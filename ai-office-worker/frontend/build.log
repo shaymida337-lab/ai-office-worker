@@ -1,0 +1,39 @@
+
+> ai-office-worker-frontend@1.0.0 build
+> next build
+
+  ▲ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/11) ...
+   Generating static pages (2/11) 
+   Generating static pages (5/11) 
+   Generating static pages (8/11) 
+ ✓ Generating static pages (11/11)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                              Size     First Load JS
+┌ ○ /                                    2.51 kB         113 kB
+├ ○ /_not-found                          873 B          88.2 kB
+├ ○ /auth/callback                       673 B            88 kB
+├ ○ /auth/error                          715 B          96.8 kB
+├ ○ /dashboard                           3.2 kB          122 kB
+├ ○ /dashboard/documents                 2.88 kB         122 kB
+├ ƒ /dashboard/documents/[id]            2.82 kB         122 kB
+├ ○ /dashboard/missing-invoices          1.75 kB         121 kB
+├ ○ /dashboard/payments                  1.81 kB         121 kB
+└ ○ /dashboard/settings                  2.1 kB          112 kB
++ First Load JS shared by all            87.3 kB
+  ├ chunks/117-0a25f44115172b14.js       31.7 kB
+  ├ chunks/fd9d1056-016abee54dfb105d.js  53.6 kB
+  └ other shared chunks (total)          1.95 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

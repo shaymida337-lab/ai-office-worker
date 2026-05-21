@@ -1,0 +1,16 @@
+{
+  "name": "ai-office-worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "db:push": "cd backend && npx prisma db push",
+    "db:generate": "cd backend && npx prisma generate",
+    "db:studio": "cd backend && npx prisma studio"
+  },
+  "devDependencies": {
+    "@railway/cli": "^4.59.0"
+  }
+}

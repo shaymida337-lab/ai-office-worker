@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: 'Segoe UI', 'Arial Hebrew', Arial, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  direction: rtl;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: #f0f4f8;
+  color: #1a1a2e;
+  min-height: 100vh;
+}
+
+/* Status badges */
+.status-NEW        { @apply bg-blue-100 text-blue-800; }
+.status-PAID       { @apply bg-green-100 text-green-800; }
+.status-OVERDUE    { @apply bg-red-100 text-red-800; }
+.status-NEEDS_REVIEW { @apply bg-yellow-100 text-yellow-800; }
+.status-MISSING_INVOICE { @apply bg-gray-100 text-gray-700; }
+
+/* Smooth transitions */
+* { transition-property: color, background-color, border-color, opacity; transition-duration: 150ms; }
+
+/* Card style */
+.card {
+  @apply bg-white rounded-2xl shadow-sm border border-gray-100;
+}

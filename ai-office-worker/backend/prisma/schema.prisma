@@ -1,0 +1,147 @@
+// This is your Prisma schema file
+// Run: npx prisma generate && npx prisma db push
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  whatsappNumber  String?
+  googleId        String?   @unique
+  passwordHash    String?
+  displayName     String?
+  accessToken     String?   // encrypted
+  refreshToken    String?   // encrypted
+  driveFolder     String?   // Google Drive folder ID
+  sheetsId        String?   // Google Sheets ID
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  documents       Document[]
+  logs            Log[]
+  supplierPayments SupplierPayment[]
+  tasks           Task[]
+  alerts          Alert[]
+
+  @@map("users")
+}
+
+model Document {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Email metadata
+  gmailMessageId  String    @unique
+  emailSubject    String?
+  emailSender     String?
+  emailSenderAddr String?
+  receivedAt      DateTime?
+
+  // Extracted fields
+  vendorName      String?
+  docType         String?   @default("OTHER")  // INVOICE, RECEIPT, PAYMENT_REQUEST, QUOTE, OTHER
+  invoiceNumber   String?
+  docDate         DateTime?
+  paymentDueDate  DateTime?
+  amountPreTax    Float?
+  taxAmount       Float?
+  totalAmount     Float?
+  currency        String?   @default("ILS")
+
+  // Status
+  status          String?   @default("NEW")  // NEW, PAID, OVERDUE, NEEDS_REVIEW, MISSING_INVOICE
+  requiresAction  Boolean   @default(false)
+  aiConfidence    Float?    // 0-1
+  aiNotes         String?
+
+  // Storage
+  driveFileId     String?
+  driveFileUrl    String?
+  sheetsRow       Int?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  supplierPayments SupplierPayment[]
+
+  @@map("documents")
+}
+
+model SupplierPayment {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  supplierName  String?
+  amount        Float?
+  currency      String?  @default("ILS")
+  date          DateTime?
+  dueDate       DateTime?
+  paid          Boolean  @default(false)
+
+  documentId    String?  // reference to Document
+  document      Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  driveFileId   String?
+  driveFileUrl  String?
+  invoiceLink   String?
+
+  invoiceHash   String?  @unique
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("supplier_payments")
+}
+
+model Task {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  details     String?
+  relatedDoc  String?  // document id
+  completed   Boolean  @default(false)
+  priority    Int      @default(2)
+  dueDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("tasks")
+}
+
+model Alert {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  message   String
+  metadata  String?
+  seen      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("alerts")
+}
+
+model Log {
+  id          String    @id @default(uuid())
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  level       String?   @default("INFO")  // INFO, WARN, ERROR
+  action      String
+  message     String
+  metadata    String?   // JSON as text for SQLite
+  createdAt   DateTime  @default(now())
+
+  @@map("logs")
+}
+
