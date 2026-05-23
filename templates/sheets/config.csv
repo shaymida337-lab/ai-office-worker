@@ -1,0 +1,18 @@
+Key,Value,Description
+business_country,Israel,מדינה
+language,he,שפת ממשק וסיכומים
+currency,ILS,מטבע ברירת מחדל
+timezone,Asia/Jerusalem,אזור זמן לתזמון Make.com
+gmail_account,YOUR_GMAIL@gmail.com,חשבון Gmail מחובר ל-Make
+summary_recipient,YOUR_GMAIL@gmail.com,נמען לסיכום יומי
+drive_root_folder,AI-Office-Worker,תיקיית שורש ב-Drive
+spreadsheet_name,Supplier Payments,שם קובץ Google Sheets
+openai_model,gpt-4o-mini,מודל מומלץ ל-MVP
+confidence_threshold,0.7,מתחת לכך — סקירה ידנית
+gmail_label_processed,AI-Office-Worker/Processed,תווית אחרי עיבוד מוצלח
+gmail_label_manual_review,AI-Office-Worker/Manual-Review,תווית לסקירה ידנית
+gmail_label_whatsapp,WhatsApp-Forwarded,תווית למיילים מוואטסאפ
+daily_scan_time,07:00,שעת סריקת Gmail (שעון ישראל)
+daily_summary_time,18:00,שעת שליחת סיכום יומי
+weekly_report_day,Sunday,יום דוח חשבוניות חסרות
+whatsapp_forward_hint,Forward WhatsApp docs to same Gmail inbox,הסבר לצוות

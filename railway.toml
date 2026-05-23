@@ -1,0 +1,9 @@
+# Railway — deploy backend API (duplicate service for worker with start command override)
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "npm run start -w backend"
+healthcheckPath = "/health"
+restartPolicyType = "ON_FAILURE"

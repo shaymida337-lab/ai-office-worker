@@ -1,0 +1,205 @@
+// AI Office Worker — PostgreSQL for Railway production deployment.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String? // null = Google-only account
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  organization Organization?
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String   @default("My Business")
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  timezone  String   @default("Asia/Jerusalem")
+  currency  String   @default("ILS")
+  locale    String   @default("he")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  integrations    Integration[]
+  supplierPayments SupplierPayment[]
+  tasks           Task[]
+  emailMessages   EmailMessage[]
+  syncLogs        SyncLog[]
+  alerts          Alert[]
+  whatsappLogs    WhatsAppLog[]
+  customerInvoices CustomerInvoice[]
+  socialDrafts    SocialDraft[]
+}
+
+model Integration {
+  id             String    @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider       String // gmail | drive | sheets | twilio
+  accessToken    String?
+  refreshToken   String?
+  expiresAt      DateTime?
+  metadata       String? // JSON: folder IDs, spreadsheet ID, Twilio number
+  connectedAt    DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([organizationId, provider])
+}
+
+model EmailMessage {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  gmailId        String
+  threadId       String?
+  subject        String
+  fromAddress    String
+  snippet        String?
+  bodyText       String?
+  receivedAt     DateTime
+  processedAt    DateTime?
+  source         String   @default("gmail") // gmail | whatsapp_forward
+  createdAt      DateTime @default(now())
+
+  attachments EmailAttachment[]
+
+  @@unique([organizationId, gmailId])
+}
+
+model EmailAttachment {
+  id             String   @id @default(cuid())
+  emailMessageId String
+  emailMessage   EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+  filename       String
+  mimeType       String?
+  gmailAttachmentId String?
+  driveFileId    String?
+  driveLink      String?
+  createdAt      DateTime @default(now())
+
+  @@index([emailMessageId, gmailAttachmentId])
+}
+
+model SupplierPayment {
+  id              String    @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier        String
+  amount          Float
+  currency        String    @default("ILS")
+  date            DateTime
+  dueDate         DateTime?
+  paid            Boolean   @default(false)
+  documentLink    String? // payment request / document
+  invoiceLink     String?
+  emailSender     String?
+  paymentRequired Boolean   @default(true)
+  missingInvoice  Boolean   @default(false)
+  duplicateHash   String?
+  subject         String?
+  source          String    @default("gmail")
+  emailMessageId  String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([organizationId, duplicateHash])
+  @@index([organizationId, paid])
+  @@index([organizationId, dueDate])
+  @@index([organizationId, missingInvoice])
+}
+
+model CustomerInvoice {
+  id             String    @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer       String
+  amount         Float
+  currency       String    @default("ILS")
+  issueDate      DateTime  @default(now())
+  dueDate        DateTime?
+  paid           Boolean   @default(false)
+  reminderSentAt DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([organizationId, paid])
+  @@index([organizationId, dueDate])
+}
+
+model SocialDraft {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  platform       String   // facebook | instagram | general
+  topic          String
+  content        String
+  status         String   @default("draft") // draft | approved | posted
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId, status])
+}
+
+model Task {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?
+  supplier       String?
+  priority       String   @default("medium") // low | medium | high
+  status         String   @default("open") // open | done
+  dueDate        DateTime?
+  source         String   @default("gmail")
+  emailMessageId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model SyncLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           String // gmail_scan | daily_summary | whatsapp_morning | whatsapp_evening
+  status         String // success | error
+  emailsProcessed Int     @default(0)
+  paymentsCreated Int     @default(0)
+  tasksCreated   Int      @default(0)
+  errorMessage   String?
+  startedAt      DateTime @default(now())
+  finishedAt     DateTime?
+}
+
+model Alert {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           String // new_invoice | upcoming_payment | missing_invoice | duplicate
+  title          String
+  body           String?
+  read           Boolean  @default(false)
+  createdAt      DateTime @default(now())
+}
+
+model WhatsAppLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  direction      String // inbound | outbound
+  body           String
+  fromNumber     String?
+  toNumber       String?
+  createdAt      DateTime @default(now())
+}

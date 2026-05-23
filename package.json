@@ -1,0 +1,24 @@
+{
+  "name": "ai-office-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Office Worker — SaaS for Gmail, invoices, Drive, WhatsApp (Israel)",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w backend && npm run build -w frontend",
+    "db:generate": "npm run db:generate -w backend",
+    "db:migrate": "npm run db:migrate -w backend",
+    "db:push": "npm run db:push -w backend",
+    "worker": "npm run worker -w backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

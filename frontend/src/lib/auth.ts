@@ -1,0 +1,52 @@
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+export type AuthResponse = {
+  token: string;
+  user: { id: string; email: string; name: string | null };
+  organization: { id: string; name: string };
+};
+
+export function saveToken(token: string): void {
+  localStorage.setItem("token", token);
+}
+
+export async function register(input: {
+  email: string;
+  password: string;
+  name?: string;
+}): Promise<AuthResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    throw new Error(`API is not reachable at ${API_URL}`);
+  }
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Registration failed");
+  return data as AuthResponse;
+}
+
+export async function login(input: {
+  email: string;
+  password: string;
+}): Promise<AuthResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    throw new Error(`API is not reachable at ${API_URL}`);
+  }
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Login failed");
+  return data as AuthResponse;
+}
