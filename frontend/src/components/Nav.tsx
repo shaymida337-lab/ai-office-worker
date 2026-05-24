@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 const links = [
   { href: "/dashboard", label: "לוח בקרה" },
@@ -16,6 +16,13 @@ const links = [
 
 export function Nav() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  function logout() {
+    localStorage.removeItem("token");
+    router.push("/");
+  }
+
   return (
     <nav>
       {links.map((l) => (
@@ -27,6 +34,9 @@ export function Nav() {
           {l.label}
         </Link>
       ))}
+      <button type="button" onClick={logout}>
+        התנתק
+      </button>
     </nav>
   );
 }
