@@ -44,6 +44,7 @@ app.use("/api/integrations", integrationsRouter);
 app.use("/api/clients", clientsRouter);
 app.use("/api", apiRouter);
 app.use("/cron", cronRouter);
+app.use("/webhook", webhooksRouter);
 app.use("/webhooks", webhooksRouter);
 
 const server = app.listen(config.port);

@@ -12,6 +12,7 @@ const links = [
   { href: "/social", label: "סושיאל" },
   { href: "/tasks", label: "משימות" },
   { href: "/reports", label: "דוחות" },
+  { href: "/dashboard/whatsapp", label: "WhatsApp" },
 ];
 
 export function Nav() {

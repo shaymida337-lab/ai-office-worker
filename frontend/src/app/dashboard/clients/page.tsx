@@ -8,6 +8,7 @@ type ClientItem = {
   id: string;
   name: string;
   email: string;
+  whatsappNumber: string | null;
   color: string | null;
   gmailConnected: boolean;
   invoiceSheetUrl: string | null;
@@ -34,6 +35,7 @@ type ClientsResponse = {
 const emptyForm = {
   name: "",
   email: "",
+  whatsappNumber: "",
   color: "#3B82F6",
   invoiceSheetUrl: "",
   taskSheetUrl: "",
@@ -119,6 +121,11 @@ export default function ClientsPage() {
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
+          <input
+            placeholder="WhatsApp (+972...)"
+            value={form.whatsappNumber}
+            onChange={(e) => setForm({ ...form, whatsappNumber: e.target.value })}
+          />
           <label>
             צבע{" "}
             <input
@@ -169,6 +176,7 @@ export default function ClientsPage() {
                 <strong>{client.name}</strong>
               </div>
               <p>{client.email}</p>
+              <p>WhatsApp {client.whatsappNumber ? client.whatsappNumber : "לא מוגדר"}</p>
               <p>
                 Gmail {client.gmailConnected ? "מחובר" : "לא מחובר"} · Sheets{" "}
                 {client.invoiceSheetUrl || client.taskSheetUrl ? "מחובר" : "לא מחובר"} · Drive{" "}

@@ -49,6 +49,7 @@ model Client {
   organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name               String
   email              String
+  whatsappNumber     String?
   googleAccessToken  String?
   googleRefreshToken String?
   gmailConnected     Boolean  @default(false)
@@ -66,8 +67,10 @@ model Client {
   supplierPayments SupplierPayment[]
   tasks            Task[]
   emailMessages    EmailMessage[]
+  whatsappLogs     WhatsAppLog[]
 
   @@index([organizationId, isActive])
+  @@index([organizationId, whatsappNumber])
 }
 
 model Integration {
@@ -239,10 +242,17 @@ model Alert {
 model WhatsAppLog {
   id             String   @id @default(cuid())
   organizationId String
+  clientId       String?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client         Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   direction      String // inbound | outbound
   body           String
   fromNumber     String?
   toNumber       String?
+  aiGenerated    Boolean  @default(false)
+  read           Boolean  @default(false)
   createdAt      DateTime @default(now())
+
+  @@index([organizationId, clientId, createdAt])
+  @@index([clientId, read])
 }

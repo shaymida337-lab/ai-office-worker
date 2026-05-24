@@ -6,6 +6,7 @@ import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { getOAuth2Client, GMAIL_SCOPES } from "../services/google.js";
 import { syncGmailForClient } from "../services/clientGmailSync.js";
+import { normalizeWhatsAppNumber, sendClientWhatsAppMessage } from "../services/whatsapp.js";
 
 export const clientsRouter = Router();
 
@@ -123,6 +124,13 @@ clientsRouter.get("/", authMiddleware, async (req, res) => {
       googleRefreshToken: undefined,
       stats: await clientStats(organizationId, client.id),
       health: await calculateClientHealth(organizationId, client.id),
+      whatsappUnread: await prisma.whatsAppLog.count({
+        where: { organizationId, clientId: client.id, direction: "inbound", read: false },
+      }),
+      whatsappLastMessage: await prisma.whatsAppLog.findFirst({
+        where: { organizationId, clientId: client.id },
+        orderBy: { createdAt: "desc" },
+      }),
     }))
   );
 
@@ -141,9 +149,10 @@ clientsRouter.get("/", authMiddleware, async (req, res) => {
 
 clientsRouter.post("/", authMiddleware, async (req, res) => {
   const organizationId = req.auth!.organizationId;
-  const { name, email, color, invoiceSheetUrl, taskSheetUrl, driveFolderUrl } = req.body as {
+  const { name, email, color, invoiceSheetUrl, taskSheetUrl, driveFolderUrl, whatsappNumber } = req.body as {
     name?: string;
     email?: string;
+    whatsappNumber?: string;
     color?: string;
     invoiceSheetUrl?: string;
     taskSheetUrl?: string;
@@ -161,6 +170,7 @@ clientsRouter.post("/", authMiddleware, async (req, res) => {
       organizationId,
       name: name.trim(),
       email: email.trim().toLowerCase(),
+      whatsappNumber: whatsappNumber?.trim() ? normalizeWhatsAppNumber(whatsappNumber) : null,
       color: color || COLORS[count % COLORS.length],
       invoiceSheetUrl: invoiceSheetUrl?.trim() || null,
       invoiceSheetId: parseSheetId(invoiceSheetUrl),
@@ -297,6 +307,40 @@ clientsRouter.post("/:clientId/tasks", authMiddleware, checkClientOwnership, asy
   res.status(201).json({ task });
 });
 
+clientsRouter.get("/:clientId/whatsapp", authMiddleware, checkClientOwnership, async (req, res) => {
+  const client = res.locals.client;
+  const messages = await prisma.whatsAppLog.findMany({
+    where: { organizationId: req.auth!.organizationId, clientId: client.id },
+    orderBy: { createdAt: "asc" },
+    take: 100,
+  });
+  await prisma.whatsAppLog.updateMany({
+    where: { organizationId: req.auth!.organizationId, clientId: client.id, direction: "inbound", read: false },
+    data: { read: true },
+  });
+  res.json({ messages });
+});
+
+clientsRouter.post("/:clientId/whatsapp/send", authMiddleware, checkClientOwnership, async (req, res) => {
+  const client = res.locals.client;
+  const body = req.body as { body?: string };
+  const text = body.body?.trim();
+  if (!text) {
+    res.status(400).json({ error: "Message body is required" });
+    return;
+  }
+  try {
+    const result = await sendClientWhatsAppMessage(client.id, text);
+    if (!result.sent) {
+      res.status(400).json({ error: result.reason });
+      return;
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to send WhatsApp message" });
+  }
+});
+
 clientsRouter.get("/:clientId/health-score", authMiddleware, checkClientOwnership, async (req, res) => {
   const client = res.locals.client;
   res.json(await calculateClientHealth(req.auth!.organizationId, client.id));
@@ -397,6 +441,9 @@ clientsRouter.put("/:clientId", authMiddleware, checkClientOwnership, async (req
     data: {
       ...(body.name && { name: body.name.trim() }),
       ...(body.email && { email: body.email.trim().toLowerCase() }),
+      ...(body.whatsappNumber !== undefined && {
+        whatsappNumber: body.whatsappNumber?.trim() ? normalizeWhatsAppNumber(body.whatsappNumber) : null,
+      }),
       ...(body.color && { color: body.color }),
       ...(body.invoiceSheetUrl !== undefined && {
         invoiceSheetUrl: body.invoiceSheetUrl?.trim() || null,

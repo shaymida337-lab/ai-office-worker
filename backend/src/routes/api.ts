@@ -5,6 +5,11 @@ import { authMiddleware } from "../lib/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { getDashboardStats, getMissingInvoicesReport } from "../services/dashboard.js";
 import { buildDailySummary } from "../services/summary.js";
+import {
+  getWhatsAppSettings,
+  saveWhatsAppSettings,
+  sendWhatsAppMessage,
+} from "../services/whatsapp.js";
 
 export const apiRouter = Router();
 apiRouter.use(authMiddleware);
@@ -125,6 +130,33 @@ apiRouter.get("/alerts", async (req, res) => {
 apiRouter.get("/summary/daily", async (req, res) => {
   const text = await buildDailySummary(req.auth!.organizationId);
   res.json({ text });
+});
+
+apiRouter.get("/integrations/whatsapp/status", async (req, res) => {
+  res.json(await getWhatsAppSettings(req.auth!.organizationId));
+});
+
+apiRouter.put("/integrations/whatsapp/settings", async (req, res) => {
+  const body = req.body as { ownerWhatsApp?: string };
+  if (!body.ownerWhatsApp?.trim()) {
+    res.status(400).json({ error: "WhatsApp number is required" });
+    return;
+  }
+
+  await saveWhatsAppSettings(req.auth!.organizationId, body.ownerWhatsApp);
+  res.json(await getWhatsAppSettings(req.auth!.organizationId));
+});
+
+apiRouter.post("/integrations/whatsapp/test", async (req, res) => {
+  const result = await sendWhatsAppMessage(
+    req.auth!.organizationId,
+    "בדיקת WhatsApp מ-AI Office Worker הצליחה."
+  );
+  if (!result.sent) {
+    res.status(400).json({ error: result.reason });
+    return;
+  }
+  res.json(result);
 });
 
 apiRouter.post("/sync/gmail", async (req, res) => {

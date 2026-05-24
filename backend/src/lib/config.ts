@@ -49,8 +49,15 @@ export const config = {
   twilio: {
     accountSid: optional("TWILIO_ACCOUNT_SID"),
     authToken: optional("TWILIO_AUTH_TOKEN"),
-    whatsappFrom: optional("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886"),
-    ownerWhatsApp: optional("OWNER_WHATSAPP_NUMBER"), // e.g. whatsapp:+972501234567
+    whatsappFrom: optional(
+      "TWILIO_WHATSAPP_NUMBER",
+      optional("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+    ),
+    ownerWhatsApp: optional("OWNER_WHATSAPP", optional("OWNER_WHATSAPP_NUMBER")),
+    webhookUrl: optional(
+      "TWILIO_WEBHOOK_URL",
+      "https://ai-office-worker-backend.onrender.com/webhook/whatsapp"
+    ),
   },
 
   driveRootFolder: optional("GOOGLE_DRIVE_ROOT", "AI Office Worker"),
@@ -68,6 +75,6 @@ export function hasTwilio(): boolean {
   return Boolean(
     config.twilio.accountSid &&
       config.twilio.authToken &&
-      config.twilio.ownerWhatsApp
+      config.twilio.whatsappFrom
   );
 }

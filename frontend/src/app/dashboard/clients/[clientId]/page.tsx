@@ -34,11 +34,20 @@ type Suggestion = {
   priority: TaskPriority;
 };
 
+type WhatsAppMessage = {
+  id: string;
+  direction: "inbound" | "outbound";
+  body: string;
+  aiGenerated: boolean;
+  createdAt: string;
+};
+
 type ClientDetail = {
   client: {
     id: string;
     name: string;
     email: string;
+    whatsappNumber: string | null;
     color: string | null;
     gmailConnected: boolean;
     invoiceSheetUrl: string | null;
@@ -75,6 +84,8 @@ export default function ClientDetailPage() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [health, setHealth] = useState<HealthScore | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [whatsappMessages, setWhatsappMessages] = useState<WhatsAppMessage[]>([]);
+  const [whatsappText, setWhatsappText] = useState("");
   const [form, setForm] = useState(emptyTask);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -86,8 +97,10 @@ export default function ClientDetailPage() {
   async function load() {
     const next = await apiFetch<ClientDetail>(`/api/clients/${clientId}`);
     const taskResult = await apiFetch<{ tasks: TaskItem[] }>(`/api/clients/${clientId}/tasks`);
+    const whatsappResult = await apiFetch<{ messages: WhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp`);
     setData(next);
     setTasks(taskResult.tasks);
+    setWhatsappMessages(whatsappResult.messages);
     setHealth(next.client.health ?? null);
   }
 
@@ -95,6 +108,12 @@ export default function ClientDetailPage() {
     load().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת לקוח נכשלה"));
     const cached = suggestionCache.get(clientId);
     if (cached) setSuggestions(cached);
+    const interval = window.setInterval(() => {
+      apiFetch<{ messages: WhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp`)
+        .then((result) => setWhatsappMessages(result.messages))
+        .catch(() => undefined);
+    }, 30000);
+    return () => window.clearInterval(interval);
   }, [clientId]);
 
   const healthTone = useMemo(() => {
@@ -226,6 +245,24 @@ export default function ClientDetailPage() {
     setHealth(next);
   }
 
+  async function sendWhatsAppMessage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const body = whatsappText.trim();
+    if (!body) return;
+    setMessage("");
+    try {
+      await apiFetch(`/api/clients/${clientId}/whatsapp/send`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      });
+      setWhatsappText("");
+      const result = await apiFetch<{ messages: WhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp`);
+      setWhatsappMessages(result.messages);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Failed to send WhatsApp message");
+    }
+  }
+
   if (!data) {
     return (
       <div className="container">
@@ -242,6 +279,7 @@ export default function ClientDetailPage() {
         <span style={{ color: data.client.color ?? "#3B82F6" }}>■</span> {data.client.name}
       </h1>
       <p>gmail: {data.client.email}</p>
+      <p>WhatsApp: {data.client.whatsappNumber || "לא מוגדר"}</p>
       {message && <p style={{ color: "var(--danger)" }}>{message}</p>}
 
       <div className="card">
@@ -283,6 +321,39 @@ export default function ClientDetailPage() {
             פתח Drive
           </a>
         )}
+      </div>
+
+      <div className="card">
+        <h2>WhatsApp</h2>
+        <div style={{ display: "grid", gap: "0.5rem" }}>
+          {whatsappMessages.map((item) => (
+            <div
+              key={item.id}
+              style={{
+                justifySelf: item.direction === "inbound" ? "start" : "end",
+                background: item.direction === "inbound" ? "#dcfce7" : "#e5e7eb",
+                color: "#111827",
+                borderRadius: "12px",
+                padding: "0.6rem 0.8rem",
+                maxWidth: "75%",
+              }}
+            >
+              <div>{item.body}</div>
+              {item.aiGenerated && <small>AI reply</small>}
+            </div>
+          ))}
+          {whatsappMessages.length === 0 && <p>No WhatsApp messages yet</p>}
+        </div>
+        <form onSubmit={sendWhatsAppMessage} style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
+          <input
+            value={whatsappText}
+            onChange={(event) => setWhatsappText(event.target.value)}
+            placeholder="Type WhatsApp message"
+          />
+          <button className="btn" type="submit">
+            Send
+          </button>
+        </form>
       </div>
 
       <div className="card">
