@@ -6,6 +6,10 @@ import {
   ensureInvoiceFolderTree,
   uploadInvoiceAttachmentToDrive,
 } from "./driveService.js";
+import {
+  writeClientInvoiceToSheet,
+  writeClientTaskToSheet,
+} from "./clientSheetsService.js";
 
 const GMAIL_QUERIES = [
   "has:attachment newer_than:30d",
@@ -121,6 +125,16 @@ export async function syncGmailForClient(clientId: string) {
           emailMessageId: emailRecord.id,
         },
       });
+      await writeClientTaskToSheet(clientId, {
+        date: receivedAt,
+        from,
+        subject,
+        summary: taskTitle,
+        action: taskTitle,
+        priority: analysis.confidence < 0.7 ? "גבוה" : "בינוני",
+        dueDate: analysis.dueDate ? new Date(analysis.dueDate) : null,
+        status: "פתוח",
+      });
       tasksCreated++;
     }
 
@@ -158,6 +172,17 @@ export async function syncGmailForClient(clientId: string) {
             source: "gmail",
             emailMessageId: emailRecord.id,
           },
+        });
+        await writeClientInvoiceToSheet(clientId, {
+          date: receivedAt,
+          supplier: analysis.supplier,
+          amount: analysis.amount ?? 0,
+          currency: analysis.currency,
+          driveFileUrl: driveLinks[0],
+          driveFolderUrl: client.driveFolderUrl,
+          emailSubject: subject,
+          status: "ממתין",
+          notes: analysis.tasks.join(", "),
         });
         paymentsCreated++;
       }

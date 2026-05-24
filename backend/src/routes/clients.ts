@@ -31,12 +31,15 @@ function authFromQuery(req: { query: Record<string, unknown>; headers: { authori
   }
 }
 
-async function clientStats(clientId: string) {
+async function clientStats(organizationId: string, clientId: string) {
   const [invoices, openTasks, toPay, missingInvoices] = await Promise.all([
-    prisma.supplierPayment.count({ where: { clientId } }),
-    prisma.task.count({ where: { clientId, status: "open" } }),
-    prisma.supplierPayment.aggregate({ where: { clientId, paid: false }, _sum: { amount: true } }),
-    prisma.supplierPayment.count({ where: { clientId, missingInvoice: true } }),
+    prisma.supplierPayment.count({ where: { organizationId, clientId } }),
+    prisma.task.count({ where: { organizationId, clientId, status: "open" } }),
+    prisma.supplierPayment.aggregate({
+      where: { organizationId, clientId, paid: false },
+      _sum: { amount: true },
+    }),
+    prisma.supplierPayment.count({ where: { organizationId, clientId, missingInvoice: true } }),
   ]);
 
   return {
@@ -59,7 +62,7 @@ clientsRouter.get("/", authMiddleware, async (req, res) => {
       ...client,
       googleAccessToken: undefined,
       googleRefreshToken: undefined,
-      stats: await clientStats(client.id),
+      stats: await clientStats(organizationId, client.id),
     }))
   );
 
@@ -108,19 +111,19 @@ clientsRouter.post("/", authMiddleware, async (req, res) => {
     },
   });
 
-  res.status(201).json({ client: { ...client, stats: await clientStats(client.id) } });
+  res.status(201).json({ client: { ...client, stats: await clientStats(organizationId, client.id) } });
 });
 
 clientsRouter.get("/gmail/callback", async (req, res) => {
   try {
     if (req.query.error) {
-      res.redirect(`${config.frontendUrl}/clients?error=oauth_denied`);
+      res.redirect(`${config.frontendUrl}/dashboard/clients?error=oauth_denied`);
       return;
     }
 
     const decoded = jwt.verify(String(req.query.state), config.jwtSecret) as { purpose: string; clientId: string };
     if (decoded.purpose !== "client_gmail") {
-      res.redirect(`${config.frontendUrl}/clients?error=invalid_state`);
+      res.redirect(`${config.frontendUrl}/dashboard/clients?error=invalid_state`);
       return;
     }
 
@@ -135,9 +138,9 @@ clientsRouter.get("/gmail/callback", async (req, res) => {
       },
     });
 
-    res.redirect(`${config.frontendUrl}/clients/${decoded.clientId}?connected=1`);
+    res.redirect(`${config.frontendUrl}/dashboard/clients/${decoded.clientId}?connected=1`);
   } catch {
-    res.redirect(`${config.frontendUrl}/clients?error=oauth_failed`);
+    res.redirect(`${config.frontendUrl}/dashboard/clients?error=oauth_failed`);
   }
 });
 
@@ -146,10 +149,8 @@ clientsRouter.post("/scan-all", authMiddleware, async (req, res) => {
     where: { organizationId: req.auth!.organizationId, isActive: true, gmailConnected: true },
   });
 
-  res.json({ success: true, count: clients.length });
-  for (const client of clients) {
-    syncGmailForClient(client.id).catch(console.error);
-  }
+  const results = await Promise.all(clients.map((client) => syncGmailForClient(client.id)));
+  res.json({ success: true, count: clients.length, results });
 });
 
 clientsRouter.get("/:clientId/connect-gmail", async (req, res) => {
@@ -195,9 +196,17 @@ clientsRouter.get("/:clientId", authMiddleware, async (req, res) => {
   }
 
   const [payments, tasks, stats] = await Promise.all([
-    prisma.supplierPayment.findMany({ where: { clientId: client.id }, orderBy: { date: "desc" }, take: 20 }),
-    prisma.task.findMany({ where: { clientId: client.id, status: "open" }, orderBy: { createdAt: "desc" }, take: 20 }),
-    clientStats(client.id),
+    prisma.supplierPayment.findMany({
+      where: { organizationId, clientId: client.id },
+      orderBy: { date: "desc" },
+      take: 20,
+    }),
+    prisma.task.findMany({
+      where: { organizationId, clientId: client.id, status: "open" },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+    clientStats(organizationId, client.id),
   ]);
 
   res.json({
@@ -238,7 +247,7 @@ clientsRouter.put("/:clientId", authMiddleware, async (req, res) => {
     },
   });
 
-  res.json({ client: { ...updated, stats: await clientStats(updated.id) } });
+  res.json({ client: { ...updated, stats: await clientStats(req.auth!.organizationId, updated.id) } });
 });
 
 clientsRouter.post("/:clientId/scan", authMiddleware, async (req, res) => {
@@ -250,6 +259,6 @@ clientsRouter.post("/:clientId/scan", authMiddleware, async (req, res) => {
     return;
   }
 
-  res.json({ success: true });
-  syncGmailForClient(client.id).catch(console.error);
+  const result = await syncGmailForClient(client.id);
+  res.json({ success: true, result });
 });

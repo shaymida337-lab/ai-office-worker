@@ -5,11 +5,34 @@ import { Nav } from "@/components/Nav";
 import { apiFetch, type DashboardStats, type GmailStatus } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
+type ClientSummary = {
+  id: string;
+  name: string;
+  color: string | null;
+  stats?: {
+    toPay: number;
+    openTasks: number;
+    invoices: number;
+    missingInvoices: number;
+  };
+};
+
+type ClientsResponse = {
+  clients: ClientSummary[];
+  totals: {
+    toPay: number;
+    openTasks: number;
+    invoices: number;
+    missingInvoices: number;
+  };
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [summary, setSummary] = useState("");
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
+  const [clients, setClients] = useState<ClientsResponse | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
 
@@ -21,6 +44,8 @@ export default function DashboardPage() {
       setSummary(sum.text);
       const gmail = await apiFetch<GmailStatus>("/api/integrations/gmail/status");
       setGmailStatus(gmail);
+      const clientData = await apiFetch<ClientsResponse>("/api/clients");
+      setClients(clientData);
     } catch {
       router.push("/");
     }
@@ -63,6 +88,20 @@ export default function DashboardPage() {
     }
   }
 
+  async function scanAllClients() {
+    setSyncing(true);
+    setError("");
+    try {
+      await apiFetch<{ success: boolean }>("/api/clients/scan-all", { method: "POST" });
+      await load();
+      setError("סריקת כל הלקוחות הסתיימה");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "סריקת לקוחות נכשלה");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   if (!stats) {
     return (
       <div className="container">
@@ -75,6 +114,42 @@ export default function DashboardPage() {
     <div className="container">
       <h1>לוח בקרה</h1>
       <Nav />
+      {clients && (
+        <div className="card">
+          <h2>כל הלקוחות</h2>
+          <div style={{ marginBottom: "1rem" }}>
+            <button className="btn" onClick={scanAllClients} disabled={syncing}>
+              {syncing ? "סורק..." : "סרוק את כולם"}
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => router.push("/dashboard/clients")}
+              style={{ marginRight: "0.75rem" }}
+            >
+              + הוסף לקוח
+            </button>
+          </div>
+          {clients.clients.length === 0 ? (
+            <p>אין לקוחות עדיין.</p>
+          ) : (
+            clients.clients.map((client) => (
+              <div key={client.id} style={{ borderTop: "1px solid var(--border)", padding: "0.75rem 0" }}>
+                <strong>
+                  <span style={{ color: client.color ?? "#3B82F6" }}>■</span> {client.name}
+                </strong>
+                <div>
+                  ₪{client.stats?.toPay ?? 0} לשלם · {client.stats?.openTasks ?? 0} משימות ·{" "}
+                  {client.stats?.invoices ?? 0} חשבוניות · {client.stats?.missingInvoices ?? 0} חסרות
+                </div>
+              </div>
+            ))
+          )}
+          <p>
+            סה"כ: ₪{clients.totals.toPay} · {clients.totals.openTasks} משימות ·{" "}
+            {clients.totals.invoices} חשבוניות
+          </p>
+        </div>
+      )}
       <div style={{ marginBottom: "1rem" }}>
         <button
           className="btn btn-secondary"

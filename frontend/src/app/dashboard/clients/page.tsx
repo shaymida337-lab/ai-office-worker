@@ -72,6 +72,17 @@ export default function ClientsPage() {
     }
   }
 
+  async function scanClient(clientId: string) {
+    setMessage("");
+    try {
+      await apiFetch(`/api/clients/${clientId}/scan`, { method: "POST" });
+      setMessage("סריקת הלקוח הסתיימה");
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "סריקת לקוח נכשלה");
+    }
+  }
+
   function connectUrl(clientId: string) {
     const token = getToken();
     const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -167,6 +178,12 @@ export default function ClientsPage() {
               </p>
               <a className="btn btn-secondary" href={connectUrl(client.id)}>
                 חבר Gmail
+              </a>
+              <button className="btn btn-secondary" onClick={() => scanClient(client.id)}>
+                סרוק
+              </button>
+              <a className="btn btn-secondary" href={`/dashboard/clients/${client.id}`}>
+                דוח
               </a>
             </div>
           ))

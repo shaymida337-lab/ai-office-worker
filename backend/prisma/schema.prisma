@@ -106,6 +106,7 @@ model EmailMessage {
 
   @@unique([organizationId, gmailId])
   @@index([clientId])
+  @@index([organizationId, processedAt])
 }
 
 model EmailAttachment {
@@ -150,6 +151,7 @@ model SupplierPayment {
   @@index([organizationId, paid])
   @@index([organizationId, dueDate])
   @@index([organizationId, missingInvoice])
+  @@index([clientId, paid])
 }
 
 model CustomerInvoice {
@@ -201,6 +203,10 @@ model Task {
   emailMessageId String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+  @@index([clientId, status])
 }
 
 model SyncLog {
@@ -215,6 +221,8 @@ model SyncLog {
   errorMessage   String?
   startedAt      DateTime @default(now())
   finishedAt     DateTime?
+
+  @@index([organizationId, type, status, finishedAt])
 }
 
 model Alert {
