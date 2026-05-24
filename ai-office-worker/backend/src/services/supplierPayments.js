@@ -39,6 +39,7 @@ const createPaymentFromDocument = async (doc) => {
   const payment = await prisma.supplierPayment.create({
     data: {
       userId: doc.userId,
+      clientId: doc.clientId || null,
       supplierName: doc.vendorName,
       amount: doc.totalAmount,
       currency: doc.currency || 'ILS',

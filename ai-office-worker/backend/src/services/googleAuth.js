@@ -1,41 +1,61 @@
 const { google } = require('googleapis');
 const { PrismaClient } = require('@prisma/client');
 const { logger } = require('../utils/logger');
-const { getGoogleRedirectUri } = require('../utils/googleOAuth');
+const { getGoogleRedirectUri, getClientGmailRedirectUri } = require('../utils/googleOAuth');
 
 const prisma = new PrismaClient();
 
-/**
- * Returns an authenticated Google OAuth2 client for a given user.
- * Handles token refresh automatically.
- */
-const getAuthClient = async (user) => {
+const getAuthClient = async (user) =>
+  getAuthClientForTokens({
+    id: user.id,
+    accessToken: user.accessToken,
+    refreshToken: user.refreshToken,
+    entityType: 'user',
+    redirectUri: getGoogleRedirectUri(),
+  });
+
+const getAuthClientForClient = async (client) =>
+  getAuthClientForTokens({
+    id: client.id,
+    accessToken: client.googleAccessToken,
+    refreshToken: client.googleRefreshToken,
+    entityType: 'client',
+    redirectUri: getClientGmailRedirectUri(),
+  });
+
+const getAuthClientForTokens = async ({ id, accessToken, refreshToken, entityType, redirectUri }) => {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    getGoogleRedirectUri()
+    redirectUri
   );
 
   oauth2Client.setCredentials({
-    access_token: user.accessToken,
-    refresh_token: user.refreshToken,
+    access_token: accessToken,
+    refresh_token: refreshToken,
   });
 
-  // Auto-refresh tokens
   oauth2Client.on('tokens', async (tokens) => {
-    if (tokens.access_token) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          accessToken: tokens.access_token,
-          ...(tokens.refresh_token && { refreshToken: tokens.refresh_token }),
-        },
-      });
-      logger.info('Tokens refreshed', { userId: user.id });
+    if (!tokens.access_token) return;
+    const data = {
+      ...(entityType === 'client'
+        ? { googleAccessToken: tokens.access_token }
+        : { accessToken: tokens.access_token }),
+      ...(tokens.refresh_token && (entityType === 'client'
+        ? { googleRefreshToken: tokens.refresh_token }
+        : { refreshToken: tokens.refresh_token })),
+    };
+
+    if (entityType === 'client') {
+      await prisma.client.update({ where: { id }, data });
+      logger.info('Client tokens refreshed', { clientId: id });
+    } else {
+      await prisma.user.update({ where: { id }, data });
+      logger.info('Tokens refreshed', { userId: id });
     }
   });
 
   return oauth2Client;
 };
 
-module.exports = { getAuthClient };
+module.exports = { getAuthClient, getAuthClientForClient, getAuthClientForTokens };

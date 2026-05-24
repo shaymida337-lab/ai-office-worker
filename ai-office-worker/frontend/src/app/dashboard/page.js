@@ -11,14 +11,30 @@ export default function DashboardPage() {
   const [scanMsg, setScanMsg] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const [clientsData, setClientsData] = useState({ clients: [], totals: {} });
+
   useEffect(() => {
-    Promise.all([apiClient.getStats(), apiClient.getMe()])
-      .then(([statsRes, meRes]) => {
+    Promise.all([apiClient.getStats(), apiClient.getMe(), apiClient.getClients()])
+      .then(([statsRes, meRes, clientsRes]) => {
         setData(statsRes.data);
         setUser(meRes.data.user);
+        setClientsData(clientsRes.data);
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const scanAllClients = async () => {
+    setScanning(true);
+    setScanMsg('');
+    try {
+      await apiClient.scanAllClients();
+      setScanMsg('סריקה הופעלה לכל הלקוחות!');
+    } catch {
+      setScanMsg('שגיאה בהפעלת הסריקה.');
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const triggerScan = async () => {
     setScanning(true);
@@ -47,44 +63,88 @@ export default function DashboardPage() {
 
   const stats = data?.stats || {};
   const recentDocs = data?.recentDocs || [];
+  const clients = clientsData.clients || [];
+  const totals = clientsData.totals || {};
   const name = user?.displayName?.split(' ')[0] || 'שלום';
   const googleConnected = user?.googleConnected;
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">שלום {name} 👋</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            {new Date().toLocaleDateString('he-IL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </p>
-          {!googleConnected && (
-            <div className="mt-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl p-3">
-              Gmail לא מחובר.{' '}
-              <a
-                href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/auth/google`}
-                className="font-bold underline"
-              >
-                התחבר עם Google
-              </a>{' '}
-              כדי לסרוק חשבוניות מהמייל.
-            </div>
-          )}
+          <h1 className="text-2xl font-bold text-gray-800">לוח בקרה — כל הלקוחות</h1>
+          <p className="text-gray-500 text-sm mt-1">שלום {name} 👋</p>
         </div>
-        <button
-          onClick={triggerScan}
-          disabled={scanning || !googleConnected}
-          className="bg-blue-900 hover:bg-blue-800 disabled:opacity-60 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-colors flex items-center gap-2"
-        >
-          <span className={scanning ? 'animate-spin' : ''}>🔄</span>
-          {scanning ? 'סורק...' : 'סרוק עכשיו'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={scanAllClients}
+            disabled={scanning}
+            className="bg-blue-900 hover:bg-blue-800 disabled:opacity-60 text-white px-5 py-2.5 rounded-xl text-sm font-bold"
+          >
+            {scanning ? 'סורק...' : 'סרוק את כולם'}
+          </button>
+          <Link href="/dashboard/clients" className="bg-green-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold">
+            + הוסף לקוח
+          </Link>
+        </div>
       </div>
 
       {scanMsg && (
         <div className="bg-blue-50 text-blue-700 rounded-xl p-4 mb-6 text-sm">{scanMsg}</div>
       )}
+
+      {clients.length > 0 ? (
+        <>
+          <div className="space-y-3 mb-6">
+            {clients.map((c) => (
+              <Link key={c.id} href={`/dashboard/clients/${c.id}`} className="card p-5 block hover:bg-gray-50">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color || '#3B82F6' }} />
+                  <span className="font-bold text-gray-800">{c.name}</span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-gray-600">
+                  <span>💰 לשלם: {formatCurrency(c.stats?.toPay)}</span>
+                  <span>📋 משימות: {c.stats?.openTasks ?? 0}</span>
+                  <span>📄 חשבוניות: {c.stats?.invoices ?? 0}</span>
+                  <span>⚠️ חסרות: {c.stats?.missingInvoices ?? 0}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+          <div className="card p-5 mb-6 text-sm">
+            <div className="font-bold mb-2">סה״כ כל הלקוחות</div>
+            <div className="flex flex-wrap gap-4 text-gray-700">
+              <span>💰 {formatCurrency(totals.toPay)}</span>
+              <span>📋 {totals.openTasks ?? 0} משימות</span>
+              <span>📄 {totals.invoices ?? 0} חשבוניות</span>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="card p-8 text-center mb-6">
+          <p className="text-gray-500 mb-4">עדיין אין לקוחות. הוסף לקוח ראשון כדי להתחיל.</p>
+          <Link href="/dashboard/clients" className="text-blue-700 font-bold hover:underline">ניהול לקוחות →</Link>
+        </div>
+      )}
+
+      {!googleConnected && clients.length === 0 && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl p-3">
+          ניתן גם לחבר Gmail אישי:{' '}
+          <a href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/auth/google`} className="font-bold underline">התחבר עם Google</a>
+        </div>
+      )}
+
+      {/* Legacy personal scan */}
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-bold text-gray-700">החשבון האישי שלי</h2>
+        <button
+          onClick={triggerScan}
+          disabled={scanning || !googleConnected}
+          className="text-sm bg-gray-100 px-4 py-2 rounded-lg disabled:opacity-50"
+        >
+          סרוק Gmail אישי
+        </button>
+      </div>
 
       {/* Connected sheets */}
       <div className="grid md:grid-cols-2 gap-4 mb-6">

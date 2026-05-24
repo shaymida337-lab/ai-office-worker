@@ -1,5 +1,5 @@
 const { google } = require('googleapis');
-const { getAuthClient } = require('./googleAuth');
+const { getAuthClient, getAuthClientForClient } = require('./googleAuth');
 const { PrismaClient } = require('@prisma/client');
 const { logger } = require('../utils/logger');
 
@@ -96,6 +96,20 @@ const ensureTabWithHeaders = async (sheets, spreadsheetId, tabName, headers) => 
 
   return meta.data.properties?.title ?? tabName;
 };
+
+const getSheetsClientForClient = async (client) => {
+  const auth = await getAuthClientForClient(client);
+  return google.sheets({ version: 'v4', auth });
+};
+
+const getDriveFolderUrlForClient = (client) => {
+  if (client.driveFolderUrl) return client.driveFolderUrl;
+  if (client.driveFolderId) return `https://drive.google.com/drive/folders/${client.driveFolderId}`;
+  return '';
+};
+
+const resolveClientInvoiceSheetId = (client) => client.invoiceSheetId || null;
+const resolveClientTaskSheetId = (client) => client.taskSheetId || null;
 
 const resolveInvoiceSheetId = (user) =>
   user.invoiceSheetId || user.sheetsId || null;
@@ -285,15 +299,124 @@ const writeTaskToSheet = async (userId, task) => {
   return rowNum;
 };
 
+const writeInvoiceToSheetForClient = async (clientId, invoice) => {
+  const client = await prisma.client.findUnique({ where: { id: clientId } });
+  if (!client?.googleAccessToken) return null;
+
+  let spreadsheetId = resolveClientInvoiceSheetId(client);
+  let spreadsheetUrl = client.invoiceSheetUrl;
+
+  if (!spreadsheetId) {
+    const sheets = await getSheetsClientForClient(client);
+    const created = await sheets.spreadsheets.create({
+      requestBody: {
+        properties: { title: `${client.name} - חשבוניות` },
+        sheets: [{ properties: { title: INVOICE_TAB, index: 0 } }],
+      },
+      fields: 'spreadsheetId,spreadsheetUrl',
+    });
+    spreadsheetId = created.data.spreadsheetId;
+    spreadsheetUrl = created.data.spreadsheetUrl
+      ?? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+    await prisma.client.update({
+      where: { id: clientId },
+      data: { invoiceSheetId: spreadsheetId, invoiceSheetUrl: spreadsheetUrl },
+    });
+    await ensureTabWithHeaders(sheets, spreadsheetId, INVOICE_TAB, INVOICE_HEADERS);
+  } else {
+    const sheets = await getSheetsClientForClient(client);
+    await ensureTabWithHeaders(sheets, spreadsheetId, INVOICE_TAB, INVOICE_HEADERS);
+  }
+
+  const sheets = await getSheetsClientForClient(client);
+  const statusLabel = INVOICE_STATUS_MAP[invoice.status] || invoice.status || 'ממתין';
+  const row = [
+    invoice.date || '',
+    invoice.supplier || '',
+    invoice.amount ?? '',
+    invoice.currency || 'ILS',
+    invoice.driveFileUrl || '',
+    invoice.driveFolderUrl || getDriveFolderUrlForClient(client),
+    invoice.emailSubject || '',
+    statusLabel,
+    invoice.notes || '',
+  ];
+
+  const res = await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: `${INVOICE_TAB}!A:I`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [row] },
+  });
+
+  const updatedRange = res.data.updates?.updatedRange || '';
+  return parseInt(updatedRange.match(/:(\d+)/)?.[1] || '2', 10);
+};
+
+const writeTaskToSheetForClient = async (clientId, task) => {
+  const client = await prisma.client.findUnique({ where: { id: clientId } });
+  if (!client?.googleAccessToken) return null;
+
+  let spreadsheetId = resolveClientTaskSheetId(client);
+
+  if (!spreadsheetId) {
+    const sheets = await getSheetsClientForClient(client);
+    const created = await sheets.spreadsheets.create({
+      requestBody: {
+        properties: { title: `${client.name} - משימות` },
+        sheets: [{ properties: { title: TASK_TAB, index: 0 } }],
+      },
+      fields: 'spreadsheetId,spreadsheetUrl',
+    });
+    spreadsheetId = created.data.spreadsheetId;
+    const spreadsheetUrl = created.data.spreadsheetUrl
+      ?? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+    await prisma.client.update({
+      where: { id: clientId },
+      data: { taskSheetId: spreadsheetId, taskSheetUrl: spreadsheetUrl },
+    });
+    await ensureTabWithHeaders(sheets, spreadsheetId, TASK_TAB, TASK_HEADERS);
+  } else {
+    const sheets = await getSheetsClientForClient(client);
+    await ensureTabWithHeaders(sheets, spreadsheetId, TASK_TAB, TASK_HEADERS);
+  }
+
+  const sheets = await getSheetsClientForClient(client);
+  const row = [
+    task.date || '',
+    task.from || '',
+    task.subject || '',
+    task.summary || '',
+    task.action || '',
+    priorityToLabel(task.priority),
+    task.dueDate || '',
+    task.status || 'פתוח',
+  ];
+
+  const res = await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: `${TASK_TAB}!A:H`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [row] },
+  });
+
+  const updatedRange = res.data.updates?.updatedRange || '';
+  return parseInt(updatedRange.match(/:(\d+)/)?.[1] || '2', 10);
+};
+
 module.exports = {
   parseSheetIdFromUrl,
   parseFolderIdFromUrl,
   getSheetsClient,
+  getSheetsClientForClient,
   testSheetConnection,
   saveUserSheetSettings,
   writeInvoiceToSheet,
   writeTaskToSheet,
+  writeInvoiceToSheetForClient,
+  writeTaskToSheetForClient,
   getDriveFolderUrl,
+  getDriveFolderUrlForClient,
   INVOICE_TAB,
   TASK_TAB,
 };

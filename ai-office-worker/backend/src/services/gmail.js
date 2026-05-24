@@ -1,5 +1,5 @@
 const { google } = require('googleapis');
-const { getAuthClient } = require('./googleAuth');
+const { getAuthClient, getAuthClientForClient } = require('./googleAuth');
 const { logger } = require('../utils/logger');
 
 const FINANCIAL_KEYWORDS = [
@@ -12,18 +12,28 @@ const FINANCIAL_KEYWORDS = [
  * Fetch new emails from Gmail since the last scan.
  * Returns only emails that look financial.
  */
-const scanNewEmails = async (user, sinceDate = null) => {
+const scanNewEmails = async (user, sinceDate = null, broad = false) => {
   const auth = await getAuthClient(user);
+  return scanWithAuth(auth, user.id, sinceDate, broad);
+};
+
+const scanNewEmailsForClient = async (client, sinceDate = null, broad = true) => {
+  const auth = await getAuthClientForClient(client);
+  return scanWithAuth(auth, client.id, sinceDate, broad);
+};
+
+const scanWithAuth = async (auth, ownerId, sinceDate, broad) => {
   const gmail = google.gmail({ version: 'v1', auth });
 
-  // Build query: unread or recent financial-looking emails
   const afterDate = sinceDate
     ? Math.floor(sinceDate.getTime() / 1000)
-    : Math.floor((Date.now() - 7 * 24 * 60 * 60 * 1000) / 1000); // last 7 days
+    : Math.floor((Date.now() - 7 * 24 * 60 * 60 * 1000) / 1000);
 
-  const query = `after:${afterDate} (${FINANCIAL_KEYWORDS.map(k => `"${k}"`).join(' OR ')})`;
+  const query = broad
+    ? `after:${afterDate}`
+    : `after:${afterDate} (${FINANCIAL_KEYWORDS.map(k => `"${k}"`).join(' OR ')})`;
 
-  logger.info('Gmail scan started', { userId: user.id, query });
+  logger.info('Gmail scan started', { ownerId, query, broad });
 
   let messages = [];
   let pageToken = null;
@@ -42,7 +52,7 @@ const scanNewEmails = async (user, sinceDate = null) => {
     pageToken = res.data.nextPageToken;
   } while (pageToken);
 
-  logger.info('Gmail scan found messages', { userId: user.id, count: messages.length });
+  logger.info('Gmail scan found messages', { ownerId, count: messages.length });
 
   const emails = [];
   for (const msg of messages) {
@@ -147,6 +157,15 @@ const extractAttachmentInfo = (payload, attachments = []) => {
  */
 const downloadAttachment = async (user, messageId, attachmentId) => {
   const auth = await getAuthClient(user);
+  return downloadAttachmentWithAuth(auth, messageId, attachmentId);
+};
+
+const downloadAttachmentForClient = async (client, messageId, attachmentId) => {
+  const auth = await getAuthClientForClient(client);
+  return downloadAttachmentWithAuth(auth, messageId, attachmentId);
+};
+
+const downloadAttachmentWithAuth = async (auth, messageId, attachmentId) => {
   const gmail = google.gmail({ version: 'v1', auth });
 
   const res = await gmail.users.messages.attachments.get({
@@ -158,4 +177,9 @@ const downloadAttachment = async (user, messageId, attachmentId) => {
   return res.data.data; // base64url encoded
 };
 
-module.exports = { scanNewEmails, downloadAttachment };
+module.exports = {
+  scanNewEmails,
+  scanNewEmailsForClient,
+  downloadAttachment,
+  downloadAttachmentForClient,
+};

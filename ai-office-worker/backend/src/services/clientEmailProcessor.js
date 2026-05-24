@@ -1,9 +1,9 @@
 const { PrismaClient } = require('@prisma/client');
 const pdfParse = require('pdf-parse');
-const { scanNewEmails, downloadAttachment } = require('./gmail');
+const { scanNewEmailsForClient, downloadAttachmentForClient } = require('./gmail');
 const { extractFromText, extractFromImage, analyzeEmailForTask, priorityToInt } = require('./aiExtractor');
-const { ensureUserDriveRoot, uploadInvoiceAttachmentToDrive, folderForDocumentType } = require('./driveService');
-const { writeInvoiceToSheet, writeTaskToSheet, getDriveFolderUrl } = require('./sheetsService');
+const { ensureClientDriveRoot, uploadInvoiceAttachmentForClient } = require('./driveService');
+const { writeInvoiceToSheetForClient, writeTaskToSheetForClient, getDriveFolderUrlForClient } = require('./sheetsService');
 const { createPaymentFromDocument } = require('./supplierPayments');
 const { logger } = require('../utils/logger');
 
@@ -18,11 +18,16 @@ const formatDateIso = (date) => {
   return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 };
 
-/**
- * Main processing pipeline for a single user.
- */
-const processUserEmails = async (user) => {
+const priorityLabel = (priorityInt) => {
+  if (priorityInt === 1) return 'גבוה';
+  if (priorityInt === 3) return 'נמוך';
+  return 'בינוני';
+};
+
+const processClientEmails = async (client) => {
   const stats = {
+    clientId: client.id,
+    clientName: client.name,
     scanned: 0,
     saved: 0,
     tasksCreated: 0,
@@ -32,24 +37,14 @@ const processUserEmails = async (user) => {
     tasksWritten: 0,
   };
 
-  try {
-    if (!user.accessToken || !user.refreshToken) {
-      const message = 'Google credentials unavailable for this user; skipping email scan.';
-      logger.warn(message, { userId: user.id });
-      await prisma.log.create({
-        data: {
-          userId: user.id,
-          level: 'WARN',
-          action: 'SCAN_SKIPPED',
-          message,
-          metadata: JSON.stringify({ userId: user.id }),
-        },
-      });
-      return stats;
-    }
+  if (!client.gmailConnected || !client.googleAccessToken || !client.googleRefreshToken) {
+    stats.errors++;
+    return stats;
+  }
 
+  try {
     const lastDoc = await prisma.document.findFirst({
-      where: { userId: user.id },
+      where: { clientId: client.id },
       orderBy: { receivedAt: 'desc' },
       select: { receivedAt: true },
     });
@@ -58,58 +53,47 @@ const processUserEmails = async (user) => {
       ? new Date(lastDoc.receivedAt.getTime() - 60 * 60 * 1000)
       : null;
 
-    const emails = await scanNewEmails(user, sinceDate);
+    const emails = await scanNewEmailsForClient(client, sinceDate, true);
     stats.scanned = emails.length;
 
-    const folderId = await ensureUserDriveRoot(user);
+    const folderId = await ensureClientDriveRoot(client);
 
     for (const email of emails) {
       try {
-        await processEmail(user, email, folderId, stats);
+        await processClientEmail(client, email, folderId, stats);
       } catch (err) {
         stats.errors++;
-        logger.error('Email processing failed', {
-          userId: user.id,
+        logger.error('Client email processing failed', {
+          clientId: client.id,
           msgId: email.gmailMessageId,
           error: err.message,
-        });
-        await prisma.log.create({
-          data: {
-            userId: user.id,
-            level: 'ERROR',
-            action: 'PROCESS_EMAIL',
-            message: `Failed to process email: ${err.message}`,
-            metadata: JSON.stringify({ gmailMessageId: email.gmailMessageId }),
-          },
         });
       }
     }
 
-    logger.info('User processing complete', { userId: user.id, stats });
-
     await prisma.log.create({
       data: {
-        userId: user.id,
+        userId: client.userId,
         level: 'INFO',
-        action: 'SCAN_COMPLETE',
-        message: `Scan complete: ${stats.saved} invoices, ${stats.tasksCreated} tasks, ${stats.skipped} skipped`,
+        action: 'CLIENT_SCAN_COMPLETE',
+        message: `${client.name}: ${stats.saved} invoices, ${stats.tasksCreated} tasks`,
         metadata: JSON.stringify(stats),
       },
     });
   } catch (err) {
-    logger.error('processUserEmails failed', { userId: user.id, error: err.message });
+    logger.error('processClientEmails failed', { clientId: client.id, error: err.message });
     stats.errors++;
   }
 
   return stats;
 };
 
-const processEmail = async (user, email, folderId, stats) => {
+const processClientEmail = async (client, email, folderId, stats) => {
   const existingDoc = await prisma.document.findFirst({
-    where: { userId: user.id, clientId: null, gmailMessageId: email.gmailMessageId },
+    where: { clientId: client.id, gmailMessageId: email.gmailMessageId },
   });
   const existingTask = await prisma.task.findFirst({
-    where: { userId: user.id, clientId: null, gmailMessageId: email.gmailMessageId },
+    where: { clientId: client.id, gmailMessageId: email.gmailMessageId },
   });
 
   if (existingDoc || existingTask) {
@@ -124,7 +108,7 @@ const processEmail = async (user, email, folderId, stats) => {
 
   for (const att of email.attachments) {
     try {
-      const attData = await downloadAttachment(user, email.gmailMessageId, att.attachmentId);
+      const attData = await downloadAttachmentForClient(client, email.gmailMessageId, att.attachmentId);
       const base64 = attData.replace(/-/g, '+').replace(/_/g, '/');
       const buffer = Buffer.from(base64, 'base64');
 
@@ -156,7 +140,7 @@ const processEmail = async (user, email, folderId, stats) => {
       }
 
       if (extraction?.isFinancial) {
-        const uploadResult = await uploadInvoiceAttachmentToDrive(user, {
+        const uploadResult = await uploadInvoiceAttachmentForClient(client, {
           rootFolderId: folderId,
           supplier: extraction.vendorName || email.senderName || email.senderEmail || 'Unknown Supplier',
           documentType,
@@ -170,7 +154,7 @@ const processEmail = async (user, email, folderId, stats) => {
         break;
       }
     } catch (err) {
-      logger.warn('Attachment processing failed', { filename: att.filename, error: err.message });
+      logger.warn('Client attachment failed', { clientId: client.id, error: err.message });
     }
   }
 
@@ -184,7 +168,7 @@ const processEmail = async (user, email, folderId, stats) => {
   }
 
   if (extraction?.isFinancial && extraction.confidence >= 0.4) {
-    await saveInvoiceEmail(user, email, extraction, driveFileId, driveFileUrl, folderId, stats);
+    await saveClientInvoice(client, email, extraction, driveFileId, driveFileUrl, stats);
     return;
   }
 
@@ -195,25 +179,27 @@ const processEmail = async (user, email, folderId, stats) => {
   }
 
   const taskTitle = taskAnalysis.requiredAction || taskAnalysis.summary || email.subject || 'משימה חדשה';
-  const dueDate = taskAnalysis.suggestedDueDate
-    ? new Date(taskAnalysis.suggestedDueDate)
-    : null;
+  const dueDate = taskAnalysis.suggestedDueDate ? new Date(taskAnalysis.suggestedDueDate) : null;
+  const priority = priorityToInt(taskAnalysis.priority);
 
   const task = await prisma.task.create({
     data: {
-      userId: user.id,
+      userId: client.userId,
+      clientId: client.id,
       gmailMessageId: email.gmailMessageId,
       title: taskTitle.slice(0, 200),
+      action: taskAnalysis.requiredAction || null,
       details: taskAnalysis.summary || null,
       emailSender: email.senderName || email.senderEmail,
       emailSubject: email.subject,
-      priority: priorityToInt(taskAnalysis.priority),
+      priority,
+      status: 'פתוח',
       dueDate: dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate : null,
     },
   });
 
   try {
-    const sheetsRow = await writeTaskToSheet(user.id, {
+    const sheetsRow = await writeTaskToSheetForClient(client.id, {
       date: formatDateHe(email.receivedAt),
       from: email.senderName || email.senderEmail || '',
       subject: email.subject || '',
@@ -228,16 +214,17 @@ const processEmail = async (user, email, folderId, stats) => {
       stats.tasksWritten++;
     }
   } catch (err) {
-    logger.warn('Task sheet write failed', { taskId: task.id, error: err.message });
+    logger.warn('Client task sheet write failed', { taskId: task.id, error: err.message });
   }
 
   stats.tasksCreated++;
 };
 
-const saveInvoiceEmail = async (user, email, extraction, driveFileId, driveFileUrl, folderId, stats) => {
+const saveClientInvoice = async (client, email, extraction, driveFileId, driveFileUrl, stats) => {
   const doc = await prisma.document.create({
     data: {
-      userId: user.id,
+      userId: client.userId,
+      clientId: client.id,
       gmailMessageId: email.gmailMessageId,
       emailSubject: email.subject,
       emailSender: email.senderName,
@@ -264,10 +251,9 @@ const saveInvoiceEmail = async (user, email, extraction, driveFileId, driveFileU
   try {
     await createPaymentFromDocument(doc);
   } catch (err) {
-    logger.warn('Failed to create supplier payment', { docId: doc.id, error: err.message });
+    logger.warn('Client payment create failed', { docId: doc.id, error: err.message });
   }
 
-  const driveFolderUrl = getDriveFolderUrl(user);
   const invoiceStatus = extraction.suggestedStatus === 'PAID'
     ? 'שולם'
     : extraction.suggestedStatus === 'OVERDUE'
@@ -275,13 +261,13 @@ const saveInvoiceEmail = async (user, email, extraction, driveFileId, driveFileU
       : 'ממתין';
 
   try {
-    const sheetsRow = await writeInvoiceToSheet(user.id, {
+    const sheetsRow = await writeInvoiceToSheetForClient(client.id, {
       date: formatDateHe(email.receivedAt),
       supplier: extraction.vendorName || email.senderName || email.senderEmail || '',
       amount: extraction.totalAmount ?? '',
       currency: extraction.currency || 'ILS',
       driveFileUrl: driveFileUrl || '',
-      driveFolderUrl,
+      driveFolderUrl: getDriveFolderUrlForClient(client),
       emailSubject: email.subject || '',
       status: invoiceStatus,
       notes: extraction.notes || '',
@@ -291,17 +277,10 @@ const saveInvoiceEmail = async (user, email, extraction, driveFileId, driveFileU
       stats.invoicesWritten++;
     }
   } catch (err) {
-    logger.warn('Invoice sheet write failed', { docId: doc.id, error: err.message });
+    logger.warn('Client invoice sheet write failed', { docId: doc.id, error: err.message });
   }
 
   stats.saved++;
-  logger.info('Document saved', {
-    userId: user.id,
-    docId: doc.id,
-    vendor: extraction.vendorName,
-    total: extraction.totalAmount,
-    folderType: folderForDocumentType((extraction.docType || 'OTHER').toLowerCase()),
-  });
 };
 
-module.exports = { processUserEmails, processEmail };
+module.exports = { processClientEmails, processClientEmail };

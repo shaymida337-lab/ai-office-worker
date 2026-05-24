@@ -33,6 +33,7 @@ export default function DashboardLayout({ children }) {
 
   const navItems = [
     { href: '/dashboard', label: 'בית', icon: '🏠' },
+    { href: '/dashboard/clients', label: 'לקוחות', icon: '👥' },
     { href: '/dashboard/documents', label: 'מסמכים', icon: '📄' },
     { href: '/dashboard/payments', label: 'תשלומים', icon: '💰' },
     { href: '/dashboard/missing-invoices', label: 'חשבוניות חסרות', icon: '⚠️' },

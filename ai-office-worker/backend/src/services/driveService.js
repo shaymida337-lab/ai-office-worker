@@ -1,6 +1,6 @@
 const { Readable } = require('node:stream');
 const { google } = require('googleapis');
-const { getAuthClient } = require('./googleAuth');
+const { getAuthClient, getAuthClientForClient } = require('./googleAuth');
 const { PrismaClient } = require('@prisma/client');
 const { logger } = require('../utils/logger');
 
@@ -122,11 +122,62 @@ const uploadInvoiceAttachmentToDrive = async (user, input) => {
   };
 };
 
+const ensureClientDriveRoot = async (client) => {
+  if (client.driveFolderId) return client.driveFolderId;
+
+  const auth = await getAuthClientForClient(client);
+  const drive = google.drive({ version: 'v3', auth });
+  const rootId = await ensureInvoiceFolderTree(drive);
+
+  await prisma.client.update({
+    where: { id: client.id },
+    data: { driveFolderId: rootId, driveFolderUrl: `https://drive.google.com/drive/folders/${rootId}` },
+  });
+
+  logger.info('Client Drive folder tree ready', { clientId: client.id, rootId });
+  return rootId;
+};
+
+const uploadInvoiceAttachmentForClient = async (client, input) => {
+  const auth = await getAuthClientForClient(client);
+  const drive = google.drive({ version: 'v3', auth });
+
+  const folderType = folderForDocumentType(input.documentType);
+  const typeFolderId = await ensureDriveFolder(drive, folderType, input.rootFolderId);
+  const supplierFolderId = await ensureDriveFolder(
+    drive,
+    safeFolderName(input.supplier),
+    typeFolderId
+  );
+
+  const upload = await drive.files.create({
+    requestBody: {
+      name: `${input.receivedAt.toISOString().slice(0, 10)}_${input.filename}`,
+      parents: [supplierFolderId],
+    },
+    media: {
+      mimeType: input.mimeType || 'application/octet-stream',
+      body: Readable.from(input.buffer),
+    },
+    fields: 'id, webViewLink',
+  });
+
+  const fileId = upload.data.id ?? null;
+  return {
+    fileId,
+    webViewLink:
+      upload.data.webViewLink ||
+      (fileId ? `https://drive.google.com/file/d/${fileId}/view` : ''),
+  };
+};
+
 module.exports = {
   ensureDriveFolder,
   ensureInvoiceFolderTree,
   ensureUserDriveRoot,
+  ensureClientDriveRoot,
   uploadInvoiceAttachmentToDrive,
+  uploadInvoiceAttachmentForClient,
   folderForDocumentType,
   safeFolderName,
 };

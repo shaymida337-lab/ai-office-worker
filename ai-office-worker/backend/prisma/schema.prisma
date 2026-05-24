@@ -17,12 +17,12 @@ model User {
   googleId        String?   @unique
   passwordHash    String?
   displayName     String?
-  accessToken     String?   // encrypted
-  refreshToken    String?   // encrypted
-  driveFolder     String?   // Google Drive folder ID
+  accessToken     String?
+  refreshToken    String?
+  driveFolder     String?
   driveFolderUrl  String?
   driveFolderId   String?
-  sheetsId        String?   // legacy auto-created sheet
+  sheetsId        String?
   invoiceSheetUrl String?
   invoiceSheetId  String?
   taskSheetUrl    String?
@@ -31,30 +31,58 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  documents       Document[]
-  logs            Log[]
+  documents        Document[]
+  logs             Log[]
   supplierPayments SupplierPayment[]
-  tasks           Task[]
-  alerts          Alert[]
+  tasks            Task[]
+  alerts           Alert[]
+  clients          Client[]
 
   @@map("users")
+}
+
+model Client {
+  id                 String   @id @default(cuid())
+  userId             String
+  name               String
+  email              String
+  googleAccessToken  String?
+  googleRefreshToken String?
+  gmailConnected     Boolean  @default(false)
+  invoiceSheetId     String?
+  invoiceSheetUrl    String?
+  taskSheetId        String?
+  taskSheetUrl       String?
+  driveFolderId      String?
+  driveFolderUrl     String?
+  color              String?  @default("#3B82F6")
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents          Document[]
+  supplierPayments   SupplierPayment[]
+  tasks              Task[]
+
+  @@map("clients")
 }
 
 model Document {
   id              String    @id @default(uuid())
   userId          String
+  clientId        String?
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client          Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  // Email metadata
-  gmailMessageId  String    @unique
+  gmailMessageId  String
   emailSubject    String?
   emailSender     String?
   emailSenderAddr String?
   receivedAt      DateTime?
 
-  // Extracted fields
   vendorName      String?
-  docType         String?   @default("OTHER")  // INVOICE, RECEIPT, PAYMENT_REQUEST, QUOTE, OTHER
+  docType         String?   @default("OTHER")
   invoiceNumber   String?
   docDate         DateTime?
   paymentDueDate  DateTime?
@@ -63,13 +91,11 @@ model Document {
   totalAmount     Float?
   currency        String?   @default("ILS")
 
-  // Status
-  status          String?   @default("NEW")  // NEW, PAID, OVERDUE, NEEDS_REVIEW, MISSING_INVOICE
+  status          String?   @default("NEW")
   requiresAction  Boolean   @default(false)
-  aiConfidence    Float?    // 0-1
+  aiConfidence    Float?
   aiNotes         String?
 
-  // Storage
   driveFileId     String?
   driveFileUrl    String?
   sheetsRow       Int?
@@ -79,13 +105,16 @@ model Document {
 
   supplierPayments SupplierPayment[]
 
+  @@unique([clientId, gmailMessageId])
   @@map("documents")
 }
 
 model SupplierPayment {
   id            String   @id @default(uuid())
   userId        String
+  clientId      String?
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client        Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   supplierName  String?
   amount        Float?
@@ -94,7 +123,7 @@ model SupplierPayment {
   dueDate       DateTime?
   paid          Boolean  @default(false)
 
-  documentId    String?  // reference to Document
+  documentId    String?
   document      Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
   driveFileId   String?
@@ -113,13 +142,18 @@ model SupplierPayment {
 model Task {
   id              String   @id @default(uuid())
   userId          String
+  clientId        String?
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  gmailMessageId  String?  @unique
+  client          Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  gmailMessageId  String?
   title           String
   details         String?
   emailSender     String?
   emailSubject    String?
-  relatedDoc      String?  // document id
+  action          String?
+  status          String   @default("פתוח")
+  relatedDoc      String?
   completed       Boolean  @default(false)
   priority        Int      @default(2)
   dueDate         DateTime?
@@ -127,6 +161,7 @@ model Task {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  @@unique([clientId, gmailMessageId])
   @@map("tasks")
 }
 
@@ -147,12 +182,11 @@ model Log {
   id          String    @id @default(uuid())
   userId      String?
   user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  level       String?   @default("INFO")  // INFO, WARN, ERROR
+  level       String?   @default("INFO")
   action      String
   message     String
-  metadata    String?   // JSON as text for SQLite
+  metadata    String?
   createdAt   DateTime  @default(now())
 
   @@map("logs")
 }
-

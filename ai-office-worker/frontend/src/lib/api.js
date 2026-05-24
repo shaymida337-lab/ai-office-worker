@@ -51,6 +51,19 @@ export const apiClient = {
   saveSheetSettings: (data) => api.put('/api/settings/sheets', data),
   testSheetConnection: (sheetUrl, type) => api.post('/api/settings/sheets/test', { sheetUrl, type }),
   testDriveFolder: (driveFolderUrl) => api.post('/api/settings/drive/test', { driveFolderUrl }),
+
+  // Clients
+  getClients: () => api.get('/api/clients'),
+  getClient: (id) => api.get(`/api/clients/${id}`),
+  createClient: (data) => api.post('/api/clients', data),
+  updateClient: (id, data) => api.put(`/api/clients/${id}`, data),
+  scanClient: (id) => api.post(`/api/clients/${id}/scan`),
+  scanAllClients: () => api.post('/api/clients/scan-all'),
+  connectClientGmailUrl: (clientId) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('ai_office_token') : '';
+    const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    return `${base}/api/clients/${clientId}/connect-gmail?token=${encodeURIComponent(token || '')}`;
+  },
   
   // Demo
   getDemo: () => api.get('/api/demo/live'),
