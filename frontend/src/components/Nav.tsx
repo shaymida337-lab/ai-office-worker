@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const links = [
   { href: "/dashboard", label: "לוח בקרה" },
+  { href: "/dashboard/clients", label: "לקוחות" },
   { href: "/payments", label: "תשלומי ספקים" },
   { href: "/camera", label: "צילום חשבונית" },
   { href: "/collections", label: "גבייה" },
