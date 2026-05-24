@@ -23,7 +23,13 @@ const authenticate = async (req, res, next) => {
         accessToken: true,
         refreshToken: true,
         driveFolder: true,
+        driveFolderUrl: true,
+        driveFolderId: true,
         sheetsId: true,
+        invoiceSheetUrl: true,
+        invoiceSheetId: true,
+        taskSheetUrl: true,
+        taskSheetId: true,
         isActive: true,
       },
     });

@@ -45,6 +45,12 @@ export const apiClient = {
   // Scan
   triggerScan: () => api.post('/api/scan/now'),
   getLogs: () => api.get('/api/scan/logs'),
+
+  // Settings
+  getSettings: () => api.get('/api/settings'),
+  saveSheetSettings: (data) => api.put('/api/settings/sheets', data),
+  testSheetConnection: (sheetUrl, type) => api.post('/api/settings/sheets/test', { sheetUrl, type }),
+  testDriveFolder: (driveFolderUrl) => api.post('/api/settings/drive/test', { driveFolderUrl }),
   
   // Demo
   getDemo: () => api.get('/api/demo/live'),

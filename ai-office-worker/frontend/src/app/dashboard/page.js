@@ -86,6 +86,44 @@ export default function DashboardPage() {
         <div className="bg-blue-50 text-blue-700 rounded-xl p-4 mb-6 text-sm">{scanMsg}</div>
       )}
 
+      {/* Connected sheets */}
+      <div className="grid md:grid-cols-2 gap-4 mb-6">
+        <div className="card p-5">
+          <h2 className="font-bold text-gray-800 mb-3">טבלאות מחוברות</h2>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span>{data?.sheets?.invoiceSheetUrl ? '✅ טבלת חשבוניות' : '⏳ טבלת חשבוניות (תיווצר אוטומטית)'}</span>
+              {data?.sheets?.invoiceSheetUrl && (
+                <a href={data.sheets.invoiceSheetUrl} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline shrink-0">פתח ↗</a>
+              )}
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span>{data?.sheets?.taskSheetUrl ? '✅ טבלת משימות' : '⏳ טבלת משימות (תיווצר אוטומטית)'}</span>
+              {data?.sheets?.taskSheetUrl && (
+                <a href={data.sheets.taskSheetUrl} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline shrink-0">פתח ↗</a>
+              )}
+            </div>
+            <Link href="/dashboard/settings" className="inline-block mt-2 text-blue-700 text-sm font-medium hover:underline">הגדרות →</Link>
+          </div>
+        </div>
+
+        <div className="card p-5">
+          <h2 className="font-bold text-gray-800 mb-3">סריקה אחרונה</h2>
+          {data?.lastScan ? (
+            <div className="space-y-1 text-sm text-gray-600">
+              <div>📬 {data.lastScan.scanned ?? 0} מיילים נסרקו</div>
+              <div>🧾 {data.lastScan.saved ?? 0} חשבוניות → {data.lastScan.invoicesWritten ?? 0} נכתבו לטבלה</div>
+              <div>✅ {data.lastScan.tasksCreated ?? 0} משימות → {data.lastScan.tasksWritten ?? 0} נכתבו לטבלה</div>
+              {data.lastScan.at && (
+                <div className="text-xs text-gray-400 mt-2">{new Date(data.lastScan.at).toLocaleString('he-IL')}</div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">עדיין לא בוצעה סריקה</p>
+          )}
+        </div>
+      </div>
+
       {/* Stats cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <StatCard

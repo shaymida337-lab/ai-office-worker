@@ -66,7 +66,8 @@ router.post('/demo', async (req, res) => {
       attachments: [],
     };
 
-    await processEmail(user, sampleEmail, null, stats);
+    const folderId = user.driveFolderId || user.driveFolder || null;
+    await processEmail(user, sampleEmail, folderId, stats);
 
     res.json({ success: true, stats });
   } catch (err) {

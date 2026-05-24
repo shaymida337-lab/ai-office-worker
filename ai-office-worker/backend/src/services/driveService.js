@@ -73,7 +73,8 @@ const ensureInvoiceFolderTree = async (drive) => {
 };
 
 const ensureUserDriveRoot = async (user) => {
-  if (user.driveFolder) return user.driveFolder;
+  const folderId = user.driveFolderId || user.driveFolder;
+  if (folderId) return folderId;
 
   const auth = await getAuthClient(user);
   const drive = google.drive({ version: 'v3', auth });

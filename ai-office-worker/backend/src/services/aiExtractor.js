@@ -159,4 +159,86 @@ const getDefaultExtraction = () => ({
   notes: 'AI extraction failed - requires manual review',
 });
 
-module.exports = { extractFromText, extractFromImage };
+const TASK_ANALYSIS_PROMPT = `You analyze business emails for a Hebrew-speaking small business owner.
+Decide if the email requires a follow-up task (not a financial invoice/receipt).
+
+Respond ONLY with valid JSON (no markdown):
+{
+  "isActionable": true/false,
+  "summary": "תקציר קצר של המייל בעברית",
+  "requiredAction": "מה צריך לעשות בעקבות המייל",
+  "priority": "גבוה|בינוני|נמוך",
+  "suggestedDueDate": "YYYY-MM-DD or empty string",
+  "isUrgent": true/false
+}
+
+Rules:
+- isActionable=false for newsletters, ads, automated notifications with no action needed
+- isActionable=true for client requests, supplier messages, meetings, approvals, questions
+- priority גבוה for urgent deadlines or isUrgent=true
+- suggestedDueDate only if clearly mentioned or strongly implied`;
+
+const getDefaultTaskAnalysis = () => ({
+  isActionable: false,
+  summary: '',
+  requiredAction: '',
+  priority: 'בינוני',
+  suggestedDueDate: '',
+  isUrgent: false,
+});
+
+const parseTaskResponse = (text) => {
+  try {
+    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(cleaned);
+  } catch {
+    return getDefaultTaskAnalysis();
+  }
+};
+
+const analyzeEmailForTask = async (email) => {
+  const content = `שולח: ${email.senderName || email.senderEmail || ''}
+נושא: ${email.subject || ''}
+תוכן:
+${email.bodyText || email.snippet || ''}`;
+
+  const provider = process.env.AI_PROVIDER || 'anthropic';
+
+  try {
+    if (provider === 'anthropic') {
+      const res = await anthropic.messages.create({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 1024,
+        messages: [{
+          role: 'user',
+          content: `${TASK_ANALYSIS_PROMPT}\n\n${content}`,
+        }],
+      });
+      const parsed = parseTaskResponse(res.content[0].text);
+      return { ...getDefaultTaskAnalysis(), ...parsed };
+    }
+
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 1024,
+      messages: [
+        { role: 'system', content: TASK_ANALYSIS_PROMPT },
+        { role: 'user', content },
+      ],
+    });
+    const parsed = parseTaskResponse(res.choices[0].message.content);
+    return { ...getDefaultTaskAnalysis(), ...parsed };
+  } catch (err) {
+    logger.error('AI task analysis failed', { error: err.message });
+    return getDefaultTaskAnalysis();
+  }
+};
+
+const priorityToInt = (priority) => {
+  const p = String(priority || '').toLowerCase();
+  if (p.includes('גבוה') || p === 'high') return 1;
+  if (p.includes('נמוך') || p === 'low') return 3;
+  return 2;
+};
+
+module.exports = { extractFromText, extractFromImage, analyzeEmailForTask, priorityToInt };

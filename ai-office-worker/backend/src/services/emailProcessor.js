@@ -1,22 +1,36 @@
 const { PrismaClient } = require('@prisma/client');
 const pdfParse = require('pdf-parse');
 const { scanNewEmails, downloadAttachment } = require('./gmail');
-const { extractFromText, extractFromImage } = require('./aiExtractor');
-const { ensureUserDriveRoot, uploadInvoiceAttachmentToDrive } = require('./driveService');
-const { ensureSheet, appendDocumentRow } = require('./googleSheets');
+const { extractFromText, extractFromImage, analyzeEmailForTask, priorityToInt } = require('./aiExtractor');
+const { ensureUserDriveRoot, uploadInvoiceAttachmentToDrive, folderForDocumentType } = require('./driveService');
+const { writeInvoiceToSheet, writeTaskToSheet, getDriveFolderUrl } = require('./sheetsService');
 const { createPaymentFromDocument } = require('./supplierPayments');
 const { logger } = require('../utils/logger');
 
 const prisma = new PrismaClient();
 
+const formatDateHe = (date) =>
+  date ? new Date(date).toLocaleDateString('he-IL') : '';
+
+const formatDateIso = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+};
+
 /**
  * Main processing pipeline for a single user.
- * 1. Scan Gmail for new financial emails
- * 2. For each email: extract data → save to Drive → log to Sheets → save to DB
- * Returns summary statistics.
  */
 const processUserEmails = async (user) => {
-  const stats = { scanned: 0, saved: 0, skipped: 0, errors: 0 };
+  const stats = {
+    scanned: 0,
+    saved: 0,
+    tasksCreated: 0,
+    skipped: 0,
+    errors: 0,
+    invoicesWritten: 0,
+    tasksWritten: 0,
+  };
 
   try {
     if (!user.accessToken || !user.refreshToken) {
@@ -34,7 +48,6 @@ const processUserEmails = async (user) => {
       return stats;
     }
 
-    // Get most recent processed email date
     const lastDoc = await prisma.document.findFirst({
       where: { userId: user.id },
       orderBy: { receivedAt: 'desc' },
@@ -42,20 +55,14 @@ const processUserEmails = async (user) => {
     });
 
     const sinceDate = lastDoc?.receivedAt
-      ? new Date(lastDoc.receivedAt.getTime() - 60 * 60 * 1000) // 1hr overlap
+      ? new Date(lastDoc.receivedAt.getTime() - 60 * 60 * 1000)
       : null;
 
-    // 1. Scan Gmail
     const emails = await scanNewEmails(user, sinceDate);
     stats.scanned = emails.length;
 
-    // 2. Ensure Drive folder and Sheet exist
-    const [folderId] = await Promise.all([
-      ensureUserDriveRoot(user),
-      ensureSheet(user),
-    ]);
+    const folderId = await ensureUserDriveRoot(user);
 
-    // 3. Process each email
     for (const email of emails) {
       try {
         await processEmail(user, email, folderId, stats);
@@ -85,11 +92,10 @@ const processUserEmails = async (user) => {
         userId: user.id,
         level: 'INFO',
         action: 'SCAN_COMPLETE',
-        message: `Scan complete: ${stats.saved} saved, ${stats.skipped} skipped, ${stats.errors} errors`,
+        message: `Scan complete: ${stats.saved} invoices, ${stats.tasksCreated} tasks, ${stats.skipped} skipped`,
         metadata: JSON.stringify(stats),
       },
     });
-
   } catch (err) {
     logger.error('processUserEmails failed', { userId: user.id, error: err.message });
     stats.errors++;
@@ -99,100 +105,136 @@ const processUserEmails = async (user) => {
 };
 
 const processEmail = async (user, email, folderId, stats) => {
-  // Deduplication check
-  const existing = await prisma.document.findUnique({
+  const existingDoc = await prisma.document.findUnique({
+    where: { gmailMessageId: email.gmailMessageId },
+  });
+  const existingTask = await prisma.task.findUnique({
     where: { gmailMessageId: email.gmailMessageId },
   });
 
-  if (existing) {
+  if (existingDoc || existingTask) {
     stats.skipped++;
     return;
   }
 
-  // Try to extract from attachments first, then body text
   let extraction = null;
   let driveFileId = null;
   let driveFileUrl = null;
+  let documentType = 'other';
 
-  // Process image/PDF attachments
   for (const att of email.attachments) {
     try {
       const attData = await downloadAttachment(user, email.gmailMessageId, att.attachmentId);
-      const base64 = attData.replace(/-/g, '+').replace(/_/g, '/'); // base64url → base64
-
-      // Upload to Drive
+      const base64 = attData.replace(/-/g, '+').replace(/_/g, '/');
       const buffer = Buffer.from(base64, 'base64');
-      const uploadResult = await uploadInvoiceAttachmentToDrive(user, {
-        rootFolderId: folderId,
-        supplier: email.senderName || email.senderEmail || 'Unknown Supplier',
-        documentType: 'other',
-        filename: att.filename,
-        mimeType: att.mimeType,
-        receivedAt: email.receivedAt,
-        buffer,
-      });
-      driveFileId = uploadResult.fileId;
-      driveFileUrl = uploadResult.webViewLink;
 
-      // Extract data from attachments
       if (att.mimeType.startsWith('image/')) {
         const imgExtraction = await extractFromImage(base64, att.mimeType, email.subject);
         if (imgExtraction.isFinancial && imgExtraction.confidence > 0.4) {
           extraction = imgExtraction;
-          break;
+          documentType = (imgExtraction.docType || 'OTHER').toLowerCase();
         }
       }
 
       if (att.mimeType === 'application/pdf') {
         try {
-          const pdfBuffer = Buffer.from(base64, 'base64');
-          const pdfData = await pdfParse(pdfBuffer);
+          const pdfData = await pdfParse(buffer);
           if (pdfData.text?.trim()) {
             const pdfExtraction = await extractFromText(pdfData.text, email.subject);
             if (pdfExtraction.isFinancial && pdfExtraction.confidence > 0.4) {
               extraction = pdfExtraction;
-              break;
+              documentType = (pdfExtraction.docType || 'OTHER').toLowerCase();
             }
           }
-        } catch (pdfErr) {
-          logger.warn('PDF text extraction failed, trying image path', {
-            filename: att.filename,
-            error: pdfErr.message,
-          });
+        } catch {
           const imgExtraction = await extractFromImage(base64, att.mimeType, email.subject);
           if (imgExtraction.isFinancial && imgExtraction.confidence > 0.4) {
             extraction = imgExtraction;
-            break;
+            documentType = (imgExtraction.docType || 'OTHER').toLowerCase();
           }
         }
       }
+
+      if (extraction?.isFinancial) {
+        const uploadResult = await uploadInvoiceAttachmentToDrive(user, {
+          rootFolderId: folderId,
+          supplier: extraction.vendorName || email.senderName || email.senderEmail || 'Unknown Supplier',
+          documentType,
+          filename: att.filename,
+          mimeType: att.mimeType,
+          receivedAt: email.receivedAt,
+          buffer,
+        });
+        driveFileId = uploadResult.fileId;
+        driveFileUrl = uploadResult.webViewLink;
+        break;
+      }
     } catch (err) {
-      logger.warn('Attachment processing failed', {
-        filename: att.filename,
-        error: err.message,
-      });
+      logger.warn('Attachment processing failed', { filename: att.filename, error: err.message });
     }
   }
 
-  // If no extraction from attachments, try email body
   if (!extraction || extraction.confidence < 0.4) {
     const bodyText = `${email.subject}\n\n${email.bodyText || email.snippet}`;
     const textExtraction = await extractFromText(bodyText, email.subject);
-
     if (textExtraction.isFinancial) {
-      extraction = extraction && extraction.confidence > textExtraction.confidence
-        ? extraction
-        : textExtraction;
+      extraction = textExtraction;
+      documentType = (textExtraction.docType || 'OTHER').toLowerCase();
     }
   }
 
-  // Skip non-financial emails
-  if (!extraction || !extraction.isFinancial) {
+  if (extraction?.isFinancial && extraction.confidence >= 0.4) {
+    await saveInvoiceEmail(user, email, extraction, driveFileId, driveFileUrl, folderId, stats);
+    return;
+  }
+
+  const taskAnalysis = await analyzeEmailForTask(email);
+  if (!taskAnalysis.isActionable) {
     stats.skipped++;
     return;
   }
 
-  // Save to database
+  const taskTitle = taskAnalysis.requiredAction || taskAnalysis.summary || email.subject || 'משימה חדשה';
+  const dueDate = taskAnalysis.suggestedDueDate
+    ? new Date(taskAnalysis.suggestedDueDate)
+    : null;
+
+  const task = await prisma.task.create({
+    data: {
+      userId: user.id,
+      gmailMessageId: email.gmailMessageId,
+      title: taskTitle.slice(0, 200),
+      details: taskAnalysis.summary || null,
+      emailSender: email.senderName || email.senderEmail,
+      emailSubject: email.subject,
+      priority: priorityToInt(taskAnalysis.priority),
+      dueDate: dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate : null,
+    },
+  });
+
+  try {
+    const sheetsRow = await writeTaskToSheet(user.id, {
+      date: formatDateHe(email.receivedAt),
+      from: email.senderName || email.senderEmail || '',
+      subject: email.subject || '',
+      summary: taskAnalysis.summary || '',
+      action: taskAnalysis.requiredAction || '',
+      priority: taskAnalysis.priority || 'בינוני',
+      dueDate: formatDateIso(taskAnalysis.suggestedDueDate),
+      status: 'פתוח',
+    });
+    if (sheetsRow) {
+      await prisma.task.update({ where: { id: task.id }, data: { sheetsRow } });
+      stats.tasksWritten++;
+    }
+  } catch (err) {
+    logger.warn('Task sheet write failed', { taskId: task.id, error: err.message });
+  }
+
+  stats.tasksCreated++;
+};
+
+const saveInvoiceEmail = async (user, email, extraction, driveFileId, driveFileUrl, folderId, stats) => {
   const doc = await prisma.document.create({
     data: {
       userId: user.id,
@@ -219,22 +261,37 @@ const processEmail = async (user, email, folderId, stats) => {
     },
   });
 
-  // Create SupplierPayment entry for invoices / payment requests
   try {
     await createPaymentFromDocument(doc);
   } catch (err) {
     logger.warn('Failed to create supplier payment', { docId: doc.id, error: err.message });
   }
 
-  // Append to Google Sheets
+  const driveFolderUrl = getDriveFolderUrl(user);
+  const invoiceStatus = extraction.suggestedStatus === 'PAID'
+    ? 'שולם'
+    : extraction.suggestedStatus === 'OVERDUE'
+      ? 'באיחור'
+      : 'ממתין';
+
   try {
-    const sheetsRow = await appendDocumentRow(user, doc);
-    await prisma.document.update({
-      where: { id: doc.id },
-      data: { sheetsRow },
+    const sheetsRow = await writeInvoiceToSheet(user.id, {
+      date: formatDateHe(email.receivedAt),
+      supplier: extraction.vendorName || email.senderName || email.senderEmail || '',
+      amount: extraction.totalAmount ?? '',
+      currency: extraction.currency || 'ILS',
+      driveFileUrl: driveFileUrl || '',
+      driveFolderUrl,
+      emailSubject: email.subject || '',
+      status: invoiceStatus,
+      notes: extraction.notes || '',
     });
+    if (sheetsRow) {
+      await prisma.document.update({ where: { id: doc.id }, data: { sheetsRow } });
+      stats.invoicesWritten++;
+    }
   } catch (err) {
-    logger.warn('Sheets append failed', { docId: doc.id, error: err.message });
+    logger.warn('Invoice sheet write failed', { docId: doc.id, error: err.message });
   }
 
   stats.saved++;
@@ -243,6 +300,7 @@ const processEmail = async (user, email, folderId, stats) => {
     docId: doc.id,
     vendor: extraction.vendorName,
     total: extraction.totalAmount,
+    folderType: folderForDocumentType((extraction.docType || 'OTHER').toLowerCase()),
   });
 };
 

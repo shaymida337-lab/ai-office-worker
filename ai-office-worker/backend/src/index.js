@@ -12,6 +12,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const scanRoutes = require('./routes/scan');
 const paymentsRoutes = require('./routes/payments');
 const demoRoutes = require('./routes/demo');
+const settingsRoutes = require('./routes/settings');
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/scan', scanRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/demo', demoRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // ─── Health check ────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {

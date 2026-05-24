@@ -20,7 +20,13 @@ model User {
   accessToken     String?   // encrypted
   refreshToken    String?   // encrypted
   driveFolder     String?   // Google Drive folder ID
-  sheetsId        String?   // Google Sheets ID
+  driveFolderUrl  String?
+  driveFolderId   String?
+  sheetsId        String?   // legacy auto-created sheet
+  invoiceSheetUrl String?
+  invoiceSheetId  String?
+  taskSheetUrl    String?
+  taskSheetId     String?
   isActive        Boolean   @default(true)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -105,17 +111,21 @@ model SupplierPayment {
 }
 
 model Task {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title       String
-  details     String?
-  relatedDoc  String?  // document id
-  completed   Boolean  @default(false)
-  priority    Int      @default(2)
-  dueDate     DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gmailMessageId  String?  @unique
+  title           String
+  details         String?
+  emailSender     String?
+  emailSubject    String?
+  relatedDoc      String?  // document id
+  completed       Boolean  @default(false)
+  priority        Int      @default(2)
+  dueDate         DateTime?
+  sheetsRow       Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@map("tasks")
 }
