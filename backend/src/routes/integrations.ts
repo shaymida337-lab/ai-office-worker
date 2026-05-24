@@ -6,6 +6,27 @@ import { getOAuth2Client, GMAIL_SCOPES } from "../services/google.js";
 
 export const integrationsRouter = Router();
 
+function tokenFromRequest(req: {
+  headers: { authorization?: string };
+  query?: Record<string, unknown>;
+}): string | null {
+  const header = req.headers.authorization;
+  if (header?.startsWith("Bearer ")) return header.slice(7);
+  return typeof req.query?.token === "string" ? req.query.token : null;
+}
+
+function gmailAuthUrl(state?: string) {
+  return getOAuth2Client(config.google.integrationRedirectUri).then((oauth2) =>
+    oauth2.generateAuthUrl({
+      access_type: "offline",
+      prompt: "consent",
+      include_granted_scopes: true,
+      scope: GMAIL_SCOPES,
+      state,
+    })
+  );
+}
+
 integrationsRouter.get("/gmail/status", authMiddleware, async (req, res) => {
   const integration = await prisma.integration.findUnique({
     where: {
@@ -23,7 +44,7 @@ integrationsRouter.get("/gmail/status", authMiddleware, async (req, res) => {
   });
 });
 
-integrationsRouter.get("/gmail/connect-url", async (_req, res) => {
+integrationsRouter.get("/gmail/connect-url", authMiddleware, async (req, res) => {
   if (!hasGoogleOAuth()) {
     res.status(503).json({
       error:
@@ -32,14 +53,23 @@ integrationsRouter.get("/gmail/connect-url", async (_req, res) => {
     return;
   }
 
-  const oauth2 = await getOAuth2Client(config.google.integrationRedirectUri);
-  const url = oauth2.generateAuthUrl({
-    access_type: "offline",
-    prompt: "consent",
-    scope: GMAIL_SCOPES,
-  });
+  res.json({ url: await gmailAuthUrl(signToken(req.auth!)) });
+});
 
-  res.json({ url });
+integrationsRouter.get("/gmail/connect", async (req, res) => {
+  if (!hasGoogleOAuth()) {
+    res.status(503).send("Google OAuth is not configured");
+    return;
+  }
+
+  const token = tokenFromRequest(req);
+  if (!token) {
+    res.status(401).send("Missing user token");
+    return;
+  }
+
+  verifyToken(token);
+  res.redirect(await gmailAuthUrl(token));
 });
 
 integrationsRouter.get("/gmail/callback", async (req, res) => {
@@ -56,7 +86,7 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
     const { tokens } = await oauth2.getToken(code);
     oauth2.setCredentials(tokens);
 
-    if (!tokens.refresh_token) {
+    if (!tokens.refresh_token && !state) {
       res
         .status(400)
         .send("Google did not return a refresh token. Reconnect and approve access.");
@@ -116,6 +146,22 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
       });
     }
 
+    const existingIntegration = await prisma.integration.findUnique({
+      where: {
+        organizationId_provider: {
+          organizationId,
+          provider: "gmail",
+        },
+      },
+    });
+    const refreshToken = tokens.refresh_token ?? existingIntegration?.refreshToken;
+    if (!refreshToken) {
+      res
+        .status(400)
+        .send("Google did not return a refresh token. Reconnect and approve access.");
+      return;
+    }
+
     await prisma.integration.upsert({
       where: {
         organizationId_provider: {
@@ -127,12 +173,12 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
         organizationId,
         provider: "gmail",
         accessToken: tokens.access_token ?? null,
-        refreshToken: tokens.refresh_token,
+        refreshToken,
         expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
       },
       update: {
         accessToken: tokens.access_token ?? null,
-        refreshToken: tokens.refresh_token,
+        refreshToken,
         expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
       },
     });
