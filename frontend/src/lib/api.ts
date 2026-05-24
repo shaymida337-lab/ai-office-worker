@@ -1,12 +1,35 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("token");
 }
 
+export function clearToken(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("token");
+}
+
+export function isAuthError(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 401 || err.status === 403);
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
+  if (!token) {
+    throw new ApiError("Unauthorized", 401);
+  }
+
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
@@ -23,7 +46,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error((err as { error?: string }).error ?? "Request failed");
+    throw new ApiError((err as { error?: string }).error ?? "Request failed", res.status);
   }
   return res.json() as Promise<T>;
 }

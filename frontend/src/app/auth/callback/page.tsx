@@ -9,10 +9,13 @@ function CallbackInner() {
 
   useEffect(() => {
     const token = params.get("token");
-    if (token) {
-      localStorage.setItem("token", token);
-      router.replace("/dashboard");
+    if (!token) {
+      router.replace("/?error=missing_token");
+      return;
     }
+
+    localStorage.setItem("token", token);
+    window.location.replace("/dashboard");
   }, [params, router]);
 
   return (

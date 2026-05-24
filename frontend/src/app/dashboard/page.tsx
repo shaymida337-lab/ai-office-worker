@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Nav } from "@/components/Nav";
-import { apiFetch, type DashboardStats, type GmailStatus } from "@/lib/api";
+import {
+  apiFetch,
+  clearToken,
+  isAuthError,
+  type DashboardStats,
+  type GmailStatus,
+} from "@/lib/api";
 import { useRouter } from "next/navigation";
 
 type ClientSummary = {
@@ -46,8 +52,13 @@ export default function DashboardPage() {
       setGmailStatus(gmail);
       const clientData = await apiFetch<ClientsResponse>("/api/clients");
       setClients(clientData);
-    } catch {
-      router.push("/");
+    } catch (err) {
+      if (isAuthError(err)) {
+        clearToken();
+        router.replace("/");
+        return;
+      }
+      setError(err instanceof Error ? err.message : "טעינת הדשבורד נכשלה");
     }
   }, [router]);
 
@@ -110,7 +121,7 @@ export default function DashboardPage() {
   if (!stats) {
     return (
       <div className="container">
-        <p>טוען...</p>
+        <p>{error || "טוען..."}</p>
       </div>
     );
   }
