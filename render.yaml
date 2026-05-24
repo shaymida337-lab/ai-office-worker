@@ -43,3 +43,20 @@ services:
         sync: false
       - key: GOOGLE_DRIVE_ROOT
         value: AI Office Worker
+
+  - type: web
+    name: ai-office-worker-frontend
+    runtime: node
+    plan: free
+    region: oregon
+    autoDeploy: true
+    buildCommand: npm install --include=dev && npm run build -w frontend
+    startCommand: cd frontend && npx next start -p $PORT
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        value: https://ai-office-worker-backend.onrender.com
