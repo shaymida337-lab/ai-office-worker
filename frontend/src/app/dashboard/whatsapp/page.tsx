@@ -10,6 +10,7 @@ type WhatsAppStatus = {
   connected: boolean;
   ownerWhatsApp: string;
   from: string;
+  webhookUrl: string;
   connectedAt: string | null;
 };
 
@@ -30,7 +31,7 @@ export default function WhatsAppSettingsPage() {
   const [loading, setLoading] = useState(false);
 
   async function load() {
-    const next = await apiFetch<WhatsAppStatus>("/api/integrations/whatsapp/status");
+    const next = await apiFetch<WhatsAppStatus>("/api/whatsapp/status");
     const clientData = await apiFetch<{ clients: ClientItem[] }>("/api/clients");
     setStatus(next);
     setClients(clientData.clients);
@@ -46,12 +47,12 @@ export default function WhatsAppSettingsPage() {
     setMessage("");
     setLoading(true);
     try {
-      const next = await apiFetch<WhatsAppStatus>("/api/integrations/whatsapp/settings", {
-        method: "PUT",
+      await apiFetch<WhatsAppStatus>("/api/settings/whatsapp", {
+        method: "POST",
         body: JSON.stringify({ ownerWhatsApp }),
       });
-      setStatus(next);
-      setMessage("WhatsApp settings saved");
+      await load();
+      setMessage("מספר נשמר בהצלחה");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Failed to save WhatsApp settings");
     } finally {
@@ -63,8 +64,8 @@ export default function WhatsAppSettingsPage() {
     setMessage("");
     setLoading(true);
     try {
-      await apiFetch("/api/integrations/whatsapp/test", { method: "POST" });
-      setMessage("Test WhatsApp message sent");
+      await apiFetch("/api/whatsapp/test", { method: "POST" });
+      setMessage("הודעת בדיקה נשלחה!");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Failed to send test message");
     } finally {
@@ -78,10 +79,20 @@ export default function WhatsAppSettingsPage() {
       <Nav />
       {message && <p>{message}</p>}
       <div className="card">
-        <p>Twilio: {status?.configured ? "Configured" : "Not configured"}</p>
-        <p>Connection: {status?.connected ? "Connected" : "Not connected"}</p>
+        <p>Twilio: {status?.configured ? "✅ Configured" : "❌ Not configured"}</p>
+        <p>Connection: {status?.connected ? "✅ Connected" : "❌ Not connected"}</p>
         <p>From: {status?.from || "Not set"}</p>
-        <p>Webhook: https://ai-office-worker-backend.onrender.com/webhook/whatsapp</p>
+        <p>Webhook: {status?.webhookUrl || "Not set"}</p>
+        {status && !status.configured && (
+          <div style={{ background: "#fef3c7", color: "#92400e", padding: "1rem", borderRadius: 8 }}>
+            <strong>⚠️ כדי להפעיל WhatsApp:</strong>
+            <ol>
+              <li>כנס ל: console.twilio.com</li>
+              <li>העתק את Account SID ו-Auth Token</li>
+              <li>הוסף ל-Render</li>
+            </ol>
+          </div>
+        )}
         <form onSubmit={save} style={{ display: "grid", gap: "0.75rem" }}>
           <label>
             Owner WhatsApp number
@@ -93,7 +104,7 @@ export default function WhatsAppSettingsPage() {
             />
           </label>
           <button className="btn" type="submit" disabled={loading}>
-            Save WhatsApp Number
+            {loading ? "Saving..." : "Save WhatsApp Number"}
           </button>
         </form>
         <button className="btn btn-secondary" onClick={sendTest} disabled={loading || !status?.configured}>

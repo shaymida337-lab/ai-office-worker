@@ -132,11 +132,11 @@ apiRouter.get("/summary/daily", async (req, res) => {
   res.json({ text });
 });
 
-apiRouter.get("/integrations/whatsapp/status", async (req, res) => {
+async function sendWhatsAppStatus(req: Request, res: Response) {
   res.json(await getWhatsAppSettings(req.auth!.organizationId));
-});
+}
 
-apiRouter.put("/integrations/whatsapp/settings", async (req, res) => {
+async function saveWhatsAppNumber(req: Request, res: Response) {
   const body = req.body as { ownerWhatsApp?: string };
   if (!body.ownerWhatsApp?.trim()) {
     res.status(400).json({ error: "WhatsApp number is required" });
@@ -145,19 +145,26 @@ apiRouter.put("/integrations/whatsapp/settings", async (req, res) => {
 
   await saveWhatsAppSettings(req.auth!.organizationId, body.ownerWhatsApp);
   res.json(await getWhatsAppSettings(req.auth!.organizationId));
-});
+}
 
-apiRouter.post("/integrations/whatsapp/test", async (req, res) => {
+async function sendWhatsAppTest(req: Request, res: Response) {
   const result = await sendWhatsAppMessage(
     req.auth!.organizationId,
-    "בדיקת WhatsApp מ-AI Office Worker הצליחה."
+    "✅ AI Office Worker WhatsApp מחובר בהצלחה!"
   );
   if (!result.sent) {
     res.status(400).json({ error: result.reason });
     return;
   }
   res.json(result);
-});
+}
+
+apiRouter.get("/integrations/whatsapp/status", sendWhatsAppStatus);
+apiRouter.put("/integrations/whatsapp/settings", saveWhatsAppNumber);
+apiRouter.get("/whatsapp/status", sendWhatsAppStatus);
+apiRouter.post("/settings/whatsapp", saveWhatsAppNumber);
+apiRouter.post("/whatsapp/test", sendWhatsAppTest);
+apiRouter.post("/integrations/whatsapp/test", sendWhatsAppTest);
 
 apiRouter.post("/sync/gmail", async (req, res) => {
   try {

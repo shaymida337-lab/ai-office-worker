@@ -10,6 +10,18 @@ async function getTwilioClient() {
   return twilio(config.twilio.accountSid, config.twilio.authToken);
 }
 
+async function checkTwilioConnection() {
+  const client = await getTwilioClient();
+  if (!client) return false;
+  try {
+    await client.api.accounts(config.twilio.accountSid).fetch();
+    return true;
+  } catch (err) {
+    console.error("[twilio] connection check failed", err instanceof Error ? err.message : String(err));
+    return false;
+  }
+}
+
 export function normalizeWhatsAppNumber(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -34,9 +46,10 @@ export async function getWhatsAppSettings(organizationId: string) {
 
   return {
     configured: hasTwilio(),
-    connected: Boolean(integration && ownerWhatsApp),
+    connected: await checkTwilioConnection(),
     ownerWhatsApp: ownerWhatsApp || "",
     from: config.twilio.whatsappFrom,
+    webhookUrl: config.twilio.webhookUrl,
     connectedAt: integration?.connectedAt ?? null,
   };
 }
