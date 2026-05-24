@@ -5,7 +5,7 @@ services:
     plan: free
     region: oregon
     autoDeploy: true
-    buildCommand: npm install && npm run db:generate -w backend && npm run build -w backend
+    buildCommand: npm install --include=dev && npm run db:generate -w backend && npm run build -w backend
     startCommand: npm run db:migrate:deploy -w backend && npm run start -w backend
     healthCheckPath: /health
     envVars:
