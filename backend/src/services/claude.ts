@@ -63,8 +63,8 @@ export async function analyzeEmailContent(input: {
 
   const text =
     message.content[0].type === "text" ? message.content[0].text : "{}";
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  const parsed = JSON.parse(jsonMatch?.[0] ?? text) as EmailAnalysis;
+  const parsed = parseJsonObject<EmailAnalysis>(text, "email analysis");
+  if (!parsed) return fallbackAnalysis(input);
   return {
     supplier: parsed.supplier || "לא ידוע",
     amount: parsed.amount ?? null,
@@ -126,8 +126,10 @@ export async function analyzeInvoiceFile(input: {
 
   const text =
     message.content[0]?.type === "text" ? message.content[0].text : "{}";
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  const parsed = JSON.parse(jsonMatch?.[0] ?? text) as Record<string, unknown>;
+  const parsed = parseJsonObject<Record<string, unknown>>(text, "invoice scan");
+  if (!parsed) {
+    throw new Error("Claude did not return valid JSON for invoice scan");
+  }
   const supplier = firstString(parsed, ["supplier", "שם ספק", "ספק"]);
   const amount = firstNumber(parsed, ["amount", "סכום"]);
   const date = firstString(parsed, ["date", "תאריך", "invoiceDate", "תאריך חשבונית"]);
@@ -146,6 +148,22 @@ export async function analyzeInvoiceFile(input: {
     invoiceNumber,
     currency: currency || "ILS",
   };
+}
+
+function parseJsonObject<T>(text: string, context: string): T | null {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
+  const candidate = fenced ?? text.match(/\{[\s\S]*\}/)?.[0] ?? text.trim();
+
+  try {
+    return JSON.parse(candidate) as T;
+  } catch (err) {
+    const preview = text.slice(0, 200).replace(/\s+/g, " ");
+    console.warn(`[claude] Invalid JSON for ${context}`, {
+      error: err instanceof Error ? err.message : String(err),
+      preview,
+    });
+    return null;
+  }
 }
 
 function firstString(source: Record<string, unknown>, keys: string[]): string | null {
