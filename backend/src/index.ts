@@ -1,4 +1,3 @@
-console.log("[api] Starting AI Office Worker API...");
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -47,9 +46,7 @@ app.use("/api", apiRouter);
 app.use("/cron", cronRouter);
 app.use("/webhooks", webhooksRouter);
 
-const server = app.listen(config.port, () => {
-  console.log(`API running on http://localhost:${config.port}`);
-});
+const server = app.listen(config.port);
 server.on("error", (err: NodeJS.ErrnoException) => {
   console.error("[api] Failed to start:", err.message);
   process.exit(1);

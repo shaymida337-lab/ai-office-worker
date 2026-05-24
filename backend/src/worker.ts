@@ -13,15 +13,12 @@ async function runGmailSync() {
     );
     if (!connected) continue;
     try {
-      console.log(`[worker] Gmail sync org=${org.id}`);
       await syncGmailForOrganization(org.id);
     } catch (err) {
       console.error(`[worker] sync failed org=${org.id}`, err);
     }
   }
 }
-
-console.log("[worker] AI Office Worker cron started (Asia/Jerusalem)");
 
 // 07:00 — Gmail scan
 cron.schedule("0 7 * * *", runGmailSync, { timezone: "Asia/Jerusalem" });

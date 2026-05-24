@@ -51,10 +51,60 @@ apiRouter.get("/tasks", async (req, res) => {
 
 apiRouter.patch("/tasks/:id", async (req, res) => {
   const { status } = req.body as { status?: string };
-  await prisma.task.updateMany({
+  const updated = await prisma.task.updateMany({
     where: { id: req.params.id, organizationId: req.auth!.organizationId },
     data: { status: status ?? "done" },
   });
+  if (updated.count === 0) {
+    res.status(404).json({ error: "Task not found" });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+apiRouter.put("/tasks/:id", async (req, res) => {
+  const body = req.body as {
+    title?: string;
+    description?: string | null;
+    dueDate?: string | null;
+    priority?: string;
+    status?: string;
+  };
+  const title = body.title?.trim();
+  if (!title) {
+    res.status(400).json({ error: "Task title is required" });
+    return;
+  }
+  const dueDate = body.dueDate ? new Date(body.dueDate) : null;
+  if (dueDate && Number.isNaN(dueDate.getTime())) {
+    res.status(400).json({ error: "Invalid due date" });
+    return;
+  }
+  const updated = await prisma.task.updateMany({
+    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    data: {
+      title,
+      description: body.description?.trim() || null,
+      dueDate,
+      ...(body.priority && { priority: body.priority }),
+      ...(body.status && { status: body.status }),
+    },
+  });
+  if (updated.count === 0) {
+    res.status(404).json({ error: "Task not found" });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+apiRouter.delete("/tasks/:id", async (req, res) => {
+  const deleted = await prisma.task.deleteMany({
+    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+  });
+  if (deleted.count === 0) {
+    res.status(404).json({ error: "Task not found" });
+    return;
+  }
   res.json({ ok: true });
 });
 

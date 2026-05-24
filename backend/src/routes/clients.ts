@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { authMiddleware, verifyToken, type JwtPayload } from "../lib/auth.js";
@@ -10,6 +10,8 @@ import { syncGmailForClient } from "../services/clientGmailSync.js";
 export const clientsRouter = Router();
 
 const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"];
+const VALID_PRIORITIES = new Set(["low", "medium", "high"]);
+const VALID_STATUSES = new Set(["todo", "in-progress", "done", "open"]);
 
 function parseSheetId(url?: string): string | null {
   return url?.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)?.[1] ?? null;
@@ -18,6 +20,29 @@ function parseSheetId(url?: string): string | null {
 function parseFolderId(url?: string): string | null {
   return url?.match(/\/folders\/([a-zA-Z0-9-_]+)/)?.[1] ?? null;
 }
+
+function getParam(value: string | string[] | undefined): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+const checkClientOwnership: RequestHandler = async (req, res, next) => {
+  const clientId = getParam(req.params.clientId);
+  if (!clientId) {
+    res.status(400).json({ error: "Invalid client id" });
+    return;
+  }
+
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, organizationId: req.auth!.organizationId, isActive: true },
+  });
+  if (!client) {
+    res.status(403).json({ error: "Client access denied" });
+    return;
+  }
+
+  res.locals.client = client;
+  next();
+};
 
 function authFromQuery(req: { query: Record<string, unknown>; headers: { authorization?: string } }): JwtPayload | null {
   const token =
@@ -34,7 +59,7 @@ function authFromQuery(req: { query: Record<string, unknown>; headers: { authori
 async function clientStats(organizationId: string, clientId: string) {
   const [invoices, openTasks, toPay, missingInvoices] = await Promise.all([
     prisma.supplierPayment.count({ where: { organizationId, clientId } }),
-    prisma.task.count({ where: { organizationId, clientId, status: "open" } }),
+    prisma.task.count({ where: { organizationId, clientId, status: { not: "done" } } }),
     prisma.supplierPayment.aggregate({
       where: { organizationId, clientId, paid: false },
       _sum: { amount: true },
@@ -47,6 +72,40 @@ async function clientStats(organizationId: string, clientId: string) {
     openTasks,
     toPay: toPay._sum.amount ?? 0,
     missingInvoices,
+  };
+}
+
+async function calculateClientHealth(organizationId: string, clientId: string) {
+  const [client, totalTasks, doneTasks, recentEmails, payments, missingInvoices] = await Promise.all([
+    prisma.client.findFirst({ where: { id: clientId, organizationId, isActive: true } }),
+    prisma.task.count({ where: { organizationId, clientId } }),
+    prisma.task.count({ where: { organizationId, clientId, status: "done" } }),
+    prisma.emailMessage.count({
+      where: {
+        organizationId,
+        clientId,
+        receivedAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      },
+    }),
+    prisma.supplierPayment.count({ where: { organizationId, clientId } }),
+    prisma.supplierPayment.count({ where: { organizationId, clientId, missingInvoice: true } }),
+  ]);
+
+  const gmailActivity = client?.gmailConnected ? Math.min(100, 50 + recentEmails * 10) : 20;
+  const driveUsage = client?.driveFolderId || client?.driveFolderUrl ? 100 : 35;
+  const sheetsData =
+    client?.invoiceSheetId || client?.taskSheetId || client?.invoiceSheetUrl || client?.taskSheetUrl ? 100 : 35;
+  const taskCompletionRate = totalTasks === 0 ? 70 : Math.round((doneTasks / totalTasks) * 100);
+  const dataPenalty = Math.min(30, Math.max(0, missingInvoices - payments) * 5);
+  const score = Math.max(
+    0,
+    Math.min(100, Math.round((gmailActivity + driveUsage + sheetsData + taskCompletionRate) / 4 - dataPenalty))
+  );
+
+  return {
+    score,
+    status: score >= 71 ? "good" : score >= 41 ? "warning" : "risk",
+    breakdown: { gmailActivity, driveUsage, sheetsData, taskCompletionRate },
   };
 }
 
@@ -63,6 +122,7 @@ clientsRouter.get("/", authMiddleware, async (req, res) => {
       googleAccessToken: undefined,
       googleRefreshToken: undefined,
       stats: await clientStats(organizationId, client.id),
+      health: await calculateClientHealth(organizationId, client.id),
     }))
   );
 
@@ -159,9 +219,14 @@ clientsRouter.get("/:clientId/connect-gmail", async (req, res) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  const clientId = getParam(req.params.clientId);
+  if (!clientId) {
+    res.status(400).json({ error: "Invalid client id" });
+    return;
+  }
 
   const client = await prisma.client.findFirst({
-    where: { id: req.params.clientId, organizationId: auth.organizationId, isActive: true },
+    where: { id: clientId, organizationId: auth.organizationId, isActive: true },
   });
   if (!client) {
     res.status(404).json({ error: "Client not found" });
@@ -185,46 +250,147 @@ clientsRouter.get("/:clientId/connect-gmail", async (req, res) => {
   res.redirect(url);
 });
 
-clientsRouter.get("/:clientId", authMiddleware, async (req, res) => {
-  const organizationId = req.auth!.organizationId;
-  const client = await prisma.client.findFirst({
-    where: { id: req.params.clientId, organizationId, isActive: true },
+clientsRouter.get("/:clientId/tasks", authMiddleware, checkClientOwnership, async (req, res) => {
+  const client = res.locals.client;
+  const tasks = await prisma.task.findMany({
+    where: { organizationId: req.auth!.organizationId, clientId: client.id },
+    orderBy: { createdAt: "desc" },
+    take: 100,
   });
-  if (!client) {
-    res.status(404).json({ error: "Client not found" });
+  res.json({ tasks });
+});
+
+clientsRouter.post("/:clientId/tasks", authMiddleware, checkClientOwnership, async (req, res) => {
+  const client = res.locals.client;
+  const body = req.body as {
+    title?: string;
+    description?: string;
+    dueDate?: string | null;
+    priority?: string;
+    status?: string;
+  };
+  const title = body.title?.trim();
+  if (!title) {
+    res.status(400).json({ error: "Task title is required" });
+    return;
+  }
+  const priority = VALID_PRIORITIES.has(body.priority ?? "") ? body.priority! : "medium";
+  const status = VALID_STATUSES.has(body.status ?? "") ? body.status! : "todo";
+  const dueDate = body.dueDate ? new Date(body.dueDate) : null;
+  if (dueDate && Number.isNaN(dueDate.getTime())) {
+    res.status(400).json({ error: "Invalid due date" });
     return;
   }
 
-  const [payments, tasks, stats] = await Promise.all([
+  const task = await prisma.task.create({
+    data: {
+      organizationId: req.auth!.organizationId,
+      clientId: client.id,
+      title,
+      description: body.description?.trim() || null,
+      dueDate,
+      priority,
+      status,
+      source: "manual",
+    },
+  });
+  res.status(201).json({ task });
+});
+
+clientsRouter.get("/:clientId/health-score", authMiddleware, checkClientOwnership, async (req, res) => {
+  const client = res.locals.client;
+  res.json(await calculateClientHealth(req.auth!.organizationId, client.id));
+});
+
+clientsRouter.post("/:clientId/health-score/recalculate", authMiddleware, checkClientOwnership, async (req, res) => {
+  const client = res.locals.client;
+  res.json(await calculateClientHealth(req.auth!.organizationId, client.id));
+});
+
+clientsRouter.post("/:clientId/ai-suggestions", authMiddleware, checkClientOwnership, async (req, res) => {
+  const client = res.locals.client;
+  const [stats, recentTasks, missingInvoices] = await Promise.all([
+    clientStats(req.auth!.organizationId, client.id),
+    prisma.task.findMany({
+      where: { organizationId: req.auth!.organizationId, clientId: client.id },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    }),
+    prisma.supplierPayment.findMany({
+      where: { organizationId: req.auth!.organizationId, clientId: client.id, missingInvoice: true },
+      orderBy: { date: "desc" },
+      take: 3,
+    }),
+  ]);
+
+  const suggestions = [
+    ...(missingInvoices.length > 0
+      ? missingInvoices.map((payment) => ({
+          title: `לבקש חשבונית מ${payment.supplier}`,
+          description: `נמצאה דרישת תשלום ללא חשבונית עבור ${payment.supplier}.`,
+          priority: "high",
+        }))
+      : []),
+    ...(stats.openTasks > 3
+      ? [
+          {
+            title: "לסגור משימות פתוחות",
+            description: `יש ${stats.openTasks} משימות פתוחות ללקוח. כדאי לתעדף ולסגור ישנות.`,
+            priority: "medium",
+          },
+        ]
+      : []),
+    ...(stats.toPay > 0
+      ? [
+          {
+            title: "לעבור על תשלומים פתוחים",
+            description: `קיימים תשלומים פתוחים בסך ₪${Math.round(stats.toPay).toLocaleString("he-IL")}.`,
+            priority: "medium",
+          },
+        ]
+      : []),
+    ...(recentTasks.length === 0
+      ? [
+          {
+            title: "לבצע בדיקת סטטוס ללקוח",
+            description: "אין משימות אחרונות. מומלץ לבדוק אם יש פעולות פתוחות מול הלקוח.",
+            priority: "low",
+          },
+        ]
+      : []),
+  ].slice(0, 5);
+
+  res.json({ suggestions });
+});
+
+clientsRouter.get("/:clientId", authMiddleware, checkClientOwnership, async (req, res) => {
+  const organizationId = req.auth!.organizationId;
+  const client = res.locals.client;
+
+  const [payments, tasks, stats, health] = await Promise.all([
     prisma.supplierPayment.findMany({
       where: { organizationId, clientId: client.id },
       orderBy: { date: "desc" },
       take: 20,
     }),
     prisma.task.findMany({
-      where: { organizationId, clientId: client.id, status: "open" },
+      where: { organizationId, clientId: client.id },
       orderBy: { createdAt: "desc" },
       take: 20,
     }),
     clientStats(organizationId, client.id),
+    calculateClientHealth(organizationId, client.id),
   ]);
 
   res.json({
-    client: { ...client, googleAccessToken: undefined, googleRefreshToken: undefined, stats },
+    client: { ...client, googleAccessToken: undefined, googleRefreshToken: undefined, stats, health },
     payments,
     tasks,
   });
 });
 
-clientsRouter.put("/:clientId", authMiddleware, async (req, res) => {
-  const client = await prisma.client.findFirst({
-    where: { id: req.params.clientId, organizationId: req.auth!.organizationId },
-  });
-  if (!client) {
-    res.status(404).json({ error: "Client not found" });
-    return;
-  }
-
+clientsRouter.put("/:clientId", authMiddleware, checkClientOwnership, async (req, res) => {
+  const client = res.locals.client;
   const body = req.body as Record<string, string | undefined>;
   const updated = await prisma.client.update({
     where: { id: client.id },
@@ -250,11 +416,9 @@ clientsRouter.put("/:clientId", authMiddleware, async (req, res) => {
   res.json({ client: { ...updated, stats: await clientStats(req.auth!.organizationId, updated.id) } });
 });
 
-clientsRouter.post("/:clientId/scan", authMiddleware, async (req, res) => {
-  const client = await prisma.client.findFirst({
-    where: { id: req.params.clientId, organizationId: req.auth!.organizationId, gmailConnected: true },
-  });
-  if (!client) {
+clientsRouter.post("/:clientId/scan", authMiddleware, checkClientOwnership, async (_req, res) => {
+  const client = res.locals.client;
+  if (!client.gmailConnected) {
     res.status(404).json({ error: "Client not found or Gmail not connected" });
     return;
   }
