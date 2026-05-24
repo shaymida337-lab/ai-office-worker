@@ -62,10 +62,47 @@ export async function getOAuth2Client(redirectUri = config.google.redirectUri) {
 export const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/spreadsheets",
   "openid",
   "email",
   "profile",
 ];
+
+export async function getGoogleClientsForClient(clientId: string) {
+  const google = await loadGoogle();
+  const client = await prisma.client.findUnique({ where: { id: clientId } });
+  if (!client?.googleRefreshToken) {
+    throw new Error("Client Gmail not connected");
+  }
+
+  const oauth2 = new google.auth.OAuth2(
+    config.google.clientId,
+    config.google.clientSecret,
+    config.google.clientGmailRedirectUri
+  );
+  oauth2.setCredentials({
+    access_token: client.googleAccessToken ?? undefined,
+    refresh_token: client.googleRefreshToken,
+  });
+
+  oauth2.on("tokens", async (tokens) => {
+    await prisma.client.update({
+      where: { id: clientId },
+      data: {
+        googleAccessToken: tokens.access_token ?? undefined,
+        ...(tokens.refresh_token && { googleRefreshToken: tokens.refresh_token }),
+      },
+    });
+  });
+
+  return {
+    gmail: google.gmail({ version: "v1", auth: oauth2 }),
+    drive: google.drive({ version: "v3", auth: oauth2 }),
+    sheets: google.sheets({ version: "v4", auth: oauth2 }),
+    oauth2,
+    client,
+  };
+}
 
 export async function ensureDriveFolder(
   drive: drive_v3.Drive,

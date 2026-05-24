@@ -40,6 +40,34 @@ model Organization {
   whatsappLogs    WhatsAppLog[]
   customerInvoices CustomerInvoice[]
   socialDrafts    SocialDraft[]
+  clients         Client[]
+}
+
+model Client {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name               String
+  email              String
+  googleAccessToken  String?
+  googleRefreshToken String?
+  gmailConnected     Boolean  @default(false)
+  invoiceSheetId     String?
+  invoiceSheetUrl    String?
+  taskSheetId        String?
+  taskSheetUrl       String?
+  driveFolderId      String?
+  driveFolderUrl     String?
+  color              String?  @default("#3B82F6")
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  supplierPayments SupplierPayment[]
+  tasks            Task[]
+  emailMessages    EmailMessage[]
+
+  @@index([organizationId, isActive])
 }
 
 model Integration {
@@ -60,7 +88,9 @@ model Integration {
 model EmailMessage {
   id             String   @id @default(cuid())
   organizationId String
+  clientId       String?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client         Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   gmailId        String
   threadId       String?
   subject        String
@@ -75,6 +105,7 @@ model EmailMessage {
   attachments EmailAttachment[]
 
   @@unique([organizationId, gmailId])
+  @@index([clientId])
 }
 
 model EmailAttachment {
@@ -94,7 +125,9 @@ model EmailAttachment {
 model SupplierPayment {
   id              String    @id @default(cuid())
   organizationId  String
+  clientId        String?
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client          Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   supplier        String
   amount          Float
   currency        String    @default("ILS")
@@ -155,7 +188,9 @@ model SocialDraft {
 model Task {
   id             String   @id @default(cuid())
   organizationId String
+  clientId       String?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client         Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   title          String
   description    String?
   supplier       String?

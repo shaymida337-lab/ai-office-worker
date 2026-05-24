@@ -35,6 +35,10 @@ export const config = {
         "https://ai-office-worker-backend.onrender.com/api/auth/google/callback"
       )
     ),
+    clientGmailRedirectUri: optional(
+      "GOOGLE_CLIENT_REDIRECT_URI",
+      "https://ai-office-worker-backend.onrender.com/api/clients/gmail/callback"
+    ),
   },
 
   anthropic: {
