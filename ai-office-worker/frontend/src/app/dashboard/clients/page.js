@@ -16,7 +16,7 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
-    name: '', email: '', invoiceSheetUrl: '', taskSheetUrl: '', driveFolderUrl: '',
+    name: '', email: '', color: '#3B82F6', invoiceSheetUrl: '', taskSheetUrl: '', driveFolderUrl: '',
   });
   const [msg, setMsg] = useState('');
   const searchParams = useSearchParams();
@@ -39,7 +39,7 @@ export default function ClientsPage() {
     try {
       await apiClient.createClient(form);
       setShowForm(false);
-      setForm({ name: '', email: '', invoiceSheetUrl: '', taskSheetUrl: '', driveFolderUrl: '' });
+      setForm({ name: '', email: '', color: '#3B82F6', invoiceSheetUrl: '', taskSheetUrl: '', driveFolderUrl: '' });
       setMsg('✅ לקוח נוסף');
       load();
     } catch (err) {
@@ -64,7 +64,7 @@ export default function ClientsPage() {
         <h1 className="text-2xl font-bold text-gray-800">ניהול לקוחות</h1>
         <div className="flex gap-2">
           <button onClick={scanAll} className="bg-blue-900 text-white px-4 py-2 rounded-xl text-sm font-bold">סרוק את כולם</button>
-          <button onClick={() => setShowForm(true)} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold">+ הוסף לקוח</button>
+          <button onClick={() => setShowForm(true)} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold">+ הוסף לקוח חדש</button>
         </div>
       </div>
 
@@ -119,8 +119,12 @@ export default function ClientsPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <form onSubmit={createClient} className="card p-6 w-full max-w-lg space-y-3">
             <h2 className="font-bold text-lg mb-2">לקוח חדש</h2>
-            <input required placeholder="שם העסק" className="w-full border rounded-xl px-3 py-2 text-sm" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <input required type="email" placeholder="Gmail של הלקוח" className="w-full border rounded-xl px-3 py-2 text-sm" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <input required placeholder="שם לקוח" className="w-full border rounded-xl px-3 py-2 text-sm" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <input required type="email" placeholder="מייל" className="w-full border rounded-xl px-3 py-2 text-sm" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <label className="flex items-center justify-between gap-3 text-sm text-gray-700">
+              <span>צבע</span>
+              <input type="color" className="h-10 w-16 rounded border border-gray-200" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} />
+            </label>
             <input placeholder="URL טבלת חשבוניות" className="w-full border rounded-xl px-3 py-2 text-sm" value={form.invoiceSheetUrl} onChange={(e) => setForm({ ...form, invoiceSheetUrl: e.target.value })} />
             <input placeholder="URL טבלת משימות" className="w-full border rounded-xl px-3 py-2 text-sm" value={form.taskSheetUrl} onChange={(e) => setForm({ ...form, taskSheetUrl: e.target.value })} />
             <input placeholder="URL תיקיית Drive" className="w-full border rounded-xl px-3 py-2 text-sm" value={form.driveFolderUrl} onChange={(e) => setForm({ ...form, driveFolderUrl: e.target.value })} />
