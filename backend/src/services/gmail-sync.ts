@@ -1,8 +1,12 @@
 import { prisma } from "../lib/prisma.js";
 import { buildDuplicateHash } from "../lib/duplicate.js";
 import { analyzeEmailContent } from "./claude.js";
-import { getGoogleClients, ensureDriveFolder } from "./google.js";
-import { config } from "../lib/config.js";
+import { getGoogleClients } from "./google.js";
+import {
+  ensureInvoiceFolderTree,
+  folderForDocumentType,
+  uploadInvoiceAttachmentToDrive,
+} from "./driveService.js";
 import { notifyNewInvoice } from "./whatsapp.js";
 
 const GMAIL_QUERIES = [
@@ -44,8 +48,7 @@ export async function syncGmailForOrganization(organizationId: string) {
 
   try {
     const { gmail, drive } = await getGoogleClients(organizationId);
-    const rootId = await ensureDriveFolder(drive, config.driveRootFolder);
-    await ensureDocumentFolders(drive, rootId);
+    const rootId = await ensureInvoiceFolderTree(drive);
     const messages = await listCandidateMessages(gmail);
 
     for (const msgRef of messages) {
@@ -131,25 +134,17 @@ export async function syncGmailForOrganization(organizationId: string) {
         });
         const buffer = decodeGmailAttachment(att.data.data ?? "");
         const folderType = folderForDocumentType(analysis.documentType);
-        const typeFolderId = await ensureDriveFolder(drive, folderType, rootId);
-        const folderId = await ensureDriveFolder(
+        const upload = await uploadInvoiceAttachmentToDrive({
           drive,
-          safeFolderName(analysis.supplier),
-          typeFolderId
-        );
-        const { Readable } = await import("stream");
-        const upload = await drive.files.create({
-          requestBody: {
-            name: `${receivedAt.toISOString().slice(0, 10)}_${part.filename}`,
-            parents: [folderId],
-          },
-          media: {
-            mimeType: part.mimeType ?? "application/octet-stream",
-            body: Readable.from(buffer),
-          },
-          fields: "id, webViewLink",
+          rootFolderId: rootId,
+          supplier: analysis.supplier,
+          documentType: analysis.documentType,
+          filename: part.filename,
+          mimeType: part.mimeType,
+          receivedAt,
+          buffer,
         });
-        const link = upload.data.webViewLink ?? `https://drive.google.com/file/d/${upload.data.id}/view`;
+        const link = upload.webViewLink;
         driveLinks.push({ type: folderType, link });
         await prisma.emailAttachment.create({
           data: {
@@ -157,7 +152,7 @@ export async function syncGmailForOrganization(organizationId: string) {
             filename: part.filename,
             mimeType: part.mimeType ?? undefined,
             gmailAttachmentId: attachmentId,
-            driveFileId: upload.data.id ?? undefined,
+            driveFileId: upload.fileId ?? undefined,
             driveLink: link,
           },
         });
@@ -351,31 +346,3 @@ function decodeGmailAttachment(data: string): Buffer {
   return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
 
-function folderForDocumentType(documentType: string): string {
-  switch (documentType) {
-    case "invoice":
-      return "Invoices";
-    case "receipt":
-      return "Receipts";
-    case "payment_request":
-      return "Payment Requests";
-    default:
-      return "Other";
-  }
-}
-
-function safeFolderName(name: string): string {
-  return (name || "Unknown Supplier").replace(/[\\/:*?"<>|]/g, "-").slice(0, 80);
-}
-
-async function ensureDocumentFolders(
-  drive: Awaited<ReturnType<typeof getGoogleClients>>["drive"],
-  rootId: string
-) {
-  await Promise.all([
-    ensureDriveFolder(drive, "Invoices", rootId),
-    ensureDriveFolder(drive, "Receipts", rootId),
-    ensureDriveFolder(drive, "Payment Requests", rootId),
-    ensureDriveFolder(drive, "Missing Invoices", rootId),
-  ]);
-}
