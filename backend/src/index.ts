@@ -8,6 +8,7 @@ import { apiRouter } from "./routes/api.js";
 import { cronRouter } from "./routes/cron.js";
 import { integrationsRouter } from "./routes/integrations.js";
 import { webhooksRouter } from "./routes/webhooks.js";
+import { clientsRouter } from "./routes/clients.js";
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.get("/health", (_req, res) => {
 app.use("/auth", authRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/integrations", integrationsRouter);
+app.use("/api/clients", clientsRouter);
 app.use("/api", apiRouter);
 app.use("/cron", cronRouter);
 app.use("/webhooks", webhooksRouter);

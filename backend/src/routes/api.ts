@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { authMiddleware } from "../lib/auth.js";
@@ -186,7 +186,7 @@ apiRouter.post("/camera/invoices", async (req, res) => {
   }
 });
 
-apiRouter.get("/business-health", async (req, res) => {
+async function sendBusinessHealth(req: Request, res: Response) {
   const stats = await getDashboardStats(req.auth!.organizationId);
   const score = stats.businessHealthScore;
   const recommendations: string[] = [];
@@ -217,6 +217,14 @@ apiRouter.get("/business-health", async (req, res) => {
       hoursSavedThisWeek: stats.hoursSavedThisWeek,
     },
   });
+}
+
+apiRouter.get("/business-health", async (req, res) => {
+  await sendBusinessHealth(req, res);
+});
+
+apiRouter.get("/health-score", async (req, res) => {
+  await sendBusinessHealth(req, res);
 });
 
 apiRouter.get("/customer-invoices", async (req, res) => {

@@ -37,6 +37,7 @@ export async function getGoogleClients(organizationId: string) {
       },
       data: {
         accessToken: tokens.access_token ?? undefined,
+        ...(tokens.refresh_token && { refreshToken: tokens.refresh_token }),
         expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
       },
     });
@@ -61,6 +62,7 @@ export async function getOAuth2Client(redirectUri = config.google.redirectUri) {
 
 export const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/spreadsheets",
   "openid",
