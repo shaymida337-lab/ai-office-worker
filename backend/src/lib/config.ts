@@ -21,10 +21,16 @@ export const config = {
   google: {
     clientId: optional("GOOGLE_CLIENT_ID"),
     clientSecret: optional("GOOGLE_CLIENT_SECRET"),
-    redirectUri: optional("GOOGLE_REDIRECT_URI", "http://localhost:4000/auth/google/callback"),
+    redirectUri: optional(
+      "GOOGLE_REDIRECT_URI",
+      optional(
+        "GOOGLE_CALLBACK_URL",
+        "https://ai-office-worker-backend.onrender.com/api/auth/google/callback"
+      )
+    ),
     integrationRedirectUri: optional(
       "GOOGLE_INTEGRATION_REDIRECT_URI",
-      "http://localhost:4000/api/integrations/gmail/callback"
+      "https://ai-office-worker-backend.onrender.com/api/integrations/gmail/callback"
     ),
   },
 
