@@ -30,7 +30,10 @@ export const config = {
     ),
     integrationRedirectUri: optional(
       "GOOGLE_INTEGRATION_REDIRECT_URI",
-      "https://ai-office-worker-backend.onrender.com/api/integrations/gmail/callback"
+      optional(
+        "GOOGLE_CALLBACK_URL",
+        "https://ai-office-worker-backend.onrender.com/api/auth/google/callback"
+      )
     ),
   },
 
