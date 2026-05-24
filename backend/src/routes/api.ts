@@ -84,6 +84,10 @@ apiRouter.post("/sync/gmail", async (req, res) => {
     res.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
+    if (message === "Gmail not connected") {
+      res.status(409).json({ error: message });
+      return;
+    }
     res.status(500).json({ error: message });
   }
 });
