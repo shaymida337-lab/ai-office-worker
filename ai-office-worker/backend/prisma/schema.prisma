@@ -95,11 +95,12 @@ model SupplierPayment {
   driveFileUrl  String?
   invoiceLink   String?
 
-  invoiceHash   String?  @unique
+  invoiceHash   String?
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  @@unique([userId, invoiceHash])
   @@map("supplier_payments")
 }
 

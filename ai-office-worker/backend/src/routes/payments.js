@@ -1,6 +1,10 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
+const {
+  syncPaymentStatusToDocument,
+  getSuppliersSummary,
+} = require('../services/supplierPayments');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -26,6 +30,16 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
+// GET /api/payments/suppliers - aggregated supplier summary
+router.get('/suppliers', authenticate, async (req, res) => {
+  try {
+    const suppliers = await getSuppliersSummary(req.user.id);
+    res.json({ suppliers });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PATCH /api/payments/:id/paid - mark as paid/unpaid
 router.patch('/:id/paid', authenticate, async (req, res) => {
   try {
@@ -33,12 +47,21 @@ router.patch('/:id/paid', authenticate, async (req, res) => {
     const { id } = req.params;
     const { paid } = req.body;
 
-    const payment = await prisma.supplierPayment.updateMany({
+    const payment = await prisma.supplierPayment.findFirst({
       where: { id, userId },
+    });
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+
+    await prisma.supplierPayment.update({
+      where: { id },
       data: { paid: !!paid },
     });
 
-    res.json({ updated: payment.count });
+    if (payment.documentId) {
+      await syncPaymentStatusToDocument(payment.documentId, !!paid);
+    }
+
+    res.json({ updated: 1, paid: !!paid });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

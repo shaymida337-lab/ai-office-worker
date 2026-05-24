@@ -2,6 +2,7 @@ const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const { updateRowStatus } = require('../services/googleSheets');
+const { syncDocumentStatusToPayments } = require('../services/supplierPayments');
 const { logger } = require('../utils/logger');
 
 const router = express.Router();
@@ -20,9 +21,9 @@ router.get('/', authenticate, async (req, res) => {
     if (requiresAction !== undefined) where.requiresAction = requiresAction === 'true';
     if (search) {
       where.OR = [
-        { vendorName: { contains: search, mode: 'insensitive' } },
-        { emailSubject: { contains: search, mode: 'insensitive' } },
-        { invoiceNumber: { contains: search, mode: 'insensitive' } },
+        { vendorName: { contains: search } },
+        { emailSubject: { contains: search } },
+        { invoiceNumber: { contains: search } },
       ];
     }
 
@@ -70,6 +71,8 @@ router.patch('/:id/status', authenticate, async (req, res) => {
       where: { id: req.params.id },
       data: { status },
     });
+
+    await syncDocumentStatusToPayments(doc.id, status);
 
     // Update Sheet row too
     if (doc.sheetsRow) {

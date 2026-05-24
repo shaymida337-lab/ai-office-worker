@@ -1,13 +1,42 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import { apiClient } from '@/lib/api';
 
-export default function LandingPage() {
+const OAUTH_ERROR_MESSAGES = {
+  oauth_failed: 'התחברות Google נכשלה. בדוק שה-GOOGLE_CLIENT_SECRET מוגדר נכון ב-backend/.env.',
+  oauth_denied: 'ההתחברות בוטלה או נדחתה ב-Google.',
+  oauth_no_email: 'לא התקבל כתובת מייל מ-Google.',
+  auth_failed: 'ההתחברות נכשלה.',
+};
+
+function LandingPageContent() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const oauthError = searchParams.get('error');
+    const reason = searchParams.get('reason');
+    if (!oauthError) return;
+
+    let message = OAUTH_ERROR_MESSAGES[oauthError] || 'שגיאה בהתחברות. נסה שוב.';
+    if (reason === 'invalid_client') {
+      message = 'Google OAuth לא מוגדר נכון: GOOGLE_CLIENT_SECRET ב-backend/.env עדיין placeholder או שגוי.';
+    } else if (reason === 'invalid_state') {
+      message = 'שגיאת אבטחה בהתחברות Google. נסה שוב.';
+    } else if (reason === 'not_configured') {
+      message = 'Google OAuth לא מוגדר. מלא GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET ו-GOOGLE_REDIRECT_URI ב-backend/.env.';
+    } else if (reason && reason !== 'no_code') {
+      message = `${message} (${reason})`;
+    }
+
+    setError(message);
+  }, [searchParams]);
 
   const handleLogin = async () => {
     if (!email || !email.includes('@') || !password || password.length < 6) {
@@ -19,7 +48,7 @@ export default function LandingPage() {
     try {
       if (whatsapp) sessionStorage.setItem('pending_whatsapp', whatsapp);
 
-      const { data } = await apiClient.login(email, password);
+      const { data } = await apiClient.login(email, password, whatsapp || undefined);
       localStorage.setItem('ai_office_token', data.token);
       window.location.href = '/dashboard';
     } catch (err) {
@@ -138,5 +167,17 @@ export default function LandingPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LandingPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 flex items-center justify-center">
+        <div className="text-white text-xl">טוען...</div>
+      </div>
+    }>
+      <LandingPageContent />
+    </Suspense>
   );
 }

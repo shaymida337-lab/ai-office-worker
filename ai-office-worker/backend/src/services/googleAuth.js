@@ -1,6 +1,7 @@
 const { google } = require('googleapis');
 const { PrismaClient } = require('@prisma/client');
 const { logger } = require('../utils/logger');
+const { getGoogleRedirectUri } = require('../utils/googleOAuth');
 
 const prisma = new PrismaClient();
 
@@ -12,7 +13,7 @@ const getAuthClient = async (user) => {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
+    getGoogleRedirectUri()
   );
 
   oauth2Client.setCredentials({

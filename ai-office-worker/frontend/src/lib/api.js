@@ -30,7 +30,8 @@ export const apiClient = {
   // Auth
   getMe: () => api.get('/api/auth/me'),
   logout: () => api.post('/api/auth/logout'),
-  login: (email, password) => api.post('/api/auth/login', { email, password }),
+  login: (email, password, whatsappNumber) => api.post('/api/auth/login', { email, password, whatsappNumber }),
+  getGoogleAuthStatus: () => api.get('/api/auth/google/status'),
 
   // Dashboard
   getStats: () => api.get('/api/dashboard/stats'),
@@ -50,6 +51,7 @@ export const apiClient = {
 
   // Payments
   getPayments: (params) => api.get('/api/payments', { params }),
+  getSuppliers: () => api.get('/api/payments/suppliers'),
   markPaymentPaid: (id, paid) => api.patch(`/api/payments/${id}/paid`, { paid }),
   getMissingInvoices: () => api.get('/api/payments/missing-invoices'),
 };

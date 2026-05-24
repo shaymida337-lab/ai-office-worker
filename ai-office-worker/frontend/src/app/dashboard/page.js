@@ -48,6 +48,7 @@ export default function DashboardPage() {
   const stats = data?.stats || {};
   const recentDocs = data?.recentDocs || [];
   const name = user?.displayName?.split(' ')[0] || 'שלום';
+  const googleConnected = user?.googleConnected;
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -58,10 +59,22 @@ export default function DashboardPage() {
           <p className="text-gray-500 text-sm mt-1">
             {new Date().toLocaleDateString('he-IL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
+          {!googleConnected && (
+            <div className="mt-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl p-3">
+              Gmail לא מחובר.{' '}
+              <a
+                href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/auth/google`}
+                className="font-bold underline"
+              >
+                התחבר עם Google
+              </a>{' '}
+              כדי לסרוק חשבוניות מהמייל.
+            </div>
+          )}
         </div>
         <button
           onClick={triggerScan}
-          disabled={scanning}
+          disabled={scanning || !googleConnected}
           className="bg-blue-900 hover:bg-blue-800 disabled:opacity-60 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-colors flex items-center gap-2"
         >
           <span className={scanning ? 'animate-spin' : ''}>🔄</span>

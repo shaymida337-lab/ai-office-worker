@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { google } = require('googleapis');
 const { PrismaClient } = require('@prisma/client');
 const { logger } = require('../utils/logger');
+const { getGoogleRedirectUri } = require('../utils/googleOAuth');
 const { authenticate } = require('../middleware/auth');
 const { processUserEmails } = require('../services/emailProcessor');
 
@@ -19,11 +20,57 @@ const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
 ];
 
+const PLACEHOLDER_GOOGLE_SECRETS = new Set([
+  '',
+  'your-client-secret',
+  'your-google-client-secret',
+]);
+
+const isGoogleOAuthConfigured = () => {
+  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = process.env;
+  const redirectUri = getGoogleRedirectUri();
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !redirectUri) return false;
+  if (GOOGLE_CLIENT_ID.includes('your-google-client-id')) return false;
+  if (PLACEHOLDER_GOOGLE_SECRETS.has(GOOGLE_CLIENT_SECRET)) return false;
+  return true;
+};
+
 const createOAuthClient = () => new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT_URI,
+  getGoogleRedirectUri(),
 );
+
+const frontendUrl = () => process.env.FRONTEND_URL || 'http://localhost:3000';
+
+const oauthErrorRedirect = (errorCode, reason) => {
+  const params = new URLSearchParams({ error: errorCode });
+  if (reason) params.set('reason', reason);
+  return `${frontendUrl()}/?${params.toString()}`;
+};
+
+const createOAuthState = () => jwt.sign(
+  { purpose: 'google_oauth', nonce: crypto.randomBytes(16).toString('hex') },
+  process.env.JWT_SECRET,
+  { expiresIn: '10m' },
+);
+
+const verifyOAuthState = (state) => {
+  if (!state) return false;
+  try {
+    const decoded = jwt.verify(state, process.env.JWT_SECRET);
+    return decoded.purpose === 'google_oauth';
+  } catch {
+    return false;
+  }
+};
+
+if (process.env.NODE_ENV !== 'production' && !isGoogleOAuthConfigured()) {
+  logger.warn(
+    'Google OAuth is not configured: set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI in backend/.env. ' +
+    'Redirect URI must be http://localhost:4000/api/auth/google/callback (also add it in Google Cloud Console).'
+  );
+}
 
 const hashPassword = (password) => {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -40,9 +87,8 @@ const verifyPassword = (password, storedHash) => {
 };
 
 // POST /api/auth/login
-// Local email/password auth only
 router.post('/login', async (req, res) => {
-  const { email, password, displayName } = req.body;
+  const { email, password, displayName, whatsappNumber } = req.body;
   if (!email || typeof email !== 'string' || !email.includes('@') || !password || typeof password !== 'string' || password.length < 6) {
     return res.status(400).json({ error: 'Email and password are required. Password must be at least 6 characters.' });
   }
@@ -53,7 +99,7 @@ router.post('/login', async (req, res) => {
 
     if (user) {
       if (!user.passwordHash) {
-        return res.status(400).json({ error: 'This account requires a password setup. Use a different email.' });
+        return res.status(400).json({ error: 'This account uses Google sign-in. Click "התחבר עם Google".' });
       }
       if (!verifyPassword(password, user.passwordHash)) {
         return res.status(401).json({ error: 'Invalid credentials' });
@@ -63,6 +109,7 @@ router.post('/login', async (req, res) => {
         where: { id: user.id },
         data: {
           displayName: displayName || user.displayName || normalizedEmail.split('@')[0],
+          ...(whatsappNumber ? { whatsappNumber } : {}),
           isActive: true,
         },
       });
@@ -72,6 +119,7 @@ router.post('/login', async (req, res) => {
           email: normalizedEmail,
           passwordHash: hashPassword(password),
           displayName: displayName || normalizedEmail.split('@')[0],
+          whatsappNumber: whatsappNumber || null,
           googleId: null,
           isActive: true,
         },
@@ -91,17 +139,33 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// GET /api/auth/google/status
+router.get('/google/status', (req, res) => {
+  res.json({
+    configured: isGoogleOAuthConfigured(),
+    redirectUri: getGoogleRedirectUri(),
+    clientIdSet: !!(process.env.GOOGLE_CLIENT_ID && !process.env.GOOGLE_CLIENT_ID.includes('your-google-client-id')),
+    clientSecretSet: !!(process.env.GOOGLE_CLIENT_SECRET && !PLACEHOLDER_GOOGLE_SECRETS.has(process.env.GOOGLE_CLIENT_SECRET)),
+  });
+});
+
 router.get('/google', (req, res) => {
   try {
-    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.GOOGLE_REDIRECT_URI) {
-      return res.status(500).json({ error: 'Google OAuth is not configured' });
+    if (!isGoogleOAuthConfigured()) {
+      return res.status(500).json({
+        error: 'Google OAuth is not configured',
+        hint: 'Set GOOGLE_CLIENT_SECRET in backend/.env (from Google Cloud Console → Credentials → OAuth client).',
+        redirectUri: getGoogleRedirectUri(),
+      });
     }
 
     const oauth2Client = createOAuthClient();
+    const state = createOAuthState();
     const authUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',
       prompt: 'consent',
       scope: SCOPES,
+      state,
     });
 
     res.redirect(authUrl);
@@ -112,10 +176,32 @@ router.get('/google', (req, res) => {
 });
 
 router.get('/google/callback', async (req, res) => {
+  logger.debug('Google OAuth callback', {
+    query: req.query,
+    url: req.originalUrl,
+  });
+
   try {
+    if (req.query.error) {
+      logger.warn('Google OAuth returned an error', {
+        error: req.query.error,
+        description: req.query.error_description,
+      });
+      return res.redirect(oauthErrorRedirect('oauth_denied', String(req.query.error)));
+    }
+
+    if (!verifyOAuthState(req.query.state)) {
+      logger.warn('Google OAuth state validation failed', { state: req.query.state });
+      return res.redirect(oauthErrorRedirect('oauth_failed', 'invalid_state'));
+    }
+
     const code = req.query.code;
     if (!code) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/?error=oauth_failed`);
+      return res.redirect(oauthErrorRedirect('oauth_failed', 'no_code'));
+    }
+
+    if (!isGoogleOAuthConfigured()) {
+      return res.redirect(oauthErrorRedirect('oauth_failed', 'not_configured'));
     }
 
     const oauth2Client = createOAuthClient();
@@ -129,7 +215,7 @@ router.get('/google/callback', async (req, res) => {
     const displayName = userInfo.data.name || email?.split('@')[0] || 'User';
 
     if (!email) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/?error=oauth_no_email`);
+      return res.redirect(oauthErrorRedirect('oauth_no_email'));
     }
 
     let user = await prisma.user.findUnique({ where: { email } });
@@ -140,7 +226,7 @@ router.get('/google/callback', async (req, res) => {
           displayName,
           googleId,
           accessToken: tokens.access_token,
-          ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
+          refreshToken: tokens.refresh_token || user.refreshToken,
           isActive: true,
         },
       });
@@ -157,6 +243,10 @@ router.get('/google/callback', async (req, res) => {
       });
     }
 
+    if (!user.refreshToken) {
+      logger.warn('Google login succeeded but no refresh token — user may need to revoke app access and re-consent', { userId: user.id });
+    }
+
     processUserEmails(user).then((stats) => {
       logger.info('Google login scan finished', { userId: user.id, stats });
     }).catch((scanErr) => {
@@ -164,18 +254,22 @@ router.get('/google/callback', async (req, res) => {
     });
 
     const jwtToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '30d' });
-    const redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?token=${encodeURIComponent(jwtToken)}`;
+    const redirectUrl = `${frontendUrl()}/auth/callback?token=${encodeURIComponent(jwtToken)}`;
     res.redirect(redirectUrl);
   } catch (err) {
-    logger.error('Google callback failed', { error: err.message });
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/?error=oauth_failed`);
+    logger.error('Google callback failed', {
+      error: err.message,
+      response: err.response?.data,
+    });
+    res.redirect(oauthErrorRedirect('oauth_failed', err.message));
   }
 });
 
 // GET /api/auth/me
 router.get('/me', authenticate, (req, res) => {
+  const googleConnected = !!(req.user.accessToken && req.user.refreshToken);
   const { accessToken, refreshToken, passwordHash, ...safeUser } = req.user;
-  res.json({ user: safeUser });
+  res.json({ user: { ...safeUser, googleConnected } });
 });
 
 // POST /api/auth/logout

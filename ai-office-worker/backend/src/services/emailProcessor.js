@@ -1,11 +1,11 @@
 const { PrismaClient } = require('@prisma/client');
+const pdfParse = require('pdf-parse');
 const { scanNewEmails, downloadAttachment } = require('./gmail');
 const { extractFromText, extractFromImage } = require('./aiExtractor');
 const { ensureDriveFolder, uploadFileToDrive } = require('./googleDrive');
 const { ensureSheet, appendDocumentRow } = require('./googleSheets');
+const { createPaymentFromDocument } = require('./supplierPayments');
 const { logger } = require('../utils/logger');
-const { sendWhatsApp } = require('./twilioService');
-const crypto = require('crypto');
 
 const prisma = new PrismaClient();
 
@@ -72,7 +72,7 @@ const processUserEmails = async (user) => {
             level: 'ERROR',
             action: 'PROCESS_EMAIL',
             message: `Failed to process email: ${err.message}`,
-            metadata: { gmailMessageId: email.gmailMessageId },
+            metadata: JSON.stringify({ gmailMessageId: email.gmailMessageId }),
           },
         });
       }
@@ -86,7 +86,7 @@ const processUserEmails = async (user) => {
         level: 'INFO',
         action: 'SCAN_COMPLETE',
         message: `Scan complete: ${stats.saved} saved, ${stats.skipped} skipped, ${stats.errors} errors`,
-        metadata: stats,
+        metadata: JSON.stringify(stats),
       },
     });
 
@@ -131,12 +131,36 @@ const processEmail = async (user, email, folderId, stats) => {
       driveFileId = uploadResult.fileId;
       driveFileUrl = uploadResult.fileUrl;
 
-      // Extract data from image attachments
-      if (att.mimeType.startsWith('image/') || att.mimeType === 'application/pdf') {
+      // Extract data from attachments
+      if (att.mimeType.startsWith('image/')) {
         const imgExtraction = await extractFromImage(base64, att.mimeType, email.subject);
         if (imgExtraction.isFinancial && imgExtraction.confidence > 0.4) {
           extraction = imgExtraction;
           break;
+        }
+      }
+
+      if (att.mimeType === 'application/pdf') {
+        try {
+          const pdfBuffer = Buffer.from(base64, 'base64');
+          const pdfData = await pdfParse(pdfBuffer);
+          if (pdfData.text?.trim()) {
+            const pdfExtraction = await extractFromText(pdfData.text, email.subject);
+            if (pdfExtraction.isFinancial && pdfExtraction.confidence > 0.4) {
+              extraction = pdfExtraction;
+              break;
+            }
+          }
+        } catch (pdfErr) {
+          logger.warn('PDF text extraction failed, trying image path', {
+            filename: att.filename,
+            error: pdfErr.message,
+          });
+          const imgExtraction = await extractFromImage(base64, att.mimeType, email.subject);
+          if (imgExtraction.isFinancial && imgExtraction.confidence > 0.4) {
+            extraction = imgExtraction;
+            break;
+          }
         }
       }
     } catch (err) {
@@ -192,47 +216,9 @@ const processEmail = async (user, email, folderId, stats) => {
     },
   });
 
-  // If this looks like an invoice/payment request, create a SupplierPayment entry
+  // Create SupplierPayment entry for invoices / payment requests
   try {
-    if (doc.docType === 'INVOICE' || doc.docType === 'PAYMENT_REQUEST') {
-      // create a deterministic hash to prevent duplicates: vendor|invoiceNumber|totalAmount
-      const hashInput = `${doc.vendorName || ''}|${doc.invoiceNumber || ''}|${doc.totalAmount || ''}`;
-      const invoiceHash = crypto.createHash('sha256').update(hashInput).digest('hex');
-
-      // Check existing supplier payment by hash
-      const existingPayment = await prisma.supplierPayment.findUnique({ where: { invoiceHash } }).catch(() => null);
-      if (!existingPayment) {
-        const payment = await prisma.supplierPayment.create({
-          data: {
-            userId: doc.userId,
-            supplierName: doc.vendorName,
-            amount: doc.totalAmount,
-            currency: doc.currency || 'ILS',
-            date: doc.docDate,
-            dueDate: doc.paymentDueDate,
-            paid: doc.status === 'PAID',
-            documentId: doc.id,
-            driveFileId: doc.driveFileId,
-            driveFileUrl: doc.driveFileUrl,
-            invoiceLink: doc.driveFileUrl,
-            invoiceHash,
-          },
-        });
-
-        // Create an alert for the user and send WhatsApp if configured
-        try {
-          const alertMsg = `נמצא חשבונית חדשה מ-${doc.vendorName || 'ספק'} סכום ₪${Math.round(doc.totalAmount || 0)} מספר: ${doc.invoiceNumber || '-'} תאריך: ${doc.docDate ? new Date(doc.docDate).toLocaleDateString('he-IL') : '-'} `;
-          await prisma.alert.create({ data: { userId: doc.userId, type: 'NEW_INVOICE', message: alertMsg, metadata: JSON.stringify({ documentId: doc.id, paymentId: payment.id }) } });
-
-          const userRecord = await prisma.user.findUnique({ where: { id: doc.userId } });
-          if (userRecord && userRecord.whatsappNumber) {
-            await sendWhatsApp(userRecord.whatsappNumber, alertMsg);
-          }
-        } catch (err) {
-          logger.warn('Failed to create alert or send WhatsApp', { docId: doc.id, error: err.message });
-        }
-      }
-    }
+    await createPaymentFromDocument(doc);
   } catch (err) {
     logger.warn('Failed to create supplier payment', { docId: doc.id, error: err.message });
   }
