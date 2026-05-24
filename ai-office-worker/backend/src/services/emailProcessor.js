@@ -2,7 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const pdfParse = require('pdf-parse');
 const { scanNewEmails, downloadAttachment } = require('./gmail');
 const { extractFromText, extractFromImage } = require('./aiExtractor');
-const { ensureDriveFolder, uploadFileToDrive } = require('./googleDrive');
+const { ensureUserDriveRoot, uploadInvoiceAttachmentToDrive } = require('./driveService');
 const { ensureSheet, appendDocumentRow } = require('./googleSheets');
 const { createPaymentFromDocument } = require('./supplierPayments');
 const { logger } = require('../utils/logger');
@@ -51,7 +51,7 @@ const processUserEmails = async (user) => {
 
     // 2. Ensure Drive folder and Sheet exist
     const [folderId] = await Promise.all([
-      ensureDriveFolder(user),
+      ensureUserDriveRoot(user),
       ensureSheet(user),
     ]);
 
@@ -121,15 +121,18 @@ const processEmail = async (user, email, folderId, stats) => {
       const base64 = attData.replace(/-/g, '+').replace(/_/g, '/'); // base64url → base64
 
       // Upload to Drive
-      const uploadResult = await uploadFileToDrive(
-        user,
-        att.filename,
-        att.mimeType,
-        base64,
-        folderId
-      );
+      const buffer = Buffer.from(base64, 'base64');
+      const uploadResult = await uploadInvoiceAttachmentToDrive(user, {
+        rootFolderId: folderId,
+        supplier: email.senderName || email.senderEmail || 'Unknown Supplier',
+        documentType: 'other',
+        filename: att.filename,
+        mimeType: att.mimeType,
+        receivedAt: email.receivedAt,
+        buffer,
+      });
       driveFileId = uploadResult.fileId;
-      driveFileUrl = uploadResult.fileUrl;
+      driveFileUrl = uploadResult.webViewLink;
 
       // Extract data from attachments
       if (att.mimeType.startsWith('image/')) {
