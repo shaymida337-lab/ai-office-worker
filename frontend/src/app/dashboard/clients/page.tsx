@@ -75,8 +75,10 @@ export default function ClientsPage() {
   async function scanClient(clientId: string) {
     setMessage("");
     try {
-      await apiFetch(`/api/clients/${clientId}/scan`, { method: "POST" });
-      setMessage("סריקת הלקוח הסתיימה");
+      const response = await apiFetch<{ result?: { message?: string } }>(`/api/clients/${clientId}/scan`, {
+        method: "POST",
+      });
+      setMessage(response.result?.message ?? "סריקת הלקוח הסתיימה");
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "סריקת לקוח נכשלה");

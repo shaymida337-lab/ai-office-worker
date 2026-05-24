@@ -18,6 +18,7 @@ const GMAIL_QUERIES = [
   "payment newer_than:30d",
 ];
 const MAX_MESSAGES = 20;
+const DRIVE_FULL_MESSAGE = "הסריקה הושלמה. לא ניתן לשמור ל-Drive - האחסון שלך מלא";
 
 export async function syncGmailForClient(clientId: string) {
   const client = await prisma.client.findUnique({ where: { id: clientId } });
@@ -27,17 +28,24 @@ export async function syncGmailForClient(clientId: string) {
   let emailsProcessed = 0;
   let paymentsCreated = 0;
   let tasksCreated = 0;
+  let driveUploadFailed = false;
 
   const { gmail, drive } = await getGoogleClientsForClient(clientId);
-  const rootId = client.driveFolderId || (await ensureInvoiceFolderTree(drive));
-  if (!client.driveFolderId) {
-    await prisma.client.update({
-      where: { id: clientId },
-      data: {
-        driveFolderId: rootId,
-        driveFolderUrl: `https://drive.google.com/drive/folders/${rootId}`,
-      },
-    });
+  let rootId = client.driveFolderId ?? null;
+  if (!rootId) {
+    try {
+      rootId = await ensureInvoiceFolderTree(drive);
+      await prisma.client.update({
+        where: { id: clientId },
+        data: {
+          driveFolderId: rootId,
+          driveFolderUrl: `https://drive.google.com/drive/folders/${rootId}`,
+        },
+      });
+    } catch (err) {
+      driveUploadFailed = true;
+      console.error("Client Drive setup failed; continuing Gmail sync without Drive", err);
+    }
   }
 
   const messages = await listMessages(gmail);
@@ -90,23 +98,32 @@ export async function syncGmailForClient(clientId: string) {
       const attachmentId = part.body?.attachmentId;
       if (!part.filename || !attachmentId) continue;
 
-      const att = await gmail.users.messages.attachments.get({
-        userId: "me",
-        messageId: msgRef.id,
-        id: attachmentId,
-      });
-      const buffer = decodeAttachment(att.data.data ?? "");
-      const upload = await uploadInvoiceAttachmentToDrive({
-        drive,
-        rootFolderId: rootId,
-        supplier: analysis.supplier,
-        documentType: analysis.documentType,
-        filename: part.filename,
-        mimeType: part.mimeType,
-        receivedAt,
-        buffer,
-      });
-      driveLinks.push(upload.webViewLink);
+      try {
+        if (!rootId) {
+          throw new Error("Drive root unavailable");
+        }
+
+        const att = await gmail.users.messages.attachments.get({
+          userId: "me",
+          messageId: msgRef.id,
+          id: attachmentId,
+        });
+        const buffer = decodeAttachment(att.data.data ?? "");
+        const upload = await uploadInvoiceAttachmentToDrive({
+          drive,
+          rootFolderId: rootId,
+          supplier: analysis.supplier,
+          documentType: analysis.documentType,
+          filename: part.filename,
+          mimeType: part.mimeType,
+          receivedAt,
+          buffer,
+        });
+        driveLinks.push(upload.webViewLink);
+      } catch (err) {
+        driveUploadFailed = true;
+        console.error("Client Drive upload failed; continuing Gmail sync without attachment upload", err);
+      }
     }
 
     for (const taskTitle of analysis.tasks) {
@@ -125,16 +142,20 @@ export async function syncGmailForClient(clientId: string) {
           emailMessageId: emailRecord.id,
         },
       });
-      await writeClientTaskToSheet(clientId, {
-        date: receivedAt,
-        from,
-        subject,
-        summary: taskTitle,
-        action: taskTitle,
-        priority: analysis.confidence < 0.7 ? "גבוה" : "בינוני",
-        dueDate: analysis.dueDate ? new Date(analysis.dueDate) : null,
-        status: "פתוח",
-      });
+      try {
+        await writeClientTaskToSheet(clientId, {
+          date: receivedAt,
+          from,
+          subject,
+          summary: taskTitle,
+          action: taskTitle,
+          priority: analysis.confidence < 0.7 ? "גבוה" : "בינוני",
+          dueDate: analysis.dueDate ? new Date(analysis.dueDate) : null,
+          status: "פתוח",
+        });
+      } catch (err) {
+        console.error("Client task sheet write failed; continuing Gmail sync", err);
+      }
       tasksCreated++;
     }
 
@@ -173,17 +194,21 @@ export async function syncGmailForClient(clientId: string) {
             emailMessageId: emailRecord.id,
           },
         });
-        await writeClientInvoiceToSheet(clientId, {
-          date: receivedAt,
-          supplier: analysis.supplier,
-          amount: analysis.amount ?? 0,
-          currency: analysis.currency,
-          driveFileUrl: driveLinks[0],
-          driveFolderUrl: client.driveFolderUrl,
-          emailSubject: subject,
-          status: "ממתין",
-          notes: analysis.tasks.join(", "),
-        });
+        try {
+          await writeClientInvoiceToSheet(clientId, {
+            date: receivedAt,
+            supplier: analysis.supplier,
+            amount: analysis.amount ?? 0,
+            currency: analysis.currency,
+            driveFileUrl: driveLinks[0],
+            driveFolderUrl: client.driveFolderUrl,
+            emailSubject: subject,
+            status: "ממתין",
+            notes: analysis.tasks.join(", "),
+          });
+        } catch (err) {
+          console.error("Client invoice sheet write failed; continuing Gmail sync", err);
+        }
         paymentsCreated++;
       }
     }
@@ -194,7 +219,15 @@ export async function syncGmailForClient(clientId: string) {
     });
   }
 
-  return { clientId, clientName: client.name, emailsProcessed, paymentsCreated, tasksCreated };
+  return {
+    clientId,
+    clientName: client.name,
+    emailsProcessed,
+    paymentsCreated,
+    tasksCreated,
+    driveUploadFailed,
+    message: driveUploadFailed ? DRIVE_FULL_MESSAGE : undefined,
+  };
 }
 
 type PayloadPart = {

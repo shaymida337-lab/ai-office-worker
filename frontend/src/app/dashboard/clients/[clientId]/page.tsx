@@ -50,9 +50,12 @@ export default function ClientDetailPage() {
   async function scanClient() {
     setMessage("");
     try {
-      await apiFetch(`/api/clients/${params.clientId}/scan`, { method: "POST" });
+      const response = await apiFetch<{ result?: { message?: string } }>(
+        `/api/clients/${params.clientId}/scan`,
+        { method: "POST" }
+      );
       await load();
-      setMessage("הסריקה הסתיימה");
+      setMessage(response.result?.message ?? "הסריקה הסתיימה");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "סריקה נכשלה");
     }

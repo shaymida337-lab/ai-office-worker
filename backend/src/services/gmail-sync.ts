@@ -20,6 +20,7 @@ const GMAIL_QUERIES = [
   "payment request newer_than:30d",
 ];
 const MAX_MESSAGES_PER_SYNC = 20;
+const DRIVE_FULL_MESSAGE = "הסריקה הושלמה. לא ניתן לשמור ל-Drive - האחסון שלך מלא";
 
 export async function syncGmailForOrganization(organizationId: string) {
   const activeLog = await prisma.syncLog.findFirst({
@@ -45,10 +46,17 @@ export async function syncGmailForOrganization(organizationId: string) {
   let emailsProcessed = 0;
   let paymentsCreated = 0;
   let tasksCreated = 0;
+  let driveUploadFailed = false;
 
   try {
     const { gmail, drive } = await getGoogleClients(organizationId);
-    const rootId = await ensureInvoiceFolderTree(drive);
+    let rootId: string | null = null;
+    try {
+      rootId = await ensureInvoiceFolderTree(drive);
+    } catch (err) {
+      driveUploadFailed = true;
+      console.error("Drive setup failed; continuing Gmail sync without Drive", err);
+    }
     const messages = await listCandidateMessages(gmail);
 
     for (const msgRef of messages) {
@@ -127,35 +135,52 @@ export async function syncGmailForOrganization(organizationId: string) {
           continue;
         }
 
-        const att = await gmail.users.messages.attachments.get({
-          userId: "me",
-          messageId: msgRef.id,
-          id: attachmentId,
-        });
-        const buffer = decodeGmailAttachment(att.data.data ?? "");
         const folderType = folderForDocumentType(analysis.documentType);
-        const upload = await uploadInvoiceAttachmentToDrive({
-          drive,
-          rootFolderId: rootId,
-          supplier: analysis.supplier,
-          documentType: analysis.documentType,
-          filename: part.filename,
-          mimeType: part.mimeType,
-          receivedAt,
-          buffer,
-        });
-        const link = upload.webViewLink;
-        driveLinks.push({ type: folderType, link });
-        await prisma.emailAttachment.create({
-          data: {
-            emailMessageId: emailRecord.id,
+        try {
+          if (!rootId) {
+            throw new Error("Drive root unavailable");
+          }
+
+          const att = await gmail.users.messages.attachments.get({
+            userId: "me",
+            messageId: msgRef.id,
+            id: attachmentId,
+          });
+          const buffer = decodeGmailAttachment(att.data.data ?? "");
+          const upload = await uploadInvoiceAttachmentToDrive({
+            drive,
+            rootFolderId: rootId,
+            supplier: analysis.supplier,
+            documentType: analysis.documentType,
             filename: part.filename,
-            mimeType: part.mimeType ?? undefined,
-            gmailAttachmentId: attachmentId,
-            driveFileId: upload.fileId ?? undefined,
-            driveLink: link,
-          },
-        });
+            mimeType: part.mimeType,
+            receivedAt,
+            buffer,
+          });
+          const link = upload.webViewLink;
+          driveLinks.push({ type: folderType, link });
+          await prisma.emailAttachment.create({
+            data: {
+              emailMessageId: emailRecord.id,
+              filename: part.filename,
+              mimeType: part.mimeType ?? undefined,
+              gmailAttachmentId: attachmentId,
+              driveFileId: upload.fileId ?? undefined,
+              driveLink: link,
+            },
+          });
+        } catch (err) {
+          driveUploadFailed = true;
+          console.error("Drive upload failed; continuing Gmail sync without attachment upload", err);
+          await prisma.emailAttachment.create({
+            data: {
+              emailMessageId: emailRecord.id,
+              filename: part.filename,
+              mimeType: part.mimeType ?? undefined,
+              gmailAttachmentId: attachmentId,
+            },
+          });
+        }
       }
 
       for (const taskTitle of analysis.tasks) {
@@ -280,7 +305,13 @@ export async function syncGmailForOrganization(organizationId: string) {
       },
     });
 
-    return { emailsProcessed, paymentsCreated, tasksCreated };
+    return {
+      emailsProcessed,
+      paymentsCreated,
+      tasksCreated,
+      driveUploadFailed,
+      message: driveUploadFailed ? DRIVE_FULL_MESSAGE : undefined,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     await prisma.syncLog.update({

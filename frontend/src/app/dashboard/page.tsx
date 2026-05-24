@@ -64,12 +64,14 @@ export default function DashboardPage() {
         paymentsCreated: number;
         tasksCreated: number;
         inProgress?: boolean;
+        message?: string;
       }>("/api/sync/gmail", { method: "POST" });
       await load();
       setError(
         result.inProgress
           ? "סריקת Gmail כבר רצה. נסה שוב בעוד רגע."
-          : `נסרקו ${result.emailsProcessed} מיילים, נוספו ${result.paymentsCreated} תשלומים`
+          : result.message ??
+              `נסרקו ${result.emailsProcessed} מיילים, נוספו ${result.paymentsCreated} תשלומים`
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed");
@@ -92,9 +94,12 @@ export default function DashboardPage() {
     setSyncing(true);
     setError("");
     try {
-      await apiFetch<{ success: boolean }>("/api/clients/scan-all", { method: "POST" });
+      const result = await apiFetch<{ success: boolean; results?: Array<{ message?: string }> }>(
+        "/api/clients/scan-all",
+        { method: "POST" }
+      );
       await load();
-      setError("סריקת כל הלקוחות הסתיימה");
+      setError(result.results?.find((item) => item.message)?.message ?? "סריקת כל הלקוחות הסתיימה");
     } catch (e) {
       setError(e instanceof Error ? e.message : "סריקת לקוחות נכשלה");
     } finally {
