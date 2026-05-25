@@ -33,6 +33,8 @@ type WhatsAppAssistantSettings = {
   noMessagesOnHolidays: boolean;
 };
 
+type SettingsTab = "general" | "accountant" | "whatsapp" | "notifications";
+
 export default function SettingsPage() {
   const [form, setForm] = useState<AccountantSettings>({ sendMonthlyReport: true, reportDay: 1 });
   const [whatsapp, setWhatsapp] = useState<WhatsAppAssistantSettings>({
@@ -54,6 +56,7 @@ export default function SettingsPage() {
     noMessagesOnHolidays: true,
   });
   const [message, setMessage] = useState("");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
   useEffect(() => {
     apiFetch<AccountantSettings>("/api/accountant/settings")
@@ -104,93 +107,182 @@ export default function SettingsPage() {
     }
   }
 
+  const tabs: Array<{ id: SettingsTab; label: string }> = [
+    { id: "general", label: "הגדרות כלליות" },
+    { id: "accountant", label: "רואה חשבון" },
+    { id: "whatsapp", label: "WhatsApp Assistant" },
+    { id: "notifications", label: "התראות" },
+  ];
+
   return (
     <div className="container">
       <Nav />
       <div className="mb-8"><div className="page-kicker">Workspace controls</div><h1>הגדרות</h1></div>
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
-      <form className="card grid gap-3" onSubmit={save}>
-        <h2>הגדרות רואה חשבון</h2>
-        <input placeholder="שם רואה החשבון" value={form.accountantName ?? ""} onChange={(e) => setForm({ ...form, accountantName: e.target.value })} />
-        <input type="email" placeholder="אימייל רואה החשבון" value={form.accountantEmail ?? ""} onChange={(e) => setForm({ ...form, accountantEmail: e.target.value })} />
-        <input placeholder="שם העסק הרשמי" value={form.businessName ?? ""} onChange={(e) => setForm({ ...form, businessName: e.target.value })} />
-        <input placeholder="ח.פ / עוסק מורשה" value={form.businessId ?? ""} onChange={(e) => setForm({ ...form, businessId: e.target.value })} />
-        <input placeholder="כתובת העסק" value={form.businessAddress ?? ""} onChange={(e) => setForm({ ...form, businessAddress: e.target.value })} />
-        <label>
-          <input type="checkbox" checked={form.sendMonthlyReport ?? true} onChange={(e) => setForm({ ...form, sendMonthlyReport: e.target.checked })} />{" "}
-          לשלוח דוח חודשי לרואה החשבון
-        </label>
-        <label>
-          תאריך שליחה
-          <input type="number" min={1} max={28} value={form.reportDay ?? 1} onChange={(e) => setForm({ ...form, reportDay: Number(e.target.value) })} />
-        </label>
-        <button className="btn" type="submit">שמור הגדרות</button>
-      </form>
-      <form className="card grid gap-3" onSubmit={saveWhatsapp}>
-        <h2>WhatsApp Assistant</h2>
-        <h3>הגדרות בעלים</h3>
-        <label>
-          מספר WhatsApp שלי
-          <input placeholder="whatsapp:+972..." value={whatsapp.ownerPhone} onChange={(e) => setWhatsapp({ ...whatsapp, ownerPhone: e.target.value })} />
-        </label>
-        <label>
-          שעת דוח בוקר
-          <input type="time" value={whatsapp.ownerMorningTime} onChange={(e) => setWhatsapp({ ...whatsapp, ownerMorningTime: e.target.value })} />
-        </label>
-        <label>
-          <input type="checkbox" checked={whatsapp.ownerCriticalAlerts} onChange={(e) => setWhatsapp({ ...whatsapp, ownerCriticalAlerts: e.target.checked })} />{" "}
-          קבל התראות דחופות
-        </label>
-        <label>
-          <input type="checkbox" checked={whatsapp.ownerMorningReport} onChange={(e) => setWhatsapp({ ...whatsapp, ownerMorningReport: e.target.checked })} />{" "}
-          שלח לי דוח בוקר יומי
-        </label>
 
-        <h3>הגדרות לקוחות</h3>
-        <label>
-          <input type="checkbox" checked={whatsapp.clientMorningSummary} onChange={(e) => setWhatsapp({ ...whatsapp, clientMorningSummary: e.target.checked })} />{" "}
-          שלח ללקוחות סיכום בוקר
-        </label>
-        <label>
-          שעת שליחה
-          <input type="time" value={whatsapp.clientMorningTime} onChange={(e) => setWhatsapp({ ...whatsapp, clientMorningTime: e.target.value })} />
-        </label>
-        <label>
-          תזכורת תשלום אחרי X ימים
-          <input type="number" min={1} max={60} value={whatsapp.clientPaymentDaysWait} onChange={(e) => setWhatsapp({ ...whatsapp, clientPaymentDaysWait: Number(e.target.value) })} />
-        </label>
-        <label>
-          מקסימום הודעות ביום ללקוח
-          <input type="number" min={1} max={3} value={whatsapp.maxMessagesPerDay} onChange={(e) => setWhatsapp({ ...whatsapp, maxMessagesPerDay: Number(e.target.value) })} />
-        </label>
-        <label>
-          <input type="checkbox" checked={whatsapp.clientPaymentReminder} onChange={(e) => setWhatsapp({ ...whatsapp, clientPaymentReminder: e.target.checked })} />{" "}
-          שלח תזכורות תשלום
-        </label>
+      <div className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-[var(--border)] bg-surface-card p-2 shadow-card">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={[
+              "rounded-xl px-4 py-3 text-[15px] font-semibold transition",
+              activeTab === tab.id
+                ? "bg-[#6366F1] text-white shadow-[inset_0_-3px_0_rgba(255,255,255,0.32),0_12px_28px_rgba(99,102,241,0.28)]"
+                : "text-[#E2E8F0] hover:bg-surface-hover hover:text-white",
+            ].join(" ")}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-        <h3>שעות שקטות</h3>
-        <label>
-          אל תשלח אחרי
-          <input type="time" value={whatsapp.quietHoursStart} onChange={(e) => setWhatsapp({ ...whatsapp, quietHoursStart: e.target.value })} />
-        </label>
-        <label>
-          אל תשלח לפני
-          <input type="time" value={whatsapp.quietHoursEnd} onChange={(e) => setWhatsapp({ ...whatsapp, quietHoursEnd: e.target.value })} />
-        </label>
-        <label>
-          <input type="checkbox" checked={whatsapp.noMessagesOnSaturday} onChange={(e) => setWhatsapp({ ...whatsapp, noMessagesOnSaturday: e.target.checked })} />{" "}
-          לא לשלוח בשבת
-        </label>
-        <div className="flex flex-wrap gap-3">
-          <button className="btn" type="submit">שמור WhatsApp Assistant</button>
-          <button className="btn btn-secondary" type="button" onClick={() => testWhatsapp("morning")}>
-            שלח דוח בוקר לעצמי עכשיו
-          </button>
-          <button className="btn btn-secondary" type="button" onClick={() => testWhatsapp("number")}>
-            בדוק שהמספר עובד
-          </button>
-        </div>
-      </form>
+      {activeTab === "general" && (
+        <form className="card grid gap-3" onSubmit={save}>
+          <h2>הגדרות כלליות</h2>
+          <label>
+            שם העסק הרשמי
+            <input placeholder="שם העסק הרשמי" value={form.businessName ?? ""} onChange={(e) => setForm({ ...form, businessName: e.target.value })} />
+          </label>
+          <label>
+            ח.פ / עוסק מורשה
+            <input placeholder="ח.פ / עוסק מורשה" value={form.businessId ?? ""} onChange={(e) => setForm({ ...form, businessId: e.target.value })} />
+          </label>
+          <label>
+            כתובת העסק
+            <input placeholder="כתובת העסק" value={form.businessAddress ?? ""} onChange={(e) => setForm({ ...form, businessAddress: e.target.value })} />
+          </label>
+          <button className="btn" type="submit">שמור הגדרות כלליות</button>
+        </form>
+      )}
+
+      {activeTab === "accountant" && (
+        <form className="card grid gap-3" onSubmit={save}>
+          <h2>רואה חשבון</h2>
+          <label>
+            שם רואה החשבון
+            <input placeholder="שם רואה החשבון" value={form.accountantName ?? ""} onChange={(e) => setForm({ ...form, accountantName: e.target.value })} />
+          </label>
+          <label>
+            אימייל רואה החשבון
+            <input type="email" placeholder="אימייל רואה החשבון" value={form.accountantEmail ?? ""} onChange={(e) => setForm({ ...form, accountantEmail: e.target.value })} />
+          </label>
+          <label>
+            תאריך שליחה
+            <input type="number" min={1} max={28} value={form.reportDay ?? 1} onChange={(e) => setForm({ ...form, reportDay: Number(e.target.value) })} />
+          </label>
+          <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+            <input className="w-auto" type="checkbox" checked={form.sendMonthlyReport ?? true} onChange={(e) => setForm({ ...form, sendMonthlyReport: e.target.checked })} />
+            שלוח דוח חודשי
+          </label>
+          <button className="btn" type="submit">שמור הגדרות רואה חשבון</button>
+        </form>
+      )}
+
+      {activeTab === "whatsapp" && (
+        <form className="card grid gap-5" onSubmit={saveWhatsapp}>
+          <h2>WhatsApp Assistant</h2>
+          <section className="grid gap-3">
+            <h3 className="text-lg font-semibold text-ink-primary">מספר WhatsApp שלי</h3>
+            <label>
+              מספר WhatsApp שלי
+              <input placeholder="whatsapp:+972..." value={whatsapp.ownerPhone} onChange={(e) => setWhatsapp({ ...whatsapp, ownerPhone: e.target.value })} />
+            </label>
+          </section>
+
+          <section className="grid gap-3">
+            <h3 className="text-lg font-semibold text-ink-primary">שעת בוקר / שעת שליחה / שעות שקטות</h3>
+            <label>
+              שעת בוקר
+              <input type="time" value={whatsapp.ownerMorningTime} onChange={(e) => setWhatsapp({ ...whatsapp, ownerMorningTime: e.target.value })} />
+            </label>
+            <label>
+              שעת שליחה
+              <input type="time" value={whatsapp.clientMorningTime} onChange={(e) => setWhatsapp({ ...whatsapp, clientMorningTime: e.target.value })} />
+            </label>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label>
+                שעות שקטות - אל תשלח אחרי
+                <input type="time" value={whatsapp.quietHoursStart} onChange={(e) => setWhatsapp({ ...whatsapp, quietHoursStart: e.target.value })} />
+              </label>
+              <label>
+                שעות שקטות - אל תשלח לפני
+                <input type="time" value={whatsapp.quietHoursEnd} onChange={(e) => setWhatsapp({ ...whatsapp, quietHoursEnd: e.target.value })} />
+              </label>
+            </div>
+          </section>
+
+          <section className="grid gap-3">
+            <h3 className="text-lg font-semibold text-ink-primary">הגדרות בעלים</h3>
+            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+              <input className="w-auto" type="checkbox" checked={whatsapp.isActive} onChange={(e) => setWhatsapp({ ...whatsapp, isActive: e.target.checked })} />
+              WhatsApp Assistant פעיל
+            </label>
+            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+              <input className="w-auto" type="checkbox" checked={whatsapp.ownerMorningReport} onChange={(e) => setWhatsapp({ ...whatsapp, ownerMorningReport: e.target.checked })} />
+              שלח לי דוח בוקר יומי
+            </label>
+            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+              <input className="w-auto" type="checkbox" checked={whatsapp.ownerCriticalAlerts} onChange={(e) => setWhatsapp({ ...whatsapp, ownerCriticalAlerts: e.target.checked })} />
+              קבל התראות דחופות
+            </label>
+          </section>
+
+          <section className="grid gap-3">
+            <h3 className="text-lg font-semibold text-ink-primary">הגדרות ללקוחות</h3>
+            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+              <input className="w-auto" type="checkbox" checked={whatsapp.clientMorningSummary} onChange={(e) => setWhatsapp({ ...whatsapp, clientMorningSummary: e.target.checked })} />
+              שלח ללקוחות סיכום בוקר
+            </label>
+            <label>
+              תזכורת תשלום אחרי X ימים
+              <input type="number" min={1} max={60} value={whatsapp.clientPaymentDaysWait} onChange={(e) => setWhatsapp({ ...whatsapp, clientPaymentDaysWait: Number(e.target.value) })} />
+            </label>
+            <label>
+              מקסימום הודעות ביום ללקוח
+              <input type="number" min={1} max={3} value={whatsapp.maxMessagesPerDay} onChange={(e) => setWhatsapp({ ...whatsapp, maxMessagesPerDay: Number(e.target.value) })} />
+            </label>
+            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+              <input className="w-auto" type="checkbox" checked={whatsapp.clientPaymentReminder} onChange={(e) => setWhatsapp({ ...whatsapp, clientPaymentReminder: e.target.checked })} />
+              שלח תזכורות תשלום
+            </label>
+            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+              <input className="w-auto" type="checkbox" checked={whatsapp.clientInvoiceFound} onChange={(e) => setWhatsapp({ ...whatsapp, clientInvoiceFound: e.target.checked })} />
+              עדכן לקוח כשנמצאה חשבונית
+            </label>
+            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+              <input className="w-auto" type="checkbox" checked={whatsapp.clientUrgentOnly} onChange={(e) => setWhatsapp({ ...whatsapp, clientUrgentOnly: e.target.checked })} />
+              לשלוח רק הודעות דחופות
+            </label>
+          </section>
+
+          <div className="flex flex-wrap gap-3">
+            <button className="btn" type="submit">שמור הגדרות WhatsApp</button>
+            <button className="btn btn-secondary" type="button" onClick={() => testWhatsapp("morning")}>
+              שלח דוח בוקר לעצמי עכשיו
+            </button>
+            <button className="btn btn-secondary" type="button" onClick={() => testWhatsapp("number")}>
+              בדוק שהמספר עובד
+            </button>
+          </div>
+        </form>
+      )}
+
+      {activeTab === "notifications" && (
+        <form className="card grid gap-3" onSubmit={saveWhatsapp}>
+          <h2>התראות</h2>
+          <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+            <input className="w-auto" type="checkbox" checked={whatsapp.noMessagesOnSaturday} onChange={(e) => setWhatsapp({ ...whatsapp, noMessagesOnSaturday: e.target.checked })} />
+            לא לשלוח התראות בשבת
+          </label>
+          <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+            <input className="w-auto" type="checkbox" checked={whatsapp.noMessagesOnHolidays} onChange={(e) => setWhatsapp({ ...whatsapp, noMessagesOnHolidays: e.target.checked })} />
+            לא לשלוח התראות בחגים
+          </label>
+          <button className="btn" type="submit">שמור הגדרות התראות</button>
+        </form>
+      )}
     </div>
   );
 }
