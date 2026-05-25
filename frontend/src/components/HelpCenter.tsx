@@ -122,8 +122,7 @@ export function HelpCenter() {
   return (
     <>
       <button className={`help-fab ${open ? "help-fab-open" : ""}`} onClick={() => setOpen(true)} aria-label="פתח מרכז עזרה">
-        <span className="help-fab-text">צריך עזרה? 💬</span>
-        <span className="help-fab-badge">{commonTopics.length}</span>
+        <span className="help-fab-text">עזרה</span>
       </button>
       {open && (
         <div className="help-overlay" role="dialog" aria-modal="true">

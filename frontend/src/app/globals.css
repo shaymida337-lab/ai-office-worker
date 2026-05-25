@@ -229,25 +229,25 @@
 
 .help-fab {
   position: fixed;
-  right: 1.25rem;
+  right: 0.9rem;
   left: auto;
-  bottom: 1.25rem;
+  top: 1rem;
+  bottom: auto;
   z-index: 80;
-  min-width: 0;
-  min-height: 48px;
+  min-width: 72px;
+  min-height: 44px;
   border: 0;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: 14px;
+  background: #6366f1;
   color: white;
   box-shadow: 0 18px 42px rgba(99, 102, 241, 0.42);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.15rem;
-  font-size: 14px;
-  font-weight: 800;
+  padding: 0.65rem 1rem;
+  font-size: 16px;
+  font-weight: 700;
   border: 1px solid rgba(255, 255, 255, 0.22);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -260,20 +260,6 @@
 
 .help-fab-text {
   white-space: nowrap;
-}
-
-.help-fab-badge {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  background: #ef4444;
-  color: white;
-  min-width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  display: grid;
-  place-items: center;
 }
 
 .help-overlay {
@@ -557,20 +543,23 @@ mark {
   }
 
   .help-fab {
-    right: 0.85rem;
+    right: 4.25rem;
     left: auto;
-    bottom: 5.75rem;
+    top: 0.65rem;
+    bottom: auto;
   }
 }
 
 @media (min-width: 641px) and (max-width: 1023px) {
   .help-fab {
-    bottom: 5.75rem;
+    top: 0.65rem;
+    bottom: auto;
+    right: 4.5rem;
   }
 }
 
 @media (min-width: 1024px) {
   .help-fab {
-    right: calc(15rem + 1.25rem);
+    right: 0.9rem;
   }
 }
