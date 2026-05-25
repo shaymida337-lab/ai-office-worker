@@ -6,7 +6,7 @@ services:
     region: oregon
     autoDeploy: true
     buildCommand: "cd backend && npm install && npm run build"
-    startCommand: "cd backend && npm start"
+    startCommand: "cd backend && node dist/index.js"
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
