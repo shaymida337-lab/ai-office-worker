@@ -42,6 +42,18 @@ type WhatsAppMessage = {
   createdAt: string;
 };
 
+type InvoiceItem = {
+  id: string;
+  invoiceNumber: string | null;
+  amount: number;
+  currency: string;
+  date: string;
+  dueDate: string | null;
+  status: "paid" | "pending" | "overdue";
+  description: string | null;
+  driveUrl: string | null;
+};
+
 type ClientDetail = {
   client: {
     id: string;
@@ -85,6 +97,7 @@ export default function ClientDetailPage() {
   const [health, setHealth] = useState<HealthScore | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [whatsappMessages, setWhatsappMessages] = useState<WhatsAppMessage[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [whatsappText, setWhatsappText] = useState("");
   const [form, setForm] = useState(emptyTask);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -98,9 +111,11 @@ export default function ClientDetailPage() {
     const next = await apiFetch<ClientDetail>(`/api/clients/${clientId}`);
     const taskResult = await apiFetch<{ tasks: TaskItem[] }>(`/api/clients/${clientId}/tasks`);
     const whatsappResult = await apiFetch<{ messages: WhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp`);
+    const invoiceResult = await apiFetch<{ invoices: InvoiceItem[] }>(`/api/clients/${clientId}/invoices`);
     setData(next);
     setTasks(taskResult.tasks);
     setWhatsappMessages(whatsappResult.messages);
+    setInvoices(invoiceResult.invoices);
     setHealth(next.client.health ?? null);
   }
 
@@ -123,6 +138,21 @@ export default function ClientDetailPage() {
     return { label: "ירוק", color: "#16a34a" };
   }, [health?.score]);
 
+  async function scanInvoices() {
+    setMessage("");
+    setLoading(true);
+    try {
+      const result = await apiFetch<{ found: number; saved: number; errors: Array<{ error: string }> }>(`/api/clients/${clientId}/scan/invoices`, {
+        method: "POST",
+      });
+      await load();
+      setMessage(result.errors.length ? `נשמרו ${result.saved} חשבוניות. שגיאות: ${result.errors.map((item) => item.error).join("; ")}` : `נמצאו ${result.saved} חשבוניות חדשות`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "סריקת חשבוניות נכשלה");
+    } finally {
+      setLoading(false);
+    }
+  }
   async function scanClient() {
     setMessage("");
     setLoading(true);
@@ -435,6 +465,29 @@ export default function ClientDetailPage() {
 
       <div className="card">
         <h2>חשבוניות</h2>
+        <button className="btn" onClick={scanInvoices} disabled={loading}>
+          {loading ? "סורק..." : "סרוק חשבוניות"}
+        </button>
+        <p>
+          שולם: ₪{invoices.filter((invoice) => invoice.status === "paid").reduce((sum, invoice) => sum + invoice.amount, 0).toLocaleString("he-IL")} · ממתין: ₪{invoices.filter((invoice) => invoice.status !== "paid").reduce((sum, invoice) => sum + invoice.amount, 0).toLocaleString("he-IL")}
+        </p>
+        {data.client.driveFolderUrl && <a className="btn btn-secondary" href={data.client.driveFolderUrl} target="_blank" rel="noreferrer">פתח Drive</a>}
+        {data.client.invoiceSheetUrl && <a className="btn btn-secondary" href={data.client.invoiceSheetUrl} target="_blank" rel="noreferrer">פתח Sheets</a>}
+        {invoices.length === 0 ? (
+          <p>לא נמצאו חשבוניות</p>
+        ) : (
+          invoices.map((invoice) => (
+            <div key={invoice.id} style={{ borderTop: "1px solid var(--border)", padding: "0.75rem 0" }}>
+              <strong>{invoice.invoiceNumber ?? "ללא מספר"}</strong>
+              <p>{new Date(invoice.date).toLocaleDateString("he-IL")} · ₪{invoice.amount.toLocaleString("he-IL")} {invoice.currency} · {invoice.status}</p>
+              {invoice.description && <p>{invoice.description}</p>}
+              {invoice.driveUrl && <a href={invoice.driveUrl} target="_blank" rel="noreferrer">Drive PDF</a>}
+            </div>
+          ))
+        )}
+      </div>
+      <div className="card">
+        <h2>תשלומים / מסמכים ישנים</h2>
         {data.payments.length === 0 ? (
           <p>אין חשבוניות עדיין.</p>
         ) : (

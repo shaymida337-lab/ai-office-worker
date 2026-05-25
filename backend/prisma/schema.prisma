@@ -1,4 +1,4 @@
-// AI Office Worker — PostgreSQL for Railway production deployment.
+// AI Office Worker â€” PostgreSQL for Railway production deployment.
 
 generator client {
   provider = "prisma-client-js"
@@ -41,6 +41,7 @@ model Organization {
   customerInvoices CustomerInvoice[]
   socialDrafts    SocialDraft[]
   clients         Client[]
+  invoices        Invoice[]
 }
 
 model Client {
@@ -68,6 +69,7 @@ model Client {
   tasks            Task[]
   emailMessages    EmailMessage[]
   whatsappLogs     WhatsAppLog[]
+  invoices         Invoice[]
 
   @@index([organizationId, isActive])
   @@index([organizationId, whatsappNumber])
@@ -176,6 +178,30 @@ model CustomerInvoice {
   @@index([organizationId, dueDate])
 }
 
+model Invoice {
+  id             String   @id @default(cuid())
+  clientId       String
+  client         Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoiceNumber  String?
+  amount         Float
+  currency       String   @default("ILS")
+  date           DateTime
+  dueDate        DateTime?
+  status         String   @default("pending")
+  description    String?
+  driveUrl       String?
+  sheetsRow      Int?
+  emailId        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId, status, date])
+  @@index([clientId, date])
+  @@unique([organizationId, clientId, emailId, invoiceNumber])
+}
+
 model SocialDraft {
   id             String   @id @default(cuid())
   organizationId String
@@ -256,3 +282,5 @@ model WhatsAppLog {
   @@index([organizationId, clientId, createdAt])
   @@index([clientId, read])
 }
+
+

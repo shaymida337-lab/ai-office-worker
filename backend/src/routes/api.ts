@@ -19,6 +19,71 @@ apiRouter.get("/dashboard", async (req, res) => {
   res.json(stats);
 });
 
+
+apiRouter.get("/invoices", async (req, res) => {
+  const status = typeof req.query.status === "string" ? req.query.status : undefined;
+  const clientId = typeof req.query.clientId === "string" ? req.query.clientId : undefined;
+  const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+  const invoices = await prisma.invoice.findMany({
+    where: {
+      organizationId: req.auth!.organizationId,
+      ...(clientId && { clientId }),
+      ...(status && status !== "all" && { status }),
+      ...(search && { invoiceNumber: { contains: search, mode: "insensitive" } }),
+    },
+    include: { client: { select: { id: true, name: true, color: true } } },
+    orderBy: { date: "desc" },
+    take: 300,
+  });
+  res.json({ invoices });
+});
+
+apiRouter.put("/invoices/:id/status", async (req, res) => {
+  const body = req.body as { status?: string };
+  if (!body.status || !["paid", "pending", "overdue"].includes(body.status)) {
+    res.status(400).json({ error: "Invalid invoice status" });
+    return;
+  }
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+  });
+  if (!invoice) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+  const updated = await prisma.invoice.update({ where: { id: invoice.id }, data: { status: body.status } });
+  try {
+    const { updateInvoiceStatusInSheets } = await import("../services/clientSheetsService.js");
+    await updateInvoiceStatusInSheets(invoice.clientId, invoice.sheetsRow, body.status);
+  } catch (err) {
+    console.error("[invoices] failed to update sheet status", err);
+  }
+  res.json({ invoice: updated });
+});
+
+apiRouter.get("/organizations/:id/invoices/summary", async (req, res) => {
+  if (req.params.id !== req.auth!.organizationId) {
+    res.status(403).json({ error: "Organization access denied" });
+    return;
+  }
+  const invoices = await prisma.invoice.findMany({
+    where: { organizationId: req.auth!.organizationId },
+    include: { client: { select: { id: true, name: true } } },
+  });
+  const byStatus = invoices.reduce<Record<string, number>>((acc, invoice) => {
+    acc[invoice.status] = (acc[invoice.status] ?? 0) + invoice.amount;
+    return acc;
+  }, {});
+  const byClient = invoices.reduce<Record<string, { clientId: string; clientName: string; count: number; amount: number }>>((acc, invoice) => {
+    const current = acc[invoice.clientId] ?? { clientId: invoice.clientId, clientName: invoice.client.name, count: 0, amount: 0 };
+    current.count += 1;
+    current.amount += invoice.amount;
+    acc[invoice.clientId] = current;
+    return acc;
+  }, {});
+  res.json({ count: invoices.length, byStatus, byClient: Object.values(byClient) });
+});
+
 apiRouter.get("/payments", async (req, res) => {
   const payments = await prisma.supplierPayment.findMany({
     where: { organizationId: req.auth!.organizationId },

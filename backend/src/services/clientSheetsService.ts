@@ -5,14 +5,15 @@ const INVOICE_TAB = "חשבוניות";
 const TASK_TAB = "משימות";
 const INVOICE_HEADERS = [
   "תאריך",
-  "ספק",
+  "מספר חשבונית",
+  "שם לקוח",
+  "תיאור",
   "סכום",
   "מטבע",
-  "קישור לחשבונית",
-  "קישור לתיקייה",
-  "נושא מייל",
   "סטטוס",
-  "הערות",
+  "תאריך פירעון",
+  "קישור ל-Drive",
+  "תאריך סריקה",
 ];
 const TASK_HEADERS = [
   "תאריך קבלה",
@@ -63,6 +64,62 @@ export async function writeClientInvoiceToSheet(
       ],
     },
   });
+}
+
+export async function logInvoiceToSheets(
+  clientId: string,
+  invoice: {
+    invoiceNumber?: string | null;
+    clientName?: string | null;
+    description?: string | null;
+    amount: number;
+    currency: string;
+    date: Date;
+    dueDate?: Date | null;
+    status: string;
+  },
+  driveUrl: string | null
+) {
+  const { sheets } = await getGoogleClientsForClient(clientId);
+  const spreadsheetId = await ensureClientSpreadsheet(clientId, "invoice");
+  await ensureSheetHeaders(sheets, spreadsheetId, INVOICE_TAB, INVOICE_HEADERS);
+
+  const append = await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: INVOICE_TAB + "!A:J",
+    valueInputOption: "USER_ENTERED",
+    requestBody: {
+      values: [[
+        invoice.date.toLocaleDateString("he-IL"),
+        invoice.invoiceNumber ?? "",
+        invoice.clientName ?? "",
+        invoice.description ?? "",
+        invoice.amount,
+        invoice.currency,
+        statusLabel(invoice.status),
+        invoice.dueDate ? invoice.dueDate.toLocaleDateString("he-IL") : "",
+        driveUrl ?? "",
+        new Date().toLocaleString("he-IL"),
+      ]],
+    },
+  });
+
+  const row = extractUpdatedRow(append.data.updates?.updatedRange);
+  if (row) await colorInvoiceRow(sheets, spreadsheetId, INVOICE_TAB, row, invoice.status);
+  return { spreadsheetId, row };
+}
+
+export async function updateInvoiceStatusInSheets(clientId: string, row: number | null | undefined, status: string) {
+  if (!row) return;
+  const { sheets } = await getGoogleClientsForClient(clientId);
+  const spreadsheetId = await ensureClientSpreadsheet(clientId, "invoice");
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: INVOICE_TAB + "!G" + row,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: [[statusLabel(status)]] },
+  });
+  await colorInvoiceRow(sheets, spreadsheetId, INVOICE_TAB, row, status);
 }
 
 export async function writeClientTaskToSheet(
@@ -161,4 +218,52 @@ async function ensureSheetHeaders(
     valueInputOption: "USER_ENTERED",
     requestBody: { values: [headers] },
   });
+}
+
+async function colorInvoiceRow(
+  sheets: Awaited<ReturnType<typeof getGoogleClientsForClient>>["sheets"],
+  spreadsheetId: string,
+  tab: string,
+  row: number,
+  status: string
+) {
+  const sheetId = await getSheetId(sheets, spreadsheetId, tab);
+  if (sheetId === null) return;
+  const color = status === "paid"
+    ? { red: 0.85, green: 0.95, blue: 0.88 }
+    : status === "overdue"
+      ? { red: 0.98, green: 0.86, blue: 0.86 }
+      : { red: 0.98, green: 0.93, blue: 0.75 };
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [{
+        repeatCell: {
+          range: { sheetId, startRowIndex: row - 1, endRowIndex: row, startColumnIndex: 0, endColumnIndex: INVOICE_HEADERS.length },
+          cell: { userEnteredFormat: { backgroundColor: color } },
+          fields: "userEnteredFormat.backgroundColor",
+        },
+      }],
+    },
+  });
+}
+
+async function getSheetId(
+  sheets: Awaited<ReturnType<typeof getGoogleClientsForClient>>["sheets"],
+  spreadsheetId: string,
+  tab: string
+) {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title)" });
+  return meta.data.sheets?.find((sheet) => sheet.properties?.title === tab)?.properties?.sheetId ?? null;
+}
+
+function extractUpdatedRow(range?: string | null) {
+  const match = range?.match(/![A-Z]+(d+):/);
+  return match ? Number(match[1]) : null;
+}
+
+function statusLabel(status: string) {
+  if (status === "paid") return "שולם";
+  if (status === "overdue") return "באיחור";
+  return "ממתין";
 }

@@ -6,6 +6,7 @@ import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { getOAuth2Client, GMAIL_SCOPES } from "../services/google.js";
 import { syncGmailForClient } from "../services/clientGmailSync.js";
+import { scanForInvoices } from "../services/invoiceScanner.js";
 import { normalizeWhatsAppNumber, sendClientWhatsAppMessage } from "../services/whatsapp.js";
 
 export const clientsRouter = Router();
@@ -457,6 +458,27 @@ clientsRouter.post("/:clientId/ai-suggestions", authMiddleware, checkClientOwner
   ].slice(0, 5);
 
   res.json({ suggestions });
+});
+
+
+clientsRouter.post("/:clientId/scan/invoices", authMiddleware, checkClientOwnership, async (_req, res) => {
+  const client = res.locals.client;
+  if (!client.gmailConnected || !client.googleRefreshToken) {
+    res.status(400).json({ error: "חבר Gmail בהגדרות" });
+    return;
+  }
+  const result = await scanForInvoices(client.id);
+  res.json(result);
+});
+
+clientsRouter.get("/:clientId/invoices", authMiddleware, checkClientOwnership, async (req, res) => {
+  const client = res.locals.client;
+  const invoices = await prisma.invoice.findMany({
+    where: { organizationId: req.auth!.organizationId, clientId: client.id },
+    orderBy: { date: "desc" },
+    take: 200,
+  });
+  res.json({ invoices });
 });
 
 clientsRouter.get("/:clientId", authMiddleware, checkClientOwnership, async (req, res) => {
