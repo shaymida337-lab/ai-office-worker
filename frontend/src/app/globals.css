@@ -145,11 +145,11 @@
   }
 
   .btn {
-    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-transparent bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(99,102,241,0.22)] transition-all duration-200 hover:scale-[1.02] hover:shadow-[0_18px_42px_rgba(99,102,241,0.35)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-indigo-300/60 bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] px-5 py-3 text-[15px] font-bold text-white shadow-[0_14px_30px_rgba(99,102,241,0.32)] transition-all duration-200 hover:scale-[1.02] hover:border-white/70 hover:brightness-110 hover:shadow-[0_18px_42px_rgba(99,102,241,0.45)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60;
   }
 
   .btn-secondary {
-    @apply border-[var(--border)] bg-transparent text-ink-secondary shadow-none hover:border-[rgba(99,102,241,0.6)] hover:bg-surface-hover hover:text-ink-primary;
+    @apply border-indigo-400/50 bg-indigo-500/20 text-white shadow-[0_8px_24px_rgba(99,102,241,0.12)] hover:border-white/70 hover:bg-indigo-500/35 hover:text-white hover:brightness-110;
   }
 
   .btn-danger {

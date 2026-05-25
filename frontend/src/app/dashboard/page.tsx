@@ -234,7 +234,7 @@ export default function DashboardPage() {
               <p className="text-sm">סטטוס פעילות וסיכום מהיר לכל לקוח.</p>
             </div>
             {!hasInitialScanDone && (
-              <button className="btn btn-secondary" onClick={startFirstScan} disabled={firstScanRunning || syncing}>
+              <button className="btn" onClick={startFirstScan} disabled={firstScanRunning || syncing}>
                 {firstScanRunning ? "סריקה ראשונית רצה..." : "סריקה ראשונית 90 יום"}
               </button>
             )}

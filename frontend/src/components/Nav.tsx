@@ -59,7 +59,7 @@ export function Nav() {
             <Bot className="h-6 w-6 text-white" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate bg-[linear-gradient(135deg,#8B5CF6,#6366F1)] bg-clip-text text-lg font-extrabold leading-tight tracking-tight text-transparent">
+            <span className="block truncate text-lg font-extrabold leading-tight tracking-tight text-white drop-shadow-[0_0_18px_rgba(99,102,241,0.35)]">
               AI Office Worker
             </span>
             <span className="mt-0.5 block truncate text-[11px] font-medium text-ink-muted">Premium workspace</span>
