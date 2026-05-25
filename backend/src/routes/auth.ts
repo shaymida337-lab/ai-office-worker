@@ -180,11 +180,13 @@ authRouter.get("/google/callback", async (req, res) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
+    let isNewUser = false;
     let user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
       include: { organization: true },
     });
     if (!user) {
+      isNewUser = true;
       user = await prisma.user.create({
         data: {
           email: normalizedEmail,
@@ -234,6 +236,13 @@ authRouter.get("/google/callback", async (req, res) => {
       organizationId: org.id,
       email: user.email,
     });
+
+    if (isNewUser && tokens.refresh_token) {
+      const { scheduler } = await import("../services/scheduler.js");
+      scheduler.runFirstTimeScan(org.id).catch((scanErr) => {
+        console.error("[auth] first-time scan failed", scanErr);
+      });
+    }
 
     res.redirect(`${config.frontendUrl}/auth/callback#token=${encodeURIComponent(token)}`);
   } catch (err) {

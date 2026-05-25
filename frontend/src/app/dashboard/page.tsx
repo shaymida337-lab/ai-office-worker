@@ -33,13 +33,30 @@ type ClientsResponse = {
   };
 };
 
+type ScanStatus = {
+  last: {
+    id: string;
+    type: string;
+    status: string;
+    found: number;
+    saved: number;
+    errors: string | null;
+    startedAt: string;
+    endedAt: string | null;
+  } | null;
+  nextScheduledScanAt: string;
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [summary, setSummary] = useState("");
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
   const [clients, setClients] = useState<ClientsResponse | null>(null);
+  const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [firstScanRunning, setFirstScanRunning] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -52,6 +69,12 @@ export default function DashboardPage() {
       setGmailStatus(gmail);
       const clientData = await apiFetch<ClientsResponse>("/api/clients");
       setClients(clientData);
+      const automation = await apiFetch<ScanStatus>("/api/automation/scan-status");
+      setScanStatus(automation);
+      if (automation.last?.type === "first_time" && automation.last.endedAt) {
+        setFirstScanRunning(false);
+      }
+      setLastUpdatedAt(new Date());
     } catch (err) {
       if (isAuthError(err)) {
         clearToken();
@@ -64,7 +87,24 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load();
+    const interval = window.setInterval(() => {
+      load().catch(() => undefined);
+    }, 5 * 60 * 1000);
+    return () => window.clearInterval(interval);
   }, [load]);
+
+  async function startFirstScan() {
+    setFirstScanRunning(true);
+    setError("ברוך הבא! מתחיל סריקה ראשונית...");
+    try {
+      await apiFetch<{ started: boolean; message: string }>("/api/automation/first-scan", { method: "POST" });
+      setError("סורק Gmail... מזהה חשבוניות... שומר ב-Drive ומעדכן Sheets...");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "סריקה ראשונית נכשלה");
+      setFirstScanRunning(false);
+    }
+  }
 
   async function runSync() {
     setSyncing(true);
@@ -130,6 +170,24 @@ export default function DashboardPage() {
     <div className="container">
       <h1>לוח בקרה</h1>
       <Nav />
+      <div className="card">
+        <strong style={{ color: "#16a34a" }}>● Live</strong>
+        <span style={{ marginRight: "0.75rem" }}>
+          עודכן לאחרונה: {lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}
+        </span>
+        <span style={{ marginRight: "0.75rem" }}>
+          סריקה הבאה: {scanStatus ? new Date(scanStatus.nextScheduledScanAt).toLocaleString("he-IL") : "טוען..."}
+        </span>
+        {scanStatus?.last && (
+          <p>
+            סטטוס אחרון: {scanStatus.last.type} · {scanStatus.last.status} · נמצאו {scanStatus.last.found} · נשמרו{" "}
+            {scanStatus.last.saved}
+          </p>
+        )}
+        <button className="btn btn-secondary" onClick={startFirstScan} disabled={firstScanRunning || syncing}>
+          {firstScanRunning ? "סריקה ראשונית רצה..." : "הפעל סריקה ראשונית 90 יום"}
+        </button>
+      </div>
       {clients && (
         <div className="card">
           <h2>כל הלקוחות</h2>
@@ -233,4 +291,11 @@ export default function DashboardPage() {
       </div>
     </div>
   );
+}
+
+function relativeTime(date: Date) {
+  const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+  if (minutes === 0) return "עכשיו";
+  if (minutes === 1) return "לפני דקה";
+  return `לפני ${minutes} דקות`;
 }

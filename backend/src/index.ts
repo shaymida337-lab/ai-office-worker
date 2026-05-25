@@ -8,6 +8,7 @@ import { cronRouter } from "./routes/cron.js";
 import { integrationsRouter } from "./routes/integrations.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { clientsRouter } from "./routes/clients.js";
+import { scheduler } from "./services/scheduler.js";
 
 const app = express();
 
@@ -47,8 +48,19 @@ app.use("/cron", cronRouter);
 app.use("/webhook", webhooksRouter);
 app.use("/webhooks", webhooksRouter);
 
-const server = app.listen(config.port);
+const server = app.listen(config.port, () => {
+  console.log(`Server running on port ${config.port}`);
+  scheduler.startAllJobs();
+});
 server.on("error", (err: NodeJS.ErrnoException) => {
   console.error("[api] Failed to start:", err.message);
   process.exit(1);
 });
+
+if (process.env.NODE_ENV === "production") {
+  setInterval(() => {
+    fetch("https://ai-office-worker-backend.onrender.com/health").catch(() => {
+      // Keep-alive failures should never crash the API process.
+    });
+  }, 14 * 60 * 1000);
+}

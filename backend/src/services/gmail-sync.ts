@@ -22,7 +22,7 @@ const GMAIL_QUERIES = [
 const MAX_MESSAGES_PER_SYNC = 20;
 const DRIVE_FULL_MESSAGE = "הסריקה הושלמה. לא ניתן לשמור ל-Drive - האחסון שלך מלא";
 
-export async function syncGmailForOrganization(organizationId: string) {
+export async function syncGmailForOrganization(organizationId: string, options: { daysBack?: number; isFirstTime?: boolean } = {}) {
   const activeLog = await prisma.syncLog.findFirst({
     where: {
       organizationId,
@@ -57,7 +57,7 @@ export async function syncGmailForOrganization(organizationId: string) {
       driveUploadFailed = true;
       console.error("Drive setup failed; continuing Gmail sync without Drive", err);
     }
-    const messages = await listCandidateMessages(gmail);
+    const messages = await listCandidateMessages(gmail, options.isFirstTime ? 90 : options.daysBack ?? 30);
 
     for (const msgRef of messages) {
       if (!msgRef.id) continue;
@@ -332,10 +332,13 @@ type PayloadPart = {
 type GmailClient = Awaited<ReturnType<typeof getGoogleClients>>["gmail"];
 type GmailMessageRef = { id?: string | null; threadId?: string | null };
 
-async function listCandidateMessages(gmail: GmailClient): Promise<GmailMessageRef[]> {
+async function listCandidateMessages(gmail: GmailClient, daysBack: number): Promise<GmailMessageRef[]> {
   const byId = new Map<string, GmailMessageRef>();
+  const queries = GMAIL_QUERIES.map((query) =>
+    query.replace(/newer_than:\d+d/g, `newer_than:${Math.max(1, Math.ceil(daysBack))}d`)
+  );
 
-  for (const q of GMAIL_QUERIES) {
+  for (const q of queries) {
     const result = await gmail.users.messages.list({
       userId: "me",
       q,

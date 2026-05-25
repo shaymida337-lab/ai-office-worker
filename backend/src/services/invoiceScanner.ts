@@ -4,11 +4,11 @@ import { extractInvoiceData } from "./invoiceExtractor.js";
 import { saveInvoiceToDrive } from "./driveOrganizer.js";
 import { logInvoiceToSheets } from "./clientSheetsService.js";
 
-const INVOICE_QUERIES = [
-  "subject:(חשבונית OR invoice OR receipt OR קבלה) newer_than:30d",
-  "has:attachment filename:pdf newer_than:30d",
-  "subject:(תשלום OR payment OR חשבון) newer_than:30d",
-  "from:(invoice OR billing OR חשבוניות) newer_than:30d",
+const INVOICE_KEYWORDS = [
+  "חשבונית", "invoice", "receipt", "קבלה", "תשלום", "payment", "חשבון", "billing", "הצעת מחיר", "quote", "הזמנה", "order",
+];
+const URGENT_KEYWORDS = [
+  "דחוף", "urgent", "overdue", "באיחור", "reminder", "תזכורת", "final notice", "הודעה אחרונה",
 ];
 
 type GmailClient = Awaited<ReturnType<typeof getGoogleClientsForClient>>["gmail"];
@@ -19,21 +19,17 @@ type PayloadPart = {
   parts?: PayloadPart[] | null;
 };
 
-type DownloadedAttachment = {
-  filename: string;
-  mimeType: string | null;
-  buffer: Buffer;
-};
+type DownloadedAttachment = { filename: string; mimeType: string | null; buffer: Buffer };
 
-export async function scanForInvoices(clientId: string) {
+type ScanOptions = { daysBack?: number; limit?: number };
+
+export async function scanForInvoices(clientId: string, options: ScanOptions = {}) {
   const client = await prisma.client.findUnique({ where: { id: clientId } });
-  if (!client?.gmailConnected || !client.googleRefreshToken) {
-    throw new Error("חבר Gmail בהגדרות");
-  }
+  if (!client?.gmailConnected || !client.googleRefreshToken) throw new Error("חבר Gmail בהגדרות");
 
   const organizationId = client.organizationId;
   const { gmail, drive } = await getGoogleClientsForClient(clientId);
-  const messages = await listInvoiceMessages(gmail);
+  const messages = await listInvoiceMessages(gmail, options.daysBack ?? 30, options.limit ?? 50);
   const errors: Array<{ emailId?: string; error: string }> = [];
   let found = 0;
   let saved = 0;
@@ -57,11 +53,7 @@ export async function scanForInvoices(clientId: string) {
         const attachmentId = part.body?.attachmentId;
         if (!attachmentId || !part.filename) continue;
         const attachment = await gmail.users.messages.attachments.get({ userId: "me", messageId: ref.id, id: attachmentId });
-        attachments.push({
-          filename: part.filename,
-          mimeType: part.mimeType ?? "application/pdf",
-          buffer: decodeBase64Url(attachment.data.data ?? ""),
-        });
+        attachments.push({ filename: part.filename, mimeType: part.mimeType ?? "application/pdf", buffer: decodeBase64Url(attachment.data.data ?? "") });
       }
 
       const invoice = await extractInvoiceData(
@@ -73,12 +65,7 @@ export async function scanForInvoices(clientId: string) {
       invoice.pdfAttachment = attachments[0]?.buffer;
 
       const existing = await prisma.invoice.findFirst({
-        where: {
-          organizationId,
-          clientId,
-          emailId: ref.id,
-          ...(invoice.invoiceNumber ? { invoiceNumber: invoice.invoiceNumber } : {}),
-        },
+        where: { organizationId, clientId, emailId: ref.id, ...(invoice.invoiceNumber ? { invoiceNumber: invoice.invoiceNumber } : {}) },
       });
       if (existing) continue;
 
@@ -138,15 +125,35 @@ export async function scanForInvoices(clientId: string) {
   return { found, saved, errors };
 }
 
-async function listInvoiceMessages(gmail: GmailClient) {
+export function detectInvoice(input: { subject?: string | null; body?: string | null }) {
+  const text = `${input.subject ?? ""} ${input.body ?? ""}`.toLowerCase();
+  return INVOICE_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+export function detectUrgent(input: { subject?: string | null; body?: string | null }) {
+  const text = `${input.subject ?? ""} ${input.body ?? ""}`.toLowerCase();
+  return URGENT_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+async function listInvoiceMessages(gmail: GmailClient, daysBack: number, maxResults: number) {
   const byId = new Map<string, { id?: string | null }>();
-  for (const q of INVOICE_QUERIES) {
-    const result = await gmail.users.messages.list({ userId: "me", q, maxResults: 50 });
+  for (const q of invoiceQueries(daysBack)) {
+    const result = await gmail.users.messages.list({ userId: "me", q, maxResults });
     for (const message of result.data.messages ?? []) {
       if (message.id) byId.set(message.id, message);
     }
   }
   return [...byId.values()];
+}
+
+function invoiceQueries(daysBack: number) {
+  const newerThan = Math.max(1, Math.ceil(daysBack));
+  return [
+    `subject:(חשבונית OR invoice OR receipt OR קבלה) newer_than:${newerThan}d`,
+    `has:attachment filename:pdf newer_than:${newerThan}d`,
+    `subject:(תשלום OR payment OR חשבון) newer_than:${newerThan}d`,
+    `from:(invoice OR billing OR חשבוניות) newer_than:${newerThan}d`,
+  ];
 }
 
 function collectParts(payload?: PayloadPart): PayloadPart[] {
@@ -173,8 +180,7 @@ function isPdf(part: PayloadPart) {
 }
 
 function isInvoiceCandidate(subject: string, body: string, parts: PayloadPart[]) {
-  const text = `${subject}\n${body}\n${parts.map((part) => part.filename).join(" ")}`;
-  return /חשבונית|invoice|receipt|קבלה|תשלום|payment|billing|חשבון/i.test(text);
+  return detectInvoice({ subject, body }) || parts.some((part) => detectInvoice({ subject: part.filename, body: "" }));
 }
 
 function decodeBase64Url(data: string): Buffer {

@@ -36,6 +36,7 @@ model Organization {
   tasks           Task[]
   emailMessages   EmailMessage[]
   syncLogs        SyncLog[]
+  scanLogs        ScanLog[]
   alerts          Alert[]
   whatsappLogs    WhatsAppLog[]
   customerInvoices CustomerInvoice[]
@@ -252,6 +253,21 @@ model SyncLog {
   finishedAt     DateTime?
 
   @@index([organizationId, type, status, finishedAt])
+}
+
+model ScanLog {
+  id             String   @id @default(cuid())
+  orgId          String
+  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  type           String
+  status         String
+  found          Int      @default(0)
+  saved          Int      @default(0)
+  errors         String?
+  startedAt      DateTime @default(now())
+  endedAt        DateTime?
+
+  @@index([orgId, type, status, startedAt])
 }
 
 model Alert {

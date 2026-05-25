@@ -14,6 +14,27 @@ import {
 export const apiRouter = Router();
 apiRouter.use(authMiddleware);
 
+
+apiRouter.post("/automation/first-scan", async (req, res) => {
+  const { scheduler } = await import("../services/scheduler.js");
+  scheduler.runFirstTimeScan(req.auth!.organizationId).catch((err) => {
+    console.error("[automation] first-time scan failed", err);
+  });
+  res.json({ started: true, message: "ברוך הבא! מתחיל סריקה ראשונית..." });
+});
+
+apiRouter.get("/automation/scan-status", async (req, res) => {
+  const logs = await prisma.$queryRawUnsafe<Array<{ id: string; type: string; status: string; found: number; saved: number; errors: string | null; startedAt: Date; endedAt: Date | null }>>(
+    'SELECT "id", "type", "status", "found", "saved", "errors", "startedAt", "endedAt" FROM "ScanLog" WHERE "orgId" = $1 ORDER BY "startedAt" DESC LIMIT 10',
+    req.auth!.organizationId
+  );
+  const last = logs[0] ?? null;
+  const nextDaily = new Date();
+  nextDaily.setHours(2, 0, 0, 0);
+  if (nextDaily <= new Date()) nextDaily.setDate(nextDaily.getDate() + 1);
+  res.json({ last, logs, nextScheduledScanAt: nextDaily.toISOString() });
+});
+
 apiRouter.get("/dashboard", async (req, res) => {
   const stats = await getDashboardStats(req.auth!.organizationId);
   res.json(stats);

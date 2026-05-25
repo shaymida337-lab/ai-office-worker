@@ -105,6 +105,7 @@ export default function ClientDetailPage() {
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [loading, setLoading] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [message, setMessage] = useState("");
 
   async function load() {
@@ -117,6 +118,7 @@ export default function ClientDetailPage() {
     setWhatsappMessages(whatsappResult.messages);
     setInvoices(invoiceResult.invoices);
     setHealth(next.client.health ?? null);
+    setLastUpdatedAt(new Date());
   }
 
   useEffect(() => {
@@ -124,10 +126,9 @@ export default function ClientDetailPage() {
     const cached = suggestionCache.get(clientId);
     if (cached) setSuggestions(cached);
     const interval = window.setInterval(() => {
-      apiFetch<{ messages: WhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp`)
-        .then((result) => setWhatsappMessages(result.messages))
+      load()
         .catch(() => undefined);
-    }, 30000);
+    }, 2 * 60 * 1000);
     return () => window.clearInterval(interval);
   }, [clientId]);
 
@@ -308,6 +309,10 @@ export default function ClientDetailPage() {
       <h1>
         <span style={{ color: data.client.color ?? "#3B82F6" }}>■</span> {data.client.name}
       </h1>
+      <p style={{ color: "var(--muted)" }}>
+        <strong style={{ color: "#16a34a" }}>● Live</strong> · עודכן לאחרונה:{" "}
+        {lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}
+      </p>
       <p>gmail: {data.client.email}</p>
       <p>WhatsApp: {data.client.whatsappNumber || "לא מוגדר"}</p>
       {message && <p style={{ color: "var(--danger)" }}>{message}</p>}
@@ -505,4 +510,11 @@ export default function ClientDetailPage() {
       </div>
     </div>
   );
+}
+
+function relativeTime(date: Date) {
+  const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+  if (minutes === 0) return "עכשיו";
+  if (minutes === 1) return "לפני דקה";
+  return `לפני ${minutes} דקות`;
 }
