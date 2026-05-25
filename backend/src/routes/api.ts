@@ -316,11 +316,15 @@ apiRouter.post("/whatsapp-assistant/test/:type", async (req, res) => {
   res.json(result);
 });
 
-apiRouter.post("/sync/gmail", async (req, res) => {
+async function scanGmail(req: Request, res: Response) {
   try {
     const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
     const result = await syncGmailForOrganization(req.auth!.organizationId);
-    res.json(result);
+    res.json({
+      ...result,
+      emailsFound: result.emailsProcessed,
+      success: true,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
     if (message === "Gmail not connected") {
@@ -329,7 +333,10 @@ apiRouter.post("/sync/gmail", async (req, res) => {
     }
     res.status(500).json({ error: message });
   }
-});
+}
+
+apiRouter.post("/sync/gmail", scanGmail);
+apiRouter.post("/gmail/scan", scanGmail);
 
 apiRouter.post("/camera/invoices/preview", async (req, res) => {
   try {

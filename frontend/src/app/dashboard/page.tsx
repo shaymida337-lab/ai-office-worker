@@ -116,22 +116,25 @@ export default function DashboardPage() {
   }
 
   async function runSync() {
+    console.log("Scanning Gmail...");
+    console.log("Token:", localStorage.getItem("token"));
     setSyncing(true);
     setError("");
     try {
       const result = await apiFetch<{
         emailsProcessed: number;
+        emailsFound?: number;
         paymentsCreated: number;
         tasksCreated: number;
         inProgress?: boolean;
         message?: string;
-      }>("/api/sync/gmail", { method: "POST" });
+      }>("/api/gmail/scan", { method: "POST" });
       await load();
       setError(
         result.inProgress
           ? "סריקת Gmail כבר רצה. נסה שוב בעוד רגע."
           : result.message ??
-              `נסרקו ${result.emailsProcessed} מיילים, נוספו ${result.paymentsCreated} תשלומים`
+              `נמצאו ${result.emailsFound ?? result.emailsProcessed} מיילים ✅`
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed");
@@ -240,7 +243,7 @@ export default function DashboardPage() {
           התחבר עם Google
         </a>
         <button className="btn" onClick={runSync} disabled={syncing}>
-          {syncing ? "סורק Gmail..." : "סרוק Gmail עכשיו"}
+          {syncing ? "סורק מיילים... ⏳" : "סרוק Gmail עכשיו"}
         </button>
         <button
           className="btn btn-secondary"
