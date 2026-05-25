@@ -4,6 +4,8 @@ import { syncGmailForOrganization } from "./gmail-sync.js";
 import { scanForInvoices, detectUrgent } from "./invoiceScanner.js";
 import { sendDailySummary, buildDailySummary } from "./summary.js";
 import { sendWhatsAppMessage } from "./whatsapp.js";
+import { generateAccountantReport } from "./accountantReports.js";
+import { previousMonth } from "./vatService.js";
 
 const TIMEZONE = "Asia/Jerusalem";
 const MAX_RETRIES = 3;
@@ -23,6 +25,7 @@ class SchedulerService {
     cron.schedule("*/30 * * * *", () => this.withRetry("quick", () => this.runQuickScan()), { timezone: TIMEZONE });
     cron.schedule("0 3 * * *", () => this.withRetry("health", () => this.updateAllHealthScores()), { timezone: TIMEZONE });
     cron.schedule("0 8 1 * *", () => this.withRetry("monthly", () => this.generateMonthlyReport()), { timezone: TIMEZONE });
+    cron.schedule("0 6 1 * *", () => this.withRetry("monthly", () => this.generateMonthlyAccountantReports()), { timezone: TIMEZONE });
 
     console.log("[scheduler] All scheduled jobs started");
   }
@@ -129,6 +132,23 @@ class SchedulerService {
         await finishScanLog(logId, { status: "success" });
       } catch (err) {
         await finishScanLog(logId, { status: "failed", errors: [errorMessage(err)] });
+      }
+    }
+  }
+
+  async generateMonthlyAccountantReports() {
+    const period = previousMonth();
+    const orgs = await prisma.organization.findMany();
+    for (const org of orgs) {
+      const logId = await createScanLog(org.id, "monthly");
+      try {
+        await syncGmailForOrganization(org.id, { daysBack: 31 });
+        await generateAccountantReport(org.id, period);
+        await finishScanLog(logId, { status: "success" });
+        console.log(`[scheduler] Accountant report done org=${org.id} period=${period}`);
+      } catch (err) {
+        await finishScanLog(logId, { status: "failed", errors: [errorMessage(err)] });
+        console.error(`[scheduler] Accountant report failed org=${org.id}`, err);
       }
     }
   }

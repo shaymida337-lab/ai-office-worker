@@ -40,6 +40,44 @@ apiRouter.get("/dashboard", async (req, res) => {
   res.json(stats);
 });
 
+apiRouter.get("/accountant/settings", async (req, res) => {
+  const { getAccountantSettings } = await import("../services/accountantReports.js");
+  res.json(await getAccountantSettings(req.auth!.organizationId));
+});
+
+apiRouter.put("/accountant/settings", async (req, res) => {
+  const { updateAccountantSettings } = await import("../services/accountantReports.js");
+  res.json(await updateAccountantSettings(req.auth!.organizationId, req.body as Record<string, unknown>));
+});
+
+apiRouter.get("/accountant/summary", async (req, res) => {
+  const period = typeof req.query.period === "string" ? req.query.period : undefined;
+  const { buildAccountantSummary } = await import("../services/accountantReports.js");
+  res.json(await buildAccountantSummary(req.auth!.organizationId, period));
+});
+
+apiRouter.post("/accountant/generate", async (req, res) => {
+  const period = typeof req.body?.period === "string" ? req.body.period : undefined;
+  const { generateAccountantReport } = await import("../services/accountantReports.js");
+  res.json(await generateAccountantReport(req.auth!.organizationId, period));
+});
+
+apiRouter.get("/accountant/download.zip", async (req, res) => {
+  const period = typeof req.query.period === "string" ? req.query.period : undefined;
+  const { accountantZipBuffer, buildAccountantSummary } = await import("../services/accountantReports.js");
+  const buffer = accountantZipBuffer(await buildAccountantSummary(req.auth!.organizationId, period));
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", "attachment; filename=accountant-report.zip");
+  res.send(buffer);
+});
+
+apiRouter.post("/accountant/send", async (req, res) => {
+  const period = typeof req.body?.period === "string" ? req.body.period : undefined;
+  const { generateAccountantReport } = await import("../services/accountantReports.js");
+  const report = await generateAccountantReport(req.auth!.organizationId, period);
+  res.json({ sent: false, reason: "Email provider is not configured yet", report });
+});
+
 
 apiRouter.get("/invoices", async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status : undefined;

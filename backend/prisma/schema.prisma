@@ -28,6 +28,13 @@ model Organization {
   timezone  String   @default("Asia/Jerusalem")
   currency  String   @default("ILS")
   locale    String   @default("he")
+  accountantEmail   String?
+  accountantName    String?
+  businessName      String?
+  businessId        String?
+  businessAddress   String?
+  sendMonthlyReport Boolean  @default(true)
+  reportDay         Int      @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -43,6 +50,7 @@ model Organization {
   socialDrafts    SocialDraft[]
   clients         Client[]
   invoices        Invoice[]
+  accountantReports AccountantReport[]
 }
 
 model Client {
@@ -268,6 +276,23 @@ model ScanLog {
   endedAt        DateTime?
 
   @@index([orgId, type, status, startedAt])
+}
+
+model AccountantReport {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  period         String
+  totalIncome    Float
+  totalExpenses  Float
+  profit         Float
+  vatDue         Float
+  driveUrl       String?
+  sentAt         DateTime?
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, period])
+  @@index([organizationId, createdAt])
 }
 
 model Alert {
