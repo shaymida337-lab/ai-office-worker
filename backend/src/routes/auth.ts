@@ -1,3 +1,5 @@
+import crypto from "crypto";
+import jwt from "jsonwebtoken";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
@@ -131,19 +133,35 @@ authRouter.get("/google", async (_req, res) => {
     return;
   }
   const oauth2 = await getOAuth2Client();
+  const state = jwt.sign(
+    { purpose: "google_login", nonce: crypto.randomBytes(16).toString("hex") },
+    config.jwtSecret,
+    { expiresIn: "15m" }
+  );
   const url = oauth2.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
     scope: GMAIL_SCOPES,
+    state,
   });
   res.redirect(url);
 });
 
 authRouter.get("/google/callback", async (req, res) => {
   try {
-    const code = req.query.code as string;
+    const code = req.query.code as string | undefined;
+    const state = req.query.state as string | undefined;
     if (!code) {
       res.status(400).send("Missing code");
+      return;
+    }
+    if (!state) {
+      res.status(400).send("Missing state");
+      return;
+    }
+    const decoded = jwt.verify(state, config.jwtSecret) as { purpose?: string };
+    if (decoded.purpose !== "google_login") {
+      res.status(400).send("Invalid state");
       return;
     }
     const oauth2 = await getOAuth2Client();
@@ -217,7 +235,7 @@ authRouter.get("/google/callback", async (req, res) => {
       email: user.email,
     });
 
-    res.redirect(`${config.frontendUrl}/auth/callback?token=${token}`);
+    res.redirect(`${config.frontendUrl}/auth/callback#token=${encodeURIComponent(token)}`);
   } catch (err) {
     console.error(err);
     res.status(500).send("Auth failed");

@@ -26,6 +26,10 @@ function getParam(value: string | string[] | undefined): string | null {
   return typeof value === "string" ? value : null;
 }
 
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 const checkClientOwnership: RequestHandler = async (req, res, next) => {
   const clientId = getParam(req.params.clientId);
   if (!clientId) {
@@ -163,13 +167,18 @@ clientsRouter.post("/", authMiddleware, async (req, res) => {
     res.status(400).json({ error: "Name and email are required" });
     return;
   }
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!isValidEmail(normalizedEmail)) {
+    res.status(400).json({ error: "Invalid email" });
+    return;
+  }
 
   const count = await prisma.client.count({ where: { organizationId } });
   const client = await prisma.client.create({
     data: {
       organizationId,
       name: name.trim(),
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
       whatsappNumber: whatsappNumber?.trim() ? normalizeWhatsAppNumber(whatsappNumber) : null,
       color: color || COLORS[count % COLORS.length],
       invoiceSheetUrl: invoiceSheetUrl?.trim() || null,
@@ -191,24 +200,59 @@ clientsRouter.get("/gmail/callback", async (req, res) => {
       return;
     }
 
-    const decoded = jwt.verify(String(req.query.state), config.jwtSecret) as { purpose: string; clientId: string };
-    if (decoded.purpose !== "client_gmail") {
+    const code = req.query.code as string | undefined;
+    if (!code) {
+      res.redirect(`${config.frontendUrl}/dashboard/clients?error=missing_code`);
+      return;
+    }
+
+    const decoded = jwt.verify(String(req.query.state), config.jwtSecret) as {
+      purpose?: string;
+      clientId?: string;
+      organizationId?: string;
+    };
+    if (decoded.purpose !== "client_gmail" || !decoded.clientId || !decoded.organizationId) {
       res.redirect(`${config.frontendUrl}/dashboard/clients?error=invalid_state`);
       return;
     }
 
+    const client = await prisma.client.findFirst({
+      where: { id: decoded.clientId, organizationId: decoded.organizationId, isActive: true },
+    });
+    if (!client) {
+      res.redirect(`${config.frontendUrl}/dashboard/clients?error=client_not_found`);
+      return;
+    }
+
     const oauth2 = await getOAuth2Client(config.google.clientGmailRedirectUri);
-    const { tokens } = await oauth2.getToken(String(req.query.code));
+    const { tokens } = await oauth2.getToken(code);
+    oauth2.setCredentials(tokens);
+    const oauth2api = await import("googleapis").then((g) =>
+      g.google.oauth2({ version: "v2", auth: oauth2 })
+    );
+    const me = await oauth2api.userinfo.get();
+    const connectedEmail = me.data.email?.trim().toLowerCase();
+    if (connectedEmail && connectedEmail !== client.email.trim().toLowerCase()) {
+      res.redirect(`${config.frontendUrl}/dashboard/clients/${client.id}?error=gmail_account_mismatch`);
+      return;
+    }
+
+    const refreshToken = tokens.refresh_token ?? client.googleRefreshToken;
+    if (!refreshToken) {
+      res.redirect(`${config.frontendUrl}/dashboard/clients/${client.id}?error=missing_refresh_token`);
+      return;
+    }
+
     await prisma.client.update({
-      where: { id: decoded.clientId },
+      where: { id: client.id },
       data: {
         googleAccessToken: tokens.access_token,
-        googleRefreshToken: tokens.refresh_token ?? undefined,
+        googleRefreshToken: refreshToken,
         gmailConnected: true,
       },
     });
 
-    res.redirect(`${config.frontendUrl}/dashboard/clients/${decoded.clientId}?connected=1`);
+    res.redirect(`${config.frontendUrl}/dashboard/clients/${client.id}?connected=1`);
   } catch {
     res.redirect(`${config.frontendUrl}/dashboard/clients?error=oauth_failed`);
   }
@@ -219,8 +263,16 @@ clientsRouter.post("/scan-all", authMiddleware, async (req, res) => {
     where: { organizationId: req.auth!.organizationId, isActive: true, gmailConnected: true },
   });
 
-  const results = await Promise.all(clients.map((client) => syncGmailForClient(client.id)));
-  res.json({ success: true, count: clients.length, results });
+  const results = await Promise.allSettled(clients.map((client) => syncGmailForClient(client.id)));
+  res.json({
+    success: results.every((result) => result.status === "fulfilled"),
+    count: clients.length,
+    results: results.map((result, index) =>
+      result.status === "fulfilled"
+        ? result.value
+        : { clientId: clients[index]?.id, error: result.reason instanceof Error ? result.reason.message : "Gmail sync failed" }
+    ),
+  });
 });
 
 clientsRouter.get("/:clientId/connect-gmail", async (req, res) => {
@@ -245,7 +297,7 @@ clientsRouter.get("/:clientId/connect-gmail", async (req, res) => {
 
   const oauth2 = await getOAuth2Client(config.google.clientGmailRedirectUri);
   const state = jwt.sign(
-    { purpose: "client_gmail", clientId: client.id, nonce: crypto.randomBytes(16).toString("hex") },
+    { purpose: "client_gmail", clientId: client.id, organizationId: auth.organizationId, nonce: crypto.randomBytes(16).toString("hex") },
     config.jwtSecret,
     { expiresIn: "15m" }
   );
@@ -436,6 +488,11 @@ clientsRouter.get("/:clientId", authMiddleware, checkClientOwnership, async (req
 clientsRouter.put("/:clientId", authMiddleware, checkClientOwnership, async (req, res) => {
   const client = res.locals.client;
   const body = req.body as Record<string, string | undefined>;
+  if (body.email !== undefined && !isValidEmail(body.email.trim().toLowerCase())) {
+    res.status(400).json({ error: "Invalid email" });
+    return;
+  }
+
   const updated = await prisma.client.update({
     where: { id: client.id },
     data: {
@@ -465,8 +522,8 @@ clientsRouter.put("/:clientId", authMiddleware, checkClientOwnership, async (req
 
 clientsRouter.post("/:clientId/scan", authMiddleware, checkClientOwnership, async (_req, res) => {
   const client = res.locals.client;
-  if (!client.gmailConnected) {
-    res.status(404).json({ error: "Client not found or Gmail not connected" });
+  if (!client.gmailConnected || !client.googleRefreshToken) {
+    res.status(400).json({ error: "חבר Gmail בהגדרות" });
     return;
   }
 

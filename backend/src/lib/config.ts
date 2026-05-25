@@ -10,13 +10,22 @@ function optional(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
 
+function requiredInProduction(name: string, fallback: string): string {
+  const value = process.env[name];
+  if (value) return value;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(`Missing env: ${name}`);
+  }
+  return fallback;
+}
+
 export const config = {
   port: parseInt(optional("PORT", "4000"), 10),
   nodeEnv: optional("NODE_ENV", "development"),
   databaseUrl: optional("DATABASE_URL", "file:./dev.db"),
-  jwtSecret: optional("JWT_SECRET", "dev-secret-change-in-production"),
+  jwtSecret: requiredInProduction("JWT_SECRET", "dev-secret-change-in-production"),
   frontendUrl: optional("FRONTEND_URL", "http://localhost:3000"),
-  cronSecret: optional("CRON_SECRET", "dev-cron-secret"),
+  cronSecret: requiredInProduction("CRON_SECRET", "dev-cron-secret"),
 
   google: {
     clientId: optional("GOOGLE_CLIENT_ID"),

@@ -8,7 +8,8 @@ function CallbackInner() {
   const params = useSearchParams();
 
   useEffect(() => {
-    const token = params.get("token");
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const token = params.get("token") ?? hashParams.get("token");
     if (!token) {
       router.replace("/?error=missing_token");
       return;

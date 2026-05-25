@@ -68,7 +68,12 @@ integrationsRouter.get("/gmail/connect", async (req, res) => {
     return;
   }
 
-  verifyToken(token);
+  try {
+    verifyToken(token);
+  } catch {
+    res.status(401).send("Invalid user token");
+    return;
+  }
   res.redirect(await gmailAuthUrl(token));
 });
 
@@ -184,7 +189,7 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
     });
 
     if (frontendToken) {
-      res.redirect(`${config.frontendUrl}/auth/callback?token=${frontendToken}&gmail=connected`);
+      res.redirect(`${config.frontendUrl}/auth/callback#token=${encodeURIComponent(frontendToken)}&gmail=connected`);
       return;
     }
 

@@ -13,10 +13,12 @@ export const webhooksRouter = Router();
 
 async function handleTwilioWhatsApp(req: Request, res: Response) {
   const signature = req.header("X-Twilio-Signature") ?? "";
-  if (
-    config.twilio.authToken &&
-    !validateRequest(config.twilio.authToken, signature, config.twilio.webhookUrl, req.body)
-  ) {
+  if (!config.twilio.authToken) {
+    res.status(503).send("Twilio webhook is not configured");
+    return;
+  }
+
+  if (!validateRequest(config.twilio.authToken, signature, config.twilio.webhookUrl, req.body)) {
     res.status(403).send("Invalid Twilio signature");
     return;
   }
