@@ -74,7 +74,7 @@
   input,
   select,
   textarea {
-    @apply w-full rounded-[10px] border border-[var(--border)] bg-surface-hover px-4 py-3 text-sm text-ink-primary outline-none transition-all duration-200 placeholder:text-ink-muted focus:border-accent-primary focus:shadow-[0_0_0_4px_rgba(99,102,241,0.14)];
+    @apply w-full rounded-[10px] border border-[var(--border)] bg-surface-hover px-4 py-3 text-[14px] text-[#E2E8F0] outline-none transition-all duration-200 placeholder:text-ink-muted focus:border-accent-primary focus:shadow-[0_0_0_4px_rgba(99,102,241,0.14)];
   }
 
   label {
@@ -86,11 +86,11 @@
   }
 
   th {
-    @apply sticky top-0 z-10 border-b border-[var(--border)] bg-[rgba(22,22,30,0.95)] px-4 py-4 text-right text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted backdrop-blur;
+    @apply sticky top-0 z-10 border-b border-[var(--border)] bg-[rgba(22,22,30,0.95)] px-4 py-4 text-right text-[13px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8] backdrop-blur;
   }
 
   td {
-    @apply border-b border-[var(--border-subtle)] px-4 py-4 text-right text-ink-secondary;
+    @apply border-b border-[var(--border-subtle)] px-4 py-4 text-right text-[14px] text-[#E2E8F0];
   }
 
   tbody tr {
@@ -137,7 +137,7 @@
   }
 
   .stat-value {
-    @apply mt-2 text-3xl font-bold tracking-tight text-ink-primary;
+    @apply mt-2 text-[28px] font-bold tracking-tight text-ink-primary;
   }
 
   .stat-label {
@@ -166,7 +166,7 @@
   }
 
   .badge {
-    @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold;
+    @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] font-semibold;
   }
 
   .badge::before {
@@ -187,7 +187,7 @@
   }
 
   .page-kicker {
-    @apply mb-2 text-xs font-semibold uppercase tracking-[0.24em] text-accent-primary;
+    @apply mb-2 text-[13px] font-semibold uppercase tracking-[0.24em] text-accent-primary;
   }
 
   .table-shell {

@@ -146,7 +146,7 @@ export default function InvoicesPage() {
             {filtered.map((invoice) => (
               <tr key={invoice.id} onClick={() => setSelected(invoice)} className="cursor-pointer">
                 <td>{new Date(invoice.date).toLocaleDateString("he-IL")}</td>
-                <td><span className="inline-flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-surface-hover text-xs font-bold text-ink-primary">{invoice.client?.name?.slice(0, 2) ?? "AI"}</span>{invoice.client?.name ?? ""}</span></td>
+                <td><span className="inline-flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-surface-hover text-[13px] font-bold text-ink-primary">{invoice.client?.name?.slice(0, 2) ?? "AI"}</span>{invoice.client?.name ?? ""}</span></td>
                 <td className="text-ink-primary">{invoice.invoiceNumber ?? "-"}</td>
                 <td>{invoice.description ?? ""}</td>
                 <td className="font-semibold text-ink-primary">₪{invoice.amount.toLocaleString("he-IL")} {invoice.currency}</td>
