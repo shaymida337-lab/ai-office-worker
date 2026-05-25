@@ -127,10 +127,9 @@ authRouter.post("/login", async (req, res) => {
   }
 });
 
-authRouter.get("/google", async (_req, res) => {
+async function buildGoogleAuthUrl() {
   if (!hasGoogleOAuth()) {
-    res.status(503).json({ error: "Google OAuth not configured" });
-    return;
+    return null;
   }
   const oauth2 = await getOAuth2Client();
   const state = jwt.sign(
@@ -144,6 +143,24 @@ authRouter.get("/google", async (_req, res) => {
     scope: GMAIL_SCOPES,
     state,
   });
+  return url;
+}
+
+authRouter.get("/google/url", async (_req, res) => {
+  const url = await buildGoogleAuthUrl();
+  if (!url) {
+    res.status(503).json({ error: "Google OAuth not configured" });
+    return;
+  }
+  res.json({ url });
+});
+
+authRouter.get("/google", async (_req, res) => {
+  const url = await buildGoogleAuthUrl();
+  if (!url) {
+    res.status(503).json({ error: "Google OAuth not configured" });
+    return;
+  }
   res.redirect(url);
 });
 

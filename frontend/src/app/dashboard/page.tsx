@@ -11,6 +11,8 @@ import {
 } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://ai-office-worker-backend.onrender.com";
+
 type ClientSummary = {
   id: string;
   name: string;
@@ -131,13 +133,25 @@ export default function DashboardPage() {
     }
   }
 
-  async function connectGmail() {
+  async function handleConnectGmail() {
+    console.log("Connecting Gmail...");
+    console.log("API URL:", process.env.NEXT_PUBLIC_API_URL);
     setError("");
     try {
-      const { url } = await apiFetch<{ url: string }>("/api/integrations/gmail/connect-url");
-      window.location.href = url;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to connect Gmail");
+      console.log("Button clicked");
+      const response = await fetch(`${API_URL}/auth/google/url`);
+      console.log("Google auth URL response:", response.status);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error((body as { error?: string }).error ?? "Could not start Google OAuth");
+      }
+      const data = (await response.json()) as { url?: string };
+      console.log("Google auth redirect URL:", data.url);
+      if (!data.url) throw new Error("Missing Google OAuth URL");
+      window.location.assign(data.url);
+    } catch (err) {
+      console.error("Connect Gmail failed", err);
+      setError(err instanceof Error ? err.message : "Connect Gmail failed");
     }
   }
 
@@ -227,7 +241,9 @@ export default function DashboardPage() {
       <div style={{ marginBottom: "1rem" }}>
         <button
           className="btn btn-secondary"
-          onClick={connectGmail}
+          onClick={handleConnectGmail}
+          disabled={false}
+          type="button"
           style={{ marginLeft: "0.75rem" }}
         >
           {gmailStatus?.connected ? "Gmail מחובר ✓" : "Connect Gmail"}

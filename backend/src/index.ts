@@ -17,6 +17,7 @@ app.use(
     origin(origin, callback) {
       const allowedOrigins = new Set([
         config.frontendUrl,
+        "https://ai-office-worker-frontend.onrender.com",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
       ]);
