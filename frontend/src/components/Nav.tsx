@@ -54,12 +54,12 @@ export function Nav() {
   return (
     <>
       <aside className="fixed right-0 top-0 z-50 hidden h-screen w-60 flex-col border-l border-[var(--border)] bg-surface-secondary/95 px-3 py-4 shadow-card backdrop-blur-xl lg:flex">
-        <Link href="/dashboard" className="mb-6 flex min-w-0 items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-surface-hover">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] shadow-[0_14px_35px_rgba(99,102,241,0.35)]">
+        <Link href="/dashboard" className="relative mb-6 block h-16 rounded-2xl px-3 py-3 transition hover:bg-surface-hover">
+          <span className="absolute right-3 top-1/2 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-2xl bg-[#6366F1] shadow-[0_14px_35px_rgba(99,102,241,0.35)] ring-1 ring-[#818CF8]">
             <Bot className="h-6 w-6 text-white" />
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-lg font-extrabold leading-tight tracking-tight text-white drop-shadow-[0_0_18px_rgba(99,102,241,0.35)]">
+          <span className="absolute left-3 right-[72px] top-1/2 min-w-0 -translate-y-1/2 text-left">
+            <span className="block truncate text-xl font-extrabold leading-tight tracking-tight text-white drop-shadow-[0_0_18px_rgba(99,102,241,0.35)]">
               AI Office Worker
             </span>
             <span className="mt-0.5 block truncate text-[11px] font-medium text-ink-muted">Premium workspace</span>

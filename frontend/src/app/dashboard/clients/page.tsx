@@ -128,8 +128,8 @@ export default function ClientsPage() {
             <input className="pr-10" placeholder="חפש לקוח, מייל או WhatsApp" value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
           <div className="flex gap-2">
-            <button className={`btn btn-secondary ${view === "grid" ? "border-accent-primary text-ink-primary" : ""}`} onClick={() => setView("grid")}>Grid</button>
-            <button className={`btn btn-secondary ${view === "list" ? "border-accent-primary text-ink-primary" : ""}`} onClick={() => setView("list")}>List</button>
+            <button className={view === "grid" ? "btn" : "btn btn-toggle-inactive"} onClick={() => setView("grid")}>Grid</button>
+            <button className={view === "list" ? "btn" : "btn btn-toggle-inactive"} onClick={() => setView("list")}>List</button>
           </div>
         </div>
       </div>
