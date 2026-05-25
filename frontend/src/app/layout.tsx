@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { BackendWarmup } from "@/components/BackendWarmup";
 import { HelpCenter } from "@/components/HelpCenter";
 import "./globals.css";
 
@@ -15,6 +16,7 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl">
       <body>
+        <BackendWarmup />
         {children}
         <HelpCenter />
       </body>

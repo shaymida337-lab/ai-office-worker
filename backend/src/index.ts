@@ -39,7 +39,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", service: "ai-office-worker-api" });
+  res.json({ status: "ok" });
 });
 
 app.use("/auth", authRouter);
@@ -61,11 +61,3 @@ server.on("error", (err: NodeJS.ErrnoException) => {
   console.error("[api] Failed to start:", err.message);
   process.exit(1);
 });
-
-if (process.env.NODE_ENV === "production") {
-  setInterval(() => {
-    fetch("https://ai-office-worker-backend.onrender.com/health").catch(() => {
-      // Keep-alive failures should never crash the API process.
-    });
-  }, 14 * 60 * 1000);
-}

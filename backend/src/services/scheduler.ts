@@ -12,6 +12,7 @@ import { publishDueSocialPosts } from "./socialMedia.js";
 
 const TIMEZONE = "Asia/Jerusalem";
 const MAX_RETRIES = 3;
+const KEEP_ALIVE_URL = "https://ai-office-worker-backend.onrender.com/health";
 
 type ScanType = "daily" | "quick" | "monthly" | "health" | "first_time" | "whatsapp" | "social";
 type AssistantRow = { organizationId: string; ownerPhone: string; isActive: boolean };
@@ -35,8 +36,17 @@ class SchedulerService {
     cron.schedule("0 8 * * 0-5", () => this.withRetry("whatsapp", () => this.sendClientMorningBriefs()), { timezone: TIMEZONE });
     cron.schedule("0 10 * * 0-5", () => this.withRetry("whatsapp", () => this.sendPaymentReminders()), { timezone: TIMEZONE });
     cron.schedule("0 * * * *", () => this.withRetry("social", () => this.publishApprovedSocialPosts()), { timezone: TIMEZONE });
+    cron.schedule("*/8 * * * *", () => this.pingKeepAlive(), { timezone: TIMEZONE });
 
     console.log("[scheduler] All scheduled jobs started");
+  }
+
+  private async pingKeepAlive() {
+    try {
+      await fetch(KEEP_ALIVE_URL);
+    } catch (err) {
+      console.warn("[scheduler] Keep-alive ping failed", errorMessage(err));
+    }
   }
 
   async runFirstTimeScan(organizationId: string) {
