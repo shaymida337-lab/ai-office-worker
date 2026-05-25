@@ -35,6 +35,16 @@ type ClientsResponse = {
 };
 
 type ScanStatus = {
+  logs: Array<{
+    id: string;
+    type: string;
+    status: string;
+    found: number;
+    saved: number;
+    errors: string | null;
+    startedAt: string;
+    endedAt: string | null;
+  }>;
   last: {
     id: string;
     type: string;
@@ -81,9 +91,7 @@ export default function DashboardPage() {
       apiFetch<WhatsAppAssistantStats>("/api/whatsapp-assistant/stats")
         .then(setWhatsAppStats)
         .catch(() => undefined);
-      if (automation.last?.type === "first_time" && automation.last.endedAt) {
-        setFirstScanRunning(false);
-      }
+      setFirstScanRunning(Boolean(automation.logs?.some((log) => log.type === "first_time" && !log.endedAt)));
       setLastUpdatedAt(new Date());
     } catch (err) {
       if (isAuthError(err)) {
@@ -175,6 +183,9 @@ export default function DashboardPage() {
     { label: "כסף לשלם", value: `₪${stats.moneyToPay.toLocaleString("he-IL")}`, icon: WalletCards, detail: `${stats.upcomingPaymentsCount} תשלומים קרובים`, tone: "text-amber-300" },
     { label: "בריאות עסקית", value: `${stats.businessHealthScore}/100`, icon: HeartPulse, detail: `נחסכו ${stats.hoursSavedThisWeek} שעות`, tone: "text-violet-300" },
   ];
+  const initialScanLogs = scanStatus?.logs?.filter((log) => log.type === "first_time") ?? [];
+  const hasInitialScanDone = initialScanLogs.some((log) => ["success", "partial"].includes(log.status));
+  const latestInitialScan = initialScanLogs[0];
 
   return (
     <div className="container">
@@ -222,10 +233,21 @@ export default function DashboardPage() {
               <h2>לקוחות אחרונים</h2>
               <p className="text-sm">סטטוס פעילות וסיכום מהיר לכל לקוח.</p>
             </div>
-            <button className="btn btn-secondary" onClick={startFirstScan} disabled={firstScanRunning || syncing}>
-              {firstScanRunning ? "סריקה ראשונית רצה..." : "סריקה ראשונית"}
-            </button>
+            {!hasInitialScanDone && (
+              <button className="btn btn-secondary" onClick={startFirstScan} disabled={firstScanRunning || syncing}>
+                {firstScanRunning ? "סריקה ראשונית רצה..." : "סריקה ראשונית 90 יום"}
+              </button>
+            )}
           </div>
+          {!hasInitialScanDone && (
+            <div className="mb-5 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4">
+              <strong className="text-ink-primary">סריקה ראשונית 90 יום</strong>
+              <p className="mt-1 text-sm">
+                סריקה חד-פעמית של Gmail ל-90 הימים האחרונים לזיהוי לקוחות, חשבוניות ומשימות.
+                {latestInitialScan?.status === "failed" ? " הסריקה הקודמת נכשלה, אפשר לנסות שוב." : ""}
+              </p>
+            </div>
+          )}
           <div className="space-y-3">
             {(clients?.clients ?? []).slice(0, 5).map((client) => (
               <div key={client.id} className="group flex items-center justify-between gap-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary/60 p-4 transition hover:border-accent-primary/40 hover:bg-surface-hover">
