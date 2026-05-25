@@ -198,10 +198,28 @@ export default function DashboardPage() {
         </div>
         <div className="flex flex-wrap gap-3">
           <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק Gmail"}</button>
+          {!hasInitialScanDone && (
+            <button className="btn" onClick={startFirstScan} disabled={firstScanRunning || syncing}>
+              <Clock3 className="h-4 w-4" />
+              {firstScanRunning ? "סורק 90 יום..." : "סריקה ראשונית - 90 יום"}
+            </button>
+          )}
           <button className="btn btn-secondary" onClick={scanAllClients} disabled={syncing}><RefreshCcw className="h-4 w-4" />סרוק לקוחות</button>
           <button className="btn btn-secondary" onClick={() => router.push("/dashboard/clients")}><Plus className="h-4 w-4" />הוסף לקוח</button>
         </div>
       </div>
+      {firstScanRunning && (
+        <div className="mb-6 rounded-2xl border border-[#818CF8] bg-[#6366F1]/15 p-4 text-white">
+          <div className="mb-2 flex items-center gap-2 font-semibold">
+            <Clock3 className="h-4 w-4 animate-pulse" />
+            סריקה ראשונית מתבצעת עכשיו
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
+            <div className="h-full w-2/3 animate-pulse rounded-full bg-[#6366F1]" />
+          </div>
+          <p className="mt-2 text-sm text-white/80">סורק Gmail ל-90 הימים האחרונים ומזהה לקוחות, חשבוניות ומשימות.</p>
+        </div>
+      )}
 
       {error && <div className="toast border-red-400/30 text-red-200">{error}</div>}
 
@@ -233,11 +251,6 @@ export default function DashboardPage() {
               <h2>לקוחות אחרונים</h2>
               <p className="text-sm">סטטוס פעילות וסיכום מהיר לכל לקוח.</p>
             </div>
-            {!hasInitialScanDone && (
-              <button className="btn" onClick={startFirstScan} disabled={firstScanRunning || syncing}>
-                {firstScanRunning ? "סריקה ראשונית רצה..." : "סריקה ראשונית 90 יום"}
-              </button>
-            )}
           </div>
           {!hasInitialScanDone && (
             <div className="mb-5 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4">
