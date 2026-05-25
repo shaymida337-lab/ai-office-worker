@@ -63,6 +63,11 @@ type WhatsAppAssistantStats = {
   activeChats: number;
 };
 
+type ScanToast = {
+  type: "info" | "success" | "error";
+  text: string;
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -75,6 +80,7 @@ export default function DashboardPage() {
   const [syncing, setSyncing] = useState(false);
   const [firstScanRunning, setFirstScanRunning] = useState(false);
   const [firstScanSummary, setFirstScanSummary] = useState("");
+  const [scanToast, setScanToast] = useState<ScanToast | null>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -113,7 +119,9 @@ export default function DashboardPage() {
 
   async function startFirstScan() {
     setFirstScanRunning(true);
-    setFirstScanSummary("");
+    const progressMessage = "סורק מיילים... זה עלול לקחת מספר דקות";
+    setFirstScanSummary(progressMessage);
+    setScanToast({ type: "info", text: progressMessage });
     setError("");
     try {
       await apiFetch<{ emailsProcessed: number; paymentsCreated: number; tasksCreated: number; inProgress?: boolean; message?: string }>(
@@ -123,9 +131,12 @@ export default function DashboardPage() {
       await load();
       const updatedClients = await apiFetch<ClientsResponse>("/api/clients");
       setClients(updatedClients);
-      setFirstScanSummary(`נמצאו ${updatedClients.clients.length} לקוחות, ${updatedClients.totals.invoices} חשבוניות`);
+      const successMessage = `✅ הסריקה הושלמה! נמצאו ${updatedClients.clients.length} לקוחות ו-${updatedClients.totals.invoices} חשבוניות`;
+      setFirstScanSummary(successMessage);
+      setScanToast({ type: "success", text: successMessage });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "סריקה ראשונית נכשלה");
+      const errorMessage = e instanceof Error ? e.message : "סריקה ראשונית נכשלה";
+      setScanToast({ type: "error", text: errorMessage });
     } finally {
       setFirstScanRunning(false);
     }
@@ -219,12 +230,13 @@ export default function DashboardPage() {
             </p>
           </div>
           <button
-            className="inline-flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl border border-white/35 bg-white px-6 py-4 text-[17px] font-extrabold text-[#4F46E5] shadow-[0_18px_42px_rgba(15,23,42,0.24)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-80"
+            type="button"
+            className="inline-flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl border border-[#818CF8] bg-[#6366F1] px-6 py-4 text-[18px] font-bold text-white shadow-[0_18px_42px_rgba(15,23,42,0.28)] transition hover:scale-[1.01] hover:bg-[#7C3AED] disabled:cursor-not-allowed disabled:opacity-80"
             onClick={startFirstScan}
             disabled={firstScanRunning || syncing}
           >
-            <Clock3 className={`h-5 w-5 ${firstScanRunning ? "animate-spin" : ""}`} />
-            {firstScanRunning ? "סורק עכשיו..." : "הפעל סריקה ראשונית"}
+            {firstScanRunning && <RefreshCcw className="h-5 w-5 animate-spin" />}
+            {firstScanRunning ? "סורק מיילים..." : "🕐 הפעל סריקה ראשונית - 90 יום"}
           </button>
         </div>
         {firstScanRunning && (
@@ -238,7 +250,7 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-        {firstScanSummary && !firstScanRunning && (
+        {firstScanSummary && (
           <div className="mt-5 rounded-2xl border border-white/25 bg-white/15 p-4 text-[15px] font-bold text-white">
             {firstScanSummary}
           </div>
@@ -246,6 +258,18 @@ export default function DashboardPage() {
       </section>
 
       {error && <div className="toast border-red-400/30 text-red-200">{error}</div>}
+      {scanToast && (
+        <div
+          className={[
+            "toast",
+            scanToast.type === "success" ? "border-emerald-400/30 text-emerald-200" : "",
+            scanToast.type === "error" ? "border-red-400/30 text-red-200" : "",
+            scanToast.type === "info" ? "border-[#818CF8]/40 text-white" : "",
+          ].join(" ")}
+        >
+          {scanToast.text}
+        </div>
+      )}
 
       <section className="grid mb-8">
         {kpis.map((kpi) => {
