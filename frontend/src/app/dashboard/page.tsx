@@ -12,6 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://ai-office-worker-backend.onrender.com";
+const GOOGLE_AUTH_DIRECT_URL = `${API_URL}/auth/google`;
 
 type ClientSummary = {
   id: string;
@@ -239,15 +240,14 @@ export default function DashboardPage() {
         </div>
       )}
       <div style={{ marginBottom: "1rem" }}>
-        <button
+        <a
           className="btn btn-secondary"
           onClick={handleConnectGmail}
-          disabled={false}
-          type="button"
+          href={GOOGLE_AUTH_DIRECT_URL}
           style={{ marginLeft: "0.75rem" }}
         >
           {gmailStatus?.connected ? "Gmail מחובר ✓" : "Connect Gmail"}
-        </button>
+        </a>
         <button className="btn" onClick={runSync} disabled={syncing}>
           {syncing ? "סורק Gmail..." : "סרוק Gmail עכשיו"}
         </button>
