@@ -54,13 +54,15 @@ export function Nav() {
   return (
     <>
       <aside className="fixed right-0 top-0 z-50 hidden h-screen w-60 flex-col border-l border-[var(--border)] bg-surface-secondary/95 px-3 py-4 shadow-card backdrop-blur-xl lg:flex">
-        <Link href="/dashboard" className="mb-6 flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-surface-hover">
-          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] shadow-[0_14px_35px_rgba(99,102,241,0.35)]">
+        <Link href="/dashboard" className="mb-6 flex min-w-0 items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-surface-hover">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] shadow-[0_14px_35px_rgba(99,102,241,0.35)]">
             <Bot className="h-6 w-6 text-white" />
           </span>
-          <span>
-            <span className="block text-sm font-bold text-ink-primary">AI Office Worker</span>
-            <span className="block text-xs text-ink-muted">Premium workspace</span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate bg-[linear-gradient(135deg,#8B5CF6,#6366F1)] bg-clip-text text-lg font-extrabold leading-tight tracking-tight text-transparent">
+              AI Office Worker
+            </span>
+            <span className="mt-0.5 block truncate text-[11px] font-medium text-ink-muted">Premium workspace</span>
           </span>
         </Link>
 
