@@ -74,6 +74,7 @@ export default function DashboardPage() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [firstScanRunning, setFirstScanRunning] = useState(false);
+  const [firstScanSummary, setFirstScanSummary] = useState("");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -113,13 +114,20 @@ export default function DashboardPage() {
 
   async function startFirstScan() {
     setFirstScanRunning(true);
-    setError("ברוך הבא! מתחיל סריקה ראשונית...");
+    setFirstScanSummary("");
+    setError("");
     try {
-      await apiFetch<{ started: boolean; message: string }>("/api/automation/first-scan", { method: "POST" });
-      setError("סורק Gmail... מזהה חשבוניות... שומר ב-Drive ומעדכן Sheets...");
+      await apiFetch<{ emailsProcessed: number; paymentsCreated: number; tasksCreated: number; inProgress?: boolean; message?: string }>(
+        "/api/gmail/scan",
+        { method: "POST", body: JSON.stringify({ daysBack: 90 }) }
+      );
       await load();
+      const updatedClients = await apiFetch<ClientsResponse>("/api/clients");
+      setClients(updatedClients);
+      setFirstScanSummary(`נמצאו ${updatedClients.clients.length} לקוחות, ${updatedClients.totals.invoices} חשבוניות`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "סריקה ראשונית נכשלה");
+    } finally {
       setFirstScanRunning(false);
     }
   }
@@ -198,28 +206,49 @@ export default function DashboardPage() {
         </div>
         <div className="flex flex-wrap gap-3">
           <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק Gmail"}</button>
-          {!hasInitialScanDone && (
-            <button className="btn" onClick={startFirstScan} disabled={firstScanRunning || syncing}>
-              <Clock3 className="h-4 w-4" />
-              {firstScanRunning ? "סורק 90 יום..." : "סריקה ראשונית - 90 יום"}
-            </button>
-          )}
           <button className="btn btn-secondary" onClick={scanAllClients} disabled={syncing}><RefreshCcw className="h-4 w-4" />סרוק לקוחות</button>
           <button className="btn btn-secondary" onClick={() => router.push("/dashboard/clients")}><Plus className="h-4 w-4" />הוסף לקוח</button>
         </div>
       </div>
-      {firstScanRunning && (
-        <div className="mb-6 rounded-2xl border border-[#818CF8] bg-[#6366F1]/15 p-4 text-white">
-          <div className="mb-2 flex items-center gap-2 font-semibold">
-            <Clock3 className="h-4 w-4 animate-pulse" />
-            סריקה ראשונית מתבצעת עכשיו
+
+      <section className="mb-8 rounded-3xl border border-[#818CF8]/70 bg-[linear-gradient(135deg,rgba(99,102,241,0.95),rgba(139,92,246,0.92))] p-6 text-white shadow-[0_24px_60px_rgba(99,102,241,0.35)]">
+        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[14px] font-semibold text-white">
+              <Clock3 className="h-4 w-4" />
+              סריקה ראשונית 90 יום
+            </div>
+            <h2 className="text-2xl font-extrabold text-white">הפעל סריקה ראשונית - 90 יום אחורה</h2>
+            <p className="mt-2 text-[14px] font-medium text-white/90">
+              סרוק את כל המיילים מ-90 הימים האחרונים למציאת לקוחות וחשבוניות
+            </p>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
-            <div className="h-full w-2/3 animate-pulse rounded-full bg-[#6366F1]" />
-          </div>
-          <p className="mt-2 text-sm text-white/80">סורק Gmail ל-90 הימים האחרונים ומזהה לקוחות, חשבוניות ומשימות.</p>
+          <button
+            className="inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl border border-white/35 bg-white px-6 py-4 text-[16px] font-extrabold text-[#4F46E5] shadow-[0_18px_42px_rgba(15,23,42,0.24)] transition hover:scale-[1.02] md:w-auto md:min-w-80"
+            onClick={startFirstScan}
+            disabled={firstScanRunning || syncing}
+          >
+            <Clock3 className={`h-5 w-5 ${firstScanRunning ? "animate-spin" : ""}`} />
+            {firstScanRunning ? "סורק עכשיו..." : "הפעל סריקה ראשונית"}
+          </button>
         </div>
-      )}
+        {firstScanRunning && (
+          <div className="mt-5">
+            <div className="mb-2 flex items-center justify-between text-[14px] font-semibold text-white">
+              <span>סורק Gmail ומעדכן נתונים...</span>
+              <span>90 יום</span>
+            </div>
+            <div className="h-3 overflow-hidden rounded-full bg-white/20">
+              <div className="h-full w-2/3 animate-pulse rounded-full bg-white shadow-[0_0_24px_rgba(255,255,255,0.7)]" />
+            </div>
+          </div>
+        )}
+        {firstScanSummary && !firstScanRunning && (
+          <div className="mt-5 rounded-2xl border border-white/25 bg-white/15 p-4 text-[15px] font-bold text-white">
+            {firstScanSummary}
+          </div>
+        )}
+      </section>
 
       {error && <div className="toast border-red-400/30 text-red-200">{error}</div>}
 

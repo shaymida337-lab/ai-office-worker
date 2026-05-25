@@ -325,10 +325,13 @@ apiRouter.post("/whatsapp-assistant/test/:type", async (req, res) => {
 async function scanGmail(req: Request, res: Response) {
   try {
     const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
-    const result = await syncGmailForOrganization(req.auth!.organizationId);
+    const rawDaysBack = Number(req.body?.daysBack ?? req.query.daysBack);
+    const daysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0 ? Math.ceil(rawDaysBack) : undefined;
+    const result = await syncGmailForOrganization(req.auth!.organizationId, { daysBack });
     res.json({
       ...result,
       emailsFound: result.emailsProcessed,
+      daysBack: daysBack ?? 30,
       success: true,
     });
   } catch (err) {
