@@ -196,6 +196,9 @@ export default function ClientsPage() {
               <a className="btn btn-secondary" href={connectUrl(client.id)} onClick={() => logConnectGmail(client.id)}>
                 חבר Gmail
               </a>
+              <a href={connectUrl(client.id)} onClick={() => logConnectGmail(client.id)} style={{ marginRight: "0.75rem" }}>
+                לינק Gmail ישיר
+              </a>
               <button className="btn btn-secondary" onClick={() => scanClient(client.id)}>
                 סרוק
               </button>

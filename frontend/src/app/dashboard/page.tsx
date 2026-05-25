@@ -134,26 +134,13 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleConnectGmail() {
+  function handleConnectGmail() {
     console.log("Connecting Gmail...");
     console.log("API URL:", process.env.NEXT_PUBLIC_API_URL);
+    console.log("Button clicked");
+    console.log("Google auth direct URL:", GOOGLE_AUTH_DIRECT_URL);
     setError("");
-    try {
-      console.log("Button clicked");
-      const response = await fetch(`${API_URL}/auth/google/url`);
-      console.log("Google auth URL response:", response.status);
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error((body as { error?: string }).error ?? "Could not start Google OAuth");
-      }
-      const data = (await response.json()) as { url?: string };
-      console.log("Google auth redirect URL:", data.url);
-      if (!data.url) throw new Error("Missing Google OAuth URL");
-      window.location.assign(data.url);
-    } catch (err) {
-      console.error("Connect Gmail failed", err);
-      setError(err instanceof Error ? err.message : "Connect Gmail failed");
-    }
+    window.location.href = GOOGLE_AUTH_DIRECT_URL;
   }
 
   async function scanAllClients() {
@@ -247,6 +234,9 @@ export default function DashboardPage() {
           style={{ marginLeft: "0.75rem" }}
         >
           {gmailStatus?.connected ? "Gmail מחובר ✓" : "Connect Gmail"}
+        </a>
+        <a href={GOOGLE_AUTH_DIRECT_URL} style={{ marginRight: "0.75rem", fontSize: "0.9rem" }}>
+          פתח חיבור Gmail ישיר
         </a>
         <button className="btn" onClick={runSync} disabled={syncing}>
           {syncing ? "סורק Gmail..." : "סרוק Gmail עכשיו"}
