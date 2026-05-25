@@ -5,8 +5,8 @@ services:
     plan: free
     region: oregon
     autoDeploy: true
-    buildCommand: "cd backend && npm install && npm run build"
-    startCommand: "cd backend && node dist/index.js"
+    buildCommand: "cd backend && npm install && npm run db:generate && npm run build"
+    startCommand: "cd backend && npm run db:migrate:deploy && node dist/index.js"
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
