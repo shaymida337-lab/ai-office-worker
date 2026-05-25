@@ -25,6 +25,7 @@
     "googleapis": "^148.0.0",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",
+    "pdf-parse": "^2.4.5",
     "pdfkit": "^0.18.0",
     "qrcode": "^1.5.4",
     "twilio": "^5.13.1",

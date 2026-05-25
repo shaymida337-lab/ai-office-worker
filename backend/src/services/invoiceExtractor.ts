@@ -59,11 +59,12 @@ function normalizeInvoiceData(
 ): InvoiceData {
   const date = normalizeDate(firstString(parsed, ["date", "invoiceDate"])) ?? fallback.date;
   const dueDate = normalizeDate(firstString(parsed, ["dueDate", "due_date"])) ?? fallback.dueDate;
+  const parsedAmount = firstNumber(parsed, ["amount", "total", "sum", "totalAmount", "amountDue", "balanceDue"]);
   return {
     clientName: firstString(parsed, ["clientName", "customer", "customerName"]) ?? clientFallback?.name ?? fallback.clientName,
     clientEmail: firstString(parsed, ["clientEmail", "email"]) ?? clientFallback?.email ?? fallback.clientEmail,
     invoiceNumber: firstString(parsed, ["invoiceNumber", "invoice_number", "number"]) ?? fallback.invoiceNumber,
-    amount: firstNumber(parsed, ["amount", "total", "sum"]) ?? fallback.amount,
+    amount: parsedAmount && parsedAmount > 0 ? parsedAmount : fallback.amount,
     currency: normalizeCurrency(firstString(parsed, ["currency"]) ?? fallback.currency),
     date,
     dueDate,
@@ -113,7 +114,7 @@ function firstString(source: Record<string, unknown>, keys: string[]): string | 
 function firstNumber(source: Record<string, unknown>, keys: string[]): number | null {
   for (const key of keys) {
     const value = source[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
     if (typeof value === "string") {
       const amount = extractAmount(value);
       if (amount !== null) return amount;
@@ -123,10 +124,74 @@ function firstNumber(source: Record<string, unknown>, keys: string[]): number | 
 }
 
 function extractAmount(text: string): number | null {
-  const match = text.match(/(?:₪|ILS|USD|EUR|\$|€)?\s*([0-9]{1,3}(?:[,\s][0-9]{3})*(?:[.][0-9]{1,2})?|[0-9]+(?:[.,][0-9]{1,2})?)/i);
-  if (!match) return null;
-  const amount = Number(match[1].replace(/\s/g, "").replace(/,/g, ""));
+  const normalized = text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\u00a0/g, " ")
+    .replace(/[־–—]/g, "-");
+  const candidates: Array<{ raw: string; score: number }> = [];
+
+  const labelPattern =
+    /(?:סה["״']?כ|סך\s*הכל|סכום\s*(?:לתשלום)?|לתשלום|לתשלום\s*עד|יתרה\s*לתשלום|total\s*(?:due|amount)?|amount\s*(?:due)?|balance\s*due|grand\s*total)[^\d₪$€]{0,40}(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*)(?:\s*(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur))?/gi;
+  collectMatches(normalized, labelPattern, 100, candidates);
+
+  collectMatches(
+    normalized,
+    /(?:₪|ils|nis|ש["״']?ח)\s*([0-9][0-9.,\s]*)/gi,
+    80,
+    candidates
+  );
+  collectMatches(
+    normalized,
+    /([0-9][0-9.,\s]*)\s*(?:₪|ils|nis|ש["״']?ח)/gi,
+    80,
+    candidates
+  );
+  collectMatches(normalized, /(?:\$|usd)\s*([0-9][0-9.,\s]*)|([0-9][0-9.,\s]*)\s*(?:\$|usd)/gi, 70, candidates);
+  collectMatches(normalized, /(?:€|eur)\s*([0-9][0-9.,\s]*)|([0-9][0-9.,\s]*)\s*(?:€|eur)/gi, 70, candidates);
+
+  const amounts = candidates
+    .map((candidate) => ({ amount: parseAmount(candidate.raw), score: candidate.score }))
+    .filter((candidate): candidate is { amount: number; score: number } => candidate.amount !== null && candidate.amount > 0)
+    .filter((candidate) => !looksLikeDateOrYear(candidate.amount));
+
+  if (!amounts.length) return null;
+  amounts.sort((a, b) => b.score - a.score || b.amount - a.amount);
+  return amounts[0].amount;
+}
+
+function collectMatches(text: string, pattern: RegExp, score: number, out: Array<{ raw: string; score: number }>) {
+  for (const match of text.matchAll(pattern)) {
+    const raw = match.slice(1).find((group) => group && /\d/.test(group));
+    if (raw) out.push({ raw, score });
+  }
+}
+
+function parseAmount(raw: string): number | null {
+  const cleaned = raw.replace(/[^\d.,]/g, "");
+  if (!cleaned) return null;
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  const decimalSeparator = lastComma > lastDot ? "," : ".";
+  let normalized = cleaned;
+
+  if (lastComma !== -1 && lastDot !== -1) {
+    normalized = cleaned
+      .replace(new RegExp(`\\${decimalSeparator === "," ? "." : ","}`, "g"), "")
+      .replace(decimalSeparator, ".");
+  } else if (lastComma !== -1) {
+    const decimals = cleaned.length - lastComma - 1;
+    normalized = decimals === 2 ? cleaned.replace(",", ".") : cleaned.replace(/,/g, "");
+  } else if (lastDot !== -1) {
+    const decimals = cleaned.length - lastDot - 1;
+    normalized = decimals === 2 ? cleaned : cleaned.replace(/\./g, "");
+  }
+
+  const amount = Number(normalized);
   return Number.isFinite(amount) ? amount : null;
+}
+
+function looksLikeDateOrYear(amount: number) {
+  return Number.isInteger(amount) && amount >= 1900 && amount <= 2099;
 }
 
 function extractDate(text: string): string | null {

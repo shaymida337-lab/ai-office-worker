@@ -55,9 +55,11 @@ export async function scanForInvoices(clientId: string, options: ScanOptions = {
         const attachment = await gmail.users.messages.attachments.get({ userId: "me", messageId: ref.id, id: attachmentId });
         attachments.push({ filename: part.filename, mimeType: part.mimeType ?? "application/pdf", buffer: decodeBase64Url(attachment.data.data ?? "") });
       }
+      const pdfText = (await Promise.all(attachments.map((attachment) => extractPdfText(attachment.buffer)))).filter(Boolean).join("\n\n");
+      const bodyForExtraction = pdfText ? `${bodyText}\n\n--- PDF ATTACHMENT TEXT ---\n${pdfText}` : bodyText;
 
       const invoice = await extractInvoiceData(
-        bodyText,
+        bodyForExtraction,
         subject,
         parts.map((part) => ({ filename: part.filename, mimeType: part.mimeType })),
         { name: client.name, email: client.email }
@@ -195,4 +197,19 @@ function parseDate(value: string, fallback: Date | null): Date {
 
 function errorMessage(err: unknown) {
   return err instanceof Error ? err.message : String(err);
+}
+
+async function extractPdfText(buffer: Buffer) {
+  let parser: { getText(): Promise<{ text?: string }>; destroy(): Promise<void> } | null = null;
+  try {
+    const { PDFParse } = await import("pdf-parse");
+    parser = new PDFParse({ data: new Uint8Array(buffer) });
+    const parsed = await parser.getText();
+    return parsed.text?.trim() ?? "";
+  } catch (err) {
+    console.warn("[invoiceScanner] PDF text extraction failed", errorMessage(err));
+    return "";
+  } finally {
+    await parser?.destroy().catch(() => undefined);
+  }
 }

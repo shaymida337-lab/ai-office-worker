@@ -178,12 +178,10 @@ function firstString(source: Record<string, unknown>, keys: string[]): string | 
 function firstNumber(source: Record<string, unknown>, keys: string[]): number | null {
   for (const key of keys) {
     const value = source[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
     if (typeof value === "string") {
-      const numeric = value.replace(/[^\d.]/g, "");
-      if (!numeric) continue;
-      const amount = Number(numeric);
-      if (Number.isFinite(amount)) return amount;
+      const amount = extractAmount(value);
+      if (amount !== null) return amount;
     }
   }
   return null;
@@ -230,11 +228,48 @@ function extractSupplier(sender?: string): string | null {
 }
 
 function extractAmount(text: string): number | null {
-  const match =
-    text.match(/(?:₪|ils|nis)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i) ??
-    text.match(/([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:₪|ils|nis)/i);
-  if (!match?.[1]) return null;
-  const amount = Number(match[1].replace(/,/g, ""));
+  const candidates: Array<{ raw: string; score: number }> = [];
+  const normalized = text.replace(/&nbsp;/gi, " ").replace(/\u00a0/g, " ");
+  collectAmountMatches(
+    normalized,
+    /(?:סה["״']?כ|סך\s*הכל|סכום\s*(?:לתשלום)?|לתשלום|total\s*(?:due|amount)?|amount\s*(?:due)?|balance\s*due)[^\d₪$€]{0,40}(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*)(?:\s*(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur))?/gi,
+    100,
+    candidates
+  );
+  collectAmountMatches(normalized, /(?:₪|ils|nis|ש["״']?ח)\s*([0-9][0-9.,\s]*)/gi, 80, candidates);
+  collectAmountMatches(normalized, /([0-9][0-9.,\s]*)\s*(?:₪|ils|nis|ש["״']?ח)/gi, 80, candidates);
+
+  const amounts = candidates
+    .map((candidate) => ({ amount: parseAmount(candidate.raw), score: candidate.score }))
+    .filter((candidate): candidate is { amount: number; score: number } => candidate.amount !== null && candidate.amount > 0)
+    .filter((candidate) => !(Number.isInteger(candidate.amount) && candidate.amount >= 1900 && candidate.amount <= 2099));
+  if (!amounts.length) return null;
+  amounts.sort((a, b) => b.score - a.score || b.amount - a.amount);
+  return amounts[0].amount;
+}
+
+function collectAmountMatches(text: string, pattern: RegExp, score: number, out: Array<{ raw: string; score: number }>) {
+  for (const match of text.matchAll(pattern)) {
+    const raw = match.slice(1).find((group) => group && /\d/.test(group));
+    if (raw) out.push({ raw, score });
+  }
+}
+
+function parseAmount(raw: string): number | null {
+  const cleaned = raw.replace(/[^\d.,]/g, "");
+  if (!cleaned) return null;
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  const decimalSeparator = lastComma > lastDot ? "," : ".";
+  let normalized = cleaned;
+  if (lastComma !== -1 && lastDot !== -1) {
+    normalized = cleaned.replace(new RegExp(`\\${decimalSeparator === "," ? "." : ","}`, "g"), "").replace(decimalSeparator, ".");
+  } else if (lastComma !== -1) {
+    normalized = cleaned.length - lastComma - 1 === 2 ? cleaned.replace(",", ".") : cleaned.replace(/,/g, "");
+  } else if (lastDot !== -1) {
+    normalized = cleaned.length - lastDot - 1 === 2 ? cleaned : cleaned.replace(/\./g, "");
+  }
+  const amount = Number(normalized);
   return Number.isFinite(amount) ? amount : null;
 }
 

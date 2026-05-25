@@ -86,9 +86,11 @@ export async function syncGmailForClient(clientId: string) {
     emailsProcessed++;
 
     const parts = collectParts(full.data.payload as PayloadPart | undefined);
+    const pdfText = await extractPdfTextFromParts(gmail, msgRef.id, parts);
+    const bodyForAnalysis = pdfText ? `${bodyText}\n\n--- PDF ATTACHMENT TEXT ---\n${pdfText}` : bodyText;
     const analysis = await analyzeEmailContent({
       subject,
-      body: bodyText,
+      body: bodyForAnalysis,
       filenames: parts.map((p) => p.filename).filter(Boolean) as string[],
       sender: from,
     });
@@ -271,4 +273,28 @@ function extractBody(payload?: PayloadPart): string {
 
 function decodeAttachment(data: string): Buffer {
   return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+}
+
+async function extractPdfTextFromParts(gmail: GmailClient, messageId: string, parts: PayloadPart[]) {
+  const pdfParts = parts.filter((part) => part.body?.attachmentId && (part.mimeType === "application/pdf" || /\.pdf$/i.test(part.filename ?? "")));
+  const texts: string[] = [];
+  for (const part of pdfParts) {
+    let parser: { getText(): Promise<{ text?: string }>; destroy(): Promise<void> } | null = null;
+    try {
+      const attachment = await gmail.users.messages.attachments.get({
+        userId: "me",
+        messageId,
+        id: part.body!.attachmentId!,
+      });
+      const { PDFParse } = await import("pdf-parse");
+      parser = new PDFParse({ data: new Uint8Array(decodeAttachment(attachment.data.data ?? "")) });
+      const parsed = await parser.getText();
+      if (parsed.text?.trim()) texts.push(parsed.text.trim());
+    } catch (err) {
+      console.warn("[client-gmail-sync] PDF text extraction failed", err instanceof Error ? err.message : String(err));
+    } finally {
+      await parser?.destroy().catch(() => undefined);
+    }
+  }
+  return texts.join("\n\n");
 }
