@@ -85,6 +85,9 @@ model Client {
   invoices         Invoice[]
   clientWhatsApp   ClientWhatsApp?
   whatsAppMessages WhatsAppMessage[]
+  socialAccounts   SocialAccount[]
+  socialPosts      SocialPost[]
+  socialSettings   SocialSettings?
 
   @@index([organizationId, isActive])
   @@index([organizationId, whatsappNumber])
@@ -229,6 +232,59 @@ model SocialDraft {
   updatedAt      DateTime @updatedAt
 
   @@index([organizationId, status])
+}
+
+model SocialAccount {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  platform    String
+  accessToken String
+  pageId      String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([clientId, platform])
+  @@index([clientId, isActive])
+}
+
+model SocialPost {
+  id            String   @id @default(cuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  platform      String
+  content       String
+  imageUrl      String?
+  canvaDesignId String?
+  scheduledAt   DateTime
+  status        String
+  approvalToken String?
+  approvedAt    DateTime?
+  publishedAt   DateTime?
+  errorMessage   String?
+  retryCount     Int      @default(0)
+  analytics      Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([clientId, scheduledAt])
+  @@index([status, scheduledAt])
+  @@index([approvalToken])
+}
+
+model SocialSettings {
+  id              String  @id @default(cuid())
+  clientId        String  @unique
+  client          Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  businessType    String
+  brandColors     String?
+  brandVoice      String?
+  postsPerWeek    Int     @default(3)
+  targetAudience  String?
+  canvaTemplateId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model Task {

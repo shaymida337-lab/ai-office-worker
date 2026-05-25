@@ -69,6 +69,21 @@ export const config = {
     ),
   },
 
+  canva: {
+    clientId: optional("CANVA_CLIENT_ID"),
+    clientSecret: optional("CANVA_CLIENT_SECRET"),
+  },
+
+  facebook: {
+    appId: optional("FACEBOOK_APP_ID"),
+    appSecret: optional("FACEBOOK_APP_SECRET"),
+  },
+
+  linkedin: {
+    clientId: optional("LINKEDIN_CLIENT_ID"),
+    clientSecret: optional("LINKEDIN_CLIENT_SECRET"),
+  },
+
   driveRootFolder: optional("GOOGLE_DRIVE_ROOT", "AI Office Worker"),
 };
 

@@ -8,11 +8,12 @@ import { generateAccountantReport } from "./accountantReports.js";
 import { previousMonth } from "./vatService.js";
 import { notificationGuard } from "./notificationGuard.js";
 import { clientTemplates, ownerTemplates } from "./messageTemplates.js";
+import { publishDueSocialPosts } from "./socialMedia.js";
 
 const TIMEZONE = "Asia/Jerusalem";
 const MAX_RETRIES = 3;
 
-type ScanType = "daily" | "quick" | "monthly" | "health" | "first_time" | "whatsapp";
+type ScanType = "daily" | "quick" | "monthly" | "health" | "first_time" | "whatsapp" | "social";
 type AssistantRow = { organizationId: string; ownerPhone: string; isActive: boolean };
 type RuleFlags = { ownerMorningReport: boolean; clientMorningSummary: boolean; clientPaymentReminder: boolean; clientPaymentDaysWait: number };
 
@@ -33,6 +34,7 @@ class SchedulerService {
     cron.schedule("30 7 * * 0-5", () => this.withRetry("whatsapp", () => this.sendOwnerMorningReports()), { timezone: TIMEZONE });
     cron.schedule("0 8 * * 0-5", () => this.withRetry("whatsapp", () => this.sendClientMorningBriefs()), { timezone: TIMEZONE });
     cron.schedule("0 10 * * 0-5", () => this.withRetry("whatsapp", () => this.sendPaymentReminders()), { timezone: TIMEZONE });
+    cron.schedule("0 * * * *", () => this.withRetry("social", () => this.publishApprovedSocialPosts()), { timezone: TIMEZONE });
 
     console.log("[scheduler] All scheduled jobs started");
   }
@@ -248,6 +250,10 @@ class SchedulerService {
         console.error(`[scheduler] Payment reminder failed invoice=${invoice.id}`, err);
       }
     }
+  }
+
+  async publishApprovedSocialPosts() {
+    await publishDueSocialPosts();
   }
 
   private async withRetry(type: ScanType, run: () => Promise<void>) {
