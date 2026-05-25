@@ -3,6 +3,49 @@ import { prisma } from "../lib/prisma.js";
 import { getDashboardStats } from "./dashboard.js";
 
 type WhatsAppMetadata = { ownerWhatsApp?: string };
+type TwilioMessageClient = {
+  messages: {
+    create(args: { from: string | undefined; to: string; body: string }): Promise<{ sid: string }>;
+  };
+};
+
+const TWILIO_SEND_RETRIES = 2;
+
+function errorMessage(err: unknown) {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendTwilioMessageWithRetry(
+  client: TwilioMessageClient,
+  args: { from: string | undefined; to: string; body: string },
+  context: Record<string, string | number | boolean | null | undefined>
+) {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= TWILIO_SEND_RETRIES + 1; attempt += 1) {
+    try {
+      return await client.messages.create(args);
+    } catch (err) {
+      lastError = err;
+      console.error("[twilio] send attempt failed", {
+        ...context,
+        attempt,
+        maxAttempts: TWILIO_SEND_RETRIES + 1,
+        error: errorMessage(err),
+      });
+
+      if (attempt <= TWILIO_SEND_RETRIES) {
+        await wait(500 * attempt);
+      }
+    }
+  }
+
+  throw lastError;
+}
 
 async function getTwilioClient() {
   if (!hasTwilio()) return null;
@@ -99,11 +142,15 @@ export async function sendWhatsAppMessage(organizationId: string, body: string) 
   const settings = await getWhatsAppSettings(organizationId);
   if (!client || !settings.ownerWhatsApp) return { sent: false, reason: "Twilio is not configured" };
 
-  const message = await client.messages.create({
-    from: config.twilio.whatsappFrom,
-    to: settings.ownerWhatsApp,
-    body,
-  });
+  const message = await sendTwilioMessageWithRetry(
+    client as TwilioMessageClient,
+    {
+      from: config.twilio.whatsappFrom,
+      to: settings.ownerWhatsApp,
+      body,
+    },
+    { organizationId, to: settings.ownerWhatsApp, target: "owner" }
+  );
 
   await prisma.whatsAppLog.create({
     data: {
@@ -126,11 +173,21 @@ export async function sendClientWhatsAppMessage(clientId: string, body: string, 
   if (!twilioClient) return { sent: false, reason: "Twilio is not configured" };
 
   try {
-    const message = await twilioClient.messages.create({
-      from: config.twilio.whatsappFrom,
-      to: clientRecord.whatsappNumber,
-      body,
-    });
+    const message = await sendTwilioMessageWithRetry(
+      twilioClient as TwilioMessageClient,
+      {
+        from: config.twilio.whatsappFrom,
+        to: clientRecord.whatsappNumber,
+        body,
+      },
+      {
+        organizationId: clientRecord.organizationId,
+        clientId,
+        to: clientRecord.whatsappNumber,
+        target: "client",
+        aiGenerated,
+      }
+    );
     await prisma.whatsAppLog.create({
       data: {
         organizationId: clientRecord.organizationId,
@@ -145,7 +202,13 @@ export async function sendClientWhatsAppMessage(clientId: string, body: string, 
     });
     return { sent: true, sid: message.sid };
   } catch (err) {
-    console.error("[twilio] send failed", { clientId, error: err instanceof Error ? err.message : String(err) });
+    console.error("[twilio] send failed", {
+      organizationId: clientRecord.organizationId,
+      clientId,
+      to: clientRecord.whatsappNumber,
+      target: "client",
+      error: errorMessage(err),
+    });
     throw err;
   }
 }
