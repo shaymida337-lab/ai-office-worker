@@ -11,9 +11,6 @@ import {
 } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://ai-office-worker-backend.onrender.com";
-const GOOGLE_AUTH_DIRECT_URL = `${API_URL}/auth/google`;
-
 type ClientSummary = {
   id: string;
   name: string;
@@ -134,15 +131,6 @@ export default function DashboardPage() {
     }
   }
 
-  function handleConnectGmail() {
-    console.log("Connecting Gmail...");
-    console.log("API URL:", process.env.NEXT_PUBLIC_API_URL);
-    console.log("Button clicked");
-    console.log("Google auth direct URL:", GOOGLE_AUTH_DIRECT_URL);
-    setError("");
-    window.location.href = GOOGLE_AUTH_DIRECT_URL;
-  }
-
   async function scanAllClients() {
     setSyncing(true);
     setError("");
@@ -228,15 +216,19 @@ export default function DashboardPage() {
       )}
       <div style={{ marginBottom: "1rem" }}>
         <a
-          className="btn btn-secondary"
-          onClick={handleConnectGmail}
-          href={GOOGLE_AUTH_DIRECT_URL}
-          style={{ marginLeft: "0.75rem" }}
+          href="https://ai-office-worker-backend.onrender.com/auth/google"
+          style={{
+            display: "block",
+            padding: "12px",
+            background: "#4285f4",
+            color: "white",
+            borderRadius: "8px",
+            textAlign: "center",
+            textDecoration: "none",
+            marginBottom: "0.75rem",
+          }}
         >
-          {gmailStatus?.connected ? "Gmail מחובר ✓" : "Connect Gmail"}
-        </a>
-        <a href={GOOGLE_AUTH_DIRECT_URL} style={{ marginRight: "0.75rem", fontSize: "0.9rem" }}>
-          פתח חיבור Gmail ישיר
+          התחבר עם Google
         </a>
         <button className="btn" onClick={runSync} disabled={syncing}>
           {syncing ? "סורק Gmail..." : "סרוק Gmail עכשיו"}
