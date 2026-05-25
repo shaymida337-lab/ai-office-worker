@@ -79,6 +79,8 @@ model Client {
   emailMessages    EmailMessage[]
   whatsappLogs     WhatsAppLog[]
   invoices         Invoice[]
+  clientWhatsApp   ClientWhatsApp?
+  whatsAppMessages WhatsAppMessage[]
 
   @@index([organizationId, isActive])
   @@index([organizationId, whatsappNumber])
@@ -322,6 +324,38 @@ model WhatsAppLog {
 
   @@index([organizationId, clientId, createdAt])
   @@index([clientId, read])
+}
+
+model ClientWhatsApp {
+  id              String   @id @default(cuid())
+  clientId        String   @unique
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  phoneNumber     String?
+  isConnected     Boolean  @default(false)
+  sessionData     String?
+  lastSyncAt      DateTime?
+  messagesScanned Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model WhatsAppMessage {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  from        String
+  to          String?
+  body        String
+  timestamp   DateTime
+  hasInvoice  Boolean  @default(false)
+  hasTask     Boolean  @default(false)
+  processed   Boolean  @default(false)
+  invoiceId   String?
+  taskId      String?
+  createdAt   DateTime @default(now())
+
+  @@index([clientId, timestamp])
+  @@index([clientId, processed])
 }
 
 

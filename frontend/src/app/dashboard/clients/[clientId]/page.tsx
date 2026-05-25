@@ -42,6 +42,24 @@ type WhatsAppMessage = {
   createdAt: string;
 };
 
+type ClientWhatsAppStatus = {
+  connected: boolean;
+  phoneNumber: string | null;
+  lastSync: string | null;
+  messagesScanned: number;
+};
+
+type ClientWhatsAppMessage = {
+  id: string;
+  from: string;
+  to: string | null;
+  body: string;
+  timestamp: string;
+  hasInvoice: boolean;
+  hasTask: boolean;
+  processed: boolean;
+};
+
 type InvoiceItem = {
   id: string;
   invoiceNumber: string | null;
@@ -97,6 +115,9 @@ export default function ClientDetailPage() {
   const [health, setHealth] = useState<HealthScore | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [whatsappMessages, setWhatsappMessages] = useState<WhatsAppMessage[]>([]);
+  const [clientWhatsAppStatus, setClientWhatsAppStatus] = useState<ClientWhatsAppStatus | null>(null);
+  const [clientWhatsAppMessages, setClientWhatsAppMessages] = useState<ClientWhatsAppMessage[]>([]);
+  const [clientWhatsAppQr, setClientWhatsAppQr] = useState<string | null>(null);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [whatsappText, setWhatsappText] = useState("");
   const [form, setForm] = useState(emptyTask);
@@ -113,9 +134,13 @@ export default function ClientDetailPage() {
     const taskResult = await apiFetch<{ tasks: TaskItem[] }>(`/api/clients/${clientId}/tasks`);
     const whatsappResult = await apiFetch<{ messages: WhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp`);
     const invoiceResult = await apiFetch<{ invoices: InvoiceItem[] }>(`/api/clients/${clientId}/invoices`);
+    const clientWhatsApp = await apiFetch<ClientWhatsAppStatus>(`/api/clients/${clientId}/whatsapp/status`);
+    const clientWhatsAppMessageResult = await apiFetch<{ messages: ClientWhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp/messages`);
     setData(next);
     setTasks(taskResult.tasks);
     setWhatsappMessages(whatsappResult.messages);
+    setClientWhatsAppStatus(clientWhatsApp);
+    setClientWhatsAppMessages(clientWhatsAppMessageResult.messages);
     setInvoices(invoiceResult.invoices);
     setHealth(next.client.health ?? null);
     setLastUpdatedAt(new Date());
@@ -294,6 +319,38 @@ export default function ClientDetailPage() {
     }
   }
 
+  async function connectClientWhatsApp() {
+    setMessage("מכין QR לחיבור WhatsApp...");
+    try {
+      const result = await apiFetch<{ qrCode?: string; status: string }>(`/api/clients/${clientId}/whatsapp/connect`, { method: "POST" });
+      setClientWhatsAppQr(result.qrCode ?? null);
+      setMessage(result.status === "connected" ? "WhatsApp מחובר" : "סרוק את ה-QR עם WhatsApp");
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "חיבור WhatsApp נכשל");
+    }
+  }
+
+  async function scanClientWhatsApp() {
+    setMessage("סורק היסטוריית WhatsApp...");
+    try {
+      const result = await apiFetch<{ processed: number }>(`/api/clients/${clientId}/whatsapp/scan`, {
+        method: "POST",
+        body: JSON.stringify({ daysBack: 30 }),
+      });
+      setMessage(`נסרקו ${result.processed} הודעות WhatsApp`);
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "סריקת WhatsApp נכשלה");
+    }
+  }
+
+  async function disconnectClientWhatsApp() {
+    await apiFetch(`/api/clients/${clientId}/whatsapp/disconnect`, { method: "DELETE" });
+    setClientWhatsAppQr(null);
+    await load();
+  }
+
   if (!data) {
     return (
       <div className="container">
@@ -389,6 +446,36 @@ export default function ClientDetailPage() {
             Send
           </button>
         </form>
+      </div>
+
+      <div className="card">
+        <h2>WhatsApp אישי של הלקוח</h2>
+        <p>סטטוס: {clientWhatsAppStatus?.connected ? "מחובר" : "לא מחובר"}</p>
+        <p>נסרקו: {clientWhatsAppStatus?.messagesScanned ?? 0} הודעות</p>
+        {clientWhatsAppStatus?.lastSync && <p>סנכרון אחרון: {new Date(clientWhatsAppStatus.lastSync).toLocaleString("he-IL")}</p>}
+        <button className="btn" onClick={connectClientWhatsApp}>חבר WhatsApp עם QR</button>
+        <button className="btn btn-secondary" onClick={scanClientWhatsApp} style={{ marginRight: "0.5rem" }}>סרוק 30 ימים</button>
+        <button className="btn btn-secondary" onClick={disconnectClientWhatsApp} style={{ marginRight: "0.5rem" }}>נתק</button>
+        {clientWhatsAppQr && (
+          <div style={{ marginTop: "1rem" }}>
+            <p>סרוק את הקוד באפליקציית WhatsApp של הלקוח:</p>
+            <img src={clientWhatsAppQr} alt="WhatsApp QR" style={{ maxWidth: 280, background: "white", padding: 8 }} />
+          </div>
+        )}
+        <h3>הודעות שנסרקו</h3>
+        {clientWhatsAppMessages.length === 0 ? (
+          <p>אין הודעות WhatsApp שנסרקו עדיין</p>
+        ) : (
+          clientWhatsAppMessages.map((item) => (
+            <div key={item.id} style={{ borderTop: "1px solid var(--border)", padding: "0.75rem 0" }}>
+              <strong>{item.from}</strong>
+              <p>{item.body}</p>
+              <small>
+                {new Date(item.timestamp).toLocaleString("he-IL")} · {item.hasInvoice ? "חשבונית" : ""} {item.hasTask ? "משימה" : ""}
+              </small>
+            </div>
+          ))
+        )}
       </div>
 
       <div className="card">
