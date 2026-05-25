@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { apiFetch, getToken } from "@/lib/api";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://ai-office-worker-backend.onrender.com";
+
 type ClientItem = {
   id: string;
   name: string;
@@ -89,8 +91,13 @@ export default function ClientsPage() {
 
   function connectUrl(clientId: string) {
     const token = getToken();
-    const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-    return `${base}/api/clients/${clientId}/connect-gmail?token=${encodeURIComponent(token ?? "")}`;
+    return `${API_URL}/api/clients/${clientId}/connect-gmail?token=${encodeURIComponent(token ?? "")}`;
+  }
+
+  function logConnectGmail(clientId: string) {
+    console.log("Button clicked");
+    console.log("API URL:", process.env.NEXT_PUBLIC_API_URL);
+    console.log("Client Gmail URL:", connectUrl(clientId));
   }
 
   return (
@@ -186,7 +193,7 @@ export default function ClientsPage() {
                 ₪{client.stats?.toPay ?? 0} לתשלום · {client.stats?.openTasks ?? 0} משימות ·{" "}
                 {client.stats?.invoices ?? 0} חשבוניות
               </p>
-              <a className="btn btn-secondary" href={connectUrl(client.id)}>
+              <a className="btn btn-secondary" href={connectUrl(client.id)} onClick={() => logConnectGmail(client.id)}>
                 חבר Gmail
               </a>
               <button className="btn btn-secondary" onClick={() => scanClient(client.id)}>
