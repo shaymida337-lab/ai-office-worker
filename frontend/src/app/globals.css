@@ -229,7 +229,8 @@
 
 .help-fab {
   position: fixed;
-  right: 1.25rem;
+  left: 1.25rem;
+  right: auto;
   bottom: 1.25rem;
   z-index: 80;
   min-width: 56px;
@@ -566,7 +567,8 @@ mark {
   }
 
   .help-fab {
-    right: 0.85rem;
+    left: 0.85rem;
+    right: auto;
     bottom: 0.85rem;
   }
 }

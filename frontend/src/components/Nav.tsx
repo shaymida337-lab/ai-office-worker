@@ -54,15 +54,15 @@ export function Nav() {
   return (
     <>
       <aside className="fixed right-0 top-0 z-50 hidden h-screen w-60 flex-col border-l border-[var(--border)] bg-surface-secondary/95 px-3 py-4 shadow-card backdrop-blur-xl lg:flex">
-        <Link href="/dashboard" className="relative mb-6 block h-16 rounded-2xl px-3 py-3 transition hover:bg-surface-hover">
-          <span className="absolute right-3 top-1/2 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-2xl bg-[#6366F1] shadow-[0_14px_35px_rgba(99,102,241,0.35)] ring-1 ring-[#818CF8]">
-            <Bot className="h-6 w-6 text-white" />
+        <Link href="/dashboard" className="mb-6 block rounded-2xl px-3 py-3 transition hover:bg-surface-hover">
+          <span className="block whitespace-nowrap text-left text-lg font-extrabold leading-tight tracking-tight text-white drop-shadow-[0_0_18px_rgba(99,102,241,0.35)]">
+            AI Office Worker
           </span>
-          <span className="absolute left-3 right-[72px] top-1/2 min-w-0 -translate-y-1/2 text-left">
-            <span className="block truncate text-xl font-extrabold leading-tight tracking-tight text-white drop-shadow-[0_0_18px_rgba(99,102,241,0.35)]">
-              AI Office Worker
+          <span className="mt-3 flex items-center gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#6366F1] shadow-[0_14px_35px_rgba(99,102,241,0.35)] ring-1 ring-[#818CF8]">
+              <Bot className="h-6 w-6 text-white" />
             </span>
-            <span className="mt-0.5 block truncate text-[11px] font-medium text-ink-muted">Premium workspace</span>
+            <span className="block text-left text-[11px] font-medium text-ink-muted">Premium workspace</span>
           </span>
         </Link>
 
