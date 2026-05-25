@@ -31,21 +31,20 @@ export async function syncGmailForClient(clientId: string) {
   let driveUploadFailed = false;
 
   const { gmail, drive } = await getGoogleClientsForClient(clientId);
-  let rootId = client.driveFolderId ?? null;
-  if (!rootId) {
-    try {
-      rootId = await ensureInvoiceFolderTree(drive);
+  let rootId: string | null = null;
+  try {
+    rootId = await ensureInvoiceFolderTree(drive);
+    const driveFolderUrl = `https://drive.google.com/drive/folders/${rootId}`;
+    if (client.driveFolderId !== rootId || client.driveFolderUrl !== driveFolderUrl) {
       await prisma.client.update({
         where: { id: clientId },
-        data: {
-          driveFolderId: rootId,
-          driveFolderUrl: `https://drive.google.com/drive/folders/${rootId}`,
-        },
+        data: { driveFolderId: rootId, driveFolderUrl },
       });
-    } catch (err) {
-      driveUploadFailed = true;
-      console.error("Client Drive setup failed; continuing Gmail sync without Drive", err);
     }
+  } catch (err) {
+    rootId = client.driveFolderId ?? null;
+    driveUploadFailed = true;
+    console.error("Client Drive setup failed; continuing Gmail sync without Drive", err);
   }
 
   const messages = await listMessages(gmail);

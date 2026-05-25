@@ -1,7 +1,6 @@
 ﻿import { Readable } from "node:stream";
 import type { drive_v3 } from "googleapis";
-import { config } from "../lib/config.js";
-import { ensureDriveFolder, safeFolderName } from "./driveService.js";
+import { INVOICE_DRIVE_FOLDER_NAME, ensureDriveFolder, safeFolderName } from "./driveService.js";
 import type { InvoiceData } from "./invoiceExtractor.js";
 
 export async function saveInvoiceToDrive(
@@ -13,7 +12,7 @@ export async function saveInvoiceToDrive(
   const invoiceDate = new Date(invoice.date);
   const safeDate = Number.isNaN(invoiceDate.getTime()) ? new Date() : invoiceDate;
   const folderParts = [
-    config.driveRootFolder,
+    INVOICE_DRIVE_FOLDER_NAME,
     safeFolderName(invoice.clientName || organizationId),
     String(safeDate.getFullYear()),
     String(safeDate.getMonth() + 1).padStart(2, "0"),

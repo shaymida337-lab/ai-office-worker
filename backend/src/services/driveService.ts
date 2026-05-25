@@ -1,11 +1,12 @@
 import { Readable } from "node:stream";
 import type { drive_v3 } from "googleapis";
-import { config } from "../lib/config.js";
 
 export type UploadedDriveFile = {
   fileId: string | null;
   webViewLink: string;
 };
+
+export const INVOICE_DRIVE_FOLDER_NAME = "AI Office Worker - חשבוניות";
 
 export async function ensureDriveFolder(
   drive: drive_v3.Drive,
@@ -44,7 +45,7 @@ export async function ensureDriveFolder(
 export async function ensureInvoiceFolderTree(
   drive: drive_v3.Drive
 ): Promise<string> {
-  const rootId = await ensureDriveFolder(drive, config.driveRootFolder);
+  const rootId = await ensureDriveFolder(drive, INVOICE_DRIVE_FOLDER_NAME);
   await Promise.all([
     ensureDriveFolder(drive, "Invoices", rootId),
     ensureDriveFolder(drive, "Receipts", rootId),

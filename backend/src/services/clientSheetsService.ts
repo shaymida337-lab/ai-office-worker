@@ -46,20 +46,21 @@ export async function writeClientInvoiceToSheet(
 
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: `${INVOICE_TAB}!A:I`,
+    range: `${INVOICE_TAB}!A:J`,
     valueInputOption: "USER_ENTERED",
     requestBody: {
       values: [
         [
           invoice.date.toLocaleDateString("he-IL"),
+          "",
           invoice.supplier,
+          [invoice.emailSubject, invoice.notes].filter(Boolean).join(" - "),
           invoice.amount,
           invoice.currency,
-          invoice.driveFileUrl ?? "",
-          invoice.driveFolderUrl ?? client.driveFolderUrl ?? "",
-          invoice.emailSubject ?? "",
           invoice.status,
-          invoice.notes ?? "",
+          "",
+          invoice.driveFileUrl ?? invoice.driveFolderUrl ?? client.driveFolderUrl ?? "",
+          new Date().toLocaleString("he-IL"),
         ],
       ],
     },
