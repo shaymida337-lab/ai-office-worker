@@ -40,6 +40,12 @@ apiRouter.get("/dashboard", async (req, res) => {
   res.json(stats);
 });
 
+apiRouter.post("/help/ask", async (req, res) => {
+  const question = typeof req.body?.question === "string" ? req.body.question : "";
+  const { answerHelpQuestion } = await import("../services/helpAI.js");
+  res.json({ answer: await answerHelpQuestion(question) });
+});
+
 apiRouter.get("/accountant/settings", async (req, res) => {
   const { getAccountantSettings } = await import("../services/accountantReports.js");
   res.json(await getAccountantSettings(req.auth!.organizationId));
