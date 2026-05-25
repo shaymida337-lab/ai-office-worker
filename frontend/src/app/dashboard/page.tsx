@@ -92,7 +92,6 @@ export default function DashboardPage() {
       apiFetch<WhatsAppAssistantStats>("/api/whatsapp-assistant/stats")
         .then(setWhatsAppStats)
         .catch(() => undefined);
-      setFirstScanRunning(Boolean(automation.logs?.some((log) => log.type === "first_time" && !log.endedAt)));
       setLastUpdatedAt(new Date());
     } catch (err) {
       if (isAuthError(err)) {
@@ -191,10 +190,6 @@ export default function DashboardPage() {
     { label: "כסף לשלם", value: `₪${stats.moneyToPay.toLocaleString("he-IL")}`, icon: WalletCards, detail: `${stats.upcomingPaymentsCount} תשלומים קרובים`, tone: "text-amber-300" },
     { label: "בריאות עסקית", value: `${stats.businessHealthScore}/100`, icon: HeartPulse, detail: `נחסכו ${stats.hoursSavedThisWeek} שעות`, tone: "text-violet-300" },
   ];
-  const initialScanLogs = scanStatus?.logs?.filter((log) => log.type === "first_time") ?? [];
-  const hasInitialScanDone = initialScanLogs.some((log) => ["success", "partial"].includes(log.status));
-  const latestInitialScan = initialScanLogs[0];
-
   return (
     <div className="container">
       <Nav />
@@ -211,8 +206,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <section className="mb-8 rounded-3xl border border-[#818CF8]/70 bg-[linear-gradient(135deg,rgba(99,102,241,0.95),rgba(139,92,246,0.92))] p-6 text-white shadow-[0_24px_60px_rgba(99,102,241,0.35)]">
-        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+      <section className="mb-8 rounded-3xl border border-[#818CF8]/70 bg-[linear-gradient(135deg,rgba(99,102,241,0.98),rgba(139,92,246,0.94))] p-6 text-white shadow-[0_24px_60px_rgba(99,102,241,0.35)]">
+        <div className="flex flex-col gap-5">
           <div>
             <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[14px] font-semibold text-white">
               <Clock3 className="h-4 w-4" />
@@ -224,7 +219,7 @@ export default function DashboardPage() {
             </p>
           </div>
           <button
-            className="inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl border border-white/35 bg-white px-6 py-4 text-[16px] font-extrabold text-[#4F46E5] shadow-[0_18px_42px_rgba(15,23,42,0.24)] transition hover:scale-[1.02] md:w-auto md:min-w-80"
+            className="inline-flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl border border-white/35 bg-white px-6 py-4 text-[17px] font-extrabold text-[#4F46E5] shadow-[0_18px_42px_rgba(15,23,42,0.24)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-80"
             onClick={startFirstScan}
             disabled={firstScanRunning || syncing}
           >
@@ -281,15 +276,6 @@ export default function DashboardPage() {
               <p className="text-sm">סטטוס פעילות וסיכום מהיר לכל לקוח.</p>
             </div>
           </div>
-          {!hasInitialScanDone && (
-            <div className="mb-5 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4">
-              <strong className="text-ink-primary">סריקה ראשונית 90 יום</strong>
-              <p className="mt-1 text-sm">
-                סריקה חד-פעמית של Gmail ל-90 הימים האחרונים לזיהוי לקוחות, חשבוניות ומשימות.
-                {latestInitialScan?.status === "failed" ? " הסריקה הקודמת נכשלה, אפשר לנסות שוב." : ""}
-              </p>
-            </div>
-          )}
           <div className="space-y-3">
             {(clients?.clients ?? []).slice(0, 5).map((client) => (
               <div key={client.id} className="group flex items-center justify-between gap-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary/60 p-4 transition hover:border-accent-primary/40 hover:bg-surface-hover">
