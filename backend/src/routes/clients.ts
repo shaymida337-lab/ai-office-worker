@@ -64,7 +64,7 @@ function authFromQuery(req: { query: Record<string, unknown>; headers: { authori
 
 async function clientStats(organizationId: string, clientId: string) {
   const [invoices, openTasks, toPay, missingInvoices] = await Promise.all([
-    prisma.supplierPayment.count({ where: { organizationId, clientId } }),
+    prisma.invoice.count({ where: { organizationId, clientId } }),
     prisma.task.count({ where: { organizationId, clientId, status: { not: "done" } } }),
     prisma.supplierPayment.aggregate({
       where: { organizationId, clientId, paid: false },
