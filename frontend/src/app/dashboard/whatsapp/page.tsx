@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
+import { MessageCircle, Phone, Send, Settings, ShieldAlert } from "lucide-react";
 
 type WhatsAppStatus = {
   configured: boolean;
@@ -75,17 +76,28 @@ export default function WhatsAppSettingsPage() {
 
   return (
     <div className="container">
-      <h1>WhatsApp</h1>
       <Nav />
-      {message && <p>{message}</p>}
-      <div className="card">
-        <p>Twilio: {status?.configured ? "✅ Configured" : "❌ Not configured"}</p>
-        <p>Connection: {status?.connected ? "✅ Connected" : "❌ Not connected"}</p>
-        <p>From: {status?.from || "Not set"}</p>
-        <p>Webhook: {status?.webhookUrl || "Not set"}</p>
+      <div className="mb-8">
+        <div className="page-kicker">Client messaging</div>
+        <h1>WhatsApp</h1>
+        <p>מרכז הודעות והתראות ללקוחות עם ממשק דמוי צ׳אט.</p>
+      </div>
+      {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
+      <div className="grid gap-6 xl:grid-cols-[.85fr_1.15fr]">
+        <aside className="card">
+          <div className="mb-5 flex items-center gap-3">
+            <Settings className="h-5 w-5 text-accent-primary" />
+            <h2>הגדרות חיבור</h2>
+          </div>
+          <div className="space-y-3 text-sm">
+            <StatusRow label="Twilio" ok={Boolean(status?.configured)} />
+            <StatusRow label="Connection" ok={Boolean(status?.connected)} />
+            <div className="rounded-xl bg-surface-secondary p-3 text-ink-secondary">From: {status?.from || "Not set"}</div>
+            <div className="rounded-xl bg-surface-secondary p-3 text-ink-secondary">Webhook: {status?.webhookUrl || "Not set"}</div>
+          </div>
         {status && !status.configured && (
-          <div style={{ background: "#fef3c7", color: "#92400e", padding: "1rem", borderRadius: 8 }}>
-            <strong>⚠️ כדי להפעיל WhatsApp:</strong>
+          <div className="mt-5 rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4 text-amber-200">
+            <strong className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" />כדי להפעיל WhatsApp:</strong>
             <ol>
               <li>כנס ל: console.twilio.com</li>
               <li>העתק את Account SID ו-Auth Token</li>
@@ -93,7 +105,7 @@ export default function WhatsAppSettingsPage() {
             </ol>
           </div>
         )}
-        <form onSubmit={save} style={{ display: "grid", gap: "0.75rem" }}>
+        <form onSubmit={save} className="mt-5 grid gap-3">
           <label>
             Owner WhatsApp number
             <input
@@ -107,27 +119,52 @@ export default function WhatsAppSettingsPage() {
             {loading ? "Saving..." : "Save WhatsApp Number"}
           </button>
         </form>
-        <button className="btn btn-secondary" onClick={sendTest} disabled={loading || !status?.configured}>
-          Send Test Message
+        <button className="btn btn-secondary mt-3" onClick={sendTest} disabled={loading || !status?.configured}>
+          <Send className="h-4 w-4" />Send Test Message
         </button>
+        </aside>
+
+        <section className="card">
+          <div className="mb-5 flex items-center gap-3">
+            <MessageCircle className="h-5 w-5 text-emerald-300" />
+            <h2>Client WhatsApp Activity</h2>
+          </div>
+          <div className="grid gap-3">
+            {clients.length === 0 ? (
+              <p>No clients yet</p>
+            ) : (
+              clients.map((client) => (
+                <Link key={client.id} href={`/dashboard/clients/${client.id}`} className="group rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4 transition hover:border-accent-primary/40 hover:bg-surface-hover">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-11 w-11 place-items-center rounded-full bg-[linear-gradient(135deg,#10B981,#3B82F6)] text-sm font-bold text-white">{client.name.slice(0, 2)}</span>
+                      <div>
+                        <strong className="text-ink-primary">{client.name}</strong>
+                        <p className="flex items-center gap-2 text-sm"><Phone className="h-3.5 w-3.5" />{client.whatsappNumber || "No WhatsApp number configured"}</p>
+                      </div>
+                    </div>
+                    {Boolean(client.whatsappUnread) && <span className="badge badge-warn">{client.whatsappUnread} unread</span>}
+                  </div>
+                  {client.whatsappLastMessage && (
+                    <div className="mt-4 max-w-[85%] rounded-2xl rounded-tr-md bg-accent-primary/15 p-3 text-sm text-ink-secondary">
+                      {client.whatsappLastMessage.body}
+                    </div>
+                  )}
+                </Link>
+              ))
+            )}
+          </div>
+        </section>
       </div>
-      <div className="card">
-        <h2>Client WhatsApp Activity</h2>
-        {clients.length === 0 ? (
-          <p>No clients yet</p>
-        ) : (
-          clients.map((client) => (
-            <div key={client.id} style={{ borderTop: "1px solid var(--border)", padding: "0.75rem 0" }}>
-              <Link href={`/dashboard/clients/${client.id}`}>
-                <strong>{client.name}</strong>
-              </Link>
-              <p>{client.whatsappNumber || "No WhatsApp number configured"}</p>
-              {Boolean(client.whatsappUnread) && <strong>{client.whatsappUnread} unread</strong>}
-              {client.whatsappLastMessage && <p>{client.whatsappLastMessage.body}</p>}
-            </div>
-          ))
-        )}
-      </div>
+    </div>
+  );
+}
+
+function StatusRow({ label, ok }: { label: string; ok: boolean }) {
+  return (
+    <div className="flex items-center justify-between rounded-xl bg-surface-secondary p-3">
+      <span className="text-ink-secondary">{label}</span>
+      <span className={`badge ${ok ? "badge-ok" : "badge-error"}`}>{ok ? "Connected" : "Not configured"}</span>
     </div>
   );
 }

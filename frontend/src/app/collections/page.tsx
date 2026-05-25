@@ -49,14 +49,14 @@ export default function CollectionsPage() {
 
   return (
     <div className="container">
-      <h1>גביית לקוחות</h1>
       <Nav />
+      <div className="mb-8"><div className="page-kicker">Collections</div><h1>גביית לקוחות</h1></div>
       <div className="card">
-        <form onSubmit={createInvoice}>
+        <form onSubmit={createInvoice} className="grid gap-3 md:grid-cols-4">
           <input placeholder="לקוח" value={customer} onChange={(e) => setCustomer(e.target.value)} required />
-          <input placeholder="סכום" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required style={{ marginRight: "0.5rem" }} />
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={{ marginRight: "0.5rem" }} />
-          <button className="btn" style={{ marginRight: "0.5rem" }}>הוסף חוב לקוח</button>
+          <input placeholder="סכום" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <button className="btn">הוסף חוב לקוח</button>
         </form>
       </div>
       {reminder && <div className="card"><strong>טיוטת תזכורת:</strong><p>{reminder}</p></div>}
@@ -74,7 +74,7 @@ export default function CollectionsPage() {
                 <td>{i.paid ? "כן" : "לא"}</td>
                 <td>
                   {!i.paid && <button className="btn btn-secondary" onClick={() => markPaid(i.id)}>שולם</button>}
-                  {!i.paid && <button className="btn" onClick={() => sendReminder(i.id)} style={{ marginRight: "0.5rem" }}>צור תזכורת</button>}
+                  {!i.paid && <button className="btn mr-2" onClick={() => sendReminder(i.id)}>צור תזכורת</button>}
                 </td>
               </tr>
             ))}

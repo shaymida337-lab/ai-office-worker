@@ -2,20 +2,40 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import {
+  BarChart3,
+  Bell,
+  Bot,
+  Camera,
+  CheckSquare,
+  ChevronDown,
+  CircleDollarSign,
+  FileBarChart,
+  FileText,
+  Home,
+  Inbox,
+  LogOut,
+  Megaphone,
+  MessageCircle,
+  Search,
+  Settings,
+  Users,
+  WalletCards,
+} from "lucide-react";
 
 const links = [
-  { href: "/dashboard", label: "\u05dc\u05d5\u05d7 \u05d1\u05e7\u05e8\u05d4" },
-  { href: "/dashboard/clients", label: "\u05dc\u05e7\u05d5\u05d7\u05d5\u05ea" },
-  { href: "/dashboard/invoices", label: "\u05d7\u05e9\u05d1\u05d5\u05e0\u05d9\u05d5\u05ea \u{1F9FE}" },
-  { href: "/dashboard/accountant", label: "\u05e8\u05d5\u05d0\u05d4 \u05d7\u05e9\u05d1\u05d5\u05df" },
-  { href: "/dashboard/settings", label: "\u05d4\u05d2\u05d3\u05e8\u05d5\u05ea" },
-  { href: "/payments", label: "\u05ea\u05e9\u05dc\u05d5\u05de\u05d9 \u05e1\u05e4\u05e7\u05d9\u05dd" },
-  { href: "/camera", label: "\u05e6\u05d9\u05dc\u05d5\u05dd \u05d7\u05e9\u05d1\u05d5\u05e0\u05d9\u05ea" },
-  { href: "/collections", label: "\u05d2\u05d1\u05d9\u05d9\u05d4" },
-  { href: "/social", label: "\u05e1\u05d5\u05e9\u05d9\u05d0\u05dc" },
-  { href: "/tasks", label: "\u05de\u05e9\u05d9\u05de\u05d5\u05ea" },
-  { href: "/reports", label: "\u05d3\u05d5\u05d7\u05d5\u05ea" },
-  { href: "/dashboard/whatsapp", label: "WhatsApp" },
+  { href: "/dashboard", label: "לוח בקרה", icon: Home },
+  { href: "/dashboard/clients", label: "לקוחות", icon: Users },
+  { href: "/dashboard/invoices", label: "חשבוניות", icon: FileText },
+  { href: "/payments", label: "תשלומי ספקים", icon: WalletCards },
+  { href: "/collections", label: "גבייה", icon: CircleDollarSign },
+  { href: "/tasks", label: "משימות", icon: CheckSquare },
+  { href: "/social", label: "סושיאל", icon: Megaphone },
+  { href: "/dashboard/whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { href: "/reports", label: "דוחות", icon: BarChart3 },
+  { href: "/dashboard/accountant", label: "רואה חשבון", icon: FileBarChart },
+  { href: "/camera", label: "צילום חשבונית", icon: Camera },
+  { href: "/dashboard/settings", label: "הגדרות", icon: Settings },
 ];
 
 export function Nav() {
@@ -32,15 +52,94 @@ export function Nav() {
   }
 
   return (
-    <nav>
-      {links.map((l) => (
-        <Link key={l.href} href={l.href} className={isActive(l.href) ? "active" : ""}>
-          {l.label}
+    <>
+      <aside className="fixed right-0 top-0 z-50 hidden h-screen w-60 flex-col border-l border-[var(--border)] bg-surface-secondary/95 px-3 py-4 shadow-card backdrop-blur-xl lg:flex">
+        <Link href="/dashboard" className="mb-6 flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-surface-hover">
+          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] shadow-[0_14px_35px_rgba(99,102,241,0.35)]">
+            <Bot className="h-6 w-6 text-white" />
+          </span>
+          <span>
+            <span className="block text-sm font-bold text-ink-primary">AI Office Worker</span>
+            <span className="block text-xs text-ink-muted">Premium workspace</span>
+          </span>
         </Link>
-      ))}
-      <button type="button" onClick={logout}>
-        {"\u05d4\u05ea\u05e0\u05ea\u05e7"}
-      </button>
-    </nav>
+
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto pb-4">
+          {links.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={[
+                  "group relative flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                  active
+                    ? "border-accent-primary/30 bg-accent-primary/15 text-ink-primary shadow-[inset_-3px_0_0_#6366F1]"
+                    : "text-ink-secondary hover:border-[var(--border)] hover:bg-surface-hover hover:text-ink-primary",
+                ].join(" ")}
+              >
+                <Icon className={["h-[18px] w-[18px]", active ? "text-accent-primary" : "text-ink-muted group-hover:text-ink-primary"].join(" ")} />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-surface-card p-3">
+          <div className="mb-3 flex items-center gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-surface-hover text-sm font-bold text-ink-primary">AI</span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-ink-primary">מנהל מערכת</span>
+              <span className="block truncate text-xs text-ink-muted">מחובר</span>
+            </span>
+          </div>
+          <button type="button" onClick={logout} className="btn btn-secondary w-full justify-between">
+            התנתק
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+      </aside>
+
+      <header className="fixed left-0 right-0 top-0 z-40 border-b border-transparent bg-surface-primary/80 backdrop-blur-xl lg:right-60">
+        <div className="h-px bg-[linear-gradient(90deg,transparent,#6366F1,#8B5CF6,transparent)]" />
+        <div className="flex h-16 items-center gap-3 px-4 md:px-8">
+          <Link href="/dashboard" className="grid h-10 w-10 place-items-center rounded-xl bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] lg:hidden">
+            <Bot className="h-5 w-5 text-white" />
+          </Link>
+          <div className="mx-auto flex h-10 w-full max-w-xl items-center gap-3 rounded-xl border border-[var(--border)] bg-surface-hover px-3 text-ink-muted shadow-card">
+            <Search className="h-4 w-4" />
+            <span className="flex-1 text-sm">חיפוש לקוחות, חשבוניות, משימות...</span>
+            <kbd className="rounded-md border border-[var(--border)] bg-surface-card px-2 py-1 text-[11px] text-ink-muted">⌘K</kbd>
+          </div>
+          <button className="relative grid h-10 w-10 place-items-center rounded-xl border border-[var(--border)] bg-surface-card text-ink-secondary hover:bg-surface-hover hover:text-ink-primary">
+            <Bell className="h-4 w-4" />
+            <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-[var(--error)]" />
+          </button>
+          <button className="hidden items-center gap-2 rounded-xl border border-[var(--border)] bg-surface-card px-3 py-2 text-sm text-ink-secondary hover:bg-surface-hover hover:text-ink-primary md:flex">
+            <span className="grid h-7 w-7 place-items-center rounded-full bg-surface-hover text-xs font-bold text-ink-primary">AI</span>
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        </div>
+      </header>
+
+      <nav className="fixed bottom-4 left-4 right-4 z-50 flex gap-2 overflow-x-auto rounded-2xl border border-[var(--border)] bg-surface-secondary/95 p-2 shadow-card backdrop-blur-xl lg:hidden">
+        {links.slice(0, 6).map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex min-w-16 flex-col items-center gap-1 rounded-xl px-3 py-2 text-[11px] transition ${
+                isActive(item.href) ? "bg-accent-primary/20 text-ink-primary" : "text-ink-muted hover:bg-surface-hover"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+    </>
   );
 }

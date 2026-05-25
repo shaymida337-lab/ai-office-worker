@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
+import { Download, FileText, Filter, RefreshCcw, Search } from "lucide-react";
 
 type ClientItem = { id: string; name: string; gmailConnected: boolean };
 type InvoiceStatus = "paid" | "pending" | "overdue";
@@ -104,55 +105,81 @@ export default function InvoicesPage() {
 
   return (
     <div className="container">
-      <h1>חשבוניות</h1>
       <Nav />
-      {message && <p>{message}</p>}
-      <div className="grid">
-        <div className="card"><div className="stat-label">חשבוניות החודש</div><div className="stat-value">{thisMonth.length}</div></div>
-        <div className="card"><div className="stat-label">ממתין לתשלום</div><div className="stat-value" style={{ color: "var(--danger)" }}>₪{pending.toLocaleString("he-IL")}</div></div>
-        <div className="card"><div className="stat-label">שולם</div><div className="stat-value" style={{ color: "var(--ok)" }}>₪{paid.toLocaleString("he-IL")}</div></div>
-        <div className="card"><div className="stat-label">באיחור</div><div className="stat-value" style={{ color: "var(--danger)" }}>{overdue}</div></div>
+      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className="page-kicker">Invoice intelligence</div>
+          <h1>חשבוניות</h1>
+          <p>מעקב, סינון וסריקה של חשבוניות מכל הלקוחות.</p>
+        </div>
+        <button className="btn" onClick={scanInvoices} disabled={scanning}>
+          <RefreshCcw className="h-4 w-4" />{scanning ? "סורק..." : "סרוק חשבוניות"}
+        </button>
+      </div>
+      {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
+
+      <div className="grid mb-8">
+        <Metric label="חשבוניות החודש" value={thisMonth.length} tone="text-blue-300" />
+        <Metric label="ממתין לתשלום" value={`₪${pending.toLocaleString("he-IL")}`} tone="text-red-300" />
+        <Metric label="שולם" value={`₪${paid.toLocaleString("he-IL")}`} tone="text-emerald-300" />
+        <Metric label="באיחור" value={overdue} tone="text-amber-300" />
       </div>
 
-      <div className="card" style={{ display: "grid", gap: "0.75rem" }}>
-        <button className="btn" onClick={scanInvoices} disabled={scanning}>{scanning ? "סורק..." : "סרוק חשבוניות"}</button>
-        <select value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="all">כל הלקוחות</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">כל הסטטוסים</option><option value="paid">שולם</option><option value="pending">ממתין</option><option value="overdue">באיחור</option></select>
-        <input placeholder="חיפוש לפי מספר חשבונית" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-        <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+      <div className="card">
+        <div className="mb-4 flex items-center gap-2 text-ink-secondary"><Filter className="h-4 w-4" />סינון וחיפוש</div>
+        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <select value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="all">כל הלקוחות</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
+          <select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">כל הסטטוסים</option><option value="paid">שולם</option><option value="pending">ממתין</option><option value="overdue">באיחור</option></select>
+          <div className="relative xl:col-span-2">
+            <Search className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-ink-muted" />
+            <input className="pr-10" placeholder="חיפוש לפי מספר חשבונית" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
       </div>
 
-      <div className="card" style={{ overflowX: "auto" }}>
+      <div className="table-shell">
         <table>
           <thead><tr><th>תאריך</th><th>לקוח</th><th>מספר</th><th>תיאור</th><th>סכום</th><th>סטטוס</th><th>Drive</th><th>פעולות</th></tr></thead>
           <tbody>
             {filtered.map((invoice) => (
-              <tr key={invoice.id} onClick={() => setSelected(invoice)} style={{ cursor: "pointer" }}>
+              <tr key={invoice.id} onClick={() => setSelected(invoice)} className="cursor-pointer">
                 <td>{new Date(invoice.date).toLocaleDateString("he-IL")}</td>
-                <td>{invoice.client?.name ?? ""}</td>
-                <td>{invoice.invoiceNumber ?? "-"}</td>
+                <td><span className="inline-flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-surface-hover text-xs font-bold text-ink-primary">{invoice.client?.name?.slice(0, 2) ?? "AI"}</span>{invoice.client?.name ?? ""}</span></td>
+                <td className="text-ink-primary">{invoice.invoiceNumber ?? "-"}</td>
                 <td>{invoice.description ?? ""}</td>
-                <td>₪{invoice.amount.toLocaleString("he-IL")} {invoice.currency}</td>
-                <td><span className={`badge ${invoice.status === "paid" ? "badge-ok" : "badge-warn"}`}>{statusLabels[invoice.status]}</span></td>
-                <td>{invoice.driveUrl ? <a href={invoice.driveUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>PDF</a> : "-"}</td>
-                <td><button className="btn btn-secondary" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "סמן ממתין" : "סמן שולם"}</button></td>
+                <td className="font-semibold text-ink-primary">₪{invoice.amount.toLocaleString("he-IL")} {invoice.currency}</td>
+                <td><span className={`badge ${invoice.status === "paid" ? "badge-ok" : invoice.status === "overdue" ? "badge-error" : "badge-warn"}`}>{statusLabels[invoice.status]}</span></td>
+                <td>{invoice.driveUrl ? <a className="btn btn-secondary px-3 py-1.5" href={invoice.driveUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />PDF</a> : "-"}</td>
+                <td><button className="btn btn-secondary px-3 py-1.5 opacity-80 hover:opacity-100" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "סמן ממתין" : "סמן שולם"}</button></td>
               </tr>
             ))}
           </tbody>
         </table>
-        {filtered.length === 0 && <p>לא נמצאו חשבוניות</p>}
+        {filtered.length === 0 && <p className="p-6">לא נמצאו חשבוניות</p>}
       </div>
 
       {selected && (
-        <div className="card">
-          <h2>פרטי חשבונית</h2>
-          <p>לקוח: {selected.client?.name}</p>
-          <p>מספר: {selected.invoiceNumber ?? "-"}</p>
-          <p>{selected.description}</p>
-          <button className="btn btn-secondary" onClick={() => setSelected(null)}>סגור</button>
+        <div className="fixed inset-0 z-[110] grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="card w-full max-w-xl animate-[toastSlide_.25s_ease]">
+            <div className="mb-4 flex items-center gap-3"><FileText className="h-5 w-5 text-accent-primary" /><h2>פרטי חשבונית</h2></div>
+            <p>לקוח: {selected.client?.name}</p>
+            <p>מספר: {selected.invoiceNumber ?? "-"}</p>
+            <p>{selected.description}</p>
+            <button className="btn btn-secondary mt-4" onClick={() => setSelected(null)}>סגור</button>
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function Metric({ label, value, tone }: { label: string; value: string | number; tone: string }) {
+  return (
+    <div className="card">
+      <div className="stat-label">{label}</div>
+      <div className={`stat-value ${tone}`}>{value}</div>
     </div>
   );
 }

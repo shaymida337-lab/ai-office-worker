@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { apiFetch, getToken } from "@/lib/api";
+import { Mail, Plus, RefreshCcw, Search, ShieldCheck, Users } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://ai-office-worker-backend.onrender.com";
 
@@ -49,6 +50,8 @@ export default function ClientsPage() {
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState("");
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState<"grid" | "list">("grid");
 
   async function load() {
     const next = await apiFetch<ClientsResponse>("/api/clients");
@@ -100,21 +103,39 @@ export default function ClientsPage() {
     console.log("Client Gmail URL:", connectUrl(clientId));
   }
 
+  const filteredClients = (data?.clients ?? []).filter((client) =>
+    `${client.name} ${client.email} ${client.whatsappNumber ?? ""}`.toLowerCase().includes(query.toLowerCase())
+  );
+
   return (
     <div className="container">
-      <h1>לקוחות</h1>
       <Nav />
-
-      <div style={{ margin: "1rem 0" }}>
-        <button className="btn" onClick={() => setShowForm((v) => !v)}>
-          + הוסף לקוח חדש
-        </button>
+      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className="page-kicker">Client workspace</div>
+          <h1>לקוחות</h1>
+          <p>כל לקוח, האינטגרציות שלו והמדדים העסקיים במקום אחד.</p>
+        </div>
+        <button className="btn" onClick={() => setShowForm((v) => !v)}><Plus className="h-4 w-4" />הוסף לקוח חדש</button>
       </div>
 
-      {message && <p>{message}</p>}
+      {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
+
+      <div className="card">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-ink-muted" />
+            <input className="pr-10" placeholder="חפש לקוח, מייל או WhatsApp" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
+          <div className="flex gap-2">
+            <button className={`btn btn-secondary ${view === "grid" ? "border-accent-primary text-ink-primary" : ""}`} onClick={() => setView("grid")}>Grid</button>
+            <button className={`btn btn-secondary ${view === "list" ? "border-accent-primary text-ink-primary" : ""}`} onClick={() => setView("list")}>List</button>
+          </div>
+        </div>
+      </div>
 
       {showForm && (
-        <form onSubmit={createClient} className="card" style={{ display: "grid", gap: "0.75rem" }}>
+        <form onSubmit={createClient} className="card grid gap-3 md:grid-cols-2">
           <input
             required
             placeholder="שם לקוח"
@@ -156,55 +177,41 @@ export default function ClientsPage() {
             value={form.driveFolderUrl}
             onChange={(e) => setForm({ ...form, driveFolderUrl: e.target.value })}
           />
-          <button className="btn" type="submit">
+          <button className="btn md:col-span-2" type="submit">
             שמור לקוח
           </button>
         </form>
       )}
 
-      <section style={{ marginTop: "1rem" }}>
+      <section className={view === "grid" ? "grid gap-6 md:grid-cols-2 xl:grid-cols-3" : "space-y-4"}>
         {!data ? (
-          <p>טוען לקוחות...</p>
-        ) : data.clients.length === 0 ? (
-          <p>אין לקוחות עדיין.</p>
+          <div className="skeleton h-32" />
+        ) : filteredClients.length === 0 ? (
+          <div className="card text-center"><Users className="mx-auto mb-3 h-8 w-8 text-ink-muted" /><p>אין לקוחות תואמים.</p></div>
         ) : (
-          data.clients.map((client) => (
-            <div key={client.id} className="card" style={{ marginBottom: "0.75rem" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: 14,
-                    height: 14,
-                    borderRadius: "50%",
-                    background: client.color ?? "#3B82F6",
-                  }}
-                />
-                <strong>{client.name}</strong>
+          filteredClients.map((client) => (
+            <div key={client.id} className="card group">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] text-sm font-bold text-white">{client.name.slice(0, 2)}</span>
+                  <div>
+                    <strong className="text-lg text-ink-primary">{client.name}</strong>
+                    <p className="flex items-center gap-2 text-sm"><Mail className="h-3.5 w-3.5" />{client.email}</p>
+                  </div>
+                </div>
+                <span className={`badge ${client.gmailConnected ? "badge-ok" : "badge-warn"}`}>{client.gmailConnected ? "Gmail" : "חיבור חסר"}</span>
               </div>
-              <p>{client.email}</p>
-              <p>WhatsApp {client.whatsappNumber ? client.whatsappNumber : "לא מוגדר"}</p>
-              <p>
-                Gmail {client.gmailConnected ? "מחובר" : "לא מחובר"} · Sheets{" "}
-                {client.invoiceSheetUrl || client.taskSheetUrl ? "מחובר" : "לא מחובר"} · Drive{" "}
-                {client.driveFolderUrl ? "מחובר" : "לא מחובר"}
-              </p>
-              <p>
-                ₪{client.stats?.toPay ?? 0} לתשלום · {client.stats?.openTasks ?? 0} משימות ·{" "}
-                {client.stats?.invoices ?? 0} חשבוניות
-              </p>
-              <a className="btn btn-secondary" href={connectUrl(client.id)} onClick={() => logConnectGmail(client.id)}>
-                חבר Gmail
-              </a>
-              <a href={connectUrl(client.id)} onClick={() => logConnectGmail(client.id)} style={{ marginRight: "0.75rem" }}>
-                לינק Gmail ישיר
-              </a>
-              <button className="btn btn-secondary" onClick={() => scanClient(client.id)}>
-                סרוק
-              </button>
-              <a className="btn btn-secondary" href={`/dashboard/clients/${client.id}`}>
-                דוח
-              </a>
+              <div className="mb-5 grid grid-cols-3 gap-3 rounded-2xl bg-surface-secondary p-3 text-center text-sm">
+                <div><div className="font-bold text-ink-primary">₪{(client.stats?.toPay ?? 0).toLocaleString("he-IL")}</div><div className="text-ink-muted">לתשלום</div></div>
+                <div><div className="font-bold text-ink-primary">{client.stats?.openTasks ?? 0}</div><div className="text-ink-muted">משימות</div></div>
+                <div><div className="font-bold text-ink-primary">{client.stats?.invoices ?? 0}</div><div className="text-ink-muted">חשבוניות</div></div>
+              </div>
+              <p className="mb-4 flex items-center gap-2 text-sm"><ShieldCheck className="h-4 w-4 text-emerald-300" />Sheets {client.invoiceSheetUrl || client.taskSheetUrl ? "מחובר" : "לא מחובר"} · Drive {client.driveFolderUrl ? "מחובר" : "לא מחובר"}</p>
+              <div className="flex flex-wrap gap-2">
+                <a className="btn btn-secondary" href={connectUrl(client.id)} onClick={() => logConnectGmail(client.id)}>חבר Gmail</a>
+                <button className="btn btn-secondary" onClick={() => scanClient(client.id)}><RefreshCcw className="h-4 w-4" />סרוק</button>
+                <a className="btn" href={`/dashboard/clients/${client.id}`}>דוח</a>
+              </div>
             </div>
           ))
         )}

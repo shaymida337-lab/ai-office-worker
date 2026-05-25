@@ -27,27 +27,22 @@ export default function TasksPage() {
 
   return (
     <div className="container">
-      <h1>משימות מהמייל</h1>
       <Nav />
+      <div className="mb-8"><div className="page-kicker">Task inbox</div><h1>משימות מהמייל</h1></div>
       <div className="card">
-        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+        <ul className="m-0 list-none p-0">
           {tasks.map((t) => (
             <li
               key={t.id}
-              style={{
-                padding: "0.75rem 0",
-                borderBottom: "1px solid #2a3548",
-                opacity: t.status === "done" ? 0.5 : 1,
-              }}
+              className={`border-b border-[var(--border)] py-3 ${t.status === "done" ? "opacity-50" : ""}`}
             >
               <strong>{t.title}</strong>
               {t.supplier && (
-                <span style={{ color: "var(--muted)" }}> — {t.supplier}</span>
+                <span className="text-ink-muted"> — {t.supplier}</span>
               )}
               {t.status !== "done" && (
                 <button
-                  className="btn btn-secondary"
-                  style={{ marginRight: "1rem" }}
+                  className="btn btn-secondary mr-4"
                   onClick={() => complete(t.id)}
                 >
                   בוצע
@@ -57,7 +52,7 @@ export default function TasksPage() {
           ))}
         </ul>
         {tasks.length === 0 && (
-          <p style={{ color: "var(--muted)" }}>אין משימות עדיין.</p>
+          <p>אין משימות עדיין.</p>
         )}
       </div>
     </div>

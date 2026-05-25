@@ -21,7 +21,7 @@ export default function ReportsPage() {
       <Nav />
       <div className="card">
         {missing.length === 0 ? (
-          <p style={{ color: "var(--ok)" }}>אין חשבוניות חסרות כרגע.</p>
+          <p className="text-emerald-300">אין חשבוניות חסרות כרגע.</p>
         ) : (
           <table>
             <thead>

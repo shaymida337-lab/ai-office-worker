@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
+import { BarChart3, BriefcaseBusiness, CalendarDays, Check, Megaphone, Send, Sparkles, Users, X } from "lucide-react";
 
 type ClientItem = { id: string; name: string; email: string };
 type SocialAccount = { id: string; platform: string; pageId: string | null; isActive: boolean };
@@ -87,28 +88,39 @@ export default function SocialPage() {
 
   return (
     <div className="container">
-      <h1>מנהל סושיאל AI</h1>
       <Nav />
-      {message && <p>{message}</p>}
+      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className="page-kicker">Social command center</div>
+          <h1>מנהל סושיאל AI</h1>
+          <p>תכנון, אישור ופרסום תוכן לכל לקוח ולכל פלטפורמה.</p>
+        </div>
+        <button className="btn" onClick={generate} disabled={loading || !clientId}><Sparkles className="h-4 w-4" />{loading ? "יוצר תוכן..." : "Generate content"}</button>
+      </div>
+      {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
       <div className="card">
-        <label>
-          לקוח
-          <select value={clientId} onChange={(e) => setClientId(e.target.value)} style={{ marginRight: "0.5rem" }}>
+        <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+          <label>
+            לקוח
+            <select value={clientId} onChange={(e) => setClientId(e.target.value)}>
             {clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}
-          </select>
-        </label>
-        <button className="btn" onClick={generate} disabled={loading || !clientId} style={{ marginRight: "0.75rem" }}>
-          {loading ? "יוצר תוכן..." : "Generate new content"}
-        </button>
+            </select>
+          </label>
+          <div className="badge badge-ok">Approval workflow active</div>
+        </div>
       </div>
 
       <div className="card">
         <h2>חשבונות מחוברים</h2>
-        <div className="grid">
+        <div className="mt-5 grid gap-5 md:grid-cols-3">
           {platforms.map((platform) => (
             <div className="card" key={platform}>
-              <h3>{platformIcon(platform)} {platform}</h3>
-              <p>{connected.has(platform) ? "✅ מחובר" : "לא מחובר"}</p>
+              <div className="mb-4 flex items-center justify-between">
+                <span className="grid h-12 w-12 place-items-center rounded-2xl bg-surface-hover text-accent-primary">{platformIcon(platform)}</span>
+                <span className={`badge ${connected.has(platform) ? "badge-ok" : "badge-warn"}`}>{connected.has(platform) ? "מחובר" : "לא מחובר"}</span>
+              </div>
+              <h3 className="text-lg font-semibold capitalize text-ink-primary">{platform}</h3>
+              <p className="mb-4 text-sm">סטטוס חיבור ופרטי פרסום</p>
               <button className="btn btn-secondary" onClick={() => connect(platform)}>
                 {connected.has(platform) ? "עדכן חיבור" : "Connect"}
               </button>
@@ -118,13 +130,15 @@ export default function SocialPage() {
       </div>
 
       <div className="card">
-        <button className="btn btn-secondary" onClick={() => setTab("calendar")}>Content calendar</button>
-        <button className="btn btn-secondary" onClick={() => setTab("pending")} style={{ marginRight: "0.5rem" }}>Pending approval</button>
-        <button className="btn btn-secondary" onClick={() => setTab("analytics")} style={{ marginRight: "0.5rem" }}>Analytics</button>
+        <div className="flex flex-wrap gap-2">
+          <TabButton active={tab === "calendar"} onClick={() => setTab("calendar")} icon={<CalendarDays className="h-4 w-4" />}>Content calendar</TabButton>
+          <TabButton active={tab === "pending"} onClick={() => setTab("pending")} icon={<Check className="h-4 w-4" />}>Pending approval</TabButton>
+          <TabButton active={tab === "analytics"} onClick={() => setTab("analytics")} icon={<BarChart3 className="h-4 w-4" />}>Analytics</TabButton>
+        </div>
       </div>
 
       {tab === "analytics" && (
-        <div className="card">
+        <div className="table-shell">
           <h2>Analytics</h2>
           <table><thead><tr><th>פלטפורמה</th><th>לייקים</th><th>תגובות</th><th>Reach</th></tr></thead><tbody>
             {posts.map((post) => <tr key={post.id}><td>{post.platform}</td><td>{post.analytics?.likes ?? 0}</td><td>{post.analytics?.comments ?? 0}</td><td>{post.analytics?.reach ?? 0}</td></tr>)}
@@ -133,7 +147,7 @@ export default function SocialPage() {
       )}
 
       {tab !== "analytics" && (
-        <div className="grid">
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           {shownPosts.map((post) => (
             <PostCard key={post.id} post={post} onAction={postAction} />
           ))}
@@ -145,25 +159,38 @@ export default function SocialPage() {
 
 function PostCard({ post, onAction }: { post: SocialPost; onAction: (postId: string, action: "approve" | "reject" | "publish") => Promise<void> }) {
   return (
-    <div className="card">
-      <strong>{platformIcon(post.platform)} {post.platform}</strong>
-      <span className="badge badge-ok" style={{ marginRight: "0.5rem" }}>{post.status}</span>
-      <p>{new Date(post.scheduledAt).toLocaleString("he-IL")}</p>
-      {post.imageUrl && <img src={post.imageUrl} alt="" style={{ width: "100%", borderRadius: 12 }} />}
-      <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{post.content}</pre>
+    <div className="card overflow-hidden">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <strong className="flex items-center gap-2 capitalize text-ink-primary">{platformIcon(post.platform)} {post.platform}</strong>
+        <span className="badge badge-ok">{post.status}</span>
+      </div>
+      <p className="mb-4 text-sm">{new Date(post.scheduledAt).toLocaleString("he-IL")}</p>
+      {post.imageUrl && <img src={post.imageUrl} alt="" className="mb-4 aspect-video w-full rounded-2xl object-cover" />}
+      <pre className="mb-5 whitespace-pre-wrap font-sans text-sm leading-7 text-ink-secondary">{post.content}</pre>
+      <div className="flex flex-wrap gap-2">
       {post.status === "pending_approval" && (
         <>
-          <button className="btn" onClick={() => onAction(post.id, "approve")}>Approve</button>
-          <button className="btn btn-secondary" onClick={() => onAction(post.id, "reject")} style={{ marginRight: "0.5rem" }}>Reject</button>
+          <button className="btn" onClick={() => onAction(post.id, "approve")}><Check className="h-4 w-4" />Approve</button>
+          <button className="btn btn-secondary" onClick={() => onAction(post.id, "reject")}><X className="h-4 w-4" />Reject</button>
         </>
       )}
-      {post.status === "approved" && <button className="btn" onClick={() => onAction(post.id, "publish")}>Publish now</button>}
+      {post.status === "approved" && <button className="btn" onClick={() => onAction(post.id, "publish")}><Send className="h-4 w-4" />Publish now</button>}
+      </div>
     </div>
   );
 }
 
 function platformIcon(platform: string) {
-  if (platform === "instagram") return "📸";
-  if (platform === "facebook") return "📘";
-  return "💼";
+  if (platform === "instagram") return <Megaphone className="h-5 w-5" />;
+  if (platform === "facebook") return <Users className="h-5 w-5" />;
+  return <BriefcaseBusiness className="h-5 w-5" />;
+}
+
+function TabButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <button className={`btn btn-secondary ${active ? "border-accent-primary bg-accent-primary/10 text-ink-primary" : ""}`} onClick={onClick}>
+      {icon}
+      {children}
+    </button>
+  );
 }

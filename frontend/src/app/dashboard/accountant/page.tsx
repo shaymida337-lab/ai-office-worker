@@ -91,9 +91,11 @@ export default function AccountantPage() {
       </div>
       <div className="card">
         <h2>מסמכים מוכנים</h2>
-        <button className="btn" onClick={generate} disabled={loading}>{loading ? "מייצר..." : "צור דוח חודש"}</button>
-        <button className="btn btn-secondary" onClick={downloadZip} style={{ marginRight: "0.75rem" }}>הורד הכל כ-ZIP</button>
-        <button className="btn btn-secondary" onClick={() => setMessage("שליחה באימייל תופעל אחרי הגדרת ספק מייל")}>שלח לרואה חשבון</button>
+        <div className="flex flex-wrap gap-3">
+          <button className="btn" onClick={generate} disabled={loading}>{loading ? "מייצר..." : "צור דוח חודש"}</button>
+          <button className="btn btn-secondary" onClick={downloadZip}>הורד הכל כ-ZIP</button>
+          <button className="btn btn-secondary" onClick={() => setMessage("שליחה באימייל תופעל אחרי הגדרת ספק מייל")}>שלח לרואה חשבון</button>
+        </div>
         <ul>
           {summary.reports.map((report) => (
             <li key={report.id}>{report.period} {report.driveUrl ? <a href={report.driveUrl} target="_blank" rel="noreferrer">פתח PDF</a> : "ממתין ל-Drive"}</li>

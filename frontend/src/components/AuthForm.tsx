@@ -40,12 +40,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const isSignup = mode === "signup";
 
   return (
-    <div className="card" style={{ maxWidth: 400, margin: "0 auto" }}>
-      <h2 style={{ marginTop: 0 }}>{isSignup ? "הרשמה" : "התחברות"}</h2>
-      <form onSubmit={handleSubmit}>
+    <div className="card mx-auto max-w-md">
+      <h2>{isSignup ? "הרשמה" : "התחברות"}</h2>
+      <form onSubmit={handleSubmit} className="mt-5 grid gap-4">
         {isSignup && (
-          <div style={{ marginBottom: "1rem" }}>
-            <label htmlFor="name" style={{ display: "block", marginBottom: 4 }}>
+          <div>
+            <label htmlFor="name">
               שם (אופציונלי)
             </label>
             <input
@@ -53,13 +53,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              style={inputStyle}
               autoComplete="name"
             />
           </div>
         )}
-        <div style={{ marginBottom: "1rem" }}>
-          <label htmlFor="email" style={{ display: "block", marginBottom: 4 }}>
+        <div>
+          <label htmlFor="email">
             אימייל
           </label>
           <input
@@ -68,14 +67,13 @@ export function AuthForm({ mode }: { mode: Mode }) {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            style={inputStyle}
             autoComplete="email"
             dir="ltr"
           />
         </div>
-        <div style={{ marginBottom: "1rem" }}>
-          <label htmlFor="password" style={{ display: "block", marginBottom: 4 }}>
-            סיסמה {isSignup && <span style={{ color: "var(--muted)" }}>(מינימום 8 תווים)</span>}
+        <div>
+          <label htmlFor="password">
+            סיסמה {isSignup && <span className="text-ink-muted">(מינימום 8 תווים)</span>}
           </label>
           <input
             id="password"
@@ -84,19 +82,18 @@ export function AuthForm({ mode }: { mode: Mode }) {
             minLength={isSignup ? 8 : 1}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            style={inputStyle}
             autoComplete={isSignup ? "new-password" : "current-password"}
             dir="ltr"
           />
         </div>
         {error && (
-          <p style={{ color: "var(--danger)", marginBottom: "1rem" }}>{error}</p>
+          <p className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-red-200">{error}</p>
         )}
-        <button type="submit" className="btn" disabled={loading} style={{ width: "100%" }}>
+        <button type="submit" className="btn w-full" disabled={loading}>
           {loading ? "..." : isSignup ? "צור חשבון" : "התחבר"}
         </button>
       </form>
-      <p style={{ marginTop: "1.5rem", color: "var(--muted)", fontSize: "0.9rem" }}>
+      <p className="mt-6 text-sm text-ink-muted">
         {isSignup ? (
           <>
             כבר יש חשבון? <Link href="/login">התחבר</Link>
@@ -110,13 +107,3 @@ export function AuthForm({ mode }: { mode: Mode }) {
     </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "0.6rem 0.75rem",
-  borderRadius: 8,
-  border: "1px solid #2a3548",
-  background: "#0f1419",
-  color: "var(--text)",
-  fontSize: "1rem",
-};

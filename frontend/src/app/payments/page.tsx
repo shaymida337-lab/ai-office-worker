@@ -94,9 +94,7 @@ export default function PaymentsPage() {
             ))}
           </tbody>
         </table>
-        {payments.length === 0 && (
-          <p style={{ color: "var(--muted)" }}>אין רשומות. הרץ סריקת Gmail מהלוח.</p>
-        )}
+        {payments.length === 0 && <p>אין רשומות. הרץ סריקת Gmail מהלוח.</p>}
       </div>
     </div>
   );

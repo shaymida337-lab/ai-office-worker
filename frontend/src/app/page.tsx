@@ -4,12 +4,14 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export default function HomePage() {
   return (
-    <div className="container" style={{ paddingTop: "4rem", textAlign: "center" }}>
-      <h1>AI Office Worker</h1>
-      <p style={{ color: "var(--muted)", maxWidth: 480, margin: "1rem auto" }}>
+    <div className="mx-auto grid min-h-screen max-w-5xl place-items-center px-6 py-16 text-center">
+      <div className="card max-w-3xl">
+        <div className="page-kicker">Premium automation workspace</div>
+        <h1>AI Office Worker</h1>
+        <p className="mx-auto mt-4 max-w-xl">
         עוזר משרד חכם לעסקים בישראל — Gmail, חשבוניות, Drive, WhatsApp וסיכומים יומיים.
       </p>
-      <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
         <Link className="btn" href="/login">
           התחברות באימייל
         </Link>
@@ -17,13 +19,14 @@ export default function HomePage() {
           הרשמה
         </Link>
       </div>
-      <p style={{ marginTop: "1.25rem", fontSize: "0.9rem", color: "var(--muted)" }}>
+        <p className="mt-5 text-sm">
         או{" "}
         <a href={`${API_URL}/auth/google`}>התחבר עם Google</a> (לחיבור Gmail)
       </p>
-      <p style={{ marginTop: "1rem", fontSize: "0.9rem", color: "var(--muted)" }}>
+        <p className="mt-4 text-sm">
         כבר מחובר? <Link href="/dashboard">לוח בקרה</Link>
       </p>
+      </div>
     </div>
   );
 }

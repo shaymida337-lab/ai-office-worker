@@ -20,7 +20,7 @@ function CallbackInner() {
   }, [params, router]);
 
   return (
-    <div className="container" style={{ paddingTop: "4rem", textAlign: "center" }}>
+    <div className="container text-center">
       <p>מתחבר...</p>
     </div>
   );

@@ -10,6 +10,7 @@ import {
   type GmailStatus,
 } from "@/lib/api";
 import { useRouter } from "next/navigation";
+import { Activity, ArrowUpRight, Clock3, FileText, HeartPulse, MessageCircle, Plus, RefreshCcw, ScanLine, WalletCards } from "lucide-react";
 
 type ClientSummary = {
   id: string;
@@ -168,146 +169,120 @@ export default function DashboardPage() {
     );
   }
 
+  const kpis = [
+    { label: "לקוחות", value: clients?.clients.length ?? 0, icon: Activity, detail: `${clients?.totals.openTasks ?? 0} משימות פתוחות`, tone: "text-blue-300" },
+    { label: "כסף לקבל", value: `₪${stats.moneyToReceive.toLocaleString("he-IL")}`, icon: ArrowUpRight, detail: "הכנסות צפויות", tone: "text-emerald-300" },
+    { label: "כסף לשלם", value: `₪${stats.moneyToPay.toLocaleString("he-IL")}`, icon: WalletCards, detail: `${stats.upcomingPaymentsCount} תשלומים קרובים`, tone: "text-amber-300" },
+    { label: "בריאות עסקית", value: `${stats.businessHealthScore}/100`, icon: HeartPulse, detail: `נחסכו ${stats.hoursSavedThisWeek} שעות`, tone: "text-violet-300" },
+  ];
+
   return (
     <div className="container">
-      <h1>לוח בקרה</h1>
       <Nav />
-      <div className="card">
-        <strong style={{ color: "#16a34a" }}>● Live</strong>
-        <span style={{ marginRight: "0.75rem" }}>
-          עודכן לאחרונה: {lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}
-        </span>
-        <span style={{ marginRight: "0.75rem" }}>
-          סריקה הבאה: {scanStatus ? new Date(scanStatus.nextScheduledScanAt).toLocaleString("he-IL") : "טוען..."}
-        </span>
-        {scanStatus?.last && (
-          <p>
-            סטטוס אחרון: {scanStatus.last.type} · {scanStatus.last.status} · נמצאו {scanStatus.last.found} · נשמרו{" "}
-            {scanStatus.last.saved}
-          </p>
-        )}
-        <button className="btn btn-secondary" onClick={startFirstScan} disabled={firstScanRunning || syncing}>
-          {firstScanRunning ? "סריקה ראשונית רצה..." : "הפעל סריקה ראשונית 90 יום"}
-        </button>
+      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className="page-kicker">Business command center</div>
+          <h1>לוח בקרה</h1>
+          <p>ניהול חשבוניות, לקוחות, תשלומים ואוטומציות במקום אחד.</p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק Gmail"}</button>
+          <button className="btn btn-secondary" onClick={scanAllClients} disabled={syncing}><RefreshCcw className="h-4 w-4" />סרוק לקוחות</button>
+          <button className="btn btn-secondary" onClick={() => router.push("/dashboard/clients")}><Plus className="h-4 w-4" />הוסף לקוח</button>
+        </div>
       </div>
-      {clients && (
-        <div className="card">
-          <h2>כל הלקוחות</h2>
-          <div style={{ marginBottom: "1rem" }}>
-            <button className="btn" onClick={scanAllClients} disabled={syncing}>
-              {syncing ? "סורק..." : "סרוק את כולם"}
-            </button>
-            <button
-              className="btn btn-secondary"
-              onClick={() => router.push("/dashboard/clients")}
-              style={{ marginRight: "0.75rem" }}
-            >
-              + הוסף לקוח
-            </button>
-          </div>
-          {clients.clients.length === 0 ? (
-            <p>אין לקוחות עדיין.</p>
-          ) : (
-            clients.clients.map((client) => (
-              <div key={client.id} style={{ borderTop: "1px solid var(--border)", padding: "0.75rem 0" }}>
-                <strong>
-                  <span style={{ color: client.color ?? "#3B82F6" }}>■</span> {client.name}
-                </strong>
+
+      {error && <div className="toast border-red-400/30 text-red-200">{error}</div>}
+
+      <section className="grid mb-8">
+        {kpis.map((kpi) => {
+          const Icon = kpi.icon;
+          return (
+            <div key={kpi.label} className="card overflow-hidden">
+              <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,#6366F1,#8B5CF6,transparent)]" />
+              <div className="flex items-start justify-between gap-4">
                 <div>
-                  ₪{client.stats?.toPay ?? 0} לשלם · {client.stats?.openTasks ?? 0} משימות ·{" "}
-                  {client.stats?.invoices ?? 0} חשבוניות · {client.stats?.missingInvoices ?? 0} חסרות
+                  <div className="stat-label">{kpi.label}</div>
+                  <div className="stat-value">{kpi.value}</div>
+                  <p className="mt-2 text-sm">{kpi.detail}</p>
                 </div>
+                <span className={`grid h-12 w-12 place-items-center rounded-2xl bg-surface-hover ${kpi.tone}`}>
+                  <Icon className="h-5 w-5" />
+                </span>
               </div>
-            ))
-          )}
-          <p>
-            סה"כ: ₪{clients.totals.toPay} · {clients.totals.openTasks} משימות ·{" "}
-            {clients.totals.invoices} חשבוניות
-          </p>
-        </div>
-      )}
-      <div style={{ marginBottom: "1rem" }}>
-        <a
-          href="https://ai-office-worker-backend.onrender.com/auth/google"
-          style={{
-            display: "block",
-            padding: "12px",
-            background: "#4285f4",
-            color: "white",
-            borderRadius: "8px",
-            textAlign: "center",
-            textDecoration: "none",
-            marginBottom: "0.75rem",
-          }}
-        >
-          התחבר עם Google
-        </a>
-        <button className="btn" onClick={runSync} disabled={syncing}>
-          {syncing ? "סורק מיילים... ⏳" : "סרוק Gmail עכשיו"}
-        </button>
-        <button
-          className="btn btn-secondary"
-          onClick={() => router.push("/camera")}
-          style={{ marginRight: "0.75rem" }}
-        >
-          צלם/העלה חשבונית
-        </button>
-        {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
-      </div>
-      <div className="grid">
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1.25fr_.75fr]">
         <div className="card">
-          <h2>WhatsApp</h2>
-          <div className="stat-label">הודעות נשלחו היום</div>
-          <div className="stat-value">{whatsAppStats?.sentToday ?? 0}</div>
-          <p>שיחות פעילות: {whatsAppStats?.activeChats ?? 0}</p>
-          <button className="btn btn-secondary" onClick={() => router.push("/dashboard/settings")}>
-            ראה כל השיחות
-          </button>
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <h2>לקוחות אחרונים</h2>
+              <p className="text-sm">סטטוס פעילות וסיכום מהיר לכל לקוח.</p>
+            </div>
+            <button className="btn btn-secondary" onClick={startFirstScan} disabled={firstScanRunning || syncing}>
+              {firstScanRunning ? "סריקה ראשונית רצה..." : "סריקה ראשונית"}
+            </button>
+          </div>
+          <div className="space-y-3">
+            {(clients?.clients ?? []).slice(0, 5).map((client) => (
+              <div key={client.id} className="group flex items-center justify-between gap-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary/60 p-4 transition hover:border-accent-primary/40 hover:bg-surface-hover">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-11 w-11 place-items-center rounded-full bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] text-sm font-bold text-white">
+                    {client.name.slice(0, 2)}
+                  </span>
+                  <div>
+                    <strong className="text-ink-primary">{client.name}</strong>
+                    <p className="text-sm">₪{(client.stats?.toPay ?? 0).toLocaleString("he-IL")} לתשלום · {client.stats?.invoices ?? 0} חשבוניות</p>
+                  </div>
+                </div>
+                <span className="badge badge-ok">{client.stats?.missingInvoices ? `${client.stats.missingInvoices} חסרות` : "תקין"}</span>
+              </div>
+            ))}
+            {clients?.clients.length === 0 && <p>אין לקוחות עדיין.</p>}
+          </div>
         </div>
-        <div className="card">
-          <div className="stat-label">כסף לשלם</div>
-          <div className="stat-value">₪{stats.moneyToPay.toLocaleString("he-IL")}</div>
+
+        <div className="space-y-6">
+          <div className="card">
+            <div className="mb-4 flex items-center gap-3">
+              <Clock3 className="h-5 w-5 text-accent-primary" />
+              <h2>סטטוס אוטומציה</h2>
+            </div>
+            <div className="space-y-3 text-sm text-ink-secondary">
+              <div className="flex justify-between"><span>Live</span><span className="text-emerald-300">פעיל</span></div>
+              <div className="flex justify-between"><span>עודכן לאחרונה</span><span>{lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}</span></div>
+              <div className="flex justify-between"><span>סריקה הבאה</span><span>{scanStatus ? new Date(scanStatus.nextScheduledScanAt).toLocaleString("he-IL") : "טוען..."}</span></div>
+              {scanStatus?.last && <div className="rounded-xl bg-surface-hover p-3">נמצאו {scanStatus.last.found} · נשמרו {scanStatus.last.saved}</div>}
+            </div>
+          </div>
+          <div className="card">
+            <div className="mb-4 flex items-center gap-3">
+              <MessageCircle className="h-5 w-5 text-emerald-300" />
+              <h2>WhatsApp</h2>
+            </div>
+            <div className="stat-value">{whatsAppStats?.sentToday ?? 0}</div>
+            <p>הודעות נשלחו היום · {whatsAppStats?.activeChats ?? 0} שיחות פעילות</p>
+            <button className="btn btn-secondary mt-4" onClick={() => router.push("/dashboard/settings")}>ראה כל השיחות</button>
+          </div>
         </div>
+      </section>
+
+      <section className="mt-6 grid gap-6 xl:grid-cols-[.8fr_1.2fr]">
         <div className="card">
-          <div className="stat-label">כסף לקבל</div>
-          <div className="stat-value">₪{stats.moneyToReceive.toLocaleString("he-IL")}</div>
-        </div>
-        <div className="card">
-          <div className="stat-label">ציון בריאות עסקית</div>
-          <div className="stat-value">{stats.businessHealthScore}/100</div>
-          <small style={{ color: "var(--muted)" }}>
-            חסכת כ-{stats.hoursSavedThisWeek} שעות השבוע
-          </small>
-        </div>
-        <div className="card">
-          <div className="stat-label">חשבוניות ממתינות</div>
-          <div className="stat-value">{stats.pendingInvoices}</div>
-        </div>
-        <div className="card">
-          <div className="stat-label">חשבוניות חסרות</div>
-          <div className="stat-value" style={{ color: "var(--warn)" }}>
-            {stats.missingInvoicesCount}
+          <h2>פעולות מהירות</h2>
+          <div className="mt-4 grid gap-3">
+            <a className="btn" href="https://ai-office-worker-backend.onrender.com/auth/google">התחבר עם Google</a>
+            <button className="btn btn-secondary" onClick={() => router.push("/camera")}><FileText className="h-4 w-4" />צלם/העלה חשבונית</button>
           </div>
         </div>
         <div className="card">
-          <div className="stat-label">תשלומים קרובים (7 ימים)</div>
-          <div className="stat-value">{stats.upcomingPaymentsCount}</div>
+          <h2>סיכום יומי</h2>
+          <pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-7 text-ink-secondary">{summary}</pre>
         </div>
-        <div className="card">
-          <div className="stat-label">משימות פתוחות</div>
-          <div className="stat-value">{stats.openTasks}</div>
-        </div>
-        <div className="card">
-          <div className="stat-label">גבייה באיחור</div>
-          <div className="stat-value">{stats.overdueCustomerInvoices}</div>
-        </div>
-      </div>
-      <div className="card">
-        <h2>סיכום יומי</h2>
-        <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", margin: 0 }}>
-          {summary}
-        </pre>
-      </div>
+      </section>
     </div>
   );
 }

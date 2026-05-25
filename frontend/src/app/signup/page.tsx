@@ -3,10 +3,10 @@ import { AuthForm } from "@/components/AuthForm";
 
 export default function SignupPage() {
   return (
-    <div className="container" style={{ paddingTop: "3rem" }}>
-      <h1 style={{ textAlign: "center" }}>AI Office Worker</h1>
+    <div className="mx-auto min-h-screen max-w-3xl px-6 py-16">
+      <h1 className="text-center">AI Office Worker</h1>
       <AuthForm mode="signup" />
-      <p style={{ textAlign: "center", marginTop: "2rem" }}>
+      <p className="mt-8 text-center">
         <Link href="/">חזרה לדף הבית</Link>
       </p>
     </div>

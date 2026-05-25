@@ -106,10 +106,10 @@ export default function SettingsPage() {
 
   return (
     <div className="container">
-      <h1>הגדרות</h1>
       <Nav />
-      {message && <p>{message}</p>}
-      <form className="card" onSubmit={save} style={{ display: "grid", gap: "0.75rem" }}>
+      <div className="mb-8"><div className="page-kicker">Workspace controls</div><h1>הגדרות</h1></div>
+      {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
+      <form className="card grid gap-3" onSubmit={save}>
         <h2>הגדרות רואה חשבון</h2>
         <input placeholder="שם רואה החשבון" value={form.accountantName ?? ""} onChange={(e) => setForm({ ...form, accountantName: e.target.value })} />
         <input type="email" placeholder="אימייל רואה החשבון" value={form.accountantEmail ?? ""} onChange={(e) => setForm({ ...form, accountantEmail: e.target.value })} />
@@ -126,7 +126,7 @@ export default function SettingsPage() {
         </label>
         <button className="btn" type="submit">שמור הגדרות</button>
       </form>
-      <form className="card" onSubmit={saveWhatsapp} style={{ display: "grid", gap: "0.75rem", marginTop: "1rem" }}>
+      <form className="card grid gap-3" onSubmit={saveWhatsapp}>
         <h2>WhatsApp Assistant</h2>
         <h3>הגדרות בעלים</h3>
         <label>
@@ -181,12 +181,12 @@ export default function SettingsPage() {
           <input type="checkbox" checked={whatsapp.noMessagesOnSaturday} onChange={(e) => setWhatsapp({ ...whatsapp, noMessagesOnSaturday: e.target.checked })} />{" "}
           לא לשלוח בשבת
         </label>
-        <div>
+        <div className="flex flex-wrap gap-3">
           <button className="btn" type="submit">שמור WhatsApp Assistant</button>
-          <button className="btn btn-secondary" type="button" onClick={() => testWhatsapp("morning")} style={{ marginRight: "0.75rem" }}>
+          <button className="btn btn-secondary" type="button" onClick={() => testWhatsapp("morning")}>
             שלח דוח בוקר לעצמי עכשיו
           </button>
-          <button className="btn btn-secondary" type="button" onClick={() => testWhatsapp("number")} style={{ marginRight: "0.75rem" }}>
+          <button className="btn btn-secondary" type="button" onClick={() => testWhatsapp("number")}>
             בדוק שהמספר עובד
           </button>
         </div>

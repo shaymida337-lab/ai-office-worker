@@ -173,7 +173,7 @@ export function HelpCenter() {
                         <div className="help-grid">
                           {helpCategories.map((category) => (
                             <button className="help-category-card" key={category.id} onClick={() => setCategoryId(category.id)}>
-                              <span style={{ color: category.color }}>{category.icon}</span>
+                              <span className={categoryTone(category.id, "text")}>{category.icon}</span>
                               <strong>{category.title}</strong>
                               <small>{category.description}</small>
                             </button>
@@ -209,7 +209,7 @@ export function HelpCenter() {
 function TopicCard({ topic, onOpen }: { topic: TopicWithCategory; onOpen: (topic: TopicWithCategory) => void }) {
   return (
     <button className="help-topic-card" onClick={() => onOpen(topic)}>
-      <span className="help-category-badge" style={{ background: topic.category.color }}>{topic.category.icon}</span>
+      <span className={`help-category-badge ${categoryTone(topic.category.id, "bg")}`}>{topic.category.icon}</span>
       <strong>{topic.title}</strong>
       <small>{topic.shortDesc}</small>
       {topic.autoFix && <span className="help-one-click">תקן אוטומטית →</span>}
@@ -225,7 +225,7 @@ function SearchResults({ query, results, onOpen }: { query: string; results: Top
         <div className="help-list">
           {results.map((topic) => (
             <button className="help-result" key={topic.id} onClick={() => onOpen(topic)}>
-              <span className="help-category-badge" style={{ background: topic.category.color }}>{topic.category.icon} {topic.category.title}</span>
+              <span className={`help-category-badge ${categoryTone(topic.category.id, "bg")}`}>{topic.category.icon} {topic.category.title}</span>
               <strong>{highlight(topic.title, query)}</strong>
               <small>{highlight(topic.shortDesc, query)}</small>
             </button>
@@ -251,7 +251,7 @@ function TopicDetail(props: {
   return (
     <section className="help-detail">
       <button className="help-back" onClick={props.onBack}>← חזרה</button>
-      <span className="help-category-badge" style={{ background: props.topic.category.color }}>{props.topic.category.icon} {props.topic.category.title}</span>
+      <span className={`help-category-badge ${categoryTone(props.topic.category.id, "bg")}`}>{props.topic.category.icon} {props.topic.category.title}</span>
       <h3>🔧 {props.topic.title}</h3>
       <p>{props.topic.shortDesc}</p>
       {props.topic.explanation && <pre className="help-explanation">{props.topic.explanation}</pre>}
@@ -310,10 +310,22 @@ function OnboardingChecklist({ completion, items }: { completion: number; items:
   return (
     <section className="help-section help-checklist">
       <div><h3>צ'קליסט התחלה מהירה</h3><p>{completion}% הושלם</p></div>
-      <div className="help-progress"><span style={{ width: `${completion}%` }} /></div>
+      <progress className="help-progress" value={completion} max={100} />
       {items.map((item) => <button key={item.id} onClick={() => { window.location.href = item.href; }}><span>{item.done ? "☑" : "☐"}</span>{item.label}</button>)}
     </section>
   );
+}
+
+function categoryTone(categoryId: string, type: "text" | "bg") {
+  const tones: Record<string, { text: string; bg: string }> = {
+    gmail: { text: "text-emerald-300", bg: "bg-emerald-500" },
+    drive: { text: "text-blue-300", bg: "bg-blue-500" },
+    whatsapp: { text: "text-violet-300", bg: "bg-violet-500" },
+    invoices: { text: "text-amber-300", bg: "bg-amber-500" },
+    sheets: { text: "text-cyan-300", bg: "bg-cyan-500" },
+    general: { text: "text-slate-300", bg: "bg-slate-500" },
+  };
+  return tones[categoryId]?.[type] ?? tones.general[type];
 }
 
 function EscalationBox({ topic, triedSolution }: { topic: HelpTopic; triedSolution: boolean }) {

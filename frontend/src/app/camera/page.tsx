@@ -92,10 +92,10 @@ export default function CameraPage() {
 
   return (
     <div className="container">
-      <h1>צילום חשבונית</h1>
       <Nav />
+      <div className="mb-8"><div className="page-kicker">Document capture</div><h1>צילום חשבונית</h1></div>
       <div className="card">
-        <p style={{ color: "var(--muted)" }}>
+        <p>
           העלה JPG, PNG או PDF. Claude יחלץ את פרטי החשבונית ותוכל לאשר לפני שמירה.
         </p>
         <input
@@ -103,14 +103,14 @@ export default function CameraPage() {
           accept="image/jpeg,image/png,.jpg,.jpeg,.png,.pdf,application/pdf"
           onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
         />
-        <div style={{ marginTop: "1rem" }}>
+        <div className="mt-4">
           <button className="btn" onClick={buildPreview} disabled={!file || previewing}>
             {previewing ? "סורק חשבונית..." : "הצג תצוגה מקדימה"}
           </button>
         </div>
 
         {preview && (
-          <div className="card" style={{ marginTop: "1rem" }}>
+          <div className="card mt-4">
             <h2>תצוגה מקדימה</h2>
             <p><strong>ספק:</strong> {preview.supplier}</p>
             <p><strong>סכום:</strong> {preview.amount ?? "לא זוהה"}</p>
@@ -123,8 +123,8 @@ export default function CameraPage() {
           </div>
         )}
 
-        {message && <p style={{ color: "var(--ok)" }}>{message}</p>}
-        {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
+        {message && <p className="text-emerald-300">{message}</p>}
+        {error && <p className="text-red-300">{error}</p>}
       </div>
     </div>
   );

@@ -67,16 +67,16 @@ export default function SocialApprovalPage() {
       <p>בדוק את הפוסטים הבאים ואשר או דחה בלחיצה אחת.</p>
       {message && <p>{message}</p>}
       <button className="btn" onClick={approveAll} disabled={loading || posts.length === 0}>Approve All</button>
-      <div className="grid" style={{ marginTop: "1rem" }}>
+      <div className="mt-4 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
         {posts.map((post) => (
           <div className="card" key={post.id}>
             <strong>{post.platform}</strong>
-            <span className="badge badge-ok" style={{ marginRight: "0.5rem" }}>{post.status}</span>
+            <span className="badge badge-ok mr-2">{post.status}</span>
             <p>{new Date(post.scheduledAt).toLocaleString("he-IL")}</p>
-            {post.imageUrl && <img src={post.imageUrl} alt="" style={{ width: "100%", borderRadius: 12 }} />}
-            <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{post.content}</pre>
+            {post.imageUrl && <img src={post.imageUrl} alt="" className="my-4 aspect-video w-full rounded-2xl object-cover" />}
+            <pre className="whitespace-pre-wrap font-sans text-sm leading-7 text-ink-secondary">{post.content}</pre>
             <button className="btn" disabled={loading || post.status === "approved"} onClick={() => action(post.id, "approve")}>Approve</button>
-            <button className="btn btn-secondary" disabled={loading} onClick={() => action(post.id, "reject")} style={{ marginRight: "0.5rem" }}>Reject</button>
+            <button className="btn btn-secondary mr-2" disabled={loading} onClick={() => action(post.id, "reject")}>Reject</button>
           </div>
         ))}
       </div>
