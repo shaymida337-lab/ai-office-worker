@@ -3,14 +3,18 @@ import { prisma } from "../lib/prisma.js";
 import { syncGmailForOrganization } from "./gmail-sync.js";
 import { scanForInvoices, detectUrgent } from "./invoiceScanner.js";
 import { sendDailySummary, buildDailySummary } from "./summary.js";
-import { sendWhatsAppMessage } from "./whatsapp.js";
+import { sendWhatsAppMessage, sendWhatsAppToPhone } from "./whatsapp.js";
 import { generateAccountantReport } from "./accountantReports.js";
 import { previousMonth } from "./vatService.js";
+import { notificationGuard } from "./notificationGuard.js";
+import { clientTemplates, ownerTemplates } from "./messageTemplates.js";
 
 const TIMEZONE = "Asia/Jerusalem";
 const MAX_RETRIES = 3;
 
-type ScanType = "daily" | "quick" | "monthly" | "health" | "first_time";
+type ScanType = "daily" | "quick" | "monthly" | "health" | "first_time" | "whatsapp";
+type AssistantRow = { organizationId: string; ownerPhone: string; isActive: boolean };
+type RuleFlags = { ownerMorningReport: boolean; clientMorningSummary: boolean; clientPaymentReminder: boolean; clientPaymentDaysWait: number };
 
 type LogUpdate = { status: "success" | "failed" | "partial"; found?: number; saved?: number; errors?: string[] };
 
@@ -26,6 +30,9 @@ class SchedulerService {
     cron.schedule("0 3 * * *", () => this.withRetry("health", () => this.updateAllHealthScores()), { timezone: TIMEZONE });
     cron.schedule("0 8 1 * *", () => this.withRetry("monthly", () => this.generateMonthlyReport()), { timezone: TIMEZONE });
     cron.schedule("0 6 1 * *", () => this.withRetry("monthly", () => this.generateMonthlyAccountantReports()), { timezone: TIMEZONE });
+    cron.schedule("30 7 * * 0-5", () => this.withRetry("whatsapp", () => this.sendOwnerMorningReports()), { timezone: TIMEZONE });
+    cron.schedule("0 8 * * 0-5", () => this.withRetry("whatsapp", () => this.sendClientMorningBriefs()), { timezone: TIMEZONE });
+    cron.schedule("0 10 * * 0-5", () => this.withRetry("whatsapp", () => this.sendPaymentReminders()), { timezone: TIMEZONE });
 
     console.log("[scheduler] All scheduled jobs started");
   }
@@ -153,6 +160,96 @@ class SchedulerService {
     }
   }
 
+  async sendOwnerMorningReports() {
+    const assistants = await prisma.$queryRawUnsafe<AssistantRow[]>(
+      'SELECT "organizationId","ownerPhone","isActive" FROM "WhatsAppAssistant" WHERE "isActive" = true'
+    );
+
+    for (const assistant of assistants) {
+      try {
+        const flags = await getRuleFlags(assistant.organizationId);
+        if (!flags.ownerMorningReport) continue;
+        // RULE: Max 2 messages per day per number
+        // RULE: No messages 21:00-07:00
+        // RULE: No messages on Saturday
+        const canSend = await notificationGuard.canSend(assistant.ownerPhone, assistant.organizationId, "morning_report");
+        if (!canSend.allowed) continue;
+
+        const data = await buildOwnerReportData(assistant.organizationId);
+        // RULE: Only send if content is relevant
+        const message = ownerTemplates.morningReport(data);
+        const sent = await sendWhatsAppToPhone(assistant.organizationId, assistant.ownerPhone, message, undefined, true);
+        if (sent.sent) await notificationGuard.logSent(assistant.ownerPhone, assistant.organizationId, "morning_report", message, undefined, true);
+      } catch (err) {
+        console.error("[scheduler] Owner morning WhatsApp failed", err);
+      }
+    }
+  }
+
+  async sendClientMorningBriefs() {
+    const clients = await prisma.client.findMany({ where: { whatsappNumber: { not: null }, isActive: true } });
+    for (const client of clients) {
+      if (!client.whatsappNumber) continue;
+      try {
+        const flags = await getRuleFlags(client.organizationId);
+        if (!flags.clientMorningSummary) continue;
+        // RULE: Max 2 messages per day per number
+        // RULE: No messages 21:00-07:00
+        // RULE: No messages on Saturday
+        const canSend = await notificationGuard.canSend(client.whatsappNumber, client.organizationId, "morning_brief");
+        if (!canSend.allowed) continue;
+
+        const data = await buildClientBriefData(client.id);
+        // RULE: Only send if content is relevant
+        if (data.tasksToday === 0 && !data.pendingInvoice) continue;
+
+        const message = clientTemplates.morningBrief(data);
+        const sent = await sendWhatsAppToPhone(client.organizationId, client.whatsappNumber, message, client.id, true);
+        if (sent.sent) await notificationGuard.logSent(client.whatsappNumber, client.organizationId, "morning_brief", message, client.id);
+      } catch (err) {
+        console.error(`[scheduler] Client morning brief failed client=${client.id}`, err);
+      }
+    }
+  }
+
+  async sendPaymentReminders() {
+    const invoices = await prisma.invoice.findMany({
+      where: { status: "pending", dueDate: { not: null } },
+      include: { client: true },
+      take: 100,
+    });
+
+    for (const invoice of invoices) {
+      const client = invoice.client;
+      if (!client.whatsappNumber || !invoice.dueDate) continue;
+      try {
+        const flags = await getRuleFlags(client.organizationId);
+        if (!flags.clientPaymentReminder) continue;
+        const threshold = new Date(Date.now() - flags.clientPaymentDaysWait * 24 * 60 * 60 * 1000);
+        if (invoice.dueDate > threshold) continue;
+        // RULE: Max 2 messages per day per number
+        // RULE: No messages 21:00-07:00
+        // RULE: No messages on Saturday
+        // RULE: Payment reminder max once per 7 days
+        const canSend = await notificationGuard.canSend(client.whatsappNumber, client.organizationId, "payment_reminder");
+        if (!canSend.allowed) continue;
+
+        const daysOverdue = Math.floor((Date.now() - invoice.dueDate.getTime()) / (1000 * 60 * 60 * 24));
+        // RULE: Only send if content is relevant
+        const message = clientTemplates.paymentReminder({
+          clientName: client.name,
+          invoiceNumber: invoice.invoiceNumber || "---",
+          amount: invoice.amount,
+          daysOverdue,
+        });
+        const sent = await sendWhatsAppToPhone(client.organizationId, client.whatsappNumber, message, client.id, true);
+        if (sent.sent) await notificationGuard.logSent(client.whatsappNumber, client.organizationId, "payment_reminder", message, client.id);
+      } catch (err) {
+        console.error(`[scheduler] Payment reminder failed invoice=${invoice.id}`, err);
+      }
+    }
+  }
+
   private async withRetry(type: ScanType, run: () => Promise<void>) {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
       try {
@@ -195,6 +292,57 @@ function wait(ms: number) {
 
 function errorMessage(err: unknown) {
   return err instanceof Error ? err.message : String(err);
+}
+
+async function buildOwnerReportData(organizationId: string) {
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const [activeClients, income, pendingPayments, newEmails, todayTasks, urgentAlert] = await Promise.all([
+    prisma.client.count({ where: { organizationId, isActive: true } }),
+    prisma.invoice.aggregate({ where: { organizationId, date: { gte: monthStart } }, _sum: { amount: true } }),
+    prisma.invoice.count({ where: { organizationId, status: { not: "paid" } } }),
+    prisma.emailMessage.count({ where: { organizationId, receivedAt: { gte: todayStart } } }),
+    prisma.task.count({ where: { organizationId, status: "open", dueDate: { lte: new Date() } } }),
+    prisma.alert.findFirst({ where: { organizationId, read: false }, orderBy: { createdAt: "desc" } }),
+  ]);
+
+  return {
+    activeClients,
+    monthlyIncome: income._sum.amount ?? 0,
+    pendingPayments,
+    newEmails,
+    todayTasks,
+    urgentClient: urgentAlert?.type,
+    urgentReason: urgentAlert?.title,
+  };
+}
+
+async function buildClientBriefData(clientId: string) {
+  const client = await prisma.client.findUnique({ where: { id: clientId } });
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+  const [tasksToday, pendingInvoice] = await Promise.all([
+    prisma.task.count({ where: { clientId, status: "open", dueDate: { lte: todayEnd } } }),
+    prisma.invoice.aggregate({ where: { clientId, status: { not: "paid" } }, _sum: { amount: true } }),
+  ]);
+  return {
+    clientName: client?.name ?? "לקוח",
+    tasksToday,
+    pendingInvoice: pendingInvoice._sum.amount ?? undefined,
+    tip: tasksToday > 0 ? "מומלץ לסגור קודם את המשימות הדחופות." : undefined,
+  };
+}
+
+async function getRuleFlags(organizationId: string): Promise<RuleFlags> {
+  const rows = await prisma.$queryRawUnsafe<RuleFlags[]>(
+    'SELECT "ownerMorningReport","clientMorningSummary","clientPaymentReminder","clientPaymentDaysWait" FROM "NotificationRules" WHERE "organizationId" = $1 LIMIT 1',
+    organizationId
+  );
+  return rows[0] ?? { ownerMorningReport: true, clientMorningSummary: true, clientPaymentReminder: true, clientPaymentDaysWait: 7 };
 }
 
 export const scheduler = new SchedulerService();

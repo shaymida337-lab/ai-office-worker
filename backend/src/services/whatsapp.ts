@@ -165,6 +165,38 @@ export async function sendWhatsAppMessage(organizationId: string, body: string) 
   return { sent: true, sid: message.sid };
 }
 
+export async function sendWhatsAppToPhone(organizationId: string, phone: string, body: string, clientId?: string, aiGenerated = false) {
+  const normalized = normalizeWhatsAppNumber(phone);
+  const twilioClient = await getTwilioClient();
+  if (!twilioClient) return { sent: false, reason: "Twilio is not configured" };
+  if (!normalized) return { sent: false, reason: "WhatsApp number is missing" };
+
+  const message = await sendTwilioMessageWithRetry(
+    twilioClient as TwilioMessageClient,
+    {
+      from: config.twilio.whatsappFrom,
+      to: normalized,
+      body,
+    },
+    { organizationId, clientId, to: normalized, target: clientId ? "client" : "owner", aiGenerated }
+  );
+
+  await prisma.whatsAppLog.create({
+    data: {
+      organizationId,
+      clientId,
+      direction: "outbound",
+      body,
+      fromNumber: config.twilio.whatsappFrom,
+      toNumber: normalized,
+      aiGenerated,
+      read: true,
+    },
+  });
+
+  return { sent: true, sid: message.sid };
+}
+
 export async function sendClientWhatsAppMessage(clientId: string, body: string, aiGenerated = false) {
   const clientRecord = await prisma.client.findUnique({ where: { id: clientId } });
   if (!clientRecord?.whatsappNumber) return { sent: false, reason: "Client WhatsApp number is missing" };

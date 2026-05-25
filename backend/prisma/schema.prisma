@@ -51,6 +51,10 @@ model Organization {
   clients         Client[]
   invoices        Invoice[]
   accountantReports AccountantReport[]
+  whatsAppAssistant WhatsAppAssistant?
+  whatsAppNotifications WhatsAppNotification[]
+  whatsAppConversations WhatsAppConversation[]
+  notificationRules NotificationRules?
 }
 
 model Client {
@@ -356,6 +360,68 @@ model WhatsAppMessage {
 
   @@index([clientId, timestamp])
   @@index([clientId, processed])
+}
+
+model WhatsAppAssistant {
+  id                String   @id @default(cuid())
+  organizationId    String   @unique
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ownerPhone        String
+  isActive          Boolean  @default(true)
+  morningReportTime String   @default("07:30")
+  clientDailyTime   String   @default("08:00")
+  language          String   @default("he")
+  createdAt         DateTime @default(now())
+}
+
+model WhatsAppNotification {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String?
+  phone          String
+  type           String
+  message        String
+  sentAt         DateTime @default(now())
+  isOwner        Boolean  @default(false)
+
+  @@index([organizationId, sentAt])
+  @@index([phone, sentAt])
+  @@index([phone, type, sentAt])
+}
+
+model WhatsAppConversation {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  phone          String
+  clientId       String?
+  messages       Json
+  lastMessageAt  DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, phone])
+  @@index([organizationId, lastMessageAt])
+}
+
+model NotificationRules {
+  id                    String  @id @default(cuid())
+  organizationId        String  @unique
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ownerMorningReport    Boolean @default(true)
+  ownerMorningTime      String  @default("07:30")
+  ownerCriticalAlerts   Boolean @default(true)
+  clientMorningSummary  Boolean @default(true)
+  clientMorningTime     String  @default("08:00")
+  clientPaymentReminder Boolean @default(true)
+  clientPaymentDaysWait Int     @default(7)
+  clientInvoiceFound    Boolean @default(true)
+  clientUrgentOnly      Boolean @default(true)
+  maxMessagesPerDay     Int     @default(2)
+  quietHoursStart       String  @default("21:00")
+  quietHoursEnd         String  @default("07:00")
+  noMessagesOnSaturday  Boolean @default(true)
+  noMessagesOnHolidays  Boolean @default(true)
 }
 
 

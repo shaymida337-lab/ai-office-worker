@@ -47,6 +47,11 @@ type ScanStatus = {
   nextScheduledScanAt: string;
 };
 
+type WhatsAppAssistantStats = {
+  sentToday: number;
+  activeChats: number;
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -54,6 +59,7 @@ export default function DashboardPage() {
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
   const [clients, setClients] = useState<ClientsResponse | null>(null);
   const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
+  const [whatsAppStats, setWhatsAppStats] = useState<WhatsAppAssistantStats | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [firstScanRunning, setFirstScanRunning] = useState(false);
@@ -71,6 +77,9 @@ export default function DashboardPage() {
       setClients(clientData);
       const automation = await apiFetch<ScanStatus>("/api/automation/scan-status");
       setScanStatus(automation);
+      apiFetch<WhatsAppAssistantStats>("/api/whatsapp-assistant/stats")
+        .then(setWhatsAppStats)
+        .catch(() => undefined);
       if (automation.last?.type === "first_time" && automation.last.endedAt) {
         setFirstScanRunning(false);
       }
@@ -243,6 +252,15 @@ export default function DashboardPage() {
         {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
       </div>
       <div className="grid">
+        <div className="card">
+          <h2>WhatsApp</h2>
+          <div className="stat-label">הודעות נשלחו היום</div>
+          <div className="stat-value">{whatsAppStats?.sentToday ?? 0}</div>
+          <p>שיחות פעילות: {whatsAppStats?.activeChats ?? 0}</p>
+          <button className="btn btn-secondary" onClick={() => router.push("/dashboard/settings")}>
+            ראה כל השיחות
+          </button>
+        </div>
         <div className="card">
           <div className="stat-label">כסף לשלם</div>
           <div className="stat-value">₪{stats.moneyToPay.toLocaleString("he-IL")}</div>

@@ -4,10 +4,9 @@ import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import {
   findClientByWhatsAppNumber,
-  findOrganizationByWhatsAppNumber,
-  generateWhatsAppReply,
-  handleWhatsAppCommand,
+  normalizeWhatsAppNumber,
 } from "../services/whatsapp.js";
+import { handleClientMessage, handleOwnerMessage } from "../services/whatsappChatEngine.js";
 
 export const webhooksRouter = Router();
 
@@ -26,8 +25,38 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
   const body = (req.body.Body as string) ?? "";
   const from = req.body.From as string;
   const twiml = new twilio.twiml.MessagingResponse();
-  const client = await findClientByWhatsAppNumber(from);
+  const normalizedFrom = normalizeWhatsAppNumber(from);
+  const assistant = await findAssistantByOwnerPhone(normalizedFrom);
 
+  if (assistant) {
+    await prisma.whatsAppLog.create({
+      data: {
+        organizationId: assistant.organizationId,
+        direction: "inbound",
+        body,
+        fromNumber: normalizedFrom,
+        toNumber: config.twilio.whatsappFrom,
+      },
+    });
+
+    const reply = await safeReply(() => handleOwnerMessage(body, assistant.organizationId, normalizedFrom));
+    twiml.message(reply);
+    await prisma.whatsAppLog.create({
+      data: {
+        organizationId: assistant.organizationId,
+        direction: "outbound",
+        body: reply,
+        fromNumber: config.twilio.whatsappFrom,
+        toNumber: normalizedFrom,
+        aiGenerated: true,
+        read: true,
+      },
+    });
+    res.type("text/xml").send(twiml.toString());
+    return;
+  }
+
+  const client = await findClientByWhatsAppNumber(normalizedFrom);
   if (client) {
     await prisma.whatsAppLog.create({
       data: {
@@ -35,17 +64,12 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
         clientId: client.id,
         direction: "inbound",
         body,
-        fromNumber: from,
+        fromNumber: normalizedFrom,
         toNumber: config.twilio.whatsappFrom,
       },
     });
 
-    let reply = "תודה על הודעתך, נחזור אליך בקרוב";
-    try {
-      reply = await generateWhatsAppReply(body);
-    } catch {
-      reply = "תודה על הודעתך, נחזור אליך בקרוב";
-    }
+    const reply = await safeReply(() => handleClientMessage(body, client.id, client.organizationId, normalizedFrom));
 
     twiml.message(reply);
     await prisma.whatsAppLog.create({
@@ -55,7 +79,7 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
         direction: "outbound",
         body: reply,
         fromNumber: config.twilio.whatsappFrom,
-        toNumber: from,
+        toNumber: normalizedFrom,
         aiGenerated: true,
         read: true,
       },
@@ -64,17 +88,25 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
     return;
   }
 
-  const organizationId = await findOrganizationByWhatsAppNumber(from);
-  if (!organizationId) {
-    twiml.message("מספר זה אינו רשום במערכת. פנה למנהל.");
-    res.type("text/xml").send(twiml.toString());
-    return;
-  }
-
-  const reply = await handleWhatsAppCommand(organizationId, body, from);
-  twiml.message(reply);
-
+  twiml.message("שלום! מספר זה אינו רשום במערכת. פנה למנהל.");
   res.type("text/xml").send(twiml.toString());
+}
+
+async function findAssistantByOwnerPhone(phone: string) {
+  const rows = await prisma.$queryRawUnsafe<Array<{ organizationId: string }>>(
+    'SELECT "organizationId" FROM "WhatsAppAssistant" WHERE "ownerPhone" = $1 AND "isActive" = true LIMIT 1',
+    phone
+  );
+  return rows[0] ?? null;
+}
+
+async function safeReply(run: () => Promise<string>) {
+  try {
+    return await run();
+  } catch (err) {
+    console.error("[webhook] WhatsApp assistant reply failed", err);
+    return "תודה על ההודעה. הייתה תקלה רגעית, נסה שוב בעוד דקה.";
+  }
 }
 
 webhooksRouter.post("/twilio/whatsapp", handleTwilioWhatsApp);

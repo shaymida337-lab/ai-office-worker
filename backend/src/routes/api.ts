@@ -290,6 +290,32 @@ apiRouter.post("/settings/whatsapp", saveWhatsAppNumber);
 apiRouter.post("/whatsapp/test", sendWhatsAppTest);
 apiRouter.post("/integrations/whatsapp/test", sendWhatsAppTest);
 
+apiRouter.get("/whatsapp-assistant/settings", async (req, res) => {
+  const { getWhatsAppAssistantSettings } = await import("../services/whatsappAssistant.js");
+  res.json(await getWhatsAppAssistantSettings(req.auth!.organizationId));
+});
+
+apiRouter.put("/whatsapp-assistant/settings", async (req, res) => {
+  const { updateWhatsAppAssistantSettings } = await import("../services/whatsappAssistant.js");
+  res.json(await updateWhatsAppAssistantSettings(req.auth!.organizationId, req.body as Record<string, unknown>));
+});
+
+apiRouter.get("/whatsapp-assistant/stats", async (req, res) => {
+  const { getWhatsAppAssistantStats } = await import("../services/whatsappAssistant.js");
+  res.json(await getWhatsAppAssistantStats(req.auth!.organizationId));
+});
+
+apiRouter.post("/whatsapp-assistant/test/:type", async (req, res) => {
+  const type = req.params.type === "number" ? "number" : "morning";
+  const { sendAssistantTest } = await import("../services/whatsappAssistant.js");
+  const result = await sendAssistantTest(req.auth!.organizationId, type);
+  if (!result.sent) {
+    res.status(400).json({ error: result.reason });
+    return;
+  }
+  res.json(result);
+});
+
 apiRouter.post("/sync/gmail", async (req, res) => {
   try {
     const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
