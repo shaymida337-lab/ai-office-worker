@@ -304,7 +304,7 @@ model Task {
   description    String?
   supplier       String?
   priority       String   @default("medium") // low | medium | high
-  status         String   @default("open") // open | done
+  status         String   @default("open") // open | completed
   dueDate        DateTime?
   source         String   @default("gmail")
   emailMessageId String?

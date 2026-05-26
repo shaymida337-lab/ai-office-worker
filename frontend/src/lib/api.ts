@@ -95,6 +95,7 @@ export type Task = {
   priority: string;
   status: string;
   dueDate: string | null;
+  updatedAt: string;
 };
 
 export type CustomerInvoice = {

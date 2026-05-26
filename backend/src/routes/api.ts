@@ -228,7 +228,7 @@ apiRouter.patch("/tasks/:id", async (req, res) => {
   const { status } = req.body as { status?: string };
   const updated = await prisma.task.updateMany({
     where: { id: req.params.id, organizationId: req.auth!.organizationId },
-    data: { status: status ?? "done" },
+    data: { status: status ?? "completed" },
   });
   if (updated.count === 0) {
     res.status(404).json({ error: "Task not found" });

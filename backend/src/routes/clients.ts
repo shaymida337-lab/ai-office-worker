@@ -65,7 +65,7 @@ function authFromQuery(req: { query: Record<string, unknown>; headers: { authori
 async function clientStats(organizationId: string, clientId: string) {
   const [invoices, openTasks, toPay, missingInvoices] = await Promise.all([
     prisma.invoice.count({ where: { organizationId, clientId } }),
-    prisma.task.count({ where: { organizationId, clientId, status: { not: "done" } } }),
+    prisma.task.count({ where: { organizationId, clientId, status: { notIn: ["done", "completed"] } } }),
     prisma.supplierPayment.aggregate({
       where: { organizationId, clientId, paid: false },
       _sum: { amount: true },
@@ -85,7 +85,7 @@ async function calculateClientHealth(organizationId: string, clientId: string) {
   const [client, totalTasks, doneTasks, recentEmails, payments, missingInvoices] = await Promise.all([
     prisma.client.findFirst({ where: { id: clientId, organizationId, isActive: true } }),
     prisma.task.count({ where: { organizationId, clientId } }),
-    prisma.task.count({ where: { organizationId, clientId, status: "done" } }),
+    prisma.task.count({ where: { organizationId, clientId, status: { in: ["done", "completed"] } } }),
     prisma.emailMessage.count({
       where: {
         organizationId,

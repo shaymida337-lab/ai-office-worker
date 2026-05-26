@@ -5,9 +5,16 @@ import { Nav } from "@/components/Nav";
 import { apiFetch, type Task } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
+type TaskTab = "active" | "completed";
+
+const completedStatuses = new Set(["completed", "done"]);
+
 export default function TasksPage() {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [activeTab, setActiveTab] = useState<TaskTab>("active");
+  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     apiFetch<Task[]>("/api/tasks")
@@ -16,43 +23,129 @@ export default function TasksPage() {
   }, [router]);
 
   async function complete(id: string) {
-    await apiFetch(`/api/tasks/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: "done" }),
-    });
-    setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, status: "done" } : t))
-    );
+    setCompletingIds((prev) => new Set(prev).add(id));
+    try {
+      await apiFetch(`/api/tasks/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "completed" }),
+      });
+      window.setTimeout(() => {
+        const completedAt = new Date().toISOString();
+        setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "completed", updatedAt: completedAt } : task)));
+        setCompletingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, 450);
+    } catch {
+      setCompletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   }
+
+  async function restore(id: string) {
+    setRestoringIds((prev) => new Set(prev).add(id));
+    try {
+      await apiFetch(`/api/tasks/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "open" }),
+      });
+      const restoredAt = new Date().toISOString();
+      setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "open", updatedAt: restoredAt } : task)));
+      setActiveTab("active");
+    } finally {
+      setRestoringIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
+
+  const activeTasks = tasks.filter((task) => !completedStatuses.has(task.status));
+  const completedTasks = tasks.filter((task) => completedStatuses.has(task.status));
+  const visibleTasks = activeTab === "active" ? activeTasks : completedTasks;
+
+  const formatCompletedDate = (date: string) =>
+    new Intl.DateTimeFormat("he-IL", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(date));
 
   return (
     <div className="container">
       <Nav />
       <div className="mb-8"><div className="page-kicker">Task inbox</div><h1>משימות מהמייל</h1></div>
       <div className="card">
+        <div className="mb-5 flex flex-wrap gap-2 rounded-2xl border border-[var(--border)] bg-surface-hover p-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("active")}
+            className={`rounded-xl px-4 py-2 text-[14px] font-bold transition ${
+              activeTab === "active" ? "bg-[#6366F1] text-white shadow-[0_10px_24px_rgba(99,102,241,0.28)]" : "text-[#E2E8F0] hover:bg-surface-card"
+            }`}
+          >
+            משימות פעילות ({activeTasks.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("completed")}
+            className={`rounded-xl px-4 py-2 text-[14px] font-bold transition ${
+              activeTab === "completed" ? "bg-[#6366F1] text-white shadow-[0_10px_24px_rgba(99,102,241,0.28)]" : "text-[#E2E8F0] hover:bg-surface-card"
+            }`}
+          >
+            בוצעו ✓ ({completedTasks.length})
+          </button>
+        </div>
+
         <ul className="m-0 list-none p-0">
-          {tasks.map((t) => (
+          {visibleTasks.map((t) => {
+            const isCompleting = completingIds.has(t.id);
+            const isRestoring = restoringIds.has(t.id);
+            return (
             <li
               key={t.id}
-              className={`border-b border-[var(--border)] py-3 ${t.status === "done" ? "opacity-50" : ""}`}
+              className={`flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] py-4 transition-all duration-300 ${
+                activeTab === "completed" ? "text-ink-muted opacity-70" : "text-[#E2E8F0]"
+              } ${isCompleting ? "scale-[0.98] rounded-xl bg-emerald-500/15 px-3 text-emerald-100 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]" : ""}`}
             >
-              <strong>{t.title}</strong>
-              {t.supplier && (
-                <span className="text-ink-muted"> — {t.supplier}</span>
-              )}
-              {t.status !== "done" && (
+              <div>
+                <strong className={activeTab === "completed" ? "text-[14px] font-semibold text-ink-muted line-through" : "text-[15px] font-semibold text-white"}>
+                  {isCompleting ? "✓ בוצע" : t.title}
+                </strong>
+                {t.supplier && <span className="text-[14px] text-ink-muted"> — {t.supplier}</span>}
+                {activeTab === "completed" && <div className="mt-1 text-[13px] text-ink-muted">הושלם: {formatCompletedDate(t.updatedAt)}</div>}
+              </div>
+              {activeTab === "active" ? (
                 <button
-                  className="btn btn-secondary mr-4"
+                  className="btn btn-secondary"
+                  disabled={isCompleting}
                   onClick={() => complete(t.id)}
                 >
                   בוצע
                 </button>
+              ) : (
+                <button
+                  className="btn btn-secondary"
+                  disabled={isRestoring}
+                  onClick={() => restore(t.id)}
+                >
+                  {isRestoring ? "משחזר..." : "שחזר"}
+                </button>
               )}
             </li>
-          ))}
+          );
+          })}
         </ul>
-        {tasks.length === 0 && (
-          <p>אין משימות עדיין.</p>
+        {visibleTasks.length === 0 && (
+          <p className="text-[14px] text-ink-muted">{activeTab === "active" ? "אין משימות פעילות כרגע." : "אין משימות שבוצעו עדיין."}</p>
         )}
       </div>
     </div>
