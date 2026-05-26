@@ -35,6 +35,46 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
   res.json({ last, logs, nextScheduledScanAt: nextDaily.toISOString() });
 });
 
+apiRouter.post("/help/auto-fix/invoices", async (req, res) => {
+  try {
+    const { getGoogleClients } = await import("../services/google.js");
+    const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
+    const { gmail } = await getGoogleClients(req.auth!.organizationId);
+
+    const labelName = "AI Office Worker - חשבוניות";
+    const labels = await gmail.users.labels.list({ userId: "me" });
+    const existingLabel = labels.data.labels?.find((label) => label.name === labelName);
+    let labelCreated = false;
+    if (!existingLabel) {
+      await gmail.users.labels.create({
+        userId: "me",
+        requestBody: {
+          name: labelName,
+          labelListVisibility: "labelShow",
+          messageListVisibility: "show",
+        },
+      });
+      labelCreated = true;
+    }
+
+    const result = await syncGmailForOrganization(req.auth!.organizationId, { daysBack: 90 });
+    res.json({
+      success: true,
+      labelCreated,
+      invoicesFound: result.invoicesCreated ?? result.invoiceEmails ?? 0,
+      emailsScanned: result.emailsProcessed,
+      clientsFound: result.potentialClients ?? result.clientsCreated ?? 0,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Auto fix failed";
+    if (message === "Gmail not connected") {
+      res.status(409).json({ error: "Gmail לא מחובר - לחץ כאן לחיבור", code: "GMAIL_NOT_CONNECTED" });
+      return;
+    }
+    res.status(500).json({ error: `התיקון האוטומטי נכשל: ${message}` });
+  }
+});
+
 apiRouter.get("/dashboard", async (req, res) => {
   const stats = await getDashboardStats(req.auth!.organizationId);
   res.json(stats);
@@ -337,10 +377,10 @@ async function scanGmail(req: Request, res: Response) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
     if (message === "Gmail not connected") {
-      res.status(409).json({ error: message });
+      res.status(409).json({ error: "Gmail לא מחובר - לחץ כאן לחיבור", code: "GMAIL_NOT_CONNECTED" });
       return;
     }
-    res.status(500).json({ error: message });
+    res.status(500).json({ error: `סריקת Gmail נכשלה: ${message}` });
   }
 }
 

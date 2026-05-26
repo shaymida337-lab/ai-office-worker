@@ -10,12 +10,8 @@ async function loadGoogle() {
 
 export async function getGoogleClients(organizationId: string) {
   const google = await loadGoogle();
-  const integration = await prisma.integration.findUnique({
-    where: {
-      organizationId_provider: { organizationId, provider: "gmail" },
-    },
-  });
-  if (!integration?.refreshToken) {
+  const integration = await ensureGmailAccessToken(organizationId);
+  if (!integration.refreshToken) {
     throw new Error("Gmail not connected");
   }
 
@@ -49,6 +45,47 @@ export async function getGoogleClients(organizationId: string) {
     sheets: google.sheets({ version: "v4", auth: oauth2 }),
     oauth2,
   };
+}
+
+export async function ensureGmailAccessToken(organizationId: string) {
+  const google = await loadGoogle();
+  const integration = await prisma.integration.findUnique({
+    where: {
+      organizationId_provider: { organizationId, provider: "gmail" },
+    },
+  });
+  if (!integration?.refreshToken) {
+    throw new Error("Gmail not connected");
+  }
+
+  const expiresAt = integration.expiresAt?.getTime() ?? 0;
+  const hasValidAccessToken = Boolean(integration.accessToken) && expiresAt > Date.now() + 60_000;
+  if (hasValidAccessToken) {
+    console.log("Gmail token: valid ✅");
+    return integration;
+  }
+
+  console.log("Gmail token: expired, refreshing...");
+  const oauth2 = new google.auth.OAuth2(
+    config.google.clientId,
+    config.google.clientSecret,
+    config.google.redirectUri
+  );
+  oauth2.setCredentials({
+    refresh_token: integration.refreshToken,
+  });
+
+  const { credentials } = await oauth2.refreshAccessToken();
+  return prisma.integration.update({
+    where: {
+      organizationId_provider: { organizationId, provider: "gmail" },
+    },
+    data: {
+      accessToken: credentials.access_token ?? integration.accessToken,
+      refreshToken: credentials.refresh_token ?? integration.refreshToken,
+      expiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : integration.expiresAt,
+    },
+  });
 }
 
 export async function getOAuth2Client(redirectUri = config.google.redirectUri) {

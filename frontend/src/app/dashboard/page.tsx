@@ -80,6 +80,7 @@ export default function DashboardPage() {
   const [syncing, setSyncing] = useState(false);
   const [firstScanRunning, setFirstScanRunning] = useState(false);
   const [firstScanSummary, setFirstScanSummary] = useState("");
+  const [scanProgress, setScanProgress] = useState<string[]>([]);
   const [scanToast, setScanToast] = useState<ScanToast | null>(null);
   const [error, setError] = useState("");
 
@@ -119,23 +120,45 @@ export default function DashboardPage() {
 
   async function startFirstScan() {
     setFirstScanRunning(true);
-    const progressMessage = "סורק מיילים... זה עלול לקחת מספר דקות";
+    const progressMessage = "מתחבר ל-Gmail...";
     setFirstScanSummary(progressMessage);
+    setScanProgress([progressMessage]);
     setScanToast({ type: "info", text: progressMessage });
     setError("");
     try {
-      await apiFetch<{ emailsProcessed: number; paymentsCreated: number; tasksCreated: number; inProgress?: boolean; message?: string }>(
+      const addProgress = (message: string) => setScanProgress((items) => [...items, message]);
+      addProgress("מחפש מיילים מ-90 הימים האחרונים...");
+      const result = await apiFetch<{
+        emailsProcessed: number;
+        emailsFound?: number;
+        clientsCreated?: number;
+        invoicesCreated?: number;
+        potentialClients?: number;
+        invoiceEmails?: number;
+        inProgress?: boolean;
+        message?: string;
+      }>(
         "/api/gmail/scan",
         { method: "POST", body: JSON.stringify({ daysBack: 90 }) }
       );
+      addProgress(`נמצאו ${result.emailsFound ?? result.emailsProcessed} מיילים`);
+      addProgress("מזהה לקוחות...");
+      addProgress(`נמצאו ${result.potentialClients ?? result.clientsCreated ?? 0} לקוחות`);
+      addProgress("מזהה חשבוניות...");
+      addProgress(`נמצאו ${result.invoicesCreated ?? result.invoiceEmails ?? 0} חשבוניות`);
+      addProgress("✅ הסריקה הושלמה!");
       await load();
       const updatedClients = await apiFetch<ClientsResponse>("/api/clients");
       setClients(updatedClients);
-      const successMessage = `✅ הסריקה הושלמה! נמצאו ${updatedClients.clients.length} לקוחות ו-${updatedClients.totals.invoices} חשבוניות`;
-      setFirstScanSummary(successMessage);
+      const scanned = result.emailsFound ?? result.emailsProcessed;
+      const clientsFound = result.potentialClients ?? updatedClients.clients.length;
+      const invoicesFound = result.invoicesCreated ?? updatedClients.totals.invoices;
+      const successMessage = `✅ הסריקה הושלמה! נמצאו ${clientsFound} לקוחות ו-${invoicesFound} חשבוניות`;
+      setFirstScanSummary(`נסרקו ${scanned} מיילים | נמצאו ${clientsFound} לקוחות | ${invoicesFound} חשבוניות`);
       setScanToast({ type: "success", text: successMessage });
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : "סריקה ראשונית נכשלה";
+      setScanProgress((items) => [...items, errorMessage]);
       setScanToast({ type: "error", text: errorMessage });
     } finally {
       setFirstScanRunning(false);
@@ -248,6 +271,13 @@ export default function DashboardPage() {
             <div className="h-3 overflow-hidden rounded-full bg-white/20">
               <div className="h-full w-2/3 animate-pulse rounded-full bg-white shadow-[0_0_24px_rgba(255,255,255,0.7)]" />
             </div>
+          </div>
+        )}
+        {scanProgress.length > 0 && (
+          <div className="mt-5 grid gap-2 rounded-2xl border border-white/25 bg-white/10 p-4 text-[14px] font-semibold text-white">
+            {scanProgress.map((item) => (
+              <div key={item}>{item}</div>
+            ))}
           </div>
         )}
         {firstScanSummary && (

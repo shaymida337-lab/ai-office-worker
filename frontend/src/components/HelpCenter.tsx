@@ -30,6 +30,7 @@ export function HelpCenter() {
   const [showWhatsApp, setShowWhatsApp] = useState(false);
   const [question, setQuestion] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [autoFixLoading, setAutoFixLoading] = useState(false);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [checklist, setChecklist] = useState(defaultChecklist);
 
@@ -90,11 +91,21 @@ export function HelpCenter() {
     }
     if (action === "reconnect-gmail") window.location.href = `${API_URL}/auth/google`;
     if (action === "rescan-gmail") {
+      setAutoFixLoading(true);
+      setChat((messages) => [...messages, { role: "assistant", text: "מתקן אוטומטית..." }]);
       try {
-        await apiFetch("/api/gmail/scan", { method: "POST" });
-        setChat((messages) => [...messages, { role: "assistant", text: "הרצתי סריקת Gmail מחדש. בדוק בדשבורד אם נמצאו מיילים." }]);
+        const result = await apiFetch<{ invoicesFound: number; emailsScanned: number; clientsFound: number; labelCreated: boolean }>("/api/help/auto-fix/invoices", { method: "POST" });
+        setChat((messages) => [
+          ...messages,
+          {
+            role: "assistant",
+            text: `✅ תוקן! נמצאו ${result.invoicesFound} חשבוניות. נסרקו ${result.emailsScanned} מיילים ונמצאו ${result.clientsFound} לקוחות${result.labelCreated ? " | נוצרה תווית Gmail לחשבוניות" : ""}.`,
+          },
+        ]);
       } catch (err) {
-        setChat((messages) => [...messages, { role: "assistant", text: err instanceof Error ? err.message : "הסריקה נכשלה. נסה לחבר Gmail מחדש." }]);
+        setChat((messages) => [...messages, { role: "assistant", text: err instanceof Error ? err.message : "התיקון האוטומטי נכשל. נסה לחבר Gmail מחדש." }]);
+      } finally {
+        setAutoFixLoading(false);
       }
     }
   }
@@ -139,6 +150,7 @@ export function HelpCenter() {
               {topic ? (
                 <TopicDetail
                   topic={topic}
+                  autoFixLoading={autoFixLoading}
                   triedSolution={triedSolution}
                   showWhatsApp={showWhatsApp}
                   onBack={() => setTopic(null)}
@@ -238,6 +250,7 @@ function SearchResults({ query, results, onOpen }: { query: string; results: Top
 
 function TopicDetail(props: {
   topic: TopicWithCategory;
+  autoFixLoading: boolean;
   triedSolution: boolean;
   showWhatsApp: boolean;
   onBack: () => void;
@@ -260,7 +273,7 @@ function TopicDetail(props: {
             <div className="help-step" key={step}>
               <strong>✅ צעד {index + 1}</strong>
               <span>{step}</span>
-              {index === 0 && props.topic.autoFix && <button className="btn btn-secondary" onClick={() => props.onAutoFix(props.topic.autoFix)}>תקן אוטומטית →</button>}
+              {index === 0 && props.topic.autoFix && <button className="btn btn-secondary" onClick={() => props.onAutoFix(props.topic.autoFix)} disabled={props.autoFixLoading}>{props.autoFixLoading ? "מתקן אוטומטית..." : "תקן אוטומטית →"}</button>}
             </div>
           ))}
         </div>
@@ -269,7 +282,7 @@ function TopicDetail(props: {
         <div className="help-trouble" key={item.problem}>
           <strong>{item.problem}</strong>
           <p>{item.solution}</p>
-          {item.autoFix && <button className="btn btn-secondary" onClick={() => props.onAutoFix(item.autoFix)}>תקן אוטומטית →</button>}
+          {item.autoFix && <button className="btn btn-secondary" onClick={() => props.onAutoFix(item.autoFix)} disabled={props.autoFixLoading}>{props.autoFixLoading ? "מתקן אוטומטית..." : "תקן אוטומטית →"}</button>}
         </div>
       ))}
       <div className="help-detail-actions">

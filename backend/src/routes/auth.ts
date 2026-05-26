@@ -2,10 +2,11 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { Router } from "express";
 import { z } from "zod";
+import { authMiddleware } from "../lib/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { signToken } from "../lib/auth.js";
 import { config, hasGoogleOAuth } from "../lib/config.js";
-import { getOAuth2Client, GMAIL_SCOPES } from "../services/google.js";
+import { ensureGmailAccessToken, getOAuth2Client, GMAIL_SCOPES } from "../services/google.js";
 import { hashPassword, verifyPassword } from "../lib/password.js";
 import { sendAuthSuccess } from "../lib/auth-response.js";
 
@@ -162,6 +163,26 @@ authRouter.get("/google", async (_req, res) => {
     return;
   }
   res.redirect(url);
+});
+
+authRouter.get("/status", authMiddleware, async (req, res) => {
+  try {
+    const integration = await ensureGmailAccessToken(req.auth!.organizationId);
+    res.json({
+      gmail: {
+        connected: true,
+        hasAccessToken: Boolean(integration.accessToken),
+        expiresAt: integration.expiresAt,
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Auth status failed";
+    if (message === "Gmail not connected") {
+      res.json({ gmail: { connected: false, hasAccessToken: false, expiresAt: null } });
+      return;
+    }
+    res.status(500).json({ error: message });
+  }
 });
 
 authRouter.get("/google/callback", async (req, res) => {

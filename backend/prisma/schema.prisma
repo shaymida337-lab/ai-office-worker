@@ -63,6 +63,9 @@ model Client {
   organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name               String
   email              String
+  domain             String?
+  firstSeen          DateTime?
+  lastSeen           DateTime?
   whatsappNumber     String?
   googleAccessToken  String?
   googleRefreshToken String?
@@ -91,6 +94,7 @@ model Client {
 
   @@index([organizationId, isActive])
   @@index([organizationId, whatsappNumber])
+  @@index([organizationId, domain])
 }
 
 model Integration {
@@ -212,11 +216,14 @@ model Invoice {
   driveUrl       String?
   sheetsRow      Int?
   emailId        String?
+  fromEmail      String?
+  gmailMessageId String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@index([organizationId, status, date])
   @@index([clientId, date])
+  @@index([organizationId, gmailMessageId])
   @@unique([organizationId, clientId, emailId, invoiceNumber])
 }
 
