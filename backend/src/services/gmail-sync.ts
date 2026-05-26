@@ -14,7 +14,7 @@ const MAX_MESSAGES_PER_SYNC = 500;
 const DRIVE_FULL_MESSAGE = "הסריקה הושלמה. לא ניתן לשמור ל-Drive - האחסון שלך מלא";
 const INVOICE_KEYWORDS = ["חשבונית", "חשבון", "קבלה", "לתשלום", "invoice", "receipt", "payment", "פקטורה"];
 
-export async function syncGmailForOrganization(organizationId: string, options: { daysBack?: number; isFirstTime?: boolean } = {}) {
+export async function syncGmailForOrganization(organizationId: string, options: { daysBack?: number; isFirstTime?: boolean; forceReprocess?: boolean } = {}) {
   const activeLog = await prisma.syncLog.findFirst({
     where: {
       organizationId,
@@ -24,7 +24,39 @@ export async function syncGmailForOrganization(organizationId: string, options: 
     },
   });
   if (activeLog) {
-    return { emailsProcessed: 0, paymentsCreated: 0, tasksCreated: 0, inProgress: true };
+    const staleAfterMs = 30 * 60 * 1000;
+    if (activeLog.startedAt.getTime() > Date.now() - staleAfterMs) {
+      console.log(`[gmail-sync] Existing Gmail scan still running org=${organizationId} log=${activeLog.id}`);
+      return { emailsProcessed: 0, paymentsCreated: 0, tasksCreated: 0, clientsCreated: 0, invoicesCreated: 0, uniqueSenders: 0, potentialClients: 0, invoiceEmails: 0, invoiceAmountsExtracted: 0, inProgress: true, scanSteps: ["סריקת Gmail כבר רצה"] };
+    }
+    console.warn(`[gmail-sync] Closing stale Gmail scan log org=${organizationId} log=${activeLog.id}`);
+    await prisma.syncLog.update({
+      where: { id: activeLog.id },
+      data: { status: "error", errorMessage: "Stale running scan was reset", finishedAt: new Date() },
+    });
+  }
+
+  const scanSteps: string[] = [];
+  const logStep = (message: string) => {
+    scanSteps.push(message);
+    console.log(message);
+  };
+
+  const daysBack = options.isFirstTime ? 90 : options.daysBack ?? 90;
+  if (options.forceReprocess) {
+    logStep(`[gmail-sync] Force reprocess enabled for ${daysBack} day scan`);
+  }
+
+  const activeLogAfterReset = await prisma.syncLog.findFirst({
+    where: {
+      organizationId,
+      type: "gmail_scan",
+      status: "running",
+      finishedAt: null,
+    },
+  });
+  if (activeLogAfterReset) {
+    return { emailsProcessed: 0, paymentsCreated: 0, tasksCreated: 0, clientsCreated: 0, invoicesCreated: 0, uniqueSenders: 0, potentialClients: 0, invoiceEmails: 0, invoiceAmountsExtracted: 0, inProgress: true, scanSteps: ["סריקת Gmail כבר רצה"] };
   }
 
   const log = await prisma.syncLog.create({
@@ -47,17 +79,19 @@ export async function syncGmailForOrganization(organizationId: string, options: 
   let potentialClients = 0;
 
   try {
+    logStep("[gmail-sync] Checking Gmail token and creating Google clients");
     const { gmail, drive } = await getGoogleClients(organizationId);
     let rootId: string | null = null;
     try {
+      logStep("[gmail-sync] Checking Drive invoice folder");
       rootId = await ensureInvoiceFolderTree(drive);
     } catch (err) {
       driveUploadFailed = true;
       console.error("Drive setup failed; continuing Gmail sync without Drive", err);
     }
-    const daysBack = options.isFirstTime ? 90 : options.daysBack ?? 30;
+    logStep(`[gmail-sync] Searching Gmail from last ${daysBack} days`);
     const messages = await listCandidateMessages(gmail, daysBack);
-    console.log(`Found ${messages.length} total emails`);
+    logStep(`Found ${messages.length} emails in last ${daysBack} days`);
     const scannedEmails: ScannedEmail[] = [];
 
     for (const msgRef of messages) {
@@ -151,6 +185,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
       }
     }
     uniqueSenders = senderCounts.size;
+    logStep(`Found ${uniqueSenders} unique senders`);
     const clientIdByDomain = new Map<string, string>();
     for (const [domain, sender] of senderCounts) {
       if (sender.count < 2) continue;
@@ -166,10 +201,10 @@ export async function syncGmailForOrganization(organizationId: string, options: 
       clientIdByDomain.set(domain, saved.id);
       if (saved.created) clientsCreated++;
     }
-    console.log(`Found ${uniqueSenders} unique senders, ${potentialClients} potential clients`);
+    logStep(`Found ${potentialClients} potential clients`);
 
     for (const email of scannedEmails) {
-      const clientId = clientIdByDomain.get(email.domain);
+      let clientId = clientIdByDomain.get(email.domain);
       if (clientId) {
         await prisma.emailMessage.update({
           where: { id: email.emailRecordId },
@@ -177,7 +212,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         });
       }
 
-      if (email.alreadyProcessed) continue;
+      if (email.alreadyProcessed && !options.forceReprocess) continue;
 
       const pdfText = await extractPdfTextFromParts(gmail, email.gmailId, email.parts);
       const bodyForAnalysis = pdfText ? `${email.bodyText}\n\n--- PDF ATTACHMENT TEXT ---\n${pdfText}` : email.bodyText;
@@ -190,6 +225,23 @@ export async function syncGmailForOrganization(organizationId: string, options: 
       const invoiceMatch = detectInvoice(email.subject, bodyForAnalysis, email.parts);
       if (invoiceMatch.isInvoice) invoiceEmails++;
       if (invoiceMatch.amount !== null) invoiceAmountsExtracted++;
+      if (!clientId && invoiceMatch.isInvoice && email.domain) {
+        const saved = await upsertPotentialClient({
+          organizationId,
+          name: email.senderName || email.domain,
+          email: email.senderEmail,
+          domain: email.domain,
+          firstSeen: email.receivedAt,
+          lastSeen: email.receivedAt,
+        });
+        clientId = saved.id;
+        clientIdByDomain.set(email.domain, saved.id);
+        if (saved.created) clientsCreated++;
+        await prisma.emailMessage.update({
+          where: { id: email.emailRecordId },
+          data: { clientId },
+        });
+      }
       const driveLinks: { type: string; link: string }[] = [];
 
       for (const part of email.parts) {
@@ -231,27 +283,36 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           });
           const link = upload.webViewLink;
           driveLinks.push({ type: folderType, link });
-          await prisma.emailAttachment.create({
-            data: {
-              emailMessageId: email.emailRecordId,
-              filename: part.filename,
-              mimeType: part.mimeType ?? undefined,
-              gmailAttachmentId: attachmentId,
-              driveFileId: upload.fileId ?? undefined,
-              driveLink: link,
-            },
-          });
+          if (existingAttachment) {
+            await prisma.emailAttachment.update({
+              where: { id: existingAttachment.id },
+              data: { driveFileId: upload.fileId ?? undefined, driveLink: link },
+            });
+          } else {
+            await prisma.emailAttachment.create({
+              data: {
+                emailMessageId: email.emailRecordId,
+                filename: part.filename,
+                mimeType: part.mimeType ?? undefined,
+                gmailAttachmentId: attachmentId,
+                driveFileId: upload.fileId ?? undefined,
+                driveLink: link,
+              },
+            });
+          }
         } catch (err) {
           driveUploadFailed = true;
           console.error("Drive upload failed; continuing Gmail sync without attachment upload", err);
-          await prisma.emailAttachment.create({
-            data: {
-              emailMessageId: email.emailRecordId,
-              filename: part.filename,
-              mimeType: part.mimeType ?? undefined,
-              gmailAttachmentId: attachmentId,
-            },
-          });
+          if (!existingAttachment) {
+            await prisma.emailAttachment.create({
+              data: {
+                emailMessageId: email.emailRecordId,
+                filename: part.filename,
+                mimeType: part.mimeType ?? undefined,
+                gmailAttachmentId: attachmentId,
+              },
+            });
+          }
         }
       }
 
@@ -380,8 +441,8 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         data: { processedAt: new Date() },
       });
     }
-    console.log(`Found ${invoiceEmails} invoice emails, extracted ${invoiceAmountsExtracted} amounts`);
-    console.log(`Saved ${clientsCreated} clients, ${invoicesCreated} invoices to database`);
+    logStep(`Found ${invoiceEmails} invoice emails, extracted ${invoiceAmountsExtracted} amounts`);
+    logStep(`Saved ${clientsCreated} clients, ${invoicesCreated} invoices to database`);
 
     await prisma.syncLog.update({
       where: { id: log.id },
@@ -405,6 +466,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
       invoiceEmails,
       invoiceAmountsExtracted,
       driveUploadFailed,
+      scanSteps,
       message: driveUploadFailed ? DRIVE_FULL_MESSAGE : undefined,
     };
   } catch (err) {

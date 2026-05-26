@@ -61,10 +61,11 @@ export async function ensureGmailAccessToken(organizationId: string) {
   const expiresAt = integration.expiresAt?.getTime() ?? 0;
   const hasValidAccessToken = Boolean(integration.accessToken) && expiresAt > Date.now() + 60_000;
   if (hasValidAccessToken) {
-    console.log("Gmail token: valid ✅");
+    console.log("Gmail token status: valid");
     return integration;
   }
 
+  console.log("Gmail token status: expired");
   console.log("Gmail token: expired, refreshing...");
   const oauth2 = new google.auth.OAuth2(
     config.google.clientId,

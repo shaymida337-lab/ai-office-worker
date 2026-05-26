@@ -366,20 +366,26 @@ async function scanGmail(req: Request, res: Response) {
   try {
     const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
     const rawDaysBack = Number(req.body?.daysBack ?? req.query.daysBack);
-    const daysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0 ? Math.ceil(rawDaysBack) : undefined;
-    const result = await syncGmailForOrganization(req.auth!.organizationId, { daysBack });
+    const daysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0 ? Math.ceil(rawDaysBack) : 90;
+    console.log(`[gmail-scan] POST /api/gmail/scan org=${req.auth!.organizationId} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack}`);
+    console.log("[gmail-scan] Step 1: checking Gmail authentication");
+    console.log("[gmail-scan] Step 2: starting Gmail sync");
+    const result = await syncGmailForOrganization(req.auth!.organizationId, { daysBack, forceReprocess: daysBack >= 90 });
+    console.log(`[gmail-scan] Step 3: scan finished emails=${result.emailsProcessed} clients=${result.clientsCreated} invoices=${result.invoicesCreated} tasks=${result.tasksCreated}`);
     res.json({
       ...result,
       emailsFound: result.emailsProcessed,
-      daysBack: daysBack ?? 30,
+      daysBack,
       success: true,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
     if (message === "Gmail not connected") {
-      res.status(409).json({ error: "Gmail לא מחובר - לחץ כאן לחיבור", code: "GMAIL_NOT_CONNECTED" });
+      console.log("[gmail-scan] Gmail not connected");
+      res.status(409).json({ error: "יש להתחבר ל-Gmail תחילה", code: "GMAIL_NOT_CONNECTED" });
       return;
     }
+    console.error("[gmail-scan] Scan failed", err);
     res.status(500).json({ error: `סריקת Gmail נכשלה: ${message}` });
   }
 }

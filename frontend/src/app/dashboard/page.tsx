@@ -83,6 +83,7 @@ export default function DashboardPage() {
   const [firstScanSummary, setFirstScanSummary] = useState("");
   const [scanProgress, setScanProgress] = useState<string[]>([]);
   const [scanToast, setScanToast] = useState<ScanToast | null>(null);
+  const [showGmailConnect, setShowGmailConnect] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -120,15 +121,25 @@ export default function DashboardPage() {
   }, [load]);
 
   async function startFirstScan() {
+    if (gmailStatus && !gmailStatus.connected) {
+      const message = "יש להתחבר ל-Gmail תחילה";
+      setShowGmailConnect(true);
+      setFirstScanSummary(message);
+      setScanProgress([message]);
+      setScanToast({ type: "error", text: message });
+      return;
+    }
+
     setFirstScanRunning(true);
     const progressMessage = "מתחבר ל-Gmail...";
     setFirstScanSummary(progressMessage);
     setScanProgress([progressMessage]);
     setScanToast({ type: "info", text: progressMessage });
+    setShowGmailConnect(false);
     setError("");
     try {
       const addProgress = (message: string) => setScanProgress((items) => [...items, message]);
-      addProgress("מחפש מיילים מ-90 הימים האחרונים...");
+      addProgress("מחפש מיילים...");
       const result = await apiFetch<{
         emailsProcessed: number;
         emailsFound?: number;
@@ -136,33 +147,49 @@ export default function DashboardPage() {
         invoicesCreated?: number;
         potentialClients?: number;
         invoiceEmails?: number;
+        tasksCreated?: number;
+        scanSteps?: string[];
         inProgress?: boolean;
         message?: string;
       }>(
         "/api/gmail/scan",
         { method: "POST", body: JSON.stringify({ daysBack: 90 }) }
       );
-      addProgress(`נמצאו ${result.emailsFound ?? result.emailsProcessed} מיילים`);
+      const scanned = result.emailsFound ?? result.emailsProcessed;
+      addProgress(`נמצאו ${scanned} מיילים`);
       addProgress("מזהה לקוחות...");
       addProgress(`נמצאו ${result.potentialClients ?? result.clientsCreated ?? 0} לקוחות`);
       addProgress("מזהה חשבוניות...");
       addProgress(`נמצאו ${result.invoicesCreated ?? result.invoiceEmails ?? 0} חשבוניות`);
+      addProgress("שומר נתונים...");
       addProgress("✅ הסריקה הושלמה!");
       await load();
       const updatedClients = await apiFetch<ClientsResponse>("/api/clients");
       setClients(updatedClients);
-      const scanned = result.emailsFound ?? result.emailsProcessed;
       const clientsFound = result.potentialClients ?? updatedClients.clients.length;
       const invoicesFound = result.invoicesCreated ?? updatedClients.totals.invoices;
+      const tasksFound = result.tasksCreated ?? 0;
       const successMessage = `✅ הסריקה הושלמה! נמצאו ${clientsFound} לקוחות ו-${invoicesFound} חשבוניות`;
-      setFirstScanSummary(`נסרקו ${scanned} מיילים | נמצאו ${clientsFound} לקוחות | ${invoicesFound} חשבוניות`);
+      setFirstScanSummary(`נסרקו ${scanned} מיילים | נמצאו ${clientsFound} לקוחות | ${invoicesFound} חשבוניות | ${tasksFound} משימות`);
       setScanToast({ type: "success", text: successMessage });
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : "סריקה ראשונית נכשלה";
+      if (errorMessage.includes("Gmail") || errorMessage.includes("להתחבר")) {
+        setShowGmailConnect(true);
+      }
       setScanProgress((items) => [...items, errorMessage]);
       setScanToast({ type: "error", text: errorMessage });
     } finally {
       setFirstScanRunning(false);
+    }
+  }
+
+  async function connectGmail() {
+    try {
+      const result = await apiFetch<{ url: string }>("/api/integrations/gmail/connect-url");
+      window.location.href = result.url;
+    } catch {
+      window.location.href = "https://ai-office-worker-backend.onrender.com/auth/google";
     }
   }
 
@@ -281,9 +308,14 @@ export default function DashboardPage() {
         )}
         {scanProgress.length > 0 && (
           <div className="mt-3 grid gap-1.5 rounded-xl border border-white/25 bg-white/10 p-3 text-[13px] font-semibold text-white">
-            {scanProgress.map((item) => (
-              <div key={item}>{item}</div>
+            {scanProgress.map((item, index) => (
+              <div key={`${item}-${index}`}>{item}</div>
             ))}
+            {showGmailConnect && (
+              <button type="button" onClick={connectGmail} className="mt-2 w-full rounded-xl bg-white px-4 py-2 text-[14px] font-bold text-[#4F46E5] transition hover:bg-white/90 sm:w-auto">
+                התחבר ל-Gmail
+              </button>
+            )}
           </div>
         )}
         {firstScanSummary && (
