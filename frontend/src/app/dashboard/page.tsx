@@ -246,48 +246,48 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <section className="mb-8 rounded-3xl border border-[#818CF8]/70 bg-[linear-gradient(135deg,rgba(99,102,241,0.98),rgba(139,92,246,0.94))] p-6 text-white shadow-[0_24px_60px_rgba(99,102,241,0.35)]">
-        <div className="flex flex-col gap-5">
-          <div>
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[14px] font-semibold text-white">
-              <Clock3 className="h-4 w-4" />
+      <section className="mb-6 rounded-2xl border border-[#818CF8]/70 bg-[linear-gradient(135deg,rgba(99,102,241,0.98),rgba(139,92,246,0.94))] p-3 text-white shadow-[0_14px_34px_rgba(99,102,241,0.28)]">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="mb-1 inline-flex items-center gap-2 rounded-full bg-white/15 px-2.5 py-0.5 text-[13px] font-semibold text-white">
+              <Clock3 className="h-3.5 w-3.5" />
               סריקה ראשונית 90 יום
             </div>
-            <h2 className="text-2xl font-extrabold text-white">הפעל סריקה ראשונית - 90 יום אחורה</h2>
-            <p className="mt-2 text-[14px] font-medium text-white/90">
+            <h2 className="text-[16px] font-bold text-white">הפעל סריקה ראשונית - 90 יום אחורה</h2>
+            <p className="mt-1 text-[13px] font-medium text-white/85">
               סרוק את כל המיילים מ-90 הימים האחרונים למציאת לקוחות וחשבוניות
             </p>
           </div>
           <button
             type="button"
-            className="inline-flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl border border-[#818CF8] bg-[#6366F1] px-6 py-4 text-[18px] font-bold text-white shadow-[0_18px_42px_rgba(15,23,42,0.28)] transition hover:scale-[1.01] hover:bg-[#7C3AED] disabled:cursor-not-allowed disabled:opacity-80"
+            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-[#818CF8] bg-[#6366F1] px-4 text-[14px] font-bold text-white shadow-[0_10px_22px_rgba(15,23,42,0.22)] transition hover:scale-[1.01] hover:bg-[#7C3AED] disabled:cursor-not-allowed disabled:opacity-80 lg:w-auto lg:min-w-64"
             onClick={startFirstScan}
             disabled={firstScanRunning || syncing}
           >
-            {firstScanRunning && <RefreshCcw className="h-5 w-5 animate-spin" />}
+            {firstScanRunning && <RefreshCcw className="h-4 w-4 animate-spin" />}
             {firstScanRunning ? "סורק מיילים..." : "🕐 הפעל סריקה ראשונית - 90 יום"}
           </button>
         </div>
         {firstScanRunning && (
-          <div className="mt-5">
-            <div className="mb-2 flex items-center justify-between text-[14px] font-semibold text-white">
+          <div className="mt-3">
+            <div className="mb-1 flex items-center justify-between text-[13px] font-semibold text-white">
               <span>סורק Gmail ומעדכן נתונים...</span>
               <span>90 יום</span>
             </div>
-            <div className="h-3 overflow-hidden rounded-full bg-white/20">
+            <div className="h-2 overflow-hidden rounded-full bg-white/20">
               <div className="h-full w-2/3 animate-pulse rounded-full bg-white shadow-[0_0_24px_rgba(255,255,255,0.7)]" />
             </div>
           </div>
         )}
         {scanProgress.length > 0 && (
-          <div className="mt-5 grid gap-2 rounded-2xl border border-white/25 bg-white/10 p-4 text-[14px] font-semibold text-white">
+          <div className="mt-3 grid gap-1.5 rounded-xl border border-white/25 bg-white/10 p-3 text-[13px] font-semibold text-white">
             {scanProgress.map((item) => (
               <div key={item}>{item}</div>
             ))}
           </div>
         )}
         {firstScanSummary && (
-          <div className="mt-5 rounded-2xl border border-white/25 bg-white/15 p-4 text-[15px] font-bold text-white">
+          <div className="mt-3 rounded-xl border border-white/25 bg-white/15 p-3 text-[13px] font-bold text-white">
             {firstScanSummary}
           </div>
         )}
