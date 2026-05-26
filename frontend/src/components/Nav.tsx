@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { Logo } from "@/components/Logo";
 import {
   BarChart3,
   Bell,
-  Bot,
   Camera,
   CheckSquare,
   ChevronDown,
@@ -13,7 +13,6 @@ import {
   FileBarChart,
   FileText,
   Home,
-  Inbox,
   LogOut,
   Megaphone,
   MessageCircle,
@@ -55,15 +54,7 @@ export function Nav() {
     <>
       <aside className="fixed right-0 top-0 z-50 hidden h-screen w-60 flex-col border-l border-[var(--border)] bg-surface-secondary/95 px-3 py-4 shadow-card backdrop-blur-xl lg:flex">
         <Link href="/dashboard" className="mb-6 block rounded-2xl px-3 py-3 transition hover:bg-surface-hover">
-          <span className="block whitespace-nowrap text-left text-[17px] font-extrabold leading-tight tracking-tight text-white drop-shadow-[0_0_18px_rgba(99,102,241,0.35)]">
-            AI Office Worker
-          </span>
-          <span className="mt-3 flex items-center gap-3">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#6366F1] shadow-[0_14px_35px_rgba(99,102,241,0.35)] ring-1 ring-[#818CF8]">
-              <Bot className="h-6 w-6 text-white" />
-            </span>
-            <span className="block text-left text-[13px] font-medium text-ink-muted">Premium workspace</span>
-          </span>
+          <Logo size="md" showSubtitle />
         </Link>
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto pb-4">
@@ -106,8 +97,8 @@ export function Nav() {
       <header className="fixed left-0 right-0 top-0 z-40 border-b border-transparent bg-surface-primary/80 backdrop-blur-xl lg:right-60">
         <div className="h-px bg-[linear-gradient(90deg,transparent,#6366F1,#8B5CF6,transparent)]" />
         <div className="flex h-16 items-center gap-3 px-4 md:px-8">
-          <Link href="/dashboard" className="grid h-10 w-10 place-items-center rounded-xl bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] lg:hidden">
-            <Bot className="h-5 w-5 text-white" />
+          <Link href="/dashboard" className="lg:hidden">
+            <Logo size="md" iconOnly />
           </Link>
           <div className="mx-auto flex h-10 w-full max-w-xl items-center gap-3 rounded-xl border border-[var(--border)] bg-surface-hover px-3 text-ink-muted shadow-card">
             <Search className="h-4 w-4" />
@@ -126,7 +117,25 @@ export function Nav() {
       </header>
 
       <nav className="fixed bottom-4 left-4 right-4 z-50 flex gap-2 overflow-x-auto rounded-2xl border border-[var(--border)] bg-surface-secondary/95 p-2 shadow-card backdrop-blur-xl lg:hidden">
-        {links.slice(0, 6).map((item) => {
+        {links.slice(0, 3).map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex min-w-16 flex-col items-center gap-1 rounded-xl px-3 py-2 text-[13px] transition ${
+                isActive(item.href) ? "bg-accent-primary/20 text-white" : "text-[#E2E8F0] hover:bg-surface-hover"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {item.label}
+            </Link>
+          );
+        })}
+        <Link href="/dashboard" className="flex min-w-16 flex-col items-center gap-1 rounded-xl px-3 py-2 text-[13px] text-white">
+          <Logo size="sm" iconOnly />
+        </Link>
+        {links.slice(3, 5).map((item) => {
           const Icon = item.icon;
           return (
             <Link

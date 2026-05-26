@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Logo } from "@/components/Logo";
 import { Nav } from "@/components/Nav";
 import {
   apiFetch,
@@ -227,11 +228,16 @@ export default function DashboardPage() {
   return (
     <div className="container">
       <Nav />
-      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <div className="page-kicker">Business command center</div>
-          <h1>לוח בקרה</h1>
-          <p>ניהול חשבוניות, לקוחות, תשלומים ואוטומציות במקום אחד.</p>
+      <div className="mb-8 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+        <div className="flex flex-col gap-4">
+          <div className="rounded-3xl border border-[var(--border)] bg-[rgba(22,22,30,0.72)] p-5 shadow-card backdrop-blur">
+            <Logo size="lg" showSubtitle />
+            <div className="mt-3 text-[12px] font-bold uppercase tracking-[0.24em] text-blue-300">Business command center</div>
+          </div>
+          <div>
+            <h1>לוח בקרה</h1>
+            <p>ניהול חשבוניות, לקוחות, תשלומים ואוטומציות במקום אחד.</p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-3">
           <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק Gmail"}</button>

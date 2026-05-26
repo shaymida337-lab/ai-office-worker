@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { login, register, saveToken } from "@/lib/auth";
+import { Logo } from "@/components/Logo";
 
 type Mode = "login" | "signup";
 
@@ -41,6 +42,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
   return (
     <div className="card mx-auto max-w-md">
+      <div className="mb-6 flex justify-center">
+        <Logo size="lg" showSubtitle />
+      </div>
       <h2>{isSignup ? "הרשמה" : "התחברות"}</h2>
       <form onSubmit={handleSubmit} className="mt-5 grid gap-4">
         {isSignup && (

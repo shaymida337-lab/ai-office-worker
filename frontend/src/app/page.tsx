@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Logo } from "@/components/Logo";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -6,6 +7,9 @@ export default function HomePage() {
   return (
     <div className="mx-auto grid min-h-screen max-w-5xl place-items-center px-6 py-16 text-center">
       <div className="card max-w-3xl">
+        <div className="mb-6 flex justify-center">
+          <Logo size="lg" showSubtitle />
+        </div>
         <div className="page-kicker">Premium automation workspace</div>
         <h1>AI Office Worker</h1>
         <p className="mx-auto mt-4 max-w-xl">
