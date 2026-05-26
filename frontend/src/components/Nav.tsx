@@ -13,7 +13,6 @@ import {
   FileBarChart,
   FileText,
   Home,
-  LogOut,
   Megaphone,
   MessageCircle,
   Search,
@@ -83,20 +82,26 @@ export function Nav() {
           })}
         </nav>
 
-        <div className="rounded-2xl border border-[var(--border)] bg-surface-card p-3">
-          <div className="mb-3 flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-full bg-surface-hover text-sm font-bold text-ink-primary">AI</span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-ink-primary">מנהל מערכת</span>
-              <span className="block truncate text-[13px] text-ink-muted">מחובר</span>
+        <div className="relative z-10 mt-4 shrink-0 rounded-2xl border border-[var(--border)] bg-surface-card p-3 shadow-card">
+          <div className="mb-3 flex min-w-0 items-center gap-3 rounded-xl bg-surface-hover/60 p-2">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#6366F1] text-sm font-bold text-white">AI</span>
+            <span className="min-w-0 flex-1">
+              <span className="block whitespace-nowrap text-[14px] font-bold text-white">מנהל מערכת AI</span>
+              <span className="mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold text-[#10B981]">
+                <span className="h-2 w-2 rounded-full bg-[#10B981]" />
+                מחובר
+              </span>
             </span>
           </div>
           <button type="button" onClick={openHelp} className="mb-3 w-full rounded-xl bg-[#6366F1] px-4 py-2.5 text-[14px] font-bold text-white shadow-[0_12px_28px_rgba(99,102,241,0.28)] transition hover:bg-[#7C3AED]">
             עזרה
           </button>
-          <button type="button" onClick={logout} className="btn btn-secondary w-full justify-between">
-            התנתק
-            <LogOut className="h-4 w-4" />
+          <button
+            type="button"
+            onClick={logout}
+            className="flex w-full items-center justify-center rounded-xl border border-[#EF4444] bg-transparent px-4 py-2.5 text-[14px] font-bold text-[#EF4444] transition hover:bg-[#EF4444] hover:text-white"
+          >
+            התנתק →
           </button>
         </div>
       </aside>
