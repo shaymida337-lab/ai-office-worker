@@ -50,6 +50,10 @@ export function Nav() {
     router.push("/");
   }
 
+  function openHelp() {
+    window.dispatchEvent(new Event("open-help-center"));
+  }
+
   return (
     <>
       <aside className="fixed right-0 top-0 z-50 hidden h-screen w-60 flex-col border-l border-[var(--border)] bg-surface-secondary/95 px-3 py-4 shadow-card backdrop-blur-xl lg:flex">
@@ -87,6 +91,9 @@ export function Nav() {
               <span className="block truncate text-[13px] text-ink-muted">מחובר</span>
             </span>
           </div>
+          <button type="button" onClick={openHelp} className="mb-3 w-full rounded-xl bg-[#6366F1] px-4 py-2.5 text-[14px] font-bold text-white shadow-[0_12px_28px_rgba(99,102,241,0.28)] transition hover:bg-[#7C3AED]">
+            עזרה
+          </button>
           <button type="button" onClick={logout} className="btn btn-secondary w-full justify-between">
             התנתק
             <LogOut className="h-4 w-4" />

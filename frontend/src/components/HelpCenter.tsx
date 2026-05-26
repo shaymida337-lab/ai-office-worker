@@ -43,6 +43,12 @@ export function HelpCenter() {
     if (open && getToken()) void loadChecklist();
   }, [open]);
 
+  useEffect(() => {
+    const openHelp = () => setOpen(true);
+    window.addEventListener("open-help-center", openHelp);
+    return () => window.removeEventListener("open-help-center", openHelp);
+  }, []);
+
   const selectedCategory = helpCategories.find((category) => category.id === categoryId) ?? null;
   const searchResults = useMemo(() => {
     if (!debouncedSearch) return [];
@@ -132,9 +138,6 @@ export function HelpCenter() {
 
   return (
     <>
-      <button className={`help-fab ${open ? "help-fab-open" : ""}`} onClick={() => setOpen(true)} aria-label="פתח מרכז עזרה">
-        <span className="help-fab-text">עזרה</span>
-      </button>
       {open && (
         <div className="help-overlay" role="dialog" aria-modal="true">
           <div className="help-modal">
