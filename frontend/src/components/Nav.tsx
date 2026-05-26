@@ -60,7 +60,7 @@ export function Nav() {
           <Logo size="md" showSubtitle />
         </Link>
 
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto pb-4">
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto pb-56">
           {links.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
@@ -82,7 +82,7 @@ export function Nav() {
           })}
         </nav>
 
-        <div className="relative z-10 mt-4 shrink-0 rounded-2xl border border-[var(--border)] bg-surface-card p-3 shadow-card">
+        <div className="fixed bottom-4 right-3 z-[60] w-[13.5rem] rounded-2xl border border-[var(--border)] bg-surface-card p-3 shadow-card">
           <div className="mb-3 flex min-w-0 items-center gap-3 rounded-xl bg-surface-hover/60 p-2">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#6366F1] text-sm font-bold text-white">AI</span>
             <span className="min-w-0 flex-1">
