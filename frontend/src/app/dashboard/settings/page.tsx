@@ -120,14 +120,14 @@ export default function SettingsPage() {
       <div className="mb-8"><div className="page-kicker">Workspace controls</div><h1>הגדרות</h1></div>
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
 
-      <div className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-[var(--border)] bg-surface-card p-2 shadow-card">
+      <div className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border border-[var(--border)] bg-surface-card p-2 shadow-card md:flex-wrap">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
             className={[
-              "rounded-xl px-4 py-3 text-[15px] font-semibold transition",
+              "shrink-0 rounded-xl px-4 py-3 text-[15px] font-semibold transition",
               activeTab === tab.id
                 ? "bg-[#6366F1] text-white shadow-[inset_0_-3px_0_rgba(255,255,255,0.32),0_12px_28px_rgba(99,102,241,0.28)]"
                 : "text-[#E2E8F0] hover:bg-surface-hover hover:text-white",
@@ -187,7 +187,7 @@ export default function SettingsPage() {
             <h3 className="text-lg font-semibold text-ink-primary">מספר WhatsApp שלי</h3>
             <label>
               מספר WhatsApp שלי
-              <input placeholder="whatsapp:+972..." value={whatsapp.ownerPhone} onChange={(e) => setWhatsapp({ ...whatsapp, ownerPhone: e.target.value })} />
+              <input dir="ltr" placeholder="whatsapp:+972..." value={whatsapp.ownerPhone} onChange={(e) => setWhatsapp({ ...whatsapp, ownerPhone: e.target.value })} />
             </label>
           </section>
 
@@ -257,7 +257,7 @@ export default function SettingsPage() {
             </label>
           </section>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="grid gap-3 sm:flex sm:flex-wrap">
             <button className="btn" type="submit">שמור הגדרות WhatsApp</button>
             <button className="btn btn-secondary" type="button" onClick={() => testWhatsapp("morning")}>
               שלח דוח בוקר לעצמי עכשיו

@@ -2,7 +2,7 @@ import { Router, type RequestHandler } from "express";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { authMiddleware, verifyToken, type JwtPayload } from "../lib/auth.js";
-import { config } from "../lib/config.js";
+import { config, hasGoogleOAuth } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { getOAuth2Client, GMAIL_SCOPES } from "../services/google.js";
 import { syncGmailForClient } from "../services/clientGmailSync.js";
@@ -60,6 +60,48 @@ function authFromQuery(req: { query: Record<string, unknown>; headers: { authori
   } catch {
     return null;
   }
+}
+
+async function redirectToClientGmailOAuth(req: Parameters<RequestHandler>[0], res: Parameters<RequestHandler>[1]) {
+  if (!hasGoogleOAuth()) {
+    res.status(503).send("Google OAuth is not configured");
+    return;
+  }
+
+  const auth = authFromQuery(req);
+  if (!auth) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const clientId = getParam(req.params.clientId);
+  if (!clientId) {
+    res.status(400).json({ error: "Invalid client id" });
+    return;
+  }
+
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, organizationId: auth.organizationId, isActive: true },
+  });
+  if (!client) {
+    res.status(404).json({ error: "Client not found" });
+    return;
+  }
+
+  const oauth2 = await getOAuth2Client(config.google.clientGmailRedirectUri);
+  const state = jwt.sign(
+    { purpose: "client_gmail", clientId: client.id, organizationId: auth.organizationId, nonce: crypto.randomBytes(16).toString("hex") },
+    config.jwtSecret,
+    { expiresIn: "15m" }
+  );
+
+  const url = oauth2.generateAuthUrl({
+    access_type: "offline",
+    prompt: "consent",
+    scope: GMAIL_SCOPES,
+    state,
+    login_hint: client.email,
+  });
+  res.redirect(url);
 }
 
 async function clientStats(organizationId: string, clientId: string) {
@@ -194,6 +236,32 @@ clientsRouter.post("/", authMiddleware, async (req, res) => {
   res.status(201).json({ client: { ...client, stats: await clientStats(organizationId, client.id) } });
 });
 
+clientsRouter.get("/connect-gmail/:clientId", redirectToClientGmailOAuth);
+
+clientsRouter.get("/:clientId/connect-gmail-url", authMiddleware, checkClientOwnership, async (req, res) => {
+  if (!hasGoogleOAuth()) {
+    res.status(503).json({ error: "Google OAuth is not configured" });
+    return;
+  }
+
+  const client = res.locals.client;
+  const oauth2 = await getOAuth2Client(config.google.clientGmailRedirectUri);
+  const state = jwt.sign(
+    { purpose: "client_gmail", clientId: client.id, organizationId: req.auth!.organizationId, nonce: crypto.randomBytes(16).toString("hex") },
+    config.jwtSecret,
+    { expiresIn: "15m" }
+  );
+
+  const url = oauth2.generateAuthUrl({
+    access_type: "offline",
+    prompt: "consent",
+    scope: GMAIL_SCOPES,
+    state,
+    login_hint: client.email,
+  });
+  res.json({ url });
+});
+
 clientsRouter.get("/gmail/callback", async (req, res) => {
   try {
     if (req.query.error) {
@@ -277,40 +345,7 @@ clientsRouter.post("/scan-all", authMiddleware, async (req, res) => {
 });
 
 clientsRouter.get("/:clientId/connect-gmail", async (req, res) => {
-  const auth = authFromQuery(req);
-  if (!auth) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  const clientId = getParam(req.params.clientId);
-  if (!clientId) {
-    res.status(400).json({ error: "Invalid client id" });
-    return;
-  }
-
-  const client = await prisma.client.findFirst({
-    where: { id: clientId, organizationId: auth.organizationId, isActive: true },
-  });
-  if (!client) {
-    res.status(404).json({ error: "Client not found" });
-    return;
-  }
-
-  const oauth2 = await getOAuth2Client(config.google.clientGmailRedirectUri);
-  const state = jwt.sign(
-    { purpose: "client_gmail", clientId: client.id, organizationId: auth.organizationId, nonce: crypto.randomBytes(16).toString("hex") },
-    config.jwtSecret,
-    { expiresIn: "15m" }
-  );
-
-  const url = oauth2.generateAuthUrl({
-    access_type: "offline",
-    prompt: "consent",
-    scope: GMAIL_SCOPES,
-    state,
-    login_hint: client.email,
-  });
-  res.redirect(url);
+  await redirectToClientGmailOAuth(req, res);
 });
 
 clientsRouter.get("/:clientId/tasks", authMiddleware, checkClientOwnership, async (req, res) => {

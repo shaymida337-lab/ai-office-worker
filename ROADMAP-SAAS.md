@@ -1,7 +1,7 @@
 # AI Office Worker — SaaS Roadmap
 
 **Product:** Production-ready SaaS for Israeli businesses  
-**Stack:** Node.js · Prisma · SQLite → PostgreSQL · Next.js · Claude · Twilio · Google APIs  
+**Stack:** Node.js · Prisma · PostgreSQL · Next.js · Claude · Twilio · Google APIs
 **Deploy:** Railway (API + worker) · Netlify (frontend)
 
 ---
@@ -18,7 +18,7 @@ flowchart TB
     subgraph railway [Railway]
         API[Express API]
         Worker[Cron Worker]
-        DB[(SQLite / PostgreSQL)]
+        DB[(PostgreSQL)]
     end
 
     subgraph external [Integrations]
@@ -91,7 +91,7 @@ ai-office-worker/
 | Collection reminders | WhatsApp + email to suppliers |
 | Money to receive | Receivables model |
 | Google Sheets sync | Optional export |
-| PostgreSQL on Railway | Replace SQLite |
+| Production database hardening | Backups, pooling, migrations |
 | Multi-tenant billing | Stripe Customer portal |
 
 ---
@@ -115,7 +115,7 @@ ai-office-worker/
 - [ ] Netlify frontend `NEXT_PUBLIC_API_URL`
 - [ ] Google OAuth production redirect URIs
 - [ ] Twilio webhook URL
-- [ ] Migrate to PostgreSQL (`provider = "postgresql"`)
+- [ ] Run Prisma migrations against production PostgreSQL
 - [ ] HTTPS only, rotate `JWT_SECRET`
 
 ---

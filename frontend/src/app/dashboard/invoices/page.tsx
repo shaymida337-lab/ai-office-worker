@@ -99,8 +99,14 @@ export default function InvoicesPage() {
 
   async function toggleStatus(invoice: Invoice) {
     const next = invoice.status === "paid" ? "pending" : "paid";
-    await apiFetch(`/api/invoices/${invoice.id}/status`, { method: "PUT", body: JSON.stringify({ status: next }) });
-    await load();
+    setMessage("");
+    try {
+      await apiFetch(`/api/invoices/${invoice.id}/status`, { method: "PUT", body: JSON.stringify({ status: next }) });
+      await load();
+      setMessage(next === "paid" ? "החשבונית סומנה כשולמה" : "החשבונית סומנה כממתינה");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "עדכון סטטוס חשבונית נכשל");
+    }
   }
 
   return (
@@ -139,7 +145,39 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      <div className="table-shell">
+      <div className="grid gap-4 md:hidden">
+        {filtered.map((invoice) => (
+          <div key={invoice.id} className="card">
+            <button type="button" className="w-full text-right" onClick={() => setSelected(invoice)}>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="break-words">{invoice.client?.name ?? "לקוח לא ידוע"}</h2>
+                  <p>{new Date(invoice.date).toLocaleDateString("he-IL")} · {invoice.invoiceNumber ?? "ללא מספר"}</p>
+                </div>
+                <span className={`badge shrink-0 ${invoice.status === "paid" ? "badge-ok" : invoice.status === "overdue" ? "badge-error" : "badge-warn"}`}>
+                  {statusLabels[invoice.status]}
+                </span>
+              </div>
+              {invoice.description && <p className="mb-4 break-words">{invoice.description}</p>}
+              <div className="rounded-2xl bg-surface-secondary p-3 text-left text-2xl font-bold text-ink-primary">
+                ₪{invoice.amount.toLocaleString("he-IL")} {invoice.currency}
+              </div>
+            </button>
+            <div className="mt-4 grid gap-2">
+              {invoice.driveUrl && (
+                <a className="btn btn-secondary" href={invoice.driveUrl} target="_blank" rel="noreferrer">
+                  <Download className="h-4 w-4" />פתח PDF
+                </a>
+              )}
+              <button className="btn btn-secondary" onClick={() => toggleStatus(invoice)}>
+                {invoice.status === "paid" ? "סמן ממתין" : "סמן שולם"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="table-shell hidden md:block">
         <table>
           <thead><tr><th>תאריך</th><th>לקוח</th><th>מספר</th><th>תיאור</th><th>סכום</th><th>סטטוס</th><th>Drive</th><th>פעולות</th></tr></thead>
           <tbody>
@@ -157,12 +195,12 @@ export default function InvoicesPage() {
             ))}
           </tbody>
         </table>
-        {filtered.length === 0 && <p className="p-6">לא נמצאו חשבוניות</p>}
       </div>
+      {filtered.length === 0 && <div className="card"><p>לא נמצאו חשבוניות.</p></div>}
 
       {selected && (
         <div className="fixed inset-0 z-[110] grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="card w-full max-w-xl animate-[toastSlide_.25s_ease]">
+          <div className="card max-h-[85vh] w-full max-w-xl overflow-y-auto animate-[toastSlide_.25s_ease]">
             <div className="mb-4 flex items-center gap-3"><FileText className="h-5 w-5 text-accent-primary" /><h2>פרטי חשבונית</h2></div>
             <p>לקוח: {selected.client?.name}</p>
             <p>מספר: {selected.invoiceNumber ?? "-"}</p>

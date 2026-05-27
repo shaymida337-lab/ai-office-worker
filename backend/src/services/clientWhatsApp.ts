@@ -4,6 +4,7 @@ import { extractInvoiceData } from "./invoiceExtractor.js";
 import { ensureDriveFolder, safeFolderName } from "./driveService.js";
 import { getGoogleClientsForClient } from "./google.js";
 import { logInvoiceToSheets } from "./clientSheetsService.js";
+import { config } from "../lib/config.js";
 
 type WhatsAppRuntimeClient = {
   on(event: string, handler: (...args: any[]) => void): void;
@@ -173,7 +174,7 @@ class ClientWhatsAppService {
 
 async function saveWhatsAppInvoiceToDrive(clientId: string, body: string, invoice: { invoiceNumber: string | null; date: string }) {
   const { drive, client } = await getGoogleClientsForClient(clientId);
-  const root = await ensureDriveFolder(drive, "AI Office Worker");
+  const root = await ensureDriveFolder(drive, config.driveRootFolder);
   const folder = await ensureDriveFolder(drive, safeFolderName(client.name), root);
   const upload = await drive.files.create({
     requestBody: { name: `whatsapp_${invoice.invoiceNumber ?? Date.now()}_${invoice.date}.txt`, parents: [folder] },

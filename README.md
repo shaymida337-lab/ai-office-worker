@@ -6,9 +6,9 @@
 
 | Layer | Tech |
 |-------|------|
-| Frontend | Next.js (Netlify) |
-| Backend | Node.js + Express (Railway) |
-| Database | Prisma + SQLite (dev) → PostgreSQL (prod) |
+| Frontend | Next.js |
+| Backend | Node.js + Express |
+| Database | Prisma + PostgreSQL |
 | AI | Claude API |
 | Messaging | Twilio WhatsApp |
 | Integrations | Gmail, Google Drive, Google Sheets |
@@ -19,12 +19,12 @@
 npm install
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env.local
-cd backend && npx prisma db push && cd ..
-npm run dev -w backend
-npm run dev -w frontend
+npm run db:generate
+npm run db:migrate
+npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) → Sign in with Google.
+Open [http://localhost:3000](http://localhost:3000).
 
 **Full beginner guide:** [docs/BEGINNER-SETUP-SAAS.md](./docs/BEGINNER-SETUP-SAAS.md)  
 **Roadmap:** [ROADMAP-SAAS.md](./ROADMAP-SAAS.md)
@@ -44,7 +44,7 @@ legacy/      Original Make.com MVP files (reference only)
 |---------|-------------|
 | `npm run dev` | API + frontend together |
 | `npm run worker -w backend` | Scheduled Gmail + WhatsApp jobs |
-| `npm run db:push -w backend` | Apply Prisma schema |
+| `npm run db:migrate` | Apply Prisma migrations |
 
 ## Region defaults
 

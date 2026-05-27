@@ -1,12 +1,13 @@
 import { Readable } from "node:stream";
 import type { drive_v3 } from "googleapis";
+import { config } from "../lib/config.js";
 
 export type UploadedDriveFile = {
   fileId: string | null;
   webViewLink: string;
 };
 
-export const INVOICE_DRIVE_FOLDER_NAME = "AI Office Worker - חשבוניות";
+export const INVOICE_DRIVE_FOLDER_NAME = `${config.driveRootFolder} - חשבוניות`;
 
 export async function ensureDriveFolder(
   drive: drive_v3.Drive,

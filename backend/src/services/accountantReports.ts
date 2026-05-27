@@ -3,10 +3,11 @@ import PDFDocument from "pdfkit";
 import { prisma } from "../lib/prisma.js";
 import { ensureDriveFolder, safeFolderName } from "./driveService.js";
 import { getGoogleClients } from "./google.js";
+import { config } from "../lib/config.js";
 import { categorizeExpense } from "./accountantAI.js";
 import { calculateMonthlyVAT, monthRange, previousMonth, VAT_RATE } from "./vatService.js";
 
-const ROOT_FOLDER = "AI Office Worker - דוחות רואה חשבון";
+const ROOT_FOLDER = `${config.driveRootFolder} - דוחות רואה חשבון`;
 const MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 
 export type AccountantSummary = Awaited<ReturnType<typeof buildAccountantSummary>>;

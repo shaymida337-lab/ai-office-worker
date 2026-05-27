@@ -9,12 +9,13 @@ import { previousMonth } from "./vatService.js";
 import { notificationGuard } from "./notificationGuard.js";
 import { clientTemplates, ownerTemplates } from "./messageTemplates.js";
 import { publishDueSocialPosts } from "./socialMedia.js";
+import { processCrmNotifications, processLeadSequences } from "./crm.js";
 
 const TIMEZONE = "Asia/Jerusalem";
 const MAX_RETRIES = 3;
-const KEEP_ALIVE_URL = "https://ai-office-worker-backend.onrender.com/health";
+const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL;
 
-type ScanType = "daily" | "quick" | "monthly" | "health" | "first_time" | "whatsapp" | "social";
+type ScanType = "daily" | "quick" | "monthly" | "health" | "first_time" | "whatsapp" | "social" | "crm";
 type AssistantRow = { organizationId: string; ownerPhone: string; isActive: boolean };
 type RuleFlags = { ownerMorningReport: boolean; clientMorningSummary: boolean; clientPaymentReminder: boolean; clientPaymentDaysWait: number };
 
@@ -36,12 +37,15 @@ class SchedulerService {
     cron.schedule("0 8 * * 0-5", () => this.withRetry("whatsapp", () => this.sendClientMorningBriefs()), { timezone: TIMEZONE });
     cron.schedule("0 10 * * 0-5", () => this.withRetry("whatsapp", () => this.sendPaymentReminders()), { timezone: TIMEZONE });
     cron.schedule("0 * * * *", () => this.withRetry("social", () => this.publishApprovedSocialPosts()), { timezone: TIMEZONE });
+    cron.schedule("*/15 * * * *", () => this.withRetry("crm", () => this.processCrmSequences()), { timezone: TIMEZONE });
     cron.schedule("*/8 * * * *", () => this.pingKeepAlive(), { timezone: TIMEZONE });
 
     console.log("[scheduler] All scheduled jobs started");
   }
 
   private async pingKeepAlive() {
+    if (!KEEP_ALIVE_URL) return;
+
     try {
       await fetch(KEEP_ALIVE_URL);
     } catch (err) {
@@ -264,6 +268,16 @@ class SchedulerService {
 
   async publishApprovedSocialPosts() {
     await publishDueSocialPosts();
+  }
+
+  async processCrmSequences() {
+    const [sequences, notifications] = await Promise.all([
+      processLeadSequences(),
+      processCrmNotifications(),
+    ]);
+    if (sequences.sent || sequences.errors.length || notifications.created) {
+      console.log(`[scheduler] CRM sequences sent=${sequences.sent} errors=${sequences.errors.length} notifications=${notifications.created}`);
+    }
   }
 
   private async withRetry(type: ScanType, run: () => Promise<void>) {

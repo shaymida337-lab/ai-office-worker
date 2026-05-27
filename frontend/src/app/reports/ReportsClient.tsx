@@ -3,27 +3,48 @@
 import { useEffect, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { apiFetch, type Payment } from "@/lib/api";
-import { useRouter } from "next/navigation";
 
 export default function ReportsClient() {
-  const router = useRouter();
   const [missing, setMissing] = useState<Payment[]>([]);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     apiFetch<Payment[]>("/api/reports/missing-invoices")
       .then(setMissing)
-      .catch(() => router.push("/"));
-  }, [router]);
+      .catch((err) => setMessage(err instanceof Error ? err.message : "טעינת הדוח נכשלה"))
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <div className="container">
-      <h1>דוח חשבוניות חסרות</h1>
       <Nav />
-      <div className="card">
-        {missing.length === 0 ? (
-          <p className="text-emerald-300">אין חשבוניות חסרות כרגע.</p>
-        ) : (
-          <table>
+      <div className="mb-8"><div className="page-kicker">Reports</div><h1>דוח חשבוניות חסרות</h1></div>
+      {message && <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-base text-red-100">{message}</div>}
+      {loading ? (
+        <div className="card"><p>טוען דוח חשבוניות חסרות...</p></div>
+      ) : missing.length === 0 ? (
+        <div className="card"><p className="text-emerald-300">אין חשבוניות חסרות כרגע.</p></div>
+      ) : (
+        <>
+          <div className="grid gap-4 md:hidden">
+            {missing.map((p) => (
+              <div key={p.id} className="card">
+                <h2 className="break-words">{p.supplier}</h2>
+                <p className="break-words">{p.subject ?? "ללא נושא"}</p>
+                <div className="my-4 rounded-2xl bg-surface-secondary p-3 text-left text-2xl font-bold text-ink-primary">
+                  ₪{p.amount.toLocaleString("he-IL")}
+                </div>
+                {p.documentLink && (
+                  <a className="btn btn-secondary" href={p.documentLink} target="_blank" rel="noreferrer">
+                    פתח דרישת תשלום
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="table-shell hidden md:block">
+            <table>
             <thead>
               <tr>
                 <th>ספק</th>
@@ -50,9 +71,10 @@ export default function ReportsClient() {
                 </tr>
               ))}
             </tbody>
-          </table>
-        )}
-      </div>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }

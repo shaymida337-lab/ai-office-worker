@@ -98,11 +98,16 @@ export default function CameraPage() {
         <p>
           העלה JPG, PNG או PDF. Claude יחלץ את פרטי החשבונית ותוכל לאשר לפני שמירה.
         </p>
-        <input
-          type="file"
-          accept="image/jpeg,image/png,.jpg,.jpeg,.png,.pdf,application/pdf"
-          onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
-        />
+        <label className="mt-4">
+          בחר או צלם חשבונית
+          <input
+            type="file"
+            accept="image/jpeg,image/png,.jpg,.jpeg,.png,.pdf,application/pdf"
+            capture="environment"
+            onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+        {file && <p className="mt-3 rounded-2xl bg-surface-secondary p-3 text-ink-primary">נבחר קובץ: {file.name}</p>}
         <div className="mt-4">
           <button className="btn" onClick={buildPreview} disabled={!file || previewing}>
             {previewing ? "סורק חשבונית..." : "הצג תצוגה מקדימה"}
@@ -118,13 +123,13 @@ export default function CameraPage() {
             <p><strong>תאריך:</strong> {preview.date ?? "לא זוהה"}</p>
             <p><strong>מספר חשבונית:</strong> {preview.invoiceNumber ?? "לא זוהה"}</p>
             <button className="btn" onClick={saveInvoice} disabled={saving}>
-              {saving ? "שומר..." : "אשר ושמור Payment"}
+              {saving ? "שומר..." : "אשר ושמור כתשלום ספק"}
             </button>
           </div>
         )}
 
-        {message && <p className="text-emerald-300">{message}</p>}
-        {error && <p className="text-red-300">{error}</p>}
+        {message && <div className="mt-4 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-emerald-100">{message}</div>}
+        {error && <div className="mt-4 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-red-100">{error}</div>}
       </div>
     </div>
   );

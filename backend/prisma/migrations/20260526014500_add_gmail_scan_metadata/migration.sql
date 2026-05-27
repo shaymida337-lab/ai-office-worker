@@ -1,4 +1,4 @@
-﻿-- Add metadata needed by the Gmail scanner.
+-- Add metadata needed by the Gmail scanner.
 ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "domain" TEXT;
 ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "firstSeen" TIMESTAMP(3);
 ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "lastSeen" TIMESTAMP(3);

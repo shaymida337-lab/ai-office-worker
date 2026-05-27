@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Nav } from "@/components/Nav";
-import { apiFetch, getToken } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { Mail, Plus, RefreshCcw, Search, ShieldCheck, Users } from "lucide-react";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://ai-office-worker-backend.onrender.com";
 
 type ClientItem = {
   id: string;
@@ -52,6 +50,8 @@ export default function ClientsPage() {
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [saving, setSaving] = useState(false);
+  const [scanningId, setScanningId] = useState<string | null>(null);
 
   async function load() {
     const next = await apiFetch<ClientsResponse>("/api/clients");
@@ -65,6 +65,7 @@ export default function ClientsPage() {
   async function createClient(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
+    setSaving(true);
     try {
       await apiFetch("/api/clients", {
         method: "POST",
@@ -76,11 +77,14 @@ export default function ClientsPage() {
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "שמירת לקוח נכשלה");
+    } finally {
+      setSaving(false);
     }
   }
 
   async function scanClient(clientId: string) {
     setMessage("");
+    setScanningId(clientId);
     try {
       const response = await apiFetch<{ result?: { message?: string } }>(`/api/clients/${clientId}/scan`, {
         method: "POST",
@@ -89,18 +93,19 @@ export default function ClientsPage() {
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "סריקת לקוח נכשלה");
+    } finally {
+      setScanningId(null);
     }
   }
 
-  function connectUrl(clientId: string) {
-    const token = getToken();
-    return `${API_URL}/api/clients/${clientId}/connect-gmail?token=${encodeURIComponent(token ?? "")}`;
-  }
-
-  function logConnectGmail(clientId: string) {
-    console.log("Button clicked");
-    console.log("API URL:", process.env.NEXT_PUBLIC_API_URL);
-    console.log("Client Gmail URL:", connectUrl(clientId));
+  async function connectGmail(clientId: string) {
+    setMessage("");
+    try {
+      const result = await apiFetch<{ url: string }>(`/api/clients/${clientId}/connect-gmail-url`);
+      window.location.href = result.url;
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "חיבור Gmail נכשל");
+    }
   }
 
   const filteredClients = (data?.clients ?? []).filter((client) =>
@@ -136,24 +141,34 @@ export default function ClientsPage() {
 
       {showForm && (
         <form onSubmit={createClient} className="card grid gap-3 md:grid-cols-2">
-          <input
-            required
-            placeholder="שם לקוח"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-          />
-          <input
-            required
-            type="email"
-            placeholder="מייל"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-          />
-          <input
-            placeholder="WhatsApp (+972...)"
-            value={form.whatsappNumber}
-            onChange={(e) => setForm({ ...form, whatsappNumber: e.target.value })}
-          />
+          <label>
+            שם לקוח
+            <input
+              required
+              placeholder="שם לקוח"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
+          </label>
+          <label>
+            אימייל
+            <input
+              required
+              type="email"
+              placeholder="client@example.com"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+            />
+          </label>
+          <label>
+            WhatsApp
+            <input
+              dir="ltr"
+              placeholder="+972..."
+              value={form.whatsappNumber}
+              onChange={(e) => setForm({ ...form, whatsappNumber: e.target.value })}
+            />
+          </label>
           <label>
             צבע{" "}
             <input
@@ -162,23 +177,35 @@ export default function ClientsPage() {
               onChange={(e) => setForm({ ...form, color: e.target.value })}
             />
           </label>
-          <input
-            placeholder="URL טבלת חשבוניות"
-            value={form.invoiceSheetUrl}
-            onChange={(e) => setForm({ ...form, invoiceSheetUrl: e.target.value })}
-          />
-          <input
-            placeholder="URL טבלת משימות"
-            value={form.taskSheetUrl}
-            onChange={(e) => setForm({ ...form, taskSheetUrl: e.target.value })}
-          />
-          <input
-            placeholder="URL תיקיית Drive"
-            value={form.driveFolderUrl}
-            onChange={(e) => setForm({ ...form, driveFolderUrl: e.target.value })}
-          />
-          <button className="btn md:col-span-2" type="submit">
-            שמור לקוח
+          <label>
+            URL טבלת חשבוניות
+            <input
+              dir="ltr"
+              placeholder="https://..."
+              value={form.invoiceSheetUrl}
+              onChange={(e) => setForm({ ...form, invoiceSheetUrl: e.target.value })}
+            />
+          </label>
+          <label>
+            URL טבלת משימות
+            <input
+              dir="ltr"
+              placeholder="https://..."
+              value={form.taskSheetUrl}
+              onChange={(e) => setForm({ ...form, taskSheetUrl: e.target.value })}
+            />
+          </label>
+          <label>
+            URL תיקיית Drive
+            <input
+              dir="ltr"
+              placeholder="https://..."
+              value={form.driveFolderUrl}
+              onChange={(e) => setForm({ ...form, driveFolderUrl: e.target.value })}
+            />
+          </label>
+          <button className="btn md:col-span-2" type="submit" disabled={saving}>
+            {saving ? "שומר..." : "שמור לקוח"}
           </button>
         </form>
       )}
@@ -191,25 +218,25 @@ export default function ClientsPage() {
         ) : (
           filteredClients.map((client) => (
             <div key={client.id} className="card group">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
+              <div className="mb-4 grid gap-3 sm:flex sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
                   <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] text-sm font-bold text-white">{client.name.slice(0, 2)}</span>
-                  <div>
-                    <strong className="text-lg text-ink-primary">{client.name}</strong>
-                    <p className="flex items-center gap-2 text-sm"><Mail className="h-3.5 w-3.5" />{client.email}</p>
+                  <div className="min-w-0">
+                    <strong className="block truncate text-lg text-ink-primary">{client.name}</strong>
+                    <p className="flex min-w-0 items-center gap-2 text-sm"><Mail className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{client.email}</span></p>
                   </div>
                 </div>
-                <span className={`badge ${client.gmailConnected ? "badge-ok" : "badge-warn"}`}>{client.gmailConnected ? "Gmail" : "חיבור חסר"}</span>
+                <span className={`badge w-fit ${client.gmailConnected ? "badge-ok" : "badge-warn"}`}>{client.gmailConnected ? "Gmail מחובר" : "חיבור חסר"}</span>
               </div>
-              <div className="mb-5 grid grid-cols-3 gap-3 rounded-2xl bg-surface-secondary p-3 text-center text-sm">
+              <div className="mb-5 grid gap-3 rounded-2xl bg-surface-secondary p-3 text-center text-sm sm:grid-cols-3">
                 <div><div className="font-bold text-ink-primary">₪{(client.stats?.toPay ?? 0).toLocaleString("he-IL")}</div><div className="text-ink-muted">לתשלום</div></div>
                 <div><div className="font-bold text-ink-primary">{client.stats?.openTasks ?? 0}</div><div className="text-ink-muted">משימות</div></div>
                 <div><div className="font-bold text-ink-primary">{client.stats?.invoices ?? 0}</div><div className="text-ink-muted">חשבוניות</div></div>
               </div>
               <p className="mb-4 flex items-center gap-2 text-sm"><ShieldCheck className="h-4 w-4 text-emerald-300" />Sheets {client.invoiceSheetUrl || client.taskSheetUrl ? "מחובר" : "לא מחובר"} · Drive {client.driveFolderUrl ? "מחובר" : "לא מחובר"}</p>
-              <div className="flex flex-wrap gap-2">
-                <a className="btn btn-secondary" href={connectUrl(client.id)} onClick={() => logConnectGmail(client.id)}>חבר Gmail</a>
-                <button className="btn btn-secondary" onClick={() => scanClient(client.id)}><RefreshCcw className="h-4 w-4" />סרוק</button>
+              <div className="grid gap-2 sm:flex sm:flex-wrap">
+                <button className="btn btn-secondary" onClick={() => connectGmail(client.id)}>חבר Gmail</button>
+                <button className="btn btn-secondary" onClick={() => scanClient(client.id)} disabled={scanningId === client.id}><RefreshCcw className={["h-4 w-4", scanningId === client.id ? "animate-spin" : ""].join(" ")} />{scanningId === client.id ? "סורק..." : "סרוק"}</button>
                 <a className="btn" href={`/dashboard/clients/${client.id}`}>דוח</a>
               </div>
             </div>

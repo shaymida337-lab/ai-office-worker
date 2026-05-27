@@ -88,6 +88,15 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
     return;
   }
 
+  const organization = await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
+  if (organization) {
+    const { createLeadFromUnknownWhatsApp } = await import("../services/crm.js");
+    await createLeadFromUnknownWhatsApp(organization.id, normalizedFrom, body);
+    twiml.message("שלום! תודה שפנית אלינו. קיבלנו את ההודעה ונציג יחזור אליך בהקדם.");
+    res.type("text/xml").send(twiml.toString());
+    return;
+  }
+
   twiml.message("שלום! מספר זה אינו רשום במערכת. פנה למנהל.");
   res.type("text/xml").send(twiml.toString());
 }

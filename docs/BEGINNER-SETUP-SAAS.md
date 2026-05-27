@@ -7,6 +7,7 @@
 ## מה צריך מראש
 
 - מחשב עם **Node.js 20+**
+- **PostgreSQL 16+** מקומי
 - חשבון **Google** (Gmail אישי)
 - חשבון **Anthropic** (Claude API)
 - חשבון **Twilio** (WhatsApp — אופציונלי לבדיקה ראשונה)
@@ -31,7 +32,7 @@ npm install
    - `JWT_SECRET` — מחרוזת אקראית ארוכה
    - `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`
    - `ANTHROPIC_API_KEY`
-   - `DATABASE_URL=file:./dev.db`
+   - `DATABASE_URL` ו-`DIRECT_URL` ל-PostgreSQL המקומי
 
 ### Google OAuth (חובה)
 
@@ -39,7 +40,10 @@ npm install
 2. הפעל: Gmail API, Drive API, Sheets API
 3. **OAuth consent screen** → External → הוסף את המייל שלך כ-Test user
 4. **Credentials → OAuth Client ID** → Web application
-5. Redirect URI: `http://localhost:4000/auth/google/callback`
+5. הוסף את ה-Redirect URIs:
+   - `http://localhost:4000/auth/google/callback`
+   - `http://localhost:4000/api/integrations/gmail/callback`
+   - `http://localhost:4000/api/clients/gmail/callback`
 6. העתק Client ID ו-Secret ל-`backend/.env`
 
 ### Claude API
@@ -51,8 +55,8 @@ npm install
 
 1. [twilio.com](https://www.twilio.com/) → Sandbox for WhatsApp
 2. מלא `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`
-3. `OWNER_WHATSAPP_NUMBER=whatsapp:+972...`
-4. Webhook URL (אחרי פריסה): `https://YOUR-API.railway.app/webhooks/twilio/whatsapp`
+3. `OWNER_WHATSAPP=whatsapp:+972...`
+4. לפיתוח מקומי צריך HTTPS tunnel, ואז `TWILIO_WEBHOOK_URL=https://YOUR-TUNNEL/webhook/whatsapp`
 
 ---
 
@@ -60,8 +64,8 @@ npm install
 
 ```bash
 cd backend
-npx prisma db push
 npx prisma generate
+npx prisma migrate dev
 cd ..
 ```
 
@@ -69,19 +73,13 @@ cd ..
 
 ## שלב 4 — הרצה מקומית
 
-טרמינל 1 — API:
+טרמינל אחד — API + Frontend:
 
 ```bash
-npm run dev -w backend
+npm run dev
 ```
 
-טרמינל 2 — Frontend:
-
-```bash
-npm run dev -w frontend
-```
-
-טרמינל 3 — Worker (תזמון):
+Worker ידני (אופציונלי):
 
 ```bash
 npm run worker -w backend

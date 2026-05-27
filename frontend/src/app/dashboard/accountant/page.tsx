@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { apiFetch, getToken } from "@/lib/api";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://ai-office-worker-backend.onrender.com";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 type AccountantSummary = {
   period: string;
@@ -74,9 +74,9 @@ export default function AccountantPage() {
 
   return (
     <div className="container">
-      <h1>רואה חשבון</h1>
       <Nav />
-      {message && <p>{message}</p>}
+      <div className="mb-8"><div className="page-kicker">Accountant reports</div><h1>רואה חשבון</h1></div>
+      {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-base text-ink-primary">{message}</div>}
       <div className="grid">
         <div className="card"><div className="stat-label">הכנסות החודש</div><div className="stat-value">₪{summary.totalIncome.toLocaleString("he-IL")}</div></div>
         <div className="card"><div className="stat-label">הוצאות החודש</div><div className="stat-value">₪{summary.totalExpenses.toLocaleString("he-IL")}</div></div>
@@ -91,18 +91,30 @@ export default function AccountantPage() {
       </div>
       <div className="card">
         <h2>מסמכים מוכנים</h2>
-        <div className="flex flex-wrap gap-3">
+        <div className="grid gap-3 sm:flex sm:flex-wrap">
           <button className="btn" onClick={generate} disabled={loading}>{loading ? "מייצר..." : "צור דוח חודש"}</button>
           <button className="btn btn-secondary" onClick={downloadZip}>הורד הכל כ-ZIP</button>
           <button className="btn btn-secondary" onClick={() => setMessage("שליחה באימייל תופעל אחרי הגדרת ספק מייל")}>שלח לרואה חשבון</button>
         </div>
-        <ul>
+        <ul className="mt-4 grid gap-2">
           {summary.reports.map((report) => (
-            <li key={report.id}>{report.period} {report.driveUrl ? <a href={report.driveUrl} target="_blank" rel="noreferrer">פתח PDF</a> : "ממתין ל-Drive"}</li>
+            <li key={report.id} className="rounded-2xl bg-surface-secondary p-3">{report.period} {report.driveUrl ? <a className="text-accent-primary" href={report.driveUrl} target="_blank" rel="noreferrer">פתח PDF</a> : "ממתין ל-Drive"}</li>
           ))}
         </ul>
       </div>
-      <div className="card">
+      <div className="grid gap-4 md:hidden">
+        <h2>סיכום שנתי</h2>
+        {summary.annual.map((row) => (
+          <div key={row.period} className="card">
+            <h3 className="text-lg font-semibold text-ink-primary">{row.period}</h3>
+            <div className="mt-3 grid gap-2 rounded-2xl bg-surface-secondary p-3">
+              <div className="flex justify-between gap-3"><span className="text-ink-secondary">הכנסות</span><strong>₪{row.income.toLocaleString("he-IL")}</strong></div>
+              <div className="flex justify-between gap-3"><span className="text-ink-secondary">הוצאות</span><strong>₪{row.expenses.toLocaleString("he-IL")}</strong></div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="table-shell hidden md:block">
         <h2>סיכום שנתי</h2>
         <table><thead><tr><th>חודש</th><th>הכנסות</th><th>הוצאות</th></tr></thead><tbody>
           {summary.annual.map((row) => <tr key={row.period}><td>{row.period}</td><td>₪{row.income.toLocaleString("he-IL")}</td><td>₪{row.expenses.toLocaleString("he-IL")}</td></tr>)}

@@ -40,7 +40,7 @@ export default function WhatsAppSettingsPage() {
   }
 
   useEffect(() => {
-    load().catch((err) => setMessage(err instanceof Error ? err.message : "Failed to load WhatsApp settings"));
+    load().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת הגדרות WhatsApp נכשלה"));
   }, []);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -55,7 +55,7 @@ export default function WhatsAppSettingsPage() {
       await load();
       setMessage("מספר נשמר בהצלחה");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Failed to save WhatsApp settings");
+      setMessage(err instanceof Error ? err.message : "שמירת הגדרות WhatsApp נכשלה");
     } finally {
       setLoading(false);
     }
@@ -68,7 +68,7 @@ export default function WhatsAppSettingsPage() {
       await apiFetch("/api/whatsapp/test", { method: "POST" });
       setMessage("הודעת בדיקה נשלחה!");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Failed to send test message");
+      setMessage(err instanceof Error ? err.message : "שליחת הודעת בדיקה נכשלה");
     } finally {
       setLoading(false);
     }
@@ -91,23 +91,23 @@ export default function WhatsAppSettingsPage() {
           </div>
           <div className="space-y-3 text-sm">
             <StatusRow label="Twilio" ok={Boolean(status?.configured)} />
-            <StatusRow label="Connection" ok={Boolean(status?.connected)} />
-            <div className="rounded-xl bg-surface-secondary p-3 text-ink-secondary">From: {status?.from || "Not set"}</div>
-            <div className="rounded-xl bg-surface-secondary p-3 text-ink-secondary">Webhook: {status?.webhookUrl || "Not set"}</div>
+            <StatusRow label="חיבור" ok={Boolean(status?.connected)} />
+            <div className="break-all rounded-xl bg-surface-secondary p-3 text-ink-secondary">מספר שולח: {status?.from || "לא הוגדר"}</div>
+            <div className="break-all rounded-xl bg-surface-secondary p-3 text-ink-secondary">Webhook: {status?.webhookUrl || "לא הוגדר"}</div>
           </div>
         {status && !status.configured && (
           <div className="mt-5 rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4 text-amber-200">
             <strong className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" />כדי להפעיל WhatsApp:</strong>
             <ol>
               <li>כנס ל: console.twilio.com</li>
-              <li>העתק את Account SID ו-Auth Token</li>
-              <li>הוסף ל-Render</li>
+              <li>העתק את Account SID ו-Auth Token אל backend/.env</li>
+              <li>הגדר TWILIO_WEBHOOK_URL לכתובת HTTPS ציבורית שמפנה ל-/webhook/whatsapp</li>
             </ol>
           </div>
         )}
         <form onSubmit={save} className="mt-5 grid gap-3">
           <label>
-            Owner WhatsApp number
+            מספר WhatsApp של בעל העסק
             <input
               dir="ltr"
               placeholder="+972501234567"
@@ -116,34 +116,34 @@ export default function WhatsAppSettingsPage() {
             />
           </label>
           <button className="btn" type="submit" disabled={loading}>
-            {loading ? "Saving..." : "Save WhatsApp Number"}
+            {loading ? "שומר..." : "שמור מספר WhatsApp"}
           </button>
         </form>
         <button className="btn btn-secondary mt-3" onClick={sendTest} disabled={loading || !status?.configured}>
-          <Send className="h-4 w-4" />Send Test Message
+          <Send className="h-4 w-4" />שלח הודעת בדיקה
         </button>
         </aside>
 
         <section className="card">
           <div className="mb-5 flex items-center gap-3">
             <MessageCircle className="h-5 w-5 text-emerald-300" />
-            <h2>Client WhatsApp Activity</h2>
+            <h2>פעילות WhatsApp של לקוחות</h2>
           </div>
           <div className="grid gap-3">
             {clients.length === 0 ? (
-              <p>No clients yet</p>
+              <p>אין לקוחות עדיין.</p>
             ) : (
               clients.map((client) => (
                 <Link key={client.id} href={`/dashboard/clients/${client.id}`} className="group rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4 transition hover:border-accent-primary/40 hover:bg-surface-hover">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-center gap-3">
+                  <div className="grid gap-3 sm:flex sm:items-start sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
                       <span className="grid h-11 w-11 place-items-center rounded-full bg-[linear-gradient(135deg,#10B981,#3B82F6)] text-sm font-bold text-white">{client.name.slice(0, 2)}</span>
-                      <div>
-                        <strong className="text-ink-primary">{client.name}</strong>
-                        <p className="flex items-center gap-2 text-sm"><Phone className="h-3.5 w-3.5" />{client.whatsappNumber || "No WhatsApp number configured"}</p>
+                      <div className="min-w-0">
+                        <strong className="block truncate text-ink-primary">{client.name}</strong>
+                        <p className="flex min-w-0 items-center gap-2 text-sm"><Phone className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{client.whatsappNumber || "לא הוגדר מספר WhatsApp"}</span></p>
                       </div>
                     </div>
-                    {Boolean(client.whatsappUnread) && <span className="badge badge-warn">{client.whatsappUnread} unread</span>}
+                    {Boolean(client.whatsappUnread) && <span className="badge badge-warn w-fit">{client.whatsappUnread} לא נקראו</span>}
                   </div>
                   {client.whatsappLastMessage && (
                     <div className="mt-4 max-w-[85%] rounded-2xl rounded-tr-md bg-accent-primary/15 p-3 text-sm text-ink-secondary">
@@ -164,7 +164,7 @@ function StatusRow({ label, ok }: { label: string; ok: boolean }) {
   return (
     <div className="flex items-center justify-between rounded-xl bg-surface-secondary p-3">
       <span className="text-ink-secondary">{label}</span>
-      <span className={`badge ${ok ? "badge-ok" : "badge-error"}`}>{ok ? "Connected" : "Not configured"}</span>
+      <span className={`badge ${ok ? "badge-ok" : "badge-error"}`}>{ok ? "מחובר" : "לא הוגדר"}</span>
     </div>
   );
 }

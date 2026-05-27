@@ -12,7 +12,7 @@ ai-office-worker/
 │   ├── tsconfig.json
 │   ├── .env.example
 │   ├── prisma/
-│   │   └── schema.prisma        # Database schema (SQLite)
+│   │   └── schema.prisma        # Database schema (PostgreSQL)
 │   └── src/
 │       ├── index.ts             # Express API entry
 │       ├── worker.ts            # Cron: Gmail + WhatsApp

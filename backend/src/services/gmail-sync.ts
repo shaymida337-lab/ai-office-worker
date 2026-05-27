@@ -11,8 +11,44 @@ import {
 import { notifyNewInvoice } from "./whatsapp.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
+const MAX_MESSAGES_PER_QUICK_SCAN = 25;
 const DRIVE_FULL_MESSAGE = "הסריקה הושלמה. לא ניתן לשמור ל-Drive - האחסון שלך מלא";
 const INVOICE_KEYWORDS = ["חשבונית", "חשבון", "קבלה", "לתשלום", "invoice", "receipt", "payment", "פקטורה"];
+
+export async function quickScanGmailForOrganization(organizationId: string, options: { daysBack?: number } = {}) {
+  const daysBack = options.daysBack ?? 7;
+  const { gmail } = await getGoogleClients(organizationId);
+  const messages = await withTimeout(
+    listCandidateMessages(gmail, daysBack, MAX_MESSAGES_PER_QUICK_SCAN),
+    8_000,
+    "Gmail quick scan timed out"
+  );
+
+  await prisma.syncLog.create({
+    data: {
+      organizationId,
+      type: "gmail_scan",
+      status: "success",
+      emailsProcessed: messages.length,
+      finishedAt: new Date(),
+    },
+  });
+
+  return {
+    emailsProcessed: messages.length,
+    paymentsCreated: 0,
+    tasksCreated: 0,
+    clientsCreated: 0,
+    invoicesCreated: 0,
+    uniqueSenders: 0,
+    potentialClients: 0,
+    invoiceEmails: 0,
+    invoiceAmountsExtracted: 0,
+    quick: true,
+    backgroundProcessing: true,
+    scanSteps: [`נמצאו ${messages.length} מיילים ב-Gmail`, "העיבוד המלא ממשיך ברקע"],
+  };
+}
 
 export async function syncGmailForOrganization(organizationId: string, options: { daysBack?: number; isFirstTime?: boolean; forceReprocess?: boolean } = {}) {
   const activeLog = await prisma.syncLog.findFirst({
@@ -504,7 +540,7 @@ type ScannedEmail = {
   alreadyProcessed: boolean;
 };
 
-async function listCandidateMessages(gmail: GmailClient, daysBack: number): Promise<GmailMessageRef[]> {
+async function listCandidateMessages(gmail: GmailClient, daysBack: number, maxMessages = MAX_MESSAGES_PER_SYNC): Promise<GmailMessageRef[]> {
   const byId = new Map<string, GmailMessageRef>();
   const from = new Date(Date.now() - Math.max(1, Math.ceil(daysBack)) * 24 * 60 * 60 * 1000);
   const queryDate = `${from.getFullYear()}/${String(from.getMonth() + 1).padStart(2, "0")}/${String(from.getDate()).padStart(2, "0")}`;
@@ -516,7 +552,7 @@ async function listCandidateMessages(gmail: GmailClient, daysBack: number): Prom
     const result = await gmail.users.messages.list({
       userId: "me",
       q,
-      maxResults: 100,
+      maxResults: Math.min(100, maxMessages),
       pageToken,
     });
 
@@ -526,9 +562,18 @@ async function listCandidateMessages(gmail: GmailClient, daysBack: number): Prom
       }
     }
     pageToken = result.data.nextPageToken ?? undefined;
-  } while (pageToken && byId.size < MAX_MESSAGES_PER_SYNC);
+  } while (pageToken && byId.size < maxMessages);
 
-  return [...byId.values()].slice(0, MAX_MESSAGES_PER_SYNC);
+  return [...byId.values()].slice(0, maxMessages);
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise
+      .then(resolve, reject)
+      .finally(() => clearTimeout(timer));
+  });
 }
 
 function collectAttachmentParts(payload?: PayloadPart): PayloadPart[] {

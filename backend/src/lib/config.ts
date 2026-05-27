@@ -25,6 +25,10 @@ export const config = {
   databaseUrl: optional("DATABASE_URL", "file:./dev.db"),
   jwtSecret: requiredInProduction("JWT_SECRET", "dev-secret-change-in-production"),
   frontendUrl: optional("FRONTEND_URL", "http://localhost:3000"),
+  corsOrigins: optional("CORS_ORIGINS")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
   cronSecret: requiredInProduction("CRON_SECRET", "dev-cron-secret"),
 
   google: {
@@ -32,21 +36,15 @@ export const config = {
     clientSecret: optional("GOOGLE_CLIENT_SECRET"),
     redirectUri: optional(
       "GOOGLE_REDIRECT_URI",
-      optional(
-        "GOOGLE_CALLBACK_URL",
-        "https://ai-office-worker-backend.onrender.com/api/auth/google/callback"
-      )
+      optional("GOOGLE_CALLBACK_URL", "http://localhost:4000/auth/google/callback")
     ),
     integrationRedirectUri: optional(
       "GOOGLE_INTEGRATION_REDIRECT_URI",
-      optional(
-        "GOOGLE_CALLBACK_URL",
-        "https://ai-office-worker-backend.onrender.com/api/auth/google/callback"
-      )
+      optional("GOOGLE_CALLBACK_URL", "http://localhost:4000/api/integrations/gmail/callback")
     ),
     clientGmailRedirectUri: optional(
       "GOOGLE_CLIENT_REDIRECT_URI",
-      "https://ai-office-worker-backend.onrender.com/api/clients/gmail/callback"
+      "http://localhost:4000/api/clients/gmail/callback"
     ),
   },
 
@@ -65,7 +63,7 @@ export const config = {
     ownerWhatsApp: optional("OWNER_WHATSAPP", optional("OWNER_WHATSAPP_NUMBER")),
     webhookUrl: optional(
       "TWILIO_WEBHOOK_URL",
-      "https://ai-office-worker-backend.onrender.com/webhook/whatsapp"
+      "http://localhost:4000/webhook/whatsapp"
     ),
   },
 

@@ -1,6 +1,6 @@
 # Run locally (verified paths)
 
-Project root: `c:\Users\User\Documents\ai-office-worker`
+Project root: `c:\Users\shaym\ai-office-worker`
 
 ```
 ai-office-worker/
@@ -13,39 +13,38 @@ ai-office-worker/
 ## 1. Install (from project root only)
 
 ```powershell
-cd c:\Users\User\Documents\ai-office-worker
+cd c:\Users\shaym\ai-office-worker
 npm install
 ```
 
-## 2. Database (from backend folder)
+## 2. Environment
 
 ```powershell
-cd c:\Users\User\Documents\ai-office-worker\backend
-npx prisma db push
-npx prisma generate
+Copy-Item backend\.env.example backend\.env
+Copy-Item frontend\.env.example frontend\.env.local
 ```
 
-Ensure `backend\.env` exists (copy from `backend\.env.example`).
+Ensure PostgreSQL is running locally and `backend\.env` points to:
+`postgresql://postgres:postgres@localhost:5432/ai_office_worker`
 
-## 3. Start backend (Terminal 1)
+## 3. Database
 
 ```powershell
-cd c:\Users\User\Documents\ai-office-worker\backend
+npm run db:generate
+npm run db:migrate
+```
+
+## 4. Start app
+
+```powershell
 npm run dev
 ```
 
-Wait for: `API running on http://localhost:4000`
-
-## 4. Start frontend (Terminal 2)
-
-```powershell
-cd c:\Users\User\Documents\ai-office-worker\frontend
-npm run dev
-```
+Wait for: `Server running on port 4000` and `Ready` from Next.js.
 
 Open: http://localhost:3000/login
 
-## 5. Test auth (Terminal 3)
+## 5. Test auth
 
 ```powershell
 # Health

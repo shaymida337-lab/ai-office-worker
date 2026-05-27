@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Logo } from "@/components/Logo";
 import { Nav } from "@/components/Nav";
 import {
   apiFetch,
@@ -11,7 +10,7 @@ import {
   type GmailStatus,
 } from "@/lib/api";
 import { useRouter } from "next/navigation";
-import { Activity, ArrowUpRight, Clock3, FileText, HeartPulse, MessageCircle, Plus, RefreshCcw, ScanLine, WalletCards } from "lucide-react";
+import { Activity, ArrowUpRight, Building2, Clock3, FileText, HeartPulse, MessageCircle, Plus, RefreshCcw, ScanLine, WalletCards } from "lucide-react";
 
 type ClientSummary = {
   id: string;
@@ -188,14 +187,13 @@ export default function DashboardPage() {
     try {
       const result = await apiFetch<{ url: string }>("/api/integrations/gmail/connect-url");
       window.location.href = result.url;
-    } catch {
-      window.location.href = "https://ai-office-worker-backend.onrender.com/auth/google";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Google OAuth is not configured");
+      setShowGmailConnect(true);
     }
   }
 
   async function runSync() {
-    console.log("Scanning Gmail...");
-    console.log("Token:", localStorage.getItem("token"));
     setSyncing(true);
     setError("");
     try {
@@ -205,6 +203,8 @@ export default function DashboardPage() {
         paymentsCreated: number;
         tasksCreated: number;
         inProgress?: boolean;
+        backgroundProcessing?: boolean;
+        quick?: boolean;
         message?: string;
       }>("/api/gmail/scan", { method: "POST" });
       await load();
@@ -212,7 +212,9 @@ export default function DashboardPage() {
         result.inProgress
           ? "סריקת Gmail כבר רצה. נסה שוב בעוד רגע."
           : result.message ??
-              `נמצאו ${result.emailsFound ?? result.emailsProcessed} מיילים ✅`
+              (result.backgroundProcessing
+                ? `נמצאו ${result.emailsFound ?? result.emailsProcessed} מיילים ב-Gmail. העיבוד המלא ממשיך ברקע.`
+                : `נמצאו ${result.emailsFound ?? result.emailsProcessed} מיילים ✅`)
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed");
@@ -257,9 +259,14 @@ export default function DashboardPage() {
       <Nav />
       <div className="mb-8 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
         <div className="flex flex-col gap-4">
-          <div className="rounded-3xl border border-[var(--border)] bg-[rgba(22,22,30,0.72)] p-5 shadow-card backdrop-blur">
-            <Logo size="lg" showSubtitle />
-            <div className="mt-3 text-[12px] font-bold uppercase tracking-[0.24em] text-blue-300">Business command center</div>
+          <div className="flex items-center gap-3 rounded-3xl border border-[var(--border)] bg-[linear-gradient(135deg,rgba(15,23,42,0.95),rgba(22,22,30,0.88))] p-4 shadow-card backdrop-blur">
+            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/5 text-ink-primary">
+              <Building2 className="h-7 w-7" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-[12px] font-bold uppercase tracking-[0.22em] text-ink-muted">Business command center</div>
+              <div className="mt-1 text-sm text-ink-secondary">ניהול העסק במקום אחד</div>
+            </div>
           </div>
           <div>
             <h1>לוח בקרה</h1>
@@ -287,12 +294,12 @@ export default function DashboardPage() {
           </div>
           <button
             type="button"
-            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-[#818CF8] bg-[#6366F1] px-4 text-[14px] font-bold text-white shadow-[0_10px_22px_rgba(15,23,42,0.22)] transition hover:scale-[1.01] hover:bg-[#7C3AED] disabled:cursor-not-allowed disabled:opacity-80 lg:w-auto lg:min-w-64"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#818CF8] bg-[#6366F1] px-4 py-3 text-[16px] font-bold text-white shadow-[0_10px_22px_rgba(15,23,42,0.22)] transition hover:scale-[1.01] hover:bg-[#7C3AED] disabled:cursor-not-allowed disabled:opacity-80 lg:w-auto lg:min-w-64"
             onClick={startFirstScan}
             disabled={firstScanRunning || syncing}
           >
             {firstScanRunning && <RefreshCcw className="h-4 w-4 animate-spin" />}
-            {firstScanRunning ? "סורק מיילים..." : "🕐 הפעל סריקה ראשונית - 90 יום"}
+            {firstScanRunning ? "סורק מיילים..." : "הפעל סריקה ראשונית - 90 יום"}
           </button>
         </div>
         {firstScanRunning && (
@@ -312,7 +319,7 @@ export default function DashboardPage() {
               <div key={`${item}-${index}`}>{item}</div>
             ))}
             {showGmailConnect && (
-              <button type="button" onClick={connectGmail} className="mt-2 w-full rounded-xl bg-white px-4 py-2 text-[14px] font-bold text-[#4F46E5] transition hover:bg-white/90 sm:w-auto">
+              <button type="button" onClick={connectGmail} className="mt-2 min-h-11 w-full rounded-xl bg-white px-4 py-3 text-[16px] font-bold text-[#4F46E5] transition hover:bg-white/90 sm:w-auto">
                 התחבר ל-Gmail
               </button>
             )}
@@ -370,17 +377,17 @@ export default function DashboardPage() {
           </div>
           <div className="space-y-3">
             {(clients?.clients ?? []).slice(0, 5).map((client) => (
-              <div key={client.id} className="group flex items-center justify-between gap-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary/60 p-4 transition hover:border-accent-primary/40 hover:bg-surface-hover">
-                <div className="flex items-center gap-3">
+              <div key={client.id} className="group grid gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary/60 p-4 transition hover:border-accent-primary/40 hover:bg-surface-hover sm:flex sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
                   <span className="grid h-11 w-11 place-items-center rounded-full bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] text-sm font-bold text-white">
                     {client.name.slice(0, 2)}
                   </span>
-                  <div>
-                    <strong className="text-ink-primary">{client.name}</strong>
+                  <div className="min-w-0">
+                    <strong className="block truncate text-ink-primary">{client.name}</strong>
                     <p className="text-sm">₪{(client.stats?.toPay ?? 0).toLocaleString("he-IL")} לתשלום · {client.stats?.invoices ?? 0} חשבוניות</p>
                   </div>
                 </div>
-                <span className="badge badge-ok">{client.stats?.missingInvoices ? `${client.stats.missingInvoices} חסרות` : "תקין"}</span>
+                <span className={`badge w-fit ${client.stats?.missingInvoices ? "badge-warn" : "badge-ok"}`}>{client.stats?.missingInvoices ? `${client.stats.missingInvoices} חסרות` : "תקין"}</span>
               </div>
             ))}
             {clients?.clients.length === 0 && <p>אין לקוחות עדיין.</p>}
@@ -416,7 +423,7 @@ export default function DashboardPage() {
         <div className="card">
           <h2>פעולות מהירות</h2>
           <div className="mt-4 grid gap-3">
-            <a className="btn" href="https://ai-office-worker-backend.onrender.com/auth/google">התחבר עם Google</a>
+            <button className="btn" onClick={connectGmail}>התחבר עם Google</button>
             <button className="btn btn-secondary" onClick={() => router.push("/camera")}><FileText className="h-4 w-4" />צלם/העלה חשבונית</button>
           </div>
         </div>

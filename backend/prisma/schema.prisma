@@ -56,6 +56,8 @@ model Organization {
   whatsAppNotifications WhatsAppNotification[]
   whatsAppConversations WhatsAppConversation[]
   notificationRules NotificationRules?
+  leads           Lead[]
+  messageTemplates MessageTemplate[]
 }
 
 model Client {
@@ -486,6 +488,87 @@ model NotificationRules {
   quietHoursEnd         String  @default("07:00")
   noMessagesOnSaturday  Boolean @default(true)
   noMessagesOnHolidays  Boolean @default(true)
+}
+
+model Lead {
+  id              String   @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  company         String?
+  phone           String?
+  email           String?
+  whatsapp        String?
+  source          String   @default("manual")
+  stage           String   @default("חדש")
+  estimatedValue  Float    @default(0)
+  assignedTo      String?
+  tags            String[] @default([])
+  notes           String?
+  score           Int      @default(0)
+  priorityStars   Int      @default(1)
+  repliedAt       DateTime?
+  lastContactAt   DateTime?
+  nextReminderAt  DateTime?
+  lastMessageStatus String?
+  attachments     String[] @default([])
+  messageCount    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  timeline  LeadTimeline[]
+  sequences LeadSequence[]
+
+  @@index([organizationId, stage, createdAt])
+  @@index([organizationId, source])
+  @@index([organizationId, assignedTo])
+  @@index([organizationId, nextReminderAt])
+  @@index([phone])
+  @@index([email])
+}
+
+model LeadTimeline {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type      String
+  content   String
+  channel   String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([leadId, createdAt])
+}
+
+model LeadSequence {
+  id              String   @id @default(cuid())
+  leadId          String
+  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  step            Int
+  channel         String
+  template        String
+  scheduledAt     DateTime
+  sentAt          DateTime?
+  status          String   @default("pending")
+  messageTemplate String?
+  createdAt       DateTime @default(now())
+
+  @@index([leadId, status])
+  @@index([status, scheduledAt])
+}
+
+model MessageTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  channel        String
+  content        String
+  variables      String[] @default([])
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, name, channel])
+  @@index([organizationId, channel])
 }
 
 

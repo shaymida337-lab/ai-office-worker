@@ -12,6 +12,32 @@ import {
 } from "../services/whatsapp.js";
 
 export const apiRouter = Router();
+
+apiRouter.post("/leads/webhook", async (req, res) => {
+  try {
+    const { createCrmLead } = await import("../services/crm.js");
+    const body = req.body as { organizationId?: string; name?: string; phone?: string; email?: string; source?: string; message?: string };
+    const organization = body.organizationId
+      ? await prisma.organization.findUnique({ where: { id: body.organizationId } })
+      : await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
+    if (!organization) {
+      res.status(400).json({ error: "Organization is required" });
+      return;
+    }
+    const lead = await createCrmLead(organization.id, {
+      name: body.name,
+      phone: body.phone,
+      email: body.email,
+      whatsapp: body.phone,
+      source: body.source || "website",
+      notes: body.message,
+    });
+    res.json({ lead });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Lead webhook failed" });
+  }
+});
+
 apiRouter.use(authMiddleware);
 
 
@@ -24,10 +50,56 @@ apiRouter.post("/automation/first-scan", async (req, res) => {
 });
 
 apiRouter.get("/automation/scan-status", async (req, res) => {
-  const logs = await prisma.$queryRawUnsafe<Array<{ id: string; type: string; status: string; found: number; saved: number; errors: string | null; startedAt: Date; endedAt: Date | null }>>(
+  type ScanStatusLog = {
+    id: string;
+    type: string;
+    status: string;
+    found: number;
+    saved: number;
+    errors: string | null;
+    startedAt: Date;
+    endedAt: Date | null;
+  };
+
+  const [scanLogs, syncLogs] = await Promise.all([
+    prisma.$queryRawUnsafe<ScanStatusLog[]>(
     'SELECT "id", "type", "status", "found", "saved", "errors", "startedAt", "endedAt" FROM "ScanLog" WHERE "orgId" = $1 ORDER BY "startedAt" DESC LIMIT 10',
     req.auth!.organizationId
-  );
+    ),
+    prisma.syncLog.findMany({
+      where: { organizationId: req.auth!.organizationId, type: "gmail_scan" },
+      orderBy: { startedAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        emailsProcessed: true,
+        paymentsCreated: true,
+        tasksCreated: true,
+        errorMessage: true,
+        startedAt: true,
+        finishedAt: true,
+      },
+    }),
+  ]);
+
+  const logs: ScanStatusLog[] = [
+    ...scanLogs,
+    ...syncLogs.map((log) => ({
+      id: log.id,
+      type: log.type,
+      status: log.status === "error" ? "failed" : log.status,
+      found: log.emailsProcessed,
+      saved: log.paymentsCreated + log.tasksCreated,
+      errors: log.errorMessage,
+      startedAt: log.startedAt,
+      endedAt: log.finishedAt,
+    })),
+  ]
+    .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+    .slice(0, 10);
+
   const last = logs[0] ?? null;
   const nextDaily = new Date();
   nextDaily.setHours(2, 0, 0, 0);
@@ -78,6 +150,120 @@ apiRouter.post("/help/auto-fix/invoices", async (req, res) => {
 apiRouter.get("/dashboard", async (req, res) => {
   const stats = await getDashboardStats(req.auth!.organizationId);
   res.json(stats);
+});
+
+apiRouter.get("/leads", async (req, res) => {
+  const { listCrmLeads } = await import("../services/crm.js");
+  res.json(await listCrmLeads(req.auth!.organizationId, req.query));
+});
+
+apiRouter.get("/leads/kpis", async (req, res) => {
+  const { getCrmKpis } = await import("../services/crm.js");
+  res.json(await getCrmKpis(req.auth!.organizationId));
+});
+
+apiRouter.get("/leads/templates", async (req, res) => {
+  const { listMessageTemplates } = await import("../services/crm.js");
+  res.json({ templates: await listMessageTemplates(req.auth!.organizationId) });
+});
+
+apiRouter.put("/leads/templates/:id", async (req, res) => {
+  try {
+    const { updateMessageTemplate } = await import("../services/crm.js");
+    res.json(await updateMessageTemplate(req.auth!.organizationId, req.params.id, req.body as { content?: string }));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Template update failed" });
+  }
+});
+
+apiRouter.get("/leads/:id", async (req, res) => {
+  try {
+    const { getCrmLead } = await import("../services/crm.js");
+    res.json(await getCrmLead(req.auth!.organizationId, req.params.id));
+  } catch (err) {
+    res.status(404).json({ error: err instanceof Error ? err.message : "Lead not found" });
+  }
+});
+
+apiRouter.post("/leads", async (req, res) => {
+  try {
+    const { createCrmLead } = await import("../services/crm.js");
+    res.json(await createCrmLead(req.auth!.organizationId, req.body as Record<string, unknown>, req.auth!.userId));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Create lead failed" });
+  }
+});
+
+apiRouter.put("/leads/:id", async (req, res) => {
+  try {
+    const { updateCrmLead } = await import("../services/crm.js");
+    res.json(await updateCrmLead(req.auth!.organizationId, req.params.id, req.body as Record<string, unknown>, req.auth!.userId));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Update lead failed" });
+  }
+});
+
+apiRouter.post("/leads/:id/timeline", async (req, res) => {
+  try {
+    const { addLeadTimeline } = await import("../services/crm.js");
+    res.json(await addLeadTimeline(req.auth!.organizationId, req.params.id, req.body as { type?: string; content?: string; channel?: string }, req.auth!.userId));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Timeline update failed" });
+  }
+});
+
+apiRouter.post("/leads/reply", async (req, res) => {
+  try {
+    const { handleLeadReply } = await import("../services/crm.js");
+    const lead = await handleLeadReply(req.auth!.organizationId, req.body as { phone?: string; email?: string; message?: string; channel?: string });
+    if (!lead) {
+      res.status(404).json({ error: "Lead not found" });
+      return;
+    }
+    res.json({ lead });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Lead reply failed" });
+  }
+});
+
+apiRouter.post("/leads/scan-gmail", async (req, res) => {
+  try {
+    const keywords = ["מעוניין", "פרטים", "מחיר", "interested", "details", "price"];
+    const leads = await prisma.emailMessage.findMany({
+      where: {
+        organizationId: req.auth!.organizationId,
+        receivedAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        OR: keywords.flatMap((keyword) => [
+          { subject: { contains: keyword, mode: "insensitive" as const } },
+          { bodyText: { contains: keyword, mode: "insensitive" as const } },
+        ]),
+      },
+      take: 25,
+      orderBy: { receivedAt: "desc" },
+    });
+    const { createCrmLead } = await import("../services/crm.js");
+    const created = [];
+    for (const email of leads) {
+      const phone = email.fromAddress.match(/\+?\d[\d\s-]{7,}/)?.[0]?.replace(/\s/g, "");
+      const exists = await prisma.lead.findFirst({
+        where: {
+          organizationId: req.auth!.organizationId,
+          OR: [{ email: email.fromAddress }, ...(phone ? [{ phone }] : [])],
+        },
+      });
+      if (exists) continue;
+      created.push(await createCrmLead(req.auth!.organizationId, {
+        name: email.fromAddress.replace(/<[^>]+>/g, "").trim() || "ליד ממייל",
+        email: email.fromAddress,
+        phone,
+        source: "email",
+        notes: `${email.subject}\n\n${email.bodyText ?? email.snippet ?? ""}`.slice(0, 1000),
+      }, req.auth!.userId));
+    }
+    res.json({ scanned: leads.length, created: created.length, leads: created });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Gmail lead scan failed" });
+  }
 });
 
 apiRouter.post("/help/ask", async (req, res) => {
@@ -207,7 +393,7 @@ apiRouter.patch("/payments/:id", async (req, res) => {
   const payment = await prisma.supplierPayment.updateMany({
     where: { id: req.params.id, organizationId: req.auth!.organizationId },
     data: {
-      ...(paid !== undefined && { paid }),
+      ...(paid !== undefined && { paid, ...(paid && { missingInvoice: false }) }),
       ...(invoiceLink !== undefined && { invoiceLink, missingInvoice: false }),
       ...(documentLink !== undefined && { documentLink }),
     },
@@ -364,11 +550,31 @@ apiRouter.post("/whatsapp-assistant/test/:type", async (req, res) => {
 
 async function scanGmail(req: Request, res: Response) {
   try {
-    const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
+    const { quickScanGmailForOrganization, syncGmailForOrganization } = await import("../services/gmail-sync.js");
     const rawDaysBack = Number(req.body?.daysBack ?? req.query.daysBack);
-    const daysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0 ? Math.ceil(rawDaysBack) : 90;
+    const hasExplicitDaysBack = req.body?.daysBack !== undefined || req.query.daysBack !== undefined;
+    const daysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0 ? Math.ceil(rawDaysBack) : 7;
     console.log(`[gmail-scan] POST /api/gmail/scan org=${req.auth!.organizationId} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack}`);
     console.log("[gmail-scan] Step 1: checking Gmail authentication");
+    if (!hasExplicitDaysBack) {
+      console.log("[gmail-scan] Step 2: running quick Gmail scan for manual request");
+      const result = await quickScanGmailForOrganization(req.auth!.organizationId, { daysBack });
+      void syncGmailForOrganization(req.auth!.organizationId, { daysBack })
+        .then((backgroundResult) => {
+          console.log(`[gmail-scan] Background processing finished emails=${backgroundResult.emailsProcessed} clients=${backgroundResult.clientsCreated} invoices=${backgroundResult.invoicesCreated} tasks=${backgroundResult.tasksCreated}`);
+        })
+        .catch((backgroundError) => {
+          console.error("[gmail-scan] Background processing failed", backgroundError);
+        });
+      res.json({
+        ...result,
+        emailsFound: result.emailsProcessed,
+        daysBack,
+        success: true,
+      });
+      return;
+    }
+
     console.log("[gmail-scan] Step 2: starting Gmail sync");
     const result = await syncGmailForOrganization(req.auth!.organizationId, { daysBack, forceReprocess: daysBack >= 90 });
     console.log(`[gmail-scan] Step 3: scan finished emails=${result.emailsProcessed} clients=${result.clientsCreated} invoices=${result.invoicesCreated} tasks=${result.tasksCreated}`);

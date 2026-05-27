@@ -143,7 +143,7 @@ export function HelpCenter() {
           <div className="help-modal">
             <header className="help-header">
               <div>
-                <h2>🤝 מרכז העזרה</h2>
+                <h2>מרכז העזרה</h2>
                 <p>פתרון עצמי מהיר לפני פנייה לתמיכה</p>
               </div>
               <button className="help-close" onClick={() => setOpen(false)} aria-label="סגור">×</button>
@@ -176,13 +176,13 @@ export function HelpCenter() {
                     <>
                       <OnboardingChecklist completion={completion} items={checklist} />
                       <section className="help-section">
-                        <h3>בעיות נפוצות 🔧</h3>
+                        <h3>בעיות נפוצות</h3>
                         <div className="help-grid">
                           {commonTopics.map((item) => <TopicCard key={item.id} topic={item} onOpen={openTopic} />)}
                         </div>
                       </section>
                       <section className="help-section">
-                        <h3>נושאים 📚</h3>
+                        <h3>נושאים</h3>
                         <div className="help-grid">
                           {helpCategories.map((category) => (
                             <button className="help-category-card" key={category.id} onClick={() => setCategoryId(category.id)}>

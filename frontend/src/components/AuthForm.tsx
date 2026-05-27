@@ -94,7 +94,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
           <p className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-red-200">{error}</p>
         )}
         <button type="submit" className="btn w-full" disabled={loading}>
-          {loading ? "..." : isSignup ? "צור חשבון" : "התחבר"}
+          {loading ? "טוען..." : isSignup ? "צור חשבון" : "התחבר"}
         </button>
       </form>
       <p className="mt-6 text-sm text-ink-muted">

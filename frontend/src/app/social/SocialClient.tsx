@@ -29,6 +29,9 @@ export default function SocialClient() {
   const [tab, setTab] = useState<"calendar" | "pending" | "analytics">("calendar");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [connectPlatform, setConnectPlatform] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [pageId, setPageId] = useState("");
 
   async function load() {
     const data = await apiFetch<{ clients: ClientItem[] }>("/api/clients");
@@ -50,17 +53,28 @@ export default function SocialClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
-  async function connect(platform: string) {
+  async function connect(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const platform = connectPlatform;
     if (!clientId) return;
-    const accessToken = window.prompt(`הדבק access token עבור ${platform}`);
-    const pageId = window.prompt("Page ID / Instagram Business ID / LinkedIn author ID") || "";
-    const result = await apiFetch<{ oauthUrl?: string; connected?: boolean }>(`/api/social/connect/${platform}`, {
-      method: "POST",
-      body: JSON.stringify({ clientId, accessToken, pageId }),
-    });
-    if (result.oauthUrl && !accessToken) window.location.href = result.oauthUrl;
-    setMessage(result.connected ? `${platform} חובר בהצלחה` : `פתח OAuth עבור ${platform}`);
-    await load();
+    setLoading(true);
+    setMessage("");
+    try {
+      const result = await apiFetch<{ oauthUrl?: string; connected?: boolean }>(`/api/social/connect/${platform}`, {
+        method: "POST",
+        body: JSON.stringify({ clientId, accessToken, pageId }),
+      });
+      if (result.oauthUrl && !accessToken) window.location.href = result.oauthUrl;
+      setMessage(result.connected ? `${platform} חובר בהצלחה` : `פתח OAuth עבור ${platform}`);
+      setConnectPlatform("");
+      setAccessToken("");
+      setPageId("");
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "חיבור חשבון סושיאל נכשל");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function generate() {
@@ -79,8 +93,17 @@ export default function SocialClient() {
   }
 
   async function postAction(postId: string, action: "approve" | "reject" | "publish") {
-    await apiFetch(`/api/social/${action}/${postId}`, { method: "POST" });
-    await load();
+    setLoading(true);
+    setMessage("");
+    try {
+      await apiFetch(`/api/social/${action}/${postId}`, { method: "POST" });
+      setMessage(action === "approve" ? "הפוסט אושר" : action === "reject" ? "הפוסט נדחה" : "הפוסט פורסם");
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "פעולת הסושיאל נכשלה");
+    } finally {
+      setLoading(false);
+    }
   }
 
   const shownPosts = tab === "pending" ? posts.filter((post) => post.status === "pending_approval") : posts;
@@ -95,9 +118,10 @@ export default function SocialClient() {
           <h1>מנהל סושיאל AI</h1>
           <p>תכנון, אישור ופרסום תוכן לכל לקוח ולכל פלטפורמה.</p>
         </div>
-        <button className="btn" onClick={generate} disabled={loading || !clientId}><Sparkles className="h-4 w-4" />{loading ? "יוצר תוכן..." : "Generate content"}</button>
+        <button className="btn" onClick={generate} disabled={loading || !clientId}><Sparkles className="h-4 w-4" />{loading ? "יוצר תוכן..." : "צור תוכן"}</button>
       </div>
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
+      {clients.length === 0 && <div className="card"><p>אין לקוחות עדיין. הוסף לקוח לפני יצירת תוכן סושיאל.</p></div>}
       <div className="card">
         <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
           <label>
@@ -106,7 +130,7 @@ export default function SocialClient() {
             {clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}
             </select>
           </label>
-          <div className="badge badge-ok">Approval workflow active</div>
+          <div className="badge badge-ok">תהליך אישור פעיל</div>
         </div>
       </div>
 
@@ -121,29 +145,54 @@ export default function SocialClient() {
               </div>
               <h3 className="text-lg font-semibold capitalize text-ink-primary">{platform}</h3>
               <p className="mb-4 text-sm">סטטוס חיבור ופרטי פרסום</p>
-              <button className="btn btn-secondary" onClick={() => connect(platform)}>
-                {connected.has(platform) ? "עדכן חיבור" : "Connect"}
+              <button className="btn btn-secondary" onClick={() => setConnectPlatform(platform)}>
+                {connected.has(platform) ? "עדכן חיבור" : "חבר חשבון"}
               </button>
             </div>
           ))}
         </div>
       </div>
 
+      {connectPlatform && (
+        <div className="fixed inset-0 z-[110] grid place-items-end bg-black/70 p-4 backdrop-blur-sm sm:place-items-center">
+          <form onSubmit={connect} className="card max-h-[85vh] w-full max-w-xl overflow-y-auto">
+            <h2>חיבור {connectPlatform}</h2>
+            <p>הדבק פרטי חיבור או השאר טוקן ריק כדי לפתוח OAuth אם השרת תומך בכך.</p>
+            <label>
+              טוקן גישה
+              <input dir="ltr" value={accessToken} onChange={(event) => setAccessToken(event.target.value)} placeholder="access token" />
+            </label>
+            <label>
+              מזהה עמוד / עסק
+              <input dir="ltr" value={pageId} onChange={(event) => setPageId(event.target.value)} placeholder="page / author id" />
+            </label>
+            <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap">
+              <button className="btn" type="submit" disabled={loading}>{loading ? "מחבר..." : "חבר חשבון"}</button>
+              <button className="btn btn-secondary" type="button" onClick={() => setConnectPlatform("")}>ביטול</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       <div className="card">
         <div className="flex flex-wrap gap-2">
-          <TabButton active={tab === "calendar"} onClick={() => setTab("calendar")} icon={<CalendarDays className="h-4 w-4" />}>Content calendar</TabButton>
-          <TabButton active={tab === "pending"} onClick={() => setTab("pending")} icon={<Check className="h-4 w-4" />}>Pending approval</TabButton>
-          <TabButton active={tab === "analytics"} onClick={() => setTab("analytics")} icon={<BarChart3 className="h-4 w-4" />}>Analytics</TabButton>
+          <TabButton active={tab === "calendar"} onClick={() => setTab("calendar")} icon={<CalendarDays className="h-4 w-4" />}>יומן תוכן</TabButton>
+          <TabButton active={tab === "pending"} onClick={() => setTab("pending")} icon={<Check className="h-4 w-4" />}>ממתין לאישור</TabButton>
+          <TabButton active={tab === "analytics"} onClick={() => setTab("analytics")} icon={<BarChart3 className="h-4 w-4" />}>ביצועים</TabButton>
         </div>
       </div>
 
       {tab === "analytics" && (
-        <div className="table-shell">
-          <h2>Analytics</h2>
-          <table><thead><tr><th>פלטפורמה</th><th>לייקים</th><th>תגובות</th><th>Reach</th></tr></thead><tbody>
-            {posts.map((post) => <tr key={post.id}><td>{post.platform}</td><td>{post.analytics?.likes ?? 0}</td><td>{post.analytics?.comments ?? 0}</td><td>{post.analytics?.reach ?? 0}</td></tr>)}
-          </tbody></table>
-        </div>
+        posts.length === 0 ? (
+          <div className="card"><p>אין נתוני ביצועים עדיין.</p></div>
+        ) : (
+          <div className="table-shell">
+          <h2>נתוני ביצועים</h2>
+            <table><thead><tr><th>פלטפורמה</th><th>לייקים</th><th>תגובות</th><th>Reach</th></tr></thead><tbody>
+              {posts.map((post) => <tr key={post.id}><td>{post.platform}</td><td>{post.analytics?.likes ?? 0}</td><td>{post.analytics?.comments ?? 0}</td><td>{post.analytics?.reach ?? 0}</td></tr>)}
+            </tbody></table>
+          </div>
+        )
       )}
 
       {tab !== "analytics" && (
@@ -151,6 +200,11 @@ export default function SocialClient() {
           {shownPosts.map((post) => (
             <PostCard key={post.id} post={post} onAction={postAction} />
           ))}
+          {shownPosts.length === 0 && (
+            <div className="card">
+              <p>{tab === "pending" ? "אין פוסטים שממתינים לאישור." : "אין פוסטים ביומן עדיין. צור תוכן כדי להתחיל."}</p>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -170,11 +224,11 @@ function PostCard({ post, onAction }: { post: SocialPost; onAction: (postId: str
       <div className="flex flex-wrap gap-2">
       {post.status === "pending_approval" && (
         <>
-          <button className="btn" onClick={() => onAction(post.id, "approve")}><Check className="h-4 w-4" />Approve</button>
-          <button className="btn btn-secondary" onClick={() => onAction(post.id, "reject")}><X className="h-4 w-4" />Reject</button>
+          <button className="btn" onClick={() => onAction(post.id, "approve")}><Check className="h-4 w-4" />אשר</button>
+          <button className="btn btn-secondary" onClick={() => onAction(post.id, "reject")}><X className="h-4 w-4" />דחה</button>
         </>
       )}
-      {post.status === "approved" && <button className="btn" onClick={() => onAction(post.id, "publish")}><Send className="h-4 w-4" />Publish now</button>}
+      {post.status === "approved" && <button className="btn" onClick={() => onAction(post.id, "publish")}><Send className="h-4 w-4" />פרסם עכשיו</button>}
       </div>
     </div>
   );

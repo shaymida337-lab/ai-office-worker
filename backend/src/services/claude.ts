@@ -55,7 +55,7 @@ export async function analyzeEmailContent(input: {
 קבצים: ${input.filenames.join(", ") || "אין"}`;
 
   const message = await anthropic.messages.create({
-    model: "claude-opus-4-5",
+    model: config.anthropic.model,
     max_tokens: 1024,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userContent }],
@@ -108,7 +108,7 @@ export async function analyzeInvoiceFile(input: {
         };
 
   const message = await anthropic.messages.create({
-    model: "claude-opus-4-5",
+    model: config.anthropic.model,
     max_tokens: 700,
     messages: [
       {
