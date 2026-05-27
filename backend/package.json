@@ -11,7 +11,7 @@
     "seed:demo": "tsx scripts/seed-demo.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:deploy": "echo 'skipping migrations'",
     "db:push": "prisma db push"
   },
   "dependencies": {
