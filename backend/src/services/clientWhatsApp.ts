@@ -33,46 +33,10 @@ class ClientWhatsAppService {
   private clients = new Map<string, WhatsAppRuntimeClient>();
 
   async initializeClient(clientId: string): Promise<{ qrCode?: string; status: string }> {
-    const [{ Client, LocalAuth }, qrcode] = await Promise.all([
-      import("whatsapp-web.js"),
-      import("qrcode"),
-    ]);
-    const existing = this.clients.get(clientId);
-    if (existing) return { status: "connected" };
-
-    const client = new Client({
-      authStrategy: new LocalAuth({ clientId: `client_${clientId}`, dataPath: "./whatsapp-sessions" }),
-      puppeteer: {
-        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--single-process"],
-      },
-    }) as unknown as WhatsAppRuntimeClient;
-
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const finish = (value: { qrCode?: string; status: string }) => {
-        if (!settled) {
-          settled = true;
-          resolve(value);
-        }
-      };
-      client.on("qr", async (qr: string) => {
-        finish({ qrCode: await qrcode.toDataURL(qr), status: "qr_ready" });
-      });
-      client.on("ready", async () => {
-        this.clients.set(clientId, client);
-        await upsertClientWhatsApp(clientId, { isConnected: true });
-        finish({ status: "connected" });
-      });
-      client.on("message", (msg: WhatsAppRuntimeMessage) => {
-        this.processMessage(clientId, msg).catch((err) => console.error("[clientWhatsApp] message processing failed", err));
-      });
-      client.on("disconnected", async () => {
-        this.clients.delete(clientId);
-        await upsertClientWhatsApp(clientId, { isConnected: false });
-      });
-      Promise.resolve(client.initialize()).catch(reject);
-      setTimeout(() => finish({ status: "initializing" }), 25000);
-    });
+    await upsertClientWhatsApp(clientId, { isConnected: false });
+    return {
+      status: "disabled",
+    };
   }
 
   async processMessage(clientId: string, msg: WhatsAppRuntimeMessage) {
