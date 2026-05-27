@@ -22,13 +22,13 @@ services:
       - key: FRONTEND_URL
         sync: false
       - key: GOOGLE_CLIENT_ID
-        sync: false
+        value: 962636575245-5cvgi8b8bld3ic9kq0n5fqc8vbhdlpie.apps.googleusercontent.com
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        sync: false
+        value: https://ai-office-worker-backend.onrender.com/api/integrations/gmail/callback
       - key: GOOGLE_INTEGRATION_REDIRECT_URI
-        sync: false
+        value: https://ai-office-worker-backend.onrender.com/api/integrations/gmail/callback
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: ANTHROPIC_MODEL
