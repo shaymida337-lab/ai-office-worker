@@ -87,7 +87,7 @@ export default function DashboardPage() {
 
   const load = useCallback(async () => {
     try {
-      const s = await apiFetch<DashboardStats>("/api/dashboard");
+      const s = await apiFetch<DashboardStats>("/api/stats");
       setStats(s);
       const sum = await apiFetch<{ text: string }>("/api/summary/daily");
       setSummary(sum.text);
@@ -184,11 +184,46 @@ export default function DashboardPage() {
   }
 
   async function connectGmail() {
+    console.log("מנסה להתחבר לGmail...");
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+    console.log("token:", token ? "קיים" : "חסר!");
+
+    if (!token) {
+      alert("שגיאה: לא מחובר למערכת");
+      return;
+    }
+
     try {
-      const result = await apiFetch<{ url: string }>("/api/integrations/gmail/connect-url");
-      window.location.href = result.url;
+      setError("");
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+      const res = await fetch(`${apiUrl}/api/integrations/gmail/connect-url`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      console.log("Gmail connect-url status:", res.status);
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error((errorData as { error?: string }).error ?? "חיבור Gmail נכשל");
+      }
+
+      const data = await res.json() as { url?: string };
+      console.log("Gmail OAuth URL:", data.url ? "התקבל" : "חסר!");
+
+      if (!data.url) {
+        throw new Error("שרת לא החזיר כתובת OAuth");
+      }
+
+      window.location.href = data.url;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Google OAuth is not configured");
+      const message = err instanceof Error ? err.message : "Google OAuth is not configured";
+      console.error("Gmail connect failed:", err);
+      alert(message);
+      setError(message);
       setShowGmailConnect(true);
     }
   }
@@ -254,6 +289,7 @@ export default function DashboardPage() {
     { label: "כסף לשלם", value: `₪${stats.moneyToPay.toLocaleString("he-IL")}`, icon: WalletCards, detail: `${stats.upcomingPaymentsCount} תשלומים קרובים`, tone: "text-amber-300" },
     { label: "בריאות עסקית", value: `${stats.businessHealthScore}/100`, icon: HeartPulse, detail: `נחסכו ${stats.hoursSavedThisWeek} שעות`, tone: "text-violet-300" },
   ];
+  const gmailConnected = Boolean(gmailStatus?.connected);
   return (
     <div className="container">
       <Nav />
@@ -279,6 +315,26 @@ export default function DashboardPage() {
           <button className="btn btn-secondary" onClick={() => router.push("/dashboard/clients")}><Plus className="h-4 w-4" />הוסף לקוח</button>
         </div>
       </div>
+
+      {gmailStatus && !gmailConnected && (
+        <section className="mb-4 rounded-2xl bg-[linear-gradient(135deg,#4285F4,#34A853)] p-5 text-white shadow-[0_18px_40px_rgba(66,133,244,0.28)]">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="m-0 text-xl font-bold text-white">📧 חבר את Gmail שלך</h3>
+              <p className="mt-1 text-sm font-medium text-white/85">
+                כדי לסרוק מיילים ולמצוא לידים ותשלומים
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={connectGmail}
+              className="min-h-11 whitespace-nowrap rounded-xl border-none bg-white px-5 py-3 text-sm font-bold text-[#4285F4] shadow-[0_10px_24px_rgba(15,23,42,0.16)] transition hover:bg-white/90 active:scale-[0.99]"
+            >
+              🔗 התחבר עכשיו
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="mb-6 rounded-2xl border border-[#818CF8]/70 bg-[linear-gradient(135deg,rgba(99,102,241,0.98),rgba(139,92,246,0.94))] p-3 text-white shadow-[0_14px_34px_rgba(99,102,241,0.28)]">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

@@ -30,6 +30,37 @@ socialRouter.post("/reject/:postId", async (req, res) => {
 
 socialRouter.use(authMiddleware);
 
+socialRouter.get("/status", async (req, res) => {
+  const clients = await prisma.client.findMany({
+    where: { organizationId: req.auth!.organizationId, isActive: true },
+    select: {
+      id: true,
+      name: true,
+      socialAccounts: {
+        select: { platform: true, isActive: true, pageId: true, updatedAt: true },
+      },
+    },
+  });
+  const platforms = ["instagram", "facebook", "linkedin"];
+  const byPlatform = platforms.map((platform) => {
+    const accounts = clients.flatMap((client) =>
+      client.socialAccounts
+        .filter((account) => account.platform === platform)
+        .map((account) => ({ ...account, clientName: client.name }))
+    );
+    const active = accounts.filter((account) => account.isActive);
+    return {
+      platform,
+      connected: active.length > 0,
+      activeAccounts: active.length,
+      totalAccounts: accounts.length,
+      lastUpdatedAt: active[0]?.updatedAt ?? accounts[0]?.updatedAt ?? null,
+      clients: active.map((account) => account.clientName),
+    };
+  });
+  res.json({ platforms: byPlatform });
+});
+
 socialRouter.post("/connect/:platform", async (req, res) => {
   const body = req.body as { clientId?: string; accessToken?: string; pageId?: string };
   if (!body.clientId) {

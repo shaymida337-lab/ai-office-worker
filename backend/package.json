@@ -14,6 +14,9 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:push": "prisma db push"
   },
+  "puppeteer": {
+    "skipDownload": true
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@prisma/client": "^6.8.2",

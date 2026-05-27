@@ -47,6 +47,10 @@ services:
         value: https://ai-office-worker-backend.onrender.com/webhook/whatsapp
       - key: GOOGLE_DRIVE_ROOT
         value: AI Office Worker
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: "true"
+      - key: PUPPETEER_SKIP_DOWNLOAD
+        value: "true"
 
   - type: web
     name: ai-office-worker-frontend

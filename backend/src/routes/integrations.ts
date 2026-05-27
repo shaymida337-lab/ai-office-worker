@@ -44,16 +44,40 @@ integrationsRouter.get("/gmail/status", authMiddleware, async (req, res) => {
   });
 });
 
-integrationsRouter.get("/gmail/connect-url", authMiddleware, async (req, res) => {
-  if (!hasGoogleOAuth()) {
-    res.status(503).json({
-      error:
-        "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend/.env.",
-    });
-    return;
-  }
+integrationsRouter.delete("/gmail", authMiddleware, async (req, res) => {
+  await prisma.integration.deleteMany({
+    where: {
+      organizationId: req.auth!.organizationId,
+      provider: "gmail",
+    },
+  });
+  res.json({ ok: true });
+});
 
-  res.json({ url: await gmailAuthUrl(signToken(req.auth!)) });
+integrationsRouter.get("/gmail/connect-url", authMiddleware, async (req, res) => {
+  try {
+    if (!hasGoogleOAuth()) {
+      const missing = [
+        !config.google.clientId && "GOOGLE_CLIENT_ID",
+        !config.google.clientSecret && "GOOGLE_CLIENT_SECRET",
+      ].filter(Boolean);
+      const message = `Google OAuth is not configured. Missing: ${missing.join(", ")}`;
+      console.error("Gmail connect error:", message);
+      res.status(503).json({ error: message });
+      return;
+    }
+
+    const auth = req.auth!;
+    const state = signToken({
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      email: auth.email,
+    });
+    res.json({ url: await gmailAuthUrl(state) });
+  } catch (error) {
+    console.error("Gmail connect error:", error);
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
 });
 
 integrationsRouter.get("/gmail/connect", async (req, res) => {
@@ -193,7 +217,7 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
       return;
     }
 
-    res.redirect(`${config.frontendUrl}/dashboard?gmail=connected`);
+    res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=connected`);
   } catch (err) {
     console.error("[gmail/callback]", err);
     res.status(500).send("Failed to connect Gmail");

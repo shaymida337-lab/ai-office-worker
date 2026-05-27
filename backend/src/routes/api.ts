@@ -152,6 +152,30 @@ apiRouter.get("/dashboard", async (req, res) => {
   res.json(stats);
 });
 
+apiRouter.get("/stats", async (req, res) => {
+  const organizationId = req.auth!.organizationId;
+  const [stats, totalClients, openInvoices] = await Promise.all([
+    getDashboardStats(organizationId),
+    prisma.client.count({ where: { organizationId, isActive: true } }),
+    prisma.invoice.count({ where: { organizationId, status: { not: "paid" } } }),
+  ]);
+
+  res.json({
+    ...stats,
+    totalClients,
+    openInvoices,
+    amountToReceive: stats.moneyToReceive,
+    amountToPay: stats.moneyToPay,
+    summary: {
+      totalClients,
+      openInvoices,
+      amountToReceive: stats.moneyToReceive,
+      amountToPay: stats.moneyToPay,
+      currency: stats.currency,
+    },
+  });
+});
+
 apiRouter.get("/message-scans", async (req, res) => {
   const channel = typeof req.query.channel === "string" ? req.query.channel : undefined;
   const contactType = typeof req.query.contactType === "string" ? req.query.contactType : undefined;
@@ -585,23 +609,37 @@ apiRouter.post("/whatsapp-assistant/test/:type", async (req, res) => {
 async function scanGmail(req: Request, res: Response) {
   try {
     const { quickScanGmailForOrganization, syncGmailForOrganization } = await import("../services/gmail-sync.js");
+    const gmailIntegration = await prisma.integration.findUnique({
+      where: { organizationId_provider: { organizationId: req.auth!.organizationId, provider: "gmail" } },
+      select: { refreshToken: true, accessToken: true },
+    });
+    if (!gmailIntegration?.refreshToken && !gmailIntegration?.accessToken) {
+      res.status(409).json({ error: "משתמש לא מחובר לGmail", code: "GMAIL_NOT_CONNECTED" });
+      return;
+    }
+
     const rawDaysBack = Number(req.body?.daysBack ?? req.query.daysBack);
     const hasExplicitDaysBack = req.body?.daysBack !== undefined || req.query.daysBack !== undefined;
-    const daysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0 ? Math.ceil(rawDaysBack) : 7;
+    const daysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0 ? Math.ceil(rawDaysBack) : 90;
+    const leadsBefore = await prisma.lead.count({ where: { organizationId: req.auth!.organizationId } });
     console.log(`[gmail-scan] POST /api/gmail/scan org=${req.auth!.organizationId} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack}`);
     console.log("[gmail-scan] Step 1: checking Gmail authentication");
     if (!hasExplicitDaysBack) {
       console.log("[gmail-scan] Step 2: running quick Gmail scan for manual request");
       const result = await quickScanGmailForOrganization(req.auth!.organizationId, { daysBack });
-      void syncGmailForOrganization(req.auth!.organizationId, { daysBack })
+      void syncGmailForOrganization(req.auth!.organizationId, { daysBack, forceReprocess: daysBack >= 90 })
         .then((backgroundResult) => {
           console.log(`[gmail-scan] Background processing finished emails=${backgroundResult.emailsProcessed} clients=${backgroundResult.clientsCreated} invoices=${backgroundResult.invoicesCreated} tasks=${backgroundResult.tasksCreated}`);
         })
         .catch((backgroundError) => {
           console.error("[gmail-scan] Background processing failed", backgroundError);
         });
+      const emails = await latestScannedEmails(req.auth!.organizationId);
       res.json({
         ...result,
+        scanned: result.emailsProcessed,
+        leads: 0,
+        emails,
         emailsFound: result.emailsProcessed,
         daysBack,
         success: true,
@@ -611,9 +649,16 @@ async function scanGmail(req: Request, res: Response) {
 
     console.log("[gmail-scan] Step 2: starting Gmail sync");
     const result = await syncGmailForOrganization(req.auth!.organizationId, { daysBack, forceReprocess: daysBack >= 90 });
+    const [leadsAfter, emails] = await Promise.all([
+      prisma.lead.count({ where: { organizationId: req.auth!.organizationId } }),
+      latestScannedEmails(req.auth!.organizationId),
+    ]);
     console.log(`[gmail-scan] Step 3: scan finished emails=${result.emailsProcessed} clients=${result.clientsCreated} invoices=${result.invoicesCreated} tasks=${result.tasksCreated}`);
     res.json({
       ...result,
+      scanned: result.emailsProcessed,
+      leads: Math.max(0, leadsAfter - leadsBefore),
+      emails,
       emailsFound: result.emailsProcessed,
       daysBack,
       success: true,
@@ -622,7 +667,7 @@ async function scanGmail(req: Request, res: Response) {
     const message = err instanceof Error ? err.message : "Sync failed";
     if (message === "Gmail not connected") {
       console.log("[gmail-scan] Gmail not connected");
-      res.status(409).json({ error: "יש להתחבר ל-Gmail תחילה", code: "GMAIL_NOT_CONNECTED" });
+      res.status(409).json({ error: "משתמש לא מחובר לGmail", code: "GMAIL_NOT_CONNECTED" });
       return;
     }
     console.error("[gmail-scan] Scan failed", err);
@@ -632,6 +677,33 @@ async function scanGmail(req: Request, res: Response) {
 
 apiRouter.post("/sync/gmail", scanGmail);
 apiRouter.post("/gmail/scan", scanGmail);
+
+async function latestScannedEmails(organizationId: string) {
+  const emails = await prisma.emailMessage.findMany({
+    where: { organizationId },
+    orderBy: { receivedAt: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      gmailId: true,
+      fromAddress: true,
+      subject: true,
+      bodyText: true,
+      receivedAt: true,
+      source: true,
+    },
+  });
+
+  return emails.map((email) => ({
+    id: email.id,
+    messageId: email.gmailId,
+    from: email.fromAddress,
+    subject: email.subject,
+    body: email.bodyText,
+    date: email.receivedAt,
+    source: email.source,
+  }));
+}
 
 apiRouter.post("/camera/invoices/preview", async (req, res) => {
   try {
