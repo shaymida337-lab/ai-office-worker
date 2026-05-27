@@ -28,6 +28,7 @@ import {
 const links = [
   { href: "/dashboard", label: "לוח בקרה", icon: Home },
   { href: "/crm", label: "CRM", icon: CircleDollarSign },
+  { href: "/message-scans", label: "סריקות הודעות", icon: Search },
   { href: "/dashboard/clients", label: "לקוחות", icon: Users },
   { href: "/dashboard/invoices", label: "חשבוניות", icon: FileText },
   { href: "/payments", label: "תשלומי ספקים", icon: WalletCards },

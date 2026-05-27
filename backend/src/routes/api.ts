@@ -152,6 +152,40 @@ apiRouter.get("/dashboard", async (req, res) => {
   res.json(stats);
 });
 
+apiRouter.get("/message-scans", async (req, res) => {
+  const channel = typeof req.query.channel === "string" ? req.query.channel : undefined;
+  const contactType = typeof req.query.contactType === "string" ? req.query.contactType : undefined;
+  const urgency = typeof req.query.urgency === "string" ? req.query.urgency : undefined;
+  const scans = await prisma.messageScan.findMany({
+    where: {
+      organizationId: req.auth!.organizationId,
+      ...(channel && channel !== "all" && { channel }),
+      ...(contactType && contactType !== "all" && { contactType }),
+      ...(urgency && urgency !== "all" && { urgency }),
+    },
+    orderBy: { occurredAt: "desc" },
+    take: 200,
+  });
+  res.json({ scans });
+});
+
+apiRouter.get("/message-scans/stats", async (req, res) => {
+  const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  const scans = await prisma.messageScan.findMany({
+    where: { organizationId: req.auth!.organizationId, occurredAt: { gte: since } },
+    select: { channel: true, contactType: true, intent: true, urgency: true, sentiment: true },
+    take: 5000,
+  });
+  res.json({
+    total: scans.length,
+    byChannel: countBy(scans, "channel"),
+    byContactType: countBy(scans, "contactType"),
+    byIntent: countBy(scans, "intent"),
+    urgent: scans.filter((scan) => scan.urgency === "high").length,
+    sentiment: countBy(scans, "sentiment"),
+  });
+});
+
 apiRouter.get("/leads", async (req, res) => {
   const { listCrmLeads } = await import("../services/crm.js");
   res.json(await listCrmLeads(req.auth!.organizationId, req.query));
@@ -857,4 +891,12 @@ function buildSocialDraft(platform: string, topic: string, tone: string) {
 ניהול עסק קטן דורש סדר, מעקב ותגובה מהירה. ${topic} הוא אחד הדברים שיכולים לעזור לבעל העסק לחסוך זמן, לצמצם טעויות ולקבל החלטות טובות יותר.
 
 טיפ קצר: התחילו ממעקב פשוט וקבוע, ואז שפרו אותו בהדרגה עם אוטומציה.${hashtags}`;
+}
+
+function countBy<T extends Record<string, string>>(items: T[], key: keyof T) {
+  return items.reduce<Record<string, number>>((acc, item) => {
+    const value = item[key] || "unknown";
+    acc[value] = (acc[value] ?? 0) + 1;
+    return acc;
+  }, {});
 }

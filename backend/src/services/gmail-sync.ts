@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { buildDuplicateHash } from "../lib/duplicate.js";
 import { analyzeEmailContent } from "./claude.js";
 import { getGoogleClients } from "./google.js";
+import { analyzeAndSaveMessage } from "./messageScanner.js";
 import {
   ensureInvoiceFolderTree,
   folderForDocumentType,
@@ -183,6 +184,23 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           fromAddress: from,
           receivedAt,
         },
+      });
+
+      await analyzeAndSaveMessage({
+        organizationId,
+        channel: "gmail",
+        externalId: msgRef.id,
+        emailMessageId: emailRecord.id,
+        from,
+        senderName: sender.name,
+        senderEmail: sender.email,
+        senderPhone: extractPhoneFromText(bodyText),
+        subject,
+        bodyText,
+        occurredAt: receivedAt,
+        createLead: true,
+      }).catch((err) => {
+        console.warn("[gmail-sync] message intelligence scan failed", err instanceof Error ? err.message : String(err));
       });
 
       scannedEmails.push({
@@ -671,6 +689,10 @@ function extractInvoiceAmount(text: string) {
     }
   }
   return amounts.length ? Math.max(...amounts) : null;
+}
+
+function extractPhoneFromText(text: string) {
+  return text.match(/(?:\+972|0)(?:[-\s]?\d){8,10}/)?.[0]?.replace(/[\s-]/g, "") ?? undefined;
 }
 
 function parseAmount(raw: string) {

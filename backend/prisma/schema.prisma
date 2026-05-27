@@ -58,6 +58,7 @@ model Organization {
   notificationRules NotificationRules?
   leads           Lead[]
   messageTemplates MessageTemplate[]
+  messageScans    MessageScan[]
 }
 
 model Client {
@@ -569,6 +570,38 @@ model MessageTemplate {
 
   @@unique([organizationId, name, channel])
   @@index([organizationId, channel])
+}
+
+model MessageScan {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channel        String
+  externalId     String
+  emailMessageId String?
+  whatsappLogId  String?
+  senderName     String?
+  senderEmail    String?
+  senderPhone    String?
+  subject        String?
+  bodyText       String
+  occurredAt     DateTime
+  contactType    String   @default("other")
+  intent         String   @default("other")
+  sentiment      String   @default("neutral")
+  urgency        String   @default("normal")
+  summary        String?
+  confidence     Float    @default(0.5)
+  rawAnalysis    Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, channel, externalId])
+  @@index([organizationId, channel, occurredAt])
+  @@index([organizationId, contactType, intent])
+  @@index([organizationId, urgency, occurredAt])
+  @@index([senderEmail])
+  @@index([senderPhone])
 }
 
 

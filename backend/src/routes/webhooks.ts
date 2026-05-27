@@ -7,6 +7,7 @@ import {
   normalizeWhatsAppNumber,
 } from "../services/whatsapp.js";
 import { handleClientMessage, handleOwnerMessage } from "../services/whatsappChatEngine.js";
+import { analyzeAndSaveMessage } from "../services/messageScanner.js";
 
 export const webhooksRouter = Router();
 
@@ -29,7 +30,7 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
   const assistant = await findAssistantByOwnerPhone(normalizedFrom);
 
   if (assistant) {
-    await prisma.whatsAppLog.create({
+    const inboundLog = await prisma.whatsAppLog.create({
       data: {
         organizationId: assistant.organizationId,
         direction: "inbound",
@@ -38,6 +39,7 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
         toNumber: config.twilio.whatsappFrom,
       },
     });
+    await scanWhatsAppMessage(assistant.organizationId, inboundLog.id, normalizedFrom, body, false);
 
     const reply = await safeReply(() => handleOwnerMessage(body, assistant.organizationId, normalizedFrom));
     twiml.message(reply);
@@ -58,7 +60,7 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
 
   const client = await findClientByWhatsAppNumber(normalizedFrom);
   if (client) {
-    await prisma.whatsAppLog.create({
+    const inboundLog = await prisma.whatsAppLog.create({
       data: {
         organizationId: client.organizationId,
         clientId: client.id,
@@ -68,6 +70,7 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
         toNumber: config.twilio.whatsappFrom,
       },
     });
+    await scanWhatsAppMessage(client.organizationId, inboundLog.id, normalizedFrom, body, false);
 
     const reply = await safeReply(() => handleClientMessage(body, client.id, client.organizationId, normalizedFrom));
 
@@ -90,8 +93,16 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
 
   const organization = await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
   if (organization) {
-    const { createLeadFromUnknownWhatsApp } = await import("../services/crm.js");
-    await createLeadFromUnknownWhatsApp(organization.id, normalizedFrom, body);
+    const inboundLog = await prisma.whatsAppLog.create({
+      data: {
+        organizationId: organization.id,
+        direction: "inbound",
+        body,
+        fromNumber: normalizedFrom,
+        toNumber: config.twilio.whatsappFrom,
+      },
+    });
+    await scanWhatsAppMessage(organization.id, inboundLog.id, normalizedFrom, body, true);
     twiml.message("שלום! תודה שפנית אלינו. קיבלנו את ההודעה ונציג יחזור אליך בהקדם.");
     res.type("text/xml").send(twiml.toString());
     return;
@@ -116,6 +127,21 @@ async function safeReply(run: () => Promise<string>) {
     console.error("[webhook] WhatsApp assistant reply failed", err);
     return "תודה על ההודעה. הייתה תקלה רגעית, נסה שוב בעוד דקה.";
   }
+}
+
+async function scanWhatsAppMessage(organizationId: string, logId: string, phone: string, body: string, createLead: boolean) {
+  await analyzeAndSaveMessage({
+    organizationId,
+    channel: "whatsapp",
+    externalId: logId,
+    whatsappLogId: logId,
+    senderPhone: phone,
+    bodyText: body,
+    occurredAt: new Date(),
+    createLead,
+  }).catch((err) => {
+    console.warn("[webhook] WhatsApp intelligence scan failed", err instanceof Error ? err.message : String(err));
+  });
 }
 
 webhooksRouter.post("/twilio/whatsapp", handleTwilioWhatsApp);
