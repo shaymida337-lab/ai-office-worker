@@ -159,39 +159,69 @@ async function calculateClientHealth(organizationId: string, clientId: string) {
 
 clientsRouter.get("/", authMiddleware, async (req, res) => {
   const organizationId = req.auth!.organizationId;
-  const clients = await prisma.client.findMany({
-    where: { organizationId, isActive: true },
-    orderBy: { createdAt: "asc" },
-  });
+  const emptyTotals = { toPay: 0, openTasks: 0, invoices: 0, missingInvoices: 0 };
+  try {
+    const clients = await prisma.client.findMany({
+      where: { organizationId, isActive: true },
+      orderBy: { createdAt: "asc" },
+    });
 
-  const clientsWithStats = await Promise.all(
-    clients.map(async (client) => ({
-      ...client,
-      googleAccessToken: undefined,
-      googleRefreshToken: undefined,
-      stats: await clientStats(organizationId, client.id),
-      health: await calculateClientHealth(organizationId, client.id),
-      whatsappUnread: await prisma.whatsAppLog.count({
-        where: { organizationId, clientId: client.id, direction: "inbound", read: false },
+    const clientsWithStats = await Promise.all(
+      clients.map(async (client) => {
+        const [statsResult, healthResult, unreadResult, lastMessageResult] = await Promise.allSettled([
+          clientStats(organizationId, client.id),
+          calculateClientHealth(organizationId, client.id),
+          prisma.whatsAppLog.count({
+            where: { organizationId, clientId: client.id, direction: "inbound", read: false },
+          }),
+          prisma.whatsAppLog.findFirst({
+            where: { organizationId, clientId: client.id },
+            orderBy: { createdAt: "desc" },
+          }),
+        ]);
+
+        if (statsResult.status === "rejected") {
+          console.error(`[clients] stats failed org=${organizationId} client=${client.id}`, statsResult.reason);
+        }
+        if (healthResult.status === "rejected") {
+          console.error(`[clients] health failed org=${organizationId} client=${client.id}`, healthResult.reason);
+        }
+        if (unreadResult.status === "rejected") {
+          console.error(`[clients] whatsapp unread failed org=${organizationId} client=${client.id}`, unreadResult.reason);
+        }
+        if (lastMessageResult.status === "rejected") {
+          console.error(`[clients] whatsapp last message failed org=${organizationId} client=${client.id}`, lastMessageResult.reason);
+        }
+
+        return {
+          ...client,
+          googleAccessToken: undefined,
+          googleRefreshToken: undefined,
+          stats: statsResult.status === "fulfilled" ? statsResult.value : emptyTotals,
+          health: healthResult.status === "fulfilled"
+            ? healthResult.value
+            : { score: 0, status: "unknown", breakdown: { gmailActivity: 0, driveUsage: 0, sheetsData: 0, taskCompletionRate: 0 } },
+          whatsappUnread: unreadResult.status === "fulfilled" ? unreadResult.value : 0,
+          whatsappLastMessage: lastMessageResult.status === "fulfilled" ? lastMessageResult.value : null,
+        };
+      })
+    );
+
+    const totals = clientsWithStats.reduce(
+      (acc, client) => ({
+        toPay: acc.toPay + client.stats.toPay,
+        openTasks: acc.openTasks + client.stats.openTasks,
+        invoices: acc.invoices + client.stats.invoices,
+        missingInvoices: acc.missingInvoices + client.stats.missingInvoices,
       }),
-      whatsappLastMessage: await prisma.whatsAppLog.findFirst({
-        where: { organizationId, clientId: client.id },
-        orderBy: { createdAt: "desc" },
-      }),
-    }))
-  );
+      emptyTotals
+    );
 
-  const totals = clientsWithStats.reduce(
-    (acc, client) => ({
-      toPay: acc.toPay + client.stats.toPay,
-      openTasks: acc.openTasks + client.stats.openTasks,
-      invoices: acc.invoices + client.stats.invoices,
-      missingInvoices: acc.missingInvoices + client.stats.missingInvoices,
-    }),
-    { toPay: 0, openTasks: 0, invoices: 0, missingInvoices: 0 }
-  );
-
-  res.json({ clients: clientsWithStats, totals });
+    res.json({ clients: clientsWithStats, totals });
+  } catch (err) {
+    console.error(`[clients] list failed org=${organizationId}; returning empty 200 response`, err);
+    res.json({ clients: [], totals: emptyTotals, warning: "clients_list_failed" });
+  }
 });
 
 clientsRouter.post("/", authMiddleware, async (req, res) => {

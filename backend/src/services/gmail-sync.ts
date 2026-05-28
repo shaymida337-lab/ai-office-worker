@@ -218,19 +218,20 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         continue;
       }
 
-      const existing = await prisma.emailMessage.findUnique({
-        where: {
-          organizationId_gmailId: {
-            organizationId,
-            gmailId: msgRef.id,
+      try {
+        const existing = await prisma.emailMessage.findUnique({
+          where: {
+            organizationId_gmailId: {
+              organizationId,
+              gmailId: msgRef.id,
+            },
           },
-        },
-      });
-      const full = await gmail.users.messages.get({
-        userId: "me",
-        id: msgRef.id,
-        format: "full",
-      });
+        });
+        const full = await gmail.users.messages.get({
+          userId: "me",
+          id: msgRef.id,
+          format: "full",
+        });
 
       const headers = full.data.payload?.headers ?? [];
       const subject =
@@ -249,28 +250,29 @@ export async function syncGmailForOrganization(organizationId: string, options: 
       const attachmentParts = collectAttachmentParts(full.data.payload as PayloadPart | undefined);
       logStep(`[gmail-sync] fetched message=${msgRef.id} sender="${from || "unknown"}" subject="${subject}" date="${receivedAt.toISOString()}" attachments=${attachmentParts.length ? attachmentParts.map((part) => `${part.filename || "unnamed"}:${part.mimeType || "unknown"}`).join(", ") : "none"} bodyLength=${bodyText.length}`);
 
-      const emailRecord = await prisma.emailMessage.upsert({
-        where: {
-          organizationId_gmailId: { organizationId, gmailId: msgRef.id },
-        },
-        create: {
-          organizationId,
-          gmailId: msgRef.id,
-          threadId: full.data.threadId ?? undefined,
-          subject,
-          fromAddress: from,
-          snippet: full.data.snippet ?? undefined,
-          bodyText,
-          receivedAt,
-          source,
-        },
-        update: {
-          bodyText,
-          snippet: full.data.snippet ?? undefined,
-          fromAddress: from,
-          receivedAt,
-        },
-      });
+        const emailRecord = await prisma.emailMessage.upsert({
+          where: {
+            organizationId_gmailId: { organizationId, gmailId: msgRef.id },
+          },
+          create: {
+            organizationId,
+            gmailId: msgRef.id,
+            threadId: full.data.threadId ?? undefined,
+            subject,
+            fromAddress: from,
+            snippet: full.data.snippet ?? undefined,
+            bodyText,
+            receivedAt,
+            source,
+          },
+          update: {
+            bodyText,
+            snippet: full.data.snippet ?? undefined,
+            fromAddress: from,
+            receivedAt,
+          },
+        });
+        logStep(`[gmail-sync] DB upsert EmailMessage success message=${msgRef.id} id=${emailRecord.id}`);
 
       await analyzeAndSaveMessage({
         organizationId,
@@ -289,22 +291,27 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         console.warn("[gmail-sync] message intelligence scan failed", err instanceof Error ? err.message : String(err));
       });
 
-      scannedEmails.push({
-        gmailId: msgRef.id,
-        emailRecordId: emailRecord.id,
-        subject,
-        from,
-        senderEmail: sender.email,
-        senderName: sender.name,
-        domain: sender.domain ?? "",
-        bodyText,
-        receivedAt,
-        source,
-        parts: attachmentParts,
-        fullPayload: full.data.payload as PayloadPart | undefined,
-        alreadyProcessed: Boolean(existing?.processedAt),
-      });
-      emailsProcessed++;
+        scannedEmails.push({
+          gmailId: msgRef.id,
+          emailRecordId: emailRecord.id,
+          subject,
+          from,
+          senderEmail: sender.email,
+          senderName: sender.name,
+          domain: sender.domain ?? "",
+          bodyText,
+          receivedAt,
+          source,
+          parts: attachmentParts,
+          fullPayload: full.data.payload as PayloadPart | undefined,
+          alreadyProcessed: Boolean(existing?.processedAt),
+        });
+        emailsProcessed++;
+      } catch (err) {
+        errorsCount++;
+        console.error(`[gmail-sync] fetch/parse/save failed message=${msgRef.id}`, err);
+        logStep(`[gmail-sync] error message=${msgRef.id} stage=fetch_parse_save reason="${err instanceof Error ? err.message : String(err)}"`);
+      }
     }
 
     const senderCounts = new Map<string, { count: number; email: string; name: string; firstSeen: Date; lastSeen: Date }>();
@@ -344,6 +351,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
     logStep(`Found ${potentialClients} potential clients`);
 
     for (const email of scannedEmails) {
+      try {
       let clientId = clientIdByDomain.get(email.domain);
       if (clientId) {
         await prisma.emailMessage.update({
@@ -469,6 +477,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           });
           const link = upload.webViewLink;
           driveLinks.push({ type: folderType, link });
+          logStep(`[gmail-sync] Drive upload success message=${email.gmailId} file="${part.filename}" link=${link ?? "none"}`);
           if (existingAttachment) {
             await prisma.emailAttachment.update({
               where: { id: existingAttachment.id },
@@ -700,6 +709,12 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         where: { id: email.emailRecordId },
         data: { processedAt: new Date() },
       });
+      logStep(`[gmail-sync] DB mark processed success message=${email.gmailId}`);
+      } catch (err) {
+        errorsCount++;
+        console.error(`[gmail-sync] processing failed message=${email.gmailId}`, err);
+        logStep(`[gmail-sync] error message=${email.gmailId} stage=process_save reason="${err instanceof Error ? err.message : String(err)}"`);
+      }
     }
     const recordsSaved = paymentsCreated + invoicesCreated + tasksCreated + clientsCreated;
     logStep(`Found ${relevantEmailsFound} relevant emails (${invoiceEmails} invoices, ${receiptsFound} receipts, ${paymentRequestsFound} payment requests, ${supplierMessagesFound} supplier messages)`);
@@ -877,6 +892,8 @@ async function listCandidateMessages(gmail: GmailClient, daysBack: number, maxMe
   const safeDaysBack = Math.max(1, Math.ceil(daysBack));
   const dateFilter = `newer_than:${safeDaysBack}d`;
   const keywordOr = "{invoice receipt payment \"payment request\" חשבונית קבלה תשלום \"דרישת תשלום\"}";
+  let totalPagesScanned = 0;
+  let totalMessagesSeen = 0;
   const queries = [
     `${dateFilter} has:attachment ${keywordOr} ${GMAIL_EXCLUDE_QUERY}`,
     `${dateFilter} ${keywordOr} ${GMAIL_EXCLUDE_QUERY}`,
@@ -886,9 +903,13 @@ async function listCandidateMessages(gmail: GmailClient, daysBack: number, maxMe
   for (const q of queries) {
     console.log(`[gmail-sync] Searching Gmail query="${q}" maxMessages=${maxMessages}`);
     let pageToken: string | undefined;
+    let queryPages = 0;
+    let queryMessagesSeen = 0;
     do {
       const remaining = maxMessages - byId.size;
       if (remaining <= 0) break;
+      queryPages++;
+      totalPagesScanned++;
       const result = await gmail.users.messages.list({
         userId: "me",
         q,
@@ -896,16 +917,21 @@ async function listCandidateMessages(gmail: GmailClient, daysBack: number, maxMe
         pageToken,
       });
 
-      for (const message of result.data.messages ?? []) {
+      const pageMessages = result.data.messages ?? [];
+      queryMessagesSeen += pageMessages.length;
+      totalMessagesSeen += pageMessages.length;
+      console.log(`[gmail-sync] Gmail page query="${q}" page=${queryPages} messages=${pageMessages.length} uniqueSoFar=${byId.size} nextPage=${Boolean(result.data.nextPageToken)}`);
+      for (const message of pageMessages) {
         if (message.id && !byId.has(message.id)) {
           byId.set(message.id, message);
         }
       }
       pageToken = result.data.nextPageToken ?? undefined;
     } while (pageToken && byId.size < maxMessages);
+    console.log(`[gmail-sync] Gmail query complete pages=${queryPages} messagesSeen=${queryMessagesSeen} uniqueTotal=${byId.size}`);
   }
 
-  console.log(`[gmail-sync] Gmail list returned ${byId.size} candidate messages`);
+  console.log(`[gmail-sync] Gmail list returned ${byId.size} candidate messages pagesScanned=${totalPagesScanned} messagesSeen=${totalMessagesSeen} maxMessages=${maxMessages}`);
   return [...byId.values()].slice(0, maxMessages);
 }
 
