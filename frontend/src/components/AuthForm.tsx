@@ -30,7 +30,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
             })
           : await login({ email, password });
       saveToken(result.token);
-      router.push("/dashboard");
+      const searchParams = new URLSearchParams(window.location.search);
+      const next = searchParams.get("next");
+      router.push(next?.startsWith("/") ? next : "/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
     } finally {

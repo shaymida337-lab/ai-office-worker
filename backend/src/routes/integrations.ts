@@ -36,6 +36,20 @@ type GmailIntegrationState = {
   timestamp: number;
 };
 
+function signGmailIntegrationState(auth: {
+  userId: string;
+  organizationId: string;
+  email: string;
+}) {
+  return jwt.sign({
+    purpose: "gmail_integration",
+    userId: auth.userId,
+    organizationId: auth.organizationId,
+    email: auth.email,
+    timestamp: Date.now(),
+  } satisfies GmailIntegrationState, config.jwtSecret, { expiresIn: "10m" });
+}
+
 function runPostConnectionGmailScan(organizationId: string) {
   void import("../services/gmail-sync.js")
     .then(({ syncGmailForOrganization }) =>
@@ -91,15 +105,9 @@ integrationsRouter.get("/gmail/connect-url", authMiddleware, async (req, res) =>
       return;
     }
 
-    const auth = req.auth!;
-    const state = jwt.sign({
-      purpose: "gmail_integration",
-      userId: auth.userId,
-      organizationId: auth.organizationId,
-      email: auth.email,
-      timestamp: Date.now(),
-    } satisfies GmailIntegrationState, config.jwtSecret, { expiresIn: "10m" });
-    res.json({ url: await gmailAuthUrl(state) });
+    const state = signGmailIntegrationState(req.auth!);
+    const url = await gmailAuthUrl(state);
+    res.json({ url });
   } catch (error) {
     console.error("Gmail connect error:", error);
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -119,12 +127,13 @@ integrationsRouter.get("/gmail/connect", async (req, res) => {
   }
 
   try {
-    verifyToken(token);
+    const auth = verifyToken(token);
+    const state = signGmailIntegrationState(auth);
+    res.redirect(await gmailAuthUrl(state));
   } catch {
     res.status(401).send("Invalid user token");
     return;
   }
-  res.redirect(await gmailAuthUrl(token));
 });
 
 integrationsRouter.get("/gmail/callback", async (req, res) => {

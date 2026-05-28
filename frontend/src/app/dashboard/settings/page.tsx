@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
-import { apiFetch, type GmailStatus } from "@/lib/api";
+import { apiFetch, getToken, type GmailStatus } from "@/lib/api";
 
 type AccountantSettings = {
   accountantEmail?: string | null;
@@ -145,6 +145,10 @@ export default function SettingsPage() {
 
   async function connectGmail() {
     setMessage("");
+    if (!getToken()) {
+      router.push(`/login?next=${encodeURIComponent("/dashboard/settings?tab=integrations")}`);
+      return;
+    }
     try {
       const result = await apiFetch<{ url: string }>("/api/integrations/gmail/connect-url");
       window.location.href = result.url;

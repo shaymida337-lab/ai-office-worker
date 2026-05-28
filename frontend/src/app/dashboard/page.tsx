@@ -5,6 +5,7 @@ import { Nav } from "@/components/Nav";
 import {
   apiFetch,
   clearToken,
+  getToken,
   isAuthError,
   type DashboardStats,
   type GmailStatus,
@@ -278,11 +279,11 @@ export default function DashboardPage() {
 
   async function connectGmail() {
     console.log("מנסה להתחבר לGmail...");
-    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+    const token = getToken();
     console.log("token:", token ? "קיים" : "חסר!");
 
     if (!token) {
-      alert("שגיאה: לא מחובר למערכת");
+      router.push(`/login?next=${encodeURIComponent("/dashboard?connect=gmail")}`);
       return;
     }
 
