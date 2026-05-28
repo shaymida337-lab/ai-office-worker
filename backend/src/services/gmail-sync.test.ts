@@ -14,6 +14,8 @@ function analysis(overrides: Partial<EmailAnalysis> = {}): EmailAnalysis {
     documentType: "other",
     paymentRequired: false,
     dueDate: null,
+    invoiceDate: null,
+    invoiceNumber: null,
     tasks: [],
     confidence: 0.5,
     ...overrides,

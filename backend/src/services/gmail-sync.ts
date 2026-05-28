@@ -15,6 +15,8 @@ import { notifyNewInvoice } from "./whatsapp.js";
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_QUICK_SCAN = 25;
 const GMAIL_SCAN_BATCH_SIZE = 10;
+const GMAIL_PROGRESS_EMAIL_INTERVAL = 25;
+const GMAIL_PROGRESS_MIN_INTERVAL_MS = 30_000;
 const DRIVE_FULL_MESSAGE = "הסריקה הושלמה. לא ניתן לשמור ל-Drive - האחסון שלך מלא";
 const GMAIL_EXCLUDE_QUERY = "-category:promotions -category:social -in:spam -in:trash";
 const INVOICE_KEYWORDS = [
@@ -30,6 +32,8 @@ const INVOICE_KEYWORDS = [
   "invoice",
   "tax invoice",
   "receipt",
+  "subscription receipt",
+  "subscription invoice",
   "payment",
   "payment due",
   "payment request",
@@ -37,6 +41,31 @@ const INVOICE_KEYWORDS = [
   "supplier bill",
   "paid",
   "statement",
+  "utility bill",
+  "electricity bill",
+  "water bill",
+  "internet bill",
+  "monthly bill",
+  "google payments",
+  "google workspace",
+  "google cloud",
+  "apple receipt",
+  "paypal receipt",
+  "meta receipt",
+  "facebook receipt",
+  "openai invoice",
+  "chatgpt receipt",
+  "wolt invoice",
+  "wolt receipt",
+  "חברת חשמל",
+  "חשבון חשמל",
+  "חשבון מים",
+  "ארנונה",
+  "בזק",
+  "סלקום",
+  "פרטנר",
+  "הוט",
+  "חשבון אינטרנט",
   "פקטורה",
   "icount",
   "i-count",
@@ -62,7 +91,14 @@ const RECEIPT_KEYWORDS = [
   "חשבונית מס קבלה",
   "קבלה",
   "receipt",
+  "subscription receipt",
   "payment received",
+  "paypal receipt",
+  "apple receipt",
+  "google receipt",
+  "meta receipt",
+  "openai receipt",
+  "wolt receipt",
   "paid",
   "שולם",
 ];
@@ -72,6 +108,11 @@ const INVOICE_KEYWORD_PATTERNS = [
   /חשבונית/i,
   /tax\s+invoice/i,
   /\binvoice\b/i,
+  /\breceipt\b/i,
+  /subscription\s+(receipt|invoice)/i,
+  /(google|apple|paypal|meta|facebook|openai|chatgpt|wolt).*(receipt|invoice|payment)/i,
+  /(electricity|water|internet|utility|monthly)\s+bill/i,
+  /(חשבונית|קבלה|תשלום|חשבון).*(חשמל|מים|אינטרנט|בזק|סלקום|פרטנר|הוט|ארנונה)/i,
 ];
 const SUPPLIER_KEYWORDS = [
   "supplier",
@@ -147,7 +188,17 @@ export async function quickScanGmailForOrganization(organizationId: string, opti
 
 let gmailScanQueue: Promise<unknown> = Promise.resolve();
 
-export async function syncGmailForOrganization(organizationId: string, options: { daysBack?: number; isFirstTime?: boolean; forceReprocess?: boolean; scanLogId?: string } = {}) {
+type GmailSyncOptions = {
+  daysBack?: number;
+  since?: Date;
+  isFirstTime?: boolean;
+  forceReprocess?: boolean;
+  scanLogId?: string;
+  scanMode?: "manual" | "auto_daily" | "auto_weekly" | "retry" | "first_time";
+  retryOfId?: string;
+};
+
+export async function syncGmailForOrganization(organizationId: string, options: GmailSyncOptions = {}) {
   const queuedRun = gmailScanQueue
     .catch(() => undefined)
     .then(() => runGmailSyncForOrganization(organizationId, options));
@@ -155,7 +206,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
   return queuedRun;
 }
 
-async function runGmailSyncForOrganization(organizationId: string, options: { daysBack?: number; isFirstTime?: boolean; forceReprocess?: boolean; scanLogId?: string } = {}) {
+async function runGmailSyncForOrganization(organizationId: string, options: GmailSyncOptions = {}) {
   const activeLog = await prisma.syncLog.findFirst({
     where: {
       organizationId,
@@ -185,8 +236,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
   };
 
   const daysBack = options.isFirstTime ? 90 : options.daysBack ?? 90;
+  const scanMode = options.scanMode ?? (options.isFirstTime ? "first_time" : "manual");
   if (options.forceReprocess) {
     logStep(`[gmail-sync] Force reprocess enabled for ${daysBack} day scan`);
+  }
+  if (options.since) {
+    logStep(`[gmail-sync] Incremental scan since ${options.since.toISOString()}`);
   }
 
   const activeLogAfterReset = await prisma.syncLog.findFirst({
@@ -212,12 +267,14 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
       organizationId,
       type: "gmail_scan",
       status: "running",
+      scanMode,
+      retryOfId: options.retryOfId,
     },
   });
   if (existingScanLog) {
     await prisma.syncLog.update({
       where: { id: existingScanLog.id },
-      data: { status: "running", errorMessage: null, finishedAt: null },
+      data: { status: "running", errorMessage: null, finishedAt: null, scanMode, retryOfId: options.retryOfId },
     });
   }
 
@@ -247,10 +304,36 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
   let driveUploadsSucceeded = 0;
   let driveUploadsSkipped = 0;
   let driveUploadsFailed = 0;
+  let sheetsUpdated = 0;
+  let lastProgressWriteAt = 0;
+  let lastProgressEmailsProcessed = 0;
   let invoiceDetectionPositive = 0;
   let invoiceDetectionNegative = 0;
   let ignoredCount = 0;
   const ignoredReasons: Record<string, number> = {};
+  const maybeSaveScanProgress = async (force = false) => {
+    const now = Date.now();
+    const emailDelta = emailsProcessed - lastProgressEmailsProcessed;
+    if (
+      !force &&
+      emailDelta < GMAIL_PROGRESS_EMAIL_INTERVAL &&
+      now - lastProgressWriteAt < GMAIL_PROGRESS_MIN_INTERVAL_MS
+    ) {
+      return;
+    }
+    await saveScanProgress(log.id, {
+      emailsProcessed,
+      emailsSaved: emailsSavedToGmailScanItem,
+      invoicesFound: invoicesCreated,
+      paymentsCreated,
+      tasksCreated,
+      driveUploaded: driveUploadsSucceeded,
+      sheetsUpdated,
+      errorsCount,
+    });
+    lastProgressWriteAt = now;
+    lastProgressEmailsProcessed = emailsProcessed;
+  };
 
   const ignoreMessage = (reason: string, messageId?: string | null) => {
     ignoredCount++;
@@ -327,6 +410,44 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
     return saved;
   };
 
+  const saveFetchErrorScanItem = async (orgId: string, gmailMessageId: string, reason: string) => {
+    const duplicateKey = createHash("sha256")
+      .update(`${gmailMessageId}|fetch-error`)
+      .digest("hex")
+      .slice(0, 40);
+    const saved = await prisma.gmailScanItem.upsert({
+      where: { organizationId_duplicateKey: { organizationId: orgId, duplicateKey } },
+      create: {
+        organizationId: orgId,
+        gmailMessageId,
+        gmailMessageLink: gmailMessageLink(gmailMessageId),
+        sender: "unknown",
+        senderEmail: null,
+        subject: "(fetch failed)",
+        occurredAt: new Date(),
+        amount: null,
+        supplierName: "Unknown supplier",
+        documentType: "unknown_needs_review",
+        attachmentFilename: null,
+        driveFileLink: null,
+        confidenceScore: "low",
+        reviewStatus: "needs_review",
+        duplicateKey,
+        decisionReason: reason,
+        rawAnalysis: { parserRejected: true, reason, stage: "fetch_parse_save" },
+      },
+      update: {
+        decisionReason: reason,
+        reviewStatus: "needs_review",
+        rawAnalysis: { parserRejected: true, reason, stage: "fetch_parse_save" },
+      },
+    });
+    emailsSavedToGmailScanItem++;
+    dbGmailScanItemUpserts++;
+    ignoredReasons[reason] = (ignoredReasons[reason] ?? 0) + 1;
+    logStep(`[gmail-sync] DB fetch-error GmailScanItem upsert success message=${gmailMessageId} id=${saved.id}`);
+  };
+
   try {
     logStep("[gmail-sync] Checking Gmail token and creating Google clients");
     const { gmail, drive } = await getGoogleClients(organizationId);
@@ -339,7 +460,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
       console.error("Drive setup failed; continuing Gmail sync without Drive", err);
     }
     logStep(`[gmail-sync] Searching Gmail from last ${daysBack} days`);
-    const messages = await listCandidateMessages(gmail, daysBack);
+    const messages = await listCandidateMessages(gmail, daysBack, MAX_MESSAGES_PER_SYNC, options.since);
     logStep(`[gmail-sync] total emails fetched from Gmail=${messages.length}`);
     const scannedEmails: ScannedEmail[] = [];
 
@@ -458,14 +579,17 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
           errorsCount++;
           console.error(`[gmail-sync] fetch/parse/save failed message=${msgRef.id}`, err);
           logStep(`[gmail-sync] error message=${msgRef.id} stage=fetch_parse_save reason="${err instanceof Error ? err.message : String(err)}"`);
+          try {
+            await saveFetchErrorScanItem(organizationId, msgRef.id, `fetch_parse_save_failed: ${err instanceof Error ? err.message : String(err)}`);
+          } catch (fallbackErr) {
+            console.error(`[gmail-sync] fetch-error GmailScanItem save failed message=${msgRef.id}`, fallbackErr);
+            logStep(`[gmail-sync] error message=${msgRef.id} stage=fetch_error_scan_item_save reason="${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}"`);
+          }
         }
       }
-      await saveScanProgress(log.id, {
-        emailsProcessed,
-        paymentsCreated,
-        tasksCreated,
-      });
+      await maybeSaveScanProgress();
     }
+    await maybeSaveScanProgress(true);
 
     const senderCounts = new Map<string, { count: number; email: string; name: string; firstSeen: Date; lastSeen: Date }>();
     for (const email of scannedEmails) {
@@ -513,6 +637,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
       logStep(`[gmail-sync] process batch ${processBatchNumber}/${Math.ceil(scannedEmails.length / GMAIL_SCAN_BATCH_SIZE)} size=${batch.length}`);
       for (const email of batch) {
         let scanItemPersisted = false;
+        let currentDuplicateKey: string | null = null;
         try {
       let clientId = clientIdByDomain.get(email.domain);
       if (clientId) {
@@ -558,6 +683,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
         supplierName,
         amount,
       });
+      currentDuplicateKey = duplicateKey;
       const existingScanItem = await prisma.gmailScanItem.findUnique({
         where: { organizationId_duplicateKey: { organizationId, duplicateKey } },
       });
@@ -752,11 +878,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
       logStep(`[gmail-sync] saved GmailScanItem message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} review=${savedScanItem.reviewStatus} relevant=${classification.isRelevant}`);
 
       if (existingScanItem && !options.forceReprocess) {
-        await prisma.emailMessage.update({
-          where: { id: email.emailRecordId },
-          data: { processedAt: new Date() },
-        });
-        continue;
+        logStep(`[gmail-sync] duplicate GmailScanItem message=${email.gmailId}; continuing idempotent invoice/payment persistence`);
       }
 
       for (const taskTitle of analysis.tasks) {
@@ -782,32 +904,70 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
         tasksCreated++;
       }
 
-      if (clientId && classification.documentType === "invoice" && amount != null) {
-        logStep(`[gmail-sync] DB Invoice insert attempt message=${email.gmailId} clientId=${clientId} amount=${amount}`);
-        const createdInvoice = await saveDetectedInvoice({
-          organizationId,
-          clientId,
-          amount,
-          date: email.receivedAt,
-          fromEmail: email.senderEmail,
-          subject: email.subject,
-          gmailMessageId: email.gmailId,
-          driveUrl: driveLinks[0]?.link ?? null,
-        });
-        if (createdInvoice) {
-          invoicesCreated++;
-          logStep(`[gmail-sync] saved Invoice message=${email.gmailId} amount=${amount} supplier="${supplierName}"`);
-        } else {
-          duplicatesSkipped++;
-          logStep(`[gmail-sync] duplicate Invoice message=${email.gmailId}`);
+      if (isInvoiceRecordDocument(classification.documentType)) {
+        if (!clientId) {
+          const saved = await ensureInvoiceClient({
+            organizationId,
+            supplierName,
+            senderEmail: email.senderEmail,
+            domain: email.domain,
+            receivedAt: email.receivedAt,
+          });
+          clientId = saved.id;
+          if (email.domain) clientIdByDomain.set(email.domain, saved.id);
+          if (saved.created) clientsCreated++;
+          await prisma.emailMessage.update({
+            where: { id: email.emailRecordId },
+            data: { clientId },
+          });
+          logStep(`[gmail-sync] invoice client created message=${email.gmailId} clientId=${clientId} supplier="${supplierName}"`);
+        }
+        logStep(`[gmail-sync] invoice detected message=${email.gmailId} type=${classification.documentType} clientId=${clientId ?? "none"} amount=${amount ?? "missing"} drive=${driveLinks[0]?.link ? "yes" : "no"}`);
+      }
+
+      if (clientId && isInvoiceRecordDocument(classification.documentType)) {
+        const invoiceAmount = amount ?? 0;
+        const invoiceNumber = analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
+        const invoiceDate = normalizeBusinessDate(analysis.invoiceDate, email.receivedAt) ?? email.receivedAt;
+        if (amount == null) {
+          logStep(`[gmail-sync] invoice amount missing message=${email.gmailId}; saving Invoice with amount=0 for review`);
+        }
+        logStep(`[gmail-sync] DB Invoice insert attempt message=${email.gmailId} clientId=${clientId} supplier="${supplierName}" amount=${invoiceAmount} invoiceNumber=${invoiceNumber ?? "none"} date=${invoiceDate.toISOString()} type=${classification.documentType}`);
+        try {
+          const createdInvoice = await saveDetectedInvoice({
+            organizationId,
+            clientId,
+            amount: invoiceAmount,
+            currency: analysis.currency,
+            date: invoiceDate,
+            dueDate: normalizeBusinessDate(analysis.dueDate, null),
+            invoiceNumber,
+            supplierName,
+            documentType: classification.documentType,
+            fromEmail: email.senderEmail,
+            subject: email.subject,
+            emailMessageId: email.emailRecordId,
+            gmailMessageId: email.gmailId,
+            driveUrl: driveLinks[0]?.link ?? null,
+          });
+          if (createdInvoice) {
+            invoicesCreated++;
+            logStep(`[gmail-sync] invoice save success message=${email.gmailId} invoiceId=${createdInvoice.id} amount=${invoiceAmount} supplier="${supplierName}" drive=${driveLinks[0]?.link ?? "none"}`);
+          } else {
+            duplicatesSkipped++;
+            logStep(`[gmail-sync] duplicate invoice ignored message=${email.gmailId} supplier="${supplierName}" invoiceNumber=${invoiceNumber ?? "none"} amount=${invoiceAmount} date=${invoiceDate.toISOString()}`);
+          }
+        } catch (err) {
+          errorsCount++;
+          logStep(`[gmail-sync] invoice save failed message=${email.gmailId} supplier="${supplierName}" reason="${err instanceof Error ? err.message : String(err)}"`);
+          throw err;
         }
       } else {
         const reasons = [
-          !clientId && "no_client_id",
-          classification.documentType !== "invoice" && `document_type_${classification.documentType}`,
-          amount == null && "no_amount",
+          isInvoiceRecordDocument(classification.documentType) && !clientId && "no_client_id",
+          !isInvoiceRecordDocument(classification.documentType) && `document_type_${classification.documentType}`,
         ].filter(Boolean);
-        logStep(`[gmail-sync] Invoice save skipped message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
+        logStep(`[gmail-sync] invoice rejected message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
       }
 
       if (classification.isRelevant && (amount != null || analysis.documentType !== "other" || classification.documentType !== "supplier_message")) {
@@ -859,28 +1019,34 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
           });
           await appendSupplierPaymentToSheet({
             organizationId,
+            paymentId: existingPayment.id,
             supplier: supplierName,
             amount: amount ?? existingPayment.amount,
             date: email.receivedAt,
+            dueDate: normalizeBusinessDate(analysis.dueDate, existingPayment.dueDate),
             paid: existingPayment.paid,
             missingInvoice,
             documentLink,
             invoiceLink,
+            gmailLink: gmailMessageLink(email.gmailId),
           }).then((sheet) => {
+            sheetsUpdated++;
             logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${existingPayment.id} spreadsheet=${sheet.spreadsheetId}`);
           }).catch((err) => {
             console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${existingPayment.id}`, err);
             logStep(`[gmail-sync] Sheets append failed message=${email.gmailId} reason="${err instanceof Error ? err.message : String(err)}"`);
           });
           if (missingInvoice) {
-            await createPaymentAlertOnce({
+            await createMissingInvoiceTaskOnce({
               organizationId,
-              type: "missing_invoice",
               supplierName,
               subject: email.subject,
               amount,
+              emailMessageId: email.emailRecordId,
               gmailMessageId: email.gmailId,
             });
+          } else if (invoiceLink) {
+            await closeMissingInvoiceTask(organizationId, email.emailRecordId);
           }
           logStep(`[gmail-sync] updated SupplierPayment message=${email.gmailId} id=${existingPayment.id}`);
         } else {
@@ -909,14 +1075,18 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
           paymentsCreated++;
           await appendSupplierPaymentToSheet({
             organizationId,
+            paymentId: payment.id,
             supplier: supplierName,
             amount: amount ?? 0,
             date: email.receivedAt,
+            dueDate,
             paid: false,
             missingInvoice,
             documentLink,
             invoiceLink,
+            gmailLink: gmailMessageLink(email.gmailId),
           }).then((sheet) => {
+            sheetsUpdated++;
             logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${payment.id} spreadsheet=${sheet.spreadsheetId}`);
           }).catch((err) => {
             console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${payment.id}`, err);
@@ -933,6 +1103,16 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
               amount,
               gmailMessageId: email.gmailId,
             });
+            if (missingInvoice) {
+              await createMissingInvoiceTaskOnce({
+                organizationId,
+                supplierName,
+                subject: email.subject,
+                amount,
+                emailMessageId: email.emailRecordId,
+                gmailMessageId: email.gmailId,
+              });
+            }
             if (!missingInvoice) {
               await notifyNewInvoice(organizationId, supplierName, amount);
             }
@@ -962,14 +1142,23 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
               console.error(`[gmail-sync] fallback GmailScanItem save failed message=${email.gmailId}`, fallbackErr);
               logStep(`[gmail-sync] error message=${email.gmailId} stage=fallback_scan_item_save reason="${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}"`);
             }
+          } else if (currentDuplicateKey) {
+            try {
+              await prisma.gmailScanItem.update({
+                where: { organizationId_duplicateKey: { organizationId, duplicateKey: currentDuplicateKey } },
+                data: {
+                  reviewStatus: "needs_review",
+                  decisionReason: `process_save_failed: ${err instanceof Error ? err.message : String(err)}`,
+                },
+              });
+            } catch (markErr) {
+              console.error(`[gmail-sync] failed marking GmailScanItem error message=${email.gmailId}`, markErr);
+              logStep(`[gmail-sync] error message=${email.gmailId} stage=mark_scan_item_error reason="${markErr instanceof Error ? markErr.message : String(markErr)}"`);
+            }
           }
         }
       }
-      await saveScanProgress(log.id, {
-        emailsProcessed,
-        paymentsCreated,
-        tasksCreated,
-      });
+      await maybeSaveScanProgress();
     }
     const recordsSaved = paymentsCreated + invoicesCreated + tasksCreated + clientsCreated;
     logStep(`Found ${relevantEmailsFound} relevant emails (${invoiceEmails} invoices, ${receiptsFound} receipts, ${paymentRequestsFound} payment requests, ${supplierMessagesFound} supplier messages)`);
@@ -987,8 +1176,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
       where: { id: log.id },
       data: {
         emailsProcessed,
+        emailsSaved: emailsSavedToGmailScanItem,
+        invoicesFound: invoicesCreated,
         paymentsCreated,
         tasksCreated,
+        driveUploaded: driveUploadsSucceeded,
+        sheetsUpdated,
+        errorsCount,
         finishedAt: new Date(),
         status: "success",
       },
@@ -1019,6 +1213,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
       driveUploadsSucceeded,
       driveUploadsSkipped,
       driveUploadsFailed,
+      sheetsUpdated,
       invoiceDetectionPositive,
       invoiceDetectionNegative,
       ignoredCount,
@@ -1035,7 +1230,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: { da
     const message = err instanceof Error ? err.message : "Unknown error";
     await prisma.syncLog.update({
       where: { id: log.id },
-      data: { status: "error", errorMessage: message, finishedAt: new Date() },
+      data: { status: "error", errorMessage: message, errorsCount: Math.max(errorsCount, 1), finishedAt: new Date() },
     });
     throw err;
   }
@@ -1156,10 +1351,28 @@ function gmailMessageLink(gmailMessageId: string) {
   return `https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(gmailMessageId)}`;
 }
 
-async function listCandidateMessages(gmail: GmailClient, daysBack: number, maxMessages = MAX_MESSAGES_PER_SYNC): Promise<GmailMessageRef[]> {
+function isInvoiceRecordDocument(documentType: GmailDocumentType) {
+  return documentType === "invoice" || documentType === "receipt";
+}
+
+function extractInvoiceNumber(text: string) {
+  const patterns = [
+    /(?:invoice|receipt|חשבונית|קבלה|מספר)\s*(?:no\.?|number|#|מס׳|מספר)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,})/i,
+    /(?:inv|rcpt)[-_]?\s*([A-Z0-9][A-Z0-9._/-]{2,})/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) return match[1].replace(/[.,;:]+$/, "").slice(0, 80);
+  }
+  return null;
+}
+
+async function listCandidateMessages(gmail: GmailClient, daysBack: number, maxMessages = MAX_MESSAGES_PER_SYNC, since?: Date): Promise<GmailMessageRef[]> {
   const byId = new Map<string, GmailMessageRef>();
   const safeDaysBack = Math.max(1, Math.ceil(daysBack));
-  const dateFilter = `newer_than:${safeDaysBack}d`;
+  const dateFilter = since
+    ? `after:${formatGmailSearchDate(since)}`
+    : `newer_than:${safeDaysBack}d`;
   const keywordOr = "{invoice receipt payment \"payment request\" חשבונית קבלה תשלום \"דרישת תשלום\"}";
   let totalPagesScanned = 0;
   let totalMessagesSeen = 0;
@@ -1202,6 +1415,14 @@ async function listCandidateMessages(gmail: GmailClient, daysBack: number, maxMe
 
   console.log(`[gmail-sync] Gmail list returned ${byId.size} candidate messages pagesScanned=${totalPagesScanned} messagesSeen=${totalMessagesSeen} maxMessages=${maxMessages}`);
   return [...byId.values()].slice(0, maxMessages);
+}
+
+function formatGmailSearchDate(date: Date) {
+  const safeDate = new Date(date.getTime() - 60 * 60 * 1000);
+  const yyyy = safeDate.getUTCFullYear();
+  const mm = String(safeDate.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(safeDate.getUTCDate()).padStart(2, "0");
+  return `${yyyy}/${mm}/${dd}`;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
@@ -1248,8 +1469,13 @@ function chunkArray<T>(items: T[], size: number) {
 
 async function saveScanProgress(logId: string, data: {
   emailsProcessed: number;
+  emailsSaved?: number;
+  invoicesFound?: number;
   paymentsCreated: number;
   tasksCreated: number;
+  driveUploaded?: number;
+  sheetsUpdated?: number;
+  errorsCount?: number;
 }) {
   await prisma.syncLog.update({
     where: { id: logId },
@@ -1487,6 +1713,26 @@ async function upsertPotentialClient(input: {
   return { id, created: true };
 }
 
+async function ensureInvoiceClient(input: {
+  organizationId: string;
+  supplierName: string;
+  senderEmail: string;
+  domain: string;
+  receivedAt: Date;
+}) {
+  const supplierKey = canonicalSupplierKey(input.supplierName) || "invoice-supplier";
+  const domain = input.domain || `${supplierKey}.local`;
+  const email = input.senderEmail || `invoice-${supplierKey}@local.invalid`;
+  return upsertPotentialClient({
+    organizationId: input.organizationId,
+    name: input.supplierName || domain,
+    email,
+    domain,
+    firstSeen: input.receivedAt,
+    lastSeen: input.receivedAt,
+  });
+}
+
 async function upsertGmailLead(input: {
   organizationId: string;
   name: string;
@@ -1609,36 +1855,113 @@ async function createPaymentAlertOnce(input: {
   });
 }
 
+async function createMissingInvoiceTaskOnce(input: {
+  organizationId: string;
+  supplierName: string;
+  subject: string;
+  amount: number | null;
+  emailMessageId: string;
+  gmailMessageId: string;
+}) {
+  await createPaymentAlertOnce({
+    organizationId: input.organizationId,
+    type: "missing_invoice",
+    supplierName: input.supplierName,
+    subject: input.subject,
+    amount: input.amount,
+    gmailMessageId: input.gmailMessageId,
+  });
+  const existing = await prisma.task.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      emailMessageId: input.emailMessageId,
+      title: { startsWith: "MissingInvoice:" },
+      status: "open",
+    },
+  });
+  if (existing) return existing;
+  return prisma.task.create({
+    data: {
+      organizationId: input.organizationId,
+      title: `MissingInvoice: ${input.supplierName}`,
+      description: `${input.subject}\nGmail: ${gmailMessageLink(input.gmailMessageId)}\nAmount: ${input.amount ?? "unknown"}`,
+      supplier: input.supplierName,
+      priority: "high",
+      status: "open",
+      source: "gmail",
+      emailMessageId: input.emailMessageId,
+    },
+  });
+}
+
+async function closeMissingInvoiceTask(organizationId: string, emailMessageId: string) {
+  await prisma.task.updateMany({
+    where: {
+      organizationId,
+      emailMessageId,
+      title: { startsWith: "MissingInvoice:" },
+      status: "open",
+    },
+    data: { status: "completed" },
+  });
+}
+
 async function saveDetectedInvoice(input: {
   organizationId: string;
   clientId: string;
   amount: number;
+  currency: string;
   date: Date;
+  dueDate: Date | null;
+  invoiceNumber: string | null;
+  supplierName: string;
+  documentType: GmailDocumentType;
   fromEmail: string;
   subject: string;
+  emailMessageId: string;
   gmailMessageId: string;
   driveUrl: string | null;
 }) {
-  const existing = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
-    'SELECT "id" FROM "Invoice" WHERE "organizationId" = $1 AND "gmailMessageId" = $2 LIMIT 1',
-    input.organizationId,
-    input.gmailMessageId
-  );
-  if (existing.length) return false;
+  const existingByGmail = await prisma.invoice.findFirst({
+    where: { organizationId: input.organizationId, gmailMessageId: input.gmailMessageId },
+    select: { id: true },
+  });
+  if (existingByGmail) return null;
 
-  await prisma.$executeRawUnsafe(
-    'INSERT INTO "Invoice" ("id","clientId","organizationId","amount","currency","date","status","description","driveUrl","emailId","fromEmail","gmailMessageId","createdAt","updatedAt") VALUES ($1,$2,$3,$4,\'ILS\',$5,\'pending\',$6,$7,$8,$9,$10,NOW(),NOW())',
-    randomUUID(),
-    input.clientId,
-    input.organizationId,
-    input.amount,
-    input.date,
-    input.subject,
-    input.driveUrl,
-    input.gmailMessageId,
-    input.fromEmail,
-    input.gmailMessageId
-  );
-  return true;
+  const dateStart = new Date(input.date);
+  dateStart.setHours(0, 0, 0, 0);
+  const dateEnd = new Date(input.date);
+  dateEnd.setHours(23, 59, 59, 999);
+  const existingByBusinessKey = await prisma.invoice.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      clientId: input.clientId,
+      amount: input.amount,
+      date: { gte: dateStart, lte: dateEnd },
+      ...(input.invoiceNumber
+        ? { invoiceNumber: input.invoiceNumber }
+        : { description: { contains: input.supplierName, mode: "insensitive" } }),
+    },
+    select: { id: true },
+  });
+  if (existingByBusinessKey) return null;
+
+  return prisma.invoice.create({
+    data: {
+      organizationId: input.organizationId,
+      clientId: input.clientId,
+      invoiceNumber: input.invoiceNumber,
+      amount: input.amount,
+      currency: input.currency || "ILS",
+      date: input.date,
+      dueDate: input.dueDate,
+      status: input.documentType === "receipt" ? "paid" : "pending",
+      description: `${input.supplierName} · ${input.subject}\nGmail: ${gmailMessageLink(input.gmailMessageId)}`,
+      driveUrl: input.driveUrl,
+      emailId: input.emailMessageId,
+      fromEmail: input.fromEmail,
+      gmailMessageId: input.gmailMessageId,
+    },
+  });
 }
 

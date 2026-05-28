@@ -13,8 +13,8 @@ function databaseUrlWithSaferPoolSettings() {
   const url = new URL(raw);
   url.searchParams.set("pgbouncer", "true");
   url.searchParams.set("connect_timeout", "10");
-  url.searchParams.set("pool_timeout", "10");
-  url.searchParams.set("connection_limit", "1");
+  url.searchParams.set("pool_timeout", process.env.PRISMA_POOL_TIMEOUT ?? "20");
+  url.searchParams.set("connection_limit", process.env.PRISMA_CONNECTION_LIMIT ?? "5");
   return url.toString();
 }
 

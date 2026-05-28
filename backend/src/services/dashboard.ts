@@ -21,9 +21,25 @@ export async function getDashboardStats(organizationId: string) {
     (p) => p.dueDate && p.dueDate <= in7days && p.dueDate >= now
   );
 
-  const openTasks = await prisma.task.count({
-    where: { organizationId, status: "open" },
-  });
+  const [
+    openTasks,
+    totalInvoices,
+    scansCompleted,
+    driveUploads,
+    clients,
+  ] = await Promise.all([
+    prisma.task.count({
+      where: { organizationId, status: "open" },
+    }),
+    prisma.invoice.count({ where: { organizationId } }),
+    prisma.syncLog.count({
+      where: { organizationId, type: "gmail_scan", status: "success" },
+    }),
+    prisma.emailAttachment.count({
+      where: { driveLink: { not: null }, emailMessage: { organizationId } },
+    }),
+    prisma.client.count({ where: { organizationId } }),
+  ]);
 
   const customerInvoices = await prisma.customerInvoice.findMany({
     where: { organizationId },
@@ -65,6 +81,12 @@ export async function getDashboardStats(organizationId: string) {
     overdueCustomerInvoices,
     overdueSupplierPayments,
     supplierPaymentsCount: payments.length,
+    totalInvoices,
+    unpaidPayments: openPayments.length,
+    paidPayments: validPayments.filter((p) => p.paid).length,
+    scansCompleted,
+    driveUploads,
+    clients,
     suspiciousPaymentsCount,
     hoursSavedThisWeek: Math.round((payments.length + customerInvoices.length + openTasks) * 0.25),
     currency: "ILS",

@@ -44,6 +44,10 @@ type ScanStatus = {
     status: string;
     found: number;
     saved: number;
+    invoicesFound?: number;
+    paymentsFound?: number;
+    driveUploaded?: number;
+    sheetsUpdated?: number;
     errors: string | null;
     startedAt: string;
     endedAt: string | null;
@@ -54,6 +58,10 @@ type ScanStatus = {
     status: string;
     found: number;
     saved: number;
+    invoicesFound?: number;
+    paymentsFound?: number;
+    driveUploaded?: number;
+    sheetsUpdated?: number;
     errors: string | null;
     startedAt: string;
     endedAt: string | null;
@@ -128,7 +136,33 @@ type ScanProgressResult = {
   supplierPaymentsFound: number;
   clientsFound: number;
   uploadedToDrive: number;
+  sheetsUpdated?: number;
+  failedItems?: Array<{
+    id: string;
+    gmailMessageId: string;
+    gmailMessageLink: string;
+    sender: string;
+    subject: string;
+    documentType: string;
+    decisionReason: string;
+    reviewStatus: string;
+    occurredAt: string;
+  }>;
+  finalSummary?: {
+    emailsFetched: number;
+    emailsSaved: number;
+    invoicesFound: number;
+    paymentsFound: number;
+    uploadedToDrive: number;
+    sheetsUpdated: number;
+    failedItems: number;
+    errorsCount: number;
+    completedAt: string;
+  } | null;
+  lastSuccessfulScanAt?: string | null;
   rejectedReasons: Record<string, number>;
+  progressPercent?: number;
+  estimatedRemainingSeconds?: number | null;
   summary?: GmailScanSummary;
 };
 
@@ -164,6 +198,14 @@ const emptyStats: DashboardStats = {
   overdueCustomerInvoices: 0,
   overdueSupplierPayments: 0,
   hoursSavedThisWeek: 0,
+  supplierPaymentsCount: 0,
+  totalInvoices: 0,
+  unpaidPayments: 0,
+  paidPayments: 0,
+  scansCompleted: 0,
+  driveUploads: 0,
+  clients: 0,
+  suspiciousPaymentsCount: 0,
   currency: "ILS",
 };
 
@@ -207,6 +249,11 @@ export default function DashboardPage() {
   const [actionMessage, setActionMessage] = useState("");
   const [showGmailConnect, setShowGmailConnect] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const savedScanId = window.localStorage.getItem("activeGmailScanId");
+    if (savedScanId) setActiveScanId(savedScanId);
+  }, []);
 
   const refreshGmailStatus = useCallback(async () => {
     const status = await apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`);
@@ -265,7 +312,10 @@ export default function DashboardPage() {
       if (scanStatusResult.status === "fulfilled") {
         setScanStatus(scanStatusResult.value);
         const running = scanStatusResult.value.logs.find((log) => log.status === "running" && !log.endedAt);
-        if (running && !activeScanId) setActiveScanId(running.id);
+        if (running && !activeScanId) {
+          setActiveScanId(running.id);
+          window.localStorage.setItem("activeGmailScanId", running.id);
+        }
       } else {
         console.error("[dashboard] /api/automation/scan-status failed", scanStatusResult.reason);
         setScanStatus(emptyScanStatus());
@@ -340,12 +390,14 @@ export default function DashboardPage() {
           setFirstScanSummary(formatProgressSummary(progress));
           setScanToast({ type: "success", text: "הסריקה הסתיימה והנתונים עודכנו" });
           setActiveScanId(null);
+          window.localStorage.removeItem("activeGmailScanId");
           await load();
         } else if (progress.status === "error") {
           setFirstScanRunning(false);
           setSyncing(false);
           setScanToast({ type: "error", text: progress.error ?? "הסריקה נכשלה" });
           setActiveScanId(null);
+          window.localStorage.removeItem("activeGmailScanId");
         }
       } catch (err) {
         if (!cancelled) setScanToast({ type: "error", text: err instanceof Error ? err.message : "טעינת סטטוס סריקה נכשלה" });
@@ -377,6 +429,7 @@ export default function DashboardPage() {
     setScanToast({ type: "info", text: progressMessage });
     setShowGmailConnect(false);
     setError("");
+    let startedScanId: string | null = null;
     try {
       const addProgress = (message: string) => setScanProgress((items) => [...items, message]);
       addProgress("יוצר סריקה ברקע...");
@@ -385,7 +438,9 @@ export default function DashboardPage() {
         { method: "POST", body: JSON.stringify({ daysBack: scanRangeDays }) }
       );
       if (result.scanId) {
+        startedScanId = result.scanId;
         setActiveScanId(result.scanId);
+        window.localStorage.setItem("activeGmailScanId", result.scanId);
         setFirstScanSummary(`סריקה התחילה ברקע (${scanRangeDays} ימים). אפשר להמשיך לעבוד בדשבורד.`);
         setScanToast({ type: "info", text: "הסריקה רצה ברקע. הסטטוס יתעדכן אוטומטית." });
         return;
@@ -401,7 +456,7 @@ export default function DashboardPage() {
       setScanProgress((items) => [...items, errorMessage]);
       setScanToast({ type: "error", text: errorMessage });
     } finally {
-      if (!activeScanId) setFirstScanRunning(false);
+      if (!startedScanId) setFirstScanRunning(false);
     }
   }
 
@@ -468,6 +523,7 @@ export default function DashboardPage() {
       const result = await apiFetch<GmailScanResult>("/api/gmail/scan", { method: "POST" });
       if (result.scanId) {
         setActiveScanId(result.scanId);
+        window.localStorage.setItem("activeGmailScanId", result.scanId);
         const message = result.inProgress ? "סריקת Gmail כבר רצה. מציג סטטוס חי." : "סריקת Gmail התחילה ברקע.";
         setError(message);
         setScanToast({ type: "info", text: message });
@@ -542,7 +598,7 @@ export default function DashboardPage() {
   }
 
   const kpis = [
-    { label: "לקוחות", value: clients?.clients.length ?? 0, icon: Activity, detail: `${clients?.totals.openTasks ?? 0} משימות פתוחות`, tone: "text-blue-300" },
+    { label: "לקוחות", value: stats.clients, icon: Activity, detail: `${stats.openTasks} משימות פתוחות`, tone: "text-blue-300" },
     { label: "כסף לקבל", value: `₪${stats.moneyToReceive.toLocaleString("he-IL")}`, icon: ArrowUpRight, detail: "הכנסות צפויות", tone: "text-emerald-300" },
     { label: "כסף לשלם", value: `₪${stats.moneyToPay.toLocaleString("he-IL")}`, icon: WalletCards, detail: `${stats.upcomingPaymentsCount} תשלומים קרובים`, tone: "text-amber-300" },
     { label: "בריאות עסקית", value: `${stats.businessHealthScore}/100`, icon: HeartPulse, detail: `נחסכו ${stats.hoursSavedThisWeek} שעות`, tone: "text-violet-300" },
@@ -692,15 +748,41 @@ export default function DashboardPage() {
               {activeScan?.status === "completed" ? "הושלם" : activeScan?.status === "error" ? "נכשל" : "סורק"}
             </span>
           </div>
+          <div className="mb-3">
+            <div className="mb-1 flex items-center justify-between text-sm font-semibold text-ink-secondary">
+              <span>התקדמות</span>
+              <span>{activeScan?.progressPercent ?? 0}%{activeScan?.estimatedRemainingSeconds ? ` · כ-${Math.ceil(activeScan.estimatedRemainingSeconds / 60)} דק׳` : ""}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
+              <div className="h-full rounded-full bg-[#818CF8] transition-all" style={{ width: `${activeScan?.progressPercent ?? 5}%` }} />
+            </div>
+          </div>
           <div className="grid gap-3 md:grid-cols-6">
             <MiniMetric label="מיילים" value={activeScan?.emailsFetched ?? 0} />
             <MiniMetric label="נשמרו" value={activeScan?.emailsSaved ?? 0} />
             <MiniMetric label="חשבוניות" value={activeScan?.invoicesFound ?? 0} />
             <MiniMetric label="תשלומי ספקים" value={activeScan?.supplierPaymentsFound ?? 0} />
             <MiniMetric label="Drive" value={activeScan?.uploadedToDrive ?? 0} />
-            <MiniMetric label="דורש בדיקה" value={Object.values(activeScan?.rejectedReasons ?? {}).reduce((sum, count) => sum + count, 0)} />
+            <MiniMetric label="Sheets" value={activeScan?.sheetsUpdated ?? 0} />
+            <MiniMetric label="נכשל/בדיקה" value={activeScan?.failedItems?.length ?? Object.values(activeScan?.rejectedReasons ?? {}).reduce((sum, count) => sum + count, 0)} />
           </div>
           {scanProgress.length > 0 && <div className="mt-3 grid gap-1 text-sm text-ink-secondary">{scanProgress.map((line) => <span key={line}>{line}</span>)}</div>}
+          {activeScan?.lastSuccessfulScanAt && <div className="mt-3 text-sm text-ink-secondary">סריקה מוצלחת אחרונה: {new Date(activeScan.lastSuccessfulScanAt).toLocaleString("he-IL")}</div>}
+          {activeScan?.finalSummary && (
+            <div className="mt-3 rounded-xl bg-surface-secondary p-3 text-sm text-ink-secondary">
+              סיכום סופי: {activeScan.finalSummary.emailsFetched} מיילים · {activeScan.finalSummary.invoicesFound} חשבוניות · {activeScan.finalSummary.paymentsFound} תשלומים · {activeScan.finalSummary.uploadedToDrive} Drive · {activeScan.finalSummary.sheetsUpdated} Sheets
+            </div>
+          )}
+          {Boolean(activeScan?.failedItems?.length) && (
+            <div className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-100">
+              <div className="font-semibold">פריטים שנכשלו / דורשים בדיקה</div>
+              {activeScan?.failedItems?.slice(0, 5).map((item) => (
+                <div key={item.id} className="mt-1">
+                  {item.subject || item.sender} · {item.decisionReason}
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -723,6 +805,17 @@ export default function DashboardPage() {
             </div>
           );
         })}
+      </section>
+
+      <section className="mb-8 grid gap-3 md:grid-cols-4">
+        <MiniMetric label="חשבוניות וקבלות" value={stats.totalInvoices} />
+        <MiniMetric label="תשלומים פתוחים" value={stats.unpaidPayments} />
+        <MiniMetric label="תשלומים ששולמו" value={stats.paidPayments} />
+        <MiniMetric label="חשבוניות חסרות" value={stats.missingInvoicesCount} />
+        <MiniMetric label="סריקות שהושלמו" value={stats.scansCompleted} />
+        <MiniMetric label="העלאות Drive" value={stats.driveUploads} />
+        <MiniMetric label="תשלומי ספקים" value={stats.supplierPaymentsCount} />
+        <MiniMetric label="סכומים חשודים שסוננו" value={stats.suspiciousPaymentsCount} />
       </section>
 
       <section className="mb-8 grid gap-6 xl:grid-cols-2">
@@ -825,7 +918,15 @@ export default function DashboardPage() {
               <div className="flex justify-between"><span>Live</span><span className="text-emerald-300">פעיל</span></div>
               <div className="flex justify-between"><span>עודכן לאחרונה</span><span>{lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}</span></div>
               <div className="flex justify-between"><span>סריקה הבאה</span><span>{scanStatus ? new Date(scanStatus.nextScheduledScanAt).toLocaleString("he-IL") : "טוען..."}</span></div>
-              {scanStatus?.last && <div className="rounded-xl bg-surface-hover p-3">נמצאו {scanStatus.last.found} · נשמרו {scanStatus.last.saved}</div>}
+              {scanStatus?.last && (
+                <div className="rounded-xl bg-surface-hover p-3">
+                  <div className="font-semibold text-ink-primary">סריקה אחרונה: {scanStatus.last.status}</div>
+                  <div>מיילים {scanStatus.last.found} · נשמרו {scanStatus.last.saved}</div>
+                  <div>חשבוניות {scanStatus.last.invoicesFound ?? 0} · תשלומים {scanStatus.last.paymentsFound ?? 0}</div>
+                  <div>Drive {scanStatus.last.driveUploaded ?? 0} · Sheets {scanStatus.last.sheetsUpdated ?? 0}</div>
+                  {scanStatus.last.errors && <div className="text-red-200">{scanStatus.last.errors}</div>}
+                </div>
+              )}
             </div>
           </div>
           <div className="card">
@@ -923,16 +1024,17 @@ function BusinessTable({
 function scanProgressMessages(progress: ScanProgressResult) {
   return [
     progress.status === "running" ? "סורק ומעבד מיילים..." : progress.status === "completed" ? "הסריקה הושלמה" : "הסריקה נכשלה",
+    `התקדמות ${progress.progressPercent ?? 0}%${progress.estimatedRemainingSeconds ? ` · נותרו בערך ${Math.ceil(progress.estimatedRemainingSeconds / 60)} דק׳` : ""}`,
     `נמצאו ${progress.emailsFetched} מיילים`,
     `נשמרו ${progress.emailsSaved} פריטי סריקה`,
     `נמצאו ${progress.invoicesFound} חשבוניות ו-${progress.supplierPaymentsFound} תשלומי ספקים`,
-    `הועלו ${progress.uploadedToDrive} קבצים ל-Drive`,
-    `דורשים בדיקה: ${Object.values(progress.rejectedReasons ?? {}).reduce((sum, count) => sum + count, 0)}`,
+    `הועלו ${progress.uploadedToDrive} קבצים ל-Drive ועודכנו ${progress.sheetsUpdated ?? 0} שורות Sheets`,
+    `נכשלו/דורשים בדיקה: ${progress.failedItems?.length ?? Object.values(progress.rejectedReasons ?? {}).reduce((sum, count) => sum + count, 0)}`,
   ];
 }
 
 function formatProgressSummary(progress: ScanProgressResult) {
-  return `נמצאו ${progress.emailsFetched} מיילים | נשמרו ${progress.emailsSaved} | חשבוניות ${progress.invoicesFound} | תשלומי ספקים ${progress.supplierPaymentsFound} | Drive ${progress.uploadedToDrive}`;
+  return `נמצאו ${progress.emailsFetched} מיילים | נשמרו ${progress.emailsSaved} | חשבוניות ${progress.invoicesFound} | תשלומי ספקים ${progress.supplierPaymentsFound} | Drive ${progress.uploadedToDrive} | Sheets ${progress.sheetsUpdated ?? 0}`;
 }
 
 function scanSummaryFromResult(result: GmailScanResult): GmailScanSummary {

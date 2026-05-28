@@ -85,6 +85,14 @@ export type DashboardStats = {
   overdueCustomerInvoices: number;
   overdueSupplierPayments: number;
   hoursSavedThisWeek: number;
+  supplierPaymentsCount: number;
+  totalInvoices: number;
+  unpaidPayments: number;
+  paidPayments: number;
+  scansCompleted: number;
+  driveUploads: number;
+  clients: number;
+  suspiciousPaymentsCount: number;
   currency: string;
 };
 

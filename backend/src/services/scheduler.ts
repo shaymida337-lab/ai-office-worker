@@ -15,7 +15,7 @@ const TIMEZONE = "Asia/Jerusalem";
 const MAX_RETRIES = 3;
 const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL;
 
-type ScanType = "daily" | "quick" | "monthly" | "health" | "first_time" | "whatsapp" | "social" | "crm";
+type ScanType = "daily" | "quick" | "monthly" | "health" | "first_time" | "whatsapp" | "social" | "crm" | "gmail_auto" | "gmail_retry";
 type AssistantRow = { organizationId: string; ownerPhone: string; isActive: boolean };
 type RuleFlags = { ownerMorningReport: boolean; clientMorningSummary: boolean; clientPaymentReminder: boolean; clientPaymentDaysWait: number };
 
@@ -30,7 +30,9 @@ class SchedulerService {
 
     cron.schedule("0 2 * * *", () => this.withRetry("daily", () => this.runDailyScan()), { timezone: TIMEZONE });
     cron.schedule("*/30 * * * *", () => this.withRetry("quick", () => this.runQuickScan()), { timezone: TIMEZONE });
-    cron.schedule("0 3 * * *", () => this.withRetry("health", () => this.updateAllHealthScores()), { timezone: TIMEZONE });
+    cron.schedule("0 3 * * *", () => this.runAutomaticGmailScans("auto_daily"), { timezone: TIMEZONE });
+    cron.schedule("30 3 * * 0", () => this.runAutomaticGmailScans("auto_weekly"), { timezone: TIMEZONE });
+    cron.schedule("30 4 * * *", () => this.withRetry("health", () => this.updateAllHealthScores()), { timezone: TIMEZONE });
     cron.schedule("0 8 1 * *", () => this.withRetry("monthly", () => this.generateMonthlyReport()), { timezone: TIMEZONE });
     cron.schedule("0 6 1 * *", () => this.withRetry("monthly", () => this.generateMonthlyAccountantReports()), { timezone: TIMEZONE });
     cron.schedule("30 7 * * 0-5", () => this.withRetry("whatsapp", () => this.sendOwnerMorningReports()), { timezone: TIMEZONE });
@@ -76,6 +78,69 @@ class SchedulerService {
     }
   }
 
+  async runAutomaticGmailScans(mode: "auto_daily" | "auto_weekly" = "auto_daily") {
+    const orgs = await prisma.organization.findMany({
+      where: { integrations: { some: { provider: "gmail", refreshToken: { not: null } } } },
+      select: { id: true },
+    });
+
+    console.log(`[scheduler] automatic Gmail ${mode} start orgs=${orgs.length}`);
+    for (const org of orgs) {
+      await this.runAutomaticGmailScanForOrg(org.id, mode, 0).catch((err) => {
+        console.error(`[scheduler] automatic Gmail ${mode} failed org=${org.id}`, err);
+      });
+    }
+  }
+
+  private async runAutomaticGmailScanForOrg(organizationId: string, mode: "auto_daily" | "auto_weekly" | "retry", retryAttempt: 0 | 1, retryOfId?: string) {
+    const active = await prisma.syncLog.findFirst({
+      where: { organizationId, type: "gmail_scan", status: "running", finishedAt: null },
+      orderBy: { startedAt: "desc" },
+    });
+    if (active && active.startedAt.getTime() > Date.now() - 30 * 60 * 1000) {
+      console.log(`[scheduler] automatic Gmail skipped org=${organizationId} reason=scan_already_running scanId=${active.id}`);
+      return;
+    }
+
+    const lastSuccess = await prisma.syncLog.findFirst({
+      where: { organizationId, type: "gmail_scan", status: "success", finishedAt: { not: null } },
+      orderBy: { finishedAt: "desc" },
+    });
+    const scanLog = await createRunningGmailScanLog(organizationId, mode, retryOfId);
+    if (!scanLog) {
+      console.log(`[scheduler] automatic Gmail skipped org=${organizationId} reason=db_scan_lock_active`);
+      return;
+    }
+
+    try {
+      const fullRescan = mode === "auto_weekly";
+      const result = await syncGmailForOrganization(organizationId, {
+        scanLogId: scanLog.id,
+        scanMode: mode,
+        retryOfId,
+        since: fullRescan ? undefined : lastSuccess?.finishedAt ?? undefined,
+        daysBack: fullRescan ? 30 : 1,
+        forceReprocess: fullRescan,
+      });
+      console.log(
+        `[scheduler] automatic Gmail done org=${organizationId} scanId=${scanLog.id} mode=${mode} emails=${result.emailsProcessed ?? 0} saved=${result.emailsSavedToGmailScanItem ?? 0} invoices=${result.invoicesCreated ?? 0} payments=${result.paymentsCreated ?? 0} drive=${result.driveUploadsSucceeded ?? 0} sheets=${result.sheetsUpdated ?? 0} errors=${result.errorsCount ?? 0}`
+      );
+    } catch (err) {
+      const message = errorMessage(err);
+      console.error(`[scheduler] automatic Gmail failed org=${organizationId} scanId=${scanLog.id} mode=${mode}`, err);
+      if (retryAttempt === 0) {
+        const nextRetryAt = new Date(Date.now() + 30 * 60 * 1000);
+        await prisma.syncLog.update({
+          where: { id: scanLog.id },
+          data: { nextRetryAt, errorMessage: `${message}\nRetry scheduled for ${nextRetryAt.toISOString()}` },
+        });
+        setTimeout(() => {
+          void this.runAutomaticGmailScanForOrg(organizationId, "retry", 1, scanLog.id);
+        }, 30 * 60 * 1000);
+      }
+    }
+  }
+
   async runDailyScan() {
     const orgs = await prisma.organization.findMany({ include: { integrations: true, clients: true } });
     for (const org of orgs) {
@@ -84,8 +149,6 @@ class SchedulerService {
       let found = 0;
       let saved = 0;
       try {
-        const hasOrgGmail = org.integrations.some((integration) => integration.provider === "gmail" && integration.refreshToken);
-        if (hasOrgGmail) await syncGmailForOrganization(org.id, { daysBack: 1 });
         for (const client of org.clients.filter((client) => client.isActive && client.gmailConnected)) {
           const result = await scanForInvoices(client.id, { daysBack: 1, limit: 50 });
           found += result.found;
@@ -314,6 +377,27 @@ async function finishScanLog(id: string, update: LogUpdate) {
     update.errors?.length ? update.errors.join("\n") : null,
     id
   );
+}
+
+async function createRunningGmailScanLog(organizationId: string, scanMode: string, retryOfId?: string) {
+  try {
+    return await prisma.syncLog.create({
+      data: {
+        organizationId,
+        type: "gmail_scan",
+        status: "running",
+        scanMode,
+        retryOfId,
+      },
+    });
+  } catch (err) {
+    const active = await prisma.syncLog.findFirst({
+      where: { organizationId, type: "gmail_scan", status: "running", finishedAt: null },
+      orderBy: { startedAt: "desc" },
+    });
+    if (active) return null;
+    throw err;
+  }
 }
 
 function wait(ms: number) {

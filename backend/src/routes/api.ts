@@ -321,21 +321,24 @@ apiRouter.post("/debug/gmail/scan-90", async (req, res) => {
 
   try {
     const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
-    const result = await syncGmailForOrganization(integration.organizationId, { daysBack: 90, forceReprocess: true });
+    const { scanLog, created } = await createRunningGmailScanLog(integration.organizationId, "manual");
+    if (created) {
+      void syncGmailForOrganization(integration.organizationId, {
+        daysBack: 90,
+        forceReprocess: true,
+        scanLogId: scanLog.id,
+        scanMode: "manual",
+      }).catch((err) => {
+        console.error(`[debug/gmail/scan-90] background scan failed org=${integration.organizationId} scanId=${scanLog.id}`, err);
+      });
+    }
     res.json({
       ...base,
       connected: true,
-      emailsFetched: result.emailsProcessed ?? 0,
-      emailsSaved: result.emailsSavedToGmailScanItem ?? result.recordsSaved ?? 0,
-      clientsFound: result.clientsCreated ?? result.potentialClients ?? 0,
-      invoicesFound: result.invoicesCreated ?? result.invoiceEmails ?? 0,
-      errors: result.errorsCount ?? 0,
-      totalScanned: result.emailsProcessed ?? 0,
-      totalParsed: result.emailsParsed ?? 0,
-      totalRejected: result.parserRejectedCount ?? result.ignoredCount ?? 0,
-      totalSaved: result.emailsSavedToGmailScanItem ?? result.recordsSaved ?? 0,
-      totalUploadedToDrive: result.driveUploadsSucceeded ?? 0,
-      raw: result,
+      scanId: scanLog.id,
+      status: created ? "started" : "running",
+      inProgress: true,
+      progressUrl: `/api/gmail/scan/${scanLog.id}`,
     });
   } catch (err) {
     res.status(500).json({
@@ -362,6 +365,10 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
     status: string;
     found: number;
     saved: number;
+    invoicesFound?: number;
+    paymentsFound?: number;
+    driveUploaded?: number;
+    sheetsUpdated?: number;
     errors: string | null;
     startedAt: Date;
     endedAt: Date | null;
@@ -381,8 +388,15 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
         type: true,
         status: true,
         emailsProcessed: true,
+        emailsSaved: true,
+        invoicesFound: true,
         paymentsCreated: true,
         tasksCreated: true,
+        driveUploaded: true,
+        sheetsUpdated: true,
+        errorsCount: true,
+        scanMode: true,
+        nextRetryAt: true,
         errorMessage: true,
         startedAt: true,
         finishedAt: true,
@@ -397,8 +411,12 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
       type: log.type,
       status: log.status === "error" ? "failed" : log.status,
       found: log.emailsProcessed,
-      saved: log.paymentsCreated + log.tasksCreated,
-      errors: log.errorMessage,
+      saved: log.emailsSaved || log.paymentsCreated + log.tasksCreated,
+      invoicesFound: log.invoicesFound,
+      paymentsFound: log.paymentsCreated,
+      driveUploaded: log.driveUploaded,
+      sheetsUpdated: log.sheetsUpdated,
+      errors: log.errorMessage || (log.errorsCount ? `${log.errorsCount} errors` : null),
       startedAt: log.startedAt,
       endedAt: log.finishedAt,
     })),
@@ -408,7 +426,7 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
 
   const last = logs[0] ?? null;
   const nextDaily = new Date();
-  nextDaily.setHours(2, 0, 0, 0);
+  nextDaily.setHours(3, 0, 0, 0);
   if (nextDaily <= new Date()) nextDaily.setDate(nextDaily.getDate() + 1);
   res.json({ last, logs, nextScheduledScanAt: nextDaily.toISOString() });
 });
@@ -435,13 +453,24 @@ apiRouter.post("/help/auto-fix/invoices", async (req, res) => {
       labelCreated = true;
     }
 
-    const result = await syncGmailForOrganization(req.auth!.organizationId, { daysBack: 90 });
+    const { scanLog, created } = await createRunningGmailScanLog(req.auth!.organizationId, "manual");
+    if (created) {
+      void syncGmailForOrganization(req.auth!.organizationId, {
+        daysBack: 90,
+        forceReprocess: true,
+        scanLogId: scanLog.id,
+        scanMode: "manual",
+      }).catch((err) => {
+        console.error(`[help/auto-fix/invoices] background scan failed org=${req.auth!.organizationId} scanId=${scanLog.id}`, err);
+      });
+    }
     res.json({
       success: true,
       labelCreated,
-      invoicesFound: result.invoicesCreated ?? result.invoiceEmails ?? 0,
-      emailsScanned: result.emailsProcessed,
-      clientsFound: result.potentialClients ?? result.clientsCreated ?? 0,
+      scanId: scanLog.id,
+      status: created ? "started" : "running",
+      inProgress: true,
+      progressUrl: `/api/gmail/scan/${scanLog.id}`,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Auto fix failed";
@@ -684,7 +713,14 @@ apiRouter.get("/invoices", async (req, res) => {
       organizationId: req.auth!.organizationId,
       ...(clientId && { clientId }),
       ...(status && status !== "all" && { status }),
-      ...(search && { invoiceNumber: { contains: search, mode: "insensitive" } }),
+      ...(search && {
+        OR: [
+          { invoiceNumber: { contains: search, mode: "insensitive" } },
+          { description: { contains: search, mode: "insensitive" } },
+          { fromEmail: { contains: search, mode: "insensitive" } },
+          { client: { name: { contains: search, mode: "insensitive" } } },
+        ],
+      }),
     },
     include: { client: { select: { id: true, name: true, color: true } } },
     orderBy: { date: "desc" },
@@ -754,15 +790,57 @@ apiRouter.patch("/payments/:id", async (req, res) => {
     invoiceLink?: string;
     documentLink?: string;
   };
-  const payment = await prisma.supplierPayment.updateMany({
+  const existingPayment = await prisma.supplierPayment.findFirst({
     where: { id: req.params.id, organizationId: req.auth!.organizationId },
+  });
+  if (!existingPayment) {
+    res.status(404).json({ error: "Payment not found" });
+    return;
+  }
+  const updatedPayment = await prisma.supplierPayment.update({
+    where: { id: existingPayment.id },
     data: {
       ...(paid !== undefined && { paid, ...(paid && { missingInvoice: false }) }),
       ...(invoiceLink !== undefined && { invoiceLink, missingInvoice: false }),
       ...(documentLink !== undefined && { documentLink }),
     },
   });
-  res.json({ updated: payment.count });
+  if ((invoiceLink !== undefined || paid === true) && existingPayment.emailMessageId) {
+    await prisma.task.updateMany({
+      where: {
+        organizationId: req.auth!.organizationId,
+        emailMessageId: existingPayment.emailMessageId,
+        title: { startsWith: "MissingInvoice:" },
+        status: "open",
+      },
+      data: { status: "completed" },
+    });
+  }
+  try {
+    const { appendSupplierPaymentToSheet } = await import("../services/supplierPaymentsSheet.js");
+    const email = existingPayment.emailMessageId
+      ? await prisma.emailMessage.findFirst({
+          where: { id: existingPayment.emailMessageId, organizationId: req.auth!.organizationId },
+          select: { gmailId: true },
+        })
+      : null;
+    await appendSupplierPaymentToSheet({
+      organizationId: req.auth!.organizationId,
+      paymentId: updatedPayment.id,
+      supplier: updatedPayment.supplier,
+      amount: updatedPayment.amount,
+      date: updatedPayment.date,
+      dueDate: updatedPayment.dueDate,
+      paid: updatedPayment.paid,
+      missingInvoice: updatedPayment.missingInvoice,
+      documentLink: updatedPayment.documentLink,
+      invoiceLink: updatedPayment.invoiceLink,
+      gmailLink: email?.gmailId ? `https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(email.gmailId)}` : null,
+    });
+  } catch (err) {
+    console.error("[payments] failed to sync payment to sheet", err);
+  }
+  res.json({ updated: 1, payment: updatedPayment });
 });
 
 apiRouter.get("/tasks", async (req, res) => {
@@ -1005,15 +1083,22 @@ async function scanGmail(req: Request, res: Response) {
       });
     }
 
-    const scanLog = await prisma.syncLog.create({
-      data: {
-        organizationId,
-        type: "gmail_scan",
+    const { scanLog, created } = await createRunningGmailScanLog(organizationId, "manual");
+    if (!created) {
+      const progress = await buildGmailScanProgress(organizationId, scanLog.id);
+      res.json({
+        success: true,
+        scanId: scanLog.id,
         status: "running",
-      },
-    });
+        inProgress: true,
+        daysBack,
+        progressUrl: `/api/gmail/scan/${scanLog.id}`,
+        summary: progress,
+      });
+      return;
+    }
     console.log(`[gmail-scan] Step 2: background scan started org=${organizationId} scanId=${scanLog.id} daysBack=${daysBack}`);
-    void syncGmailForOrganization(organizationId, { daysBack, forceReprocess: daysBack >= 90, scanLogId: scanLog.id })
+    void syncGmailForOrganization(organizationId, { daysBack, forceReprocess: daysBack >= 90, scanLogId: scanLog.id, scanMode: "manual" })
       .then((backgroundResult) => {
         console.log(`[gmail-scan] Background processing finished org=${organizationId} scanId=${scanLog.id} emails=${backgroundResult.emailsProcessed} saved=${backgroundResult.emailsSavedToGmailScanItem ?? 0} payments=${backgroundResult.paymentsCreated} invoices=${backgroundResult.invoicesCreated} driveUploaded=${backgroundResult.driveUploadsSucceeded ?? 0} rejected=${backgroundResult.parserRejectedCount ?? backgroundResult.ignoredCount ?? 0}`);
       })
@@ -1024,7 +1109,7 @@ async function scanGmail(req: Request, res: Response) {
     res.json({
       success: true,
       scanId: scanLog.id,
-      status: "running",
+      status: "started",
       inProgress: true,
       daysBack,
       progressUrl: `/api/gmail/scan/${scanLog.id}`,
@@ -1073,6 +1158,35 @@ apiRouter.post("/sync/gmail", scanGmail);
 apiRouter.post("/gmail-scan", scanGmail);
 apiRouter.post("/gmail/scan", scanGmail);
 
+async function createRunningGmailScanLog(organizationId: string, scanMode: string) {
+  try {
+    const scanLog = await prisma.syncLog.create({
+      data: {
+        organizationId,
+        type: "gmail_scan",
+        status: "running",
+        scanMode,
+      },
+    });
+    return { scanLog, created: true };
+  } catch (err) {
+    const active = await prisma.syncLog.findFirst({
+      where: {
+        organizationId,
+        type: "gmail_scan",
+        status: "running",
+        finishedAt: null,
+      },
+      orderBy: { startedAt: "desc" },
+    });
+    if (active) {
+      console.warn(`[gmail-scan] DB lock prevented duplicate running scan org=${organizationId} scanId=${active.id}`);
+      return { scanLog: active, created: false };
+    }
+    throw err;
+  }
+}
+
 async function buildGmailScanProgress(organizationId: string, scanId: string) {
   const log = await prisma.syncLog.findFirst({
     where: { id: scanId, organizationId, type: "gmail_scan" },
@@ -1082,30 +1196,38 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
   const start = log.startedAt;
   const end = log.finishedAt ?? new Date();
   const window = { gte: start, lte: end };
-  const [
-    emailsFetched,
-    emailsSaved,
-    invoicesFound,
-    supplierPaymentsFound,
-    clientsFound,
-    uploadedToDrive,
-    recentItems,
-  ] = await Promise.all([
-    prisma.emailMessage.count({ where: { organizationId, createdAt: window } }),
-    prisma.gmailScanItem.count({ where: { organizationId, createdAt: window } }),
-    prisma.gmailScanItem.count({ where: { organizationId, documentType: "invoice", createdAt: window } }),
-    prisma.supplierPayment.count({ where: { organizationId, createdAt: window } }),
-    prisma.client.count({ where: { organizationId, createdAt: window } }),
-    prisma.emailAttachment.count({ where: { driveLink: { not: null }, createdAt: window, emailMessage: { organizationId } } }),
-    prisma.gmailScanItem.findMany({
-      where: { organizationId, createdAt: window },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-      select: { decisionReason: true, reviewStatus: true, documentType: true },
-    }),
-  ]);
+  const failedItems = await prisma.gmailScanItem.findMany({
+    where: {
+      organizationId,
+      createdAt: window,
+      OR: [
+        { reviewStatus: "needs_review" },
+        { documentType: "unknown_needs_review" },
+        { decisionReason: { contains: "failed", mode: "insensitive" } },
+        { decisionReason: { contains: "rejected", mode: "insensitive" } },
+      ],
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 25,
+    select: {
+      id: true,
+      gmailMessageId: true,
+      gmailMessageLink: true,
+      sender: true,
+      subject: true,
+      documentType: true,
+      decisionReason: true,
+      reviewStatus: true,
+      occurredAt: true,
+    },
+  });
+  const lastSuccessfulScan = await prisma.syncLog.findFirst({
+    where: { organizationId, type: "gmail_scan", status: "success", finishedAt: { not: null } },
+    orderBy: { finishedAt: "desc" },
+    select: { finishedAt: true },
+  });
 
-  const rejectedReasons = recentItems.reduce<Record<string, number>>((acc, item) => {
+  const rejectedReasons = failedItems.reduce<Record<string, number>>((acc, item) => {
     const rejected =
       item.reviewStatus === "needs_review" ||
       item.documentType === "unknown_needs_review" ||
@@ -1121,6 +1243,26 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
       ? "completed"
       : "error"
     : "running";
+  const elapsedMs = Math.max(0, end.getTime() - start.getTime());
+  const emailsFetched = log.emailsProcessed;
+  const emailsSaved = log.emailsSaved;
+  const invoicesFound = log.invoicesFound;
+  const supplierPaymentsFound = log.paymentsCreated;
+  const uploadedToDrive = log.driveUploaded;
+  const processed = emailsFetched;
+  const progressPercent =
+    status === "completed"
+      ? 100
+      : status === "error"
+        ? Math.min(100, processed > 0 ? 100 : 0)
+        : processed > 0
+          ? Math.min(95, Math.max(5, Math.round((emailsSaved / Math.max(processed, 1)) * 100)))
+          : 5;
+  const emailsPerMs = processed > 0 && elapsedMs > 0 ? processed / elapsedMs : 0;
+  const estimatedRemainingSeconds =
+    status === "running" && emailsPerMs > 0 && progressPercent > 0
+      ? Math.max(0, Math.round(((100 - progressPercent) / progressPercent) * (elapsedMs / 1000)))
+      : null;
 
   return {
     scanId: log.id,
@@ -1129,26 +1271,46 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
     startedAt: log.startedAt,
     finishedAt: log.finishedAt,
     error: log.status === "error" ? log.errorMessage : null,
-    emailsFetched: log.emailsProcessed || emailsFetched,
+    progressPercent,
+    estimatedRemainingSeconds,
+    lastSuccessfulScanAt: lastSuccessfulScan?.finishedAt ?? null,
+    emailsFetched,
     emailsSaved,
     invoicesFound,
     supplierPaymentsFound,
-    clientsFound,
+    clientsFound: 0,
     uploadedToDrive,
+    sheetsUpdated: log.sheetsUpdated,
+    failedItems,
     rejectedReasons,
+    finalSummary: log.finishedAt
+      ? {
+          emailsFetched,
+          emailsSaved,
+          invoicesFound,
+          paymentsFound: supplierPaymentsFound,
+          uploadedToDrive,
+          sheetsUpdated: log.sheetsUpdated,
+          failedItems: failedItems.length,
+          errorsCount: log.errorsCount,
+          completedAt: log.finishedAt,
+        }
+      : null,
     summary: {
-      totalEmailsChecked: log.emailsProcessed || emailsFetched,
-      emailsScanned: log.emailsProcessed || emailsFetched,
-      emailsFetched: log.emailsProcessed || emailsFetched,
+      totalEmailsChecked: emailsFetched,
+      emailsScanned: emailsFetched,
+      emailsFetched,
       emailsSaved,
       recordsSaved: emailsSaved,
       invoicesFound,
       supplierPaymentsFound,
-      clientsFound,
+      clientsFound: 0,
       uploadedToDrive,
       rejectedReasons,
       paymentsSaved: supplierPaymentsFound,
-      errorsCount: log.status === "error" ? 1 : 0,
+      errorsCount: log.errorsCount || (log.status === "error" ? 1 : 0),
+      progressPercent,
+      estimatedRemainingSeconds,
     },
   };
 }

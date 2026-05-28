@@ -327,8 +327,16 @@ model SyncLog {
   type           String // gmail_scan | daily_summary | whatsapp_morning | whatsapp_evening
   status         String // success | error
   emailsProcessed Int     @default(0)
+  emailsSaved    Int      @default(0)
+  invoicesFound  Int      @default(0)
   paymentsCreated Int     @default(0)
   tasksCreated   Int      @default(0)
+  driveUploaded  Int      @default(0)
+  sheetsUpdated  Int      @default(0)
+  errorsCount    Int      @default(0)
+  scanMode       String?
+  retryOfId      String?
+  nextRetryAt    DateTime?
   errorMessage   String?
   startedAt      DateTime @default(now())
   finishedAt     DateTime?

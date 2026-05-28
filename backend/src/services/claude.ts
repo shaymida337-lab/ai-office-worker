@@ -8,6 +8,8 @@ export type EmailAnalysis = {
   documentType: "invoice" | "payment_request" | "receipt" | "other";
   paymentRequired: boolean;
   dueDate: string | null;
+  invoiceDate: string | null;
+  invoiceNumber: string | null;
   tasks: string[];
   confidence: number;
 };
@@ -33,11 +35,14 @@ const SYSTEM_PROMPT = `אתה עוזר הנהלת חשבונות לעסק ישר
   "documentType": "invoice|payment_request|receipt|other",
   "paymentRequired": boolean,
   "dueDate": "YYYY-MM-DD"|null,
+  "invoiceDate": "YYYY-MM-DD"|null,
+  "invoiceNumber": "string"|null,
   "tasks": ["string"],
   "confidence": 0-1
 }
 
-אל תמציא סכומים. documentType: invoice=חשבונית, payment_request=דרישת תשלום.`;
+אל תמציא סכומים או מספרי חשבונית. documentType: invoice=חשבונית/חשבונית מס, receipt=קבלה/חשבונית מס קבלה, payment_request=דרישת תשלום.
+לתמוך בעברית ובאנגלית, כולל PDF/image OCR text שמופיע בגוף.`;
 
 export async function analyzeEmailContent(input: {
   subject: string;
@@ -72,6 +77,8 @@ export async function analyzeEmailContent(input: {
     documentType: parsed.documentType || "other",
     paymentRequired: Boolean(parsed.paymentRequired),
     dueDate: parsed.dueDate ?? null,
+    invoiceDate: parsed.invoiceDate ?? null,
+    invoiceNumber: parsed.invoiceNumber ?? null,
     tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
     confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
   };
@@ -214,9 +221,27 @@ function fallbackAnalysis(input: {
         : "other",
     paymentRequired: isPayment,
     dueDate,
+    invoiceDate: extractInvoiceDate(text),
+    invoiceNumber: extractInvoiceNumber(text),
     tasks: [],
     confidence: amount || isInvoice || isPayment || isReceipt ? 0.55 : 0.25,
   };
+}
+
+function extractInvoiceDate(text: string): string | null {
+  return extractDueDate(text);
+}
+
+function extractInvoiceNumber(text: string): string | null {
+  const patterns = [
+    /(?:invoice|receipt|חשבונית|קבלה|מספר)\s*(?:no\.?|number|#|מס׳|מספר)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,})/i,
+    /(?:inv|rcpt)[-_]?\s*([A-Z0-9][A-Z0-9._/-]{2,})/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) return match[1].replace(/[.,;:]+$/, "").slice(0, 80);
+  }
+  return null;
 }
 
 function extractSupplier(sender?: string): string | null {
