@@ -151,12 +151,23 @@ export default function DashboardPage() {
   const [showGmailConnect, setShowGmailConnect] = useState(false);
   const [error, setError] = useState("");
 
+  const refreshGmailStatus = useCallback(async () => {
+    const status = await apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`);
+    setGmailStatus(status);
+    if (status.connected) {
+      setShowGmailConnect(false);
+      setError("");
+      setScanToast((current) => current?.type === "error" && current.text.includes("Gmail") ? null : current);
+    }
+    return status;
+  }, []);
+
   const load = useCallback(async () => {
     try {
       const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult] = await Promise.allSettled([
         apiFetch<DashboardStats>("/api/stats"),
         apiFetch<{ text: string }>("/api/summary/daily"),
-        apiFetch<GmailStatus>("/api/integrations/gmail/status"),
+        apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
         apiFetch<ClientsResponse>("/api/clients"),
         apiFetch<ScanStatus>("/api/automation/scan-status"),
       ]);
@@ -215,15 +226,38 @@ export default function DashboardPage() {
   }, [router]);
 
   useEffect(() => {
+    if (window.location.search.includes("gmail=connected")) {
+      setScanToast({ type: "success", text: "Gmail חובר בהצלחה" });
+      refreshGmailStatus().catch(() => undefined);
+      router.replace("/dashboard");
+    }
     load();
     const interval = window.setInterval(() => {
       load().catch(() => undefined);
     }, 5 * 60 * 1000);
     return () => window.clearInterval(interval);
-  }, [load]);
+  }, [load, refreshGmailStatus, router]);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshGmailStatus().catch(() => undefined);
+      }
+    };
+    const refreshOnPageShow = () => refreshGmailStatus().catch(() => undefined);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshOnPageShow);
+    window.addEventListener("pageshow", refreshOnPageShow);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshOnPageShow);
+      window.removeEventListener("pageshow", refreshOnPageShow);
+    };
+  }, [refreshGmailStatus]);
 
   async function startFirstScan() {
-    if (gmailStatus && !gmailStatus.connected) {
+    const freshGmailStatus = gmailStatus?.connected ? gmailStatus : await refreshGmailStatus().catch(() => gmailStatus);
+    if (freshGmailStatus && !freshGmailStatus.connected) {
       const message = "Please connect Gmail account first";
       setShowGmailConnect(true);
       setFirstScanSummary(message);
@@ -324,7 +358,8 @@ export default function DashboardPage() {
   }
 
   async function runSync() {
-    if (gmailStatus && !gmailStatus.connected) {
+    const freshGmailStatus = gmailStatus?.connected ? gmailStatus : await refreshGmailStatus().catch(() => gmailStatus);
+    if (freshGmailStatus && !freshGmailStatus.connected) {
       const message = "Please connect Gmail account first";
       setShowGmailConnect(true);
       setError(message);

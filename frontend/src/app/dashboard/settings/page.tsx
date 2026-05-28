@@ -81,9 +81,21 @@ export default function SettingsPage() {
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [socialStatus, setSocialStatus] = useState<SocialPlatformStatus[]>([]);
 
+  async function refreshGmailStatus() {
+    const status = await apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`);
+    setGmailStatus(status);
+    return status;
+  }
+
   useEffect(() => {
     if (window.location.search.includes("gmail=connected")) {
       setMessage("Gmail חובר בהצלחה!");
+      setGmailStatus((current) => ({
+        googleConfigured: current?.googleConfigured ?? true,
+        connected: true,
+        connectedAt: current?.connectedAt ?? new Date().toISOString(),
+      }));
+      refreshGmailStatus().catch(() => undefined);
       router.replace("/dashboard/settings");
     }
     apiFetch<AccountantSettings>("/api/accountant/settings")
@@ -92,7 +104,7 @@ export default function SettingsPage() {
     apiFetch<WhatsAppAssistantSettings>("/api/whatsapp-assistant/settings")
       .then(setWhatsapp)
       .catch(() => undefined);
-    apiFetch<GmailStatus>("/api/integrations/gmail/status")
+    apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`)
       .then(setGmailStatus)
       .catch(() => undefined);
     apiFetch<WhatsAppStatus>("/api/whatsapp/status")

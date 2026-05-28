@@ -44,10 +44,12 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   try {
     res = await fetch(url, {
       ...init,
+      cache: init?.cache ?? "no-store",
       credentials: init?.credentials ?? "include",
       signal: init?.signal ?? controller.signal,
       headers: {
         "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init?.headers,
       },
