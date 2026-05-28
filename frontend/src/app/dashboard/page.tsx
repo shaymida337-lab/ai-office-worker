@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Nav } from "@/components/Nav";
 import {
   apiFetch,
@@ -9,6 +9,8 @@ import {
   isAuthError,
   type DashboardStats,
   type GmailStatus,
+  type Payment,
+  type Task,
 } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { Activity, ArrowUpRight, Building2, Clock3, FileText, HeartPulse, MessageCircle, Plus, RefreshCcw, ScanLine, WalletCards } from "lucide-react";
@@ -83,11 +85,20 @@ type GmailScanSummary = {
   duplicatesSkipped: number;
   needsReviewCount?: number;
   errorsCount?: number;
+  emailsFetched?: number;
+  emailsSaved?: number;
+  clientsFound?: number;
+  supplierPaymentsFound?: number;
+  uploadedToDrive?: number;
+  rejectedReasons?: Record<string, number>;
 };
 
 type GmailScanResult = {
-  emailsProcessed: number;
+  emailsProcessed?: number;
   emailsFound?: number;
+  scanId?: string;
+  status?: string;
+  progressUrl?: string;
   paymentsCreated?: number;
   tasksCreated?: number;
   clientsCreated?: number;
@@ -104,22 +115,41 @@ type GmailScanResult = {
   summary?: GmailScanSummary;
 };
 
-type GmailDebugResult = {
-  connected: boolean;
-  orgId: string | null;
-  userId: string | null;
-  integrationOrgId?: string | null;
-  provider?: string | null;
-  hasAccessToken: boolean;
-  hasRefreshToken: boolean;
-  connectedAt?: string | null;
+type ScanProgressResult = {
+  scanId: string;
+  status: "running" | "completed" | "error";
+  inProgress: boolean;
+  startedAt: string;
+  finishedAt: string | null;
+  error: string | null;
   emailsFetched: number;
   emailsSaved: number;
-  clientsFound: number;
   invoicesFound: number;
-  errors: number;
-  error?: string;
-  raw?: unknown;
+  supplierPaymentsFound: number;
+  clientsFound: number;
+  uploadedToDrive: number;
+  rejectedReasons: Record<string, number>;
+  summary?: GmailScanSummary;
+};
+
+type RecentInvoice = {
+  id: string;
+  amount: number;
+  currency: string;
+  date: string;
+  status: string;
+  description: string | null;
+  driveUrl: string | null;
+  client?: { id: string; name: string; color: string | null };
+};
+
+type AlertItem = {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  read: boolean;
+  createdAt: string;
 };
 
 const emptyStats: DashboardStats = {
@@ -166,8 +196,15 @@ export default function DashboardPage() {
   const [firstScanSummary, setFirstScanSummary] = useState("");
   const [scanProgress, setScanProgress] = useState<string[]>([]);
   const [scanToast, setScanToast] = useState<ScanToast | null>(null);
-  const [gmailDebug, setGmailDebug] = useState<GmailDebugResult | null>(null);
-  const [gmailDebugRunning, setGmailDebugRunning] = useState("");
+  const [scanRangeDays, setScanRangeDays] = useState(90);
+  const [activeScanId, setActiveScanId] = useState<string | null>(null);
+  const [activeScan, setActiveScan] = useState<ScanProgressResult | null>(null);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [missingInvoices, setMissingInvoices] = useState<Payment[]>([]);
+  const [recentInvoices, setRecentInvoices] = useState<RecentInvoice[]>([]);
+  const [recentTasks, setRecentTasks] = useState<Task[]>([]);
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [actionMessage, setActionMessage] = useState("");
   const [showGmailConnect, setShowGmailConnect] = useState(false);
   const [error, setError] = useState("");
 
@@ -184,12 +221,17 @@ export default function DashboardPage() {
 
   const load = useCallback(async () => {
     try {
-      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult] = await Promise.allSettled([
+      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult] = await Promise.allSettled([
         apiFetch<DashboardStats>("/api/stats"),
         apiFetch<{ text: string }>("/api/summary/daily"),
         apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
         apiFetch<ClientsResponse>("/api/clients"),
         apiFetch<ScanStatus>("/api/automation/scan-status"),
+        apiFetch<Payment[]>("/api/payments"),
+        apiFetch<Payment[]>("/api/reports/missing-invoices"),
+        apiFetch<{ invoices: RecentInvoice[] }>("/api/invoices"),
+        apiFetch<Task[]>("/api/tasks"),
+        apiFetch<AlertItem[]>("/api/alerts"),
       ]);
 
       if (statsResult.status === "fulfilled") {
@@ -222,10 +264,18 @@ export default function DashboardPage() {
 
       if (scanStatusResult.status === "fulfilled") {
         setScanStatus(scanStatusResult.value);
+        const running = scanStatusResult.value.logs.find((log) => log.status === "running" && !log.endedAt);
+        if (running && !activeScanId) setActiveScanId(running.id);
       } else {
         console.error("[dashboard] /api/automation/scan-status failed", scanStatusResult.reason);
         setScanStatus(emptyScanStatus());
       }
+
+      setPayments(paymentsResult.status === "fulfilled" ? paymentsResult.value : []);
+      setMissingInvoices(missingResult.status === "fulfilled" ? missingResult.value : []);
+      setRecentInvoices(invoicesResult.status === "fulfilled" ? invoicesResult.value.invoices.slice(0, 8) : []);
+      setRecentTasks(tasksResult.status === "fulfilled" ? tasksResult.value.slice(0, 8) : []);
+      setAlerts(alertsResult.status === "fulfilled" ? alertsResult.value.slice(0, 8) : []);
 
       apiFetch<WhatsAppAssistantStats>("/api/whatsapp-assistant/stats")
         .then(setWhatsAppStats)
@@ -275,6 +325,40 @@ export default function DashboardPage() {
     };
   }, [refreshGmailStatus]);
 
+  useEffect(() => {
+    if (!activeScanId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const progress = await apiFetch<ScanProgressResult>(`/api/gmail/scan/${activeScanId}`);
+        if (cancelled) return;
+        setActiveScan(progress);
+        setScanProgress(scanProgressMessages(progress));
+        if (progress.status === "completed") {
+          setFirstScanRunning(false);
+          setSyncing(false);
+          setFirstScanSummary(formatProgressSummary(progress));
+          setScanToast({ type: "success", text: "הסריקה הסתיימה והנתונים עודכנו" });
+          setActiveScanId(null);
+          await load();
+        } else if (progress.status === "error") {
+          setFirstScanRunning(false);
+          setSyncing(false);
+          setScanToast({ type: "error", text: progress.error ?? "הסריקה נכשלה" });
+          setActiveScanId(null);
+        }
+      } catch (err) {
+        if (!cancelled) setScanToast({ type: "error", text: err instanceof Error ? err.message : "טעינת סטטוס סריקה נכשלה" });
+      }
+    };
+    poll().catch(() => undefined);
+    const interval = window.setInterval(() => poll().catch(() => undefined), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [activeScanId, load]);
+
   async function startFirstScan() {
     const freshGmailStatus = gmailStatus?.connected ? gmailStatus : await refreshGmailStatus().catch(() => gmailStatus);
     if (freshGmailStatus && !freshGmailStatus.connected) {
@@ -295,30 +379,20 @@ export default function DashboardPage() {
     setError("");
     try {
       const addProgress = (message: string) => setScanProgress((items) => [...items, message]);
-      addProgress("מחפש מיילים...");
+      addProgress("יוצר סריקה ברקע...");
       const result = await apiFetch<GmailScanResult>(
         "/api/gmail/scan",
-        { method: "POST", body: JSON.stringify({ daysBack: 90 }) }
+        { method: "POST", body: JSON.stringify({ daysBack: scanRangeDays }) }
       );
+      if (result.scanId) {
+        setActiveScanId(result.scanId);
+        setFirstScanSummary(`סריקה התחילה ברקע (${scanRangeDays} ימים). אפשר להמשיך לעבוד בדשבורד.`);
+        setScanToast({ type: "info", text: "הסריקה רצה ברקע. הסטטוס יתעדכן אוטומטית." });
+        return;
+      }
       const summary = scanSummaryFromResult(result);
-      const scanned = summary.emailsScanned;
-      addProgress(`נבדקו ${summary.totalEmailsChecked ?? scanned} מיילים`);
-      addProgress("מזהה לקוחות...");
-      addProgress(`נמצאו ${result.potentialClients ?? result.clientsCreated ?? 0} לקוחות`);
-      addProgress("מזהה חשבוניות...");
-      addProgress(`נמצאו ${summary.relevantEmailsFound ?? summary.invoiceOrPaymentEmailsFound} מיילים רלוונטיים`);
-      addProgress(`${summary.invoicesFound ?? 0} חשבוניות · ${summary.receiptsFound ?? 0} קבלות · ${summary.paymentRequestsFound ?? 0} דרישות תשלום`);
-      addProgress("שומר נתונים...");
-      addProgress(`נשמרו ${summary.recordsSaved} רשומות חדשות, דולגו ${summary.duplicatesSkipped} כפילויות, ${summary.needsReviewCount ?? 0} לבדיקה`);
-      addProgress("✅ הסריקה הושלמה!");
-      await load();
-      const updatedClients = await apiFetch<ClientsResponse>("/api/clients");
-      setClients(updatedClients);
-      const clientsFound = result.potentialClients ?? updatedClients.clients.length;
-      const tasksFound = result.tasksCreated ?? 0;
-      const successMessage = formatScanSuccess(summary);
-      setFirstScanSummary(`נבדקו ${summary.totalEmailsChecked ?? scanned} מיילים | ${summary.relevantEmailsFound ?? summary.invoiceOrPaymentEmailsFound} רלוונטיים | נשמרו ${summary.recordsSaved} רשומות | לבדיקה ${summary.needsReviewCount ?? 0} | שגיאות ${summary.errorsCount ?? 0} | ${clientsFound} לקוחות | ${tasksFound} משימות`);
-      setScanToast({ type: "success", text: successMessage });
+      setFirstScanSummary(formatScanSuccess(summary));
+      setScanToast({ type: "success", text: formatScanSuccess(summary) });
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : "סריקה ראשונית נכשלה";
       if (errorMessage.includes("Gmail") || errorMessage.includes("להתחבר")) {
@@ -327,7 +401,7 @@ export default function DashboardPage() {
       setScanProgress((items) => [...items, errorMessage]);
       setScanToast({ type: "error", text: errorMessage });
     } finally {
-      setFirstScanRunning(false);
+      if (!activeScanId) setFirstScanRunning(false);
     }
   }
 
@@ -392,13 +466,14 @@ export default function DashboardPage() {
     setScanToast({ type: "info", text: "סורק Gmail ומחפש חשבוניות, קבלות ודרישות תשלום..." });
     try {
       const result = await apiFetch<GmailScanResult>("/api/gmail/scan", { method: "POST" });
-      await load();
-      if (result.inProgress) {
-        const message = "סריקת Gmail כבר רצה. נסה שוב בעוד רגע.";
+      if (result.scanId) {
+        setActiveScanId(result.scanId);
+        const message = result.inProgress ? "סריקת Gmail כבר רצה. מציג סטטוס חי." : "סריקת Gmail התחילה ברקע.";
         setError(message);
         setScanToast({ type: "info", text: message });
         return;
       }
+      await load();
       const summary = scanSummaryFromResult(result);
       const message = result.message ?? (result.backgroundProcessing
         ? `נמצאו ${summary.emailsScanned} מיילים ב-Gmail. העיבוד המלא ממשיך ברקע ויעדכן חשבוניות/תשלומים.`
@@ -434,38 +509,27 @@ export default function DashboardPage() {
     }
   }
 
-  async function runGmailDebug(label: string, path: string) {
-    setGmailDebugRunning(label);
-    setGmailDebug(null);
+  async function markPaymentPaid(paymentId: string) {
+    setActionMessage("");
     try {
-      const result = await apiFetch<GmailDebugResult>(path, {
-        method: path.includes("status") ? "GET" : "POST",
-      });
-      setGmailDebug(result);
-      if (result.connected) {
-        setGmailStatus((current) => ({
-          googleConfigured: current?.googleConfigured ?? true,
-          connected: true,
-          connectedAt: result.connectedAt ?? current?.connectedAt ?? null,
-        }));
-        setShowGmailConnect(false);
-      }
+      await apiFetch(`/api/payments/${paymentId}`, { method: "PATCH", body: JSON.stringify({ paid: true }) });
+      await load();
+      setActionMessage("התשלום סומן כשולם");
     } catch (err) {
-      setGmailDebug({
-        connected: false,
-        orgId: null,
-        userId: null,
-        hasAccessToken: false,
-        hasRefreshToken: false,
-        emailsFetched: 0,
-        emailsSaved: 0,
-        clientsFound: 0,
-        invoicesFound: 0,
-        errors: 1,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      setGmailDebugRunning("");
+      setActionMessage(err instanceof Error ? err.message : "עדכון תשלום נכשל");
+    }
+  }
+
+  async function attachInvoiceToPayment(paymentId: string) {
+    const invoiceLink = window.prompt("הדבק קישור לחשבונית ב-Drive");
+    if (!invoiceLink) return;
+    setActionMessage("");
+    try {
+      await apiFetch(`/api/payments/${paymentId}`, { method: "PATCH", body: JSON.stringify({ invoiceLink }) });
+      await load();
+      setActionMessage("החשבונית צורפה לתשלום");
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : "צירוף חשבונית נכשל");
     }
   }
 
@@ -510,37 +574,21 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <section className="mb-4 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-ink-primary">
-        <div className="mb-3 font-bold">Temporary Gmail Production Debug</div>
-        <div className="flex flex-wrap gap-2">
-          <button className="btn btn-secondary" disabled={Boolean(gmailDebugRunning)} onClick={() => runGmailDebug("status", "/api/debug/gmail/status")}>
-            {gmailDebugRunning === "status" ? "Checking..." : "Check Gmail Status"}
-          </button>
-          <button className="btn btn-secondary" disabled={Boolean(gmailDebugRunning)} onClick={() => runGmailDebug("fetch", "/api/debug/gmail/test-fetch")}>
-            {gmailDebugRunning === "fetch" ? "Fetching..." : "Run Gmail Test Fetch"}
-          </button>
-          <button className="btn btn-secondary" disabled={Boolean(gmailDebugRunning)} onClick={() => runGmailDebug("scan", "/api/debug/gmail/scan-90")}>
-            {gmailDebugRunning === "scan" ? "Scanning..." : "Run 90 Day Scan Debug"}
-          </button>
+      <section className="mb-4 rounded-2xl border border-[var(--border)] bg-surface-secondary p-4">
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2>הכנה לבדיקה עסקית ראשונה</h2>
+            <p className="text-sm">חבר Gmail, בחר טווח סריקה, ואשר שהשמירה ל-Drive ול-Sheets פעילה.</p>
+          </div>
+          <span className={`badge ${gmailConnected ? "badge-ok" : "badge-warn"}`}>{gmailConnected ? "Gmail מחובר" : "Gmail לא מחובר"}</span>
         </div>
-        {gmailDebug && (
-          <pre className="mt-3 max-h-80 overflow-auto rounded-xl bg-black/40 p-3 text-left text-xs text-white" dir="ltr">
-            {JSON.stringify({
-              connected: gmailDebug.connected,
-              orgId: gmailDebug.orgId,
-              userId: gmailDebug.userId,
-              integrationOrgId: gmailDebug.integrationOrgId,
-              hasAccessToken: gmailDebug.hasAccessToken,
-              hasRefreshToken: gmailDebug.hasRefreshToken,
-              emailsFetched: gmailDebug.emailsFetched,
-              emailsSaved: gmailDebug.emailsSaved,
-              clientsFound: gmailDebug.clientsFound,
-              invoicesFound: gmailDebug.invoicesFound,
-              errors: gmailDebug.errors,
-              error: gmailDebug.error,
-            }, null, 2)}
-          </pre>
-        )}
+        <div className="grid gap-3 md:grid-cols-5">
+          <OnboardingStep title="1. Gmail" done={gmailConnected} text={gmailConnected ? "מחובר ומוכן לסריקה" : "חובה לחבר לפני סריקה"} action={!gmailConnected ? <button className="btn btn-secondary" onClick={connectGmail}>חבר Gmail</button> : null} />
+          <OnboardingStep title="2. טווח סריקה" done text={<select value={scanRangeDays} onChange={(e) => setScanRangeDays(Number(e.target.value))}><option value={7}>7 ימים</option><option value={30}>30 ימים</option><option value={90}>90 ימים</option></select>} />
+          <OnboardingStep title="3. Drive" done text="תיקיות נוצרות אוטומטית לפי ספק וסוג מסמך" />
+          <OnboardingStep title="4. Sheets" done text="טבלת תשלומי ספקים נוצרת ומתעדכנת אוטומטית" />
+          <OnboardingStep title="5. סריקה" done={Boolean(activeScan?.status === "completed" || scanStatus?.last?.status === "success")} text={activeScanId ? "סריקה רצה עכשיו" : "מוכן להפעלה"} action={<button className="btn" onClick={startFirstScan} disabled={!gmailConnected || Boolean(activeScanId)}>התחל סריקה</button>} />
+        </div>
       </section>
 
       {gmailStatus && !gmailConnected && (
@@ -631,6 +679,30 @@ export default function DashboardPage() {
           {scanToast.text}
         </div>
       )}
+      {actionMessage && <div className="toast border-emerald-400/30 text-emerald-200">{actionMessage}</div>}
+
+      {(activeScan || activeScanId) && (
+        <section className="mb-6 rounded-2xl border border-[#818CF8]/50 bg-[#818CF8]/10 p-4">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2>סטטוס סריקה</h2>
+              <p className="text-sm">מעקב חי אחרי עיבוד מיילים, קבצים, Drive ו-Sheets.</p>
+            </div>
+            <span className={`badge ${activeScan?.status === "error" ? "badge-error" : activeScan?.status === "completed" ? "badge-ok" : "badge-warn"}`}>
+              {activeScan?.status === "completed" ? "הושלם" : activeScan?.status === "error" ? "נכשל" : "סורק"}
+            </span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-6">
+            <MiniMetric label="מיילים" value={activeScan?.emailsFetched ?? 0} />
+            <MiniMetric label="נשמרו" value={activeScan?.emailsSaved ?? 0} />
+            <MiniMetric label="חשבוניות" value={activeScan?.invoicesFound ?? 0} />
+            <MiniMetric label="תשלומי ספקים" value={activeScan?.supplierPaymentsFound ?? 0} />
+            <MiniMetric label="Drive" value={activeScan?.uploadedToDrive ?? 0} />
+            <MiniMetric label="דורש בדיקה" value={Object.values(activeScan?.rejectedReasons ?? {}).reduce((sum, count) => sum + count, 0)} />
+          </div>
+          {scanProgress.length > 0 && <div className="mt-3 grid gap-1 text-sm text-ink-secondary">{scanProgress.map((line) => <span key={line}>{line}</span>)}</div>}
+        </section>
+      )}
 
       <section className="grid mb-8">
         {kpis.map((kpi) => {
@@ -651,6 +723,69 @@ export default function DashboardPage() {
             </div>
           );
         })}
+      </section>
+
+      <section className="mb-8 grid gap-6 xl:grid-cols-2">
+        <BusinessTable
+          title="תשלומי ספקים"
+          empty="אין תשלומי ספקים עדיין."
+          rows={payments.slice(0, 8).map((payment) => ({
+            id: payment.id,
+            title: payment.supplier,
+            meta: `${new Date(payment.date).toLocaleDateString("he-IL")} · ${payment.currency} ${payment.amount.toLocaleString("he-IL")}`,
+            badge: payment.paid ? "שולם" : payment.missingInvoice ? "חסרה חשבונית" : "פתוח",
+            actions: (
+              <div className="flex flex-wrap gap-2">
+                {!payment.paid && <button className="btn btn-secondary px-3 py-1.5" onClick={() => markPaymentPaid(payment.id)}>סמן שולם</button>}
+                {payment.missingInvoice && <button className="btn btn-secondary px-3 py-1.5" onClick={() => attachInvoiceToPayment(payment.id)}>צרף חשבונית</button>}
+              </div>
+            ),
+          }))}
+        />
+        <BusinessTable
+          title="חשבוניות חסרות"
+          empty="אין חשבוניות חסרות."
+          rows={missingInvoices.slice(0, 8).map((payment) => ({
+            id: payment.id,
+            title: payment.supplier,
+            meta: `${payment.subject ?? "ללא נושא"} · ${new Date(payment.date).toLocaleDateString("he-IL")}`,
+            badge: "דורש טיפול",
+            actions: <button className="btn btn-secondary px-3 py-1.5" onClick={() => attachInvoiceToPayment(payment.id)}>צרף קישור</button>,
+          }))}
+        />
+        <BusinessTable
+          title="חשבוניות אחרונות"
+          empty="אין חשבוניות שנשמרו."
+          rows={recentInvoices.map((invoice) => ({
+            id: invoice.id,
+            title: invoice.client?.name ?? "לקוח לא ידוע",
+            meta: `${new Date(invoice.date).toLocaleDateString("he-IL")} · ${invoice.currency} ${invoice.amount.toLocaleString("he-IL")}`,
+            badge: invoice.status,
+            actions: invoice.driveUrl ? <a className="btn btn-secondary px-3 py-1.5" href={invoice.driveUrl} target="_blank" rel="noreferrer">פתח Drive</a> : null,
+          }))}
+        />
+        <BusinessTable
+          title="משימות אחרונות"
+          empty="אין משימות פתוחות."
+          rows={recentTasks.map((task) => ({
+            id: task.id,
+            title: task.title,
+            meta: `${task.supplier ?? "כללי"} · ${task.priority}`,
+            badge: task.status,
+            actions: null,
+          }))}
+        />
+        <BusinessTable
+          title="כשלים ותור בדיקה"
+          empty="אין כשלים פתוחים."
+          rows={alerts.map((alert) => ({
+            id: alert.id,
+            title: alert.title,
+            meta: alert.body ?? new Date(alert.createdAt).toLocaleString("he-IL"),
+            badge: alert.type,
+            actions: <button className="btn btn-secondary px-3 py-1.5" onClick={runSync}>נסה סריקה מחדש</button>,
+          }))}
+        />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.25fr_.75fr]">
@@ -727,6 +862,77 @@ function relativeTime(date: Date) {
   if (minutes === 0) return "עכשיו";
   if (minutes === 1) return "לפני דקה";
   return `לפני ${minutes} דקות`;
+}
+
+function OnboardingStep({ title, done, text, action }: { title: string; done: boolean; text: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary/70 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <strong className="text-ink-primary">{title}</strong>
+        <span className={`badge ${done ? "badge-ok" : "badge-warn"}`}>{done ? "מוכן" : "נדרש"}</span>
+      </div>
+      <div className="text-sm text-ink-secondary">{text}</div>
+      {action && <div className="mt-3">{action}</div>}
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-xl border border-[var(--border-subtle)] bg-surface-secondary p-3">
+      <div className="text-[12px] font-bold uppercase tracking-[0.14em] text-ink-muted">{label}</div>
+      <div className="mt-1 text-2xl font-bold text-ink-primary">{value}</div>
+    </div>
+  );
+}
+
+function BusinessTable({
+  title,
+  rows,
+  empty,
+}: {
+  title: string;
+  empty: string;
+  rows: Array<{ id: string; title: string; meta: string; badge: string; actions: ReactNode }>;
+}) {
+  return (
+    <div className="card">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2>{title}</h2>
+        <span className="badge">{rows.length}</span>
+      </div>
+      <div className="grid gap-3">
+        {rows.map((row) => (
+          <div key={row.id} className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary/70 p-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <strong className="block truncate text-ink-primary">{row.title}</strong>
+                <p className="mt-1 break-words text-sm text-ink-secondary">{row.meta}</p>
+              </div>
+              <span className="badge w-fit shrink-0">{row.badge}</span>
+            </div>
+            {row.actions && <div className="mt-3">{row.actions}</div>}
+          </div>
+        ))}
+        {rows.length === 0 && <p>{empty}</p>}
+      </div>
+    </div>
+  );
+}
+
+function scanProgressMessages(progress: ScanProgressResult) {
+  return [
+    progress.status === "running" ? "סורק ומעבד מיילים..." : progress.status === "completed" ? "הסריקה הושלמה" : "הסריקה נכשלה",
+    `נמצאו ${progress.emailsFetched} מיילים`,
+    `נשמרו ${progress.emailsSaved} פריטי סריקה`,
+    `נמצאו ${progress.invoicesFound} חשבוניות ו-${progress.supplierPaymentsFound} תשלומי ספקים`,
+    `הועלו ${progress.uploadedToDrive} קבצים ל-Drive`,
+    `דורשים בדיקה: ${Object.values(progress.rejectedReasons ?? {}).reduce((sum, count) => sum + count, 0)}`,
+  ];
+}
+
+function formatProgressSummary(progress: ScanProgressResult) {
+  return `נמצאו ${progress.emailsFetched} מיילים | נשמרו ${progress.emailsSaved} | חשבוניות ${progress.invoicesFound} | תשלומי ספקים ${progress.supplierPaymentsFound} | Drive ${progress.uploadedToDrive}`;
 }
 
 function scanSummaryFromResult(result: GmailScanResult): GmailScanSummary {
