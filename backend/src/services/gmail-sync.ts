@@ -9,6 +9,7 @@ import {
   folderForDocumentType,
   uploadInvoiceAttachmentToDrive,
 } from "./driveService.js";
+import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
 import { notifyNewInvoice } from "./whatsapp.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
@@ -793,6 +794,21 @@ export async function syncGmailForOrganization(organizationId: string, options: 
               emailSender: email.from,
             },
           });
+          await appendSupplierPaymentToSheet({
+            organizationId,
+            supplier: supplierName,
+            amount: amount ?? existingPayment.amount,
+            date: email.receivedAt,
+            paid: existingPayment.paid,
+            missingInvoice,
+            documentLink,
+            invoiceLink,
+          }).then((sheet) => {
+            logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${existingPayment.id} spreadsheet=${sheet.spreadsheetId}`);
+          }).catch((err) => {
+            console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${existingPayment.id}`, err);
+            logStep(`[gmail-sync] Sheets append failed message=${email.gmailId} reason="${err instanceof Error ? err.message : String(err)}"`);
+          });
           logStep(`[gmail-sync] updated SupplierPayment message=${email.gmailId} id=${existingPayment.id}`);
         } else {
           const dueDate = analysis.dueDate ? new Date(analysis.dueDate) : null;
@@ -818,6 +834,21 @@ export async function syncGmailForOrganization(organizationId: string, options: 
             },
           });
           paymentsCreated++;
+          await appendSupplierPaymentToSheet({
+            organizationId,
+            supplier: supplierName,
+            amount: amount ?? 0,
+            date: email.receivedAt,
+            paid: false,
+            missingInvoice,
+            documentLink,
+            invoiceLink,
+          }).then((sheet) => {
+            logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${payment.id} spreadsheet=${sheet.spreadsheetId}`);
+          }).catch((err) => {
+            console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${payment.id}`, err);
+            logStep(`[gmail-sync] Sheets append failed message=${email.gmailId} reason="${err instanceof Error ? err.message : String(err)}"`);
+          });
           logStep(`[gmail-sync] saved SupplierPayment message=${email.gmailId} id=${payment.id} amount=${amount ?? 0} supplier="${supplierName}"`);
 
           if (classification.documentType === "invoice" || missingInvoice) {
