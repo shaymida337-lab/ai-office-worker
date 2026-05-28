@@ -26,7 +26,7 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: https://ai-office-worker-backend.onrender.com/api/integrations/gmail/callback
+        value: https://ai-office-worker-backend.onrender.com/auth/google/callback
       - key: GOOGLE_INTEGRATION_REDIRECT_URI
         value: https://ai-office-worker-backend.onrender.com/api/integrations/gmail/callback
       - key: ANTHROPIC_API_KEY

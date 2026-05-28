@@ -31,22 +31,34 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   }
 
   let res: Response;
+  const url = `${API_URL}${path}`;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15000);
   try {
-    res = await fetch(`${API_URL}${path}`, {
+    res = await fetch(url, {
       ...init,
+      signal: init?.signal ?? controller.signal,
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init?.headers,
       },
     });
-  } catch {
-    throw new Error(`API is not reachable at ${API_URL}`);
+  } catch (err) {
+    const message = err instanceof DOMException && err.name === "AbortError"
+      ? `API request timed out: ${url}`
+      : `API is not reachable: ${url}`;
+    console.error("[apiFetch]", message, err);
+    throw new Error(message);
+  } finally {
+    window.clearTimeout(timeout);
   }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError((err as { error?: string }).error ?? "Request failed", res.status);
+    const message = `${url} failed with status ${res.status}: ${(err as { error?: string }).error ?? "Request failed"}`;
+    console.error("[apiFetch]", message);
+    throw new ApiError(message, res.status);
   }
   return res.json() as Promise<T>;
 }

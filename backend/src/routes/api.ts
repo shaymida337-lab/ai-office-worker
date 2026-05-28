@@ -609,32 +609,34 @@ apiRouter.post("/whatsapp-assistant/test/:type", async (req, res) => {
 async function scanGmail(req: Request, res: Response) {
   try {
     const { quickScanGmailForOrganization, syncGmailForOrganization } = await import("../services/gmail-sync.js");
+    const organizationId = req.auth!.organizationId;
     const gmailIntegration = await prisma.integration.findUnique({
-      where: { organizationId_provider: { organizationId: req.auth!.organizationId, provider: "gmail" } },
+      where: { organizationId_provider: { organizationId, provider: "gmail" } },
       select: { refreshToken: true, accessToken: true },
     });
     if (!gmailIntegration?.refreshToken && !gmailIntegration?.accessToken) {
-      res.status(409).json({ error: "משתמש לא מחובר לGmail", code: "GMAIL_NOT_CONNECTED" });
+      console.warn(`[gmail-scan] Gmail not connected org=${organizationId}`);
+      res.status(409).json({ error: "Please connect Gmail account first", code: "GMAIL_NOT_CONNECTED" });
       return;
     }
 
     const rawDaysBack = Number(req.body?.daysBack ?? req.query.daysBack);
     const hasExplicitDaysBack = req.body?.daysBack !== undefined || req.query.daysBack !== undefined;
     const daysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0 ? Math.ceil(rawDaysBack) : 90;
-    const leadsBefore = await prisma.lead.count({ where: { organizationId: req.auth!.organizationId } });
-    console.log(`[gmail-scan] POST /api/gmail/scan org=${req.auth!.organizationId} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack}`);
+    const leadsBefore = await safeLeadCount(organizationId);
+    console.log(`[gmail-scan] POST /api/gmail/scan org=${organizationId} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack}`);
     console.log("[gmail-scan] Step 1: checking Gmail authentication");
     if (!hasExplicitDaysBack) {
       console.log("[gmail-scan] Step 2: running quick Gmail scan for manual request");
-      const result = await quickScanGmailForOrganization(req.auth!.organizationId, { daysBack });
-      void syncGmailForOrganization(req.auth!.organizationId, { daysBack, forceReprocess: daysBack >= 90 })
+      const result = await quickScanGmailForOrganization(organizationId, { daysBack });
+      void syncGmailForOrganization(organizationId, { daysBack, forceReprocess: daysBack >= 90 })
         .then((backgroundResult) => {
-          console.log(`[gmail-scan] Background processing finished emails=${backgroundResult.emailsProcessed} clients=${backgroundResult.clientsCreated} invoices=${backgroundResult.invoicesCreated} tasks=${backgroundResult.tasksCreated}`);
+          console.log(`[gmail-scan] Background processing finished org=${organizationId} emails=${backgroundResult.emailsProcessed} payments=${backgroundResult.paymentsCreated} invoices=${backgroundResult.invoicesCreated} duplicates=${backgroundResult.duplicatesSkipped ?? 0}`);
         })
         .catch((backgroundError) => {
-          console.error("[gmail-scan] Background processing failed", backgroundError);
+          console.error(`[gmail-scan] Background processing failed org=${organizationId}`, backgroundError);
         });
-      const emails = await latestScannedEmails(req.auth!.organizationId);
+      const emails = await latestScannedEmails(organizationId);
       res.json({
         ...result,
         scanned: result.emailsProcessed,
@@ -643,17 +645,18 @@ async function scanGmail(req: Request, res: Response) {
         emailsFound: result.emailsProcessed,
         daysBack,
         success: true,
+        summary: buildGmailScanSummary(result),
       });
       return;
     }
 
     console.log("[gmail-scan] Step 2: starting Gmail sync");
-    const result = await syncGmailForOrganization(req.auth!.organizationId, { daysBack, forceReprocess: daysBack >= 90 });
+    const result = await syncGmailForOrganization(organizationId, { daysBack, forceReprocess: daysBack >= 90 });
     const [leadsAfter, emails] = await Promise.all([
-      prisma.lead.count({ where: { organizationId: req.auth!.organizationId } }),
-      latestScannedEmails(req.auth!.organizationId),
+      safeLeadCount(organizationId),
+      latestScannedEmails(organizationId),
     ]);
-    console.log(`[gmail-scan] Step 3: scan finished emails=${result.emailsProcessed} clients=${result.clientsCreated} invoices=${result.invoicesCreated} tasks=${result.tasksCreated}`);
+    console.log(`[gmail-scan] Step 3: scan finished org=${organizationId} emails=${result.emailsProcessed} payments=${result.paymentsCreated} invoices=${result.invoicesCreated} duplicates=${result.duplicatesSkipped ?? 0}`);
     res.json({
       ...result,
       scanned: result.emailsProcessed,
@@ -662,21 +665,93 @@ async function scanGmail(req: Request, res: Response) {
       emailsFound: result.emailsProcessed,
       daysBack,
       success: true,
+      summary: buildGmailScanSummary(result),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
-    if (message === "Gmail not connected") {
+    const code = classifyGmailScanError(message);
+    if (code === "GMAIL_NOT_CONNECTED") {
       console.log("[gmail-scan] Gmail not connected");
-      res.status(409).json({ error: "משתמש לא מחובר לGmail", code: "GMAIL_NOT_CONNECTED" });
+      res.status(409).json({ error: "Please connect Gmail account first", code: "GMAIL_NOT_CONNECTED" });
       return;
     }
     console.error("[gmail-scan] Scan failed", err);
-    res.status(500).json({ error: `סריקת Gmail נכשלה: ${message}` });
+    const status = code === "GMAIL_PERMISSION_DENIED" ? 403 : code === "GMAIL_TOKEN_EXPIRED" ? 401 : 500;
+    res.status(status).json({ error: `סריקת Gmail נכשלה: ${humanGmailScanError(message, code)}`, code });
   }
 }
 
 apiRouter.post("/sync/gmail", scanGmail);
 apiRouter.post("/gmail/scan", scanGmail);
+
+function buildGmailScanSummary(result: {
+  emailsProcessed: number;
+  totalEmailsChecked?: number;
+  relevantEmailsFound?: number;
+  paymentsCreated?: number;
+  invoicesCreated?: number;
+  receiptsFound?: number;
+  paymentRequestsFound?: number;
+  tasksCreated?: number;
+  clientsCreated?: number;
+  duplicatesSkipped?: number;
+  invoiceEmails?: number;
+  recordsSaved?: number;
+  needsReviewCount?: number;
+  errorsCount?: number;
+  emailsSavedToGmailScanItem?: number;
+  ignoredCount?: number;
+  ignoredReasons?: Record<string, number>;
+}) {
+  const recordsSaved = result.recordsSaved ?? ((result.paymentsCreated ?? 0) + (result.invoicesCreated ?? 0) + (result.tasksCreated ?? 0) + (result.clientsCreated ?? 0));
+  return {
+    totalEmailsChecked: result.totalEmailsChecked ?? result.emailsProcessed,
+    emailsScanned: result.emailsProcessed,
+    relevantEmailsFound: result.relevantEmailsFound ?? result.invoiceEmails ?? 0,
+    invoiceOrPaymentEmailsFound: result.relevantEmailsFound ?? result.invoiceEmails ?? 0,
+    invoicesFound: result.invoicesCreated ?? 0,
+    receiptsFound: result.receiptsFound ?? 0,
+    paymentRequestsFound: result.paymentRequestsFound ?? 0,
+    recordsSaved,
+    paymentsSaved: result.paymentsCreated ?? 0,
+    invoicesSaved: result.invoicesCreated ?? 0,
+    duplicatesSkipped: result.duplicatesSkipped ?? 0,
+    needsReviewCount: result.needsReviewCount ?? 0,
+    errorsCount: result.errorsCount ?? 0,
+    emailsSavedToGmailScanItem: result.emailsSavedToGmailScanItem ?? 0,
+    ignoredCount: result.ignoredCount ?? 0,
+    ignoredReasons: result.ignoredReasons ?? {},
+  };
+}
+
+function classifyGmailScanError(message: string) {
+  const lower = message.toLowerCase();
+  if (message === "Gmail not connected" || lower.includes("not connected")) return "GMAIL_NOT_CONNECTED";
+  if (lower.includes("invalid_grant") || lower.includes("token") && lower.includes("expired")) return "GMAIL_TOKEN_EXPIRED";
+  if (lower.includes("insufficient") || lower.includes("permission") || lower.includes("scope") || lower.includes("forbidden")) return "GMAIL_PERMISSION_DENIED";
+  if (lower.includes("database") || lower.includes("prisma") || lower.includes("table") || lower.includes("relation")) return "DATABASE_FAILURE";
+  return "GMAIL_SCAN_FAILED";
+}
+
+function humanGmailScanError(message: string, code: string) {
+  if (code === "GMAIL_TOKEN_EXPIRED") return "החיבור ל-Gmail פג תוקף. חבר Gmail מחדש בהגדרות.";
+  if (code === "GMAIL_PERMISSION_DENIED") return "חסרות הרשאות Gmail. חבר Gmail מחדש ואשר הרשאות קריאה ושליחה.";
+  if (code === "DATABASE_FAILURE") return "שמירה למסד הנתונים נכשלה. בדוק שהטבלאות קיימות והמיגרציות הורצו.";
+  return message;
+}
+
+async function safeLeadCount(organizationId: string) {
+  try {
+    return await prisma.lead.count({ where: { organizationId } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("public.Lead") || message.includes("Lead") && message.includes("does not exist")) {
+      console.warn(`[gmail-scan] Lead table is missing; continuing with lead count 0 org=${organizationId}`);
+      return 0;
+    }
+    throw err;
+  }
+}
 
 async function latestScannedEmails(organizationId: string) {
   const emails = await prisma.emailMessage.findMany({

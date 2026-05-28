@@ -68,6 +68,71 @@ type ScanToast = {
   text: string;
 };
 
+type GmailScanSummary = {
+  totalEmailsChecked?: number;
+  emailsScanned: number;
+  relevantEmailsFound?: number;
+  invoiceOrPaymentEmailsFound: number;
+  invoicesFound?: number;
+  receiptsFound?: number;
+  paymentRequestsFound?: number;
+  recordsSaved: number;
+  paymentsSaved: number;
+  invoicesSaved: number;
+  duplicatesSkipped: number;
+  needsReviewCount?: number;
+  errorsCount?: number;
+};
+
+type GmailScanResult = {
+  emailsProcessed: number;
+  emailsFound?: number;
+  paymentsCreated?: number;
+  tasksCreated?: number;
+  clientsCreated?: number;
+  invoicesCreated?: number;
+  potentialClients?: number;
+  invoiceEmails?: number;
+  duplicatesSkipped?: number;
+  recordsSaved?: number;
+  scanSteps?: string[];
+  inProgress?: boolean;
+  backgroundProcessing?: boolean;
+  quick?: boolean;
+  message?: string;
+  summary?: GmailScanSummary;
+};
+
+const emptyStats: DashboardStats = {
+  moneyToPay: 0,
+  moneyToReceive: 0,
+  pendingInvoices: 0,
+  missingInvoicesCount: 0,
+  upcomingPaymentsCount: 0,
+  openTasks: 0,
+  unreadAlerts: 0,
+  businessHealthScore: 100,
+  overdueCustomerInvoices: 0,
+  overdueSupplierPayments: 0,
+  hoursSavedThisWeek: 0,
+  currency: "ILS",
+};
+
+const emptyClients: ClientsResponse = {
+  clients: [],
+  totals: {
+    toPay: 0,
+    openTasks: 0,
+    invoices: 0,
+    missingInvoices: 0,
+  },
+};
+
+function emptyScanStatus(): ScanStatus {
+  const nextScheduledScanAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  return { last: null, logs: [], nextScheduledScanAt };
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -87,26 +152,63 @@ export default function DashboardPage() {
 
   const load = useCallback(async () => {
     try {
-      const s = await apiFetch<DashboardStats>("/api/stats");
-      setStats(s);
-      const sum = await apiFetch<{ text: string }>("/api/summary/daily");
-      setSummary(sum.text);
-      const gmail = await apiFetch<GmailStatus>("/api/integrations/gmail/status");
-      setGmailStatus(gmail);
-      const clientData = await apiFetch<ClientsResponse>("/api/clients");
-      setClients(clientData);
-      const automation = await apiFetch<ScanStatus>("/api/automation/scan-status");
-      setScanStatus(automation);
+      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult] = await Promise.allSettled([
+        apiFetch<DashboardStats>("/api/stats"),
+        apiFetch<{ text: string }>("/api/summary/daily"),
+        apiFetch<GmailStatus>("/api/integrations/gmail/status"),
+        apiFetch<ClientsResponse>("/api/clients"),
+        apiFetch<ScanStatus>("/api/automation/scan-status"),
+      ]);
+
+      if (statsResult.status === "fulfilled") {
+        setStats(statsResult.value);
+      } else {
+        console.error("[dashboard] /api/stats failed", statsResult.reason);
+        setStats(emptyStats);
+      }
+
+      if (summaryResult.status === "fulfilled") {
+        setSummary(summaryResult.value.text);
+      } else {
+        console.error("[dashboard] /api/summary/daily failed", summaryResult.reason);
+        setSummary("לא ניתן לטעון סיכום כרגע.");
+      }
+
+      if (gmailResult.status === "fulfilled") {
+        setGmailStatus(gmailResult.value);
+      } else {
+        console.error("[dashboard] /api/integrations/gmail/status failed", gmailResult.reason);
+        setGmailStatus({ googleConfigured: true, connected: false, connectedAt: null });
+      }
+
+      if (clientsResult.status === "fulfilled") {
+        setClients(clientsResult.value);
+      } else {
+        console.error("[dashboard] /api/clients failed", clientsResult.reason);
+        setClients(emptyClients);
+      }
+
+      if (scanStatusResult.status === "fulfilled") {
+        setScanStatus(scanStatusResult.value);
+      } else {
+        console.error("[dashboard] /api/automation/scan-status failed", scanStatusResult.reason);
+        setScanStatus(emptyScanStatus());
+      }
+
       apiFetch<WhatsAppAssistantStats>("/api/whatsapp-assistant/stats")
         .then(setWhatsAppStats)
         .catch(() => undefined);
       setLastUpdatedAt(new Date());
+      setError("");
     } catch (err) {
       if (isAuthError(err)) {
         clearToken();
         router.replace("/");
         return;
       }
+      setStats(emptyStats);
+      setClients(emptyClients);
+      setScanStatus(emptyScanStatus());
       setError(err instanceof Error ? err.message : "טעינת הדשבורד נכשלה");
     }
   }, [router]);
@@ -121,7 +223,7 @@ export default function DashboardPage() {
 
   async function startFirstScan() {
     if (gmailStatus && !gmailStatus.connected) {
-      const message = "יש להתחבר ל-Gmail תחילה";
+      const message = "Please connect Gmail account first";
       setShowGmailConnect(true);
       setFirstScanSummary(message);
       setScanProgress([message]);
@@ -139,37 +241,28 @@ export default function DashboardPage() {
     try {
       const addProgress = (message: string) => setScanProgress((items) => [...items, message]);
       addProgress("מחפש מיילים...");
-      const result = await apiFetch<{
-        emailsProcessed: number;
-        emailsFound?: number;
-        clientsCreated?: number;
-        invoicesCreated?: number;
-        potentialClients?: number;
-        invoiceEmails?: number;
-        tasksCreated?: number;
-        scanSteps?: string[];
-        inProgress?: boolean;
-        message?: string;
-      }>(
+      const result = await apiFetch<GmailScanResult>(
         "/api/gmail/scan",
         { method: "POST", body: JSON.stringify({ daysBack: 90 }) }
       );
-      const scanned = result.emailsFound ?? result.emailsProcessed;
-      addProgress(`נמצאו ${scanned} מיילים`);
+      const summary = scanSummaryFromResult(result);
+      const scanned = summary.emailsScanned;
+      addProgress(`נבדקו ${summary.totalEmailsChecked ?? scanned} מיילים`);
       addProgress("מזהה לקוחות...");
       addProgress(`נמצאו ${result.potentialClients ?? result.clientsCreated ?? 0} לקוחות`);
       addProgress("מזהה חשבוניות...");
-      addProgress(`נמצאו ${result.invoicesCreated ?? result.invoiceEmails ?? 0} חשבוניות`);
+      addProgress(`נמצאו ${summary.relevantEmailsFound ?? summary.invoiceOrPaymentEmailsFound} מיילים רלוונטיים`);
+      addProgress(`${summary.invoicesFound ?? 0} חשבוניות · ${summary.receiptsFound ?? 0} קבלות · ${summary.paymentRequestsFound ?? 0} דרישות תשלום`);
       addProgress("שומר נתונים...");
+      addProgress(`נשמרו ${summary.recordsSaved} רשומות חדשות, דולגו ${summary.duplicatesSkipped} כפילויות, ${summary.needsReviewCount ?? 0} לבדיקה`);
       addProgress("✅ הסריקה הושלמה!");
       await load();
       const updatedClients = await apiFetch<ClientsResponse>("/api/clients");
       setClients(updatedClients);
       const clientsFound = result.potentialClients ?? updatedClients.clients.length;
-      const invoicesFound = result.invoicesCreated ?? updatedClients.totals.invoices;
       const tasksFound = result.tasksCreated ?? 0;
-      const successMessage = `✅ הסריקה הושלמה! נמצאו ${clientsFound} לקוחות ו-${invoicesFound} חשבוניות`;
-      setFirstScanSummary(`נסרקו ${scanned} מיילים | נמצאו ${clientsFound} לקוחות | ${invoicesFound} חשבוניות | ${tasksFound} משימות`);
+      const successMessage = formatScanSuccess(summary);
+      setFirstScanSummary(`נבדקו ${summary.totalEmailsChecked ?? scanned} מיילים | ${summary.relevantEmailsFound ?? summary.invoiceOrPaymentEmailsFound} רלוונטיים | נשמרו ${summary.recordsSaved} רשומות | לבדיקה ${summary.needsReviewCount ?? 0} | שגיאות ${summary.errorsCount ?? 0} | ${clientsFound} לקוחות | ${tasksFound} משימות`);
       setScanToast({ type: "success", text: successMessage });
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : "סריקה ראשונית נכשלה";
@@ -229,30 +322,39 @@ export default function DashboardPage() {
   }
 
   async function runSync() {
+    if (gmailStatus && !gmailStatus.connected) {
+      const message = "Please connect Gmail account first";
+      setShowGmailConnect(true);
+      setError(message);
+      setScanToast({ type: "error", text: message });
+      return;
+    }
+
     setSyncing(true);
     setError("");
+    setScanToast({ type: "info", text: "סורק Gmail ומחפש חשבוניות, קבלות ודרישות תשלום..." });
     try {
-      const result = await apiFetch<{
-        emailsProcessed: number;
-        emailsFound?: number;
-        paymentsCreated: number;
-        tasksCreated: number;
-        inProgress?: boolean;
-        backgroundProcessing?: boolean;
-        quick?: boolean;
-        message?: string;
-      }>("/api/gmail/scan", { method: "POST" });
+      const result = await apiFetch<GmailScanResult>("/api/gmail/scan", { method: "POST" });
       await load();
-      setError(
-        result.inProgress
-          ? "סריקת Gmail כבר רצה. נסה שוב בעוד רגע."
-          : result.message ??
-              (result.backgroundProcessing
-                ? `נמצאו ${result.emailsFound ?? result.emailsProcessed} מיילים ב-Gmail. העיבוד המלא ממשיך ברקע.`
-                : `נמצאו ${result.emailsFound ?? result.emailsProcessed} מיילים ✅`)
-      );
+      if (result.inProgress) {
+        const message = "סריקת Gmail כבר רצה. נסה שוב בעוד רגע.";
+        setError(message);
+        setScanToast({ type: "info", text: message });
+        return;
+      }
+      const summary = scanSummaryFromResult(result);
+      const message = result.message ?? (result.backgroundProcessing
+        ? `נמצאו ${summary.emailsScanned} מיילים ב-Gmail. העיבוד המלא ממשיך ברקע ויעדכן חשבוניות/תשלומים.`
+        : formatScanSuccess(summary));
+      setError(message);
+      setScanToast({ type: "success", text: message });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Sync failed");
+      const message = e instanceof Error ? e.message : "Sync failed";
+      setError(message);
+      setScanToast({ type: "error", text: message });
+      if (message.includes("Gmail") || message.includes("הרשאות") || message.includes("מחובר")) {
+        setShowGmailConnect(true);
+      }
     } finally {
       setSyncing(false);
     }
@@ -346,6 +448,9 @@ export default function DashboardPage() {
             <h2 className="text-[16px] font-bold text-white">הפעל סריקה ראשונית - 90 יום אחורה</h2>
             <p className="mt-1 text-[13px] font-medium text-white/85">
               סרוק את כל המיילים מ-90 הימים האחרונים למציאת לקוחות וחשבוניות
+            </p>
+            <p className="mt-2 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-[13px] font-semibold text-white">
+              המערכת אוטומטית מאוד, אבל פריטים לא ודאיים צריכים לעבור בדיקה.
             </p>
           </div>
           <button
@@ -497,4 +602,26 @@ function relativeTime(date: Date) {
   if (minutes === 0) return "עכשיו";
   if (minutes === 1) return "לפני דקה";
   return `לפני ${minutes} דקות`;
+}
+
+function scanSummaryFromResult(result: GmailScanResult): GmailScanSummary {
+  return {
+    totalEmailsChecked: result.summary?.totalEmailsChecked ?? result.emailsFound ?? result.emailsProcessed ?? 0,
+    emailsScanned: result.summary?.emailsScanned ?? result.emailsFound ?? result.emailsProcessed ?? 0,
+    relevantEmailsFound: result.summary?.relevantEmailsFound ?? result.summary?.invoiceOrPaymentEmailsFound ?? result.invoiceEmails ?? 0,
+    invoiceOrPaymentEmailsFound: result.summary?.invoiceOrPaymentEmailsFound ?? result.invoiceEmails ?? 0,
+    invoicesFound: result.summary?.invoicesFound ?? result.invoicesCreated ?? 0,
+    receiptsFound: result.summary?.receiptsFound ?? 0,
+    paymentRequestsFound: result.summary?.paymentRequestsFound ?? 0,
+    recordsSaved: result.summary?.recordsSaved ?? result.recordsSaved ?? ((result.paymentsCreated ?? 0) + (result.invoicesCreated ?? 0) + (result.tasksCreated ?? 0) + (result.clientsCreated ?? 0)),
+    paymentsSaved: result.summary?.paymentsSaved ?? result.paymentsCreated ?? 0,
+    invoicesSaved: result.summary?.invoicesSaved ?? result.invoicesCreated ?? 0,
+    duplicatesSkipped: result.summary?.duplicatesSkipped ?? result.duplicatesSkipped ?? 0,
+    needsReviewCount: result.summary?.needsReviewCount ?? 0,
+    errorsCount: result.summary?.errorsCount ?? 0,
+  };
+}
+
+function formatScanSuccess(summary: GmailScanSummary) {
+  return `✅ נבדקו ${summary.totalEmailsChecked ?? summary.emailsScanned} מיילים | נמצאו ${summary.relevantEmailsFound ?? summary.invoiceOrPaymentEmailsFound} רלוונטיים | נשמרו ${summary.recordsSaved} רשומות | לבדיקה ${summary.needsReviewCount ?? 0} | שגיאות ${summary.errorsCount ?? 0}`;
 }

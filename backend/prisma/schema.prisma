@@ -58,6 +58,7 @@ model Organization {
   leads           Lead[]
   messageTemplates MessageTemplate[]
   messageScans    MessageScan[]
+  gmailScanItems  GmailScanItem[]
 }
 
 model Client {
@@ -601,6 +602,37 @@ model MessageScan {
   @@index([organizationId, urgency, occurredAt])
   @@index([senderEmail])
   @@index([senderPhone])
+}
+
+model GmailScanItem {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  emailMessageId     String?
+  gmailMessageId     String
+  gmailMessageLink   String
+  sender             String
+  senderEmail        String?
+  subject            String
+  occurredAt         DateTime
+  amount             Float?
+  supplierName       String
+  documentType       String
+  attachmentFilename String?
+  driveFileLink      String?
+  confidenceScore    String
+  reviewStatus       String   @default("needs_review")
+  duplicateKey       String
+  decisionReason     String
+  rawAnalysis        Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([organizationId, duplicateKey])
+  @@index([organizationId, reviewStatus, occurredAt])
+  @@index([organizationId, documentType, occurredAt])
+  @@index([gmailMessageId])
+  @@index([senderEmail])
 }
 
 

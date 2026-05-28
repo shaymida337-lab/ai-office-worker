@@ -36,6 +36,21 @@ type GmailIntegrationState = {
   timestamp: number;
 };
 
+function runPostConnectionGmailScan(organizationId: string) {
+  void import("../services/gmail-sync.js")
+    .then(({ syncGmailForOrganization }) =>
+      syncGmailForOrganization(organizationId, { daysBack: 90, forceReprocess: false })
+    )
+    .then((result) => {
+      console.log(
+        `[gmail/connect] post-connection scan finished org=${organizationId} emails=${result.emailsProcessed} relevant=${result.relevantEmailsFound ?? result.invoiceEmails ?? 0} records=${result.recordsSaved ?? 0} duplicates=${result.duplicatesSkipped ?? 0} errors=${result.errorsCount ?? 0}`
+      );
+    })
+    .catch((err) => {
+      console.error(`[gmail/connect] post-connection scan failed org=${organizationId}`, err);
+    });
+}
+
 integrationsRouter.get("/gmail/status", authMiddleware, async (req, res) => {
   const integration = await prisma.integration.findUnique({
     where: {
@@ -211,7 +226,7 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
       return;
     }
 
-    await prisma.integration.upsert({
+    const savedIntegration = await prisma.integration.upsert({
       where: {
         organizationId_provider: {
           organizationId,
@@ -231,6 +246,11 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
         expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
       },
     });
+
+    console.log(
+      `[gmail/callback] connected org=${organizationId} hasAccessToken=${Boolean(savedIntegration.accessToken)} hasRefreshToken=${Boolean(savedIntegration.refreshToken)} expiresAt=${savedIntegration.expiresAt?.toISOString() ?? "none"}`
+    );
+    runPostConnectionGmailScan(organizationId);
 
     if (frontendToken) {
       res.redirect(`${config.frontendUrl}/auth/callback#token=${encodeURIComponent(frontendToken)}&gmail=connected`);

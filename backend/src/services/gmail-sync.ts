@@ -1,7 +1,7 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { prisma } from "../lib/prisma.js";
 import { buildDuplicateHash } from "../lib/duplicate.js";
-import { analyzeEmailContent } from "./claude.js";
+import { analyzeEmailContent, type EmailAnalysis } from "./claude.js";
 import { getGoogleClients } from "./google.js";
 import { analyzeAndSaveMessage } from "./messageScanner.js";
 import {
@@ -14,7 +14,69 @@ import { notifyNewInvoice } from "./whatsapp.js";
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_QUICK_SCAN = 25;
 const DRIVE_FULL_MESSAGE = "הסריקה הושלמה. לא ניתן לשמור ל-Drive - האחסון שלך מלא";
-const INVOICE_KEYWORDS = ["חשבונית", "חשבון", "קבלה", "לתשלום", "invoice", "receipt", "payment", "פקטורה"];
+const GMAIL_EXCLUDE_QUERY = "-category:promotions -category:social -in:spam -in:trash";
+const INVOICE_KEYWORDS = [
+  "חשבונית",
+  "חשבונית מס",
+  "חשבון",
+  "קבלה",
+  "דרישת תשלום",
+  "בקשת תשלום",
+  "לתשלום",
+  "שולם",
+  "invoice",
+  "tax invoice",
+  "receipt",
+  "payment",
+  "payment due",
+  "payment request",
+  "bill",
+  "supplier bill",
+  "paid",
+  "statement",
+  "פקטורה",
+  "icount",
+  "i-count",
+  "green invoice",
+  "greeninvoice",
+  "חשבונית ירוקה",
+  "morning",
+  "meshulam",
+  "משולם",
+];
+const SUPPLIER_KEYWORDS = [
+  "supplier",
+  "vendor",
+  "billing",
+  "accounts",
+  "finance",
+  "statement",
+  "quote",
+  "bill",
+  "tax invoice",
+  "icount",
+  "i-count",
+  "green invoice",
+  "greeninvoice",
+  "חשבונית ירוקה",
+  "morning",
+  "meshulam",
+  "ספק",
+  "ספקים",
+  "חשבונות",
+  "גבייה",
+  "תשלום",
+  "הצעת מחיר",
+  "חשבונית",
+  "קבלה",
+];
+const REVIEWABLE_DOCUMENT_TYPES = new Set<GmailDocumentType>([
+  "invoice",
+  "receipt",
+  "payment_request",
+  "supplier_message",
+  "unknown_needs_review",
+]);
 
 export async function quickScanGmailForOrganization(organizationId: string, options: { daysBack?: number } = {}) {
   const daysBack = options.daysBack ?? 7;
@@ -37,10 +99,13 @@ export async function quickScanGmailForOrganization(organizationId: string, opti
 
   return {
     emailsProcessed: messages.length,
+    emailsFound: messages.length,
     paymentsCreated: 0,
     tasksCreated: 0,
     clientsCreated: 0,
     invoicesCreated: 0,
+    duplicatesSkipped: 0,
+    recordsSaved: 0,
     uniqueSenders: 0,
     potentialClients: 0,
     invoiceEmails: 0,
@@ -114,6 +179,22 @@ export async function syncGmailForOrganization(organizationId: string, options: 
   let invoiceAmountsExtracted = 0;
   let uniqueSenders = 0;
   let potentialClients = 0;
+  let duplicatesSkipped = 0;
+  let relevantEmailsFound = 0;
+  let receiptsFound = 0;
+  let paymentRequestsFound = 0;
+  let supplierMessagesFound = 0;
+  let needsReviewCount = 0;
+  let errorsCount = 0;
+  let emailsSavedToGmailScanItem = 0;
+  let ignoredCount = 0;
+  const ignoredReasons: Record<string, number> = {};
+
+  const ignoreMessage = (reason: string, messageId?: string | null) => {
+    ignoredCount++;
+    ignoredReasons[reason] = (ignoredReasons[reason] ?? 0) + 1;
+    logStep(`[gmail-sync] ignored message=${messageId ?? "unknown"} reason="${reason}"`);
+  };
 
   try {
     logStep("[gmail-sync] Checking Gmail token and creating Google clients");
@@ -128,11 +209,14 @@ export async function syncGmailForOrganization(organizationId: string, options: 
     }
     logStep(`[gmail-sync] Searching Gmail from last ${daysBack} days`);
     const messages = await listCandidateMessages(gmail, daysBack);
-    logStep(`Found ${messages.length} emails in last ${daysBack} days`);
+    logStep(`[gmail-sync] total emails fetched from Gmail=${messages.length}`);
     const scannedEmails: ScannedEmail[] = [];
 
     for (const msgRef of messages) {
-      if (!msgRef.id) continue;
+      if (!msgRef.id) {
+        ignoreMessage("missing_gmail_message_id", msgRef.id);
+        continue;
+      }
 
       const existing = await prisma.emailMessage.findUnique({
         where: {
@@ -158,10 +242,12 @@ export async function syncGmailForOrganization(organizationId: string, options: 
       const receivedAt = dateHeader ? new Date(dateHeader) : new Date();
       const bodyText = extractBody(full.data.payload as PayloadPart | undefined);
       const sender = parseSender(from);
-      if (!sender.email) continue;
       const source = /whatsapp|וואטסאפ/i.test(subject + from)
         ? "whatsapp_forward"
         : "gmail";
+
+      const attachmentParts = collectAttachmentParts(full.data.payload as PayloadPart | undefined);
+      logStep(`[gmail-sync] fetched message=${msgRef.id} sender="${from || "unknown"}" subject="${subject}" date="${receivedAt.toISOString()}" attachments=${attachmentParts.length ? attachmentParts.map((part) => `${part.filename || "unnamed"}:${part.mimeType || "unknown"}`).join(", ") : "none"} bodyLength=${bodyText.length}`);
 
       const emailRecord = await prisma.emailMessage.upsert({
         where: {
@@ -193,7 +279,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         emailMessageId: emailRecord.id,
         from,
         senderName: sender.name,
-        senderEmail: sender.email,
+        senderEmail: sender.email ?? "",
         senderPhone: extractPhoneFromText(bodyText),
         subject,
         bodyText,
@@ -210,11 +296,11 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         from,
         senderEmail: sender.email,
         senderName: sender.name,
-        domain: sender.domain,
+        domain: sender.domain ?? "",
         bodyText,
         receivedAt,
         source,
-        parts: collectAttachmentParts(full.data.payload as PayloadPart | undefined),
+        parts: attachmentParts,
         fullPayload: full.data.payload as PayloadPart | undefined,
         alreadyProcessed: Boolean(existing?.processedAt),
       });
@@ -266,20 +352,57 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         });
       }
 
-      if (email.alreadyProcessed && !options.forceReprocess) continue;
+      if (email.alreadyProcessed && !options.forceReprocess) {
+        duplicatesSkipped++;
+        continue;
+      }
 
       const pdfText = await extractPdfTextFromParts(gmail, email.gmailId, email.parts);
-      const bodyForAnalysis = pdfText ? `${email.bodyText}\n\n--- PDF ATTACHMENT TEXT ---\n${pdfText}` : email.bodyText;
+      const visualAttachmentText = await extractVisualAttachmentHints(gmail, email.gmailId, email.parts, email.from);
+      const bodyForAnalysis = [email.bodyText, pdfText && `--- PDF ATTACHMENT TEXT ---\n${pdfText}`, visualAttachmentText && `--- VISUAL ATTACHMENT ANALYSIS ---\n${visualAttachmentText}`].filter(Boolean).join("\n\n");
+      logStep(`[gmail-sync] parsed message=${email.gmailId} bodyLength=${email.bodyText.length} pdfTextLength=${pdfText.length} visualTextLength=${visualAttachmentText.length}`);
       const analysis = await analyzeEmailContent({
         subject: email.subject,
         body: bodyForAnalysis,
         filenames: email.parts.map((p) => p.filename).filter(Boolean) as string[],
         sender: email.from,
       });
+      logStep(`[gmail-sync] ai message=${email.gmailId} supplier="${analysis.supplier}" amount=${analysis.amount ?? "unknown"} documentType=${analysis.documentType} paymentRequired=${analysis.paymentRequired} confidence=${analysis.confidence}`);
       const invoiceMatch = detectInvoice(email.subject, bodyForAnalysis, email.parts);
-      if (invoiceMatch.isInvoice) invoiceEmails++;
+      const amount = invoiceMatch.amount ?? analysis.amount;
+      const attachmentFilename = primaryAttachmentFilename(email.parts);
+      const supplierName = analysis.supplier || email.senderName || email.domain || "Unknown supplier";
+      const classification = classifyGmailScanCandidate({
+        subject: email.subject,
+        bodyText: bodyForAnalysis,
+        attachmentFilenames: email.parts.map((part) => part.filename).filter(Boolean) as string[],
+        analysis,
+        amount,
+        supplierName,
+      });
+      const duplicateKey = buildGmailScanDuplicateKey({
+        gmailMessageId: email.gmailId,
+        attachmentFilename,
+        supplierName,
+        amount,
+      });
+      const existingScanItem = await prisma.gmailScanItem.findUnique({
+        where: { organizationId_duplicateKey: { organizationId, duplicateKey } },
+      });
+      if (existingScanItem) {
+        duplicatesSkipped++;
+        logStep(`[gmail-sync] decision duplicate message=${email.gmailId} type=${existingScanItem.documentType} supplier="${existingScanItem.supplierName}" amount=${existingScanItem.amount ?? "unknown"}`);
+      }
+      logStep(`[gmail-sync] decision message=${email.gmailId} type=${classification.documentType} confidence=${classification.confidenceScore} review=${classification.reviewStatus} reason="${classification.decisionReason}"`);
+
+      if (classification.isRelevant) relevantEmailsFound++;
+      if (classification.documentType === "invoice") invoiceEmails++;
+      if (classification.documentType === "receipt") receiptsFound++;
+      if (classification.documentType === "payment_request") paymentRequestsFound++;
+      if (classification.documentType === "supplier_message") supplierMessagesFound++;
+      if (classification.reviewStatus === "needs_review") needsReviewCount++;
       if (invoiceMatch.amount !== null) invoiceAmountsExtracted++;
-      if (!clientId && invoiceMatch.isInvoice && email.domain) {
+      if (!clientId && classification.isRelevant && email.domain) {
         const saved = await upsertPotentialClient({
           organizationId,
           name: email.senderName || email.domain,
@@ -291,10 +414,19 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         clientId = saved.id;
         clientIdByDomain.set(email.domain, saved.id);
         if (saved.created) clientsCreated++;
+        await upsertGmailLead({
+          organizationId,
+          name: email.senderName || supplierName || email.domain,
+          company: supplierName || email.domain,
+          email: email.senderEmail,
+          phone: extractPhoneFromText(bodyForAnalysis),
+          notes: `${email.subject}\n\n${bodyForAnalysis}`.slice(0, 1200),
+        });
         await prisma.emailMessage.update({
           where: { id: email.emailRecordId },
           data: { clientId },
         });
+        logStep(`[gmail-sync] client/lead message=${email.gmailId} clientId=${clientId} clientCreated=${saved.created}`);
       }
       const driveLinks: { type: string; link: string }[] = [];
 
@@ -356,6 +488,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           }
         } catch (err) {
           driveUploadFailed = true;
+          errorsCount++;
           console.error("Drive upload failed; continuing Gmail sync without attachment upload", err);
           if (!existingAttachment) {
             await prisma.emailAttachment.create({
@@ -368,6 +501,67 @@ export async function syncGmailForOrganization(organizationId: string, options: 
             });
           }
         }
+      }
+
+      const savedScanItem = await prisma.gmailScanItem.upsert({
+        where: { organizationId_duplicateKey: { organizationId, duplicateKey } },
+        create: {
+          organizationId,
+          emailMessageId: email.emailRecordId,
+          gmailMessageId: email.gmailId,
+          gmailMessageLink: gmailMessageLink(email.gmailId),
+          sender: email.from || "unknown",
+          senderEmail: email.senderEmail || null,
+          subject: email.subject,
+          occurredAt: email.receivedAt,
+          amount,
+          supplierName,
+          documentType: classification.documentType,
+          attachmentFilename,
+          driveFileLink: driveLinks[0]?.link ?? null,
+          confidenceScore: classification.confidenceScore,
+          reviewStatus: classification.reviewStatus,
+          duplicateKey,
+          decisionReason: classification.decisionReason,
+          rawAnalysis: {
+            analysis,
+            relevant: classification.isRelevant,
+            hasAttachment: email.parts.length > 0,
+            filenames: email.parts.map((part) => part.filename).filter(Boolean),
+          },
+        },
+        update: {
+          emailMessageId: email.emailRecordId,
+          gmailMessageLink: gmailMessageLink(email.gmailId),
+          sender: email.from || "unknown",
+          senderEmail: email.senderEmail || null,
+          subject: email.subject,
+          occurredAt: email.receivedAt,
+          amount,
+          supplierName,
+          documentType: classification.documentType,
+          attachmentFilename,
+          driveFileLink: driveLinks[0]?.link ?? existingScanItem?.driveFileLink ?? null,
+          confidenceScore: classification.confidenceScore,
+          reviewStatus: classification.reviewStatus,
+          decisionReason: classification.decisionReason,
+          rawAnalysis: {
+            analysis,
+            relevant: classification.isRelevant,
+            hasAttachment: email.parts.length > 0,
+            filenames: email.parts.map((part) => part.filename).filter(Boolean),
+          },
+        },
+      });
+      emailsSavedToGmailScanItem++;
+      logStep(`[gmail-sync] saved GmailScanItem message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} review=${savedScanItem.reviewStatus} relevant=${classification.isRelevant}`);
+
+      if (existingScanItem && !options.forceReprocess) {
+        await prisma.emailMessage.update({
+          where: { id: email.emailRecordId },
+          data: { processedAt: new Date() },
+        });
+        continue;
       }
 
       for (const taskTitle of analysis.tasks) {
@@ -393,8 +587,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         tasksCreated++;
       }
 
-      const amount = invoiceMatch.amount ?? analysis.amount;
-      if (clientId && invoiceMatch.isInvoice && amount != null) {
+      if (clientId && classification.documentType === "invoice" && amount != null) {
         const createdInvoice = await saveDetectedInvoice({
           organizationId,
           clientId,
@@ -405,21 +598,31 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           gmailMessageId: email.gmailId,
           driveUrl: driveLinks[0]?.link ?? null,
         });
-        if (createdInvoice) invoicesCreated++;
+        if (createdInvoice) {
+          invoicesCreated++;
+          logStep(`[gmail-sync] saved Invoice message=${email.gmailId} amount=${amount} supplier="${supplierName}"`);
+        } else {
+          duplicatesSkipped++;
+          logStep(`[gmail-sync] duplicate Invoice message=${email.gmailId}`);
+        }
       }
 
-      if (amount != null || analysis.documentType !== "other" || invoiceMatch.isInvoice) {
+      if (classification.isRelevant && (amount != null || analysis.documentType !== "other" || classification.documentType !== "supplier_message")) {
         const dateIso = email.receivedAt.toISOString();
-        const duplicateHash = buildDuplicateHash({
+        const duplicateHash = duplicateKey || buildDuplicateHash({
           organizationId,
-          supplier: analysis.supplier || email.senderName || email.domain,
+          supplier: supplierName,
           amount: amount ?? 0,
           dateIso,
           subject: email.subject,
         });
 
-        const existingPayment = await prisma.supplierPayment.findUnique({
-          where: { organizationId_duplicateHash: { organizationId, duplicateHash } },
+        const existingPayment = await findExistingSupplierPayment({
+          organizationId,
+          duplicateHash,
+          emailMessageId: email.emailRecordId,
+          supplier: supplierName,
+          amount,
         });
 
         const documentLink =
@@ -437,6 +640,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           Boolean(documentLink || analysis.paymentRequired);
 
         if (existingPayment) {
+          duplicatesSkipped++;
           await prisma.supplierPayment.update({
             where: { id: existingPayment.id },
             data: {
@@ -448,12 +652,13 @@ export async function syncGmailForOrganization(organizationId: string, options: 
               emailSender: email.from,
             },
           });
+          logStep(`[gmail-sync] updated SupplierPayment message=${email.gmailId} id=${existingPayment.id}`);
         } else {
           const dueDate = analysis.dueDate ? new Date(analysis.dueDate) : null;
-          await prisma.supplierPayment.create({
+          const payment = await prisma.supplierPayment.create({
             data: {
               organizationId,
-              supplier: analysis.supplier || email.senderName || email.domain,
+              supplier: supplierName,
               amount: amount ?? 0,
               currency: analysis.currency,
               date: email.receivedAt,
@@ -471,20 +676,21 @@ export async function syncGmailForOrganization(organizationId: string, options: 
             },
           });
           paymentsCreated++;
+          logStep(`[gmail-sync] saved SupplierPayment message=${email.gmailId} id=${payment.id} amount=${amount ?? 0} supplier="${supplierName}"`);
 
-          if (analysis.documentType === "invoice" || missingInvoice) {
+          if (classification.documentType === "invoice" || missingInvoice) {
             await prisma.alert.create({
               data: {
                 organizationId,
                 type: missingInvoice ? "missing_invoice" : "new_invoice",
                 title: missingInvoice
-                  ? `חסרה חשבונית: ${analysis.supplier}`
-                  : `חשבונית חדשה: ${analysis.supplier}`,
+                  ? `חסרה חשבונית: ${supplierName}`
+                  : `חשבונית חדשה: ${supplierName}`,
                 body: `${email.subject} — ₪${amount ?? "?"}`,
               },
             });
             if (!missingInvoice) {
-              await notifyNewInvoice(organizationId, analysis.supplier, amount);
+              await notifyNewInvoice(organizationId, supplierName, amount);
             }
           }
         }
@@ -495,8 +701,13 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         data: { processedAt: new Date() },
       });
     }
-    logStep(`Found ${invoiceEmails} invoice emails, extracted ${invoiceAmountsExtracted} amounts`);
-    logStep(`Saved ${clientsCreated} clients, ${invoicesCreated} invoices to database`);
+    const recordsSaved = paymentsCreated + invoicesCreated + tasksCreated + clientsCreated;
+    logStep(`Found ${relevantEmailsFound} relevant emails (${invoiceEmails} invoices, ${receiptsFound} receipts, ${paymentRequestsFound} payment requests, ${supplierMessagesFound} supplier messages)`);
+    logStep(`Saved ${emailsSavedToGmailScanItem}/${emailsProcessed} fetched emails to GmailScanItem`);
+    logStep(`Ignored ${ignoredCount} emails with reasons: ${JSON.stringify(ignoredReasons)}`);
+    logStep(`Marked ${needsReviewCount} emails as Needs Review, extracted ${invoiceAmountsExtracted} amounts`);
+    logStep(`Saved ${recordsSaved} records (${clientsCreated} clients, ${invoicesCreated} invoices, ${paymentsCreated} payments, ${tasksCreated} tasks)`);
+    logStep(`Skipped ${duplicatesSkipped} duplicates or already processed emails`);
 
     await prisma.syncLog.update({
       where: { id: log.id },
@@ -511,10 +722,23 @@ export async function syncGmailForOrganization(organizationId: string, options: 
 
     return {
       emailsProcessed,
+      totalEmailsChecked: emailsProcessed,
+      relevantEmailsFound,
+      emailsFound: emailsProcessed,
       paymentsCreated,
       tasksCreated,
       clientsCreated,
       invoicesCreated,
+      receiptsFound,
+      paymentRequestsFound,
+      supplierMessagesFound,
+      duplicatesSkipped,
+      recordsSaved,
+      needsReviewCount,
+      errorsCount,
+      emailsSavedToGmailScanItem,
+      ignoredCount,
+      ignoredReasons,
       uniqueSenders,
       potentialClients,
       invoiceEmails,
@@ -542,6 +766,8 @@ type PayloadPart = {
 
 type GmailClient = Awaited<ReturnType<typeof getGoogleClients>>["gmail"];
 type GmailMessageRef = { id?: string | null; threadId?: string | null };
+type GmailDocumentType = "invoice" | "receipt" | "payment_request" | "supplier_message" | "unknown_needs_review";
+type GmailConfidenceScore = "high" | "medium" | "low";
 type ScannedEmail = {
   gmailId: string;
   emailRecordId: string;
@@ -558,30 +784,128 @@ type ScannedEmail = {
   alreadyProcessed: boolean;
 };
 
+export type GmailScanClassification = {
+  documentType: GmailDocumentType;
+  confidenceScore: GmailConfidenceScore;
+  reviewStatus: "auto_saved" | "needs_review";
+  isRelevant: boolean;
+  decisionReason: string;
+};
+
+export function classifyGmailScanCandidate(input: {
+  subject: string;
+  bodyText: string;
+  attachmentFilenames: string[];
+  analysis: Pick<EmailAnalysis, "documentType" | "confidence" | "paymentRequired">;
+  amount: number | null;
+  supplierName: string;
+}): GmailScanClassification {
+  const text = `${input.subject}\n${input.bodyText}\n${input.attachmentFilenames.join("\n")}`.toLowerCase();
+  const hasAttachment = input.attachmentFilenames.length > 0;
+  const hasPdf = input.attachmentFilenames.some((filename) => /\.pdf$/i.test(filename));
+  const hasInvoice = /חשבונית|חשבונית מס|invoice|tax invoice|green invoice|greeninvoice|icount|i-count|חשבונית ירוקה/.test(text);
+  const hasReceipt = /קבלה|receipt|paid|שולם|payment received/.test(text);
+  const hasPaymentRequest = /דרישת תשלום|בקשת תשלום|לתשלום|payment request|please pay|payment due|balance due|תשלום/.test(text);
+  const hasSupplierSignal = SUPPLIER_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
+  const hasAmount = input.amount !== null;
+  const aiType = input.analysis.documentType;
+
+  let documentType: GmailDocumentType = "unknown_needs_review";
+  if (aiType === "receipt" || hasReceipt) documentType = "receipt";
+  else if (aiType === "invoice" || hasInvoice || (hasPdf && hasAmount)) documentType = "invoice";
+  else if (aiType === "payment_request" || input.analysis.paymentRequired || hasPaymentRequest) documentType = "payment_request";
+  else if (hasSupplierSignal || hasAttachment || hasAmount) documentType = "supplier_message";
+
+  const isRelevant = documentType !== "unknown_needs_review" || hasSupplierSignal || hasAmount || hasAttachment;
+  const evidence = [
+    hasPdf && "pdf attachment",
+    hasAttachment && !hasPdf && "attachment",
+    hasAmount && "amount detected",
+    hasInvoice && "invoice keyword",
+    hasReceipt && "receipt keyword",
+    hasPaymentRequest && "payment keyword",
+    hasSupplierSignal && "supplier-like keyword",
+    aiType !== "other" && `ai:${aiType}`,
+  ].filter(Boolean) as string[];
+
+  const confidenceScore = confidenceBucket(input.analysis.confidence, evidence.length, documentType);
+  const reviewStatus = confidenceScore === "high" && documentType !== "unknown_needs_review" ? "auto_saved" : "needs_review";
+
+  return {
+    documentType,
+    confidenceScore,
+    reviewStatus,
+    isRelevant,
+    decisionReason: evidence.length
+      ? evidence.join(", ")
+      : "No strong signal; saved for review because it matched a broad Gmail candidate query",
+  };
+}
+
+export function buildGmailScanDuplicateKey(input: {
+  gmailMessageId: string;
+  attachmentFilename?: string | null;
+  supplierName: string;
+  amount: number | null;
+}) {
+  const normalized = [
+    input.gmailMessageId,
+    (input.attachmentFilename ?? "no-attachment").trim().toLowerCase(),
+    input.supplierName.trim().toLowerCase(),
+    input.amount === null ? "unknown-amount" : input.amount.toFixed(2),
+  ].join("|");
+  return createHash("sha256").update(normalized).digest("hex").slice(0, 40);
+}
+
+function confidenceBucket(confidence: number, evidenceCount: number, documentType: GmailDocumentType): GmailConfidenceScore {
+  if (documentType === "unknown_needs_review") return "low";
+  if (confidence >= 0.78 && evidenceCount >= 2) return "high";
+  if (confidence >= 0.5 || evidenceCount >= 2) return "medium";
+  return "low";
+}
+
+function primaryAttachmentFilename(parts: PayloadPart[]) {
+  return parts.find((part) => part.filename)?.filename ?? null;
+}
+
+function gmailMessageLink(gmailMessageId: string) {
+  return `https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(gmailMessageId)}`;
+}
+
 async function listCandidateMessages(gmail: GmailClient, daysBack: number, maxMessages = MAX_MESSAGES_PER_SYNC): Promise<GmailMessageRef[]> {
   const byId = new Map<string, GmailMessageRef>();
-  const from = new Date(Date.now() - Math.max(1, Math.ceil(daysBack)) * 24 * 60 * 60 * 1000);
-  const queryDate = `${from.getFullYear()}/${String(from.getMonth() + 1).padStart(2, "0")}/${String(from.getDate()).padStart(2, "0")}`;
-  const q = `after:${queryDate}`;
-  console.log(`Searching Gmail from ${queryDate} to today`);
-  let pageToken: string | undefined;
+  const safeDaysBack = Math.max(1, Math.ceil(daysBack));
+  const dateFilter = `newer_than:${safeDaysBack}d`;
+  const keywordOr = "{invoice receipt payment \"payment request\" חשבונית קבלה תשלום \"דרישת תשלום\"}";
+  const queries = [
+    `${dateFilter} has:attachment ${keywordOr} ${GMAIL_EXCLUDE_QUERY}`,
+    `${dateFilter} ${keywordOr} ${GMAIL_EXCLUDE_QUERY}`,
+    `${dateFilter} {${SUPPLIER_KEYWORDS.map((keyword) => keyword.includes(" ") ? `"${keyword}"` : keyword).join(" ")}} ${GMAIL_EXCLUDE_QUERY}`,
+  ];
 
-  do {
-    const result = await gmail.users.messages.list({
-      userId: "me",
-      q,
-      maxResults: Math.min(100, maxMessages),
-      pageToken,
-    });
+  for (const q of queries) {
+    console.log(`[gmail-sync] Searching Gmail query="${q}" maxMessages=${maxMessages}`);
+    let pageToken: string | undefined;
+    do {
+      const remaining = maxMessages - byId.size;
+      if (remaining <= 0) break;
+      const result = await gmail.users.messages.list({
+        userId: "me",
+        q,
+        maxResults: Math.min(100, remaining),
+        pageToken,
+      });
 
-    for (const message of result.data.messages ?? []) {
-      if (message.id && !byId.has(message.id)) {
-        byId.set(message.id, message);
+      for (const message of result.data.messages ?? []) {
+        if (message.id && !byId.has(message.id)) {
+          byId.set(message.id, message);
+        }
       }
-    }
-    pageToken = result.data.nextPageToken ?? undefined;
-  } while (pageToken && byId.size < maxMessages);
+      pageToken = result.data.nextPageToken ?? undefined;
+    } while (pageToken && byId.size < maxMessages);
+  }
 
+  console.log(`[gmail-sync] Gmail list returned ${byId.size} candidate messages`);
   return [...byId.values()].slice(0, maxMessages);
 }
 
@@ -655,6 +979,33 @@ async function extractPdfTextFromParts(gmail: GmailClient, messageId: string, pa
   return texts.join("\n\n");
 }
 
+async function extractVisualAttachmentHints(gmail: GmailClient, messageId: string, parts: PayloadPart[], sender: string) {
+  const visualParts = parts.filter((part) =>
+    part.body?.attachmentId &&
+    (part.mimeType?.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(part.filename ?? ""))
+  );
+  const hints: string[] = [];
+  for (const part of visualParts) {
+    try {
+      const attachment = await gmail.users.messages.attachments.get({
+        userId: "me",
+        messageId,
+        id: part.body!.attachmentId!,
+      });
+      const { analyzeInvoiceFile } = await import("./claude.js");
+      const result = await analyzeInvoiceFile({
+        fileBase64: attachment.data.data ?? "",
+        mimeType: part.mimeType || "image/jpeg",
+        filename: part.filename ?? undefined,
+      });
+      hints.push(`filename=${part.filename ?? "image"} supplier=${result.supplier} amount=${result.amount ?? "unknown"} date=${result.date ?? "unknown"} invoiceNumber=${result.invoiceNumber ?? "unknown"} currency=${result.currency}`);
+    } catch (err) {
+      console.warn(`[gmail-sync] Image OCR/vision failed message=${messageId} sender="${sender}" file="${part.filename ?? "image"}"`, err instanceof Error ? err.message : String(err));
+    }
+  }
+  return hints.join("\n");
+}
+
 function parseSender(from: string) {
   const email = (from.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] ?? "").toLowerCase();
   const domain = email.split("@")[1] ?? "";
@@ -678,8 +1029,11 @@ function detectInvoice(subject: string, body: string, parts: PayloadPart[]) {
 function extractInvoiceAmount(text: string) {
   const normalized = text.replace(/&nbsp;/gi, " ").replace(/\u00a0/g, " ");
   const patterns = [
+    /(?:סה["״']?כ|סך\s*הכל|לתשלום|total\s*(?:due|amount)?|amount\s*(?:due)?|balance\s*due)[^\d₪$€]{0,40}(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:\.[0-9]{1,2})?)/gi,
     /₪\s*([0-9][0-9,\s]*(?:\.[0-9]{1,2})?)/g,
     /([0-9][0-9,\s]*(?:\.[0-9]{1,2})?)\s*(?:ש["״']?ח|שקל|שקלים)/g,
+    /(?:ils|nis)\s*([0-9][0-9.,\s]*(?:\.[0-9]{1,2})?)/gi,
+    /([0-9][0-9.,\s]*(?:\.[0-9]{1,2})?)\s*(?:ils|nis)/gi,
   ];
   const amounts: number[] = [];
   for (const pattern of patterns) {
@@ -696,7 +1050,19 @@ function extractPhoneFromText(text: string) {
 }
 
 function parseAmount(raw: string) {
-  const compact = raw.replace(/\s/g, "").replace(/,/g, "");
+  const cleaned = raw.replace(/[^\d.,]/g, "");
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  const decimalSeparator = lastComma > lastDot ? "," : ".";
+  let compact = cleaned;
+  if (lastComma !== -1 && lastDot !== -1) {
+    compact = cleaned.replace(new RegExp(`\\${decimalSeparator === "," ? "." : ","}`, "g"), "").replace(decimalSeparator, ".");
+  } else if (lastComma !== -1) {
+    compact = cleaned.length - lastComma - 1 === 2 ? cleaned.replace(",", ".") : cleaned.replace(/,/g, "");
+  } else if (lastDot !== -1) {
+    compact = cleaned.length - lastDot - 1 === 2 ? cleaned : cleaned.replace(/\./g, "");
+  }
+  compact = compact.replace(/\s/g, "");
   const amount = Number(compact);
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
@@ -739,6 +1105,78 @@ async function upsertPotentialClient(input: {
     "#6366F1"
   );
   return { id, created: true };
+}
+
+async function upsertGmailLead(input: {
+  organizationId: string;
+  name: string;
+  company: string;
+  email: string;
+  phone?: string;
+  notes: string;
+}) {
+  const existing = await prisma.lead.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      OR: [
+        { email: input.email },
+        ...(input.phone ? [{ phone: input.phone }, { whatsapp: input.phone }] : []),
+      ],
+    },
+  });
+  if (existing) return { id: existing.id, created: false };
+
+  const lead = await prisma.lead.create({
+    data: {
+      organizationId: input.organizationId,
+      name: input.name || input.company || input.email,
+      company: input.company,
+      email: input.email,
+      phone: input.phone,
+      whatsapp: input.phone,
+      source: "email",
+      stage: "חדש",
+      notes: input.notes,
+      score: 45,
+      priorityStars: 2,
+      lastContactAt: new Date(),
+      timeline: {
+        create: {
+          type: "gmail_scan",
+          content: "נוצר אוטומטית מסריקת Gmail",
+          channel: "email",
+        },
+      },
+    },
+  });
+  return { id: lead.id, created: true };
+}
+
+async function findExistingSupplierPayment(input: {
+  organizationId: string;
+  duplicateHash: string;
+  emailMessageId: string;
+  supplier: string;
+  amount: number | null;
+}) {
+  const byHash = await prisma.supplierPayment.findUnique({
+    where: {
+      organizationId_duplicateHash: {
+        organizationId: input.organizationId,
+        duplicateHash: input.duplicateHash,
+      },
+    },
+  });
+  if (byHash) return byHash;
+
+  return prisma.supplierPayment.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      emailMessageId: input.emailMessageId,
+      supplier: input.supplier,
+      ...(input.amount !== null ? { amount: input.amount } : {}),
+    },
+  });
 }
 
 async function saveDetectedInvoice(input: {
