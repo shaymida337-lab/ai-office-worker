@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { authMiddleware } from "../lib/auth.js";
 import { errorDetails } from "../lib/errors.js";
-import { prisma } from "../lib/prisma.js";
+import { databaseHost, prisma } from "../lib/prisma.js";
 import { getDashboardStats, getMissingInvoicesReport } from "../services/dashboard.js";
 import { buildDailySummary } from "../services/summary.js";
 import {
@@ -312,6 +312,97 @@ apiRouter.get("/debug/invoices", async (req, res) => {
   } catch (err) {
     console.error("[debug/invoices] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Invoice debug failed" });
+  }
+});
+
+apiRouter.get("/debug/invoices-auth", async (req, res) => {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const userId = req.auth!.userId;
+    const email = req.auth!.email;
+    const [invoiceCount, supplierPaymentCount, gmailScanItemCount, invoiceScanItemCount] = await Promise.all([
+      prisma.invoice.count({ where: { organizationId } }),
+      prisma.supplierPayment.count({ where: { organizationId } }),
+      prisma.gmailScanItem.count({ where: { organizationId } }),
+      prisma.gmailScanItem.count({ where: { organizationId, documentType: { in: ["invoice", "receipt"] } } }),
+    ]);
+    const latestInvoiceRows = await prisma.invoice.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        organizationId: true,
+        clientId: true,
+        invoiceNumber: true,
+        amount: true,
+        currency: true,
+        date: true,
+        status: true,
+        driveUrl: true,
+        emailId: true,
+        gmailMessageId: true,
+        createdAt: true,
+        client: { select: { id: true, organizationId: true, name: true, email: true, domain: true } },
+      },
+    });
+    const latestInvoiceScanItems = await prisma.gmailScanItem.findMany({
+      where: { organizationId, documentType: { in: ["invoice", "receipt"] } },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        organizationId: true,
+        emailMessageId: true,
+        gmailMessageId: true,
+        subject: true,
+        amount: true,
+        supplierName: true,
+        documentType: true,
+        driveFileLink: true,
+        reviewStatus: true,
+        decisionReason: true,
+        createdAt: true,
+      },
+    });
+    const latestGmailScanLogs = await prisma.syncLog.findMany({
+      where: { organizationId, type: "gmail_scan" },
+      orderBy: { startedAt: "desc" },
+      take: 5,
+      select: {
+        id: true,
+        organizationId: true,
+        status: true,
+        scanMode: true,
+        emailsProcessed: true,
+        emailsSaved: true,
+        invoicesFound: true,
+        paymentsCreated: true,
+        driveUploaded: true,
+        sheetsUpdated: true,
+        errorsCount: true,
+        errorMessage: true,
+        startedAt: true,
+        finishedAt: true,
+      },
+    });
+
+    res.json({
+      authenticatedUser: { userId, email, organizationId },
+      database: { host: databaseHost() },
+      counts: {
+        invoiceCount,
+        supplierPaymentCount,
+        gmailScanItemCount,
+        invoiceScanItemCount,
+      },
+      latestInvoiceRows,
+      latestInvoiceScanItems,
+      latestGmailScanLogs,
+    });
+  } catch (err) {
+    console.error("[debug/invoices-auth] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Invoice auth debug failed" });
   }
 });
 
