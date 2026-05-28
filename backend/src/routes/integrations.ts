@@ -70,6 +70,78 @@ type GmailIntegrationState = {
   timestamp: number;
 };
 
+async function findGmailIntegrationForAuth(auth: {
+  userId: string;
+  organizationId: string;
+  email: string;
+}) {
+  const current = await prisma.integration.findUnique({
+    where: {
+      organizationId_provider: {
+        organizationId: auth.organizationId,
+        provider: "gmail",
+      },
+    },
+  });
+  if (current?.refreshToken || current?.accessToken) {
+    return current;
+  }
+
+  const matchingUserIntegration = await prisma.integration.findFirst({
+    where: {
+      provider: "gmail",
+      OR: [
+        { organization: { userId: auth.userId } },
+        { organization: { user: { email: auth.email } } },
+      ],
+      refreshToken: { not: null },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  if (!matchingUserIntegration || matchingUserIntegration.organizationId === auth.organizationId) {
+    return current;
+  }
+
+  console.warn(
+    `[gmail/status] moving Gmail integration from org=${matchingUserIntegration.organizationId} to current org=${auth.organizationId} user=${auth.userId} email=${auth.email}`
+  );
+
+  const moved = await prisma.integration.upsert({
+    where: {
+      organizationId_provider: {
+        organizationId: auth.organizationId,
+        provider: "gmail",
+      },
+    },
+    create: {
+      organizationId: auth.organizationId,
+      provider: "gmail",
+      accessToken: matchingUserIntegration.accessToken,
+      refreshToken: matchingUserIntegration.refreshToken,
+      expiresAt: matchingUserIntegration.expiresAt,
+      metadata: matchingUserIntegration.metadata,
+      connectedAt: matchingUserIntegration.connectedAt,
+    },
+    update: {
+      accessToken: matchingUserIntegration.accessToken,
+      refreshToken: matchingUserIntegration.refreshToken,
+      expiresAt: matchingUserIntegration.expiresAt,
+      metadata: matchingUserIntegration.metadata,
+    },
+  });
+
+  await prisma.integration.deleteMany({
+    where: {
+      id: matchingUserIntegration.id,
+      organizationId: { not: auth.organizationId },
+      provider: "gmail",
+    },
+  });
+
+  return moved;
+}
+
 function signGmailIntegrationState(auth: {
   userId: string;
   organizationId: string;
@@ -100,14 +172,10 @@ function runPostConnectionGmailScan(organizationId: string) {
 }
 
 integrationsRouter.get("/gmail/status", authMiddleware, async (req, res) => {
-  const integration = await prisma.integration.findUnique({
-    where: {
-      organizationId_provider: {
-        organizationId: req.auth!.organizationId,
-        provider: "gmail",
-      },
-    },
-  });
+  const integration = await findGmailIntegrationForAuth(req.auth!);
+  console.log(
+    `[gmail/status] user=${req.auth!.userId} org=${req.auth!.organizationId} connected=${Boolean(integration?.refreshToken)} integrationOrg=${integration?.organizationId ?? "none"} hasAccessToken=${Boolean(integration?.accessToken)} hasRefreshToken=${Boolean(integration?.refreshToken)} connectedAt=${integration?.connectedAt?.toISOString() ?? "none"}`
+  );
 
   res.json({
     googleConfigured: hasGoogleOAuth(),
@@ -290,7 +358,7 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
     });
 
     console.log(
-      `[gmail/callback] connected org=${organizationId} hasAccessToken=${Boolean(savedIntegration.accessToken)} hasRefreshToken=${Boolean(savedIntegration.refreshToken)} expiresAt=${savedIntegration.expiresAt?.toISOString() ?? "none"}`
+      `[gmail/callback] connected stateUser=${decodedState?.userId ?? "none"} stateEmail=${decodedState?.email ?? "none"} stateOrg=${organizationId} savedOrg=${savedIntegration.organizationId} provider=${savedIntegration.provider} hasAccessToken=${Boolean(savedIntegration.accessToken)} hasRefreshToken=${Boolean(savedIntegration.refreshToken)} connectedAt=${savedIntegration.connectedAt.toISOString()} expiresAt=${savedIntegration.expiresAt?.toISOString() ?? "none"}`
     );
     runPostConnectionGmailScan(organizationId);
 

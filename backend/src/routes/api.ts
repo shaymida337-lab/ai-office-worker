@@ -610,10 +610,53 @@ async function scanGmail(req: Request, res: Response) {
   try {
     const { quickScanGmailForOrganization, syncGmailForOrganization } = await import("../services/gmail-sync.js");
     const organizationId = req.auth!.organizationId;
-    const gmailIntegration = await prisma.integration.findUnique({
+    let gmailIntegration = await prisma.integration.findUnique({
       where: { organizationId_provider: { organizationId, provider: "gmail" } },
-      select: { refreshToken: true, accessToken: true },
+      select: { refreshToken: true, accessToken: true, organizationId: true },
     });
+    if (!gmailIntegration?.refreshToken && req.auth?.userId && req.auth?.email) {
+      const matchingUserIntegration = await prisma.integration.findFirst({
+        where: {
+          provider: "gmail",
+          OR: [
+            { organization: { userId: req.auth.userId } },
+            { organization: { user: { email: req.auth.email } } },
+          ],
+          refreshToken: { not: null },
+        },
+        orderBy: { updatedAt: "desc" },
+      });
+      if (matchingUserIntegration && matchingUserIntegration.organizationId !== organizationId) {
+        console.warn(`[gmail-scan] moving Gmail integration from org=${matchingUserIntegration.organizationId} to current org=${organizationId} user=${req.auth.userId}`);
+        const movedIntegration = await prisma.integration.upsert({
+          where: { organizationId_provider: { organizationId, provider: "gmail" } },
+          create: {
+            organizationId,
+            provider: "gmail",
+            accessToken: matchingUserIntegration.accessToken,
+            refreshToken: matchingUserIntegration.refreshToken,
+            expiresAt: matchingUserIntegration.expiresAt,
+            metadata: matchingUserIntegration.metadata,
+            connectedAt: matchingUserIntegration.connectedAt,
+          },
+          update: {
+            accessToken: matchingUserIntegration.accessToken,
+            refreshToken: matchingUserIntegration.refreshToken,
+            expiresAt: matchingUserIntegration.expiresAt,
+            metadata: matchingUserIntegration.metadata,
+          },
+          select: { refreshToken: true, accessToken: true, organizationId: true },
+        });
+        await prisma.integration.deleteMany({
+          where: {
+            id: matchingUserIntegration.id,
+            organizationId: { not: organizationId },
+            provider: "gmail",
+          },
+        });
+        gmailIntegration = movedIntegration;
+      }
+    }
     if (!gmailIntegration?.refreshToken && !gmailIntegration?.accessToken) {
       console.warn(`[gmail-scan] Gmail not connected org=${organizationId}`);
       res.status(409).json({ error: "Please connect Gmail account first", code: "GMAIL_NOT_CONNECTED" });
