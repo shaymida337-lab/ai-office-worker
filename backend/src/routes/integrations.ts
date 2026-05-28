@@ -1,4 +1,5 @@
 import { Router } from "express";
+import jwt from "jsonwebtoken";
 import { authMiddleware, signToken, verifyToken } from "../lib/auth.js";
 import { config, hasGoogleOAuth } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
@@ -26,6 +27,14 @@ function gmailAuthUrl(state?: string) {
     })
   );
 }
+
+type GmailIntegrationState = {
+  purpose: "gmail_integration";
+  userId: string;
+  organizationId: string;
+  email: string;
+  timestamp: number;
+};
 
 integrationsRouter.get("/gmail/status", authMiddleware, async (req, res) => {
   const integration = await prisma.integration.findUnique({
@@ -68,11 +77,13 @@ integrationsRouter.get("/gmail/connect-url", authMiddleware, async (req, res) =>
     }
 
     const auth = req.auth!;
-    const state = signToken({
+    const state = jwt.sign({
+      purpose: "gmail_integration",
       userId: auth.userId,
       organizationId: auth.organizationId,
       email: auth.email,
-    });
+      timestamp: Date.now(),
+    } satisfies GmailIntegrationState, config.jwtSecret, { expiresIn: "10m" });
     res.json({ url: await gmailAuthUrl(state) });
   } catch (error) {
     console.error("Gmail connect error:", error);
@@ -125,7 +136,16 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
     let organizationId: string;
     let frontendToken: string | null = null;
     if (state) {
-      organizationId = verifyToken(state).organizationId;
+      const decoded = jwt.verify(state, config.jwtSecret) as Partial<GmailIntegrationState> & { organizationId?: string };
+      if (decoded.purpose && decoded.purpose !== "gmail_integration") {
+        res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
+        return;
+      }
+      if (!decoded.organizationId) {
+        res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
+        return;
+      }
+      organizationId = decoded.organizationId;
     } else {
       const oauth2api = await import("googleapis").then((g) =>
         g.google.oauth2({ version: "v2", auth: oauth2 })
@@ -220,6 +240,10 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
     res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=connected`);
   } catch (err) {
     console.error("[gmail/callback]", err);
+    if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.TokenExpiredError) {
+      res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
+      return;
+    }
     res.status(500).send("Failed to connect Gmail");
   }
 });

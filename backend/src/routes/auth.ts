@@ -134,9 +134,13 @@ async function buildGoogleAuthUrl() {
   }
   const oauth2 = await getOAuth2Client();
   const state = jwt.sign(
-    { purpose: "google_login", nonce: crypto.randomBytes(16).toString("hex") },
+    {
+      purpose: "google_login",
+      nonce: crypto.randomBytes(16).toString("hex"),
+      timestamp: Date.now(),
+    },
     config.jwtSecret,
-    { expiresIn: "15m" }
+    { expiresIn: "10m" }
   );
   const url = oauth2.generateAuthUrl({
     access_type: "offline",
@@ -197,14 +201,62 @@ authRouter.get("/google/callback", async (req, res) => {
       res.status(400).send("Missing state");
       return;
     }
-    const decoded = jwt.verify(state, config.jwtSecret) as { purpose?: string };
+    const decoded = jwt.verify(state, config.jwtSecret) as {
+      purpose?: string;
+      userId?: string;
+      organizationId?: string;
+      email?: string;
+    };
+    const oauth2 = await getOAuth2Client();
+    const { tokens } = await oauth2.getToken(code);
+    oauth2.setCredentials(tokens);
+
+    if (decoded.purpose === "gmail_integration") {
+      if (!decoded.organizationId || !decoded.userId || !decoded.email) {
+        res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
+        return;
+      }
+      const existingIntegration = await prisma.integration.findUnique({
+        where: {
+          organizationId_provider: {
+            organizationId: decoded.organizationId,
+            provider: "gmail",
+          },
+        },
+      });
+      const refreshToken = tokens.refresh_token ?? existingIntegration?.refreshToken;
+      if (!refreshToken) {
+        res.status(400).send("Google did not return a refresh token. Reconnect and approve access.");
+        return;
+      }
+      await prisma.integration.upsert({
+        where: {
+          organizationId_provider: {
+            organizationId: decoded.organizationId,
+            provider: "gmail",
+          },
+        },
+        create: {
+          organizationId: decoded.organizationId,
+          provider: "gmail",
+          accessToken: tokens.access_token ?? null,
+          refreshToken,
+          expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+        },
+        update: {
+          accessToken: tokens.access_token ?? null,
+          refreshToken,
+          expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+        },
+      });
+      res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=connected`);
+      return;
+    }
+
     if (decoded.purpose !== "google_login") {
       res.status(400).send("Invalid state");
       return;
     }
-    const oauth2 = await getOAuth2Client();
-    const { tokens } = await oauth2.getToken(code);
-    oauth2.setCredentials(tokens);
 
     const oauth2api = await import("googleapis").then((g) =>
       g.google.oauth2({ version: "v2", auth: oauth2 })
@@ -284,7 +336,11 @@ authRouter.get("/google/callback", async (req, res) => {
 
     res.redirect(`${config.frontendUrl}/auth/callback#token=${encodeURIComponent(token)}`);
   } catch (err) {
-    console.error(err);
+    console.error("[auth/google/callback]", err);
+    if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.TokenExpiredError) {
+      res.redirect(`${config.frontendUrl}/login?error=invalid_state`);
+      return;
+    }
     res.status(500).send("Auth failed");
   }
 });
