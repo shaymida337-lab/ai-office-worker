@@ -56,7 +56,7 @@ export async function connectPrisma() {
       await prisma.$connect();
       await prisma.$queryRaw`SELECT 1`;
       globalForPrisma.prismaConnected = true;
-      console.log(`[prisma] Prisma connected successfully host=${databaseHost()}`);
+      console.log(`PRISMA_CONNECTED host=${databaseHost()}`);
     } catch (err) {
       globalForPrisma.prismaConnected = false;
       console.error(`[prisma] Prisma connection failed host=${databaseHost()}`, err);

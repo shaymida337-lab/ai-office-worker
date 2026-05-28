@@ -2,16 +2,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { config } from "./lib/config.js";
-import { authRouter } from "./routes/auth.js";
-import { apiRouter } from "./routes/api.js";
-import { cronRouter } from "./routes/cron.js";
-import { integrationsRouter } from "./routes/integrations.js";
-import { webhooksRouter } from "./routes/webhooks.js";
-import { clientsRouter } from "./routes/clients.js";
-import { clientWhatsappRouter } from "./routes/clientWhatsapp.js";
-import { socialRouter } from "./routes/social.js";
-import { scheduler } from "./services/scheduler.js";
-import { connectPrisma, databaseHost, isPrismaConnected } from "./lib/prisma.js";
+import { connectPrisma, databaseHost, isPrismaConnected, prisma } from "./lib/prisma.js";
 
 const app = express();
 
@@ -39,9 +30,22 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
+async function healthHandler(_req: express.Request, res: express.Response) {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: "ok", database: "connected" });
+  } catch (err) {
+    res.status(503).json({
+      status: "error",
+      database: "disconnected",
+      host: databaseHost(),
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+app.get("/health", healthHandler);
+app.get("/api/health", healthHandler);
 
 app.use((req, res, next) => {
   if (isPrismaConnected()) {
@@ -53,16 +57,38 @@ app.use((req, res, next) => {
   res.status(503).json({ error: "Database is not connected" });
 });
 
-app.use("/auth", authRouter);
-app.use("/api/auth", authRouter);
-app.use("/api/integrations", integrationsRouter);
-app.use("/api/clients", clientWhatsappRouter);
-app.use("/api/clients", clientsRouter);
-app.use("/api/social", socialRouter);
-app.use("/api", apiRouter);
-app.use("/cron", cronRouter);
-app.use("/webhook", webhooksRouter);
-app.use("/webhooks", webhooksRouter);
+async function registerRoutes() {
+  const [
+    { authRouter },
+    { apiRouter },
+    { cronRouter },
+    { integrationsRouter },
+    { webhooksRouter },
+    { clientsRouter },
+    { clientWhatsappRouter },
+    { socialRouter },
+  ] = await Promise.all([
+    import("./routes/auth.js"),
+    import("./routes/api.js"),
+    import("./routes/cron.js"),
+    import("./routes/integrations.js"),
+    import("./routes/webhooks.js"),
+    import("./routes/clients.js"),
+    import("./routes/clientWhatsapp.js"),
+    import("./routes/social.js"),
+  ]);
+
+  app.use("/auth", authRouter);
+  app.use("/api/auth", authRouter);
+  app.use("/api/integrations", integrationsRouter);
+  app.use("/api/clients", clientWhatsappRouter);
+  app.use("/api/clients", clientsRouter);
+  app.use("/api/social", socialRouter);
+  app.use("/api", apiRouter);
+  app.use("/cron", cronRouter);
+  app.use("/webhook", webhooksRouter);
+  app.use("/webhooks", webhooksRouter);
+}
 
 async function start() {
   try {
@@ -71,6 +97,9 @@ async function start() {
     console.error(`[api] Failed to connect database before startup db=${databaseHost()}`, err);
     process.exit(1);
   }
+
+  await registerRoutes();
+  const { scheduler } = await import("./services/scheduler.js");
 
   const server = app.listen(config.port, () => {
     console.log(`Server running on port ${config.port}`);
