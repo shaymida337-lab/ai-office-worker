@@ -187,6 +187,16 @@ export async function syncGmailForOrganization(organizationId: string, options: 
   let needsReviewCount = 0;
   let errorsCount = 0;
   let emailsSavedToGmailScanItem = 0;
+  let emailsParsed = 0;
+  let parserRejectedCount = 0;
+  let dbEmailMessageUpserts = 0;
+  let dbGmailScanItemUpserts = 0;
+  let driveUploadsAttempted = 0;
+  let driveUploadsSucceeded = 0;
+  let driveUploadsSkipped = 0;
+  let driveUploadsFailed = 0;
+  let invoiceDetectionPositive = 0;
+  let invoiceDetectionNegative = 0;
   let ignoredCount = 0;
   const ignoredReasons: Record<string, number> = {};
 
@@ -194,6 +204,75 @@ export async function syncGmailForOrganization(organizationId: string, options: 
     ignoredCount++;
     ignoredReasons[reason] = (ignoredReasons[reason] ?? 0) + 1;
     logStep(`[gmail-sync] ignored message=${messageId ?? "unknown"} reason="${reason}"`);
+  };
+
+  const saveRejectedScanItem = async (email: ScannedEmail, reason: string) => {
+    const attachmentFilename = primaryAttachmentFilename(email.parts);
+    const supplierName = email.senderName || email.domain || "Unknown supplier";
+    const duplicateKey = buildGmailScanDuplicateKey({
+      gmailMessageId: email.gmailId,
+      attachmentFilename,
+      supplierName,
+      amount: null,
+    });
+    logStep(`[gmail-sync] DB fallback GmailScanItem upsert attempt message=${email.gmailId} reason="${reason}"`);
+    const saved = await prisma.gmailScanItem.upsert({
+      where: { organizationId_duplicateKey: { organizationId, duplicateKey } },
+      create: {
+        organizationId,
+        emailMessageId: email.emailRecordId,
+        gmailMessageId: email.gmailId,
+        gmailMessageLink: gmailMessageLink(email.gmailId),
+        sender: email.from || "unknown",
+        senderEmail: email.senderEmail || null,
+        subject: email.subject,
+        occurredAt: email.receivedAt,
+        amount: null,
+        supplierName,
+        documentType: "unknown_needs_review",
+        attachmentFilename,
+        driveFileLink: null,
+        confidenceScore: "low",
+        reviewStatus: "needs_review",
+        duplicateKey,
+        decisionReason: reason,
+        rawAnalysis: {
+          parserRejected: true,
+          reason,
+          bodyLength: email.bodyText.length,
+          hasAttachment: email.parts.length > 0,
+          filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
+        },
+      },
+      update: {
+        emailMessageId: email.emailRecordId,
+        gmailMessageLink: gmailMessageLink(email.gmailId),
+        sender: email.from || "unknown",
+        senderEmail: email.senderEmail || null,
+        subject: email.subject,
+        occurredAt: email.receivedAt,
+        amount: null,
+        supplierName,
+        documentType: "unknown_needs_review",
+        attachmentFilename,
+        confidenceScore: "low",
+        reviewStatus: "needs_review",
+        decisionReason: reason,
+        rawAnalysis: {
+          parserRejected: true,
+          reason,
+          bodyLength: email.bodyText.length,
+          hasAttachment: email.parts.length > 0,
+          filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
+        },
+      },
+    });
+    emailsSavedToGmailScanItem++;
+    dbGmailScanItemUpserts++;
+    parserRejectedCount++;
+    ignoredReasons[reason] = (ignoredReasons[reason] ?? 0) + 1;
+    logStep(`[gmail-sync] DB fallback GmailScanItem upsert success message=${email.gmailId} id=${saved.id} reason="${reason}"`);
+    return saved;
   };
 
   try {
@@ -249,6 +328,14 @@ export async function syncGmailForOrganization(organizationId: string, options: 
 
       const attachmentParts = collectAttachmentParts(full.data.payload as PayloadPart | undefined);
       logStep(`[gmail-sync] fetched message=${msgRef.id} sender="${from || "unknown"}" subject="${subject}" date="${receivedAt.toISOString()}" attachments=${attachmentParts.length ? attachmentParts.map((part) => `${part.filename || "unnamed"}:${part.mimeType || "unknown"}`).join(", ") : "none"} bodyLength=${bodyText.length}`);
+      emailsParsed++;
+      if (!bodyText.trim() && attachmentParts.length === 0) {
+        parserRejectedCount++;
+        ignoredReasons.empty_body_and_no_attachments = (ignoredReasons.empty_body_and_no_attachments ?? 0) + 1;
+        logStep(`[gmail-sync] parser decision message=${msgRef.id} rejected=true reason="empty_body_and_no_attachments"`);
+      } else {
+        logStep(`[gmail-sync] parser decision message=${msgRef.id} rejected=false reason="body_or_attachment_present"`);
+      }
 
         const emailRecord = await prisma.emailMessage.upsert({
           where: {
@@ -273,6 +360,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           },
         });
         logStep(`[gmail-sync] DB upsert EmailMessage success message=${msgRef.id} id=${emailRecord.id}`);
+        dbEmailMessageUpserts++;
 
       await analyzeAndSaveMessage({
         organizationId,
@@ -335,7 +423,10 @@ export async function syncGmailForOrganization(organizationId: string, options: 
     logStep(`Found ${uniqueSenders} unique senders`);
     const clientIdByDomain = new Map<string, string>();
     for (const [domain, sender] of senderCounts) {
-      if (sender.count < 2) continue;
+      if (sender.count < 2) {
+        logStep(`[gmail-sync] client candidate skipped domain="${domain || "unknown"}" email="${sender.email || "unknown"}" reason="single_message_sender" count=${sender.count}`);
+        continue;
+      }
       potentialClients++;
       const saved = await upsertPotentialClient({
         organizationId,
@@ -347,10 +438,12 @@ export async function syncGmailForOrganization(organizationId: string, options: 
       });
       clientIdByDomain.set(domain, saved.id);
       if (saved.created) clientsCreated++;
+      logStep(`[gmail-sync] DB upsert Client success domain="${domain}" id=${saved.id} created=${saved.created}`);
     }
     logStep(`Found ${potentialClients} potential clients`);
 
     for (const email of scannedEmails) {
+      let scanItemPersisted = false;
       try {
       let clientId = clientIdByDomain.get(email.domain);
       if (clientId) {
@@ -361,8 +454,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
       }
 
       if (email.alreadyProcessed && !options.forceReprocess) {
-        duplicatesSkipped++;
-        continue;
+        logStep(`[gmail-sync] message=${email.gmailId} already processed; still tracing parser/persistence before duplicate handling`);
       }
 
       const pdfText = await extractPdfTextFromParts(gmail, email.gmailId, email.parts);
@@ -377,7 +469,10 @@ export async function syncGmailForOrganization(organizationId: string, options: 
       });
       logStep(`[gmail-sync] ai message=${email.gmailId} supplier="${analysis.supplier}" amount=${analysis.amount ?? "unknown"} documentType=${analysis.documentType} paymentRequired=${analysis.paymentRequired} confidence=${analysis.confidence}`);
       const invoiceMatch = detectInvoice(email.subject, bodyForAnalysis, email.parts);
+      if (invoiceMatch.isInvoice) invoiceDetectionPositive++;
+      else invoiceDetectionNegative++;
       const amount = invoiceMatch.amount ?? analysis.amount;
+      logStep(`[gmail-sync] invoice detection message=${email.gmailId} isInvoice=${invoiceMatch.isInvoice} detectedAmount=${invoiceMatch.amount ?? "none"} aiAmount=${analysis.amount ?? "none"} finalAmount=${amount ?? "none"}`);
       const attachmentFilename = primaryAttachmentFilename(email.parts);
       const supplierName = analysis.supplier || email.senderName || email.domain || "Unknown supplier";
       const classification = classifyGmailScanCandidate({
@@ -422,7 +517,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         clientId = saved.id;
         clientIdByDomain.set(email.domain, saved.id);
         if (saved.created) clientsCreated++;
-        await upsertGmailLead({
+        const leadSaved = await upsertGmailLead({
           organizationId,
           name: email.senderName || supplierName || email.domain,
           company: supplierName || email.domain,
@@ -430,6 +525,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           phone: extractPhoneFromText(bodyForAnalysis),
           notes: `${email.subject}\n\n${bodyForAnalysis}`.slice(0, 1200),
         });
+        logStep(`[gmail-sync] DB upsert Lead success message=${email.gmailId} id=${leadSaved.id} created=${leadSaved.created}`);
         await prisma.emailMessage.update({
           where: { id: email.emailRecordId },
           data: { clientId },
@@ -440,7 +536,11 @@ export async function syncGmailForOrganization(organizationId: string, options: 
 
       for (const part of email.parts) {
         const attachmentId = part.body?.attachmentId;
-        if (!part.filename || !attachmentId) continue;
+        if (!part.filename || !attachmentId) {
+          driveUploadsSkipped++;
+          logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${part.filename || "unnamed"}" reason="missing_filename_or_attachment_id"`);
+          continue;
+        }
 
         const existingAttachment = await prisma.emailAttachment.findFirst({
           where: {
@@ -450,11 +550,15 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         });
         if (existingAttachment?.driveLink) {
           driveLinks.push({ type: folderForDocumentType(analysis.documentType), link: existingAttachment.driveLink });
+          driveUploadsSkipped++;
+          logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${part.filename}" reason="existing_drive_link" link=${existingAttachment.driveLink}`);
           continue;
         }
 
         const folderType = folderForDocumentType(analysis.documentType);
         try {
+          driveUploadsAttempted++;
+          logStep(`[gmail-sync] Drive upload attempt message=${email.gmailId} file="${part.filename}" folder=${folderType}`);
           if (!rootId) {
             throw new Error("Drive root unavailable");
           }
@@ -477,6 +581,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           });
           const link = upload.webViewLink;
           driveLinks.push({ type: folderType, link });
+          driveUploadsSucceeded++;
           logStep(`[gmail-sync] Drive upload success message=${email.gmailId} file="${part.filename}" link=${link ?? "none"}`);
           if (existingAttachment) {
             await prisma.emailAttachment.update({
@@ -497,8 +602,10 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           }
         } catch (err) {
           driveUploadFailed = true;
+          driveUploadsFailed++;
           errorsCount++;
           console.error("Drive upload failed; continuing Gmail sync without attachment upload", err);
+          logStep(`[gmail-sync] Drive upload failed message=${email.gmailId} file="${part.filename}" reason="${err instanceof Error ? err.message : String(err)}"`);
           if (!existingAttachment) {
             await prisma.emailAttachment.create({
               data: {
@@ -512,6 +619,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         }
       }
 
+      logStep(`[gmail-sync] DB GmailScanItem upsert attempt message=${email.gmailId} duplicateKey=${duplicateKey} type=${classification.documentType}`);
       const savedScanItem = await prisma.gmailScanItem.upsert({
         where: { organizationId_duplicateKey: { organizationId, duplicateKey } },
         create: {
@@ -562,7 +670,9 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           },
         },
       });
+      scanItemPersisted = true;
       emailsSavedToGmailScanItem++;
+      dbGmailScanItemUpserts++;
       logStep(`[gmail-sync] saved GmailScanItem message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} review=${savedScanItem.reviewStatus} relevant=${classification.isRelevant}`);
 
       if (existingScanItem && !options.forceReprocess) {
@@ -597,6 +707,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
       }
 
       if (clientId && classification.documentType === "invoice" && amount != null) {
+        logStep(`[gmail-sync] DB Invoice insert attempt message=${email.gmailId} clientId=${clientId} amount=${amount}`);
         const createdInvoice = await saveDetectedInvoice({
           organizationId,
           clientId,
@@ -614,6 +725,13 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           duplicatesSkipped++;
           logStep(`[gmail-sync] duplicate Invoice message=${email.gmailId}`);
         }
+      } else {
+        const reasons = [
+          !clientId && "no_client_id",
+          classification.documentType !== "invoice" && `document_type_${classification.documentType}`,
+          amount == null && "no_amount",
+        ].filter(Boolean);
+        logStep(`[gmail-sync] Invoice save skipped message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
       }
 
       if (classification.isRelevant && (amount != null || analysis.documentType !== "other" || classification.documentType !== "supplier_message")) {
@@ -650,6 +768,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
 
         if (existingPayment) {
           duplicatesSkipped++;
+          logStep(`[gmail-sync] DB SupplierPayment update attempt message=${email.gmailId} id=${existingPayment.id}`);
           await prisma.supplierPayment.update({
             where: { id: existingPayment.id },
             data: {
@@ -664,6 +783,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           logStep(`[gmail-sync] updated SupplierPayment message=${email.gmailId} id=${existingPayment.id}`);
         } else {
           const dueDate = analysis.dueDate ? new Date(analysis.dueDate) : null;
+          logStep(`[gmail-sync] DB SupplierPayment insert attempt message=${email.gmailId} amount=${amount ?? 0} supplier="${supplierName}"`);
           const payment = await prisma.supplierPayment.create({
             data: {
               organizationId,
@@ -703,6 +823,12 @@ export async function syncGmailForOrganization(organizationId: string, options: 
             }
           }
         }
+      } else {
+        const reasons = [
+          !classification.isRelevant && "not_relevant",
+          amount == null && analysis.documentType === "other" && classification.documentType === "supplier_message" && "supplier_message_without_amount_or_ai_document_type",
+        ].filter(Boolean);
+        logStep(`[gmail-sync] SupplierPayment save skipped message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
       }
 
       await prisma.emailMessage.update({
@@ -714,10 +840,22 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         errorsCount++;
         console.error(`[gmail-sync] processing failed message=${email.gmailId}`, err);
         logStep(`[gmail-sync] error message=${email.gmailId} stage=process_save reason="${err instanceof Error ? err.message : String(err)}"`);
+        if (!scanItemPersisted) {
+          try {
+            await saveRejectedScanItem(email, `process_save_failed: ${err instanceof Error ? err.message : String(err)}`);
+          } catch (fallbackErr) {
+            console.error(`[gmail-sync] fallback GmailScanItem save failed message=${email.gmailId}`, fallbackErr);
+            logStep(`[gmail-sync] error message=${email.gmailId} stage=fallback_scan_item_save reason="${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}"`);
+          }
+        }
       }
     }
     const recordsSaved = paymentsCreated + invoicesCreated + tasksCreated + clientsCreated;
     logStep(`Found ${relevantEmailsFound} relevant emails (${invoiceEmails} invoices, ${receiptsFound} receipts, ${paymentRequestsFound} payment requests, ${supplierMessagesFound} supplier messages)`);
+    logStep(`[gmail-sync] parser totals scanned=${messages.length} parsed=${emailsParsed} rejected=${parserRejectedCount} rejectedReasons=${JSON.stringify(ignoredReasons)}`);
+    logStep(`[gmail-sync] invoice detection totals positive=${invoiceDetectionPositive} negative=${invoiceDetectionNegative} invoicesCreated=${invoicesCreated}`);
+    logStep(`[gmail-sync] DB totals emailMessageUpserts=${dbEmailMessageUpserts} gmailScanItemUpserts=${dbGmailScanItemUpserts} clientsCreated=${clientsCreated} potentialClients=${potentialClients} paymentsCreated=${paymentsCreated} invoicesCreated=${invoicesCreated}`);
+    logStep(`[gmail-sync] Drive totals attempted=${driveUploadsAttempted} succeeded=${driveUploadsSucceeded} skipped=${driveUploadsSkipped} failed=${driveUploadsFailed}`);
     logStep(`Saved ${emailsSavedToGmailScanItem}/${emailsProcessed} fetched emails to GmailScanItem`);
     logStep(`Ignored ${ignoredCount} emails with reasons: ${JSON.stringify(ignoredReasons)}`);
     logStep(`Marked ${needsReviewCount} emails as Needs Review, extracted ${invoiceAmountsExtracted} amounts`);
@@ -752,6 +890,16 @@ export async function syncGmailForOrganization(organizationId: string, options: 
       needsReviewCount,
       errorsCount,
       emailsSavedToGmailScanItem,
+      emailsParsed,
+      parserRejectedCount,
+      dbEmailMessageUpserts,
+      dbGmailScanItemUpserts,
+      driveUploadsAttempted,
+      driveUploadsSucceeded,
+      driveUploadsSkipped,
+      driveUploadsFailed,
+      invoiceDetectionPositive,
+      invoiceDetectionNegative,
       ignoredCount,
       ignoredReasons,
       uniqueSenders,

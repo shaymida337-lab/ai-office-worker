@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { createHash } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { authMiddleware } from "../lib/auth.js";
@@ -80,6 +81,51 @@ function debugGmailBase(auth: { userId: string; organizationId: string; email: s
   };
 }
 
+type DebugPayloadPart = {
+  mimeType?: string | null;
+  filename?: string | null;
+  body?: { data?: string | null; attachmentId?: string | null } | null;
+  parts?: DebugPayloadPart[] | null;
+};
+
+function decodeGmailBody(data: string) {
+  return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+}
+
+function stripDebugHtml(value: string) {
+  return value
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function collectDebugBody(payload: DebugPayloadPart | undefined, chunks: string[]) {
+  if (!payload) return;
+  if (payload.body?.data && (payload.mimeType === "text/plain" || payload.mimeType === "text/html" || !payload.parts?.length)) {
+    const decoded = decodeGmailBody(payload.body.data);
+    chunks.push(payload.mimeType === "text/html" ? stripDebugHtml(decoded) : decoded);
+  }
+  for (const part of payload.parts ?? []) collectDebugBody(part, chunks);
+}
+
+function debugBodyText(payload: DebugPayloadPart | undefined) {
+  const chunks: string[] = [];
+  collectDebugBody(payload, chunks);
+  return chunks.join("\n").trim();
+}
+
+function debugAttachmentNames(payload: DebugPayloadPart | undefined): string[] {
+  if (!payload) return [];
+  return [
+    ...(payload.filename ? [payload.filename] : []),
+    ...(payload.parts ?? []).flatMap((part) => debugAttachmentNames(part)),
+  ];
+}
+
 apiRouter.get("/debug/gmail/status", async (req, res) => {
   try {
     const integration = await debugGmailIntegrationForAuth(req.auth!);
@@ -122,14 +168,141 @@ apiRouter.post("/debug/gmail/test-fetch", async (req, res) => {
       q: "newer_than:90d -category:promotions -category:social -in:spam -in:trash",
       maxResults: 10,
     });
+    const messages = result.data.messages ?? [];
+    const firstMessage = messages.find((message) => message.id);
+    let trace: Record<string, unknown> = {
+      parserRejected: true,
+      rejectReason: "NO_MESSAGES_RETURNED",
+      dbSaveAttempted: false,
+    };
+    let emailsSaved = 0;
+
+    if (firstMessage?.id) {
+      console.log(`[debug/gmail/test-fetch] trace start org=${integration.organizationId} message=${firstMessage.id}`);
+      const full = await gmail.users.messages.get({
+        userId: "me",
+        id: firstMessage.id,
+        format: "full",
+      });
+      const headers = full.data.payload?.headers ?? [];
+      const subject = headers.find((header) => header.name === "Subject")?.value ?? "(no subject)";
+      const from = headers.find((header) => header.name === "From")?.value ?? "";
+      const dateHeader = headers.find((header) => header.name === "Date")?.value ?? "";
+      const receivedAt = dateHeader ? new Date(dateHeader) : new Date();
+      const bodyText = debugBodyText(full.data.payload as DebugPayloadPart | undefined);
+      const attachmentNames = debugAttachmentNames(full.data.payload as DebugPayloadPart | undefined);
+      const parserRejected = bodyText.length === 0 && attachmentNames.length === 0;
+      const rejectReason = parserRejected ? "EMPTY_BODY_AND_NO_ATTACHMENTS" : null;
+
+      console.log(`[debug/gmail/test-fetch] message=${firstMessage.id} subject="${subject}" from="${from}" date="${receivedAt.toISOString()}" bodyLength=${bodyText.length} attachments=${attachmentNames.join(",") || "none"} parserRejected=${parserRejected} reason=${rejectReason ?? "accepted"}`);
+      console.log(`[debug/gmail/test-fetch] DB save attempt message=${firstMessage.id}`);
+      const emailRecord = await prisma.emailMessage.upsert({
+        where: {
+          organizationId_gmailId: {
+            organizationId: integration.organizationId,
+            gmailId: firstMessage.id,
+          },
+        },
+        create: {
+          organizationId: integration.organizationId,
+          gmailId: firstMessage.id,
+          threadId: full.data.threadId ?? undefined,
+          subject,
+          fromAddress: from,
+          snippet: full.data.snippet ?? undefined,
+          bodyText,
+          receivedAt,
+          source: "gmail",
+        },
+        update: {
+          subject,
+          fromAddress: from,
+          snippet: full.data.snippet ?? undefined,
+          bodyText,
+          receivedAt,
+        },
+      });
+      console.log(`[debug/gmail/test-fetch] DB EmailMessage upsert success message=${firstMessage.id} id=${emailRecord.id}`);
+
+      const duplicateKey = createHash("sha256")
+        .update(`${firstMessage.id}|debug-trace`)
+        .digest("hex")
+        .slice(0, 40);
+      const scanItem = await prisma.gmailScanItem.upsert({
+        where: {
+          organizationId_duplicateKey: {
+            organizationId: integration.organizationId,
+            duplicateKey,
+          },
+        },
+        create: {
+          organizationId: integration.organizationId,
+          emailMessageId: emailRecord.id,
+          gmailMessageId: firstMessage.id,
+          gmailMessageLink: `https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(firstMessage.id)}`,
+          sender: from || "unknown",
+          senderEmail: null,
+          subject,
+          occurredAt: receivedAt,
+          supplierName: from || "unknown",
+          documentType: parserRejected ? "unknown_needs_review" : "supplier_message",
+          attachmentFilename: attachmentNames[0] ?? null,
+          confidenceScore: "low",
+          reviewStatus: "needs_review",
+          duplicateKey,
+          decisionReason: rejectReason ?? "Debug trace accepted message for persistence verification",
+          rawAnalysis: {
+            debugTrace: true,
+            bodyLength: bodyText.length,
+            attachments: attachmentNames,
+            snippet: full.data.snippet ?? null,
+          },
+        },
+        update: {
+          emailMessageId: emailRecord.id,
+          subject,
+          occurredAt: receivedAt,
+          attachmentFilename: attachmentNames[0] ?? null,
+          decisionReason: rejectReason ?? "Debug trace accepted message for persistence verification",
+          rawAnalysis: {
+            debugTrace: true,
+            bodyLength: bodyText.length,
+            attachments: attachmentNames,
+            snippet: full.data.snippet ?? null,
+          },
+        },
+      });
+      emailsSaved = 1;
+      console.log(`[debug/gmail/test-fetch] DB GmailScanItem upsert success message=${firstMessage.id} id=${scanItem.id}`);
+      console.log(`[debug/gmail/test-fetch] Drive upload attempt skipped message=${firstMessage.id} reason=debug_test_fetch_no_attachment_upload`);
+      trace = {
+        gmailMessageId: firstMessage.id,
+        subject,
+        from,
+        date: receivedAt.toISOString(),
+        rawParsedBodyLength: bodyText.length,
+        attachmentNames,
+        parserRejected,
+        rejectReason,
+        dbSaveAttempted: true,
+        emailMessageId: emailRecord.id,
+        gmailScanItemId: scanItem.id,
+        driveUploadAttempted: false,
+        driveUploadResult: "skipped_debug_test_fetch",
+      };
+    }
+
     res.json({
       ...base,
       connected: true,
-      emailsFetched: result.data.messages?.length ?? 0,
+      emailsFetched: messages.length,
+      emailsSaved,
       errors: 0,
-      messageIds: (result.data.messages ?? []).map((message) => message.id).filter(Boolean),
+      messageIds: messages.map((message) => message.id).filter(Boolean),
+      trace,
     });
   } catch (err) {
+    console.error("[debug/gmail/test-fetch] trace failed", err);
     res.status(500).json({
       ...base,
       errors: 1,
@@ -157,6 +330,11 @@ apiRouter.post("/debug/gmail/scan-90", async (req, res) => {
       clientsFound: result.clientsCreated ?? result.potentialClients ?? 0,
       invoicesFound: result.invoicesCreated ?? result.invoiceEmails ?? 0,
       errors: result.errorsCount ?? 0,
+      totalScanned: result.emailsProcessed ?? 0,
+      totalParsed: result.emailsParsed ?? 0,
+      totalRejected: result.parserRejectedCount ?? result.ignoredCount ?? 0,
+      totalSaved: result.emailsSavedToGmailScanItem ?? result.recordsSaved ?? 0,
+      totalUploadedToDrive: result.driveUploadsSucceeded ?? 0,
       raw: result,
     });
   } catch (err) {
@@ -810,6 +988,8 @@ async function scanGmail(req: Request, res: Response) {
       const emails = await latestScannedEmails(organizationId);
       res.json({
         ...result,
+        emailsSaved: result.recordsSaved ?? 0,
+        emailRecordsSaved: 0,
         scanned: result.emailsProcessed,
         leads: 0,
         emails,
@@ -830,6 +1010,8 @@ async function scanGmail(req: Request, res: Response) {
     console.log(`[gmail-scan] Step 3: scan finished org=${organizationId} emails=${result.emailsProcessed} payments=${result.paymentsCreated} invoices=${result.invoicesCreated} duplicates=${result.duplicatesSkipped ?? 0}`);
     res.json({
       ...result,
+      emailsSaved: result.emailsSavedToGmailScanItem ?? result.recordsSaved ?? 0,
+      emailRecordsSaved: result.emailsSavedToGmailScanItem ?? 0,
       scanned: result.emailsProcessed,
       leads: Math.max(0, leadsAfter - leadsBefore),
       emails,
@@ -853,6 +1035,7 @@ async function scanGmail(req: Request, res: Response) {
 }
 
 apiRouter.post("/sync/gmail", scanGmail);
+apiRouter.post("/gmail-scan", scanGmail);
 apiRouter.post("/gmail/scan", scanGmail);
 
 function buildGmailScanSummary(result: {
@@ -871,10 +1054,24 @@ function buildGmailScanSummary(result: {
   needsReviewCount?: number;
   errorsCount?: number;
   emailsSavedToGmailScanItem?: number;
+  emailsSaved?: number;
+  emailRecordsSaved?: number;
   ignoredCount?: number;
   ignoredReasons?: Record<string, number>;
+  emailsParsed?: number;
+  parserRejectedCount?: number;
+  dbEmailMessageUpserts?: number;
+  dbGmailScanItemUpserts?: number;
+  driveUploadsAttempted?: number;
+  driveUploadsSucceeded?: number;
+  driveUploadsSkipped?: number;
+  driveUploadsFailed?: number;
+  invoiceDetectionPositive?: number;
+  invoiceDetectionNegative?: number;
 }) {
-  const recordsSaved = result.recordsSaved ?? ((result.paymentsCreated ?? 0) + (result.invoicesCreated ?? 0) + (result.tasksCreated ?? 0) + (result.clientsCreated ?? 0));
+  const businessRecordsSaved = result.recordsSaved ?? ((result.paymentsCreated ?? 0) + (result.invoicesCreated ?? 0) + (result.tasksCreated ?? 0) + (result.clientsCreated ?? 0));
+  const emailRecordsSaved = result.emailsSavedToGmailScanItem ?? result.emailRecordsSaved ?? result.emailsSaved ?? 0;
+  const recordsSaved = Math.max(businessRecordsSaved, emailRecordsSaved);
   return {
     totalEmailsChecked: result.totalEmailsChecked ?? result.emailsProcessed,
     emailsScanned: result.emailsProcessed,
@@ -884,12 +1081,25 @@ function buildGmailScanSummary(result: {
     receiptsFound: result.receiptsFound ?? 0,
     paymentRequestsFound: result.paymentRequestsFound ?? 0,
     recordsSaved,
+    businessRecordsSaved,
+    emailRecordsSaved,
+    emailsSaved: emailRecordsSaved,
     paymentsSaved: result.paymentsCreated ?? 0,
     invoicesSaved: result.invoicesCreated ?? 0,
     duplicatesSkipped: result.duplicatesSkipped ?? 0,
     needsReviewCount: result.needsReviewCount ?? 0,
     errorsCount: result.errorsCount ?? 0,
     emailsSavedToGmailScanItem: result.emailsSavedToGmailScanItem ?? 0,
+    emailsParsed: result.emailsParsed ?? 0,
+    parserRejectedCount: result.parserRejectedCount ?? 0,
+    dbEmailMessageUpserts: result.dbEmailMessageUpserts ?? 0,
+    dbGmailScanItemUpserts: result.dbGmailScanItemUpserts ?? 0,
+    driveUploadsAttempted: result.driveUploadsAttempted ?? 0,
+    driveUploadsSucceeded: result.driveUploadsSucceeded ?? 0,
+    driveUploadsSkipped: result.driveUploadsSkipped ?? 0,
+    driveUploadsFailed: result.driveUploadsFailed ?? 0,
+    invoiceDetectionPositive: result.invoiceDetectionPositive ?? 0,
+    invoiceDetectionNegative: result.invoiceDetectionNegative ?? 0,
     ignoredCount: result.ignoredCount ?? 0,
     ignoredReasons: result.ignoredReasons ?? {},
   };

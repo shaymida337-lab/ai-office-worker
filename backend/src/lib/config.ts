@@ -45,7 +45,7 @@ export const config = {
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
-  cronSecret: requiredInProduction("CRON_SECRET", "dev-cron-secret"),
+  cronSecret: optional("CRON_SECRET", process.env.NODE_ENV === "production" ? "" : "dev-cron-secret"),
 
   google: {
     clientId: optional("GOOGLE_CLIENT_ID"),

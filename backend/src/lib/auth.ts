@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "crypto";
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 import { config } from "./config.js";
@@ -41,11 +42,39 @@ export function cronMiddleware(
   next: NextFunction
 ): void {
   const secret = req.headers["x-cron-secret"];
-  if (secret !== config.cronSecret) {
+  const receivedSecret = Array.isArray(secret) ? secret[0] : secret;
+  const expectedConfigured = Boolean(config.cronSecret);
+  const receivedConfigured = Boolean(receivedSecret);
+  const expectedFingerprint = secretFingerprint(config.cronSecret);
+  const receivedFingerprint = secretFingerprint(receivedSecret);
+  const valid =
+    typeof receivedSecret === "string" &&
+    expectedConfigured &&
+    safeSecretEquals(receivedSecret, config.cronSecret);
+
+  console.log(
+    `[cron-auth] path=${req.path} expectedSource=process.env.CRON_SECRET expectedExists=${expectedConfigured} expectedHash=${expectedFingerprint} receivedHeaderExists=${receivedConfigured} receivedHash=${receivedFingerprint} valid=${valid}`
+  );
+
+  if (!valid) {
+    console.warn(
+      `[cron-auth] forbidden path=${req.path} reason="${!expectedConfigured ? "missing_expected_cron_secret" : !receivedConfigured ? "missing_x_cron_secret_header" : "x_cron_secret_mismatch"}"`
+    );
     res.status(403).json({ error: "Forbidden" });
     return;
   }
   next();
+}
+
+function secretFingerprint(value: unknown) {
+  if (typeof value !== "string" || !value) return "none";
+  return createHash("sha256").update(value).digest("hex").slice(0, 10);
+}
+
+function safeSecretEquals(received: string, expected: string) {
+  const receivedBuffer = Buffer.from(received);
+  const expectedBuffer = Buffer.from(expected);
+  return receivedBuffer.length === expectedBuffer.length && timingSafeEqual(receivedBuffer, expectedBuffer);
 }
 
 declare global {
