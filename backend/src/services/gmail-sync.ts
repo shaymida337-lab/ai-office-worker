@@ -484,7 +484,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
       const invoiceMatch = detectInvoice(email.subject, bodyForAnalysis, email.parts);
       if (invoiceMatch.isInvoice) invoiceDetectionPositive++;
       else invoiceDetectionNegative++;
-      const amount = invoiceMatch.amount ?? analysis.amount;
+      const amount = normalizeDetectedAmount(invoiceMatch.amount ?? analysis.amount);
       logStep(`[gmail-sync] invoice detection message=${email.gmailId} isInvoice=${invoiceMatch.isInvoice} detectedAmount=${invoiceMatch.amount ?? "none"} aiAmount=${analysis.amount ?? "none"} finalAmount=${amount ?? "none"}`);
       const attachmentFilename = primaryAttachmentFilename(email.parts);
       const supplierName = analysis.supplier || email.senderName || email.domain || "Unknown supplier";
@@ -1226,7 +1226,7 @@ function extractInvoiceAmount(text: string) {
   for (const pattern of patterns) {
     for (const match of normalized.matchAll(pattern)) {
       const amount = parseAmount(match[1]);
-      if (amount !== null) amounts.push(amount);
+      if (amount !== null && isReasonableDetectedAmount(amount)) amounts.push(amount);
     }
   }
   return amounts.length ? Math.max(...amounts) : null;
@@ -1252,6 +1252,15 @@ function parseAmount(raw: string) {
   compact = compact.replace(/\s/g, "");
   const amount = Number(compact);
   return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function normalizeDetectedAmount(amount: number | null | undefined) {
+  if (amount == null) return null;
+  return isReasonableDetectedAmount(amount) ? amount : null;
+}
+
+function isReasonableDetectedAmount(amount: number) {
+  return Number.isFinite(amount) && amount > 0 && amount <= 1_000_000;
 }
 
 async function upsertPotentialClient(input: {

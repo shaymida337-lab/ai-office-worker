@@ -5,7 +5,9 @@ export async function getDashboardStats(organizationId: string) {
     where: { organizationId },
   });
 
-  const openPayments = payments.filter((p) => !p.paid);
+  const validPayments = payments.filter((p) => isReasonableMoneyAmount(p.amount));
+  const suspiciousPaymentsCount = payments.length - validPayments.length;
+  const openPayments = validPayments.filter((p) => !p.paid);
   const moneyToPay = openPayments
     .filter((p) => p.paymentRequired)
     .reduce((sum, p) => sum + p.amount, 0);
@@ -62,6 +64,8 @@ export async function getDashboardStats(organizationId: string) {
     businessHealthScore,
     overdueCustomerInvoices,
     overdueSupplierPayments,
+    supplierPaymentsCount: payments.length,
+    suspiciousPaymentsCount,
     hoursSavedThisWeek: Math.round((payments.length + customerInvoices.length + openTasks) * 0.25),
     currency: "ILS",
   };
@@ -72,4 +76,8 @@ export async function getMissingInvoicesReport(organizationId: string) {
     where: { organizationId, missingInvoice: true, paid: false },
     orderBy: { date: "desc" },
   });
+}
+
+function isReasonableMoneyAmount(amount: number) {
+  return Number.isFinite(amount) && amount >= 0 && amount <= 1_000_000;
 }
