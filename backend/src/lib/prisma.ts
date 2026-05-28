@@ -5,7 +5,11 @@ const RECONNECTABLE_PRISMA_CODES = new Set(["P1001", "P1002", "P1017", "P2024"])
 
 type ExtendedPrismaClient = ReturnType<typeof createPrismaClient>;
 
-const globalForPrisma = globalThis as unknown as { prisma?: ExtendedPrismaClient };
+const globalForPrisma = globalThis as unknown as {
+  prisma?: ExtendedPrismaClient;
+  prismaConnectPromise?: Promise<void>;
+  prismaConnected?: boolean;
+};
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -21,6 +25,17 @@ function databaseUrlWithSaferPoolSettings() {
   url.searchParams.set("pool_timeout", "10");
   url.searchParams.set("connection_limit", "1");
   return url.toString();
+}
+
+export function databaseHost() {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) return "missing";
+  try {
+    const url = new URL(raw);
+    return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ""}${url.pathname}`;
+  } catch {
+    return "invalid-url";
+  }
 }
 
 function isReconnectablePrismaError(error: unknown) {
@@ -101,6 +116,29 @@ export const prisma =
   globalForPrisma.prisma ??
   createPrismaClient();
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+globalForPrisma.prisma = prisma;
+
+export function isPrismaConnected() {
+  return Boolean(globalForPrisma.prismaConnected);
+}
+
+export async function connectPrisma() {
+  if (globalForPrisma.prismaConnected) return;
+
+  globalForPrisma.prismaConnectPromise ??= (async () => {
+    try {
+      await prisma.$connect();
+      await prisma.$queryRaw`SELECT 1`;
+      globalForPrisma.prismaConnected = true;
+      console.log(`[prisma] Prisma connected successfully host=${databaseHost()}`);
+    } catch (err) {
+      globalForPrisma.prismaConnected = false;
+      console.error(`[prisma] Prisma connection failed host=${databaseHost()}`, err);
+      throw err;
+    }
+  })().finally(() => {
+    globalForPrisma.prismaConnectPromise = undefined;
+  });
+
+  return globalForPrisma.prismaConnectPromise;
 }

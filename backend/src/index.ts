@@ -11,6 +11,7 @@ import { clientsRouter } from "./routes/clients.js";
 import { clientWhatsappRouter } from "./routes/clientWhatsapp.js";
 import { socialRouter } from "./routes/social.js";
 import { scheduler } from "./services/scheduler.js";
+import { connectPrisma, databaseHost, isPrismaConnected } from "./lib/prisma.js";
 
 const app = express();
 
@@ -42,6 +43,16 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+app.use((req, res, next) => {
+  if (isPrismaConnected()) {
+    next();
+    return;
+  }
+
+  console.error(`[api] Request blocked before Prisma connection path=${req.path} db=${databaseHost()}`);
+  res.status(503).json({ error: "Database is not connected" });
+});
+
 app.use("/auth", authRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/integrations", integrationsRouter);
@@ -53,11 +64,22 @@ app.use("/cron", cronRouter);
 app.use("/webhook", webhooksRouter);
 app.use("/webhooks", webhooksRouter);
 
-const server = app.listen(config.port, () => {
-  console.log(`Server running on port ${config.port}`);
-  scheduler.startAllJobs();
-});
-server.on("error", (err: NodeJS.ErrnoException) => {
-  console.error("[api] Failed to start:", err.message);
-  process.exit(1);
-});
+async function start() {
+  try {
+    await connectPrisma();
+  } catch (err) {
+    console.error(`[api] Failed to connect database before startup db=${databaseHost()}`, err);
+    process.exit(1);
+  }
+
+  const server = app.listen(config.port, () => {
+    console.log(`Server running on port ${config.port}`);
+    scheduler.startAllJobs();
+  });
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    console.error("[api] Failed to start:", err.message);
+    process.exit(1);
+  });
+}
+
+void start();
