@@ -156,6 +156,8 @@ apiRouter.get("/debug/invoices", async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
     const userId = req.auth!.userId;
+    const { backfillInvoicesFromGmailScanItems } = await import("../services/invoiceBackfill.js");
+    const backfillResult = await backfillInvoicesFromGmailScanItems(organizationId, 200);
     const invoiceCount = await prisma.invoice.count({ where: { organizationId } });
     const supplierPaymentCount = await prisma.supplierPayment.count({ where: { organizationId } });
     const gmailScanItemCount = await prisma.gmailScanItem.count({ where: { organizationId } });
@@ -295,6 +297,7 @@ apiRouter.get("/debug/invoices", async (req, res) => {
     res.json({
       organizationId,
       userId,
+      backfillResult,
       invoiceCount,
       supplierPaymentCount,
       gmailScanItemCount,
@@ -868,6 +871,8 @@ apiRouter.get("/invoices", async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const clientId = typeof req.query.clientId === "string" ? req.query.clientId : undefined;
   const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+  const { backfillInvoicesFromGmailScanItems } = await import("../services/invoiceBackfill.js");
+  await backfillInvoicesFromGmailScanItems(req.auth!.organizationId, 200);
   const invoices = await prisma.invoice.findMany({
     where: {
       organizationId: req.auth!.organizationId,

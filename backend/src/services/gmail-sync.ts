@@ -1171,13 +1171,18 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     logStep(`Marked ${needsReviewCount} emails as Needs Review, extracted ${invoiceAmountsExtracted} amounts`);
     logStep(`Saved ${recordsSaved} records (${clientsCreated} clients, ${invoicesCreated} invoices, ${paymentsCreated} payments, ${tasksCreated} tasks)`);
     logStep(`Skipped ${duplicatesSkipped} duplicates or already processed emails`);
+    const { backfillInvoicesFromGmailScanItems } = await import("./invoiceBackfill.js");
+    const invoiceBackfill = await backfillInvoicesFromGmailScanItems(organizationId, 200);
+    if (invoiceBackfill.created || invoiceBackfill.errors.length) {
+      logStep(`[gmail-sync] invoice backfill candidates=${invoiceBackfill.candidates} created=${invoiceBackfill.created} duplicates=${invoiceBackfill.duplicates} skipped=${invoiceBackfill.skipped} errors=${invoiceBackfill.errors.length}`);
+    }
 
     await prisma.syncLog.update({
       where: { id: log.id },
       data: {
         emailsProcessed,
         emailsSaved: emailsSavedToGmailScanItem,
-        invoicesFound: invoicesCreated,
+        invoicesFound: invoicesCreated + invoiceBackfill.created,
         paymentsCreated,
         tasksCreated,
         driveUploaded: driveUploadsSucceeded,
@@ -1197,6 +1202,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       tasksCreated,
       clientsCreated,
       invoicesCreated,
+      invoiceBackfillCreated: invoiceBackfill.created,
       receiptsFound,
       paymentRequestsFound,
       supplierMessagesFound,
