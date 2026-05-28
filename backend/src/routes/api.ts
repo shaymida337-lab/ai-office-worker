@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { authMiddleware } from "../lib/auth.js";
+import { errorDetails } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { getDashboardStats, getMissingInvoicesReport } from "../services/dashboard.js";
 import { buildDailySummary } from "../services/summary.js";
@@ -80,8 +81,29 @@ function debugGmailBase(auth: { userId: string; organizationId: string; email: s
 }
 
 apiRouter.get("/debug/gmail/status", async (req, res) => {
-  const integration = await debugGmailIntegrationForAuth(req.auth!);
-  res.json(debugGmailBase(req.auth!, integration));
+  try {
+    const integration = await debugGmailIntegrationForAuth(req.auth!);
+    console.log(
+      `[debug/gmail/status] user=${req.auth!.userId} org=${req.auth!.organizationId} connected=${Boolean(integration?.refreshToken)} integrationOrg=${integration?.organizationId ?? "none"} hasAccessToken=${Boolean(integration?.accessToken)} hasRefreshToken=${Boolean(integration?.refreshToken)}`
+    );
+    res.json(debugGmailBase(req.auth!, integration));
+  } catch (err) {
+    console.error("[debug/gmail/status] failed", errorDetails(err));
+    res.status(500).json({
+      connected: false,
+      orgId: req.auth?.organizationId ?? null,
+      userId: req.auth?.userId ?? null,
+      hasAccessToken: false,
+      hasRefreshToken: false,
+      emailsFetched: 0,
+      emailsSaved: 0,
+      clientsFound: 0,
+      invoicesFound: 0,
+      errors: 1,
+      error: err instanceof Error ? err.message : String(err),
+      details: errorDetails(err),
+    });
+  }
 });
 
 apiRouter.post("/debug/gmail/test-fetch", async (req, res) => {

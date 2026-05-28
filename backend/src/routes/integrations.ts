@@ -62,6 +62,31 @@ function gmailCallbackErrorRedirect(err: unknown) {
   return `${config.frontendUrl}/dashboard/settings?gmail=error&reason=${reason}`;
 }
 
+function shortValue(value: string | undefined | null) {
+  if (!value) return "none";
+  return `${value.slice(0, 12)}...len=${value.length}`;
+}
+
+function tokenTrace(tokens: {
+  access_token?: string | null;
+  refresh_token?: string | null;
+  expiry_date?: number | null;
+  token_type?: string | null;
+  scope?: string | null;
+  id_token?: string | null;
+}) {
+  return {
+    hasAccessToken: Boolean(tokens.access_token),
+    accessToken: shortValue(tokens.access_token),
+    hasRefreshToken: Boolean(tokens.refresh_token),
+    refreshToken: shortValue(tokens.refresh_token),
+    expiryDate: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
+    tokenType: tokens.token_type ?? null,
+    scope: tokens.scope ?? null,
+    hasIdToken: Boolean(tokens.id_token),
+  };
+}
+
 type GmailIntegrationState = {
   purpose: "gmail_integration";
   userId: string;
@@ -249,12 +274,13 @@ integrationsRouter.get("/gmail/connect", async (req, res) => {
 integrationsRouter.get("/gmail/callback", async (req, res) => {
   const hasCode = Boolean(req.query.code);
   const hasState = Boolean(req.query.state);
+  const traceId = `gmail-callback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   try {
     const code = req.query.code as string | undefined;
     const state = req.query.state as string | undefined;
     const cookieState = cookieValue(req.headers.cookie, GMAIL_OAUTH_STATE_COOKIE);
     console.log(
-      `[gmail/callback] start hasCode=${hasCode} hasState=${hasState} state=${state ?? "none"} cookieState=${cookieState ?? "none"} cookieMatches=${Boolean(state && cookieState && state === cookieState)} redirectUri=${config.google.integrationRedirectUri} clientId=${config.google.clientId} secretConfigured=${Boolean(config.google.clientSecret)}`
+      `[gmail/callback][${traceId}] start hasCode=${hasCode} code=${shortValue(code)} hasState=${hasState} state=${state ?? "none"} cookieState=${cookieState ?? "none"} cookieMatches=${Boolean(state && cookieState && state === cookieState)} redirectUri=${config.google.integrationRedirectUri} clientId=${config.google.clientId} secretConfigured=${Boolean(config.google.clientSecret)}`
     );
 
     if (!code) {
@@ -266,6 +292,9 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
     let decodedState: (Partial<GmailIntegrationState> & { organizationId?: string }) | null = null;
     if (state) {
       decodedState = jwt.verify(state, config.jwtSecret) as Partial<GmailIntegrationState> & { organizationId?: string };
+      console.log(
+        `[gmail/callback][${traceId}] decodedState purpose=${decodedState.purpose ?? "none"} userId=${decodedState.userId ?? "none"} email=${decodedState.email ?? "none"} organizationId=${decodedState.organizationId ?? "none"} timestamp=${decodedState.timestamp ?? "none"}`
+      );
       if (decodedState.purpose && decodedState.purpose !== "gmail_integration") {
         res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
         return;
@@ -280,6 +309,7 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
       return;
     }
 
+    console.log(`[gmail/callback][${traceId}] resolved userId=${decodedState?.userId ?? "none"} orgId=${organizationId} email=${decodedState?.email ?? "none"}`);
     const existingIntegration = await prisma.integration.findUnique({
       where: {
         organizationId_provider: {
@@ -288,9 +318,12 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
         },
       },
     });
+    console.log(
+      `[gmail/callback][${traceId}] integration lookup org=${organizationId} found=${Boolean(existingIntegration)} hasAccessToken=${Boolean(existingIntegration?.accessToken)} hasRefreshToken=${Boolean(existingIntegration?.refreshToken)} connectedAt=${existingIntegration?.connectedAt?.toISOString() ?? "none"}`
+    );
     if (state && existingIntegration?.refreshToken) {
       console.log(
-        `[gmail/callback] state already has Gmail refreshToken org=${organizationId}; treating duplicate callback/code replay as connected state=${state}`
+        `[gmail/callback][${traceId}] state already has Gmail refreshToken org=${organizationId}; treating duplicate callback/code replay as connected state=${state}`
       );
       clearGmailStateCookie(res);
       res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=connected`);
@@ -302,17 +335,23 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
       access_token?: string | null;
       refresh_token?: string | null;
       expiry_date?: number | null;
+      token_type?: string | null;
+      scope?: string;
+      id_token?: string | null;
     };
     try {
+      console.log(`[gmail/callback][${traceId}] exchanging code with Google redirectUri=${config.google.integrationRedirectUri}`);
       const tokenResult = await oauth2.getToken(code);
       tokens = tokenResult.tokens;
       oauth2.setCredentials(tokens);
+      console.log(`[gmail/callback][${traceId}] exchanged tokens ${JSON.stringify(tokenTrace(tokens))}`);
     } catch (err) {
+      console.error(`[gmail/callback][${traceId}] token exchange failed`, errorDetails(err));
       const isInvalidGrant =
         err instanceof Error && err.message.toLowerCase().includes("invalid_grant");
       if (isInvalidGrant && existingIntegration?.refreshToken) {
         console.log(
-          `[gmail/callback] invalid_grant after existing refreshToken org=${organizationId}; likely duplicate callback/code replay, returning connected state=${state ?? "none"}`
+          `[gmail/callback][${traceId}] invalid_grant after existing refreshToken org=${organizationId}; likely duplicate callback/code replay, returning connected state=${state ?? "none"}`
         );
         clearGmailStateCookie(res);
         res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=connected`);
@@ -321,7 +360,20 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
       throw err;
     }
 
+    try {
+      const oauth2api = await import("googleapis").then((g) =>
+        g.google.oauth2({ version: "v2", auth: oauth2 })
+      );
+      const profile = await oauth2api.userinfo.get();
+      console.log(
+        `[gmail/callback][${traceId}] decoded Google profile id=${profile.data.id ?? "none"} email=${profile.data.email ?? "none"} verified=${profile.data.verified_email ?? "unknown"} name=${profile.data.name ?? "none"}`
+      );
+    } catch (profileErr) {
+      console.error(`[gmail/callback][${traceId}] Google profile fetch failed`, errorDetails(profileErr));
+    }
+
     if (!tokens.refresh_token && !existingIntegration?.refreshToken) {
+      console.error(`[gmail/callback][${traceId}] missing refresh token and no existing refresh token org=${organizationId}`);
       res
         .status(400)
         .send("Google did not return a refresh token. Reconnect and approve access.");
@@ -330,42 +382,74 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
 
     const refreshToken = tokens.refresh_token ?? existingIntegration?.refreshToken;
     if (!refreshToken) {
+      console.error(`[gmail/callback][${traceId}] refreshToken resolved null org=${organizationId}`);
       res
         .status(400)
         .send("Google did not return a refresh token. Reconnect and approve access.");
       return;
     }
 
-    const savedIntegration = await prisma.integration.upsert({
+    console.log(
+      `[gmail/callback][${traceId}] integration upsert start org=${organizationId} provider=gmail hasAccessToken=${Boolean(tokens.access_token)} hasRefreshToken=${Boolean(refreshToken)}`
+    );
+    const savedIntegration = await prisma.$transaction(async (tx) => {
+      const saved = await tx.integration.upsert({
+        where: {
+          organizationId_provider: {
+            organizationId,
+            provider: "gmail",
+          },
+        },
+        create: {
+          organizationId,
+          provider: "gmail",
+          accessToken: tokens.access_token ?? null,
+          refreshToken,
+          expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          connectedAt: new Date(),
+        },
+        update: {
+          accessToken: tokens.access_token ?? null,
+          refreshToken,
+          expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          connectedAt: new Date(),
+        },
+      });
+      const verified = await tx.integration.findUnique({
+        where: {
+          organizationId_provider: {
+            organizationId,
+            provider: "gmail",
+          },
+        },
+      });
+      console.log(
+        `[gmail/callback][${traceId}] integration transaction verify found=${Boolean(verified)} id=${verified?.id ?? "none"} org=${verified?.organizationId ?? "none"} provider=${verified?.provider ?? "none"} hasAccessToken=${Boolean(verified?.accessToken)} hasRefreshToken=${Boolean(verified?.refreshToken)} connectedAt=${verified?.connectedAt?.toISOString() ?? "none"}`
+      );
+      if (!verified?.refreshToken) {
+        throw new Error("Gmail integration verification failed after save: refreshToken missing");
+      }
+      return saved;
+    });
+
+    const persistedIntegration = await prisma.integration.findUnique({
       where: {
         organizationId_provider: {
           organizationId,
           provider: "gmail",
         },
       },
-      create: {
-        organizationId,
-        provider: "gmail",
-        accessToken: tokens.access_token ?? null,
-        refreshToken,
-        expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
-      },
-      update: {
-        accessToken: tokens.access_token ?? null,
-        refreshToken,
-        expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
-      },
     });
 
     console.log(
-      `[gmail/callback] connected stateUser=${decodedState?.userId ?? "none"} stateEmail=${decodedState?.email ?? "none"} stateOrg=${organizationId} savedOrg=${savedIntegration.organizationId} provider=${savedIntegration.provider} hasAccessToken=${Boolean(savedIntegration.accessToken)} hasRefreshToken=${Boolean(savedIntegration.refreshToken)} connectedAt=${savedIntegration.connectedAt.toISOString()} expiresAt=${savedIntegration.expiresAt?.toISOString() ?? "none"}`
+      `[gmail/callback][${traceId}] connected stateUser=${decodedState?.userId ?? "none"} stateEmail=${decodedState?.email ?? "none"} stateOrg=${organizationId} savedOrg=${savedIntegration.organizationId} persistedOrg=${persistedIntegration?.organizationId ?? "none"} provider=${savedIntegration.provider} hasAccessToken=${Boolean(persistedIntegration?.accessToken)} hasRefreshToken=${Boolean(persistedIntegration?.refreshToken)} connectedAt=${persistedIntegration?.connectedAt.toISOString() ?? "none"} expiresAt=${persistedIntegration?.expiresAt?.toISOString() ?? "none"}`
     );
     runPostConnectionGmailScan(organizationId);
 
     clearGmailStateCookie(res);
     res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=connected`);
   } catch (err) {
-    console.error("[gmail/callback]", errorDetails(err));
+    console.error(`[gmail/callback][${traceId}] failed`, errorDetails(err));
     if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.TokenExpiredError) {
       res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
       return;
