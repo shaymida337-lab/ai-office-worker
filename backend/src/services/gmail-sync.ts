@@ -562,13 +562,13 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           },
         });
         if (existingAttachment?.driveLink) {
-          driveLinks.push({ type: folderForDocumentType(analysis.documentType), link: existingAttachment.driveLink });
+          driveLinks.push({ type: folderForDocumentType(classification.documentType), link: existingAttachment.driveLink });
           driveUploadsSkipped++;
           logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${part.filename}" reason="existing_drive_link" link=${existingAttachment.driveLink}`);
           continue;
         }
 
-        const folderType = folderForDocumentType(analysis.documentType);
+        const folderType = folderForDocumentType(classification.documentType);
         try {
           driveUploadsAttempted++;
           logStep(`[gmail-sync] Drive upload attempt message=${email.gmailId} file="${part.filename}" folder=${folderType}`);
@@ -585,8 +585,8 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           const upload = await uploadInvoiceAttachmentToDrive({
             drive,
             rootFolderId: rootId,
-            supplier: analysis.supplier,
-            documentType: analysis.documentType,
+            supplier: supplierName,
+            documentType: classification.documentType,
             filename: part.filename,
             mimeType: part.mimeType,
             receivedAt: email.receivedAt,
