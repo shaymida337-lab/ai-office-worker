@@ -152,6 +152,166 @@ apiRouter.get("/debug/gmail/status", async (req, res) => {
   }
 });
 
+apiRouter.get("/debug/invoices", async (req, res) => {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const userId = req.auth!.userId;
+    const invoiceCount = await prisma.invoice.count({ where: { organizationId } });
+    const supplierPaymentCount = await prisma.supplierPayment.count({ where: { organizationId } });
+    const gmailScanItemCount = await prisma.gmailScanItem.count({ where: { organizationId } });
+    const invoiceScanItemCount = await prisma.gmailScanItem.count({
+      where: { organizationId, documentType: { in: ["invoice", "receipt"] } },
+    });
+    const lastInvoiceRows = await prisma.invoice.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        clientId: true,
+        invoiceNumber: true,
+        amount: true,
+        currency: true,
+        date: true,
+        dueDate: true,
+        status: true,
+        description: true,
+        driveUrl: true,
+        emailId: true,
+        fromEmail: true,
+        gmailMessageId: true,
+        createdAt: true,
+        client: { select: { id: true, name: true, email: true, domain: true } },
+      },
+    });
+    const lastPaymentRows = await prisma.supplierPayment.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        supplier: true,
+        amount: true,
+        currency: true,
+        date: true,
+        dueDate: true,
+        paid: true,
+        documentLink: true,
+        invoiceLink: true,
+        missingInvoice: true,
+        subject: true,
+        emailMessageId: true,
+        createdAt: true,
+      },
+    });
+    const lastScanItems = await prisma.gmailScanItem.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        emailMessageId: true,
+        gmailMessageId: true,
+        gmailMessageLink: true,
+        sender: true,
+        senderEmail: true,
+        subject: true,
+        occurredAt: true,
+        amount: true,
+        supplierName: true,
+        documentType: true,
+        attachmentFilename: true,
+        driveFileLink: true,
+        confidenceScore: true,
+        reviewStatus: true,
+        decisionReason: true,
+        createdAt: true,
+      },
+    });
+    const invoiceOrReceiptScanItems = await prisma.gmailScanItem.findMany({
+      where: { organizationId, documentType: { in: ["invoice", "receipt"] } },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        emailMessageId: true,
+        gmailMessageId: true,
+        subject: true,
+        occurredAt: true,
+        amount: true,
+        supplierName: true,
+        documentType: true,
+        driveFileLink: true,
+        confidenceScore: true,
+        reviewStatus: true,
+        decisionReason: true,
+        createdAt: true,
+      },
+    });
+    const rejectedInvoiceReasons = await prisma.gmailScanItem.findMany({
+      where: {
+        organizationId,
+        OR: [
+          { documentType: { in: ["invoice", "receipt", "unknown_needs_review"] } },
+          { decisionReason: { contains: "invoice", mode: "insensitive" } },
+          { decisionReason: { contains: "receipt", mode: "insensitive" } },
+          { decisionReason: { contains: "failed", mode: "insensitive" } },
+          { decisionReason: { contains: "rejected", mode: "insensitive" } },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+      select: {
+        id: true,
+        gmailMessageId: true,
+        subject: true,
+        documentType: true,
+        reviewStatus: true,
+        decisionReason: true,
+        createdAt: true,
+      },
+    });
+    const recentGmailScanLogs = await prisma.syncLog.findMany({
+      where: { organizationId, type: "gmail_scan" },
+      orderBy: { startedAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        status: true,
+        scanMode: true,
+        emailsProcessed: true,
+        emailsSaved: true,
+        invoicesFound: true,
+        paymentsCreated: true,
+        driveUploaded: true,
+        sheetsUpdated: true,
+        errorsCount: true,
+        errorMessage: true,
+        startedAt: true,
+        finishedAt: true,
+      },
+    });
+
+    res.json({
+      organizationId,
+      userId,
+      invoiceCount,
+      supplierPaymentCount,
+      gmailScanItemCount,
+      invoiceScanItemCount,
+      lastInvoiceRows,
+      lastPaymentRows,
+      lastScanItems,
+      invoiceOrReceiptScanItems,
+      rejectedInvoiceReasons,
+      recentGmailScanLogs,
+    });
+  } catch (err) {
+    console.error("[debug/invoices] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Invoice debug failed" });
+  }
+});
+
 apiRouter.post("/debug/gmail/test-fetch", async (req, res) => {
   const integration = await debugGmailIntegrationForAuth(req.auth!);
   const base = debugGmailBase(req.auth!, integration);
