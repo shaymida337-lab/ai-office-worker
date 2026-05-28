@@ -104,6 +104,24 @@ type GmailScanResult = {
   summary?: GmailScanSummary;
 };
 
+type GmailDebugResult = {
+  connected: boolean;
+  orgId: string | null;
+  userId: string | null;
+  integrationOrgId?: string | null;
+  provider?: string | null;
+  hasAccessToken: boolean;
+  hasRefreshToken: boolean;
+  connectedAt?: string | null;
+  emailsFetched: number;
+  emailsSaved: number;
+  clientsFound: number;
+  invoicesFound: number;
+  errors: number;
+  error?: string;
+  raw?: unknown;
+};
+
 const emptyStats: DashboardStats = {
   moneyToPay: 0,
   moneyToReceive: 0,
@@ -148,6 +166,8 @@ export default function DashboardPage() {
   const [firstScanSummary, setFirstScanSummary] = useState("");
   const [scanProgress, setScanProgress] = useState<string[]>([]);
   const [scanToast, setScanToast] = useState<ScanToast | null>(null);
+  const [gmailDebug, setGmailDebug] = useState<GmailDebugResult | null>(null);
+  const [gmailDebugRunning, setGmailDebugRunning] = useState("");
   const [showGmailConnect, setShowGmailConnect] = useState(false);
   const [error, setError] = useState("");
 
@@ -414,6 +434,41 @@ export default function DashboardPage() {
     }
   }
 
+  async function runGmailDebug(label: string, path: string) {
+    setGmailDebugRunning(label);
+    setGmailDebug(null);
+    try {
+      const result = await apiFetch<GmailDebugResult>(path, {
+        method: path.includes("status") ? "GET" : "POST",
+      });
+      setGmailDebug(result);
+      if (result.connected) {
+        setGmailStatus((current) => ({
+          googleConfigured: current?.googleConfigured ?? true,
+          connected: true,
+          connectedAt: result.connectedAt ?? current?.connectedAt ?? null,
+        }));
+        setShowGmailConnect(false);
+      }
+    } catch (err) {
+      setGmailDebug({
+        connected: false,
+        orgId: null,
+        userId: null,
+        hasAccessToken: false,
+        hasRefreshToken: false,
+        emailsFetched: 0,
+        emailsSaved: 0,
+        clientsFound: 0,
+        invoicesFound: 0,
+        errors: 1,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setGmailDebugRunning("");
+    }
+  }
+
   if (!stats) {
     return (
       <div className="container">
@@ -454,6 +509,39 @@ export default function DashboardPage() {
           <button className="btn btn-secondary" onClick={() => router.push("/dashboard/clients")}><Plus className="h-4 w-4" />הוסף לקוח</button>
         </div>
       </div>
+
+      <section className="mb-4 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-ink-primary">
+        <div className="mb-3 font-bold">Temporary Gmail Production Debug</div>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn btn-secondary" disabled={Boolean(gmailDebugRunning)} onClick={() => runGmailDebug("status", "/api/debug/gmail/status")}>
+            {gmailDebugRunning === "status" ? "Checking..." : "Check Gmail Status"}
+          </button>
+          <button className="btn btn-secondary" disabled={Boolean(gmailDebugRunning)} onClick={() => runGmailDebug("fetch", "/api/debug/gmail/test-fetch")}>
+            {gmailDebugRunning === "fetch" ? "Fetching..." : "Run Gmail Test Fetch"}
+          </button>
+          <button className="btn btn-secondary" disabled={Boolean(gmailDebugRunning)} onClick={() => runGmailDebug("scan", "/api/debug/gmail/scan-90")}>
+            {gmailDebugRunning === "scan" ? "Scanning..." : "Run 90 Day Scan Debug"}
+          </button>
+        </div>
+        {gmailDebug && (
+          <pre className="mt-3 max-h-80 overflow-auto rounded-xl bg-black/40 p-3 text-left text-xs text-white" dir="ltr">
+            {JSON.stringify({
+              connected: gmailDebug.connected,
+              orgId: gmailDebug.orgId,
+              userId: gmailDebug.userId,
+              integrationOrgId: gmailDebug.integrationOrgId,
+              hasAccessToken: gmailDebug.hasAccessToken,
+              hasRefreshToken: gmailDebug.hasRefreshToken,
+              emailsFetched: gmailDebug.emailsFetched,
+              emailsSaved: gmailDebug.emailsSaved,
+              clientsFound: gmailDebug.clientsFound,
+              invoicesFound: gmailDebug.invoicesFound,
+              errors: gmailDebug.errors,
+              error: gmailDebug.error,
+            }, null, 2)}
+          </pre>
+        )}
+      </section>
 
       {gmailStatus && !gmailConnected && (
         <section className="mb-4 rounded-2xl bg-[linear-gradient(135deg,#4285F4,#34A853)] p-5 text-white shadow-[0_18px_40px_rgba(66,133,244,0.28)]">

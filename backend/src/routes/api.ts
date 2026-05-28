@@ -40,6 +40,112 @@ apiRouter.post("/leads/webhook", async (req, res) => {
 
 apiRouter.use(authMiddleware);
 
+async function debugGmailIntegrationForAuth(auth: { userId: string; organizationId: string; email: string }) {
+  const current = await prisma.integration.findUnique({
+    where: { organizationId_provider: { organizationId: auth.organizationId, provider: "gmail" } },
+  });
+  const fallback = current?.refreshToken
+    ? null
+    : await prisma.integration.findFirst({
+        where: {
+          provider: "gmail",
+          OR: [
+            { organization: { userId: auth.userId } },
+            { organization: { user: { email: auth.email } } },
+          ],
+          refreshToken: { not: null },
+        },
+        orderBy: { updatedAt: "desc" },
+      });
+
+  return current?.refreshToken || current?.accessToken ? current : fallback ?? current;
+}
+
+function debugGmailBase(auth: { userId: string; organizationId: string; email: string }, integration: Awaited<ReturnType<typeof debugGmailIntegrationForAuth>>) {
+  return {
+    connected: Boolean(integration?.refreshToken),
+    orgId: auth.organizationId,
+    userId: auth.userId,
+    integrationOrgId: integration?.organizationId ?? null,
+    provider: integration?.provider ?? null,
+    hasAccessToken: Boolean(integration?.accessToken),
+    hasRefreshToken: Boolean(integration?.refreshToken),
+    connectedAt: integration?.connectedAt ?? null,
+    emailsFetched: 0,
+    emailsSaved: 0,
+    clientsFound: 0,
+    invoicesFound: 0,
+    errors: 0,
+  };
+}
+
+apiRouter.get("/debug/gmail/status", async (req, res) => {
+  const integration = await debugGmailIntegrationForAuth(req.auth!);
+  res.json(debugGmailBase(req.auth!, integration));
+});
+
+apiRouter.post("/debug/gmail/test-fetch", async (req, res) => {
+  const integration = await debugGmailIntegrationForAuth(req.auth!);
+  const base = debugGmailBase(req.auth!, integration);
+  if (!integration?.refreshToken) {
+    res.status(409).json({ ...base, error: "GMAIL_NOT_CONNECTED", errors: 1 });
+    return;
+  }
+
+  try {
+    const { getGoogleClients } = await import("../services/google.js");
+    const { gmail } = await getGoogleClients(integration.organizationId);
+    const result = await gmail.users.messages.list({
+      userId: "me",
+      q: "newer_than:90d -category:promotions -category:social -in:spam -in:trash",
+      maxResults: 10,
+    });
+    res.json({
+      ...base,
+      connected: true,
+      emailsFetched: result.data.messages?.length ?? 0,
+      errors: 0,
+      messageIds: (result.data.messages ?? []).map((message) => message.id).filter(Boolean),
+    });
+  } catch (err) {
+    res.status(500).json({
+      ...base,
+      errors: 1,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
+apiRouter.post("/debug/gmail/scan-90", async (req, res) => {
+  const integration = await debugGmailIntegrationForAuth(req.auth!);
+  const base = debugGmailBase(req.auth!, integration);
+  if (!integration?.refreshToken) {
+    res.status(409).json({ ...base, error: "GMAIL_NOT_CONNECTED", errors: 1 });
+    return;
+  }
+
+  try {
+    const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
+    const result = await syncGmailForOrganization(integration.organizationId, { daysBack: 90, forceReprocess: true });
+    res.json({
+      ...base,
+      connected: true,
+      emailsFetched: result.emailsProcessed ?? 0,
+      emailsSaved: result.emailsSavedToGmailScanItem ?? result.recordsSaved ?? 0,
+      clientsFound: result.clientsCreated ?? result.potentialClients ?? 0,
+      invoicesFound: result.invoicesCreated ?? result.invoiceEmails ?? 0,
+      errors: result.errorsCount ?? 0,
+      raw: result,
+    });
+  } catch (err) {
+    res.status(500).json({
+      ...base,
+      errors: 1,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
 
 apiRouter.post("/automation/first-scan", async (req, res) => {
   const { scheduler } = await import("../services/scheduler.js");
