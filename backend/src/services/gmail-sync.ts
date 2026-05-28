@@ -527,7 +527,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
             analysis,
             relevant: classification.isRelevant,
             hasAttachment: email.parts.length > 0,
-            filenames: email.parts.map((part) => part.filename).filter(Boolean),
+            filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
           },
         },
         update: {
@@ -549,7 +549,7 @@ export async function syncGmailForOrganization(organizationId: string, options: 
             analysis,
             relevant: classification.isRelevant,
             hasAttachment: email.parts.length > 0,
-            filenames: email.parts.map((part) => part.filename).filter(Boolean),
+            filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
           },
         },
       });
