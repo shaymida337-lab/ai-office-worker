@@ -19,6 +19,18 @@ function requiredInProduction(name: string, fallback: string): string {
   return fallback;
 }
 
+function defaultGmailIntegrationRedirectUri(): string {
+  const explicit = process.env.GOOGLE_INTEGRATION_REDIRECT_URI;
+  if (explicit) return explicit;
+
+  const loginRedirect = process.env.GOOGLE_REDIRECT_URI ?? process.env.GOOGLE_CALLBACK_URL;
+  if (loginRedirect) {
+    return loginRedirect.replace(/\/(?:api\/)?auth\/google\/callback$/, "/api/integrations/gmail/callback");
+  }
+
+  return "http://localhost:4000/api/integrations/gmail/callback";
+}
+
 export const config = {
   port: parseInt(optional("PORT", "4000"), 10),
   nodeEnv: optional("NODE_ENV", "development"),
@@ -40,7 +52,7 @@ export const config = {
     ),
     integrationRedirectUri: optional(
       "GOOGLE_INTEGRATION_REDIRECT_URI",
-      optional("GOOGLE_CALLBACK_URL", "http://localhost:4000/api/integrations/gmail/callback")
+      defaultGmailIntegrationRedirectUri()
     ),
     clientGmailRedirectUri: optional(
       "GOOGLE_CLIENT_REDIRECT_URI",
