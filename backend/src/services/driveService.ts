@@ -47,13 +47,9 @@ export async function ensureInvoiceFolderTree(
   drive: drive_v3.Drive
 ): Promise<string> {
   const rootId = await ensureDriveFolder(drive, INVOICE_DRIVE_FOLDER_NAME);
-  await Promise.all([
-    ensureDriveFolder(drive, "Invoices", rootId),
-    ensureDriveFolder(drive, "Receipts", rootId),
-    ensureDriveFolder(drive, "Payment Requests", rootId),
-    ensureDriveFolder(drive, "Missing Invoices", rootId),
-    ensureDriveFolder(drive, "Other", rootId),
-  ]);
+  for (const folderName of ["Invoices", "Receipts", "Payment Requests", "Missing Invoices", "Other"]) {
+    await ensureDriveFolder(drive, folderName, rootId);
+  }
   return rootId;
 }
 

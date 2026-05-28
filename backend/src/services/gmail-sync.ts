@@ -14,6 +14,7 @@ import { notifyNewInvoice } from "./whatsapp.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_QUICK_SCAN = 25;
+const GMAIL_SCAN_BATCH_SIZE = 10;
 const DRIVE_FULL_MESSAGE = "הסריקה הושלמה. לא ניתן לשמור ל-Drive - האחסון שלך מלא";
 const GMAIL_EXCLUDE_QUERY = "-category:promotions -category:social -in:spam -in:trash";
 const INVOICE_KEYWORDS = [
@@ -144,7 +145,17 @@ export async function quickScanGmailForOrganization(organizationId: string, opti
   };
 }
 
+let gmailScanQueue: Promise<unknown> = Promise.resolve();
+
 export async function syncGmailForOrganization(organizationId: string, options: { daysBack?: number; isFirstTime?: boolean; forceReprocess?: boolean; scanLogId?: string } = {}) {
+  const queuedRun = gmailScanQueue
+    .catch(() => undefined)
+    .then(() => runGmailSyncForOrganization(organizationId, options));
+  gmailScanQueue = queuedRun.catch(() => undefined);
+  return queuedRun;
+}
+
+async function runGmailSyncForOrganization(organizationId: string, options: { daysBack?: number; isFirstTime?: boolean; forceReprocess?: boolean; scanLogId?: string } = {}) {
   const activeLog = await prisma.syncLog.findFirst({
     where: {
       organizationId,
@@ -332,13 +343,17 @@ export async function syncGmailForOrganization(organizationId: string, options: 
     logStep(`[gmail-sync] total emails fetched from Gmail=${messages.length}`);
     const scannedEmails: ScannedEmail[] = [];
 
-    for (const msgRef of messages) {
-      if (!msgRef.id) {
-        ignoreMessage("missing_gmail_message_id", msgRef.id);
-        continue;
-      }
+    let fetchBatchNumber = 0;
+    for (const batch of chunkArray(messages, GMAIL_SCAN_BATCH_SIZE)) {
+      fetchBatchNumber++;
+      logStep(`[gmail-sync] fetch batch ${fetchBatchNumber}/${Math.ceil(messages.length / GMAIL_SCAN_BATCH_SIZE)} size=${batch.length}`);
+      for (const msgRef of batch) {
+        if (!msgRef.id) {
+          ignoreMessage("missing_gmail_message_id", msgRef.id);
+          continue;
+        }
 
-      try {
+        try {
         const existing = await prisma.emailMessage.findUnique({
           where: {
             organizationId_gmailId: {
@@ -439,11 +454,17 @@ export async function syncGmailForOrganization(organizationId: string, options: 
           alreadyProcessed: Boolean(existing?.processedAt),
         });
         emailsProcessed++;
-      } catch (err) {
-        errorsCount++;
-        console.error(`[gmail-sync] fetch/parse/save failed message=${msgRef.id}`, err);
-        logStep(`[gmail-sync] error message=${msgRef.id} stage=fetch_parse_save reason="${err instanceof Error ? err.message : String(err)}"`);
+        } catch (err) {
+          errorsCount++;
+          console.error(`[gmail-sync] fetch/parse/save failed message=${msgRef.id}`, err);
+          logStep(`[gmail-sync] error message=${msgRef.id} stage=fetch_parse_save reason="${err instanceof Error ? err.message : String(err)}"`);
+        }
       }
+      await saveScanProgress(log.id, {
+        emailsProcessed,
+        paymentsCreated,
+        tasksCreated,
+      });
     }
 
     const senderCounts = new Map<string, { count: number; email: string; name: string; firstSeen: Date; lastSeen: Date }>();
@@ -486,9 +507,13 @@ export async function syncGmailForOrganization(organizationId: string, options: 
     }
     logStep(`Found ${potentialClients} potential clients`);
 
-    for (const email of scannedEmails) {
-      let scanItemPersisted = false;
-      try {
+    let processBatchNumber = 0;
+    for (const batch of chunkArray(scannedEmails, GMAIL_SCAN_BATCH_SIZE)) {
+      processBatchNumber++;
+      logStep(`[gmail-sync] process batch ${processBatchNumber}/${Math.ceil(scannedEmails.length / GMAIL_SCAN_BATCH_SIZE)} size=${batch.length}`);
+      for (const email of batch) {
+        let scanItemPersisted = false;
+        try {
       let clientId = clientIdByDomain.get(email.domain);
       if (clientId) {
         await prisma.emailMessage.update({
@@ -926,19 +951,25 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         data: { processedAt: new Date() },
       });
       logStep(`[gmail-sync] DB mark processed success message=${email.gmailId}`);
-      } catch (err) {
-        errorsCount++;
-        console.error(`[gmail-sync] processing failed message=${email.gmailId}`, err);
-        logStep(`[gmail-sync] error message=${email.gmailId} stage=process_save reason="${err instanceof Error ? err.message : String(err)}"`);
-        if (!scanItemPersisted) {
-          try {
-            await saveRejectedScanItem(email, `process_save_failed: ${err instanceof Error ? err.message : String(err)}`);
-          } catch (fallbackErr) {
-            console.error(`[gmail-sync] fallback GmailScanItem save failed message=${email.gmailId}`, fallbackErr);
-            logStep(`[gmail-sync] error message=${email.gmailId} stage=fallback_scan_item_save reason="${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}"`);
+        } catch (err) {
+          errorsCount++;
+          console.error(`[gmail-sync] processing failed message=${email.gmailId}`, err);
+          logStep(`[gmail-sync] error message=${email.gmailId} stage=process_save reason="${err instanceof Error ? err.message : String(err)}"`);
+          if (!scanItemPersisted) {
+            try {
+              await saveRejectedScanItem(email, `process_save_failed: ${err instanceof Error ? err.message : String(err)}`);
+            } catch (fallbackErr) {
+              console.error(`[gmail-sync] fallback GmailScanItem save failed message=${email.gmailId}`, fallbackErr);
+              logStep(`[gmail-sync] error message=${email.gmailId} stage=fallback_scan_item_save reason="${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}"`);
+            }
           }
         }
       }
+      await saveScanProgress(log.id, {
+        emailsProcessed,
+        paymentsCreated,
+        tasksCreated,
+      });
     }
     const recordsSaved = paymentsCreated + invoicesCreated + tasksCreated + clientsCreated;
     logStep(`Found ${relevantEmailsFound} relevant emails (${invoiceEmails} invoices, ${receiptsFound} receipts, ${paymentRequestsFound} payment requests, ${supplierMessagesFound} supplier messages)`);
@@ -1205,6 +1236,25 @@ function isRetryableError(err: unknown) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function saveScanProgress(logId: string, data: {
+  emailsProcessed: number;
+  paymentsCreated: number;
+  tasksCreated: number;
+}) {
+  await prisma.syncLog.update({
+    where: { id: logId },
+    data,
+  });
 }
 
 function collectAttachmentParts(payload?: PayloadPart): PayloadPart[] {
