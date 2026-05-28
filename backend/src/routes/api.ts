@@ -914,7 +914,7 @@ apiRouter.post("/whatsapp-assistant/test/:type", async (req, res) => {
 
 async function scanGmail(req: Request, res: Response) {
   try {
-    const { quickScanGmailForOrganization, syncGmailForOrganization } = await import("../services/gmail-sync.js");
+    const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
     const organizationId = req.auth!.organizationId;
     let gmailIntegration = await prisma.integration.findUnique({
       where: { organizationId_provider: { organizationId, provider: "gmail" } },
@@ -970,55 +970,76 @@ async function scanGmail(req: Request, res: Response) {
     }
 
     const rawDaysBack = Number(req.body?.daysBack ?? req.query.daysBack);
-    const hasExplicitDaysBack = req.body?.daysBack !== undefined || req.query.daysBack !== undefined;
     const daysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0 ? Math.ceil(rawDaysBack) : 90;
-    const leadsBefore = await safeLeadCount(organizationId);
     console.log(`[gmail-scan] POST /api/gmail/scan org=${organizationId} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack}`);
     console.log("[gmail-scan] Step 1: checking Gmail authentication");
-    if (!hasExplicitDaysBack) {
-      console.log("[gmail-scan] Step 2: running quick Gmail scan for manual request");
-      const result = await quickScanGmailForOrganization(organizationId, { daysBack });
-      void syncGmailForOrganization(organizationId, { daysBack, forceReprocess: daysBack >= 90 })
-        .then((backgroundResult) => {
-          console.log(`[gmail-scan] Background processing finished org=${organizationId} emails=${backgroundResult.emailsProcessed} payments=${backgroundResult.paymentsCreated} invoices=${backgroundResult.invoicesCreated} duplicates=${backgroundResult.duplicatesSkipped ?? 0}`);
-        })
-        .catch((backgroundError) => {
-          console.error(`[gmail-scan] Background processing failed org=${organizationId}`, backgroundError);
-        });
-      const emails = await latestScannedEmails(organizationId);
+
+    const staleAfterMs = 30 * 60 * 1000;
+    const activeLog = await prisma.syncLog.findFirst({
+      where: {
+        organizationId,
+        type: "gmail_scan",
+        status: "running",
+        finishedAt: null,
+      },
+      orderBy: { startedAt: "desc" },
+    });
+    if (activeLog && activeLog.startedAt.getTime() > Date.now() - staleAfterMs) {
+      const progress = await buildGmailScanProgress(organizationId, activeLog.id);
+      console.log(`[gmail-scan] Existing scan in progress org=${organizationId} scanId=${activeLog.id}`);
       res.json({
-        ...result,
-        emailsSaved: result.recordsSaved ?? 0,
-        emailRecordsSaved: 0,
-        scanned: result.emailsProcessed,
-        leads: 0,
-        emails,
-        emailsFound: result.emailsProcessed,
-        daysBack,
         success: true,
-        summary: buildGmailScanSummary(result),
+        scanId: activeLog.id,
+        status: "running",
+        inProgress: true,
+        daysBack,
+        progressUrl: `/api/gmail/scan/${activeLog.id}`,
+        summary: progress,
       });
       return;
     }
+    if (activeLog) {
+      await prisma.syncLog.update({
+        where: { id: activeLog.id },
+        data: { status: "error", errorMessage: "Stale running scan was reset before starting a new background scan", finishedAt: new Date() },
+      });
+    }
 
-    console.log("[gmail-scan] Step 2: starting Gmail sync");
-    const result = await syncGmailForOrganization(organizationId, { daysBack, forceReprocess: daysBack >= 90 });
-    const [leadsAfter, emails] = await Promise.all([
-      safeLeadCount(organizationId),
-      latestScannedEmails(organizationId),
-    ]);
-    console.log(`[gmail-scan] Step 3: scan finished org=${organizationId} emails=${result.emailsProcessed} payments=${result.paymentsCreated} invoices=${result.invoicesCreated} duplicates=${result.duplicatesSkipped ?? 0}`);
+    const scanLog = await prisma.syncLog.create({
+      data: {
+        organizationId,
+        type: "gmail_scan",
+        status: "running",
+      },
+    });
+    console.log(`[gmail-scan] Step 2: background scan started org=${organizationId} scanId=${scanLog.id} daysBack=${daysBack}`);
+    void syncGmailForOrganization(organizationId, { daysBack, forceReprocess: daysBack >= 90, scanLogId: scanLog.id })
+      .then((backgroundResult) => {
+        console.log(`[gmail-scan] Background processing finished org=${organizationId} scanId=${scanLog.id} emails=${backgroundResult.emailsProcessed} saved=${backgroundResult.emailsSavedToGmailScanItem ?? 0} payments=${backgroundResult.paymentsCreated} invoices=${backgroundResult.invoicesCreated} driveUploaded=${backgroundResult.driveUploadsSucceeded ?? 0} rejected=${backgroundResult.parserRejectedCount ?? backgroundResult.ignoredCount ?? 0}`);
+      })
+      .catch((backgroundError) => {
+        console.error(`[gmail-scan] Background processing failed org=${organizationId} scanId=${scanLog.id}`, backgroundError);
+      });
+
     res.json({
-      ...result,
-      emailsSaved: result.emailsSavedToGmailScanItem ?? result.recordsSaved ?? 0,
-      emailRecordsSaved: result.emailsSavedToGmailScanItem ?? 0,
-      scanned: result.emailsProcessed,
-      leads: Math.max(0, leadsAfter - leadsBefore),
-      emails,
-      emailsFound: result.emailsProcessed,
-      daysBack,
       success: true,
-      summary: buildGmailScanSummary(result),
+      scanId: scanLog.id,
+      status: "running",
+      inProgress: true,
+      daysBack,
+      progressUrl: `/api/gmail/scan/${scanLog.id}`,
+      message: "Gmail scan started in background",
+      summary: {
+        totalEmailsChecked: 0,
+        emailsScanned: 0,
+        emailsFetched: 0,
+        emailsSaved: 0,
+        invoicesFound: 0,
+        supplierPaymentsFound: 0,
+        clientsFound: 0,
+        uploadedToDrive: 0,
+        rejectedReasons: {},
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
@@ -1034,9 +1055,103 @@ async function scanGmail(req: Request, res: Response) {
   }
 }
 
+apiRouter.get("/gmail/scan/:scanId", async (req, res) => {
+  try {
+    const progress = await buildGmailScanProgress(req.auth!.organizationId, req.params.scanId);
+    if (!progress) {
+      res.status(404).json({ error: "Scan not found" });
+      return;
+    }
+    res.json(progress);
+  } catch (err) {
+    console.error("[gmail-scan] progress failed", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load scan progress" });
+  }
+});
+
 apiRouter.post("/sync/gmail", scanGmail);
 apiRouter.post("/gmail-scan", scanGmail);
 apiRouter.post("/gmail/scan", scanGmail);
+
+async function buildGmailScanProgress(organizationId: string, scanId: string) {
+  const log = await prisma.syncLog.findFirst({
+    where: { id: scanId, organizationId, type: "gmail_scan" },
+  });
+  if (!log) return null;
+
+  const start = log.startedAt;
+  const end = log.finishedAt ?? new Date();
+  const window = { gte: start, lte: end };
+  const [
+    emailsFetched,
+    emailsSaved,
+    invoicesFound,
+    supplierPaymentsFound,
+    clientsFound,
+    uploadedToDrive,
+    recentItems,
+  ] = await Promise.all([
+    prisma.emailMessage.count({ where: { organizationId, createdAt: window } }),
+    prisma.gmailScanItem.count({ where: { organizationId, createdAt: window } }),
+    prisma.gmailScanItem.count({ where: { organizationId, documentType: "invoice", createdAt: window } }),
+    prisma.supplierPayment.count({ where: { organizationId, createdAt: window } }),
+    prisma.client.count({ where: { organizationId, createdAt: window } }),
+    prisma.emailAttachment.count({ where: { driveLink: { not: null }, createdAt: window, emailMessage: { organizationId } } }),
+    prisma.gmailScanItem.findMany({
+      where: { organizationId, createdAt: window },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: { decisionReason: true, reviewStatus: true, documentType: true },
+    }),
+  ]);
+
+  const rejectedReasons = recentItems.reduce<Record<string, number>>((acc, item) => {
+    const rejected =
+      item.reviewStatus === "needs_review" ||
+      item.documentType === "unknown_needs_review" ||
+      /failed|rejected|no strong signal|empty|skipped/i.test(item.decisionReason);
+    if (!rejected) return acc;
+    const reason = item.decisionReason || "needs_review";
+    acc[reason] = (acc[reason] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const status = log.finishedAt
+    ? log.status === "success"
+      ? "completed"
+      : "error"
+    : "running";
+
+  return {
+    scanId: log.id,
+    status,
+    inProgress: status === "running",
+    startedAt: log.startedAt,
+    finishedAt: log.finishedAt,
+    error: log.status === "error" ? log.errorMessage : null,
+    emailsFetched: log.emailsProcessed || emailsFetched,
+    emailsSaved,
+    invoicesFound,
+    supplierPaymentsFound,
+    clientsFound,
+    uploadedToDrive,
+    rejectedReasons,
+    summary: {
+      totalEmailsChecked: log.emailsProcessed || emailsFetched,
+      emailsScanned: log.emailsProcessed || emailsFetched,
+      emailsFetched: log.emailsProcessed || emailsFetched,
+      emailsSaved,
+      recordsSaved: emailsSaved,
+      invoicesFound,
+      supplierPaymentsFound,
+      clientsFound,
+      uploadedToDrive,
+      rejectedReasons,
+      paymentsSaved: supplierPaymentsFound,
+      errorsCount: log.status === "error" ? 1 : 0,
+    },
+  };
+}
 
 function buildGmailScanSummary(result: {
   emailsProcessed: number;

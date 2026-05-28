@@ -116,13 +116,14 @@ export async function quickScanGmailForOrganization(organizationId: string, opti
   };
 }
 
-export async function syncGmailForOrganization(organizationId: string, options: { daysBack?: number; isFirstTime?: boolean; forceReprocess?: boolean } = {}) {
+export async function syncGmailForOrganization(organizationId: string, options: { daysBack?: number; isFirstTime?: boolean; forceReprocess?: boolean; scanLogId?: string } = {}) {
   const activeLog = await prisma.syncLog.findFirst({
     where: {
       organizationId,
       type: "gmail_scan",
       status: "running",
       finishedAt: null,
+      ...(options.scanLogId ? { id: { not: options.scanLogId } } : {}),
     },
   });
   if (activeLog) {
@@ -155,19 +156,31 @@ export async function syncGmailForOrganization(organizationId: string, options: 
       type: "gmail_scan",
       status: "running",
       finishedAt: null,
+      ...(options.scanLogId ? { id: { not: options.scanLogId } } : {}),
     },
   });
   if (activeLogAfterReset) {
     return { emailsProcessed: 0, paymentsCreated: 0, tasksCreated: 0, clientsCreated: 0, invoicesCreated: 0, uniqueSenders: 0, potentialClients: 0, invoiceEmails: 0, invoiceAmountsExtracted: 0, inProgress: true, scanSteps: ["סריקת Gmail כבר רצה"] };
   }
 
-  const log = await prisma.syncLog.create({
+  const existingScanLog = options.scanLogId
+    ? await prisma.syncLog.findFirst({
+        where: { id: options.scanLogId, organizationId, type: "gmail_scan" },
+      })
+    : null;
+  const log = existingScanLog ?? await prisma.syncLog.create({
     data: {
       organizationId,
       type: "gmail_scan",
       status: "running",
     },
   });
+  if (existingScanLog) {
+    await prisma.syncLog.update({
+      where: { id: existingScanLog.id },
+      data: { status: "running", errorMessage: null, finishedAt: null },
+    });
+  }
 
   let emailsProcessed = 0;
   let paymentsCreated = 0;
