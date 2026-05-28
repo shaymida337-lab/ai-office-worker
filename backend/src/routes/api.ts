@@ -164,6 +164,18 @@ apiRouter.get("/debug/invoices", async (req, res) => {
     const invoiceScanItemCount = await prisma.gmailScanItem.count({
       where: { organizationId, documentType: { in: ["invoice", "receipt"] } },
     });
+    const invoiceCandidatePaymentCount = await prisma.supplierPayment.count({
+      where: {
+        organizationId,
+        OR: [
+          { invoiceLink: { not: null } },
+          { subject: { contains: "invoice", mode: "insensitive" } },
+          { subject: { contains: "receipt", mode: "insensitive" } },
+          { subject: { contains: "חשבונית", mode: "insensitive" } },
+          { subject: { contains: "קבלה", mode: "insensitive" } },
+        ],
+      },
+    });
     const lastInvoiceRows = await prisma.invoice.findMany({
       where: { organizationId },
       orderBy: { createdAt: "desc" },
@@ -302,6 +314,7 @@ apiRouter.get("/debug/invoices", async (req, res) => {
       supplierPaymentCount,
       gmailScanItemCount,
       invoiceScanItemCount,
+      invoiceCandidatePaymentCount,
       lastInvoiceRows,
       lastPaymentRows,
       lastScanItems,

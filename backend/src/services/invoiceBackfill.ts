@@ -115,14 +115,127 @@ export async function backfillInvoicesFromGmailScanItems(organizationId: string,
       console.error(`[invoice-backfill] failed org=${organizationId} gmail=${item.gmailMessageId}`, err);
     }
   }
+  const paymentBackfill = await backfillInvoicesFromSupplierPayments(organizationId, limit);
 
   return {
     candidates: candidates.length,
-    created,
-    duplicates,
-    skipped,
-    errors,
+    paymentCandidates: paymentBackfill.candidates,
+    created: created + paymentBackfill.created,
+    duplicates: duplicates + paymentBackfill.duplicates,
+    skipped: skipped + paymentBackfill.skipped,
+    errors: [...errors, ...paymentBackfill.errors],
   };
+}
+
+async function backfillInvoicesFromSupplierPayments(organizationId: string, limit: number) {
+  const candidates = await prisma.supplierPayment.findMany({
+    where: {
+      organizationId,
+      OR: [
+        { invoiceLink: { not: null } },
+        { subject: { contains: "invoice", mode: "insensitive" } },
+        { subject: { contains: "receipt", mode: "insensitive" } },
+        { subject: { contains: "חשבונית", mode: "insensitive" } },
+        { subject: { contains: "קבלה", mode: "insensitive" } },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: {
+      id: true,
+      clientId: true,
+      supplier: true,
+      amount: true,
+      currency: true,
+      date: true,
+      dueDate: true,
+      paid: true,
+      invoiceLink: true,
+      documentLink: true,
+      emailSender: true,
+      subject: true,
+      emailMessageId: true,
+      createdAt: true,
+    },
+  });
+
+  let created = 0;
+  let duplicates = 0;
+  let skipped = 0;
+  const errors: Array<{ gmailMessageId: string; reason: string }> = [];
+
+  for (const payment of candidates) {
+    try {
+      const emailMessage = payment.emailMessageId
+        ? await prisma.emailMessage.findFirst({
+            where: { id: payment.emailMessageId, organizationId },
+            select: { id: true, gmailId: true, clientId: true, fromAddress: true, receivedAt: true },
+          })
+        : null;
+      const gmailMessageId = emailMessage?.gmailId ?? `supplier-payment:${payment.id}`;
+      const existingByGmail = await prisma.invoice.findFirst({
+        where: { organizationId, gmailMessageId },
+        select: { id: true },
+      });
+      if (existingByGmail) {
+        duplicates++;
+        continue;
+      }
+
+      const clientId = await ensureInvoiceBackfillClient({
+        organizationId,
+        existingClientId: payment.clientId ?? emailMessage?.clientId ?? null,
+        supplierName: payment.supplier,
+        senderEmail: extractEmail(payment.emailSender ?? emailMessage?.fromAddress ?? ""),
+        occurredAt: payment.date,
+      });
+      if (!clientId) {
+        skipped++;
+        errors.push({ gmailMessageId, reason: "missing_client_id" });
+        continue;
+      }
+
+      const invoiceNumber = extractInvoiceNumber(payment.subject ?? "");
+      const duplicate = await findExistingInvoiceByBusinessKey({
+        organizationId,
+        clientId,
+        supplierName: payment.supplier,
+        invoiceNumber,
+        amount: payment.amount,
+        date: payment.date,
+      });
+      if (duplicate) {
+        duplicates++;
+        continue;
+      }
+
+      const invoice = await prisma.invoice.create({
+        data: {
+          organizationId,
+          clientId,
+          invoiceNumber,
+          amount: payment.amount,
+          currency: payment.currency || "ILS",
+          date: payment.date,
+          dueDate: payment.dueDate,
+          status: payment.paid ? "paid" : "pending",
+          description: `${payment.supplier} · ${payment.subject ?? "Supplier invoice"}`,
+          driveUrl: payment.invoiceLink ?? payment.documentLink,
+          emailId: payment.emailMessageId,
+          fromEmail: payment.emailSender,
+          gmailMessageId,
+        },
+      });
+      created++;
+      console.log(`[invoice-backfill] invoice created from payment org=${organizationId} invoice=${invoice.id} payment=${payment.id} supplier="${payment.supplier}" amount=${payment.amount}`);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      errors.push({ gmailMessageId: `supplier-payment:${payment.id}`, reason });
+      console.error(`[invoice-backfill] payment backfill failed org=${organizationId} payment=${payment.id}`, err);
+    }
+  }
+
+  return { candidates: candidates.length, created, duplicates, skipped, errors };
 }
 
 async function ensureInvoiceBackfillClient(input: {
