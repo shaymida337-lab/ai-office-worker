@@ -9,6 +9,7 @@ import { config, hasGoogleOAuth } from "../lib/config.js";
 import { ensureGmailAccessToken, getOAuth2Client, GMAIL_SCOPES } from "../services/google.js";
 import { hashPassword, verifyPassword } from "../lib/password.js";
 import { sendAuthSuccess } from "../lib/auth-response.js";
+import { errorDetails, publicErrorMessage } from "../lib/errors.js";
 
 export const authRouter = Router();
 
@@ -81,8 +82,8 @@ authRouter.post("/register", async (req, res) => {
 
     sendAuthSuccess(res, user);
   } catch (err) {
-    console.error("[auth/register]", err);
-    res.status(500).json({ error: "Registration failed" });
+    console.error("[auth/register]", errorDetails(err));
+    res.status(500).json({ error: "Registration failed", detail: publicErrorMessage(err) });
   }
 });
 
@@ -138,8 +139,8 @@ authRouter.post("/login", async (req, res) => {
 
     sendAuthSuccess(res, user);
   } catch (err) {
-    console.error("[auth/login]", err);
-    res.status(500).json({ error: "Login failed" });
+    console.error("[auth/login]", errorDetails(err));
+    res.status(500).json({ error: "Login failed", detail: publicErrorMessage(err) });
   }
 });
 

@@ -2,6 +2,7 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { authMiddleware, signToken, verifyToken } from "../lib/auth.js";
 import { config, hasGoogleOAuth } from "../lib/config.js";
+import { errorDetails, publicErrorMessage } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { getOAuth2Client, GMAIL_SCOPES } from "../services/google.js";
 
@@ -26,6 +27,11 @@ function gmailAuthUrl(state?: string) {
       state,
     })
   );
+}
+
+function gmailCallbackErrorRedirect(err: unknown) {
+  const reason = encodeURIComponent(publicErrorMessage(err).slice(0, 500));
+  return `${config.frontendUrl}/dashboard/settings?gmail=error&reason=${reason}`;
 }
 
 type GmailIntegrationState = {
@@ -107,9 +113,12 @@ integrationsRouter.get("/gmail/connect-url", authMiddleware, async (req, res) =>
 
     const state = signGmailIntegrationState(req.auth!);
     const url = await gmailAuthUrl(state);
+    console.log(
+      `[gmail/connect-url] user=${req.auth!.userId} org=${req.auth!.organizationId} clientConfigured=${Boolean(config.google.clientId)} secretConfigured=${Boolean(config.google.clientSecret)} redirectUri=${config.google.integrationRedirectUri}`
+    );
     res.json({ url });
   } catch (error) {
-    console.error("Gmail connect error:", error);
+    console.error("Gmail connect error:", errorDetails(error));
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }
 });
@@ -137,9 +146,14 @@ integrationsRouter.get("/gmail/connect", async (req, res) => {
 });
 
 integrationsRouter.get("/gmail/callback", async (req, res) => {
+  const hasCode = Boolean(req.query.code);
+  const hasState = Boolean(req.query.state);
   try {
     const code = req.query.code as string | undefined;
     const state = req.query.state as string | undefined;
+    console.log(
+      `[gmail/callback] start hasCode=${hasCode} hasState=${hasState} redirectUri=${config.google.integrationRedirectUri} clientConfigured=${Boolean(config.google.clientId)} secretConfigured=${Boolean(config.google.clientSecret)}`
+    );
 
     if (!code) {
       res.status(400).send("Missing Google OAuth code");
@@ -268,11 +282,11 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
 
     res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=connected`);
   } catch (err) {
-    console.error("[gmail/callback]", err);
+    console.error("[gmail/callback]", errorDetails(err));
     if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.TokenExpiredError) {
       res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
       return;
     }
-    res.status(500).send("Failed to connect Gmail");
+    res.redirect(gmailCallbackErrorRedirect(err));
   }
 });
