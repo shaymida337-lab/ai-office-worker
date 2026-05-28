@@ -44,6 +44,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   try {
     res = await fetch(url, {
       ...init,
+      credentials: init?.credentials ?? "include",
       signal: init?.signal ?? controller.signal,
       headers: {
         "Content-Type": "application/json",

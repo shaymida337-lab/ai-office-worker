@@ -292,6 +292,7 @@ export default function DashboardPage() {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
       const res = await fetch(`${apiUrl}/api/integrations/gmail/connect-url`, {
         method: "GET",
+        credentials: "include",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",

@@ -1,12 +1,14 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import jwt from "jsonwebtoken";
-import { authMiddleware, signToken, verifyToken } from "../lib/auth.js";
+import { authMiddleware, verifyToken } from "../lib/auth.js";
 import { config, hasGoogleOAuth } from "../lib/config.js";
 import { errorDetails, publicErrorMessage } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { getOAuth2Client, GMAIL_SCOPES } from "../services/google.js";
 
 export const integrationsRouter = Router();
+const GMAIL_OAUTH_STATE_COOKIE = "gmail_oauth_state";
+const OAUTH_STATE_MAX_AGE_MS = 10 * 60 * 1000;
 
 function tokenFromRequest(req: {
   headers: { authorization?: string };
@@ -27,6 +29,32 @@ function gmailAuthUrl(state?: string) {
       state,
     })
   );
+}
+
+function cookieValue(header: string | undefined, name: string) {
+  if (!header) return null;
+  const cookies = header.split(";").map((entry) => entry.trim());
+  const match = cookies.find((entry) => entry.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
+}
+
+function setGmailStateCookie(res: Response, state: string) {
+  res.cookie(GMAIL_OAUTH_STATE_COOKIE, state, {
+    httpOnly: true,
+    sameSite: "none",
+    secure: true,
+    maxAge: OAUTH_STATE_MAX_AGE_MS,
+    path: "/api/integrations/gmail",
+  });
+}
+
+function clearGmailStateCookie(res: Response) {
+  res.clearCookie(GMAIL_OAUTH_STATE_COOKIE, {
+    httpOnly: true,
+    sameSite: "none",
+    secure: true,
+    path: "/api/integrations/gmail",
+  });
 }
 
 function gmailCallbackErrorRedirect(err: unknown) {
@@ -113,8 +141,9 @@ integrationsRouter.get("/gmail/connect-url", authMiddleware, async (req, res) =>
 
     const state = signGmailIntegrationState(req.auth!);
     const url = await gmailAuthUrl(state);
+    setGmailStateCookie(res, state);
     console.log(
-      `[gmail/connect-url] user=${req.auth!.userId} org=${req.auth!.organizationId} clientConfigured=${Boolean(config.google.clientId)} secretConfigured=${Boolean(config.google.clientSecret)} redirectUri=${config.google.integrationRedirectUri}`
+      `[gmail/connect-url] user=${req.auth!.userId} org=${req.auth!.organizationId} clientId=${config.google.clientId} secretConfigured=${Boolean(config.google.clientSecret)} redirectUri=${config.google.integrationRedirectUri} state=${state}`
     );
     res.json({ url });
   } catch (error) {
@@ -138,6 +167,10 @@ integrationsRouter.get("/gmail/connect", async (req, res) => {
   try {
     const auth = verifyToken(token);
     const state = signGmailIntegrationState(auth);
+    setGmailStateCookie(res, state);
+    console.log(
+      `[gmail/connect] user=${auth.userId} org=${auth.organizationId} clientId=${config.google.clientId} secretConfigured=${Boolean(config.google.clientSecret)} redirectUri=${config.google.integrationRedirectUri} state=${state}`
+    );
     res.redirect(await gmailAuthUrl(state));
   } catch {
     res.status(401).send("Invalid user token");
@@ -151,8 +184,9 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
   try {
     const code = req.query.code as string | undefined;
     const state = req.query.state as string | undefined;
+    const cookieState = cookieValue(req.headers.cookie, GMAIL_OAUTH_STATE_COOKIE);
     console.log(
-      `[gmail/callback] start hasCode=${hasCode} hasState=${hasState} redirectUri=${config.google.integrationRedirectUri} clientConfigured=${Boolean(config.google.clientId)} secretConfigured=${Boolean(config.google.clientSecret)}`
+      `[gmail/callback] start hasCode=${hasCode} hasState=${hasState} state=${state ?? "none"} cookieState=${cookieState ?? "none"} cookieMatches=${Boolean(state && cookieState && state === cookieState)} redirectUri=${config.google.integrationRedirectUri} clientId=${config.google.clientId} secretConfigured=${Boolean(config.google.clientSecret)}`
     );
 
     if (!code) {
@@ -160,77 +194,22 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
       return;
     }
 
-    const oauth2 = await getOAuth2Client(config.google.integrationRedirectUri);
-    const { tokens } = await oauth2.getToken(code);
-    oauth2.setCredentials(tokens);
-
-    if (!tokens.refresh_token && !state) {
-      res
-        .status(400)
-        .send("Google did not return a refresh token. Reconnect and approve access.");
-      return;
-    }
-
     let organizationId: string;
-    let frontendToken: string | null = null;
+    let decodedState: (Partial<GmailIntegrationState> & { organizationId?: string }) | null = null;
     if (state) {
-      const decoded = jwt.verify(state, config.jwtSecret) as Partial<GmailIntegrationState> & { organizationId?: string };
-      if (decoded.purpose && decoded.purpose !== "gmail_integration") {
+      decodedState = jwt.verify(state, config.jwtSecret) as Partial<GmailIntegrationState> & { organizationId?: string };
+      if (decodedState.purpose && decodedState.purpose !== "gmail_integration") {
         res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
         return;
       }
-      if (!decoded.organizationId) {
+      if (!decodedState.organizationId) {
         res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
         return;
       }
-      organizationId = decoded.organizationId;
+      organizationId = decodedState.organizationId;
     } else {
-      const oauth2api = await import("googleapis").then((g) =>
-        g.google.oauth2({ version: "v2", auth: oauth2 })
-      );
-      const me = await oauth2api.userinfo.get();
-      const email = me.data.email;
-      if (!email) {
-        res.status(400).send("No email from Google");
-        return;
-      }
-
-      const normalizedEmail = email.trim().toLowerCase();
-      let user = await prisma.user.findUnique({
-        where: { email: normalizedEmail },
-        include: { organization: true },
-      });
-      if (!user) {
-        user = await prisma.user.create({
-          data: {
-            email: normalizedEmail,
-            name: me.data.name ?? undefined,
-            organization: {
-              create: { name: me.data.name ?? "My Business" },
-            },
-          },
-          include: { organization: true },
-        });
-      } else if (!user.organization) {
-        await prisma.organization.create({
-          data: { userId: user.id, name: me.data.name ?? "My Business" },
-        });
-        user = await prisma.user.findUnique({
-          where: { email: normalizedEmail },
-          include: { organization: true },
-        });
-      }
-
-      if (!user?.organization) {
-        res.status(500).send("Organization missing");
-        return;
-      }
-      organizationId = user.organization.id;
-      frontendToken = signToken({
-        userId: user.id,
-        organizationId,
-        email: user.email,
-      });
+      res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
+      return;
     }
 
     const existingIntegration = await prisma.integration.findUnique({
@@ -241,6 +220,46 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
         },
       },
     });
+    if (state && existingIntegration?.refreshToken) {
+      console.log(
+        `[gmail/callback] state already has Gmail refreshToken org=${organizationId}; treating duplicate callback/code replay as connected state=${state}`
+      );
+      clearGmailStateCookie(res);
+      res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=connected`);
+      return;
+    }
+
+    const oauth2 = await getOAuth2Client(config.google.integrationRedirectUri);
+    let tokens: {
+      access_token?: string | null;
+      refresh_token?: string | null;
+      expiry_date?: number | null;
+    };
+    try {
+      const tokenResult = await oauth2.getToken(code);
+      tokens = tokenResult.tokens;
+      oauth2.setCredentials(tokens);
+    } catch (err) {
+      const isInvalidGrant =
+        err instanceof Error && err.message.toLowerCase().includes("invalid_grant");
+      if (isInvalidGrant && existingIntegration?.refreshToken) {
+        console.log(
+          `[gmail/callback] invalid_grant after existing refreshToken org=${organizationId}; likely duplicate callback/code replay, returning connected state=${state ?? "none"}`
+        );
+        clearGmailStateCookie(res);
+        res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=connected`);
+        return;
+      }
+      throw err;
+    }
+
+    if (!tokens.refresh_token && !existingIntegration?.refreshToken) {
+      res
+        .status(400)
+        .send("Google did not return a refresh token. Reconnect and approve access.");
+      return;
+    }
+
     const refreshToken = tokens.refresh_token ?? existingIntegration?.refreshToken;
     if (!refreshToken) {
       res
@@ -275,11 +294,7 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
     );
     runPostConnectionGmailScan(organizationId);
 
-    if (frontendToken) {
-      res.redirect(`${config.frontendUrl}/auth/callback#token=${encodeURIComponent(frontendToken)}&gmail=connected`);
-      return;
-    }
-
+    clearGmailStateCookie(res);
     res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=connected`);
   } catch (err) {
     console.error("[gmail/callback]", errorDetails(err));
