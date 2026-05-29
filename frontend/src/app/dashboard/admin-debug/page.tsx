@@ -92,14 +92,16 @@ type DriveMergeDuplicateFoldersResponse = {
 };
 
 type DriveMergeStartResponse = {
-  jobId: string;
+  jobId?: string;
+  id?: string;
   dryRun: boolean;
   status: "running";
   progress: string;
 };
 
 type DriveMergeStatusResponse = {
-  jobId: string;
+  jobId?: string;
+  id?: string;
   dryRun: boolean;
   status: "running" | "done" | "error";
   progress: string;
@@ -177,12 +179,16 @@ export default function AdminDebugPage() {
       body: JSON.stringify({ dryRun }),
       timeoutMs: DRIVE_JOB_REQUEST_TIMEOUT_MS,
     });
-    setDriveMergeStatus(start.progress || `Drive job started: ${start.jobId}`);
+    const jobId = start.jobId ?? start.id;
+    if (!jobId) {
+      throw new Error(`Drive merge job did not return a jobId. Start response: ${JSON.stringify(start)}`);
+    }
+    setDriveMergeStatus(start.progress || `Drive job started: ${jobId}`);
 
     const startedAt = Date.now();
     while (Date.now() - startedAt < DRIVE_JOB_MAX_WAIT_MS) {
       await wait(DRIVE_JOB_POLL_INTERVAL_MS);
-      const status = await apiFetch<DriveMergeStatusResponse>(`/api/debug/drive/merge-status/${start.jobId}`, {
+      const status = await apiFetch<DriveMergeStatusResponse>(`/api/debug/drive/merge-status/${jobId}`, {
         timeoutMs: DRIVE_JOB_REQUEST_TIMEOUT_MS,
       });
       setDriveMergeStatus(status.progress || `Drive job status: ${status.status}`);

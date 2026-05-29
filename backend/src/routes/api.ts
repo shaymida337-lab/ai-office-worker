@@ -562,6 +562,7 @@ apiRouter.post("/debug/drive/merge-duplicate-folders", (req, res) => {
 
   res.status(202).json({
     jobId,
+    id: jobId,
     dryRun,
     status: "running",
     progress: dryRun ? "Queued dry-run Drive duplicate folder scan" : "Queued real Drive duplicate folder merge",
@@ -577,6 +578,7 @@ apiRouter.get("/debug/drive/merge-status/:jobId", (req, res) => {
 
   res.json({
     jobId: job.id,
+    id: job.id,
     dryRun: job.dryRun,
     status: job.status,
     progress: job.progress,
