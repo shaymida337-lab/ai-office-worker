@@ -46,25 +46,16 @@ type DebugScanItem = {
 };
 
 type InvoiceDebugResponse = {
-  organizationId: string;
+  orgId?: string;
+  organizationId?: string;
   userId: string;
-  database?: {
-    host: string;
-    connectionLimit: string;
-    poolTimeoutSeconds: string;
-  };
-  maxRows?: number;
-  totalMs?: number;
-  queryTimings?: Array<{ label: string; ms: number; ok: boolean }>;
   invoiceCount: number;
   supplierPaymentCount: number;
   gmailScanItemCount: number;
   invoiceScanItemCount: number;
-  invoiceCandidatePaymentCount?: number;
-  lastInvoiceRows: DebugInvoiceRow[];
-  lastPaymentRows: DebugPaymentRow[];
-  invoiceOrReceiptScanItems: DebugScanItem[];
-  rejectedInvoiceReasons: DebugScanItem[];
+  lastInvoiceRows?: DebugInvoiceRow[];
+  lastPaymentRows?: DebugPaymentRow[];
+  rejectedInvoiceReasons?: DebugScanItem[];
 };
 
 export default function AdminDebugPage() {
@@ -111,30 +102,23 @@ export default function AdminDebugPage() {
       {data && (
         <>
           <section className="mb-6 grid gap-3 md:grid-cols-4">
-            <Metric label="Invoice rows" value={data.invoiceCount} />
-            <Metric label="SupplierPayment rows" value={data.supplierPaymentCount} />
-            <Metric label="Invoice scan items" value={data.invoiceScanItemCount} />
-            <Metric label="Candidate payments" value={data.invoiceCandidatePaymentCount ?? 0} />
+            <Metric label="Invoice rows" value={data.invoiceCount ?? 0} />
+            <Metric label="SupplierPayment rows" value={data.supplierPaymentCount ?? 0} />
+            <Metric label="Gmail scan items" value={data.gmailScanItemCount ?? 0} />
+            <Metric label="Invoice scan items" value={data.invoiceScanItemCount ?? 0} />
           </section>
 
-          <section className="mb-6 grid gap-4 md:grid-cols-2">
+          <section className="mb-6 grid gap-4">
             <div className="card">
               <h2>Authenticated User</h2>
               <p>User ID: {data.userId}</p>
-              <p>Org ID: {data.organizationId}</p>
-            </div>
-            <div className="card">
-              <h2>Database Timing</h2>
-              <p>Total: {data.totalMs ?? 0}ms</p>
-              <p>Rows limit: {data.maxRows ?? 20}</p>
-              <pre className="overflow-auto text-xs text-ink-secondary">{JSON.stringify({ database: data.database, queryTimings: data.queryTimings }, null, 2)}</pre>
+              <p>Org ID: {data.orgId ?? data.organizationId ?? "unknown"}</p>
             </div>
           </section>
 
-          <DebugTable title="Latest 20 Invoice rows" rows={data.lastInvoiceRows} />
-          <DebugTable title="Latest 20 SupplierPayment rows" rows={data.lastPaymentRows} />
-          <DebugTable title="Invoice / Receipt scan items" rows={data.invoiceOrReceiptScanItems} />
-          <DebugTable title="Rejected invoice reasons" rows={data.rejectedInvoiceReasons} />
+          <DebugTable title="Latest 20 Invoice rows" rows={data.lastInvoiceRows ?? []} />
+          <DebugTable title="Latest 20 SupplierPayment rows" rows={data.lastPaymentRows ?? []} />
+          <DebugTable title="Rejected invoice reasons" rows={data.rejectedInvoiceReasons ?? []} />
         </>
       )}
     </div>
@@ -150,15 +134,17 @@ function Metric({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function DebugTable({ title, rows }: { title: string; rows: unknown[] }) {
+function DebugTable({ title, rows }: { title: string; rows?: unknown[] }) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+
   return (
     <section className="card mb-6">
       <h2>{title}</h2>
-      {rows.length === 0 ? (
+      {safeRows.length === 0 ? (
         <p>אין נתונים.</p>
       ) : (
         <pre className="mt-4 max-h-[520px] overflow-auto rounded-xl bg-surface-secondary p-4 text-xs text-ink-secondary">
-          {JSON.stringify(rows, null, 2)}
+          {JSON.stringify(safeRows, null, 2)}
         </pre>
       )}
     </section>
