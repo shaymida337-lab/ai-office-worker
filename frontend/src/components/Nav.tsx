@@ -39,6 +39,7 @@ const links = [
   { href: "/reports", label: "דוחות", icon: BarChart3 },
   { href: "/dashboard/accountant", label: "רואה חשבון", icon: FileBarChart },
   { href: "/camera", label: "צילום חשבונית", icon: Camera },
+  { href: "/dashboard/admin-debug", label: "Admin Debug", icon: Settings },
   { href: "/dashboard/settings", label: "הגדרות", icon: Settings },
 ];
 

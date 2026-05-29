@@ -179,7 +179,7 @@ apiRouter.get("/debug/invoices", async (req, res) => {
     const lastInvoiceRows = await prisma.invoice.findMany({
       where: { organizationId },
       orderBy: { createdAt: "desc" },
-      take: 10,
+      take: 20,
       select: {
         id: true,
         clientId: true,
@@ -201,7 +201,7 @@ apiRouter.get("/debug/invoices", async (req, res) => {
     const lastPaymentRows = await prisma.supplierPayment.findMany({
       where: { organizationId },
       orderBy: { createdAt: "desc" },
-      take: 10,
+      take: 20,
       select: {
         id: true,
         supplier: true,
