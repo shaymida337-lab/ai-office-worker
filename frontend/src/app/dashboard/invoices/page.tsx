@@ -137,13 +137,13 @@ export default function InvoicesPage() {
   }[messageTone];
 
   return (
-    <div className="container text-[16px] text-[#E2E8F0]">
+    <div className="container text-base text-[#F1F5F9]">
       <Nav />
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="page-kicker">Invoice intelligence</div>
           <h1>חשבוניות</h1>
-          <p className="text-base leading-7 text-[#CBD5E1]">מעקב, סינון וסריקה של חשבוניות מכל הלקוחות.</p>
+          <p className="text-[17px] leading-8 text-[#E2E8F0]">מעקב, סינון וסריקה של חשבוניות מכל הלקוחות.</p>
         </div>
         <button className="btn min-w-40" onClick={scanInvoices} disabled={scanning}>
           {scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
@@ -153,7 +153,7 @@ export default function InvoicesPage() {
       {message && (
         <div className={`mb-6 rounded-2xl border p-4 text-base font-medium leading-7 ${messageClasses}`}>
           <div>{message}</div>
-          {scanProgress && <div className="mt-1 flex items-center gap-2 text-sm text-[#E2E8F0]"><Loader2 className="h-4 w-4 animate-spin" />{scanProgress}</div>}
+          {scanProgress && <div className="mt-1 flex items-center gap-2 text-base text-[#F1F5F9]"><Loader2 className="h-4 w-4 animate-spin" />{scanProgress}</div>}
         </div>
       )}
 
@@ -165,16 +165,16 @@ export default function InvoicesPage() {
       </div>
 
       <div className="card">
-        <div className="mb-4 flex items-center gap-2 text-base font-semibold text-[#F8FAFC]"><Filter className="h-4 w-4" />סינון וחיפוש</div>
+        <div className="mb-4 flex items-center gap-2 text-[17px] font-semibold text-[#F8FAFC]"><Filter className="h-5 w-5" />סינון וחיפוש</div>
         <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <select className="text-base" value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="all">כל הלקוחות</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
-          <select className="text-base" value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">כל הסטטוסים</option><option value="paid">שולם</option><option value="pending">ממתין</option><option value="overdue">באיחור</option></select>
+          <select className="text-base text-[#F8FAFC]" value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="all">כל הלקוחות</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
+          <select className="text-base text-[#F8FAFC]" value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">כל הסטטוסים</option><option value="paid">שולם</option><option value="pending">ממתין</option><option value="overdue">באיחור</option></select>
           <div className="relative xl:col-span-2">
-            <Search className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-ink-muted" />
-            <input className="pr-10 text-base" placeholder="חיפוש לפי מספר חשבונית" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Search className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-[#CBD5E1]" />
+            <input className="pr-10 text-base text-[#F8FAFC] placeholder:text-[#CBD5E1]" placeholder="חיפוש לפי מספר חשבונית" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <input className="text-base" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-          <input className="text-base" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          <input className="text-base text-[#F8FAFC]" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <input className="text-base text-[#F8FAFC]" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
       </div>
 
@@ -185,13 +185,13 @@ export default function InvoicesPage() {
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="break-words">{invoice.client?.name ?? "לקוח לא ידוע"}</h2>
-                  <p className="text-base text-[#CBD5E1]">{new Date(invoice.date).toLocaleDateString("he-IL")} · {invoice.invoiceNumber ?? "ללא מספר"}</p>
+                  <p className="text-base text-[#E2E8F0]">{new Date(invoice.date).toLocaleDateString("he-IL")} · {invoice.invoiceNumber ?? "ללא מספר"}</p>
                 </div>
                 <span className={`badge shrink-0 ${invoice.status === "paid" ? "badge-ok" : invoice.status === "overdue" ? "badge-error" : "badge-warn"}`}>
                   {statusLabels[invoice.status]}
                 </span>
               </div>
-              {invoice.description && <p className="mb-4 break-words text-base leading-7 text-[#CBD5E1]">{invoice.description}</p>}
+              {invoice.description && <p className="mb-4 break-words text-base leading-7 text-[#E2E8F0]">{invoice.description}</p>}
               <div className="rounded-2xl bg-surface-secondary p-3 text-left text-2xl font-bold text-ink-primary">
                 ₪{invoice.amount.toLocaleString("he-IL")} {invoice.currency}
               </div>
@@ -212,32 +212,32 @@ export default function InvoicesPage() {
 
       <div className="table-shell hidden max-w-full overflow-x-auto md:block">
         <table className="min-w-[980px] table-fixed">
-          <thead><tr><th className="w-28 text-[15px] text-[#F8FAFC]">תאריך</th><th className="w-36 text-[15px] text-[#F8FAFC]">לקוח</th><th className="w-28 text-[15px] text-[#F8FAFC]">מספר</th><th className="text-[15px] text-[#F8FAFC]">תיאור</th><th className="w-36 text-[15px] text-[#F8FAFC]">סכום</th><th className="w-24 text-[15px] text-[#F8FAFC]">סטטוס</th><th className="w-24 text-[15px] text-[#F8FAFC]">Drive</th><th className="w-24 text-[15px] text-[#F8FAFC]">פעולות</th></tr></thead>
+          <thead><tr><th className="w-28 text-base font-bold text-[#F8FAFC]">תאריך</th><th className="w-36 text-base font-bold text-[#F8FAFC]">לקוח</th><th className="w-28 text-base font-bold text-[#F8FAFC]">מספר</th><th className="text-base font-bold text-[#F8FAFC]">תיאור</th><th className="w-36 text-base font-bold text-[#F8FAFC]">סכום</th><th className="w-24 text-base font-bold text-[#F8FAFC]">סטטוס</th><th className="w-24 text-base font-bold text-[#F8FAFC]">Drive</th><th className="w-24 text-base font-bold text-[#F8FAFC]">פעולות</th></tr></thead>
           <tbody>
             {filtered.map((invoice) => (
               <tr key={invoice.id} onClick={() => setSelected(invoice)} className="cursor-pointer">
-                <td className="whitespace-nowrap text-[15px] text-[#E2E8F0]">{new Date(invoice.date).toLocaleDateString("he-IL")}</td>
-                <td><span className="inline-flex max-w-full items-center gap-2"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface-hover text-[13px] font-bold text-ink-primary">{invoice.client?.name?.slice(0, 2) ?? "AI"}</span><span className="truncate">{invoice.client?.name ?? ""}</span></span></td>
-                <td className="truncate text-[15px] text-[#F8FAFC]">{invoice.invoiceNumber ?? "-"}</td>
-                <td className="max-w-0 truncate text-[15px] text-[#CBD5E1]">{invoice.description ?? ""}</td>
-                <td className="whitespace-nowrap font-semibold text-ink-primary">₪{invoice.amount.toLocaleString("he-IL")} {invoice.currency}</td>
+                <td className="whitespace-nowrap text-base text-[#F1F5F9]">{new Date(invoice.date).toLocaleDateString("he-IL")}</td>
+                <td><span className="inline-flex max-w-full items-center gap-2 text-base text-[#F1F5F9]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface-hover text-sm font-bold text-ink-primary">{invoice.client?.name?.slice(0, 2) ?? "AI"}</span><span className="truncate">{invoice.client?.name ?? ""}</span></span></td>
+                <td className="truncate text-base text-[#F8FAFC]">{invoice.invoiceNumber ?? "-"}</td>
+                <td className="max-w-0 truncate text-base text-[#E2E8F0]">{invoice.description ?? ""}</td>
+                <td className="whitespace-nowrap text-base font-bold text-[#F8FAFC]">₪{invoice.amount.toLocaleString("he-IL")} {invoice.currency}</td>
                 <td><span className={`badge ${invoice.status === "paid" ? "badge-ok" : invoice.status === "overdue" ? "badge-error" : "badge-warn"}`}>{statusLabels[invoice.status]}</span></td>
-                <td>{invoice.driveUrl ? <a className="btn btn-secondary px-2 py-1 text-xs" href={invoice.driveUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />PDF</a> : "-"}</td>
-                <td><button className="rounded-lg border border-[var(--border)] bg-surface-card px-2 py-1 text-xs font-semibold text-ink-secondary opacity-90 transition hover:bg-surface-hover hover:text-ink-primary" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "ממתין" : "שולם"}</button></td>
+                <td>{invoice.driveUrl ? <a className="btn btn-secondary px-2 py-1 text-sm" href={invoice.driveUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />PDF</a> : <span className="text-base text-[#CBD5E1]">-</span>}</td>
+                <td><button className="rounded-lg border border-[var(--border)] bg-surface-card px-2 py-1 text-sm font-semibold text-[#E2E8F0] opacity-100 transition hover:bg-surface-hover hover:text-[#F8FAFC]" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "ממתין" : "שולם"}</button></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {filtered.length === 0 && <div className="card"><p>לא נמצאו חשבוניות.</p></div>}
+      {filtered.length === 0 && <div className="card"><p className="text-base text-[#E2E8F0]">לא נמצאו חשבוניות.</p></div>}
 
       {selected && (
         <div className="fixed inset-0 z-[110] grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="card max-h-[85vh] w-full max-w-xl overflow-y-auto animate-[toastSlide_.25s_ease]">
             <div className="mb-4 flex items-center gap-3"><FileText className="h-5 w-5 text-accent-primary" /><h2>פרטי חשבונית</h2></div>
-            <p>לקוח: {selected.client?.name}</p>
-            <p>מספר: {selected.invoiceNumber ?? "-"}</p>
-            <p>{selected.description}</p>
+            <p className="text-base text-[#E2E8F0]">לקוח: {selected.client?.name}</p>
+            <p className="text-base text-[#E2E8F0]">מספר: {selected.invoiceNumber ?? "-"}</p>
+            <p className="text-base leading-7 text-[#E2E8F0]">{selected.description}</p>
             <button className="btn btn-secondary mt-4" onClick={() => setSelected(null)}>סגור</button>
           </div>
         </div>
@@ -249,7 +249,7 @@ export default function InvoicesPage() {
 function Metric({ label, value, tone }: { label: string; value: string | number; tone: string }) {
   return (
     <div className="card">
-      <div className="stat-label">{label}</div>
+      <div className="stat-label text-sm text-[#CBD5E1]">{label}</div>
       <div className={`stat-value ${tone}`}>{value}</div>
     </div>
   );
