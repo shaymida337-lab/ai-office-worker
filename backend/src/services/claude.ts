@@ -23,6 +23,7 @@ export type InvoiceScanResult = {
 };
 
 const anthropic = hasClaude() ? new Anthropic({ apiKey: config.anthropic.apiKey }) : null;
+const MAX_REASONABLE_AMOUNT = 10_000_000;
 
 const SYSTEM_PROMPT = `אתה עוזר הנהלת חשבונות לעסק ישראלי. נתח מיילים בעברית ואנגלית.
 החזר אך ורק JSON תקין ללא markdown.
@@ -72,7 +73,7 @@ export async function analyzeEmailContent(input: {
   if (!parsed) return fallbackAnalysis(input);
   return {
     supplier: parsed.supplier || "לא ידוע",
-    amount: parsed.amount ?? null,
+    amount: normalizeAmountValue(parsed.amount),
     currency: parsed.currency || "ILS",
     documentType: parsed.documentType || "other",
     paymentRequired: Boolean(parsed.paymentRequired),
@@ -185,7 +186,10 @@ function firstString(source: Record<string, unknown>, keys: string[]): string | 
 function firstNumber(source: Record<string, unknown>, keys: string[]): number | null {
   for (const key of keys) {
     const value = source[key];
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+    if (typeof value === "number") {
+      const amount = normalizeAmountValue(value);
+      if (amount !== null) return amount;
+    }
     if (typeof value === "string") {
       const amount = extractAmount(value);
       if (amount !== null) return amount;
@@ -295,7 +299,17 @@ function parseAmount(raw: string): number | null {
     normalized = cleaned.length - lastDot - 1 === 2 ? cleaned : cleaned.replace(/\./g, "");
   }
   const amount = Number(normalized);
-  return Number.isFinite(amount) ? amount : null;
+  return isReasonableAmount(amount) ? amount : null;
+}
+
+function normalizeAmountValue(value: unknown): number | null {
+  if (typeof value === "number") return isReasonableAmount(value) ? value : null;
+  if (typeof value === "string") return extractAmount(value);
+  return null;
+}
+
+function isReasonableAmount(amount: number) {
+  return Number.isFinite(amount) && amount > 0 && amount <= MAX_REASONABLE_AMOUNT;
 }
 
 function extractDueDate(text: string): string | null {

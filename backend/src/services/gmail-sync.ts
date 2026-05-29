@@ -1666,7 +1666,7 @@ function normalizeDetectedAmount(amount: number | null | undefined) {
 }
 
 function isReasonableDetectedAmount(amount: number) {
-  return Number.isFinite(amount) && amount > 0 && amount <= 1_000_000;
+  return Number.isFinite(amount) && amount > 0 && amount <= 10_000_000;
 }
 
 function normalizeBusinessDate(value: string | null | undefined, fallback: Date | null) {

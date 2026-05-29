@@ -278,6 +278,41 @@ apiRouter.get("/debug/invoices", async (req, res) => {
   }
 });
 
+apiRouter.get("/debug/invoices/bad-amounts", async (req, res) => {
+  const orgId = req.auth!.organizationId;
+  const threshold = 10_000_000;
+  try {
+    const [badInvoiceCount, sampleRows] = await Promise.all([
+      prisma.invoice.count({
+        where: { organizationId: orgId, amount: { gt: threshold } },
+      }),
+      prisma.invoice.findMany({
+        where: { organizationId: orgId, amount: { gt: threshold } },
+        orderBy: { amount: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          amount: true,
+          invoiceNumber: true,
+          description: true,
+          gmailMessageId: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    res.json({
+      orgId,
+      threshold,
+      badInvoiceCount,
+      sampleRows,
+    });
+  } catch (err) {
+    console.error("[debug/invoices/bad-amounts] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Bad invoice amount debug failed" });
+  }
+});
+
 apiRouter.get("/debug/invoices-auth", async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
