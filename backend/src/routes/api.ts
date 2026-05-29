@@ -154,184 +154,123 @@ apiRouter.get("/debug/gmail/status", async (req, res) => {
 
 apiRouter.get("/debug/invoices", async (req, res) => {
   const startedAt = Date.now();
-  const queryTimings: Array<{ label: string; ms: number; ok: boolean }> = [];
-  const organizationId = req.auth!.organizationId;
+  const orgId = req.auth!.organizationId;
+  const userId = req.auth!.userId;
+  const QUERY_TIMEOUT_MS = 1900;
 
-  async function timedQuery<T>(label: string, query: () => Promise<T>) {
+  function withQueryTimeout<T>(label: string, query: Promise<T>) {
     const queryStartedAt = Date.now();
-    try {
-      const result = await query();
-      const ms = Date.now() - queryStartedAt;
-      queryTimings.push({ label, ms, ok: true });
-      console.log(`[debug/invoices] query=${label} org=${organizationId} ms=${ms} ok=true`);
-      return result;
-    } catch (err) {
-      const ms = Date.now() - queryStartedAt;
-      queryTimings.push({ label, ms, ok: false });
-      console.error(`[debug/invoices] query=${label} org=${organizationId} ms=${ms} ok=false`, errorDetails(err));
-      throw err;
-    }
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    return Promise.race([
+      query.then((result) => {
+        console.log(`[debug/invoices] query=${label} org=${orgId} ms=${Date.now() - queryStartedAt} ok=true`);
+        return result;
+      }),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          const ms = Date.now() - queryStartedAt;
+          console.error(`[debug/invoices] query=${label} org=${orgId} ms=${ms} ok=false reason=timeout`);
+          reject(new Error(`${label} timed out after ${QUERY_TIMEOUT_MS}ms`));
+        }, QUERY_TIMEOUT_MS);
+      }),
+    ]).finally(() => {
+      if (timeout) clearTimeout(timeout);
+    });
   }
 
   try {
-    const userId = req.auth!.userId;
-    await timedQuery("db_ping", () => prisma.$queryRaw`SELECT 1`);
-    const invoiceCount = await timedQuery("invoice_count", () => prisma.invoice.count({ where: { organizationId } }));
-    const supplierPaymentCount = await timedQuery("supplier_payment_count", () => prisma.supplierPayment.count({ where: { organizationId } }));
-    const gmailScanItemCount = await timedQuery("gmail_scan_item_count", () => prisma.gmailScanItem.count({ where: { organizationId } }));
-    const invoiceScanItemCount = await timedQuery("invoice_scan_item_count", () => prisma.gmailScanItem.count({
-      where: { organizationId, documentType: { in: ["invoice", "receipt"] } },
-    }));
-    const lastInvoiceRows = await timedQuery("latest_20_invoices", () => prisma.invoice.findMany({
-      where: { organizationId },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-      select: {
-        id: true,
-        clientId: true,
-        invoiceNumber: true,
-        amount: true,
-        currency: true,
-        date: true,
-        dueDate: true,
-        status: true,
-        description: true,
-        driveUrl: true,
-        emailId: true,
-        fromEmail: true,
-        gmailMessageId: true,
-        createdAt: true,
-        client: { select: { id: true, name: true, email: true, domain: true } },
-      },
-    }));
-    const lastPaymentRows = await timedQuery("latest_20_supplier_payments", () => prisma.supplierPayment.findMany({
-      where: { organizationId },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-      select: {
-        id: true,
-        supplier: true,
-        amount: true,
-        currency: true,
-        date: true,
-        dueDate: true,
-        paid: true,
-        documentLink: true,
-        invoiceLink: true,
-        missingInvoice: true,
-        subject: true,
-        emailMessageId: true,
-        createdAt: true,
-      },
-    }));
-    const lastScanItems = await timedQuery("latest_20_gmail_scan_items", () => prisma.gmailScanItem.findMany({
-      where: { organizationId },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-      select: {
-        id: true,
-        emailMessageId: true,
-        gmailMessageId: true,
-        gmailMessageLink: true,
-        sender: true,
-        senderEmail: true,
-        subject: true,
-        occurredAt: true,
-        amount: true,
-        supplierName: true,
-        documentType: true,
-        attachmentFilename: true,
-        driveFileLink: true,
-        confidenceScore: true,
-        reviewStatus: true,
-        decisionReason: true,
-        createdAt: true,
-      },
-    }));
-    const invoiceOrReceiptScanItems = await timedQuery("latest_20_invoice_scan_items", () => prisma.gmailScanItem.findMany({
-      where: { organizationId, documentType: { in: ["invoice", "receipt"] } },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-      select: {
-        id: true,
-        emailMessageId: true,
-        gmailMessageId: true,
-        subject: true,
-        occurredAt: true,
-        amount: true,
-        supplierName: true,
-        documentType: true,
-        driveFileLink: true,
-        confidenceScore: true,
-        reviewStatus: true,
-        decisionReason: true,
-        createdAt: true,
-      },
-    }));
-    const rejectedInvoiceReasons = await timedQuery("latest_20_rejected_invoice_reasons", () => prisma.gmailScanItem.findMany({
-      where: {
-        organizationId,
-        OR: [
-          { documentType: { in: ["invoice", "receipt", "unknown_needs_review"] } },
-          { reviewStatus: { in: ["needs_review", "failed", "rejected"] } },
-        ],
-      },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-      select: {
-        id: true,
-        gmailMessageId: true,
-        subject: true,
-        documentType: true,
-        reviewStatus: true,
-        decisionReason: true,
-        createdAt: true,
-      },
-    }));
-    const recentGmailScanLogs = await timedQuery("latest_20_gmail_scan_logs", () => prisma.syncLog.findMany({
-      where: { organizationId, type: "gmail_scan" },
-      orderBy: { startedAt: "desc" },
-      take: 20,
-      select: {
-        id: true,
-        status: true,
-        scanMode: true,
-        emailsProcessed: true,
-        emailsSaved: true,
-        invoicesFound: true,
-        paymentsCreated: true,
-        driveUploaded: true,
-        sheetsUpdated: true,
-        errorsCount: true,
-        errorMessage: true,
-        startedAt: true,
-        finishedAt: true,
-      },
-    }));
-    const totalMs = Date.now() - startedAt;
-    console.log(`[debug/invoices] complete org=${organizationId} totalMs=${totalMs} queries=${JSON.stringify(queryTimings)}`);
-
-    res.json({
-      organizationId,
-      userId,
-      database: {
-        host: databaseHost(),
-        connectionLimit: process.env.PRISMA_CONNECTION_LIMIT ?? "5",
-        poolTimeoutSeconds: process.env.PRISMA_POOL_TIMEOUT ?? "20",
-      },
-      maxRows: 20,
-      totalMs,
-      queryTimings,
+    const [
       invoiceCount,
       supplierPaymentCount,
       gmailScanItemCount,
       invoiceScanItemCount,
       lastInvoiceRows,
       lastPaymentRows,
-      lastScanItems,
-      invoiceOrReceiptScanItems,
       rejectedInvoiceReasons,
-      recentGmailScanLogs,
+    ] = await Promise.all([
+      withQueryTimeout("invoice_count", prisma.invoice.count({ where: { organizationId: orgId } })),
+      withQueryTimeout("supplier_payment_count", prisma.supplierPayment.count({ where: { organizationId: orgId } })),
+      withQueryTimeout("gmail_scan_item_count", prisma.gmailScanItem.count({ where: { organizationId: orgId } })),
+      withQueryTimeout("invoice_scan_item_count", prisma.gmailScanItem.count({
+        where: { organizationId: orgId, documentType: { in: ["invoice", "receipt"] } },
+      })),
+      withQueryTimeout("latest_20_invoices", prisma.invoice.findMany({
+        where: { organizationId: orgId },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          clientId: true,
+          invoiceNumber: true,
+          amount: true,
+          currency: true,
+          date: true,
+          dueDate: true,
+          status: true,
+          description: true,
+          driveUrl: true,
+          emailId: true,
+          fromEmail: true,
+          gmailMessageId: true,
+          createdAt: true,
+          client: { select: { id: true, name: true, email: true, domain: true } },
+        },
+      })),
+      withQueryTimeout("latest_20_supplier_payments", prisma.supplierPayment.findMany({
+        where: { organizationId: orgId },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          supplier: true,
+          amount: true,
+          currency: true,
+          date: true,
+          dueDate: true,
+          paid: true,
+          documentLink: true,
+          invoiceLink: true,
+          missingInvoice: true,
+          subject: true,
+          emailMessageId: true,
+          createdAt: true,
+        },
+      })),
+      withQueryTimeout("latest_20_rejected_invoice_reasons", prisma.gmailScanItem.findMany({
+        where: {
+          organizationId: orgId,
+          OR: [
+            { documentType: { in: ["invoice", "receipt", "unknown_needs_review"] } },
+            { reviewStatus: { in: ["needs_review", "failed", "rejected"] } },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          gmailMessageId: true,
+          subject: true,
+          documentType: true,
+          reviewStatus: true,
+          decisionReason: true,
+          createdAt: true,
+        },
+      })),
+    ]);
+    const totalMs = Date.now() - startedAt;
+    console.log(`[debug/invoices] complete org=${orgId} totalMs=${totalMs}`);
+
+    res.json({
+      orgId,
+      userId,
+      invoiceCount,
+      supplierPaymentCount,
+      gmailScanItemCount,
+      invoiceScanItemCount,
+      lastInvoiceRows,
+      lastPaymentRows,
+      rejectedInvoiceReasons,
     });
   } catch (err) {
     console.error("[debug/invoices] failed", errorDetails(err));
