@@ -925,8 +925,6 @@ apiRouter.get("/invoices", async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const clientId = typeof req.query.clientId === "string" ? req.query.clientId : undefined;
   const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
-  const { backfillInvoicesFromGmailScanItems } = await import("../services/invoiceBackfill.js");
-  await backfillInvoicesFromGmailScanItems(req.auth!.organizationId, 200);
   const invoices = await prisma.invoice.findMany({
     where: {
       organizationId: req.auth!.organizationId,
@@ -942,8 +940,8 @@ apiRouter.get("/invoices", async (req, res) => {
       }),
     },
     include: { client: { select: { id: true, name: true, color: true } } },
-    orderBy: { date: "desc" },
-    take: 300,
+    orderBy: { createdAt: "desc" },
+    take: 100,
   });
   res.json({ invoices });
 });
