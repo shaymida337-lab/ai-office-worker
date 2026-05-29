@@ -53,14 +53,23 @@ type InvoiceDebugResponse = {
   supplierPaymentCount: number;
   gmailScanItemCount: number;
   invoiceScanItemCount: number;
+  badAmountCount?: number;
   lastInvoiceRows?: DebugInvoiceRow[];
   lastPaymentRows?: DebugPaymentRow[];
   rejectedInvoiceReasons?: DebugScanItem[];
 };
 
+type BadInvoiceAmountsResponse = {
+  orgId: string;
+  threshold: number;
+  badInvoiceCount: number;
+  sampleRows: DebugInvoiceRow[];
+};
+
 export default function AdminDebugPage() {
   const router = useRouter();
   const [data, setData] = useState<InvoiceDebugResponse | null>(null);
+  const [badAmounts, setBadAmounts] = useState<BadInvoiceAmountsResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -68,7 +77,12 @@ export default function AdminDebugPage() {
     setLoading(true);
     setError("");
     try {
-      setData(await apiFetch<InvoiceDebugResponse>("/api/debug/invoices"));
+      const [invoiceDebug, badAmountDebug] = await Promise.all([
+        apiFetch<InvoiceDebugResponse>("/api/debug/invoices"),
+        apiFetch<BadInvoiceAmountsResponse>("/api/debug/invoices/bad-amounts"),
+      ]);
+      setData(invoiceDebug);
+      setBadAmounts(badAmountDebug);
     } catch (err) {
       if (isAuthError(err)) {
         router.push("/login");
@@ -106,6 +120,7 @@ export default function AdminDebugPage() {
             <Metric label="SupplierPayment rows" value={data.supplierPaymentCount ?? 0} />
             <Metric label="Gmail scan items" value={data.gmailScanItemCount ?? 0} />
             <Metric label="Invoice scan items" value={data.invoiceScanItemCount ?? 0} />
+            <Metric label="Bad amount rows (> 10M)" value={data.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0} />
           </section>
 
           <section className="mb-6 grid gap-4">
@@ -117,6 +132,7 @@ export default function AdminDebugPage() {
           </section>
 
           <DebugTable title="Latest 20 Invoice rows" rows={data.lastInvoiceRows ?? []} />
+          <DebugTable title="Bad amount invoice samples" rows={badAmounts?.sampleRows ?? []} />
           <DebugTable title="Latest 20 SupplierPayment rows" rows={data.lastPaymentRows ?? []} />
           <DebugTable title="Rejected invoice reasons" rows={data.rejectedInvoiceReasons ?? []} />
         </>

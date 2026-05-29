@@ -177,20 +177,20 @@ export default function InvoicesPage() {
         ))}
       </div>
 
-      <div className="table-shell hidden md:block">
-        <table>
-          <thead><tr><th>תאריך</th><th>לקוח</th><th>מספר</th><th>תיאור</th><th>סכום</th><th>סטטוס</th><th>Drive</th><th>פעולות</th></tr></thead>
+      <div className="table-shell hidden max-w-full overflow-x-auto md:block">
+        <table className="min-w-[980px] table-fixed">
+          <thead><tr><th className="w-28">תאריך</th><th className="w-36">לקוח</th><th className="w-28">מספר</th><th>תיאור</th><th className="w-36">סכום</th><th className="w-24">סטטוס</th><th className="w-24">Drive</th><th className="w-24">פעולות</th></tr></thead>
           <tbody>
             {filtered.map((invoice) => (
               <tr key={invoice.id} onClick={() => setSelected(invoice)} className="cursor-pointer">
-                <td>{new Date(invoice.date).toLocaleDateString("he-IL")}</td>
-                <td><span className="inline-flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-surface-hover text-[13px] font-bold text-ink-primary">{invoice.client?.name?.slice(0, 2) ?? "AI"}</span>{invoice.client?.name ?? ""}</span></td>
-                <td className="text-ink-primary">{invoice.invoiceNumber ?? "-"}</td>
-                <td>{invoice.description ?? ""}</td>
-                <td className="font-semibold text-ink-primary">₪{invoice.amount.toLocaleString("he-IL")} {invoice.currency}</td>
+                <td className="whitespace-nowrap">{new Date(invoice.date).toLocaleDateString("he-IL")}</td>
+                <td><span className="inline-flex max-w-full items-center gap-2"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface-hover text-[13px] font-bold text-ink-primary">{invoice.client?.name?.slice(0, 2) ?? "AI"}</span><span className="truncate">{invoice.client?.name ?? ""}</span></span></td>
+                <td className="truncate text-ink-primary">{invoice.invoiceNumber ?? "-"}</td>
+                <td className="max-w-0 truncate">{invoice.description ?? ""}</td>
+                <td className="whitespace-nowrap font-semibold text-ink-primary">₪{invoice.amount.toLocaleString("he-IL")} {invoice.currency}</td>
                 <td><span className={`badge ${invoice.status === "paid" ? "badge-ok" : invoice.status === "overdue" ? "badge-error" : "badge-warn"}`}>{statusLabels[invoice.status]}</span></td>
-                <td>{invoice.driveUrl ? <a className="btn btn-secondary px-3 py-1.5" href={invoice.driveUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />PDF</a> : "-"}</td>
-                <td><button className="btn btn-secondary px-3 py-1.5 opacity-80 hover:opacity-100" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "סמן ממתין" : "סמן שולם"}</button></td>
+                <td>{invoice.driveUrl ? <a className="btn btn-secondary px-2 py-1 text-xs" href={invoice.driveUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />PDF</a> : "-"}</td>
+                <td><button className="rounded-lg border border-[var(--border)] bg-surface-card px-2 py-1 text-xs font-semibold text-ink-secondary opacity-90 transition hover:bg-surface-hover hover:text-ink-primary" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "ממתין" : "שולם"}</button></td>
               </tr>
             ))}
           </tbody>

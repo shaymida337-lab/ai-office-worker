@@ -185,6 +185,7 @@ apiRouter.get("/debug/invoices", async (req, res) => {
       supplierPaymentCount,
       gmailScanItemCount,
       invoiceScanItemCount,
+      badAmountCount,
       lastInvoiceRows,
       lastPaymentRows,
       rejectedInvoiceReasons,
@@ -194,6 +195,9 @@ apiRouter.get("/debug/invoices", async (req, res) => {
       withQueryTimeout("gmail_scan_item_count", prisma.gmailScanItem.count({ where: { organizationId: orgId } })),
       withQueryTimeout("invoice_scan_item_count", prisma.gmailScanItem.count({
         where: { organizationId: orgId, documentType: { in: ["invoice", "receipt"] } },
+      })),
+      withQueryTimeout("bad_amount_count", prisma.invoice.count({
+        where: { organizationId: orgId, amount: { gt: 10_000_000 } },
       })),
       withQueryTimeout("latest_20_invoices", prisma.invoice.findMany({
         where: { organizationId: orgId },
@@ -268,6 +272,7 @@ apiRouter.get("/debug/invoices", async (req, res) => {
       supplierPaymentCount,
       gmailScanItemCount,
       invoiceScanItemCount,
+      badAmountCount,
       lastInvoiceRows,
       lastPaymentRows,
       rejectedInvoiceReasons,
