@@ -66,6 +66,13 @@ type BadInvoiceAmountsResponse = {
   sampleRows: DebugInvoiceRow[];
 };
 
+type TopPaymentAmountsResponse = {
+  orgId: string;
+  countedRows: number;
+  moneyToPay: number;
+  rows: DebugPaymentRow[];
+};
+
 type FixBadAmountsResponse = {
   orgId: string;
   threshold: number;
@@ -129,6 +136,7 @@ export default function AdminDebugPage() {
   const router = useRouter();
   const [data, setData] = useState<InvoiceDebugResponse | null>(null);
   const [badAmounts, setBadAmounts] = useState<BadInvoiceAmountsResponse | null>(null);
+  const [topPayments, setTopPayments] = useState<TopPaymentAmountsResponse | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -141,12 +149,14 @@ export default function AdminDebugPage() {
     setLoading(true);
     setError("");
     try {
-      const [invoiceDebug, badAmountDebug] = await Promise.all([
+      const [invoiceDebug, badAmountDebug, topPaymentDebug] = await Promise.all([
         apiFetch<InvoiceDebugResponse>("/api/debug/invoices"),
         apiFetch<BadInvoiceAmountsResponse>("/api/debug/invoices/bad-amounts"),
+        apiFetch<TopPaymentAmountsResponse>("/api/debug/payments/top-amounts"),
       ]);
       setData(invoiceDebug);
       setBadAmounts(badAmountDebug);
+      setTopPayments(topPaymentDebug);
     } catch (err) {
       if (isAuthError(err)) {
         router.push("/login");
@@ -288,6 +298,8 @@ export default function AdminDebugPage() {
             <Metric label="Gmail scan items" value={data.gmailScanItemCount ?? 0} />
             <Metric label="Invoice scan items" value={data.invoiceScanItemCount ?? 0} />
             <Metric label="Bad amount rows (> 10M)" value={data.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0} />
+            <Metric label="Money to pay counted rows" value={topPayments?.countedRows ?? 0} />
+            <Metric label="Money to pay total" value={topPayments?.moneyToPay ?? 0} />
           </section>
 
           <section className="mb-6 grid gap-4">
@@ -300,6 +312,7 @@ export default function AdminDebugPage() {
 
           <DebugTable title="Latest 20 Invoice rows" rows={data.lastInvoiceRows ?? []} />
           <DebugTable title="Bad amount invoice samples" rows={badAmounts?.sampleRows ?? []} />
+          <DebugTable title="Top 10 SupplierPayment amounts counted in Money to Pay" rows={topPayments?.rows ?? []} />
           <DebugTable title="Drive duplicate folder merge preview" rows={driveMergePreview ? [driveMergePreview] : []} />
           <DebugTable title="Latest 20 SupplierPayment rows" rows={data.lastPaymentRows ?? []} />
           <DebugTable title="Rejected invoice reasons" rows={data.rejectedInvoiceReasons ?? []} />

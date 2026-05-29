@@ -318,6 +318,55 @@ apiRouter.get("/debug/invoices/bad-amounts", async (req, res) => {
   }
 });
 
+apiRouter.get("/debug/payments/top-amounts", async (req, res) => {
+  const orgId = req.auth!.organizationId;
+  try {
+    const where = {
+      organizationId: orgId,
+      paid: false,
+      paymentRequired: true,
+      amount: { gte: 0, lte: 1_000_000 },
+    };
+    const [summary, rows] = await Promise.all([
+      prisma.supplierPayment.aggregate({
+        where,
+        _sum: { amount: true },
+        _count: { id: true },
+      }),
+      prisma.supplierPayment.findMany({
+        where,
+        orderBy: { amount: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          amount: true,
+          currency: true,
+          supplier: true,
+          date: true,
+          dueDate: true,
+          source: true,
+          subject: true,
+          emailSender: true,
+          emailMessageId: true,
+          documentLink: true,
+          invoiceLink: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    res.json({
+      orgId,
+      countedRows: summary._count.id,
+      moneyToPay: summary._sum.amount ?? 0,
+      rows,
+    });
+  } catch (err) {
+    console.error("[debug/payments/top-amounts] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Top payment amounts debug failed" });
+  }
+});
+
 apiRouter.post("/debug/invoices/fix-bad-amounts", async (req, res) => {
   const orgId = req.auth!.organizationId;
   const threshold = 10_000_000;
