@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, isAuthError } from "@/lib/api";
 
 type DebugInvoiceRow = {
   id: string;
@@ -67,6 +68,7 @@ type InvoiceDebugResponse = {
 };
 
 export default function AdminDebugPage() {
+  const router = useRouter();
   const [data, setData] = useState<InvoiceDebugResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -77,6 +79,10 @@ export default function AdminDebugPage() {
     try {
       setData(await apiFetch<InvoiceDebugResponse>("/api/debug/invoices"));
     } catch (err) {
+      if (isAuthError(err)) {
+        router.push("/login");
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to load debug data");
     } finally {
       setLoading(false);
