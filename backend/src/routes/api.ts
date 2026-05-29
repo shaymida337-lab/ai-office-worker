@@ -318,6 +318,27 @@ apiRouter.get("/debug/invoices/bad-amounts", async (req, res) => {
   }
 });
 
+apiRouter.post("/debug/invoices/fix-bad-amounts", async (req, res) => {
+  const orgId = req.auth!.organizationId;
+  const threshold = 10_000_000;
+  try {
+    const result = await prisma.invoice.updateMany({
+      where: { organizationId: orgId, amount: { gt: threshold } },
+      data: { amount: 0 },
+    });
+
+    console.log(`[debug/invoices/fix-bad-amounts] org=${orgId} threshold=${threshold} updated=${result.count}`);
+    res.json({
+      orgId,
+      threshold,
+      updatedCount: result.count,
+    });
+  } catch (err) {
+    console.error("[debug/invoices/fix-bad-amounts] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Bad invoice amount cleanup failed" });
+  }
+});
+
 apiRouter.get("/debug/invoices-auth", async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
