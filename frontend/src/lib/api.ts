@@ -31,7 +31,9 @@ export function isAuthError(err: unknown): boolean {
   return err instanceof ApiError && (err.status === 401 || err.status === 403);
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+type ApiFetchInit = RequestInit & { timeoutMs?: number };
+
+export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T> {
   const token = getToken();
   if (!token) {
     throw new ApiError("Unauthorized", 401);
@@ -39,19 +41,20 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   let res: Response;
   const url = `${API_URL}${path}`;
+  const { timeoutMs, ...fetchInit } = init ?? {};
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 15000);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs ?? 15000);
   try {
     res = await fetch(url, {
-      ...init,
-      cache: init?.cache ?? "no-store",
-      credentials: init?.credentials ?? "include",
-      signal: init?.signal ?? controller.signal,
+      ...fetchInit,
+      cache: fetchInit.cache ?? "no-store",
+      credentials: fetchInit.credentials ?? "include",
+      signal: fetchInit.signal ?? controller.signal,
       headers: {
         "Content-Type": "application/json",
         "Cache-Control": "no-cache",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...init?.headers,
+        ...fetchInit.headers,
       },
     });
   } catch (err) {

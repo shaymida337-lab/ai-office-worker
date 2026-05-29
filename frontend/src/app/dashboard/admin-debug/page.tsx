@@ -91,6 +91,30 @@ type DriveMergeDuplicateFoldersResponse = {
   }>;
 };
 
+type DriveMergeStartResponse = {
+  jobId: string;
+  dryRun: boolean;
+  status: "running";
+  progress: string;
+};
+
+type DriveMergeStatusResponse = {
+  jobId: string;
+  dryRun: boolean;
+  status: "running" | "done" | "error";
+  progress: string;
+  result?: DriveMergeDuplicateFoldersResponse;
+  error?: string;
+};
+
+const DRIVE_JOB_REQUEST_TIMEOUT_MS = 60_000;
+const DRIVE_JOB_POLL_INTERVAL_MS = 2_500;
+const DRIVE_JOB_MAX_WAIT_MS = 15 * 60_000;
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 export default function AdminDebugPage() {
   const router = useRouter();
   const [data, setData] = useState<InvoiceDebugResponse | null>(null);
@@ -100,6 +124,7 @@ export default function AdminDebugPage() {
   const [loading, setLoading] = useState(true);
   const [cleaning, setCleaning] = useState(false);
   const [driveMerging, setDriveMerging] = useState(false);
+  const [driveMergeStatus, setDriveMergeStatus] = useState("");
   const [driveMergePreview, setDriveMergePreview] = useState<DriveMergeDuplicateFoldersResponse | null>(null);
 
   async function load() {
@@ -146,19 +171,45 @@ export default function AdminDebugPage() {
     }
   }
 
+  async function runDriveMergeJob(dryRun: boolean): Promise<DriveMergeDuplicateFoldersResponse> {
+    const start = await apiFetch<DriveMergeStartResponse>("/api/debug/drive/merge-duplicate-folders", {
+      method: "POST",
+      body: JSON.stringify({ dryRun }),
+      timeoutMs: DRIVE_JOB_REQUEST_TIMEOUT_MS,
+    });
+    setDriveMergeStatus(start.progress || `Drive job started: ${start.jobId}`);
+
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < DRIVE_JOB_MAX_WAIT_MS) {
+      await wait(DRIVE_JOB_POLL_INTERVAL_MS);
+      const status = await apiFetch<DriveMergeStatusResponse>(`/api/debug/drive/merge-status/${start.jobId}`, {
+        timeoutMs: DRIVE_JOB_REQUEST_TIMEOUT_MS,
+      });
+      setDriveMergeStatus(status.progress || `Drive job status: ${status.status}`);
+
+      if (status.status === "done" && status.result) {
+        return status.result;
+      }
+      if (status.status === "error") {
+        throw new Error(status.error || "Drive duplicate folder merge failed");
+      }
+    }
+
+    throw new Error("Drive duplicate folder merge job timed out while polling status");
+  }
+
   async function mergeDuplicateDriveFolders() {
     setDriveMerging(true);
     setError("");
     setMessage("");
+    setDriveMergeStatus("");
     try {
-      const preview = await apiFetch<DriveMergeDuplicateFoldersResponse>("/api/debug/drive/merge-duplicate-folders", {
-        method: "POST",
-        body: JSON.stringify({ dryRun: true }),
-      });
+      const preview = await runDriveMergeJob(true);
       setDriveMergePreview(preview);
 
       if (preview.duplicateGroups === 0) {
         setMessage("לא נמצאו תיקיות ספק כפולות ב-Drive.");
+        setDriveMergeStatus("Dry-run complete");
         return;
       }
 
@@ -167,12 +218,10 @@ export default function AdminDebugPage() {
       );
       if (!confirmed) return;
 
-      const result = await apiFetch<DriveMergeDuplicateFoldersResponse>("/api/debug/drive/merge-duplicate-folders", {
-        method: "POST",
-        body: JSON.stringify({ dryRun: false }),
-      });
+      const result = await runDriveMergeJob(false);
       setDriveMergePreview(result);
       setMessage(`אוחדו ${result.foldersMerged} תיקיות כפולות והועברו ${result.filesMoved} פריטים.`);
+      setDriveMergeStatus("Merge complete");
     } catch (err) {
       if (isAuthError(err)) {
         router.push("/login");
@@ -215,6 +264,7 @@ export default function AdminDebugPage() {
 
       {error && <div className="toast border-red-400/30 text-red-200">{error}</div>}
       {message && <div className="toast border-emerald-400/30 text-emerald-200">{message}</div>}
+      {driveMergeStatus && <div className="toast border-blue-400/30 text-blue-100">{driveMergeStatus}</div>}
 
       {data && (
         <>

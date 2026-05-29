@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { authMiddleware } from "../lib/auth.js";
@@ -339,40 +339,79 @@ apiRouter.post("/debug/invoices/fix-bad-amounts", async (req, res) => {
   }
 });
 
-apiRouter.post("/debug/drive/merge-duplicate-folders", async (req, res) => {
-  const dryRun = (req.body as { dryRun?: boolean } | undefined)?.dryRun !== false;
-  const supplierParentFolderNames = ["Invoices", "Receipts", "Payment Requests", "Missing Invoices", "Other"];
+type DriveMergeJobStatus = "running" | "done" | "error";
+type DriveMergeFolder = {
+  id: string;
+  name: string;
+  createdTime: string | null;
+  parentLabel: string;
+};
+type DriveMergeChild = {
+  id: string;
+  name: string;
+  mimeType: string | null;
+};
+type DriveMergeResult = {
+  dryRun: boolean;
+  rootFolderId: string;
+  duplicateGroups: number;
+  foldersMerged: number;
+  filesMoved: number;
+  groups: Array<{
+    normalizedName: string;
+    keep: DriveMergeFolder;
+    duplicates: Array<DriveMergeFolder & { childCount: number; children: DriveMergeChild[] }>;
+  }>;
+};
+type DriveMergeJob = {
+  id: string;
+  organizationId: string;
+  dryRun: boolean;
+  status: DriveMergeJobStatus;
+  progress: string;
+  result?: DriveMergeResult;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+};
 
+const driveMergeJobs = new Map<string, DriveMergeJob>();
+const supplierParentFolderNames = ["Invoices", "Receipts", "Payment Requests", "Missing Invoices", "Other"];
+
+function updateDriveMergeJob(jobId: string, update: Partial<DriveMergeJob>) {
+  const job = driveMergeJobs.get(jobId);
+  if (!job) return;
+  driveMergeJobs.set(jobId, { ...job, ...update, updatedAt: Date.now() });
+}
+
+function cleanupOldDriveMergeJobs() {
+  const cutoff = Date.now() - 1000 * 60 * 60;
+  for (const [jobId, job] of driveMergeJobs.entries()) {
+    if (job.updatedAt < cutoff) driveMergeJobs.delete(jobId);
+  }
+}
+
+async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: string, dryRun: boolean) {
   try {
+    updateDriveMergeJob(jobId, { progress: "Connecting to Google Drive" });
     const { getGoogleClients } = await import("../services/google.js");
     const {
       ensureDriveFolder,
       ensureInvoiceFolderTree,
       normalizedSupplierFolderName,
     } = await import("../services/driveService.js");
-    const { drive } = await getGoogleClients(req.auth!.organizationId);
+    const { drive } = await getGoogleClients(organizationId);
     const rootFolderId = await ensureInvoiceFolderTree(drive);
     const parentFolderIds = new Map<string, string>([["Root", rootFolderId]]);
 
+    updateDriveMergeJob(jobId, { progress: "Resolving Drive parent folders" });
     for (const folderName of supplierParentFolderNames) {
       const folderId = await ensureDriveFolder(drive, folderName, rootFolderId);
       parentFolderIds.set(folderName, folderId);
     }
 
-    type DriveFolder = {
-      id: string;
-      name: string;
-      createdTime: string | null;
-      parentLabel: string;
-    };
-    type DriveChild = {
-      id: string;
-      name: string;
-      mimeType: string | null;
-    };
-
-    async function listChildFolders(parentId: string, parentLabel: string): Promise<DriveFolder[]> {
-      const folders: DriveFolder[] = [];
+    async function listChildFolders(parentId: string, parentLabel: string): Promise<DriveMergeFolder[]> {
+      const folders: DriveMergeFolder[] = [];
       let pageToken: string | undefined;
       do {
         const result = await drive.files.list({
@@ -398,8 +437,8 @@ apiRouter.post("/debug/drive/merge-duplicate-folders", async (req, res) => {
       return folders;
     }
 
-    async function listChildren(folderId: string): Promise<DriveChild[]> {
-      const children: DriveChild[] = [];
+    async function listChildren(folderId: string): Promise<DriveMergeChild[]> {
+      const children: DriveMergeChild[] = [];
       let pageToken: string | undefined;
       do {
         const result = await drive.files.list({
@@ -419,11 +458,12 @@ apiRouter.post("/debug/drive/merge-duplicate-folders", async (req, res) => {
       return children;
     }
 
+    updateDriveMergeJob(jobId, { progress: "Listing supplier folders" });
     const allFolders = (await Promise.all(
       Array.from(parentFolderIds.entries()).map(([parentLabel, parentId]) => listChildFolders(parentId, parentLabel))
     )).flat();
 
-    const groups = new Map<string, DriveFolder[]>();
+    const groups = new Map<string, DriveMergeFolder[]>();
     for (const folder of allFolders) {
       const normalized = normalizedSupplierFolderName(folder.name).toLowerCase();
       const current = groups.get(normalized) ?? [];
@@ -431,12 +471,16 @@ apiRouter.post("/debug/drive/merge-duplicate-folders", async (req, res) => {
       groups.set(normalized, current);
     }
 
-    const duplicatePlans = [];
+    const duplicatePlans: DriveMergeResult["groups"] = [];
     let foldersMerged = 0;
     let filesMoved = 0;
+    let processedGroups = 0;
+    const duplicateGroups = Array.from(groups.values()).filter((folders) => folders.length > 1).length;
 
     for (const [normalizedName, folders] of groups.entries()) {
       if (folders.length < 2) continue;
+      processedGroups++;
+      updateDriveMergeJob(jobId, { progress: `Processing duplicate group ${processedGroups}/${duplicateGroups}: ${normalizedName}` });
       const sorted = [...folders].sort((a, b) => {
         const aTime = a.createdTime ? new Date(a.createdTime).getTime() : Number.MAX_SAFE_INTEGER;
         const bTime = b.createdTime ? new Date(b.createdTime).getTime() : Number.MAX_SAFE_INTEGER;
@@ -444,21 +488,20 @@ apiRouter.post("/debug/drive/merge-duplicate-folders", async (req, res) => {
       });
       const keep = sorted[0];
       const duplicates = sorted.slice(1);
-      const duplicateDetails = [];
+      const duplicateDetails: Array<DriveMergeFolder & { childCount: number; children: DriveMergeChild[] }> = [];
 
       for (const duplicate of duplicates) {
         const children = await listChildren(duplicate.id);
         foldersMerged++;
         filesMoved += children.length;
         duplicateDetails.push({
-          id: duplicate.id,
-          name: duplicate.name,
-          parentLabel: duplicate.parentLabel,
+          ...duplicate,
           childCount: children.length,
           children: children.slice(0, 20),
         });
 
         if (!dryRun) {
+          updateDriveMergeJob(jobId, { progress: `Moving ${children.length} items from ${duplicate.name}` });
           for (const child of children) {
             await drive.files.update({
               fileId: child.id,
@@ -474,28 +517,74 @@ apiRouter.post("/debug/drive/merge-duplicate-folders", async (req, res) => {
 
       duplicatePlans.push({
         normalizedName,
-        keep: {
-          id: keep.id,
-          name: keep.name,
-          parentLabel: keep.parentLabel,
-          createdTime: keep.createdTime,
-        },
+        keep,
         duplicates: duplicateDetails,
       });
     }
 
-    res.json({
-      dryRun,
-      rootFolderId,
-      duplicateGroups: duplicatePlans.length,
-      foldersMerged,
-      filesMoved,
-      groups: duplicatePlans,
+    updateDriveMergeJob(jobId, {
+      status: "done",
+      progress: dryRun ? "Dry-run complete" : "Merge complete",
+      result: {
+        dryRun,
+        rootFolderId,
+        duplicateGroups: duplicatePlans.length,
+        foldersMerged,
+        filesMoved,
+        groups: duplicatePlans,
+      },
     });
   } catch (err) {
-    console.error("[debug/drive/merge-duplicate-folders] failed", errorDetails(err));
-    res.status(500).json({ error: err instanceof Error ? err.message : "Drive duplicate folder merge failed" });
+    console.error("[debug/drive/merge-duplicate-folders] job failed", errorDetails(err));
+    updateDriveMergeJob(jobId, {
+      status: "error",
+      progress: "Drive duplicate folder merge failed",
+      error: err instanceof Error ? err.message : "Drive duplicate folder merge failed",
+    });
   }
+}
+
+apiRouter.post("/debug/drive/merge-duplicate-folders", (req, res) => {
+  cleanupOldDriveMergeJobs();
+  const dryRun = (req.body as { dryRun?: boolean } | undefined)?.dryRun !== false;
+  const jobId = randomUUID();
+  driveMergeJobs.set(jobId, {
+    id: jobId,
+    organizationId: req.auth!.organizationId,
+    dryRun,
+    status: "running",
+    progress: dryRun ? "Queued dry-run Drive duplicate folder scan" : "Queued real Drive duplicate folder merge",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  void runDriveDuplicateFolderMergeJob(jobId, req.auth!.organizationId, dryRun);
+
+  res.status(202).json({
+    jobId,
+    dryRun,
+    status: "running",
+    progress: dryRun ? "Queued dry-run Drive duplicate folder scan" : "Queued real Drive duplicate folder merge",
+  });
+});
+
+apiRouter.get("/debug/drive/merge-status/:jobId", (req, res) => {
+  const job = driveMergeJobs.get(req.params.jobId);
+  if (!job || job.organizationId !== req.auth!.organizationId) {
+    res.status(404).json({ error: "Drive merge job not found" });
+    return;
+  }
+
+  res.json({
+    jobId: job.id,
+    dryRun: job.dryRun,
+    status: job.status,
+    progress: job.progress,
+    result: job.result,
+    error: job.error,
+    createdAt: new Date(job.createdAt).toISOString(),
+    updatedAt: new Date(job.updatedAt).toISOString(),
+  });
 });
 
 apiRouter.get("/debug/invoices-auth", async (req, res) => {
