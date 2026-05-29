@@ -66,12 +66,20 @@ type BadInvoiceAmountsResponse = {
   sampleRows: DebugInvoiceRow[];
 };
 
+type FixBadAmountsResponse = {
+  orgId: string;
+  threshold: number;
+  updatedCount: number;
+};
+
 export default function AdminDebugPage() {
   const router = useRouter();
   const [data, setData] = useState<InvoiceDebugResponse | null>(null);
   const [badAmounts, setBadAmounts] = useState<BadInvoiceAmountsResponse | null>(null);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [cleaning, setCleaning] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -94,6 +102,29 @@ export default function AdminDebugPage() {
     }
   }
 
+  async function cleanBadAmounts() {
+    const count = data?.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0;
+    const confirmed = window.confirm(`לנקות ${count} חשבוניות עם סכומים שגויים מעל 10,000,000? הפעולה תאפס את הסכום ל-0.`);
+    if (!confirmed) return;
+
+    setCleaning(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await apiFetch<FixBadAmountsResponse>("/api/debug/invoices/fix-bad-amounts", { method: "POST" });
+      setMessage(`נוקו ${result.updatedCount} שורות עם סכומים שגויים.`);
+      await load();
+    } catch (err) {
+      if (isAuthError(err)) {
+        router.push("/login");
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Failed to clean bad amounts");
+    } finally {
+      setCleaning(false);
+    }
+  }
+
   useEffect(() => {
     load();
   }, []);
@@ -107,11 +138,21 @@ export default function AdminDebugPage() {
         <p>נתוני production לפי המשתמש והארגון המחוברים.</p>
       </div>
 
-      <button className="btn mb-6" onClick={load} disabled={loading}>
-        {loading ? "טוען..." : "רענן נתונים"}
-      </button>
+      <div className="mb-6 flex flex-wrap gap-3">
+        <button className="btn" onClick={load} disabled={loading || cleaning}>
+          {loading ? "טוען..." : "רענן נתונים"}
+        </button>
+        <button
+          className="btn btn-secondary"
+          onClick={cleanBadAmounts}
+          disabled={loading || cleaning || (data?.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0) === 0}
+        >
+          {cleaning ? "מנקה..." : "נקה סכומים שגויים"}
+        </button>
+      </div>
 
       {error && <div className="toast border-red-400/30 text-red-200">{error}</div>}
+      {message && <div className="toast border-emerald-400/30 text-emerald-200">{message}</div>}
 
       {data && (
         <>
