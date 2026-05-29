@@ -140,7 +140,7 @@ function DebugTable({ title, rows }: { title: string; rows?: unknown[] }) {
   return (
     <section className="card mb-6">
       <h2>{title}</h2>
-      {safeRows.length === 0 ? (
+      {safeRows?.length === 0 ? (
         <p>אין נתונים.</p>
       ) : (
         <pre className="mt-4 max-h-[520px] overflow-auto rounded-xl bg-surface-secondary p-4 text-xs text-ink-secondary">
