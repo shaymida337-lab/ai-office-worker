@@ -75,6 +75,14 @@ type FixBadAmountsResponse = {
 type DriveMergeDuplicateFoldersResponse = {
   dryRun: boolean;
   rootFolderId: string;
+  searchedRoots?: Array<{
+    id: string;
+    name: string;
+    matchedCandidateName: string;
+    directSupplierFolderCount: number;
+    legacySupplierFolderCount: number;
+    supplierFolderCount: number;
+  }>;
   duplicateGroups: number;
   foldersMerged: number;
   filesMoved: number;

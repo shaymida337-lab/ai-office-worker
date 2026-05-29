@@ -354,6 +354,14 @@ type DriveMergeChild = {
 type DriveMergeResult = {
   dryRun: boolean;
   rootFolderId: string;
+  searchedRoots: Array<{
+    id: string;
+    name: string;
+    matchedCandidateName: string;
+    directSupplierFolderCount: number;
+    legacySupplierFolderCount: number;
+    supplierFolderCount: number;
+  }>;
   duplicateGroups: number;
   foldersMerged: number;
   filesMoved: number;
@@ -396,19 +404,11 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
     updateDriveMergeJob(jobId, { progress: "Connecting to Google Drive" });
     const { getGoogleClients } = await import("../services/google.js");
     const {
-      ensureDriveFolder,
-      ensureInvoiceFolderTree,
+      INVOICE_DRIVE_FOLDER_NAME,
       normalizedSupplierFolderName,
     } = await import("../services/driveService.js");
+    const { config } = await import("../lib/config.js");
     const { drive } = await getGoogleClients(organizationId);
-    const rootFolderId = await ensureInvoiceFolderTree(drive);
-    const parentFolderIds = new Map<string, string>([["Root", rootFolderId]]);
-
-    updateDriveMergeJob(jobId, { progress: "Resolving Drive parent folders" });
-    for (const folderName of supplierParentFolderNames) {
-      const folderId = await ensureDriveFolder(drive, folderName, rootFolderId);
-      parentFolderIds.set(folderName, folderId);
-    }
 
     async function listChildFolders(parentId: string, parentLabel: string): Promise<DriveMergeFolder[]> {
       const folders: DriveMergeFolder[] = [];
@@ -437,6 +437,32 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
       return folders;
     }
 
+    async function findFoldersByName(name: string): Promise<DriveMergeFolder[]> {
+      const folders: DriveMergeFolder[] = [];
+      let pageToken: string | undefined;
+      do {
+        const result = await drive.files.list({
+          q: `name='${escapeDriveMergeQueryValue(name)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+          fields: "nextPageToken, files(id, name, createdTime)",
+          pageSize: 1000,
+          pageToken,
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+        });
+        for (const folder of result.data.files ?? []) {
+          if (!folder.id || !folder.name) continue;
+          folders.push({
+            id: folder.id,
+            name: folder.name,
+            createdTime: folder.createdTime ?? null,
+            parentLabel: "Candidate root",
+          });
+        }
+        pageToken = result.data.nextPageToken ?? undefined;
+      } while (pageToken);
+      return folders;
+    }
+
     async function listChildren(folderId: string): Promise<DriveMergeChild[]> {
       const children: DriveMergeChild[] = [];
       let pageToken: string | undefined;
@@ -458,10 +484,45 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
       return children;
     }
 
-    updateDriveMergeJob(jobId, { progress: "Listing supplier folders" });
-    const allFolders = (await Promise.all(
-      Array.from(parentFolderIds.entries()).map(([parentLabel, parentId]) => listChildFolders(parentId, parentLabel))
-    )).flat();
+    updateDriveMergeJob(jobId, { progress: "Resolving candidate Drive roots" });
+    const candidateRootNames = Array.from(new Set([INVOICE_DRIVE_FOLDER_NAME, config.driveRootFolder].filter(Boolean)));
+    const rootCandidates: Array<DriveMergeFolder & { matchedCandidateName: string }> = [];
+    const seenRootIds = new Set<string>();
+
+    for (const candidateName of candidateRootNames) {
+      const matchingRoots = await findFoldersByName(candidateName);
+      for (const root of matchingRoots) {
+        if (seenRootIds.has(root.id)) continue;
+        seenRootIds.add(root.id);
+        rootCandidates.push({ ...root, matchedCandidateName: candidateName });
+      }
+    }
+
+    updateDriveMergeJob(jobId, { progress: `Listing supplier folders under ${rootCandidates.length} Drive roots` });
+    const allFolders: DriveMergeFolder[] = [];
+    const searchedRoots: DriveMergeResult["searchedRoots"] = [];
+    const excludedDirectFolderNames = new Set([...supplierParentFolderNames, ...candidateRootNames]);
+
+    for (const root of rootCandidates) {
+      const rootChildFolders = await listChildFolders(root.id, `${root.name} / Root`);
+      const directSupplierFolders = rootChildFolders
+        .filter((folder) => !excludedDirectFolderNames.has(folder.name))
+        .map((folder) => ({ ...folder, parentLabel: `${root.name} / Root` }));
+      const legacyParentFolders = rootChildFolders.filter((folder) => supplierParentFolderNames.includes(folder.name));
+      const legacySupplierFolders = (await Promise.all(
+        legacyParentFolders.map((folder) => listChildFolders(folder.id, `${root.name} / ${folder.name}`))
+      )).flat();
+
+      allFolders.push(...directSupplierFolders, ...legacySupplierFolders);
+      searchedRoots.push({
+        id: root.id,
+        name: root.name,
+        matchedCandidateName: root.matchedCandidateName,
+        directSupplierFolderCount: directSupplierFolders.length,
+        legacySupplierFolderCount: legacySupplierFolders.length,
+        supplierFolderCount: directSupplierFolders.length + legacySupplierFolders.length,
+      });
+    }
 
     const groups = new Map<string, DriveMergeFolder[]>();
     for (const folder of allFolders) {
@@ -527,7 +588,8 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
       progress: dryRun ? "Dry-run complete" : "Merge complete",
       result: {
         dryRun,
-        rootFolderId,
+        rootFolderId: rootCandidates[0]?.id ?? "",
+        searchedRoots,
         duplicateGroups: duplicatePlans.length,
         foldersMerged,
         filesMoved,
@@ -542,6 +604,10 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
       error: err instanceof Error ? err.message : "Drive duplicate folder merge failed",
     });
   }
+}
+
+function escapeDriveMergeQueryValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
 apiRouter.post("/debug/drive/merge-duplicate-folders", (req, res) => {
