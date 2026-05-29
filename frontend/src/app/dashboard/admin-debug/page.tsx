@@ -48,14 +48,14 @@ type DebugScanItem = {
 type InvoiceDebugResponse = {
   organizationId: string;
   userId: string;
-  backfillResult?: {
-    candidates: number;
-    paymentCandidates?: number;
-    created: number;
-    duplicates: number;
-    skipped: number;
-    errors: Array<{ gmailMessageId: string; reason: string }>;
+  database?: {
+    host: string;
+    connectionLimit: string;
+    poolTimeoutSeconds: string;
   };
+  maxRows?: number;
+  totalMs?: number;
+  queryTimings?: Array<{ label: string; ms: number; ok: boolean }>;
   invoiceCount: number;
   supplierPaymentCount: number;
   gmailScanItemCount: number;
@@ -124,8 +124,10 @@ export default function AdminDebugPage() {
               <p>Org ID: {data.organizationId}</p>
             </div>
             <div className="card">
-              <h2>Backfill Result</h2>
-              <pre className="overflow-auto text-xs text-ink-secondary">{JSON.stringify(data.backfillResult ?? {}, null, 2)}</pre>
+              <h2>Database Timing</h2>
+              <p>Total: {data.totalMs ?? 0}ms</p>
+              <p>Rows limit: {data.maxRows ?? 20}</p>
+              <pre className="overflow-auto text-xs text-ink-secondary">{JSON.stringify({ database: data.database, queryTimings: data.queryTimings }, null, 2)}</pre>
             </div>
           </section>
 

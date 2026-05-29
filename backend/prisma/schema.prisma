@@ -182,6 +182,7 @@ model SupplierPayment {
   @@index([organizationId, paid])
   @@index([organizationId, dueDate])
   @@index([organizationId, missingInvoice])
+  @@index([organizationId, createdAt])
   @@index([clientId, paid])
 }
 
@@ -226,6 +227,7 @@ model Invoice {
   updatedAt      DateTime @updatedAt
 
   @@index([organizationId, status, date])
+  @@index([organizationId, createdAt])
   @@index([clientId, date])
   @@index([organizationId, gmailMessageId])
   @@unique([organizationId, clientId, emailId, invoiceNumber])
@@ -639,6 +641,9 @@ model GmailScanItem {
   @@unique([organizationId, duplicateKey])
   @@index([organizationId, reviewStatus, occurredAt])
   @@index([organizationId, documentType, occurredAt])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, documentType, createdAt])
+  @@index([organizationId, reviewStatus, createdAt])
   @@index([gmailMessageId])
   @@index([senderEmail])
 }
