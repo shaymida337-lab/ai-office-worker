@@ -15,17 +15,14 @@ export async function ensureDriveFolder(
   parentId?: string
 ): Promise<string> {
   const escapedName = escapeDriveQueryValue(name);
-  const q = parentId
-    ? `name='${escapedName}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
-    : `name='${escapedName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-
-  const existing = await drive.files.list({
-    q,
-    fields: "files(id)",
-    pageSize: 1,
-  });
+  const q = driveFolderQuery(escapedName, parentId);
+  const existing = await findDriveFolder(drive, q);
   const existingId = existing.data.files?.[0]?.id;
   if (existingId) return existingId;
+
+  const raceCheck = await findDriveFolder(drive, q);
+  const raceCheckId = raceCheck.data.files?.[0]?.id;
+  if (raceCheckId) return raceCheckId;
 
   const created = await drive.files.create({
     requestBody: {
@@ -64,17 +61,13 @@ export async function uploadInvoiceAttachmentToDrive(input: {
   buffer: Buffer;
 }): Promise<UploadedDriveFile> {
   const folderType = folderForDocumentType(input.documentType);
-  const typeFolderId = await ensureDriveFolder(input.drive, folderType, input.rootFolderId);
-  const supplierFolderId = await ensureDriveFolder(
-    input.drive,
-    safeFolderName(input.supplier),
-    typeFolderId
-  );
+  const supplierFolderId = await ensureDriveFolder(input.drive, normalizedSupplierFolderName(input.supplier), input.rootFolderId);
+  const documentTypeFolderId = await ensureDriveFolder(input.drive, folderType, supplierFolderId);
 
   const upload = await input.drive.files.create({
     requestBody: {
       name: `${input.receivedAt.toISOString().slice(0, 10)}_${input.filename}`,
-      parents: [supplierFolderId],
+      parents: [documentTypeFolderId],
     },
     media: {
       mimeType: input.mimeType ?? "application/octet-stream",
@@ -106,7 +99,37 @@ export function folderForDocumentType(documentType: string): string {
 }
 
 export function safeFolderName(name: string): string {
-  return (name || "Unknown Supplier").replace(/[\\/:*?"<>|]/g, "-").slice(0, 80);
+  return normalizeFolderText(name || "Unknown Supplier").replace(/[\\/:*?"<>|]/g, "-").slice(0, 80);
+}
+
+export function normalizedSupplierFolderName(name: string): string {
+  const withoutBranch = (name || "Unknown Supplier").split(/\s+-\s+/)[0] ?? "Unknown Supplier";
+  return safeFolderName(withoutBranch) || "Unknown Supplier";
+}
+
+function normalizeFolderText(value: string) {
+  return value
+    .replace(/[־–—]+/g, "-")
+    .replace(/[׳‘’`]/g, "'")
+    .replace(/[״“”]/g, '"')
+    .replace(/\s*-\s*/g, " - ")
+    .replace(/\s+/g, " ")
+    .replace(/(?:\s+-\s+){2,}/g, " - ")
+    .trim();
+}
+
+function driveFolderQuery(escapedName: string, parentId?: string) {
+  return parentId
+    ? `name='${escapedName}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
+    : `name='${escapedName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+}
+
+function findDriveFolder(drive: drive_v3.Drive, q: string) {
+  return drive.files.list({
+    q,
+    fields: "files(id)",
+    pageSize: 1,
+  });
 }
 
 function escapeDriveQueryValue(value: string): string {
