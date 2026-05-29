@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
+import { apiFetch } from "@/lib/api";
 import {
   BarChart3,
   Bell,
@@ -52,10 +53,32 @@ const mobileLinks = [
 
 const mobileMoreLinks = links.filter((item) => !mobileLinks.some((link) => link.href === item.href));
 
+type SearchClient = { id: string; name: string; email?: string | null };
+type SearchInvoice = {
+  id: string;
+  invoiceNumber: string | null;
+  description: string | null;
+  amount: number;
+  currency: string;
+  client?: { name: string } | null;
+};
+type SearchTask = { id: string; title: string; supplier: string | null; status: string };
+type SearchResult = { id: string; type: string; title: string; subtitle: string; href: string };
+
 export function Nav() {
   const pathname = usePathname();
   const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchLoaded, setSearchLoaded] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [searchData, setSearchData] = useState<{
+    clients: SearchClient[];
+    invoices: SearchInvoice[];
+    tasks: SearchTask[];
+  }>({ clients: [], invoices: [], tasks: [] });
 
   function isActive(href: string) {
     return pathname === href || (href !== "/dashboard" && pathname.startsWith(`${href}/`));
@@ -77,6 +100,76 @@ export function Nav() {
 
   function openHelp() {
     window.dispatchEvent(new Event("open-help-center"));
+  }
+
+  async function loadSearchData() {
+    if (searchLoaded || searchLoading) return;
+    setSearchLoading(true);
+    setSearchError("");
+    try {
+      const [clientsResult, invoicesResult, tasksResult] = await Promise.allSettled([
+        apiFetch<{ clients: SearchClient[] }>("/api/clients"),
+        apiFetch<{ invoices: SearchInvoice[] }>("/api/invoices"),
+        apiFetch<SearchTask[]>("/api/tasks"),
+      ]);
+
+      setSearchData({
+        clients: clientsResult.status === "fulfilled" ? clientsResult.value.clients ?? [] : [],
+        invoices: invoicesResult.status === "fulfilled" ? invoicesResult.value.invoices ?? [] : [],
+        tasks: tasksResult.status === "fulfilled" ? tasksResult.value ?? [] : [],
+      });
+      setSearchLoaded(true);
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : "Search failed");
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
+  const searchResults = useMemo<SearchResult[]>(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (query.length < 2) return [];
+
+    const clients = searchData.clients
+      .filter((client) => `${client.name} ${client.email ?? ""}`.toLowerCase().includes(query))
+      .slice(0, 4)
+      .map((client) => ({
+        id: `client-${client.id}`,
+        type: "לקוח",
+        title: client.name,
+        subtitle: client.email ?? "לקוח",
+        href: `/dashboard/clients/${client.id}`,
+      }));
+
+    const invoices = searchData.invoices
+      .filter((invoice) => `${invoice.invoiceNumber ?? ""} ${invoice.description ?? ""} ${invoice.client?.name ?? ""}`.toLowerCase().includes(query))
+      .slice(0, 4)
+      .map((invoice) => ({
+        id: `invoice-${invoice.id}`,
+        type: "חשבונית",
+        title: invoice.invoiceNumber || invoice.client?.name || "חשבונית",
+        subtitle: `${invoice.client?.name ?? "ללא לקוח"} · ${invoice.amount.toLocaleString("he-IL")} ${invoice.currency}`,
+        href: "/dashboard/invoices",
+      }));
+
+    const tasks = searchData.tasks
+      .filter((task) => `${task.title} ${task.supplier ?? ""} ${task.status}`.toLowerCase().includes(query))
+      .slice(0, 4)
+      .map((task) => ({
+        id: `task-${task.id}`,
+        type: "משימה",
+        title: task.title,
+        subtitle: task.supplier ?? task.status,
+        href: "/tasks",
+      }));
+
+    return [...clients, ...invoices, ...tasks].slice(0, 10);
+  }, [searchData, searchQuery]);
+
+  function openSearchResult(href: string) {
+    setSearchOpen(false);
+    setSearchQuery("");
+    router.push(href);
   }
 
   const moreActive = mobileMoreLinks.some((item) => isActive(item.href));
@@ -148,10 +241,49 @@ export function Nav() {
           <Link href="/dashboard" className="lg:hidden">
             <Logo size="md" iconOnly />
           </Link>
-          <div className="mx-auto hidden h-10 w-full max-w-xl items-center gap-3 rounded-xl border border-[var(--border)] bg-surface-hover px-3 text-ink-muted shadow-card sm:flex">
-            <Search className="h-4 w-4" />
-            <span className="flex-1 text-sm">חיפוש לקוחות, חשבוניות, משימות...</span>
-            <kbd className="rounded-md border border-[var(--border)] bg-surface-card px-2 py-1 text-[13px] text-ink-muted">⌘K</kbd>
+          <div className="relative mx-auto hidden w-full max-w-xl sm:block">
+            <div className="flex h-11 items-center gap-3 rounded-xl border border-[var(--border)] bg-surface-hover px-3 text-[#E2E8F0] shadow-card focus-within:border-accent-primary/60">
+              <Search className="h-4 w-4 text-[#CBD5E1]" />
+              <input
+                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-base font-medium text-[#F8FAFC] outline-none placeholder:text-[#CBD5E1]"
+                placeholder="חיפוש לקוחות, חשבוניות, משימות..."
+                value={searchQuery}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  setSearchOpen(true);
+                  void loadSearchData();
+                }}
+                onFocus={() => {
+                  setSearchOpen(true);
+                  void loadSearchData();
+                }}
+              />
+              <kbd className="rounded-md border border-[var(--border)] bg-surface-card px-2 py-1 text-sm text-[#CBD5E1]">⌘K</kbd>
+            </div>
+            {searchOpen && searchQuery.trim().length >= 2 && (
+              <div className="absolute left-0 right-0 top-12 z-[80] overflow-hidden rounded-2xl border border-[var(--border)] bg-surface-secondary shadow-card">
+                {searchLoading && <div className="p-4 text-base text-[#CBD5E1]">מחפש...</div>}
+                {!searchLoading && searchError && <div className="p-4 text-base text-red-200">{searchError}</div>}
+                {!searchLoading && !searchError && searchResults.length === 0 && (
+                  <div className="p-4 text-base text-[#CBD5E1]">לא נמצאו תוצאות.</div>
+                )}
+                {!searchLoading && !searchError && searchResults.map((result) => (
+                  <button
+                    key={result.id}
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => openSearchResult(result.href)}
+                    className="flex w-full items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3 text-right last:border-b-0 hover:bg-surface-hover"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-base font-semibold text-[#F8FAFC]">{result.title}</span>
+                      <span className="mt-0.5 block truncate text-sm text-[#CBD5E1]">{result.subtitle}</span>
+                    </span>
+                    <span className="shrink-0 rounded-full bg-accent-primary/15 px-2.5 py-1 text-sm font-semibold text-[#C7D2FE]">{result.type}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="min-w-0 flex-1 text-center text-[15px] font-semibold text-ink-primary sm:hidden">
             AI Office Worker
