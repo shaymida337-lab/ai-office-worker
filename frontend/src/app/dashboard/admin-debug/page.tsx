@@ -72,6 +72,25 @@ type FixBadAmountsResponse = {
   updatedCount: number;
 };
 
+type DriveMergeDuplicateFoldersResponse = {
+  dryRun: boolean;
+  rootFolderId: string;
+  duplicateGroups: number;
+  foldersMerged: number;
+  filesMoved: number;
+  groups: Array<{
+    normalizedName: string;
+    keep: { id: string; name: string; parentLabel: string; createdTime: string | null };
+    duplicates: Array<{
+      id: string;
+      name: string;
+      parentLabel: string;
+      childCount: number;
+      children: Array<{ id: string; name: string; mimeType: string | null }>;
+    }>;
+  }>;
+};
+
 export default function AdminDebugPage() {
   const router = useRouter();
   const [data, setData] = useState<InvoiceDebugResponse | null>(null);
@@ -80,6 +99,8 @@ export default function AdminDebugPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [cleaning, setCleaning] = useState(false);
+  const [driveMerging, setDriveMerging] = useState(false);
+  const [driveMergePreview, setDriveMergePreview] = useState<DriveMergeDuplicateFoldersResponse | null>(null);
 
   async function load() {
     setLoading(true);
@@ -125,6 +146,44 @@ export default function AdminDebugPage() {
     }
   }
 
+  async function mergeDuplicateDriveFolders() {
+    setDriveMerging(true);
+    setError("");
+    setMessage("");
+    try {
+      const preview = await apiFetch<DriveMergeDuplicateFoldersResponse>("/api/debug/drive/merge-duplicate-folders", {
+        method: "POST",
+        body: JSON.stringify({ dryRun: true }),
+      });
+      setDriveMergePreview(preview);
+
+      if (preview.duplicateGroups === 0) {
+        setMessage("לא נמצאו תיקיות ספק כפולות ב-Drive.");
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `נמצאו ${preview.duplicateGroups} קבוצות כפולות, ${preview.foldersMerged} תיקיות לאיחוד ו-${preview.filesMoved} פריטים להעברה. להריץ איחוד אמיתי עכשיו?`
+      );
+      if (!confirmed) return;
+
+      const result = await apiFetch<DriveMergeDuplicateFoldersResponse>("/api/debug/drive/merge-duplicate-folders", {
+        method: "POST",
+        body: JSON.stringify({ dryRun: false }),
+      });
+      setDriveMergePreview(result);
+      setMessage(`אוחדו ${result.foldersMerged} תיקיות כפולות והועברו ${result.filesMoved} פריטים.`);
+    } catch (err) {
+      if (isAuthError(err)) {
+        router.push("/login");
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Failed to merge duplicate Drive folders");
+    } finally {
+      setDriveMerging(false);
+    }
+  }
+
   useEffect(() => {
     load();
   }, []);
@@ -139,15 +198,18 @@ export default function AdminDebugPage() {
       </div>
 
       <div className="mb-6 flex flex-wrap gap-3">
-        <button className="btn" onClick={load} disabled={loading || cleaning}>
+        <button className="btn" onClick={load} disabled={loading || cleaning || driveMerging}>
           {loading ? "טוען..." : "רענן נתונים"}
         </button>
         <button
           className="btn btn-secondary"
           onClick={cleanBadAmounts}
-          disabled={loading || cleaning || (data?.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0) === 0}
+          disabled={loading || cleaning || driveMerging || (data?.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0) === 0}
         >
           {cleaning ? "מנקה..." : "נקה סכומים שגויים"}
+        </button>
+        <button className="btn btn-secondary" onClick={mergeDuplicateDriveFolders} disabled={loading || cleaning || driveMerging}>
+          {driveMerging ? "בודק Drive..." : "אחד תיקיות כפולות"}
         </button>
       </div>
 
@@ -174,6 +236,7 @@ export default function AdminDebugPage() {
 
           <DebugTable title="Latest 20 Invoice rows" rows={data.lastInvoiceRows ?? []} />
           <DebugTable title="Bad amount invoice samples" rows={badAmounts?.sampleRows ?? []} />
+          <DebugTable title="Drive duplicate folder merge preview" rows={driveMergePreview ? [driveMergePreview] : []} />
           <DebugTable title="Latest 20 SupplierPayment rows" rows={data.lastPaymentRows ?? []} />
           <DebugTable title="Rejected invoice reasons" rows={data.rejectedInvoiceReasons ?? []} />
         </>

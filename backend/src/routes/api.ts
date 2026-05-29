@@ -339,6 +339,165 @@ apiRouter.post("/debug/invoices/fix-bad-amounts", async (req, res) => {
   }
 });
 
+apiRouter.post("/debug/drive/merge-duplicate-folders", async (req, res) => {
+  const dryRun = (req.body as { dryRun?: boolean } | undefined)?.dryRun !== false;
+  const supplierParentFolderNames = ["Invoices", "Receipts", "Payment Requests", "Missing Invoices", "Other"];
+
+  try {
+    const { getGoogleClients } = await import("../services/google.js");
+    const {
+      ensureDriveFolder,
+      ensureInvoiceFolderTree,
+      normalizedSupplierFolderName,
+    } = await import("../services/driveService.js");
+    const { drive } = await getGoogleClients(req.auth!.organizationId);
+    const rootFolderId = await ensureInvoiceFolderTree(drive);
+    const parentFolderIds = new Map<string, string>([["Root", rootFolderId]]);
+
+    for (const folderName of supplierParentFolderNames) {
+      const folderId = await ensureDriveFolder(drive, folderName, rootFolderId);
+      parentFolderIds.set(folderName, folderId);
+    }
+
+    type DriveFolder = {
+      id: string;
+      name: string;
+      createdTime: string | null;
+      parentLabel: string;
+    };
+    type DriveChild = {
+      id: string;
+      name: string;
+      mimeType: string | null;
+    };
+
+    async function listChildFolders(parentId: string, parentLabel: string): Promise<DriveFolder[]> {
+      const folders: DriveFolder[] = [];
+      let pageToken: string | undefined;
+      do {
+        const result = await drive.files.list({
+          q: `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+          fields: "nextPageToken, files(id, name, createdTime)",
+          pageSize: 1000,
+          pageToken,
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+        });
+        for (const folder of result.data.files ?? []) {
+          if (!folder.id || !folder.name) continue;
+          if (parentLabel === "Root" && supplierParentFolderNames.includes(folder.name)) continue;
+          folders.push({
+            id: folder.id,
+            name: folder.name,
+            createdTime: folder.createdTime ?? null,
+            parentLabel,
+          });
+        }
+        pageToken = result.data.nextPageToken ?? undefined;
+      } while (pageToken);
+      return folders;
+    }
+
+    async function listChildren(folderId: string): Promise<DriveChild[]> {
+      const children: DriveChild[] = [];
+      let pageToken: string | undefined;
+      do {
+        const result = await drive.files.list({
+          q: `'${folderId}' in parents and trashed=false`,
+          fields: "nextPageToken, files(id, name, mimeType)",
+          pageSize: 1000,
+          pageToken,
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+        });
+        for (const child of result.data.files ?? []) {
+          if (!child.id || !child.name) continue;
+          children.push({ id: child.id, name: child.name, mimeType: child.mimeType ?? null });
+        }
+        pageToken = result.data.nextPageToken ?? undefined;
+      } while (pageToken);
+      return children;
+    }
+
+    const allFolders = (await Promise.all(
+      Array.from(parentFolderIds.entries()).map(([parentLabel, parentId]) => listChildFolders(parentId, parentLabel))
+    )).flat();
+
+    const groups = new Map<string, DriveFolder[]>();
+    for (const folder of allFolders) {
+      const normalized = normalizedSupplierFolderName(folder.name).toLowerCase();
+      const current = groups.get(normalized) ?? [];
+      current.push(folder);
+      groups.set(normalized, current);
+    }
+
+    const duplicatePlans = [];
+    let foldersMerged = 0;
+    let filesMoved = 0;
+
+    for (const [normalizedName, folders] of groups.entries()) {
+      if (folders.length < 2) continue;
+      const sorted = [...folders].sort((a, b) => {
+        const aTime = a.createdTime ? new Date(a.createdTime).getTime() : Number.MAX_SAFE_INTEGER;
+        const bTime = b.createdTime ? new Date(b.createdTime).getTime() : Number.MAX_SAFE_INTEGER;
+        return aTime - bTime;
+      });
+      const keep = sorted[0];
+      const duplicates = sorted.slice(1);
+      const duplicateDetails = [];
+
+      for (const duplicate of duplicates) {
+        const children = await listChildren(duplicate.id);
+        foldersMerged++;
+        filesMoved += children.length;
+        duplicateDetails.push({
+          id: duplicate.id,
+          name: duplicate.name,
+          parentLabel: duplicate.parentLabel,
+          childCount: children.length,
+          children: children.slice(0, 20),
+        });
+
+        if (!dryRun) {
+          for (const child of children) {
+            await drive.files.update({
+              fileId: child.id,
+              addParents: keep.id,
+              removeParents: duplicate.id,
+              fields: "id, parents",
+              supportsAllDrives: true,
+            });
+          }
+          await drive.files.delete({ fileId: duplicate.id, supportsAllDrives: true });
+        }
+      }
+
+      duplicatePlans.push({
+        normalizedName,
+        keep: {
+          id: keep.id,
+          name: keep.name,
+          parentLabel: keep.parentLabel,
+          createdTime: keep.createdTime,
+        },
+        duplicates: duplicateDetails,
+      });
+    }
+
+    res.json({
+      dryRun,
+      rootFolderId,
+      duplicateGroups: duplicatePlans.length,
+      foldersMerged,
+      filesMoved,
+      groups: duplicatePlans,
+    });
+  } catch (err) {
+    console.error("[debug/drive/merge-duplicate-folders] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Drive duplicate folder merge failed" });
+  }
+});
+
 apiRouter.get("/debug/invoices-auth", async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
