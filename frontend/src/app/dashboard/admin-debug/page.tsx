@@ -316,6 +316,8 @@ export default function AdminDebugPage() {
       {message && <div className="toast border-emerald-400/30 text-emerald-200">{message}</div>}
       {driveMergeStatus && <div className="toast border-blue-400/30 text-blue-100">{driveMergeStatus}</div>}
 
+      <TopPaymentsTable data={topPayments} loading={loadingTopPayments} />
+
       {data && (
         <>
           <section className="mb-6 grid gap-3 md:grid-cols-4">
@@ -338,7 +340,6 @@ export default function AdminDebugPage() {
 
           <DebugTable title="Latest 20 Invoice rows" rows={data.lastInvoiceRows ?? []} />
           <DebugTable title="Bad amount invoice samples" rows={badAmounts?.sampleRows ?? []} />
-          <TopPaymentsTable data={topPayments} loading={loadingTopPayments} />
           <DebugTable title="Drive duplicate folder merge preview" rows={driveMergePreview ? [driveMergePreview] : []} />
           <DebugTable title="Latest 20 SupplierPayment rows" rows={data.lastPaymentRows ?? []} />
           <DebugTable title="Rejected invoice reasons" rows={data.rejectedInvoiceReasons ?? []} />
@@ -361,16 +362,17 @@ function TopPaymentsTable({ data, loading }: { data: TopPaymentAmountsResponse |
   const rows = data?.rows ?? [];
 
   return (
-    <section className="card mb-6">
-      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+    <section className="mb-8 rounded-3xl border border-amber-400/30 bg-[linear-gradient(135deg,rgba(245,158,11,0.16),rgba(15,23,42,0.96))] p-5 shadow-[0_20px_60px_rgba(245,158,11,0.12)]">
+      <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h2>10 התשלומים הגדולים</h2>
-          <p>
+          <div className="page-kicker">Money to pay investigation</div>
+          <h2 className="text-2xl font-black text-[#F8FAFC]">10 התשלומים הגדולים</h2>
+          <p className="mt-2 max-w-3xl text-base leading-7 text-[#E2E8F0]">
             שורות SupplierPayment שמרכיבות את "כסף לשלם": לא שולמו, נדרש תשלום, סכום בין 0 ל-1,000,000.
           </p>
         </div>
         {data && (
-          <span className="badge badge-warn w-fit">
+          <span className="rounded-2xl border border-amber-300/40 bg-amber-400/15 px-4 py-3 text-lg font-black text-amber-100">
             סה"כ מחושב: ₪{data.moneyToPay.toLocaleString("he-IL")}
           </span>
         )}
@@ -379,32 +381,37 @@ function TopPaymentsTable({ data, loading }: { data: TopPaymentAmountsResponse |
       {loading ? (
         <p>טוען את התשלומים הגדולים...</p>
       ) : rows.length === 0 ? (
-        <p>לחץ על "10 התשלומים הגדולים" כדי לטעון את הנתונים.</p>
+        <p className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-4 text-base text-[#E2E8F0]">
+          לחץ על "10 התשלומים הגדולים" כדי לטעון את הנתונים.
+        </p>
       ) : (
-        <div className="table-shell max-w-full overflow-x-auto">
-          <table className="min-w-[860px] table-fixed">
+        <div className="overflow-x-auto rounded-2xl border border-amber-300/20 bg-surface-secondary/90">
+          <table className="min-w-[900px] table-fixed">
             <thead>
-              <tr>
-                <th className="w-36">סכום</th>
-                <th className="w-56">ספק / שולח</th>
-                <th className="w-40">תאריך יצירה</th>
-                <th>emailMessageId</th>
+              <tr className="border-b border-amber-300/20 bg-amber-400/10">
+                <th className="w-48 px-4 py-4 text-right text-base font-black text-[#F8FAFC]">סכום</th>
+                <th className="w-72 px-4 py-4 text-right text-base font-black text-[#F8FAFC]">ספק / שולח</th>
+                <th className="w-52 px-4 py-4 text-right text-base font-black text-[#F8FAFC]">תאריך</th>
+                <th className="px-4 py-4 text-left text-base font-black text-[#F8FAFC]">emailMessageId</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.id}>
-                  <td className="whitespace-nowrap font-bold text-[#F8FAFC]">
-                    ₪{row.amount.toLocaleString("he-IL")} {row.currency}
+                <tr key={row.id} className="border-b border-[var(--border)] last:border-0">
+                  <td className="whitespace-nowrap px-4 py-5">
+                    <div className="text-3xl font-black tracking-tight text-amber-200">
+                      ₪{row.amount.toLocaleString("he-IL")}
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-[#CBD5E1]">{row.currency}</div>
                   </td>
-                  <td className="break-words">
-                    <div className="font-semibold text-[#F8FAFC]">{row.supplier || "ספק לא ידוע"}</div>
-                    <div className="text-sm text-[#CBD5E1]">{row.emailSender || "שולח לא ידוע"}</div>
+                  <td className="break-words px-4 py-5">
+                    <div className="text-lg font-bold text-[#F8FAFC]">{row.supplier || "ספק לא ידוע"}</div>
+                    <div className="mt-1 text-base text-[#CBD5E1]">{row.emailSender || "שולח לא ידוע"}</div>
                   </td>
-                  <td className="whitespace-nowrap">
+                  <td className="whitespace-nowrap px-4 py-5 text-base font-semibold text-[#F1F5F9]">
                     {row.createdAt ? new Date(row.createdAt).toLocaleString("he-IL") : "—"}
                   </td>
-                  <td className="break-all text-left text-sm" dir="ltr">
+                  <td className="break-all px-4 py-5 text-left text-sm text-[#CBD5E1]" dir="ltr">
                     {row.emailMessageId ?? "—"}
                   </td>
                 </tr>
