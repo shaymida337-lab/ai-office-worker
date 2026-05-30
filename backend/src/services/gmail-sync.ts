@@ -7,6 +7,7 @@ import { analyzeAndSaveMessage } from "./messageScanner.js";
 import {
   ensureInvoiceFolderTree,
   folderForDocumentType,
+  supplierBranchNameFromFolderName,
   uploadInvoiceAttachmentToDrive,
 } from "./driveService.js";
 import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
@@ -758,6 +759,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         knownSupplierNames,
       });
       const supplierName = supplierMetadata.name;
+      const supplierBranchName = supplierBranchNameFromFolderName(supplierName);
       const classification = classifyGmailScanCandidate({
         subject: email.subject,
         bodyText: bodyForAnalysis,
@@ -955,6 +957,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             confidence: classification.confidence,
             supplier: supplierMetadata,
             supplierTaxId: supplierMetadata.taxId,
+            supplierBranchName,
             invoiceNumber: analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n")),
             invoiceDate: analysis.invoiceDate ?? null,
             dueDate: analysis.dueDate ?? null,
@@ -985,6 +988,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             confidence: classification.confidence,
             supplier: supplierMetadata,
             supplierTaxId: supplierMetadata.taxId,
+            supplierBranchName,
             invoiceNumber: analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n")),
             invoiceDate: analysis.invoiceDate ?? null,
             dueDate: analysis.dueDate ?? null,

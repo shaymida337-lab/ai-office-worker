@@ -183,18 +183,36 @@ export function supplierFolderIdentityKey(input: { supplierName: string; supplie
 }
 
 export function canonicalSupplierFolderKey(name: string): string {
-  const normalized = normalizedSupplierFolderName(name)
+  const folderName = normalizedSupplierFolderName(name);
+  if (/(^|[\s([{-])(wolt|וולט)([\s)\]}-]|$)/i.test(folderName)) return "wolt";
+  if (/(^|[\s([{-])(partner|פרטנר)([\s)\]}-]|$)/i.test(folderName)) return "partner";
+  if (/(^|[\s([{-])(anthropic|claude|אנתרופיק)([\s)\]}-]|$)/i.test(folderName)) return "anthropic";
+
+  const normalized = folderName
     .toLowerCase()
     .replace(/\b(?:ltd|limited|inc|llc|corp|company|co)\b\.?/gi, "")
     .replace(/\b(?:invoice|invoices|receipt|receipts|billing|payments?|accounts?)\b/gi, "")
     .replace(/\b(?:בע"מ|בע״מ|בעמ|חברה|חשבוניות|חשבונית|קבלה|תשלומים|גבייה)\b/g, "")
     .replace(/[^\p{L}\p{N}]+/gu, "");
-  if (/^(wolt|וולט)/i.test(normalized)) return "wolt";
-  if (/^(partner|פרטנר)/i.test(normalized)) return "partner";
-  if (/^(anthropic|claude|אנתרופיק)/i.test(normalized)) return "anthropic";
+  if (/(wolt|וולט)/i.test(normalized)) return "wolt";
+  if (/(partner|פרטנר)/i.test(normalized)) return "partner";
+  if (/(anthropic|claude|אנתרופיק)/i.test(normalized)) return "anthropic";
   const municipality = normalized.match(/^(?:עיריית|עיריה|municipality)(.+)$/i)?.[1];
   if (municipality) return `municipality:${municipality}`;
   return normalized || "unknownsupplier";
+}
+
+export function supplierBranchNameFromFolderName(name: string): string | null {
+  const folderName = normalizedSupplierFolderName(name);
+  const withoutSupplierBrand = folderName
+    .replace(/\s*[\[(]\s*(?:wolt|וולט|partner|פרטנר|anthropic|claude|אנתרופיק)\s*[\])]\s*/gi, " ")
+    .replace(/\b(?:wolt|וולט|partner|פרטנר|anthropic|claude|אנתרופיק)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!withoutSupplierBrand || canonicalSupplierFolderKey(withoutSupplierBrand) !== canonicalSupplierFolderKey(folderName)) {
+    return withoutSupplierBrand || null;
+  }
+  return null;
 }
 
 function normalizeSupplierTaxId(value?: string | null) {
