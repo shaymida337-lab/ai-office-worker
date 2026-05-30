@@ -1124,6 +1124,7 @@ type DriveMergeFolder = {
   name: string;
   createdTime: string | null;
   parentLabel: string;
+  appProperties?: Record<string, string> | null;
 };
 type DriveMergeChild = {
   id: string;
@@ -1184,7 +1185,10 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
     const { getGoogleClients } = await import("../services/google.js");
     const {
       INVOICE_DRIVE_FOLDER_NAME,
+      canonicalSupplierFolderKey,
       normalizedSupplierFolderName,
+      supplierFolderIdentityKey,
+      writeSupplierFolderMetadata,
     } = await import("../services/driveService.js");
     const { config } = await import("../lib/config.js");
     const { drive } = await getGoogleClients(organizationId);
@@ -1195,7 +1199,7 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
       do {
         const result = await drive.files.list({
           q: `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-          fields: "nextPageToken, files(id, name, createdTime)",
+          fields: "nextPageToken, files(id, name, createdTime, appProperties)",
           pageSize: 1000,
           pageToken,
           supportsAllDrives: true,
@@ -1209,6 +1213,7 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
             name: folder.name,
             createdTime: folder.createdTime ?? null,
             parentLabel,
+            appProperties: folder.appProperties ?? null,
           });
         }
         pageToken = result.data.nextPageToken ?? undefined;
@@ -1222,7 +1227,7 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
       do {
         const result = await drive.files.list({
           q: `name='${escapeDriveMergeQueryValue(name)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-          fields: "nextPageToken, files(id, name, createdTime)",
+          fields: "nextPageToken, files(id, name, createdTime, appProperties)",
           pageSize: 1000,
           pageToken,
           supportsAllDrives: true,
@@ -1235,6 +1240,7 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
             name: folder.name,
             createdTime: folder.createdTime ?? null,
             parentLabel: "Candidate root",
+            appProperties: folder.appProperties ?? null,
           });
         }
         pageToken = result.data.nextPageToken ?? undefined;
@@ -1305,7 +1311,10 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
 
     const groups = new Map<string, DriveMergeFolder[]>();
     for (const folder of allFolders) {
-      const normalized = normalizedSupplierFolderName(folder.name).toLowerCase();
+      const supplierTaxId = folder.appProperties?.supplierTaxId ?? null;
+      const normalized = supplierTaxId
+        ? supplierFolderIdentityKey({ supplierName: folder.name, supplierTaxId })
+        : `name:${canonicalSupplierFolderKey(normalizedSupplierFolderName(folder.name))}`;
       const current = groups.get(normalized) ?? [];
       current.push(folder);
       groups.set(normalized, current);
@@ -1360,6 +1369,20 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
         keep,
         duplicates: duplicateDetails,
       });
+      if (!dryRun) {
+        const supplierTaxId = keep.appProperties?.supplierTaxId ?? null;
+        const supplierKey = supplierTaxId
+          ? supplierFolderIdentityKey({ supplierName: keep.name, supplierTaxId })
+          : `name:${canonicalSupplierFolderKey(normalizedSupplierFolderName(keep.name))}`;
+        await writeSupplierFolderMetadata(organizationId, supplierKey, {
+          folderId: keep.id,
+          folderName: normalizedSupplierFolderName(keep.name),
+          supplierName: normalizedSupplierFolderName(keep.name),
+          supplierTaxId,
+          supplierKey,
+          updatedAt: new Date().toISOString(),
+        });
+      }
     }
 
     updateDriveMergeJob(jobId, {

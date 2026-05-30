@@ -874,9 +874,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           const buffer = decodeGmailAttachment(data);
           const upload = await withRetry(
             () => uploadInvoiceAttachmentToDrive({
+              organizationId,
               drive,
               rootFolderId: rootId,
               supplier: supplierName,
+              supplierTaxId: supplierMetadata.taxId,
               documentType: classification.documentType,
               filename,
               mimeType: part.mimeType,

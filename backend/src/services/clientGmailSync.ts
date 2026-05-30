@@ -111,9 +111,11 @@ export async function syncGmailForClient(clientId: string) {
         });
         const buffer = decodeAttachment(att.data.data ?? "");
         const upload = await uploadInvoiceAttachmentToDrive({
+          organizationId,
           drive,
           rootFolderId: rootId,
           supplier: analysis.supplier,
+          supplierTaxId: analysis.supplierTaxId,
           documentType: analysis.documentType,
           filename: part.filename,
           mimeType: part.mimeType,
