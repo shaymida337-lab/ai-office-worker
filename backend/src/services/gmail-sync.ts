@@ -990,7 +990,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         logStep(`[gmail-sync] invoice rejected message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
       }
 
-      if (!classification.heldForFinancialSender && classification.isRelevant && (amount != null || analysis.documentType !== "other" || classification.documentType !== "supplier_message")) {
+      if (classification.reviewStatus === "auto_saved" && classification.isRelevant && (amount != null || analysis.documentType !== "other" || classification.documentType !== "supplier_message")) {
         const dateIso = email.receivedAt.toISOString();
         const duplicateHash = duplicateKey || buildDuplicateHash({
           organizationId,
@@ -1141,6 +1141,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       } else {
         const reasons = [
           classification.heldForFinancialSender && "held_for_financial_sender",
+          classification.reviewStatus !== "auto_saved" && "needs_review",
           !classification.isRelevant && "not_relevant",
           amount == null && analysis.documentType === "other" && classification.documentType === "supplier_message" && "supplier_message_without_amount_or_ai_document_type",
         ].filter(Boolean);
@@ -1339,16 +1340,22 @@ export function classifyGmailScanCandidate(input: {
 
   const confidenceScore = confidenceBucket(input.analysis.confidence, evidence.length, documentType);
   const heldForFinancialSender = isFinancialSender(input.senderEmail, input.senderDomain);
+  const autoSaveHoldReasons = [
+    !(documentType === "invoice" || documentType === "payment_request") && `documentType is ${documentType}`,
+    confidenceScore !== "high" && `confidence is ${confidenceScore}`,
+    !hasAmount && "no valid amount",
+  ].filter(Boolean) as string[];
+  const canAutoSave = autoSaveHoldReasons.length === 0;
   const reviewStatus = heldForFinancialSender
     ? "needs_review"
-    : confidenceScore === "high" && documentType !== "unknown_needs_review"
+    : canAutoSave
       ? "auto_saved"
       : "needs_review";
   const decisionReason = heldForFinancialSender
     ? "Held for review: sender is a financial institution (bank)"
-    : evidence.length
-      ? evidence.join(", ")
-      : "No strong signal; saved for review because it matched a broad Gmail candidate query";
+    : canAutoSave
+      ? `Auto-saved: ${documentType} with high confidence and valid amount`
+      : `Held for review: ${autoSaveHoldReasons.join(" / ")}`;
 
   return {
     documentType,

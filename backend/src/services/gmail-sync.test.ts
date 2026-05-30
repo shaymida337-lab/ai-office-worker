@@ -36,6 +36,7 @@ test("classifies English invoice with PDF as high confidence invoice", () => {
   assert.equal(result.confidenceScore, "high");
   assert.equal(result.reviewStatus, "auto_saved");
   assert.equal(result.isRelevant, true);
+  assert.match(result.decisionReason, /Auto-saved: invoice/);
 });
 
 test("classifies English receipt with PDF as receipt", () => {
@@ -50,6 +51,24 @@ test("classifies English receipt with PDF as receipt", () => {
 
   assert.equal(result.documentType, "receipt");
   assert.equal(result.confidenceScore, "high");
+  assert.equal(result.reviewStatus, "needs_review");
+  assert.match(result.decisionReason, /documentType is receipt/);
+});
+
+test("holds high confidence invoice without valid amount for review", () => {
+  const result = classifyGmailScanCandidate({
+    subject: "Invoice INV-1002",
+    bodyText: "Please find attached invoice.",
+    attachmentFilenames: ["invoice-1002.pdf"],
+    analysis: analysis({ documentType: "invoice", confidence: 0.9 }),
+    amount: null,
+    supplierName: "Acme Ltd",
+  });
+
+  assert.equal(result.documentType, "invoice");
+  assert.equal(result.confidenceScore, "high");
+  assert.equal(result.reviewStatus, "needs_review");
+  assert.match(result.decisionReason, /no valid amount/);
 });
 
 test("holds financial sender messages for review even with strong payment signals", () => {
@@ -128,5 +147,5 @@ test("classifies Hebrew supplier payment email without attachment", () => {
 
   assert.equal(result.documentType, "payment_request");
   assert.equal(result.isRelevant, true);
-  assert.match(result.decisionReason, /payment|supplier|ai/i);
+  assert.match(result.decisionReason, /confidence is medium/);
 });
