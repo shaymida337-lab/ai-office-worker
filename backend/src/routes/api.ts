@@ -257,6 +257,10 @@ apiRouter.get("/gmail/invoice-diagnostics", async (req, res) => {
     const diagnostics = scanItems.map((item) => {
       const email = item.emailMessageId ? emailById.get(item.emailMessageId) : null;
       const attachments = item.emailMessageId ? attachmentsByEmailId.get(item.emailMessageId) ?? [] : [];
+      const rawAnalysis = item.rawAnalysis as { filenames?: unknown; hasAttachment?: unknown } | null;
+      const rawFilenames = Array.isArray(rawAnalysis?.filenames)
+        ? rawAnalysis.filenames.filter((filename): filename is string => typeof filename === "string" && filename.trim().length > 0)
+        : [];
       const text = [
         item.subject,
         email?.subject,
@@ -264,13 +268,14 @@ apiRouter.get("/gmail/invoice-diagnostics", async (req, res) => {
         email?.bodyText,
         item.attachmentFilename,
         attachments.map((attachment) => attachment.filename).join(" "),
+        rawFilenames.join(" "),
         JSON.stringify(item.rawAnalysis ?? {}),
       ].filter(Boolean).join("\n");
       const lower = text.toLowerCase();
-      const hasAttachment = Boolean(item.attachmentFilename || attachments.length > 0);
+      const hasAttachment = Boolean(item.attachmentFilename || attachments.length > 0 || rawFilenames.length > 0 || rawAnalysis?.hasAttachment);
       const hasPdfAttachment = attachments.some((attachment) =>
         /\.pdf$/i.test(attachment.filename) || attachment.mimeType === "application/pdf"
-      ) || /\.pdf$/i.test(item.attachmentFilename ?? "");
+      ) || /\.pdf$/i.test(item.attachmentFilename ?? "") || rawFilenames.some((filename) => /\.pdf$/i.test(filename));
       const hasInvoiceKeyword = /\binvoice\b|חשבונית|green\s*invoice|greeninvoice|icount|i-count|חשבונית\s*ירוקה/i.test(text);
       const hasTaxInvoiceKeyword = /tax\s+invoice|חשבונית\s*מס/i.test(text);
       const hasReceiptKeyword = /\breceipt\b|קבלה|חשבונית\s*מס\s*קבלה/i.test(text);
@@ -302,6 +307,12 @@ apiRouter.get("/gmail/invoice-diagnostics", async (req, res) => {
         hasTaxInvoiceKeyword,
         hasReceiptKeyword,
         hasPaymentRequestKeyword,
+        attachmentFilenames: [
+          ...attachments.map((attachment) => attachment.filename),
+          ...rawFilenames,
+          ...(item.attachmentFilename ? [item.attachmentFilename] : []),
+        ].filter(Boolean),
+        attachmentMimeTypes: attachments.map((attachment) => attachment.mimeType || "unknown"),
         candidateInvoice,
         approved,
         rejected,
@@ -331,6 +342,13 @@ apiRouter.get("/gmail/invoice-diagnostics", async (req, res) => {
         approvedInvoices: diagnostics.filter((item) => item.approved).length,
         rejectedInvoices: diagnostics.filter((item) => item.rejected).length,
         supplierPaymentsCreated: latestScan?.paymentsCreated ?? 0,
+        attachmentMimeTypes: diagnostics
+          .flatMap((item) => item.attachmentMimeTypes)
+          .reduce<Record<string, number>>((acc, mimeType) => {
+            acc[mimeType] = (acc[mimeType] ?? 0) + 1;
+            return acc;
+          }, {}),
+        firstAttachmentFilenames: Array.from(new Set(diagnostics.flatMap((item) => item.attachmentFilenames))).slice(0, 20),
       },
       rejectionCounts,
       rejectedCandidates: diagnostics

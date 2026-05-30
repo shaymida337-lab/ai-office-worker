@@ -606,6 +606,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         });
         logStep(`[gmail-sync] DB upsert EmailMessage success message=${msgRef.id} id=${emailRecord.id}`);
         dbEmailMessageUpserts++;
+        await persistAttachmentMetadata(emailRecord.id, attachmentParts);
 
       await analyzeAndSaveMessage({
         organizationId,
@@ -814,19 +815,26 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           continue;
         }
         const attachmentId = part.body?.attachmentId;
-        if (!part.filename || !attachmentId) {
+        const filename = part.filename?.trim() || attachmentFilenameFromPart(part);
+        if (!filename || !part.body) {
           driveUploadsSkipped++;
-          logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${part.filename || "unnamed"}" reason="missing_filename_or_attachment_id"`);
+          logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${filename || "unnamed"}" reason="missing_filename_or_body"`);
           continue;
         }
-        const filename = part.filename;
 
-        const existingAttachment = await prisma.emailAttachment.findFirst({
-          where: {
-            emailMessageId: email.emailRecordId,
-            gmailAttachmentId: attachmentId,
-          },
-        });
+        const existingAttachment = attachmentId
+          ? await prisma.emailAttachment.findFirst({
+              where: {
+                emailMessageId: email.emailRecordId,
+                gmailAttachmentId: attachmentId,
+              },
+            })
+          : await prisma.emailAttachment.findFirst({
+              where: {
+                emailMessageId: email.emailRecordId,
+                filename,
+              },
+            });
         if (existingAttachment?.driveLink) {
           driveLinks.push({ type: folderForDocumentType(classification.documentType), link: existingAttachment.driveLink });
           driveUploadsSkipped++;
@@ -842,15 +850,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             throw new Error("Drive root unavailable");
           }
 
-          const att = await withRetry(
-            () => gmail.users.messages.attachments.get({
-              userId: "me",
-              messageId: email.gmailId,
-              id: attachmentId,
-            }),
+          const data = await withRetry(
+            () => attachmentData(gmail, email.gmailId, part),
             `[gmail-sync] Gmail attachment fetch retry message=${email.gmailId} file="${filename}"`
           );
-          const buffer = decodeGmailAttachment(att.data.data ?? "");
+          const buffer = decodeGmailAttachment(data);
           const upload = await withRetry(
             () => uploadInvoiceAttachmentToDrive({
               drive,
@@ -879,7 +883,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                 emailMessageId: email.emailRecordId,
                 filename,
                 mimeType: part.mimeType ?? undefined,
-                gmailAttachmentId: attachmentId,
+                gmailAttachmentId: attachmentId ?? undefined,
                 driveFileId: upload.fileId ?? undefined,
                 driveLink: link,
               },
@@ -897,7 +901,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                 emailMessageId: email.emailRecordId,
                 filename,
                 mimeType: part.mimeType ?? undefined,
-                gmailAttachmentId: attachmentId,
+                gmailAttachmentId: attachmentId ?? undefined,
               },
             });
           }
@@ -1340,6 +1344,7 @@ type PayloadPart = {
   mimeType?: string | null;
   body?: { attachmentId?: string | null; data?: string | null } | null;
   parts?: PayloadPart[] | null;
+  headers?: Array<{ name?: string | null; value?: string | null }> | null;
 };
 
 type GmailClient = Awaited<ReturnType<typeof getGoogleClients>>["gmail"];
@@ -1806,9 +1811,75 @@ async function saveScanProgress(logId: string, data: {
 function collectAttachmentParts(payload?: PayloadPart): PayloadPart[] {
   const out: PayloadPart[] = [];
   if (!payload) return out;
-  if (payload.filename && payload.body?.attachmentId) out.push(payload);
+  if (isAttachmentPayloadPart(payload)) out.push(payload);
   for (const p of payload.parts ?? []) out.push(...collectAttachmentParts(p));
   return out;
+}
+
+function isAttachmentPayloadPart(part: PayloadPart) {
+  const filename = part.filename?.trim();
+  const disposition = part.headers
+    ?.find((header) => header.name?.toLowerCase() === "content-disposition")
+    ?.value?.toLowerCase() ?? "";
+  return Boolean(
+    filename ||
+    disposition.includes("attachment") ||
+    (part.body?.attachmentId && !part.parts?.length) ||
+    (part.body?.data && filename)
+  );
+}
+
+async function persistAttachmentMetadata(emailMessageId: string, parts: PayloadPart[]) {
+  for (const part of parts) {
+    const filename = part.filename?.trim() || attachmentFilenameFromPart(part);
+    const attachmentId = part.body?.attachmentId ?? null;
+    const existing = attachmentId
+      ? await prisma.emailAttachment.findFirst({
+          where: { emailMessageId, gmailAttachmentId: attachmentId },
+        })
+      : filename
+        ? await prisma.emailAttachment.findFirst({
+            where: { emailMessageId, filename },
+          })
+        : null;
+    if (existing) {
+      await prisma.emailAttachment.update({
+        where: { id: existing.id },
+        data: {
+          filename,
+          mimeType: part.mimeType ?? existing.mimeType,
+          gmailAttachmentId: attachmentId ?? existing.gmailAttachmentId,
+        },
+      });
+      continue;
+    }
+    await prisma.emailAttachment.create({
+      data: {
+        emailMessageId,
+        filename,
+        mimeType: part.mimeType ?? undefined,
+        gmailAttachmentId: attachmentId ?? undefined,
+      },
+    });
+  }
+}
+
+function attachmentFilenameFromPart(part: PayloadPart) {
+  const contentDisposition = part.headers
+    ?.find((header) => header.name?.toLowerCase() === "content-disposition")
+    ?.value ?? "";
+  const match = contentDisposition.match(/filename="?([^";]+)"?/i);
+  if (match?.[1]) return decodeMimeHeader(match[1]).trim();
+  const extension = mimeExtension(part.mimeType);
+  return `attachment-${createHash("sha1").update(JSON.stringify(part.body ?? {})).digest("hex").slice(0, 8)}${extension}`;
+}
+
+function mimeExtension(mimeType?: string | null) {
+  if (mimeType === "application/pdf") return ".pdf";
+  if (mimeType === "image/png") return ".png";
+  if (mimeType === "image/jpeg") return ".jpg";
+  if (mimeType === "image/webp") return ".webp";
+  return "";
 }
 
 function extractBody(payload?: PayloadPart): string {
@@ -1819,7 +1890,7 @@ function extractBody(payload?: PayloadPart): string {
 }
 
 function collectBodyText(payload: PayloadPart, chunks: string[]) {
-  if (payload.body?.data && (payload.mimeType === "text/plain" || payload.mimeType === "text/html" || !payload.parts?.length)) {
+  if (payload.body?.data && (payload.mimeType === "text/plain" || payload.mimeType === "text/html")) {
     const decoded = decodeGmailAttachment(payload.body.data).toString("utf8");
     chunks.push(payload.mimeType === "text/html" ? stripHtml(decoded) : decoded);
   }
@@ -1859,18 +1930,14 @@ function decodeMimeHeader(value: string) {
 }
 
 async function extractPdfTextFromParts(gmail: GmailClient, messageId: string, parts: PayloadPart[]) {
-  const pdfParts = parts.filter((part) => part.body?.attachmentId && (part.mimeType === "application/pdf" || /\.pdf$/i.test(part.filename ?? "")));
+  const pdfParts = parts.filter((part) => part.body && (part.mimeType === "application/pdf" || /\.pdf$/i.test(part.filename ?? "")));
   const texts: string[] = [];
   for (const part of pdfParts) {
     let parser: { getText(): Promise<{ text?: string }>; destroy(): Promise<void> } | null = null;
     try {
-      const attachment = await gmail.users.messages.attachments.get({
-        userId: "me",
-        messageId,
-        id: part.body!.attachmentId!,
-      });
+      const data = await attachmentData(gmail, messageId, part);
       const { PDFParse } = await import("pdf-parse");
-      parser = new PDFParse({ data: new Uint8Array(decodeGmailAttachment(attachment.data.data ?? "")) });
+      parser = new PDFParse({ data: new Uint8Array(decodeGmailAttachment(data)) });
       const parsed = await parser.getText();
       if (parsed.text?.trim()) texts.push(parsed.text.trim());
     } catch (err) {
@@ -1884,20 +1951,16 @@ async function extractPdfTextFromParts(gmail: GmailClient, messageId: string, pa
 
 async function extractVisualAttachmentHints(gmail: GmailClient, messageId: string, parts: PayloadPart[], sender: string) {
   const visualParts = parts.filter((part) =>
-    part.body?.attachmentId &&
+    part.body &&
     (part.mimeType?.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(part.filename ?? ""))
   );
   const hints: string[] = [];
   for (const part of visualParts) {
     try {
-      const attachment = await gmail.users.messages.attachments.get({
-        userId: "me",
-        messageId,
-        id: part.body!.attachmentId!,
-      });
+      const data = await attachmentData(gmail, messageId, part);
       const { analyzeInvoiceFile } = await import("./claude.js");
       const result = await analyzeInvoiceFile({
-        fileBase64: attachment.data.data ?? "",
+        fileBase64: data,
         mimeType: part.mimeType || "image/jpeg",
         filename: part.filename ?? undefined,
       });
@@ -1907,6 +1970,17 @@ async function extractVisualAttachmentHints(gmail: GmailClient, messageId: strin
     }
   }
   return hints.join("\n");
+}
+
+async function attachmentData(gmail: GmailClient, messageId: string, part: PayloadPart) {
+  if (part.body?.data) return part.body.data;
+  if (!part.body?.attachmentId) throw new Error(`Attachment ${part.filename ?? "unnamed"} is missing attachmentId and inline data`);
+  const attachment = await gmail.users.messages.attachments.get({
+    userId: "me",
+    messageId,
+    id: part.body.attachmentId,
+  });
+  return attachment.data.data ?? "";
 }
 
 function parseSender(from: string) {

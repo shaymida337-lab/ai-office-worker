@@ -30,6 +30,8 @@ type DiagnosticsResponse = {
     approvedInvoices: number;
     rejectedInvoices: number;
     supplierPaymentsCreated: number;
+    attachmentMimeTypes: Record<string, number>;
+    firstAttachmentFilenames: string[];
   };
   rejectionCounts: Record<string, number>;
   rejectedCandidates: Array<{
@@ -66,6 +68,10 @@ export default function InvoiceDiagnosticsPage() {
 
   const rejectionRows = useMemo(
     () => Object.entries(data?.rejectionCounts ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 20),
+    [data]
+  );
+  const mimeRows = useMemo(
+    () => Object.entries(data?.totals.attachmentMimeTypes ?? {}).sort((a, b) => b[1] - a[1]),
     [data]
   );
 
@@ -127,6 +133,34 @@ export default function InvoiceDiagnosticsPage() {
               <Metric label="Payment request keywords" value={data.totals.emailsWithPaymentRequestKeywords} />
               <Metric label="Supplier payments created" value={data.totals.supplierPaymentsCreated} />
             </div>
+            <div className="card">
+              <h2>אבחון קבצים מצורפים</h2>
+              <Metric label="Total emails with attachments" value={data.totals.emailsWithAttachments} />
+              <Metric label="Total PDFs" value={data.totals.emailsWithPdfAttachments} />
+              <div className="mt-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-3">
+                <div className="text-sm font-semibold text-ink-primary">Attachment MIME types</div>
+                {mimeRows.length === 0 ? (
+                  <p className="mt-2 text-sm text-ink-secondary">לא נמצאו MIME types.</p>
+                ) : (
+                  <div className="mt-2 space-y-1 text-sm text-ink-secondary">
+                    {mimeRows.map(([mimeType, count]) => <div key={mimeType}>{mimeType}: {count}</div>)}
+                  </div>
+                )}
+              </div>
+              <div className="mt-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-3">
+                <div className="text-sm font-semibold text-ink-primary">20 שמות קבצים ראשונים</div>
+                {data.totals.firstAttachmentFilenames.length === 0 ? (
+                  <p className="mt-2 text-sm text-ink-secondary">לא נמצאו שמות קבצים.</p>
+                ) : (
+                  <ol className="mt-2 list-decimal space-y-1 pe-5 text-sm text-ink-secondary">
+                    {data.totals.firstAttachmentFilenames.map((filename) => <li key={filename}>{filename}</li>)}
+                  </ol>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="mb-6 grid gap-6 lg:grid-cols-2">
             <div className="card">
               <h2>סיבות דחייה מובילות</h2>
               {rejectionRows.length === 0 ? (
