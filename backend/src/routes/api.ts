@@ -375,7 +375,7 @@ apiRouter.get("/debug/payments/top-amounts", async (req, res) => {
   }
 });
 
-async function paymentClassificationInvestigationHandler(req: Request, res: Response) {
+apiRouter.get("/debug/payments/classification-investigation", async (req, res) => {
   const orgId = req.auth!.organizationId;
   try {
     const payments = await prisma.supplierPayment.findMany({
@@ -502,10 +502,7 @@ async function paymentClassificationInvestigationHandler(req: Request, res: Resp
     console.error("[debug/payments/classification-investigation] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Payment classification investigation debug failed" });
   }
-}
-
-apiRouter.get("/debug/payments/classification-investigation", paymentClassificationInvestigationHandler);
-apiRouter.get("/debug/payment-classification-investigation", paymentClassificationInvestigationHandler);
+});
 
 type GreenInvoiceConnectBody = {
   apiKeyId?: unknown;
