@@ -28,19 +28,14 @@ const INVOICE_KEYWORDS = [
   "דרישת תשלום",
   "בקשת תשלום",
   "לתשלום",
-  "שולם",
   "invoice",
   "tax invoice",
   "receipt",
   "subscription receipt",
   "subscription invoice",
-  "payment",
   "payment due",
   "payment request",
-  "bill",
   "supplier bill",
-  "paid",
-  "statement",
   "utility bill",
   "electricity bill",
   "water bill",
@@ -537,12 +532,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         );
 
       const headers = full.data.payload?.headers ?? [];
-      const subject =
-        headers.find((h) => h.name === "Subject")?.value ?? "(ללא נושא)";
+      const subject = decodeMimeHeader(
+        headers.find((h) => h.name?.toLowerCase() === "subject")?.value ?? "(ללא נושא)"
+      );
       const from =
-        headers.find((h) => h.name === "From")?.value ?? "";
+        decodeMimeHeader(headers.find((h) => h.name?.toLowerCase() === "from")?.value ?? "");
       const dateHeader =
-        headers.find((h) => h.name === "Date")?.value ?? "";
+        headers.find((h) => h.name?.toLowerCase() === "date")?.value ?? "";
       const receivedAt = dateHeader ? new Date(dateHeader) : new Date();
       const bodyText = extractBody(full.data.payload as PayloadPart | undefined);
       const sender = parseSender(from);
@@ -731,6 +727,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         attachmentFilename,
         supplierName,
         amount,
+        subject: email.subject,
+        occurredAt: email.receivedAt,
       });
       currentDuplicateKey = duplicateKey;
       const existingScanItem = await prisma.gmailScanItem.findUnique({
@@ -1355,14 +1353,19 @@ export function classifyGmailScanCandidate(input: {
   const hasSupplierSignal = SUPPLIER_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
   const hasAmount = input.amount !== null;
   const aiType = input.analysis.documentType;
+  const aiConfidence = Number.isFinite(input.analysis.confidence) ? input.analysis.confidence : 0;
+  const hasStrongInvoiceEvidence = hasInvoice || hasReceipt || /invoice|receipt|חשבונית|קבלה/i.test(input.attachmentFilenames.join(" "));
+  const hasExplicitPaymentEvidence = hasPaymentRequest || input.analysis.paymentRequired;
+  const aiInvoiceTrusted = (aiType === "invoice" || aiType === "receipt") && aiConfidence >= 0.72 && (hasStrongInvoiceEvidence || hasPdf || hasAmount);
+  const aiPaymentTrusted = aiType === "payment_request" && aiConfidence >= 0.72 && (hasExplicitPaymentEvidence || hasAmount);
 
   let documentType: GmailDocumentType = "unknown_needs_review";
-  if (hasReceipt || aiType === "receipt") documentType = "receipt";
-  else if (aiType === "invoice" || hasInvoice || (hasPdf && hasAmount)) documentType = "invoice";
-  else if (aiType === "payment_request" || input.analysis.paymentRequired || hasPaymentRequest) documentType = "payment_request";
-  else if (hasSupplierSignal || hasAttachment || hasAmount) documentType = "supplier_message";
+  if (hasReceipt || (aiInvoiceTrusted && aiType === "receipt")) documentType = "receipt";
+  else if (hasInvoice || aiInvoiceTrusted) documentType = "invoice";
+  else if (hasExplicitPaymentEvidence || aiPaymentTrusted) documentType = "payment_request";
+  else if ((hasSupplierSignal || hasAttachment) && (hasAmount || hasPdf || aiType !== "other")) documentType = "supplier_message";
 
-  const isRelevant = documentType !== "unknown_needs_review" || hasSupplierSignal || hasAmount || hasAttachment;
+  const isRelevant = documentType !== "unknown_needs_review";
   const evidence = [
     hasPdf && "pdf attachment",
     hasAttachment && !hasPdf && "attachment",
@@ -1371,7 +1374,7 @@ export function classifyGmailScanCandidate(input: {
     hasReceipt && "receipt keyword",
     hasPaymentRequest && "payment keyword",
     hasSupplierSignal && "supplier-like keyword",
-    aiType !== "other" && `ai:${aiType}`,
+    aiType !== "other" && aiConfidence >= 0.72 && `ai:${aiType}`,
   ].filter(Boolean) as string[];
 
   const confidenceScore = confidenceBucket(input.analysis.confidence, evidence.length, documentType);
@@ -1457,12 +1460,22 @@ export function buildGmailScanDuplicateKey(input: {
   attachmentFilename?: string | null;
   supplierName: string;
   amount: number | null;
+  subject?: string | null;
+  occurredAt?: Date | null;
 }) {
+  const subjectKey = (input.subject ?? "")
+    .toLowerCase()
+    .replace(/\b(?:re|fw|fwd):\s*/gi, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .slice(0, 120);
+  const dayKey = input.occurredAt ? input.occurredAt.toISOString().slice(0, 10) : "unknown-day";
   const normalized = [
-    input.gmailMessageId,
     (input.attachmentFilename ?? "no-attachment").trim().toLowerCase(),
     canonicalSupplierKey(input.supplierName),
     input.amount === null ? "unknown-amount" : input.amount.toFixed(2),
+    subjectKey || input.gmailMessageId,
+    dayKey,
   ].join("|");
   return createHash("sha256").update(normalized).digest("hex").slice(0, 40);
 }
@@ -1651,6 +1664,24 @@ function decodeGmailAttachment(data: string): Buffer {
   return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
 
+function decodeMimeHeader(value: string) {
+  return value.replace(/=\?([^?]+)\?([bqBQ])\?([^?]+)\?=/g, (_match, charset: string, encoding: string, encoded: string) => {
+    try {
+      const normalizedCharset = charset.toLowerCase();
+      if (!["utf-8", "utf8", "iso-8859-8", "windows-1255"].includes(normalizedCharset)) return encoded;
+      if (encoding.toLowerCase() === "b") {
+        return Buffer.from(encoded, "base64").toString("utf8");
+      }
+      const quoted = encoded
+        .replace(/_/g, " ")
+        .replace(/=([0-9a-f]{2})/gi, (_hex: string, byte: string) => String.fromCharCode(parseInt(byte, 16)));
+      return Buffer.from(quoted, "binary").toString("utf8");
+    } catch {
+      return value;
+    }
+  });
+}
+
 async function extractPdfTextFromParts(gmail: GmailClient, messageId: string, parts: PayloadPart[]) {
   const pdfParts = parts.filter((part) => part.body?.attachmentId && (part.mimeType === "application/pdf" || /\.pdf$/i.test(part.filename ?? "")));
   const texts: string[] = [];
@@ -1740,7 +1771,7 @@ function detectInvoice(subject: string, body: string, parts: PayloadPart[]) {
   const hasPdf = parts.some((part) => /\.pdf$/i.test(part.filename ?? "") || part.mimeType === "application/pdf");
   const amountResult = extractInvoiceAmount(text);
   return {
-    isInvoice: hasKeyword || hasPdf,
+    isInvoice: hasKeyword || (hasPdf && amountResult.amount !== null),
     amount: amountResult.amount,
     amountRejectedReason: amountResult.rejectedReason,
   };
@@ -1749,7 +1780,8 @@ function detectInvoice(subject: string, body: string, parts: PayloadPart[]) {
 export function extractInvoiceAmount(text: string): { amount: number | null; rejectedReason: string | null } {
   const normalized = text.replace(/&nbsp;/gi, " ").replace(/\u00a0/g, " ");
   const patterns = [
-    /(?:סה["״']?כ|סך\s*הכל|לתשלום|total\s*(?:due|amount)?|amount\s*(?:due)?|balance\s*due)[^\d₪$€]{0,40}(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:\.[0-9]{1,2})?)/gi,
+    /(?:סה["״']?כ|סך\s*הכל|לתשלום|סכום\s*(?:לתשלום)?|יתרה\s*לתשלום|כולל\s*מע["״']?מ|total\s*(?:due|amount|inc(?:luding)?\s*vat)?|grand\s*total|amount\s*(?:due|paid)?|balance\s*due|subtotal)[^\d₪$€]{0,50}(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:\.[0-9]{1,2})?)/gi,
+    /(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur)\s*([0-9][0-9,\s]*(?:\.[0-9]{1,2})?)\s*(?:סה["״']?כ|סך\s*הכל|לתשלום|total|amount)?/gi,
     /₪\s*([0-9][0-9,\s]*(?:\.[0-9]{1,2})?)/g,
     /([0-9][0-9,\s]*(?:\.[0-9]{1,2})?)\s*(?:ש["״']?ח|שקל|שקלים)/g,
     /(?:ils|nis)\s*([0-9][0-9.,\s]*(?:\.[0-9]{1,2})?)/gi,

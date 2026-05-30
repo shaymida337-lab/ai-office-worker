@@ -27,6 +27,10 @@ export default function TermsPage() {
               משימות, גבייה, דוחות ותקשורת עסקית. השירות עשוי להשתמש בחשבון Google של המשתמש, לאחר אישור מפורש,
               כדי לקרוא מיילים, ליצור תוויות, לשלוח מיילים, לשמור קבצים בדרייב ולעדכן גיליונות שיטס.
             </p>
+            <p className="mt-3">
+              מפעיל השירות: Shay Mida. ליצירת קשר:{" "}
+              <a href="mailto:shaymida337@gmail.com">shaymida337@gmail.com</a>.
+            </p>
           </LegalSection>
 
           <LegalSection title="אחריות המשתמש">
@@ -43,6 +47,10 @@ export default function TermsPage() {
               השירות מבקש הרשאות Google רק כדי להפעיל את יכולות המוצר: סריקת מיילים עסקיים, יצירת תוויות,
               שליחת מיילים שהמשתמש מפעיל, שמירת קבצים בדרייב ועדכון גיליונות שיטס. ניתן לנתק את הגישה בכל עת
               דרך הגדרות השירות או דרך חשבון Google.
+            </p>
+            <p className="mt-3">
+              השימוש בנתוני Google כפוף גם למדיניות הפרטיות שלנו ולדרישות Google API Services User Data Policy,
+              כולל Limited Use.
             </p>
           </LegalSection>
 
@@ -86,6 +94,9 @@ export default function TermsPage() {
           </Link>
           <Link className="btn btn-secondary" href="/privacy-policy">
             מדיניות פרטיות
+          </Link>
+          <Link className="btn btn-secondary" href="/data-deletion">
+            מחיקת נתונים
           </Link>
         </div>
       </article>

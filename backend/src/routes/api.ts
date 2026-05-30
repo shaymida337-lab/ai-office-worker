@@ -64,6 +64,108 @@ apiRouter.put("/organization/settings", async (req, res) => {
   res.json(await updateOrganizationBusinessSettings(req.auth!.organizationId, req.body as Record<string, unknown>));
 });
 
+apiRouter.get("/gmail/scan-stats", async (req, res) => {
+  const organizationId = req.auth!.organizationId;
+  try {
+    const [
+      totalItems,
+      documentTypes,
+      reviewStatuses,
+      recentItems,
+      recentLogs,
+      duplicatesSkipped,
+      driveLinkedCount,
+      amountExtractedCount,
+      sheetsUpdatedTotal,
+    ] = await Promise.all([
+      prisma.gmailScanItem.count({ where: { organizationId } }),
+      prisma.gmailScanItem.groupBy({
+        by: ["documentType"],
+        where: { organizationId },
+        _count: { _all: true },
+      }),
+      prisma.gmailScanItem.groupBy({
+        by: ["reviewStatus"],
+        where: { organizationId },
+        _count: { _all: true },
+      }),
+      prisma.gmailScanItem.findMany({
+        where: { organizationId },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        select: {
+          id: true,
+          gmailMessageId: true,
+          gmailMessageLink: true,
+          sender: true,
+          senderEmail: true,
+          subject: true,
+          occurredAt: true,
+          amount: true,
+          supplierName: true,
+          documentType: true,
+          attachmentFilename: true,
+          driveFileLink: true,
+          confidenceScore: true,
+          reviewStatus: true,
+          decisionReason: true,
+          createdAt: true,
+        },
+      }),
+      prisma.syncLog.findMany({
+        where: { organizationId, type: "gmail_scan" },
+        orderBy: { startedAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          status: true,
+          scanMode: true,
+          emailsProcessed: true,
+          emailsSaved: true,
+          invoicesFound: true,
+          paymentsCreated: true,
+          tasksCreated: true,
+          driveUploaded: true,
+          sheetsUpdated: true,
+          errorsCount: true,
+          errorMessage: true,
+          startedAt: true,
+          finishedAt: true,
+        },
+      }),
+      prisma.syncLog.aggregate({
+        where: { organizationId, type: "gmail_scan" },
+        _sum: { emailsProcessed: true, emailsSaved: true },
+      }),
+      prisma.gmailScanItem.count({ where: { organizationId, driveFileLink: { not: null } } }),
+      prisma.gmailScanItem.count({ where: { organizationId, amount: { not: null } } }),
+      prisma.syncLog.aggregate({
+        where: { organizationId, type: "gmail_scan" },
+        _sum: { sheetsUpdated: true },
+      }),
+    ]);
+
+    res.json({
+      totals: {
+        scanItems: totalItems,
+        emailsProcessed: duplicatesSkipped._sum.emailsProcessed ?? 0,
+        emailsSaved: duplicatesSkipped._sum.emailsSaved ?? 0,
+        duplicatesSkipped: Math.max(0, (duplicatesSkipped._sum.emailsProcessed ?? 0) - (duplicatesSkipped._sum.emailsSaved ?? 0)),
+        driveLinked: driveLinkedCount,
+        amountExtracted: amountExtractedCount,
+        sheetsUpdated: sheetsUpdatedTotal._sum.sheetsUpdated ?? 0,
+      },
+      byDocumentType: Object.fromEntries(documentTypes.map((item) => [item.documentType, item._count._all])),
+      byReviewStatus: Object.fromEntries(reviewStatuses.map((item) => [item.reviewStatus, item._count._all])),
+      recentItems,
+      recentLogs,
+    });
+  } catch (err) {
+    console.error("[gmail/scan-stats]", errorDetails(err));
+    res.status(500).json({ error: "טעינת סטטיסטיקות הסריקה נכשלה" });
+  }
+});
+
 async function debugGmailIntegrationForAuth(auth: { userId: string; organizationId: string; email: string }) {
   const current = await prisma.integration.findUnique({
     where: { organizationId_provider: { organizationId: auth.organizationId, provider: "gmail" } },

@@ -935,6 +935,7 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+            <button className="btn btn-secondary mt-4" onClick={() => router.push("/dashboard/scan-stats")}>פתח סטטיסטיקות סריקה</button>
           </div>
           {showWhatsApp && <div className="card">
             <div className="mb-4 flex items-center gap-3">

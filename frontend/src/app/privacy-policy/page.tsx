@@ -20,6 +20,10 @@ export default function PrivacyPolicyPage() {
               עובד משרד חכם הוא שירות אוטומציה עסקית לעסקים בישראל. השירות עוזר למשתמשים לנהל מיילים עסקיים,
               חשבוניות, מסמכי ספקים, משימות, לקוחות, דוחות ותהליכי עבודה.
             </p>
+            <p className="mt-3">
+              מפעיל השירות: Shay Mida. אימייל תמיכה ופרטיות:{" "}
+              <a href="mailto:shaymida337@gmail.com">shaymida337@gmail.com</a>.
+            </p>
           </LegalSection>
 
           <LegalSection title="איזה מידע אנו אוספים">
@@ -48,6 +52,10 @@ export default function PrivacyPolicyPage() {
               דרישות Limited Use. אנו משתמשים בהרשאות Google רק כדי לספק את הפונקציות שהמשתמש מפעיל בשירות,
               ולא מוכרים או משתפים נתוני Google עם צדדים שלישיים לצורכי פרסום.
             </p>
+            <p className="mt-3">
+              הרשאות Google משמשות לסריקת ג׳ימייל, יצירת תוויות, שליחת מיילים שהמשתמש מפעיל, שמירת מסמכים בדרייב
+              ועדכון גיליונות שיטס. איננו משתמשים בנתוני Google לאימון מודלים כלליים או לפרסום.
+            </p>
           </LegalSection>
 
           <LegalSection title="שיתוף מידע">
@@ -61,6 +69,9 @@ export default function PrivacyPolicyPage() {
             <p>
               אנו שומרים מידע כל עוד החשבון פעיל או כל עוד הוא נחוץ להפעלת השירות. ניתן לבקש מחיקת חשבון ונתונים
               באמצעות פנייה לכתובת התמיכה. ניתן גם לנתק גישה לחשבון Google דרך הגדרות חשבון Google.
+            </p>
+            <p className="mt-3">
+              הוראות מפורטות זמינות בעמוד <Link href="/data-deletion">מחיקת נתונים</Link>.
             </p>
           </LegalSection>
 
@@ -85,6 +96,9 @@ export default function PrivacyPolicyPage() {
           </Link>
           <Link className="btn btn-secondary" href="/terms">
             תנאי שימוש
+          </Link>
+          <Link className="btn btn-secondary" href="/data-deletion">
+            מחיקת נתונים
           </Link>
         </div>
       </article>
