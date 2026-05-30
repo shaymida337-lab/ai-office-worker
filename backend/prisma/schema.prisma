@@ -33,6 +33,10 @@ model Organization {
   businessName      String?
   businessId        String?
   businessAddress   String?
+  greenInvoiceApiKeyId String?
+  greenInvoiceApiSecret String?
+  greenInvoiceEnv   String?   @default("sandbox")
+  greenInvoiceConnectedAt DateTime?
   sendMonthlyReport Boolean  @default(true)
   reportDay         Int      @default(1)
   createdAt DateTime @default(now())

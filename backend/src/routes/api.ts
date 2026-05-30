@@ -12,6 +12,7 @@ import {
   saveWhatsAppSettings,
   sendWhatsAppMessage,
 } from "../services/whatsapp.js";
+import { testConnection as testGreenInvoiceConnection, type GreenInvoiceEnv } from "../services/green-invoice.js";
 
 export const apiRouter = Router();
 
@@ -364,6 +365,111 @@ apiRouter.get("/debug/payments/top-amounts", async (req, res) => {
   } catch (err) {
     console.error("[debug/payments/top-amounts] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Top payment amounts debug failed" });
+  }
+});
+
+type GreenInvoiceConnectBody = {
+  apiKeyId?: unknown;
+  apiSecret?: unknown;
+  env?: unknown;
+};
+
+function normalizeGreenInvoiceEnv(value: unknown): GreenInvoiceEnv | null {
+  if (value === undefined || value === null || value === "") return "sandbox";
+  if (value === "sandbox" || value === "production") return value;
+  return null;
+}
+
+apiRouter.post("/green-invoice/connect", async (req, res) => {
+  const orgId = req.auth!.organizationId;
+  const body = (req.body ?? {}) as GreenInvoiceConnectBody;
+  const apiKeyId = typeof body.apiKeyId === "string" ? body.apiKeyId.trim() : "";
+  const apiSecret = typeof body.apiSecret === "string" ? body.apiSecret.trim() : "";
+  const env = normalizeGreenInvoiceEnv(body.env);
+
+  if (!apiKeyId || !apiSecret) {
+    res.status(400).json({ success: false, error: "apiKeyId and apiSecret are required" });
+    return;
+  }
+  if (!env) {
+    res.status(400).json({ success: false, error: "env must be either sandbox or production" });
+    return;
+  }
+
+  try {
+    const result = await testGreenInvoiceConnection(apiKeyId, apiSecret, env);
+    if (!result.success) {
+      res.json(result);
+      return;
+    }
+
+    await prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        greenInvoiceApiKeyId: apiKeyId,
+        greenInvoiceApiSecret: apiSecret,
+        greenInvoiceEnv: env,
+        greenInvoiceConnectedAt: new Date(),
+      },
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[green-invoice/connect] failed", errorDetails(err));
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Green Invoice connect failed" });
+  }
+});
+
+apiRouter.get("/green-invoice/status", async (req, res) => {
+  const orgId = req.auth!.organizationId;
+  try {
+    const organization = await prisma.organization.findUnique({
+      where: { id: orgId },
+      select: {
+        greenInvoiceApiKeyId: true,
+        greenInvoiceEnv: true,
+        greenInvoiceConnectedAt: true,
+      },
+    });
+
+    res.json({
+      connected: Boolean(organization?.greenInvoiceApiKeyId && organization.greenInvoiceConnectedAt),
+      env: organization?.greenInvoiceEnv ?? "sandbox",
+      connectedAt: organization?.greenInvoiceConnectedAt ?? null,
+    });
+  } catch (err) {
+    console.error("[green-invoice/status] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Green Invoice status failed" });
+  }
+});
+
+apiRouter.post("/green-invoice/test", async (req, res) => {
+  const orgId = req.auth!.organizationId;
+  try {
+    const organization = await prisma.organization.findUnique({
+      where: { id: orgId },
+      select: {
+        greenInvoiceApiKeyId: true,
+        greenInvoiceApiSecret: true,
+        greenInvoiceEnv: true,
+      },
+    });
+
+    const env = normalizeGreenInvoiceEnv(organization?.greenInvoiceEnv);
+    if (!organization?.greenInvoiceApiKeyId || !organization.greenInvoiceApiSecret || !env) {
+      res.json({ success: false, error: "Green Invoice is not connected" });
+      return;
+    }
+
+    const result = await testGreenInvoiceConnection(
+      organization.greenInvoiceApiKeyId,
+      organization.greenInvoiceApiSecret,
+      env
+    );
+    res.json(result);
+  } catch (err) {
+    console.error("[green-invoice/test] failed", errorDetails(err));
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Green Invoice test failed" });
   }
 });
 

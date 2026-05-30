@@ -52,7 +52,20 @@ type SocialPlatformStatus = {
   clients: string[];
 };
 
-type SettingsTab = "general" | "integrations" | "accountant" | "whatsapp" | "notifications";
+type GreenInvoiceEnv = "sandbox" | "production";
+
+type GreenInvoiceStatus = {
+  connected: boolean;
+  env: GreenInvoiceEnv;
+  connectedAt: string | null;
+};
+
+type GreenInvoiceConnectResponse = {
+  success: boolean;
+  error?: string;
+};
+
+type SettingsTab = "general" | "integrations" | "greenInvoice" | "accountant" | "whatsapp" | "notifications";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -80,6 +93,15 @@ export default function SettingsPage() {
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [socialStatus, setSocialStatus] = useState<SocialPlatformStatus[]>([]);
+  const [greenInvoiceStatus, setGreenInvoiceStatus] = useState<GreenInvoiceStatus | null>(null);
+  const [greenInvoiceForm, setGreenInvoiceForm] = useState({
+    apiKeyId: "",
+    apiSecret: "",
+    env: "sandbox" as GreenInvoiceEnv,
+  });
+  const [greenInvoiceLoading, setGreenInvoiceLoading] = useState(false);
+  const [greenInvoiceMessage, setGreenInvoiceMessage] = useState("");
+  const [greenInvoiceError, setGreenInvoiceError] = useState("");
 
   async function refreshGmailStatus() {
     const status = await apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`);
@@ -112,6 +134,12 @@ export default function SettingsPage() {
       .catch(() => undefined);
     apiFetch<{ platforms: SocialPlatformStatus[] }>("/api/social/status")
       .then((data) => setSocialStatus(data.platforms))
+      .catch(() => undefined);
+    apiFetch<GreenInvoiceStatus>("/api/green-invoice/status")
+      .then((status) => {
+        setGreenInvoiceStatus(status);
+        if (status.env) setGreenInvoiceForm((current) => ({ ...current, env: status.env }));
+      })
       .catch(() => undefined);
   }, [router]);
 
@@ -180,9 +208,62 @@ export default function SettingsPage() {
     }
   }
 
+  async function refreshGreenInvoiceStatus() {
+    const status = await apiFetch<GreenInvoiceStatus>("/api/green-invoice/status");
+    setGreenInvoiceStatus(status);
+    setGreenInvoiceForm((current) => ({ ...current, env: status.env ?? current.env }));
+    return status;
+  }
+
+  async function connectGreenInvoice(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setGreenInvoiceLoading(true);
+    setGreenInvoiceMessage("");
+    setGreenInvoiceError("");
+    try {
+      const result = await apiFetch<GreenInvoiceConnectResponse>("/api/green-invoice/connect", {
+        method: "POST",
+        body: JSON.stringify(greenInvoiceForm),
+      });
+
+      if (!result.success) {
+        setGreenInvoiceError(result.error ? `החיבור נכשל: ${result.error}` : "החיבור לחשבונית ירוקה נכשל. בדוק את פרטי הגישה.");
+        return;
+      }
+
+      await refreshGreenInvoiceStatus();
+      setGreenInvoiceForm((current) => ({ ...current, apiSecret: "" }));
+      setGreenInvoiceMessage("חשבונית ירוקה חוברה בהצלחה.");
+    } catch (err) {
+      setGreenInvoiceError(err instanceof Error ? `החיבור נכשל: ${err.message}` : "החיבור לחשבונית ירוקה נכשל.");
+    } finally {
+      setGreenInvoiceLoading(false);
+    }
+  }
+
+  async function testGreenInvoice() {
+    setGreenInvoiceLoading(true);
+    setGreenInvoiceMessage("");
+    setGreenInvoiceError("");
+    try {
+      const result = await apiFetch<GreenInvoiceConnectResponse>("/api/green-invoice/test", { method: "POST" });
+      if (!result.success) {
+        setGreenInvoiceError(result.error ? `בדיקת החיבור נכשלה: ${result.error}` : "בדיקת החיבור נכשלה.");
+        return;
+      }
+      setGreenInvoiceMessage("בדיקת החיבור הצליחה.");
+      await refreshGreenInvoiceStatus();
+    } catch (err) {
+      setGreenInvoiceError(err instanceof Error ? `בדיקת החיבור נכשלה: ${err.message}` : "בדיקת החיבור נכשלה.");
+    } finally {
+      setGreenInvoiceLoading(false);
+    }
+  }
+
   const tabs: Array<{ id: SettingsTab; label: string }> = [
     { id: "general", label: "הגדרות כלליות" },
     { id: "integrations", label: "חיבורים" },
+    { id: "greenInvoice", label: "חשבונית ירוקה" },
     { id: "accountant", label: "רואה חשבון" },
     { id: "whatsapp", label: "WhatsApp Assistant" },
     { id: "notifications", label: "התראות" },
@@ -285,6 +366,89 @@ export default function SettingsPage() {
               })}
             </div>
           </div>
+        </section>
+      )}
+
+      {activeTab === "greenInvoice" && (
+        <section className="grid gap-5">
+          <form className="card grid gap-5" onSubmit={connectGreenInvoice}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="page-kicker">Green Invoice / morning</div>
+                <h2>חיבור חשבונית ירוקה</h2>
+                <p>חבר את חשבון Green Invoice כדי לאפשר בהמשך הפקת חשבוניות מתוך המערכת.</p>
+              </div>
+              <span className={`badge w-fit ${greenInvoiceStatus?.connected ? "badge-ok" : "badge-warn"}`}>
+                {greenInvoiceStatus?.connected ? "מחובר ✓" : "לא מחובר"}
+              </span>
+            </div>
+
+            {greenInvoiceStatus?.connected && (
+              <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm font-semibold text-emerald-100">
+                מחובר ✓ · סביבה: {greenInvoiceStatus.env === "production" ? "אמיתי" : "בדיקות"}
+                {greenInvoiceStatus.connectedAt ? ` · חובר בתאריך ${new Date(greenInvoiceStatus.connectedAt).toLocaleString("he-IL")}` : ""}
+              </div>
+            )}
+
+            {greenInvoiceMessage && (
+              <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm text-emerald-100">
+                {greenInvoiceMessage}
+              </div>
+            )}
+            {greenInvoiceError && (
+              <div className="rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-100">
+                {greenInvoiceError}
+              </div>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label>
+                API Key ID
+                <input
+                  dir="ltr"
+                  placeholder="API Key ID"
+                  value={greenInvoiceForm.apiKeyId}
+                  onChange={(event) => setGreenInvoiceForm({ ...greenInvoiceForm, apiKeyId: event.target.value })}
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                API Secret
+                <input
+                  dir="ltr"
+                  type="password"
+                  placeholder="API Secret"
+                  value={greenInvoiceForm.apiSecret}
+                  onChange={(event) => setGreenInvoiceForm({ ...greenInvoiceForm, apiSecret: event.target.value })}
+                  autoComplete="new-password"
+                />
+              </label>
+              <label>
+                סביבת עבודה
+                <select
+                  value={greenInvoiceForm.env}
+                  onChange={(event) => setGreenInvoiceForm({ ...greenInvoiceForm, env: event.target.value as GreenInvoiceEnv })}
+                >
+                  <option value="sandbox">בדיקות</option>
+                  <option value="production">אמיתי</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="grid gap-3 sm:flex sm:flex-wrap">
+              <button className="btn" type="submit" disabled={greenInvoiceLoading}>
+                {greenInvoiceLoading ? "מחבר..." : "חבר"}
+              </button>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={testGreenInvoice}
+                disabled={greenInvoiceLoading || !greenInvoiceStatus?.connected}
+              >
+                {greenInvoiceLoading ? "בודק..." : "בדוק חיבור"}
+              </button>
+            </div>
+          </form>
         </section>
       )}
 
