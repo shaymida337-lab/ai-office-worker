@@ -63,6 +63,8 @@ model Organization {
   messageTemplates MessageTemplate[]
   messageScans    MessageScan[]
   gmailScanItems  GmailScanItem[]
+  bankStatements  BankStatement[]
+  bankTransactions BankTransaction[]
 }
 
 model Client {
@@ -235,6 +237,40 @@ model Invoice {
   @@index([clientId, date])
   @@index([organizationId, gmailMessageId])
   @@unique([organizationId, clientId, emailId, invoiceNumber])
+}
+
+model BankStatement {
+  id               String   @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fileName         String
+  uploadedAt       DateTime @default(now())
+  status           String   @default("processing") // "processing" | "ready" | "error"
+  transactionCount Int      @default(0)
+
+  transactions BankTransaction[]
+
+  @@index([organizationId])
+}
+
+model BankTransaction {
+  id                       String   @id @default(cuid())
+  bankStatementId          String
+  bankStatement            BankStatement @relation(fields: [bankStatementId], references: [id], onDelete: Cascade)
+  organizationId           String
+  organization             Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  date                     DateTime
+  amount                   Float
+  description              String?
+  direction                String // "credit" | "debit"
+  rawData                  String?
+  matchStatus              String   @default("unmatched") // "matched" | "suggested" | "unmatched"
+  matchedInvoiceId         String?
+  matchedSupplierPaymentId String?
+  matchConfidence          Float?
+
+  @@index([organizationId])
+  @@index([bankStatementId])
 }
 
 model SocialDraft {

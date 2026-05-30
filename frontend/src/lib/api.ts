@@ -42,6 +42,7 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
   let res: Response;
   const url = `${API_URL}${path}`;
   const { timeoutMs, ...fetchInit } = init ?? {};
+  const isFormData = typeof FormData !== "undefined" && fetchInit.body instanceof FormData;
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs ?? 15000);
   try {
@@ -51,7 +52,7 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
       credentials: fetchInit.credentials ?? "include",
       signal: fetchInit.signal ?? controller.signal,
       headers: {
-        "Content-Type": "application/json",
+        ...(!isFormData ? { "Content-Type": "application/json" } : {}),
         "Cache-Control": "no-cache",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...fetchInit.headers,

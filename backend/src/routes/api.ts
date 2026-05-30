@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { createHash, randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import multer from "multer";
 import { authMiddleware } from "../lib/auth.js";
 import { errorDetails } from "../lib/errors.js";
 import { databaseHost, prisma } from "../lib/prisma.js";
@@ -13,8 +14,14 @@ import {
   sendWhatsAppMessage,
 } from "../services/whatsapp.js";
 import { testConnection as testGreenInvoiceConnection, type GreenInvoiceEnv } from "../services/green-invoice.js";
+import { parseBankStatementFile } from "../services/bank-parser.js";
+import { matchTransactions } from "../services/bank-matcher.js";
 
 export const apiRouter = Router();
+const bankUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 apiRouter.post("/leads/webhook", async (req, res) => {
   try {
@@ -472,6 +479,265 @@ apiRouter.post("/green-invoice/test", async (req, res) => {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : "Green Invoice test failed" });
   }
 });
+
+apiRouter.post("/bank/upload", bankUpload.single("file"), async (req, res) => {
+  const organizationId = req.auth!.organizationId;
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ error: "Bank statement file is required" });
+    return;
+  }
+
+  const statement = await prisma.bankStatement.create({
+    data: {
+      organizationId,
+      fileName: file.originalname || "bank-statement",
+      status: "processing",
+    },
+  });
+
+  try {
+    const parsed = parseBankStatementFile({
+      buffer: file.buffer,
+      fileName: file.originalname || "bank-statement",
+      mimeType: file.mimetype,
+    });
+    const suggestions = await matchTransactions(organizationId, parsed.transactions);
+
+    const rows = await prisma.$transaction(
+      parsed.transactions.map((transaction, index) => {
+        const suggestion = suggestions[index];
+        const matchedInvoiceId = suggestion?.matchedRecordType === "invoice" ? suggestion.matchedRecordId : null;
+        const matchedSupplierPaymentId = suggestion?.matchedRecordType === "supplierPayment" ? suggestion.matchedRecordId : null;
+        const matchStatus = suggestion?.matchType === "suggested" ? "suggested" : "unmatched";
+
+        return prisma.bankTransaction.create({
+          data: {
+            bankStatementId: statement.id,
+            organizationId,
+            date: transaction.date,
+            amount: transaction.amount,
+            description: transaction.description,
+            direction: transaction.direction,
+            rawData: transaction.rawData,
+            matchStatus,
+            matchedInvoiceId,
+            matchedSupplierPaymentId,
+            matchConfidence: suggestion?.confidence ?? null,
+          },
+        });
+      })
+    );
+
+    const summary = summarizeBankTransactions(rows.map((row) => row.matchStatus));
+    await prisma.bankStatement.update({
+      where: { id: statement.id },
+      data: {
+        status: "ready",
+        transactionCount: rows.length,
+      },
+    });
+
+    res.json({
+      statementId: statement.id,
+      transactionCount: rows.length,
+      summary,
+      warnings: parsed.warnings,
+    });
+  } catch (err) {
+    console.error("[bank/upload] failed", errorDetails(err));
+    await prisma.bankStatement.update({
+      where: { id: statement.id },
+      data: { status: "error" },
+    }).catch(() => undefined);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Bank statement upload failed" });
+  }
+});
+
+apiRouter.get("/bank/statements", async (req, res) => {
+  const organizationId = req.auth!.organizationId;
+  try {
+    const statements = await prisma.bankStatement.findMany({
+      where: { organizationId },
+      orderBy: { uploadedAt: "desc" },
+      select: {
+        id: true,
+        fileName: true,
+        uploadedAt: true,
+        status: true,
+        transactionCount: true,
+      },
+    });
+    res.json({ statements });
+  } catch (err) {
+    console.error("[bank/statements] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Bank statements fetch failed" });
+  }
+});
+
+apiRouter.get("/bank/statements/:id", async (req, res) => {
+  const organizationId = req.auth!.organizationId;
+  try {
+    const statement = await prisma.bankStatement.findFirst({
+      where: { id: req.params.id, organizationId },
+      include: {
+        transactions: {
+          orderBy: { date: "desc" },
+        },
+      },
+    });
+    if (!statement) {
+      res.status(404).json({ error: "Bank statement not found" });
+      return;
+    }
+
+    const invoiceIds = statement.transactions
+      .map((transaction) => transaction.matchedInvoiceId)
+      .filter((id): id is string => Boolean(id));
+    const supplierPaymentIds = statement.transactions
+      .map((transaction) => transaction.matchedSupplierPaymentId)
+      .filter((id): id is string => Boolean(id));
+
+    const [invoices, supplierPayments] = await Promise.all([
+      invoiceIds.length
+        ? prisma.invoice.findMany({
+            where: { organizationId, id: { in: invoiceIds } },
+            select: {
+              id: true,
+              invoiceNumber: true,
+              amount: true,
+              date: true,
+              status: true,
+              client: { select: { name: true } },
+            },
+          })
+        : Promise.resolve([]),
+      supplierPaymentIds.length
+        ? prisma.supplierPayment.findMany({
+            where: { organizationId, id: { in: supplierPaymentIds } },
+            select: {
+              id: true,
+              supplier: true,
+              amount: true,
+              date: true,
+              paid: true,
+              subject: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+    const invoiceById = new Map(invoices.map((invoice) => [invoice.id, invoice]));
+    const supplierPaymentById = new Map(supplierPayments.map((payment) => [payment.id, payment]));
+
+    res.json({
+      statement: {
+        id: statement.id,
+        fileName: statement.fileName,
+        uploadedAt: statement.uploadedAt,
+        status: statement.status,
+        transactionCount: statement.transactionCount,
+      },
+      transactions: statement.transactions.map((transaction) => ({
+        ...transaction,
+        matchedRecord: transaction.matchedInvoiceId
+          ? { type: "invoice", record: invoiceById.get(transaction.matchedInvoiceId) ?? null }
+          : transaction.matchedSupplierPaymentId
+            ? { type: "supplierPayment", record: supplierPaymentById.get(transaction.matchedSupplierPaymentId) ?? null }
+            : null,
+      })),
+    });
+  } catch (err) {
+    console.error("[bank/statements/:id] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Bank statement fetch failed" });
+  }
+});
+
+apiRouter.post("/bank/transactions/:id/confirm", async (req, res) => {
+  const organizationId = req.auth!.organizationId;
+  const body = (req.body ?? {}) as { matchedRecordType?: unknown; matchedRecordId?: unknown };
+
+  try {
+    const transaction = await prisma.bankTransaction.findFirst({
+      where: { id: req.params.id, organizationId },
+    });
+    if (!transaction) {
+      res.status(404).json({ error: "Bank transaction not found" });
+      return;
+    }
+
+    const overrideType = body.matchedRecordType === "invoice" || body.matchedRecordType === "supplierPayment"
+      ? body.matchedRecordType
+      : null;
+    const overrideId = typeof body.matchedRecordId === "string" && body.matchedRecordId.trim()
+      ? body.matchedRecordId.trim()
+      : null;
+
+    const targetType = overrideType ?? (transaction.matchedInvoiceId ? "invoice" : transaction.matchedSupplierPaymentId ? "supplierPayment" : null);
+    const targetId = overrideId ?? transaction.matchedInvoiceId ?? transaction.matchedSupplierPaymentId;
+    if (!targetType || !targetId) {
+      res.status(400).json({ error: "No matched record to confirm" });
+      return;
+    }
+
+    const validTarget = targetType === "invoice"
+      ? await prisma.invoice.findFirst({ where: { id: targetId, organizationId }, select: { id: true } })
+      : await prisma.supplierPayment.findFirst({ where: { id: targetId, organizationId }, select: { id: true } });
+    if (!validTarget) {
+      res.status(404).json({ error: "Matched record not found" });
+      return;
+    }
+
+    const updated = await prisma.bankTransaction.update({
+      where: { id: transaction.id },
+      data: {
+        matchStatus: "matched",
+        matchedInvoiceId: targetType === "invoice" ? targetId : null,
+        matchedSupplierPaymentId: targetType === "supplierPayment" ? targetId : null,
+        matchConfidence: transaction.matchConfidence ?? 1,
+      },
+    });
+    res.json({ transaction: updated });
+  } catch (err) {
+    console.error("[bank/transactions/confirm] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Bank transaction confirm failed" });
+  }
+});
+
+apiRouter.post("/bank/transactions/:id/reject", async (req, res) => {
+  const organizationId = req.auth!.organizationId;
+  try {
+    const transaction = await prisma.bankTransaction.findFirst({
+      where: { id: req.params.id, organizationId },
+      select: { id: true },
+    });
+    if (!transaction) {
+      res.status(404).json({ error: "Bank transaction not found" });
+      return;
+    }
+
+    const updated = await prisma.bankTransaction.update({
+      where: { id: transaction.id },
+      data: {
+        matchStatus: "unmatched",
+        matchedInvoiceId: null,
+        matchedSupplierPaymentId: null,
+        matchConfidence: null,
+      },
+    });
+    res.json({ transaction: updated });
+  } catch (err) {
+    console.error("[bank/transactions/reject] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Bank transaction reject failed" });
+  }
+});
+
+function summarizeBankTransactions(statuses: string[]) {
+  return {
+    matched: statuses.filter((status) => status === "matched").length,
+    suggested: statuses.filter((status) => status === "suggested").length,
+    unmatched: statuses.filter((status) => status === "unmatched").length,
+  };
+}
 
 apiRouter.post("/debug/invoices/fix-bad-amounts", async (req, res) => {
   const orgId = req.auth!.organizationId;
