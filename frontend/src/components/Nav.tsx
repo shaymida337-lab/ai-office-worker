@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { apiFetch } from "@/lib/api";
-import type { BusinessModuleId, OrganizationSettings } from "@/lib/business-config";
+import { normalizeEnabledModules, type BusinessModuleId, type OrganizationSettings } from "@/lib/business-config";
 import {
   BarChart3,
   Bell,
@@ -96,8 +96,8 @@ export function Nav() {
 
   const moduleAllowed = (module?: BusinessModuleId | "admin") => {
     if (!module || module === "admin") return true;
-    const enabledModules = Array.isArray(organizationSettings?.enabledModules)
-      ? organizationSettings.enabledModules
+    const enabledModules = organizationSettings
+      ? normalizeEnabledModules(organizationSettings.enabledModules, organizationSettings.businessType)
       : null;
     return !enabledModules || enabledModules.includes(module);
   };

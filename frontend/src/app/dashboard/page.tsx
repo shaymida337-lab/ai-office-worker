@@ -12,7 +12,7 @@ import {
   type Payment,
   type Task,
 } from "@/lib/api";
-import { businessTypeLabel, getBusinessProfile, type BusinessKpiConfig, type BusinessModuleId, type DashboardKpiMetric, type OrganizationSettings } from "@/lib/business-config";
+import { businessTypeLabel, getBusinessProfile, normalizeEnabledModules, type BusinessKpiConfig, type BusinessModuleId, type DashboardKpiMetric, type OrganizationSettings } from "@/lib/business-config";
 import { useRouter } from "next/navigation";
 import { Activity, ArrowUpRight, Building2, Clock3, FileText, HeartPulse, MessageCircle, Plus, RefreshCcw, ScanLine, WalletCards } from "lucide-react";
 
@@ -1017,11 +1017,11 @@ function safeBusinessProfile(settings: OrganizationSettings | null) {
 }
 
 function enabledModuleCount(settings: OrganizationSettings | null) {
-  return Array.isArray(settings?.enabledModules) ? settings.enabledModules.length : 7;
+  return settings ? normalizeEnabledModules(settings.enabledModules, settings.businessType).length : 7;
 }
 
 function moduleIsEnabled(settings: OrganizationSettings | null, moduleId: BusinessModuleId) {
-  return !settings || !Array.isArray(settings.enabledModules) || settings.enabledModules.includes(moduleId);
+  return !settings || normalizeEnabledModules(settings.enabledModules, settings.businessType).includes(moduleId);
 }
 
 function dashboardMetricValue(metric: DashboardKpiMetric, stats: DashboardStats) {

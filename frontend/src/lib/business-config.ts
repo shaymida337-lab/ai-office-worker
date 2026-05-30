@@ -336,14 +336,32 @@ export type BusinessTemplatesResponse = {
 
 export const defaultEnabledModules = businessTypes.find((type) => type.id === "service_business")!.modules as readonly BusinessModuleId[];
 
-export function getBusinessProfile(businessType: BusinessTypeId | null | undefined): BusinessProfile {
-  return businessProfiles[businessType ?? "service_business"] ?? businessProfiles.service_business;
+export function normalizeBusinessTypeId(businessType: unknown): BusinessTypeId {
+  if (businessType === "service_company") return "service_business";
+  if (businessType === "insurance_agent") return "insurance_agency";
+  return typeof businessType === "string" && businessType in businessProfiles
+    ? businessType as BusinessTypeId
+    : "service_business";
+}
+
+export function normalizeEnabledModules(enabledModules: unknown, businessType?: unknown): BusinessModuleId[] {
+  const profile = getBusinessProfile(businessType);
+  if (!Array.isArray(enabledModules)) return [...profile.modules];
+  const allowed = new Set<BusinessModuleId>(profile.modules);
+  const normalized = enabledModules.filter((moduleId): moduleId is BusinessModuleId =>
+    typeof moduleId === "string" && allowed.has(moduleId as BusinessModuleId)
+  );
+  return normalized.length ? Array.from(new Set(normalized)) : [...profile.modules];
+}
+
+export function getBusinessProfile(businessType: unknown): BusinessProfile {
+  return businessProfiles[normalizeBusinessTypeId(businessType)] ?? businessProfiles.service_business;
 }
 
 export function recommendedModulesFor(
-  businessType: BusinessTypeId,
-  businessSize: BusinessSizeId | null,
-  mainBusinessPain: BusinessPainId | null
+  businessType: unknown,
+  businessSize: unknown,
+  mainBusinessPain: unknown
 ) {
   const template = getBusinessProfile(businessType);
   const painModules = businessPains.find((pain) => pain.id === mainBusinessPain)?.modules ?? [];
@@ -354,7 +372,7 @@ export function recommendedModulesFor(
 }
 
 export function moduleEnabled(settings: OrganizationSettings | null, moduleId: BusinessModuleId) {
-  return !settings || settings.enabledModules.includes(moduleId);
+  return !settings || normalizeEnabledModules(settings.enabledModules, settings.businessType).includes(moduleId);
 }
 
 export function businessTypeLabel(type: string | null | undefined) {

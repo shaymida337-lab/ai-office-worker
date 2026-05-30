@@ -8,6 +8,8 @@ import {
   businessSizes,
   businessTypes,
   getBusinessProfile,
+  normalizeBusinessTypeId,
+  normalizeEnabledModules,
   recommendedModulesFor,
   type BusinessModuleId,
   type BusinessPainId,
@@ -25,7 +27,7 @@ type Props = {
 export function BusinessOnboardingForm({ initialSettings, mode, onSaved }: Props) {
   const [step, setStep] = useState(1);
   const [businessName, setBusinessName] = useState(initialSettings?.businessName ?? initialSettings?.name ?? "");
-  const [businessType, setBusinessType] = useState<BusinessTypeId>(initialSettings?.businessType ?? "service_business");
+  const [businessType, setBusinessType] = useState<BusinessTypeId>(normalizeBusinessTypeId(initialSettings?.businessType));
   const [businessSize, setBusinessSize] = useState<BusinessSizeId | null>(initialSettings?.businessSize ?? null);
   const [mainBusinessPain, setMainBusinessPain] = useState<BusinessPainId | null>(initialSettings?.mainBusinessPain ?? null);
   const [enabledModules, setEnabledModules] = useState<BusinessModuleId[]>(
@@ -37,10 +39,10 @@ export function BusinessOnboardingForm({ initialSettings, mode, onSaved }: Props
   useEffect(() => {
     if (!initialSettings) return;
     setBusinessName(initialSettings.businessName ?? initialSettings.name ?? "");
-    setBusinessType(initialSettings.businessType);
+    setBusinessType(normalizeBusinessTypeId(initialSettings.businessType));
     setBusinessSize(initialSettings.businessSize);
     setMainBusinessPain(initialSettings.mainBusinessPain);
-    setEnabledModules(Array.isArray(initialSettings.enabledModules) ? initialSettings.enabledModules : recommendedModulesFor(initialSettings.businessType, initialSettings.businessSize, initialSettings.mainBusinessPain));
+    setEnabledModules(normalizeEnabledModules(initialSettings.enabledModules, initialSettings.businessType));
   }, [initialSettings]);
 
   const recommendedModules = useMemo(
