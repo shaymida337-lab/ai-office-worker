@@ -600,7 +600,7 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
                 : "would-remain-auto-saved";
 
       return {
-        supplier: row.payment.supplier,
+        supplierName: row.payment.supplier,
         senderDomain: row.senderDomain,
         amount: row.payment.amount,
         currentReviewStatus: primaryScan?.reviewStatus ?? null,
@@ -629,6 +629,14 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
       moneyToPay: rows.reduce((sum, row) => sum + row.payment.amount, 0),
       cleanupPreviewSummary,
       plainTextDebug: {
+        summary: {
+          currentMoneyToPay: cleanupPreviewSummary.currentMoneyToPay,
+          newMoneyToPay: cleanupPreviewSummary.newMoneyToPay,
+          wouldMoveOut: cleanupPreviewSummary.wouldMoveOutCount,
+        },
+        rows: debugRows,
+      },
+      classificationDebug: {
         summary: {
           currentMoneyToPay: cleanupPreviewSummary.currentMoneyToPay,
           newMoneyToPay: cleanupPreviewSummary.newMoneyToPay,
