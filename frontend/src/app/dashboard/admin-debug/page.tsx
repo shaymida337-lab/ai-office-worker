@@ -25,6 +25,7 @@ type DebugPaymentRow = {
   amount: number;
   currency: string;
   date: string;
+  emailSender?: string | null;
   invoiceLink: string | null;
   documentLink: string | null;
   subject: string | null;
@@ -141,6 +142,7 @@ export default function AdminDebugPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [cleaning, setCleaning] = useState(false);
+  const [loadingTopPayments, setLoadingTopPayments] = useState(false);
   const [driveMerging, setDriveMerging] = useState(false);
   const [driveMergeStatus, setDriveMergeStatus] = useState("");
   const [driveMergePreview, setDriveMergePreview] = useState<DriveMergeDuplicateFoldersResponse | null>(null);
@@ -149,14 +151,12 @@ export default function AdminDebugPage() {
     setLoading(true);
     setError("");
     try {
-      const [invoiceDebug, badAmountDebug, topPaymentDebug] = await Promise.all([
+      const [invoiceDebug, badAmountDebug] = await Promise.all([
         apiFetch<InvoiceDebugResponse>("/api/debug/invoices"),
         apiFetch<BadInvoiceAmountsResponse>("/api/debug/invoices/bad-amounts"),
-        apiFetch<TopPaymentAmountsResponse>("/api/debug/payments/top-amounts"),
       ]);
       setData(invoiceDebug);
       setBadAmounts(badAmountDebug);
-      setTopPayments(topPaymentDebug);
     } catch (err) {
       if (isAuthError(err)) {
         router.push("/login");
@@ -165,6 +165,25 @@ export default function AdminDebugPage() {
       setError(err instanceof Error ? err.message : "Failed to load debug data");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadTopPayments() {
+    setLoadingTopPayments(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await apiFetch<TopPaymentAmountsResponse>("/api/debug/payments/top-amounts");
+      setTopPayments(result);
+      setMessage(`נטענו ${result.rows.length} התשלומים הגדולים מתוך ${result.countedRows} שורות שמרכיבות את כסף לשלם.`);
+    } catch (err) {
+      if (isAuthError(err)) {
+        router.push("/login");
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Failed to load top payments");
+    } finally {
+      setLoadingTopPayments(false);
     }
   }
 
@@ -271,17 +290,24 @@ export default function AdminDebugPage() {
       </div>
 
       <div className="mb-6 flex flex-wrap gap-3">
-        <button className="btn" onClick={load} disabled={loading || cleaning || driveMerging}>
+        <button className="btn" onClick={load} disabled={loading || cleaning || driveMerging || loadingTopPayments}>
           {loading ? "טוען..." : "רענן נתונים"}
         </button>
         <button
           className="btn btn-secondary"
+          onClick={loadTopPayments}
+          disabled={loading || cleaning || driveMerging || loadingTopPayments}
+        >
+          {loadingTopPayments ? "טוען..." : "10 התשלומים הגדולים"}
+        </button>
+        <button
+          className="btn btn-secondary"
           onClick={cleanBadAmounts}
-          disabled={loading || cleaning || driveMerging || (data?.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0) === 0}
+          disabled={loading || cleaning || driveMerging || loadingTopPayments || (data?.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0) === 0}
         >
           {cleaning ? "מנקה..." : "נקה סכומים שגויים"}
         </button>
-        <button className="btn btn-secondary" onClick={mergeDuplicateDriveFolders} disabled={loading || cleaning || driveMerging}>
+        <button className="btn btn-secondary" onClick={mergeDuplicateDriveFolders} disabled={loading || cleaning || driveMerging || loadingTopPayments}>
           {driveMerging ? "בודק Drive..." : "אחד תיקיות כפולות"}
         </button>
       </div>
@@ -298,8 +324,8 @@ export default function AdminDebugPage() {
             <Metric label="Gmail scan items" value={data.gmailScanItemCount ?? 0} />
             <Metric label="Invoice scan items" value={data.invoiceScanItemCount ?? 0} />
             <Metric label="Bad amount rows (> 10M)" value={data.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0} />
-            <Metric label="Money to pay counted rows" value={topPayments?.countedRows ?? 0} />
-            <Metric label="Money to pay total" value={topPayments?.moneyToPay ?? 0} />
+            <Metric label="Money to pay counted rows" value={topPayments?.countedRows ?? "לחץ לבדיקה"} />
+            <Metric label="Money to pay total" value={topPayments ? `₪${topPayments.moneyToPay.toLocaleString("he-IL")}` : "לחץ לבדיקה"} />
           </section>
 
           <section className="mb-6 grid gap-4">
@@ -312,7 +338,7 @@ export default function AdminDebugPage() {
 
           <DebugTable title="Latest 20 Invoice rows" rows={data.lastInvoiceRows ?? []} />
           <DebugTable title="Bad amount invoice samples" rows={badAmounts?.sampleRows ?? []} />
-          <DebugTable title="Top 10 SupplierPayment amounts counted in Money to Pay" rows={topPayments?.rows ?? []} />
+          <TopPaymentsTable data={topPayments} loading={loadingTopPayments} />
           <DebugTable title="Drive duplicate folder merge preview" rows={driveMergePreview ? [driveMergePreview] : []} />
           <DebugTable title="Latest 20 SupplierPayment rows" rows={data.lastPaymentRows ?? []} />
           <DebugTable title="Rejected invoice reasons" rows={data.rejectedInvoiceReasons ?? []} />
@@ -328,6 +354,66 @@ function Metric({ label, value }: { label: string; value: string | number }) {
       <div className="stat-label">{label}</div>
       <div className="stat-value">{value}</div>
     </div>
+  );
+}
+
+function TopPaymentsTable({ data, loading }: { data: TopPaymentAmountsResponse | null; loading: boolean }) {
+  const rows = data?.rows ?? [];
+
+  return (
+    <section className="card mb-6">
+      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2>10 התשלומים הגדולים</h2>
+          <p>
+            שורות SupplierPayment שמרכיבות את "כסף לשלם": לא שולמו, נדרש תשלום, סכום בין 0 ל-1,000,000.
+          </p>
+        </div>
+        {data && (
+          <span className="badge badge-warn w-fit">
+            סה"כ מחושב: ₪{data.moneyToPay.toLocaleString("he-IL")}
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <p>טוען את התשלומים הגדולים...</p>
+      ) : rows.length === 0 ? (
+        <p>לחץ על "10 התשלומים הגדולים" כדי לטעון את הנתונים.</p>
+      ) : (
+        <div className="table-shell max-w-full overflow-x-auto">
+          <table className="min-w-[860px] table-fixed">
+            <thead>
+              <tr>
+                <th className="w-36">סכום</th>
+                <th className="w-56">ספק / שולח</th>
+                <th className="w-40">תאריך יצירה</th>
+                <th>emailMessageId</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td className="whitespace-nowrap font-bold text-[#F8FAFC]">
+                    ₪{row.amount.toLocaleString("he-IL")} {row.currency}
+                  </td>
+                  <td className="break-words">
+                    <div className="font-semibold text-[#F8FAFC]">{row.supplier || "ספק לא ידוע"}</div>
+                    <div className="text-sm text-[#CBD5E1]">{row.emailSender || "שולח לא ידוע"}</div>
+                  </td>
+                  <td className="whitespace-nowrap">
+                    {row.createdAt ? new Date(row.createdAt).toLocaleString("he-IL") : "—"}
+                  </td>
+                  <td className="break-all text-left text-sm" dir="ltr">
+                    {row.emailMessageId ?? "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 
