@@ -1144,7 +1144,16 @@ type DriveMergeResult = {
   }>;
   duplicateGroups: number;
   foldersMerged: number;
+  suppliersFixed: number;
+  duplicateSubfoldersRemoved: number;
   filesMoved: number;
+  finalSupplierCount: number;
+  finalFolderStructure: Array<{
+    supplier: string;
+    supplierFolderId: string;
+    documentFolders: Array<{ name: string; folderId: string; childCount: number }>;
+    duplicateSubfoldersRemaining: Array<{ name: string; count: number }>;
+  }>;
   groups: Array<{
     normalizedName: string;
     keep: DriveMergeFolder;
@@ -1269,6 +1278,107 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
       return children;
     }
 
+    async function listChildDocumentFolders(parentId: string): Promise<DriveMergeFolder[]> {
+      return (await listChildFolders(parentId, "Document folders"))
+        .filter((folder) => canonicalDocumentFolderName(folder.name));
+    }
+
+    async function ensureCanonicalDocumentFolder(parentId: string, folderName: string): Promise<string> {
+      const existing = (await listChildFolders(parentId, "Document folders"))
+        .filter((folder) => folder.name === folderName)
+        .sort(sortDriveFoldersByCreatedTime)[0];
+      if (existing) return existing.id;
+      if (dryRun) return `dry-run:${parentId}:${folderName}`;
+      const created = await drive.files.create({
+        requestBody: {
+          name: folderName,
+          mimeType: "application/vnd.google-apps.folder",
+          parents: [parentId],
+        },
+        fields: "id",
+        supportsAllDrives: true,
+      });
+      if (!created.data.id) throw new Error(`Failed to create Drive document folder: ${folderName}`);
+      return created.data.id;
+    }
+
+    async function moveFolderContentsToFolder(sourceFolderId: string, targetFolderId: string) {
+      const children = await listChildren(sourceFolderId);
+      if (!dryRun) {
+        for (const child of children) {
+          await drive.files.update({
+            fileId: child.id,
+            addParents: targetFolderId,
+            removeParents: sourceFolderId,
+            fields: "id, parents",
+            supportsAllDrives: true,
+          });
+        }
+      }
+      return children.length;
+    }
+
+    async function moveDuplicateSupplierChildToCanonicalFolder(child: DriveMergeChild, duplicateSupplierId: string, canonicalSupplierId: string) {
+      const canonicalDocumentName = child.mimeType === "application/vnd.google-apps.folder"
+        ? canonicalDocumentFolderName(child.name)
+        : null;
+      if (!canonicalDocumentName) {
+        if (!dryRun) {
+          await drive.files.update({
+            fileId: child.id,
+            addParents: canonicalSupplierId,
+            removeParents: duplicateSupplierId,
+            fields: "id, parents",
+            supportsAllDrives: true,
+          });
+        }
+        return { filesMoved: 1, foldersDeleted: 0 };
+      }
+
+      const targetFolderId = await ensureCanonicalDocumentFolder(canonicalSupplierId, canonicalDocumentName);
+      const moved = await moveFolderContentsToFolder(child.id, targetFolderId);
+      if (!dryRun) {
+        await drive.files.delete({ fileId: child.id, supportsAllDrives: true });
+      }
+      return { filesMoved: moved, foldersDeleted: 1 };
+    }
+
+    async function normalizeSupplierDocumentSubfolders(supplier: DriveMergeFolder) {
+      const documentFolders = await listChildDocumentFolders(supplier.id);
+      const groupsByDocumentName = new Map<string, DriveMergeFolder[]>();
+      for (const folder of documentFolders) {
+        const canonicalName = canonicalDocumentFolderName(folder.name);
+        if (!canonicalName) continue;
+        const group = groupsByDocumentName.get(canonicalName) ?? [];
+        group.push(folder);
+        groupsByDocumentName.set(canonicalName, group);
+      }
+
+      let foldersDeleted = 0;
+      let movedFiles = 0;
+      const finalDocumentFolders: Array<{ name: string; folderId: string; childCount: number }> = [];
+      const duplicateSubfoldersRemaining: Array<{ name: string; count: number }> = [];
+
+      for (const folderName of supplierParentFolderNames) {
+        const folders = [...(groupsByDocumentName.get(folderName) ?? [])].sort(sortDriveFoldersByCreatedTime);
+        const keep = folders[0] ?? null;
+        const keepId = keep?.id ?? await ensureCanonicalDocumentFolder(supplier.id, folderName);
+        for (const duplicate of folders.slice(1)) {
+          const moved = await moveFolderContentsToFolder(duplicate.id, keepId);
+          movedFiles += moved;
+          foldersDeleted++;
+          if (!dryRun) {
+            await drive.files.delete({ fileId: duplicate.id, supportsAllDrives: true });
+          }
+        }
+        const childCount = keepId.startsWith("dry-run:") ? 0 : (await listChildren(keepId)).length;
+        finalDocumentFolders.push({ name: folderName, folderId: keepId, childCount });
+        if (dryRun && folders.length > 1) duplicateSubfoldersRemaining.push({ name: folderName, count: folders.length });
+      }
+
+      return { foldersDeleted, movedFiles, finalDocumentFolders, duplicateSubfoldersRemaining };
+    }
+
     updateDriveMergeJob(jobId, { progress: "Resolving candidate Drive roots" });
     const candidateRootNames = Array.from(new Set([INVOICE_DRIVE_FOLDER_NAME, config.driveRootFolder].filter(Boolean)));
     const rootCandidates: Array<DriveMergeFolder & { matchedCandidateName: string }> = [];
@@ -1321,7 +1431,11 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
     }
 
     const duplicatePlans: DriveMergeResult["groups"] = [];
+    const finalFolderStructure: DriveMergeResult["finalFolderStructure"] = [];
+    const canonicalSupplierFolders = new Map<string, DriveMergeFolder>();
     let foldersMerged = 0;
+    let suppliersFixed = 0;
+    let duplicateSubfoldersRemoved = 0;
     let filesMoved = 0;
     let processedGroups = 0;
     const duplicateGroups = Array.from(groups.values()).filter((folders) => folders.length > 1).length;
@@ -1336,13 +1450,13 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
         return aTime - bTime;
       });
       const keep = sorted[0];
+      canonicalSupplierFolders.set(normalizedName, keep);
       const duplicates = sorted.slice(1);
       const duplicateDetails: Array<DriveMergeFolder & { childCount: number; children: DriveMergeChild[] }> = [];
 
       for (const duplicate of duplicates) {
         const children = await listChildren(duplicate.id);
         foldersMerged++;
-        filesMoved += children.length;
         duplicateDetails.push({
           ...duplicate,
           childCount: children.length,
@@ -1352,15 +1466,23 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
         if (!dryRun) {
           updateDriveMergeJob(jobId, { progress: `Moving ${children.length} items from ${duplicate.name}` });
           for (const child of children) {
-            await drive.files.update({
-              fileId: child.id,
-              addParents: keep.id,
-              removeParents: duplicate.id,
-              fields: "id, parents",
-              supportsAllDrives: true,
-            });
+            const moved = await moveDuplicateSupplierChildToCanonicalFolder(child, duplicate.id, keep.id);
+            filesMoved += moved.filesMoved;
+            duplicateSubfoldersRemoved += moved.foldersDeleted;
           }
           await drive.files.delete({ fileId: duplicate.id, supportsAllDrives: true });
+        } else {
+          for (const child of children) {
+            const canonicalDocumentName = child.mimeType === "application/vnd.google-apps.folder"
+              ? canonicalDocumentFolderName(child.name)
+              : null;
+            if (canonicalDocumentName) {
+              filesMoved += await moveFolderContentsToFolder(child.id, `dry-run:${keep.id}:${canonicalDocumentName}`);
+              duplicateSubfoldersRemoved++;
+            } else {
+              filesMoved++;
+            }
+          }
         }
       }
 
@@ -1385,6 +1507,26 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
       }
     }
 
+    for (const [normalizedName, folders] of groups.entries()) {
+      if (!canonicalSupplierFolders.has(normalizedName)) {
+        canonicalSupplierFolders.set(normalizedName, [...folders].sort(sortDriveFoldersByCreatedTime)[0]);
+      }
+    }
+
+    for (const [normalizedName, supplier] of canonicalSupplierFolders.entries()) {
+      updateDriveMergeJob(jobId, { progress: `Normalizing document folders for ${supplier.name}` });
+      const normalized = await normalizeSupplierDocumentSubfolders(supplier);
+      if (normalized.foldersDeleted > 0 || normalized.movedFiles > 0) suppliersFixed++;
+      duplicateSubfoldersRemoved += normalized.foldersDeleted;
+      filesMoved += normalized.movedFiles;
+      finalFolderStructure.push({
+        supplier: normalizedName,
+        supplierFolderId: supplier.id,
+        documentFolders: normalized.finalDocumentFolders,
+        duplicateSubfoldersRemaining: normalized.duplicateSubfoldersRemaining,
+      });
+    }
+
     updateDriveMergeJob(jobId, {
       status: "done",
       progress: dryRun ? "Dry-run complete" : "Merge complete",
@@ -1394,7 +1536,11 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
         searchedRoots,
         duplicateGroups: duplicatePlans.length,
         foldersMerged,
+        suppliersFixed,
+        duplicateSubfoldersRemoved,
         filesMoved,
+        finalSupplierCount: canonicalSupplierFolders.size,
+        finalFolderStructure,
         groups: duplicatePlans,
       },
     });
@@ -1410,6 +1556,22 @@ async function runDriveDuplicateFolderMergeJob(jobId: string, organizationId: st
 
 function escapeDriveMergeQueryValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+function sortDriveFoldersByCreatedTime(a: DriveMergeFolder, b: DriveMergeFolder) {
+  const aTime = a.createdTime ? new Date(a.createdTime).getTime() : Number.MAX_SAFE_INTEGER;
+  const bTime = b.createdTime ? new Date(b.createdTime).getTime() : Number.MAX_SAFE_INTEGER;
+  return aTime - bTime;
+}
+
+function canonicalDocumentFolderName(name: string): string | null {
+  const normalized = name.trim().toLowerCase().replace(/\s+/g, " ");
+  if (/^(invoice|invoices|חשבונית|חשבוניות)$/.test(normalized)) return "Invoices";
+  if (/^(receipt|receipts|קבלה|קבלות)$/.test(normalized)) return "Receipts";
+  if (/^(payment request|payment requests|דרישת תשלום|בקשת תשלום|בקשות תשלום)$/.test(normalized)) return "Payment Requests";
+  if (/^(missing invoice|missing invoices|חשבוניות חסרות|חשבונית חסרה)$/.test(normalized)) return "Missing Invoices";
+  if (/^(other|אחר|שונות)$/.test(normalized)) return "Other";
+  return null;
 }
 
 apiRouter.post("/debug/drive/merge-duplicate-folders", (req, res) => {
