@@ -14,6 +14,7 @@ type ScanStatsResponse = {
     driveLinked: number;
     amountExtracted: number;
     sheetsUpdated: number;
+    rejectedEmails: number;
   };
   byDocumentType: Record<string, number>;
   byReviewStatus: Record<string, number>;
@@ -36,6 +37,17 @@ type ScanItem = {
   confidenceScore: string;
   reviewStatus: string;
   decisionReason: string;
+  rawAnalysis?: {
+    audit?: {
+      keywordMatched?: string[];
+      attachmentFound?: boolean;
+      amountFound?: boolean;
+      supplierDetected?: boolean;
+      blockedReason?: string | null;
+    };
+    evidence?: string[];
+    confidence?: number;
+  } | null;
 };
 
 type ScanLog = {
@@ -53,6 +65,26 @@ type ScanLog = {
   errorMessage: string | null;
   startedAt: string;
   finishedAt: string | null;
+};
+
+type RescanResponse = {
+  scanId: string;
+  progressUrl: string;
+  cleanup?: {
+    invoicesDeleted: number;
+    paymentsDeleted: number;
+    scanItemsDeleted: number;
+    emailsReset: number;
+  } | null;
+  summary?: {
+    totalEmailsChecked: number;
+    invoicesFound: number;
+    supplierPaymentsFound?: number;
+    paymentsFound?: number;
+    rejectedCount?: number;
+    classifiedCount?: number;
+    uniqueSuppliers?: number;
+  };
 };
 
 const documentTypeLabels: Record<string, string> = {
@@ -73,6 +105,8 @@ const reviewStatusLabels: Record<string, string> = {
 export default function ScanStatsPage() {
   const [data, setData] = useState<ScanStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [rescanning, setRescanning] = useState(false);
+  const [rescanResult, setRescanResult] = useState<RescanResponse | null>(null);
   const [error, setError] = useState("");
 
   async function load() {
@@ -84,6 +118,40 @@ export default function ScanStatsPage() {
       setError(err instanceof Error ? err.message : "טעינת סטטיסטיקות הסריקה נכשלה");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function rescanInvoices() {
+    const approved = window.confirm("סריקה מחדש תמחק חשבוניות ותשלומי ספקים שנוצרו אוטומטית מג׳ימייל ותבנה אותם מחדש לפי מנוע הזיהוי החדש. להמשיך?");
+    if (!approved) return;
+    setError("");
+    setRescanning(true);
+    try {
+      const started = await apiFetch<RescanResponse>("/api/gmail/rescan-invoices", {
+        method: "POST",
+        body: JSON.stringify({ daysBack: 90 }),
+      });
+      setRescanResult(started);
+      await pollRescan(started);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "סריקה מחדש נכשלה");
+    } finally {
+      setRescanning(false);
+    }
+  }
+
+  async function pollRescan(started: RescanResponse) {
+    if (!started.progressUrl) return;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      const progress = await apiFetch<{
+        inProgress: boolean;
+        summary?: RescanResponse["summary"];
+        finalSummary?: RescanResponse["summary"];
+      }>(started.progressUrl);
+      setRescanResult((current) => current ? { ...current, summary: progress.finalSummary ?? progress.summary ?? current.summary } : current);
+      if (!progress.inProgress) return;
     }
   }
 
@@ -103,13 +171,40 @@ export default function ScanStatsPage() {
           <h1>סטטיסטיקות סריקה</h1>
           <p>מעקב אחרי זיהוי חשבוניות, קבלות, דרישות תשלום, מסמכי ספקים ופריטים לבדיקה.</p>
         </div>
-        <button className="btn" onClick={load} disabled={loading}>{loading ? "מרענן..." : "רענן נתונים"}</button>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn btn-secondary" onClick={load} disabled={loading}>{loading ? "מרענן..." : "רענן נתונים"}</button>
+          <button className="btn" onClick={rescanInvoices} disabled={rescanning}>{rescanning ? "מתחיל סריקה..." : "סרוק מחדש חשבוניות"}</button>
+        </div>
       </div>
 
       {error && (
         <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-red-100">
           {error}
         </div>
+      )}
+
+      {rescanResult && (
+        <section className="card mb-6">
+          <h2>סריקה מחדש התחילה</h2>
+          <p className="mt-2 text-sm">המנוע החדש יסרוק מחדש את המיילים ויציג כאן תוצאות לאחר רענון הנתונים.</p>
+          {rescanResult.cleanup && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-4">
+              <Kpi label="חשבוניות שנוקו" value={rescanResult.cleanup.invoicesDeleted} icon={<FileCheck2 className="h-5 w-5" />} />
+              <Kpi label="תשלומים שנוקו" value={rescanResult.cleanup.paymentsDeleted} icon={<BarChart3 className="h-5 w-5" />} />
+              <Kpi label="פריטי Audit שנוקו" value={rescanResult.cleanup.scanItemsDeleted} icon={<MailCheck className="h-5 w-5" />} />
+              <Kpi label="מיילים לאיפוס" value={rescanResult.cleanup.emailsReset} icon={<Table2 className="h-5 w-5" />} />
+            </div>
+          )}
+          {rescanResult.summary && (
+            <div className="mt-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4 text-sm">
+              נסרקו {rescanResult.summary.totalEmailsChecked ?? 0} מיילים ·
+              נפסלו {rescanResult.summary.rejectedCount ?? 0} ·
+              חשבוניות זוהו {rescanResult.summary.invoicesFound ?? 0} ·
+              תשלומי ספקים נוצרו {rescanResult.summary.supplierPaymentsFound ?? rescanResult.summary.paymentsFound ?? 0} ·
+              ספקים ייחודיים {rescanResult.summary.uniqueSuppliers ?? 0}
+            </div>
+          )}
+        </section>
       )}
 
       {loading && !data ? (
@@ -119,6 +214,7 @@ export default function ScanStatsPage() {
           <section className="auto-grid mb-6">
             <Kpi label="מיילים שנבדקו" value={data.totals.emailsProcessed} icon={<MailCheck className="h-5 w-5" />} />
             <Kpi label="פריטים שנשמרו" value={data.totals.scanItems} icon={<FileCheck2 className="h-5 w-5" />} />
+            <Kpi label="מיילים שנדחו" value={data.totals.rejectedEmails} icon={<BarChart3 className="h-5 w-5" />} />
             <Kpi label="כפילויות שסוננו" value={data.totals.duplicatesSkipped} icon={<BarChart3 className="h-5 w-5" />} />
             <Kpi label="קבצים בדרייב" value={data.totals.driveLinked} icon={<HardDrive className="h-5 w-5" />} />
             <Kpi label="עדכוני שיטס" value={data.totals.sheetsUpdated} icon={<Table2 className="h-5 w-5" />} />
@@ -155,6 +251,7 @@ export default function ScanStatsPage() {
                         <th>סכום</th>
                         <th>ביטחון</th>
                         <th>סטטוס</th>
+                        <th>Audit</th>
                         <th>קישורים</th>
                       </tr>
                     </thead>
@@ -168,6 +265,7 @@ export default function ScanStatsPage() {
                           <td>{formatAmount(item.amount)}</td>
                           <td>{confidenceLabel(item.confidenceScore)}</td>
                           <td>{reviewStatusLabels[item.reviewStatus] ?? item.reviewStatus}</td>
+                          <td className="max-w-sm">{auditSummary(item)}</td>
                           <td>
                             <div className="flex flex-wrap gap-2">
                               <a className="btn btn-secondary px-3 py-1.5" href={item.gmailMessageLink} target="_blank" rel="noreferrer">פתח בג׳ימייל</a>
@@ -220,6 +318,7 @@ function ScanItemCard({ item }: { item: ScanItem }) {
         <MobileRow label="סכום" value={formatAmount(item.amount)} />
         <MobileRow label="ביטחון" value={confidenceLabel(item.confidenceScore)} />
         <MobileRow label="סטטוס" value={reviewStatusLabels[item.reviewStatus] ?? item.reviewStatus} />
+        <MobileRow label="Audit" value={auditSummary(item)} />
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <a className="btn btn-secondary" href={item.gmailMessageLink} target="_blank" rel="noreferrer">פתח בג׳ימייל</a>
@@ -273,9 +372,22 @@ function documentTypeLabel(type: string) {
 }
 
 function confidenceLabel(value: string) {
+  if (value.endsWith("%")) return value;
   if (value === "high") return "גבוה";
   if (value === "medium") return "בינוני";
   return "נמוך";
+}
+
+function auditSummary(item: ScanItem) {
+  const audit = item.rawAnalysis?.audit;
+  const parts = [
+    audit?.keywordMatched?.length ? `keyword matched: ${audit.keywordMatched.join(", ")}` : null,
+    audit?.attachmentFound ? "attachment found" : null,
+    audit?.amountFound ? "amount found" : null,
+    audit?.supplierDetected ? "supplier detected" : null,
+    audit?.blockedReason ? `blocked: ${audit.blockedReason}` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : item.decisionReason || "אין פירוט";
 }
 
 function scanStatusLabel(status: string) {

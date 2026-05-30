@@ -77,6 +77,7 @@ apiRouter.get("/gmail/scan-stats", async (req, res) => {
       driveLinkedCount,
       amountExtractedCount,
       sheetsUpdatedTotal,
+      rejectedEmailsCount,
     ] = await Promise.all([
       prisma.gmailScanItem.count({ where: { organizationId } }),
       prisma.gmailScanItem.groupBy({
@@ -109,6 +110,7 @@ apiRouter.get("/gmail/scan-stats", async (req, res) => {
           confidenceScore: true,
           reviewStatus: true,
           decisionReason: true,
+          rawAnalysis: true,
           createdAt: true,
         },
       }),
@@ -143,6 +145,17 @@ apiRouter.get("/gmail/scan-stats", async (req, res) => {
         where: { organizationId, type: "gmail_scan" },
         _sum: { sheetsUpdated: true },
       }),
+      prisma.gmailScanItem.count({
+        where: {
+          organizationId,
+          OR: [
+            { reviewStatus: "needs_review" },
+            { documentType: "unknown_needs_review" },
+            { decisionReason: { contains: "blocked", mode: "insensitive" } },
+            { decisionReason: { contains: "Held for review", mode: "insensitive" } },
+          ],
+        },
+      }),
     ]);
 
     res.json({
@@ -154,6 +167,7 @@ apiRouter.get("/gmail/scan-stats", async (req, res) => {
         driveLinked: driveLinkedCount,
         amountExtracted: amountExtractedCount,
         sheetsUpdated: sheetsUpdatedTotal._sum.sheetsUpdated ?? 0,
+        rejectedEmails: rejectedEmailsCount,
       },
       byDocumentType: Object.fromEntries(documentTypes.map((item) => [item.documentType, item._count._all])),
       byReviewStatus: Object.fromEntries(reviewStatuses.map((item) => [item.reviewStatus, item._count._all])),
@@ -2202,10 +2216,17 @@ async function scanGmail(req: Request, res: Response) {
       return;
     }
 
+    const rescanInvoices = req.body?.rescanInvoices === true || req.query.rescanInvoices === "true";
     const rawDaysBack = Number(req.body?.daysBack ?? req.query.daysBack);
     const daysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0 ? Math.ceil(rawDaysBack) : 90;
+    const maxMessages = rescanInvoices ? 1000 : undefined;
     console.log(`[gmail-scan] POST /api/gmail/scan org=${organizationId} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack}`);
     console.log("[gmail-scan] Step 1: checking Gmail authentication");
+
+    const cleanup = rescanInvoices ? await cleanupGmailInvoiceArtifacts(organizationId) : null;
+    if (cleanup) {
+      console.log(`[gmail-scan] invoice rescan cleanup org=${organizationId} invoicesDeleted=${cleanup.invoicesDeleted} paymentsDeleted=${cleanup.paymentsDeleted} scanItemsDeleted=${cleanup.scanItemsDeleted} emailsReset=${cleanup.emailsReset}`);
+    }
 
     const staleAfterMs = 30 * 60 * 1000;
     const activeLog = await prisma.syncLog.findFirst({
@@ -2253,7 +2274,7 @@ async function scanGmail(req: Request, res: Response) {
       return;
     }
     console.log(`[gmail-scan] Step 2: background scan started org=${organizationId} scanId=${scanLog.id} daysBack=${daysBack}`);
-    void syncGmailForOrganization(organizationId, { daysBack, forceReprocess: daysBack >= 90, scanLogId: scanLog.id, scanMode: "manual" })
+    void syncGmailForOrganization(organizationId, { daysBack, forceReprocess: daysBack >= 90 || rescanInvoices, maxMessages, scanLogId: scanLog.id, scanMode: "manual" })
       .then((backgroundResult) => {
         console.log(`[gmail-scan] Background processing finished org=${organizationId} scanId=${scanLog.id} emails=${backgroundResult.emailsProcessed} saved=${backgroundResult.emailsSavedToGmailScanItem ?? 0} payments=${backgroundResult.paymentsCreated} invoices=${backgroundResult.invoicesCreated} driveUploaded=${backgroundResult.driveUploadsSucceeded ?? 0} rejected=${backgroundResult.parserRejectedCount ?? backgroundResult.ignoredCount ?? 0}`);
       })
@@ -2269,6 +2290,7 @@ async function scanGmail(req: Request, res: Response) {
       daysBack,
       progressUrl: `/api/gmail/scan/${scanLog.id}`,
       message: "Gmail scan started in background",
+      cleanup,
       summary: {
         totalEmailsChecked: 0,
         emailsScanned: 0,
@@ -2278,6 +2300,7 @@ async function scanGmail(req: Request, res: Response) {
         supplierPaymentsFound: 0,
         clientsFound: 0,
         uploadedToDrive: 0,
+        rejectedCount: 0,
         rejectedReasons: {},
       },
     });
@@ -2293,6 +2316,45 @@ async function scanGmail(req: Request, res: Response) {
     const status = code === "GMAIL_PERMISSION_DENIED" ? 403 : code === "GMAIL_TOKEN_EXPIRED" ? 401 : 500;
     res.status(status).json({ error: `סריקת Gmail נכשלה: ${humanGmailScanError(message, code)}`, code });
   }
+}
+
+apiRouter.post("/gmail/rescan-invoices", async (req, res) => {
+  req.body = {
+    ...(req.body ?? {}),
+    rescanInvoices: true,
+    daysBack: req.body?.daysBack ?? 90,
+  };
+  await scanGmail(req, res);
+});
+
+async function cleanupGmailInvoiceArtifacts(organizationId: string) {
+  const [invoices, payments, scanItems, emails] = await prisma.$transaction([
+    prisma.invoice.deleteMany({
+      where: {
+        organizationId,
+        gmailMessageId: { not: null },
+      },
+    }),
+    prisma.supplierPayment.deleteMany({
+      where: {
+        organizationId,
+        source: "gmail",
+        emailMessageId: { not: null },
+      },
+    }),
+    prisma.gmailScanItem.deleteMany({ where: { organizationId } }),
+    prisma.emailMessage.updateMany({
+      where: { organizationId, source: "gmail" },
+      data: { processedAt: null, clientId: null },
+    }),
+  ]);
+
+  return {
+    invoicesDeleted: invoices.count,
+    paymentsDeleted: payments.count,
+    scanItemsDeleted: scanItems.count,
+    emailsReset: emails.count,
+  };
 }
 
 apiRouter.get("/gmail/scan/:scanId", async (req, res) => {
@@ -2381,6 +2443,36 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
     orderBy: { finishedAt: "desc" },
     select: { finishedAt: true },
   });
+  const [classifiedCount, rejectedCount, uniqueSupplierRows] = await Promise.all([
+    prisma.gmailScanItem.count({
+      where: {
+        organizationId,
+        createdAt: window,
+        documentType: { in: ["invoice", "receipt", "payment_request"] },
+        reviewStatus: "auto_saved",
+      },
+    }),
+    prisma.gmailScanItem.count({
+      where: {
+        organizationId,
+        createdAt: window,
+        OR: [
+          { reviewStatus: "needs_review" },
+          { documentType: "unknown_needs_review" },
+        ],
+      },
+    }),
+    prisma.gmailScanItem.findMany({
+      where: {
+        organizationId,
+        createdAt: window,
+        documentType: { in: ["invoice", "receipt", "payment_request"] },
+        reviewStatus: "auto_saved",
+      },
+      distinct: ["supplierName"],
+      select: { supplierName: true },
+    }),
+  ]);
 
   const rejectedReasons = failedItems.reduce<Record<string, number>>((acc, item) => {
     const rejected =
@@ -2443,6 +2535,10 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
           emailsFetched,
           emailsSaved,
           invoicesFound,
+          rejectedCount,
+          classifiedCount,
+          uniqueSuppliers: uniqueSupplierRows.length,
+          supplierPaymentsFound,
           paymentsFound: supplierPaymentsFound,
           uploadedToDrive,
           sheetsUpdated: log.sheetsUpdated,
@@ -2458,6 +2554,9 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
       emailsSaved,
       recordsSaved: emailsSaved,
       invoicesFound,
+      rejectedCount,
+      classifiedCount,
+      uniqueSuppliers: uniqueSupplierRows.length,
       supplierPaymentsFound,
       clientsFound: 0,
       uploadedToDrive,

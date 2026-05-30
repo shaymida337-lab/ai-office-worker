@@ -6,6 +6,7 @@ export async function backfillInvoicesFromGmailScanItems(organizationId: string,
     where: {
       organizationId,
       documentType: { in: ["invoice", "receipt"] },
+      reviewStatus: "auto_saved",
     },
     orderBy: { createdAt: "desc" },
     take: limit,
@@ -22,6 +23,7 @@ export async function backfillInvoicesFromGmailScanItems(organizationId: string,
       documentType: true,
       driveFileLink: true,
       decisionReason: true,
+      confidenceScore: true,
     },
   });
 
@@ -32,6 +34,10 @@ export async function backfillInvoicesFromGmailScanItems(organizationId: string,
 
   for (const item of candidates) {
     try {
+      if (confidencePercent(item.confidenceScore) < 70) {
+        skipped++;
+        continue;
+      }
       const existingByGmail = await prisma.invoice.findFirst({
         where: { organizationId, gmailMessageId: item.gmailMessageId },
         select: { id: true },
@@ -131,13 +137,7 @@ async function backfillInvoicesFromSupplierPayments(organizationId: string, limi
   const candidates = await prisma.supplierPayment.findMany({
     where: {
       organizationId,
-      OR: [
-        { invoiceLink: { not: null } },
-        { subject: { contains: "invoice", mode: "insensitive" } },
-        { subject: { contains: "receipt", mode: "insensitive" } },
-        { subject: { contains: "חשבונית", mode: "insensitive" } },
-        { subject: { contains: "קבלה", mode: "insensitive" } },
-      ],
+      invoiceLink: { not: null },
     },
     orderBy: { createdAt: "desc" },
     take: limit,
@@ -236,6 +236,14 @@ async function backfillInvoicesFromSupplierPayments(organizationId: string, limi
   }
 
   return { candidates: candidates.length, created, duplicates, skipped, errors };
+}
+
+function confidencePercent(value: string) {
+  const numeric = Number(String(value).replace("%", ""));
+  if (Number.isFinite(numeric)) return numeric;
+  if (value === "high") return 80;
+  if (value === "medium") return 55;
+  return 0;
 }
 
 async function ensureInvoiceBackfillClient(input: {

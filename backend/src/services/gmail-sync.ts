@@ -13,6 +13,7 @@ import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
 import { notifyNewInvoice } from "./whatsapp.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
+const MAX_MESSAGES_PER_RESCAN = 1_000;
 const MAX_MESSAGES_PER_QUICK_SCAN = 25;
 const GMAIL_SCAN_BATCH_SIZE = 10;
 const GMAIL_PROGRESS_EMAIL_INTERVAL = 25;
@@ -70,6 +71,28 @@ const INVOICE_KEYWORDS = [
   "morning",
   "meshulam",
   "משולם",
+];
+const STRONG_INVOICE_TERMS = [
+  "חשבונית מס קבלה",
+  "חשבונית מס",
+  "חשבונית",
+  "קבלה",
+  "דרישת תשלום",
+  "invoice",
+  "tax invoice",
+  "receipt",
+  "payment request",
+];
+const NON_INVOICE_BLOCK_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
+  { label: "Internal IT/System", pattern: /\binternal\s+(it|system|system issue|issue report)\b/i },
+  { label: "system notification", pattern: /הודעת\s+מערכת|הודעות\s+מערכת|system\s+(notification|alert|message|issue|report)|internal\s+system\s+issue\s+report/i },
+  { label: "security alert", pattern: /התראת\s+אבטחה|הודעות\s+אבטחה|google\s+security|security\s+(alert|notification)|login\s+alert|new\s+sign-?in/i },
+  { label: "authentication/OTP", pattern: /\botp\b|one[-\s]?time\s+password|verification\s+code|קוד\s+אימות|password\s+reset|reset\s+password|איפוס\s+סיסמה/i },
+  { label: "GitHub notification", pattern: /\bgithub\b|pull\s+request|issue\s+#|dependabot|actions?\s+workflow/i },
+  { label: "Render notification", pattern: /\brender\b|deploy(?:ment)?\s+(failed|succeeded|live)|service\s+is\s+live/i },
+  { label: "support/test email", pattern: /\b(test|testing|support ticket|help desk|customer support|zendesk|intercom|freshdesk)\b|בדיקה|תמיכה/i },
+  { label: "newsletter/marketing", pattern: /newsletter|unsubscribe|marketing|promotion|מבצע|ניוזלטר|פרסומת|עדכונים\s+שיווקיים|sale|discount/i },
+  { label: "personal email", pattern: /family|personal|חבר|משפחה|אישי|@gmail\.com\b|@yahoo\.com\b|@hotmail\.com\b|@outlook\.com\b/i },
 ];
 const PAYMENT_REQUEST_KEYWORDS = [
   "דרישת תשלום",
@@ -232,6 +255,7 @@ type GmailSyncOptions = {
   since?: Date;
   isFirstTime?: boolean;
   forceReprocess?: boolean;
+  maxMessages?: number;
   scanLogId?: string;
   scanMode?: "manual" | "auto_daily" | "auto_weekly" | "retry" | "first_time";
   retryOfId?: string;
@@ -499,7 +523,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       console.error("Drive setup failed; continuing Gmail sync without Drive", err);
     }
     logStep(`[gmail-sync] Searching Gmail from last ${daysBack} days`);
-    const messages = await listCandidateMessages(gmail, daysBack, MAX_MESSAGES_PER_SYNC, options.since);
+    const messages = await listCandidateMessages(gmail, daysBack, options.maxMessages ?? MAX_MESSAGES_PER_SYNC, options.since);
     logStep(`[gmail-sync] total emails fetched from Gmail=${messages.length}`);
     const scannedEmails: ScannedEmail[] = [];
 
@@ -709,7 +733,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       const amountRejectedReason = invoiceMatch.amountRejectedReason ?? rejectedDetectedAmountReason(analysis.amount);
       logStep(`[gmail-sync] invoice detection message=${email.gmailId} isInvoice=${invoiceMatch.isInvoice} detectedAmount=${invoiceMatch.amount ?? "none"} aiAmount=${analysis.amount ?? "none"} finalAmount=${amount ?? "none"} amountRejectedReason=${amountRejectedReason ?? "none"}`);
       const attachmentFilename = primaryAttachmentFilename(email.parts);
-      const supplierName = normalizeSupplierName(analysis.supplier || email.senderName || email.domain || "Unknown supplier");
+      const supplierName = detectSupplierName({
+        analysisSupplier: analysis.supplier,
+        bodyText: bodyForAnalysis,
+        senderName: email.senderName,
+        senderDomain: email.domain,
+      });
       const classification = classifyGmailScanCandidate({
         subject: email.subject,
         bodyText: bodyForAnalysis,
@@ -776,7 +805,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       }
       const driveLinks: { type: string; link: string }[] = [];
 
+      const shouldUploadAttachments = classification.isRelevant && classification.reviewStatus === "auto_saved";
       for (const part of email.parts) {
+        if (!shouldUploadAttachments) {
+          driveUploadsSkipped++;
+          logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${part.filename || "unnamed"}" reason="not_auto_saved_invoice_or_payment"`);
+          continue;
+        }
         const attachmentId = part.body?.attachmentId;
         if (!part.filename || !attachmentId) {
           driveUploadsSkipped++;
@@ -891,6 +926,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           decisionReason: classification.decisionReason,
           rawAnalysis: {
             analysis,
+            audit: classification.audit,
+            evidence: classification.evidence,
+            confidence: classification.confidence,
             relevant: classification.isRelevant,
             hasAttachment: email.parts.length > 0,
             filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
@@ -913,6 +951,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           decisionReason: classification.decisionReason,
           rawAnalysis: {
             analysis,
+            audit: classification.audit,
+            evidence: classification.evidence,
+            confidence: classification.confidence,
             relevant: classification.isRelevant,
             hasAttachment: email.parts.length > 0,
             filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
@@ -972,7 +1013,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         logStep(`[gmail-sync] invoice detected message=${email.gmailId} type=${classification.documentType} clientId=${clientId ?? "none"} amount=${amount ?? "missing"} drive=${driveLinks[0]?.link ? "yes" : "no"}`);
       }
 
-      if (clientId && isInvoiceRecordDocument(classification.documentType)) {
+      if (clientId && isInvoiceRecordDocument(classification.documentType) && classification.reviewStatus === "auto_saved") {
         const invoiceAmount = amount ?? 0;
         const invoiceNumber = analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
         const invoiceDate = normalizeBusinessDate(analysis.invoiceDate, email.receivedAt) ?? email.receivedAt;
@@ -1017,7 +1058,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         logStep(`[gmail-sync] invoice rejected message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
       }
 
-      if (classification.reviewStatus === "auto_saved" && classification.isRelevant && (amount != null || analysis.documentType !== "other" || classification.documentType !== "supplier_message")) {
+      const paymentEligibility = supplierPaymentCreationEligibility({
+        classification,
+        amount,
+        supplierName,
+      });
+      if (paymentEligibility.allowed) {
         const dateIso = email.receivedAt.toISOString();
         const duplicateHash = duplicateKey || buildDuplicateHash({
           organizationId,
@@ -1167,11 +1213,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         }
       } else {
         const reasons = [
-          classification.heldForFinancialSender && "held_for_financial_sender",
-          classification.reviewStatus !== "auto_saved" && "needs_review",
-          !classification.isRelevant && "not_relevant",
-          amount == null && analysis.documentType === "other" && classification.documentType === "supplier_message" && "supplier_message_without_amount_or_ai_document_type",
-        ].filter(Boolean);
+          ...paymentEligibility.reasons,
+        ];
         logStep(`[gmail-sync] SupplierPayment save skipped message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
       }
 
@@ -1301,7 +1344,7 @@ type PayloadPart = {
 type GmailClient = Awaited<ReturnType<typeof getGoogleClients>>["gmail"];
 type GmailMessageRef = { id?: string | null; threadId?: string | null };
 type GmailDocumentType = "invoice" | "receipt" | "payment_request" | "supplier_message" | "unknown_needs_review";
-type GmailConfidenceScore = "high" | "medium" | "low";
+type GmailConfidenceScore = "high" | "medium" | "low" | `${number}%`;
 type ScannedEmail = {
   gmailId: string;
   emailRecordId: string;
@@ -1321,9 +1364,24 @@ type ScannedEmail = {
 export type GmailScanClassification = {
   documentType: GmailDocumentType;
   confidenceScore: GmailConfidenceScore;
+  confidence: number;
   reviewStatus: "auto_saved" | "needs_review";
   isRelevant: boolean;
   decisionReason: string;
+  evidence: string[];
+  audit: {
+    keywordMatched: string[];
+    attachmentFound: boolean;
+    amountFound: boolean;
+    supplierDetected: boolean;
+    blockedReason: string | null;
+    invoiceAttached: boolean;
+    receiptAttached: boolean;
+    supplierPaymentRequestDetected: boolean;
+    taxInvoiceDetected: boolean;
+    pdfInvoiceDetected: boolean;
+    strictPaymentEvidence: boolean;
+  };
   heldForFinancialSender: boolean;
   financialSenderReason: string | null;
 };
@@ -1345,39 +1403,68 @@ export function classifyGmailScanCandidate(input: {
   amountRejectedReason?: string | null;
 }): GmailScanClassification {
   const text = `${input.subject}\n${input.bodyText}\n${input.attachmentFilenames.join("\n")}`.toLowerCase();
+  const attachmentText = input.attachmentFilenames.join("\n").toLowerCase();
   const hasAttachment = input.attachmentFilenames.length > 0;
   const hasPdf = input.attachmentFilenames.some((filename) => /\.pdf$/i.test(filename));
-  const hasInvoice = INVOICE_KEYWORD_PATTERNS.some((pattern) => pattern.test(text)) || /green invoice|greeninvoice|icount|i-count|חשבונית ירוקה/.test(text);
+  const block = detectNonInvoiceMessage(text, input.senderEmail, input.senderDomain);
+  const keywordMatches = matchedStrongInvoiceTerms(text);
+  const hasInvoice = keywordMatches.length > 0 || INVOICE_KEYWORD_PATTERNS.some((pattern) => pattern.test(text)) || /green invoice|greeninvoice|icount|i-count|חשבונית ירוקה/.test(text);
   const hasReceipt = RECEIPT_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
   const hasPaymentRequest = PAYMENT_REQUEST_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
   const hasSupplierSignal = SUPPLIER_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
   const hasAmount = input.amount !== null;
   const aiType = input.analysis.documentType;
   const aiConfidence = Number.isFinite(input.analysis.confidence) ? input.analysis.confidence : 0;
-  const hasStrongInvoiceEvidence = hasInvoice || hasReceipt || /invoice|receipt|חשבונית|קבלה/i.test(input.attachmentFilenames.join(" "));
-  const hasExplicitPaymentEvidence = hasPaymentRequest || input.analysis.paymentRequired;
-  const aiInvoiceTrusted = (aiType === "invoice" || aiType === "receipt") && aiConfidence >= 0.72 && (hasStrongInvoiceEvidence || hasPdf || hasAmount);
-  const aiPaymentTrusted = aiType === "payment_request" && aiConfidence >= 0.72 && (hasExplicitPaymentEvidence || hasAmount);
+  const invoiceAttached = hasAttachment && /invoice|tax[-_\s]?invoice|חשבונית|חשבונית\s*מס|חשבונית[-_\s]?מס|greeninvoice|icount|i-count/.test(attachmentText);
+  const receiptAttached = hasAttachment && /receipt|קבלה|חשבונית\s*מס\s*קבלה/.test(attachmentText);
+  const taxInvoiceDetected = /tax\s+invoice|חשבונית\s*מס/.test(text);
+  const supplierPaymentRequestDetected = hasPaymentRequest || (input.analysis.paymentRequired && aiType === "payment_request" && aiConfidence >= 0.72);
+  const pdfInvoiceDetected = hasPdf && (invoiceAttached || receiptAttached || taxInvoiceDetected || hasInvoice || hasReceipt || supplierPaymentRequestDetected) && (hasAmount || taxInvoiceDetected || invoiceAttached || receiptAttached);
+  const hasStrictPaymentEvidence = invoiceAttached || receiptAttached || supplierPaymentRequestDetected || taxInvoiceDetected || pdfInvoiceDetected;
+  const pdfLooksLikeInvoice = pdfInvoiceDetected;
+  const hasStrongInvoiceEvidence = hasStrictPaymentEvidence;
+  const hasExplicitPaymentEvidence = supplierPaymentRequestDetected;
+  const aiInvoiceTrusted = (aiType === "invoice" || aiType === "receipt") && aiConfidence >= 0.72 && hasStrongInvoiceEvidence && (hasAmount || pdfLooksLikeInvoice);
+  const aiPaymentTrusted = aiType === "payment_request" && aiConfidence >= 0.72 && hasExplicitPaymentEvidence && hasAmount;
 
   let documentType: GmailDocumentType = "unknown_needs_review";
-  if (hasReceipt || (aiInvoiceTrusted && aiType === "receipt")) documentType = "receipt";
-  else if (hasInvoice || aiInvoiceTrusted) documentType = "invoice";
-  else if (hasExplicitPaymentEvidence || aiPaymentTrusted) documentType = "payment_request";
-  else if ((hasSupplierSignal || hasAttachment) && (hasAmount || hasPdf || aiType !== "other")) documentType = "supplier_message";
+  if (!block) {
+    if (hasReceipt || (aiInvoiceTrusted && aiType === "receipt")) documentType = "receipt";
+    else if (hasInvoice || aiInvoiceTrusted) documentType = "invoice";
+    else if (hasExplicitPaymentEvidence || aiPaymentTrusted) documentType = "payment_request";
+    else if ((hasSupplierSignal || hasAttachment) && (hasAmount || pdfLooksLikeInvoice || aiType !== "other")) documentType = "supplier_message";
+  }
 
   const isRelevant = documentType !== "unknown_needs_review";
   const evidence = [
-    hasPdf && "pdf attachment",
-    hasAttachment && !hasPdf && "attachment",
-    hasAmount && "amount detected",
-    hasInvoice && "invoice keyword",
-    hasReceipt && "receipt keyword",
-    hasPaymentRequest && "payment keyword",
-    hasSupplierSignal && "supplier-like keyword",
-    aiType !== "other" && aiConfidence >= 0.72 && `ai:${aiType}`,
+    block && `blocked:${block}`,
+    hasPdf && "attachment found: PDF",
+    hasAttachment && !hasPdf && "attachment found",
+    invoiceAttached && "invoice attachment detected",
+    receiptAttached && "receipt attachment detected",
+    taxInvoiceDetected && "tax invoice detected",
+    supplierPaymentRequestDetected && "supplier payment request detected",
+    pdfInvoiceDetected && "PDF invoice detected",
+    hasAmount && "amount found",
+    ...keywordMatches.map((keyword) => `keyword matched: ${keyword}`),
+    hasReceipt && "keyword matched: receipt",
+    hasPaymentRequest && "keyword matched: payment request",
+    hasSupplierSignal && "supplier detected",
+    aiType !== "other" && aiConfidence >= 0.72 && `ai:${aiType}:${Math.round(aiConfidence * 100)}%`,
   ].filter(Boolean) as string[];
 
-  const confidenceScore = confidenceBucket(input.analysis.confidence, evidence.length, documentType);
+  const confidence = computeInvoiceConfidence({
+    blocked: Boolean(block),
+    hasStrongInvoiceEvidence,
+    pdfLooksLikeInvoice,
+    hasAmount,
+    hasSupplier: Boolean(input.supplierName && input.supplierName !== "Unknown supplier"),
+    hasExplicitPaymentEvidence,
+    aiConfidence,
+    aiType,
+    documentType,
+  });
+  const confidenceScore = `${Math.round(confidence * 100)}%` as GmailConfidenceScore;
   const financialSender = detectFinancialSender({
     senderEmail: input.senderEmail,
     senderDomain: input.senderDomain,
@@ -1388,9 +1475,13 @@ export function classifyGmailScanCandidate(input: {
   });
   const heldForFinancialSender = financialSender.held;
   const autoSaveHoldReasons = [
-    !(documentType === "invoice" || documentType === "payment_request") && `documentType is ${documentType}`,
-    confidenceScore !== "high" && `confidence is ${confidenceScore}`,
-    !hasAmount && (input.amountRejectedReason ?? "no valid amount"),
+    block && `blocked non-invoice message: ${block}`,
+    !(documentType === "invoice" || documentType === "receipt" || documentType === "payment_request") && `documentType is ${documentType}`,
+    confidence < 0.8 && `confidence below 80% (${Math.round(confidence * 100)}%)`,
+    !hasStrictPaymentEvidence && "no strict invoice/payment evidence",
+    documentType === "invoice" && !hasStrongInvoiceEvidence && "no strong invoice evidence",
+    documentType === "invoice" && !hasAmount && !pdfLooksLikeInvoice && (input.amountRejectedReason ?? "no valid amount or invoice-like PDF"),
+    documentType === "payment_request" && !hasExplicitPaymentEvidence && "no explicit payment request evidence",
   ].filter(Boolean) as string[];
   const canAutoSave = autoSaveHoldReasons.length === 0;
   const reviewStatus = heldForFinancialSender
@@ -1401,18 +1492,65 @@ export function classifyGmailScanCandidate(input: {
   const decisionReason = heldForFinancialSender
     ? financialSender.reason
     : canAutoSave
-      ? `Auto-saved: ${documentType} with high confidence and valid amount`
+      ? `Auto-saved: ${documentType} confidence=${Math.round(confidence * 100)}%; ${evidence.join("; ")}`
       : `Held for review: ${autoSaveHoldReasons.join(" / ")}`;
 
   return {
     documentType,
     confidenceScore,
+    confidence,
     reviewStatus,
     isRelevant,
     decisionReason,
+    evidence,
+    audit: {
+      keywordMatched: keywordMatches,
+      attachmentFound: hasAttachment,
+      amountFound: hasAmount,
+      supplierDetected: Boolean(input.supplierName && input.supplierName !== "Unknown supplier"),
+      blockedReason: block,
+      invoiceAttached,
+      receiptAttached,
+      supplierPaymentRequestDetected,
+      taxInvoiceDetected,
+      pdfInvoiceDetected,
+      strictPaymentEvidence: hasStrictPaymentEvidence,
+    },
     heldForFinancialSender,
     financialSenderReason: financialSender.held ? financialSender.reason : null,
   };
+}
+
+function matchedStrongInvoiceTerms(text: string) {
+  return STRONG_INVOICE_TERMS.filter((term) => text.includes(term.toLowerCase()));
+}
+
+function detectNonInvoiceMessage(text: string, senderEmail?: string, senderDomain?: string) {
+  const haystack = [text, senderEmail, senderDomain].filter(Boolean).join("\n");
+  return NON_INVOICE_BLOCK_PATTERNS.find(({ pattern }) => pattern.test(haystack))?.label ?? null;
+}
+
+function computeInvoiceConfidence(input: {
+  blocked: boolean;
+  hasStrongInvoiceEvidence: boolean;
+  pdfLooksLikeInvoice: boolean;
+  hasAmount: boolean;
+  hasSupplier: boolean;
+  hasExplicitPaymentEvidence: boolean;
+  aiConfidence: number;
+  aiType: string;
+  documentType: GmailDocumentType;
+}) {
+  if (input.blocked || input.documentType === "unknown_needs_review") return 0;
+  let score = 0;
+  if (input.hasStrongInvoiceEvidence) score += 0.42;
+  if (input.pdfLooksLikeInvoice) score += 0.22;
+  if (input.hasAmount) score += 0.2;
+  if (input.hasSupplier) score += 0.08;
+  if (input.hasExplicitPaymentEvidence) score += 0.12;
+  if (input.documentType === "payment_request" && input.hasExplicitPaymentEvidence && input.hasAmount) score += 0.35;
+  if (input.aiType !== "other") score += Math.min(0.12, Math.max(0, input.aiConfidence) * 0.12);
+  return Math.max(0, Math.min(0.99, score));
 }
 
 function detectFinancialSender(input: {
@@ -1497,6 +1635,25 @@ function gmailMessageLink(gmailMessageId: string) {
 
 function isInvoiceRecordDocument(documentType: GmailDocumentType) {
   return documentType === "invoice" || documentType === "receipt";
+}
+
+function supplierPaymentCreationEligibility(input: {
+  classification: GmailScanClassification;
+  amount: number | null;
+  supplierName: string;
+}): { allowed: true; reasons: [] } | { allowed: false; reasons: string[] } {
+  const reasons = [
+    input.classification.heldForFinancialSender && "held_for_financial_sender",
+    input.classification.reviewStatus !== "auto_saved" && "needs_review",
+    !input.classification.isRelevant && "not_relevant",
+    input.classification.confidence < 0.8 && `confidence_below_80_${Math.round(input.classification.confidence * 100)}%`,
+    !["invoice", "receipt", "payment_request"].includes(input.classification.documentType) && `document_type_${input.classification.documentType}`,
+    !input.classification.audit.strictPaymentEvidence && "missing_strict_invoice_payment_evidence",
+    input.amount === null && "missing_amount",
+    !isUsableSupplierName(input.supplierName) && "unknown_or_unusable_supplier",
+  ].filter(Boolean) as string[];
+
+  return reasons.length === 0 ? { allowed: true, reasons: [] } : { allowed: false, reasons };
 }
 
 function extractInvoiceNumber(text: string) {
@@ -1754,6 +1911,53 @@ function normalizeSupplierName(value: string) {
     .replace(/\s+/g, " ")
     .trim();
   return cleaned || value.trim() || "Unknown supplier";
+}
+
+function detectSupplierName(input: {
+  analysisSupplier?: string | null;
+  bodyText: string;
+  senderName: string;
+  senderDomain: string;
+}) {
+  const documentSupplier = extractSupplierFromDocument(input.bodyText);
+  if (documentSupplier) return documentSupplier;
+
+  const aiSupplier = normalizeSupplierName(input.analysisSupplier ?? "");
+  if (isUsableSupplierName(aiSupplier)) return aiSupplier;
+
+  const senderSupplier = normalizeSupplierName(input.senderName);
+  if (isUsableSupplierName(senderSupplier)) return senderSupplier;
+
+  return supplierFromDomain(input.senderDomain);
+}
+
+function extractSupplierFromDocument(text: string) {
+  const patterns = [
+    /(?:שם\s*(?:ה)?(?:ספק|חברה|עסק)|עוסק\s*מורשה|ח\.פ\.|חברה)[:\s-]{1,20}([^\n\r|]{2,80})/i,
+    /(?:supplier|vendor|company|business name|from)[:\s-]{1,20}([^\n\r|]{2,80})/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const candidate = normalizeSupplierName(match?.[1] ?? "");
+    if (isUsableSupplierName(candidate)) return candidate;
+  }
+  return null;
+}
+
+function isUsableSupplierName(value: string) {
+  const cleaned = value.trim();
+  if (!cleaned || cleaned === "Unknown supplier") return false;
+  if (cleaned.length < 2 || cleaned.length > 80) return false;
+  if (/^(invoice|receipt|payment|support|noreply|no reply|billing|accounts?)$/i.test(cleaned)) return false;
+  return /[\p{L}]/u.test(cleaned);
+}
+
+function supplierFromDomain(domain: string) {
+  const main = domain
+    .replace(/^www\./i, "")
+    .split(".")
+    .filter(Boolean)[0] ?? "";
+  return normalizeSupplierName(main || domain || "Unknown supplier");
 }
 
 function canonicalSupplierKey(value: string) {
