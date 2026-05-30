@@ -20,7 +20,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL
-        sync: false
+        value: https://ai-office-worker-frontend.onrender.com
       - key: GOOGLE_CLIENT_ID
         value: 962636575245-5cvgi8b8bld3ic9kq0n5fqc8vbhdlpie.apps.googleusercontent.com
       - key: GOOGLE_CLIENT_SECRET

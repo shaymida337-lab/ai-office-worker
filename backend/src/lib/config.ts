@@ -14,16 +14,20 @@ function requiredInProduction(name: string, fallback: string): string {
   const value = process.env[name];
   if (value) return value;
   if (process.env.NODE_ENV === "production") {
-    throw new Error(`Missing env: ${name}`);
+    throw new Error(`Missing required production environment variable: ${name}`);
   }
   return fallback;
 }
 
 function rejectLocalhostInProduction(name: string, value: string): string {
   if (process.env.NODE_ENV === "production" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/i.test(value)) {
-    throw new Error(`${name} cannot use localhost in production`);
+    throw new Error(`${name} cannot use localhost in production. Current value: ${value}`);
   }
   return value;
+}
+
+function configured(name: string): boolean {
+  return Boolean(process.env[name]?.trim());
 }
 
 function toGmailIntegrationRedirectUri(uri: string): string {
@@ -107,6 +111,41 @@ export const config = {
 
   driveRootFolder: optional("GOOGLE_DRIVE_ROOT", "AI Office Worker"),
 };
+
+export function validateStartupEnv() {
+  const missing: string[] = [];
+  if (config.nodeEnv === "production") {
+    for (const name of ["DATABASE_URL", "JWT_SECRET", "FRONTEND_URL"]) {
+      if (!configured(name)) missing.push(name);
+    }
+  }
+
+  if (missing.length) {
+    throw new Error(
+      [
+        `Missing required production environment variables: ${missing.join(", ")}`,
+        "Set them on the Render backend service before deploying.",
+      ].join("\n")
+    );
+  }
+
+  const optionalWarnings: string[] = [];
+  const googleKeys = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"];
+  const configuredGoogle = googleKeys.filter(configured);
+  if (configuredGoogle.length > 0 && configuredGoogle.length < googleKeys.length) {
+    optionalWarnings.push(`Google OAuth is partially configured. Missing: ${googleKeys.filter((name) => !configured(name)).join(", ")}`);
+  }
+
+  const twilioKeys = ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_WHATSAPP_NUMBER"];
+  const configuredTwilio = twilioKeys.filter(configured);
+  if (configuredTwilio.length > 0 && configuredTwilio.length < twilioKeys.length) {
+    optionalWarnings.push(`Twilio WhatsApp is partially configured. Missing: ${twilioKeys.filter((name) => !configured(name)).join(", ")}`);
+  }
+
+  for (const warning of optionalWarnings) {
+    console.warn(`[startup] ${warning}`);
+  }
+}
 
 export function hasGoogleOAuth(): boolean {
   return Boolean(config.google.clientId && config.google.clientSecret);
