@@ -585,6 +585,32 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
       }
     );
 
+    const debugRows = rows.map((row) => {
+      const primaryScan = row.scanItems[0];
+      const ruleFired = row.cleanupPreview.rule1FinancialSenderHold
+        ? "financial-sender"
+        : row.cleanupPreview.amountRejectedReason?.includes("too large")
+          ? "amount-over-1M"
+          : row.cleanupPreview.rule3AmountSanityFlag
+            ? "amount-sanity"
+            : row.cleanupPreview.wouldBeDocumentType === "receipt"
+              ? "receipt-not-auto-saved"
+              : row.cleanupPreview.rule2AutoSaveGateHold
+                ? "auto-save-gating"
+                : "would-remain-auto-saved";
+
+      return {
+        supplier: row.payment.supplier,
+        senderDomain: row.senderDomain,
+        amount: row.payment.amount,
+        currentReviewStatus: primaryScan?.reviewStatus ?? null,
+        newReviewStatus: row.cleanupPreview.wouldBeReviewStatus,
+        ruleFired,
+        currentDecisionReason: primaryScan?.decisionReason ?? null,
+        newDecisionReason: row.cleanupPreview.wouldBeDecisionReason,
+      };
+    });
+
     const domainSummary = Array.from(
       rows.reduce((acc, row) => {
         const existing = acc.get(row.senderDomain) ?? { domain: row.senderDomain, count: 0, totalAmount: 0 };
@@ -602,6 +628,14 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
       countedRows: rows.length,
       moneyToPay: rows.reduce((sum, row) => sum + row.payment.amount, 0),
       cleanupPreviewSummary,
+      plainTextDebug: {
+        summary: {
+          currentMoneyToPay: cleanupPreviewSummary.currentMoneyToPay,
+          newMoneyToPay: cleanupPreviewSummary.newMoneyToPay,
+          wouldMoveOut: cleanupPreviewSummary.wouldMoveOutCount,
+        },
+        rows: debugRows,
+      },
       domainSummary,
       rows,
     });
