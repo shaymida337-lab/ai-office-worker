@@ -34,6 +34,7 @@ const links: Array<{ href: string; label: string; icon: typeof Home; module?: Bu
   { href: "/message-scans", label: "סריקות הודעות", icon: Search },
   { href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
   { href: "/dashboard/invoices", label: "חשבוניות", icon: FileText, module: "invoices" },
+  { href: "/dashboard/invoice-diagnostics", label: "אבחון חשבוניות", icon: Search, module: "invoices" },
   { href: "/payments", label: "תשלומי ספקים", icon: WalletCards, module: "supplier_management" },
   { href: "/dashboard/bank", label: "התאמת בנק", icon: Landmark, module: "supplier_management" },
   { href: "/collections", label: "גבייה", icon: CircleDollarSign, module: "collections" },

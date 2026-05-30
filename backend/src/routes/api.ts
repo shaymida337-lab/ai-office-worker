@@ -180,6 +180,178 @@ apiRouter.get("/gmail/scan-stats", async (req, res) => {
   }
 });
 
+apiRouter.get("/gmail/invoice-diagnostics", async (req, res) => {
+  const organizationId = req.auth!.organizationId;
+  try {
+    const latestScan = await prisma.syncLog.findFirst({
+      where: { organizationId, type: "gmail_scan" },
+      orderBy: { startedAt: "desc" },
+      select: {
+        id: true,
+        status: true,
+        emailsProcessed: true,
+        invoicesFound: true,
+        paymentsCreated: true,
+        startedAt: true,
+        finishedAt: true,
+        errorMessage: true,
+      },
+    });
+
+    const scanWindow = latestScan
+      ? { gte: latestScan.startedAt, lte: latestScan.finishedAt ?? new Date() }
+      : undefined;
+    const itemWhere = {
+      organizationId,
+      ...(scanWindow ? { createdAt: scanWindow } : {}),
+    };
+
+    const scanItems = await prisma.gmailScanItem.findMany({
+      where: itemWhere,
+      orderBy: { createdAt: "desc" },
+      take: 2000,
+      select: {
+        id: true,
+        emailMessageId: true,
+        sender: true,
+        senderEmail: true,
+        subject: true,
+        documentType: true,
+        attachmentFilename: true,
+        confidenceScore: true,
+        reviewStatus: true,
+        decisionReason: true,
+        rawAnalysis: true,
+        amount: true,
+        supplierName: true,
+        createdAt: true,
+      },
+    });
+
+    const emailIds = scanItems
+      .map((item) => item.emailMessageId)
+      .filter((id): id is string => Boolean(id));
+    const [emailMessages, attachmentRows] = await Promise.all([
+      emailIds.length
+        ? prisma.emailMessage.findMany({
+            where: { id: { in: emailIds }, organizationId },
+            select: { id: true, bodyText: true, snippet: true, subject: true },
+          })
+        : Promise.resolve([]),
+      emailIds.length
+        ? prisma.emailAttachment.findMany({
+            where: { emailMessageId: { in: emailIds } },
+            select: { emailMessageId: true, filename: true, mimeType: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const emailById = new Map(emailMessages.map((email) => [email.id, email]));
+    const attachmentsByEmailId = new Map<string, typeof attachmentRows>();
+    for (const attachment of attachmentRows) {
+      const existing = attachmentsByEmailId.get(attachment.emailMessageId) ?? [];
+      existing.push(attachment);
+      attachmentsByEmailId.set(attachment.emailMessageId, existing);
+    }
+
+    const diagnostics = scanItems.map((item) => {
+      const email = item.emailMessageId ? emailById.get(item.emailMessageId) : null;
+      const attachments = item.emailMessageId ? attachmentsByEmailId.get(item.emailMessageId) ?? [] : [];
+      const text = [
+        item.subject,
+        email?.subject,
+        email?.snippet,
+        email?.bodyText,
+        item.attachmentFilename,
+        attachments.map((attachment) => attachment.filename).join(" "),
+        JSON.stringify(item.rawAnalysis ?? {}),
+      ].filter(Boolean).join("\n");
+      const lower = text.toLowerCase();
+      const hasAttachment = Boolean(item.attachmentFilename || attachments.length > 0);
+      const hasPdfAttachment = attachments.some((attachment) =>
+        /\.pdf$/i.test(attachment.filename) || attachment.mimeType === "application/pdf"
+      ) || /\.pdf$/i.test(item.attachmentFilename ?? "");
+      const hasInvoiceKeyword = /\binvoice\b|חשבונית|green\s*invoice|greeninvoice|icount|i-count|חשבונית\s*ירוקה/i.test(text);
+      const hasTaxInvoiceKeyword = /tax\s+invoice|חשבונית\s*מס/i.test(text);
+      const hasReceiptKeyword = /\breceipt\b|קבלה|חשבונית\s*מס\s*קבלה/i.test(text);
+      const hasPaymentRequestKeyword = /payment\s+request|payment\s+due|amount\s+due|balance\s+due|please\s+pay|דרישת\s+תשלום|בקשת\s+תשלום|נא\s+לשלם|לתשלום/i.test(text);
+      const hasAmountEvidence = item.amount !== null || /amount found|amountfound|סכום/i.test(lower);
+      const hasSupplierEvidence = Boolean(item.supplierName && item.supplierName !== "Unknown supplier") || /supplier detected|supplierdetected|ספק/i.test(lower);
+      const candidateInvoice =
+        hasPdfAttachment ||
+        hasInvoiceKeyword ||
+        hasTaxInvoiceKeyword ||
+        hasReceiptKeyword ||
+        hasPaymentRequestKeyword ||
+        (hasAmountEvidence && hasSupplierEvidence);
+      const approved = item.reviewStatus === "auto_saved" && ["invoice", "receipt", "payment_request"].includes(item.documentType);
+      const rejected = candidateInvoice && !approved;
+
+      return {
+        id: item.id,
+        sender: item.sender,
+        senderEmail: item.senderEmail,
+        subject: item.subject,
+        documentType: item.documentType,
+        reviewStatus: item.reviewStatus,
+        rejectionReason: item.decisionReason,
+        confidenceScore: item.confidenceScore,
+        hasAttachment,
+        hasPdfAttachment,
+        hasInvoiceKeyword,
+        hasTaxInvoiceKeyword,
+        hasReceiptKeyword,
+        hasPaymentRequestKeyword,
+        candidateInvoice,
+        approved,
+        rejected,
+      };
+    });
+
+    const rejectionCounts = diagnostics
+      .filter((item) => item.rejected)
+      .reduce<Record<string, number>>((acc, item) => {
+        const reason = item.rejectionReason || "unknown";
+        acc[reason] = (acc[reason] ?? 0) + 1;
+        return acc;
+      }, {});
+
+    res.json({
+      latestScan,
+      totals: {
+        scannedEmails: latestScan?.emailsProcessed ?? scanItems.length,
+        scanItems: scanItems.length,
+        emailsWithAttachments: diagnostics.filter((item) => item.hasAttachment).length,
+        emailsWithPdfAttachments: diagnostics.filter((item) => item.hasPdfAttachment).length,
+        emailsWithInvoiceKeywords: diagnostics.filter((item) => item.hasInvoiceKeyword).length,
+        emailsWithTaxInvoiceKeywords: diagnostics.filter((item) => item.hasTaxInvoiceKeyword).length,
+        emailsWithReceiptKeywords: diagnostics.filter((item) => item.hasReceiptKeyword).length,
+        emailsWithPaymentRequestKeywords: diagnostics.filter((item) => item.hasPaymentRequestKeyword).length,
+        candidateInvoicesBeforeFiltering: diagnostics.filter((item) => item.candidateInvoice).length,
+        approvedInvoices: diagnostics.filter((item) => item.approved).length,
+        rejectedInvoices: diagnostics.filter((item) => item.rejected).length,
+        supplierPaymentsCreated: latestScan?.paymentsCreated ?? 0,
+      },
+      rejectionCounts,
+      rejectedCandidates: diagnostics
+        .filter((item) => item.rejected)
+        .slice(0, 50)
+        .map((item) => ({
+          sender: item.sender,
+          senderEmail: item.senderEmail,
+          subject: item.subject,
+          rejectionReason: item.rejectionReason,
+          confidenceScore: item.confidenceScore,
+          documentType: item.documentType,
+          reviewStatus: item.reviewStatus,
+        })),
+    });
+  } catch (err) {
+    console.error("[gmail/invoice-diagnostics]", errorDetails(err));
+    res.status(500).json({ error: "טעינת אבחון חשבוניות נכשלה" });
+  }
+});
+
 async function debugGmailIntegrationForAuth(auth: { userId: string; organizationId: string; email: string }) {
   const current = await prisma.integration.findUnique({
     where: { organizationId_provider: { organizationId: auth.organizationId, provider: "gmail" } },
