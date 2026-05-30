@@ -228,7 +228,9 @@ export default function AdminDebugPage() {
     setError("");
     setMessage("");
     try {
-      const result = await apiFetch<PaymentClassificationInvestigationResponse>("/api/debug/payments/classification-investigation");
+      const result = await apiFetch<PaymentClassificationInvestigationResponse>("/api/debug/payments/classification-investigation", {
+        method: "GET",
+      });
       setPaymentInvestigation(result);
       setMessage(`נטענו ${result.rows.length} שורות SupplierPayment שמרכיבות את כסף לשלם.`);
     } catch (err) {
