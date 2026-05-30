@@ -162,7 +162,6 @@ type DriveMergeStatusResponse = {
 const DRIVE_JOB_REQUEST_TIMEOUT_MS = 60_000;
 const DRIVE_JOB_POLL_INTERVAL_MS = 2_500;
 const DRIVE_JOB_MAX_WAIT_MS = 15 * 60_000;
-const PAYMENT_CLASSIFICATION_INVESTIGATION_PATH = "/api/debug/payments/classification-investigation";
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -229,7 +228,7 @@ export default function AdminDebugPage() {
     setError("");
     setMessage("");
     try {
-      const result = await apiFetch<PaymentClassificationInvestigationResponse>(PAYMENT_CLASSIFICATION_INVESTIGATION_PATH);
+      const result = await apiFetch<PaymentClassificationInvestigationResponse>("/api/debug/payments/classification-investigation");
       setPaymentInvestigation(result);
       setMessage(`נטענו ${result.rows.length} שורות SupplierPayment שמרכיבות את כסף לשלם.`);
     } catch (err) {
