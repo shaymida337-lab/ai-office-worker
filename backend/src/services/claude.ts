@@ -3,6 +3,7 @@ import { config, hasClaude } from "../lib/config.js";
 
 export type EmailAnalysis = {
   supplier: string;
+  supplierTaxId?: string | null;
   amount: number | null;
   currency: string;
   documentType: "invoice" | "payment_request" | "receipt" | "other";
@@ -33,6 +34,7 @@ const SYSTEM_PROMPT = `אתה עוזר הנהלת חשבונות לעסק ישר
 שדות:
 {
   "supplier": "string",
+  "supplierTaxId": "string|null",
   "amount": number|null,
   "currency": "ILS",
   "documentType": "invoice|payment_request|receipt|other",
@@ -44,7 +46,7 @@ const SYSTEM_PROMPT = `אתה עוזר הנהלת חשבונות לעסק ישר
   "confidence": 0-1
 }
 
-אל תמציא סכומים או מספרי חשבונית. documentType: invoice=חשבונית/חשבונית מס, receipt=קבלה/חשבונית מס קבלה, payment_request=דרישת תשלום.
+אל תמציא סכומים, מספרי חשבונית או מספרי ח.פ/עוסק. supplier חייב להיות שם מנפיק החשבונית/העסק מתוך המסמך, לא כתובת אימייל ולא שם מקבל המייל. documentType: invoice=חשבונית/חשבונית מס, receipt=קבלה/חשבונית מס קבלה, payment_request=דרישת תשלום.
 לתמוך בעברית ובאנגלית, כולל PDF/image OCR text שמופיע בגוף.`;
 
 export async function analyzeEmailContent(input: {
@@ -75,6 +77,7 @@ export async function analyzeEmailContent(input: {
   if (!parsed) return fallbackAnalysis(input);
   return {
     supplier: parsed.supplier || "לא ידוע",
+    supplierTaxId: typeof (parsed as { supplierTaxId?: unknown }).supplierTaxId === "string" ? (parsed as { supplierTaxId: string }).supplierTaxId : null,
     amount: normalizeAmountValue(parsed.amount),
     currency: parsed.currency || "ILS",
     documentType: parsed.documentType || "other",
@@ -216,6 +219,7 @@ function fallbackAnalysis(input: {
 
   return {
     supplier,
+    supplierTaxId: extractSupplierTaxId(text),
     amount,
     currency: "ILS",
     documentType: isReceipt
@@ -232,6 +236,11 @@ function fallbackAnalysis(input: {
     tasks: [],
     confidence: amount || isInvoice || isPayment || isReceipt ? 0.55 : 0.25,
   };
+}
+
+function extractSupplierTaxId(text: string): string | null {
+  const match = text.match(/(?:ח\.?פ\.?|חברה\s*מספר|עוסק\s*מורשה|מספר\s*עוסק|company\s*(?:id|number)|tax\s*id|vat\s*(?:id|number))[:\s#-]{0,20}([0-9]{7,10})/i);
+  return match?.[1] ?? null;
 }
 
 function extractInvoiceDate(text: string): string | null {

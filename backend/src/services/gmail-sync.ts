@@ -309,6 +309,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
   if (options.since) {
     logStep(`[gmail-sync] Incremental scan since ${options.since.toISOString()}`);
   }
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { user: { select: { email: true } }, businessName: true, businessId: true },
+  });
+  const ownerEmails = new Set([organization?.user.email].filter((email): email is string => Boolean(email)).map((email) => email.toLowerCase()));
+  const knownSupplierNames = await loadKnownSupplierNames(organizationId);
 
   const activeLogAfterReset = await prisma.syncLog.findFirst({
     where: {
@@ -741,12 +747,17 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       const amountRejectedReason = invoiceMatch.amountRejectedReason ?? rejectedDetectedAmountReason(analysis.amount);
       logStep(`[gmail-sync] invoice detection message=${email.gmailId} isInvoice=${invoiceMatch.isInvoice} detectedAmount=${invoiceMatch.amount ?? "none"} aiAmount=${analysis.amount ?? "none"} finalAmount=${amount ?? "none"} amountRejectedReason=${amountRejectedReason ?? "none"}`);
       const attachmentFilename = primaryAttachmentFilename(email.parts);
-      const supplierName = detectSupplierName({
+      const supplierMetadata = resolveSupplierMetadata({
         analysisSupplier: analysis.supplier,
+        analysisSupplierTaxId: analysis.supplierTaxId,
         bodyText: bodyForAnalysis,
         senderName: email.senderName,
+        senderEmail: email.senderEmail,
         senderDomain: email.domain,
+        ownerEmails,
+        knownSupplierNames,
       });
+      const supplierName = supplierMetadata.name;
       const classification = classifyGmailScanCandidate({
         subject: email.subject,
         bodyText: bodyForAnalysis,
@@ -940,6 +951,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             audit: classification.audit,
             evidence: classification.evidence,
             confidence: classification.confidence,
+            supplier: supplierMetadata,
+            supplierTaxId: supplierMetadata.taxId,
+            invoiceNumber: analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n")),
+            invoiceDate: analysis.invoiceDate ?? null,
+            dueDate: analysis.dueDate ?? null,
             relevant: classification.isRelevant,
             hasAttachment: email.parts.length > 0,
             filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
@@ -965,6 +981,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             audit: classification.audit,
             evidence: classification.evidence,
             confidence: classification.confidence,
+            supplier: supplierMetadata,
+            supplierTaxId: supplierMetadata.taxId,
+            invoiceNumber: analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n")),
+            invoiceDate: analysis.invoiceDate ?? null,
+            dueDate: analysis.dueDate ?? null,
             relevant: classification.isRelevant,
             hasAttachment: email.parts.length > 0,
             filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
@@ -1498,7 +1519,7 @@ export function classifyGmailScanCandidate(input: {
     hasStrongInvoiceEvidence,
     pdfLooksLikeInvoice,
     hasAmount,
-    hasSupplier: Boolean(input.supplierName && input.supplierName !== "Unknown supplier"),
+    hasSupplier: isUsableSupplierName(input.supplierName),
     hasExplicitPaymentEvidence,
     aiConfidence,
     aiType,
@@ -2083,42 +2104,93 @@ function normalizeSupplierName(value: string) {
   return cleaned || value.trim() || "Unknown supplier";
 }
 
-function detectSupplierName(input: {
+type SupplierMetadata = {
+  name: string;
+  taxId: string | null;
+  confidence: number;
+  source: "document" | "ai" | "known_supplier" | "sender_display" | "domain" | "unknown";
+};
+
+function resolveSupplierMetadata(input: {
   analysisSupplier?: string | null;
+  analysisSupplierTaxId?: string | null;
   bodyText: string;
   senderName: string;
+  senderEmail: string;
   senderDomain: string;
-}) {
-  const documentSupplier = extractSupplierFromDocument(input.bodyText);
-  if (documentSupplier) return documentSupplier;
+  ownerEmails: Set<string>;
+  knownSupplierNames: Map<string, string>;
+}): SupplierMetadata {
+  const taxId = input.analysisSupplierTaxId || extractSupplierTaxId(input.bodyText);
+  const documentSupplier = extractSupplierFromDocument(input.bodyText, input.ownerEmails);
+  if (documentSupplier) return withKnownSupplierName({
+    name: documentSupplier,
+    taxId,
+    confidence: taxId ? 0.98 : 0.92,
+    source: "document",
+  }, input.knownSupplierNames);
 
   const aiSupplier = normalizeSupplierName(input.analysisSupplier ?? "");
-  if (isUsableSupplierName(aiSupplier)) return aiSupplier;
+  if (isUsableSupplierName(aiSupplier, input.ownerEmails)) return withKnownSupplierName({
+    name: aiSupplier,
+    taxId,
+    confidence: taxId ? 0.88 : 0.8,
+    source: "ai",
+  }, input.knownSupplierNames);
 
   const senderSupplier = normalizeSupplierName(input.senderName);
-  if (isUsableSupplierName(senderSupplier)) return senderSupplier;
+  if (isUsableSupplierName(senderSupplier, input.ownerEmails) && !looksLikeEmailAddress(senderSupplier)) return withKnownSupplierName({
+    name: senderSupplier,
+    taxId,
+    confidence: 0.52,
+    source: "sender_display",
+  }, input.knownSupplierNames);
 
-  return supplierFromDomain(input.senderDomain);
+  const domainSupplier = supplierFromDomain(input.senderDomain);
+  if (isUsableSupplierName(domainSupplier, input.ownerEmails) && !isPersonalEmailDomain(input.senderDomain)) return withKnownSupplierName({
+    name: domainSupplier,
+    taxId,
+    confidence: 0.35,
+    source: "domain",
+  }, input.knownSupplierNames);
+
+  return { name: "Unknown supplier", taxId, confidence: 0.1, source: "unknown" };
 }
 
-function extractSupplierFromDocument(text: string) {
+function withKnownSupplierName(candidate: SupplierMetadata, knownSupplierNames: Map<string, string>): SupplierMetadata {
+  const key = canonicalSupplierKey(candidate.name);
+  const known = key ? knownSupplierNames.get(key) : null;
+  if (known) return { ...candidate, name: known, source: candidate.source === "document" ? "document" : "known_supplier" };
+  if (key) knownSupplierNames.set(key, candidate.name);
+  return candidate;
+}
+
+function extractSupplierFromDocument(text: string, ownerEmails: Set<string>) {
   const patterns = [
-    /(?:שם\s*(?:ה)?(?:ספק|חברה|עסק)|עוסק\s*מורשה|ח\.פ\.|חברה)[:\s-]{1,20}([^\n\r|]{2,80})/i,
-    /(?:supplier|vendor|company|business name|from)[:\s-]{1,20}([^\n\r|]{2,80})/i,
+    /(?:שם\s*(?:ה)?(?:ספק|חברה|עסק)|שם\s*העוסק|שם\s*המנפיק|מאת|לכבוד\s*לא\s*כולל|עוסק\s*מורשה|ח\.פ\.|חברה)[:\s-]{1,20}([^\n\r|]{2,80})/i,
+    /(?:supplier|vendor|issuer|issued\s+by|company|business name|from)[:\s-]{1,20}([^\n\r|]{2,80})/i,
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
     const candidate = normalizeSupplierName(match?.[1] ?? "");
-    if (isUsableSupplierName(candidate)) return candidate;
+    if (isUsableSupplierName(candidate, ownerEmails)) return candidate;
   }
   return null;
 }
 
-function isUsableSupplierName(value: string) {
+function extractSupplierTaxId(text: string) {
+  const match = text.match(/(?:ח\.?פ\.?|חברה\s*מספר|עוסק\s*מורשה|מספר\s*עוסק|תיק\s*עוסק|company\s*(?:id|number)|tax\s*id|vat\s*(?:id|number))[:\s#-]{0,20}([0-9]{7,10})/i);
+  return match?.[1] ?? null;
+}
+
+function isUsableSupplierName(value: string, ownerEmails: Set<string> = new Set()) {
   const cleaned = value.trim();
   if (!cleaned || cleaned === "Unknown supplier") return false;
+  if (/^לא\s+ידוע$/.test(cleaned)) return false;
   if (cleaned.length < 2 || cleaned.length > 80) return false;
-  if (/^(invoice|receipt|payment|support|noreply|no reply|billing|accounts?)$/i.test(cleaned)) return false;
+  if (looksLikeEmailAddress(cleaned)) return false;
+  if ([...ownerEmails].some((email) => cleaned.toLowerCase().includes(email))) return false;
+  if (/^(invoice|receipt|payment|support|noreply|no reply|billing|accounts?|gmail|googlemail|outlook|hotmail|yahoo)$/i.test(cleaned)) return false;
   return /[\p{L}]/u.test(cleaned);
 }
 
@@ -2128,6 +2200,14 @@ function supplierFromDomain(domain: string) {
     .split(".")
     .filter(Boolean)[0] ?? "";
   return normalizeSupplierName(main || domain || "Unknown supplier");
+}
+
+function looksLikeEmailAddress(value: string) {
+  return /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value);
+}
+
+function isPersonalEmailDomain(domain: string) {
+  return /^(gmail|googlemail|outlook|hotmail|yahoo)\./i.test(domain);
 }
 
 function canonicalSupplierKey(value: string) {
@@ -2232,6 +2312,32 @@ function normalizeBusinessDate(value: string | null | undefined, fallback: Date 
   const twoYearsMs = 2 * 365 * 24 * 60 * 60 * 1000;
   if (date.getTime() < now - twoYearsMs || date.getTime() > now + twoYearsMs) return fallback;
   return date;
+}
+
+async function loadKnownSupplierNames(organizationId: string) {
+  const [payments, invoices] = await Promise.all([
+    prisma.supplierPayment.findMany({
+      where: { organizationId },
+      distinct: ["supplier"],
+      select: { supplier: true },
+      take: 500,
+    }),
+    prisma.gmailScanItem.findMany({
+      where: {
+        organizationId,
+        supplierName: { not: "Unknown supplier" },
+      },
+      distinct: ["supplierName"],
+      select: { supplierName: true },
+      take: 500,
+    }),
+  ]);
+  const names = new Map<string, string>();
+  for (const name of [...payments.map((payment) => payment.supplier), ...invoices.map((invoice) => invoice.supplierName)]) {
+    const key = canonicalSupplierKey(name);
+    if (key && !names.has(key) && isUsableSupplierName(name)) names.set(key, name);
+  }
+  return names;
 }
 
 async function upsertPotentialClient(input: {
