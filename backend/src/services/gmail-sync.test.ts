@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildGmailScanDuplicateKey,
   classifyGmailScanCandidate,
+  extractInvoiceAmount,
 } from "./gmail-sync.js";
 import type { EmailAnalysis } from "./claude.js";
 
@@ -69,6 +70,27 @@ test("holds high confidence invoice without valid amount for review", () => {
   assert.equal(result.confidenceScore, "high");
   assert.equal(result.reviewStatus, "needs_review");
   assert.match(result.decisionReason, /no valid amount/);
+});
+
+test("does not treat invoice reference number as amount", () => {
+  const result = extractInvoiceAmount("Fwd: חשבונית מס שריון 12151474");
+
+  assert.equal(result.amount, null);
+});
+
+test("holds absurd parsed amounts for review", () => {
+  const result = classifyGmailScanCandidate({
+    subject: "Invoice INV-1003",
+    bodyText: "Total due 17,914,063,727 ILS",
+    attachmentFilenames: ["invoice-1003.pdf"],
+    analysis: analysis({ documentType: "invoice", confidence: 0.9 }),
+    amount: null,
+    supplierName: "Acme Ltd",
+    amountRejectedReason: "parsed amount looks invalid/too large",
+  });
+
+  assert.equal(result.reviewStatus, "needs_review");
+  assert.match(result.decisionReason, /too large/);
 });
 
 test("holds financial sender messages for review even with strong payment signals", () => {

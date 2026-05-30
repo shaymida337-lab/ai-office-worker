@@ -120,6 +120,9 @@ const FINANCIAL_SENDER_DOMAINS = [
   "u-bank.net",
   "onezero",
 ];
+const MAX_AUTO_SAVE_AMOUNT = 1_000_000;
+const REFERENCE_NUMBER_CONTEXT =
+  /(?:אסמכתא|מספר|שובר|סידורי|מסמך|חשבונית\s*(?:מס)?\s*מספר|ref|reference|invoice\s*(?:no|number)|order\s*(?:no|number)|#)/i;
 const INVOICE_KEYWORD_PATTERNS = [
   /חשבונית\s*מס\s*קבלה/i,
   /חשבונית\s*מס/i,
@@ -684,7 +687,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       if (invoiceMatch.isInvoice) invoiceDetectionPositive++;
       else invoiceDetectionNegative++;
       const amount = normalizeDetectedAmount(invoiceMatch.amount ?? analysis.amount);
-      logStep(`[gmail-sync] invoice detection message=${email.gmailId} isInvoice=${invoiceMatch.isInvoice} detectedAmount=${invoiceMatch.amount ?? "none"} aiAmount=${analysis.amount ?? "none"} finalAmount=${amount ?? "none"}`);
+      const amountRejectedReason = invoiceMatch.amountRejectedReason ?? rejectedDetectedAmountReason(analysis.amount);
+      logStep(`[gmail-sync] invoice detection message=${email.gmailId} isInvoice=${invoiceMatch.isInvoice} detectedAmount=${invoiceMatch.amount ?? "none"} aiAmount=${analysis.amount ?? "none"} finalAmount=${amount ?? "none"} amountRejectedReason=${amountRejectedReason ?? "none"}`);
       const attachmentFilename = primaryAttachmentFilename(email.parts);
       const supplierName = normalizeSupplierName(analysis.supplier || email.senderName || email.domain || "Unknown supplier");
       const classification = classifyGmailScanCandidate({
@@ -696,6 +700,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         supplierName,
         senderEmail: email.senderEmail,
         senderDomain: email.domain,
+        amountRejectedReason,
       });
       const duplicateKey = buildGmailScanDuplicateKey({
         gmailMessageId: email.gmailId,
@@ -1309,6 +1314,7 @@ export function classifyGmailScanCandidate(input: {
   supplierName: string;
   senderEmail?: string;
   senderDomain?: string;
+  amountRejectedReason?: string | null;
 }): GmailScanClassification {
   const text = `${input.subject}\n${input.bodyText}\n${input.attachmentFilenames.join("\n")}`.toLowerCase();
   const hasAttachment = input.attachmentFilenames.length > 0;
@@ -1343,7 +1349,7 @@ export function classifyGmailScanCandidate(input: {
   const autoSaveHoldReasons = [
     !(documentType === "invoice" || documentType === "payment_request") && `documentType is ${documentType}`,
     confidenceScore !== "high" && `confidence is ${confidenceScore}`,
-    !hasAmount && "no valid amount",
+    !hasAmount && (input.amountRejectedReason ?? "no valid amount"),
   ].filter(Boolean) as string[];
   const canAutoSave = autoSaveHoldReasons.length === 0;
   const reviewStatus = heldForFinancialSender
@@ -1664,13 +1670,15 @@ function detectInvoice(subject: string, body: string, parts: PayloadPart[]) {
     INVOICE_KEYWORDS.some((keyword) => lower.includes(keyword.toLowerCase())) ||
     INVOICE_KEYWORD_PATTERNS.some((pattern) => pattern.test(text));
   const hasPdf = parts.some((part) => /\.pdf$/i.test(part.filename ?? "") || part.mimeType === "application/pdf");
+  const amountResult = extractInvoiceAmount(text);
   return {
     isInvoice: hasKeyword || hasPdf,
-    amount: extractInvoiceAmount(text),
+    amount: amountResult.amount,
+    amountRejectedReason: amountResult.rejectedReason,
   };
 }
 
-function extractInvoiceAmount(text: string) {
+export function extractInvoiceAmount(text: string): { amount: number | null; rejectedReason: string | null } {
   const normalized = text.replace(/&nbsp;/gi, " ").replace(/\u00a0/g, " ");
   const patterns = [
     /(?:סה["״']?כ|סך\s*הכל|לתשלום|total\s*(?:due|amount)?|amount\s*(?:due)?|balance\s*due)[^\d₪$€]{0,40}(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:\.[0-9]{1,2})?)/gi,
@@ -1680,13 +1688,28 @@ function extractInvoiceAmount(text: string) {
     /([0-9][0-9.,\s]*(?:\.[0-9]{1,2})?)\s*(?:ils|nis)/gi,
   ];
   const amounts: number[] = [];
+  let rejectedReason: string | null = null;
   for (const pattern of patterns) {
     for (const match of normalized.matchAll(pattern)) {
+      if (hasReferenceNumberContext(normalized, match.index ?? 0, match[0].length)) {
+        rejectedReason = "parsed amount rejected: nearby reference/document number context";
+        continue;
+      }
       const amount = parseAmount(match[1]);
-      if (amount !== null && isReasonableDetectedAmount(amount)) amounts.push(amount);
+      if (amount !== null) {
+        const reason = rejectedDetectedAmountReason(amount);
+        if (reason) rejectedReason = reason;
+        else amounts.push(amount);
+      }
     }
   }
-  return amounts.length ? Math.max(...amounts) : null;
+  return { amount: amounts.length ? Math.max(...amounts) : null, rejectedReason };
+}
+
+function hasReferenceNumberContext(text: string, matchIndex: number, rawLength: number) {
+  const start = Math.max(0, matchIndex - 30);
+  const end = Math.min(text.length, matchIndex + rawLength + 30);
+  return REFERENCE_NUMBER_CONTEXT.test(text.slice(start, end));
 }
 
 function extractPhoneFromText(text: string) {
@@ -1716,8 +1739,15 @@ function normalizeDetectedAmount(amount: number | null | undefined) {
   return isReasonableDetectedAmount(amount) ? amount : null;
 }
 
+function rejectedDetectedAmountReason(amount: number | null | undefined) {
+  if (amount == null) return null;
+  if (!Number.isFinite(amount) || amount <= 0) return "parsed amount looks invalid";
+  if (amount > MAX_AUTO_SAVE_AMOUNT) return "parsed amount looks invalid/too large";
+  return null;
+}
+
 function isReasonableDetectedAmount(amount: number) {
-  return Number.isFinite(amount) && amount > 0 && amount <= 10_000_000;
+  return rejectedDetectedAmountReason(amount) === null;
 }
 
 function normalizeBusinessDate(value: string | null | undefined, fallback: Date | null) {

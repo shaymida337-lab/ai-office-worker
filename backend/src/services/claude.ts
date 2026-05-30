@@ -23,7 +23,9 @@ export type InvoiceScanResult = {
 };
 
 const anthropic = hasClaude() ? new Anthropic({ apiKey: config.anthropic.apiKey }) : null;
-const MAX_REASONABLE_AMOUNT = 10_000_000;
+const MAX_REASONABLE_AMOUNT = 1_000_000;
+const REFERENCE_NUMBER_CONTEXT =
+  /(?:אסמכתא|מספר|שובר|סידורי|מסמך|חשבונית\s*(?:מס)?\s*מספר|ref|reference|invoice\s*(?:no|number)|order\s*(?:no|number)|#)/i;
 
 const SYSTEM_PROMPT = `אתה עוזר הנהלת חשבונות לעסק ישראלי. נתח מיילים בעברית ואנגלית.
 החזר אך ורק JSON תקין ללא markdown.
@@ -280,8 +282,14 @@ function extractAmount(text: string): number | null {
 function collectAmountMatches(text: string, pattern: RegExp, score: number, out: Array<{ raw: string; score: number }>) {
   for (const match of text.matchAll(pattern)) {
     const raw = match.slice(1).find((group) => group && /\d/.test(group));
-    if (raw) out.push({ raw, score });
+    if (raw && !hasReferenceNumberContext(text, match.index ?? 0, raw.length)) out.push({ raw, score });
   }
+}
+
+function hasReferenceNumberContext(text: string, matchIndex: number, rawLength: number) {
+  const start = Math.max(0, matchIndex - 30);
+  const end = Math.min(text.length, matchIndex + rawLength + 30);
+  return REFERENCE_NUMBER_CONTEXT.test(text.slice(start, end));
 }
 
 function parseAmount(raw: string): number | null {
