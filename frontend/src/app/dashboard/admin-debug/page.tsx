@@ -624,7 +624,7 @@ function PaymentClassificationInvestigation({ data, loading }: { data: PaymentCl
                       </div>
                     )}
                     <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-secondary p-3 text-xs text-[#CBD5E1]">
-                      {primaryScan ? JSON.stringify(primaryScan.rawAnalysis ?? primaryScan, null, 2) : "לא נמצא GmailScanItem קשור"}
+                      {primaryScan ? JSON.stringify(primaryScan.rawAnalysis ?? primaryScan, null, 2) : "לא נמצא פריט סריקת ג׳ימייל קשור"}
                     </pre>
                   </div>
                 </div>

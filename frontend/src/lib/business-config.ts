@@ -297,7 +297,7 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
     ],
   },
   service_business: {
-    title: "מרכז ניהול לעסק שירותים",
+    title: "מערכת ניהול לעסקי שירות",
     subtitle: "לקוחות, חשבוניות, ספקים, משימות וגבייה.",
     modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections"],
     dashboardKpis: baseKpis,

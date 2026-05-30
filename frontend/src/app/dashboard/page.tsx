@@ -530,7 +530,7 @@ export default function DashboardPage() {
       if (result.scanId) {
         setActiveScanId(result.scanId);
         window.localStorage.setItem("activeGmailScanId", result.scanId);
-        const message = result.inProgress ? "סריקת ג׳ימייל כבר רצה. מציג סטטוס חי." : "סריקת ג׳ימייל התחילה ברקע.";
+        const message = result.inProgress ? "סריקת המיילים מתבצעת כעת..." : "סריקת ג׳ימייל התחילה ברקע.";
         setError(message);
         setScanToast({ type: "info", text: message });
         return;
@@ -629,6 +629,14 @@ export default function DashboardPage() {
   const showDocuments = moduleIsEnabled(organizationSettings, "documents");
   const gmailConnected = Boolean(gmailStatus?.connected);
   const scanRangeLabel = `${scanRangeDays} ימים`;
+  const initialSetupComplete = gmailConnected && Boolean(activeScan?.status === "completed" || scanStatus?.last?.status === "success");
+  const startInitialSetup = () => {
+    if (!gmailConnected) {
+      connectGmail();
+      return;
+    }
+    startFirstScan();
+  };
   return (
     <div className="container">
       <Nav />
@@ -652,7 +660,7 @@ export default function DashboardPage() {
           <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק ג׳ימייל"}</button>
           <button className="btn btn-secondary" onClick={scanAllClients} disabled={syncing}><RefreshCcw className="h-4 w-4" />סרוק לקוחות</button>
           <button className="btn btn-secondary" onClick={() => router.push("/dashboard/clients")}><Plus className="h-4 w-4" />הוסף לקוח</button>
-          <button className="btn btn-secondary" onClick={() => router.push("/dashboard/business-settings")}>התאם מודולים</button>
+          <button className="btn btn-secondary" onClick={() => router.push("/dashboard/business-settings")}>התאם את המערכת</button>
         </div>
       </div>
 
@@ -662,10 +670,17 @@ export default function DashboardPage() {
             <h2>הכנה לבדיקה עסקית ראשונה</h2>
             <p className="text-sm">חבר ג׳ימייל, בחר טווח סריקה, ואשר שהשמירה לדרייב ולשיטס פעילה.</p>
           </div>
-          <span className={`badge ${gmailConnected ? "badge-ok" : "badge-warn"}`}>{gmailConnected ? "ג׳ימייל מחובר" : "ג׳ימייל לא מחובר"}</span>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <span className={`badge ${gmailConnected ? "badge-ok" : "badge-warn"}`}>{gmailConnected ? "ג׳ימייל מחובר" : "ג׳ימייל לא מחובר"}</span>
+            {!initialSetupComplete && (
+              <button type="button" className="btn w-full sm:w-auto" onClick={startInitialSetup} disabled={firstScanRunning || Boolean(activeScanId)}>
+                התחל הגדרה ראשונית
+              </button>
+            )}
+          </div>
         </div>
         <div className="grid gap-3 md:grid-cols-5">
-          <OnboardingStep title="1. Gmail" done={gmailConnected} text={gmailConnected ? "מחובר ומוכן לסריקה" : "חובה לחבר לפני סריקה"} action={!gmailConnected ? <button className="btn btn-secondary" onClick={connectGmail}>התחבר ל-Gmail</button> : null} />
+          <OnboardingStep title="1. ג׳ימייל" done={gmailConnected} text={gmailConnected ? "מחובר ומוכן לסריקה" : "חובה לחבר לפני סריקה"} />
           <OnboardingStep title="2. טווח סריקה" done text={<select value={scanRangeDays} onChange={(e) => setScanRangeDays(Number(e.target.value))}><option value={7}>7 ימים</option><option value={30}>30 ימים</option><option value={90}>90 ימים</option></select>} />
           <OnboardingStep title="3. דרייב" done text="תיקיות נוצרות אוטומטית לפי ספק וסוג מסמך" />
           <OnboardingStep title="4. שיטס" done text="טבלת תשלומי ספקים נוצרת ומתעדכנת אוטומטית" />
@@ -686,7 +701,7 @@ export default function DashboardPage() {
             {scanProgress.length > 0 && <div className="mt-3 grid gap-1 text-sm text-ink-secondary">{scanProgress.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}</div>}
             {showGmailConnect && (
               <button type="button" onClick={connectGmail} className="btn mt-3">
-                התחבר ל-Gmail
+                התחבר לג׳ימייל
               </button>
             )}
           </div>
