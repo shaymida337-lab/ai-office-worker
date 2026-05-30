@@ -386,7 +386,7 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
   }
 });
 
-apiRouter.post("/debug/payments/apply-classification-cleanup", async (req, res) => {
+async function applyClassificationCleanupHandler(req: Request, res: Response) {
   const orgId = req.auth!.organizationId;
   try {
     res.json(await applyPaymentClassificationCleanup(orgId));
@@ -394,7 +394,11 @@ apiRouter.post("/debug/payments/apply-classification-cleanup", async (req, res) 
     console.error("[debug/payments/apply-classification-cleanup] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Payment classification cleanup failed" });
   }
-});
+}
+
+apiRouter
+  .route("/debug/payments/apply-classification-cleanup")
+  .post(applyClassificationCleanupHandler);
 
 type GreenInvoiceConnectBody = {
   apiKeyId?: unknown;
