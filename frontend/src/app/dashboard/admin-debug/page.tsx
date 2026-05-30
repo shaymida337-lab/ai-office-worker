@@ -43,6 +43,7 @@ type DebugScanItem = {
   supplierName?: string;
   amount?: number | null;
   driveFileLink?: string | null;
+  rawAnalysis?: unknown;
   createdAt?: string;
 };
 
@@ -72,6 +73,32 @@ type TopPaymentAmountsResponse = {
   countedRows: number;
   moneyToPay: number;
   rows: DebugPaymentRow[];
+};
+
+type HapoalimSuspiciousResponse = {
+  orgId: string;
+  searchedAmounts: number[];
+  rows: Array<{
+    payment: DebugPaymentRow & {
+      paid: boolean;
+      paymentRequired: boolean;
+      missingInvoice: boolean;
+      dueDate?: string | null;
+      source?: string | null;
+      updatedAt?: string | null;
+    };
+    email: {
+      id: string;
+      gmailId: string;
+      subject: string;
+      fromAddress: string;
+      snippet?: string | null;
+      bodyTextPreview?: string | null;
+      receivedAt: string;
+      createdAt: string;
+    } | null;
+    scanItems: DebugScanItem[];
+  }>;
 };
 
 type FixBadAmountsResponse = {
@@ -138,11 +165,13 @@ export default function AdminDebugPage() {
   const [data, setData] = useState<InvoiceDebugResponse | null>(null);
   const [badAmounts, setBadAmounts] = useState<BadInvoiceAmountsResponse | null>(null);
   const [topPayments, setTopPayments] = useState<TopPaymentAmountsResponse | null>(null);
+  const [hapoalimRows, setHapoalimRows] = useState<HapoalimSuspiciousResponse | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [cleaning, setCleaning] = useState(false);
   const [loadingTopPayments, setLoadingTopPayments] = useState(false);
+  const [loadingHapoalim, setLoadingHapoalim] = useState(false);
   const [driveMerging, setDriveMerging] = useState(false);
   const [driveMergeStatus, setDriveMergeStatus] = useState("");
   const [driveMergePreview, setDriveMergePreview] = useState<DriveMergeDuplicateFoldersResponse | null>(null);
@@ -184,6 +213,25 @@ export default function AdminDebugPage() {
       setError(err instanceof Error ? err.message : "Failed to load top payments");
     } finally {
       setLoadingTopPayments(false);
+    }
+  }
+
+  async function loadHapoalimSuspicious() {
+    setLoadingHapoalim(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await apiFetch<HapoalimSuspiciousResponse>("/api/debug/payments/hapoalim-suspicious");
+      setHapoalimRows(result);
+      setMessage(`נטענו ${result.rows.length} תשלומי בנק הפועלים חשודים לבדיקה.`);
+    } catch (err) {
+      if (isAuthError(err)) {
+        router.push("/login");
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Failed to load Hapoalim suspicious payments");
+    } finally {
+      setLoadingHapoalim(false);
     }
   }
 
@@ -296,9 +344,16 @@ export default function AdminDebugPage() {
         <button
           className="btn btn-secondary"
           onClick={loadTopPayments}
-          disabled={loading || cleaning || driveMerging || loadingTopPayments}
+          disabled={loading || cleaning || driveMerging || loadingTopPayments || loadingHapoalim}
         >
           {loadingTopPayments ? "טוען..." : "10 התשלומים הגדולים"}
+        </button>
+        <button
+          className="btn btn-secondary"
+          onClick={loadHapoalimSuspicious}
+          disabled={loading || cleaning || driveMerging || loadingTopPayments || loadingHapoalim}
+        >
+          {loadingHapoalim ? "טוען..." : "בדוק בנק הפועלים"}
         </button>
         <button
           className="btn btn-secondary"
@@ -317,6 +372,7 @@ export default function AdminDebugPage() {
       {driveMergeStatus && <div className="toast border-blue-400/30 text-blue-100">{driveMergeStatus}</div>}
 
       <TopPaymentsTable data={topPayments} loading={loadingTopPayments} />
+      <HapoalimSuspiciousTable data={hapoalimRows} loading={loadingHapoalim} />
 
       {data && (
         <>
@@ -418,6 +474,73 @@ function TopPaymentsTable({ data, loading }: { data: TopPaymentAmountsResponse |
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HapoalimSuspiciousTable({ data, loading }: { data: HapoalimSuspiciousResponse | null; loading: boolean }) {
+  const rows = data?.rows ?? [];
+
+  return (
+    <section className="mb-8 rounded-3xl border border-red-400/30 bg-[linear-gradient(135deg,rgba(239,68,68,0.14),rgba(15,23,42,0.96))] p-5">
+      <div className="mb-5">
+        <div className="page-kicker">Classification investigation</div>
+        <h2 className="text-2xl font-black text-[#F8FAFC]">תשלומי בנק הפועלים חשודים</h2>
+        <p className="mt-2 text-base leading-7 text-[#E2E8F0]">
+          בדיקה read-only לשורות עם ₪206,651.78 ו-₪118,188.47 כדי להבין למה סווגו כתשלומי ספקים.
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-4 text-base">טוען פרטים...</p>
+      ) : rows.length === 0 ? (
+        <p className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-4 text-base text-[#E2E8F0]">
+          לחץ על "בדוק בנק הפועלים" כדי לטעון את השורות החשודות.
+        </p>
+      ) : (
+        <div className="grid gap-4">
+          {rows.map((row) => {
+            const primaryScan = row.scanItems[0];
+            return (
+              <article key={row.payment.id} className="rounded-2xl border border-red-300/20 bg-surface-secondary/95 p-4">
+                <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="text-3xl font-black text-red-200">₪{row.payment.amount.toLocaleString("he-IL")} {row.payment.currency}</div>
+                    <div className="mt-1 text-lg font-bold text-[#F8FAFC]">{row.payment.supplier}</div>
+                    <div className="text-base text-[#CBD5E1]">{row.payment.emailSender ?? row.email?.fromAddress ?? "שולח לא ידוע"}</div>
+                  </div>
+                  <div className="grid gap-1 text-base text-[#E2E8F0] md:text-left">
+                    <span>נוצר: {new Date(row.payment.createdAt).toLocaleString("he-IL")}</span>
+                    <span>paid: {row.payment.paid ? "true" : "false"} · paymentRequired: {row.payment.paymentRequired ? "true" : "false"}</span>
+                    <span dir="ltr" className="break-all text-sm text-[#CBD5E1]">{row.payment.emailMessageId ?? "no emailMessageId"}</span>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl bg-surface-hover/70 p-4">
+                    <h3 className="mb-2 text-lg font-bold text-[#F8FAFC]">פרטי המייל</h3>
+                    <p className="text-base text-[#E2E8F0]">Subject: {row.email?.subject ?? row.payment.subject ?? "—"}</p>
+                    <p className="mt-2 text-base text-[#CBD5E1]">Snippet: {row.email?.snippet ?? "—"}</p>
+                    <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-secondary p-3 text-sm text-[#CBD5E1]">
+                      {row.email?.bodyTextPreview ?? "אין bodyText שמור"}
+                    </pre>
+                  </div>
+
+                  <div className="rounded-2xl bg-surface-hover/70 p-4">
+                    <h3 className="mb-2 text-lg font-bold text-[#F8FAFC]">סיווג / raw classified text</h3>
+                    <p className="text-base text-[#E2E8F0]">documentType: {primaryScan?.documentType ?? "—"}</p>
+                    <p className="text-base text-[#E2E8F0]">reviewStatus: {primaryScan?.reviewStatus ?? "—"}</p>
+                    <p className="text-base text-[#E2E8F0]">decisionReason: {primaryScan?.decisionReason ?? "—"}</p>
+                    <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-secondary p-3 text-xs text-[#CBD5E1]">
+                      {primaryScan ? JSON.stringify(primaryScan.rawAnalysis ?? primaryScan, null, 2) : "לא נמצא GmailScanItem קשור"}
+                    </pre>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
     </section>

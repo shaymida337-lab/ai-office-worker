@@ -375,6 +375,112 @@ apiRouter.get("/debug/payments/top-amounts", async (req, res) => {
   }
 });
 
+apiRouter.get("/debug/payments/hapoalim-suspicious", async (req, res) => {
+  const orgId = req.auth!.organizationId;
+  const suspiciousAmounts = [206_651.78, 118_188.47];
+  try {
+    const payments = await prisma.supplierPayment.findMany({
+      where: {
+        organizationId: orgId,
+        supplier: { contains: "בנק הפועלים", mode: "insensitive" },
+        OR: suspiciousAmounts.map((amount) => ({
+          amount: { gte: amount - 0.01, lte: amount + 0.01 },
+        })),
+      },
+      orderBy: [{ amount: "desc" }, { createdAt: "desc" }],
+      select: {
+        id: true,
+        supplier: true,
+        amount: true,
+        currency: true,
+        date: true,
+        dueDate: true,
+        paid: true,
+        paymentRequired: true,
+        missingInvoice: true,
+        subject: true,
+        emailSender: true,
+        emailMessageId: true,
+        documentLink: true,
+        invoiceLink: true,
+        source: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    const gmailIds = payments.map((payment) => payment.emailMessageId).filter((id): id is string => Boolean(id));
+    const [emails, scanItems] = await Promise.all([
+      gmailIds.length
+        ? prisma.emailMessage.findMany({
+            where: { organizationId: orgId, gmailId: { in: gmailIds } },
+            select: {
+              id: true,
+              gmailId: true,
+              subject: true,
+              fromAddress: true,
+              snippet: true,
+              bodyText: true,
+              receivedAt: true,
+              createdAt: true,
+            },
+          })
+        : Promise.resolve([]),
+      gmailIds.length
+        ? prisma.gmailScanItem.findMany({
+            where: { organizationId: orgId, gmailMessageId: { in: gmailIds } },
+            select: {
+              id: true,
+              gmailMessageId: true,
+              sender: true,
+              senderEmail: true,
+              subject: true,
+              amount: true,
+              supplierName: true,
+              documentType: true,
+              confidenceScore: true,
+              reviewStatus: true,
+              decisionReason: true,
+              rawAnalysis: true,
+              createdAt: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const emailByGmailId = new Map(emails.map((email) => [email.gmailId, email]));
+    const scanItemsByGmailId = new Map<string, typeof scanItems>();
+    for (const item of scanItems) {
+      const current = scanItemsByGmailId.get(item.gmailMessageId) ?? [];
+      current.push(item);
+      scanItemsByGmailId.set(item.gmailMessageId, current);
+    }
+
+    res.json({
+      orgId,
+      searchedAmounts: suspiciousAmounts,
+      rows: payments.map((payment) => {
+        const email = payment.emailMessageId ? emailByGmailId.get(payment.emailMessageId) ?? null : null;
+        const relatedScanItems = payment.emailMessageId ? scanItemsByGmailId.get(payment.emailMessageId) ?? [] : [];
+        return {
+          payment,
+          email: email
+            ? {
+                ...email,
+                bodyTextPreview: email.bodyText?.slice(0, 4000) ?? null,
+                bodyText: undefined,
+              }
+            : null,
+          scanItems: relatedScanItems,
+        };
+      }),
+    });
+  } catch (err) {
+    console.error("[debug/payments/hapoalim-suspicious] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Hapoalim suspicious payments debug failed" });
+  }
+});
+
 type GreenInvoiceConnectBody = {
   apiKeyId?: unknown;
   apiSecret?: unknown;
