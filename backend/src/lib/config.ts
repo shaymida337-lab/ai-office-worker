@@ -1,11 +1,5 @@
 import "dotenv/config";
 
-function required(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-}
-
 function optional(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
@@ -13,16 +7,10 @@ function optional(name: string, fallback = ""): string {
 function requiredInProduction(name: string, fallback: string): string {
   const value = process.env[name];
   if (value) return value;
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(`Missing required production environment variable: ${name}`);
-  }
   return fallback;
 }
 
-function rejectLocalhostInProduction(name: string, value: string): string {
-  if (process.env.NODE_ENV === "production" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/i.test(value)) {
-    throw new Error(`${name} cannot use localhost in production. Current value: ${value}`);
-  }
+function rejectLocalhostInProduction(_name: string, value: string): string {
   return value;
 }
 
@@ -43,7 +31,19 @@ function defaultGmailIntegrationRedirectUri(): string {
     return toGmailIntegrationRedirectUri(loginRedirect);
   }
 
-  return "http://localhost:4000/api/integrations/gmail/callback";
+  return `${defaultBackendUrl()}/api/integrations/gmail/callback`;
+}
+
+function defaultBackendUrl(): string {
+  return process.env.NODE_ENV === "production"
+    ? "https://ai-office-worker-backend.onrender.com"
+    : "http://localhost:4000";
+}
+
+function defaultFrontendUrl(): string {
+  return process.env.NODE_ENV === "production"
+    ? "https://ai-office-worker-frontend.onrender.com"
+    : "http://localhost:3000";
 }
 
 export const config = {
@@ -51,7 +51,7 @@ export const config = {
   nodeEnv: optional("NODE_ENV", "development"),
   databaseUrl: optional("DATABASE_URL", "file:./dev.db"),
   jwtSecret: requiredInProduction("JWT_SECRET", "dev-secret-change-in-production"),
-  frontendUrl: optional("FRONTEND_URL", "http://localhost:3000"),
+  frontendUrl: optional("FRONTEND_URL", defaultFrontendUrl()),
   corsOrigins: optional("CORS_ORIGINS")
     .split(",")
     .map((origin) => origin.trim())
@@ -63,7 +63,7 @@ export const config = {
     clientSecret: optional("GOOGLE_CLIENT_SECRET"),
     redirectUri: rejectLocalhostInProduction(
       "GOOGLE_REDIRECT_URI",
-      optional("GOOGLE_REDIRECT_URI", optional("GOOGLE_CALLBACK_URL", "http://localhost:4000/auth/google/callback"))
+      optional("GOOGLE_REDIRECT_URI", optional("GOOGLE_CALLBACK_URL", `${defaultBackendUrl()}/auth/google/callback`))
     ),
     integrationRedirectUri: rejectLocalhostInProduction(
       "GOOGLE_INTEGRATION_REDIRECT_URI",
@@ -71,7 +71,7 @@ export const config = {
     ).replace(/\/(?:api\/)?auth\/google\/callback$/, "/api/integrations/gmail/callback"),
     clientGmailRedirectUri: rejectLocalhostInProduction(
       "GOOGLE_CLIENT_REDIRECT_URI",
-      optional("GOOGLE_CLIENT_REDIRECT_URI", "http://localhost:4000/api/clients/gmail/callback")
+      optional("GOOGLE_CLIENT_REDIRECT_URI", `${defaultBackendUrl()}/api/clients/gmail/callback`)
     ),
   },
 
@@ -90,7 +90,7 @@ export const config = {
     ownerWhatsApp: optional("OWNER_WHATSAPP", optional("OWNER_WHATSAPP_NUMBER")),
     webhookUrl: optional(
       "TWILIO_WEBHOOK_URL",
-      "http://localhost:4000/webhook/whatsapp"
+      `${defaultBackendUrl()}/webhook/whatsapp`
     ),
   },
 
@@ -115,7 +115,7 @@ export const config = {
 export function validateStartupEnv() {
   const missing: string[] = [];
   if (config.nodeEnv === "production") {
-    for (const name of ["DATABASE_URL", "JWT_SECRET", "FRONTEND_URL"]) {
+    for (const name of ["DATABASE_URL", "JWT_SECRET"]) {
       if (!configured(name)) missing.push(name);
     }
   }
@@ -127,6 +127,29 @@ export function validateStartupEnv() {
         "Set them on the Render backend service before deploying.",
       ].join("\n")
     );
+  }
+
+  if (!Number.isFinite(config.port)) {
+    throw new Error(`Invalid PORT value: ${process.env.PORT ?? "(missing)"}`);
+  }
+
+  if (config.nodeEnv === "production") {
+    const localhostValues = [
+      ["FRONTEND_URL", config.frontendUrl],
+      ["GOOGLE_REDIRECT_URI", config.google.redirectUri],
+      ["GOOGLE_INTEGRATION_REDIRECT_URI", config.google.integrationRedirectUri],
+      ["GOOGLE_CLIENT_REDIRECT_URI", config.google.clientGmailRedirectUri],
+      ["TWILIO_WEBHOOK_URL", config.twilio.webhookUrl],
+    ].filter(([, value]) => /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/i.test(String(value)));
+    if (localhostValues.length) {
+      throw new Error(
+        [
+          "Production environment contains localhost URLs:",
+          ...localhostValues.map(([name, value]) => `- ${name}=${value}`),
+          "Set production URLs on the Render backend service.",
+        ].join("\n")
+      );
+    }
   }
 
   const optionalWarnings: string[] = [];
