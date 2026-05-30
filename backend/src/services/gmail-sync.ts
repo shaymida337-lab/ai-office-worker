@@ -102,6 +102,24 @@ const RECEIPT_KEYWORDS = [
   "paid",
   "שולם",
 ];
+const FINANCIAL_SENDER_DOMAINS = [
+  "poalim.co.il",
+  "bankhapoalim",
+  "leumi.co.il",
+  "bankleumi",
+  "discountbank.co.il",
+  "mizrahi-tefahot.co.il",
+  "mizrahi",
+  "fibi.co.il",
+  "bankotsar",
+  "mercantile",
+  "jbank.co.il",
+  "bankyahav",
+  "massad",
+  "pagi",
+  "u-bank.net",
+  "onezero",
+];
 const INVOICE_KEYWORD_PATTERNS = [
   /חשבונית\s*מס\s*קבלה/i,
   /חשבונית\s*מס/i,
@@ -676,6 +694,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         analysis,
         amount,
         supplierName,
+        senderEmail: email.senderEmail,
+        senderDomain: email.domain,
       });
       const duplicateKey = buildGmailScanDuplicateKey({
         gmailMessageId: email.gmailId,
@@ -970,7 +990,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         logStep(`[gmail-sync] invoice rejected message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
       }
 
-      if (classification.isRelevant && (amount != null || analysis.documentType !== "other" || classification.documentType !== "supplier_message")) {
+      if (!classification.heldForFinancialSender && classification.isRelevant && (amount != null || analysis.documentType !== "other" || classification.documentType !== "supplier_message")) {
         const dateIso = email.receivedAt.toISOString();
         const duplicateHash = duplicateKey || buildDuplicateHash({
           organizationId,
@@ -1120,6 +1140,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         }
       } else {
         const reasons = [
+          classification.heldForFinancialSender && "held_for_financial_sender",
           !classification.isRelevant && "not_relevant",
           amount == null && analysis.documentType === "other" && classification.documentType === "supplier_message" && "supplier_message_without_amount_or_ai_document_type",
         ].filter(Boolean);
@@ -1275,6 +1296,7 @@ export type GmailScanClassification = {
   reviewStatus: "auto_saved" | "needs_review";
   isRelevant: boolean;
   decisionReason: string;
+  heldForFinancialSender: boolean;
 };
 
 export function classifyGmailScanCandidate(input: {
@@ -1284,6 +1306,8 @@ export function classifyGmailScanCandidate(input: {
   analysis: Pick<EmailAnalysis, "documentType" | "confidence" | "paymentRequired">;
   amount: number | null;
   supplierName: string;
+  senderEmail?: string;
+  senderDomain?: string;
 }): GmailScanClassification {
   const text = `${input.subject}\n${input.bodyText}\n${input.attachmentFilenames.join("\n")}`.toLowerCase();
   const hasAttachment = input.attachmentFilenames.length > 0;
@@ -1314,17 +1338,37 @@ export function classifyGmailScanCandidate(input: {
   ].filter(Boolean) as string[];
 
   const confidenceScore = confidenceBucket(input.analysis.confidence, evidence.length, documentType);
-  const reviewStatus = confidenceScore === "high" && documentType !== "unknown_needs_review" ? "auto_saved" : "needs_review";
+  const heldForFinancialSender = isFinancialSender(input.senderEmail, input.senderDomain);
+  const reviewStatus = heldForFinancialSender
+    ? "needs_review"
+    : confidenceScore === "high" && documentType !== "unknown_needs_review"
+      ? "auto_saved"
+      : "needs_review";
+  const decisionReason = heldForFinancialSender
+    ? "Held for review: sender is a financial institution (bank)"
+    : evidence.length
+      ? evidence.join(", ")
+      : "No strong signal; saved for review because it matched a broad Gmail candidate query";
 
   return {
     documentType,
     confidenceScore,
     reviewStatus,
     isRelevant,
-    decisionReason: evidence.length
-      ? evidence.join(", ")
-      : "No strong signal; saved for review because it matched a broad Gmail candidate query",
+    decisionReason,
+    heldForFinancialSender,
   };
+}
+
+function isFinancialSender(senderEmail?: string, senderDomain?: string) {
+  const values = [senderEmail, senderDomain]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.toLowerCase());
+
+  return values.some((value) => {
+    const domain = value.match(/@([^>\s]+)/)?.[1] ?? value;
+    return FINANCIAL_SENDER_DOMAINS.some((financialDomain) => domain.includes(financialDomain));
+  });
 }
 
 export function buildGmailScanDuplicateKey(input: {

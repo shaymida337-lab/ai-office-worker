@@ -52,6 +52,23 @@ test("classifies English receipt with PDF as receipt", () => {
   assert.equal(result.confidenceScore, "high");
 });
 
+test("holds financial sender messages for review even with strong payment signals", () => {
+  const result = classifyGmailScanCandidate({
+    subject: "פרעון הלוואות וביטול מסגרת",
+    bodyText: "מצורף מסמך עם סכום 12,500 ש״ח",
+    attachmentFilenames: ["notice.pdf"],
+    analysis: analysis({ documentType: "receipt", paymentRequired: true, confidence: 0.95 }),
+    amount: 12500,
+    supplierName: "בנק הפועלים",
+    senderEmail: "yhoyariv.cohen@poalim.co.il",
+    senderDomain: "poalim.co.il",
+  });
+
+  assert.equal(result.reviewStatus, "needs_review");
+  assert.equal(result.heldForFinancialSender, true);
+  assert.match(result.decisionReason, /financial institution/);
+});
+
 test("classifies payment request without attachment and marks for review", () => {
   const result = classifyGmailScanCandidate({
     subject: "Payment request",
