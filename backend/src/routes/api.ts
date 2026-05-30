@@ -16,6 +16,8 @@ import {
 import { testConnection as testGreenInvoiceConnection, type GreenInvoiceEnv } from "../services/green-invoice.js";
 import { parseBankStatementFile } from "../services/bank-parser.js";
 import { matchTransactions } from "../services/bank-matcher.js";
+import { classifyGmailScanCandidate, extractInvoiceAmount } from "../services/gmail-sync.js";
+import type { EmailAnalysis } from "../services/claude.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -477,6 +479,37 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
       return compact || "unknown";
     };
 
+    const amountRejectedReason = (amount: number | null | undefined) => {
+      if (amount == null) return null;
+      if (!Number.isFinite(amount) || amount <= 0) return "parsed amount looks invalid";
+      if (amount > 1_000_000) return "parsed amount looks invalid/too large";
+      return null;
+    };
+
+    const analysisFromScanItem = (scanItem: typeof scanItems[number] | undefined, payment: typeof payments[number]): EmailAnalysis => {
+      const raw = scanItem?.rawAnalysis;
+      const analysis = raw && typeof raw === "object" && !Array.isArray(raw) && "analysis" in raw
+        ? (raw as { analysis?: Partial<EmailAnalysis> }).analysis
+        : undefined;
+      const confidenceFromScan = scanItem?.confidenceScore === "high" ? 0.9 : scanItem?.confidenceScore === "medium" ? 0.6 : 0.3;
+      return {
+        supplier: analysis?.supplier || payment.supplier || "לא ידוע",
+        amount: typeof analysis?.amount === "number" ? analysis.amount : payment.amount,
+        currency: analysis?.currency || payment.currency || "ILS",
+        documentType: analysis?.documentType === "invoice" || analysis?.documentType === "payment_request" || analysis?.documentType === "receipt" || analysis?.documentType === "other"
+          ? analysis.documentType
+          : scanItem?.documentType === "invoice" || scanItem?.documentType === "payment_request" || scanItem?.documentType === "receipt"
+            ? scanItem.documentType
+            : "other",
+        paymentRequired: typeof analysis?.paymentRequired === "boolean" ? analysis.paymentRequired : payment.paymentRequired,
+        dueDate: analysis?.dueDate ?? null,
+        invoiceDate: analysis?.invoiceDate ?? null,
+        invoiceNumber: analysis?.invoiceNumber ?? null,
+        tasks: Array.isArray(analysis?.tasks) ? analysis.tasks : [],
+        confidence: typeof analysis?.confidence === "number" ? analysis.confidence : confidenceFromScan,
+      };
+    };
+
     const rows = payments.map((payment) => {
       const email = payment.emailMessageId
         ? emailById.get(payment.emailMessageId) ?? emailByGmailId.get(payment.emailMessageId) ?? null
@@ -484,7 +517,25 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
       const relatedScanItems = payment.emailMessageId
         ? scanItemsByEmailRef.get(payment.emailMessageId) ?? (email?.gmailId ? scanItemsByEmailRef.get(email.gmailId) : undefined) ?? []
         : [];
+      const primaryScanItem = relatedScanItems[0];
       const senderDomain = extractDomain(payment.emailSender ?? email?.fromAddress);
+      const textForNewRules = `${email?.subject ?? payment.subject ?? ""}\n${email?.bodyText ?? ""}`;
+      const parsedAmount = extractInvoiceAmount(textForNewRules);
+      const previousAnalysis = analysisFromScanItem(primaryScanItem, payment);
+      const analysisAmountRejectedReason = amountRejectedReason(previousAnalysis.amount);
+      const wouldBeAmount = parsedAmount.amount ?? (analysisAmountRejectedReason ? null : previousAnalysis.amount);
+      const wouldBeClassification = classifyGmailScanCandidate({
+        subject: email?.subject ?? payment.subject ?? "",
+        bodyText: email?.bodyText ?? "",
+        attachmentFilenames: [],
+        analysis: previousAnalysis,
+        amount: wouldBeAmount,
+        supplierName: payment.supplier,
+        senderEmail: email?.fromAddress ?? payment.emailSender ?? undefined,
+        senderDomain,
+        amountRejectedReason: parsedAmount.rejectedReason ?? analysisAmountRejectedReason,
+      });
+      const wouldRemainInMoneyToPay = wouldBeClassification.reviewStatus === "auto_saved";
       return {
         senderDomain,
         payment,
@@ -496,8 +547,43 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
             }
           : null,
         scanItems: relatedScanItems,
+        cleanupPreview: {
+          sender: payment.emailSender ?? email?.fromAddress ?? null,
+          currentStoredAmount: payment.amount,
+          newlyParsedAmount: parsedAmount.amount,
+          wouldBeAmount,
+          rule1FinancialSenderHold: wouldBeClassification.heldForFinancialSender,
+          rule2AutoSaveGateHold: !wouldBeClassification.heldForFinancialSender && wouldBeClassification.reviewStatus !== "auto_saved",
+          rule3AmountSanityFlag: Boolean(parsedAmount.rejectedReason ?? analysisAmountRejectedReason) || wouldBeAmount === null,
+          amountRejectedReason: parsedAmount.rejectedReason ?? analysisAmountRejectedReason,
+          wouldBeDocumentType: wouldBeClassification.documentType,
+          wouldBeReviewStatus: wouldBeClassification.reviewStatus,
+          wouldBeDecisionReason: wouldBeClassification.decisionReason,
+          wouldMoveOutOfMoneyToPay: !wouldRemainInMoneyToPay,
+          wouldRemainInMoneyToPay,
+        },
       };
     });
+
+    const cleanupPreviewSummary = rows.reduce(
+      (acc, row) => {
+        acc.currentMoneyToPay += row.payment.amount;
+        if (row.cleanupPreview.wouldMoveOutOfMoneyToPay) {
+          acc.wouldMoveOutCount += 1;
+          acc.amountMovedOut += row.payment.amount;
+        } else {
+          acc.newMoneyToPay += row.cleanupPreview.wouldBeAmount ?? 0;
+        }
+        return acc;
+      },
+      {
+        totalRows: rows.length,
+        wouldMoveOutCount: 0,
+        currentMoneyToPay: 0,
+        newMoneyToPay: 0,
+        amountMovedOut: 0,
+      }
+    );
 
     const domainSummary = Array.from(
       rows.reduce((acc, row) => {
@@ -515,6 +601,7 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
       orgId,
       countedRows: rows.length,
       moneyToPay: rows.reduce((sum, row) => sum + row.payment.amount, 0),
+      cleanupPreviewSummary,
       domainSummary,
       rows,
     });

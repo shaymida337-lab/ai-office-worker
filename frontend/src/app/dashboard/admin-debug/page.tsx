@@ -79,6 +79,13 @@ type PaymentClassificationInvestigationResponse = {
   orgId: string;
   countedRows: number;
   moneyToPay: number;
+  cleanupPreviewSummary?: {
+    totalRows: number;
+    wouldMoveOutCount: number;
+    currentMoneyToPay: number;
+    newMoneyToPay: number;
+    amountMovedOut: number;
+  };
   domainSummary: Array<{
     domain: string;
     count: number;
@@ -105,6 +112,21 @@ type PaymentClassificationInvestigationResponse = {
       createdAt: string;
     } | null;
     scanItems: DebugScanItem[];
+    cleanupPreview?: {
+      sender: string | null;
+      currentStoredAmount: number;
+      newlyParsedAmount: number | null;
+      wouldBeAmount: number | null;
+      rule1FinancialSenderHold: boolean;
+      rule2AutoSaveGateHold: boolean;
+      rule3AmountSanityFlag: boolean;
+      amountRejectedReason: string | null;
+      wouldBeDocumentType: string;
+      wouldBeReviewStatus: string;
+      wouldBeDecisionReason: string;
+      wouldMoveOutOfMoneyToPay: boolean;
+      wouldRemainInMoneyToPay: boolean;
+    };
   }>;
 };
 
@@ -541,6 +563,20 @@ function PaymentClassificationInvestigation({ data, loading }: { data: PaymentCl
             </div>
           </div>
 
+          {data?.cleanupPreviewSummary && (
+            <div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4">
+              <h3 className="text-xl font-black text-[#F8FAFC]">Preview ניקוי read-only לפי המנוע החדש</h3>
+              <p className="mt-2 text-base text-[#D1FAE5]">
+                {data.cleanupPreviewSummary.wouldMoveOutCount} מתוך {data.cleanupPreviewSummary.totalRows} שורות היו יוצאות מ-"כסף לשלם".
+              </p>
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <Metric label="Current money to pay" value={`₪${data.cleanupPreviewSummary.currentMoneyToPay.toLocaleString("he-IL")}`} />
+                <Metric label="Would move out" value={`₪${data.cleanupPreviewSummary.amountMovedOut.toLocaleString("he-IL")}`} />
+                <Metric label="New money to pay" value={`₪${data.cleanupPreviewSummary.newMoneyToPay.toLocaleString("he-IL")}`} />
+              </div>
+            </div>
+          )}
+
           {rows.map((row) => {
             const primaryScan = row.scanItems[0];
             return (
@@ -574,6 +610,19 @@ function PaymentClassificationInvestigation({ data, loading }: { data: PaymentCl
                     <p className="text-base text-[#E2E8F0]">documentType: {primaryScan?.documentType ?? "—"}</p>
                     <p className="text-base text-[#E2E8F0]">reviewStatus: {primaryScan?.reviewStatus ?? "—"}</p>
                     <p className="text-base text-[#E2E8F0]">decisionReason: {primaryScan?.decisionReason ?? "—"}</p>
+                    {row.cleanupPreview && (
+                      <div className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-sm text-[#D1FAE5]">
+                        <div className="font-bold text-[#F8FAFC]">Would-be cleanup decision</div>
+                        <p>new amount parser: {row.cleanupPreview.newlyParsedAmount === null ? "null" : `₪${row.cleanupPreview.newlyParsedAmount.toLocaleString("he-IL")}`}</p>
+                        <p>wouldBeAmount: {row.cleanupPreview.wouldBeAmount === null ? "null" : `₪${row.cleanupPreview.wouldBeAmount.toLocaleString("he-IL")}`}</p>
+                        <p>rule #1 bank hold: {row.cleanupPreview.rule1FinancialSenderHold ? "yes" : "no"}</p>
+                        <p>rule #2 auto-save gate hold: {row.cleanupPreview.rule2AutoSaveGateHold ? "yes" : "no"}</p>
+                        <p>rule #3 amount sanity flag: {row.cleanupPreview.rule3AmountSanityFlag ? "yes" : "no"}</p>
+                        <p>amount reason: {row.cleanupPreview.amountRejectedReason ?? "—"}</p>
+                        <p>would status: {row.cleanupPreview.wouldBeReviewStatus}</p>
+                        <p>decisionReason: {row.cleanupPreview.wouldBeDecisionReason}</p>
+                      </div>
+                    )}
                     <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-secondary p-3 text-xs text-[#CBD5E1]">
                       {primaryScan ? JSON.stringify(primaryScan.rawAnalysis ?? primaryScan, null, 2) : "לא נמצא GmailScanItem קשור"}
                     </pre>
