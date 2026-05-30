@@ -92,8 +92,9 @@ const NON_INVOICE_BLOCK_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   { label: "Render notification", pattern: /\brender\b|deploy(?:ment)?\s+(failed|succeeded|live)|service\s+is\s+live/i },
   { label: "support/test email", pattern: /\b(test|testing|support ticket|help desk|customer support|zendesk|intercom|freshdesk)\b|בדיקה|תמיכה/i },
   { label: "newsletter/marketing", pattern: /newsletter|unsubscribe|marketing|promotion|מבצע|ניוזלטר|פרסומת|עדכונים\s+שיווקיים|sale|discount/i },
-  { label: "personal email", pattern: /family|personal|חבר|משפחה|אישי|@gmail\.com\b|@yahoo\.com\b|@hotmail\.com\b|@outlook\.com\b/i },
 ];
+const PERSONAL_EMAIL_CONTENT_PATTERN = /family|personal|חבר|משפחה|אישי/i;
+const PERSONAL_EMAIL_DOMAIN_PATTERN = /(?:^|@)(gmail\.com|yahoo\.com|hotmail\.com|outlook\.com)$/i;
 const PAYMENT_REQUEST_KEYWORDS = [
   "דרישת תשלום",
   "בקשת תשלום",
@@ -1406,7 +1407,6 @@ export function classifyGmailScanCandidate(input: {
   const attachmentText = input.attachmentFilenames.join("\n").toLowerCase();
   const hasAttachment = input.attachmentFilenames.length > 0;
   const hasPdf = input.attachmentFilenames.some((filename) => /\.pdf$/i.test(filename));
-  const block = detectNonInvoiceMessage(text, input.senderEmail, input.senderDomain);
   const keywordMatches = matchedStrongInvoiceTerms(text);
   const hasInvoice = keywordMatches.length > 0 || INVOICE_KEYWORD_PATTERNS.some((pattern) => pattern.test(text)) || /green invoice|greeninvoice|icount|i-count|חשבונית ירוקה/.test(text);
   const hasReceipt = RECEIPT_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
@@ -1415,17 +1415,28 @@ export function classifyGmailScanCandidate(input: {
   const hasAmount = input.amount !== null;
   const aiType = input.analysis.documentType;
   const aiConfidence = Number.isFinite(input.analysis.confidence) ? input.analysis.confidence : 0;
+  const hasSupplier = isUsableSupplierName(input.supplierName);
   const invoiceAttached = hasAttachment && /invoice|tax[-_\s]?invoice|חשבונית|חשבונית\s*מס|חשבונית[-_\s]?מס|greeninvoice|icount|i-count/.test(attachmentText);
   const receiptAttached = hasAttachment && /receipt|קבלה|חשבונית\s*מס\s*קבלה/.test(attachmentText);
   const taxInvoiceDetected = /tax\s+invoice|חשבונית\s*מס/.test(text);
   const supplierPaymentRequestDetected = hasPaymentRequest || (input.analysis.paymentRequired && aiType === "payment_request" && aiConfidence >= 0.72);
-  const pdfInvoiceDetected = hasPdf && (invoiceAttached || receiptAttached || taxInvoiceDetected || hasInvoice || hasReceipt || supplierPaymentRequestDetected) && (hasAmount || taxInvoiceDetected || invoiceAttached || receiptAttached);
+  const pdfInvoiceDetected = hasPdf && (
+    invoiceAttached ||
+    receiptAttached ||
+    taxInvoiceDetected ||
+    hasInvoice ||
+    hasReceipt ||
+    supplierPaymentRequestDetected ||
+    (hasAmount && hasSupplier)
+  );
   const hasStrictPaymentEvidence = invoiceAttached || receiptAttached || supplierPaymentRequestDetected || taxInvoiceDetected || pdfInvoiceDetected;
   const pdfLooksLikeInvoice = pdfInvoiceDetected;
   const hasStrongInvoiceEvidence = hasStrictPaymentEvidence;
   const hasExplicitPaymentEvidence = supplierPaymentRequestDetected;
   const aiInvoiceTrusted = (aiType === "invoice" || aiType === "receipt") && aiConfidence >= 0.72 && hasStrongInvoiceEvidence && (hasAmount || pdfLooksLikeInvoice);
   const aiPaymentTrusted = aiType === "payment_request" && aiConfidence >= 0.72 && hasExplicitPaymentEvidence && hasAmount;
+  const personalSenderReason = detectPersonalMessage(text, input.senderEmail, input.senderDomain);
+  const block = detectNonInvoiceMessage(text, input.senderEmail, input.senderDomain);
 
   let documentType: GmailDocumentType = "unknown_needs_review";
   if (!block) {
@@ -1465,6 +1476,7 @@ export function classifyGmailScanCandidate(input: {
     documentType,
   });
   const confidenceScore = `${Math.round(confidence * 100)}%` as GmailConfidenceScore;
+  const hasInvoiceEvidence = hasStrictPaymentEvidence || confidence >= 0.7;
   const financialSender = detectFinancialSender({
     senderEmail: input.senderEmail,
     senderDomain: input.senderDomain,
@@ -1476,8 +1488,9 @@ export function classifyGmailScanCandidate(input: {
   const heldForFinancialSender = financialSender.held;
   const autoSaveHoldReasons = [
     block && `blocked non-invoice message: ${block}`,
+    personalSenderReason && !hasInvoiceEvidence && `personal email without invoice evidence: ${personalSenderReason}`,
     !(documentType === "invoice" || documentType === "receipt" || documentType === "payment_request") && `documentType is ${documentType}`,
-    confidence < 0.8 && `confidence below 80% (${Math.round(confidence * 100)}%)`,
+    confidence < 0.7 && `confidence below 70% (${Math.round(confidence * 100)}%)`,
     !hasStrictPaymentEvidence && "no strict invoice/payment evidence",
     documentType === "invoice" && !hasStrongInvoiceEvidence && "no strong invoice evidence",
     documentType === "invoice" && !hasAmount && !pdfLooksLikeInvoice && (input.amountRejectedReason ?? "no valid amount or invoice-like PDF"),
@@ -1507,8 +1520,8 @@ export function classifyGmailScanCandidate(input: {
       keywordMatched: keywordMatches,
       attachmentFound: hasAttachment,
       amountFound: hasAmount,
-      supplierDetected: Boolean(input.supplierName && input.supplierName !== "Unknown supplier"),
-      blockedReason: block,
+      supplierDetected: hasSupplier,
+      blockedReason: block ?? (personalSenderReason && !hasInvoiceEvidence ? personalSenderReason : null),
       invoiceAttached,
       receiptAttached,
       supplierPaymentRequestDetected,
@@ -1528,6 +1541,12 @@ function matchedStrongInvoiceTerms(text: string) {
 function detectNonInvoiceMessage(text: string, senderEmail?: string, senderDomain?: string) {
   const haystack = [text, senderEmail, senderDomain].filter(Boolean).join("\n");
   return NON_INVOICE_BLOCK_PATTERNS.find(({ pattern }) => pattern.test(haystack))?.label ?? null;
+}
+
+function detectPersonalMessage(text: string, senderEmail?: string, senderDomain?: string) {
+  const domain = (senderDomain || senderEmail?.split("@")[1] || "").trim().toLowerCase();
+  if (PERSONAL_EMAIL_DOMAIN_PATTERN.test(domain)) return `personal sender domain: ${domain}`;
+  return PERSONAL_EMAIL_CONTENT_PATTERN.test(text) ? "personal email content" : null;
 }
 
 function computeInvoiceConfidence(input: {
@@ -1646,7 +1665,7 @@ function supplierPaymentCreationEligibility(input: {
     input.classification.heldForFinancialSender && "held_for_financial_sender",
     input.classification.reviewStatus !== "auto_saved" && "needs_review",
     !input.classification.isRelevant && "not_relevant",
-    input.classification.confidence < 0.8 && `confidence_below_80_${Math.round(input.classification.confidence * 100)}%`,
+    input.classification.confidence < 0.7 && `confidence_below_70_${Math.round(input.classification.confidence * 100)}%`,
     !["invoice", "receipt", "payment_request"].includes(input.classification.documentType) && `document_type_${input.classification.documentType}`,
     !input.classification.audit.strictPaymentEvidence && "missing_strict_invoice_payment_evidence",
     input.amount === null && "missing_amount",
