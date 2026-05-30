@@ -10,10 +10,10 @@ export default function HomePage() {
         <div className="mb-6 flex justify-center">
           <Logo size="lg" showSubtitle />
         </div>
-        <div className="page-kicker">Premium automation workspace</div>
-        <h1>AI Office Worker</h1>
+        <div className="page-kicker">סביבת אוטומציה עסקית</div>
+        <h1>עובד משרד חכם</h1>
         <p className="mx-auto mt-4 max-w-xl">
-        עוזר משרד חכם לעסקים בישראל — Gmail, חשבוניות, Drive, WhatsApp וסיכומים יומיים.
+        עוזר משרד חכם לעסקים בישראל — ג׳ימייל, חשבוניות, דרייב, וואטסאפ וסיכומים יומיים.
       </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
         <Link className="btn" href="/login">
@@ -25,7 +25,7 @@ export default function HomePage() {
       </div>
         <p className="mt-5 text-sm">
         או{" "}
-        <a href={`${API_URL}/auth/google`}>התחבר עם Google</a> (לחיבור Gmail)
+        <a href={`${API_URL}/auth/google`}>התחבר עם גוגל</a> (לחיבור ג׳ימייל)
       </p>
         <p className="mt-4 text-sm">
         כבר מחובר? <Link href="/dashboard">לוח בקרה</Link>

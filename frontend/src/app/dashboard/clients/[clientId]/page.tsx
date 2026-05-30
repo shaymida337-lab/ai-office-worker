@@ -331,33 +331,33 @@ export default function ClientDetailPage() {
       const result = await apiFetch<{ messages: WhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp`);
       setWhatsappMessages(result.messages);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "שליחת הודעת WhatsApp נכשלה");
+      setMessage(err instanceof Error ? err.message : "שליחת הודעת וואטסאפ נכשלה");
     }
   }
 
   async function connectClientWhatsApp() {
-    setMessage("מכין QR לחיבור WhatsApp...");
+    setMessage("מכין קוד לחיבור וואטסאפ...");
     try {
       const result = await apiFetch<{ qrCode?: string; status: string }>(`/api/clients/${clientId}/whatsapp/connect`, { method: "POST" });
       setClientWhatsAppQr(result.qrCode ?? null);
-      setMessage(result.status === "connected" ? "WhatsApp מחובר" : "סרוק את ה-QR עם WhatsApp");
+      setMessage(result.status === "connected" ? "וואטסאפ מחובר" : "סרוק את הקוד עם וואטסאפ");
       await load();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "חיבור WhatsApp נכשל");
+      setMessage(err instanceof Error ? err.message : "חיבור וואטסאפ נכשל");
     }
   }
 
   async function scanClientWhatsApp() {
-    setMessage("סורק היסטוריית WhatsApp...");
+    setMessage("סורק היסטוריית וואטסאפ...");
     try {
       const result = await apiFetch<{ processed: number }>(`/api/clients/${clientId}/whatsapp/scan`, {
         method: "POST",
         body: JSON.stringify({ daysBack: 30 }),
       });
-      setMessage(`נסרקו ${result.processed} הודעות WhatsApp`);
+      setMessage(`נסרקו ${result.processed} הודעות וואטסאפ`);
       await load();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "סריקת WhatsApp נכשלה");
+      setMessage(err instanceof Error ? err.message : "סריקת וואטסאפ נכשלה");
     }
   }
 
@@ -382,10 +382,10 @@ export default function ClientDetailPage() {
       <div className="mb-8 flex items-start gap-4">
         <span className="grid h-16 w-16 place-items-center rounded-2xl bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] text-lg font-bold text-white">{data.client.name.slice(0, 2)}</span>
         <div className="min-w-0">
-          <div className="page-kicker">Client cockpit</div>
+          <div className="page-kicker">מרכז לקוח</div>
           <h1 className="break-words">{data.client.name}</h1>
-          <p><strong className="text-emerald-300">● Live</strong> · עודכן לאחרונה: {lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}</p>
-          <p className="break-words">Gmail: {data.client.email} · WhatsApp: {data.client.whatsappNumber || "לא מוגדר"}</p>
+          <p><strong className="text-emerald-300">● פעיל</strong> · עודכן לאחרונה: {lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}</p>
+          <p className="break-words">ג׳ימייל: {data.client.email} · וואטסאפ: {data.client.whatsappNumber || "לא מוגדר"}</p>
         </div>
       </div>
       {message && <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200">{message}</div>}
@@ -402,9 +402,9 @@ export default function ClientDetailPage() {
         </button>
         {showBreakdown && health && (
           <ul>
-            <li>פעילות Gmail: {health.breakdown.gmailActivity}</li>
-            <li>שימוש ב-Drive: {health.breakdown.driveUsage}</li>
-            <li>נתוני Sheets: {health.breakdown.sheetsData}</li>
+            <li>פעילות ג׳ימייל: {health.breakdown.gmailActivity}</li>
+            <li>שימוש בדרייב: {health.breakdown.driveUsage}</li>
+            <li>נתוני שיטס: {health.breakdown.sheetsData}</li>
             <li>שיעור השלמת משימות: {health.breakdown.taskCompletionRate}</li>
           </ul>
         )}
@@ -412,27 +412,27 @@ export default function ClientDetailPage() {
 
       <div className="mb-6 flex flex-wrap gap-3">
         <button className="btn" onClick={scanClient} disabled={loading}>
-          {loading ? "טוען..." : "סרוק"}
+          {loading ? "טוען..." : "סרוק נתוני לקוח"}
         </button>
         {data.client.invoiceSheetUrl && (
           <a className="btn btn-secondary" href={data.client.invoiceSheetUrl} target="_blank" rel="noreferrer">
-            פתח Sheets חשבוניות
+            פתח שיטס חשבוניות
           </a>
         )}
         {data.client.taskSheetUrl && (
           <a className="btn btn-secondary" href={data.client.taskSheetUrl} target="_blank" rel="noreferrer">
-            פתח Sheets משימות
+            פתח שיטס משימות
           </a>
         )}
         {data.client.driveFolderUrl && (
           <a className="btn btn-secondary" href={data.client.driveFolderUrl} target="_blank" rel="noreferrer">
-            פתח Drive
+            פתח דרייב
           </a>
         )}
       </div>
 
       <div className="card">
-        <h2>WhatsApp</h2>
+        <h2>וואטסאפ</h2>
         <div className="mt-4 grid gap-2">
           {whatsappMessages.map((item) => (
             <div
@@ -440,16 +440,20 @@ export default function ClientDetailPage() {
               className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm ${item.direction === "inbound" ? "justify-self-start rounded-tr-md bg-emerald-400/15 text-emerald-100" : "justify-self-end rounded-tl-md bg-accent-primary/20 text-ink-primary"}`}
             >
               <div>{item.body}</div>
-              {item.aiGenerated && <small>מענה AI</small>}
+              {item.aiGenerated && <small>מענה חכם</small>}
             </div>
           ))}
-          {whatsappMessages.length === 0 && <p>אין הודעות WhatsApp עדיין.</p>}
+          {whatsappMessages.length === 0 && (
+            <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+              <p>עדיין אין הודעות וואטסאפ. לאחר שליחה או סריקה, השיחה תופיע כאן.</p>
+            </div>
+          )}
         </div>
         <form onSubmit={sendWhatsAppMessage} className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
           <input
             value={whatsappText}
             onChange={(event) => setWhatsappText(event.target.value)}
-            placeholder="כתוב הודעת WhatsApp"
+            placeholder="כתוב הודעת וואטסאפ"
           />
           <button className="btn" type="submit">
             שלח
@@ -458,24 +462,24 @@ export default function ClientDetailPage() {
       </div>
 
       <div className="card">
-        <h2>WhatsApp אישי של הלקוח</h2>
+        <h2>וואטסאפ אישי של הלקוח</h2>
         <p>סטטוס: {clientWhatsAppStatus?.connected ? "מחובר" : "לא מחובר"}</p>
         <p>נסרקו: {clientWhatsAppStatus?.messagesScanned ?? 0} הודעות</p>
         {clientWhatsAppStatus?.lastSync && <p>סנכרון אחרון: {new Date(clientWhatsAppStatus.lastSync).toLocaleString("he-IL")}</p>}
         <div className="mt-4 flex flex-wrap gap-2">
-          <button className="btn" onClick={connectClientWhatsApp}>חבר WhatsApp עם QR</button>
+          <button className="btn" onClick={connectClientWhatsApp}>חבר וואטסאפ עם קוד</button>
           <button className="btn btn-secondary" onClick={scanClientWhatsApp}>סרוק 30 ימים</button>
-          <button className="btn btn-secondary" onClick={disconnectClientWhatsApp}>נתק</button>
+          <button className="btn btn-secondary" onClick={disconnectClientWhatsApp}>נתק וואטסאפ</button>
         </div>
         {clientWhatsAppQr && (
           <div className="mt-4">
-            <p>סרוק את הקוד באפליקציית WhatsApp של הלקוח:</p>
-            <img src={clientWhatsAppQr} alt="WhatsApp QR" className="mt-3 w-full max-w-[280px] rounded-2xl bg-white p-2" />
+            <p>סרוק את הקוד באפליקציית וואטסאפ של הלקוח:</p>
+            <img src={clientWhatsAppQr} alt="קוד חיבור וואטסאפ" className="mt-3 w-full max-w-[280px] rounded-2xl bg-white p-2" />
           </div>
         )}
         <h3>הודעות שנסרקו</h3>
         {clientWhatsAppMessages.length === 0 ? (
-          <p>אין הודעות WhatsApp שנסרקו עדיין</p>
+          <p>עדיין אין הודעות שנסרקו. חבר וואטסאפ ללקוח או הרץ סריקה כדי לראות שיחות ומסמכים.</p>
         ) : (
           clientWhatsAppMessages.map((item) => (
             <div key={item.id} className="border-t border-[var(--border)] py-3">
@@ -527,14 +531,16 @@ export default function ClientDetailPage() {
           </form>
         )}
         {tasks.length === 0 ? (
-          <p>אין משימות עדיין.</p>
+          <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+            <p>אין משימות ללקוח הזה. אפשר להוסיף משימה ידנית או ליצור הצעות חכמות.</p>
+          </div>
         ) : (
           tasks.map((task) => (
             <div key={task.id} className="border-t border-[var(--border)] py-3">
               <strong>{task.title}</strong>
               <p>{task.description}</p>
               <button className="btn btn-secondary" onClick={() => toggleStatus(task)}>
-                {taskStatusLabels[task.status]}
+                {nextTaskStatusAction(task.status)}
               </button>
               <span> {taskPriorityLabels[task.priority]}</span>
               {task.dueDate && <span> · {new Date(task.dueDate).toLocaleDateString("he-IL")}</span>}
@@ -542,7 +548,7 @@ export default function ClientDetailPage() {
                 ערוך
               </button>
               <button className="btn btn-secondary" onClick={() => deleteTask(task.id)}>
-                מחק
+                מחק משימה
               </button>
             </div>
           ))
@@ -550,9 +556,9 @@ export default function ClientDetailPage() {
       </div>
 
       <div className="card">
-        <h2>הצעות AI</h2>
+        <h2>הצעות חכמות</h2>
         <button className="btn" onClick={generateSuggestions} disabled={suggestionsLoading}>
-          {suggestionsLoading ? "מייצר..." : "צור הצעות AI"}
+          {suggestionsLoading ? "מייצר..." : "צור הצעות חכמות"}
         </button>
         {suggestions.map((suggestion) => (
           <div key={`${suggestion.title}-${suggestion.priority}`} className="border-t border-[var(--border)] py-3">
@@ -574,32 +580,32 @@ export default function ClientDetailPage() {
         <p>
           שולם: ₪{invoices.filter((invoice) => invoice.status === "paid").reduce((sum, invoice) => sum + invoice.amount, 0).toLocaleString("he-IL")} · ממתין: ₪{invoices.filter((invoice) => invoice.status !== "paid").reduce((sum, invoice) => sum + invoice.amount, 0).toLocaleString("he-IL")}
         </p>
-        {data.client.driveFolderUrl && <a className="btn btn-secondary" href={data.client.driveFolderUrl} target="_blank" rel="noreferrer">פתח Drive</a>}
-        {data.client.invoiceSheetUrl && <a className="btn btn-secondary" href={data.client.invoiceSheetUrl} target="_blank" rel="noreferrer">פתח Sheets</a>}
+        {data.client.driveFolderUrl && <a className="btn btn-secondary" href={data.client.driveFolderUrl} target="_blank" rel="noreferrer">פתח דרייב</a>}
+        {data.client.invoiceSheetUrl && <a className="btn btn-secondary" href={data.client.invoiceSheetUrl} target="_blank" rel="noreferrer">פתח שיטס</a>}
         {invoices.length === 0 ? (
-          <p>לא נמצאו חשבוניות</p>
+          <p>לא נמצאו חשבוניות ללקוח. אפשר לסרוק חשבוניות או לפתוח את תיקיית הדרייב אם היא מחוברת.</p>
         ) : (
           invoices.map((invoice) => (
             <div key={invoice.id} className="border-t border-[var(--border)] py-3">
               <strong>{invoice.invoiceNumber ?? "ללא מספר"}</strong>
-              <p>{new Date(invoice.date).toLocaleDateString("he-IL")} · ₪{invoice.amount.toLocaleString("he-IL")} {invoice.currency} · {invoiceStatusLabels[invoice.status]}</p>
+              <p>{new Date(invoice.date).toLocaleDateString("he-IL")} · {formatCurrency(invoice.amount, invoice.currency)} · {invoiceStatusLabels[invoice.status]}</p>
               {invoice.description && <p>{invoice.description}</p>}
-              {invoice.driveUrl && <a href={invoice.driveUrl} target="_blank" rel="noreferrer">פתח PDF ב-Drive</a>}
+              {invoice.driveUrl && <a href={invoice.driveUrl} target="_blank" rel="noreferrer">פתח קובץ בדרייב</a>}
             </div>
           ))
         )}
       </div>
       <div className="card">
-        <h2>תשלומים / מסמכים ישנים</h2>
+        <h2>תשלומים ומסמכים קודמים</h2>
         {data.payments.length === 0 ? (
-          <p>אין חשבוניות עדיין.</p>
+          <p>אין תשלומים או מסמכים קודמים להצגה.</p>
         ) : (
           data.payments.map((payment) => (
             <p key={payment.id}>
-              {payment.supplier} | ₪{payment.amount} | {new Date(payment.date).toLocaleDateString("he-IL")} |{" "}
+              {payment.supplier} · ₪{payment.amount} · {new Date(payment.date).toLocaleDateString("he-IL")}{" "}
               {(payment.invoiceLink || payment.documentLink) && (
                 <a href={payment.invoiceLink ?? payment.documentLink ?? ""} target="_blank" rel="noreferrer">
-                  פתח ב-Drive
+                  פתח בדרייב
                 </a>
               )}
             </p>
@@ -615,4 +621,15 @@ function relativeTime(date: Date) {
   if (minutes === 0) return "עכשיו";
   if (minutes === 1) return "לפני דקה";
   return `לפני ${minutes} דקות`;
+}
+
+function nextTaskStatusAction(status: TaskStatus) {
+  if (status === "todo" || status === "open") return "העבר לתהליך";
+  if (status === "in-progress") return "סמן כבוצע";
+  return "פתח מחדש";
+}
+
+function formatCurrency(amount: number, currency: string) {
+  const symbols: Record<string, string> = { ILS: "₪", USD: "$", EUR: "€", GBP: "£" };
+  return `${symbols[currency] ?? currency} ${amount.toLocaleString("he-IL")}`;
 }

@@ -23,11 +23,11 @@ export async function register(input: {
       body: JSON.stringify(input),
     });
   } catch {
-    throw new Error(`API is not reachable at ${API_URL}`);
+    throw new Error("אי אפשר להתחבר לשרת כרגע. נסה שוב בעוד רגע.");
   }
 
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Registration failed");
+  if (!res.ok) throw new Error(data.error ?? "ההרשמה נכשלה");
   return data as AuthResponse;
 }
 
@@ -43,10 +43,10 @@ export async function login(input: {
       body: JSON.stringify(input),
     });
   } catch {
-    throw new Error(`API is not reachable at ${API_URL}`);
+    throw new Error("אי אפשר להתחבר לשרת כרגע. נסה שוב בעוד רגע.");
   }
 
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Login failed");
+  if (!res.ok) throw new Error(data.error ?? "ההתחברות נכשלה");
   return data as AuthResponse;
 }

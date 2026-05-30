@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
@@ -30,7 +30,7 @@ import {
 
 const links: Array<{ href: string; label: string; icon: typeof Home; module?: BusinessModuleId | "admin" }> = [
   { href: "/dashboard", label: "לוח בקרה", icon: Home },
-  { href: "/crm", label: "CRM", icon: CircleDollarSign, module: "crm" },
+  { href: "/crm", label: "ניהול לקוחות", icon: CircleDollarSign, module: "crm" },
   { href: "/message-scans", label: "סריקות הודעות", icon: Search },
   { href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
   { href: "/dashboard/invoices", label: "חשבוניות", icon: FileText, module: "invoices" },
@@ -39,11 +39,11 @@ const links: Array<{ href: string; label: string; icon: typeof Home; module?: Bu
   { href: "/collections", label: "גבייה", icon: CircleDollarSign, module: "collections" },
   { href: "/tasks", label: "משימות", icon: CheckSquare, module: "tasks" },
   { href: "/social", label: "סושיאל", icon: Megaphone },
-  { href: "/dashboard/whatsapp", label: "WhatsApp", icon: MessageCircle, module: "whatsapp" },
+  { href: "/dashboard/whatsapp", label: "וואטסאפ", icon: MessageCircle, module: "whatsapp" },
   { href: "/reports", label: "דוחות", icon: BarChart3 },
   { href: "/dashboard/accountant", label: "רואה חשבון", icon: FileBarChart },
   { href: "/camera", label: "צילום חשבונית", icon: Camera, module: "documents" },
-  { href: "/dashboard/admin-debug", label: "Admin Debug", icon: Settings, module: "admin" },
+  { href: "/dashboard/admin-debug", label: "בדיקות מנהל", icon: Settings, module: "admin" },
   { href: "/dashboard/business-settings", label: "הגדרות עסק", icon: Settings },
   { href: "/dashboard/settings", label: "הגדרות", icon: Settings },
 ];
@@ -77,6 +77,7 @@ export function Nav() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchLoaded, setSearchLoaded] = useState(false);
   const [searchError, setSearchError] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [searchData, setSearchData] = useState<{
     clients: SearchClient[];
     invoices: SearchInvoice[];
@@ -94,8 +95,23 @@ export function Nav() {
       .catch(() => setOrganizationSettings(null));
   }, [pathname, router]);
 
+  useEffect(() => {
+    function focusSearch(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+        void loadSearchData();
+        searchInputRef.current?.focus();
+      }
+    }
+
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
+  }, [searchLoaded, searchLoading]);
+
   const moduleAllowed = (module?: BusinessModuleId | "admin") => {
-    if (!module || module === "admin") return true;
+    if (module === "admin") return process.env.NEXT_PUBLIC_SHOW_ADMIN_DEBUG === "true";
+    if (!module) return true;
     const enabledModules = organizationSettings
       ? normalizeEnabledModules(organizationSettings.enabledModules, organizationSettings.businessType)
       : null;
@@ -145,7 +161,7 @@ export function Nav() {
       });
       setSearchLoaded(true);
     } catch (err) {
-      setSearchError(err instanceof Error ? err.message : "Search failed");
+      setSearchError(err instanceof Error ? err.message : "החיפוש נכשל");
     } finally {
       setSearchLoading(false);
     }
@@ -173,7 +189,7 @@ export function Nav() {
         id: `invoice-${invoice.id}`,
         type: "חשבונית",
         title: invoice.invoiceNumber || invoice.client?.name || "חשבונית",
-        subtitle: `${invoice.client?.name ?? "ללא לקוח"} · ${invoice.amount.toLocaleString("he-IL")} ${invoice.currency}`,
+        subtitle: `${invoice.client?.name ?? "ללא לקוח"} · ${formatCurrency(invoice.amount, invoice.currency)}`,
         href: "/dashboard/invoices",
       }));
 
@@ -184,7 +200,7 @@ export function Nav() {
         id: `task-${task.id}`,
         type: "משימה",
         title: task.title,
-        subtitle: task.supplier ?? task.status,
+        subtitle: task.supplier ?? taskStatusLabel(task.status),
         href: "/tasks",
       }));
 
@@ -230,9 +246,9 @@ export function Nav() {
 
         <div className="fixed bottom-4 right-3 z-[60] w-[13.5rem] rounded-2xl border border-[var(--border)] bg-surface-card p-3 shadow-card">
           <div className="mb-3 flex min-w-0 items-center gap-3 rounded-xl bg-surface-hover/60 p-2">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#6366F1] text-sm font-bold text-white">AI</span>
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#6366F1] text-sm font-bold text-white">חכם</span>
             <span className="min-w-0 flex-1">
-              <span className="block whitespace-nowrap text-[14px] font-bold text-white">מנהל מערכת AI</span>
+              <span className="block whitespace-nowrap text-[14px] font-bold text-white">מנהל מערכת חכם</span>
               <span className="mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold text-[#10B981]">
                 <span className="h-2 w-2 rounded-full bg-[#10B981]" />
                 מחובר
@@ -247,7 +263,7 @@ export function Nav() {
             onClick={logout}
             className="flex w-full items-center justify-center rounded-xl border border-[#EF4444] bg-transparent px-4 py-2.5 text-[14px] font-bold text-[#EF4444] transition hover:bg-[#EF4444] hover:text-white"
           >
-            התנתק →
+            התנתק
           </button>
         </div>
       </aside>
@@ -270,6 +286,7 @@ export function Nav() {
             <div className="flex h-11 items-center gap-3 rounded-xl border border-[var(--border)] bg-surface-hover px-3 text-[#E2E8F0] shadow-card focus-within:border-accent-primary/60">
               <Search className="h-4 w-4 text-[#CBD5E1]" />
               <input
+                ref={searchInputRef}
                 className="min-w-0 flex-1 border-0 bg-transparent p-0 text-base font-medium text-[#F8FAFC] outline-none placeholder:text-[#CBD5E1]"
                 placeholder="חיפוש לקוחות, חשבוניות, משימות..."
                 value={searchQuery}
@@ -283,7 +300,7 @@ export function Nav() {
                   void loadSearchData();
                 }}
               />
-              <kbd className="rounded-md border border-[var(--border)] bg-surface-card px-2 py-1 text-sm text-[#CBD5E1]">⌘K</kbd>
+              <kbd className="rounded-md border border-[var(--border)] bg-surface-card px-2 py-1 text-sm text-[#CBD5E1]">Ctrl K</kbd>
             </div>
             {searchOpen && searchQuery.trim().length >= 2 && (
               <div className="absolute left-0 right-0 top-12 z-[80] overflow-hidden rounded-2xl border border-[var(--border)] bg-surface-secondary shadow-card">
@@ -311,14 +328,24 @@ export function Nav() {
             )}
           </div>
           <div className="min-w-0 flex-1 text-center text-[15px] font-semibold text-ink-primary sm:hidden">
-            AI Office Worker
+            עובד משרד חכם
           </div>
-          <button className="relative grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-[var(--border)] bg-surface-card text-ink-secondary hover:bg-surface-hover hover:text-ink-primary">
+          <button
+            type="button"
+            onClick={() => router.push("/message-scans")}
+            aria-label="פתח סריקות הודעות"
+            className="relative grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-[var(--border)] bg-surface-card text-ink-secondary hover:bg-surface-hover hover:text-ink-primary"
+          >
             <Bell className="h-4 w-4" />
             <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-[var(--error)]" />
           </button>
-          <button className="hidden items-center gap-2 rounded-xl border border-[var(--border)] bg-surface-card px-3 py-2 text-sm text-ink-secondary hover:bg-surface-hover hover:text-ink-primary md:flex">
-            <span className="grid h-7 w-7 place-items-center rounded-full bg-surface-hover text-[13px] font-bold text-ink-primary">AI</span>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/settings")}
+            aria-label="פתח הגדרות"
+            className="hidden items-center gap-2 rounded-xl border border-[var(--border)] bg-surface-card px-3 py-2 text-sm text-ink-secondary hover:bg-surface-hover hover:text-ink-primary md:flex"
+          >
+            <span className="grid h-7 w-7 place-items-center rounded-full bg-surface-hover text-[13px] font-bold text-ink-primary">חכם</span>
             <ChevronDown className="h-4 w-4" />
           </button>
         </div>
@@ -398,4 +425,20 @@ export function Nav() {
       </nav>
     </>
   );
+}
+
+function taskStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    open: "פתוח",
+    todo: "לביצוע",
+    "in-progress": "בתהליך",
+    done: "בוצע",
+    completed: "בוצע",
+  };
+  return labels[status] ?? status;
+}
+
+function formatCurrency(amount: number, currency: string) {
+  const symbols: Record<string, string> = { ILS: "₪", USD: "$", EUR: "€", GBP: "£" };
+  return `${symbols[currency] ?? currency} ${amount.toLocaleString("he-IL")}`;
 }

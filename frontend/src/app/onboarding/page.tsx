@@ -22,8 +22,8 @@ export default function OnboardingPage() {
     <div className="container">
       <Nav />
       <div className="mb-8">
-        <div className="page-kicker">Business onboarding</div>
-        <h1>התאמת AI Office Worker לעסק שלך</h1>
+        <div className="page-kicker">התאמת העסק</div>
+        <h1>התאמת עובד משרד חכם לעסק שלך</h1>
         <p>שלושה צעדים קצרים: סוג עסק, גודל העסק, והכאב המרכזי. משם נבנה דשבורד ומודולים מומלצים.</p>
       </div>
 

@@ -43,7 +43,7 @@ export default function AccountantPage() {
     try {
       await apiFetch("/api/accountant/generate", { method: "POST", body: JSON.stringify({ period: summary?.period }) });
       await load();
-      setMessage("הדוח נוצר ונשמר ב-Drive");
+      setMessage("הדוח נוצר ונשמר בדרייב");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "יצירת דוח נכשלה");
     } finally {
@@ -56,7 +56,7 @@ export default function AccountantPage() {
       headers: { Authorization: `Bearer ${getToken() ?? ""}` },
     });
     if (!response.ok) {
-      setMessage("הורדת ZIP נכשלה");
+      setMessage("הורדת הקובץ המכווץ נכשלה");
       return;
     }
     const blob = await response.blob();
@@ -75,7 +75,7 @@ export default function AccountantPage() {
   return (
     <div className="container">
       <Nav />
-      <div className="mb-8"><div className="page-kicker">Accountant reports</div><h1>רואה חשבון</h1></div>
+      <div className="mb-8"><div className="page-kicker">דוחות לרואה חשבון</div><h1>רואה חשבון</h1></div>
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-base text-ink-primary">{message}</div>}
       <div className="grid">
         <div className="card"><div className="stat-label">הכנסות החודש</div><div className="stat-value">₪{summary.totalIncome.toLocaleString("he-IL")}</div></div>
@@ -93,13 +93,14 @@ export default function AccountantPage() {
         <h2>מסמכים מוכנים</h2>
         <div className="grid gap-3 sm:flex sm:flex-wrap">
           <button className="btn" onClick={generate} disabled={loading}>{loading ? "מייצר..." : "צור דוח חודש"}</button>
-          <button className="btn btn-secondary" onClick={downloadZip}>הורד הכל כ-ZIP</button>
+          <button className="btn btn-secondary" onClick={downloadZip}>הורד הכול כקובץ מכווץ</button>
           <button className="btn btn-secondary" onClick={() => setMessage("שליחה באימייל תופעל אחרי הגדרת ספק מייל")}>שלח לרואה חשבון</button>
         </div>
         <ul className="mt-4 grid gap-2">
           {summary.reports.map((report) => (
-            <li key={report.id} className="rounded-2xl bg-surface-secondary p-3">{report.period} {report.driveUrl ? <a className="text-accent-primary" href={report.driveUrl} target="_blank" rel="noreferrer">פתח PDF</a> : "ממתין ל-Drive"}</li>
+            <li key={report.id} className="rounded-2xl bg-surface-secondary p-3">{report.period} {report.driveUrl ? <a className="text-accent-primary" href={report.driveUrl} target="_blank" rel="noreferrer">פתח קובץ</a> : "ממתין לדרייב"}</li>
           ))}
+          {summary.reports.length === 0 && <li className="rounded-2xl bg-surface-secondary p-3 text-ink-secondary">עדיין לא נוצרו דוחות חודשיים.</li>}
         </ul>
       </div>
       <div className="grid gap-4 md:hidden">

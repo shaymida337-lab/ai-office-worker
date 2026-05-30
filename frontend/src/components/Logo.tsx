@@ -15,7 +15,7 @@ export function Logo({ size = "md", showSubtitle = false, iconOnly = false, clas
   const sizing = sizeMap[size];
 
   return (
-    <div className={`flex items-center gap-3 ${className}`} dir="ltr">
+    <div className={`flex items-center gap-3 ${className}`} dir="rtl">
       <span className={`${sizing.icon} logo-icon`}>
         <svg viewBox="0 0 48 48" aria-hidden="true" className="h-full w-full">
           <defs>
@@ -30,9 +30,9 @@ export function Logo({ size = "md", showSubtitle = false, iconOnly = false, clas
         </svg>
       </span>
       {!iconOnly && (
-        <span className="min-w-0 text-left">
-          <span className={`logo-title block whitespace-nowrap font-extrabold leading-tight tracking-tight ${sizing.title}`}>AI Office Worker</span>
-          {showSubtitle && <span className={`block font-medium text-ink-muted ${sizing.subtitle}`}>by Shay Mida</span>}
+        <span className="min-w-0 text-right">
+          <span className={`logo-title block whitespace-nowrap font-extrabold leading-tight tracking-tight ${sizing.title}`}>עובד משרד חכם</span>
+          {showSubtitle && <span className={`block font-medium text-ink-muted ${sizing.subtitle}`}>מערכת אוטומציה עסקית</span>}
         </span>
       )}
     </div>

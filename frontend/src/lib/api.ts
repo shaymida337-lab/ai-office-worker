@@ -36,7 +36,7 @@ type ApiFetchInit = RequestInit & { timeoutMs?: number };
 export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T> {
   const token = getToken();
   if (!token) {
-    throw new ApiError("Unauthorized", 401);
+    throw new ApiError("צריך להתחבר כדי להמשיך", 401);
   }
 
   let res: Response;
@@ -60,8 +60,8 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
     });
   } catch (err) {
     const message = err instanceof DOMException && err.name === "AbortError"
-      ? `API request timed out: ${url}`
-      : `API is not reachable: ${url}`;
+      ? "השרת לא ענה בזמן. נסה שוב בעוד רגע."
+      : "אי אפשר להתחבר לשרת כרגע. בדוק שהמערכת פעילה ונסה שוב.";
     console.error("[apiFetch]", message, err);
     throw new Error(message);
   } finally {
@@ -70,7 +70,7 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    const message = `${url} failed with status ${res.status}: ${(err as { error?: string }).error ?? "Request failed"}`;
+    const message = (err as { error?: string }).error ?? `הבקשה נכשלה עם קוד ${res.status}`;
     console.error("[apiFetch]", message);
     throw new ApiError(message, res.status);
   }

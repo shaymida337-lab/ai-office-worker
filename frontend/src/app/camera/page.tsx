@@ -93,10 +93,10 @@ export default function CameraPage() {
   return (
     <div className="container">
       <Nav />
-      <div className="mb-8"><div className="page-kicker">Document capture</div><h1>צילום חשבונית</h1></div>
+      <div className="mb-8"><div className="page-kicker">קליטת מסמכים</div><h1>צילום חשבונית</h1></div>
       <div className="card">
         <p>
-          העלה JPG, PNG או PDF. Claude יחלץ את פרטי החשבונית ותוכל לאשר לפני שמירה.
+          העלה תמונה או קובץ חשבונית. המערכת תחלץ את פרטי החשבונית ותאפשר לך לאשר לפני שמירה.
         </p>
         <label className="mt-4">
           בחר או צלם חשבונית

@@ -75,7 +75,11 @@ export default function CollectionsPage() {
   return (
     <div className="container">
       <Nav />
-      <div className="mb-8"><div className="page-kicker">Collections</div><h1>גביית לקוחות</h1></div>
+      <div className="mb-8">
+        <div className="page-kicker">גבייה</div>
+        <h1>גביית לקוחות</h1>
+        <p>מעקב אחרי חובות פתוחים, תאריכי יעד ותזכורות גבייה ללקוחות.</p>
+      </div>
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-base text-ink-primary">{message}</div>}
       <div className="card">
         <form onSubmit={createInvoice} className="grid gap-3 md:grid-cols-4">
@@ -96,7 +100,12 @@ export default function CollectionsPage() {
       </div>
       {reminder && <div className="card"><strong>טיוטת תזכורת:</strong><p>{reminder}</p></div>}
       {loading && <div className="card"><p>טוען חובות לקוחות...</p></div>}
-      {!loading && invoices.length === 0 && <div className="card"><p>אין חובות לקוחות עדיין.</p></div>}
+      {!loading && invoices.length === 0 && (
+        <div className="card">
+          <h2>אין חובות פתוחים</h2>
+          <p className="mt-2">הוסף חוב לקוח ידנית או הפעל סריקות כדי להתחיל לנהל גבייה במקום אחד.</p>
+        </div>
+      )}
 
       <div className="grid gap-4 md:hidden">
         {invoices.map((i) => (
@@ -113,7 +122,7 @@ export default function CollectionsPage() {
             </div>
             {!i.paid && (
               <div className="grid gap-2">
-                <button className="btn btn-secondary" onClick={() => markPaid(i.id)}>סמן שולם</button>
+                <button className="btn btn-secondary" onClick={() => markPaid(i.id)}>סמן כחוב ששולם</button>
                 <button className="btn" onClick={() => sendReminder(i.id)}>צור תזכורת</button>
               </div>
             )}
@@ -134,8 +143,10 @@ export default function CollectionsPage() {
                 <td>{i.dueDate ? new Date(i.dueDate).toLocaleDateString("he-IL") : "—"}</td>
                 <td>{i.paid ? "כן" : "לא"}</td>
                 <td>
-                  {!i.paid && <button className="btn btn-secondary" onClick={() => markPaid(i.id)}>שולם</button>}
-                  {!i.paid && <button className="btn mr-2" onClick={() => sendReminder(i.id)}>צור תזכורת</button>}
+                  <div className="flex flex-wrap gap-2">
+                  {!i.paid && <button className="btn btn-secondary" onClick={() => markPaid(i.id)}>סמן כחוב ששולם</button>}
+                  {!i.paid && <button className="btn" onClick={() => sendReminder(i.id)}>צור תזכורת</button>}
+                  </div>
                 </td>
               </tr>
             ))}

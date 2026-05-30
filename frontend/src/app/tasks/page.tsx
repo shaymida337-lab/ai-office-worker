@@ -14,11 +14,13 @@ export default function TasksPage() {
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     apiFetch<Task[]>("/api/tasks")
       .then(setTasks)
-      .catch((err) => setMessage(err instanceof Error ? err.message : "טעינת משימות נכשלה"));
+      .catch((err) => setMessage(err instanceof Error ? err.message : "טעינת משימות נכשלה"))
+      .finally(() => setLoading(false));
   }, []);
 
   async function complete(id: string) {
@@ -84,7 +86,11 @@ export default function TasksPage() {
   return (
     <div className="container">
       <Nav />
-      <div className="mb-8"><div className="page-kicker">Task inbox</div><h1>משימות מהמייל</h1></div>
+      <div className="mb-8">
+        <div className="page-kicker">תיבת משימות</div>
+        <h1>משימות מהמייל</h1>
+        <p>משימות שנוצרו מסריקות ג׳ימייל, וואטסאפ וחשבוניות כדי שלא ייפול טיפול בין הכיסאות.</p>
+      </div>
       {message && <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-base text-red-100">{message}</div>}
       <div className="card">
         <div className="mb-5 flex flex-wrap gap-2 rounded-2xl border border-[var(--border)] bg-surface-hover p-1">
@@ -104,7 +110,7 @@ export default function TasksPage() {
               activeTab === "completed" ? "bg-[#6366F1] text-white shadow-[0_10px_24px_rgba(99,102,241,0.28)]" : "text-[#E2E8F0] hover:bg-surface-card"
             }`}
           >
-            בוצעו ✓ ({completedTasks.length})
+            משימות שבוצעו ({completedTasks.length})
           </button>
         </div>
 
@@ -121,9 +127,9 @@ export default function TasksPage() {
             >
               <div className="min-w-0">
                 <strong className={activeTab === "completed" ? "text-[14px] font-semibold text-ink-muted line-through" : "text-[15px] font-semibold text-white"}>
-                  {isCompleting ? "✓ בוצע" : t.title}
+                  {isCompleting ? "סומן כבוצע" : t.title}
                 </strong>
-                {t.supplier && <span className="text-[14px] text-ink-muted"> — {t.supplier}</span>}
+                {t.supplier && <span className="text-[14px] text-ink-muted"> · {t.supplier}</span>}
                 {activeTab === "completed" && <div className="mt-1 text-[13px] text-ink-muted">הושלם: {formatCompletedDate(t.updatedAt)}</div>}
               </div>
               {activeTab === "active" ? (
@@ -132,7 +138,7 @@ export default function TasksPage() {
                   disabled={isCompleting}
                   onClick={() => complete(t.id)}
                 >
-                  בוצע
+                  סמן כבוצע
                 </button>
               ) : (
                 <button
@@ -147,8 +153,14 @@ export default function TasksPage() {
           );
           })}
         </ul>
-        {visibleTasks.length === 0 && (
-          <p className="text-[14px] text-ink-muted">{activeTab === "active" ? "אין משימות פעילות כרגע." : "אין משימות שבוצעו עדיין."}</p>
+        {loading && <div className="skeleton h-24" aria-label="טוען משימות" />}
+        {!loading && visibleTasks.length === 0 && (
+          <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+            <h2>{activeTab === "active" ? "אין משימות פתוחות" : "אין משימות שבוצעו"}</h2>
+            <p className="mt-2 text-[14px] text-ink-muted">
+              {activeTab === "active" ? "כשסריקות יזהו טיפול נדרש, המשימות יופיעו כאן." : "משימות שסומנו כבוצעו יישמרו כאן לבקרה."}
+            </p>
+          </div>
         )}
       </div>
     </div>

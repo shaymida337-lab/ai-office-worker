@@ -65,7 +65,7 @@ export default function SocialClient() {
         body: JSON.stringify({ clientId, accessToken, pageId }),
       });
       if (result.oauthUrl && !accessToken) window.location.href = result.oauthUrl;
-      setMessage(result.connected ? `${platform} חובר בהצלחה` : `פתח OAuth עבור ${platform}`);
+      setMessage(result.connected ? `${platformLabel(platform)} חובר בהצלחה` : `נפתח חיבור מאובטח עבור ${platformLabel(platform)}`);
       setConnectPlatform("");
       setAccessToken("");
       setPageId("");
@@ -114,14 +114,19 @@ export default function SocialClient() {
       <Nav />
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="page-kicker">Social command center</div>
-          <h1>מנהל סושיאל AI</h1>
+          <div className="page-kicker">מרכז ניהול סושיאל</div>
+          <h1>מנהל סושיאל חכם</h1>
           <p>תכנון, אישור ופרסום תוכן לכל לקוח ולכל פלטפורמה.</p>
         </div>
         <button className="btn" onClick={generate} disabled={loading || !clientId}><Sparkles className="h-4 w-4" />{loading ? "יוצר תוכן..." : "צור תוכן"}</button>
       </div>
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
-      {clients.length === 0 && <div className="card"><p>אין לקוחות עדיין. הוסף לקוח לפני יצירת תוכן סושיאל.</p></div>}
+      {clients.length === 0 && (
+        <div className="card">
+          <h2>אין לקוחות לסושיאל</h2>
+          <p className="mt-2">הוסף לקוח ראשון כדי לחבר חשבונות, ליצור תוכן ולהפעיל תהליך אישור.</p>
+        </div>
+      )}
       <div className="card">
         <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
           <label>
@@ -143,7 +148,7 @@ export default function SocialClient() {
                 <span className="grid h-12 w-12 place-items-center rounded-2xl bg-surface-hover text-accent-primary">{platformIcon(platform)}</span>
                 <span className={`badge ${connected.has(platform) ? "badge-ok" : "badge-warn"}`}>{connected.has(platform) ? "מחובר" : "לא מחובר"}</span>
               </div>
-              <h3 className="text-lg font-semibold capitalize text-ink-primary">{platform}</h3>
+              <h3 className="text-lg font-semibold text-ink-primary">{platformLabel(platform)}</h3>
               <p className="mb-4 text-sm">סטטוס חיבור ופרטי פרסום</p>
               <button className="btn btn-secondary" onClick={() => setConnectPlatform(platform)}>
                 {connected.has(platform) ? "עדכן חיבור" : "חבר חשבון"}
@@ -156,15 +161,15 @@ export default function SocialClient() {
       {connectPlatform && (
         <div className="fixed inset-0 z-[110] grid place-items-end bg-black/70 p-4 backdrop-blur-sm sm:place-items-center">
           <form onSubmit={connect} className="card max-h-[85vh] w-full max-w-xl overflow-y-auto">
-            <h2>חיבור {connectPlatform}</h2>
-            <p>הדבק פרטי חיבור או השאר טוקן ריק כדי לפתוח OAuth אם השרת תומך בכך.</p>
+            <h2>חיבור {platformLabel(connectPlatform)}</h2>
+            <p>הדבק פרטי חיבור או השאר את השדה ריק כדי לפתוח חיבור מאובטח אם השרת תומך בכך.</p>
             <label>
               טוקן גישה
-              <input dir="ltr" value={accessToken} onChange={(event) => setAccessToken(event.target.value)} placeholder="access token" />
+              <input dir="ltr" value={accessToken} onChange={(event) => setAccessToken(event.target.value)} placeholder="טוקן גישה" />
             </label>
             <label>
               מזהה עמוד / עסק
-              <input dir="ltr" value={pageId} onChange={(event) => setPageId(event.target.value)} placeholder="page / author id" />
+              <input dir="ltr" value={pageId} onChange={(event) => setPageId(event.target.value)} placeholder="מזהה עמוד או יוצר" />
             </label>
             <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap">
               <button className="btn" type="submit" disabled={loading}>{loading ? "מחבר..." : "חבר חשבון"}</button>
@@ -184,14 +189,31 @@ export default function SocialClient() {
 
       {tab === "analytics" && (
         posts.length === 0 ? (
-          <div className="card"><p>אין נתוני ביצועים עדיין.</p></div>
-        ) : (
-          <div className="table-shell">
-          <h2>נתוני ביצועים</h2>
-            <table><thead><tr><th>פלטפורמה</th><th>לייקים</th><th>תגובות</th><th>Reach</th></tr></thead><tbody>
-              {posts.map((post) => <tr key={post.id}><td>{post.platform}</td><td>{post.analytics?.likes ?? 0}</td><td>{post.analytics?.comments ?? 0}</td><td>{post.analytics?.reach ?? 0}</td></tr>)}
-            </tbody></table>
+          <div className="card">
+            <h2>אין נתוני ביצועים עדיין</h2>
+            <p className="mt-2">לאחר פרסום פוסטים יוצגו כאן נתוני חשיפה, לייקים ותגובות.</p>
           </div>
+        ) : (
+          <>
+            <div className="grid gap-4 md:hidden">
+              {posts.map((post) => (
+                <div className="card" key={post.id}>
+                  <h2>{platformLabel(post.platform)}</h2>
+                  <div className="mt-3 grid gap-2 rounded-2xl bg-surface-secondary p-3">
+                    <MetricRow label="לייקים" value={post.analytics?.likes ?? 0} />
+                    <MetricRow label="תגובות" value={post.analytics?.comments ?? 0} />
+                    <MetricRow label="חשיפה" value={post.analytics?.reach ?? 0} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="table-shell hidden md:block">
+              <h2 className="p-4">נתוני ביצועים</h2>
+              <table><thead><tr><th>פלטפורמה</th><th>לייקים</th><th>תגובות</th><th>חשיפה</th></tr></thead><tbody>
+                {posts.map((post) => <tr key={post.id}><td>{platformLabel(post.platform)}</td><td>{post.analytics?.likes ?? 0}</td><td>{post.analytics?.comments ?? 0}</td><td>{post.analytics?.reach ?? 0}</td></tr>)}
+              </tbody></table>
+            </div>
+          </>
         )
       )}
 
@@ -202,7 +224,8 @@ export default function SocialClient() {
           ))}
           {shownPosts.length === 0 && (
             <div className="card">
-              <p>{tab === "pending" ? "אין פוסטים שממתינים לאישור." : "אין פוסטים ביומן עדיין. צור תוכן כדי להתחיל."}</p>
+              <h2>{tab === "pending" ? "אין פוסטים שממתינים לאישור" : "אין פוסטים ביומן"}</h2>
+              <p className="mt-2">{tab === "pending" ? "פוסטים חדשים לאישור יופיעו כאן אחרי יצירת תוכן." : "צור תוכן כדי לבנות יומן פרסום שבועי."}</p>
             </div>
           )}
         </div>
@@ -215,8 +238,8 @@ function PostCard({ post, onAction }: { post: SocialPost; onAction: (postId: str
   return (
     <div className="card overflow-hidden">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <strong className="flex items-center gap-2 capitalize text-ink-primary">{platformIcon(post.platform)} {post.platform}</strong>
-        <span className="badge badge-ok">{post.status}</span>
+        <strong className="flex items-center gap-2 text-ink-primary">{platformIcon(post.platform)} {platformLabel(post.platform)}</strong>
+        <span className="badge badge-ok">{postStatusLabel(post.status)}</span>
       </div>
       <p className="mb-4 text-sm">{new Date(post.scheduledAt).toLocaleString("he-IL")}</p>
       {post.imageUrl && <img src={post.imageUrl} alt="" className="mb-4 aspect-video w-full rounded-2xl object-cover" />}
@@ -240,11 +263,39 @@ function platformIcon(platform: string) {
   return <BriefcaseBusiness className="h-5 w-5" />;
 }
 
+function platformLabel(platform: string) {
+  const labels: Record<string, string> = {
+    instagram: "אינסטגרם",
+    facebook: "פייסבוק",
+    linkedin: "לינקדאין",
+  };
+  return labels[platform] ?? "סושיאל";
+}
+
+function postStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending_approval: "ממתין לאישור",
+    approved: "אושר",
+    rejected: "נדחה",
+    published: "פורסם",
+  };
+  return labels[status] ?? status;
+}
+
 function TabButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <button className={`btn btn-secondary ${active ? "border-accent-primary bg-accent-primary/10 text-ink-primary" : ""}`} onClick={onClick}>
       {icon}
       {children}
     </button>
+  );
+}
+
+function MetricRow({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-ink-secondary">{label}</span>
+      <strong className="text-ink-primary">{value.toLocaleString("he-IL")}</strong>
+    </div>
   );
 }

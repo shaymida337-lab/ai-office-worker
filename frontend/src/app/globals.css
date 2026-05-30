@@ -130,10 +130,10 @@
   }
 
   .card {
-    @apply relative mb-5 min-w-0 rounded-2xl border border-[var(--border)] bg-[rgba(22,22,30,0.85)] p-4 shadow-card backdrop-blur transition-all duration-300 hover:-translate-y-0.5 hover:border-[rgba(99,102,241,0.4)] hover:shadow-glow md:mb-6 md:p-6;
+    @apply relative mb-5 min-w-0 rounded-2xl border border-[var(--border)] bg-[rgba(22,22,30,0.85)] p-4 shadow-card backdrop-blur transition-colors duration-300 md:mb-6 md:p-6;
   }
 
-  .grid {
+  .auto-grid {
     display: grid;
     gap: 1rem;
     grid-template-columns: minmax(0, 1fr);
@@ -152,7 +152,7 @@
   }
 
   .btn-secondary {
-    @apply border-[#818CF8] bg-[#6366F1] text-white shadow-[0_12px_28px_rgba(99,102,241,0.28)] hover:border-white/80 hover:bg-[#7C3AED] hover:text-white;
+    @apply border-[#818CF8]/70 bg-surface-card text-[#E2E8F0] shadow-none hover:border-[#A5B4FC] hover:bg-surface-hover hover:text-white hover:shadow-[0_12px_28px_rgba(99,102,241,0.18)];
   }
 
   .btn-toggle-inactive {
@@ -227,7 +227,7 @@
 }
 
 @media (min-width: 640px) {
-  .grid {
+  .auto-grid {
     gap: 1.5rem;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
@@ -249,14 +249,6 @@
   p,
   td {
     @apply text-[16px] leading-7;
-  }
-
-  .text-sm,
-  .text-\[13px\],
-  .text-\[14px\],
-  .text-\[15px\] {
-    font-size: 16px !important;
-    line-height: 1.5rem !important;
   }
 
   nav .text-\[12px\],
@@ -285,10 +277,6 @@
 
   .stat-value {
     @apply text-[24px];
-  }
-
-  .btn {
-    @apply w-full;
   }
 
   .help-close {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
-import { getBusinessProfile, type BusinessCrmField, type OrganizationSettings } from "@/lib/business-config";
+import { getBusinessProfile, uiTranslations, type BusinessCrmField, type OrganizationSettings } from "@/lib/business-config";
 import { BarChart3, CalendarClock, Flame, GripVertical, List, MessageCircle, Plus, Search, Star, UserRoundCheck } from "lucide-react";
 
 type Lead = {
@@ -105,7 +105,7 @@ export default function CrmPage() {
   }
 
   useEffect(() => {
-    load().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת CRM נכשלה"));
+    load().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת ניהול הלקוחות נכשלה"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.search, filters.source, filters.stage, filters.minValue, filters.maxValue, filters.assignedTo, filters.from, filters.to, filters.sortBy, filters.sortDir]);
 
@@ -139,7 +139,7 @@ export default function CrmPage() {
       });
       setForm(emptyForm);
       setShowForm(false);
-      setMessage("הליד נוסף וה-sequence הופעל אוטומטית");
+      setMessage("הליד נוסף ורצף ההודעות הופעל אוטומטית");
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "שמירת ליד נכשלה");
@@ -165,7 +165,7 @@ export default function CrmPage() {
       }),
     });
     setSelected(result.lead);
-    setMessage("הליד סומן כענה וה-sequence נעצר");
+    setMessage("הליד סומן כענה ורצף ההודעות נעצר");
     await load();
   }
 
@@ -204,7 +204,7 @@ export default function CrmPage() {
       setMessage(`נסרקו ${result.scanned} מיילים ונוצרו ${result.created} לידים`);
       await load();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "סריקת לידים מ-Gmail נכשלה");
+      setMessage(err instanceof Error ? err.message : "סריקת לידים מג׳ימייל נכשלה");
     } finally {
       setSaving(false);
     }
@@ -228,30 +228,30 @@ export default function CrmPage() {
       <Nav />
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="page-kicker">CRM automation</div>
+          <div className="page-kicker">ניהול לקוחות אוטומטי</div>
           <h1>{businessProfile.title}</h1>
           <p>{businessProfile.subtitle}</p>
         </div>
         <div className="grid gap-2 sm:flex sm:flex-wrap">
           <button className="btn" onClick={() => setShowForm((open) => !open)}><Plus className="h-4 w-4" />הוסף ליד</button>
-          <button className="btn btn-secondary" onClick={() => setTemplatesOpen((open) => !open)}>תבניות sequence</button>
-          <button className="btn btn-secondary" onClick={scanGmailLeads} disabled={saving}>סרוק לידים מ-Gmail</button>
+          <button className="btn btn-secondary" onClick={() => setTemplatesOpen((open) => !open)}>תבניות רצף הודעות</button>
+          <button className="btn btn-secondary" onClick={scanGmailLeads} disabled={saving}>סרוק לידים מג׳ימייל</button>
         </div>
       </div>
 
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-base text-ink-primary">{message}</div>}
 
-      <section className="grid mb-6">
+      <section className="auto-grid mb-6">
         <KpiCard label={crmKpiLabel(organizationSettings?.businessType, "newToday")} value={kpis.newToday} icon={<UserRoundCheck className="h-5 w-5" />} />
         <KpiCard label={crmKpiLabel(organizationSettings?.businessType, "responseRate")} value={`${kpis.responseRate}%`} icon={<MessageCircle className="h-5 w-5" />} />
         <KpiCard label={crmKpiLabel(organizationSettings?.businessType, "avgCloseDays")} value={`${kpis.avgCloseDays} ימים`} icon={<CalendarClock className="h-5 w-5" />} />
-        <KpiCard label="ערך Pipeline" value={`₪${kpis.pipelineValue.toLocaleString("he-IL")}`} icon={<Flame className="h-5 w-5" />} />
+        <KpiCard label="ערך תהליך המכירה" value={`₪${kpis.pipelineValue.toLocaleString("he-IL")}`} icon={<Flame className="h-5 w-5" />} />
       </section>
 
       <section className="card mb-6">
         <div className="mb-3">
-          <h2>שדות CRM מותאמים</h2>
-          <p className="text-sm">הטופס משתמש באותם נתוני CRM קיימים, עם שפה ושדות עבודה שמותאמים לסוג העסק.</p>
+          <h2>שדות ניהול לקוחות מותאמים</h2>
+          <p className="text-sm">הטופס משתמש באותם נתוני לקוחות קיימים, עם שפה ושדות עבודה שמותאמים לסוג העסק.</p>
         </div>
         <div className="grid gap-2 md:grid-cols-3">
           {businessProfile.crmFields.map((field) => (
@@ -277,7 +277,7 @@ export default function CrmPage() {
               מקור
               <select value={filters.source} onChange={(event) => setFilters({ ...filters, source: event.target.value })}>
                 <option value="all">כל המקורות</option>
-                {sources.map((source) => <option key={source} value={source}>{source}</option>)}
+                {sources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
               </select>
             </label>
             <label>
@@ -305,7 +305,7 @@ export default function CrmPage() {
             </label>
             <label>
               סוכן אחראי
-              <input value={filters.assignedTo} onChange={(event) => setFilters({ ...filters, assignedTo: event.target.value })} placeholder="User ID או שם" />
+              <input value={filters.assignedTo} onChange={(event) => setFilters({ ...filters, assignedTo: event.target.value })} placeholder="מזהה משתמש או שם" />
             </label>
             <label>
               מיון
@@ -335,9 +335,9 @@ export default function CrmPage() {
             </button>
           </div>
           <div className="grid gap-2 sm:flex">
-            <ViewButton active={view === "kanban"} onClick={() => setView("kanban")} icon={<GripVertical className="h-4 w-4" />}>Kanban</ViewButton>
+            <ViewButton active={view === "kanban"} onClick={() => setView("kanban")} icon={<GripVertical className="h-4 w-4" />}>לוח שלבים</ViewButton>
             <ViewButton active={view === "list"} onClick={() => setView("list")} icon={<List className="h-4 w-4" />}>רשימה</ViewButton>
-            <ViewButton active={view === "pipeline"} onClick={() => setView("pipeline")} icon={<BarChart3 className="h-4 w-4" />}>Pipeline</ViewButton>
+            <ViewButton active={view === "pipeline"} onClick={() => setView("pipeline")} icon={<BarChart3 className="h-4 w-4" />}>תהליך מכירה</ViewButton>
           </div>
         </div>
       </section>
@@ -346,19 +346,19 @@ export default function CrmPage() {
         <form onSubmit={createLead} className="card grid gap-3 md:grid-cols-3">
           <label>{crmLabels.name.label}<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder={crmLabels.name.placeholder} /></label>
           <label>{crmLabels.phone.label}<input required dir="ltr" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder={crmLabels.phone.placeholder} /></label>
-          <label>מקור<select value={form.source} onChange={(event) => setForm({ ...form, source: event.target.value })}>{sources.map((source) => <option key={source} value={source}>{source}</option>)}</select></label>
+          <label>מקור<select value={form.source} onChange={(event) => setForm({ ...form, source: event.target.value })}>{sources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}</select></label>
           <label>{crmLabels.company.label}<input value={form.company} onChange={(event) => setForm({ ...form, company: event.target.value })} placeholder={crmLabels.company.placeholder} /></label>
           <label>{crmLabels.email.label}<input dir="ltr" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder={crmLabels.email.placeholder} /></label>
           <label>{crmLabels.estimatedValue.label}<input type="number" value={form.estimatedValue} onChange={(event) => setForm({ ...form, estimatedValue: event.target.value })} placeholder={crmLabels.estimatedValue.placeholder} /></label>
           <label className="md:col-span-2">{crmLabels.tags.label}<input value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} placeholder={crmLabels.tags.placeholder} /></label>
           <label>{crmLabels.notes.label}<input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder={crmLabels.notes.placeholder} /></label>
-          <button className="btn md:col-span-3" disabled={saving}>{saving ? "שומר..." : "שמור והפעל sequence"}</button>
+          <button className="btn md:col-span-3" disabled={saving}>{saving ? "שומר..." : "שמור והפעל רצף הודעות"}</button>
         </form>
       )}
 
       {templatesOpen && <TemplatePanel templates={templates} onSave={saveTemplate} />}
 
-      {!data ? <div className="card"><p>טוען CRM...</p></div> : null}
+      {!data ? <div className="card"><p>טוען ניהול לקוחות...</p></div> : null}
       {data && view === "kanban" && (
         <section className="grid gap-4 xl:grid-cols-6">
           {stages.map((stage) => {
@@ -379,6 +379,16 @@ export default function CrmPage() {
           })}
         </section>
       )}
+      {data && view === "kanban" && filteredLeads.length === 0 && (
+        <div className="card">
+          <h2>{filters.search || filters.source !== "all" || filters.stage !== "all" ? "לא נמצאו לידים תואמים" : "עדיין אין לידים"}</h2>
+          <p className="mt-2">
+            {filters.search || filters.source !== "all" || filters.stage !== "all"
+              ? "נסה לשנות חיפוש או לנקות פילטרים."
+              : "הוסף ליד ידנית או סרוק ג׳ימייל כדי להתחיל לבנות תהליך מכירה."}
+          </p>
+        </div>
+      )}
 
       {data && view === "list" && (
         <section className="table-shell">
@@ -389,7 +399,7 @@ export default function CrmPage() {
                 <tr key={lead.id} className="cursor-pointer" onClick={() => setSelected(lead)}>
                   <td>{lead.name}<br /><span className="text-ink-muted">{lead.company}</span></td>
                   <td>{lead.phone ?? "-"}</td>
-                  <td>{lead.source}</td>
+                  <td>{sourceLabel(lead.source)}</td>
                   <td>{lead.stage}</td>
                   <td>₪{lead.estimatedValue.toLocaleString("he-IL")}</td>
                   <td><ScoreBadge score={lead.score} /></td>
@@ -400,6 +410,12 @@ export default function CrmPage() {
               ))}
             </tbody>
           </table>
+          {filteredLeads.length === 0 && (
+            <div className="p-4">
+              <h2>{filters.search || filters.source !== "all" || filters.stage !== "all" ? "לא נמצאו לידים תואמים" : "עדיין אין לידים"}</h2>
+              <p className="mt-2 text-sm">אפשר לנקות פילטרים, להוסיף ליד ידנית או לסרוק לידים מג׳ימייל.</p>
+            </div>
+          )}
         </section>
       )}
 
@@ -433,7 +449,7 @@ function LeadCard({ lead, onOpen, onDrag, onStage }: { lead: Lead; onOpen: () =>
       </div>
       <div className="mb-3 flex flex-wrap gap-2">
         <ScoreBadge score={lead.score} />
-        <span className="badge badge-warn">{lead.source}</span>
+        <span className="badge badge-warn">{sourceLabel(lead.source)}</span>
       </div>
       <div className="grid gap-1 text-sm text-ink-secondary">
         <span>₪{lead.estimatedValue.toLocaleString("he-IL")}</span>
@@ -448,15 +464,6 @@ function LeadCard({ lead, onOpen, onDrag, onStage }: { lead: Lead; onOpen: () =>
 }
 
 function safeBusinessProfile(settings: OrganizationSettings | null) {
-  const profile = settings?.businessProfile;
-  if (
-    profile &&
-    Array.isArray(profile.dashboardKpis) &&
-    Array.isArray(profile.dashboardWidgets) &&
-    Array.isArray(profile.crmFields)
-  ) {
-    return profile;
-  }
   return getBusinessProfile(settings?.businessType);
 }
 
@@ -467,7 +474,7 @@ function crmFieldMap(fields: BusinessCrmField[]) {
     phone: { key: "phone", label: "טלפון", placeholder: "+972..." },
     email: { key: "email", label: "מייל", placeholder: "client@example.com" },
     estimatedValue: { key: "estimatedValue", label: "ערך עסקה", placeholder: "0" },
-    tags: { key: "tags", label: "תגיות", placeholder: "דחוף, המלצה, VIP" },
+    tags: { key: "tags", label: "תגיות", placeholder: "דחוף, המלצה, לקוח חשוב" },
     notes: { key: "notes", label: "הערות", placeholder: "הערות פנימיות" },
   };
   return fields.reduce((acc, field) => ({ ...acc, [field.key]: field }), fallback);
@@ -489,6 +496,31 @@ function crmKpiLabel(businessType: string | null | undefined, key: CrmKpiKey) {
   };
   const fallback = { newToday: "לידים חדשים היום", responseRate: "שיעור תשובה", avgCloseDays: "ממוצע לסגירה" };
   return (businessType && labels[businessType]?.[key]) || fallback[key];
+}
+
+function sourceLabel(source: string) {
+  return uiTranslations.crmSources[source as keyof typeof uiTranslations.crmSources] ?? source;
+}
+
+function channelLabel(channel: string | null | undefined) {
+  if (!channel) return "";
+  return uiTranslations.sequenceChannels[channel as keyof typeof uiTranslations.sequenceChannels] ?? channel;
+}
+
+function statusLabel(status: string | null | undefined) {
+  if (!status) return "";
+  return uiTranslations.statuses[status as keyof typeof uiTranslations.statuses] ?? status;
+}
+
+function timelineTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    note: "הערה",
+    message: "הודעה",
+    reply: "תשובה",
+    stage: "שינוי שלב",
+    created: "נוצר",
+  };
+  return labels[type] ?? type;
 }
 
 function LeadModal({
@@ -603,7 +635,7 @@ function LeadModal({
         <form onSubmit={saveDetails} className="mt-6 grid gap-3 md:grid-cols-3">
           <label>{crmLabels.name.label}<input required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder={crmLabels.name.placeholder} /></label>
           <label>{crmLabels.company.label}<input value={draft.company} onChange={(event) => setDraft({ ...draft, company: event.target.value })} placeholder={crmLabels.company.placeholder} /></label>
-          <label>מקור<select value={draft.source} onChange={(event) => setDraft({ ...draft, source: event.target.value })}>{sources.map((source) => <option key={source} value={source}>{source}</option>)}</select></label>
+          <label>מקור<select value={draft.source} onChange={(event) => setDraft({ ...draft, source: event.target.value })}>{sources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}</select></label>
           <label>{crmLabels.phone.label}<input dir="ltr" value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} placeholder={crmLabels.phone.placeholder} /></label>
           <label>וואטסאפ<input dir="ltr" value={draft.whatsapp} onChange={(event) => setDraft({ ...draft, whatsapp: event.target.value })} /></label>
           <label>{crmLabels.email.label}<input dir="ltr" type="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} placeholder={crmLabels.email.placeholder} /></label>
@@ -611,7 +643,7 @@ function LeadModal({
           <label>סוכן אחראי<input value={draft.assignedTo} onChange={(event) => setDraft({ ...draft, assignedTo: event.target.value })} /></label>
           <label>תזכורת הבאה<input type="datetime-local" value={draft.nextReminderAt} onChange={(event) => setDraft({ ...draft, nextReminderAt: event.target.value })} /></label>
           <label className="md:col-span-2">{crmLabels.tags.label}<input value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} placeholder={crmLabels.tags.placeholder} /></label>
-          <label>קבצים מצורפים<input value={draft.attachments} onChange={(event) => setDraft({ ...draft, attachments: event.target.value })} placeholder="URL, URL" /></label>
+          <label>קבצים מצורפים<input value={draft.attachments} onChange={(event) => setDraft({ ...draft, attachments: event.target.value })} placeholder="קישור, קישור" /></label>
           <label className="md:col-span-3">{crmLabels.notes.label}<textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder={crmLabels.notes.placeholder} /></label>
           <button className="btn md:col-span-3" disabled={saving}>{saving ? "שומר..." : "שמור פרטי ליד"}</button>
         </form>
@@ -621,7 +653,7 @@ function LeadModal({
             <div className="grid gap-3">
               {lead.timeline.map((item) => (
                 <div key={item.id} className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-3">
-                  <strong>{item.type}</strong>
+                  <strong>{timelineTypeLabel(item.type)}</strong>
                   <p>{item.content}</p>
                   <small className="text-ink-muted">{new Date(item.createdAt).toLocaleString("he-IL")}</small>
                 </div>
@@ -634,21 +666,21 @@ function LeadModal({
             </form>
           </div>
           <div>
-            <h3 className="mb-3 text-lg font-semibold text-ink-primary">Sequence</h3>
+            <h3 className="mb-3 text-lg font-semibold text-ink-primary">רצף הודעות</h3>
             <div className="mb-4 rounded-2xl border border-[var(--border)] bg-surface-secondary p-3">
               <label>
                 סמן שהליד ענה
                 <textarea value={replyText} onChange={(event) => setReplyText(event.target.value)} placeholder="תוכן התשובה שהתקבלה" />
               </label>
               <button className="btn mt-2" onClick={markReply} disabled={saving || (!lead.phone && !lead.whatsapp && !lead.email)}>
-                עצור sequence וסמן תשובה
+                עצור רצף וסמן תשובה
               </button>
             </div>
             <div className="grid gap-2">
               {lead.sequences.map((sequence) => (
                 <div key={sequence.id} className="rounded-2xl bg-surface-secondary p-3">
                   <strong>{sequence.template}</strong>
-                  <p>{sequence.channel} · {sequence.status}</p>
+                  <p>{channelLabel(sequence.channel)} · {statusLabel(sequence.status)}</p>
                   <small>{new Date(sequence.scheduledAt).toLocaleString("he-IL")}</small>
                 </div>
               ))}
@@ -664,7 +696,7 @@ function PipelineView({ rows }: { rows: CrmResponse["pipeline"] }) {
   const max = Math.max(1, ...rows.map((row) => row.count));
   return (
     <section className="card">
-      <h2>Pipeline מכירות</h2>
+      <h2>תהליך מכירה</h2>
       <div className="mt-5 grid gap-4">
         {rows.map((row) => (
           <div key={row.stage} className="grid gap-2">
@@ -699,7 +731,7 @@ function TemplatePanel({ templates, onSave }: { templates: MessageTemplate[]; on
     <section className="card">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h2>תבניות sequence</h2>
+          <h2>תבניות רצף הודעות</h2>
           <p>עריכת התבניות תשפיע על הודעות אוטומטיות עתידיות ללידים.</p>
         </div>
         <span className="badge badge-ok">{templates.length}</span>
@@ -709,7 +741,7 @@ function TemplatePanel({ templates, onSave }: { templates: MessageTemplate[]; on
           <div key={template.id} className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-4">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <strong>{template.name}</strong>
-              <span className="badge badge-warn">{template.channel}</span>
+              <span className="badge badge-warn">{channelLabel(template.channel)}</span>
             </div>
             <textarea
               className="min-h-44"

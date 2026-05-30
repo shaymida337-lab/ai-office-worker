@@ -220,7 +220,7 @@ export default function AdminDebugPage() {
         router.push("/login");
         return;
       }
-      setError(err instanceof Error ? err.message : "Failed to load debug data");
+      setError(err instanceof Error ? err.message : "טעינת נתוני האבחון נכשלה");
     } finally {
       setLoading(false);
     }
@@ -239,7 +239,7 @@ export default function AdminDebugPage() {
         router.push("/login");
         return;
       }
-      setError(err instanceof Error ? err.message : "Failed to load top payments");
+      setError(err instanceof Error ? err.message : "טעינת התשלומים הגדולים נכשלה");
     } finally {
       setLoadingTopPayments(false);
     }
@@ -254,13 +254,13 @@ export default function AdminDebugPage() {
         method: "GET",
       });
       setPaymentInvestigation(result);
-      setMessage(`נטענו ${result.rows.length} שורות SupplierPayment שמרכיבות את כסף לשלם.`);
+      setMessage(`נטענו ${result.rows.length} שורות תשלומי ספקים שמרכיבות את כסף לשלם.`);
     } catch (err) {
       if (isAuthError(err)) {
         router.push("/login");
         return;
       }
-      setError(err instanceof Error ? err.message : "Failed to load payment classification investigation");
+      setError(err instanceof Error ? err.message : "טעינת בדיקת סיווג התשלומים נכשלה");
     } finally {
       setLoadingPaymentInvestigation(false);
     }
@@ -283,7 +283,7 @@ export default function AdminDebugPage() {
         router.push("/login");
         return;
       }
-      setError(err instanceof Error ? err.message : "Failed to clean bad amounts");
+      setError(err instanceof Error ? err.message : "ניקוי סכומים שגויים נכשל");
     } finally {
       setCleaning(false);
     }
@@ -297,9 +297,9 @@ export default function AdminDebugPage() {
     });
     const jobId = start.jobId ?? start.id;
     if (!jobId) {
-      throw new Error(`Drive merge job did not return a jobId. Start response: ${JSON.stringify(start)}`);
+      throw new Error(`משימת איחוד תיקיות דרייב לא החזירה מזהה. תגובת התחלה: ${JSON.stringify(start)}`);
     }
-    setDriveMergeStatus(start.progress || `Drive job started: ${jobId}`);
+    setDriveMergeStatus(start.progress || `משימת דרייב התחילה: ${jobId}`);
 
     const startedAt = Date.now();
     while (Date.now() - startedAt < DRIVE_JOB_MAX_WAIT_MS) {
@@ -307,17 +307,17 @@ export default function AdminDebugPage() {
       const status = await apiFetch<DriveMergeStatusResponse>(`/api/debug/drive/merge-status/${jobId}`, {
         timeoutMs: DRIVE_JOB_REQUEST_TIMEOUT_MS,
       });
-      setDriveMergeStatus(status.progress || `Drive job status: ${status.status}`);
+      setDriveMergeStatus(status.progress || `סטטוס משימת דרייב: ${status.status}`);
 
       if (status.status === "done" && status.result) {
         return status.result;
       }
       if (status.status === "error") {
-        throw new Error(status.error || "Drive duplicate folder merge failed");
+        throw new Error(status.error || "איחוד תיקיות דרייב כפולות נכשל");
       }
     }
 
-    throw new Error("Drive duplicate folder merge job timed out while polling status");
+    throw new Error("משימת איחוד תיקיות דרייב כפולות הסתיימה בחריגת זמן");
   }
 
   async function mergeDuplicateDriveFolders() {
@@ -330,8 +330,8 @@ export default function AdminDebugPage() {
       setDriveMergePreview(preview);
 
       if (preview.duplicateGroups === 0) {
-        setMessage("לא נמצאו תיקיות ספק כפולות ב-Drive.");
-        setDriveMergeStatus("Dry-run complete");
+        setMessage("לא נמצאו תיקיות ספק כפולות בדרייב.");
+        setDriveMergeStatus("בדיקה מקדימה הושלמה");
         return;
       }
 
@@ -343,13 +343,13 @@ export default function AdminDebugPage() {
       const result = await runDriveMergeJob(false);
       setDriveMergePreview(result);
       setMessage(`אוחדו ${result.foldersMerged} תיקיות כפולות והועברו ${result.filesMoved} פריטים.`);
-      setDriveMergeStatus("Merge complete");
+      setDriveMergeStatus("האיחוד הושלם");
     } catch (err) {
       if (isAuthError(err)) {
         router.push("/login");
         return;
       }
-      setError(err instanceof Error ? err.message : "Failed to merge duplicate Drive folders");
+      setError(err instanceof Error ? err.message : "איחוד תיקיות דרייב כפולות נכשל");
     } finally {
       setDriveMerging(false);
     }
@@ -363,9 +363,9 @@ export default function AdminDebugPage() {
     <div className="container">
       <Nav />
       <div className="mb-8">
-        <div className="page-kicker">Production diagnostics</div>
-        <h1>Admin Debug</h1>
-        <p>נתוני production לפי המשתמש והארגון המחוברים.</p>
+        <div className="page-kicker">אבחון מערכת</div>
+        <h1>בדיקות מנהל</h1>
+        <p>נתוני סביבת הייצור לפי המשתמש והארגון המחוברים.</p>
       </div>
 
       <div className="mb-6 flex flex-wrap gap-3">
@@ -394,7 +394,7 @@ export default function AdminDebugPage() {
           {cleaning ? "מנקה..." : "נקה סכומים שגויים"}
         </button>
         <button className="btn btn-secondary" onClick={mergeDuplicateDriveFolders} disabled={loading || cleaning || driveMerging || loadingTopPayments || loadingPaymentInvestigation}>
-          {driveMerging ? "בודק Drive..." : "אחד תיקיות כפולות"}
+          {driveMerging ? "בודק דרייב..." : "אחד תיקיות כפולות"}
         </button>
       </div>
 
@@ -408,28 +408,28 @@ export default function AdminDebugPage() {
       {data && (
         <>
           <section className="mb-6 grid gap-3 md:grid-cols-4">
-            <Metric label="Invoice rows" value={data.invoiceCount ?? 0} />
-            <Metric label="SupplierPayment rows" value={data.supplierPaymentCount ?? 0} />
-            <Metric label="Gmail scan items" value={data.gmailScanItemCount ?? 0} />
-            <Metric label="Invoice scan items" value={data.invoiceScanItemCount ?? 0} />
-            <Metric label="Bad amount rows (> 10M)" value={data.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0} />
-            <Metric label="Money to pay counted rows" value={topPayments?.countedRows ?? "לחץ לבדיקה"} />
-            <Metric label="Money to pay total" value={topPayments ? `₪${topPayments.moneyToPay.toLocaleString("he-IL")}` : "לחץ לבדיקה"} />
+            <Metric label="רשומות חשבוניות" value={data.invoiceCount ?? 0} />
+            <Metric label="רשומות תשלומי ספקים" value={data.supplierPaymentCount ?? 0} />
+            <Metric label="פריטי סריקת ג׳ימייל" value={data.gmailScanItemCount ?? 0} />
+            <Metric label="פריטי סריקת חשבוניות" value={data.invoiceScanItemCount ?? 0} />
+            <Metric label="רשומות עם סכום חריג מעל 10 מיליון" value={data.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0} />
+            <Metric label="שורות שנכללו בכסף לשלם" value={topPayments?.countedRows ?? "לחץ לבדיקה"} />
+            <Metric label="סה״כ כסף לשלם" value={topPayments ? `₪${topPayments.moneyToPay.toLocaleString("he-IL")}` : "לחץ לבדיקה"} />
           </section>
 
           <section className="mb-6 grid gap-4">
             <div className="card">
-              <h2>Authenticated User</h2>
-              <p>User ID: {data.userId}</p>
-              <p>Org ID: {data.orgId ?? data.organizationId ?? "unknown"}</p>
+              <h2>משתמש מחובר</h2>
+              <p>מזהה משתמש: {data.userId}</p>
+              <p>מזהה ארגון: {data.orgId ?? data.organizationId ?? "לא ידוע"}</p>
             </div>
           </section>
 
-          <DebugTable title="Latest 20 Invoice rows" rows={data.lastInvoiceRows ?? []} />
-          <DebugTable title="Bad amount invoice samples" rows={badAmounts?.sampleRows ?? []} />
-          <DebugTable title="Drive duplicate folder merge preview" rows={driveMergePreview ? [driveMergePreview] : []} />
-          <DebugTable title="Latest 20 SupplierPayment rows" rows={data.lastPaymentRows ?? []} />
-          <DebugTable title="Rejected invoice reasons" rows={data.rejectedInvoiceReasons ?? []} />
+          <DebugTable title="20 רשומות חשבוניות אחרונות" rows={data.lastInvoiceRows ?? []} />
+          <DebugTable title="דוגמאות לחשבוניות עם סכום חריג" rows={badAmounts?.sampleRows ?? []} />
+          <DebugTable title="תצוגה מקדימה לאיחוד תיקיות דרייב כפולות" rows={driveMergePreview ? [driveMergePreview] : []} />
+          <DebugTable title="20 רשומות תשלומי ספקים אחרונות" rows={data.lastPaymentRows ?? []} />
+          <DebugTable title="סיבות דחייה של חשבוניות" rows={data.rejectedInvoiceReasons ?? []} />
         </>
       )}
     </div>
@@ -452,10 +452,10 @@ function TopPaymentsTable({ data, loading }: { data: TopPaymentAmountsResponse |
     <section className="mb-8 rounded-3xl border border-amber-400/30 bg-[linear-gradient(135deg,rgba(245,158,11,0.16),rgba(15,23,42,0.96))] p-5 shadow-[0_20px_60px_rgba(245,158,11,0.12)]">
       <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="page-kicker">Money to pay investigation</div>
+          <div className="page-kicker">בדיקת תשלומים לתשלום</div>
           <h2 className="text-2xl font-black text-[#F8FAFC]">10 התשלומים הגדולים</h2>
           <p className="mt-2 max-w-3xl text-base leading-7 text-[#E2E8F0]">
-            שורות SupplierPayment שמרכיבות את "כסף לשלם": לא שולמו, נדרש תשלום, סכום בין 0 ל-1,000,000.
+            שורות תשלומי ספקים שמרכיבות את "כסף לשלם": לא שולמו, נדרש תשלום, סכום בין 0 ל-1,000,000.
           </p>
         </div>
         {data && (
@@ -479,7 +479,7 @@ function TopPaymentsTable({ data, loading }: { data: TopPaymentAmountsResponse |
                 <th className="w-48 px-4 py-4 text-right text-base font-black text-[#F8FAFC]">סכום</th>
                 <th className="w-72 px-4 py-4 text-right text-base font-black text-[#F8FAFC]">ספק / שולח</th>
                 <th className="w-52 px-4 py-4 text-right text-base font-black text-[#F8FAFC]">תאריך</th>
-                <th className="px-4 py-4 text-left text-base font-black text-[#F8FAFC]">emailMessageId</th>
+                <th className="px-4 py-4 text-left text-base font-black text-[#F8FAFC]">מזהה מייל</th>
               </tr>
             </thead>
             <tbody>
@@ -517,10 +517,10 @@ function PaymentClassificationInvestigation({ data, loading }: { data: PaymentCl
   return (
     <section className="mb-8 rounded-3xl border border-red-400/30 bg-[linear-gradient(135deg,rgba(239,68,68,0.14),rgba(15,23,42,0.96))] p-5">
       <div className="mb-5">
-        <div className="page-kicker">Classification investigation</div>
+        <div className="page-kicker">בדיקת סיווג</div>
         <h2 className="text-2xl font-black text-[#F8FAFC]">בדיקת סיווג כל התשלומים</h2>
         <p className="mt-2 text-base leading-7 text-[#E2E8F0]">
-          בדיקה read-only לכל שורות SupplierPayment עם paymentRequired=true ו-paid=false, כולל מקור המייל והחלטת הסיווג.
+          בדיקה לקריאה בלבד לכל שורות תשלומי ספקים עם דרישת תשלום פתוחה, כולל מקור המייל והחלטת הסיווג.
         </p>
       </div>
 
@@ -535,7 +535,7 @@ function PaymentClassificationInvestigation({ data, loading }: { data: PaymentCl
           <div className="rounded-2xl border border-red-300/20 bg-surface-secondary/95 p-4">
             <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
               <div>
-                <h3 className="text-xl font-black text-[#F8FAFC]">סיכום לפי sender domain</h3>
+                <h3 className="text-xl font-black text-[#F8FAFC]">סיכום לפי דומיין שולח</h3>
                 <p className="text-base text-[#CBD5E1]">
                   {data?.countedRows ?? 0} שורות · סה"כ ₪{(data?.moneyToPay ?? 0).toLocaleString("he-IL")}
                 </p>
@@ -545,7 +545,7 @@ function PaymentClassificationInvestigation({ data, loading }: { data: PaymentCl
               <table className="min-w-[620px] table-fixed">
                 <thead>
                   <tr className="border-b border-red-300/20 bg-red-400/10">
-                    <th className="w-72 px-4 py-3 text-right text-base font-black text-[#F8FAFC]">Domain</th>
+                    <th className="w-72 px-4 py-3 text-right text-base font-black text-[#F8FAFC]">דומיין</th>
                     <th className="w-32 px-4 py-3 text-right text-base font-black text-[#F8FAFC]">כמות</th>
                     <th className="px-4 py-3 text-right text-base font-black text-[#F8FAFC]">סה"כ ₪</th>
                   </tr>
@@ -565,14 +565,14 @@ function PaymentClassificationInvestigation({ data, loading }: { data: PaymentCl
 
           {data?.cleanupPreviewSummary && (
             <div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4">
-              <h3 className="text-xl font-black text-[#F8FAFC]">Preview ניקוי read-only לפי המנוע החדש</h3>
+              <h3 className="text-xl font-black text-[#F8FAFC]">תצוגה מקדימה לניקוי לפי המנוע החדש</h3>
               <p className="mt-2 text-base text-[#D1FAE5]">
                 {data.cleanupPreviewSummary.wouldMoveOutCount} מתוך {data.cleanupPreviewSummary.totalRows} שורות היו יוצאות מ-"כסף לשלם".
               </p>
               <div className="mt-3 grid gap-3 md:grid-cols-3">
-                <Metric label="Current money to pay" value={`₪${data.cleanupPreviewSummary.currentMoneyToPay.toLocaleString("he-IL")}`} />
-                <Metric label="Would move out" value={`₪${data.cleanupPreviewSummary.amountMovedOut.toLocaleString("he-IL")}`} />
-                <Metric label="New money to pay" value={`₪${data.cleanupPreviewSummary.newMoneyToPay.toLocaleString("he-IL")}`} />
+                <Metric label="כסף לשלם נוכחי" value={`₪${data.cleanupPreviewSummary.currentMoneyToPay.toLocaleString("he-IL")}`} />
+                <Metric label="סכום שיוסר" value={`₪${data.cleanupPreviewSummary.amountMovedOut.toLocaleString("he-IL")}`} />
+                <Metric label="כסף לשלם חדש" value={`₪${data.cleanupPreviewSummary.newMoneyToPay.toLocaleString("he-IL")}`} />
               </div>
             </div>
           )}
@@ -590,37 +590,37 @@ function PaymentClassificationInvestigation({ data, loading }: { data: PaymentCl
                   </div>
                   <div className="grid gap-1 text-base text-[#E2E8F0] md:text-left">
                     <span>נוצר: {new Date(row.payment.createdAt).toLocaleString("he-IL")}</span>
-                    <span>paid: {row.payment.paid ? "true" : "false"} · paymentRequired: {row.payment.paymentRequired ? "true" : "false"}</span>
-                    <span dir="ltr" className="break-all text-sm text-[#CBD5E1]">{row.payment.emailMessageId ?? "no emailMessageId"}</span>
+                    <span>שולם: {row.payment.paid ? "כן" : "לא"} · נדרש תשלום: {row.payment.paymentRequired ? "כן" : "לא"}</span>
+                    <span dir="ltr" className="break-all text-sm text-[#CBD5E1]">{row.payment.emailMessageId ?? "—"}</span>
                   </div>
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="rounded-2xl bg-surface-hover/70 p-4">
                     <h3 className="mb-2 text-lg font-bold text-[#F8FAFC]">פרטי המייל</h3>
-                    <p className="text-base text-[#E2E8F0]">Subject: {row.email?.subject ?? row.payment.subject ?? "—"}</p>
-                    <p className="mt-2 text-base text-[#CBD5E1]">Snippet: {row.email?.snippet ?? "—"}</p>
+                    <p className="text-base text-[#E2E8F0]">נושא: {row.email?.subject ?? row.payment.subject ?? "—"}</p>
+                    <p className="mt-2 text-base text-[#CBD5E1]">תקציר: {row.email?.snippet ?? "—"}</p>
                     <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-secondary p-3 text-sm text-[#CBD5E1]">
                       {row.email?.bodyTextPreview ?? "אין bodyText שמור"}
                     </pre>
                   </div>
 
                   <div className="rounded-2xl bg-surface-hover/70 p-4">
-                    <h3 className="mb-2 text-lg font-bold text-[#F8FAFC]">סיווג / raw classified text</h3>
-                    <p className="text-base text-[#E2E8F0]">documentType: {primaryScan?.documentType ?? "—"}</p>
-                    <p className="text-base text-[#E2E8F0]">reviewStatus: {primaryScan?.reviewStatus ?? "—"}</p>
-                    <p className="text-base text-[#E2E8F0]">decisionReason: {primaryScan?.decisionReason ?? "—"}</p>
+                    <h3 className="mb-2 text-lg font-bold text-[#F8FAFC]">סיווג וניתוח גולמי</h3>
+                    <p className="text-base text-[#E2E8F0]">סוג מסמך: {primaryScan?.documentType ?? "—"}</p>
+                    <p className="text-base text-[#E2E8F0]">סטטוס בדיקה: {primaryScan?.reviewStatus ?? "—"}</p>
+                    <p className="text-base text-[#E2E8F0]">סיבת החלטה: {primaryScan?.decisionReason ?? "—"}</p>
                     {row.cleanupPreview && (
                       <div className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-sm text-[#D1FAE5]">
-                        <div className="font-bold text-[#F8FAFC]">Would-be cleanup decision</div>
-                        <p>new amount parser: {row.cleanupPreview.newlyParsedAmount === null ? "null" : `₪${row.cleanupPreview.newlyParsedAmount.toLocaleString("he-IL")}`}</p>
-                        <p>wouldBeAmount: {row.cleanupPreview.wouldBeAmount === null ? "null" : `₪${row.cleanupPreview.wouldBeAmount.toLocaleString("he-IL")}`}</p>
-                        <p>rule #1 bank hold: {row.cleanupPreview.rule1FinancialSenderHold ? "yes" : "no"}</p>
-                        <p>rule #2 auto-save gate hold: {row.cleanupPreview.rule2AutoSaveGateHold ? "yes" : "no"}</p>
-                        <p>rule #3 amount sanity flag: {row.cleanupPreview.rule3AmountSanityFlag ? "yes" : "no"}</p>
-                        <p>amount reason: {row.cleanupPreview.amountRejectedReason ?? "—"}</p>
-                        <p>would status: {row.cleanupPreview.wouldBeReviewStatus}</p>
-                        <p>decisionReason: {row.cleanupPreview.wouldBeDecisionReason}</p>
+                        <div className="font-bold text-[#F8FAFC]">החלטת ניקוי צפויה</div>
+                        <p>סכום חדש שזוהה: {row.cleanupPreview.newlyParsedAmount === null ? "אין" : `₪${row.cleanupPreview.newlyParsedAmount.toLocaleString("he-IL")}`}</p>
+                        <p>סכום לאחר ניקוי: {row.cleanupPreview.wouldBeAmount === null ? "אין" : `₪${row.cleanupPreview.wouldBeAmount.toLocaleString("he-IL")}`}</p>
+                        <p>כלל 1 - השהיית בנק: {row.cleanupPreview.rule1FinancialSenderHold ? "כן" : "לא"}</p>
+                        <p>כלל 2 - השהיית שמירה אוטומטית: {row.cleanupPreview.rule2AutoSaveGateHold ? "כן" : "לא"}</p>
+                        <p>כלל 3 - בדיקת סבירות סכום: {row.cleanupPreview.rule3AmountSanityFlag ? "כן" : "לא"}</p>
+                        <p>סיבת סכום: {row.cleanupPreview.amountRejectedReason ?? "—"}</p>
+                        <p>סטטוס צפוי: {row.cleanupPreview.wouldBeReviewStatus}</p>
+                        <p>סיבת החלטה: {row.cleanupPreview.wouldBeDecisionReason}</p>
                       </div>
                     )}
                     <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-secondary p-3 text-xs text-[#CBD5E1]">

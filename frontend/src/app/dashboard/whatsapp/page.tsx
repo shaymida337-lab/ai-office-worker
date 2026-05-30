@@ -40,7 +40,7 @@ export default function WhatsAppSettingsPage() {
   }
 
   useEffect(() => {
-    load().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת הגדרות WhatsApp נכשלה"));
+    load().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת הגדרות וואטסאפ נכשלה"));
   }, []);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -55,7 +55,7 @@ export default function WhatsAppSettingsPage() {
       await load();
       setMessage("מספר נשמר בהצלחה");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "שמירת הגדרות WhatsApp נכשלה");
+      setMessage(err instanceof Error ? err.message : "שמירת הגדרות וואטסאפ נכשלה");
     } finally {
       setLoading(false);
     }
@@ -78,9 +78,9 @@ export default function WhatsAppSettingsPage() {
     <div className="container">
       <Nav />
       <div className="mb-8">
-        <div className="page-kicker">Client messaging</div>
-        <h1>WhatsApp</h1>
-        <p>מרכז הודעות והתראות ללקוחות עם ממשק דמוי צ׳אט.</p>
+        <div className="page-kicker">הודעות לקוחות</div>
+        <h1>וואטסאפ</h1>
+        <p>מרכז חיבור, בדיקות והתראות וואטסאפ לכל הלקוחות.</p>
       </div>
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
       <div className="grid gap-6 xl:grid-cols-[.85fr_1.15fr]">
@@ -90,24 +90,24 @@ export default function WhatsAppSettingsPage() {
             <h2>הגדרות חיבור</h2>
           </div>
           <div className="space-y-3 text-sm">
-            <StatusRow label="Twilio" ok={Boolean(status?.configured)} />
+            <StatusRow label="ספק הודעות" ok={Boolean(status?.configured)} />
             <StatusRow label="חיבור" ok={Boolean(status?.connected)} />
             <div className="break-all rounded-xl bg-surface-secondary p-3 text-ink-secondary">מספר שולח: {status?.from || "לא הוגדר"}</div>
-            <div className="break-all rounded-xl bg-surface-secondary p-3 text-ink-secondary">Webhook: {status?.webhookUrl || "לא הוגדר"}</div>
+            <div className="break-all rounded-xl bg-surface-secondary p-3 text-ink-secondary">כתובת קבלת הודעות: {status?.webhookUrl || "לא הוגדר"}</div>
           </div>
         {status && !status.configured && (
           <div className="mt-5 rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4 text-amber-200">
-            <strong className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" />כדי להפעיל WhatsApp:</strong>
+            <strong className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" />כדי להפעיל וואטסאפ:</strong>
             <ol>
-              <li>כנס ל: console.twilio.com</li>
-              <li>העתק את Account SID ו-Auth Token אל backend/.env</li>
-              <li>הגדר TWILIO_WEBHOOK_URL לכתובת HTTPS ציבורית שמפנה ל-/webhook/whatsapp</li>
+              <li>כנס למסוף ספק ההודעות.</li>
+              <li>העתק את פרטי החיבור לקובץ הסביבה של השרת.</li>
+              <li>הגדר כתובת ציבורית לקבלת הודעות נכנסות.</li>
             </ol>
           </div>
         )}
         <form onSubmit={save} className="mt-5 grid gap-3">
           <label>
-            מספר WhatsApp של בעל העסק
+            מספר הוואטסאפ של בעל העסק
             <input
               dir="ltr"
               placeholder="+972501234567"
@@ -116,7 +116,7 @@ export default function WhatsAppSettingsPage() {
             />
           </label>
           <button className="btn" type="submit" disabled={loading}>
-            {loading ? "שומר..." : "שמור מספר WhatsApp"}
+            {loading ? "שומר..." : "שמור מספר וואטסאפ"}
           </button>
         </form>
         <button className="btn btn-secondary mt-3" onClick={sendTest} disabled={loading || !status?.configured}>
@@ -127,11 +127,15 @@ export default function WhatsAppSettingsPage() {
         <section className="card">
           <div className="mb-5 flex items-center gap-3">
             <MessageCircle className="h-5 w-5 text-emerald-300" />
-            <h2>פעילות WhatsApp של לקוחות</h2>
+            <h2>פעילות וואטסאפ של לקוחות</h2>
           </div>
           <div className="grid gap-3">
             {clients.length === 0 ? (
-              <p>אין לקוחות עדיין.</p>
+              <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+                <h2>אין לקוחות לחיבור וואטסאפ</h2>
+                <p className="mt-2">הוסף לקוחות ואז תוכל לראות כאן שיחות, מספרים חסרים והודעות שלא נקראו.</p>
+                <Link className="btn mt-4" href="/dashboard/clients">הוסף לקוח</Link>
+              </div>
             ) : (
               clients.map((client) => (
                 <Link key={client.id} href={`/dashboard/clients/${client.id}`} className="group rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4 transition hover:border-accent-primary/40 hover:bg-surface-hover">
@@ -140,13 +144,13 @@ export default function WhatsAppSettingsPage() {
                       <span className="grid h-11 w-11 place-items-center rounded-full bg-[linear-gradient(135deg,#10B981,#3B82F6)] text-sm font-bold text-white">{client.name.slice(0, 2)}</span>
                       <div className="min-w-0">
                         <strong className="block truncate text-ink-primary">{client.name}</strong>
-                        <p className="flex min-w-0 items-center gap-2 text-sm"><Phone className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{client.whatsappNumber || "לא הוגדר מספר WhatsApp"}</span></p>
+                        <p className="flex min-w-0 items-center gap-2 text-sm"><Phone className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{client.whatsappNumber || "לא הוגדר מספר וואטסאפ"}</span></p>
                       </div>
                     </div>
                     {Boolean(client.whatsappUnread) && <span className="badge badge-warn w-fit">{client.whatsappUnread} לא נקראו</span>}
                   </div>
                   {client.whatsappLastMessage && (
-                    <div className="mt-4 max-w-[85%] rounded-2xl rounded-tr-md bg-accent-primary/15 p-3 text-sm text-ink-secondary">
+                    <div className="mt-4 max-w-[85%] rounded-2xl rounded-tr-md bg-accent-primary/15 p-3 text-right text-sm text-ink-secondary">
                       {client.whatsappLastMessage.body}
                     </div>
                   )}

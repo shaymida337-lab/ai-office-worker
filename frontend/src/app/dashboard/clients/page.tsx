@@ -104,7 +104,7 @@ export default function ClientsPage() {
       const result = await apiFetch<{ url: string }>(`/api/clients/${clientId}/connect-gmail-url`);
       window.location.href = result.url;
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "חיבור Gmail נכשל");
+      setMessage(err instanceof Error ? err.message : "חיבור ג׳ימייל נכשל");
     }
   }
 
@@ -117,7 +117,7 @@ export default function ClientsPage() {
       <Nav />
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="page-kicker">Client workspace</div>
+          <div className="page-kicker">סביבת לקוחות</div>
           <h1>לקוחות</h1>
           <p>כל לקוח, האינטגרציות שלו והמדדים העסקיים במקום אחד.</p>
         </div>
@@ -130,7 +130,7 @@ export default function ClientsPage() {
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-ink-muted" />
-            <input className="pr-10" placeholder="חפש לקוח, מייל או WhatsApp" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <input className="pr-10" placeholder="חפש לקוח, מייל או וואטסאפ" value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
           <div className="flex gap-2">
             <button className={view === "grid" ? "btn" : "btn btn-toggle-inactive"} onClick={() => setView("grid")}>רשת</button>
@@ -155,13 +155,13 @@ export default function ClientsPage() {
             <input
               required
               type="email"
-              placeholder="client@example.com"
+              placeholder="כתובת מייל"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
           </label>
           <label>
-            WhatsApp
+            וואטסאפ
             <input
               dir="ltr"
               placeholder="+972..."
@@ -178,28 +178,28 @@ export default function ClientsPage() {
             />
           </label>
           <label>
-            URL טבלת חשבוניות
+            קישור לטבלת חשבוניות
             <input
               dir="ltr"
-              placeholder="https://..."
+              placeholder="קישור לגיליון חשבוניות"
               value={form.invoiceSheetUrl}
               onChange={(e) => setForm({ ...form, invoiceSheetUrl: e.target.value })}
             />
           </label>
           <label>
-            URL טבלת משימות
+            קישור לטבלת משימות
             <input
               dir="ltr"
-              placeholder="https://..."
+              placeholder="קישור לגיליון משימות"
               value={form.taskSheetUrl}
               onChange={(e) => setForm({ ...form, taskSheetUrl: e.target.value })}
             />
           </label>
           <label>
-            URL תיקיית Drive
+            קישור תיקיית דרייב
             <input
               dir="ltr"
-              placeholder="https://..."
+              placeholder="קישור לתיקיית דרייב"
               value={form.driveFolderUrl}
               onChange={(e) => setForm({ ...form, driveFolderUrl: e.target.value })}
             />
@@ -214,7 +214,12 @@ export default function ClientsPage() {
         {!data ? (
           <div className="skeleton h-32" />
         ) : filteredClients.length === 0 ? (
-          <div className="card text-center"><Users className="mx-auto mb-3 h-8 w-8 text-ink-muted" /><p>אין לקוחות תואמים.</p></div>
+          <div className="card text-center">
+            <Users className="mx-auto mb-3 h-8 w-8 text-ink-muted" />
+            <h2>{query ? "לא נמצאו לקוחות תואמים" : "עדיין אין לקוחות במערכת"}</h2>
+            <p className="mt-2">{query ? "נסה לחפש לפי שם, מייל או מספר וואטסאפ אחר." : "הוסף לקוח ראשון כדי לחבר ג׳ימייל, דרייב ושיטס ולהתחיל לסרוק מסמכים."}</p>
+            {!query && <button className="btn mx-auto mt-4" onClick={() => setShowForm(true)}>הוסף לקוח ראשון</button>}
+          </div>
         ) : (
           filteredClients.map((client) => (
             <div key={client.id} className="card group">
@@ -226,18 +231,18 @@ export default function ClientsPage() {
                     <p className="flex min-w-0 items-center gap-2 text-sm"><Mail className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{client.email}</span></p>
                   </div>
                 </div>
-                <span className={`badge w-fit ${client.gmailConnected ? "badge-ok" : "badge-warn"}`}>{client.gmailConnected ? "Gmail מחובר" : "חיבור חסר"}</span>
+                <span className={`badge w-fit ${client.gmailConnected ? "badge-ok" : "badge-warn"}`}>{client.gmailConnected ? "ג׳ימייל מחובר" : "חיבור חסר"}</span>
               </div>
               <div className="mb-5 grid gap-3 rounded-2xl bg-surface-secondary p-3 text-center text-sm sm:grid-cols-3">
                 <div><div className="font-bold text-ink-primary">₪{(client.stats?.toPay ?? 0).toLocaleString("he-IL")}</div><div className="text-ink-muted">לתשלום</div></div>
                 <div><div className="font-bold text-ink-primary">{client.stats?.openTasks ?? 0}</div><div className="text-ink-muted">משימות</div></div>
                 <div><div className="font-bold text-ink-primary">{client.stats?.invoices ?? 0}</div><div className="text-ink-muted">חשבוניות</div></div>
               </div>
-              <p className="mb-4 flex items-center gap-2 text-sm"><ShieldCheck className="h-4 w-4 text-emerald-300" />Sheets {client.invoiceSheetUrl || client.taskSheetUrl ? "מחובר" : "לא מחובר"} · Drive {client.driveFolderUrl ? "מחובר" : "לא מחובר"}</p>
+              <p className="mb-4 flex items-center gap-2 text-sm"><ShieldCheck className="h-4 w-4 text-emerald-300" />שיטס {client.invoiceSheetUrl || client.taskSheetUrl ? "מחובר" : "לא מחובר"} · דרייב {client.driveFolderUrl ? "מחובר" : "לא מחובר"}</p>
               <div className="grid gap-2 sm:flex sm:flex-wrap">
-                <button className="btn btn-secondary" onClick={() => connectGmail(client.id)}>חבר Gmail</button>
-                <button className="btn btn-secondary" onClick={() => scanClient(client.id)} disabled={scanningId === client.id}><RefreshCcw className={["h-4 w-4", scanningId === client.id ? "animate-spin" : ""].join(" ")} />{scanningId === client.id ? "סורק..." : "סרוק"}</button>
-                <a className="btn" href={`/dashboard/clients/${client.id}`}>דוח</a>
+                <button className="btn btn-secondary" onClick={() => connectGmail(client.id)}>חבר ג׳ימייל ללקוח</button>
+                <button className="btn btn-secondary" onClick={() => scanClient(client.id)} disabled={scanningId === client.id}><RefreshCcw className={["h-4 w-4", scanningId === client.id ? "animate-spin" : ""].join(" ")} />{scanningId === client.id ? "סורק..." : "סרוק ג׳ימייל"}</button>
+                <a className="btn" href={`/dashboard/clients/${client.id}`}>פתח כרטיס לקוח</a>
               </div>
             </div>
           ))

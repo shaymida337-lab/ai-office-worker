@@ -87,7 +87,7 @@ export default function InvoicesPage() {
       const targets = clients.filter((client) => (clientId === "all" || client.id === clientId) && client.gmailConnected);
       if (targets.length === 0) {
         setMessageTone("error");
-        setMessage("לא נמצאו לקוחות עם Gmail מחובר לסריקה. חבר Gmail ללקוח ואז נסה שוב.");
+        setMessage("לא נמצאו לקוחות עם ג׳ימייל מחובר לסריקה. חבר ג׳ימייל ללקוח ואז נסה שוב.");
         return;
       }
 
@@ -141,7 +141,7 @@ export default function InvoicesPage() {
       <Nav />
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="page-kicker">Invoice intelligence</div>
+          <div className="page-kicker">חוכמת חשבוניות</div>
           <h1>חשבוניות</h1>
           <p className="text-[17px] leading-8 text-[#E2E8F0]">מעקב, סינון וסריקה של חשבוניות מכל הלקוחות.</p>
         </div>
@@ -157,7 +157,7 @@ export default function InvoicesPage() {
         </div>
       )}
 
-      <div className="grid mb-8">
+      <div className="auto-grid mb-8">
         <Metric label="חשבוניות החודש" value={thisMonth.length} tone="text-blue-300" />
         <Metric label="ממתין לתשלום" value={`₪${pending.toLocaleString("he-IL")}`} tone="text-red-300" />
         <Metric label="שולם" value={`₪${paid.toLocaleString("he-IL")}`} tone="text-emerald-300" />
@@ -193,17 +193,17 @@ export default function InvoicesPage() {
               </div>
               {invoice.description && <p className="mb-4 break-words text-base leading-7 text-[#E2E8F0]">{invoice.description}</p>}
               <div className="rounded-2xl bg-surface-secondary p-3 text-left text-2xl font-bold text-ink-primary">
-                ₪{invoice.amount.toLocaleString("he-IL")} {invoice.currency}
+                {formatCurrency(invoice.amount, invoice.currency)}
               </div>
             </button>
             <div className="mt-4 grid gap-2">
               {invoice.driveUrl && (
                 <a className="btn btn-secondary" href={invoice.driveUrl} target="_blank" rel="noreferrer">
-                  <Download className="h-4 w-4" />פתח PDF
+                  <Download className="h-4 w-4" />פתח קובץ
                 </a>
               )}
               <button className="btn btn-secondary" onClick={() => toggleStatus(invoice)}>
-                {invoice.status === "paid" ? "סמן ממתין" : "סמן שולם"}
+                {invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}
               </button>
             </div>
           </div>
@@ -212,24 +212,31 @@ export default function InvoicesPage() {
 
       <div className="table-shell hidden max-w-full overflow-x-auto md:block">
         <table className="min-w-[980px] table-fixed">
-          <thead><tr><th className="w-28 text-base font-bold text-[#F8FAFC]">תאריך</th><th className="w-36 text-base font-bold text-[#F8FAFC]">לקוח</th><th className="w-28 text-base font-bold text-[#F8FAFC]">מספר</th><th className="text-base font-bold text-[#F8FAFC]">תיאור</th><th className="w-36 text-base font-bold text-[#F8FAFC]">סכום</th><th className="w-24 text-base font-bold text-[#F8FAFC]">סטטוס</th><th className="w-24 text-base font-bold text-[#F8FAFC]">Drive</th><th className="w-24 text-base font-bold text-[#F8FAFC]">פעולות</th></tr></thead>
+          <thead><tr><th className="w-28 text-base font-bold text-[#F8FAFC]">תאריך</th><th className="w-36 text-base font-bold text-[#F8FAFC]">לקוח</th><th className="w-28 text-base font-bold text-[#F8FAFC]">מספר</th><th className="text-base font-bold text-[#F8FAFC]">תיאור</th><th className="w-36 text-base font-bold text-[#F8FAFC]">סכום</th><th className="w-24 text-base font-bold text-[#F8FAFC]">סטטוס</th><th className="w-24 text-base font-bold text-[#F8FAFC]">דרייב</th><th className="w-24 text-base font-bold text-[#F8FAFC]">פעולות</th></tr></thead>
           <tbody>
             {filtered.map((invoice) => (
               <tr key={invoice.id} onClick={() => setSelected(invoice)} className="cursor-pointer">
                 <td className="whitespace-nowrap text-base text-[#F1F5F9]">{new Date(invoice.date).toLocaleDateString("he-IL")}</td>
-                <td><span className="inline-flex max-w-full items-center gap-2 text-base text-[#F1F5F9]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface-hover text-sm font-bold text-ink-primary">{invoice.client?.name?.slice(0, 2) ?? "AI"}</span><span className="truncate">{invoice.client?.name ?? ""}</span></span></td>
+                <td><span className="inline-flex max-w-full items-center gap-2 text-base text-[#F1F5F9]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface-hover text-sm font-bold text-ink-primary">{invoice.client?.name?.slice(0, 2) ?? "חכ"}</span><span className="truncate">{invoice.client?.name ?? ""}</span></span></td>
                 <td className="truncate text-base text-[#F8FAFC]">{invoice.invoiceNumber ?? "-"}</td>
                 <td className="max-w-0 truncate text-base text-[#E2E8F0]">{invoice.description ?? ""}</td>
-                <td className="whitespace-nowrap text-base font-bold text-[#F8FAFC]">₪{invoice.amount.toLocaleString("he-IL")} {invoice.currency}</td>
+                <td className="whitespace-nowrap text-base font-bold text-[#F8FAFC]">{formatCurrency(invoice.amount, invoice.currency)}</td>
                 <td><span className={`badge ${invoice.status === "paid" ? "badge-ok" : invoice.status === "overdue" ? "badge-error" : "badge-warn"}`}>{statusLabels[invoice.status]}</span></td>
-                <td>{invoice.driveUrl ? <a className="btn btn-secondary px-2 py-1 text-sm" href={invoice.driveUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />PDF</a> : <span className="text-base text-[#CBD5E1]">-</span>}</td>
-                <td><button className="rounded-lg border border-[var(--border)] bg-surface-card px-2 py-1 text-sm font-semibold text-[#E2E8F0] opacity-100 transition hover:bg-surface-hover hover:text-[#F8FAFC]" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "ממתין" : "שולם"}</button></td>
+                <td>{invoice.driveUrl ? <a className="btn btn-secondary px-2 py-1 text-sm" href={invoice.driveUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />קובץ</a> : <span className="text-base text-[#CBD5E1]">-</span>}</td>
+                <td><button className="rounded-lg border border-[var(--border)] bg-surface-card px-2 py-1 text-sm font-semibold text-[#E2E8F0] opacity-100 transition hover:bg-surface-hover hover:text-[#F8FAFC]" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}</button></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {filtered.length === 0 && <div className="card"><p className="text-base text-[#E2E8F0]">לא נמצאו חשבוניות.</p></div>}
+      {filtered.length === 0 && (
+        <div className="card">
+          <h2>לא נמצאו חשבוניות</h2>
+          <p className="mt-2 text-base text-[#E2E8F0]">
+            נסה לשנות את הסינון או להפעיל סריקת חשבוניות ללקוחות עם ג׳ימייל מחובר.
+          </p>
+        </div>
+      )}
 
       {selected && (
         <div className="fixed inset-0 z-[110] grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
@@ -253,4 +260,9 @@ function Metric({ label, value, tone }: { label: string; value: string | number;
       <div className={`stat-value ${tone}`}>{value}</div>
     </div>
   );
+}
+
+function formatCurrency(amount: number, currency: string) {
+  const symbols: Record<string, string> = { ILS: "₪", USD: "$", EUR: "€", GBP: "£" };
+  return `${symbols[currency] ?? currency} ${amount.toLocaleString("he-IL")}`;
 }

@@ -36,7 +36,7 @@ const contactLabels: Record<string, string> = {
   lead: "ליד חדש",
   client: "לקוח קיים",
   vendor: "ספק",
-  spam: "זבל",
+  spam: "ספאם / לא רלוונטי",
   other: "אחר",
 };
 
@@ -52,6 +52,11 @@ const sentimentLabels: Record<string, string> = {
   positive: "חיובי",
   negative: "שלילי",
   neutral: "ניטרלי",
+};
+
+const channelLabels: Record<string, string> = {
+  gmail: "ג׳ימייל",
+  whatsapp: "וואטסאפ",
 };
 
 export default function MessageScansPage() {
@@ -109,8 +114,8 @@ export default function MessageScansPage() {
       <Nav />
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="page-kicker">Message intelligence</div>
-          <h1>מנוע סריקת Gmail ו-WhatsApp</h1>
+          <div className="page-kicker">חוכמת הודעות</div>
+          <h1>מנוע סריקת ג׳ימייל ווואטסאפ</h1>
           <p>כל הודעה מסווגת לליד, לקוח, ספק או זבל עם סנטימנט, דחיפות וכוונה עסקית.</p>
         </div>
         <button className="btn" onClick={load} disabled={loading}>
@@ -120,10 +125,10 @@ export default function MessageScansPage() {
 
       {message && <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-base text-red-100">{message}</div>}
 
-      <section className="grid mb-6">
+      <section className="auto-grid mb-6">
         <Kpi label="סה״כ הודעות" value={stats?.total ?? 0} icon={<Inbox className="h-5 w-5" />} />
-        <Kpi label="Gmail" value={stats?.byChannel.gmail ?? 0} icon={<Search className="h-5 w-5" />} />
-        <Kpi label="WhatsApp" value={stats?.byChannel.whatsapp ?? 0} icon={<MessageCircle className="h-5 w-5" />} />
+        <Kpi label="ג׳ימייל" value={stats?.byChannel.gmail ?? 0} icon={<Search className="h-5 w-5" />} />
+        <Kpi label="וואטסאפ" value={stats?.byChannel.whatsapp ?? 0} icon={<MessageCircle className="h-5 w-5" />} />
         <Kpi label="דחופות" value={stats?.urgent ?? 0} icon={<AlertTriangle className="h-5 w-5" />} />
       </section>
 
@@ -137,8 +142,8 @@ export default function MessageScansPage() {
             ערוץ
             <select value={filters.channel} onChange={(event) => setFilters({ ...filters, channel: event.target.value })}>
               <option value="all">כל הערוצים</option>
-              <option value="gmail">Gmail</option>
-              <option value="whatsapp">WhatsApp</option>
+              <option value="gmail">ג׳ימייל</option>
+              <option value="whatsapp">וואטסאפ</option>
             </select>
           </label>
           <label>
@@ -162,7 +167,10 @@ export default function MessageScansPage() {
       {loading ? (
         <div className="card"><p>טוען סריקות הודעות...</p></div>
       ) : filteredScans.length === 0 ? (
-        <div className="card"><p>אין סריקות להצגה עדיין. הפעל סריקת Gmail או שלח הודעת WhatsApp נכנסת.</p></div>
+        <div className="card">
+          <h2>אין סריקות להצגה</h2>
+          <p className="mt-2">הפעל סריקת ג׳ימייל מלוח הבקרה או חבר וואטסאפ כדי להתחיל לסווג הודעות.</p>
+        </div>
       ) : (
         <>
           <div className="grid gap-4 md:hidden">
@@ -186,7 +194,7 @@ export default function MessageScansPage() {
                 {filteredScans.map((scan) => (
                   <tr key={scan.id}>
                     <td>{new Date(scan.occurredAt).toLocaleString("he-IL")}</td>
-                    <td>{scan.channel}</td>
+                    <td>{channelLabel(scan.channel)}</td>
                     <td>
                       <strong>{scan.senderName || scan.senderEmail || scan.senderPhone || "לא ידוע"}</strong>
                       <br />
@@ -225,7 +233,7 @@ function ScanCard({ scan }: { scan: MessageScan }) {
         <UrgencyBadge value={scan.urgency} />
       </div>
       <div className="mb-3 flex flex-wrap gap-2">
-        <span className="badge badge-warn">{scan.channel}</span>
+        <span className="badge badge-warn">{channelLabel(scan.channel)}</span>
         <ContactBadge value={scan.contactType} />
         <span className="badge badge-ok">{intentLabels[scan.intent] ?? scan.intent}</span>
       </div>
@@ -275,6 +283,10 @@ function Breakdown({ title, values, labels }: { title: string; values: Record<st
 function ContactBadge({ value }: { value: string }) {
   const className = value === "lead" ? "badge-ok" : value === "spam" ? "badge-error" : value === "vendor" ? "badge-warn" : "badge";
   return <span className={`badge ${className}`}>{contactLabels[value] ?? value}</span>;
+}
+
+function channelLabel(channel: string) {
+  return channelLabels[channel] ?? channel;
 }
 
 function UrgencyBadge({ value }: { value: string }) {

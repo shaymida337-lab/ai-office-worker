@@ -12,7 +12,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const SUPPORT_PHONE = (process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP ?? process.env.NEXT_PUBLIC_OWNER_WHATSAPP ?? "").replace(/[^\d]/g, "");
 
 const defaultChecklist: ChecklistItem[] = [
-  { id: "gmail", label: "חבר Gmail", done: false, href: "/dashboard" },
+  { id: "gmail", label: "חבר ג׳ימייל", done: false, href: "/dashboard" },
   { id: "client", label: "הוסף לקוח ראשון", done: false, href: "/dashboard/clients" },
   { id: "scan", label: "הרץ סריקה ראשונה", done: false, href: "/dashboard" },
   { id: "report", label: "צפה בדוח ראשון", done: false, href: "/dashboard/accountant" },
@@ -70,7 +70,7 @@ export function HelpCenter() {
         apiFetch<{ last: { status: string } | null }>("/api/automation/scan-status"),
       ]);
       setChecklist([
-        { id: "gmail", label: "חבר Gmail", done: gmail.connected, href: "/dashboard" },
+        { id: "gmail", label: "חבר ג׳ימייל", done: gmail.connected, href: "/dashboard" },
         { id: "client", label: "הוסף לקוח ראשון", done: clients.clients.length > 0, href: "/dashboard/clients" },
         { id: "scan", label: "הרץ סריקה ראשונה", done: Boolean(scan.last), href: "/dashboard" },
         { id: "report", label: "צפה בדוח ראשון", done: scan.last?.status === "success", href: "/dashboard/accountant" },
@@ -105,11 +105,11 @@ export function HelpCenter() {
           ...messages,
           {
             role: "assistant",
-            text: `✅ תוקן! נמצאו ${result.invoicesFound} חשבוניות. נסרקו ${result.emailsScanned} מיילים ונמצאו ${result.clientsFound} לקוחות${result.labelCreated ? " | נוצרה תווית Gmail לחשבוניות" : ""}.`,
+            text: `תוקן. נמצאו ${result.invoicesFound} חשבוניות. נסרקו ${result.emailsScanned} מיילים ונמצאו ${result.clientsFound} לקוחות${result.labelCreated ? " · נוצרה תווית ג׳ימייל לחשבוניות" : ""}.`,
           },
         ]);
       } catch (err) {
-        setChat((messages) => [...messages, { role: "assistant", text: err instanceof Error ? err.message : "התיקון האוטומטי נכשל. נסה לחבר Gmail מחדש." }]);
+        setChat((messages) => [...messages, { role: "assistant", text: err instanceof Error ? err.message : "התיקון האוטומטי נכשל. נסה לחבר ג׳ימייל מחדש." }]);
       } finally {
         setAutoFixLoading(false);
       }
@@ -127,7 +127,7 @@ export function HelpCenter() {
       setChat((messages) => [...messages, { role: "assistant", text: result.answer }]);
       if (result.answer.includes("לא מצאתי תשובה")) setShowWhatsApp(true);
     } catch {
-      setChat((messages) => [...messages, { role: "assistant", text: "לא מצאתי תשובה, שלח לנו WhatsApp" }]);
+      setChat((messages) => [...messages, { role: "assistant", text: "לא מצאתי תשובה, שלח לנו וואטסאפ" }]);
       setShowWhatsApp(true);
     } finally {
       setAiLoading(false);
@@ -225,7 +225,7 @@ function TopicCard({ topic, onOpen }: { topic: TopicWithCategory; onOpen: (topic
       <span className={`help-category-badge ${categoryTone(topic.category.id, "bg")}`}>{topic.category.icon}</span>
       <strong>{topic.title}</strong>
       <small>{topic.shortDesc}</small>
-      {topic.autoFix && <span className="help-one-click">תקן אוטומטית →</span>}
+      {topic.autoFix && <span className="help-one-click">תקן אוטומטית</span>}
     </button>
   );
 }
@@ -245,7 +245,7 @@ function SearchResults({ query, results, onOpen }: { query: string; results: Top
           ))}
         </div>
       ) : (
-        <div className="help-empty">לא מצאת? שאל את ה-AI →</div>
+        <div className="help-empty">לא מצאת תשובה? שאל את העוזר החכם.</div>
       )}
     </section>
   );
@@ -264,9 +264,9 @@ function TopicDetail(props: {
 }) {
   return (
     <section className="help-detail">
-      <button className="help-back" onClick={props.onBack}>← חזרה</button>
+      <button className="help-back" onClick={props.onBack}>חזרה</button>
       <span className={`help-category-badge ${categoryTone(props.topic.category.id, "bg")}`}>{props.topic.category.icon} {props.topic.category.title}</span>
-      <h3>🔧 {props.topic.title}</h3>
+      <h3>{props.topic.title}</h3>
       <p>{props.topic.shortDesc}</p>
       {props.topic.explanation && <pre className="help-explanation">{props.topic.explanation}</pre>}
       {props.topic.steps && (
@@ -274,9 +274,9 @@ function TopicDetail(props: {
           <h4>פתרון צעד אחר צעד:</h4>
           {props.topic.steps.map((step, index) => (
             <div className="help-step" key={step}>
-              <strong>✅ צעד {index + 1}</strong>
+              <strong>צעד {index + 1}</strong>
               <span>{step}</span>
-              {index === 0 && props.topic.autoFix && <button className="btn btn-secondary" onClick={() => props.onAutoFix(props.topic.autoFix)} disabled={props.autoFixLoading}>{props.autoFixLoading ? "מתקן אוטומטית..." : "תקן אוטומטית →"}</button>}
+              {index === 0 && props.topic.autoFix && <button className="btn btn-secondary" onClick={() => props.onAutoFix(props.topic.autoFix)} disabled={props.autoFixLoading}>{props.autoFixLoading ? "מתקן אוטומטית..." : "תקן אוטומטית"}</button>}
             </div>
           ))}
         </div>
@@ -285,12 +285,12 @@ function TopicDetail(props: {
         <div className="help-trouble" key={item.problem}>
           <strong>{item.problem}</strong>
           <p>{item.solution}</p>
-          {item.autoFix && <button className="btn btn-secondary" onClick={() => props.onAutoFix(item.autoFix)} disabled={props.autoFixLoading}>{props.autoFixLoading ? "מתקן אוטומטית..." : "תקן אוטומטית →"}</button>}
+          {item.autoFix && <button className="btn btn-secondary" onClick={() => props.onAutoFix(item.autoFix)} disabled={props.autoFixLoading}>{props.autoFixLoading ? "מתקן אוטומטית..." : "תקן אוטומטית"}</button>}
         </div>
       ))}
       <div className="help-detail-actions">
         <button className="btn btn-secondary" onClick={props.onTry}>ניסיתי את הפתרון</button>
-        <button className="btn btn-secondary" onClick={props.onAskAi}>שאל את ה-AI</button>
+        <button className="btn btn-secondary" onClick={props.onAskAi}>שאל את העוזר החכם</button>
         <button className="btn" onClick={props.onStillBroken}>עדיין לא עובד</button>
       </div>
       {props.showWhatsApp && <EscalationBox topic={props.topic} triedSolution={props.triedSolution} />}
@@ -301,7 +301,7 @@ function TopicDetail(props: {
 function AiChat(props: { question: string; loading: boolean; chat: ChatMessage[]; showWhatsApp: boolean; onQuestionChange: (value: string) => void; onAsk: () => void; onBadAnswer: () => void }) {
   return (
     <section className="help-section">
-      <h3>שאל AI 🤖</h3>
+      <h3>שאל את העוזר החכם</h3>
       <div className="help-chat">
         {props.chat.map((message, index) => (
           <div className={`help-message help-message-${message.role}`} key={`${message.role}-${index}`}>
@@ -309,10 +309,10 @@ function AiChat(props: { question: string; loading: boolean; chat: ChatMessage[]
             {message.role === "assistant" && <div className="help-feedback">האם זה עזר? <button>👍</button><button onClick={props.onBadAnswer}>👎</button></div>}
           </div>
         ))}
-        {props.loading && <div className="help-message help-message-assistant">ה-AI חושב...</div>}
+        {props.loading && <div className="help-message help-message-assistant">העוזר בודק את השאלה...</div>}
       </div>
       <div className="help-ai-row">
-        <input placeholder="למשל: למה Gmail לא סורק?" value={props.question} onChange={(event) => props.onQuestionChange(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") props.onAsk(); }} />
+        <input placeholder="למשל: למה ג׳ימייל לא סורק?" value={props.question} onChange={(event) => props.onQuestionChange(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") props.onAsk(); }} />
         <button className="btn" onClick={props.onAsk} disabled={props.loading}>שלח</button>
       </div>
       {props.showWhatsApp && <GenericEscalationBox />}
@@ -343,26 +343,26 @@ function categoryTone(categoryId: string, type: "text" | "bg") {
 }
 
 function EscalationBox({ topic, triedSolution }: { topic: HelpTopic; triedSolution: boolean }) {
-  const message = ["שלום! אני צריך עזרה עם AI Office Worker.", `הבעיה שלי: ${topic.title}`, `ניסיתי: ${triedSolution ? "עברתי על הפתרון במרכז העזרה" : "עדיין לא ניסיתי פתרון"}`, "עדיין לא עובד."].join("\n");
+  const message = ["שלום! אני צריך עזרה עם עובד משרד חכם.", `הבעיה שלי: ${topic.title}`, `ניסיתי: ${triedSolution ? "עברתי על הפתרון במרכז העזרה" : "עדיין לא ניסיתי פתרון"}`, "עדיין לא עובד."].join("\n");
   const url = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(message)}`;
   return (
     <div className="help-escalation">
       <strong>עדיין לא עובד?</strong>
-      <p>WhatsApp לבעלים מופיע רק אחרי שניסית פתרון, ונשלח עם הקשר מלא.</p>
-      {SUPPORT_PHONE ? <a className="btn" href={url} target="_blank" rel="noreferrer">שלח WhatsApp</a> : <button className="btn" disabled>WhatsApp לא הוגדר</button>}
+      <p>וואטסאפ לבעלים מופיע רק אחרי שניסית פתרון, ונשלח עם הקשר מלא.</p>
+      {SUPPORT_PHONE ? <a className="btn" href={url} target="_blank" rel="noreferrer">שלח וואטסאפ</a> : <button className="btn" disabled>וואטסאפ לא הוגדר</button>}
       <small>נושא: {topic.title}</small>
     </div>
   );
 }
 
 function GenericEscalationBox() {
-  const message = ["שלום! אני צריך עזרה עם AI Office Worker.", "הבעיה שלי: שאלתי את מרכז העזרה ולא נמצאה תשובה.", "ניסיתי: שאלתי את ה-AI.", "עדיין לא עובד."].join("\n");
+  const message = ["שלום! אני צריך עזרה עם עובד משרד חכם.", "הבעיה שלי: שאלתי את מרכז העזרה ולא נמצאה תשובה.", "ניסיתי: שאלתי את העוזר.", "עדיין לא עובד."].join("\n");
   const url = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(message)}`;
   return (
     <div className="help-escalation">
       <strong>לא מצאת תשובה?</strong>
-      <p>אפשר לשלוח WhatsApp עם הקשר מלא רק אחרי ניסיון פתרון עצמי.</p>
-      {SUPPORT_PHONE ? <a className="btn" href={url} target="_blank" rel="noreferrer">שלח WhatsApp</a> : <button className="btn" disabled>WhatsApp לא הוגדר</button>}
+      <p>אפשר לשלוח וואטסאפ עם הקשר מלא רק אחרי ניסיון פתרון עצמי.</p>
+      {SUPPORT_PHONE ? <a className="btn" href={url} target="_blank" rel="noreferrer">שלח וואטסאפ</a> : <button className="btn" disabled>וואטסאפ לא הוגדר</button>}
     </div>
   );
 }

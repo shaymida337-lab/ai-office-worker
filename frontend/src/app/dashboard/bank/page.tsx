@@ -112,7 +112,7 @@ export default function BankReconciliationPage() {
   async function uploadStatement() {
     if (!file) {
       setMessageTone("error");
-      setMessage("בחר קובץ Excel או CSV לפני העלאה.");
+      setMessage("בחר קובץ גיליון או קובץ תנועות לפני העלאה.");
       return;
     }
 
@@ -194,7 +194,7 @@ export default function BankReconciliationPage() {
       <Nav />
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="page-kicker">Bank reconciliation</div>
+          <div className="page-kicker">התאמת בנק</div>
           <h1>התאמת בנק</h1>
           <p className="text-[17px] leading-8 text-[#E2E8F0]">העלאת דפי בנק, זיהוי תנועות והתאמה לחשבוניות ותשלומי ספקים.</p>
         </div>
@@ -210,14 +210,14 @@ export default function BankReconciliationPage() {
             </span>
             <div>
               <h2>העלה דף תנועות מהבנק</h2>
-              <p className="text-base text-[#E2E8F0]">קבצי Excel או CSV. המערכת תזהה תנועות ותציע התאמות בלבד.</p>
+              <p className="text-base text-[#E2E8F0]">קבצי גיליון או קובץ תנועות. המערכת תזהה תנועות ותציע התאמות בלבד.</p>
             </div>
           </div>
 
           <label className="mb-4 grid cursor-pointer place-items-center rounded-3xl border border-dashed border-accent-primary/40 bg-accent-primary/10 p-8 text-center transition hover:bg-accent-primary/15">
             <FileSpreadsheet className="mb-3 h-10 w-10 text-accent-primary" />
-            <span className="text-lg font-bold text-[#F8FAFC]">{file ? file.name : "בחר קובץ Excel / CSV"}</span>
-            <span className="mt-2 text-base text-[#CBD5E1]">xlsx, xls, csv</span>
+            <span className="text-lg font-bold text-[#F8FAFC]">{file ? file.name : "בחר קובץ תנועות"}</span>
+            <span className="mt-2 text-base text-[#CBD5E1]">קובץ גיליון או תנועות בנק</span>
             <input
               className="hidden"
               type="file"
@@ -395,7 +395,7 @@ function MatchSummary({ transaction }: { transaction: BankTransaction }) {
 
 function MatchActions({ transaction, acting, onConfirm, onReject }: { transaction: BankTransaction; acting: boolean; onConfirm: () => void; onReject: () => void }) {
   if (transaction.matchStatus === "matched") {
-    return <span className="inline-flex items-center gap-2 text-base font-bold text-emerald-200"><CheckCircle2 className="h-4 w-4" />מאושר ✓</span>;
+    return <span className="inline-flex items-center gap-2 text-base font-bold text-emerald-200"><CheckCircle2 className="h-4 w-4" />מאושר</span>;
   }
   if (transaction.matchStatus !== "suggested") return <span className="text-base text-[#CBD5E1]">אין הצעה לאישור</span>;
   return (

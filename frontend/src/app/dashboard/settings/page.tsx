@@ -113,7 +113,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (window.location.search.includes("gmail=connected")) {
-      setMessage("Gmail חובר בהצלחה!");
+      setMessage("ג׳ימייל חובר בהצלחה!");
       setGmailStatus((current) => ({
         googleConfigured: current?.googleConfigured ?? true,
         connected: true,
@@ -172,9 +172,9 @@ export default function SettingsPage() {
         body: JSON.stringify(whatsapp),
       });
       setWhatsapp(next);
-      setMessage("הגדרות WhatsApp Assistant נשמרו");
+      setMessage("הגדרות עוזר וואטסאפ נשמרו");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "שמירת הגדרות WhatsApp נכשלה");
+      setMessage(err instanceof Error ? err.message : "שמירת הגדרות וואטסאפ נכשלה");
     }
   }
 
@@ -198,7 +198,7 @@ export default function SettingsPage() {
       const result = await apiFetch<{ url: string }>("/api/integrations/gmail/connect-url");
       window.location.href = result.url;
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "חיבור Gmail נכשל");
+      setMessage(err instanceof Error ? err.message : "חיבור ג׳ימייל נכשל");
     }
   }
 
@@ -207,9 +207,9 @@ export default function SettingsPage() {
     try {
       await apiFetch("/api/integrations/gmail", { method: "DELETE" });
       setGmailStatus((current) => current ? { ...current, connected: false, connectedAt: null } : current);
-      setMessage("Gmail נותק בהצלחה");
+      setMessage("ג׳ימייל נותק בהצלחה");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "ניתוק Gmail נכשל");
+      setMessage(err instanceof Error ? err.message : "ניתוק ג׳ימייל נכשל");
     }
   }
 
@@ -271,14 +271,14 @@ export default function SettingsPage() {
     { id: "integrations", label: "חיבורים" },
     { id: "greenInvoice", label: "חשבונית ירוקה" },
     { id: "accountant", label: "רואה חשבון" },
-    { id: "whatsapp", label: "WhatsApp Assistant" },
+    { id: "whatsapp", label: "עוזר וואטסאפ" },
     { id: "notifications", label: "התראות" },
   ];
 
   return (
     <div className="container">
       <Nav />
-      <div className="mb-8"><div className="page-kicker">Workspace controls</div><h1>הגדרות</h1></div>
+      <div className="mb-8"><div className="page-kicker">בקרת סביבת עבודה</div><h1>הגדרות</h1></div>
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
 
       <div className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border border-[var(--border)] bg-surface-card p-2 shadow-card md:flex-wrap">
@@ -302,7 +302,7 @@ export default function SettingsPage() {
       {activeTab === "business" && (
         <div className="card grid gap-5">
           <div>
-            <div className="page-kicker">SaaS configuration</div>
+            <div className="page-kicker">הגדרות מערכת</div>
             <h2>סוג עסק ומודולים פעילים</h2>
             <p>הבחירה כאן קובעת אילו אזורים יוצגו בדשבורד ובניווט. ההגדרות המלאות זמינות בעמוד ייעודי.</p>
           </div>
@@ -337,7 +337,7 @@ export default function SettingsPage() {
           <div className="card">
             <div className="mb-5">
               <h2>חיבורים</h2>
-              <p>כאן מחברים את Gmail, WhatsApp וחשבונות הסושיאל. בלי Gmail מחובר סריקת המיילים לא תעבוד.</p>
+              <p>כאן מחברים את ג׳ימייל, וואטסאפ וחשבונות הסושיאל. בלי ג׳ימייל מחובר סריקת המיילים לא תעבוד.</p>
             </div>
             <div className="grid gap-4 xl:grid-cols-2">
               <GmailIntegrationCard
@@ -346,7 +346,7 @@ export default function SettingsPage() {
                 onDisconnect={disconnectGmail}
               />
               <IntegrationCard
-                title="WhatsApp"
+                title="וואטסאפ"
                 status={whatsappStatus?.connected ? "מחובר" : whatsappStatus?.configured ? "מוגדר, לא אומת" : "לא מוגדר"}
                 connected={Boolean(whatsappStatus?.connected)}
                 description="משמש להתראות, שיחות נכנסות, יצירת לידים וזיהוי תשובות."
@@ -354,7 +354,7 @@ export default function SettingsPage() {
                   whatsappStatus?.ownerWhatsApp ? `מספר בעלים: ${whatsappStatus.ownerWhatsApp}` : "לא הוגדר מספר בעלים",
                   whatsappStatus?.from ? `שולח: ${whatsappStatus.from}` : "",
                 ].filter(Boolean).join(" · ")}
-                actionLabel="פתח הגדרות WhatsApp"
+                actionLabel="פתח הגדרות וואטסאפ"
                 onAction={() => setActiveTab("whatsapp")}
               />
             </div>
@@ -364,7 +364,7 @@ export default function SettingsPage() {
             <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2>חיבורי סושיאל</h2>
-                <p>Instagram, Facebook ו-LinkedIn מחוברים דרך לקוחות במודול הסושיאל.</p>
+                <p>חשבונות סושיאל מחוברים דרך לקוחות במודול הסושיאל.</p>
               </div>
               <button type="button" className="btn sm:!w-auto" onClick={() => router.push("/social")}>פתח מודול סושיאל</button>
             </div>
@@ -394,18 +394,18 @@ export default function SettingsPage() {
           <form className="card grid gap-5" onSubmit={connectGreenInvoice}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <div className="page-kicker">Green Invoice / morning</div>
+                <div className="page-kicker">חשבונית ירוקה / מורנינג</div>
                 <h2>חיבור חשבונית ירוקה</h2>
-                <p>חבר את חשבון Green Invoice כדי לאפשר בהמשך הפקת חשבוניות מתוך המערכת.</p>
+                <p>חבר את חשבון חשבונית ירוקה כדי לאפשר בהמשך הפקת חשבוניות מתוך המערכת.</p>
               </div>
               <span className={`badge w-fit ${greenInvoiceStatus?.connected ? "badge-ok" : "badge-warn"}`}>
-                {greenInvoiceStatus?.connected ? "מחובר ✓" : "לא מחובר"}
+                {greenInvoiceStatus?.connected ? "מחובר" : "לא מחובר"}
               </span>
             </div>
 
             {greenInvoiceStatus?.connected && (
               <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm font-semibold text-emerald-100">
-                מחובר ✓ · סביבה: {greenInvoiceStatus.env === "production" ? "אמיתי" : "בדיקות"}
+                מחובר · סביבה: {greenInvoiceStatus.env === "production" ? "אמיתי" : "בדיקות"}
                 {greenInvoiceStatus.connectedAt ? ` · חובר בתאריך ${new Date(greenInvoiceStatus.connectedAt).toLocaleString("he-IL")}` : ""}
               </div>
             )}
@@ -423,21 +423,21 @@ export default function SettingsPage() {
 
             <div className="grid gap-4 md:grid-cols-2">
               <label>
-                API Key ID
+                מזהה מפתח גישה
                 <input
                   dir="ltr"
-                  placeholder="API Key ID"
+                  placeholder="מזהה מפתח"
                   value={greenInvoiceForm.apiKeyId}
                   onChange={(event) => setGreenInvoiceForm({ ...greenInvoiceForm, apiKeyId: event.target.value })}
                   autoComplete="off"
                 />
               </label>
               <label>
-                API Secret
+                סוד מפתח גישה
                 <input
                   dir="ltr"
                   type="password"
-                  placeholder="API Secret"
+                  placeholder="סוד מפתח"
                   value={greenInvoiceForm.apiSecret}
                   onChange={(event) => setGreenInvoiceForm({ ...greenInvoiceForm, apiSecret: event.target.value })}
                   autoComplete="new-password"
@@ -489,7 +489,7 @@ export default function SettingsPage() {
           </label>
           <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
             <input className="w-auto" type="checkbox" checked={form.sendMonthlyReport ?? true} onChange={(e) => setForm({ ...form, sendMonthlyReport: e.target.checked })} />
-            שלוח דוח חודשי
+            שלח דוח חודשי
           </label>
           <button className="btn" type="submit">שמור הגדרות רואה חשבון</button>
         </form>
@@ -497,12 +497,12 @@ export default function SettingsPage() {
 
       {activeTab === "whatsapp" && (
         <form className="card grid gap-5" onSubmit={saveWhatsapp}>
-          <h2>WhatsApp Assistant</h2>
+          <h2>עוזר וואטסאפ</h2>
           <section className="grid gap-3">
-            <h3 className="text-lg font-semibold text-ink-primary">מספר WhatsApp שלי</h3>
+            <h3 className="text-lg font-semibold text-ink-primary">מספר הוואטסאפ שלי</h3>
             <label>
-              מספר WhatsApp שלי
-              <input dir="ltr" placeholder="whatsapp:+972..." value={whatsapp.ownerPhone} onChange={(e) => setWhatsapp({ ...whatsapp, ownerPhone: e.target.value })} />
+              מספר הוואטסאפ שלי
+              <input dir="ltr" placeholder="+972..." value={whatsapp.ownerPhone} onChange={(e) => setWhatsapp({ ...whatsapp, ownerPhone: e.target.value })} />
             </label>
           </section>
 
@@ -532,7 +532,7 @@ export default function SettingsPage() {
             <h3 className="text-lg font-semibold text-ink-primary">הגדרות בעלים</h3>
             <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
               <input className="w-auto" type="checkbox" checked={whatsapp.isActive} onChange={(e) => setWhatsapp({ ...whatsapp, isActive: e.target.checked })} />
-              WhatsApp Assistant פעיל
+              עוזר וואטסאפ פעיל
             </label>
             <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
               <input className="w-auto" type="checkbox" checked={whatsapp.ownerMorningReport} onChange={(e) => setWhatsapp({ ...whatsapp, ownerMorningReport: e.target.checked })} />
@@ -551,7 +551,7 @@ export default function SettingsPage() {
               שלח ללקוחות סיכום בוקר
             </label>
             <label>
-              תזכורת תשלום אחרי X ימים
+              שליחת תזכורת תשלום אחרי מספר ימים
               <input type="number" min={1} max={60} value={whatsapp.clientPaymentDaysWait} onChange={(e) => setWhatsapp({ ...whatsapp, clientPaymentDaysWait: Number(e.target.value) })} />
             </label>
             <label>
@@ -573,7 +573,7 @@ export default function SettingsPage() {
           </section>
 
           <div className="grid gap-3 sm:flex sm:flex-wrap">
-            <button className="btn" type="submit">שמור הגדרות WhatsApp</button>
+            <button className="btn" type="submit">שמור הגדרות וואטסאפ</button>
             <button className="btn btn-secondary" type="button" onClick={() => testWhatsapp("morning")}>
               שלח דוח בוקר לעצמי עכשיו
             </button>
@@ -650,30 +650,30 @@ function GmailIntegrationCard({
     <div className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-4">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold text-ink-primary">Gmail</h3>
+          <h3 className="text-lg font-semibold text-ink-primary">ג׳ימייל</h3>
           <p className="mt-1 text-sm">חובה לסריקת מיילים, יצירת לידים, זיהוי ספקים וחשבוניות.</p>
         </div>
         <span className={`badge ${connected ? "badge-ok" : "badge-warn"}`}>
-          {connected ? "מחובר ✅" : status?.googleConfigured === false ? "Google OAuth לא מוגדר" : "לא מחובר"}
+          {connected ? "מחובר" : status?.googleConfigured === false ? "התחברות גוגל לא מוגדרת" : "לא מחובר"}
         </span>
       </div>
       <p className="mb-4 break-words text-sm text-ink-muted">
         {connected && status?.connectedAt
           ? `חובר בתאריך ${new Date(status.connectedAt).toLocaleString("he-IL")}`
-          : "כפתור החיבור קורא ל-GET /api/integrations/gmail/connect-url ומעביר אותך לאישור Google OAuth."}
+          : "כפתור החיבור מעביר אותך לאישור גוגל כדי לאפשר סריקת מיילים."}
       </p>
       {connected ? (
         <div className="grid gap-2 sm:flex sm:flex-wrap">
           <button type="button" className="btn btn-secondary" onClick={onConnect}>
-            חבר Gmail מחדש
+            חבר ג׳ימייל מחדש
           </button>
           <button type="button" className="btn btn-danger" onClick={onDisconnect}>
-            נתק
+            נתק ג׳ימייל
           </button>
         </div>
       ) : (
         <button type="button" className="btn min-h-[56px] w-full bg-[#2563EB] text-base shadow-[0_16px_32px_rgba(37,99,235,0.35)] hover:bg-[#1D4ED8]" onClick={onConnect}>
-          חבר Gmail
+          חבר ג׳ימייל
         </button>
       )}
     </div>
@@ -681,8 +681,8 @@ function GmailIntegrationCard({
 }
 
 function platformLabel(platform: string) {
-  if (platform === "instagram") return "Instagram";
-  if (platform === "facebook") return "Facebook";
-  if (platform === "linkedin") return "LinkedIn";
-  return platform;
+  if (platform === "instagram") return "אינסטגרם";
+  if (platform === "facebook") return "פייסבוק";
+  if (platform === "linkedin") return "לינקדאין";
+  return "סושיאל";
 }

@@ -19,12 +19,19 @@ export default function ReportsClient() {
   return (
     <div className="container">
       <Nav />
-      <div className="mb-8"><div className="page-kicker">Reports</div><h1>דוח חשבוניות חסרות</h1></div>
+      <div className="mb-8">
+        <div className="page-kicker">דוחות</div>
+        <h1>דוח חשבוניות חסרות</h1>
+        <p>ריכוז ספקים ותשלומים שבהם נדרש לצרף חשבונית או מסמך תומך.</p>
+      </div>
       {message && <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-base text-red-100">{message}</div>}
       {loading ? (
         <div className="card"><p>טוען דוח חשבוניות חסרות...</p></div>
       ) : missing.length === 0 ? (
-        <div className="card"><p className="text-emerald-300">אין חשבוניות חסרות כרגע.</p></div>
+        <div className="card">
+          <h2 className="text-emerald-300">אין חשבוניות חסרות כרגע</h2>
+          <p className="mt-2">כל התשלומים שנבדקו כוללים מסמך מתאים או שלא דורשים טיפול כרגע.</p>
+        </div>
       ) : (
         <>
           <div className="grid gap-4 md:hidden">

@@ -31,7 +31,7 @@ export function BusinessOnboardingForm({ initialSettings, mode, onSaved }: Props
   const [businessSize, setBusinessSize] = useState<BusinessSizeId | null>(initialSettings?.businessSize ?? null);
   const [mainBusinessPain, setMainBusinessPain] = useState<BusinessPainId | null>(initialSettings?.mainBusinessPain ?? null);
   const [enabledModules, setEnabledModules] = useState<BusinessModuleId[]>(
-    initialSettings?.enabledModules ?? recommendedModulesFor("service_business", null, null)
+    normalizeEnabledModules(initialSettings?.enabledModules, initialSettings?.businessType)
   );
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -111,7 +111,14 @@ export function BusinessOnboardingForm({ initialSettings, mode, onSaved }: Props
       {message && <div className="rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
 
       <div className="card">
-        <div className="mb-5 flex flex-wrap items-center gap-2 text-sm text-ink-secondary">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-sm font-semibold text-ink-primary">שלב {step} מתוך 3</div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-hover">
+              <div className="h-full rounded-full bg-[#6366F1] transition-all" style={{ width: `${(step / 3) * 100}%` }} />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-ink-secondary">
           {[1, 2, 3].map((item) => (
             <button
               key={item}
@@ -125,6 +132,7 @@ export function BusinessOnboardingForm({ initialSettings, mode, onSaved }: Props
               שלב {item}
             </button>
           ))}
+          </div>
         </div>
 
         {step === 1 && (
@@ -160,7 +168,7 @@ export function BusinessOnboardingForm({ initialSettings, mode, onSaved }: Props
           <div className="grid gap-4">
             <div>
               <h2>2. מה גודל העסק?</h2>
-              <p className="text-sm text-ink-secondary">עסקים עם צוות יקבלו גם מודול Employees כברירת מחדל.</p>
+              <p className="text-sm text-ink-secondary">עסקים עם צוות יקבלו גם מודול צוות כברירת מחדל.</p>
             </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {businessSizes.map((size) => (

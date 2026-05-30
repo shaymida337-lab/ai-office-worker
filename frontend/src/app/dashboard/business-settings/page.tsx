@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { BusinessOnboardingForm } from "@/components/BusinessOnboardingForm";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
-import { businessTypeLabel, type OrganizationSettings } from "@/lib/business-config";
+import { businessTypeLabel, normalizeEnabledModules, type OrganizationSettings } from "@/lib/business-config";
 
 export default function BusinessSettingsPage() {
   const router = useRouter();
@@ -23,14 +23,14 @@ export default function BusinessSettingsPage() {
       <Nav />
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="page-kicker">Business settings</div>
+          <div className="page-kicker">הגדרות עסק</div>
           <h1>הגדרות עסק ומודולים</h1>
           <p>
             שינוי סוג עסק, גודל, כאב מרכזי ומודולים פעילים. הדשבורד והניווט יתעדכנו לפי הבחירה.
           </p>
           {settings && (
             <p className="mt-2 text-sm text-ink-secondary">
-              סוג נוכחי: {businessTypeLabel(settings.businessType)} · מודולים פעילים: {settings.enabledModules.length}
+              סוג נוכחי: {businessTypeLabel(settings.businessType)} · מודולים פעילים: {normalizeEnabledModules(settings.enabledModules, settings.businessType).length}
             </p>
           )}
         </div>

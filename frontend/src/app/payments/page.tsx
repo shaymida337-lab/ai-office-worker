@@ -39,10 +39,19 @@ export default function PaymentsPage() {
   return (
     <div className="container">
       <Nav />
-      <div className="mb-8"><div className="page-kicker">Supplier payments</div><h1>תשלומי ספקים</h1></div>
+      <div className="mb-8">
+        <div className="page-kicker">ספקים ותשלומים</div>
+        <h1>תשלומי ספקים</h1>
+        <p>מעקב אחרי תשלומים שזוהו מהמיילים, כולל מסמכים חסרים וסטטוס תשלום.</p>
+      </div>
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-base text-ink-primary">{message}</div>}
       {loading && <div className="card"><p>טוען תשלומי ספקים...</p></div>}
-      {!loading && payments.length === 0 && <div className="card"><p>אין רשומות. הרץ סריקת Gmail מהלוח.</p></div>}
+      {!loading && payments.length === 0 && (
+        <div className="card">
+          <h2>עדיין אין תשלומי ספקים</h2>
+          <p className="mt-2">הפעל סריקת ג׳ימייל מלוח הבקרה כדי לזהות דרישות תשלום, חשבוניות ומסמכים מספקים.</p>
+        </div>
+      )}
 
       <div className="grid gap-4 md:hidden">
         {payments.map((p) => (
@@ -65,7 +74,7 @@ export default function PaymentsPage() {
               {p.invoiceLink && <a className="btn btn-secondary" href={p.invoiceLink} target="_blank" rel="noreferrer">פתח חשבונית</a>}
               {!p.paid && (
                 <button className="btn" onClick={() => markPaid(p.id)} disabled={updatingId === p.id}>
-                  {updatingId === p.id ? "מעדכן..." : "סמן שולם"}
+                  {updatingId === p.id ? "מעדכן..." : "סמן כתשלום ששולם"}
                 </button>
               )}
             </div>
@@ -86,7 +95,7 @@ export default function PaymentsPage() {
               <th>מסמך</th>
               <th>חשבונית</th>
               <th>חסרה</th>
-              <th></th>
+              <th>פעולה</th>
             </tr>
           </thead>
           <tbody>
@@ -105,7 +114,7 @@ export default function PaymentsPage() {
                 <td>
                   {p.documentLink ? (
                     <a href={p.documentLink} target="_blank" rel="noreferrer">
-                      קישור
+                      פתח מסמך
                     </a>
                   ) : (
                     "—"
@@ -114,7 +123,7 @@ export default function PaymentsPage() {
                 <td>
                   {p.invoiceLink ? (
                     <a href={p.invoiceLink} target="_blank" rel="noreferrer">
-                      קישור
+                      פתח חשבונית
                     </a>
                   ) : (
                     "—"
@@ -130,7 +139,7 @@ export default function PaymentsPage() {
                 <td>
                   {!p.paid && (
                     <button className="btn btn-secondary" onClick={() => markPaid(p.id)} disabled={updatingId === p.id}>
-                      {updatingId === p.id ? "מעדכן..." : "סמן שולם"}
+                      {updatingId === p.id ? "מעדכן..." : "סמן כתשלום ששולם"}
                     </button>
                   )}
                 </td>

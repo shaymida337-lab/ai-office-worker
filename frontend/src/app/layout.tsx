@@ -4,8 +4,8 @@ import { HelpCenter } from "@/components/HelpCenter";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Office Worker",
-  description: "עוזר משרד AI לעסקים בישראל",
+  title: "עובד משרד חכם",
+  description: "עוזר משרד חכם לעסקים בישראל",
 };
 
 export default function RootLayout({

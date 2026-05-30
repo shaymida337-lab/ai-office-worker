@@ -12,7 +12,7 @@ import {
   type Payment,
   type Task,
 } from "@/lib/api";
-import { businessTypeLabel, getBusinessProfile, normalizeEnabledModules, type BusinessKpiConfig, type BusinessModuleId, type DashboardKpiMetric, type OrganizationSettings } from "@/lib/business-config";
+import { businessModules, businessTypeLabel, getBusinessProfile, normalizeEnabledModules, uiTranslations, type BusinessKpiConfig, type BusinessModuleId, type DashboardKpiMetric, type OrganizationSettings } from "@/lib/business-config";
 import { useRouter } from "next/navigation";
 import { Activity, ArrowUpRight, Building2, Clock3, FileText, HeartPulse, MessageCircle, Plus, RefreshCcw, ScanLine, WalletCards } from "lucide-react";
 
@@ -251,6 +251,8 @@ export default function DashboardPage() {
   const [actionMessage, setActionMessage] = useState("");
   const [showGmailConnect, setShowGmailConnect] = useState(false);
   const [error, setError] = useState("");
+  const [invoiceAttachPaymentId, setInvoiceAttachPaymentId] = useState<string | null>(null);
+  const [invoiceAttachLink, setInvoiceAttachLink] = useState("");
 
   useEffect(() => {
     const savedScanId = window.localStorage.getItem("activeGmailScanId");
@@ -263,7 +265,7 @@ export default function DashboardPage() {
     if (status.connected) {
       setShowGmailConnect(false);
       setError("");
-      setScanToast((current) => current?.type === "error" && current.text.includes("Gmail") ? null : current);
+      setScanToast((current) => current?.type === "error" && current.text.includes("ג׳ימייל") ? null : current);
     }
     return status;
   }, []);
@@ -357,7 +359,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (window.location.search.includes("gmail=connected")) {
-      setScanToast({ type: "success", text: "Gmail חובר בהצלחה" });
+      setScanToast({ type: "success", text: "ג׳ימייל חובר בהצלחה" });
       refreshGmailStatus().catch(() => undefined);
       router.replace("/dashboard");
     }
@@ -424,7 +426,7 @@ export default function DashboardPage() {
   async function startFirstScan() {
     const freshGmailStatus = gmailStatus?.connected ? gmailStatus : await refreshGmailStatus().catch(() => gmailStatus);
     if (freshGmailStatus && !freshGmailStatus.connected) {
-      const message = "Please connect Gmail account first";
+      const message = "יש לחבר חשבון ג׳ימייל לפני הסריקה";
       setShowGmailConnect(true);
       setFirstScanSummary(message);
       setScanProgress([message]);
@@ -433,7 +435,7 @@ export default function DashboardPage() {
     }
 
     setFirstScanRunning(true);
-    const progressMessage = "מתחבר ל-Gmail...";
+    const progressMessage = "מתחבר לג׳ימייל...";
     setFirstScanSummary(progressMessage);
     setScanProgress([progressMessage]);
     setScanToast({ type: "info", text: progressMessage });
@@ -460,7 +462,7 @@ export default function DashboardPage() {
       setScanToast({ type: "success", text: formatScanSuccess(summary) });
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : "סריקה ראשונית נכשלה";
-      if (errorMessage.includes("Gmail") || errorMessage.includes("להתחבר")) {
+      if (errorMessage.includes("Gmail") || errorMessage.includes("ג׳ימייל") || errorMessage.includes("להתחבר")) {
         setShowGmailConnect(true);
       }
       setScanProgress((items) => [...items, errorMessage]);
@@ -471,9 +473,7 @@ export default function DashboardPage() {
   }
 
   async function connectGmail() {
-    console.log("מנסה להתחבר לGmail...");
     const token = getToken();
-    console.log("token:", token ? "קיים" : "חסר!");
 
     if (!token) {
       router.push(`/login?next=${encodeURIComponent("/dashboard?connect=gmail")}`);
@@ -492,26 +492,22 @@ export default function DashboardPage() {
         },
       });
 
-      console.log("Gmail connect-url status:", res.status);
-
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error((errorData as { error?: string }).error ?? "חיבור Gmail נכשל");
+        throw new Error((errorData as { error?: string }).error ?? "חיבור ג׳ימייל נכשל");
       }
 
       const data = await res.json() as { url?: string };
-      console.log("Gmail OAuth URL:", data.url ? "התקבל" : "חסר!");
 
       if (!data.url) {
-        throw new Error("שרת לא החזיר כתובת OAuth");
+        throw new Error("שרת לא החזיר כתובת חיבור לגוגל");
       }
 
       window.location.href = data.url;
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Google OAuth is not configured";
-      console.error("Gmail connect failed:", err);
-      alert(message);
+      const message = err instanceof Error ? err.message : "התחברות גוגל לא מוגדרת";
       setError(message);
+      setScanToast({ type: "error", text: message });
       setShowGmailConnect(true);
     }
   }
@@ -519,7 +515,7 @@ export default function DashboardPage() {
   async function runSync() {
     const freshGmailStatus = gmailStatus?.connected ? gmailStatus : await refreshGmailStatus().catch(() => gmailStatus);
     if (freshGmailStatus && !freshGmailStatus.connected) {
-      const message = "Please connect Gmail account first";
+      const message = "יש לחבר חשבון ג׳ימייל לפני הסריקה";
       setShowGmailConnect(true);
       setError(message);
       setScanToast({ type: "error", text: message });
@@ -528,13 +524,13 @@ export default function DashboardPage() {
 
     setSyncing(true);
     setError("");
-    setScanToast({ type: "info", text: "סורק Gmail ומחפש חשבוניות, קבלות ודרישות תשלום..." });
+    setScanToast({ type: "info", text: "סורק ג׳ימייל ומחפש חשבוניות, קבלות ודרישות תשלום..." });
     try {
       const result = await apiFetch<GmailScanResult>("/api/gmail/scan", { method: "POST" });
       if (result.scanId) {
         setActiveScanId(result.scanId);
         window.localStorage.setItem("activeGmailScanId", result.scanId);
-        const message = result.inProgress ? "סריקת Gmail כבר רצה. מציג סטטוס חי." : "סריקת Gmail התחילה ברקע.";
+        const message = result.inProgress ? "סריקת ג׳ימייל כבר רצה. מציג סטטוס חי." : "סריקת ג׳ימייל התחילה ברקע.";
         setError(message);
         setScanToast({ type: "info", text: message });
         return;
@@ -542,15 +538,15 @@ export default function DashboardPage() {
       await load();
       const summary = scanSummaryFromResult(result);
       const message = result.message ?? (result.backgroundProcessing
-        ? `נמצאו ${summary.emailsScanned} מיילים ב-Gmail. העיבוד המלא ממשיך ברקע ויעדכן חשבוניות/תשלומים.`
+        ? `נמצאו ${summary.emailsScanned} מיילים בג׳ימייל. העיבוד המלא ממשיך ברקע ויעדכן חשבוניות/תשלומים.`
         : formatScanSuccess(summary));
       setError(message);
       setScanToast({ type: "success", text: message });
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Sync failed";
+      const message = e instanceof Error ? e.message : "סריקת ג׳ימייל נכשלה";
       setError(message);
       setScanToast({ type: "error", text: message });
-      if (message.includes("Gmail") || message.includes("הרשאות") || message.includes("מחובר")) {
+      if (message.includes("Gmail") || message.includes("ג׳ימייל") || message.includes("הרשאות") || message.includes("מחובר")) {
         setShowGmailConnect(true);
       }
     } finally {
@@ -587,13 +583,20 @@ export default function DashboardPage() {
   }
 
   async function attachInvoiceToPayment(paymentId: string) {
-    const invoiceLink = window.prompt("הדבק קישור לחשבונית ב-Drive");
-    if (!invoiceLink) return;
+    setInvoiceAttachPaymentId(paymentId);
+    setInvoiceAttachLink("");
+  }
+
+  async function submitInvoiceAttachment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!invoiceAttachPaymentId || !invoiceAttachLink.trim()) return;
     setActionMessage("");
     try {
-      await apiFetch(`/api/payments/${paymentId}`, { method: "PATCH", body: JSON.stringify({ invoiceLink }) });
+      await apiFetch(`/api/payments/${invoiceAttachPaymentId}`, { method: "PATCH", body: JSON.stringify({ invoiceLink: invoiceAttachLink.trim() }) });
       await load();
       setActionMessage("החשבונית צורפה לתשלום");
+      setInvoiceAttachPaymentId(null);
+      setInvoiceAttachLink("");
     } catch (err) {
       setActionMessage(err instanceof Error ? err.message : "צירוף חשבונית נכשל");
     }
@@ -625,6 +628,7 @@ export default function DashboardPage() {
   const showWhatsApp = moduleIsEnabled(organizationSettings, "whatsapp");
   const showDocuments = moduleIsEnabled(organizationSettings, "documents");
   const gmailConnected = Boolean(gmailStatus?.connected);
+  const scanRangeLabel = `${scanRangeDays} ימים`;
   return (
     <div className="container">
       <Nav />
@@ -645,7 +649,7 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק Gmail"}</button>
+          <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק ג׳ימייל"}</button>
           <button className="btn btn-secondary" onClick={scanAllClients} disabled={syncing}><RefreshCcw className="h-4 w-4" />סרוק לקוחות</button>
           <button className="btn btn-secondary" onClick={() => router.push("/dashboard/clients")}><Plus className="h-4 w-4" />הוסף לקוח</button>
           <button className="btn btn-secondary" onClick={() => router.push("/dashboard/business-settings")}>התאם מודולים</button>
@@ -656,90 +660,35 @@ export default function DashboardPage() {
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2>הכנה לבדיקה עסקית ראשונה</h2>
-            <p className="text-sm">חבר Gmail, בחר טווח סריקה, ואשר שהשמירה ל-Drive ול-Sheets פעילה.</p>
+            <p className="text-sm">חבר ג׳ימייל, בחר טווח סריקה, ואשר שהשמירה לדרייב ולשיטס פעילה.</p>
           </div>
-          <span className={`badge ${gmailConnected ? "badge-ok" : "badge-warn"}`}>{gmailConnected ? "Gmail מחובר" : "Gmail לא מחובר"}</span>
+          <span className={`badge ${gmailConnected ? "badge-ok" : "badge-warn"}`}>{gmailConnected ? "ג׳ימייל מחובר" : "ג׳ימייל לא מחובר"}</span>
         </div>
         <div className="grid gap-3 md:grid-cols-5">
-          <OnboardingStep title="1. Gmail" done={gmailConnected} text={gmailConnected ? "מחובר ומוכן לסריקה" : "חובה לחבר לפני סריקה"} action={!gmailConnected ? <button className="btn btn-secondary" onClick={connectGmail}>חבר Gmail</button> : null} />
+          <OnboardingStep title="1. Gmail" done={gmailConnected} text={gmailConnected ? "מחובר ומוכן לסריקה" : "חובה לחבר לפני סריקה"} action={!gmailConnected ? <button className="btn btn-secondary" onClick={connectGmail}>התחבר ל-Gmail</button> : null} />
           <OnboardingStep title="2. טווח סריקה" done text={<select value={scanRangeDays} onChange={(e) => setScanRangeDays(Number(e.target.value))}><option value={7}>7 ימים</option><option value={30}>30 ימים</option><option value={90}>90 ימים</option></select>} />
-          <OnboardingStep title="3. Drive" done text="תיקיות נוצרות אוטומטית לפי ספק וסוג מסמך" />
-          <OnboardingStep title="4. Sheets" done text="טבלת תשלומי ספקים נוצרת ומתעדכנת אוטומטית" />
-          <OnboardingStep title="5. סריקה" done={Boolean(activeScan?.status === "completed" || scanStatus?.last?.status === "success")} text={activeScanId ? "סריקה רצה עכשיו" : "מוכן להפעלה"} action={<button className="btn" onClick={startFirstScan} disabled={!gmailConnected || Boolean(activeScanId)}>התחל סריקה</button>} />
+          <OnboardingStep title="3. דרייב" done text="תיקיות נוצרות אוטומטית לפי ספק וסוג מסמך" />
+          <OnboardingStep title="4. שיטס" done text="טבלת תשלומי ספקים נוצרת ומתעדכנת אוטומטית" />
+          <OnboardingStep
+            title="5. סריקה"
+            done={Boolean(activeScan?.status === "completed" || scanStatus?.last?.status === "success")}
+            text={activeScanId ? "סריקה רצה עכשיו" : `מוכן לסריקת ${scanRangeLabel}`}
+            action={<button className="btn" onClick={startFirstScan} disabled={!gmailConnected || Boolean(activeScanId)}>{firstScanRunning ? "סורק..." : `התחל סריקת ${scanRangeLabel}`}</button>}
+          />
         </div>
-      </section>
-
-      {gmailStatus && !gmailConnected && (
-        <section className="mb-4 rounded-2xl bg-[linear-gradient(135deg,#4285F4,#34A853)] p-5 text-white shadow-[0_18px_40px_rgba(66,133,244,0.28)]">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="m-0 text-xl font-bold text-white">📧 חבר את Gmail שלך</h3>
-              <p className="mt-1 text-sm font-medium text-white/85">
-                כדי לסרוק מיילים ולמצוא לידים ותשלומים
-              </p>
+        {(firstScanRunning || scanProgress.length > 0 || firstScanSummary) && (
+          <div className="mt-4 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <strong className="text-ink-primary">סטטוס סריקה ראשונית</strong>
+              <span className="badge badge-warn">{scanRangeLabel}</span>
             </div>
-            <button
-              type="button"
-              onClick={connectGmail}
-              className="min-h-11 whitespace-nowrap rounded-xl border-none bg-white px-5 py-3 text-sm font-bold text-[#4285F4] shadow-[0_10px_24px_rgba(15,23,42,0.16)] transition hover:bg-white/90 active:scale-[0.99]"
-            >
-              🔗 התחבר עכשיו
-            </button>
-          </div>
-        </section>
-      )}
-
-      <section className="mb-6 rounded-2xl border border-[#818CF8]/70 bg-[linear-gradient(135deg,rgba(99,102,241,0.98),rgba(139,92,246,0.94))] p-3 text-white shadow-[0_14px_34px_rgba(99,102,241,0.28)]">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <div className="mb-1 inline-flex items-center gap-2 rounded-full bg-white/15 px-2.5 py-0.5 text-[13px] font-semibold text-white">
-              <Clock3 className="h-3.5 w-3.5" />
-              סריקה ראשונית 90 יום
-            </div>
-            <h2 className="text-[16px] font-bold text-white">הפעל סריקה ראשונית - 90 יום אחורה</h2>
-            <p className="mt-1 text-[13px] font-medium text-white/85">
-              סרוק את כל המיילים מ-90 הימים האחרונים למציאת לקוחות וחשבוניות
-            </p>
-            <p className="mt-2 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-[13px] font-semibold text-white">
-              המערכת אוטומטית מאוד, אבל פריטים לא ודאיים צריכים לעבור בדיקה.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#818CF8] bg-[#6366F1] px-4 py-3 text-[16px] font-bold text-white shadow-[0_10px_22px_rgba(15,23,42,0.22)] transition hover:scale-[1.01] hover:bg-[#7C3AED] disabled:cursor-not-allowed disabled:opacity-80 lg:w-auto lg:min-w-64"
-            onClick={startFirstScan}
-            disabled={firstScanRunning || syncing}
-          >
-            {firstScanRunning && <RefreshCcw className="h-4 w-4 animate-spin" />}
-            {firstScanRunning ? "סורק מיילים..." : "הפעל סריקה ראשונית - 90 יום"}
-          </button>
-        </div>
-        {firstScanRunning && (
-          <div className="mt-3">
-            <div className="mb-1 flex items-center justify-between text-[13px] font-semibold text-white">
-              <span>סורק Gmail ומעדכן נתונים...</span>
-              <span>90 יום</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-white/20">
-              <div className="h-full w-2/3 animate-pulse rounded-full bg-white shadow-[0_0_24px_rgba(255,255,255,0.7)]" />
-            </div>
-          </div>
-        )}
-        {scanProgress.length > 0 && (
-          <div className="mt-3 grid gap-1.5 rounded-xl border border-white/25 bg-white/10 p-3 text-[13px] font-semibold text-white">
-            {scanProgress.map((item, index) => (
-              <div key={`${item}-${index}`}>{item}</div>
-            ))}
+            {firstScanSummary && <p className="text-sm">{firstScanSummary}</p>}
+            {scanProgress.length > 0 && <div className="mt-3 grid gap-1 text-sm text-ink-secondary">{scanProgress.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}</div>}
             {showGmailConnect && (
-              <button type="button" onClick={connectGmail} className="mt-2 min-h-11 w-full rounded-xl bg-white px-4 py-3 text-[16px] font-bold text-[#4F46E5] transition hover:bg-white/90 sm:w-auto">
+              <button type="button" onClick={connectGmail} className="btn mt-3">
                 התחבר ל-Gmail
               </button>
             )}
-          </div>
-        )}
-        {firstScanSummary && (
-          <div className="mt-3 rounded-xl border border-white/25 bg-white/15 p-3 text-[13px] font-bold text-white">
-            {firstScanSummary}
           </div>
         )}
       </section>
@@ -764,7 +713,7 @@ export default function DashboardPage() {
           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2>סטטוס סריקה</h2>
-              <p className="text-sm">מעקב חי אחרי עיבוד מיילים, קבצים, Drive ו-Sheets.</p>
+              <p className="text-sm">מעקב חי אחרי עיבוד מיילים, קבצים, דרייב ושיטס.</p>
             </div>
             <span className={`badge ${activeScan?.status === "error" ? "badge-error" : activeScan?.status === "completed" ? "badge-ok" : "badge-warn"}`}>
               {activeScan?.status === "completed" ? "הושלם" : activeScan?.status === "error" ? "נכשל" : "סורק"}
@@ -784,15 +733,15 @@ export default function DashboardPage() {
             <MiniMetric label="נשמרו" value={activeScan?.emailsSaved ?? 0} />
             <MiniMetric label="חשבוניות" value={activeScan?.invoicesFound ?? 0} />
             <MiniMetric label="תשלומי ספקים" value={activeScan?.supplierPaymentsFound ?? 0} />
-            <MiniMetric label="Drive" value={activeScan?.uploadedToDrive ?? 0} />
-            <MiniMetric label="Sheets" value={activeScan?.sheetsUpdated ?? 0} />
+            <MiniMetric label="דרייב" value={activeScan?.uploadedToDrive ?? 0} />
+            <MiniMetric label="שיטס" value={activeScan?.sheetsUpdated ?? 0} />
             <MiniMetric label="נכשל/בדיקה" value={activeScan?.failedItems?.length ?? Object.values(activeScan?.rejectedReasons ?? {}).reduce((sum, count) => sum + count, 0)} />
           </div>
           {scanProgress.length > 0 && <div className="mt-3 grid gap-1 text-sm text-ink-secondary">{scanProgress.map((line) => <span key={line}>{line}</span>)}</div>}
           {activeScan?.lastSuccessfulScanAt && <div className="mt-3 text-sm text-ink-secondary">סריקה מוצלחת אחרונה: {new Date(activeScan.lastSuccessfulScanAt).toLocaleString("he-IL")}</div>}
           {activeScan?.finalSummary && (
             <div className="mt-3 rounded-xl bg-surface-secondary p-3 text-sm text-ink-secondary">
-              סיכום סופי: {activeScan.finalSummary.emailsFetched} מיילים · {activeScan.finalSummary.invoicesFound} חשבוניות · {activeScan.finalSummary.paymentsFound} תשלומים · {activeScan.finalSummary.uploadedToDrive} Drive · {activeScan.finalSummary.sheetsUpdated} Sheets
+              סיכום סופי: {activeScan.finalSummary.emailsFetched} מיילים · {activeScan.finalSummary.invoicesFound} חשבוניות · {activeScan.finalSummary.paymentsFound} תשלומים · {activeScan.finalSummary.uploadedToDrive} דרייב · {activeScan.finalSummary.sheetsUpdated} שיטס
             </div>
           )}
           {Boolean(activeScan?.failedItems?.length) && (
@@ -808,7 +757,7 @@ export default function DashboardPage() {
         </section>
       )}
 
-      <section className="grid mb-8">
+      <section className="auto-grid mb-8">
         {kpis.map((kpi) => {
           const Icon = kpi.icon;
           return (
@@ -851,7 +800,7 @@ export default function DashboardPage() {
         {showSupplier && <MiniMetric label="תשלומים ששולמו" value={stats.paidPayments} />}
         {showSupplier && <MiniMetric label="חשבוניות חסרות" value={stats.missingInvoicesCount} />}
         <MiniMetric label="סריקות שהושלמו" value={stats.scansCompleted} />
-        {showDocuments && <MiniMetric label="העלאות Drive" value={stats.driveUploads} />}
+        {showDocuments && <MiniMetric label="העלאות לדרייב" value={stats.driveUploads} />}
         {showSupplier && <MiniMetric label="תשלומי ספקים" value={stats.supplierPaymentsCount} />}
         {showSupplier && <MiniMetric label="סכומים חשודים שסוננו" value={stats.suspiciousPaymentsCount} />}
       </section>
@@ -863,7 +812,7 @@ export default function DashboardPage() {
           rows={payments.slice(0, 8).map((payment) => ({
             id: payment.id,
             title: payment.supplier,
-            meta: `${new Date(payment.date).toLocaleDateString("he-IL")} · ${payment.currency} ${payment.amount.toLocaleString("he-IL")}`,
+            meta: `${new Date(payment.date).toLocaleDateString("he-IL")} · ${formatCurrency(payment.amount, payment.currency)}`,
             badge: payment.paid ? "שולם" : payment.missingInvoice ? "חסרה חשבונית" : "פתוח",
             actions: (
               <div className="flex flex-wrap gap-2">
@@ -890,9 +839,9 @@ export default function DashboardPage() {
           rows={recentInvoices.map((invoice) => ({
             id: invoice.id,
             title: invoice.client?.name ?? "לקוח לא ידוע",
-            meta: `${new Date(invoice.date).toLocaleDateString("he-IL")} · ${invoice.currency} ${invoice.amount.toLocaleString("he-IL")}`,
-            badge: invoice.status,
-            actions: invoice.driveUrl ? <a className="btn btn-secondary px-3 py-1.5" href={invoice.driveUrl} target="_blank" rel="noreferrer">פתח Drive</a> : null,
+            meta: `${new Date(invoice.date).toLocaleDateString("he-IL")} · ${formatCurrency(invoice.amount, invoice.currency)}`,
+            badge: invoiceStatusLabel(invoice.status),
+            actions: invoice.driveUrl ? <a className="btn btn-secondary px-3 py-1.5" href={invoice.driveUrl} target="_blank" rel="noreferrer">פתח בדרייב</a> : null,
           }))}
         />}
         {showTasks && <BusinessTable
@@ -901,8 +850,8 @@ export default function DashboardPage() {
           rows={recentTasks.map((task) => ({
             id: task.id,
             title: task.title,
-            meta: `${task.supplier ?? "כללי"} · ${task.priority}`,
-            badge: task.status,
+            meta: `${task.supplier ?? "כללי"} · ${taskPriorityLabel(task.priority)}`,
+            badge: taskStatusLabel(task.status),
             actions: null,
           }))}
         />}
@@ -913,7 +862,7 @@ export default function DashboardPage() {
             id: alert.id,
             title: alert.title,
             meta: alert.body ?? new Date(alert.createdAt).toLocaleString("he-IL"),
-            badge: alert.type,
+            badge: alertTypeLabel(alert.type),
             actions: <button className="btn btn-secondary px-3 py-1.5" onClick={runSync}>נסה סריקה מחדש</button>,
           }))}
         />
@@ -942,7 +891,12 @@ export default function DashboardPage() {
                 <span className={`badge w-fit ${client.stats?.missingInvoices ? "badge-warn" : "badge-ok"}`}>{client.stats?.missingInvoices ? `${client.stats.missingInvoices} חסרות` : "תקין"}</span>
               </div>
             ))}
-            {clients?.clients.length === 0 && <p>אין לקוחות עדיין.</p>}
+            {clients?.clients.length === 0 && (
+              <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+                <h3 className="text-base font-semibold text-ink-primary">עדיין אין לקוחות</h3>
+                <p className="mt-1 text-sm">הוסף לקוח ראשון כדי לראות כאן פעילות, חשבוניות ומשימות.</p>
+              </div>
+            )}
           </div>
         </div>}
 
@@ -953,15 +907,15 @@ export default function DashboardPage() {
               <h2>סטטוס אוטומציה</h2>
             </div>
             <div className="space-y-3 text-sm text-ink-secondary">
-              <div className="flex justify-between"><span>Live</span><span className="text-emerald-300">פעיל</span></div>
+              <div className="flex justify-between"><span>מצב חי</span><span className="text-emerald-300">פעיל</span></div>
               <div className="flex justify-between"><span>עודכן לאחרונה</span><span>{lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}</span></div>
               <div className="flex justify-between"><span>סריקה הבאה</span><span>{scanStatus ? new Date(scanStatus.nextScheduledScanAt).toLocaleString("he-IL") : "טוען..."}</span></div>
               {scanStatus?.last && (
                 <div className="rounded-xl bg-surface-hover p-3">
-                  <div className="font-semibold text-ink-primary">סריקה אחרונה: {scanStatus.last.status}</div>
+                  <div className="font-semibold text-ink-primary">סריקה אחרונה: {scanStatusLabel(scanStatus.last.status)}</div>
                   <div>מיילים {scanStatus.last.found} · נשמרו {scanStatus.last.saved}</div>
                   <div>חשבוניות {scanStatus.last.invoicesFound ?? 0} · תשלומים {scanStatus.last.paymentsFound ?? 0}</div>
-                  <div>Drive {scanStatus.last.driveUploaded ?? 0} · Sheets {scanStatus.last.sheetsUpdated ?? 0}</div>
+                  <div>דרייב {scanStatus.last.driveUploaded ?? 0} · שיטס {scanStatus.last.sheetsUpdated ?? 0}</div>
                   {scanStatus.last.errors && <div className="text-red-200">{scanStatus.last.errors}</div>}
                 </div>
               )}
@@ -970,11 +924,11 @@ export default function DashboardPage() {
           {showWhatsApp && <div className="card">
             <div className="mb-4 flex items-center gap-3">
               <MessageCircle className="h-5 w-5 text-emerald-300" />
-              <h2>WhatsApp</h2>
+              <h2>וואטסאפ</h2>
             </div>
             <div className="stat-value">{whatsAppStats?.sentToday ?? 0}</div>
             <p>הודעות נשלחו היום · {whatsAppStats?.activeChats ?? 0} שיחות פעילות</p>
-            <button className="btn btn-secondary mt-4" onClick={() => router.push("/dashboard/settings")}>ראה כל השיחות</button>
+            <button className="btn btn-secondary mt-4" onClick={() => router.push("/dashboard/whatsapp")}>פתח מרכז וואטסאפ</button>
           </div>}
         </div>
       </section>
@@ -983,7 +937,7 @@ export default function DashboardPage() {
         <div className="card">
           <h2>פעולות מהירות</h2>
           <div className="mt-4 grid gap-3">
-            <button className="btn" onClick={connectGmail}>התחבר עם Google</button>
+            <button className="btn btn-secondary" onClick={() => router.push("/dashboard/settings")}>פתח הגדרות אינטגרציות</button>
             <button className="btn btn-secondary" onClick={() => router.push("/camera")}><FileText className="h-4 w-4" />צלם/העלה חשבונית</button>
           </div>
         </div>
@@ -992,6 +946,22 @@ export default function DashboardPage() {
           <pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-7 text-ink-secondary">{summary}</pre>
         </div>
       </section>
+      {invoiceAttachPaymentId && (
+        <div className="fixed inset-0 z-[130] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="attach-invoice-title" onClick={() => setInvoiceAttachPaymentId(null)}>
+          <form className="card w-full max-w-lg" onSubmit={submitInvoiceAttachment} onClick={(event) => event.stopPropagation()}>
+            <h2 id="attach-invoice-title">צירוף חשבונית לתשלום</h2>
+            <p className="mt-2 text-sm">הדבק קישור לחשבונית בדרייב כדי לסגור את החוסר בתשלום הספק.</p>
+            <label className="mt-4">
+              קישור לחשבונית
+              <input dir="ltr" value={invoiceAttachLink} onChange={(event) => setInvoiceAttachLink(event.target.value)} placeholder="https://drive.google.com/..." autoFocus />
+            </label>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button className="btn" type="submit" disabled={!invoiceAttachLink.trim()}>צרף חשבונית</button>
+              <button className="btn btn-secondary" type="button" onClick={() => setInvoiceAttachPaymentId(null)}>ביטול</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
@@ -1004,15 +974,6 @@ function relativeTime(date: Date) {
 }
 
 function safeBusinessProfile(settings: OrganizationSettings | null) {
-  const profile = settings?.businessProfile;
-  if (
-    profile &&
-    Array.isArray(profile.dashboardKpis) &&
-    Array.isArray(profile.dashboardWidgets) &&
-    Array.isArray(profile.crmFields)
-  ) {
-    return profile;
-  }
   return getBusinessProfile(settings?.businessType);
 }
 
@@ -1062,18 +1023,42 @@ function dashboardMetricTone(metric: DashboardKpiMetric) {
 }
 
 function businessModulesLabel(moduleId: string) {
+  return businessModules.find((module) => module.id === moduleId)?.label ?? moduleId;
+}
+
+function scanStatusLabel(status: string) {
+  return uiTranslations.statuses[status as keyof typeof uiTranslations.statuses] ?? status;
+}
+
+function taskStatusLabel(status: string) {
   const labels: Record<string, string> = {
-    crm: "CRM",
-    invoices: "Invoices",
-    supplier_management: "Supplier Management",
-    tasks: "Tasks",
-    whatsapp: "WhatsApp",
-    documents: "Documents",
-    meetings: "Meetings",
-    collections: "Collections",
-    employees: "Employees",
+    open: "פתוח",
+    todo: "לביצוע",
+    "in-progress": "בתהליך",
+    done: "בוצע",
+    completed: "בוצע",
   };
-  return labels[moduleId] ?? moduleId;
+  return labels[status] ?? scanStatusLabel(status);
+}
+
+function taskPriorityLabel(priority: string) {
+  const labels: Record<string, string> = { low: "עדיפות נמוכה", medium: "עדיפות בינונית", high: "עדיפות גבוהה" };
+  return labels[priority] ?? priority;
+}
+
+function invoiceStatusLabel(status: string) {
+  const labels: Record<string, string> = { paid: "שולם", pending: "ממתין", overdue: "באיחור", draft: "טיוטה" };
+  return labels[status] ?? scanStatusLabel(status);
+}
+
+function alertTypeLabel(type: string) {
+  const labels: Record<string, string> = { error: "שגיאה", warning: "אזהרה", info: "מידע", review: "לבדיקה" };
+  return labels[type] ?? type;
+}
+
+function formatCurrency(amount: number, currency: string) {
+  const symbols: Record<string, string> = { ILS: "₪", USD: "$", EUR: "€", GBP: "£" };
+  return `${symbols[currency] ?? currency} ${amount.toLocaleString("he-IL")}`;
 }
 
 function OnboardingStep({ title, done, text, action }: { title: string; done: boolean; text: ReactNode; action?: ReactNode }) {
@@ -1126,7 +1111,11 @@ function BusinessTable({
             {row.actions && <div className="mt-3">{row.actions}</div>}
           </div>
         ))}
-        {rows.length === 0 && <p>{empty}</p>}
+        {rows.length === 0 && (
+          <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+            <p className="text-sm">{empty}</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1139,13 +1128,13 @@ function scanProgressMessages(progress: ScanProgressResult) {
     `נמצאו ${progress.emailsFetched} מיילים`,
     `נשמרו ${progress.emailsSaved} פריטי סריקה`,
     `נמצאו ${progress.invoicesFound} חשבוניות ו-${progress.supplierPaymentsFound} תשלומי ספקים`,
-    `הועלו ${progress.uploadedToDrive} קבצים ל-Drive ועודכנו ${progress.sheetsUpdated ?? 0} שורות Sheets`,
+    `הועלו ${progress.uploadedToDrive} קבצים לדרייב ועודכנו ${progress.sheetsUpdated ?? 0} שורות שיטס`,
     `נכשלו/דורשים בדיקה: ${progress.failedItems?.length ?? Object.values(progress.rejectedReasons ?? {}).reduce((sum, count) => sum + count, 0)}`,
   ];
 }
 
 function formatProgressSummary(progress: ScanProgressResult) {
-  return `נמצאו ${progress.emailsFetched} מיילים | נשמרו ${progress.emailsSaved} | חשבוניות ${progress.invoicesFound} | תשלומי ספקים ${progress.supplierPaymentsFound} | Drive ${progress.uploadedToDrive} | Sheets ${progress.sheetsUpdated ?? 0}`;
+  return `נמצאו ${progress.emailsFetched} מיילים · נשמרו ${progress.emailsSaved} · חשבוניות ${progress.invoicesFound} · תשלומי ספקים ${progress.supplierPaymentsFound} · דרייב ${progress.uploadedToDrive} · שיטס ${progress.sheetsUpdated ?? 0}`;
 }
 
 function scanSummaryFromResult(result: GmailScanResult): GmailScanSummary {
@@ -1167,5 +1156,5 @@ function scanSummaryFromResult(result: GmailScanResult): GmailScanSummary {
 }
 
 function formatScanSuccess(summary: GmailScanSummary) {
-  return `✅ נבדקו ${summary.totalEmailsChecked ?? summary.emailsScanned} מיילים | נמצאו ${summary.relevantEmailsFound ?? summary.invoiceOrPaymentEmailsFound} רלוונטיים | נשמרו ${summary.recordsSaved} רשומות | לבדיקה ${summary.needsReviewCount ?? 0} | שגיאות ${summary.errorsCount ?? 0}`;
+  return `נבדקו ${summary.totalEmailsChecked ?? summary.emailsScanned} מיילים · נמצאו ${summary.relevantEmailsFound ?? summary.invoiceOrPaymentEmailsFound} רלוונטיים · נשמרו ${summary.recordsSaved} רשומות · לבדיקה ${summary.needsReviewCount ?? 0} · שגיאות ${summary.errorsCount ?? 0}`;
 }

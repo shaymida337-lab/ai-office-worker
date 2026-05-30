@@ -1,44 +1,109 @@
+export const uiTranslations = {
+  businessTypes: {
+    beauty_clinic: "קליניקת יופי",
+    accountant: "משרד רואי חשבון",
+    lawyer: "משרד עורכי דין",
+    insurance_agency: "סוכנות ביטוח",
+    real_estate: "משרד נדל״ן",
+    ecommerce: "חנות אונליין",
+    importer: "יבואן",
+    service_business: "עסק שירותים",
+    marketing_agency: "סוכנות שיווק",
+    restaurant: "מסעדה",
+    other: "אחר",
+  },
+  modules: {
+    crm: "ניהול לקוחות",
+    invoices: "חשבוניות",
+    supplier_management: "ספקים ותשלומים",
+    tasks: "משימות",
+    whatsapp: "וואטסאפ",
+    documents: "מסמכים",
+    meetings: "פגישות",
+    collections: "גבייה",
+    employees: "צוות",
+  },
+  pains: {
+    leads: "לידים",
+    invoices: "חשבוניות",
+    collections: "גבייה",
+    customer_service: "שירות לקוחות",
+    whatsapp: "וואטסאפ",
+    tasks: "משימות",
+    documents: "מסמכים",
+  },
+  sizes: {
+    solo: "עצמאי / יחיד",
+    "2_5": "2-5 עובדים",
+    "6_20": "6-20 עובדים",
+    "20_plus": "20+ עובדים",
+  },
+  crmSources: {
+    manual: "ידני",
+    whatsapp: "וואטסאפ",
+    email: "מייל",
+    website: "אתר",
+    referral: "הפניה",
+    facebook: "פייסבוק",
+  },
+  sequenceChannels: {
+    whatsapp: "וואטסאפ",
+    email: "מייל",
+    sms: "מסרון",
+  },
+  statuses: {
+    draft: "טיוטה",
+    sent: "נשלח",
+    approved: "אושר",
+    rejected: "נדחה",
+    pending: "ממתין",
+    completed: "הושלם",
+    running: "רץ",
+    error: "שגיאה",
+  },
+} as const;
+
 export const businessModules = [
-  { id: "crm", label: "CRM", description: "לקוחות, לידים ותהליך מכירה" },
-  { id: "invoices", label: "Invoices", description: "חשבוניות, קבלות והכנסות" },
-  { id: "supplier_management", label: "Supplier Management", description: "ספקים, תשלומים וחשבוניות חסרות" },
-  { id: "tasks", label: "Tasks", description: "משימות, תזכורות ומעקב עבודה" },
-  { id: "whatsapp", label: "WhatsApp", description: "הודעות, התראות ותזכורות" },
-  { id: "documents", label: "Documents", description: "Drive, קבצים וסידור מסמכים" },
-  { id: "meetings", label: "Meetings", description: "פגישות וסיכומי שיחה" },
-  { id: "collections", label: "Collections", description: "גבייה ותזכורות תשלום" },
-  { id: "employees", label: "Employees", description: "צוות, שיוכים ותפעול עובדים" },
+  { id: "crm", label: uiTranslations.modules.crm, description: "לקוחות, לידים ותהליך מכירה" },
+  { id: "invoices", label: uiTranslations.modules.invoices, description: "חשבוניות, קבלות והכנסות" },
+  { id: "supplier_management", label: uiTranslations.modules.supplier_management, description: "ספקים, תשלומים וחשבוניות חסרות" },
+  { id: "tasks", label: uiTranslations.modules.tasks, description: "משימות, תזכורות ומעקב עבודה" },
+  { id: "whatsapp", label: uiTranslations.modules.whatsapp, description: "הודעות, התראות ותזכורות" },
+  { id: "documents", label: uiTranslations.modules.documents, description: "דרייב, קבצים וסידור מסמכים" },
+  { id: "meetings", label: uiTranslations.modules.meetings, description: "פגישות וסיכומי שיחה" },
+  { id: "collections", label: uiTranslations.modules.collections, description: "גבייה ותזכורות תשלום" },
+  { id: "employees", label: uiTranslations.modules.employees, description: "צוות, שיוכים ותפעול עובדים" },
 ] as const;
 
 export const businessSizes = [
-  { id: "solo", label: "Solo" },
-  { id: "2_5", label: "2-5 employees" },
-  { id: "6_20", label: "6-20 employees" },
-  { id: "20_plus", label: "20+" },
+  { id: "solo", label: uiTranslations.sizes.solo },
+  { id: "2_5", label: uiTranslations.sizes["2_5"] },
+  { id: "6_20", label: uiTranslations.sizes["6_20"] },
+  { id: "20_plus", label: uiTranslations.sizes["20_plus"] },
 ] as const;
 
 export const businessPains = [
-  { id: "leads", label: "Leads", description: "יותר לידים ומעקב אחרי מתעניינים", modules: ["crm", "whatsapp"] },
-  { id: "invoices", label: "Invoices", description: "חשבוניות וקבלות מסודרות", modules: ["invoices", "documents"] },
-  { id: "collections", label: "Collections", description: "גבייה ותזכורות תשלום", modules: ["collections", "invoices", "whatsapp"] },
-  { id: "customer_service", label: "Customer Service", description: "שירות לקוחות והודעות", modules: ["crm", "whatsapp", "tasks"] },
-  { id: "whatsapp", label: "WhatsApp", description: "ניהול הודעות ותזכורות", modules: ["whatsapp", "crm"] },
-  { id: "tasks", label: "Tasks", description: "משימות, פולואפים ותפעול", modules: ["tasks", "employees"] },
-  { id: "documents", label: "Documents", description: "מסמכים, Drive וקבצים", modules: ["documents", "tasks"] },
+  { id: "leads", label: uiTranslations.pains.leads, description: "יותר לידים ומעקב אחרי מתעניינים", modules: ["crm", "whatsapp"] },
+  { id: "invoices", label: uiTranslations.pains.invoices, description: "חשבוניות וקבלות מסודרות", modules: ["invoices", "documents"] },
+  { id: "collections", label: uiTranslations.pains.collections, description: "גבייה ותזכורות תשלום", modules: ["collections", "invoices", "whatsapp"] },
+  { id: "customer_service", label: uiTranslations.pains.customer_service, description: "שירות לקוחות והודעות", modules: ["crm", "whatsapp", "tasks"] },
+  { id: "whatsapp", label: uiTranslations.pains.whatsapp, description: "ניהול הודעות ותזכורות", modules: ["whatsapp", "crm"] },
+  { id: "tasks", label: uiTranslations.pains.tasks, description: "משימות, פולואפים ותפעול", modules: ["tasks", "employees"] },
+  { id: "documents", label: uiTranslations.pains.documents, description: "מסמכים, דרייב וקבצים", modules: ["documents", "tasks"] },
 ] as const;
 
 export const businessTypes = [
-  { id: "beauty_clinic", label: "Beauty Clinic", modules: ["crm", "invoices", "tasks", "whatsapp", "meetings", "collections"] },
-  { id: "accountant", label: "Accountant", modules: ["crm", "invoices", "supplier_management", "tasks", "documents", "meetings"] },
-  { id: "lawyer", label: "Lawyer", modules: ["crm", "invoices", "tasks", "documents", "meetings", "collections"] },
-  { id: "insurance_agency", label: "Insurance Agency", modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "collections"] },
-  { id: "real_estate", label: "Real Estate", modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "meetings"] },
-  { id: "ecommerce", label: "Ecommerce", modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "collections", "employees"] },
-  { id: "importer", label: "Importer", modules: ["crm", "invoices", "supplier_management", "tasks", "documents", "collections", "employees"] },
-  { id: "service_business", label: "Service Business", modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections"] },
-  { id: "marketing_agency", label: "Marketing Agency", modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "meetings", "employees"] },
-  { id: "restaurant", label: "Restaurant", modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "employees"] },
-  { id: "other", label: "Other", modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections"] },
+  { id: "beauty_clinic", label: uiTranslations.businessTypes.beauty_clinic, modules: ["crm", "invoices", "tasks", "whatsapp", "meetings", "collections"] },
+  { id: "accountant", label: uiTranslations.businessTypes.accountant, modules: ["crm", "invoices", "supplier_management", "tasks", "documents", "meetings"] },
+  { id: "lawyer", label: uiTranslations.businessTypes.lawyer, modules: ["crm", "invoices", "tasks", "documents", "meetings", "collections"] },
+  { id: "insurance_agency", label: uiTranslations.businessTypes.insurance_agency, modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "collections"] },
+  { id: "real_estate", label: uiTranslations.businessTypes.real_estate, modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "meetings"] },
+  { id: "ecommerce", label: uiTranslations.businessTypes.ecommerce, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "collections", "employees"] },
+  { id: "importer", label: uiTranslations.businessTypes.importer, modules: ["crm", "invoices", "supplier_management", "tasks", "documents", "collections", "employees"] },
+  { id: "service_business", label: uiTranslations.businessTypes.service_business, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections"] },
+  { id: "marketing_agency", label: uiTranslations.businessTypes.marketing_agency, modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "meetings", "employees"] },
+  { id: "restaurant", label: uiTranslations.businessTypes.restaurant, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "employees"] },
+  { id: "other", label: uiTranslations.businessTypes.other, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections"] },
 ] as const;
 
 export type BusinessModuleId = (typeof businessModules)[number]["id"];
@@ -64,7 +129,7 @@ const defaultCrmFields: BusinessCrmField[] = [
   { key: "phone", label: "טלפון", placeholder: "+972..." },
   { key: "email", label: "מייל", placeholder: "client@example.com" },
   { key: "estimatedValue", label: "ערך עסקה", placeholder: "0" },
-  { key: "tags", label: "תגיות", placeholder: "דחוף, המלצה, VIP" },
+  { key: "tags", label: "תגיות", placeholder: "דחוף, המלצה, לקוח חשוב" },
   { key: "notes", label: "הערות", placeholder: "צרכים, סטטוס או הקשר חשוב" },
 ];
 
@@ -77,8 +142,8 @@ const baseKpis: BusinessKpiConfig[] = [
 
 export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
   beauty_clinic: {
-    title: "Clinic growth cockpit",
-    subtitle: "לידים, תורים, WhatsApp וגבייה למרפאת יופי.",
+    title: "מרכז צמיחה לקליניקה",
+    subtitle: "לידים, תורים, וואטסאפ וגבייה למרפאת יופי.",
     modules: ["crm", "invoices", "tasks", "whatsapp", "meetings", "collections"],
     dashboardKpis: [
       { id: "leads", label: "מתעניינות", detail: "לידים ומטופלות במעקב", metric: "clients", module: "crm" },
@@ -89,20 +154,20 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
     dashboardWidgets: [
       { id: "new-consults", title: "פניות חדשות", description: "מעקב אחרי מתעניינות, מקור הפנייה והשלב הבא.", module: "crm", metric: "clients" },
       { id: "treatment-followups", title: "פולואפים לטיפולים", description: "משימות ותזכורות אחרי ייעוץ או טיפול.", module: "tasks", metric: "openTasks" },
-      { id: "whatsapp-reminders", title: "WhatsApp תזכורות", description: "הודעות ותזכורות ללקוחות לפני תור או תשלום.", module: "whatsapp", metric: "clients" },
+      { id: "whatsapp-reminders", title: "תזכורות וואטסאפ", description: "הודעות ותזכורות ללקוחות לפני תור או תשלום.", module: "whatsapp", metric: "clients" },
     ],
     crmFields: [
       { key: "name", label: "שם מטופלת / מתעניינת", placeholder: "שם מלא" },
       { key: "company", label: "טיפול מעניין", placeholder: "לייזר, הזרקות, פנים..." },
-      { key: "phone", label: "טלפון / WhatsApp", placeholder: "+972..." },
+      { key: "phone", label: "טלפון / וואטסאפ", placeholder: "+972..." },
       { key: "email", label: "מייל", placeholder: "אופציונלי" },
       { key: "estimatedValue", label: "שווי טיפול צפוי", placeholder: "עלות טיפול משוערת" },
-      { key: "tags", label: "תגיות קליניקה", placeholder: "ייעוץ, חוזרת, VIP" },
+      { key: "tags", label: "תגיות קליניקה", placeholder: "ייעוץ, חוזרת, לקוחה חשובה" },
       { key: "notes", label: "העדפות ורגישויות", placeholder: "טיפול מבוקש, זמינות, הערות" },
     ],
   },
   accountant: {
-    title: "Accounting operations desk",
+    title: "מרכז תפעול למשרד רואה חשבון",
     subtitle: "לקוחות, מסמכים, חשבוניות ומשימות דיווח.",
     modules: ["crm", "invoices", "supplier_management", "tasks", "documents", "meetings"],
     dashboardKpis: [
@@ -127,7 +192,7 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
     ],
   },
   lawyer: {
-    title: "Legal practice dashboard",
+    title: "לוח ניהול למשרד עורכי דין",
     subtitle: "תיקים, לקוחות, מסמכים, פגישות וגבייה.",
     modules: ["crm", "invoices", "tasks", "documents", "meetings", "collections"],
     dashboardKpis: baseKpis,
@@ -147,14 +212,14 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
     ],
   },
   insurance_agency: {
-    title: "Insurance agency cockpit",
+    title: "מרכז ניהול לסוכנות ביטוח",
     subtitle: "לידים, חידושים, פוליסות ושירות לקוחות.",
     modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "collections"],
     dashboardKpis: baseKpis,
     dashboardWidgets: [
       { id: "renewals", title: "חידושי פוליסות", description: "לקוחות שדורשים חידוש, הצעה או תזכורת.", module: "tasks", metric: "openTasks" },
       { id: "policy-docs", title: "מסמכי פוליסה", description: "מסמכים וקבצים לכל לקוח.", module: "documents", metric: "totalInvoices" },
-      { id: "service-whatsapp", title: "שירות ב-WhatsApp", description: "שיחות ותשובות ללקוחות.", module: "whatsapp", metric: "clients" },
+      { id: "service-whatsapp", title: "שירות בוואטסאפ", description: "שיחות ותשובות ללקוחות.", module: "whatsapp", metric: "clients" },
     ],
     crmFields: [
       { key: "name", label: "שם מבוטח / ליד", placeholder: "שם מלא" },
@@ -167,12 +232,12 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
     ],
   },
   real_estate: {
-    title: "Real estate deal room",
+    title: "חדר עסקאות נדל״ן",
     subtitle: "נכסים, קונים, מוכרים, פגישות ומסמכים.",
     modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "meetings"],
     dashboardKpis: [
       { id: "prospects", label: "קונים/מוכרים", detail: "אנשי קשר פעילים", metric: "clients", module: "crm" },
-      { id: "pipeline", label: "שווי עסקאות", detail: "Pipeline נדל״ן", metric: "moneyToReceive", module: "invoices", format: "currency" },
+      { id: "pipeline", label: "שווי עסקאות", detail: "תהליך מכירה נדל״ני", metric: "moneyToReceive", module: "invoices", format: "currency" },
       { id: "showings", label: "סיורים ופולואפים", detail: "משימות פתוחות", metric: "openTasks", module: "tasks" },
       { id: "health", label: "קצב עסקאות", detail: "מדד פעילות כולל", metric: "businessHealthScore", format: "score" },
     ],
@@ -192,14 +257,14 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
     ],
   },
   ecommerce: {
-    title: "Ecommerce operations cockpit",
+    title: "מרכז תפעול לחנות אונליין",
     subtitle: "הזמנות, ספקים, גבייה, שירות וצוות.",
     modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "collections", "employees"],
     dashboardKpis: baseKpis,
     dashboardWidgets: [
       { id: "orders", title: "לקוחות והזמנות", description: "לקוחות, פניות ושירות אחרי רכישה.", module: "crm", metric: "clients" },
       { id: "supplier-payments", title: "ספקים ומלאי", description: "תשלומי ספקים וחשבוניות חסרות.", module: "supplier_management", metric: "moneyToPay" },
-      { id: "support", title: "שירות לקוחות", description: "WhatsApp ומשימות טיפול פתוחות.", module: "whatsapp", metric: "openTasks" },
+      { id: "support", title: "שירות לקוחות", description: "וואטסאפ ומשימות טיפול פתוחות.", module: "whatsapp", metric: "openTasks" },
     ],
     crmFields: [
       { key: "name", label: "שם לקוח", placeholder: "שם מלא" },
@@ -207,12 +272,12 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
       { key: "phone", label: "טלפון", placeholder: "+972..." },
       { key: "email", label: "מייל", placeholder: "customer@example.com" },
       { key: "estimatedValue", label: "שווי הזמנה", placeholder: "סכום הזמנה" },
-      { key: "tags", label: "תגיות מסחר", placeholder: "החזרה, VIP, משלוח, תלונה" },
+      { key: "tags", label: "תגיות מסחר", placeholder: "החזרה, לקוח חשוב, משלוח, תלונה" },
       { key: "notes", label: "פרטי שירות", placeholder: "בעיה, משלוח, בקשה מיוחדת" },
     ],
   },
   importer: {
-    title: "Importer control tower",
+    title: "מרכז שליטה ליבואן",
     subtitle: "ספקים, מסמכים, תשלומים, משימות וצוות.",
     modules: ["crm", "invoices", "supplier_management", "tasks", "documents", "collections", "employees"],
     dashboardKpis: baseKpis,
@@ -232,7 +297,7 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
     ],
   },
   service_business: {
-    title: "Service business command center",
+    title: "מרכז ניהול לעסק שירותים",
     subtitle: "לקוחות, חשבוניות, ספקים, משימות וגבייה.",
     modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections"],
     dashboardKpis: baseKpis,
@@ -244,7 +309,7 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
     crmFields: defaultCrmFields,
   },
   marketing_agency: {
-    title: "Agency delivery cockpit",
+    title: "מרכז ביצוע לסוכנות שיווק",
     subtitle: "לקוחות, קמפיינים, משימות, פגישות וצוות.",
     modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "meetings", "employees"],
     dashboardKpis: [
@@ -264,13 +329,13 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
       { key: "phone", label: "טלפון", placeholder: "+972..." },
       { key: "email", label: "מייל", placeholder: "client@example.com" },
       { key: "estimatedValue", label: "ריטיינר צפוי", placeholder: "סכום חודשי" },
-      { key: "tags", label: "תגיות Agency", placeholder: "SEO, PPC, סושיאל, דחוף" },
+      { key: "tags", label: "תגיות סוכנות", placeholder: "קידום, פרסום, סושיאל, דחוף" },
       { key: "notes", label: "בריף ויעדים", placeholder: "מטרות, תקציב, ערוצים" },
     ],
   },
   restaurant: {
-    title: "Restaurant operations board",
-    subtitle: "ספקים, צוות, WhatsApp, חשבוניות ומשימות.",
+    title: "לוח תפעול למסעדה",
+    subtitle: "ספקים, צוות, וואטסאפ, חשבוניות ומשימות.",
     modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "employees"],
     dashboardKpis: [
       { id: "customers", label: "לקוחות / אירועים", detail: "אנשי קשר והזמנות", metric: "clients", module: "crm" },
@@ -281,7 +346,7 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
     dashboardWidgets: [
       { id: "supplier-invoices", title: "חשבוניות ספקים", description: "מזון, שתייה וספקים פתוחים.", module: "supplier_management", metric: "moneyToPay" },
       { id: "staff-tasks", title: "משימות צוות", description: "תפעול, משמרות ופולואפים.", module: "employees", metric: "openTasks" },
-      { id: "whatsapp-orders", title: "WhatsApp לקוחות", description: "אירועים, הזמנות ושירות לקוחות.", module: "whatsapp", metric: "clients" },
+      { id: "whatsapp-orders", title: "וואטסאפ לקוחות", description: "אירועים, הזמנות ושירות לקוחות.", module: "whatsapp", metric: "clients" },
     ],
     crmFields: [
       { key: "name", label: "שם לקוח / ספק", placeholder: "שם מלא או עסק" },
@@ -289,12 +354,12 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
       { key: "phone", label: "טלפון", placeholder: "+972..." },
       { key: "email", label: "מייל", placeholder: "אופציונלי" },
       { key: "estimatedValue", label: "שווי הזמנה", placeholder: "סכום משוער" },
-      { key: "tags", label: "תגיות מסעדה", placeholder: "אירוע, ספק, VIP, תלונה" },
+      { key: "tags", label: "תגיות מסעדה", placeholder: "אירוע, ספק, לקוח חשוב, תלונה" },
       { key: "notes", label: "פרטים תפעוליים", placeholder: "תאריך, כמות, בקשות מיוחדות" },
     ],
   },
   other: {
-    title: "Business command center",
+    title: "מרכז ניהול עסקי",
     subtitle: "מודולים כלליים לניהול עסק.",
     modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections"],
     dashboardKpis: baseKpis,
@@ -376,5 +441,5 @@ export function moduleEnabled(settings: OrganizationSettings | null, moduleId: B
 }
 
 export function businessTypeLabel(type: string | null | undefined) {
-  return businessTypes.find((item) => item.id === type)?.label ?? "Service Business";
+  return businessTypes.find((item) => item.id === normalizeBusinessTypeId(type))?.label ?? uiTranslations.businessTypes.service_business;
 }
