@@ -17,6 +17,7 @@ import { testConnection as testGreenInvoiceConnection, type GreenInvoiceEnv } fr
 import { parseBankStatementFile } from "../services/bank-parser.js";
 import { matchTransactions } from "../services/bank-matcher.js";
 import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } from "../services/paymentClassificationDebug.js";
+import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -50,6 +51,18 @@ apiRouter.post("/leads/webhook", async (req, res) => {
 });
 
 apiRouter.use(authMiddleware);
+
+apiRouter.get("/business/templates", async (_req, res) => {
+  res.json(getBusinessTemplates());
+});
+
+apiRouter.get("/organization/settings", async (req, res) => {
+  res.json(await getOrganizationSettings(req.auth!.organizationId));
+});
+
+apiRouter.put("/organization/settings", async (req, res) => {
+  res.json(await updateOrganizationBusinessSettings(req.auth!.organizationId, req.body as Record<string, unknown>));
+});
 
 async function debugGmailIntegrationForAuth(auth: { userId: string; organizationId: string; email: string }) {
   const current = await prisma.integration.findUnique({

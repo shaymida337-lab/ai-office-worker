@@ -12,6 +12,7 @@ import {
   type Payment,
   type Task,
 } from "@/lib/api";
+import { businessTypeLabel, moduleEnabled, type OrganizationSettings } from "@/lib/business-config";
 import { useRouter } from "next/navigation";
 import { Activity, ArrowUpRight, Building2, Clock3, FileText, HeartPulse, MessageCircle, Plus, RefreshCcw, ScanLine, WalletCards } from "lucide-react";
 
@@ -231,6 +232,7 @@ export default function DashboardPage() {
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
   const [clients, setClients] = useState<ClientsResponse | null>(null);
   const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
+  const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings | null>(null);
   const [whatsAppStats, setWhatsAppStats] = useState<WhatsAppAssistantStats | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -268,7 +270,7 @@ export default function DashboardPage() {
 
   const load = useCallback(async () => {
     try {
-      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult] = await Promise.allSettled([
+      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult] = await Promise.allSettled([
         apiFetch<DashboardStats>("/api/stats"),
         apiFetch<{ text: string }>("/api/summary/daily"),
         apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
@@ -279,6 +281,7 @@ export default function DashboardPage() {
         apiFetch<{ invoices: RecentInvoice[] }>("/api/invoices"),
         apiFetch<Task[]>("/api/tasks"),
         apiFetch<AlertItem[]>("/api/alerts"),
+        apiFetch<OrganizationSettings>("/api/organization/settings"),
       ]);
 
       if (statsResult.status === "fulfilled") {
@@ -326,6 +329,13 @@ export default function DashboardPage() {
       setRecentInvoices(invoicesResult.status === "fulfilled" ? invoicesResult.value.invoices.slice(0, 8) : []);
       setRecentTasks(tasksResult.status === "fulfilled" ? tasksResult.value.slice(0, 8) : []);
       setAlerts(alertsResult.status === "fulfilled" ? alertsResult.value.slice(0, 8) : []);
+      if (orgResult.status === "fulfilled") {
+        setOrganizationSettings(orgResult.value);
+        if (orgResult.value.onboardingRequired) {
+          router.replace("/onboarding");
+          return;
+        }
+      }
 
       apiFetch<WhatsAppAssistantStats>("/api/whatsapp-assistant/stats")
         .then(setWhatsAppStats)
@@ -598,11 +608,17 @@ export default function DashboardPage() {
   }
 
   const kpis = [
-    { label: "לקוחות", value: stats.clients, icon: Activity, detail: `${stats.openTasks} משימות פתוחות`, tone: "text-blue-300" },
-    { label: "כסף לקבל", value: `₪${stats.moneyToReceive.toLocaleString("he-IL")}`, icon: ArrowUpRight, detail: "הכנסות צפויות", tone: "text-emerald-300" },
-    { label: "כסף לשלם", value: `₪${stats.moneyToPay.toLocaleString("he-IL")}`, icon: WalletCards, detail: `${stats.upcomingPaymentsCount} תשלומים קרובים`, tone: "text-amber-300" },
+    moduleEnabled(organizationSettings, "crm") && { label: "לקוחות", value: stats.clients, icon: Activity, detail: `${stats.openTasks} משימות פתוחות`, tone: "text-blue-300" },
+    moduleEnabled(organizationSettings, "invoices") && { label: "כסף לקבל", value: `₪${stats.moneyToReceive.toLocaleString("he-IL")}`, icon: ArrowUpRight, detail: "הכנסות צפויות", tone: "text-emerald-300" },
+    moduleEnabled(organizationSettings, "supplier_management") && { label: "כסף לשלם", value: `₪${stats.moneyToPay.toLocaleString("he-IL")}`, icon: WalletCards, detail: `${stats.upcomingPaymentsCount} תשלומים קרובים`, tone: "text-amber-300" },
     { label: "בריאות עסקית", value: `${stats.businessHealthScore}/100`, icon: HeartPulse, detail: `נחסכו ${stats.hoursSavedThisWeek} שעות`, tone: "text-violet-300" },
-  ];
+  ].filter(Boolean) as Array<{ label: string; value: string | number; icon: typeof Activity; detail: string; tone: string }>;
+  const showSupplier = moduleEnabled(organizationSettings, "supplier_management");
+  const showInvoices = moduleEnabled(organizationSettings, "invoices");
+  const showTasks = moduleEnabled(organizationSettings, "tasks");
+  const showCrm = moduleEnabled(organizationSettings, "crm");
+  const showWhatsApp = moduleEnabled(organizationSettings, "whatsapp");
+  const showDocuments = moduleEnabled(organizationSettings, "documents");
   const gmailConnected = Boolean(gmailStatus?.connected);
   return (
     <div className="container">
@@ -615,7 +631,7 @@ export default function DashboardPage() {
             </span>
             <div className="min-w-0">
               <div className="text-[12px] font-bold uppercase tracking-[0.22em] text-ink-muted">Business command center</div>
-              <div className="mt-1 text-sm text-ink-secondary">ניהול העסק במקום אחד</div>
+              <div className="mt-1 text-sm text-ink-secondary">{businessTypeLabel(organizationSettings?.businessType)} · {organizationSettings?.enabledModules.length ?? 7} מודולים פעילים</div>
             </div>
           </div>
           <div>
@@ -627,6 +643,7 @@ export default function DashboardPage() {
           <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק Gmail"}</button>
           <button className="btn btn-secondary" onClick={scanAllClients} disabled={syncing}><RefreshCcw className="h-4 w-4" />סרוק לקוחות</button>
           <button className="btn btn-secondary" onClick={() => router.push("/dashboard/clients")}><Plus className="h-4 w-4" />הוסף לקוח</button>
+          <button className="btn btn-secondary" onClick={() => router.push("/dashboard/business-settings")}>התאם מודולים</button>
         </div>
       </div>
 
@@ -808,18 +825,18 @@ export default function DashboardPage() {
       </section>
 
       <section className="mb-8 grid gap-3 md:grid-cols-4">
-        <MiniMetric label="חשבוניות וקבלות" value={stats.totalInvoices} />
-        <MiniMetric label="תשלומים פתוחים" value={stats.unpaidPayments} />
-        <MiniMetric label="תשלומים ששולמו" value={stats.paidPayments} />
-        <MiniMetric label="חשבוניות חסרות" value={stats.missingInvoicesCount} />
+        {showInvoices && <MiniMetric label="חשבוניות וקבלות" value={stats.totalInvoices} />}
+        {showSupplier && <MiniMetric label="תשלומים פתוחים" value={stats.unpaidPayments} />}
+        {showSupplier && <MiniMetric label="תשלומים ששולמו" value={stats.paidPayments} />}
+        {showSupplier && <MiniMetric label="חשבוניות חסרות" value={stats.missingInvoicesCount} />}
         <MiniMetric label="סריקות שהושלמו" value={stats.scansCompleted} />
-        <MiniMetric label="העלאות Drive" value={stats.driveUploads} />
-        <MiniMetric label="תשלומי ספקים" value={stats.supplierPaymentsCount} />
-        <MiniMetric label="סכומים חשודים שסוננו" value={stats.suspiciousPaymentsCount} />
+        {showDocuments && <MiniMetric label="העלאות Drive" value={stats.driveUploads} />}
+        {showSupplier && <MiniMetric label="תשלומי ספקים" value={stats.supplierPaymentsCount} />}
+        {showSupplier && <MiniMetric label="סכומים חשודים שסוננו" value={stats.suspiciousPaymentsCount} />}
       </section>
 
       <section className="mb-8 grid gap-6 xl:grid-cols-2">
-        <BusinessTable
+        {showSupplier && <BusinessTable
           title="תשלומי ספקים"
           empty="אין תשלומי ספקים עדיין."
           rows={payments.slice(0, 8).map((payment) => ({
@@ -834,8 +851,8 @@ export default function DashboardPage() {
               </div>
             ),
           }))}
-        />
-        <BusinessTable
+        />}
+        {showSupplier && <BusinessTable
           title="חשבוניות חסרות"
           empty="אין חשבוניות חסרות."
           rows={missingInvoices.slice(0, 8).map((payment) => ({
@@ -845,8 +862,8 @@ export default function DashboardPage() {
             badge: "דורש טיפול",
             actions: <button className="btn btn-secondary px-3 py-1.5" onClick={() => attachInvoiceToPayment(payment.id)}>צרף קישור</button>,
           }))}
-        />
-        <BusinessTable
+        />}
+        {showInvoices && <BusinessTable
           title="חשבוניות אחרונות"
           empty="אין חשבוניות שנשמרו."
           rows={recentInvoices.map((invoice) => ({
@@ -856,8 +873,8 @@ export default function DashboardPage() {
             badge: invoice.status,
             actions: invoice.driveUrl ? <a className="btn btn-secondary px-3 py-1.5" href={invoice.driveUrl} target="_blank" rel="noreferrer">פתח Drive</a> : null,
           }))}
-        />
-        <BusinessTable
+        />}
+        {showTasks && <BusinessTable
           title="משימות אחרונות"
           empty="אין משימות פתוחות."
           rows={recentTasks.map((task) => ({
@@ -867,7 +884,7 @@ export default function DashboardPage() {
             badge: task.status,
             actions: null,
           }))}
-        />
+        />}
         <BusinessTable
           title="כשלים ותור בדיקה"
           empty="אין כשלים פתוחים."
@@ -882,7 +899,7 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.25fr_.75fr]">
-        <div className="card">
+        {showCrm && <div className="card">
           <div className="mb-5 flex items-center justify-between">
             <div>
               <h2>לקוחות אחרונים</h2>
@@ -906,7 +923,7 @@ export default function DashboardPage() {
             ))}
             {clients?.clients.length === 0 && <p>אין לקוחות עדיין.</p>}
           </div>
-        </div>
+        </div>}
 
         <div className="space-y-6">
           <div className="card">
@@ -929,7 +946,7 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
-          <div className="card">
+          {showWhatsApp && <div className="card">
             <div className="mb-4 flex items-center gap-3">
               <MessageCircle className="h-5 w-5 text-emerald-300" />
               <h2>WhatsApp</h2>
@@ -937,7 +954,7 @@ export default function DashboardPage() {
             <div className="stat-value">{whatsAppStats?.sentToday ?? 0}</div>
             <p>הודעות נשלחו היום · {whatsAppStats?.activeChats ?? 0} שיחות פעילות</p>
             <button className="btn btn-secondary mt-4" onClick={() => router.push("/dashboard/settings")}>ראה כל השיחות</button>
-          </div>
+          </div>}
         </div>
       </section>
 

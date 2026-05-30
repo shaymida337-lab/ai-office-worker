@@ -10,6 +10,7 @@ import { ensureGmailAccessToken, getOAuth2Client, GMAIL_SCOPES } from "../servic
 import { hashPassword, verifyPassword } from "../lib/password.js";
 import { sendAuthSuccess } from "../lib/auth-response.js";
 import { errorDetails, publicErrorMessage } from "../lib/errors.js";
+import { markOrganizationNeedsOnboarding } from "../services/businessTemplates.js";
 
 export const authRouter = Router();
 
@@ -79,6 +80,7 @@ authRouter.post("/register", async (req, res) => {
       },
       include: { organization: true },
     });
+    if (user.organization) await markOrganizationNeedsOnboarding(user.organization.id);
 
     sendAuthSuccess(res, user);
   } catch (err) {
@@ -122,9 +124,10 @@ authRouter.post("/login", async (req, res) => {
     }
 
     if (!user.organization) {
-      await prisma.organization.create({
+      const organization = await prisma.organization.create({
         data: { userId: user.id, name: user.name ?? "My Business" },
       });
+      await markOrganizationNeedsOnboarding(organization.id);
       const refreshed = await prisma.user.findUnique({
         where: { id: user.id },
         include: { organization: true },
@@ -307,10 +310,12 @@ authRouter.get("/google/callback", async (req, res) => {
         },
         include: { organization: true },
       });
+      if (user.organization) await markOrganizationNeedsOnboarding(user.organization.id);
     } else if (!user.organization) {
-      await prisma.organization.create({
+      const organization = await prisma.organization.create({
         data: { userId: user.id, name: me.data.name ?? "My Business" },
       });
+      await markOrganizationNeedsOnboarding(organization.id);
       user = await prisma.user.findUnique({
         where: { email: normalizedEmail },
         include: { organization: true },

@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { apiFetch } from "@/lib/api";
+import type { BusinessModuleId, OrganizationSettings } from "@/lib/business-config";
 import {
   BarChart3,
   Bell,
@@ -27,33 +28,32 @@ import {
   X,
 } from "lucide-react";
 
-const links = [
+const links: Array<{ href: string; label: string; icon: typeof Home; module?: BusinessModuleId | "admin" }> = [
   { href: "/dashboard", label: "לוח בקרה", icon: Home },
-  { href: "/crm", label: "CRM", icon: CircleDollarSign },
+  { href: "/crm", label: "CRM", icon: CircleDollarSign, module: "crm" },
   { href: "/message-scans", label: "סריקות הודעות", icon: Search },
-  { href: "/dashboard/clients", label: "לקוחות", icon: Users },
-  { href: "/dashboard/invoices", label: "חשבוניות", icon: FileText },
-  { href: "/payments", label: "תשלומי ספקים", icon: WalletCards },
-  { href: "/dashboard/bank", label: "התאמת בנק", icon: Landmark },
-  { href: "/collections", label: "גבייה", icon: CircleDollarSign },
-  { href: "/tasks", label: "משימות", icon: CheckSquare },
+  { href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
+  { href: "/dashboard/invoices", label: "חשבוניות", icon: FileText, module: "invoices" },
+  { href: "/payments", label: "תשלומי ספקים", icon: WalletCards, module: "supplier_management" },
+  { href: "/dashboard/bank", label: "התאמת בנק", icon: Landmark, module: "supplier_management" },
+  { href: "/collections", label: "גבייה", icon: CircleDollarSign, module: "collections" },
+  { href: "/tasks", label: "משימות", icon: CheckSquare, module: "tasks" },
   { href: "/social", label: "סושיאל", icon: Megaphone },
-  { href: "/dashboard/whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { href: "/dashboard/whatsapp", label: "WhatsApp", icon: MessageCircle, module: "whatsapp" },
   { href: "/reports", label: "דוחות", icon: BarChart3 },
   { href: "/dashboard/accountant", label: "רואה חשבון", icon: FileBarChart },
-  { href: "/camera", label: "צילום חשבונית", icon: Camera },
-  { href: "/dashboard/admin-debug", label: "Admin Debug", icon: Settings },
+  { href: "/camera", label: "צילום חשבונית", icon: Camera, module: "documents" },
+  { href: "/dashboard/admin-debug", label: "Admin Debug", icon: Settings, module: "admin" },
+  { href: "/dashboard/business-settings", label: "הגדרות עסק", icon: Settings },
   { href: "/dashboard/settings", label: "הגדרות", icon: Settings },
 ];
 
-const mobileLinks = [
+const mobileLinks: typeof links = [
   { href: "/dashboard", label: "בית", icon: Home },
-  { href: "/dashboard/clients", label: "לקוחות", icon: Users },
-  { href: "/dashboard/invoices", label: "חשבוניות", icon: FileText },
-  { href: "/payments", label: "ספקים", icon: WalletCards },
+  { href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
+  { href: "/dashboard/invoices", label: "חשבוניות", icon: FileText, module: "invoices" },
+  { href: "/payments", label: "ספקים", icon: WalletCards, module: "supplier_management" },
 ];
-
-const mobileMoreLinks = links.filter((item) => !mobileLinks.some((link) => link.href === item.href));
 
 type SearchClient = { id: string; name: string; email?: string | null };
 type SearchInvoice = {
@@ -70,6 +70,7 @@ type SearchResult = { id: string; type: string; title: string; subtitle: string;
 export function Nav() {
   const pathname = usePathname();
   const router = useRouter();
+  const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -81,6 +82,25 @@ export function Nav() {
     invoices: SearchInvoice[];
     tasks: SearchTask[];
   }>({ clients: [], invoices: [], tasks: [] });
+
+  useEffect(() => {
+    apiFetch<OrganizationSettings>("/api/organization/settings")
+      .then((settings) => {
+        setOrganizationSettings(settings);
+        if (settings.onboardingRequired && pathname !== "/onboarding") {
+          router.replace("/onboarding");
+        }
+      })
+      .catch(() => setOrganizationSettings(null));
+  }, [pathname, router]);
+
+  const moduleAllowed = (module?: BusinessModuleId | "admin") => {
+    if (!module || module === "admin") return true;
+    return !organizationSettings || organizationSettings.enabledModules.includes(module);
+  };
+  const visibleLinks = links.filter((item) => moduleAllowed(item.module));
+  const visibleMobileLinks = mobileLinks.filter((item) => moduleAllowed(item.module));
+  const mobileMoreLinks = visibleLinks.filter((item) => !visibleMobileLinks.some((link) => link.href === item.href));
 
   function isActive(href: string) {
     return pathname === href || (href !== "/dashboard" && pathname.startsWith(`${href}/`));
@@ -184,7 +204,7 @@ export function Nav() {
         </Link>
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto pb-56">
-          {links.map((item) => {
+              {visibleLinks.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
             return (
@@ -344,7 +364,7 @@ export function Nav() {
       )}
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 grid grid-cols-5 gap-1 border-t border-[var(--border)] bg-surface-secondary/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-card backdrop-blur-xl lg:hidden">
-        {mobileLinks.map((item) => {
+        {visibleMobileLinks.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href);
           return (

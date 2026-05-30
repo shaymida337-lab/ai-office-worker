@@ -28,6 +28,11 @@ model Organization {
   timezone  String   @default("Asia/Jerusalem")
   currency  String   @default("ILS")
   locale    String   @default("he")
+  businessType String @default("service_business") @map("business_type")
+  enabledModules Json @default("[\"crm\",\"invoices\",\"supplier_management\",\"tasks\",\"whatsapp\",\"documents\",\"collections\"]") @map("enabled_modules")
+  businessSize String? @map("business_size")
+  mainBusinessPain String? @map("main_business_pain")
+  onboardingCompleted Boolean @default(true) @map("onboarding_completed")
   accountantEmail   String?
   accountantName    String?
   businessName      String?

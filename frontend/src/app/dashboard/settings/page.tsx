@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import { apiFetch, getToken, type GmailStatus } from "@/lib/api";
+import { businessTypeLabel, type OrganizationSettings } from "@/lib/business-config";
 
 type AccountantSettings = {
   accountantEmail?: string | null;
@@ -65,7 +66,7 @@ type GreenInvoiceConnectResponse = {
   error?: string;
 };
 
-type SettingsTab = "general" | "integrations" | "greenInvoice" | "accountant" | "whatsapp" | "notifications";
+type SettingsTab = "business" | "general" | "integrations" | "greenInvoice" | "accountant" | "whatsapp" | "notifications";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -90,6 +91,7 @@ export default function SettingsPage() {
   });
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState<SettingsTab>("integrations");
+  const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings | null>(null);
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [socialStatus, setSocialStatus] = useState<SocialPlatformStatus[]>([]);
@@ -123,6 +125,9 @@ export default function SettingsPage() {
     apiFetch<AccountantSettings>("/api/accountant/settings")
       .then(setForm)
       .catch((err) => setMessage(err instanceof Error ? err.message : "טעינת הגדרות נכשלה"));
+    apiFetch<OrganizationSettings>("/api/organization/settings")
+      .then(setOrganizationSettings)
+      .catch(() => undefined);
     apiFetch<WhatsAppAssistantSettings>("/api/whatsapp-assistant/settings")
       .then(setWhatsapp)
       .catch(() => undefined);
@@ -261,6 +266,7 @@ export default function SettingsPage() {
   }
 
   const tabs: Array<{ id: SettingsTab; label: string }> = [
+    { id: "business", label: "סוג עסק ומודולים" },
     { id: "general", label: "הגדרות כלליות" },
     { id: "integrations", label: "חיבורים" },
     { id: "greenInvoice", label: "חשבונית ירוקה" },
@@ -292,6 +298,20 @@ export default function SettingsPage() {
           </button>
         ))}
       </div>
+
+      {activeTab === "business" && (
+        <div className="card grid gap-5">
+          <div>
+            <div className="page-kicker">SaaS configuration</div>
+            <h2>סוג עסק ומודולים פעילים</h2>
+            <p>הבחירה כאן קובעת אילו אזורים יוצגו בדשבורד ובניווט. ההגדרות המלאות זמינות בעמוד ייעודי.</p>
+          </div>
+          <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4 text-sm text-ink-secondary">
+            הגדרה נוכחית: {businessTypeLabel(organizationSettings?.businessType)} · {organizationSettings?.enabledModules.length ?? 7} מודולים פעילים
+          </div>
+          <button className="btn" type="button" onClick={() => router.push("/dashboard/business-settings")}>פתח הגדרות עסק</button>
+        </div>
+      )}
 
       {activeTab === "general" && (
         <form className="card grid gap-3" onSubmit={save}>
