@@ -406,11 +406,17 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
       },
     });
 
-    const gmailIds = payments.map((payment) => payment.emailMessageId).filter((id): id is string => Boolean(id));
+    const emailMessageRefs = payments.map((payment) => payment.emailMessageId).filter((id): id is string => Boolean(id));
     const [emails, scanItems] = await Promise.all([
-      gmailIds.length
+      emailMessageRefs.length
         ? prisma.emailMessage.findMany({
-            where: { organizationId: orgId, gmailId: { in: gmailIds } },
+            where: {
+              organizationId: orgId,
+              OR: [
+                { id: { in: emailMessageRefs } },
+                { gmailId: { in: emailMessageRefs } },
+              ],
+            },
             select: {
               id: true,
               gmailId: true,
@@ -423,11 +429,18 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
             },
           })
         : Promise.resolve([]),
-      gmailIds.length
+      emailMessageRefs.length
         ? prisma.gmailScanItem.findMany({
-            where: { organizationId: orgId, gmailMessageId: { in: gmailIds } },
+            where: {
+              organizationId: orgId,
+              OR: [
+                { emailMessageId: { in: emailMessageRefs } },
+                { gmailMessageId: { in: emailMessageRefs } },
+              ],
+            },
             select: {
               id: true,
+              emailMessageId: true,
               gmailMessageId: true,
               sender: true,
               senderEmail: true,
@@ -445,12 +458,15 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
         : Promise.resolve([]),
     ]);
 
+    const emailById = new Map(emails.map((email) => [email.id, email]));
     const emailByGmailId = new Map(emails.map((email) => [email.gmailId, email]));
-    const scanItemsByGmailId = new Map<string, typeof scanItems>();
+    const scanItemsByEmailRef = new Map<string, typeof scanItems>();
     for (const item of scanItems) {
-      const current = scanItemsByGmailId.get(item.gmailMessageId) ?? [];
-      current.push(item);
-      scanItemsByGmailId.set(item.gmailMessageId, current);
+      for (const ref of [item.emailMessageId, item.gmailMessageId].filter((id): id is string => Boolean(id))) {
+        const current = scanItemsByEmailRef.get(ref) ?? [];
+        current.push(item);
+        scanItemsByEmailRef.set(ref, current);
+      }
     }
 
     const extractDomain = (value: string | null | undefined) => {
@@ -462,8 +478,12 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
     };
 
     const rows = payments.map((payment) => {
-      const email = payment.emailMessageId ? emailByGmailId.get(payment.emailMessageId) ?? null : null;
-      const relatedScanItems = payment.emailMessageId ? scanItemsByGmailId.get(payment.emailMessageId) ?? [] : [];
+      const email = payment.emailMessageId
+        ? emailById.get(payment.emailMessageId) ?? emailByGmailId.get(payment.emailMessageId) ?? null
+        : null;
+      const relatedScanItems = payment.emailMessageId
+        ? scanItemsByEmailRef.get(payment.emailMessageId) ?? (email?.gmailId ? scanItemsByEmailRef.get(email.gmailId) : undefined) ?? []
+        : [];
       const senderDomain = extractDomain(payment.emailSender ?? email?.fromAddress);
       return {
         senderDomain,
