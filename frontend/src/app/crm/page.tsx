@@ -220,7 +220,7 @@ export default function CrmPage() {
   }
 
   const kpis = data?.kpis ?? { newToday: 0, responseRate: 0, avgCloseDays: 0, pipelineValue: 0 };
-  const businessProfile = organizationSettings?.businessProfile ?? getBusinessProfile(organizationSettings?.businessType);
+  const businessProfile = safeBusinessProfile(organizationSettings);
   const crmLabels = crmFieldMap(businessProfile.crmFields);
 
   return (
@@ -445,6 +445,19 @@ function LeadCard({ lead, onOpen, onDrag, onStage }: { lead: Lead; onOpen: () =>
       </div>
     </button>
   );
+}
+
+function safeBusinessProfile(settings: OrganizationSettings | null) {
+  const profile = settings?.businessProfile;
+  if (
+    profile &&
+    Array.isArray(profile.dashboardKpis) &&
+    Array.isArray(profile.dashboardWidgets) &&
+    Array.isArray(profile.crmFields)
+  ) {
+    return profile;
+  }
+  return getBusinessProfile(settings?.businessType);
 }
 
 function crmFieldMap(fields: BusinessCrmField[]) {

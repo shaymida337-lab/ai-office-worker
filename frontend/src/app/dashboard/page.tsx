@@ -12,7 +12,7 @@ import {
   type Payment,
   type Task,
 } from "@/lib/api";
-import { businessTypeLabel, getBusinessProfile, moduleEnabled, type BusinessKpiConfig, type DashboardKpiMetric, type OrganizationSettings } from "@/lib/business-config";
+import { businessTypeLabel, getBusinessProfile, type BusinessKpiConfig, type BusinessModuleId, type DashboardKpiMetric, type OrganizationSettings } from "@/lib/business-config";
 import { useRouter } from "next/navigation";
 import { Activity, ArrowUpRight, Building2, Clock3, FileText, HeartPulse, MessageCircle, Plus, RefreshCcw, ScanLine, WalletCards } from "lucide-react";
 
@@ -607,9 +607,9 @@ export default function DashboardPage() {
     );
   }
 
-  const businessProfile = organizationSettings?.businessProfile ?? getBusinessProfile(organizationSettings?.businessType);
+  const businessProfile = safeBusinessProfile(organizationSettings);
   const kpis = businessProfile.dashboardKpis
-    .filter((kpi) => !kpi.module || moduleEnabled(organizationSettings, kpi.module))
+    .filter((kpi) => !kpi.module || moduleIsEnabled(organizationSettings, kpi.module))
     .map((kpi) => ({
       label: kpi.label,
       value: formatDashboardMetric(kpi, stats),
@@ -617,13 +617,13 @@ export default function DashboardPage() {
       detail: kpi.detail,
       tone: dashboardMetricTone(kpi.metric),
     }));
-  const businessWidgets = businessProfile.dashboardWidgets.filter((widget) => moduleEnabled(organizationSettings, widget.module));
-  const showSupplier = moduleEnabled(organizationSettings, "supplier_management");
-  const showInvoices = moduleEnabled(organizationSettings, "invoices");
-  const showTasks = moduleEnabled(organizationSettings, "tasks");
-  const showCrm = moduleEnabled(organizationSettings, "crm");
-  const showWhatsApp = moduleEnabled(organizationSettings, "whatsapp");
-  const showDocuments = moduleEnabled(organizationSettings, "documents");
+  const businessWidgets = businessProfile.dashboardWidgets.filter((widget) => moduleIsEnabled(organizationSettings, widget.module));
+  const showSupplier = moduleIsEnabled(organizationSettings, "supplier_management");
+  const showInvoices = moduleIsEnabled(organizationSettings, "invoices");
+  const showTasks = moduleIsEnabled(organizationSettings, "tasks");
+  const showCrm = moduleIsEnabled(organizationSettings, "crm");
+  const showWhatsApp = moduleIsEnabled(organizationSettings, "whatsapp");
+  const showDocuments = moduleIsEnabled(organizationSettings, "documents");
   const gmailConnected = Boolean(gmailStatus?.connected);
   return (
     <div className="container">
@@ -636,7 +636,7 @@ export default function DashboardPage() {
             </span>
             <div className="min-w-0">
               <div className="text-[12px] font-bold uppercase tracking-[0.22em] text-ink-muted">{businessProfile.title}</div>
-              <div className="mt-1 text-sm text-ink-secondary">{businessTypeLabel(organizationSettings?.businessType)} · {organizationSettings?.enabledModules.length ?? 7} מודולים פעילים</div>
+              <div className="mt-1 text-sm text-ink-secondary">{businessTypeLabel(organizationSettings?.businessType)} · {enabledModuleCount(organizationSettings)} מודולים פעילים</div>
             </div>
           </div>
           <div>
@@ -1001,6 +1001,27 @@ function relativeTime(date: Date) {
   if (minutes === 0) return "עכשיו";
   if (minutes === 1) return "לפני דקה";
   return `לפני ${minutes} דקות`;
+}
+
+function safeBusinessProfile(settings: OrganizationSettings | null) {
+  const profile = settings?.businessProfile;
+  if (
+    profile &&
+    Array.isArray(profile.dashboardKpis) &&
+    Array.isArray(profile.dashboardWidgets) &&
+    Array.isArray(profile.crmFields)
+  ) {
+    return profile;
+  }
+  return getBusinessProfile(settings?.businessType);
+}
+
+function enabledModuleCount(settings: OrganizationSettings | null) {
+  return Array.isArray(settings?.enabledModules) ? settings.enabledModules.length : 7;
+}
+
+function moduleIsEnabled(settings: OrganizationSettings | null, moduleId: BusinessModuleId) {
+  return !settings || !Array.isArray(settings.enabledModules) || settings.enabledModules.includes(moduleId);
 }
 
 function dashboardMetricValue(metric: DashboardKpiMetric, stats: DashboardStats) {

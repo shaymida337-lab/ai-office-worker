@@ -96,7 +96,10 @@ export function Nav() {
 
   const moduleAllowed = (module?: BusinessModuleId | "admin") => {
     if (!module || module === "admin") return true;
-    return !organizationSettings || organizationSettings.enabledModules.includes(module);
+    const enabledModules = Array.isArray(organizationSettings?.enabledModules)
+      ? organizationSettings.enabledModules
+      : null;
+    return !enabledModules || enabledModules.includes(module);
   };
   const visibleLinks = links.filter((item) => moduleAllowed(item.module));
   const visibleMobileLinks = mobileLinks.filter((item) => moduleAllowed(item.module));

@@ -40,7 +40,7 @@ export function BusinessOnboardingForm({ initialSettings, mode, onSaved }: Props
     setBusinessType(initialSettings.businessType);
     setBusinessSize(initialSettings.businessSize);
     setMainBusinessPain(initialSettings.mainBusinessPain);
-    setEnabledModules(initialSettings.enabledModules);
+    setEnabledModules(Array.isArray(initialSettings.enabledModules) ? initialSettings.enabledModules : recommendedModulesFor(initialSettings.businessType, initialSettings.businessSize, initialSettings.mainBusinessPain));
   }, [initialSettings]);
 
   const recommendedModules = useMemo(
