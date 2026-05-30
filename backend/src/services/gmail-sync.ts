@@ -214,11 +214,12 @@ const REVIEWABLE_DOCUMENT_TYPES = new Set<GmailDocumentType>([
 export async function quickScanGmailForOrganization(organizationId: string, options: { daysBack?: number } = {}) {
   const daysBack = options.daysBack ?? 7;
   const { gmail } = await getGoogleClients(organizationId);
-  const messages = await withTimeout(
+  const listing = await withTimeout(
     listCandidateMessages(gmail, daysBack, MAX_MESSAGES_PER_QUICK_SCAN),
     8_000,
     "Gmail quick scan timed out"
   );
+  const messages = listing.messages;
 
   await prisma.syncLog.create({
     data: {
@@ -256,6 +257,7 @@ type GmailSyncOptions = {
   since?: Date;
   isFirstTime?: boolean;
   forceReprocess?: boolean;
+  scanAllMail?: boolean;
   maxMessages?: number;
   scanLogId?: string;
   scanMode?: "manual" | "auto_daily" | "auto_weekly" | "retry" | "first_time";
@@ -524,7 +526,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       console.error("Drive setup failed; continuing Gmail sync without Drive", err);
     }
     logStep(`[gmail-sync] Searching Gmail from last ${daysBack} days`);
-    const messages = await listCandidateMessages(gmail, daysBack, options.maxMessages ?? MAX_MESSAGES_PER_SYNC, options.since);
+    const listing = await listCandidateMessages(gmail, daysBack, options.maxMessages ?? MAX_MESSAGES_PER_SYNC, options.since, {
+      scanAllMail: options.scanAllMail,
+    });
+    const messages = listing.messages;
+    logStep(`[gmail-sync] Gmail listing diagnostics ${JSON.stringify(listing.diagnostics)}`);
     logStep(`[gmail-sync] total emails fetched from Gmail=${messages.length}`);
     const scannedEmails: ScannedEmail[] = [];
 
@@ -1349,6 +1355,24 @@ type PayloadPart = {
 
 type GmailClient = Awaited<ReturnType<typeof getGoogleClients>>["gmail"];
 type GmailMessageRef = { id?: string | null; threadId?: string | null };
+export type GmailListingDiagnostics = {
+  requestedDaysBack: number;
+  dateFilter: string;
+  maxMessages: number;
+  scanAllMail: boolean;
+  totalGmailMessagesFound: number;
+  pagesProcessed: number;
+  messagesProcessed: number;
+  nextPageTokenUses: number;
+  queries: Array<{
+    query: string;
+    pagesProcessed: number;
+    messagesSeen: number;
+    uniqueMessagesAfterQuery: number;
+    nextPageTokensSeen: number;
+    stoppedBecauseMaxReached: boolean;
+  }>;
+};
 type GmailDocumentType = "invoice" | "receipt" | "payment_request" | "supplier_message" | "unknown_needs_review";
 type GmailConfidenceScore = "high" | "medium" | "low" | `${number}%`;
 type ScannedEmail = {
@@ -1692,26 +1716,53 @@ function extractInvoiceNumber(text: string) {
   return null;
 }
 
-async function listCandidateMessages(gmail: GmailClient, daysBack: number, maxMessages = MAX_MESSAGES_PER_SYNC, since?: Date): Promise<GmailMessageRef[]> {
+export async function diagnoseGmailListingForOrganization(
+  organizationId: string,
+  options: { daysBack?: number; maxMessages?: number; scanAllMail?: boolean } = {}
+) {
+  const { gmail } = await getGoogleClients(organizationId);
+  const listing = await listCandidateMessages(
+    gmail,
+    options.daysBack ?? 90,
+    options.maxMessages ?? MAX_MESSAGES_PER_RESCAN,
+    undefined,
+    { scanAllMail: options.scanAllMail ?? true }
+  );
+  return listing.diagnostics;
+}
+
+async function listCandidateMessages(
+  gmail: GmailClient,
+  daysBack: number,
+  maxMessages = MAX_MESSAGES_PER_SYNC,
+  since?: Date,
+  options: { scanAllMail?: boolean } = {}
+): Promise<{ messages: GmailMessageRef[]; diagnostics: GmailListingDiagnostics }> {
   const byId = new Map<string, GmailMessageRef>();
   const safeDaysBack = Math.max(1, Math.ceil(daysBack));
   const dateFilter = since
     ? `after:${formatGmailSearchDate(since)}`
     : `newer_than:${safeDaysBack}d`;
   const keywordOr = "{invoice receipt payment \"payment request\" חשבונית קבלה תשלום \"דרישת תשלום\"}";
+  const excludeQuery = options.scanAllMail ? "-in:spam -in:trash" : GMAIL_EXCLUDE_QUERY;
   let totalPagesScanned = 0;
   let totalMessagesSeen = 0;
-  const queries = [
-    `${dateFilter} has:attachment ${keywordOr} ${GMAIL_EXCLUDE_QUERY}`,
-    `${dateFilter} ${keywordOr} ${GMAIL_EXCLUDE_QUERY}`,
-    `${dateFilter} {${SUPPLIER_KEYWORDS.map((keyword) => keyword.includes(" ") ? `"${keyword}"` : keyword).join(" ")}} ${GMAIL_EXCLUDE_QUERY}`,
-  ];
+  let totalNextPageTokenUses = 0;
+  const queryDiagnostics: GmailListingDiagnostics["queries"] = [];
+  const queries = options.scanAllMail
+    ? [`${dateFilter} ${excludeQuery}`]
+    : [
+        `${dateFilter} has:attachment ${keywordOr} ${excludeQuery}`,
+        `${dateFilter} ${keywordOr} ${excludeQuery}`,
+        `${dateFilter} {${SUPPLIER_KEYWORDS.map((keyword) => keyword.includes(" ") ? `"${keyword}"` : keyword).join(" ")}} ${excludeQuery}`,
+      ];
 
   for (const q of queries) {
     console.log(`[gmail-sync] Searching Gmail query="${q}" maxMessages=${maxMessages}`);
     let pageToken: string | undefined;
     let queryPages = 0;
     let queryMessagesSeen = 0;
+    let queryNextPageTokensSeen = 0;
     do {
       const remaining = maxMessages - byId.size;
       if (remaining <= 0) break;
@@ -1733,13 +1784,39 @@ async function listCandidateMessages(gmail: GmailClient, daysBack: number, maxMe
           byId.set(message.id, message);
         }
       }
+      if (result.data.nextPageToken) {
+        queryNextPageTokensSeen++;
+        totalNextPageTokenUses++;
+      }
       pageToken = result.data.nextPageToken ?? undefined;
     } while (pageToken && byId.size < maxMessages);
+    queryDiagnostics.push({
+      query: q,
+      pagesProcessed: queryPages,
+      messagesSeen: queryMessagesSeen,
+      uniqueMessagesAfterQuery: byId.size,
+      nextPageTokensSeen: queryNextPageTokensSeen,
+      stoppedBecauseMaxReached: byId.size >= maxMessages,
+    });
     console.log(`[gmail-sync] Gmail query complete pages=${queryPages} messagesSeen=${queryMessagesSeen} uniqueTotal=${byId.size}`);
   }
 
   console.log(`[gmail-sync] Gmail list returned ${byId.size} candidate messages pagesScanned=${totalPagesScanned} messagesSeen=${totalMessagesSeen} maxMessages=${maxMessages}`);
-  return [...byId.values()].slice(0, maxMessages);
+  const messages = [...byId.values()].slice(0, maxMessages);
+  return {
+    messages,
+    diagnostics: {
+      requestedDaysBack: safeDaysBack,
+      dateFilter,
+      maxMessages,
+      scanAllMail: Boolean(options.scanAllMail),
+      totalGmailMessagesFound: byId.size,
+      pagesProcessed: totalPagesScanned,
+      messagesProcessed: messages.length,
+      nextPageTokenUses: totalNextPageTokenUses,
+      queries: queryDiagnostics,
+    },
+  };
 }
 
 function formatGmailSearchDate(date: Date) {

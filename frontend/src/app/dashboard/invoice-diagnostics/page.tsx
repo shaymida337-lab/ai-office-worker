@@ -10,12 +10,31 @@ type DiagnosticsResponse = {
   latestScan: {
     id: string;
     status: string;
+    scanMode: string | null;
     emailsProcessed: number;
     invoicesFound: number;
     paymentsCreated: number;
     startedAt: string;
     finishedAt: string | null;
     errorMessage: string | null;
+  } | null;
+  gmailListingDiagnostics: {
+    requestedDaysBack: number;
+    dateFilter: string;
+    maxMessages: number;
+    scanAllMail: boolean;
+    totalGmailMessagesFound: number;
+    pagesProcessed: number;
+    messagesProcessed: number;
+    nextPageTokenUses: number;
+    queries: Array<{
+      query: string;
+      pagesProcessed: number;
+      messagesSeen: number;
+      uniqueMessagesAfterQuery: number;
+      nextPageTokensSeen: number;
+      stoppedBecauseMaxReached: boolean;
+    }>;
   } | null;
   totals: {
     scannedEmails: number;
@@ -54,7 +73,7 @@ export default function InvoiceDiagnosticsPage() {
     setLoading(true);
     setError("");
     try {
-      setData(await apiFetch<DiagnosticsResponse>("/api/gmail/invoice-diagnostics", { timeoutMs: 30000 }));
+      setData(await apiFetch<DiagnosticsResponse>("/api/gmail/invoice-diagnostics", { timeoutMs: 60000 }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "טעינת אבחון חשבוניות נכשלה");
     } finally {
@@ -113,6 +132,43 @@ export default function InvoiceDiagnosticsPage() {
                 <span className="rounded-full bg-red-500/15 px-3 py-1 text-sm text-red-100">{data.latestScan.errorMessage}</span>
               )}
             </div>
+          </section>
+
+          <section className="card mb-6">
+            <h2>אבחון Gmail Listing</h2>
+            <p className="mt-1 text-sm text-ink-secondary">בדיקה חיה וקריאה בלבד של Gmail API לטווח 90 יום, בלי להריץ סריקה ובלי לשנות נתונים.</p>
+            {data.gmailListingDiagnostics ? (
+              <>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Metric label="Requested days range" value={data.gmailListingDiagnostics.requestedDaysBack} />
+                  <Metric label="Total Gmail messages found" value={data.gmailListingDiagnostics.totalGmailMessagesFound} />
+                  <Metric label="Pages processed" value={data.gmailListingDiagnostics.pagesProcessed} />
+                  <Metric label="Messages processed" value={data.gmailListingDiagnostics.messagesProcessed} />
+                  <Metric label="nextPageToken uses" value={data.gmailListingDiagnostics.nextPageTokenUses} />
+                  <Metric label="Max messages" value={data.gmailListingDiagnostics.maxMessages} />
+                </div>
+                <div className="mt-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-3 text-sm text-ink-secondary">
+                  <div>Query mode: {data.gmailListingDiagnostics.scanAllMail ? "Full mailbox" : "Keyword candidates"}</div>
+                  <div>Date filter: {data.gmailListingDiagnostics.dateFilter}</div>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {data.gmailListingDiagnostics.queries.map((query) => (
+                    <div key={query.query} className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-3">
+                      <div className="break-words text-sm font-semibold text-ink-primary">{query.query}</div>
+                      <div className="mt-2 grid gap-2 text-sm text-ink-secondary sm:grid-cols-2 lg:grid-cols-5">
+                        <span>Pages: {query.pagesProcessed}</span>
+                        <span>Seen: {query.messagesSeen}</span>
+                        <span>Unique: {query.uniqueMessagesAfterQuery}</span>
+                        <span>Tokens: {query.nextPageTokensSeen}</span>
+                        <span>Max reached: {query.stoppedBecauseMaxReached ? "yes" : "no"}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="mt-3 text-sm text-ink-secondary">Gmail listing diagnostics unavailable.</p>
+            )}
           </section>
 
           <section className="auto-grid mb-6">

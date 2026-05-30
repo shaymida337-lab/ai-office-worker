@@ -189,6 +189,7 @@ apiRouter.get("/gmail/invoice-diagnostics", async (req, res) => {
       select: {
         id: true,
         status: true,
+        scanMode: true,
         emailsProcessed: true,
         invoicesFound: true,
         paymentsCreated: true,
@@ -327,8 +328,21 @@ apiRouter.get("/gmail/invoice-diagnostics", async (req, res) => {
         return acc;
       }, {});
 
+    let gmailListingDiagnostics = null;
+    try {
+      const { diagnoseGmailListingForOrganization } = await import("../services/gmail-sync.js");
+      gmailListingDiagnostics = await diagnoseGmailListingForOrganization(organizationId, {
+        daysBack: 90,
+        maxMessages: 1000,
+        scanAllMail: true,
+      });
+    } catch (err) {
+      console.warn("[gmail/invoice-diagnostics] Gmail listing diagnostics failed", errorDetails(err));
+    }
+
     res.json({
       latestScan,
+      gmailListingDiagnostics,
       totals: {
         scannedEmails: latestScan?.emailsProcessed ?? scanItems.length,
         scanItems: scanItems.length,
@@ -2464,7 +2478,14 @@ async function scanGmail(req: Request, res: Response) {
       return;
     }
     console.log(`[gmail-scan] Step 2: background scan started org=${organizationId} scanId=${scanLog.id} daysBack=${daysBack}`);
-    void syncGmailForOrganization(organizationId, { daysBack, forceReprocess: daysBack >= 90 || rescanInvoices, maxMessages, scanLogId: scanLog.id, scanMode: "manual" })
+    void syncGmailForOrganization(organizationId, {
+      daysBack,
+      forceReprocess: daysBack >= 90 || rescanInvoices,
+      scanAllMail: rescanInvoices,
+      maxMessages,
+      scanLogId: scanLog.id,
+      scanMode: "manual",
+    })
       .then((backgroundResult) => {
         console.log(`[gmail-scan] Background processing finished org=${organizationId} scanId=${scanLog.id} emails=${backgroundResult.emailsProcessed} saved=${backgroundResult.emailsSavedToGmailScanItem ?? 0} payments=${backgroundResult.paymentsCreated} invoices=${backgroundResult.invoicesCreated} driveUploaded=${backgroundResult.driveUploadsSucceeded ?? 0} rejected=${backgroundResult.parserRejectedCount ?? backgroundResult.ignoredCount ?? 0}`);
       })
