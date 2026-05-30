@@ -229,49 +229,63 @@ export async function buildPaymentClassificationDebug(organizationId: string, db
 export async function applyPaymentClassificationCleanup(organizationId: string) {
   const before = await buildPaymentClassificationDebug(organizationId);
   const rowsToChange = before.rows.filter((row: PaymentDebugRow) => rowNeedsCleanup(row));
-  console.log(
-    `[payment-cleanup] before org=${organizationId} rows=${before.rows.length} changes=${rowsToChange.length} currentMoneyToPay=${before.cleanupPreviewSummary.currentMoneyToPay}`
-  );
-
-  const result = await prisma.$transaction(async (tx) => {
-    let changedRows = 0;
-    for (const row of rowsToChange) {
-      const amount = row.cleanupPreview.wouldBeAmount ?? 0;
-      const paymentRequired = row.cleanupPreview.wouldRemainInMoneyToPay;
-      await tx.supplierPayment.update({
-        where: { id: row.payment.id },
-        data: {
-          amount,
-          paymentRequired,
-        },
-      });
-
-      const scanItem = row.scanItems[0];
-      if (scanItem) {
-        await tx.gmailScanItem.update({
-          where: { id: scanItem.id },
-          data: {
-            amount,
-            reviewStatus: row.cleanupPreview.wouldBeReviewStatus,
-            decisionReason: row.cleanupPreview.wouldBeDecisionReason,
-          },
-        });
-      }
-      changedRows++;
-    }
-
-    const updatedSummary = await tx.supplierPayment.aggregate({
-      where: { organizationId, paymentRequired: true, paid: false },
-      _sum: { amount: true },
-      _count: { id: true },
-    });
-
+  const cleanupPlan = rowsToChange.map((row: PaymentDebugRow) => {
+    const amount = row.cleanupPreview.wouldBeAmount ?? 0;
+    const scanItem = row.scanItems[0];
     return {
-      changedRows,
-      newMoneyToPay: updatedSummary._sum.amount ?? 0,
-      remainingRows: updatedSummary._count.id,
+      paymentId: row.payment.id,
+      amount,
+      paymentRequired: row.cleanupPreview.wouldRemainInMoneyToPay,
+      scanItemId: scanItem?.id ?? null,
+      scanItemAmount: amount,
+      scanItemReviewStatus: row.cleanupPreview.wouldBeReviewStatus,
+      scanItemDecisionReason: row.cleanupPreview.wouldBeDecisionReason,
     };
   });
+
+  console.log(
+    `[payment-cleanup] before org=${organizationId} rows=${before.rows.length} changes=${cleanupPlan.length} currentMoneyToPay=${before.cleanupPreviewSummary.currentMoneyToPay} expectedNewMoneyToPay=${before.cleanupPreviewSummary.newMoneyToPay} expectedMoveOut=${before.cleanupPreviewSummary.wouldMoveOutCount}`
+  );
+
+  const result = await prisma.$transaction(
+    async (tx) => {
+      let changedRows = 0;
+      for (const change of cleanupPlan) {
+        await tx.supplierPayment.update({
+          where: { id: change.paymentId },
+          data: {
+            amount: change.amount,
+            paymentRequired: change.paymentRequired,
+          },
+        });
+
+        if (change.scanItemId) {
+          await tx.gmailScanItem.update({
+            where: { id: change.scanItemId },
+            data: {
+              amount: change.scanItemAmount,
+              reviewStatus: change.scanItemReviewStatus,
+              decisionReason: change.scanItemDecisionReason,
+            },
+          });
+        }
+        changedRows++;
+      }
+
+      const updatedSummary = await tx.supplierPayment.aggregate({
+        where: { organizationId, paymentRequired: true, paid: false },
+        _sum: { amount: true },
+        _count: { id: true },
+      });
+
+      return {
+        changedRows,
+        newMoneyToPay: updatedSummary._sum.amount ?? 0,
+        remainingRows: updatedSummary._count.id,
+      };
+    },
+    { maxWait: 30_000, timeout: 30_000 }
+  );
 
   console.log(
     `[payment-cleanup] after org=${organizationId} changed=${result.changedRows} newMoneyToPay=${result.newMoneyToPay} remainingRows=${result.remainingRows}`
@@ -279,7 +293,7 @@ export async function applyPaymentClassificationCleanup(organizationId: string) 
 
   return {
     beforeSummary: before.cleanupPreviewSummary,
-    plannedChanges: rowsToChange.length,
+    plannedChanges: cleanupPlan.length,
     ...result,
   };
 }
