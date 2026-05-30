@@ -192,7 +192,45 @@ clientsRouter.get("/", authMiddleware, async (req, res) => {
     );
     const clients = await Promise.race([query, timeout]);
 
-    res.json({ clients, totals: emptyTotals });
+    const whatsappSummary = clients.length
+      ? await prisma.whatsAppLog.groupBy({
+          by: ["clientId"],
+          where: {
+            organizationId,
+            clientId: { in: clients.map((client) => client.id) },
+            direction: "inbound",
+            read: false,
+          },
+          _count: { _all: true },
+        })
+      : [];
+    const lastWhatsAppMessages = clients.length
+      ? await prisma.whatsAppLog.findMany({
+          where: {
+            organizationId,
+            clientId: { in: clients.map((client) => client.id) },
+          },
+          orderBy: { createdAt: "desc" },
+          take: clients.length * 3,
+          select: { clientId: true, body: true, createdAt: true, direction: true },
+        })
+      : [];
+    const unreadByClient = new Map(whatsappSummary.map((item) => [item.clientId, item._count._all]));
+    const lastByClient = new Map<string, { body: string; createdAt: Date; direction: string }>();
+    for (const message of lastWhatsAppMessages) {
+      if (message.clientId && !lastByClient.has(message.clientId)) {
+        lastByClient.set(message.clientId, message);
+      }
+    }
+
+    res.json({
+      clients: clients.map((client) => ({
+        ...client,
+        whatsappUnread: unreadByClient.get(client.id) ?? 0,
+        whatsappLastMessage: lastByClient.get(client.id) ?? null,
+      })),
+      totals: emptyTotals,
+    });
   } catch (err) {
     console.error(`[clients] list failed org=${organizationId}; returning empty 200 response`, err);
     res.json({ clients: [], totals: emptyTotals, warning: "clients_list_failed" });

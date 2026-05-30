@@ -66,9 +66,13 @@ async function checkTwilioConnection() {
 }
 
 export function normalizeWhatsAppNumber(value: string) {
-  const trimmed = value.trim();
+  const trimmed = value.trim().replace(/^whatsapp:/i, "");
   if (!trimmed) return "";
-  return trimmed.startsWith("whatsapp:") ? trimmed : `whatsapp:${trimmed}`;
+  let number = trimmed.replace(/[\s().-]/g, "");
+  if (number.startsWith("00")) number = `+${number.slice(2)}`;
+  if (number.startsWith("0")) number = `+972${number.slice(1)}`;
+  if (/^\d+$/.test(number)) number = `+${number}`;
+  return `whatsapp:${number}`;
 }
 
 function parseMetadata(metadata: string | null): WhatsAppMetadata {
@@ -101,7 +105,7 @@ export async function saveWhatsAppSettings(organizationId: string, ownerWhatsApp
   const normalized = normalizeWhatsAppNumber(ownerWhatsApp);
   if (!normalized) throw new Error("WhatsApp number is required");
 
-  return prisma.integration.upsert({
+  const integration = await prisma.integration.upsert({
     where: { organizationId_provider: { organizationId, provider: "twilio" } },
     create: {
       organizationId,
@@ -112,6 +116,17 @@ export async function saveWhatsAppSettings(organizationId: string, ownerWhatsApp
       metadata: JSON.stringify({ ownerWhatsApp: normalized } satisfies WhatsAppMetadata),
     },
   });
+
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "WhatsAppAssistant" ("id","organizationId","ownerPhone","isActive","morningReportTime","clientDailyTime","language","createdAt")
+     VALUES ($1,$2,$3,true,'07:30','08:00','he',CURRENT_TIMESTAMP)
+     ON CONFLICT ("organizationId") DO UPDATE SET "ownerPhone" = EXCLUDED."ownerPhone", "isActive" = true`,
+    `waa_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    organizationId,
+    normalized
+  );
+
+  return integration;
 }
 
 export async function findOrganizationByWhatsAppNumber(fromNumber: string) {
@@ -133,8 +148,44 @@ export async function findOrganizationByWhatsAppNumber(fromNumber: string) {
 export async function findClientByWhatsAppNumber(fromNumber: string) {
   const normalized = normalizeWhatsAppNumber(fromNumber);
   return prisma.client.findFirst({
-    where: { whatsappNumber: normalized, isActive: true },
+    where: {
+      isActive: true,
+      OR: [
+        { whatsappNumber: normalized },
+        { whatsappNumber: fromNumber },
+      ],
+    },
   });
+}
+
+export async function findOrCreateClientByWhatsAppNumber(organizationId: string, fromNumber: string, profileName?: string) {
+  const normalized = normalizeWhatsAppNumber(fromNumber);
+  const existing = await prisma.client.findFirst({
+    where: {
+      organizationId,
+      isActive: true,
+      OR: [
+        { whatsappNumber: normalized },
+        { whatsappNumber: fromNumber },
+      ],
+    },
+  });
+  if (existing) return { client: existing, created: false };
+
+  const digits = normalized.replace(/^whatsapp:\+?/, "");
+  const name = profileName?.trim() || `לקוח וואטסאפ ${digits.slice(-4) || "חדש"}`;
+  const client = await prisma.client.create({
+    data: {
+      organizationId,
+      name,
+      email: `whatsapp-${digits || Date.now()}@whatsapp.local`,
+      whatsappNumber: normalized,
+      firstSeen: new Date(),
+      lastSeen: new Date(),
+      color: "#10B981",
+    },
+  });
+  return { client, created: true };
 }
 
 export async function sendWhatsAppMessage(organizationId: string, body: string) {

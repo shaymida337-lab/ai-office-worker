@@ -42,24 +42,6 @@ type WhatsAppMessage = {
   createdAt: string;
 };
 
-type ClientWhatsAppStatus = {
-  connected: boolean;
-  phoneNumber: string | null;
-  lastSync: string | null;
-  messagesScanned: number;
-};
-
-type ClientWhatsAppMessage = {
-  id: string;
-  from: string;
-  to: string | null;
-  body: string;
-  timestamp: string;
-  hasInvoice: boolean;
-  hasTask: boolean;
-  processed: boolean;
-};
-
 type InvoiceItem = {
   id: string;
   invoiceNumber: string | null;
@@ -131,9 +113,6 @@ export default function ClientDetailPage() {
   const [health, setHealth] = useState<HealthScore | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [whatsappMessages, setWhatsappMessages] = useState<WhatsAppMessage[]>([]);
-  const [clientWhatsAppStatus, setClientWhatsAppStatus] = useState<ClientWhatsAppStatus | null>(null);
-  const [clientWhatsAppMessages, setClientWhatsAppMessages] = useState<ClientWhatsAppMessage[]>([]);
-  const [clientWhatsAppQr, setClientWhatsAppQr] = useState<string | null>(null);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [whatsappText, setWhatsappText] = useState("");
   const [form, setForm] = useState(emptyTask);
@@ -150,13 +129,9 @@ export default function ClientDetailPage() {
     const taskResult = await apiFetch<{ tasks: TaskItem[] }>(`/api/clients/${clientId}/tasks`);
     const whatsappResult = await apiFetch<{ messages: WhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp`);
     const invoiceResult = await apiFetch<{ invoices: InvoiceItem[] }>(`/api/clients/${clientId}/invoices`);
-    const clientWhatsApp = await apiFetch<ClientWhatsAppStatus>(`/api/clients/${clientId}/whatsapp/status`);
-    const clientWhatsAppMessageResult = await apiFetch<{ messages: ClientWhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp/messages`);
     setData(next);
     setTasks(taskResult.tasks);
     setWhatsappMessages(whatsappResult.messages);
-    setClientWhatsAppStatus(clientWhatsApp);
-    setClientWhatsAppMessages(clientWhatsAppMessageResult.messages);
     setInvoices(invoiceResult.invoices);
     setHealth(next.client.health ?? null);
     setLastUpdatedAt(new Date());
@@ -335,38 +310,6 @@ export default function ClientDetailPage() {
     }
   }
 
-  async function connectClientWhatsApp() {
-    setMessage("מכין קוד לחיבור וואטסאפ...");
-    try {
-      const result = await apiFetch<{ qrCode?: string; status: string }>(`/api/clients/${clientId}/whatsapp/connect`, { method: "POST" });
-      setClientWhatsAppQr(result.qrCode ?? null);
-      setMessage(result.status === "connected" ? "וואטסאפ מחובר" : "סרוק את הקוד עם וואטסאפ");
-      await load();
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "חיבור וואטסאפ נכשל");
-    }
-  }
-
-  async function scanClientWhatsApp() {
-    setMessage("סורק היסטוריית וואטסאפ...");
-    try {
-      const result = await apiFetch<{ processed: number }>(`/api/clients/${clientId}/whatsapp/scan`, {
-        method: "POST",
-        body: JSON.stringify({ daysBack: 30 }),
-      });
-      setMessage(`נסרקו ${result.processed} הודעות וואטסאפ`);
-      await load();
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "סריקת וואטסאפ נכשלה");
-    }
-  }
-
-  async function disconnectClientWhatsApp() {
-    await apiFetch(`/api/clients/${clientId}/whatsapp/disconnect`, { method: "DELETE" });
-    setClientWhatsAppQr(null);
-    await load();
-  }
-
   if (!data) {
     return (
       <div className="container">
@@ -433,19 +376,24 @@ export default function ClientDetailPage() {
 
       <div className="card">
         <h2>וואטסאפ</h2>
+        <p className="mt-2 text-sm text-ink-secondary">
+          השיחה מוצגת מתוך WhatsApp Business. הודעות נכנסות נשמרות אוטומטית, משויכות ללקוח לפי מספר הטלפון, ומופיעות כאן לאחר שהלקוח שולח הודעה.
+        </p>
         <div className="mt-4 grid gap-2">
           {whatsappMessages.map((item) => (
             <div
               key={item.id}
-              className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm ${item.direction === "inbound" ? "justify-self-start rounded-tr-md bg-emerald-400/15 text-emerald-100" : "justify-self-end rounded-tl-md bg-accent-primary/20 text-ink-primary"}`}
+              className={`w-fit max-w-full rounded-2xl px-4 py-3 text-sm sm:max-w-[75%] ${item.direction === "inbound" ? "justify-self-start rounded-tr-md bg-emerald-400/15 text-emerald-100" : "justify-self-end rounded-tl-md bg-accent-primary/20 text-ink-primary"}`}
             >
               <div>{item.body}</div>
-              {item.aiGenerated && <small>מענה חכם</small>}
+              <small className="mt-1 block text-ink-muted">
+                {item.direction === "inbound" ? "התקבל מהלקוח" : item.aiGenerated ? "מענה חכם" : "נשלח מהמערכת"} · {new Date(item.createdAt).toLocaleString("he-IL")}
+              </small>
             </div>
           ))}
           {whatsappMessages.length === 0 && (
             <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-              <p>עדיין אין הודעות וואטסאפ. לאחר שליחה או סריקה, השיחה תופיע כאן.</p>
+              <p>עדיין אין הודעות וואטסאפ ללקוח הזה. ודא שמספר הוואטסאפ שמור בכרטיס הלקוח, ואז שלח הודעת בדיקה או בקש מהלקוח לשלוח הודעה.</p>
             </div>
           )}
         </div>
@@ -459,38 +407,6 @@ export default function ClientDetailPage() {
             שלח
           </button>
         </form>
-      </div>
-
-      <div className="card">
-        <h2>וואטסאפ אישי של הלקוח</h2>
-        <p>סטטוס: {clientWhatsAppStatus?.connected ? "מחובר" : "לא מחובר"}</p>
-        <p>נסרקו: {clientWhatsAppStatus?.messagesScanned ?? 0} הודעות</p>
-        {clientWhatsAppStatus?.lastSync && <p>סנכרון אחרון: {new Date(clientWhatsAppStatus.lastSync).toLocaleString("he-IL")}</p>}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button className="btn" onClick={connectClientWhatsApp}>חבר וואטסאפ עם קוד</button>
-          <button className="btn btn-secondary" onClick={scanClientWhatsApp}>סרוק 30 ימים</button>
-          <button className="btn btn-secondary" onClick={disconnectClientWhatsApp}>נתק וואטסאפ</button>
-        </div>
-        {clientWhatsAppQr && (
-          <div className="mt-4">
-            <p>סרוק את הקוד באפליקציית וואטסאפ של הלקוח:</p>
-            <img src={clientWhatsAppQr} alt="קוד חיבור וואטסאפ" className="mt-3 w-full max-w-[280px] rounded-2xl bg-white p-2" />
-          </div>
-        )}
-        <h3>הודעות שנסרקו</h3>
-        {clientWhatsAppMessages.length === 0 ? (
-          <p>עדיין אין הודעות שנסרקו. חבר וואטסאפ ללקוח או הרץ סריקה כדי לראות שיחות ומסמכים.</p>
-        ) : (
-          clientWhatsAppMessages.map((item) => (
-            <div key={item.id} className="border-t border-[var(--border)] py-3">
-              <strong>{item.from}</strong>
-              <p>{item.body}</p>
-              <small>
-                {new Date(item.timestamp).toLocaleString("he-IL")} · {item.hasInvoice ? "חשבונית" : ""} {item.hasTask ? "משימה" : ""}
-              </small>
-            </div>
-          ))
-        )}
       </div>
 
       <div className="card">

@@ -4,6 +4,7 @@ import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import {
   findClientByWhatsAppNumber,
+  findOrCreateClientByWhatsAppNumber,
   normalizeWhatsAppNumber,
 } from "../services/whatsapp.js";
 import { handleClientMessage, handleOwnerMessage } from "../services/whatsappChatEngine.js";
@@ -25,6 +26,7 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
 
   const body = (req.body.Body as string) ?? "";
   const from = req.body.From as string;
+  const profileName = typeof req.body.ProfileName === "string" ? req.body.ProfileName : undefined;
   const twiml = new twilio.twiml.MessagingResponse();
   const normalizedFrom = normalizeWhatsAppNumber(from);
   const assistant = await findAssistantByOwnerPhone(normalizedFrom);
@@ -60,6 +62,10 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
 
   const client = await findClientByWhatsAppNumber(normalizedFrom);
   if (client) {
+    await prisma.client.update({
+      where: { id: client.id },
+      data: { lastSeen: new Date(), whatsappNumber: client.whatsappNumber ?? normalizedFrom },
+    });
     const inboundLog = await prisma.whatsAppLog.create({
       data: {
         organizationId: client.organizationId,
@@ -93,9 +99,11 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
 
   const organization = await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
   if (organization) {
+    const { client: newClient, created } = await findOrCreateClientByWhatsAppNumber(organization.id, normalizedFrom, profileName);
     const inboundLog = await prisma.whatsAppLog.create({
       data: {
         organizationId: organization.id,
+        clientId: newClient.id,
         direction: "inbound",
         body,
         fromNumber: normalizedFrom,
@@ -103,7 +111,20 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       },
     });
     await scanWhatsAppMessage(organization.id, inboundLog.id, normalizedFrom, body, true);
-    twiml.message("שלום! תודה שפנית אלינו. קיבלנו את ההודעה ונציג יחזור אליך בהקדם.");
+    const reply = await safeReply(() => handleClientMessage(body, newClient.id, organization.id, normalizedFrom));
+    twiml.message(created ? `שלום ${newClient.name}, קיבלנו את ההודעה ונפתח לך כרטיס לקוח במערכת.\n${reply}` : reply);
+    await prisma.whatsAppLog.create({
+      data: {
+        organizationId: organization.id,
+        clientId: newClient.id,
+        direction: "outbound",
+        body: created ? `שלום ${newClient.name}, קיבלנו את ההודעה ונפתח לך כרטיס לקוח במערכת.\n${reply}` : reply,
+        fromNumber: config.twilio.whatsappFrom,
+        toNumber: normalizedFrom,
+        aiGenerated: true,
+        read: true,
+      },
+    });
     res.type("text/xml").send(twiml.toString());
     return;
   }
