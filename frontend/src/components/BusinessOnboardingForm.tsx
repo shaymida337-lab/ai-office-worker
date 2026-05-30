@@ -7,6 +7,7 @@ import {
   businessPains,
   businessSizes,
   businessTypes,
+  getBusinessProfile,
   recommendedModulesFor,
   type BusinessModuleId,
   type BusinessPainId,
@@ -46,6 +47,11 @@ export function BusinessOnboardingForm({ initialSettings, mode, onSaved }: Props
     () => recommendedModulesFor(businessType, businessSize, mainBusinessPain),
     [businessType, businessSize, mainBusinessPain]
   );
+  const businessProfile = useMemo(() => getBusinessProfile(businessType), [businessType]);
+  const visibleModules = useMemo(
+    () => businessModules.filter((module) => businessProfile.modules.includes(module.id)),
+    [businessProfile.modules]
+  );
 
   function applyRecommendations(nextBusinessType = businessType, nextSize = businessSize, nextPain = mainBusinessPain) {
     setEnabledModules(recommendedModulesFor(nextBusinessType, nextSize, nextPain));
@@ -83,7 +89,7 @@ export function BusinessOnboardingForm({ initialSettings, mode, onSaved }: Props
           businessType,
           businessSize,
           mainBusinessPain,
-          enabledModules,
+          enabledModules: enabledModules.filter((moduleId) => businessProfile.modules.includes(moduleId)),
           onboardingCompleted: true,
         }),
       });
@@ -208,12 +214,12 @@ export function BusinessOnboardingForm({ initialSettings, mode, onSaved }: Props
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2>מודולים שיופעלו</h2>
-            <p className="text-sm text-ink-secondary">אפשר לערוך ידנית, וההמלצה מתעדכנת לפי הסוג, הגודל והכאב שבחרת.</p>
+            <p className="text-sm text-ink-secondary">מוצגים רק מודולים רלוונטיים לסוג העסק שנבחר. מודולים לא רלוונטיים מוסתרים מהפלטפורמה.</p>
           </div>
           <button className="btn btn-secondary" type="button" onClick={() => setEnabledModules(recommendedModules)}>אפס להמלצה</button>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {businessModules.map((module) => {
+          {visibleModules.map((module) => {
             const checked = enabledModules.includes(module.id);
             return (
               <label key={module.id} className="flex cursor-pointer flex-row items-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">

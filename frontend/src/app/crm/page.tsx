@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
+import { getBusinessProfile, type BusinessCrmField, type OrganizationSettings } from "@/lib/business-config";
 import { BarChart3, CalendarClock, Flame, GripVertical, List, MessageCircle, Plus, Search, Star, UserRoundCheck } from "lucide-react";
 
 type Lead = {
@@ -71,6 +72,7 @@ export default function CrmPage() {
   const [selected, setSelected] = useState<Lead | null>(null);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings | null>(null);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [draggedId, setDraggedId] = useState("");
@@ -109,6 +111,9 @@ export default function CrmPage() {
 
   useEffect(() => {
     loadTemplates().catch(() => undefined);
+    apiFetch<OrganizationSettings>("/api/organization/settings")
+      .then(setOrganizationSettings)
+      .catch(() => undefined);
   }, []);
 
   const filteredLeads = useMemo(() => {
@@ -215,6 +220,8 @@ export default function CrmPage() {
   }
 
   const kpis = data?.kpis ?? { newToday: 0, responseRate: 0, avgCloseDays: 0, pipelineValue: 0 };
+  const businessProfile = organizationSettings?.businessProfile ?? getBusinessProfile(organizationSettings?.businessType);
+  const crmLabels = crmFieldMap(businessProfile.crmFields);
 
   return (
     <div className="container">
@@ -222,8 +229,8 @@ export default function CrmPage() {
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="page-kicker">CRM automation</div>
-          <h1>CRM לידים מתקדם</h1>
-          <p>Kanban מכירתי, scoring אוטומטי, sequences, pipeline והתראות בזמן אמת.</p>
+          <h1>{businessProfile.title}</h1>
+          <p>{businessProfile.subtitle}</p>
         </div>
         <div className="grid gap-2 sm:flex sm:flex-wrap">
           <button className="btn" onClick={() => setShowForm((open) => !open)}><Plus className="h-4 w-4" />הוסף ליד</button>
@@ -235,10 +242,25 @@ export default function CrmPage() {
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-base text-ink-primary">{message}</div>}
 
       <section className="grid mb-6">
-        <KpiCard label="לידים חדשים היום" value={kpis.newToday} icon={<UserRoundCheck className="h-5 w-5" />} />
-        <KpiCard label="שיעור תשובה" value={`${kpis.responseRate}%`} icon={<MessageCircle className="h-5 w-5" />} />
-        <KpiCard label="ממוצע לסגירה" value={`${kpis.avgCloseDays} ימים`} icon={<CalendarClock className="h-5 w-5" />} />
+        <KpiCard label={crmKpiLabel(organizationSettings?.businessType, "newToday")} value={kpis.newToday} icon={<UserRoundCheck className="h-5 w-5" />} />
+        <KpiCard label={crmKpiLabel(organizationSettings?.businessType, "responseRate")} value={`${kpis.responseRate}%`} icon={<MessageCircle className="h-5 w-5" />} />
+        <KpiCard label={crmKpiLabel(organizationSettings?.businessType, "avgCloseDays")} value={`${kpis.avgCloseDays} ימים`} icon={<CalendarClock className="h-5 w-5" />} />
         <KpiCard label="ערך Pipeline" value={`₪${kpis.pipelineValue.toLocaleString("he-IL")}`} icon={<Flame className="h-5 w-5" />} />
+      </section>
+
+      <section className="card mb-6">
+        <div className="mb-3">
+          <h2>שדות CRM מותאמים</h2>
+          <p className="text-sm">הטופס משתמש באותם נתוני CRM קיימים, עם שפה ושדות עבודה שמותאמים לסוג העסק.</p>
+        </div>
+        <div className="grid gap-2 md:grid-cols-3">
+          {businessProfile.crmFields.map((field) => (
+            <div key={field.key} className="rounded-xl border border-[var(--border-subtle)] bg-surface-secondary p-3">
+              <strong className="block text-ink-primary">{field.label}</strong>
+              <span className="text-sm text-ink-secondary">{field.placeholder}</span>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="card">
@@ -322,14 +344,14 @@ export default function CrmPage() {
 
       {showForm && (
         <form onSubmit={createLead} className="card grid gap-3 md:grid-cols-3">
-          <label>שם<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="שם מלא" /></label>
-          <label>טלפון<input required dir="ltr" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="+972..." /></label>
+          <label>{crmLabels.name.label}<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder={crmLabels.name.placeholder} /></label>
+          <label>{crmLabels.phone.label}<input required dir="ltr" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder={crmLabels.phone.placeholder} /></label>
           <label>מקור<select value={form.source} onChange={(event) => setForm({ ...form, source: event.target.value })}>{sources.map((source) => <option key={source} value={source}>{source}</option>)}</select></label>
-          <label>חברה<input value={form.company} onChange={(event) => setForm({ ...form, company: event.target.value })} /></label>
-          <label>מייל<input dir="ltr" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
-          <label>ערך עסקה<input type="number" value={form.estimatedValue} onChange={(event) => setForm({ ...form, estimatedValue: event.target.value })} /></label>
-          <label className="md:col-span-2">תגיות<input value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} placeholder="דחוף, SaaS, המלצה" /></label>
-          <label>הערות<input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+          <label>{crmLabels.company.label}<input value={form.company} onChange={(event) => setForm({ ...form, company: event.target.value })} placeholder={crmLabels.company.placeholder} /></label>
+          <label>{crmLabels.email.label}<input dir="ltr" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder={crmLabels.email.placeholder} /></label>
+          <label>{crmLabels.estimatedValue.label}<input type="number" value={form.estimatedValue} onChange={(event) => setForm({ ...form, estimatedValue: event.target.value })} placeholder={crmLabels.estimatedValue.placeholder} /></label>
+          <label className="md:col-span-2">{crmLabels.tags.label}<input value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} placeholder={crmLabels.tags.placeholder} /></label>
+          <label>{crmLabels.notes.label}<input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder={crmLabels.notes.placeholder} /></label>
           <button className="btn md:col-span-3" disabled={saving}>{saving ? "שומר..." : "שמור והפעל sequence"}</button>
         </form>
       )}
@@ -391,6 +413,7 @@ export default function CrmPage() {
           onUpdate={updateLead}
           onMarkReply={markLeadReply}
           onAddTimeline={addTimeline}
+          crmFields={businessProfile.crmFields}
         />
       )}
     </div>
@@ -424,6 +447,37 @@ function LeadCard({ lead, onOpen, onDrag, onStage }: { lead: Lead; onOpen: () =>
   );
 }
 
+function crmFieldMap(fields: BusinessCrmField[]) {
+  const fallback: Record<BusinessCrmField["key"], BusinessCrmField> = {
+    name: { key: "name", label: "שם", placeholder: "שם מלא" },
+    company: { key: "company", label: "חברה", placeholder: "שם חברה או הקשר" },
+    phone: { key: "phone", label: "טלפון", placeholder: "+972..." },
+    email: { key: "email", label: "מייל", placeholder: "client@example.com" },
+    estimatedValue: { key: "estimatedValue", label: "ערך עסקה", placeholder: "0" },
+    tags: { key: "tags", label: "תגיות", placeholder: "דחוף, המלצה, VIP" },
+    notes: { key: "notes", label: "הערות", placeholder: "הערות פנימיות" },
+  };
+  return fields.reduce((acc, field) => ({ ...acc, [field.key]: field }), fallback);
+}
+
+type CrmKpiKey = "newToday" | "responseRate" | "avgCloseDays";
+
+function crmKpiLabel(businessType: string | null | undefined, key: CrmKpiKey) {
+  const labels: Record<string, Record<CrmKpiKey, string>> = {
+    beauty_clinic: { newToday: "מתעניינות חדשות", responseRate: "שיעור מענה", avgCloseDays: "זמן לסגירת טיפול" },
+    accountant: { newToday: "פניות לקוחות", responseRate: "שיעור מענה", avgCloseDays: "זמן סגירת חוסר" },
+    lawyer: { newToday: "פניות לתיקים", responseRate: "שיעור מענה", avgCloseDays: "זמן לסגירת תיק" },
+    insurance_agency: { newToday: "לידים לפוליסה", responseRate: "שיעור מענה", avgCloseDays: "זמן לסגירת פוליסה" },
+    real_estate: { newToday: "קונים/מוכרים חדשים", responseRate: "שיעור מענה", avgCloseDays: "זמן לעסקה" },
+    ecommerce: { newToday: "פניות לקוחות", responseRate: "שיעור מענה", avgCloseDays: "זמן טיפול" },
+    importer: { newToday: "פניות מסחריות", responseRate: "שיעור מענה", avgCloseDays: "זמן סגירת הזמנה" },
+    marketing_agency: { newToday: "לידים לקמפיין", responseRate: "שיעור מענה", avgCloseDays: "זמן לסגירת ריטיינר" },
+    restaurant: { newToday: "פניות / אירועים", responseRate: "שיעור מענה", avgCloseDays: "זמן סגירת הזמנה" },
+  };
+  const fallback = { newToday: "לידים חדשים היום", responseRate: "שיעור תשובה", avgCloseDays: "ממוצע לסגירה" };
+  return (businessType && labels[businessType]?.[key]) || fallback[key];
+}
+
 function LeadModal({
   lead,
   timelineText,
@@ -432,6 +486,7 @@ function LeadModal({
   onUpdate,
   onMarkReply,
   onAddTimeline,
+  crmFields,
 }: {
   lead: Lead;
   timelineText: string;
@@ -440,7 +495,9 @@ function LeadModal({
   onUpdate: (id: string, body: Record<string, unknown>) => Promise<void>;
   onMarkReply: (lead: Lead, replyMessage: string) => Promise<void>;
   onAddTimeline: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
+  crmFields: BusinessCrmField[];
 }) {
+  const crmLabels = crmFieldMap(crmFields);
   const [draft, setDraft] = useState({
     name: lead.name,
     company: lead.company ?? "",
@@ -522,7 +579,7 @@ function LeadModal({
         <div className="grid gap-4 md:grid-cols-3">
           <Info label="מקור" value={lead.source} />
           <Info label="שלב" value={lead.stage} />
-          <Info label="ערך עסקה" value={`₪${lead.estimatedValue.toLocaleString("he-IL")}`} />
+          <Info label={crmLabels.estimatedValue.label} value={`₪${lead.estimatedValue.toLocaleString("he-IL")}`} />
           <Info label="ציון" value={`${lead.score} · ${"★".repeat(lead.priorityStars)}`} />
           <Info label="סוכן אחראי" value={lead.assignedTo || "לא הוגדר"} />
           <Info label="תזכורת הבאה" value={lead.nextReminderAt ? new Date(lead.nextReminderAt).toLocaleString("he-IL") : "אין"} />
@@ -531,18 +588,18 @@ function LeadModal({
           {stages.map((stage) => <button key={stage} className={lead.stage === stage ? "btn" : "btn btn-toggle-inactive"} onClick={() => onUpdate(lead.id, { stage })}>{stage}</button>)}
         </div>
         <form onSubmit={saveDetails} className="mt-6 grid gap-3 md:grid-cols-3">
-          <label>שם מלא<input required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
-          <label>חברה<input value={draft.company} onChange={(event) => setDraft({ ...draft, company: event.target.value })} /></label>
+          <label>{crmLabels.name.label}<input required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder={crmLabels.name.placeholder} /></label>
+          <label>{crmLabels.company.label}<input value={draft.company} onChange={(event) => setDraft({ ...draft, company: event.target.value })} placeholder={crmLabels.company.placeholder} /></label>
           <label>מקור<select value={draft.source} onChange={(event) => setDraft({ ...draft, source: event.target.value })}>{sources.map((source) => <option key={source} value={source}>{source}</option>)}</select></label>
-          <label>טלפון<input dir="ltr" value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} /></label>
+          <label>{crmLabels.phone.label}<input dir="ltr" value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} placeholder={crmLabels.phone.placeholder} /></label>
           <label>וואטסאפ<input dir="ltr" value={draft.whatsapp} onChange={(event) => setDraft({ ...draft, whatsapp: event.target.value })} /></label>
-          <label>מייל<input dir="ltr" type="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} /></label>
-          <label>ערך עסקה<input type="number" value={draft.estimatedValue} onChange={(event) => setDraft({ ...draft, estimatedValue: event.target.value })} /></label>
+          <label>{crmLabels.email.label}<input dir="ltr" type="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} placeholder={crmLabels.email.placeholder} /></label>
+          <label>{crmLabels.estimatedValue.label}<input type="number" value={draft.estimatedValue} onChange={(event) => setDraft({ ...draft, estimatedValue: event.target.value })} placeholder={crmLabels.estimatedValue.placeholder} /></label>
           <label>סוכן אחראי<input value={draft.assignedTo} onChange={(event) => setDraft({ ...draft, assignedTo: event.target.value })} /></label>
           <label>תזכורת הבאה<input type="datetime-local" value={draft.nextReminderAt} onChange={(event) => setDraft({ ...draft, nextReminderAt: event.target.value })} /></label>
-          <label className="md:col-span-2">תגיות<input value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} placeholder="דחוף, המלצה, SaaS" /></label>
+          <label className="md:col-span-2">{crmLabels.tags.label}<input value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} placeholder={crmLabels.tags.placeholder} /></label>
           <label>קבצים מצורפים<input value={draft.attachments} onChange={(event) => setDraft({ ...draft, attachments: event.target.value })} placeholder="URL, URL" /></label>
-          <label className="md:col-span-3">הערות פנימיות<textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></label>
+          <label className="md:col-span-3">{crmLabels.notes.label}<textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder={crmLabels.notes.placeholder} /></label>
           <button className="btn md:col-span-3" disabled={saving}>{saving ? "שומר..." : "שמור פרטי ליד"}</button>
         </form>
         <section className="mt-6 grid gap-4 md:grid-cols-[1fr_.9fr]">

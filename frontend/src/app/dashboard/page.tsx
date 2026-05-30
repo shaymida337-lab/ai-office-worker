@@ -12,7 +12,7 @@ import {
   type Payment,
   type Task,
 } from "@/lib/api";
-import { businessTypeLabel, moduleEnabled, type OrganizationSettings } from "@/lib/business-config";
+import { businessTypeLabel, getBusinessProfile, moduleEnabled, type BusinessKpiConfig, type DashboardKpiMetric, type OrganizationSettings } from "@/lib/business-config";
 import { useRouter } from "next/navigation";
 import { Activity, ArrowUpRight, Building2, Clock3, FileText, HeartPulse, MessageCircle, Plus, RefreshCcw, ScanLine, WalletCards } from "lucide-react";
 
@@ -607,12 +607,17 @@ export default function DashboardPage() {
     );
   }
 
-  const kpis = [
-    moduleEnabled(organizationSettings, "crm") && { label: "לקוחות", value: stats.clients, icon: Activity, detail: `${stats.openTasks} משימות פתוחות`, tone: "text-blue-300" },
-    moduleEnabled(organizationSettings, "invoices") && { label: "כסף לקבל", value: `₪${stats.moneyToReceive.toLocaleString("he-IL")}`, icon: ArrowUpRight, detail: "הכנסות צפויות", tone: "text-emerald-300" },
-    moduleEnabled(organizationSettings, "supplier_management") && { label: "כסף לשלם", value: `₪${stats.moneyToPay.toLocaleString("he-IL")}`, icon: WalletCards, detail: `${stats.upcomingPaymentsCount} תשלומים קרובים`, tone: "text-amber-300" },
-    { label: "בריאות עסקית", value: `${stats.businessHealthScore}/100`, icon: HeartPulse, detail: `נחסכו ${stats.hoursSavedThisWeek} שעות`, tone: "text-violet-300" },
-  ].filter(Boolean) as Array<{ label: string; value: string | number; icon: typeof Activity; detail: string; tone: string }>;
+  const businessProfile = organizationSettings?.businessProfile ?? getBusinessProfile(organizationSettings?.businessType);
+  const kpis = businessProfile.dashboardKpis
+    .filter((kpi) => !kpi.module || moduleEnabled(organizationSettings, kpi.module))
+    .map((kpi) => ({
+      label: kpi.label,
+      value: formatDashboardMetric(kpi, stats),
+      icon: dashboardMetricIcon(kpi.metric),
+      detail: kpi.detail,
+      tone: dashboardMetricTone(kpi.metric),
+    }));
+  const businessWidgets = businessProfile.dashboardWidgets.filter((widget) => moduleEnabled(organizationSettings, widget.module));
   const showSupplier = moduleEnabled(organizationSettings, "supplier_management");
   const showInvoices = moduleEnabled(organizationSettings, "invoices");
   const showTasks = moduleEnabled(organizationSettings, "tasks");
@@ -630,13 +635,13 @@ export default function DashboardPage() {
               <Building2 className="h-7 w-7" />
             </span>
             <div className="min-w-0">
-              <div className="text-[12px] font-bold uppercase tracking-[0.22em] text-ink-muted">Business command center</div>
+              <div className="text-[12px] font-bold uppercase tracking-[0.22em] text-ink-muted">{businessProfile.title}</div>
               <div className="mt-1 text-sm text-ink-secondary">{businessTypeLabel(organizationSettings?.businessType)} · {organizationSettings?.enabledModules.length ?? 7} מודולים פעילים</div>
             </div>
           </div>
           <div>
             <h1>לוח בקרה</h1>
-            <p>ניהול חשבוניות, לקוחות, תשלומים ואוטומציות במקום אחד.</p>
+            <p>{businessProfile.subtitle}</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -824,6 +829,22 @@ export default function DashboardPage() {
         })}
       </section>
 
+      {businessWidgets.length > 0 && (
+        <section className="mb-8 grid gap-4 md:grid-cols-3">
+          {businessWidgets.map((widget) => (
+            <div key={widget.id} className="card">
+              <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.18em] text-ink-muted">{businessTypeLabel(organizationSettings?.businessType)}</div>
+              <h2>{widget.title}</h2>
+              <p className="text-sm">{widget.description}</p>
+              <div className="mt-4 rounded-xl bg-surface-secondary p-3">
+                <div className="stat-value">{formatDashboardMetric({ metric: widget.metric }, stats)}</div>
+                <div className="stat-label">{businessModulesLabel(widget.module)}</div>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+
       <section className="mb-8 grid gap-3 md:grid-cols-4">
         {showInvoices && <MiniMetric label="חשבוניות וקבלות" value={stats.totalInvoices} />}
         {showSupplier && <MiniMetric label="תשלומים פתוחים" value={stats.unpaidPayments} />}
@@ -980,6 +1001,58 @@ function relativeTime(date: Date) {
   if (minutes === 0) return "עכשיו";
   if (minutes === 1) return "לפני דקה";
   return `לפני ${minutes} דקות`;
+}
+
+function dashboardMetricValue(metric: DashboardKpiMetric, stats: DashboardStats) {
+  const values: Record<DashboardKpiMetric, number> = {
+    clients: stats.clients,
+    moneyToReceive: stats.moneyToReceive,
+    moneyToPay: stats.moneyToPay,
+    openTasks: stats.openTasks,
+    businessHealthScore: stats.businessHealthScore,
+    totalInvoices: stats.totalInvoices,
+    unpaidPayments: stats.unpaidPayments,
+    supplierPaymentsCount: stats.supplierPaymentsCount,
+  };
+  return values[metric] ?? 0;
+}
+
+function formatDashboardMetric(kpi: Pick<BusinessKpiConfig, "metric" | "format">, stats: DashboardStats) {
+  const value = dashboardMetricValue(kpi.metric, stats);
+  if (kpi.format === "currency") return `₪${value.toLocaleString("he-IL")}`;
+  if (kpi.format === "score") return `${value}/100`;
+  return value.toLocaleString("he-IL");
+}
+
+function dashboardMetricIcon(metric: DashboardKpiMetric) {
+  if (metric === "moneyToReceive") return ArrowUpRight;
+  if (metric === "moneyToPay" || metric === "supplierPaymentsCount" || metric === "unpaidPayments") return WalletCards;
+  if (metric === "openTasks") return Clock3;
+  if (metric === "businessHealthScore") return HeartPulse;
+  return Activity;
+}
+
+function dashboardMetricTone(metric: DashboardKpiMetric) {
+  if (metric === "moneyToReceive") return "text-emerald-300";
+  if (metric === "moneyToPay" || metric === "supplierPaymentsCount" || metric === "unpaidPayments") return "text-amber-300";
+  if (metric === "openTasks") return "text-violet-300";
+  if (metric === "businessHealthScore") return "text-blue-300";
+  return "text-blue-300";
+}
+
+function businessModulesLabel(moduleId: string) {
+  const labels: Record<string, string> = {
+    crm: "CRM",
+    invoices: "Invoices",
+    supplier_management: "Supplier Management",
+    tasks: "Tasks",
+    whatsapp: "WhatsApp",
+    documents: "Documents",
+    meetings: "Meetings",
+    collections: "Collections",
+    employees: "Employees",
+  };
+  return labels[moduleId] ?? moduleId;
 }
 
 function OnboardingStep({ title, done, text, action }: { title: string; done: boolean; text: ReactNode; action?: ReactNode }) {
