@@ -19,6 +19,13 @@ function requiredInProduction(name: string, fallback: string): string {
   return fallback;
 }
 
+function rejectLocalhostInProduction(name: string, value: string): string {
+  if (process.env.NODE_ENV === "production" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/i.test(value)) {
+    throw new Error(`${name} cannot use localhost in production`);
+  }
+  return value;
+}
+
 function toGmailIntegrationRedirectUri(uri: string): string {
   return uri.replace(/\/(?:api\/)?auth\/google\/callback$/, "/api/integrations/gmail/callback");
 }
@@ -50,17 +57,17 @@ export const config = {
   google: {
     clientId: optional("GOOGLE_CLIENT_ID"),
     clientSecret: optional("GOOGLE_CLIENT_SECRET"),
-    redirectUri: optional(
+    redirectUri: rejectLocalhostInProduction(
       "GOOGLE_REDIRECT_URI",
-      optional("GOOGLE_CALLBACK_URL", "http://localhost:4000/auth/google/callback")
+      optional("GOOGLE_REDIRECT_URI", optional("GOOGLE_CALLBACK_URL", "http://localhost:4000/auth/google/callback"))
     ),
-    integrationRedirectUri: optional(
+    integrationRedirectUri: rejectLocalhostInProduction(
       "GOOGLE_INTEGRATION_REDIRECT_URI",
-      defaultGmailIntegrationRedirectUri()
+      optional("GOOGLE_INTEGRATION_REDIRECT_URI", defaultGmailIntegrationRedirectUri())
     ).replace(/\/(?:api\/)?auth\/google\/callback$/, "/api/integrations/gmail/callback"),
-    clientGmailRedirectUri: optional(
+    clientGmailRedirectUri: rejectLocalhostInProduction(
       "GOOGLE_CLIENT_REDIRECT_URI",
-      "http://localhost:4000/api/clients/gmail/callback"
+      optional("GOOGLE_CLIENT_REDIRECT_URI", "http://localhost:4000/api/clients/gmail/callback")
     ),
   },
 

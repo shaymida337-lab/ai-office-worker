@@ -14,18 +14,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  async rewrites() {
-    return [
-      {
-        source: "/privacy-policy",
-        destination: "/privacy-policy.html",
-      },
-      {
-        source: "/terms",
-        destination: "/terms.html",
-      },
-    ];
-  },
 };
 
 export default nextConfig;

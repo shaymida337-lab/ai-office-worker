@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { BackendWarmup } from "@/components/BackendWarmup";
+import { Footer } from "@/components/Footer";
 import { HelpCenter } from "@/components/HelpCenter";
 import "./globals.css";
 
@@ -18,6 +19,7 @@ export default function RootLayout({
       <body>
         <BackendWarmup />
         {children}
+        <Footer />
         <HelpCenter />
       </body>
     </html>

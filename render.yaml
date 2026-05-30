@@ -29,6 +29,8 @@ services:
         value: https://ai-office-worker-backend.onrender.com/auth/google/callback
       - key: GOOGLE_INTEGRATION_REDIRECT_URI
         value: https://ai-office-worker-backend.onrender.com/api/integrations/gmail/callback
+      - key: GOOGLE_CLIENT_REDIRECT_URI
+        value: https://ai-office-worker-backend.onrender.com/api/clients/gmail/callback
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: ANTHROPIC_MODEL
