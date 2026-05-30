@@ -75,10 +75,17 @@ type TopPaymentAmountsResponse = {
   rows: DebugPaymentRow[];
 };
 
-type HapoalimSuspiciousResponse = {
+type PaymentClassificationInvestigationResponse = {
   orgId: string;
-  searchedAmounts: number[];
+  countedRows: number;
+  moneyToPay: number;
+  domainSummary: Array<{
+    domain: string;
+    count: number;
+    totalAmount: number;
+  }>;
   rows: Array<{
+    senderDomain: string;
     payment: DebugPaymentRow & {
       paid: boolean;
       paymentRequired: boolean;
@@ -165,13 +172,13 @@ export default function AdminDebugPage() {
   const [data, setData] = useState<InvoiceDebugResponse | null>(null);
   const [badAmounts, setBadAmounts] = useState<BadInvoiceAmountsResponse | null>(null);
   const [topPayments, setTopPayments] = useState<TopPaymentAmountsResponse | null>(null);
-  const [hapoalimRows, setHapoalimRows] = useState<HapoalimSuspiciousResponse | null>(null);
+  const [paymentInvestigation, setPaymentInvestigation] = useState<PaymentClassificationInvestigationResponse | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [cleaning, setCleaning] = useState(false);
   const [loadingTopPayments, setLoadingTopPayments] = useState(false);
-  const [loadingHapoalim, setLoadingHapoalim] = useState(false);
+  const [loadingPaymentInvestigation, setLoadingPaymentInvestigation] = useState(false);
   const [driveMerging, setDriveMerging] = useState(false);
   const [driveMergeStatus, setDriveMergeStatus] = useState("");
   const [driveMergePreview, setDriveMergePreview] = useState<DriveMergeDuplicateFoldersResponse | null>(null);
@@ -216,22 +223,22 @@ export default function AdminDebugPage() {
     }
   }
 
-  async function loadHapoalimSuspicious() {
-    setLoadingHapoalim(true);
+  async function loadPaymentInvestigation() {
+    setLoadingPaymentInvestigation(true);
     setError("");
     setMessage("");
     try {
-      const result = await apiFetch<HapoalimSuspiciousResponse>("/api/debug/payments/hapoalim-suspicious");
-      setHapoalimRows(result);
-      setMessage(`נטענו ${result.rows.length} תשלומי בנק הפועלים חשודים לבדיקה.`);
+      const result = await apiFetch<PaymentClassificationInvestigationResponse>("/api/debug/payments/classification-investigation");
+      setPaymentInvestigation(result);
+      setMessage(`נטענו ${result.rows.length} שורות SupplierPayment שמרכיבות את כסף לשלם.`);
     } catch (err) {
       if (isAuthError(err)) {
         router.push("/login");
         return;
       }
-      setError(err instanceof Error ? err.message : "Failed to load Hapoalim suspicious payments");
+      setError(err instanceof Error ? err.message : "Failed to load payment classification investigation");
     } finally {
-      setLoadingHapoalim(false);
+      setLoadingPaymentInvestigation(false);
     }
   }
 
@@ -338,31 +345,31 @@ export default function AdminDebugPage() {
       </div>
 
       <div className="mb-6 flex flex-wrap gap-3">
-        <button className="btn" onClick={load} disabled={loading || cleaning || driveMerging || loadingTopPayments}>
+        <button className="btn" onClick={load} disabled={loading || cleaning || driveMerging || loadingTopPayments || loadingPaymentInvestigation}>
           {loading ? "טוען..." : "רענן נתונים"}
         </button>
         <button
           className="btn btn-secondary"
           onClick={loadTopPayments}
-          disabled={loading || cleaning || driveMerging || loadingTopPayments || loadingHapoalim}
+          disabled={loading || cleaning || driveMerging || loadingTopPayments || loadingPaymentInvestigation}
         >
           {loadingTopPayments ? "טוען..." : "10 התשלומים הגדולים"}
         </button>
         <button
           className="btn btn-secondary"
-          onClick={loadHapoalimSuspicious}
-          disabled={loading || cleaning || driveMerging || loadingTopPayments || loadingHapoalim}
+          onClick={loadPaymentInvestigation}
+          disabled={loading || cleaning || driveMerging || loadingTopPayments || loadingPaymentInvestigation}
         >
-          {loadingHapoalim ? "טוען..." : "בדוק בנק הפועלים"}
+          {loadingPaymentInvestigation ? "טוען..." : "בדוק סיווג תשלומים"}
         </button>
         <button
           className="btn btn-secondary"
           onClick={cleanBadAmounts}
-          disabled={loading || cleaning || driveMerging || loadingTopPayments || (data?.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0) === 0}
+          disabled={loading || cleaning || driveMerging || loadingTopPayments || loadingPaymentInvestigation || (data?.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0) === 0}
         >
           {cleaning ? "מנקה..." : "נקה סכומים שגויים"}
         </button>
-        <button className="btn btn-secondary" onClick={mergeDuplicateDriveFolders} disabled={loading || cleaning || driveMerging || loadingTopPayments}>
+        <button className="btn btn-secondary" onClick={mergeDuplicateDriveFolders} disabled={loading || cleaning || driveMerging || loadingTopPayments || loadingPaymentInvestigation}>
           {driveMerging ? "בודק Drive..." : "אחד תיקיות כפולות"}
         </button>
       </div>
@@ -372,7 +379,7 @@ export default function AdminDebugPage() {
       {driveMergeStatus && <div className="toast border-blue-400/30 text-blue-100">{driveMergeStatus}</div>}
 
       <TopPaymentsTable data={topPayments} loading={loadingTopPayments} />
-      <HapoalimSuspiciousTable data={hapoalimRows} loading={loadingHapoalim} />
+      <PaymentClassificationInvestigation data={paymentInvestigation} loading={loadingPaymentInvestigation} />
 
       {data && (
         <>
@@ -480,16 +487,16 @@ function TopPaymentsTable({ data, loading }: { data: TopPaymentAmountsResponse |
   );
 }
 
-function HapoalimSuspiciousTable({ data, loading }: { data: HapoalimSuspiciousResponse | null; loading: boolean }) {
+function PaymentClassificationInvestigation({ data, loading }: { data: PaymentClassificationInvestigationResponse | null; loading: boolean }) {
   const rows = data?.rows ?? [];
 
   return (
     <section className="mb-8 rounded-3xl border border-red-400/30 bg-[linear-gradient(135deg,rgba(239,68,68,0.14),rgba(15,23,42,0.96))] p-5">
       <div className="mb-5">
         <div className="page-kicker">Classification investigation</div>
-        <h2 className="text-2xl font-black text-[#F8FAFC]">תשלומי בנק הפועלים חשודים</h2>
+        <h2 className="text-2xl font-black text-[#F8FAFC]">בדיקת סיווג כל התשלומים</h2>
         <p className="mt-2 text-base leading-7 text-[#E2E8F0]">
-          בדיקה read-only לשורות עם ₪206,651.78 ו-₪118,188.47 כדי להבין למה סווגו כתשלומי ספקים.
+          בדיקה read-only לכל שורות SupplierPayment עם paymentRequired=true ו-paid=false, כולל מקור המייל והחלטת הסיווג.
         </p>
       </div>
 
@@ -497,10 +504,41 @@ function HapoalimSuspiciousTable({ data, loading }: { data: HapoalimSuspiciousRe
         <p className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-4 text-base">טוען פרטים...</p>
       ) : rows.length === 0 ? (
         <p className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-4 text-base text-[#E2E8F0]">
-          לחץ על "בדוק בנק הפועלים" כדי לטעון את השורות החשודות.
+          לחץ על "בדוק סיווג תשלומים" כדי לטעון את כל השורות שמרכיבות את כסף לשלם.
         </p>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-5">
+          <div className="rounded-2xl border border-red-300/20 bg-surface-secondary/95 p-4">
+            <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h3 className="text-xl font-black text-[#F8FAFC]">סיכום לפי sender domain</h3>
+                <p className="text-base text-[#CBD5E1]">
+                  {data?.countedRows ?? 0} שורות · סה"כ ₪{(data?.moneyToPay ?? 0).toLocaleString("he-IL")}
+                </p>
+              </div>
+            </div>
+            <div className="overflow-x-auto rounded-2xl border border-red-300/20">
+              <table className="min-w-[620px] table-fixed">
+                <thead>
+                  <tr className="border-b border-red-300/20 bg-red-400/10">
+                    <th className="w-72 px-4 py-3 text-right text-base font-black text-[#F8FAFC]">Domain</th>
+                    <th className="w-32 px-4 py-3 text-right text-base font-black text-[#F8FAFC]">כמות</th>
+                    <th className="px-4 py-3 text-right text-base font-black text-[#F8FAFC]">סה"כ ₪</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data?.domainSummary ?? []).map((domain) => (
+                    <tr key={domain.domain} className="border-b border-[var(--border)] last:border-0">
+                      <td className="break-all px-4 py-3 text-left text-base font-semibold text-[#F8FAFC]" dir="ltr">{domain.domain}</td>
+                      <td className="px-4 py-3 text-base text-[#E2E8F0]">{domain.count}</td>
+                      <td className="px-4 py-3 text-lg font-black text-red-100">₪{domain.totalAmount.toLocaleString("he-IL")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {rows.map((row) => {
             const primaryScan = row.scanItems[0];
             return (
@@ -510,6 +548,7 @@ function HapoalimSuspiciousTable({ data, loading }: { data: HapoalimSuspiciousRe
                     <div className="text-3xl font-black text-red-200">₪{row.payment.amount.toLocaleString("he-IL")} {row.payment.currency}</div>
                     <div className="mt-1 text-lg font-bold text-[#F8FAFC]">{row.payment.supplier}</div>
                     <div className="text-base text-[#CBD5E1]">{row.payment.emailSender ?? row.email?.fromAddress ?? "שולח לא ידוע"}</div>
+                    <div className="mt-1 break-all text-sm font-semibold text-red-100" dir="ltr">{row.senderDomain}</div>
                   </div>
                   <div className="grid gap-1 text-base text-[#E2E8F0] md:text-left">
                     <span>נוצר: {new Date(row.payment.createdAt).toLocaleString("he-IL")}</span>

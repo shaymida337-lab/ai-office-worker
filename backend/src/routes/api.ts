@@ -375,17 +375,14 @@ apiRouter.get("/debug/payments/top-amounts", async (req, res) => {
   }
 });
 
-apiRouter.get("/debug/payments/hapoalim-suspicious", async (req, res) => {
+apiRouter.get("/debug/payments/classification-investigation", async (req, res) => {
   const orgId = req.auth!.organizationId;
-  const suspiciousAmounts = [206_651.78, 118_188.47];
   try {
     const payments = await prisma.supplierPayment.findMany({
       where: {
         organizationId: orgId,
-        supplier: { contains: "בנק הפועלים", mode: "insensitive" },
-        OR: suspiciousAmounts.map((amount) => ({
-          amount: { gte: amount - 0.01, lte: amount + 0.01 },
-        })),
+        paymentRequired: true,
+        paid: false,
       },
       orderBy: [{ amount: "desc" }, { createdAt: "desc" }],
       select: {
@@ -456,28 +453,54 @@ apiRouter.get("/debug/payments/hapoalim-suspicious", async (req, res) => {
       scanItemsByGmailId.set(item.gmailMessageId, current);
     }
 
+    const extractDomain = (value: string | null | undefined) => {
+      if (!value) return "unknown";
+      const match = value.toLowerCase().match(/[a-z0-9._%+-]+@([a-z0-9.-]+\.[a-z]{2,})/);
+      if (match?.[1]) return match[1];
+      const compact = value.trim().toLowerCase();
+      return compact || "unknown";
+    };
+
+    const rows = payments.map((payment) => {
+      const email = payment.emailMessageId ? emailByGmailId.get(payment.emailMessageId) ?? null : null;
+      const relatedScanItems = payment.emailMessageId ? scanItemsByGmailId.get(payment.emailMessageId) ?? [] : [];
+      const senderDomain = extractDomain(payment.emailSender ?? email?.fromAddress);
+      return {
+        senderDomain,
+        payment,
+        email: email
+          ? {
+              ...email,
+              bodyTextPreview: email.bodyText?.slice(0, 1200) ?? null,
+              bodyText: undefined,
+            }
+          : null,
+        scanItems: relatedScanItems,
+      };
+    });
+
+    const domainSummary = Array.from(
+      rows.reduce((acc, row) => {
+        const existing = acc.get(row.senderDomain) ?? { domain: row.senderDomain, count: 0, totalAmount: 0 };
+        existing.count += 1;
+        existing.totalAmount += row.payment.amount;
+        acc.set(row.senderDomain, existing);
+        return acc;
+      }, new Map<string, { domain: string; count: number; totalAmount: number }>())
+    )
+      .map(([, value]) => value)
+      .sort((a, b) => b.totalAmount - a.totalAmount);
+
     res.json({
       orgId,
-      searchedAmounts: suspiciousAmounts,
-      rows: payments.map((payment) => {
-        const email = payment.emailMessageId ? emailByGmailId.get(payment.emailMessageId) ?? null : null;
-        const relatedScanItems = payment.emailMessageId ? scanItemsByGmailId.get(payment.emailMessageId) ?? [] : [];
-        return {
-          payment,
-          email: email
-            ? {
-                ...email,
-                bodyTextPreview: email.bodyText?.slice(0, 4000) ?? null,
-                bodyText: undefined,
-              }
-            : null,
-          scanItems: relatedScanItems,
-        };
-      }),
+      countedRows: rows.length,
+      moneyToPay: rows.reduce((sum, row) => sum + row.payment.amount, 0),
+      domainSummary,
+      rows,
     });
   } catch (err) {
-    console.error("[debug/payments/hapoalim-suspicious] failed", errorDetails(err));
-    res.status(500).json({ error: err instanceof Error ? err.message : "Hapoalim suspicious payments debug failed" });
+    console.error("[debug/payments/classification-investigation] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Payment classification investigation debug failed" });
   }
 });
 
