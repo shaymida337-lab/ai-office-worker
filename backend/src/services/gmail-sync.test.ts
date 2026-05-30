@@ -110,6 +110,25 @@ test("holds financial sender messages for review even with strong payment signal
   assert.match(result.decisionReason, /financial institution/);
 });
 
+test("holds forwarded bank notifications from gmail when bank name appears in content", () => {
+  const result = classifyGmailScanCandidate({
+    subject: "Fwd: בנק הפועלים - הודעה על פעולה בחשבון",
+    bodyText: "הודעה מבנק הפועלים על פרעון הלוואות וביטול מסגרת. סכום לתשלום 118,188.47 ש״ח",
+    attachmentFilenames: ["notice.pdf"],
+    analysis: analysis({ documentType: "payment_request", paymentRequired: true, confidence: 0.95 }),
+    amount: 118188.47,
+    supplierName: "בנק הפועלים",
+    senderName: "Forwarded mail",
+    senderEmail: "someone@gmail.com",
+    senderDomain: "gmail.com",
+  });
+
+  assert.equal(result.reviewStatus, "needs_review");
+  assert.equal(result.heldForFinancialSender, true);
+  assert.match(result.decisionReason, /financial institution detected by name/);
+  assert.match(result.financialSenderReason ?? "", /בנק הפועלים/);
+});
+
 test("classifies payment request without attachment and marks for review", () => {
   const result = classifyGmailScanCandidate({
     subject: "Payment request",

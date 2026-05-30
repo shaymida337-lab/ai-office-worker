@@ -120,6 +120,29 @@ const FINANCIAL_SENDER_DOMAINS = [
   "u-bank.net",
   "onezero",
 ];
+const FINANCIAL_INSTITUTION_NAME_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
+  { label: "בנק הפועלים", pattern: /(?:^|[^\p{L}\p{N}])בנק\s+הפועלים(?=$|[^\p{L}\p{N}])/u },
+  { label: "פועלים", pattern: /(?:^|[^\p{L}\p{N}])פועלים(?=$|[^\p{L}\p{N}])/u },
+  { label: "בנק לאומי", pattern: /(?:^|[^\p{L}\p{N}])בנק\s+לאומי(?=$|[^\p{L}\p{N}])/u },
+  { label: "לאומי", pattern: /(?:^|[^\p{L}\p{N}])לאומי(?=$|[^\p{L}\p{N}])/u },
+  { label: "דיסקונט", pattern: /(?:^|[^\p{L}\p{N}])דיסקונט(?=$|[^\p{L}\p{N}])/u },
+  { label: "מזרחי טפחות", pattern: /(?:^|[^\p{L}\p{N}])מזרחי(?:\s|-)+טפחות(?=$|[^\p{L}\p{N}])/u },
+  { label: "מזרחי", pattern: /(?:^|[^\p{L}\p{N}])מזרחי(?=$|[^\p{L}\p{N}])/u },
+  { label: "הבינלאומי", pattern: /(?:^|[^\p{L}\p{N}])(?:הבנק\s+)?הבינלאומי(?=$|[^\p{L}\p{N}])/u },
+  { label: "בנק", pattern: /(?:^|[^\p{L}\p{N}])בנק(?=$|[^\p{L}\p{N}])/u },
+  { label: "bank hapoalim", pattern: /\bbank\s+hapoalim\b/i },
+  { label: "hapoalim", pattern: /\bhapoalim\b/i },
+  { label: "poalim", pattern: /\bpoalim\b/i },
+  { label: "bank leumi", pattern: /\bbank\s+leumi\b/i },
+  { label: "leumi", pattern: /\bleumi\b/i },
+  { label: "discount bank", pattern: /\bdiscount\s+bank\b/i },
+  { label: "discount", pattern: /\bdiscount\b/i },
+  { label: "mizrahi tefahot", pattern: /\bmizrahi(?:\s|-)+tefahot\b/i },
+  { label: "mizrahi", pattern: /\bmizrahi\b/i },
+  { label: "first international bank", pattern: /\bfirst\s+international\s+bank\b/i },
+  { label: "fibi", pattern: /\bfibi\b/i },
+  { label: "bank", pattern: /\bbank\b/i },
+];
 const MAX_AUTO_SAVE_AMOUNT = 1_000_000;
 const REFERENCE_NUMBER_CONTEXT =
   /(?:אסמכתא|מספר|שובר|סידורי|מסמך|חשבונית\s*(?:מס)?\s*מספר|ref|reference|invoice\s*(?:no|number)|order\s*(?:no|number)|#)/i;
@@ -698,6 +721,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         analysis,
         amount,
         supplierName,
+        senderName: email.senderName,
         senderEmail: email.senderEmail,
         senderDomain: email.domain,
         amountRejectedReason,
@@ -1303,7 +1327,12 @@ export type GmailScanClassification = {
   isRelevant: boolean;
   decisionReason: string;
   heldForFinancialSender: boolean;
+  financialSenderReason: string | null;
 };
+
+type FinancialSenderDetection =
+  | { held: true; reason: string }
+  | { held: false; reason: null };
 
 export function classifyGmailScanCandidate(input: {
   subject: string;
@@ -1312,6 +1341,7 @@ export function classifyGmailScanCandidate(input: {
   analysis: Pick<EmailAnalysis, "documentType" | "confidence" | "paymentRequired">;
   amount: number | null;
   supplierName: string;
+  senderName?: string;
   senderEmail?: string;
   senderDomain?: string;
   amountRejectedReason?: string | null;
@@ -1345,7 +1375,15 @@ export function classifyGmailScanCandidate(input: {
   ].filter(Boolean) as string[];
 
   const confidenceScore = confidenceBucket(input.analysis.confidence, evidence.length, documentType);
-  const heldForFinancialSender = isFinancialSender(input.senderEmail, input.senderDomain);
+  const financialSender = detectFinancialSender({
+    senderEmail: input.senderEmail,
+    senderDomain: input.senderDomain,
+    senderName: input.senderName,
+    supplierName: input.supplierName,
+    subject: input.subject,
+    bodyText: input.bodyText,
+  });
+  const heldForFinancialSender = financialSender.held;
   const autoSaveHoldReasons = [
     !(documentType === "invoice" || documentType === "payment_request") && `documentType is ${documentType}`,
     confidenceScore !== "high" && `confidence is ${confidenceScore}`,
@@ -1358,7 +1396,7 @@ export function classifyGmailScanCandidate(input: {
       ? "auto_saved"
       : "needs_review";
   const decisionReason = heldForFinancialSender
-    ? "Held for review: sender is a financial institution (bank)"
+    ? financialSender.reason
     : canAutoSave
       ? `Auto-saved: ${documentType} with high confidence and valid amount`
       : `Held for review: ${autoSaveHoldReasons.join(" / ")}`;
@@ -1370,18 +1408,48 @@ export function classifyGmailScanCandidate(input: {
     isRelevant,
     decisionReason,
     heldForFinancialSender,
+    financialSenderReason: financialSender.held ? financialSender.reason : null,
   };
 }
 
-function isFinancialSender(senderEmail?: string, senderDomain?: string) {
-  const values = [senderEmail, senderDomain]
+function detectFinancialSender(input: {
+  senderEmail?: string;
+  senderDomain?: string;
+  senderName?: string;
+  supplierName?: string;
+  subject?: string;
+  bodyText?: string;
+}): FinancialSenderDetection {
+  const values = [input.senderEmail, input.senderDomain]
     .filter((value): value is string => Boolean(value))
     .map((value) => value.toLowerCase());
 
-  return values.some((value) => {
+  const domainMatch = values.some((value) => {
     const domain = value.match(/@([^>\s]+)/)?.[1] ?? value;
     return FINANCIAL_SENDER_DOMAINS.some((financialDomain) => domain.includes(financialDomain));
   });
+  if (domainMatch) {
+    return { held: true, reason: "Held for review: sender is a financial institution (bank)" };
+  }
+
+  const searchableText = [
+    input.senderName,
+    input.supplierName,
+    input.subject,
+    input.bodyText,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join("\n");
+
+  const nameMatch = FINANCIAL_INSTITUTION_NAME_PATTERNS.find(({ pattern }) => pattern.test(searchableText));
+  if (nameMatch) {
+    return {
+      held: true,
+      reason: `Held for review: financial institution detected by name (${nameMatch.label})`,
+    };
+  }
+
+  return { held: false, reason: null };
 }
 
 export function buildGmailScanDuplicateKey(input: {
