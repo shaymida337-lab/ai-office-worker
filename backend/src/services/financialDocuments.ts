@@ -73,12 +73,23 @@ export function buildFinancialDocumentFingerprint(input: {
 export function buildCrossSourceFinancialFingerprint(input: Omit<Parameters<typeof buildFinancialDocumentFingerprint>[0], "source">) {
   return hashFingerprint([
     input.sender ?? "unknown",
-    input.fileName ?? "no-file",
-    input.fileSize == null ? "unknown-size" : String(input.fileSize),
     input.amount == null ? "unknown-amount" : input.amount.toFixed(2),
     input.invoiceNumber ?? "unknown-invoice",
     normalizeDateKey(input.date),
   ]);
+}
+
+export function financialDocumentBlockingReason(input: {
+  supplierName?: string | null;
+  invoiceNumber?: string | null;
+  totalAmount?: number | null;
+  documentDate?: Date | string | null;
+}) {
+  if (!isValidSupplierName(input.supplierName)) return "supplier name missing or invalid";
+  if (!input.invoiceNumber?.trim()) return "invoice number missing";
+  if (input.totalAmount == null || !Number.isFinite(input.totalAmount) || input.totalAmount <= 0) return "amount missing or invalid";
+  if (!parseDate(input.documentDate)) return "invoice date missing or invalid";
+  return null;
 }
 
 export async function recordFinancialDocumentDecision(input: FinancialDocumentInput) {
@@ -87,6 +98,12 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
   const documentDate = parseDate(input.documentDate);
   const dueDate = parseDate(input.dueDate);
   const confidenceScore = clampConfidence(input.confidenceScore);
+  const blockingReason = financialDocumentBlockingReason({
+    supplierName: input.supplierName,
+    invoiceNumber: input.invoiceNumber,
+    totalAmount,
+    documentDate,
+  });
   const sourceFingerprint = buildFinancialDocumentFingerprint({
     source: input.source,
     sender: input.sender,
@@ -98,8 +115,6 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
   });
   const documentFingerprint = buildCrossSourceFinancialFingerprint({
     sender: input.supplierName ?? input.sender,
-    fileName: input.fileName,
-    fileSize: input.fileSize,
     amount: totalAmount,
     invoiceNumber: input.invoiceNumber,
     date: documentDate,
@@ -111,12 +126,29 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
     return { action: "filtered" as const, documentType, sourceFingerprint, documentFingerprint };
   }
 
+  if (blockingReason) {
+    const review = await upsertReview({
+      ...input,
+      documentType,
+      documentDate,
+      dueDate,
+      confidenceScore,
+      sourceFingerprint,
+      documentFingerprint,
+      reviewStatus: "needs_review",
+      uncertaintyReason: input.uncertaintyReason ?? blockingReason,
+    });
+    console.log(`[financial-document] needs_review source=${input.source} reviewId=${review.id} reason="${blockingReason}"`);
+    return { action: "needs_review" as const, documentType, sourceFingerprint, documentFingerprint, review };
+  }
+
   const existingPayment = await prisma.supplierPayment.findFirst({
     where: {
       organizationId: input.organizationId,
       OR: [
         { documentFingerprint },
         { sourceFingerprint },
+        { duplicateHash: documentFingerprint },
       ],
     },
   });
@@ -309,5 +341,15 @@ function mergeSources(existing: unknown, source: string) {
 
 function isInvoiceLike(type: NormalizedFinancialDocumentType) {
   return type === "tax_invoice" || type === "receipt" || type === "tax_invoice_receipt";
+}
+
+function isValidSupplierName(value?: string | null) {
+  const supplier = value?.trim() ?? "";
+  if (!supplier) return false;
+  if (/^(unknown|unknown supplier|לא ידוע|לא מזוהה|n\/a|null|undefined)$/i.test(supplier)) return false;
+  if (supplier === ".name" || supplier.startsWith(".")) return false;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supplier)) return false;
+  if (/^[\w.-]+\.[a-z]{2,}$/i.test(supplier)) return false;
+  return supplier.replace(/[^\p{L}\p{N}]/gu, "").length >= 2;
 }
 

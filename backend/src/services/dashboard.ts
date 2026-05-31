@@ -2,7 +2,7 @@ import { prisma } from "../lib/prisma.js";
 
 export async function getDashboardStats(organizationId: string) {
   const payments = await prisma.supplierPayment.findMany({
-    where: { organizationId },
+    where: { organizationId, approvalStatus: "approved" },
   });
 
   const validPayments = payments.filter((p) => isReasonableMoneyAmount(p.amount));
@@ -99,7 +99,7 @@ export async function getDashboardStats(organizationId: string) {
 
 export async function getMissingInvoicesReport(organizationId: string) {
   return prisma.supplierPayment.findMany({
-    where: { organizationId, missingInvoice: true, paid: false, duplicateDetected: false },
+    where: { organizationId, approvalStatus: "approved", missingInvoice: true, paid: false, duplicateDetected: false },
     orderBy: { date: "desc" },
   });
 }

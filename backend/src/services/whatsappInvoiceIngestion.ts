@@ -911,8 +911,13 @@ function whatsAppDocumentFilename(logId: string, index: number, mimeType: string
 }
 
 function usableSupplierName(value: string | null | undefined) {
-  if (!value?.trim()) return false;
-  return !/^(לא ידוע|unknown|unknown supplier)$/i.test(value.trim());
+  const supplier = value?.trim() ?? "";
+  if (!supplier) return false;
+  if (/^(לא ידוע|לא מזוהה|unknown|unknown supplier|n\/a|null|undefined)$/i.test(supplier)) return false;
+  if (supplier === ".name" || supplier.startsWith(".")) return false;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supplier)) return false;
+  if (/^[\w.-]+\.[a-z]{2,}$/i.test(supplier)) return false;
+  return supplier.replace(/[^\p{L}\p{N}]/gu, "").length >= 2;
 }
 
 function normalizeAmount(value: number | null | undefined) {

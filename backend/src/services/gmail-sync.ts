@@ -12,7 +12,7 @@ import {
 } from "./driveService.js";
 import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
 import { notifyNewInvoice } from "./whatsapp.js";
-import { recordFinancialDocumentDecision } from "./financialDocuments.js";
+import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from "./financialDocuments.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
@@ -800,6 +800,42 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       if (classification.documentType === "supplier_message") supplierMessagesFound++;
       if (classification.reviewStatus === "needs_review") needsReviewCount++;
       if (invoiceMatch.amount !== null) invoiceAmountsExtracted++;
+      const invoiceNumberForDecision = analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
+      const documentDateForDecision = normalizeBusinessDate(analysis.invoiceDate, email.receivedAt) ?? email.receivedAt;
+      const documentValidationReason = financialDocumentBlockingReason({
+        supplierName,
+        invoiceNumber: invoiceNumberForDecision,
+        totalAmount: analysis.totalAmount ?? amount,
+        documentDate: documentDateForDecision,
+      });
+      const documentDecision = await recordFinancialDocumentDecision({
+        organizationId,
+        source: "gmail",
+        sender: email.senderEmail || email.from || null,
+        subject: email.subject,
+        fileName: attachmentFilename,
+        fileSize: null,
+        supplierName,
+        supplierTaxId: supplierMetadata.taxId,
+        invoiceNumber: invoiceNumberForDecision,
+        documentDate: documentDateForDecision,
+        dueDate: analysis.dueDate,
+        amountBeforeVat: analysis.amountBeforeVat ?? null,
+        vatAmount: analysis.vatAmount ?? null,
+        totalAmount: analysis.totalAmount ?? amount,
+        documentType: classification.documentType,
+        driveFileUrl: null,
+        confidenceScore: classification.confidence,
+        uncertaintyReason: documentValidationReason ?? (classification.reviewStatus === "needs_review" ? classification.decisionReason : null),
+        rawAnalysis: {
+          analysis,
+          classification,
+          gmailMessageId: email.gmailId,
+        },
+        emailMessageId: email.emailRecordId,
+        gmailMessageId: email.gmailId,
+      });
+      const canPersistFinancialRecord = documentDecision.action === "accepted";
       if (!clientId && classification.isRelevant && email.domain) {
         const saved = await upsertPotentialClient({
           organizationId,
@@ -827,8 +863,6 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         });
         logStep(`[gmail-sync] client/lead message=${email.gmailId} clientId=${clientId} clientCreated=${saved.created}`);
       }
-      const invoiceNumberForDecision = analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
-      const documentDateForDecision = normalizeBusinessDate(analysis.invoiceDate, email.receivedAt) ?? email.receivedAt;
       const driveLinks: {
         type: string;
         link: string;
@@ -843,11 +877,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         fileSize?: number | null;
       }[] = [];
 
-      const shouldUploadAttachments = classification.isRelevant && classification.reviewStatus === "auto_saved";
+      const shouldUploadAttachments = classification.isRelevant && classification.reviewStatus === "auto_saved" && canPersistFinancialRecord;
       for (const part of email.parts) {
         if (!shouldUploadAttachments) {
           driveUploadsSkipped++;
-          logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${part.filename || "unnamed"}" reason="not_auto_saved_invoice_or_payment"`);
+          logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${part.filename || "unnamed"}" reason="${documentValidationReason ?? documentDecision.action ?? "not_auto_saved_invoice_or_payment"}"`);
           continue;
         }
         const attachmentId = part.body?.attachmentId;
@@ -1066,35 +1100,6 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       emailsSavedToGmailScanItem++;
       dbGmailScanItemUpserts++;
       logStep(`[gmail-sync] saved GmailScanItem message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} review=${savedScanItem.reviewStatus} relevant=${classification.isRelevant}`);
-
-      const documentDecision = await recordFinancialDocumentDecision({
-        organizationId,
-        source: "gmail",
-        sender: email.senderEmail || email.from || null,
-        subject: email.subject,
-        fileName: driveLinks[0]?.fileId ? attachmentFilename : attachmentFilename,
-        fileSize: driveLinks[0]?.fileSize ?? null,
-        supplierName,
-        supplierTaxId: supplierMetadata.taxId,
-        invoiceNumber: invoiceNumberForDecision,
-        documentDate: documentDateForDecision,
-        dueDate: analysis.dueDate,
-        amountBeforeVat: analysis.amountBeforeVat ?? null,
-        vatAmount: analysis.vatAmount ?? null,
-        totalAmount: analysis.totalAmount ?? amount,
-        documentType: classification.documentType,
-        driveFileUrl: driveLinks[0]?.link ?? null,
-        confidenceScore: classification.confidence,
-        uncertaintyReason: classification.reviewStatus === "needs_review" ? classification.decisionReason : null,
-        rawAnalysis: {
-          analysis,
-          classification,
-          gmailMessageId: email.gmailId,
-        },
-        emailMessageId: email.emailRecordId,
-        gmailMessageId: email.gmailId,
-      });
-      const canPersistFinancialRecord = documentDecision.action === "accepted";
 
       if (existingScanItem && !options.forceReprocess) {
         logStep(`[gmail-sync] duplicate GmailScanItem message=${email.gmailId}; continuing idempotent invoice/payment persistence`);
@@ -2366,9 +2371,11 @@ function extractSupplierTaxId(text: string) {
 function isUsableSupplierName(value: string, ownerEmails: Set<string> = new Set()) {
   const cleaned = value.trim();
   if (!cleaned || cleaned === "Unknown supplier") return false;
-  if (/^לא\s+ידוע$/.test(cleaned)) return false;
+  if (/^(unknown|unknown supplier|לא\s+ידוע|לא\s+מזוהה|n\/a|null|undefined)$/i.test(cleaned)) return false;
+  if (cleaned === ".name" || cleaned.startsWith(".")) return false;
   if (cleaned.length < 2 || cleaned.length > 80) return false;
   if (looksLikeEmailAddress(cleaned)) return false;
+  if (/^[\w.-]+\.[a-z]{2,}$/i.test(cleaned)) return false;
   if ([...ownerEmails].some((email) => cleaned.toLowerCase().includes(email))) return false;
   if (/^(invoice|receipt|payment|support|noreply|no reply|billing|accounts?|gmail|googlemail|outlook|hotmail|yahoo)$/i.test(cleaned)) return false;
   return /[\p{L}]/u.test(cleaned);

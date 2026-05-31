@@ -2719,6 +2719,7 @@ apiRouter.get("/payments", async (req, res) => {
   const payments = await prisma.supplierPayment.findMany({
     where: {
       organizationId: req.auth!.organizationId,
+      approvalStatus: "approved",
       ...(duplicatesOnly ? { duplicateDetected: true } : {}),
     },
     orderBy: { date: "desc" },
