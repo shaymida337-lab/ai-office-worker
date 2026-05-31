@@ -69,6 +69,7 @@ model Organization {
   messageTemplates MessageTemplate[]
   messageScans    MessageScan[]
   gmailScanItems  GmailScanItem[]
+  documentReviews FinancialDocumentReview[]
   bankStatements  BankStatement[]
   bankTransactions BankTransaction[]
   helpProgress    HelpProgress[]
@@ -183,6 +184,13 @@ model EmailAttachment {
   gmailAttachmentId String?
   driveFileId    String?
   driveLink      String?
+  driveFolderId  String?
+  driveClientFolderId String?
+  driveSupplierFolderId String?
+  driveFolderPath String?
+  supplierName   String?
+  invoiceMonth   Int?
+  invoiceYear    Int?
   createdAt      DateTime @default(now())
 
   @@index([emailMessageId, gmailAttachmentId])
@@ -202,6 +210,26 @@ model SupplierPayment {
   paid            Boolean   @default(false)
   documentLink    String? // payment request / document
   invoiceLink     String?
+  driveFileId     String?
+  driveFileUrl    String?
+  driveFolderId   String?
+  driveClientFolderId String?
+  driveSupplierFolderId String?
+  driveFolderPath String?
+  supplierName    String?
+  invoiceMonth    Int?
+  invoiceYear     Int?
+  invoiceNumber   String?
+  documentFingerprint String?
+  sourceFingerprint   String?
+  documentTypeDetailed String?
+  supplierTaxId   String?
+  amountBeforeVat Float?
+  vatAmount       Float?
+  totalAmount     Float?
+  confidenceScore Float?
+  approvalStatus  String    @default("approved")
+  sourcesJson     Json?
   emailSender     String?
   paymentRequired Boolean   @default(true)
   missingInvoice  Boolean   @default(false)
@@ -220,12 +248,52 @@ model SupplierPayment {
   updatedAt       DateTime  @updatedAt
 
   @@unique([organizationId, duplicateHash])
+  @@unique([organizationId, documentFingerprint])
   @@index([organizationId, paid])
   @@index([organizationId, dueDate])
   @@index([organizationId, missingInvoice])
   @@index([organizationId, duplicateDetected])
   @@index([organizationId, createdAt])
   @@index([clientId, paid])
+}
+
+model FinancialDocumentReview {
+  id                  String   @id @default(cuid())
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  source              String
+  sender              String?
+  subject             String?
+  fileName            String?
+  fileSize            Int?
+  sourceFingerprint   String
+  documentFingerprint String
+  documentType        String
+  supplierName        String?
+  supplierTaxId       String?
+  invoiceNumber       String?
+  documentDate        DateTime?
+  dueDate             DateTime?
+  amountBeforeVat     Float?
+  vatAmount           Float?
+  totalAmount         Float?
+  currency            String   @default("ILS")
+  driveFileUrl        String?
+  confidenceScore     Float    @default(0)
+  reviewStatus        String   @default("needs_review")
+  uncertaintyReason   String?
+  rawAnalysis         Json?
+  emailMessageId      String?
+  gmailMessageId      String?
+  whatsappLogId       String?
+  supplierPaymentId   String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([organizationId, documentFingerprint])
+  @@index([organizationId, reviewStatus, createdAt])
+  @@index([organizationId, source, createdAt])
+  @@index([organizationId, sourceFingerprint])
 }
 
 model CustomerInvoice {
@@ -261,6 +329,15 @@ model Invoice {
   status         String   @default("pending")
   description    String?
   driveUrl       String?
+  driveFileId    String?
+  driveFileUrl   String?
+  driveFolderId  String?
+  driveClientFolderId String?
+  driveSupplierFolderId String?
+  driveFolderPath String?
+  supplierName   String?
+  invoiceMonth   Int?
+  invoiceYear    Int?
   sheetsRow      Int?
   emailId        String?
   fromEmail      String?

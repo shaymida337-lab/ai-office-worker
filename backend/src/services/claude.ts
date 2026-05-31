@@ -5,8 +5,11 @@ export type EmailAnalysis = {
   supplier: string;
   supplierTaxId?: string | null;
   amount: number | null;
+  amountBeforeVat?: number | null;
+  vatAmount?: number | null;
+  totalAmount?: number | null;
   currency: string;
-  documentType: "invoice" | "payment_request" | "receipt" | "other";
+  documentType: "invoice" | "tax_invoice_receipt" | "quote" | "payment_request" | "receipt" | "other";
   paymentRequired: boolean;
   dueDate: string | null;
   invoiceDate: string | null;
@@ -19,10 +22,13 @@ export type InvoiceScanResult = {
   supplier: string;
   supplierTaxId?: string | null;
   amount: number | null;
+  amountBeforeVat?: number | null;
+  vatAmount?: number | null;
+  totalAmount?: number | null;
   date: string | null;
   dueDate?: string | null;
   invoiceNumber: string | null;
-  documentType?: "invoice" | "payment_request" | "receipt" | "other";
+  documentType?: "invoice" | "tax_invoice_receipt" | "quote" | "payment_request" | "receipt" | "other";
   paymentRequired?: boolean;
   currency: string;
 };
@@ -40,8 +46,11 @@ const SYSTEM_PROMPT = `אתה עוזר הנהלת חשבונות לעסק ישר
   "supplier": "string",
   "supplierTaxId": "string|null",
   "amount": number|null,
+  "amountBeforeVat": number|null,
+  "vatAmount": number|null,
+  "totalAmount": number|null,
   "currency": "ILS",
-  "documentType": "invoice|payment_request|receipt|other",
+  "documentType": "invoice|tax_invoice_receipt|receipt|payment_request|quote|other",
   "paymentRequired": boolean,
   "dueDate": "YYYY-MM-DD"|null,
   "invoiceDate": "YYYY-MM-DD"|null,
@@ -50,7 +59,7 @@ const SYSTEM_PROMPT = `אתה עוזר הנהלת חשבונות לעסק ישר
   "confidence": 0-1
 }
 
-אל תמציא סכומים, מספרי חשבונית או מספרי ח.פ/עוסק. supplier חייב להיות שם מנפיק החשבונית/העסק מתוך המסמך, לא כתובת אימייל ולא שם מקבל המייל. documentType: invoice=חשבונית/חשבונית מס, receipt=קבלה/חשבונית מס קבלה, payment_request=דרישת תשלום.
+אל תמציא סכומים, מספרי חשבונית או מספרי ח.פ/עוסק. supplier חייב להיות שם מנפיק החשבונית/העסק מתוך המסמך, לא כתובת אימייל ולא שם מקבל המייל. documentType: invoice=חשבונית מס, receipt=קבלה, tax_invoice_receipt=חשבונית מס קבלה, payment_request=דרישת תשלום, quote=הצעת מחיר, other=לא רלוונטי.
 לתמוך בעברית ובאנגלית, כולל PDF/image OCR text שמופיע בגוף.`;
 
 export async function analyzeEmailContent(input: {
@@ -83,8 +92,11 @@ export async function analyzeEmailContent(input: {
     supplier: parsed.supplier || "לא ידוע",
     supplierTaxId: typeof (parsed as { supplierTaxId?: unknown }).supplierTaxId === "string" ? (parsed as { supplierTaxId: string }).supplierTaxId : null,
     amount: normalizeAmountValue(parsed.amount),
+    amountBeforeVat: normalizeAmountValue(parsed.amountBeforeVat),
+    vatAmount: normalizeAmountValue(parsed.vatAmount),
+    totalAmount: normalizeAmountValue(parsed.totalAmount) ?? normalizeAmountValue(parsed.amount),
     currency: parsed.currency || "ILS",
-    documentType: parsed.documentType || "other",
+    documentType: normalizeEmailDocumentType(parsed.documentType),
     paymentRequired: Boolean(parsed.paymentRequired),
     dueDate: parsed.dueDate ?? null,
     invoiceDate: parsed.invoiceDate ?? null,
@@ -109,16 +121,19 @@ export async function analyzeInvoiceFile(input: {
   "supplier": "שם ספק/מנפיק",
   "supplierTaxId": "ח.פ/עוסק|null",
   "amount": number|null,
+  "amountBeforeVat": number|null,
+  "vatAmount": number|null,
+  "totalAmount": number|null,
   "date": "YYYY-MM-DD|null",
   "dueDate": "YYYY-MM-DD|null",
   "invoiceNumber": "string|null",
-  "documentType": "invoice|receipt|payment_request|other",
+  "documentType": "invoice|tax_invoice_receipt|receipt|payment_request|quote|other",
   "paymentRequired": boolean,
   "currency": "ILS"
 }
 כללים חשובים:
 - supplier הוא שם העסק/מנפיק החשבונית שמופיע בראש המסמך או ליד פרטי עוסק/ח.פ, לא שם הלקוח ולא "Unknown".
-- amount הוא סה"כ לתשלום / סה"כ כולל מע"מ / Total Due. אל תחזיר סכום ביניים, מע"מ בלבד או מספר אסמכתא.
+- amount הוא סה"כ לתשלום / סה"כ כולל מע"מ / Total Due. totalAmount זהה לסה"כ כולל מע"מ. amountBeforeVat הוא סכום לפני מע"מ. vatAmount הוא מע"מ. אל תחזיר סכום ביניים, מע"מ בלבד או מספר אסמכתא בשדה amount.
 - invoiceNumber הוא מספר חשבונית/קבלה/מסמך בלבד, לא ח.פ/עוסק ולא מספר טלפון.
 - אל תמציא ערכים. אם זה צילום של חשבונית/קבלה, בצע OCR מתוך התמונה.`;
   const fileBlock =
@@ -166,6 +181,9 @@ export async function analyzeInvoiceFile(input: {
   const supplier = firstString(parsed, ["supplier", "שם ספק", "ספק"]);
   const supplierTaxId = firstString(parsed, ["supplierTaxId", "taxId", "vatNumber", "ח.פ", "עוסק מורשה", "מספר עוסק"]);
   const amount = firstNumber(parsed, ["amount", "total", "totalDue", "grandTotal", "balanceDue", "סכום", "סהכ", "סה\"כ", "סך הכל", "לתשלום"]);
+  const amountBeforeVat = firstNumber(parsed, ["amountBeforeVat", "subtotal", "beforeVat", "netAmount", "סכום לפני מעמ", "סהכ לפני מעמ", "לפני מע\"מ"]);
+  const vatAmount = firstNumber(parsed, ["vatAmount", "vat", "tax", "מע\"מ", "מעמ"]);
+  const totalAmount = firstNumber(parsed, ["totalAmount", "amount", "total", "totalDue", "grandTotal", "balanceDue", "סהכ כולל מעמ", "סה\"כ כולל מע\"מ", "לתשלום"]);
   const date = firstString(parsed, ["date", "תאריך", "invoiceDate", "תאריך חשבונית"]);
   const dueDate = firstString(parsed, ["dueDate", "due_date", "תאריך יעד", "לתשלום עד"]);
   const invoiceNumber = firstString(parsed, [
@@ -182,6 +200,9 @@ export async function analyzeInvoiceFile(input: {
     supplier: supplier || "לא ידוע",
     supplierTaxId,
     amount,
+    amountBeforeVat,
+    vatAmount,
+    totalAmount: totalAmount ?? amount,
     date,
     dueDate,
     invoiceNumber,
@@ -233,10 +254,16 @@ function firstNumber(source: Record<string, unknown>, keys: string[]): number | 
 
 function normalizeDocumentType(value: string | null): InvoiceScanResult["documentType"] {
   const normalized = (value ?? "").toLowerCase();
+  if (/tax_invoice_receipt|invoice\s+receipt|חשבונית\s*מס\s*קבלה/.test(normalized)) return "tax_invoice_receipt";
+  if (/quote|proposal|estimate|הצעת\s*מחיר/.test(normalized)) return "quote";
   if (/receipt|קבלה/.test(normalized)) return "receipt";
   if (/payment|דרישת|בקשת/.test(normalized)) return "payment_request";
   if (/invoice|חשבונית/.test(normalized)) return "invoice";
   return "other";
+}
+
+function normalizeEmailDocumentType(value: unknown): EmailAnalysis["documentType"] {
+  return normalizeDocumentType(typeof value === "string" ? value : null) ?? "other";
 }
 
 function fallbackAnalysis(input: {
@@ -257,6 +284,9 @@ function fallbackAnalysis(input: {
     supplier,
     supplierTaxId: extractSupplierTaxId(text),
     amount,
+    amountBeforeVat: null,
+    vatAmount: null,
+    totalAmount: amount,
     currency: "ILS",
     documentType: isReceipt
       ? "receipt"

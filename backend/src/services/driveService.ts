@@ -6,7 +6,14 @@ import { prisma } from "../lib/prisma.js";
 export type UploadedDriveFile = {
   fileId: string | null;
   webViewLink: string;
+  clientFolderId: string | null;
   supplierFolderId: string | null;
+  folderId: string | null;
+  folderPath: string;
+  folderWebViewLink: string | null;
+  supplierName: string;
+  invoiceMonth: number;
+  invoiceYear: number;
   duplicateDetected?: boolean;
 };
 
@@ -21,6 +28,7 @@ export type SupplierFolderMetadata = {
 
 type DriveIntegrationMetadata = {
   supplierFolders?: Record<string, SupplierFolderMetadata>;
+  folderCache?: Record<string, { folderId: string; folderPath: string; updatedAt: string }>;
 };
 
 export const INVOICE_DRIVE_FOLDER_NAME = `${config.driveRootFolder} - חשבוניות`;
@@ -60,7 +68,7 @@ export async function ensureInvoiceFolderTree(
   drive: drive_v3.Drive
 ): Promise<string> {
   const rootId = await ensureDriveFolder(drive, INVOICE_DRIVE_FOLDER_NAME);
-  for (const folderName of ["Invoices", "Receipts", "Payment Requests", "Missing Invoices", "Other"]) {
+  for (const folderName of ["Clients"]) {
     await ensureDriveFolder(drive, folderName, rootId);
   }
   return rootId;
@@ -70,36 +78,59 @@ export async function uploadInvoiceAttachmentToDrive(input: {
   organizationId: string;
   drive: drive_v3.Drive;
   rootFolderId: string;
+  clientId?: string | null;
+  clientName?: string | null;
   supplier: string;
   supplierTaxId?: string | null;
   documentType: string;
   filename: string;
   mimeType?: string | null;
   receivedAt: Date;
+  documentDate?: Date | string | null;
+  invoiceNumber?: string | null;
+  amount?: number | null;
+  totalAmount?: number | null;
   buffer: Buffer;
   fileSha256?: string | null;
   fileMd5?: string | null;
 }): Promise<UploadedDriveFile> {
-  const folderType = folderForDocumentType(input.documentType);
-  const supplierFolder = await ensureSupplierDriveFolder({
+  const documentDate = normalizeDocumentDate(input.documentDate, input.receivedAt);
+  const invoiceYear = documentDate.getFullYear();
+  const invoiceMonth = documentDate.getMonth() + 1;
+  const amount = input.totalAmount ?? input.amount ?? null;
+  const clientName = await resolveDriveClientName(input.organizationId, input.clientId, input.clientName);
+  const supplierName = normalizedSupplierFolderName(input.supplier);
+  const targetFolder = await ensureProductionInvoiceFolder({
     organizationId: input.organizationId,
     drive: input.drive,
     rootFolderId: input.rootFolderId,
-    supplierName: input.supplier,
+    clientName,
+    supplierName,
     supplierTaxId: input.supplierTaxId ?? null,
+    documentDate,
   });
-  const supplierFolderId = supplierFolder.folderId;
-  const documentTypeFolderId = await ensureDriveFolder(input.drive, folderType, supplierFolderId);
-  const existingFile = await findExistingDriveDocument(input.drive, documentTypeFolderId, {
-    filename: input.filename,
+  const driveFilename = buildInvoiceDriveFilename(input.filename, input.invoiceNumber, documentDate, amount);
+  const existingFile = await findExistingDriveDocument(input.drive, targetFolder.folderId, {
+    filename: driveFilename,
     fileSha256: input.fileSha256 ?? null,
     fileMd5: input.fileMd5 ?? null,
+    supplierName,
+    invoiceNumber: input.invoiceNumber ?? null,
+    amount,
+    invoiceDate: documentDate,
   });
   if (existingFile) {
     const fileId = existingFile.id ?? null;
     return {
       fileId,
-      supplierFolderId,
+      clientFolderId: targetFolder.clientFolderId,
+      supplierFolderId: targetFolder.supplierFolderId,
+      folderId: targetFolder.folderId,
+      folderPath: targetFolder.folderPath,
+      folderWebViewLink: targetFolder.folderWebViewLink,
+      supplierName,
+      invoiceMonth,
+      invoiceYear,
       duplicateDetected: true,
       webViewLink: existingFile.webViewLink ?? (fileId ? `https://drive.google.com/file/d/${fileId}/view` : ""),
     };
@@ -107,11 +138,19 @@ export async function uploadInvoiceAttachmentToDrive(input: {
 
   const upload = await input.drive.files.create({
     requestBody: {
-      name: `${input.receivedAt.toISOString().slice(0, 10)}_${input.filename}`,
-      parents: [documentTypeFolderId],
+      name: driveFilename,
+      parents: [targetFolder.folderId],
       appProperties: {
         ...(input.fileSha256 ? { fileSha256: input.fileSha256 } : {}),
         ...(input.fileMd5 ? { fileMd5: input.fileMd5 } : {}),
+        clientName,
+        supplierName,
+        ...(input.invoiceNumber ? { invoiceNumber: input.invoiceNumber } : {}),
+        ...(amount !== null ? { amount: amount.toFixed(2) } : {}),
+        invoiceDate: documentDate.toISOString().slice(0, 10),
+        invoiceYear: String(invoiceYear),
+        invoiceMonth: String(invoiceMonth).padStart(2, "0"),
+        driveFolderPath: targetFolder.folderPath,
       },
     },
     media: {
@@ -124,7 +163,14 @@ export async function uploadInvoiceAttachmentToDrive(input: {
   const fileId = upload.data.id ?? null;
   return {
     fileId,
-    supplierFolderId,
+    clientFolderId: targetFolder.clientFolderId,
+    supplierFolderId: targetFolder.supplierFolderId,
+    folderId: targetFolder.folderId,
+    folderPath: targetFolder.folderPath,
+    folderWebViewLink: targetFolder.folderWebViewLink,
+    supplierName,
+    invoiceMonth,
+    invoiceYear,
     webViewLink:
       upload.data.webViewLink ??
       (fileId ? `https://drive.google.com/file/d/${fileId}/view` : ""),
@@ -135,25 +181,41 @@ export async function findExistingSupplierDriveDocument(input: {
   organizationId: string;
   drive: drive_v3.Drive;
   rootFolderId: string;
+  clientId?: string | null;
+  clientName?: string | null;
   supplier: string;
   supplierTaxId?: string | null;
   documentType: string;
   filename: string;
   fileSha256?: string | null;
   fileMd5?: string | null;
+  documentDate?: Date | string | null;
+  invoiceNumber?: string | null;
+  amount?: number | null;
+  totalAmount?: number | null;
 }) {
-  const supplierFolder = await ensureSupplierDriveFolder({
+  const documentDate = normalizeDocumentDate(input.documentDate, new Date());
+  const amount = input.totalAmount ?? input.amount ?? null;
+  const clientName = await resolveDriveClientName(input.organizationId, input.clientId, input.clientName);
+  const supplierName = normalizedSupplierFolderName(input.supplier);
+  const documentFolder = await ensureProductionInvoiceFolder({
     organizationId: input.organizationId,
     drive: input.drive,
     rootFolderId: input.rootFolderId,
-    supplierName: input.supplier,
+    clientName,
+    supplierName,
     supplierTaxId: input.supplierTaxId ?? null,
+    documentDate,
   });
-  const documentFolderId = await ensureDriveFolder(input.drive, folderForDocumentType(input.documentType), supplierFolder.folderId);
+  const documentFolderId = documentFolder.folderId;
   return findExistingDriveDocument(input.drive, documentFolderId, {
-    filename: input.filename,
+    filename: buildInvoiceDriveFilename(input.filename, input.invoiceNumber, documentDate, amount),
     fileSha256: input.fileSha256 ?? null,
     fileMd5: input.fileMd5 ?? null,
+    supplierName,
+    invoiceNumber: input.invoiceNumber ?? null,
+    amount,
+    invoiceDate: documentDate,
   });
 }
 
@@ -171,7 +233,7 @@ export async function ensureSupplierDriveFolder(input: {
   const stored = metadata.supplierFolders?.[supplierKey];
   if (stored?.folderId) {
     const existingStored = await getDriveFolder(input.drive, stored.folderId).catch(() => null);
-    if (existingStored?.id) return stored;
+    if (existingStored?.id && existingStored.parents?.includes(input.rootFolderId)) return stored;
   }
 
   const existingByIdentity = await findSupplierFolderByIdentity(input.drive, {
@@ -215,12 +277,59 @@ export function folderForDocumentType(documentType: string): string {
 }
 
 export function safeFolderName(name: string): string {
-  return normalizeFolderText(name || "Unknown Supplier").replace(/[\\/:*?"<>|]/g, "-").slice(0, 80);
+  const normalized = normalizeFolderText(name || "לא מזוהה").replace(/[\\/:*?"<>|]/g, "-").slice(0, 80);
+  return /^(unknown|unknown supplier|לא ידוע)$/i.test(normalized) ? "לא מזוהה" : normalized;
 }
 
 export function normalizedSupplierFolderName(name: string): string {
-  const withoutBranch = (name || "Unknown Supplier").split(/\s+-\s+/)[0] ?? "Unknown Supplier";
-  return safeFolderName(withoutBranch) || "Unknown Supplier";
+  const withoutBranch = (name || "לא מזוהה").split(/\s+-\s+/)[0] ?? "לא מזוהה";
+  return safeFolderName(withoutBranch) || "לא מזוהה";
+}
+
+async function ensureProductionInvoiceFolder(input: {
+  organizationId: string;
+  drive: drive_v3.Drive;
+  rootFolderId: string;
+  clientName: string;
+  supplierName: string;
+  supplierTaxId?: string | null;
+  documentDate: Date;
+}) {
+  const clientName = safeFolderName(input.clientName);
+  const supplierName = normalizedSupplierFolderName(input.supplierName);
+  const monthFolder = monthFolderName(input.documentDate);
+  const clientsFolderId = await ensureCachedDriveFolder(input, "Clients", input.rootFolderId, [INVOICE_DRIVE_FOLDER_NAME, "Clients"]);
+  const clientFolderId = await ensureCachedDriveFolder(input, clientName, clientsFolderId, [INVOICE_DRIVE_FOLDER_NAME, "Clients", clientName]);
+  const suppliersFolderId = await ensureCachedDriveFolder(input, "Suppliers", clientFolderId, [INVOICE_DRIVE_FOLDER_NAME, "Clients", clientName, "Suppliers"]);
+  const supplierFolderId = await ensureCachedDriveFolder(input, supplierName, suppliersFolderId, [INVOICE_DRIVE_FOLDER_NAME, "Clients", clientName, "Suppliers", supplierName]);
+  const monthFolderId = await ensureCachedDriveFolder(input, monthFolder, supplierFolderId, [INVOICE_DRIVE_FOLDER_NAME, "Clients", clientName, "Suppliers", supplierName, monthFolder]);
+  const folderPath = [INVOICE_DRIVE_FOLDER_NAME, "Clients", clientName, "Suppliers", supplierName, monthFolder].join("/");
+  return {
+    clientFolderId,
+    supplierFolderId,
+    folderId: monthFolderId,
+    folderPath,
+    folderWebViewLink: `https://drive.google.com/drive/folders/${monthFolderId}`,
+  };
+}
+
+async function ensureCachedDriveFolder(
+  input: { organizationId: string; drive: drive_v3.Drive },
+  name: string,
+  parentId: string,
+  folderPathParts: string[]
+) {
+  const folderPath = folderPathParts.join("/");
+  const metadata = await readDriveIntegrationMetadata(input.organizationId);
+  const cached = metadata.folderCache?.[folderPath];
+  if (cached?.folderId) {
+    const existing = await getDriveFolder(input.drive, cached.folderId).catch(() => null);
+    if (existing?.id && existing.parents?.includes(parentId)) return cached.folderId;
+  }
+
+  const folderId = await ensureDriveFolder(input.drive, name, parentId);
+  await writeFolderCacheMetadata(input.organizationId, folderPath, folderId);
+  return folderId;
 }
 
 export function supplierFolderIdentityKey(input: { supplierName: string; supplierTaxId?: string | null }) {
@@ -265,10 +374,19 @@ export function supplierBranchNameFromFolderName(name: string): string | null {
 async function findExistingDriveDocument(
   drive: drive_v3.Drive,
   parentId: string,
-  input: { filename: string; fileSha256: string | null; fileMd5: string | null }
+  input: {
+    filename: string;
+    fileSha256: string | null;
+    fileMd5: string | null;
+    supplierName?: string | null;
+    invoiceNumber?: string | null;
+    amount?: number | null;
+    invoiceDate?: Date | string | null;
+  }
 ) {
   let pageToken: string | undefined;
   const normalizedFilename = normalizeDriveFilename(input.filename);
+  const businessKey = driveBusinessDuplicateKey(input);
   do {
     const result = await drive.files.list({
       q: `'${parentId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`,
@@ -283,6 +401,7 @@ async function findExistingDriveDocument(
       const appProperties = file.appProperties ?? {};
       if (input.fileSha256 && appProperties.fileSha256 === input.fileSha256) return file;
       if (input.fileMd5 && (appProperties.fileMd5 === input.fileMd5 || file.md5Checksum === input.fileMd5)) return file;
+      if (businessKey && driveBusinessDuplicateKey(appProperties) === businessKey) return file;
       if (file.name && normalizeDriveFilename(file.name).endsWith(normalizedFilename)) return file;
     }
     pageToken = result.data.nextPageToken ?? undefined;
@@ -292,6 +411,23 @@ async function findExistingDriveDocument(
 
 function normalizeDriveFilename(value: string) {
   return value.toLowerCase().replace(/^\d{4}-\d{2}-\d{2}_/, "").replace(/\s+/g, " ").trim();
+}
+
+function driveBusinessDuplicateKey(input: {
+  supplierName?: string | null;
+  invoiceNumber?: string | null;
+  amount?: number | string | null;
+  invoiceDate?: Date | string | null;
+}) {
+  if (!input.supplierName || !input.invoiceNumber || input.amount == null || !input.invoiceDate) return null;
+  const date = normalizeDocumentDate(input.invoiceDate, new Date()).toISOString().slice(0, 10);
+  const amount = typeof input.amount === "number" ? input.amount.toFixed(2) : normalizeAmountText(input.amount);
+  return [
+    canonicalSupplierFolderKey(input.supplierName),
+    String(input.invoiceNumber).trim().toLowerCase(),
+    amount,
+    date,
+  ].join("|");
 }
 
 function normalizeSupplierTaxId(value?: string | null) {
@@ -306,7 +442,7 @@ async function findSupplierFolderByIdentity(
   if (input.supplierTaxId) {
     const byTaxId = await findDriveFolder(
       drive,
-      `appProperties has { key='supplierTaxId' and value='${escapeDriveQueryValue(input.supplierTaxId)}' } and mimeType='application/vnd.google-apps.folder' and trashed=false`
+      `'${input.rootFolderId}' in parents and appProperties has { key='supplierTaxId' and value='${escapeDriveQueryValue(input.supplierTaxId)}' } and mimeType='application/vnd.google-apps.folder' and trashed=false`
     );
     const id = byTaxId.data.files?.[0]?.id;
     if (id) return id;
@@ -314,7 +450,7 @@ async function findSupplierFolderByIdentity(
 
   const bySupplierKey = await findDriveFolder(
     drive,
-    `appProperties has { key='supplierKey' and value='${escapeDriveQueryValue(input.supplierKey)}' } and mimeType='application/vnd.google-apps.folder' and trashed=false`
+    `'${input.rootFolderId}' in parents and appProperties has { key='supplierKey' and value='${escapeDriveQueryValue(input.supplierKey)}' } and mimeType='application/vnd.google-apps.folder' and trashed=false`
   );
   const supplierKeyId = bySupplierKey.data.files?.[0]?.id;
   if (supplierKeyId) return supplierKeyId;
@@ -401,7 +537,7 @@ async function ensureExistingFolderByName(drive: drive_v3.Drive, name: string, p
 async function getDriveFolder(drive: drive_v3.Drive, folderId: string) {
   const result = await drive.files.get({
     fileId: folderId,
-    fields: "id, name, trashed",
+    fields: "id, name, parents, trashed",
     supportsAllDrives: true,
   });
   return result.data.trashed ? null : result.data;
@@ -435,6 +571,26 @@ export async function writeSupplierFolderMetadata(organizationId: string, suppli
   });
 }
 
+async function writeFolderCacheMetadata(organizationId: string, folderPath: string, folderId: string) {
+  const existing = await prisma.integration.findUnique({
+    where: { organizationId_provider: { organizationId, provider: "drive" } },
+    select: { metadata: true },
+  });
+  const metadata = parseDriveMetadata(existing?.metadata);
+  const nextMetadata: DriveIntegrationMetadata = {
+    ...metadata,
+    folderCache: {
+      ...(metadata.folderCache ?? {}),
+      [folderPath]: { folderId, folderPath, updatedAt: new Date().toISOString() },
+    },
+  };
+  await prisma.integration.upsert({
+    where: { organizationId_provider: { organizationId, provider: "drive" } },
+    create: { organizationId, provider: "drive", metadata: JSON.stringify(nextMetadata) },
+    update: { metadata: JSON.stringify(nextMetadata) },
+  });
+}
+
 function parseDriveMetadata(value?: string | null): DriveIntegrationMetadata {
   if (!value) return {};
   try {
@@ -454,6 +610,61 @@ function normalizeFolderText(value: string) {
     .replace(/\s+/g, " ")
     .replace(/(?:\s+-\s+){2,}/g, " - ")
     .trim();
+}
+
+function normalizeDocumentDate(value: Date | string | null | undefined, fallback: Date) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return fallback;
+}
+
+function monthFolderName(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+async function resolveDriveClientName(organizationId: string, clientId?: string | null, clientName?: string | null) {
+  if (clientName?.trim()) return safeFolderName(clientName);
+  if (clientId) {
+    const client = await prisma.client.findFirst({
+      where: { id: clientId, organizationId },
+      select: { name: true },
+    });
+    if (client?.name) return safeFolderName(client.name);
+  }
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { businessName: true, name: true },
+  });
+  return safeFolderName(organization?.businessName || organization?.name || "Unassigned Client");
+}
+
+function buildInvoiceDriveFilename(originalFilename: string, invoiceNumber: string | null | undefined, invoiceDate: Date, amount: number | null) {
+  const extension = driveFileExtension(originalFilename);
+  const invoicePart = safeFilenamePart(invoiceNumber || originalFilename.replace(/\.[^.]+$/, "") || "invoice");
+  const datePart = invoiceDate.toISOString().slice(0, 10);
+  const amountPart = amount === null ? "unknown" : safeFilenamePart(formatAmountForFilename(amount));
+  return `${invoicePart}_${datePart}_${amountPart}${extension}`;
+}
+
+function driveFileExtension(filename: string) {
+  const match = filename.match(/(\.[A-Za-z0-9]{2,8})$/);
+  return match?.[1]?.toLowerCase() ?? ".pdf";
+}
+
+function safeFilenamePart(value: string) {
+  return value.trim().replace(/[\\/:*?"<>|\s]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "unknown";
+}
+
+function formatAmountForFilename(amount: number) {
+  return Number.isInteger(amount) ? String(amount) : amount.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function normalizeAmountText(value: string) {
+  const numeric = Number(value.replace(/[^\d.-]/g, ""));
+  return Number.isFinite(numeric) ? numeric.toFixed(2) : value.trim().toLowerCase();
 }
 
 function driveFolderQuery(escapedName: string, parentId?: string) {

@@ -52,8 +52,8 @@ test("classifies English receipt with PDF as receipt", () => {
 
   assert.equal(result.documentType, "receipt");
   assert.equal(result.confidenceScore, "high");
-  assert.equal(result.reviewStatus, "needs_review");
-  assert.match(result.decisionReason, /documentType is receipt/);
+  assert.equal(result.reviewStatus, "auto_saved");
+  assert.match(result.decisionReason, /Auto-saved: receipt/);
 });
 
 test("holds high confidence invoice without valid amount for review", () => {
@@ -188,5 +188,5 @@ test("classifies Hebrew supplier payment email without attachment", () => {
 
   assert.equal(result.documentType, "payment_request");
   assert.equal(result.isRelevant, true);
-  assert.match(result.decisionReason, /confidence is medium/);
+  assert.match(result.decisionReason, /payment request without attachment/);
 });

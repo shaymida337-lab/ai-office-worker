@@ -6,6 +6,7 @@ import { analyzeEmailContent, analyzeInvoiceFile, type EmailAnalysis, type Invoi
 import { ensureInvoiceFolderTree, findExistingSupplierDriveDocument, uploadInvoiceAttachmentToDrive } from "./driveService.js";
 import { getGoogleClients } from "./google.js";
 import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
+import { recordFinancialDocumentDecision } from "./financialDocuments.js";
 
 type WhatsAppMediaInput = {
   organizationId: string;
@@ -75,6 +76,52 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
         documentType: analysis.documentType,
       });
     }
+    const documentDecision = await recordFinancialDocumentDecision({
+      organizationId: input.organizationId,
+      source: "whatsapp",
+      sender: input.fromNumber,
+      subject: input.body,
+      fileName: filename,
+      fileSize: buffer.length,
+      supplierName: supplier,
+      supplierTaxId: analysis.supplierTaxId ?? null,
+      invoiceNumber: analysis.invoiceNumber,
+      documentDate: analysis.invoiceDate,
+      dueDate: analysis.dueDate,
+      amountBeforeVat: analysis.amountBeforeVat ?? null,
+      vatAmount: analysis.vatAmount ?? null,
+      totalAmount: analysis.totalAmount ?? amount,
+      documentType: analysis.documentType,
+      confidenceScore: analysis.confidence,
+      uncertaintyReason: supplier === "Unknown supplier" || amount === null || !analysis.invoiceNumber
+        ? "חסרים פרטי ספק, סכום או מספר חשבונית"
+        : null,
+      rawAnalysis: { analysis, whatsappLogId: input.whatsappLogId },
+      whatsappLogId: input.whatsappLogId,
+    });
+    if (documentDecision.action !== "accepted") {
+      processed.push({
+        filename,
+        supplier,
+        amount,
+        invoiceNumber: analysis.invoiceNumber,
+        documentType: analysis.documentType,
+        documentDate: analysis.invoiceDate,
+        driveLink: null,
+        paymentId: documentDecision.action === "duplicate" ? documentDecision.payment.id : null,
+        invoiceId: null,
+        created: false,
+        duplicateDetected: documentDecision.action === "duplicate",
+        duplicateReason: documentDecision.action,
+      });
+      continue;
+    }
+    const supplierClientId = await findSupplierClientForWhatsAppDocument({
+      organizationId: input.organizationId,
+      preferredClientId: input.clientId ?? null,
+      supplier,
+      fromNumber: input.fromNumber,
+    });
     const duplicate = await findExistingCrossSourceDuplicate({
       organizationId: input.organizationId,
       supplier,
@@ -122,12 +169,17 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       organizationId: input.organizationId,
       drive,
       rootFolderId,
+      clientId: supplierClientId,
       supplier,
       supplierTaxId: analysis.supplierTaxId ?? null,
       documentType: analysis.documentType,
       filename,
       fileSha256: fileHash,
       fileMd5,
+      documentDate: analysis.invoiceDate,
+      invoiceNumber: analysis.invoiceNumber,
+      amount,
+      totalAmount: analysis.totalAmount ?? amount,
     });
     if (existingDriveFile) {
       console.log(`[whatsapp-invoice] stop=drive_existing_file_without_payment_create logId=${input.whatsappLogId} driveFileId=${existingDriveFile.id ?? "null"}`);
@@ -152,24 +204,23 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       organizationId: input.organizationId,
       drive,
       rootFolderId,
+      clientId: supplierClientId,
       supplier,
       supplierTaxId: analysis.supplierTaxId ?? null,
       documentType: analysis.documentType,
       filename,
       mimeType,
       receivedAt: new Date(),
+      documentDate: analysis.invoiceDate,
+      invoiceNumber: analysis.invoiceNumber,
+      amount,
+      totalAmount: analysis.totalAmount ?? amount,
       buffer,
       fileSha256: fileHash,
       fileMd5,
     });
-    console.log(`[whatsapp-invoice] drive upload done logId=${input.whatsappLogId} driveFileId=${upload.fileId ?? "null"} supplierFolderId=${upload.supplierFolderId ?? "null"}`);
+    console.log(`[whatsapp-invoice] drive upload done logId=${input.whatsappLogId} driveFileId=${upload.fileId ?? "null"} folderPath="${upload.folderPath}"`);
 
-    const supplierClientId = await findSupplierClientForWhatsAppDocument({
-      organizationId: input.organizationId,
-      preferredClientId: input.clientId ?? null,
-      supplier,
-      fromNumber: input.fromNumber,
-    });
     const payment = await upsertWhatsAppSupplierPayment({
       organizationId: input.organizationId,
       clientId: supplierClientId,
@@ -182,6 +233,22 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       invoiceDate: analysis.invoiceDate,
       invoiceNumber: analysis.invoiceNumber,
       driveLink: upload.webViewLink || null,
+      driveFileId: upload.fileId,
+      driveFileUrl: upload.webViewLink || null,
+      driveFolderId: upload.folderId,
+      driveClientFolderId: upload.clientFolderId,
+      driveSupplierFolderId: upload.supplierFolderId,
+      driveFolderPath: upload.folderPath,
+      invoiceMonth: upload.invoiceMonth,
+      invoiceYear: upload.invoiceYear,
+      documentFingerprint: documentDecision.documentFingerprint,
+      sourceFingerprint: documentDecision.sourceFingerprint,
+      documentTypeDetailed: documentDecision.documentType,
+      supplierTaxId: analysis.supplierTaxId ?? null,
+      amountBeforeVat: analysis.amountBeforeVat ?? null,
+      vatAmount: analysis.vatAmount ?? null,
+      totalAmount: analysis.totalAmount ?? amount,
+      confidenceScore: analysis.confidence,
       fromNumber: input.fromNumber,
       filename,
       fileHash,
@@ -199,6 +266,22 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       invoiceNumber: analysis.invoiceNumber,
       documentType: analysis.documentType,
       driveLink: upload.webViewLink || null,
+      driveFileId: upload.fileId,
+      driveFileUrl: upload.webViewLink || null,
+      driveFolderId: upload.folderId,
+      driveClientFolderId: upload.clientFolderId,
+      driveSupplierFolderId: upload.supplierFolderId,
+      driveFolderPath: upload.folderPath,
+      invoiceMonth: upload.invoiceMonth,
+      invoiceYear: upload.invoiceYear,
+      documentFingerprint: documentDecision.documentFingerprint,
+      sourceFingerprint: documentDecision.sourceFingerprint,
+      documentTypeDetailed: documentDecision.documentType,
+      supplierTaxId: analysis.supplierTaxId ?? null,
+      amountBeforeVat: analysis.amountBeforeVat ?? null,
+      vatAmount: analysis.vatAmount ?? null,
+      totalAmount: analysis.totalAmount ?? amount,
+      confidenceScore: analysis.confidence,
       fromNumber: input.fromNumber,
       filename,
     });
@@ -208,7 +291,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       invoiceNumber: analysis.invoiceNumber,
       invoiceDate: analysis.invoiceDate,
       driveLink: upload.webViewLink || null,
-      driveFolderLink: upload.supplierFolderId ? `https://drive.google.com/drive/folders/${upload.supplierFolderId}` : null,
+      driveFolderLink: upload.folderWebViewLink,
     });
     console.log(`[whatsapp-invoice] sheets sync requested logId=${input.whatsappLogId} paymentId=${payment.id}`);
 
@@ -319,6 +402,9 @@ async function analyzeWhatsAppDocument(input: {
     supplier: imageScan.supplier,
     supplierTaxId: imageScan.supplierTaxId ?? null,
     amount: imageScan.amount,
+    amountBeforeVat: imageScan.amountBeforeVat ?? null,
+    vatAmount: imageScan.vatAmount ?? null,
+    totalAmount: imageScan.totalAmount ?? imageScan.amount,
     currency: imageScan.currency,
     documentType: imageScan.documentType ?? "other",
     paymentRequired: imageScan.paymentRequired ?? imageScan.documentType !== "receipt",
@@ -355,6 +441,9 @@ function mergeInvoiceScan(fileScan: InvoiceScanResult | null, fallback: EmailAna
     supplier: usableSupplierName(fileScan?.supplier) ? fileScan!.supplier : fallback?.supplier ?? "לא ידוע",
     supplierTaxId: fileScan?.supplierTaxId ?? fallback?.supplierTaxId ?? null,
     amount: normalizeAmount(fileScan?.amount) ?? normalizeAmount(fallback?.amount),
+    amountBeforeVat: normalizeAmount(fileScan?.amountBeforeVat) ?? normalizeAmount(fallback?.amountBeforeVat),
+    vatAmount: normalizeAmount(fileScan?.vatAmount) ?? normalizeAmount(fallback?.vatAmount),
+    totalAmount: normalizeAmount(fileScan?.totalAmount) ?? normalizeAmount(fallback?.totalAmount) ?? normalizeAmount(fileScan?.amount) ?? normalizeAmount(fallback?.amount),
     date: fileScan?.date ?? fallback?.invoiceDate ?? null,
     dueDate: fileScan?.dueDate ?? fallback?.dueDate ?? null,
     invoiceNumber: fileScan?.invoiceNumber ?? fallback?.invoiceNumber ?? null,
@@ -416,6 +505,22 @@ async function upsertWhatsAppInvoiceRecord(input: {
   invoiceNumber: string | null;
   documentType: string;
   driveLink: string | null;
+  driveFileId: string | null;
+  driveFileUrl: string | null;
+  driveFolderId: string | null;
+  driveClientFolderId: string | null;
+  driveSupplierFolderId: string | null;
+  driveFolderPath: string | null;
+  invoiceMonth: number | null;
+  invoiceYear: number | null;
+  documentFingerprint: string;
+  sourceFingerprint: string;
+  documentTypeDetailed: string;
+  supplierTaxId: string | null;
+  amountBeforeVat: number | null;
+  vatAmount: number | null;
+  totalAmount: number | null;
+  confidenceScore: number;
   fromNumber: string;
   filename: string;
 }) {
@@ -442,6 +547,15 @@ async function upsertWhatsAppInvoiceRecord(input: {
         status: input.documentType === "receipt" ? "paid" : "pending",
         description: `WhatsApp ${input.documentType}: ${input.supplier}`,
         driveUrl: input.driveLink,
+        driveFileId: input.driveFileId,
+        driveFileUrl: input.driveFileUrl,
+        driveFolderId: input.driveFolderId,
+        driveClientFolderId: input.driveClientFolderId,
+        driveSupplierFolderId: input.driveSupplierFolderId,
+        driveFolderPath: input.driveFolderPath,
+        supplierName: input.supplier,
+        invoiceMonth: input.invoiceMonth,
+        invoiceYear: input.invoiceYear,
         fromEmail: input.fromNumber,
         gmailMessageId: `whatsapp:${input.whatsappLogId}`,
       },
@@ -462,6 +576,15 @@ async function upsertWhatsAppInvoiceRecord(input: {
       status: input.documentType === "receipt" ? "paid" : "pending",
       description: `WhatsApp ${input.documentType}: ${input.supplier}`,
       driveUrl: input.driveLink,
+      driveFileId: input.driveFileId,
+      driveFileUrl: input.driveFileUrl,
+      driveFolderId: input.driveFolderId,
+      driveClientFolderId: input.driveClientFolderId,
+      driveSupplierFolderId: input.driveSupplierFolderId,
+      driveFolderPath: input.driveFolderPath,
+      supplierName: input.supplier,
+      invoiceMonth: input.invoiceMonth,
+      invoiceYear: input.invoiceYear,
       emailId,
       fromEmail: input.fromNumber,
       gmailMessageId: `whatsapp:${input.whatsappLogId}`,
@@ -483,19 +606,35 @@ async function upsertWhatsAppSupplierPayment(input: {
   invoiceDate: string | null;
   invoiceNumber: string | null;
   driveLink: string | null;
+  driveFileId: string | null;
+  driveFileUrl: string | null;
+  driveFolderId: string | null;
+  driveClientFolderId: string | null;
+  driveSupplierFolderId: string | null;
+  driveFolderPath: string | null;
+  invoiceMonth: number | null;
+  invoiceYear: number | null;
+  documentFingerprint: string;
+  sourceFingerprint: string;
+  documentTypeDetailed: string;
+  supplierTaxId: string | null;
+  amountBeforeVat: number | null;
+  vatAmount: number | null;
+  totalAmount: number | null;
+  confidenceScore: number;
   fromNumber: string;
   filename: string;
   fileHash: string;
 }) {
   const date = normalizeDate(input.invoiceDate) ?? new Date();
-  const duplicateHash = buildDuplicateHash({
+  const duplicateHash = input.documentFingerprint || buildDuplicateHash({
     organizationId: input.organizationId,
     supplier: input.supplier,
     amount: input.amount ?? 0,
     dateIso: input.fileHash ? "1970-01-01" : date.toISOString(),
     subject: input.fileHash ? `file:${input.fileHash}` : `whatsapp:${input.whatsappLogId}:${input.filename}:${input.invoiceNumber ?? ""}`,
   });
-  const invoiceLink = input.documentType === "invoice" || input.documentType === "receipt" ? input.driveLink : null;
+  const invoiceLink = input.documentType === "invoice" || input.documentType === "receipt" || input.documentType === "tax_invoice_receipt" ? input.driveLink : null;
   const documentLink = input.documentType === "payment_request" ? input.driveLink : invoiceLink ?? input.driveLink;
 
   const existing = await prisma.supplierPayment.findUnique({
@@ -510,6 +649,26 @@ async function upsertWhatsAppSupplierPayment(input: {
         dueDate: normalizeDate(input.dueDate) ?? existing.dueDate,
         documentLink: documentLink ?? existing.documentLink,
         invoiceLink: invoiceLink ?? existing.invoiceLink,
+        driveFileId: input.driveFileId ?? existing.driveFileId,
+        driveFileUrl: input.driveFileUrl ?? existing.driveFileUrl,
+        driveFolderId: input.driveFolderId ?? existing.driveFolderId,
+        driveClientFolderId: input.driveClientFolderId ?? existing.driveClientFolderId,
+        driveSupplierFolderId: input.driveSupplierFolderId ?? existing.driveSupplierFolderId,
+        driveFolderPath: input.driveFolderPath ?? existing.driveFolderPath,
+        supplierName: input.supplier,
+        invoiceMonth: input.invoiceMonth ?? existing.invoiceMonth,
+        invoiceYear: input.invoiceYear ?? existing.invoiceYear,
+        invoiceNumber: input.invoiceNumber ?? existing.invoiceNumber,
+        documentFingerprint: input.documentFingerprint,
+        sourceFingerprint: input.sourceFingerprint,
+        documentTypeDetailed: input.documentTypeDetailed,
+        supplierTaxId: input.supplierTaxId ?? existing.supplierTaxId,
+        amountBeforeVat: input.amountBeforeVat ?? existing.amountBeforeVat,
+        vatAmount: input.vatAmount ?? existing.vatAmount,
+        totalAmount: input.totalAmount ?? existing.totalAmount,
+        confidenceScore: input.confidenceScore,
+        approvalStatus: "approved",
+        sourcesJson: existing.source === "gmail" || existing.source === "both" ? ["gmail", "whatsapp"] : ["whatsapp"],
         emailSender: input.fromNumber,
         paymentRequired: input.paymentRequired,
         missingInvoice: Boolean(input.paymentRequired && !invoiceLink),
@@ -537,6 +696,26 @@ async function upsertWhatsAppSupplierPayment(input: {
       paid: input.documentType === "receipt",
       documentLink,
       invoiceLink,
+      driveFileId: input.driveFileId,
+      driveFileUrl: input.driveFileUrl,
+      driveFolderId: input.driveFolderId,
+      driveClientFolderId: input.driveClientFolderId,
+      driveSupplierFolderId: input.driveSupplierFolderId,
+      driveFolderPath: input.driveFolderPath,
+      supplierName: input.supplier,
+      invoiceMonth: input.invoiceMonth,
+      invoiceYear: input.invoiceYear,
+      invoiceNumber: input.invoiceNumber,
+      documentFingerprint: input.documentFingerprint,
+      sourceFingerprint: input.sourceFingerprint,
+      documentTypeDetailed: input.documentTypeDetailed,
+      supplierTaxId: input.supplierTaxId,
+      amountBeforeVat: input.amountBeforeVat,
+      vatAmount: input.vatAmount,
+      totalAmount: input.totalAmount,
+      confidenceScore: input.confidenceScore,
+      approvalStatus: "approved",
+      sourcesJson: ["whatsapp"],
       emailSender: input.fromNumber,
       paymentRequired: input.paymentRequired || input.documentType !== "receipt",
       missingInvoice: Boolean(input.paymentRequired && !invoiceLink),

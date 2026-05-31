@@ -38,6 +38,7 @@ const links: NavLink[] = [
   { id: "clients", href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
   { id: "invoices", href: "/dashboard/invoices", label: "חשבוניות", icon: FileText, module: "invoices" },
   { id: "invoiceDiagnostics", href: "/dashboard/invoice-diagnostics", label: "אבחון חשבוניות", icon: Search, module: "invoices" },
+  { id: "documentReviews", href: "/dashboard/document-reviews", label: "מסמכים לבדיקה", icon: Search, module: "supplier_management" },
   { id: "supplierPayments", href: "/payments", label: "תשלומי ספקים", icon: WalletCards, module: "supplier_management" },
   { id: "bank", href: "/dashboard/bank", label: "התאמת בנק", icon: Landmark, module: "supplier_management" },
   { id: "collections", href: "/collections", label: "גבייה", icon: CircleDollarSign, module: "collections" },

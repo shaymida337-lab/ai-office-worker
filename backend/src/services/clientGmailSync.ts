@@ -114,12 +114,18 @@ export async function syncGmailForClient(clientId: string) {
           organizationId,
           drive,
           rootFolderId: rootId,
+          clientId,
+          clientName: client.name,
           supplier: analysis.supplier,
           supplierTaxId: analysis.supplierTaxId,
           documentType: analysis.documentType,
           filename: part.filename,
           mimeType: part.mimeType,
           receivedAt,
+          documentDate: analysis.invoiceDate ?? receivedAt,
+          invoiceNumber: analysis.invoiceNumber,
+          amount: analysis.amount,
+          totalAmount: analysis.totalAmount ?? analysis.amount,
           buffer,
         });
         driveLinks.push(upload.webViewLink);

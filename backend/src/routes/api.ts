@@ -19,6 +19,7 @@ import { parseBankStatementFile } from "../services/bank-parser.js";
 import { matchTransactions } from "../services/bank-matcher.js";
 import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } from "../services/paymentClassificationDebug.js";
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
+import { approveFinancialDocumentReview, deleteFinancialDocumentReview } from "../services/financialDocuments.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -2724,6 +2725,37 @@ apiRouter.get("/payments", async (req, res) => {
     take: 100,
   });
   res.json(payments.map(enrichPaymentSources));
+});
+
+apiRouter.get("/document-reviews", async (req, res) => {
+  const status = typeof req.query.status === "string" ? req.query.status : "needs_review";
+  const items = await prisma.financialDocumentReview.findMany({
+    where: {
+      organizationId: req.auth!.organizationId,
+      ...(status === "all" ? {} : { reviewStatus: status }),
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+  res.json(items);
+});
+
+apiRouter.post("/document-reviews/:id/approve", async (req, res) => {
+  try {
+    const item = await approveFinancialDocumentReview(req.auth!.organizationId, req.params.id);
+    res.json({ ok: true, item });
+  } catch (err) {
+    res.status(404).json({ error: err instanceof Error ? err.message : "Document review item not found" });
+  }
+});
+
+apiRouter.delete("/document-reviews/:id", async (req, res) => {
+  const deleted = await deleteFinancialDocumentReview(req.auth!.organizationId, req.params.id);
+  if (deleted.count === 0) {
+    res.status(404).json({ error: "Document review item not found" });
+    return;
+  }
+  res.json({ ok: true });
 });
 
 apiRouter.patch("/payments/:id", async (req, res) => {
