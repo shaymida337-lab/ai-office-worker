@@ -147,6 +147,9 @@ async function start() {
 
     const server = app.listen(config.port, () => {
       console.log(`[startup] Server running port=${config.port} env=${config.nodeEnv} db=${databaseHost()}`);
+      import("./services/googleStartupValidation.js")
+        .then(({ validateGoogleIntegrationsAtStartup }) => validateGoogleIntegrationsAtStartup())
+        .catch((err) => console.error("[startup/google] validation crashed", formatStartupError(err)));
       try {
         scheduler.startAllJobs();
       } catch (err) {

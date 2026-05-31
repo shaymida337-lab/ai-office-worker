@@ -125,7 +125,7 @@ export async function appendSupplierPaymentToSheet(input: {
   return { ...spreadsheet, row: rowNumber, updated: false };
 }
 
-async function ensureSupplierPaymentsSpreadsheet(organizationId: string) {
+export async function ensureSupplierPaymentsSpreadsheet(organizationId: string) {
   const { sheets } = await getGoogleClients(organizationId);
   const existing = await prisma.integration.findUnique({
     where: { organizationId_provider: { organizationId, provider: "sheets" } },
