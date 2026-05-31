@@ -54,8 +54,8 @@ export default function PaymentsPage() {
     setDeletingId(payment.id);
     setMessage("");
     try {
-      const result = await apiFetch<{ deleted?: { supplierPayments?: number; documentReviews?: number }; verification?: { beforeCount?: number; afterCount?: number }; unlinked?: { bankTransactions?: number; tasks?: number } }>(`/api/payments/${payment.id}`, {
-        method: "DELETE",
+      const result = await apiFetch<{ deleted?: { supplierPayments?: number; documentReviews?: number }; verification?: { beforeCount?: number; afterCount?: number }; unlinked?: { bankTransactions?: number; tasks?: number } }>(`/api/payments/${payment.id}/delete`, {
+        method: "POST",
       });
       if ((result.deleted?.supplierPayments ?? 0) < 1 || (result.verification?.afterCount ?? 1) !== 0) {
         throw new Error(`השרת לא מחק את הרשומה. נמחקו ${result.deleted?.supplierPayments ?? 0}, נשארו ${result.verification?.afterCount ?? "לא ידוע"}.`);

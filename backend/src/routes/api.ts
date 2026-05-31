@@ -2869,12 +2869,13 @@ apiRouter.patch("/payments/:id", async (req, res) => {
   res.json({ updated: 1, payment: updatedPayment });
 });
 
-apiRouter.delete("/payments/:id", async (req, res) => {
+async function deleteSupplierPaymentHandler(req: Request, res: Response) {
+  const paymentId = String(req.params.id);
   const beforeCount = await prisma.supplierPayment.count({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    where: { id: paymentId, organizationId: req.auth!.organizationId },
   });
   const payment = await prisma.supplierPayment.findFirst({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    where: { id: paymentId, organizationId: req.auth!.organizationId },
     select: { id: true, emailMessageId: true },
   });
   if (!payment) {
@@ -2903,9 +2904,9 @@ apiRouter.delete("/payments/:id", async (req, res) => {
     }),
   ]);
   const afterCount = await prisma.supplierPayment.count({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    where: { id: paymentId, organizationId: req.auth!.organizationId },
   });
-  console.log(`[payments] delete id=${req.params.id} org=${req.auth!.organizationId} before=${beforeCount} deleted=${deleted.count} after=${afterCount}`);
+  console.log(`[payments] delete id=${paymentId} org=${req.auth!.organizationId} before=${beforeCount} deleted=${deleted.count} after=${afterCount}`);
 
   res.json({
     ok: true,
@@ -2919,7 +2920,10 @@ apiRouter.delete("/payments/:id", async (req, res) => {
       tasks: tasks.count,
     },
   });
-});
+}
+
+apiRouter.post("/payments/:id/delete", deleteSupplierPaymentHandler);
+apiRouter.delete("/payments/:id", deleteSupplierPaymentHandler);
 
 apiRouter.get("/tasks", async (req, res) => {
   const tasks = await prisma.task.findMany({
