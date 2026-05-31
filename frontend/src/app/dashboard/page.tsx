@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Nav } from "@/components/Nav";
 import {
   apiFetch,
@@ -642,7 +642,7 @@ export default function DashboardPage() {
   const gmailConnected = Boolean(gmailStatus?.connected);
   const scanRangeLabel = `${scanRangeDays} ימים`;
   const initialSetupComplete = gmailConnected && Boolean(activeScan?.status === "completed" || scanStatus?.last?.status === "success");
-  const actionRecommendations = useMemo(() => buildActionRecommendations({
+  const actionRecommendations = buildActionRecommendations({
     stats,
     gmailConnected,
     scanStatus,
@@ -659,24 +659,7 @@ export default function DashboardPage() {
     showTasks,
     showDocuments,
     businessActionRecommendations: businessProfile.actionRecommendations ?? [],
-  }), [
-    alerts,
-    gmailConnected,
-    initialSetupComplete,
-    missingInvoices,
-    payments,
-    recentInvoices,
-    recentTasks,
-    scanStatus,
-    showDocuments,
-    showInvoices,
-    showSupplier,
-    showTasks,
-    showWhatsApp,
-    stats,
-    whatsAppStats,
-    businessProfile.actionRecommendations,
-  ]);
+  });
   const startInitialSetup = () => {
     if (!gmailConnected) {
       connectGmail();
