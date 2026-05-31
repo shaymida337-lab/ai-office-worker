@@ -75,6 +75,33 @@ type WhatsAppAssistantStats = {
   activeChats: number;
 };
 
+type SystemComponentStatus = {
+  name: "gmail" | "drive" | "sheets" | "whatsapp" | "database";
+  label: string;
+  connected: boolean;
+  status: "PASS" | "FAIL";
+  reason: string | null;
+  details?: Record<string, unknown>;
+};
+
+type SystemHealth = {
+  checkedAt: string;
+  allPassed: boolean;
+  components: Record<SystemComponentStatus["name"], SystemComponentStatus>;
+};
+
+type WhatsAppScanResult = {
+  scanId: string;
+  status: "completed" | "error";
+  mode: string;
+  messagesFound: number;
+  messagesScanned: number;
+  paymentMessagesFound: number;
+  supplierPaymentsFound: number;
+  errorsCount: number;
+  errors: string[];
+};
+
 type ScanToast = {
   type: "info" | "success" | "error";
   text: string;
@@ -216,6 +243,9 @@ const emptyStats: DashboardStats = {
   paidPayments: 0,
   scansCompleted: 0,
   driveUploads: 0,
+  documentsInDrive: 0,
+  invoicesFromGmail: 0,
+  invoicesFromWhatsApp: 0,
   clients: 0,
   suspiciousPaymentsCount: 0,
   sheetsReconciliation: null,
@@ -246,6 +276,12 @@ export default function DashboardPage() {
   const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
   const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings | null>(null);
   const [whatsAppStats, setWhatsAppStats] = useState<WhatsAppAssistantStats | null>(null);
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [systemChecking, setSystemChecking] = useState(false);
+  const [showSystemCheck, setShowSystemCheck] = useState(false);
+  const [whatsAppScanRange, setWhatsAppScanRange] = useState("30");
+  const [whatsAppScanning, setWhatsAppScanning] = useState(false);
+  const [whatsAppScanResult, setWhatsAppScanResult] = useState<WhatsAppScanResult | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [firstScanRunning, setFirstScanRunning] = useState(false);
@@ -284,7 +320,7 @@ export default function DashboardPage() {
 
   const load = useCallback(async () => {
     try {
-      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult] = await Promise.allSettled([
+      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult, systemResult] = await Promise.allSettled([
         apiFetch<DashboardStats>("/api/stats"),
         apiFetch<{ text: string }>("/api/summary/daily"),
         apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
@@ -296,6 +332,7 @@ export default function DashboardPage() {
         apiFetch<Task[]>("/api/tasks"),
         apiFetch<AlertItem[]>("/api/alerts"),
         apiFetch<OrganizationSettings>("/api/organization/settings"),
+        apiFetch<SystemHealth>("/api/system/health", { timeoutMs: 30000 }),
       ]);
 
       if (statsResult.status === "fulfilled") {
@@ -349,6 +386,12 @@ export default function DashboardPage() {
           router.replace("/onboarding");
           return;
         }
+      }
+      if (systemResult.status === "fulfilled") {
+        setSystemHealth(systemResult.value);
+      } else {
+        console.error("[dashboard] /api/system/health failed", systemResult.reason);
+        setSystemHealth(null);
       }
 
       apiFetch<WhatsAppAssistantStats>("/api/whatsapp-assistant/stats")
@@ -583,6 +626,51 @@ export default function DashboardPage() {
     }
   }
 
+  async function runSystemCheck() {
+    setSystemChecking(true);
+    setShowSystemCheck(true);
+    setError("");
+    try {
+      const result = await apiFetch<SystemHealth>("/api/system/health/check", { method: "POST", timeoutMs: 45000 });
+      setSystemHealth(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "בדיקת מערכת נכשלה");
+    } finally {
+      setSystemChecking(false);
+    }
+  }
+
+  async function runWhatsAppScan() {
+    setWhatsAppScanning(true);
+    setWhatsAppScanResult(null);
+    setError("");
+    const fullScan = whatsAppScanRange === "full";
+    try {
+      const result = await apiFetch<WhatsAppScanResult>("/api/whatsapp/scan", {
+        method: "POST",
+        timeoutMs: 60000,
+        body: JSON.stringify({
+          fullScan,
+          daysBack: fullScan ? null : Number(whatsAppScanRange),
+        }),
+      });
+      setWhatsAppScanResult(result);
+      setScanToast({
+        type: result.status === "completed" ? "success" : "error",
+        text: result.status === "completed"
+          ? `סריקת וואטסאפ הסתיימה: ${result.messagesScanned} הודעות נסרקו`
+          : `סריקת וואטסאפ הסתיימה עם ${result.errorsCount} שגיאות`,
+      });
+      await load();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "סריקת וואטסאפ נכשלה";
+      setError(message);
+      setScanToast({ type: "error", text: message });
+    } finally {
+      setWhatsAppScanning(false);
+    }
+  }
+
   async function markPaymentPaid(paymentId: string) {
     setActionMessage("");
     try {
@@ -640,6 +728,8 @@ export default function DashboardPage() {
   const showWhatsApp = moduleIsEnabled(organizationSettings, "whatsapp");
   const showDocuments = moduleIsEnabled(organizationSettings, "documents");
   const gmailConnected = Boolean(gmailStatus?.connected);
+  const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
+  const setupComplete = gmailConnected && whatsAppConnected;
   const scanRangeLabel = `${scanRangeDays} ימים`;
   const initialSetupComplete = gmailConnected && Boolean(activeScan?.status === "completed" || scanStatus?.last?.status === "success");
   const actionRecommendations = buildActionRecommendations({
@@ -688,11 +778,41 @@ export default function DashboardPage() {
         </div>
         <div className="flex flex-wrap gap-3">
           <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק ג׳ימייל"}</button>
+          <button className="btn btn-secondary" onClick={runWhatsAppScan} disabled={whatsAppScanning || !whatsAppConnected}><MessageCircle className="h-4 w-4" />{whatsAppScanning ? "סורק וואטסאפ..." : "סרוק וואטסאפ"}</button>
           <button className="btn btn-secondary" onClick={scanAllClients} disabled={syncing}><RefreshCcw className="h-4 w-4" />סרוק לקוחות</button>
           <button className="btn btn-secondary" onClick={() => router.push("/dashboard/clients")}><Plus className="h-4 w-4" />הוסף לקוח</button>
           <button className="btn btn-secondary" onClick={() => router.push("/dashboard/business-settings")}>התאם את המערכת</button>
         </div>
       </div>
+
+      <SystemConnectionsPanel
+        health={systemHealth}
+        gmailConnected={gmailConnected}
+        whatsAppConnected={whatsAppConnected}
+        whatsAppScanning={whatsAppScanning}
+        whatsAppScanRange={whatsAppScanRange}
+        whatsAppScanResult={whatsAppScanResult}
+        onConnectGmail={connectGmail}
+        onConnectWhatsApp={() => router.push("/dashboard/whatsapp")}
+        onRunSystemCheck={runSystemCheck}
+        onRunWhatsAppScan={runWhatsAppScan}
+        onWhatsAppRangeChange={setWhatsAppScanRange}
+      />
+
+      {!setupComplete && (
+        <section className="mb-4 rounded-3xl border border-amber-400/30 bg-amber-400/10 p-4 shadow-card">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-sm font-bold text-amber-100">Complete setup before starting scans</div>
+              <p className="mt-1 text-sm text-ink-secondary">חבר Gmail ו-WhatsApp כדי להפעיל סריקות, דרייב, שיטס ודשבורד מלא.</p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              {!gmailConnected && <button type="button" className="btn" onClick={connectGmail}>Connect Gmail</button>}
+              {!whatsAppConnected && <button type="button" className="btn" onClick={() => router.push("/dashboard/whatsapp")}>Connect WhatsApp</button>}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="mb-4 rounded-2xl border border-[var(--border)] bg-surface-secondary p-4">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -808,7 +928,19 @@ export default function DashboardPage() {
         </section>
       )}
 
-      <ActionCenter recommendations={actionRecommendations} onNavigate={(href) => router.push(href)} />
+      {setupComplete ? (
+        <ActionCenter recommendations={actionRecommendations} onNavigate={(href) => router.push(href)} />
+      ) : (
+        <SetupLockedNotice onConnectGmail={connectGmail} onConnectWhatsApp={() => router.push("/dashboard/whatsapp")} />
+      )}
+
+      <section className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <MiniMetric label="Invoices from Gmail" value={stats.invoicesFromGmail ?? 0} />
+        <MiniMetric label="Invoices from WhatsApp" value={stats.invoicesFromWhatsApp ?? 0} />
+        <MiniMetric label="Documents in Drive" value={stats.documentsInDrive ?? stats.driveUploads} />
+        <MiniMetric label="Pending Supplier Payments" value={stats.unpaidPayments} />
+        <MiniMetric label="Missing Invoices" value={stats.missingInvoicesCount} />
+      </section>
 
       <section className="auto-grid mb-8">
         {kpis.map((kpi) => {
@@ -831,7 +963,7 @@ export default function DashboardPage() {
         })}
       </section>
 
-      {businessWidgets.length > 0 && (
+      {setupComplete && businessWidgets.length > 0 && (
         <section className="mb-8 grid gap-4 md:grid-cols-3">
           {businessWidgets.map((widget) => (
             <div key={widget.id} className="card">
@@ -858,7 +990,7 @@ export default function DashboardPage() {
         {showSupplier && <MiniMetric label="סכומים חשודים שסוננו" value={stats.suspiciousPaymentsCount} />}
       </section>
 
-      <section className="mb-8 grid gap-6 xl:grid-cols-2">
+      {setupComplete && <section className="mb-8 grid gap-6 xl:grid-cols-2">
         {showSupplier && <BusinessTable
           title="תשלומי ספקים"
           empty="אין תשלומי ספקים עדיין."
@@ -919,7 +1051,7 @@ export default function DashboardPage() {
             actions: <button className="btn btn-secondary px-3 py-1.5" onClick={runSync}>נסה סריקה מחדש</button>,
           }))}
         />
-      </section>
+      </section>}
 
       <section className="grid gap-6 xl:grid-cols-[1.25fr_.75fr]">
         {showCrm && <div className="card">
@@ -1000,6 +1132,14 @@ export default function DashboardPage() {
           <pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-7 text-ink-secondary">{summary}</pre>
         </div>
       </section>
+      {showSystemCheck && (
+        <SystemCheckModal
+          health={systemHealth}
+          checking={systemChecking}
+          onClose={() => setShowSystemCheck(false)}
+          onRunAgain={runSystemCheck}
+        />
+      )}
       {invoiceAttachPaymentId && (
         <div className="fixed inset-0 z-[130] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="attach-invoice-title" onClick={() => setInvoiceAttachPaymentId(null)}>
           <form className="card w-full max-w-lg" onSubmit={submitInvoiceAttachment} onClick={(event) => event.stopPropagation()}>
@@ -1018,6 +1158,167 @@ export default function DashboardPage() {
       )}
     </div>
   );
+}
+
+function SystemConnectionsPanel({
+  health,
+  gmailConnected,
+  whatsAppConnected,
+  whatsAppScanning,
+  whatsAppScanRange,
+  whatsAppScanResult,
+  onConnectGmail,
+  onConnectWhatsApp,
+  onRunSystemCheck,
+  onRunWhatsAppScan,
+  onWhatsAppRangeChange,
+}: {
+  health: SystemHealth | null;
+  gmailConnected: boolean;
+  whatsAppConnected: boolean;
+  whatsAppScanning: boolean;
+  whatsAppScanRange: string;
+  whatsAppScanResult: WhatsAppScanResult | null;
+  onConnectGmail: () => void;
+  onConnectWhatsApp: () => void;
+  onRunSystemCheck: () => void;
+  onRunWhatsAppScan: () => void;
+  onWhatsAppRangeChange: (value: string) => void;
+}) {
+  const components: SystemComponentStatus[] = [
+    health?.components.gmail ?? fallbackComponent("gmail", "Gmail", gmailConnected),
+    health?.components.drive ?? fallbackComponent("drive", "Google Drive", false),
+    health?.components.sheets ?? fallbackComponent("sheets", "Google Sheets", false),
+    health?.components.whatsapp ?? fallbackComponent("whatsapp", "WhatsApp", whatsAppConnected),
+    health?.components.database ?? fallbackComponent("database", "Database", false),
+  ];
+
+  return (
+    <section className="mb-4 rounded-3xl border border-[var(--border)] bg-surface-secondary p-4 shadow-card">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2>System Connections</h2>
+          <p className="text-sm">סטטוס חי של Gmail, Drive, Sheets, WhatsApp וה-Database.</p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button type="button" className="btn btn-secondary" onClick={onRunSystemCheck}>Run System Check</button>
+          {!gmailConnected && <button type="button" className="btn" onClick={onConnectGmail}>Connect Gmail</button>}
+          {whatsAppConnected ? (
+            <span className="badge badge-ok justify-center py-3">WhatsApp Connected</span>
+          ) : (
+            <button type="button" className="btn" onClick={onConnectWhatsApp}>Connect WhatsApp</button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {components.map((component) => (
+          <ConnectionStatusItem key={component.name} component={component} />
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-primary/60 p-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="font-semibold text-ink-primary">Scan WhatsApp</div>
+            <p className="text-sm">סרוק הודעות WhatsApp שנקלטו במערכת ועדכן סטטיסטיקות ותור בדיקה.</p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <select value={whatsAppScanRange} onChange={(event) => onWhatsAppRangeChange(event.target.value)} disabled={whatsAppScanning || !whatsAppConnected}>
+              <option value="7">Scan Last 7 Days</option>
+              <option value="30">Scan Last 30 Days</option>
+              <option value="90">Scan Last 90 Days</option>
+              <option value="full">Full Scan</option>
+            </select>
+            <button type="button" className="btn" onClick={onRunWhatsAppScan} disabled={whatsAppScanning || !whatsAppConnected}>
+              {whatsAppScanning ? "Scanning..." : "Scan WhatsApp"}
+            </button>
+          </div>
+        </div>
+        {whatsAppScanning && <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-hover"><div className="h-full w-2/3 animate-pulse rounded-full bg-accent-primary" /></div>}
+        {whatsAppScanResult && (
+          <p className="mt-3 text-sm text-ink-secondary">
+            WhatsApp scan: {whatsAppScanResult.messagesScanned} messages scanned · {whatsAppScanResult.supplierPaymentsFound} supplier payments · {whatsAppScanResult.errorsCount} errors
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ConnectionStatusItem({ component }: { component: SystemComponentStatus }) {
+  return (
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-primary/70 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-sm font-bold text-ink-primary">{component.label}</div>
+          <div className="mt-1 text-xs text-ink-secondary">{component.reason ?? "Live check passed"}</div>
+        </div>
+        <span className={`badge ${component.connected ? "badge-ok" : "badge-error"} shrink-0`}>
+          {component.connected ? "✅ Connected" : "❌ Not Connected"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SystemCheckModal({ health, checking, onClose, onRunAgain }: {
+  health: SystemHealth | null;
+  checking: boolean;
+  onClose: () => void;
+  onRunAgain: () => void;
+}) {
+  const components = health ? Object.values(health.components) : [];
+  return (
+    <div className="fixed inset-0 z-[140] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="system-check-title" onClick={onClose}>
+      <div className="card w-full max-w-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2 id="system-check-title">System Check</h2>
+            <p className="text-sm">בדיקה חיה מול ה-backend וכל האינטגרציות.</p>
+          </div>
+          <button type="button" className="btn btn-secondary px-3 py-1.5" onClick={onClose}>סגור</button>
+        </div>
+        {checking && <p className="text-sm text-ink-secondary">מריץ בדיקה...</p>}
+        <div className="space-y-2">
+          {components.map((component) => (
+            <div key={component.name} className="rounded-xl border border-[var(--border-subtle)] bg-surface-secondary p-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <strong>{component.label} ........ {component.status}</strong>
+                <span className={`badge ${component.connected ? "badge-ok" : "badge-error"}`}>{component.connected ? "PASS" : "FAIL"}</span>
+              </div>
+              {component.reason && <div className="mt-1 text-sm text-red-200">{component.reason}</div>}
+            </div>
+          ))}
+          {!checking && !components.length && <p className="text-sm text-ink-secondary">אין תוצאות עדיין.</p>}
+        </div>
+        <button type="button" className="btn mt-4" onClick={onRunAgain} disabled={checking}>Run Again</button>
+      </div>
+    </div>
+  );
+}
+
+function SetupLockedNotice({ onConnectGmail, onConnectWhatsApp }: { onConnectGmail: () => void; onConnectWhatsApp: () => void }) {
+  return (
+    <section className="mb-8 rounded-3xl border border-[var(--border)] bg-surface-secondary p-5 text-center shadow-card">
+      <h2>Advanced dashboard unlocks after setup</h2>
+      <p className="mx-auto mt-2 max-w-2xl text-sm">חבר Gmail ו-WhatsApp כדי לפתוח המלצות מתקדמות, טבלאות עבודה וסריקות עומק. המדדים והסטטוס הבסיסיים נשארים זמינים.</p>
+      <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
+        <button type="button" className="btn" onClick={onConnectGmail}>Connect Gmail</button>
+        <button type="button" className="btn btn-secondary" onClick={onConnectWhatsApp}>Connect WhatsApp</button>
+      </div>
+    </section>
+  );
+}
+
+function fallbackComponent(name: SystemComponentStatus["name"], label: string, connected: boolean): SystemComponentStatus {
+  return {
+    name,
+    label,
+    connected,
+    status: connected ? "PASS" : "FAIL",
+    reason: connected ? null : "Waiting for live backend status",
+  };
 }
 
 function relativeTime(date: Date) {

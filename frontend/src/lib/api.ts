@@ -95,6 +95,9 @@ export type DashboardStats = {
   paidPayments: number;
   scansCompleted: number;
   driveUploads: number;
+  documentsInDrive?: number;
+  invoicesFromGmail?: number;
+  invoicesFromWhatsApp?: number;
   clients: number;
   suspiciousPaymentsCount: number;
   sheetsReconciliation?: {

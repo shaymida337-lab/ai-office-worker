@@ -14,6 +14,8 @@ export async function getDashboardStats(organizationId: string) {
 
   const pendingInvoices = openPayments.filter((p) => p.paymentRequired).length;
   const missingInvoices = payments.filter((p) => p.missingInvoice && !p.duplicateDetected);
+  const invoicesFromGmail = payments.filter((p) => p.source === "gmail" || p.source === "both" || p.firstSource === "gmail" || p.lastSource === "gmail").length;
+  const invoicesFromWhatsApp = payments.filter((p) => p.source === "whatsapp" || p.source === "both" || p.firstSource === "whatsapp" || p.lastSource === "whatsapp").length;
 
   const now = new Date();
   const in7days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -85,6 +87,9 @@ export async function getDashboardStats(organizationId: string) {
     paidPayments: validPayments.filter((p) => p.paid).length,
     scansCompleted,
     driveUploads,
+    documentsInDrive: driveUploads,
+    invoicesFromGmail,
+    invoicesFromWhatsApp,
     clients,
     suspiciousPaymentsCount,
     hoursSavedThisWeek: Math.round((payments.length + customerInvoices.length + openTasks) * 0.25),

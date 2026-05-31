@@ -2574,6 +2574,142 @@ apiRouter.get("/whatsapp-assistant/stats", async (req, res) => {
   res.json(await getWhatsAppAssistantStats(req.auth!.organizationId));
 });
 
+apiRouter.get("/system/health", async (req, res) => {
+  const { getSystemHealth } = await import("../services/systemHealth.js");
+  res.json(await getSystemHealth(req.auth!.organizationId));
+});
+
+apiRouter.post("/system/health/check", async (req, res) => {
+  const { getSystemHealth } = await import("../services/systemHealth.js");
+  res.json(await getSystemHealth(req.auth!.organizationId));
+});
+
+apiRouter.post("/whatsapp/scan", async (req, res) => {
+  const organizationId = req.auth!.organizationId;
+  const body = req.body as { daysBack?: number | null; fullScan?: boolean };
+  const fullScan = Boolean(body.fullScan);
+  const requestedDaysBack = Number(body.daysBack ?? 30);
+  const daysBack = Number.isFinite(requestedDaysBack) ? Math.max(1, requestedDaysBack) : 30;
+  const since = !fullScan
+    ? new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000)
+    : null;
+  const scanMode = fullScan ? "full" : `last_${daysBack}_days`;
+
+  const log = await prisma.syncLog.create({
+    data: {
+      organizationId,
+      type: "whatsapp",
+      status: "running",
+      scanMode,
+      startedAt: new Date(),
+    },
+  });
+
+  try {
+    const where = {
+      organizationId,
+      direction: "inbound",
+      ...(since ? { createdAt: { gte: since } } : {}),
+    };
+    const messages = await prisma.whatsAppLog.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: fullScan ? 1000 : 500,
+      select: {
+        id: true,
+        clientId: true,
+        body: true,
+        fromNumber: true,
+        createdAt: true,
+      },
+    });
+
+    const { analyzeAndSaveMessage } = await import("../services/messageScanner.js");
+    let scanned = 0;
+    let errorsCount = 0;
+    const errors: string[] = [];
+
+    for (const message of messages) {
+      try {
+        await analyzeAndSaveMessage({
+          organizationId,
+          channel: "whatsapp",
+          externalId: message.id,
+          whatsappLogId: message.id,
+          senderPhone: message.fromNumber ?? undefined,
+          bodyText: message.body,
+          occurredAt: message.createdAt,
+          createLead: false,
+        });
+        scanned += 1;
+      } catch (err) {
+        errorsCount += 1;
+        if (errors.length < 5) errors.push(err instanceof Error ? err.message : String(err));
+      }
+    }
+
+    const [invoiceMessages, paymentsFromWhatsApp] = await Promise.all([
+      prisma.messageScan.count({
+        where: {
+          organizationId,
+          channel: "whatsapp",
+          intent: "payment",
+          ...(since ? { occurredAt: { gte: since } } : {}),
+        },
+      }),
+      prisma.supplierPayment.count({
+        where: {
+          organizationId,
+          OR: [
+            { source: "whatsapp" },
+            { source: "both" },
+            { firstSource: "whatsapp" },
+            { lastSource: "whatsapp" },
+          ],
+          ...(since ? { createdAt: { gte: since } } : {}),
+        },
+      }),
+    ]);
+
+    await prisma.syncLog.update({
+      where: { id: log.id },
+      data: {
+        status: errorsCount ? "error" : "success",
+        emailsProcessed: messages.length,
+        emailsSaved: scanned,
+        invoicesFound: invoiceMessages,
+        paymentsCreated: paymentsFromWhatsApp,
+        errorsCount,
+        errorMessage: errors.length ? errors.join(" | ") : null,
+        finishedAt: new Date(),
+      },
+    });
+
+    res.json({
+      scanId: log.id,
+      status: errorsCount ? "error" : "completed",
+      mode: scanMode,
+      messagesFound: messages.length,
+      messagesScanned: scanned,
+      paymentMessagesFound: invoiceMessages,
+      supplierPaymentsFound: paymentsFromWhatsApp,
+      errorsCount,
+      errors,
+    });
+  } catch (err) {
+    await prisma.syncLog.update({
+      where: { id: log.id },
+      data: {
+        status: "error",
+        errorsCount: 1,
+        errorMessage: err instanceof Error ? err.message : String(err),
+        finishedAt: new Date(),
+      },
+    });
+    res.status(500).json({ error: err instanceof Error ? err.message : "WhatsApp scan failed" });
+  }
+});
+
 apiRouter.post("/whatsapp-assistant/test/:type", async (req, res) => {
   const type = req.params.type === "number" ? "number" : "morning";
   const { sendAssistantTest } = await import("../services/whatsappAssistant.js");
