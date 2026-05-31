@@ -18,6 +18,16 @@ function configured(name: string): boolean {
   return Boolean(process.env[name]?.trim());
 }
 
+export function missingTwilioEnvVars(): string[] {
+  const missing: string[] = [];
+  if (!configured("TWILIO_ACCOUNT_SID")) missing.push("TWILIO_ACCOUNT_SID");
+  if (!configured("TWILIO_AUTH_TOKEN")) missing.push("TWILIO_AUTH_TOKEN");
+  if (!configured("TWILIO_WHATSAPP_NUMBER") && !configured("TWILIO_WHATSAPP_FROM")) {
+    missing.push("TWILIO_WHATSAPP_NUMBER");
+  }
+  return missing;
+}
+
 function toGmailIntegrationRedirectUri(uri: string): string {
   return uri.replace(/\/(?:api\/)?auth\/google\/callback$/, "/api/integrations/gmail/callback");
 }
@@ -78,6 +88,13 @@ export const config = {
   anthropic: {
     apiKey: optional("ANTHROPIC_API_KEY"),
     model: optional("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
+  },
+
+  aiVoice: {
+    provider: optional("AI_VOICE_PROVIDER", optional("OPENAI_API_KEY") ? "openai" : "browser"),
+    openAiApiKey: optional("OPENAI_API_KEY"),
+    openAiModel: optional("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
+    openAiVoice: optional("OPENAI_TTS_VOICE", "nova"),
   },
 
   twilio: {
@@ -159,10 +176,16 @@ export function validateStartupEnv() {
     optionalWarnings.push(`Google OAuth is partially configured. Missing: ${googleKeys.filter((name) => !configured(name)).join(", ")}`);
   }
 
-  const twilioKeys = ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_WHATSAPP_NUMBER"];
-  const configuredTwilio = twilioKeys.filter(configured);
-  if (configuredTwilio.length > 0 && configuredTwilio.length < twilioKeys.length) {
-    optionalWarnings.push(`Twilio WhatsApp is partially configured. Missing: ${twilioKeys.filter((name) => !configured(name)).join(", ")}`);
+  const missingTwilio = missingTwilioEnvVars();
+  const anyTwilioConfigured = [
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_AUTH_TOKEN",
+    "TWILIO_WHATSAPP_NUMBER",
+    "TWILIO_WHATSAPP_FROM",
+    "TWILIO_WEBHOOK_URL",
+  ].some(configured);
+  if (anyTwilioConfigured && missingTwilio.length) {
+    optionalWarnings.push(`WhatsApp configuration missing: ${missingTwilio.join(", ")}`);
   }
 
   for (const warning of optionalWarnings) {
@@ -179,9 +202,5 @@ export function hasClaude(): boolean {
 }
 
 export function hasTwilio(): boolean {
-  return Boolean(
-    config.twilio.accountSid &&
-      config.twilio.authToken &&
-      config.twilio.whatsappFrom
-  );
+  return missingTwilioEnvVars().length === 0;
 }

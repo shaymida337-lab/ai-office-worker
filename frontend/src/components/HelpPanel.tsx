@@ -32,7 +32,11 @@ export function HelpPanel({
         <div className="page-help-body">
           <section className="page-help-section">
             <h3>הסבר קצר</h3>
-            <p>{content.description}</p>
+            <p>{content.quickExplanation}</p>
+            <h3>הסבר למתחילים</h3>
+            <p>{content.beginnerExplanation}</p>
+            <h3>הסבר מתקדם</h3>
+            <p>{content.advancedExplanation}</p>
             <h3>מה עושים כאן?</h3>
             <p>{content.usedFor}</p>
           </section>
@@ -66,7 +70,11 @@ export function HelpPanel({
             <ul>{content.troubleshooting.map((item) => <li key={item}>{item}</li>)}</ul>
           </section>
 
-          <VideoHelpBlock videoUrl={content.videoUrl} />
+          <VideoHelpBlock
+            pageKey={content.pageKey}
+            videoUrl={content.video?.url ?? content.videoUrl}
+            videoTitle={content.video?.title ?? `סרטון הדרכה - ${content.title}`}
+          />
 
           <section className="page-help-section">
             <h3>הסבר קולי</h3>
@@ -76,7 +84,7 @@ export function HelpPanel({
           <section className="page-help-section">
             <h3>הדרכה מודרכת</h3>
             <p>המערכת תסמן לך על המסך איפה ללחוץ ומה לבדוק.</p>
-            <button type="button" className="btn" onClick={onStartWalkthrough}>התחל הדרכה</button>
+            <button type="button" className="btn" onClick={onStartWalkthrough}>הדרכה מלאה</button>
           </section>
 
           <section className="page-help-section">

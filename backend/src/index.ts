@@ -150,6 +150,9 @@ async function start() {
       import("./services/googleStartupValidation.js")
         .then(({ validateGoogleIntegrationsAtStartup }) => validateGoogleIntegrationsAtStartup())
         .catch((err) => console.error("[startup/google] validation crashed", formatStartupError(err)));
+      import("./services/whatsappStartupValidation.js")
+        .then(({ validateWhatsAppAtStartup }) => validateWhatsAppAtStartup())
+        .catch((err) => console.error("[startup/whatsapp] validation crashed", formatStartupError(err)));
       try {
         scheduler.startAllJobs();
       } catch (err) {

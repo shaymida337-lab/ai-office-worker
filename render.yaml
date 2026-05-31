@@ -35,6 +35,14 @@ services:
         sync: false
       - key: ANTHROPIC_MODEL
         value: claude-haiku-4-5-20251001
+      - key: AI_VOICE_PROVIDER
+        value: openai
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_TTS_MODEL
+        value: gpt-4o-mini-tts
+      - key: OPENAI_TTS_VOICE
+        value: nova
       - key: CRON_SECRET
         generateValue: true
       - key: TWILIO_ACCOUNT_SID

@@ -37,6 +37,7 @@ export function HelpCenter() {
         }}
       />
       <WalkthroughOverlay
+        pageKey={content.pageKey}
         steps={content.walkthroughSteps}
         open={walkthroughOpen}
         onClose={() => setWalkthroughOpen(false)}

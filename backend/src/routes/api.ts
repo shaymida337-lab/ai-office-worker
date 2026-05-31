@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import multer from "multer";
 import { authMiddleware } from "../lib/auth.js";
+import { config } from "../lib/config.js";
 import { errorDetails } from "../lib/errors.js";
 import { databaseHost, prisma } from "../lib/prisma.js";
 import { getDashboardStats, getMissingInvoicesReport } from "../services/dashboard.js";
@@ -2525,6 +2526,116 @@ apiRouter.get("/summary/daily", async (req, res) => {
   res.json({ text });
 });
 
+apiRouter.get("/help/progress", async (req, res) => {
+  const pageKey = typeof req.query.pageKey === "string" ? req.query.pageKey : null;
+  const rows = await prisma.$queryRawUnsafe<Array<{
+    pageKey: string;
+    itemType: string;
+    itemKey: string;
+    progress: number;
+    completed: boolean;
+    metadata: unknown;
+    updatedAt: Date;
+  }>>(
+    `SELECT "pageKey", "itemType", "itemKey", "progress", "completed", "metadata", "updatedAt"
+     FROM "HelpProgress"
+     WHERE "userId" = $1 AND "organizationId" = $2 ${pageKey ? 'AND "pageKey" = $3' : ""}
+     ORDER BY "updatedAt" DESC`,
+    ...(pageKey ? [req.auth!.userId, req.auth!.organizationId, pageKey] : [req.auth!.userId, req.auth!.organizationId])
+  );
+  res.json({
+    items: rows.map((row) => ({
+      ...row,
+      updatedAt: row.updatedAt.toISOString(),
+    })),
+  });
+});
+
+apiRouter.post("/help/progress", async (req, res) => {
+  const body = req.body as {
+    pageKey?: string;
+    itemType?: string;
+    itemKey?: string;
+    progress?: number;
+    completed?: boolean;
+    metadata?: Record<string, unknown>;
+  };
+  const pageKey = body.pageKey?.trim();
+  const itemType = body.itemType?.trim();
+  const itemKey = body.itemKey?.trim() || "main";
+  if (!pageKey || !itemType) {
+    res.status(400).json({ error: "pageKey and itemType are required" });
+    return;
+  }
+  const progress = Math.max(0, Math.min(100, Number(body.progress ?? 0)));
+  const completed = Boolean(body.completed || progress >= 95);
+  const metadata = JSON.stringify(body.metadata ?? {});
+  const [row] = await prisma.$queryRawUnsafe<Array<{ id: string; updatedAt: Date }>>(
+    `INSERT INTO "HelpProgress"
+      ("id","userId","organizationId","pageKey","itemType","itemKey","progress","completed","metadata","createdAt","updatedAt")
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+     ON CONFLICT ("userId","pageKey","itemType","itemKey")
+     DO UPDATE SET "progress" = EXCLUDED."progress",
+       "completed" = EXCLUDED."completed",
+       "metadata" = EXCLUDED."metadata",
+       "updatedAt" = CURRENT_TIMESTAMP
+     RETURNING "id", "updatedAt"`,
+    `help_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    req.auth!.userId,
+    req.auth!.organizationId,
+    pageKey,
+    itemType,
+    itemKey,
+    progress,
+    completed,
+    metadata
+  );
+  res.json({ ok: true, id: row?.id, completed, progress, updatedAt: row?.updatedAt.toISOString() });
+});
+
+apiRouter.post("/help/voice", async (req, res) => {
+  const body = req.body as { text?: string; speed?: "slow" | "normal" | "fast" };
+  const input = body.text?.trim();
+  if (!input) {
+    res.status(400).json({ error: "Voice text is required" });
+    return;
+  }
+  if (config.aiVoice.provider !== "openai" || !config.aiVoice.openAiApiKey) {
+    res.status(503).json({
+      error: "AI voice is not configured",
+      requiredEnv: ["OPENAI_API_KEY"],
+      fallback: "browser_speech",
+    });
+    return;
+  }
+
+  const speed = body.speed === "slow" ? 0.82 : body.speed === "fast" ? 1.12 : 0.95;
+  const response = await fetch("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.aiVoice.openAiApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.aiVoice.openAiModel,
+      voice: config.aiVoice.openAiVoice,
+      input: input.slice(0, 3500),
+      speed,
+      instructions: "Speak Hebrew naturally, clearly and warmly, like a professional onboarding assistant. Use a calm pace and clear pronunciation.",
+      response_format: "mp3",
+    }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => response.statusText);
+    res.status(502).json({ error: `AI voice generation failed: ${errorText}` });
+    return;
+  }
+  const audio = Buffer.from(await response.arrayBuffer());
+  res.setHeader("Content-Type", "audio/mpeg");
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.send(audio);
+});
+
 async function sendWhatsAppStatus(req: Request, res: Response) {
   res.json(await getWhatsAppSettings(req.auth!.organizationId));
 }
@@ -2553,8 +2664,10 @@ async function sendWhatsAppTest(req: Request, res: Response) {
 }
 
 apiRouter.get("/integrations/whatsapp/status", sendWhatsAppStatus);
+apiRouter.get("/integrations/whatsapp/health", sendWhatsAppStatus);
 apiRouter.put("/integrations/whatsapp/settings", saveWhatsAppNumber);
 apiRouter.get("/whatsapp/status", sendWhatsAppStatus);
+apiRouter.get("/whatsapp/health", sendWhatsAppStatus);
 apiRouter.post("/settings/whatsapp", saveWhatsAppNumber);
 apiRouter.post("/whatsapp/test", sendWhatsAppTest);
 apiRouter.post("/integrations/whatsapp/test", sendWhatsAppTest);
@@ -2620,12 +2733,20 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
         clientId: true,
         body: true,
         fromNumber: true,
+        mediaCount: true,
+        mediaJson: true,
         createdAt: true,
       },
     });
 
     const { analyzeAndSaveMessage } = await import("../services/messageScanner.js");
+    const { ingestWhatsAppInvoiceMedia } = await import("../services/whatsappInvoiceIngestion.js");
     let scanned = 0;
+    let mediaMessagesFound = 0;
+    let mediaItemsFound = 0;
+    let mediaItemsProcessed = 0;
+    let driveFilesCreated = 0;
+    let supplierPaymentsCreatedOrUpdated = 0;
     let errorsCount = 0;
     const errors: string[] = [];
 
@@ -2642,6 +2763,22 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
           createLead: false,
         });
         scanned += 1;
+        const media = normalizeStoredWhatsAppMedia(message.mediaJson);
+        if (message.mediaCount > 0 || media.length > 0) {
+          mediaMessagesFound += 1;
+          mediaItemsFound += media.length;
+          const mediaResult = await ingestWhatsAppInvoiceMedia({
+            organizationId,
+            clientId: message.clientId,
+            whatsappLogId: message.id,
+            fromNumber: message.fromNumber ?? "",
+            body: message.body,
+            media,
+          });
+          mediaItemsProcessed += mediaResult.processed.length;
+          driveFilesCreated += mediaResult.processed.filter((item) => item.driveLink).length;
+          supplierPaymentsCreatedOrUpdated += mediaResult.processed.filter((item) => item.paymentId).length;
+        }
       } catch (err) {
         errorsCount += 1;
         if (errors.length < 5) errors.push(err instanceof Error ? err.message : String(err));
@@ -2679,6 +2816,7 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
         emailsSaved: scanned,
         invoicesFound: invoiceMessages,
         paymentsCreated: paymentsFromWhatsApp,
+        driveUploaded: driveFilesCreated,
         errorsCount,
         errorMessage: errors.length ? errors.join(" | ") : null,
         finishedAt: new Date(),
@@ -2691,6 +2829,11 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
       mode: scanMode,
       messagesFound: messages.length,
       messagesScanned: scanned,
+      mediaMessagesFound,
+      mediaItemsFound,
+      mediaItemsProcessed,
+      driveFilesCreated,
+      supplierPaymentsCreatedOrUpdated,
       paymentMessagesFound: invoiceMessages,
       supplierPaymentsFound: paymentsFromWhatsApp,
       errorsCount,
@@ -2709,6 +2852,20 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
     res.status(500).json({ error: err instanceof Error ? err.message : "WhatsApp scan failed" });
   }
 });
+
+function normalizeStoredWhatsAppMedia(value: unknown): Array<{ url: string; contentType: string; filename?: string | null }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const media = item as { url?: unknown; contentType?: unknown; filename?: unknown };
+    if (typeof media.url !== "string" || !media.url) return [];
+    return [{
+      url: media.url,
+      contentType: typeof media.contentType === "string" ? media.contentType : "",
+      filename: typeof media.filename === "string" ? media.filename : null,
+    }];
+  });
+}
 
 apiRouter.post("/whatsapp-assistant/test/:type", async (req, res) => {
   const type = req.params.type === "number" ? "number" : "morning";

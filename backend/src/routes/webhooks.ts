@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import {
   findClientByWhatsAppNumber,
   findOrCreateClientByWhatsAppNumber,
+  getWhatsAppConfigurationStatus,
   normalizeWhatsAppNumber,
 } from "../services/whatsapp.js";
 import { handleClientMessage, handleOwnerMessage } from "../services/whatsappChatEngine.js";
@@ -12,6 +13,21 @@ import { analyzeAndSaveMessage } from "../services/messageScanner.js";
 import { ingestWhatsAppInvoiceMedia, parseTwilioMedia } from "../services/whatsappInvoiceIngestion.js";
 
 export const webhooksRouter = Router();
+
+function whatsappWebhookHealth(_req: Request, res: Response) {
+  const configuration = getWhatsAppConfigurationStatus();
+  res.status(configuration.configured ? 200 : 503).json({
+    provider: configuration.provider,
+    configured: configuration.configured,
+    missingVariables: configuration.missingVariables,
+    webhookUrl: configuration.webhookUrl,
+    webhookUrls: configuration.webhookUrls,
+    inboundMethod: "POST",
+    message: configuration.configured
+      ? "WhatsApp webhook endpoint is registered"
+      : `WhatsApp configuration missing: ${configuration.missingVariables.join(", ")}`,
+  });
+}
 
 async function handleTwilioWhatsApp(req: Request, res: Response) {
   const signature = req.header("X-Twilio-Signature") ?? "";
@@ -43,6 +59,9 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
         body,
         fromNumber: normalizedFrom,
         toNumber: config.twilio.whatsappFrom,
+        providerMessageSid: messageSid,
+        mediaCount: media.length,
+        mediaJson: media,
       },
     });
     await scanWhatsAppMessage(assistant.organizationId, inboundLog.id, normalizedFrom, body, false);
@@ -85,6 +104,9 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
         body,
         fromNumber: normalizedFrom,
         toNumber: config.twilio.whatsappFrom,
+        providerMessageSid: messageSid,
+        mediaCount: media.length,
+        mediaJson: media,
       },
     });
     await scanWhatsAppMessage(client.organizationId, inboundLog.id, normalizedFrom, body, false);
@@ -127,6 +149,9 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
         body,
         fromNumber: normalizedFrom,
         toNumber: config.twilio.whatsappFrom,
+        providerMessageSid: messageSid,
+        mediaCount: media.length,
+        mediaJson: media,
       },
     });
     await scanWhatsAppMessage(organization.id, inboundLog.id, normalizedFrom, body, true);
@@ -225,3 +250,5 @@ async function scanWhatsAppMessage(organizationId: string, logId: string, phone:
 
 webhooksRouter.post("/twilio/whatsapp", handleTwilioWhatsApp);
 webhooksRouter.post("/whatsapp", handleTwilioWhatsApp);
+webhooksRouter.get("/twilio/whatsapp", whatsappWebhookHealth);
+webhooksRouter.get("/whatsapp", whatsappWebhookHealth);

@@ -7,12 +7,22 @@ export type PageWalkthroughStep = {
   title: string;
   text: string;
   selector: string;
+  requiredAction?: boolean;
+  actionText?: string;
+};
+
+export type PageHelpVideo = {
+  url: string;
+  title?: string;
 };
 
 export type PageHelpContent = {
   pageKey: string;
   paths: string[];
   title: string;
+  quickExplanation: string;
+  beginnerExplanation: string;
+  advancedExplanation: string;
   description: string;
   usedFor: string;
   steps: string[];
@@ -20,6 +30,7 @@ export type PageHelpContent = {
   commonMistakes: string[];
   troubleshooting: string[];
   videoUrl?: string | null;
+  video?: PageHelpVideo | null;
   voiceText: string;
   walkthroughSteps: PageWalkthroughStep[];
   supportNote: string;
@@ -27,7 +38,10 @@ export type PageHelpContent = {
 
 const defaultSupportNote = "אם משהו לא ברור, לחץ על בדוק מערכת או פנה לתמיכה. תמיד אפשר לנסות שוב בלי לפגוע בנתונים.";
 
-export const pageHelpContent: PageHelpContent[] = [
+const rawPageHelpContent: Array<
+  Omit<PageHelpContent, "quickExplanation" | "beginnerExplanation" | "advancedExplanation"> &
+  Partial<Pick<PageHelpContent, "quickExplanation" | "beginnerExplanation" | "advancedExplanation">>
+> = [
   {
     pageKey: "dashboard",
     paths: ["/dashboard"],
@@ -63,9 +77,13 @@ export const pageHelpContent: PageHelpContent[] = [
     voiceText: "זהו לוח הבקרה. כאן בודקים שהמערכת מחוברת, מריצים סריקות Gmail ו-WhatsApp, ורואים חשבוניות ותשלומים פתוחים. התחל מחיבור Gmail ו-WhatsApp, ואז הרץ סריקה.",
     walkthroughSteps: [
       { title: "מצב חיבורים", text: "פה רואים אם המערכת מחוברת ל-Gmail, Drive, Sheets, WhatsApp והמסד.", selector: "[data-help='system-connections']" },
-      { title: "סריקת Gmail", text: "פה לוחצים כדי לחפש חשבוניות חדשות במייל.", selector: "[data-help='scan-gmail']" },
-      { title: "סריקת WhatsApp", text: "פה לוחצים כדי לסרוק הודעות ומסמכים מ-WhatsApp.", selector: "[data-help='scan-whatsapp']" },
-      { title: "מדדים", text: "פה רואים כמה חשבוניות, מסמכים ותשלומים פתוחים יש במערכת.", selector: "[data-help='integration-metrics']" },
+      { title: "חיבור Gmail", text: "מצא את כפתור חיבור Gmail. אם Gmail כבר מחובר, עבור לשלב הבא.", selector: "[data-help='connect-gmail'], [data-help='system-connections']", requiredAction: true, actionText: "לחץ על אזור חיבור Gmail או ודא שהוא מחובר." },
+      { title: "חיבור WhatsApp", text: "מצא את כפתור חיבור WhatsApp. אם WhatsApp כבר מחובר, עבור לשלב הבא.", selector: "[data-help='connect-whatsapp'], [data-help='system-connections']", requiredAction: true, actionText: "לחץ על אזור חיבור WhatsApp או ודא שהוא מחובר." },
+      { title: "סריקת Gmail", text: "פה לוחצים כדי לחפש חשבוניות חדשות במייל.", selector: "[data-help='scan-gmail']", requiredAction: true, actionText: "לחץ על סריקת Gmail או סמן שבדקת את הכפתור." },
+      { title: "סריקת WhatsApp", text: "פה לוחצים כדי לסרוק הודעות ומסמכים מ-WhatsApp.", selector: "[data-help='scan-whatsapp']", requiredAction: true, actionText: "לחץ על סריקת WhatsApp או סמן שבדקת את הכפתור." },
+      { title: "בדיקת חשבוניות", text: "אחרי סריקה בודקים חשבוניות ותשלומים פתוחים.", selector: "[data-help='integration-metrics']" },
+      { title: "פתיחת Google Sheets", text: "אם יש קישור לטבלה, פתח אותו כדי לוודא שהנתונים נכתבו.", selector: "[data-help='sheets-reconciliation'], [data-help='integration-metrics']" },
+      { title: "סיום onboarding", text: "סיימת את ההדרכה. עכשיו אפשר לעבוד לבד עם המערכת.", selector: "main, .container" },
     ],
     supportNote: defaultSupportNote,
   },
@@ -245,10 +263,25 @@ export const pageHelpContent: PageHelpContent[] = [
   },
 ];
 
+function enrichHelpContent(page: (typeof rawPageHelpContent)[number]): PageHelpContent {
+  return {
+    ...page,
+    quickExplanation: page.quickExplanation ?? page.description,
+    beginnerExplanation: page.beginnerExplanation ?? `${page.description} ${page.usedFor} התחל לפי השלבים הראשונים, בלי לשנות נתונים לפני שבדקת שהחיבורים עובדים.`,
+    advancedExplanation: page.advancedExplanation ?? `בדף ${page.title} אפשר לבדוק נתונים, מקורות, סטטוסים וקישורים למסמכים. אם משהו לא מסתדר, בדוק את החיבורים ואת הודעות השגיאה לפני פעולה חוזרת.`,
+    video: page.video ?? (page.videoUrl ? { url: page.videoUrl, title: `סרטון הדרכה - ${page.title}` } : null),
+  };
+}
+
+export const pageHelpContent: PageHelpContent[] = rawPageHelpContent.map(enrichHelpContent);
+
 export const fallbackHelpContent: PageHelpContent = {
   pageKey: "general",
   paths: ["*"],
   title: "עזרה כללית",
+  quickExplanation: "קרא את ההסבר הקצר ובדוק מה הפעולה הראשית בדף.",
+  beginnerExplanation: "אם זו הפעם הראשונה שלך, התחל מחיבור Gmail ו-WhatsApp בלוח הבקרה. אחר כך הרץ סריקה ובדוק את התוצאות.",
+  advancedExplanation: "משתמשים מנוסים יכולים לבדוק חיבורים, מקורות נתונים, קישורי Drive וסטטוסי Sheets לפני טיפול ידני.",
   description: "כאן תקבל הסבר קצר על הדף הנוכחי ומה כדאי לעשות.",
   usedFor: "המערכת עוזרת לאסוף חשבוניות, משימות והודעות ממייל, WhatsApp, Drive ו-Sheets.",
   steps: ["קרא את הכותרת בדף.", "בדוק אם יש כפתור פעולה ראשי.", "אם יש חיבור חסר, חבר אותו קודם.", "אם יש שגיאה, לחץ על עזרה או בדוק מערכת."],

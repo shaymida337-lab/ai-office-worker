@@ -1,8 +1,15 @@
-import { config, hasTwilio } from "../lib/config.js";
+import { config, hasTwilio, missingTwilioEnvVars } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { getDashboardStats } from "./dashboard.js";
 
 type WhatsAppMetadata = { ownerWhatsApp?: string };
+type TwilioAccountClient = TwilioMessageClient & {
+  api: {
+    accounts(sid: string): {
+      fetch(): Promise<{ sid?: string; status?: string; friendlyName?: string }>;
+    };
+  };
+};
 type TwilioMessageClient = {
   messages: {
     create(args: { from: string | undefined; to: string; body: string }): Promise<{ sid: string }>;
@@ -47,21 +54,81 @@ async function sendTwilioMessageWithRetry(
   throw lastError;
 }
 
+export function getWhatsAppProvider() {
+  return "twilio_whatsapp" as const;
+}
+
+export function getWhatsAppConfigurationStatus() {
+  const missingVariables = missingTwilioEnvVars();
+  return {
+    provider: getWhatsAppProvider(),
+    configured: missingVariables.length === 0,
+    missingVariables,
+    requiredVariables: [
+      "TWILIO_ACCOUNT_SID",
+      "TWILIO_AUTH_TOKEN",
+      "TWILIO_WHATSAPP_NUMBER",
+    ],
+    optionalVariables: [
+      "TWILIO_WEBHOOK_URL",
+      "OWNER_WHATSAPP",
+    ],
+    from: config.twilio.whatsappFrom,
+    webhookUrl: config.twilio.webhookUrl,
+    webhookUrls: [
+      config.twilio.webhookUrl,
+      config.twilio.webhookUrl.replace("/webhook/", "/api/webhook/"),
+      `${config.twilio.webhookUrl.replace(/\/(?:api\/)?webhook\/whatsapp$/, "")}/webhook/twilio/whatsapp`,
+      `${config.twilio.webhookUrl.replace(/\/(?:api\/)?webhook\/whatsapp$/, "")}/api/webhook/twilio/whatsapp`,
+    ],
+  };
+}
+
 async function getTwilioClient() {
   if (!hasTwilio()) return null;
   const twilio = (await import("twilio")).default;
-  return twilio(config.twilio.accountSid, config.twilio.authToken);
+  return twilio(config.twilio.accountSid, config.twilio.authToken) as TwilioAccountClient;
 }
 
-async function checkTwilioConnection() {
+export async function checkTwilioConnection() {
+  const configuration = getWhatsAppConfigurationStatus();
+  if (!configuration.configured) {
+    return {
+      connected: false,
+      reason: "WhatsApp configuration missing",
+      missingVariables: configuration.missingVariables,
+      account: null,
+    };
+  }
   const client = await getTwilioClient();
-  if (!client) return false;
+  if (!client) {
+    return {
+      connected: false,
+      reason: "WhatsApp configuration missing",
+      missingVariables: configuration.missingVariables,
+      account: null,
+    };
+  }
   try {
-    await client.api.accounts(config.twilio.accountSid).fetch();
-    return true;
+    const account = await client.api.accounts(config.twilio.accountSid).fetch();
+    return {
+      connected: true,
+      reason: null,
+      missingVariables: [],
+      account: {
+        sid: account.sid ?? config.twilio.accountSid,
+        status: account.status ?? null,
+        friendlyName: account.friendlyName ?? null,
+      },
+    };
   } catch (err) {
     console.error("[twilio] connection check failed", err instanceof Error ? err.message : String(err));
-    return false;
+    return {
+      connected: false,
+      reason: err instanceof Error ? err.message : String(err),
+      missingVariables: [],
+      account: null,
+    };
   }
 }
 
@@ -91,12 +158,19 @@ export async function getWhatsAppSettings(organizationId: string) {
   const metadata = parseMetadata(integration?.metadata ?? null);
   const ownerWhatsApp = metadata.ownerWhatsApp || config.twilio.ownerWhatsApp;
 
+  const configuration = getWhatsAppConfigurationStatus();
+  const connection = await checkTwilioConnection();
   return {
-    configured: hasTwilio(),
-    connected: await checkTwilioConnection(),
+    provider: configuration.provider,
+    configured: configuration.configured,
+    connected: connection.connected,
+    reason: connection.reason,
+    missingVariables: connection.missingVariables,
+    account: connection.account,
     ownerWhatsApp: ownerWhatsApp || "",
-    from: config.twilio.whatsappFrom,
-    webhookUrl: config.twilio.webhookUrl,
+    from: configuration.from,
+    webhookUrl: configuration.webhookUrl,
+    webhookUrls: configuration.webhookUrls,
     connectedAt: integration?.connectedAt ?? null,
   };
 }

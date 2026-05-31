@@ -739,11 +739,39 @@ mark {
   text-align: center;
 }
 
-.page-help-video iframe {
+.page-help-video iframe,
+.page-help-video video {
   width: 100%;
   aspect-ratio: 16 / 9;
   border: 0;
   border-radius: 16px;
+}
+
+.page-help-video video {
+  background: #000;
+}
+
+.help-video-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  color: #cbd5e1;
+  font-size: 0.95rem;
+}
+
+.help-video-controls label,
+.voice-speed {
+  width: auto;
+  min-width: 130px;
+  color: #cbd5e1;
+}
+
+.help-video-controls select,
+.voice-speed select {
+  min-height: 40px;
+  padding: 0.45rem 0.7rem;
 }
 
 .voice-guide {
@@ -751,6 +779,10 @@ mark {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
+}
+
+.voice-guide audio {
+  width: 100%;
 }
 
 .help-tooltip {
@@ -827,6 +859,43 @@ mark {
 
 .walkthrough-card p {
   color: #cbd5e1;
+}
+
+.walkthrough-step-required,
+.walkthrough-step-done {
+  margin-top: 0.75rem;
+  border-radius: 14px;
+  padding: 0.75rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.walkthrough-step-required {
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  background: rgba(250, 204, 21, 0.12);
+  color: #fde68a;
+}
+
+.walkthrough-step-done {
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  background: rgba(16, 185, 129, 0.12);
+  color: #bbf7d0;
+}
+
+.walkthrough-progress {
+  margin-top: 0.75rem;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #1e293b;
+}
+
+.walkthrough-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #6366f1, #22c55e);
+  transition: width 0.25s ease;
 }
 
 .walkthrough-actions {

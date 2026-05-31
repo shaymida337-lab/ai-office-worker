@@ -137,27 +137,30 @@ async function checkWhatsApp(organizationId: string): Promise<SystemComponentSta
   try {
     const settings = await getWhatsAppSettings(organizationId);
     if (!settings.configured) {
-      return fail("whatsapp", "WhatsApp", "Twilio WhatsApp environment variables are missing", {
+      return fail("whatsapp", "WhatsApp", `WhatsApp configuration missing: ${settings.missingVariables.join(", ")}`, {
+        provider: settings.provider,
+        missingVariables: settings.missingVariables,
         webhookUrl: settings.webhookUrl,
+        webhookUrls: settings.webhookUrls,
       });
     }
     if (!settings.connected) {
-      return fail("whatsapp", "WhatsApp", "Twilio account connection check failed", {
+      return fail("whatsapp", "WhatsApp", settings.reason ?? "Twilio account connection check failed", {
+        provider: settings.provider,
         webhookUrl: settings.webhookUrl,
-        from: settings.from,
-      });
-    }
-    if (!settings.ownerWhatsApp) {
-      return fail("whatsapp", "WhatsApp", "Owner WhatsApp number is not configured", {
-        webhookUrl: settings.webhookUrl,
+        webhookUrls: settings.webhookUrls,
         from: settings.from,
       });
     }
     return pass("whatsapp", "WhatsApp", {
+      provider: settings.provider,
       ownerWhatsApp: settings.ownerWhatsApp,
       from: settings.from,
       webhookUrl: settings.webhookUrl,
+      webhookUrls: settings.webhookUrls,
       connectedAt: settings.connectedAt,
+      account: settings.account,
+      warning: settings.ownerWhatsApp ? null : "OWNER_WHATSAPP is not configured; inbound webhook can work, but owner test messages need an owner number.",
     });
   } catch (err) {
     return fail("whatsapp", "WhatsApp", publicError(err));
