@@ -28,6 +28,7 @@ type ProcessedWhatsAppInvoice = {
   documentDate: string | null;
   driveLink: string | null;
   paymentId: string | null;
+  invoiceId: string | null;
   created: boolean;
   duplicateDetected: boolean;
   duplicateReason: string | null;
@@ -97,6 +98,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
         documentDate: analysis.invoiceDate,
         driveLink: duplicate.driveLink,
         paymentId: duplicate.paymentId,
+        invoiceId: null,
         created: false,
         duplicateDetected: true,
         duplicateReason: duplicate.reason,
@@ -125,6 +127,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
         documentDate: analysis.invoiceDate,
         driveLink: existingDriveFile.webViewLink ?? (existingDriveFile.id ? `https://drive.google.com/file/d/${existingDriveFile.id}/view` : null),
         paymentId: null,
+        invoiceId: null,
         created: false,
         duplicateDetected: true,
         duplicateReason: "google_drive_existing_file",
@@ -148,7 +151,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
     });
     console.log(`[whatsapp-invoice] drive upload done logId=${input.whatsappLogId} driveFileId=${upload.fileId ?? "null"} supplierFolderId=${upload.supplierFolderId ?? "null"}`);
 
-    const supplierClientId = await findOrCreateSupplierClient({
+    const supplierClientId = await findSupplierClientForWhatsAppDocument({
       organizationId: input.organizationId,
       preferredClientId: input.clientId ?? null,
       supplier,
@@ -171,6 +174,22 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       fileHash,
     });
     console.log(`[whatsapp-invoice] payment upsert done logId=${input.whatsappLogId} paymentId=${payment.id} created=${payment.created}`);
+    const invoice = await upsertWhatsAppInvoiceRecord({
+      organizationId: input.organizationId,
+      clientId: supplierClientId,
+      whatsappLogId: input.whatsappLogId,
+      supplier,
+      amount,
+      currency: analysis.currency ?? "ILS",
+      invoiceDate: analysis.invoiceDate,
+      dueDate: analysis.dueDate,
+      invoiceNumber: analysis.invoiceNumber,
+      documentType: analysis.documentType,
+      driveLink: upload.webViewLink || null,
+      fromNumber: input.fromNumber,
+      filename,
+    });
+    console.log(`[whatsapp-invoice] invoice upsert done logId=${input.whatsappLogId} invoiceId=${invoice?.id ?? "skipped_no_client"} created=${invoice?.created ?? false}`);
     await syncPaymentToSheet(input.organizationId, payment.id, {
       supplierTaxId: analysis.supplierTaxId ?? null,
       invoiceNumber: analysis.invoiceNumber,
@@ -188,6 +207,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       documentDate: analysis.invoiceDate,
       driveLink: upload.webViewLink || null,
       paymentId: payment.id,
+      invoiceId: invoice?.id ?? null,
       created: payment.created,
       duplicateDetected: false,
       duplicateReason: null,
@@ -284,7 +304,7 @@ async function analyzeWhatsAppDocument(input: {
   };
 }
 
-async function findOrCreateSupplierClient(input: {
+async function findSupplierClientForWhatsAppDocument(input: {
   organizationId: string;
   preferredClientId: string | null;
   supplier: string;
@@ -304,6 +324,11 @@ async function findOrCreateSupplierClient(input: {
     return existing.id;
   }
 
+  if (!config.twilio.createClientsEnabled) {
+    console.log(`[whatsapp-invoice] supplier client creation disabled supplier="${input.supplier}" from=${input.fromNumber}`);
+    return null;
+  }
+
   const digits = input.fromNumber.replace(/\D/g, "").slice(-10) || String(Date.now());
   const created = await prisma.client.create({
     data: {
@@ -317,6 +342,73 @@ async function findOrCreateSupplierClient(input: {
     select: { id: true },
   });
   return created.id;
+}
+
+async function upsertWhatsAppInvoiceRecord(input: {
+  organizationId: string;
+  clientId: string | null;
+  whatsappLogId: string;
+  supplier: string;
+  amount: number | null;
+  currency: string;
+  invoiceDate: string | null;
+  dueDate: string | null;
+  invoiceNumber: string | null;
+  documentType: string;
+  driveLink: string | null;
+  fromNumber: string;
+  filename: string;
+}) {
+  if (!input.clientId) return null;
+  const date = normalizeDate(input.invoiceDate) ?? new Date();
+  const emailId = `whatsapp:${input.whatsappLogId}:${input.invoiceNumber ?? input.filename}`;
+  const existing = await prisma.invoice.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      clientId: input.clientId,
+      emailId,
+      invoiceNumber: input.invoiceNumber,
+    },
+    select: { id: true },
+  });
+  if (existing) {
+    const updated = await prisma.invoice.update({
+      where: { id: existing.id },
+      data: {
+        amount: input.amount ?? 0,
+        currency: input.currency || "ILS",
+        date,
+        dueDate: normalizeDate(input.dueDate),
+        status: input.documentType === "receipt" ? "paid" : "pending",
+        description: `WhatsApp ${input.documentType}: ${input.supplier}`,
+        driveUrl: input.driveLink,
+        fromEmail: input.fromNumber,
+        gmailMessageId: `whatsapp:${input.whatsappLogId}`,
+      },
+      select: { id: true },
+    });
+    return { id: updated.id, created: false };
+  }
+
+  const created = await prisma.invoice.create({
+    data: {
+      organizationId: input.organizationId,
+      clientId: input.clientId,
+      invoiceNumber: input.invoiceNumber,
+      amount: input.amount ?? 0,
+      currency: input.currency || "ILS",
+      date,
+      dueDate: normalizeDate(input.dueDate),
+      status: input.documentType === "receipt" ? "paid" : "pending",
+      description: `WhatsApp ${input.documentType}: ${input.supplier}`,
+      driveUrl: input.driveLink,
+      emailId,
+      fromEmail: input.fromNumber,
+      gmailMessageId: `whatsapp:${input.whatsappLogId}`,
+    },
+    select: { id: true },
+  });
+  return { id: created.id, created: true };
 }
 
 async function upsertWhatsAppSupplierPayment(input: {

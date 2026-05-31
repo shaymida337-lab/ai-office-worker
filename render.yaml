@@ -60,7 +60,7 @@ services:
       - key: WHATSAPP_MESSAGE_PROCESSING_ENABLED
         value: "true"
       - key: WHATSAPP_MEDIA_INGESTION_ENABLED
-        value: "false"
+        value: "true"
       - key: WHATSAPP_AUTO_REPLY_ENABLED
         value: "false"
       - key: WHATSAPP_CREATE_CLIENTS_ENABLED

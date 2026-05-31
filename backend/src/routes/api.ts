@@ -3128,6 +3128,7 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
     let mediaItemsProcessed = 0;
     let driveFilesCreated = 0;
     let supplierPaymentsCreatedOrUpdated = 0;
+    let invoiceRecordsCreatedOrUpdated = 0;
     let errorsCount = 0;
     const errors: string[] = [];
 
@@ -3159,6 +3160,7 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
           mediaItemsProcessed += mediaResult.processed.length;
           driveFilesCreated += mediaResult.processed.filter((item) => item.driveLink).length;
           supplierPaymentsCreatedOrUpdated += mediaResult.processed.filter((item) => item.paymentId).length;
+          invoiceRecordsCreatedOrUpdated += mediaResult.processed.filter((item) => item.invoiceId).length;
         }
       } catch (err) {
         errorsCount += 1;
@@ -3215,6 +3217,7 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
       mediaItemsProcessed,
       driveFilesCreated,
       supplierPaymentsCreatedOrUpdated,
+      invoiceRecordsCreatedOrUpdated,
       paymentMessagesFound: invoiceMessages,
       supplierPaymentsFound: paymentsFromWhatsApp,
       errorsCount,

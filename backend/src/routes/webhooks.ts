@@ -273,7 +273,14 @@ async function safeMediaIngestion(input: Parameters<typeof ingestWhatsAppInvoice
   try {
     console.log(`[webhook] WhatsApp media ingestion start logId=${input.whatsappLogId} media=${input.media.length}`);
     const result = await ingestWhatsAppInvoiceMedia(input);
-    console.log(`[webhook] WhatsApp media ingestion done logId=${input.whatsappLogId} processed=${result.processed.length} skipped=${result.skipped}`);
+    console.log("[webhook] WhatsApp media ingestion done", {
+      logId: input.whatsappLogId,
+      processed: result.processed.length,
+      skipped: result.skipped,
+      paymentIds: result.processed.map((item) => item.paymentId).filter(Boolean),
+      invoiceIds: result.processed.map((item) => item.invoiceId).filter(Boolean),
+      driveLinks: result.processed.map((item) => item.driveLink).filter(Boolean),
+    });
     return result;
   } catch (err) {
     console.error("[webhook] WhatsApp invoice media ingestion failed", err);
