@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
+import { isNavItemVisible, type NavItemId } from "@/config/navVisibility";
 import { apiFetch } from "@/lib/api";
 import { normalizeEnabledModules, type BusinessModuleId, type OrganizationSettings } from "@/lib/business-config";
 import {
@@ -28,32 +29,34 @@ import {
   X,
 } from "lucide-react";
 
-const links: Array<{ href: string; label: string; icon: typeof Home; module?: BusinessModuleId | "admin" }> = [
-  { href: "/dashboard", label: "לוח בקרה", icon: Home },
-  { href: "/crm", label: "ניהול לקוחות", icon: CircleDollarSign, module: "crm" },
-  { href: "/message-scans", label: "סריקות הודעות", icon: Search },
-  { href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
-  { href: "/dashboard/invoices", label: "חשבוניות", icon: FileText, module: "invoices" },
-  { href: "/dashboard/invoice-diagnostics", label: "אבחון חשבוניות", icon: Search, module: "invoices" },
-  { href: "/payments", label: "תשלומי ספקים", icon: WalletCards, module: "supplier_management" },
-  { href: "/dashboard/bank", label: "התאמת בנק", icon: Landmark, module: "supplier_management" },
-  { href: "/collections", label: "גבייה", icon: CircleDollarSign, module: "collections" },
-  { href: "/tasks", label: "משימות", icon: CheckSquare, module: "tasks" },
-  { href: "/social", label: "סושיאל", icon: Megaphone },
-  { href: "/dashboard/whatsapp", label: "וואטסאפ", icon: MessageCircle, module: "whatsapp" },
-  { href: "/reports", label: "דוחות", icon: BarChart3 },
-  { href: "/dashboard/accountant", label: "רואה חשבון", icon: FileBarChart },
-  { href: "/camera", label: "צילום חשבונית", icon: Camera, module: "documents" },
-  { href: "/dashboard/admin-debug", label: "בדיקות מנהל", icon: Settings, module: "admin" },
-  { href: "/dashboard/business-settings", label: "הגדרות עסק", icon: Settings },
-  { href: "/dashboard/settings", label: "הגדרות", icon: Settings },
+type NavLink = { id: NavItemId; href: string; label: string; icon: typeof Home; module?: BusinessModuleId | "admin" };
+
+const links: NavLink[] = [
+  { id: "dashboard", href: "/dashboard", label: "לוח בקרה", icon: Home },
+  { id: "crm", href: "/crm", label: "ניהול לקוחות", icon: CircleDollarSign, module: "crm" },
+  { id: "messageScans", href: "/message-scans", label: "סריקות הודעות", icon: Search },
+  { id: "clients", href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
+  { id: "invoices", href: "/dashboard/invoices", label: "חשבוניות", icon: FileText, module: "invoices" },
+  { id: "invoiceDiagnostics", href: "/dashboard/invoice-diagnostics", label: "אבחון חשבוניות", icon: Search, module: "invoices" },
+  { id: "supplierPayments", href: "/payments", label: "תשלומי ספקים", icon: WalletCards, module: "supplier_management" },
+  { id: "bank", href: "/dashboard/bank", label: "התאמת בנק", icon: Landmark, module: "supplier_management" },
+  { id: "collections", href: "/collections", label: "גבייה", icon: CircleDollarSign, module: "collections" },
+  { id: "tasks", href: "/tasks", label: "משימות", icon: CheckSquare, module: "tasks" },
+  { id: "social", href: "/social", label: "סושיאל", icon: Megaphone },
+  { id: "whatsapp", href: "/dashboard/whatsapp", label: "וואטסאפ", icon: MessageCircle, module: "whatsapp" },
+  { id: "reports", href: "/reports", label: "דוחות", icon: BarChart3 },
+  { id: "accountant", href: "/dashboard/accountant", label: "רואה חשבון", icon: FileBarChart },
+  { id: "camera", href: "/camera", label: "צילום חשבונית", icon: Camera, module: "documents" },
+  { id: "adminDebug", href: "/dashboard/admin-debug", label: "בדיקות מנהל", icon: Settings, module: "admin" },
+  { id: "businessSettings", href: "/dashboard/business-settings", label: "הגדרות עסק", icon: Settings },
+  { id: "settings", href: "/dashboard/settings", label: "הגדרות", icon: Settings },
 ];
 
-const mobileLinks: typeof links = [
-  { href: "/dashboard", label: "בית", icon: Home },
-  { href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
-  { href: "/dashboard/invoices", label: "חשבוניות", icon: FileText, module: "invoices" },
-  { href: "/payments", label: "ספקים", icon: WalletCards, module: "supplier_management" },
+const mobileLinks: NavLink[] = [
+  { id: "dashboard", href: "/dashboard", label: "בית", icon: Home },
+  { id: "clients", href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
+  { id: "invoices", href: "/dashboard/invoices", label: "חשבוניות", icon: FileText, module: "invoices" },
+  { id: "supplierPayments", href: "/payments", label: "ספקים", icon: WalletCards, module: "supplier_management" },
 ];
 
 type SearchClient = { id: string; name: string; email?: string | null };
@@ -118,8 +121,11 @@ export function Nav() {
       : null;
     return !enabledModules || enabledModules.includes(module);
   };
-  const visibleLinks = links.filter((item) => moduleAllowed(item.module));
-  const visibleMobileLinks = mobileLinks.filter((item) => moduleAllowed(item.module));
+  const navVisible = (item: NavLink) => (
+    isNavItemVisible(item.id, organizationSettings?.businessType) && moduleAllowed(item.module)
+  );
+  const visibleLinks = links.filter(navVisible);
+  const visibleMobileLinks = mobileLinks.filter(navVisible);
   const mobileMoreLinks = visibleLinks.filter((item) => !visibleMobileLinks.some((link) => link.href === item.href));
 
   function isActive(href: string) {

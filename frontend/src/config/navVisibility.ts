@@ -1,0 +1,54 @@
+export type NavItemId =
+  | "dashboard"
+  | "crm"
+  | "messageScans"
+  | "clients"
+  | "invoices"
+  | "invoiceDiagnostics"
+  | "supplierPayments"
+  | "bank"
+  | "collections"
+  | "tasks"
+  | "social"
+  | "whatsapp"
+  | "reports"
+  | "accountant"
+  | "camera"
+  | "adminDebug"
+  | "businessSettings"
+  | "settings";
+
+type NavVisibilityRule = {
+  visible: boolean;
+  businessTypes?: Partial<Record<string, boolean>>;
+};
+
+export const navVisibility: Record<NavItemId, NavVisibilityRule> = {
+  dashboard: { visible: true },
+  crm: { visible: false },
+  messageScans: { visible: false },
+  clients: { visible: false },
+  invoices: { visible: true },
+  invoiceDiagnostics: { visible: false },
+  supplierPayments: { visible: true },
+  bank: { visible: true },
+  collections: { visible: true },
+  tasks: { visible: false },
+  social: { visible: false },
+  whatsapp: { visible: false },
+  reports: { visible: false },
+  accountant: { visible: false },
+  camera: { visible: false },
+  adminDebug: { visible: false },
+  businessSettings: { visible: false },
+  settings: { visible: true },
+};
+
+export function isNavItemVisible(itemId: NavItemId, businessType?: string | null) {
+  const rule = navVisibility[itemId];
+  if (!rule) return true;
+  if (businessType && rule.businessTypes && businessType in rule.businessTypes) {
+    return rule.businessTypes[businessType] ?? rule.visible;
+  }
+  return rule.visible;
+}
