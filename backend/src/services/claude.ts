@@ -116,7 +116,11 @@ export async function analyzeInvoiceFile(input: {
   "paymentRequired": boolean,
   "currency": "ILS"
 }
-אל תמציא ערכים. אם זה צילום של חשבונית/קבלה, בצע OCR מתוך התמונה.`;
+כללים חשובים:
+- supplier הוא שם העסק/מנפיק החשבונית שמופיע בראש המסמך או ליד פרטי עוסק/ח.פ, לא שם הלקוח ולא "Unknown".
+- amount הוא סה"כ לתשלום / סה"כ כולל מע"מ / Total Due. אל תחזיר סכום ביניים, מע"מ בלבד או מספר אסמכתא.
+- invoiceNumber הוא מספר חשבונית/קבלה/מסמך בלבד, לא ח.פ/עוסק ולא מספר טלפון.
+- אל תמציא ערכים. אם זה צילום של חשבונית/קבלה, בצע OCR מתוך התמונה.`;
   const fileBlock =
     input.mimeType === "application/pdf"
       ? {
@@ -161,7 +165,7 @@ export async function analyzeInvoiceFile(input: {
   }
   const supplier = firstString(parsed, ["supplier", "שם ספק", "ספק"]);
   const supplierTaxId = firstString(parsed, ["supplierTaxId", "taxId", "vatNumber", "ח.פ", "עוסק מורשה", "מספר עוסק"]);
-  const amount = firstNumber(parsed, ["amount", "סכום"]);
+  const amount = firstNumber(parsed, ["amount", "total", "totalDue", "grandTotal", "balanceDue", "סכום", "סהכ", "סה\"כ", "סך הכל", "לתשלום"]);
   const date = firstString(parsed, ["date", "תאריך", "invoiceDate", "תאריך חשבונית"]);
   const dueDate = firstString(parsed, ["dueDate", "due_date", "תאריך יעד", "לתשלום עד"]);
   const invoiceNumber = firstString(parsed, [

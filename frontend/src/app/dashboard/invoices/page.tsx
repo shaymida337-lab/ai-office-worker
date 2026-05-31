@@ -245,6 +245,14 @@ export default function InvoicesPage() {
             <p className="text-base text-[#E2E8F0]">לקוח: {selected.client?.name}</p>
             <p className="text-base text-[#E2E8F0]">מספר: {selected.invoiceNumber ?? "-"}</p>
             <p className="text-base leading-7 text-[#E2E8F0]">{selected.description}</p>
+            {selected.driveUrl && (
+              <div className="mt-4">
+                <iframe className="h-80 w-full rounded-2xl border border-[var(--border-subtle)] bg-white" src={toDrivePreviewUrl(selected.driveUrl)} title="Invoice preview" />
+                <a className="btn btn-secondary mt-3" href={selected.driveUrl} target="_blank" rel="noreferrer">
+                  <Download className="h-4 w-4" />פתח בדרייב
+                </a>
+              </div>
+            )}
             <button className="btn btn-secondary mt-4" onClick={() => setSelected(null)}>סגור</button>
           </div>
         </div>
@@ -265,4 +273,8 @@ function Metric({ label, value, tone }: { label: string; value: string | number;
 function formatCurrency(amount: number, currency: string) {
   const symbols: Record<string, string> = { ILS: "₪", USD: "$", EUR: "€", GBP: "£" };
   return `${symbols[currency] ?? currency} ${amount.toLocaleString("he-IL")}`;
+}
+
+function toDrivePreviewUrl(url: string) {
+  return url.replace(/\/view(?:\?.*)?$/, "/preview");
 }

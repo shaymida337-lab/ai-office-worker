@@ -10,6 +10,7 @@ export default function PaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -83,6 +84,7 @@ export default function PaymentsPage() {
               <MobileRow label="כפילות" value={p.duplicateDetected ? `כן (${p.duplicateReason ?? "זוהתה"})` : "לא"} />
             </div>
             <div className="mt-4 grid gap-2">
+              {(p.invoiceLink || p.documentLink) && <button className="btn btn-secondary" type="button" onClick={() => setPreviewUrl(p.invoiceLink ?? p.documentLink)}>תצוגה מקדימה</button>}
               {p.documentLink && <a className="btn btn-secondary" href={p.documentLink} target="_blank" rel="noreferrer">פתח מסמך</a>}
               {p.invoiceLink && <a className="btn btn-secondary" href={p.invoiceLink} target="_blank" rel="noreferrer">פתח חשבונית</a>}
               {!p.paid && (
@@ -128,18 +130,18 @@ export default function PaymentsPage() {
                 <td>{p.paid ? "כן" : "לא"}</td>
                 <td>
                   {p.documentLink ? (
-                    <a href={p.documentLink} target="_blank" rel="noreferrer">
-                      פתח מסמך
-                    </a>
+                    <button className="text-accent-primary underline-offset-4 hover:underline" type="button" onClick={() => setPreviewUrl(p.documentLink)}>
+                      תצוגה
+                    </button>
                   ) : (
                     "—"
                   )}
                 </td>
                 <td>
                   {p.invoiceLink ? (
-                    <a href={p.invoiceLink} target="_blank" rel="noreferrer">
-                      פתח חשבונית
-                    </a>
+                    <button className="text-accent-primary underline-offset-4 hover:underline" type="button" onClick={() => setPreviewUrl(p.invoiceLink)}>
+                      תצוגה
+                    </button>
                   ) : (
                     "—"
                   )}
@@ -165,6 +167,20 @@ export default function PaymentsPage() {
           </tbody>
         </table>
       </div>
+      {previewUrl && (
+        <div className="fixed inset-0 z-[120] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setPreviewUrl(null)}>
+          <div className="card h-[85vh] w-full max-w-5xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2>תצוגה מקדימה לחשבונית</h2>
+              <div className="flex gap-2">
+                <a className="btn btn-secondary" href={previewUrl} target="_blank" rel="noreferrer">פתח בדרייב</a>
+                <button className="btn btn-secondary" type="button" onClick={() => setPreviewUrl(null)}>סגור</button>
+              </div>
+            </div>
+            <iframe className="h-[calc(85vh-8rem)] w-full rounded-2xl border border-[var(--border-subtle)] bg-white" src={toDrivePreviewUrl(previewUrl)} title="Invoice preview" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -176,4 +192,8 @@ function MobileRow({ label, value }: { label: string; value: string }) {
       <span className="min-w-0 break-words text-left font-semibold text-ink-primary">{value}</span>
     </div>
   );
+}
+
+function toDrivePreviewUrl(url: string) {
+  return url.replace(/\/view(?:\?.*)?$/, "/preview");
 }

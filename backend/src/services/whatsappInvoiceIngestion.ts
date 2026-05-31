@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { buildDuplicateHash } from "../lib/duplicate.js";
 import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
-import { analyzeEmailContent, analyzeInvoiceFile, type EmailAnalysis } from "./claude.js";
+import { analyzeEmailContent, analyzeInvoiceFile, type EmailAnalysis, type InvoiceScanResult } from "./claude.js";
 import { ensureInvoiceFolderTree, findExistingSupplierDriveDocument, uploadInvoiceAttachmentToDrive } from "./driveService.js";
 import { getGoogleClients } from "./google.js";
 import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
@@ -24,6 +24,7 @@ type ProcessedWhatsAppInvoice = {
   filename: string;
   supplier: string;
   amount: number | null;
+  invoiceNumber: string | null;
   documentType: string;
   documentDate: string | null;
   driveLink: string | null;
@@ -58,12 +59,22 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
     console.log(`[whatsapp-invoice] media download done logId=${input.whatsappLogId} index=${index} bytes=${buffer.length}`);
     const fileHash = sha256(buffer);
     const fileMd5 = md5(buffer);
-    console.log(`[whatsapp-invoice] extraction start logId=${input.whatsappLogId} index=${index}`);
+    console.log(`[whatsapp-invoice] extraction start logId=${input.whatsappLogId} index=${index} filename="${filename}" mime=${mimeType} bytes=${buffer.length}`);
     const analysis = await analyzeWhatsAppDocument({ body: input.body, filename, mimeType, buffer, fromNumber: input.fromNumber });
-    console.log(`[whatsapp-invoice] extraction done logId=${input.whatsappLogId} supplier="${analysis.supplier}" amount=${analysis.amount ?? "null"} invoiceNumber=${analysis.invoiceNumber ?? "null"} documentType=${analysis.documentType}`);
+    console.log(`[whatsapp-invoice] extraction done logId=${input.whatsappLogId} supplier="${analysis.supplier}" supplierTaxId=${analysis.supplierTaxId ?? "null"} amount=${analysis.amount ?? "null"} invoiceNumber=${analysis.invoiceNumber ?? "null"} invoiceDate=${analysis.invoiceDate ?? "null"} dueDate=${analysis.dueDate ?? "null"} documentType=${analysis.documentType} confidence=${analysis.confidence}`);
 
     const supplier = usableSupplierName(analysis.supplier) ? analysis.supplier.trim() : "Unknown supplier";
     const amount = normalizeAmount(analysis.amount);
+    if (supplier === "Unknown supplier" || amount === null || !analysis.invoiceNumber) {
+      console.warn("[whatsapp-invoice] extraction incomplete", {
+        logId: input.whatsappLogId,
+        filename,
+        supplier,
+        amount,
+        invoiceNumber: analysis.invoiceNumber,
+        documentType: analysis.documentType,
+      });
+    }
     const duplicate = await findExistingCrossSourceDuplicate({
       organizationId: input.organizationId,
       supplier,
@@ -94,6 +105,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
         filename,
         supplier: duplicate.supplier ?? supplier,
         amount: duplicate.amount ?? amount,
+        invoiceNumber: analysis.invoiceNumber,
         documentType: analysis.documentType,
         documentDate: analysis.invoiceDate,
         driveLink: duplicate.driveLink,
@@ -123,6 +135,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
         filename,
         supplier,
         amount,
+        invoiceNumber: analysis.invoiceNumber,
         documentType: analysis.documentType,
         documentDate: analysis.invoiceDate,
         driveLink: existingDriveFile.webViewLink ?? (existingDriveFile.id ? `https://drive.google.com/file/d/${existingDriveFile.id}/view` : null),
@@ -203,6 +216,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       filename,
       supplier,
       amount,
+      invoiceNumber: analysis.invoiceNumber,
       documentType: analysis.documentType,
       documentDate: analysis.invoiceDate,
       driveLink: upload.webViewLink || null,
@@ -274,21 +288,33 @@ async function analyzeWhatsAppDocument(input: {
   buffer: Buffer;
   fromNumber: string;
 }): Promise<EmailAnalysis> {
-  if (input.mimeType === PDF_MIME) {
-    const pdfText = await extractPdfText(input.buffer);
-    return analyzeEmailContent({
-      subject: `WhatsApp PDF ${input.filename}`,
-      body: [input.body, pdfText && `--- WHATSAPP PDF TEXT ---\n${pdfText}`].filter(Boolean).join("\n\n"),
-      filenames: [input.filename],
-      sender: input.fromNumber,
+  let fileScan: InvoiceScanResult | null = null;
+  try {
+    fileScan = await analyzeInvoiceFile({
+      fileBase64: input.buffer.toString("base64"),
+      mimeType: input.mimeType,
+      filename: input.filename,
+    });
+  } catch (err) {
+    console.error("[whatsapp-invoice] file OCR extraction failed", {
+      filename: input.filename,
+      mimeType: input.mimeType,
+      error: err instanceof Error ? err.message : String(err),
     });
   }
 
-  const imageScan = await analyzeInvoiceFile({
-    fileBase64: input.buffer.toString("base64"),
-    mimeType: input.mimeType,
-    filename: input.filename,
-  });
+  const textAnalysis = input.mimeType === PDF_MIME || !fileScan || !usableSupplierName(fileScan.supplier) || fileScan.amount === null || !fileScan.invoiceNumber
+    ? await analyzeWhatsAppDocumentTextFallback(input).catch((err) => {
+        console.error("[whatsapp-invoice] text fallback extraction failed", {
+          filename: input.filename,
+          mimeType: input.mimeType,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      })
+    : null;
+
+  const imageScan = mergeInvoiceScan(fileScan, textAnalysis);
   return {
     supplier: imageScan.supplier,
     supplierTaxId: imageScan.supplierTaxId ?? null,
@@ -301,6 +327,40 @@ async function analyzeWhatsAppDocument(input: {
     invoiceNumber: imageScan.invoiceNumber,
     tasks: [],
     confidence: 0.85,
+  };
+}
+
+async function analyzeWhatsAppDocumentTextFallback(input: {
+  body: string;
+  filename: string;
+  mimeType: string;
+  buffer: Buffer;
+  fromNumber: string;
+}) {
+  const pdfText = input.mimeType === PDF_MIME ? await extractPdfText(input.buffer) : "";
+  return analyzeEmailContent({
+    subject: `WhatsApp document ${input.filename}`,
+    body: [
+      input.body,
+      pdfText && `--- WHATSAPP PDF TEXT ---\n${pdfText}`,
+      `Filename: ${input.filename}`,
+    ].filter(Boolean).join("\n\n"),
+    filenames: [input.filename],
+    sender: input.fromNumber,
+  });
+}
+
+function mergeInvoiceScan(fileScan: InvoiceScanResult | null, fallback: EmailAnalysis | null): InvoiceScanResult {
+  return {
+    supplier: usableSupplierName(fileScan?.supplier) ? fileScan!.supplier : fallback?.supplier ?? "לא ידוע",
+    supplierTaxId: fileScan?.supplierTaxId ?? fallback?.supplierTaxId ?? null,
+    amount: normalizeAmount(fileScan?.amount) ?? normalizeAmount(fallback?.amount),
+    date: fileScan?.date ?? fallback?.invoiceDate ?? null,
+    dueDate: fileScan?.dueDate ?? fallback?.dueDate ?? null,
+    invoiceNumber: fileScan?.invoiceNumber ?? fallback?.invoiceNumber ?? null,
+    documentType: fileScan?.documentType ?? fallback?.documentType ?? "other",
+    paymentRequired: fileScan?.paymentRequired ?? fallback?.paymentRequired ?? fileScan?.documentType !== "receipt",
+    currency: fileScan?.currency ?? fallback?.currency ?? "ILS",
   };
 }
 
