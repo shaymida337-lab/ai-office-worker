@@ -112,9 +112,9 @@ async function registerRoutes(app: express.Express) {
     app.use("/api/clients", clientWhatsappRouter);
     app.use("/api/clients", clientsRouter);
     app.use("/api/social", socialRouter);
-    app.use("/api", apiRouter);
     app.use("/api/webhook", webhooksRouter);
     app.use("/api/webhooks", webhooksRouter);
+    app.use("/api", apiRouter);
     app.use("/cron", cronRouter);
     app.use("/webhook", webhooksRouter);
     app.use("/webhooks", webhooksRouter);
