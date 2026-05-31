@@ -22,6 +22,10 @@ function whatsappWebhookHealth(_req: Request, res: Response) {
     missingVariables: configuration.missingVariables,
     envDiagnostics: configuration.envDiagnostics,
     messageProcessingEnabled: configuration.messageProcessingEnabled,
+    mediaIngestionEnabled: configuration.mediaIngestionEnabled,
+    autoReplyEnabled: configuration.autoReplyEnabled,
+    createClientsEnabled: configuration.createClientsEnabled,
+    webEnabled: configuration.webEnabled,
     webhookUrl: configuration.webhookUrl,
     webhookUrls: configuration.webhookUrls,
     inboundMethod: "POST",
@@ -43,22 +47,47 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
     return;
   }
 
-  if (!config.twilio.messageProcessingEnabled) {
-    const twiml = new twilio.twiml.MessagingResponse();
-    twiml.message("תודה, ההודעה התקבלה. בשלב זה המערכת לא קוראת הודעות WhatsApp ולא אוספת חשבוניות מ-WhatsApp.");
-    res.type("text/xml").send(twiml.toString());
-    return;
-  }
-
   const body = (req.body.Body as string) ?? "";
   const from = req.body.From as string;
+  const to = req.body.To as string;
   const media = parseTwilioMedia(req.body as Record<string, unknown>);
   const messageSid = typeof req.body.MessageSid === "string" ? req.body.MessageSid : "unknown";
   const profileName = typeof req.body.ProfileName === "string" ? req.body.ProfileName : undefined;
-  const twiml = new twilio.twiml.MessagingResponse();
   const normalizedFrom = normalizeWhatsAppNumber(from);
+  const normalizedTo = normalizeWhatsAppNumber(to || config.twilio.whatsappFrom);
+  console.log("[webhook] WhatsApp message received", {
+    sid: messageSid,
+    from: normalizedFrom,
+    to: normalizedTo,
+    configuredSandboxNumber: config.twilio.whatsappFrom,
+    mediaCount: media.length,
+    bodyPreview: body.slice(0, 240),
+    processingEnabled: config.twilio.messageProcessingEnabled,
+    mediaIngestionEnabled: config.twilio.mediaIngestionEnabled,
+    autoReplyEnabled: config.twilio.autoReplyEnabled,
+    createClientsEnabled: config.twilio.createClientsEnabled,
+    path: req.originalUrl,
+  });
+
+  if (!config.twilio.messageProcessingEnabled) {
+    res.type("text/xml").send(new twilio.twiml.MessagingResponse().toString());
+    return;
+  }
+
+  const twiml = new twilio.twiml.MessagingResponse();
+  const configuredSandboxNumber = normalizeWhatsAppNumber(config.twilio.whatsappFrom);
+  if (normalizedTo !== configuredSandboxNumber) {
+    console.log("[webhook] WhatsApp inbound ignored because it was not sent to the configured Twilio Sandbox number", {
+      sid: messageSid,
+      from: normalizedFrom,
+      to: normalizedTo,
+      configuredSandboxNumber,
+    });
+    res.type("text/xml").send(twiml.toString());
+    return;
+  }
   const assistant = await findAssistantByOwnerPhone(normalizedFrom);
-  console.log(`[webhook] WhatsApp inbound sid=${messageSid} from=${normalizedFrom} media=${media.length} path=${req.originalUrl}`);
+  console.log(`[webhook] WhatsApp inbound accepted sid=${messageSid} from=${normalizedFrom} media=${media.length} path=${req.originalUrl}`);
 
   if (assistant) {
     const inboundLog = await prisma.whatsAppLog.create({
@@ -74,27 +103,29 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       },
     });
     await scanWhatsAppMessage(assistant.organizationId, inboundLog.id, normalizedFrom, body, false);
-    const mediaResult = await safeMediaIngestion({
+    const mediaResult = config.twilio.mediaIngestionEnabled ? await safeMediaIngestion({
       organizationId: assistant.organizationId,
       whatsappLogId: inboundLog.id,
       fromNumber: normalizedFrom,
       body,
       media,
-    });
+    }) : { reply: null };
 
-    const reply = mediaResult.reply ?? await safeReply(() => handleOwnerMessage(body, assistant.organizationId, normalizedFrom));
-    twiml.message(reply);
-    await prisma.whatsAppLog.create({
-      data: {
-        organizationId: assistant.organizationId,
-        direction: "outbound",
-        body: reply,
-        fromNumber: config.twilio.whatsappFrom,
-        toNumber: normalizedFrom,
-        aiGenerated: true,
-        read: true,
-      },
-    });
+    if (config.twilio.autoReplyEnabled) {
+      const reply = mediaResult.reply ?? await safeReply(() => handleOwnerMessage(body, assistant.organizationId, normalizedFrom));
+      twiml.message(reply);
+      await prisma.whatsAppLog.create({
+        data: {
+          organizationId: assistant.organizationId,
+          direction: "outbound",
+          body: reply,
+          fromNumber: config.twilio.whatsappFrom,
+          toNumber: normalizedFrom,
+          aiGenerated: true,
+          read: true,
+        },
+      });
+    }
     res.type("text/xml").send(twiml.toString());
     return;
   }
@@ -119,29 +150,40 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       },
     });
     await scanWhatsAppMessage(client.organizationId, inboundLog.id, normalizedFrom, body, false);
-    const mediaResult = await safeMediaIngestion({
+    const mediaResult = config.twilio.mediaIngestionEnabled ? await safeMediaIngestion({
       organizationId: client.organizationId,
       clientId: client.id,
       whatsappLogId: inboundLog.id,
       fromNumber: normalizedFrom,
       body,
       media,
-    });
+    }) : { reply: null };
 
-    const reply = mediaResult.reply ?? await safeReply(() => handleClientMessage(body, client.id, client.organizationId, normalizedFrom));
+    if (config.twilio.autoReplyEnabled) {
+      const reply = mediaResult.reply ?? await safeReply(() => handleClientMessage(body, client.id, client.organizationId, normalizedFrom));
+      twiml.message(reply);
+      await prisma.whatsAppLog.create({
+        data: {
+          organizationId: client.organizationId,
+          clientId: client.id,
+          direction: "outbound",
+          body: reply,
+          fromNumber: config.twilio.whatsappFrom,
+          toNumber: normalizedFrom,
+          aiGenerated: true,
+          read: true,
+        },
+      });
+    }
+    res.type("text/xml").send(twiml.toString());
+    return;
+  }
 
-    twiml.message(reply);
-    await prisma.whatsAppLog.create({
-      data: {
-        organizationId: client.organizationId,
-        clientId: client.id,
-        direction: "outbound",
-        body: reply,
-        fromNumber: config.twilio.whatsappFrom,
-        toNumber: normalizedFrom,
-        aiGenerated: true,
-        read: true,
-      },
+  if (!config.twilio.createClientsEnabled) {
+    console.log("[webhook] WhatsApp inbound ignored because client creation is disabled", {
+      sid: messageSid,
+      from: normalizedFrom,
+      to: normalizedTo,
     });
     res.type("text/xml").send(twiml.toString());
     return;
@@ -164,33 +206,34 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       },
     });
     await scanWhatsAppMessage(organization.id, inboundLog.id, normalizedFrom, body, true);
-    const mediaResult = await safeMediaIngestion({
+    const mediaResult = config.twilio.mediaIngestionEnabled ? await safeMediaIngestion({
       organizationId: organization.id,
       clientId: newClient.id,
       whatsappLogId: inboundLog.id,
       fromNumber: normalizedFrom,
       body,
       media,
-    });
-    const reply = mediaResult.reply ?? await safeReply(() => handleClientMessage(body, newClient.id, organization.id, normalizedFrom));
-    twiml.message(created ? `שלום ${newClient.name}, קיבלנו את ההודעה ונפתח לך כרטיס לקוח במערכת.\n${reply}` : reply);
-    await prisma.whatsAppLog.create({
-      data: {
-        organizationId: organization.id,
-        clientId: newClient.id,
-        direction: "outbound",
-        body: created ? `שלום ${newClient.name}, קיבלנו את ההודעה ונפתח לך כרטיס לקוח במערכת.\n${reply}` : reply,
-        fromNumber: config.twilio.whatsappFrom,
-        toNumber: normalizedFrom,
-        aiGenerated: true,
-        read: true,
-      },
-    });
+    }) : { reply: null };
+    if (config.twilio.autoReplyEnabled) {
+      const reply = mediaResult.reply ?? await safeReply(() => handleClientMessage(body, newClient.id, organization.id, normalizedFrom));
+      twiml.message(created ? `שלום ${newClient.name}, קיבלנו את ההודעה ונפתח לך כרטיס לקוח במערכת.\n${reply}` : reply);
+      await prisma.whatsAppLog.create({
+        data: {
+          organizationId: organization.id,
+          clientId: newClient.id,
+          direction: "outbound",
+          body: created ? `שלום ${newClient.name}, קיבלנו את ההודעה ונפתח לך כרטיס לקוח במערכת.\n${reply}` : reply,
+          fromNumber: config.twilio.whatsappFrom,
+          toNumber: normalizedFrom,
+          aiGenerated: true,
+          read: true,
+        },
+      });
+    }
     res.type("text/xml").send(twiml.toString());
     return;
   }
 
-  twiml.message("שלום! מספר זה אינו רשום במערכת. פנה למנהל.");
   res.type("text/xml").send(twiml.toString());
 }
 

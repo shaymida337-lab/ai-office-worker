@@ -39,10 +39,10 @@ clientWhatsappRouter.delete("/:clientId/whatsapp/disconnect", async (req, res) =
 });
 
 clientWhatsappRouter.post("/:clientId/whatsapp/scan", async (req, res) => {
-  if (!config.twilio.messageProcessingEnabled) {
+  if (!config.twilio.webEnabled) {
     res.json({
       status: "disabled",
-      reason: "WhatsApp chat scanning is disabled. Customer reminders and notifications remain available.",
+      reason: "WhatsApp Web scanning is disabled. The system only processes new messages received through the Twilio webhook.",
       messagesScanned: 0,
     });
     return;
@@ -52,10 +52,10 @@ clientWhatsappRouter.post("/:clientId/whatsapp/scan", async (req, res) => {
 });
 
 clientWhatsappRouter.get("/:clientId/whatsapp/messages", async (req, res) => {
-  if (!config.twilio.messageProcessingEnabled) {
+  if (!config.twilio.webEnabled) {
     res.json({
       status: "disabled",
-      reason: "WhatsApp chat reading is disabled.",
+      reason: "WhatsApp Web chat reading is disabled.",
       messages: [],
     });
     return;

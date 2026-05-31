@@ -22,6 +22,23 @@ function errorMessage(err: unknown) {
   return err instanceof Error ? err.message : String(err);
 }
 
+function twilioErrorDetails(err: unknown) {
+  const candidate = err as {
+    message?: unknown;
+    code?: unknown;
+    status?: unknown;
+    moreInfo?: unknown;
+    details?: unknown;
+  };
+  return {
+    message: errorMessage(err),
+    code: candidate.code ?? null,
+    status: candidate.status ?? null,
+    moreInfo: candidate.moreInfo ?? null,
+    details: candidate.details ?? null,
+  };
+}
+
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -76,6 +93,10 @@ export function getWhatsAppConfigurationStatus() {
     from: config.twilio.whatsappFrom,
     webhookUrl: config.twilio.webhookUrl,
     messageProcessingEnabled: config.twilio.messageProcessingEnabled,
+    mediaIngestionEnabled: config.twilio.mediaIngestionEnabled,
+    autoReplyEnabled: config.twilio.autoReplyEnabled,
+    createClientsEnabled: config.twilio.createClientsEnabled,
+    webEnabled: config.twilio.webEnabled,
     webhookUrls: [
       config.twilio.webhookUrl,
       config.twilio.webhookUrl.replace("/webhook/", "/api/webhook/"),
@@ -174,6 +195,21 @@ export async function getWhatsAppSettings(organizationId: string) {
     webhookUrl: configuration.webhookUrl,
     webhookUrls: configuration.webhookUrls,
     connectedAt: integration?.connectedAt ?? null,
+    diagnostics: {
+      accountSid: configuration.envDiagnostics.TWILIO_ACCOUNT_SID,
+      authToken: configuration.envDiagnostics.TWILIO_AUTH_TOKEN,
+      whatsappNumber: configuration.envDiagnostics.TWILIO_WHATSAPP_NUMBER,
+      whatsappFrom: configuration.envDiagnostics.TWILIO_WHATSAPP_FROM,
+      twilioApiStatus: connection.connected ? "PASS" : "FAIL",
+      account: connection.account,
+      lastError: connection.reason,
+      missingVariables: configuration.missingVariables,
+      messageProcessingEnabled: configuration.messageProcessingEnabled,
+      mediaIngestionEnabled: configuration.mediaIngestionEnabled,
+      autoReplyEnabled: configuration.autoReplyEnabled,
+      createClientsEnabled: configuration.createClientsEnabled,
+      webEnabled: configuration.webEnabled,
+    },
   };
 }
 
@@ -290,6 +326,91 @@ export async function sendWhatsAppMessage(organizationId: string, body: string) 
   });
 
   return { sent: true, sid: message.sid };
+}
+
+export async function testWhatsAppConnection(organizationId: string) {
+  const settings = await getWhatsAppSettings(organizationId);
+  if (!settings.configured) {
+    console.error("[twilio] test send blocked by missing configuration", {
+      organizationId,
+      missingVariables: settings.missingVariables,
+      diagnostics: settings.diagnostics,
+    });
+    return {
+      sent: false,
+      connected: false,
+      reason: "WhatsApp configuration missing",
+      diagnostics: settings.diagnostics,
+      error: { message: `Missing variables: ${settings.missingVariables.join(", ")}` },
+    };
+  }
+  if (!settings.connected) {
+    console.error("[twilio] test send blocked by failed API connection", {
+      organizationId,
+      reason: settings.reason,
+      diagnostics: settings.diagnostics,
+    });
+    return {
+      sent: false,
+      connected: false,
+      reason: "Twilio API connection failed",
+      diagnostics: settings.diagnostics,
+      error: { message: settings.reason ?? "Twilio API connection failed" },
+    };
+  }
+  if (!settings.ownerWhatsApp) {
+    console.error("[twilio] test send blocked by missing owner number", {
+      organizationId,
+      from: settings.from,
+    });
+    return {
+      sent: false,
+      connected: false,
+      reason: "Owner WhatsApp number is not configured",
+      diagnostics: settings.diagnostics,
+      error: { message: "Set owner WhatsApp number before sending a test message" },
+    };
+  }
+
+  try {
+    const result = await sendWhatsAppMessage(
+      organizationId,
+      "✅ הודעת בדיקה מ-AI Office Worker. חיבור WhatsApp עובד בהצלחה."
+    );
+    return {
+      ...result,
+      connected: result.sent,
+      reason: result.sent ? null : result.reason ?? "WhatsApp test message failed",
+      to: settings.ownerWhatsApp,
+      from: settings.from,
+      diagnostics: {
+        ...settings.diagnostics,
+        twilioApiStatus: result.sent ? "PASS" : settings.diagnostics.twilioApiStatus,
+        lastError: result.sent ? null : result.reason ?? settings.diagnostics.lastError,
+      },
+    };
+  } catch (err) {
+    const details = twilioErrorDetails(err);
+    console.error("[twilio] test send failed", {
+      organizationId,
+      to: settings.ownerWhatsApp,
+      from: settings.from,
+      error: details,
+    });
+    return {
+      sent: false,
+      connected: false,
+      reason: details.message,
+      to: settings.ownerWhatsApp,
+      from: settings.from,
+      diagnostics: {
+        ...settings.diagnostics,
+        twilioApiStatus: "FAIL",
+        lastError: details.message,
+      },
+      error: details,
+    };
+  }
 }
 
 export async function sendWhatsAppToPhone(organizationId: string, phone: string, body: string, clientId?: string, aiGenerated = false) {

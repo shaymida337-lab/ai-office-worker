@@ -12,7 +12,7 @@ import { buildDailySummary } from "../services/summary.js";
 import {
   getWhatsAppSettings,
   saveWhatsAppSettings,
-  sendWhatsAppMessage,
+  testWhatsAppConnection,
 } from "../services/whatsapp.js";
 import { testConnection as testGreenInvoiceConnection, type GreenInvoiceEnv } from "../services/green-invoice.js";
 import { parseBankStatementFile } from "../services/bank-parser.js";
@@ -3014,12 +3014,9 @@ async function saveWhatsAppNumber(req: Request, res: Response) {
 }
 
 async function sendWhatsAppTest(req: Request, res: Response) {
-  const result = await sendWhatsAppMessage(
-    req.auth!.organizationId,
-    "✅ AI Office Worker WhatsApp מחובר בהצלחה!"
-  );
+  const result = await testWhatsAppConnection(req.auth!.organizationId);
   if (!result.sent) {
-    res.status(400).json({ error: result.reason });
+    res.status(400).json({ error: result.reason, result });
     return;
   }
   res.json(result);
@@ -3032,7 +3029,10 @@ apiRouter.get("/whatsapp/status", sendWhatsAppStatus);
 apiRouter.get("/whatsapp/health", sendWhatsAppStatus);
 apiRouter.post("/settings/whatsapp", saveWhatsAppNumber);
 apiRouter.post("/whatsapp/test", sendWhatsAppTest);
+apiRouter.get("/whatsapp/test", sendWhatsAppTest);
 apiRouter.post("/integrations/whatsapp/test", sendWhatsAppTest);
+apiRouter.get("/integrations/whatsapp/test", sendWhatsAppTest);
+apiRouter.post("/integrations/whatsapp/test-send", sendWhatsAppTest);
 
 apiRouter.get("/whatsapp-assistant/settings", async (req, res) => {
   const { getWhatsAppAssistantSettings } = await import("../services/whatsappAssistant.js");
@@ -3145,7 +3145,7 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
         });
         scanned += 1;
         const media = normalizeStoredWhatsAppMedia(message.mediaJson);
-        if (message.mediaCount > 0 || media.length > 0) {
+        if (config.twilio.mediaIngestionEnabled && (message.mediaCount > 0 || media.length > 0)) {
           mediaMessagesFound += 1;
           mediaItemsFound += media.length;
           const mediaResult = await ingestWhatsAppInvoiceMedia({

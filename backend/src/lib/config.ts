@@ -139,6 +139,10 @@ export const config = {
       `${defaultBackendUrl()}/webhook/whatsapp`
     ),
     messageProcessingEnabled: optional("WHATSAPP_MESSAGE_PROCESSING_ENABLED", "false").toLowerCase() === "true",
+    mediaIngestionEnabled: optional("WHATSAPP_MEDIA_INGESTION_ENABLED", "false").toLowerCase() === "true",
+    autoReplyEnabled: optional("WHATSAPP_AUTO_REPLY_ENABLED", "false").toLowerCase() === "true",
+    createClientsEnabled: optional("WHATSAPP_CREATE_CLIENTS_ENABLED", "false").toLowerCase() === "true",
+    webEnabled: optional("WHATSAPP_WEB_ENABLED", "false").toLowerCase() === "true",
   },
 
   canva: {
