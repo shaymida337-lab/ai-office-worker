@@ -22,11 +22,11 @@ services:
       - key: FRONTEND_URL
         value: https://ai-office-worker-frontend.onrender.com
       - key: GOOGLE_CLIENT_ID
-        value: 962636575245-5cvgi8b8bld3ic9kq0n5fqc8vbhdlpie.apps.googleusercontent.com
+        value: 962636575245-k60is1q1in957n61in4dhlkvbtpga59l.apps.googleusercontent.com
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: https://ai-office-worker-backend.onrender.com/auth/google/callback
+        value: https://ai-office-worker-backend.onrender.com/api/auth/google/callback
       - key: GOOGLE_INTEGRATION_REDIRECT_URI
         value: https://ai-office-worker-backend.onrender.com/api/integrations/gmail/callback
       - key: GOOGLE_CLIENT_REDIRECT_URI
