@@ -139,6 +139,20 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
           whatsappLogId: input.whatsappLogId,
           fromNumber: input.fromNumber,
           duplicateReason: duplicate.reason,
+          supplier,
+          amount,
+          invoiceDate: analysis.invoiceDate,
+          dueDate: analysis.dueDate,
+          invoiceNumber: analysis.invoiceNumber,
+          documentType: analysis.documentType,
+          supplierTaxId: analysis.supplierTaxId ?? null,
+          amountBeforeVat: analysis.amountBeforeVat ?? null,
+          vatAmount: analysis.vatAmount ?? null,
+          totalAmount: analysis.totalAmount ?? amount,
+          confidenceScore: analysis.confidence,
+          documentFingerprint: documentDecision.documentFingerprint,
+          sourceFingerprint: documentDecision.sourceFingerprint,
+          driveLink: duplicate.driveLink,
         });
         await syncPaymentToSheet(input.organizationId, duplicate.paymentId, {
           supplierTaxId: analysis.supplierTaxId ?? null,
@@ -531,8 +545,17 @@ async function upsertWhatsAppInvoiceRecord(input: {
     where: {
       organizationId: input.organizationId,
       clientId: input.clientId,
-      emailId,
-      invoiceNumber: input.invoiceNumber,
+      OR: [
+        { emailId, invoiceNumber: input.invoiceNumber },
+        {
+          invoiceNumber: input.invoiceNumber,
+          amount: input.amount ?? 0,
+          date: {
+            gte: startOfDay(date),
+            lte: endOfDay(date),
+          },
+        },
+      ],
     },
     select: { id: true },
   });
@@ -655,6 +678,7 @@ async function upsertWhatsAppSupplierPayment(input: {
         driveClientFolderId: input.driveClientFolderId ?? existing.driveClientFolderId,
         driveSupplierFolderId: input.driveSupplierFolderId ?? existing.driveSupplierFolderId,
         driveFolderPath: input.driveFolderPath ?? existing.driveFolderPath,
+        supplier: input.supplier,
         supplierName: input.supplier,
         invoiceMonth: input.invoiceMonth ?? existing.invoiceMonth,
         invoiceYear: input.invoiceYear ?? existing.invoiceYear,
@@ -816,21 +840,67 @@ async function attachWhatsAppSourceToPayment(input: {
   whatsappLogId: string;
   fromNumber: string;
   duplicateReason: string;
+  supplier: string;
+  amount: number | null;
+  invoiceDate: string | null;
+  dueDate: string | null;
+  invoiceNumber: string | null;
+  documentType: string;
+  supplierTaxId: string | null;
+  amountBeforeVat: number | null;
+  vatAmount: number | null;
+  totalAmount: number | null;
+  confidenceScore: number;
+  documentFingerprint: string;
+  sourceFingerprint: string;
+  driveLink: string | null;
 }) {
   const payment = await prisma.supplierPayment.findUnique({ where: { id: input.paymentId } });
   if (!payment) return;
+  const incomingSupplierIsValid = usableSupplierName(input.supplier);
+  const shouldReplaceSupplier = incomingSupplierIsValid && !usableSupplierName(payment.supplier);
+  const mergedDate = normalizeDate(input.invoiceDate) ?? payment.date;
+  const mergedDueDate = normalizeDate(input.dueDate) ?? payment.dueDate;
+  const invoiceLink = isInvoiceLikeDocument(input.documentType) ? input.driveLink ?? payment.invoiceLink : payment.invoiceLink;
+  const documentLink = input.documentType === "payment_request" ? input.driveLink ?? payment.documentLink : payment.documentLink ?? invoiceLink ?? input.driveLink;
+  const hasCompleteIncomingInvoice =
+    incomingSupplierIsValid &&
+    Boolean(input.invoiceNumber?.trim()) &&
+    input.amount !== null &&
+    input.amount > 0 &&
+    Boolean(mergedDate);
   await prisma.supplierPayment.update({
     where: { id: input.paymentId },
     data: {
       source: payment.source === "gmail" || payment.source === "both" ? "both" : payment.source,
+      supplier: shouldReplaceSupplier ? input.supplier : payment.supplier,
+      supplierName: shouldReplaceSupplier ? input.supplier : payment.supplierName ?? payment.supplier,
+      amount: input.amount ?? payment.amount,
+      date: mergedDate,
+      dueDate: mergedDueDate,
+      invoiceNumber: input.invoiceNumber ?? payment.invoiceNumber,
+      documentLink,
+      invoiceLink,
+      driveFileUrl: input.driveLink ?? payment.driveFileUrl,
+      supplierTaxId: input.supplierTaxId ?? payment.supplierTaxId,
+      amountBeforeVat: input.amountBeforeVat ?? payment.amountBeforeVat,
+      vatAmount: input.vatAmount ?? payment.vatAmount,
+      totalAmount: input.totalAmount ?? payment.totalAmount,
+      confidenceScore: Math.max(payment.confidenceScore ?? 0, input.confidenceScore),
+      documentFingerprint: input.documentFingerprint,
+      sourceFingerprint: input.sourceFingerprint,
+      documentTypeDetailed: input.documentType,
+      approvalStatus: hasCompleteIncomingInvoice ? "approved" : payment.approvalStatus,
       emailSender: input.fromNumber,
       lastSource: "whatsapp",
       sourceCount: Math.max(payment.sourceCount ?? 1, 1) + 1,
-      duplicateDetected: true,
-      duplicateReason: input.duplicateReason,
+      duplicateDetected: hasCompleteIncomingInvoice ? false : true,
+      duplicateReason: hasCompleteIncomingInvoice ? null : input.duplicateReason,
       firstSeenAt: payment.firstSeenAt ?? payment.createdAt,
       lastSeenAt: new Date(),
-      subject: duplicateSubject(payment.subject, true, input.duplicateReason),
+      subject: hasCompleteIncomingInvoice
+        ? duplicateSubject(input.invoiceNumber ? `WhatsApp ${input.invoiceNumber}` : payment.subject, false, null)
+        : duplicateSubject(payment.subject, true, input.duplicateReason),
     },
   });
 }
@@ -890,6 +960,10 @@ function paymentDuplicate(payment: {
   };
 }
 
+function isInvoiceLikeDocument(documentType: string) {
+  return documentType === "invoice" || documentType === "receipt" || documentType === "tax_invoice_receipt";
+}
+
 function isSupportedDocumentMedia(media: { contentType: string; url: string; filename?: string | null }) {
   const mimeType = media.contentType.toLowerCase();
   const filename = media.filename ?? media.url;
@@ -928,6 +1002,18 @@ function normalizeDate(value: string | null | undefined) {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function startOfDay(value: Date) {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function endOfDay(value: Date) {
+  const date = new Date(value);
+  date.setHours(23, 59, 59, 999);
+  return date;
 }
 
 function buildReply(items: ProcessedWhatsAppInvoice[]) {
