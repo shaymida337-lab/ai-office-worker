@@ -8,6 +8,9 @@ export const uiTranslations = {
     ecommerce: "חנות אונליין",
     importer: "יבואן",
     service_business: "עסק שירותים",
+    renovation_contractor: "קבלן שיפוצים",
+    mortgage_advisor: "יועץ משכנתאות",
+    event_production: "הפקת אירועים",
     marketing_agency: "סוכנות שיווק",
     restaurant: "מסעדה",
     other: "אחר",
@@ -101,6 +104,9 @@ export const businessTypes = [
   { id: "ecommerce", label: uiTranslations.businessTypes.ecommerce, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "collections", "employees"] },
   { id: "importer", label: uiTranslations.businessTypes.importer, modules: ["crm", "invoices", "supplier_management", "tasks", "documents", "collections", "employees"] },
   { id: "service_business", label: uiTranslations.businessTypes.service_business, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections"] },
+  { id: "renovation_contractor", label: uiTranslations.businessTypes.renovation_contractor, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections", "employees"] },
+  { id: "mortgage_advisor", label: uiTranslations.businessTypes.mortgage_advisor, modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "meetings", "collections"] },
+  { id: "event_production", label: uiTranslations.businessTypes.event_production, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "meetings", "employees"] },
   { id: "marketing_agency", label: uiTranslations.businessTypes.marketing_agency, modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "meetings", "employees"] },
   { id: "restaurant", label: uiTranslations.businessTypes.restaurant, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "employees"] },
   { id: "other", label: uiTranslations.businessTypes.other, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections"] },
@@ -121,6 +127,9 @@ export type BusinessProfile = {
   dashboardWidgets: BusinessDashboardWidget[];
   dashboardKpis: BusinessKpiConfig[];
   crmFields: BusinessCrmField[];
+  onboardingRecommendations?: string[];
+  actionRecommendations?: Array<{ title: string; explanation: string; href: string }>;
+  terminology?: Record<string, string>;
 };
 
 const defaultCrmFields: BusinessCrmField[] = [
@@ -307,6 +316,129 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
       { id: "tasks", title: "משימות שירות", description: "פולואפים, תפעול ותזכורות.", module: "tasks", metric: "openTasks" },
     ],
     crmFields: defaultCrmFields,
+  },
+  renovation_contractor: {
+    title: "מרכז ניהול לקבלן שיפוצים",
+    subtitle: "לקוחות, הצעות מחיר, ספקים, צוות, מסמכים וגבייה לפרויקטי שיפוץ.",
+    modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections", "employees"],
+    dashboardKpis: [
+      { id: "projects", label: "פרויקטים פעילים", detail: "לקוחות ואתרי עבודה במעקב", metric: "clients", module: "crm" },
+      { id: "receivable", label: "גבייה מלקוחות", detail: "מקדמות ותשלומים לקבל", metric: "moneyToReceive", module: "collections", format: "currency" },
+      { id: "supplier", label: "תשלומי ספקים", detail: "חומרים, קבלני משנה וחשבוניות", metric: "moneyToPay", module: "supplier_management", format: "currency" },
+      { id: "tasks", label: "משימות שטח", detail: "מדידות, הזמנות ופולואפים", metric: "openTasks", module: "tasks" },
+    ],
+    dashboardWidgets: [
+      { id: "renovation-sites", title: "אתרי עבודה פעילים", description: "מעקב אחרי לקוחות, שלב פרויקט והמשך טיפול.", module: "crm", metric: "clients" },
+      { id: "renovation-suppliers", title: "ספקים וקבלני משנה", description: "חשבוניות חומרים, תשלומים וחוסרים.", module: "supplier_management", metric: "moneyToPay" },
+      { id: "renovation-documents", title: "מסמכי פרויקט", description: "הצעות מחיר, תוכניות, תמונות וחשבוניות בדרייב.", module: "documents", metric: "totalInvoices" },
+    ],
+    crmFields: [
+      { key: "name", label: "שם לקוח / פרויקט", placeholder: "משפחת כהן / שיפוץ דירה" },
+      { key: "company", label: "כתובת אתר / סוג עבודה", placeholder: "מטבח, אמבטיה, דירה מלאה..." },
+      { key: "phone", label: "טלפון לקוח", placeholder: "+972..." },
+      { key: "email", label: "מייל לשליחת הצעה", placeholder: "client@example.com" },
+      { key: "estimatedValue", label: "שווי פרויקט", placeholder: "עלות שיפוץ משוערת" },
+      { key: "tags", label: "תגיות שיפוץ", placeholder: "מדידה, הצעת מחיר, ביצוע, דחוף" },
+      { key: "notes", label: "פרטי עבודה", placeholder: "מידות, חומרים, דדליין, קבלני משנה" },
+    ],
+    onboardingRecommendations: [
+      "חבר ג׳ימייל כדי לזהות הצעות מחיר, חשבוניות ספקים ותכתובות עם לקוחות.",
+      "הפעל מסמכים כדי לשמור תוכניות, תמונות וחשבוניות לפי פרויקט.",
+      "הפעל ספקים ותשלומים למעקב אחרי חומרים וקבלני משנה.",
+    ],
+    actionRecommendations: [
+      { title: "בדוק חשבוניות חומרים", explanation: "ודא שכל חשבונית ספק שויכה לפרויקט וקיימת קבלה.", href: "/payments" },
+      { title: "עדכן משימות שטח", explanation: "בדוק מדידות, הזמנות חומרים ופולואפים פתוחים.", href: "/tasks" },
+      { title: "בדוק גבייה לפי פרויקט", explanation: "וודא שמקדמות ותשלומי ביניים לא נשארו פתוחים.", href: "/collections" },
+    ],
+    terminology: {
+      client: "לקוח / פרויקט",
+      deal: "פרויקט שיפוץ",
+      supplier: "ספק / קבלן משנה",
+      document: "תוכנית / הצעת מחיר / חשבונית",
+    },
+  },
+  mortgage_advisor: {
+    title: "מרכז ניהול ליועץ משכנתאות",
+    subtitle: "לידים, תיקי לקוחות, בנקים, מסמכים, פגישות ופולואפים.",
+    modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "meetings", "collections"],
+    dashboardKpis: [
+      { id: "applications", label: "תיקים פעילים", detail: "לקוחות בתהליך משכנתה", metric: "clients", module: "crm" },
+      { id: "fees", label: "עמלות לקבל", detail: "תשלומי ייעוץ וגבייה", metric: "moneyToReceive", module: "collections", format: "currency" },
+      { id: "tasks", label: "חוסרים ופולואפים", detail: "מסמכים ומשימות פתוחות", metric: "openTasks", module: "tasks" },
+      { id: "health", label: "בריאות תיקים", detail: "מדד פעילות כולל", metric: "businessHealthScore", format: "score" },
+    ],
+    dashboardWidgets: [
+      { id: "mortgage-pipeline", title: "תיקי משכנתה", description: "לקוחות לפי שלב: בדיקה, אישור עקרוני, מכרז בנקים וסגירה.", module: "crm", metric: "clients" },
+      { id: "mortgage-documents", title: "מסמכים חסרים", description: "תלושי שכר, דפי בנק, אישורי הכנסה וחוזים.", module: "documents", metric: "openTasks" },
+      { id: "mortgage-meetings", title: "פגישות ופולואפים", description: "שיחות ייעוץ, תזכורות ללקוח ומעקב מול בנקים.", module: "meetings", metric: "openTasks" },
+    ],
+    crmFields: [
+      { key: "name", label: "שם לקוח / תיק", placeholder: "שם מלא" },
+      { key: "company", label: "שלב משכנתה / בנק מוביל", placeholder: "בדיקה, אישור עקרוני, בנק..." },
+      { key: "phone", label: "טלפון / וואטסאפ", placeholder: "+972..." },
+      { key: "email", label: "מייל למסמכים", placeholder: "client@example.com" },
+      { key: "estimatedValue", label: "גובה משכנתה", placeholder: "סכום מבוקש" },
+      { key: "tags", label: "תגיות תיק", placeholder: "רכישה, מחזור, מחיר למשתכן, דחוף" },
+      { key: "notes", label: "חוסרים והערות", placeholder: "מסמכים חסרים, יחס החזר, בנקים רלוונטיים" },
+    ],
+    onboardingRecommendations: [
+      "חבר ג׳ימייל כדי לזהות מסמכי לקוחות, אישורי בנקים ופולואפים.",
+      "הפעל מסמכים כדי לרכז תלושי שכר, דפי בנק וחוזים בדרייב.",
+      "הפעל פגישות ומשימות כדי לא לפספס חוסרים מול לקוחות ובנקים.",
+    ],
+    actionRecommendations: [
+      { title: "בדוק מסמכים חסרים בתיקים", explanation: "וודא שכל תיק משכנתה כולל תלושים, דפי בנק ואישורי הכנסה.", href: "/dashboard/scan-stats" },
+      { title: "חזור ללידים חמים", explanation: "לקוחות שלא התקדמו לשלב הבא צריכים פולואפ מהיר.", href: "/crm" },
+      { title: "בדוק גביית שכר טרחה", explanation: "וודא שכל תיק פעיל מחובר לתשלום ייעוץ ברור.", href: "/collections" },
+    ],
+    terminology: {
+      client: "לקוח / תיק משכנתה",
+      deal: "תיק משכנתה",
+      supplier: "בנק / גוף מממן",
+      document: "מסמכי הכנסה ובנק",
+    },
+  },
+  event_production: {
+    title: "מרכז ניהול להפקת אירועים",
+    subtitle: "לקוחות, אירועים, ספקים, צוות, מסמכים, תשלומים ופולואפים.",
+    modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "meetings", "employees"],
+    dashboardKpis: [
+      { id: "events", label: "אירועים פעילים", detail: "לקוחות ואירועים בהפקה", metric: "clients", module: "crm" },
+      { id: "event-revenue", label: "תשלומים מלקוחות", detail: "מקדמות ויתרות לקבל", metric: "moneyToReceive", module: "invoices", format: "currency" },
+      { id: "supplier-payments", label: "ספקים לשלם", detail: "אולם, ציוד, צילום, קייטרינג ועוד", metric: "moneyToPay", module: "supplier_management", format: "currency" },
+      { id: "event-tasks", label: "משימות הפקה", detail: "משימות פתוחות עד האירוע", metric: "openTasks", module: "tasks" },
+    ],
+    dashboardWidgets: [
+      { id: "event-pipeline", title: "אירועים קרובים", description: "מעקב אחרי לקוחות, תאריך אירוע ושלב הפקה.", module: "crm", metric: "clients" },
+      { id: "event-suppliers", title: "ספקי אירוע", description: "תשלומים, חשבוניות וקבלות חסרות מול ספקים.", module: "supplier_management", metric: "moneyToPay" },
+      { id: "event-team", title: "צוות ומשימות", description: "שיוך משימות, דדליין ותיאום יום האירוע.", module: "employees", metric: "openTasks" },
+    ],
+    crmFields: [
+      { key: "name", label: "שם לקוח / אירוע", placeholder: "חתונת כהן / אירוע חברה" },
+      { key: "company", label: "סוג אירוע / מקום", placeholder: "חתונה, בר מצווה, כנס, אולם..." },
+      { key: "phone", label: "טלפון איש קשר", placeholder: "+972..." },
+      { key: "email", label: "מייל לשליחת הצעה", placeholder: "client@example.com" },
+      { key: "estimatedValue", label: "תקציב אירוע", placeholder: "סכום משוער" },
+      { key: "tags", label: "תגיות הפקה", placeholder: "הצעה, סגור, ספקים, דחוף" },
+      { key: "notes", label: "פרטי הפקה", placeholder: "תאריך, כמות אורחים, ספקים, דדליין" },
+    ],
+    onboardingRecommendations: [
+      "חבר ג׳ימייל כדי לזהות הצעות ספקים, חשבוניות ותכתובות עם לקוחות.",
+      "הפעל ספקים ותשלומים לניהול קייטרינג, ציוד, צילום, מוזיקה ועוד.",
+      "הפעל צוות ומשימות כדי לחלק אחריות לקראת יום האירוע.",
+    ],
+    actionRecommendations: [
+      { title: "בדוק ספקים לאירועים קרובים", explanation: "וודא שכל ספק קיבל משימה, תשלום וחשבונית מסודרת.", href: "/payments" },
+      { title: "עדכן משימות הפקה", explanation: "בדוק דדליין, תיאומים וצוות לפני האירועים הקרובים.", href: "/tasks" },
+      { title: "בדוק מקדמות ויתרות", explanation: "וודא שאין יתרות פתוחות מול לקוחות לפני האירוע.", href: "/collections" },
+    ],
+    terminology: {
+      client: "לקוח / אירוע",
+      deal: "אירוע",
+      supplier: "ספק אירוע",
+      document: "הצעת ספק / חוזה / חשבונית",
+    },
   },
   marketing_agency: {
     title: "מרכז ביצוע לסוכנות שיווק",

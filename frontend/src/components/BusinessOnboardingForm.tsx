@@ -243,6 +243,23 @@ export function BusinessOnboardingForm({ initialSettings, mode, onSaved }: Props
           })}
         </div>
       </div>
+
+      {businessProfile.onboardingRecommendations?.length ? (
+        <div className="card">
+          <div className="mb-4">
+            <h2>המלצות לפי סוג העסק</h2>
+            <p className="text-sm text-ink-secondary">המערכת תתחיל עם ההגדרות שמומלצות לעסק שבחרת, ואפשר לשנות הכל בהמשך.</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {businessProfile.onboardingRecommendations.map((recommendation, index) => (
+              <div key={recommendation} className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+                <span className="badge badge-ok">המלצה {index + 1}</span>
+                <p className="mt-3 text-sm">{recommendation}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

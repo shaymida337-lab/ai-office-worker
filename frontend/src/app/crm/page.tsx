@@ -491,6 +491,9 @@ function crmKpiLabel(businessType: string | null | undefined, key: CrmKpiKey) {
     real_estate: { newToday: "קונים/מוכרים חדשים", responseRate: "שיעור מענה", avgCloseDays: "זמן לעסקה" },
     ecommerce: { newToday: "פניות לקוחות", responseRate: "שיעור מענה", avgCloseDays: "זמן טיפול" },
     importer: { newToday: "פניות מסחריות", responseRate: "שיעור מענה", avgCloseDays: "זמן סגירת הזמנה" },
+    renovation_contractor: { newToday: "פניות לשיפוץ", responseRate: "שיעור מענה", avgCloseDays: "זמן לסגירת פרויקט" },
+    mortgage_advisor: { newToday: "תיקי משכנתה חדשים", responseRate: "שיעור מענה", avgCloseDays: "זמן לאישור עקרוני" },
+    event_production: { newToday: "אירועים חדשים", responseRate: "שיעור מענה", avgCloseDays: "זמן לסגירת אירוע" },
     marketing_agency: { newToday: "לידים לקמפיין", responseRate: "שיעור מענה", avgCloseDays: "זמן לסגירת ריטיינר" },
     restaurant: { newToday: "פניות / אירועים", responseRate: "שיעור מענה", avgCloseDays: "זמן סגירת הזמנה" },
   };
