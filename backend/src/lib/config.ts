@@ -93,6 +93,9 @@ export const config = {
     .map((origin) => origin.trim())
     .filter(Boolean),
   cronSecret: optional("CRON_SECRET", process.env.NODE_ENV === "production" ? "" : "dev-cron-secret"),
+  debug: {
+    classificationInvestigationToken: optional("DEBUG_CLASSIFICATION_TOKEN"),
+  },
 
   google: {
     clientId: optional("GOOGLE_CLIENT_ID"),

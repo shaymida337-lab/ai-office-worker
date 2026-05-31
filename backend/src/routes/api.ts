@@ -51,6 +51,26 @@ apiRouter.post("/leads/webhook", async (req, res) => {
   }
 });
 
+apiRouter.get("/debug/payments/open-classification-inputs", async (req, res, next) => {
+  const orgId = typeof req.query.orgId === "string" ? req.query.orgId.trim() : "";
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!orgId && !token) {
+    next();
+    return;
+  }
+  if (!orgId || !token || !config.debug.classificationInvestigationToken || token !== config.debug.classificationInvestigationToken) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  try {
+    res.json(await buildOpenClassificationInputsDebug(orgId));
+  } catch (err) {
+    console.error("[debug/payments/open-classification-inputs/public] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Open supplier payment classification input debug failed" });
+  }
+});
+
 apiRouter.use(authMiddleware);
 
 apiRouter.get("/business/templates", async (_req, res) => {
@@ -917,6 +937,149 @@ function extractEmailAddress(value: string | null | undefined) {
 function extractEmailDomain(value: string | null | undefined) {
   const email = extractEmailAddress(value) ?? value?.toLowerCase() ?? "";
   return email.includes("@") ? email.split("@").pop()?.replace(/[>\s),;]+$/g, "") ?? "unknown" : "unknown";
+}
+
+async function buildOpenClassificationInputsDebug(orgId: string) {
+  const rows = await prisma.$queryRawUnsafe<Array<{
+    paymentId: string;
+    amount: number;
+    currency: string;
+    supplier: string;
+    senderName: string | null;
+    senderEmail: string | null;
+    senderDomain: string | null;
+    documentType: string | null;
+    reviewStatus: string | null;
+    confidenceScore: string | null;
+    decisionReason: string | null;
+    emailMessageId: string | null;
+    gmailMessageId: string | null;
+    emailSubject: string | null;
+    paymentSubject: string | null;
+    paymentSource: string;
+    duplicateHash: string | null;
+    duplicateDetected: boolean;
+    duplicateReason: string | null;
+    scanItemId: string | null;
+    scanItemCount: number;
+    createdAt: Date;
+    updatedAt: Date;
+  }>>(
+    `SELECT
+      sp."id" AS "paymentId",
+      sp."amount",
+      sp."currency",
+      sp."supplier",
+      COALESCE(gsi."sender", sp."emailSender", em."fromAddress") AS "senderName",
+      COALESCE(gsi."senderEmail", substring(COALESCE(sp."emailSender", em."fromAddress") from '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}')) AS "senderEmail",
+      lower(split_part(COALESCE(gsi."senderEmail", substring(COALESCE(sp."emailSender", em."fromAddress") from '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}'), 'unknown'), '@', 2)) AS "senderDomain",
+      gsi."documentType",
+      gsi."reviewStatus",
+      gsi."confidenceScore",
+      gsi."decisionReason",
+      sp."emailMessageId",
+      COALESCE(em."gmailId", gsi."gmailMessageId") AS "gmailMessageId",
+      COALESCE(em."subject", gsi."subject") AS "emailSubject",
+      sp."subject" AS "paymentSubject",
+      sp."source" AS "paymentSource",
+      sp."duplicateHash",
+      sp."duplicateDetected",
+      sp."duplicateReason",
+      gsi."id" AS "scanItemId",
+      COALESCE(gsic."scanItemCount", 0)::int AS "scanItemCount",
+      sp."createdAt",
+      sp."updatedAt"
+    FROM "SupplierPayment" sp
+    LEFT JOIN "EmailMessage" em
+      ON em."organizationId" = sp."organizationId"
+      AND (em."id" = sp."emailMessageId" OR em."gmailId" = sp."emailMessageId")
+    LEFT JOIN LATERAL (
+      SELECT *
+      FROM "GmailScanItem" item
+      WHERE item."organizationId" = sp."organizationId"
+        AND (
+          item."emailMessageId" = sp."emailMessageId"
+          OR item."gmailMessageId" = sp."emailMessageId"
+          OR item."emailMessageId" = em."id"
+          OR item."gmailMessageId" = em."gmailId"
+        )
+      ORDER BY item."createdAt" DESC
+      LIMIT 1
+    ) gsi ON true
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*) AS "scanItemCount"
+      FROM "GmailScanItem" item
+      WHERE item."organizationId" = sp."organizationId"
+        AND (
+          item."emailMessageId" = sp."emailMessageId"
+          OR item."gmailMessageId" = sp."emailMessageId"
+          OR item."emailMessageId" = em."id"
+          OR item."gmailMessageId" = em."gmailId"
+        )
+    ) gsic ON true
+    WHERE sp."organizationId" = $1
+      AND sp."paymentRequired" = true
+      AND sp."paid" = false
+    ORDER BY sp."amount" DESC, sp."createdAt" DESC`,
+    orgId
+  );
+
+  const normalizedRows = rows.map((row) => ({
+    ...row,
+    senderDomain: row.senderDomain && row.senderDomain.length > 0 ? row.senderDomain : extractEmailDomain(row.senderEmail ?? row.senderName),
+  }));
+
+  const domainSummary = Array.from(
+    normalizedRows.reduce((acc, row) => {
+      const domain = row.senderDomain || "unknown";
+      const existing = acc.get(domain) ?? {
+        senderDomain: domain,
+        count: 0,
+        totalAmount: 0,
+        examples: [] as Array<{ paymentId: string; supplier: string; amount: number; decisionReason: string | null }>,
+      };
+      existing.count += 1;
+      existing.totalAmount += row.amount;
+      if (existing.examples.length < 5) {
+        existing.examples.push({
+          paymentId: row.paymentId,
+          supplier: row.supplier,
+          amount: row.amount,
+          decisionReason: row.decisionReason,
+        });
+      }
+      acc.set(domain, existing);
+      return acc;
+    }, new Map<string, { senderDomain: string; count: number; totalAmount: number; examples: Array<{ paymentId: string; supplier: string; amount: number; decisionReason: string | null }> }>())
+  )
+    .map(([, value]) => value)
+    .sort((a, b) => b.totalAmount - a.totalAmount);
+
+  const duplicateSummary = Array.from(
+    normalizedRows.reduce((acc, row) => {
+      const key = row.duplicateHash || `${row.senderDomain}|${row.emailSubject}|${row.amount}`;
+      const existing = acc.get(key) ?? { key, count: 0, totalAmount: 0, paymentIds: [] as string[] };
+      existing.count += 1;
+      existing.totalAmount += row.amount;
+      if (existing.paymentIds.length < 10) existing.paymentIds.push(row.paymentId);
+      acc.set(key, existing);
+      return acc;
+    }, new Map<string, { key: string; count: number; totalAmount: number; paymentIds: string[] }>())
+  )
+    .map(([, value]) => value)
+    .filter((value) => value.count > 1)
+    .sort((a, b) => b.totalAmount - a.totalAmount);
+
+  return {
+    orgId,
+    endpoint: "/api/debug/payments/open-classification-inputs",
+    readOnly: true,
+    countedRows: normalizedRows.length,
+    moneyToPay: normalizedRows.reduce((sum, row) => sum + row.amount, 0),
+    domainSummary,
+    duplicateSummary,
+    rows: normalizedRows,
+  };
 }
 
 apiRouter.get("/debug/sheets/supplier-payments/verify", async (req, res) => {

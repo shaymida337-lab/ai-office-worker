@@ -45,6 +45,8 @@ services:
         value: nova
       - key: CRON_SECRET
         generateValue: true
+      - key: DEBUG_CLASSIFICATION_TOKEN
+        sync: false
       - key: TWILIO_ACCOUNT_SID
         sync: false
       - key: TWILIO_AUTH_TOKEN
