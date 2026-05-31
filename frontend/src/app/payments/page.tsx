@@ -155,15 +155,17 @@ export default function PaymentsPage() {
             {payments.map((p) => (
               <tr key={p.id}>
                 <td>
-                  <button className="rounded-xl border border-red-400/60 bg-red-500/20 px-3 py-2 text-sm font-bold text-red-100 transition hover:bg-red-500/30" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
+                  <button className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-60" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
                     {deletingId === p.id ? "מוחק..." : "מחק"}
                   </button>
                 </td>
                 <td>
-                  <div className="font-semibold">{p.supplier}</div>
-                  <button className="mt-2 rounded-lg border border-red-400/50 bg-red-500/10 px-2 py-1 text-xs font-bold text-red-100 md:hidden" type="button" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
+                  <div className="flex min-w-40 flex-wrap items-center gap-3">
+                    <span className="font-semibold">{p.supplier}</span>
+                    <button className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-60" type="button" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
                     {deletingId === p.id ? "מוחק..." : "מחק"}
-                  </button>
+                    </button>
+                  </div>
                 </td>
                 <td>{p.emailSender ?? "—"}</td>
                 <td>₪{p.amount.toLocaleString("he-IL")}</td>
