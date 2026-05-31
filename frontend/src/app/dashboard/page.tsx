@@ -2,6 +2,7 @@
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Nav } from "@/components/Nav";
+import { HelpTooltip } from "@/components/HelpTooltip";
 import {
   apiFetch,
   clearToken,
@@ -777,14 +778,21 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק ג׳ימייל"}</button>
-          <button className="btn btn-secondary" onClick={runWhatsAppScan} disabled={whatsAppScanning || !whatsAppConnected}><MessageCircle className="h-4 w-4" />{whatsAppScanning ? "סורק וואטסאפ..." : "סרוק וואטסאפ"}</button>
+          <div className="inline-flex items-center gap-2" data-help="scan-gmail">
+            <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק ג׳ימייל"}</button>
+            <HelpTooltip text="מחפש חשבוניות חדשות במייל ומוסיף אותן למערכת." label="סרוק Gmail" />
+          </div>
+          <div className="inline-flex items-center gap-2" data-help="scan-whatsapp">
+            <button className="btn btn-secondary" onClick={runWhatsAppScan} disabled={whatsAppScanning || !whatsAppConnected}><MessageCircle className="h-4 w-4" />{whatsAppScanning ? "סורק וואטסאפ..." : "סרוק וואטסאפ"}</button>
+            <HelpTooltip text="בודק מסמכים והודעות שנשלחו בווטסאפ ומנסה לזהות חשבוניות." label="סרוק WhatsApp" />
+          </div>
           <button className="btn btn-secondary" onClick={scanAllClients} disabled={syncing}><RefreshCcw className="h-4 w-4" />סרוק לקוחות</button>
           <button className="btn btn-secondary" onClick={() => router.push("/dashboard/clients")}><Plus className="h-4 w-4" />הוסף לקוח</button>
           <button className="btn btn-secondary" onClick={() => router.push("/dashboard/business-settings")}>התאם את המערכת</button>
         </div>
       </div>
 
+      <div data-help="system-connections">
       <SystemConnectionsPanel
         health={systemHealth}
         gmailConnected={gmailConnected}
@@ -798,6 +806,7 @@ export default function DashboardPage() {
         onRunWhatsAppScan={runWhatsAppScan}
         onWhatsAppRangeChange={setWhatsAppScanRange}
       />
+      </div>
 
       {!setupComplete && (
         <section className="mb-4 rounded-3xl border border-amber-400/30 bg-amber-400/10 p-4 shadow-card">
@@ -934,7 +943,7 @@ export default function DashboardPage() {
         <SetupLockedNotice onConnectGmail={connectGmail} onConnectWhatsApp={() => router.push("/dashboard/whatsapp")} />
       )}
 
-      <section className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-5" data-help="integration-metrics">
         <MiniMetric label="Invoices from Gmail" value={stats.invoicesFromGmail ?? 0} />
         <MiniMetric label="Invoices from WhatsApp" value={stats.invoicesFromWhatsApp ?? 0} />
         <MiniMetric label="Documents in Drive" value={stats.documentsInDrive ?? stats.driveUploads} />
@@ -1201,12 +1210,18 @@ function SystemConnectionsPanel({
           <p className="text-sm">סטטוס חי של Gmail, Drive, Sheets, WhatsApp וה-Database.</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <button type="button" className="btn btn-secondary" onClick={onRunSystemCheck}>Run System Check</button>
+          <div className="inline-flex items-center gap-2">
+            <button type="button" className="btn btn-secondary" onClick={onRunSystemCheck}>Run System Check</button>
+            <HelpTooltip text="בודק שכל החיבורים עובדים: Gmail, Drive, Sheets, WhatsApp ושרת." label="בדוק מערכת" />
+          </div>
           {!gmailConnected && <button type="button" className="btn" onClick={onConnectGmail}>Connect Gmail</button>}
           {whatsAppConnected ? (
             <span className="badge badge-ok justify-center py-3">WhatsApp Connected</span>
           ) : (
-            <button type="button" className="btn" onClick={onConnectWhatsApp}>Connect WhatsApp</button>
+            <div className="inline-flex items-center gap-2">
+              <button type="button" className="btn" onClick={onConnectWhatsApp}>Connect WhatsApp</button>
+              <HelpTooltip text="מחבר את המערכת לחשבון הווטסאפ העסקי שלך." label="חבר WhatsApp" />
+            </div>
           )}
         </div>
       </div>
