@@ -3062,7 +3062,9 @@ apiRouter.post("/system/health/check", async (req, res) => {
 apiRouter.post("/whatsapp/scan", async (req, res) => {
   if (!config.twilio.messageProcessingEnabled) {
     res.json({
+      scanId: null,
       status: "disabled",
+      inProgress: false,
       reason: "WhatsApp message scanning and invoice extraction are disabled. Invoices are collected from Gmail only.",
       messagesFound: 0,
       messagesScanned: 0,
@@ -3089,6 +3091,28 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
     : null;
   const scanMode = fullScan ? "full" : `last_${daysBack}_days`;
 
+  const activeLog = await prisma.syncLog.findFirst({
+    where: {
+      organizationId,
+      type: "whatsapp",
+      status: "running",
+      startedAt: { gte: new Date(Date.now() - 30 * 60 * 1000) },
+    },
+    orderBy: { startedAt: "desc" },
+  });
+  if (activeLog) {
+    res.status(202).json({
+      scanId: activeLog.id,
+      status: "running",
+      inProgress: true,
+      mode: activeLog.scanMode ?? scanMode,
+      progressUrl: `/api/whatsapp/scan/${activeLog.id}`,
+      message: "WhatsApp scan is already running in the background",
+      ...(await buildWhatsAppScanProgress(organizationId, activeLog.id)),
+    });
+    return;
+  }
+
   const log = await prisma.syncLog.create({
     data: {
       organizationId,
@@ -3099,6 +3123,57 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
     },
   });
 
+  void runWhatsAppScanJob({
+    organizationId,
+    scanId: log.id,
+    scanMode,
+    since,
+    fullScan,
+  }).catch((err) => {
+    console.error("[whatsapp-scan] background job crashed", errorDetails(err));
+  });
+
+  res.status(202).json({
+    scanId: log.id,
+    status: "started",
+    inProgress: true,
+    mode: scanMode,
+    progressUrl: `/api/whatsapp/scan/${log.id}`,
+    message: "WhatsApp scan started in background",
+    messagesFound: 0,
+    messagesScanned: 0,
+    mediaMessagesFound: 0,
+    mediaItemsFound: 0,
+    mediaItemsProcessed: 0,
+    driveFilesCreated: 0,
+    supplierPaymentsCreatedOrUpdated: 0,
+    invoiceRecordsCreatedOrUpdated: 0,
+    paymentMessagesFound: 0,
+    supplierPaymentsFound: 0,
+    errorsCount: 0,
+    errors: [],
+  });
+});
+
+apiRouter.get("/whatsapp/scan/:scanId", async (req, res) => {
+  const progress = await buildWhatsAppScanProgress(req.auth!.organizationId, req.params.scanId);
+  if (!progress) {
+    res.status(404).json({ error: "WhatsApp scan not found" });
+    return;
+  }
+  res.json(progress);
+});
+
+async function runWhatsAppScanJob(input: {
+  organizationId: string;
+  scanId: string;
+  scanMode: string;
+  since: Date | null;
+  fullScan: boolean;
+}) {
+  const { organizationId, scanId, scanMode, since, fullScan } = input;
+  const startedAt = Date.now();
+  console.log(`[whatsapp-scan] background start org=${organizationId} scanId=${scanId} mode=${scanMode}`);
   try {
     const where = {
       organizationId,
@@ -3122,6 +3197,7 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
 
     const { analyzeAndSaveMessage } = await import("../services/messageScanner.js");
     const { ingestWhatsAppInvoiceMedia } = await import("../services/whatsappInvoiceIngestion.js");
+    console.log(`[whatsapp-scan] messages loaded org=${organizationId} scanId=${scanId} count=${messages.length}`);
     let scanned = 0;
     let mediaMessagesFound = 0;
     let mediaItemsFound = 0;
@@ -3149,6 +3225,7 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
         if (config.twilio.mediaIngestionEnabled && (message.mediaCount > 0 || media.length > 0)) {
           mediaMessagesFound += 1;
           mediaItemsFound += media.length;
+          console.log(`[whatsapp-scan] media processing start scanId=${scanId} logId=${message.id} media=${media.length}`);
           const mediaResult = await ingestWhatsAppInvoiceMedia({
             organizationId,
             clientId: message.clientId,
@@ -3161,9 +3238,30 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
           driveFilesCreated += mediaResult.processed.filter((item) => item.driveLink).length;
           supplierPaymentsCreatedOrUpdated += mediaResult.processed.filter((item) => item.paymentId).length;
           invoiceRecordsCreatedOrUpdated += mediaResult.processed.filter((item) => item.invoiceId).length;
+          console.log(`[whatsapp-scan] media processing done scanId=${scanId} logId=${message.id} processed=${mediaResult.processed.length} payments=${mediaResult.processed.filter((item) => item.paymentId).length} invoices=${mediaResult.processed.filter((item) => item.invoiceId).length}`);
+        }
+        if (scanned === 1 || scanned % 5 === 0 || scanned === messages.length) {
+          await prisma.syncLog.update({
+            where: { id: scanId },
+            data: {
+              emailsProcessed: messages.length,
+              emailsSaved: scanned,
+              invoicesFound: mediaItemsProcessed,
+              paymentsCreated: supplierPaymentsCreatedOrUpdated,
+              driveUploaded: driveFilesCreated,
+              errorsCount,
+              errorMessage: errors.length ? errors.join(" | ") : null,
+            },
+          });
         }
       } catch (err) {
         errorsCount += 1;
+        const details = errorDetails(err);
+        console.error("[whatsapp-scan] message processing failed", {
+          scanId,
+          logId: message.id,
+          error: details,
+        });
         if (errors.length < 5) errors.push(err instanceof Error ? err.message : String(err));
       }
     }
@@ -3192,7 +3290,7 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
     ]);
 
     await prisma.syncLog.update({
-      where: { id: log.id },
+      where: { id: scanId },
       data: {
         status: errorsCount ? "error" : "success",
         emailsProcessed: messages.length,
@@ -3205,27 +3303,15 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
         finishedAt: new Date(),
       },
     });
-
-    res.json({
-      scanId: log.id,
-      status: errorsCount ? "error" : "completed",
-      mode: scanMode,
-      messagesFound: messages.length,
-      messagesScanned: scanned,
-      mediaMessagesFound,
-      mediaItemsFound,
-      mediaItemsProcessed,
-      driveFilesCreated,
-      supplierPaymentsCreatedOrUpdated,
-      invoiceRecordsCreatedOrUpdated,
-      paymentMessagesFound: invoiceMessages,
-      supplierPaymentsFound: paymentsFromWhatsApp,
-      errorsCount,
-      errors,
-    });
+    console.log(`[whatsapp-scan] background done org=${organizationId} scanId=${scanId} status=${errorsCount ? "error" : "success"} elapsedMs=${Date.now() - startedAt} messages=${messages.length} scanned=${scanned} paymentsUpdated=${supplierPaymentsCreatedOrUpdated} driveFiles=${driveFilesCreated} errors=${errorsCount}`);
   } catch (err) {
+    console.error("[whatsapp-scan] background failed", {
+      scanId,
+      organizationId,
+      error: errorDetails(err),
+    });
     await prisma.syncLog.update({
-      where: { id: log.id },
+      where: { id: scanId },
       data: {
         status: "error",
         errorsCount: 1,
@@ -3233,9 +3319,48 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
         finishedAt: new Date(),
       },
     });
-    res.status(500).json({ error: err instanceof Error ? err.message : "WhatsApp scan failed" });
   }
-});
+}
+
+async function buildWhatsAppScanProgress(organizationId: string, scanId: string) {
+  const log = await prisma.syncLog.findFirst({
+    where: { id: scanId, organizationId, type: "whatsapp" },
+  });
+  if (!log) return null;
+  const status = log.finishedAt ? (log.status === "success" ? "completed" : "error") : "running";
+  const messagesFound = log.emailsProcessed;
+  const messagesScanned = log.emailsSaved;
+  const progressPercent = status === "completed"
+    ? 100
+    : status === "error"
+      ? 100
+      : messagesFound > 0
+        ? Math.min(95, Math.max(5, Math.round((messagesScanned / Math.max(messagesFound, 1)) * 100)))
+        : 5;
+  const errors = log.errorMessage ? log.errorMessage.split(" | ").filter(Boolean).slice(0, 5) : [];
+  return {
+    scanId: log.id,
+    status,
+    inProgress: status === "running",
+    mode: log.scanMode ?? "unknown",
+    progressPercent,
+    startedAt: log.startedAt,
+    finishedAt: log.finishedAt,
+    error: status === "error" ? log.errorMessage : null,
+    messagesFound,
+    messagesScanned,
+    mediaMessagesFound: 0,
+    mediaItemsFound: 0,
+    mediaItemsProcessed: log.invoicesFound,
+    driveFilesCreated: log.driveUploaded,
+    supplierPaymentsCreatedOrUpdated: log.paymentsCreated,
+    invoiceRecordsCreatedOrUpdated: 0,
+    paymentMessagesFound: log.invoicesFound,
+    supplierPaymentsFound: log.paymentsCreated,
+    errorsCount: log.errorsCount,
+    errors,
+  };
+}
 
 function normalizeStoredWhatsAppMedia(value: unknown): Array<{ url: string; contentType: string; filename?: string | null }> {
   if (!Array.isArray(value)) return [];

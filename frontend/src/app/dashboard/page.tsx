@@ -92,11 +92,23 @@ type SystemHealth = {
 };
 
 type WhatsAppScanResult = {
-  scanId: string;
-  status: "completed" | "error";
+  scanId: string | null;
+  status: "disabled" | "started" | "running" | "completed" | "error";
+  inProgress?: boolean;
   mode: string;
+  progressUrl?: string;
+  progressPercent?: number;
+  startedAt?: string;
+  finishedAt?: string | null;
+  error?: string | null;
   messagesFound: number;
   messagesScanned: number;
+  mediaMessagesFound?: number;
+  mediaItemsFound?: number;
+  mediaItemsProcessed?: number;
+  driveFilesCreated?: number;
+  supplierPaymentsCreatedOrUpdated?: number;
+  invoiceRecordsCreatedOrUpdated?: number;
   paymentMessagesFound: number;
   supplierPaymentsFound: number;
   errorsCount: number;
@@ -649,13 +661,26 @@ export default function DashboardPage() {
     try {
       const result = await apiFetch<WhatsAppScanResult>("/api/whatsapp/scan", {
         method: "POST",
-        timeoutMs: 60000,
+        timeoutMs: 15000,
         body: JSON.stringify({
           fullScan,
           daysBack: fullScan ? null : Number(whatsAppScanRange),
         }),
       });
       setWhatsAppScanResult(result);
+      if (result.progressUrl && result.inProgress) {
+        setScanToast({ type: "info", text: "סריקת וואטסאפ התחילה ברקע. מעבד קבצים וחשבוניות..." });
+        const completed = await pollWhatsAppScan(result.progressUrl);
+        setWhatsAppScanResult(completed);
+        setScanToast({
+          type: completed.status === "completed" ? "success" : "error",
+          text: completed.status === "completed"
+            ? `סריקת וואטסאפ הסתיימה: ${completed.messagesScanned} הודעות · ${completed.supplierPaymentsFound} תשלומי ספקים`
+            : `סריקת וואטסאפ נכשלה: ${completed.error ?? completed.errors?.[0] ?? "שגיאה לא ידועה"}`,
+        });
+        await load();
+        return;
+      }
       setScanToast({
         type: result.status === "completed" ? "success" : "error",
         text: result.status === "completed"
@@ -670,6 +695,17 @@ export default function DashboardPage() {
     } finally {
       setWhatsAppScanning(false);
     }
+  }
+
+  async function pollWhatsAppScan(progressUrl: string) {
+    let latest = await apiFetch<WhatsAppScanResult>(progressUrl, { timeoutMs: 15000 });
+    setWhatsAppScanResult(latest);
+    for (let attempt = 0; latest.inProgress && attempt < 120; attempt += 1) {
+      await delay(2500);
+      latest = await apiFetch<WhatsAppScanResult>(progressUrl, { timeoutMs: 15000 });
+      setWhatsAppScanResult(latest);
+    }
+    return latest;
   }
 
   async function markPaymentPaid(paymentId: string) {
@@ -1250,10 +1286,25 @@ function SystemConnectionsPanel({
             </button>
           </div>
         </div>
-        {whatsAppScanning && <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-hover"><div className="h-full w-2/3 animate-pulse rounded-full bg-accent-primary" /></div>}
+        {whatsAppScanning && (
+          <div className="mt-3">
+            <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
+              <div
+                className="h-full rounded-full bg-accent-primary transition-all"
+                style={{ width: `${Math.max(5, whatsAppScanResult?.progressPercent ?? 12)}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-ink-secondary">
+              {whatsAppScanResult?.inProgress
+                ? `מעבד ברקע... ${whatsAppScanResult.progressPercent ?? 5}% · ${whatsAppScanResult.messagesScanned}/${whatsAppScanResult.messagesFound || "?"} הודעות`
+                : "מתחיל סריקת וואטסאפ..."}
+            </p>
+          </div>
+        )}
         {whatsAppScanResult && (
           <p className="mt-3 text-sm text-ink-secondary">
-            WhatsApp scan: {whatsAppScanResult.messagesScanned} messages scanned · {whatsAppScanResult.supplierPaymentsFound} supplier payments · {whatsAppScanResult.errorsCount} errors
+            WhatsApp scan: {whatsAppScanResult.messagesScanned} messages scanned · {whatsAppScanResult.supplierPaymentsFound} supplier payments · {whatsAppScanResult.driveFilesCreated ?? 0} Drive files · {whatsAppScanResult.errorsCount} errors
+            {whatsAppScanResult.error ? ` · ${whatsAppScanResult.error}` : ""}
           </p>
         )}
       </div>
@@ -1341,6 +1392,10 @@ function relativeTime(date: Date) {
   if (minutes === 0) return "עכשיו";
   if (minutes === 1) return "לפני דקה";
   return `לפני ${minutes} דקות`;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function safeBusinessProfile(settings: OrganizationSettings | null) {

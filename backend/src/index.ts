@@ -159,6 +159,10 @@ async function start() {
         console.error("[startup] Scheduler failed to start", formatStartupError(err));
       }
     });
+    server.requestTimeout = 5 * 60 * 1000;
+    server.headersTimeout = 5 * 60 * 1000 + 5000;
+    server.keepAliveTimeout = 65 * 1000;
+    console.log("[startup] HTTP timeouts configured requestTimeoutMs=300000 headersTimeoutMs=305000 keepAliveTimeoutMs=65000");
     server.on("error", (err: NodeJS.ErrnoException) => {
       console.error("[startup] HTTP server failed to start", formatStartupError(err));
       process.exit(1);
