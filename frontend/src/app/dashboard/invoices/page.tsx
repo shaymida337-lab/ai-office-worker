@@ -138,10 +138,14 @@ export default function InvoicesPage() {
     setMessageTone("info");
     setMessage("");
     try {
-      const result = await apiFetch<{ deleted?: { invoices?: number }; unlinked?: { bankTransactions?: number; whatsappMessages?: number } }>(`/api/invoices/${invoice.id}`, {
+      const result = await apiFetch<{ deleted?: { invoices?: number }; verification?: { beforeCount?: number; afterCount?: number }; unlinked?: { bankTransactions?: number; whatsappMessages?: number } }>(`/api/invoices/${invoice.id}`, {
         method: "DELETE",
       });
+      if ((result.deleted?.invoices ?? 0) < 1 || (result.verification?.afterCount ?? 1) !== 0) {
+        throw new Error(`השרת לא מחק את החשבונית. נמחקו ${result.deleted?.invoices ?? 0}, נשארו ${result.verification?.afterCount ?? "לא ידוע"}.`);
+      }
       setSelected(null);
+      setInvoices((prev) => prev.filter((item) => item.id !== invoice.id));
       await load();
       setMessageTone("success");
       setMessage(`נמחקו ${result.deleted?.invoices ?? 1} חשבוניות. נותקו ${result.unlinked?.bankTransactions ?? 0} התאמות בנק.`);
