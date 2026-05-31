@@ -55,6 +55,8 @@ services:
         sync: false
       - key: TWILIO_WEBHOOK_URL
         value: https://ai-office-worker-backend.onrender.com/webhook/whatsapp
+      - key: WHATSAPP_MESSAGE_PROCESSING_ENABLED
+        value: "false"
       - key: GOOGLE_DRIVE_ROOT
         value: AI Office Worker
 

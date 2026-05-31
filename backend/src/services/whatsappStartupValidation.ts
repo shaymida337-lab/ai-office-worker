@@ -3,7 +3,7 @@ import { checkTwilioConnection, getWhatsAppConfigurationStatus } from "./whatsap
 export async function validateWhatsAppAtStartup() {
   const configuration = getWhatsAppConfigurationStatus();
   console.log(
-    `[startup/whatsapp] provider=${configuration.provider} webhookUrl=${configuration.webhookUrl} from=${configuration.from || "none"}`
+    `[startup/whatsapp] provider=${configuration.provider} webhookUrl=${configuration.webhookUrl} from=${configuration.from || "none"} messageProcessingEnabled=${configuration.messageProcessingEnabled}`
   );
   console.log(`[startup/whatsapp] envDiagnostics=${JSON.stringify(configuration.envDiagnostics)}`);
   console.log(`[startup/whatsapp] webhook candidates=${configuration.webhookUrls.join(",")}`);

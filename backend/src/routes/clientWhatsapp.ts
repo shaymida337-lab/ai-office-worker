@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../lib/auth.js";
+import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { clientWhatsApp } from "../services/clientWhatsApp.js";
 
@@ -38,11 +39,27 @@ clientWhatsappRouter.delete("/:clientId/whatsapp/disconnect", async (req, res) =
 });
 
 clientWhatsappRouter.post("/:clientId/whatsapp/scan", async (req, res) => {
+  if (!config.twilio.messageProcessingEnabled) {
+    res.json({
+      status: "disabled",
+      reason: "WhatsApp chat scanning is disabled. Customer reminders and notifications remain available.",
+      messagesScanned: 0,
+    });
+    return;
+  }
   const daysBack = Number(req.body?.daysBack ?? 30);
   res.json(await clientWhatsApp.scanHistory(req.params.clientId, Number.isFinite(daysBack) ? daysBack : 30));
 });
 
 clientWhatsappRouter.get("/:clientId/whatsapp/messages", async (req, res) => {
+  if (!config.twilio.messageProcessingEnabled) {
+    res.json({
+      status: "disabled",
+      reason: "WhatsApp chat reading is disabled.",
+      messages: [],
+    });
+    return;
+  }
   const messages = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
     'SELECT "id","from","to","body","timestamp","hasInvoice","hasTask","processed","invoiceId","taskId","createdAt" FROM "WhatsAppMessage" WHERE "clientId" = $1 ORDER BY "timestamp" DESC LIMIT 100',
     req.params.clientId

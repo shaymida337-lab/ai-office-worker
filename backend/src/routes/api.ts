@@ -2698,6 +2698,25 @@ apiRouter.post("/system/health/check", async (req, res) => {
 });
 
 apiRouter.post("/whatsapp/scan", async (req, res) => {
+  if (!config.twilio.messageProcessingEnabled) {
+    res.json({
+      status: "disabled",
+      reason: "WhatsApp message scanning and invoice extraction are disabled. Invoices are collected from Gmail only.",
+      messagesFound: 0,
+      messagesScanned: 0,
+      mediaMessagesFound: 0,
+      mediaItemsFound: 0,
+      mediaItemsProcessed: 0,
+      driveFilesCreated: 0,
+      supplierPaymentsCreatedOrUpdated: 0,
+      paymentMessagesFound: 0,
+      supplierPaymentsFound: 0,
+      errorsCount: 0,
+      errors: [],
+    });
+    return;
+  }
+
   const organizationId = req.auth!.organizationId;
   const body = req.body as { daysBack?: number | null; fullScan?: boolean };
   const fullScan = Boolean(body.fullScan);

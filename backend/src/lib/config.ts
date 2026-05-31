@@ -135,6 +135,7 @@ export const config = {
       "TWILIO_WEBHOOK_URL",
       `${defaultBackendUrl()}/webhook/whatsapp`
     ),
+    messageProcessingEnabled: optional("WHATSAPP_MESSAGE_PROCESSING_ENABLED", "false").toLowerCase() === "true",
   },
 
   canva: {

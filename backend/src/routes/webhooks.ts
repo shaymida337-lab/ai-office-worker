@@ -21,6 +21,7 @@ function whatsappWebhookHealth(_req: Request, res: Response) {
     configured: configuration.configured,
     missingVariables: configuration.missingVariables,
     envDiagnostics: configuration.envDiagnostics,
+    messageProcessingEnabled: configuration.messageProcessingEnabled,
     webhookUrl: configuration.webhookUrl,
     webhookUrls: configuration.webhookUrls,
     inboundMethod: "POST",
@@ -39,6 +40,13 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
 
   if (!isValidTwilioSignature(req, signature)) {
     res.status(403).send("Invalid Twilio signature");
+    return;
+  }
+
+  if (!config.twilio.messageProcessingEnabled) {
+    const twiml = new twilio.twiml.MessagingResponse();
+    twiml.message("תודה, ההודעה התקבלה. בשלב זה המערכת לא קוראת הודעות WhatsApp ולא אוספת חשבוניות מ-WhatsApp.");
+    res.type("text/xml").send(twiml.toString());
     return;
   }
 

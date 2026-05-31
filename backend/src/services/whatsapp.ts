@@ -75,6 +75,7 @@ export function getWhatsAppConfigurationStatus() {
     ],
     from: config.twilio.whatsappFrom,
     webhookUrl: config.twilio.webhookUrl,
+    messageProcessingEnabled: config.twilio.messageProcessingEnabled,
     webhookUrls: [
       config.twilio.webhookUrl,
       config.twilio.webhookUrl.replace("/webhook/", "/api/webhook/"),
