@@ -5,6 +5,7 @@ export async function validateWhatsAppAtStartup() {
   console.log(
     `[startup/whatsapp] provider=${configuration.provider} webhookUrl=${configuration.webhookUrl} from=${configuration.from || "none"}`
   );
+  console.log(`[startup/whatsapp] envDiagnostics=${JSON.stringify(configuration.envDiagnostics)}`);
   console.log(`[startup/whatsapp] webhook candidates=${configuration.webhookUrls.join(",")}`);
 
   if (!configuration.configured) {

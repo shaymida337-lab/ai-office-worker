@@ -28,6 +28,32 @@ export function missingTwilioEnvVars(): string[] {
   return missing;
 }
 
+export function twilioEnvDiagnostics() {
+  const names = [
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_AUTH_TOKEN",
+    "TWILIO_WHATSAPP_NUMBER",
+    "TWILIO_WHATSAPP_FROM",
+    "TWILIO_WEBHOOK_URL",
+    "OWNER_WHATSAPP",
+  ];
+  return Object.fromEntries(
+    names.map((name) => {
+      const raw = process.env[name];
+      const trimmed = raw?.trim() ?? "";
+      return [
+        name,
+        {
+          exists: raw !== undefined,
+          rawLength: raw?.length ?? 0,
+          trimmedLength: trimmed.length,
+          configured: trimmed.length > 0,
+        },
+      ];
+    })
+  );
+}
+
 function toGmailIntegrationRedirectUri(uri: string): string {
   return uri.replace(/\/(?:api\/)?auth\/google\/callback$/, "/api/integrations/gmail/callback");
 }

@@ -1,4 +1,4 @@
-import { config, hasTwilio, missingTwilioEnvVars } from "../lib/config.js";
+import { config, hasTwilio, missingTwilioEnvVars, twilioEnvDiagnostics } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { getDashboardStats } from "./dashboard.js";
 
@@ -81,6 +81,7 @@ export function getWhatsAppConfigurationStatus() {
       `${config.twilio.webhookUrl.replace(/\/(?:api\/)?webhook\/whatsapp$/, "")}/webhook/twilio/whatsapp`,
       `${config.twilio.webhookUrl.replace(/\/(?:api\/)?webhook\/whatsapp$/, "")}/api/webhook/twilio/whatsapp`,
     ],
+    envDiagnostics: twilioEnvDiagnostics(),
   };
 }
 

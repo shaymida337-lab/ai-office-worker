@@ -20,6 +20,7 @@ function whatsappWebhookHealth(_req: Request, res: Response) {
     provider: configuration.provider,
     configured: configuration.configured,
     missingVariables: configuration.missingVariables,
+    envDiagnostics: configuration.envDiagnostics,
     webhookUrl: configuration.webhookUrl,
     webhookUrls: configuration.webhookUrls,
     inboundMethod: "POST",
