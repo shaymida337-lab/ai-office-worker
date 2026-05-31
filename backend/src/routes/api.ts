@@ -719,6 +719,16 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
   }
 });
 
+apiRouter.get("/debug/sheets/supplier-payments/verify", async (req, res) => {
+  try {
+    const { verifySupplierPaymentsSheet } = await import("../services/supplierPaymentsSheet.js");
+    res.json(await verifySupplierPaymentsSheet(req.auth!.organizationId));
+  } catch (err) {
+    console.error("[debug/sheets/supplier-payments/verify]", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Supplier payments sheet verification failed" });
+  }
+});
+
 async function applyClassificationCleanupHandler(req: Request, res: Response) {
   const orgId = req.auth!.organizationId;
   try {
@@ -2052,9 +2062,16 @@ apiRouter.get("/stats", async (req, res) => {
     prisma.client.count({ where: { organizationId, isActive: true } }),
     prisma.invoice.count({ where: { organizationId, status: { not: "paid" } } }),
   ]);
+  const sheetsReconciliation = await import("../services/supplierPaymentsSheet.js")
+    .then(({ getSupplierPaymentsSheetReconciliation }) => getSupplierPaymentsSheetReconciliation(organizationId))
+    .catch((err) => {
+      console.warn("[stats] supplier payments sheet reconciliation failed", err instanceof Error ? err.message : String(err));
+      return null;
+    });
 
   res.json({
     ...stats,
+    sheetsReconciliation,
     totalClients,
     openInvoices,
     amountToReceive: stats.moneyToReceive,
@@ -2334,19 +2351,24 @@ apiRouter.get("/organizations/:id/invoices/summary", async (req, res) => {
 });
 
 apiRouter.get("/payments", async (req, res) => {
+  const duplicatesOnly = req.query.duplicatesOnly === "true";
   const payments = await prisma.supplierPayment.findMany({
-    where: { organizationId: req.auth!.organizationId },
+    where: {
+      organizationId: req.auth!.organizationId,
+      ...(duplicatesOnly ? { duplicateDetected: true } : {}),
+    },
     orderBy: { date: "desc" },
     take: 100,
   });
-  res.json(payments);
+  res.json(payments.map(enrichPaymentSources));
 });
 
 apiRouter.patch("/payments/:id", async (req, res) => {
-  const { paid, invoiceLink, documentLink } = req.body as {
+  const { paid, invoiceLink, documentLink, receiptLink } = req.body as {
     paid?: boolean;
     invoiceLink?: string;
     documentLink?: string;
+    receiptLink?: string;
   };
   const existingPayment = await prisma.supplierPayment.findFirst({
     where: { id: req.params.id, organizationId: req.auth!.organizationId },
@@ -2361,6 +2383,7 @@ apiRouter.patch("/payments/:id", async (req, res) => {
       ...(paid !== undefined && { paid, ...(paid && { missingInvoice: false }) }),
       ...(invoiceLink !== undefined && { invoiceLink, missingInvoice: false }),
       ...(documentLink !== undefined && { documentLink }),
+      ...(receiptLink !== undefined && { documentLink: receiptLink }),
     },
   });
   if ((invoiceLink !== undefined || paid === true) && existingPayment.emailMessageId) {
@@ -2394,6 +2417,13 @@ apiRouter.patch("/payments/:id", async (req, res) => {
       documentLink: updatedPayment.documentLink,
       invoiceLink: updatedPayment.invoiceLink,
       gmailLink: email?.gmailId ? `https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(email.gmailId)}` : null,
+      source: updatedPayment.source,
+      duplicateDetected: updatedPayment.duplicateDetected,
+      duplicateReason: updatedPayment.duplicateReason,
+      paidDate: paid === true ? new Date() : null,
+      receiptLink: receiptLink ?? updatedPayment.documentLink ?? updatedPayment.invoiceLink,
+      createdAt: updatedPayment.createdAt,
+      updatedAt: updatedPayment.updatedAt,
     });
   } catch (err) {
     console.error("[payments] failed to sync payment to sheet", err);
@@ -2470,8 +2500,15 @@ apiRouter.delete("/tasks/:id", async (req, res) => {
 });
 
 apiRouter.get("/reports/missing-invoices", async (req, res) => {
-  const report = await getMissingInvoicesReport(req.auth!.organizationId);
-  res.json(report);
+  try {
+    const { getMissingInvoicesReportFromSheetComparison } = await import("../services/supplierPaymentsSheet.js");
+    const report = await getMissingInvoicesReportFromSheetComparison(req.auth!.organizationId);
+    res.json(report.map(enrichPaymentSources));
+  } catch (err) {
+    console.error("[reports/missing-invoices] sheet comparison failed, falling back to database report", err);
+    const report = await getMissingInvoicesReport(req.auth!.organizationId);
+    res.json(report.map(enrichPaymentSources));
+  }
 });
 
 apiRouter.get("/alerts", async (req, res) => {
@@ -3213,6 +3250,24 @@ async function sendBusinessHealth(req: Request, res: Response) {
       hoursSavedThisWeek: stats.hoursSavedThisWeek,
     },
   });
+}
+
+function enrichPaymentSources<T extends { source: string; subject: string | null; duplicateDetected?: boolean; duplicateReason?: string | null }>(payment: T) {
+  const source = payment.source || "gmail";
+  const sources = source === "both"
+    ? ["Gmail", "WhatsApp"]
+    : source === "whatsapp"
+      ? ["WhatsApp"]
+      : source === "gmail"
+        ? ["Gmail"]
+        : [source];
+  const duplicateReason = payment.duplicateReason ?? payment.subject?.match(/\[duplicate:([^\]]+)\]/)?.[1] ?? null;
+  return {
+    ...payment,
+    sources,
+    duplicateDetected: Boolean(payment.duplicateDetected || duplicateReason),
+    duplicateReason,
+  };
 }
 
 apiRouter.get("/business-health", async (req, res) => {

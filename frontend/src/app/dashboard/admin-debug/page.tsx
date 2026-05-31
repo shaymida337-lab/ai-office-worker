@@ -181,6 +181,18 @@ type DriveMergeStatusResponse = {
   error?: string;
 };
 
+type SupplierPaymentsSheetVerification = {
+  spreadsheetId: string;
+  spreadsheetUrl: string;
+  totalSupplierPaymentsInDatabase: number;
+  totalRowsInGoogleSheet: number;
+  missingRowsCount: number;
+  duplicateRowsCount: number;
+  lastSyncTime: string | null;
+  missingRows: Array<{ paymentId: string; supplier: string; amount: number; invoiceDate: string; key: string }>;
+  duplicateRows: Array<{ row: number; key: string }>;
+};
+
 const DRIVE_JOB_REQUEST_TIMEOUT_MS = 60_000;
 const DRIVE_JOB_POLL_INTERVAL_MS = 2_500;
 const DRIVE_JOB_MAX_WAIT_MS = 15 * 60_000;
@@ -204,6 +216,8 @@ export default function AdminDebugPage() {
   const [driveMerging, setDriveMerging] = useState(false);
   const [driveMergeStatus, setDriveMergeStatus] = useState("");
   const [driveMergePreview, setDriveMergePreview] = useState<DriveMergeDuplicateFoldersResponse | null>(null);
+  const [sheetsVerifying, setSheetsVerifying] = useState(false);
+  const [sheetsVerification, setSheetsVerification] = useState<SupplierPaymentsSheetVerification | null>(null);
 
   async function load() {
     setLoading(true);
@@ -355,6 +369,27 @@ export default function AdminDebugPage() {
     }
   }
 
+  async function verifySupplierPaymentsSheet() {
+    setSheetsVerifying(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await apiFetch<SupplierPaymentsSheetVerification>("/api/debug/sheets/supplier-payments/verify", {
+        timeoutMs: DRIVE_JOB_REQUEST_TIMEOUT_MS,
+      });
+      setSheetsVerification(result);
+      setMessage(`אימות Sheets הושלם: ${result.totalRowsInGoogleSheet} שורות, ${result.missingRowsCount} חסרות, ${result.duplicateRowsCount} כפולות.`);
+    } catch (err) {
+      if (isAuthError(err)) {
+        router.push("/login");
+        return;
+      }
+      setError(err instanceof Error ? err.message : "אימות Google Sheets נכשל");
+    } finally {
+      setSheetsVerifying(false);
+    }
+  }
+
   useEffect(() => {
     load();
   }, []);
@@ -393,8 +428,11 @@ export default function AdminDebugPage() {
         >
           {cleaning ? "מנקה..." : "נקה סכומים שגויים"}
         </button>
-        <button className="btn btn-secondary" onClick={mergeDuplicateDriveFolders} disabled={loading || cleaning || driveMerging || loadingTopPayments || loadingPaymentInvestigation}>
+        <button className="btn btn-secondary" onClick={mergeDuplicateDriveFolders} disabled={loading || cleaning || driveMerging || loadingTopPayments || loadingPaymentInvestigation || sheetsVerifying}>
           {driveMerging ? "בודק דרייב..." : "אחד תיקיות כפולות"}
+        </button>
+        <button className="btn btn-secondary" onClick={verifySupplierPaymentsSheet} disabled={loading || cleaning || driveMerging || loadingTopPayments || loadingPaymentInvestigation || sheetsVerifying}>
+          {sheetsVerifying ? "מאמת Sheets..." : "אמת Google Sheets"}
         </button>
       </div>
 
@@ -404,6 +442,15 @@ export default function AdminDebugPage() {
 
       <TopPaymentsTable data={topPayments} loading={loadingTopPayments} />
       <PaymentClassificationInvestigation data={paymentInvestigation} loading={loadingPaymentInvestigation} />
+      {sheetsVerification && (
+        <section className="mb-6 grid gap-3 md:grid-cols-5">
+          <Metric label="תשלומי ספקים ב-DB" value={sheetsVerification.totalSupplierPaymentsInDatabase} />
+          <Metric label="שורות ב-Google Sheet" value={sheetsVerification.totalRowsInGoogleSheet} />
+          <Metric label="שורות חסרות" value={sheetsVerification.missingRowsCount} />
+          <Metric label="שורות כפולות" value={sheetsVerification.duplicateRowsCount} />
+          <Metric label="סנכרון אחרון" value={sheetsVerification.lastSyncTime ? new Date(sheetsVerification.lastSyncTime).toLocaleString("he-IL") : "לא ידוע"} />
+        </section>
+      )}
 
       {data && (
         <>
@@ -428,6 +475,8 @@ export default function AdminDebugPage() {
           <DebugTable title="20 רשומות חשבוניות אחרונות" rows={data.lastInvoiceRows ?? []} />
           <DebugTable title="דוגמאות לחשבוניות עם סכום חריג" rows={badAmounts?.sampleRows ?? []} />
           <DebugTable title="תצוגה מקדימה לאיחוד תיקיות דרייב כפולות" rows={driveMergePreview ? [driveMergePreview] : []} />
+          <DebugTable title="אימות Google Sheets - שורות חסרות" rows={sheetsVerification?.missingRows ?? []} />
+          <DebugTable title="אימות Google Sheets - שורות כפולות" rows={sheetsVerification?.duplicateRows ?? []} />
           <DebugTable title="20 רשומות תשלומי ספקים אחרונות" rows={data.lastPaymentRows ?? []} />
           <DebugTable title="סיבות דחייה של חשבוניות" rows={data.rejectedInvoiceReasons ?? []} />
         </>

@@ -17,9 +17,13 @@ export type EmailAnalysis = {
 
 export type InvoiceScanResult = {
   supplier: string;
+  supplierTaxId?: string | null;
   amount: number | null;
   date: string | null;
+  dueDate?: string | null;
   invoiceNumber: string | null;
+  documentType?: "invoice" | "payment_request" | "receipt" | "other";
+  paymentRequired?: boolean;
   currency: string;
 };
 
@@ -99,8 +103,20 @@ export async function analyzeInvoiceFile(input: {
     throw new Error("ANTHROPIC_API_KEY is not configured");
   }
 
-  const prompt =
-    'חלץ מהחשבונית הזו: שם ספק, סכום, תאריך, מספר חשבונית, מטבע.\nהחזר JSON בלבד.';
+  const prompt = `חלץ מהמסמך המצורף את פרטי הנהלת החשבונות.
+החזר JSON בלבד:
+{
+  "supplier": "שם ספק/מנפיק",
+  "supplierTaxId": "ח.פ/עוסק|null",
+  "amount": number|null,
+  "date": "YYYY-MM-DD|null",
+  "dueDate": "YYYY-MM-DD|null",
+  "invoiceNumber": "string|null",
+  "documentType": "invoice|receipt|payment_request|other",
+  "paymentRequired": boolean,
+  "currency": "ILS"
+}
+אל תמציא ערכים. אם זה צילום של חשבונית/קבלה, בצע OCR מתוך התמונה.`;
   const fileBlock =
     input.mimeType === "application/pdf"
       ? {
@@ -144,8 +160,10 @@ export async function analyzeInvoiceFile(input: {
     throw new Error("Claude did not return valid JSON for invoice scan");
   }
   const supplier = firstString(parsed, ["supplier", "שם ספק", "ספק"]);
+  const supplierTaxId = firstString(parsed, ["supplierTaxId", "taxId", "vatNumber", "ח.פ", "עוסק מורשה", "מספר עוסק"]);
   const amount = firstNumber(parsed, ["amount", "סכום"]);
   const date = firstString(parsed, ["date", "תאריך", "invoiceDate", "תאריך חשבונית"]);
+  const dueDate = firstString(parsed, ["dueDate", "due_date", "תאריך יעד", "לתשלום עד"]);
   const invoiceNumber = firstString(parsed, [
     "invoiceNumber",
     "invoice_number",
@@ -153,12 +171,18 @@ export async function analyzeInvoiceFile(input: {
     "מספר",
   ]);
   const currency = firstString(parsed, ["currency", "מטבע"]);
+  const rawDocumentType = firstString(parsed, ["documentType", "document_type", "סוג מסמך"]);
+  const documentType = normalizeDocumentType(rawDocumentType);
 
   return {
     supplier: supplier || "לא ידוע",
+    supplierTaxId,
     amount,
     date,
+    dueDate,
     invoiceNumber,
+    documentType,
+    paymentRequired: typeof parsed.paymentRequired === "boolean" ? parsed.paymentRequired : documentType !== "receipt",
     currency: currency || "ILS",
   };
 }
@@ -201,6 +225,14 @@ function firstNumber(source: Record<string, unknown>, keys: string[]): number | 
     }
   }
   return null;
+}
+
+function normalizeDocumentType(value: string | null): InvoiceScanResult["documentType"] {
+  const normalized = (value ?? "").toLowerCase();
+  if (/receipt|קבלה/.test(normalized)) return "receipt";
+  if (/payment|דרישת|בקשת/.test(normalized)) return "payment_request";
+  if (/invoice|חשבונית/.test(normalized)) return "invoice";
+  return "other";
 }
 
 function fallbackAnalysis(input: {

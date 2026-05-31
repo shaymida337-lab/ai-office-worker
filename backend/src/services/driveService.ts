@@ -7,6 +7,7 @@ export type UploadedDriveFile = {
   fileId: string | null;
   webViewLink: string;
   supplierFolderId: string | null;
+  duplicateDetected?: boolean;
 };
 
 export type SupplierFolderMetadata = {
@@ -76,6 +77,8 @@ export async function uploadInvoiceAttachmentToDrive(input: {
   mimeType?: string | null;
   receivedAt: Date;
   buffer: Buffer;
+  fileSha256?: string | null;
+  fileMd5?: string | null;
 }): Promise<UploadedDriveFile> {
   const folderType = folderForDocumentType(input.documentType);
   const supplierFolder = await ensureSupplierDriveFolder({
@@ -87,11 +90,29 @@ export async function uploadInvoiceAttachmentToDrive(input: {
   });
   const supplierFolderId = supplierFolder.folderId;
   const documentTypeFolderId = await ensureDriveFolder(input.drive, folderType, supplierFolderId);
+  const existingFile = await findExistingDriveDocument(input.drive, documentTypeFolderId, {
+    filename: input.filename,
+    fileSha256: input.fileSha256 ?? null,
+    fileMd5: input.fileMd5 ?? null,
+  });
+  if (existingFile) {
+    const fileId = existingFile.id ?? null;
+    return {
+      fileId,
+      supplierFolderId,
+      duplicateDetected: true,
+      webViewLink: existingFile.webViewLink ?? (fileId ? `https://drive.google.com/file/d/${fileId}/view` : ""),
+    };
+  }
 
   const upload = await input.drive.files.create({
     requestBody: {
       name: `${input.receivedAt.toISOString().slice(0, 10)}_${input.filename}`,
       parents: [documentTypeFolderId],
+      appProperties: {
+        ...(input.fileSha256 ? { fileSha256: input.fileSha256 } : {}),
+        ...(input.fileMd5 ? { fileMd5: input.fileMd5 } : {}),
+      },
     },
     media: {
       mimeType: input.mimeType ?? "application/octet-stream",
@@ -108,6 +129,32 @@ export async function uploadInvoiceAttachmentToDrive(input: {
       upload.data.webViewLink ??
       (fileId ? `https://drive.google.com/file/d/${fileId}/view` : ""),
   };
+}
+
+export async function findExistingSupplierDriveDocument(input: {
+  organizationId: string;
+  drive: drive_v3.Drive;
+  rootFolderId: string;
+  supplier: string;
+  supplierTaxId?: string | null;
+  documentType: string;
+  filename: string;
+  fileSha256?: string | null;
+  fileMd5?: string | null;
+}) {
+  const supplierFolder = await ensureSupplierDriveFolder({
+    organizationId: input.organizationId,
+    drive: input.drive,
+    rootFolderId: input.rootFolderId,
+    supplierName: input.supplier,
+    supplierTaxId: input.supplierTaxId ?? null,
+  });
+  const documentFolderId = await ensureDriveFolder(input.drive, folderForDocumentType(input.documentType), supplierFolder.folderId);
+  return findExistingDriveDocument(input.drive, documentFolderId, {
+    filename: input.filename,
+    fileSha256: input.fileSha256 ?? null,
+    fileMd5: input.fileMd5 ?? null,
+  });
 }
 
 export async function ensureSupplierDriveFolder(input: {
@@ -213,6 +260,38 @@ export function supplierBranchNameFromFolderName(name: string): string | null {
     return withoutSupplierBrand || null;
   }
   return null;
+}
+
+async function findExistingDriveDocument(
+  drive: drive_v3.Drive,
+  parentId: string,
+  input: { filename: string; fileSha256: string | null; fileMd5: string | null }
+) {
+  let pageToken: string | undefined;
+  const normalizedFilename = normalizeDriveFilename(input.filename);
+  do {
+    const result = await drive.files.list({
+      q: `'${parentId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`,
+      fields: "nextPageToken, files(id, name, webViewLink, md5Checksum, appProperties)",
+      pageSize: 1000,
+      pageToken,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    for (const file of result.data.files ?? []) {
+      if (!file.id) continue;
+      const appProperties = file.appProperties ?? {};
+      if (input.fileSha256 && appProperties.fileSha256 === input.fileSha256) return file;
+      if (input.fileMd5 && (appProperties.fileMd5 === input.fileMd5 || file.md5Checksum === input.fileMd5)) return file;
+      if (file.name && normalizeDriveFilename(file.name).endsWith(normalizedFilename)) return file;
+    }
+    pageToken = result.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return null;
+}
+
+function normalizeDriveFilename(value: string) {
+  return value.toLowerCase().replace(/^\d{4}-\d{2}-\d{2}_/, "").replace(/\s+/g, " ").trim();
 }
 
 function normalizeSupplierTaxId(value?: string | null) {

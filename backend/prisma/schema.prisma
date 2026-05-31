@@ -185,6 +185,13 @@ model SupplierPayment {
   duplicateHash   String?
   subject         String?
   source          String    @default("gmail")
+  firstSource     String    @default("gmail")
+  lastSource      String    @default("gmail")
+  sourceCount     Int       @default(1)
+  duplicateDetected Boolean @default(false)
+  duplicateReason String?
+  firstSeenAt     DateTime  @default(now())
+  lastSeenAt      DateTime  @default(now())
   emailMessageId  String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -193,6 +200,7 @@ model SupplierPayment {
   @@index([organizationId, paid])
   @@index([organizationId, dueDate])
   @@index([organizationId, missingInvoice])
+  @@index([organizationId, duplicateDetected])
   @@index([organizationId, createdAt])
   @@index([clientId, paid])
 }

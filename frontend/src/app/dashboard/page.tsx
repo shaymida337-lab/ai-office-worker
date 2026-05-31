@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Nav } from "@/components/Nav";
 import {
   apiFetch,
@@ -14,7 +14,7 @@ import {
 } from "@/lib/api";
 import { businessModules, businessTypeLabel, getBusinessProfile, normalizeEnabledModules, uiTranslations, type BusinessKpiConfig, type BusinessModuleId, type DashboardKpiMetric, type OrganizationSettings } from "@/lib/business-config";
 import { useRouter } from "next/navigation";
-import { Activity, ArrowUpRight, Building2, Clock3, FileText, HeartPulse, MessageCircle, Plus, RefreshCcw, ScanLine, WalletCards } from "lucide-react";
+import { Activity, ArrowUpRight, Building2, ClipboardList, Clock3, FileText, HeartPulse, MessageCircle, Plus, RefreshCcw, ScanLine, WalletCards } from "lucide-react";
 
 type ClientSummary = {
   id: string;
@@ -187,6 +187,17 @@ type AlertItem = {
   createdAt: string;
 };
 
+type ActionPriority = "urgent" | "important" | "recommended";
+
+type ActionRecommendation = {
+  id: string;
+  priority: ActionPriority;
+  title: string;
+  explanation: string;
+  actionLabel: string;
+  href: string;
+};
+
 const emptyStats: DashboardStats = {
   moneyToPay: 0,
   moneyToReceive: 0,
@@ -207,6 +218,7 @@ const emptyStats: DashboardStats = {
   driveUploads: 0,
   clients: 0,
   suspiciousPaymentsCount: 0,
+  sheetsReconciliation: null,
   currency: "ILS",
 };
 
@@ -630,6 +642,41 @@ export default function DashboardPage() {
   const gmailConnected = Boolean(gmailStatus?.connected);
   const scanRangeLabel = `${scanRangeDays} ימים`;
   const initialSetupComplete = gmailConnected && Boolean(activeScan?.status === "completed" || scanStatus?.last?.status === "success");
+  const actionRecommendations = useMemo(() => buildActionRecommendations({
+    stats,
+    gmailConnected,
+    scanStatus,
+    payments,
+    missingInvoices,
+    recentInvoices,
+    recentTasks,
+    alerts,
+    whatsAppStats,
+    initialSetupComplete,
+    showWhatsApp,
+    showSupplier,
+    showInvoices,
+    showTasks,
+    showDocuments,
+    businessActionRecommendations: businessProfile.actionRecommendations ?? [],
+  }), [
+    alerts,
+    gmailConnected,
+    initialSetupComplete,
+    missingInvoices,
+    payments,
+    recentInvoices,
+    recentTasks,
+    scanStatus,
+    showDocuments,
+    showInvoices,
+    showSupplier,
+    showTasks,
+    showWhatsApp,
+    stats,
+    whatsAppStats,
+    businessProfile.actionRecommendations,
+  ]);
   const startInitialSetup = () => {
     if (!gmailConnected) {
       connectGmail();
@@ -709,6 +756,12 @@ export default function DashboardPage() {
       </section>
 
       {error && <div className="toast border-red-400/30 text-red-200">{error}</div>}
+      {stats.sheetsReconciliation?.warning && (
+        <div className="toast border-amber-400/40 text-amber-100">
+          אזהרת Google Sheets: קיימים {stats.sheetsReconciliation.difference} הבדלים בין DB ל-Google Sheet
+          ({stats.sheetsReconciliation.dbCount} ב-DB, {stats.sheetsReconciliation.googleSheetCount} ב-Sheet).
+        </div>
+      )}
       {scanToast && (
         <div
           className={[
@@ -771,6 +824,8 @@ export default function DashboardPage() {
           )}
         </section>
       )}
+
+      <ActionCenter recommendations={actionRecommendations} onNavigate={(href) => router.push(href)} />
 
       <section className="auto-grid mb-8">
         {kpis.map((kpi) => {
@@ -1040,6 +1095,239 @@ function dashboardMetricTone(metric: DashboardKpiMetric) {
 
 function businessModulesLabel(moduleId: string) {
   return businessModules.find((module) => module.id === moduleId)?.label ?? moduleId;
+}
+
+function buildActionRecommendations(input: {
+  stats: DashboardStats;
+  gmailConnected: boolean;
+  scanStatus: ScanStatus | null;
+  payments: Payment[];
+  missingInvoices: Payment[];
+  recentInvoices: RecentInvoice[];
+  recentTasks: Task[];
+  alerts: AlertItem[];
+  whatsAppStats: WhatsAppAssistantStats | null;
+  initialSetupComplete: boolean;
+  showWhatsApp: boolean;
+  showSupplier: boolean;
+  showInvoices: boolean;
+  showTasks: boolean;
+  showDocuments: boolean;
+  businessActionRecommendations: Array<{ title: string; explanation: string; href: string }>;
+}): ActionRecommendation[] {
+  const actions: ActionRecommendation[] = [];
+  const openPayments = input.payments.filter((payment) => !payment.paid);
+  const overduePayments = openPayments.filter((payment) => payment.dueDate && new Date(payment.dueDate).getTime() < Date.now());
+  const paymentsMissingReceipt = openPayments.filter((payment) => payment.missingInvoice || !payment.invoiceLink);
+  const openTasks = input.recentTasks.filter((task) => task.status !== "done" && task.status !== "completed");
+  const highPriorityTasks = openTasks.filter((task) => task.priority === "high");
+  const lastScan = input.scanStatus?.last;
+  const hasScanErrors = Boolean(lastScan?.errors || input.alerts.some((alert) => !alert.read && ["error", "warning", "review"].includes(alert.type)));
+  const needsScan = !lastScan || input.stats.scansCompleted === 0;
+  const driveReady = input.showDocuments && (input.stats.driveUploads > 0 || (lastScan?.driveUploaded ?? 0) > 0);
+  const sheetsReady = (lastScan?.sheetsUpdated ?? 0) > 0;
+
+  if (!input.initialSetupComplete) {
+    actions.push({
+      id: "onboarding",
+      priority: "urgent",
+      title: input.gmailConnected ? "השלם סריקה ראשונה" : "חבר ג׳ימייל והתחל הגדרה ראשונית",
+      explanation: "בלי חיבור וסריקה ראשונה המערכת לא יכולה לזהות חשבוניות, תשלומי ספקים ומשימות חדשות.",
+      actionLabel: input.gmailConnected ? "פתח סריקה" : "פתח חיבור ג׳ימייל",
+      href: input.gmailConnected ? "/dashboard" : "/dashboard/settings",
+    });
+  }
+
+  if (hasScanErrors) {
+    actions.push({
+      id: "scan-review",
+      priority: "urgent",
+      title: "בדוק פריטי סריקה שדורשים טיפול",
+      explanation: "נמצאו כשלים או פריטים שדורשים בדיקה כדי למנוע פספוס של חשבונית או תשלום.",
+      actionLabel: "פתח סטטיסטיקות סריקה",
+      href: "/dashboard/scan-stats",
+    });
+  }
+
+  if (input.showSupplier && paymentsMissingReceipt.length > 0) {
+    const first = paymentsMissingReceipt[0];
+    actions.push({
+      id: "missing-receipts",
+      priority: "urgent",
+      title: paymentsMissingReceipt.length === 1 ? `חסרה קבלה עבור ${first.supplier}` : `חסרות קבלות עבור ${paymentsMissingReceipt.length} תשלומי ספקים`,
+      explanation: "צרף קבלה או חשבונית לתשלום כדי להשאיר את הנהלת החשבונות נקייה ומוכנה לדוח.",
+      actionLabel: "פתח תשלומי ספקים",
+      href: "/payments",
+    });
+  }
+
+  if (input.showSupplier && overduePayments.length > 0) {
+    actions.push({
+      id: "overdue-payments",
+      priority: "urgent",
+      title: `אשר ${overduePayments.length} תשלומים באיחור`,
+      explanation: "יש תשלומי ספקים שעבר מועד הטיפול שלהם. מומלץ לאשר תשלום או לסמן אותם כשולמו.",
+      actionLabel: "בדוק ספקים",
+      href: "/payments",
+    });
+  }
+
+  if (input.showInvoices && input.recentInvoices.length > 0) {
+    actions.push({
+      id: "new-invoices",
+      priority: "important",
+      title: `בדוק ${input.recentInvoices.length} חשבוניות אחרונות`,
+      explanation: "חשבוניות שנשמרו לאחרונה מחכות לבדיקה כדי לוודא שהסכום, הספק והקישור לדרייב נכונים.",
+      actionLabel: "פתח חשבוניות",
+      href: "/dashboard/invoices",
+    });
+  }
+
+  if (input.showSupplier && openPayments.length > 0) {
+    actions.push({
+      id: "pending-payments",
+      priority: "important",
+      title: `אשר ${openPayments.length} תשלומים ממתינים`,
+      explanation: "סגור תשלומים פתוחים כדי לשמור על תמונת תזרים מדויקת.",
+      actionLabel: "פתח תשלומים",
+      href: "/payments",
+    });
+  }
+
+  if (input.showTasks && highPriorityTasks.length > 0) {
+    actions.push({
+      id: "high-tasks",
+      priority: "important",
+      title: `טפל ב-${highPriorityTasks.length} משימות בעדיפות גבוהה`,
+      explanation: "משימות דחופות מהמיילים או מהלקוחות מחכות להמשך טיפול.",
+      actionLabel: "פתח משימות",
+      href: "/tasks",
+    });
+  }
+
+  if (needsScan && input.gmailConnected) {
+    actions.push({
+      id: "run-scan",
+      priority: "important",
+      title: "בצע סריקת ג׳ימייל",
+      explanation: "סריקה תאתר חשבוניות, קבלות, דרישות תשלום ומשימות חדשות.",
+      actionLabel: "פתח סריקה",
+      href: "/dashboard",
+    });
+  }
+
+  if (input.showWhatsApp && (!input.whatsAppStats || (input.whatsAppStats.activeChats === 0 && input.whatsAppStats.sentToday === 0))) {
+    actions.push({
+      id: "whatsapp",
+      priority: "recommended",
+      title: "חבר וואטסאפ עסקי",
+      explanation: "חיבור וואטסאפ יאפשר מעקב אחרי שיחות, לידים ותזכורות ללקוחות.",
+      actionLabel: "פתח וואטסאפ",
+      href: "/dashboard/whatsapp",
+    });
+  }
+
+  if (input.showDocuments && input.gmailConnected && !driveReady) {
+    actions.push({
+      id: "drive",
+      priority: "recommended",
+      title: "ודא שמירת קבצים בדרייב",
+      explanation: "אחרי הסריקה הראשונה כדאי לוודא שחשבוניות וקבלות נשמרות בתיקיות מסודרות בדרייב.",
+      actionLabel: "פתח סטטיסטיקות",
+      href: "/dashboard/scan-stats",
+    });
+  }
+
+  if (input.gmailConnected && !sheetsReady) {
+    actions.push({
+      id: "sheets",
+      priority: "recommended",
+      title: "ודא עדכון שיטס",
+      explanation: "שיטס אמור להתעדכן אוטומטית עם תשלומי ספקים ומשימות אחרי סריקה.",
+      actionLabel: "פתח סטטיסטיקות",
+      href: "/dashboard/scan-stats",
+    });
+  }
+
+  for (const [index, item] of input.businessActionRecommendations.entries()) {
+    actions.push({
+      id: `business-${index}`,
+      priority: "recommended",
+      title: item.title,
+      explanation: item.explanation,
+      actionLabel: "פתח טיפול",
+      href: item.href,
+    });
+  }
+
+  if (actions.length === 0) {
+    actions.push({
+      id: "all-good",
+      priority: "recommended",
+      title: "המערכת נראית מסודרת",
+      explanation: "אין כרגע פעולות דחופות. מומלץ לבצע בדיקה קצרה של סטטיסטיקות הסריקה והמשימות.",
+      actionLabel: "פתח סטטיסטיקות",
+      href: "/dashboard/scan-stats",
+    });
+  }
+
+  const priorityOrder: Record<ActionPriority, number> = { urgent: 0, important: 1, recommended: 2 };
+  return actions
+    .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])
+    .slice(0, 5);
+}
+
+function ActionCenter({ recommendations, onNavigate }: { recommendations: ActionRecommendation[]; onNavigate: (href: string) => void }) {
+  return (
+    <section className="mb-8 overflow-hidden rounded-[2rem] border border-[#818CF8]/35 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.28),transparent_34%),linear-gradient(135deg,rgba(22,22,30,0.96),rgba(12,12,18,0.92))] p-4 shadow-card md:p-6">
+      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/10 text-violet-200">
+            <ClipboardList className="h-5 w-5" />
+          </span>
+          <div>
+            <div className="page-kicker">מנהל משרד אישי</div>
+            <h2>📋 מה כדאי לעשות עכשיו?</h2>
+            <p className="text-sm">המערכת בודקת חשבוניות, ספקים, סריקות, משימות וחיבורים ומסדרת לך את הפעולות לפי עדיפות.</p>
+          </div>
+        </div>
+        <span className="badge w-fit border-[#818CF8]/40 bg-[#818CF8]/15 text-violet-100">{recommendations.length} המלצות פעילות</span>
+      </div>
+      <div className="grid gap-3 xl:grid-cols-3">
+        {recommendations.map((item, index) => (
+          <article key={item.id} className={`rounded-2xl border p-4 ${priorityCardClass(item.priority)} ${index === 0 ? "xl:col-span-1" : ""}`}>
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <span className={`badge ${priorityBadgeClass(item.priority)}`}>{priorityLabel(item.priority)}</span>
+              <span className="text-xs font-semibold text-ink-muted">פעולה {index + 1}</span>
+            </div>
+            <h3 className="text-lg font-bold text-ink-primary">{item.title}</h3>
+            <p className="mt-2 text-sm leading-6 text-ink-secondary">{item.explanation}</p>
+            <button type="button" className="btn btn-secondary mt-4 w-full justify-center sm:w-auto" onClick={() => onNavigate(item.href)}>
+              {item.actionLabel}
+            </button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function priorityLabel(priority: ActionPriority) {
+  if (priority === "urgent") return "דחוף";
+  if (priority === "important") return "חשוב";
+  return "מומלץ";
+}
+
+function priorityBadgeClass(priority: ActionPriority) {
+  if (priority === "urgent") return "border-red-300/40 bg-red-500/15 text-red-100";
+  if (priority === "important") return "border-amber-300/40 bg-amber-500/15 text-amber-100";
+  return "border-emerald-300/40 bg-emerald-500/15 text-emerald-100";
+}
+
+function priorityCardClass(priority: ActionPriority) {
+  if (priority === "urgent") return "border-red-300/25 bg-red-500/10";
+  if (priority === "important") return "border-amber-300/25 bg-amber-500/10";
+  return "border-emerald-300/25 bg-emerald-500/10";
 }
 
 function scanStatusLabel(status: string) {

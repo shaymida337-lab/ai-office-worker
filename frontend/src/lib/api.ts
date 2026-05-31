@@ -97,6 +97,16 @@ export type DashboardStats = {
   driveUploads: number;
   clients: number;
   suspiciousPaymentsCount: number;
+  sheetsReconciliation?: {
+    dbCount: number;
+    googleSheetCount: number;
+    difference: number;
+    warning: boolean;
+    missingRowsCount: number;
+    duplicateRowsCount: number;
+    lastSyncTime: string | null;
+    spreadsheetUrl: string;
+  } | null;
   currency: string;
 };
 
@@ -120,6 +130,14 @@ export type Payment = {
   missingInvoice: boolean;
   paymentRequired: boolean;
   subject: string | null;
+  sources?: string[];
+  duplicateDetected?: boolean;
+  duplicateReason?: string | null;
+  firstSource?: string | null;
+  lastSource?: string | null;
+  sourceCount?: number;
+  firstSeenAt?: string | null;
+  lastSeenAt?: string | null;
 };
 
 export type Task = {

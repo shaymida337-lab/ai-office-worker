@@ -13,7 +13,7 @@ export async function getDashboardStats(organizationId: string) {
     .reduce((sum, p) => sum + p.amount, 0);
 
   const pendingInvoices = openPayments.filter((p) => p.paymentRequired).length;
-  const missingInvoices = payments.filter((p) => p.missingInvoice);
+  const missingInvoices = payments.filter((p) => p.missingInvoice && !p.duplicateDetected);
 
   const now = new Date();
   const in7days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -68,7 +68,6 @@ export async function getDashboardStats(organizationId: string) {
         Math.min(openTasks, 10) * 2
     )
   );
-
   return {
     moneyToPay,
     moneyToReceive,
@@ -95,7 +94,7 @@ export async function getDashboardStats(organizationId: string) {
 
 export async function getMissingInvoicesReport(organizationId: string) {
   return prisma.supplierPayment.findMany({
-    where: { organizationId, missingInvoice: true, paid: false },
+    where: { organizationId, missingInvoice: true, paid: false, duplicateDetected: false },
     orderBy: { date: "desc" },
   });
 }

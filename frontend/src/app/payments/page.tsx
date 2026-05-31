@@ -9,13 +9,15 @@ export default function PaymentsPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [duplicatesOnly, setDuplicatesOnly] = useState(false);
 
   useEffect(() => {
-    apiFetch<Payment[]>("/api/payments")
+    setLoading(true);
+    apiFetch<Payment[]>(`/api/payments${duplicatesOnly ? "?duplicatesOnly=true" : ""}`)
       .then(setPayments)
       .catch((err) => setMessage(err instanceof Error ? err.message : "טעינת תשלומי ספקים נכשלה"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [duplicatesOnly]);
 
   async function markPaid(id: string) {
     setUpdatingId(id);
@@ -44,6 +46,15 @@ export default function PaymentsPage() {
         <h1>תשלומי ספקים</h1>
         <p>מעקב אחרי תשלומים שזוהו מהמיילים, כולל מסמכים חסרים וסטטוס תשלום.</p>
       </div>
+      <div className="mb-6 flex flex-wrap gap-3">
+        <button
+          className={`btn ${duplicatesOnly ? "" : "btn-secondary"}`}
+          onClick={() => setDuplicatesOnly((value) => !value)}
+          type="button"
+        >
+          {duplicatesOnly ? "מציג כפילויות בלבד" : "הצג כפילויות בלבד"}
+        </button>
+      </div>
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-base text-ink-primary">{message}</div>}
       {loading && <div className="card"><p>טוען תשלומי ספקים...</p></div>}
       {!loading && payments.length === 0 && (
@@ -68,6 +79,8 @@ export default function PaymentsPage() {
               <MobileRow label="תאריך" value={new Date(p.date).toLocaleDateString("he-IL")} />
               <MobileRow label="לתשלום עד" value={p.dueDate ? new Date(p.dueDate).toLocaleDateString("he-IL") : "—"} />
               <MobileRow label="חשבונית חסרה" value={p.missingInvoice ? "כן" : "לא"} />
+              <MobileRow label="מקורות" value={(p.sources ?? []).join(", ") || "—"} />
+              <MobileRow label="כפילות" value={p.duplicateDetected ? `כן (${p.duplicateReason ?? "זוהתה"})` : "לא"} />
             </div>
             <div className="mt-4 grid gap-2">
               {p.documentLink && <a className="btn btn-secondary" href={p.documentLink} target="_blank" rel="noreferrer">פתח מסמך</a>}
@@ -95,6 +108,8 @@ export default function PaymentsPage() {
               <th>מסמך</th>
               <th>חשבונית</th>
               <th>חסרה</th>
+              <th>מקורות</th>
+              <th>כפילות</th>
               <th>פעולה</th>
             </tr>
           </thead>
@@ -136,6 +151,8 @@ export default function PaymentsPage() {
                     <span className="badge badge-ok">לא</span>
                   )}
                 </td>
+                <td>{(p.sources ?? []).join(", ") || "—"}</td>
+                <td>{p.duplicateDetected ? <span className="badge badge-warn">{p.duplicateReason ?? "זוהתה"}</span> : "—"}</td>
                 <td>
                   {!p.paid && (
                     <button className="btn btn-secondary" onClick={() => markPaid(p.id)} disabled={updatingId === p.id}>

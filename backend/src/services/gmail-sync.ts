@@ -824,7 +824,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         });
         logStep(`[gmail-sync] client/lead message=${email.gmailId} clientId=${clientId} clientCreated=${saved.created}`);
       }
-      const driveLinks: { type: string; link: string }[] = [];
+      const driveLinks: { type: string; link: string; folderId?: string | null }[] = [];
 
       const shouldUploadAttachments = classification.isRelevant && classification.reviewStatus === "auto_saved";
       for (const part of email.parts) {
@@ -890,7 +890,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             `[gmail-sync] Drive upload retry message=${email.gmailId} file="${filename}"`
           );
           const link = upload.webViewLink;
-          driveLinks.push({ type: folderType, link });
+          driveLinks.push({ type: folderType, link, folderId: upload.supplierFolderId });
           driveUploadsSucceeded++;
           logStep(`[gmail-sync] Drive upload success message=${email.gmailId} file="${filename}" link=${link ?? "none"}`);
           if (existingAttachment) {
@@ -1146,6 +1146,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               amount: amount ?? existingPayment.amount,
               dueDate: normalizeBusinessDate(analysis.dueDate, existingPayment.dueDate),
               emailSender: email.from,
+              lastSource: "gmail",
+              source: existingPayment.source === "whatsapp" || existingPayment.source === "both" ? "both" : existingPayment.source,
+              sourceCount: Math.max(existingPayment.sourceCount ?? 1, 1) + (existingPayment.source === "whatsapp" ? 1 : 0),
+              duplicateDetected: existingPayment.source === "whatsapp" || existingPayment.duplicateDetected,
+              duplicateReason: existingPayment.source === "whatsapp" ? "supplier_amount_invoice_date" : existingPayment.duplicateReason,
+              firstSeenAt: existingPayment.firstSeenAt ?? existingPayment.createdAt,
+              lastSeenAt: new Date(),
             },
           });
           await appendSupplierPaymentToSheet({
@@ -1160,6 +1167,17 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             documentLink,
             invoiceLink,
             gmailLink: gmailMessageLink(email.gmailId),
+            supplierTaxId: supplierMetadata.taxId,
+            invoiceNumber: analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n")),
+            invoiceDate: analysis.invoiceDate ?? email.receivedAt,
+            source: existingPayment.source === "whatsapp" || existingPayment.source === "both" ? "both" : "gmail",
+            duplicateDetected: existingPayment.source === "whatsapp" || existingPayment.duplicateDetected,
+            duplicateReason: existingPayment.source === "whatsapp" ? "supplier_amount_invoice_date" : existingPayment.duplicateReason,
+            driveFolderLink: driveLinks[0]?.folderId ? `https://drive.google.com/drive/folders/${driveLinks[0].folderId}` : null,
+            paidDate: existingPayment.paid ? existingPayment.updatedAt : null,
+            receiptLink: existingPayment.paid ? existingPayment.documentLink ?? existingPayment.invoiceLink : null,
+            createdAt: existingPayment.createdAt,
+            updatedAt: new Date(),
           }).then((sheet) => {
             sheetsUpdated++;
             logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${existingPayment.id} spreadsheet=${sheet.spreadsheetId}`);
@@ -1216,6 +1234,17 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             documentLink,
             invoiceLink,
             gmailLink: gmailMessageLink(email.gmailId),
+            supplierTaxId: supplierMetadata.taxId,
+            invoiceNumber: analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n")),
+            invoiceDate: analysis.invoiceDate ?? email.receivedAt,
+            source: "gmail",
+            duplicateDetected: false,
+            duplicateReason: null,
+            driveFolderLink: driveLinks[0]?.folderId ? `https://drive.google.com/drive/folders/${driveLinks[0].folderId}` : null,
+            paidDate: payment.paid ? payment.updatedAt : null,
+            receiptLink: payment.paid ? payment.documentLink ?? payment.invoiceLink : null,
+            createdAt: payment.createdAt,
+            updatedAt: payment.updatedAt,
           }).then((sheet) => {
             sheetsUpdated++;
             logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${payment.id} spreadsheet=${sheet.spreadsheetId}`);
