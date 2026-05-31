@@ -9,15 +9,24 @@ export default function PaymentsPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  useEffect(() => {
+  async function loadPayments() {
     setLoading(true);
-    apiFetch<Payment[]>(`/api/payments${duplicatesOnly ? "?duplicatesOnly=true" : ""}`)
-      .then(setPayments)
-      .catch((err) => setMessage(err instanceof Error ? err.message : "טעינת תשלומי ספקים נכשלה"))
-      .finally(() => setLoading(false));
+    try {
+      const data = await apiFetch<Payment[]>(`/api/payments${duplicatesOnly ? "?duplicatesOnly=true" : ""}`);
+      setPayments(data);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "טעינת תשלומי ספקים נכשלה");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadPayments();
   }, [duplicatesOnly]);
 
   async function markPaid(id: string) {
@@ -36,6 +45,24 @@ export default function PaymentsPage() {
       setMessage(err instanceof Error ? err.message : "עדכון התשלום נכשל");
     } finally {
       setUpdatingId(null);
+    }
+  }
+
+  async function deletePayment(payment: Payment) {
+    const confirmed = window.confirm(`למחוק את תשלום הספק "${payment.supplier}" בסכום ₪${payment.amount.toLocaleString("he-IL")}? הפעולה תמחק את הרשומה מה-DB.`);
+    if (!confirmed) return;
+    setDeletingId(payment.id);
+    setMessage("");
+    try {
+      const result = await apiFetch<{ deleted?: { supplierPayments?: number; documentReviews?: number }; unlinked?: { bankTransactions?: number; tasks?: number } }>(`/api/payments/${payment.id}`, {
+        method: "DELETE",
+      });
+      await loadPayments();
+      setMessage(`נמחקו ${result.deleted?.supplierPayments ?? 1} תשלומי ספקים. נותקו ${result.unlinked?.bankTransactions ?? 0} התאמות בנק.`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "מחיקת התשלום נכשלה");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -87,6 +114,9 @@ export default function PaymentsPage() {
               {(p.invoiceLink || p.documentLink) && <button className="btn btn-secondary" type="button" onClick={() => setPreviewUrl(p.invoiceLink ?? p.documentLink)}>תצוגה מקדימה</button>}
               {p.documentLink && <a className="btn btn-secondary" href={p.documentLink} target="_blank" rel="noreferrer">פתח מסמך</a>}
               {p.invoiceLink && <a className="btn btn-secondary" href={p.invoiceLink} target="_blank" rel="noreferrer">פתח חשבונית</a>}
+              <button className="btn btn-secondary border-red-400/50 text-red-200" type="button" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
+                {deletingId === p.id ? "מוחק..." : "מחק תשלום"}
+              </button>
               {!p.paid && (
                 <button className="btn" onClick={() => markPaid(p.id)} disabled={updatingId === p.id}>
                   {updatingId === p.id ? "מעדכן..." : "סמן כתשלום ששולם"}
@@ -161,6 +191,9 @@ export default function PaymentsPage() {
                       {updatingId === p.id ? "מעדכן..." : "סמן כתשלום ששולם"}
                     </button>
                   )}
+                  <button className="btn btn-secondary border-red-400/50 text-red-200" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
+                    {deletingId === p.id ? "מוחק..." : "מחק"}
+                  </button>
                 </td>
               </tr>
             ))}

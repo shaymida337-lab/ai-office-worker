@@ -38,6 +38,7 @@ export default function InvoicesPage() {
   const [messageTone, setMessageTone] = useState<"info" | "success" | "error">("info");
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Invoice | null>(null);
 
   async function load() {
@@ -130,6 +131,28 @@ export default function InvoicesPage() {
     }
   }
 
+  async function deleteInvoice(invoice: Invoice) {
+    const confirmed = window.confirm(`למחוק את החשבונית ${invoice.invoiceNumber ?? invoice.id} בסכום ${formatCurrency(invoice.amount, invoice.currency)}? הפעולה תמחק את הרשומה מה-DB.`);
+    if (!confirmed) return;
+    setDeletingId(invoice.id);
+    setMessageTone("info");
+    setMessage("");
+    try {
+      const result = await apiFetch<{ deleted?: { invoices?: number }; unlinked?: { bankTransactions?: number; whatsappMessages?: number } }>(`/api/invoices/${invoice.id}`, {
+        method: "DELETE",
+      });
+      setSelected(null);
+      await load();
+      setMessageTone("success");
+      setMessage(`נמחקו ${result.deleted?.invoices ?? 1} חשבוניות. נותקו ${result.unlinked?.bankTransactions ?? 0} התאמות בנק.`);
+    } catch (err) {
+      setMessageTone("error");
+      setMessage(err instanceof Error ? err.message : "מחיקת החשבונית נכשלה");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   const messageClasses = {
     info: "border-accent-primary/40 bg-accent-primary/15 text-[#E0E7FF]",
     success: "border-emerald-400/40 bg-emerald-500/15 text-emerald-100",
@@ -205,6 +228,9 @@ export default function InvoicesPage() {
               <button className="btn btn-secondary" onClick={() => toggleStatus(invoice)}>
                 {invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}
               </button>
+              <button className="btn btn-secondary border-red-400/50 text-red-200" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
+                {deletingId === invoice.id ? "מוחק..." : "מחק חשבונית"}
+              </button>
             </div>
           </div>
         ))}
@@ -223,7 +249,12 @@ export default function InvoicesPage() {
                 <td className="whitespace-nowrap text-base font-bold text-[#F8FAFC]">{formatCurrency(invoice.amount, invoice.currency)}</td>
                 <td><span className={`badge ${invoice.status === "paid" ? "badge-ok" : invoice.status === "overdue" ? "badge-error" : "badge-warn"}`}>{statusLabels[invoice.status]}</span></td>
                 <td>{invoice.driveUrl ? <a className="btn btn-secondary px-2 py-1 text-sm" href={invoice.driveUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />קובץ</a> : <span className="text-base text-[#CBD5E1]">-</span>}</td>
-                <td><button className="rounded-lg border border-[var(--border)] bg-surface-card px-2 py-1 text-sm font-semibold text-[#E2E8F0] opacity-100 transition hover:bg-surface-hover hover:text-[#F8FAFC]" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}</button></td>
+                <td>
+                  <div className="flex flex-wrap gap-2">
+                    <button className="rounded-lg border border-[var(--border)] bg-surface-card px-2 py-1 text-sm font-semibold text-[#E2E8F0] opacity-100 transition hover:bg-surface-hover hover:text-[#F8FAFC]" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}</button>
+                    <button className="rounded-lg border border-red-400/50 bg-red-500/10 px-2 py-1 text-sm font-semibold text-red-100 transition hover:bg-red-500/20" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>{deletingId === invoice.id ? "מוחק..." : "מחק"}</button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -253,6 +284,9 @@ export default function InvoicesPage() {
                 </a>
               </div>
             )}
+            <button className="btn btn-secondary mt-4 border-red-400/50 text-red-200" onClick={() => deleteInvoice(selected)} disabled={deletingId === selected.id}>
+              {deletingId === selected.id ? "מוחק..." : "מחק חשבונית"}
+            </button>
             <button className="btn btn-secondary mt-4" onClick={() => setSelected(null)}>סגור</button>
           </div>
         </div>

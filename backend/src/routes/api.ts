@@ -2691,6 +2691,38 @@ apiRouter.put("/invoices/:id/status", async (req, res) => {
   res.json({ invoice: updated });
 });
 
+apiRouter.delete("/invoices/:id", async (req, res) => {
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    select: { id: true },
+  });
+  if (!invoice) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+
+  const [bankMatches, whatsappMessages] = await prisma.$transaction([
+    prisma.bankTransaction.updateMany({
+      where: { organizationId: req.auth!.organizationId, matchedInvoiceId: invoice.id },
+      data: { matchedInvoiceId: null, matchStatus: "unmatched", matchConfidence: null },
+    }),
+    prisma.whatsAppMessage.updateMany({
+      where: { invoiceId: invoice.id },
+      data: { invoiceId: null, hasInvoice: false },
+    }),
+    prisma.invoice.delete({ where: { id: invoice.id } }),
+  ]);
+
+  res.json({
+    ok: true,
+    deleted: { invoices: 1 },
+    unlinked: {
+      bankTransactions: bankMatches.count,
+      whatsappMessages: whatsappMessages.count,
+    },
+  });
+});
+
 apiRouter.get("/organizations/:id/invoices/summary", async (req, res) => {
   if (req.params.id !== req.auth!.organizationId) {
     res.status(403).json({ error: "Organization access denied" });
@@ -2825,6 +2857,48 @@ apiRouter.patch("/payments/:id", async (req, res) => {
     console.error("[payments] failed to sync payment to sheet", err);
   }
   res.json({ updated: 1, payment: updatedPayment });
+});
+
+apiRouter.delete("/payments/:id", async (req, res) => {
+  const payment = await prisma.supplierPayment.findFirst({
+    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    select: { id: true, emailMessageId: true },
+  });
+  if (!payment) {
+    res.status(404).json({ error: "Payment not found" });
+    return;
+  }
+
+  const [bankMatches, reviews, tasks] = await prisma.$transaction([
+    prisma.bankTransaction.updateMany({
+      where: { organizationId: req.auth!.organizationId, matchedSupplierPaymentId: payment.id },
+      data: { matchedSupplierPaymentId: null, matchStatus: "unmatched", matchConfidence: null },
+    }),
+    prisma.financialDocumentReview.deleteMany({
+      where: { organizationId: req.auth!.organizationId, supplierPaymentId: payment.id },
+    }),
+    prisma.task.updateMany({
+      where: {
+        organizationId: req.auth!.organizationId,
+        emailMessageId: payment.emailMessageId ?? "__none__",
+        title: { startsWith: "MissingInvoice:" },
+      },
+      data: { status: "completed" },
+    }),
+    prisma.supplierPayment.delete({ where: { id: payment.id } }),
+  ]);
+
+  res.json({
+    ok: true,
+    deleted: {
+      supplierPayments: 1,
+      documentReviews: reviews.count,
+    },
+    unlinked: {
+      bankTransactions: bankMatches.count,
+      tasks: tasks.count,
+    },
+  });
 });
 
 apiRouter.get("/tasks", async (req, res) => {
