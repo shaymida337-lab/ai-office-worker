@@ -720,6 +720,205 @@ apiRouter.get("/debug/payments/classification-investigation", async (req, res) =
   }
 });
 
+apiRouter.get("/debug/payments/open-classification-inputs", async (req, res) => {
+  const orgId = req.auth!.organizationId;
+  try {
+    const payments = await prisma.supplierPayment.findMany({
+      where: {
+        organizationId: orgId,
+        paymentRequired: true,
+        paid: false,
+      },
+      orderBy: [{ amount: "desc" }, { createdAt: "desc" }],
+      select: {
+        id: true,
+        amount: true,
+        currency: true,
+        supplier: true,
+        emailSender: true,
+        emailMessageId: true,
+        subject: true,
+        source: true,
+        duplicateHash: true,
+        duplicateDetected: true,
+        duplicateReason: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    const emailRefs = Array.from(new Set(payments.flatMap((payment) => payment.emailMessageId ? [payment.emailMessageId] : [])));
+    const emails = emailRefs.length
+      ? await prisma.emailMessage.findMany({
+          where: {
+            organizationId: orgId,
+            OR: [
+              { id: { in: emailRefs } },
+              { gmailId: { in: emailRefs } },
+            ],
+          },
+          select: {
+            id: true,
+            gmailId: true,
+            subject: true,
+            fromAddress: true,
+            receivedAt: true,
+          },
+        })
+      : [];
+    const emailById = new Map(emails.map((email) => [email.id, email]));
+    const emailByGmailId = new Map(emails.map((email) => [email.gmailId, email]));
+    const scanRefs = Array.from(new Set([
+      ...emailRefs,
+      ...emails.map((email) => email.id),
+      ...emails.map((email) => email.gmailId),
+    ].filter(Boolean)));
+    const scanItems = scanRefs.length
+      ? await prisma.gmailScanItem.findMany({
+          where: {
+            organizationId: orgId,
+            OR: [
+              { emailMessageId: { in: scanRefs } },
+              { gmailMessageId: { in: scanRefs } },
+            ],
+          },
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            emailMessageId: true,
+            gmailMessageId: true,
+            sender: true,
+            senderEmail: true,
+            subject: true,
+            amount: true,
+            supplierName: true,
+            documentType: true,
+            reviewStatus: true,
+            confidenceScore: true,
+            decisionReason: true,
+            createdAt: true,
+          },
+        })
+      : [];
+    const scanItemsByRef = new Map<string, typeof scanItems>();
+    for (const scanItem of scanItems) {
+      for (const ref of [scanItem.emailMessageId, scanItem.gmailMessageId].filter((value): value is string => Boolean(value))) {
+        const existing = scanItemsByRef.get(ref) ?? [];
+        existing.push(scanItem);
+        scanItemsByRef.set(ref, existing);
+      }
+    }
+
+    const rows = payments.map((payment) => {
+      const email = payment.emailMessageId
+        ? emailById.get(payment.emailMessageId) ?? emailByGmailId.get(payment.emailMessageId) ?? null
+        : null;
+      const relatedScanItems = [
+        ...(payment.emailMessageId ? scanItemsByRef.get(payment.emailMessageId) ?? [] : []),
+        ...(email?.id ? scanItemsByRef.get(email.id) ?? [] : []),
+        ...(email?.gmailId ? scanItemsByRef.get(email.gmailId) ?? [] : []),
+      ];
+      const primaryScanItem = relatedScanItems[0] ?? null;
+      const sender = primaryScanItem?.sender ?? payment.emailSender ?? email?.fromAddress ?? null;
+      const senderEmail = primaryScanItem?.senderEmail ?? extractEmailAddress(sender) ?? extractEmailAddress(email?.fromAddress) ?? null;
+      const senderDomain = extractEmailDomain(senderEmail ?? sender);
+
+      return {
+        paymentId: payment.id,
+        amount: payment.amount,
+        currency: payment.currency,
+        supplier: payment.supplier,
+        senderName: primaryScanItem?.sender ?? sender,
+        senderEmail,
+        senderDomain,
+        documentType: primaryScanItem?.documentType ?? null,
+        reviewStatus: primaryScanItem?.reviewStatus ?? null,
+        confidenceScore: primaryScanItem?.confidenceScore ?? null,
+        decisionReason: primaryScanItem?.decisionReason ?? null,
+        emailMessageId: payment.emailMessageId,
+        gmailMessageId: email?.gmailId ?? primaryScanItem?.gmailMessageId ?? null,
+        emailSubject: email?.subject ?? payment.subject,
+        paymentSubject: payment.subject,
+        paymentSource: payment.source,
+        duplicateHash: payment.duplicateHash,
+        duplicateDetected: payment.duplicateDetected,
+        duplicateReason: payment.duplicateReason,
+        scanItemId: primaryScanItem?.id ?? null,
+        scanItemCount: relatedScanItems.length,
+        createdAt: payment.createdAt,
+        updatedAt: payment.updatedAt,
+      };
+    });
+
+    const domainSummary = Array.from(
+      rows.reduce((acc, row) => {
+        const domain = row.senderDomain || "unknown";
+        const existing = acc.get(domain) ?? {
+          senderDomain: domain,
+          count: 0,
+          totalAmount: 0,
+          examples: [] as Array<{ paymentId: string; supplier: string; amount: number; decisionReason: string | null }>,
+        };
+        existing.count += 1;
+        existing.totalAmount += row.amount;
+        if (existing.examples.length < 5) {
+          existing.examples.push({
+            paymentId: row.paymentId,
+            supplier: row.supplier,
+            amount: row.amount,
+            decisionReason: row.decisionReason,
+          });
+        }
+        acc.set(domain, existing);
+        return acc;
+      }, new Map<string, { senderDomain: string; count: number; totalAmount: number; examples: Array<{ paymentId: string; supplier: string; amount: number; decisionReason: string | null }> }>())
+    )
+      .map(([, value]) => value)
+      .sort((a, b) => b.totalAmount - a.totalAmount);
+
+    const duplicateSummary = Array.from(
+      rows.reduce((acc, row) => {
+        const key = row.duplicateHash || `${row.senderDomain}|${row.emailSubject}|${row.amount}`;
+        const existing = acc.get(key) ?? { key, count: 0, totalAmount: 0, paymentIds: [] as string[] };
+        existing.count += 1;
+        existing.totalAmount += row.amount;
+        if (existing.paymentIds.length < 10) existing.paymentIds.push(row.paymentId);
+        acc.set(key, existing);
+        return acc;
+      }, new Map<string, { key: string; count: number; totalAmount: number; paymentIds: string[] }>())
+    )
+      .map(([, value]) => value)
+      .filter((value) => value.count > 1)
+      .sort((a, b) => b.totalAmount - a.totalAmount);
+
+    res.json({
+      orgId,
+      endpoint: "/api/debug/payments/open-classification-inputs",
+      readOnly: true,
+      countedRows: rows.length,
+      moneyToPay: rows.reduce((sum, row) => sum + row.amount, 0),
+      domainSummary,
+      duplicateSummary,
+      rows,
+    });
+  } catch (err) {
+    console.error("[debug/payments/open-classification-inputs] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Open supplier payment classification input debug failed" });
+  }
+});
+
+function extractEmailAddress(value: string | null | undefined) {
+  if (!value) return null;
+  return value.match(/<([^>]+)>/)?.[1]?.trim().toLowerCase()
+    ?? value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.toLowerCase()
+    ?? null;
+}
+
+function extractEmailDomain(value: string | null | undefined) {
+  const email = extractEmailAddress(value) ?? value?.toLowerCase() ?? "";
+  return email.includes("@") ? email.split("@").pop()?.replace(/[>\s),;]+$/g, "") ?? "unknown" : "unknown";
+}
+
 apiRouter.get("/debug/sheets/supplier-payments/verify", async (req, res) => {
   try {
     const { verifySupplierPaymentsSheet } = await import("../services/supplierPaymentsSheet.js");
