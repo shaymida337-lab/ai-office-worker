@@ -204,15 +204,22 @@ export default function InvoicesPage() {
       <div className="grid gap-4 md:hidden">
         {filtered.map((invoice) => (
           <div key={invoice.id} className="card">
+            <div className="mb-3 flex justify-end">
+              <button className="rounded-xl border border-red-400/60 bg-red-500/20 px-3 py-2 text-sm font-bold text-red-100" type="button" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
+                {deletingId === invoice.id ? "מוחק..." : "מחק"}
+              </button>
+            </div>
             <button type="button" className="w-full text-right" onClick={() => setSelected(invoice)}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="break-words">{invoice.client?.name ?? "לקוח לא ידוע"}</h2>
                   <p className="text-base text-[#E2E8F0]">{new Date(invoice.date).toLocaleDateString("he-IL")} · {invoice.invoiceNumber ?? "ללא מספר"}</p>
                 </div>
-                <span className={`badge shrink-0 ${invoice.status === "paid" ? "badge-ok" : invoice.status === "overdue" ? "badge-error" : "badge-warn"}`}>
-                  {statusLabels[invoice.status]}
-                </span>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <span className={`badge ${invoice.status === "paid" ? "badge-ok" : invoice.status === "overdue" ? "badge-error" : "badge-warn"}`}>
+                    {statusLabels[invoice.status]}
+                  </span>
+                </div>
               </div>
               {invoice.description && <p className="mb-4 break-words text-base leading-7 text-[#E2E8F0]">{invoice.description}</p>}
               <div className="rounded-2xl bg-surface-secondary p-3 text-left text-2xl font-bold text-ink-primary">
@@ -238,10 +245,15 @@ export default function InvoicesPage() {
 
       <div className="table-shell hidden max-w-full overflow-x-auto md:block">
         <table className="min-w-[980px] table-fixed">
-          <thead><tr><th className="w-28 text-base font-bold text-[#F8FAFC]">תאריך</th><th className="w-36 text-base font-bold text-[#F8FAFC]">לקוח</th><th className="w-28 text-base font-bold text-[#F8FAFC]">מספר</th><th className="text-base font-bold text-[#F8FAFC]">תיאור</th><th className="w-36 text-base font-bold text-[#F8FAFC]">סכום</th><th className="w-24 text-base font-bold text-[#F8FAFC]">סטטוס</th><th className="w-24 text-base font-bold text-[#F8FAFC]">דרייב</th><th className="w-24 text-base font-bold text-[#F8FAFC]">פעולות</th></tr></thead>
+          <thead><tr><th className="w-24 text-base font-bold text-[#F8FAFC]">מחק</th><th className="w-28 text-base font-bold text-[#F8FAFC]">תאריך</th><th className="w-36 text-base font-bold text-[#F8FAFC]">לקוח</th><th className="w-28 text-base font-bold text-[#F8FAFC]">מספר</th><th className="text-base font-bold text-[#F8FAFC]">תיאור</th><th className="w-36 text-base font-bold text-[#F8FAFC]">סכום</th><th className="w-24 text-base font-bold text-[#F8FAFC]">סטטוס</th><th className="w-24 text-base font-bold text-[#F8FAFC]">דרייב</th><th className="w-24 text-base font-bold text-[#F8FAFC]">פעולות</th></tr></thead>
           <tbody>
             {filtered.map((invoice) => (
               <tr key={invoice.id} onClick={() => setSelected(invoice)} className="cursor-pointer">
+                <td>
+                  <button className="rounded-xl border border-red-400/60 bg-red-500/20 px-3 py-2 text-sm font-bold text-red-100 transition hover:bg-red-500/30" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>
+                    {deletingId === invoice.id ? "מוחק..." : "מחק"}
+                  </button>
+                </td>
                 <td className="whitespace-nowrap text-base text-[#F1F5F9]">{new Date(invoice.date).toLocaleDateString("he-IL")}</td>
                 <td><span className="inline-flex max-w-full items-center gap-2 text-base text-[#F1F5F9]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface-hover text-sm font-bold text-ink-primary">{invoice.client?.name?.slice(0, 2) ?? "חכ"}</span><span className="truncate">{invoice.client?.name ?? ""}</span></span></td>
                 <td className="truncate text-base text-[#F8FAFC]">{invoice.invoiceNumber ?? "-"}</td>

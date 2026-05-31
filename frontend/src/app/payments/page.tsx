@@ -100,7 +100,12 @@ export default function PaymentsPage() {
                 <h2 className="break-words">{p.supplier}</h2>
                 <p className="break-words">{p.emailSender ?? "שולח לא ידוע"}</p>
               </div>
-              <span className={`badge shrink-0 ${p.paid ? "badge-ok" : "badge-warn"}`}>{p.paid ? "שולם" : "ממתין"}</span>
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                <button className="rounded-xl border border-red-400/60 bg-red-500/20 px-3 py-2 text-sm font-bold text-red-100" type="button" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
+                  {deletingId === p.id ? "מוחק..." : "מחק"}
+                </button>
+                <span className={`badge ${p.paid ? "badge-ok" : "badge-warn"}`}>{p.paid ? "שולם" : "ממתין"}</span>
+              </div>
             </div>
             <div className="grid gap-2 rounded-2xl bg-surface-secondary p-3">
               <MobileRow label="סכום" value={`₪${p.amount.toLocaleString("he-IL")}`} />
@@ -127,10 +132,11 @@ export default function PaymentsPage() {
         ))}
       </div>
 
-      <div className="table-shell hidden md:block">
-        <table>
+      <div className="table-shell hidden max-w-full overflow-x-auto md:block">
+        <table className="min-w-[1180px]">
           <thead>
             <tr>
+              <th>מחק</th>
               <th>ספק</th>
               <th>שולח</th>
               <th>סכום</th>
@@ -148,7 +154,17 @@ export default function PaymentsPage() {
           <tbody>
             {payments.map((p) => (
               <tr key={p.id}>
-                <td>{p.supplier}</td>
+                <td>
+                  <button className="rounded-xl border border-red-400/60 bg-red-500/20 px-3 py-2 text-sm font-bold text-red-100 transition hover:bg-red-500/30" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
+                    {deletingId === p.id ? "מוחק..." : "מחק"}
+                  </button>
+                </td>
+                <td>
+                  <div className="font-semibold">{p.supplier}</div>
+                  <button className="mt-2 rounded-lg border border-red-400/50 bg-red-500/10 px-2 py-1 text-xs font-bold text-red-100 md:hidden" type="button" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
+                    {deletingId === p.id ? "מוחק..." : "מחק"}
+                  </button>
+                </td>
                 <td>{p.emailSender ?? "—"}</td>
                 <td>₪{p.amount.toLocaleString("he-IL")}</td>
                 <td>{new Date(p.date).toLocaleDateString("he-IL")}</td>
@@ -191,9 +207,6 @@ export default function PaymentsPage() {
                       {updatingId === p.id ? "מעדכן..." : "סמן כתשלום ששולם"}
                     </button>
                   )}
-                  <button className="btn btn-secondary border-red-400/50 text-red-200" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
-                    {deletingId === p.id ? "מוחק..." : "מחק"}
-                  </button>
                 </td>
               </tr>
             ))}
