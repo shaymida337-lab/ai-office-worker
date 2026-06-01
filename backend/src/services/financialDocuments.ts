@@ -40,6 +40,7 @@ export type FinancialDocumentInput = {
   emailMessageId?: string | null;
   gmailMessageId?: string | null;
   whatsappLogId?: string | null;
+  fileSha256?: string | null;
 };
 
 export function normalizeFinancialDocumentType(value: string | null | undefined): NormalizedFinancialDocumentType {
@@ -179,6 +180,7 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
     totalAmount,
     documentDate,
     documentType,
+    fileSha256: input.fileSha256,
   });
 
   if (!isPaymentDocumentType(documentType)) {
@@ -230,6 +232,7 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
       totalAmount,
       documentDate,
       documentType,
+      fileSha256: input.fileSha256,
     },
     candidates: duplicateCandidates,
   });

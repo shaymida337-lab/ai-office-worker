@@ -7,6 +7,7 @@ import { ensureInvoiceFolderTree, findExistingSupplierDriveDocument, uploadInvoi
 import { getGoogleClients } from "./google.js";
 import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
 import { recordFinancialDocumentDecision } from "./financialDocuments.js";
+import { matchFinancialDocuments, type DedupMatchResult, type FinancialDocumentFingerprintInput } from "./dedup/sharedMatcher.js";
 
 type WhatsAppMediaInput = {
   organizationId: string;
@@ -98,6 +99,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
         : null,
       rawAnalysis: { analysis, whatsappLogId: input.whatsappLogId },
       whatsappLogId: input.whatsappLogId,
+      fileSha256: fileHash,
     });
     if (documentDecision.action !== "accepted") {
       processed.push({
@@ -131,6 +133,45 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       invoiceDate: analysis.invoiceDate,
       fileHash,
     });
+    if (duplicate?.matchResult === "UNSURE") {
+      const reviewDecision = await recordFinancialDocumentDecision({
+        organizationId: input.organizationId,
+        source: "whatsapp",
+        sender: input.fromNumber,
+        subject: input.body,
+        fileName: filename,
+        fileSize: buffer.length,
+        supplierName: supplier,
+        supplierTaxId: analysis.supplierTaxId ?? null,
+        invoiceNumber: analysis.invoiceNumber,
+        documentDate: analysis.invoiceDate,
+        dueDate: analysis.dueDate,
+        amountBeforeVat: analysis.amountBeforeVat ?? null,
+        vatAmount: analysis.vatAmount ?? null,
+        totalAmount: analysis.totalAmount ?? amount,
+        documentType: analysis.documentType,
+        confidenceScore: Math.min(analysis.confidence, 0.79),
+        uncertaintyReason: `possible duplicate: ${duplicate.reason}`,
+        rawAnalysis: { analysis, whatsappLogId: input.whatsappLogId, duplicateReasons: duplicate.reasons },
+        whatsappLogId: input.whatsappLogId,
+        fileSha256: fileHash,
+      });
+      processed.push({
+        filename,
+        supplier,
+        amount,
+        invoiceNumber: analysis.invoiceNumber,
+        documentType: analysis.documentType,
+        documentDate: analysis.invoiceDate,
+        driveLink: null,
+        paymentId: null,
+        invoiceId: null,
+        created: false,
+        duplicateDetected: false,
+        duplicateReason: reviewDecision.action,
+      });
+      continue;
+    }
     if (duplicate) {
       console.log(`[whatsapp-invoice] duplicate detected logId=${input.whatsappLogId} reason=${duplicate.reason} paymentId=${duplicate.paymentId ?? "null"}`);
       if (duplicate.paymentId) {
@@ -768,6 +809,15 @@ async function findExistingCrossSourceDuplicate(input: {
   invoiceDate: string | null;
   fileHash: string;
 }) {
+  const currentDocument = whatsappFinancialDocumentInput({
+    organizationId: input.organizationId,
+    supplier: input.supplier,
+    supplierTaxId: input.supplierTaxId,
+    invoiceNumber: input.invoiceNumber,
+    amount: input.amount,
+    invoiceDate: input.invoiceDate,
+    fileHash: input.fileHash,
+  });
   const byFileHash = await prisma.supplierPayment.findFirst({
     where: {
       organizationId: input.organizationId,
@@ -781,7 +831,7 @@ async function findExistingCrossSourceDuplicate(input: {
     },
   });
   if (byFileHash) {
-    return paymentDuplicate(byFileHash, "file_hash");
+    return matchedPaymentDuplicate(currentDocument, paymentFinancialDocumentInput(byFileHash, input.fileHash), byFileHash, "file_hash");
   }
 
   if (input.supplierTaxId && input.invoiceNumber) {
@@ -790,24 +840,48 @@ async function findExistingCrossSourceDuplicate(input: {
       orderBy: { createdAt: "desc" },
       take: 1000,
     });
-    const matchingScanItem = scanItems.find((item) => {
+    let matchingScanItem: (typeof scanItems)[number] | null = null;
+    let matchingScanItemResult: ReturnType<typeof matchWhatsAppFinancialDocumentCandidate> | null = null;
+    for (const item of scanItems) {
       const raw = item.rawAnalysis as Record<string, any> | null;
       const taxId = normalizeTaxId(raw?.supplierTaxId ?? raw?.supplier?.taxId ?? raw?.analysis?.supplierTaxId);
       const invoiceNumber = normalizeInvoiceNumber(raw?.invoiceNumber ?? raw?.analysis?.invoiceNumber);
-      return taxId === normalizeTaxId(input.supplierTaxId) && invoiceNumber === normalizeInvoiceNumber(input.invoiceNumber);
-    });
+      const match = matchWhatsAppFinancialDocumentCandidate(currentDocument, {
+        organizationId: input.organizationId,
+        supplierName: item.supplierName,
+        supplierTaxId: taxId,
+        invoiceNumber,
+        totalAmount: item.amount,
+        documentDate: raw?.date ?? raw?.invoiceDate ?? raw?.analysis?.date ?? raw?.analysis?.invoiceDate,
+        documentType: raw?.documentType ?? raw?.analysis?.documentType,
+      });
+      if (match.result === "MATCH") {
+        matchingScanItem = item;
+        matchingScanItemResult = match;
+        break;
+      }
+      if (match.result === "UNSURE" && !matchingScanItem) {
+        matchingScanItem = item;
+        matchingScanItemResult = match;
+      }
+    }
     if (matchingScanItem) {
       const payment = matchingScanItem.emailMessageId
         ? await prisma.supplierPayment.findFirst({
             where: { organizationId: input.organizationId, emailMessageId: matchingScanItem.emailMessageId },
           })
         : null;
+      if (matchingScanItemResult?.result === "UNSURE") {
+        return possibleDuplicateReview("supplier_tax_id_invoice_number", matchingScanItemResult.reasons, payment?.id ?? null);
+      }
       return {
+        matchResult: "MATCH" as const,
         paymentId: payment?.id ?? null,
         supplier: payment?.supplier ?? matchingScanItem.supplierName,
         amount: payment?.amount ?? matchingScanItem.amount,
         driveLink: payment?.invoiceLink ?? payment?.documentLink ?? matchingScanItem.driveFileLink,
-        reason: "supplier_tax_id_invoice_number",
+        reason: `supplier_tax_id_invoice_number:${matchingScanItemResult?.reasons.join(",") ?? "match"}`,
+        reasons: matchingScanItemResult?.reasons ?? ["match"],
       };
     }
   }
@@ -828,11 +902,94 @@ async function findExistingCrossSourceDuplicate(input: {
         },
         orderBy: { createdAt: "desc" },
       });
-      if (payment) return paymentDuplicate(payment, "supplier_amount_invoice_date");
+      if (payment) {
+        return matchedPaymentDuplicate(currentDocument, paymentFinancialDocumentInput(payment), payment, "supplier_amount_invoice_date");
+      }
     }
   }
 
   return null;
+}
+
+export function matchWhatsAppFinancialDocumentCandidate(
+  current: FinancialDocumentFingerprintInput,
+  candidate: FinancialDocumentFingerprintInput
+) {
+  return matchFinancialDocuments(current, candidate);
+}
+
+function whatsappFinancialDocumentInput(input: {
+  organizationId: string;
+  supplier: string;
+  supplierTaxId: string | null;
+  invoiceNumber: string | null;
+  amount: number | null;
+  invoiceDate: string | null;
+  fileHash: string;
+}): FinancialDocumentFingerprintInput {
+  return {
+    organizationId: input.organizationId,
+    supplierName: input.supplier,
+    supplierTaxId: input.supplierTaxId,
+    invoiceNumber: input.invoiceNumber,
+    totalAmount: input.amount,
+    documentDate: input.invoiceDate,
+    documentType: "invoice",
+    fileSha256: input.fileHash,
+  };
+}
+
+function paymentFinancialDocumentInput(payment: {
+  organizationId?: string | null;
+  supplier: string;
+  supplierName?: string | null;
+  supplierTaxId?: string | null;
+  invoiceNumber?: string | null;
+  amount: number;
+  totalAmount?: number | null;
+  date?: Date | string | null;
+  documentTypeDetailed?: string | null;
+}, fileSha256?: string | null): FinancialDocumentFingerprintInput {
+  return {
+    organizationId: payment.organizationId,
+    supplierName: payment.supplierName ?? payment.supplier,
+    supplierTaxId: payment.supplierTaxId,
+    invoiceNumber: payment.invoiceNumber,
+    totalAmount: payment.totalAmount ?? payment.amount,
+    documentDate: payment.date,
+    documentType: payment.documentTypeDetailed,
+    fileSha256,
+  };
+}
+
+function matchedPaymentDuplicate(
+  current: FinancialDocumentFingerprintInput,
+  candidate: FinancialDocumentFingerprintInput,
+  payment: {
+    id: string;
+    supplier: string;
+    amount: number;
+    invoiceLink: string | null;
+    documentLink: string | null;
+  },
+  legacyReason: string
+) {
+  const match = matchWhatsAppFinancialDocumentCandidate(current, candidate);
+  if (match.result === "MATCH") return paymentDuplicate(payment, `${legacyReason}:${match.reasons.join(",")}`, match.result, match.reasons);
+  if (match.result === "UNSURE") return possibleDuplicateReview(legacyReason, match.reasons, payment.id);
+  return null;
+}
+
+function possibleDuplicateReview(reason: string, reasons: string[], paymentId: string | null) {
+  return {
+    matchResult: "UNSURE" as const,
+    paymentId,
+    supplier: null,
+    amount: null,
+    driveLink: null,
+    reason: `${reason}:${reasons.join(",")}`,
+    reasons,
+  };
 }
 
 async function attachWhatsAppSourceToPayment(input: {
@@ -950,13 +1107,15 @@ function paymentDuplicate(payment: {
   amount: number;
   invoiceLink: string | null;
   documentLink: string | null;
-}, reason: string) {
+}, reason: string, matchResult: DedupMatchResult = "MATCH", reasons: string[] = [reason]) {
   return {
+    matchResult,
     paymentId: payment.id,
     supplier: payment.supplier,
     amount: payment.amount,
     driveLink: payment.invoiceLink ?? payment.documentLink,
     reason,
+    reasons,
   };
 }
 
