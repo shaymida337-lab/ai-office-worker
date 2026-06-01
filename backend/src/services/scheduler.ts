@@ -10,6 +10,7 @@ import { notificationGuard } from "./notificationGuard.js";
 import { clientTemplates, ownerTemplates } from "./messageTemplates.js";
 import { publishDueSocialPosts } from "./socialMedia.js";
 import { processCrmNotifications, processLeadSequences } from "./crm.js";
+import { initialConnectScanWindow } from "./scanWindow.js";
 
 const TIMEZONE = "Asia/Jerusalem";
 const MAX_RETRIES = 3;
@@ -61,10 +62,11 @@ class SchedulerService {
     let found = 0;
     let saved = 0;
     try {
-      await syncGmailForOrganization(organizationId, { daysBack: 90, isFirstTime: true });
+      const initialWindow = initialConnectScanWindow();
+      await syncGmailForOrganization(organizationId, { isFirstTime: true });
       const clients = await prisma.client.findMany({ where: { organizationId, isActive: true, gmailConnected: true } });
       for (const client of clients) {
-        const result = await scanForInvoices(client.id, { daysBack: 90, limit: 50 });
+        const result = await scanForInvoices(client.id, { daysBack: initialWindow.daysBack, limit: 50 });
         found += result.found;
         saved += result.saved;
         errors.push(...result.errors.map((item) => item.error));

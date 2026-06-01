@@ -184,7 +184,7 @@ function signGmailIntegrationState(auth: {
 function runPostConnectionGmailScan(organizationId: string) {
   void import("../services/gmail-sync.js")
     .then(({ syncGmailForOrganization }) =>
-      syncGmailForOrganization(organizationId, { daysBack: 90, forceReprocess: false })
+      syncGmailForOrganization(organizationId, { isFirstTime: true, forceReprocess: false })
     )
     .then((result) => {
       console.log(

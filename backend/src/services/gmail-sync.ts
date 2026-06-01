@@ -14,6 +14,7 @@ import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
 import { notifyNewInvoice } from "./whatsapp.js";
 import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from "./financialDocuments.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
+import { initialConnectScanWindow } from "./scanWindow.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
@@ -306,13 +307,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     console.log(message);
   };
 
-  const daysBack = options.isFirstTime ? 90 : options.daysBack ?? 90;
+  const initialWindow = options.isFirstTime && !options.since && !options.daysBack ? initialConnectScanWindow() : null;
+  const daysBack = initialWindow?.daysBack ?? options.daysBack ?? 90;
+  const since = options.since ?? initialWindow?.since;
   const scanMode = options.scanMode ?? (options.isFirstTime ? "first_time" : "manual");
   if (options.forceReprocess) {
     logStep(`[gmail-sync] Force reprocess enabled for ${daysBack} day scan`);
   }
-  if (options.since) {
-    logStep(`[gmail-sync] Incremental scan since ${options.since.toISOString()}`);
+  if (since) {
+    logStep(`[gmail-sync] Incremental scan since ${since.toISOString()}`);
   }
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -537,7 +540,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       console.error("Drive setup failed; continuing Gmail sync without Drive", err);
     }
     logStep(`[gmail-sync] Searching Gmail from last ${daysBack} days`);
-    const listing = await listCandidateMessages(gmail, daysBack, options.maxMessages ?? MAX_MESSAGES_PER_SYNC, options.since, {
+    const listing = await listCandidateMessages(gmail, daysBack, options.maxMessages ?? MAX_MESSAGES_PER_SYNC, since, {
       scanAllMail: options.scanAllMail,
     });
     const messages = listing.messages;

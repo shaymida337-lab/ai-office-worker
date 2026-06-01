@@ -20,6 +20,7 @@ import { matchTransactions } from "../services/bank-matcher.js";
 import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } from "../services/paymentClassificationDebug.js";
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
 import { approveFinancialDocumentReview, deleteFinancialDocumentReview } from "../services/financialDocuments.js";
+import { initialConnectScanWindow } from "../services/scanWindow.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -3215,10 +3216,14 @@ apiRouter.post("/whatsapp/scan", async (req, res) => {
   const organizationId = req.auth!.organizationId;
   const body = req.body as { daysBack?: number | null; fullScan?: boolean };
   const fullScan = Boolean(body.fullScan);
-  const requestedDaysBack = Number(body.daysBack ?? 30);
-  const daysBack = Number.isFinite(requestedDaysBack) ? Math.max(1, requestedDaysBack) : 30;
+  const hasExplicitDaysBack = body.daysBack !== undefined && body.daysBack !== null;
+  const initialWindow = initialConnectScanWindow();
+  const requestedDaysBack = hasExplicitDaysBack ? Number(body.daysBack) : initialWindow.daysBack;
+  const daysBack = Number.isFinite(requestedDaysBack) ? Math.max(1, requestedDaysBack) : initialWindow.daysBack;
   const since = !fullScan
-    ? new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000)
+    ? hasExplicitDaysBack
+      ? new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000)
+      : initialWindow.since
     : null;
   const scanMode = fullScan ? "full" : `last_${daysBack}_days`;
 
@@ -3576,8 +3581,12 @@ async function scanGmail(req: Request, res: Response) {
     }
 
     const rescanInvoices = req.body?.rescanInvoices === true || req.query.rescanInvoices === "true";
-    const rawDaysBack = Number(req.body?.daysBack ?? req.query.daysBack);
-    const daysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0 ? Math.ceil(rawDaysBack) : 90;
+    const rawDaysBackValue = req.body?.daysBack ?? req.query.daysBack;
+    const rawDaysBack = Number(rawDaysBackValue);
+    const initialWindow = initialConnectScanWindow();
+    const hasExplicitDaysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0;
+    const daysBack = hasExplicitDaysBack ? Math.ceil(rawDaysBack) : rescanInvoices ? 90 : initialWindow.daysBack;
+    const since = hasExplicitDaysBack || rescanInvoices ? undefined : initialWindow.since;
     const maxMessages = rescanInvoices ? 1000 : undefined;
     console.log(`[gmail-scan] POST /api/gmail/scan org=${organizationId} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack}`);
     console.log("[gmail-scan] Step 1: checking Gmail authentication");
@@ -3635,6 +3644,7 @@ async function scanGmail(req: Request, res: Response) {
     console.log(`[gmail-scan] Step 2: background scan started org=${organizationId} scanId=${scanLog.id} daysBack=${daysBack}`);
     void syncGmailForOrganization(organizationId, {
       daysBack,
+      since,
       forceReprocess: daysBack >= 90 || rescanInvoices,
       scanAllMail: rescanInvoices,
       maxMessages,
