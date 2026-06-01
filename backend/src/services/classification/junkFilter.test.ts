@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyJunk } from "./junkFilter.js";
+import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./junkFilter.js";
 
 test("no-reply security alert is certain junk", () => {
   const result = classifyJunk({
@@ -102,4 +102,40 @@ test("government no-reply notification is blocklisted", () => {
 
   assert.equal(result.bucket, "UNSURE");
   assert.equal(result.blocklisted, true);
+});
+
+test("pipeline gate blocks certain junk before auto classification", () => {
+  const result = classifyJunk({
+    sender: "no-reply@example.com",
+    subject: "Password reset",
+    body: "Reset your password.",
+    channel: "gmail",
+  });
+
+  assert.equal(shouldAutoClassifyAfterJunkFilter(result), false);
+});
+
+test("pipeline gate lets real messages reach classification", () => {
+  const result = classifyJunk({
+    sender: "client@example.com",
+    subject: "Need help with an order",
+    body: "Please call me about a new order.",
+    channel: "gmail",
+  });
+
+  assert.equal(result.bucket, "REAL");
+  assert.equal(shouldAutoClassifyAfterJunkFilter(result), true);
+});
+
+test("pipeline gate sends unsure messages to review instead of auto classification", () => {
+  const result = classifyJunk({
+    sender: "unknown@example.com",
+    subject: "Document",
+    body: "Attached.",
+    channel: "gmail",
+    attachmentFilenames: ["document.pdf"],
+  });
+
+  assert.equal(result.bucket, "UNSURE");
+  assert.equal(shouldAutoClassifyAfterJunkFilter(result), false);
 });

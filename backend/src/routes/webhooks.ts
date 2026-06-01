@@ -11,6 +11,8 @@ import {
 import { handleClientMessage, handleOwnerMessage } from "../services/whatsappChatEngine.js";
 import { analyzeAndSaveMessage } from "../services/messageScanner.js";
 import { ingestWhatsAppInvoiceMedia, parseTwilioMedia } from "../services/whatsappInvoiceIngestion.js";
+import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "../services/classification/junkFilter.js";
+import { recordFinancialDocumentDecision } from "../services/financialDocuments.js";
 
 export const webhooksRouter = Router();
 
@@ -103,6 +105,16 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       res.type("text/xml").send(twiml.toString());
       return;
     }
+    if (!(await shouldContinueAfterWhatsAppJunkGate({
+      organizationId: assistant.organizationId,
+      whatsappLogId: inboundLog.id,
+      fromNumber: normalizedFrom,
+      body,
+      media,
+    }))) {
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
     await scanWhatsAppMessage(assistant.organizationId, inboundLog.id, normalizedFrom, body, false);
     const mediaResult = config.twilio.mediaIngestionEnabled ? await safeMediaIngestion({
       organizationId: assistant.organizationId,
@@ -159,6 +171,16 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       res.type("text/xml").send(twiml.toString());
       return;
     }
+    if (!(await shouldContinueAfterWhatsAppJunkGate({
+      organizationId: client.organizationId,
+      whatsappLogId: inboundLog.id,
+      fromNumber: normalizedFrom,
+      body,
+      media,
+    }))) {
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
     await scanWhatsAppMessage(client.organizationId, inboundLog.id, normalizedFrom, body, false);
     const mediaResult = config.twilio.mediaIngestionEnabled ? await safeMediaIngestion({
       organizationId: client.organizationId,
@@ -209,10 +231,8 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       res.type("text/xml").send(twiml.toString());
       return;
     }
-    const { client: newClient, created } = await findOrCreateClientByWhatsAppNumber(organization.id, normalizedFrom, profileName);
     const inboundLog = await createInboundWhatsAppLogOnce({
       organizationId: organization.id,
-      clientId: newClient.id,
       body,
       fromNumber: normalizedFrom,
       toNumber: config.twilio.whatsappFrom,
@@ -224,6 +244,21 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       res.type("text/xml").send(twiml.toString());
       return;
     }
+    if (!(await shouldContinueAfterWhatsAppJunkGate({
+      organizationId: organization.id,
+      whatsappLogId: inboundLog.id,
+      fromNumber: normalizedFrom,
+      body,
+      media,
+    }))) {
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
+    const { client: newClient, created } = await findOrCreateClientByWhatsAppNumber(organization.id, normalizedFrom, profileName);
+    await prisma.whatsAppLog.update({
+      where: { id: inboundLog.id },
+      data: { clientId: newClient.id },
+    });
     await scanWhatsAppMessage(organization.id, inboundLog.id, normalizedFrom, body, true);
     const mediaResult = config.twilio.mediaIngestionEnabled ? await safeMediaIngestion({
       organizationId: organization.id,
@@ -312,6 +347,66 @@ export async function createInboundWhatsAppLogOnce(input: InboundWhatsAppLogInpu
 
 export async function hasProcessedInboundWhatsAppMessage(organizationId: string, providerMessageSid: string, db: WhatsAppLogStore = prisma) {
   return Boolean(await findProcessedInboundWhatsAppMessage(organizationId, providerMessageSid, db));
+}
+
+async function shouldContinueAfterWhatsAppJunkGate(input: {
+  organizationId: string;
+  whatsappLogId: string;
+  fromNumber: string;
+  body: string;
+  media: Array<{ filename?: string | null; contentType: string; url: string }>;
+}) {
+  const decision = classifyJunk({
+    sender: input.fromNumber,
+    subject: input.body.slice(0, 120),
+    body: input.body,
+    channel: "whatsapp",
+    attachmentFilenames: input.media.map((item) => item.filename).filter(Boolean) as string[],
+    metadata: { whatsappLogId: input.whatsappLogId, mediaCount: input.media.length },
+  });
+
+  if (decision.bucket === "CERTAIN_JUNK") {
+    console.log("[webhook] WhatsApp junk dropped", {
+      organizationId: input.organizationId,
+      whatsappLogId: input.whatsappLogId,
+      reason: decision.reason,
+    });
+    return false;
+  }
+
+  if (!shouldAutoClassifyAfterJunkFilter(decision)) {
+    console.log("[webhook] WhatsApp junk needs_review", {
+      organizationId: input.organizationId,
+      whatsappLogId: input.whatsappLogId,
+      reason: decision.reason,
+      blocklisted: decision.blocklisted,
+    });
+    await recordFinancialDocumentDecision({
+      organizationId: input.organizationId,
+      source: "whatsapp",
+      sender: input.fromNumber,
+      subject: input.body.slice(0, 240),
+      fileName: input.media[0]?.filename ?? null,
+      fileSize: null,
+      supplierName: input.fromNumber,
+      supplierTaxId: null,
+      invoiceNumber: null,
+      documentDate: new Date(),
+      dueDate: null,
+      amountBeforeVat: null,
+      vatAmount: null,
+      totalAmount: null,
+      documentType: "payment_request",
+      driveFileUrl: null,
+      confidenceScore: 0,
+      uncertaintyReason: `junk_filter:${decision.reason}`,
+      rawAnalysis: { junkDecision: decision, whatsappLogId: input.whatsappLogId },
+      whatsappLogId: input.whatsappLogId,
+    });
+    return false;
+  }
+
+  return true;
 }
 
 async function findProcessedInboundWhatsAppMessage(organizationId: string, providerMessageSid: string, db: WhatsAppLogStore) {

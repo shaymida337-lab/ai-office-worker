@@ -26,7 +26,7 @@ const TECH_PLATFORM_DOMAINS = [
 
 const BLOCKLIST_TERMS = [
   /bank|בנק/i,
-  /credit\s*card|כרטיס\s*אשראי|ישראכרט|ויזה|visa|mastercard|amex|max\s*card|cal/i,
+  /credit\s*card|כרטיס\s*אשראי|ישראכרט|ויזה|\bvisa\b|mastercard|amex|max\s*card|\bcal\b/i,
   /gov\.il|ממשלתי|רשות\s*המסים|ביטוח\s*לאומי/i,
 ];
 
@@ -94,6 +94,10 @@ export function classifyJunk(input: JunkFilterInput): JunkFilterResult {
   }
 
   return { bucket: "UNSURE", reason: "insufficient_signal", blocklisted: false };
+}
+
+export function shouldAutoClassifyAfterJunkFilter(result: JunkFilterResult) {
+  return result.bucket === "REAL" && !result.blocklisted;
 }
 
 function isNoReplySender(sender: string) {

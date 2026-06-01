@@ -13,6 +13,7 @@ import {
 import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
 import { notifyNewInvoice } from "./whatsapp.js";
 import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from "./financialDocuments.js";
+import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
@@ -727,6 +728,54 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       const visualAttachmentText = await extractVisualAttachmentHints(gmail, email.gmailId, email.parts, email.from);
       const bodyForAnalysis = [email.bodyText, pdfText && `--- PDF ATTACHMENT TEXT ---\n${pdfText}`, visualAttachmentText && `--- VISUAL ATTACHMENT ANALYSIS ---\n${visualAttachmentText}`].filter(Boolean).join("\n\n");
       logStep(`[gmail-sync] parsed message=${email.gmailId} bodyLength=${email.bodyText.length} pdfTextLength=${pdfText.length} visualTextLength=${visualAttachmentText.length}`);
+      const junkDecision = classifyJunk({
+        sender: email.senderEmail || email.from,
+        subject: email.subject,
+        body: bodyForAnalysis,
+        channel: "gmail",
+        attachmentFilenames: email.parts.map((part) => part.filename).filter(Boolean) as string[],
+        metadata: { gmailMessageId: email.gmailId, domain: email.domain },
+      });
+      if (junkDecision.bucket === "CERTAIN_JUNK") {
+        logStep(`[gmail-sync] junk dropped message=${email.gmailId} reason="${junkDecision.reason}"`);
+        await prisma.emailMessage.update({
+          where: { id: email.emailRecordId },
+          data: { processedAt: new Date() },
+        });
+        continue;
+      }
+      if (!shouldAutoClassifyAfterJunkFilter(junkDecision)) {
+        needsReviewCount++;
+        logStep(`[gmail-sync] junk needs_review message=${email.gmailId} reason="${junkDecision.reason}" blocklisted=${junkDecision.blocklisted}`);
+        await recordFinancialDocumentDecision({
+          organizationId,
+          source: "gmail",
+          sender: email.senderEmail || email.from || null,
+          subject: email.subject,
+          fileName: primaryAttachmentFilename(email.parts),
+          fileSize: null,
+          supplierName: email.senderName || email.domain || null,
+          supplierTaxId: null,
+          invoiceNumber: null,
+          documentDate: email.receivedAt,
+          dueDate: null,
+          amountBeforeVat: null,
+          vatAmount: null,
+          totalAmount: null,
+          documentType: "payment_request",
+          driveFileUrl: null,
+          confidenceScore: 0,
+          uncertaintyReason: `junk_filter:${junkDecision.reason}`,
+          rawAnalysis: { junkDecision, gmailMessageId: email.gmailId },
+          emailMessageId: email.emailRecordId,
+          gmailMessageId: email.gmailId,
+        });
+        await prisma.emailMessage.update({
+          where: { id: email.emailRecordId },
+          data: { processedAt: new Date() },
+        });
+        continue;
+      }
       const analysis = await analyzeEmailContent({
         subject: email.subject,
         body: bodyForAnalysis,
