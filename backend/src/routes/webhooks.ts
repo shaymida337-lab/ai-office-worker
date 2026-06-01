@@ -90,18 +90,19 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
   console.log(`[webhook] WhatsApp inbound accepted sid=${messageSid} from=${normalizedFrom} media=${media.length} path=${req.originalUrl}`);
 
   if (assistant) {
-    const inboundLog = await prisma.whatsAppLog.create({
-      data: {
-        organizationId: assistant.organizationId,
-        direction: "inbound",
-        body,
-        fromNumber: normalizedFrom,
-        toNumber: config.twilio.whatsappFrom,
-        providerMessageSid: messageSid,
-        mediaCount: media.length,
-        mediaJson: media,
-      },
+    const inboundLog = await createInboundWhatsAppLogOnce({
+      organizationId: assistant.organizationId,
+      body,
+      fromNumber: normalizedFrom,
+      toNumber: config.twilio.whatsappFrom,
+      providerMessageSid: messageSid,
+      mediaCount: media.length,
+      mediaJson: media,
     });
+    if (inboundLog.duplicate) {
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
     await scanWhatsAppMessage(assistant.organizationId, inboundLog.id, normalizedFrom, body, false);
     const mediaResult = config.twilio.mediaIngestionEnabled ? await safeMediaIngestion({
       organizationId: assistant.organizationId,
@@ -132,23 +133,32 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
 
   const client = await findClientByWhatsAppNumber(normalizedFrom);
   if (client) {
+    if (await hasProcessedInboundWhatsAppMessage(client.organizationId, messageSid)) {
+      console.log("[webhook] WhatsApp duplicate webhook skipped", {
+        organizationId: client.organizationId,
+        sid: messageSid,
+      });
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
     await prisma.client.update({
       where: { id: client.id },
       data: { lastSeen: new Date(), whatsappNumber: client.whatsappNumber ?? normalizedFrom },
     });
-    const inboundLog = await prisma.whatsAppLog.create({
-      data: {
-        organizationId: client.organizationId,
-        clientId: client.id,
-        direction: "inbound",
-        body,
-        fromNumber: normalizedFrom,
-        toNumber: config.twilio.whatsappFrom,
-        providerMessageSid: messageSid,
-        mediaCount: media.length,
-        mediaJson: media,
-      },
+    const inboundLog = await createInboundWhatsAppLogOnce({
+      organizationId: client.organizationId,
+      clientId: client.id,
+      body,
+      fromNumber: normalizedFrom,
+      toNumber: config.twilio.whatsappFrom,
+      providerMessageSid: messageSid,
+      mediaCount: media.length,
+      mediaJson: media,
     });
+    if (inboundLog.duplicate) {
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
     await scanWhatsAppMessage(client.organizationId, inboundLog.id, normalizedFrom, body, false);
     const mediaResult = config.twilio.mediaIngestionEnabled ? await safeMediaIngestion({
       organizationId: client.organizationId,
@@ -191,20 +201,29 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
 
   const organization = await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
   if (organization) {
-    const { client: newClient, created } = await findOrCreateClientByWhatsAppNumber(organization.id, normalizedFrom, profileName);
-    const inboundLog = await prisma.whatsAppLog.create({
-      data: {
+    if (await hasProcessedInboundWhatsAppMessage(organization.id, messageSid)) {
+      console.log("[webhook] WhatsApp duplicate webhook skipped", {
         organizationId: organization.id,
-        clientId: newClient.id,
-        direction: "inbound",
-        body,
-        fromNumber: normalizedFrom,
-        toNumber: config.twilio.whatsappFrom,
-        providerMessageSid: messageSid,
-        mediaCount: media.length,
-        mediaJson: media,
-      },
+        sid: messageSid,
+      });
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
+    const { client: newClient, created } = await findOrCreateClientByWhatsAppNumber(organization.id, normalizedFrom, profileName);
+    const inboundLog = await createInboundWhatsAppLogOnce({
+      organizationId: organization.id,
+      clientId: newClient.id,
+      body,
+      fromNumber: normalizedFrom,
+      toNumber: config.twilio.whatsappFrom,
+      providerMessageSid: messageSid,
+      mediaCount: media.length,
+      mediaJson: media,
     });
+    if (inboundLog.duplicate) {
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
     await scanWhatsAppMessage(organization.id, inboundLog.id, normalizedFrom, body, true);
     const mediaResult = config.twilio.mediaIngestionEnabled ? await safeMediaIngestion({
       organizationId: organization.id,
@@ -243,6 +262,73 @@ async function findAssistantByOwnerPhone(phone: string) {
     phone
   );
   return rows[0] ?? null;
+}
+
+type InboundWhatsAppLogInput = {
+  organizationId: string;
+  clientId?: string | null;
+  body: string;
+  fromNumber: string;
+  toNumber: string;
+  providerMessageSid: string;
+  mediaCount: number;
+  mediaJson: unknown;
+};
+
+type WhatsAppLogStore = {
+  whatsAppLog: {
+    findFirst(args: unknown): Promise<{ id: string } | null>;
+    create(args: unknown): Promise<{ id: string }>;
+  };
+};
+
+export async function createInboundWhatsAppLogOnce(input: InboundWhatsAppLogInput, db: WhatsAppLogStore = prisma) {
+  const existing = await findProcessedInboundWhatsAppMessage(input.organizationId, input.providerMessageSid, db);
+  if (existing) {
+    console.log("[webhook] WhatsApp duplicate webhook skipped", {
+      organizationId: input.organizationId,
+      sid: input.providerMessageSid,
+      existingLogId: existing.id,
+    });
+    return { id: existing.id, duplicate: true, created: false };
+  }
+
+  const created = await db.whatsAppLog.create({
+    data: {
+      organizationId: input.organizationId,
+      clientId: input.clientId ?? undefined,
+      direction: "inbound",
+      body: input.body,
+      fromNumber: input.fromNumber,
+      toNumber: input.toNumber,
+      providerMessageSid: input.providerMessageSid,
+      mediaCount: input.mediaCount,
+      mediaJson: input.mediaJson,
+    },
+    select: { id: true },
+  });
+  return { id: created.id, duplicate: false, created: true };
+}
+
+export async function hasProcessedInboundWhatsAppMessage(organizationId: string, providerMessageSid: string, db: WhatsAppLogStore = prisma) {
+  return Boolean(await findProcessedInboundWhatsAppMessage(organizationId, providerMessageSid, db));
+}
+
+async function findProcessedInboundWhatsAppMessage(organizationId: string, providerMessageSid: string, db: WhatsAppLogStore) {
+  if (!isUsableProviderMessageSid(providerMessageSid)) return null;
+  return db.whatsAppLog.findFirst({
+    where: {
+      organizationId,
+      direction: "inbound",
+      providerMessageSid,
+    },
+    select: { id: true },
+  });
+}
+
+function isUsableProviderMessageSid(value: string | null | undefined) {
+  const sid = value?.trim();
+  return Boolean(sid && sid !== "unknown");
 }
 
 function isValidTwilioSignature(req: Request, signature: string) {
