@@ -8,6 +8,7 @@ import { getGoogleClients } from "./google.js";
 import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
 import { recordFinancialDocumentDecision } from "./financialDocuments.js";
 import { matchFinancialDocuments, type DedupMatchResult, type FinancialDocumentFingerprintInput } from "./dedup/sharedMatcher.js";
+import { classifyBusinessDocument, pipelineActionForClassification } from "./classification/classifier.js";
 
 type WhatsAppMediaInput = {
   organizationId: string;
@@ -50,6 +51,10 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
   console.log(`[whatsapp-invoice] google clients start logId=${input.whatsappLogId}`);
   const { drive } = await getGoogleClients(input.organizationId);
   const rootFolderId = await ensureInvoiceFolderTree(drive);
+  const organization = await prisma.organization.findUnique({
+    where: { id: input.organizationId },
+    select: { businessName: true },
+  });
   console.log(`[whatsapp-invoice] drive root ready logId=${input.whatsappLogId} rootFolderId=${rootFolderId}`);
   const processed: ProcessedWhatsAppInvoice[] = [];
 
@@ -118,13 +123,69 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       });
       continue;
     }
-    const supplierClientId = await findSupplierClientForWhatsAppDocument({
-      organizationId: input.organizationId,
-      preferredClientId: input.clientId ?? null,
-      supplier,
-      fromNumber: input.fromNumber,
+    const businessClassification = classifyBusinessDocument({
+      sender: input.fromNumber,
+      subject: input.body,
+      body: input.body,
+      documentType: analysis.documentType,
+      supplierName: supplier,
+      businessName: organization?.businessName ?? undefined,
+      issuedBy: supplier,
+      issuedTo: organization?.businessName ?? undefined,
+      paymentRequired: analysis.paymentRequired,
+      channel: "whatsapp",
+      metadata: { whatsappLogId: input.whatsappLogId, filename },
     });
-    const duplicate = await findExistingCrossSourceDuplicate({
+    const pipelineAction = pipelineActionForClassification(businessClassification);
+    if (pipelineAction === "NEEDS_REVIEW") {
+      const reviewDecision = await recordFinancialDocumentDecision({
+        organizationId: input.organizationId,
+        source: "whatsapp",
+        sender: input.fromNumber,
+        subject: input.body,
+        fileName: filename,
+        fileSize: buffer.length,
+        supplierName: supplier,
+        supplierTaxId: analysis.supplierTaxId ?? null,
+        invoiceNumber: analysis.invoiceNumber,
+        documentDate: analysis.invoiceDate,
+        dueDate: analysis.dueDate,
+        amountBeforeVat: analysis.amountBeforeVat ?? null,
+        vatAmount: analysis.vatAmount ?? null,
+        totalAmount: analysis.totalAmount ?? amount,
+        documentType: "payment_request",
+        confidenceScore: Math.min(analysis.confidence, 0.79),
+        uncertaintyReason: `classifier:${businessClassification.reason}`,
+        rawAnalysis: { analysis, businessClassification, whatsappLogId: input.whatsappLogId },
+        whatsappLogId: input.whatsappLogId,
+        fileSha256: fileHash,
+      });
+      processed.push({
+        filename,
+        supplier,
+        amount,
+        invoiceNumber: analysis.invoiceNumber,
+        documentType: analysis.documentType,
+        documentDate: analysis.invoiceDate,
+        driveLink: null,
+        paymentId: null,
+        invoiceId: null,
+        created: false,
+        duplicateDetected: false,
+        duplicateReason: reviewDecision.action,
+      });
+      continue;
+    }
+    const isSupplierExpense = pipelineAction === "SUPPLIER_EXPENSE";
+    const invoiceClientId = pipelineAction === "CUSTOMER_INVOICE"
+      ? await findSupplierClientForWhatsAppDocument({
+          organizationId: input.organizationId,
+          preferredClientId: input.clientId ?? null,
+          supplier,
+          fromNumber: input.fromNumber,
+        })
+      : null;
+    const duplicate = isSupplierExpense ? await findExistingCrossSourceDuplicate({
       organizationId: input.organizationId,
       supplier,
       supplierTaxId: analysis.supplierTaxId ?? null,
@@ -132,7 +193,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       amount,
       invoiceDate: analysis.invoiceDate,
       fileHash,
-    });
+    }) : null;
     if (duplicate?.matchResult === "UNSURE") {
       const reviewDecision = await recordFinancialDocumentDecision({
         organizationId: input.organizationId,
@@ -224,7 +285,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       organizationId: input.organizationId,
       drive,
       rootFolderId,
-      clientId: supplierClientId,
+      clientId: invoiceClientId,
       supplier,
       supplierTaxId: analysis.supplierTaxId ?? null,
       documentType: analysis.documentType,
@@ -259,7 +320,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       organizationId: input.organizationId,
       drive,
       rootFolderId,
-      clientId: supplierClientId,
+      clientId: invoiceClientId,
       supplier,
       supplierTaxId: analysis.supplierTaxId ?? null,
       documentType: analysis.documentType,
@@ -276,9 +337,9 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
     });
     console.log(`[whatsapp-invoice] drive upload done logId=${input.whatsappLogId} driveFileId=${upload.fileId ?? "null"} folderPath="${upload.folderPath}"`);
 
-    const payment = await upsertWhatsAppSupplierPayment({
+    const payment = isSupplierExpense ? await upsertWhatsAppSupplierPayment({
       organizationId: input.organizationId,
-      clientId: supplierClientId,
+      clientId: null,
       whatsappLogId: input.whatsappLogId,
       supplier,
       amount,
@@ -307,11 +368,13 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       fromNumber: input.fromNumber,
       filename,
       fileHash,
-    });
-    console.log(`[whatsapp-invoice] payment upsert done logId=${input.whatsappLogId} paymentId=${payment.id} created=${payment.created}`);
-    const invoice = await upsertWhatsAppInvoiceRecord({
+    }) : null;
+    if (payment) {
+      console.log(`[whatsapp-invoice] payment upsert done logId=${input.whatsappLogId} paymentId=${payment.id} created=${payment.created}`);
+    }
+    const invoice = pipelineAction === "CUSTOMER_INVOICE" ? await upsertWhatsAppInvoiceRecord({
       organizationId: input.organizationId,
-      clientId: supplierClientId,
+      clientId: invoiceClientId,
       whatsappLogId: input.whatsappLogId,
       supplier,
       amount,
@@ -339,16 +402,18 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       confidenceScore: analysis.confidence,
       fromNumber: input.fromNumber,
       filename,
-    });
+    }) : null;
     console.log(`[whatsapp-invoice] invoice upsert done logId=${input.whatsappLogId} invoiceId=${invoice?.id ?? "skipped_no_client"} created=${invoice?.created ?? false}`);
-    await syncPaymentToSheet(input.organizationId, payment.id, {
-      supplierTaxId: analysis.supplierTaxId ?? null,
-      invoiceNumber: analysis.invoiceNumber,
-      invoiceDate: analysis.invoiceDate,
-      driveLink: upload.webViewLink || null,
-      driveFolderLink: upload.folderWebViewLink,
-    });
-    console.log(`[whatsapp-invoice] sheets sync requested logId=${input.whatsappLogId} paymentId=${payment.id}`);
+    if (payment) {
+      await syncPaymentToSheet(input.organizationId, payment.id, {
+        supplierTaxId: analysis.supplierTaxId ?? null,
+        invoiceNumber: analysis.invoiceNumber,
+        invoiceDate: analysis.invoiceDate,
+        driveLink: upload.webViewLink || null,
+        driveFolderLink: upload.folderWebViewLink,
+      });
+      console.log(`[whatsapp-invoice] sheets sync requested logId=${input.whatsappLogId} paymentId=${payment.id}`);
+    }
 
     processed.push({
       filename,
@@ -358,9 +423,9 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       documentType: analysis.documentType,
       documentDate: analysis.invoiceDate,
       driveLink: upload.webViewLink || null,
-      paymentId: payment.id,
+      paymentId: payment?.id ?? null,
       invoiceId: invoice?.id ?? null,
-      created: payment.created,
+      created: payment?.created ?? invoice?.created ?? false,
       duplicateDetected: false,
       duplicateReason: null,
     });

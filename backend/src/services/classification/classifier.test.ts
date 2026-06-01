@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyBusinessDocument } from "./classifier.js";
+import { classifyBusinessDocument, pipelineActionForClassification } from "./classifier.js";
 
 test("supplier invoice from OpenAI is outgoing supplier and classified", () => {
   const result = classifyBusinessDocument({
@@ -19,6 +19,7 @@ test("supplier invoice from OpenAI is outgoing supplier and classified", () => {
   assert.equal(result.party, "SUPPLIER");
   assert.equal(result.isRealSupplier, "REAL_SUPPLIER");
   assert.equal(result.decision, "CLASSIFIED");
+  assert.equal(pipelineActionForClassification(result), "SUPPLIER_EXPENSE");
 });
 
 test("supplier invoice from hardware store is outgoing supplier and classified", () => {
@@ -37,6 +38,7 @@ test("supplier invoice from hardware store is outgoing supplier and classified",
   assert.equal(result.party, "SUPPLIER");
   assert.equal(result.isRealSupplier, "REAL_SUPPLIER");
   assert.equal(result.decision, "CLASSIFIED");
+  assert.equal(pipelineActionForClassification(result), "SUPPLIER_EXPENSE");
 });
 
 test("customer paying the business is incoming customer and classified", () => {
@@ -55,6 +57,7 @@ test("customer paying the business is incoming customer and classified", () => {
   assert.equal(result.party, "CUSTOMER");
   assert.equal(result.isRealSupplier, "NOT_APPLICABLE");
   assert.equal(result.decision, "CLASSIFIED");
+  assert.equal(pipelineActionForClassification(result), "CUSTOMER_INVOICE");
 });
 
 test("bank statement is blocklisted and never supplier or customer", () => {
@@ -70,6 +73,7 @@ test("bank statement is blocklisted and never supplier or customer", () => {
   assert.equal(result.party, "NONE");
   assert.equal(result.isRealSupplier, "BLOCKLISTED");
   assert.equal(result.decision, "NEEDS_REVIEW");
+  assert.equal(pipelineActionForClassification(result), "NEEDS_REVIEW");
 });
 
 test("ambiguous money direction goes to review", () => {
@@ -84,6 +88,7 @@ test("ambiguous money direction goes to review", () => {
   assert.equal(result.direction, "UNSURE");
   assert.equal(result.party, "NONE");
   assert.equal(result.decision, "NEEDS_REVIEW");
+  assert.equal(pipelineActionForClassification(result), "NEEDS_REVIEW");
 });
 
 test("supplier is never returned as customer", () => {

@@ -15,6 +15,7 @@ import { notifyNewInvoice } from "./whatsapp.js";
 import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from "./financialDocuments.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
 import { initialConnectScanWindow } from "./scanWindow.js";
+import { classifyBusinessDocument, pipelineActionForClassification } from "./classification/classifier.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
@@ -817,7 +818,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         senderDomain: email.domain,
         amountRejectedReason,
       });
-      const isIncomingSupplierExpense = isIncomingSupplierExpenseCandidate({
+      const legacySupplierExpenseSignal = isIncomingSupplierExpenseCandidate({
         source: email.source,
         senderEmail: email.senderEmail,
         senderDomain: email.domain,
@@ -826,6 +827,58 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         paymentRequired: analysis.paymentRequired,
         ownerEmails,
       });
+      const businessClassification = classifyBusinessDocument({
+        sender: email.senderEmail || email.from,
+        subject: email.subject,
+        body: bodyForAnalysis,
+        documentType: classification.documentType,
+        supplierName,
+        businessName: organization?.businessName ?? undefined,
+        issuedBy: legacySupplierExpenseSignal ? supplierName : undefined,
+        issuedTo: legacySupplierExpenseSignal ? organization?.businessName ?? undefined : undefined,
+        paymentRequired: analysis.paymentRequired,
+        channel: "gmail",
+        metadata: { gmailMessageId: email.gmailId },
+      });
+      const pipelineAction = pipelineActionForClassification(businessClassification);
+      if (pipelineAction === "NEEDS_REVIEW") {
+        needsReviewCount++;
+        logStep(`[gmail-sync] classifier needs_review message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
+        await recordFinancialDocumentDecision({
+          organizationId,
+          source: "gmail",
+          sender: email.senderEmail || email.from || null,
+          subject: email.subject,
+          fileName: primaryAttachmentFilename(email.parts),
+          fileSize: null,
+          supplierName,
+          supplierTaxId: supplierMetadata.taxId,
+          invoiceNumber: analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, primaryAttachmentFilename(email.parts) ?? ""].join("\n")),
+          documentDate: normalizeBusinessDate(analysis.invoiceDate, email.receivedAt) ?? email.receivedAt,
+          dueDate: analysis.dueDate,
+          amountBeforeVat: analysis.amountBeforeVat ?? null,
+          vatAmount: analysis.vatAmount ?? null,
+          totalAmount: analysis.totalAmount ?? amount,
+          documentType: "payment_request",
+          driveFileUrl: null,
+          confidenceScore: Math.min(classification.confidence, 0.79),
+          uncertaintyReason: `classifier:${businessClassification.reason}`,
+          rawAnalysis: {
+            analysis,
+            classification,
+            businessClassification,
+            gmailMessageId: email.gmailId,
+          },
+          emailMessageId: email.emailRecordId,
+          gmailMessageId: email.gmailId,
+        });
+        await prisma.emailMessage.update({
+          where: { id: email.emailRecordId },
+          data: { processedAt: new Date() },
+        });
+        continue;
+      }
+      const isIncomingSupplierExpense = pipelineAction === "SUPPLIER_EXPENSE";
       if (isIncomingSupplierExpense && clientId) {
         logStep(`[gmail-sync] supplier expense message=${email.gmailId}; ignoring clientId=${clientId} to avoid supplier-as-client placeholder`);
         clientId = undefined;

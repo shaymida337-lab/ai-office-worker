@@ -26,6 +26,8 @@ export type ClassificationResult = {
   reason: string;
 };
 
+export type PipelineClassificationAction = "SUPPLIER_EXPENSE" | "CUSTOMER_INVOICE" | "NEEDS_REVIEW";
+
 const BLOCKLIST_PATTERNS = [
   /bank|בנק/i,
   /credit\s*card|כרטיס\s*אשראי|ישראכרט|ויזה|\bvisa\b|mastercard|amex|max\s*card|\bcal\b/i,
@@ -105,6 +107,17 @@ export function classifyBusinessDocument(input: ClassificationInput): Classifica
   }
 
   return needsReview("money_direction_unsure", "UNSURE", "NONE", "UNSURE");
+}
+
+export function pipelineActionForClassification(result: ClassificationResult): PipelineClassificationAction {
+  if (result.decision !== "CLASSIFIED") return "NEEDS_REVIEW";
+  if (result.direction === "OUTGOING" && result.party === "SUPPLIER" && result.isRealSupplier === "REAL_SUPPLIER") {
+    return "SUPPLIER_EXPENSE";
+  }
+  if (result.direction === "INCOMING" && result.party === "CUSTOMER") {
+    return "CUSTOMER_INVOICE";
+  }
+  return "NEEDS_REVIEW";
 }
 
 function classifySupplierReality(text: string): SupplierReality {
