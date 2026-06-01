@@ -1,5 +1,11 @@
 import { createHash } from "crypto";
 import { prisma } from "../lib/prisma.js";
+import {
+  buildFinancialDocumentFingerprint as buildSharedFinancialDocumentFingerprint,
+  matchFinancialDocuments,
+  type DedupMatchResult,
+  type FinancialDocumentFingerprintInput,
+} from "./dedup/sharedMatcher.js";
 
 export type FinancialDocumentSource = "gmail" | "whatsapp";
 
@@ -92,6 +98,52 @@ export function financialDocumentBlockingReason(input: {
   return null;
 }
 
+export type ExistingFinancialDocumentCandidate = {
+  id: string;
+  supplier?: string | null;
+  supplierName?: string | null;
+  supplierTaxId?: string | null;
+  invoiceNumber?: string | null;
+  amount?: number | null;
+  totalAmount?: number | null;
+  date?: Date | string | null;
+  documentTypeDetailed?: string | null;
+  documentFingerprint?: string | null;
+  sourceFingerprint?: string | null;
+  duplicateHash?: string | null;
+};
+
+export function matchExistingFinancialDocumentCandidate(input: {
+  current: FinancialDocumentFingerprintInput;
+  candidates: ExistingFinancialDocumentCandidate[];
+}): {
+  result: DedupMatchResult;
+  candidate: ExistingFinancialDocumentCandidate | null;
+  reasons: string[];
+} {
+  let unsure: { candidate: ExistingFinancialDocumentCandidate; reasons: string[] } | null = null;
+  for (const candidate of input.candidates) {
+    const candidateInput: FinancialDocumentFingerprintInput = {
+      organizationId: input.current.organizationId,
+      supplierName: candidate.supplierName ?? candidate.supplier,
+      supplierTaxId: candidate.supplierTaxId,
+      invoiceNumber: candidate.invoiceNumber,
+      totalAmount: candidate.totalAmount ?? candidate.amount,
+      documentDate: candidate.date,
+      documentType: candidate.documentTypeDetailed,
+    };
+    const match = matchFinancialDocuments(input.current, candidateInput);
+    if (match.result === "MATCH") {
+      return { result: "MATCH", candidate, reasons: match.reasons };
+    }
+    if (match.result === "UNSURE" && !unsure) {
+      unsure = { candidate, reasons: match.reasons };
+    }
+  }
+  if (unsure) return { result: "UNSURE", candidate: unsure.candidate, reasons: unsure.reasons };
+  return { result: "NO_MATCH", candidate: null, reasons: ["no_candidate_match"] };
+}
+
 export async function recordFinancialDocumentDecision(input: FinancialDocumentInput) {
   const documentType = normalizeFinancialDocumentType(input.documentType);
   const totalAmount = input.totalAmount ?? null;
@@ -113,11 +165,20 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
     invoiceNumber: input.invoiceNumber,
     date: documentDate,
   });
-  const documentFingerprint = buildCrossSourceFinancialFingerprint({
+  const legacyDocumentFingerprint = buildCrossSourceFinancialFingerprint({
     sender: input.supplierName ?? input.sender,
     amount: totalAmount,
     invoiceNumber: input.invoiceNumber,
     date: documentDate,
+  });
+  const documentFingerprint = buildSharedFinancialDocumentFingerprint({
+    organizationId: input.organizationId,
+    supplierName: input.supplierName ?? input.sender,
+    supplierTaxId: input.supplierTaxId,
+    invoiceNumber: input.invoiceNumber,
+    totalAmount,
+    documentDate,
+    documentType,
   });
 
   if (!isPaymentDocumentType(documentType)) {
@@ -142,16 +203,40 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
     return { action: "needs_review" as const, documentType, sourceFingerprint, documentFingerprint, review };
   }
 
-  const existingPayment = await prisma.supplierPayment.findFirst({
+  const duplicateCandidateWhere = buildDuplicateCandidateWhere({
+    organizationId: input.organizationId,
+    documentFingerprint,
+    legacyDocumentFingerprint,
+    sourceFingerprint,
+    supplierName: input.supplierName,
+    invoiceNumber: input.invoiceNumber,
+    totalAmount,
+    documentDate,
+  });
+  const duplicateCandidates = await prisma.supplierPayment.findMany({
     where: {
       organizationId: input.organizationId,
-      OR: [
-        { documentFingerprint },
-        { sourceFingerprint },
-        { duplicateHash: documentFingerprint },
-      ],
+      OR: duplicateCandidateWhere,
     },
+    orderBy: { createdAt: "desc" },
+    take: 10,
   });
+  const duplicateMatch = matchExistingFinancialDocumentCandidate({
+    current: {
+      organizationId: input.organizationId,
+      supplierName: input.supplierName ?? input.sender,
+      supplierTaxId: input.supplierTaxId,
+      invoiceNumber: input.invoiceNumber,
+      totalAmount,
+      documentDate,
+      documentType,
+    },
+    candidates: duplicateCandidates,
+  });
+  const matchedCandidateId = duplicateMatch.result === "MATCH" ? duplicateMatch.candidate?.id : null;
+  const existingPayment = matchedCandidateId
+    ? duplicateCandidates.find((candidate) => candidate.id === matchedCandidateId) ?? null
+    : null;
 
   if (existingPayment) {
     const sources = mergeSources(existingPayment.sourcesJson, input.source);
@@ -184,8 +269,25 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
       },
     });
     await upsertReview({ ...input, documentType, documentDate, dueDate, confidenceScore, sourceFingerprint, documentFingerprint, reviewStatus: "duplicate", supplierPaymentId: updated.id, uncertaintyReason: "זוהתה כפילות - הרשומה הקיימת עודכנה" });
-    console.log(`[financial-document] duplicate source=${input.source} paymentId=${updated.id} fingerprint=${documentFingerprint}`);
+    console.log(`[financial-document] duplicate source=${input.source} paymentId=${updated.id} fingerprint=${documentFingerprint} reasons=${duplicateMatch.reasons.join(",")}`);
     return { action: "duplicate" as const, documentType, sourceFingerprint, documentFingerprint, payment: updated };
+  }
+
+  if (duplicateMatch.result === "UNSURE") {
+    const review = await upsertReview({
+      ...input,
+      documentType,
+      documentDate,
+      dueDate,
+      confidenceScore,
+      sourceFingerprint,
+      documentFingerprint,
+      reviewStatus: "needs_review",
+      supplierPaymentId: duplicateMatch.candidate?.id ?? null,
+      uncertaintyReason: input.uncertaintyReason ?? `possible duplicate: ${duplicateMatch.reasons.join(", ")}`,
+    });
+    console.log(`[financial-document] possible_duplicate_review source=${input.source} reviewId=${review.id} candidatePaymentId=${duplicateMatch.candidate?.id ?? "none"} reasons=${duplicateMatch.reasons.join(",")}`);
+    return { action: "needs_review" as const, documentType, sourceFingerprint, documentFingerprint, review };
   }
 
   if (confidenceScore < 0.8) {
@@ -195,6 +297,46 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
   }
 
   return { action: "accepted" as const, documentType, sourceFingerprint, documentFingerprint };
+}
+
+function buildDuplicateCandidateWhere(input: {
+  organizationId: string;
+  documentFingerprint: string;
+  legacyDocumentFingerprint: string;
+  sourceFingerprint: string;
+  supplierName?: string | null;
+  invoiceNumber?: string | null;
+  totalAmount: number | null;
+  documentDate: Date | null;
+}) {
+  const clauses: Array<Record<string, unknown>> = [
+    { documentFingerprint: input.documentFingerprint },
+    { documentFingerprint: input.legacyDocumentFingerprint },
+    { sourceFingerprint: input.sourceFingerprint },
+    { duplicateHash: input.documentFingerprint },
+    { duplicateHash: input.legacyDocumentFingerprint },
+  ];
+
+  if (input.invoiceNumber?.trim() && input.totalAmount !== null) {
+    clauses.push({
+      invoiceNumber: input.invoiceNumber,
+      amount: input.totalAmount,
+    });
+  }
+
+  if (input.supplierName?.trim() && input.totalAmount !== null && input.documentDate) {
+    const dayStart = new Date(input.documentDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(input.documentDate);
+    dayEnd.setHours(23, 59, 59, 999);
+    clauses.push({
+      supplier: { equals: input.supplierName, mode: "insensitive" },
+      amount: input.totalAmount,
+      date: { gte: dayStart, lte: dayEnd },
+    });
+  }
+
+  return clauses;
 }
 
 export async function approveFinancialDocumentReview(organizationId: string, reviewId: string) {
