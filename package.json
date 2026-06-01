@@ -12,6 +12,7 @@
     "build": "npm run build -w backend && npm run build -w frontend",
     "db:generate": "npm run db:generate -w backend",
     "db:migrate": "npm run db:migrate -w backend",
+    "db:check-drift": "npm run db:check-drift -w backend",
     "db:push": "npm run db:push -w backend",
     "worker": "npm run worker -w backend"
   },

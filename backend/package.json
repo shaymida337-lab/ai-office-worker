@@ -13,6 +13,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "node -e \"console.log('Skipping Prisma migrate deploy on boot; production migrations are managed manually.')\"",
+    "db:check-drift": "node scripts/check-drift.mjs",
     "db:push": "prisma db push"
   },
   "dependencies": {
