@@ -1,5 +1,10 @@
 import { createHash } from "crypto";
 import { prisma } from "../lib/prisma.js";
+import { recordFinancialDocumentDecision } from "./financialDocuments.js";
+import {
+  matchFinancialDocuments,
+  type FinancialDocumentFingerprintInput,
+} from "./dedup/sharedMatcher.js";
 
 export async function backfillInvoicesFromGmailScanItems(organizationId: string, limit = 100) {
   const candidates = await prisma.gmailScanItem.findMany({
@@ -155,6 +160,16 @@ async function backfillInvoicesFromSupplierPayments(organizationId: string, limi
       emailSender: true,
       subject: true,
       emailMessageId: true,
+      source: true,
+      firstSource: true,
+      lastSource: true,
+      paymentRequired: true,
+      missingInvoice: true,
+      approvalStatus: true,
+      documentTypeDetailed: true,
+      invoiceNumber: true,
+      supplierTaxId: true,
+      totalAmount: true,
       createdAt: true,
     },
   });
@@ -182,6 +197,15 @@ async function backfillInvoicesFromSupplierPayments(organizationId: string, limi
         continue;
       }
 
+      const customerFacingDecision = decideSupplierPaymentInvoiceBackfill({
+        payment,
+        invoiceCandidates: [],
+      });
+      if (customerFacingDecision.action === "skip") {
+        skipped++;
+        continue;
+      }
+
       const clientId = await ensureInvoiceBackfillClient({
         organizationId,
         existingClientId: payment.clientId ?? emailMessage?.clientId ?? null,
@@ -196,16 +220,42 @@ async function backfillInvoicesFromSupplierPayments(organizationId: string, limi
       }
 
       const invoiceNumber = extractInvoiceNumber(payment.subject ?? "");
-      const duplicate = await findExistingInvoiceByBusinessKey({
+      const invoiceCandidates = await findInvoiceBackfillCandidates({
         organizationId,
         clientId,
         supplierName: payment.supplier,
-        invoiceNumber,
+        invoiceNumber: payment.invoiceNumber ?? invoiceNumber,
         amount: payment.amount,
         date: payment.date,
       });
-      if (duplicate) {
+      const duplicateDecision = decideSupplierPaymentInvoiceBackfill({
+        payment,
+        invoiceCandidates,
+      });
+      if (duplicateDecision.action === "duplicate") {
         duplicates++;
+        continue;
+      }
+      if (duplicateDecision.action === "needs_review") {
+        await recordFinancialDocumentDecision({
+          organizationId,
+          source: "gmail",
+          sender: payment.emailSender,
+          subject: payment.subject,
+          supplierName: payment.supplier,
+          supplierTaxId: payment.supplierTaxId,
+          invoiceNumber: payment.invoiceNumber ?? invoiceNumber,
+          documentDate: payment.date,
+          dueDate: payment.dueDate,
+          totalAmount: payment.totalAmount ?? payment.amount,
+          documentType: payment.documentTypeDetailed ?? "invoice",
+          driveFileUrl: payment.invoiceLink ?? payment.documentLink,
+          confidenceScore: 0.79,
+          uncertaintyReason: `possible invoice backfill duplicate: ${duplicateDecision.reasons.join(", ")}`,
+          rawAnalysis: { supplierPaymentId: payment.id, source: "invoiceBackfill" },
+          emailMessageId: payment.emailMessageId,
+        });
+        skipped++;
         continue;
       }
 
@@ -213,7 +263,7 @@ async function backfillInvoicesFromSupplierPayments(organizationId: string, limi
         data: {
           organizationId,
           clientId,
-          invoiceNumber,
+          invoiceNumber: payment.invoiceNumber ?? invoiceNumber,
           amount: payment.amount,
           currency: payment.currency || "ILS",
           date: payment.date,
@@ -236,6 +286,94 @@ async function backfillInvoicesFromSupplierPayments(organizationId: string, limi
   }
 
   return { candidates: candidates.length, created, duplicates, skipped, errors };
+}
+
+export type SupplierPaymentInvoiceBackfillPayment = {
+  id: string;
+  clientId?: string | null;
+  supplier: string;
+  supplierTaxId?: string | null;
+  invoiceNumber?: string | null;
+  amount: number;
+  totalAmount?: number | null;
+  date: Date;
+  documentTypeDetailed?: string | null;
+  source?: string | null;
+  firstSource?: string | null;
+  lastSource?: string | null;
+  subject?: string | null;
+  paymentRequired?: boolean | null;
+  missingInvoice?: boolean | null;
+};
+
+export type InvoiceBackfillCandidate = {
+  id: string;
+  supplierName?: string | null;
+  invoiceNumber?: string | null;
+  amount: number;
+  date: Date;
+};
+
+export function decideSupplierPaymentInvoiceBackfill(input: {
+  payment: SupplierPaymentInvoiceBackfillPayment;
+  invoiceCandidates: InvoiceBackfillCandidate[];
+}): {
+  action: "backfill" | "skip" | "duplicate" | "needs_review";
+  reasons: string[];
+  candidate: InvoiceBackfillCandidate | null;
+} {
+  if (!isClearlyCustomerFacingSupplierPayment(input.payment)) {
+    return { action: "skip", reasons: ["supplier_payment_not_customer_facing"], candidate: null };
+  }
+
+  const current = supplierPaymentFinancialDocumentInput(input.payment);
+  let unsure: { candidate: InvoiceBackfillCandidate; reasons: string[] } | null = null;
+  for (const candidate of input.invoiceCandidates) {
+    const match = matchFinancialDocuments(current, invoiceFinancialDocumentInput(candidate));
+    if (match.result === "MATCH") {
+      return { action: "duplicate", reasons: match.reasons, candidate };
+    }
+    if (match.result === "UNSURE" && !unsure) {
+      unsure = { candidate, reasons: match.reasons };
+    }
+  }
+
+  if (unsure) return { action: "needs_review", reasons: unsure.reasons, candidate: unsure.candidate };
+  return { action: "backfill", reasons: ["customer_facing_no_duplicate"], candidate: null };
+}
+
+function isClearlyCustomerFacingSupplierPayment(payment: SupplierPaymentInvoiceBackfillPayment) {
+  if (!payment.clientId) return false;
+  const markers = [
+    payment.source,
+    payment.firstSource,
+    payment.lastSource,
+    payment.subject,
+  ].filter((value): value is string => Boolean(value));
+  return markers.some((value) =>
+    /customer[_\s-]?invoice|client[_\s-]?invoice|sales[_\s-]?invoice|customer[_\s-]?facing|money[_\s-]?in|income|חשבונית\s*לקוח|חשבונית\s*מכירה/i.test(value)
+  );
+}
+
+function supplierPaymentFinancialDocumentInput(payment: SupplierPaymentInvoiceBackfillPayment): FinancialDocumentFingerprintInput {
+  return {
+    supplierName: payment.supplier,
+    supplierTaxId: payment.supplierTaxId,
+    invoiceNumber: payment.invoiceNumber,
+    totalAmount: payment.totalAmount ?? payment.amount,
+    documentDate: payment.date,
+    documentType: payment.documentTypeDetailed ?? "invoice",
+  };
+}
+
+function invoiceFinancialDocumentInput(invoice: InvoiceBackfillCandidate): FinancialDocumentFingerprintInput {
+  return {
+    supplierName: invoice.supplierName,
+    invoiceNumber: invoice.invoiceNumber,
+    totalAmount: invoice.amount,
+    documentDate: invoice.date,
+    documentType: "invoice",
+  };
 }
 
 function confidencePercent(value: string) {
@@ -293,12 +431,23 @@ async function findExistingInvoiceByBusinessKey(input: {
   amount: number;
   date: Date;
 }) {
+  return (await findInvoiceBackfillCandidates(input))[0] ?? null;
+}
+
+async function findInvoiceBackfillCandidates(input: {
+  organizationId: string;
+  clientId: string;
+  supplierName: string;
+  invoiceNumber: string | null;
+  amount: number;
+  date: Date;
+}) {
   const dateStart = new Date(input.date);
   dateStart.setHours(0, 0, 0, 0);
   const dateEnd = new Date(input.date);
   dateEnd.setHours(23, 59, 59, 999);
 
-  return prisma.invoice.findFirst({
+  return prisma.invoice.findMany({
     where: {
       organizationId: input.organizationId,
       clientId: input.clientId,
@@ -308,7 +457,9 @@ async function findExistingInvoiceByBusinessKey(input: {
         ? { invoiceNumber: input.invoiceNumber }
         : { description: { contains: input.supplierName, mode: "insensitive" } }),
     },
-    select: { id: true },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    select: { id: true, supplierName: true, invoiceNumber: true, amount: true, date: true },
   });
 }
 
