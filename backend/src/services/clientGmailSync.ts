@@ -10,6 +10,12 @@ import {
   writeClientInvoiceToSheet,
   writeClientTaskToSheet,
 } from "./clientSheetsService.js";
+import { recordFinancialDocumentDecision } from "./financialDocuments.js";
+import {
+  matchFinancialDocuments,
+  type DedupMatchResult,
+  type FinancialDocumentFingerprintInput,
+} from "./dedup/sharedMatcher.js";
 
 const GMAIL_QUERIES = [
   "has:attachment newer_than:30d",
@@ -177,11 +183,58 @@ export async function syncGmailForClient(clientId: string) {
         subject,
       });
 
-      const existingPayment = await prisma.supplierPayment.findUnique({
-        where: { organizationId_duplicateHash: { organizationId, duplicateHash } },
+      const duplicateCandidates = await prisma.supplierPayment.findMany({
+        where: {
+          organizationId,
+          OR: buildClientGmailDuplicateCandidateWhere({
+            duplicateHash,
+            supplier: analysis.supplier,
+            invoiceNumber: analysis.invoiceNumber,
+            amount: analysis.totalAmount ?? analysis.amount ?? null,
+            date: analysis.invoiceDate ?? receivedAt,
+          }),
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
       });
+      const duplicateDecision = decideClientGmailFinancialDocumentDuplicate({
+        current: {
+          organizationId,
+          supplierName: analysis.supplier,
+          supplierTaxId: analysis.supplierTaxId,
+          invoiceNumber: analysis.invoiceNumber,
+          totalAmount: analysis.totalAmount ?? analysis.amount ?? null,
+          documentDate: analysis.invoiceDate ?? receivedAt,
+          documentType: analysis.documentType,
+        },
+        legacyDuplicateHash: duplicateHash,
+        candidates: duplicateCandidates,
+      });
+      const existingPayment = duplicateDecision.result === "MATCH" ? duplicateDecision.candidate : null;
 
-      if (!existingPayment) {
+      if (duplicateDecision.result === "UNSURE") {
+        await recordFinancialDocumentDecision({
+          organizationId,
+          source: "gmail",
+          sender: from,
+          subject,
+          supplierName: analysis.supplier,
+          supplierTaxId: analysis.supplierTaxId,
+          invoiceNumber: analysis.invoiceNumber,
+          documentDate: analysis.invoiceDate ?? receivedAt,
+          dueDate: analysis.dueDate,
+          amountBeforeVat: analysis.amountBeforeVat,
+          vatAmount: analysis.vatAmount,
+          totalAmount: analysis.totalAmount ?? analysis.amount ?? null,
+          documentType: analysis.documentType,
+          driveFileUrl: driveLinks[0],
+          confidenceScore: Math.min(analysis.confidence, 0.79),
+          uncertaintyReason: `possible duplicate: ${duplicateDecision.reasons.join(", ")}`,
+          rawAnalysis: analysis,
+          emailMessageId: emailRecord.id,
+          gmailMessageId: msgRef.id,
+        });
+      } else if (!existingPayment) {
         await prisma.supplierPayment.create({
           data: {
             organizationId,
@@ -237,6 +290,100 @@ export async function syncGmailForClient(clientId: string) {
     driveUploadFailed,
     message: driveUploadFailed ? DRIVE_FULL_MESSAGE : undefined,
   };
+}
+
+export type ClientGmailDuplicateCandidate = {
+  id: string;
+  supplier?: string | null;
+  supplierName?: string | null;
+  supplierTaxId?: string | null;
+  invoiceNumber?: string | null;
+  amount?: number | null;
+  totalAmount?: number | null;
+  date?: Date | string | null;
+  documentTypeDetailed?: string | null;
+  duplicateHash?: string | null;
+};
+
+export function decideClientGmailFinancialDocumentDuplicate(input: {
+  current: FinancialDocumentFingerprintInput;
+  legacyDuplicateHash: string;
+  candidates: ClientGmailDuplicateCandidate[];
+}): {
+  result: DedupMatchResult;
+  candidate: ClientGmailDuplicateCandidate | null;
+  reasons: string[];
+} {
+  let unsure: { candidate: ClientGmailDuplicateCandidate; reasons: string[] } | null = null;
+  let legacyFallback: ClientGmailDuplicateCandidate | null = null;
+
+  for (const candidate of input.candidates) {
+    const match = matchFinancialDocuments(input.current, {
+      organizationId: input.current.organizationId,
+      supplierName: candidate.supplierName ?? candidate.supplier,
+      supplierTaxId: candidate.supplierTaxId,
+      invoiceNumber: candidate.invoiceNumber,
+      totalAmount: candidate.totalAmount ?? candidate.amount,
+      documentDate: candidate.date,
+      documentType: candidate.documentTypeDetailed,
+    });
+    if (match.result === "MATCH") {
+      return { result: "MATCH", candidate, reasons: match.reasons };
+    }
+    if (match.result === "UNSURE" && !unsure) {
+      unsure = { candidate, reasons: match.reasons };
+    }
+    if (candidate.duplicateHash === input.legacyDuplicateHash && !legacyFallback) {
+      legacyFallback = candidate;
+    }
+  }
+
+  if (unsure) return { result: "UNSURE", candidate: unsure.candidate, reasons: unsure.reasons };
+  if (legacyFallback) return { result: "MATCH", candidate: legacyFallback, reasons: ["legacy_duplicate_hash"] };
+  return { result: "NO_MATCH", candidate: null, reasons: ["no_candidate_match"] };
+}
+
+function buildClientGmailDuplicateCandidateWhere(input: {
+  duplicateHash: string;
+  supplier?: string | null;
+  invoiceNumber?: string | null;
+  amount: number | null;
+  date: Date | string | null;
+}) {
+  const clauses: Array<Record<string, unknown>> = [{ duplicateHash: input.duplicateHash }];
+  if (input.invoiceNumber?.trim() && input.amount !== null) {
+    clauses.push({ invoiceNumber: input.invoiceNumber, amount: input.amount });
+  }
+  const date = normalizeDate(input.date);
+  if (input.supplier?.trim() && input.amount !== null && date) {
+    clauses.push({
+      supplier: { equals: input.supplier, mode: "insensitive" },
+      amount: input.amount,
+      date: { gte: startOfDay(date), lte: endOfDay(date) },
+    });
+  }
+  return clauses;
+}
+
+function normalizeDate(value: Date | string | null | undefined) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+function startOfDay(value: Date) {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function endOfDay(value: Date) {
+  const date = new Date(value);
+  date.setHours(23, 59, 59, 999);
+  return date;
 }
 
 type PayloadPart = {
