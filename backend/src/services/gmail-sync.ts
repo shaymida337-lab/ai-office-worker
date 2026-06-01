@@ -699,17 +699,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         continue;
       }
       potentialClients++;
-      const saved = await upsertPotentialClient({
-        organizationId,
-        name: sender.name,
-        email: sender.email,
-        domain,
-        firstSeen: sender.firstSeen,
-        lastSeen: sender.lastSeen,
-      });
-      clientIdByDomain.set(domain, saved.id);
-      if (saved.created) clientsCreated++;
-      logStep(`[gmail-sync] DB upsert Client success domain="${domain}" id=${saved.id} created=${saved.created}`);
+      logStep(`[gmail-sync] client candidate deferred domain="${domain || "unknown"}" email="${sender.email || "unknown"}" count=${sender.count}`);
     }
     logStep(`Found ${potentialClients} potential clients`);
 
@@ -775,6 +765,19 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         senderDomain: email.domain,
         amountRejectedReason,
       });
+      const isIncomingSupplierExpense = isIncomingSupplierExpenseCandidate({
+        source: email.source,
+        senderEmail: email.senderEmail,
+        senderDomain: email.domain,
+        supplierName,
+        documentType: classification.documentType,
+        paymentRequired: analysis.paymentRequired,
+        ownerEmails,
+      });
+      if (isIncomingSupplierExpense && clientId) {
+        logStep(`[gmail-sync] supplier expense message=${email.gmailId}; ignoring clientId=${clientId} to avoid supplier-as-client placeholder`);
+        clientId = undefined;
+      }
       const duplicateKey = buildGmailScanDuplicateKey({
         gmailMessageId: email.gmailId,
         attachmentFilename,
@@ -836,7 +839,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         gmailMessageId: email.gmailId,
       });
       const canPersistFinancialRecord = documentDecision.action === "accepted";
-      if (!clientId && classification.isRelevant && email.domain) {
+      if (!clientId && !isIncomingSupplierExpense && classification.isRelevant && email.domain) {
         const saved = await upsertPotentialClient({
           organizationId,
           name: normalizeSupplierName(email.senderName || email.domain),
@@ -943,7 +946,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               organizationId,
               drive,
               rootFolderId: rootId,
-              clientId,
+              clientId: isIncomingSupplierExpense ? null : clientId,
+              clientName: isIncomingSupplierExpense ? "Supplier Expenses" : null,
               supplier: supplierName,
               supplierTaxId: supplierMetadata.taxId,
               documentType: classification.documentType,
@@ -1130,26 +1134,30 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
 
       if (isInvoiceRecordDocument(classification.documentType)) {
         if (!clientId) {
-          const saved = await ensureInvoiceClient({
-            organizationId,
-            supplierName,
-            senderEmail: email.senderEmail,
-            domain: email.domain,
-            receivedAt: email.receivedAt,
-          });
-          clientId = saved.id;
-          if (email.domain) clientIdByDomain.set(email.domain, saved.id);
-          if (saved.created) clientsCreated++;
-          await prisma.emailMessage.update({
-            where: { id: email.emailRecordId },
-            data: { clientId },
-          });
-          logStep(`[gmail-sync] invoice client created message=${email.gmailId} clientId=${clientId} supplier="${supplierName}"`);
+          if (isIncomingSupplierExpense) {
+            logStep(`[gmail-sync] supplier expense invoice message=${email.gmailId}; skipping Client placeholder creation supplier="${supplierName}"`);
+          } else {
+            const saved = await ensureInvoiceClient({
+              organizationId,
+              supplierName,
+              senderEmail: email.senderEmail,
+              domain: email.domain,
+              receivedAt: email.receivedAt,
+            });
+            clientId = saved.id;
+            if (email.domain) clientIdByDomain.set(email.domain, saved.id);
+            if (saved.created) clientsCreated++;
+            await prisma.emailMessage.update({
+              where: { id: email.emailRecordId },
+              data: { clientId },
+            });
+            logStep(`[gmail-sync] invoice client created message=${email.gmailId} clientId=${clientId} supplier="${supplierName}"`);
+          }
         }
         logStep(`[gmail-sync] invoice detected message=${email.gmailId} type=${classification.documentType} clientId=${clientId ?? "none"} amount=${amount ?? "missing"} drive=${driveLinks[0]?.link ? "yes" : "no"}`);
       }
 
-      if (canPersistFinancialRecord && clientId && isInvoiceRecordDocument(classification.documentType) && classification.reviewStatus === "auto_saved") {
+      if (!isIncomingSupplierExpense && canPersistFinancialRecord && clientId && isInvoiceRecordDocument(classification.documentType) && classification.reviewStatus === "auto_saved") {
         const invoiceAmount = amount ?? 0;
         const invoiceNumber = analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
         const invoiceDate = normalizeBusinessDate(analysis.invoiceDate, email.receivedAt) ?? email.receivedAt;
@@ -1196,6 +1204,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         }
       } else {
         const reasons = [
+          isIncomingSupplierExpense && "incoming_supplier_expense_saved_as_supplier_payment",
           isInvoiceRecordDocument(classification.documentType) && !clientId && "no_client_id",
           !isInvoiceRecordDocument(classification.documentType) && `document_type_${classification.documentType}`,
         ].filter(Boolean);
@@ -1891,7 +1900,68 @@ function isInvoiceRecordDocument(documentType: GmailDocumentType) {
   return documentType === "invoice" || documentType === "receipt" || documentType === "tax_invoice_receipt";
 }
 
-function supplierPaymentCreationEligibility(input: {
+export function isIncomingSupplierExpenseCandidate(input: {
+  source?: string | null;
+  senderEmail?: string | null;
+  senderDomain?: string | null;
+  supplierName: string;
+  documentType: GmailDocumentType;
+  paymentRequired?: boolean | null;
+  ownerEmails?: Set<string> | string[];
+}) {
+  const paymentDocument =
+    input.documentType === "invoice" ||
+    input.documentType === "receipt" ||
+    input.documentType === "tax_invoice_receipt" ||
+    input.documentType === "payment_request";
+  if (!paymentDocument) return false;
+  if (!isUsableSupplierName(input.supplierName)) return false;
+
+  const source = (input.source ?? "").toLowerCase();
+  if (source && source !== "gmail" && source !== "whatsapp_forward") return false;
+
+  const senderEmail = (input.senderEmail ?? "").trim().toLowerCase();
+  const senderDomain = (input.senderDomain ?? senderEmail.split("@")[1] ?? "").trim().toLowerCase();
+  const owners = new Set(
+    [...(input.ownerEmails instanceof Set ? input.ownerEmails : input.ownerEmails ?? [])]
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean)
+  );
+  if (senderEmail && owners.has(senderEmail)) return false;
+  if (senderDomain && [...owners].some((email) => email.endsWith(`@${senderDomain}`))) return false;
+
+  return Boolean(senderEmail || senderDomain || input.paymentRequired || paymentDocument);
+}
+
+export function buildGmailFinancialPersistencePlan(input: {
+  isIncomingSupplierExpense: boolean;
+  classification: Pick<GmailScanClassification, "documentType" | "isRelevant" | "reviewStatus">;
+  canPersistFinancialRecord: boolean;
+  clientId?: string | null;
+  supplierPaymentAllowed: boolean;
+}) {
+  const invoiceRecordDocument = isInvoiceRecordDocument(input.classification.documentType);
+  return {
+    shouldCreateClientForRelevantEmail:
+      !input.isIncomingSupplierExpense &&
+      !input.clientId &&
+      input.classification.isRelevant,
+    shouldEnsureInvoiceClient:
+      !input.isIncomingSupplierExpense &&
+      invoiceRecordDocument &&
+      !input.clientId,
+    shouldSaveInvoice:
+      !input.isIncomingSupplierExpense &&
+      input.canPersistFinancialRecord &&
+      Boolean(input.clientId) &&
+      invoiceRecordDocument &&
+      input.classification.reviewStatus === "auto_saved",
+    supplierPaymentsToCreateOrUpdate:
+      input.canPersistFinancialRecord && input.supplierPaymentAllowed ? 1 : 0,
+  };
+}
+
+export function supplierPaymentCreationEligibility(input: {
   classification: GmailScanClassification;
   amount: number | null;
   supplierName: string;

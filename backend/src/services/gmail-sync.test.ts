@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildGmailFinancialPersistencePlan,
   buildGmailScanDuplicateKey,
   classifyGmailScanCandidate,
   extractInvoiceAmount,
+  isIncomingSupplierExpenseCandidate,
+  supplierPaymentCreationEligibility,
 } from "./gmail-sync.js";
 import type { EmailAnalysis } from "./claude.js";
 
@@ -189,4 +192,55 @@ test("classifies Hebrew supplier payment email without attachment", () => {
   assert.equal(result.documentType, "payment_request");
   assert.equal(result.isRelevant, true);
   assert.match(result.decisionReason, /payment request without attachment/);
+});
+
+test("incoming OpenAI supplier invoice persists only as SupplierPayment", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "Your OpenAI invoice INV-2026-1001",
+    bodyText: "Attached is your invoice. Total due 120 ILS. Please pay by the due date.",
+    attachmentFilenames: ["openai-invoice-2026-1001.pdf"],
+    analysis: analysis({
+      supplier: "OpenAI",
+      documentType: "invoice",
+      paymentRequired: true,
+      confidence: 0.94,
+      invoiceNumber: "INV-2026-1001",
+      invoiceDate: "2026-06-01",
+      amount: 120,
+      totalAmount: 120,
+    }),
+    amount: 120,
+    supplierName: "OpenAI",
+    senderEmail: "billing@openai.com",
+    senderDomain: "openai.com",
+  });
+  const isSupplierExpense = isIncomingSupplierExpenseCandidate({
+    source: "gmail",
+    senderEmail: "billing@openai.com",
+    senderDomain: "openai.com",
+    supplierName: "OpenAI",
+    documentType: classification.documentType,
+    paymentRequired: true,
+    ownerEmails: new Set(["owner@example-business.co.il"]),
+  });
+  const paymentEligibility = supplierPaymentCreationEligibility({
+    classification,
+    amount: 120,
+    supplierName: "OpenAI",
+  });
+  const plan = buildGmailFinancialPersistencePlan({
+    isIncomingSupplierExpense: isSupplierExpense,
+    classification,
+    canPersistFinancialRecord: true,
+    clientId: null,
+    supplierPaymentAllowed: paymentEligibility.allowed,
+  });
+
+  assert.equal(classification.reviewStatus, "auto_saved");
+  assert.equal(isSupplierExpense, true);
+  assert.equal(paymentEligibility.allowed, true);
+  assert.equal(plan.supplierPaymentsToCreateOrUpdate, 1);
+  assert.equal(plan.shouldCreateClientForRelevantEmail, false);
+  assert.equal(plan.shouldEnsureInvoiceClient, false);
+  assert.equal(plan.shouldSaveInvoice, false);
 });
