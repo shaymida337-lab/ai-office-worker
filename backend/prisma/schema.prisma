@@ -290,10 +290,10 @@ model FinancialDocumentReview {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  @@unique([organizationId, documentFingerprint])
-  @@index([organizationId, reviewStatus, createdAt])
-  @@index([organizationId, source, createdAt])
-  @@index([organizationId, sourceFingerprint])
+  @@unique([organizationId, documentFingerprint], map: "FDR_org_documentFingerprint_key")
+  @@index([organizationId, reviewStatus, createdAt], map: "FDR_org_reviewStatus_createdAt_idx")
+  @@index([organizationId, source, createdAt], map: "FDR_org_source_createdAt_idx")
+  @@index([organizationId, sourceFingerprint], map: "FDR_org_sourceFingerprint_idx")
 }
 
 model CustomerInvoice {
@@ -497,6 +497,8 @@ model SyncLog {
   finishedAt     DateTime?
 
   @@index([organizationId, type, status, finishedAt])
+  @@index([organizationId, type, status, startedAt])
+  @@index([nextRetryAt])
 }
 
 model ScanLog {
