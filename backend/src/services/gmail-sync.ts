@@ -944,7 +944,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         gmailMessageId: email.gmailId,
       });
       const canPersistFinancialRecord = documentDecision.action === "accepted";
-      if (!clientId && !isIncomingSupplierExpense && classification.isRelevant && email.domain) {
+      if (canPersistFinancialRecord && classification.reviewStatus === "auto_saved" && !clientId && !isIncomingSupplierExpense && classification.isRelevant && email.domain) {
         const saved = await upsertPotentialClient({
           organizationId,
           name: normalizeSupplierName(email.senderName || email.domain),
@@ -2048,6 +2048,8 @@ export function buildGmailFinancialPersistencePlan(input: {
   const invoiceRecordDocument = isInvoiceRecordDocument(input.classification.documentType);
   return {
     shouldCreateClientForRelevantEmail:
+      input.canPersistFinancialRecord &&
+      input.classification.reviewStatus === "auto_saved" &&
       !input.isIncomingSupplierExpense &&
       !input.clientId &&
       input.classification.isRelevant,
