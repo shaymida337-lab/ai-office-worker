@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decideClientGmailFinancialDocumentDuplicate, shouldCreateClientGmailTasksAfterDedup } from "./clientGmailSync.js";
+import {
+  decideClientGmailFinancialDocumentDuplicate,
+  shouldCreateClientGmailTasksAfterDedup,
+  shouldWriteClientGmailTaskSheetAfterDedup,
+} from "./clientGmailSync.js";
 
 test("client Gmail dedup marks known duplicate as MATCH", () => {
   const result = decideClientGmailFinancialDocumentDuplicate({
@@ -58,6 +62,7 @@ test("client Gmail dedup lets new item proceed as NO_MATCH", () => {
   assert.equal(result.result, "NO_MATCH");
   assert.equal(result.candidate, null);
   assert.equal(shouldCreateClientGmailTasksAfterDedup(result), true);
+  assert.equal(shouldWriteClientGmailTaskSheetAfterDedup(result), true);
 });
 
 test("client Gmail dedup sends borderline duplicate to review as UNSURE", () => {
@@ -86,6 +91,7 @@ test("client Gmail dedup sends borderline duplicate to review as UNSURE", () => 
   assert.equal(result.candidate?.id, "payment-3");
   assert.match(result.reasons.join(","), /same_supplier/);
   assert.equal(shouldCreateClientGmailTasksAfterDedup(result), false);
+  assert.equal(shouldWriteClientGmailTaskSheetAfterDedup(result), false);
 });
 
 test("client Gmail dedup keeps legacy duplicateHash fallback for old records", () => {
@@ -116,6 +122,7 @@ test("client Gmail dedup keeps legacy duplicateHash fallback for old records", (
   assert.equal(result.candidate?.id, "payment-4");
   assert.deepEqual(result.reasons, ["legacy_duplicate_hash"]);
   assert.equal(shouldCreateClientGmailTasksAfterDedup(result), false);
+  assert.equal(shouldWriteClientGmailTaskSheetAfterDedup(result), false);
 });
 
 test("client Gmail task creation is blocked for duplicate MATCH", () => {
@@ -144,4 +151,5 @@ test("client Gmail task creation is blocked for duplicate MATCH", () => {
 
   assert.equal(result.result, "MATCH");
   assert.equal(shouldCreateClientGmailTasksAfterDedup(result), false);
+  assert.equal(shouldWriteClientGmailTaskSheetAfterDedup(result), false);
 });

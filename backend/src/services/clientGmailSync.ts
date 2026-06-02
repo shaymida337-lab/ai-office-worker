@@ -156,20 +156,6 @@ export async function syncGmailForClient(clientId: string) {
         supplier: analysis.supplier,
         priority: analysis.confidence < 0.7 ? "high" : "medium",
       });
-      try {
-        await writeClientTaskToSheet(clientId, {
-          date: receivedAt,
-          from,
-          subject,
-          summary: taskTitle,
-          action: taskTitle,
-          priority: analysis.confidence < 0.7 ? "גבוה" : "בינוני",
-          dueDate: analysis.dueDate ? new Date(analysis.dueDate) : null,
-          status: "פתוח",
-        });
-      } catch (err) {
-        console.error("Client task sheet write failed; continuing Gmail sync", err);
-      }
     }
 
     if (analysis.amount != null || analysis.documentType !== "other") {
@@ -247,6 +233,22 @@ export async function syncGmailForClient(clientId: string) {
               },
             });
             tasksCreated++;
+            if (shouldWriteClientGmailTaskSheetAfterDedup(duplicateDecision)) {
+              try {
+                await writeClientTaskToSheet(clientId, {
+                  date: receivedAt,
+                  from,
+                  subject,
+                  summary: pendingTask.title,
+                  action: pendingTask.title,
+                  priority: pendingTask.priority === "high" ? "גבוה" : "בינוני",
+                  dueDate: analysis.dueDate ? new Date(analysis.dueDate) : null,
+                  status: "פתוח",
+                });
+              } catch (err) {
+                console.error("Client task sheet write failed; continuing Gmail sync", err);
+              }
+            }
           }
         }
         await prisma.supplierPayment.create({
@@ -358,6 +360,10 @@ export function decideClientGmailFinancialDocumentDuplicate(input: {
 }
 
 export function shouldCreateClientGmailTasksAfterDedup(input: { result: DedupMatchResult; candidate: ClientGmailDuplicateCandidate | null }) {
+  return input.result === "NO_MATCH" && input.candidate === null;
+}
+
+export function shouldWriteClientGmailTaskSheetAfterDedup(input: { result: DedupMatchResult; candidate: ClientGmailDuplicateCandidate | null }) {
   return input.result === "NO_MATCH" && input.candidate === null;
 }
 
