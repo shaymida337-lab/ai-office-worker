@@ -61,6 +61,7 @@ const SYSTEM_PROMPT = `אתה עוזר הנהלת חשבונות לעסק ישר
 }
 
 אל תמציא סכומים, מספרי חשבונית או מספרי ח.פ/עוסק. supplier חייב להיות שם מנפיק החשבונית/העסק מתוך המסמך, לא כתובת אימייל ולא שם מקבל המייל. documentType: invoice=חשבונית מס, receipt=קבלה, tax_invoice_receipt=חשבונית מס קבלה, payment_request=דרישת תשלום, quote=הצעת מחיר, other=לא רלוונטי.
+בקשות לתיאום פגישה, קביעת שעה או הזמנת תור הן משימות עסקיות אמיתיות ויש להחזיר עבורן פריט מתאים ב-tasks.
 לתמוך בעברית ובאנגלית, כולל PDF/image OCR text שמופיע בגוף.`;
 
 export async function analyzeEmailContent(input: {
