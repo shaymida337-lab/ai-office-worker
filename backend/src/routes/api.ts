@@ -686,12 +686,7 @@ apiRouter.get("/debug/invoices/bad-amounts", async (req, res) => {
 apiRouter.get("/debug/payments/top-amounts", async (req, res) => {
   const orgId = req.auth!.organizationId;
   try {
-    const where = {
-      organizationId: orgId,
-      paid: false,
-      paymentRequired: true,
-      amount: { gte: 0, lte: 1_000_000 },
-    };
+    const where = debugTopPaymentAmountsWhere(orgId);
     const [summary, rows] = await Promise.all([
       prisma.supplierPayment.aggregate({
         where,
@@ -731,6 +726,16 @@ apiRouter.get("/debug/payments/top-amounts", async (req, res) => {
     res.status(500).json({ error: err instanceof Error ? err.message : "Top payment amounts debug failed" });
   }
 });
+
+export function debugTopPaymentAmountsWhere(organizationId: string) {
+  return {
+    organizationId,
+    approvalStatus: "approved",
+    paid: false,
+    paymentRequired: true,
+    amount: { gte: 0, lte: 1_000_000 },
+  };
+}
 
 apiRouter.get("/debug/payments/classification-investigation", async (req, res) => {
   const orgId = req.auth!.organizationId;
