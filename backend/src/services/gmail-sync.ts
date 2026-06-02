@@ -16,6 +16,7 @@ import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
 import { initialConnectScanWindow } from "./scanWindow.js";
 import { classifyBusinessDocument, pipelineActionForClassification } from "./classification/classifier.js";
+import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
@@ -167,7 +168,7 @@ const FINANCIAL_INSTITUTION_NAME_PATTERNS: Array<{ label: string; pattern: RegEx
   { label: "fibi", pattern: /\bfibi\b/i },
   { label: "bank", pattern: /\bbank\b/i },
 ];
-const MAX_AUTO_SAVE_AMOUNT = 1_000_000;
+const MAX_AUTO_SAVE_AMOUNT = MAX_REASONABLE_FINANCIAL_AMOUNT;
 const REFERENCE_NUMBER_CONTEXT =
   /(?:אסמכתא|מספר|שובר|סידורי|מסמך|חשבונית\s*(?:מס)?\s*מספר|ref|reference|invoice\s*(?:no|number)|order\s*(?:no|number)|#)/i;
 const INVOICE_KEYWORD_PATTERNS = [

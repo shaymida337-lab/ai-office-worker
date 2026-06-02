@@ -1,6 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { matchExistingFinancialDocumentCandidate } from "./financialDocuments.js";
+import { financialDocumentBlockingReason, matchExistingFinancialDocumentCandidate } from "./financialDocuments.js";
+
+test("financial document gate routes amounts over 1M to needs_review", () => {
+  const reason = financialDocumentBlockingReason({
+    supplierName: "OpenAI LLC",
+    invoiceNumber: "INV-2026-1001",
+    totalAmount: 2_000_000,
+    documentDate: "2026-06-01",
+  });
+
+  assert.match(reason ?? "", /exceeds review threshold/);
+});
+
+test("financial document gate accepts otherwise-valid amounts under 1M", () => {
+  const reason = financialDocumentBlockingReason({
+    supplierName: "OpenAI LLC",
+    invoiceNumber: "INV-2026-1001",
+    totalAmount: 500_000,
+    documentDate: "2026-06-01",
+  });
+
+  assert.equal(reason, null);
+});
 
 test("financial document matcher marks known duplicate as MATCH", () => {
   const result = matchExistingFinancialDocumentCandidate({

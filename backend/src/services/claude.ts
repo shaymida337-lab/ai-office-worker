@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
+import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
 
 export type EmailAnalysis = {
   supplier: string;
@@ -34,7 +35,7 @@ export type InvoiceScanResult = {
 };
 
 const anthropic = hasClaude() ? new Anthropic({ apiKey: config.anthropic.apiKey }) : null;
-const MAX_REASONABLE_AMOUNT = 1_000_000;
+const MAX_REASONABLE_AMOUNT = MAX_REASONABLE_FINANCIAL_AMOUNT;
 const REFERENCE_NUMBER_CONTEXT =
   /(?:אסמכתא|מספר|שובר|סידורי|מסמך|חשבונית\s*(?:מס)?\s*מספר|ref|reference|invoice\s*(?:no|number)|order\s*(?:no|number)|#)/i;
 
