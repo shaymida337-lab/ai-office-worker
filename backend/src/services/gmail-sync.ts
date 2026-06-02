@@ -1216,27 +1216,29 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         logStep(`[gmail-sync] duplicate GmailScanItem message=${email.gmailId}; continuing idempotent invoice/payment persistence`);
       }
 
-      for (const taskTitle of analysis.tasks) {
-        const existingTask = await prisma.task.findFirst({
-          where: {
-            organizationId,
-            emailMessageId: email.emailRecordId,
-            title: taskTitle,
-          },
-        });
-        if (existingTask) continue;
+      if (canPersistFinancialRecord && classification.reviewStatus === "auto_saved") {
+        for (const taskTitle of analysis.tasks) {
+          const existingTask = await prisma.task.findFirst({
+            where: {
+              organizationId,
+              emailMessageId: email.emailRecordId,
+              title: taskTitle,
+            },
+          });
+          if (existingTask) continue;
 
-        await prisma.task.create({
-          data: {
-            organizationId,
-            title: taskTitle,
-            supplier: supplierName,
-            priority: analysis.confidence < 0.7 ? "high" : "medium",
-            source: email.source,
-            emailMessageId: email.emailRecordId,
-          },
-        });
-        tasksCreated++;
+          await prisma.task.create({
+            data: {
+              organizationId,
+              title: taskTitle,
+              supplier: supplierName,
+              priority: analysis.confidence < 0.7 ? "high" : "medium",
+              source: email.source,
+              emailMessageId: email.emailRecordId,
+            },
+          });
+          tasksCreated++;
+        }
       }
 
       if (isInvoiceRecordDocument(classification.documentType)) {
@@ -2067,6 +2069,9 @@ export function buildGmailFinancialPersistencePlan(input: {
       !input.isIncomingSupplierExpense &&
       invoiceRecordDocument &&
       !input.clientId,
+    shouldCreateAnalysisTasks:
+      input.canPersistFinancialRecord &&
+      input.classification.reviewStatus === "auto_saved",
     shouldSaveInvoice:
       !input.isIncomingSupplierExpense &&
       input.canPersistFinancialRecord &&
