@@ -141,21 +141,20 @@ export async function syncGmailForClient(clientId: string) {
       }
     }
 
+    const pendingTaskCreates: Array<{
+      title: string;
+      supplier: string;
+      priority: string;
+    }> = [];
     for (const taskTitle of analysis.tasks) {
       const exists = await prisma.task.findFirst({
         where: { organizationId, clientId, emailMessageId: emailRecord.id, title: taskTitle },
       });
       if (exists) continue;
-      await prisma.task.create({
-        data: {
-          organizationId,
-          clientId,
-          title: taskTitle,
-          supplier: analysis.supplier,
-          priority: analysis.confidence < 0.7 ? "high" : "medium",
-          source: "gmail",
-          emailMessageId: emailRecord.id,
-        },
+      pendingTaskCreates.push({
+        title: taskTitle,
+        supplier: analysis.supplier,
+        priority: analysis.confidence < 0.7 ? "high" : "medium",
       });
       try {
         await writeClientTaskToSheet(clientId, {
@@ -171,7 +170,6 @@ export async function syncGmailForClient(clientId: string) {
       } catch (err) {
         console.error("Client task sheet write failed; continuing Gmail sync", err);
       }
-      tasksCreated++;
     }
 
     if (analysis.amount != null || analysis.documentType !== "other") {
@@ -235,6 +233,22 @@ export async function syncGmailForClient(clientId: string) {
           gmailMessageId: msgRef.id,
         });
       } else if (!existingPayment) {
+        if (shouldCreateClientGmailTasksAfterDedup(duplicateDecision)) {
+          for (const pendingTask of pendingTaskCreates) {
+            await prisma.task.create({
+              data: {
+                organizationId,
+                clientId,
+                title: pendingTask.title,
+                supplier: pendingTask.supplier,
+                priority: pendingTask.priority,
+                source: "gmail",
+                emailMessageId: emailRecord.id,
+              },
+            });
+            tasksCreated++;
+          }
+        }
         await prisma.supplierPayment.create({
           data: {
             organizationId,
@@ -341,6 +355,10 @@ export function decideClientGmailFinancialDocumentDuplicate(input: {
   if (unsure) return { result: "UNSURE", candidate: unsure.candidate, reasons: unsure.reasons };
   if (legacyFallback) return { result: "MATCH", candidate: legacyFallback, reasons: ["legacy_duplicate_hash"] };
   return { result: "NO_MATCH", candidate: null, reasons: ["no_candidate_match"] };
+}
+
+export function shouldCreateClientGmailTasksAfterDedup(input: { result: DedupMatchResult; candidate: ClientGmailDuplicateCandidate | null }) {
+  return input.result === "NO_MATCH" && input.candidate === null;
 }
 
 function buildClientGmailDuplicateCandidateWhere(input: {
