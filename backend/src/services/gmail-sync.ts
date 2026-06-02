@@ -1241,7 +1241,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         if (!clientId) {
           if (isIncomingSupplierExpense) {
             logStep(`[gmail-sync] supplier expense invoice message=${email.gmailId}; skipping Client placeholder creation supplier="${supplierName}"`);
-          } else {
+          } else if (canPersistFinancialRecord && classification.reviewStatus === "auto_saved") {
             const saved = await ensureInvoiceClient({
               organizationId,
               supplierName,
@@ -2054,6 +2054,8 @@ export function buildGmailFinancialPersistencePlan(input: {
       !input.clientId &&
       input.classification.isRelevant,
     shouldEnsureInvoiceClient:
+      input.canPersistFinancialRecord &&
+      input.classification.reviewStatus === "auto_saved" &&
       !input.isIncomingSupplierExpense &&
       invoiceRecordDocument &&
       !input.clientId,

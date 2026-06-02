@@ -286,3 +286,45 @@ test("creates relevant-email Client after review gate passes", () => {
   assert.equal(classification.reviewStatus, "auto_saved");
   assert.equal(plan.shouldCreateClientForRelevantEmail, true);
 });
+
+test("does not ensure invoice Client before review approval", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "Invoice INV-1002",
+    bodyText: "Please find attached invoice.",
+    attachmentFilenames: ["invoice-1002.pdf"],
+    analysis: analysis({ documentType: "invoice", confidence: 0.9 }),
+    amount: null,
+    supplierName: "Acme Ltd",
+  });
+  const plan = buildGmailFinancialPersistencePlan({
+    isIncomingSupplierExpense: false,
+    classification,
+    canPersistFinancialRecord: false,
+    clientId: null,
+    supplierPaymentAllowed: false,
+  });
+
+  assert.equal(classification.reviewStatus, "needs_review");
+  assert.equal(plan.shouldEnsureInvoiceClient, false);
+});
+
+test("ensures invoice Client after review gate passes", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "Invoice INV-1001",
+    bodyText: "Please find attached invoice for 1,250 ILS",
+    attachmentFilenames: ["invoice-1001.pdf"],
+    analysis: analysis({ documentType: "invoice", amount: 1250, confidence: 0.9 }),
+    amount: 1250,
+    supplierName: "Acme Ltd",
+  });
+  const plan = buildGmailFinancialPersistencePlan({
+    isIncomingSupplierExpense: false,
+    classification,
+    canPersistFinancialRecord: true,
+    clientId: null,
+    supplierPaymentAllowed: false,
+  });
+
+  assert.equal(classification.reviewStatus, "auto_saved");
+  assert.equal(plan.shouldEnsureInvoiceClient, true);
+});
