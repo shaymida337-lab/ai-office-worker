@@ -261,13 +261,23 @@ export async function getMissingInvoicesReportFromSheetComparison(organizationId
   const verification = await verifySupplierPaymentsSheet(organizationId);
   const missingPaymentIds = new Set(verification.missingRows.map((row) => row.paymentId));
   const payments = await prisma.supplierPayment.findMany({
-    where: { organizationId, missingInvoice: true, paid: false, duplicateDetected: false },
+    where: missingInvoicesReportWhere(organizationId),
     orderBy: { date: "desc" },
   });
   return payments.map((payment) => ({
     ...payment,
     sheetSyncStatus: missingPaymentIds.has(payment.id) ? "missing_in_google_sheet" : "synced_to_google_sheet",
   }));
+}
+
+export function missingInvoicesReportWhere(organizationId: string) {
+  return {
+    organizationId,
+    approvalStatus: "approved",
+    missingInvoice: true,
+    paid: false,
+    duplicateDetected: false,
+  };
 }
 
 async function ensureHeaders(organizationId: string, spreadsheetId: string) {
