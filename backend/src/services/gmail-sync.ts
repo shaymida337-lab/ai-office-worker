@@ -956,15 +956,17 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         clientId = saved.id;
         clientIdByDomain.set(email.domain, saved.id);
         if (saved.created) clientsCreated++;
-        const leadSaved = await upsertGmailLead({
-          organizationId,
-          name: normalizeSupplierName(email.senderName || supplierName || email.domain),
-          company: supplierName || email.domain,
-          email: email.senderEmail,
-          phone: extractPhoneFromText(bodyForAnalysis),
-          notes: `${email.subject}\n\n${bodyForAnalysis}`.slice(0, 1200),
-        });
-        logStep(`[gmail-sync] DB upsert Lead success message=${email.gmailId} id=${leadSaved.id} created=${leadSaved.created}`);
+        if (canPersistFinancialRecord && classification.reviewStatus === "auto_saved") {
+          const leadSaved = await upsertGmailLead({
+            organizationId,
+            name: normalizeSupplierName(email.senderName || supplierName || email.domain),
+            company: supplierName || email.domain,
+            email: email.senderEmail,
+            phone: extractPhoneFromText(bodyForAnalysis),
+            notes: `${email.subject}\n\n${bodyForAnalysis}`.slice(0, 1200),
+          });
+          logStep(`[gmail-sync] DB upsert Lead success message=${email.gmailId} id=${leadSaved.id} created=${leadSaved.created}`);
+        }
         await prisma.emailMessage.update({
           where: { id: email.emailRecordId },
           data: { clientId },
@@ -2048,6 +2050,12 @@ export function buildGmailFinancialPersistencePlan(input: {
   const invoiceRecordDocument = isInvoiceRecordDocument(input.classification.documentType);
   return {
     shouldCreateClientForRelevantEmail:
+      input.canPersistFinancialRecord &&
+      input.classification.reviewStatus === "auto_saved" &&
+      !input.isIncomingSupplierExpense &&
+      !input.clientId &&
+      input.classification.isRelevant,
+    shouldCreateLeadForRelevantEmail:
       input.canPersistFinancialRecord &&
       input.classification.reviewStatus === "auto_saved" &&
       !input.isIncomingSupplierExpense &&
