@@ -39,6 +39,10 @@ clientWhatsappRouter.delete("/:clientId/whatsapp/disconnect", async (req, res) =
 });
 
 clientWhatsappRouter.post("/:clientId/whatsapp/scan", async (req, res) => {
+  // WARNING: This legacy keyword-based task extraction is DISABLED. If re-enabled,
+  // it will create tasks IN ADDITION to Gmail's Claude extraction, with NO
+  // cross-channel dedup - risking duplicate tasks. Add dedup before enabling.
+  // See Step 1.6 audit.
   if (!config.twilio.webEnabled) {
     res.json({
       status: "disabled",

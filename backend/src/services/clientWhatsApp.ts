@@ -149,6 +149,10 @@ async function saveWhatsAppInvoiceToDrive(clientId: string, body: string, invoic
 }
 
 function extractTasks(text: string) {
+  // WARNING: This legacy keyword-based task extraction is DISABLED. If re-enabled,
+  // it will create tasks IN ADDITION to Gmail's Claude extraction, with NO
+  // cross-channel dedup - risking duplicate tasks. Add dedup before enabling.
+  // See Step 1.6 audit.
   if (!/לעשות|צריך|תזכיר|reminder|task|משימה|deadline|תאריך יעד|follow up/i.test(text)) return [];
   return text.split(/\n|\.|;|,/).map((item) => item.trim()).filter(Boolean).slice(0, 5);
 }
