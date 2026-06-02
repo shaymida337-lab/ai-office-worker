@@ -17,7 +17,7 @@ export async function buildAccountantSummary(organizationId: string, period = cu
   const [org, incomeInvoices, expenses, reports] = await Promise.all([
     prisma.organization.findUnique({ where: { id: organizationId } }),
     prisma.invoice.findMany({ where: { organizationId, date: { gte: start, lte: end } }, include: { client: true } }),
-    prisma.supplierPayment.findMany({ where: { organizationId, date: { gte: start, lte: end } } }),
+    prisma.supplierPayment.findMany({ where: accountantApprovedExpenseWhere(organizationId, start, end) }),
     getAccountantReports(organizationId),
   ]);
   const categorizedExpenses = await Promise.all(expenses.map(async (expense) => ({
@@ -25,7 +25,7 @@ export async function buildAccountantSummary(organizationId: string, period = cu
     accounting: await categorizeExpense(expense.subject ?? "", expense.supplier, expense.amount),
   })));
   const totalIncome = incomeInvoices.reduce((sum, invoice) => sum + invoice.amount, 0);
-  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const totalExpenses = sumApprovedSupplierExpenses(expenses);
   const vat = await calculateMonthlyVAT(organizationId, period);
   const annual = await buildAnnualSummary(organizationId, Number(period.slice(0, 4)));
   return {
@@ -183,7 +183,7 @@ async function buildAnnualSummary(organizationId: string, year: number) {
     const { start, end } = monthRange(period);
     const [income, expenses] = await Promise.all([
       prisma.invoice.aggregate({ where: { organizationId, date: { gte: start, lte: end } }, _sum: { amount: true } }),
-      prisma.supplierPayment.aggregate({ where: { organizationId, date: { gte: start, lte: end } }, _sum: { amount: true } }),
+      prisma.supplierPayment.aggregate({ where: accountantApprovedExpenseWhere(organizationId, start, end), _sum: { amount: true } }),
     ]);
     rows.push({ period, income: income._sum.amount ?? 0, expenses: expenses._sum.amount ?? 0 });
   }
@@ -193,6 +193,16 @@ async function buildAnnualSummary(organizationId: string, year: number) {
 function currentMonth() {
   const now = new Date();
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+export function accountantApprovedExpenseWhere(organizationId: string, start: Date, end: Date) {
+  return { organizationId, approvalStatus: "approved", date: { gte: start, lte: end } };
+}
+
+export function sumApprovedSupplierExpenses(expenses: Array<{ amount: number; approvalStatus?: string | null }>) {
+  return expenses
+    .filter((expense) => expense.approvalStatus === "approved")
+    .reduce((sum, expense) => sum + expense.amount, 0);
 }
 
 function stringOrNull(value: unknown) {
