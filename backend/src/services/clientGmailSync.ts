@@ -116,6 +116,9 @@ export async function syncGmailForClient(clientId: string) {
           id: attachmentId,
         });
         const buffer = decodeAttachment(att.data.data ?? "");
+        // FUTURE: Drive upload runs before dedup by design - review records need
+        // driveFileUrl. Revisit with an explicit review-artifact schema so UNSURE
+        // items don't create orphan Drive files. Tech-debt, not a blocking leak.
         const upload = await uploadInvoiceAttachmentToDrive({
           organizationId,
           drive,
