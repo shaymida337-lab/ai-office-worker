@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { getHelpContentForPath } from "@/config/helpContent";
-import { HelpButton } from "@/components/HelpButton";
 import { HelpPanel } from "@/components/HelpPanel";
 import { WalkthroughOverlay } from "@/components/WalkthroughOverlay";
 
@@ -26,7 +25,6 @@ export function HelpCenter() {
 
   return (
     <>
-      <HelpButton onClick={() => setPanelOpen(true)} />
       <HelpPanel
         content={content}
         open={panelOpen}
