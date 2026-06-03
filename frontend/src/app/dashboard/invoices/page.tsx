@@ -167,7 +167,7 @@ export default function InvoicesPage() {
   return (
     <div className="container text-base text-[#F1F5F9]">
       <Nav />
-      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="page-kicker">חוכמת חשבוניות</div>
           <h1>חשבוניות</h1>
@@ -185,26 +185,35 @@ export default function InvoicesPage() {
         </div>
       )}
 
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" dir="rtl">
+      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" dir="rtl">
         <Metric label="חשבוניות החודש" value={thisMonth.length} tone="text-blue-300" />
         <Metric label="ממתין לתשלום" value={`₪${pending.toLocaleString("he-IL")}`} tone="text-red-300" />
         <Metric label="שולם" value={`₪${paid.toLocaleString("he-IL")}`} tone="text-emerald-300" />
         <Metric label="באיחור" value={overdue} tone="text-amber-300" />
       </div>
 
-      <div className="card">
+      <div className="card mb-5">
         <div className="mb-4 flex items-center gap-2 text-[17px] font-semibold text-[#F8FAFC]"><Filter className="h-5 w-5" />סינון וחיפוש</div>
         <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           <select className="text-base text-[#F8FAFC]" value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="all">כל הלקוחות</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
           <select className="text-base text-[#F8FAFC]" value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">כל הסטטוסים</option><option value="paid">שולם</option><option value="pending">ממתין</option><option value="overdue">באיחור</option></select>
           <div className="relative xl:col-span-2">
-            <Search className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-[#CBD5E1]" />
-            <input className="pr-10 text-base text-[#F8FAFC] placeholder:text-[#CBD5E1]" placeholder="חיפוש לפי מספר חשבונית" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b7686]" />
+            <input className="w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 py-3 pr-10 font-sans text-base text-ink-primary shadow-sm outline-none placeholder:text-[#6b7686] focus:border-accent-primary focus:ring-2 focus:ring-[rgba(29,91,255,0.12)]" placeholder="חיפוש לפי מספר חשבונית" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <input className="text-base text-[#F8FAFC]" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
           <input className="text-base text-[#F8FAFC]" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
       </div>
+
+      {filtered.length === 0 && (
+        <div className="card">
+          <h2>לא נמצאו חשבוניות</h2>
+          <p className="mt-2 text-base text-[#E2E8F0]">
+            נסה לשנות את הסינון או להפעיל סריקת חשבוניות ללקוחות עם ג׳ימייל מחובר.
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-4 md:hidden">
         {filtered.map((invoice) => (
@@ -277,14 +286,6 @@ export default function InvoicesPage() {
           </tbody>
         </table>
       </div>
-      {filtered.length === 0 && (
-        <div className="card">
-          <h2>לא נמצאו חשבוניות</h2>
-          <p className="mt-2 text-base text-[#E2E8F0]">
-            נסה לשנות את הסינון או להפעיל סריקת חשבוניות ללקוחות עם ג׳ימייל מחובר.
-          </p>
-        </div>
-      )}
 
       {selected && (
         <div className="fixed inset-0 z-[110] grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
