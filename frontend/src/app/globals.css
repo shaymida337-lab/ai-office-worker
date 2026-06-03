@@ -127,7 +127,7 @@
 
 @layer components {
   .container {
-    @apply mx-auto w-full max-w-[1400px] overflow-x-hidden px-4 pb-32 pt-20 md:px-8 lg:px-10 lg:pb-12 lg:pt-24;
+    @apply mx-auto w-full max-w-[1400px] overflow-x-hidden px-4 pb-32 pt-20 md:px-8 lg:px-10 lg:pb-32 lg:pt-24;
   }
 
   .card {
