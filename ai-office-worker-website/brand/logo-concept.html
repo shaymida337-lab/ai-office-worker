@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>מותג ולוגו — עובד משרד AI</title>
+<meta name="description" content="קונספט לוגו ומדריך מותג לעובד משרד AI: סימן, ואריאציות, צבעים, טיפוגרפיה וקובצי favicon." />
+<link rel="icon" type="image/svg+xml" href="favicons/favicon.svg" />
+<link rel="icon" type="image/png" sizes="32x32" href="favicons/favicon-32.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="favicons/apple-touch-icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --blue:#1d5bff; --blue-tl:#3a6cff; --blue-br:#143cbf; --navy:#0b2a6b;
+    --green:#10b981; --green-l:#34d399;
+    --bg:#f6f9fe; --ink:#0e1830; --muted:#5b6b8c; --line:#e4ecf8; --card:#ffffff;
+    --grad:linear-gradient(135deg,var(--blue-tl),var(--blue) 55%,var(--blue-br));
+    --shadow:0 18px 50px -18px rgba(11,42,107,.28);
+    --r:22px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:'Assistant','Plus Jakarta Sans',system-ui,Arial,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  h1,h2,h3{font-family:'Bricolage Grotesque','Assistant',sans-serif;line-height:1.1;font-weight:800;letter-spacing:-.01em}
+  section{padding:74px 0;border-bottom:1px solid var(--line)}
+  .eyebrow{display:inline-flex;align-items:center;gap:.5rem;font-weight:700;font-size:.82rem;
+    letter-spacing:.04em;color:var(--blue);background:#eaf1ff;border:1px solid #d8e6ff;
+    padding:.4rem .8rem;border-radius:999px;text-transform:uppercase}
+  .eyebrow.green{color:#0b8f6a;background:#e7faf2;border-color:#c5f1e0}
+  .lead{color:var(--muted);font-size:1.12rem;max-width:62ch;margin-top:1rem}
+  h2{font-size:clamp(1.6rem,3.4vw,2.4rem);margin-top:.9rem}
+  .sec-head{margin-bottom:38px}
+
+  /* top bar */
+  .topbar{position:sticky;top:0;z-index:20;background:rgba(246,249,254,.82);
+    backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+  .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:72px}
+  .topbar img{height:42px;display:block}
+  .topbar .tag{color:var(--muted);font-weight:600;font-size:.92rem}
+
+  /* hero */
+  .hero{position:relative;overflow:hidden;background:
+      radial-gradient(120% 90% at 80% -10%,#1b3aa0 0%,transparent 55%),
+      radial-gradient(120% 90% at 10% 110%,#0a7f5e 0%,transparent 50%),
+      linear-gradient(160deg,#0a1c4d,#0b2a6b 60%,#08153a);
+    color:#fff;border-bottom:none;padding:96px 0 104px}
+  .hero .wrap{display:grid;grid-template-columns:1.1fr .9fr;gap:48px;align-items:center}
+  .hero h1{font-size:clamp(2.1rem,5vw,3.4rem);color:#fff}
+  .hero p{color:#c5d3f5;font-size:1.14rem;margin-top:1.1rem;max-width:48ch}
+  .hero .eyebrow{color:#bfe9d8;background:rgba(52,211,153,.12);border-color:rgba(52,211,153,.3)}
+  .hero-mark{justify-self:center;position:relative}
+  .hero-mark .glow{position:absolute;inset:-14% ;background:radial-gradient(closest-side,rgba(52,211,153,.45),transparent 70%);filter:blur(22px);z-index:0}
+  .hero-mark img{position:relative;z-index:1;width:230px;height:230px;filter:drop-shadow(0 30px 50px rgba(0,0,0,.45))}
+
+  /* concept meaning */
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  .meaning{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+    padding:26px;box-shadow:var(--shadow)}
+  .meaning .ic{width:54px;height:54px;border-radius:15px;display:grid;place-items:center;
+    background:var(--grad);color:#fff;margin-bottom:14px}
+  .meaning.g .ic{background:linear-gradient(135deg,var(--green-l),var(--green))}
+  .meaning h3{font-size:1.18rem;margin-bottom:.3rem}
+  .meaning p{color:var(--muted);font-size:.98rem}
+
+  /* lockups */
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+    box-shadow:var(--shadow);padding:40px;display:flex;align-items:center;justify-content:center;min-height:180px}
+  .two{display:grid;grid-template-columns:1.4fr 1fr;gap:22px}
+  .panel.alt{background:#fbfdff}
+  .panel img{max-width:100%;height:auto}
+  .panel .cap{position:absolute}
+  .labeled{position:relative}
+  .labeled .cap{position:absolute;top:14px;inset-inline-start:18px;font-size:.78rem;font-weight:700;color:var(--muted);letter-spacing:.03em}
+
+  /* variations */
+  .vargrid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+  .var{border-radius:18px;border:1px solid var(--line);min-height:150px;display:grid;place-items:center;padding:20px}
+  .var img{width:84px;height:84px}
+  .var.light{background:#fff}
+  .var.soft{background:var(--bg)}
+  .var.brand{background:var(--grad);border-color:transparent}
+  .var.dark{background:#0b1733;border-color:#13224a}
+  .var .vlabel{font-size:.78rem;font-weight:700;color:var(--muted);margin-top:6px}
+  .var.brand .vlabel,.var.dark .vlabel{color:#aebfe6}
+
+  /* clearspace / sizes */
+  .util{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  .clearbox{position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+    box-shadow:var(--shadow);padding:34px;display:grid;place-items:center}
+  .clear-inner{position:relative;padding:38px;outline:2px dashed #c8d6f2;border-radius:14px}
+  .clear-inner img{width:120px;height:120px;display:block}
+  .sizes{display:flex;align-items:flex-end;gap:26px;justify-content:center;flex-wrap:wrap}
+  .sizes .s{text-align:center}
+  .sizes img{display:block;margin:0 auto 8px;image-rendering:auto}
+  .sizes span{font-size:.78rem;color:var(--muted);font-weight:700}
+
+  /* colors */
+  .swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
+  .sw{border-radius:16px;overflow:hidden;border:1px solid var(--line);background:#fff}
+  .sw .chip{height:92px}
+  .sw .meta{padding:12px 14px}
+  .sw .name{font-weight:700;font-size:.95rem}
+  .sw .hex{color:var(--muted);font-size:.82rem;font-family:'Plus Jakarta Sans',monospace;direction:ltr;text-align:right}
+
+  /* typography */
+  .typ{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  .typ .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:26px;box-shadow:var(--shadow)}
+  .typ .big{font-size:2.4rem;line-height:1;margin:.2rem 0 .5rem}
+  .typ .role{font-size:.8rem;font-weight:700;color:var(--blue);letter-spacing:.04em;text-transform:uppercase}
+  .typ .name{font-weight:700}
+  .typ .muted{color:var(--muted);font-size:.9rem}
+
+  /* favicon preview */
+  .fav{display:grid;grid-template-columns:1.1fr .9fr;gap:24px;align-items:stretch}
+  .browser{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+  .browser .bar{background:#eef3fb;padding:12px 14px;display:flex;align-items:center;gap:8px;direction:ltr}
+  .browser .dot{width:11px;height:11px;border-radius:50%}
+  .tab{margin-inline-start:14px;background:#fff;border-radius:9px 9px 0 0;padding:8px 14px;display:flex;align-items:center;gap:8px;
+    box-shadow:0 -1px 0 var(--line);font-size:.85rem;font-weight:600;color:var(--ink);direction:rtl}
+  .tab img{width:16px;height:16px}
+  .browser .page{padding:30px;display:grid;place-items:center;min-height:150px}
+  .browser .page img{width:64px;height:64px}
+  .appicons{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);
+    padding:26px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
+  .home{display:flex;gap:18px;align-items:flex-end}
+  .home .app{text-align:center}
+  .home .app img{width:64px;height:64px;border-radius:15px;display:block;box-shadow:0 10px 22px -8px rgba(11,42,107,.5)}
+  .home .app small{display:block;margin-top:7px;font-size:.72rem;color:var(--muted);font-weight:600}
+
+  /* do / dont */
+  .dd{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  .dd .box{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px;box-shadow:var(--shadow)}
+  .dd h3{display:flex;align-items:center;gap:.5rem;font-size:1.1rem;margin-bottom:.6rem}
+  .dd ul{list-style:none;display:flex;flex-direction:column;gap:.5rem}
+  .dd li{display:flex;gap:.55rem;color:var(--muted);font-size:.98rem}
+  .tick{color:var(--green);font-weight:800}.cross{color:#e0506b;font-weight:800}
+
+  /* files */
+  .files{background:#0b1733;color:#cdd9f5;border-radius:var(--r);padding:30px 32px}
+  .files h3{color:#fff;margin-bottom:14px}
+  .files code{font-family:'Plus Jakarta Sans',monospace;direction:ltr;display:inline-block;
+    background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:7px;
+    padding:.12rem .5rem;font-size:.84rem;color:#bfe9d8}
+  .files ul{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:10px 26px;margin-top:6px}
+  .files li{font-size:.92rem}
+
+  footer{padding:40px 0;text-align:center;color:var(--muted);font-size:.9rem}
+
+  @media(max-width:860px){
+    .hero .wrap{grid-template-columns:1fr;text-align:center}
+    .hero-mark{order:-1}
+    .grid3,.typ{grid-template-columns:1fr}
+    .two,.util,.fav,.dd{grid-template-columns:1fr}
+    .vargrid{grid-template-columns:repeat(2,1fr)}
+    .swatches{grid-template-columns:repeat(2,1fr)}
+    .files ul{grid-template-columns:1fr}
+    .topbar .tag{display:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <img src="logo-horizontal-rtl.svg" alt="עובד משרד AI" />
+    <span class="tag">קונספט לוגו ומדריך מותג</span>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow">זהות מותג · קונספט</span>
+      <h1 style="margin-top:1rem">סימן אחד שאומר<br>בינה, עבודה ותוצאה.</h1>
+      <p>קונספט הלוגו של <strong style="color:#fff">עובד משרד AI</strong> בנוי סביב צ׳ברון מטפס בצורת האות A — בינה מלאכותית וצמיחה — עם פס ירוק שמסמל משימה שהושלמה, וניצוץ קטן שמרמז על האינטליגנציה שמאחורי הקלעים.</p>
+    </div>
+    <div class="hero-mark">
+      <div class="glow"></div>
+      <img src="logo-mark.svg" alt="הסימן של עובד משרד AI" />
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow green">הרעיון</span>
+      <h2>מה הסימן מספר</h2>
+      <p class="lead">שלושה רכיבים, משמעות אחת: עוזר חכם שלוקח אחריות על העבודה ומסיים אותה.</p>
+    </div>
+    <div class="grid3">
+      <div class="meaning">
+        <div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M5 19 L12 5 L19 19" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h3>הצ׳ברון = A של AI</h3>
+        <p>צורת ה־A העולה מייצגת בינה מלאכותית, תנופה וצמיחה — חץ שמכוון קדימה ומעלה.</p>
+      </div>
+      <div class="meaning g">
+        <div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M5 12 H19" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg></div>
+        <h3>הפס הירוק = הושלם</h3>
+        <p>הקו הירוק חוצה את הסימן כמו סימון "בוצע" — המשימה טופלה, המייל סודר, החשבונית זוהתה.</p>
+      </div>
+      <div class="meaning">
+        <div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 3 l1.6 5 5 1.6 -5 1.6 -1.6 5 -1.6 -5 -5 -1.6 5 -1.6 z" fill="#fff"/></svg></div>
+        <h3>הניצוץ = אינטליגנציה</h3>
+        <p>ניצוץ קטן בפינה מסמן שיש כאן חוכמה — עוזר שמבין הקשר, לא רק מבצע פקודות.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">הלוגו הראשי</span>
+      <h2>נעילות (Lockups)</h2>
+      <p class="lead">הגרסה האופקית מותאמת לכיווניות ימין־לשמאל — הסימן בצד ימin, שם המותג לצדו. לצד גרסה מוערמת לשימוש מרובע.</p>
+    </div>
+    <div class="two">
+      <div class="panel labeled"><span class="cap">אופקי · RTL</span><img src="logo-horizontal-rtl.svg" alt="לוגו אופקי" /></div>
+      <div class="panel alt labeled"><span class="cap">מוערם</span><img src="logo-stacked.svg" alt="לוגו מוערם" style="max-height:160px" /></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">גמישות</span>
+      <h2>ואריאציות הסימן</h2>
+      <p class="lead">הסימן עובד על רקע בהיר, על רקע המותג, על כהה, וכן בגרסה חד־גונית להדפסה.</p>
+    </div>
+    <div class="vargrid">
+      <div class="var light"><div style="text-align:center"><img src="logo-mark.svg" alt="על רקע לבן"/><div class="vlabel">על לבן</div></div></div>
+      <div class="var soft"><div style="text-align:center"><img src="logo-mark.svg" alt="על רקע רך"/><div class="vlabel">על רקע רך</div></div></div>
+      <div class="var brand"><div style="text-align:center"><img src="logo-mark-white.svg" alt="על רקע המותג"/><div class="vlabel">על המותג</div></div></div>
+      <div class="var dark"><div style="text-align:center"><img src="logo-mark-white.svg" alt="על כהה"/><div class="vlabel">על כהה</div></div></div>
+    </div>
+    <div style="margin-top:18px" class="vargrid">
+      <div class="var light"><div style="text-align:center"><img src="logo-mark-mono.svg" alt="חד־גוני"/><div class="vlabel">חד־גוני (נייבי)</div></div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">שימוש נכון</span>
+      <h2>מרחב נשימה וגדלים</h2>
+      <p class="lead">השאירו סביב הסימן מרווח פנוי בגודל הפס הירוק לפחות. הסימן נשאר קריא גם בגדלים קטנים.</p>
+    </div>
+    <div class="util">
+      <div class="clearbox">
+        <div class="clear-inner"><img src="logo-mark.svg" alt="מרחב נשימה"/></div>
+      </div>
+      <div class="clearbox">
+        <div class="sizes">
+          <div class="s"><img src="favicons/favicon-16.png" width="16" height="16" alt="16"/><span>16px</span></div>
+          <div class="s"><img src="favicons/favicon-32.png" width="32" height="32" alt="32"/><span>32px</span></div>
+          <div class="s"><img src="favicons/favicon-48.png" width="48" height="48" alt="48"/><span>48px</span></div>
+          <div class="s"><img src="favicons/icon-256.png" width="84" height="84" alt="גדול"/><span>גדול</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow green">פלטת צבעים</span>
+      <h2>הצבעים של המותג</h2>
+      <p class="lead">כחול אמון דומיננטי, ירוק "בוצע" כהדגשה, ולבן/נייבי לאיזון.</p>
+    </div>
+    <div class="swatches">
+      <div class="sw"><div class="chip" style="background:#1d5bff"></div><div class="meta"><div class="name">כחול ראשי</div><div class="hex">#1D5BFF</div></div></div>
+      <div class="sw"><div class="chip" style="background:#0b2a6b"></div><div class="meta"><div class="name">נייבי</div><div class="hex">#0B2A6B</div></div></div>
+      <div class="sw"><div class="chip" style="background:#10b981"></div><div class="meta"><div class="name">ירוק</div><div class="hex">#10B981</div></div></div>
+      <div class="sw"><div class="chip" style="background:#34d399"></div><div class="meta"><div class="name">ירוק בהיר</div><div class="hex">#34D399</div></div></div>
+      <div class="sw"><div class="chip" style="background:#f6f9fe;border-bottom:1px solid var(--line)"></div><div class="meta"><div class="name">רקע רך</div><div class="hex">#F6F9FE</div></div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">טיפוגרפיה</span>
+      <h2>הגופנים</h2>
+      <p class="lead">Assistant לעברית, Bricolage Grotesque לכותרות תצוגה ו־Plus Jakarta Sans לטקסט לועזי.</p>
+    </div>
+    <div class="typ">
+      <div class="card">
+        <div class="role">עברית · Assistant</div>
+        <div class="big" style="font-family:'Assistant'">עובד משרד AI</div>
+        <div class="name" style="font-family:'Assistant'">אבגדהוזחטי 0123</div>
+        <div class="muted">משמש לכל תוכן העברית באתר ובלוגו.</div>
+      </div>
+      <div class="card">
+        <div class="role">תצוגה · Bricolage Grotesque</div>
+        <div class="big" style="font-family:'Bricolage Grotesque'">Office&nbsp;AI</div>
+        <div class="name" style="font-family:'Bricolage Grotesque'">ABCabc 0123</div>
+        <div class="muted">לכותרות גדולות ולמספרים בולטים.</div>
+      </div>
+      <div class="card">
+        <div class="role">גוף · Plus Jakarta Sans</div>
+        <div class="big" style="font-family:'Plus Jakarta Sans'">Aa Bb Cc</div>
+        <div class="name" style="font-family:'Plus Jakarta Sans'">ABCabc 0123</div>
+        <div class="muted">לטקסט לועזי ולממשק.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow green">Favicon &amp; אייקון אפליקציה</span>
+      <h2>כך זה נראה בפועל</h2>
+      <p class="lead">קובצי ה־favicon נוצרו בכל הגדלים — מ־16px בלשונית הדפדפן ועד 512px למסך הבית.</p>
+    </div>
+    <div class="fav">
+      <div class="browser">
+        <div class="bar">
+          <span class="dot" style="background:#ff5f57"></span>
+          <span class="dot" style="background:#febc2e"></span>
+          <span class="dot" style="background:#28c840"></span>
+          <span class="tab"><img src="favicons/favicon-16.png" alt=""/> עובד משרד AI</span>
+        </div>
+        <div class="page"><img src="favicons/icon-256.png" alt="favicon גדול"/></div>
+      </div>
+      <div class="appicons">
+        <div class="home">
+          <div class="app"><img src="favicons/apple-touch-icon.png" alt="אייקון iOS"/><small>iOS · 180</small></div>
+          <div class="app"><img src="favicons/android-chrome-192.png" alt="אייקון Android"/><small>Android · 192</small></div>
+        </div>
+        <div style="color:var(--muted);font-size:.9rem;text-align:center">אייקון מעוגל בסגנון אפליקציה, מוכן ל־PWA</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">הנחיות</span>
+      <h2>מותר ואסור</h2>
+    </div>
+    <div class="dd">
+      <div class="box">
+        <h3><span class="tick">✓</span> מותר</h3>
+        <ul>
+          <li><span class="tick">✓</span> להשתמש בגרסה הלבנה על רקעים כהים ועל רקע המותג.</li>
+          <li><span class="tick">✓</span> לשמור על פרופורציות הסימן ועל מרחב נשימה סביבו.</li>
+          <li><span class="tick">✓</span> להשתמש בקובצי ה־SVG לכל גודל — הם וקטוריים וחדים תמיד.</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h3><span class="cross">✕</span> אסור</h3>
+        <ul>
+          <li><span class="cross">✕</span> למתוח, להטות או לסובב את הסימן.</li>
+          <li><span class="cross">✕</span> לשנות את צבעי המותג או להחליף את הפס הירוק בצבע אחר.</li>
+          <li><span class="cross">✕</span> להציב את הסימן הצבעוני על רקע בעל ניגודיות נמוכה.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="border-bottom:none">
+  <div class="wrap">
+    <div class="files">
+      <h3>הקבצים שנוצרו</h3>
+      <p style="color:#aebfe6;margin-bottom:8px">לוגו (וקטור) בתיקיית <code>brand/</code>, וקובצי favicon ב־<code>brand/favicons/</code> (גם הועתקו לשורש האתר לשימוש מיידי).</p>
+      <ul>
+        <li><code>logo-mark.svg</code> — הסימן הראשי</li>
+        <li><code>logo-mark-white.svg</code> — לבן לרקע כהה</li>
+        <li><code>logo-mark-mono.svg</code> — חד־גוני</li>
+        <li><code>logo-horizontal-rtl.svg</code> — נעילה אופקית RTL</li>
+        <li><code>logo-stacked.svg</code> — נעילה מוערמת</li>
+        <li><code>favicon.svg</code> · <code>favicon.ico</code></li>
+        <li><code>favicon-16/32/48.png</code></li>
+        <li><code>apple-touch-icon.png</code> (180)</li>
+        <li><code>android-chrome-192/512.png</code></li>
+        <li><code>site.webmanifest</code> · <code>head-snippet.html</code></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  עובד משרד AI — קונספט לוגו ומדריך מותג · נבנה כקובצי מקור מוכנים לייצור
+</footer>
+
+</body>
+</html>

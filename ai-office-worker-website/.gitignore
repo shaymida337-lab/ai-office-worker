@@ -1,0 +1,18 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Local env / secrets (none needed for this static site, but just in case)
+.env
+.env.local
+
+# Vercel
+.vercel
+
+# Build helpers and brand source are not required at runtime.
+# Uncomment the next two lines if you prefer to keep them out of the repo:
+# _build/
+# brand/

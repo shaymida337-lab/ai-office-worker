@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" direction="rtl">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#0a1c4d"/>
+      <stop offset="1" stop-color="#143c9e"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3a6cff"/><stop offset="0.55" stop-color="#1d5bff"/><stop offset="1" stop-color="#143cbf"/>
+    </linearGradient>
+    <radialGradient id="g1" cx="0.12" cy="0.9" r="0.5"><stop offset="0" stop-color="#34d399" stop-opacity="0.45"/><stop offset="1" stop-color="#34d399" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" cx="0.9" cy="0.1" r="0.5"><stop offset="0" stop-color="#4f82ff" stop-opacity="0.5"/><stop offset="1" stop-color="#4f82ff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#g1)"/>
+  <rect width="1200" height="630" fill="url(#g2)"/>
+
+  <!-- logo tile top-right -->
+  <g transform="translate(960,90)">
+    <rect width="150" height="150" rx="38" fill="url(#tile)"/>
+    <path d="M40 111 L75 45 L110 111" fill="none" stroke="#fff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M50 90 H100" stroke="#34d399" stroke-width="15" stroke-linecap="round"/>
+  </g>
+
+  <!-- brand line -->
+  <text x="1110" y="150" text-anchor="end" direction="rtl"
+        font-family="'Assistant','Plus Jakarta Sans',Arial,sans-serif" font-size="34" font-weight="700" fill="#ffffff">עובד משרד <tspan fill="#34d399">AI</tspan></text>
+
+  <!-- headline -->
+  <text x="1110" y="340" text-anchor="end" direction="rtl"
+        font-family="'Assistant','Plus Jakarta Sans',Arial,sans-serif" font-size="82" font-weight="800" fill="#ffffff">עובד המשרד הווירטואלי</text>
+  <text x="1110" y="440" text-anchor="end" direction="rtl"
+        font-family="'Assistant','Plus Jakarta Sans',Arial,sans-serif" font-size="82" font-weight="800" fill="#ffffff">של העסק שלך</text>
+  <rect x="870" y="470" width="240" height="9" rx="4" fill="#34d399"/>
+
+  <!-- subheadline -->
+  <text x="1110" y="545" text-anchor="end" direction="rtl"
+        font-family="'Assistant','Plus Jakarta Sans',Arial,sans-serif" font-size="33" font-weight="600" fill="#c5d3f5">מיילים · חשבוניות · משימות · מסמכים · התראות אוטומטיות</text>
+</svg>

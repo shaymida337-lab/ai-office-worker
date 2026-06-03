@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>עובד משרד AI — עובד המשרד הווירטואלי של העסק שלך</title>
+<meta name="description" content="סריקת מיילים, זיהוי חשבוניות, ניהול משימות, ארגון מסמכים והתראות אוטומטיות במקום אחד. עובד משרד וירטואלי מבוסס בינה מלאכותית." />
+<meta name="theme-color" content="#1d5bff" />
+<link rel="canonical" href="https://ai-office-worker.com/" />
+<link rel="alternate" hreflang="he" href="https://ai-office-worker.com/" />
+<link rel="alternate" hreflang="x-default" href="https://ai-office-worker.com/" />
+
+<!-- Favicons -->
+<link rel="icon" href="favicon.ico" sizes="any" />
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+<link rel="manifest" href="site.webmanifest" />
+
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:locale" content="he_IL" />
+<meta property="og:site_name" content="עובד משרד AI" />
+<meta property="og:title" content="עובד משרד AI — עובד המשרד הווירטואלי של העסק שלך" />
+<meta property="og:description" content="סריקת מיילים, זיהוי חשבוניות, ניהול משימות, ארגון מסמכים והתראות אוטומטיות במקום אחד. עובד משרד וירטואלי מבוסס בינה מלאכותית." />
+<meta property="og:url" content="https://ai-office-worker.com/" />
+<meta property="og:image" content="https://ai-office-worker.com/og-image.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="עובד משרד AI — עובד המשרד הווירטואלי של העסק שלך" />
+<meta name="twitter:description" content="סריקת מיילים, זיהוי חשבוניות, ניהול משימות, ארגון מסמכים והתראות אוטומטיות במקום אחד. עובד משרד וירטואלי מבוסס בינה מלאכותית." />
+<meta name="twitter:image" content="https://ai-office-worker.com/og-image.png" />
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" onload="this.rel='stylesheet'" />
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" /></noscript>
+
+<link rel="stylesheet" href="assets/styles.css" />
+
+<!-- Analytics: loaded only after cookie consent. Set GA_MEASUREMENT_ID in assets/script.js (and he/assets/script.js). See GO-LIVE.md. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "name": "עובד משרד AI",
+      "url": "https://ai-office-worker.com/",
+      "logo": "https://ai-office-worker.com/android-chrome-512.png",
+      "sameAs": []
+    },
+    {
+      "@type": "WebSite",
+      "name": "עובד משרד AI",
+      "url": "https://ai-office-worker.com/",
+      "inLanguage": "he-IL"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "עובד משרד AI",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "description": "עובד משרד וירטואלי מבוסס בינה מלאכותית: סריקת מיילים, זיהוי חשבוניות, ניהול משימות, ארגון מסמכים והתראות אוטומטיות.",
+      "url": "https://ai-office-worker.com/",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "ILS" }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {"@type":"Question","name":"האם המידע שלי מאובטח?","acceptedAnswer":{"@type":"Answer","text":"כן. אנחנו מתחברים דרך OAuth של גוגל, לא שומרים סיסמאות, ומצפינים נתונים במעבר ובמנוחה. ניתן לבטל גישה בכל רגע."}},
+        {"@type":"Question","name":"לאילו שירותים המערכת מתחברת?","acceptedAnswer":{"@type":"Answer","text":"Gmail, Google Drive, Google Sheets ו-WhatsApp עסקי. המערכת יכולה לסרוק מיילים והודעות וואטסאפ, לזהות חשבוניות ומשימות, ולשלוח התראות."}},
+        {"@type":"Question","name":"האם צריך ידע טכני?","acceptedAnswer":{"@type":"Answer","text":"לא. ההתקנה היא בכמה קליקים — מתחברים לחשבון גוגל, בוחרים מה להפעיל, וזהו."}},
+        {"@type":"Question","name":"מתי המוצר יהיה זמין?","acceptedAnswer":{"@type":"Answer","text":"אנחנו פותחים גישה בהדרגה. הצטרפו לרשימת ההמתנה ותהיו מהראשונים לקבל גישה."}},
+        {"@type":"Question","name":"כמה זה יעלה?","acceptedAnswer":{"@type":"Answer","text":"התמחור יפורסם לפני ההשקה. נרשמים לרשימת ההמתנה מקבלים תנאים מוקדמים מיוחדים."}},
+        {"@type":"Question","name":"האם המערכת מבצעת תשלומים אוטומטית?","acceptedAnswer":{"@type":"Answer","text":"המערכת מזהה חשבוניות ומכינה הכל, אך פעולות רגישות כמו תשלום תמיד דורשות אישור שלכם."}}
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<a href="#main" class="skip-link">דלג לתוכן הראשי</a>
+<header class="nav" id="nav">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="עובד משרד AI — דף הבית"><span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 19 L12 5 L19 19" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.2 15 H15.8" stroke="#34d399" stroke-width="2.4" stroke-linecap="round"/></svg></span><span class="brand-copy"><span class="brand-name"><span class="ltr">Office AI</span> · עובד משרד</span><small>העובד שאף פעם לא מתעייף</small></span></a>
+    <nav class="nav-links" aria-label="ניווט ראשי">
+      <a href="index.html" class="active" aria-current="page">בית</a><a href="landing.html">דף נחיתה</a><a href="features.html">יכולות</a><a href="about.html">על המערכת</a><a href="security.html">אבטחה</a><a href="contact.html">יצירת קשר</a>
+    </nav>
+    <div class="nav-cta"><a href="contact.html" class="btn btn-ghost">דברו איתנו</a><a href="index.html#waitlist" class="btn btn-primary">הצטרפות לרשימת המתנה</a></div>
+    <button class="nav-toggle" aria-label="פתיחת תפריט" aria-expanded="false" aria-controls="nav"><span></span><span></span><span></span></button>
+  </div>
+</header>
+<main id="main">
+
+<section class="hero">
+  <div class="atmos" aria-hidden="true"><div class="grid-bg"></div><div class="blob b1"></div><div class="blob b2"></div></div>
+  <div class="container">
+    <div class="hero-grid">
+      <div>
+        <span class="eyebrow anim a1"><span class="dot"></span> עובד משרד מבוסס בינה מלאכותית</span>
+        <h1 class="anim a2">העבודה המשרדית גוזלת לך <span class="grad-text">שעות כל שבוע</span></h1>
+        <p class="hero-kicker anim a2">העובד המשרדי הראשון שאפשר פשוט לדבר איתו.</p>
+        <p class="lead anim a3">חשבוניות, מיילים, הודעות וואטסאפ, משימות ומסמכים — הכל נאסף, מזוהה, מסודר ומתעדכן אוטומטית במקום אחד.</p>
+        <div class="hero-actions anim a4">
+          <a href="#waitlist" class="btn btn-primary btn-lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg> הצטרפות לרשימת המתנה</a>
+          <a href="features.html" class="btn btn-ghost btn-lg">לראות את היכולות</a>
+        </div>
+        <div class="hero-proof anim a5">
+          <div class="avatars" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+          <div><div class="stars">★★★★★</div><small>עסקים קטנים ובעלי מקצוע כבר ברשימה</small></div>
+        </div>
+      </div>
+      <div class="mockup" aria-hidden="true">
+        <div class="float-chip top"><span class="badge-ico ico g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span><div><b>חשבונית זוהתה</b><span>₪1,240 · סופק לדרייב</span></div></div>
+        <div class="card">
+          <div class="card-top"><span class="ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 2h8M9 14h.01M15 14h.01"/></svg></span><b>עובד משרד AI</b><span class="status"><i></i> פעיל</span></div>
+          <div class="task-row"><span class="ico b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span><div class="meta"><b>מיילים והודעות סוּוגו</b><span>Gmail ו-WhatsApp · חשבונית ומשימה</span></div><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span></div>
+          <div class="task-row"><span class="ico g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg></span><div class="meta"><b>חשבונית נשמרה בדרייב</b><span>תיקייה: ספקים · אפריל</span></div><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span></div>
+          <div class="task-row"><span class="ico y"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span><div class="meta"><b>משימה חדשה נוצרה</b><span>לחזור ללקוח עד יום ג׳</span></div><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span></div>
+        </div>
+        <div class="float-chip bottom"><span class="badge-ico ico b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"/></svg></span><div><b>נשלחה התראה</b><span>וואטסאפ · בוצע ✓</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section--tight" aria-label="אינטגרציות">
+  <div class="container">
+    <p style="text-align:center;color:var(--muted);font-weight:600;margin-bottom:1.6rem">מתחבר לכלים שאתם כבר עובדים איתם</p>
+    <div class="marquee">
+      <div class="marquee-track">
+        <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Gmail</span><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> Google Drive</span><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg> Google Sheets</span><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"/></svg> WhatsApp</span><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg> חשבוניות</span><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> משימות</span>
+        <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Gmail</span><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> Google Drive</span><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg> Google Sheets</span><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"/></svg> WhatsApp</span><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg> חשבוניות</span><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> משימות</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="problem">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="eyebrow">הבעיה</span>
+      <h2>העבודה המשרדית גוזלת את הזמן שלכם</h2>
+      <p class="lead">כל יום הולכים לאיבוד שעות על משימות חוזרות שאפשר להפוך לאוטומטיות.</p>
+    </div>
+    <div class="split">
+      <div class="pain-list">
+        <div class="pain reveal"><span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg></span><div><b>מיילים שמציפים</b><p>חשבוניות ובקשות נבלעות בתיבה ומתפספסות.</p></div></div>
+        <div class="pain reveal d1"><span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg></span><div><b>חשבוניות מפוזרות</b><p>חיפוש ידני בין מיילים, הורדות ותיקיות.</p></div></div>
+        <div class="pain reveal d2"><span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg></span><div><b>משימות שנשכחות</b><p>אין מי שיתרגם מיילים למשימות ברורות.</p></div></div>
+      </div>
+      <div class="pain-list">
+        <div class="pain reveal d1"><span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg></span><div><b>מסמכים בלי סדר</b><p>אין מבנה אחיד, קשה למצוא קבצים אחר כך.</p></div></div>
+        <div class="pain reveal d2"><span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg></span><div><b>בלי התראות בזמן</b><p>דברים דחופים מתגלים מאוחר מדי.</p></div></div>
+        <div class="pain reveal d3"><span class="x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg></span><div><b>עבודה ידנית אינסופית</b><p>הזמן היקר שלכם הולך על תפעול, לא על העסק.</p></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="solution" style="background:var(--bg-deep)">
+  <div class="container">
+    <div class="split">
+      <div class="reveal">
+        <span class="eyebrow green">הפתרון</span>
+        <h2 style="margin:1rem 0 1.2rem">עובד שמטפל בהכול — אוטומטית</h2>
+        <p class="lead" style="margin-bottom:1.5rem">עובד משרד AI קורא מיילים והודעות וואטסאפ, מזהה חשבוניות, בקשות ומשימות, מסדר מסמכים ושולח לכם התראה כשצריך.</p>
+        <div class="benefit-row"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span><div><b>חוסך שעות בכל שבוע</b><p>פחות עבודה ידנית, יותר זמן ללקוחות ולעסק.</p></div></div>
+        <div class="benefit-row"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span><div><b>שום דבר לא מתפספס</b><p>כל חשבונית, משימה ובקשה מטופלות במקום.</p></div></div>
+        <div class="benefit-row"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span><div><b>אתם תמיד בשליטה</b><p>פעולות רגישות דורשות אישור — אתם מחליטים.</p></div></div>
+      </div>
+      <div class="solution-panel reveal d2">
+        <span class="eyebrow green" style="background:rgba(52,211,153,.16)">איך זה זורם</span>
+        <h3 style="margin:1rem 0 .4rem">ממייל או וואטסאפ ועד סדר מלא — בלי ידיים</h3>
+        <div class="flow">
+          <div class="flow-step"><span class="n">1</span><span>הודעה חדשה נכנסת ב-Gmail או ב-WhatsApp</span><span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></div>
+          <div class="flow-step"><span class="n">2</span><span>ה-AI מזהה חשבונית, בקשה או משימה</span><span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></div>
+          <div class="flow-step"><span class="n">3</span><span>הקובץ נשמר ומסודר בדרייב</span><span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></div>
+          <div class="flow-step"><span class="n">4</span><span>הנתונים מתעדכנים ב-Google Sheets</span><span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></div>
+          <div class="flow-step"><span class="n">5</span><span>מקבלים התראה בוואטסאפ על מה שחשוב</span><span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="features">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="eyebrow">היכולות</span>
+      <h2>כל מה שעובד משרד צריך לעשות</h2>
+      <p class="lead">שש עשרה יכולות שעובדות יחד כדי לנהל את העבודה השוטפת במקומכם.</p>
+    </div>
+    <div class="bento reveal">
+      <article class="feature-card span-3">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></div>
+        <h3>סריקת מיילים חכמה</h3>
+        <p class="grow">ה-AI קורא את התיבה, מזהה מה חשוב וממיין אוטומטית לפי נושא ודחיפות.</p>
+      </article>
+      <article class="feature-card span-3">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"/></svg></div>
+        <h3>סריקת WhatsApp עסקי</h3>
+        <p class="grow">המערכת סורקת הודעות וואטסאפ עסקיות, מזהה חשבוניות, בקשות ומשימות — ומעבירה אותן למעקב מסודר.</p>
+      </article>
+      <article class="feature-card accent span-3"><span class="tag">פופולרי</span>
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg></div>
+        <h3>זיהוי חשבוניות</h3>
+        <p class="grow">מאתר חשבוניות במייל ובוואטסאפ, מחלץ סכום, ספק ותאריך — ושומר הכול מסודר.</p>
+      </article>
+      <article class="feature-card accent span-3">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg></div>
+        <h3>הפקת חשבוניות אוטומטית</h3>
+        <p class="grow">המערכת יכולה להכין ולהפיק חשבוניות אוטומטית לפי תשלומים, הודעות או פעולות שבוצעו — ורק לאחר אישור בעל העסק.</p>
+      </article>
+      <article class="feature-card span-3">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+        <h3>אישור לפני שליחה</h3>
+        <p class="grow">לפני כל שליחה או הפקת חשבונית, המערכת מציגה תצוגה מקדימה ומבקשת אישור.</p>
+      </article>
+      <article class="feature-card accent span-3">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+        <h3>דוח חודשי מוכן לרואה חשבון</h3>
+        <p class="grow">המערכת מרכזת חשבוניות, הוצאות, תשלומים ומסמכים — ומכינה דוח חודשי מסודר ומוכן לשליחה לרואה החשבון.</p>
+      </article>
+      <article class="feature-card span-3">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg></div>
+        <h3>סיכום הוצאות והכנסות</h3>
+        <p class="grow">קבלת תמונת מצב ברורה של העסק כולל הוצאות, הכנסות, חשבוניות חסרות ותשלומים פתוחים.</p>
+      </article>
+      <article class="feature-card accent span-3">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div>
+        <h3>אפליקציה לעסק</h3>
+        <p class="grow">קבלת התראות, חיפוש חשבוניות, צפייה במשימות וניהול העסק — ישירות מהטלפון.</p>
+      </article>
+      <article class="feature-card span-3">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s7-4.4 7-11a7 7 0 1 0-14 0c0 6.6 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
+        <h3>ניהול מכל מקום</h3>
+        <p class="grow">בדרך, בבית או אצל לקוח — כל המידע של העסק זמין בלחיצה.</p>
+      </article>
+      <article class="feature-card span-2">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+        <h3>ארגון ב-Google Drive</h3>
+        <p class="grow">כל מסמך נשמר בתיקייה הנכונה במבנה אחיד וברור.</p>
+      </article>
+      <article class="feature-card span-2">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></div>
+        <h3>אינטגרציית Sheets</h3>
+        <p class="grow">מעדכן גיליונות מעקב אוטומטית — הוצאות, חשבוניות ומשימות.</p>
+      </article>
+      <article class="feature-card span-2">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"/></svg></div>
+        <h3>WhatsApp עסקי והתראות</h3>
+        <p class="grow">מקבלים עדכון בזמן אמת אחרי שהמערכת מזהה חשבונית, בקשה או משימה שדורשת תשומת לב.</p>
+      </article>
+      <article class="feature-card span-3">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+        <h3>חילוץ משימות</h3>
+        <p class="grow">הופך מיילים והודעות וואטסאפ למשימות ברורות עם תאריכי יעד.</p>
+      </article>
+      <article class="feature-card accent span-3">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 2h8M9 14h.01M15 14h.01"/></svg></div>
+        <h3>עוזר משרד AI</h3>
+        <p class="grow">שואלים אותו שאלות על המסמכים והנתונים — ומקבלים תשובה מיד.</p>
+      </article>
+      <article class="feature-card accent span-3">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3M8 21h8"/></svg></div>
+        <h3>עוזר קולי חכם לעסק</h3>
+        <p class="grow">דברו חופשי והמערכת תבין מה אתם צריכים — חיפוש חשבוניות, משימות, תשלומים, לקוחות ותזכורות.</p>
+      </article>
+      <article class="feature-card span-3">
+        <div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M8.5 11h5"/></svg></div>
+        <h3>חיפוש קולי מיידי</h3>
+        <p class="grow">במקום לחפש ידנית — פשוט שואלים בקול והמערכת מוצאת הכול תוך שניות.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section voice-section" id="voice">
+  <div class="container">
+    <div class="voice-panel reveal">
+      <div class="voice-copy">
+        <span class="eyebrow green">שליטה קולית</span>
+        <h2>תדברו למערכת כמו לעובד אמיתי</h2>
+        <p class="lead">במקום לחפש קבצים, לרשום משימות או לבדוק חשבוניות — פשוט מדברים.<br>המערכת מבינה קולית מה צריך לעשות, מבצעת פעולות אוטומטית ומחזירה תשובה ברורה.</p>
+        <div class="voice-examples">
+          <span>כמה כסף אני צריך לשלם השבוע?</span>
+          <span>האם נכנסה חשבונית מוולט?</span>
+          <span>תראה לי משימות פתוחות</span>
+          <span>שלח תזכורת ללקוח</span>
+          <span>מה עדיין לא שולם?</span>
+          <span>תחפש את החשבונית של בזק</span>
+          <span>תוודא שיצאה חשבונית ללקוח</span>
+          <span>תכין חשבונית חדשה</span>
+          <span>שלח חשבונית לאחר אישור</span>
+          <span>תכין דוח חודשי לרואה חשבון</span>
+          <span>איזה חשבוניות עדיין חסרות?</span>
+          <span>כמה הוצאות היו החודש?</span>
+          <span>תסכם לי את התשלומים של מאי</span>
+          <span>פתח לי את החשבונית האחרונה</span>
+          <span>מה המשימות שלי להיום?</span>
+          <span>כמה לקוחות עדיין לא שילמו?</span>
+        </div>
+      </div>
+      <div class="voice-visual" aria-hidden="true">
+        <div class="voice-orb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3M8 21h8"/></svg></div>
+        <div class="waveform"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <p>מקשיב, מבין ומבצע</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section mobile-section" id="mobile">
+  <div class="container">
+    <div class="mobile-panel reveal">
+      <div class="mobile-copy">
+        <span class="eyebrow">אפליקציה לטלפון</span>
+        <h2>המשרד שלכם גם בטלפון</h2>
+        <p class="lead">כל החשבוניות, המשימות, ההתראות והמסמכים זמינים מכל מקום — דרך אפליקציה נוחה ומהירה בטלפון.</p>
+        <div class="mobile-points">
+          <span>התראות בזמן אמת</span>
+          <span>חיפוש חשבוניות</span>
+          <span>משימות להיום</span>
+        </div>
+      </div>
+      <div class="phone-mockup" aria-hidden="true">
+        <div class="phone-shell">
+          <div class="phone-notch"></div>
+          <div class="phone-screen">
+            <div class="app-top"><b>AI Office Worker</b><span>חי</span></div>
+            <div class="app-card notify"><small>התראה חדשה</small><b>חשבונית זוהתה</b><p>וולט · ₪428 · ממתין לאישור</p></div>
+            <div class="app-grid">
+              <div><b>₪12.4K</b><span>הוצאות החודש</span></div>
+              <div><b>7</b><span>משימות פתוחות</span></div>
+            </div>
+            <div class="app-list">
+              <p><span></span> דוח לרואה חשבון מוכן</p>
+              <p><span></span> 3 לקוחות ממתינים לתשלום</p>
+              <p><span></span> חשבונית אחרונה נשמרה בדרייב</p>
+            </div>
+          </div>
+        </div>
+        <div class="mobile-notification">משימה חדשה להיום</div>
+        <div class="mobile-notification second">חשבונית מוכנה לבדיקה</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="how" style="background:var(--bg-deep)">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="eyebrow green">איך זה עובד</span>
+      <h2>מתחילים בשלושה צעדים</h2>
+      <p class="lead">בלי התקנות מסובכות ובלי ידע טכני.</p>
+    </div>
+    <div class="card-grid cols-3">
+      <div class="feature-card reveal"><div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></div><h3>1 · מתחברים</h3><p>חיבור מאובטח לחשבון גוגל דרך OAuth. בלי סיסמאות, עם הרשאות מינימליות.</p></div>
+      <div class="feature-card reveal d1"><div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg></div><h3>2 · בוחרים מה להפעיל</h3><p>מסמנים אילו משימות העובד ינהל — מיילים, חשבוניות, התראות ועוד.</p></div>
+      <div class="feature-card reveal d2"><div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></div><h3>3 · נותנים לו לעבוד</h3><p>העובד פועל ברקע ומעדכן אתכם. אתם מאשרים את מה שחשוב.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="audience">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="eyebrow">למי זה מתאים</span>
+      <h2>בנוי לעסקים שרצים מהר</h2>
+    </div>
+    <div class="card-grid cols-3">
+      <div class="feature-card reveal"><div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg></div><h3>בעלי מקצוע</h3><p>עורכי דין, רואי חשבון, יועצים ומטפלים שרוצים פחות ניירת ויותר לקוחות.</p></div>
+      <div class="feature-card accent reveal d1"><div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><h3>עסקים קטנים</h3><p>צוותים רזים שצריכים שהעבודה המשרדית תזוז לבד, בלי לשכור עוד אדם.</p></div>
+      <div class="feature-card reveal d2"><div class="f-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div><h3>מנהלי משרד</h3><p>מי שאחראי על הסדר — חשבוניות, מסמכים ומשימות — ורוצה הכול מרוכז.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="benefits" style="background:var(--bg-deep)">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="eyebrow green">יתרונות המערכת</span>
+      <h2>למה עסקים בוחרים בנו</h2>
+    </div>
+    <div class="stat-grid reveal" style="margin-bottom:3rem">
+      <div class="stat"><div class="num" data-count="12" data-suffix="+">12+</div><div class="label">שעות שנחסכות בשבוע</div></div>
+      <div class="stat"><div class="num" data-count="98" data-suffix="%">98%</div><div class="label">דיוק בזיהוי חשבוניות</div></div>
+      <div class="stat"><div class="num" data-count="16">16</div><div class="label">יכולות בעובד אחד</div></div>
+      <div class="stat"><div class="num" data-count="24" data-suffix="/7">24/7</div><div class="label">עובד בלי הפסקה</div></div>
+    </div>
+    <div class="split">
+      <div>
+        <div class="benefit-row reveal"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><div><b>חיסכון אמיתי בזמן</b><p>משימות שלקחו שעות קורות עכשיו ברקע.</p></div></div>
+        <div class="benefit-row reveal d1"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><div><b>מוכן להנהלת חשבונות</b><p>המערכת חוסכת שעות של סידור ניירת, חיפוש חשבוניות והתעסקות מול הנהלת חשבונות.</p></div></div>
+        <div class="benefit-row reveal d1"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></span><div><b>גם מהמחשב וגם מהטלפון</b><p>המערכת זמינה גם מהמחשב וגם מהטלפון — עם חוויית שימוש מהירה ונוחה.</p></div></div>
+        <div class="benefit-row reveal d2"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></span><div><b>אבטחה ופרטיות</b><p>חיבור OAuth, הצפנה, ושליטה מלאה על הגישה.</p></div></div>
+        <div class="benefit-row reveal d2"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span><div><b>דיוק גבוה</b><p>זיהוי אמין של חשבוניות, סכומים ופרטים.</p></div></div>
+      </div>
+      <div>
+        <div class="benefit-row reveal d1"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg></span><div><b>התקנה מהירה</b><p>מוכן לעבודה תוך דקות, בלי איש IT.</p></div></div>
+        <div class="benefit-row reveal d2"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 2h8M9 14h.01M15 14h.01"/></svg></span><div><b>חכם והקשרי</b><p>מבין מסמכים, חשבוניות, הודעות ומשימות — ועונה גם בקול.</p></div></div>
+        <div class="benefit-row reveal d3"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"/></svg></span><div><b>תמיד מעודכנים</b><p>סריקה והתראות בוואטסאפ על כל מה שדחוף.</p></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Testimonials section intentionally hidden until real customer quotes are provided. -->
+
+<section class="section" id="faq">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="eyebrow green">שאלות נפוצות</span>
+      <h2>כל מה שרציתם לדעת</h2>
+    </div>
+    <div class="faq reveal">
+      <div class="faq-item"><button class="faq-q" aria-expanded="false">האם המידע שלי מאובטח?<span class="pm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></span></button><div class="faq-a"><div class="faq-a-inner">כן. אנחנו מתחברים דרך OAuth של גוגל, לא שומרים סיסמאות, ומצפינים נתונים במעבר ובמנוחה. אפשר לבטל את הגישה בכל רגע.</div></div></div>
+      <div class="faq-item"><button class="faq-q" aria-expanded="false">לאילו שירותים המערכת מתחברת?<span class="pm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></span></button><div class="faq-a"><div class="faq-a-inner">Gmail, Google Drive, Google Sheets ו-WhatsApp עסקי. המערכת יכולה לסרוק מיילים והודעות וואטסאפ, לזהות חשבוניות ומשימות, ולשלוח התראות.</div></div></div>
+      <div class="faq-item"><button class="faq-q" aria-expanded="false">המערכת יכולה גם להוציא חשבוניות?<span class="pm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></span></button><div class="faq-a"><div class="faq-a-inner">כן. המערכת יכולה להכין ולהפיק חשבוניות אוטומטית, אך תמיד עם אישור של בעל העסק לפני שליחה או הפקה.</div></div></div>
+      <div class="faq-item"><button class="faq-q" aria-expanded="false">המערכת יכולה להכין חומר לרואה חשבון?<span class="pm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></span></button><div class="faq-a"><div class="faq-a-inner">כן. המערכת מרכזת את כל החשבוניות, המסמכים והתשלומים ומכינה דוח חודשי מסודר ומוכן לשליחה לרואה החשבון.</div></div></div>
+      <div class="faq-item"><button class="faq-q" aria-expanded="false">אפשר לדבר למערכת בקול?<span class="pm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></span></button><div class="faq-a"><div class="faq-a-inner">כן. המערכת תומכת בשליטה קולית חכמה, כך שאפשר לשאול שאלות, לחפש מסמכים, לבדוק תשלומים ולנהל משימות פשוט בדיבור.</div></div></div>
+      <div class="faq-item"><button class="faq-q" aria-expanded="false">האם צריך ידע טכני?<span class="pm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></span></button><div class="faq-a"><div class="faq-a-inner">לא. ההתקנה היא בכמה קליקים — מתחברים לחשבון גוגל, בוחרים מה להפעיל, וזהו.</div></div></div>
+      <div class="faq-item"><button class="faq-q" aria-expanded="false">מתי המוצר יהיה זמין?<span class="pm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></span></button><div class="faq-a"><div class="faq-a-inner">אנחנו פותחים גישה בהדרגה. הצטרפו לרשימת ההמתנה כדי להיות מהראשונים.</div></div></div>
+      <div class="faq-item"><button class="faq-q" aria-expanded="false">כמה זה יעלה?<span class="pm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></span></button><div class="faq-a"><div class="faq-a-inner">התמחור יפורסם לפני ההשקה. נרשמים לרשימת ההמתנה מקבלים תנאים מוקדמים מיוחדים.</div></div></div>
+      <div class="faq-item"><button class="faq-q" aria-expanded="false">האם המערכת מבצעת תשלומים אוטומטית?<span class="pm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></span></button><div class="faq-a"><div class="faq-a-inner">המערכת מזהה חשבוניות ומכינה הכול, אך פעולות רגישות כמו תשלום תמיד דורשות אישור מצדכם.</div></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="waitlist">
+  <div class="container">
+    <div class="waitlist">
+      <div class="wl-glow"></div><div class="wl-glow g2"></div>
+      <div class="waitlist-inner">
+        <span class="eyebrow green" style="background:rgba(52,211,153,.16)">רשימת המתנה</span>
+        <h2 style="margin:1rem 0 0">היו מהראשונים להעסיק עובד AI</h2>
+        <p class="lead">הצטרפו לרשימת ההמתנה וקבלו גישה מוקדמת ותנאים מיוחדים להרשמה מוקדמת.</p>
+        <form class="wl-form" novalidate>
+          <label for="wl-email" class="sr-only">כתובת אימייל</label>
+          <input id="wl-email" type="email" name="email" placeholder="כתובת האימייל שלכם" required autocomplete="email" />
+          <button type="submit" class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg> הצטרפות</button>
+        </form>
+        <div class="wl-error" role="alert" aria-live="polite"></div>
+        <p class="wl-note">בלי ספאם. אפשר לבטל בכל רגע.</p>
+        <div class="wl-success" role="status">
+          <span class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span>
+          <div><b style="font-size:1.2rem">נרשמתם בהצלחה!</b><br><span style="opacity:.8">נעדכן את <span data-email></span> ברגע שתיפתח גישה.</span></div>
+        </div>
+        <div class="wl-tags">
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg> גישה מוקדמת</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg> תנאים מיוחדים</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg> ליווי בהקמה</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+<footer class="footer">
+  <div class="container">
+    <div class="footer-top">
+      <div><a class="brand" href="index.html"><span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 19 L12 5 L19 19" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.2 15 H15.8" stroke="#34d399" stroke-width="2.4" stroke-linecap="round"/></svg></span><span class="brand-copy"><span class="brand-name"><span class="ltr">Office AI</span> · עובד משרד</span><small>העובד שאף פעם לא מתעייף</small></span></a><p class="about-blurb">עובד המשרד הווירטואלי של העסק שלך — סורק Gmail ו-WhatsApp, מזהה חשבוניות ומשימות, ומסדר מסמכים ונתונים אוטומטית.</p>
+      </div>
+      <div class="footer-col"><h4>המוצר</h4><ul><li><a href="landing.html">דף נחיתה</a></li><li><a href="features.html">יכולות</a></li><li><a href="index.html#benefits">יתרונות</a></li><li><a href="index.html#faq">שאלות נפוצות</a></li><li><a href="index.html#waitlist">רשימת המתנה</a></li></ul></div>
+      <div class="footer-col"><h4>החברה</h4><ul><li><a href="about.html">על המערכת</a></li><li><a href="contact.html">יצירת קשר</a></li><li><a href="security.html">אבטחה</a></li></ul></div>
+      <div class="footer-col"><h4>מידע משפטי</h4><ul><li><a href="privacy.html">מדיניות פרטיות</a></li><li><a href="terms.html">תנאי שימוש</a></li><li><a href="security.html">אבטחה</a></li></ul></div>
+    </div>
+    <div class="footer-bottom"><span>© <span data-year>2026</span> עובד משרד AI. כל הזכויות שמורות.</span></div>
+  </div>
+</footer>
+<script src="assets/script.js"></script>
+</body>
+</html>

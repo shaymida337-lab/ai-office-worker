@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="עובד משרד AI mark (monochrome)">
+  <path d="M44 210 L128 44 L212 210" fill="none" stroke="#0b2a6b" stroke-width="26"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M64 168 H192" stroke="#0b2a6b" stroke-width="24" stroke-linecap="round" opacity="0.55"/>
+  <path d="M206 34 l6.5 17 17 6.5 -17 6.5 -6.5 17 -6.5 -17 -17 -6.5 17 -6.5 z" fill="#0b2a6b"/>
+</svg>

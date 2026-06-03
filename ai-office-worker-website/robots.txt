@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ai-office-worker.com/sitemap.xml
+Sitemap: https://ai-office-worker.com/he/sitemap.xml

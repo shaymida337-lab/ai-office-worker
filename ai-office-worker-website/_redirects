@@ -1,0 +1,6 @@
+# Static hosting redirects & 404 handling
+# (Used by Netlify and Render static sites)
+
+# Serve the custom 404 for unknown paths
+/he/*    /he/404.html   404
+/*       /404.html      404
