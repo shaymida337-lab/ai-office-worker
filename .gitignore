@@ -31,3 +31,6 @@ logs/
 tmp/
 temp/
 render.env
+
+# Local Netlify folder
+.netlify
