@@ -14,10 +14,20 @@ type RequiredEnvName =
   | "R2_SECRET_ACCESS_KEY";
 
 function requiredEnv(name: RequiredEnvName): string {
-  const value = process.env[name];
+  const value = process.env[name]?.trim();
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
+  return value;
+}
+
+function validatePostgresUrl(name: "DIRECT_URL", value: string): string {
+  if (!value.startsWith("postgresql://") && !value.startsWith("postgres://")) {
+    throw new Error(
+      `${name} is missing or malformed - it must start with postgresql://`
+    );
+  }
+
   return value;
 }
 
@@ -113,7 +123,7 @@ function runPgDump(directUrl: string, outputPath: string): Promise<void> {
 }
 
 async function main() {
-  const directUrl = requiredEnv("DIRECT_URL");
+  const directUrl = validatePostgresUrl("DIRECT_URL", requiredEnv("DIRECT_URL"));
   const accountId = requiredEnv("R2_ACCOUNT_ID");
   const accessKeyId = requiredEnv("R2_ACCESS_KEY_ID");
   const secretAccessKey = requiredEnv("R2_SECRET_ACCESS_KEY");
