@@ -799,13 +799,13 @@ export default function DashboardPage() {
       <Nav />
       <div className="mb-8 flex min-w-0 flex-col gap-6 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 flex-col gap-4">
-          <div className="flex items-center gap-3 rounded-3xl border border-[var(--border)] bg-[linear-gradient(135deg,rgba(15,23,42,0.95),rgba(22,22,30,0.88))] p-4 shadow-card backdrop-blur">
-            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/5 text-ink-primary">
+          <div className="flex items-center gap-3 rounded-3xl border border-[#dbe5ff] bg-[#f8fbff] p-4 shadow-[0_10px_34px_rgba(20,40,90,0.08)]">
+            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-[#cdd9ff] bg-[#e8eeff] text-[#1d5bff]">
               <Building2 className="h-7 w-7" />
             </span>
             <div className="min-w-0">
-              <div className="text-[12px] font-bold uppercase tracking-[0.22em] text-ink-muted">{businessProfile.title}</div>
-              <div className="mt-1 text-sm text-ink-secondary">{businessTypeLabel(organizationSettings?.businessType)} · {enabledModuleCount(organizationSettings)} מודולים פעילים</div>
+              <div className="text-[12px] font-bold uppercase tracking-[0.22em] text-[#1d5bff]">{businessProfile.title}</div>
+              <div className="mt-1 text-sm font-semibold text-[#0e1116]">{businessTypeLabel(organizationSettings?.businessType)} · {enabledModuleCount(organizationSettings)} מודולים פעילים</div>
             </div>
           </div>
           <div>
@@ -817,12 +817,18 @@ export default function DashboardPage() {
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <div className="text-[12px] font-extrabold uppercase tracking-[0.2em] text-accent-primary">פעולות מהירות</div>
-              <p className="mt-1 text-sm">פעולה ראשית אחת, וכל השאר זמינות לפי צורך.</p>
+              <p className="mt-1 text-sm">שתי הסריקות המרכזיות זמינות מיד.</p>
             </div>
           </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-2" data-help="scan-gmail">
-            <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק ג׳ימייל"}</button>
-            <HelpTooltip text="מחפש חשבוניות חדשות במייל ומוסיף אותן למערכת." label="סרוק ג׳ימייל" />
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2" data-help="scan-gmail">
+              <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק ג׳ימייל"}</button>
+              <HelpTooltip text="מחפש חשבוניות חדשות במייל ומוסיף אותן למערכת." label="סרוק ג׳ימייל" />
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-2" data-help="scan-whatsapp">
+              <button className="btn" onClick={runWhatsAppScan} disabled={whatsAppScanning || !whatsAppConnected}><MessageCircle className="h-4 w-4" />{whatsAppScanning ? "סורק וואטסאפ..." : "סרוק וואטסאפ"}</button>
+              <HelpTooltip text="בודק מסמכים והודעות שנשלחו בווטסאפ ומנסה לזהות חשבוניות." label="סרוק וואטסאפ" />
+            </div>
           </div>
           <details className="group mt-3 rounded-2xl border border-[#e6eaf2] bg-[#f4f6fb]">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-bold text-[#0e1116] transition hover:text-[#1d5bff] [&::-webkit-details-marker]:hidden">
@@ -833,10 +839,6 @@ export default function DashboardPage() {
               <div>
                 <div className="mb-2 text-xs font-bold text-ink-muted">סריקות</div>
                 <div className="flex min-w-0 flex-wrap gap-2">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2" data-help="scan-whatsapp">
-                    <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#d7def0] bg-white px-3.5 py-2 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={runWhatsAppScan} disabled={whatsAppScanning || !whatsAppConnected}><MessageCircle className="h-4 w-4" />{whatsAppScanning ? "סורק וואטסאפ..." : "סרוק וואטסאפ"}</button>
-                    <HelpTooltip text="בודק מסמכים והודעות שנשלחו בווטסאפ ומנסה לזהות חשבוניות." label="סרוק וואטסאפ" />
-                  </div>
                   <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#d7def0] bg-white px-3.5 py-2 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={scanAllClients} disabled={syncing}><RefreshCcw className="h-4 w-4" />סרוק לקוחות</button>
                 </div>
               </div>
@@ -873,11 +875,7 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="text-sm font-bold text-amber-100">השלימו את ההגדרה לפני התחלת סריקות</div>
-              <p className="mt-1 text-sm text-ink-secondary">חברו ג׳ימייל ווואטסאפ כדי להפעיל סריקות, דרייב, שיטס ודשבורד מלא.</p>
-            </div>
-          <div className="flex min-w-0 flex-wrap gap-2">
-              {!gmailConnected && <button type="button" className="btn btn-secondary" onClick={connectGmail}>חבר ג׳ימייל</button>}
-              {!whatsAppConnected && <button type="button" className="btn btn-secondary" onClick={() => router.push("/dashboard/whatsapp")}>חבר וואטסאפ</button>}
+              <p className="mt-1 text-sm text-ink-secondary">חברו את השירותים החסרים ישירות בכרטיסי ״חיבורי מערכת״ כדי להפעיל סריקות, דרייב, שיטס ודשבורד מלא.</p>
             </div>
           </div>
         </section>
@@ -1000,7 +998,7 @@ export default function DashboardPage() {
       {setupComplete ? (
         <ActionCenter recommendations={actionRecommendations} onNavigate={(href) => router.push(href)} />
       ) : (
-        <SetupLockedNotice onConnectGmail={connectGmail} onConnectWhatsApp={() => router.push("/dashboard/whatsapp")} />
+        <SetupLockedNotice />
       )}
 
       <section className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-5" data-help="integration-metrics">
@@ -1274,22 +1272,25 @@ function SystemConnectionsPanel({
             <button type="button" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2.5 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={onRunSystemCheck}>בדיקת מערכת</button>
             <HelpTooltip text="בודק שכל החיבורים עובדים: ג׳ימייל, גוגל דרייב, גוגל שיטס, וואטסאפ ושרת." label="בדוק מערכת" />
           </div>
-          {!gmailConnected && <button type="button" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2.5 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={onConnectGmail}>חבר ג׳ימייל</button>}
-          {whatsAppConnected ? (
-            <span className="badge badge-ok justify-center py-3">וואטסאפ מחובר</span>
-          ) : (
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <button type="button" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2.5 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={onConnectWhatsApp}>חבר וואטסאפ</button>
-              <HelpTooltip text="מחבר את המערכת לחשבון הווטסאפ העסקי שלך." label="חבר וואטסאפ" />
-            </div>
-          )}
         </div>
       </div>
 
       <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
-        {components.map((component) => (
-          <ConnectionStatusItem key={component.name} component={component} />
-        ))}
+        {components.map((component) => {
+          const connectAction =
+            component.name === "gmail" || component.name === "drive" || component.name === "sheets"
+              ? onConnectGmail
+              : component.name === "whatsapp"
+                ? onConnectWhatsApp
+                : undefined;
+          return (
+            <ConnectionStatusItem
+              key={component.name}
+              component={component}
+              onConnect={connectAction}
+            />
+          );
+        })}
       </div>
 
       <div className="mt-4 min-w-0 rounded-2xl border border-[var(--border-subtle)] bg-surface-primary/60 p-3">
@@ -1336,17 +1337,30 @@ function SystemConnectionsPanel({
   );
 }
 
-function ConnectionStatusItem({ component }: { component: SystemComponentStatus }) {
+function ConnectionStatusItem({ component, onConnect }: { component: SystemComponentStatus; onConnect?: () => void }) {
+  const showConnect = !component.connected && Boolean(onConnect);
+
   return (
     <div className="min-w-0 rounded-2xl border border-[var(--border-subtle)] bg-surface-primary/70 p-3">
-      <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex min-w-0 flex-col gap-3">
         <div className="min-w-0">
           <div className="text-sm font-bold text-ink-primary">{systemComponentLabel(component.label)}</div>
           <div className="mt-1 break-words text-xs text-ink-secondary">{systemReasonLabel(component.reason) ?? "הבדיקה החיה עברה בהצלחה"}</div>
         </div>
-        <span className={`badge w-fit ${component.connected ? "badge-ok" : "badge-error"} shrink-0`}>
-          {component.connected ? "מחובר" : "לא מחובר"}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`badge w-fit ${component.connected ? "badge-ok" : "badge-error"} shrink-0`}>
+            {component.connected ? "מחובר" : "לא מחובר"}
+          </span>
+          {showConnect && (
+            <button
+              type="button"
+              className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7]"
+              onClick={onConnect}
+            >
+              חבר
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1388,15 +1402,11 @@ function SystemCheckModal({ health, checking, onClose, onRunAgain }: {
   );
 }
 
-function SetupLockedNotice({ onConnectGmail, onConnectWhatsApp }: { onConnectGmail: () => void; onConnectWhatsApp: () => void }) {
+function SetupLockedNotice() {
   return (
     <section className="mb-8 rounded-3xl border border-[var(--border)] bg-surface-secondary p-5 text-center shadow-card">
       <h2>הדשבורד המתקדם ייפתח אחרי ההגדרה</h2>
-      <p className="mx-auto mt-2 max-w-2xl text-sm">חברו ג׳ימייל ווואטסאפ כדי לפתוח המלצות מתקדמות, טבלאות עבודה וסריקות עומק. המדדים והסטטוס הבסיסיים נשארים זמינים.</p>
-      <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
-        <button type="button" className="btn btn-secondary" onClick={onConnectGmail}>חבר ג׳ימייל</button>
-        <button type="button" className="btn btn-secondary" onClick={onConnectWhatsApp}>חבר וואטסאפ</button>
-      </div>
+      <p className="mx-auto mt-2 max-w-2xl text-sm">חברו את השירותים החסרים בכרטיסי ״חיבורי מערכת״ למעלה כדי לפתוח המלצות מתקדמות, טבלאות עבודה וסריקות עומק. המדדים והסטטוס הבסיסיים נשארים זמינים.</p>
     </section>
   );
 }

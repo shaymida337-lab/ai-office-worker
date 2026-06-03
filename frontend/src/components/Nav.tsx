@@ -292,12 +292,12 @@ export function Nav() {
             <Logo size="md" iconOnly />
           </Link>
           <div className="relative mx-auto hidden w-full max-w-xl sm:block">
-            <div className="flex h-11 items-center gap-3 rounded-xl border border-[var(--border)] bg-surface-hover px-3 text-[#E2E8F0] shadow-card focus-within:border-accent-primary/60">
-              <Search className="h-4 w-4 text-[#CBD5E1]" />
+            <div className="flex h-12 items-center gap-3 rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[#0e1116] shadow-[0_8px_24px_rgba(20,40,90,0.06)] transition focus-within:border-[#1d5bff] focus-within:shadow-[0_0_0_4px_rgba(29,91,255,0.10)]">
+              <Search className="h-5 w-5 shrink-0 text-[#1d5bff]" />
               <input
                 ref={searchInputRef}
-                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-base font-medium text-[#F8FAFC] outline-none placeholder:text-[#CBD5E1]"
-                placeholder="חיפוש לקוחות, חשבוניות, משימות..."
+                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[16px] font-semibold text-[#0e1116] outline-none placeholder:text-[#6b7686]"
+                placeholder="חיפוש לקוחות, חשבוניות, ספקים ומשימות"
                 value={searchQuery}
                 onChange={(event) => {
                   setSearchQuery(event.target.value);
@@ -309,7 +309,7 @@ export function Nav() {
                   void loadSearchData();
                 }}
               />
-              <kbd className="rounded-md border border-[var(--border)] bg-surface-card px-2 py-1 text-sm text-[#CBD5E1]">Ctrl K</kbd>
+              <kbd className="rounded-md border border-[#e6eaf2] bg-[#f4f6fb] px-2 py-1 text-sm font-semibold text-[#6b7686]">Ctrl K</kbd>
             </div>
             {searchOpen && searchQuery.trim().length >= 2 && (
               <div className="absolute left-0 right-0 top-12 z-[80] overflow-hidden rounded-2xl border border-[var(--border)] bg-surface-secondary shadow-card">
