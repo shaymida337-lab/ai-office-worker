@@ -72,7 +72,7 @@ export default function DocumentReviewsPage() {
       <div className="mb-8">
         <div className="page-kicker">דיוק מסמכים</div>
         <h1>מסמכים לבדיקה</h1>
-        <p>מסמכים מ-Gmail ו-WhatsApp עם confidence נמוך או נתונים חסרים. אישור ידני יכניס אותם לתשלומי ספקים.</p>
+        <p>מסמכים מג׳ימייל ומוואטסאפ עם רמת ודאות נמוכה או נתונים חסרים. אישור ידני יכניס אותם לתשלומי ספקים.</p>
       </div>
 
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-base text-ink-primary">{message}</div>}
@@ -103,7 +103,7 @@ export default function DocumentReviewsPage() {
                   <td>{item.totalAmount == null ? "—" : `₪${item.totalAmount.toLocaleString("he-IL")}`}</td>
                   <td>{item.supplierName ?? "לא מזוהה"}</td>
                   <td>
-                    <div>{item.uncertaintyReason ?? "confidence נמוך"}</div>
+                    <div>{item.uncertaintyReason ?? "רמת ודאות נמוכה"}</div>
                     <div className="text-sm text-ink-secondary">{Math.round(item.confidenceScore * 100)}%</div>
                   </td>
                   <td>{item.driveFileUrl ? <a className="text-accent-primary underline-offset-4 hover:underline" href={item.driveFileUrl} target="_blank" rel="noreferrer">פתח</a> : "—"}</td>
@@ -128,7 +128,7 @@ export default function DocumentReviewsPage() {
 }
 
 function sourceLabel(source: string) {
-  return source === "whatsapp" ? "WhatsApp" : "Gmail";
+  return source === "whatsapp" ? "וואטסאפ" : "ג׳ימייל";
 }
 
 function documentTypeLabel(type: string) {
