@@ -209,7 +209,7 @@ export default function InvoicesPage() {
       {filtered.length === 0 && (
         <div className="card">
           <h2>לא נמצאו חשבוניות</h2>
-          <p className="mt-2 text-base text-[#E2E8F0]">
+          <p className="mt-2 text-base text-[#6b7686]">
             נסה לשנות את הסינון או להפעיל סריקת חשבוניות ללקוחות עם ג׳ימייל מחובר.
           </p>
         </div>
