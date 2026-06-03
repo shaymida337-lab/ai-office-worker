@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { BackendWarmup } from "@/components/BackendWarmup";
-import { Footer } from "@/components/Footer";
 import { HelpCenter } from "@/components/HelpCenter";
 import { NatalieAssistantWidget } from "@/components/NatalieAssistantWidget";
 import "./globals.css";
@@ -34,7 +33,6 @@ export default function RootLayout({
       <body>
         <BackendWarmup />
         {children}
-        <Footer />
         <HelpCenter />
         <NatalieAssistantWidget />
       </body>
