@@ -926,7 +926,7 @@ export default function DashboardPage() {
       </section>
 
       {error && <div className="toast border-red-400/30 text-red-200">{error}</div>}
-      {stats.sheetsReconciliation?.warning && (
+      {process.env.NODE_ENV === "development" && stats.sheetsReconciliation?.warning && (
         <div className="toast border-amber-400/40 text-amber-100">
           אזהרת גוגל שיטס: קיימים {stats.sheetsReconciliation.difference} הבדלים בין מסד הנתונים לגוגל שיטס
           ({stats.sheetsReconciliation.dbCount} במסד הנתונים, {stats.sheetsReconciliation.googleSheetCount} בגוגל שיטס).
