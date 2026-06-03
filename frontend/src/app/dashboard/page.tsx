@@ -797,8 +797,8 @@ export default function DashboardPage() {
   return (
     <div className="container">
       <Nav />
-      <div className="mb-8 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-        <div className="flex flex-col gap-4">
+      <div className="mb-8 flex min-w-0 flex-col gap-6 md:flex-row md:items-start md:justify-between">
+        <div className="flex min-w-0 flex-col gap-4">
           <div className="flex items-center gap-3 rounded-3xl border border-[var(--border)] bg-[linear-gradient(135deg,rgba(15,23,42,0.95),rgba(22,22,30,0.88))] p-4 shadow-card backdrop-blur">
             <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/5 text-ink-primary">
               <Building2 className="h-7 w-7" />
@@ -813,19 +813,43 @@ export default function DashboardPage() {
             <p>{businessProfile.subtitle}</p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <div className="inline-flex items-center gap-2" data-help="scan-gmail">
+        <section className="w-full min-w-0 rounded-3xl border border-[var(--border)] bg-white p-4 shadow-card md:w-auto md:min-w-[24rem] md:max-w-[38rem]">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[12px] font-extrabold uppercase tracking-[0.2em] text-accent-primary">פעולות מהירות</div>
+              <p className="mt-1 text-sm">פעולה ראשית אחת, וכל השאר זמינות לפי צורך.</p>
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2" data-help="scan-gmail">
             <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק ג׳ימייל"}</button>
-            <HelpTooltip text="מחפש חשבוניות חדשות במייל ומוסיף אותן למערכת." label="סרוק Gmail" />
+            <HelpTooltip text="מחפש חשבוניות חדשות במייל ומוסיף אותן למערכת." label="סרוק ג׳ימייל" />
           </div>
-          <div className="inline-flex items-center gap-2" data-help="scan-whatsapp">
-            <button className="btn btn-secondary" onClick={runWhatsAppScan} disabled={whatsAppScanning || !whatsAppConnected}><MessageCircle className="h-4 w-4" />{whatsAppScanning ? "סורק וואטסאפ..." : "סרוק וואטסאפ"}</button>
-            <HelpTooltip text="בודק מסמכים והודעות שנשלחו בווטסאפ ומנסה לזהות חשבוניות." label="סרוק WhatsApp" />
-          </div>
-          <button className="btn btn-secondary" onClick={scanAllClients} disabled={syncing}><RefreshCcw className="h-4 w-4" />סרוק לקוחות</button>
-          <button className="btn btn-secondary" onClick={() => router.push("/dashboard/clients")}><Plus className="h-4 w-4" />הוסף לקוח</button>
-          <button className="btn btn-secondary" onClick={() => router.push("/dashboard/business-settings")}>התאם את המערכת</button>
-        </div>
+          <details className="group mt-3 rounded-2xl border border-[#e6eaf2] bg-[#f4f6fb]">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-bold text-[#0e1116] transition hover:text-[#1d5bff] [&::-webkit-details-marker]:hidden">
+              <span>פעולות נוספות</span>
+              <span className="text-xs text-[#6b7686] transition group-open:rotate-180">⌄</span>
+            </summary>
+            <div className="grid gap-4 border-t border-[#e6eaf2] p-3">
+              <div>
+                <div className="mb-2 text-xs font-bold text-ink-muted">סריקות</div>
+                <div className="flex min-w-0 flex-wrap gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2" data-help="scan-whatsapp">
+                    <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#d7def0] bg-white px-3.5 py-2 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={runWhatsAppScan} disabled={whatsAppScanning || !whatsAppConnected}><MessageCircle className="h-4 w-4" />{whatsAppScanning ? "סורק וואטסאפ..." : "סרוק וואטסאפ"}</button>
+                    <HelpTooltip text="בודק מסמכים והודעות שנשלחו בווטסאפ ומנסה לזהות חשבוניות." label="סרוק וואטסאפ" />
+                  </div>
+                  <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#d7def0] bg-white px-3.5 py-2 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={scanAllClients} disabled={syncing}><RefreshCcw className="h-4 w-4" />סרוק לקוחות</button>
+                </div>
+              </div>
+              <div>
+                <div className="mb-2 text-xs font-bold text-ink-muted">ניהול</div>
+                <div className="flex min-w-0 flex-wrap gap-2">
+                  <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-transparent bg-white px-3.5 py-2 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={() => router.push("/dashboard/clients")}><Plus className="h-4 w-4" />הוסף לקוח</button>
+                  <button className="inline-flex min-h-10 items-center justify-center rounded-xl border border-transparent bg-white px-3.5 py-2 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={() => router.push("/dashboard/business-settings")}>התאם את המערכת</button>
+                </div>
+              </div>
+            </div>
+          </details>
+        </section>
       </div>
 
       <div data-help="system-connections">
@@ -848,12 +872,12 @@ export default function DashboardPage() {
         <section className="mb-4 rounded-3xl border border-amber-400/30 bg-amber-400/10 p-4 shadow-card">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <div className="text-sm font-bold text-amber-100">Complete setup before starting scans</div>
-              <p className="mt-1 text-sm text-ink-secondary">חבר Gmail ו-WhatsApp כדי להפעיל סריקות, דרייב, שיטס ודשבורד מלא.</p>
+              <div className="text-sm font-bold text-amber-100">השלימו את ההגדרה לפני התחלת סריקות</div>
+              <p className="mt-1 text-sm text-ink-secondary">חברו ג׳ימייל ווואטסאפ כדי להפעיל סריקות, דרייב, שיטס ודשבורד מלא.</p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              {!gmailConnected && <button type="button" className="btn" onClick={connectGmail}>Connect Gmail</button>}
-              {!whatsAppConnected && <button type="button" className="btn" onClick={() => router.push("/dashboard/whatsapp")}>Connect WhatsApp</button>}
+          <div className="flex min-w-0 flex-wrap gap-2">
+              {!gmailConnected && <button type="button" className="btn btn-secondary" onClick={connectGmail}>חבר ג׳ימייל</button>}
+              {!whatsAppConnected && <button type="button" className="btn btn-secondary" onClick={() => router.push("/dashboard/whatsapp")}>חבר וואטסאפ</button>}
             </div>
           </div>
         </section>
@@ -868,7 +892,7 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <span className={`badge ${gmailConnected ? "badge-ok" : "badge-warn"}`}>{gmailConnected ? "ג׳ימייל מחובר" : "ג׳ימייל לא מחובר"}</span>
             {!initialSetupComplete && (
-              <button type="button" className="btn w-full sm:w-auto" onClick={startInitialSetup} disabled={firstScanRunning || Boolean(activeScanId)}>
+              <button type="button" className="btn btn-secondary w-full sm:w-auto" onClick={startInitialSetup} disabled={firstScanRunning || Boolean(activeScanId)}>
                 התחל הגדרה ראשונית
               </button>
             )}
@@ -883,7 +907,7 @@ export default function DashboardPage() {
             title="5. סריקה"
             done={Boolean(activeScan?.status === "completed" || scanStatus?.last?.status === "success")}
             text={activeScanId ? "סריקה רצה עכשיו" : `מוכן לסריקת ${scanRangeLabel}`}
-            action={<button className="btn" onClick={startFirstScan} disabled={!gmailConnected || Boolean(activeScanId)}>{firstScanRunning ? "סורק..." : `התחל סריקת ${scanRangeLabel}`}</button>}
+            action={<button className="btn btn-secondary" onClick={startFirstScan} disabled={!gmailConnected || Boolean(activeScanId)}>{firstScanRunning ? "סורק..." : `התחל סריקת ${scanRangeLabel}`}</button>}
           />
         </div>
         {(firstScanRunning || scanProgress.length > 0 || firstScanSummary) && (
@@ -895,7 +919,7 @@ export default function DashboardPage() {
             {firstScanSummary && <p className="text-sm">{firstScanSummary}</p>}
             {scanProgress.length > 0 && <div className="mt-3 grid gap-1 text-sm text-ink-secondary">{scanProgress.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}</div>}
             {showGmailConnect && (
-              <button type="button" onClick={connectGmail} className="btn mt-3">
+              <button type="button" onClick={connectGmail} className="btn btn-secondary mt-3">
                 התחבר לג׳ימייל
               </button>
             )}
@@ -906,8 +930,8 @@ export default function DashboardPage() {
       {error && <div className="toast border-red-400/30 text-red-200">{error}</div>}
       {stats.sheetsReconciliation?.warning && (
         <div className="toast border-amber-400/40 text-amber-100">
-          אזהרת Google Sheets: קיימים {stats.sheetsReconciliation.difference} הבדלים בין DB ל-Google Sheet
-          ({stats.sheetsReconciliation.dbCount} ב-DB, {stats.sheetsReconciliation.googleSheetCount} ב-Sheet).
+          אזהרת גוגל שיטס: קיימים {stats.sheetsReconciliation.difference} הבדלים בין מסד הנתונים לגוגל שיטס
+          ({stats.sheetsReconciliation.dbCount} במסד הנתונים, {stats.sheetsReconciliation.googleSheetCount} בגוגל שיטס).
         </div>
       )}
       {scanToast && (
@@ -980,11 +1004,11 @@ export default function DashboardPage() {
       )}
 
       <section className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-5" data-help="integration-metrics">
-        <MiniMetric label="Invoices from Gmail" value={stats.invoicesFromGmail ?? 0} />
-        <MiniMetric label="Invoices from WhatsApp" value={stats.invoicesFromWhatsApp ?? 0} />
-        <MiniMetric label="Documents in Drive" value={stats.documentsInDrive ?? stats.driveUploads} />
-        <MiniMetric label="Pending Supplier Payments" value={stats.unpaidPayments} />
-        <MiniMetric label="Missing Invoices" value={stats.missingInvoicesCount} />
+        <MiniMetric label="חשבוניות מג׳ימייל" value={stats.invoicesFromGmail ?? 0} />
+        <MiniMetric label="חשבוניות מוואטסאפ" value={stats.invoicesFromWhatsApp ?? 0} />
+        <MiniMetric label="מסמכים בגוגל דרייב" value={stats.documentsInDrive ?? stats.driveUploads} />
+        <MiniMetric label="תשלומי ספקים ממתינים" value={stats.unpaidPayments} />
+        <MiniMetric label="חשבוניות חסרות" value={stats.missingInvoicesCount} />
       </section>
 
       <section className="auto-grid mb-8">
@@ -1231,58 +1255,58 @@ function SystemConnectionsPanel({
   onWhatsAppRangeChange: (value: string) => void;
 }) {
   const components: SystemComponentStatus[] = [
-    health?.components.gmail ?? fallbackComponent("gmail", "Gmail", gmailConnected),
-    health?.components.drive ?? fallbackComponent("drive", "Google Drive", false),
-    health?.components.sheets ?? fallbackComponent("sheets", "Google Sheets", false),
-    health?.components.whatsapp ?? fallbackComponent("whatsapp", "WhatsApp", whatsAppConnected),
-    health?.components.database ?? fallbackComponent("database", "Database", false),
+    health?.components.gmail ?? fallbackComponent("gmail", "ג׳ימייל", gmailConnected),
+    health?.components.drive ?? fallbackComponent("drive", "גוגל דרייב", false),
+    health?.components.sheets ?? fallbackComponent("sheets", "גוגל שיטס", false),
+    health?.components.whatsapp ?? fallbackComponent("whatsapp", "וואטסאפ", whatsAppConnected),
+    health?.components.database ?? fallbackComponent("database", "מסד נתונים", false),
   ];
 
   return (
-    <section className="mb-4 rounded-3xl border border-[var(--border)] bg-surface-secondary p-4 shadow-card">
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2>System Connections</h2>
-          <p className="text-sm">סטטוס חי של Gmail, Drive, Sheets, WhatsApp וה-Database.</p>
+    <section className="mb-4 min-w-0 overflow-hidden rounded-3xl border border-[var(--border)] bg-surface-secondary p-4 shadow-card">
+      <div className="mb-4 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <h2>חיבורי מערכת</h2>
+          <p className="text-sm">סטטוס חי של ג׳ימייל, גוגל דרייב, גוגל שיטס, וואטסאפ ומסד הנתונים.</p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <div className="inline-flex items-center gap-2">
-            <button type="button" className="btn btn-secondary" onClick={onRunSystemCheck}>Run System Check</button>
-            <HelpTooltip text="בודק שכל החיבורים עובדים: Gmail, Drive, Sheets, WhatsApp ושרת." label="בדוק מערכת" />
+        <div className="flex w-full min-w-0 flex-wrap gap-2 lg:w-auto lg:justify-end">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <button type="button" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2.5 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={onRunSystemCheck}>בדיקת מערכת</button>
+            <HelpTooltip text="בודק שכל החיבורים עובדים: ג׳ימייל, גוגל דרייב, גוגל שיטס, וואטסאפ ושרת." label="בדוק מערכת" />
           </div>
-          {!gmailConnected && <button type="button" className="btn" onClick={onConnectGmail}>Connect Gmail</button>}
+          {!gmailConnected && <button type="button" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2.5 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={onConnectGmail}>חבר ג׳ימייל</button>}
           {whatsAppConnected ? (
-            <span className="badge badge-ok justify-center py-3">WhatsApp Connected</span>
+            <span className="badge badge-ok justify-center py-3">וואטסאפ מחובר</span>
           ) : (
-            <div className="inline-flex items-center gap-2">
-              <button type="button" className="btn" onClick={onConnectWhatsApp}>Connect WhatsApp</button>
-              <HelpTooltip text="מחבר את המערכת לחשבון הווטסאפ העסקי שלך." label="חבר WhatsApp" />
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <button type="button" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2.5 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={onConnectWhatsApp}>חבר וואטסאפ</button>
+              <HelpTooltip text="מחבר את המערכת לחשבון הווטסאפ העסקי שלך." label="חבר וואטסאפ" />
             </div>
           )}
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
         {components.map((component) => (
           <ConnectionStatusItem key={component.name} component={component} />
         ))}
       </div>
 
-      <div className="mt-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-primary/60 p-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="font-semibold text-ink-primary">Scan WhatsApp</div>
-            <p className="text-sm">סרוק הודעות WhatsApp שנקלטו במערכת ועדכן סטטיסטיקות ותור בדיקה.</p>
+      <div className="mt-4 min-w-0 rounded-2xl border border-[var(--border-subtle)] bg-surface-primary/60 p-3">
+        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="font-semibold text-ink-primary">סריקת וואטסאפ</div>
+            <p className="text-sm">סרוק הודעות וואטסאפ שנקלטו במערכת ועדכן סטטיסטיקות ותור בדיקה.</p>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex w-full min-w-0 flex-wrap gap-2 sm:items-center lg:w-auto lg:justify-end">
             <select value={whatsAppScanRange} onChange={(event) => onWhatsAppRangeChange(event.target.value)} disabled={whatsAppScanning || !whatsAppConnected}>
-              <option value="7">Scan Last 7 Days</option>
-              <option value="30">Scan Last 30 Days</option>
-              <option value="90">Scan Last 90 Days</option>
-              <option value="full">Full Scan</option>
+              <option value="7">סריקת 7 הימים האחרונים</option>
+              <option value="30">סריקת 30 הימים האחרונים</option>
+              <option value="90">סריקת 90 הימים האחרונים</option>
+              <option value="full">סריקה מלאה</option>
             </select>
-            <button type="button" className="btn" onClick={onRunWhatsAppScan} disabled={whatsAppScanning || !whatsAppConnected}>
-              {whatsAppScanning ? "Scanning..." : "Scan WhatsApp"}
+            <button type="button" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2.5 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:pointer-events-none disabled:opacity-60" onClick={onRunWhatsAppScan} disabled={whatsAppScanning || !whatsAppConnected}>
+              {whatsAppScanning ? "סורק..." : "סריקת וואטסאפ"}
             </button>
           </div>
         </div>
@@ -1303,7 +1327,7 @@ function SystemConnectionsPanel({
         )}
         {whatsAppScanResult && (
           <p className="mt-3 text-sm text-ink-secondary">
-            WhatsApp scan: {whatsAppScanResult.messagesScanned} messages scanned · {whatsAppScanResult.supplierPaymentsFound} supplier payments · {whatsAppScanResult.driveFilesCreated ?? 0} Drive files · {whatsAppScanResult.errorsCount} errors
+            סריקת וואטסאפ: {whatsAppScanResult.messagesScanned} הודעות נסרקו · {whatsAppScanResult.supplierPaymentsFound} תשלומי ספקים · {whatsAppScanResult.driveFilesCreated ?? 0} קבצים בדרייב · {whatsAppScanResult.errorsCount} שגיאות
             {whatsAppScanResult.error ? ` · ${whatsAppScanResult.error}` : ""}
           </p>
         )}
@@ -1314,14 +1338,14 @@ function SystemConnectionsPanel({
 
 function ConnectionStatusItem({ component }: { component: SystemComponentStatus }) {
   return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-primary/70 p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="text-sm font-bold text-ink-primary">{component.label}</div>
-          <div className="mt-1 text-xs text-ink-secondary">{component.reason ?? "Live check passed"}</div>
+    <div className="min-w-0 rounded-2xl border border-[var(--border-subtle)] bg-surface-primary/70 p-3">
+      <div className="flex min-w-0 flex-col gap-2">
+        <div className="min-w-0">
+          <div className="text-sm font-bold text-ink-primary">{systemComponentLabel(component.label)}</div>
+          <div className="mt-1 break-words text-xs text-ink-secondary">{systemReasonLabel(component.reason) ?? "הבדיקה החיה עברה בהצלחה"}</div>
         </div>
-        <span className={`badge ${component.connected ? "badge-ok" : "badge-error"} shrink-0`}>
-          {component.connected ? "✅ Connected" : "❌ Not Connected"}
+        <span className={`badge w-fit ${component.connected ? "badge-ok" : "badge-error"} shrink-0`}>
+          {component.connected ? "מחובר" : "לא מחובר"}
         </span>
       </div>
     </div>
@@ -1340,8 +1364,8 @@ function SystemCheckModal({ health, checking, onClose, onRunAgain }: {
       <div className="card w-full max-w-2xl" onClick={(event) => event.stopPropagation()}>
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 id="system-check-title">System Check</h2>
-            <p className="text-sm">בדיקה חיה מול ה-backend וכל האינטגרציות.</p>
+            <h2 id="system-check-title">בדיקת מערכת</h2>
+            <p className="text-sm">בדיקה חיה מול השרת וכל האינטגרציות.</p>
           </div>
           <button type="button" className="btn btn-secondary px-3 py-1.5" onClick={onClose}>סגור</button>
         </div>
@@ -1350,15 +1374,15 @@ function SystemCheckModal({ health, checking, onClose, onRunAgain }: {
           {components.map((component) => (
             <div key={component.name} className="rounded-xl border border-[var(--border-subtle)] bg-surface-secondary p-3">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <strong>{component.label} ........ {component.status}</strong>
-                <span className={`badge ${component.connected ? "badge-ok" : "badge-error"}`}>{component.connected ? "PASS" : "FAIL"}</span>
+                <strong>{systemComponentLabel(component.label)} ........ {systemStatusLabel(component.status)}</strong>
+                <span className={`badge ${component.connected ? "badge-ok" : "badge-error"}`}>{component.connected ? "תקין" : "נכשל"}</span>
               </div>
-              {component.reason && <div className="mt-1 text-sm text-red-200">{component.reason}</div>}
+              {component.reason && <div className="mt-1 text-sm text-red-200">{systemReasonLabel(component.reason)}</div>}
             </div>
           ))}
           {!checking && !components.length && <p className="text-sm text-ink-secondary">אין תוצאות עדיין.</p>}
         </div>
-        <button type="button" className="btn mt-4" onClick={onRunAgain} disabled={checking}>Run Again</button>
+        <button type="button" className="btn btn-secondary mt-4" onClick={onRunAgain} disabled={checking}>בדיקה חוזרת</button>
       </div>
     </div>
   );
@@ -1367,11 +1391,11 @@ function SystemCheckModal({ health, checking, onClose, onRunAgain }: {
 function SetupLockedNotice({ onConnectGmail, onConnectWhatsApp }: { onConnectGmail: () => void; onConnectWhatsApp: () => void }) {
   return (
     <section className="mb-8 rounded-3xl border border-[var(--border)] bg-surface-secondary p-5 text-center shadow-card">
-      <h2>Advanced dashboard unlocks after setup</h2>
-      <p className="mx-auto mt-2 max-w-2xl text-sm">חבר Gmail ו-WhatsApp כדי לפתוח המלצות מתקדמות, טבלאות עבודה וסריקות עומק. המדדים והסטטוס הבסיסיים נשארים זמינים.</p>
+      <h2>הדשבורד המתקדם ייפתח אחרי ההגדרה</h2>
+      <p className="mx-auto mt-2 max-w-2xl text-sm">חברו ג׳ימייל ווואטסאפ כדי לפתוח המלצות מתקדמות, טבלאות עבודה וסריקות עומק. המדדים והסטטוס הבסיסיים נשארים זמינים.</p>
       <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
-        <button type="button" className="btn" onClick={onConnectGmail}>Connect Gmail</button>
-        <button type="button" className="btn btn-secondary" onClick={onConnectWhatsApp}>Connect WhatsApp</button>
+        <button type="button" className="btn btn-secondary" onClick={onConnectGmail}>חבר ג׳ימייל</button>
+        <button type="button" className="btn btn-secondary" onClick={onConnectWhatsApp}>חבר וואטסאפ</button>
       </div>
     </section>
   );
@@ -1383,8 +1407,39 @@ function fallbackComponent(name: SystemComponentStatus["name"], label: string, c
     label,
     connected,
     status: connected ? "PASS" : "FAIL",
-    reason: connected ? null : "Waiting for live backend status",
+    reason: connected ? null : "ממתין לסטטוס מהשרת",
   };
+}
+
+function systemComponentLabel(label: string) {
+  const labels: Record<string, string> = {
+    Gmail: "ג׳ימייל",
+    gmail: "ג׳ימייל",
+    "Google Drive": "גוגל דרייב",
+    Drive: "גוגל דרייב",
+    drive: "גוגל דרייב",
+    "Google Sheets": "גוגל שיטס",
+    Sheets: "גוגל שיטס",
+    sheets: "גוגל שיטס",
+    WhatsApp: "וואטסאפ",
+    whatsapp: "וואטסאפ",
+    Database: "מסד נתונים",
+    database: "מסד נתונים",
+  };
+  return labels[label] ?? label;
+}
+
+function systemReasonLabel(reason: string | null) {
+  if (!reason) return null;
+  const labels: Record<string, string> = {
+    "Waiting for live backend status": "ממתין לסטטוס מהשרת",
+    "Live check passed": "הבדיקה החיה עברה בהצלחה",
+  };
+  return labels[reason] ?? reason;
+}
+
+function systemStatusLabel(status: SystemComponentStatus["status"]) {
+  return status === "PASS" ? "תקין" : "נכשל";
 }
 
 function relativeTime(date: Date) {

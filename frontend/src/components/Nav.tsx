@@ -225,12 +225,12 @@ export function Nav() {
 
   return (
     <>
-      <aside className="fixed right-0 top-0 z-50 hidden h-screen w-60 flex-col border-l border-[var(--border)] bg-surface-secondary/95 px-3 py-4 shadow-card backdrop-blur-xl lg:flex">
-        <Link href="/dashboard" className="mb-6 block rounded-2xl px-3 py-3 transition hover:bg-surface-hover">
+      <aside className="fixed right-0 top-0 z-50 hidden h-screen w-60 flex-col border-l border-[#e6eaf2] bg-white/95 px-3 py-4 shadow-[0_12px_40px_rgba(20,40,90,0.08)] backdrop-blur-xl lg:flex">
+        <Link href="/dashboard" className="mb-6 block rounded-2xl px-3 py-3 transition hover:bg-[#f4f6fb]">
           <Logo size="md" showSubtitle />
         </Link>
 
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto pb-56">
+        <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto pb-56" aria-label="ניווט ראשי">
               {visibleLinks.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
@@ -238,38 +238,39 @@ export function Nav() {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={active ? "page" : undefined}
                 className={[
-                  "group relative flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-[15px] font-medium transition-all duration-200",
+                  "group relative flex min-h-11 items-center gap-3 rounded-xl border px-3 py-2.5 text-[15px] font-bold transition-all duration-200",
                   active
-                    ? "border-accent-primary/30 bg-accent-primary/15 text-white shadow-[inset_-3px_0_0_#6366F1]"
-                    : "text-[#E2E8F0] hover:border-[var(--border)] hover:bg-surface-hover hover:text-white",
+                    ? "border-[#cdd9ff] bg-[#e8eeff] text-[#1d5bff] shadow-[inset_-3px_0_0_#1d5bff]"
+                    : "border-transparent text-[#0e1116] hover:border-[#e6eaf2] hover:bg-[#f4f6fb] hover:text-[#1d5bff]",
                 ].join(" ")}
               >
-                <Icon className={["h-[18px] w-[18px]", active ? "text-accent-primary" : "text-ink-muted group-hover:text-ink-primary"].join(" ")} />
-                <span>{item.label}</span>
+                <Icon className={["h-[19px] w-[19px] shrink-0", active ? "text-[#1d5bff]" : "text-[#6b7686] group-hover:text-[#1d5bff]"].join(" ")} />
+                <span className="min-w-0 flex-1 truncate text-right">{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="fixed bottom-4 right-3 z-[60] w-[13.5rem] rounded-2xl border border-[var(--border)] bg-surface-card p-3 shadow-card">
-          <div className="mb-3 flex min-w-0 items-center gap-3 rounded-xl bg-surface-hover/60 p-2">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#6366F1] text-sm font-bold text-white">חכם</span>
+        <div className="fixed bottom-4 right-3 z-[60] w-[13.5rem] rounded-2xl border border-[#e6eaf2] bg-white p-3 shadow-[0_12px_34px_rgba(20,40,90,0.10)]">
+          <div className="mb-3 flex min-w-0 items-center gap-3 rounded-xl bg-[#f4f6fb] p-2">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#1d5bff] text-sm font-bold text-white">חכם</span>
             <span className="min-w-0 flex-1">
-              <span className="block whitespace-nowrap text-[14px] font-bold text-white">מנהל מערכת חכם</span>
-              <span className="mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold text-[#10B981]">
-                <span className="h-2 w-2 rounded-full bg-[#10B981]" />
+              <span className="block whitespace-nowrap text-[14px] font-bold text-[#0e1116]">מנהל מערכת חכם</span>
+              <span className="mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold text-[#1faa59]">
+                <span className="h-2 w-2 rounded-full bg-[#1faa59]" />
                 מחובר
               </span>
             </span>
           </div>
-          <button type="button" onClick={openHelp} className="mb-3 w-full rounded-xl bg-[#6366F1] px-4 py-2.5 text-[14px] font-bold text-white shadow-[0_12px_28px_rgba(99,102,241,0.28)] transition hover:bg-[#7C3AED]">
+          <button type="button" onClick={openHelp} className="mb-3 w-full rounded-xl bg-[#1d5bff] px-4 py-2.5 text-[14px] font-bold text-white shadow-[0_12px_28px_rgba(29,91,255,0.24)] transition hover:bg-[#1746c7]">
             עזרה
           </button>
           <button
             type="button"
             onClick={logout}
-            className="flex w-full items-center justify-center rounded-xl border border-[#EF4444] bg-transparent px-4 py-2.5 text-[14px] font-bold text-[#EF4444] transition hover:bg-[#EF4444] hover:text-white"
+            className="flex w-full items-center justify-center rounded-xl border border-[#dc2626]/45 bg-white px-4 py-2.5 text-[14px] font-bold text-[#dc2626] transition hover:bg-red-50"
           >
             התנתק
           </button>

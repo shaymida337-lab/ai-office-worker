@@ -4,7 +4,7 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-inter)", "Inter", "system-ui", "sans-serif"],
+        sans: ["var(--font-heebo)", "Heebo", "system-ui", "sans-serif"],
       },
       colors: {
         surface: {
@@ -22,10 +22,16 @@ module.exports = {
           primary: "var(--accent-primary)",
           secondary: "var(--accent-secondary)",
         },
+        status: {
+          success: "var(--success)",
+          warning: "var(--warning)",
+          error: "var(--error)",
+          info: "var(--info)",
+        },
       },
       boxShadow: {
-        glow: "0 0 0 1px rgba(99,102,241,.2), 0 24px 70px rgba(0,0,0,.38)",
-        card: "0 18px 50px rgba(0,0,0,.28)",
+        glow: "0 0 0 1px rgba(29,91,255,.12), 0 18px 50px rgba(20,40,90,.12)",
+        card: "0 10px 34px rgba(20,40,90,.08)",
       },
     },
   },

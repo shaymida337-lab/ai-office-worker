@@ -5,23 +5,24 @@
 @tailwind utilities;
 
 :root {
+  --font-heebo: "Heebo";
   --font-inter: "Inter";
-  --bg-primary: #0A0A0F;
-  --bg-secondary: #111118;
-  --bg-card: #16161E;
-  --bg-hover: #1E1E28;
-  --border: #2A2A35;
-  --border-subtle: #1E1E28;
-  --accent-primary: #6366F1;
-  --accent-secondary: #8B5CF6;
-  --accent-gradient: linear-gradient(135deg, #6366F1, #8B5CF6);
-  --text-primary: #F8F8FF;
-  --text-secondary: #A0A0B8;
-  --text-muted: #6B6B80;
-  --success: #10B981;
-  --warning: #F59E0B;
-  --error: #EF4444;
-  --info: #3B82F6;
+  --bg-primary: #f4f6fb;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-hover: #eaf0ff;
+  --border: #e6eaf2;
+  --border-subtle: #edf1f7;
+  --accent-primary: #1d5bff;
+  --accent-secondary: #1746c7;
+  --accent-gradient: linear-gradient(135deg, #1d5bff, #1746c7);
+  --text-primary: #0e1116;
+  --text-secondary: #6b7686;
+  --text-muted: #8a94a6;
+  --success: #1faa59;
+  --warning: #f5a623;
+  --error: #dc2626;
+  --info: #1d5bff;
   --bg: var(--bg-primary);
   --card: var(--bg-card);
   --text: var(--text-primary);
@@ -49,10 +50,10 @@
     min-height: 100vh;
     width: 100%;
     overflow-x: hidden;
-    font-family: var(--font-inter), system-ui, sans-serif;
+    font-family: var(--font-heebo), system-ui, sans-serif;
     background:
-      radial-gradient(circle at top right, rgba(99, 102, 241, 0.18), transparent 28rem),
-      radial-gradient(circle at 20% 15%, rgba(139, 92, 246, 0.14), transparent 24rem),
+      radial-gradient(circle at top right, rgba(29, 91, 255, 0.11), transparent 30rem),
+      radial-gradient(circle at 20% 15%, rgba(31, 170, 89, 0.08), transparent 24rem),
       var(--bg-primary);
     color: var(--text-primary);
   }
@@ -77,7 +78,7 @@
   input,
   select,
   textarea {
-    @apply min-h-11 w-full rounded-[10px] border border-[var(--border)] bg-surface-hover px-4 py-3 text-[16px] text-[#E2E8F0] outline-none transition-all duration-200 placeholder:text-ink-muted focus:border-accent-primary focus:shadow-[0_0_0_4px_rgba(99,102,241,0.14)];
+    @apply min-h-11 w-full rounded-xl border border-[var(--border)] bg-white px-4 py-3 text-[16px] text-ink-primary outline-none transition-all duration-200 placeholder:text-ink-muted focus:border-accent-primary focus:shadow-[0_0_0_4px_rgba(29,91,255,0.14)];
   }
 
   label {
@@ -89,15 +90,15 @@
   }
 
   th {
-    @apply sticky top-0 z-10 border-b border-[var(--border)] bg-[rgba(22,22,30,0.95)] px-4 py-4 text-right text-[13px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8] backdrop-blur;
+    @apply sticky top-0 z-10 border-b border-[var(--border)] bg-white/95 px-4 py-4 text-right text-[13px] font-semibold uppercase tracking-[0.18em] text-ink-muted backdrop-blur;
   }
 
   td {
-    @apply border-b border-[var(--border-subtle)] px-4 py-4 text-right text-[14px] text-[#E2E8F0];
+    @apply border-b border-[var(--border-subtle)] px-4 py-4 text-right text-[14px] text-ink-secondary;
   }
 
   tbody tr {
-    @apply transition-all duration-200 hover:bg-[rgba(30,30,40,0.7)];
+    @apply transition-all duration-200 hover:bg-surface-hover;
   }
 
   button {
@@ -105,7 +106,7 @@
   }
 
   ::selection {
-    background: rgba(99, 102, 241, 0.35);
+    background: rgba(29, 91, 255, 0.18);
   }
 
   ::-webkit-scrollbar {
@@ -114,11 +115,11 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: var(--bg-secondary);
+    background: var(--bg-primary);
   }
 
   ::-webkit-scrollbar-thumb {
-    border: 2px solid var(--bg-secondary);
+    border: 2px solid var(--bg-primary);
     border-radius: 999px;
     background: var(--border);
   }
@@ -126,11 +127,11 @@
 
 @layer components {
   .container {
-    @apply mx-auto w-full max-w-[1400px] px-4 pb-32 pt-20 md:px-8 lg:mr-60 lg:px-10 lg:pb-12 lg:pt-24;
+    @apply mx-auto w-full max-w-[1400px] overflow-x-hidden px-4 pb-32 pt-20 md:px-8 lg:px-10 lg:pb-12 lg:pt-24;
   }
 
   .card {
-    @apply relative mb-5 min-w-0 rounded-2xl border border-[var(--border)] bg-[rgba(22,22,30,0.85)] p-4 shadow-card backdrop-blur transition-colors duration-300 md:mb-6 md:p-6;
+    @apply relative mb-5 min-w-0 rounded-2xl border border-[var(--border)] bg-white p-4 shadow-card transition-colors duration-300 md:mb-6 md:p-6;
   }
 
   .auto-grid {
@@ -148,15 +149,15 @@
   }
 
   .btn {
-    @apply inline-flex min-h-11 cursor-pointer touch-manipulation items-center justify-center gap-2 rounded-[10px] border border-[#818CF8] bg-[#6366F1] px-4 py-3 text-[16px] font-semibold text-white shadow-[0_12px_28px_rgba(99,102,241,0.35)] transition-all duration-200 hover:scale-[1.02] hover:bg-[#7C3AED] hover:shadow-[0_18px_42px_rgba(99,102,241,0.5)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60 md:px-5 md:py-2.5 md:text-[15px];
+    @apply inline-flex min-h-11 cursor-pointer touch-manipulation items-center justify-center gap-2 rounded-xl border border-accent-primary bg-accent-primary px-4 py-3 text-[16px] font-semibold text-white shadow-[0_12px_28px_rgba(29,91,255,0.24)] transition-all duration-200 hover:scale-[1.02] hover:bg-accent-secondary hover:shadow-[0_18px_42px_rgba(29,91,255,0.28)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60 md:px-5 md:py-2.5 md:text-[15px];
   }
 
   .btn-secondary {
-    @apply border-[#818CF8]/70 bg-surface-card text-[#E2E8F0] shadow-none hover:border-[#A5B4FC] hover:bg-surface-hover hover:text-white hover:shadow-[0_12px_28px_rgba(99,102,241,0.18)];
+    @apply border-accent-primary bg-white text-accent-primary shadow-none hover:border-accent-secondary hover:bg-surface-hover hover:text-accent-secondary hover:shadow-[0_12px_28px_rgba(29,91,255,0.12)];
   }
 
   .btn-toggle-inactive {
-    @apply border-[#818CF8] bg-surface-card text-white shadow-none hover:bg-[#6366F1];
+    @apply border-accent-primary bg-white text-accent-primary shadow-none hover:bg-surface-hover;
   }
 
   .btn-danger {
@@ -178,15 +179,15 @@
   }
 
   .badge-warn {
-    @apply border border-amber-400/20 bg-amber-400/10 text-amber-300;
+    @apply border border-amber-400/30 bg-amber-50 text-amber-700;
   }
 
   .badge-ok {
-    @apply border border-emerald-400/20 bg-emerald-400/10 text-emerald-300;
+    @apply border border-emerald-400/30 bg-emerald-50 text-emerald-700;
   }
 
   .badge-error {
-    @apply border border-red-400/20 bg-red-400/10 text-red-300;
+    @apply border border-red-400/30 bg-red-50 text-red-700;
   }
 
   .page-kicker {
@@ -194,12 +195,12 @@
   }
 
   .table-shell {
-    @apply w-full max-w-full overflow-x-auto rounded-2xl border border-[var(--border)] bg-[rgba(22,22,30,0.8)] shadow-card backdrop-blur;
+    @apply w-full max-w-full overflow-x-auto rounded-2xl border border-[var(--border)] bg-white shadow-card;
     -webkit-overflow-scrolling: touch;
   }
 
   .toast {
-    @apply fixed bottom-24 left-4 right-4 z-[120] rounded-2xl border border-[var(--border)] bg-[rgba(22,22,30,0.95)] p-4 text-base text-ink-primary shadow-glow backdrop-blur md:bottom-6 md:left-6 md:right-auto md:max-w-md md:text-sm;
+    @apply fixed bottom-24 left-4 right-4 z-[120] rounded-2xl border border-[var(--border)] bg-white/95 p-4 text-base text-ink-primary shadow-glow backdrop-blur md:bottom-6 md:left-6 md:right-auto md:max-w-md md:text-sm;
     animation: toastSlide 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
@@ -209,20 +210,20 @@
 
   .skeleton::after {
     content: "";
-    @apply absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent;
+    @apply absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/80 to-transparent;
     animation: shimmer 1.4s infinite;
   }
 
   .logo-icon {
-    @apply grid shrink-0 place-items-center rounded-[14px] shadow-[0_14px_35px_rgba(99,102,241,0.35)] ring-1 ring-[#818CF8]/70;
+    @apply grid shrink-0 place-items-center rounded-[14px] shadow-[0_14px_35px_rgba(29,91,255,0.24)] ring-1 ring-[rgba(29,91,255,0.20)];
   }
 
   .logo-title {
-    background: linear-gradient(135deg, #ffffff, #ede9fe, #c4b5fd);
+    background: linear-gradient(135deg, #0e1116, #1d5bff);
     background-clip: text;
     -webkit-background-clip: text;
     color: transparent;
-    text-shadow: 0 0 22px rgba(99, 102, 241, 0.18);
+    text-shadow: none;
   }
 }
 
@@ -230,6 +231,15 @@
   .auto-grid {
     gap: 1.5rem;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    width: calc(100% - 15rem);
+    max-width: min(1400px, calc(100% - 15rem));
+    margin-right: 15rem;
+    margin-left: 0;
   }
 }
 
