@@ -158,10 +158,11 @@ export default function InvoicesPage() {
   }
 
   const messageClasses = {
-    info: "border-accent-primary/40 bg-accent-primary/15 text-[#E0E7FF]",
-    success: "border-emerald-400/40 bg-emerald-500/15 text-emerald-100",
-    error: "border-red-400/40 bg-red-500/15 text-red-100",
+    info: "border-accent-primary/40 bg-accent-primary/10 text-accent-primary",
+    success: "border-emerald-400/40 bg-emerald-50 text-emerald-700",
+    error: "border-red-400/40 bg-red-50 text-red-700",
   }[messageTone];
+  const visibleMessage = message.trim();
 
   return (
     <div className="container text-base text-[#F1F5F9]">
@@ -177,14 +178,14 @@ export default function InvoicesPage() {
           {scanning ? "סורק..." : "סרוק חשבוניות"}
         </button>
       </div>
-      {message && (
+      {visibleMessage && (
         <div className={`mb-6 rounded-2xl border p-4 text-base font-medium leading-7 ${messageClasses}`}>
-          <div>{message}</div>
-          {scanProgress && <div className="mt-1 flex items-center gap-2 text-base text-[#F1F5F9]"><Loader2 className="h-4 w-4 animate-spin" />{scanProgress}</div>}
+          <div>{visibleMessage}</div>
+          {scanProgress && <div className="mt-1 flex items-center gap-2 text-base text-ink-secondary"><Loader2 className="h-4 w-4 animate-spin" />{scanProgress}</div>}
         </div>
       )}
 
-      <div className="auto-grid mb-8">
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" dir="rtl">
         <Metric label="חשבוניות החודש" value={thisMonth.length} tone="text-blue-300" />
         <Metric label="ממתין לתשלום" value={`₪${pending.toLocaleString("he-IL")}`} tone="text-red-300" />
         <Metric label="שולם" value={`₪${paid.toLocaleString("he-IL")}`} tone="text-emerald-300" />
