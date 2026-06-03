@@ -1,4 +1,26 @@
 services:
+  - type: cron
+    name: ai-office-worker-db-backup
+    runtime: node
+    plan: starter
+    region: oregon
+    schedule: "0 3 * * *"
+    buildCommand: "npm install"
+    startCommand: "npm exec -w backend -- tsx scripts/backup-to-r2.ts"
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DIRECT_URL
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        value: ai-office-worker-backups
+
   - type: web
     name: ai-office-worker-backend
     runtime: node
