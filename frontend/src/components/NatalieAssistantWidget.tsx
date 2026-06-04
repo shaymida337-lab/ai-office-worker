@@ -15,6 +15,11 @@ type NatalieAskResponse = {
   answer: string;
 };
 
+type NatalieHistoryMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 const initialMessages: WidgetMessage[] = [
   {
     id: "welcome",
@@ -49,6 +54,16 @@ function shouldShowWidget(pathname: string) {
   return !hiddenPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
+function buildNatalieHistory(messages: WidgetMessage[]): NatalieHistoryMessage[] {
+  return messages
+    .filter((message) => message.text !== "נטלי חושבת..." && message.text !== "מצטערת, לא הצלחתי להתחבר כרגע. נסה שוב.")
+    .map<NatalieHistoryMessage>((message) => ({
+      role: message.sender === "user" ? "user" : "assistant",
+      content: message.text,
+    }))
+    .slice(-10);
+}
+
 export function NatalieAssistantWidget() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -77,6 +92,7 @@ export function NatalieAssistantWidget() {
     if (!cleanText || sending) return;
 
     const timestamp = Date.now();
+    const history = buildNatalieHistory(messages);
     const userMessage: WidgetMessage = {
       id: `user-${timestamp}`,
       sender: "user",
@@ -96,7 +112,7 @@ export function NatalieAssistantWidget() {
     try {
       const result = await apiFetch<NatalieAskResponse>("/api/natalie/ask", {
         method: "POST",
-        body: JSON.stringify({ question: cleanText }),
+        body: JSON.stringify({ question: cleanText, history }),
       });
       const answer = result.answer?.trim() || "לא מצאתי תשובה לפי הנתונים הקיימים כרגע.";
       setMessages((current) =>
