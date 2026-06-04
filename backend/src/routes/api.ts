@@ -2476,12 +2476,12 @@ apiRouter.post("/natalie/ask", async (req, res) => {
   }
 
   try {
-    const answer = await askNatalieBusinessQuestion({
+    const result = await askNatalieBusinessQuestion({
       organizationId: req.auth!.organizationId,
       question,
       history,
     });
-    res.json({ answer });
+    res.json(result);
   } catch (err) {
     console.error("[natalie/ask] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Natalie failed to answer" });

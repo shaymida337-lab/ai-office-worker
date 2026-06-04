@@ -1,4 +1,4 @@
-import { answerBusinessQuestionWithClaude } from "./claude.js";
+import { answerBusinessQuestionWithClaude, type NatalieClaudeResponse } from "./claude.js";
 import { getDashboardStats } from "./dashboard.js";
 import { prisma } from "../lib/prisma.js";
 
@@ -6,7 +6,7 @@ export async function askNatalieBusinessQuestion(input: {
   organizationId: string;
   question: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
-}): Promise<string> {
+}): Promise<NatalieClaudeResponse> {
   const [stats, richerContext] = await Promise.all([
     getDashboardStats(input.organizationId),
     getNatalieBusinessContext(input.organizationId).catch((err) => {

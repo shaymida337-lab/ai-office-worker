@@ -64,10 +64,31 @@ const SYSTEM_PROMPT = `אתה עוזר הנהלת חשבונות לעסק ישר
 בקשות לתיאום פגישה, קביעת שעה או הזמנת תור הן משימות עסקיות אמיתיות ויש להחזיר עבורן פריט מתאים ב-tasks.
 לתמוך בעברית ובאנגלית, כולל PDF/image OCR text שמופיע בגוף.`;
 
+export type NatalieClaudeResponse =
+  | { answer: string }
+  | {
+      action: "create_task";
+      proposal: { title: string; dueDate?: string; notes?: string };
+      answer: string;
+    };
+
 const NATALIE_BUSINESS_SYSTEM_PROMPT = `את נטלי, עוזרת משרדית חכמה לעסק ישראלי קטן.
 עני בעברית, קצר וברור.
 עני רק על בסיס מספרי העסק שסופקו לך בהקשר.
-אם הנתונים שסופקו לא מכילים את התשובה, אמרי זאת בכנות בעברית ואל תמציאי מידע.`;
+אם הנתונים שסופקו לא מכילים את התשובה, אמרי זאת בכנות בעברית ואל תמציאי מידע.
+
+החזירי תמיד JSON תקין בלבד, ללא markdown:
+לתשובה רגילה:
+{"answer":"..."}
+
+אם ורק אם המשתמש מבקש בבירור ליצור משימה או תזכורת, למשל "תזכיר לי", "תוסיפי משימה", "צריך לזכור":
+{"action":"create_task","proposal":{"title":"כותרת משימה קצרה","dueDate":"YYYY-MM-DD","notes":"פרטים אופציונליים"},"answer":"אני אצור משימה: ... לאשר?"}
+
+כללי פעולה:
+- action="create_task" רק בבקשת משימה/תזכורת ברורה.
+- אל תיצרי משימה בפועל. רק הציעי.
+- dueDate אופציונלי. אם אין תאריך ברור, השמיטו אותו.
+- answer להצעת משימה חייב לציין בדיוק מה ייווצר ולהסתיים במילה "לאשר?".`;
 
 export async function analyzeEmailContent(input: {
   subject: string;
@@ -117,7 +138,7 @@ export async function answerBusinessQuestionWithClaude(input: {
   question: string;
   businessContext: unknown;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
-}): Promise<string> {
+}): Promise<NatalieClaudeResponse> {
   if (!anthropic) {
     throw new Error("ANTHROPIC_API_KEY is not configured");
   }
@@ -141,7 +162,10 @@ export async function answerBusinessQuestionWithClaude(input: {
     messages,
   });
 
-  return message.content[0]?.type === "text" ? message.content[0].text.trim() : "";
+  const text = message.content[0]?.type === "text" ? message.content[0].text.trim() : "{}";
+  const parsed = parseJsonObject<NatalieClaudeResponse>(text, "Natalie business answer");
+  if (parsed && isNatalieClaudeResponse(parsed)) return parsed;
+  return { answer: text || "לא הצלחתי לנסח תשובה כרגע." };
 }
 
 export async function analyzeInvoiceFile(input: {
@@ -264,6 +288,20 @@ function parseJsonObject<T>(text: string, context: string): T | null {
     });
     return null;
   }
+}
+
+function isNatalieClaudeResponse(value: unknown): value is NatalieClaudeResponse {
+  if (!value || typeof value !== "object") return false;
+  const response = value as Record<string, unknown>;
+  if (typeof response.answer !== "string" || !response.answer.trim()) return false;
+  if (response.action === undefined) return true;
+  if (response.action !== "create_task") return false;
+  const proposal = response.proposal as { title?: unknown; dueDate?: unknown; notes?: unknown } | undefined;
+  if (!proposal || typeof proposal.title !== "string" || !proposal.title.trim()) return false;
+  return (
+    (proposal.dueDate === undefined || typeof proposal.dueDate === "string") &&
+    (proposal.notes === undefined || typeof proposal.notes === "string")
+  );
 }
 
 function firstString(source: Record<string, unknown>, keys: string[]): string | null {
