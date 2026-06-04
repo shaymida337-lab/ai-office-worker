@@ -22,6 +22,7 @@ import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusine
 import { approveFinancialDocumentReview, deleteFinancialDocumentReview } from "../services/financialDocuments.js";
 import { initialConnectScanWindow } from "../services/scanWindow.js";
 import { askNatalieBusinessQuestion } from "../services/natalie.js";
+import { createTask } from "../services/tasks.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -2484,6 +2485,37 @@ apiRouter.post("/natalie/ask", async (req, res) => {
   } catch (err) {
     console.error("[natalie/ask] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Natalie failed to answer" });
+  }
+});
+
+apiRouter.post("/natalie/create-task", async (req, res) => {
+  const body = (req.body ?? {}) as { title?: unknown; dueDate?: unknown; notes?: unknown };
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  const notes = typeof body.notes === "string" ? body.notes.trim() : "";
+  if (!title) {
+    res.status(400).json({ error: "Task title is required" });
+    return;
+  }
+
+  const dueDate = typeof body.dueDate === "string" && body.dueDate.trim() ? new Date(body.dueDate) : null;
+  if (dueDate && Number.isNaN(dueDate.getTime())) {
+    res.status(400).json({ error: "Invalid due date" });
+    return;
+  }
+
+  try {
+    const task = await createTask({
+      organizationId: req.auth!.organizationId,
+      title,
+      description: notes || null,
+      dueDate,
+      source: "natalie",
+      status: "open",
+    });
+    res.status(201).json(task);
+  } catch (err) {
+    console.error("[natalie/create-task] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Task creation failed" });
   }
 });
 
