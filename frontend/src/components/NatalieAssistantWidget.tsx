@@ -3,11 +3,16 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Mic, SendHorizontal, X } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 
 type WidgetMessage = {
   id: string;
   sender: "natalie" | "user";
   text: string;
+};
+
+type NatalieAskResponse = {
+  answer: string;
 };
 
 const initialMessages: WidgetMessage[] = [
@@ -44,30 +49,13 @@ function shouldShowWidget(pathname: string) {
   return !hiddenPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
-function cannedReply(message: string) {
-  const normalized = message.trim().toLowerCase();
-
-  if (normalized.includes("חשבונית")) {
-    return "מצאתי כמה פריטים שקשורים לחשבוניות. בדמו הזה אני לא ניגשת לנתונים חיים, אבל בהמשך אוכל להציג לך סיכום מסודר ולאשר פעולות.";
-  }
-
-  if (normalized.includes("משימ") || normalized.includes("דחוף")) {
-    return "נראה שיש כמה דברים לטיפול. כרגע זו שיחת mock, אבל המבנה מוכן להצגת משימות וסדר עדיפויות בהמשך.";
-  }
-
-  if (normalized.includes("תשלום") || normalized.includes("ספק")) {
-    return "אפשר לבדוק תשלומי ספקים, חשבוניות חסרות ומה פתוח לתשלום. בשלב הזה אני מחזירה תשובות הדגמה בלבד.";
-  }
-
-  return "קיבלתי. כרגע זו שיחת דמו מקומית, בלי חיבור לשרת. בהמשך אוכל לעזור לבצע פעולות אמיתיות רק אחרי אישור שלך.";
-}
-
 export function NatalieAssistantWidget() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<WidgetMessage[]>(initialMessages);
+  const [sending, setSending] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -84,24 +72,50 @@ export function NatalieAssistantWidget() {
 
   if (!shouldShowWidget(pathname)) return null;
 
-  function sendMessage(text = input) {
+  async function sendMessage(text = input) {
     const cleanText = text.trim();
-    if (!cleanText) return;
+    if (!cleanText || sending) return;
 
+    const timestamp = Date.now();
     const userMessage: WidgetMessage = {
-      id: `user-${Date.now()}`,
+      id: `user-${timestamp}`,
       sender: "user",
       text: cleanText,
     };
 
-    const natalieMessage: WidgetMessage = {
-      id: `natalie-${Date.now()}`,
+    const loadingMessage: WidgetMessage = {
+      id: `natalie-loading-${timestamp}`,
       sender: "natalie",
-      text: cannedReply(cleanText),
+      text: "נטלי חושבת...",
     };
 
-    setMessages((current) => [...current, userMessage, natalieMessage]);
+    setMessages((current) => [...current, userMessage, loadingMessage]);
     setInput("");
+    setSending(true);
+
+    try {
+      const result = await apiFetch<NatalieAskResponse>("/api/natalie/ask", {
+        method: "POST",
+        body: JSON.stringify({ question: cleanText }),
+      });
+      const answer = result.answer?.trim() || "לא מצאתי תשובה לפי הנתונים הקיימים כרגע.";
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === loadingMessage.id ? { ...message, text: answer } : message
+        )
+      );
+    } catch (err) {
+      console.error("[natalie] ask failed", err);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === loadingMessage.id
+            ? { ...message, text: "מצטערת, לא הצלחתי להתחבר כרגע. נסה שוב." }
+            : message
+        )
+      );
+    } finally {
+      setSending(false);
+    }
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -175,13 +189,14 @@ export function NatalieAssistantWidget() {
                 ref={inputRef}
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
+                disabled={sending}
                 placeholder="כתוב הודעה לנטלי…"
                 className="min-h-11 flex-1 rounded-[14px] border border-[#e6eaf2] bg-[#f4f6fb] px-3 py-2 text-[15px] font-semibold text-[#0e1116] outline-none placeholder:text-[#6b7686] focus:border-[#1d5bff] focus:bg-white focus:shadow-[0_0_0_4px_rgba(29,91,255,0.10)]"
                 aria-label="הודעה לנטלי"
               />
               <button
                 type="submit"
-                disabled={!input.trim()}
+                disabled={!input.trim() || sending}
                 className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[#1d5bff] text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
                 aria-label="שלח הודעה"
               >
