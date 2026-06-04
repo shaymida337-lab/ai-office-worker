@@ -35,7 +35,7 @@ export const navVisibility: Record<NavItemId, NavVisibilityRule> = {
   supplierPayments: { visible: true },
   bank: { visible: true },
   collections: { visible: true },
-  tasks: { visible: false },
+  tasks: { visible: true },
   social: { visible: false },
   whatsapp: { visible: false },
   reports: { visible: false },
