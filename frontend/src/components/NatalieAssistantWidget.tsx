@@ -5,6 +5,24 @@ import { Mic, SendHorizontal, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 
+type SpeechRecognitionConstructor = new () => SpeechRecognition;
+type SpeechRecognition = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+type SpeechRecognitionEvent = {
+  results: ArrayLike<{
+    0: { transcript: string };
+    isFinal: boolean;
+  }>;
+};
+
 type WidgetMessage = {
   id: string;
   sender: "natalie" | "user";
@@ -86,11 +104,13 @@ export function NatalieAssistantWidget() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
+  const [speechError, setSpeechError] = useState("");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<WidgetMessage[]>(initialMessages);
   const [sending, setSending] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   useEffect(() => {
     messagesRef.current?.scrollTo({
@@ -104,6 +124,12 @@ export function NatalieAssistantWidget() {
   }, [open]);
 
   if (!shouldShowWidget(pathname)) return null;
+
+  const SpeechRecognitionApi =
+    typeof window !== "undefined"
+      ? ((window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor }).SpeechRecognition ??
+          (window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor }).webkitSpeechRecognition)
+      : undefined;
 
   async function sendMessage(text = input) {
     const cleanText = text.trim();
@@ -205,6 +231,44 @@ export function NatalieAssistantWidget() {
     );
   }
 
+  function startSpeechRecognition() {
+    if (!SpeechRecognitionApi || sending) {
+      setSpeechError("הדפדפן לא תומך בזיהוי דיבור כרגע.");
+      return;
+    }
+
+    setSpeechError("");
+    const recognition = new SpeechRecognitionApi();
+    recognitionRef.current = recognition;
+    recognition.lang = "he-IL";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map((result) => result[0]?.transcript ?? "")
+        .join(" ")
+        .trim();
+      setInput(transcript);
+    };
+    recognition.onerror = () => {
+      setSpeechError("לא הצלחתי לשמוע כרגע. נסה שוב.");
+      setListening(false);
+    };
+    recognition.onend = () => {
+      setListening(false);
+      recognitionRef.current = null;
+    };
+
+    setListening(true);
+    recognition.start();
+  }
+
+  function stopSpeechRecognition() {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setListening(false);
+  }
+
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     sendMessage();
@@ -294,7 +358,8 @@ export function NatalieAssistantWidget() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setListening(true)}
+                onClick={startSpeechRecognition}
+                disabled={!SpeechRecognitionApi || sending}
                 className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-[#d7def0] bg-white text-[#1d5bff] transition hover:border-[#1d5bff] hover:bg-[#e8eeff]"
                 aria-label="הפעל מצב הקשבה"
               >
@@ -345,11 +410,12 @@ export function NatalieAssistantWidget() {
             </div>
             <h2 className="m-0 text-3xl font-extrabold text-[#0e1116]">מקשיבה…</h2>
             <p className="mx-auto mt-2 max-w-xs text-base font-semibold leading-7 text-[#6b7686]">
-              מצב קולי להדגמה בלבד. בהמשך נטלי תוכל להבין דיבור ולבקש אישור לפני פעולות רגישות.
+              דבר בעברית, ואני אמלא את ההודעה בשדה הצ׳אט.
             </p>
+            {speechError && <p className="mx-auto mt-2 max-w-xs text-sm font-bold text-red-600">{speechError}</p>}
             <button
               type="button"
-              onClick={() => setListening(false)}
+              onClick={stopSpeechRecognition}
               className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#1d5bff] px-6 py-2.5 text-base font-extrabold text-white shadow-[0_12px_28px_rgba(29,91,255,0.24)] transition hover:bg-[#1746c7]"
             >
               עצור
