@@ -296,7 +296,6 @@ export function NatalieAssistantWidget() {
   }
 
   async function approveTaskProposal(messageId: string, action: "create_task" | "complete_task", proposal: TaskActionProposal) {
-    console.log("[approve] called", messageId, action, JSON.stringify(proposal));
     setMessages((current) =>
       current.map((message) =>
         message.id === messageId ? { ...message, actionStatus: "creating", actionFeedback: undefined } : message
@@ -310,14 +309,10 @@ export function NatalieAssistantWidget() {
           body: JSON.stringify(proposal),
         });
       } else {
-        console.log("[approve] about to POST complete-task", (proposal as CompleteTaskProposal).taskId);
         await apiFetch<{ id: string; title: string; dueDate: string | null; status: string }>("/api/natalie/complete-task", {
           method: "POST",
           body: JSON.stringify({ taskId: (proposal as CompleteTaskProposal).taskId }),
         });
-      }
-      if (action === "complete_task") {
-        console.log("[approve] showing success");
       }
       setMessages((current) =>
         current.map((message) =>
@@ -334,7 +329,6 @@ export function NatalieAssistantWidget() {
         )
       );
     } catch (err) {
-      console.error("[approve] caught:", err);
       console.error(`[natalie] ${action} failed`, err);
       setMessages((current) =>
         current.map((message) =>
