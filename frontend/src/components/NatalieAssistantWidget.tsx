@@ -148,6 +148,17 @@ export function NatalieAssistantWidget() {
     if (open) inputRef.current?.focus();
   }, [open]);
 
+  useEffect(() => {
+    return () => {
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // Ignore cleanup errors from already-ended browser speech sessions.
+      }
+      recognitionRef.current = null;
+    };
+  }, []);
+
   if (!shouldShowWidget(pathname)) return null;
 
   const SpeechRecognitionApi =
@@ -313,15 +324,11 @@ export function NatalieAssistantWidget() {
     );
   }
 
-  function startSpeechRecognition() {
-    if (!SpeechRecognitionApi || sending) {
-      setSpeechError("הדפדפן לא תומך בזיהוי דיבור כרגע.");
-      return;
-    }
+  function getRecognition() {
+    if (recognitionRef.current) return recognitionRef.current;
+    if (!SpeechRecognitionApi) return null;
 
-    setSpeechError("");
     const recognition = new SpeechRecognitionApi();
-    recognitionRef.current = recognition;
     recognition.lang = "he-IL";
     recognition.continuous = false;
     recognition.interimResults = true;
@@ -338,8 +345,23 @@ export function NatalieAssistantWidget() {
     };
     recognition.onend = () => {
       setListening(false);
-      recognitionRef.current = null;
     };
+    recognitionRef.current = recognition;
+    return recognitionRef.current;
+  }
+
+  function startSpeechRecognition() {
+    if (!SpeechRecognitionApi || sending) {
+      setSpeechError("הדפדפן לא תומך בזיהוי דיבור כרגע.");
+      return;
+    }
+
+    setSpeechError("");
+    const recognition = getRecognition();
+    if (!recognition) {
+      setSpeechError("הדפדפן לא תומך בזיהוי דיבור כרגע.");
+      return;
+    }
 
     setListening(true);
     recognition.start();
@@ -347,7 +369,6 @@ export function NatalieAssistantWidget() {
 
   function stopSpeechRecognition() {
     recognitionRef.current?.stop();
-    recognitionRef.current = null;
     setListening(false);
   }
 
