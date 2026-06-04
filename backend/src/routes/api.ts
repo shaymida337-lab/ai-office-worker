@@ -22,7 +22,7 @@ import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusine
 import { approveFinancialDocumentReview, deleteFinancialDocumentReview } from "../services/financialDocuments.js";
 import { initialConnectScanWindow } from "../services/scanWindow.js";
 import { askNatalieBusinessQuestion } from "../services/natalie.js";
-import { createTask } from "../services/tasks.js";
+import { completeTask, createTask } from "../services/tasks.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -2516,6 +2516,30 @@ apiRouter.post("/natalie/create-task", async (req, res) => {
   } catch (err) {
     console.error("[natalie/create-task] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Task creation failed" });
+  }
+});
+
+apiRouter.post("/natalie/complete-task", async (req, res) => {
+  const body = (req.body ?? {}) as { taskId?: unknown };
+  const taskId = typeof body.taskId === "string" ? body.taskId.trim() : "";
+  if (!taskId) {
+    res.status(400).json({ error: "Task id is required" });
+    return;
+  }
+
+  try {
+    const task = await completeTask({
+      organizationId: req.auth!.organizationId,
+      taskId,
+    });
+    if (!task) {
+      res.status(404).json({ error: "Task not found for organization" });
+      return;
+    }
+    res.json(task);
+  } catch (err) {
+    console.error("[natalie/complete-task] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Task completion failed" });
   }
 });
 
