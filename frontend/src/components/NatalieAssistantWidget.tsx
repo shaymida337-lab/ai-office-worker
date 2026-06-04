@@ -124,36 +124,6 @@ function isActionableMessage(
   );
 }
 
-const GOOGLE_TTS_MAX_CHARS = 200;
-
-function splitForGoogleTts(text: string) {
-  const chunks: string[] = [];
-  const words = text.split(/\s+/).filter(Boolean);
-  let current = "";
-
-  for (const word of words) {
-    if (word.length > GOOGLE_TTS_MAX_CHARS) {
-      if (current) chunks.push(current);
-      current = "";
-      for (let index = 0; index < word.length; index += GOOGLE_TTS_MAX_CHARS) {
-        chunks.push(word.slice(index, index + GOOGLE_TTS_MAX_CHARS));
-      }
-      continue;
-    }
-
-    const next = current ? `${current} ${word}` : word;
-    if (next.length <= GOOGLE_TTS_MAX_CHARS) {
-      current = next;
-    } else {
-      chunks.push(current);
-      current = word;
-    }
-  }
-
-  if (current) chunks.push(current);
-  return chunks;
-}
-
 export function NatalieAssistantWidget() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -166,8 +136,6 @@ export function NatalieAssistantWidget() {
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const speechSequenceRef = useRef(0);
 
   useEffect(() => {
     messagesRef.current?.scrollTo({
@@ -189,50 +157,24 @@ export function NatalieAssistantWidget() {
       : undefined;
 
   function speakNatalieReply(text: string) {
-    const cleanText = text.trim();
-    if (!voiceEnabled || !cleanText || cleanText === "נטלי חושבת...") return;
-    if (typeof window === "undefined") return;
+    try {
+      const cleanText = text.trim();
+      if (!voiceEnabled || !cleanText || cleanText === "נטלי חושבת...") return;
+      if (typeof window === "undefined" || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return;
 
-    stopCurrentSpeech();
-    const chunks = splitForGoogleTts(cleanText);
-    const sequence = speechSequenceRef.current;
-    let chunkIndex = 0;
-
-    const playNextChunk = () => {
-      if (sequence !== speechSequenceRef.current || !voiceEnabled) return;
-      const chunk = chunks[chunkIndex];
-      if (!chunk) return;
-
-      const audio = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&tl=iw&client=tw-ob&q=${encodeURIComponent(chunk)}`);
-      audioRef.current = audio;
-      audio.onended = () => {
-        chunkIndex += 1;
-        playNextChunk();
-      };
-      audio.onerror = () => speakWithBrowserFallback(chunks.slice(chunkIndex).join(" "));
-      void audio.play().catch(() => speakWithBrowserFallback(chunks.slice(chunkIndex).join(" ")));
-    };
-
-    playNextChunk();
-  }
-
-  function stopCurrentSpeech() {
-    speechSequenceRef.current += 1;
-    audioRef.current?.pause();
-    if (audioRef.current) audioRef.current.currentTime = 0;
-    audioRef.current = null;
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(cleanText);
+      u.lang = "he-IL";
+      window.speechSynthesis.speak(u);
+    } catch (err) {
+      console.error("[natalie] speech synthesis failed", err);
     }
   }
 
-  function speakWithBrowserFallback(text: string) {
-    const fallbackText = text.trim();
-    if (!fallbackText || typeof window === "undefined" || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(fallbackText);
-    utterance.lang = "he-IL";
-    window.speechSynthesis.speak(utterance);
+  function stopCurrentSpeech() {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
   }
 
   async function sendMessage(text = input) {
@@ -256,6 +198,13 @@ export function NatalieAssistantWidget() {
     setMessages((current) => [...current, userMessage, loadingMessage]);
     setInput("");
     setSending(true);
+
+    if (voiceEnabled && typeof window !== "undefined" && "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined") {
+      const unlock = new SpeechSynthesisUtterance(" ");
+      unlock.volume = 0;
+      unlock.lang = "he-IL";
+      window.speechSynthesis.speak(unlock);
+    }
 
     try {
       const result = await apiFetch<NatalieAskResponse>("/api/natalie/ask", {
