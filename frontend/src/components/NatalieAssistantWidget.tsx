@@ -9,11 +9,25 @@ type WidgetMessage = {
   id: string;
   sender: "natalie" | "user";
   text: string;
+  action?: "create_task";
+  proposal?: TaskProposal;
+  actionStatus?: "pending" | "creating" | "created" | "cancelled" | "error";
+  actionFeedback?: string;
 };
 
-type NatalieAskResponse = {
-  answer: string;
+type TaskProposal = {
+  title: string;
+  dueDate?: string;
+  notes?: string;
 };
+
+type NatalieAskResponse =
+  | { answer: string }
+  | {
+      action: "create_task";
+      proposal: TaskProposal;
+      answer: string;
+    };
 
 type NatalieHistoryMessage = {
   role: "user" | "assistant";
@@ -62,6 +76,10 @@ function buildNatalieHistory(messages: WidgetMessage[]): NatalieHistoryMessage[]
       content: message.text,
     }))
     .slice(-10);
+}
+
+function isCreateTaskResponse(response: NatalieAskResponse): response is Extract<NatalieAskResponse, { action: "create_task" }> {
+  return "action" in response && response.action === "create_task";
 }
 
 export function NatalieAssistantWidget() {
@@ -117,7 +135,19 @@ export function NatalieAssistantWidget() {
       const answer = result.answer?.trim() || "לא מצאתי תשובה לפי הנתונים הקיימים כרגע.";
       setMessages((current) =>
         current.map((message) =>
-          message.id === loadingMessage.id ? { ...message, text: answer } : message
+          message.id === loadingMessage.id
+            ? {
+                ...message,
+                text: answer,
+                ...(isCreateTaskResponse(result)
+                  ? {
+                      action: "create_task" as const,
+                      proposal: result.proposal,
+                      actionStatus: "pending" as const,
+                    }
+                  : {}),
+              }
+            : message
         )
       );
     } catch (err) {
@@ -132,6 +162,47 @@ export function NatalieAssistantWidget() {
     } finally {
       setSending(false);
     }
+  }
+
+  async function approveTaskProposal(messageId: string, proposal: TaskProposal) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId ? { ...message, actionStatus: "creating", actionFeedback: undefined } : message
+      )
+    );
+
+    try {
+      await apiFetch<{ id: string; title: string; dueDate: string | null; status: string }>("/api/natalie/create-task", {
+        method: "POST",
+        body: JSON.stringify(proposal),
+      });
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? { ...message, actionStatus: "created", actionFeedback: `✅ המשימה נוצרה: ${proposal.title}` }
+            : message
+        )
+      );
+    } catch (err) {
+      console.error("[natalie] create task failed", err);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? { ...message, actionStatus: "error", actionFeedback: "לא הצלחתי ליצור את המשימה כרגע. אפשר לנסות שוב." }
+            : message
+        )
+      );
+    }
+  }
+
+  function cancelTaskProposal(messageId: string) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? { ...message, actionStatus: "cancelled", actionFeedback: "בוטל. לא נוצרה משימה." }
+          : message
+      )
+    );
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -177,15 +248,43 @@ export function NatalieAssistantWidget() {
                 className={`natalie-message-enter flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
                 dir="ltr"
               >
-                <div
-                  className={
-                    message.sender === "user"
-                      ? "max-w-[86%] rounded-[18px] rounded-bl-[5px] bg-[#1d5bff] px-4 py-2.5 text-right text-[15px] font-semibold leading-6 text-white shadow-[0_12px_24px_rgba(29,91,255,0.18)]"
-                      : "max-w-[86%] rounded-[18px] rounded-br-[5px] border border-[#e6eaf2] bg-white px-4 py-2.5 text-right text-[15px] font-semibold leading-6 text-[#0e1116] shadow-[0_8px_20px_rgba(20,40,90,0.06)]"
-                  }
-                  dir="rtl"
-                >
-                  {message.text}
+                <div className="max-w-[86%]" dir="rtl">
+                  <div
+                    className={
+                      message.sender === "user"
+                        ? "rounded-[18px] rounded-bl-[5px] bg-[#1d5bff] px-4 py-2.5 text-right text-[15px] font-semibold leading-6 text-white shadow-[0_12px_24px_rgba(29,91,255,0.18)]"
+                        : "rounded-[18px] rounded-br-[5px] border border-[#e6eaf2] bg-white px-4 py-2.5 text-right text-[15px] font-semibold leading-6 text-[#0e1116] shadow-[0_8px_20px_rgba(20,40,90,0.06)]"
+                    }
+                  >
+                    {message.text}
+                  </div>
+                  {message.action === "create_task" && message.proposal && (
+                    <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
+                      {message.actionFeedback && (
+                        <div className="mb-2 text-right text-[14px] font-bold text-[#0e1116]">{message.actionFeedback}</div>
+                      )}
+                      {(message.actionStatus === "pending" || message.actionStatus === "creating" || message.actionStatus === "error") && (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={message.actionStatus === "creating"}
+                            onClick={() => approveTaskProposal(message.id, message.proposal!)}
+                            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
+                          >
+                            {message.actionStatus === "creating" ? "יוצרת..." : "אשר ✓"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={message.actionStatus === "creating"}
+                            onClick={() => cancelTaskProposal(message.id)}
+                            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2 text-sm font-extrabold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            ביטול
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
