@@ -64,6 +64,11 @@ const SYSTEM_PROMPT = `אתה עוזר הנהלת חשבונות לעסק ישר
 בקשות לתיאום פגישה, קביעת שעה או הזמנת תור הן משימות עסקיות אמיתיות ויש להחזיר עבורן פריט מתאים ב-tasks.
 לתמוך בעברית ובאנגלית, כולל PDF/image OCR text שמופיע בגוף.`;
 
+const NATALIE_BUSINESS_SYSTEM_PROMPT = `את נטלי, עוזרת משרדית חכמה לעסק ישראלי קטן.
+עני בעברית, קצר וברור.
+עני רק על בסיס מספרי העסק שסופקו לך בהקשר.
+אם הנתונים שסופקו לא מכילים את התשובה, אמרי זאת בכנות בעברית ואל תמציאי מידע.`;
+
 export async function analyzeEmailContent(input: {
   subject: string;
   body: string;
@@ -106,6 +111,29 @@ export async function analyzeEmailContent(input: {
     tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
     confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
   };
+}
+
+export async function answerBusinessQuestionWithClaude(input: {
+  question: string;
+  businessContext: unknown;
+}): Promise<string> {
+  if (!anthropic) {
+    throw new Error("ANTHROPIC_API_KEY is not configured");
+  }
+
+  const message = await anthropic.messages.create({
+    model: config.anthropic.model,
+    max_tokens: 500,
+    system: NATALIE_BUSINESS_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: `מספרי העסק:\n${JSON.stringify(input.businessContext, null, 2)}\n\nשאלת המשתמש:\n${input.question}`,
+      },
+    ],
+  });
+
+  return message.content[0]?.type === "text" ? message.content[0].text.trim() : "";
 }
 
 export async function analyzeInvoiceFile(input: {

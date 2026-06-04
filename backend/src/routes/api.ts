@@ -21,6 +21,7 @@ import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } fr
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
 import { approveFinancialDocumentReview, deleteFinancialDocumentReview } from "../services/financialDocuments.js";
 import { initialConnectScanWindow } from "../services/scanWindow.js";
+import { askNatalieBusinessQuestion } from "../services/natalie.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -2454,6 +2455,25 @@ apiRouter.get("/stats", async (req, res) => {
       currency: stats.currency,
     },
   });
+});
+
+apiRouter.post("/natalie/ask", async (req, res) => {
+  const question = typeof req.body?.question === "string" ? req.body.question.trim() : "";
+  if (!question) {
+    res.status(400).json({ error: "question is required" });
+    return;
+  }
+
+  try {
+    const answer = await askNatalieBusinessQuestion({
+      organizationId: req.auth!.organizationId,
+      question,
+    });
+    res.json({ answer });
+  } catch (err) {
+    console.error("[natalie/ask] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Natalie failed to answer" });
+  }
 });
 
 apiRouter.get("/message-scans", async (req, res) => {
