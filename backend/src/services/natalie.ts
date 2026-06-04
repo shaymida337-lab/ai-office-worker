@@ -1,5 +1,6 @@
 import { answerBusinessQuestionWithClaude, type NatalieClaudeResponse } from "./claude.js";
 import { getDashboardStats } from "./dashboard.js";
+import { findTasksByPartialTitle } from "./tasks.js";
 import { prisma } from "../lib/prisma.js";
 
 export async function askNatalieBusinessQuestion(input: {
@@ -7,6 +8,9 @@ export async function askNatalieBusinessQuestion(input: {
   question: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
 }): Promise<NatalieClaudeResponse> {
+  const completeTaskResponse = await maybeBuildCompleteTaskProposal(input.organizationId, input.question);
+  if (completeTaskResponse) return completeTaskResponse;
+
   const [stats, richerContext] = await Promise.all([
     getDashboardStats(input.organizationId),
     getNatalieBusinessContext(input.organizationId).catch((err) => {
@@ -23,6 +27,60 @@ export async function askNatalieBusinessQuestion(input: {
       richerBusinessData: richerContext,
     },
   });
+}
+
+async function maybeBuildCompleteTaskProposal(organizationId: string, question: string): Promise<NatalieClaudeResponse | null> {
+  const title = extractCompleteTaskTitle(question);
+  if (!title) return null;
+
+  const matches = await findTasksByPartialTitle({
+    organizationId,
+    title,
+    status: "open",
+    limit: 5,
+  });
+
+  if (matches.length === 0) {
+    return { answer: `לא מצאתי משימה פתוחה שמתאימה ל־"${title}".` };
+  }
+
+  if (matches.length > 1) {
+    const list = matches.map((task, index) => `${index + 1}. ${task.title}`).join("\n");
+    return { answer: `מצאתי כמה משימות פתוחות שמתאימות ל־"${title}":\n${list}\nאיזו מהן לסמן כבוצעה?` };
+  }
+
+  const task = matches[0];
+  return {
+    action: "complete_task",
+    proposal: {
+      taskId: task.id,
+      title: task.title,
+    },
+    answer: `מצאתי את המשימה "${task.title}". לסמן אותה כבוצעה?`,
+  };
+}
+
+function extractCompleteTaskTitle(question: string) {
+  const quotedTitle = question.match(/["'״׳](.+?)["'״׳]/)?.[1]?.trim();
+  if (quotedTitle && isCompleteTaskRequest(question)) return quotedTitle;
+  if (!isCompleteTaskRequest(question)) return "";
+
+  return question
+    .replace(/^(נטלי\s*,?\s*)?/i, "")
+    .replace(/(בבקשה|נא)/g, "")
+    .replace(/(תסמני|סמני|לסמן|תסגרי|סגרי|לסגור|תשלימי|השלימי|להשלים|mark|complete|close)/gi, "")
+    .replace(/(את|המשימה|משימה|task)/gi, "")
+    .replace(/(כבוצעה|כבוצע|בוצעה|בוצע|כהושלמה|כהושלם|להושלמה|להושלם|done|completed|closed)$/gi, "")
+    .replace(/[.?!؟,،]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isCompleteTaskRequest(question: string) {
+  const hasActionVerb = /(תסמני|סמני|לסמן|תסגרי|סגרי|לסגור|תשלימי|השלימי|להשלים|mark|complete|close)/i.test(question);
+  const hasCompletionMarker = /(כ?בוצע|כ?בוצעה|הושל|הושלמה|done|completed|closed)/i.test(question);
+  const mentionsTask = /(משימה|task)/i.test(question);
+  return hasActionVerb || (hasCompletionMarker && mentionsTask);
 }
 
 async function getNatalieBusinessContext(organizationId: string) {

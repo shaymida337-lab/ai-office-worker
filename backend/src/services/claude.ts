@@ -70,6 +70,11 @@ export type NatalieClaudeResponse =
       action: "create_task";
       proposal: { title: string; dueDate?: string; notes?: string };
       answer: string;
+    }
+  | {
+      action: "complete_task";
+      proposal: { taskId: string; title: string };
+      answer: string;
     };
 
 const NATALIE_BUSINESS_SYSTEM_PROMPT = `את נטלי, עוזרת משרדית חכמה לעסק ישראלי קטן.
@@ -295,13 +300,25 @@ function isNatalieClaudeResponse(value: unknown): value is NatalieClaudeResponse
   const response = value as Record<string, unknown>;
   if (typeof response.answer !== "string" || !response.answer.trim()) return false;
   if (response.action === undefined) return true;
-  if (response.action !== "create_task") return false;
-  const proposal = response.proposal as { title?: unknown; dueDate?: unknown; notes?: unknown } | undefined;
-  if (!proposal || typeof proposal.title !== "string" || !proposal.title.trim()) return false;
-  return (
-    (proposal.dueDate === undefined || typeof proposal.dueDate === "string") &&
-    (proposal.notes === undefined || typeof proposal.notes === "string")
-  );
+  if (response.action === "create_task") {
+    const proposal = response.proposal as { title?: unknown; dueDate?: unknown; notes?: unknown } | undefined;
+    if (!proposal || typeof proposal.title !== "string" || !proposal.title.trim()) return false;
+    return (
+      (proposal.dueDate === undefined || typeof proposal.dueDate === "string") &&
+      (proposal.notes === undefined || typeof proposal.notes === "string")
+    );
+  }
+  if (response.action === "complete_task") {
+    const proposal = response.proposal as { taskId?: unknown; title?: unknown } | undefined;
+    return Boolean(
+      proposal &&
+        typeof proposal.taskId === "string" &&
+        proposal.taskId.trim() &&
+        typeof proposal.title === "string" &&
+        proposal.title.trim()
+    );
+  }
+  return false;
 }
 
 function firstString(source: Record<string, unknown>, keys: string[]): string | null {

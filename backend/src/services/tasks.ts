@@ -64,6 +64,7 @@ export async function completeTask(input: {
 export async function findTasksByPartialTitle(input: {
   organizationId: string;
   title: string;
+  status?: string;
   limit?: number;
 }) {
   const title = input.title.trim();
@@ -74,6 +75,7 @@ export async function findTasksByPartialTitle(input: {
   return prisma.task.findMany({
     where: {
       organizationId: input.organizationId,
+      ...(input.status ? { status: input.status } : {}),
       title: {
         contains: title,
         mode: "insensitive",

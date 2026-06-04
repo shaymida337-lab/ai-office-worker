@@ -27,23 +27,35 @@ type WidgetMessage = {
   id: string;
   sender: "natalie" | "user";
   text: string;
-  action?: "create_task";
-  proposal?: TaskProposal;
+  action?: "create_task" | "complete_task";
+  proposal?: TaskActionProposal;
   actionStatus?: "pending" | "creating" | "created" | "cancelled" | "error";
   actionFeedback?: string;
 };
 
-type TaskProposal = {
+type CreateTaskProposal = {
   title: string;
   dueDate?: string;
   notes?: string;
 };
 
+type CompleteTaskProposal = {
+  taskId: string;
+  title: string;
+};
+
+type TaskActionProposal = CreateTaskProposal | CompleteTaskProposal;
+
 type NatalieAskResponse =
   | { answer: string }
   | {
       action: "create_task";
-      proposal: TaskProposal;
+      proposal: CreateTaskProposal;
+      answer: string;
+    }
+  | {
+      action: "complete_task";
+      proposal: CompleteTaskProposal;
       answer: string;
     };
 
@@ -96,8 +108,20 @@ function buildNatalieHistory(messages: WidgetMessage[]): NatalieHistoryMessage[]
     .slice(-10);
 }
 
-function isCreateTaskResponse(response: NatalieAskResponse): response is Extract<NatalieAskResponse, { action: "create_task" }> {
-  return "action" in response && response.action === "create_task";
+function isTaskActionResponse(response: NatalieAskResponse): response is Extract<NatalieAskResponse, { action: "create_task" | "complete_task" }> {
+  return "action" in response && (response.action === "create_task" || response.action === "complete_task");
+}
+
+function isActionableMessage(
+  message: WidgetMessage
+): message is WidgetMessage & (
+  | { action: "create_task"; proposal: CreateTaskProposal }
+  | { action: "complete_task"; proposal: CompleteTaskProposal }
+) {
+  return (
+    ((message.action === "create_task" && Boolean(message.proposal)) ||
+      (message.action === "complete_task" && Boolean(message.proposal)))
+  );
 }
 
 const GOOGLE_TTS_MAX_CHARS = 200;
@@ -246,9 +270,9 @@ export function NatalieAssistantWidget() {
             ? {
                 ...message,
                 text: answer,
-                ...(isCreateTaskResponse(result)
+                ...(isTaskActionResponse(result)
                   ? {
-                      action: "create_task" as const,
+                      action: result.action,
                       proposal: result.proposal,
                       actionStatus: "pending" as const,
                     }
@@ -271,7 +295,7 @@ export function NatalieAssistantWidget() {
     }
   }
 
-  async function approveTaskProposal(messageId: string, proposal: TaskProposal) {
+  async function approveTaskProposal(messageId: string, action: "create_task" | "complete_task", proposal: TaskActionProposal) {
     setMessages((current) =>
       current.map((message) =>
         message.id === messageId ? { ...message, actionStatus: "creating", actionFeedback: undefined } : message
@@ -279,23 +303,44 @@ export function NatalieAssistantWidget() {
     );
 
     try {
-      await apiFetch<{ id: string; title: string; dueDate: string | null; status: string }>("/api/natalie/create-task", {
-        method: "POST",
-        body: JSON.stringify(proposal),
-      });
+      if (action === "create_task") {
+        await apiFetch<{ id: string; title: string; dueDate: string | null; status: string }>("/api/natalie/create-task", {
+          method: "POST",
+          body: JSON.stringify(proposal),
+        });
+      } else {
+        await apiFetch<{ id: string; title: string; dueDate: string | null; status: string }>("/api/natalie/complete-task", {
+          method: "POST",
+          body: JSON.stringify({ taskId: (proposal as CompleteTaskProposal).taskId }),
+        });
+      }
       setMessages((current) =>
         current.map((message) =>
           message.id === messageId
-            ? { ...message, actionStatus: "created", actionFeedback: `✅ המשימה נוצרה: ${proposal.title}` }
+            ? {
+                ...message,
+                actionStatus: "created",
+                actionFeedback:
+                  action === "create_task"
+                    ? `✅ המשימה נוצרה: ${proposal.title}`
+                    : `✅ המשימה סומנה כבוצעה: ${proposal.title}`,
+              }
             : message
         )
       );
     } catch (err) {
-      console.error("[natalie] create task failed", err);
+      console.error(`[natalie] ${action} failed`, err);
       setMessages((current) =>
         current.map((message) =>
           message.id === messageId
-            ? { ...message, actionStatus: "error", actionFeedback: "לא הצלחתי ליצור את המשימה כרגע. אפשר לנסות שוב." }
+            ? {
+                ...message,
+                actionStatus: "error",
+                actionFeedback:
+                  action === "create_task"
+                    ? "לא הצלחתי ליצור את המשימה כרגע. אפשר לנסות שוב."
+                    : "לא הצלחתי לסמן את המשימה כבוצעה כרגע. אפשר לנסות שוב.",
+              }
             : message
         )
       );
@@ -306,7 +351,14 @@ export function NatalieAssistantWidget() {
     setMessages((current) =>
       current.map((message) =>
         message.id === messageId
-          ? { ...message, actionStatus: "cancelled", actionFeedback: "בוטל. לא נוצרה משימה." }
+          ? {
+              ...message,
+              actionStatus: "cancelled",
+              actionFeedback:
+                message.action === "complete_task"
+                  ? "בוטל. המשימה לא סומנה כבוצעה."
+                  : "בוטל. לא נוצרה משימה.",
+            }
           : message
       )
     );
@@ -419,7 +471,7 @@ export function NatalieAssistantWidget() {
                   >
                     {message.text}
                   </div>
-                  {message.action === "create_task" && message.proposal && (
+                  {isActionableMessage(message) && (
                     <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
                       {message.actionFeedback && (
                         <div className="mb-2 text-right text-[14px] font-bold text-[#0e1116]">{message.actionFeedback}</div>
@@ -429,10 +481,10 @@ export function NatalieAssistantWidget() {
                           <button
                             type="button"
                             disabled={message.actionStatus === "creating"}
-                            onClick={() => approveTaskProposal(message.id, message.proposal!)}
+                            onClick={() => approveTaskProposal(message.id, message.action, message.proposal)}
                             className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
                           >
-                            {message.actionStatus === "creating" ? "יוצרת..." : "אשר ✓"}
+                            {message.actionStatus === "creating" ? (message.action === "create_task" ? "יוצרת..." : "מסמנת...") : "אשר ✓"}
                           </button>
                           <button
                             type="button"
