@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Mic, SendHorizontal, X } from "lucide-react";
+import { Mic, SendHorizontal, Volume2, VolumeX, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 
@@ -108,6 +108,7 @@ export function NatalieAssistantWidget() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<WidgetMessage[]>(initialMessages);
   const [sending, setSending] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -130,6 +131,17 @@ export function NatalieAssistantWidget() {
       ? ((window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor }).SpeechRecognition ??
           (window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor }).webkitSpeechRecognition)
       : undefined;
+
+  function speakNatalieReply(text: string) {
+    const cleanText = text.trim();
+    if (!voiceEnabled || !cleanText || cleanText === "נטלי חושבת...") return;
+    if (typeof window === "undefined" || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return;
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = "he-IL";
+    window.speechSynthesis.speak(utterance);
+  }
 
   async function sendMessage(text = input) {
     const cleanText = text.trim();
@@ -159,6 +171,7 @@ export function NatalieAssistantWidget() {
         body: JSON.stringify({ question: cleanText, history }),
       });
       const answer = result.answer?.trim() || "לא מצאתי תשובה לפי הנתונים הקיימים כרגע.";
+      speakNatalieReply(answer);
       setMessages((current) =>
         current.map((message) =>
           message.id === loadingMessage.id
@@ -295,14 +308,25 @@ export function NatalieAssistantWidget() {
                 </div>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[#e6eaf2] bg-[#f4f6fb] text-[#6b7686] transition hover:bg-[#e8eeff] hover:text-[#1d5bff]"
-              aria-label="סגור את נטלי"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setVoiceEnabled((value) => !value)}
+                className="grid h-10 w-10 place-items-center rounded-xl border border-[#e6eaf2] bg-[#f4f6fb] text-[#6b7686] transition hover:bg-[#e8eeff] hover:text-[#1d5bff]"
+                aria-label={voiceEnabled ? "כבה קול לנטלי" : "הפעל קול לנטלי"}
+                aria-pressed={voiceEnabled}
+              >
+                {voiceEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="grid h-10 w-10 place-items-center rounded-xl border border-[#e6eaf2] bg-[#f4f6fb] text-[#6b7686] transition hover:bg-[#e8eeff] hover:text-[#1d5bff]"
+                aria-label="סגור את נטלי"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </header>
 
           <div ref={messagesRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f4f6fb] px-4 py-4">
