@@ -1219,17 +1219,25 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
 
       if (canPersistFinancialRecord && classification.reviewStatus === "auto_saved") {
         for (const taskTitle of analysis.tasks) {
-          const existingTask = await prisma.task.findFirst({
+          const existingTask = await prisma.task.findUnique({
             where: {
-              organizationId,
-              emailMessageId: email.emailRecordId,
-              title: taskTitle,
+              organizationId_emailMessageId: {
+                organizationId,
+                emailMessageId: email.emailRecordId,
+              },
             },
           });
           if (existingTask) continue;
 
-          await prisma.task.create({
-            data: {
+          await prisma.task.upsert({
+            where: {
+              organizationId_emailMessageId: {
+                organizationId,
+                emailMessageId: email.emailRecordId,
+              },
+            },
+            update: {},
+            create: {
               organizationId,
               title: taskTitle,
               supplier: supplierName,
@@ -2918,17 +2926,24 @@ async function createMissingInvoiceTaskOnce(input: {
     amount: input.amount,
     gmailMessageId: input.gmailMessageId,
   });
-  const existing = await prisma.task.findFirst({
+  const existing = await prisma.task.findUnique({
     where: {
-      organizationId: input.organizationId,
-      emailMessageId: input.emailMessageId,
-      title: { startsWith: "MissingInvoice:" },
-      status: "open",
+      organizationId_emailMessageId: {
+        organizationId: input.organizationId,
+        emailMessageId: input.emailMessageId,
+      },
     },
   });
   if (existing) return existing;
-  return prisma.task.create({
-    data: {
+  return prisma.task.upsert({
+    where: {
+      organizationId_emailMessageId: {
+        organizationId: input.organizationId,
+        emailMessageId: input.emailMessageId,
+      },
+    },
+    update: {},
+    create: {
       organizationId: input.organizationId,
       title: `MissingInvoice: ${input.supplierName}`,
       description: `${input.subject}\nGmail: ${gmailMessageLink(input.gmailMessageId)}\nAmount: ${input.amount ?? "unknown"}`,

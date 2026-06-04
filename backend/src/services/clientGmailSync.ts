@@ -150,8 +150,13 @@ export async function syncGmailForClient(clientId: string) {
       priority: string;
     }> = [];
     for (const taskTitle of analysis.tasks) {
-      const exists = await prisma.task.findFirst({
-        where: { organizationId, clientId, emailMessageId: emailRecord.id, title: taskTitle },
+      const exists = await prisma.task.findUnique({
+        where: {
+          organizationId_emailMessageId: {
+            organizationId,
+            emailMessageId: emailRecord.id,
+          },
+        },
       });
       if (exists) continue;
       pendingTaskCreates.push({
@@ -224,8 +229,24 @@ export async function syncGmailForClient(clientId: string) {
       } else if (!existingPayment) {
         if (shouldCreateClientGmailTasksAfterDedup(duplicateDecision)) {
           for (const pendingTask of pendingTaskCreates) {
-            await prisma.task.create({
-              data: {
+            const existingTask = await prisma.task.findUnique({
+              where: {
+                organizationId_emailMessageId: {
+                  organizationId,
+                  emailMessageId: emailRecord.id,
+                },
+              },
+            });
+            if (existingTask) continue;
+            await prisma.task.upsert({
+              where: {
+                organizationId_emailMessageId: {
+                  organizationId,
+                  emailMessageId: emailRecord.id,
+                },
+              },
+              update: {},
+              create: {
                 organizationId,
                 clientId,
                 title: pendingTask.title,

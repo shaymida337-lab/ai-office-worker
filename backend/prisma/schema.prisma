@@ -470,6 +470,7 @@ model Task {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  @@unique([organizationId, emailMessageId])
   @@index([organizationId, status])
   @@index([organizationId, createdAt])
   @@index([clientId, status])
