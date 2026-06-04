@@ -291,7 +291,7 @@ export default function SettingsPage() {
               "shrink-0 rounded-xl px-4 py-3 text-[15px] font-semibold transition",
               activeTab === tab.id
                 ? "bg-[#6366F1] text-white shadow-[inset_0_-3px_0_rgba(255,255,255,0.32),0_12px_28px_rgba(99,102,241,0.28)]"
-                : "text-[#E2E8F0] hover:bg-surface-hover hover:text-white",
+                : "text-[#6b7686] hover:text-[#0e1116]",
             ].join(" ")}
           >
             {tab.label}
