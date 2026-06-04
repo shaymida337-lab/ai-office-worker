@@ -100,6 +100,15 @@ function isCreateTaskResponse(response: NatalieAskResponse): response is Extract
   return "action" in response && response.action === "create_task";
 }
 
+function pickHebrewVoice(voices: SpeechSynthesisVoice[]) {
+  const hebrewVoices = voices.filter((voice) => voice.lang.toLowerCase().startsWith("he"));
+  return (
+    hebrewVoices.find((voice) => /hila|carmit|female/i.test(voice.name)) ??
+    hebrewVoices[0] ??
+    null
+  );
+}
+
 export function NatalieAssistantWidget() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -138,9 +147,24 @@ export function NatalieAssistantWidget() {
     if (typeof window === "undefined" || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return;
 
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = "he-IL";
-    window.speechSynthesis.speak(utterance);
+    const speakWithAvailableVoice = (voices: SpeechSynthesisVoice[]) => {
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = "he-IL";
+      const voice = pickHebrewVoice(voices);
+      if (voice) utterance.voice = voice;
+      window.speechSynthesis.speak(utterance);
+    };
+
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      speakWithAvailableVoice(voices);
+      return;
+    }
+
+    window.speechSynthesis.onvoiceschanged = () => {
+      window.speechSynthesis.onvoiceschanged = null;
+      speakWithAvailableVoice(window.speechSynthesis.getVoices());
+    };
   }
 
   async function sendMessage(text = input) {
