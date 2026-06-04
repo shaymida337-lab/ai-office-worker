@@ -2459,6 +2459,16 @@ apiRouter.get("/stats", async (req, res) => {
 
 apiRouter.post("/natalie/ask", async (req, res) => {
   const question = typeof req.body?.question === "string" ? req.body.question.trim() : "";
+  const history = Array.isArray(req.body?.history)
+    ? req.body.history
+        .filter((item: unknown): item is { role: "user" | "assistant"; content: string } => {
+          if (!item || typeof item !== "object") return false;
+          const message = item as { role?: unknown; content?: unknown };
+          return (message.role === "user" || message.role === "assistant") && typeof message.content === "string" && message.content.trim().length > 0;
+        })
+        .map((item: { role: "user" | "assistant"; content: string }) => ({ role: item.role, content: item.content.trim() }))
+        .slice(-10)
+    : [];
   if (!question) {
     res.status(400).json({ error: "question is required" });
     return;
@@ -2468,6 +2478,7 @@ apiRouter.post("/natalie/ask", async (req, res) => {
     const answer = await askNatalieBusinessQuestion({
       organizationId: req.auth!.organizationId,
       question,
+      history,
     });
     res.json({ answer });
   } catch (err) {

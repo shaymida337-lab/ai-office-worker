@@ -116,21 +116,29 @@ export async function analyzeEmailContent(input: {
 export async function answerBusinessQuestionWithClaude(input: {
   question: string;
   businessContext: unknown;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
 }): Promise<string> {
   if (!anthropic) {
     throw new Error("ANTHROPIC_API_KEY is not configured");
   }
 
+  const messages: Array<{ role: "user" | "assistant"; content: string }> = [
+    {
+      role: "user",
+      content: `מספרי העסק:\n${JSON.stringify(input.businessContext, null, 2)}`,
+    },
+    ...(input.history ?? []),
+    {
+      role: "user",
+      content: `שאלת המשתמש:\n${input.question}`,
+    },
+  ];
+
   const message = await anthropic.messages.create({
     model: config.anthropic.model,
     max_tokens: 500,
     system: NATALIE_BUSINESS_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `מספרי העסק:\n${JSON.stringify(input.businessContext, null, 2)}\n\nשאלת המשתמש:\n${input.question}`,
-      },
-    ],
+    messages,
   });
 
   return message.content[0]?.type === "text" ? message.content[0].text.trim() : "";

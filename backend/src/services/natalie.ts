@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma.js";
 export async function askNatalieBusinessQuestion(input: {
   organizationId: string;
   question: string;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
 }): Promise<string> {
   const [stats, richerContext] = await Promise.all([
     getDashboardStats(input.organizationId),
@@ -16,6 +17,7 @@ export async function askNatalieBusinessQuestion(input: {
 
   return answerBusinessQuestionWithClaude({
     question: input.question,
+    history: input.history,
     businessContext: {
       dashboardStats: stats,
       richerBusinessData: richerContext,
