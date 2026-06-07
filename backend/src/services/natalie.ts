@@ -90,7 +90,11 @@ async function getNatalieBusinessContext(organizationId: string) {
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const next7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const [invoices, supplierPayments, customerInvoices] = await Promise.all([
+  const [organization, invoices, supplierPayments, customerInvoices] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { businessProfile: true },
+    }),
     prisma.invoice.findMany({
       where: { organizationId },
       select: { amount: true, status: true, date: true },
@@ -124,8 +128,17 @@ async function getNatalieBusinessContext(organizationId: string) {
   const customerInvoicesThisMonth = customerInvoices.filter((invoice) => isInRange(invoice.issueDate, thisMonthStart, nextMonthStart));
   const openCustomerInvoices = customerInvoices.filter((invoice) => !invoice.paid);
   const openSupplierPayments = supplierPayments.filter((payment) => !payment.paid && payment.paymentRequired && isReasonableMoneyAmount(payment.amount));
+  const businessProfile = organization?.businessProfile?.trim();
 
   return {
+    ...(businessProfile
+      ? {
+          businessProfile: {
+            label: "מידע על העסק (זיכרון קבוע):",
+            text: businessProfile,
+          },
+        }
+      : {}),
     labels: {
       invoicesThisMonth: "מספר חשבוניות החודש",
       invoicesLastMonth: "מספר חשבוניות בחודש שעבר",
