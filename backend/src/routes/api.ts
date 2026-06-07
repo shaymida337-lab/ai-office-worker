@@ -2767,6 +2767,7 @@ apiRouter.get("/invoices", async (req, res) => {
         OR: [
           { invoiceNumber: { contains: search, mode: "insensitive" } },
           { description: { contains: search, mode: "insensitive" } },
+          { supplierName: { contains: search, mode: "insensitive" } },
           { fromEmail: { contains: search, mode: "insensitive" } },
           { client: { name: { contains: search, mode: "insensitive" } } },
         ],

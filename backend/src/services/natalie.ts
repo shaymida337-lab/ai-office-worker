@@ -8,6 +8,9 @@ export async function askNatalieBusinessQuestion(input: {
   question: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
 }): Promise<NatalieClaudeResponse> {
+  const showInvoiceResponse = await maybeBuildShowInvoiceResponse(input.organizationId, input.question);
+  if (showInvoiceResponse) return showInvoiceResponse;
+
   const completeTaskResponse = await maybeBuildCompleteTaskProposal(input.organizationId, input.question);
   if (completeTaskResponse) return completeTaskResponse;
 
@@ -27,6 +30,103 @@ export async function askNatalieBusinessQuestion(input: {
       richerBusinessData: richerContext,
     },
   });
+}
+
+async function maybeBuildShowInvoiceResponse(organizationId: string, question: string): Promise<NatalieClaudeResponse | null> {
+  const supplierName = extractShowInvoiceSearchTerm(question);
+  if (!supplierName) return null;
+
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { businessProfile: true },
+  });
+  const searchTerms = expandInvoiceSearchTerms(supplierName, organization?.businessProfile);
+  const invoices = await prisma.invoice.findMany({
+    where: {
+      organizationId,
+      OR: searchTerms.flatMap((term) => [
+        { supplierName: { contains: term, mode: "insensitive" as const } },
+        { invoiceNumber: { contains: term, mode: "insensitive" as const } },
+      ]),
+    },
+    select: {
+      id: true,
+      supplierName: true,
+      invoiceNumber: true,
+      amount: true,
+      currency: true,
+      date: true,
+      dueDate: true,
+      status: true,
+      driveUrl: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 5,
+  });
+
+  if (invoices.length === 0) {
+    return { answer: `לא מצאתי חשבונית קיימת שמתאימה ל־"${supplierName}".` };
+  }
+
+  const first = invoices[0];
+  return {
+    action: "show_invoice",
+    invoices: invoices.map((invoice) => ({
+      id: invoice.id,
+      supplierName: invoice.supplierName,
+      invoiceNumber: invoice.invoiceNumber,
+      amount: invoice.amount,
+      currency: invoice.currency,
+      issueDate: invoice.date,
+      dueDate: invoice.dueDate,
+      status: invoice.status,
+      driveUrl: invoice.driveUrl,
+    })),
+    answer:
+      invoices.length === 1
+        ? `מצאתי חשבונית של ${first.supplierName ?? supplierName}${first.invoiceNumber ? ` מספר ${first.invoiceNumber}` : ""}.`
+        : `מצאתי ${invoices.length} חשבוניות שמתאימות ל־"${supplierName}".`,
+  };
+}
+
+function extractShowInvoiceSearchTerm(question: string) {
+  const quotedName = question.match(/["'״׳](.+?)["'״׳]/)?.[1]?.trim();
+  if (quotedName && isShowInvoiceRequest(question)) return quotedName;
+  if (!isShowInvoiceRequest(question)) return "";
+
+  return question
+    .replace(/^(נטלי\s*,?\s*)?/i, "")
+    .replace(/(בבקשה|נא)/g, "")
+    .replace(/(תראי|הראי|תציגי|הציגי|תפתחי|פתחי|תמצאי|חפשי|להציג|לראות|לפתוח|show|open|find|search|display)/gi, "")
+    .replace(/(את|לי|של|החשבונית|חשבונית|invoice|the|me|for|of)/gi, "")
+    .replace(/[.?!؟,،]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isShowInvoiceRequest(question: string) {
+  const mentionsInvoice = /(חשבונית|invoice)/i.test(question);
+  const hasShowVerb = /(תראי|הראי|תציגי|הציגי|תפתחי|פתחי|תמצאי|חפשי|להציג|לראות|לפתוח|show|open|find|search|display)/i.test(question);
+  return mentionsInvoice && hasShowVerb;
+}
+
+function expandInvoiceSearchTerms(term: string, businessProfile?: string | null) {
+  const terms = new Set([term]);
+  const knownAliases: Record<string, string[]> = {
+    "וולט": ["Wolt"],
+    wolt: ["וולט"],
+  };
+  for (const alias of knownAliases[term.toLowerCase()] ?? knownAliases[term] ?? []) terms.add(alias);
+
+  for (const line of businessProfile?.split(/\r?\n/) ?? []) {
+    if (!line.toLowerCase().includes(term.toLowerCase()) || !/[=:]/.test(line)) continue;
+    for (const part of line.split(/[=:]/)) {
+      const alias = part.trim();
+      if (alias && alias.length <= 40) terms.add(alias);
+    }
+  }
+
+  return [...terms].filter(Boolean);
 }
 
 async function maybeBuildCompleteTaskProposal(organizationId: string, question: string): Promise<NatalieClaudeResponse | null> {
