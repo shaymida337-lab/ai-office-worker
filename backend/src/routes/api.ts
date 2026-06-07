@@ -89,6 +89,24 @@ apiRouter.put("/organization/settings", async (req, res) => {
   res.json(await updateOrganizationBusinessSettings(req.auth!.organizationId, req.body as Record<string, unknown>));
 });
 
+apiRouter.get("/settings/business-profile", async (req, res) => {
+  const organization = await prisma.organization.findUnique({
+    where: { id: req.auth!.organizationId },
+    select: { businessProfile: true },
+  });
+  res.json({ businessProfile: organization?.businessProfile ?? "" });
+});
+
+apiRouter.put("/settings/business-profile", async (req, res) => {
+  const businessProfile = typeof req.body?.businessProfile === "string" ? req.body.businessProfile : "";
+  const organization = await prisma.organization.update({
+    where: { id: req.auth!.organizationId },
+    data: { businessProfile },
+    select: { businessProfile: true },
+  });
+  res.json({ businessProfile: organization.businessProfile ?? "" });
+});
+
 apiRouter.get("/gmail/scan-stats", async (req, res) => {
   const organizationId = req.auth!.organizationId;
   try {

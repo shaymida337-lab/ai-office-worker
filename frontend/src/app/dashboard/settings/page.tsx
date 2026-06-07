@@ -92,6 +92,8 @@ export default function SettingsPage() {
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState<SettingsTab>("integrations");
   const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings | null>(null);
+  const [businessProfile, setBusinessProfile] = useState("");
+  const [businessProfileMessage, setBusinessProfileMessage] = useState("");
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [socialStatus, setSocialStatus] = useState<SocialPlatformStatus[]>([]);
@@ -127,6 +129,9 @@ export default function SettingsPage() {
       .catch((err) => setMessage(err instanceof Error ? err.message : "טעינת הגדרות נכשלה"));
     apiFetch<OrganizationSettings>("/api/organization/settings")
       .then(setOrganizationSettings)
+      .catch(() => undefined);
+    apiFetch<{ businessProfile: string }>("/api/settings/business-profile")
+      .then((data) => setBusinessProfile(data.businessProfile))
       .catch(() => undefined);
     apiFetch<WhatsAppAssistantSettings>("/api/whatsapp-assistant/settings")
       .then(setWhatsapp)
@@ -175,6 +180,20 @@ export default function SettingsPage() {
       setMessage("הגדרות עוזר וואטסאפ נשמרו");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "שמירת הגדרות וואטסאפ נכשלה");
+    }
+  }
+
+  async function saveBusinessProfile() {
+    setBusinessProfileMessage("");
+    try {
+      const next = await apiFetch<{ businessProfile: string }>("/api/settings/business-profile", {
+        method: "PUT",
+        body: JSON.stringify({ businessProfile }),
+      });
+      setBusinessProfile(next.businessProfile);
+      setBusinessProfileMessage("נשמר");
+    } catch (err) {
+      setBusinessProfileMessage(err instanceof Error ? err.message : "שמירת הזיכרון של נטלי נכשלה");
     }
   }
 
@@ -328,6 +347,23 @@ export default function SettingsPage() {
             כתובת העסק
             <input placeholder="כתובת העסק" value={form.businessAddress ?? ""} onChange={(e) => setForm({ ...form, businessAddress: e.target.value })} />
           </label>
+          <section className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+            <h3 className="mb-2 text-xl font-extrabold text-ink-primary">הזיכרון של נטלי</h3>
+            <p className="mb-3 text-sm leading-6 text-ink-secondary">
+              כתבי כאן מידע קבוע על העסק שנטלי תזכור בכל שיחה (למשל: שמות ספקים, כינויים, נהלים).
+            </p>
+            <textarea
+              value={businessProfile}
+              onChange={(event) => setBusinessProfile(event.target.value)}
+              rows={6}
+              className="w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 py-3 font-sans text-base text-ink-primary shadow-sm outline-none placeholder:text-[#6b7686] focus:border-accent-primary focus:ring-2 focus:ring-[rgba(29,91,255,0.12)]"
+              placeholder="לדוגמה: הספק 'יוסי' הוא יוסי כהן מהדפוס; לקוחות VIP מקבלים מענה באותו יום..."
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button className="btn" type="button" onClick={saveBusinessProfile}>שמור</button>
+              {businessProfileMessage && <span className="text-sm font-semibold text-ink-secondary">{businessProfileMessage}</span>}
+            </div>
+          </section>
           <button className="btn" type="submit">שמור הגדרות כלליות</button>
         </form>
       )}
