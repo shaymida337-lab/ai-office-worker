@@ -33,7 +33,9 @@ export async function askNatalieBusinessQuestion(input: {
 }
 
 async function maybeBuildShowInvoiceResponse(organizationId: string, question: string): Promise<NatalieClaudeResponse | null> {
+  console.log("[SHOW_INVOICE_DEBUG] incoming", { organizationId, question });
   const supplierName = extractShowInvoiceSearchTerm(question);
+  console.log("[SHOW_INVOICE_DEBUG] extracted supplierName", { supplierName });
   if (!supplierName) return null;
 
   const organization = await prisma.organization.findUnique({
@@ -41,6 +43,7 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
     select: { businessProfile: true },
   });
   const searchTerms = expandInvoiceSearchTerms(supplierName, organization?.businessProfile);
+  console.log("[SHOW_INVOICE_DEBUG] searchTerms", { searchTerms });
   const invoices = await prisma.invoice.findMany({
     where: {
       organizationId,
@@ -62,6 +65,10 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
     },
     orderBy: { createdAt: "desc" },
     take: 5,
+  });
+  console.log("[SHOW_INVOICE_DEBUG] invoices returned", {
+    count: invoices.length,
+    supplierNames: invoices.map((invoice) => invoice.supplierName),
   });
 
   if (invoices.length === 0) {
