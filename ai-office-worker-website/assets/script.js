@@ -117,7 +117,7 @@
      reCAPTCHA נטען רק בעמודים שיש בהם טופס.
      ======================================================================== */
   var FORMSPREE_WAITLIST_ID = "";  // לדוגמה "mqakzbrd"
-  var FORMSPREE_CONTACT_ID  = "";  // לדוגמה "xvgakwpe"
+  var FORMSPREE_CONTACT_ID  = "mykaeqzn";  // לדוגמה "xvgakwpe"
   var RECAPTCHA_SITE_KEY    = "";  // reCAPTCHA v3 SITE key, למשל "6Lc...your-site-key"
 
   var FS_BASE = "https://formspree.io/f/";
