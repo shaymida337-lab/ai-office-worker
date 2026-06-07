@@ -45,6 +45,7 @@ model Organization {
   greenInvoiceConnectedAt DateTime?
   sendMonthlyReport Boolean  @default(true)
   reportDay         Int      @default(1)
+  businessProfile   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
