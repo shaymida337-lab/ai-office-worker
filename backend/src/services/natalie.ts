@@ -101,11 +101,16 @@ function extractShowInvoiceSearchTerm(question: string) {
   if (quotedName && isShowInvoiceRequest(question)) return quotedName;
   if (!isShowInvoiceRequest(question)) return "";
 
-  return question
-    .replace(/^(נטלי\s*,?\s*)?/i, "")
-    .replace(/(בבקשה|נא)/g, "")
-    .replace(/(תראי|הראי|תציגי|הציגי|תפתחי|פתחי|תמצאי|חפשי|להציג|לראות|לפתוח|show|open|find|search|display)/gi, "")
-    .replace(/(את|לי|של|החשבונית|חשבונית|invoice|the|me|for|of)/gi, "")
+  const afterOf = question.match(/(?:^|\s)של\s+(.+)$/i)?.[1];
+  const candidate =
+    afterOf ??
+    question.replace(
+      /(תראי|תראה|תוציאי|תציגי|הציגי|הראי|הראה|חפשי|חפש|מצא|מצאי|למצוא|לראות|לפתוח|להציג|חשבונית|invoice|בבקשה|נא|נטלי|לי|את|the|me|for|of)/gi,
+      ""
+    );
+
+  return candidate
+    .replace(/(בבקשה|נא|חשבונית|את|לי|של|invoice|the|of|for|me)/gi, "")
     .replace(/[.?!؟,،]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
