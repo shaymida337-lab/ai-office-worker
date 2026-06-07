@@ -12,7 +12,7 @@
     "seed:demo": "tsx scripts/seed-demo.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:migrate:deploy": "node -e \"console.log('Skipping Prisma migrate deploy on boot; production migrations are managed manually.')\"",
+    "db:migrate:deploy": "prisma migrate deploy",
     "db:check-drift": "node scripts/check-drift.mjs",
     "db:push": "prisma db push"
   },
