@@ -286,18 +286,26 @@
       data.append("source", "contact-he");
       data.append("locale", document.documentElement.lang || "he");
 
-      getCaptchaToken("contact").then(function (token) {
-        if (token) data.append("g-recaptcha-response", token);
-        submitToFormspree(FORMSPREE_CONTACT_ID, data)
-          .then(function () {
+      fetch(FS_BASE + FORMSPREE_CONTACT_ID, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        body: data
+      })
+          .then(function (res) {
+            if (!res.ok) {
+              console.error("Formspree contact submit failed", { status: res.status, statusText: res.statusText });
+              if (btn) { btn.disabled = false; btn.innerHTML = original; }
+              cErr.textContent = "משהו השתבש. נסו שוב.";
+              return;
+            }
             contactForm.querySelectorAll("input,textarea,select,button").forEach(function (f) { f.disabled = true; });
             if (ok) ok.style.display = "flex";
           })
-          .catch(function () {
+          .catch(function (err) {
+            console.error("Formspree contact submit error", err);
             if (btn) { btn.disabled = false; btn.innerHTML = original; }
             cErr.textContent = "משהו השתבש. נסו שוב.";
           });
-      });
     });
   }
 
