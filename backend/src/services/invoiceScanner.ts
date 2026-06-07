@@ -113,6 +113,7 @@ export async function scanForInvoices(clientId: string, options: ScanOptions = {
           dueDate: invoice.dueDate ? parseDate(invoice.dueDate, null) : null,
           status: invoice.status,
           description: invoice.description,
+          supplierName: invoice.supplierName,
           driveUrl,
           sheetsRow,
           emailId: ref.id,

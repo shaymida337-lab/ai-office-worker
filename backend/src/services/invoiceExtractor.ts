@@ -6,6 +6,7 @@ export type InvoiceStatus = "paid" | "pending" | "overdue";
 export interface InvoiceData {
   clientName: string | null;
   clientEmail: string | null;
+  supplierName: string | null;
   invoiceNumber: string | null;
   amount: number;
   currency: string;
@@ -35,8 +36,8 @@ Body: ${emailBody.slice(0, 8000)}
 Attachments: ${attachments.map((item) => item.filename).filter(Boolean).join(", ") || "none"}
 
 Return exactly:
-{"clientName":null,"clientEmail":null,"invoiceNumber":null,"amount":0,"currency":"ILS","date":"YYYY-MM-DD","dueDate":null,"status":"pending","description":null}
-If a field is missing, use null. Amount must be numeric. Status: paid, pending, overdue.`;
+{"clientName":null,"clientEmail":null,"supplierName":null,"invoiceNumber":null,"amount":0,"currency":"ILS","date":"YYYY-MM-DD","dueDate":null,"status":"pending","description":null}
+supplierName is the supplier/vendor/issuer business that issued the invoice, NOT the client/customer. If the supplier cannot be determined, return null. If a field is missing, use null. Amount must be numeric. Status: paid, pending, overdue.`;
 
   try {
     const message = await anthropic.messages.create({
@@ -63,6 +64,7 @@ function normalizeInvoiceData(
   return {
     clientName: firstString(parsed, ["clientName", "customer", "customerName"]) ?? clientFallback?.name ?? fallback.clientName,
     clientEmail: firstString(parsed, ["clientEmail", "email"]) ?? clientFallback?.email ?? fallback.clientEmail,
+    supplierName: firstString(parsed, ["supplierName", "supplier", "vendor", "vendorName", "issuer", "issuerName"]) ?? fallback.supplierName,
     invoiceNumber: firstString(parsed, ["invoiceNumber", "invoice_number", "number"]) ?? fallback.invoiceNumber,
     amount: parsedAmount && parsedAmount > 0 ? parsedAmount : fallback.amount,
     currency: normalizeCurrency(firstString(parsed, ["currency"]) ?? fallback.currency),
@@ -83,6 +85,7 @@ function fallbackInvoiceData(
   return {
     clientName: clientFallback?.name ?? null,
     clientEmail: clientFallback?.email ?? null,
+    supplierName: null,
     invoiceNumber:
       text.match(/(?:invoice|receipt|חשבונית|קבלה)[^\dA-Z]{0,12}([A-Z0-9-]{3,})/i)?.[1] ??
       attachments.find((item) => item.filename)?.filename?.replace(/\.[^.]+$/, "") ??
