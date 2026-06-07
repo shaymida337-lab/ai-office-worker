@@ -3022,7 +3022,7 @@ apiRouter.get("/tasks", async (req, res) => {
   const tasks = await prisma.task.findMany({
     where: { organizationId: req.auth!.organizationId },
     orderBy: { createdAt: "desc" },
-    take: 50,
+    take: 500,
   });
   res.json(tasks);
 });

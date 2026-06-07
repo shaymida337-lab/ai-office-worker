@@ -15,6 +15,7 @@ export default function TasksPage() {
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     apiFetch<Task[]>("/api/tasks")
@@ -73,6 +74,13 @@ export default function TasksPage() {
   const activeTasks = tasks.filter((task) => !completedStatuses.has(task.status));
   const completedTasks = tasks.filter((task) => completedStatuses.has(task.status));
   const visibleTasks = activeTab === "active" ? activeTasks : completedTasks;
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredTasks = normalizedQuery
+    ? visibleTasks.filter((task) =>
+        (task.title ?? "").toLowerCase().includes(normalizedQuery) ||
+        (task.supplier ?? "").toLowerCase().includes(normalizedQuery)
+      )
+    : visibleTasks;
 
   const formatCompletedDate = (date: string) =>
     new Intl.DateTimeFormat("he-IL", {
@@ -88,11 +96,17 @@ export default function TasksPage() {
       <Nav />
       <div className="mb-8">
         <div className="page-kicker">תיבת משימות</div>
-        <h1>משימות מהמייל</h1>
-        <p>משימות שנוצרו מסריקות ג׳ימייל, וואטסאפ וחשבוניות כדי שלא ייפול טיפול בין הכיסאות.</p>
+        <h1>כל המשימות</h1>
+        <p>כל המשימות שלך — מהמייל, מוואטסאפ, מנטלי ושנוצרו ידנית.</p>
       </div>
       {message && <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-base text-red-100">{message}</div>}
       <div className="card">
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="חיפוש משימה..."
+          className="mb-5 w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 py-3 font-sans text-base text-ink-primary shadow-sm outline-none placeholder:text-[#6b7686] focus:border-accent-primary focus:ring-2 focus:ring-[rgba(29,91,255,0.12)]"
+        />
         <div className="mb-5 flex flex-wrap gap-2 rounded-2xl border border-[var(--border)] bg-surface-hover p-1">
           <button
             type="button"
@@ -115,7 +129,7 @@ export default function TasksPage() {
         </div>
 
         <ul className="m-0 list-none p-0">
-          {visibleTasks.map((t) => {
+          {filteredTasks.map((t) => {
             const isCompleting = completingIds.has(t.id);
             const isRestoring = restoringIds.has(t.id);
             return (
@@ -154,7 +168,7 @@ export default function TasksPage() {
           })}
         </ul>
         {loading && <div className="skeleton h-24" aria-label="טוען משימות" />}
-        {!loading && visibleTasks.length === 0 && (
+        {!loading && filteredTasks.length === 0 && (
           <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
             <h2>{activeTab === "active" ? "אין משימות פתוחות" : "אין משימות שבוצעו"}</h2>
             <p className="mt-2 text-[14px] text-ink-muted">
