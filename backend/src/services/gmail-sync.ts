@@ -2805,9 +2805,10 @@ function detectInvoice(subject: string, body: string, parts: PayloadPart[]) {
     INVOICE_KEYWORDS.some((keyword) => lower.includes(keyword.toLowerCase())) ||
     INVOICE_KEYWORD_PATTERNS.some((pattern) => pattern.test(text));
   const hasPdf = parts.some((part) => /\.pdf$/i.test(part.filename ?? "") || part.mimeType === "application/pdf");
+  const hasImage = parts.some((part) => part.body && (part.mimeType === "image/jpeg" || part.mimeType === "image/png"));
   const amountResult = extractInvoiceAmount(text);
   return {
-    isInvoice: hasKeyword || (hasPdf && amountResult.amount !== null),
+    isInvoice: hasKeyword || (hasPdf && amountResult.amount !== null) || hasImage,
     amount: amountResult.amount,
     amountRejectedReason: amountResult.rejectedReason,
   };
