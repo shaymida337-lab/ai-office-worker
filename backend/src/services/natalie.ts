@@ -118,7 +118,7 @@ function extractShowInvoiceSearchTerm(question: string) {
 
 function isShowInvoiceRequest(question: string) {
   const mentionsInvoice = /(חשבונית|invoice)/i.test(question);
-  const hasShowVerb = /(תראי|תראה|הראי|הראה לי|הראה|תראה לי|תציגי|הציגי|תפתחי|פתחי|תמצאי|חפשי|להציג|לראות|לפתוח|show|open|find|search|display)/i.test(question);
+  const hasShowVerb = /(תראי|תראה|הראי|הראה לי|הראה|תראה לי|תציגי|הציגי|תפתחי|פתחי|תמצאי|חפשי|להציג|לראות|לפתוח|show|open|find|search|display|תוציאי|תוציא|תציעי|תציע|תביאי|תביא)/i.test(question);
   return mentionsInvoice && hasShowVerb;
 }
 
