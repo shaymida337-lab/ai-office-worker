@@ -2448,6 +2448,7 @@ function isAttachmentPayloadPart(part: PayloadPart) {
     filename ||
     disposition.includes("attachment") ||
     (part.body?.attachmentId && !part.parts?.length) ||
+    (part.body?.data && !part.parts?.length && (part.mimeType === "image/jpeg" || part.mimeType === "image/png")) ||
     (part.body?.data && filename)
   );
 }
