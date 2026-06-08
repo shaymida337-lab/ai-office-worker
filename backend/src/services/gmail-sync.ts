@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "crypto";
 import { prisma } from "../lib/prisma.js";
 import { buildDuplicateHash } from "../lib/duplicate.js";
-import { analyzeEmailContent, type EmailAnalysis } from "./claude.js";
+import { analyzeEmailContent, analyzeInvoiceFile, type EmailAnalysis } from "./claude.js";
 import { getGoogleClients } from "./google.js";
 import { analyzeAndSaveMessage } from "./messageScanner.js";
 import {
@@ -1285,8 +1285,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       }
 
       if (!isIncomingSupplierExpense && canPersistFinancialRecord && clientId && isInvoiceRecordDocument(classification.documentType) && classification.reviewStatus === "auto_saved") {
-        const invoicePdfParts = email.parts.filter(isPdfAttachmentPart);
-        const createTargets = invoicePdfParts.length > 1 ? invoicePdfParts : [null];
+        const invoiceParts = email.parts.filter((part) => isPdfAttachmentPart(part) || Boolean(part.body && (part.mimeType === "image/jpeg" || part.mimeType === "image/png")));
+        const shouldUseAttachmentInvoices = invoiceParts.length > 1 || invoiceParts.some((part) => part.mimeType === "image/jpeg" || part.mimeType === "image/png");
+        const createTargets = shouldUseAttachmentInvoices ? invoiceParts : [null];
         for (const invoicePart of createTargets) {
           const targetFilename = invoicePart ? attachmentFilenameForPart(invoicePart) : attachmentFilename;
           const targetAttachmentId = invoicePart?.body?.attachmentId ?? null;
@@ -1300,7 +1301,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                 bodyText: email.bodyText,
                 sender: email.from,
               })
-            : { analysis, attachmentText: "" };
+            : { skipped: false as const, analysis, attachmentText: "" };
+          if (targetAnalysis.skipped) {
+            logStep(`[gmail-sync] invoice attachment skipped message=${email.gmailId} file="${targetFilename ?? "unnamed"}" reason="${targetAnalysis.reason}"`);
+            continue;
+          }
           const targetBodyForDetection = invoicePart
             ? [email.bodyText, targetAnalysis.attachmentText && `--- PDF ATTACHMENT TEXT ---\n${targetAnalysis.attachmentText}`].filter(Boolean).join("\n\n")
             : bodyForAnalysis;
@@ -1312,7 +1317,14 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             continue;
           }
 
-          const targetAmount = normalizeDetectedAmount(targetInvoiceMatch.amount ?? targetAnalysis.analysis.amount);
+          const isImageInvoicePart = Boolean(invoicePart && (invoicePart.mimeType === "image/jpeg" || invoicePart.mimeType === "image/png"));
+          const targetAmount = isImageInvoicePart
+            ? normalizeDetectedAmount(targetAnalysis.analysis.amount)
+            : normalizeDetectedAmount(targetInvoiceMatch.amount ?? targetAnalysis.analysis.amount);
+          if (isImageInvoicePart && (targetAmount === null || (!isUsableSupplierName(targetAnalysis.analysis.supplier, ownerEmails) && !targetAnalysis.analysis.invoiceNumber))) {
+            logStep(`[gmail-sync] invoice image skipped message=${email.gmailId} file="${targetFilename ?? "unnamed"}" reason="image_missing_amount_and_supplier_or_invoice_number" amount=${targetAmount ?? "none"} supplier="${targetAnalysis.analysis.supplier}" invoiceNumber=${targetAnalysis.analysis.invoiceNumber ?? "none"}`);
+            continue;
+          }
           const targetSupplierMetadata = invoicePart
             ? resolveSupplierMetadata({
                 analysisSupplier: targetAnalysis.analysis.supplier,
@@ -1357,10 +1369,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               subject: email.subject,
               emailMessageId: email.emailRecordId,
               gmailMessageId: email.gmailId,
-              invoiceDedupeKey: invoicePdfParts.length > 1 ? attachmentInvoiceDedupeKey : null,
-              attachmentFilename: invoicePdfParts.length > 1 ? targetFilename : null,
-              gmailAttachmentId: invoicePdfParts.length > 1 ? targetAttachmentId : null,
-              allowMultipleInvoicesForMessage: invoicePdfParts.length > 1,
+              invoiceDedupeKey: shouldUseAttachmentInvoices ? attachmentInvoiceDedupeKey : null,
+              attachmentFilename: shouldUseAttachmentInvoices ? targetFilename : null,
+              gmailAttachmentId: shouldUseAttachmentInvoices ? targetAttachmentId : null,
+              allowMultipleInvoicesForMessage: shouldUseAttachmentInvoices,
               driveUrl: targetDriveLink?.link ?? null,
               driveFileId: targetDriveLink?.fileId ?? null,
               driveFileUrl: targetDriveLink?.link ?? null,
@@ -2567,6 +2579,37 @@ async function analyzeInvoiceAttachmentForEmail(input: {
   bodyText: string;
   sender: string;
 }) {
+  if (input.part.mimeType === "image/jpeg" || input.part.mimeType === "image/png") {
+    const data = await attachmentData(input.gmail, input.gmailMessageId, input.part);
+    const buffer = decodeGmailAttachment(data);
+    if (buffer.length < 50 * 1024) {
+      return { skipped: true as const, reason: `image_below_min_size_${buffer.length}_bytes`, attachmentText: "" };
+    }
+    const result = await analyzeInvoiceFile({
+      fileBase64: buffer.toString("base64"),
+      mimeType: input.part.mimeType,
+      filename: input.part.filename ?? undefined,
+    });
+    return {
+      skipped: false as const,
+      attachmentText: "",
+      analysis: {
+        supplier: result.supplier,
+        supplierTaxId: result.supplierTaxId ?? null,
+        amount: result.amount,
+        amountBeforeVat: result.amountBeforeVat ?? null,
+        vatAmount: result.vatAmount ?? null,
+        totalAmount: result.totalAmount ?? result.amount,
+        currency: result.currency,
+        documentType: result.documentType ?? "other",
+        paymentRequired: result.paymentRequired ?? result.documentType !== "receipt",
+        dueDate: result.dueDate ?? null,
+        invoiceDate: result.date,
+        invoiceNumber: result.invoiceNumber,
+      },
+    };
+  }
+
   const attachmentText = await extractPdfTextFromPart(input.gmail, input.gmailMessageId, input.part).catch((err) => {
     console.warn(`[gmail-sync] per-PDF extraction failed message=${input.gmailMessageId} file="${input.part.filename ?? "unnamed"}"`, err instanceof Error ? err.message : String(err));
     return "";
@@ -2581,7 +2624,7 @@ async function analyzeInvoiceAttachmentForEmail(input: {
     filenames: [input.part.filename].filter(Boolean) as string[],
     sender: input.sender,
   });
-  return { analysis, attachmentText };
+  return { skipped: false as const, analysis, attachmentText };
 }
 
 async function extractVisualAttachmentHints(gmail: GmailClient, messageId: string, parts: PayloadPart[], sender: string) {
