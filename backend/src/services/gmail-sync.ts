@@ -842,7 +842,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         metadata: { gmailMessageId: email.gmailId },
       });
       const pipelineAction = pipelineActionForClassification(businessClassification);
-      if (pipelineAction === "NEEDS_REVIEW") {
+      const isImageInvoiceCandidate = invoiceMatch.isInvoice
+        && email.parts.some((part) => part.body && (part.mimeType === "image/jpeg" || part.mimeType === "image/png"))
+        && (
+          INVOICE_KEYWORDS.some((keyword) => email.subject.toLowerCase().includes(keyword.toLowerCase())) ||
+          INVOICE_KEYWORD_PATTERNS.some((pattern) => pattern.test(email.subject))
+        );
+      if (pipelineAction === "NEEDS_REVIEW" && !isImageInvoiceCandidate) {
         needsReviewCount++;
         logStep(`[gmail-sync] classifier needs_review message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
         await recordFinancialDocumentDecision({
@@ -878,6 +884,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           data: { processedAt: new Date() },
         });
         continue;
+      } else if (pipelineAction === "NEEDS_REVIEW") {
+        logStep(`[gmail-sync] classifier needs_review BYPASS image-invoice-candidate message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
       }
       const isIncomingSupplierExpense = pipelineAction === "SUPPLIER_EXPENSE";
       if (isIncomingSupplierExpense && clientId) {
