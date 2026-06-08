@@ -977,6 +977,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       const driveLinks: {
         type: string;
         link: string;
+        filename?: string | null;
+        gmailAttachmentId?: string | null;
+        mimeType?: string | null;
         fileId?: string | null;
         folderId?: string | null;
         clientFolderId?: string | null;
@@ -1020,6 +1023,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           driveLinks.push({
             type: folderForDocumentType(classification.documentType),
             link: existingAttachment.driveLink,
+            filename,
+            gmailAttachmentId: attachmentId ?? null,
+            mimeType: part.mimeType ?? null,
             fileId: existingAttachment.driveFileId,
             folderId: existingAttachment.driveFolderId,
             clientFolderId: existingAttachment.driveClientFolderId,
@@ -1074,6 +1080,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           driveLinks.push({
             type: folderType,
             link,
+            filename,
+            gmailAttachmentId: attachmentId ?? null,
+            mimeType: part.mimeType ?? null,
             fileId: upload.fileId,
             folderId: upload.folderId,
             clientFolderId: upload.clientFolderId,
@@ -1276,49 +1285,104 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       }
 
       if (!isIncomingSupplierExpense && canPersistFinancialRecord && clientId && isInvoiceRecordDocument(classification.documentType) && classification.reviewStatus === "auto_saved") {
-        const invoiceAmount = amount ?? 0;
-        const invoiceNumber = analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
-        const invoiceDate = normalizeBusinessDate(analysis.invoiceDate, email.receivedAt) ?? email.receivedAt;
-        if (amount == null) {
-          logStep(`[gmail-sync] invoice amount missing message=${email.gmailId}; saving Invoice with amount=0 for review`);
-        }
-        logStep(`[gmail-sync] DB Invoice insert attempt message=${email.gmailId} clientId=${clientId} supplier="${supplierName}" amount=${invoiceAmount} invoiceNumber=${invoiceNumber ?? "none"} date=${invoiceDate.toISOString()} type=${classification.documentType}`);
-        try {
-          const createdInvoice = await saveDetectedInvoice({
-            organizationId,
-            clientId,
-            amount: invoiceAmount,
-            currency: analysis.currency,
-            date: invoiceDate,
-            dueDate: normalizeBusinessDate(analysis.dueDate, null),
-            invoiceNumber,
-            supplierName,
-            documentType: classification.documentType,
-            fromEmail: email.senderEmail,
-            subject: email.subject,
-            emailMessageId: email.emailRecordId,
-            gmailMessageId: email.gmailId,
-            driveUrl: driveLinks[0]?.link ?? null,
-            driveFileId: driveLinks[0]?.fileId ?? null,
-            driveFileUrl: driveLinks[0]?.link ?? null,
-            driveFolderId: driveLinks[0]?.folderId ?? null,
-            driveClientFolderId: driveLinks[0]?.clientFolderId ?? null,
-            driveSupplierFolderId: driveLinks[0]?.supplierFolderId ?? null,
-            driveFolderPath: driveLinks[0]?.folderPath ?? null,
-            invoiceMonth: driveLinks[0]?.invoiceMonth ?? invoiceDate.getMonth() + 1,
-            invoiceYear: driveLinks[0]?.invoiceYear ?? invoiceDate.getFullYear(),
-          });
-          if (createdInvoice) {
-            invoicesCreated++;
-            logStep(`[gmail-sync] invoice save success message=${email.gmailId} invoiceId=${createdInvoice.id} amount=${invoiceAmount} supplier="${supplierName}" drive=${driveLinks[0]?.link ?? "none"}`);
-          } else {
-            duplicatesSkipped++;
-            logStep(`[gmail-sync] duplicate invoice ignored message=${email.gmailId} supplier="${supplierName}" invoiceNumber=${invoiceNumber ?? "none"} amount=${invoiceAmount} date=${invoiceDate.toISOString()}`);
+        const invoicePdfParts = email.parts.filter(isPdfAttachmentPart);
+        const createTargets = invoicePdfParts.length > 1 ? invoicePdfParts : [null];
+        for (const invoicePart of createTargets) {
+          const targetFilename = invoicePart ? attachmentFilenameForPart(invoicePart) : attachmentFilename;
+          const targetAttachmentId = invoicePart?.body?.attachmentId ?? null;
+          const targetDriveLink = invoicePart ? findDriveLinkForAttachment(driveLinks, invoicePart) : driveLinks[0];
+          const targetAnalysis = invoicePart
+            ? await analyzeInvoiceAttachmentForEmail({
+                gmail,
+                gmailMessageId: email.gmailId,
+                part: invoicePart,
+                subject: email.subject,
+                bodyText: email.bodyText,
+                sender: email.from,
+              })
+            : { analysis, attachmentText: "" };
+          const targetBodyForDetection = invoicePart
+            ? [email.bodyText, targetAnalysis.attachmentText && `--- PDF ATTACHMENT TEXT ---\n${targetAnalysis.attachmentText}`].filter(Boolean).join("\n\n")
+            : bodyForAnalysis;
+          const targetInvoiceMatch = invoicePart
+            ? detectInvoice(email.subject, targetBodyForDetection, [invoicePart])
+            : invoiceMatch;
+          if (invoicePart && !targetInvoiceMatch.isInvoice && !isInvoiceRecordDocument(normalizeInvoiceDocumentType(targetAnalysis.analysis.documentType, classification.documentType))) {
+            logStep(`[gmail-sync] invoice PDF skipped message=${email.gmailId} file="${targetFilename ?? "unnamed"}" reason="per_pdf_not_invoice"`);
+            continue;
           }
-        } catch (err) {
-          errorsCount++;
-          logStep(`[gmail-sync] invoice save failed message=${email.gmailId} supplier="${supplierName}" reason="${err instanceof Error ? err.message : String(err)}"`);
-          throw err;
+
+          const targetAmount = normalizeDetectedAmount(targetInvoiceMatch.amount ?? targetAnalysis.analysis.amount);
+          const targetSupplierMetadata = invoicePart
+            ? resolveSupplierMetadata({
+                analysisSupplier: targetAnalysis.analysis.supplier,
+                analysisSupplierTaxId: targetAnalysis.analysis.supplierTaxId,
+                bodyText: targetBodyForDetection,
+                senderName: email.senderName,
+                senderEmail: email.senderEmail,
+                senderDomain: email.domain,
+                ownerEmails,
+                knownSupplierNames,
+              })
+            : supplierMetadata;
+          const targetSupplierName = targetSupplierMetadata.name;
+          const targetDocumentType = normalizeInvoiceDocumentType(targetAnalysis.analysis.documentType, classification.documentType);
+          const invoiceAmount = targetAmount ?? 0;
+          const invoiceNumber = targetAnalysis.analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, targetBodyForDetection, targetFilename ?? ""].join("\n"));
+          const invoiceDate = normalizeBusinessDate(targetAnalysis.analysis.invoiceDate, email.receivedAt) ?? email.receivedAt;
+          const attachmentInvoiceDedupeKey = invoicePart
+            ? buildInvoiceAttachmentDedupeKey({
+                emailMessageId: email.emailRecordId,
+                gmailMessageId: email.gmailId,
+                attachmentFilename: targetFilename,
+                gmailAttachmentId: targetAttachmentId,
+              })
+            : null;
+          if (targetAmount == null) {
+            logStep(`[gmail-sync] invoice amount missing message=${email.gmailId} file="${targetFilename ?? "body"}"; saving Invoice with amount=0 for review`);
+          }
+          logStep(`[gmail-sync] DB Invoice insert attempt message=${email.gmailId} file="${targetFilename ?? "body"}" clientId=${clientId} supplier="${targetSupplierName}" amount=${invoiceAmount} invoiceNumber=${invoiceNumber ?? "none"} date=${invoiceDate.toISOString()} type=${targetDocumentType}`);
+          try {
+            const createdInvoice = await saveDetectedInvoice({
+              organizationId,
+              clientId,
+              amount: invoiceAmount,
+              currency: targetAnalysis.analysis.currency,
+              date: invoiceDate,
+              dueDate: normalizeBusinessDate(targetAnalysis.analysis.dueDate, null),
+              invoiceNumber,
+              supplierName: targetSupplierName,
+              documentType: targetDocumentType,
+              fromEmail: email.senderEmail,
+              subject: email.subject,
+              emailMessageId: email.emailRecordId,
+              gmailMessageId: email.gmailId,
+              invoiceDedupeKey: invoicePdfParts.length > 1 ? attachmentInvoiceDedupeKey : null,
+              attachmentFilename: invoicePdfParts.length > 1 ? targetFilename : null,
+              gmailAttachmentId: invoicePdfParts.length > 1 ? targetAttachmentId : null,
+              allowMultipleInvoicesForMessage: invoicePdfParts.length > 1,
+              driveUrl: targetDriveLink?.link ?? null,
+              driveFileId: targetDriveLink?.fileId ?? null,
+              driveFileUrl: targetDriveLink?.link ?? null,
+              driveFolderId: targetDriveLink?.folderId ?? null,
+              driveClientFolderId: targetDriveLink?.clientFolderId ?? null,
+              driveSupplierFolderId: targetDriveLink?.supplierFolderId ?? null,
+              driveFolderPath: targetDriveLink?.folderPath ?? null,
+              invoiceMonth: targetDriveLink?.invoiceMonth ?? invoiceDate.getMonth() + 1,
+              invoiceYear: targetDriveLink?.invoiceYear ?? invoiceDate.getFullYear(),
+            });
+            if (createdInvoice) {
+              invoicesCreated++;
+              logStep(`[gmail-sync] invoice save success message=${email.gmailId} file="${targetFilename ?? "body"}" invoiceId=${createdInvoice.id} amount=${invoiceAmount} supplier="${targetSupplierName}" drive=${targetDriveLink?.link ?? "none"}`);
+            } else {
+              duplicatesSkipped++;
+              logStep(`[gmail-sync] duplicate invoice ignored message=${email.gmailId} file="${targetFilename ?? "body"}" supplier="${targetSupplierName}" invoiceNumber=${invoiceNumber ?? "none"} amount=${invoiceAmount} date=${invoiceDate.toISOString()}`);
+            }
+          } catch (err) {
+            errorsCount++;
+            logStep(`[gmail-sync] invoice save failed message=${email.gmailId} file="${targetFilename ?? "body"}" supplier="${targetSupplierName}" reason="${err instanceof Error ? err.message : String(err)}"`);
+            throw err;
+          }
         }
       } else {
         const reasons = [
@@ -1999,6 +2063,23 @@ export function buildGmailScanDuplicateKey(input: {
   return createHash("sha256").update(normalized).digest("hex").slice(0, 40);
 }
 
+function buildInvoiceAttachmentDedupeKey(input: {
+  emailMessageId: string;
+  gmailMessageId: string;
+  attachmentFilename?: string | null;
+  gmailAttachmentId?: string | null;
+}) {
+  const attachmentKey = [
+    input.gmailAttachmentId ?? "no-attachment-id",
+    (input.attachmentFilename ?? "unnamed").trim().toLowerCase(),
+  ].join("|");
+  const hash = createHash("sha256")
+    .update(`${input.gmailMessageId}|${attachmentKey}`)
+    .digest("hex")
+    .slice(0, 24);
+  return `${input.emailMessageId}:${hash}`;
+}
+
 function confidenceBucket(confidence: number, evidenceCount: number, documentType: GmailDocumentType): GmailConfidenceScore {
   if (documentType === "unknown_needs_review") return "low";
   if (confidence >= 0.78 && evidenceCount >= 2) return "high";
@@ -2010,12 +2091,50 @@ function primaryAttachmentFilename(parts: PayloadPart[]) {
   return parts.find((part) => part.filename)?.filename ?? null;
 }
 
+function attachmentFilenameForPart(part: PayloadPart) {
+  return part.filename?.trim() || attachmentFilenameFromPart(part);
+}
+
+function isPdfAttachmentPart(part: PayloadPart) {
+  return Boolean(part.body && (part.mimeType === "application/pdf" || /\.pdf$/i.test(part.filename ?? "")));
+}
+
+function findDriveLinkForAttachment(
+  driveLinks: Array<{
+    filename?: string | null;
+    gmailAttachmentId?: string | null;
+    link: string;
+    fileId?: string | null;
+    folderId?: string | null;
+    clientFolderId?: string | null;
+    supplierFolderId?: string | null;
+    folderPath?: string | null;
+    invoiceMonth?: number | null;
+    invoiceYear?: number | null;
+  }>,
+  part: PayloadPart
+) {
+  const attachmentId = part.body?.attachmentId ?? null;
+  const filename = attachmentFilenameForPart(part);
+  return (
+    (attachmentId ? driveLinks.find((link) => link.gmailAttachmentId === attachmentId) : null) ??
+    (filename ? driveLinks.find((link) => link.filename === filename) : null) ??
+    null
+  );
+}
+
 function gmailMessageLink(gmailMessageId: string) {
   return `https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(gmailMessageId)}`;
 }
 
 function isInvoiceRecordDocument(documentType: GmailDocumentType) {
   return documentType === "invoice" || documentType === "receipt" || documentType === "tax_invoice_receipt";
+}
+
+function normalizeInvoiceDocumentType(documentType: EmailAnalysis["documentType"], fallback: GmailDocumentType): GmailDocumentType {
+  return documentType === "invoice" || documentType === "receipt" || documentType === "tax_invoice_receipt"
+    ? documentType
+    : fallback;
 }
 
 export function isIncomingSupplierExpenseCandidate(input: {
@@ -2414,23 +2533,55 @@ function decodeMimeHeader(value: string) {
 }
 
 async function extractPdfTextFromParts(gmail: GmailClient, messageId: string, parts: PayloadPart[]) {
-  const pdfParts = parts.filter((part) => part.body && (part.mimeType === "application/pdf" || /\.pdf$/i.test(part.filename ?? "")));
+  const pdfParts = parts.filter(isPdfAttachmentPart);
   const texts: string[] = [];
   for (const part of pdfParts) {
-    let parser: { getText(): Promise<{ text?: string }>; destroy(): Promise<void> } | null = null;
     try {
-      const data = await attachmentData(gmail, messageId, part);
-      const { PDFParse } = await import("pdf-parse");
-      parser = new PDFParse({ data: new Uint8Array(decodeGmailAttachment(data)) });
-      const parsed = await parser.getText();
-      if (parsed.text?.trim()) texts.push(parsed.text.trim());
+      const text = await extractPdfTextFromPart(gmail, messageId, part);
+      if (text) texts.push(text);
     } catch (err) {
       console.warn("[gmail-sync] PDF text extraction failed", err instanceof Error ? err.message : String(err));
-    } finally {
-      await parser?.destroy().catch(() => undefined);
     }
   }
   return texts.join("\n\n");
+}
+
+async function extractPdfTextFromPart(gmail: GmailClient, messageId: string, part: PayloadPart) {
+  let parser: { getText(): Promise<{ text?: string }>; destroy(): Promise<void> } | null = null;
+  try {
+    const data = await attachmentData(gmail, messageId, part);
+    const { PDFParse } = await import("pdf-parse");
+    parser = new PDFParse({ data: new Uint8Array(decodeGmailAttachment(data)) });
+    const parsed = await parser.getText();
+    return parsed.text?.trim() ?? "";
+  } finally {
+    await parser?.destroy().catch(() => undefined);
+  }
+}
+
+async function analyzeInvoiceAttachmentForEmail(input: {
+  gmail: GmailClient;
+  gmailMessageId: string;
+  part: PayloadPart;
+  subject: string;
+  bodyText: string;
+  sender: string;
+}) {
+  const attachmentText = await extractPdfTextFromPart(input.gmail, input.gmailMessageId, input.part).catch((err) => {
+    console.warn(`[gmail-sync] per-PDF extraction failed message=${input.gmailMessageId} file="${input.part.filename ?? "unnamed"}"`, err instanceof Error ? err.message : String(err));
+    return "";
+  });
+  const body = [
+    input.bodyText,
+    attachmentText && `--- PDF ATTACHMENT TEXT ---\n${attachmentText}`,
+  ].filter(Boolean).join("\n\n");
+  const analysis = await analyzeEmailContent({
+    subject: input.subject,
+    body,
+    filenames: [input.part.filename].filter(Boolean) as string[],
+    sender: input.sender,
+  });
+  return { analysis, attachmentText };
 }
 
 async function extractVisualAttachmentHints(gmail: GmailClient, messageId: string, parts: PayloadPart[], sender: string) {
@@ -2982,6 +3133,10 @@ async function saveDetectedInvoice(input: {
   subject: string;
   emailMessageId: string;
   gmailMessageId: string;
+  invoiceDedupeKey?: string | null;
+  attachmentFilename?: string | null;
+  gmailAttachmentId?: string | null;
+  allowMultipleInvoicesForMessage?: boolean;
   driveUrl: string | null;
   driveFileId: string | null;
   driveFileUrl: string | null;
@@ -2992,29 +3147,45 @@ async function saveDetectedInvoice(input: {
   invoiceMonth: number | null;
   invoiceYear: number | null;
 }) {
-  const existingByGmail = await prisma.invoice.findFirst({
-    where: { organizationId: input.organizationId, gmailMessageId: input.gmailMessageId },
-    select: { id: true },
-  });
-  if (existingByGmail) return null;
+  if (input.invoiceDedupeKey) {
+    const existingByAttachment = await prisma.invoice.findFirst({
+      where: { organizationId: input.organizationId, emailId: input.invoiceDedupeKey },
+      select: { id: true },
+    });
+    if (existingByAttachment) return null;
+  }
+
+  if (!input.allowMultipleInvoicesForMessage) {
+    const existingByGmail = await prisma.invoice.findFirst({
+      where: { organizationId: input.organizationId, gmailMessageId: input.gmailMessageId },
+      select: { id: true },
+    });
+    if (existingByGmail) return null;
+  }
 
   const dateStart = new Date(input.date);
   dateStart.setHours(0, 0, 0, 0);
   const dateEnd = new Date(input.date);
   dateEnd.setHours(23, 59, 59, 999);
-  const existingByBusinessKey = await prisma.invoice.findFirst({
-    where: {
-      organizationId: input.organizationId,
-      clientId: input.clientId,
-      amount: input.amount,
-      date: { gte: dateStart, lte: dateEnd },
-      ...(input.invoiceNumber
-        ? { invoiceNumber: input.invoiceNumber }
-        : { description: { contains: input.supplierName, mode: "insensitive" } }),
-    },
-    select: { id: true },
-  });
-  if (existingByBusinessKey) return null;
+  if (!input.allowMultipleInvoicesForMessage) {
+    const existingByBusinessKey = await prisma.invoice.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        clientId: input.clientId,
+        amount: input.amount,
+        date: { gte: dateStart, lte: dateEnd },
+        ...(input.invoiceNumber
+          ? { invoiceNumber: input.invoiceNumber }
+          : { description: { contains: input.supplierName, mode: "insensitive" } }),
+      },
+      select: { id: true },
+    });
+    if (existingByBusinessKey) return null;
+  }
+
+  const attachmentDescription = input.invoiceDedupeKey
+    ? `\nAttachment: ${input.attachmentFilename ?? "unknown"} (${input.gmailAttachmentId ?? "no-id"})`
+    : "";
 
   return prisma.invoice.create({
     data: {
@@ -3026,7 +3197,7 @@ async function saveDetectedInvoice(input: {
       date: input.date,
       dueDate: input.dueDate,
       status: input.documentType === "receipt" ? "paid" : "pending",
-      description: `${input.supplierName} · ${input.subject}\nGmail: ${gmailMessageLink(input.gmailMessageId)}`,
+      description: `${input.supplierName} · ${input.subject}\nGmail: ${gmailMessageLink(input.gmailMessageId)}${attachmentDescription}`,
       driveUrl: input.driveUrl,
       driveFileId: input.driveFileId,
       driveFileUrl: input.driveFileUrl,
@@ -3037,7 +3208,7 @@ async function saveDetectedInvoice(input: {
       supplierName: input.supplierName,
       invoiceMonth: input.invoiceMonth,
       invoiceYear: input.invoiceYear,
-      emailId: input.emailMessageId,
+      emailId: input.invoiceDedupeKey ?? input.emailMessageId,
       fromEmail: input.fromEmail,
       gmailMessageId: input.gmailMessageId,
     },
