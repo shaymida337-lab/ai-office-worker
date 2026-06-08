@@ -2647,7 +2647,7 @@ async function extractVisualAttachmentHints(gmail: GmailClient, messageId: strin
       const data = await attachmentData(gmail, messageId, part);
       const { analyzeInvoiceFile } = await import("./claude.js");
       const result = await analyzeInvoiceFile({
-        fileBase64: data,
+        fileBase64: decodeGmailAttachment(data).toString("base64"),
         mimeType: part.mimeType || "image/jpeg",
         filename: part.filename ?? undefined,
       });
