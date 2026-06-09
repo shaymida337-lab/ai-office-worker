@@ -122,6 +122,9 @@ export async function appendSupplierPaymentToSheet(input: {
   );
 
   const rowNumber = Number(append.data.updates?.updatedRange?.match(/![A-Z]+(\d+):/)?.[1] ?? 0) || null;
+  console.log(
+    `[sheets] SHEETS_ROW_CREATED org=${input.organizationId} paymentId=${input.paymentId ?? "none"} supplier="${input.supplier}" invoiceNumber=${input.invoiceNumber ?? "none"} row=${rowNumber ?? "unknown"} spreadsheet=${spreadsheet.spreadsheetId}`
+  );
   return { ...spreadsheet, row: rowNumber, updated: false };
 }
 

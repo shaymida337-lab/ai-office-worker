@@ -121,6 +121,10 @@ export async function uploadInvoiceAttachmentToDrive(input: {
   });
   if (existingFile) {
     const fileId = existingFile.id ?? null;
+    const webViewLink = existingFile.webViewLink ?? (fileId ? `https://drive.google.com/file/d/${fileId}/view` : "");
+    console.log(
+      `[drive] DUPLICATE_SKIPPED org=${input.organizationId} reason=existing_drive_file file="${driveFilename}" driveFileId=${fileId ?? "none"} link=${webViewLink || "none"} folderId=${targetFolder.folderId} folderPath="${targetFolder.folderPath}"`
+    );
     return {
       fileId,
       clientFolderId: targetFolder.clientFolderId,
@@ -132,7 +136,7 @@ export async function uploadInvoiceAttachmentToDrive(input: {
       invoiceMonth,
       invoiceYear,
       duplicateDetected: true,
-      webViewLink: existingFile.webViewLink ?? (fileId ? `https://drive.google.com/file/d/${fileId}/view` : ""),
+      webViewLink,
     };
   }
 
@@ -161,6 +165,12 @@ export async function uploadInvoiceAttachmentToDrive(input: {
   });
 
   const fileId = upload.data.id ?? null;
+  const webViewLink =
+    upload.data.webViewLink ??
+    (fileId ? `https://drive.google.com/file/d/${fileId}/view` : "");
+  console.log(
+    `[drive] DRIVE_FILE_SAVED org=${input.organizationId} file="${driveFilename}" driveFileId=${fileId ?? "none"} link=${webViewLink || "none"} folderId=${targetFolder.folderId} folderPath="${targetFolder.folderPath}"`
+  );
   return {
     fileId,
     clientFolderId: targetFolder.clientFolderId,
@@ -171,9 +181,7 @@ export async function uploadInvoiceAttachmentToDrive(input: {
     supplierName,
     invoiceMonth,
     invoiceYear,
-    webViewLink:
-      upload.data.webViewLink ??
-      (fileId ? `https://drive.google.com/file/d/${fileId}/view` : ""),
+    webViewLink,
   };
 }
 

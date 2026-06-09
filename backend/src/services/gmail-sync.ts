@@ -768,6 +768,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     const historicalMessages = listing.messages.filter((message) => {
       if (message.id && fastMessageIds.has(message.id)) {
         logStep(`[gmail-sync] FAST_SCAN_SKIPPED_DUPLICATE message=${message.id} reason=historical_candidate_duplicate`);
+        logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=historical_candidate_duplicate key=${message.id} message=${message.id}`);
         return false;
       }
       return true;
@@ -818,6 +819,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       for (const email of batch) {
         let scanItemPersisted = false;
         let currentDuplicateKey: string | null = null;
+        let savedScanItemId: string | null = null;
+        let driveSavedForPilot = false;
+        let sheetsUpdatedForPilot = false;
+        let invoicePersistedForPilot = false;
+        let paymentPersistedForPilot = false;
         try {
       let clientId = clientIdByDomain.get(email.domain);
       if (clientId) {
@@ -1018,6 +1024,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       if (existingScanItem) {
         duplicatesSkipped++;
         logStep(`[gmail-sync] decision duplicate message=${email.gmailId} type=${existingScanItem.documentType} supplier="${existingScanItem.supplierName}" amount=${existingScanItem.amount ?? "unknown"}`);
+        logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=gmail_scan_item_exists key=${duplicateKey} message=${email.gmailId}`);
       }
       logStep(`[gmail-sync] decision message=${email.gmailId} type=${classification.documentType} confidence=${classification.confidenceScore} review=${classification.reviewStatus} reason="${classification.decisionReason}"`);
 
@@ -1158,7 +1165,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             fileSize: null,
           });
           driveUploadsSkipped++;
+          driveSavedForPilot = true;
           logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${filename}" reason="existing_drive_link" link=${existingAttachment.driveLink}`);
+          logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=existing_drive_link key=${attachmentId ?? filename} message=${email.gmailId} file="${filename}"`);
           continue;
         }
 
@@ -1216,6 +1225,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           });
           driveUploadsSucceeded++;
           logStep(`[gmail-sync] Drive upload success message=${email.gmailId} file="${filename}" link=${link ?? "none"}`);
+          logStep(`[gmail-sync] DRIVE_FILE_SAVED org=${organizationId} message=${email.gmailId} file="${filename}" driveFileId=${upload.fileId ?? "none"} link=${link || "none"} folderId=${upload.folderId ?? "none"} folderPath="${upload.folderPath}"`);
+          driveSavedForPilot = true;
           if (existingAttachment) {
             await prisma.emailAttachment.update({
               where: { id: existingAttachment.id },
@@ -1347,6 +1358,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         },
       });
       scanItemPersisted = true;
+      savedScanItemId = savedScanItem.id;
       emailsSavedToGmailScanItem++;
       dbGmailScanItemUpserts++;
       logStep(`[gmail-sync] saved GmailScanItem message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} review=${savedScanItem.reviewStatus} relevant=${classification.isRelevant}`);
@@ -1521,10 +1533,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             });
             if (createdInvoice) {
               invoicesCreated++;
+              invoicePersistedForPilot = true;
               logStep(`[gmail-sync] invoice save success message=${email.gmailId} file="${targetFilename ?? "body"}" invoiceId=${createdInvoice.id} amount=${invoiceAmount} supplier="${invoiceSupplierName}" drive=${targetDriveLink?.link ?? "none"}`);
             } else {
               duplicatesSkipped++;
               logStep(`[gmail-sync] duplicate invoice ignored message=${email.gmailId} file="${targetFilename ?? "body"}" supplier="${invoiceSupplierName}" invoiceNumber=${invoiceNumber ?? "none"} amount=${invoiceAmount} date=${invoiceDate.toISOString()}`);
+              logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=invoice_exists key=${invoiceNumber ?? targetFilename ?? email.gmailId} message=${email.gmailId}`);
             }
           } catch (err) {
             errorsCount++;
@@ -1594,7 +1608,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
 
         if (existingPayment) {
           duplicatesSkipped++;
+          paymentPersistedForPilot = true;
           logStep(`[gmail-sync] DB SupplierPayment update attempt message=${email.gmailId} id=${existingPayment.id}`);
+          logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=supplier_payment_exists key=${duplicateHash} message=${email.gmailId} paymentId=${existingPayment.id}`);
           await prisma.supplierPayment.update({
             where: { id: existingPayment.id },
             data: {
@@ -1658,6 +1674,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             updatedAt: new Date(),
           }).then((sheet) => {
             sheetsUpdated++;
+            sheetsUpdatedForPilot = true;
             logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${existingPayment.id} spreadsheet=${sheet.spreadsheetId}`);
           }).catch((err) => {
             console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${existingPayment.id}`, err);
@@ -1723,6 +1740,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             },
           });
           paymentsCreated++;
+          paymentPersistedForPilot = true;
           await appendSupplierPaymentToSheet({
             organizationId,
             paymentId: payment.id,
@@ -1748,6 +1766,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             updatedAt: payment.updatedAt,
           }).then((sheet) => {
             sheetsUpdated++;
+            sheetsUpdatedForPilot = true;
             logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${payment.id} spreadsheet=${sheet.spreadsheetId}`);
           }).catch((err) => {
             console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${payment.id}`, err);
@@ -1795,6 +1814,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         data: { processedAt: new Date() },
       });
       logStep(`[gmail-sync] DB mark processed success message=${email.gmailId}`);
+      if (classification.isRelevant && (savedScanItemId || invoicePersistedForPilot || paymentPersistedForPilot)) {
+        logStep(
+          `[gmail-sync] PILOT_FLOW_SUCCESS org=${organizationId} message=${email.gmailId} scanItem=${savedScanItemId ?? "none"} invoice=${invoicePersistedForPilot} payment=${paymentPersistedForPilot} drive=${driveSavedForPilot || Boolean(driveLinks[0]?.link)} sheets=${sheetsUpdatedForPilot} type=${classification.documentType} review=${classification.reviewStatus}`
+        );
+      }
         } catch (err) {
           errorsCount++;
           console.error(`[gmail-sync] processing failed message=${email.gmailId}`, err);
