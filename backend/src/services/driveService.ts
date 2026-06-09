@@ -34,6 +34,16 @@ type DriveIntegrationMetadata = {
 };
 
 export const INVOICE_DRIVE_FOLDER_NAME = safeFolderName(config.driveRootFolder);
+export const DRIVE_FOLDER_NAMES = Object.freeze({
+  root: INVOICE_DRIVE_FOLDER_NAME,
+  clients: "Clients",
+  suppliers: "Suppliers",
+  invoices: "Invoices",
+  receipts: "Receipts",
+  needsReview: "Needs Review",
+  unknownSupplier: "לא זוהה",
+  unknownClient: "לקוח לא מזוהה",
+});
 
 export async function ensureDriveFolder(
   drive: drive_v3.Drive,
@@ -74,7 +84,7 @@ export async function ensureInvoiceFolderTree(
   drive: drive_v3.Drive
 ): Promise<string> {
   const rootId = await ensureDriveFolder(drive, INVOICE_DRIVE_FOLDER_NAME);
-  for (const folderName of ["Clients"]) {
+  for (const folderName of [DRIVE_FOLDER_NAMES.clients]) {
     await ensureDriveFolder(drive, folderName, rootId);
   }
   return rootId;
@@ -298,18 +308,16 @@ export function folderForDocumentType(documentType: string): string {
 }
 
 export function safeFolderName(name: string): string {
-  const normalized = normalizeFolderText(name || "לא מזוהה").replace(/[\x00-\x1F\x7F\\/:*?"<>|]/g, "-").slice(0, 80);
-  return /^(unknown|unknown supplier|לא ידוע)$/i.test(normalized) ? "לא מזוהה" : normalized;
+  const normalized = normalizeFolderText(name || DRIVE_FOLDER_NAMES.unknownSupplier).replace(/[\x00-\x1F\x7F\\/:*?"<>|]/g, "-").slice(0, 80);
+  return /^(unknown|unknown supplier|לא ידוע)$/i.test(normalized) ? DRIVE_FOLDER_NAMES.unknownSupplier : normalized;
 }
 
 export function normalizedSupplierFolderName(name: string): string {
-  const withoutBranch = (name || "ספק לא מזוהה").split(/\s+-\s+/)[0] ?? "ספק לא מזוהה";
+  const withoutBranch = (name || DRIVE_FOLDER_NAMES.unknownSupplier).split(/\s+-\s+/)[0] ?? DRIVE_FOLDER_NAMES.unknownSupplier;
   const normalized = safeFolderName(withoutBranch);
-  const unknownSupplierSuffix = normalized.match(/^unknown supplier(?:\s+-\s+(.+))?$/i)?.[1];
-  if (/^unknown supplier/i.test(normalized)) {
-    return unknownSupplierSuffix ? `ספק לא מזוהה - ${unknownSupplierSuffix}` : "ספק לא מזוהה";
-  }
-  return /^(unknown|unknown supplier|לא מזוהה)$/i.test(normalized) ? "ספק לא מזוהה" : normalized || "ספק לא מזוהה";
+  return isUnknownSupplierName(name) || isUnknownSupplierName(normalized)
+    ? DRIVE_FOLDER_NAMES.unknownSupplier
+    : normalized || DRIVE_FOLDER_NAMES.unknownSupplier;
 }
 
 async function ensureProductionInvoiceFolder(input: {
@@ -332,16 +340,22 @@ async function ensureProductionInvoiceFolder(input: {
     reviewStatus: input.reviewStatus,
     documentDate: input.documentDate,
   });
-  const clientsFolderId = await ensureCachedDriveFolder(input, "Clients", input.rootFolderId, [INVOICE_DRIVE_FOLDER_NAME, "Clients"]);
-  const clientFolderId = await ensureCachedDriveFolder(input, clientName, clientsFolderId, [INVOICE_DRIVE_FOLDER_NAME, "Clients", clientName]);
+  const clientsFolderId = await ensureCachedDriveFolder(input, DRIVE_FOLDER_NAMES.clients, input.rootFolderId, [INVOICE_DRIVE_FOLDER_NAME, DRIVE_FOLDER_NAMES.clients]);
+  const clientFolderId = await ensureCachedDriveFolder(input, clientName, clientsFolderId, [INVOICE_DRIVE_FOLDER_NAME, DRIVE_FOLDER_NAMES.clients, clientName]);
   let parentId = clientFolderId;
   let supplierFolderId: string | null = null;
   const nestedFolders = folderPathParts.slice(3);
   for (let index = 0; index < nestedFolders.length; index++) {
     const folderName = nestedFolders[index];
-    const currentPath = [INVOICE_DRIVE_FOLDER_NAME, "Clients", clientName, ...nestedFolders.slice(0, index + 1)];
+    const currentPath = [INVOICE_DRIVE_FOLDER_NAME, DRIVE_FOLDER_NAMES.clients, clientName, ...nestedFolders.slice(0, index + 1)];
     parentId = await ensureCachedDriveFolder(input, folderName, parentId, currentPath);
-    if (folderName === supplierName && index === nestedFolders.length - 1) supplierFolderId = parentId;
+    if (
+      folderName === supplierName &&
+      folderPathParts[index + 2] === DRIVE_FOLDER_NAMES.suppliers &&
+      folderPathParts[index + 4]
+    ) {
+      supplierFolderId = parentId;
+    }
   }
   if (parentId === input.rootFolderId) {
     throw new Error("Refusing to upload Drive file into root folder");
@@ -658,6 +672,11 @@ function normalizeFolderText(value: string) {
     .trim();
 }
 
+function isUnknownSupplierName(name?: string | null) {
+  const normalized = normalizeFolderText(name ?? "").toLowerCase();
+  return /^(unknown|unknown supplier|unknown vendor|לא זוהה|לא ידוע|ספק לא מזוהה)(?:\s+-\s+.*)?$/i.test(normalized);
+}
+
 function normalizeDocumentDate(value: Date | string | null | undefined, fallback: Date) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
   if (typeof value === "string" && value.trim()) {
@@ -692,16 +711,18 @@ export function buildInvoiceDriveFolderPathParts(input: {
   const categoryFolder = driveDocumentCategoryFolder({
     documentType: input.documentType ?? "invoice",
     reviewStatus: input.reviewStatus ?? null,
+    supplierName,
   });
-  const basePath = [
+  return [
     rootFolderName,
-    "Clients",
+    DRIVE_FOLDER_NAMES.clients,
     clientName,
     String(input.documentDate.getFullYear()),
     monthFolderName(input.documentDate),
+    DRIVE_FOLDER_NAMES.suppliers,
+    supplierName,
     categoryFolder,
   ];
-  return categoryFolder === "חשבוניות ספקים" ? [...basePath, supplierName] : basePath;
 }
 
 function monthFolderName(date: Date) {
@@ -709,18 +730,27 @@ function monthFolderName(date: Date) {
 }
 
 function normalizedClientFolderName(name: string) {
-  const normalized = safeFolderName(name || "לקוח לא מזוהה");
-  return /^(unknown|unknown client|unassigned client|לא מזוהה)$/i.test(normalized) ? "לקוח לא מזוהה" : normalized || "לקוח לא מזוהה";
+  const normalized = safeFolderName(name || DRIVE_FOLDER_NAMES.unknownClient);
+  return /^(unknown|unknown client|unassigned client|לא מזוהה)$/i.test(normalized) ? DRIVE_FOLDER_NAMES.unknownClient : normalized || DRIVE_FOLDER_NAMES.unknownClient;
 }
 
-function driveDocumentCategoryFolder(input: { documentType?: string | null; reviewStatus?: DriveDocumentReviewStatus | null }) {
-  if (isNeedsReviewDocument(input)) return "דורש בדיקה";
-  if (isReceiptDocument(input.documentType)) return "קבלות תשלום";
-  return "חשבוניות ספקים";
+function driveDocumentCategoryFolder(input: { documentType?: string | null; reviewStatus?: DriveDocumentReviewStatus | null; supplierName?: string | null }) {
+  if (isNeedsReviewDocument(input) || isUnknownSupplierName(input.supplierName) || isUncertainDocument(input.documentType)) return DRIVE_FOLDER_NAMES.needsReview;
+  if (isReceiptDocument(input.documentType)) return DRIVE_FOLDER_NAMES.receipts;
+  if (isInvoiceDocument(input.documentType)) return DRIVE_FOLDER_NAMES.invoices;
+  return DRIVE_FOLDER_NAMES.needsReview;
 }
 
 function isNeedsReviewDocument(input: { documentType?: string | null; reviewStatus?: DriveDocumentReviewStatus | null }) {
   return input.reviewStatus === "needs_review" || input.documentType === "unknown_needs_review";
+}
+
+function isUncertainDocument(documentType?: string | null) {
+  return /^(unknown|unknown_needs_review|other|quote|supplier_message|payment_request)$/i.test(documentType ?? "");
+}
+
+function isInvoiceDocument(documentType?: string | null) {
+  return /^(invoice|tax_invoice|tax_invoice_receipt|regular_invoice)$/i.test(documentType ?? "");
 }
 
 function isReceiptDocument(documentType?: string | null) {
