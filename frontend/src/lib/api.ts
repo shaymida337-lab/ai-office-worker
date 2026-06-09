@@ -117,6 +117,8 @@ export type GmailStatus = {
   googleConfigured: boolean;
   connected: boolean;
   connectedAt: string | null;
+  reconnectRequired?: boolean;
+  missingDriveScopes?: string[];
 };
 
 export type Payment = {

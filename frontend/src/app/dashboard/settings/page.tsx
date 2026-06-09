@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
-import { apiFetch, getToken, type GmailStatus } from "@/lib/api";
+import { API_URL, apiFetch, getToken, type GmailStatus } from "@/lib/api";
 import { businessTypeLabel, type OrganizationSettings } from "@/lib/business-config";
 
 type AccountantSettings = {
@@ -209,16 +209,15 @@ export default function SettingsPage() {
 
   async function connectGmail() {
     setMessage("");
-    if (!getToken()) {
+    console.log("GOOGLE_RECONNECT_CLICKED");
+    const token = getToken();
+    if (!token) {
       router.push(`/login?next=${encodeURIComponent("/dashboard/settings?tab=integrations")}`);
       return;
     }
-    try {
-      const result = await apiFetch<{ url: string }>("/api/integrations/gmail/connect-url");
-      window.location.href = result.url;
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "חיבור ג׳ימייל נכשל");
-    }
+    const url = `${API_URL}/api/integrations/gmail/connect?token=${encodeURIComponent(token)}`;
+    console.log("GOOGLE_AUTH_REDIRECT_STARTED", url);
+    window.location.href = url;
   }
 
   async function disconnectGmail() {
@@ -682,6 +681,7 @@ function GmailIntegrationCard({
   onDisconnect: () => void;
 }) {
   const connected = Boolean(status?.connected);
+  const reconnectRequired = Boolean(status?.reconnectRequired);
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-4">
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -701,7 +701,7 @@ function GmailIntegrationCard({
       {connected ? (
         <div className="grid gap-2 sm:flex sm:flex-wrap">
           <button type="button" className="btn btn-secondary" onClick={onConnect}>
-            חבר ג׳ימייל מחדש
+            {reconnectRequired ? "חבר מחדש את גוגל" : "חבר ג׳ימייל מחדש"}
           </button>
           <button type="button" className="btn btn-danger" onClick={onDisconnect}>
             נתק ג׳ימייל
