@@ -262,6 +262,7 @@ export async function analyzeInvoiceFile(input: {
 
   const text =
     message.content[0]?.type === "text" ? message.content[0].text : "{}";
+  console.log(`[claude] RAW invoice OCR response: ${text.slice(0, 1500)}`);
   const parsed = parseJsonObject<Record<string, unknown>>(text, "invoice scan");
   if (!parsed) {
     throw new Error("Claude did not return valid JSON for invoice scan");
