@@ -215,7 +215,14 @@ const SUPPLIER_KEYWORDS = [
   "חשבונית",
   "קבלה",
 ];
-const OCR_SUPPLIER_KEYWORD_RULES = [
+type OcrSupplierKeywordRule = {
+  supplierName: string;
+  confidence: number;
+  patterns: RegExp[];
+  contextPatterns?: RegExp[];
+};
+
+const OCR_SUPPLIER_KEYWORD_RULES: OcrSupplierKeywordRule[] = [
   {
     supplierName: "חברת החשמל",
     confidence: 0.99,
@@ -243,6 +250,117 @@ const OCR_SUPPLIER_KEYWORD_RULES = [
     ],
   },
   {
+    supplierName: "ארנונה",
+    confidence: 0.97,
+    patterns: [
+      /ארנונה/u,
+      /חיוב\s+ארנונה/u,
+      /תשלום\s+ארנונה/u,
+      /arnona/u,
+      /municipal\s+tax/u,
+      /property\s+tax/u,
+    ],
+  },
+  {
+    supplierName: "בזק",
+    confidence: 0.99,
+    patterns: [
+      /בזק/u,
+      /bezeq/u,
+      /bezeqint/u,
+      /bezeq\s+international/u,
+      /בזק\s+בינלאומי/u,
+      /בזקבינלאומי/u,
+    ],
+  },
+  {
+    supplierName: "הוט",
+    confidence: 0.98,
+    patterns: [
+      /(?:^|\s)הוט(?:\s|$)/u,
+      /(?:^|\s)hot(?:\s|$)/u,
+      /hotmobile/u,
+      /hot\s+mobile/u,
+      /הוטמובייל/u,
+      /הוט\s+מובייל/u,
+    ],
+    contextPatterns: [
+      /חשבונית|חשבון|קבלה|תשלום|חיוב|אינטרנט|תקשורת|כבלים|סלולר|mobile|internet|invoice|bill|payment|statement/u,
+    ],
+  },
+  {
+    supplierName: "סלקום",
+    confidence: 0.99,
+    patterns: [
+      /סלקום/u,
+      /cellcom/u,
+    ],
+  },
+  {
+    supplierName: "פלאפון",
+    confidence: 0.99,
+    patterns: [
+      /פלאפון/u,
+      /pelephone/u,
+    ],
+  },
+  {
+    supplierName: "yes",
+    confidence: 0.98,
+    patterns: [
+      /(?:^|\s)yes(?:\s|$)/u,
+      /(?:^|\s)יס(?:\s|$)/u,
+    ],
+    contextPatterns: [
+      /חשבונית|חשבון|קבלה|תשלום|חיוב|טלוויזיה|טלויזיה|תקשורת|לוויין|לווין|tv|television|invoice|bill|payment|statement/u,
+    ],
+  },
+  {
+    supplierName: "max",
+    confidence: 0.98,
+    patterns: [
+      /(?:^|\s)max(?:\s|$)/u,
+      /(?:^|\s)מקס(?:\s|$)/u,
+      /לאומי\s+קארד/u,
+      /לאומיקארד/u,
+    ],
+    contextPatterns: [
+      /חשבונית|חשבון|קבלה|תשלום|חיוב|כרטיס|אשראי|פירוט|עסקה|ויזה|מאסטרקארד|credit|card|statement|invoice|payment|transaction/u,
+    ],
+  },
+  {
+    supplierName: "ישראכרט",
+    confidence: 0.99,
+    patterns: [
+      /ישראכרט/u,
+      /ישרא\s+כרט/u,
+      /isracard/u,
+      /isra\s+card/u,
+    ],
+  },
+  {
+    supplierName: "פז",
+    confidence: 0.98,
+    patterns: [
+      /(?:^|\s)פז(?:\s|$)/u,
+      /(?:^|\s)paz(?:\s|$)/u,
+      /yellow/u,
+    ],
+    contextPatterns: [
+      /חשבונית|חשבון|קבלה|תשלום|חיוב|דלק|תחנה|תדלוק|fuel|gas|station|invoice|receipt|payment|yellow/u,
+    ],
+  },
+  {
+    supplierName: "דור אלון",
+    confidence: 0.99,
+    patterns: [
+      /דור\s+אלון/u,
+      /דוראלון/u,
+      /dor\s+alon/u,
+      /doralon/u,
+    ],
+  },
+  {
     supplierName: "הולילנד",
     confidence: 0.99,
     patterns: [
@@ -261,7 +379,7 @@ const OCR_SUPPLIER_KEYWORD_RULES = [
     ],
   },
   {
-    supplierName: "וולט",
+    supplierName: "Wolt",
     confidence: 0.99,
     patterns: [
       /וולט/u,
@@ -955,6 +1073,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         sender: email.from,
       });
       logStep(`[gmail-sync] ai message=${email.gmailId} supplier="${analysis.supplier}" amount=${analysis.amount ?? "unknown"} documentType=${analysis.documentType} paymentRequired=${analysis.paymentRequired} confidence=${analysis.confidence}`);
+      const ocrClassifierText = `${supplierEvidenceText}\n${analysis.supplier ?? ""}`;
+      const ocrSupplierClassifier = classifyOcrSupplierText(ocrClassifierText);
+      logStep(`[gmail-sync] OCR_CLASSIFIER_INPUT message=${email.gmailId} chars=${ocrClassifierText.length} normalizedPreview="${truncateForLog(normalizeOcrSupplierText(ocrClassifierText), 500)}"`);
+      logStep(`[gmail-sync] OCR_CLASSIFIER_RESULT message=${email.gmailId} supplier="${ocrSupplierClassifier?.supplierName ?? "none"}" confidence=${ocrSupplierClassifier?.confidence ?? 0} keyword="${ocrSupplierClassifier?.keyword ?? "none"}"`);
       const invoiceMatch = detectInvoice(email.subject, bodyForAnalysis, email.parts);
       if (invoiceMatch.isInvoice) invoiceDetectionPositive++;
       else invoiceDetectionNegative++;
@@ -974,9 +1096,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       });
       const supplierName = supplierMetadata.name;
       const supplierBranchName = supplierBranchNameFromFolderName(supplierName);
-      logStep(`[gmail-sync] SUPPLIER_DETECTED message=${email.gmailId} supplier="${supplierName}" confidence=${supplierMetadata.confidence} source=${supplierMetadata.source}${supplierMetadata.keyword ? ` keyword="${supplierMetadata.keyword}"` : ""}`);
       if (supplierMetadata.source === "unknown") {
-        logStep(`[gmail-sync] SUPPLIER_UNKNOWN_REASON message=${email.gmailId} reason="no OCR/document/AI/sender/domain supplier matched" analysisSupplier="${analysis.supplier}" ocrPreview="${truncateForLog(visualAttachmentText || pdfText || email.bodyText, 400)}"`);
+        logStep(`[gmail-sync] SUPPLIER_NOT_FOUND message=${email.gmailId} reason="no OCR/document/AI/sender/domain supplier matched" analysisSupplier="${analysis.supplier}" ocrPreview="${truncateForLog(visualAttachmentText || pdfText || email.bodyText, 400)}"`);
+      } else {
+        logStep(`[gmail-sync] SUPPLIER_DETECTED message=${email.gmailId} supplier="${supplierName}" confidence=${supplierMetadata.confidence} source=${supplierMetadata.source}${supplierMetadata.keyword ? ` keyword="${supplierMetadata.keyword}"` : ""}`);
       }
       let classification = classifyGmailScanCandidate({
         subject: email.subject,
@@ -1558,9 +1681,14 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             : supplierMetadata;
           const targetSupplierName = targetSupplierMetadata.name;
           if (invoicePart) {
-            logStep(`[gmail-sync] SUPPLIER_DETECTED message=${email.gmailId} file="${targetFilename ?? "unnamed"}" supplier="${targetSupplierName}" confidence=${targetSupplierMetadata.confidence} source=${targetSupplierMetadata.source}${targetSupplierMetadata.keyword ? ` keyword="${targetSupplierMetadata.keyword}"` : ""}`);
+            const targetOcrClassifierText = `${targetSupplierEvidenceText}\n${targetAnalysis.analysis.supplier ?? ""}`;
+            const targetOcrSupplierClassifier = classifyOcrSupplierText(targetOcrClassifierText);
+            logStep(`[gmail-sync] OCR_CLASSIFIER_INPUT message=${email.gmailId} file="${targetFilename ?? "unnamed"}" chars=${targetOcrClassifierText.length} normalizedPreview="${truncateForLog(normalizeOcrSupplierText(targetOcrClassifierText), 500)}"`);
+            logStep(`[gmail-sync] OCR_CLASSIFIER_RESULT message=${email.gmailId} file="${targetFilename ?? "unnamed"}" supplier="${targetOcrSupplierClassifier?.supplierName ?? "none"}" confidence=${targetOcrSupplierClassifier?.confidence ?? 0} keyword="${targetOcrSupplierClassifier?.keyword ?? "none"}"`);
             if (targetSupplierMetadata.source === "unknown") {
-              logStep(`[gmail-sync] SUPPLIER_UNKNOWN_REASON message=${email.gmailId} file="${targetFilename ?? "unnamed"}" reason="no OCR/document/AI/sender/domain supplier matched" analysisSupplier="${targetAnalysis.analysis.supplier}" ocrPreview="${truncateForLog(targetAnalysis.attachmentText || targetBodyForDetection, 400)}"`);
+              logStep(`[gmail-sync] SUPPLIER_NOT_FOUND message=${email.gmailId} file="${targetFilename ?? "unnamed"}" reason="no OCR/document/AI/sender/domain supplier matched" analysisSupplier="${targetAnalysis.analysis.supplier}" ocrPreview="${truncateForLog(targetAnalysis.attachmentText || targetBodyForDetection, 400)}"`);
+            } else {
+              logStep(`[gmail-sync] SUPPLIER_DETECTED message=${email.gmailId} file="${targetFilename ?? "unnamed"}" supplier="${targetSupplierName}" confidence=${targetSupplierMetadata.confidence} source=${targetSupplierMetadata.source}${targetSupplierMetadata.keyword ? ` keyword="${targetSupplierMetadata.keyword}"` : ""}`);
             }
           }
           const targetDocumentType = normalizeInvoiceDocumentType(targetAnalysis.analysis.documentType, classification.documentType);
@@ -3375,30 +3503,55 @@ function withKnownSupplierName(candidate: SupplierMetadata, knownSupplierNames: 
   return candidate;
 }
 
-export function detectSupplierKeyword(text: string) {
-  const normalizedText = normalizeSupplierKeywordText(text);
+export function classifyOcrSupplierText(text: string) {
+  const normalizedText = normalizeOcrSupplierText(text);
   const compactText = normalizedText.replace(/\s+/g, "");
   for (const rule of OCR_SUPPLIER_KEYWORD_RULES) {
+    const contextMatched = !rule.contextPatterns?.length || rule.contextPatterns.some((pattern) => {
+      pattern.lastIndex = 0;
+      const normalizedMatch = pattern.test(normalizedText);
+      pattern.lastIndex = 0;
+      return normalizedMatch || pattern.test(compactText);
+    });
+    if (!contextMatched) continue;
+
     const match = rule.patterns
-      .map((pattern) => normalizedText.match(pattern)?.[0] ?? compactText.match(pattern)?.[0])
+      .map((pattern) => {
+        pattern.lastIndex = 0;
+        const normalizedMatch = normalizedText.match(pattern)?.[0];
+        pattern.lastIndex = 0;
+        return normalizedMatch ?? compactText.match(pattern)?.[0];
+      })
       .find((value): value is string => Boolean(value));
     if (match) {
       return {
         supplierName: rule.supplierName,
         confidence: rule.confidence,
         keyword: match,
+        normalizedText,
       };
     }
   }
   return null;
 }
 
-function normalizeSupplierKeywordText(text: string) {
+export function detectSupplierKeyword(text: string) {
+  const result = classifyOcrSupplierText(text);
+  if (!result) return null;
+  return {
+    supplierName: result.supplierName,
+    confidence: result.confidence,
+    keyword: result.keyword,
+  };
+}
+
+export function normalizeOcrSupplierText(text: string) {
   return text
     .normalize("NFKC")
     .replace(/[\u0591-\u05C7]/g, "")
     .replace(/[״׳"'`´]/g, "")
     .replace(/[־‐‑‒–—_/-]+/g, " ")
+    .replace(/[\r\n\t]+/g, " ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim()

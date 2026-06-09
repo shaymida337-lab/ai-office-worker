@@ -4,12 +4,14 @@ import {
   applyBusinessReviewToInvoiceCandidate,
   buildGmailFinancialPersistencePlan,
   buildGmailScanDuplicateKey,
+  classifyOcrSupplierText,
   classifyGmailScanCandidate,
   collectAttachmentParts,
   detectSupplierKeyword,
   extractInvoiceAmount,
   isIncomingSupplierExpenseCandidate,
   isInvoiceImageAttachmentPart,
+  normalizeOcrSupplierText,
   resolveSupplierMetadata,
   supplierPaymentCreationEligibility,
 } from "./gmail-sync.js";
@@ -215,15 +217,23 @@ test("detects חברת החשמל from Hebrew OCR text", () => {
 test("detects requested Hebrew suppliers from OCR keywords", () => {
   const cases = [
     ["תאגיד מי-רמת-גן חשבון מים תקופתי", "מי רמת גן"],
-    ["קבלה מאת הולילנד עבור שירותים", "הולילנד"],
-    ["חשבונית סופר-פארם סניף רמת גן", "סופר פארם"],
-    ["Wolt receipt total paid", "וולט"],
+    ["חיוב ארנונה עירוני לתשלום", "ארנונה"],
+    ["חשבונית בזק בינלאומי עבור אינטרנט", "בזק"],
+    ["חשבונית הוט מובייל עבור שירותי תקשורת", "הוט"],
+    ["סלקום חשבונית חודשית", "סלקום"],
+    ["פלאפון חשבון חודשי", "פלאפון"],
+    ["yes חשבונית חודשית עבור טלוויזיה", "yes"],
+    ["max פירוט חיובי כרטיס אשראי", "max"],
+    ["ישרא כרט פירוט עסקאות", "ישראכרט"],
+    ["תחנת פז קבלה עבור דלק", "פז"],
+    ["דור אלון חשבונית דלק", "דור אלון"],
+    ["Wolt receipt total paid", "Wolt"],
   ] as const;
 
   for (const [text, expectedSupplier] of cases) {
     const result = detectSupplierKeyword(text);
     assert.equal(result?.supplierName, expectedSupplier);
-    assert.equal(result?.confidence, 0.99);
+    assert.ok((result?.confidence ?? 0) >= 0.97);
   }
 });
 
@@ -232,6 +242,15 @@ test("detects noisy spaced Hebrew OCR supplier keywords", () => {
 
   assert.equal(result?.supplierName, "מי רמת גן");
   assert.equal(result?.confidence, 0.99);
+});
+
+test("normalizes noisy OCR text before supplier classification", () => {
+  const normalized = normalizeOcrSupplierText("חֶבְרַת\nהחשמל !!!  MAX\tפירוט-חיוב");
+  const result = classifyOcrSupplierText("תשלום עבור דור\nאלון; מסמך 123");
+
+  assert.equal(normalized, "חברת החשמל max פירוט חיוב");
+  assert.equal(result?.supplierName, "דור אלון");
+  assert.equal(result?.keyword.replace(/\s+/g, ""), "דוראלון");
 });
 
 test("resolves חברת החשמל supplier from OCR before unknown fallback", () => {
@@ -256,7 +275,7 @@ test("resolves requested keyword suppliers before unknown fallback", () => {
     ["subject: חשבון מי רמת גן\nbody empty", "מי רמת גן"],
     ["--- PDF ATTACHMENT TEXT ---\nהולילנד חשבונית מס קבלה", "הולילנד"],
     ["--- VISUAL ATTACHMENT ANALYSIS ---\nrawOcrText=סופר פארם סכום 78.40", "סופר פארם"],
-    ["email body says wolt payment receipt", "וולט"],
+    ["email body says wolt payment receipt", "Wolt"],
   ] as const;
 
   for (const [bodyText, expectedSupplier] of cases) {
@@ -685,6 +704,47 @@ test("allows needs-review invoice SupplierPayment with missing amount and suppli
 
   assert.equal(classification.documentType, "invoice");
   assert.equal(classification.reviewStatus, "needs_review");
+  assert.equal(paymentEligibility.allowed, true);
+  assert.equal(paymentEligibility.persistAsNeedsReview, true);
+  assert.equal(plan.supplierPaymentsToCreateOrUpdate, 1);
+});
+
+test("detected OCR supplier keeps SupplierPayment plan on supplier instead of unknown fallback", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: "Unknown",
+    analysisSupplierTaxId: null,
+    bodyText: "--- VISUAL ATTACHMENT ANALYSIS ---\nrawOcrText=max פירוט חיובי כרטיס אשראי amount=unknown",
+    senderName: "Unknown",
+    senderEmail: "scan@gmail.com",
+    senderDomain: "gmail.com",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+  const classification = classifyGmailScanCandidate({
+    subject: "Credit card statement",
+    bodyText: "max פירוט חיובי כרטיס אשראי amount=unknown",
+    attachmentFilenames: ["statement.jpg"],
+    analysis: analysis({ documentType: "invoice", confidence: 0.56 }),
+    amount: null,
+    supplierName: supplier.name,
+  });
+  const paymentEligibility = supplierPaymentCreationEligibility({
+    classification,
+    amount: null,
+    supplierName: supplier.name,
+  });
+  const plan = buildGmailFinancialPersistencePlan({
+    isIncomingSupplierExpense: true,
+    classification,
+    canPersistFinancialRecord: true,
+    clientId: null,
+    supplierPaymentAllowed: paymentEligibility.allowed,
+  });
+
+  assert.equal(supplier.name, "max");
+  assert.equal(supplier.source, "keyword");
+  assert.equal(classification.reviewStatus, "needs_review");
+  assert.doesNotMatch(classification.decisionReason, /unknown supplier/i);
   assert.equal(paymentEligibility.allowed, true);
   assert.equal(paymentEligibility.persistAsNeedsReview, true);
   assert.equal(plan.supplierPaymentsToCreateOrUpdate, 1);
