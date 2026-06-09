@@ -37,6 +37,7 @@ export type FinancialDocumentInput = {
   driveFileUrl?: string | null;
   confidenceScore?: number | null;
   uncertaintyReason?: string | null;
+  parsedFieldsJson?: unknown;
   rawAnalysis?: unknown;
   emailMessageId?: string | null;
   gmailMessageId?: string | null;
@@ -199,6 +200,7 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
       documentDate,
       dueDate,
       confidenceScore,
+      parsedFieldsJson: input.parsedFieldsJson,
       sourceFingerprint,
       documentFingerprint,
       reviewStatus: "needs_review",
@@ -215,6 +217,7 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
       documentDate,
       dueDate,
       confidenceScore,
+      parsedFieldsJson: input.parsedFieldsJson,
       sourceFingerprint,
       documentFingerprint,
       reviewStatus: "needs_review",
@@ -283,6 +286,7 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
         vatAmount: input.vatAmount ?? existingPayment.vatAmount,
         totalAmount: totalAmount ?? existingPayment.totalAmount,
         confidenceScore: Math.max(existingPayment.confidenceScore ?? 0, confidenceScore),
+        parsedFieldsJson: input.parsedFieldsJson as any,
         approvalStatus: "approved",
         driveFileUrl: input.driveFileUrl ?? existingPayment.driveFileUrl,
         invoiceLink: isInvoiceLike(documentType) ? input.driveFileUrl ?? existingPayment.invoiceLink : existingPayment.invoiceLink,
@@ -302,6 +306,7 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
       documentDate,
       dueDate,
       confidenceScore,
+      parsedFieldsJson: input.parsedFieldsJson,
       sourceFingerprint,
       documentFingerprint,
       reviewStatus: "needs_review",
@@ -313,7 +318,7 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
   }
 
   if (confidenceScore < 0.8) {
-    const review = await upsertReview({ ...input, documentType, documentDate, dueDate, confidenceScore, sourceFingerprint, documentFingerprint, reviewStatus: "needs_review", uncertaintyReason: input.uncertaintyReason ?? `confidence below 80% (${Math.round(confidenceScore * 100)}%)` });
+    const review = await upsertReview({ ...input, documentType, documentDate, dueDate, confidenceScore, parsedFieldsJson: input.parsedFieldsJson, sourceFingerprint, documentFingerprint, reviewStatus: "needs_review", uncertaintyReason: input.uncertaintyReason ?? `confidence below 80% (${Math.round(confidenceScore * 100)}%)` });
     console.log(`[financial-document] needs_review source=${input.source} reviewId=${review.id} confidence=${confidenceScore}`);
     return { action: "needs_review" as const, documentType, sourceFingerprint, documentFingerprint, review };
   }
@@ -396,6 +401,7 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
       vatAmount: review.vatAmount,
       totalAmount: review.totalAmount,
       confidenceScore: review.confidenceScore,
+      parsedFieldsJson: review.parsedFieldsJson as any,
       approvalStatus: "approved",
       sourcesJson: [review.source],
       emailMessageId: review.emailMessageId,
@@ -403,6 +409,7 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
     update: {
       approvalStatus: "approved",
       confidenceScore: review.confidenceScore,
+      parsedFieldsJson: review.parsedFieldsJson as any,
       lastSeenAt: new Date(),
     },
   });
@@ -451,6 +458,7 @@ async function upsertReview(input: FinancialDocumentInput & {
       confidenceScore: input.confidenceScore,
       reviewStatus: input.reviewStatus,
       uncertaintyReason: input.uncertaintyReason,
+      parsedFieldsJson: input.parsedFieldsJson as any,
       rawAnalysis: input.rawAnalysis as any,
       emailMessageId: input.emailMessageId,
       gmailMessageId: input.gmailMessageId,
@@ -477,6 +485,7 @@ async function upsertReview(input: FinancialDocumentInput & {
       confidenceScore: input.confidenceScore,
       reviewStatus: input.reviewStatus,
       uncertaintyReason: input.uncertaintyReason,
+      parsedFieldsJson: input.parsedFieldsJson as any,
       rawAnalysis: input.rawAnalysis as any,
       supplierPaymentId: input.supplierPaymentId,
     },

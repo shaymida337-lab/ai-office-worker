@@ -63,7 +63,7 @@ const SYSTEM_PROMPT = `אתה עוזר הנהלת חשבונות לעסק ישר
   "confidence": 0-1
 }
 
-אל תמציא סכומים, מספרי חשבונית או מספרי ח.פ/עוסק. supplier חייב להיות שם מנפיק החשבונית/העסק מתוך המסמך, לא כתובת אימייל ולא שם מקבל המייל. documentType: invoice=חשבונית מס, receipt=קבלה, tax_invoice_receipt=חשבונית מס קבלה, payment_request=דרישת תשלום, quote=הצעת מחיר, other=לא רלוונטי.
+אל תמציא סכומים, מספרי חשבונית או מספרי ח.פ/עוסק. אם לא נמצא סכום החזר null ולא 0. אם לא נמצא מספר חשבונית/חשבון החזר null ולעולם אל תחזיר "Number" או "Invoice". חפש במיוחד בעברית: "סהכ לתשלום", "סה״כ לתשלום", "סכום לתשלום", "מספר חשבונית", "חשבון", "תאריך", "מועד תשלום". supplier חייב להיות שם מנפיק החשבונית/העסק מתוך המסמך, לא כתובת אימייל ולא שם מקבל המייל. documentType: invoice=חשבונית מס, receipt=קבלה, tax_invoice_receipt=חשבונית מס קבלה, payment_request=דרישת תשלום, quote=הצעת מחיר, other=לא רלוונטי.
 בקשות לתיאום פגישה, קביעת שעה או הזמנת תור הן משימות עסקיות אמיתיות ויש להחזיר עבורן פריט מתאים ב-tasks.
 לתמוך בעברית ובאנגלית, כולל PDF/image OCR text שמופיע בגוף.`;
 
@@ -157,7 +157,7 @@ export async function analyzeEmailContent(input: {
     paymentRequired: Boolean(parsed.paymentRequired),
     dueDate: parsed.dueDate ?? null,
     invoiceDate: parsed.invoiceDate ?? null,
-    invoiceNumber: parsed.invoiceNumber ?? null,
+    invoiceNumber: normalizeInvoiceNumberValue(parsed.invoiceNumber),
     tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
     confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
   };
@@ -235,8 +235,8 @@ export async function analyzeInvoiceFile(input: {
 כללים חשובים:
 - supplier הוא שם העסק/מנפיק החשבונית שמופיע בראש המסמך או ליד פרטי עוסק/ח.פ, לא שם הלקוח ולא "Unknown".
 - אם OCR בעברית/אנגלית מזהה ספק ברור, החזר אותו כפי שמופיע ברשימה: "חברת החשמל" עבור "חברת החשמל"/"חברת החשמל לישראל"/Israel Electric; "מי רמת גן" עבור "מי רמת גן"/"מי-רמת-גן"/"תאגיד מי רמת גן"; "הולילנד" עבור "הולילנד"/Holyland; "סופר פארם" עבור "סופר פארם"/"סופר-פארם"/Super-Pharm; "וולט" עבור "וולט"/Wolt.
-- amount הוא סה"כ לתשלום / סה"כ כולל מע"מ / Total Due. totalAmount זהה לסה"כ כולל מע"מ. amountBeforeVat הוא סכום לפני מע"מ. vatAmount הוא מע"מ. אל תחזיר סכום ביניים, מע"מ בלבד או מספר אסמכתא בשדה amount.
-- invoiceNumber הוא מספר חשבונית/קבלה/מסמך בלבד, לא ח.פ/עוסק ולא מספר טלפון.
+- amount הוא סה"כ לתשלום / סה"כ כולל מע"מ / Total Due / סכום לתשלום. totalAmount זהה לסה"כ כולל מע"מ. amountBeforeVat הוא סכום לפני מע"מ. vatAmount הוא מע"מ. אל תחזיר סכום ביניים, מע"מ בלבד, מספר חשבון או מספר אסמכתא בשדה amount. אם אין סכום ברור החזר null ולא 0.
+- invoiceNumber הוא מספר חשבונית/קבלה/מסמך בלבד; אם אין מספר חשבונית, מספר חשבון מותר כשזה המזהה היחיד של חשבון תקופתי. לא ח.פ/עוסק ולא מספר טלפון. לעולם אל תחזיר "Number" או "Invoice".
 - אל תמציא ערכים. אם זה צילום של חשבונית/קבלה, בצע OCR מתוך התמונה.
 - התמונה, אם קיימת, עברה הכנה ל-OCR: auto-rotate לפי metadata, auto-crop לשוליים בהירים, normalize/contrast, shadow reduction ושיפור חדות.
 - תמוך בעברית משולבת במספרים, כולל סכום, מספר חשבון, מספר חשבונית ותאריך יעד.
@@ -292,12 +292,12 @@ ${prepared.ocrText ? `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמ
   const totalAmount = firstNumber(parsed, ["totalAmount", "amount", "total", "totalDue", "grandTotal", "balanceDue", "סהכ כולל מעמ", "סה\"כ כולל מע\"מ", "לתשלום"]);
   const date = firstString(parsed, ["date", "תאריך", "invoiceDate", "תאריך חשבונית"]);
   const dueDate = firstString(parsed, ["dueDate", "due_date", "תאריך יעד", "לתשלום עד"]);
-  const invoiceNumber = firstString(parsed, [
+  const invoiceNumber = normalizeInvoiceNumberValue(firstString(parsed, [
     "invoiceNumber",
     "invoice_number",
     "מספר חשבונית",
     "מספר",
-  ]);
+  ]));
   const currency = firstString(parsed, ["currency", "מטבע"]);
   const rawDocumentType = firstString(parsed, ["documentType", "document_type", "סוג מסמך"]);
   const documentType = normalizeDocumentType(rawDocumentType);
@@ -456,6 +456,19 @@ function firstString(source: Record<string, unknown>, keys: string[]): string | 
   return null;
 }
 
+function normalizeInvoiceNumberValue(value: unknown): string | null {
+  const raw = typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : typeof value === "string"
+      ? value.trim()
+      : "";
+  const cleaned = raw.replace(/[.,;:]+$/, "").trim().slice(0, 80);
+  if (!cleaned) return null;
+  if (/^(?:number|invoice|receipt|no|מספר|חשבונית|חשבון|קבלה)$/iu.test(cleaned)) return null;
+  if (!/[0-9]/.test(cleaned) && cleaned.length < 4) return null;
+  return cleaned;
+}
+
 function firstNumber(source: Record<string, unknown>, keys: string[]): number | null {
   for (const key of keys) {
     const value = source[key];
@@ -535,11 +548,12 @@ function extractInvoiceDate(text: string): string | null {
 function extractInvoiceNumber(text: string): string | null {
   const patterns = [
     /(?:invoice|receipt|חשבונית|קבלה|מספר)\s*(?:no\.?|number|#|מס׳|מספר)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,})/i,
-    /(?:inv|rcpt)[-_]?\s*([A-Z0-9][A-Z0-9._/-]{2,})/i,
+    /\b(?:inv|rcpt)[-_\s]+([A-Z0-9][A-Z0-9._/-]{2,})/i,
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    if (match?.[1]) return match[1].replace(/[.,;:]+$/, "").slice(0, 80);
+    const invoiceNumber = normalizeInvoiceNumberValue(match?.[1]);
+    if (invoiceNumber) return invoiceNumber;
   }
   return null;
 }

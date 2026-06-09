@@ -8,6 +8,7 @@ import {
   classifyGmailScanCandidate,
   collectAttachmentParts,
   detectSupplierKeyword,
+  extractHebrewInvoiceFieldsFromText,
   extractInvoiceAmount,
   isIncomingSupplierExpenseCandidate,
   isInvoiceImageAttachmentPart,
@@ -409,6 +410,46 @@ test("does not treat invoice reference number as amount", () => {
   const result = extractInvoiceAmount("Fwd: חשבונית מס שריון 12151474");
 
   assert.equal(result.amount, null);
+});
+
+test("extracts Hebrew OCR invoice amount, number and dates", () => {
+  const result = extractHebrewInvoiceFieldsFromText(`
+    חברת החשמל
+    מספר חשבון: 123456789
+    סה"כ לתשלום ₪ 1,110.90
+    תאריך 01/06/2026
+    מועד תשלום 15/06/2026
+  `);
+
+  assert.equal(result.amount, 1110.9);
+  assert.equal(result.invoiceNumber, "123456789");
+  assert.equal(result.invoiceDate, "2026-06-01");
+  assert.equal(result.dueDate, "2026-06-15");
+  assert.ok(result.confidence >= 0.9);
+});
+
+test("extracts Hebrew amount without shekel symbol", () => {
+  const result = extractHebrewInvoiceFieldsFromText("סכום לתשלום 412.25 תאריך 09.06.2026");
+
+  assert.equal(result.amount, 412.25);
+  assert.equal(result.invoiceDate, "2026-06-09");
+});
+
+test("rejects generic invoice number placeholders", () => {
+  const result = extractHebrewInvoiceFieldsFromText("Invoice Number סהכ לתשלום 88.20");
+
+  assert.equal(result.invoiceNumber, null);
+  assert.equal(result.amount, 88.2);
+});
+
+test("returns null fields when extraction fails", () => {
+  const result = extractHebrewInvoiceFieldsFromText("צילום מטושטש ללא שדות ברורים");
+
+  assert.equal(result.amount, null);
+  assert.equal(result.invoiceNumber, null);
+  assert.equal(result.invoiceDate, null);
+  assert.equal(result.dueDate, null);
+  assert.match(result.reasons.join(","), /amount_not_found/);
 });
 
 test("holds absurd parsed amounts for review", () => {

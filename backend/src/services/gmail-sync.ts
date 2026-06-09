@@ -1077,11 +1077,32 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       const ocrSupplierClassifier = classifyOcrSupplierText(ocrClassifierText);
       logStep(`[gmail-sync] OCR_CLASSIFIER_INPUT message=${email.gmailId} chars=${ocrClassifierText.length} normalizedPreview="${truncateForLog(normalizeOcrSupplierText(ocrClassifierText), 500)}"`);
       logStep(`[gmail-sync] OCR_CLASSIFIER_RESULT message=${email.gmailId} supplier="${ocrSupplierClassifier?.supplierName ?? "none"}" confidence=${ocrSupplierClassifier?.confidence ?? 0} keyword="${ocrSupplierClassifier?.keyword ?? "none"}"`);
+      const extractedFields = extractHebrewInvoiceFieldsFromText(`${supplierEvidenceText}\n${analysis.supplier ?? ""}`);
+      const parsedFieldsJson = {
+        amount: extractedFields.amount,
+        invoiceNumber: extractedFields.invoiceNumber,
+        invoiceDate: extractedFields.invoiceDate,
+        dueDate: extractedFields.dueDate,
+        confidence: extractedFields.confidence,
+        reasons: extractedFields.reasons,
+      };
+      if (extractedFields.amount !== null) {
+        logStep(`[gmail-sync] AMOUNT_EXTRACTED message=${email.gmailId} amount=${extractedFields.amount} confidence=${extractedFields.confidence}`);
+      }
+      if (extractedFields.invoiceDate || extractedFields.dueDate) {
+        logStep(`[gmail-sync] DATE_EXTRACTED message=${email.gmailId} invoiceDate=${extractedFields.invoiceDate ?? "none"} dueDate=${extractedFields.dueDate ?? "none"} confidence=${extractedFields.confidence}`);
+      }
+      if (extractedFields.invoiceNumber) {
+        logStep(`[gmail-sync] INVOICE_NUMBER_EXTRACTED message=${email.gmailId} invoiceNumber="${extractedFields.invoiceNumber}" confidence=${extractedFields.confidence}`);
+      }
+      if (extractedFields.amount === null && !extractedFields.invoiceDate && !extractedFields.dueDate && !extractedFields.invoiceNumber) {
+        logStep(`[gmail-sync] EXTRACTION_FAILED message=${email.gmailId} reason="${extractedFields.reasons.join(",")}"`);
+      }
       const invoiceMatch = detectInvoice(email.subject, bodyForAnalysis, email.parts);
       if (invoiceMatch.isInvoice) invoiceDetectionPositive++;
       else invoiceDetectionNegative++;
-      const amount = normalizeDetectedAmount(invoiceMatch.amount ?? analysis.amount);
-      const amountRejectedReason = invoiceMatch.amountRejectedReason ?? rejectedDetectedAmountReason(analysis.amount);
+      const amount = normalizeDetectedAmount(extractedFields.amount ?? invoiceMatch.amount ?? analysis.totalAmount ?? analysis.amount);
+      const amountRejectedReason = invoiceMatch.amountRejectedReason ?? rejectedDetectedAmountReason(extractedFields.amount ?? analysis.totalAmount ?? analysis.amount);
       logStep(`[gmail-sync] invoice detection message=${email.gmailId} isInvoice=${invoiceMatch.isInvoice} detectedAmount=${invoiceMatch.amount ?? "none"} aiAmount=${analysis.amount ?? "none"} finalAmount=${amount ?? "none"} amountRejectedReason=${amountRejectedReason ?? "none"}`);
       const attachmentFilename = primaryAttachmentFilename(email.parts);
       const supplierMetadata = resolveSupplierMetadata({
@@ -1162,9 +1183,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           fileSize: null,
           supplierName,
           supplierTaxId: supplierMetadata.taxId,
-          invoiceNumber: analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, primaryAttachmentFilename(email.parts) ?? ""].join("\n")),
-          documentDate: normalizeBusinessDate(analysis.invoiceDate, email.receivedAt) ?? email.receivedAt,
-          dueDate: analysis.dueDate,
+          invoiceNumber: normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, primaryAttachmentFilename(email.parts) ?? ""].join("\n")),
+          documentDate: normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, email.receivedAt) ?? email.receivedAt,
+          dueDate: normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null),
           amountBeforeVat: analysis.amountBeforeVat ?? null,
           vatAmount: analysis.vatAmount ?? null,
           totalAmount: analysis.totalAmount ?? amount,
@@ -1172,10 +1193,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           driveFileUrl: null,
           confidenceScore: Math.min(classification.confidence, 0.79),
           uncertaintyReason: `classifier:${businessClassification.reason}`,
+          parsedFieldsJson,
           rawAnalysis: {
             analysis,
             classification,
             businessClassification,
+            parsed_fields_json: parsedFieldsJson,
             gmailMessageId: email.gmailId,
           },
           emailMessageId: email.emailRecordId,
@@ -1220,9 +1243,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       if (classification.documentType === "supplier_message") supplierMessagesFound++;
       if (classification.reviewStatus === "needs_review") needsReviewCount++;
       if (invoiceMatch.amount !== null) invoiceAmountsExtracted++;
-      const invoiceNumberForDecision = analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
-      const documentDateForDecision = normalizeBusinessDate(analysis.invoiceDate, email.receivedAt) ?? email.receivedAt;
-      logStep(`[gmail-sync] PARSED_FIELDS_EXTRACTED message=${email.gmailId} supplier="${supplierName}" amount=${analysis.totalAmount ?? amount ?? "unknown"} invoiceNumber=${invoiceNumberForDecision ?? "unknown"} dueDate=${analysis.dueDate ?? "unknown"} documentDate=${documentDateForDecision.toISOString()} documentType=${classification.documentType} review=${classification.reviewStatus}`);
+      const invoiceNumberForDecision = normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
+      const documentDateForDecision = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, email.receivedAt) ?? email.receivedAt;
+      const dueDateForDecision = normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null);
+      logStep(`[gmail-sync] PARSED_FIELDS_EXTRACTED message=${email.gmailId} supplier="${supplierName}" amount=${analysis.totalAmount ?? amount ?? "unknown"} invoiceNumber=${invoiceNumberForDecision ?? "unknown"} dueDate=${dueDateForDecision?.toISOString() ?? "unknown"} documentDate=${documentDateForDecision.toISOString()} documentType=${classification.documentType} review=${classification.reviewStatus}`);
       const documentValidationReason = financialDocumentBlockingReason({
         supplierName,
         invoiceNumber: invoiceNumberForDecision,
@@ -1240,7 +1264,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         supplierTaxId: supplierMetadata.taxId,
         invoiceNumber: invoiceNumberForDecision,
         documentDate: documentDateForDecision,
-        dueDate: analysis.dueDate,
+        dueDate: dueDateForDecision,
         amountBeforeVat: analysis.amountBeforeVat ?? null,
         vatAmount: analysis.vatAmount ?? null,
         totalAmount: analysis.totalAmount ?? amount,
@@ -1249,10 +1273,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         confidenceScore: classification.confidence,
         uncertaintyReason: documentValidationReason ?? (classification.reviewStatus === "needs_review" ? classification.decisionReason : null),
         forceNeedsReview: invoiceNeedsBusinessReview,
+        parsedFieldsJson,
         rawAnalysis: {
           analysis,
           classification,
           businessClassification,
+          parsed_fields_json: parsedFieldsJson,
           gmailMessageId: email.gmailId,
         },
         emailMessageId: email.emailRecordId,
@@ -1495,6 +1521,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           reviewStatus: classification.reviewStatus,
           duplicateKey,
           decisionReason: classification.decisionReason,
+          parsedFieldsJson,
           rawAnalysis: {
             analysis,
             audit: classification.audit,
@@ -1503,9 +1530,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             supplier: supplierMetadata,
             supplierTaxId: supplierMetadata.taxId,
             supplierBranchName,
-            invoiceNumber: analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n")),
-            invoiceDate: analysis.invoiceDate ?? null,
-            dueDate: analysis.dueDate ?? null,
+            invoiceNumber: invoiceNumberForDecision,
+            invoiceDate: documentDateForDecision.toISOString(),
+            dueDate: dueDateForDecision?.toISOString() ?? null,
+            parsed_fields_json: parsedFieldsJson,
             relevant: classification.isRelevant,
             ocrText: {
               pdfText,
@@ -1530,6 +1558,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           confidenceScore: classification.confidenceScore,
           reviewStatus: classification.reviewStatus,
           decisionReason: classification.decisionReason,
+          parsedFieldsJson,
           rawAnalysis: {
             analysis,
             audit: classification.audit,
@@ -1538,9 +1567,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             supplier: supplierMetadata,
             supplierTaxId: supplierMetadata.taxId,
             supplierBranchName,
-            invoiceNumber: analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n")),
-            invoiceDate: analysis.invoiceDate ?? null,
-            dueDate: analysis.dueDate ?? null,
+            invoiceNumber: invoiceNumberForDecision,
+            invoiceDate: documentDateForDecision.toISOString(),
+            dueDate: dueDateForDecision?.toISOString() ?? null,
+            parsed_fields_json: parsedFieldsJson,
             relevant: classification.isRelevant,
             ocrText: {
               pdfText,
@@ -1844,11 +1874,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               vatAmount: analysis.vatAmount ?? existingPayment.vatAmount,
               totalAmount: analysis.totalAmount ?? paymentAmount ?? existingPayment.totalAmount,
               confidenceScore: classification.confidence,
+              parsedFieldsJson,
               approvalStatus: paymentApprovalStatus,
               sourcesJson: existingPayment.source === "whatsapp" || existingPayment.source === "both" ? ["gmail", "whatsapp"] : ["gmail"],
               missingInvoice,
               amount: paymentAmount ?? existingPayment.amount,
-              dueDate: normalizeBusinessDate(analysis.dueDate, existingPayment.dueDate),
+              dueDate: dueDateForDecision ?? existingPayment.dueDate,
               emailSender: email.from,
               lastSource: "gmail",
               source: existingPayment.source === "whatsapp" || existingPayment.source === "both" ? "both" : existingPayment.source,
@@ -1865,15 +1896,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             supplier: paymentSupplierName,
             amount: paymentAmount ?? existingPayment.amount,
             date: email.receivedAt,
-            dueDate: normalizeBusinessDate(analysis.dueDate, existingPayment.dueDate),
+            dueDate: dueDateForDecision ?? existingPayment.dueDate,
             paid: existingPayment.paid,
             missingInvoice,
             documentLink,
             invoiceLink,
             gmailLink: gmailMessageLink(email.gmailId),
             supplierTaxId: supplierMetadata.taxId,
-            invoiceNumber: analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n")),
-            invoiceDate: analysis.invoiceDate ?? email.receivedAt,
+            invoiceNumber: invoiceNumberForDecision,
+            invoiceDate: documentDateForDecision,
             source: existingPayment.source === "whatsapp" || existingPayment.source === "both" ? "both" : "gmail",
             duplicateDetected: existingPayment.source === "whatsapp" || existingPayment.duplicateDetected,
             duplicateReason: existingPayment.source === "whatsapp" ? "supplier_amount_invoice_date" : existingPayment.duplicateReason,
@@ -1907,7 +1938,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             logStep(`[gmail-sync] SUPPLIER_PAYMENT_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${existingPayment.id} reason="${classification.decisionReason}"`);
           }
         } else {
-          const dueDate = normalizeBusinessDate(analysis.dueDate, null);
+          const dueDate = dueDateForDecision;
           logStep(`[gmail-sync] DB SupplierPayment insert attempt message=${email.gmailId} amount=${paymentAmount ?? 0} supplier="${paymentSupplierName}"`);
           const payment = await prisma.supplierPayment.create({
             data: {
@@ -1936,8 +1967,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               supplierTaxId: supplierMetadata.taxId,
               amountBeforeVat: analysis.amountBeforeVat ?? null,
               vatAmount: analysis.vatAmount ?? null,
-              totalAmount: analysis.totalAmount ?? paymentAmount ?? 0,
+              totalAmount: analysis.totalAmount ?? paymentAmount ?? null,
               confidenceScore: classification.confidence,
+              parsedFieldsJson,
               approvalStatus: paymentApprovalStatus,
               sourcesJson: ["gmail"],
               emailSender: email.from,
@@ -1964,8 +1996,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             invoiceLink,
             gmailLink: gmailMessageLink(email.gmailId),
             supplierTaxId: supplierMetadata.taxId,
-            invoiceNumber: analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n")),
-            invoiceDate: analysis.invoiceDate ?? email.receivedAt,
+            invoiceNumber: invoiceNumberForDecision,
+            invoiceDate: documentDateForDecision,
             source: "gmail",
             duplicateDetected: false,
             duplicateReason: null,
@@ -2031,6 +2063,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           supplierMetadata,
           invoiceNumber: invoiceNumberForDecision,
           documentDate: documentDateForDecision,
+          dueDate: dueDateForDecision,
+          parsedFieldsJson,
           documentDecision,
           duplicateKey,
           logStep,
@@ -2768,16 +2802,123 @@ export function supplierPaymentCreationEligibility(input: {
     : { allowed: false, reasons, persistAsNeedsReview: false };
 }
 
+export type ExtractedHebrewInvoiceFields = {
+  amount: number | null;
+  invoiceNumber: string | null;
+  invoiceDate: string | null;
+  dueDate: string | null;
+  confidence: number;
+  reasons: string[];
+};
+
+export function extractHebrewInvoiceFieldsFromText(text: string): ExtractedHebrewInvoiceFields {
+  const normalized = normalizeExtractionText(text);
+  const amountResult = extractInvoiceAmount(normalized);
+  const invoiceNumber = extractInvoiceNumber(normalized);
+  const invoiceDate = extractDateNearLabels(normalized, [
+    /תאריך\s+חשבונית/u,
+    /תאריך\s+הפקה/u,
+    /תאריך\s+מסמך/u,
+    /תאריך/u,
+    /invoice\s+date/i,
+    /date/i,
+  ]);
+  const dueDate = extractDateNearLabels(normalized, [
+    /מועד\s+תשלום/u,
+    /לתשלום\s+עד/u,
+    /תשלום\s+עד/u,
+    /תאריך\s+לתשלום/u,
+    /due\s+date/i,
+    /payment\s+due/i,
+  ]);
+  const reasons = [
+    amountResult.amount !== null ? "amount_found" : amountResult.rejectedReason ?? "amount_not_found",
+    invoiceNumber ? "invoice_number_found" : "invoice_number_not_found",
+    invoiceDate ? "invoice_date_found" : "invoice_date_not_found",
+    dueDate ? "due_date_found" : "due_date_not_found",
+  ];
+  const score =
+    (amountResult.amount !== null ? 0.42 : 0) +
+    (invoiceNumber ? 0.2 : 0) +
+    (invoiceDate ? 0.2 : 0) +
+    (dueDate ? 0.18 : 0);
+
+  return {
+    amount: amountResult.amount,
+    invoiceNumber,
+    invoiceDate,
+    dueDate,
+    confidence: Math.min(0.99, Number(score.toFixed(2))),
+    reasons,
+  };
+}
+
+function normalizeExtractionText(text: string) {
+  return text
+    .normalize("NFKC")
+    .replace(/[\u0591-\u05C7]/g, "")
+    .replace(/[״׳]/g, "\"")
+    .replace(/[־‐‑‒–—_]+/g, " ")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function extractInvoiceNumber(text: string) {
   const patterns = [
-    /(?:invoice|receipt|חשבונית|קבלה|מספר)\s*(?:no\.?|number|#|מס׳|מספר)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,})/i,
-    /(?:inv|rcpt)[-_]?\s*([A-Z0-9][A-Z0-9._/-]{2,})/i,
+    /(?:מספר\s+חשבונית|חשבונית\s*(?:מס|מספר)?|חשבונית\s+מס|מסמך\s+מספר|invoice\s*(?:no\.?|number|#)?|receipt\s*(?:no\.?|number|#)?|מספר)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,})/iu,
+    /(?:מספר\s+חשבון|חשבון)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{2,})/iu,
+    /\b(?:inv|rcpt)[-_\s]+([A-Z0-9][A-Z0-9._/-]{2,})/i,
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    if (match?.[1]) return match[1].replace(/[.,;:]+$/, "").slice(0, 80);
+    const candidate = normalizeInvoiceNumberCandidate(match?.[1] ?? "");
+    if (candidate) return candidate;
   }
   return null;
+}
+
+function normalizeInvoiceNumberCandidate(value: string) {
+  const cleaned = value.replace(/[.,;:]+$/, "").trim().slice(0, 80);
+  if (!cleaned) return null;
+  if (/^(?:number|invoice|receipt|no|מספר|חשבונית|חשבון|קבלה)$/iu.test(cleaned)) return null;
+  if (!/[0-9]/.test(cleaned) && cleaned.length < 4) return null;
+  return cleaned;
+}
+
+function extractDateNearLabels(text: string, labels: RegExp[]) {
+  const datePattern = /([0-3]?\d[./-][01]?\d[./-](?:20)?\d{2}|\d{4}-[01]\d-[0-3]\d)/u;
+  for (const label of labels) {
+    label.lastIndex = 0;
+    const match = text.match(label);
+    if (!match || match.index == null) continue;
+    const windowText = text.slice(match.index, Math.min(text.length, match.index + 90));
+    const date = windowText.match(datePattern)?.[1];
+    const parsed = normalizeExtractedDate(date);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function normalizeExtractedDate(value: string | null | undefined) {
+  if (!value) return null;
+  const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return validDateIso(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  const parts = value.split(/[./-]/).map((part) => Number(part));
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return null;
+  const [day, month, rawYear] = parts;
+  const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+  return validDateIso(year, month, day);
+}
+
+function validDateIso(year: number, month: number, day: number) {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) return null;
+  return date.toISOString().slice(0, 10);
 }
 
 export async function diagnoseGmailListingForOrganization(
@@ -3630,12 +3771,12 @@ function detectInvoice(subject: string, body: string, parts: PayloadPart[]) {
 export function extractInvoiceAmount(text: string): { amount: number | null; rejectedReason: string | null } {
   const normalized = text.replace(/&nbsp;/gi, " ").replace(/\u00a0/g, " ");
   const patterns = [
-    /(?:סה["״']?כ|סך\s*הכל|לתשלום|סכום\s*(?:לתשלום)?|יתרה\s*לתשלום|כולל\s*מע["״']?מ|total\s*(?:due|amount|inc(?:luding)?\s*vat)?|grand\s*total|amount\s*(?:due|paid)?|balance\s*due|subtotal)[^\d₪$€]{0,50}(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:\.[0-9]{1,2})?)/gi,
-    /(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur)\s*([0-9][0-9,\s]*(?:\.[0-9]{1,2})?)\s*(?:סה["״']?כ|סך\s*הכל|לתשלום|total|amount)?/gi,
+    /(?:סה["״']?כ\s*(?:לתשלום)?|סך\s*הכל\s*(?:לתשלום)?|סכום\s*לתשלום|יתרה\s*לתשלום|לתשלום|כולל\s*מע["״']?מ|total\s*(?:due|amount|inc(?:luding)?\s*vat)?|grand\s*total|amount\s*(?:due|paid)?|balance\s*due|subtotal)[^\d₪$€]{0,60}(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
+    /(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur)\s*([0-9][0-9,\s]*(?:[.,][0-9]{1,2})?)\s*(?:סה["״']?כ|סך\s*הכל|לתשלום|total|amount)?/gi,
     /₪\s*([0-9][0-9,\s]*(?:\.[0-9]{1,2})?)/g,
     /([0-9][0-9,\s]*(?:\.[0-9]{1,2})?)\s*(?:ש["״']?ח|שקל|שקלים)/g,
-    /(?:ils|nis)\s*([0-9][0-9.,\s]*(?:\.[0-9]{1,2})?)/gi,
-    /([0-9][0-9.,\s]*(?:\.[0-9]{1,2})?)\s*(?:ils|nis)/gi,
+    /(?:ils|nis)\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
+    /([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)\s*(?:ils|nis)/gi,
   ];
   const amounts: number[] = [];
   let rejectedReason: string | null = null;
@@ -3659,7 +3800,11 @@ export function extractInvoiceAmount(text: string): { amount: number | null; rej
 function hasReferenceNumberContext(text: string, matchIndex: number, rawLength: number) {
   const start = Math.max(0, matchIndex - 30);
   const end = Math.min(text.length, matchIndex + rawLength + 30);
-  return REFERENCE_NUMBER_CONTEXT.test(text.slice(start, end));
+  const context = text.slice(start, end);
+  if (/(?:סה["״']?כ\s*(?:לתשלום)?|סך\s*הכל|סכום\s*לתשלום|יתרה\s*לתשלום|לתשלום|total\s*(?:due|amount)|amount\s*due|balance\s*due)/i.test(context)) {
+    return false;
+  }
+  return REFERENCE_NUMBER_CONTEXT.test(context);
 }
 
 function extractPhoneFromText(text: string) {
@@ -3920,6 +4065,8 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
   supplierMetadata: SupplierMetadata;
   invoiceNumber: string | null;
   documentDate: Date;
+  dueDate: Date | null;
+  parsedFieldsJson: unknown;
   documentDecision: {
     action: string;
     documentType: string;
@@ -3949,7 +4096,7 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
       : input.supplierName;
     const paymentAmount = input.amount ?? normalizeDetectedAmount(input.analysis.totalAmount) ?? 0;
     const paymentApprovalStatus = paymentNeedsReview ? "needs_review" : "approved";
-    const dueDate = normalizeBusinessDate(input.analysis.dueDate, null);
+    const dueDate = input.dueDate;
     const invoiceLink = isInvoiceRecordDocument(input.classification.documentType) ? driveLink.link : null;
     const documentLink = input.classification.documentType === "payment_request" ? driveLink.link : null;
     const missingInvoice =
@@ -3997,6 +4144,7 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
         vatAmount: input.analysis.vatAmount ?? null,
         totalAmount: input.analysis.totalAmount ?? paymentAmount,
         confidenceScore: input.classification.confidence,
+        parsedFieldsJson: input.parsedFieldsJson as any,
         approvalStatus: paymentApprovalStatus,
         sourcesJson: ["gmail"],
         emailSender: input.email.from,
@@ -4025,7 +4173,7 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
       gmailLink: gmailMessageLink(input.email.gmailId),
       supplierTaxId: input.supplierMetadata.taxId,
       invoiceNumber: input.invoiceNumber,
-      invoiceDate: input.analysis.invoiceDate ?? input.email.receivedAt,
+      invoiceDate: input.documentDate,
       source: "gmail",
       duplicateDetected: false,
       duplicateReason: null,
