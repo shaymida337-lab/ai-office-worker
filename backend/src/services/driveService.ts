@@ -61,6 +61,10 @@ export async function ensureDriveFolder(
     throw new Error(`Failed to create Google Drive folder: ${name}`);
   }
 
+  console.log(
+    `[drive] DRIVE_FOLDER_CREATED name="${name}" folderId=${created.data.id} parentId=${parentId ?? "root"}`
+  );
+
   return created.data.id;
 }
 
@@ -170,6 +174,9 @@ export async function uploadInvoiceAttachmentToDrive(input: {
     (fileId ? `https://drive.google.com/file/d/${fileId}/view` : "");
   console.log(
     `[drive] DRIVE_FILE_SAVED org=${input.organizationId} file="${driveFilename}" driveFileId=${fileId ?? "none"} link=${webViewLink || "none"} folderId=${targetFolder.folderId} folderPath="${targetFolder.folderPath}"`
+  );
+  console.log(
+    `[drive] DRIVE_UPLOAD_SUCCESS org=${input.organizationId} file="${driveFilename}" driveFileId=${fileId ?? "none"} link=${webViewLink || "none"} folderId=${targetFolder.folderId} folderPath="${targetFolder.folderPath}"`
   );
   return {
     fileId,
@@ -514,6 +521,9 @@ async function createSupplierFolder(
     fields: "id",
   });
   if (!created.data.id) throw new Error(`Failed to create supplier Drive folder: ${input.supplierName}`);
+  console.log(
+    `[drive] DRIVE_FOLDER_CREATED name="${input.supplierName}" folderId=${created.data.id} parentId=${input.rootFolderId}`
+  );
   return created.data.id;
 }
 

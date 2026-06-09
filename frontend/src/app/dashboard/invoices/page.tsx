@@ -23,6 +23,7 @@ type Invoice = {
   reviewSourceId?: string | null;
   description: string | null;
   driveUrl: string | null;
+  driveFileUrl?: string | null;
   gmailMessageLink?: string | null;
   supplierName?: string | null;
   decisionReason?: string | null;
@@ -32,14 +33,13 @@ type Invoice = {
 type ClientsResponse = { clients: ClientItem[] };
 type InvoicesResponse = { invoices: Invoice[] };
 
-const statusLabels: Record<string, string> = { paid: "שולם", pending: "ממתין", overdue: "באיחור", needs_review: "דורש בדיקה", rejected: "נדחה" };
-const reviewStatusLabels: Record<InvoiceReviewStatus, string> = { approved: "אושר", needs_review: "דורש בדיקה", rejected: "נדחה" };
+const reviewStatusLabels: Record<InvoiceReviewStatus, string> = { approved: "מאושר", needs_review: "דורש בדיקה", rejected: "נדחה" };
 const MISSING_VALUE = "לא זוהה";
 const reviewTabs: Array<{ value: "all" | InvoiceReviewStatus; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "approved", label: "Approved" },
-  { value: "needs_review", label: "Needs Review" },
-  { value: "rejected", label: "Rejected" },
+  { value: "all", label: "הכול" },
+  { value: "approved", label: "מאושר" },
+  { value: "needs_review", label: "דורש בדיקה" },
+  { value: "rejected", label: "נדחה" },
 ];
 
 export default function InvoicesPage() {
@@ -161,7 +161,7 @@ export default function InvoicesPage() {
 
   async function deleteInvoice(invoice: Invoice) {
     if (!isPersistedInvoice(invoice)) return;
-    const confirmed = window.confirm(`למחוק את החשבונית ${invoice.invoiceNumber ?? invoice.id} בסכום ${formatCurrency(invoice.amount, invoice.currency)}? הפעולה תמחק את הרשומה מה-DB.`);
+    const confirmed = window.confirm(`למחוק את החשבונית ${invoice.invoiceNumber ?? invoice.id} בסכום ${formatCurrency(invoice.amount, invoice.currency)}? הפעולה תמחק את הרשומה מהמערכת.`);
     if (!confirmed) return;
     setDeletingId(invoice.id);
     setMessageTone("info");
@@ -171,7 +171,7 @@ export default function InvoicesPage() {
         method: "DELETE",
       });
       if ((result.deleted?.invoices ?? 0) < 1 || (result.verification?.afterCount ?? 1) !== 0) {
-        throw new Error(`השרת לא מחק את החשבונית. נמחקו ${result.deleted?.invoices ?? 0}, נשארו ${result.verification?.afterCount ?? "לא ידוע"}.`);
+        throw new Error("מחיקת החשבונית לא הושלמה. נסה שוב או פנה לתמיכה.");
       }
       setSelected(null);
       setInvoices((prev) => prev.filter((item) => item.id !== invoice.id));
@@ -313,7 +313,7 @@ export default function InvoicesPage() {
         <Metric label="באיחור" value={overdue} tone="text-[#111827]" />
       </div>
 
-      <div className="mb-5 flex flex-wrap gap-2" dir="ltr" aria-label="Invoice review status filters">
+      <div className="mb-5 flex flex-wrap gap-2" dir="rtl" aria-label="סינון חשבוניות לפי סטטוס בדיקה">
         {reviewTabs.map((tab) => (
           <button
             key={tab.value}
@@ -368,25 +368,27 @@ export default function InvoicesPage() {
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
                   <span className={`invoice-status-pill inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>
-                    {invoice.reviewStatus && invoice.reviewStatus !== "approved" ? reviewStatusLabels[invoice.reviewStatus] : statusLabels[invoice.status]}
+                    {reviewBadgeLabel(invoice)}
                   </span>
                 </div>
               </div>
               {invoice.description && <p className="mb-4 break-words text-base font-semibold leading-7 text-[#111827]">{invoice.description}</p>}
               <div className="mb-4 grid gap-2 text-base font-bold text-[#111827]">
                 <div>מקור: {sourceLabel(invoice.source)}</div>
-                <div>סיבת בדיקה: <span className="invoice-muted text-[#4B5563]">{invoice.decisionReason ?? MISSING_VALUE}</span></div>
+                <div>הערות מערכת: <span className="invoice-muted text-[#4B5563]">{systemNoteForInvoice(invoice)}</span></div>
               </div>
-              {!isPersistedInvoice(invoice) && <p className="mb-4 text-sm font-bold text-[#111827]">מועמדת לבדיקה מסריקת מסמכים, עדיין לא רשומת Invoice מאושרת.</p>}
+              {!isPersistedInvoice(invoice) && <p className="mb-4 text-sm font-bold text-[#111827]">מועמדת לבדיקה מסריקת מסמכים, ועדיין לא אושרה כחשבונית במערכת.</p>}
               <div className="rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] p-3 text-left text-2xl font-black text-[#111827]">
                 {formatInvoiceAmount(invoice)}
               </div>
             </button>
             <div className="mt-4 grid gap-2">
-              {invoice.driveUrl && (
-                <a className="invoice-action inline-flex items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE]" href={invoice.driveUrl} target="_blank" rel="noreferrer">
-                  <Download className="h-4 w-4" />פתח קובץ
+              {documentDriveUrl(invoice) ? (
+                <a className="invoice-action inline-flex items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer">
+                  <Download className="h-4 w-4" />פתח מסמך בדרייב
                 </a>
+              ) : (
+                <div className="invoice-muted rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-center text-base font-black text-[#4B5563]">המסמך עדיין לא נשמר בדרייב</div>
               )}
               {invoice.gmailMessageLink && (
                 <a className="invoice-action inline-flex items-center justify-center gap-2 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer">
@@ -406,7 +408,7 @@ export default function InvoicesPage() {
 
       <div className="invoice-table-wrap hidden max-w-full overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-white shadow-sm md:block">
         <table className="min-w-[1280px] table-fixed bg-white text-[#111827]">
-          <thead className="bg-[#F3F4F6]"><tr className="border-b border-[#E5E7EB]"><th className="w-24 text-base font-black text-[#111827]">מחק</th><th className="w-28 text-base font-black text-[#111827]">תאריך</th><th className="w-40 text-base font-black text-[#111827]">לקוח/ספק</th><th className="w-32 text-base font-black text-[#111827]">מספר</th><th className="w-36 text-base font-black text-[#111827]">מקור</th><th className="w-56 text-base font-black text-[#111827]">תיאור</th><th className="w-52 text-base font-black text-[#111827]">סיבת בדיקה</th><th className="w-36 text-base font-black text-[#111827]">סכום</th><th className="w-28 text-base font-black text-[#111827]">סטטוס</th><th className="w-24 text-base font-black text-[#111827]">דרייב</th><th className="w-32 text-base font-black text-[#111827]">פעולות</th></tr></thead>
+          <thead className="bg-[#F3F4F6]"><tr className="border-b border-[#E5E7EB]"><th className="w-24 text-base font-black text-[#111827]">מחק</th><th className="w-28 text-base font-black text-[#111827]">תאריך</th><th className="w-40 text-base font-black text-[#111827]">לקוח/ספק</th><th className="w-32 text-base font-black text-[#111827]">מספר</th><th className="w-36 text-base font-black text-[#111827]">מקור</th><th className="w-56 text-base font-black text-[#111827]">תיאור</th><th className="w-52 text-base font-black text-[#111827]">הערות מערכת</th><th className="w-36 text-base font-black text-[#111827]">סכום</th><th className="w-28 text-base font-black text-[#111827]">סטטוס</th><th className="w-24 text-base font-black text-[#111827]">דרייב</th><th className="w-32 text-base font-black text-[#111827]">פעולות</th></tr></thead>
           <tbody>
             {filtered.map((invoice) => (
               <tr key={invoice.id} onClick={() => setSelected(invoice)} className="cursor-pointer border-b border-[#E5E7EB] bg-white transition hover:bg-[#F8FAFC]">
@@ -420,10 +422,10 @@ export default function InvoicesPage() {
                 <td className="truncate text-base font-semibold text-[#111827]">{invoice.invoiceNumber ?? MISSING_VALUE}</td>
                 <td className="truncate text-base font-semibold text-[#111827]">{sourceLabel(invoice.source)}</td>
                 <td className="max-w-0 truncate text-base font-semibold text-[#111827]">{invoice.description ?? MISSING_VALUE}</td>
-                <td className="truncate text-base font-semibold text-[#111827]">{invoice.decisionReason ?? MISSING_VALUE}</td>
+                <td className="truncate text-base font-semibold text-[#111827]">{systemNoteForInvoice(invoice)}</td>
                 <td className="whitespace-nowrap text-base font-black text-[#111827]">{formatInvoiceAmount(invoice)}</td>
-                <td><span className={`invoice-status-pill inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>{invoice.reviewStatus && invoice.reviewStatus !== "approved" ? reviewStatusLabels[invoice.reviewStatus] : statusLabels[invoice.status]}</span></td>
-                <td>{invoice.driveUrl ? <a className="invoice-action inline-flex items-center justify-center gap-1 rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-2 py-1 text-sm font-black text-[#111827] transition hover:bg-[#BFDBFE]" href={invoice.driveUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />קובץ</a> : <span className="invoice-muted text-base font-bold text-[#4B5563]">-</span>}</td>
+                <td><span className={`invoice-status-pill inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>{reviewBadgeLabel(invoice)}</span></td>
+                <td>{documentDriveUrl(invoice) ? <a className="invoice-action inline-flex items-center justify-center gap-1 rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-2 py-1 text-sm font-black text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />דרייב</a> : <span className="invoice-muted text-base font-bold text-[#4B5563]">-</span>}</td>
                 <td>
                   <div className="flex flex-wrap gap-2">
                     {invoice.gmailMessageLink && <a className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>מייל</a>}
@@ -480,15 +482,15 @@ export default function InvoicesPage() {
               <DetailCard label="מספר חשבונית" value={selected.invoiceNumber || MISSING_VALUE} />
               <DetailCard label="תאריך" value={formatInvoiceDate(selected.date)} />
               <DetailCard label="מקור" value={sourceLabel(selected.source)} />
-              <DetailCard label="סטטוס" value={selected.reviewStatus && selected.reviewStatus !== "approved" ? reviewStatusLabels[selected.reviewStatus] : statusLabels[selected.status]} />
+              <DetailCard label="סטטוס" value={reviewBadgeLabel(selected)} />
               <div className="invoice-detail-surface rounded-2xl border border-[#E5E7EB] bg-white p-4 sm:col-span-2">
                 <div className="mb-2 text-sm font-black text-[#111827]">קישור למסמך</div>
-                {selected.driveUrl ? (
-                  <a className="invoice-action inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] sm:w-auto" href={selected.driveUrl} target="_blank" rel="noreferrer">
-                    <Download className="h-4 w-4" />פתח מסמך
+                {documentDriveUrl(selected) ? (
+                  <a className="invoice-action inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] sm:w-auto" href={documentDriveUrl(selected) ?? undefined} target="_blank" rel="noreferrer">
+                    <Download className="h-4 w-4" />פתח מסמך בדרייב
                   </a>
                 ) : (
-                  <div className="invoice-muted break-words text-lg font-black leading-7 text-[#4B5563]">{MISSING_VALUE}</div>
+                  <div className="invoice-muted break-words text-lg font-black leading-7 text-[#4B5563]">המסמך עדיין לא נשמר בדרייב</div>
                 )}
               </div>
             </div>
@@ -500,12 +502,10 @@ export default function InvoicesPage() {
               </div>
             )}
 
-            {selected.decisionReason && (
-              <div className="invoice-detail-surface mt-5 rounded-2xl border border-[#E5E7EB] bg-white p-4">
-                <div className="mb-2 text-sm font-black text-[#111827]">סיבת בדיקה</div>
-                <p className="whitespace-pre-wrap break-words text-base font-semibold leading-8 text-[#111827]">{selected.decisionReason}</p>
-              </div>
-            )}
+            <div className="invoice-detail-surface mt-5 rounded-2xl border border-[#E5E7EB] bg-white p-4">
+              <div className="mb-2 text-sm font-black text-[#111827]">הערות מערכת</div>
+              <p className="whitespace-pre-wrap break-words text-base font-semibold leading-8 text-[#111827]">{systemNoteForInvoice(selected)}</p>
+            </div>
 
             {selected.gmailMessageLink && (
               <div className="mt-5">
@@ -515,10 +515,10 @@ export default function InvoicesPage() {
               </div>
             )}
 
-            {selected.driveUrl && (
+            {documentDriveUrl(selected) && (
               <div className="mt-6">
                 <div className="mb-2 text-sm font-black text-[#111827]">תצוגה מקדימה</div>
-                <iframe className="h-[55vh] min-h-80 w-full rounded-2xl border border-[#E5E7EB] bg-white shadow-inner" src={toDrivePreviewUrl(selected.driveUrl)} title="Invoice preview" />
+                <iframe className="h-[55vh] min-h-80 w-full rounded-2xl border border-[#E5E7EB] bg-white shadow-inner" src={toDrivePreviewUrl(documentDriveUrl(selected)!)} title="תצוגה מקדימה של חשבונית" />
               </div>
             )}
 
@@ -578,19 +578,57 @@ function isPersistedInvoice(invoice: Invoice) {
   return !invoice.source || invoice.source === "invoice";
 }
 
+function reviewBadgeLabel(invoice: Invoice) {
+  return reviewStatusLabels[invoice.reviewStatus ?? "approved"];
+}
+
+function systemNoteForInvoice(invoice: Invoice) {
+  const reviewStatus = invoice.reviewStatus ?? "approved";
+  const rawReason = normalizeInternalReason(invoice.decisionReason);
+
+  if (reviewStatus === "rejected") return "המסמך נדחה לאחר בדיקה";
+  if (rawReason.includes("receipt") || rawReason.includes("קבלה")) return "ייתכן שמדובר בקבלה";
+
+  if (reviewStatus === "needs_review") {
+    if (rawReason.includes("money direction unsure")) return "המערכת לא בטוחה בכיוון התשלום";
+    if (rawReason.includes("no valid amount") || rawReason.includes("missing amount") || rawReason.includes("amount") || rawReason.includes("total") || rawReason.includes("sum")) return "לא זוהה סכום תקין";
+    if (rawReason.includes("confidence below") || rawReason.includes("medium confidence")) return "רמת ודאות בינונית";
+    if (rawReason.includes("held for review") || rawReason.includes("needs review") || rawReason.includes("classifier") || rawReason.includes("unknown or unusable supplier")) return "נדרש אימות ידני";
+    if (!Number.isFinite(invoice.amount) || invoice.amount <= 0) return "לא זוהה סכום תקין";
+
+    if (!invoice.supplierName && !invoice.client?.name) return "נדרש אימות ידני של הספק";
+    if (!invoice.invoiceNumber) return "נדרש אימות ידני של מספר החשבונית";
+    if (!invoice.date || Number.isNaN(new Date(invoice.date).getTime())) return "נדרש אימות ידני של תאריך החשבונית";
+
+    return "נדרש אימות ידני";
+  }
+
+  return "זוהתה חשבונית בביטחון גבוה";
+}
+
+function normalizeInternalReason(reason: string | null | undefined) {
+  return (reason ?? "")
+    .toLowerCase()
+    .replace(/[_:.-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function statusBadgeClass(invoice: Invoice) {
   const reviewStatus = invoice.reviewStatus ?? "approved";
   if (reviewStatus === "needs_review") return "border border-[#D97706] bg-[#FEF3C7] text-[#111827]";
   if (reviewStatus === "rejected") return "border border-[#DC2626] bg-[#FEE2E2] text-[#111827]";
-  if (invoice.status === "paid") return "border border-[#059669] bg-[#D1FAE5] text-[#111827]";
-  if (invoice.status === "overdue") return "border border-[#DC2626] bg-[#FEE2E2] text-[#111827]";
-  return "border border-[#D97706] bg-[#FEF3C7] text-[#111827]";
+  return "border border-[#059669] bg-[#D1FAE5] text-[#111827]";
 }
 
 function sourceLabel(source: Invoice["source"] | undefined) {
-  if (source === "gmail_scan_item") return "סריקת Gmail";
+  if (source === "gmail_scan_item") return "סריקת מייל";
   if (source === "financial_document_review") return "בדיקת מסמך";
   return "חשבונית מאושרת";
+}
+
+function documentDriveUrl(invoice: Invoice) {
+  return invoice.driveFileUrl || invoice.driveUrl || null;
 }
 
 function toDrivePreviewUrl(url: string) {

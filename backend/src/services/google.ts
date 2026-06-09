@@ -2,6 +2,11 @@ import type { drive_v3 } from "googleapis";
 import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 
+type ScopeAwareOAuth2Client = {
+  getAccessToken(): Promise<{ token?: string | null } | string | null | undefined>;
+  getTokenInfo(accessToken: string): Promise<{ scopes?: string[] }>;
+};
+
 /** Lazy-load googleapis — avoids 30–60s cold start on Windows */
 async function loadGoogle() {
   const { google } = await import("googleapis");
@@ -38,6 +43,8 @@ export async function getGoogleClients(organizationId: string) {
       },
     });
   });
+
+  await assertRequiredGoogleDriveScopes(oauth2, { organizationId, context: "organization_google_clients" });
 
   return {
     gmail: google.gmail({ version: "v1", auth: oauth2 }),
@@ -98,16 +105,89 @@ export async function getOAuth2Client(redirectUri = config.google.redirectUri) {
   );
 }
 
+export const REQUIRED_GOOGLE_DRIVE_SCOPES = [
+  "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/drive",
+  "https://www.googleapis.com/auth/drive.metadata",
+  "https://www.googleapis.com/auth/drive.appdata",
+];
+
 export const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.labels",
   "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/drive.file",
+  ...REQUIRED_GOOGLE_DRIVE_SCOPES,
   "https://www.googleapis.com/auth/spreadsheets",
   "openid",
   "email",
   "profile",
 ];
+
+export function missingRequiredGoogleDriveScopes(scopes: readonly string[] | null | undefined) {
+  const granted = new Set(scopes ?? []);
+  return REQUIRED_GOOGLE_DRIVE_SCOPES.filter((scope) => !granted.has(scope));
+}
+
+export function googleOAuthMetadata(existingMetadata: string | null | undefined, grantedScopeString: string | null | undefined) {
+  const existing = parseGoogleIntegrationMetadata(existingMetadata);
+  const grantedScopes = grantedScopeString?.split(/\s+/).map((scope) => scope.trim()).filter(Boolean) ?? [];
+  return JSON.stringify({
+    ...existing,
+    googleOAuthScopes: grantedScopes,
+    googleDriveRequiredScopes: REQUIRED_GOOGLE_DRIVE_SCOPES,
+    googleOAuthScopesUpdatedAt: new Date().toISOString(),
+  });
+}
+
+export function googleOAuthScopesFromMetadata(metadata: string | null | undefined) {
+  const parsed = parseGoogleIntegrationMetadata(metadata);
+  return Array.isArray(parsed.googleOAuthScopes)
+    ? parsed.googleOAuthScopes.filter((scope): scope is string => typeof scope === "string")
+    : [];
+}
+
+export function isGoogleReconnectRequiredError(err: unknown) {
+  return Boolean(err && typeof err === "object" && "code" in err && (err as { code?: unknown }).code === "GOOGLE_RECONNECT_REQUIRED");
+}
+
+export async function assertRequiredGoogleDriveScopes(
+  oauth2: ScopeAwareOAuth2Client,
+  input: { organizationId?: string; clientId?: string; context: string }
+) {
+  const accessTokenResult = await oauth2.getAccessToken();
+  const accessToken = typeof accessTokenResult === "string" ? accessTokenResult : accessTokenResult?.token;
+  if (!accessToken) {
+    const error = new Error("Google OAuth access token is unavailable. Reconnect Google integration.");
+    (error as Error & { code?: string }).code = "GOOGLE_RECONNECT_REQUIRED";
+    throw error;
+  }
+
+  const tokenInfo = await oauth2.getTokenInfo(accessToken);
+  const scopes = tokenInfo.scopes ?? [];
+  const missingScopes = missingRequiredGoogleDriveScopes(scopes);
+  if (missingScopes.length === 0) return scopes;
+
+  console.warn(
+    `[google/oauth] missing required Drive scopes context=${input.context} org=${input.organizationId ?? "none"} client=${input.clientId ?? "none"} missing="${missingScopes.join(" ")}" granted="${scopes.join(" ")}"`
+  );
+  const error = new Error(
+    `Google Drive permissions are missing required scopes (${missingScopes.join(", ")}). Reconnect Google integration from Settings.`
+  );
+  (error as Error & { code?: string; missingScopes?: string[]; grantedScopes?: string[] }).code = "GOOGLE_RECONNECT_REQUIRED";
+  (error as Error & { missingScopes?: string[] }).missingScopes = missingScopes;
+  (error as Error & { grantedScopes?: string[] }).grantedScopes = scopes;
+  throw error;
+}
+
+function parseGoogleIntegrationMetadata(metadata: string | null | undefined): Record<string, unknown> {
+  if (!metadata) return {};
+  try {
+    const parsed = JSON.parse(metadata);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
 
 export async function getGoogleClientsForClient(clientId: string) {
   const google = await loadGoogle();
@@ -135,6 +215,8 @@ export async function getGoogleClientsForClient(clientId: string) {
       },
     });
   });
+
+  await assertRequiredGoogleDriveScopes(oauth2, { organizationId: client.organizationId, clientId, context: "client_google_clients" });
 
   return {
     gmail: google.gmail({ version: "v1", auth: oauth2 }),
@@ -164,5 +246,8 @@ export async function ensureDriveFolder(
     },
     fields: "id",
   });
+  console.log(
+    `[drive] DRIVE_FOLDER_CREATED name="${name}" folderId=${created.data.id ?? "none"} parentId=${parentId ?? "root"}`
+  );
   return created.data.id!;
 }

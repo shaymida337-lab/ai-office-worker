@@ -97,6 +97,7 @@ async function redirectToClientGmailOAuth(req: Parameters<RequestHandler>[0], re
   const url = oauth2.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
+    include_granted_scopes: true,
     scope: GMAIL_SCOPES,
     state,
     login_hint: client.email,
@@ -298,6 +299,7 @@ clientsRouter.get("/:clientId/connect-gmail-url", authMiddleware, checkClientOwn
   const url = oauth2.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
+    include_granted_scopes: true,
     scope: GMAIL_SCOPES,
     state,
     login_hint: client.email,

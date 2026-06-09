@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "crypto";
 import { prisma } from "../lib/prisma.js";
 import { buildDuplicateHash } from "../lib/duplicate.js";
 import { analyzeEmailContent, analyzeInvoiceFile, type EmailAnalysis } from "./claude.js";
-import { getGoogleClients } from "./google.js";
+import { getGoogleClients, isGoogleReconnectRequiredError } from "./google.js";
 import { analyzeAndSaveMessage } from "./messageScanner.js";
 import {
   ensureInvoiceFolderTree,
@@ -547,6 +547,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     } catch (err) {
       driveUploadFailed = true;
       console.error("Drive setup failed; continuing Gmail sync without Drive", err);
+      if (isGoogleReconnectRequiredError(err) || isInsufficientScopeError(err)) {
+        logStep(`[gmail-sync] Google Drive reconnect required org=${organizationId} reason="${err instanceof Error ? err.message : String(err)}"`);
+      }
     }
     const scannedEmails: ScannedEmail[] = [];
 
@@ -1119,7 +1122,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         fileSize?: number | null;
       }[] = [];
 
-      const shouldUploadAttachments = classification.isRelevant && classification.reviewStatus === "auto_saved" && canPersistFinancialRecord;
+      const shouldUploadAttachments =
+        classification.isRelevant &&
+        (
+          (classification.reviewStatus === "auto_saved" && canPersistFinancialRecord) ||
+          (classification.reviewStatus === "needs_review" && isInvoiceRecordDocument(classification.documentType) && documentDecision.action !== "filtered")
+        );
       for (const part of email.parts) {
         if (!shouldUploadAttachments) {
           driveUploadsSkipped++;
@@ -1226,6 +1234,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           driveUploadsSucceeded++;
           logStep(`[gmail-sync] Drive upload success message=${email.gmailId} file="${filename}" link=${link ?? "none"}`);
           logStep(`[gmail-sync] DRIVE_FILE_SAVED org=${organizationId} message=${email.gmailId} file="${filename}" driveFileId=${upload.fileId ?? "none"} link=${link || "none"} folderId=${upload.folderId ?? "none"} folderPath="${upload.folderPath}"`);
+          logStep(`[gmail-sync] DRIVE_UPLOAD_SUCCESS org=${organizationId} message=${email.gmailId} file="${filename}" driveFileId=${upload.fileId ?? "none"} link=${link || "none"} folderId=${upload.folderId ?? "none"} folderPath="${upload.folderPath}"`);
           driveSavedForPilot = true;
           if (existingAttachment) {
             await prisma.emailAttachment.update({
@@ -1266,6 +1275,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           driveUploadsFailed++;
           errorsCount++;
           console.error("Drive upload failed; continuing Gmail sync without attachment upload", err);
+          if (isGoogleReconnectRequiredError(err) || isInsufficientScopeError(err)) {
+            logStep(`[gmail-sync] Google Drive reconnect required org=${organizationId} message=${email.gmailId} file="${filename}" reason="${err instanceof Error ? err.message : String(err)}"`);
+          }
           logStep(`[gmail-sync] Drive upload failed message=${email.gmailId} file="${filename}" reason="${err instanceof Error ? err.message : String(err)}"`);
           if (!existingAttachment) {
             await prisma.emailAttachment.create({
@@ -1278,6 +1290,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             });
           }
         }
+      }
+
+      const primaryDriveLink = driveLinks[0]?.link ?? null;
+      if ("review" in documentDecision && documentDecision.review && primaryDriveLink) {
+        const review = await prisma.financialDocumentReview.update({
+          where: { id: documentDecision.review.id },
+          data: { driveFileUrl: primaryDriveLink },
+        });
+        logStep(`[gmail-sync] INVOICE_DRIVE_LINK_SAVED org=${organizationId} target=financialDocumentReview id=${review.id} message=${email.gmailId} driveUrl=${primaryDriveLink}`);
       }
 
       logStep(`[gmail-sync] DB GmailScanItem upsert attempt message=${email.gmailId} duplicateKey=${duplicateKey} type=${classification.documentType}`);
@@ -1362,6 +1383,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       emailsSavedToGmailScanItem++;
       dbGmailScanItemUpserts++;
       logStep(`[gmail-sync] saved GmailScanItem message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} review=${savedScanItem.reviewStatus} relevant=${classification.isRelevant}`);
+      if (savedScanItem.driveFileLink) {
+        logStep(`[gmail-sync] DRIVE_URL_SAVED org=${organizationId} target=gmailScanItem id=${savedScanItem.id} message=${email.gmailId} driveUrl=${savedScanItem.driveFileLink}`);
+        logStep(`[gmail-sync] INVOICE_DRIVE_LINK_SAVED org=${organizationId} target=gmailScanItem id=${savedScanItem.id} message=${email.gmailId} driveUrl=${savedScanItem.driveFileLink}`);
+      }
       if (invoiceNeedsBusinessReview) {
         logStep(`[gmail-sync] INVOICE_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} reason="${businessClassification.reason}"`);
       }
@@ -2752,6 +2777,23 @@ function isRetryableError(err: unknown) {
   return status === 429 || status >= 500 || message.includes("timeout") || message.includes("rate") || message.includes("temporarily") || message.includes("socket");
 }
 
+function isInsufficientScopeError(err: unknown) {
+  const candidate = err as {
+    code?: unknown;
+    status?: unknown;
+    message?: unknown;
+    response?: { status?: unknown; data?: unknown };
+    errors?: unknown;
+  };
+  const status = Number(candidate.status ?? candidate.code ?? candidate.response?.status ?? 0);
+  const text = JSON.stringify({
+    message: err instanceof Error ? err.message : candidate.message,
+    data: candidate.response?.data,
+    errors: candidate.errors,
+  }).toLowerCase();
+  return status === 403 && (text.includes("insufficient_scope") || text.includes("insufficient") || text.includes("scope"));
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -3681,7 +3723,7 @@ async function saveDetectedInvoice(input: {
     ? `\nAttachment: ${input.attachmentFilename ?? "unknown"} (${input.gmailAttachmentId ?? "no-id"})`
     : "";
 
-  return prisma.invoice.create({
+  const invoice = await prisma.invoice.create({
     data: {
       organizationId: input.organizationId,
       clientId: input.clientId,
@@ -3707,5 +3749,15 @@ async function saveDetectedInvoice(input: {
       gmailMessageId: input.gmailMessageId,
     },
   });
+  const invoiceDriveUrl = invoice.driveFileUrl ?? invoice.driveUrl;
+  if (invoiceDriveUrl) {
+    console.log(
+      `[gmail-sync] DRIVE_URL_SAVED org=${input.organizationId} target=invoice id=${invoice.id} message=${input.gmailMessageId} driveUrl=${invoiceDriveUrl}`
+    );
+    console.log(
+      `[gmail-sync] INVOICE_DRIVE_LINK_SAVED org=${input.organizationId} target=invoice id=${invoice.id} message=${input.gmailMessageId} driveUrl=${invoiceDriveUrl}`
+    );
+  }
+  return invoice;
 }
 

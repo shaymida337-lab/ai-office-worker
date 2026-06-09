@@ -2767,6 +2767,7 @@ type ReviewInvoiceCandidate = {
   reviewSourceId: string;
   description: string | null;
   driveUrl: string | null;
+  driveFileUrl: string | null;
   client: null;
   supplierName: string | null;
   fromEmail: string | null;
@@ -2823,8 +2824,9 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
     reviewStatus: item.reviewStatus,
     source: "gmail_scan_item",
     reviewSourceId: item.id,
-    description: [item.subject, item.decisionReason].filter(Boolean).join(" · ") || null,
+    description: [item.subject, item.attachmentFilename].filter(Boolean).join(" · ") || null,
     driveUrl: item.driveFileLink,
+    driveFileUrl: item.driveFileLink,
     client: null,
     supplierName: item.supplierName,
     fromEmail: item.senderEmail ?? item.sender,
@@ -2870,8 +2872,9 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
     reviewStatus: item.reviewStatus,
     source: "financial_document_review",
     reviewSourceId: item.id,
-    description: [item.subject, item.uncertaintyReason, item.fileName].filter(Boolean).join(" · ") || null,
+    description: [item.subject, item.fileName].filter(Boolean).join(" · ") || null,
     driveUrl: item.driveFileUrl,
+    driveFileUrl: item.driveFileUrl,
     client: null,
     supplierName: item.supplierName,
     fromEmail: item.sender,
@@ -2987,12 +2990,17 @@ apiRouter.get("/invoices", async (req, res) => {
   const usedReviewRefs = new Set<string>();
 
   const invoices = [
-    ...invoiceRows.map((invoice) => ({
-      ...invoice,
-      source: "invoice",
-      reviewStatus: "approved",
-      reviewSourceId: null,
-    })),
+    ...invoiceRows.map((invoice) => {
+      const driveFileUrl = invoice.driveFileUrl ?? invoice.driveUrl ?? null;
+      return {
+        ...invoice,
+        driveUrl: driveFileUrl,
+        driveFileUrl,
+        source: "invoice",
+        reviewStatus: "approved",
+        reviewSourceId: null,
+      };
+    }),
     ...gmailScanItems
       .filter((item) => !existingInvoiceRefs.has(item.gmailMessageId) && !existingInvoiceRefs.has(item.emailMessageId ?? ""))
       .map((item) => {

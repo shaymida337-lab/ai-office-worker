@@ -4,7 +4,13 @@ import { authMiddleware, verifyToken } from "../lib/auth.js";
 import { config, hasGoogleOAuth } from "../lib/config.js";
 import { errorDetails, publicErrorMessage } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
-import { getOAuth2Client, GMAIL_SCOPES } from "../services/google.js";
+import {
+  getOAuth2Client,
+  GMAIL_SCOPES,
+  googleOAuthMetadata,
+  googleOAuthScopesFromMetadata,
+  missingRequiredGoogleDriveScopes,
+} from "../services/google.js";
 
 export const integrationsRouter = Router();
 const GMAIL_OAUTH_STATE_COOKIE = "gmail_oauth_state";
@@ -198,14 +204,19 @@ function runPostConnectionGmailScan(organizationId: string) {
 
 integrationsRouter.get("/gmail/status", authMiddleware, async (req, res) => {
   const integration = await findGmailIntegrationForAuth(req.auth!);
+  const grantedScopes = googleOAuthScopesFromMetadata(integration?.metadata);
+  const missingDriveScopes = missingRequiredGoogleDriveScopes(grantedScopes);
+  const reconnectRequired = Boolean(integration?.refreshToken) && (grantedScopes.length === 0 || missingDriveScopes.length > 0);
   console.log(
-    `[gmail/status] user=${req.auth!.userId} org=${req.auth!.organizationId} connected=${Boolean(integration?.refreshToken)} integrationOrg=${integration?.organizationId ?? "none"} hasAccessToken=${Boolean(integration?.accessToken)} hasRefreshToken=${Boolean(integration?.refreshToken)} connectedAt=${integration?.connectedAt?.toISOString() ?? "none"}`
+    `[gmail/status] user=${req.auth!.userId} org=${req.auth!.organizationId} connected=${Boolean(integration?.refreshToken)} integrationOrg=${integration?.organizationId ?? "none"} hasAccessToken=${Boolean(integration?.accessToken)} hasRefreshToken=${Boolean(integration?.refreshToken)} connectedAt=${integration?.connectedAt?.toISOString() ?? "none"} reconnectRequired=${reconnectRequired} missingDriveScopes="${missingDriveScopes.join(" ")}"`
   );
 
   res.json({
     googleConfigured: hasGoogleOAuth(),
     connected: Boolean(integration?.refreshToken),
     connectedAt: integration?.connectedAt ?? null,
+    reconnectRequired,
+    missingDriveScopes,
   });
 });
 
@@ -321,15 +332,6 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
     console.log(
       `[gmail/callback][${traceId}] integration lookup org=${organizationId} found=${Boolean(existingIntegration)} hasAccessToken=${Boolean(existingIntegration?.accessToken)} hasRefreshToken=${Boolean(existingIntegration?.refreshToken)} connectedAt=${existingIntegration?.connectedAt?.toISOString() ?? "none"}`
     );
-    if (state && existingIntegration?.refreshToken) {
-      console.log(
-        `[gmail/callback][${traceId}] state already has Gmail refreshToken org=${organizationId}; treating duplicate callback/code replay as connected state=${state}`
-      );
-      clearGmailStateCookie(res);
-      res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=connected`);
-      return;
-    }
-
     const oauth2 = await getOAuth2Client(config.google.integrationRedirectUri);
     let tokens: {
       access_token?: string | null;
@@ -392,6 +394,7 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
     console.log(
       `[gmail/callback][${traceId}] integration upsert start org=${organizationId} provider=gmail hasAccessToken=${Boolean(tokens.access_token)} hasRefreshToken=${Boolean(refreshToken)}`
     );
+    const metadata = googleOAuthMetadata(existingIntegration?.metadata, tokens.scope ?? null);
     const savedIntegration = await prisma.$transaction(async (tx) => {
       const saved = await tx.integration.upsert({
         where: {
@@ -406,12 +409,14 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
           accessToken: tokens.access_token ?? null,
           refreshToken,
           expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          metadata,
           connectedAt: new Date(),
         },
         update: {
           accessToken: tokens.access_token ?? null,
           refreshToken,
           expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          metadata,
           connectedAt: new Date(),
         },
       });

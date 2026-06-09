@@ -6,7 +6,7 @@ import { authMiddleware } from "../lib/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { signToken } from "../lib/auth.js";
 import { config, hasGoogleOAuth } from "../lib/config.js";
-import { ensureGmailAccessToken, getOAuth2Client, GMAIL_SCOPES } from "../services/google.js";
+import { ensureGmailAccessToken, getOAuth2Client, GMAIL_SCOPES, googleOAuthMetadata } from "../services/google.js";
 import { hashPassword, verifyPassword } from "../lib/password.js";
 import { sendAuthSuccess } from "../lib/auth-response.js";
 import { errorDetails, publicErrorMessage } from "../lib/errors.js";
@@ -164,6 +164,7 @@ async function buildGoogleAuthUrl() {
   const url = oauth2.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
+    include_granted_scopes: true,
     scope: GMAIL_SCOPES,
     state,
   });
@@ -248,6 +249,7 @@ authRouter.get("/google/callback", async (req, res) => {
         res.status(400).send("Google did not return a refresh token. Reconnect and approve access.");
         return;
       }
+      const metadata = googleOAuthMetadata(existingIntegration?.metadata, tokens.scope ?? null);
       const savedIntegration = await prisma.integration.upsert({
         where: {
           organizationId_provider: {
@@ -261,11 +263,13 @@ authRouter.get("/google/callback", async (req, res) => {
           accessToken: tokens.access_token ?? null,
           refreshToken,
           expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          metadata,
         },
         update: {
           accessToken: tokens.access_token ?? null,
           refreshToken,
           expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          metadata,
         },
       });
       console.log(
@@ -328,6 +332,13 @@ authRouter.get("/google/callback", async (req, res) => {
       return;
     }
 
+    const existingLoginIntegration = await prisma.integration.findUnique({
+      where: {
+        organizationId_provider: { organizationId: org.id, provider: "gmail" },
+      },
+      select: { metadata: true },
+    });
+    const metadata = googleOAuthMetadata(existingLoginIntegration?.metadata, tokens.scope ?? null);
     const savedIntegration = await prisma.integration.upsert({
       where: {
         organizationId_provider: { organizationId: org.id, provider: "gmail" },
@@ -338,11 +349,13 @@ authRouter.get("/google/callback", async (req, res) => {
         accessToken: tokens.access_token ?? null,
         refreshToken: tokens.refresh_token ?? null,
         expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+        metadata,
       },
       update: {
         accessToken: tokens.access_token ?? null,
         refreshToken: tokens.refresh_token ?? undefined,
         expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+        metadata,
       },
     });
     console.log(
