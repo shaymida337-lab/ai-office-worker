@@ -114,6 +114,10 @@ export const config = {
     ),
   },
 
+  outboundEmail: {
+    allowSend: optional("ALLOW_OUTBOUND_EMAIL_SEND", "false").toLowerCase() === "true",
+  },
+
   anthropic: {
     apiKey: optional("ANTHROPIC_API_KEY"),
     model: optional("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),

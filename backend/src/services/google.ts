@@ -115,13 +115,36 @@ export const REQUIRED_GOOGLE_DRIVE_SCOPES = [
 export const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.labels",
-  "https://www.googleapis.com/auth/gmail.send",
   ...REQUIRED_GOOGLE_DRIVE_SCOPES,
   "https://www.googleapis.com/auth/spreadsheets",
   "openid",
   "email",
   "profile",
 ];
+
+type OutboundEmailContext = {
+  provider: "gmail";
+  feature: string;
+  organizationId?: string;
+  clientId?: string;
+  recipientDomain?: string;
+};
+
+export function isOutboundEmailAllowed() {
+  return config.outboundEmail.allowSend;
+}
+
+export function assertOutboundEmailAllowed(context: OutboundEmailContext) {
+  if (isOutboundEmailAllowed()) return;
+
+  const safeContext = Object.fromEntries(
+    Object.entries(context).filter(([, value]) => value !== undefined && value !== "")
+  );
+  console.warn(`SECURITY_EMAIL_SEND_ATTEMPT_BLOCKED ${JSON.stringify(safeContext)}`);
+  const error = new Error("Outbound email sending is disabled.");
+  (error as Error & { code?: string }).code = "OUTBOUND_EMAIL_SEND_BLOCKED";
+  throw error;
+}
 
 export function missingRequiredGoogleDriveScopes(scopes: readonly string[] | null | undefined) {
   const granted = new Set(scopes ?? []);

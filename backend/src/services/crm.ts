@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { assertOutboundEmailAllowed } from "./google.js";
 import { sendWhatsAppMessage, sendWhatsAppToPhone } from "./whatsapp.js";
 
 export const LEAD_STAGES = ["חדש", "יצירת קשר", "בטיפול", "הצעת מחיר", "סגור", "הפסד"] as const;
@@ -635,7 +636,17 @@ function dateMs(value: Date | string | null | undefined) {
   return Number.isNaN(date.getTime()) ? null : date.getTime();
 }
 
+function emailDomain(value: string) {
+  return value.split("@")[1]?.trim().toLowerCase() || "unknown";
+}
+
 async function sendLeadEmail(organizationId: string, to: string, subject: string, body: string) {
+  assertOutboundEmailAllowed({
+    provider: "gmail",
+    feature: "crm_lead_email",
+    organizationId,
+    recipientDomain: emailDomain(to),
+  });
   const { getGoogleClients } = await import("./google.js");
   const { gmail } = await getGoogleClients(organizationId);
   const raw = Buffer.from(

@@ -61,7 +61,6 @@ Render environment variables:
 - `profile`: receives the user's basic profile/name for account creation and display.
 - `https://www.googleapis.com/auth/gmail.readonly`: reads Gmail messages and attachments to detect invoices, supplier payment requests, CRM leads, and business tasks.
 - `https://www.googleapis.com/auth/gmail.labels`: lists and creates Gmail labels used to organize invoice-related messages. This is intentionally narrower than `gmail.modify`.
-- `https://www.googleapis.com/auth/gmail.send`: sends follow-up emails that the user triggers from the CRM/workflow features.
 - `https://www.googleapis.com/auth/drive.file`: creates and manages Drive files/folders created by the app, such as uploaded invoices, supplier documents, WhatsApp files, and accountant reports.
 - `https://www.googleapis.com/auth/spreadsheets`: creates and updates Sheets used by the app for supplier payments, client invoices, tasks, and accountant reports.
 
@@ -73,15 +72,13 @@ Render environment variables:
 
 ### How the app uses Google data
 
-Users explicitly connect their Google account through Google OAuth. After consent, the app uses Gmail to scan business emails and attachments for invoices, supplier payment requests, CRM leads, and tasks. The app uses Gmail labels to organize invoice-related messages, Drive to create folders and store documents created or uploaded through the app, Sheets to create and update operational spreadsheets, and Gmail send only for follow-up emails initiated by the user.
+Users explicitly connect their Google account through Google OAuth. After consent, the app uses Gmail to scan business emails and attachments for invoices, supplier payment requests, CRM leads, and tasks. The app uses Gmail labels to organize invoice-related messages, Drive to create folders and store documents created or uploaded through the app, and Sheets to create and update operational spreadsheets.
 
 ### Why each sensitive/restricted scope is needed
 
 `gmail.readonly` is required to read messages and attachments so the app can detect invoices, payment requests, supplier documents, CRM leads, and tasks.
 
 `gmail.labels` is required to list/create labels that organize invoice-related messages. The app does not need broader message modification permissions.
-
-`gmail.send` is required because users can send follow-up emails from the CRM/workflow features.
 
 `drive.file` is required to create and manage files and folders created by the app, including invoices, supplier documents, WhatsApp attachments, and reports.
 
