@@ -271,6 +271,7 @@ type GmailSyncOptions = {
   scanLogId?: string;
   scanMode?: "manual" | "auto_daily" | "auto_weekly" | "retry" | "first_time";
   retryOfId?: string;
+  fastOnly?: boolean;
 };
 
 export async function syncGmailForOrganization(organizationId: string, options: GmailSyncOptions = {}) {
@@ -692,6 +693,64 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     const fastScannedEmails = scannedEmails.splice(0, scannedEmails.length);
     await processScannedEmails(fastScannedEmails, "fast");
     logStep(`[gmail-sync] FAST_SCAN_DONE processed=${fastMessages.length}`);
+
+    if (options.fastOnly) {
+      await maybeSaveScanProgress(true);
+      const recordsSaved = paymentsCreated + invoicesCreated + tasksCreated + clientsCreated;
+      logStep(`Found ${relevantEmailsFound} relevant emails (${invoiceEmails} invoices, ${receiptsFound} receipts, ${paymentRequestsFound} payment requests, ${supplierMessagesFound} supplier messages)`);
+      logStep(`[gmail-sync] parser totals scanned=${fastMessages.length} parsed=${emailsParsed} rejected=${parserRejectedCount} rejectedReasons=${JSON.stringify(ignoredReasons)}`);
+      logStep(`[gmail-sync] invoice detection totals positive=${invoiceDetectionPositive} negative=${invoiceDetectionNegative} invoicesCreated=${invoicesCreated}`);
+      logStep(`[gmail-sync] DB totals emailMessageUpserts=${dbEmailMessageUpserts} gmailScanItemUpserts=${dbGmailScanItemUpserts} clientsCreated=${clientsCreated} potentialClients=${potentialClients} paymentsCreated=${paymentsCreated} invoicesCreated=${invoicesCreated}`);
+      logStep(`[gmail-sync] Drive totals attempted=${driveUploadsAttempted} succeeded=${driveUploadsSucceeded} skipped=${driveUploadsSkipped} failed=${driveUploadsFailed}`);
+      logStep(`Marked ${needsReviewCount} emails as Needs Review, extracted ${invoiceAmountsExtracted} amounts`);
+      logStep(`Saved ${recordsSaved} records (${clientsCreated} clients, ${invoicesCreated} invoices, ${paymentsCreated} payments, ${tasksCreated} tasks)`);
+      logStep(`Skipped ${duplicatesSkipped} duplicates or already processed emails`);
+      await prisma.syncLog.update({
+        where: { id: log.id },
+        data: {
+          emailsProcessed,
+          emailsSaved: emailsSavedToGmailScanItem,
+          invoicesFound: invoicesCreated,
+          paymentsCreated,
+          tasksCreated,
+          driveUploaded: driveUploadsSucceeded,
+          sheetsUpdated,
+          errorsCount,
+          finishedAt: new Date(),
+          status: "success",
+        },
+      });
+
+      return {
+        emailsProcessed,
+        totalEmailsChecked: emailsProcessed,
+        relevantEmailsFound,
+        recordsSaved,
+        clientsCreated,
+        invoicesCreated,
+        paymentsCreated,
+        tasksCreated,
+        uniqueSenders,
+        potentialClients,
+        invoiceEmails,
+        invoiceAmountsExtracted,
+        needsReviewCount,
+        duplicatesSkipped,
+        driveUploadsAttempted,
+        driveUploadsSucceeded,
+        driveUploadsFailed,
+        driveUploadsSkipped,
+        sheetsUpdated,
+        parserRejectedCount,
+        ignoredCount,
+        ignoredReasons,
+        errorsCount,
+        scanSteps,
+        emailsParsed,
+        emailsSavedToGmailScanItem,
+        inProgress: false,
+      };
+    }
 
     logStep(`[gmail-sync] Searching Gmail from last ${daysBack} days`);
     const listing = await listCandidateMessages(gmail, daysBack, options.maxMessages ?? MAX_MESSAGES_PER_SYNC, since, {

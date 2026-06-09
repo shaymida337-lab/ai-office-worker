@@ -29,6 +29,10 @@ class SchedulerService {
     if (this.started) return;
     this.started = true;
 
+    console.log("[scheduler] FAST_SCAN_SERVICE_INITIALIZED");
+    cron.schedule("*/2 * * * *", () => this.runFastGmailScans(), { timezone: TIMEZONE });
+    console.log("[scheduler] FAST_SCAN_INTERVAL_REGISTERED schedule=*/2 * * * *");
+
     cron.schedule("0 2 * * *", () => this.withRetry("daily", () => this.runDailyScan()), { timezone: TIMEZONE });
     cron.schedule("*/30 * * * *", () => this.withRetry("quick", () => this.runQuickScan()), { timezone: TIMEZONE });
     cron.schedule("0 3 * * *", () => this.runAutomaticGmailScans("auto_daily"), { timezone: TIMEZONE });
@@ -90,6 +94,25 @@ class SchedulerService {
     for (const org of orgs) {
       await this.runAutomaticGmailScanForOrg(org.id, mode, 0).catch((err) => {
         console.error(`[scheduler] automatic Gmail ${mode} failed org=${org.id}`, err);
+      });
+    }
+  }
+
+  async runFastGmailScans() {
+    const orgs = await prisma.organization.findMany({
+      where: { integrations: { some: { provider: "gmail", refreshToken: { not: null } } } },
+      select: { id: true },
+    });
+
+    console.log(`[scheduler] FAST_SCAN_TRIGGERED orgs=${orgs.length}`);
+    for (const org of orgs) {
+      await syncGmailForOrganization(org.id, {
+        daysBack: 1,
+        fastOnly: true,
+        maxMessages: 20,
+        scanMode: "auto_daily",
+      }).catch((err) => {
+        console.error(`[scheduler] FAST_SCAN_TRIGGERED failed org=${org.id}`, err);
       });
     }
   }
