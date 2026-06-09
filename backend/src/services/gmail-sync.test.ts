@@ -5,8 +5,10 @@ import {
   buildGmailFinancialPersistencePlan,
   buildGmailScanDuplicateKey,
   classifyGmailScanCandidate,
+  collectAttachmentParts,
   extractInvoiceAmount,
   isIncomingSupplierExpenseCandidate,
+  isInvoiceImageAttachmentPart,
   supplierPaymentCreationEligibility,
 } from "./gmail-sync.js";
 import type { EmailAnalysis } from "./claude.js";
@@ -74,6 +76,154 @@ test("holds high confidence invoice without valid amount for review", () => {
   assert.equal(result.confidenceScore, "high");
   assert.equal(result.reviewStatus, "needs_review");
   assert.match(result.decisionReason, /no valid amount/);
+});
+
+test("collects inline jpeg image parts for OCR", () => {
+  const result = collectAttachmentParts({
+    mimeType: "multipart/related",
+    parts: [
+      {
+        mimeType: "text/html",
+        body: { data: Buffer.from("<img src=\"cid:invoice-photo\">").toString("base64") },
+      },
+      {
+        mimeType: "image/jpeg",
+        filename: "",
+        body: { attachmentId: "att-inline-photo" },
+        headers: [
+          { name: "Content-Disposition", value: "inline" },
+          { name: "Content-ID", value: "<invoice-photo>" },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].mimeType, "image/jpeg");
+  assert.equal(result[0].body?.attachmentId, "att-inline-photo");
+});
+
+test("recursively collects image parts nested under mixed alternative related payloads", () => {
+  const result = collectAttachmentParts({
+    mimeType: "multipart/mixed",
+    parts: [
+      {
+        mimeType: "multipart/alternative",
+        parts: [
+          { mimeType: "text/plain", body: { data: Buffer.from("invoice attached").toString("base64url") } },
+          {
+            mimeType: "multipart/related",
+            parts: [
+              { mimeType: "text/html", body: { data: Buffer.from("<img src=\"cid:nested-invoice\">").toString("base64url") } },
+              {
+                mimeType: "application/octet-stream",
+                filename: "IMG_2042.JPG",
+                body: { attachmentId: "att-nested-photo" },
+                headers: [
+                  { name: "Content-Disposition", value: "inline; filename=\"IMG_2042.JPG\"" },
+                  { name: "Content-ID", value: "<nested-invoice>" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].body?.attachmentId, "att-nested-photo");
+  assert.equal(isInvoiceImageAttachmentPart(result[0]), true);
+});
+
+test("detects inline CID image data without attachmentId", () => {
+  const result = collectAttachmentParts({
+    mimeType: "multipart/related",
+    parts: [
+      { mimeType: "text/html", body: { data: Buffer.from("<img src=\"cid:inline-photo\">").toString("base64url") } },
+      {
+        mimeType: "image/png",
+        filename: "",
+        body: { data: Buffer.from("png-bytes").toString("base64url") },
+        headers: [
+          { name: "Content-Disposition", value: "inline" },
+          { name: "Content-ID", value: "<inline-photo>" },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].mimeType, "image/png");
+  assert.equal(isInvoiceImageAttachmentPart(result[0]), true);
+});
+
+test("detects HEIC image attachments by MIME and generic filename", () => {
+  const byMime = collectAttachmentParts({
+    mimeType: "multipart/mixed",
+    parts: [
+      {
+        mimeType: "image/heic",
+        filename: "",
+        body: { attachmentId: "att-heic-mime" },
+        headers: [{ name: "Content-Disposition", value: "attachment" }],
+      },
+    ],
+  });
+  const byFilename = collectAttachmentParts({
+    mimeType: "multipart/mixed",
+    parts: [
+      {
+        mimeType: "application/octet-stream",
+        filename: "IMG_3001.HEIF",
+        body: { attachmentId: "att-heif-name" },
+      },
+    ],
+  });
+
+  assert.equal(isInvoiceImageAttachmentPart(byMime[0]), true);
+  assert.equal(isInvoiceImageAttachmentPart(byFilename[0]), true);
+});
+
+test("holds photographed invoice image with uncertain OCR for review", () => {
+  const result = classifyGmailScanCandidate({
+    subject: "Photo from phone",
+    bodyText: "filename=photo.jpg documentType=invoice supplier=Acme Ltd amount=unknown invoiceNumber=INV-44 currency=ILS paymentRequired=true",
+    attachmentFilenames: ["photo.jpg"],
+    analysis: analysis({ documentType: "invoice", confidence: 0.86, invoiceNumber: "INV-44" }),
+    amount: null,
+    supplierName: "Acme Ltd",
+  });
+
+  assert.equal(result.documentType, "invoice");
+  assert.equal(result.isRelevant, true);
+  assert.equal(result.reviewStatus, "needs_review");
+  assert.match(result.decisionReason, /no valid amount/);
+  assert.equal(result.audit.imageInvoiceDetected, true);
+});
+
+test("keeps image-only needs-review invoice out of financial persistence", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "IMG_3001",
+    bodyText: "filename=IMG_3001.HEIC documentType=invoice amount=unknown invoiceNumber=unknown imageOcrUnavailable=true unsupportedMime=image/heic",
+    attachmentFilenames: ["IMG_3001.HEIC"],
+    analysis: analysis({ documentType: "invoice", confidence: 0.55 }),
+    amount: null,
+    supplierName: "Unknown",
+  });
+  const plan = buildGmailFinancialPersistencePlan({
+    isIncomingSupplierExpense: false,
+    classification,
+    canPersistFinancialRecord: false,
+    clientId: null,
+    supplierPaymentAllowed: false,
+  });
+
+  assert.equal(classification.documentType, "invoice");
+  assert.equal(classification.reviewStatus, "needs_review");
+  assert.equal(classification.audit.imageInvoiceDetected, true);
+  assert.equal(plan.shouldSaveInvoice, false);
+  assert.equal(plan.shouldEnsureInvoiceClient, false);
 });
 
 test("keeps invoice candidate when business classifier cannot determine money direction", () => {

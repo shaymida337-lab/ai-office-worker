@@ -602,6 +602,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         : "gmail";
 
       const attachmentParts = collectAttachmentParts(full.data.payload as PayloadPart | undefined);
+      for (const imagePart of attachmentParts.filter(isInvoiceImageAttachmentPart)) {
+        logStep(`[gmail-sync] IMAGE_ATTACHMENT_FOUND message=${msgRef.id} file="${attachmentFilenameForPart(imagePart)}" mime=${imageMimeTypeForPart(imagePart) ?? imagePart.mimeType ?? "unknown"} inline=${isInlineAttachmentPart(imagePart)}`);
+      }
       logStep(`[gmail-sync] fetched message=${msgRef.id} sender="${from || "unknown"}" subject="${subject}" date="${receivedAt.toISOString()}" attachments=${attachmentParts.length ? attachmentParts.map((part) => `${part.filename || "unnamed"}:${part.mimeType || "unknown"}`).join(", ") : "none"} bodyLength=${bodyText.length}`);
       emailsParsed++;
       if (!bodyText.trim() && attachmentParts.length === 0) {
@@ -829,7 +832,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       }
 
       const pdfText = await extractPdfTextFromParts(gmail, email.gmailId, email.parts);
-      const visualAttachmentText = await extractVisualAttachmentHints(gmail, email.gmailId, email.parts, email.from);
+      const visualAttachmentHints = await extractVisualAttachmentHints(gmail, email.gmailId, email.parts, email.from, logStep, ownerEmails);
+      const visualAttachmentText = visualAttachmentHints.text;
       const bodyForAnalysis = [email.bodyText, pdfText && `--- PDF ATTACHMENT TEXT ---\n${pdfText}`, visualAttachmentText && `--- VISUAL ATTACHMENT ANALYSIS ---\n${visualAttachmentText}`].filter(Boolean).join("\n\n");
       logStep(`[gmail-sync] parsed message=${email.gmailId} bodyLength=${email.bodyText.length} pdfTextLength=${pdfText.length} visualTextLength=${visualAttachmentText.length}`);
       const junkDecision = classifyJunk({
@@ -918,6 +922,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         senderDomain: email.domain,
         amountRejectedReason,
       });
+      if (
+        visualAttachmentHints.invoiceCandidateFound &&
+        (visualAttachmentHints.needsReview || !isInvoiceRecordDocument(classification.documentType))
+      ) {
+        classification = promoteImageInvoiceCandidateForReview(classification, visualAttachmentHints.reviewReason);
+      }
       const legacySupplierExpenseSignal = isIncomingSupplierExpenseCandidate({
         source: email.source,
         senderEmail: email.senderEmail,
@@ -1343,6 +1353,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       if (invoiceNeedsBusinessReview) {
         logStep(`[gmail-sync] INVOICE_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} reason="${businessClassification.reason}"`);
       }
+      if (visualAttachmentHints.invoiceCandidateFound && savedScanItem.reviewStatus === "needs_review") {
+        logStep(`[gmail-sync] IMAGE_INVOICE_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} reason="${classification.decisionReason}"`);
+      }
 
       if (existingScanItem && !options.forceReprocess) {
         logStep(`[gmail-sync] duplicate GmailScanItem message=${email.gmailId}; continuing idempotent invoice/payment persistence`);
@@ -1407,8 +1420,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       }
 
       if (!isIncomingSupplierExpense && canPersistFinancialRecord && clientId && isInvoiceRecordDocument(classification.documentType) && classification.reviewStatus === "auto_saved") {
-        const invoiceParts = email.parts.filter((part) => isPdfAttachmentPart(part) || Boolean(part.body && (part.mimeType === "image/jpeg" || part.mimeType === "image/png")));
-        const shouldUseAttachmentInvoices = invoiceParts.length > 1 || invoiceParts.some((part) => part.mimeType === "image/jpeg" || part.mimeType === "image/png");
+        const invoiceParts = email.parts.filter((part) => isPdfAttachmentPart(part) || isInvoiceImageAttachmentPart(part));
+        const shouldUseAttachmentInvoices = invoiceParts.length > 1 || invoiceParts.some(isInvoiceImageAttachmentPart);
         const createTargets = shouldUseAttachmentInvoices ? invoiceParts : [null];
         for (const invoicePart of createTargets) {
           const targetFilename = invoicePart ? attachmentFilenameForPart(invoicePart) : attachmentFilename;
@@ -1439,14 +1452,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             continue;
           }
 
-          const isImageInvoicePart = Boolean(invoicePart && (invoicePart.mimeType === "image/jpeg" || invoicePart.mimeType === "image/png"));
+          const isImageInvoicePart = Boolean(invoicePart && isInvoiceImageAttachmentPart(invoicePart));
           const targetAmount = isImageInvoicePart
-            ? normalizeDetectedAmount(targetAnalysis.analysis.amount)
+            ? normalizeDetectedAmount(targetAnalysis.analysis.totalAmount ?? targetAnalysis.analysis.amount)
             : normalizeDetectedAmount(targetInvoiceMatch.amount ?? targetAnalysis.analysis.amount);
-          if (isImageInvoicePart && (targetAmount === null || (!isUsableSupplierName(targetAnalysis.analysis.supplier, ownerEmails) && !targetAnalysis.analysis.invoiceNumber))) {
-            logStep(`[gmail-sync] invoice image skipped message=${email.gmailId} file="${targetFilename ?? "unnamed"}" reason="image_missing_amount_and_supplier_or_invoice_number" amount=${targetAmount ?? "none"} supplier="${targetAnalysis.analysis.supplier}" invoiceNumber=${targetAnalysis.analysis.invoiceNumber ?? "none"}`);
-            continue;
-          }
           const targetSupplierMetadata = invoicePart
             ? resolveSupplierMetadata({
                 analysisSupplier: targetAnalysis.analysis.supplier,
@@ -1878,7 +1887,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
   }
 }
 
-type PayloadPart = {
+export type PayloadPart = {
   filename?: string | null;
   mimeType?: string | null;
   body?: { attachmentId?: string | null; data?: string | null } | null;
@@ -1943,11 +1952,26 @@ export type GmailScanClassification = {
     supplierPaymentRequestDetected: boolean;
     taxInvoiceDetected: boolean;
     pdfInvoiceDetected: boolean;
+    imageInvoiceDetected: boolean;
     strictPaymentEvidence: boolean;
   };
   heldForFinancialSender: boolean;
   financialSenderReason: string | null;
 };
+
+type AttachmentInvoiceAnalysisResult =
+  | { skipped: true; reason: string; attachmentText: string }
+  | { skipped: false; analysis: EmailAnalysis; attachmentText: string };
+
+const GMAIL_IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/pjpeg",
+  "image/png",
+  "image/heic",
+  "image/heif",
+]);
+const CLAUDE_VISION_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
 
 type FinancialSenderDetection =
   | { held: true; reason: string }
@@ -1969,6 +1993,7 @@ export function classifyGmailScanCandidate(input: {
   const attachmentText = input.attachmentFilenames.join("\n").toLowerCase();
   const hasAttachment = input.attachmentFilenames.length > 0;
   const hasPdf = input.attachmentFilenames.some((filename) => /\.pdf$/i.test(filename));
+  const hasImageAttachment = input.attachmentFilenames.some((filename) => /\.(png|jpe?g|heic|heif)$/i.test(filename));
   const keywordMatches = matchedStrongInvoiceTerms(text);
   const hasInvoice = keywordMatches.length > 0 || INVOICE_KEYWORD_PATTERNS.some((pattern) => pattern.test(text)) || /green invoice|greeninvoice|icount|i-count|חשבונית ירוקה/.test(text);
   const hasReceipt = RECEIPT_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
@@ -1991,7 +2016,18 @@ export function classifyGmailScanCandidate(input: {
     supplierPaymentRequestDetected ||
     (hasAmount && hasSupplier)
   );
-  const hasStrictPaymentEvidence = invoiceAttached || receiptAttached || supplierPaymentRequestDetected || taxInvoiceDetected || pdfInvoiceDetected;
+  const imageInvoiceDetected = hasImageAttachment && (
+    invoiceAttached ||
+    receiptAttached ||
+    taxInvoiceDetected ||
+    hasInvoice ||
+    hasReceipt ||
+    aiType === "invoice" ||
+    aiType === "receipt" ||
+    aiType === "tax_invoice_receipt" ||
+    ((hasAmount || input.analysis.paymentRequired) && aiType !== "other")
+  );
+  const hasStrictPaymentEvidence = invoiceAttached || receiptAttached || supplierPaymentRequestDetected || taxInvoiceDetected || pdfInvoiceDetected || imageInvoiceDetected;
   const pdfLooksLikeInvoice = pdfInvoiceDetected;
   const hasStrongInvoiceEvidence = hasStrictPaymentEvidence;
   const hasExplicitPaymentEvidence = supplierPaymentRequestDetected;
@@ -2006,7 +2042,7 @@ export function classifyGmailScanCandidate(input: {
     else if (aiType === "tax_invoice_receipt" || /חשבונית\s*מס\s*קבלה/.test(text)) documentType = "tax_invoice_receipt";
     else if (hasReceipt || (aiInvoiceTrusted && aiType === "receipt")) documentType = "receipt";
     else if (hasExplicitPaymentEvidence || aiPaymentTrusted) documentType = "payment_request";
-    else if (hasInvoice || aiInvoiceTrusted) documentType = "invoice";
+    else if (hasInvoice || aiInvoiceTrusted || (imageInvoiceDetected && aiType === "invoice")) documentType = "invoice";
     else if ((hasSupplierSignal || hasAttachment) && (hasAmount || pdfLooksLikeInvoice || aiType !== "other")) documentType = "supplier_message";
   }
 
@@ -2014,12 +2050,14 @@ export function classifyGmailScanCandidate(input: {
   const evidence = [
     block && `blocked:${block}`,
     hasPdf && "attachment found: PDF",
+    hasImageAttachment && "attachment found: image",
     hasAttachment && !hasPdf && "attachment found",
     invoiceAttached && "invoice attachment detected",
     receiptAttached && "receipt attachment detected",
     taxInvoiceDetected && "tax invoice detected",
     supplierPaymentRequestDetected && "supplier payment request detected",
     pdfInvoiceDetected && "PDF invoice detected",
+    imageInvoiceDetected && "image invoice detected",
     hasAmount && "amount found",
     ...keywordMatches.map((keyword) => `keyword matched: ${keyword}`),
     hasReceipt && "keyword matched: receipt",
@@ -2093,6 +2131,7 @@ export function classifyGmailScanCandidate(input: {
       supplierPaymentRequestDetected,
       taxInvoiceDetected,
       pdfInvoiceDetected,
+      imageInvoiceDetected,
       strictPaymentEvidence: hasStrictPaymentEvidence,
     },
     heldForFinancialSender,
@@ -2123,6 +2162,23 @@ export function applyBusinessReviewToInvoiceCandidate(input: {
     reviewStatus: "needs_review",
     isRelevant: true,
     decisionReason: `Held for review: classifier ${input.businessClassification.reason}; ${input.classification.decisionReason}`,
+    evidence,
+  };
+}
+
+function promoteImageInvoiceCandidateForReview(classification: GmailScanClassification, reason: string): GmailScanClassification {
+  const documentType = isInvoiceRecordDocument(classification.documentType)
+    ? classification.documentType
+    : "invoice";
+  const evidence = classification.evidence.includes("image invoice OCR candidate")
+    ? classification.evidence
+    : [...classification.evidence, "image invoice OCR candidate"];
+  return {
+    ...classification,
+    documentType,
+    reviewStatus: "needs_review",
+    isRelevant: true,
+    decisionReason: `Held for review: ${reason}; ${classification.decisionReason}`,
     evidence,
   };
 }
@@ -2302,6 +2358,10 @@ function normalizeInvoiceDocumentType(documentType: EmailAnalysis["documentType"
   return documentType === "invoice" || documentType === "receipt" || documentType === "tax_invoice_receipt"
     ? documentType
     : fallback;
+}
+
+function isInvoiceScanResultDocument(documentType: string | null | undefined) {
+  return documentType === "invoice" || documentType === "receipt" || documentType === "tax_invoice_receipt" || documentType === "payment_request";
 }
 
 export function isIncomingSupplierExpenseCandidate(input: {
@@ -2658,7 +2718,7 @@ async function saveScanProgress(logId: string, data: {
   });
 }
 
-function collectAttachmentParts(payload?: PayloadPart): PayloadPart[] {
+export function collectAttachmentParts(payload?: PayloadPart): PayloadPart[] {
   const out: PayloadPart[] = [];
   if (!payload) return out;
   if (isAttachmentPayloadPart(payload)) out.push(payload);
@@ -2671,13 +2731,49 @@ function isAttachmentPayloadPart(part: PayloadPart) {
   const disposition = part.headers
     ?.find((header) => header.name?.toLowerCase() === "content-disposition")
     ?.value?.toLowerCase() ?? "";
+  const contentId = part.headers
+    ?.find((header) => header.name?.toLowerCase() === "content-id")
+    ?.value?.trim();
+  const hasLeafBody = Boolean(part.body?.attachmentId || part.body?.data) && !part.parts?.length;
   return Boolean(
     filename ||
     disposition.includes("attachment") ||
-    (part.body?.attachmentId && !part.parts?.length) ||
-    (part.body?.data && !part.parts?.length && (part.mimeType === "image/jpeg" || part.mimeType === "image/png")) ||
+    (hasLeafBody && (isInvoiceImageAttachmentPart(part) || Boolean(contentId) || disposition.includes("inline"))) ||
     (part.body?.data && filename)
   );
+}
+
+export function isInvoiceImageAttachmentPart(part: PayloadPart) {
+  return Boolean(part.body && imageMimeTypeForPart(part));
+}
+
+function imageMimeTypeForPart(part: PayloadPart) {
+  const mimeType = normalizeImageMimeType(part.mimeType);
+  if (mimeType) return mimeType;
+  const filename = part.filename ?? attachmentFilenameFromHeaders(part);
+  if (/\.png$/i.test(filename)) return "image/png";
+  if (/\.jpe?g$/i.test(filename)) return "image/jpeg";
+  if (/\.heic$/i.test(filename)) return "image/heic";
+  if (/\.heif$/i.test(filename)) return "image/heif";
+  return null;
+}
+
+function normalizeImageMimeType(mimeType?: string | null) {
+  const normalized = mimeType?.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (!GMAIL_IMAGE_MIME_TYPES.has(normalized)) return null;
+  if (normalized === "image/jpg" || normalized === "image/pjpeg") return "image/jpeg";
+  return normalized;
+}
+
+function isClaudeVisionSupportedImageMime(mimeType: string | null) {
+  return Boolean(mimeType && CLAUDE_VISION_IMAGE_MIME_TYPES.has(mimeType));
+}
+
+function isInlineAttachmentPart(part: PayloadPart) {
+  const disposition = part.headers
+    ?.find((header) => header.name?.toLowerCase() === "content-disposition")
+    ?.value?.toLowerCase() ?? "";
+  return disposition.includes("inline");
 }
 
 async function persistAttachmentMetadata(emailMessageId: string, parts: PayloadPart[]) {
@@ -2716,20 +2812,38 @@ async function persistAttachmentMetadata(emailMessageId: string, parts: PayloadP
 }
 
 function attachmentFilenameFromPart(part: PayloadPart) {
-  const contentDisposition = part.headers
-    ?.find((header) => header.name?.toLowerCase() === "content-disposition")
-    ?.value ?? "";
-  const match = contentDisposition.match(/filename="?([^";]+)"?/i);
-  if (match?.[1]) return decodeMimeHeader(match[1]).trim();
+  const headerFilename = attachmentFilenameFromHeaders(part);
+  if (headerFilename) return headerFilename;
   const extension = mimeExtension(part.mimeType);
   return `attachment-${createHash("sha1").update(JSON.stringify(part.body ?? {})).digest("hex").slice(0, 8)}${extension}`;
 }
 
+function attachmentFilenameFromHeaders(part: PayloadPart) {
+  const headers = part.headers ?? [];
+  for (const headerName of ["content-disposition", "content-type"]) {
+    const headerValue = headers.find((header) => header.name?.toLowerCase() === headerName)?.value ?? "";
+    const match = headerValue.match(/(?:filename|name)\*?=(?:UTF-8''|")?([^";]+)"?/i);
+    if (match?.[1]) return decodeMimeHeader(decodeURIComponentSafe(match[1].trim())).trim();
+  }
+  return "";
+}
+
+function decodeURIComponentSafe(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function mimeExtension(mimeType?: string | null) {
-  if (mimeType === "application/pdf") return ".pdf";
-  if (mimeType === "image/png") return ".png";
-  if (mimeType === "image/jpeg") return ".jpg";
-  if (mimeType === "image/webp") return ".webp";
+  const normalized = mimeType?.split(";")[0]?.trim().toLowerCase();
+  if (normalized === "application/pdf") return ".pdf";
+  if (normalized === "image/png") return ".png";
+  if (normalized === "image/jpeg" || normalized === "image/jpg" || normalized === "image/pjpeg") return ".jpg";
+  if (normalized === "image/heic") return ".heic";
+  if (normalized === "image/heif") return ".heif";
+  if (normalized === "image/webp") return ".webp";
   return "";
 }
 
@@ -2814,16 +2928,21 @@ async function analyzeInvoiceAttachmentForEmail(input: {
   subject: string;
   bodyText: string;
   sender: string;
-}) {
-  if (input.part.mimeType === "image/jpeg" || input.part.mimeType === "image/png") {
+}): Promise<AttachmentInvoiceAnalysisResult> {
+  const imageMimeType = imageMimeTypeForPart(input.part);
+  if (imageMimeType) {
+    if (!isClaudeVisionSupportedImageMime(imageMimeType)) {
+      return {
+        skipped: true as const,
+        reason: `unsupported_image_mime_${imageMimeType}`,
+        attachmentText: `filename=${attachmentFilenameForPart(input.part)} documentType=invoice amount=unknown invoiceNumber=unknown currency=ILS imageOcrUnavailable=true unsupportedMime=${imageMimeType}`,
+      };
+    }
     const data = await attachmentData(input.gmail, input.gmailMessageId, input.part);
     const buffer = decodeGmailAttachment(data);
-    if (buffer.length < 50 * 1024) {
-      return { skipped: true as const, reason: `image_below_min_size_${buffer.length}_bytes`, attachmentText: "" };
-    }
     const result = await analyzeInvoiceFile({
       fileBase64: buffer.toString("base64"),
-      mimeType: input.part.mimeType,
+      mimeType: imageMimeType,
       filename: input.part.filename ?? undefined,
     });
     return {
@@ -2842,6 +2961,8 @@ async function analyzeInvoiceAttachmentForEmail(input: {
         dueDate: result.dueDate ?? null,
         invoiceDate: result.date,
         invoiceNumber: result.invoiceNumber,
+        tasks: [],
+        confidence: isInvoiceScanResultDocument(result.documentType) ? 0.82 : 0.55,
       },
     };
   }
@@ -2863,27 +2984,57 @@ async function analyzeInvoiceAttachmentForEmail(input: {
   return { skipped: false as const, analysis, attachmentText };
 }
 
-async function extractVisualAttachmentHints(gmail: GmailClient, messageId: string, parts: PayloadPart[], sender: string) {
-  const visualParts = parts.filter((part) =>
-    part.body &&
-    (part.mimeType?.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(part.filename ?? ""))
-  );
+async function extractVisualAttachmentHints(
+  gmail: GmailClient,
+  messageId: string,
+  parts: PayloadPart[],
+  sender: string,
+  logStep: (message: string) => void,
+  ownerEmails: Set<string>
+) {
+  const visualParts = parts.filter(isInvoiceImageAttachmentPart);
   const hints: string[] = [];
+  let invoiceCandidateFound = false;
+  let needsReview = false;
+  let reviewReason = "image invoice OCR candidate";
   for (const part of visualParts) {
+    const filename = attachmentFilenameForPart(part);
+    const imageMimeType = imageMimeTypeForPart(part);
     try {
       const data = await attachmentData(gmail, messageId, part);
+      const buffer = decodeGmailAttachment(data);
+      if (!isClaudeVisionSupportedImageMime(imageMimeType)) {
+        invoiceCandidateFound = true;
+        needsReview = true;
+        reviewReason = `image OCR unavailable: unsupported MIME ${imageMimeType ?? part.mimeType ?? "unknown"}`;
+        logStep(`[gmail-sync] OCR_STARTED image message=${messageId} file="${filename}" mime=${imageMimeType ?? part.mimeType ?? "unknown"} bytes=${buffer.length} mode=unsupported_fallback`);
+        logStep(`[gmail-sync] OCR_FINISHED image message=${messageId} file="${filename}" status=unsupported_mime needsReview=true`);
+        hints.push(`filename=${filename} documentType=invoice supplier=unknown amount=unknown date=unknown invoiceNumber=unknown currency=ILS paymentRequired=unknown imageOcrUnavailable=true unsupportedMime=${imageMimeType ?? part.mimeType ?? "unknown"}`);
+        continue;
+      }
+      logStep(`[gmail-sync] OCR_STARTED IMAGE_OCR_STARTED message=${messageId} file="${filename}" mime=${imageMimeType} bytes=${buffer.length}`);
       const { analyzeInvoiceFile } = await import("./claude.js");
       const result = await analyzeInvoiceFile({
-        fileBase64: decodeGmailAttachment(data).toString("base64"),
-        mimeType: part.mimeType || "image/jpeg",
+        fileBase64: buffer.toString("base64"),
+        mimeType: imageMimeType ?? "image/jpeg",
         filename: part.filename ?? undefined,
       });
-      hints.push(`filename=${part.filename ?? "image"} supplier=${result.supplier} amount=${result.amount ?? "unknown"} date=${result.date ?? "unknown"} invoiceNumber=${result.invoiceNumber ?? "unknown"} currency=${result.currency}`);
+      const amount = normalizeDetectedAmount(result.totalAmount ?? result.amount);
+      const hasSupplier = isUsableSupplierName(result.supplier, ownerEmails);
+      const hasInvoiceNumber = Boolean(result.invoiceNumber?.trim());
+      const isInvoiceCandidate = isInvoiceScanResultDocument(result.documentType) || amount !== null || hasInvoiceNumber || (hasSupplier && result.paymentRequired === true);
+      const uncertain = isInvoiceCandidate && (amount === null || (!hasSupplier && !hasInvoiceNumber));
+      invoiceCandidateFound ||= isInvoiceCandidate;
+      needsReview ||= uncertain;
+      if (uncertain) reviewReason = `image OCR uncertain: amount=${amount ?? "missing"} supplier=${hasSupplier ? "present" : "missing"} invoiceNumber=${hasInvoiceNumber ? "present" : "missing"}`;
+      logStep(`[gmail-sync] OCR_FINISHED IMAGE_OCR_FINISHED message=${messageId} file="${filename}" documentType=${result.documentType ?? "other"} supplier="${result.supplier}" amount=${amount ?? "unknown"} invoiceNumber=${result.invoiceNumber ?? "unknown"} invoiceCandidate=${isInvoiceCandidate} needsReview=${uncertain}`);
+      hints.push(`filename=${filename} documentType=${result.documentType ?? "other"} supplier=${result.supplier} amount=${amount ?? "unknown"} date=${result.date ?? "unknown"} invoiceNumber=${result.invoiceNumber ?? "unknown"} currency=${result.currency} paymentRequired=${result.paymentRequired ?? "unknown"}`);
     } catch (err) {
+      logStep(`[gmail-sync] OCR_FINISHED image message=${messageId} file="${filename}" status=error`);
       console.warn(`[gmail-sync] Image OCR/vision failed message=${messageId} sender="${sender}" file="${part.filename ?? "image"}"`, err instanceof Error ? err.message : String(err));
     }
   }
-  return hints.join("\n");
+  return { text: hints.join("\n"), invoiceCandidateFound, needsReview, reviewReason };
 }
 
 async function attachmentData(gmail: GmailClient, messageId: string, part: PayloadPart) {
@@ -3041,7 +3192,7 @@ function detectInvoice(subject: string, body: string, parts: PayloadPart[]) {
     INVOICE_KEYWORDS.some((keyword) => lower.includes(keyword.toLowerCase())) ||
     INVOICE_KEYWORD_PATTERNS.some((pattern) => pattern.test(text));
   const hasPdf = parts.some((part) => /\.pdf$/i.test(part.filename ?? "") || part.mimeType === "application/pdf");
-  const hasImage = parts.some((part) => part.body && (part.mimeType === "image/jpeg" || part.mimeType === "image/png"));
+  const hasImage = parts.some(isInvoiceImageAttachmentPart);
   const amountResult = extractInvoiceAmount(text);
   return {
     isInvoice: hasKeyword || (hasPdf && amountResult.amount !== null) || hasImage,
