@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { missingInvoicesReportWhere } from "./supplierPaymentsSheet.js";
+import { hasSupplierPaymentSheetRowData, missingInvoicesReportWhere } from "./supplierPaymentsSheet.js";
 
 function matchesMissingInvoicesReportWhere(
   payment: {
@@ -55,4 +55,12 @@ test("missing-invoice list includes approved supplier payments missing an invoic
     ),
     true
   );
+});
+
+test("supplier payment sheet rows require identifying data", () => {
+  assert.equal(hasSupplierPaymentSheetRowData({ supplier: "", amount: 0 }), false);
+  assert.equal(hasSupplierPaymentSheetRowData({ supplier: "", amount: 0, invoiceLink: "https://drive.google.com/file/d/1" }), true);
+  assert.equal(hasSupplierPaymentSheetRowData({ supplier: "לא זוהה", amount: 0 }), true);
+  assert.equal(hasSupplierPaymentSheetRowData({ supplier: "", amount: 42 }), true);
+  assert.equal(hasSupplierPaymentSheetRowData({ supplier: "", amount: 0, invoiceNumber: "INV-1" }), true);
 });

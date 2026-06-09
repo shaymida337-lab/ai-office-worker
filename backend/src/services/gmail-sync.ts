@@ -10,7 +10,7 @@ import {
   supplierBranchNameFromFolderName,
   uploadInvoiceAttachmentToDrive,
 } from "./driveService.js";
-import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
+import { appendSupplierPaymentToSheet, hasSupplierPaymentSheetRowData } from "./supplierPaymentsSheet.js";
 import { notifyNewInvoice } from "./whatsapp.js";
 import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from "./financialDocuments.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
@@ -214,6 +214,18 @@ const SUPPLIER_KEYWORDS = [
   "הצעת מחיר",
   "חשבונית",
   "קבלה",
+];
+const OCR_SUPPLIER_KEYWORD_RULES = [
+  {
+    supplierName: "חברת החשמל",
+    confidence: 0.99,
+    patterns: [
+      /חברת\s+החשמל(?:\s+לישראל)?/u,
+      /חברת\s*חשמל/u,
+      /\bisrael\s+electric(?:\s+corporation)?\b/i,
+      /\belectric\s+corporation\b/i,
+    ],
+  },
 ];
 const REVIEWABLE_DOCUMENT_TYPES = new Set<GmailDocumentType>([
   "invoice",
@@ -919,6 +931,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       });
       const supplierName = supplierMetadata.name;
       const supplierBranchName = supplierBranchNameFromFolderName(supplierName);
+      logStep(`[gmail-sync] SUPPLIER_CLASSIFICATION message=${email.gmailId} supplier="${supplierName}" confidence=${supplierMetadata.confidence} source=${supplierMetadata.source}${supplierMetadata.keyword ? ` keyword="${supplierMetadata.keyword}"` : ""}`);
+      if (supplierMetadata.source === "unknown") {
+        logStep(`[gmail-sync] SUPPLIER_UNKNOWN message=${email.gmailId} reason="no OCR/document/AI/sender/domain supplier matched" analysisSupplier="${analysis.supplier}" ocrPreview="${truncateForLog(visualAttachmentText || pdfText || email.bodyText, 400)}"`);
+      }
       let classification = classifyGmailScanCandidate({
         subject: email.subject,
         bodyText: bodyForAnalysis,
@@ -1040,6 +1056,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       if (invoiceMatch.amount !== null) invoiceAmountsExtracted++;
       const invoiceNumberForDecision = analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
       const documentDateForDecision = normalizeBusinessDate(analysis.invoiceDate, email.receivedAt) ?? email.receivedAt;
+      logStep(`[gmail-sync] PARSED_FIELDS_EXTRACTED message=${email.gmailId} supplier="${supplierName}" amount=${analysis.totalAmount ?? amount ?? "unknown"} invoiceNumber=${invoiceNumberForDecision ?? "unknown"} dueDate=${analysis.dueDate ?? "unknown"} documentDate=${documentDateForDecision.toISOString()} documentType=${classification.documentType} review=${classification.reviewStatus}`);
       const documentValidationReason = financialDocumentBlockingReason({
         supplierName,
         invoiceNumber: invoiceNumberForDecision,
@@ -1105,22 +1122,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         });
         logStep(`[gmail-sync] client/lead message=${email.gmailId} clientId=${clientId} clientCreated=${saved.created}`);
       }
-      const driveLinks: {
-        type: string;
-        link: string;
-        filename?: string | null;
-        gmailAttachmentId?: string | null;
-        mimeType?: string | null;
-        fileId?: string | null;
-        folderId?: string | null;
-        clientFolderId?: string | null;
-        supplierFolderId?: string | null;
-        folderPath?: string | null;
-        supplierName?: string | null;
-        invoiceMonth?: number | null;
-        invoiceYear?: number | null;
-        fileSize?: number | null;
-      }[] = [];
+      const driveLinks: GmailDriveLink[] = [];
 
       const shouldUploadAttachments =
         classification.isRelevant &&
@@ -1484,7 +1486,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             continue;
           }
           const targetBodyForDetection = invoicePart
-            ? [email.bodyText, targetAnalysis.attachmentText && `--- PDF ATTACHMENT TEXT ---\n${targetAnalysis.attachmentText}`].filter(Boolean).join("\n\n")
+            ? [email.bodyText, targetAnalysis.attachmentText && `--- ATTACHMENT OCR TEXT ---\n${targetAnalysis.attachmentText}`].filter(Boolean).join("\n\n")
             : bodyForAnalysis;
           const targetInvoiceMatch = invoicePart
             ? detectInvoice(email.subject, targetBodyForDetection, [invoicePart])
@@ -1839,6 +1841,28 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         logStep(`[gmail-sync] SupplierPayment save skipped message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
       }
 
+      if (documentDecision.action !== "filtered" && classification.isRelevant && driveLinks.length > 0) {
+        const driveSync = await ensureSupplierPaymentsForDriveLinks({
+          organizationId,
+          email,
+          driveLinks,
+          classification,
+          analysis,
+          amount,
+          supplierName,
+          supplierMetadata,
+          invoiceNumber: invoiceNumberForDecision,
+          documentDate: documentDateForDecision,
+          documentDecision,
+          duplicateKey,
+          logStep,
+        });
+        paymentsCreated += driveSync.created;
+        sheetsUpdated += driveSync.sheetsUpdated;
+        if (driveSync.created > 0) paymentPersistedForPilot = true;
+        if (driveSync.sheetsUpdated > 0) sheetsUpdatedForPilot = true;
+      }
+
       await prisma.emailMessage.update({
         where: { id: email.emailRecordId },
         data: { processedAt: new Date() },
@@ -2037,6 +2061,23 @@ export type GmailScanClassification = {
 type AttachmentInvoiceAnalysisResult =
   | { skipped: true; reason: string; attachmentText: string }
   | { skipped: false; analysis: EmailAnalysis; attachmentText: string };
+
+type GmailDriveLink = {
+  type: string;
+  link: string;
+  filename?: string | null;
+  gmailAttachmentId?: string | null;
+  mimeType?: string | null;
+  fileId?: string | null;
+  folderId?: string | null;
+  clientFolderId?: string | null;
+  supplierFolderId?: string | null;
+  folderPath?: string | null;
+  supplierName?: string | null;
+  invoiceMonth?: number | null;
+  invoiceYear?: number | null;
+  fileSize?: number | null;
+};
 
 const GMAIL_IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
@@ -3040,23 +3081,32 @@ async function analyzeInvoiceAttachmentForEmail(input: {
 }): Promise<AttachmentInvoiceAnalysisResult> {
   const imageMimeType = imageMimeTypeForPart(input.part);
   if (imageMimeType) {
-    if (!isClaudeVisionSupportedImageMime(imageMimeType)) {
-      return {
-        skipped: true as const,
-        reason: `unsupported_image_mime_${imageMimeType}`,
-        attachmentText: `filename=${attachmentFilenameForPart(input.part)} documentType=invoice amount=unknown invoiceNumber=unknown currency=ILS imageOcrUnavailable=true unsupportedMime=${imageMimeType}`,
-      };
-    }
     const data = await attachmentData(input.gmail, input.gmailMessageId, input.part);
     const buffer = decodeGmailAttachment(data);
-    const result = await analyzeInvoiceFile({
-      fileBase64: buffer.toString("base64"),
-      mimeType: imageMimeType,
-      filename: input.part.filename ?? undefined,
-    });
+    let result;
+    try {
+      result = await analyzeInvoiceFile({
+        fileBase64: buffer.toString("base64"),
+        mimeType: imageMimeType,
+        filename: input.part.filename ?? undefined,
+      });
+    } catch (err) {
+      if (!isClaudeVisionSupportedImageMime(imageMimeType)) {
+        return {
+          skipped: true as const,
+          reason: `unsupported_image_mime_${imageMimeType}`,
+          attachmentText: `filename=${attachmentFilenameForPart(input.part)} documentType=invoice amount=unknown invoiceNumber=unknown currency=ILS imageOcrUnavailable=true unsupportedMime=${imageMimeType}`,
+        };
+      }
+      throw err;
+    }
+    const attachmentText = buildImageAttachmentOcrText(input.part, result);
+    if (result.ocrText) {
+      console.log(`[gmail-sync] OCR_TEXT_EXTRACTED message=${input.gmailMessageId} file="${attachmentFilenameForPart(input.part)}" source=tesseract_heb_eng confidence=${result.ocrConfidence ?? "unknown"} text="${truncateForLog(result.ocrText)}"`);
+    }
     return {
       skipped: false as const,
-      attachmentText: "",
+      attachmentText,
       analysis: {
         supplier: result.supplier,
         supplierTaxId: result.supplierTaxId ?? null,
@@ -3093,6 +3143,22 @@ async function analyzeInvoiceAttachmentForEmail(input: {
   return { skipped: false as const, analysis, attachmentText };
 }
 
+function buildImageAttachmentOcrText(part: PayloadPart, result: Awaited<ReturnType<typeof analyzeInvoiceFile>>) {
+  return [
+    `filename=${attachmentFilenameForPart(part)}`,
+    `documentType=${result.documentType ?? "other"}`,
+    `supplier=${result.supplier}`,
+    `supplierTaxId=${result.supplierTaxId ?? "unknown"}`,
+    `amount=${result.totalAmount ?? result.amount ?? "unknown"}`,
+    `date=${result.date ?? "unknown"}`,
+    `dueDate=${result.dueDate ?? "unknown"}`,
+    `invoiceNumber=${result.invoiceNumber ?? "unknown"}`,
+    `currency=${result.currency}`,
+    `paymentRequired=${result.paymentRequired ?? "unknown"}`,
+    result.ocrText ? `rawOcrText=${result.ocrText.slice(0, 3000)}` : "",
+  ].filter(Boolean).join(" ");
+}
+
 async function extractVisualAttachmentHints(
   gmail: GmailClient,
   messageId: string,
@@ -3112,35 +3178,39 @@ async function extractVisualAttachmentHints(
     try {
       const data = await attachmentData(gmail, messageId, part);
       const buffer = decodeGmailAttachment(data);
-      if (!isClaudeVisionSupportedImageMime(imageMimeType)) {
-        invoiceCandidateFound = true;
-        needsReview = true;
-        reviewReason = `image OCR unavailable: unsupported MIME ${imageMimeType ?? part.mimeType ?? "unknown"}`;
-        logStep(`[gmail-sync] OCR_STARTED image message=${messageId} file="${filename}" mime=${imageMimeType ?? part.mimeType ?? "unknown"} bytes=${buffer.length} mode=unsupported_fallback`);
-        logStep(`[gmail-sync] OCR_FINISHED image message=${messageId} file="${filename}" status=unsupported_mime needsReview=true`);
-        hints.push(`filename=${filename} documentType=invoice supplier=unknown amount=unknown date=unknown invoiceNumber=unknown currency=ILS paymentRequired=unknown imageOcrUnavailable=true unsupportedMime=${imageMimeType ?? part.mimeType ?? "unknown"}`);
-        continue;
-      }
-      logStep(`[gmail-sync] OCR_STARTED IMAGE_OCR_STARTED message=${messageId} file="${filename}" mime=${imageMimeType} bytes=${buffer.length}`);
+      logStep(`[gmail-sync] OCR_STARTED IMAGE_OCR_STARTED message=${messageId} file="${filename}" mime=${imageMimeType ?? part.mimeType ?? "unknown"} bytes=${buffer.length} preprocessing=sharp_auto_rotate_crop_contrast_shadow_sharpen tesseract=heb+eng`);
       const { analyzeInvoiceFile } = await import("./claude.js");
       const result = await analyzeInvoiceFile({
         fileBase64: buffer.toString("base64"),
         mimeType: imageMimeType ?? "image/jpeg",
         filename: part.filename ?? undefined,
       });
+      if (result.ocrText) {
+        logStep(`[gmail-sync] OCR_TEXT_EXTRACTED message=${messageId} file="${filename}" source=tesseract_heb_eng confidence=${result.ocrConfidence ?? "unknown"} text="${truncateForLog(result.ocrText)}"`);
+      }
+      const keywordSupplier = detectSupplierKeyword(`${result.ocrText ?? ""}\n${result.supplier}`);
       const amount = normalizeDetectedAmount(result.totalAmount ?? result.amount);
-      const hasSupplier = isUsableSupplierName(result.supplier, ownerEmails);
+      const hasSupplier = isUsableSupplierName(result.supplier, ownerEmails) || Boolean(keywordSupplier);
       const hasInvoiceNumber = Boolean(result.invoiceNumber?.trim());
       const isInvoiceCandidate = isInvoiceScanResultDocument(result.documentType) || amount !== null || hasInvoiceNumber || (hasSupplier && result.paymentRequired === true);
       const uncertain = isInvoiceCandidate && (amount === null || (!hasSupplier && !hasInvoiceNumber));
       invoiceCandidateFound ||= isInvoiceCandidate;
       needsReview ||= uncertain;
       if (uncertain) reviewReason = `image OCR uncertain: amount=${amount ?? "missing"} supplier=${hasSupplier ? "present" : "missing"} invoiceNumber=${hasInvoiceNumber ? "present" : "missing"}`;
-      logStep(`[gmail-sync] OCR_FINISHED IMAGE_OCR_FINISHED message=${messageId} file="${filename}" documentType=${result.documentType ?? "other"} supplier="${result.supplier}" amount=${amount ?? "unknown"} invoiceNumber=${result.invoiceNumber ?? "unknown"} invoiceCandidate=${isInvoiceCandidate} needsReview=${uncertain}`);
-      hints.push(`filename=${filename} documentType=${result.documentType ?? "other"} supplier=${result.supplier} amount=${amount ?? "unknown"} date=${result.date ?? "unknown"} invoiceNumber=${result.invoiceNumber ?? "unknown"} currency=${result.currency} paymentRequired=${result.paymentRequired ?? "unknown"}`);
+      logStep(`[gmail-sync] OCR_FINISHED IMAGE_OCR_FINISHED message=${messageId} file="${filename}" documentType=${result.documentType ?? "other"} supplier="${keywordSupplier?.supplierName ?? result.supplier}" supplierConfidence=${keywordSupplier?.confidence ?? (hasSupplier ? 0.82 : 0.1)} amount=${amount ?? "unknown"} invoiceNumber=${result.invoiceNumber ?? "unknown"} invoiceCandidate=${isInvoiceCandidate} needsReview=${uncertain}`);
+      hints.push(buildImageAttachmentOcrText(part, {
+        ...result,
+        supplier: keywordSupplier?.supplierName ?? result.supplier,
+      }));
     } catch (err) {
       logStep(`[gmail-sync] OCR_FINISHED image message=${messageId} file="${filename}" status=error`);
       console.warn(`[gmail-sync] Image OCR/vision failed message=${messageId} sender="${sender}" file="${part.filename ?? "image"}"`, err instanceof Error ? err.message : String(err));
+      if (!isClaudeVisionSupportedImageMime(imageMimeType)) {
+        invoiceCandidateFound = true;
+        needsReview = true;
+        reviewReason = `image OCR unavailable: unsupported MIME ${imageMimeType ?? part.mimeType ?? "unknown"}`;
+        hints.push(`filename=${filename} documentType=invoice supplier=unknown amount=unknown date=unknown invoiceNumber=unknown currency=ILS paymentRequired=unknown imageOcrUnavailable=true unsupportedMime=${imageMimeType ?? part.mimeType ?? "unknown"}`);
+      }
     }
   }
   return { text: hints.join("\n"), invoiceCandidateFound, needsReview, reviewReason };
@@ -3180,14 +3250,19 @@ function normalizeSupplierName(value: string) {
   return cleaned || value.trim() || "Unknown supplier";
 }
 
+function truncateForLog(text: string, limit = 900) {
+  return text.replace(/\s+/g, " ").slice(0, limit).replace(/"/g, "'");
+}
+
 type SupplierMetadata = {
   name: string;
   taxId: string | null;
   confidence: number;
-  source: "document" | "ai" | "known_supplier" | "sender_display" | "domain" | "unknown";
+  source: "keyword" | "document" | "ai" | "known_supplier" | "sender_display" | "domain" | "unknown";
+  keyword?: string | null;
 };
 
-function resolveSupplierMetadata(input: {
+export function resolveSupplierMetadata(input: {
   analysisSupplier?: string | null;
   analysisSupplierTaxId?: string | null;
   bodyText: string;
@@ -3198,6 +3273,15 @@ function resolveSupplierMetadata(input: {
   knownSupplierNames: Map<string, string>;
 }): SupplierMetadata {
   const taxId = input.analysisSupplierTaxId || extractSupplierTaxId(input.bodyText);
+  const keywordSupplier = detectSupplierKeyword(`${input.bodyText}\n${input.analysisSupplier ?? ""}`);
+  if (keywordSupplier) return withKnownSupplierName({
+    name: keywordSupplier.supplierName,
+    taxId,
+    confidence: keywordSupplier.confidence,
+    source: "keyword",
+    keyword: keywordSupplier.keyword,
+  }, input.knownSupplierNames);
+
   const documentSupplier = extractSupplierFromDocument(input.bodyText, input.ownerEmails);
   if (documentSupplier) return withKnownSupplierName({
     name: documentSupplier,
@@ -3236,9 +3320,26 @@ function resolveSupplierMetadata(input: {
 function withKnownSupplierName(candidate: SupplierMetadata, knownSupplierNames: Map<string, string>): SupplierMetadata {
   const key = canonicalSupplierKey(candidate.name);
   const known = key ? knownSupplierNames.get(key) : null;
-  if (known) return { ...candidate, name: known, source: candidate.source === "document" ? "document" : "known_supplier" };
+  if (known) return { ...candidate, name: known, source: candidate.source === "document" || candidate.source === "keyword" ? candidate.source : "known_supplier" };
   if (key) knownSupplierNames.set(key, candidate.name);
   return candidate;
+}
+
+export function detectSupplierKeyword(text: string) {
+  const normalizedText = text.replace(/\s+/g, " ");
+  for (const rule of OCR_SUPPLIER_KEYWORD_RULES) {
+    const match = rule.patterns
+      .map((pattern) => normalizedText.match(pattern)?.[0])
+      .find((value): value is string => Boolean(value));
+    if (match) {
+      return {
+        supplierName: rule.supplierName,
+        confidence: rule.confidence,
+        keyword: match,
+      };
+    }
+  }
+  return null;
 }
 
 function extractSupplierFromDocument(text: string, ownerEmails: Set<string>) {
@@ -3568,6 +3669,169 @@ async function findExistingSupplierPayment(input: {
   }
 
   return null;
+}
+
+async function findSupplierPaymentByDriveLink(organizationId: string, driveLink: GmailDriveLink) {
+  const clauses: Array<
+    | { driveFileId: string }
+    | { driveFileUrl: string }
+    | { invoiceLink: string }
+    | { documentLink: string }
+  > = [];
+  if (driveLink.fileId) clauses.push({ driveFileId: driveLink.fileId });
+  if (driveLink.link) {
+    clauses.push({ driveFileUrl: driveLink.link });
+    clauses.push({ invoiceLink: driveLink.link });
+    clauses.push({ documentLink: driveLink.link });
+  }
+  if (!clauses.length) return null;
+  return prisma.supplierPayment.findFirst({
+    where: {
+      organizationId,
+      OR: clauses,
+    },
+  });
+}
+
+async function ensureSupplierPaymentsForDriveLinks(input: {
+  organizationId: string;
+  email: ScannedEmail;
+  driveLinks: GmailDriveLink[];
+  classification: GmailScanClassification;
+  analysis: EmailAnalysis;
+  amount: number | null;
+  supplierName: string;
+  supplierMetadata: SupplierMetadata;
+  invoiceNumber: string | null;
+  documentDate: Date;
+  documentDecision: {
+    action: string;
+    documentType: string;
+    sourceFingerprint: string;
+    documentFingerprint: string;
+  };
+  duplicateKey: string | null;
+  logStep: (message: string) => void;
+}) {
+  let created = 0;
+  let sheetsUpdated = 0;
+  for (const driveLink of input.driveLinks) {
+    if (!driveLink.link && !driveLink.fileId) continue;
+    const existingByDrive = await findSupplierPaymentByDriveLink(input.organizationId, driveLink);
+    if (existingByDrive) {
+      input.logStep(`[gmail-sync] SUPPLIER_PAYMENT_DB_SAVE_SKIPPED message=${input.email.gmailId} file="${driveLink.filename ?? "unnamed"}" reason=drive_file_already_linked paymentId=${existingByDrive.id}`);
+      continue;
+    }
+
+    const paymentNeedsReview =
+      input.classification.reviewStatus === "needs_review" ||
+      input.classification.confidence < 0.8 ||
+      input.amount === null ||
+      !isUsableSupplierName(input.supplierName);
+    const paymentSupplierName = paymentNeedsReview && !isUsableSupplierName(input.supplierName)
+      ? UNKNOWN_SUPPLIER_FALLBACK
+      : input.supplierName;
+    const paymentAmount = input.amount ?? normalizeDetectedAmount(input.analysis.totalAmount) ?? 0;
+    const paymentApprovalStatus = paymentNeedsReview ? "needs_review" : "approved";
+    const dueDate = normalizeBusinessDate(input.analysis.dueDate, null);
+    const invoiceLink = isInvoiceRecordDocument(input.classification.documentType) ? driveLink.link : null;
+    const documentLink = input.classification.documentType === "payment_request" ? driveLink.link : null;
+    const missingInvoice =
+      Boolean(input.analysis.paymentRequired || input.classification.documentType === "payment_request") &&
+      !invoiceLink &&
+      Boolean(documentLink || input.analysis.paymentRequired);
+    const driveIdentity = driveLink.fileId ?? driveLink.link ?? driveLink.filename ?? input.email.gmailId;
+    const fingerprintSuffix = createHash("sha256").update(driveIdentity).digest("hex").slice(0, 12);
+    const documentFingerprint = `${input.documentDecision.documentFingerprint}:${fingerprintSuffix}`;
+    const duplicateHash = buildDuplicateHash({
+      organizationId: input.organizationId,
+      supplier: paymentSupplierName,
+      amount: paymentAmount,
+      dateIso: input.email.receivedAt.toISOString(),
+      subject: `${input.email.subject}|drive:${driveIdentity}`,
+    });
+
+    input.logStep(`[gmail-sync] SUPPLIER_PAYMENT_DB_SAVE_ATTEMPT message=${input.email.gmailId} file="${driveLink.filename ?? "unnamed"}" driveFileId=${driveLink.fileId ?? "none"} supplier="${paymentSupplierName}" amount=${paymentAmount} invoiceNumber=${input.invoiceNumber ?? "none"} dueDate=${dueDate?.toISOString() ?? "none"} status=${paymentApprovalStatus}`);
+    const payment = await prisma.supplierPayment.create({
+      data: {
+        organizationId: input.organizationId,
+        supplier: paymentSupplierName,
+        amount: paymentAmount,
+        currency: input.analysis.currency,
+        date: input.email.receivedAt,
+        dueDate,
+        paid: false,
+        documentLink,
+        invoiceLink,
+        driveFileId: driveLink.fileId ?? null,
+        driveFileUrl: driveLink.link ?? null,
+        driveFolderId: driveLink.folderId ?? null,
+        driveClientFolderId: driveLink.clientFolderId ?? null,
+        driveSupplierFolderId: driveLink.supplierFolderId ?? null,
+        driveFolderPath: driveLink.folderPath ?? null,
+        supplierName: driveLink.supplierName ?? paymentSupplierName,
+        invoiceMonth: driveLink.invoiceMonth ?? input.documentDate.getMonth() + 1,
+        invoiceYear: driveLink.invoiceYear ?? input.documentDate.getFullYear(),
+        invoiceNumber: input.invoiceNumber,
+        documentFingerprint,
+        sourceFingerprint: `${input.documentDecision.sourceFingerprint}:${fingerprintSuffix}`,
+        documentTypeDetailed: input.documentDecision.documentType,
+        supplierTaxId: input.supplierMetadata.taxId,
+        amountBeforeVat: input.analysis.amountBeforeVat ?? null,
+        vatAmount: input.analysis.vatAmount ?? null,
+        totalAmount: input.analysis.totalAmount ?? paymentAmount,
+        confidenceScore: input.classification.confidence,
+        approvalStatus: paymentApprovalStatus,
+        sourcesJson: ["gmail"],
+        emailSender: input.email.from,
+        paymentRequired: input.analysis.paymentRequired,
+        missingInvoice,
+        duplicateHash: input.duplicateKey ? `${input.duplicateKey}:${fingerprintSuffix}` : duplicateHash,
+        subject: input.email.subject,
+        source: input.email.source,
+        emailMessageId: input.email.emailRecordId,
+      },
+    });
+    created++;
+    input.logStep(`[gmail-sync] SUPPLIER_PAYMENT_DB_SAVE_SUCCESS message=${input.email.gmailId} paymentId=${payment.id} file="${driveLink.filename ?? "unnamed"}" driveFileId=${driveLink.fileId ?? "none"} status=${paymentApprovalStatus}`);
+
+    const sheetInput = {
+      organizationId: input.organizationId,
+      paymentId: payment.id,
+      supplier: paymentSupplierName,
+      amount: paymentAmount,
+      date: input.email.receivedAt,
+      dueDate,
+      paid: false,
+      missingInvoice,
+      documentLink,
+      invoiceLink,
+      gmailLink: gmailMessageLink(input.email.gmailId),
+      supplierTaxId: input.supplierMetadata.taxId,
+      invoiceNumber: input.invoiceNumber,
+      invoiceDate: input.analysis.invoiceDate ?? input.email.receivedAt,
+      source: "gmail",
+      duplicateDetected: false,
+      duplicateReason: null,
+      driveFolderLink: driveLink.folderId ? `https://drive.google.com/drive/folders/${driveLink.folderId}` : null,
+      paidDate: null,
+      receiptLink: null,
+      createdAt: payment.createdAt,
+      updatedAt: payment.updatedAt,
+    };
+    if (!hasSupplierPaymentSheetRowData(sheetInput)) {
+      input.logStep(`[gmail-sync] Sheets append skipped message=${input.email.gmailId} paymentId=${payment.id} reason=empty_supplier_payment_row`);
+      continue;
+    }
+    await appendSupplierPaymentToSheet(sheetInput).then((sheet) => {
+      if (!("skipped" in sheet && sheet.skipped)) sheetsUpdated++;
+      input.logStep(`[gmail-sync] Sheets append success message=${input.email.gmailId} paymentId=${payment.id} spreadsheet=${sheet.spreadsheetId || "skipped"}`);
+    }).catch((err) => {
+      console.error(`[gmail-sync] Sheets append failed message=${input.email.gmailId} paymentId=${payment.id}`, err);
+      input.logStep(`[gmail-sync] Sheets append failed message=${input.email.gmailId} reason="${err instanceof Error ? err.message : String(err)}"`);
+    });
+  }
+  return { created, sheetsUpdated };
 }
 
 async function createPaymentAlertOnce(input: {

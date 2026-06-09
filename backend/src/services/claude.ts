@@ -32,10 +32,13 @@ export type InvoiceScanResult = {
   documentType?: "invoice" | "tax_invoice_receipt" | "quote" | "payment_request" | "receipt" | "other";
   paymentRequired?: boolean;
   currency: string;
+  ocrText?: string | null;
+  ocrConfidence?: number | null;
 };
 
 const anthropic = hasClaude() ? new Anthropic({ apiKey: config.anthropic.apiKey }) : null;
 const MAX_REASONABLE_AMOUNT = MAX_REASONABLE_FINANCIAL_AMOUNT;
+const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/pjpeg", "image/png", "image/heic", "image/heif"]);
 const REFERENCE_NUMBER_CONTEXT =
   /(?:אסמכתא|מספר|שובר|סידורי|מסמך|חשבונית\s*(?:מס)?\s*מספר|ref|reference|invoice\s*(?:no|number)|order\s*(?:no|number)|#)/i;
 
@@ -203,6 +206,16 @@ export async function analyzeInvoiceFile(input: {
     throw new Error("ANTHROPIC_API_KEY is not configured");
   }
 
+  const prepared = isImageMimeType(input.mimeType)
+    ? await prepareImageForOcr(input.fileBase64, input.mimeType, input.filename)
+    : {
+        fileBase64: input.fileBase64,
+        mimeType: input.mimeType,
+        preprocessingNotes: "not_image",
+        ocrText: null,
+        ocrConfidence: null,
+      };
+
   const prompt = `חלץ מהמסמך המצורף את פרטי הנהלת החשבונות.
 החזר JSON בלבד:
 {
@@ -221,25 +234,29 @@ export async function analyzeInvoiceFile(input: {
 }
 כללים חשובים:
 - supplier הוא שם העסק/מנפיק החשבונית שמופיע בראש המסמך או ליד פרטי עוסק/ח.פ, לא שם הלקוח ולא "Unknown".
+- אם מופיע בטקסט "חברת החשמל", "חברת החשמל לישראל" או Israel Electric, supplier חייב להיות "חברת החשמל".
 - amount הוא סה"כ לתשלום / סה"כ כולל מע"מ / Total Due. totalAmount זהה לסה"כ כולל מע"מ. amountBeforeVat הוא סכום לפני מע"מ. vatAmount הוא מע"מ. אל תחזיר סכום ביניים, מע"מ בלבד או מספר אסמכתא בשדה amount.
 - invoiceNumber הוא מספר חשבונית/קבלה/מסמך בלבד, לא ח.פ/עוסק ולא מספר טלפון.
-- אל תמציא ערכים. אם זה צילום של חשבונית/קבלה, בצע OCR מתוך התמונה.`;
+- אל תמציא ערכים. אם זה צילום של חשבונית/קבלה, בצע OCR מתוך התמונה.
+- התמונה, אם קיימת, עברה הכנה ל-OCR: auto-rotate לפי metadata, auto-crop לשוליים בהירים, normalize/contrast, shadow reduction ושיפור חדות.
+- תמוך בעברית משולבת במספרים, כולל סכום, מספר חשבון, מספר חשבונית ותאריך יעד.
+${prepared.ocrText ? `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמש בו רק אם הוא מתאים למסמך:\n${prepared.ocrText.slice(0, 5000)}` : ""}`;
   const fileBlock =
-    input.mimeType === "application/pdf"
+    prepared.mimeType === "application/pdf"
       ? {
           type: "document",
           source: {
             type: "base64",
-            media_type: input.mimeType,
-            data: input.fileBase64,
+            media_type: prepared.mimeType,
+            data: prepared.fileBase64,
           },
         }
       : {
           type: "image",
           source: {
             type: "base64",
-            media_type: input.mimeType,
-            data: input.fileBase64,
+            media_type: prepared.mimeType,
+            data: prepared.fileBase64,
           },
         };
 
@@ -253,7 +270,7 @@ export async function analyzeInvoiceFile(input: {
           fileBlock,
           {
             type: "text",
-            text: `${prompt}\nשם קובץ: ${input.filename ?? "לא ידוע"}`,
+            text: `${prompt}\nשם קובץ: ${input.filename ?? "לא ידוע"}\npreprocessing=${prepared.preprocessingNotes}`,
           },
         ] as any,
       },
@@ -298,7 +315,73 @@ export async function analyzeInvoiceFile(input: {
     documentType,
     paymentRequired: typeof parsed.paymentRequired === "boolean" ? parsed.paymentRequired : documentType !== "receipt",
     currency: currency || "ILS",
+    ocrText: prepared.ocrText,
+    ocrConfidence: prepared.ocrConfidence,
   };
+}
+
+async function prepareImageForOcr(fileBase64: string, mimeType: string, filename?: string) {
+  const originalBuffer = Buffer.from(fileBase64, "base64");
+  let processedBuffer: Buffer<ArrayBufferLike> = originalBuffer;
+  let processedMimeType = normalizeImageMimeType(mimeType) ?? "image/jpeg";
+  let preprocessingNotes = "original_image";
+
+  try {
+    const sharpModule = await import("sharp");
+    const sharp = sharpModule.default;
+    processedBuffer = await sharp(originalBuffer, { limitInputPixels: false })
+      .rotate()
+      .trim({ background: "#ffffff", threshold: 12 })
+      .grayscale()
+      .normalize()
+      .linear(1.18, -12)
+      .sharpen({ sigma: 1.1, m1: 1.2, m2: 0.6 })
+      .jpeg({ quality: 92, mozjpeg: true })
+      .toBuffer();
+    processedMimeType = "image/jpeg";
+    preprocessingNotes = "sharp:auto_rotate,auto_crop,grayscale,contrast_boost,shadow_reduction,sharpen";
+  } catch (err) {
+    preprocessingNotes = `preprocess_failed:${err instanceof Error ? err.message : String(err)}`.slice(0, 180);
+    console.warn(`[claude] Image preprocessing failed for ${filename ?? "image"}`, err instanceof Error ? err.message : String(err));
+  }
+
+  const ocr = await recognizeHebrewImageText(processedBuffer, filename);
+  return {
+    fileBase64: processedBuffer.toString("base64"),
+    mimeType: processedMimeType,
+    preprocessingNotes,
+    ocrText: ocr?.text ?? null,
+    ocrConfidence: ocr?.confidence ?? null,
+  };
+}
+
+async function recognizeHebrewImageText(buffer: Buffer, filename?: string) {
+  try {
+    const tesseract = await import("tesseract.js");
+    const result = await tesseract.recognize(buffer, "heb+eng");
+    const text = result.data.text?.replace(/\s+/g, " ").trim() ?? "";
+    if (!text) return null;
+    const confidence = typeof result.data.confidence === "number" ? result.data.confidence / 100 : null;
+    console.log(`[claude] OCR_TEXT_EXTRACTED source=tesseract_heb_eng file="${filename ?? "image"}" confidence=${confidence ?? "unknown"} text="${truncateForLog(text)}"`);
+    return { text, confidence };
+  } catch (err) {
+    console.warn(`[claude] Tesseract OCR failed for ${filename ?? "image"}`, err instanceof Error ? err.message : String(err));
+    return null;
+  }
+}
+
+function isImageMimeType(mimeType: string) {
+  return IMAGE_MIME_TYPES.has(mimeType.split(";")[0]?.trim().toLowerCase());
+}
+
+function normalizeImageMimeType(mimeType: string) {
+  const normalized = mimeType.split(";")[0]?.trim().toLowerCase();
+  if (normalized === "image/jpg" || normalized === "image/pjpeg") return "image/jpeg";
+  return IMAGE_MIME_TYPES.has(normalized) ? normalized : null;
+}
+
+function truncateForLog(text: string, limit = 900) {
+  return text.replace(/\s+/g, " ").slice(0, limit).replace(/"/g, "'");
 }
 
 function parseJsonObject<T>(text: string, context: string): T | null {

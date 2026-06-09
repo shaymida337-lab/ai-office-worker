@@ -51,6 +51,10 @@ export async function appendSupplierPaymentToSheet(input: {
   createdAt?: Date | string | null;
   updatedAt?: Date | string | null;
 }) {
+  if (!hasSupplierPaymentSheetRowData(input)) {
+    console.warn(`[sheets] supplier payment row skipped: empty payment payload org=${input.organizationId} paymentId=${input.paymentId ?? "none"}`);
+    return { spreadsheetId: "", spreadsheetUrl: "", row: null, updated: false, skipped: true };
+  }
   const { sheets } = await getGoogleClients(input.organizationId);
   const spreadsheet = await ensureSupplierPaymentsSpreadsheet(input.organizationId);
   await ensureHeaders(input.organizationId, spreadsheet.spreadsheetId);
@@ -126,6 +130,25 @@ export async function appendSupplierPaymentToSheet(input: {
     `[sheets] SHEETS_ROW_CREATED org=${input.organizationId} paymentId=${input.paymentId ?? "none"} supplier="${input.supplier}" invoiceNumber=${input.invoiceNumber ?? "none"} row=${rowNumber ?? "unknown"} spreadsheet=${spreadsheet.spreadsheetId}`
   );
   return { ...spreadsheet, row: rowNumber, updated: false };
+}
+
+export function hasSupplierPaymentSheetRowData(input: {
+  paymentId?: string | null;
+  supplier?: string | null;
+  amount?: number | null;
+  documentLink?: string | null;
+  invoiceLink?: string | null;
+  gmailLink?: string | null;
+  invoiceNumber?: string | null;
+}) {
+  const driveFileLink = input.invoiceLink ?? input.documentLink ?? input.gmailLink ?? "";
+  return Boolean(
+    input.paymentId?.trim() ||
+    input.supplier?.trim() ||
+    input.invoiceNumber?.trim() ||
+    driveFileLink.trim() ||
+    (typeof input.amount === "number" && Number.isFinite(input.amount) && input.amount > 0)
+  );
 }
 
 export async function ensureSupplierPaymentsSpreadsheet(organizationId: string) {

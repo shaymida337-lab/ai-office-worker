@@ -6,9 +6,11 @@ import {
   buildGmailScanDuplicateKey,
   classifyGmailScanCandidate,
   collectAttachmentParts,
+  detectSupplierKeyword,
   extractInvoiceAmount,
   isIncomingSupplierExpenseCandidate,
   isInvoiceImageAttachmentPart,
+  resolveSupplierMetadata,
   supplierPaymentCreationEligibility,
 } from "./gmail-sync.js";
 import type { EmailAnalysis } from "./claude.js";
@@ -200,6 +202,57 @@ test("holds photographed invoice image with uncertain OCR for review", () => {
   assert.equal(result.reviewStatus, "needs_review");
   assert.match(result.decisionReason, /no valid amount/);
   assert.equal(result.audit.imageInvoiceDetected, true);
+});
+
+test("detects חברת החשמל from Hebrew OCR text", () => {
+  const text = "צילום חשבון חברת החשמל לישראל מספר חשבון 123456 סכום לתשלום 418.90 ש״ח";
+  const result = detectSupplierKeyword(text);
+
+  assert.equal(result?.supplierName, "חברת החשמל");
+  assert.equal(result?.confidence, 0.99);
+});
+
+test("resolves חברת החשמל supplier from OCR before unknown fallback", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: "לא ידוע",
+    analysisSupplierTaxId: null,
+    bodyText: "--- VISUAL ATTACHMENT ANALYSIS ---\nrawOcrText=חברת החשמל סכום לתשלום 418.90 מספר חשבון 123456",
+    senderName: "Unknown",
+    senderEmail: "photo-scan@gmail.com",
+    senderDomain: "gmail.com",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+
+  assert.equal(supplier.name, "חברת החשמל");
+  assert.equal(supplier.source, "keyword");
+  assert.equal(supplier.confidence, 0.99);
+});
+
+test("keeps low-confidence חברת החשמל image invoice in needs review with supplier", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: "Unknown",
+    analysisSupplierTaxId: null,
+    bodyText: "filename=photo.jpg documentType=invoice rawOcrText=חברת החשמל סכום לתשלום 418.90 מספר חשבון 123456",
+    senderName: "Unknown",
+    senderEmail: "photo-scan@gmail.com",
+    senderDomain: "gmail.com",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+  const classification = classifyGmailScanCandidate({
+    subject: "Photo from phone",
+    bodyText: "filename=photo.jpg documentType=invoice rawOcrText=חברת החשמל מספר חשבון 123456 amount=unknown",
+    attachmentFilenames: ["photo.jpg"],
+    analysis: analysis({ documentType: "invoice", confidence: 0.52 }),
+    amount: null,
+    supplierName: supplier.name,
+  });
+
+  assert.equal(supplier.name, "חברת החשמל");
+  assert.equal(classification.documentType, "invoice");
+  assert.equal(classification.reviewStatus, "needs_review");
+  assert.equal(classification.isRelevant, true);
 });
 
 test("keeps image-only needs-review invoice out of financial persistence", () => {
