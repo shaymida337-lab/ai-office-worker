@@ -286,12 +286,14 @@
       data.append("source", "contact-he");
       data.append("locale", document.documentElement.lang || "he");
 
+      console.log("[lead] sending to Formspree…", FS_BASE + FORMSPREE_CONTACT_ID);
       fetch(FS_BASE + FORMSPREE_CONTACT_ID, {
         method: "POST",
         headers: { Accept: "application/json" },
         body: data
       })
           .then(function (res) {
+            console.log("[lead] Formspree response", { status: res.status, ok: res.ok });
             if (!res.ok) {
               console.error("Formspree contact submit failed", { status: res.status, statusText: res.statusText });
               if (btn) { btn.disabled = false; btn.innerHTML = original; }
