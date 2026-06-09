@@ -560,6 +560,54 @@ test("does not ensure invoice Client before review approval", () => {
   assert.equal(plan.shouldEnsureInvoiceClient, false);
 });
 
+test("allows needs-review invoice SupplierPayment with missing amount and supplier", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "Invoice photo",
+    bodyText: "Attached invoice image",
+    attachmentFilenames: ["invoice-photo.jpg"],
+    analysis: analysis({ documentType: "invoice", confidence: 0.55 }),
+    amount: null,
+    supplierName: "Unknown supplier",
+  });
+  const paymentEligibility = supplierPaymentCreationEligibility({
+    classification,
+    amount: null,
+    supplierName: "Unknown supplier",
+  });
+  const plan = buildGmailFinancialPersistencePlan({
+    isIncomingSupplierExpense: true,
+    classification,
+    canPersistFinancialRecord: true,
+    clientId: null,
+    supplierPaymentAllowed: paymentEligibility.allowed,
+  });
+
+  assert.equal(classification.documentType, "invoice");
+  assert.equal(classification.reviewStatus, "needs_review");
+  assert.equal(paymentEligibility.allowed, true);
+  assert.equal(paymentEligibility.persistAsNeedsReview, true);
+  assert.equal(plan.supplierPaymentsToCreateOrUpdate, 1);
+});
+
+test("keeps non invoice needs-review SupplierPayment blocked", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "General update",
+    bodyText: "Please review the attached document later.",
+    attachmentFilenames: [],
+    analysis: analysis({ documentType: "other", confidence: 0.4 }),
+    amount: null,
+    supplierName: "Unknown supplier",
+  });
+  const paymentEligibility = supplierPaymentCreationEligibility({
+    classification,
+    amount: null,
+    supplierName: "Unknown supplier",
+  });
+
+  assert.equal(paymentEligibility.allowed, false);
+  assert.match(paymentEligibility.reasons.join(","), /document_type_/);
+});
+
 test("ensures invoice Client after review gate passes", () => {
   const classification = classifyGmailScanCandidate({
     subject: "Invoice INV-1001",
