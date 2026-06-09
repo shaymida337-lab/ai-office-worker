@@ -15,7 +15,12 @@ import { notifyNewInvoice } from "./whatsapp.js";
 import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from "./financialDocuments.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
 import { initialConnectScanWindow } from "./scanWindow.js";
-import { classifyBusinessDocument, pipelineActionForClassification } from "./classification/classifier.js";
+import {
+  classifyBusinessDocument,
+  pipelineActionForClassification,
+  type ClassificationResult,
+  type PipelineClassificationAction,
+} from "./classification/classifier.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
@@ -901,7 +906,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       });
       const supplierName = supplierMetadata.name;
       const supplierBranchName = supplierBranchNameFromFolderName(supplierName);
-      const classification = classifyGmailScanCandidate({
+      let classification = classifyGmailScanCandidate({
         subject: email.subject,
         bodyText: bodyForAnalysis,
         attachmentFilenames: email.parts.map((part) => part.filename).filter(Boolean) as string[],
@@ -936,13 +941,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         metadata: { gmailMessageId: email.gmailId },
       });
       const pipelineAction = pipelineActionForClassification(businessClassification);
-      const isImageInvoiceCandidate = invoiceMatch.isInvoice
-        && email.parts.some((part) => part.body && (part.mimeType === "image/jpeg" || part.mimeType === "image/png"))
-        && (
-          INVOICE_KEYWORDS.some((keyword) => email.subject.toLowerCase().includes(keyword.toLowerCase())) ||
-          INVOICE_KEYWORD_PATTERNS.some((pattern) => pattern.test(email.subject))
-        );
-      if (pipelineAction === "NEEDS_REVIEW" && !isImageInvoiceCandidate) {
+      const invoiceNeedsBusinessReview = pipelineAction === "NEEDS_REVIEW" && invoiceMatch.isInvoice;
+      classification = applyBusinessReviewToInvoiceCandidate({
+        classification,
+        invoiceDetected: invoiceMatch.isInvoice,
+        analysisDocumentType: analysis.documentType,
+        businessClassification,
+        pipelineAction,
+      });
+      if (pipelineAction === "NEEDS_REVIEW" && !invoiceMatch.isInvoice) {
         needsReviewCount++;
         logStep(`[gmail-sync] classifier needs_review message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
         await recordFinancialDocumentDecision({
@@ -979,7 +986,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         });
         continue;
       } else if (pipelineAction === "NEEDS_REVIEW") {
-        logStep(`[gmail-sync] classifier needs_review BYPASS image-invoice-candidate message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
+        logStep(`[gmail-sync] classifier needs_review invoice pass-through message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
       }
       const isIncomingSupplierExpense = pipelineAction === "SUPPLIER_EXPENSE";
       if (isIncomingSupplierExpense && clientId) {
@@ -1038,9 +1045,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         driveFileUrl: null,
         confidenceScore: classification.confidence,
         uncertaintyReason: documentValidationReason ?? (classification.reviewStatus === "needs_review" ? classification.decisionReason : null),
+        forceNeedsReview: invoiceNeedsBusinessReview,
         rawAnalysis: {
           analysis,
           classification,
+          businessClassification,
           gmailMessageId: email.gmailId,
         },
         emailMessageId: email.emailRecordId,
@@ -1283,6 +1292,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             invoiceDate: analysis.invoiceDate ?? null,
             dueDate: analysis.dueDate ?? null,
             relevant: classification.isRelevant,
+            ocrText: {
+              pdfText,
+              visualAttachmentText,
+            },
             hasAttachment: email.parts.length > 0,
             filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
           },
@@ -1314,6 +1327,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             invoiceDate: analysis.invoiceDate ?? null,
             dueDate: analysis.dueDate ?? null,
             relevant: classification.isRelevant,
+            ocrText: {
+              pdfText,
+              visualAttachmentText,
+            },
             hasAttachment: email.parts.length > 0,
             filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
           },
@@ -1323,6 +1340,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       emailsSavedToGmailScanItem++;
       dbGmailScanItemUpserts++;
       logStep(`[gmail-sync] saved GmailScanItem message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} review=${savedScanItem.reviewStatus} relevant=${classification.isRelevant}`);
+      if (invoiceNeedsBusinessReview) {
+        logStep(`[gmail-sync] INVOICE_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} reason="${businessClassification.reason}"`);
+      }
 
       if (existingScanItem && !options.forceReprocess) {
         logStep(`[gmail-sync] duplicate GmailScanItem message=${email.gmailId}; continuing idempotent invoice/payment persistence`);
@@ -2073,6 +2093,33 @@ export function classifyGmailScanCandidate(input: {
     },
     heldForFinancialSender,
     financialSenderReason: financialSender.held ? financialSender.reason : null,
+  };
+}
+
+export function applyBusinessReviewToInvoiceCandidate(input: {
+  classification: GmailScanClassification;
+  invoiceDetected: boolean;
+  analysisDocumentType: EmailAnalysis["documentType"];
+  businessClassification: ClassificationResult;
+  pipelineAction: PipelineClassificationAction;
+}): GmailScanClassification {
+  if (!input.invoiceDetected || input.pipelineAction !== "NEEDS_REVIEW") return input.classification;
+
+  const documentType = isInvoiceRecordDocument(input.classification.documentType)
+    ? input.classification.documentType
+    : normalizeInvoiceDocumentType(input.analysisDocumentType, "invoice");
+  const classifierEvidence = `classifier needs review: ${input.businessClassification.reason}`;
+  const evidence = input.classification.evidence.includes(classifierEvidence)
+    ? input.classification.evidence
+    : [...input.classification.evidence, classifierEvidence];
+
+  return {
+    ...input.classification,
+    documentType,
+    reviewStatus: "needs_review",
+    isRelevant: true,
+    decisionReason: `Held for review: classifier ${input.businessClassification.reason}; ${input.classification.decisionReason}`,
+    evidence,
   };
 }
 

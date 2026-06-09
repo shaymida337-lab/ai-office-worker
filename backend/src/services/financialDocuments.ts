@@ -42,6 +42,7 @@ export type FinancialDocumentInput = {
   gmailMessageId?: string | null;
   whatsappLogId?: string | null;
   fileSha256?: string | null;
+  forceNeedsReview?: boolean;
 };
 
 export function normalizeFinancialDocumentType(value: string | null | undefined): NormalizedFinancialDocumentType {
@@ -204,6 +205,22 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
       uncertaintyReason: input.uncertaintyReason ?? blockingReason,
     });
     console.log(`[financial-document] needs_review source=${input.source} reviewId=${review.id} reason="${blockingReason}"`);
+    return { action: "needs_review" as const, documentType, sourceFingerprint, documentFingerprint, review };
+  }
+
+  if (input.forceNeedsReview) {
+    const review = await upsertReview({
+      ...input,
+      documentType,
+      documentDate,
+      dueDate,
+      confidenceScore,
+      sourceFingerprint,
+      documentFingerprint,
+      reviewStatus: "needs_review",
+      uncertaintyReason: input.uncertaintyReason ?? "needs review requested by classifier",
+    });
+    console.log(`[financial-document] needs_review source=${input.source} reviewId=${review.id} reason="${input.uncertaintyReason ?? "forced_review"}"`);
     return { action: "needs_review" as const, documentType, sourceFingerprint, documentFingerprint, review };
   }
 

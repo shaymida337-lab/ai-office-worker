@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  applyBusinessReviewToInvoiceCandidate,
   buildGmailFinancialPersistencePlan,
   buildGmailScanDuplicateKey,
   classifyGmailScanCandidate,
@@ -73,6 +74,65 @@ test("holds high confidence invoice without valid amount for review", () => {
   assert.equal(result.confidenceScore, "high");
   assert.equal(result.reviewStatus, "needs_review");
   assert.match(result.decisionReason, /no valid amount/);
+});
+
+test("keeps invoice candidate when business classifier cannot determine money direction", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "Invoice INV-1004",
+    bodyText: "Please find attached invoice for 900 ILS",
+    attachmentFilenames: ["invoice-1004.pdf"],
+    analysis: analysis({ documentType: "invoice", amount: 900, confidence: 0.93 }),
+    amount: 900,
+    supplierName: "Acme Ltd",
+  });
+
+  const result = applyBusinessReviewToInvoiceCandidate({
+    classification,
+    invoiceDetected: true,
+    analysisDocumentType: "invoice",
+    pipelineAction: "NEEDS_REVIEW",
+    businessClassification: {
+      direction: "UNSURE",
+      party: "NONE",
+      isRealSupplier: "UNSURE",
+      decision: "NEEDS_REVIEW",
+      reason: "money_direction_unsure",
+    },
+  });
+
+  assert.equal(result.documentType, "invoice");
+  assert.equal(result.isRelevant, true);
+  assert.equal(result.reviewStatus, "needs_review");
+  assert.equal(result.confidence, classification.confidence);
+  assert.match(result.decisionReason, /money_direction_unsure/);
+});
+
+test("does not promote non-invoice classifier review into invoice candidate", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "Team lunch",
+    bodyText: "Are you free tomorrow?",
+    attachmentFilenames: [],
+    analysis: analysis({ confidence: 0.2 }),
+    amount: null,
+    supplierName: "Unknown",
+  });
+
+  const result = applyBusinessReviewToInvoiceCandidate({
+    classification,
+    invoiceDetected: false,
+    analysisDocumentType: "other",
+    pipelineAction: "NEEDS_REVIEW",
+    businessClassification: {
+      direction: "UNSURE",
+      party: "NONE",
+      isRealSupplier: "UNSURE",
+      decision: "NEEDS_REVIEW",
+      reason: "money_direction_unsure",
+    },
+  });
+
+  assert.equal(result, classification);
+  assert.equal(result.isRelevant, false);
 });
 
 test("does not treat invoice reference number as amount", () => {
