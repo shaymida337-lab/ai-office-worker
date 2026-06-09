@@ -221,9 +221,51 @@ const OCR_SUPPLIER_KEYWORD_RULES = [
     confidence: 0.99,
     patterns: [
       /חברת\s+החשמל(?:\s+לישראל)?/u,
-      /חברת\s*חשמל/u,
-      /\bisrael\s+electric(?:\s+corporation)?\b/i,
-      /\belectric\s+corporation\b/i,
+      /חברת\s+חשמל/u,
+      /חברתהחשמל(?:לישראל)?/u,
+      /חברתחשמל/u,
+      /israel\s+electric(?:\s+corporation)?/u,
+      /israelelectric(?:corporation)?/u,
+      /electric\s+corporation/u,
+      /electriccorporation/u,
+    ],
+  },
+  {
+    supplierName: "מי רמת גן",
+    confidence: 0.99,
+    patterns: [
+      /מי\s+רמת\s+גן/u,
+      /תאגיד\s+מי\s+רמת\s+גן/u,
+      /מירמתגן/u,
+      /תאגידמירמתגן/u,
+      /mei\s+ramat\s+gan/u,
+      /meiramatgan/u,
+    ],
+  },
+  {
+    supplierName: "הולילנד",
+    confidence: 0.99,
+    patterns: [
+      /הולילנד/u,
+      /holyland/u,
+    ],
+  },
+  {
+    supplierName: "סופר פארם",
+    confidence: 0.99,
+    patterns: [
+      /סופר\s+פארם/u,
+      /סופרפארם/u,
+      /super\s+pharm/u,
+      /superpharm/u,
+    ],
+  },
+  {
+    supplierName: "וולט",
+    confidence: 0.99,
+    patterns: [
+      /וולט/u,
+      /wolt/u,
     ],
   },
 ];
@@ -856,6 +898,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       const visualAttachmentHints = await extractVisualAttachmentHints(gmail, email.gmailId, email.parts, email.from, logStep, ownerEmails);
       const visualAttachmentText = visualAttachmentHints.text;
       const bodyForAnalysis = [email.bodyText, pdfText && `--- PDF ATTACHMENT TEXT ---\n${pdfText}`, visualAttachmentText && `--- VISUAL ATTACHMENT ANALYSIS ---\n${visualAttachmentText}`].filter(Boolean).join("\n\n");
+      const supplierEvidenceText = [email.subject, bodyForAnalysis].filter(Boolean).join("\n\n");
       logStep(`[gmail-sync] parsed message=${email.gmailId} bodyLength=${email.bodyText.length} pdfTextLength=${pdfText.length} visualTextLength=${visualAttachmentText.length}`);
       const junkDecision = classifyJunk({
         sender: email.senderEmail || email.from,
@@ -922,7 +965,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       const supplierMetadata = resolveSupplierMetadata({
         analysisSupplier: analysis.supplier,
         analysisSupplierTaxId: analysis.supplierTaxId,
-        bodyText: bodyForAnalysis,
+        bodyText: supplierEvidenceText,
         senderName: email.senderName,
         senderEmail: email.senderEmail,
         senderDomain: email.domain,
@@ -931,9 +974,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       });
       const supplierName = supplierMetadata.name;
       const supplierBranchName = supplierBranchNameFromFolderName(supplierName);
-      logStep(`[gmail-sync] SUPPLIER_CLASSIFICATION message=${email.gmailId} supplier="${supplierName}" confidence=${supplierMetadata.confidence} source=${supplierMetadata.source}${supplierMetadata.keyword ? ` keyword="${supplierMetadata.keyword}"` : ""}`);
+      logStep(`[gmail-sync] SUPPLIER_DETECTED message=${email.gmailId} supplier="${supplierName}" confidence=${supplierMetadata.confidence} source=${supplierMetadata.source}${supplierMetadata.keyword ? ` keyword="${supplierMetadata.keyword}"` : ""}`);
       if (supplierMetadata.source === "unknown") {
-        logStep(`[gmail-sync] SUPPLIER_UNKNOWN message=${email.gmailId} reason="no OCR/document/AI/sender/domain supplier matched" analysisSupplier="${analysis.supplier}" ocrPreview="${truncateForLog(visualAttachmentText || pdfText || email.bodyText, 400)}"`);
+        logStep(`[gmail-sync] SUPPLIER_UNKNOWN_REASON message=${email.gmailId} reason="no OCR/document/AI/sender/domain supplier matched" analysisSupplier="${analysis.supplier}" ocrPreview="${truncateForLog(visualAttachmentText || pdfText || email.bodyText, 400)}"`);
       }
       let classification = classifyGmailScanCandidate({
         subject: email.subject,
@@ -1488,6 +1531,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           const targetBodyForDetection = invoicePart
             ? [email.bodyText, targetAnalysis.attachmentText && `--- ATTACHMENT OCR TEXT ---\n${targetAnalysis.attachmentText}`].filter(Boolean).join("\n\n")
             : bodyForAnalysis;
+          const targetSupplierEvidenceText = [email.subject, targetBodyForDetection].filter(Boolean).join("\n\n");
           const targetInvoiceMatch = invoicePart
             ? detectInvoice(email.subject, targetBodyForDetection, [invoicePart])
             : invoiceMatch;
@@ -1504,7 +1548,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             ? resolveSupplierMetadata({
                 analysisSupplier: targetAnalysis.analysis.supplier,
                 analysisSupplierTaxId: targetAnalysis.analysis.supplierTaxId,
-                bodyText: targetBodyForDetection,
+                bodyText: targetSupplierEvidenceText,
                 senderName: email.senderName,
                 senderEmail: email.senderEmail,
                 senderDomain: email.domain,
@@ -1513,6 +1557,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               })
             : supplierMetadata;
           const targetSupplierName = targetSupplierMetadata.name;
+          if (invoicePart) {
+            logStep(`[gmail-sync] SUPPLIER_DETECTED message=${email.gmailId} file="${targetFilename ?? "unnamed"}" supplier="${targetSupplierName}" confidence=${targetSupplierMetadata.confidence} source=${targetSupplierMetadata.source}${targetSupplierMetadata.keyword ? ` keyword="${targetSupplierMetadata.keyword}"` : ""}`);
+            if (targetSupplierMetadata.source === "unknown") {
+              logStep(`[gmail-sync] SUPPLIER_UNKNOWN_REASON message=${email.gmailId} file="${targetFilename ?? "unnamed"}" reason="no OCR/document/AI/sender/domain supplier matched" analysisSupplier="${targetAnalysis.analysis.supplier}" ocrPreview="${truncateForLog(targetAnalysis.attachmentText || targetBodyForDetection, 400)}"`);
+            }
+          }
           const targetDocumentType = normalizeInvoiceDocumentType(targetAnalysis.analysis.documentType, classification.documentType);
           const invoiceAmount = targetAmount ?? 0;
           const invoiceNeedsReviewSave = classification.reviewStatus === "needs_review" || targetAmount === null || !isUsableSupplierName(targetSupplierName);
@@ -3326,10 +3376,11 @@ function withKnownSupplierName(candidate: SupplierMetadata, knownSupplierNames: 
 }
 
 export function detectSupplierKeyword(text: string) {
-  const normalizedText = text.replace(/\s+/g, " ");
+  const normalizedText = normalizeSupplierKeywordText(text);
+  const compactText = normalizedText.replace(/\s+/g, "");
   for (const rule of OCR_SUPPLIER_KEYWORD_RULES) {
     const match = rule.patterns
-      .map((pattern) => normalizedText.match(pattern)?.[0])
+      .map((pattern) => normalizedText.match(pattern)?.[0] ?? compactText.match(pattern)?.[0])
       .find((value): value is string => Boolean(value));
     if (match) {
       return {
@@ -3340,6 +3391,18 @@ export function detectSupplierKeyword(text: string) {
     }
   }
   return null;
+}
+
+function normalizeSupplierKeywordText(text: string) {
+  return text
+    .normalize("NFKC")
+    .replace(/[\u0591-\u05C7]/g, "")
+    .replace(/[״׳"'`´]/g, "")
+    .replace(/[־‐‑‒–—_/-]+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 function extractSupplierFromDocument(text: string, ownerEmails: Set<string>) {

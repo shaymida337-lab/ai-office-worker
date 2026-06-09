@@ -212,6 +212,28 @@ test("detects חברת החשמל from Hebrew OCR text", () => {
   assert.equal(result?.confidence, 0.99);
 });
 
+test("detects requested Hebrew suppliers from OCR keywords", () => {
+  const cases = [
+    ["תאגיד מי-רמת-גן חשבון מים תקופתי", "מי רמת גן"],
+    ["קבלה מאת הולילנד עבור שירותים", "הולילנד"],
+    ["חשבונית סופר-פארם סניף רמת גן", "סופר פארם"],
+    ["Wolt receipt total paid", "וולט"],
+  ] as const;
+
+  for (const [text, expectedSupplier] of cases) {
+    const result = detectSupplierKeyword(text);
+    assert.equal(result?.supplierName, expectedSupplier);
+    assert.equal(result?.confidence, 0.99);
+  }
+});
+
+test("detects noisy spaced Hebrew OCR supplier keywords", () => {
+  const result = detectSupplierKeyword("צילום חשבון מ י   ר מ ת   ג ן מספר צרכן 123 סכום לתשלום");
+
+  assert.equal(result?.supplierName, "מי רמת גן");
+  assert.equal(result?.confidence, 0.99);
+});
+
 test("resolves חברת החשמל supplier from OCR before unknown fallback", () => {
   const supplier = resolveSupplierMetadata({
     analysisSupplier: "לא ידוע",
@@ -227,6 +249,32 @@ test("resolves חברת החשמל supplier from OCR before unknown fallback", (
   assert.equal(supplier.name, "חברת החשמל");
   assert.equal(supplier.source, "keyword");
   assert.equal(supplier.confidence, 0.99);
+});
+
+test("resolves requested keyword suppliers before unknown fallback", () => {
+  const cases = [
+    ["subject: חשבון מי רמת גן\nbody empty", "מי רמת גן"],
+    ["--- PDF ATTACHMENT TEXT ---\nהולילנד חשבונית מס קבלה", "הולילנד"],
+    ["--- VISUAL ATTACHMENT ANALYSIS ---\nrawOcrText=סופר פארם סכום 78.40", "סופר פארם"],
+    ["email body says wolt payment receipt", "וולט"],
+  ] as const;
+
+  for (const [bodyText, expectedSupplier] of cases) {
+    const supplier = resolveSupplierMetadata({
+      analysisSupplier: "Unknown",
+      analysisSupplierTaxId: null,
+      bodyText,
+      senderName: "Unknown",
+      senderEmail: "photo-scan@gmail.com",
+      senderDomain: "gmail.com",
+      ownerEmails: new Set(["owner@example.com"]),
+      knownSupplierNames: new Map(),
+    });
+
+    assert.equal(supplier.name, expectedSupplier);
+    assert.equal(supplier.source, "keyword");
+    assert.notEqual(supplier.name, "Unknown supplier");
+  }
 });
 
 test("keeps low-confidence חברת החשמל image invoice in needs review with supplier", () => {
