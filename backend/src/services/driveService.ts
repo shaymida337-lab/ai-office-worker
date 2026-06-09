@@ -31,7 +31,7 @@ type DriveIntegrationMetadata = {
   folderCache?: Record<string, { folderId: string; folderPath: string; updatedAt: string }>;
 };
 
-export const INVOICE_DRIVE_FOLDER_NAME = `${config.driveRootFolder} - חשבוניות`;
+export const INVOICE_DRIVE_FOLDER_NAME = safeFolderName(config.driveRootFolder);
 
 export async function ensureDriveFolder(
   drive: drive_v3.Drive,
@@ -113,7 +113,7 @@ export async function uploadInvoiceAttachmentToDrive(input: {
     supplierTaxId: input.supplierTaxId ?? null,
     documentDate,
   });
-  const driveFilename = buildInvoiceDriveFilename(input.filename, input.invoiceNumber, documentDate, amount);
+  const driveFilename = buildInvoiceDriveFilename(input.filename, supplierName, input.invoiceNumber, documentDate, amount);
   const existingFile = await findExistingDriveDocument(input.drive, targetFolder.folderId, {
     filename: driveFilename,
     fileSha256: input.fileSha256 ?? null,
@@ -127,7 +127,7 @@ export async function uploadInvoiceAttachmentToDrive(input: {
     const fileId = existingFile.id ?? null;
     const webViewLink = existingFile.webViewLink ?? (fileId ? `https://drive.google.com/file/d/${fileId}/view` : "");
     console.log(
-      `[drive] DUPLICATE_SKIPPED org=${input.organizationId} reason=existing_drive_file file="${driveFilename}" driveFileId=${fileId ?? "none"} link=${webViewLink || "none"} folderId=${targetFolder.folderId} folderPath="${targetFolder.folderPath}"`
+      `[drive] DRIVE_DUPLICATE_SKIPPED org=${input.organizationId} reason=existing_drive_file file="${driveFilename}" driveFileId=${fileId ?? "none"} link=${webViewLink || "none"} folderId=${targetFolder.folderId} folderPath="${targetFolder.folderPath}"`
     );
     return {
       fileId,
@@ -223,8 +223,9 @@ export async function findExistingSupplierDriveDocument(input: {
     documentDate,
   });
   const documentFolderId = documentFolder.folderId;
-  return findExistingDriveDocument(input.drive, documentFolderId, {
-    filename: buildInvoiceDriveFilename(input.filename, input.invoiceNumber, documentDate, amount),
+  const filename = buildInvoiceDriveFilename(input.filename, supplierName, input.invoiceNumber, documentDate, amount);
+  const existingFile = await findExistingDriveDocument(input.drive, documentFolderId, {
+    filename,
     fileSha256: input.fileSha256 ?? null,
     fileMd5: input.fileMd5 ?? null,
     supplierName,
@@ -232,6 +233,12 @@ export async function findExistingSupplierDriveDocument(input: {
     amount,
     invoiceDate: documentDate,
   });
+  if (existingFile) {
+    console.log(
+      `[drive] DRIVE_DUPLICATE_SKIPPED org=${input.organizationId} reason=existing_drive_file file="${filename}" driveFileId=${existingFile.id ?? "none"} link=${existingFile.webViewLink || "none"} folderId=${documentFolder.folderId} folderPath="${documentFolder.folderPath}"`
+    );
+  }
+  return existingFile;
 }
 
 export async function ensureSupplierDriveFolder(input: {
@@ -318,7 +325,11 @@ async function ensureProductionInvoiceFolder(input: {
   const suppliersFolderId = await ensureCachedDriveFolder(input, "Suppliers", clientFolderId, [INVOICE_DRIVE_FOLDER_NAME, "Clients", clientName, "Suppliers"]);
   const supplierFolderId = await ensureCachedDriveFolder(input, supplierName, suppliersFolderId, [INVOICE_DRIVE_FOLDER_NAME, "Clients", clientName, "Suppliers", supplierName]);
   const monthFolderId = await ensureCachedDriveFolder(input, monthFolder, supplierFolderId, [INVOICE_DRIVE_FOLDER_NAME, "Clients", clientName, "Suppliers", supplierName, monthFolder]);
-  const folderPath = [INVOICE_DRIVE_FOLDER_NAME, "Clients", clientName, "Suppliers", supplierName, monthFolder].join("/");
+  const folderPath = buildInvoiceDriveFolderPath({
+    clientName,
+    supplierName,
+    documentDate: input.documentDate,
+  });
   return {
     clientFolderId,
     supplierFolderId,
@@ -639,6 +650,18 @@ function normalizeDocumentDate(value: Date | string | null | undefined, fallback
   return fallback;
 }
 
+export function buildInvoiceDriveFolderPath(input: {
+  rootFolderName?: string | null;
+  clientName: string;
+  supplierName: string;
+  documentDate: Date;
+}) {
+  const rootFolderName = safeFolderName(input.rootFolderName || INVOICE_DRIVE_FOLDER_NAME);
+  const clientName = safeFolderName(input.clientName);
+  const supplierName = normalizedSupplierFolderName(input.supplierName);
+  return [rootFolderName, "Clients", clientName, "Suppliers", supplierName, monthFolderName(input.documentDate)].join("/");
+}
+
 function monthFolderName(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -659,12 +682,19 @@ async function resolveDriveClientName(organizationId: string, clientId?: string 
   return safeFolderName(organization?.businessName || organization?.name || "Unassigned Client");
 }
 
-function buildInvoiceDriveFilename(originalFilename: string, invoiceNumber: string | null | undefined, invoiceDate: Date, amount: number | null) {
+export function buildInvoiceDriveFilename(
+  originalFilename: string,
+  supplierName: string | null | undefined,
+  invoiceNumber: string | null | undefined,
+  invoiceDate: Date,
+  amount: number | null
+) {
   const extension = driveFileExtension(originalFilename);
-  const invoicePart = safeFilenamePart(invoiceNumber || originalFilename.replace(/\.[^.]+$/, "") || "invoice");
+  const supplierPart = safeFilenamePart(supplierName || "unknown-supplier");
+  const invoicePart = safeFilenamePart(invoiceNumber || "no-invoice-number");
   const datePart = invoiceDate.toISOString().slice(0, 10);
   const amountPart = amount === null ? "unknown" : safeFilenamePart(formatAmountForFilename(amount));
-  return `${invoicePart}_${datePart}_${amountPart}${extension}`;
+  return `${supplierPart}_${invoicePart}_${datePart}_${amountPart}${extension}`;
 }
 
 function driveFileExtension(filename: string) {

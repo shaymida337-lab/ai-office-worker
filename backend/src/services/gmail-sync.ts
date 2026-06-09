@@ -1175,7 +1175,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           driveUploadsSkipped++;
           driveSavedForPilot = true;
           logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${filename}" reason="existing_drive_link" link=${existingAttachment.driveLink}`);
-          logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=existing_drive_link key=${attachmentId ?? filename} message=${email.gmailId} file="${filename}"`);
+          logStep(`[gmail-sync] DRIVE_DUPLICATE_SKIPPED org=${organizationId} reason=existing_drive_link key=${attachmentId ?? filename} message=${email.gmailId} file="${filename}"`);
           continue;
         }
 
@@ -1193,13 +1193,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           );
           const buffer = decodeGmailAttachment(data);
           const fileSize = buffer.length;
+          const fileSha256 = createHash("sha256").update(buffer).digest("hex");
+          const fileMd5 = createHash("md5").update(buffer).digest("hex");
           const upload = await withRetry(
             () => uploadInvoiceAttachmentToDrive({
               organizationId,
               drive,
               rootFolderId: rootId,
               clientId: isIncomingSupplierExpense ? null : clientId,
-              clientName: isIncomingSupplierExpense ? "Supplier Expenses" : null,
+              clientName: null,
               supplier: supplierName,
               supplierTaxId: supplierMetadata.taxId,
               documentType: classification.documentType,
@@ -1211,6 +1213,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               amount,
               totalAmount: analysis.totalAmount ?? amount,
               buffer,
+              fileSha256,
+              fileMd5,
             }),
             `[gmail-sync] Drive upload retry message=${email.gmailId} file="${filename}"`
           );

@@ -1,6 +1,5 @@
-﻿import { Readable } from "node:stream";
-import type { drive_v3 } from "googleapis";
-import { INVOICE_DRIVE_FOLDER_NAME, ensureDriveFolder, safeFolderName } from "./driveService.js";
+﻿import type { drive_v3 } from "googleapis";
+import { ensureInvoiceFolderTree, uploadInvoiceAttachmentToDrive } from "./driveService.js";
 import type { InvoiceData } from "./invoiceExtractor.js";
 
 export async function saveInvoiceToDrive(
@@ -11,30 +10,28 @@ export async function saveInvoiceToDrive(
 ) {
   const invoiceDate = new Date(invoice.date);
   const safeDate = Number.isNaN(invoiceDate.getTime()) ? new Date() : invoiceDate;
-  const folderParts = [
-    INVOICE_DRIVE_FOLDER_NAME,
-    safeFolderName(invoice.clientName || organizationId),
-    String(safeDate.getFullYear()),
-    String(safeDate.getMonth() + 1).padStart(2, "0"),
-  ];
-
-  let parentId: string | undefined;
-  for (const folder of folderParts) {
-    parentId = await ensureDriveFolder(drive, folder, parentId);
-  }
-
-  const invoiceNumber = safeFolderName(invoice.invoiceNumber || "unknown");
-  const fileName = `חשבונית_${invoiceNumber}_${safeDate.toISOString().slice(0, 10)}.pdf`;
-  const upload = await drive.files.create({
-    requestBody: { name: fileName, parents: parentId ? [parentId] : undefined },
-    media: { mimeType: "application/pdf", body: Readable.from(pdfBuffer) },
-    fields: "id, webViewLink",
+  const rootFolderId = await ensureInvoiceFolderTree(drive);
+  const upload = await uploadInvoiceAttachmentToDrive({
+    organizationId,
+    drive,
+    rootFolderId,
+    clientName: invoice.clientName,
+    supplier: invoice.supplierName ?? "לא מזוהה",
+    documentType: "invoice",
+    filename: "invoice.pdf",
+    mimeType: "application/pdf",
+    receivedAt: safeDate,
+    documentDate: safeDate,
+    invoiceNumber: invoice.invoiceNumber,
+    amount: invoice.amount,
+    totalAmount: invoice.amount,
+    buffer: pdfBuffer,
   });
 
-  const fileId = upload.data.id ?? null;
   return {
-    fileId,
-    webViewLink: upload.data.webViewLink ?? (fileId ? `https://drive.google.com/file/d/${fileId}/view` : ""),
-    folderId: parentId ?? null,
+    fileId: upload.fileId,
+    webViewLink: upload.webViewLink,
+    folderId: upload.folderId,
+    folderPath: upload.folderPath,
   };
 }
