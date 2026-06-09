@@ -21,6 +21,7 @@ import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
 const MAX_MESSAGES_PER_QUICK_SCAN = 25;
+const MAX_MESSAGES_PER_FAST_SCAN = 20;
 const GMAIL_SCAN_BATCH_SIZE = 10;
 const GMAIL_PROGRESS_EMAIL_INTERVAL = 25;
 const GMAIL_PROGRESS_MIN_INTERVAL_MS = 30_000;
@@ -541,23 +542,24 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       driveUploadFailed = true;
       console.error("Drive setup failed; continuing Gmail sync without Drive", err);
     }
-    logStep(`[gmail-sync] Searching Gmail from last ${daysBack} days`);
-    const listing = await listCandidateMessages(gmail, daysBack, options.maxMessages ?? MAX_MESSAGES_PER_SYNC, since, {
-      scanAllMail: options.scanAllMail,
-    });
-    const messages = listing.messages;
-    logStep(`[gmail-sync] Gmail listing diagnostics ${JSON.stringify(listing.diagnostics)}`);
-    logStep(`[gmail-sync] total emails fetched from Gmail=${messages.length}`);
     const scannedEmails: ScannedEmail[] = [];
 
-    let fetchBatchNumber = 0;
-    for (const batch of chunkArray(messages, GMAIL_SCAN_BATCH_SIZE)) {
-      fetchBatchNumber++;
-      logStep(`[gmail-sync] fetch batch ${fetchBatchNumber}/${Math.ceil(messages.length / GMAIL_SCAN_BATCH_SIZE)} size=${batch.length}`);
+    const fetchAndParseMessages = async (
+      messagesToFetch: GmailMessageRef[],
+      label: "fast" | "historical"
+    ) => {
+      let fetchBatchNumber = 0;
+      const totalBatches = Math.ceil(messagesToFetch.length / GMAIL_SCAN_BATCH_SIZE);
+      for (const batch of chunkArray(messagesToFetch, GMAIL_SCAN_BATCH_SIZE)) {
+        fetchBatchNumber++;
+        logStep(`[gmail-sync] fetch ${label} batch ${fetchBatchNumber}/${totalBatches} size=${batch.length}`);
       for (const msgRef of batch) {
         if (!msgRef.id) {
           ignoreMessage("missing_gmail_message_id", msgRef.id);
           continue;
+        }
+        if (label === "fast") {
+          logStep(`[gmail-sync] FAST_SCAN_PROCESSING_MESSAGE message=${msgRef.id}`);
         }
 
         try {
@@ -675,12 +677,44 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           }
         }
       }
-      await maybeSaveScanProgress();
-    }
+        await maybeSaveScanProgress();
+      }
+    };
+
+    logStep("[gmail-sync] FAST_SCAN_STARTED query=newer_than:2h maxResults=20");
+    const fastListing = await listFastCandidateMessages(gmail, MAX_MESSAGES_PER_FAST_SCAN, {
+      scanAllMail: options.scanAllMail,
+    });
+    const fastMessages = fastListing.messages;
+    const fastMessageIds = new Set(fastMessages.flatMap((message) => message.id ? [message.id] : []));
+    logStep(`[gmail-sync] FAST_SCAN_FOUND_MESSAGES count=${fastMessages.length} diagnostics=${JSON.stringify(fastListing.diagnostics)}`);
+    await fetchAndParseMessages(fastMessages, "fast");
+    const fastScannedEmails = scannedEmails.splice(0, scannedEmails.length);
+    await processScannedEmails(fastScannedEmails, "fast");
+    logStep(`[gmail-sync] FAST_SCAN_DONE processed=${fastMessages.length}`);
+
+    logStep(`[gmail-sync] Searching Gmail from last ${daysBack} days`);
+    const listing = await listCandidateMessages(gmail, daysBack, options.maxMessages ?? MAX_MESSAGES_PER_SYNC, since, {
+      scanAllMail: options.scanAllMail,
+    });
+    const historicalMessages = listing.messages.filter((message) => {
+      if (message.id && fastMessageIds.has(message.id)) {
+        logStep(`[gmail-sync] FAST_SCAN_SKIPPED_DUPLICATE message=${message.id} reason=historical_candidate_duplicate`);
+        return false;
+      }
+      return true;
+    });
+    const messages = [...fastMessages, ...historicalMessages];
+    logStep(`[gmail-sync] Gmail listing diagnostics ${JSON.stringify(listing.diagnostics)}`);
+    logStep(`[gmail-sync] total emails fetched from Gmail=${messages.length} fast=${fastMessages.length} historical=${historicalMessages.length}`);
+    await fetchAndParseMessages(historicalMessages, "historical");
+    const historicalScannedEmails = scannedEmails.splice(0, scannedEmails.length);
+    await processScannedEmails(historicalScannedEmails, "historical");
     await maybeSaveScanProgress(true);
 
+    async function processScannedEmails(emailsToProcess: ScannedEmail[], label: "fast" | "historical") {
     const senderCounts = new Map<string, { count: number; email: string; name: string; firstSeen: Date; lastSeen: Date }>();
-    for (const email of scannedEmails) {
+    for (const email of emailsToProcess) {
       const current = senderCounts.get(email.domain);
       if (!current) {
         senderCounts.set(email.domain, {
@@ -696,8 +730,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         if (email.receivedAt > current.lastSeen) current.lastSeen = email.receivedAt;
       }
     }
-    uniqueSenders = senderCounts.size;
-    logStep(`Found ${uniqueSenders} unique senders`);
+    uniqueSenders += senderCounts.size;
+    logStep(`[gmail-sync] ${label} scan found ${senderCounts.size} unique senders`);
     const clientIdByDomain = new Map<string, string>();
     for (const [domain, sender] of senderCounts) {
       if (sender.count < 2) {
@@ -710,9 +744,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     logStep(`Found ${potentialClients} potential clients`);
 
     let processBatchNumber = 0;
-    for (const batch of chunkArray(scannedEmails, GMAIL_SCAN_BATCH_SIZE)) {
+    for (const batch of chunkArray(emailsToProcess, GMAIL_SCAN_BATCH_SIZE)) {
       processBatchNumber++;
-      logStep(`[gmail-sync] process batch ${processBatchNumber}/${Math.ceil(scannedEmails.length / GMAIL_SCAN_BATCH_SIZE)} size=${batch.length}`);
+      logStep(`[gmail-sync] process ${label} batch ${processBatchNumber}/${Math.ceil(emailsToProcess.length / GMAIL_SCAN_BATCH_SIZE)} size=${batch.length}`);
       for (const email of batch) {
         let scanItemPersisted = false;
         let currentDuplicateKey: string | null = null;
@@ -1676,6 +1710,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       }
       await maybeSaveScanProgress();
     }
+    }
+
     const recordsSaved = paymentsCreated + invoicesCreated + tasksCreated + clientsCreated;
     logStep(`Found ${relevantEmailsFound} relevant emails (${invoiceEmails} invoices, ${receiptsFound} receipts, ${paymentRequestsFound} payment requests, ${supplierMessagesFound} supplier messages)`);
     logStep(`[gmail-sync] parser totals scanned=${messages.length} parsed=${emailsParsed} rejected=${parserRejectedCount} rejectedReasons=${JSON.stringify(ignoredReasons)}`);
@@ -2275,6 +2311,86 @@ export async function diagnoseGmailListingForOrganization(
     { scanAllMail: options.scanAllMail ?? true }
   );
   return listing.diagnostics;
+}
+
+async function listFastCandidateMessages(
+  gmail: GmailClient,
+  maxMessages = MAX_MESSAGES_PER_FAST_SCAN,
+  options: { scanAllMail?: boolean } = {}
+): Promise<{ messages: GmailMessageRef[]; diagnostics: GmailListingDiagnostics }> {
+  const byId = new Map<string, GmailMessageRef>();
+  const dateFilter = "newer_than:2h";
+  const excludeQuery = options.scanAllMail ? "-in:spam -in:trash" : GMAIL_EXCLUDE_QUERY;
+  const subjectTerms = ["חשבונית", "invoice", "receipt", "קבלה", "\"דרישת תשלום\""];
+  const queries = [
+    `${dateFilter} has:attachment ${excludeQuery}`,
+    ...subjectTerms.map((term) => `${dateFilter} subject:${term} ${excludeQuery}`),
+  ];
+  let totalPagesScanned = 0;
+  let totalMessagesSeen = 0;
+  let totalNextPageTokenUses = 0;
+  const queryDiagnostics: GmailListingDiagnostics["queries"] = [];
+
+  for (const q of queries) {
+    console.log(`[gmail-sync] FAST_SCAN_STARTED query="${q}" maxMessages=${maxMessages}`);
+    let pageToken: string | undefined;
+    let queryPages = 0;
+    let queryMessagesSeen = 0;
+    let queryNextPageTokensSeen = 0;
+    do {
+      const remaining = maxMessages - byId.size;
+      if (remaining <= 0) break;
+      queryPages++;
+      totalPagesScanned++;
+      const result = await gmail.users.messages.list({
+        userId: "me",
+        q,
+        maxResults: Math.min(MAX_MESSAGES_PER_FAST_SCAN, remaining),
+        pageToken,
+      });
+
+      const pageMessages = result.data.messages ?? [];
+      queryMessagesSeen += pageMessages.length;
+      totalMessagesSeen += pageMessages.length;
+      for (const message of pageMessages) {
+        if (!message.id) continue;
+        if (byId.has(message.id)) {
+          console.log(`[gmail-sync] FAST_SCAN_SKIPPED_DUPLICATE message=${message.id} reason=fast_query_duplicate`);
+          continue;
+        }
+        byId.set(message.id, message);
+      }
+      if (result.data.nextPageToken) {
+        queryNextPageTokensSeen++;
+        totalNextPageTokenUses++;
+      }
+      pageToken = result.data.nextPageToken ?? undefined;
+    } while (pageToken && byId.size < maxMessages);
+    queryDiagnostics.push({
+      query: q,
+      pagesProcessed: queryPages,
+      messagesSeen: queryMessagesSeen,
+      uniqueMessagesAfterQuery: byId.size,
+      nextPageTokensSeen: queryNextPageTokensSeen,
+      stoppedBecauseMaxReached: byId.size >= maxMessages,
+    });
+  }
+
+  const messages = [...byId.values()].slice(0, maxMessages);
+  return {
+    messages,
+    diagnostics: {
+      requestedDaysBack: 0,
+      dateFilter,
+      maxMessages,
+      scanAllMail: Boolean(options.scanAllMail),
+      totalGmailMessagesFound: byId.size,
+      pagesProcessed: totalPagesScanned,
+      messagesProcessed: messages.length,
+      nextPageTokenUses: totalNextPageTokenUses,
+      queries: queryDiagnostics,
+    },
+  };
 }
 
 async function listCandidateMessages(
