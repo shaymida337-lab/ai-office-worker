@@ -7,6 +7,7 @@ import {
   classifyOcrSupplierText,
   classifyGmailScanCandidate,
   collectAttachmentParts,
+  detectMunicipalCollectionDocument,
   detectSupplierKeyword,
   extractHebrewInvoiceFieldsFromText,
   extractInvoiceAmount,
@@ -238,6 +239,54 @@ test("detects requested Hebrew suppliers from OCR keywords", () => {
   }
 });
 
+test("detects Ramat Gan municipal fine documents from OCR", () => {
+  const text = `
+    עיריית רמת גן
+    תשלום קנס
+    סה״כ לתשלום 449.80
+  `;
+  const supplier = detectSupplierKeyword(text);
+  const cityDocument = detectMunicipalCollectionDocument(text);
+  const fields = extractHebrewInvoiceFieldsFromText(text);
+  const classification = classifyGmailScanCandidate({
+    subject: "תשלום קנס",
+    bodyText: text,
+    attachmentFilenames: ["fine.pdf"],
+    analysis: analysis({ documentType: "payment_request", paymentRequired: true, confidence: 0.8 }),
+    amount: fields.amount,
+    supplierName: supplier?.supplierName ?? "Unknown supplier",
+  });
+
+  assert.equal(cityDocument.detected, true);
+  assert.equal(supplier?.supplierName, "עיריית רמת גן");
+  assert.equal(fields.amount, 449.8);
+  assert.equal(classification.documentType, "payment_request");
+  assert.equal(classification.reviewStatus, "auto_saved");
+});
+
+test("extracts municipal demand amount with thousands separator", () => {
+  const text = `
+    עירייה מחלקת גבייה
+    דרישה לתשלום
+    מספר חשבון 123456789
+    הסכום לתשלום 1,110.90
+  `;
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: "Unknown",
+    analysisSupplierTaxId: null,
+    bodyText: text,
+    senderName: "גבייה עירונית",
+    senderEmail: "collections@example.gov.il",
+    senderDomain: "example.gov.il",
+    ownerEmails: new Set(),
+    knownSupplierNames: new Map(),
+  });
+  const fields = extractHebrewInvoiceFieldsFromText(text);
+
+  assert.equal(supplier.name, "עירייה");
+  assert.equal(fields.amount, 1110.9);
+});
+
 test("detects noisy spaced Hebrew OCR supplier keywords", () => {
   const result = detectSupplierKeyword("צילום חשבון מ י   ר מ ת   ג ן מספר צרכן 123 סכום לתשלום");
 
@@ -442,6 +491,13 @@ test("rejects generic invoice number placeholders", () => {
   assert.equal(result.amount, 88.2);
 });
 
+test("rejects placeholder invoice number value Number", () => {
+  const result = extractHebrewInvoiceFieldsFromText("מספר חשבונית: Number סהכ לתשלום 88.20");
+
+  assert.equal(result.invoiceNumber, null);
+  assert.equal(result.amount, 88.2);
+});
+
 test("returns null fields when extraction fails", () => {
   const result = extractHebrewInvoiceFieldsFromText("צילום מטושטש ללא שדות ברורים");
 
@@ -450,6 +506,25 @@ test("returns null fields when extraction fails", () => {
   assert.equal(result.invoiceDate, null);
   assert.equal(result.dueDate, null);
   assert.match(result.reasons.join(","), /amount_not_found/);
+});
+
+test("city document without amount stays needs review with null parsed amount", () => {
+  const text = "עיריית רמת גן תשלום קנס ללא סכום ברור";
+  const fields = extractHebrewInvoiceFieldsFromText(text);
+  const supplier = detectSupplierKeyword(text);
+  const result = classifyGmailScanCandidate({
+    subject: "תשלום קנס",
+    bodyText: text,
+    attachmentFilenames: ["fine.pdf"],
+    analysis: analysis({ documentType: "payment_request", paymentRequired: true, confidence: 0.85 }),
+    amount: fields.amount,
+    supplierName: supplier?.supplierName ?? "Unknown supplier",
+  });
+
+  assert.equal(fields.amount, null);
+  assert.equal(result.documentType, "payment_request");
+  assert.equal(result.reviewStatus, "needs_review");
+  assert.match(result.decisionReason, /no valid amount|confidence below/);
 });
 
 test("holds absurd parsed amounts for review", () => {
