@@ -2753,30 +2753,268 @@ apiRouter.post("/accountant/send", async (req, res) => {
   res.json({ sent: false, reason: "Email provider is not configured yet", report });
 });
 
+type ReviewInvoiceCandidate = {
+  id: string;
+  clientId: string;
+  invoiceNumber: string | null;
+  amount: number;
+  currency: string;
+  date: Date;
+  dueDate: Date | null;
+  status: string;
+  reviewStatus: string;
+  source: "gmail_scan_item" | "financial_document_review";
+  reviewSourceId: string;
+  description: string | null;
+  driveUrl: string | null;
+  client: null;
+  supplierName: string | null;
+  fromEmail: string | null;
+  gmailMessageId: string | null;
+  gmailMessageLink?: string | null;
+  confidenceScore?: string | number | null;
+  decisionReason?: string | null;
+  attachmentFilename?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type RawRecord = Record<string, unknown>;
+
+export function invoiceReviewStatusFilter(status: string | undefined) {
+  return status === "approved" || status === "needs_review" || status === "rejected" ? status : undefined;
+}
+
+export function mapGmailScanItemToInvoiceCandidate(item: {
+  id: string;
+  gmailMessageId: string;
+  emailMessageId: string | null;
+  gmailMessageLink: string;
+  sender: string;
+  senderEmail: string | null;
+  subject: string;
+  occurredAt: Date;
+  amount: number | null;
+  supplierName: string;
+  attachmentFilename: string | null;
+  driveFileLink: string | null;
+  confidenceScore: string;
+  reviewStatus: string;
+  decisionReason: string;
+  rawAnalysis: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}): ReviewInvoiceCandidate {
+  const raw = asRecord(item.rawAnalysis);
+  const analysis = asRecord(raw?.analysis);
+  const invoiceNumber = stringValue(raw?.invoiceNumber) ?? stringValue(analysis?.invoiceNumber);
+  const date = dateValue(raw?.invoiceDate) ?? dateValue(analysis?.invoiceDate) ?? item.occurredAt;
+  const dueDate = dateValue(raw?.dueDate) ?? dateValue(analysis?.dueDate);
+
+  return {
+    id: `gmail-scan:${item.id}`,
+    clientId: "",
+    invoiceNumber,
+    amount: item.amount ?? numberValue(analysis?.totalAmount) ?? 0,
+    currency: stringValue(analysis?.currency) ?? "ILS",
+    date,
+    dueDate,
+    status: item.reviewStatus,
+    reviewStatus: item.reviewStatus,
+    source: "gmail_scan_item",
+    reviewSourceId: item.id,
+    description: [item.subject, item.decisionReason].filter(Boolean).join(" · ") || null,
+    driveUrl: item.driveFileLink,
+    client: null,
+    supplierName: item.supplierName,
+    fromEmail: item.senderEmail ?? item.sender,
+    gmailMessageId: item.gmailMessageId,
+    gmailMessageLink: item.gmailMessageLink,
+    confidenceScore: item.confidenceScore,
+    decisionReason: item.decisionReason,
+    attachmentFilename: item.attachmentFilename,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+export function mapDocumentReviewToInvoiceCandidate(item: {
+  id: string;
+  sender: string | null;
+  subject: string | null;
+  fileName: string | null;
+  invoiceNumber: string | null;
+  documentDate: Date | null;
+  dueDate: Date | null;
+  totalAmount: number | null;
+  currency: string;
+  driveFileUrl: string | null;
+  supplierName: string | null;
+  confidenceScore: number;
+  reviewStatus: string;
+  uncertaintyReason: string | null;
+  emailMessageId: string | null;
+  gmailMessageId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): ReviewInvoiceCandidate {
+  return {
+    id: `document-review:${item.id}`,
+    clientId: "",
+    invoiceNumber: item.invoiceNumber,
+    amount: item.totalAmount ?? 0,
+    currency: item.currency,
+    date: item.documentDate ?? item.createdAt,
+    dueDate: item.dueDate,
+    status: item.reviewStatus,
+    reviewStatus: item.reviewStatus,
+    source: "financial_document_review",
+    reviewSourceId: item.id,
+    description: [item.subject, item.uncertaintyReason, item.fileName].filter(Boolean).join(" · ") || null,
+    driveUrl: item.driveFileUrl,
+    client: null,
+    supplierName: item.supplierName,
+    fromEmail: item.sender,
+    gmailMessageId: item.gmailMessageId,
+    confidenceScore: item.confidenceScore,
+    decisionReason: item.uncertaintyReason,
+    attachmentFilename: item.fileName,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function asRecord(value: unknown): RawRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as RawRecord : null;
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function dateValue(value: unknown) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value !== "string" || !value.trim()) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 
 apiRouter.get("/invoices", async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const clientId = typeof req.query.clientId === "string" ? req.query.clientId : undefined;
   const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
-  const invoices = await prisma.invoice.findMany({
-    where: {
-      organizationId: req.auth!.organizationId,
-      ...(clientId && { clientId }),
-      ...(status && status !== "all" && { status }),
-      ...(search && {
-        OR: [
-          { invoiceNumber: { contains: search, mode: "insensitive" } },
-          { description: { contains: search, mode: "insensitive" } },
-          { supplierName: { contains: search, mode: "insensitive" } },
-          { fromEmail: { contains: search, mode: "insensitive" } },
-          { client: { name: { contains: search, mode: "insensitive" } } },
-        ],
+  const organizationId = req.auth!.organizationId;
+  const reviewStatus = invoiceReviewStatusFilter(status);
+  const paymentStatus = status && status !== "all" && !reviewStatus ? status : undefined;
+  const includeApprovedInvoices = !reviewStatus || reviewStatus === "approved";
+  const includeReviewCandidates = !paymentStatus && !clientId && (!reviewStatus || reviewStatus === "needs_review" || reviewStatus === "rejected");
+  const reviewCandidateStatus = reviewStatus === "needs_review" || reviewStatus === "rejected" ? reviewStatus : undefined;
+
+  const [invoiceRows, gmailScanItems, documentReviews] = await Promise.all([
+    includeApprovedInvoices
+      ? prisma.invoice.findMany({
+          where: {
+            organizationId,
+            ...(clientId && { clientId }),
+            ...(paymentStatus && { status: paymentStatus }),
+            ...(search && {
+              OR: [
+                { invoiceNumber: { contains: search, mode: "insensitive" } },
+                { description: { contains: search, mode: "insensitive" } },
+                { supplierName: { contains: search, mode: "insensitive" } },
+                { fromEmail: { contains: search, mode: "insensitive" } },
+                { client: { name: { contains: search, mode: "insensitive" } } },
+              ],
+            }),
+          },
+          include: { client: { select: { id: true, name: true, color: true } } },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        })
+      : Promise.resolve([]),
+    includeReviewCandidates
+      ? prisma.gmailScanItem.findMany({
+          where: {
+            organizationId,
+            documentType: { in: ["invoice", "receipt", "unknown_needs_review"] },
+            ...(reviewCandidateStatus ? { reviewStatus: reviewCandidateStatus } : { reviewStatus: { in: ["needs_review", "rejected"] } }),
+            ...(search && {
+              OR: [
+                { subject: { contains: search, mode: "insensitive" } },
+                { supplierName: { contains: search, mode: "insensitive" } },
+                { sender: { contains: search, mode: "insensitive" } },
+                { senderEmail: { contains: search, mode: "insensitive" } },
+                { attachmentFilename: { contains: search, mode: "insensitive" } },
+                { decisionReason: { contains: search, mode: "insensitive" } },
+              ],
+            }),
+          },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        })
+      : Promise.resolve([]),
+    includeReviewCandidates
+      ? prisma.financialDocumentReview.findMany({
+          where: {
+            organizationId,
+            documentType: { in: ["tax_invoice", "receipt", "tax_invoice_receipt"] },
+            ...(reviewCandidateStatus ? { reviewStatus: reviewCandidateStatus } : { reviewStatus: { in: ["needs_review", "rejected"] } }),
+            ...(search && {
+              OR: [
+                { subject: { contains: search, mode: "insensitive" } },
+                { supplierName: { contains: search, mode: "insensitive" } },
+                { sender: { contains: search, mode: "insensitive" } },
+                { fileName: { contains: search, mode: "insensitive" } },
+                { invoiceNumber: { contains: search, mode: "insensitive" } },
+                { uncertaintyReason: { contains: search, mode: "insensitive" } },
+              ],
+            }),
+          },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const existingInvoiceRefs = new Set(
+    invoiceRows.flatMap((invoice) => [invoice.gmailMessageId, invoice.emailId].filter((value): value is string => Boolean(value)))
+  );
+  const usedReviewRefs = new Set<string>();
+
+  const invoices = [
+    ...invoiceRows.map((invoice) => ({
+      ...invoice,
+      source: "invoice",
+      reviewStatus: "approved",
+      reviewSourceId: null,
+    })),
+    ...gmailScanItems
+      .filter((item) => !existingInvoiceRefs.has(item.gmailMessageId) && !existingInvoiceRefs.has(item.emailMessageId ?? ""))
+      .map((item) => {
+        if (item.gmailMessageId) usedReviewRefs.add(`gmail:${item.gmailMessageId}`);
+        if (item.emailMessageId) usedReviewRefs.add(`email:${item.emailMessageId}`);
+        return mapGmailScanItemToInvoiceCandidate(item);
       }),
-    },
-    include: { client: { select: { id: true, name: true, color: true } } },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+    ...documentReviews
+      .filter((item) => {
+        const refs = [item.gmailMessageId && `gmail:${item.gmailMessageId}`, item.emailMessageId && `email:${item.emailMessageId}`].filter((value): value is string => Boolean(value));
+        if (refs.some((ref) => existingInvoiceRefs.has(ref.replace(/^(gmail|email):/, "")) || usedReviewRefs.has(ref))) return false;
+        refs.forEach((ref) => usedReviewRefs.add(ref));
+        return true;
+      })
+      .map(mapDocumentReviewToInvoiceCandidate),
+  ]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 100);
+
+  const needsReviewCount = invoices.filter((invoice) => invoice.reviewStatus === "needs_review").length;
+  console.log(`[invoices] UI_INVOICES_API_RETURNED count=${invoices.length} org=${organizationId}`);
+  console.log(`[invoices] NEEDS_REVIEW_INVOICES_RETURNED count=${needsReviewCount} org=${organizationId}`);
   res.json({ invoices });
 });
 
