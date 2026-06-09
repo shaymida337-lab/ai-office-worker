@@ -123,24 +123,47 @@ authRouter.post("/login", async (req, res) => {
       return;
     }
 
-    if (!user.organization) {
+    let userWithOrganization = user;
+    if (!userWithOrganization.organization) {
       const organization = await prisma.organization.create({
-        data: { userId: user.id, name: user.name ?? "My Business" },
+        data: { userId: userWithOrganization.id, name: userWithOrganization.name ?? "My Business" },
       });
       await markOrganizationNeedsOnboarding(organization.id);
       const refreshed = await prisma.user.findUnique({
-        where: { id: user.id },
+        where: { id: userWithOrganization.id },
         include: { organization: true },
       });
       if (!refreshed?.organization) {
         res.status(500).json({ error: "Organization missing" });
         return;
       }
-      sendAuthSuccess(res, refreshed);
-      return;
+      userWithOrganization = refreshed;
     }
 
-    sendAuthSuccess(res, user);
+    const org = userWithOrganization.organization;
+    if (!org) {
+      res.status(500).json({ error: "Organization missing" });
+      return;
+    }
+    const token = signToken({
+      userId: userWithOrganization.id,
+      organizationId: org.id,
+      email: userWithOrganization.email,
+    });
+    const response = {
+      token,
+      user: {
+        id: userWithOrganization.id,
+        email: userWithOrganization.email,
+        name: userWithOrganization.name,
+      },
+      organization: {
+        id: org.id,
+        name: org.name,
+      },
+    };
+    console.log(`[auth/login] success userId=${response.user.id} organizationId=${response.organization.id} hasToken=${Boolean(response.token)}`);
+    res.json(response);
   } catch (err) {
     console.error("[auth/login]", errorDetails(err));
     res.status(500).json({ error: "Login failed", detail: publicErrorMessage(err) });
