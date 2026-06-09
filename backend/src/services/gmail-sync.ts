@@ -1519,12 +1519,16 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           }
         }
       } else {
-        const reasons = [
-          isIncomingSupplierExpense && "incoming_supplier_expense_saved_as_supplier_payment",
-          isInvoiceRecordDocument(classification.documentType) && !clientId && "no_client_id",
-          !isInvoiceRecordDocument(classification.documentType) && `document_type_${classification.documentType}`,
-        ].filter(Boolean);
-        logStep(`[gmail-sync] invoice rejected message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
+        if (isInvoiceRecordDocument(classification.documentType) && classification.reviewStatus === "needs_review") {
+          logStep(`[gmail-sync] invoice held for review message=${email.gmailId} reason="${classification.decisionReason}"`);
+        } else {
+          const reasons = [
+            isIncomingSupplierExpense && "incoming_supplier_expense_saved_as_supplier_payment",
+            isInvoiceRecordDocument(classification.documentType) && !clientId && "no_client_id",
+            !isInvoiceRecordDocument(classification.documentType) && `document_type_${classification.documentType}`,
+          ].filter(Boolean);
+          logStep(`[gmail-sync] invoice rejected message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
+        }
       }
 
       const paymentEligibility = supplierPaymentCreationEligibility({
