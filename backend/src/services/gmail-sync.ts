@@ -1205,6 +1205,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               supplier: supplierName,
               supplierTaxId: supplierMetadata.taxId,
               documentType: classification.documentType,
+              reviewStatus: classification.reviewStatus,
               filename,
               mimeType: part.mimeType,
               receivedAt: email.receivedAt,
