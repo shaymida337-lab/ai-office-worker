@@ -34,6 +34,7 @@ type InvoicesResponse = { invoices: Invoice[] };
 
 const statusLabels: Record<string, string> = { paid: "שולם", pending: "ממתין", overdue: "באיחור", needs_review: "דורש בדיקה", rejected: "נדחה" };
 const reviewStatusLabels: Record<InvoiceReviewStatus, string> = { approved: "אושר", needs_review: "דורש בדיקה", rejected: "נדחה" };
+const MISSING_VALUE = "לא זוהה";
 const reviewTabs: Array<{ value: "all" | InvoiceReviewStatus; label: string }> = [
   { value: "all", label: "All" },
   { value: "approved", label: "Approved" },
@@ -71,6 +72,17 @@ export default function InvoicesPage() {
       setMessage(err instanceof Error ? err.message : "טעינת חשבוניות נכשלה");
     });
   }, []);
+
+  useEffect(() => {
+    if (!selected) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setSelected(null);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selected]);
 
   const filtered = useMemo(() => {
     return invoices.filter((invoice) => {
@@ -175,22 +187,22 @@ export default function InvoicesPage() {
   }
 
   const messageClasses = {
-    info: "border-accent-primary/40 bg-accent-primary/10 text-accent-primary",
-    success: "border-emerald-400/40 bg-emerald-50 text-emerald-700",
-    error: "border-red-400/40 bg-red-50 text-red-700",
+    info: "border-[#1D4ED8] bg-[#EFF6FF] text-[#111827]",
+    success: "border-[#059669] bg-[#ECFDF5] text-[#111827]",
+    error: "border-[#DC2626] bg-[#FEF2F2] text-[#111827]",
   }[messageTone];
   const visibleMessage = message.trim();
 
   return (
-    <div className="container text-base text-[#F1F5F9]">
+    <div className="container text-base text-[#111827]">
       <Nav />
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="page-kicker">חוכמת חשבוניות</div>
-          <h1>חשבוניות</h1>
-          <p className="text-[17px] leading-8 text-[#E2E8F0]">מעקב, סינון וסריקה של חשבוניות מכל הלקוחות.</p>
+          <div className="page-kicker text-[#111827]">חוכמת חשבוניות</div>
+          <h1 className="text-[#111827]">חשבוניות</h1>
+          <p className="text-[17px] font-medium leading-8 text-[#111827]">מעקב, סינון וסריקה של חשבוניות מכל הלקוחות.</p>
         </div>
-        <button className="btn min-w-40" onClick={scanInvoices} disabled={scanning}>
+        <button className="inline-flex min-w-40 items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] disabled:cursor-not-allowed disabled:bg-[#E5E7EB]" onClick={scanInvoices} disabled={scanning}>
           {scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
           {scanning ? "סורק..." : "סרוק חשבוניות"}
         </button>
@@ -198,15 +210,15 @@ export default function InvoicesPage() {
       {visibleMessage && (
         <div className={`mb-6 rounded-2xl border p-4 text-base font-medium leading-7 ${messageClasses}`}>
           <div>{visibleMessage}</div>
-          {scanProgress && <div className="mt-1 flex items-center gap-2 text-base text-ink-secondary"><Loader2 className="h-4 w-4 animate-spin" />{scanProgress}</div>}
+          {scanProgress && <div className="mt-1 flex items-center gap-2 text-base font-semibold text-[#111827]"><Loader2 className="h-4 w-4 animate-spin" />{scanProgress}</div>}
         </div>
       )}
 
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" dir="rtl">
-        <Metric label="חשבוניות החודש" value={thisMonth.length} tone="text-blue-300" />
-        <Metric label="ממתין לתשלום" value={`₪${pending.toLocaleString("he-IL")}`} tone="text-red-300" />
-        <Metric label="שולם" value={`₪${paid.toLocaleString("he-IL")}`} tone="text-emerald-300" />
-        <Metric label="באיחור" value={overdue} tone="text-amber-300" />
+        <Metric label="חשבוניות החודש" value={thisMonth.length} tone="text-[#111827]" />
+        <Metric label="ממתין לתשלום" value={`₪${pending.toLocaleString("he-IL")}`} tone="text-[#111827]" />
+        <Metric label="שולם" value={`₪${paid.toLocaleString("he-IL")}`} tone="text-[#111827]" />
+        <Metric label="באיחור" value={overdue} tone="text-[#111827]" />
       </div>
 
       <div className="mb-5 flex flex-wrap gap-2" dir="ltr" aria-label="Invoice review status filters">
@@ -216,8 +228,8 @@ export default function InvoicesPage() {
             type="button"
             className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
               reviewStatus === tab.value
-                ? "border-accent-primary bg-accent-primary text-white"
-                : "border-[var(--border)] bg-surface-card text-[#E2E8F0] hover:bg-surface-hover"
+                ? "border-[#1D4ED8] bg-[#DBEAFE] text-[#111827]"
+                : "border-[#D1D5DB] bg-white text-[#111827] hover:bg-[#F3F4F6]"
             }`}
             onClick={() => setReviewStatus(tab.value)}
           >
@@ -226,23 +238,23 @@ export default function InvoicesPage() {
         ))}
       </div>
 
-      <div className="card mb-5">
-        <div className="mb-4 flex items-center gap-2 text-[17px] font-semibold text-[#F8FAFC]"><Filter className="h-5 w-5" />סינון וחיפוש</div>
+      <div className="mb-5 rounded-2xl border border-[#D1D5DB] bg-white p-5 text-[#111827] shadow-sm">
+        <div className="mb-4 flex items-center gap-2 text-[17px] font-black text-[#111827]"><Filter className="h-5 w-5" />סינון וחיפוש</div>
         <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
-          <select className="text-base text-[#F8FAFC]" value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="all">כל הלקוחות</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
+          <select className="rounded-2xl border border-[#D1D5DB] bg-white px-4 py-3 text-base font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="all">כל הלקוחות</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
           <div className="relative xl:col-span-2">
-            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b7686]" />
-            <input className="w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 py-3 pr-10 font-sans text-base text-ink-primary shadow-sm outline-none placeholder:text-[#6b7686] focus:border-accent-primary focus:ring-2 focus:ring-[rgba(29,91,255,0.12)]" placeholder="חיפוש לפי מספר חשבונית" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#374151]" />
+            <input className="w-full rounded-2xl border border-[#D1D5DB] bg-white px-4 py-3 pr-10 font-sans text-base font-semibold text-[#111827] shadow-sm outline-none placeholder:text-[#374151] focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" placeholder="חיפוש לפי מספר חשבונית" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <input className="text-base text-[#F8FAFC]" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-          <input className="text-base text-[#F8FAFC]" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          <input className="rounded-2xl border border-[#D1D5DB] bg-white px-4 py-3 text-base font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <input className="rounded-2xl border border-[#D1D5DB] bg-white px-4 py-3 text-base font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
       </div>
 
       {filtered.length === 0 && (
-        <div className="card">
-          <h2>לא נמצאו חשבוניות</h2>
-          <p className="mt-2 text-base text-[#6b7686]">
+        <div className="rounded-2xl border border-[#D1D5DB] bg-white p-5 text-[#111827] shadow-sm">
+          <h2 className="text-[#111827]">לא נמצאו חשבוניות</h2>
+          <p className="mt-2 text-base font-medium text-[#374151]">
             נסה לשנות את הסינון או להפעיל סריקת חשבוניות ללקוחות עם ג׳ימייל מחובר.
           </p>
         </div>
@@ -250,45 +262,45 @@ export default function InvoicesPage() {
 
       <div className="grid gap-4 md:hidden">
         {filtered.map((invoice) => (
-          <div key={invoice.id} className="card">
+          <div key={invoice.id} className="rounded-2xl border border-[#D1D5DB] bg-white p-5 text-[#111827] shadow-sm">
             {isPersistedInvoice(invoice) && <div className="mb-3 flex justify-end">
-              <button className="rounded-xl border border-red-400/60 bg-red-500/20 px-3 py-2 text-sm font-bold text-red-100" type="button" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
+              <button className="rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#FECACA]" type="button" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
                 {deletingId === invoice.id ? "מוחק..." : "מחק"}
               </button>
             </div>}
             <button type="button" className="w-full text-right" onClick={() => setSelected(invoice)}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="break-words">{invoice.client?.name ?? invoice.supplierName ?? "חשבונית לבדיקה"}</h2>
-                  <p className="text-base text-[#E2E8F0]">{new Date(invoice.date).toLocaleDateString("he-IL")} · {invoice.invoiceNumber ?? "ללא מספר"}</p>
+                  <h2 className="break-words text-[#111827]">{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</h2>
+                  <p className="text-base font-semibold text-[#374151]">{formatInvoiceDate(invoice.date)} · {invoice.invoiceNumber ?? MISSING_VALUE}</p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
-                  <span className={`badge ${statusBadgeClass(invoice)}`}>
+                  <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>
                     {invoice.reviewStatus && invoice.reviewStatus !== "approved" ? reviewStatusLabels[invoice.reviewStatus] : statusLabels[invoice.status]}
                   </span>
                 </div>
               </div>
-              {invoice.description && <p className="mb-4 break-words text-base leading-7 text-[#E2E8F0]">{invoice.description}</p>}
-              {!isPersistedInvoice(invoice) && <p className="mb-4 text-sm font-semibold text-amber-100">מועמדת לבדיקה מסריקת מסמכים, עדיין לא רשומת Invoice מאושרת.</p>}
-              <div className="rounded-2xl bg-surface-secondary p-3 text-left text-2xl font-bold text-ink-primary">
-                {formatCurrency(invoice.amount, invoice.currency)}
+              {invoice.description && <p className="mb-4 break-words text-base font-semibold leading-7 text-[#111827]">{invoice.description}</p>}
+              {!isPersistedInvoice(invoice) && <p className="mb-4 text-sm font-bold text-[#111827]">מועמדת לבדיקה מסריקת מסמכים, עדיין לא רשומת Invoice מאושרת.</p>}
+              <div className="rounded-2xl border border-[#D1D5DB] bg-[#F9FAFB] p-3 text-left text-2xl font-black text-[#111827]">
+                {formatInvoiceAmount(invoice)}
               </div>
             </button>
             <div className="mt-4 grid gap-2">
               {invoice.driveUrl && (
-                <a className="btn btn-secondary" href={invoice.driveUrl} target="_blank" rel="noreferrer">
+                <a className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE]" href={invoice.driveUrl} target="_blank" rel="noreferrer">
                   <Download className="h-4 w-4" />פתח קובץ
                 </a>
               )}
               {invoice.gmailMessageLink && (
-                <a className="btn btn-secondary" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer">
+                <a className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#D1D5DB] bg-white px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer">
                   <Download className="h-4 w-4" />פתח מייל
                 </a>
               )}
-              {isPersistedInvoice(invoice) && <button className="btn btn-secondary" onClick={() => toggleStatus(invoice)}>
+              {isPersistedInvoice(invoice) && <button className="rounded-2xl border border-[#D1D5DB] bg-white px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6]" onClick={() => toggleStatus(invoice)}>
                 {invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}
               </button>}
-              {isPersistedInvoice(invoice) && <button className="btn btn-secondary border-red-400/50 text-red-200" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
+              {isPersistedInvoice(invoice) && <button className="rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA]" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
                 {deletingId === invoice.id ? "מוחק..." : "מחק חשבונית"}
               </button>}
             </div>
@@ -296,29 +308,29 @@ export default function InvoicesPage() {
         ))}
       </div>
 
-      <div className="table-shell hidden max-w-full overflow-x-auto md:block">
-        <table className="min-w-[980px] table-fixed">
-          <thead><tr><th className="w-24 text-base font-bold text-[#F8FAFC]">מחק</th><th className="w-28 text-base font-bold text-[#F8FAFC]">תאריך</th><th className="w-36 text-base font-bold text-[#F8FAFC]">לקוח</th><th className="w-28 text-base font-bold text-[#F8FAFC]">מספר</th><th className="text-base font-bold text-[#F8FAFC]">תיאור</th><th className="w-36 text-base font-bold text-[#F8FAFC]">סכום</th><th className="w-24 text-base font-bold text-[#F8FAFC]">סטטוס</th><th className="w-24 text-base font-bold text-[#F8FAFC]">דרייב</th><th className="w-24 text-base font-bold text-[#F8FAFC]">פעולות</th></tr></thead>
+      <div className="hidden max-w-full overflow-x-auto rounded-2xl border border-[#D1D5DB] bg-white shadow-sm md:block">
+        <table className="min-w-[980px] table-fixed bg-white text-[#111827]">
+          <thead className="bg-[#F3F4F6]"><tr className="border-b border-[#D1D5DB]"><th className="w-24 text-base font-black text-[#111827]">מחק</th><th className="w-28 text-base font-black text-[#111827]">תאריך</th><th className="w-36 text-base font-black text-[#111827]">לקוח</th><th className="w-28 text-base font-black text-[#111827]">מספר</th><th className="text-base font-black text-[#111827]">תיאור</th><th className="w-36 text-base font-black text-[#111827]">סכום</th><th className="w-24 text-base font-black text-[#111827]">סטטוס</th><th className="w-24 text-base font-black text-[#111827]">דרייב</th><th className="w-24 text-base font-black text-[#111827]">פעולות</th></tr></thead>
           <tbody>
             {filtered.map((invoice) => (
-              <tr key={invoice.id} onClick={() => setSelected(invoice)} className="cursor-pointer">
+              <tr key={invoice.id} onClick={() => setSelected(invoice)} className="cursor-pointer border-b border-[#E5E7EB] bg-white transition hover:bg-[#F9FAFB]">
                 <td>
-                  {isPersistedInvoice(invoice) ? <button className="rounded-xl border border-red-400/60 bg-red-500/20 px-3 py-2 text-sm font-bold text-red-100 transition hover:bg-red-500/30" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>
+                  {isPersistedInvoice(invoice) ? <button className="rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>
                     {deletingId === invoice.id ? "מוחק..." : "מחק"}
-                  </button> : <span className="text-base text-[#CBD5E1]">-</span>}
+                  </button> : <span className="text-base font-bold text-[#374151]">-</span>}
                 </td>
-                <td className="whitespace-nowrap text-base text-[#F1F5F9]">{new Date(invoice.date).toLocaleDateString("he-IL")}</td>
-                <td><span className="inline-flex max-w-full items-center gap-2 text-base text-[#F1F5F9]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface-hover text-sm font-bold text-ink-primary">{(invoice.client?.name ?? invoice.supplierName ?? "בדיקה").slice(0, 2)}</span><span className="truncate">{invoice.client?.name ?? invoice.supplierName ?? "לבדיקה"}</span></span></td>
-                <td className="truncate text-base text-[#F8FAFC]">{invoice.invoiceNumber ?? "-"}</td>
-                <td className="max-w-0 truncate text-base text-[#E2E8F0]">{invoice.description ?? ""}</td>
-                <td className="whitespace-nowrap text-base font-bold text-[#F8FAFC]">{formatCurrency(invoice.amount, invoice.currency)}</td>
-                <td><span className={`badge ${statusBadgeClass(invoice)}`}>{invoice.reviewStatus && invoice.reviewStatus !== "approved" ? reviewStatusLabels[invoice.reviewStatus] : statusLabels[invoice.status]}</span></td>
-                <td>{invoice.driveUrl ? <a className="btn btn-secondary px-2 py-1 text-sm" href={invoice.driveUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />קובץ</a> : <span className="text-base text-[#CBD5E1]">-</span>}</td>
+                <td className="whitespace-nowrap text-base font-semibold text-[#111827]">{formatInvoiceDate(invoice.date)}</td>
+                <td><span className="inline-flex max-w-full items-center gap-2 text-base font-semibold text-[#111827]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#D1D5DB] bg-[#F3F4F6] text-sm font-black text-[#111827]">{(invoice.client?.name ?? invoice.supplierName ?? "בדיקה").slice(0, 2)}</span><span className="truncate">{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</span></span></td>
+                <td className="truncate text-base font-semibold text-[#111827]">{invoice.invoiceNumber ?? MISSING_VALUE}</td>
+                <td className="max-w-0 truncate text-base font-semibold text-[#111827]">{invoice.description ?? MISSING_VALUE}</td>
+                <td className="whitespace-nowrap text-base font-black text-[#111827]">{formatInvoiceAmount(invoice)}</td>
+                <td><span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>{invoice.reviewStatus && invoice.reviewStatus !== "approved" ? reviewStatusLabels[invoice.reviewStatus] : statusLabels[invoice.status]}</span></td>
+                <td>{invoice.driveUrl ? <a className="inline-flex items-center justify-center gap-1 rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-2 py-1 text-sm font-black text-[#111827] transition hover:bg-[#BFDBFE]" href={invoice.driveUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />קובץ</a> : <span className="text-base font-bold text-[#374151]">-</span>}</td>
                 <td>
                   <div className="flex flex-wrap gap-2">
-                    {invoice.gmailMessageLink && <a className="rounded-lg border border-[var(--border)] bg-surface-card px-2 py-1 text-sm font-semibold text-[#E2E8F0] transition hover:bg-surface-hover hover:text-[#F8FAFC]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>מייל</a>}
-                    {isPersistedInvoice(invoice) && <button className="rounded-lg border border-[var(--border)] bg-surface-card px-2 py-1 text-sm font-semibold text-[#E2E8F0] opacity-100 transition hover:bg-surface-hover hover:text-[#F8FAFC]" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}</button>}
-                    {isPersistedInvoice(invoice) && <button className="rounded-lg border border-red-400/50 bg-red-500/10 px-2 py-1 text-sm font-semibold text-red-100 transition hover:bg-red-500/20" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>{deletingId === invoice.id ? "מוחק..." : "מחק"}</button>}
+                    {invoice.gmailMessageLink && <a className="rounded-lg border border-[#D1D5DB] bg-white px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>מייל</a>}
+                    {isPersistedInvoice(invoice) && <button className="rounded-lg border border-[#D1D5DB] bg-white px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}</button>}
+                    {isPersistedInvoice(invoice) && <button className="rounded-lg border border-[#B91C1C] bg-[#FEE2E2] px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>{deletingId === invoice.id ? "מוחק..." : "מחק"}</button>}
                   </div>
                 </td>
               </tr>
@@ -328,83 +340,94 @@ export default function InvoicesPage() {
       </div>
 
       {selected && (
-        <div className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/75 p-3 backdrop-blur-sm sm:p-6">
-          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-5 text-right text-slate-950 shadow-2xl animate-[toastSlide_.25s_ease] sm:p-7" dir="rtl">
-            <div className="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/75 p-3 backdrop-blur-sm sm:p-6" role="presentation" onClick={() => setSelected(null)}>
+          <div className="relative max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[28px] border border-[#D1D5DB] bg-white p-5 text-right text-[#111827] shadow-2xl animate-[toastSlide_.25s_ease] sm:p-7" dir="rtl" role="dialog" aria-modal="true" aria-labelledby="invoice-details-title" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="absolute left-4 top-4 z-10 grid h-11 w-11 place-items-center rounded-full border border-[#374151] bg-white text-2xl font-black leading-none text-[#111827] shadow-sm transition hover:bg-[#F3F4F6] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]"
+              aria-label="סגור חלון פרטי חשבונית"
+              onClick={() => setSelected(null)}
+            >
+              ×
+            </button>
+            <div className="mb-6 flex flex-col gap-4 border-b border-[#D1D5DB] pb-5 pl-12 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-3">
-                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-700">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] text-[#111827]">
                   <FileText className="h-6 w-6" />
                 </span>
                 <div>
-                  <p className="text-sm font-extrabold uppercase tracking-wide text-blue-700">פרטי חשבונית</p>
-                  <h2 className="mt-1 text-2xl font-black leading-tight text-slate-950 sm:text-3xl">
-                    {selected.supplierName || selected.client?.name || "חשבונית לבדיקה"}
+                  <p className="text-sm font-extrabold uppercase tracking-wide text-[#111827]">פרטי חשבונית</p>
+                  <h2 id="invoice-details-title" className="mt-1 text-2xl font-black leading-tight text-[#111827] sm:text-3xl">
+                    {selected.supplierName || selected.client?.name || MISSING_VALUE}
                   </h2>
-                  <p className="mt-2 text-base font-semibold leading-7 text-slate-600">
+                  <p className="mt-2 text-base font-semibold leading-7 text-[#111827]">
                     {selected.reviewStatus === "needs_review" ? "חשבונית שמורה וממתינה לאישור" : reviewStatusLabels[selected.reviewStatus ?? "approved"]}
                   </p>
                 </div>
               </div>
-              <span className={`w-fit rounded-full px-4 py-2 text-sm font-black ${
+              <span className={`w-fit rounded-full border px-4 py-2 text-sm font-black text-[#111827] ${
                 selected.reviewStatus === "needs_review"
-                  ? "bg-amber-100 text-amber-900"
+                  ? "border-[#D97706] bg-[#FEF3C7]"
                   : selected.reviewStatus === "rejected"
-                    ? "bg-red-100 text-red-800"
-                    : "bg-emerald-100 text-emerald-800"
+                    ? "border-[#DC2626] bg-[#FEE2E2]"
+                    : "border-[#059669] bg-[#D1FAE5]"
               }`}>
                 {reviewStatusLabels[selected.reviewStatus ?? "approved"]}
               </span>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <DetailCard label="ספק" value={selected.supplierName || "לא זוהה"} />
-              <DetailCard label="לקוח" value={selected.client?.name || "לא משויך"} />
-              <DetailCard label="סכום" value={formatCurrency(selected.amount, selected.currency)} highlight />
-              <DetailCard label="מספר חשבונית" value={selected.invoiceNumber || "ללא מספר"} />
-              <DetailCard label="תאריך" value={new Date(selected.date).toLocaleDateString("he-IL")} />
+              <DetailCard label="ספק" value={selected.supplierName || MISSING_VALUE} />
+              <DetailCard label="סכום" value={formatInvoiceAmount(selected)} highlight />
+              <DetailCard label="מספר חשבונית" value={selected.invoiceNumber || MISSING_VALUE} />
+              <DetailCard label="תאריך" value={formatInvoiceDate(selected.date)} />
               <DetailCard label="מקור" value={sourceLabel(selected.source)} />
+              <DetailCard label="סטטוס" value={selected.reviewStatus && selected.reviewStatus !== "approved" ? reviewStatusLabels[selected.reviewStatus] : statusLabels[selected.status]} />
+              <div className="rounded-2xl border border-[#D1D5DB] bg-white p-4 sm:col-span-2">
+                <div className="mb-2 text-sm font-black text-[#111827]">קישור למסמך</div>
+                {selected.driveUrl ? (
+                  <a className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] sm:w-auto" href={selected.driveUrl} target="_blank" rel="noreferrer">
+                    <Download className="h-4 w-4" />פתח מסמך
+                  </a>
+                ) : (
+                  <div className="break-words text-lg font-black leading-7 text-[#374151]">{MISSING_VALUE}</div>
+                )}
+              </div>
             </div>
 
             {selected.description && (
-              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="mb-2 text-sm font-black text-slate-600">תיאור</div>
-                <p className="whitespace-pre-wrap break-words text-base font-semibold leading-8 text-slate-950">{selected.description}</p>
+              <div className="mt-5 rounded-2xl border border-[#D1D5DB] bg-white p-4">
+                <div className="mb-2 text-sm font-black text-[#111827]">תיאור</div>
+                <p className="whitespace-pre-wrap break-words text-base font-semibold leading-8 text-[#111827]">{selected.description}</p>
               </div>
             )}
 
             {selected.decisionReason && (
-              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                <div className="mb-2 text-sm font-black text-amber-900">סיבת בדיקה</div>
-                <p className="whitespace-pre-wrap break-words text-base font-semibold leading-8 text-amber-950">{selected.decisionReason}</p>
+              <div className="mt-5 rounded-2xl border border-[#D97706] bg-[#FFFBEB] p-4">
+                <div className="mb-2 text-sm font-black text-[#111827]">סיבת בדיקה</div>
+                <p className="whitespace-pre-wrap break-words text-base font-semibold leading-8 text-[#111827]">{selected.decisionReason}</p>
               </div>
             )}
 
-            {(selected.driveUrl || selected.gmailMessageLink) && (
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                {selected.driveUrl && (
-                  <a className="inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-600 px-4 py-3 text-base font-black text-white transition hover:bg-blue-700" href={selected.driveUrl} target="_blank" rel="noreferrer">
-                    <Download className="h-4 w-4" />פתח קובץ בדרייב
-                  </a>
-                )}
-                {selected.gmailMessageLink && (
-                  <a className="inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-base font-black text-blue-800 transition hover:bg-blue-100" href={selected.gmailMessageLink} target="_blank" rel="noreferrer">
-                    פתח מייל מקור
-                  </a>
-                )}
+            {selected.gmailMessageLink && (
+              <div className="mt-5">
+                <a className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-white px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#EFF6FF] sm:w-auto" href={selected.gmailMessageLink} target="_blank" rel="noreferrer">
+                  פתח מייל מקור
+                </a>
               </div>
             )}
 
             {selected.driveUrl && (
               <div className="mt-6">
-                <div className="mb-2 text-sm font-black text-slate-700">תצוגה מקדימה</div>
-                <iframe className="h-[55vh] min-h-80 w-full rounded-2xl border border-slate-300 bg-white shadow-inner" src={toDrivePreviewUrl(selected.driveUrl)} title="Invoice preview" />
+                <div className="mb-2 text-sm font-black text-[#111827]">תצוגה מקדימה</div>
+                <iframe className="h-[55vh] min-h-80 w-full rounded-2xl border border-[#9CA3AF] bg-white shadow-inner" src={toDrivePreviewUrl(selected.driveUrl)} title="Invoice preview" />
               </div>
             )}
 
-            <div className="mt-6 flex flex-col-reverse gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:justify-between">
-              <button className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-base font-black text-slate-800 transition hover:bg-slate-100" onClick={() => setSelected(null)}>סגור</button>
+            <div className="mt-6 flex flex-col-reverse gap-3 border-t border-[#D1D5DB] pt-5 sm:flex-row sm:justify-between">
+              <button type="button" className="rounded-2xl border border-[#374151] bg-white px-5 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6]" onClick={() => setSelected(null)}>סגור</button>
               {isPersistedInvoice(selected) && (
-                <button className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-base font-black text-red-700 transition hover:bg-red-100" onClick={() => deleteInvoice(selected)} disabled={deletingId === selected.id}>
+                <button type="button" className="rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-5 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA]" onClick={() => deleteInvoice(selected)} disabled={deletingId === selected.id}>
                   {deletingId === selected.id ? "מוחק..." : "מחק חשבונית"}
                 </button>
               )}
@@ -418,20 +441,34 @@ export default function InvoicesPage() {
 
 function Metric({ label, value, tone }: { label: string; value: string | number; tone: string }) {
   return (
-    <div className="card">
-      <div className="stat-label text-sm text-[#CBD5E1]">{label}</div>
-      <div className={`stat-value ${tone}`}>{value}</div>
+    <div className="rounded-2xl border border-[#D1D5DB] bg-white p-5 text-[#111827] shadow-sm">
+      <div className="text-sm font-black text-[#111827]">{label}</div>
+      <div className={`mt-2 text-3xl font-black ${tone}`}>{value}</div>
     </div>
   );
 }
 
 function DetailCard({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
+  const isMissing = value === MISSING_VALUE;
+
   return (
-    <div className={`rounded-2xl border p-4 ${highlight ? "border-blue-200 bg-blue-50" : "border-slate-200 bg-slate-50"}`}>
-      <div className={`mb-2 text-sm font-black ${highlight ? "text-blue-800" : "text-slate-600"}`}>{label}</div>
-      <div className={`break-words text-lg font-black leading-7 ${highlight ? "text-blue-950" : "text-slate-950"}`}>{value}</div>
+    <div className={`rounded-2xl border p-4 ${highlight ? "border-[#1D4ED8] bg-[#EFF6FF]" : "border-[#D1D5DB] bg-white"}`}>
+      <div className="mb-2 text-sm font-black text-[#111827]">{label}</div>
+      <div className={`break-words text-lg font-black leading-7 ${isMissing ? "text-[#374151]" : "text-[#111827]"}`}>{value}</div>
     </div>
   );
+}
+
+function formatInvoiceAmount(invoice: Invoice) {
+  if (!Number.isFinite(invoice.amount)) return MISSING_VALUE;
+  return formatCurrency(invoice.amount, invoice.currency);
+}
+
+function formatInvoiceDate(date: string | null | undefined) {
+  if (!date) return MISSING_VALUE;
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return MISSING_VALUE;
+  return parsed.toLocaleDateString("he-IL");
 }
 
 function formatCurrency(amount: number, currency: string) {
@@ -445,11 +482,11 @@ function isPersistedInvoice(invoice: Invoice) {
 
 function statusBadgeClass(invoice: Invoice) {
   const reviewStatus = invoice.reviewStatus ?? "approved";
-  if (reviewStatus === "needs_review") return "badge-warn";
-  if (reviewStatus === "rejected") return "badge-error";
-  if (invoice.status === "paid") return "badge-ok";
-  if (invoice.status === "overdue") return "badge-error";
-  return "badge-warn";
+  if (reviewStatus === "needs_review") return "border border-[#D97706] bg-[#FEF3C7] text-[#111827]";
+  if (reviewStatus === "rejected") return "border border-[#DC2626] bg-[#FEE2E2] text-[#111827]";
+  if (invoice.status === "paid") return "border border-[#059669] bg-[#D1FAE5] text-[#111827]";
+  if (invoice.status === "overdue") return "border border-[#DC2626] bg-[#FEE2E2] text-[#111827]";
+  return "border border-[#D97706] bg-[#FEF3C7] text-[#111827]";
 }
 
 function sourceLabel(source: Invoice["source"] | undefined) {
