@@ -269,7 +269,7 @@ type GmailSyncOptions = {
   scanAllMail?: boolean;
   maxMessages?: number;
   scanLogId?: string;
-  scanMode?: "manual" | "auto_daily" | "auto_weekly" | "retry" | "first_time";
+  scanMode?: "manual" | "auto_daily" | "auto_weekly" | "retry" | "first_time" | "fast_recurring";
   retryOfId?: string;
   fastOnly?: boolean;
 };
@@ -682,8 +682,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       }
     };
 
-    logStep("[gmail-sync] FAST_SCAN_STARTED query=newer_than:2h maxResults=20");
-    const fastListing = await listFastCandidateMessages(gmail, MAX_MESSAGES_PER_FAST_SCAN, {
+    const fastScanMaxMessages = options.maxMessages ?? MAX_MESSAGES_PER_FAST_SCAN;
+    logStep(`[gmail-sync] FAST_SCAN_STARTED query=newer_than:2h maxResults=${fastScanMaxMessages} mode=${scanMode}`);
+    const fastListing = await listFastCandidateMessages(gmail, fastScanMaxMessages, {
       scanAllMail: options.scanAllMail,
     });
     const fastMessages = fastListing.messages;
