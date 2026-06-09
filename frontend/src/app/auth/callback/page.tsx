@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { saveToken } from "@/lib/auth";
 
 function CallbackInner() {
   const router = useRouter();
@@ -15,7 +16,7 @@ function CallbackInner() {
       return;
     }
 
-    localStorage.setItem("token", token);
+    saveToken(token);
     window.location.replace("/dashboard");
   }, [params, router]);
 

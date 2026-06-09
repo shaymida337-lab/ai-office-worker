@@ -30,9 +30,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
             })
           : await login({ email, password });
       saveToken(result.token);
+      const savedToken = localStorage.getItem("token") || sessionStorage.getItem("token");
+      if (!savedToken) throw new Error("ההתחברות הצליחה אבל ה-token לא נשמר בדפדפן");
+      console.log(`[auth] login token saved hasToken=${Boolean(savedToken)} userId=${result.user.id} organizationId=${result.organization.id}`);
       const searchParams = new URLSearchParams(window.location.search);
       const next = searchParams.get("next");
-      router.push(next?.startsWith("/") ? next : "/dashboard");
+      router.replace(next?.startsWith("/") ? next : "/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
     } finally {

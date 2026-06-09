@@ -24,7 +24,10 @@ export function getToken(): string | null {
 
 export function clearToken(): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem("token");
+  for (const key of ["token", "authToken", "accessToken"]) {
+    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
+  }
 }
 
 export function isAuthError(err: unknown): boolean {
@@ -45,6 +48,7 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
   const isFormData = typeof FormData !== "undefined" && fetchInit.body instanceof FormData;
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs ?? 15000);
+  console.log(`[apiFetch] request path=${path} url=${url} hasToken=${Boolean(token)}`);
   try {
     res = await fetch(url, {
       ...fetchInit,
@@ -58,6 +62,7 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
         ...fetchInit.headers,
       },
     });
+    console.log(`[apiFetch] response path=${path} status=${res.status} ok=${res.ok}`);
   } catch (err) {
     const message = err instanceof DOMException && err.name === "AbortError"
       ? "השרת לא ענה בזמן. נסה שוב בעוד רגע."

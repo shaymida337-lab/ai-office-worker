@@ -333,6 +333,13 @@ export default function DashboardPage() {
 
   const load = useCallback(async () => {
     try {
+      if (!getToken()) {
+        console.warn("[dashboard] missing token before load; redirecting to login");
+        clearToken();
+        router.replace(`/login?next=${encodeURIComponent("/dashboard")}`);
+        return;
+      }
+
       const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult, systemResult] = await Promise.allSettled([
         apiFetch<DashboardStats>("/api/stats"),
         apiFetch<{ text: string }>("/api/summary/daily"),
@@ -347,6 +354,13 @@ export default function DashboardPage() {
         apiFetch<OrganizationSettings>("/api/organization/settings"),
         apiFetch<SystemHealth>("/api/system/health", { timeoutMs: 30000 }),
       ]);
+      const settledResults = [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult, systemResult];
+      if (settledResults.some((result) => result.status === "rejected" && isAuthError(result.reason))) {
+        console.warn("[dashboard] auth failed while loading dashboard; redirecting to login");
+        clearToken();
+        router.replace(`/login?next=${encodeURIComponent("/dashboard")}`);
+        return;
+      }
 
       if (statsResult.status === "fulfilled") {
         setStats(statsResult.value);
@@ -415,7 +429,7 @@ export default function DashboardPage() {
     } catch (err) {
       if (isAuthError(err)) {
         clearToken();
-        router.replace("/");
+        router.replace(`/login?next=${encodeURIComponent("/dashboard")}`);
         return;
       }
       setStats(emptyStats);

@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "crypto";
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 import { config } from "./config.js";
+import { prisma } from "./prisma.js";
 
 export type JwtPayload = {
   userId: string;
@@ -17,11 +18,11 @@ export function verifyToken(token: string): JwtPayload {
   return jwt.verify(token, config.jwtSecret) as JwtPayload;
 }
 
-export function authMiddleware(
+export async function authMiddleware(
   req: Request,
   res: Response,
   next: NextFunction
-): void {
+): Promise<void> {
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) {
@@ -29,7 +30,31 @@ export function authMiddleware(
     return;
   }
   try {
-    req.auth = verifyToken(token);
+    const payload = verifyToken(token);
+    req.authTokenPayload = payload;
+    console.log(
+      `[auth] decoded userId=${payload.userId} organizationId=${payload.organizationId} email=${payload.email} path=${req.path}`
+    );
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      include: { organization: true },
+    });
+    if (!user?.organization) {
+      console.warn(`[auth] user/org not found userId=${payload.userId} tokenOrg=${payload.organizationId} path=${req.path}`);
+      res.status(401).json({ error: "User or organization not found" });
+      return;
+    }
+    if (user.organization.id !== payload.organizationId || user.email !== payload.email) {
+      console.warn(
+        `[auth] token payload mismatch userId=${payload.userId} tokenOrg=${payload.organizationId} dbOrg=${user.organization.id} tokenEmail=${payload.email} dbEmail=${user.email} path=${req.path}`
+      );
+    }
+    req.auth = {
+      userId: user.id,
+      organizationId: user.organization.id,
+      email: user.email,
+    };
+    console.log(`[auth] ok userId=${req.auth.userId} organizationId=${req.auth.organizationId} path=${req.path}`);
     next();
   } catch {
     res.status(401).json({ error: "Invalid token" });
@@ -81,6 +106,7 @@ declare global {
   namespace Express {
     interface Request {
       auth?: JwtPayload;
+      authTokenPayload?: JwtPayload;
     }
   }
 }

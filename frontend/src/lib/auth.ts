@@ -7,7 +7,13 @@ export type AuthResponse = {
 };
 
 export function saveToken(token: string): void {
+  if (!token.trim()) throw new Error("Missing auth token");
   localStorage.setItem("token", token);
+  sessionStorage.setItem("token", token);
+  localStorage.removeItem("authToken");
+  sessionStorage.removeItem("authToken");
+  localStorage.removeItem("accessToken");
+  sessionStorage.removeItem("accessToken");
 }
 
 export async function register(input: {
@@ -28,6 +34,7 @@ export async function register(input: {
 
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "ההרשמה נכשלה");
+  if (!data.token) throw new Error("השרת לא החזיר token להתחברות");
   return data as AuthResponse;
 }
 
@@ -48,5 +55,6 @@ export async function login(input: {
 
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "ההתחברות נכשלה");
+  if (!data.token) throw new Error("השרת לא החזיר token להתחברות");
   return data as AuthResponse;
 }

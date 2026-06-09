@@ -77,6 +77,38 @@ apiRouter.get("/debug/payments/open-classification-inputs", async (req, res, nex
 
 apiRouter.use(authMiddleware);
 
+apiRouter.get("/debug/me", async (req, res) => {
+  const tokenPayload = req.authTokenPayload ?? null;
+  const currentUser = await prisma.user.findUnique({
+    where: { id: req.auth!.userId },
+    include: { organization: true },
+  });
+  const response = {
+    tokenStatus: tokenPayload ? "valid" : "missing",
+    tokenDecoded: tokenPayload,
+    currentUser: currentUser
+      ? {
+          id: currentUser.id,
+          email: currentUser.email,
+          organizationId: currentUser.organization?.id ?? null,
+          organizationName: currentUser.organization?.name ?? null,
+        }
+      : null,
+    auth: req.auth,
+    database: { host: databaseHost() },
+    tokenMatchesDb: Boolean(
+      tokenPayload &&
+        currentUser &&
+        currentUser.organization &&
+        tokenPayload.userId === currentUser.id &&
+        tokenPayload.organizationId === currentUser.organization.id &&
+        tokenPayload.email === currentUser.email
+    ),
+  };
+  console.log(`[debug/me] response=${JSON.stringify(response)}`);
+  res.json(response);
+});
+
 apiRouter.get("/business/templates", async (_req, res) => {
   res.json(getBusinessTemplates());
 });
@@ -2442,6 +2474,10 @@ apiRouter.post("/help/auto-fix/invoices", async (req, res) => {
 
 apiRouter.get("/dashboard", async (req, res) => {
   const stats = await getDashboardStats(req.auth!.organizationId);
+  console.log(
+    `[dashboard] auth tokenDecoded=${JSON.stringify(req.authTokenPayload)} effectiveAuth=${JSON.stringify(req.auth)}`
+  );
+  console.log(`[dashboard] response=${JSON.stringify(stats)}`);
   res.json(stats);
 });
 
@@ -2452,6 +2488,9 @@ apiRouter.get("/stats", async (req, res) => {
     prisma.client.count({ where: { organizationId, isActive: true } }),
     prisma.invoice.count({ where: { organizationId, status: { not: "paid" } } }),
   ]);
+  console.log(
+    `[stats] returned userId=${req.auth!.userId} organizationId=${organizationId} totalInvoices=${stats.totalInvoices} supplierPayments=${stats.supplierPaymentsCount} totalClients=${totalClients} openInvoices=${openInvoices}`
+  );
   const sheetsReconciliation = await import("../services/supplierPaymentsSheet.js")
     .then(({ getSupplierPaymentsSheetReconciliation }) => getSupplierPaymentsSheetReconciliation(organizationId))
     .catch((err) => {
@@ -2459,7 +2498,7 @@ apiRouter.get("/stats", async (req, res) => {
       return null;
     });
 
-  res.json({
+  const response = {
     ...stats,
     sheetsReconciliation,
     totalClients,
@@ -2473,7 +2512,12 @@ apiRouter.get("/stats", async (req, res) => {
       amountToPay: stats.moneyToPay,
       currency: stats.currency,
     },
-  });
+  };
+  console.log(
+    `[stats] auth tokenDecoded=${JSON.stringify(req.authTokenPayload)} effectiveAuth=${JSON.stringify(req.auth)}`
+  );
+  console.log(`[stats] response=${JSON.stringify(response)}`);
+  res.json(response);
 });
 
 apiRouter.post("/natalie/ask", async (req, res) => {
@@ -2983,6 +3027,9 @@ apiRouter.get("/invoices", async (req, res) => {
         })
       : Promise.resolve([]),
   ]);
+  console.log(
+    `[invoices] query userId=${req.auth!.userId} organizationId=${organizationId} clientId=${clientId ?? "none"} status=${status ?? "none"} invoiceRows=${invoiceRows.length} gmailScanItems=${gmailScanItems.length} documentReviews=${documentReviews.length}`
+  );
 
   const existingInvoiceRefs = new Set(
     invoiceRows.flatMap((invoice) => [invoice.gmailMessageId, invoice.emailId].filter((value): value is string => Boolean(value)))
@@ -3021,9 +3068,14 @@ apiRouter.get("/invoices", async (req, res) => {
     .slice(0, 100);
 
   const needsReviewCount = invoices.filter((invoice) => invoice.reviewStatus === "needs_review").length;
+  const response = { invoices };
+  console.log(
+    `[invoices] auth tokenDecoded=${JSON.stringify(req.authTokenPayload)} effectiveAuth=${JSON.stringify(req.auth)}`
+  );
   console.log(`[invoices] UI_INVOICES_API_RETURNED count=${invoices.length} org=${organizationId}`);
   console.log(`[invoices] NEEDS_REVIEW_INVOICES_RETURNED count=${needsReviewCount} org=${organizationId}`);
-  res.json({ invoices });
+  console.log(`[invoices] response=${JSON.stringify(response)}`);
+  res.json(response);
 });
 
 apiRouter.put("/invoices/:id/status", async (req, res) => {
@@ -3125,7 +3177,15 @@ apiRouter.get("/payments", async (req, res) => {
     orderBy: { date: "desc" },
     take: 100,
   });
-  res.json(payments.map(enrichPaymentSources));
+  console.log(
+    `[payments] query userId=${req.auth!.userId} organizationId=${req.auth!.organizationId} duplicatesOnly=${duplicatesOnly} rows=${payments.length}`
+  );
+  const response = payments.map(enrichPaymentSources);
+  console.log(
+    `[payments] auth tokenDecoded=${JSON.stringify(req.authTokenPayload)} effectiveAuth=${JSON.stringify(req.auth)}`
+  );
+  console.log(`[payments] response=${JSON.stringify(response)}`);
+  res.json(response);
 });
 
 apiRouter.get("/document-reviews", async (req, res) => {
