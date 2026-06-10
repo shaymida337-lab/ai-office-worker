@@ -1786,6 +1786,16 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           if (targetAmount == null) {
             logStep(`[gmail-sync] invoice amount missing message=${email.gmailId} file="${targetFilename ?? "body"}"; saving Invoice with amount=0 for review`);
           }
+          const skipInvoiceReason = nonInvoiceCreationSkipReason({
+            filename: targetFilename,
+            mimeType: invoicePart?.mimeType ?? null,
+            text: targetBodyForDetection,
+            amount: invoiceAmount,
+          });
+          if (skipInvoiceReason) {
+            logStep(`[gmail-sync] SKIPPED_NOT_INVOICE message=${email.gmailId} file="${targetFilename ?? "body"}" reason="${skipInvoiceReason}"`);
+            continue;
+          }
           logStep(`[gmail-sync] DB Invoice insert attempt message=${email.gmailId} file="${targetFilename ?? "body"}" clientId=${clientId} supplier="${invoiceSupplierName}" amount=${invoiceAmount} invoiceNumber=${invoiceNumber ?? "none"} date=${invoiceDate.toISOString()} type=${targetDocumentType}`);
           try {
             const createdInvoice = await saveDetectedInvoice({
@@ -3839,6 +3849,42 @@ function detectInvoice(subject: string, body: string, parts: PayloadPart[]) {
     amount: amountResult.amount,
     amountRejectedReason: amountResult.rejectedReason,
   };
+}
+
+function nonInvoiceCreationSkipReason(input: {
+  filename?: string | null;
+  mimeType?: string | null;
+  text: string;
+  amount: number | null;
+}) {
+  const filename = input.filename?.trim() ?? "";
+  const normalizedFilename = filename.toLowerCase();
+  const mimeType = input.mimeType?.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (
+    /(?:^|[\\/])(?:website|webpage)(?:[._-]|$)/i.test(filename) ||
+    /\.(?:html?|css|js)$/i.test(filename) ||
+    ["text/html", "text/css", "application/javascript", "text/javascript", "application/x-javascript"].includes(mimeType)
+  ) {
+    return `unsupported_web_file filename=${filename || "unknown"} mime=${mimeType || "unknown"}`;
+  }
+
+  if (/<!doctype\s+html\b|<html\b|<head\b|<body\b/i.test(input.text)) {
+    return "html_document_marker";
+  }
+
+  const text = input.text.toLowerCase();
+  const hasInvoiceKeyword =
+    INVOICE_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase())) ||
+    INVOICE_KEYWORD_PATTERNS.some((pattern) => pattern.test(input.text));
+  if (!hasInvoiceKeyword && !(input.amount !== null && Number.isFinite(input.amount) && input.amount > 0)) {
+    return "missing_invoice_keyword_and_positive_amount";
+  }
+
+  if (normalizedFilename.includes("website") || normalizedFilename.includes("webpage")) {
+    return `unsupported_web_filename filename=${filename}`;
+  }
+
+  return null;
 }
 
 export function extractInvoiceAmount(text: string): { amount: number | null; rejectedReason: string | null } {
