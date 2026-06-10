@@ -55,6 +55,8 @@ export default function InvoicesPage() {
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(() => new Set());
   const [selected, setSelected] = useState<Invoice | null>(null);
 
   async function load() {
@@ -96,6 +98,20 @@ export default function InvoicesPage() {
       );
     });
   }, [clientId, fromDate, invoices, reviewStatus, search, toDate]);
+  const filteredIds = useMemo(() => filtered.map((invoice) => invoice.id), [filtered]);
+  const selectedVisibleInvoices = useMemo(
+    () => filtered.filter((invoice) => selectedInvoiceIds.has(invoice.id)),
+    [filtered, selectedInvoiceIds]
+  );
+  const allVisibleSelected = filtered.length > 0 && filtered.every((invoice) => selectedInvoiceIds.has(invoice.id));
+
+  useEffect(() => {
+    setSelectedInvoiceIds((current) => {
+      const visibleIds = new Set(filteredIds);
+      const next = new Set([...current].filter((id) => visibleIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [filteredIds]);
 
   const now = new Date();
   const thisMonth = filtered.filter((invoice) => {
@@ -166,14 +182,13 @@ export default function InvoicesPage() {
     setMessageTone("info");
     setMessage("");
     try {
-      const target = invoiceDeleteTarget(invoice);
-      const result = await apiFetch<{ deleted?: { invoices?: number }; verification?: { beforeCount?: number; afterCount?: number }; unlinked?: { bankTransactions?: number; whatsappMessages?: number } }>(target, {
-        method: "DELETE",
-      });
-      if (isPersistedInvoice(invoice) && ((result.deleted?.invoices ?? 0) < 1 || (result.verification?.afterCount ?? 1) !== 0)) {
-        throw new Error("מחיקת החשבונית לא הושלמה. נסה שוב או פנה לתמיכה.");
-      }
+      const result = await deleteInvoiceRecord(invoice);
       setSelected(null);
+      setSelectedInvoiceIds((current) => {
+        const next = new Set(current);
+        next.delete(invoice.id);
+        return next;
+      });
       setInvoices((prev) => prev.filter((item) => item.id !== invoice.id));
       await load();
       setMessageTone("success");
@@ -183,6 +198,63 @@ export default function InvoicesPage() {
       setMessage(err instanceof Error ? err.message : "מחיקת החשבונית נכשלה");
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function deleteInvoiceRecord(invoice: Invoice) {
+    const target = invoiceDeleteTarget(invoice);
+    const result = await apiFetch<{ deleted?: { invoices?: number }; verification?: { beforeCount?: number; afterCount?: number }; unlinked?: { bankTransactions?: number; whatsappMessages?: number } }>(target, {
+      method: "DELETE",
+    });
+    if (isPersistedInvoice(invoice) && ((result.deleted?.invoices ?? 0) < 1 || (result.verification?.afterCount ?? 1) !== 0)) {
+      throw new Error("מחיקת החשבונית לא הושלמה. נסה שוב או פנה לתמיכה.");
+    }
+    return result;
+  }
+
+  function toggleInvoiceSelection(invoiceId: string) {
+    setSelectedInvoiceIds((current) => {
+      const next = new Set(current);
+      if (next.has(invoiceId)) next.delete(invoiceId);
+      else next.add(invoiceId);
+      return next;
+    });
+  }
+
+  function toggleSelectAllVisible() {
+    setSelectedInvoiceIds((current) => {
+      if (allVisibleSelected) return new Set();
+      const next = new Set(current);
+      filtered.forEach((invoice) => next.add(invoice.id));
+      return next;
+    });
+  }
+
+  async function deleteSelectedInvoices() {
+    if (selectedVisibleInvoices.length === 0) return;
+    const confirmed = window.confirm(`למחוק ${selectedVisibleInvoices.length} חשבוניות?`);
+    if (!confirmed) return;
+    setBulkDeleting(true);
+    setMessageTone("info");
+    setMessage("");
+    try {
+      for (const invoice of selectedVisibleInvoices) {
+        setDeletingId(invoice.id);
+        await deleteInvoiceRecord(invoice);
+      }
+      const deletedIds = new Set(selectedVisibleInvoices.map((invoice) => invoice.id));
+      setSelected((current) => (current && deletedIds.has(current.id) ? null : current));
+      setSelectedInvoiceIds(new Set());
+      setInvoices((prev) => prev.filter((invoice) => !deletedIds.has(invoice.id)));
+      await load();
+      setMessageTone("success");
+      setMessage(`${deletedIds.size} חשבוניות נמחקו.`);
+    } catch (err) {
+      setMessageTone("error");
+      setMessage(err instanceof Error ? err.message : "מחיקת החשבוניות נכשלה");
+    } finally {
+      setDeletingId(null);
+      setBulkDeleting(false);
     }
   }
 
@@ -328,6 +400,20 @@ export default function InvoicesPage() {
             {tab.label}
           </button>
         ))}
+        <button
+          type="button"
+          className="rounded-full border border-[#D97706] bg-[#FEF3C7] px-4 py-2 text-sm font-black text-[#111827] transition hover:bg-[#FDE68A]"
+          onClick={() => {
+            setReviewStatus("needs_review");
+            setClientId("all");
+            setSearch("");
+            setFromDate("");
+            setToDate("");
+            setSelectedInvoiceIds(new Set());
+          }}
+        >
+          סינון מהיר: דורש בדיקה
+        </button>
       </div>
 
       <div className="invoice-panel mb-5 rounded-2xl border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-sm">
@@ -343,6 +429,30 @@ export default function InvoicesPage() {
         </div>
       </div>
 
+      <div className="invoice-panel mb-5 flex flex-col gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm sm:flex-row sm:items-center sm:justify-between" dir="rtl">
+        <label className="inline-flex items-center gap-2 text-base font-black text-[#111827]">
+          <input
+            type="checkbox"
+            checked={allVisibleSelected}
+            onChange={toggleSelectAllVisible}
+            disabled={filtered.length === 0 || bulkDeleting}
+            className="h-5 w-5 rounded border-[#9CA3AF]"
+          />
+          בחר הכל בעמוד
+        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-bold text-[#111827]">נבחרו {selectedVisibleInvoices.length} חשבוניות</span>
+          <button
+            type="button"
+            className="invoice-action rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA] disabled:cursor-not-allowed disabled:bg-[#E5E7EB]"
+            onClick={deleteSelectedInvoices}
+            disabled={selectedVisibleInvoices.length === 0 || bulkDeleting}
+          >
+            {bulkDeleting ? "מוחק נבחרים..." : "מחק נבחרים"}
+          </button>
+        </div>
+      </div>
+
       {filtered.length === 0 && (
         <div className="invoice-panel rounded-2xl border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-sm">
           <h2 className="text-[#111827]">לא נמצאו חשבוניות</h2>
@@ -355,7 +465,17 @@ export default function InvoicesPage() {
       <div className="grid gap-4 md:hidden">
         {filtered.map((invoice) => (
           <div key={invoice.id} className="invoice-mobile-row rounded-2xl border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-sm">
-            <div className="mb-3 flex justify-end">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <label className="inline-flex items-center gap-2 text-sm font-black text-[#111827]" onClick={(event) => event.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={selectedInvoiceIds.has(invoice.id)}
+                  onChange={() => toggleInvoiceSelection(invoice.id)}
+                  disabled={bulkDeleting}
+                  className="h-5 w-5 rounded border-[#9CA3AF]"
+                />
+                בחר
+              </label>
               <button className="invoice-action rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#FECACA]" type="button" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
                 {deletingId === invoice.id ? "מוחק..." : "מחק"}
               </button>
@@ -408,10 +528,21 @@ export default function InvoicesPage() {
 
       <div className="invoice-table-wrap hidden max-w-full overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-white shadow-sm md:block">
         <table className="min-w-[1280px] table-fixed bg-white text-[#111827]">
-          <thead className="bg-[#F3F4F6]"><tr className="border-b border-[#E5E7EB]"><th className="w-24 text-base font-black text-[#111827]">מחק</th><th className="w-28 text-base font-black text-[#111827]">תאריך</th><th className="w-40 text-base font-black text-[#111827]">לקוח/ספק</th><th className="w-32 text-base font-black text-[#111827]">מספר</th><th className="w-36 text-base font-black text-[#111827]">מקור</th><th className="w-56 text-base font-black text-[#111827]">תיאור</th><th className="w-52 text-base font-black text-[#111827]">הערות מערכת</th><th className="w-36 text-base font-black text-[#111827]">סכום</th><th className="w-28 text-base font-black text-[#111827]">סטטוס</th><th className="w-24 text-base font-black text-[#111827]">דרייב</th><th className="w-32 text-base font-black text-[#111827]">פעולות</th></tr></thead>
+          <thead className="bg-[#F3F4F6]"><tr className="border-b border-[#E5E7EB]"><th className="w-20 text-base font-black text-[#111827]"><input type="checkbox" aria-label="בחר הכל בעמוד" checked={allVisibleSelected} onChange={toggleSelectAllVisible} disabled={filtered.length === 0 || bulkDeleting} className="h-5 w-5 rounded border-[#9CA3AF]" /></th><th className="w-24 text-base font-black text-[#111827]">מחק</th><th className="w-28 text-base font-black text-[#111827]">תאריך</th><th className="w-40 text-base font-black text-[#111827]">לקוח/ספק</th><th className="w-32 text-base font-black text-[#111827]">מספר</th><th className="w-36 text-base font-black text-[#111827]">מקור</th><th className="w-56 text-base font-black text-[#111827]">תיאור</th><th className="w-52 text-base font-black text-[#111827]">הערות מערכת</th><th className="w-36 text-base font-black text-[#111827]">סכום</th><th className="w-28 text-base font-black text-[#111827]">סטטוס</th><th className="w-24 text-base font-black text-[#111827]">דרייב</th><th className="w-32 text-base font-black text-[#111827]">פעולות</th></tr></thead>
           <tbody>
             {filtered.map((invoice) => (
               <tr key={invoice.id} onClick={() => setSelected(invoice)} className="cursor-pointer border-b border-[#E5E7EB] bg-white transition hover:bg-[#F8FAFC]">
+                <td>
+                  <input
+                    type="checkbox"
+                    aria-label="בחר חשבונית"
+                    checked={selectedInvoiceIds.has(invoice.id)}
+                    onChange={() => toggleInvoiceSelection(invoice.id)}
+                    onClick={(event) => event.stopPropagation()}
+                    disabled={bulkDeleting}
+                    className="h-5 w-5 rounded border-[#9CA3AF]"
+                  />
+                </td>
                 <td>
                   <button className="invoice-action rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>
                     {deletingId === invoice.id ? "מוחק..." : "מחק"}
