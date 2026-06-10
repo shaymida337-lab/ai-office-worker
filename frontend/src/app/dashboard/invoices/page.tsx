@@ -32,6 +32,11 @@ type Invoice = {
 
 type ClientsResponse = { clients: ClientItem[] };
 type InvoicesResponse = { invoices: Invoice[] };
+type InvoiceDeleteResponse = {
+  deleted?: { invoices?: number; gmailScanItems?: number; documentReviews?: number };
+  verification?: { after?: { invoices?: number; gmailScanItems?: number; documentReviews?: number }; afterCount?: number };
+  unlinked?: { bankTransactions?: number; whatsappMessages?: number; tasks?: number };
+};
 
 const reviewStatusLabels: Record<InvoiceReviewStatus, string> = { approved: "מאושר", needs_review: "דורש בדיקה", rejected: "נדחה" };
 const MISSING_VALUE = "לא זוהה";
@@ -203,10 +208,10 @@ export default function InvoicesPage() {
 
   async function deleteInvoiceRecord(invoice: Invoice) {
     const target = invoiceDeleteTarget(invoice);
-    const result = await apiFetch<{ deleted?: { invoices?: number }; verification?: { beforeCount?: number; afterCount?: number }; unlinked?: { bankTransactions?: number; whatsappMessages?: number } }>(target, {
+    const result = await apiFetch<InvoiceDeleteResponse>(target, {
       method: "DELETE",
     });
-    if (isPersistedInvoice(invoice) && ((result.deleted?.invoices ?? 0) < 1 || (result.verification?.afterCount ?? 1) !== 0)) {
+    if (!invoiceDeleteSucceeded(invoice, result)) {
       throw new Error("מחיקת החשבונית לא הושלמה. נסה שוב או פנה לתמיכה.");
     }
     return result;
@@ -715,6 +720,17 @@ function invoiceDeleteTarget(invoice: Invoice) {
     return `/api/document-reviews/${invoice.reviewSourceId ?? invoice.id.replace(/^document-review:/, "")}`;
   }
   return `/api/invoices/${invoice.id}`;
+}
+
+function invoiceDeleteSucceeded(invoice: Invoice, result: InvoiceDeleteResponse) {
+  if (invoice.source === "gmail_scan_item") {
+    return (result.deleted?.gmailScanItems ?? 0) > 0 && (result.verification?.after?.gmailScanItems ?? 0) === 0;
+  }
+  if (invoice.source === "financial_document_review") {
+    return (result.deleted?.documentReviews ?? 0) > 0 && (result.verification?.after?.documentReviews ?? 0) === 0;
+  }
+  const afterInvoices = result.verification?.after?.invoices ?? result.verification?.afterCount ?? 0;
+  return (result.deleted?.invoices ?? 0) > 0 && afterInvoices === 0;
 }
 
 function reviewBadgeLabel(invoice: Invoice) {

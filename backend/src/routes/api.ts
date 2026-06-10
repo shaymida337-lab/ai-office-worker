@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import multer from "multer";
+import type { Prisma } from "@prisma/client";
 import { authMiddleware } from "../lib/auth.js";
 import { config } from "../lib/config.js";
 import { errorDetails } from "../lib/errors.js";
@@ -19,7 +20,7 @@ import { parseBankStatementFile } from "../services/bank-parser.js";
 import { matchTransactions } from "../services/bank-matcher.js";
 import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } from "../services/paymentClassificationDebug.js";
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
-import { approveFinancialDocumentReview, deleteFinancialDocumentReview } from "../services/financialDocuments.js";
+import { approveFinancialDocumentReview } from "../services/financialDocuments.js";
 import { initialConnectScanWindow } from "../services/scanWindow.js";
 import { askNatalieBusinessQuestion } from "../services/natalie.js";
 import { completeTask, createTask } from "../services/tasks.js";
@@ -3049,45 +3050,242 @@ apiRouter.put("/invoices/:id/status", async (req, res) => {
   res.json({ invoice: updated });
 });
 
-apiRouter.delete("/invoices/:id", async (req, res) => {
-  const beforeCount = await prisma.invoice.count({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
-  });
-  const invoice = await prisma.invoice.findFirst({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
-    select: { id: true },
-  });
-  if (!invoice) {
-    res.status(404).json({ error: "Invoice not found" });
-    return;
+type InvoiceArtifactDeleteSeed = {
+  invoiceId?: string;
+  gmailScanItemId?: string;
+  documentReviewId?: string;
+};
+
+async function deleteInvoiceArtifacts(organizationId: string, seed: InvoiceArtifactDeleteSeed) {
+  const [seedInvoice, seedScanItem, seedReview] = await Promise.all([
+    seed.invoiceId
+      ? prisma.invoice.findFirst({
+          where: { id: seed.invoiceId, organizationId },
+          select: { id: true, emailId: true, gmailMessageId: true, invoiceNumber: true, amount: true, date: true, supplierName: true },
+        })
+      : Promise.resolve(null),
+    seed.gmailScanItemId
+      ? prisma.gmailScanItem.findFirst({
+          where: { id: seed.gmailScanItemId, organizationId },
+          select: { id: true, emailMessageId: true, gmailMessageId: true },
+        })
+      : Promise.resolve(null),
+    seed.documentReviewId
+      ? prisma.financialDocumentReview.findFirst({
+          where: { id: seed.documentReviewId, organizationId },
+          select: { id: true, emailMessageId: true, gmailMessageId: true, invoiceNumber: true, totalAmount: true, documentDate: true, supplierName: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  if ((seed.invoiceId && !seedInvoice) || (seed.gmailScanItemId && !seedScanItem) || (seed.documentReviewId && !seedReview)) {
+    return { found: false as const };
   }
 
-  const [bankMatches, whatsappMessages, deleted] = await prisma.$transaction([
+  const invoiceIds = new Set<string>();
+  const gmailScanItemIds = new Set<string>();
+  const documentReviewIds = new Set<string>();
+  const gmailMessageIds = new Set<string>();
+  const emailMessageIds = new Set<string>();
+  const invoiceFingerprints: Array<{ invoiceNumber: string; amount: number; date: Date | null; supplierName: string | null }> = [];
+
+  function addRefs(input: { gmailMessageId?: string | null; emailMessageId?: string | null }) {
+    if (input.gmailMessageId) gmailMessageIds.add(input.gmailMessageId);
+    if (input.emailMessageId) emailMessageIds.add(input.emailMessageId);
+  }
+
+  function addInvoiceFingerprint(input: { invoiceNumber?: string | null; amount?: number | null; date?: Date | null; supplierName?: string | null }) {
+    if (!input.invoiceNumber || input.amount == null || !Number.isFinite(input.amount)) return;
+    invoiceFingerprints.push({
+      invoiceNumber: input.invoiceNumber,
+      amount: input.amount,
+      date: input.date ?? null,
+      supplierName: input.supplierName ?? null,
+    });
+  }
+
+  if (seedInvoice) {
+    invoiceIds.add(seedInvoice.id);
+    addRefs({ gmailMessageId: seedInvoice.gmailMessageId, emailMessageId: seedInvoice.emailId });
+    addInvoiceFingerprint(seedInvoice);
+  }
+  if (seedScanItem) {
+    gmailScanItemIds.add(seedScanItem.id);
+    addRefs(seedScanItem);
+  }
+  if (seedReview) {
+    documentReviewIds.add(seedReview.id);
+    addRefs(seedReview);
+    addInvoiceFingerprint({ invoiceNumber: seedReview.invoiceNumber, amount: seedReview.totalAmount, date: seedReview.documentDate, supplierName: seedReview.supplierName });
+  }
+
+  for (let round = 0; round < 2; round += 1) {
+    const invoiceWhere = buildLinkedInvoiceWhere(organizationId, gmailMessageIds, emailMessageIds, invoiceFingerprints);
+    const scanItemWhere = buildLinkedGmailScanItemWhere(organizationId, gmailMessageIds, emailMessageIds);
+    const reviewWhere = buildLinkedDocumentReviewWhere(organizationId, gmailMessageIds, emailMessageIds, invoiceFingerprints);
+    const [linkedInvoices, linkedScanItems, linkedReviews] = await Promise.all([
+      invoiceWhere ? prisma.invoice.findMany({ where: invoiceWhere, select: { id: true, emailId: true, gmailMessageId: true, invoiceNumber: true, amount: true, date: true, supplierName: true } }) : Promise.resolve([]),
+      scanItemWhere ? prisma.gmailScanItem.findMany({ where: scanItemWhere, select: { id: true, emailMessageId: true, gmailMessageId: true } }) : Promise.resolve([]),
+      reviewWhere ? prisma.financialDocumentReview.findMany({ where: reviewWhere, select: { id: true, emailMessageId: true, gmailMessageId: true, invoiceNumber: true, totalAmount: true, documentDate: true, supplierName: true } }) : Promise.resolve([]),
+    ]);
+
+    for (const invoice of linkedInvoices) {
+      invoiceIds.add(invoice.id);
+      addRefs({ gmailMessageId: invoice.gmailMessageId, emailMessageId: invoice.emailId });
+      addInvoiceFingerprint(invoice);
+    }
+    for (const item of linkedScanItems) {
+      gmailScanItemIds.add(item.id);
+      addRefs(item);
+    }
+    for (const review of linkedReviews) {
+      documentReviewIds.add(review.id);
+      addRefs(review);
+      addInvoiceFingerprint({ invoiceNumber: review.invoiceNumber, amount: review.totalAmount, date: review.documentDate, supplierName: review.supplierName });
+    }
+  }
+
+  const invoiceIdList = [...invoiceIds];
+  const gmailScanItemIdList = [...gmailScanItemIds];
+  const documentReviewIdList = [...documentReviewIds];
+  const emailMessageIdList = [...emailMessageIds];
+
+  const before = {
+    invoices: invoiceIdList.length,
+    gmailScanItems: gmailScanItemIdList.length,
+    documentReviews: documentReviewIdList.length,
+  };
+
+  const [bankMatches, whatsappMessages, tasks, documentReviews, gmailScanItems, invoices] = await prisma.$transaction([
     prisma.bankTransaction.updateMany({
-      where: { organizationId: req.auth!.organizationId, matchedInvoiceId: invoice.id },
+      where: { organizationId, matchedInvoiceId: { in: invoiceIdList } },
       data: { matchedInvoiceId: null, matchStatus: "unmatched", matchConfidence: null },
     }),
     prisma.whatsAppMessage.updateMany({
-      where: { invoiceId: invoice.id },
+      where: { invoiceId: { in: invoiceIdList } },
       data: { invoiceId: null, hasInvoice: false },
     }),
+    prisma.task.updateMany({
+      where: {
+        organizationId,
+        emailMessageId: { in: emailMessageIdList },
+        status: "open",
+      },
+      data: { status: "completed" },
+    }),
+    prisma.financialDocumentReview.deleteMany({
+      where: { organizationId, id: { in: documentReviewIdList } },
+    }),
+    prisma.gmailScanItem.deleteMany({
+      where: { organizationId, id: { in: gmailScanItemIdList } },
+    }),
     prisma.invoice.deleteMany({
-      where: { id: invoice.id, organizationId: req.auth!.organizationId },
+      where: { organizationId, id: { in: invoiceIdList } },
     }),
   ]);
-  const afterCount = await prisma.invoice.count({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
-  });
-  console.log(`[invoices] delete id=${req.params.id} org=${req.auth!.organizationId} before=${beforeCount} deleted=${deleted.count} after=${afterCount}`);
 
-  res.json({
-    ok: true,
-    deleted: { invoices: deleted.count },
-    verification: { beforeCount, afterCount },
+  const after = {
+    invoices: invoiceIdList.length
+      ? await prisma.invoice.count({ where: { organizationId, id: { in: invoiceIdList } } })
+      : 0,
+    gmailScanItems: gmailScanItemIdList.length
+      ? await prisma.gmailScanItem.count({ where: { organizationId, id: { in: gmailScanItemIdList } } })
+      : 0,
+    documentReviews: documentReviewIdList.length
+      ? await prisma.financialDocumentReview.count({ where: { organizationId, id: { in: documentReviewIdList } } })
+      : 0,
+  };
+
+  console.log(
+    `[invoice-delete] org=${organizationId} seed=${JSON.stringify(seed)} before=${JSON.stringify(before)} deleted=${JSON.stringify({ invoices: invoices.count, gmailScanItems: gmailScanItems.count, documentReviews: documentReviews.count })} after=${JSON.stringify(after)} unlinked=${JSON.stringify({ bankTransactions: bankMatches.count, whatsappMessages: whatsappMessages.count, tasks: tasks.count })}`
+  );
+
+  return {
+    found: true as const,
+    deleted: {
+      invoices: invoices.count,
+      gmailScanItems: gmailScanItems.count,
+      documentReviews: documentReviews.count,
+    },
+    verification: { before, after },
     unlinked: {
       bankTransactions: bankMatches.count,
       whatsappMessages: whatsappMessages.count,
+      tasks: tasks.count,
     },
+  };
+}
+
+function buildLinkedInvoiceWhere(
+  organizationId: string,
+  gmailMessageIds: Set<string>,
+  emailMessageIds: Set<string>,
+  fingerprints: Array<{ invoiceNumber: string; amount: number; date: Date | null; supplierName: string | null }>
+): Prisma.InvoiceWhereInput | null {
+  const OR: Prisma.InvoiceWhereInput[] = [];
+  if (gmailMessageIds.size) OR.push({ gmailMessageId: { in: [...gmailMessageIds] } });
+  if (emailMessageIds.size) OR.push({ emailId: { in: [...emailMessageIds] } });
+  for (const fingerprint of fingerprints) {
+    OR.push({
+      invoiceNumber: fingerprint.invoiceNumber,
+      amount: fingerprint.amount,
+      ...(fingerprint.supplierName ? { supplierName: fingerprint.supplierName } : {}),
+      ...(fingerprint.date ? { date: dateDayWhere(fingerprint.date) } : {}),
+    });
+  }
+  return OR.length ? { organizationId, OR } : null;
+}
+
+function buildLinkedGmailScanItemWhere(
+  organizationId: string,
+  gmailMessageIds: Set<string>,
+  emailMessageIds: Set<string>
+): Prisma.GmailScanItemWhereInput | null {
+  const OR: Prisma.GmailScanItemWhereInput[] = [];
+  if (gmailMessageIds.size) OR.push({ gmailMessageId: { in: [...gmailMessageIds] } });
+  if (emailMessageIds.size) OR.push({ emailMessageId: { in: [...emailMessageIds] } });
+  return OR.length ? { organizationId, OR } : null;
+}
+
+function buildLinkedDocumentReviewWhere(
+  organizationId: string,
+  gmailMessageIds: Set<string>,
+  emailMessageIds: Set<string>,
+  fingerprints: Array<{ invoiceNumber: string; amount: number; date: Date | null; supplierName: string | null }>
+): Prisma.FinancialDocumentReviewWhereInput | null {
+  const OR: Prisma.FinancialDocumentReviewWhereInput[] = [];
+  if (gmailMessageIds.size) OR.push({ gmailMessageId: { in: [...gmailMessageIds] } });
+  if (emailMessageIds.size) OR.push({ emailMessageId: { in: [...emailMessageIds] } });
+  for (const fingerprint of fingerprints) {
+    OR.push({
+      invoiceNumber: fingerprint.invoiceNumber,
+      totalAmount: fingerprint.amount,
+      ...(fingerprint.supplierName ? { supplierName: fingerprint.supplierName } : {}),
+      ...(fingerprint.date ? { documentDate: dateDayWhere(fingerprint.date) } : {}),
+    });
+  }
+  return OR.length ? { organizationId, OR } : null;
+}
+
+function dateDayWhere(date: Date) {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { gte: start, lt: end };
+}
+
+apiRouter.delete("/invoices/:id", async (req, res) => {
+  const result = await deleteInvoiceArtifacts(req.auth!.organizationId, { invoiceId: req.params.id });
+  if (!result.found) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+  res.json({
+    ok: true,
+    deleted: result.deleted,
+    verification: result.verification,
+    unlinked: result.unlinked,
   });
 });
 
@@ -3151,24 +3349,21 @@ apiRouter.post("/document-reviews/:id/approve", async (req, res) => {
 });
 
 apiRouter.delete("/document-reviews/:id", async (req, res) => {
-  const deleted = await deleteFinancialDocumentReview(req.auth!.organizationId, req.params.id);
-  if (deleted.count === 0) {
+  const result = await deleteInvoiceArtifacts(req.auth!.organizationId, { documentReviewId: req.params.id });
+  if (!result.found) {
     res.status(404).json({ error: "Document review item not found" });
     return;
   }
-  res.json({ ok: true });
+  res.json({ ok: true, deleted: result.deleted, verification: result.verification, unlinked: result.unlinked });
 });
 
 apiRouter.delete("/gmail-scan-items/:id", async (req, res) => {
-  const deleted = await prisma.gmailScanItem.deleteMany({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
-  });
-  if (deleted.count === 0) {
+  const result = await deleteInvoiceArtifacts(req.auth!.organizationId, { gmailScanItemId: req.params.id });
+  if (!result.found) {
     res.status(404).json({ error: "Gmail scan item not found" });
     return;
   }
-  console.log(`[gmail-scan-items] delete id=${req.params.id} org=${req.auth!.organizationId} deleted=${deleted.count}`);
-  res.json({ ok: true, deleted: { gmailScanItems: deleted.count } });
+  res.json({ ok: true, deleted: result.deleted, verification: result.verification, unlinked: result.unlinked });
 });
 
 apiRouter.patch("/payments/:id", async (req, res) => {
