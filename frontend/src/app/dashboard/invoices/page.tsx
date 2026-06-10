@@ -160,24 +160,24 @@ export default function InvoicesPage() {
   }
 
   async function deleteInvoice(invoice: Invoice) {
-    if (!isPersistedInvoice(invoice)) return;
-    const confirmed = window.confirm(`למחוק את החשבונית ${invoice.invoiceNumber ?? invoice.id} בסכום ${formatCurrency(invoice.amount, invoice.currency)}? הפעולה תמחק את הרשומה מהמערכת.`);
+    const confirmed = window.confirm("האם למחוק את החשבונית?");
     if (!confirmed) return;
     setDeletingId(invoice.id);
     setMessageTone("info");
     setMessage("");
     try {
-      const result = await apiFetch<{ deleted?: { invoices?: number }; verification?: { beforeCount?: number; afterCount?: number }; unlinked?: { bankTransactions?: number; whatsappMessages?: number } }>(`/api/invoices/${invoice.id}`, {
+      const target = invoiceDeleteTarget(invoice);
+      const result = await apiFetch<{ deleted?: { invoices?: number }; verification?: { beforeCount?: number; afterCount?: number }; unlinked?: { bankTransactions?: number; whatsappMessages?: number } }>(target, {
         method: "DELETE",
       });
-      if ((result.deleted?.invoices ?? 0) < 1 || (result.verification?.afterCount ?? 1) !== 0) {
+      if (isPersistedInvoice(invoice) && ((result.deleted?.invoices ?? 0) < 1 || (result.verification?.afterCount ?? 1) !== 0)) {
         throw new Error("מחיקת החשבונית לא הושלמה. נסה שוב או פנה לתמיכה.");
       }
       setSelected(null);
       setInvoices((prev) => prev.filter((item) => item.id !== invoice.id));
       await load();
       setMessageTone("success");
-      setMessage(`נמחקו ${result.deleted?.invoices ?? 1} חשבוניות. נותקו ${result.unlinked?.bankTransactions ?? 0} התאמות בנק.`);
+      setMessage(`החשבונית נמחקה. נותקו ${result.unlinked?.bankTransactions ?? 0} התאמות בנק.`);
     } catch (err) {
       setMessageTone("error");
       setMessage(err instanceof Error ? err.message : "מחיקת החשבונית נכשלה");
@@ -355,11 +355,11 @@ export default function InvoicesPage() {
       <div className="grid gap-4 md:hidden">
         {filtered.map((invoice) => (
           <div key={invoice.id} className="invoice-mobile-row rounded-2xl border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-sm">
-            {isPersistedInvoice(invoice) && <div className="mb-3 flex justify-end">
+            <div className="mb-3 flex justify-end">
               <button className="invoice-action rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#FECACA]" type="button" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
                 {deletingId === invoice.id ? "מוחק..." : "מחק"}
               </button>
-            </div>}
+            </div>
             <button type="button" className="w-full text-right" onClick={() => setSelected(invoice)}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -398,9 +398,9 @@ export default function InvoicesPage() {
               {isPersistedInvoice(invoice) && <button className="invoice-action rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6]" onClick={() => toggleStatus(invoice)}>
                 {invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}
               </button>}
-              {isPersistedInvoice(invoice) && <button className="invoice-action rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA]" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
+              <button className="invoice-action rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA]" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
                 {deletingId === invoice.id ? "מוחק..." : "מחק חשבונית"}
-              </button>}
+              </button>
             </div>
           </div>
         ))}
@@ -413,9 +413,9 @@ export default function InvoicesPage() {
             {filtered.map((invoice) => (
               <tr key={invoice.id} onClick={() => setSelected(invoice)} className="cursor-pointer border-b border-[#E5E7EB] bg-white transition hover:bg-[#F8FAFC]">
                 <td>
-                  {isPersistedInvoice(invoice) ? <button className="invoice-action rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>
+                  <button className="invoice-action rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>
                     {deletingId === invoice.id ? "מוחק..." : "מחק"}
-                  </button> : <span className="invoice-muted text-base font-bold text-[#4B5563]">-</span>}
+                  </button>
                 </td>
                 <td className="whitespace-nowrap text-base font-semibold text-[#111827]">{formatInvoiceDate(invoice.date)}</td>
                 <td><span className="inline-flex max-w-full items-center gap-2 text-base font-semibold text-[#111827]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#E5E7EB] bg-[#F3F4F6] text-sm font-black text-[#111827]">{(invoice.client?.name ?? invoice.supplierName ?? "בדיקה").slice(0, 2)}</span><span className="truncate">{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</span></span></td>
@@ -430,7 +430,7 @@ export default function InvoicesPage() {
                   <div className="flex flex-wrap gap-2">
                     {invoice.gmailMessageLink && <a className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>מייל</a>}
                     {isPersistedInvoice(invoice) && <button className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}</button>}
-                    {isPersistedInvoice(invoice) && <button className="invoice-action rounded-lg border border-[#B91C1C] bg-[#FEE2E2] px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>{deletingId === invoice.id ? "מוחק..." : "מחק"}</button>}
+                    <button className="invoice-action rounded-lg border border-[#B91C1C] bg-[#FEE2E2] px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>{deletingId === invoice.id ? "מוחק..." : "מחק"}</button>
                   </div>
                 </td>
               </tr>
@@ -524,11 +524,9 @@ export default function InvoicesPage() {
 
             <div className="mt-6 flex flex-col-reverse gap-3 border-t border-[#E5E7EB] pt-5 sm:flex-row sm:justify-between">
               <button type="button" className="invoice-action rounded-2xl border border-[#E5E7EB] bg-white px-5 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6]" onClick={() => setSelected(null)}>סגור</button>
-              {isPersistedInvoice(selected) && (
-                <button type="button" className="invoice-action rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-5 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA]" onClick={() => deleteInvoice(selected)} disabled={deletingId === selected.id}>
-                  {deletingId === selected.id ? "מוחק..." : "מחק חשבונית"}
-                </button>
-              )}
+              <button type="button" className="invoice-action rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-5 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA]" onClick={() => deleteInvoice(selected)} disabled={deletingId === selected.id}>
+                {deletingId === selected.id ? "מוחק..." : "מחק חשבונית"}
+              </button>
             </div>
           </div>
         </div>
@@ -576,6 +574,16 @@ function formatCurrency(amount: number, currency: string) {
 
 function isPersistedInvoice(invoice: Invoice) {
   return !invoice.source || invoice.source === "invoice";
+}
+
+function invoiceDeleteTarget(invoice: Invoice) {
+  if (invoice.source === "gmail_scan_item") {
+    return `/api/gmail-scan-items/${invoice.reviewSourceId ?? invoice.id.replace(/^gmail-scan:/, "")}`;
+  }
+  if (invoice.source === "financial_document_review") {
+    return `/api/document-reviews/${invoice.reviewSourceId ?? invoice.id.replace(/^document-review:/, "")}`;
+  }
+  return `/api/invoices/${invoice.id}`;
 }
 
 function reviewBadgeLabel(invoice: Invoice) {

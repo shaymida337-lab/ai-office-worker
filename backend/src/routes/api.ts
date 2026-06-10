@@ -3219,6 +3219,18 @@ apiRouter.delete("/document-reviews/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+apiRouter.delete("/gmail-scan-items/:id", async (req, res) => {
+  const deleted = await prisma.gmailScanItem.deleteMany({
+    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+  });
+  if (deleted.count === 0) {
+    res.status(404).json({ error: "Gmail scan item not found" });
+    return;
+  }
+  console.log(`[gmail-scan-items] delete id=${req.params.id} org=${req.auth!.organizationId} deleted=${deleted.count}`);
+  res.json({ ok: true, deleted: { gmailScanItems: deleted.count } });
+});
+
 apiRouter.patch("/payments/:id", async (req, res) => {
   const { paid, invoiceLink, documentLink, receiptLink } = req.body as {
     paid?: boolean;
