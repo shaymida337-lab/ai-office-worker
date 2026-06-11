@@ -1757,7 +1757,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           const isImageInvoicePart = Boolean(invoicePart && isInvoiceImageAttachmentPart(invoicePart));
           const targetAmount = isImageInvoicePart
             ? normalizeDetectedAmount(targetAnalysis.analysis.totalAmount ?? targetAnalysis.analysis.amount)
-            : normalizeDetectedAmount(targetInvoiceMatch.amount ?? targetAnalysis.analysis.amount);
+            : normalizeDetectedAmount(targetInvoiceMatch.amount ?? targetAnalysis.analysis.totalAmount ?? targetAnalysis.analysis.amount);
           const targetSupplierMetadata = invoicePart
             ? resolveSupplierMetadata({
                 analysisSupplier: targetAnalysis.analysis.supplier,
@@ -1872,8 +1872,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           ? UNKNOWN_SUPPLIER_FALLBACK
           : supplierName;
         const paymentAmount = supplierPaymentNeedsReview
-          ? amount ?? 0
-          : amount;
+          ? amount ?? finalTotalAmount ?? 0
+          : amount ?? finalTotalAmount;
         const paymentApprovalStatus = supplierPaymentNeedsReview ? "needs_review" : "approved";
         const dateIso = email.receivedAt.toISOString();
         const duplicateHash = documentDecision.documentFingerprint || duplicateKey || buildDuplicateHash({
