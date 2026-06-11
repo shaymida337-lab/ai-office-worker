@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { apiFetch, type Payment } from "@/lib/api";
@@ -76,7 +77,7 @@ export default function PaymentsPage() {
       <div className="mb-8">
         <div className="page-kicker">ספקים ותשלומים</div>
         <h1>תשלומי ספקים</h1>
-        <p>מעקב אחרי תשלומים שזוהו מהמיילים, כולל מסמכים חסרים וסטטוס תשלום.</p>
+        <p className="mt-2 text-base font-semibold leading-7 text-[#111827]">מעקב אחרי תשלומים שזוהו מהמיילים, כולל מסמכים חסרים וסטטוס תשלום.</p>
       </div>
       <div className="mb-6 flex flex-wrap gap-3">
         <button
@@ -105,9 +106,6 @@ export default function PaymentsPage() {
                 <p className="break-words">{p.emailSender ?? "שולח לא ידוע"}</p>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-2">
-                <button className="rounded-xl border border-red-400/60 bg-red-500/20 px-3 py-2 text-sm font-bold text-red-100" type="button" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
-                  {deletingId === p.id ? "מוחק..." : "מחק"}
-                </button>
                 <span className={`badge ${p.paid ? "badge-ok" : "badge-warn"}`}>{p.paid ? "שולם" : "ממתין"}</span>
               </div>
             </div>
@@ -137,79 +135,76 @@ export default function PaymentsPage() {
       </div>
 
       <div className="table-shell hidden max-w-full overflow-x-auto md:block">
-        <table className="min-w-[1180px]">
+        <table className="min-w-[1320px] border-separate border-spacing-0 text-right text-[#111827]" dir="rtl">
           <thead>
             <tr>
-              <th>מחק</th>
-              <th>ספק</th>
-              <th>שולח</th>
-              <th>סכום</th>
-              <th>תאריך</th>
-              <th>לתשלום עד</th>
-              <th>שולם</th>
-              <th>מסמך</th>
-              <th>חשבונית</th>
-              <th>חסרה</th>
-              <th>מקורות</th>
-              <th>כפילות</th>
-              <th>פעולה</th>
+              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">מחק</th>
+              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">ספק</th>
+              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">שולח</th>
+              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">סכום</th>
+              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">תאריך</th>
+              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">לתשלום עד</th>
+              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">שולם</th>
+              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">מסמך</th>
+              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">חשבונית</th>
+              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">חסרה</th>
+              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">מקורות</th>
+              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">כפילות</th>
+              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">פעולה</th>
             </tr>
           </thead>
           <tbody>
             {payments.map((p) => (
               <tr key={p.id}>
-                <td>
-                  <button className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-60" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
+                <td className="px-4 py-3 align-middle text-[#111827]">
+                  <button className="min-w-[72px] whitespace-nowrap rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-60" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
                     {deletingId === p.id ? "מוחק..." : "מחק"}
                   </button>
                 </td>
-                <td>
-                  <div className="flex min-w-40 flex-wrap items-center gap-3">
-                    <span className="font-semibold">{p.supplier}</span>
-                    <button className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-60" type="button" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
-                    {deletingId === p.id ? "מוחק..." : "מחק"}
-                    </button>
-                  </div>
+                <td className="px-4 py-3 align-middle text-[#111827]">
+                  <span className="block min-w-40 break-words font-bold text-[#111827]">{p.supplier}</span>
                 </td>
-                <td>{p.emailSender ?? "—"}</td>
-                <td>₪{p.amount.toLocaleString("he-IL")}</td>
-                <td>{new Date(p.date).toLocaleDateString("he-IL")}</td>
-                <td>
+                <td className="px-4 py-3 align-middle font-semibold text-[#111827]">{p.emailSender ?? "—"}</td>
+                <td className="whitespace-nowrap px-4 py-3 align-middle font-bold text-[#111827]">₪{p.amount.toLocaleString("he-IL")}</td>
+                <td className="whitespace-nowrap px-4 py-3 align-middle font-semibold text-[#111827]">{new Date(p.date).toLocaleDateString("he-IL")}</td>
+                <td className="whitespace-nowrap px-4 py-3 align-middle font-semibold text-[#111827]">
                   {p.dueDate
                     ? new Date(p.dueDate).toLocaleDateString("he-IL")
                     : "—"}
                 </td>
-                <td>{p.paid ? "כן" : "לא"}</td>
-                <td>
+                <td className="px-4 py-3 align-middle">
+                  <StatusPill tone={p.paid ? "ok" : "warn"}>{p.paid ? "כן" : "לא"}</StatusPill>
+                </td>
+                <td className="px-4 py-3 align-middle font-semibold text-[#111827]">
                   {p.documentLink ? (
-                    <button className="text-accent-primary underline-offset-4 hover:underline" type="button" onClick={() => setPreviewUrl(p.documentLink)}>
+                    <button className="min-w-[72px] whitespace-nowrap rounded-xl border border-[#1D4ED8] bg-[#DBEAFE] px-3 py-2 text-sm font-bold text-[#111827] hover:bg-[#BFDBFE]" type="button" onClick={() => setPreviewUrl(p.documentLink)}>
                       תצוגה
                     </button>
                   ) : (
                     "—"
                   )}
                 </td>
-                <td>
+                <td className="px-4 py-3 align-middle font-semibold text-[#111827]">
                   {p.invoiceLink ? (
-                    <button className="text-accent-primary underline-offset-4 hover:underline" type="button" onClick={() => setPreviewUrl(p.invoiceLink)}>
+                    <button className="min-w-[72px] whitespace-nowrap rounded-xl border border-[#1D4ED8] bg-[#DBEAFE] px-3 py-2 text-sm font-bold text-[#111827] hover:bg-[#BFDBFE]" type="button" onClick={() => setPreviewUrl(p.invoiceLink)}>
                       תצוגה
                     </button>
                   ) : (
                     "—"
                   )}
                 </td>
-                <td>
+                <td className="px-4 py-3 align-middle">
                   {p.missingInvoice ? (
-                    <span className="badge badge-warn">כן</span>
+                    <StatusPill tone="warn">כן</StatusPill>
                   ) : (
-                    <span className="badge badge-ok">לא</span>
+                    <StatusPill tone="ok">לא</StatusPill>
                   )}
                 </td>
-                <td>{(p.sources ?? []).join(", ") || "—"}</td>
-                <td>{p.duplicateDetected ? <span className="badge badge-warn">{p.duplicateReason ?? "זוהתה"}</span> : "—"}</td>
-                <td>
+                <td className="px-4 py-3 align-middle font-semibold text-[#111827]">{(p.sources ?? []).join(", ") || "—"}</td>
+                <td className="px-4 py-3 align-middle font-semibold text-[#111827]">{p.duplicateDetected ? <StatusPill tone="warn">{p.duplicateReason ?? "זוהתה"}</StatusPill> : "—"}</td>
+                <td className="px-4 py-3 align-middle">
                   {!p.paid && (
-                    <button className="btn btn-secondary" onClick={() => markPaid(p.id)} disabled={updatingId === p.id}>
+                    <button className="min-w-[172px] whitespace-nowrap rounded-xl border border-[#1D4ED8] bg-white px-4 py-2 text-sm font-bold text-[#111827] shadow-sm transition hover:bg-[#EFF6FF] disabled:opacity-60" onClick={() => markPaid(p.id)} disabled={updatingId === p.id}>
                       {updatingId === p.id ? "מעדכן..." : "סמן כתשלום ששולם"}
                     </button>
                   )}
@@ -243,6 +238,17 @@ function MobileRow({ label, value }: { label: string; value: string }) {
       <span className="text-ink-secondary">{label}</span>
       <span className="min-w-0 break-words text-left font-semibold text-ink-primary">{value}</span>
     </div>
+  );
+}
+
+function StatusPill({ tone, children }: { tone: "ok" | "warn"; children: ReactNode }) {
+  const toneClass = tone === "ok"
+    ? "border-emerald-600 bg-emerald-100 text-[#111827]"
+    : "border-amber-600 bg-amber-100 text-[#111827]";
+  return (
+    <span className={`inline-flex min-w-[44px] items-center justify-center rounded-full border px-3 py-1 text-sm font-black ${toneClass}`}>
+      {children}
+    </span>
   );
 }
 
