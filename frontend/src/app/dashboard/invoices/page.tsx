@@ -532,7 +532,7 @@ export default function InvoicesPage() {
       </div>
 
       <div className="invoice-table-wrap hidden max-w-full overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-white shadow-sm md:block">
-        <table className="min-w-[1280px] table-fixed bg-white text-[#111827]">
+        <table className="min-w-[1440px] table-fixed bg-white text-[#111827]">
           <thead className="bg-[#F3F4F6]"><tr className="border-b border-[#E5E7EB]"><th className="w-20 text-base font-black text-[#111827]"><input type="checkbox" aria-label="בחר הכל בעמוד" checked={allVisibleSelected} onChange={toggleSelectAllVisible} disabled={filtered.length === 0 || bulkDeleting} className="h-5 w-5 rounded border-[#9CA3AF]" /></th><th className="w-24 text-base font-black text-[#111827]">מחק</th><th className="w-28 text-base font-black text-[#111827]">תאריך</th><th className="w-40 text-base font-black text-[#111827]">לקוח/ספק</th><th className="w-32 text-base font-black text-[#111827]">מספר</th><th className="w-36 text-base font-black text-[#111827]">מקור</th><th className="w-56 text-base font-black text-[#111827]">תיאור</th><th className="w-52 text-base font-black text-[#111827]">הערות מערכת</th><th className="w-36 text-base font-black text-[#111827]">סכום</th><th className="w-28 text-base font-black text-[#111827]">סטטוס</th><th className="w-24 text-base font-black text-[#111827]">דרייב</th><th className="w-32 text-base font-black text-[#111827]">פעולות</th></tr></thead>
           <tbody>
             {filtered.map((invoice) => (
@@ -557,10 +557,10 @@ export default function InvoicesPage() {
                 <td><span className="inline-flex max-w-full items-center gap-2 text-base font-semibold text-[#111827]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#E5E7EB] bg-[#F3F4F6] text-sm font-black text-[#111827]">{(invoice.client?.name ?? invoice.supplierName ?? "בדיקה").slice(0, 2)}</span><span className="truncate">{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</span></span></td>
                 <td className="truncate text-base font-semibold text-[#111827]">{invoice.invoiceNumber ?? MISSING_VALUE}</td>
                 <td className="truncate text-base font-semibold text-[#111827]">{sourceLabel(invoice.source)}</td>
-                <td className="max-w-0 truncate text-base font-semibold text-[#111827]">{invoice.description ?? MISSING_VALUE}</td>
-                <td className="truncate text-base font-semibold text-[#111827]">{systemNoteForInvoice(invoice)}</td>
+                <td className="max-w-xs truncate text-base font-semibold text-[#111827]" title={invoice.description ?? MISSING_VALUE}>{invoice.description ?? MISSING_VALUE}</td>
+                <td className="max-w-xs truncate text-base font-semibold text-[#111827]" title={systemNoteForInvoice(invoice)}>{systemNoteForInvoice(invoice)}</td>
                 <td className="whitespace-nowrap text-base font-black text-[#111827]">{formatInvoiceAmount(invoice)}</td>
-                <td><span className={`invoice-status-pill inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>{reviewBadgeLabel(invoice)}</span></td>
+                <td className="whitespace-nowrap"><span className={`invoice-status-pill inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>{reviewBadgeLabel(invoice)}</span></td>
                 <td>{documentDriveUrl(invoice) ? <a className="invoice-action inline-flex items-center justify-center gap-1 rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-2 py-1 text-sm font-black text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />דרייב</a> : <span className="invoice-muted text-base font-bold text-[#4B5563]">-</span>}</td>
                 <td>
                   <div className="flex flex-wrap gap-2">
