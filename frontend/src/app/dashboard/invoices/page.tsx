@@ -548,7 +548,7 @@ export default function InvoicesPage() {
           <tbody>
             {filtered.map((invoice) => (
               <tr key={invoice.id} onClick={() => setSelected(invoice)} className="cursor-pointer border-b border-[#E5E7EB] bg-white transition hover:bg-[#F8FAFC]">
-                <td>
+                <td className="py-4">
                   <input
                     type="checkbox"
                     aria-label="בחר חשבונית"
@@ -559,31 +559,30 @@ export default function InvoicesPage() {
                     className="h-5 w-5 rounded border-[#9CA3AF]"
                   />
                 </td>
-                <td>
-                  <button className="invoice-action rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>
+                <td className="py-4">
+                  <button className="invoice-action rounded-lg border border-[#B91C1C] bg-[#FEE2E2] px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>
                     {deletingId === invoice.id ? "מוחק..." : "מחק"}
                   </button>
                 </td>
-                <td>
-                  <div className="flex max-w-full items-center gap-2 text-base font-semibold text-[#111827]">
+                <td className="py-4">
+                  <div className="flex max-w-full items-center gap-2 text-[#111827]">
                     <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#E5E7EB] bg-[#F3F4F6] text-sm font-black text-[#111827]">{(invoice.client?.name ?? invoice.supplierName ?? "בדיקה").slice(0, 2)}</span>
                     <div className="min-w-0">
-                      <div className="truncate" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</div>
-                      <div className="truncate text-xs font-bold text-[#6B7280]" title={sourceLabel(invoice.source)}>{sourceLabel(invoice.source)}</div>
-                      <div className="truncate text-xs font-bold text-[#6B7280]" title={invoice.invoiceNumber ?? MISSING_VALUE}>מס׳: {invoice.invoiceNumber ?? MISSING_VALUE}</div>
+                      <div className="truncate text-base font-semibold" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</div>
+                      <div className="truncate text-xs font-normal text-[#9CA3AF]" title={invoiceMetaLine(invoice)}>{invoiceMetaLine(invoice)}</div>
                     </div>
                   </div>
                 </td>
-                <td className="whitespace-nowrap text-base font-semibold text-[#111827]">{formatInvoiceDate(invoice.date)}</td>
-                <td className="min-w-0 text-base font-semibold text-[#111827]">
-                  <div className="truncate" title={invoice.description ?? MISSING_VALUE}>{invoice.description ?? MISSING_VALUE}</div>
-                  <div className="truncate text-xs font-bold text-[#6B7280]" title={systemNoteForInvoice(invoice)}>{systemNoteForInvoice(invoice)}</div>
+                <td className="whitespace-nowrap py-4 text-base font-normal text-[#111827]">{formatInvoiceDate(invoice.date)}</td>
+                <td className="min-w-0 py-4 text-[#111827]">
+                  <div className="truncate text-base font-semibold" title={displayInvoiceDescription(invoice)}>{displayInvoiceDescription(invoice)}</div>
+                  <div className="truncate text-xs font-normal text-[#9CA3AF]" title={systemNoteForInvoice(invoice)}>{systemNoteForInvoice(invoice)}</div>
                 </td>
-                <td className="whitespace-nowrap text-base font-black text-[#111827]">{formatInvoiceAmount(invoice)}</td>
-                <td className="whitespace-nowrap"><span className={`invoice-status-pill inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>{reviewBadgeLabel(invoice)}</span></td>
-                <td className="whitespace-nowrap">
-                  <div className="flex flex-nowrap gap-2">
-                    {documentDriveUrl(invoice) && <a className="invoice-action inline-flex items-center justify-center gap-1 rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-2 py-1 text-sm font-black text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />דרייב</a>}
+                <td className="whitespace-nowrap py-4 text-base font-bold text-[#111827]">{formatInvoiceAmount(invoice)}</td>
+                <td className="whitespace-nowrap py-4"><span className={`invoice-status-pill inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>{reviewBadgeLabel(invoice)}</span></td>
+                <td className="whitespace-nowrap py-4">
+                  <div className="flex flex-nowrap gap-1.5">
+                    {documentDriveUrl(invoice) && <a className="invoice-action inline-flex items-center justify-center gap-1 rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3.5 w-3.5" />דרייב</a>}
                     {invoice.gmailMessageLink && <a className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>מייל</a>}
                     {isPersistedInvoice(invoice) && <button className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}</button>}
                     <button className="invoice-action rounded-lg border border-[#B91C1C] bg-[#FEE2E2] px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>{deletingId === invoice.id ? "מוחק..." : "מחק"}</button>
@@ -721,6 +720,19 @@ function formatInvoiceDate(date: string | null | undefined) {
   const parsed = new Date(date);
   if (Number.isNaN(parsed.getTime())) return MISSING_VALUE;
   return parsed.toLocaleDateString("he-IL");
+}
+
+function displayInvoiceDescription(invoice: Invoice) {
+  const description = invoice.description?.trim();
+  if (!description || description.startsWith("/") || /^https?:\/\//i.test(description) || description.includes("#inbox")) return "—";
+  return description;
+}
+
+function invoiceMetaLine(invoice: Invoice) {
+  const parts = [sourceLabel(invoice.source)];
+  const invoiceNumber = invoice.invoiceNumber?.trim();
+  if (invoiceNumber && invoiceNumber !== MISSING_VALUE) parts.push(`מס׳ ${invoiceNumber}`);
+  return parts.join(" · ");
 }
 
 function formatCurrency(amount: number, currency: string) {
