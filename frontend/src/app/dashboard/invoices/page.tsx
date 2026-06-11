@@ -531,12 +531,11 @@ export default function InvoicesPage() {
         ))}
       </div>
 
-      <div className="invoice-table-wrap hidden max-w-full overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-white shadow-sm md:block">
+      <div className="invoice-table-wrap hidden max-w-full overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-white pl-2 shadow-sm md:block">
         <table className="w-full table-fixed bg-white text-[#111827]">
           <thead className="bg-[#F3F4F6]">
             <tr className="border-b border-[#E5E7EB]">
               <th className="w-12 text-base font-black text-[#111827]"><input type="checkbox" aria-label="בחר הכל בעמוד" checked={allVisibleSelected} onChange={toggleSelectAllVisible} disabled={filtered.length === 0 || bulkDeleting} className="h-5 w-5 rounded border-[#9CA3AF]" /></th>
-              <th className="w-16 text-base font-black text-[#111827]">מחק</th>
               <th className="w-52 text-base font-black text-[#111827]">לקוח/ספק</th>
               <th className="w-24 text-base font-black text-[#111827]">תאריך</th>
               <th className="text-base font-black text-[#111827]">תיאור</th>
@@ -558,11 +557,6 @@ export default function InvoicesPage() {
                     disabled={bulkDeleting}
                     className="h-5 w-5 rounded border-[#9CA3AF]"
                   />
-                </td>
-                <td className="py-4">
-                  <button className="invoice-action rounded-lg border border-[#B91C1C] bg-[#FEE2E2] px-2 py-1 text-sm font-bold text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>
-                    {deletingId === invoice.id ? "מוחק..." : "מחק"}
-                  </button>
                 </td>
                 <td className="py-4">
                   <div className="flex max-w-full items-center gap-2 text-[#111827]">
