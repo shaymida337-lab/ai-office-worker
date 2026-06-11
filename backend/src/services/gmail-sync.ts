@@ -3850,7 +3850,7 @@ function detectInvoice(subject: string, body: string, parts: PayloadPart[]) {
   const hasImage = parts.some(isInvoiceImageAttachmentPart);
   const amountResult = extractInvoiceAmount(text);
   return {
-    isInvoice: hasKeyword || (hasPdf && amountResult.amount !== null) || hasImage,
+    isInvoice: hasKeyword || (hasPdf && amountResult.amount !== null) || (hasImage && hasKeyword),
     amount: amountResult.amount,
     amountRejectedReason: amountResult.rejectedReason,
   };
