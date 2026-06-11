@@ -3931,7 +3931,7 @@ function extractPhoneFromText(text: string) {
 }
 
 function parseAmount(raw: string) {
-  const cleaned = raw.replace(/[^\d.,]/g, "");
+  const cleaned = raw.replace(/[^\d.,]/g, "").replace(/[.,]+$/, "");
   const lastComma = cleaned.lastIndexOf(",");
   const lastDot = cleaned.lastIndexOf(".");
   const decimalSeparator = lastComma > lastDot ? "," : ".";

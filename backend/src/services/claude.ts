@@ -601,7 +601,7 @@ function hasReferenceNumberContext(text: string, matchIndex: number, rawLength: 
 }
 
 function parseAmount(raw: string): number | null {
-  const cleaned = raw.replace(/[^\d.,]/g, "");
+  const cleaned = raw.replace(/[^\d.,]/g, "").replace(/[.,]+$/, "");
   if (!cleaned) return null;
   const lastComma = cleaned.lastIndexOf(",");
   const lastDot = cleaned.lastIndexOf(".");
