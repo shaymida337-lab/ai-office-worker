@@ -107,9 +107,6 @@ export async function getOAuth2Client(redirectUri = config.google.redirectUri) {
 
 export const REQUIRED_GOOGLE_DRIVE_SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
-  "https://www.googleapis.com/auth/drive",
-  "https://www.googleapis.com/auth/drive.metadata",
-  "https://www.googleapis.com/auth/drive.appdata",
 ];
 
 export const GMAIL_SCOPES = [
