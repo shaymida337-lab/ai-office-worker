@@ -1285,9 +1285,14 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         where: { organizationId_duplicateKey: { organizationId, duplicateKey } },
       });
       if (existingScanItem) {
-        duplicatesSkipped++;
         logStep(`[gmail-sync] decision duplicate message=${email.gmailId} type=${existingScanItem.documentType} supplier="${existingScanItem.supplierName}" amount=${existingScanItem.amount ?? "unknown"}`);
-        logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=gmail_scan_item_exists key=${duplicateKey} message=${email.gmailId}`);
+        const existingScanItemAmount = Number(existingScanItem.amount);
+        if (Number.isFinite(existingScanItemAmount) && existingScanItemAmount > 0) {
+          duplicatesSkipped++;
+          logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=gmail_scan_item_exists key=${duplicateKey} message=${email.gmailId}`);
+        } else {
+          logStep(`[gmail-sync] REPROCESSING_EMPTY_DUPLICATE org=${organizationId} reason=gmail_scan_item_exists key=${duplicateKey} message=${email.gmailId}`);
+        }
       }
       logStep(`[gmail-sync] decision message=${email.gmailId} type=${classification.documentType} confidence=${classification.confidenceScore} review=${classification.reviewStatus} reason="${classification.decisionReason}"`);
 
@@ -1903,10 +1908,21 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           Boolean(documentLink || analysis.paymentRequired);
 
         if (existingPayment) {
-          duplicatesSkipped++;
+          const existingPaymentAmount = Number(existingPayment.amount);
+          const existingPaymentTotalAmount = Number(existingPayment.totalAmount);
+          const existingPaymentHasValidAmount =
+            (Number.isFinite(existingPaymentAmount) && existingPaymentAmount > 0) ||
+            (Number.isFinite(existingPaymentTotalAmount) && existingPaymentTotalAmount > 0);
+          if (existingPaymentHasValidAmount) {
+            duplicatesSkipped++;
+          }
           paymentPersistedForPilot = true;
           logStep(`[gmail-sync] DB SupplierPayment update attempt message=${email.gmailId} id=${existingPayment.id}`);
-          logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=supplier_payment_exists key=${duplicateHash} message=${email.gmailId} paymentId=${existingPayment.id}`);
+          if (existingPaymentHasValidAmount) {
+            logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=supplier_payment_exists key=${duplicateHash} message=${email.gmailId} paymentId=${existingPayment.id}`);
+          } else {
+            logStep(`[gmail-sync] REPROCESSING_EMPTY_DUPLICATE org=${organizationId} reason=supplier_payment_exists key=${duplicateHash} message=${email.gmailId} paymentId=${existingPayment.id}`);
+          }
           await prisma.supplierPayment.update({
             where: { id: existingPayment.id },
             data: {
