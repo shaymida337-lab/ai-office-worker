@@ -1216,6 +1216,16 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         businessClassification,
         pipelineAction,
       });
+      const hasPdfOrImageAttachment = email.parts.some((part) => isPdfAttachmentPart(part) || isInvoiceImageAttachmentPart(part));
+      const hasStrictPaymentEvidence = Boolean(classification.audit.strictPaymentEvidence);
+      if (!hasPdfOrImageAttachment && isPersonalEmailSender(email.senderEmail, email.domain) && !hasStrictPaymentEvidence) {
+        logStep(`[gmail-sync] REJECTED no-attachment personal email without strict evidence message=${email.gmailId}`);
+        await prisma.emailMessage.update({
+          where: { id: email.emailRecordId },
+          data: { processedAt: new Date() },
+        });
+        continue;
+      }
       if (pipelineAction === "NEEDS_REVIEW" && !invoiceMatch.isInvoice) {
         needsReviewCount++;
         logStep(`[gmail-sync] classifier needs_review message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
@@ -2573,6 +2583,11 @@ function detectPersonalMessage(text: string, senderEmail?: string, senderDomain?
   const domain = (senderDomain || senderEmail?.split("@")[1] || "").trim().toLowerCase();
   if (PERSONAL_EMAIL_DOMAIN_PATTERN.test(domain)) return `personal sender domain: ${domain}`;
   return PERSONAL_EMAIL_CONTENT_PATTERN.test(text) ? "personal email content" : null;
+}
+
+function isPersonalEmailSender(senderEmail?: string | null, senderDomain?: string | null) {
+  const domain = (senderDomain || senderEmail?.split("@")[1] || "").trim().toLowerCase();
+  return PERSONAL_EMAIL_DOMAIN_PATTERN.test(domain);
 }
 
 function computeInvoiceConfidence(input: {
