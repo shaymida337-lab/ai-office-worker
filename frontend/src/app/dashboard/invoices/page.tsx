@@ -424,13 +424,13 @@ export default function InvoicesPage() {
       <div className="invoice-panel mb-5 rounded-2xl border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-sm">
         <div className="mb-4 flex items-center gap-2 text-[17px] font-black text-[#111827]"><Filter className="h-5 w-5" />סינון וחיפוש</div>
         <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
-          <select className="rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="all">כל הלקוחות</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
+          <select className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="all">כל הלקוחות</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
           <div className="relative xl:col-span-2">
             <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4B5563]" />
             <input className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 pr-10 font-sans text-base font-semibold text-[#111827] shadow-sm outline-none placeholder:text-[#4B5563] focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" placeholder="חיפוש לפי מספר חשבונית" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <input className="rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-          <input className="rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          <input className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <input className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
       </div>
 
@@ -459,7 +459,7 @@ export default function InvoicesPage() {
       </div>
 
       {filtered.length === 0 && (
-        <div className="invoice-panel rounded-2xl border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-sm">
+        <div className="invoice-panel rounded-2xl border border-[#E5E7EB] bg-white p-5 text-center text-[#111827] shadow-sm">
           <h2 className="text-[#111827]">לא נמצאו חשבוניות</h2>
           <p className="invoice-muted mt-2 text-base font-bold text-[#4B5563]">
             נסה לשנות את הסינון או להפעיל סריקת חשבוניות ללקוחות עם ג׳ימייל מחובר.
@@ -469,62 +469,50 @@ export default function InvoicesPage() {
 
       <div className="grid gap-4 md:hidden">
         {filtered.map((invoice) => (
-          <div key={invoice.id} className="invoice-mobile-row rounded-2xl border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <label className="inline-flex items-center gap-2 text-sm font-black text-[#111827]" onClick={(event) => event.stopPropagation()}>
+          <div key={invoice.id} className="invoice-mobile-row space-y-2 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 flex-1 items-start gap-2">
                 <input
                   type="checkbox"
                   checked={selectedInvoiceIds.has(invoice.id)}
                   onChange={() => toggleInvoiceSelection(invoice.id)}
                   disabled={bulkDeleting}
-                  className="h-5 w-5 rounded border-[#9CA3AF]"
+                  className="mt-1 h-5 w-5 shrink-0 rounded border-[#9CA3AF]"
+                  aria-label="בחר חשבונית"
                 />
-                בחר
-              </label>
-              <button className="invoice-action rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#FECACA]" type="button" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
-                {deletingId === invoice.id ? "מוחק..." : "מחק"}
-              </button>
+                <button type="button" className="min-w-0 flex-1 text-right" onClick={() => setSelected(invoice)}>
+                  <div className="truncate text-base font-semibold text-[#111827]" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</div>
+                </button>
+              </div>
+              <span className={`invoice-status-pill inline-flex shrink-0 items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>
+                {reviewBadgeLabel(invoice)}
+              </span>
             </div>
-            <button type="button" className="w-full text-right" onClick={() => setSelected(invoice)}>
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="break-words text-[#111827]">{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</h2>
-                  <p className="invoice-muted text-base font-bold text-[#4B5563]">{formatInvoiceDate(invoice.date)} · {invoice.invoiceNumber ?? MISSING_VALUE}</p>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <span className={`invoice-status-pill inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>
-                    {reviewBadgeLabel(invoice)}
-                  </span>
-                </div>
-              </div>
-              {invoice.description && <p className="mb-4 break-words text-base font-semibold leading-7 text-[#111827]">{invoice.description}</p>}
-              <div className="mb-4 grid gap-2 text-base font-bold text-[#111827]">
-                <div>מקור: {sourceLabel(invoice.source)}</div>
-                <div>הערות מערכת: <span className="invoice-muted text-[#4B5563]">{systemNoteForInvoice(invoice)}</span></div>
-              </div>
-              {!isPersistedInvoice(invoice) && <p className="mb-4 text-sm font-bold text-[#111827]">מועמדת לבדיקה מסריקת מסמכים, ועדיין לא אושרה כחשבונית במערכת.</p>}
-              <div className="rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] p-3 text-left text-2xl font-black text-[#111827]">
-                {formatInvoiceAmount(invoice)}
-              </div>
+            <button type="button" className="block w-full min-w-0 text-right" onClick={() => setSelected(invoice)}>
+              <div className="truncate text-sm font-normal text-[#6B7280]" title={`${formatInvoiceDate(invoice.date)} · ${invoiceMetaLine(invoice)}`}>{formatInvoiceDate(invoice.date)} · {invoiceMetaLine(invoice)}</div>
             </button>
-            <div className="mt-4 grid gap-2">
-              {documentDriveUrl(invoice) ? (
-                <a className="invoice-action inline-flex items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer">
-                  <Download className="h-4 w-4" />פתח מסמך בדרייב
+            {displayInvoiceDescription(invoice) !== "—" && (
+              <button type="button" className="block w-full min-w-0 text-right" onClick={() => setSelected(invoice)}>
+                <div className="truncate text-base font-semibold text-[#111827]" title={displayInvoiceDescription(invoice)}>{displayInvoiceDescription(invoice)}</div>
+              </button>
+            )}
+            <div className="min-w-0 text-lg font-bold text-[#111827]">{formatInvoiceAmount(invoice)}</div>
+            <div className="grid grid-cols-2 gap-2">
+              {documentDriveUrl(invoice) && (
+                <a className="invoice-action inline-flex min-h-[44px] min-w-0 items-center justify-center gap-2 rounded-xl border border-[#1D4ED8] bg-[#DBEAFE] px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer">
+                  <Download className="h-4 w-4 shrink-0" /><span className="truncate">פתח בדרייב</span>
                 </a>
-              ) : (
-                <div className="invoice-muted rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-center text-base font-black text-[#4B5563]">המסמך עדיין לא נשמר בדרייב</div>
               )}
               {invoice.gmailMessageLink && (
-                <a className="invoice-action inline-flex items-center justify-center gap-2 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer">
-                  <Download className="h-4 w-4" />פתח מייל
+                <a className="invoice-action inline-flex min-h-[44px] min-w-0 items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer">
+                  <Download className="h-4 w-4 shrink-0" /><span className="truncate">פתח מייל</span>
                 </a>
               )}
-              {isPersistedInvoice(invoice) && <button className="invoice-action rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6]" onClick={() => toggleStatus(invoice)}>
-                {invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}
+              {isPersistedInvoice(invoice) && <button className="invoice-action min-h-[44px] min-w-0 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={() => toggleStatus(invoice)}>
+                <span className="truncate">{invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}</span>
               </button>}
-              <button className="invoice-action rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA]" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
-                {deletingId === invoice.id ? "מוחק..." : "מחק חשבונית"}
+              <button className="invoice-action min-h-[44px] min-w-0 rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#FECACA]" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
+                <span className="truncate">{deletingId === invoice.id ? "מוחק..." : "מחק"}</span>
               </button>
             </div>
           </div>
@@ -589,11 +577,11 @@ export default function InvoicesPage() {
       </div>
 
       {selected && (
-        <div className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/75 p-3 backdrop-blur-sm sm:p-6" role="presentation" onClick={() => setSelected(null)}>
-          <div className="invoice-modal relative max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[28px] border border-[#E5E7EB] bg-white p-5 text-right text-[#111827] shadow-2xl animate-[toastSlide_.25s_ease] sm:p-7" dir="rtl" role="dialog" aria-modal="true" aria-labelledby="invoice-details-title" onClick={(event) => event.stopPropagation()}>
+        <div className="fixed inset-0 z-[110] overflow-y-auto bg-slate-950/75 p-0 backdrop-blur-sm sm:grid sm:place-items-center sm:p-6" role="presentation" onClick={() => setSelected(null)}>
+          <div className="invoice-modal relative min-h-screen w-full overflow-y-auto rounded-none border border-[#E5E7EB] bg-white p-4 text-right text-[#111827] shadow-2xl animate-[toastSlide_.25s_ease] sm:max-h-[92vh] sm:min-h-0 sm:max-w-4xl sm:rounded-[28px] sm:p-7" dir="rtl" role="dialog" aria-modal="true" aria-labelledby="invoice-details-title" onClick={(event) => event.stopPropagation()}>
             <button
               type="button"
-              className="invoice-action absolute left-4 top-4 z-10 grid h-11 w-11 place-items-center rounded-full border border-[#E5E7EB] bg-white text-2xl font-black leading-none text-[#111827] shadow-sm transition hover:bg-[#F3F4F6] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]"
+              className="invoice-action sticky top-3 z-20 mr-auto grid h-11 w-11 place-items-center rounded-full border border-[#E5E7EB] bg-white text-2xl font-black leading-none text-[#111827] shadow-sm transition hover:bg-[#F3F4F6] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8] sm:absolute sm:left-4 sm:top-4"
               aria-label="סגור חלון פרטי חשבונית"
               onClick={() => setSelected(null)}
             >
@@ -635,7 +623,7 @@ export default function InvoicesPage() {
               <div className="invoice-detail-surface rounded-2xl border border-[#E5E7EB] bg-white p-4 sm:col-span-2">
                 <div className="mb-2 text-sm font-black text-[#111827]">קישור למסמך</div>
                 {documentDriveUrl(selected) ? (
-                  <a className="invoice-action inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] sm:w-auto" href={documentDriveUrl(selected) ?? undefined} target="_blank" rel="noreferrer">
+                  <a className="invoice-action inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] sm:w-auto" href={documentDriveUrl(selected) ?? undefined} target="_blank" rel="noreferrer">
                     <Download className="h-4 w-4" />פתח מסמך בדרייב
                   </a>
                 ) : (
@@ -658,7 +646,7 @@ export default function InvoicesPage() {
 
             {selected.gmailMessageLink && (
               <div className="mt-5">
-                <a className="invoice-action inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-white px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#EFF6FF] sm:w-auto" href={selected.gmailMessageLink} target="_blank" rel="noreferrer">
+                <a className="invoice-action inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-white px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#EFF6FF] sm:w-auto" href={selected.gmailMessageLink} target="_blank" rel="noreferrer">
                   פתח מייל מקור
                 </a>
               </div>
@@ -667,13 +655,13 @@ export default function InvoicesPage() {
             {documentDriveUrl(selected) && (
               <div className="mt-6">
                 <div className="mb-2 text-sm font-black text-[#111827]">תצוגה מקדימה</div>
-                <iframe className="h-[55vh] min-h-80 w-full rounded-2xl border border-[#E5E7EB] bg-white shadow-inner" src={toDrivePreviewUrl(documentDriveUrl(selected)!)} title="תצוגה מקדימה של חשבונית" />
+                <iframe className="h-[50vh] w-full rounded-2xl border border-[#E5E7EB] bg-white shadow-inner sm:h-[55vh] sm:min-h-80" src={toDrivePreviewUrl(documentDriveUrl(selected)!)} title="תצוגה מקדימה של חשבונית" />
               </div>
             )}
 
             <div className="mt-6 flex flex-col-reverse gap-3 border-t border-[#E5E7EB] pt-5 sm:flex-row sm:justify-between">
-              <button type="button" className="invoice-action rounded-2xl border border-[#E5E7EB] bg-white px-5 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6]" onClick={() => setSelected(null)}>סגור</button>
-              <button type="button" className="invoice-action rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-5 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA]" onClick={() => deleteInvoice(selected)} disabled={deletingId === selected.id}>
+              <button type="button" className="invoice-action min-h-[44px] w-full rounded-2xl border border-[#E5E7EB] bg-white px-5 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6] sm:w-auto" onClick={() => setSelected(null)}>סגור</button>
+              <button type="button" className="invoice-action min-h-[44px] w-full rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-5 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA] sm:w-auto" onClick={() => deleteInvoice(selected)} disabled={deletingId === selected.id}>
                 {deletingId === selected.id ? "מוחק..." : "מחק חשבונית"}
               </button>
             </div>
