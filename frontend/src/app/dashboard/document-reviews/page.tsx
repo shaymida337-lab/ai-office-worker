@@ -80,8 +80,8 @@ export default function DocumentReviewsPage() {
       {!loading && items.length === 0 && <div className="card"><h2>אין מסמכים שממתינים לבדיקה</h2><p className="mt-2">מסמכים בטוחים נשמרים אוטומטית, ומסמכים לא רלוונטיים מסוננים.</p></div>}
 
       {!loading && items.length > 0 && (
-        <div className="table-shell">
-          <table>
+        <div className="table-shell overflow-x-auto">
+          <table className="min-w-[980px]">
             <thead>
               <tr>
                 <th>מקור</th>
@@ -89,9 +89,9 @@ export default function DocumentReviewsPage() {
                 <th>סוג מסמך</th>
                 <th>סכום</th>
                 <th>ספק</th>
-                <th>סיבת חוסר ודאות</th>
+                <th className="max-w-xs">סיבת חוסר ודאות</th>
                 <th>קובץ</th>
-                <th>פעולות</th>
+                <th className="whitespace-nowrap">פעולות</th>
               </tr>
             </thead>
             <tbody>
@@ -102,13 +102,13 @@ export default function DocumentReviewsPage() {
                   <td>{documentTypeLabel(item.documentType)}</td>
                   <td>{item.totalAmount == null ? "—" : `₪${item.totalAmount.toLocaleString("he-IL")}`}</td>
                   <td>{item.supplierName ?? "לא מזוהה"}</td>
-                  <td>
-                    <div>{item.uncertaintyReason ?? "רמת ודאות נמוכה"}</div>
+                  <td className="max-w-xs">
+                    <div className="truncate" title={item.uncertaintyReason ?? "רמת ודאות נמוכה"}>{item.uncertaintyReason ?? "רמת ודאות נמוכה"}</div>
                     <div className="text-sm text-ink-secondary">{Math.round(item.confidenceScore * 100)}%</div>
                   </td>
                   <td>{item.driveFileUrl ? <a className="text-accent-primary underline-offset-4 hover:underline" href={item.driveFileUrl} target="_blank" rel="noreferrer">פתח</a> : "—"}</td>
-                  <td>
-                    <div className="flex flex-wrap gap-2">
+                  <td className="whitespace-nowrap">
+                    <div className="flex flex-nowrap gap-2">
                       <button className="btn btn-secondary" type="button" disabled={updatingId === item.id} onClick={() => approve(item.id)}>
                         אשר נתונים
                       </button>
