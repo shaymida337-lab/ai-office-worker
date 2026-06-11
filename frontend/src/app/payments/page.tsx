@@ -99,17 +99,15 @@ export default function PaymentsPage() {
 
       <div className="grid gap-4 md:hidden">
         {payments.map((p) => (
-          <div key={p.id} className="card">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="break-words">{p.supplier}</h2>
-                <p className="break-words">{p.emailSender ?? "שולח לא ידוע"}</p>
+          <div key={p.id} className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm" dir="rtl">
+            <div className="mb-4 flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="min-w-0 break-words text-xl font-black leading-7 text-[#111827] [overflow-wrap:anywhere]">{p.supplier || "לא ידוע"}</h2>
+                <p className="mt-1 min-w-0 break-words text-sm font-semibold leading-6 text-[#111827] [overflow-wrap:anywhere]">{p.emailSender ?? "שולח לא ידוע"}</p>
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-2">
-                <span className={`badge ${p.paid ? "badge-ok" : "badge-warn"}`}>{p.paid ? "שולם" : "ממתין"}</span>
-              </div>
+              <StatusPill tone={p.paid ? "ok" : "warn"}>{p.paid ? "שולם" : "ממתין"}</StatusPill>
             </div>
-            <div className="grid gap-2 rounded-2xl bg-surface-secondary p-3">
+            <div className="grid min-w-0 gap-2 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] p-3">
               <MobileRow label="סכום" value={`₪${p.amount.toLocaleString("he-IL")}`} />
               <MobileRow label="תאריך" value={new Date(p.date).toLocaleDateString("he-IL")} />
               <MobileRow label="לתשלום עד" value={p.dueDate ? new Date(p.dueDate).toLocaleDateString("he-IL") : "—"} />
@@ -118,14 +116,14 @@ export default function PaymentsPage() {
               <MobileRow label="כפילות" value={p.duplicateDetected ? `כן (${p.duplicateReason ?? "זוהתה"})` : "לא"} />
             </div>
             <div className="mt-4 grid gap-2">
-              {(p.invoiceLink || p.documentLink) && <button className="btn btn-secondary" type="button" onClick={() => setPreviewUrl(p.invoiceLink ?? p.documentLink)}>תצוגה מקדימה</button>}
-              {p.documentLink && <a className="btn btn-secondary" href={p.documentLink} target="_blank" rel="noreferrer">פתח מסמך</a>}
-              {p.invoiceLink && <a className="btn btn-secondary" href={p.invoiceLink} target="_blank" rel="noreferrer">פתח חשבונית</a>}
-              <button className="btn btn-secondary border-red-400/50 text-red-200" type="button" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
+              {(p.invoiceLink || p.documentLink) && <button className="min-h-[44px] w-full rounded-xl border border-[#1D4ED8] bg-white px-4 py-3 text-center text-sm font-bold text-[#111827] shadow-sm transition hover:bg-[#EFF6FF]" type="button" onClick={() => setPreviewUrl(p.invoiceLink ?? p.documentLink)}>תצוגה מקדימה</button>}
+              {p.documentLink && <a className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-[#1D4ED8] bg-white px-4 py-3 text-center text-sm font-bold text-[#111827] shadow-sm transition hover:bg-[#EFF6FF]" href={p.documentLink} target="_blank" rel="noreferrer">פתח מסמך</a>}
+              {p.invoiceLink && <a className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-[#1D4ED8] bg-white px-4 py-3 text-center text-sm font-bold text-[#111827] shadow-sm transition hover:bg-[#EFF6FF]" href={p.invoiceLink} target="_blank" rel="noreferrer">פתח חשבונית</a>}
+              <button className="min-h-[44px] w-full rounded-xl border border-red-600 bg-red-600 px-4 py-3 text-center text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60" type="button" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
                 {deletingId === p.id ? "מוחק..." : "מחק תשלום"}
               </button>
               {!p.paid && (
-                <button className="btn" onClick={() => markPaid(p.id)} disabled={updatingId === p.id}>
+                <button className="min-h-[44px] w-full rounded-xl border border-[#1D4ED8] bg-[#1D4ED8] px-4 py-3 text-center text-sm font-bold text-white shadow-sm transition hover:bg-[#1746c7] disabled:opacity-60" onClick={() => markPaid(p.id)} disabled={updatingId === p.id}>
                   {updatingId === p.id ? "מעדכן..." : "סמן כתשלום ששולם"}
                 </button>
               )}
@@ -215,16 +213,16 @@ export default function PaymentsPage() {
         </table>
       </div>
       {previewUrl && (
-        <div className="fixed inset-0 z-[120] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setPreviewUrl(null)}>
-          <div className="card h-[85vh] w-full max-w-5xl" onClick={(event) => event.stopPropagation()}>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="fixed inset-0 z-[120] overflow-y-auto bg-black/70 p-0 backdrop-blur-sm sm:grid sm:place-items-center sm:p-4" role="dialog" aria-modal="true" onClick={() => setPreviewUrl(null)}>
+          <div className="h-screen w-full overflow-hidden bg-white p-4 text-[#111827] sm:h-[85vh] sm:max-w-5xl sm:rounded-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2>תצוגה מקדימה לחשבונית</h2>
-              <div className="flex gap-2">
-                <a className="btn btn-secondary" href={previewUrl} target="_blank" rel="noreferrer">פתח בדרייב</a>
-                <button className="btn btn-secondary" type="button" onClick={() => setPreviewUrl(null)}>סגור</button>
+              <div className="grid gap-2 sm:flex">
+                <a className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-[#1D4ED8] bg-white px-4 py-3 text-sm font-bold text-[#111827]" href={previewUrl} target="_blank" rel="noreferrer">פתח בדרייב</a>
+                <button className="min-h-[44px] rounded-xl border border-[#E5E7EB] bg-white px-4 py-3 text-sm font-bold text-[#111827]" type="button" onClick={() => setPreviewUrl(null)}>סגור</button>
               </div>
             </div>
-            <iframe className="h-[calc(85vh-8rem)] w-full rounded-2xl border border-[var(--border-subtle)] bg-white" src={toDrivePreviewUrl(previewUrl)} title="Invoice preview" />
+            <iframe className="h-[calc(100vh-9rem)] w-full rounded-2xl border border-[var(--border-subtle)] bg-white sm:h-[calc(85vh-8rem)]" src={toDrivePreviewUrl(previewUrl)} title="Invoice preview" />
           </div>
         </div>
       )}
@@ -234,9 +232,9 @@ export default function PaymentsPage() {
 
 function MobileRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-3">
-      <span className="text-ink-secondary">{label}</span>
-      <span className="min-w-0 break-words text-left font-semibold text-ink-primary">{value}</span>
+    <div className="flex min-w-0 items-start gap-2 text-sm leading-6 text-[#111827]">
+      <span className="shrink-0 font-black text-[#111827]">{label}:</span>
+      <span className="min-w-0 flex-1 break-words text-left font-semibold text-[#111827] [overflow-wrap:anywhere]">{value || "—"}</span>
     </div>
   );
 }
