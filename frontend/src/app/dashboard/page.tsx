@@ -248,11 +248,17 @@ type DocumentReview = {
   sender: string | null;
   subject: string | null;
   fileName: string | null;
+  invoiceNumber?: string | null;
+  documentDate?: string | null;
   documentType: string;
   supplierName: string | null;
+  supplierTaxId?: string | null;
   totalAmount: number | null;
+  currency?: string | null;
   confidenceScore: number;
   uncertaintyReason: string | null;
+  parsedFieldsJson?: unknown;
+  rawAnalysis?: unknown;
   driveFileUrl: string | null;
   reviewStatus: string;
   createdAt: string;
@@ -729,7 +735,7 @@ export default function DashboardPage() {
   const estimatedVat = monthDocumentTotal * 0.18 / 1.18;
 
   return (
-    <main className={`${spacing.page} min-h-screen`} style={{ backgroundColor: colors.bg, color: colors.textPrimary }}>
+    <main className={`${spacing.page} min-h-screen lg:mr-60`} style={{ backgroundColor: colors.bg, color: colors.textPrimary }}>
       <Nav />
       <PageHeader
         title={`${todayGreeting} 👋`}
@@ -951,7 +957,7 @@ function ReviewRow({ item }: { item: DocumentReview }) {
           <div className={`${typography.meta} mt-1`} style={{ color: colors.textPrimary }}>{description}</div>
         </div>
         <div className={typography.body} style={{ color: colors.textPrimary }}>
-          {formatShekel(item.totalAmount ?? 0)} · {formatDate(item.createdAt)}
+          {formatMoney(item.totalAmount ?? 0, item.currency ?? "ILS")} · {formatDate(item.documentDate ?? item.createdAt)}
         </div>
         <div className="flex items-center justify-between gap-3 sm:justify-end">
           <StatusPill tone="warn">{labelFor("reviewStatus", item.reviewStatus)}</StatusPill>
@@ -963,15 +969,49 @@ function ReviewRow({ item }: { item: DocumentReview }) {
 }
 
 function reviewTitle(item: DocumentReview) {
-  return item.supplierName?.trim() || item.sender?.trim() || sourceLabel(item.source) || "ספק לא ידוע";
+  return firstText(
+    item.supplierName,
+    item.sender,
+    stringFromUnknown(item.parsedFieldsJson, ["supplierName", "supplier", "vendorName", "businessName"]),
+    stringFromUnknown(item.rawAnalysis, ["supplierName", "supplier", "vendorName", "businessName"]),
+    sourceLabel(item.source),
+    "ספק לא ידוע"
+  );
 }
 
 function reviewDescription(item: DocumentReview) {
-  return item.subject?.trim() || item.fileName?.trim() || item.uncertaintyReason?.trim() || labelFor("documentType", item.documentType) || "מסמך לבדיקה";
+  const documentLabel = labelFor("documentType", item.documentType);
+  const subjectAndFile = [item.subject, item.fileName].map((value) => value?.trim()).filter(Boolean).join(" · ");
+  return firstText(
+    subjectAndFile,
+    item.subject,
+    item.fileName,
+    item.invoiceNumber ? `${documentLabel} ${item.invoiceNumber}` : null,
+    stringFromUnknown(item.parsedFieldsJson, ["description", "title", "subject", "fileName", "invoiceNumber"]),
+    stringFromUnknown(item.rawAnalysis, ["description", "title", "subject", "fileName", "invoiceNumber"]),
+    item.uncertaintyReason,
+    documentLabel,
+    "מסמך לבדיקה"
+  );
 }
 
 function sourceLabel(source: string) {
   return source === "whatsapp" ? "וואטסאפ" : source === "gmail" ? "ג׳ימייל" : source.replace(/_/g, " ");
+}
+
+function firstText(...values: Array<string | null | undefined>) {
+  return values.map((value) => value?.trim()).find(Boolean) ?? "";
+}
+
+function stringFromUnknown(value: unknown, keys: string[]) {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  for (const key of keys) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && candidate.trim()) return candidate;
+    if (typeof candidate === "number" && Number.isFinite(candidate)) return String(candidate);
+  }
+  return null;
 }
 
 function ActivityCard({ title, empty, children }: { title: string; empty: string; children: ReactNode }) {
@@ -1273,6 +1313,11 @@ function isThisMonth(value: string) {
 
 function formatShekel(amount: number) {
   return `₪${Math.round(amount).toLocaleString("he-IL")}`;
+}
+
+function formatMoney(amount: number, currency: string) {
+  if (currency === "ILS") return formatShekel(amount);
+  return `${currency} ${Math.round(amount).toLocaleString("he-IL")}`;
 }
 
 function formatNumber(value: number) {
