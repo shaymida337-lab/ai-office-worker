@@ -1,7 +1,9 @@
 import { Readable } from "node:stream";
+import { createHash } from "node:crypto";
 import type { drive_v3 } from "googleapis";
 import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
+import { getGoogleClients } from "./google.js";
 
 export type UploadedDriveFile = {
   fileId: string | null;
@@ -205,6 +207,278 @@ export async function uploadInvoiceAttachmentToDrive(input: {
     invoiceYear,
     webViewLink,
   };
+}
+
+export async function retryPendingDriveUploads(organizationId: string) {
+  const pendingAttachments = await prisma.emailAttachment.findMany({
+    where: {
+      driveUploadStatus: "pending_retry",
+      emailMessage: { organizationId },
+    },
+    include: { emailMessage: true },
+    orderBy: { createdAt: "asc" },
+    take: 20,
+  });
+  if (!pendingAttachments.length) return { attempted: 0, uploaded: 0, failed: 0 };
+
+  const { gmail, drive } = await getGoogleClients(organizationId);
+  const rootFolderId = await ensureInvoiceFolderTree(drive);
+  let uploaded = 0;
+  let failed = 0;
+
+  for (const attachment of pendingAttachments) {
+    try {
+      if (!attachment.gmailAttachmentId) {
+        failed++;
+        console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${attachment.id} reason=missing_attachment_id`);
+        continue;
+      }
+
+      const metadata = await resolveRetryUploadMetadata(organizationId, attachment.emailMessage.id, attachment.emailMessage.gmailId);
+      if (!metadata) {
+        failed++;
+        console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${attachment.id} reason=missing_document_metadata`);
+        continue;
+      }
+
+      const data = await gmail.users.messages.attachments.get({
+        userId: "me",
+        messageId: attachment.emailMessage.gmailId,
+        id: attachment.gmailAttachmentId,
+      });
+      const buffer = decodeDriveRetryAttachment(data.data.data ?? "");
+      const fileSha256 = createHash("sha256").update(buffer).digest("hex");
+      const fileMd5 = createHash("md5").update(buffer).digest("hex");
+      const upload = await uploadInvoiceAttachmentToDrive({
+        organizationId,
+        drive,
+        rootFolderId,
+        clientId: metadata.clientId,
+        clientName: null,
+        supplier: metadata.supplierName,
+        supplierTaxId: metadata.supplierTaxId,
+        documentType: metadata.documentType,
+        reviewStatus: metadata.reviewStatus,
+        filename: attachment.filename,
+        mimeType: attachment.mimeType,
+        receivedAt: attachment.emailMessage.receivedAt,
+        documentDate: metadata.documentDate,
+        invoiceNumber: metadata.invoiceNumber,
+        amount: metadata.amount,
+        totalAmount: metadata.totalAmount,
+        buffer,
+        fileSha256,
+        fileMd5,
+      });
+
+      await markDriveRetryUploaded({
+        organizationId,
+        emailMessageId: attachment.emailMessage.id,
+        gmailMessageId: attachment.emailMessage.gmailId,
+        attachmentId: attachment.id,
+        filename: attachment.filename,
+        documentType: metadata.documentType,
+        upload,
+      });
+      uploaded++;
+    } catch (err) {
+      failed++;
+      console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${attachment.id} reason=${shortDriveFailureReason(err)}`);
+    }
+  }
+
+  return { attempted: pendingAttachments.length, uploaded, failed };
+}
+
+type RetryUploadMetadata = {
+  clientId: string | null;
+  supplierName: string;
+  supplierTaxId: string | null;
+  documentType: string;
+  reviewStatus: string | null;
+  documentDate: Date;
+  invoiceNumber: string | null;
+  amount: number | null;
+  totalAmount: number | null;
+};
+
+async function resolveRetryUploadMetadata(
+  organizationId: string,
+  emailMessageId: string,
+  gmailMessageId: string
+): Promise<RetryUploadMetadata | null> {
+  const [review, payment, invoice, scanItem] = await Promise.all([
+    prisma.financialDocumentReview.findFirst({
+      where: {
+        organizationId,
+        OR: [{ emailMessageId }, { gmailMessageId }],
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.supplierPayment.findFirst({
+      where: { organizationId, emailMessageId },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.invoice.findFirst({
+      where: { organizationId, gmailMessageId },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.gmailScanItem.findFirst({
+      where: {
+        organizationId,
+        OR: [{ emailMessageId }, { gmailMessageId }],
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+
+  const supplierName =
+    review?.supplierName ??
+    payment?.supplierName ??
+    payment?.supplier ??
+    invoice?.supplierName ??
+    scanItem?.supplierName ??
+    null;
+  if (!supplierName) return null;
+
+  const documentType =
+    review?.documentType ??
+    payment?.documentTypeDetailed ??
+    scanItem?.documentType ??
+    (invoice ? "invoice" : null);
+  if (!documentType) return null;
+
+  const documentDate =
+    review?.documentDate ??
+    payment?.date ??
+    invoice?.date ??
+    scanItem?.occurredAt ??
+    new Date();
+  const amount = payment?.amount ?? invoice?.amount ?? scanItem?.amount ?? review?.totalAmount ?? null;
+  const totalAmount = review?.totalAmount ?? payment?.totalAmount ?? invoice?.amount ?? amount;
+
+  return {
+    clientId: payment?.clientId ?? invoice?.clientId ?? null,
+    supplierName,
+    supplierTaxId: review?.supplierTaxId ?? payment?.supplierTaxId ?? null,
+    documentType,
+    reviewStatus: review?.reviewStatus ?? scanItem?.reviewStatus ?? payment?.approvalStatus ?? null,
+    documentDate,
+    invoiceNumber: review?.invoiceNumber ?? payment?.invoiceNumber ?? invoice?.invoiceNumber ?? null,
+    amount,
+    totalAmount,
+  };
+}
+
+async function markDriveRetryUploaded(input: {
+  organizationId: string;
+  emailMessageId: string;
+  gmailMessageId: string;
+  attachmentId: string;
+  filename: string;
+  documentType: string;
+  upload: UploadedDriveFile;
+}) {
+  if (!input.upload.webViewLink) {
+    throw new Error("Drive upload returned no link");
+  }
+
+  await prisma.emailAttachment.update({
+    where: { id: input.attachmentId },
+    data: {
+      driveFileId: input.upload.fileId ?? undefined,
+      driveLink: input.upload.webViewLink,
+      driveUploadStatus: "uploaded",
+      driveFolderId: input.upload.folderId,
+      driveClientFolderId: input.upload.clientFolderId,
+      driveSupplierFolderId: input.upload.supplierFolderId,
+      driveFolderPath: input.upload.folderPath,
+      supplierName: input.upload.supplierName,
+      invoiceMonth: input.upload.invoiceMonth,
+      invoiceYear: input.upload.invoiceYear,
+    },
+  });
+
+  await prisma.gmailScanItem.updateMany({
+    where: {
+      organizationId: input.organizationId,
+      OR: [{ emailMessageId: input.emailMessageId }, { gmailMessageId: input.gmailMessageId }],
+      attachmentFilename: input.filename,
+      driveUploadStatus: "pending_retry",
+    },
+    data: {
+      driveFileLink: input.upload.webViewLink,
+      driveUploadStatus: "uploaded",
+    },
+  });
+
+  await prisma.financialDocumentReview.updateMany({
+    where: {
+      organizationId: input.organizationId,
+      OR: [{ emailMessageId: input.emailMessageId }, { gmailMessageId: input.gmailMessageId }],
+      driveUploadStatus: "pending_retry",
+    },
+    data: {
+      driveFileUrl: input.upload.webViewLink,
+      driveUploadStatus: "uploaded",
+    },
+  });
+
+  const isInvoiceLike = /^(invoice|receipt|tax_invoice|tax_invoice_receipt)$/i.test(input.documentType);
+  const isPaymentRequest = /^payment_request$/i.test(input.documentType);
+  await prisma.supplierPayment.updateMany({
+    where: {
+      organizationId: input.organizationId,
+      emailMessageId: input.emailMessageId,
+      driveUploadStatus: "pending_retry",
+    },
+    data: {
+      ...(isPaymentRequest ? { documentLink: input.upload.webViewLink } : {}),
+      ...(isInvoiceLike ? { invoiceLink: input.upload.webViewLink } : {}),
+      driveFileId: input.upload.fileId ?? undefined,
+      driveFileUrl: input.upload.webViewLink,
+      driveUploadStatus: "uploaded",
+      driveFolderId: input.upload.folderId,
+      driveClientFolderId: input.upload.clientFolderId,
+      driveSupplierFolderId: input.upload.supplierFolderId,
+      driveFolderPath: input.upload.folderPath,
+      supplierName: input.upload.supplierName,
+      invoiceMonth: input.upload.invoiceMonth,
+      invoiceYear: input.upload.invoiceYear,
+    },
+  });
+
+  await prisma.invoice.updateMany({
+    where: {
+      organizationId: input.organizationId,
+      gmailMessageId: input.gmailMessageId,
+      driveUploadStatus: "pending_retry",
+    },
+    data: {
+      driveUrl: input.upload.webViewLink,
+      driveFileId: input.upload.fileId ?? undefined,
+      driveFileUrl: input.upload.webViewLink,
+      driveUploadStatus: "uploaded",
+      driveFolderId: input.upload.folderId,
+      driveClientFolderId: input.upload.clientFolderId,
+      driveSupplierFolderId: input.upload.supplierFolderId,
+      driveFolderPath: input.upload.folderPath,
+      supplierName: input.upload.supplierName,
+      invoiceMonth: input.upload.invoiceMonth,
+      invoiceYear: input.upload.invoiceYear,
+    },
+  });
+}
+
+function decodeDriveRetryAttachment(data: string) {
+  return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+}
+
+function shortDriveFailureReason(err: unknown) {
+  return (err instanceof Error ? err.message : String(err))
+    .replace(/\s+/g, "_")
+    .replace(/[^A-Za-z0-9_.:-]/g, "")
+    .slice(0, 80) || "unknown";
 }
 
 export async function findExistingSupplierDriveDocument(input: {

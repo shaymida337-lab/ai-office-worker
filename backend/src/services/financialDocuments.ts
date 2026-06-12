@@ -384,6 +384,7 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
       paid: review.documentType === "receipt" || review.documentType === "tax_invoice_receipt",
       documentLink: review.driveFileUrl,
       invoiceLink: isInvoiceLike(normalizeFinancialDocumentType(review.documentType)) ? review.driveFileUrl : null,
+      driveUploadStatus: review.driveUploadStatus,
       emailSender: review.sender,
       paymentRequired: review.documentType !== "receipt",
       missingInvoice: review.documentType === "payment_request",
@@ -408,6 +409,7 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
     },
     update: {
       approvalStatus: "approved",
+      driveUploadStatus: review.driveUploadStatus,
       confidenceScore: review.confidenceScore,
       parsedFieldsJson: review.parsedFieldsJson as any,
       lastSeenAt: new Date(),

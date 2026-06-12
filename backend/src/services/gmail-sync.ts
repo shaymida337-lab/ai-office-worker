@@ -7,6 +7,7 @@ import { analyzeAndSaveMessage } from "./messageScanner.js";
 import {
   ensureInvoiceFolderTree,
   folderForDocumentType,
+  retryPendingDriveUploads,
   supplierBranchNameFromFolderName,
   uploadInvoiceAttachmentToDrive,
 } from "./driveService.js";
@@ -525,6 +526,16 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     scanSteps.push(message);
     console.log(message);
   };
+
+  try {
+    const retryResult = await retryPendingDriveUploads(organizationId);
+    if (retryResult.attempted > 0) {
+      logStep(`[gmail-sync] Drive pending retry attempted=${retryResult.attempted} uploaded=${retryResult.uploaded} failed=${retryResult.failed}`);
+    }
+  } catch (err) {
+    console.error(`[gmail-sync] pending Drive retry failed org=${organizationId}`, err);
+    logStep(`[gmail-sync] pending Drive retry skipped reason="${err instanceof Error ? err.message : String(err)}"`);
+  }
 
   const initialWindow = options.isFirstTime && !options.since && !options.daysBack ? initialConnectScanWindow() : null;
   const daysBack = initialWindow?.daysBack ?? options.daysBack ?? 90;
@@ -1376,6 +1387,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         logStep(`[gmail-sync] client/lead message=${email.gmailId} clientId=${clientId} clientCreated=${saved.created}`);
       }
       const driveLinks: GmailDriveLink[] = [];
+      let driveUploadFailureReason: string | null = null;
 
       const shouldUploadAttachments =
         classification.isRelevant &&
@@ -1393,7 +1405,18 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         const filename = part.filename?.trim() || attachmentFilenameFromPart(part);
         if (!filename || !part.body) {
           driveUploadsSkipped++;
+          driveUploadFailureReason = "missing_filename_or_body";
           logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${filename || "unnamed"}" reason="missing_filename_or_body"`);
+          if (shouldUploadAttachments && filename) {
+            const failedAttachment = await markEmailAttachmentDriveStatus({
+              emailMessageId: email.emailRecordId,
+              filename,
+              mimeType: part.mimeType,
+              gmailAttachmentId: attachmentId ?? null,
+              driveUploadStatus: "pending_retry",
+            });
+            console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${failedAttachment.id} reason=missing_filename_or_body`);
+          }
           continue;
         }
 
@@ -1411,6 +1434,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               },
             });
         if (existingAttachment?.driveLink) {
+          await prisma.emailAttachment.update({
+            where: { id: existingAttachment.id },
+            data: { driveUploadStatus: "uploaded" },
+          });
           driveLinks.push({
             type: folderForDocumentType(classification.documentType),
             link: existingAttachment.driveLink,
@@ -1502,6 +1529,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               data: {
                 driveFileId: upload.fileId ?? undefined,
                 driveLink: link,
+                driveUploadStatus: "uploaded",
                 driveFolderId: upload.folderId,
                 driveClientFolderId: upload.clientFolderId,
                 driveSupplierFolderId: upload.supplierFolderId,
@@ -1520,6 +1548,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                 gmailAttachmentId: attachmentId ?? undefined,
                 driveFileId: upload.fileId ?? undefined,
                 driveLink: link,
+                driveUploadStatus: "uploaded",
                 driveFolderId: upload.folderId,
                 driveClientFolderId: upload.clientFolderId,
                 driveSupplierFolderId: upload.supplierFolderId,
@@ -1534,31 +1563,58 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           driveUploadFailed = true;
           driveUploadsFailed++;
           errorsCount++;
+          driveUploadFailureReason = shortDriveFailureReason(err);
           console.error("Drive upload failed; continuing Gmail sync without attachment upload", err);
           if (isGoogleReconnectRequiredError(err) || isInsufficientScopeError(err)) {
             logStep(`[gmail-sync] Google Drive reconnect required org=${organizationId} message=${email.gmailId} file="${filename}" reason="${err instanceof Error ? err.message : String(err)}"`);
           }
           logStep(`[gmail-sync] Drive upload failed message=${email.gmailId} file="${filename}" reason="${err instanceof Error ? err.message : String(err)}"`);
-          if (!existingAttachment) {
-            await prisma.emailAttachment.create({
+          if (existingAttachment) {
+            await prisma.emailAttachment.update({
+              where: { id: existingAttachment.id },
+              data: { driveUploadStatus: "pending_retry" },
+            });
+            console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${existingAttachment.id} reason=${driveUploadFailureReason}`);
+          } else {
+            const failedAttachment = await prisma.emailAttachment.create({
               data: {
                 emailMessageId: email.emailRecordId,
                 filename,
                 mimeType: part.mimeType ?? undefined,
                 gmailAttachmentId: attachmentId ?? undefined,
+                driveUploadStatus: "pending_retry",
               },
             });
+            console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${failedAttachment.id} reason=${driveUploadFailureReason}`);
           }
         }
       }
 
       const primaryDriveLink = driveLinks[0]?.link ?? null;
+      const documentDriveUploadStatus =
+        shouldUploadAttachments
+          ? primaryDriveLink
+            ? "uploaded"
+            : email.parts.length > 0
+              ? "pending_retry"
+              : "not_required"
+          : "not_required";
+      const documentDriveUploadFailureReason =
+        documentDriveUploadStatus === "pending_retry"
+          ? driveUploadFailureReason ?? "upload_missing_link"
+          : null;
       if ("review" in documentDecision && documentDecision.review && primaryDriveLink) {
         const review = await prisma.financialDocumentReview.update({
           where: { id: documentDecision.review.id },
-          data: { driveFileUrl: primaryDriveLink },
+          data: { driveFileUrl: primaryDriveLink, driveUploadStatus: "uploaded" },
         });
         logStep(`[gmail-sync] INVOICE_DRIVE_LINK_SAVED org=${organizationId} target=financialDocumentReview id=${review.id} message=${email.gmailId} driveUrl=${primaryDriveLink}`);
+      } else if ("review" in documentDecision && documentDecision.review && documentDriveUploadStatus === "pending_retry") {
+        const review = await prisma.financialDocumentReview.update({
+          where: { id: documentDecision.review.id },
+          data: { driveUploadStatus: "pending_retry" },
+        });
+        console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=financialDocumentReview:${review.id} reason=${documentDriveUploadFailureReason}`);
       }
 
       logStep(`[gmail-sync] DB GmailScanItem upsert attempt message=${email.gmailId} duplicateKey=${duplicateKey} type=${classification.documentType}`);
@@ -1578,6 +1634,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           documentType: classification.documentType,
           attachmentFilename,
           driveFileLink: driveLinks[0]?.link ?? null,
+          driveUploadStatus: documentDriveUploadStatus,
           confidenceScore: classification.confidenceScore,
           reviewStatus: classification.reviewStatus,
           duplicateKey,
@@ -1616,6 +1673,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           documentType: classification.documentType,
           attachmentFilename,
           driveFileLink: driveLinks[0]?.link ?? existingScanItem?.driveFileLink ?? null,
+          driveUploadStatus: driveLinks[0]?.link ? "uploaded" : documentDriveUploadStatus,
           confidenceScore: classification.confidenceScore,
           reviewStatus: classification.reviewStatus,
           decisionReason: classification.decisionReason,
@@ -1647,6 +1705,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       emailsSavedToGmailScanItem++;
       dbGmailScanItemUpserts++;
       logStep(`[gmail-sync] saved GmailScanItem message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} review=${savedScanItem.reviewStatus} relevant=${classification.isRelevant}`);
+      if (documentDriveUploadStatus === "pending_retry") {
+        console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=gmailScanItem:${savedScanItem.id} reason=${documentDriveUploadFailureReason}`);
+      }
       if (savedScanItem.driveFileLink) {
         logStep(`[gmail-sync] DRIVE_URL_SAVED org=${organizationId} target=gmailScanItem id=${savedScanItem.id} message=${email.gmailId} driveUrl=${savedScanItem.driveFileLink}`);
         logStep(`[gmail-sync] INVOICE_DRIVE_LINK_SAVED org=${organizationId} target=gmailScanItem id=${savedScanItem.id} message=${email.gmailId} driveUrl=${savedScanItem.driveFileLink}`);
@@ -1825,6 +1886,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               driveUrl: targetDriveLink?.link ?? null,
               driveFileId: targetDriveLink?.fileId ?? null,
               driveFileUrl: targetDriveLink?.link ?? null,
+              driveUploadStatus: targetDriveLink?.link
+                ? "uploaded"
+                : shouldUploadAttachments && email.parts.length > 0
+                  ? "pending_retry"
+                  : "not_required",
               driveFolderId: targetDriveLink?.folderId ?? null,
               driveClientFolderId: targetDriveLink?.clientFolderId ?? null,
               driveSupplierFolderId: targetDriveLink?.supplierFolderId ?? null,
@@ -1835,6 +1901,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             if (createdInvoice) {
               invoicesCreated++;
               invoicePersistedForPilot = true;
+              if (createdInvoice.driveUploadStatus === "pending_retry") {
+                console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=invoice:${createdInvoice.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
+              }
               logStep(`[gmail-sync] invoice save success message=${email.gmailId} file="${targetFilename ?? "body"}" invoiceId=${createdInvoice.id} amount=${invoiceAmount} supplier="${invoiceSupplierName}" drive=${targetDriveLink?.link ?? "none"}`);
             } else {
               duplicatesSkipped++;
@@ -1923,13 +1992,14 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           } else {
             logStep(`[gmail-sync] REPROCESSING_EMPTY_DUPLICATE org=${organizationId} reason=supplier_payment_exists key=${duplicateHash} message=${email.gmailId} paymentId=${existingPayment.id}`);
           }
-          await prisma.supplierPayment.update({
+          const updatedPayment = await prisma.supplierPayment.update({
             where: { id: existingPayment.id },
             data: {
               documentLink: documentLink ?? existingPayment.documentLink,
               invoiceLink: invoiceLink ?? existingPayment.invoiceLink,
               driveFileId: driveLinks[0]?.fileId ?? existingPayment.driveFileId,
               driveFileUrl: driveLinks[0]?.link ?? existingPayment.driveFileUrl,
+              driveUploadStatus: driveLinks[0]?.link ? "uploaded" : existingPayment.driveUploadStatus ?? documentDriveUploadStatus,
               driveFolderId: driveLinks[0]?.folderId ?? existingPayment.driveFolderId,
               driveClientFolderId: driveLinks[0]?.clientFolderId ?? existingPayment.driveClientFolderId,
               driveSupplierFolderId: driveLinks[0]?.supplierFolderId ?? existingPayment.driveSupplierFolderId,
@@ -1962,6 +2032,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               lastSeenAt: new Date(),
             },
           });
+          if (updatedPayment.driveUploadStatus === "pending_retry") {
+            console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=supplierPayment:${updatedPayment.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
+          }
           await appendSupplierPaymentToSheet({
             organizationId,
             paymentId: existingPayment.id,
@@ -2025,6 +2098,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               invoiceLink,
               driveFileId: driveLinks[0]?.fileId ?? null,
               driveFileUrl: driveLinks[0]?.link ?? null,
+              driveUploadStatus: documentDriveUploadStatus,
               driveFolderId: driveLinks[0]?.folderId ?? null,
               driveClientFolderId: driveLinks[0]?.clientFolderId ?? null,
               driveSupplierFolderId: driveLinks[0]?.supplierFolderId ?? null,
@@ -2055,6 +2129,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           });
           paymentsCreated++;
           paymentPersistedForPilot = true;
+          if (payment.driveUploadStatus === "pending_retry") {
+            console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=supplierPayment:${payment.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
+          }
           await appendSupplierPaymentToSheet({
             organizationId,
             paymentId: payment.id,
@@ -3425,6 +3502,49 @@ function decodeGmailAttachment(data: string): Buffer {
   return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
 
+async function markEmailAttachmentDriveStatus(input: {
+  emailMessageId: string;
+  filename: string;
+  mimeType?: string | null;
+  gmailAttachmentId?: string | null;
+  driveUploadStatus: "uploaded" | "pending_retry" | "not_required";
+}) {
+  const existing = input.gmailAttachmentId
+    ? await prisma.emailAttachment.findFirst({
+        where: { emailMessageId: input.emailMessageId, gmailAttachmentId: input.gmailAttachmentId },
+      })
+    : await prisma.emailAttachment.findFirst({
+        where: { emailMessageId: input.emailMessageId, filename: input.filename },
+      });
+  if (existing) {
+    return prisma.emailAttachment.update({
+      where: { id: existing.id },
+      data: {
+        filename: input.filename,
+        mimeType: input.mimeType ?? existing.mimeType,
+        gmailAttachmentId: input.gmailAttachmentId ?? existing.gmailAttachmentId,
+        driveUploadStatus: input.driveUploadStatus,
+      },
+    });
+  }
+  return prisma.emailAttachment.create({
+    data: {
+      emailMessageId: input.emailMessageId,
+      filename: input.filename,
+      mimeType: input.mimeType ?? undefined,
+      gmailAttachmentId: input.gmailAttachmentId ?? undefined,
+      driveUploadStatus: input.driveUploadStatus,
+    },
+  });
+}
+
+function shortDriveFailureReason(err: unknown) {
+  return (err instanceof Error ? err.message : String(err))
+    .replace(/\s+/g, "_")
+    .replace(/[^A-Za-z0-9_.:-]/g, "")
+    .slice(0, 80) || "unknown";
+}
+
 function decodeMimeHeader(value: string) {
   return value.replace(/=\?([^?]+)\?([bqBQ])\?([^?]+)\?=/g, (_match, charset: string, encoding: string, encoded: string) => {
     try {
@@ -4248,6 +4368,7 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
         invoiceLink,
         driveFileId: driveLink.fileId ?? null,
         driveFileUrl: driveLink.link ?? null,
+        driveUploadStatus: "uploaded",
         driveFolderId: driveLink.folderId ?? null,
         driveClientFolderId: driveLink.clientFolderId ?? null,
         driveSupplierFolderId: driveLink.supplierFolderId ?? null,
@@ -4429,6 +4550,7 @@ async function saveDetectedInvoice(input: {
   driveUrl: string | null;
   driveFileId: string | null;
   driveFileUrl: string | null;
+  driveUploadStatus: string | null;
   driveFolderId: string | null;
   driveClientFolderId: string | null;
   driveSupplierFolderId: string | null;
@@ -4490,6 +4612,7 @@ async function saveDetectedInvoice(input: {
       driveUrl: input.driveUrl,
       driveFileId: input.driveFileId,
       driveFileUrl: input.driveFileUrl,
+      driveUploadStatus: input.driveUploadStatus,
       driveFolderId: input.driveFolderId,
       driveClientFolderId: input.driveClientFolderId,
       driveSupplierFolderId: input.driveSupplierFolderId,

@@ -185,6 +185,7 @@ model EmailAttachment {
   gmailAttachmentId String?
   driveFileId    String?
   driveLink      String?
+  driveUploadStatus String?
   driveFolderId  String?
   driveClientFolderId String?
   driveSupplierFolderId String?
@@ -213,6 +214,7 @@ model SupplierPayment {
   invoiceLink     String?
   driveFileId     String?
   driveFileUrl    String?
+  driveUploadStatus String?
   driveFolderId   String?
   driveClientFolderId String?
   driveSupplierFolderId String?
@@ -281,6 +283,7 @@ model FinancialDocumentReview {
   totalAmount         Float?
   currency            String   @default("ILS")
   driveFileUrl        String?
+  driveUploadStatus   String?
   confidenceScore     Float    @default(0)
   reviewStatus        String   @default("needs_review")
   uncertaintyReason   String?
@@ -334,6 +337,7 @@ model Invoice {
   driveUrl       String?
   driveFileId    String?
   driveFileUrl   String?
+  driveUploadStatus String?
   driveFolderId  String?
   driveClientFolderId String?
   driveSupplierFolderId String?
@@ -794,6 +798,7 @@ model GmailScanItem {
   documentType       String
   attachmentFilename String?
   driveFileLink      String?
+  driveUploadStatus  String?
   confidenceScore    String
   reviewStatus       String   @default("needs_review")
   duplicateKey       String
