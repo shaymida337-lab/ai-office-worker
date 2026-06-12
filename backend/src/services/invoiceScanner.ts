@@ -22,11 +22,45 @@ type PayloadPart = {
 type DownloadedAttachment = { filename: string; mimeType: string | null; buffer: Buffer };
 
 type ScanOptions = { daysBack?: number; limit?: number };
+type ClientForInvoiceScan = NonNullable<Awaited<ReturnType<typeof loadClientForInvoiceScan>>>;
+
+const CLIENT_SCAN_TYPE = "client_invoice_scan";
+const CLIENT_SCAN_STALE_AFTER_MS = 30 * 60 * 1000;
+const runningClientScans = new Set<string>();
 
 export async function scanForInvoices(clientId: string, options: ScanOptions = {}) {
-  const client = await prisma.client.findUnique({ where: { id: clientId } });
+  const client = await loadClientForInvoiceScan(clientId);
   if (!client?.gmailConnected || !client.googleRefreshToken) throw new Error("חבר Gmail בהגדרות");
 
+  const lock = await acquireClientScanLock(client.organizationId, clientId);
+  if (!lock) return { found: 0, saved: 0, errors: [], inProgress: true };
+
+  try {
+    const result = await runInvoiceScanForClient(clientId, client, options);
+    await prisma.syncLog.update({
+      where: { id: lock.id },
+      data: {
+        status: "success",
+        invoicesFound: result.found,
+        emailsSaved: result.saved,
+        errorsCount: result.errors.length,
+        errorMessage: result.errors.length ? JSON.stringify(result.errors.slice(0, 10)) : null,
+        finishedAt: new Date(),
+      },
+    });
+    return result;
+  } catch (err) {
+    await prisma.syncLog.update({
+      where: { id: lock.id },
+      data: { status: "error", errorMessage: errorMessage(err), finishedAt: new Date() },
+    }).catch(() => undefined);
+    throw err;
+  } finally {
+    runningClientScans.delete(clientId);
+  }
+}
+
+async function runInvoiceScanForClient(clientId: string, client: ClientForInvoiceScan, options: ScanOptions = {}) {
   const organizationId = client.organizationId;
   const { gmail, drive } = await getGoogleClientsForClient(clientId);
   const messages = await listInvoiceMessages(gmail, options.daysBack ?? 30, options.limit ?? 50);
@@ -126,6 +160,62 @@ export async function scanForInvoices(clientId: string, options: ScanOptions = {
   }
 
   return { found, saved, errors };
+}
+
+async function loadClientForInvoiceScan(clientId: string) {
+  return prisma.client.findUnique({ where: { id: clientId } });
+}
+
+async function acquireClientScanLock(organizationId: string, clientId: string) {
+  if (runningClientScans.has(clientId)) {
+    console.log(`CLIENT SCAN SKIPPED clientId=${clientId} reason=already_running`);
+    return null;
+  }
+
+  const activeLog = await prisma.syncLog.findFirst({
+    where: {
+      organizationId,
+      clientId,
+      type: CLIENT_SCAN_TYPE,
+      status: "running",
+      finishedAt: null,
+    },
+  });
+  if (activeLog) {
+    if (activeLog.startedAt.getTime() > Date.now() - CLIENT_SCAN_STALE_AFTER_MS) {
+      console.log(`CLIENT SCAN SKIPPED clientId=${clientId} reason=already_running`);
+      return null;
+    }
+    console.warn(`[invoiceScanner] Closing stale client scan log clientId=${clientId} log=${activeLog.id}`);
+    await prisma.syncLog.update({
+      where: { id: activeLog.id },
+      data: { status: "error", errorMessage: "Stale running client invoice scan was reset", finishedAt: new Date() },
+    });
+  }
+
+  try {
+    const lock = await prisma.syncLog.create({
+      data: {
+        organizationId,
+        clientId,
+        type: CLIENT_SCAN_TYPE,
+        status: "running",
+        scanMode: "client_invoice_scan",
+      },
+    });
+    runningClientScans.add(clientId);
+    return lock;
+  } catch (err) {
+    const active = await prisma.syncLog.findFirst({
+      where: { organizationId, clientId, type: CLIENT_SCAN_TYPE, status: "running", finishedAt: null },
+      orderBy: { startedAt: "desc" },
+    });
+    if (active) {
+      console.log(`CLIENT SCAN SKIPPED clientId=${clientId} reason=already_running`);
+      return null;
+    }
+    throw err;
+  }
 }
 
 export function detectInvoice(input: { subject?: string | null; body?: string | null }) {

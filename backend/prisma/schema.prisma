@@ -487,6 +487,7 @@ model SyncLog {
   id             String   @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String?
   type           String // gmail_scan | daily_summary | whatsapp_morning | whatsapp_evening
   status         String // success | error
   emailsProcessed Int     @default(0)
@@ -506,6 +507,7 @@ model SyncLog {
 
   @@index([organizationId, type, status, finishedAt])
   @@index([organizationId, type, status, startedAt])
+  @@index([clientId, type, status, finishedAt])
   @@index([nextRetryAt])
 }
 
