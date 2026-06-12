@@ -4342,61 +4342,89 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
       Boolean(input.analysis.paymentRequired || input.classification.documentType === "payment_request") &&
       !invoiceLink &&
       Boolean(documentLink || input.analysis.paymentRequired);
-    const driveIdentity = driveLink.fileId ?? driveLink.link ?? driveLink.filename ?? input.email.gmailId;
-    const fingerprintSuffix = createHash("sha256").update(driveIdentity).digest("hex").slice(0, 12);
-    const documentFingerprint = `${input.documentDecision.documentFingerprint}:${fingerprintSuffix}`;
-    const duplicateHash = buildDuplicateHash({
+    const documentFingerprint = input.documentDecision.documentFingerprint;
+    const duplicateHash = documentFingerprint || input.duplicateKey || buildDuplicateHash({
       organizationId: input.organizationId,
       supplier: paymentSupplierName,
       amount: paymentAmount,
       dateIso: input.email.receivedAt.toISOString(),
-      subject: `${input.email.subject}|drive:${driveIdentity}`,
+      subject: input.email.subject,
     });
 
     const totalAmount = normalizeDetectedAmount(input.analysis.totalAmount) ?? paymentAmount;
-    input.logStep(`[gmail-sync] SUPPLIER_PAYMENT_DB_SAVE_ATTEMPT message=${input.email.gmailId} file="${driveLink.filename ?? "unnamed"}" driveFileId=${driveLink.fileId ?? "none"} supplier="${paymentSupplierName}" amount=${paymentAmount} invoiceNumber=${input.invoiceNumber ?? "none"} dueDate=${dueDate?.toISOString() ?? "none"} status=${paymentApprovalStatus}`);
-    const payment = await prisma.supplierPayment.create({
-      data: {
-        organizationId: input.organizationId,
-        supplier: paymentSupplierName,
-        amount: paymentAmount,
-        currency: input.analysis.currency,
-        date: input.email.receivedAt,
-        dueDate,
-        paid: false,
-        documentLink,
-        invoiceLink,
-        driveFileId: driveLink.fileId ?? null,
-        driveFileUrl: driveLink.link ?? null,
-        driveUploadStatus: "uploaded",
-        driveFolderId: driveLink.folderId ?? null,
-        driveClientFolderId: driveLink.clientFolderId ?? null,
-        driveSupplierFolderId: driveLink.supplierFolderId ?? null,
-        driveFolderPath: driveLink.folderPath ?? null,
-        supplierName: driveLink.supplierName ?? paymentSupplierName,
-        invoiceMonth: driveLink.invoiceMonth ?? input.documentDate.getMonth() + 1,
-        invoiceYear: driveLink.invoiceYear ?? input.documentDate.getFullYear(),
-        invoiceNumber: input.invoiceNumber,
-        documentFingerprint,
-        sourceFingerprint: `${input.documentDecision.sourceFingerprint}:${fingerprintSuffix}`,
-        documentTypeDetailed: input.documentDecision.documentType,
-        supplierTaxId: input.supplierMetadata.taxId,
-        amountBeforeVat: input.analysis.amountBeforeVat ?? null,
-        vatAmount: input.analysis.vatAmount ?? null,
-        totalAmount,
-        confidenceScore: input.classification.confidence,
-        parsedFieldsJson: input.parsedFieldsJson as any,
-        approvalStatus: paymentApprovalStatus,
-        sourcesJson: ["gmail"],
-        emailSender: input.email.from,
-        paymentRequired: input.analysis.paymentRequired,
-        missingInvoice,
-        duplicateHash: input.duplicateKey ? `${input.duplicateKey}:${fingerprintSuffix}` : duplicateHash,
-        subject: input.email.subject,
-        source: input.email.source,
-        emailMessageId: input.email.emailRecordId,
-      },
+    const existingByFingerprintOrHash = await findSupplierPaymentByDocumentIdentity({
+      organizationId: input.organizationId,
+      documentFingerprint,
+      duplicateHash,
     });
+    if (existingByFingerprintOrHash) {
+      await updateSupplierPaymentMissingDriveFields(existingByFingerprintOrHash.id, driveLink, documentLink, invoiceLink);
+      input.logStep(`ENSURE-PAYMENTS DEDUP HIT org=${input.organizationId} fingerprint=${shortFingerprint(documentFingerprint)}`);
+      continue;
+    }
+
+    input.logStep(`[gmail-sync] SUPPLIER_PAYMENT_DB_SAVE_ATTEMPT message=${input.email.gmailId} file="${driveLink.filename ?? "unnamed"}" driveFileId=${driveLink.fileId ?? "none"} supplier="${paymentSupplierName}" amount=${paymentAmount} invoiceNumber=${input.invoiceNumber ?? "none"} dueDate=${dueDate?.toISOString() ?? "none"} status=${paymentApprovalStatus}`);
+    let payment;
+    try {
+      payment = await prisma.supplierPayment.create({
+        data: {
+          organizationId: input.organizationId,
+          supplier: paymentSupplierName,
+          amount: paymentAmount,
+          currency: input.analysis.currency,
+          date: input.email.receivedAt,
+          dueDate,
+          paid: false,
+          documentLink,
+          invoiceLink,
+          driveFileId: driveLink.fileId ?? null,
+          driveFileUrl: driveLink.link ?? null,
+          driveUploadStatus: "uploaded",
+          driveFolderId: driveLink.folderId ?? null,
+          driveClientFolderId: driveLink.clientFolderId ?? null,
+          driveSupplierFolderId: driveLink.supplierFolderId ?? null,
+          driveFolderPath: driveLink.folderPath ?? null,
+          supplierName: driveLink.supplierName ?? paymentSupplierName,
+          invoiceMonth: driveLink.invoiceMonth ?? input.documentDate.getMonth() + 1,
+          invoiceYear: driveLink.invoiceYear ?? input.documentDate.getFullYear(),
+          invoiceNumber: input.invoiceNumber,
+          documentFingerprint,
+          sourceFingerprint: input.documentDecision.sourceFingerprint,
+          documentTypeDetailed: input.documentDecision.documentType,
+          supplierTaxId: input.supplierMetadata.taxId,
+          amountBeforeVat: input.analysis.amountBeforeVat ?? null,
+          vatAmount: input.analysis.vatAmount ?? null,
+          totalAmount,
+          confidenceScore: input.classification.confidence,
+          parsedFieldsJson: input.parsedFieldsJson as any,
+          approvalStatus: paymentApprovalStatus,
+          sourcesJson: ["gmail"],
+          emailSender: input.email.from,
+          paymentRequired: input.analysis.paymentRequired,
+          missingInvoice,
+          duplicateHash,
+          subject: input.email.subject,
+          source: input.email.source,
+          emailMessageId: input.email.emailRecordId,
+        },
+      });
+    } catch (err) {
+      const existingAfterRace = isPrismaUniqueConstraintError(err)
+        ? await findSupplierPaymentByDocumentIdentity({
+            organizationId: input.organizationId,
+            documentFingerprint,
+            duplicateHash,
+          })
+        : null;
+      if (existingAfterRace) {
+        await updateSupplierPaymentMissingDriveFields(existingAfterRace.id, driveLink, documentLink, invoiceLink);
+        input.logStep(`ENSURE-PAYMENTS DEDUP HIT org=${input.organizationId} fingerprint=${shortFingerprint(documentFingerprint)}`);
+        continue;
+      }
+      console.error(`[gmail-sync] SupplierPayment create failed message=${input.email.gmailId} file="${driveLink.filename ?? "unnamed"}"`, err);
+      input.logStep(`[gmail-sync] SupplierPayment create failed message=${input.email.gmailId} reason="${err instanceof Error ? err.message : String(err)}"`);
+      continue;
+    }
     created++;
     input.logStep(`[gmail-sync] SUPPLIER_PAYMENT_DB_SAVE_SUCCESS message=${input.email.gmailId} paymentId=${payment.id} file="${driveLink.filename ?? "unnamed"}" driveFileId=${driveLink.fileId ?? "none"} status=${paymentApprovalStatus}`);
 
@@ -4437,6 +4465,73 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
     });
   }
   return { created, sheetsUpdated };
+}
+
+async function findSupplierPaymentByDocumentIdentity(input: {
+  organizationId: string;
+  documentFingerprint: string;
+  duplicateHash: string;
+}) {
+  return prisma.supplierPayment.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      OR: [
+        { documentFingerprint: input.documentFingerprint },
+        { duplicateHash: input.duplicateHash },
+      ],
+    },
+  });
+}
+
+async function updateSupplierPaymentMissingDriveFields(
+  paymentId: string,
+  driveLink: GmailDriveLink,
+  documentLink: string | null,
+  invoiceLink: string | null
+) {
+  const existing = await prisma.supplierPayment.findUnique({
+    where: { id: paymentId },
+    select: {
+      documentLink: true,
+      invoiceLink: true,
+      driveFileId: true,
+      driveFileUrl: true,
+      driveUploadStatus: true,
+      driveFolderId: true,
+      driveClientFolderId: true,
+      driveSupplierFolderId: true,
+      driveFolderPath: true,
+      supplierName: true,
+      invoiceMonth: true,
+      invoiceYear: true,
+    },
+  });
+  if (!existing) return;
+
+  const data = {
+    ...(documentLink && !existing.documentLink ? { documentLink } : {}),
+    ...(invoiceLink && !existing.invoiceLink ? { invoiceLink } : {}),
+    ...(driveLink.fileId && !existing.driveFileId ? { driveFileId: driveLink.fileId } : {}),
+    ...(driveLink.link && !existing.driveFileUrl ? { driveFileUrl: driveLink.link } : {}),
+    ...(!existing.driveUploadStatus ? { driveUploadStatus: "uploaded" } : {}),
+    ...(driveLink.folderId && !existing.driveFolderId ? { driveFolderId: driveLink.folderId } : {}),
+    ...(driveLink.clientFolderId && !existing.driveClientFolderId ? { driveClientFolderId: driveLink.clientFolderId } : {}),
+    ...(driveLink.supplierFolderId && !existing.driveSupplierFolderId ? { driveSupplierFolderId: driveLink.supplierFolderId } : {}),
+    ...(driveLink.folderPath && !existing.driveFolderPath ? { driveFolderPath: driveLink.folderPath } : {}),
+    ...(driveLink.supplierName && !existing.supplierName ? { supplierName: driveLink.supplierName } : {}),
+    ...(driveLink.invoiceMonth && !existing.invoiceMonth ? { invoiceMonth: driveLink.invoiceMonth } : {}),
+    ...(driveLink.invoiceYear && !existing.invoiceYear ? { invoiceYear: driveLink.invoiceYear } : {}),
+  };
+  if (Object.keys(data).length === 0) return;
+  await prisma.supplierPayment.update({ where: { id: paymentId }, data });
+}
+
+function isPrismaUniqueConstraintError(err: unknown) {
+  return typeof err === "object" && err !== null && "code" in err && (err as { code?: string }).code === "P2002";
+}
+
+function shortFingerprint(fingerprint: string) {
+  return fingerprint.slice(0, 12);
 }
 
 async function createPaymentAlertOnce(input: {
