@@ -79,9 +79,9 @@ export default function PaymentsPage() {
         <h1>תשלומי ספקים</h1>
         <p className="mt-2 text-base font-semibold leading-7 text-[#111827]">מעקב אחרי תשלומים שזוהו מהמיילים, כולל מסמכים חסרים וסטטוס תשלום.</p>
       </div>
-      <div className="mb-6 flex flex-wrap gap-3">
+      <div className="mb-6 grid gap-3 sm:flex sm:flex-wrap">
         <button
-          className={`btn ${duplicatesOnly ? "" : "btn-secondary"}`}
+          className={`min-h-[44px] rounded-2xl px-4 py-3 text-base font-black ${duplicatesOnly ? "btn" : "btn btn-secondary"}`}
           onClick={() => setDuplicatesOnly((value) => !value)}
           type="button"
         >
@@ -100,31 +100,38 @@ export default function PaymentsPage() {
       <div className="grid gap-4 md:hidden">
         {payments.map((p) => (
           <div key={p.id} className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm" dir="rtl">
-            <div className="mb-4 flex min-w-0 items-start justify-between gap-3">
+            <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <h2 className="min-w-0 break-words text-xl font-black leading-7 text-[#111827] [overflow-wrap:anywhere]">{p.supplier || "לא ידוע"}</h2>
-                <p className="mt-1 min-w-0 break-words text-sm font-semibold leading-6 text-[#111827] [overflow-wrap:anywhere]">{p.emailSender ?? "שולח לא ידוע"}</p>
+                <p className="mt-1 min-w-0 break-words text-sm font-semibold leading-6 text-[#6B7280] [overflow-wrap:anywhere]">{paymentSenderMeta(p)}</p>
               </div>
-              <StatusPill tone={p.paid ? "ok" : "warn"}>{p.paid ? "שולם" : "ממתין"}</StatusPill>
+              <StatusPill tone={p.paid ? "ok" : "warn"}>{paymentStatusLabel(p.paid ? "paid" : "pending")}</StatusPill>
+            </div>
+            <p className="mb-3 min-w-0 break-words text-sm font-semibold leading-6 text-[#6B7280] [overflow-wrap:anywhere]">
+              {formatPaymentDate(p.date)}{p.dueDate ? ` · לתשלום עד ${formatPaymentDate(p.dueDate)}` : ""}
+            </p>
+            {paymentDescription(p) !== "—" && (
+              <p className="mb-3 min-w-0 break-words text-base font-semibold leading-6 text-[#111827] [overflow-wrap:anywhere]">{paymentDescription(p)}</p>
+            )}
+            <div className="mb-3 text-lg font-black text-[#111827]">{formatPaymentAmount(p)}</div>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <StatusPill tone={p.paid ? "ok" : "warn"}>{paymentStatusLabel(p.paid ? "paid" : "pending")}</StatusPill>
+              {p.missingInvoice && <StatusPill tone="warn">{paymentStatusLabel("missing_invoice")}</StatusPill>}
+              {p.duplicateDetected && <StatusPill tone="warn">{duplicateStatusLabel(p.duplicateReason)}</StatusPill>}
             </div>
             <div className="grid min-w-0 gap-2 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] p-3">
-              <MobileRow label="סכום" value={`₪${p.amount.toLocaleString("he-IL")}`} />
-              <MobileRow label="תאריך" value={new Date(p.date).toLocaleDateString("he-IL")} />
-              <MobileRow label="לתשלום עד" value={p.dueDate ? new Date(p.dueDate).toLocaleDateString("he-IL") : "—"} />
-              <MobileRow label="חשבונית חסרה" value={p.missingInvoice ? "כן" : "לא"} />
-              <MobileRow label="מקורות" value={(p.sources ?? []).join(", ") || "—"} />
-              <MobileRow label="כפילות" value={p.duplicateDetected ? `כן (${p.duplicateReason ?? "זוהתה"})` : "לא"} />
+              <MobileRow label="מסמך" value={documentSummary(p)} />
+              {p.duplicateDetected && <MobileRow label="כפילות" value={duplicateStatusLabel(p.duplicateReason)} />}
             </div>
-            <div className="mt-4 grid gap-2">
-              {(p.invoiceLink || p.documentLink) && <button className="min-h-[44px] w-full rounded-xl border border-[#1D4ED8] bg-white px-4 py-3 text-center text-sm font-bold text-[#111827] shadow-sm transition hover:bg-[#EFF6FF]" type="button" onClick={() => setPreviewUrl(p.invoiceLink ?? p.documentLink)}>תצוגה מקדימה</button>}
-              {p.documentLink && <a className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-[#1D4ED8] bg-white px-4 py-3 text-center text-sm font-bold text-[#111827] shadow-sm transition hover:bg-[#EFF6FF]" href={p.documentLink} target="_blank" rel="noreferrer">פתח מסמך</a>}
-              {p.invoiceLink && <a className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-[#1D4ED8] bg-white px-4 py-3 text-center text-sm font-bold text-[#111827] shadow-sm transition hover:bg-[#EFF6FF]" href={p.invoiceLink} target="_blank" rel="noreferrer">פתח חשבונית</a>}
-              <button className="min-h-[44px] w-full rounded-xl border border-red-600 bg-red-600 px-4 py-3 text-center text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60" type="button" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {p.documentLink && <button className="min-h-[44px] min-w-0 rounded-xl border border-[#1D4ED8] bg-[#DBEAFE] px-3 py-2 text-center text-sm font-bold text-[#111827] shadow-sm transition hover:bg-[#BFDBFE]" type="button" onClick={() => setPreviewUrl(p.documentLink)}><span className="truncate">תצוגת מסמך</span></button>}
+              {p.invoiceLink && <button className="min-h-[44px] min-w-0 rounded-xl border border-[#1D4ED8] bg-[#DBEAFE] px-3 py-2 text-center text-sm font-bold text-[#111827] shadow-sm transition hover:bg-[#BFDBFE]" type="button" onClick={() => setPreviewUrl(p.invoiceLink)}><span className="truncate">תצוגת חשבונית</span></button>}
+              <button className="min-h-[44px] min-w-0 rounded-xl border border-red-600 bg-red-600 px-3 py-2 text-center text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60" type="button" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
                 {deletingId === p.id ? "מוחק..." : "מחק תשלום"}
               </button>
               {!p.paid && (
-                <button className="min-h-[44px] w-full rounded-xl border border-[#1D4ED8] bg-[#1D4ED8] px-4 py-3 text-center text-sm font-bold text-white shadow-sm transition hover:bg-[#1746c7] disabled:opacity-60" onClick={() => markPaid(p.id)} disabled={updatingId === p.id}>
-                  {updatingId === p.id ? "מעדכן..." : "סמן כתשלום ששולם"}
+                <button className="min-h-[44px] min-w-0 rounded-xl border border-[#1D4ED8] bg-[#1D4ED8] px-3 py-2 text-center text-sm font-bold text-white shadow-sm transition hover:bg-[#1746c7] disabled:opacity-60" onClick={() => markPaid(p.id)} disabled={updatingId === p.id}>
+                  {updatingId === p.id ? "מעדכן..." : "סמן כשולם"}
                 </button>
               )}
             </div>
@@ -132,80 +139,63 @@ export default function PaymentsPage() {
         ))}
       </div>
 
-      <div className="table-shell hidden max-w-full overflow-x-auto md:block">
-        <table className="min-w-[1320px] border-separate border-spacing-0 text-right text-[#111827]" dir="rtl">
-          <thead>
-            <tr>
-              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">מחק</th>
-              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">ספק</th>
-              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">שולח</th>
-              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">סכום</th>
-              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">תאריך</th>
-              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">לתשלום עד</th>
-              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">שולם</th>
-              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">מסמך</th>
-              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">חשבונית</th>
-              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">חסרה</th>
-              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">מקורות</th>
-              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">כפילות</th>
-              <th className="whitespace-nowrap px-4 py-3 align-middle text-sm font-black text-[#111827]">פעולה</th>
+      <div className="table-shell hidden max-w-full overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm md:block">
+        <table className="w-full table-fixed border-separate border-spacing-0 text-right text-[#111827]" dir="rtl">
+          <thead className="bg-[#F3F4F6]">
+            <tr className="border-b border-[#E5E7EB]">
+              <th className="w-[4%] px-1 py-3 align-middle text-sm font-black text-[#111827]">מחק</th>
+              <th className="w-[20%] px-3 py-3 align-middle text-sm font-black text-[#111827]">ספק</th>
+              <th className="w-[12%] px-3 py-3 align-middle text-sm font-black text-[#111827]">סכום</th>
+              <th className="w-[12%] px-3 py-3 align-middle text-sm font-black text-[#111827]">תאריך</th>
+              <th className="w-[22%] px-3 py-3 align-middle text-sm font-black text-[#111827]">סטטוס</th>
+              <th className="w-[15%] px-3 py-3 align-middle text-sm font-black text-[#111827]">מסמך</th>
+              <th className="w-[15%] px-3 py-3 align-middle text-sm font-black text-[#111827]">פעולות</th>
             </tr>
           </thead>
           <tbody>
             {payments.map((p) => (
-              <tr key={p.id}>
-                <td className="px-4 py-3 align-middle text-[#111827]">
-                  <button className="min-w-[72px] whitespace-nowrap rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-60" onClick={() => deletePayment(p)} disabled={deletingId === p.id}>
+              <tr key={p.id} className="border-b border-[#E5E7EB] bg-white transition hover:bg-[#F8FAFC]">
+                <td className="px-1 py-4 align-middle text-[#111827]">
+                  <button className="min-h-[32px] w-full truncate rounded-lg bg-red-600 px-1 py-1 text-xs font-bold text-white shadow-sm disabled:opacity-60" onClick={() => deletePayment(p)} disabled={deletingId === p.id} title="מחק תשלום">
                     {deletingId === p.id ? "מוחק..." : "מחק"}
                   </button>
                 </td>
-                <td className="px-4 py-3 align-middle text-[#111827]">
-                  <span className="block min-w-40 break-words font-bold text-[#111827]">{p.supplier}</span>
+                <td className="min-w-0 px-3 py-4 align-middle text-[#111827]">
+                  <div className="flex max-w-full items-center gap-2">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#E5E7EB] bg-[#F3F4F6] text-sm font-black text-[#111827]">{(p.supplier || "ספק").slice(0, 2)}</span>
+                    <div className="min-w-0">
+                      <div className="truncate text-base font-semibold text-[#111827]" title={p.supplier || "לא ידוע"}>{p.supplier || "לא ידוע"}</div>
+                      <div className="truncate text-xs font-normal text-[#9CA3AF]" title={paymentSenderMeta(p)}>{paymentSenderMeta(p)}</div>
+                    </div>
+                  </div>
                 </td>
-                <td className="px-4 py-3 align-middle font-semibold text-[#111827]">{p.emailSender ?? "—"}</td>
-                <td className="whitespace-nowrap px-4 py-3 align-middle font-bold text-[#111827]">₪{p.amount.toLocaleString("he-IL")}</td>
-                <td className="whitespace-nowrap px-4 py-3 align-middle font-semibold text-[#111827]">{new Date(p.date).toLocaleDateString("he-IL")}</td>
-                <td className="whitespace-nowrap px-4 py-3 align-middle font-semibold text-[#111827]">
-                  {p.dueDate
-                    ? new Date(p.dueDate).toLocaleDateString("he-IL")
-                    : "—"}
+                <td className="whitespace-nowrap px-3 py-4 align-middle text-base font-bold text-[#111827]">{formatPaymentAmount(p)}</td>
+                <td className="px-3 py-4 align-middle text-[#111827]">
+                  <div className="whitespace-nowrap text-base font-semibold">{formatPaymentDate(p.date)}</div>
+                  {p.dueDate && <div className="truncate text-xs font-normal text-[#9CA3AF]" title={`לתשלום עד ${formatPaymentDate(p.dueDate)}`}>לתשלום עד {formatPaymentDate(p.dueDate)}</div>}
                 </td>
-                <td className="px-4 py-3 align-middle">
-                  <StatusPill tone={p.paid ? "ok" : "warn"}>{p.paid ? "כן" : "לא"}</StatusPill>
+                <td className="px-3 py-4 align-middle">
+                  <div className="flex min-w-0 flex-wrap gap-1.5">
+                    <StatusPill tone={p.paid ? "ok" : "warn"}>{paymentStatusLabel(p.paid ? "paid" : "pending")}</StatusPill>
+                    {p.missingInvoice && <StatusPill tone="warn">{paymentStatusLabel("missing_invoice")}</StatusPill>}
+                    {p.duplicateDetected && <StatusPill tone="warn">{duplicateStatusLabel(p.duplicateReason)}</StatusPill>}
+                  </div>
                 </td>
-                <td className="px-4 py-3 align-middle font-semibold text-[#111827]">
-                  {p.documentLink ? (
-                    <button className="min-w-[72px] whitespace-nowrap rounded-xl border border-[#1D4ED8] bg-[#DBEAFE] px-3 py-2 text-sm font-bold text-[#111827] hover:bg-[#BFDBFE]" type="button" onClick={() => setPreviewUrl(p.documentLink)}>
-                      תצוגה
-                    </button>
-                  ) : (
-                    "—"
-                  )}
+                <td className="px-3 py-4 align-middle font-semibold text-[#111827]">
+                  <div className="flex min-w-0 flex-wrap gap-1">
+                    {p.documentLink && <button className="rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-2 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#BFDBFE]" type="button" onClick={() => setPreviewUrl(p.documentLink)}>מסמך</button>}
+                    {p.invoiceLink && <button className="rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-2 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#BFDBFE]" type="button" onClick={() => setPreviewUrl(p.invoiceLink)}>חשבונית</button>}
+                    {!p.documentLink && !p.invoiceLink && <span className="text-sm font-semibold text-[#6B7280]">—</span>}
+                  </div>
                 </td>
-                <td className="px-4 py-3 align-middle font-semibold text-[#111827]">
-                  {p.invoiceLink ? (
-                    <button className="min-w-[72px] whitespace-nowrap rounded-xl border border-[#1D4ED8] bg-[#DBEAFE] px-3 py-2 text-sm font-bold text-[#111827] hover:bg-[#BFDBFE]" type="button" onClick={() => setPreviewUrl(p.invoiceLink)}>
-                      תצוגה
-                    </button>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td className="px-4 py-3 align-middle">
-                  {p.missingInvoice ? (
-                    <StatusPill tone="warn">כן</StatusPill>
-                  ) : (
-                    <StatusPill tone="ok">לא</StatusPill>
-                  )}
-                </td>
-                <td className="px-4 py-3 align-middle font-semibold text-[#111827]">{(p.sources ?? []).join(", ") || "—"}</td>
-                <td className="px-4 py-3 align-middle font-semibold text-[#111827]">{p.duplicateDetected ? <StatusPill tone="warn">{p.duplicateReason ?? "זוהתה"}</StatusPill> : "—"}</td>
-                <td className="px-4 py-3 align-middle">
-                  {!p.paid && (
-                    <button className="min-w-[172px] whitespace-nowrap rounded-xl border border-[#1D4ED8] bg-white px-4 py-2 text-sm font-bold text-[#111827] shadow-sm transition hover:bg-[#EFF6FF] disabled:opacity-60" onClick={() => markPaid(p.id)} disabled={updatingId === p.id}>
-                      {updatingId === p.id ? "מעדכן..." : "סמן כתשלום ששולם"}
-                    </button>
-                  )}
+                <td className="px-3 py-4 align-middle">
+                  <div className="flex min-w-0 flex-wrap gap-1">
+                    {!p.paid && (
+                      <button className="rounded-lg border border-[#1D4ED8] bg-white px-2 py-1 text-xs font-bold text-[#111827] shadow-sm transition hover:bg-[#EFF6FF] disabled:opacity-60" onClick={() => markPaid(p.id)} disabled={updatingId === p.id}>
+                        {updatingId === p.id ? "מעדכן..." : "סמן כשולם"}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -237,6 +227,66 @@ function MobileRow({ label, value }: { label: string; value: string }) {
       <span className="min-w-0 flex-1 break-words text-left font-semibold text-[#111827] [overflow-wrap:anywhere]">{value || "—"}</span>
     </div>
   );
+}
+
+function formatPaymentDate(value: string | null | undefined) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("he-IL");
+}
+
+function formatPaymentAmount(payment: Payment) {
+  const symbol = payment.currency === "ILS" || !payment.currency ? "₪" : payment.currency;
+  return `${symbol}${payment.amount.toLocaleString("he-IL")}`;
+}
+
+function paymentDescription(payment: Payment) {
+  return payment.subject?.trim() || "—";
+}
+
+function paymentSenderMeta(payment: Payment) {
+  const sender = payment.emailSender?.trim() || "שולח לא ידוע";
+  const sources = (payment.sources ?? []).filter(Boolean).join(", ");
+  return sources ? `${sender} · מקורות: ${sources}` : sender;
+}
+
+function documentSummary(payment: Payment) {
+  if (payment.documentLink && payment.invoiceLink) return "מסמך + חשבונית";
+  if (payment.invoiceLink) return "חשבונית";
+  if (payment.documentLink) return "מסמך";
+  return "—";
+}
+
+const paymentLabelMap: Record<string, string> = {
+  paid: "שולם",
+  unpaid: "ממתין לתשלום",
+  pending: "ממתין לתשלום",
+  missing_invoice: "חסרה חשבונית",
+  quarantined_invalid_required_invoice_fields: "בהסגר - חסרים שדות חובה",
+  supplier_amount_invoice_date: "אותו ספק, סכום ותאריך חשבונית",
+  supplier_amount_date: "אותו ספק, סכום ותאריך",
+  google_drive_existing_file: "קובץ קיים בדרייב",
+  legacy_duplicate_hash: "כפילות לפי מזהה ישן",
+  gmail_scan_item_exists: "פריט ג׳ימייל כבר נסרק",
+  supplier_payment_exists: "תשלום ספק כבר קיים",
+};
+
+function paymentNoteLabel(code: string | null | undefined) {
+  if (!code) return "זוהתה";
+  if (paymentLabelMap[code]) return paymentLabelMap[code];
+  const [prefix, details] = code.split(":", 2);
+  if (details && paymentLabelMap[prefix]) {
+    return `${paymentLabelMap[prefix]} - ${details}`;
+  }
+  return code;
+}
+
+function paymentStatusLabel(status: string) {
+  return paymentNoteLabel(status);
+}
+
+function duplicateStatusLabel(reason: string | null | undefined) {
+  const label = paymentNoteLabel(reason);
+  return label === "זוהתה" ? "כפילות" : `כפילות - ${label}`;
 }
 
 function StatusPill({ tone, children }: { tone: "ok" | "warn"; children: ReactNode }) {
