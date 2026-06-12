@@ -1,9 +1,10 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Nav } from "@/components/Nav";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { apiFetch, type Payment } from "@/lib/api";
+import { labelFor } from "@/lib/labels";
 
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -105,7 +106,7 @@ export default function PaymentsPage() {
                 <h2 className="min-w-0 break-words text-xl font-black leading-7 text-[#111827] [overflow-wrap:anywhere]">{p.supplier || "לא ידוע"}</h2>
                 <p className="mt-1 min-w-0 break-words text-sm font-semibold leading-6 text-[#6B7280] [overflow-wrap:anywhere]">{paymentSenderMeta(p)}</p>
               </div>
-              <StatusPill tone={p.paid ? "ok" : "warn"}>{paymentStatusLabel(p.paid ? "paid" : "pending")}</StatusPill>
+              <StatusPill tone={p.paid ? "success" : "warn"}>{paymentStatusLabel(p.paid ? "paid" : "pending")}</StatusPill>
             </div>
             <p className="mb-3 min-w-0 break-words text-sm font-semibold leading-6 text-[#6B7280] [overflow-wrap:anywhere]">
               {formatPaymentDate(p.date)}{p.dueDate ? ` · לתשלום עד ${formatPaymentDate(p.dueDate)}` : ""}
@@ -115,7 +116,7 @@ export default function PaymentsPage() {
             )}
             <div className="mb-3 text-lg font-black text-[#111827]">{formatPaymentAmount(p)}</div>
             <div className="mb-3 flex flex-wrap gap-2">
-              <StatusPill tone={p.paid ? "ok" : "warn"}>{paymentStatusLabel(p.paid ? "paid" : "pending")}</StatusPill>
+              <StatusPill tone={p.paid ? "success" : "warn"}>{paymentStatusLabel(p.paid ? "paid" : "pending")}</StatusPill>
               {p.missingInvoice && <StatusPill tone="warn">{paymentStatusLabel("missing_invoice")}</StatusPill>}
               {p.duplicateDetected && <StatusPill tone="warn">{duplicateStatusLabel(p.duplicateReason)}</StatusPill>}
             </div>
@@ -176,7 +177,7 @@ export default function PaymentsPage() {
                 </td>
                 <td className="px-3 py-4 align-middle">
                   <div className="flex min-w-0 flex-wrap gap-1.5">
-                    <StatusPill tone={p.paid ? "ok" : "warn"}>{paymentStatusLabel(p.paid ? "paid" : "pending")}</StatusPill>
+                    <StatusPill tone={p.paid ? "success" : "warn"}>{paymentStatusLabel(p.paid ? "paid" : "pending")}</StatusPill>
                     {p.missingInvoice && <StatusPill tone="warn">{paymentStatusLabel("missing_invoice")}</StatusPill>}
                     {p.duplicateDetected && <StatusPill tone="warn">{duplicateStatusLabel(p.duplicateReason)}</StatusPill>}
                   </div>
@@ -271,33 +272,20 @@ const paymentLabelMap: Record<string, string> = {
 };
 
 function paymentNoteLabel(code: string | null | undefined) {
-  if (!code) return "זוהתה";
-  if (paymentLabelMap[code]) return paymentLabelMap[code];
-  const [prefix, details] = code.split(":", 2);
-  if (details && paymentLabelMap[prefix]) {
-    return `${paymentLabelMap[prefix]} - ${details}`;
+  if (!code) return labelFor("duplicateReason", code);
+  if (code === "paid" || code === "unpaid" || code === "pending" || code === "missing_invoice") {
+    return labelFor("paymentStatus", code);
   }
-  return code;
+  return labelFor("duplicateReason", code);
 }
 
 function paymentStatusLabel(status: string) {
-  return paymentNoteLabel(status);
+  return labelFor("paymentStatus", status);
 }
 
 function duplicateStatusLabel(reason: string | null | undefined) {
-  const label = paymentNoteLabel(reason);
+  const label = labelFor("duplicateReason", reason);
   return label === "זוהתה" ? "כפילות" : `כפילות - ${label}`;
-}
-
-function StatusPill({ tone, children }: { tone: "ok" | "warn"; children: ReactNode }) {
-  const toneClass = tone === "ok"
-    ? "border-emerald-600 bg-emerald-100 text-[#111827]"
-    : "border-amber-600 bg-amber-100 text-[#111827]";
-  return (
-    <span className={`inline-flex min-w-[44px] items-center justify-center rounded-full border px-3 py-1 text-sm font-black ${toneClass}`}>
-      {children}
-    </span>
-  );
 }
 
 function toDrivePreviewUrl(url: string) {
