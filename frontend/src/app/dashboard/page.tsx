@@ -715,15 +715,6 @@ export default function DashboardPage() {
     }
   }
 
-  if (!stats) {
-    return (
-      <main className={spacing.page} style={{ backgroundColor: colors.bg, color: colors.textPrimary }}>
-        <Nav />
-        <p className={typography.body}>{error || "טוען..."}</p>
-      </main>
-    );
-  }
-
   const gmailConnected = Boolean(gmailStatus?.connected);
   const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
   const todayGreeting = greetingForNow();
@@ -796,10 +787,10 @@ export default function DashboardPage() {
         </section>
 
         <section className={`grid grid-cols-2 md:grid-cols-4 ${spacing.inline}`}>
-          <KpiCard title="חשבוניות החודש" value={formatNumber(monthInvoices.length)} subtitle="מסמכים שנמצאו החודש" />
-          <KpiCard title="ממתין לתשלום" value={formatShekel(unpaidSupplierTotal)} subtitle="תשלומי ספקים פתוחים" />
-          <KpiCard title="שולם החודש" value={formatShekel(paidThisMonth)} subtitle="לפי תאריך המסמך" />
-          <KpiCard title="מע״מ משוער" value={formatShekel(estimatedVat)} subtitle="הערכה לפי 18% מע״מ" />
+          <KpiCard title="חשבוניות החודש" value={stats ? formatNumber(monthInvoices.length) : "—"} subtitle="מסמכים שנמצאו החודש" />
+          <KpiCard title="ממתין לתשלום" value={stats ? formatShekel(unpaidSupplierTotal) : "—"} subtitle="תשלומי ספקים פתוחים" />
+          <KpiCard title="שולם החודש" value={stats ? formatShekel(paidThisMonth) : "—"} subtitle="לפי תאריך המסמך" />
+          <KpiCard title="מע״מ משוער" value={stats ? formatShekel(estimatedVat) : "—"} subtitle="הערכה לפי 18% מע״מ" />
         </section>
 
         <section className={`grid ${spacing.section} lg:grid-cols-2`}>
@@ -950,12 +941,14 @@ function SectionTitle({ title }: { title: string }) {
 }
 
 function ReviewRow({ item }: { item: DocumentReview }) {
+  const title = reviewTitle(item);
+  const description = reviewDescription(item);
   return (
     <article className={`${radius.card} ${shadow.card} ${spacing.card}`} style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}` }}>
       <div className="grid gap-3 sm:grid-cols-4 sm:items-center">
         <div className="sm:col-span-2">
-          <div className={`${typography.body} font-semibold`} style={{ color: colors.textPrimary }}>{item.supplierName ?? item.sender ?? "ספק לא ידוע"}</div>
-          <div className={`${typography.meta} mt-1`} style={{ color: colors.textSecondary }}>{item.subject ?? item.fileName ?? labelFor("documentType", item.documentType)}</div>
+          <div className={`${typography.body} font-semibold`} style={{ color: colors.textPrimary }}>{title}</div>
+          <div className={`${typography.meta} mt-1`} style={{ color: colors.textPrimary }}>{description}</div>
         </div>
         <div className={typography.body} style={{ color: colors.textPrimary }}>
           {formatShekel(item.totalAmount ?? 0)} · {formatDate(item.createdAt)}
@@ -967,6 +960,18 @@ function ReviewRow({ item }: { item: DocumentReview }) {
       </div>
     </article>
   );
+}
+
+function reviewTitle(item: DocumentReview) {
+  return item.supplierName?.trim() || item.sender?.trim() || sourceLabel(item.source) || "ספק לא ידוע";
+}
+
+function reviewDescription(item: DocumentReview) {
+  return item.subject?.trim() || item.fileName?.trim() || item.uncertaintyReason?.trim() || labelFor("documentType", item.documentType) || "מסמך לבדיקה";
+}
+
+function sourceLabel(source: string) {
+  return source === "whatsapp" ? "וואטסאפ" : source === "gmail" ? "ג׳ימייל" : source.replace(/_/g, " ");
 }
 
 function ActivityCard({ title, empty, children }: { title: string; empty: string; children: ReactNode }) {
