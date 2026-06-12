@@ -36,13 +36,13 @@ const links: NavLink[] = [
   { id: "crm", href: "/crm", label: "ניהול לקוחות", icon: CircleDollarSign, module: "crm" },
   { id: "messageScans", href: "/message-scans", label: "סריקות הודעות", icon: Search },
   { id: "clients", href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
-  { id: "invoices", href: "/dashboard/invoices", label: "חשבוניות", icon: FileText, module: "invoices" },
+  { id: "invoices", href: "/dashboard/invoices", label: "חשבוניות", icon: FileText },
   { id: "invoiceDiagnostics", href: "/dashboard/invoice-diagnostics", label: "אבחון חשבוניות", icon: Search, module: "invoices" },
-  { id: "documentReviews", href: "/dashboard/document-reviews", label: "מסמכים לבדיקה", icon: Search, module: "supplier_management" },
-  { id: "supplierPayments", href: "/payments", label: "תשלומי ספקים", icon: WalletCards, module: "supplier_management" },
-  { id: "bank", href: "/dashboard/bank", label: "התאמת בנק", icon: Landmark, module: "supplier_management" },
+  { id: "documentReviews", href: "/dashboard/document-reviews", label: "מסמכים לבדיקה", icon: Search },
+  { id: "supplierPayments", href: "/payments", label: "תשלומי ספקים", icon: WalletCards },
+  { id: "bank", href: "/dashboard/bank", label: "התאמת בנק", icon: Landmark },
   { id: "tasks", href: "/tasks", label: "משימות", icon: CheckSquare },
-  { id: "collections", href: "/collections", label: "גבייה", icon: CircleDollarSign, module: "collections" },
+  { id: "collections", href: "/collections", label: "גבייה", icon: CircleDollarSign },
   { id: "social", href: "/social", label: "סושיאל", icon: Megaphone },
   { id: "whatsapp", href: "/dashboard/whatsapp", label: "וואטסאפ", icon: MessageCircle, module: "whatsapp" },
   { id: "reports", href: "/reports", label: "דוחות", icon: BarChart3 },
@@ -56,8 +56,8 @@ const links: NavLink[] = [
 const mobileLinks: NavLink[] = [
   { id: "dashboard", href: "/dashboard", label: "בית", icon: Home },
   { id: "clients", href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
-  { id: "invoices", href: "/dashboard/invoices", label: "חשבוניות", icon: FileText, module: "invoices" },
-  { id: "supplierPayments", href: "/payments", label: "ספקים", icon: WalletCards, module: "supplier_management" },
+  { id: "invoices", href: "/dashboard/invoices", label: "חשבוניות", icon: FileText },
+  { id: "supplierPayments", href: "/payments", label: "ספקים", icon: WalletCards },
 ];
 
 type SearchClient = { id: string; name: string; email?: string | null };

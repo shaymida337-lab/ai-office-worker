@@ -24,13 +24,14 @@ export function ScanBanner({
   errors?: number;
 }) {
   const text = scanBannerText(status, found, scanned, totalMatched, errors);
-  const progress = status === "running" ? 45 : 100;
   return (
     <section className={`${radius.card} ${shadow.card} ${spacing.card} border`} style={statusStyles[status]}>
       <div className={`${type.body} max-w-full text-wrap leading-6 font-semibold`}>{text}</div>
-      <div className={`mt-3 h-2 w-full overflow-hidden ${radius.pill}`} style={{ backgroundColor: colors.border }}>
-        <div className="h-full transition-all" style={{ width: `${progress}%`, backgroundColor: colors.accent }} />
-      </div>
+      {status === "running" && (
+        <div className={`mt-3 h-2 w-full overflow-hidden ${radius.pill}`} style={{ backgroundColor: colors.border }}>
+          <div className="h-full transition-all" style={{ width: "45%", backgroundColor: colors.accent }} />
+        </div>
+      )}
     </section>
   );
 }

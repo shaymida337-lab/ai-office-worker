@@ -330,6 +330,7 @@ export default function DashboardPage() {
   const [scanRangeDays, setScanRangeDays] = useState(90);
   const [activeScanId, setActiveScanId] = useState<string | null>(null);
   const [activeScan, setActiveScan] = useState<ScanProgressResult | null>(null);
+  const [successScanBannerHidden, setSuccessScanBannerHidden] = useState(false);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [missingInvoices, setMissingInvoices] = useState<Payment[]>([]);
   const [recentInvoices, setRecentInvoices] = useState<RecentInvoice[]>([]);
@@ -492,6 +493,17 @@ export default function DashboardPage() {
       window.clearInterval(interval);
     };
   }, [activeScanId, load]);
+
+  useEffect(() => {
+    const banner = buildScanBannerState(activeScan, scanStatus);
+    if (banner?.status !== "success" || banner.errors > 0) {
+      setSuccessScanBannerHidden(false);
+      return;
+    }
+    setSuccessScanBannerHidden(false);
+    const timeout = window.setTimeout(() => setSuccessScanBannerHidden(true), 8000);
+    return () => window.clearTimeout(timeout);
+  }, [activeScan, scanStatus]);
 
   async function startFirstScan() {
     const freshGmailStatus = gmailStatus?.connected ? gmailStatus : await refreshGmailStatus().catch(() => gmailStatus);
@@ -724,7 +736,7 @@ export default function DashboardPage() {
   const gmailConnected = Boolean(gmailStatus?.connected);
   const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
   const todayGreeting = greetingForNow();
-  const scanBanner = buildScanBannerState(activeScan, scanStatus);
+  const scanBanner = successScanBannerHidden ? null : buildScanBannerState(activeScan, scanStatus);
   const monthInvoices = recentInvoices.filter((invoice) => isThisMonth(invoice.date));
   const unpaidSupplierTotal = payments.filter((payment) => !payment.paid).reduce((sum, payment) => sum + payment.amount, 0);
   const paidThisMonth = payments.filter((payment) => payment.paid && isThisMonth(payment.date)).reduce((sum, payment) => sum + payment.amount, 0);
