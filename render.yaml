@@ -28,6 +28,7 @@ services:
     region: oregon
     autoDeploy: true
     buildCommand: "export DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} && cd backend && npm install && npm run db:generate && npm run build"
+    preDeployCommand: "export DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} && cd backend && npx prisma migrate deploy"
     startCommand: "export DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} && cd backend && node dist/index.js"
     healthCheckPath: /health
     envVars:

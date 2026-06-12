@@ -23,16 +23,16 @@ Direct production SQL caused the previous stuck-migration incident: tables and c
 
 ## Production Migration Flow
 
-Migrations are intentionally not run on backend boot. The production `db:migrate:deploy` script is a no-op, and `render.yaml` starts the backend with `node dist/index.js`.
+Migrations run automatically on deploy via `preDeployCommand`. Manual `prisma migrate deploy` remains available for emergencies.
 
-This is deliberate. Do not re-enable migrate-on-boot unless the production migration history has been fully audited and the team explicitly agrees. Production migrations should be applied as a controlled manual step:
+The backend service runs this after build and before start:
 
 ```bash
 cd backend
 npx prisma migrate deploy
 ```
 
-Run this from the Render Shell for the backend service, where `DATABASE_URL` points to the production database.
+For emergency manual runs, use the Render Shell for the backend service, where `DATABASE_URL` points to the production database.
 
 ## Drift Check
 
