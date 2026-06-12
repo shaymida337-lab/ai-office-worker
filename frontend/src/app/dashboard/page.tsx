@@ -1,8 +1,13 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
-import { HelpTooltip } from "@/components/HelpTooltip";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { KpiCard } from "@/components/ui/KpiCard";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { ScanBanner } from "@/components/ui/ScanBanner";
+import { StatusPill } from "@/components/ui/StatusPill";
 import {
   apiFetch,
   clearToken,
@@ -13,9 +18,9 @@ import {
   type Payment,
   type Task,
 } from "@/lib/api";
-import { businessModules, businessTypeLabel, getBusinessProfile, normalizeEnabledModules, uiTranslations, type BusinessKpiConfig, type BusinessModuleId, type DashboardKpiMetric, type OrganizationSettings } from "@/lib/business-config";
-import { useRouter } from "next/navigation";
-import { Activity, ArrowUpRight, Building2, ClipboardList, Clock3, FileText, HeartPulse, MessageCircle, Plus, RefreshCcw, ScanLine, WalletCards } from "lucide-react";
+import { colors, radius, shadow, spacing, type as typography } from "@/lib/design-tokens";
+import { labelFor } from "@/lib/labels";
+import type { OrganizationSettings } from "@/lib/business-config";
 
 type ClientSummary = {
   id: string;
@@ -51,6 +56,8 @@ type ScanStatus = {
     driveUploaded?: number;
     sheetsUpdated?: number;
     errors: string | null;
+    windowTruncated?: boolean;
+    totalMatched?: number | null;
     startedAt: string;
     endedAt: string | null;
   }>;
@@ -65,6 +72,8 @@ type ScanStatus = {
     driveUploaded?: number;
     sheetsUpdated?: number;
     errors: string | null;
+    windowTruncated?: boolean;
+    totalMatched?: number | null;
     startedAt: string;
     endedAt: string | null;
   } | null;
@@ -233,15 +242,20 @@ type AlertItem = {
   createdAt: string;
 };
 
-type ActionPriority = "urgent" | "important" | "recommended";
-
-type ActionRecommendation = {
+type DocumentReview = {
   id: string;
-  priority: ActionPriority;
-  title: string;
-  explanation: string;
-  actionLabel: string;
-  href: string;
+  source: string;
+  sender: string | null;
+  subject: string | null;
+  fileName: string | null;
+  documentType: string;
+  supplierName: string | null;
+  totalAmount: number | null;
+  confidenceScore: number;
+  uncertaintyReason: string | null;
+  driveFileUrl: string | null;
+  reviewStatus: string;
+  createdAt: string;
 };
 
 const emptyStats: DashboardStats = {
@@ -315,6 +329,7 @@ export default function DashboardPage() {
   const [recentInvoices, setRecentInvoices] = useState<RecentInvoice[]>([]);
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [documentReviews, setDocumentReviews] = useState<DocumentReview[]>([]);
   const [actionMessage, setActionMessage] = useState("");
   const [showGmailConnect, setShowGmailConnect] = useState(false);
   const [error, setError] = useState("");
@@ -339,7 +354,7 @@ export default function DashboardPage() {
 
   const load = useCallback(async () => {
     try {
-      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult, systemResult] = await Promise.allSettled([
+      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult, systemResult, reviewsResult] = await Promise.allSettled([
         apiFetch<DashboardStats>("/api/stats"),
         apiFetch<{ text: string }>("/api/summary/daily"),
         apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
@@ -352,35 +367,13 @@ export default function DashboardPage() {
         apiFetch<AlertItem[]>("/api/alerts"),
         apiFetch<OrganizationSettings>("/api/organization/settings"),
         apiFetch<SystemHealth>("/api/system/health", { timeoutMs: 30000 }),
+        apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review"),
       ]);
 
-      if (statsResult.status === "fulfilled") {
-        setStats(statsResult.value);
-      } else {
-        console.error("[dashboard] /api/stats failed", statsResult.reason);
-        setStats(emptyStats);
-      }
-
-      if (summaryResult.status === "fulfilled") {
-        setSummary(summaryResult.value.text);
-      } else {
-        console.error("[dashboard] /api/summary/daily failed", summaryResult.reason);
-        setSummary("לא ניתן לטעון סיכום כרגע.");
-      }
-
-      if (gmailResult.status === "fulfilled") {
-        setGmailStatus(gmailResult.value);
-      } else {
-        console.error("[dashboard] /api/integrations/gmail/status failed", gmailResult.reason);
-        setGmailStatus({ googleConfigured: true, connected: false, connectedAt: null });
-      }
-
-      if (clientsResult.status === "fulfilled") {
-        setClients(clientsResult.value);
-      } else {
-        console.error("[dashboard] /api/clients failed", clientsResult.reason);
-        setClients(emptyClients);
-      }
+      setStats(statsResult.status === "fulfilled" ? statsResult.value : emptyStats);
+      setSummary(summaryResult.status === "fulfilled" ? summaryResult.value.text : "לא ניתן לטעון סיכום כרגע.");
+      setGmailStatus(gmailResult.status === "fulfilled" ? gmailResult.value : { googleConfigured: true, connected: false, connectedAt: null });
+      setClients(clientsResult.status === "fulfilled" ? clientsResult.value : emptyClients);
 
       if (scanStatusResult.status === "fulfilled") {
         setScanStatus(scanStatusResult.value);
@@ -390,15 +383,16 @@ export default function DashboardPage() {
           window.localStorage.setItem("activeGmailScanId", running.id);
         }
       } else {
-        console.error("[dashboard] /api/automation/scan-status failed", scanStatusResult.reason);
         setScanStatus(emptyScanStatus());
       }
 
       setPayments(paymentsResult.status === "fulfilled" ? paymentsResult.value : []);
       setMissingInvoices(missingResult.status === "fulfilled" ? missingResult.value : []);
-      setRecentInvoices(invoicesResult.status === "fulfilled" ? invoicesResult.value.invoices.slice(0, 8) : []);
+      setRecentInvoices(invoicesResult.status === "fulfilled" ? invoicesResult.value.invoices : []);
       setRecentTasks(tasksResult.status === "fulfilled" ? tasksResult.value.slice(0, 8) : []);
       setAlerts(alertsResult.status === "fulfilled" ? alertsResult.value.slice(0, 8) : []);
+      setDocumentReviews(reviewsResult.status === "fulfilled" ? reviewsResult.value.slice(0, 5) : []);
+
       if (orgResult.status === "fulfilled") {
         setOrganizationSettings(orgResult.value);
         if (orgResult.value.onboardingRequired) {
@@ -406,16 +400,9 @@ export default function DashboardPage() {
           return;
         }
       }
-      if (systemResult.status === "fulfilled") {
-        setSystemHealth(systemResult.value);
-      } else {
-        console.error("[dashboard] /api/system/health failed", systemResult.reason);
-        setSystemHealth(null);
-      }
 
-      apiFetch<WhatsAppAssistantStats>("/api/whatsapp-assistant/stats")
-        .then(setWhatsAppStats)
-        .catch(() => undefined);
+      setSystemHealth(systemResult.status === "fulfilled" ? systemResult.value : null);
+      apiFetch<WhatsAppAssistantStats>("/api/whatsapp-assistant/stats").then(setWhatsAppStats).catch(() => undefined);
       setLastUpdatedAt(new Date());
       setError("");
     } catch (err) {
@@ -429,7 +416,7 @@ export default function DashboardPage() {
       setScanStatus(emptyScanStatus());
       setError(err instanceof Error ? err.message : "טעינת הדשבורד נכשלה");
     }
-  }, [router]);
+  }, [activeScanId, router]);
 
   useEffect(() => {
     if (window.location.search.includes("gmail=connected")) {
@@ -476,9 +463,7 @@ export default function DashboardPage() {
           setFirstScanSummary(formatProgressSummary(progress));
           setScanToast({
             type: progress.status === "partial" ? "warning" : "success",
-            text: progress.status === "partial"
-              ? formatPartialScanMessage(progress)
-              : "הסריקה הסתיימה והנתונים עודכנו",
+            text: progress.status === "partial" ? formatPartialScanMessage(progress) : "הסריקה הסתיימה והנתונים עודכנו",
           });
           setActiveScanId(null);
           window.localStorage.removeItem("activeGmailScanId");
@@ -524,10 +509,7 @@ export default function DashboardPage() {
     try {
       const addProgress = (message: string) => setScanProgress((items) => [...items, message]);
       addProgress("יוצר סריקה ברקע...");
-      const result = await apiFetch<GmailScanResult>(
-        "/api/gmail/scan",
-        { method: "POST", body: JSON.stringify({ daysBack: scanRangeDays }) }
-      );
+      const result = await apiFetch<GmailScanResult>("/api/gmail/scan", { method: "POST", body: JSON.stringify({ daysBack: scanRangeDays }) });
       if (result.scanId) {
         startedScanId = result.scanId;
         setActiveScanId(result.scanId);
@@ -553,7 +535,6 @@ export default function DashboardPage() {
 
   async function connectGmail() {
     const token = getToken();
-
     if (!token) {
       router.push(`/login?next=${encodeURIComponent("/dashboard?connect=gmail")}`);
       return;
@@ -570,18 +551,12 @@ export default function DashboardPage() {
           "Content-Type": "application/json",
         },
       });
-
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error((errorData as { error?: string }).error ?? "חיבור ג׳ימייל נכשל");
       }
-
       const data = await res.json() as { url?: string };
-
-      if (!data.url) {
-        throw new Error("שרת לא החזיר כתובת חיבור לגוגל");
-      }
-
+      if (!data.url) throw new Error("שרת לא החזיר כתובת חיבור לגוגל");
       window.location.href = data.url;
     } catch (err) {
       const message = err instanceof Error ? err.message : "התחברות גוגל לא מוגדרת";
@@ -616,9 +591,7 @@ export default function DashboardPage() {
       }
       await load();
       const summary = scanSummaryFromResult(result);
-      const message = result.message ?? (result.backgroundProcessing
-        ? `נמצאו ${summary.emailsScanned} מיילים בג׳ימייל. העיבוד המלא ממשיך ברקע ויעדכן חשבוניות/תשלומים.`
-        : formatScanSuccess(summary));
+      const message = result.message ?? (result.backgroundProcessing ? `נמצאו ${summary.emailsScanned} מיילים בג׳ימייל. העיבוד המלא ממשיך ברקע ויעדכן חשבוניות/תשלומים.` : formatScanSuccess(summary));
       setError(message);
       setScanToast({ type: "success", text: message });
     } catch (e) {
@@ -637,10 +610,7 @@ export default function DashboardPage() {
     setSyncing(true);
     setError("");
     try {
-      const result = await apiFetch<{ success: boolean; results?: Array<{ message?: string }> }>(
-        "/api/clients/scan-all",
-        { method: "POST" }
-      );
+      const result = await apiFetch<{ success: boolean; results?: Array<{ message?: string }> }>("/api/clients/scan-all", { method: "POST" });
       await load();
       setError(result.results?.find((item) => item.message)?.message ?? "סריקת כל הלקוחות הסתיימה");
     } catch (e) {
@@ -673,10 +643,7 @@ export default function DashboardPage() {
       const result = await apiFetch<WhatsAppScanResult>("/api/whatsapp/scan", {
         method: "POST",
         timeoutMs: 15000,
-        body: JSON.stringify({
-          fullScan,
-          daysBack: fullScan ? null : Number(whatsAppScanRange),
-        }),
+        body: JSON.stringify({ fullScan, daysBack: fullScan ? null : Number(whatsAppScanRange) }),
       });
       setWhatsAppScanResult(result);
       if (result.progressUrl && result.inProgress) {
@@ -694,9 +661,7 @@ export default function DashboardPage() {
       }
       setScanToast({
         type: result.status === "completed" ? "success" : "error",
-        text: result.status === "completed"
-          ? `סריקת וואטסאפ הסתיימה: ${result.messagesScanned} הודעות נסרקו`
-          : `סריקת וואטסאפ הסתיימה עם ${result.errorsCount} שגיאות`,
+        text: result.status === "completed" ? `סריקת וואטסאפ הסתיימה: ${result.messagesScanned} הודעות נסרקו` : `סריקת וואטסאפ הסתיימה עם ${result.errorsCount} שגיאות`,
       });
       await load();
     } catch (err) {
@@ -730,7 +695,7 @@ export default function DashboardPage() {
     }
   }
 
-  async function attachInvoiceToPayment(paymentId: string) {
+  function attachInvoiceToPayment(paymentId: string) {
     setInvoiceAttachPaymentId(paymentId);
     setInvoiceAttachLink("");
   }
@@ -752,1112 +717,449 @@ export default function DashboardPage() {
 
   if (!stats) {
     return (
-      <div className="container">
-        <p>{error || "טוען..."}</p>
-      </div>
+      <main className={spacing.page} style={{ backgroundColor: colors.bg, color: colors.textPrimary }}>
+        <Nav />
+        <p className={typography.body}>{error || "טוען..."}</p>
+      </main>
     );
   }
 
-  const businessProfile = safeBusinessProfile(organizationSettings);
-  const kpis = businessProfile.dashboardKpis
-    .filter((kpi) => !kpi.module || moduleIsEnabled(organizationSettings, kpi.module))
-    .map((kpi) => ({
-      label: kpi.label,
-      value: formatDashboardMetric(kpi, stats),
-      icon: dashboardMetricIcon(kpi.metric),
-      detail: kpi.detail,
-      tone: dashboardMetricTone(kpi.metric),
-    }));
-  const businessWidgets = businessProfile.dashboardWidgets.filter((widget) => moduleIsEnabled(organizationSettings, widget.module));
-  const showSupplier = moduleIsEnabled(organizationSettings, "supplier_management");
-  const showInvoices = moduleIsEnabled(organizationSettings, "invoices");
-  const showTasks = moduleIsEnabled(organizationSettings, "tasks");
-  const showCrm = moduleIsEnabled(organizationSettings, "crm");
-  const showWhatsApp = moduleIsEnabled(organizationSettings, "whatsapp");
-  const showDocuments = moduleIsEnabled(organizationSettings, "documents");
   const gmailConnected = Boolean(gmailStatus?.connected);
   const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
-  const setupComplete = gmailConnected && whatsAppConnected;
-  const scanRangeLabel = `${scanRangeDays} ימים`;
-  const initialSetupComplete = gmailConnected && Boolean(isCompletedGmailScanStatus(activeScan?.status) || isCompletedGmailScanStatus(scanStatus?.last?.status));
-  const actionRecommendations = buildActionRecommendations({
-    stats,
-    gmailConnected,
-    scanStatus,
-    payments,
-    missingInvoices,
-    recentInvoices,
-    recentTasks,
-    alerts,
-    whatsAppStats,
-    initialSetupComplete,
-    showWhatsApp,
-    showSupplier,
-    showInvoices,
-    showTasks,
-    showDocuments,
-    businessActionRecommendations: businessProfile.actionRecommendations ?? [],
-  });
-  const startInitialSetup = () => {
-    if (!gmailConnected) {
-      connectGmail();
-      return;
-    }
-    startFirstScan();
-  };
+  const todayGreeting = greetingForNow();
+  const scanBanner = buildScanBannerState(activeScan, scanStatus);
+  const monthInvoices = recentInvoices.filter((invoice) => isThisMonth(invoice.date));
+  const unpaidSupplierTotal = payments.filter((payment) => !payment.paid).reduce((sum, payment) => sum + payment.amount, 0);
+  const paidThisMonth = payments.filter((payment) => payment.paid && isThisMonth(payment.date)).reduce((sum, payment) => sum + payment.amount, 0);
+  const monthDocumentTotal = [
+    ...payments.filter((payment) => isThisMonth(payment.date)).map((payment) => payment.amount),
+    ...monthInvoices.map((invoice) => invoice.amount),
+  ].reduce((sum, amount) => sum + amount, 0);
+  const estimatedVat = monthDocumentTotal * 0.18 / 1.18;
+
   return (
-    <div className="container">
+    <main className={`${spacing.page} min-h-screen`} style={{ backgroundColor: colors.bg, color: colors.textPrimary }}>
       <Nav />
-      <div className="mb-8 flex min-w-0 flex-col gap-6 md:flex-row md:items-start md:justify-between">
-        <div className="flex min-w-0 flex-col gap-4">
-          <div className="flex items-center gap-3 rounded-3xl border border-[#dbe5ff] bg-[#f8fbff] p-4 shadow-[0_10px_34px_rgba(20,40,90,0.08)]">
-            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-[#cdd9ff] bg-[#e8eeff] text-[#1d5bff]">
-              <Building2 className="h-7 w-7" />
-            </span>
-            <div className="min-w-0">
-              <div className="text-[12px] font-bold uppercase tracking-[0.22em] text-[#1d5bff]">{businessProfile.title}</div>
-              <div className="mt-1 text-sm font-semibold text-[#0e1116]">{businessTypeLabel(organizationSettings?.businessType)} · {enabledModuleCount(organizationSettings)} מודולים פעילים</div>
-            </div>
-          </div>
-          <div>
-            <h1>לוח בקרה</h1>
-            <p>{businessProfile.subtitle}</p>
-          </div>
-        </div>
-        <section className="w-full min-w-0 rounded-3xl border border-[var(--border)] bg-white p-4 shadow-card md:w-auto md:min-w-[24rem] md:max-w-[38rem]">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
-              <div className="text-[12px] font-extrabold uppercase tracking-[0.2em] text-accent-primary">פעולות מהירות</div>
-              <p className="mt-1 text-sm">שתי הסריקות המרכזיות זמינות מיד.</p>
-            </div>
-          </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <div className="flex min-w-0 flex-wrap items-center gap-2" data-help="scan-gmail">
-              <button className="btn" onClick={runSync} disabled={syncing}><ScanLine className="h-4 w-4" />{syncing ? "סורק..." : "סרוק ג׳ימייל"}</button>
-              <HelpTooltip text="מחפש חשבוניות חדשות במייל ומוסיף אותן למערכת." label="סרוק ג׳ימייל" />
-            </div>
-            <div className="flex min-w-0 flex-wrap items-center gap-2" data-help="scan-whatsapp">
-              <button className="btn" onClick={runWhatsAppScan} disabled={whatsAppScanning || !whatsAppConnected}><MessageCircle className="h-4 w-4" />{whatsAppScanning ? "סורק וואטסאפ..." : "סרוק וואטסאפ"}</button>
-              <HelpTooltip text="בודק מסמכים והודעות שנשלחו בווטסאפ ומנסה לזהות חשבוניות." label="סרוק וואטסאפ" />
-            </div>
-          </div>
-          <details className="group mt-3 rounded-2xl border border-[#e6eaf2] bg-[#f4f6fb]">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-bold text-[#0e1116] transition hover:text-[#1d5bff] [&::-webkit-details-marker]:hidden">
-              <span>פעולות נוספות</span>
-              <span className="text-xs text-[#6b7686] transition group-open:rotate-180">⌄</span>
-            </summary>
-            <div className="grid gap-4 border-t border-[#e6eaf2] p-3">
-              <div>
-                <div className="mb-2 text-xs font-bold text-ink-muted">סריקות</div>
-                <div className="flex min-w-0 flex-wrap gap-2">
-                  <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#d7def0] bg-white px-3.5 py-2 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={scanAllClients} disabled={syncing}><RefreshCcw className="h-4 w-4" />סרוק לקוחות</button>
-                </div>
-              </div>
-              <div>
-                <div className="mb-2 text-xs font-bold text-ink-muted">ניהול</div>
-                <div className="flex min-w-0 flex-wrap gap-2">
-                  <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-transparent bg-white px-3.5 py-2 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={() => router.push("/dashboard/clients")}><Plus className="h-4 w-4" />הוסף לקוח</button>
-                  <button className="inline-flex min-h-10 items-center justify-center rounded-xl border border-transparent bg-white px-3.5 py-2 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={() => router.push("/dashboard/business-settings")}>התאם את המערכת</button>
-                </div>
-              </div>
-            </div>
-          </details>
-        </section>
-      </div>
-
-      <div data-help="system-connections">
-      <SystemConnectionsPanel
-        health={systemHealth}
-        gmailConnected={gmailConnected}
-        whatsAppConnected={whatsAppConnected}
-        whatsAppScanning={whatsAppScanning}
-        whatsAppScanRange={whatsAppScanRange}
-        whatsAppScanResult={whatsAppScanResult}
-        onConnectGmail={connectGmail}
-        onConnectWhatsApp={() => router.push("/dashboard/whatsapp")}
-        onRunSystemCheck={runSystemCheck}
-        onRunWhatsAppScan={runWhatsAppScan}
-        onWhatsAppRangeChange={setWhatsAppScanRange}
+      <PageHeader
+        title={`${todayGreeting} 👋`}
+        subtitle="נטלי כאן — זה מה שקורה בעסק שלך עכשיו"
+        action={
+          <button
+            type="button"
+            onClick={runSync}
+            disabled={syncing || Boolean(activeScanId)}
+            className={`${radius.control} min-h-11 px-5 py-3 font-semibold disabled:opacity-60`}
+            style={{ backgroundColor: colors.accent, color: colors.surface, border: `1px solid ${colors.accent}` }}
+          >
+            {syncing || activeScanId ? "סורקת..." : "סרוק עכשיו"}
+          </button>
+        }
       />
+
+      <div className={`grid ${spacing.section}`}>
+        {scanBanner && (
+          <ScanBanner
+            status={scanBanner.status}
+            found={scanBanner.found}
+            scanned={scanBanner.scanned}
+            totalMatched={scanBanner.totalMatched}
+            errors={scanBanner.errors}
+          />
+        )}
+
+        <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
+
+        {showGmailConnect && (
+          <section className={`${radius.card} ${shadow.card} ${spacing.card}`} style={{ backgroundColor: colors.surface, border: `1px solid ${colors.warnBorder}` }}>
+            <div className={typography.sectionTitle} style={{ color: colors.textPrimary }}>צריך לחבר ג׳ימייל</div>
+            <p className={`${typography.body} mt-2`} style={{ color: colors.textSecondary }}>חיבור ג׳ימייל נדרש לפני סריקת המסמכים.</p>
+            <button type="button" onClick={connectGmail} className={`${radius.control} mt-4 min-h-11 px-4 py-3 font-semibold`} style={{ backgroundColor: colors.surface, border: `1px solid ${colors.accent}`, color: colors.accent }}>
+              התחבר לג׳ימייל
+            </button>
+          </section>
+        )}
+
+        <section className={`grid ${spacing.section}`}>
+          <SectionTitle title="ממתינים לאישורך" />
+          {documentReviews.length > 0 ? (
+            <div className={`grid ${spacing.inline}`}>
+              {documentReviews.map((item) => (
+                <ReviewRow key={item.id} item={item} />
+              ))}
+              <a href="/dashboard/document-reviews" className={`${typography.body} font-semibold`} style={{ color: colors.accent }}>
+                לכל המסמכים לבדיקה ←
+              </a>
+            </div>
+          ) : (
+            <EmptyState title="הכל מאושר ✓" hint="אין מסמכים שממתינים לבדיקה שלך" />
+          )}
+        </section>
+
+        <section className={`grid grid-cols-2 md:grid-cols-4 ${spacing.inline}`}>
+          <KpiCard title="חשבוניות החודש" value={formatNumber(monthInvoices.length)} subtitle="מסמכים שנמצאו החודש" />
+          <KpiCard title="ממתין לתשלום" value={formatShekel(unpaidSupplierTotal)} subtitle="תשלומי ספקים פתוחים" />
+          <KpiCard title="שולם החודש" value={formatShekel(paidThisMonth)} subtitle="לפי תאריך המסמך" />
+          <KpiCard title="מע״מ משוער" value={formatShekel(estimatedVat)} subtitle="הערכה לפי 18% מע״מ" />
+        </section>
+
+        <section className={`grid ${spacing.section} lg:grid-cols-2`}>
+          <ActivityCard title="תשלומי ספקים" empty="אין תשלומי ספקים עדיין">
+            {payments.slice(0, 5).map((payment) => (
+              <DataRow
+                key={payment.id}
+                title={payment.supplier || "ספק לא ידוע"}
+                meta={`${formatDate(payment.date)} · ${formatShekel(payment.amount)}`}
+                pill={<StatusPill tone={payment.paid ? "success" : "warn"}>{labelFor("paymentStatus", payment.paid ? "paid" : "pending")}</StatusPill>}
+                action={!payment.paid ? <SecondaryButton onClick={() => markPaymentPaid(payment.id)}>סמן שולם</SecondaryButton> : null}
+              />
+            ))}
+          </ActivityCard>
+
+          <ActivityCard title="חשבוניות חסרות" empty="אין חשבוניות חסרות">
+            {missingInvoices.slice(0, 5).map((payment) => (
+              <DataRow
+                key={payment.id}
+                title={payment.supplier || "ספק לא ידוע"}
+                meta={`${payment.subject ?? "ללא נושא"} · ${formatDate(payment.date)}`}
+                pill={<StatusPill tone="warn">{labelFor("paymentStatus", "missing_invoice")}</StatusPill>}
+                action={<SecondaryButton onClick={() => attachInvoiceToPayment(payment.id)}>צרף קישור</SecondaryButton>}
+              />
+            ))}
+          </ActivityCard>
+
+          <ActivityCard title="חשבוניות אחרונות" empty="אין חשבוניות שנשמרו">
+            {recentInvoices.slice(0, 5).map((invoice) => (
+              <DataRow
+                key={invoice.id}
+                title={invoice.client?.name ?? "לקוח לא ידוע"}
+                meta={`${formatDate(invoice.date)} · ${formatShekel(invoice.amount)}`}
+                pill={<StatusPill tone={invoice.status === "paid" ? "success" : "warn"}>{labelFor("paymentStatus", invoice.status)}</StatusPill>}
+                action={invoice.driveUrl ? <SecondaryLink href={invoice.driveUrl}>פתח בדרייב</SecondaryLink> : null}
+              />
+            ))}
+          </ActivityCard>
+
+          <ActivityCard title="משימות אחרונות" empty="אין משימות פתוחות">
+            {recentTasks.slice(0, 5).map((task) => (
+              <DataRow
+                key={task.id}
+                title={task.title}
+                meta={`${task.supplier ?? "כללי"} · ${taskPriorityLabel(task.priority)}`}
+                pill={<StatusPill tone={task.status === "completed" || task.status === "done" ? "success" : "info"}>{labelFor("scanStatus", task.status)}</StatusPill>}
+              />
+            ))}
+          </ActivityCard>
+        </section>
+
+        <section className={`grid ${spacing.section} lg:grid-cols-2`}>
+          <ActivityCard title="כשלים ותור בדיקה" empty="אין כשלים פתוחים">
+            {alerts.slice(0, 5).map((alert) => (
+              <DataRow
+                key={alert.id}
+                title={alert.title}
+                meta={alert.body ?? formatDateTime(alert.createdAt)}
+                pill={<StatusPill tone={alert.type === "error" ? "danger" : "warn"}>{alertTypeLabel(alert.type)}</StatusPill>}
+                action={<SecondaryButton onClick={runSync}>נסה שוב</SecondaryButton>}
+              />
+            ))}
+          </ActivityCard>
+
+          <ActivityCard title="לקוחות אחרונים" empty="עדיין אין לקוחות">
+            {(clients?.clients ?? []).slice(0, 5).map((client) => (
+              <DataRow
+                key={client.id}
+                title={client.name}
+                meta={`${formatShekel(client.stats?.toPay ?? 0)} לתשלום · ${client.stats?.invoices ?? 0} חשבוניות`}
+                pill={<StatusPill tone={client.stats?.missingInvoices ? "warn" : "success"}>{client.stats?.missingInvoices ? `${client.stats.missingInvoices} חסרות` : "תקין"}</StatusPill>}
+              />
+            ))}
+          </ActivityCard>
+        </section>
+
+        <section className={`grid ${spacing.section} lg:grid-cols-2`}>
+          <SystemCard
+            gmailConnected={gmailConnected}
+            whatsAppConnected={whatsAppConnected}
+            systemHealth={systemHealth}
+            systemChecking={systemChecking}
+            showSystemCheck={showSystemCheck}
+            onConnectGmail={connectGmail}
+            onConnectWhatsApp={() => router.push("/dashboard/whatsapp")}
+            onRunSystemCheck={runSystemCheck}
+          />
+
+          <WhatsAppCard
+            whatsAppConnected={whatsAppConnected}
+            whatsAppScanning={whatsAppScanning}
+            whatsAppScanRange={whatsAppScanRange}
+            whatsAppScanResult={whatsAppScanResult}
+            whatsAppStats={whatsAppStats}
+            onRangeChange={setWhatsAppScanRange}
+            onRun={runWhatsAppScan}
+            onOpen={() => router.push("/dashboard/whatsapp")}
+          />
+        </section>
+
+        <section className={`grid ${spacing.section} lg:grid-cols-2`}>
+          <ActivityCard title="אוטומציה וסריקות" empty="אין נתוני סריקה עדיין">
+            <DataRow title="עודכן לאחרונה" meta={lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען"} pill={<StatusPill tone="info">פעיל</StatusPill>} />
+            <DataRow title="סריקה הבאה" meta={scanStatus ? formatDateTime(scanStatus.nextScheduledScanAt) : "טוען"} />
+            {scanStatus?.last && (
+              <DataRow
+                title="סריקה אחרונה"
+                meta={`מיילים ${formatNumber(scanStatus.last.found)} · נשמרו ${formatNumber(scanStatus.last.saved)}`}
+                pill={<StatusPill tone={scanStatus.last.status === "success" ? "success" : scanStatus.last.status === "partial" ? "warn" : "danger"}>{labelFor("scanStatus", scanStatus.last.status)}</StatusPill>}
+                action={<SecondaryButton onClick={() => router.push("/dashboard/scan-stats")}>סטטיסטיקות</SecondaryButton>}
+              />
+            )}
+          </ActivityCard>
+
+          <ActivityCard title="סיכום יומי" empty="אין סיכום זמין">
+            <p className={`${typography.body} whitespace-pre-wrap leading-7`} style={{ color: colors.textSecondary }}>{summary}</p>
+            <div className="flex flex-wrap gap-3">
+              <SecondaryButton onClick={scanAllClients} disabled={syncing}>סרוק לקוחות</SecondaryButton>
+              <SecondaryButton onClick={() => router.push("/camera")}>צלם חשבונית</SecondaryButton>
+              <SecondaryButton onClick={() => router.push("/dashboard/settings")}>הגדרות</SecondaryButton>
+            </div>
+          </ActivityCard>
+        </section>
       </div>
 
-      {!setupComplete && (
-        <section className="mb-4 rounded-3xl border border-amber-400/30 bg-amber-400/10 p-4 shadow-card">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-sm font-bold text-amber-100">השלימו את ההגדרה לפני התחלת סריקות</div>
-              <p className="mt-1 text-sm text-ink-secondary">חברו את השירותים החסרים ישירות בכרטיסי ״חיבורי מערכת״ כדי להפעיל סריקות, דרייב, שיטס ודשבורד מלא.</p>
-            </div>
-          </div>
-        </section>
-      )}
-
-      <section className="mb-4 rounded-2xl border border-[var(--border)] bg-surface-secondary p-4">
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2>הכנה לבדיקה עסקית ראשונה</h2>
-            <p className="text-sm">חבר ג׳ימייל, בחר טווח סריקה, ואשר שהשמירה לדרייב ולשיטס פעילה.</p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <span className={`badge ${gmailConnected ? "badge-ok" : "badge-warn"}`}>{gmailConnected ? "ג׳ימייל מחובר" : "ג׳ימייל לא מחובר"}</span>
-            {!initialSetupComplete && (
-              <button type="button" className="btn btn-secondary w-full sm:w-auto" onClick={startInitialSetup} disabled={firstScanRunning || Boolean(activeScanId)}>
-                התחל הגדרה ראשונית
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="grid gap-3 md:grid-cols-5">
-          <OnboardingStep title="1. ג׳ימייל" done={gmailConnected} text={gmailConnected ? "מחובר ומוכן לסריקה" : "חובה לחבר לפני סריקה"} />
-          <OnboardingStep title="2. טווח סריקה" done text={<select value={scanRangeDays} onChange={(e) => setScanRangeDays(Number(e.target.value))}><option value={7}>7 ימים</option><option value={30}>30 ימים</option><option value={90}>90 ימים</option></select>} />
-          <OnboardingStep title="3. דרייב" done text="תיקיות נוצרות אוטומטית לפי ספק וסוג מסמך" />
-          <OnboardingStep title="4. שיטס" done text="טבלת תשלומי ספקים נוצרת ומתעדכנת אוטומטית" />
-          <OnboardingStep
-            title="5. סריקה"
-            done={Boolean(isCompletedGmailScanStatus(activeScan?.status) || isCompletedGmailScanStatus(scanStatus?.last?.status))}
-            text={activeScanId ? "סריקה רצה עכשיו" : `מוכן לסריקת ${scanRangeLabel}`}
-            action={<button className="btn btn-secondary" onClick={startFirstScan} disabled={!gmailConnected || Boolean(activeScanId)}>{firstScanRunning ? "סורק..." : `התחל סריקת ${scanRangeLabel}`}</button>}
-          />
-        </div>
-        {(firstScanRunning || scanProgress.length > 0 || firstScanSummary) && (
-          <div className="mt-4 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <strong className="text-ink-primary">סטטוס סריקה ראשונית</strong>
-              <span className="badge badge-warn">{scanRangeLabel}</span>
-            </div>
-            {firstScanSummary && <p className="text-sm">{firstScanSummary}</p>}
-            {scanProgress.length > 0 && <div className="mt-3 grid gap-1 text-sm text-ink-secondary">{scanProgress.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}</div>}
-            {showGmailConnect && (
-              <button type="button" onClick={connectGmail} className="btn btn-secondary mt-3">
-                התחבר לג׳ימייל
-              </button>
-            )}
-          </div>
-        )}
-      </section>
-
-      {error && <div className="toast border-red-400/30 text-red-200">{error}</div>}
-      {process.env.NODE_ENV === "development" && stats.sheetsReconciliation?.warning && (
-        <div className="toast border-amber-400/40 text-amber-100">
-          אזהרת גוגל שיטס: קיימים {stats.sheetsReconciliation.difference} הבדלים בין מסד הנתונים לגוגל שיטס
-          ({stats.sheetsReconciliation.dbCount} במסד הנתונים, {stats.sheetsReconciliation.googleSheetCount} בגוגל שיטס).
-        </div>
-      )}
-      {scanToast && (
-        <div
-          className={[
-            "toast",
-            scanToast.type === "success" ? "border-emerald-400/30 text-emerald-200" : "",
-            scanToast.type === "warning" ? "border-amber-400/40 text-amber-100" : "",
-            scanToast.type === "error" ? "border-red-400/30 text-red-200" : "",
-            scanToast.type === "info" ? "border-[#818CF8]/40 text-white" : "",
-          ].join(" ")}
-        >
-          {scanToast.text}
-        </div>
-      )}
-      {actionMessage && <div className="toast border-emerald-400/30 text-emerald-200">{actionMessage}</div>}
-
-      {(activeScan || activeScanId) && (
-        <section className="mb-6 rounded-2xl border border-[#818CF8]/50 bg-[#818CF8]/10 p-4">
-          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2>סטטוס סריקה</h2>
-              <p className="text-sm">מעקב חי אחרי עיבוד מיילים, קבצים, דרייב ושיטס.</p>
-            </div>
-            <span className={`badge ${activeScan?.status === "error" ? "badge-error" : activeScan?.status === "completed" ? "badge-ok" : "badge-warn"}`}>
-              {activeScan?.status === "completed" ? "הושלם" : activeScan?.status === "error" ? "נכשל" : "סורק"}
-            </span>
-          </div>
-          <div className="mb-3">
-            <div className="mb-1 flex items-center justify-between text-sm font-semibold text-ink-secondary">
-              <span>התקדמות</span>
-              <span>{activeScan?.progressPercent ?? 0}%{activeScan?.estimatedRemainingSeconds ? ` · כ-${Math.ceil(activeScan.estimatedRemainingSeconds / 60)} דק׳` : ""}</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
-              <div className="h-full rounded-full bg-[#818CF8] transition-all" style={{ width: `${activeScan?.progressPercent ?? 5}%` }} />
-            </div>
-          </div>
-          <div className="grid gap-3 md:grid-cols-6">
-            <MiniMetric label="מיילים" value={activeScan?.emailsFetched ?? 0} />
-            <MiniMetric label="נשמרו" value={activeScan?.emailsSaved ?? 0} />
-            <MiniMetric label="חשבוניות" value={activeScan?.invoicesFound ?? 0} />
-            <MiniMetric label="תשלומי ספקים" value={activeScan?.supplierPaymentsFound ?? 0} />
-            <MiniMetric label="דרייב" value={activeScan?.uploadedToDrive ?? 0} />
-            <MiniMetric label="שיטס" value={activeScan?.sheetsUpdated ?? 0} />
-            <MiniMetric label="נכשל/בדיקה" value={activeScan?.failedItems?.length ?? Object.values(activeScan?.rejectedReasons ?? {}).reduce((sum, count) => sum + count, 0)} />
-          </div>
-          {scanProgress.length > 0 && <div className="mt-3 grid gap-1 text-sm text-ink-secondary">{scanProgress.map((line) => <span key={line}>{line}</span>)}</div>}
-          {activeScan?.lastSuccessfulScanAt && <div className="mt-3 text-sm text-ink-secondary">סריקה מוצלחת אחרונה: {new Date(activeScan.lastSuccessfulScanAt).toLocaleString("he-IL")}</div>}
-          {activeScan?.finalSummary && (
-            <div className="mt-3 rounded-xl bg-surface-secondary p-3 text-sm text-ink-secondary">
-              סיכום סופי: {activeScan.finalSummary.emailsFetched} מיילים · {activeScan.finalSummary.invoicesFound} חשבוניות · {activeScan.finalSummary.paymentsFound} תשלומים · {activeScan.finalSummary.uploadedToDrive} דרייב · {activeScan.finalSummary.sheetsUpdated} שיטס
-            </div>
-          )}
-          {Boolean(activeScan?.failedItems?.length) && (
-            <div className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-100">
-              <div className="font-semibold">פריטים שנכשלו / דורשים בדיקה</div>
-              {activeScan?.failedItems?.slice(0, 5).map((item) => (
-                <div key={item.id} className="mt-1">
-                  {item.subject || item.sender} · {item.decisionReason}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {setupComplete ? (
-        <ActionCenter recommendations={actionRecommendations} onNavigate={(href) => router.push(href)} />
-      ) : (
-        <SetupLockedNotice />
-      )}
-
-      <section className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-5" data-help="integration-metrics">
-        <MiniMetric label="חשבוניות מג׳ימייל" value={stats.invoicesFromGmail ?? 0} />
-        <MiniMetric label="חשבוניות מוואטסאפ" value={stats.invoicesFromWhatsApp ?? 0} />
-        <MiniMetric label="מסמכים בגוגל דרייב" value={stats.documentsInDrive ?? stats.driveUploads} />
-        <MiniMetric label="תשלומי ספקים ממתינים" value={stats.unpaidPayments} />
-        <MiniMetric label="חשבוניות חסרות" value={stats.missingInvoicesCount} />
-      </section>
-
-      <section className="auto-grid mb-8">
-        {kpis.map((kpi) => {
-          const Icon = kpi.icon;
-          return (
-            <div key={kpi.label} className="card overflow-hidden">
-              <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,#6366F1,#8B5CF6,transparent)]" />
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="stat-label">{kpi.label}</div>
-                  <div className="stat-value">{kpi.value}</div>
-                  <p className="mt-2 text-sm">{kpi.detail}</p>
-                </div>
-                <span className={`grid h-12 w-12 place-items-center rounded-2xl bg-surface-hover ${kpi.tone}`}>
-                  <Icon className="h-5 w-5" />
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </section>
-
-      {setupComplete && businessWidgets.length > 0 && (
-        <section className="mb-8 grid gap-4 md:grid-cols-3">
-          {businessWidgets.map((widget) => (
-            <div key={widget.id} className="card">
-              <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.18em] text-ink-muted">{businessTypeLabel(organizationSettings?.businessType)}</div>
-              <h2>{widget.title}</h2>
-              <p className="text-sm">{widget.description}</p>
-              <div className="mt-4 rounded-xl bg-surface-secondary p-3">
-                <div className="stat-value">{formatDashboardMetric({ metric: widget.metric }, stats)}</div>
-                <div className="stat-label">{businessModulesLabel(widget.module)}</div>
-              </div>
-            </div>
-          ))}
-        </section>
-      )}
-
-      <section className="mb-8 grid gap-3 md:grid-cols-4">
-        {showInvoices && <MiniMetric label="חשבוניות וקבלות" value={stats.totalInvoices} />}
-        {showSupplier && <MiniMetric label="תשלומים פתוחים" value={stats.unpaidPayments} />}
-        {showSupplier && <MiniMetric label="תשלומים ששולמו" value={stats.paidPayments} />}
-        {showSupplier && <MiniMetric label="חשבוניות חסרות" value={stats.missingInvoicesCount} />}
-        <MiniMetric label="סריקות שהושלמו" value={stats.scansCompleted} />
-        {showDocuments && <MiniMetric label="העלאות לדרייב" value={stats.driveUploads} />}
-        {showSupplier && <MiniMetric label="תשלומי ספקים" value={stats.supplierPaymentsCount} />}
-        {showSupplier && <MiniMetric label="סכומים חשודים שסוננו" value={stats.suspiciousPaymentsCount} />}
-      </section>
-
-      {setupComplete && <section className="mb-8 grid gap-6 xl:grid-cols-2">
-        {showSupplier && <BusinessTable
-          title="תשלומי ספקים"
-          empty="אין תשלומי ספקים עדיין."
-          rows={payments.slice(0, 8).map((payment) => ({
-            id: payment.id,
-            title: payment.supplier,
-            meta: `${new Date(payment.date).toLocaleDateString("he-IL")} · ${formatCurrency(payment.amount, payment.currency)}`,
-            badge: payment.paid ? "שולם" : payment.missingInvoice ? "חסרה חשבונית" : "פתוח",
-            actions: (
-              <div className="flex flex-wrap gap-2">
-                {!payment.paid && <button className="btn btn-secondary px-3 py-1.5" onClick={() => markPaymentPaid(payment.id)}>סמן שולם</button>}
-                {payment.missingInvoice && <button className="btn btn-secondary px-3 py-1.5" onClick={() => attachInvoiceToPayment(payment.id)}>צרף חשבונית</button>}
-              </div>
-            ),
-          }))}
-        />}
-        {showSupplier && <BusinessTable
-          title="חשבוניות חסרות"
-          empty="אין חשבוניות חסרות."
-          rows={missingInvoices.slice(0, 8).map((payment) => ({
-            id: payment.id,
-            title: payment.supplier,
-            meta: `${payment.subject ?? "ללא נושא"} · ${new Date(payment.date).toLocaleDateString("he-IL")}`,
-            badge: "דורש טיפול",
-            actions: <button className="btn btn-secondary px-3 py-1.5" onClick={() => attachInvoiceToPayment(payment.id)}>צרף קישור</button>,
-          }))}
-        />}
-        {showInvoices && <BusinessTable
-          title="חשבוניות אחרונות"
-          empty="אין חשבוניות שנשמרו."
-          rows={recentInvoices.map((invoice) => ({
-            id: invoice.id,
-            title: invoice.client?.name ?? "לקוח לא ידוע",
-            meta: `${new Date(invoice.date).toLocaleDateString("he-IL")} · ${formatCurrency(invoice.amount, invoice.currency)}`,
-            badge: invoiceStatusLabel(invoice.status),
-            actions: invoice.driveUrl ? <a className="btn btn-secondary px-3 py-1.5" href={invoice.driveUrl} target="_blank" rel="noreferrer">פתח בדרייב</a> : null,
-          }))}
-        />}
-        {showTasks && <BusinessTable
-          title="משימות אחרונות"
-          empty="אין משימות פתוחות."
-          rows={recentTasks.map((task) => ({
-            id: task.id,
-            title: task.title,
-            meta: `${task.supplier ?? "כללי"} · ${taskPriorityLabel(task.priority)}`,
-            badge: taskStatusLabel(task.status),
-            actions: null,
-          }))}
-        />}
-        <BusinessTable
-          title="כשלים ותור בדיקה"
-          empty="אין כשלים פתוחים."
-          rows={alerts.map((alert) => ({
-            id: alert.id,
-            title: alert.title,
-            meta: alert.body ?? new Date(alert.createdAt).toLocaleString("he-IL"),
-            badge: alertTypeLabel(alert.type),
-            actions: <button className="btn btn-secondary px-3 py-1.5" onClick={runSync}>נסה סריקה מחדש</button>,
-          }))}
-        />
-      </section>}
-
-      <section className="grid gap-6 xl:grid-cols-[1.25fr_.75fr]">
-        {showCrm && <div className="card">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <h2>לקוחות אחרונים</h2>
-              <p className="text-sm">סטטוס פעילות וסיכום מהיר לכל לקוח.</p>
-            </div>
-          </div>
-          <div className="space-y-3">
-            {(clients?.clients ?? []).slice(0, 5).map((client) => (
-              <div key={client.id} className="group grid gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary/60 p-4 transition hover:border-accent-primary/40 hover:bg-surface-hover sm:flex sm:items-center sm:justify-between">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="grid h-11 w-11 place-items-center rounded-full bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] text-sm font-bold text-white">
-                    {client.name.slice(0, 2)}
-                  </span>
-                  <div className="min-w-0">
-                    <strong className="block truncate text-ink-primary">{client.name}</strong>
-                    <p className="text-sm">₪{(client.stats?.toPay ?? 0).toLocaleString("he-IL")} לתשלום · {client.stats?.invoices ?? 0} חשבוניות</p>
-                  </div>
-                </div>
-                <span className={`badge w-fit ${client.stats?.missingInvoices ? "badge-warn" : "badge-ok"}`}>{client.stats?.missingInvoices ? `${client.stats.missingInvoices} חסרות` : "תקין"}</span>
-              </div>
-            ))}
-            {clients?.clients.length === 0 && (
-              <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-                <h3 className="text-base font-semibold text-ink-primary">עדיין אין לקוחות</h3>
-                <p className="mt-1 text-sm">הוסף לקוח ראשון כדי לראות כאן פעילות, חשבוניות ומשימות.</p>
-              </div>
-            )}
-          </div>
-        </div>}
-
-        <div className="space-y-6">
-          <div className="card">
-            <div className="mb-4 flex items-center gap-3">
-              <Clock3 className="h-5 w-5 text-accent-primary" />
-              <h2>סטטוס אוטומציה</h2>
-            </div>
-            <div className="space-y-3 text-sm text-ink-secondary">
-              <div className="flex justify-between"><span>מצב חי</span><span className="text-emerald-300">פעיל</span></div>
-              <div className="flex justify-between"><span>עודכן לאחרונה</span><span>{lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}</span></div>
-              <div className="flex justify-between"><span>סריקה הבאה</span><span>{scanStatus ? new Date(scanStatus.nextScheduledScanAt).toLocaleString("he-IL") : "טוען..."}</span></div>
-              {scanStatus?.last && (
-                <div className="rounded-xl bg-surface-hover p-3">
-                  <div className="font-semibold text-ink-primary">סריקה אחרונה: {scanStatusLabel(scanStatus.last.status)}</div>
-                  <div>מיילים {scanStatus.last.found} · נשמרו {scanStatus.last.saved}</div>
-                  <div>חשבוניות {scanStatus.last.invoicesFound ?? 0} · תשלומים {scanStatus.last.paymentsFound ?? 0}</div>
-                  <div>דרייב {scanStatus.last.driveUploaded ?? 0} · שיטס {scanStatus.last.sheetsUpdated ?? 0}</div>
-                  {scanStatus.last.errors && <div className="text-red-200">{scanStatus.last.errors}</div>}
-                </div>
-              )}
-            </div>
-            <button className="btn btn-secondary mt-4" onClick={() => router.push("/dashboard/scan-stats")}>פתח סטטיסטיקות סריקה</button>
-          </div>
-          {showWhatsApp && <div className="card">
-            <div className="mb-4 flex items-center gap-3">
-              <MessageCircle className="h-5 w-5 text-emerald-300" />
-              <h2>וואטסאפ</h2>
-            </div>
-            <div className="stat-value">{whatsAppStats?.sentToday ?? 0}</div>
-            <p>הודעות נשלחו היום · {whatsAppStats?.activeChats ?? 0} שיחות פעילות</p>
-            <button className="btn btn-secondary mt-4" onClick={() => router.push("/dashboard/whatsapp")}>פתח מרכז וואטסאפ</button>
-          </div>}
-        </div>
-      </section>
-
-      <section className="mt-6 grid gap-6 xl:grid-cols-[.8fr_1.2fr]">
-        <div className="card">
-          <h2>פעולות מהירות</h2>
-          <div className="mt-4 grid gap-3">
-            <button className="btn btn-secondary" onClick={() => router.push("/dashboard/settings")}>פתח הגדרות אינטגרציות</button>
-            <button className="btn btn-secondary" onClick={() => router.push("/camera")}><FileText className="h-4 w-4" />צלם/העלה חשבונית</button>
-          </div>
-        </div>
-        <div className="card">
-          <h2>סיכום יומי</h2>
-          <pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-7 text-ink-secondary">{summary}</pre>
-        </div>
-      </section>
-      {showSystemCheck && (
-        <SystemCheckModal
-          health={systemHealth}
-          checking={systemChecking}
-          onClose={() => setShowSystemCheck(false)}
-          onRunAgain={runSystemCheck}
-        />
-      )}
       {invoiceAttachPaymentId && (
-        <div className="fixed inset-0 z-[130] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="attach-invoice-title" onClick={() => setInvoiceAttachPaymentId(null)}>
-          <form className="card w-full max-w-lg" onSubmit={submitInvoiceAttachment} onClick={(event) => event.stopPropagation()}>
-            <h2 id="attach-invoice-title">צירוף חשבונית לתשלום</h2>
-            <p className="mt-2 text-sm">הדבק קישור לחשבונית בדרייב כדי לסגור את החוסר בתשלום הספק.</p>
+        <div className={`fixed inset-0 z-50 grid place-items-center ${spacing.page}`} style={{ backgroundColor: colors.bg }}>
+          <form className={`${radius.card} ${shadow.raised} ${spacing.card} w-full max-w-lg`} style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}` }} onSubmit={submitInvoiceAttachment}>
+            <h2 className={typography.sectionTitle}>צירוף חשבונית לתשלום</h2>
+            <p className={`${typography.body} mt-2`} style={{ color: colors.textSecondary }}>הדבק קישור לחשבונית בדרייב כדי לסגור את החוסר בתשלום הספק.</p>
             <label className="mt-4">
               קישור לחשבונית
               <input dir="ltr" value={invoiceAttachLink} onChange={(event) => setInvoiceAttachLink(event.target.value)} placeholder="https://drive.google.com/..." autoFocus />
             </label>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button className="btn" type="submit" disabled={!invoiceAttachLink.trim()}>צרף חשבונית</button>
-              <button className="btn btn-secondary" type="button" onClick={() => setInvoiceAttachPaymentId(null)}>ביטול</button>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button className={`${radius.control} min-h-11 px-4 py-3 font-semibold`} style={{ backgroundColor: colors.accent, border: `1px solid ${colors.accent}`, color: colors.surface }} type="submit" disabled={!invoiceAttachLink.trim()}>צרף חשבונית</button>
+              <SecondaryButton type="button" onClick={() => setInvoiceAttachPaymentId(null)}>ביטול</SecondaryButton>
             </div>
           </form>
         </div>
       )}
+    </main>
+  );
+}
+
+function SectionTitle({ title }: { title: string }) {
+  return <h2 className={typography.sectionTitle} style={{ color: colors.textPrimary }}>{title}</h2>;
+}
+
+function ReviewRow({ item }: { item: DocumentReview }) {
+  return (
+    <article className={`${radius.card} ${shadow.card} ${spacing.card}`} style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}` }}>
+      <div className="grid gap-3 sm:grid-cols-4 sm:items-center">
+        <div className="sm:col-span-2">
+          <div className={`${typography.body} font-semibold`} style={{ color: colors.textPrimary }}>{item.supplierName ?? item.sender ?? "ספק לא ידוע"}</div>
+          <div className={`${typography.meta} mt-1`} style={{ color: colors.textSecondary }}>{item.subject ?? item.fileName ?? labelFor("documentType", item.documentType)}</div>
+        </div>
+        <div className={typography.body} style={{ color: colors.textPrimary }}>
+          {formatShekel(item.totalAmount ?? 0)} · {formatDate(item.createdAt)}
+        </div>
+        <div className="flex items-center justify-between gap-3 sm:justify-end">
+          <StatusPill tone="warn">{labelFor("reviewStatus", item.reviewStatus)}</StatusPill>
+          <SecondaryLink href="/dashboard/document-reviews">צפה</SecondaryLink>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ActivityCard({ title, empty, children }: { title: string; empty: string; children: ReactNode }) {
+  const hasChildren = Boolean(children) && (!Array.isArray(children) || children.length > 0);
+  return (
+    <section className={`${radius.card} ${shadow.card} ${spacing.card}`} style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}` }}>
+      <h2 className={typography.sectionTitle} style={{ color: colors.textPrimary }}>{title}</h2>
+      <div className={`mt-4 grid ${spacing.inline}`}>
+        {hasChildren ? children : <EmptyState title={empty} />}
+      </div>
+    </section>
+  );
+}
+
+function DataRow({ title, meta, pill, action }: { title: ReactNode; meta: ReactNode; pill?: ReactNode; action?: ReactNode }) {
+  return (
+    <div className={`${radius.control} flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between`} style={{ backgroundColor: colors.bg, border: `1px solid ${colors.border}` }}>
+      <div className="min-w-0 flex-1">
+        <div className={`${typography.body} truncate font-semibold`} style={{ color: colors.textPrimary }}>{title}</div>
+        <div className={`${typography.meta} mt-1`} style={{ color: colors.textSecondary }}>{meta}</div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        {pill}
+        {action}
+      </div>
     </div>
   );
 }
 
-function SystemConnectionsPanel({
-  health,
+function MessageStack({ error, actionMessage, toast }: { error: string; actionMessage: string; toast: ScanToast | null }) {
+  return (
+    <div className="grid gap-3">
+      {error && <InlineMessage tone="danger">{error}</InlineMessage>}
+      {actionMessage && <InlineMessage tone="success">{actionMessage}</InlineMessage>}
+      {toast && <InlineMessage tone={toast.type === "warning" ? "warn" : toast.type === "error" ? "danger" : toast.type}>{toast.text}</InlineMessage>}
+    </div>
+  );
+}
+
+function InlineMessage({ tone, children }: { tone: "info" | "success" | "warn" | "danger"; children: ReactNode }) {
+  const style = tone === "success"
+    ? { color: colors.successText, backgroundColor: colors.successBg, borderColor: colors.successBorder }
+    : tone === "warn"
+      ? { color: colors.warnText, backgroundColor: colors.warnBg, borderColor: colors.warnBorder }
+      : tone === "danger"
+        ? { color: colors.dangerText, backgroundColor: colors.dangerBg, borderColor: colors.dangerBorder }
+        : { color: colors.infoText, backgroundColor: colors.infoBg, borderColor: colors.infoBorder };
+  return <div className={`${radius.card} ${spacing.card} border ${typography.body} font-semibold`} style={style}>{children}</div>;
+}
+
+function SecondaryButton({ children, onClick, disabled, type = "button" }: { children: ReactNode; onClick?: () => void; disabled?: boolean; type?: "button" | "submit" }) {
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={`${radius.control} min-h-11 px-4 py-3 font-semibold disabled:opacity-60`}
+      style={{ backgroundColor: colors.surface, border: `1px solid ${colors.accent}`, color: colors.accent }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SecondaryLink({ children, href }: { children: ReactNode; href: string }) {
+  return (
+    <a
+      href={href}
+      className={`${radius.control} inline-flex min-h-11 items-center justify-center px-4 py-3 font-semibold`}
+      style={{ backgroundColor: colors.surface, border: `1px solid ${colors.accent}`, color: colors.accent }}
+      target={href.startsWith("http") ? "_blank" : undefined}
+      rel={href.startsWith("http") ? "noreferrer" : undefined}
+    >
+      {children}
+    </a>
+  );
+}
+
+function SystemCard({
   gmailConnected,
+  whatsAppConnected,
+  systemHealth,
+  systemChecking,
+  showSystemCheck,
+  onConnectGmail,
+  onConnectWhatsApp,
+  onRunSystemCheck,
+}: {
+  gmailConnected: boolean;
+  whatsAppConnected: boolean;
+  systemHealth: SystemHealth | null;
+  systemChecking: boolean;
+  showSystemCheck: boolean;
+  onConnectGmail: () => void;
+  onConnectWhatsApp: () => void;
+  onRunSystemCheck: () => void;
+}) {
+  const components: SystemComponentStatus[] = [
+    systemHealth?.components.gmail ?? fallbackComponent("gmail", "ג׳ימייל", gmailConnected),
+    systemHealth?.components.drive ?? fallbackComponent("drive", "גוגל דרייב", false),
+    systemHealth?.components.sheets ?? fallbackComponent("sheets", "גוגל שיטס", false),
+    systemHealth?.components.whatsapp ?? fallbackComponent("whatsapp", "וואטסאפ", whatsAppConnected),
+    systemHealth?.components.database ?? fallbackComponent("database", "מסד נתונים", false),
+  ];
+  return (
+    <ActivityCard title="חיבורי מערכת" empty="אין נתוני מערכת">
+      {components.map((component) => (
+        <DataRow
+          key={component.name}
+          title={systemComponentLabel(component.label)}
+          meta={systemReasonLabel(component.reason) ?? "הבדיקה החיה עברה בהצלחה"}
+          pill={<StatusPill tone={component.connected ? "success" : "danger"}>{component.connected ? "מחובר" : "לא מחובר"}</StatusPill>}
+          action={!component.connected && component.name === "gmail" ? <SecondaryButton onClick={onConnectGmail}>חבר</SecondaryButton> : !component.connected && component.name === "whatsapp" ? <SecondaryButton onClick={onConnectWhatsApp}>חבר</SecondaryButton> : null}
+        />
+      ))}
+      <div className="flex flex-wrap gap-3">
+        <SecondaryButton onClick={onRunSystemCheck} disabled={systemChecking}>{systemChecking ? "בודק..." : "בדיקת מערכת"}</SecondaryButton>
+        {showSystemCheck && <StatusPill tone={systemHealth?.allPassed ? "success" : "warn"}>{systemHealth?.allPassed ? "הכל תקין" : "יש נושאים לבדיקה"}</StatusPill>}
+      </div>
+    </ActivityCard>
+  );
+}
+
+function WhatsAppCard({
   whatsAppConnected,
   whatsAppScanning,
   whatsAppScanRange,
   whatsAppScanResult,
-  onConnectGmail,
-  onConnectWhatsApp,
-  onRunSystemCheck,
-  onRunWhatsAppScan,
-  onWhatsAppRangeChange,
+  whatsAppStats,
+  onRangeChange,
+  onRun,
+  onOpen,
 }: {
-  health: SystemHealth | null;
-  gmailConnected: boolean;
   whatsAppConnected: boolean;
   whatsAppScanning: boolean;
   whatsAppScanRange: string;
   whatsAppScanResult: WhatsAppScanResult | null;
-  onConnectGmail: () => void;
-  onConnectWhatsApp: () => void;
-  onRunSystemCheck: () => void;
-  onRunWhatsAppScan: () => void;
-  onWhatsAppRangeChange: (value: string) => void;
-}) {
-  const components: SystemComponentStatus[] = [
-    health?.components.gmail ?? fallbackComponent("gmail", "ג׳ימייל", gmailConnected),
-    health?.components.drive ?? fallbackComponent("drive", "גוגל דרייב", false),
-    health?.components.sheets ?? fallbackComponent("sheets", "גוגל שיטס", false),
-    health?.components.whatsapp ?? fallbackComponent("whatsapp", "וואטסאפ", whatsAppConnected),
-    health?.components.database ?? fallbackComponent("database", "מסד נתונים", false),
-  ];
-
-  return (
-    <section className="mb-4 min-w-0 overflow-hidden rounded-3xl border border-[var(--border)] bg-surface-secondary p-4 shadow-card">
-      <div className="mb-4 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <h2>חיבורי מערכת</h2>
-          <p className="text-sm">סטטוס חי של ג׳ימייל, גוגל דרייב, גוגל שיטס, וואטסאפ ומסד הנתונים.</p>
-        </div>
-        <div className="flex w-full min-w-0 flex-wrap gap-2 lg:w-auto lg:justify-end">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <button type="button" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2.5 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]" onClick={onRunSystemCheck}>בדיקת מערכת</button>
-            <HelpTooltip text="בודק שכל החיבורים עובדים: ג׳ימייל, גוגל דרייב, גוגל שיטס, וואטסאפ ושרת." label="בדוק מערכת" />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
-        {components.map((component) => {
-          const connectAction =
-            component.name === "gmail" || component.name === "drive" || component.name === "sheets"
-              ? onConnectGmail
-              : component.name === "whatsapp"
-                ? onConnectWhatsApp
-                : undefined;
-          return (
-            <ConnectionStatusItem
-              key={component.name}
-              component={component}
-              onConnect={connectAction}
-            />
-          );
-        })}
-      </div>
-
-      <div className="mt-4 min-w-0 rounded-2xl border border-[var(--border-subtle)] bg-surface-primary/60 p-3">
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <div className="font-semibold text-ink-primary">סריקת וואטסאפ</div>
-            <p className="text-sm">סרוק הודעות וואטסאפ שנקלטו במערכת ועדכן סטטיסטיקות ותור בדיקה.</p>
-          </div>
-          <div className="flex w-full min-w-0 flex-wrap gap-2 sm:items-center lg:w-auto lg:justify-end">
-            <select value={whatsAppScanRange} onChange={(event) => onWhatsAppRangeChange(event.target.value)} disabled={whatsAppScanning || !whatsAppConnected}>
-              <option value="7">סריקת 7 הימים האחרונים</option>
-              <option value="30">סריקת 30 הימים האחרונים</option>
-              <option value="90">סריקת 90 הימים האחרונים</option>
-              <option value="full">סריקה מלאה</option>
-            </select>
-            <button type="button" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2.5 text-sm font-bold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:pointer-events-none disabled:opacity-60" onClick={onRunWhatsAppScan} disabled={whatsAppScanning || !whatsAppConnected}>
-              {whatsAppScanning ? "סורק..." : "סריקת וואטסאפ"}
-            </button>
-          </div>
-        </div>
-        {whatsAppScanning && (
-          <div className="mt-3">
-            <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
-              <div
-                className="h-full rounded-full bg-accent-primary transition-all"
-                style={{ width: `${Math.max(5, whatsAppScanResult?.progressPercent ?? 12)}%` }}
-              />
-            </div>
-            <p className="mt-2 text-xs text-ink-secondary">
-              {whatsAppScanResult?.inProgress
-                ? `מעבד ברקע... ${whatsAppScanResult.progressPercent ?? 5}% · ${whatsAppScanResult.messagesScanned}/${whatsAppScanResult.messagesFound || "?"} הודעות`
-                : "מתחיל סריקת וואטסאפ..."}
-            </p>
-          </div>
-        )}
-        {whatsAppScanResult && (
-          <p className="mt-3 text-sm text-ink-secondary">
-            סריקת וואטסאפ: {whatsAppScanResult.messagesScanned} הודעות נסרקו · {whatsAppScanResult.supplierPaymentsFound} תשלומי ספקים · {whatsAppScanResult.driveFilesCreated ?? 0} קבצים בדרייב · {whatsAppScanResult.errorsCount} שגיאות
-            {whatsAppScanResult.error ? ` · ${whatsAppScanResult.error}` : ""}
-          </p>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function ConnectionStatusItem({ component, onConnect }: { component: SystemComponentStatus; onConnect?: () => void }) {
-  const showConnect = !component.connected && Boolean(onConnect);
-
-  return (
-    <div className="min-w-0 rounded-2xl border border-[var(--border-subtle)] bg-surface-primary/70 p-3">
-      <div className="flex min-w-0 flex-col gap-3">
-        <div className="min-w-0">
-          <div className="text-sm font-bold text-ink-primary">{systemComponentLabel(component.label)}</div>
-          <div className="mt-1 break-words text-xs text-ink-secondary">{systemReasonLabel(component.reason) ?? "הבדיקה החיה עברה בהצלחה"}</div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`badge w-fit ${component.connected ? "badge-ok" : "badge-error"} shrink-0`}>
-            {component.connected ? "מחובר" : "לא מחובר"}
-          </span>
-          {showConnect && (
-            <button
-              type="button"
-              className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7]"
-              onClick={onConnect}
-            >
-              חבר
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SystemCheckModal({ health, checking, onClose, onRunAgain }: {
-  health: SystemHealth | null;
-  checking: boolean;
-  onClose: () => void;
-  onRunAgain: () => void;
-}) {
-  const components = health ? Object.values(health.components) : [];
-  return (
-    <div className="fixed inset-0 z-[140] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="system-check-title" onClick={onClose}>
-      <div className="card w-full max-w-2xl" onClick={(event) => event.stopPropagation()}>
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <h2 id="system-check-title">בדיקת מערכת</h2>
-            <p className="text-sm">בדיקה חיה מול השרת וכל האינטגרציות.</p>
-          </div>
-          <button type="button" className="btn btn-secondary px-3 py-1.5" onClick={onClose}>סגור</button>
-        </div>
-        {checking && <p className="text-sm text-ink-secondary">מריץ בדיקה...</p>}
-        <div className="space-y-2">
-          {components.map((component) => (
-            <div key={component.name} className="rounded-xl border border-[var(--border-subtle)] bg-surface-secondary p-3">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <strong>{systemComponentLabel(component.label)} ........ {systemStatusLabel(component.status)}</strong>
-                <span className={`badge ${component.connected ? "badge-ok" : "badge-error"}`}>{component.connected ? "תקין" : "נכשל"}</span>
-              </div>
-              {component.reason && <div className="mt-1 text-sm text-red-200">{systemReasonLabel(component.reason)}</div>}
-            </div>
-          ))}
-          {!checking && !components.length && <p className="text-sm text-ink-secondary">אין תוצאות עדיין.</p>}
-        </div>
-        <button type="button" className="btn btn-secondary mt-4" onClick={onRunAgain} disabled={checking}>בדיקה חוזרת</button>
-      </div>
-    </div>
-  );
-}
-
-function SetupLockedNotice() {
-  return (
-    <section className="mb-8 rounded-3xl border border-[var(--border)] bg-surface-secondary p-5 text-center shadow-card">
-      <h2>הדשבורד המתקדם ייפתח אחרי ההגדרה</h2>
-      <p className="mx-auto mt-2 max-w-2xl text-sm">חברו את השירותים החסרים בכרטיסי ״חיבורי מערכת״ למעלה כדי לפתוח המלצות מתקדמות, טבלאות עבודה וסריקות עומק. המדדים והסטטוס הבסיסיים נשארים זמינים.</p>
-    </section>
-  );
-}
-
-function fallbackComponent(name: SystemComponentStatus["name"], label: string, connected: boolean): SystemComponentStatus {
-  return {
-    name,
-    label,
-    connected,
-    status: connected ? "PASS" : "FAIL",
-    reason: connected ? null : "ממתין לסטטוס מהשרת",
-  };
-}
-
-function systemComponentLabel(label: string) {
-  const labels: Record<string, string> = {
-    Gmail: "ג׳ימייל",
-    gmail: "ג׳ימייל",
-    "Google Drive": "גוגל דרייב",
-    Drive: "גוגל דרייב",
-    drive: "גוגל דרייב",
-    "Google Sheets": "גוגל שיטס",
-    Sheets: "גוגל שיטס",
-    sheets: "גוגל שיטס",
-    WhatsApp: "וואטסאפ",
-    whatsapp: "וואטסאפ",
-    Database: "מסד נתונים",
-    database: "מסד נתונים",
-  };
-  return labels[label] ?? label;
-}
-
-function systemReasonLabel(reason: string | null) {
-  if (!reason) return null;
-  const labels: Record<string, string> = {
-    "Waiting for live backend status": "ממתין לסטטוס מהשרת",
-    "Live check passed": "הבדיקה החיה עברה בהצלחה",
-  };
-  return labels[reason] ?? reason;
-}
-
-function systemStatusLabel(status: SystemComponentStatus["status"]) {
-  return status === "PASS" ? "תקין" : "נכשל";
-}
-
-function relativeTime(date: Date) {
-  const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
-  if (minutes === 0) return "עכשיו";
-  if (minutes === 1) return "לפני דקה";
-  return `לפני ${minutes} דקות`;
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function safeBusinessProfile(settings: OrganizationSettings | null) {
-  return getBusinessProfile(settings?.businessType);
-}
-
-function enabledModuleCount(settings: OrganizationSettings | null) {
-  return settings ? normalizeEnabledModules(settings.enabledModules, settings.businessType).length : 7;
-}
-
-function moduleIsEnabled(settings: OrganizationSettings | null, moduleId: BusinessModuleId) {
-  return !settings || normalizeEnabledModules(settings.enabledModules, settings.businessType).includes(moduleId);
-}
-
-function dashboardMetricValue(metric: DashboardKpiMetric, stats: DashboardStats) {
-  const values: Record<DashboardKpiMetric, number> = {
-    clients: stats.clients,
-    moneyToReceive: stats.moneyToReceive,
-    moneyToPay: stats.moneyToPay,
-    openTasks: stats.openTasks,
-    businessHealthScore: stats.businessHealthScore,
-    totalInvoices: stats.totalInvoices,
-    unpaidPayments: stats.unpaidPayments,
-    supplierPaymentsCount: stats.supplierPaymentsCount,
-  };
-  return values[metric] ?? 0;
-}
-
-function formatDashboardMetric(kpi: Pick<BusinessKpiConfig, "metric" | "format">, stats: DashboardStats) {
-  const value = dashboardMetricValue(kpi.metric, stats);
-  if (kpi.format === "currency") return `₪${value.toLocaleString("he-IL")}`;
-  if (kpi.format === "score") return `${value}/100`;
-  return value.toLocaleString("he-IL");
-}
-
-function dashboardMetricIcon(metric: DashboardKpiMetric) {
-  if (metric === "moneyToReceive") return ArrowUpRight;
-  if (metric === "moneyToPay" || metric === "supplierPaymentsCount" || metric === "unpaidPayments") return WalletCards;
-  if (metric === "openTasks") return Clock3;
-  if (metric === "businessHealthScore") return HeartPulse;
-  return Activity;
-}
-
-function dashboardMetricTone(metric: DashboardKpiMetric) {
-  if (metric === "moneyToReceive") return "text-emerald-300";
-  if (metric === "moneyToPay" || metric === "supplierPaymentsCount" || metric === "unpaidPayments") return "text-amber-300";
-  if (metric === "openTasks") return "text-violet-300";
-  if (metric === "businessHealthScore") return "text-blue-300";
-  return "text-blue-300";
-}
-
-function businessModulesLabel(moduleId: string) {
-  return businessModules.find((module) => module.id === moduleId)?.label ?? moduleId;
-}
-
-function buildActionRecommendations(input: {
-  stats: DashboardStats;
-  gmailConnected: boolean;
-  scanStatus: ScanStatus | null;
-  payments: Payment[];
-  missingInvoices: Payment[];
-  recentInvoices: RecentInvoice[];
-  recentTasks: Task[];
-  alerts: AlertItem[];
   whatsAppStats: WhatsAppAssistantStats | null;
-  initialSetupComplete: boolean;
-  showWhatsApp: boolean;
-  showSupplier: boolean;
-  showInvoices: boolean;
-  showTasks: boolean;
-  showDocuments: boolean;
-  businessActionRecommendations: Array<{ title: string; explanation: string; href: string }>;
-}): ActionRecommendation[] {
-  const actions: ActionRecommendation[] = [];
-  const openPayments = input.payments.filter((payment) => !payment.paid);
-  const overduePayments = openPayments.filter((payment) => payment.dueDate && new Date(payment.dueDate).getTime() < Date.now());
-  const paymentsMissingReceipt = openPayments.filter((payment) => payment.missingInvoice || !payment.invoiceLink);
-  const openTasks = input.recentTasks.filter((task) => task.status !== "done" && task.status !== "completed");
-  const highPriorityTasks = openTasks.filter((task) => task.priority === "high");
-  const lastScan = input.scanStatus?.last;
-  const hasScanErrors = Boolean(lastScan?.errors || input.alerts.some((alert) => !alert.read && ["error", "warning", "review"].includes(alert.type)));
-  const needsScan = !lastScan || input.stats.scansCompleted === 0;
-  const driveReady = input.showDocuments && (input.stats.driveUploads > 0 || (lastScan?.driveUploaded ?? 0) > 0);
-  const sheetsReady = (lastScan?.sheetsUpdated ?? 0) > 0;
-
-  if (!input.initialSetupComplete) {
-    actions.push({
-      id: "onboarding",
-      priority: "urgent",
-      title: input.gmailConnected ? "השלם סריקה ראשונה" : "חבר ג׳ימייל והתחל הגדרה ראשונית",
-      explanation: "בלי חיבור וסריקה ראשונה המערכת לא יכולה לזהות חשבוניות, תשלומי ספקים ומשימות חדשות.",
-      actionLabel: input.gmailConnected ? "פתח סריקה" : "פתח חיבור ג׳ימייל",
-      href: input.gmailConnected ? "/dashboard" : "/dashboard/settings",
-    });
-  }
-
-  if (hasScanErrors) {
-    actions.push({
-      id: "scan-review",
-      priority: "urgent",
-      title: "בדוק פריטי סריקה שדורשים טיפול",
-      explanation: "נמצאו כשלים או פריטים שדורשים בדיקה כדי למנוע פספוס של חשבונית או תשלום.",
-      actionLabel: "פתח סטטיסטיקות סריקה",
-      href: "/dashboard/scan-stats",
-    });
-  }
-
-  if (input.showSupplier && paymentsMissingReceipt.length > 0) {
-    const first = paymentsMissingReceipt[0];
-    actions.push({
-      id: "missing-receipts",
-      priority: "urgent",
-      title: paymentsMissingReceipt.length === 1 ? `חסרה קבלה עבור ${first.supplier}` : `חסרות קבלות עבור ${paymentsMissingReceipt.length} תשלומי ספקים`,
-      explanation: "צרף קבלה או חשבונית לתשלום כדי להשאיר את הנהלת החשבונות נקייה ומוכנה לדוח.",
-      actionLabel: "פתח תשלומי ספקים",
-      href: "/payments",
-    });
-  }
-
-  if (input.showSupplier && overduePayments.length > 0) {
-    actions.push({
-      id: "overdue-payments",
-      priority: "urgent",
-      title: `אשר ${overduePayments.length} תשלומים באיחור`,
-      explanation: "יש תשלומי ספקים שעבר מועד הטיפול שלהם. מומלץ לאשר תשלום או לסמן אותם כשולמו.",
-      actionLabel: "בדוק ספקים",
-      href: "/payments",
-    });
-  }
-
-  if (input.showInvoices && input.recentInvoices.length > 0) {
-    actions.push({
-      id: "new-invoices",
-      priority: "important",
-      title: `בדוק ${input.recentInvoices.length} חשבוניות אחרונות`,
-      explanation: "חשבוניות שנשמרו לאחרונה מחכות לבדיקה כדי לוודא שהסכום, הספק והקישור לדרייב נכונים.",
-      actionLabel: "פתח חשבוניות",
-      href: "/dashboard/invoices",
-    });
-  }
-
-  if (input.showSupplier && openPayments.length > 0) {
-    actions.push({
-      id: "pending-payments",
-      priority: "important",
-      title: `אשר ${openPayments.length} תשלומים ממתינים`,
-      explanation: "סגור תשלומים פתוחים כדי לשמור על תמונת תזרים מדויקת.",
-      actionLabel: "פתח תשלומים",
-      href: "/payments",
-    });
-  }
-
-  if (input.showTasks && highPriorityTasks.length > 0) {
-    actions.push({
-      id: "high-tasks",
-      priority: "important",
-      title: `טפל ב-${highPriorityTasks.length} משימות בעדיפות גבוהה`,
-      explanation: "משימות דחופות מהמיילים או מהלקוחות מחכות להמשך טיפול.",
-      actionLabel: "פתח משימות",
-      href: "/tasks",
-    });
-  }
-
-  if (needsScan && input.gmailConnected) {
-    actions.push({
-      id: "run-scan",
-      priority: "important",
-      title: "בצע סריקת ג׳ימייל",
-      explanation: "סריקה תאתר חשבוניות, קבלות, דרישות תשלום ומשימות חדשות.",
-      actionLabel: "פתח סריקה",
-      href: "/dashboard",
-    });
-  }
-
-  if (input.showWhatsApp && (!input.whatsAppStats || (input.whatsAppStats.activeChats === 0 && input.whatsAppStats.sentToday === 0))) {
-    actions.push({
-      id: "whatsapp",
-      priority: "recommended",
-      title: "חבר וואטסאפ עסקי",
-      explanation: "חיבור וואטסאפ יאפשר מעקב אחרי שיחות, לידים ותזכורות ללקוחות.",
-      actionLabel: "פתח וואטסאפ",
-      href: "/dashboard/whatsapp",
-    });
-  }
-
-  if (input.showDocuments && input.gmailConnected && !driveReady) {
-    actions.push({
-      id: "drive",
-      priority: "recommended",
-      title: "ודא שמירת קבצים בדרייב",
-      explanation: "אחרי הסריקה הראשונה כדאי לוודא שחשבוניות וקבלות נשמרות בתיקיות מסודרות בדרייב.",
-      actionLabel: "פתח סטטיסטיקות",
-      href: "/dashboard/scan-stats",
-    });
-  }
-
-  if (input.gmailConnected && !sheetsReady) {
-    actions.push({
-      id: "sheets",
-      priority: "recommended",
-      title: "ודא עדכון שיטס",
-      explanation: "שיטס אמור להתעדכן אוטומטית עם תשלומי ספקים ומשימות אחרי סריקה.",
-      actionLabel: "פתח סטטיסטיקות",
-      href: "/dashboard/scan-stats",
-    });
-  }
-
-  for (const [index, item] of input.businessActionRecommendations.entries()) {
-    actions.push({
-      id: `business-${index}`,
-      priority: "recommended",
-      title: item.title,
-      explanation: item.explanation,
-      actionLabel: "פתח טיפול",
-      href: item.href,
-    });
-  }
-
-  if (actions.length === 0) {
-    actions.push({
-      id: "all-good",
-      priority: "recommended",
-      title: "המערכת נראית מסודרת",
-      explanation: "אין כרגע פעולות דחופות. מומלץ לבצע בדיקה קצרה של סטטיסטיקות הסריקה והמשימות.",
-      actionLabel: "פתח סטטיסטיקות",
-      href: "/dashboard/scan-stats",
-    });
-  }
-
-  const priorityOrder: Record<ActionPriority, number> = { urgent: 0, important: 1, recommended: 2 };
-  return actions
-    .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])
-    .slice(0, 5);
-}
-
-function ActionCenter({ recommendations, onNavigate }: { recommendations: ActionRecommendation[]; onNavigate: (href: string) => void }) {
-  return (
-    <section className="mb-8 overflow-hidden rounded-[2rem] border border-[#818CF8]/35 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.28),transparent_34%),linear-gradient(135deg,rgba(22,22,30,0.96),rgba(12,12,18,0.92))] p-4 shadow-card md:p-6">
-      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-start gap-3">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/10 text-violet-200">
-            <ClipboardList className="h-5 w-5" />
-          </span>
-          <div>
-            <div className="page-kicker">מנהל משרד אישי</div>
-            <h2>📋 מה כדאי לעשות עכשיו?</h2>
-            <p className="text-sm">המערכת בודקת חשבוניות, ספקים, סריקות, משימות וחיבורים ומסדרת לך את הפעולות לפי עדיפות.</p>
-          </div>
-        </div>
-        <span className="badge w-fit border-[#818CF8]/40 bg-[#818CF8]/15 text-violet-100">{recommendations.length} המלצות פעילות</span>
-      </div>
-      <div className="grid gap-3 xl:grid-cols-3">
-        {recommendations.map((item, index) => (
-          <article key={item.id} className={`rounded-2xl border p-4 ${priorityCardClass(item.priority)} ${index === 0 ? "xl:col-span-1" : ""}`}>
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <span className={`badge ${priorityBadgeClass(item.priority)}`}>{priorityLabel(item.priority)}</span>
-              <span className="text-xs font-semibold text-ink-muted">פעולה {index + 1}</span>
-            </div>
-            <h3 className="text-lg font-bold text-ink-primary">{item.title}</h3>
-            <p className="mt-2 text-sm leading-6 text-ink-secondary">{item.explanation}</p>
-            <button type="button" className="btn btn-secondary mt-4 w-full justify-center sm:w-auto" onClick={() => onNavigate(item.href)}>
-              {item.actionLabel}
-            </button>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function priorityLabel(priority: ActionPriority) {
-  if (priority === "urgent") return "דחוף";
-  if (priority === "important") return "חשוב";
-  return "מומלץ";
-}
-
-function priorityBadgeClass(priority: ActionPriority) {
-  if (priority === "urgent") return "border-red-300/40 bg-red-500/15 text-red-100";
-  if (priority === "important") return "border-amber-300/40 bg-amber-500/15 text-amber-100";
-  return "border-emerald-300/40 bg-emerald-500/15 text-emerald-100";
-}
-
-function priorityCardClass(priority: ActionPriority) {
-  if (priority === "urgent") return "border-red-300/25 bg-red-500/10";
-  if (priority === "important") return "border-amber-300/25 bg-amber-500/10";
-  return "border-emerald-300/25 bg-emerald-500/10";
-}
-
-function scanStatusLabel(status: string) {
-  return uiTranslations.statuses[status as keyof typeof uiTranslations.statuses] ?? status;
-}
-
-function isCompletedGmailScanStatus(status?: string) {
-  return status === "completed" || status === "success" || status === "partial";
-}
-
-function taskStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    open: "פתוח",
-    todo: "לביצוע",
-    "in-progress": "בתהליך",
-    done: "בוצע",
-    completed: "בוצע",
-  };
-  return labels[status] ?? scanStatusLabel(status);
-}
-
-function taskPriorityLabel(priority: string) {
-  const labels: Record<string, string> = { low: "עדיפות נמוכה", medium: "עדיפות בינונית", high: "עדיפות גבוהה" };
-  return labels[priority] ?? priority;
-}
-
-function invoiceStatusLabel(status: string) {
-  const labels: Record<string, string> = { paid: "שולם", pending: "ממתין", overdue: "באיחור", draft: "טיוטה" };
-  return labels[status] ?? scanStatusLabel(status);
-}
-
-function alertTypeLabel(type: string) {
-  const labels: Record<string, string> = { error: "שגיאה", warning: "אזהרה", info: "מידע", review: "לבדיקה" };
-  return labels[type] ?? type;
-}
-
-function formatCurrency(amount: number, currency: string) {
-  const symbols: Record<string, string> = { ILS: "₪", USD: "$", EUR: "€", GBP: "£" };
-  return `${symbols[currency] ?? currency} ${amount.toLocaleString("he-IL")}`;
-}
-
-function OnboardingStep({ title, done, text, action }: { title: string; done: boolean; text: ReactNode; action?: ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary/70 p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <strong className="text-ink-primary">{title}</strong>
-        <span className={`badge ${done ? "badge-ok" : "badge-warn"}`}>{done ? "מוכן" : "נדרש"}</span>
-      </div>
-      <div className="text-sm text-ink-secondary">{text}</div>
-      {action && <div className="mt-3">{action}</div>}
-    </div>
-  );
-}
-
-function MiniMetric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-xl border border-[var(--border-subtle)] bg-surface-secondary p-3">
-      <div className="text-[12px] font-bold uppercase tracking-[0.14em] text-ink-muted">{label}</div>
-      <div className="mt-1 text-2xl font-bold text-ink-primary">{value}</div>
-    </div>
-  );
-}
-
-function BusinessTable({
-  title,
-  rows,
-  empty,
-}: {
-  title: string;
-  empty: string;
-  rows: Array<{ id: string; title: string; meta: string; badge: string; actions: ReactNode }>;
+  onRangeChange: (value: string) => void;
+  onRun: () => void;
+  onOpen: () => void;
 }) {
   return (
-    <div className="card">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2>{title}</h2>
-        <span className="badge">{rows.length}</span>
+    <ActivityCard title="וואטסאפ" empty="וואטסאפ לא מחובר">
+      <DataRow title="הודעות היום" meta={`${formatNumber(whatsAppStats?.sentToday ?? 0)} נשלחו · ${formatNumber(whatsAppStats?.activeChats ?? 0)} שיחות פעילות`} pill={<StatusPill tone={whatsAppConnected ? "success" : "danger"}>{whatsAppConnected ? "מחובר" : "לא מחובר"}</StatusPill>} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <select value={whatsAppScanRange} onChange={(event) => onRangeChange(event.target.value)} disabled={whatsAppScanning || !whatsAppConnected}>
+          <option value="7">7 ימים</option>
+          <option value="30">30 ימים</option>
+          <option value="90">90 ימים</option>
+          <option value="full">סריקה מלאה</option>
+        </select>
+        <SecondaryButton onClick={onRun} disabled={whatsAppScanning || !whatsAppConnected}>{whatsAppScanning ? "סורק..." : "סריקת וואטסאפ"}</SecondaryButton>
       </div>
-      <div className="grid gap-3">
-        {rows.map((row) => (
-          <div key={row.id} className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary/70 p-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <strong className="block truncate text-ink-primary">{row.title}</strong>
-                <p className="mt-1 break-words text-sm text-ink-secondary">{row.meta}</p>
-              </div>
-              <span className="badge w-fit shrink-0">{row.badge}</span>
-            </div>
-            {row.actions && <div className="mt-3">{row.actions}</div>}
-          </div>
-        ))}
-        {rows.length === 0 && (
-          <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-            <p className="text-sm">{empty}</p>
-          </div>
-        )}
-      </div>
-    </div>
+      {whatsAppScanResult && <p className={typography.body} style={{ color: colors.textSecondary }}>נסרקו {formatNumber(whatsAppScanResult.messagesScanned)} הודעות · נמצאו {formatNumber(whatsAppScanResult.supplierPaymentsFound)} תשלומי ספקים · {formatNumber(whatsAppScanResult.errorsCount)} שגיאות</p>}
+      <SecondaryButton onClick={onOpen}>פתח מרכז וואטסאפ</SecondaryButton>
+    </ActivityCard>
   );
+}
+
+function buildScanBannerState(activeScan: ScanProgressResult | null, scanStatus: ScanStatus | null): {
+  status: "running" | "success" | "partial" | "truncated" | "error";
+  found: number;
+  scanned: number;
+  totalMatched?: number | null;
+  errors: number;
+} | null {
+  if (activeScan) {
+    const truncated = activeScan.windowTruncated ?? activeScan.summary?.windowTruncated ?? false;
+    return {
+      status: activeScan.status === "running" ? "running" : truncated ? "truncated" : activeScan.status === "completed" ? "success" : activeScan.status,
+      found: activeScan.invoicesFound + activeScan.supplierPaymentsFound,
+      scanned: activeScan.emailsFetched,
+      totalMatched: activeScan.totalMatched ?? activeScan.summary?.totalMatched,
+      errors: activeScan.summary?.errorsCount ?? activeScan.finalSummary?.errorsCount ?? 0,
+    };
+  }
+  if (!scanStatus?.last) return null;
+  return {
+    status: scanStatus.last.status === "running" ? "running" : scanStatus.last.windowTruncated ? "truncated" : scanStatus.last.status === "success" ? "success" : scanStatus.last.status === "partial" ? "partial" : "error",
+    found: (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0),
+    scanned: scanStatus.last.found,
+    totalMatched: scanStatus.last.totalMatched,
+    errors: scanStatus.last.errors ? 1 : 0,
+  };
+}
+
+function greetingForNow() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "בוקר טוב";
+  if (hour >= 12 && hour < 17) return "צהריים טובים";
+  if (hour >= 17 && hour < 22) return "ערב טוב";
+  return "לילה טוב";
 }
 
 function scanProgressMessages(progress: ScanProgressResult) {
@@ -1866,9 +1168,6 @@ function scanProgressMessages(progress: ScanProgressResult) {
     `התקדמות ${progress.progressPercent ?? 0}%${progress.estimatedRemainingSeconds ? ` · נותרו בערך ${Math.ceil(progress.estimatedRemainingSeconds / 60)} דק׳` : ""}`,
     `נמצאו ${progress.emailsFetched} מיילים`,
     `נשמרו ${progress.emailsSaved} פריטי סריקה`,
-    `נמצאו ${progress.invoicesFound} חשבוניות ו-${progress.supplierPaymentsFound} תשלומי ספקים`,
-    `הועלו ${progress.uploadedToDrive} קבצים לדרייב ועודכנו ${progress.sheetsUpdated ?? 0} שורות שיטס`,
-    `נכשלו/דורשים בדיקה: ${progress.failedItems?.length ?? Object.values(progress.rejectedReasons ?? {}).reduce((sum, count) => sum + count, 0)}`,
   ];
 }
 
@@ -1918,7 +1217,80 @@ function formatScanSuccess(summary: GmailScanSummary) {
 }
 
 function appendScanTruncationMessage(message: string, windowTruncated?: boolean, emailsScanned = 0) {
-  return windowTruncated
-    ? `${message} · נסרקו ${emailsScanned} הודעות — ייתכן שיש עוד, הרץ סריקה נוספת`
-    : message;
+  return windowTruncated ? `${message} · נסרקו ${emailsScanned} הודעות — ייתכן שיש עוד, הרץ סריקה נוספת` : message;
+}
+
+function fallbackComponent(name: SystemComponentStatus["name"], label: string, connected: boolean): SystemComponentStatus {
+  return { name, label, connected, status: connected ? "PASS" : "FAIL", reason: null };
+}
+
+function systemComponentLabel(label: string) {
+  const labels: Record<string, string> = {
+    gmail: "ג׳ימייל",
+    drive: "גוגל דרייב",
+    sheets: "גוגל שיטס",
+    whatsapp: "וואטסאפ",
+    database: "מסד נתונים",
+  };
+  return labels[label.toLowerCase()] ?? label;
+}
+
+function systemReasonLabel(reason: string | null) {
+  if (!reason) return null;
+  const labels: Record<string, string> = {
+    connected: "מחובר",
+    missing: "חסר חיבור",
+    disconnected: "לא מחובר",
+    failed: "נכשלה בדיקה",
+  };
+  return labels[reason] ?? reason.replace(/_/g, " ");
+}
+
+function alertTypeLabel(type: string) {
+  const labels: Record<string, string> = { error: "שגיאה", warning: "אזהרה", info: "מידע", review: "לבדיקה" };
+  return labels[type] ?? type.replace(/_/g, " ");
+}
+
+function taskPriorityLabel(priority: string) {
+  const labels: Record<string, string> = { low: "עדיפות נמוכה", medium: "עדיפות בינונית", high: "עדיפות גבוהה" };
+  return labels[priority] ?? priority.replace(/_/g, " ");
+}
+
+function isCompletedGmailScanStatus(status?: string) {
+  return status === "completed" || status === "success" || status === "partial";
+}
+
+function isThisMonth(value: string) {
+  const date = new Date(value);
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+}
+
+function formatShekel(amount: number) {
+  return `₪${Math.round(amount).toLocaleString("he-IL")}`;
+}
+
+function formatNumber(value: number) {
+  return value.toLocaleString("he-IL");
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("he-IL");
+}
+
+function relativeTime(date: Date) {
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.max(0, Math.round(diffMs / 60000));
+  if (minutes < 1) return "עכשיו";
+  if (minutes < 60) return `לפני ${minutes} דקות`;
+  const hours = Math.round(minutes / 60);
+  return `לפני ${hours} שעות`;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
