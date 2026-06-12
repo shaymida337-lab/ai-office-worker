@@ -489,7 +489,7 @@ model SyncLog {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   clientId       String?
   type           String // gmail_scan | daily_summary | whatsapp_morning | whatsapp_evening
-  status         String // success | error
+  status         String // success | partial | error
   emailsProcessed Int     @default(0)
   emailsSaved    Int      @default(0)
   invoicesFound  Int      @default(0)
@@ -498,6 +498,8 @@ model SyncLog {
   driveUploaded  Int      @default(0)
   sheetsUpdated  Int      @default(0)
   errorsCount    Int      @default(0)
+  windowTruncated Boolean  @default(false)
+  totalMatched    Int?
   scanMode       String?
   retryOfId      String?
   nextRetryAt    DateTime?

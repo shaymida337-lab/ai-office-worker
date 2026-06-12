@@ -938,6 +938,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       logStep(`Marked ${needsReviewCount} emails as Needs Review, extracted ${invoiceAmountsExtracted} amounts`);
       logStep(`Saved ${recordsSaved} records (${clientsCreated} clients, ${invoicesCreated} invoices, ${paymentsCreated} payments, ${tasksCreated} tasks)`);
       logStep(`Skipped ${duplicatesSkipped} duplicates or already processed emails`);
+      const windowTruncated = listingDiagnosticsWindowTruncated(fastListing.diagnostics);
+      if (windowTruncated) {
+        logStep(`[gmail-sync] SCAN_WINDOW_TRUNCATED scanned=${fastMessages.length} maxMessages=${fastListing.diagnostics.maxMessages}`);
+      }
       await prisma.syncLog.update({
         where: { id: log.id },
         data: {
@@ -949,8 +953,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           driveUploaded: driveUploadsSucceeded,
           sheetsUpdated,
           errorsCount,
+          windowTruncated,
+          totalMatched: fastMessages.length,
           finishedAt: new Date(),
-          status: "success",
+          status: errorsCount > 0 ? "partial" : "success",
         },
       });
 
@@ -981,6 +987,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         scanSteps,
         emailsParsed,
         emailsSavedToGmailScanItem,
+        windowTruncated,
+        totalMatched: fastMessages.length,
         inProgress: false,
       };
     }
@@ -1000,6 +1008,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     const messages = [...fastMessages, ...historicalMessages];
     logStep(`[gmail-sync] Gmail listing diagnostics ${JSON.stringify(listing.diagnostics)}`);
     logStep(`[gmail-sync] total emails fetched from Gmail=${messages.length} fast=${fastMessages.length} historical=${historicalMessages.length}`);
+    const windowTruncated = listingDiagnosticsWindowTruncated(fastListing.diagnostics) || listingDiagnosticsWindowTruncated(listing.diagnostics);
+    if (windowTruncated) {
+      logStep(`[gmail-sync] SCAN_WINDOW_TRUNCATED scanned=${messages.length} maxMessages=${Math.max(fastListing.diagnostics.maxMessages, listing.diagnostics.maxMessages)}`);
+    }
     await fetchAndParseMessages(historicalMessages, "historical");
     const historicalScannedEmails = scannedEmails.splice(0, scannedEmails.length);
     await processScannedEmails(historicalScannedEmails, "historical");
@@ -2293,8 +2305,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         driveUploaded: driveUploadsSucceeded,
         sheetsUpdated,
         errorsCount,
+        windowTruncated,
+        totalMatched: messages.length,
         finishedAt: new Date(),
-        status: "success",
+        status: errorsCount > 0 ? "partial" : "success",
       },
     });
 
@@ -2325,6 +2339,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       driveUploadsSkipped,
       driveUploadsFailed,
       sheetsUpdated,
+      windowTruncated,
+      totalMatched: messages.length,
       invoiceDetectionPositive,
       invoiceDetectionNegative,
       ignoredCount,
@@ -3259,6 +3275,10 @@ async function listCandidateMessages(
       queries: queryDiagnostics,
     },
   };
+}
+
+function listingDiagnosticsWindowTruncated(diagnostics: GmailListingDiagnostics) {
+  return diagnostics.queries.some((query) => query.stoppedBecauseMaxReached);
 }
 
 function formatGmailSearchDate(date: Date) {

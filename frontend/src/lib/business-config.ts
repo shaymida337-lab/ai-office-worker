@@ -61,6 +61,7 @@ export const uiTranslations = {
     rejected: "נדחה",
     pending: "ממתין",
     completed: "הושלם",
+    partial: "הושלם עם שגיאות",
     running: "רץ",
     error: "שגיאה",
   },

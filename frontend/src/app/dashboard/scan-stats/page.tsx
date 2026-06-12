@@ -62,6 +62,8 @@ type ScanLog = {
   driveUploaded: number;
   sheetsUpdated: number;
   errorsCount: number;
+  windowTruncated?: boolean;
+  totalMatched?: number | null;
   errorMessage: string | null;
   startedAt: string;
   finishedAt: string | null;
@@ -392,6 +394,7 @@ function auditSummary(item: ScanItem) {
 
 function scanStatusLabel(status: string) {
   if (status === "success") return "הושלמה";
+  if (status === "partial") return "הושלמה עם שגיאות";
   if (status === "running") return "רצה עכשיו";
   if (status === "error") return "שגיאה";
   return status;

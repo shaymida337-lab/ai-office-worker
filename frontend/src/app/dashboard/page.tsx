@@ -116,7 +116,7 @@ type WhatsAppScanResult = {
 };
 
 type ScanToast = {
-  type: "info" | "success" | "error";
+  type: "info" | "success" | "warning" | "error";
   text: string;
 };
 
@@ -140,6 +140,8 @@ type GmailScanSummary = {
   supplierPaymentsFound?: number;
   uploadedToDrive?: number;
   rejectedReasons?: Record<string, number>;
+  windowTruncated?: boolean;
+  totalMatched?: number | null;
 };
 
 type GmailScanResult = {
@@ -166,7 +168,7 @@ type GmailScanResult = {
 
 type ScanProgressResult = {
   scanId: string;
-  status: "running" | "completed" | "error";
+  status: "running" | "completed" | "partial" | "error";
   inProgress: boolean;
   startedAt: string;
   finishedAt: string | null;
@@ -198,6 +200,8 @@ type ScanProgressResult = {
     sheetsUpdated: number;
     failedItems: number;
     errorsCount: number;
+    windowTruncated?: boolean;
+    totalMatched?: number | null;
     completedAt: string;
   } | null;
   lastSuccessfulScanAt?: string | null;
@@ -205,6 +209,8 @@ type ScanProgressResult = {
   progressPercent?: number;
   estimatedRemainingSeconds?: number | null;
   summary?: GmailScanSummary;
+  windowTruncated?: boolean;
+  totalMatched?: number | null;
 };
 
 type RecentInvoice = {
@@ -464,11 +470,16 @@ export default function DashboardPage() {
         if (cancelled) return;
         setActiveScan(progress);
         setScanProgress(scanProgressMessages(progress));
-        if (progress.status === "completed") {
+        if (progress.status === "completed" || progress.status === "partial") {
           setFirstScanRunning(false);
           setSyncing(false);
           setFirstScanSummary(formatProgressSummary(progress));
-          setScanToast({ type: "success", text: "הסריקה הסתיימה והנתונים עודכנו" });
+          setScanToast({
+            type: progress.status === "partial" ? "warning" : "success",
+            text: progress.status === "partial"
+              ? formatPartialScanMessage(progress)
+              : "הסריקה הסתיימה והנתונים עודכנו",
+          });
           setActiveScanId(null);
           window.localStorage.removeItem("activeGmailScanId");
           await load();
@@ -768,7 +779,7 @@ export default function DashboardPage() {
   const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
   const setupComplete = gmailConnected && whatsAppConnected;
   const scanRangeLabel = `${scanRangeDays} ימים`;
-  const initialSetupComplete = gmailConnected && Boolean(activeScan?.status === "completed" || scanStatus?.last?.status === "success");
+  const initialSetupComplete = gmailConnected && Boolean(isCompletedGmailScanStatus(activeScan?.status) || isCompletedGmailScanStatus(scanStatus?.last?.status));
   const actionRecommendations = buildActionRecommendations({
     stats,
     gmailConnected,
@@ -903,7 +914,7 @@ export default function DashboardPage() {
           <OnboardingStep title="4. שיטס" done text="טבלת תשלומי ספקים נוצרת ומתעדכנת אוטומטית" />
           <OnboardingStep
             title="5. סריקה"
-            done={Boolean(activeScan?.status === "completed" || scanStatus?.last?.status === "success")}
+            done={Boolean(isCompletedGmailScanStatus(activeScan?.status) || isCompletedGmailScanStatus(scanStatus?.last?.status))}
             text={activeScanId ? "סריקה רצה עכשיו" : `מוכן לסריקת ${scanRangeLabel}`}
             action={<button className="btn btn-secondary" onClick={startFirstScan} disabled={!gmailConnected || Boolean(activeScanId)}>{firstScanRunning ? "סורק..." : `התחל סריקת ${scanRangeLabel}`}</button>}
           />
@@ -937,6 +948,7 @@ export default function DashboardPage() {
           className={[
             "toast",
             scanToast.type === "success" ? "border-emerald-400/30 text-emerald-200" : "",
+            scanToast.type === "warning" ? "border-amber-400/40 text-amber-100" : "",
             scanToast.type === "error" ? "border-red-400/30 text-red-200" : "",
             scanToast.type === "info" ? "border-[#818CF8]/40 text-white" : "",
           ].join(" ")}
@@ -1753,6 +1765,10 @@ function scanStatusLabel(status: string) {
   return uiTranslations.statuses[status as keyof typeof uiTranslations.statuses] ?? status;
 }
 
+function isCompletedGmailScanStatus(status?: string) {
+  return status === "completed" || status === "success" || status === "partial";
+}
+
 function taskStatusLabel(status: string) {
   const labels: Record<string, string> = {
     open: "פתוח",
@@ -1846,7 +1862,7 @@ function BusinessTable({
 
 function scanProgressMessages(progress: ScanProgressResult) {
   return [
-    progress.status === "running" ? "סורק ומעבד מיילים..." : progress.status === "completed" ? "הסריקה הושלמה" : "הסריקה נכשלה",
+    progress.status === "running" ? "סורק ומעבד מיילים..." : progress.status === "error" ? "הסריקה נכשלה" : progress.status === "partial" ? `הסריקה הושלמה עם ${progress.summary?.errorsCount ?? progress.finalSummary?.errorsCount ?? 0} שגיאות` : "הסריקה הושלמה",
     `התקדמות ${progress.progressPercent ?? 0}%${progress.estimatedRemainingSeconds ? ` · נותרו בערך ${Math.ceil(progress.estimatedRemainingSeconds / 60)} דק׳` : ""}`,
     `נמצאו ${progress.emailsFetched} מיילים`,
     `נשמרו ${progress.emailsSaved} פריטי סריקה`,
@@ -1857,7 +1873,11 @@ function scanProgressMessages(progress: ScanProgressResult) {
 }
 
 function formatProgressSummary(progress: ScanProgressResult) {
-  return `נמצאו ${progress.emailsFetched} מיילים · נשמרו ${progress.emailsSaved} · חשבוניות ${progress.invoicesFound} · תשלומי ספקים ${progress.supplierPaymentsFound} · דרייב ${progress.uploadedToDrive} · שיטס ${progress.sheetsUpdated ?? 0}`;
+  return appendScanTruncationMessage(
+    `נמצאו ${progress.emailsFetched} מיילים · נשמרו ${progress.emailsSaved} · חשבוניות ${progress.invoicesFound} · תשלומי ספקים ${progress.supplierPaymentsFound} · דרייב ${progress.uploadedToDrive} · שיטס ${progress.sheetsUpdated ?? 0}`,
+    progress.windowTruncated ?? progress.summary?.windowTruncated,
+    progress.emailsFetched
+  );
 }
 
 function scanSummaryFromResult(result: GmailScanResult): GmailScanSummary {
@@ -1875,9 +1895,30 @@ function scanSummaryFromResult(result: GmailScanResult): GmailScanSummary {
     duplicatesSkipped: result.summary?.duplicatesSkipped ?? result.duplicatesSkipped ?? 0,
     needsReviewCount: result.summary?.needsReviewCount ?? 0,
     errorsCount: result.summary?.errorsCount ?? 0,
+    windowTruncated: result.summary?.windowTruncated,
+    totalMatched: result.summary?.totalMatched,
   };
 }
 
+function formatPartialScanMessage(progress: ScanProgressResult) {
+  const errorsCount = progress.summary?.errorsCount ?? progress.finalSummary?.errorsCount ?? 0;
+  return appendScanTruncationMessage(
+    `הסריקה הושלמה עם ${errorsCount} שגיאות`,
+    progress.windowTruncated ?? progress.summary?.windowTruncated,
+    progress.emailsFetched
+  );
+}
+
 function formatScanSuccess(summary: GmailScanSummary) {
-  return `נבדקו ${summary.totalEmailsChecked ?? summary.emailsScanned} מיילים · נמצאו ${summary.relevantEmailsFound ?? summary.invoiceOrPaymentEmailsFound} רלוונטיים · נשמרו ${summary.recordsSaved} רשומות · לבדיקה ${summary.needsReviewCount ?? 0} · שגיאות ${summary.errorsCount ?? 0}`;
+  return appendScanTruncationMessage(
+    `נבדקו ${summary.totalEmailsChecked ?? summary.emailsScanned} מיילים · נמצאו ${summary.relevantEmailsFound ?? summary.invoiceOrPaymentEmailsFound} רלוונטיים · נשמרו ${summary.recordsSaved} רשומות · לבדיקה ${summary.needsReviewCount ?? 0} · שגיאות ${summary.errorsCount ?? 0}`,
+    summary.windowTruncated,
+    summary.totalEmailsChecked ?? summary.emailsScanned
+  );
+}
+
+function appendScanTruncationMessage(message: string, windowTruncated?: boolean, emailsScanned = 0) {
+  return windowTruncated
+    ? `${message} · נסרקו ${emailsScanned} הודעות — ייתכן שיש עוד, הרץ סריקה נוספת`
+    : message;
 }

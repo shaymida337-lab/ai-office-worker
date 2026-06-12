@@ -174,6 +174,8 @@ apiRouter.get("/gmail/scan-stats", async (req, res) => {
           driveUploaded: true,
           sheetsUpdated: true,
           errorsCount: true,
+          windowTruncated: true,
+          totalMatched: true,
           errorMessage: true,
           startedAt: true,
           finishedAt: true,
@@ -2329,6 +2331,8 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
     driveUploaded?: number;
     sheetsUpdated?: number;
     errors: string | null;
+    windowTruncated?: boolean;
+    totalMatched?: number | null;
     startedAt: Date;
     endedAt: Date | null;
   };
@@ -2354,6 +2358,8 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
         driveUploaded: true,
         sheetsUpdated: true,
         errorsCount: true,
+        windowTruncated: true,
+        totalMatched: true,
         scanMode: true,
         nextRetryAt: true,
         errorMessage: true,
@@ -2376,6 +2382,8 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
       driveUploaded: log.driveUploaded,
       sheetsUpdated: log.sheetsUpdated,
       errors: log.errorMessage || (log.errorsCount ? `${log.errorsCount} errors` : null),
+      windowTruncated: log.windowTruncated,
+      totalMatched: log.totalMatched,
       startedAt: log.startedAt,
       endedAt: log.finishedAt,
     })),
@@ -4428,7 +4436,9 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
   const status = log.finishedAt
     ? log.status === "success"
       ? "completed"
-      : "error"
+      : log.status === "partial"
+        ? "partial"
+        : "error"
     : "running";
   const elapsedMs = Math.max(0, end.getTime() - start.getTime());
   const emailsFetched = log.emailsProcessed;
@@ -4438,7 +4448,7 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
   const uploadedToDrive = log.driveUploaded;
   const processed = emailsFetched;
   const progressPercent =
-    status === "completed"
+    status === "completed" || status === "partial"
       ? 100
       : status === "error"
         ? Math.min(100, processed > 0 ? 100 : 0)
@@ -4467,6 +4477,8 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
     supplierPaymentsFound,
     clientsFound: 0,
     uploadedToDrive,
+    windowTruncated: log.windowTruncated,
+    totalMatched: log.totalMatched,
     sheetsUpdated: log.sheetsUpdated,
     failedItems,
     rejectedReasons,
@@ -4484,6 +4496,8 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
           sheetsUpdated: log.sheetsUpdated,
           failedItems: failedItems.length,
           errorsCount: log.errorsCount,
+          windowTruncated: log.windowTruncated,
+          totalMatched: log.totalMatched,
           completedAt: log.finishedAt,
         }
       : null,
@@ -4503,6 +4517,8 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
       rejectedReasons,
       paymentsSaved: supplierPaymentsFound,
       errorsCount: log.errorsCount || (log.status === "error" ? 1 : 0),
+      windowTruncated: log.windowTruncated,
+      totalMatched: log.totalMatched,
       progressPercent,
       estimatedRemainingSeconds,
     },
@@ -4539,6 +4555,8 @@ function buildGmailScanSummary(result: {
   driveUploadsFailed?: number;
   invoiceDetectionPositive?: number;
   invoiceDetectionNegative?: number;
+  windowTruncated?: boolean;
+  totalMatched?: number | null;
 }) {
   const businessRecordsSaved = result.recordsSaved ?? ((result.paymentsCreated ?? 0) + (result.invoicesCreated ?? 0) + (result.tasksCreated ?? 0) + (result.clientsCreated ?? 0));
   const emailRecordsSaved = result.emailsSavedToGmailScanItem ?? result.emailRecordsSaved ?? result.emailsSaved ?? 0;
@@ -4571,6 +4589,8 @@ function buildGmailScanSummary(result: {
     driveUploadsFailed: result.driveUploadsFailed ?? 0,
     invoiceDetectionPositive: result.invoiceDetectionPositive ?? 0,
     invoiceDetectionNegative: result.invoiceDetectionNegative ?? 0,
+    windowTruncated: result.windowTruncated ?? false,
+    totalMatched: result.totalMatched ?? null,
     ignoredCount: result.ignoredCount ?? 0,
     ignoredReasons: result.ignoredReasons ?? {},
   };
