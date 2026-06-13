@@ -747,7 +747,7 @@ export default function DashboardPage() {
   const estimatedVat = monthDocumentTotal * 0.18 / 1.18;
 
   return (
-    <main className={`${spacing.page} pt-16 min-h-screen lg:mr-60`} style={{ backgroundColor: colors.bg, color: colors.textPrimary }}>
+    <main className={`${spacing.page} pt-16 min-h-screen overflow-x-hidden lg:mr-60`} style={{ backgroundColor: colors.bg, color: colors.textPrimary }}>
       <Nav />
       <PageHeader
         title={`${todayGreeting} 👋`}
@@ -765,7 +765,7 @@ export default function DashboardPage() {
         }
       />
 
-      <div className={`grid ${spacing.section}`}>
+      <div className={`grid min-w-0 ${spacing.section}`}>
         {scanBanner && (
           <ScanBanner
             status={scanBanner.status}
@@ -1043,7 +1043,7 @@ function DataRow({ title, meta, pill, action }: { title: ReactNode; meta: ReactN
     <div className={`${radius.control} flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between`} style={{ backgroundColor: colors.bg, border: `1px solid ${colors.border}` }}>
       <div className="min-w-0 flex-1">
         <div className={`${typography.body} truncate font-semibold`} style={{ color: colors.textPrimary }}>{title}</div>
-        <div className={`${typography.meta} mt-1`} style={{ color: colors.textSecondary }}>{meta}</div>
+        <div className={`${typography.meta} mt-1 break-words min-w-0`} style={{ color: colors.textSecondary }}>{meta}</div>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         {pill}
