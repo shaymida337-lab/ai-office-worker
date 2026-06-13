@@ -27,6 +27,30 @@ test("Render deployment notification is certain junk", () => {
   assert.equal(result.reason, "technical_platform_system_notification");
 });
 
+test("technical platform sender without business document signal is certain junk", () => {
+  const result = classifyJunk({
+    sender: "notifications@github.com",
+    subject: "page route / ).",
+    body: "",
+    channel: "gmail",
+    attachmentFilenames: [],
+  });
+
+  assert.equal(result.bucket, "CERTAIN_JUNK");
+});
+
+test("technical platform invoice with business document signal proceeds as real", () => {
+  const result = classifyJunk({
+    sender: "billing@github.com",
+    subject: "Your GitHub invoice receipt",
+    body: "Invoice for your subscription",
+    channel: "gmail",
+    attachmentFilenames: ["invoice.pdf"],
+  });
+
+  assert.equal(result.bucket, "REAL");
+});
+
 test("pure marketing newsletter is certain junk", () => {
   const result = classifyJunk({
     sender: "newsletter@vendor.example",
