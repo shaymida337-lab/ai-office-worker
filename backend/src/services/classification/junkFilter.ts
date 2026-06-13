@@ -69,6 +69,10 @@ export function classifyJunk(input: JunkFilterInput): JunkFilterResult {
     return { bucket: "CERTAIN_JUNK", reason: "technical_platform_system_notification", blocklisted: false };
   }
 
+  if (isTechnicalPlatformSender(sender) && !hasBusinessDocumentSignal) {
+    return { bucket: "CERTAIN_JUNK", reason: "technical_platform_no_business_document", blocklisted: false };
+  }
+
   if (CUSTOMER_ACTION_TERMS.some((pattern) => pattern.test(combined))) {
     return { bucket: "REAL", reason: "customer_action_signal", blocklisted: false };
   }
