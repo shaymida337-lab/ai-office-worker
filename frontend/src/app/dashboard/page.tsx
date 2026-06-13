@@ -747,7 +747,7 @@ export default function DashboardPage() {
   const estimatedVat = monthDocumentTotal * 0.18 / 1.18;
 
   return (
-    <main className={`${spacing.page} min-h-screen lg:mr-60`} style={{ backgroundColor: colors.bg, color: colors.textPrimary }}>
+    <main className={`${spacing.page} pt-16 min-h-screen lg:mr-60`} style={{ backgroundColor: colors.bg, color: colors.textPrimary }}>
       <Nav />
       <PageHeader
         title={`${todayGreeting} 👋`}
