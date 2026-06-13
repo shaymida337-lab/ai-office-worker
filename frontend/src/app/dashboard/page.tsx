@@ -747,7 +747,7 @@ export default function DashboardPage() {
   const estimatedVat = monthDocumentTotal * 0.18 / 1.18;
 
   return (
-    <main className={`${spacing.page} pt-16 min-h-screen overflow-x-hidden lg:mr-60`} style={{ backgroundColor: colors.bg, color: colors.textPrimary }}>
+    <main className={`${spacing.page} pt-16 min-h-screen overflow-x-clip max-w-full lg:mr-60`} style={{ backgroundColor: colors.bg, color: colors.textPrimary }}>
       <Nav />
       <PageHeader
         title={`${todayGreeting} 👋`}
@@ -765,7 +765,7 @@ export default function DashboardPage() {
         }
       />
 
-      <div className={`grid min-w-0 ${spacing.section}`}>
+      <div className={`grid min-w-0 max-w-full ${spacing.section}`}>
         {scanBanner && (
           <ScanBanner
             status={scanBanner.status}
