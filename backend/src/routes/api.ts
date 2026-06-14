@@ -2993,6 +2993,60 @@ apiRouter.get("/invoices", async (req, res) => {
       : Promise.resolve([]),
   ]);
 
+  const missingDriveInvoiceGmailIds = Array.from(new Set(
+    invoiceRows
+      .filter((invoice) => !invoice.driveFileUrl && !invoice.driveUrl && invoice.gmailMessageId)
+      .map((invoice) => invoice.gmailMessageId!)
+  ));
+  const paymentDriveFallbackByInvoiceKey = new Map<string, { link: string | null; ambiguous: boolean }>();
+  const invoicePaymentDriveFallbackKey = (gmailMessageId: string | null | undefined, amount: number | null | undefined) => {
+    const normalizedAmount = Number(amount);
+    return gmailMessageId && Number.isFinite(normalizedAmount) ? `${gmailMessageId}:${normalizedAmount.toFixed(2)}` : null;
+  };
+  if (missingDriveInvoiceGmailIds.length > 0) {
+    const emailMessagesForDriveFallback = await prisma.emailMessage.findMany({
+      where: {
+        organizationId,
+        gmailId: { in: missingDriveInvoiceGmailIds },
+      },
+      select: { id: true, gmailId: true },
+    });
+    const gmailIdByEmailMessageId = new Map(emailMessagesForDriveFallback.map((email) => [email.id, email.gmailId]));
+    const emailMessageIds = emailMessagesForDriveFallback.map((email) => email.id);
+    const supplierPaymentsWithDrive = emailMessageIds.length > 0
+      ? await prisma.supplierPayment.findMany({
+          where: {
+            organizationId,
+            emailMessageId: { in: emailMessageIds },
+            OR: [
+              { driveFileUrl: { not: null } },
+              { invoiceLink: { not: null } },
+              { documentLink: { not: null } },
+            ],
+          },
+          select: {
+            emailMessageId: true,
+            amount: true,
+            driveFileUrl: true,
+            invoiceLink: true,
+            documentLink: true,
+          },
+        })
+      : [];
+    for (const payment of supplierPaymentsWithDrive) {
+      const gmailMessageId = payment.emailMessageId ? gmailIdByEmailMessageId.get(payment.emailMessageId) : null;
+      const fallbackKey = invoicePaymentDriveFallbackKey(gmailMessageId, Number(payment.amount));
+      const link = payment.driveFileUrl ?? payment.invoiceLink ?? payment.documentLink ?? null;
+      if (!fallbackKey || !link) continue;
+      const existing = paymentDriveFallbackByInvoiceKey.get(fallbackKey);
+      if (existing) {
+        paymentDriveFallbackByInvoiceKey.set(fallbackKey, { link: null, ambiguous: true });
+      } else {
+        paymentDriveFallbackByInvoiceKey.set(fallbackKey, { link, ambiguous: false });
+      }
+    }
+  }
+
   const existingInvoiceRefs = new Set(
     invoiceRows.flatMap((invoice) => [invoice.gmailMessageId, invoice.emailId].filter((value): value is string => Boolean(value)))
   );
@@ -3000,7 +3054,10 @@ apiRouter.get("/invoices", async (req, res) => {
 
   const invoices = [
     ...invoiceRows.map((invoice) => {
-      const driveFileUrl = invoice.driveFileUrl ?? invoice.driveUrl ?? null;
+      const invoiceDriveFileUrl = invoice.driveFileUrl ?? invoice.driveUrl ?? null;
+      const fallbackKey = invoiceDriveFileUrl ? null : invoicePaymentDriveFallbackKey(invoice.gmailMessageId, invoice.amount);
+      const fallback = fallbackKey ? paymentDriveFallbackByInvoiceKey.get(fallbackKey) : undefined;
+      const driveFileUrl = invoiceDriveFileUrl ?? (fallback && !fallback.ambiguous ? fallback.link : null);
       return {
         ...invoice,
         driveUrl: driveFileUrl,
