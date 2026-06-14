@@ -388,6 +388,12 @@ export default function DashboardPage() {
         if (running && !activeScanId) {
           setActiveScanId(running.id);
           window.localStorage.setItem("activeGmailScanId", running.id);
+        } else if (!running) {
+          setActiveScanId(null);
+          setActiveScan(null);
+          setSyncing(false);
+          setFirstScanRunning(false);
+          window.localStorage.removeItem("activeGmailScanId");
         }
       } else {
         setScanStatus(emptyScanStatus());
