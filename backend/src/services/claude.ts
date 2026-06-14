@@ -125,6 +125,7 @@ export async function analyzeEmailContent(input: {
   body: string;
   filenames: string[];
   sender?: string;
+  ocrRawText?: string;
 }): Promise<EmailAnalysis> {
   if (!anthropic) {
     return fallbackAnalysis(input);
@@ -146,13 +147,14 @@ export async function analyzeEmailContent(input: {
     message.content[0].type === "text" ? message.content[0].text : "{}";
   const parsed = parseJsonObject<EmailAnalysis>(text, "email analysis");
   if (!parsed) return fallbackAnalysis(input);
+  const amounts = normalizeEmailAnalysisAmountFields(parsed, { ocrRawText: input.ocrRawText });
   return {
     supplier: parsed.supplier || "לא ידוע",
     supplierTaxId: typeof (parsed as { supplierTaxId?: unknown }).supplierTaxId === "string" ? (parsed as { supplierTaxId: string }).supplierTaxId : null,
-    amount: normalizeAmountValue(parsed.amount),
-    amountBeforeVat: normalizeAmountValue(parsed.amountBeforeVat),
-    vatAmount: normalizeAmountValue(parsed.vatAmount),
-    totalAmount: normalizeAmountValue(parsed.totalAmount) ?? normalizeAmountValue(parsed.amount),
+    amount: amounts.amount,
+    amountBeforeVat: amounts.amountBeforeVat,
+    vatAmount: amounts.vatAmount,
+    totalAmount: amounts.totalAmount,
     currency: parsed.currency || "ILS",
     documentType: normalizeEmailDocumentType(parsed.documentType),
     paymentRequired: Boolean(parsed.paymentRequired),
@@ -469,6 +471,20 @@ function normalizeInvoiceNumberValue(value: unknown): string | null {
   if (/^(?:number|invoice|receipt|no|מספר|חשבונית|חשבון|קבלה)$/iu.test(cleaned)) return null;
   if (!/[0-9]/.test(cleaned) && cleaned.length < 4) return null;
   return cleaned;
+}
+
+export function normalizeEmailAnalysisAmountFields(
+  source: { amount?: unknown; amountBeforeVat?: unknown; vatAmount?: unknown; totalAmount?: unknown },
+  context?: { ocrRawText?: string }
+) {
+  const amountContext = { source: "ai_json" as const, ocrRawText: context?.ocrRawText };
+  const amount = normalizeAmountValue(source.amount, amountContext);
+  return {
+    amount,
+    amountBeforeVat: normalizeAmountValue(source.amountBeforeVat, amountContext),
+    vatAmount: normalizeAmountValue(source.vatAmount, amountContext),
+    totalAmount: normalizeAmountValue(source.totalAmount, amountContext) ?? amount,
+  };
 }
 
 function firstNumber(source: Record<string, unknown>, keys: string[], context?: { ocrRawText?: string }): number | null {

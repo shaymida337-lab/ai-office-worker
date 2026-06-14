@@ -170,6 +170,7 @@ export async function syncGmailForClient(clientId: string) {
       body: bodyForAnalysis,
       filenames: attachmentFilenames,
       sender: from,
+      ocrRawText: bodyForAnalysis,
     });
 
     const driveLinks: string[] = [];
