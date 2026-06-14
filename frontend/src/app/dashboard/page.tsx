@@ -228,6 +228,8 @@ type RecentInvoice = {
   currency: string;
   date: string;
   status: string;
+  reviewStatus?: string;
+  source?: string;
   description: string | null;
   driveUrl: string | null;
   client?: { id: string; name: string; color: string | null };
@@ -743,7 +745,8 @@ export default function DashboardPage() {
   const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
   const todayGreeting = greetingForNow();
   const scanBanner = successScanBannerHidden ? null : buildScanBannerState(activeScan, scanStatus);
-  const monthInvoices = recentInvoices.filter((invoice) => isThisMonth(invoice.date));
+  const approvedRecentInvoices = recentInvoices.filter((invoice) => invoice.source === "invoice" && invoice.reviewStatus === "approved");
+  const monthInvoices = approvedRecentInvoices.filter((invoice) => isThisMonth(invoice.date));
   const unpaidSupplierTotal = payments.filter((payment) => !payment.paid).reduce((sum, payment) => sum + payment.amount, 0);
   const paidThisMonth = payments.filter((payment) => payment.paid && isThisMonth(payment.date)).reduce((sum, payment) => sum + payment.amount, 0);
   const monthDocumentTotal = [
