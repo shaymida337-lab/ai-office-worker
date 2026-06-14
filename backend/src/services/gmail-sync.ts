@@ -1070,7 +1070,52 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       }
 
       if (email.alreadyProcessed && !options.forceReprocess) {
-        logStep(`[gmail-sync] message=${email.gmailId} already processed; still tracing parser/persistence before duplicate handling`);
+        if (scanMode === "fast_recurring") {
+          const pendingDriveStatuses = ["pending_retry", "failed"];
+          const pendingRepairCounts = await Promise.all([
+            prisma.emailAttachment.count({
+              where: {
+                emailMessageId: email.emailRecordId,
+                driveUploadStatus: { in: pendingDriveStatuses },
+              },
+            }),
+            prisma.gmailScanItem.count({
+              where: {
+                organizationId,
+                OR: [{ emailMessageId: email.emailRecordId }, { gmailMessageId: email.gmailId }],
+                driveUploadStatus: { in: pendingDriveStatuses },
+              },
+            }),
+            prisma.financialDocumentReview.count({
+              where: {
+                organizationId,
+                OR: [{ emailMessageId: email.emailRecordId }, { gmailMessageId: email.gmailId }],
+                driveUploadStatus: { in: pendingDriveStatuses },
+              },
+            }),
+            prisma.supplierPayment.count({
+              where: {
+                organizationId,
+                emailMessageId: email.emailRecordId,
+                driveUploadStatus: { in: pendingDriveStatuses },
+              },
+            }),
+            prisma.invoice.count({
+              where: {
+                organizationId,
+                gmailMessageId: email.gmailId,
+                driveUploadStatus: { in: pendingDriveStatuses },
+              },
+            }),
+          ]);
+          if (!pendingRepairCounts.some((count) => count > 0)) {
+            logStep(`[gmail-sync] fast scan skip already-processed message=${email.gmailId} reason=no_pending_repair`);
+            continue;
+          }
+          logStep(`[gmail-sync] fast scan reprocess already-processed message=${email.gmailId} reason=pending_repair`);
+        } else {
+          logStep(`[gmail-sync] message=${email.gmailId} already processed; still tracing parser/persistence before duplicate handling`);
+        }
       }
 
       const pdfText = await extractPdfTextFromParts(gmail, email.gmailId, email.parts);
