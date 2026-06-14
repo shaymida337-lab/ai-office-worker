@@ -1291,6 +1291,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         logStep(`[gmail-sync] classifier needs_review invoice pass-through message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
       }
       const isIncomingSupplierExpense = pipelineAction === "SUPPLIER_EXPENSE";
+      const isCustomerInvoice = pipelineAction === "CUSTOMER_INVOICE";
       if (isIncomingSupplierExpense && clientId) {
         logStep(`[gmail-sync] supplier expense message=${email.gmailId}; ignoring clientId=${clientId} to avoid supplier-as-client placeholder`);
         clientId = undefined;
@@ -1793,7 +1794,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         logStep(`[gmail-sync] invoice detected message=${email.gmailId} type=${classification.documentType} clientId=${clientId ?? "none"} amount=${amount ?? "missing"} drive=${driveLinks[0]?.link ? "yes" : "no"}`);
       }
 
-      if (!isIncomingSupplierExpense && documentDecision.action !== "filtered" && clientId && isInvoiceRecordDocument(classification.documentType)) {
+      if (isCustomerInvoice && documentDecision.action !== "filtered" && clientId && isInvoiceRecordDocument(classification.documentType)) {
         const invoiceParts = email.parts.filter((part) => isPdfAttachmentPart(part) || isInvoiceImageAttachmentPart(part));
         const shouldUseAttachmentInvoices = invoiceParts.length > 1 || invoiceParts.some(isInvoiceImageAttachmentPart);
         const createTargets = shouldUseAttachmentInvoices ? invoiceParts : [null];
@@ -1949,7 +1950,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         supplierName,
         senderIsOwner,
       });
-      const canPersistSupplierPayment = documentDecision.action !== "filtered" && paymentEligibility.allowed;
+      const canPersistSupplierPayment = documentDecision.action !== "filtered" && !isCustomerInvoice && paymentEligibility.allowed;
       if (canPersistSupplierPayment) {
         const supplierPaymentNeedsReview = paymentEligibility.persistAsNeedsReview;
         const paymentSupplierName = supplierPaymentNeedsReview && !isUsableSupplierName(supplierName)
@@ -2237,6 +2238,46 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         sheetsUpdated += driveSync.sheetsUpdated;
         if (driveSync.created > 0) paymentPersistedForPilot = true;
         if (driveSync.sheetsUpdated > 0) sheetsUpdatedForPilot = true;
+      }
+
+      if (
+        documentDecision.action === "accepted" &&
+        classification.isRelevant &&
+        !invoicePersistedForPilot &&
+        !paymentPersistedForPilot
+      ) {
+        logStep(`[gmail-sync] persistence fallback needs_review message=${email.gmailId} reason="no_invoice_or_supplier_payment_created"`);
+        await recordFinancialDocumentDecision({
+          organizationId,
+          source: "gmail",
+          sender: email.senderEmail || email.from || null,
+          subject: email.subject,
+          fileName: attachmentFilename,
+          fileSize: null,
+          supplierName,
+          supplierTaxId: supplierMetadata.taxId,
+          invoiceNumber: invoiceNumberForDecision,
+          documentDate: documentDateForDecision,
+          dueDate: dueDateForDecision,
+          amountBeforeVat: analysis.amountBeforeVat ?? null,
+          vatAmount: analysis.vatAmount ?? null,
+          totalAmount: finalTotalAmount,
+          documentType: classification.documentType,
+          driveFileUrl: driveLinks[0]?.link ?? null,
+          confidenceScore: Math.min(classification.confidence, 0.79),
+          uncertaintyReason: "no invoice or supplier payment was created",
+          forceNeedsReview: true,
+          parsedFieldsJson,
+          rawAnalysis: {
+            analysis,
+            classification,
+            businessClassification,
+            parsed_fields_json: parsedFieldsJson,
+            gmailMessageId: email.gmailId,
+          },
+          emailMessageId: email.emailRecordId,
+          gmailMessageId: email.gmailId,
+        });
       }
 
       await prisma.emailMessage.update({
