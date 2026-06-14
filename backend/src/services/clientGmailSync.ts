@@ -27,6 +27,24 @@ const GMAIL_QUERIES = [
 const MAX_MESSAGES = 20;
 const DRIVE_FULL_MESSAGE = "הסריקה הושלמה. לא ניתן לשמור ל-Drive - האחסון שלך מלא";
 
+export type ClientGmailJunkAction = "drop" | "review" | "proceed";
+
+export function decideClientGmailJunkAction(input: {
+  subject: string;
+  body: string;
+  sender: string;
+  attachmentFilenames: string[];
+  junkDecision: ReturnType<typeof classifyJunk>;
+}): ClientGmailJunkAction {
+  if (input.junkDecision.bucket === "CERTAIN_JUNK") {
+    return "drop";
+  }
+  if (!shouldAutoClassifyAfterJunkFilter(input.junkDecision)) {
+    return "review";
+  }
+  return "proceed";
+}
+
 export async function syncGmailForClient(clientId: string) {
   const client = await prisma.client.findUnique({ where: { id: clientId } });
   if (!client?.gmailConnected) throw new Error("Client Gmail not connected");
@@ -103,14 +121,21 @@ export async function syncGmailForClient(clientId: string) {
       attachmentFilenames,
       metadata: { gmailMessageId: msgRef.id, clientId },
     });
-    if (junkDecision.bucket === "CERTAIN_JUNK") {
+    const junkAction = decideClientGmailJunkAction({
+      subject,
+      body: bodyForAnalysis,
+      sender: from,
+      attachmentFilenames,
+      junkDecision,
+    });
+    if (junkAction === "drop") {
       await prisma.emailMessage.update({
         where: { id: emailRecord.id },
         data: { processedAt: new Date() },
       });
       continue;
     }
-    if (!shouldAutoClassifyAfterJunkFilter(junkDecision)) {
+    if (junkAction === "review") {
       await recordFinancialDocumentDecision({
         organizationId,
         source: "gmail",
