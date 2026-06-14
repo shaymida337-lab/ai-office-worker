@@ -1227,6 +1227,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         senderDomain: email.domain,
         ownerEmails,
         knownSupplierNames,
+        logStep,
       });
       const supplierName = supplierMetadata.name;
       const supplierBranchName = supplierBranchNameFromFolderName(supplierName);
@@ -1887,6 +1888,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                 senderDomain: email.domain,
                 ownerEmails,
                 knownSupplierNames,
+                logStep,
               })
             : supplierMetadata;
           const targetSupplierName = targetSupplierMetadata.name;
@@ -3901,50 +3903,82 @@ export function resolveSupplierMetadata(input: {
   senderDomain: string;
   ownerEmails: Set<string>;
   knownSupplierNames: Map<string, string>;
+  logStep?: (message: string) => void;
 }): SupplierMetadata {
   const taxId = input.analysisSupplierTaxId || extractSupplierTaxId(input.bodyText);
   const keywordSupplier = detectSupplierKeyword(`${input.bodyText}\n${input.analysisSupplier ?? ""}`);
-  if (keywordSupplier) return withKnownSupplierName({
+  if (keywordSupplier) return finalizeSupplierMetadata({
     name: keywordSupplier.supplierName,
     taxId,
     confidence: keywordSupplier.confidence,
     source: "keyword",
     keyword: keywordSupplier.keyword,
-  }, input.knownSupplierNames);
+  }, input);
 
   const documentSupplier = extractSupplierFromDocument(input.bodyText, input.ownerEmails);
-  if (documentSupplier) return withKnownSupplierName({
+  if (documentSupplier) return finalizeSupplierMetadata({
     name: documentSupplier,
     taxId,
     confidence: taxId ? 0.98 : 0.92,
     source: "document",
-  }, input.knownSupplierNames);
+  }, input);
 
   const aiSupplier = normalizeSupplierName(input.analysisSupplier ?? "");
-  if (isUsableSupplierName(aiSupplier, input.ownerEmails)) return withKnownSupplierName({
+  if (isUsableSupplierName(aiSupplier, input.ownerEmails)) return finalizeSupplierMetadata({
     name: aiSupplier,
     taxId,
     confidence: taxId ? 0.88 : 0.8,
     source: "ai",
-  }, input.knownSupplierNames);
+  }, input);
 
   const senderSupplier = normalizeSupplierName(input.senderName);
-  if (isUsableSupplierName(senderSupplier, input.ownerEmails) && !looksLikeEmailAddress(senderSupplier)) return withKnownSupplierName({
+  if (isUsableSupplierName(senderSupplier, input.ownerEmails) && !looksLikeEmailAddress(senderSupplier)) return finalizeSupplierMetadata({
     name: senderSupplier,
     taxId,
     confidence: 0.52,
     source: "sender_display",
-  }, input.knownSupplierNames);
+  }, input);
 
   const domainSupplier = supplierFromDomain(input.senderDomain);
-  if (isUsableSupplierName(domainSupplier, input.ownerEmails) && !isPersonalEmailDomain(input.senderDomain)) return withKnownSupplierName({
+  if (isUsableSupplierName(domainSupplier, input.ownerEmails) && !isPersonalEmailDomain(input.senderDomain)) return finalizeSupplierMetadata({
     name: domainSupplier,
     taxId,
     confidence: 0.35,
     source: "domain",
-  }, input.knownSupplierNames);
+  }, input);
 
   return { name: "Unknown supplier", taxId, confidence: 0.1, source: "unknown" };
+}
+
+function finalizeSupplierMetadata(
+  candidate: SupplierMetadata,
+  input: {
+    senderName: string;
+    ownerEmails: Set<string>;
+    knownSupplierNames: Map<string, string>;
+    logStep?: (message: string) => void;
+  }
+): SupplierMetadata {
+  if (!isTaxIdLikeSupplierName(candidate.name, candidate.taxId)) {
+    return withKnownSupplierName(candidate, input.knownSupplierNames);
+  }
+
+  const original = candidate.name;
+  const senderFallback = normalizeSupplierName(input.senderName);
+  const fallback =
+    isUsableSupplierName(senderFallback, input.ownerEmails) &&
+    !looksLikeEmailAddress(senderFallback) &&
+    !isTaxIdLikeSupplierName(senderFallback, candidate.taxId)
+      ? senderFallback
+      : UNKNOWN_SUPPLIER_FALLBACK;
+  input.logStep?.(`[gmail-sync] supplier name rejected as tax-id/numeric, using fallback original=${original} fallback=${fallback}`);
+  return withKnownSupplierName({
+    ...candidate,
+    name: fallback,
+    confidence: Math.min(candidate.confidence, fallback === UNKNOWN_SUPPLIER_FALLBACK ? 0.1 : 0.52),
+    source: fallback === UNKNOWN_SUPPLIER_FALLBACK ? "unknown" : "sender_display",
+    keyword: undefined,
+  }, input.knownSupplierNames);
 }
 
 function withKnownSupplierName(candidate: SupplierMetadata, knownSupplierNames: Map<string, string>): SupplierMetadata {
@@ -4050,6 +4084,20 @@ function extractSupplierFromDocument(text: string, ownerEmails: Set<string>) {
 function extractSupplierTaxId(text: string) {
   const match = text.match(/(?:ח\.?פ\.?|חברה\s*מספר|עוסק\s*מורשה|מספר\s*עוסק|תיק\s*עוסק|company\s*(?:id|number)|tax\s*id|vat\s*(?:id|number))[:\s#-]{0,20}([0-9]{7,10})/i);
   return match?.[1] ?? null;
+}
+
+function isTaxIdLikeSupplierName(value: string, supplierTaxId?: string | null) {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  const digits = trimmed.replace(/\D/g, "");
+  const normalizedTaxId = supplierTaxId?.replace(/\D/g, "") ?? "";
+  if (normalizedTaxId && digits === normalizedTaxId) return true;
+  if (/^\d+$/.test(trimmed)) return true;
+
+  const withoutTaxLabels = trimmed
+    .replace(/(?:ח\.?פ\.?|חברה\s*מספר|עוסק\s*מורשה|מספר\s*עוסק|תיק\s*עוסק|company\s*(?:id|number)|tax\s*id|vat\s*(?:id|number))/gi, "")
+    .trim();
+  return digits.length >= 7 && digits.length <= 10 && /^[\d\s.-]+$/.test(withoutTaxLabels);
 }
 
 function isUsableSupplierName(value: string, ownerEmails: Set<string> = new Set()) {
