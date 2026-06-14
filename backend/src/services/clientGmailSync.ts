@@ -16,6 +16,7 @@ import {
   type DedupMatchResult,
   type FinancialDocumentFingerprintInput,
 } from "./dedup/sharedMatcher.js";
+import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
 
 const GMAIL_QUERIES = [
   "has:attachment newer_than:30d",
@@ -93,10 +94,56 @@ export async function syncGmailForClient(clientId: string) {
     const parts = collectParts(full.data.payload as PayloadPart | undefined);
     const pdfText = await extractPdfTextFromParts(gmail, msgRef.id, parts);
     const bodyForAnalysis = pdfText ? `${bodyText}\n\n--- PDF ATTACHMENT TEXT ---\n${pdfText}` : bodyText;
+    const attachmentFilenames = parts.map((p) => p.filename).filter(Boolean) as string[];
+    const junkDecision = classifyJunk({
+      sender: from,
+      subject,
+      body: bodyForAnalysis,
+      channel: "gmail",
+      attachmentFilenames,
+      metadata: { gmailMessageId: msgRef.id, clientId },
+    });
+    if (junkDecision.bucket === "CERTAIN_JUNK") {
+      await prisma.emailMessage.update({
+        where: { id: emailRecord.id },
+        data: { processedAt: new Date() },
+      });
+      continue;
+    }
+    if (!shouldAutoClassifyAfterJunkFilter(junkDecision)) {
+      await recordFinancialDocumentDecision({
+        organizationId,
+        source: "gmail",
+        sender: from || null,
+        subject,
+        fileName: parts.find((part) => part.filename)?.filename ?? null,
+        fileSize: null,
+        supplierName: from || null,
+        supplierTaxId: null,
+        invoiceNumber: null,
+        documentDate: receivedAt,
+        dueDate: null,
+        amountBeforeVat: null,
+        vatAmount: null,
+        totalAmount: null,
+        documentType: "payment_request",
+        driveFileUrl: null,
+        confidenceScore: 0,
+        uncertaintyReason: `junk_filter:${junkDecision.reason}`,
+        rawAnalysis: { junkDecision, gmailMessageId: msgRef.id },
+        emailMessageId: emailRecord.id,
+        gmailMessageId: msgRef.id,
+      });
+      await prisma.emailMessage.update({
+        where: { id: emailRecord.id },
+        data: { processedAt: new Date() },
+      });
+      continue;
+    }
     const analysis = await analyzeEmailContent({
       subject,
       body: bodyForAnalysis,
-      filenames: parts.map((p) => p.filename).filter(Boolean) as string[],
+      filenames: attachmentFilenames,
       sender: from,
     });
 
