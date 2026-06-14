@@ -1941,10 +1941,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         }
       }
 
+      const senderEmailLower = (email.senderEmail ?? "").trim().toLowerCase();
+      const senderIsOwner = !!senderEmailLower && ownerEmails.has(senderEmailLower);
       const paymentEligibility = supplierPaymentCreationEligibility({
         classification,
         amount,
         supplierName,
+        senderIsOwner,
       });
       const canPersistSupplierPayment = documentDecision.action !== "filtered" && paymentEligibility.allowed;
       if (canPersistSupplierPayment) {
@@ -2945,12 +2948,14 @@ export function supplierPaymentCreationEligibility(input: {
   classification: GmailScanClassification;
   amount: number | null;
   supplierName: string;
+  senderIsOwner?: boolean;
 }): { allowed: true; reasons: []; persistAsNeedsReview: boolean } | { allowed: false; reasons: string[]; persistAsNeedsReview: false } {
   if (isInvoiceRecordDocument(input.classification.documentType)) {
     return {
       allowed: true,
       reasons: [],
       persistAsNeedsReview:
+        input.senderIsOwner === true ||
         input.classification.reviewStatus !== "auto_saved" ||
         input.classification.confidence < 0.8 ||
         !input.classification.audit.strictPaymentEvidence ||
