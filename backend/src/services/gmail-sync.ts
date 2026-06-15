@@ -4209,7 +4209,7 @@ function extractPhoneFromText(text: string) {
   return text.match(/(?:\+972|0)(?:[-\s]?\d){8,10}/)?.[0]?.replace(/[\s-]/g, "") ?? undefined;
 }
 
-function parseAmount(raw: string) {
+export function parseAmount(raw: string) {
   const cleaned = raw.replace(/[^\d.,]/g, "").replace(/[.,]+$/, "");
   const lastComma = cleaned.lastIndexOf(",");
   const lastDot = cleaned.lastIndexOf(".");
@@ -4220,7 +4220,8 @@ function parseAmount(raw: string) {
   } else if (lastComma !== -1) {
     compact = cleaned.length - lastComma - 1 === 2 ? cleaned.replace(",", ".") : cleaned.replace(/,/g, "");
   } else if (lastDot !== -1) {
-    compact = cleaned.length - lastDot - 1 === 2 ? cleaned : cleaned.replace(/\./g, "");
+    const decimals = cleaned.length - lastDot - 1;
+    compact = decimals >= 1 && decimals <= 2 ? cleaned : cleaned.replace(/\./g, "");
   }
   compact = compact.replace(/\s/g, "");
   const amount = Number(compact);
