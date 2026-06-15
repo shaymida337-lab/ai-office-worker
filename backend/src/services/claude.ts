@@ -1,7 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
-import { parseMoneyAmount } from "./financial/amountParser.js";
 
 export type EmailAnalysis = {
   supplier: string;
@@ -125,7 +124,6 @@ export async function analyzeEmailContent(input: {
   body: string;
   filenames: string[];
   sender?: string;
-  ocrRawText?: string;
 }): Promise<EmailAnalysis> {
   if (!anthropic) {
     return fallbackAnalysis(input);
@@ -147,14 +145,13 @@ export async function analyzeEmailContent(input: {
     message.content[0].type === "text" ? message.content[0].text : "{}";
   const parsed = parseJsonObject<EmailAnalysis>(text, "email analysis");
   if (!parsed) return fallbackAnalysis(input);
-  const amounts = normalizeEmailAnalysisAmountFields(parsed, { ocrRawText: input.ocrRawText });
   return {
     supplier: parsed.supplier || "לא ידוע",
     supplierTaxId: typeof (parsed as { supplierTaxId?: unknown }).supplierTaxId === "string" ? (parsed as { supplierTaxId: string }).supplierTaxId : null,
-    amount: amounts.amount,
-    amountBeforeVat: amounts.amountBeforeVat,
-    vatAmount: amounts.vatAmount,
-    totalAmount: amounts.totalAmount,
+    amount: normalizeAmountValue(parsed.amount),
+    amountBeforeVat: normalizeAmountValue(parsed.amountBeforeVat),
+    vatAmount: normalizeAmountValue(parsed.vatAmount),
+    totalAmount: normalizeAmountValue(parsed.totalAmount) ?? normalizeAmountValue(parsed.amount),
     currency: parsed.currency || "ILS",
     documentType: normalizeEmailDocumentType(parsed.documentType),
     paymentRequired: Boolean(parsed.paymentRequired),
@@ -289,11 +286,10 @@ ${prepared.ocrText ? `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמ
   }
   const supplier = firstString(parsed, ["supplier", "שם ספק", "ספק"]);
   const supplierTaxId = firstString(parsed, ["supplierTaxId", "taxId", "vatNumber", "ח.פ", "עוסק מורשה", "מספר עוסק"]);
-  const amountContext = { ocrRawText: prepared.ocrText ?? undefined };
-  const amount = firstNumber(parsed, ["amount", "total", "totalDue", "grandTotal", "balanceDue", "סכום", "סהכ", "סה\"כ", "סך הכל", "לתשלום"], amountContext);
-  const amountBeforeVat = firstNumber(parsed, ["amountBeforeVat", "subtotal", "beforeVat", "netAmount", "סכום לפני מעמ", "סהכ לפני מעמ", "לפני מע\"מ"], amountContext);
-  const vatAmount = firstNumber(parsed, ["vatAmount", "vat", "tax", "מע\"מ", "מעמ"], amountContext);
-  const totalAmount = firstNumber(parsed, ["totalAmount", "amount", "total", "totalDue", "grandTotal", "balanceDue", "סהכ כולל מעמ", "סה\"כ כולל מע\"מ", "לתשלום"], amountContext);
+  const amount = firstNumber(parsed, ["amount", "total", "totalDue", "grandTotal", "balanceDue", "סכום", "סהכ", "סה\"כ", "סך הכל", "לתשלום"]);
+  const amountBeforeVat = firstNumber(parsed, ["amountBeforeVat", "subtotal", "beforeVat", "netAmount", "סכום לפני מעמ", "סהכ לפני מעמ", "לפני מע\"מ"]);
+  const vatAmount = firstNumber(parsed, ["vatAmount", "vat", "tax", "מע\"מ", "מעמ"]);
+  const totalAmount = firstNumber(parsed, ["totalAmount", "amount", "total", "totalDue", "grandTotal", "balanceDue", "סהכ כולל מעמ", "סה\"כ כולל מע\"מ", "לתשלום"]);
   const date = firstString(parsed, ["date", "תאריך", "invoiceDate", "תאריך חשבונית"]);
   const dueDate = firstString(parsed, ["dueDate", "due_date", "תאריך יעד", "לתשלום עד"]);
   const invoiceNumber = normalizeInvoiceNumberValue(firstString(parsed, [
@@ -473,25 +469,11 @@ function normalizeInvoiceNumberValue(value: unknown): string | null {
   return cleaned;
 }
 
-export function normalizeEmailAnalysisAmountFields(
-  source: { amount?: unknown; amountBeforeVat?: unknown; vatAmount?: unknown; totalAmount?: unknown },
-  context?: { ocrRawText?: string }
-) {
-  const amountContext = { source: "ai_json" as const, ocrRawText: context?.ocrRawText };
-  const amount = normalizeAmountValue(source.amount, amountContext);
-  return {
-    amount,
-    amountBeforeVat: normalizeAmountValue(source.amountBeforeVat, amountContext),
-    vatAmount: normalizeAmountValue(source.vatAmount, amountContext),
-    totalAmount: normalizeAmountValue(source.totalAmount, amountContext) ?? amount,
-  };
-}
-
-function firstNumber(source: Record<string, unknown>, keys: string[], context?: { ocrRawText?: string }): number | null {
+function firstNumber(source: Record<string, unknown>, keys: string[]): number | null {
   for (const key of keys) {
     const value = source[key];
     if (typeof value === "number") {
-      const amount = normalizeAmountValue(value, { source: "ai_json", ocrRawText: context?.ocrRawText });
+      const amount = normalizeAmountValue(value);
       if (amount !== null) return amount;
     }
     if (typeof value === "string") {
@@ -636,21 +618,10 @@ function parseAmount(raw: string): number | null {
   return isReasonableAmount(amount) ? amount : null;
 }
 
-export function normalizeAmountValue(value: unknown, context?: { source?: "ai_json"; ocrRawText?: string }): number | null {
-  if (typeof value === "number") {
-    const parsed = parseMoneyAmount(value, { source: context?.source, ocrRawText: context?.ocrRawText });
-    if (parsed.amount === null) return null;
-    if (context?.ocrRawText && materiallyDifferentAmount(parsed.amount, value)) {
-      return isReasonableAmount(parsed.amount) ? parsed.amount : null;
-    }
-    return isReasonableAmount(value) ? value : null;
-  }
+function normalizeAmountValue(value: unknown): number | null {
+  if (typeof value === "number") return isReasonableAmount(value) ? value : null;
   if (typeof value === "string") return extractAmount(value);
   return null;
-}
-
-function materiallyDifferentAmount(left: number, right: number) {
-  return Math.abs(left - right) > 0.01;
 }
 
 function isReasonableAmount(amount: number) {
