@@ -88,6 +88,33 @@ test("real supplier invoice proceeds as real", () => {
   assert.equal(result.reason, "business_document_signal");
 });
 
+test("normal sender is not blocklisted because invoice body mentions bank or card terms", () => {
+  const result = classifyJunk({
+    sender: "shaymida337@gmail.com",
+    subject: "חשבונית בזק",
+    body: "חשבונית לתשלום. אמצעי תשלום: ויזה. פרטי בנק להעברה מופיעים במסמך.",
+    channel: "gmail",
+    attachmentFilenames: ["bezeq-invoice.pdf"],
+  });
+
+  assert.equal(result.blocklisted, false);
+  assert.notEqual(result.reason, "blocklisted_financial_or_government_sender");
+});
+
+test("sender containing financial blocklist term is still blocklisted", () => {
+  const result = classifyJunk({
+    sender: "promo@bank.co.il",
+    subject: "Monthly statement",
+    body: "Attached statement.",
+    channel: "gmail",
+    attachmentFilenames: ["statement.pdf"],
+  });
+
+  assert.equal(result.bucket, "UNSURE");
+  assert.equal(result.reason, "blocklisted_financial_or_government_sender");
+  assert.equal(result.blocklisted, true);
+});
+
 test("ambiguous unknown sender with document goes to review", () => {
   const result = classifyJunk({
     sender: "unknown@example.com",

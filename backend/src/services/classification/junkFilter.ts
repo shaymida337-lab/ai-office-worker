@@ -115,8 +115,7 @@ function isTechnicalPlatformSender(sender: string) {
 }
 
 function blocklistReasonFor(sender: string, text: string) {
-  const combined = `${sender}\n${text}`;
-  if (BLOCKLIST_TERMS.some((pattern) => pattern.test(combined))) {
+  if (BLOCKLIST_TERMS.some((pattern) => pattern.test(sender))) {
     return "blocklisted_financial_or_government_sender";
   }
   return null;
