@@ -600,7 +600,7 @@ function hasReferenceNumberContext(text: string, matchIndex: number, rawLength: 
   return REFERENCE_NUMBER_CONTEXT.test(text.slice(start, end));
 }
 
-function parseAmount(raw: string): number | null {
+export function parseAmount(raw: string): number | null {
   const cleaned = raw.replace(/[^\d.,]/g, "").replace(/[.,]+$/, "");
   if (!cleaned) return null;
   const lastComma = cleaned.lastIndexOf(",");
@@ -612,7 +612,8 @@ function parseAmount(raw: string): number | null {
   } else if (lastComma !== -1) {
     normalized = cleaned.length - lastComma - 1 === 2 ? cleaned.replace(",", ".") : cleaned.replace(/,/g, "");
   } else if (lastDot !== -1) {
-    normalized = cleaned.length - lastDot - 1 === 2 ? cleaned : cleaned.replace(/\./g, "");
+    const decimals = cleaned.length - lastDot - 1;
+    normalized = decimals >= 1 && decimals <= 2 ? cleaned : cleaned.replace(/\./g, "");
   }
   const amount = Number(normalized);
   return isReasonableAmount(amount) ? amount : null;
