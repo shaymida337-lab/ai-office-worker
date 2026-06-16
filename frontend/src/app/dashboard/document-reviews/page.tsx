@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
+import { reviewReasonLabel } from "@/lib/reviewReasonLabels";
 
 type DocumentReview = {
   id: string;
@@ -103,7 +104,7 @@ export default function DocumentReviewsPage() {
                   <td>{item.totalAmount == null ? "—" : `₪${item.totalAmount.toLocaleString("he-IL")}`}</td>
                   <td>{item.supplierName ?? "לא מזוהה"}</td>
                   <td className="max-w-xs">
-                    <div className="truncate" title={item.uncertaintyReason ?? "רמת ודאות נמוכה"}>{item.uncertaintyReason ?? "רמת ודאות נמוכה"}</div>
+                    <div className="truncate" title={item.uncertaintyReason ?? "רמת ודאות נמוכה"}>{reviewReasonLabel(item.uncertaintyReason)}</div>
                     <div className="text-sm text-ink-secondary">{Math.round(item.confidenceScore * 100)}%</div>
                   </td>
                   <td>{item.driveFileUrl ? <a className="text-accent-primary underline-offset-4 hover:underline" href={item.driveFileUrl} target="_blank" rel="noreferrer">פתח</a> : "—"}</td>
