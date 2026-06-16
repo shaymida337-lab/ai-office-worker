@@ -169,7 +169,7 @@ function collectMatches(text: string, pattern: RegExp, score: number, out: Array
   }
 }
 
-function parseAmount(raw: string): number | null {
+export function parseAmount(raw: string): number | null {
   const cleaned = raw.replace(/[^\d.,]/g, "");
   if (!cleaned) return null;
   const lastComma = cleaned.lastIndexOf(",");
@@ -186,7 +186,7 @@ function parseAmount(raw: string): number | null {
     normalized = decimals === 2 ? cleaned.replace(",", ".") : cleaned.replace(/,/g, "");
   } else if (lastDot !== -1) {
     const decimals = cleaned.length - lastDot - 1;
-    normalized = decimals === 2 ? cleaned : cleaned.replace(/\./g, "");
+    normalized = decimals >= 1 && decimals <= 2 ? cleaned : cleaned.replace(/\./g, "");
   }
 
   const amount = Number(normalized);
