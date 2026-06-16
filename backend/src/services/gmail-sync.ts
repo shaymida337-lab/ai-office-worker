@@ -4157,43 +4157,31 @@ export function extractInvoiceAmount(text: string): { amount: number | null; rej
     .replace(/&nbsp;/gi, " ")
     .replace(/\u00a0/g, " ")
     .replace(/[״]/g, "\"");
-  const prioritizedPatterns: Array<{ pattern: RegExp; score: number }> = [
-    { pattern: /(?:סה["']?כ\s+לתשלום\s+כולל\s+מע["']?מ|סהכ\s+לתשלום\s+כולל\s+מעמ|סה["']?כ\s+כולל\s+מע["']?מ)[^\d₪$€]{0,80}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi, score: 120 },
-    { pattern: /(?:סה["']?כ\s+לתשלום|סהכ\s+לתשלום|(?:ה)?סכום\s+לתשלום|יתרה\s+לתשלום)[^\d₪$€]{0,80}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi, score: 110 },
+  const prioritizedPatterns = [
+    /(?:סה["']?כ\s+לתשלום|סהכ\s+לתשלום|(?:ה)?סכום\s+לתשלום|יתרה\s+לתשלום)[^\d₪$€]{0,80}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
   ];
-  const patterns: Array<{ pattern: RegExp; score: number }> = [
-    { pattern: /(?:סה["']?כ\s*(?:לתשלום)?|סך\s*הכל\s*(?:לתשלום)?|(?:ה)?סכום\s*לתשלום|יתרה\s*לתשלום|לתשלום|כולל\s*מע["']?מ|total\s*(?:due|amount|inc(?:luding)?\s*vat)?|grand\s*total|amount\s*(?:due|paid)?|balance\s*due|subtotal)[^\d₪$€]{0,60}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi, score: 90 },
-    { pattern: /(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)\s*([0-9][0-9,\s]*(?:[.,][0-9]{1,2})?)\s*(?:סה["']?כ|סך\s*הכל|לתשלום|total|amount)?/gi, score: 80 },
-    { pattern: /₪\s*([0-9][0-9,\s]*(?:\.[0-9]{1,2})?)/g, score: 70 },
-    { pattern: /([0-9][0-9,\s]*(?:\.[0-9]{1,2})?)\s*(?:ש["']?ח|שקל|שקלים)/g, score: 70 },
-    { pattern: /(?:ils|nis)\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi, score: 70 },
-    { pattern: /([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)\s*(?:ils|nis)/gi, score: 70 },
+  const patterns = [
+    /(?:סה["']?כ\s*(?:לתשלום)?|סך\s*הכל\s*(?:לתשלום)?|(?:ה)?סכום\s*לתשלום|יתרה\s*לתשלום|לתשלום|כולל\s*מע["']?מ|total\s*(?:due|amount|inc(?:luding)?\s*vat)?|grand\s*total|amount\s*(?:due|paid)?|balance\s*due|subtotal)[^\d₪$€]{0,60}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
+    /(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)\s*([0-9][0-9,\s]*(?:[.,][0-9]{1,2})?)\s*(?:סה["']?כ|סך\s*הכל|לתשלום|total|amount)?/gi,
+    /₪\s*([0-9][0-9,\s]*(?:\.[0-9]{1,2})?)/g,
+    /([0-9][0-9,\s]*(?:\.[0-9]{1,2})?)\s*(?:ש["']?ח|שקל|שקלים)/g,
+    /(?:ils|nis)\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
+    /([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)\s*(?:ils|nis)/gi,
   ];
   let rejectedReason: string | null = null;
-  const collectAmounts = (amountPatterns: Array<{ pattern: RegExp; score: number }>, requireReferenceCheck: boolean) => {
-    const amounts: Array<{ amount: number; score: number }> = [];
-    for (const { pattern, score } of amountPatterns) {
+  const collectAmounts = (amountPatterns: RegExp[], requireReferenceCheck: boolean) => {
+    const amounts: number[] = [];
+    for (const pattern of amountPatterns) {
       for (const match of normalized.matchAll(pattern)) {
-        const raw = match[1];
-        const rawIndex = raw ? match[0].indexOf(raw) : -1;
-        const valueIndex = rawIndex >= 0 ? (match.index ?? 0) + rawIndex : match.index ?? 0;
-        if (hasNonAmountContext(normalized, valueIndex, raw?.length ?? match[0].length)) {
-          rejectedReason = "parsed amount rejected: nearby non-amount context";
-          continue;
-        }
-        if (looksLikeDueDateFragment(normalized, valueIndex, raw ?? "")) {
-          rejectedReason = "parsed amount rejected: due-date fragment";
-          continue;
-        }
         if (requireReferenceCheck && hasReferenceNumberContext(normalized, match.index ?? 0, match[0].length)) {
           rejectedReason = "parsed amount rejected: nearby reference/document number context";
           continue;
         }
-        const amount = parseAmount(raw);
+        const amount = parseAmount(match[1]);
         if (amount !== null) {
           const reason = rejectedDetectedAmountReason(amount);
           if (reason) rejectedReason = reason;
-          else amounts.push({ amount, score });
+          else amounts.push(amount);
         }
       }
     }
@@ -4201,30 +4189,10 @@ export function extractInvoiceAmount(text: string): { amount: number | null; rej
   };
 
   const prioritizedAmounts = collectAmounts(prioritizedPatterns, false);
-  if (prioritizedAmounts.length) return { amount: chooseBestAmount(prioritizedAmounts), rejectedReason };
+  if (prioritizedAmounts.length) return { amount: Math.max(...prioritizedAmounts), rejectedReason };
 
   const amounts = collectAmounts(patterns, true);
-  return { amount: amounts.length ? chooseBestAmount(amounts) : null, rejectedReason };
-}
-
-function chooseBestAmount(candidates: Array<{ amount: number; score: number }>) {
-  candidates.sort((a, b) => b.score - a.score || b.amount - a.amount);
-  return candidates[0].amount;
-}
-
-function hasNonAmountContext(text: string, matchIndex: number, rawLength: number) {
-  const start = Math.max(0, matchIndex - 24);
-  const end = Math.min(text.length, matchIndex + rawLength + 8);
-  const context = text.slice(start, end);
-  return /(?:מספר\s+עסקה|עסקה|אסמכתא|ברקוד|מספר\s+חשבון|חשבון|uid|מספר\s+כרטיס|כרטיס|ח\.?פ|עוסק|טלפון|מספר\s+חשבונית|transaction|barcode|account|card|ref|reference|phone)\s*[:#-]?\s*$/i.test(context.slice(0, Math.max(0, matchIndex - start)));
-}
-
-function looksLikeDueDateFragment(text: string, matchIndex: number, raw: string) {
-  const compact = raw.replace(/\s+/g, "");
-  if (!/^\d{2,4}$/.test(compact) || /[.,]/.test(raw)) return false;
-  const start = Math.max(0, matchIndex - 24);
-  const end = Math.min(text.length, matchIndex + raw.length + 12);
-  return /(?:לתשלום\s+עד|תשלום\s+עד|מועד\s+תשלום|due\s+date|payment\s+due)/i.test(text.slice(start, end));
+  return { amount: amounts.length ? Math.max(...amounts) : null, rejectedReason };
 }
 
 function hasReferenceNumberContext(text: string, matchIndex: number, rawLength: number) {

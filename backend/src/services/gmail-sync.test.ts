@@ -461,38 +461,6 @@ test("does not treat invoice reference number as amount", () => {
   assert.equal(result.amount, null);
 });
 
-test("selects Max receipt total instead of nearby transaction and barcode numbers", () => {
-  const result = extractInvoiceAmount(`
-    MAX קבלה
-    תאריך 18/08/2022
-    סה"כ לתשלום מספר עסקה 110,723
-    פריטים:
-    4 X 10.90
-    מע"מ 6.34
-    סה"כ 43.60 ש"ח
-    חשבון 514984269
-    ברקוד 72900110723
-    UID 220818131240265592700016
-  `);
-
-  assert.equal(result.amount, 43.6);
-});
-
-test("selects Bezeq total including VAT instead of due-date fragments", () => {
-  const result = extractInvoiceAmount(`
-    בזק חשבונית
-    מספר חשבונית 238419712
-    לקוח 514984269
-    טלפון 03-7197197
-    סה"כ לתשלום עד 19 7
-    סכום לפני מע"מ 138.37
-    מע"מ 24.91
-    סה"כ לתשלום כולל מע"מ 163.28 ש"ח
-  `);
-
-  assert.equal(result.amount, 163.28);
-});
-
 test("extracts Hebrew OCR invoice amount, number and dates", () => {
   const result = extractHebrewInvoiceFieldsFromText(`
     חברת החשמל
