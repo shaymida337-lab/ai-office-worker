@@ -15,6 +15,7 @@ import {
   isInvoiceImageAttachmentPart,
   normalizeOcrSupplierText,
   resolveSupplierMetadata,
+  selectInvoiceAttachmentAmount,
   supplierPaymentCreationEligibility,
 } from "./gmail-sync.js";
 import type { EmailAnalysis } from "./claude.js";
@@ -82,6 +83,17 @@ test("holds high confidence invoice without valid amount for review", () => {
   assert.equal(result.confidenceScore, "high");
   assert.equal(result.reviewStatus, "needs_review");
   assert.match(result.decisionReason, /no valid amount/);
+});
+
+test("selects detected OCR amount for image invoice when AI amount is missing", () => {
+  const amount = selectInvoiceAttachmentAmount({
+    isImageInvoicePart: true,
+    detectedAmount: 2000,
+    aiTotalAmount: null,
+    aiAmount: null,
+  });
+
+  assert.equal(amount, 2000);
 });
 
 test("collects inline jpeg image parts for OCR", () => {

@@ -1875,9 +1875,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           }
 
           const isImageInvoicePart = Boolean(invoicePart && isInvoiceImageAttachmentPart(invoicePart));
-          const targetAmount = isImageInvoicePart
-            ? normalizeDetectedAmount(targetAnalysis.analysis.totalAmount ?? targetAnalysis.analysis.amount)
-            : normalizeDetectedAmount(targetInvoiceMatch.amount ?? targetAnalysis.analysis.totalAmount ?? targetAnalysis.analysis.amount);
+          const targetAmount = selectInvoiceAttachmentAmount({
+            isImageInvoicePart,
+            detectedAmount: targetInvoiceMatch.amount,
+            aiTotalAmount: targetAnalysis.analysis.totalAmount,
+            aiAmount: targetAnalysis.analysis.amount,
+          });
           const targetSupplierMetadata = invoicePart
             ? resolveSupplierMetadata({
                 analysisSupplier: targetAnalysis.analysis.supplier,
@@ -4231,6 +4234,18 @@ export function parseAmount(raw: string) {
 function normalizeDetectedAmount(amount: number | null | undefined) {
   if (amount == null) return null;
   return isReasonableDetectedAmount(amount) ? amount : null;
+}
+
+export function selectInvoiceAttachmentAmount(input: {
+  isImageInvoicePart: boolean;
+  detectedAmount: number | null | undefined;
+  aiTotalAmount: number | null | undefined;
+  aiAmount: number | null | undefined;
+}) {
+  const aiAmount = input.aiTotalAmount ?? input.aiAmount;
+  return input.isImageInvoicePart
+    ? normalizeDetectedAmount(aiAmount ?? input.detectedAmount)
+    : normalizeDetectedAmount(input.detectedAmount ?? aiAmount);
 }
 
 export function rejectedDetectedAmountReason(amount: number | null | undefined) {
