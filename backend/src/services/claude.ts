@@ -581,7 +581,7 @@ function extractAmount(text: string): number | null {
   const amounts = candidates
     .map((candidate) => ({ amount: parseAmount(candidate.raw), score: candidate.score }))
     .filter((candidate): candidate is { amount: number; score: number } => candidate.amount !== null && candidate.amount > 0)
-    .filter((candidate) => !(Number.isInteger(candidate.amount) && candidate.amount >= 1900 && candidate.amount <= 2099));
+    .filter((candidate) => !(Number.isInteger(candidate.amount) && candidate.amount >= 2020 && candidate.amount <= 2030));
   if (!amounts.length) return null;
   amounts.sort((a, b) => b.score - a.score || b.amount - a.amount);
   return amounts[0].amount;

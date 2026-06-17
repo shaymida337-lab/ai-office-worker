@@ -194,7 +194,7 @@ export function parseAmount(raw: string): number | null {
 }
 
 function looksLikeDateOrYear(amount: number) {
-  return Number.isInteger(amount) && amount >= 1900 && amount <= 2099;
+  return Number.isInteger(amount) && amount >= 2020 && amount <= 2030;
 }
 
 function extractDate(text: string): string | null {
