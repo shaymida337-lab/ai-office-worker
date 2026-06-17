@@ -23,12 +23,25 @@ type SpeechRecognitionEvent = {
   }>;
 };
 
+type NatalieInvoiceSummary = {
+  id: string;
+  supplierName: string | null;
+  invoiceNumber: string | null;
+  amount: number;
+  currency: string;
+  issueDate: string | Date;
+  dueDate: string | Date | null;
+  status: string;
+  driveUrl: string | null;
+};
+
 type WidgetMessage = {
   id: string;
   sender: "natalie" | "user";
   text: string;
-  action?: "create_task" | "complete_task";
+  action?: "create_task" | "complete_task" | "show_invoice";
   proposal?: TaskActionProposal;
+  invoices?: NatalieInvoiceSummary[];
   actionStatus?: "pending" | "creating" | "created" | "cancelled" | "error";
   actionFeedback?: string;
 };
@@ -56,6 +69,11 @@ type NatalieAskResponse =
   | {
       action: "complete_task";
       proposal: CompleteTaskProposal;
+      answer: string;
+    }
+  | {
+      action: "show_invoice";
+      invoices: NatalieInvoiceSummary[];
       answer: string;
     };
 
@@ -112,6 +130,10 @@ function isTaskActionResponse(response: NatalieAskResponse): response is Extract
   return "action" in response && (response.action === "create_task" || response.action === "complete_task");
 }
 
+function isShowInvoiceResponse(response: NatalieAskResponse): response is Extract<NatalieAskResponse, { action: "show_invoice" }> {
+  return "action" in response && response.action === "show_invoice";
+}
+
 function isActionableMessage(
   message: WidgetMessage
 ): message is WidgetMessage & (
@@ -122,6 +144,16 @@ function isActionableMessage(
     ((message.action === "create_task" && Boolean(message.proposal)) ||
       (message.action === "complete_task" && Boolean(message.proposal)))
   );
+}
+
+function isInvoiceMessage(message: WidgetMessage): message is WidgetMessage & { action: "show_invoice"; invoices: NatalieInvoiceSummary[] } {
+  return message.action === "show_invoice" && Array.isArray(message.invoices) && message.invoices.length > 0;
+}
+
+function formatInvoiceDate(date: string | Date) {
+  const parsed = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(parsed.getTime())) return String(date);
+  return new Intl.DateTimeFormat("he-IL").format(parsed);
 }
 
 export function NatalieAssistantWidget() {
@@ -235,6 +267,12 @@ export function NatalieAssistantWidget() {
                       action: result.action,
                       proposal: result.proposal,
                       actionStatus: "pending" as const,
+                    }
+                  : {}),
+                ...(isShowInvoiceResponse(result)
+                  ? {
+                      action: result.action,
+                      invoices: result.invoices,
                     }
                   : {}),
               }
@@ -466,6 +504,33 @@ export function NatalieAssistantWidget() {
                           </button>
                         </div>
                       )}
+                    </div>
+                  )}
+                  {isInvoiceMessage(message) && (
+                    <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
+                      <div className="space-y-3 text-right">
+                        {message.invoices.map((invoice) => (
+                          <div key={invoice.id} className="rounded-xl border border-[#e6eaf2] bg-[#f8faff] p-3">
+                            <div className="text-[14px] font-extrabold text-[#0e1116]">
+                              {invoice.supplierName ?? "ספק לא ידוע"}
+                              {invoice.invoiceNumber ? ` · ${invoice.invoiceNumber}` : ""}
+                            </div>
+                            <div className="mt-1 text-[13px] font-bold text-[#6b7686]">
+                              {invoice.amount.toLocaleString("he-IL")} {invoice.currency} · {formatInvoiceDate(invoice.issueDate)}
+                            </div>
+                            {invoice.driveUrl && (
+                              <a
+                                href={invoice.driveUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-3 inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7]"
+                              >
+                                פתחי ב-Drive
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
