@@ -4134,13 +4134,17 @@ function isTaxIdLikeSupplierName(value: string, supplierTaxId?: string | null) {
 
 function isUsableSupplierName(value: string, ownerEmails: Set<string> = new Set()) {
   const cleaned = value.trim();
+  const normalizedToken = cleaned.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   if (!cleaned || cleaned === "Unknown supplier") return false;
   if (/^(unknown|unknown supplier|לא\s+ידוע|לא\s+מזוהה|n\/a|null|undefined)$/i.test(cleaned)) return false;
   if (cleaned === ".name" || cleaned.startsWith(".")) return false;
-  if (cleaned.length < 2 || cleaned.length > 80) return false;
+  if (/[\r\n]/.test(value)) return false;
+  if (cleaned.length < 2 || cleaned.length > 60) return false;
   if (looksLikeEmailAddress(cleaned)) return false;
   if (/^[\w.-]+\.[a-z]{2,}$/i.test(cleaned)) return false;
   if ([...ownerEmails].some((email) => cleaned.toLowerCase().includes(email))) return false;
+  if (/^(address|current|name|details|document|documents|number|supplier|vendor|issuer|company|business name|from)$/i.test(normalizedToken)) return false;
+  if (/^multi\s+number\s+documents\b/i.test(normalizedToken)) return false;
   if (/^(invoice|receipt|payment|support|noreply|no reply|billing|accounts?|gmail|googlemail|outlook|hotmail|yahoo)$/i.test(cleaned)) return false;
   return /[\p{L}]/u.test(cleaned);
 }

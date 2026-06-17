@@ -386,6 +386,46 @@ test("prefers explicit supplier sources over incidental keyword matches", () => 
   assert.equal(aiSupplier.source, "ai");
 });
 
+test("rejects unstable OCR supplier junk and falls back to sender", () => {
+  const cases = [
+    ["supplier: address.", "Bezeq"],
+    ["from: Current", "Bezeq"],
+    ["supplier: multi number documents before parseAmount found amount 163.28", "Bezeq"],
+  ] as const;
+
+  for (const [bodyText, expectedSupplier] of cases) {
+    const supplier = resolveSupplierMetadata({
+      analysisSupplier: "Unknown",
+      analysisSupplierTaxId: null,
+      bodyText,
+      senderName: "Bezeq",
+      senderEmail: "billing@bezeq.co.il",
+      senderDomain: "bezeq.co.il",
+      ownerEmails: new Set(["owner@example.com"]),
+      knownSupplierNames: new Map(),
+    });
+
+    assert.equal(supplier.name, expectedSupplier);
+    assert.equal(supplier.source, "sender_display");
+  }
+});
+
+test("keeps real Bezeq supplier names usable", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: "בזק",
+    analysisSupplierTaxId: null,
+    bodyText: "",
+    senderName: "Unknown",
+    senderEmail: "billing@bezeq.co.il",
+    senderDomain: "bezeq.co.il",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+
+  assert.equal(supplier.name, "בזק");
+  assert.equal(supplier.source, "ai");
+});
+
 test("keeps keyword suppliers when no explicit supplier source exists", () => {
   const cases = [
     ["סופר פארם סכום 78.40", "סופר פארם"],
