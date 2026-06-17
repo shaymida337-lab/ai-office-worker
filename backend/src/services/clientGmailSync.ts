@@ -45,6 +45,13 @@ export function decideClientGmailJunkAction(input: {
   return "proceed";
 }
 
+export function selectClientInvoiceAmount(input: {
+  amount: number | null | undefined;
+  totalAmount: number | null | undefined;
+}): number | null {
+  return input.amount ?? input.totalAmount ?? null;
+}
+
 export async function syncGmailForClient(clientId: string) {
   const client = await prisma.client.findUnique({ where: { id: clientId } });
   if (!client?.gmailConnected) throw new Error("Client Gmail not connected");
@@ -347,12 +354,13 @@ export async function syncGmailForClient(clientId: string) {
             }
           }
         }
+        const clientInvoiceAmount = selectClientInvoiceAmount({ amount: analysis.amount, totalAmount: analysis.totalAmount }) ?? 0;
         await prisma.supplierPayment.create({
           data: {
             organizationId,
             clientId,
             supplier: analysis.supplier,
-            amount: analysis.amount ?? 0,
+            amount: clientInvoiceAmount,
             currency: analysis.currency,
             date: receivedAt,
             dueDate: analysis.dueDate ? new Date(analysis.dueDate) : null,
@@ -372,7 +380,7 @@ export async function syncGmailForClient(clientId: string) {
           await writeClientInvoiceToSheet(clientId, {
             date: receivedAt,
             supplier: analysis.supplier,
-            amount: analysis.amount ?? 0,
+            amount: clientInvoiceAmount,
             currency: analysis.currency,
             driveFileUrl: driveLinks[0],
             driveFolderUrl: client.driveFolderUrl,

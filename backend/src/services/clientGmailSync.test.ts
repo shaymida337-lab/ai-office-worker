@@ -2,9 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   decideClientGmailFinancialDocumentDuplicate,
+  selectClientInvoiceAmount,
   shouldCreateClientGmailTasksAfterDedup,
   shouldWriteClientGmailTaskSheetAfterDedup,
 } from "./clientGmailSync.js";
+
+test("selectClientInvoiceAmount falls back to total amount only when amount is missing", () => {
+  assert.equal(selectClientInvoiceAmount({ amount: null, totalAmount: 354 }), 354);
+  assert.equal(selectClientInvoiceAmount({ amount: 354, totalAmount: 999 }), 354);
+  assert.equal(selectClientInvoiceAmount({ amount: null, totalAmount: null }), null);
+});
 
 test("client Gmail dedup marks known duplicate as MATCH", () => {
   const result = decideClientGmailFinancialDocumentDuplicate({
