@@ -1,7 +1,7 @@
 ﻿import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
 
-export type InvoiceStatus = "paid" | "pending" | "overdue";
+export type InvoiceStatus = "paid" | "pending" | "overdue" | "needs_review";
 
 export interface InvoiceData {
   clientName: string | null;
@@ -9,6 +9,7 @@ export interface InvoiceData {
   supplierName: string | null;
   invoiceNumber: string | null;
   amount: number;
+  amountMissing: boolean;
   currency: string;
   date: string;
   dueDate: string | null;
@@ -61,16 +62,19 @@ function normalizeInvoiceData(
   const date = normalizeDate(firstString(parsed, ["date", "invoiceDate"])) ?? fallback.date;
   const dueDate = normalizeDate(firstString(parsed, ["dueDate", "due_date"])) ?? fallback.dueDate;
   const parsedAmount = firstNumber(parsed, ["amount", "total", "sum", "totalAmount", "amountDue", "balanceDue"]);
+  const hasParsedPositiveAmount = parsedAmount !== null && parsedAmount > 0;
+  const amountMissing = hasParsedPositiveAmount ? false : fallback.amountMissing;
   return {
     clientName: firstString(parsed, ["clientName", "customer", "customerName"]) ?? clientFallback?.name ?? fallback.clientName,
     clientEmail: firstString(parsed, ["clientEmail", "email"]) ?? clientFallback?.email ?? fallback.clientEmail,
     supplierName: firstString(parsed, ["supplierName", "supplier", "vendor", "vendorName", "issuer", "issuerName"]) ?? fallback.supplierName,
     invoiceNumber: firstString(parsed, ["invoiceNumber", "invoice_number", "number"]) ?? fallback.invoiceNumber,
-    amount: parsedAmount && parsedAmount > 0 ? parsedAmount : fallback.amount,
+    amount: hasParsedPositiveAmount ? parsedAmount : fallback.amount,
+    amountMissing,
     currency: normalizeCurrency(firstString(parsed, ["currency"]) ?? fallback.currency),
     date,
     dueDate,
-    status: normalizeStatus(firstString(parsed, ["status"]) ?? fallback.status),
+    status: amountMissing ? "needs_review" : normalizeStatus(firstString(parsed, ["status"]) ?? fallback.status),
     description: firstString(parsed, ["description", "notes"]) ?? fallback.description,
   };
 }
@@ -82,6 +86,8 @@ function fallbackInvoiceData(
   clientFallback?: { name?: string | null; email?: string | null }
 ): InvoiceData {
   const text = `${subject}\n${emailBody}`;
+  const amount = extractAmount(text);
+  const amountMissing = amount === null;
   return {
     clientName: clientFallback?.name ?? null,
     clientEmail: clientFallback?.email ?? null,
@@ -90,11 +96,12 @@ function fallbackInvoiceData(
       text.match(/(?:invoice|receipt|חשבונית|קבלה)[^\dA-Z]{0,12}([A-Z0-9-]{3,})/i)?.[1] ??
       attachments.find((item) => item.filename)?.filename?.replace(/\.[^.]+$/, "") ??
       null,
-    amount: extractAmount(text) ?? 0,
+    amount: amount ?? 0,
+    amountMissing,
     currency: /usd|\$/i.test(text) ? "USD" : /eur|€/i.test(text) ? "EUR" : "ILS",
     date: extractDate(text) ?? new Date().toISOString().slice(0, 10),
     dueDate: extractDueDate(text),
-    status: /paid|שולם|קבלה/i.test(text) ? "paid" : "pending",
+    status: amountMissing ? "needs_review" : /paid|שולם|קבלה/i.test(text) ? "paid" : "pending",
     description: subject || null,
   };
 }
@@ -154,7 +161,7 @@ function extractAmount(text: string): number | null {
 
   const amounts = candidates
     .map((candidate) => ({ amount: parseAmount(candidate.raw), score: candidate.score, hasDateContext: candidate.hasDateContext }))
-    .filter((candidate): candidate is { amount: number; score: number; hasDateContext: boolean } => candidate.amount !== null && candidate.amount > 0)
+    .filter((candidate): candidate is { amount: number; score: number; hasDateContext: boolean } => candidate.amount !== null && candidate.amount >= 0)
     .filter((candidate) => !looksLikeDateOrYear(candidate.amount, candidate.hasDateContext));
 
   if (!amounts.length) return null;
