@@ -71,7 +71,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
     console.log(`[whatsapp-invoice] extraction done logId=${input.whatsappLogId} supplier="${analysis.supplier}" supplierTaxId=${analysis.supplierTaxId ?? "null"} amount=${analysis.amount ?? "null"} invoiceNumber=${analysis.invoiceNumber ?? "null"} invoiceDate=${analysis.invoiceDate ?? "null"} dueDate=${analysis.dueDate ?? "null"} documentType=${analysis.documentType} confidence=${analysis.confidence}`);
 
     const supplier = usableSupplierName(analysis.supplier) ? analysis.supplier.trim() : "Unknown supplier";
-    const amount = normalizeAmount(analysis.amount);
+    const amount = selectWhatsAppInvoiceAmount({ amount: analysis.amount, totalAmount: analysis.totalAmount });
     if (supplier === "Unknown supplier" || amount === null || !analysis.invoiceNumber) {
       console.warn("[whatsapp-invoice] extraction incomplete", {
         logId: input.whatsappLogId,
@@ -1220,6 +1220,13 @@ function usableSupplierName(value: string | null | undefined) {
 
 function normalizeAmount(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+export function selectWhatsAppInvoiceAmount(input: {
+  amount: number | null | undefined;
+  totalAmount: number | null | undefined;
+}): number | null {
+  return normalizeAmount(input.amount) ?? normalizeAmount(input.totalAmount);
 }
 
 function normalizeDate(value: string | null | undefined) {

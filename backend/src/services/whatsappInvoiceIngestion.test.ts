@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { matchWhatsAppFinancialDocumentCandidate } from "./whatsappInvoiceIngestion.js";
+import { matchWhatsAppFinancialDocumentCandidate, selectWhatsAppInvoiceAmount } from "./whatsappInvoiceIngestion.js";
+
+test("selectWhatsAppInvoiceAmount falls back to total amount only when amount is missing", () => {
+  assert.equal(selectWhatsAppInvoiceAmount({ amount: null, totalAmount: 163.28 }), 163.28);
+  assert.equal(selectWhatsAppInvoiceAmount({ amount: 200, totalAmount: 163.28 }), 200);
+  assert.equal(selectWhatsAppInvoiceAmount({ amount: null, totalAmount: null }), null);
+});
 
 test("WhatsApp financial matcher detects same invoice from Gmail as MATCH", () => {
   const result = matchWhatsAppFinancialDocumentCandidate(
