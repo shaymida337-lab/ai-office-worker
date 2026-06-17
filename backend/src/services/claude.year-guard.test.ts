@@ -27,7 +27,7 @@ test("Claude fallback keeps 1950 as a legitimate round amount", async () => {
   assert.equal(amount1950.amount, 1950);
 });
 
-test("Claude fallback still filters current date-year-like amounts", async () => {
+test("Claude fallback keeps bare 2025 as a legitimate amount", async () => {
   process.env.ANTHROPIC_API_KEY = "";
   const { analyzeEmailContent } = await import("./claude.js");
   const amount2025 = await analyzeEmailContent({
@@ -36,13 +36,19 @@ test("Claude fallback still filters current date-year-like amounts", async () =>
     filenames: [],
     sender: "supplier@example.com",
   });
-  const amount2024 = await analyzeEmailContent({
+
+  assert.equal(amount2025.amount, 2025);
+});
+
+test("Claude fallback still filters years that appear in date context", async () => {
+  process.env.ANTHROPIC_API_KEY = "";
+  const { analyzeEmailContent } = await import("./claude.js");
+  const dateYear = await analyzeEmailContent({
     subject: "חשבונית",
-    body: 'סה"כ לתשלום: 2024 ש"ח',
+    body: "לתשלום עד 2025-05-14",
     filenames: [],
     sender: "supplier@example.com",
   });
 
-  assert.equal(amount2025.amount, null);
-  assert.equal(amount2024.amount, null);
+  assert.equal(dateYear.amount, null);
 });

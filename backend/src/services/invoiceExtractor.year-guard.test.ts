@@ -17,12 +17,18 @@ test("invoiceExtractor keeps 1950 as a legitimate round amount", async () => {
   assert.equal(amount1950.amount, 1950);
 });
 
-test("invoiceExtractor still filters current date-year-like amounts", async () => {
+test("invoiceExtractor keeps bare 2025 as a legitimate amount", async () => {
   process.env.ANTHROPIC_API_KEY = "";
   const { extractInvoiceData } = await import("./invoiceExtractor.js");
   const amount2025 = await extractInvoiceData('סה"כ לתשלום: 2025 ש"ח', "חשבונית", []);
-  const amount2024 = await extractInvoiceData('סה"כ לתשלום: 2024 ש"ח', "חשבונית", []);
 
-  assert.equal(amount2025.amount, 0);
-  assert.equal(amount2024.amount, 0);
+  assert.equal(amount2025.amount, 2025);
+});
+
+test("invoiceExtractor still filters years that appear in date context", async () => {
+  process.env.ANTHROPIC_API_KEY = "";
+  const { extractInvoiceData } = await import("./invoiceExtractor.js");
+  const dateYear = await extractInvoiceData("לתשלום עד 2025-05-14", "חשבונית", []);
+
+  assert.equal(dateYear.amount, 0);
 });

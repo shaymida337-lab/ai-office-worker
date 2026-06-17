@@ -131,7 +131,7 @@ function extractAmount(text: string): number | null {
     .replace(/&nbsp;/gi, " ")
     .replace(/\u00a0/g, " ")
     .replace(/[־–—]/g, "-");
-  const candidates: Array<{ raw: string; score: number }> = [];
+  const candidates: Array<{ raw: string; score: number; hasDateContext: boolean }> = [];
 
   const labelPattern =
     /(?:סה["״']?כ|סך\s*הכל|סכום\s*(?:לתשלום)?|לתשלום|לתשלום\s*עד|יתרה\s*לתשלום|total\s*(?:due|amount)?|amount\s*(?:due)?|balance\s*due|grand\s*total)[^\d₪$€]{0,40}(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*)(?:\s*(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur))?/gi;
@@ -153,19 +153,19 @@ function extractAmount(text: string): number | null {
   collectMatches(normalized, /(?:€|eur)\s*([0-9][0-9.,\s]*)|([0-9][0-9.,\s]*)\s*(?:€|eur)/gi, 70, candidates);
 
   const amounts = candidates
-    .map((candidate) => ({ amount: parseAmount(candidate.raw), score: candidate.score }))
-    .filter((candidate): candidate is { amount: number; score: number } => candidate.amount !== null && candidate.amount > 0)
-    .filter((candidate) => !looksLikeDateOrYear(candidate.amount));
+    .map((candidate) => ({ amount: parseAmount(candidate.raw), score: candidate.score, hasDateContext: candidate.hasDateContext }))
+    .filter((candidate): candidate is { amount: number; score: number; hasDateContext: boolean } => candidate.amount !== null && candidate.amount > 0)
+    .filter((candidate) => !looksLikeDateOrYear(candidate.amount, candidate.hasDateContext));
 
   if (!amounts.length) return null;
   amounts.sort((a, b) => b.score - a.score || b.amount - a.amount);
   return amounts[0].amount;
 }
 
-function collectMatches(text: string, pattern: RegExp, score: number, out: Array<{ raw: string; score: number }>) {
+function collectMatches(text: string, pattern: RegExp, score: number, out: Array<{ raw: string; score: number; hasDateContext: boolean }>) {
   for (const match of text.matchAll(pattern)) {
     const raw = match.slice(1).find((group) => group && /\d/.test(group));
-    if (raw) out.push({ raw, score });
+    if (raw) out.push({ raw, score, hasDateContext: hasDateOrYearContext(text, match.index ?? 0, match[0].length) });
   }
 }
 
@@ -193,8 +193,15 @@ export function parseAmount(raw: string): number | null {
   return Number.isFinite(amount) ? amount : null;
 }
 
-function looksLikeDateOrYear(amount: number) {
-  return Number.isInteger(amount) && amount >= 2020 && amount <= 2030;
+function looksLikeDateOrYear(amount: number, hasDateContext: boolean) {
+  return hasDateContext && Number.isInteger(amount) && amount >= 2020 && amount <= 2030;
+}
+
+function hasDateOrYearContext(text: string, matchIndex: number, rawLength: number) {
+  const start = Math.max(0, matchIndex - 30);
+  const end = Math.min(text.length, matchIndex + rawLength + 30);
+  const context = text.slice(start, end);
+  return /(?:20\d{2}[-/.][01]?\d[-/.][0-3]?\d|[0-3]?\d[-/.][01]?\d[-/.]20\d{2}|תאריך|מועד|חודש|שנה|date|due|period|year|month)/i.test(context);
 }
 
 function extractDate(text: string): string | null {
