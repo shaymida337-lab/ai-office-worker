@@ -4182,7 +4182,9 @@ export function extractInvoiceAmount(text: string): { amount: number | null; rej
         }
         const amount = parseAmount(match[1]);
         if (amount !== null) {
-          const reason = rejectedDetectedAmountReason(amount);
+          const reason = rejectedDetectedAmountReason(amount, {
+            hasDateContext: hasDateOrYearContext(normalized, match.index ?? 0, match[0].length),
+          });
           if (reason) rejectedReason = reason;
           else amounts.push(amount);
         }
@@ -4206,6 +4208,13 @@ function hasReferenceNumberContext(text: string, matchIndex: number, rawLength: 
     return false;
   }
   return REFERENCE_NUMBER_CONTEXT.test(context);
+}
+
+function hasDateOrYearContext(text: string, matchIndex: number, rawLength: number) {
+  const start = Math.max(0, matchIndex - 30);
+  const end = Math.min(text.length, matchIndex + rawLength + 30);
+  const context = text.slice(start, end);
+  return /(?:20\d{2}[-/.][01]?\d[-/.][0-3]?\d|[0-3]?\d[-/.][01]?\d[-/.]20\d{2}|תאריך|מועד|חודש|שנה|date|due|period|year|month)/i.test(context);
 }
 
 function extractPhoneFromText(text: string) {
@@ -4248,10 +4257,10 @@ export function selectInvoiceAttachmentAmount(input: {
     : normalizeDetectedAmount(input.detectedAmount ?? aiAmount);
 }
 
-export function rejectedDetectedAmountReason(amount: number | null | undefined) {
+export function rejectedDetectedAmountReason(amount: number | null | undefined, context?: { hasDateContext?: boolean }) {
   if (amount == null) return null;
   if (!Number.isFinite(amount) || amount <= 0) return "parsed amount looks invalid";
-  if (Number.isInteger(amount) && amount >= 2020 && amount <= 2030) return "parsed amount looks like a year";
+  if (context?.hasDateContext === true && Number.isInteger(amount) && amount >= 2020 && amount <= 2030) return "parsed amount looks like a year";
   if (amount > MAX_AUTO_SAVE_AMOUNT) return "parsed amount looks invalid/too large";
   return null;
 }

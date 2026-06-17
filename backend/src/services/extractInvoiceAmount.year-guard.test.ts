@@ -22,12 +22,16 @@ test("extractInvoiceAmount keeps a real decimal total alongside a date year", ()
   assert.equal(result.amount, 45.6);
 });
 
-test("rejectedDetectedAmountReason rejects only current date-year-like integer amounts", () => {
+test("rejectedDetectedAmountReason rejects year-like amounts only with date context", () => {
   assert.equal(rejectedDetectedAmountReason(2000), null);
   assert.equal(rejectedDetectedAmountReason(1950), null);
-  assert.equal(rejectedDetectedAmountReason(2025), "parsed amount looks like a year");
-  assert.equal(rejectedDetectedAmountReason(2026), "parsed amount looks like a year");
-  assert.equal(rejectedDetectedAmountReason(2024), "parsed amount looks like a year");
+  assert.equal(rejectedDetectedAmountReason(2025), null);
+  assert.equal(rejectedDetectedAmountReason(2025, { hasDateContext: true }), "parsed amount looks like a year");
+  assert.equal(rejectedDetectedAmountReason(2026, { hasDateContext: true }), "parsed amount looks like a year");
+  assert.equal(rejectedDetectedAmountReason(2024, { hasDateContext: true }), "parsed amount looks like a year");
+  assert.equal(rejectedDetectedAmountReason(0), "parsed amount looks invalid");
+  assert.equal(rejectedDetectedAmountReason(-10), "parsed amount looks invalid");
+  assert.equal(rejectedDetectedAmountReason(10_000_001), "parsed amount looks invalid/too large");
   assert.equal(rejectedDetectedAmountReason(43.9), null);
   assert.equal(rejectedDetectedAmountReason(163.28), null);
   assert.equal(rejectedDetectedAmountReason(1850), null);
