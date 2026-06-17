@@ -62,6 +62,8 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
       dueDate: true,
       status: true,
       driveUrl: true,
+      driveFileUrl: true,
+      gmailMessageId: true,
     },
     orderBy: { createdAt: "desc" },
     take: 5,
@@ -75,20 +77,75 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
     return { answer: `לא מצאתי חשבונית קיימת שמתאימה ל־"${supplierName}".` };
   }
 
+  const missingDriveInvoiceGmailIds = Array.from(new Set(
+    invoices
+      .filter((invoice) => !selectNatalieInvoiceDriveUrl(invoice) && invoice.gmailMessageId)
+      .map((invoice) => invoice.gmailMessageId!)
+  ));
+  const paymentDriveFallbackByInvoiceKey = new Map<string, { link: string | null; ambiguous: boolean }>();
+  const invoicePaymentDriveFallbackKey = (gmailMessageId: string | null | undefined, amount: number | null | undefined) => {
+    const normalizedAmount = Number(amount);
+    return gmailMessageId && Number.isFinite(normalizedAmount) ? `${gmailMessageId}:${normalizedAmount.toFixed(2)}` : null;
+  };
+  if (missingDriveInvoiceGmailIds.length > 0) {
+    const emailMessagesForDriveFallback = await prisma.emailMessage.findMany({
+      where: {
+        organizationId,
+        gmailId: { in: missingDriveInvoiceGmailIds },
+      },
+      select: { id: true, gmailId: true },
+    });
+    const gmailIdByEmailMessageId = new Map(emailMessagesForDriveFallback.map((email) => [email.id, email.gmailId]));
+    const emailMessageIds = emailMessagesForDriveFallback.map((email) => email.id);
+    const supplierPaymentsWithDrive = emailMessageIds.length > 0
+      ? await prisma.supplierPayment.findMany({
+          where: {
+            organizationId,
+            emailMessageId: { in: emailMessageIds },
+            OR: [
+              { driveFileUrl: { not: null } },
+              { invoiceLink: { not: null } },
+              { documentLink: { not: null } },
+            ],
+          },
+          select: {
+            emailMessageId: true,
+            amount: true,
+            driveFileUrl: true,
+            invoiceLink: true,
+            documentLink: true,
+          },
+        })
+      : [];
+    for (const payment of supplierPaymentsWithDrive) {
+      const gmailMessageId = payment.emailMessageId ? gmailIdByEmailMessageId.get(payment.emailMessageId) : null;
+      const fallbackKey = invoicePaymentDriveFallbackKey(gmailMessageId, Number(payment.amount));
+      const link = payment.driveFileUrl ?? payment.invoiceLink ?? payment.documentLink ?? null;
+      if (!fallbackKey || !link) continue;
+      const existing = paymentDriveFallbackByInvoiceKey.get(fallbackKey);
+      paymentDriveFallbackByInvoiceKey.set(fallbackKey, existing ? { link: null, ambiguous: true } : { link, ambiguous: false });
+    }
+  }
+
   const first = invoices[0];
   return {
     action: "show_invoice",
-    invoices: invoices.map((invoice) => ({
-      id: invoice.id,
-      supplierName: invoice.supplierName,
-      invoiceNumber: invoice.invoiceNumber,
-      amount: invoice.amount,
-      currency: invoice.currency,
-      issueDate: invoice.date,
-      dueDate: invoice.dueDate,
-      status: invoice.status,
-      driveUrl: invoice.driveUrl,
-    })),
+    invoices: invoices.map((invoice) => {
+      const driveUrl = selectNatalieInvoiceDriveUrl(invoice);
+      const fallbackKey = driveUrl ? null : invoicePaymentDriveFallbackKey(invoice.gmailMessageId, invoice.amount);
+      const fallback = fallbackKey ? paymentDriveFallbackByInvoiceKey.get(fallbackKey) : undefined;
+      return {
+        id: invoice.id,
+        supplierName: invoice.supplierName,
+        invoiceNumber: invoice.invoiceNumber,
+        amount: invoice.amount,
+        currency: invoice.currency,
+        issueDate: invoice.date,
+        dueDate: invoice.dueDate,
+        status: invoice.status,
+        driveUrl: driveUrl ?? (fallback && !fallback.ambiguous ? fallback.link : null),
+      };
+    }),
     answer:
       invoices.length === 1
         ? `מצאתי חשבונית של ${first.supplierName ?? supplierName}${first.invoiceNumber ? ` מספר ${first.invoiceNumber}` : ""}.`
@@ -139,6 +196,13 @@ function expandInvoiceSearchTerms(term: string, businessProfile?: string | null)
   }
 
   return [...terms].filter(Boolean);
+}
+
+export function selectNatalieInvoiceDriveUrl(input: {
+  driveUrl: string | null;
+  driveFileUrl?: string | null;
+}) {
+  return input.driveFileUrl ?? input.driveUrl ?? null;
 }
 
 async function maybeBuildCompleteTaskProposal(organizationId: string, question: string): Promise<NatalieClaudeResponse | null> {
