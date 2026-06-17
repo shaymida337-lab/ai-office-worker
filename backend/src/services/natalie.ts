@@ -179,11 +179,13 @@ function isShowInvoiceRequest(question: string) {
   return mentionsInvoice && hasShowVerb;
 }
 
-function expandInvoiceSearchTerms(term: string, businessProfile?: string | null) {
+export function expandInvoiceSearchTerms(term: string, businessProfile?: string | null) {
   const terms = new Set([term]);
   const knownAliases: Record<string, string[]> = {
     "וולט": ["Wolt"],
     wolt: ["וולט"],
+    "פנגו": ["Pango"],
+    pango: ["פנגו"],
   };
   for (const alias of knownAliases[term.toLowerCase()] ?? knownAliases[term] ?? []) terms.add(alias);
 
