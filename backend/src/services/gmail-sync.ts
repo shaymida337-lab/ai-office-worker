@@ -3906,15 +3906,6 @@ export function resolveSupplierMetadata(input: {
   logStep?: (message: string) => void;
 }): SupplierMetadata {
   const taxId = input.analysisSupplierTaxId || extractSupplierTaxId(input.bodyText);
-  const keywordSupplier = detectSupplierKeyword(`${input.bodyText}\n${input.analysisSupplier ?? ""}`);
-  if (keywordSupplier) return finalizeSupplierMetadata({
-    name: keywordSupplier.supplierName,
-    taxId,
-    confidence: keywordSupplier.confidence,
-    source: "keyword",
-    keyword: keywordSupplier.keyword,
-  }, input);
-
   const documentSupplier = extractSupplierFromDocument(input.bodyText, input.ownerEmails);
   if (documentSupplier) return finalizeSupplierMetadata({
     name: documentSupplier,
@@ -3929,6 +3920,15 @@ export function resolveSupplierMetadata(input: {
     taxId,
     confidence: taxId ? 0.88 : 0.8,
     source: "ai",
+  }, input);
+
+  const keywordSupplier = detectSupplierKeyword(`${input.bodyText}\n${input.analysisSupplier ?? ""}`);
+  if (keywordSupplier) return finalizeSupplierMetadata({
+    name: keywordSupplier.supplierName,
+    taxId,
+    confidence: keywordSupplier.confidence,
+    source: "keyword",
+    keyword: keywordSupplier.keyword,
   }, input);
 
   const senderSupplier = normalizeSupplierName(input.senderName);

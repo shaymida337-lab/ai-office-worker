@@ -346,6 +346,57 @@ test("resolves requested keyword suppliers before unknown fallback", () => {
   }
 });
 
+test("prefers explicit supplier sources over incidental keyword matches", () => {
+  const documentSupplier = resolveSupplierMetadata({
+    analysisSupplier: "Unknown",
+    analysisSupplierTaxId: null,
+    bodyText: "שם ספק: אבי סופר\nפירוט: חשבון מי רמת גן צורף בטעות",
+    senderName: "Unknown",
+    senderEmail: "photo-scan@gmail.com",
+    senderDomain: "gmail.com",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+  const aiSupplier = resolveSupplierMetadata({
+    analysisSupplier: "אבי סופר",
+    analysisSupplierTaxId: null,
+    bodyText: "פירוט חיוב כולל אזכור מי רמת גן",
+    senderName: "Unknown",
+    senderEmail: "photo-scan@gmail.com",
+    senderDomain: "gmail.com",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+
+  assert.equal(documentSupplier.name, "אבי סופר");
+  assert.equal(documentSupplier.source, "document");
+  assert.equal(aiSupplier.name, "אבי סופר");
+  assert.equal(aiSupplier.source, "ai");
+});
+
+test("keeps keyword suppliers when no explicit supplier source exists", () => {
+  const cases = [
+    ["סופר פארם סכום 78.40", "סופר פארם"],
+    ["חשבון מי רמת גן\nbody empty", "מי רמת גן"],
+  ] as const;
+
+  for (const [bodyText, expectedSupplier] of cases) {
+    const supplier = resolveSupplierMetadata({
+      analysisSupplier: "Unknown",
+      analysisSupplierTaxId: null,
+      bodyText,
+      senderName: "Unknown",
+      senderEmail: "photo-scan@gmail.com",
+      senderDomain: "gmail.com",
+      ownerEmails: new Set(["owner@example.com"]),
+      knownSupplierNames: new Map(),
+    });
+
+    assert.equal(supplier.name, expectedSupplier);
+    assert.equal(supplier.source, "keyword");
+  }
+});
+
 test("keeps low-confidence חברת החשמל image invoice in needs review with supplier", () => {
   const supplier = resolveSupplierMetadata({
     analysisSupplier: "Unknown",
