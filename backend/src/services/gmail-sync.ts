@@ -4236,7 +4236,7 @@ function normalizeDetectedAmount(amount: number | null | undefined) {
 export function rejectedDetectedAmountReason(amount: number | null | undefined) {
   if (amount == null) return null;
   if (!Number.isFinite(amount) || amount <= 0) return "parsed amount looks invalid";
-  if (Number.isInteger(amount) && amount >= 1900 && amount <= 2100) return "parsed amount looks like a year";
+  if (Number.isInteger(amount) && amount >= 2020 && amount <= 2030) return "parsed amount looks like a year";
   if (amount > MAX_AUTO_SAVE_AMOUNT) return "parsed amount looks invalid/too large";
   return null;
 }
