@@ -2006,10 +2006,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         const paymentSupplierName = supplierPaymentNeedsReview && !isUsableSupplierName(supplierName)
           ? UNKNOWN_SUPPLIER_FALLBACK
           : supplierName;
-        const paymentAmount = supplierPaymentNeedsReview
-          ? amount ?? finalTotalAmount ?? 0
-          : amount ?? finalTotalAmount;
-        const paymentApprovalStatus = supplierPaymentNeedsReview ? "needs_review" : "approved";
+        const paymentDecision = supplierPaymentPersistenceDecision({
+          amount,
+          finalTotalAmount,
+          needsReview: supplierPaymentNeedsReview,
+        });
+        const paymentAmount = paymentDecision.paymentAmount;
+        const paymentApprovalStatus = paymentDecision.approvalStatus;
         const dateIso = email.receivedAt.toISOString();
         const duplicateHash = documentDecision.documentFingerprint || duplicateKey || buildDuplicateHash({
           organizationId,
@@ -2101,37 +2104,41 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           if (updatedPayment.driveUploadStatus === "pending_retry") {
             console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=supplierPayment:${updatedPayment.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
           }
-          await appendSupplierPaymentToSheet({
-            organizationId,
-            paymentId: existingPayment.id,
-            supplier: paymentSupplierName,
-            amount: paymentAmount ?? existingPayment.amount,
-            date: email.receivedAt,
-            dueDate: dueDateForDecision ?? existingPayment.dueDate,
-            paid: existingPayment.paid,
-            missingInvoice,
-            documentLink,
-            invoiceLink,
-            gmailLink: gmailMessageLink(email.gmailId),
-            supplierTaxId: supplierMetadata.taxId,
-            invoiceNumber: invoiceNumberForDecision,
-            invoiceDate: documentDateForDecision,
-            source: existingPayment.source === "whatsapp" || existingPayment.source === "both" ? "both" : "gmail",
-            duplicateDetected: existingPayment.source === "whatsapp" || existingPayment.duplicateDetected,
-            duplicateReason: existingPayment.source === "whatsapp" ? "supplier_amount_invoice_date" : existingPayment.duplicateReason,
-            driveFolderLink: driveLinks[0]?.folderId ? `https://drive.google.com/drive/folders/${driveLinks[0].folderId}` : null,
-            paidDate: existingPayment.paid ? existingPayment.updatedAt : null,
-            receiptLink: existingPayment.paid ? existingPayment.documentLink ?? existingPayment.invoiceLink : null,
-            createdAt: existingPayment.createdAt,
-            updatedAt: new Date(),
-          }).then((sheet) => {
-            sheetsUpdated++;
-            sheetsUpdatedForPilot = true;
-            logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${existingPayment.id} spreadsheet=${sheet.spreadsheetId}`);
-          }).catch((err) => {
-            console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${existingPayment.id}`, err);
-            logStep(`[gmail-sync] Sheets append failed message=${email.gmailId} reason="${err instanceof Error ? err.message : String(err)}"`);
-          });
+          if (paymentDecision.shouldAppendToSheet) {
+            await appendSupplierPaymentToSheet({
+              organizationId,
+              paymentId: existingPayment.id,
+              supplier: paymentSupplierName,
+              amount: paymentAmount ?? existingPayment.amount,
+              date: email.receivedAt,
+              dueDate: dueDateForDecision ?? existingPayment.dueDate,
+              paid: existingPayment.paid,
+              missingInvoice,
+              documentLink,
+              invoiceLink,
+              gmailLink: gmailMessageLink(email.gmailId),
+              supplierTaxId: supplierMetadata.taxId,
+              invoiceNumber: invoiceNumberForDecision,
+              invoiceDate: documentDateForDecision,
+              source: existingPayment.source === "whatsapp" || existingPayment.source === "both" ? "both" : "gmail",
+              duplicateDetected: existingPayment.source === "whatsapp" || existingPayment.duplicateDetected,
+              duplicateReason: existingPayment.source === "whatsapp" ? "supplier_amount_invoice_date" : existingPayment.duplicateReason,
+              driveFolderLink: driveLinks[0]?.folderId ? `https://drive.google.com/drive/folders/${driveLinks[0].folderId}` : null,
+              paidDate: existingPayment.paid ? existingPayment.updatedAt : null,
+              receiptLink: existingPayment.paid ? existingPayment.documentLink ?? existingPayment.invoiceLink : null,
+              createdAt: existingPayment.createdAt,
+              updatedAt: new Date(),
+            }).then((sheet) => {
+              sheetsUpdated++;
+              sheetsUpdatedForPilot = true;
+              logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${existingPayment.id} spreadsheet=${sheet.spreadsheetId}`);
+            }).catch((err) => {
+              console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${existingPayment.id}`, err);
+              logStep(`[gmail-sync] Sheets append failed message=${email.gmailId} reason="${err instanceof Error ? err.message : String(err)}"`);
+            });
+          } else {
+            logStep(`[gmail-sync] Sheets append skipped message=${email.gmailId} paymentId=${existingPayment.id} reason="missing_amount_needs_review"`);
+          }
           if (missingInvoice) {
             await createMissingInvoiceTaskOnce({
               organizationId,
@@ -2198,37 +2205,41 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           if (payment.driveUploadStatus === "pending_retry") {
             console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=supplierPayment:${payment.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
           }
-          await appendSupplierPaymentToSheet({
-            organizationId,
-            paymentId: payment.id,
-            supplier: paymentSupplierName,
-            amount: paymentAmount ?? 0,
-            date: email.receivedAt,
-            dueDate,
-            paid: false,
-            missingInvoice,
-            documentLink,
-            invoiceLink,
-            gmailLink: gmailMessageLink(email.gmailId),
-            supplierTaxId: supplierMetadata.taxId,
-            invoiceNumber: invoiceNumberForDecision,
-            invoiceDate: documentDateForDecision,
-            source: "gmail",
-            duplicateDetected: false,
-            duplicateReason: null,
-            driveFolderLink: driveLinks[0]?.folderId ? `https://drive.google.com/drive/folders/${driveLinks[0].folderId}` : null,
-            paidDate: payment.paid ? payment.updatedAt : null,
-            receiptLink: payment.paid ? payment.documentLink ?? payment.invoiceLink : null,
-            createdAt: payment.createdAt,
-            updatedAt: payment.updatedAt,
-          }).then((sheet) => {
-            sheetsUpdated++;
-            sheetsUpdatedForPilot = true;
-            logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${payment.id} spreadsheet=${sheet.spreadsheetId}`);
-          }).catch((err) => {
-            console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${payment.id}`, err);
-            logStep(`[gmail-sync] Sheets append failed message=${email.gmailId} reason="${err instanceof Error ? err.message : String(err)}"`);
-          });
+          if (paymentDecision.shouldAppendToSheet) {
+            await appendSupplierPaymentToSheet({
+              organizationId,
+              paymentId: payment.id,
+              supplier: paymentSupplierName,
+              amount: paymentAmount ?? 0,
+              date: email.receivedAt,
+              dueDate,
+              paid: false,
+              missingInvoice,
+              documentLink,
+              invoiceLink,
+              gmailLink: gmailMessageLink(email.gmailId),
+              supplierTaxId: supplierMetadata.taxId,
+              invoiceNumber: invoiceNumberForDecision,
+              invoiceDate: documentDateForDecision,
+              source: "gmail",
+              duplicateDetected: false,
+              duplicateReason: null,
+              driveFolderLink: driveLinks[0]?.folderId ? `https://drive.google.com/drive/folders/${driveLinks[0].folderId}` : null,
+              paidDate: payment.paid ? payment.updatedAt : null,
+              receiptLink: payment.paid ? payment.documentLink ?? payment.invoiceLink : null,
+              createdAt: payment.createdAt,
+              updatedAt: payment.updatedAt,
+            }).then((sheet) => {
+              sheetsUpdated++;
+              sheetsUpdatedForPilot = true;
+              logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${payment.id} spreadsheet=${sheet.spreadsheetId}`);
+            }).catch((err) => {
+              console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${payment.id}`, err);
+              logStep(`[gmail-sync] Sheets append failed message=${email.gmailId} reason="${err instanceof Error ? err.message : String(err)}"`);
+            });
+          } else {
+            logStep(`[gmail-sync] Sheets append skipped message=${email.gmailId} paymentId=${payment.id} reason="missing_amount_needs_review"`);
+          }
           logStep(`[gmail-sync] saved SupplierPayment message=${email.gmailId} id=${payment.id} amount=${paymentAmount ?? 0} supplier="${paymentSupplierName}"`);
           if (supplierPaymentNeedsReview) {
             logStep(`[gmail-sync] SUPPLIER_PAYMENT_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${payment.id} reason="${classification.decisionReason}"`);
@@ -3069,6 +3080,24 @@ export function supplierPaymentCreationEligibility(input: {
   return reasons.length === 0
     ? { allowed: true, reasons: [], persistAsNeedsReview: false }
     : { allowed: false, reasons, persistAsNeedsReview: false };
+}
+
+export function supplierPaymentPersistenceDecision(input: {
+  amount: number | null | undefined;
+  finalTotalAmount: number | null | undefined;
+  needsReview: boolean;
+}) {
+  const paymentAmount = input.needsReview
+    ? input.amount ?? input.finalTotalAmount ?? 0
+    : input.amount ?? input.finalTotalAmount ?? null;
+  const approvalStatus = input.needsReview ? "needs_review" : "approved";
+  const missingAmount = input.amount == null && input.finalTotalAmount == null;
+  return {
+    paymentAmount,
+    approvalStatus,
+    shouldCreatePayment: true,
+    shouldAppendToSheet: !(input.needsReview && missingAmount),
+  };
 }
 
 export type ExtractedHebrewInvoiceFields = {
