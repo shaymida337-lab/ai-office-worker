@@ -3,6 +3,18 @@ import { getDashboardStats } from "./dashboard.js";
 import { findTasksByPartialTitle } from "./tasks.js";
 import { prisma } from "../lib/prisma.js";
 
+type ShowInvoiceItem = {
+  id: string;
+  supplierName: string | null;
+  invoiceNumber: string | null;
+  amount: number;
+  currency: string;
+  issueDate: Date;
+  dueDate: Date | null;
+  status: string;
+  driveUrl: string | null;
+};
+
 export async function askNatalieBusinessQuestion(input: {
   organizationId: string;
   question: string;
@@ -68,14 +80,43 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
     orderBy: { createdAt: "desc" },
     take: 5,
   });
+  const remainingSupplierPaymentSlots = Math.max(0, 5 - invoices.length);
+  const supplierPayments = remainingSupplierPaymentSlots > 0
+    ? await prisma.supplierPayment.findMany({
+        where: {
+          organizationId,
+          OR: searchTerms.flatMap((term) => [
+            { supplier: { contains: term, mode: "insensitive" as const } },
+            { supplierName: { contains: term, mode: "insensitive" as const } },
+            { invoiceNumber: { contains: term, mode: "insensitive" as const } },
+          ]),
+        },
+        select: {
+          id: true,
+          supplier: true,
+          supplierName: true,
+          invoiceNumber: true,
+          amount: true,
+          currency: true,
+          date: true,
+          dueDate: true,
+          paid: true,
+          driveFileUrl: true,
+          invoiceLink: true,
+          documentLink: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: remainingSupplierPaymentSlots,
+      })
+    : [];
   console.log("[SHOW_INVOICE_DEBUG] invoices returned", {
     count: invoices.length,
     supplierNames: invoices.map((invoice) => invoice.supplierName),
   });
-
-  if (invoices.length === 0) {
-    return { answer: `לא מצאתי חשבונית קיימת שמתאימה ל־"${supplierName}".` };
-  }
+  console.log("[SHOW_INVOICE_DEBUG] supplier payments returned", {
+    count: supplierPayments.length,
+    supplierNames: supplierPayments.map((payment) => payment.supplierName ?? payment.supplier),
+  });
 
   const missingDriveInvoiceGmailIds = Array.from(new Set(
     invoices
@@ -127,29 +168,35 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
     }
   }
 
-  const first = invoices[0];
+  const invoiceItems = invoices.map((invoice) => {
+    const driveUrl = selectNatalieInvoiceDriveUrl(invoice);
+    const fallbackKey = driveUrl ? null : invoicePaymentDriveFallbackKey(invoice.gmailMessageId, invoice.amount);
+    const fallback = fallbackKey ? paymentDriveFallbackByInvoiceKey.get(fallbackKey) : undefined;
+    return {
+      id: invoice.id,
+      supplierName: invoice.supplierName,
+      invoiceNumber: invoice.invoiceNumber,
+      amount: invoice.amount,
+      currency: invoice.currency,
+      issueDate: invoice.date,
+      dueDate: invoice.dueDate,
+      status: invoice.status,
+      driveUrl: driveUrl ?? (fallback && !fallback.ambiguous ? fallback.link : null),
+    };
+  });
+  const showInvoiceItems = mergeShowInvoiceItems(invoiceItems, supplierPayments.map(mapSupplierPaymentToShowInvoiceItem), 5);
+  if (showInvoiceItems.length === 0) {
+    return { answer: `לא מצאתי חשבונית קיימת שמתאימה ל־"${supplierName}".` };
+  }
+
+  const first = showInvoiceItems[0];
   return {
     action: "show_invoice",
-    invoices: invoices.map((invoice) => {
-      const driveUrl = selectNatalieInvoiceDriveUrl(invoice);
-      const fallbackKey = driveUrl ? null : invoicePaymentDriveFallbackKey(invoice.gmailMessageId, invoice.amount);
-      const fallback = fallbackKey ? paymentDriveFallbackByInvoiceKey.get(fallbackKey) : undefined;
-      return {
-        id: invoice.id,
-        supplierName: invoice.supplierName,
-        invoiceNumber: invoice.invoiceNumber,
-        amount: invoice.amount,
-        currency: invoice.currency,
-        issueDate: invoice.date,
-        dueDate: invoice.dueDate,
-        status: invoice.status,
-        driveUrl: driveUrl ?? (fallback && !fallback.ambiguous ? fallback.link : null),
-      };
-    }),
+    invoices: showInvoiceItems,
     answer:
-      invoices.length === 1
+      showInvoiceItems.length === 1
         ? `מצאתי חשבונית של ${first.supplierName ?? supplierName}${first.invoiceNumber ? ` מספר ${first.invoiceNumber}` : ""}.`
-        : `מצאתי ${invoices.length} חשבוניות שמתאימות ל־"${supplierName}".`,
+        : `מצאתי ${showInvoiceItems.length} חשבוניות שמתאימות ל־"${supplierName}".`,
   };
 }
 
@@ -205,6 +252,69 @@ export function selectNatalieInvoiceDriveUrl(input: {
   driveFileUrl?: string | null;
 }) {
   return input.driveFileUrl ?? input.driveUrl ?? null;
+}
+
+export function mapSupplierPaymentToShowInvoiceItem(payment: {
+  id: string;
+  supplier: string;
+  supplierName: string | null;
+  invoiceNumber: string | null;
+  amount: number;
+  currency: string;
+  date: Date;
+  dueDate: Date | null;
+  paid: boolean;
+  driveFileUrl: string | null;
+  invoiceLink: string | null;
+  documentLink: string | null;
+}): ShowInvoiceItem {
+  return {
+    id: `supplier-payment:${payment.id}`,
+    supplierName: payment.supplierName ?? payment.supplier,
+    invoiceNumber: payment.invoiceNumber,
+    amount: payment.amount,
+    currency: payment.currency,
+    issueDate: payment.date,
+    dueDate: payment.dueDate,
+    status: payment.paid ? "paid" : "pending",
+    driveUrl: payment.driveFileUrl ?? payment.invoiceLink ?? payment.documentLink ?? null,
+  };
+}
+
+export function mergeShowInvoiceItems(invoiceItems: ShowInvoiceItem[], supplierPaymentItems: ShowInvoiceItem[], limit: number) {
+  const merged: ShowInvoiceItem[] = [];
+  const seenIds = new Set<string>();
+  const addItem = (item: ShowInvoiceItem) => {
+    if (merged.length >= limit || seenIds.has(item.id)) return;
+    seenIds.add(item.id);
+    merged.push(item);
+  };
+
+  for (const item of invoiceItems) addItem(item);
+  for (const item of supplierPaymentItems) {
+    if (hasInvoiceDuplicate(merged, item)) continue;
+    addItem(item);
+  }
+  return merged.slice(0, limit);
+}
+
+function hasInvoiceDuplicate(invoiceItems: ShowInvoiceItem[], candidate: ShowInvoiceItem) {
+  if (!candidate.supplierName || !candidate.invoiceNumber || !Number.isFinite(candidate.amount)) return false;
+  const candidateDate = dateFingerprint(candidate.issueDate);
+  if (!candidateDate) return false;
+  return invoiceItems.some((item) => {
+    if (!item.supplierName || !item.invoiceNumber || !Number.isFinite(item.amount)) return false;
+    return (
+      item.supplierName === candidate.supplierName &&
+      item.invoiceNumber === candidate.invoiceNumber &&
+      item.amount === candidate.amount &&
+      dateFingerprint(item.issueDate) === candidateDate
+    );
+  });
+}
+
+function dateFingerprint(date: Date) {
+  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
 }
 
 async function maybeBuildCompleteTaskProposal(organizationId: string, question: string): Promise<NatalieClaudeResponse | null> {
