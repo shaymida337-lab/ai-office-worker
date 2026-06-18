@@ -74,6 +74,7 @@ model Organization {
   bankStatements  BankStatement[]
   bankTransactions BankTransaction[]
   helpProgress    HelpProgress[]
+  outgoingInvoiceDrafts OutgoingInvoiceDraft[]
 }
 
 model HelpProgress {
@@ -319,6 +320,30 @@ model CustomerInvoice {
 
   @@index([organizationId, paid])
   @@index([organizationId, dueDate])
+}
+
+model OutgoingInvoiceDraft {
+  id                     String       @id @default(cuid())
+  organizationId         String
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status                 String       @default("draft")
+  source                 String       @default("natalie")
+  customerName           String
+  customerEmail          String?
+  customerTaxId          String?
+  clientId               String?
+  description            String
+  amount                 Float
+  currency               String       @default("ILS")
+  issueDate              DateTime?
+  dueDate                DateTime?
+  proposalJson           Json
+  greenInvoiceDocumentId String?
+  approvedAt             DateTime?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  @@index([organizationId, status])
 }
 
 model Invoice {
