@@ -213,7 +213,7 @@ export async function answerBusinessQuestionWithClaude(input: {
   let lastError: unknown;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const stream = anthropic.messages.stream(
+      const finalMessage = await anthropic.messages.create(
         {
           model: config.anthropic.model,
           max_tokens: 500,
@@ -225,7 +225,6 @@ export async function answerBusinessQuestionWithClaude(input: {
           timeout: 60000,
         }
       );
-      const finalMessage = await stream.finalMessage();
       const firstBlock = finalMessage.content[0];
       const text = firstBlock?.type === "text" ? firstBlock.text.trim() : "{}";
       const parsed = parseJsonObject<NatalieClaudeResponse>(text, "Natalie business answer");
