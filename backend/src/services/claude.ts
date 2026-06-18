@@ -93,6 +93,20 @@ export type NatalieClaudeResponse =
         driveUrl: string | null;
       }>;
       answer: string;
+    }
+  | {
+      action: "issue_invoice";
+      proposal: {
+        customerName: string;
+        customerTaxId?: string;
+        customerEmail?: string;
+        description: string;
+        amount: number;
+        currency?: string;
+        issueDate?: string;
+        dueDate?: string;
+      };
+      answer: string;
     };
 
 const NATALIE_BUSINESS_SYSTEM_PROMPT = `את נטלי, עוזרת משרדית חכמה לעסק ישראלי קטן.
@@ -402,7 +416,7 @@ function parseJsonObject<T>(text: string, context: string): T | null {
   }
 }
 
-function isNatalieClaudeResponse(value: unknown): value is NatalieClaudeResponse {
+export function isNatalieClaudeResponse(value: unknown): value is NatalieClaudeResponse {
   if (!value || typeof value !== "object") return false;
   const response = value as Record<string, unknown>;
   if (typeof response.answer !== "string" || !response.answer.trim()) return false;
@@ -427,6 +441,27 @@ function isNatalieClaudeResponse(value: unknown): value is NatalieClaudeResponse
   }
   if (response.action === "show_invoice") {
     return Array.isArray(response.invoices) && response.invoices.every(isNatalieInvoiceSummary);
+  }
+  if (response.action === "issue_invoice") {
+    const proposal = response.proposal as {
+      customerName?: unknown;
+      customerTaxId?: unknown;
+      customerEmail?: unknown;
+      description?: unknown;
+      amount?: unknown;
+      currency?: unknown;
+      issueDate?: unknown;
+      dueDate?: unknown;
+    } | undefined;
+    if (!proposal || typeof proposal.customerName !== "string" || !proposal.customerName.trim()) return false;
+    if (typeof proposal.description !== "string" || !proposal.description.trim()) return false;
+    if (typeof proposal.amount !== "number" || !Number.isFinite(proposal.amount) || proposal.amount <= 0) return false;
+    if (proposal.customerTaxId !== undefined && typeof proposal.customerTaxId !== "string") return false;
+    if (proposal.customerEmail !== undefined && typeof proposal.customerEmail !== "string") return false;
+    if (proposal.currency !== undefined && typeof proposal.currency !== "string") return false;
+    if (proposal.issueDate !== undefined && typeof proposal.issueDate !== "string") return false;
+    if (proposal.dueDate !== undefined && typeof proposal.dueDate !== "string") return false;
+    return true;
   }
   return false;
 }
