@@ -13,6 +13,7 @@ type ShowInvoiceItem = {
   dueDate: Date | null;
   status: string;
   driveUrl: string | null;
+  pendingReview?: boolean;
 };
 
 export async function askNatalieBusinessQuestion(input: {
@@ -109,6 +110,33 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
         take: remainingSupplierPaymentSlots,
       })
     : [];
+  const remainingFinancialDocumentReviewSlots = Math.max(0, 5 - invoices.length - supplierPayments.length);
+  const financialDocumentReviews = remainingFinancialDocumentReviewSlots > 0
+    ? await prisma.financialDocumentReview.findMany({
+        where: {
+          organizationId,
+          reviewStatus: "needs_review",
+          documentType: { in: ["tax_invoice", "receipt", "tax_invoice_receipt"] },
+          OR: searchTerms.flatMap((term) => [
+            { supplierName: { contains: term, mode: "insensitive" as const } },
+            { invoiceNumber: { contains: term, mode: "insensitive" as const } },
+          ]),
+        },
+        select: {
+          id: true,
+          supplierName: true,
+          invoiceNumber: true,
+          totalAmount: true,
+          currency: true,
+          documentDate: true,
+          dueDate: true,
+          driveFileUrl: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: remainingFinancialDocumentReviewSlots,
+      })
+    : [];
   console.log("[SHOW_INVOICE_DEBUG] invoices returned", {
     count: invoices.length,
     supplierNames: invoices.map((invoice) => invoice.supplierName),
@@ -116,6 +144,10 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
   console.log("[SHOW_INVOICE_DEBUG] supplier payments returned", {
     count: supplierPayments.length,
     supplierNames: supplierPayments.map((payment) => payment.supplierName ?? payment.supplier),
+  });
+  console.log("[SHOW_INVOICE_DEBUG] financial document reviews returned", {
+    count: financialDocumentReviews.length,
+    supplierNames: financialDocumentReviews.map((review) => review.supplierName),
   });
 
   const missingDriveInvoiceGmailIds = Array.from(new Set(
@@ -184,7 +216,11 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
       driveUrl: driveUrl ?? (fallback && !fallback.ambiguous ? fallback.link : null),
     };
   });
-  const showInvoiceItems = mergeShowInvoiceItems(invoiceItems, supplierPayments.map(mapSupplierPaymentToShowInvoiceItem), 5);
+  const showInvoiceItems = mergeShowInvoiceItems(
+    mergeShowInvoiceItems(invoiceItems, supplierPayments.map(mapSupplierPaymentToShowInvoiceItem), 5),
+    financialDocumentReviews.map(mapFinancialDocumentReviewToShowInvoiceItem),
+    5,
+  );
   if (showInvoiceItems.length === 0) {
     return { answer: `לא מצאתי חשבונית קיימת שמתאימה ל־"${supplierName}".` };
   }
@@ -193,10 +229,7 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
   return {
     action: "show_invoice",
     invoices: showInvoiceItems,
-    answer:
-      showInvoiceItems.length === 1
-        ? `מצאתי חשבונית של ${first.supplierName ?? supplierName}${first.invoiceNumber ? ` מספר ${first.invoiceNumber}` : ""}.`
-        : `מצאתי ${showInvoiceItems.length} חשבוניות שמתאימות ל־"${supplierName}".`,
+    answer: buildShowInvoiceAnswer(showInvoiceItems, supplierName, first),
   };
 }
 
@@ -209,12 +242,12 @@ function extractShowInvoiceSearchTerm(question: string) {
   const candidate =
     afterOf ??
     question.replace(
-      /(תראי|תראה|תוציאי|תציגי|הציגי|הראי|הראה|חפשי|חפש|מצא|מצאי|למצוא|לראות|לפתוח|להציג|חשבונית|invoice|בבקשה|נא|נטלי|לי|את|the|me|for|of)/gi,
+      /(תראי|תראה|תוציאי|תציגי|הציגי|הראי|הראה|חפשי|חפש|מצא|מצאי|למצוא|לראות|לפתוח|להציג|חשבונית|invoice|בבקשה|נא|נטלי|לי|את|the|me|for|of|show|open|find|search|display|latest|אחרונה|האחרונה|החדשה|החדש ביותר)/gi,
       ""
     );
 
   return candidate
-    .replace(/(בבקשה|נא|חשבונית|את|לי|של|invoice|the|of|for|me)/gi, "")
+    .replace(/(בבקשה|נא|חשבונית|את|לי|של|invoice|the|of|for|me|show|open|find|search|display|latest|אחרונה|האחרונה|החדשה|החדש ביותר)/gi, "")
     .replace(/[.?!؟,،]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -252,6 +285,46 @@ export function selectNatalieInvoiceDriveUrl(input: {
   driveFileUrl?: string | null;
 }) {
   return input.driveFileUrl ?? input.driveUrl ?? null;
+}
+
+export function mapFinancialDocumentReviewToShowInvoiceItem(review: {
+  id: string;
+  supplierName: string | null;
+  invoiceNumber: string | null;
+  totalAmount: number | null;
+  currency: string;
+  documentDate: Date | null;
+  dueDate: Date | null;
+  driveFileUrl: string | null;
+  createdAt: Date;
+}): ShowInvoiceItem {
+  return {
+    id: `financial-document-review:${review.id}`,
+    supplierName: review.supplierName,
+    invoiceNumber: review.invoiceNumber,
+    amount: review.totalAmount ?? 0,
+    currency: review.currency,
+    issueDate: review.documentDate ?? review.createdAt,
+    dueDate: review.dueDate,
+    status: "needs_review",
+    driveUrl: review.driveFileUrl,
+    pendingReview: true,
+  };
+}
+
+function buildShowInvoiceAnswer(showInvoiceItems: ShowInvoiceItem[], supplierName: string, first: ShowInvoiceItem) {
+  if (showInvoiceItems.length === 1) {
+    if (first.pendingReview) {
+      return `מצאתי מסמך של ${first.supplierName ?? supplierName}${first.invoiceNumber ? ` מספר ${first.invoiceNumber}` : ""} ממתינה לאישור.`;
+    }
+    return `מצאתי חשבונית של ${first.supplierName ?? supplierName}${first.invoiceNumber ? ` מספר ${first.invoiceNumber}` : ""}.`;
+  }
+
+  const pendingReviewCount = showInvoiceItems.filter((item) => item.pendingReview).length;
+  if (pendingReviewCount > 0) {
+    return `מצאתי ${showInvoiceItems.length} חשבוניות שמתאימות ל־"${supplierName}" (${pendingReviewCount} ממתינות לאישור).`;
+  }
+  return `מצאתי ${showInvoiceItems.length} חשבוניות שמתאימות ל־"${supplierName}".`;
 }
 
 export function mapSupplierPaymentToShowInvoiceItem(payment: {
