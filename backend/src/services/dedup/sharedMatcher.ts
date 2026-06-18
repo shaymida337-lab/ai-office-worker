@@ -104,6 +104,9 @@ export function buildFinancialDocumentFingerprint(input: FinancialDocumentFinger
   }
 
   if (supplier && amount && date) {
+    if (!hasStrongInvoiceNumber(invoiceNumber) && !fileSha256) {
+      return hashParts(["financial-document", organizationId, "supplier-amount-date", supplier, amount, documentType]);
+    }
     return hashParts(["financial-document", organizationId, "supplier-amount-date", supplier, amount, date, documentType]);
   }
 

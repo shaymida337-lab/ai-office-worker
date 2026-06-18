@@ -153,6 +153,50 @@ test("same invoice number with conflicting amount is unsure", () => {
   assert.match(result.reasons.join(","), /same_invoice_number/);
 });
 
+test("same supplier+amount+type without invoice number matches across different dates", () => {
+  const dayOne = {
+    organizationId: "org-1",
+    supplierName: "514812502",
+    totalAmount: 354,
+    documentDate: "2026-06-01",
+    documentType: "receipt",
+  };
+  const dayTwo = {
+    organizationId: "org-1",
+    supplierName: "514812502",
+    totalAmount: 354,
+    documentDate: "2026-06-04",
+    documentType: "receipt",
+  };
+
+  assert.equal(
+    buildFinancialDocumentFingerprint(dayOne),
+    buildFinancialDocumentFingerprint(dayTwo)
+  );
+});
+
+test("same supplier+type without invoice number stays distinct when amounts differ", () => {
+  const first = {
+    organizationId: "org-1",
+    supplierName: "514812502",
+    totalAmount: 354,
+    documentDate: "2026-06-01",
+    documentType: "receipt",
+  };
+  const second = {
+    organizationId: "org-1",
+    supplierName: "514812502",
+    totalAmount: 420,
+    documentDate: "2026-06-01",
+    documentType: "receipt",
+  };
+
+  assert.notEqual(
+    buildFinancialDocumentFingerprint(first),
+    buildFinancialDocumentFingerprint(second)
+  );
+});
+
 test("message fingerprint uses provider id across channels when available", () => {
   const first = buildMessageFingerprint({
     organizationId: "org-1",
