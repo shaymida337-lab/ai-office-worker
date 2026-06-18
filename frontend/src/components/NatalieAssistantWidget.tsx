@@ -182,6 +182,14 @@ function formatInvoiceDate(date: string | Date) {
   return new Intl.DateTimeFormat("he-IL").format(parsed);
 }
 
+function formatIssueInvoiceText(value: unknown): string {
+  return typeof value === "string" && value.trim() ? value.trim() : "—";
+}
+
+function formatIssueInvoiceAmount(amount: unknown): string {
+  return typeof amount === "number" && Number.isFinite(amount) ? amount.toLocaleString("he-IL") : "—";
+}
+
 export function NatalieAssistantWidget() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -275,11 +283,26 @@ export function NatalieAssistantWidget() {
       window.speechSynthesis.speak(unlock);
     }
 
+    let result: NatalieAskResponse;
     try {
-      const result = await apiFetch<NatalieAskResponse>("/api/natalie/ask", {
+      result = await apiFetch<NatalieAskResponse>("/api/natalie/ask", {
         method: "POST",
         body: JSON.stringify({ question: cleanText, history }),
       });
+    } catch (err) {
+      console.error("[natalie] ask network failed", err);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === loadingMessage.id
+            ? { ...message, text: "מצטערת, לא הצלחתי להתחבר כרגע. נסה שוב." }
+            : message
+        )
+      );
+      setSending(false);
+      return;
+    }
+
+    try {
       const answer = result.answer?.trim() || "לא מצאתי תשובה לפי הנתונים הקיימים כרגע.";
       speakNatalieReply(answer);
       setMessages((current) =>
@@ -313,12 +336,11 @@ export function NatalieAssistantWidget() {
         )
       );
     } catch (err) {
-      console.error("[natalie] ask failed", err);
+      console.error("[natalie] ask response processing failed", err);
+      const fallbackAnswer = result.answer?.trim() || "לא מצאתי תשובה לפי הנתונים הקיימים כרגע.";
       setMessages((current) =>
         current.map((message) =>
-          message.id === loadingMessage.id
-            ? { ...message, text: "מצטערת, לא הצלחתי להתחבר כרגע. נסה שוב." }
-            : message
+          message.id === loadingMessage.id ? { ...message, text: fallbackAnswer } : message
         )
       );
     } finally {
@@ -598,10 +620,10 @@ export function NatalieAssistantWidget() {
                         ⚠️ טיוטה פנימית — לא חשבונית מס רשמית
                       </div>
                       <div className="mb-3 space-y-1 text-right">
-                        <div className="text-[14px] font-extrabold text-[#0e1116]">לקוח: {message.proposal.customerName}</div>
-                        <div className="text-[13px] font-bold text-[#6b7686]">תיאור: {message.proposal.description}</div>
+                        <div className="text-[14px] font-extrabold text-[#0e1116]">לקוח: {formatIssueInvoiceText(message.proposal.customerName)}</div>
+                        <div className="text-[13px] font-bold text-[#6b7686]">תיאור: {formatIssueInvoiceText(message.proposal.description)}</div>
                         <div className="text-[13px] font-bold text-[#6b7686]">
-                          סכום: {message.proposal.amount.toLocaleString("he-IL")} {message.proposal.currency ?? "ILS"}
+                          סכום: {formatIssueInvoiceAmount(message.proposal.amount)} {message.proposal.currency ?? "ILS"}
                         </div>
                       </div>
                       {message.actionFeedback && (
