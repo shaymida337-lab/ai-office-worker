@@ -4146,6 +4146,9 @@ function isUsableSupplierName(value: string, ownerEmails: Set<string> = new Set(
   if (/^(address|current|name|details|document|documents|number|supplier|vendor|issuer|company|business name|from)$/i.test(normalizedToken)) return false;
   if (/^multi\s+number\s+documents\b/i.test(normalizedToken)) return false;
   if (/^(invoice|receipt|payment|support|noreply|no reply|billing|accounts?|gmail|googlemail|outlook|hotmail|yahoo)$/i.test(cleaned)) return false;
+  if (cleaned.includes("/")) return false;
+  if (/ocr\/ai/i.test(cleaned) || /^(ocr|ai)\b/i.test(normalizedToken)) return false;
+  if (/\boutput\b/i.test(normalizedToken)) return false;
   return /[\p{L}]/u.test(cleaned);
 }
 

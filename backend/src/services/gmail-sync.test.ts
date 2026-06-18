@@ -410,6 +410,54 @@ test("rejects unstable OCR supplier junk and falls back to sender", () => {
   }
 });
 
+test("rejects OCR/AI output junk analysis supplier and falls back to sender", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: "OCR/AI output.",
+    analysisSupplierTaxId: null,
+    bodyText: "",
+    senderName: "Bezeq",
+    senderEmail: "billing@bezeq.co.il",
+    senderDomain: "bezeq.co.il",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+
+  assert.equal(supplier.name, "Bezeq");
+  assert.equal(supplier.source, "sender_display");
+});
+
+test("keeps real short Hebrew supplier from AI analysis", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: "בזק",
+    analysisSupplierTaxId: null,
+    bodyText: "",
+    senderName: "Bezeq",
+    senderEmail: "billing@bezeq.co.il",
+    senderDomain: "bezeq.co.il",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+
+  assert.equal(supplier.name, "בזק");
+  assert.equal(supplier.source, "ai");
+});
+
+test("keeps real short Latin supplier from AI analysis", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: "Wolt",
+    analysisSupplierTaxId: null,
+    bodyText: "",
+    senderName: "Unknown",
+    senderEmail: "billing@wolt.com",
+    senderDomain: "wolt.com",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+
+  assert.equal(supplier.name, "Wolt");
+  assert.equal(supplier.source, "ai");
+});
+
 test("keeps real Bezeq supplier names usable", () => {
   const supplier = resolveSupplierMetadata({
     analysisSupplier: "בזק",
