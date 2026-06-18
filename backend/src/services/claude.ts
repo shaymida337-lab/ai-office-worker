@@ -210,24 +210,39 @@ export async function answerBusinessQuestionWithClaude(input: {
     },
   ];
 
-  const stream = anthropic.messages.stream(
-    {
-      model: config.anthropic.model,
-      max_tokens: 500,
-      system: NATALIE_BUSINESS_SYSTEM_PROMPT,
-      messages,
-    },
-    {
-      maxRetries: 4,
-      timeout: 60000,
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const stream = anthropic.messages.stream(
+        {
+          model: config.anthropic.model,
+          max_tokens: 500,
+          system: NATALIE_BUSINESS_SYSTEM_PROMPT,
+          messages,
+        },
+        {
+          maxRetries: 4,
+          timeout: 60000,
+        }
+      );
+      const finalMessage = await stream.finalMessage();
+      const firstBlock = finalMessage.content[0];
+      const text = firstBlock?.type === "text" ? firstBlock.text.trim() : "{}";
+      const parsed = parseJsonObject<NatalieClaudeResponse>(text, "Natalie business answer");
+      if (parsed && isNatalieClaudeResponse(parsed)) return parsed;
+      return { answer: text || "לא הצלחתי לנסח תשובה כרגע." };
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+      const looksLikeDisconnect = ["premature close", "premature", "econnreset", "socket", "terminated", "network", "fetch failed"].some((s) =>
+        msg.includes(s)
+      );
+      if (!looksLikeDisconnect || attempt >= 3) throw err;
+      console.warn(`[natalie] Claude stream disconnect attempt=${attempt} reason="${err instanceof Error ? err.message : String(err)}"`);
+      await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
     }
-  );
-  const finalMessage = await stream.finalMessage();
-  const firstBlock = finalMessage.content[0];
-  const text = firstBlock?.type === "text" ? firstBlock.text.trim() : "{}";
-  const parsed = parseJsonObject<NatalieClaudeResponse>(text, "Natalie business answer");
-  if (parsed && isNatalieClaudeResponse(parsed)) return parsed;
-  return { answer: text || "לא הצלחתי לנסח תשובה כרגע." };
+  }
+  throw lastError;
 }
 
 export async function analyzeInvoiceFile(input: {
