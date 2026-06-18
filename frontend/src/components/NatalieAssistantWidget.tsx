@@ -39,8 +39,8 @@ type WidgetMessage = {
   id: string;
   sender: "natalie" | "user";
   text: string;
-  action?: "create_task" | "complete_task" | "show_invoice";
-  proposal?: TaskActionProposal;
+  action?: "create_task" | "complete_task" | "show_invoice" | "issue_invoice";
+  proposal?: TaskActionProposal | IssueInvoiceProposal;
   invoices?: NatalieInvoiceSummary[];
   actionStatus?: "pending" | "creating" | "created" | "cancelled" | "error";
   actionFeedback?: string;
@@ -59,6 +59,17 @@ type CompleteTaskProposal = {
 
 type TaskActionProposal = CreateTaskProposal | CompleteTaskProposal;
 
+type IssueInvoiceProposal = {
+  customerName: string;
+  customerEmail?: string;
+  customerTaxId?: string;
+  description: string;
+  amount: number;
+  currency?: string;
+  issueDate?: string;
+  dueDate?: string;
+};
+
 type NatalieAskResponse =
   | { answer: string }
   | {
@@ -74,6 +85,11 @@ type NatalieAskResponse =
   | {
       action: "show_invoice";
       invoices: NatalieInvoiceSummary[];
+      answer: string;
+    }
+  | {
+      action: "issue_invoice";
+      proposal: IssueInvoiceProposal;
       answer: string;
     };
 
@@ -134,6 +150,10 @@ function isShowInvoiceResponse(response: NatalieAskResponse): response is Extrac
   return "action" in response && response.action === "show_invoice";
 }
 
+function isIssueInvoiceResponse(response: NatalieAskResponse): response is Extract<NatalieAskResponse, { action: "issue_invoice" }> {
+  return "action" in response && response.action === "issue_invoice";
+}
+
 function isActionableMessage(
   message: WidgetMessage
 ): message is WidgetMessage & (
@@ -144,6 +164,12 @@ function isActionableMessage(
     ((message.action === "create_task" && Boolean(message.proposal)) ||
       (message.action === "complete_task" && Boolean(message.proposal)))
   );
+}
+
+function isIssueInvoiceActionableMessage(
+  message: WidgetMessage
+): message is WidgetMessage & { action: "issue_invoice"; proposal: IssueInvoiceProposal } {
+  return message.action === "issue_invoice" && Boolean(message.proposal);
 }
 
 function isInvoiceMessage(message: WidgetMessage): message is WidgetMessage & { action: "show_invoice"; invoices: NatalieInvoiceSummary[] } {
@@ -269,6 +295,13 @@ export function NatalieAssistantWidget() {
                       actionStatus: "pending" as const,
                     }
                   : {}),
+                ...(isIssueInvoiceResponse(result)
+                  ? {
+                      action: result.action,
+                      proposal: result.proposal,
+                      actionStatus: "pending" as const,
+                    }
+                  : {}),
                 ...(isShowInvoiceResponse(result)
                   ? {
                       action: result.action,
@@ -356,6 +389,59 @@ export function NatalieAssistantWidget() {
                 message.action === "complete_task"
                   ? "בוטל. המשימה לא סומנה כבוצעה."
                   : "בוטל. לא נוצרה משימה.",
+            }
+          : message
+      )
+    );
+  }
+
+  async function approveIssueInvoiceProposal(messageId: string, proposal: IssueInvoiceProposal) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId ? { ...message, actionStatus: "creating", actionFeedback: undefined } : message
+      )
+    );
+
+    try {
+      const result = await apiFetch<{ ok: true; draftId: string; confirmationMessage: string }>("/api/natalie/save-invoice-draft", {
+        method: "POST",
+        body: JSON.stringify(proposal),
+      });
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                actionStatus: "created",
+                actionFeedback: result.confirmationMessage,
+              }
+            : message
+        )
+      );
+    } catch (err) {
+      console.error("[natalie] issue_invoice failed", err);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                actionStatus: "error",
+                actionFeedback: "לא הצלחתי לשמור את הטיוטה כרגע. אפשר לנסות שוב.",
+              }
+            : message
+        )
+      );
+    }
+  }
+
+  function cancelIssueInvoiceProposal(messageId: string) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              actionStatus: "cancelled",
+              actionFeedback: "בוטל. לא נשמרה טיוטת חשבונית.",
             }
           : message
       )
@@ -498,6 +584,43 @@ export function NatalieAssistantWidget() {
                             type="button"
                             disabled={message.actionStatus === "creating"}
                             onClick={() => cancelTaskProposal(message.id)}
+                            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2 text-sm font-extrabold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            ביטול
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {isIssueInvoiceActionableMessage(message) && (
+                    <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
+                      <div className="mb-3 rounded-xl border border-[#f5d565] bg-[#fff8db] px-3 py-2 text-right text-[13px] font-extrabold leading-6 text-[#8a6400]">
+                        ⚠️ טיוטה פנימית — לא חשבונית מס רשמית
+                      </div>
+                      <div className="mb-3 space-y-1 text-right">
+                        <div className="text-[14px] font-extrabold text-[#0e1116]">לקוח: {message.proposal.customerName}</div>
+                        <div className="text-[13px] font-bold text-[#6b7686]">תיאור: {message.proposal.description}</div>
+                        <div className="text-[13px] font-bold text-[#6b7686]">
+                          סכום: {message.proposal.amount.toLocaleString("he-IL")} {message.proposal.currency ?? "ILS"}
+                        </div>
+                      </div>
+                      {message.actionFeedback && (
+                        <div className="mb-2 text-right text-[14px] font-bold text-[#0e1116]">{message.actionFeedback}</div>
+                      )}
+                      {(message.actionStatus === "pending" || message.actionStatus === "creating" || message.actionStatus === "error") && (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={message.actionStatus === "creating"}
+                            onClick={() => approveIssueInvoiceProposal(message.id, message.proposal)}
+                            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
+                          >
+                            {message.actionStatus === "creating" ? "שומרת..." : "אשר ✓"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={message.actionStatus === "creating"}
+                            onClick={() => cancelIssueInvoiceProposal(message.id)}
                             className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2 text-sm font-extrabold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             ביטול
