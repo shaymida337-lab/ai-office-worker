@@ -24,6 +24,11 @@ import { approveFinancialDocumentReview } from "../services/financialDocuments.j
 import { initialConnectScanWindow } from "../services/scanWindow.js";
 import { askNatalieBusinessQuestion } from "../services/natalie.js";
 import { completeTask, createTask } from "../services/tasks.js";
+import {
+  INVOICE_DRAFT_SAVED_CONFIRMATION_MESSAGE,
+  saveInvoiceDraft,
+  validateInvoiceDraftInput,
+} from "../services/outgoingInvoiceDraft.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -2543,6 +2548,29 @@ apiRouter.post("/natalie/create-task", async (req, res) => {
   } catch (err) {
     console.error("[natalie/create-task] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Task creation failed" });
+  }
+});
+
+apiRouter.post("/natalie/save-invoice-draft", async (req, res) => {
+  const validation = validateInvoiceDraftInput(req.body);
+  if (!validation.ok) {
+    res.status(400).json({ error: validation.reason });
+    return;
+  }
+
+  try {
+    const draft = await saveInvoiceDraft({
+      organizationId: req.auth!.organizationId,
+      draft: validation.value,
+    });
+    res.status(201).json({
+      ok: true,
+      draftId: draft.id,
+      confirmationMessage: INVOICE_DRAFT_SAVED_CONFIRMATION_MESSAGE,
+    });
+  } catch (err) {
+    console.error("[natalie/save-invoice-draft] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Invoice draft save failed" });
   }
 });
 
