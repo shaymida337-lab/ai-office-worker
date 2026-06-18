@@ -210,7 +210,7 @@ export async function answerBusinessQuestionWithClaude(input: {
     },
   ];
 
-  const message = await anthropic.messages.create(
+  const stream = anthropic.messages.stream(
     {
       model: config.anthropic.model,
       max_tokens: 500,
@@ -222,8 +222,9 @@ export async function answerBusinessQuestionWithClaude(input: {
       timeout: 60000,
     }
   );
-
-  const text = message.content[0]?.type === "text" ? message.content[0].text.trim() : "{}";
+  const finalMessage = await stream.finalMessage();
+  const firstBlock = finalMessage.content[0];
+  const text = firstBlock?.type === "text" ? firstBlock.text.trim() : "{}";
   const parsed = parseJsonObject<NatalieClaudeResponse>(text, "Natalie business answer");
   if (parsed && isNatalieClaudeResponse(parsed)) return parsed;
   return { answer: text || "לא הצלחתי לנסח תשובה כרגע." };
