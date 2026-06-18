@@ -210,12 +210,18 @@ export async function answerBusinessQuestionWithClaude(input: {
     },
   ];
 
-  const message = await anthropic.messages.create({
-    model: config.anthropic.model,
-    max_tokens: 500,
-    system: NATALIE_BUSINESS_SYSTEM_PROMPT,
-    messages,
-  });
+  const message = await anthropic.messages.create(
+    {
+      model: config.anthropic.model,
+      max_tokens: 500,
+      system: NATALIE_BUSINESS_SYSTEM_PROMPT,
+      messages,
+    },
+    {
+      maxRetries: 4,
+      timeout: 60000,
+    }
+  );
 
   const text = message.content[0]?.type === "text" ? message.content[0].text.trim() : "{}";
   const parsed = parseJsonObject<NatalieClaudeResponse>(text, "Natalie business answer");
