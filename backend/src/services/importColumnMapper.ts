@@ -8,7 +8,13 @@ export type ImportColumnRole =
   | "date"
   | "quantity"
   | "description"
+  | "credit"
+  | "debit"
+  | "balance"
+  | "reference"
   | "unknown";
+
+export type ImportFileKind = "sales" | "bank_statement" | "unknown";
 
 export type ColumnMapping = {
   columnIndex: number;
@@ -33,6 +39,10 @@ const ROLE_KEYWORDS: Record<Exclude<ImportColumnRole, "unknown">, string[]> = {
   date: ["תאריך", "date", "יום"],
   quantity: ["כמות", "qty", "quantity", "units", "יחידות"],
   description: ["תיאור", "פירוט", "description", "desc", "details", "מוצר", "פריט"],
+  credit: ["זכות", "credit", "הפקדה", "זיכוי"],
+  debit: ["חובה", "debit", "משיכה", "חיוב"],
+  balance: ["יתרה", "balance"],
+  reference: ["אסמכתא", "reference", "ref", "אישור"],
 };
 
 const KNOWN_ROLES = Object.keys(ROLE_KEYWORDS) as Exclude<ImportColumnRole, "unknown">[];
@@ -88,6 +98,50 @@ export function detectImportColumns(rows: string[][]): ColumnMappingResult {
     headerRowIndex: bestHeaderRowIndex,
     mappings,
     warnings,
+  };
+}
+
+export function detectImportFileKind(mappings: ColumnMapping[]): {
+  kind: ImportFileKind;
+  confidence: number;
+  reason: string;
+} {
+  const roles = new Set(
+    mappings.filter((mapping) => mapping.role !== "unknown" && mapping.confidence > 0).map((mapping) => mapping.role)
+  );
+
+  const hasBankSignal = roles.has("credit") || roles.has("debit") || roles.has("balance");
+  const hasCustomerSignal = roles.has("email") || roles.has("customerName") || roles.has("firstName");
+  const hasSalesSignal = hasCustomerSignal && roles.has("amount");
+
+  if (hasBankSignal && hasSalesSignal) {
+    return {
+      kind: "bank_statement",
+      confidence: 0.6,
+      reason: "זוהו גם עמודות מכירות וגם עמודות בנק — מעדיף דוח בנק כדי למנוע הנפקת חשבוניות שגויות",
+    };
+  }
+
+  if (hasBankSignal) {
+    return {
+      kind: "bank_statement",
+      confidence: 0.9,
+      reason: "זוהו עמודות זכות/חובה/יתרה — נראה דוח בנק",
+    };
+  }
+
+  if (hasSalesSignal) {
+    return {
+      kind: "sales",
+      confidence: 0.9,
+      reason: "זוהו שם/מייל וסכום — נראה קובץ מכירות",
+    };
+  }
+
+  return {
+    kind: "unknown",
+    confidence: 0,
+    reason: "לא זוהו מספיק עמודות לסיווג הקובץ",
   };
 }
 
