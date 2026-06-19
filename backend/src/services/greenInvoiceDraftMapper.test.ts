@@ -23,7 +23,7 @@ test("mapDraftToGreenInvoiceDocument maps full draft with explicit options", () 
   const result = mapDraftToGreenInvoiceDocument(fullDraft, {
     documentType: 400,
     language: "en",
-    vatType: 1,
+    vatType: 2,
   });
 
   assert.deepEqual(result, {
@@ -38,7 +38,7 @@ test("mapDraftToGreenInvoiceDocument maps full draft with explicit options", () 
         description: "שירות משלוחים",
         price: 163.28,
         quantity: 1,
-        vatType: 1,
+        vatType: 2,
       },
     ],
     payment: [
@@ -66,6 +66,7 @@ test("mapDraftToGreenInvoiceDocument applies defaults when options are omitted",
   assert.equal(DEFAULT_DOCUMENT_TYPE, 320);
   assert.equal(result.language, "he");
   assert.equal(result.income[0]?.vatType, DEFAULT_VAT_TYPE);
+  assert.equal(DEFAULT_VAT_TYPE, 1);
   assert.equal(result.currency, "ILS");
   assert.equal(DEFAULT_PAYMENT_TYPE, 4);
   assert.deepEqual(result.payment, [
@@ -98,6 +99,20 @@ test("mapDraftToGreenInvoiceDocument matches payment date to document date when 
 
   assert.equal(result.date, "2026-06-18");
   assert.equal(result.payment?.[0]?.date, "2026-06-18");
+});
+
+test("mapDraftToGreenInvoiceDocument uses options.vatType when provided", () => {
+  const result = mapDraftToGreenInvoiceDocument(
+    {
+      customerName: "Acme",
+      description: "Consulting",
+      amount: 250,
+    },
+    { vatType: 2 }
+  );
+
+  assert.equal(result.income[0]?.vatType, 2);
+  assert.notEqual(result.income[0]?.vatType, DEFAULT_VAT_TYPE);
 });
 
 test("mapDraftToGreenInvoiceDocument uses options.paymentType when provided", () => {

@@ -1,7 +1,7 @@
 import type { GreenInvoiceCreateDocumentParams } from "./green-invoice.js";
 
 export const DEFAULT_DOCUMENT_TYPE = 320; // חשבונית מס/קבלה
-export const DEFAULT_VAT_TYPE = 0; // ⚠️ לאמת מול הגדרות חשבון Green Invoice לפני הנפקה אמיתית
+export const DEFAULT_VAT_TYPE = 1; // מחיר כולל מע"מ (INCLUDED) — אומת מול Green Invoice
 export const DEFAULT_PAYMENT_TYPE = 4; // העברה בנקאית
 
 export type GreenInvoiceDraftInput = {
