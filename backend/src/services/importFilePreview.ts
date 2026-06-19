@@ -15,6 +15,7 @@ export type ImportPreviewResult = {
   fileKindReason: string;
   mappings: ColumnMapping[];
   sampleRows: string[][];
+  allRows: string[][];
   totalDataRows: number;
   warnings: string[];
 };
@@ -63,6 +64,7 @@ export function buildImportPreview(input: ImportPreviewInput): ImportPreviewResu
     fileKindReason: fileKindResult.reason,
     mappings: columnResult.mappings,
     sampleRows,
+    allRows: dataRows,
     totalDataRows: dataRows.length,
     warnings: columnResult.warnings,
   };

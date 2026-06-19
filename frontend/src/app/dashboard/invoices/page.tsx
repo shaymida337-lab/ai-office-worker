@@ -1,9 +1,10 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
-import { Download, FileText, Filter, Loader2, RefreshCcw, Search } from "lucide-react";
+import { Download, FileText, Filter, Loader2, RefreshCcw, Search, UploadCloud } from "lucide-react";
 
 type ClientItem = { id: string; name: string; gmailConnected: boolean };
 type InvoicePaymentStatus = "paid" | "pending" | "overdue";
@@ -371,10 +372,19 @@ export default function InvoicesPage() {
           <h1 className="text-[#111827]">חשבוניות</h1>
           <p className="text-[17px] font-medium leading-8 text-[#111827]">מעקב, סינון וסריקה של חשבוניות מכל הלקוחות.</p>
         </div>
-        <button className="inline-flex min-w-40 items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] disabled:cursor-not-allowed disabled:bg-[#E5E7EB]" onClick={scanInvoices} disabled={scanning}>
-          {scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-          {scanning ? "סורק..." : "סרוק חשבוניות"}
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link
+            href="/dashboard/invoice-import"
+            className="inline-flex min-w-40 items-center justify-center gap-2 rounded-2xl border border-[#059669] bg-[#ECFDF5] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#D1FAE5]"
+          >
+            <UploadCloud className="h-4 w-4" />
+            ייבוא מקובץ
+          </Link>
+          <button className="inline-flex min-w-40 items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] disabled:cursor-not-allowed disabled:bg-[#E5E7EB]" onClick={scanInvoices} disabled={scanning}>
+            {scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+            {scanning ? "סורק..." : "סרוק חשבוניות"}
+          </button>
+        </div>
       </div>
       {visibleMessage && (
         <div className={`mb-6 rounded-2xl border p-4 text-base font-medium leading-7 ${messageClasses}`}>

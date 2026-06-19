@@ -34,6 +34,7 @@ test("buildImportPreview maps ticket sales workbook with sample rows", () => {
   assert.equal(roleAt(preview, 5), "email");
   assert.equal(roleAt(preview, 6), "amount");
   assert.equal(preview.sampleRows.length, 2);
+  assert.equal(preview.allRows.length, 2);
   assert.equal(preview.totalDataRows, 2);
 });
 
@@ -65,5 +66,6 @@ test("buildImportPreview limits sample rows to 10", () => {
   });
 
   assert.equal(preview.sampleRows.length, 10);
+  assert.equal(preview.allRows.length, 15);
   assert.equal(preview.totalDataRows, 15);
 });
