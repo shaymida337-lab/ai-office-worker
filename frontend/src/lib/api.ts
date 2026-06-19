@@ -77,6 +77,33 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
   return res.json() as Promise<T>;
 }
 
+export type IssueDraftResponse = {
+  success: boolean;
+  documentId?: string;
+  document?: {
+    id?: string;
+    documentId?: string;
+    number?: number;
+    url?: string;
+    pdfUrl?: string;
+  };
+  error?: string;
+};
+
+export async function issueDraft(draftId: string): Promise<IssueDraftResponse> {
+  try {
+    return await apiFetch<IssueDraftResponse>(`/api/natalie/invoice-drafts/${draftId}/issue`, {
+      method: "POST",
+      timeoutMs: 60000,
+    });
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "הנפקת הטיוטה נכשלה",
+    };
+  }
+}
+
 export type DashboardStats = {
   moneyToPay: number;
   moneyToReceive: number;

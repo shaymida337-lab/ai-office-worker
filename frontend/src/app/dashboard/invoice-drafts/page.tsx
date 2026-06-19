@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { StatusPill } from "@/components/ui/StatusPill";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, issueDraft } from "@/lib/api";
 
 type InvoiceDraft = {
   id: string;
@@ -26,8 +26,10 @@ type InvoiceDraft = {
 export default function InvoiceDraftsPage() {
   const [drafts, setDrafts] = useState<InvoiceDraft[]>([]);
   const [message, setMessage] = useState("");
+  const [documentLink, setDocumentLink] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [issuingId, setIssuingId] = useState<string | null>(null);
 
   const summary = useMemo(() => {
     const totalAmount = drafts.reduce((sum, draft) => sum + draft.amount, 0);
@@ -41,6 +43,7 @@ export default function InvoiceDraftsPage() {
       setDrafts(data);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "טעינת טיוטות החשבונית נכשלה");
+      setDocumentLink(null);
     } finally {
       setLoading(false);
     }
@@ -58,6 +61,7 @@ export default function InvoiceDraftsPage() {
 
     setDeletingId(draft.id);
     setMessage("");
+    setDocumentLink(null);
     try {
       await apiFetch(`/api/natalie/invoice-drafts/${draft.id}`, { method: "DELETE" });
       setDrafts((prev) => prev.filter((item) => item.id !== draft.id));
@@ -66,6 +70,32 @@ export default function InvoiceDraftsPage() {
       setMessage(err instanceof Error ? err.message : "מחיקת הטיוטה נכשלה");
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function issueDraftInSandbox(draft: InvoiceDraft) {
+    const confirmed = window.confirm(
+      "להנפיק מסמך בסביבת הבדיקות? פעולה זו יוצרת מסמך ב-Green Invoice (סנדבוקס).",
+    );
+    if (!confirmed) return;
+
+    setIssuingId(draft.id);
+    setMessage("");
+    setDocumentLink(null);
+    try {
+      const result = await issueDraft(draft.id);
+      if (result.success) {
+        const link = result.document?.pdfUrl ?? result.document?.url ?? null;
+        setMessage(`הטיוטה הונפקה בהצלחה. מזהה מסמך: ${result.documentId ?? "—"}`);
+        setDocumentLink(link);
+        await loadDrafts();
+      } else {
+        setMessage(result.error ?? "הנפקת הטיוטה נכשלה");
+      }
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "הנפקת הטיוטה נכשלה");
+    } finally {
+      setIssuingId(null);
     }
   }
 
@@ -97,7 +127,21 @@ export default function InvoiceDraftsPage() {
         </div>
       )}
 
-      {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-base text-ink-primary">{message}</div>}
+      {message && (
+        <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-base text-ink-primary">
+          <p>{message}</p>
+          {documentLink && (
+            <a
+              className="mt-2 inline-block font-bold text-accent-primary underline"
+              href={documentLink}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              צפייה במסמך
+            </a>
+          )}
+        </div>
+      )}
       {loading && <div className="card"><p>טוען טיוטות חשבונית...</p></div>}
       {!loading && drafts.length === 0 && (
         <div className="card">
@@ -123,6 +167,13 @@ export default function InvoiceDraftsPage() {
             <p className="mb-3 min-w-0 break-words text-base font-semibold leading-6 text-[#111827] [overflow-wrap:anywhere]">{draft.description}</p>
             <div className="mb-3 text-lg font-black text-[#111827]">{formatDraftAmount(draft)}</div>
             <p className="mb-4 text-sm font-semibold text-[#6B7280]">נוצרה: {formatDraftDate(draft.createdAt)}</p>
+            <div className="mb-3">
+              <IssueDraftControl
+                draft={draft}
+                issuingId={issuingId}
+                onIssue={() => issueDraftInSandbox(draft)}
+              />
+            </div>
             <button
               className="min-h-[44px] w-full rounded-xl border border-red-600 bg-red-600 px-3 py-2 text-center text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60"
               type="button"
@@ -140,11 +191,12 @@ export default function InvoiceDraftsPage() {
           <thead className="bg-[#F3F4F6]">
             <tr className="border-b border-[#E5E7EB]">
               <th className="w-[4%] px-1 py-3 align-middle text-sm font-black text-[#111827]">מחק</th>
-              <th className="w-[18%] px-3 py-3 align-middle text-sm font-black text-[#111827]">לקוח</th>
-              <th className="w-[22%] px-3 py-3 align-middle text-sm font-black text-[#111827]">תיאור</th>
-              <th className="w-[12%] px-3 py-3 align-middle text-sm font-black text-[#111827]">סכום</th>
-              <th className="w-[12%] px-3 py-3 align-middle text-sm font-black text-[#111827]">מקור</th>
-              <th className="w-[12%] px-3 py-3 align-middle text-sm font-black text-[#111827]">תאריך יצירה</th>
+              <th className="w-[14%] px-2 py-3 align-middle text-sm font-black text-[#111827]">הנפקה</th>
+              <th className="w-[16%] px-3 py-3 align-middle text-sm font-black text-[#111827]">לקוח</th>
+              <th className="w-[20%] px-3 py-3 align-middle text-sm font-black text-[#111827]">תיאור</th>
+              <th className="w-[10%] px-3 py-3 align-middle text-sm font-black text-[#111827]">סכום</th>
+              <th className="w-[10%] px-3 py-3 align-middle text-sm font-black text-[#111827]">מקור</th>
+              <th className="w-[10%] px-3 py-3 align-middle text-sm font-black text-[#111827]">תאריך יצירה</th>
             </tr>
           </thead>
           <tbody>
@@ -160,6 +212,14 @@ export default function InvoiceDraftsPage() {
                   >
                     {deletingId === draft.id ? "מוחק..." : "מחק"}
                   </button>
+                </td>
+                <td className="px-2 py-4 align-middle">
+                  <IssueDraftControl
+                    compact
+                    draft={draft}
+                    issuingId={issuingId}
+                    onIssue={() => issueDraftInSandbox(draft)}
+                  />
                 </td>
                 <td className="min-w-0 px-3 py-4 align-middle text-[#111827]">
                   <div className="min-w-0">
@@ -183,6 +243,44 @@ export default function InvoiceDraftsPage() {
         </table>
       </div>
     </div>
+  );
+}
+
+function IssueDraftControl({
+  draft,
+  issuingId,
+  onIssue,
+  compact = false,
+}: {
+  draft: InvoiceDraft;
+  issuingId: string | null;
+  onIssue: () => void;
+  compact?: boolean;
+}) {
+  if (draft.greenInvoiceDocumentId) {
+    return (
+      <div className={compact ? "text-xs" : "text-sm"}>
+        <StatusPill tone="success">הונפק ✓</StatusPill>
+        <div className="mt-1 break-all font-semibold text-[#047857]" title={draft.greenInvoiceDocumentId}>
+          {draft.greenInvoiceDocumentId}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      className={
+        compact
+          ? "min-h-[32px] w-full truncate rounded-lg bg-emerald-600 px-1 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+          : "min-h-[44px] w-full rounded-xl border border-emerald-600 bg-emerald-600 px-3 py-2 text-center text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+      }
+      disabled={issuingId === draft.id}
+      onClick={onIssue}
+      type="button"
+    >
+      {issuingId === draft.id ? "מנפיק..." : "הנפק בסנדבוקס"}
+    </button>
   );
 }
 
