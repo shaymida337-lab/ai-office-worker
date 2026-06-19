@@ -2,6 +2,7 @@ import type { GreenInvoiceCreateDocumentParams } from "./green-invoice.js";
 
 export const DEFAULT_DOCUMENT_TYPE = 320; // חשבונית מס/קבלה
 export const DEFAULT_VAT_TYPE = 0; // ⚠️ לאמת מול הגדרות חשבון Green Invoice לפני הנפקה אמיתית
+export const DEFAULT_PAYMENT_TYPE = 4; // העברה בנקאית
 
 export type GreenInvoiceDraftInput = {
   customerName: string;
@@ -17,6 +18,7 @@ export type MapDraftToGreenInvoiceOptions = {
   documentType?: number;
   language?: "he" | "en";
   vatType?: number;
+  paymentType?: number;
 };
 
 function formatIssueDate(issueDate: string): string {
@@ -66,6 +68,15 @@ export function mapDraftToGreenInvoiceDocument(
   if (draft.issueDate?.trim()) {
     params.date = formatIssueDate(draft.issueDate);
   }
+
+  params.payment = [
+    {
+      price: draft.amount,
+      type: options?.paymentType ?? DEFAULT_PAYMENT_TYPE,
+      currency: draft.currency || "ILS",
+      ...(params.date ? { date: params.date } : {}),
+    },
+  ];
 
   return params;
 }

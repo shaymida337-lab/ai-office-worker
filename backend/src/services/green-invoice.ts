@@ -17,10 +17,18 @@ export type GreenInvoiceIncomeLineItem = {
   vatType: GreenInvoiceVatType;
 };
 
+export type GreenInvoicePaymentLineItem = {
+  price: number;
+  type: number;
+  currency?: string;
+  date?: string;
+};
+
 export type GreenInvoiceCreateDocumentParams = {
   documentType: number;
   client: GreenInvoiceClientInfo;
   income: GreenInvoiceIncomeLineItem[];
+  payment?: GreenInvoicePaymentLineItem[];
   currency?: string;
   language?: "he" | "en";
   date?: string;
@@ -127,6 +135,19 @@ function toCreateDocumentPayload(params: GreenInvoiceCreateDocumentParams) {
       vatType: item.vatType,
       currency: params.currency ?? "ILS",
     })),
+    ...(params.payment?.length
+      ? {
+          payment: params.payment.map((item) => {
+            const date = item.date ?? params.date;
+            return {
+              price: item.price,
+              type: item.type,
+              currency: item.currency ?? params.currency ?? "ILS",
+              ...(date ? { date } : {}),
+            };
+          }),
+        }
+      : {}),
   };
 }
 

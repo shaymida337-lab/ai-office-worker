@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   DEFAULT_DOCUMENT_TYPE,
+  DEFAULT_PAYMENT_TYPE,
   DEFAULT_VAT_TYPE,
   mapDraftToGreenInvoiceDocument,
 } from "./greenInvoiceDraftMapper.js";
@@ -39,6 +40,14 @@ test("mapDraftToGreenInvoiceDocument maps full draft with explicit options", () 
         vatType: 1,
       },
     ],
+    payment: [
+      {
+        price: 163.28,
+        type: DEFAULT_PAYMENT_TYPE,
+        currency: "ILS",
+        date: "2026-06-18",
+      },
+    ],
     currency: "ILS",
     language: "en",
     date: "2026-06-18",
@@ -57,6 +66,29 @@ test("mapDraftToGreenInvoiceDocument applies defaults when options are omitted",
   assert.equal(result.language, "he");
   assert.equal(result.income[0]?.vatType, DEFAULT_VAT_TYPE);
   assert.equal(result.currency, "ILS");
+  assert.deepEqual(result.payment, [
+    {
+      price: 100,
+      type: DEFAULT_PAYMENT_TYPE,
+      currency: "ILS",
+    },
+  ]);
+  assert.equal(DEFAULT_PAYMENT_TYPE, 4);
+  assert.equal("date" in (result.payment?.[0] ?? {}), false);
+});
+
+test("mapDraftToGreenInvoiceDocument uses options.paymentType when provided", () => {
+  const result = mapDraftToGreenInvoiceDocument(
+    {
+      customerName: "Acme",
+      description: "Consulting",
+      amount: 250,
+    },
+    { paymentType: 1 }
+  );
+
+  assert.equal(result.payment?.[0]?.type, 1);
+  assert.notEqual(result.payment?.[0]?.type, DEFAULT_PAYMENT_TYPE);
 });
 
 test("mapDraftToGreenInvoiceDocument omits client email and taxId when missing", () => {
@@ -70,6 +102,7 @@ test("mapDraftToGreenInvoiceDocument omits client email and taxId when missing",
   assert.equal("taxId" in result.client, false);
   assert.equal(result.client.email, undefined);
   assert.equal(result.client.taxId, undefined);
+  assert.deepEqual(result.payment, [{ price: 50, type: DEFAULT_PAYMENT_TYPE, currency: "ILS" }]);
 });
 
 test("mapDraftToGreenInvoiceDocument throws when customerName is empty or missing", () => {
@@ -102,4 +135,5 @@ test("mapDraftToGreenInvoiceDocument omits date when issueDate is missing", () =
 
   assert.equal("date" in result, false);
   assert.equal(result.date, undefined);
+  assert.equal("date" in (result.payment?.[0] ?? {}), false);
 });
