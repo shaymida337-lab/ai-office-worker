@@ -1,3 +1,4 @@
+import type { OutgoingInvoiceDraft } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 
 export type InvoiceDraftInput = {
@@ -145,4 +146,23 @@ export async function saveInvoiceDraft(input: {
       approvedAt: new Date(),
     },
   });
+}
+
+export async function listOutgoingInvoiceDrafts(input: {
+  organizationId: string;
+}): Promise<OutgoingInvoiceDraft[]> {
+  return prisma.outgoingInvoiceDraft.findMany({
+    where: { organizationId: input.organizationId },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function deleteOutgoingInvoiceDraft(input: {
+  organizationId: string;
+  id: string;
+}): Promise<{ deleted: boolean }> {
+  const result = await prisma.outgoingInvoiceDraft.deleteMany({
+    where: { id: input.id, organizationId: input.organizationId },
+  });
+  return { deleted: result.count > 0 };
 }

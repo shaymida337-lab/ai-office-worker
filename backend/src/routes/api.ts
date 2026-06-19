@@ -26,6 +26,8 @@ import { askNatalieBusinessQuestion } from "../services/natalie.js";
 import { completeTask, createTask } from "../services/tasks.js";
 import {
   INVOICE_DRAFT_SAVED_CONFIRMATION_MESSAGE,
+  deleteOutgoingInvoiceDraft,
+  listOutgoingInvoiceDrafts,
   saveInvoiceDraft,
   saveInvoiceDraftsBatch,
   validateInvoiceDraftInput,
@@ -2629,6 +2631,33 @@ apiRouter.post("/natalie/invoice-import/save", async (req, res) => {
   } catch (err) {
     console.error("[natalie/invoice-import/save] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Invoice import save failed" });
+  }
+});
+
+apiRouter.get("/natalie/invoice-drafts", async (req, res) => {
+  try {
+    const drafts = await listOutgoingInvoiceDrafts({ organizationId: req.auth!.organizationId });
+    res.json(drafts);
+  } catch (err) {
+    console.error("[natalie/invoice-drafts] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Invoice drafts list failed" });
+  }
+});
+
+apiRouter.delete("/natalie/invoice-drafts/:id", async (req, res) => {
+  try {
+    const result = await deleteOutgoingInvoiceDraft({
+      organizationId: req.auth!.organizationId,
+      id: req.params.id,
+    });
+    if (!result.deleted) {
+      res.status(404).json({ error: "טיוטה לא נמצאה" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[natalie/invoice-drafts/:id] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Invoice draft delete failed" });
   }
 });
 
