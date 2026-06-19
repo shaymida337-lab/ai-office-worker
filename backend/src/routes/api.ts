@@ -29,6 +29,7 @@ import {
   saveInvoiceDraft,
   validateInvoiceDraftInput,
 } from "../services/outgoingInvoiceDraft.js";
+import { buildImportPreview } from "../services/importFilePreview.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -2571,6 +2572,26 @@ apiRouter.post("/natalie/save-invoice-draft", async (req, res) => {
   } catch (err) {
     console.error("[natalie/save-invoice-draft] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Invoice draft save failed" });
+  }
+});
+
+apiRouter.post("/natalie/invoice-import/preview", bankUpload.single("file"), async (req, res) => {
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ error: "קובץ נדרש" });
+    return;
+  }
+
+  try {
+    const preview = buildImportPreview({
+      buffer: file.buffer,
+      fileName: file.originalname || "import",
+      mimeType: file.mimetype,
+    });
+    res.json(preview);
+  } catch (err) {
+    console.error("[natalie/invoice-import/preview] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Invoice import preview failed" });
   }
 });
 
