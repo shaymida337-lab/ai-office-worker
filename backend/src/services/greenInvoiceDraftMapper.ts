@@ -21,6 +21,10 @@ export type MapDraftToGreenInvoiceOptions = {
   paymentType?: number;
 };
 
+export function todayYmd(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function formatIssueDate(issueDate: string): string {
   const trimmed = issueDate.trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
@@ -74,7 +78,7 @@ export function mapDraftToGreenInvoiceDocument(
       price: draft.amount,
       type: options?.paymentType ?? DEFAULT_PAYMENT_TYPE,
       currency: draft.currency || "ILS",
-      ...(params.date ? { date: params.date } : {}),
+      date: params.date ?? todayYmd(),
     },
   ];
 

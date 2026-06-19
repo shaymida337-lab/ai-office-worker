@@ -6,6 +6,7 @@ import {
   DEFAULT_PAYMENT_TYPE,
   DEFAULT_VAT_TYPE,
   mapDraftToGreenInvoiceDocument,
+  todayYmd,
 } from "./greenInvoiceDraftMapper.js";
 
 const fullDraft = {
@@ -66,15 +67,37 @@ test("mapDraftToGreenInvoiceDocument applies defaults when options are omitted",
   assert.equal(result.language, "he");
   assert.equal(result.income[0]?.vatType, DEFAULT_VAT_TYPE);
   assert.equal(result.currency, "ILS");
+  assert.equal(DEFAULT_PAYMENT_TYPE, 4);
   assert.deepEqual(result.payment, [
     {
       price: 100,
       type: DEFAULT_PAYMENT_TYPE,
       currency: "ILS",
+      date: todayYmd(),
     },
   ]);
-  assert.equal(DEFAULT_PAYMENT_TYPE, 4);
-  assert.equal("date" in (result.payment?.[0] ?? {}), false);
+  assert.equal("date" in result, false);
+});
+
+test("mapDraftToGreenInvoiceDocument sets payment date to today when issueDate is missing", () => {
+  const result = mapDraftToGreenInvoiceDocument({
+    customerName: "Acme",
+    description: "Work",
+    amount: 50,
+  });
+
+  const paymentDate = result.payment?.[0]?.date;
+  assert.match(paymentDate ?? "", /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(paymentDate, todayYmd());
+  assert.equal("date" in result, false);
+  assert.equal(result.date, undefined);
+});
+
+test("mapDraftToGreenInvoiceDocument matches payment date to document date when issueDate exists", () => {
+  const result = mapDraftToGreenInvoiceDocument(fullDraft);
+
+  assert.equal(result.date, "2026-06-18");
+  assert.equal(result.payment?.[0]?.date, "2026-06-18");
 });
 
 test("mapDraftToGreenInvoiceDocument uses options.paymentType when provided", () => {
@@ -89,6 +112,7 @@ test("mapDraftToGreenInvoiceDocument uses options.paymentType when provided", ()
 
   assert.equal(result.payment?.[0]?.type, 1);
   assert.notEqual(result.payment?.[0]?.type, DEFAULT_PAYMENT_TYPE);
+  assert.equal(result.payment?.[0]?.date, todayYmd());
 });
 
 test("mapDraftToGreenInvoiceDocument omits client email and taxId when missing", () => {
@@ -102,7 +126,9 @@ test("mapDraftToGreenInvoiceDocument omits client email and taxId when missing",
   assert.equal("taxId" in result.client, false);
   assert.equal(result.client.email, undefined);
   assert.equal(result.client.taxId, undefined);
-  assert.deepEqual(result.payment, [{ price: 50, type: DEFAULT_PAYMENT_TYPE, currency: "ILS" }]);
+  assert.deepEqual(result.payment, [
+    { price: 50, type: DEFAULT_PAYMENT_TYPE, currency: "ILS", date: todayYmd() },
+  ]);
 });
 
 test("mapDraftToGreenInvoiceDocument throws when customerName is empty or missing", () => {
@@ -124,16 +150,4 @@ test("mapDraftToGreenInvoiceDocument throws when customerName is empty or missin
       } as { customerName: string; description: string; amount: number }),
     /customerName is required/
   );
-});
-
-test("mapDraftToGreenInvoiceDocument omits date when issueDate is missing", () => {
-  const result = mapDraftToGreenInvoiceDocument({
-    customerName: "Acme",
-    description: "Work",
-    amount: 50,
-  });
-
-  assert.equal("date" in result, false);
-  assert.equal(result.date, undefined);
-  assert.equal("date" in (result.payment?.[0] ?? {}), false);
 });
