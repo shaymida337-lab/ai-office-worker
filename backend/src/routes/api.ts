@@ -15,7 +15,9 @@ import {
   saveWhatsAppSettings,
   testWhatsAppConnection,
 } from "../services/whatsapp.js";
-import { testConnection as testGreenInvoiceConnection, type GreenInvoiceEnv } from "../services/green-invoice.js";
+import { createDocument, testConnection as testGreenInvoiceConnection, type GreenInvoiceEnv } from "../services/green-invoice.js";
+import { issueDraftHandler } from "../services/greenInvoiceIssueHandler.js";
+import type { IssueDraftInput } from "../services/greenInvoiceIssuer.js";
 import { parseBankStatementFile } from "../services/bank-parser.js";
 import { matchTransactions } from "../services/bank-matcher.js";
 import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } from "../services/paymentClassificationDebug.js";
@@ -2659,6 +2661,45 @@ apiRouter.delete("/natalie/invoice-drafts/:id", async (req, res) => {
     console.error("[natalie/invoice-drafts/:id] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Invoice draft delete failed" });
   }
+});
+
+apiRouter.post("/natalie/invoice-drafts/:id/issue", async (req, res) => {
+  const organizationId = req.auth!.organizationId;
+  const draftId = req.params.id;
+  const result = await issueDraftHandler({
+    draftId,
+    organizationId,
+    loadDraft: async (id, orgId) => {
+      const row = await prisma.outgoingInvoiceDraft.findFirst({ where: { id, organizationId: orgId } });
+      if (!row) return null;
+      const draft: IssueDraftInput = {
+        id: row.id,
+        customerName: row.customerName,
+        customerEmail: row.customerEmail ?? undefined,
+        customerTaxId: row.customerTaxId ?? undefined,
+        description: row.description,
+        amount: row.amount,
+        currency: row.currency,
+        issueDate: row.issueDate ? row.issueDate.toISOString().slice(0, 10) : undefined,
+        approvedAt: row.approvedAt,
+        greenInvoiceDocumentId: row.greenInvoiceDocumentId,
+      };
+      return draft;
+    },
+    loadOrganization: (orgId) =>
+      prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { greenInvoiceApiKeyId: true, greenInvoiceApiSecret: true, greenInvoiceEnv: true },
+      }),
+    createDocument,
+    saveDocumentId: async (id, documentId) => {
+      await prisma.outgoingInvoiceDraft.updateMany({
+        where: { id, organizationId },
+        data: { greenInvoiceDocumentId: documentId, status: "issued" },
+      });
+    },
+  });
+  res.status(result.status).json(result.body);
 });
 
 apiRouter.post("/natalie/complete-task", async (req, res) => {
