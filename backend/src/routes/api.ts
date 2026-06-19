@@ -27,9 +27,12 @@ import { completeTask, createTask } from "../services/tasks.js";
 import {
   INVOICE_DRAFT_SAVED_CONFIRMATION_MESSAGE,
   saveInvoiceDraft,
+  saveInvoiceDraftsBatch,
   validateInvoiceDraftInput,
 } from "../services/outgoingInvoiceDraft.js";
 import { buildImportPreview } from "../services/importFilePreview.js";
+import { buildInvoiceDraftsFromRows } from "../services/importInvoiceRows.js";
+import type { ColumnMapping } from "../services/importColumnMapper.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -2592,6 +2595,40 @@ apiRouter.post("/natalie/invoice-import/preview", bankUpload.single("file"), asy
   } catch (err) {
     console.error("[natalie/invoice-import/preview] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Invoice import preview failed" });
+  }
+});
+
+apiRouter.post("/natalie/invoice-import/save", async (req, res) => {
+  const body = req.body as { rows?: unknown; mappings?: unknown };
+  if (!Array.isArray(body.rows) || !Array.isArray(body.mappings)) {
+    res.status(400).json({ error: "rows and mappings are required arrays" });
+    return;
+  }
+
+  const rows = body.rows as string[][];
+  const mappings = body.mappings as ColumnMapping[];
+
+  const { drafts, warnings } = buildInvoiceDraftsFromRows({ rows, mappings });
+  if (drafts.length === 0) {
+    res.status(400).json({ error: "לא נמצאו שורות תקינות לשמירה", warnings });
+    return;
+  }
+
+  try {
+    const { savedCount, draftIds } = await saveInvoiceDraftsBatch({
+      organizationId: req.auth!.organizationId,
+      drafts,
+    });
+    res.status(201).json({
+      ok: true,
+      savedCount,
+      draftIds,
+      warnings,
+      confirmationMessage: `✅ נשמרו ${savedCount} טיוטות פנימיות. אלה טיוטות בלבד — לא הונפקו חשבוניות מס רשמיות.`,
+    });
+  } catch (err) {
+    console.error("[natalie/invoice-import/save] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Invoice import save failed" });
   }
 });
 

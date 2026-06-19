@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { validateInvoiceDraftInput } from "./outgoingInvoiceDraft.js";
+import { validateInvoiceDraftInput, filterValidInvoiceDrafts } from "./outgoingInvoiceDraft.js";
 
 const validInput = {
   customerName: "Wolt",
@@ -50,4 +50,17 @@ test("validateInvoiceDraftInput rejects missing description", () => {
 test("validateInvoiceDraftInput rejects non-string customerEmail", () => {
   const result = validateInvoiceDraftInput({ ...validInput, customerEmail: 123 });
   assert.equal(result.ok, false);
+});
+
+test("filterValidInvoiceDrafts keeps only valid drafts", () => {
+  const valid = filterValidInvoiceDrafts([
+    validInput,
+    { ...validInput, customerName: "" },
+    { ...validInput, amount: -5 },
+    { customerName: "OK", description: "desc", amount: 10 },
+  ]);
+
+  assert.equal(valid.length, 2);
+  assert.equal(valid[0]?.customerName, "Wolt");
+  assert.equal(valid[1]?.customerName, "OK");
 });

@@ -75,6 +75,50 @@ function parseOptionalDate(value?: string) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+export function filterValidInvoiceDrafts(drafts: InvoiceDraftInput[]): ValidatedInvoiceDraftInput[] {
+  const valid: ValidatedInvoiceDraftInput[] = [];
+  for (const draft of drafts) {
+    const validation = validateInvoiceDraftInput(draft);
+    if (validation.ok) valid.push(validation.value);
+  }
+  return valid;
+}
+
+export async function saveInvoiceDraftsBatch(input: {
+  organizationId: string;
+  drafts: InvoiceDraftInput[];
+}): Promise<{ savedCount: number; draftIds: string[] }> {
+  const validDrafts = filterValidInvoiceDrafts(input.drafts);
+  const draftIds: string[] = [];
+  const approvedAt = new Date();
+
+  for (const draft of validDrafts) {
+    const issueDate = parseOptionalDate(draft.issueDate);
+    const dueDate = parseOptionalDate(draft.dueDate);
+    const saved = await prisma.outgoingInvoiceDraft.create({
+      data: {
+        organizationId: input.organizationId,
+        status: "draft",
+        source: "import",
+        customerName: draft.customerName,
+        customerEmail: draft.customerEmail ?? null,
+        customerTaxId: draft.customerTaxId ?? null,
+        clientId: draft.clientId ?? null,
+        description: draft.description,
+        amount: draft.amount,
+        currency: draft.currency ?? "ILS",
+        issueDate,
+        dueDate,
+        proposalJson: draft,
+        approvedAt,
+      },
+    });
+    draftIds.push(saved.id);
+  }
+
+  return { savedCount: draftIds.length, draftIds };
+}
+
 export async function saveInvoiceDraft(input: {
   organizationId: string;
   draft: ValidatedInvoiceDraftInput;
