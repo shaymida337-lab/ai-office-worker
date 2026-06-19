@@ -5,6 +5,7 @@ export type NavItemId =
   | "clients"
   | "invoices"
   | "invoiceImport"
+  | "invoiceDrafts"
   | "invoiceDiagnostics"
   | "documentReviews"
   | "supplierPayments"
@@ -32,6 +33,7 @@ export const navVisibility: Record<NavItemId, NavVisibilityRule> = {
   clients: { visible: false },
   invoices: { visible: true },
   invoiceImport: { visible: true },
+  invoiceDrafts: { visible: true },
   invoiceDiagnostics: { visible: false },
   documentReviews: { visible: true },
   supplierPayments: { visible: true },
