@@ -479,6 +479,9 @@ export function NatalieAssistantWidget() {
 
       setInput(text);
       setSpeechError("");
+      if (!sending) {
+        void sendMessage(text);
+      }
     } catch (err) {
       console.error("[natalie] transcription failed", err);
       setSpeechError(
