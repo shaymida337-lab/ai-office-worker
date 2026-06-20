@@ -9,6 +9,12 @@ type MicState = "idle" | "recording" | "transcribing";
 
 const RECORDER_MIME_CANDIDATES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"];
 
+const VAD_SILENCE_DURATION_MS = 2000;
+const VAD_VOLUME_THRESHOLD = 0.015;
+const VAD_MIN_SPEECH_MS = 400;
+const VAD_MAX_RECORDING_MS = 30000;
+const VAD_CHECK_INTERVAL_MS = 100;
+
 function pickRecorderMimeType(): string {
   if (typeof MediaRecorder === "undefined") return "";
   for (const candidate of RECORDER_MIME_CANDIDATES) {
@@ -28,6 +34,17 @@ function extensionForRecordingMimeType(mimeType: string): string {
 
 function releaseMediaStream(stream: MediaStream | null) {
   stream?.getTracks().forEach((track) => track.stop());
+}
+
+function computeAnalyserRms(analyser: AnalyserNode): number {
+  const data = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(data);
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) {
+    const normalized = (data[i]! - 128) / 128;
+    sum += normalized * normalized;
+  }
+  return Math.sqrt(sum / data.length);
 }
 
 function isMicRecordingSupported(): boolean {
@@ -222,8 +239,98 @@ export function NatalieAssistantWidget() {
   const recordedChunksRef = useRef<Blob[]>([]);
   const recorderMimeTypeRef = useRef("audio/webm");
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const vadIntervalRef = useRef<number | null>(null);
+  const silenceStartedAtRef = useRef<number | null>(null);
+  const hasDetectedSpeechRef = useRef(false);
+  const speechStartedAtRef = useRef<number | null>(null);
+  const recordingStartedAtRef = useRef<number | null>(null);
+  const stopAudioRecordingRef = useRef<() => void>(() => {});
+
+  function stopVadMonitoring() {
+    if (vadIntervalRef.current !== null) {
+      clearInterval(vadIntervalRef.current);
+      vadIntervalRef.current = null;
+    }
+    analyserRef.current = null;
+    silenceStartedAtRef.current = null;
+    hasDetectedSpeechRef.current = false;
+    speechStartedAtRef.current = null;
+    recordingStartedAtRef.current = null;
+
+    const audioContext = audioContextRef.current;
+    audioContextRef.current = null;
+    if (audioContext && audioContext.state !== "closed") {
+      void audioContext.close().catch(() => {
+        // Ignore AudioContext close errors during cleanup.
+      });
+    }
+  }
+
+  async function startVadMonitoring(stream: MediaStream) {
+    stopVadMonitoring();
+
+    const audioContext = new AudioContext();
+    audioContextRef.current = audioContext;
+    if (audioContext.state === "suspended") {
+      await audioContext.resume();
+    }
+
+    const source = audioContext.createMediaStreamSource(stream);
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.8;
+    source.connect(analyser);
+    analyserRef.current = analyser;
+
+    recordingStartedAtRef.current = Date.now();
+    silenceStartedAtRef.current = null;
+    hasDetectedSpeechRef.current = false;
+    speechStartedAtRef.current = null;
+
+    vadIntervalRef.current = window.setInterval(() => {
+      const currentAnalyser = analyserRef.current;
+      const recorder = mediaRecorderRef.current;
+      if (!currentAnalyser || !recorder || recorder.state !== "recording") {
+        return;
+      }
+
+      const now = Date.now();
+      const rms = computeAnalyserRms(currentAnalyser);
+
+      if (rms > VAD_VOLUME_THRESHOLD) {
+        if (!hasDetectedSpeechRef.current) {
+          hasDetectedSpeechRef.current = true;
+          speechStartedAtRef.current = now;
+        }
+        silenceStartedAtRef.current = null;
+      } else if (
+        hasDetectedSpeechRef.current &&
+        speechStartedAtRef.current !== null &&
+        now - speechStartedAtRef.current >= VAD_MIN_SPEECH_MS
+      ) {
+        if (silenceStartedAtRef.current === null) {
+          silenceStartedAtRef.current = now;
+        } else if (now - silenceStartedAtRef.current >= VAD_SILENCE_DURATION_MS) {
+          stopVadMonitoring();
+          stopAudioRecordingRef.current();
+        }
+      }
+
+      if (
+        recordingStartedAtRef.current !== null &&
+        now - recordingStartedAtRef.current >= VAD_MAX_RECORDING_MS
+      ) {
+        stopVadMonitoring();
+        stopAudioRecordingRef.current();
+      }
+    }, VAD_CHECK_INTERVAL_MS);
+  }
 
   function releaseRecordingResources() {
+    stopVadMonitoring();
+
     const recorder = mediaRecorderRef.current;
     if (recorder) {
       recorder.onstop = null;
@@ -332,6 +439,7 @@ export function NatalieAssistantWidget() {
       };
 
       recorder.onstop = () => {
+        stopVadMonitoring();
         const chunks = recordedChunksRef.current;
         recordedChunksRef.current = [];
         releaseMediaStream(mediaStreamRef.current);
@@ -355,6 +463,7 @@ export function NatalieAssistantWidget() {
       };
 
       recorder.start();
+      await startVadMonitoring(stream);
       setMicState("recording");
     } catch (err) {
       releaseRecordingResources();
@@ -370,12 +479,14 @@ export function NatalieAssistantWidget() {
   }
 
   function stopAudioRecording() {
-    if (micState !== "recording") return;
+    stopVadMonitoring();
 
     const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === "inactive") {
-      releaseRecordingResources();
-      setMicState("idle");
+    if (!recorder || recorder.state !== "recording") {
+      if (micState === "recording") {
+        releaseRecordingResources();
+        setMicState("idle");
+      }
       return;
     }
 
@@ -388,6 +499,8 @@ export function NatalieAssistantWidget() {
       setSpeechError("לא הצלחתי לעצור את ההקלטה. נסה שוב.");
     }
   }
+
+  stopAudioRecordingRef.current = stopAudioRecording;
 
   function handleMicClick() {
     if (micState === "recording") {
@@ -943,7 +1056,7 @@ export function NatalieAssistantWidget() {
               </span>
             </div>
             <h2 className="m-0 text-3xl font-extrabold text-[#0e1116]">
-              {micState === "transcribing" ? "מתמלל…" : "מקליט… (הקש לסיום)"}
+              {micState === "transcribing" ? "מתמלל…" : "מקליט… (הפסק לדבר לסיום)"}
             </h2>
             <p className="mx-auto mt-2 max-w-xs text-base font-semibold leading-7 text-[#6b7686]">
               {micState === "transcribing"
