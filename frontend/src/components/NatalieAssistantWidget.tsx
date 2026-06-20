@@ -14,6 +14,7 @@ const VAD_VOLUME_THRESHOLD = 0.015;
 const VAD_MIN_SPEECH_MS = 400;
 const VAD_MAX_RECORDING_MS = 30000;
 const VAD_CHECK_INTERVAL_MS = 100;
+const VAD_DEBUG_LOG_INTERVAL_MS = 300;
 
 function pickRecorderMimeType(): string {
   if (typeof MediaRecorder === "undefined") return "";
@@ -53,6 +54,10 @@ function isMicRecordingSupported(): boolean {
     Boolean(navigator.mediaDevices?.getUserMedia) &&
     typeof MediaRecorder !== "undefined"
   );
+}
+
+function isVadSupported(): boolean {
+  return typeof AudioContext !== "undefined";
 }
 
 type NatalieInvoiceSummary = {
@@ -240,6 +245,7 @@ export function NatalieAssistantWidget() {
   const recorderMimeTypeRef = useRef("audio/webm");
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const vadIntervalRef = useRef<number | null>(null);
   const silenceStartedAtRef = useRef<number | null>(null);
@@ -253,6 +259,12 @@ export function NatalieAssistantWidget() {
       clearInterval(vadIntervalRef.current);
       vadIntervalRef.current = null;
     }
+    try {
+      mediaStreamSourceRef.current?.disconnect();
+    } catch {
+      // Ignore disconnect errors during cleanup.
+    }
+    mediaStreamSourceRef.current = null;
     analyserRef.current = null;
     silenceStartedAtRef.current = null;
     hasDetectedSpeechRef.current = false;
@@ -268,16 +280,59 @@ export function NatalieAssistantWidget() {
     }
   }
 
-  async function startVadMonitoring(stream: MediaStream) {
-    stopVadMonitoring();
+  function prepareAudioContextInUserGesture(): boolean {
+    if (!isVadSupported()) {
+      console.warn("[natalie][vad] AudioContext not supported — manual stop only");
+      return false;
+    }
 
-    const audioContext = new AudioContext();
-    audioContextRef.current = audioContext;
+    try {
+      stopVadMonitoring();
+      audioContextRef.current = new AudioContext();
+      console.log("[natalie][vad] AudioContext created in user gesture", {
+        audioContextState: audioContextRef.current.state,
+      });
+      return true;
+    } catch (err) {
+      console.warn("[natalie][vad] AudioContext creation failed — manual stop only", err);
+      audioContextRef.current = null;
+      return false;
+    }
+  }
+
+  async function startVadMonitoring(stream: MediaStream) {
+    const audioContext = audioContextRef.current;
+    if (!audioContext || audioContext.state === "closed") {
+      console.warn("[natalie][vad] no AudioContext available — manual stop only");
+      return;
+    }
+
+    if (vadIntervalRef.current !== null) {
+      clearInterval(vadIntervalRef.current);
+      vadIntervalRef.current = null;
+    }
+    try {
+      mediaStreamSourceRef.current?.disconnect();
+    } catch {
+      // Ignore disconnect errors when reconnecting VAD.
+    }
+    mediaStreamSourceRef.current = null;
+    analyserRef.current = null;
+    silenceStartedAtRef.current = null;
+    hasDetectedSpeechRef.current = false;
+    speechStartedAtRef.current = null;
+    recordingStartedAtRef.current = null;
+
+    console.log("[natalie][vad] startVadMonitoring", { audioContextState: audioContext.state });
     if (audioContext.state === "suspended") {
       await audioContext.resume();
+      console.log("[natalie][vad] AudioContext resume on stream connect", {
+        audioContextState: audioContext.state,
+      });
     }
 
     const source = audioContext.createMediaStreamSource(stream);
+    mediaStreamSourceRef.current = source;
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 2048;
     analyser.smoothingTimeConstant = 0.8;
@@ -289,6 +344,12 @@ export function NatalieAssistantWidget() {
     hasDetectedSpeechRef.current = false;
     speechStartedAtRef.current = null;
 
+    let lastDebugLogAt = 0;
+    console.log("[natalie][vad] interval starting", {
+      checkIntervalMs: VAD_CHECK_INTERVAL_MS,
+      stopRefDefined: stopAudioRecordingRef.current !== undefined,
+    });
+
     vadIntervalRef.current = window.setInterval(() => {
       const currentAnalyser = analyserRef.current;
       const recorder = mediaRecorderRef.current;
@@ -298,6 +359,20 @@ export function NatalieAssistantWidget() {
 
       const now = Date.now();
       const rms = computeAnalyserRms(currentAnalyser);
+
+      if (now - lastDebugLogAt >= VAD_DEBUG_LOG_INTERVAL_MS) {
+        lastDebugLogAt = now;
+        const silenceMs =
+          silenceStartedAtRef.current === null ? 0 : now - silenceStartedAtRef.current;
+        console.log("[natalie][vad] tick", {
+          rms: Number(rms.toFixed(4)),
+          threshold: VAD_VOLUME_THRESHOLD,
+          hasDetectedSpeech: hasDetectedSpeechRef.current,
+          silenceMs,
+          recorderState: recorder.state,
+          audioContextState: audioContextRef.current?.state ?? "none",
+        });
+      }
 
       if (rms > VAD_VOLUME_THRESHOLD) {
         if (!hasDetectedSpeechRef.current) {
@@ -313,6 +388,10 @@ export function NatalieAssistantWidget() {
         if (silenceStartedAtRef.current === null) {
           silenceStartedAtRef.current = now;
         } else if (now - silenceStartedAtRef.current >= VAD_SILENCE_DURATION_MS) {
+          console.log("[natalie][vad] auto-stop triggered (silence)", {
+            silenceMs: now - silenceStartedAtRef.current,
+            rms: Number(rms.toFixed(4)),
+          });
           stopVadMonitoring();
           stopAudioRecordingRef.current();
         }
@@ -322,6 +401,9 @@ export function NatalieAssistantWidget() {
         recordingStartedAtRef.current !== null &&
         now - recordingStartedAtRef.current >= VAD_MAX_RECORDING_MS
       ) {
+        console.log("[natalie][vad] auto-stop triggered (max duration)", {
+          elapsedMs: now - recordingStartedAtRef.current,
+        });
         stopVadMonitoring();
         stopAudioRecordingRef.current();
       }
@@ -420,7 +502,16 @@ export function NatalieAssistantWidget() {
     setSpeechError("");
     recordedChunksRef.current = [];
 
+    const vadAvailable = prepareAudioContextInUserGesture();
+
     try {
+      if (vadAvailable && audioContextRef.current) {
+        await audioContextRef.current.resume();
+        console.log("[natalie][vad] AudioContext resumed in user gesture chain", {
+          audioContextState: audioContextRef.current.state,
+        });
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
 
@@ -463,7 +554,9 @@ export function NatalieAssistantWidget() {
       };
 
       recorder.start();
-      await startVadMonitoring(stream);
+      if (vadAvailable) {
+        await startVadMonitoring(stream);
+      }
       setMicState("recording");
     } catch (err) {
       releaseRecordingResources();
