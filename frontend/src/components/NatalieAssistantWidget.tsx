@@ -14,7 +14,6 @@ const VAD_VOLUME_THRESHOLD = 0.015;
 const VAD_MIN_SPEECH_MS = 400;
 const VAD_MAX_RECORDING_MS = 30000;
 const VAD_CHECK_INTERVAL_MS = 100;
-const VAD_DEBUG_LOG_INTERVAL_MS = 300;
 const TTS_UNLOCK_SILENT_AUDIO =
   "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
 
@@ -239,7 +238,6 @@ export function NatalieAssistantWidget() {
   const [sending, setSending] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [pendingAudioPlay, setPendingAudioPlay] = useState(false);
-  const [debugLog, setDebugLog] = useState<string[]>([]);
   const [micIntroSeen, setMicIntroSeen] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -258,23 +256,6 @@ export function NatalieAssistantWidget() {
   const speechStartedAtRef = useRef<number | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
   const stopAudioRecordingRef = useRef<() => void>(() => {});
-
-  function formatDebugError(err: unknown): string {
-    if (err instanceof DOMException) return `${err.name}: ${err.message}`;
-    if (err instanceof Error) return `${err.name}: ${err.message}`;
-    return String(err);
-  }
-
-  function addDebug(line: string) {
-    const stamp = new Date().toLocaleTimeString("he-IL", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-    const entry = `${stamp} ${line}`;
-    console.log(line);
-    setDebugLog((prev) => [...prev, entry].slice(-15));
-  }
 
   function stopVadMonitoring() {
     if (vadIntervalRef.current !== null) {
@@ -319,8 +300,6 @@ export function NatalieAssistantWidget() {
   function unlockTtsAudioInUserGesture() {
     try {
       const audio = getTtsAudioElement();
-      console.log("[natalie][tts] unlock called", { element: audio });
-      addDebug("[natalie][tts] unlock called");
       audio.muted = true;
       audio.src = TTS_UNLOCK_SILENT_AUDIO;
       const playPromise = audio.play();
@@ -334,23 +313,13 @@ export function NatalieAssistantWidget() {
               audio.removeAttribute("src");
               audio.load();
             }
-            console.log("[natalie][tts] unlock play OK", {
-              muted: audio.muted,
-              paused: audio.paused,
-              src: audio.src || "(empty)",
-            });
-            addDebug("[natalie][tts] unlock play OK");
-            addDebug(`[natalie][tts] after unlock muted=${audio.muted} paused=${audio.paused} src=${audio.src || "(empty)"}`);
           })
-          .catch((err) => {
+          .catch(() => {
             audio.muted = false;
-            console.error("[natalie][tts] unlock play FAILED", err);
-            addDebug(`[natalie][tts] unlock play FAILED ${formatDebugError(err)}`);
           });
       }
-    } catch (err) {
-      console.error("[natalie][tts] unlock play FAILED", err);
-      addDebug(`[natalie][tts] unlock play FAILED ${formatDebugError(err)}`);
+    } catch {
+      // Ignore unlock errors — tap-to-play fallback remains available.
     }
   }
 
@@ -363,9 +332,6 @@ export function NatalieAssistantWidget() {
     try {
       stopVadMonitoring();
       audioContextRef.current = new AudioContext();
-      console.log("[natalie][vad] AudioContext created in user gesture", {
-        audioContextState: audioContextRef.current.state,
-      });
       return true;
     } catch (err) {
       console.warn("[natalie][vad] AudioContext creation failed — manual stop only", err);
@@ -397,12 +363,8 @@ export function NatalieAssistantWidget() {
     speechStartedAtRef.current = null;
     recordingStartedAtRef.current = null;
 
-    console.log("[natalie][vad] startVadMonitoring", { audioContextState: audioContext.state });
     if (audioContext.state === "suspended") {
       await audioContext.resume();
-      console.log("[natalie][vad] AudioContext resume on stream connect", {
-        audioContextState: audioContext.state,
-      });
     }
 
     const source = audioContext.createMediaStreamSource(stream);
@@ -418,12 +380,6 @@ export function NatalieAssistantWidget() {
     hasDetectedSpeechRef.current = false;
     speechStartedAtRef.current = null;
 
-    let lastDebugLogAt = 0;
-    console.log("[natalie][vad] interval starting", {
-      checkIntervalMs: VAD_CHECK_INTERVAL_MS,
-      stopRefDefined: stopAudioRecordingRef.current !== undefined,
-    });
-
     vadIntervalRef.current = window.setInterval(() => {
       const currentAnalyser = analyserRef.current;
       const recorder = mediaRecorderRef.current;
@@ -433,20 +389,6 @@ export function NatalieAssistantWidget() {
 
       const now = Date.now();
       const rms = computeAnalyserRms(currentAnalyser);
-
-      if (now - lastDebugLogAt >= VAD_DEBUG_LOG_INTERVAL_MS) {
-        lastDebugLogAt = now;
-        const silenceMs =
-          silenceStartedAtRef.current === null ? 0 : now - silenceStartedAtRef.current;
-        console.log("[natalie][vad] tick", {
-          rms: Number(rms.toFixed(4)),
-          threshold: VAD_VOLUME_THRESHOLD,
-          hasDetectedSpeech: hasDetectedSpeechRef.current,
-          silenceMs,
-          recorderState: recorder.state,
-          audioContextState: audioContextRef.current?.state ?? "none",
-        });
-      }
 
       if (rms > VAD_VOLUME_THRESHOLD) {
         if (!hasDetectedSpeechRef.current) {
@@ -462,10 +404,6 @@ export function NatalieAssistantWidget() {
         if (silenceStartedAtRef.current === null) {
           silenceStartedAtRef.current = now;
         } else if (now - silenceStartedAtRef.current >= VAD_SILENCE_DURATION_MS) {
-          console.log("[natalie][vad] auto-stop triggered (silence)", {
-            silenceMs: now - silenceStartedAtRef.current,
-            rms: Number(rms.toFixed(4)),
-          });
           stopVadMonitoring();
           stopAudioRecordingRef.current();
         }
@@ -475,9 +413,6 @@ export function NatalieAssistantWidget() {
         recordingStartedAtRef.current !== null &&
         now - recordingStartedAtRef.current >= VAD_MAX_RECORDING_MS
       ) {
-        console.log("[natalie][vad] auto-stop triggered (max duration)", {
-          elapsedMs: now - recordingStartedAtRef.current,
-        });
         stopVadMonitoring();
         stopAudioRecordingRef.current();
       }
@@ -585,9 +520,6 @@ export function NatalieAssistantWidget() {
     try {
       if (vadAvailable && audioContextRef.current) {
         await audioContextRef.current.resume();
-        console.log("[natalie][vad] AudioContext resumed in user gesture chain", {
-          audioContextState: audioContextRef.current.state,
-        });
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -769,16 +701,9 @@ export function NatalieAssistantWidget() {
       };
 
       try {
-        console.log("[natalie][tts] auto play attempt", { element: audio, src: audio.src });
-        addDebug(`[natalie][tts] auto play attempt readyState=${audio.readyState} src=${audio.src ? `${audio.src.slice(0, 40)}...` : "(empty)"}`);
         await audio.play();
-        console.log("[natalie][tts] auto play OK");
-        addDebug("[natalie][tts] auto play OK");
         setPendingAudioPlay(false);
       } catch (err) {
-        const domErr = err instanceof DOMException ? { name: err.name, message: err.message } : err;
-        console.error("[natalie][tts] auto play REJECTED", domErr);
-        addDebug(`[natalie][tts] auto play REJECTED ${formatDebugError(err)}`);
         console.error("[natalie] audio playback blocked", err);
         setPendingAudioPlay(true);
       }
@@ -1021,44 +946,10 @@ export function NatalieAssistantWidget() {
     <>
       {open && (
         <section
-          className="fixed bottom-24 right-4 z-[130] flex h-[min(480px,calc(100dvh-7.5rem))] w-[calc(100vw-2rem)] max-w-[360px] flex-col overflow-hidden rounded-[24px] border border-[#e6eaf2] bg-white font-sans text-[#0e1116] shadow-[0_24px_70px_rgba(20,40,90,0.18)] lg:right-[17rem] relative"
+          className="fixed bottom-24 right-4 z-[130] flex h-[min(480px,calc(100dvh-7.5rem))] w-[calc(100vw-2rem)] max-w-[360px] flex-col overflow-hidden rounded-[24px] border border-[#e6eaf2] bg-white font-sans text-[#0e1116] shadow-[0_24px_70px_rgba(20,40,90,0.18)] lg:right-[17rem]"
           dir="rtl"
           aria-label="שיחה עם נטלי"
         >
-          {debugLog.length > 0 && (
-            <div
-              className="absolute left-0 right-0 top-0 z-20 border-b border-white/20 bg-black/75 px-2 py-1.5"
-              dir="ltr"
-            >
-              <div className="mb-1 flex gap-1">
-                <button
-                  type="button"
-                  onClick={() => setDebugLog([])}
-                  className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] font-bold text-white"
-                >
-                  נקה לוג
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(debugLog.join("\n")).catch((err) => {
-                      console.error("[natalie][tts] copy debug log failed", err);
-                    });
-                  }}
-                  className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] font-bold text-white"
-                >
-                  העתק
-                </button>
-              </div>
-              <div className="max-h-20 overflow-y-auto font-mono text-[10px] leading-tight text-white">
-                {debugLog.map((line, index) => (
-                  <div key={`${index}-${line}`} className="whitespace-pre-wrap break-all">
-                    {line}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
           <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e6eaf2] bg-white px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
               <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] bg-[linear-gradient(135deg,#3a6cff,#1d5bff,#1746c7)] text-xl font-black text-white shadow-[0_12px_24px_rgba(29,91,255,0.25)]">
