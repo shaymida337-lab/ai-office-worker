@@ -9,6 +9,12 @@ const elevenLabsCredentials = {
   elevenLabsModel: "eleven_multilingual_v2",
 };
 
+const azureCredentials = {
+  azureSpeechKey: "azure-test-key",
+  azureSpeechRegion: "eastus",
+  azureSpeechVoice: "he-IL-HilaNeural",
+};
+
 const openAiCredentials = {
   openAiApiKey: "sk-test-key",
   openAiModel: "gpt-4o-mini-tts",
@@ -162,16 +168,21 @@ test("synthesizeSpeech returns ok:false 502 when fetchFn response is not ok", as
   }
 });
 
-test("synthesizeSpeech defaults to elevenlabs when provider is omitted", async () => {
+test("synthesizeSpeech defaults to azure when provider is omitted", async () => {
   const { fetchFn, calls } = createMockFetch({});
 
-  const result = await synthesizeSpeech(
-    { text: "שלום נטלי" } as { text: string; provider: "elevenlabs" | "openai" },
-    elevenLabsCredentials,
-    { fetchFn }
-  );
+  const result = await synthesizeSpeech({ text: "שלום נטלי" }, azureCredentials, { fetchFn });
 
   assert.equal(result.ok, true);
   assert.equal(calls.length, 1);
-  assert.match(calls[0]?.url ?? "", /api\.elevenlabs\.io\/v1\/text-to-speech\//);
+  assert.equal(calls[0]?.url, "https://eastus.tts.speech.microsoft.com/cognitiveservices/v1");
+
+  const headers = calls[0]?.init?.headers as Record<string, string>;
+  assert.equal(headers["Ocp-Apim-Subscription-Key"], azureCredentials.azureSpeechKey);
+  assert.equal(headers["Content-Type"], "application/ssml+xml");
+  assert.equal(headers["X-Microsoft-OutputFormat"], "audio-24khz-48kbitrate-mono-mp3");
+
+  const body = String(calls[0]?.init?.body);
+  assert.match(body, /he-IL-HilaNeural/);
+  assert.match(body, /שלום נטלי/);
 });

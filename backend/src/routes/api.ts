@@ -2728,6 +2728,11 @@ apiRouter.post("/natalie/complete-task", async (req, res) => {
 });
 
 export type NatalieVoiceCredentialsInput = {
+  azure: {
+    speechKey: string;
+    speechRegion: string;
+    speechVoice: string;
+  };
   elevenLabsApiKey: string;
   elevenLabsVoiceId: string;
   elevenLabsModel: string;
@@ -2738,7 +2743,8 @@ export type NatalieVoiceCredentialsInput = {
 
 export function resolveNatalieVoiceSynthesizeProvider(
   provider: string
-): "elevenlabs" | "openai" | null {
+): "azure" | "elevenlabs" | "openai" | null {
+  if (provider === "azure") return "azure";
   if (provider === "elevenlabs") return "elevenlabs";
   if (provider === "openai") return "openai";
   return null;
@@ -2746,6 +2752,9 @@ export function resolveNatalieVoiceSynthesizeProvider(
 
 export function buildNatalieVoiceCredentials(aiVoice: NatalieVoiceCredentialsInput) {
   return {
+    azureSpeechKey: aiVoice.azure.speechKey,
+    azureSpeechRegion: aiVoice.azure.speechRegion,
+    azureSpeechVoice: aiVoice.azure.speechVoice,
     elevenLabsApiKey: aiVoice.elevenLabsApiKey,
     elevenLabsVoiceId: aiVoice.elevenLabsVoiceId,
     elevenLabsModel: aiVoice.elevenLabsModel,

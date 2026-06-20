@@ -1,14 +1,17 @@
-export const DEFAULT_TTS_PROVIDER = "elevenlabs";
+export const DEFAULT_TTS_PROVIDER = "azure";
 export const DEFAULT_ELEVENLABS_MODEL = "eleven_multilingual_v2";
 export const ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 export const OPENAI_TTS_URL = "https://api.openai.com/v1/audio/speech";
+export const DEFAULT_AZURE_SPEECH_REGION = "eastus";
+export const DEFAULT_AZURE_SPEECH_VOICE = "he-IL-HilaNeural";
+export const AZURE_TTS_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
 
 const DEFAULT_ELEVENLABS_VOICE_ID = "21m00Tcm4TlvDq8ikWAM";
 const DEFAULT_OPENAI_TTS_MODEL = "gpt-4o-mini-tts";
 const DEFAULT_OPENAI_TTS_VOICE = "nova";
 const MAX_TTS_TEXT_LENGTH = 3500;
 
-export type TtsProvider = "elevenlabs" | "openai";
+export type TtsProvider = "azure" | "elevenlabs" | "openai";
 
 export type SynthesizeSpeechParams = {
   text: string;
@@ -16,6 +19,9 @@ export type SynthesizeSpeechParams = {
 };
 
 export type SynthesizeSpeechCredentials = {
+  azureSpeechKey?: string;
+  azureSpeechRegion?: string;
+  azureSpeechVoice?: string;
   elevenLabsApiKey?: string;
   elevenLabsVoiceId?: string;
   elevenLabsModel?: string;
@@ -55,11 +61,63 @@ export async function synthesizeSpeech(
   const provider = params.provider ?? DEFAULT_TTS_PROVIDER;
   const input = text.slice(0, MAX_TTS_TEXT_LENGTH);
 
+  if (provider === "azure") {
+    return synthesizeWithAzure(input, credentials, deps.fetchFn);
+  }
+
   if (provider === "elevenlabs") {
     return synthesizeWithElevenLabs(input, credentials, deps.fetchFn);
   }
 
   return synthesizeWithOpenAi(input, credentials, deps.fetchFn);
+}
+
+function buildAzureSpeechUrl(region: string): string {
+  return `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
+}
+
+function escapeSsmlText(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function buildAzureSsml(text: string, voice: string): string {
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="he-IL"><voice name="${voice}">${escapeSsmlText(text)}</voice></speak>`;
+}
+
+async function synthesizeWithAzure(
+  text: string,
+  credentials: SynthesizeSpeechCredentials,
+  fetchFn: typeof fetch
+): Promise<SynthesizeResult> {
+  const azureSpeechKey = credentials.azureSpeechKey?.trim();
+  if (!azureSpeechKey) {
+    return {
+      ok: false,
+      status: 503,
+      error: "Azure Speech is not configured (AZURE_SPEECH_KEY missing)",
+    };
+  }
+
+  const region = credentials.azureSpeechRegion?.trim() || DEFAULT_AZURE_SPEECH_REGION;
+  const voice = credentials.azureSpeechVoice?.trim() || DEFAULT_AZURE_SPEECH_VOICE;
+  const url = buildAzureSpeechUrl(region);
+
+  const response = await fetchFn(url, {
+    method: "POST",
+    headers: {
+      "Ocp-Apim-Subscription-Key": azureSpeechKey,
+      "Content-Type": "application/ssml+xml",
+      "X-Microsoft-OutputFormat": AZURE_TTS_OUTPUT_FORMAT,
+    },
+    body: buildAzureSsml(text, voice),
+  });
+
+  return toSynthesizeResult(response, "azure");
 }
 
 async function synthesizeWithElevenLabs(

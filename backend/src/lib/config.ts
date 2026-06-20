@@ -126,8 +126,19 @@ export const config = {
   aiVoice: {
     provider: optional(
       "AI_VOICE_PROVIDER",
-      optional("ELEVENLABS_API_KEY") ? "elevenlabs" : optional("OPENAI_API_KEY") ? "openai" : "browser"
+      optional("AZURE_SPEECH_KEY")
+        ? "azure"
+        : optional("ELEVENLABS_API_KEY")
+          ? "elevenlabs"
+          : optional("OPENAI_API_KEY")
+            ? "openai"
+            : "browser"
     ),
+    azure: {
+      speechKey: optional("AZURE_SPEECH_KEY"),
+      speechRegion: optional("AZURE_SPEECH_REGION", "eastus"),
+      speechVoice: optional("AZURE_SPEECH_VOICE", "he-IL-HilaNeural"),
+    },
     elevenLabsApiKey: optional("ELEVENLABS_API_KEY"),
     elevenLabsVoiceId: optional("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb"),
     elevenLabsModel: optional("ELEVENLABS_MODEL", "eleven_multilingual_v2"),

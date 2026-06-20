@@ -62,6 +62,7 @@ test("gmail scan item maps to needs_review invoice candidate", () => {
 });
 
 test("resolveNatalieVoiceSynthesizeProvider maps supported config providers", () => {
+  assert.equal(resolveNatalieVoiceSynthesizeProvider("azure"), "azure");
   assert.equal(resolveNatalieVoiceSynthesizeProvider("elevenlabs"), "elevenlabs");
   assert.equal(resolveNatalieVoiceSynthesizeProvider("openai"), "openai");
   assert.equal(resolveNatalieVoiceSynthesizeProvider("browser"), null);
@@ -71,6 +72,11 @@ test("resolveNatalieVoiceSynthesizeProvider maps supported config providers", ()
 test("buildNatalieVoiceCredentials maps aiVoice config fields for synthesizeSpeech", () => {
   assert.deepEqual(
     buildNatalieVoiceCredentials({
+      azure: {
+        speechKey: "azure-key",
+        speechRegion: "eastus",
+        speechVoice: "he-IL-HilaNeural",
+      },
       elevenLabsApiKey: "el-key",
       elevenLabsVoiceId: "voice-1",
       elevenLabsModel: "eleven_multilingual_v2",
@@ -79,6 +85,9 @@ test("buildNatalieVoiceCredentials maps aiVoice config fields for synthesizeSpee
       openAiVoice: "nova",
     }),
     {
+      azureSpeechKey: "azure-key",
+      azureSpeechRegion: "eastus",
+      azureSpeechVoice: "he-IL-HilaNeural",
       elevenLabsApiKey: "el-key",
       elevenLabsVoiceId: "voice-1",
       elevenLabsModel: "eleven_multilingual_v2",
