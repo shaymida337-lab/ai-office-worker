@@ -143,6 +143,11 @@ const initialMessages: WidgetMessage[] = [
     text: "שלום, אני נטלי. אפשר לשאול אותי על חשבוניות, משימות, תשלומים או מה דורש טיפול היום.",
   },
   {
+    id: "welcome-mic-tip",
+    sender: "natalie",
+    text: "טיפ קטן: בפעם הראשונה שתלחצו על המיקרופון 🎤, הטלפון יבקש רשות להשתמש בו — פשוט אשרו, וזהו.",
+  },
+  {
     id: "example-user",
     sender: "user",
     text: "מה דחוף היום?",
@@ -238,7 +243,6 @@ export function NatalieAssistantWidget() {
   const [sending, setSending] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [pendingAudioPlay, setPendingAudioPlay] = useState(false);
-  const [micIntroSeen, setMicIntroSeen] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -611,20 +615,6 @@ export function NatalieAssistantWidget() {
       return;
     }
     if (micState === "transcribing") return;
-
-    if (!micIntroSeen) {
-      setMessages((current) => [
-        ...current,
-        {
-          id: `natalie-mic-intro-${Date.now()}`,
-          sender: "natalie",
-          text: "רק רגע — כדי שאוכל לשמוע אותך, צריך לאשר שימוש במיקרופון. תכף תוקפץ בקשה קטנה, פשוט אשרו אותה וזהו. 🎤",
-        },
-      ]);
-      setMicIntroSeen(true);
-      return;
-    }
-
     void startAudioRecording();
   }
 
