@@ -15,6 +15,8 @@ const VAD_MIN_SPEECH_MS = 400;
 const VAD_MAX_RECORDING_MS = 30000;
 const VAD_CHECK_INTERVAL_MS = 100;
 const VAD_DEBUG_LOG_INTERVAL_MS = 300;
+const TTS_UNLOCK_SILENT_AUDIO =
+  "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
 
 function pickRecorderMimeType(): string {
   if (typeof MediaRecorder === "undefined") return "";
@@ -243,7 +245,8 @@ export function NatalieAssistantWidget() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const recorderMimeTypeRef = useRef("audio/webm");
-  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsAudioObjectUrlRef = useRef<string | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -277,6 +280,46 @@ export function NatalieAssistantWidget() {
       void audioContext.close().catch(() => {
         // Ignore AudioContext close errors during cleanup.
       });
+    }
+  }
+
+  function getTtsAudioElement(): HTMLAudioElement {
+    if (!ttsAudioRef.current) {
+      ttsAudioRef.current = new Audio();
+    }
+    return ttsAudioRef.current;
+  }
+
+  function revokeTtsObjectUrl() {
+    if (ttsAudioObjectUrlRef.current) {
+      URL.revokeObjectURL(ttsAudioObjectUrlRef.current);
+      ttsAudioObjectUrlRef.current = null;
+    }
+  }
+
+  function unlockTtsAudioInUserGesture() {
+    try {
+      const audio = getTtsAudioElement();
+      audio.muted = true;
+      audio.src = TTS_UNLOCK_SILENT_AUDIO;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        void playPromise
+          .then(() => {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.muted = false;
+            if (audio.src === TTS_UNLOCK_SILENT_AUDIO) {
+              audio.removeAttribute("src");
+              audio.load();
+            }
+          })
+          .catch(() => {
+            audio.muted = false;
+          });
+      }
+    } catch {
+      // Ignore unlock errors — tap-to-play fallback remains available.
     }
   }
 
@@ -506,6 +549,7 @@ export function NatalieAssistantWidget() {
     recordedChunksRef.current = [];
 
     const vadAvailable = prepareAudioContextInUserGesture();
+    unlockTtsAudioInUserGesture();
 
     try {
       if (vadAvailable && audioContextRef.current) {
@@ -621,17 +665,20 @@ export function NatalieAssistantWidget() {
   }
 
   function releaseCurrentAudio() {
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
-      URL.revokeObjectURL(currentAudioRef.current.src);
-      currentAudioRef.current = null;
+    const audio = ttsAudioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.onended = null;
+      revokeTtsObjectUrl();
+      audio.removeAttribute("src");
+      audio.load();
     }
     setPendingAudioPlay(false);
   }
 
   async function playPendingAudio() {
-    const audio = currentAudioRef.current;
-    if (!audio) {
+    const audio = ttsAudioRef.current;
+    if (!audio?.src) {
       setPendingAudioPlay(false);
       return;
     }
@@ -666,14 +713,14 @@ export function NatalieAssistantWidget() {
       }
 
       const blob = await response.blob();
-      const audio = new Audio(URL.createObjectURL(blob));
-      currentAudioRef.current = audio;
+      const audio = getTtsAudioElement();
+      revokeTtsObjectUrl();
+      const objectUrl = URL.createObjectURL(blob);
+      ttsAudioObjectUrlRef.current = objectUrl;
+      audio.src = objectUrl;
       audio.onended = () => {
-        if (currentAudioRef.current === audio) {
-          URL.revokeObjectURL(audio.src);
-          currentAudioRef.current = null;
-          setPendingAudioPlay(false);
-        }
+        revokeTtsObjectUrl();
+        setPendingAudioPlay(false);
       };
 
       try {
