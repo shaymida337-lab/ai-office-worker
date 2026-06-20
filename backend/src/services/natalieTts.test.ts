@@ -86,7 +86,7 @@ test("synthesizeSpeech calls ElevenLabs with correct URL, headers, and body on s
   assert.equal(calls.length, 1);
   assert.equal(
     calls[0]?.url,
-    `https://api.elevenlabs.io/v1/text-to-speech/${elevenLabsCredentials.elevenLabsVoiceId}`
+    `https://api.elevenlabs.io/v1/text-to-speech/${elevenLabsCredentials.elevenLabsVoiceId}?output_format=mp3_44100_128`
   );
 
   const headers = calls[0]?.init?.headers as Record<string, string>;
@@ -95,6 +95,7 @@ test("synthesizeSpeech calls ElevenLabs with correct URL, headers, and body on s
   const body = JSON.parse(String(calls[0]?.init?.body));
   assert.equal(body.text, "שלום נטלי");
   assert.equal(body.model_id, elevenLabsCredentials.elevenLabsModel);
+  assert.equal(body.output_format, undefined);
 });
 
 test("synthesizeSpeech returns ok:false 503 when openai provider lacks openAiApiKey", async () => {

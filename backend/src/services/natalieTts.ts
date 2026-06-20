@@ -78,8 +78,9 @@ async function synthesizeWithElevenLabs(
 
   const voiceId = credentials.elevenLabsVoiceId?.trim() || DEFAULT_ELEVENLABS_VOICE_ID;
   const model = credentials.elevenLabsModel?.trim() || DEFAULT_ELEVENLABS_MODEL;
+  const url = `${ELEVENLABS_BASE_URL}/${voiceId}?output_format=mp3_44100_128`;
 
-  const response = await fetchFn(`${ELEVENLABS_BASE_URL}/${voiceId}`, {
+  const response = await fetchFn(url, {
     method: "POST",
     headers: {
       "xi-api-key": elevenLabsApiKey,
@@ -89,7 +90,6 @@ async function synthesizeWithElevenLabs(
     body: JSON.stringify({
       text,
       model_id: model,
-      output_format: "mp3_44100_128",
     }),
   });
 
