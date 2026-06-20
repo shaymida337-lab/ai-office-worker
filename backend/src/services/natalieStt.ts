@@ -58,7 +58,7 @@ export async function transcribeAudio(
 
   const normalizedMimeType = mimeType.split(";")[0]?.trim() || "application/octet-stream";
   const form = new FormData();
-  const blob = new Blob([audioBuffer], { type: normalizedMimeType });
+  const blob = new Blob([new Uint8Array(audioBuffer)], { type: normalizedMimeType });
   form.append("file", blob, `recording.${extensionForMimeType(normalizedMimeType)}`);
   form.append("model", WHISPER_MODEL);
   form.append("language", WHISPER_LANGUAGE);
