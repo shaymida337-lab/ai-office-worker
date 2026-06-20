@@ -93,7 +93,7 @@ async function synthesizeWithElevenLabs(
     }),
   });
 
-  return toSynthesizeResult(response);
+  return toSynthesizeResult(response, "elevenlabs");
 }
 
 async function synthesizeWithOpenAi(
@@ -127,10 +127,13 @@ async function synthesizeWithOpenAi(
     }),
   });
 
-  return toSynthesizeResult(response);
+  return toSynthesizeResult(response, "openai");
 }
 
-async function toSynthesizeResult(response: Response): Promise<SynthesizeResult> {
+async function toSynthesizeResult(
+  response: Response,
+  provider: TtsProvider
+): Promise<SynthesizeResult> {
   if (!response.ok) {
     let errorText = response.statusText;
     try {
@@ -138,6 +141,11 @@ async function toSynthesizeResult(response: Response): Promise<SynthesizeResult>
     } catch {
       // Keep statusText when response body cannot be read.
     }
+    console.error("[natalieTts] provider error", {
+      provider,
+      status: response.status,
+      body: errorText,
+    });
     return {
       ok: false,
       status: 502,
