@@ -618,7 +618,7 @@ export function NatalieAssistantWidget() {
         {
           id: `natalie-mic-intro-${Date.now()}`,
           sender: "natalie",
-          text: "כדי שאשמע אותך, הדפדפן יבקש רשות לגישה למיקרופון — פשוט לחץ 'אישור' 🎤. צריך לעשות את זה רק פעם אחת.",
+          text: "רק רגע — כדי שאוכל לשמוע אותך, צריך לאשר שימוש במיקרופון. תכף תוקפץ בקשה קטנה, פשוט אשרו אותה וזהו. 🎤",
         },
       ]);
       setMicIntroSeen(true);
