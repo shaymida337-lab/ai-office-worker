@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Mic, SendHorizontal, Volume2, VolumeX, X } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, API_URL, getToken } from "@/lib/api";
 
 type SpeechRecognitionConstructor = new () => SpeechRecognition;
 type SpeechRecognition = {
@@ -207,6 +207,7 @@ export function NatalieAssistantWidget() {
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     messagesRef.current?.scrollTo({
@@ -238,10 +239,8 @@ export function NatalieAssistantWidget() {
           (window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor }).webkitSpeechRecognition)
       : undefined;
 
-  function speakNatalieReply(text: string) {
+  function speakWithBrowser(cleanText: string) {
     try {
-      const cleanText = text.trim();
-      if (!voiceEnabled || !cleanText || cleanText === "נטלי חושבת...") return;
       if (typeof window === "undefined" || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return;
 
       window.speechSynthesis.cancel();
@@ -253,7 +252,53 @@ export function NatalieAssistantWidget() {
     }
   }
 
+  async function speakNatalieReply(text: string) {
+    const cleanText = text.trim();
+    if (!voiceEnabled || !cleanText || cleanText === "נטלי חושבת...") return;
+
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      URL.revokeObjectURL(currentAudioRef.current.src);
+      currentAudioRef.current = null;
+    }
+
+    try {
+      const token = getToken();
+      const response = await fetch(`${API_URL}/api/natalie/voice`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ text: cleanText }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Natalie voice failed: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const audio = new Audio(URL.createObjectURL(blob));
+      currentAudioRef.current = audio;
+      audio.onended = () => {
+        if (currentAudioRef.current === audio) {
+          URL.revokeObjectURL(audio.src);
+          currentAudioRef.current = null;
+        }
+      };
+      await audio.play();
+    } catch (err) {
+      console.error("[natalie] server voice failed, falling back to browser", err);
+      speakWithBrowser(cleanText);
+    }
+  }
+
   function stopCurrentSpeech() {
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      URL.revokeObjectURL(currentAudioRef.current.src);
+      currentAudioRef.current = null;
+    }
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
@@ -309,7 +354,7 @@ export function NatalieAssistantWidget() {
 
     try {
       const answer = result.answer?.trim() || "לא מצאתי תשובה לפי הנתונים הקיימים כרגע.";
-      speakNatalieReply(answer);
+      void speakNatalieReply(answer);
       setMessages((current) =>
         current.map((message) =>
           message.id === loadingMessage.id
