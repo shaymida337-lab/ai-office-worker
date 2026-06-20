@@ -240,6 +240,7 @@ export function NatalieAssistantWidget() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [pendingAudioPlay, setPendingAudioPlay] = useState(false);
   const [debugLog, setDebugLog] = useState<string[]>([]);
+  const [micIntroSeen, setMicIntroSeen] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -678,6 +679,20 @@ export function NatalieAssistantWidget() {
       return;
     }
     if (micState === "transcribing") return;
+
+    if (!micIntroSeen) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: `natalie-mic-intro-${Date.now()}`,
+          sender: "natalie",
+          text: "כדי שאשמע אותך, הדפדפן יבקש רשות לגישה למיקרופון — פשוט לחץ 'אישור' 🎤. צריך לעשות את זה רק פעם אחת.",
+        },
+      ]);
+      setMicIntroSeen(true);
+      return;
+    }
+
     void startAudioRecording();
   }
 
