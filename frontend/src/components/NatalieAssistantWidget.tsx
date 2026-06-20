@@ -204,6 +204,7 @@ export function NatalieAssistantWidget() {
   const [messages, setMessages] = useState<WidgetMessage[]>(initialMessages);
   const [sending, setSending] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [pendingAudioPlay, setPendingAudioPlay] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -252,15 +253,35 @@ export function NatalieAssistantWidget() {
     }
   }
 
-  async function speakNatalieReply(text: string) {
-    const cleanText = text.trim();
-    if (!voiceEnabled || !cleanText || cleanText === "נטלי חושבת...") return;
-
+  function releaseCurrentAudio() {
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
       URL.revokeObjectURL(currentAudioRef.current.src);
       currentAudioRef.current = null;
     }
+    setPendingAudioPlay(false);
+  }
+
+  async function playPendingAudio() {
+    const audio = currentAudioRef.current;
+    if (!audio) {
+      setPendingAudioPlay(false);
+      return;
+    }
+
+    try {
+      await audio.play();
+      setPendingAudioPlay(false);
+    } catch (err) {
+      console.error("[natalie] audio playback blocked", err);
+    }
+  }
+
+  async function speakNatalieReply(text: string) {
+    const cleanText = text.trim();
+    if (!voiceEnabled || !cleanText || cleanText === "נטלי חושבת...") return;
+
+    releaseCurrentAudio();
 
     try {
       const token = getToken();
@@ -284,21 +305,26 @@ export function NatalieAssistantWidget() {
         if (currentAudioRef.current === audio) {
           URL.revokeObjectURL(audio.src);
           currentAudioRef.current = null;
+          setPendingAudioPlay(false);
         }
       };
-      await audio.play();
+
+      try {
+        await audio.play();
+        setPendingAudioPlay(false);
+      } catch (err) {
+        console.error("[natalie] audio playback blocked", err);
+        setPendingAudioPlay(true);
+      }
     } catch (err) {
       console.error("[natalie] server voice failed, falling back to browser", err);
+      releaseCurrentAudio();
       speakWithBrowser(cleanText);
     }
   }
 
   function stopCurrentSpeech() {
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
-      URL.revokeObjectURL(currentAudioRef.current.src);
-      currentAudioRef.current = null;
-    }
+    releaseCurrentAudio();
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
@@ -745,6 +771,20 @@ export function NatalieAssistantWidget() {
               </div>
             ))}
           </div>
+
+          {pendingAudioPlay && voiceEnabled && (
+            <div className="shrink-0 border-t border-[#e6eaf2] bg-[#f8faff] px-3 py-2">
+              <button
+                type="button"
+                onClick={() => void playPendingAudio()}
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#d7def0] bg-white px-3 py-2 text-[13px] font-extrabold text-[#1d5bff] transition hover:border-[#1d5bff] hover:bg-[#e8eeff]"
+                aria-label="הקש כדי לשמוע את תשובת נטלי"
+              >
+                <Volume2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>▶ הקש כדי לשמוע</span>
+              </button>
+            </div>
+          )}
 
           <form onSubmit={onSubmit} className="shrink-0 border-t border-[#e6eaf2] bg-white p-3">
             <div className="flex items-center gap-2">
