@@ -31,6 +31,12 @@ export default function InvoiceDraftsPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
+  const [bulkIssueProgress, setBulkIssueProgress] = useState<{ current: number; total: number } | null>(null);
+
+  const pendingDrafts = useMemo(
+    () => drafts.filter((draft) => !draft.greenInvoiceDocumentId),
+    [drafts]
+  );
 
   const summary = useMemo(() => {
     const totalAmount = drafts.reduce((sum, draft) => sum + draft.amount, 0);
@@ -100,6 +106,59 @@ export default function InvoiceDraftsPage() {
     }
   }
 
+  async function issueAllUnissuedDrafts() {
+    const pending = drafts.filter((draft) => !draft.greenInvoiceDocumentId);
+    if (pending.length === 0) return;
+
+    const hasDuplicates = pending.some((draft) => draft.duplicateOf.length > 0);
+    if (hasDuplicates) {
+      const proceedDespiteDuplicates = window.confirm(
+        "⚠️ זוהו כפילויות אפשריות ברשימה. מומלץ לבדוק לפני הנפקה המונית. להמשיך בכל זאת?"
+      );
+      if (!proceedDespiteDuplicates) return;
+    }
+
+    const totalCount = pending.length;
+    const totalAmount = pending.reduce((sum, draft) => sum + draft.amount, 0);
+    const confirmed = window.confirm(
+      `אתה עומד להנפיק ${totalCount} חשבוניות בסך ${totalAmount.toLocaleString("he-IL")}₪ בסביבת בדיקה (sandbox). פעולה זו תיצור מסמכים. להמשיך?`
+    );
+    if (!confirmed) return;
+
+    setMessage("");
+    setDocumentLink(null);
+    setBulkIssueProgress({ current: 0, total: totalCount });
+
+    let successCount = 0;
+    const failedCustomers: string[] = [];
+
+    for (let index = 0; index < pending.length; index++) {
+      const draft = pending[index];
+      setBulkIssueProgress({ current: index + 1, total: totalCount });
+      try {
+        const result = await issueDraft(draft.id);
+        if (result.success) {
+          successCount++;
+        } else {
+          failedCustomers.push(draft.customerName);
+        }
+      } catch {
+        failedCustomers.push(draft.customerName);
+      }
+    }
+
+    setBulkIssueProgress(null);
+
+    let summaryMessage = `הונפקו בהצלחה ${successCount} מתוך ${totalCount}.`;
+    if (failedCustomers.length > 0) {
+      summaryMessage += ` נכשלו ${failedCustomers.length}: ${failedCustomers.join(", ")}.`;
+    }
+    setMessage(summaryMessage);
+    await loadDrafts();
+  }
+
+  const bulkIssuing = bulkIssueProgress !== null;
+
   return (
     <div className="container">
       <Nav />
@@ -125,6 +184,21 @@ export default function InvoiceDraftsPage() {
             <div className="text-sm font-bold text-[#6B7280]">סכום כולל</div>
             <div className="mt-1 text-2xl font-black text-[#111827]">₪{summary.totalAmount.toLocaleString("he-IL")}</div>
           </div>
+        </div>
+      )}
+
+      {!loading && drafts.length > 0 && (
+        <div className="mb-6">
+          <button
+            className="min-h-[44px] rounded-xl border border-emerald-700 bg-emerald-700 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={pendingDrafts.length === 0 || bulkIssuing || issuingId !== null}
+            onClick={() => void issueAllUnissuedDrafts()}
+            type="button"
+          >
+            {bulkIssueProgress
+              ? `מנפיק ${bulkIssueProgress.current} מתוך ${bulkIssueProgress.total}...`
+              : "הנפק את כל מי שלא הונפק"}
+          </button>
         </div>
       )}
 
@@ -173,6 +247,7 @@ export default function InvoiceDraftsPage() {
               <IssueDraftControl
                 draft={draft}
                 issuingId={issuingId}
+                bulkIssuing={bulkIssuing}
                 onIssue={() => issueDraftInSandbox(draft)}
               />
             </div>
@@ -220,6 +295,7 @@ export default function InvoiceDraftsPage() {
                     compact
                     draft={draft}
                     issuingId={issuingId}
+                    bulkIssuing={bulkIssuing}
                     onIssue={() => issueDraftInSandbox(draft)}
                   />
                 </td>
@@ -268,11 +344,13 @@ function DuplicateWarning({ draft, compact = false }: { draft: InvoiceDraft; com
 function IssueDraftControl({
   draft,
   issuingId,
+  bulkIssuing,
   onIssue,
   compact = false,
 }: {
   draft: InvoiceDraft;
   issuingId: string | null;
+  bulkIssuing: boolean;
   onIssue: () => void;
   compact?: boolean;
 }) {
@@ -294,7 +372,7 @@ function IssueDraftControl({
           ? "min-h-[32px] w-full truncate rounded-lg bg-emerald-600 px-1 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
           : "min-h-[44px] w-full rounded-xl border border-emerald-600 bg-emerald-600 px-3 py-2 text-center text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
       }
-      disabled={issuingId === draft.id}
+      disabled={issuingId === draft.id || bulkIssuing}
       onClick={onIssue}
       type="button"
     >
