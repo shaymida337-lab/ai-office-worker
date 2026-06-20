@@ -5,23 +5,38 @@ import { Mic, SendHorizontal, Volume2, VolumeX, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { apiFetch, API_URL, getToken } from "@/lib/api";
 
-type SpeechRecognitionConstructor = new () => SpeechRecognition;
-type SpeechRecognition = {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-};
-type SpeechRecognitionEvent = {
-  results: ArrayLike<{
-    0: { transcript: string };
-    isFinal: boolean;
-  }>;
-};
+type MicState = "idle" | "recording" | "transcribing";
+
+const RECORDER_MIME_CANDIDATES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"];
+
+function pickRecorderMimeType(): string {
+  if (typeof MediaRecorder === "undefined") return "";
+  for (const candidate of RECORDER_MIME_CANDIDATES) {
+    if (MediaRecorder.isTypeSupported(candidate)) return candidate;
+  }
+  return "";
+}
+
+function extensionForRecordingMimeType(mimeType: string): string {
+  const base = mimeType.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (base === "audio/mp4") return "m4a";
+  if (base === "audio/webm") return "webm";
+  if (base === "audio/mpeg") return "mp3";
+  if (base === "audio/ogg") return "ogg";
+  return "audio";
+}
+
+function releaseMediaStream(stream: MediaStream | null) {
+  stream?.getTracks().forEach((track) => track.stop());
+}
+
+function isMicRecordingSupported(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    Boolean(navigator.mediaDevices?.getUserMedia) &&
+    typeof MediaRecorder !== "undefined"
+  );
+}
 
 type NatalieInvoiceSummary = {
   id: string;
@@ -127,11 +142,6 @@ const hiddenPrefixes = [
   "/social/approve",
 ];
 
-function isIOS() {
-  if (typeof navigator === "undefined") return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-}
-
 function shouldShowWidget(pathname: string) {
   if (pathname === "/" || pathname === "/natalie") return false;
   return !hiddenPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
@@ -198,7 +208,7 @@ function formatIssueInvoiceAmount(amount: unknown): string {
 export function NatalieAssistantWidget() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const [listening, setListening] = useState(false);
+  const [micState, setMicState] = useState<MicState>("idle");
   const [speechError, setSpeechError] = useState("");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<WidgetMessage[]>(initialMessages);
@@ -207,8 +217,31 @@ export function NatalieAssistantWidget() {
   const [pendingAudioPlay, setPendingAudioPlay] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recorderMimeTypeRef = useRef("audio/webm");
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  function releaseRecordingResources() {
+    const recorder = mediaRecorderRef.current;
+    if (recorder) {
+      recorder.onstop = null;
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      try {
+        if (recorder.state !== "inactive") {
+          recorder.stop();
+        }
+      } catch {
+        // Ignore cleanup errors from already-ended recording sessions.
+      }
+    }
+    mediaRecorderRef.current = null;
+    releaseMediaStream(mediaStreamRef.current);
+    mediaStreamRef.current = null;
+    recordedChunksRef.current = [];
+  }
 
   useEffect(() => {
     messagesRef.current?.scrollTo({
@@ -223,22 +256,147 @@ export function NatalieAssistantWidget() {
 
   useEffect(() => {
     return () => {
-      try {
-        recognitionRef.current?.stop();
-      } catch {
-        // Ignore cleanup errors from already-ended browser speech sessions.
-      }
-      recognitionRef.current = null;
+      releaseRecordingResources();
     };
   }, []);
 
   if (!shouldShowWidget(pathname)) return null;
 
-  const SpeechRecognitionApi =
-    typeof window !== "undefined"
-      ? ((window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor }).SpeechRecognition ??
-          (window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor }).webkitSpeechRecognition)
-      : undefined;
+  async function transcribeRecordedAudio(blob: Blob, mimeType: string) {
+    try {
+      const token = getToken();
+      const formData = new FormData();
+      const extension = extensionForRecordingMimeType(mimeType);
+      formData.append("audio", blob, `recording.${extension}`);
+
+      const response = await fetch(`${API_URL}/api/natalie/transcribe`, {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error || `Transcription failed: ${response.status}`);
+      }
+
+      const payload = (await response.json()) as { text?: string };
+      const text = payload.text?.trim();
+      if (!text) {
+        throw new Error("Empty transcription");
+      }
+
+      setInput(text);
+      setSpeechError("");
+    } catch (err) {
+      console.error("[natalie] transcription failed", err);
+      setSpeechError(
+        err instanceof Error && err.message.includes("Transcription failed")
+          ? "לא הצלחתי לתמלל את ההקלטה כרגע. נסה שוב או הקלד."
+          : "לא הצלחתי לתמלל את ההקלטה כרגע. נסה שוב או הקלד."
+      );
+    } finally {
+      setMicState("idle");
+    }
+  }
+
+  async function startAudioRecording() {
+    if (micState !== "idle" || sending) return;
+
+    if (!isMicRecordingSupported()) {
+      setSpeechError("הדפדפן לא תומך בהקלטת קול כרגע.");
+      return;
+    }
+
+    setSpeechError("");
+    recordedChunksRef.current = [];
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      const preferredMimeType = pickRecorderMimeType();
+      const recorder = preferredMimeType
+        ? new MediaRecorder(stream, { mimeType: preferredMimeType })
+        : new MediaRecorder(stream);
+      const resolvedMimeType = recorder.mimeType || preferredMimeType || "audio/webm";
+      recorderMimeTypeRef.current = resolvedMimeType;
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const chunks = recordedChunksRef.current;
+        recordedChunksRef.current = [];
+        releaseMediaStream(mediaStreamRef.current);
+        mediaStreamRef.current = null;
+        mediaRecorderRef.current = null;
+
+        const audioBlob = new Blob(chunks, { type: recorderMimeTypeRef.current });
+        if (!audioBlob.size) {
+          setSpeechError("לא התקבלה הקלטה. נסה שוב.");
+          setMicState("idle");
+          return;
+        }
+
+        void transcribeRecordedAudio(audioBlob, recorderMimeTypeRef.current);
+      };
+
+      recorder.onerror = () => {
+        setSpeechError("לא הצלחתי להקליט. נסה שוב.");
+        releaseRecordingResources();
+        setMicState("idle");
+      };
+
+      recorder.start();
+      setMicState("recording");
+    } catch (err) {
+      releaseRecordingResources();
+      setMicState("idle");
+      if (err instanceof DOMException && err.name === "NotAllowedError") {
+        setSpeechError("לא ניתנה הרשאת מיקרופון. אפשר לאשר בהגדרות הדפדפן ולנסות שוב, או להקליד לנטלי.");
+      } else if (err instanceof DOMException && err.name === "NotFoundError") {
+        setSpeechError("לא נמצא מיקרופון במכשיר. אפשר להקליד לנטלי.");
+      } else {
+        setSpeechError("לא הצלחתי להפעיל הקלטה. נסה שוב או הקלד.");
+      }
+    }
+  }
+
+  function stopAudioRecording() {
+    if (micState !== "recording") return;
+
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") {
+      releaseRecordingResources();
+      setMicState("idle");
+      return;
+    }
+
+    setMicState("transcribing");
+    try {
+      recorder.stop();
+    } catch {
+      releaseRecordingResources();
+      setMicState("idle");
+      setSpeechError("לא הצלחתי לעצור את ההקלטה. נסה שוב.");
+    }
+  }
+
+  function handleMicClick() {
+    if (micState === "recording") {
+      stopAudioRecording();
+      return;
+    }
+    if (micState === "transcribing") return;
+    void startAudioRecording();
+  }
 
   function speakWithBrowser(cleanText: string) {
     try {
@@ -546,67 +704,6 @@ export function NatalieAssistantWidget() {
     );
   }
 
-  function getRecognition() {
-    if (recognitionRef.current) return recognitionRef.current;
-    if (!SpeechRecognitionApi) return null;
-
-    const recognition = new SpeechRecognitionApi();
-    recognition.lang = "he-IL";
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .map((result) => result[0]?.transcript ?? "")
-        .join(" ")
-        .trim();
-      setInput(transcript);
-    };
-    recognition.onerror = () => {
-      setSpeechError("לא הצלחתי לשמוע כרגע. נסה שוב.");
-      setListening(false);
-    };
-    recognition.onend = () => {
-      setListening(false);
-    };
-    recognitionRef.current = recognition;
-    return recognitionRef.current;
-  }
-
-  function startSpeechRecognition() {
-    if (listening) return;
-
-    if (isIOS()) {
-      setSpeechError("הקלטה קולית מוגבלת באייפון כרגע — אפשר להקליד לנטלי 🙂");
-      setListening(false);
-      return;
-    }
-
-    if (!SpeechRecognitionApi || sending) {
-      setSpeechError("הדפדפן לא תומך בזיהוי דיבור כרגע.");
-      return;
-    }
-
-    setSpeechError("");
-    const recognition = getRecognition();
-    if (!recognition) {
-      setSpeechError("הדפדפן לא תומך בזיהוי דיבור כרגע.");
-      return;
-    }
-
-    try {
-      setListening(true);
-      recognition.start();
-    } catch {
-      setListening(false);
-      setSpeechError("לא הצלחתי להפעיל הקלטה. נסה שוב או הקלד.");
-    }
-  }
-
-  function stopSpeechRecognition() {
-    recognitionRef.current?.stop();
-    setListening(false);
-  }
-
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     sendMessage();
@@ -790,15 +887,10 @@ export function NatalieAssistantWidget() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={startSpeechRecognition}
-                disabled={(!SpeechRecognitionApi && !isIOS()) || sending}
-                title={
-                  isIOS()
-                    ? "הקלטה קולית מוגבלת באייפון כרגע — אפשר להקליד לנטלי 🙂"
-                    : undefined
-                }
-                className={`grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-[#d7def0] bg-white text-[#1d5bff] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] ${isIOS() ? "opacity-70" : ""}`}
-                aria-label={isIOS() ? "הקלטה קולית לא זמינה באייפון" : "הפעל מצב הקשבה"}
+                onClick={handleMicClick}
+                disabled={!isMicRecordingSupported() || sending || micState === "transcribing"}
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-[#d7def0] bg-white text-[#1d5bff] transition hover:border-[#1d5bff] hover:bg-[#e8eeff]"
+                aria-label={micState === "recording" ? "סיים הקלטה" : "התחל הקלטה קולית"}
               >
                 <Mic className="h-5 w-5" />
               </button>
@@ -820,7 +912,7 @@ export function NatalieAssistantWidget() {
                 <SendHorizontal className="h-5 w-5 rotate-180" />
               </button>
             </div>
-            {speechError && !listening && (
+            {speechError && micState === "idle" && (
               <p className="mt-2 text-sm font-bold text-red-600" role="alert">
                 {speechError}
               </p>
@@ -839,8 +931,8 @@ export function NatalieAssistantWidget() {
         נ
       </button>
 
-      {listening && (
-        <div className="fixed inset-0 z-[180] grid place-items-center bg-[rgba(15,24,48,0.32)] p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="מצב הקשבה">
+      {micState !== "idle" && (
+        <div className="fixed inset-0 z-[180] grid place-items-center bg-[rgba(15,24,48,0.32)] p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="מצב הקלטה">
           <div className="natalie-message-enter w-full max-w-sm rounded-[28px] border border-[#e6eaf2] bg-white p-8 text-center shadow-[0_30px_90px_rgba(20,40,90,0.22)]" dir="rtl">
             <div className="relative mx-auto mb-6 grid h-36 w-36 place-items-center">
               <span className="absolute h-24 w-24 animate-ping rounded-full bg-[#1d5bff]/15" />
@@ -850,17 +942,24 @@ export function NatalieAssistantWidget() {
                 <Mic className="h-10 w-10" />
               </span>
             </div>
-            <h2 className="m-0 text-3xl font-extrabold text-[#0e1116]">מקשיבה…</h2>
+            <h2 className="m-0 text-3xl font-extrabold text-[#0e1116]">
+              {micState === "transcribing" ? "מתמלל…" : "מקליט… (הקש לסיום)"}
+            </h2>
             <p className="mx-auto mt-2 max-w-xs text-base font-semibold leading-7 text-[#6b7686]">
-              דבר בעברית, ואני אמלא את ההודעה בשדה הצ׳אט.
+              {micState === "transcribing"
+                ? "ממירה את ההקלטה לטקסט בעברית."
+                : "דבר בעברית, ואני אמלא את ההודעה בשדה הצ׳אט."}
             </p>
-            {speechError && <p className="mx-auto mt-2 max-w-xs text-sm font-bold text-red-600">{speechError}</p>}
+            {speechError && micState === "recording" && (
+              <p className="mx-auto mt-2 max-w-xs text-sm font-bold text-red-600">{speechError}</p>
+            )}
             <button
               type="button"
-              onClick={stopSpeechRecognition}
-              className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#1d5bff] px-6 py-2.5 text-base font-extrabold text-white shadow-[0_12px_28px_rgba(29,91,255,0.24)] transition hover:bg-[#1746c7]"
+              onClick={stopAudioRecording}
+              disabled={micState === "transcribing"}
+              className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#1d5bff] px-6 py-2.5 text-base font-extrabold text-white shadow-[0_12px_28px_rgba(29,91,255,0.24)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
             >
-              עצור
+              {micState === "transcribing" ? "מתמלל…" : "עצור"}
             </button>
           </div>
         </div>

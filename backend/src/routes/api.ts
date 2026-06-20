@@ -38,9 +38,14 @@ import { buildImportPreview } from "../services/importFilePreview.js";
 import { buildInvoiceDraftsFromRows } from "../services/importInvoiceRows.js";
 import type { ColumnMapping } from "../services/importColumnMapper.js";
 import { synthesizeSpeech } from "../services/natalieTts.js";
+import { transcribeAudio } from "../services/natalieStt.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+const natalieAudioUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
 });
@@ -2796,6 +2801,28 @@ apiRouter.post("/natalie/voice", async (req, res) => {
   res.setHeader("Content-Type", result.contentType);
   res.setHeader("Cache-Control", "private, max-age=3600");
   res.send(result.audio);
+});
+
+apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async (req, res) => {
+  const file = req.file;
+  if (!file?.buffer?.length) {
+    res.status(400).json({ error: "Audio file is required" });
+    return;
+  }
+
+  const result = await transcribeAudio(
+    file.buffer,
+    file.mimetype || "application/octet-stream",
+    { openAiApiKey: config.aiVoice.openAiApiKey },
+    { fetchFn: fetch }
+  );
+
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+
+  res.json({ text: result.text });
 });
 
 apiRouter.get("/message-scans", async (req, res) => {
