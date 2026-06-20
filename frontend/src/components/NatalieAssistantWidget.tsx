@@ -300,6 +300,7 @@ export function NatalieAssistantWidget() {
   function unlockTtsAudioInUserGesture() {
     try {
       const audio = getTtsAudioElement();
+      console.log("[natalie][tts] unlock called", { element: audio });
       audio.muted = true;
       audio.src = TTS_UNLOCK_SILENT_AUDIO;
       const playPromise = audio.play();
@@ -313,13 +314,19 @@ export function NatalieAssistantWidget() {
               audio.removeAttribute("src");
               audio.load();
             }
+            console.log("[natalie][tts] unlock play OK", {
+              muted: audio.muted,
+              paused: audio.paused,
+              src: audio.src || "(empty)",
+            });
           })
-          .catch(() => {
+          .catch((err) => {
             audio.muted = false;
+            console.error("[natalie][tts] unlock play FAILED", err);
           });
       }
-    } catch {
-      // Ignore unlock errors — tap-to-play fallback remains available.
+    } catch (err) {
+      console.error("[natalie][tts] unlock play FAILED", err);
     }
   }
 
@@ -724,9 +731,13 @@ export function NatalieAssistantWidget() {
       };
 
       try {
+        console.log("[natalie][tts] auto play attempt", { element: audio, src: audio.src });
         await audio.play();
+        console.log("[natalie][tts] auto play OK");
         setPendingAudioPlay(false);
       } catch (err) {
+        const domErr = err instanceof DOMException ? { name: err.name, message: err.message } : err;
+        console.error("[natalie][tts] auto play REJECTED", domErr);
         console.error("[natalie] audio playback blocked", err);
         setPendingAudioPlay(true);
       }
