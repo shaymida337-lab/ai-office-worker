@@ -124,7 +124,13 @@ export const config = {
   },
 
   aiVoice: {
-    provider: optional("AI_VOICE_PROVIDER", optional("OPENAI_API_KEY") ? "openai" : "browser"),
+    provider: optional(
+      "AI_VOICE_PROVIDER",
+      optional("ELEVENLABS_API_KEY") ? "elevenlabs" : optional("OPENAI_API_KEY") ? "openai" : "browser"
+    ),
+    elevenLabsApiKey: optional("ELEVENLABS_API_KEY"),
+    elevenLabsVoiceId: optional("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb"),
+    elevenLabsModel: optional("ELEVENLABS_MODEL", "eleven_multilingual_v2"),
     openAiApiKey: optional("OPENAI_API_KEY"),
     openAiModel: optional("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
     openAiVoice: optional("OPENAI_TTS_VOICE", "nova"),

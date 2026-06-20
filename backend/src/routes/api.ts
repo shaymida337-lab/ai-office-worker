@@ -37,6 +37,7 @@ import {
 import { buildImportPreview } from "../services/importFilePreview.js";
 import { buildInvoiceDraftsFromRows } from "../services/importInvoiceRows.js";
 import type { ColumnMapping } from "../services/importColumnMapper.js";
+import { synthesizeSpeech } from "../services/natalieTts.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -2724,6 +2725,68 @@ apiRouter.post("/natalie/complete-task", async (req, res) => {
     console.error("[natalie/complete-task] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Task completion failed" });
   }
+});
+
+export type NatalieVoiceCredentialsInput = {
+  elevenLabsApiKey: string;
+  elevenLabsVoiceId: string;
+  elevenLabsModel: string;
+  openAiApiKey: string;
+  openAiModel: string;
+  openAiVoice: string;
+};
+
+export function resolveNatalieVoiceSynthesizeProvider(
+  provider: string
+): "elevenlabs" | "openai" | null {
+  if (provider === "elevenlabs") return "elevenlabs";
+  if (provider === "openai") return "openai";
+  return null;
+}
+
+export function buildNatalieVoiceCredentials(aiVoice: NatalieVoiceCredentialsInput) {
+  return {
+    elevenLabsApiKey: aiVoice.elevenLabsApiKey,
+    elevenLabsVoiceId: aiVoice.elevenLabsVoiceId,
+    elevenLabsModel: aiVoice.elevenLabsModel,
+    openAiApiKey: aiVoice.openAiApiKey,
+    openAiModel: aiVoice.openAiModel,
+    openAiVoice: aiVoice.openAiVoice,
+  };
+}
+
+apiRouter.post("/natalie/voice", async (req, res) => {
+  const body = req.body as { text?: string };
+  const text = body.text?.trim();
+  if (!text) {
+    res.status(400).json({ error: "Voice text is required" });
+    return;
+  }
+
+  const synthesizeProvider = resolveNatalieVoiceSynthesizeProvider(config.aiVoice.provider);
+  if (!synthesizeProvider) {
+    res.status(503).json({ error: "AI voice is not configured", fallback: "browser_speech" });
+    return;
+  }
+
+  const result = await synthesizeSpeech(
+    { text, provider: synthesizeProvider },
+    buildNatalieVoiceCredentials(config.aiVoice),
+    { fetchFn: fetch }
+  );
+
+  if (!result.ok) {
+    res.status(result.status).json(
+      result.status === 503
+        ? { error: result.error, fallback: "browser_speech" }
+        : { error: result.error }
+    );
+    return;
+  }
+
+  res.setHeader("Content-Type", result.contentType);
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.send(result.audio);
 });
 
 apiRouter.get("/message-scans", async (req, res) => {

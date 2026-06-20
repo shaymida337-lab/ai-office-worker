@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildNatalieVoiceCredentials,
   debugTopPaymentAmountsWhere,
   invoiceReviewStatusFilter,
   mapGmailScanItemToInvoiceCandidate,
+  resolveNatalieVoiceSynthesizeProvider,
 } from "./api.js";
 
 test("debug top-amounts excludes needs_review supplier payments", () => {
@@ -57,4 +59,32 @@ test("gmail scan item maps to needs_review invoice candidate", () => {
   assert.equal(candidate.status, "needs_review");
   assert.equal(candidate.reviewStatus, "needs_review");
   assert.equal(candidate.source, "gmail_scan_item");
+});
+
+test("resolveNatalieVoiceSynthesizeProvider maps supported config providers", () => {
+  assert.equal(resolveNatalieVoiceSynthesizeProvider("elevenlabs"), "elevenlabs");
+  assert.equal(resolveNatalieVoiceSynthesizeProvider("openai"), "openai");
+  assert.equal(resolveNatalieVoiceSynthesizeProvider("browser"), null);
+  assert.equal(resolveNatalieVoiceSynthesizeProvider("unknown"), null);
+});
+
+test("buildNatalieVoiceCredentials maps aiVoice config fields for synthesizeSpeech", () => {
+  assert.deepEqual(
+    buildNatalieVoiceCredentials({
+      elevenLabsApiKey: "el-key",
+      elevenLabsVoiceId: "voice-1",
+      elevenLabsModel: "eleven_multilingual_v2",
+      openAiApiKey: "sk-key",
+      openAiModel: "gpt-4o-mini-tts",
+      openAiVoice: "nova",
+    }),
+    {
+      elevenLabsApiKey: "el-key",
+      elevenLabsVoiceId: "voice-1",
+      elevenLabsModel: "eleven_multilingual_v2",
+      openAiApiKey: "sk-key",
+      openAiModel: "gpt-4o-mini-tts",
+      openAiVoice: "nova",
+    }
+  );
 });
