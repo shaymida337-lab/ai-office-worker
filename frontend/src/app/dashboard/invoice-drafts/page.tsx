@@ -21,6 +21,7 @@ type InvoiceDraft = {
   greenInvoiceDocumentId: string | null;
   approvedAt: string | null;
   createdAt: string;
+  duplicateOf: string[];
 };
 
 export default function InvoiceDraftsPage() {
@@ -161,6 +162,7 @@ export default function InvoiceDraftsPage() {
                 {draft.customerEmail && (
                   <p className="mt-1 min-w-0 break-words text-sm font-semibold leading-6 text-[#6B7280] [overflow-wrap:anywhere]">{draft.customerEmail}</p>
                 )}
+                <DuplicateWarning draft={draft} />
               </div>
               <SourcePill source={draft.source} />
             </div>
@@ -227,6 +229,7 @@ export default function InvoiceDraftsPage() {
                     {draft.customerEmail && (
                       <div className="truncate text-xs font-normal text-[#9CA3AF]" title={draft.customerEmail}>{draft.customerEmail}</div>
                     )}
+                    <DuplicateWarning draft={draft} compact />
                   </div>
                 </td>
                 <td className="min-w-0 px-3 py-4 align-middle text-base font-semibold text-[#111827]">
@@ -242,6 +245,22 @@ export default function InvoiceDraftsPage() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function DuplicateWarning({ draft, compact = false }: { draft: InvoiceDraft; compact?: boolean }) {
+  if (!draft.duplicateOf?.length) return null;
+
+  return (
+    <div
+      className={
+        compact
+          ? "mt-1 rounded border border-orange-300 bg-orange-50 px-1.5 py-0.5 text-[10px] font-bold leading-tight text-orange-800"
+          : "mt-2 rounded-lg border border-orange-300 bg-orange-50 px-2 py-1 text-xs font-bold leading-snug text-orange-800"
+      }
+    >
+      ⚠️ כפילות אפשרית — לקוח וסכום זהים לטיוטה אחרת
     </div>
   );
 }

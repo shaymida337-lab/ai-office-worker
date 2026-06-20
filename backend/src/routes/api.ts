@@ -36,6 +36,7 @@ import {
 } from "../services/outgoingInvoiceDraft.js";
 import { buildImportPreview } from "../services/importFilePreview.js";
 import { buildInvoiceDraftsFromRows } from "../services/importInvoiceRows.js";
+import { findDuplicateDrafts } from "../services/findDuplicateDrafts.js";
 import type { ColumnMapping } from "../services/importColumnMapper.js";
 import { synthesizeSpeech } from "../services/natalieTts.js";
 import { transcribeAudio } from "../services/natalieStt.js";
@@ -2645,7 +2646,21 @@ apiRouter.post("/natalie/invoice-import/save", async (req, res) => {
 apiRouter.get("/natalie/invoice-drafts", async (req, res) => {
   try {
     const drafts = await listOutgoingInvoiceDrafts({ organizationId: req.auth!.organizationId });
-    res.json(drafts);
+    const unissuedDrafts = drafts.filter((draft) => !draft.greenInvoiceDocumentId);
+    const duplicateMap = findDuplicateDrafts(
+      unissuedDrafts.map((draft) => ({
+        id: draft.id,
+        customerName: draft.customerName,
+        customerEmail: draft.customerEmail,
+        amount: draft.amount,
+      }))
+    );
+    res.json(
+      drafts.map((draft) => ({
+        ...draft,
+        duplicateOf: duplicateMap[draft.id] ?? [],
+      }))
+    );
   } catch (err) {
     console.error("[natalie/invoice-drafts] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Invoice drafts list failed" });
