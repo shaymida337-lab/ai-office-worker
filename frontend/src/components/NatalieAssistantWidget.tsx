@@ -127,6 +127,11 @@ const hiddenPrefixes = [
   "/social/approve",
 ];
 
+function isIOS() {
+  if (typeof navigator === "undefined") return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
 function shouldShowWidget(pathname: string) {
   if (pathname === "/" || pathname === "/natalie") return false;
   return !hiddenPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
@@ -497,6 +502,14 @@ export function NatalieAssistantWidget() {
   }
 
   function startSpeechRecognition() {
+    if (listening) return;
+
+    if (isIOS()) {
+      setSpeechError("הקלטה קולית מוגבלת באייפון כרגע — אפשר להקליד לנטלי 🙂");
+      setListening(false);
+      return;
+    }
+
     if (!SpeechRecognitionApi || sending) {
       setSpeechError("הדפדפן לא תומך בזיהוי דיבור כרגע.");
       return;
@@ -509,8 +522,13 @@ export function NatalieAssistantWidget() {
       return;
     }
 
-    setListening(true);
-    recognition.start();
+    try {
+      setListening(true);
+      recognition.start();
+    } catch {
+      setListening(false);
+      setSpeechError("לא הצלחתי להפעיל הקלטה. נסה שוב או הקלד.");
+    }
   }
 
   function stopSpeechRecognition() {
@@ -688,9 +706,14 @@ export function NatalieAssistantWidget() {
               <button
                 type="button"
                 onClick={startSpeechRecognition}
-                disabled={!SpeechRecognitionApi || sending}
-                className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-[#d7def0] bg-white text-[#1d5bff] transition hover:border-[#1d5bff] hover:bg-[#e8eeff]"
-                aria-label="הפעל מצב הקשבה"
+                disabled={(!SpeechRecognitionApi && !isIOS()) || sending}
+                title={
+                  isIOS()
+                    ? "הקלטה קולית מוגבלת באייפון כרגע — אפשר להקליד לנטלי 🙂"
+                    : undefined
+                }
+                className={`grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-[#d7def0] bg-white text-[#1d5bff] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] ${isIOS() ? "opacity-70" : ""}`}
+                aria-label={isIOS() ? "הקלטה קולית לא זמינה באייפון" : "הפעל מצב הקשבה"}
               >
                 <Mic className="h-5 w-5" />
               </button>
@@ -712,6 +735,11 @@ export function NatalieAssistantWidget() {
                 <SendHorizontal className="h-5 w-5 rotate-180" />
               </button>
             </div>
+            {speechError && !listening && (
+              <p className="mt-2 text-sm font-bold text-red-600" role="alert">
+                {speechError}
+              </p>
+            )}
           </form>
         </section>
       )}
