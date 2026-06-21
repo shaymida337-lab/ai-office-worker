@@ -51,6 +51,8 @@ type BatchStats = {
   processed: number;
   wouldChange: number;
   noChange: number;
+  skippedUntrusted: number;
+  skippedUntrustedReasons: Record<string, number>;
   failed: number;
   applied: number;
   applySucceeded: number;
@@ -233,11 +235,21 @@ async function processOneRecord(record: FlaggedRecord, apply: boolean, stats: Ba
     return;
   }
 
+  if (!preview.trustworthy) {
+    stats.skippedUntrusted++;
+    const reason = preview.skipReason ?? "unknown";
+    stats.skippedUntrustedReasons[reason] = (stats.skippedUntrustedReasons[reason] ?? 0) + 1;
+    log(
+      `[dry-run] ${record.table} id=${record.id} wouldChange=true trustworthy=false skipReason=${reason} before={${formatSnapshot(preview.before)}} after={${formatSnapshot(preview.after)}}`
+    );
+    return;
+  }
+
   stats.wouldChange++;
 
   if (!apply) {
     log(
-      `[dry-run] ${record.table} id=${record.id} wouldChange=true before={${formatSnapshot(preview.before)}} after={${formatSnapshot(preview.after)}}`
+      `[dry-run] ${record.table} id=${record.id} wouldChange=true trustworthy=true before={${formatSnapshot(preview.before)}} after={${formatSnapshot(preview.after)}}`
     );
     return;
   }
@@ -247,7 +259,7 @@ async function processOneRecord(record: FlaggedRecord, apply: boolean, stats: Ba
   if (applied.updated) stats.applySucceeded++;
 
   log(
-    `[apply] ${record.table} id=${record.id} updated=${applied.updated} before={${formatSnapshot(applied.before)}} after={${formatSnapshot(applied.after)}}`
+    `[apply] ${record.table} id=${record.id} updated=${applied.updated} skipReason=${applied.skipReason ?? "none"} before={${formatSnapshot(applied.before)}} after={${formatSnapshot(applied.after)}}`
   );
 }
 
@@ -317,15 +329,21 @@ function printSummary(stats: BatchStats, mode: string) {
   log(`Candidates (reprocessable): ${stats.candidatesTotal}`);
   log(`Skipped upfront (no Gmail link): ${stats.skippedNoGmailLink}`);
   log(`Processed (dry-run or apply attempt): ${stats.processed}`);
-  log(`Would change (needs fix): ${stats.wouldChange}`);
+  log(`Would change (trusted, needs fix): ${stats.wouldChange}`);
   log(`No change needed (skipped apply): ${stats.noChange}`);
+  log(`Skipped untrusted (would change but not applied): ${stats.skippedUntrusted}`);
+  if (stats.skippedUntrusted > 0) {
+    for (const [reason, count] of Object.entries(stats.skippedUntrustedReasons).sort((a, b) => b[1] - a[1])) {
+      log(`  skipReason=${reason}: ${count}`);
+    }
+  }
   log(`Failed: ${stats.failed}`);
   log(`Applied (dryRun:false calls): ${stats.applied}`);
   log(`Apply succeeded (updated=true): ${stats.applySucceeded}`);
   log("");
   log("=== BATCH COMPLETE ===");
   log(
-    `total_processed=${stats.processed} changed=${stats.wouldChange} unchanged=${stats.noChange} failed=${stats.failed}` +
+    `total_processed=${stats.processed} changed=${stats.wouldChange} unchanged=${stats.noChange} skipped_untrusted=${stats.skippedUntrusted} failed=${stats.failed}` +
       (stats.applied > 0 ? ` applied=${stats.applied} apply_succeeded=${stats.applySucceeded}` : "")
   );
 }
@@ -350,6 +368,8 @@ async function main() {
     processed: 0,
     wouldChange: 0,
     noChange: 0,
+    skippedUntrusted: 0,
+    skippedUntrustedReasons: {},
     failed: 0,
     applied: 0,
     applySucceeded: 0,

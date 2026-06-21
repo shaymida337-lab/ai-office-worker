@@ -4,6 +4,12 @@ import {
   fetchAndParseGmailMessageFinancialFields,
   type ParsedGmailFinancialFields,
 } from "./gmail-sync.js";
+import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
+
+const MIN_TRUST_DOCUMENT_YEAR = 2020;
+const LOW_OCR_CONFIDENCE_THRESHOLD = 0.5;
+const GARBLED_SUPPLIER_CHAR_RATIO = 0.3;
+const ALLOWED_SUPPLIER_CHAR = /[\p{Script=Hebrew}a-zA-Z0-9\s]/u;
 
 export type FinancialSnapshot = {
   supplier: string | null;
@@ -30,10 +36,19 @@ export type ReprocessFinancialDocumentResult = {
   before: FinancialSnapshot;
   after: FinancialSnapshot;
   wouldChange: boolean;
+  trustworthy: boolean;
+  skipReason: string | null;
   dryRun: boolean;
   updated: boolean;
   parsedInvoiceNumber: string | null;
 };
+
+export type ReprocessTrustContext = {
+  ocrConfidence?: number | null;
+  amountFromLowConfidenceOcrOnly?: boolean;
+};
+
+export type ReprocessParseTrustHints = ReprocessTrustContext;
 
 type LoadedSource = {
   sourceTable: ReprocessSourceTable;
@@ -188,6 +203,72 @@ export function buildReprocessComparison(before: FinancialSnapshot, after: Finan
     after,
     wouldChange: !financialSnapshotsEqual(before, after),
   };
+}
+
+function isMissingReprocessSupplier(supplier: string | null | undefined) {
+  return !supplier?.trim();
+}
+
+function isMissingReprocessAmount(amount: number | null | undefined) {
+  return amount == null || amount === 0;
+}
+
+function supplierHasGarbledCharacters(supplier: string) {
+  const trimmed = supplier.trim();
+  if (!trimmed) return false;
+  let disallowed = 0;
+  for (const char of trimmed) {
+    if (!ALLOWED_SUPPLIER_CHAR.test(char)) disallowed++;
+  }
+  return disallowed / trimmed.length > GARBLED_SUPPLIER_CHAR_RATIO;
+}
+
+function isDocumentDateOutOfTrustRange(date: Date | null | undefined) {
+  if (!date || Number.isNaN(date.getTime())) return false;
+  const year = date.getUTCFullYear();
+  const maxYear = new Date().getUTCFullYear() + 1;
+  return year < MIN_TRUST_DOCUMENT_YEAR || year > maxYear;
+}
+
+function trustContextFromParsed(parsed: ParsedGmailFinancialFields): ReprocessTrustContext {
+  const hints = parsed as ParsedGmailFinancialFields & ReprocessParseTrustHints;
+  return {
+    ocrConfidence: hints.ocrConfidence,
+    amountFromLowConfidenceOcrOnly: hints.amountFromLowConfidenceOcrOnly,
+  };
+}
+
+export function isReprocessResultTrustworthy(
+  after: FinancialSnapshot,
+  context: ReprocessTrustContext = {}
+): { trustworthy: boolean; reason: string } {
+  const supplier = after.supplier?.trim() ?? "";
+
+  if (supplier && isLikelyJunkSupplierName(supplier)) {
+    return { trustworthy: false, reason: "supplier_still_junk" };
+  }
+
+  if (supplier && supplierHasGarbledCharacters(supplier)) {
+    return { trustworthy: false, reason: "supplier_garbled_ocr" };
+  }
+
+  if (isDocumentDateOutOfTrustRange(after.date)) {
+    return { trustworthy: false, reason: "date_out_of_range" };
+  }
+
+  if (
+    context.amountFromLowConfidenceOcrOnly === true &&
+    context.ocrConfidence != null &&
+    context.ocrConfidence < LOW_OCR_CONFIDENCE_THRESHOLD
+  ) {
+    return { trustworthy: false, reason: "low_confidence_ocr_amount" };
+  }
+
+  if (isMissingReprocessSupplier(after.supplier) && isMissingReprocessAmount(after.amount)) {
+    return { trustworthy: false, reason: "no_improvement" };
+  }
+
+  return { trustworthy: true, reason: "" };
 }
 
 function parsedFieldsToSnapshot(parsed: ParsedGmailFinancialFields): FinancialSnapshot {
@@ -357,8 +438,11 @@ export async function reprocessFinancialDocumentBySource(
   });
   const after = parsedFieldsToSnapshot(parsed);
   const comparison = buildReprocessComparison(source.before, after);
+  const trust = isReprocessResultTrustworthy(after, trustContextFromParsed(parsed));
+  const skipReason = comparison.wouldChange && !trust.trustworthy ? trust.reason : null;
+  const shouldApply = comparison.wouldChange && trust.trustworthy;
 
-  if (!dryRun) {
+  if (!dryRun && shouldApply) {
     await applyInPlaceUpdate(db, source, after);
   }
 
@@ -371,8 +455,10 @@ export async function reprocessFinancialDocumentBySource(
     before: comparison.before,
     after: comparison.after,
     wouldChange: comparison.wouldChange,
+    trustworthy: trust.trustworthy,
+    skipReason,
     dryRun,
-    updated: !dryRun && comparison.wouldChange,
+    updated: !dryRun && shouldApply,
     parsedInvoiceNumber: parsed.invoiceNumber,
   };
 }

@@ -5,6 +5,7 @@ import {
   buildReprocessComparison,
   classifyReprocessSourceCapability,
   financialSnapshotsEqual,
+  isReprocessResultTrustworthy,
   reprocessFinancialDocumentBySource,
   reprocessParamsFromRecordId,
   resolveGmailMessageIdForReprocess,
@@ -53,6 +54,67 @@ test("buildReprocessComparison flags supplier and amount changes", () => {
   assert.equal(comparison.wouldChange, true);
   assert.equal(comparison.before.supplier, "FieldsFromText");
   assert.equal(comparison.after.amount, 486.5);
+});
+
+test("isReprocessResultTrustworthy rejects gibberish supplier", () => {
+  const result = isReprocessResultTrustworthy(
+    buildFinancialSnapshot({
+      supplier: "§§§@@@###",
+      amount: 120,
+      date: new Date("2025-06-01"),
+    })
+  );
+  assert.equal(result.trustworthy, false);
+  assert.equal(result.reason, "supplier_garbled_ocr");
+});
+
+test("isReprocessResultTrustworthy rejects date before 2020", () => {
+  const result = isReprocessResultTrustworthy(
+    buildFinancialSnapshot({
+      supplier: "Acme Ltd",
+      amount: 120,
+      date: new Date("2015-03-01"),
+    })
+  );
+  assert.equal(result.trustworthy, false);
+  assert.equal(result.reason, "date_out_of_range");
+});
+
+test("isReprocessResultTrustworthy accepts Wolt with amount and recent date", () => {
+  const result = isReprocessResultTrustworthy(
+    buildFinancialSnapshot({
+      supplier: "Wolt",
+      amount: 132.65,
+      date: new Date("2026-02-01"),
+    })
+  );
+  assert.equal(result.trustworthy, true);
+  assert.equal(result.reason, "");
+});
+
+test("isReprocessResultTrustworthy rejects when supplier and amount are still empty", () => {
+  const result = isReprocessResultTrustworthy(
+    buildFinancialSnapshot({
+      supplier: null,
+      amount: 0,
+      date: new Date("2025-06-01"),
+    })
+  );
+  assert.equal(result.trustworthy, false);
+  assert.equal(result.reason, "no_improvement");
+});
+
+test("isReprocessResultTrustworthy rejects low-confidence OCR-only amount when context provided", () => {
+  const result = isReprocessResultTrustworthy(
+    buildFinancialSnapshot({
+      supplier: "Wolt",
+      amount: 132.65,
+      date: new Date("2026-02-01"),
+    }),
+    { amountFromLowConfidenceOcrOnly: true, ocrConfidence: 0.32 }
+  );
+  assert.equal(result.trustworthy, false);
+  assert.equal(result.reason, "low_confidence_ocr_amount");
 });
 
 test("reprocessFinancialDocumentBySource dryRun performs no prisma writes", async () => {
@@ -106,6 +168,8 @@ test("reprocessFinancialDocumentBySource dryRun performs no prisma writes", asyn
   assert.equal(result.dryRun, true);
   assert.equal(result.updated, false);
   assert.equal(result.wouldChange, true);
+  assert.equal(result.trustworthy, true);
+  assert.equal(result.skipReason, null);
   assert.equal(result.before.supplier, "FieldsFromText");
   assert.equal(result.before.amount, 0);
   assert.equal(result.after.supplier, "חברת החשמל");
@@ -284,9 +348,57 @@ test("reprocessFinancialDocumentBySource dryRun=false updates in place by id", a
   );
 
   assert.equal(result.updated, true);
+  assert.equal(result.trustworthy, true);
+  assert.equal(result.skipReason, null);
   assert.equal(updates.length, 1);
   assert.equal(updates[0]?.table, "gmailScanItem");
   assert.equal(updates[0]?.id, "gsi-2");
   assert.equal(updates[0]?.data.supplierName, "Netlify");
   assert.equal(updates[0]?.data.amount, 49);
+});
+
+test("reprocessFinancialDocumentBySource dryRun=false skips untrustworthy parse results", async () => {
+  const updates: Array<{ table: string; id: string; data: Record<string, unknown> }> = [];
+  const mockPrisma = {
+    gmailScanItem: {
+      findFirst: async () => ({
+        id: "gsi-bad",
+        gmailMessageId: "gm-bad",
+        emailMessageId: "em-bad",
+        supplierName: "Wolt",
+        amount: 0,
+        occurredAt: new Date("2024-03-01T00:00:00.000Z"),
+      }),
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        updates.push({ table: "gmailScanItem", id: where.id, data });
+      },
+    },
+    invoice: { update: async () => undefined },
+    financialDocumentReview: { update: async () => undefined },
+  };
+
+  const result = await reprocessFinancialDocumentBySource(
+    {
+      organizationId: "org-1",
+      gmailScanItemId: "gsi-bad",
+      dryRun: false,
+    },
+    {
+      prismaClient: mockPrisma as unknown as ReprocessFinancialDocumentDeps["prismaClient"],
+      getGoogleClientsFn: (async () => ({ gmail: {} as never, drive: {} as never, sheets: {} as never, oauth2: {} as never })) as ReprocessFinancialDocumentDeps["getGoogleClientsFn"],
+      parseGmailMessage: async () => ({
+        supplierName: "§§§@@@",
+        amount: 99,
+        finalTotalAmount: 99,
+        documentDate: new Date("2015-01-01T00:00:00.000Z"),
+        invoiceNumber: null,
+      }),
+    }
+  );
+
+  assert.equal(result.wouldChange, true);
+  assert.equal(result.trustworthy, false);
+  assert.equal(result.skipReason, "supplier_garbled_ocr");
+  assert.equal(result.updated, false);
+  assert.equal(updates.length, 0);
 });
