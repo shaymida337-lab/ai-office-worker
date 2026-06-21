@@ -127,6 +127,17 @@ export default function PaymentsPage() {
     return junk;
   }, [allLoadedPayments]);
 
+  const metricPayments = useMemo(() => {
+    const seen = new Set<string>();
+    const regular: Payment[] = [];
+    for (const payment of allLoadedPayments) {
+      if (isJunkPayment(payment) || seen.has(payment.id)) continue;
+      seen.add(payment.id);
+      regular.push(payment);
+    }
+    return regular;
+  }, [allLoadedPayments]);
+
   const monthPaymentsForDisplay = (monthKeyValue: string) => {
     const payments = paymentsByMonth[monthKeyValue] ?? [];
     return payments.filter((payment) => !isJunkPayment(payment));
@@ -202,6 +213,19 @@ export default function PaymentsPage() {
     }
   }
 
+  const now = new Date();
+  const thisMonthPayments = metricPayments.filter((payment) => {
+    const date = new Date(payment.date);
+    return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+  });
+  const paidMetricValue = formatMetricAmountValue(sumPaymentsByCurrency(metricPayments, true));
+  const pendingMetricValue = formatMetricAmountValue(sumPaymentsByCurrency(metricPayments, false));
+  const overdueCount = metricPayments.filter((payment) => {
+    if (payment.paid || !payment.dueDate) return false;
+    const dueDate = new Date(payment.dueDate);
+    return !Number.isNaN(dueDate.getTime()) && dueDate < now;
+  }).length;
+
   return (
     <div className="container">
       <Nav />
@@ -224,6 +248,15 @@ export default function PaymentsPage() {
       {message && (
         <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-base text-ink-primary">
           {message}
+        </div>
+      )}
+
+      {!monthsLoading && (
+        <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" dir="rtl">
+          <Metric label="תשלומי החודש" value={thisMonthPayments.length} tone="text-[#111827]" />
+          <Metric label="ממתין לתשלום" value={pendingMetricValue} tone="text-[#111827]" />
+          <Metric label="שולם" value={paidMetricValue} tone="text-[#111827]" />
+          <Metric label="באיחור" value={overdueCount} tone="text-[#111827]" />
         </div>
       )}
 
@@ -393,6 +426,15 @@ function CollapsePanel({ open, children }: { open: boolean; children: ReactNode 
       aria-hidden={!open}
     >
       <div className="min-h-0 overflow-hidden">{children}</div>
+    </div>
+  );
+}
+
+function Metric({ label, value, tone }: { label: string; value: string | number; tone: string }) {
+  return (
+    <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-sm">
+      <div className="text-sm font-black text-[#111827]">{label}</div>
+      <div className={`mt-2 text-3xl font-black ${tone}`}>{value}</div>
     </div>
   );
 }
@@ -634,6 +676,26 @@ function formatMonthTotalsSummary(totalsByCurrency: Record<string, number>) {
 function formatCurrency(amount: number, currency: string) {
   const symbol = currency === "ILS" || !currency ? "₪" : currency;
   return `${symbol}${amount.toLocaleString("he-IL")}`;
+}
+
+function normalizePaymentCurrency(currency: string | undefined) {
+  const trimmed = currency?.trim();
+  return trimmed || "ILS";
+}
+
+function sumPaymentsByCurrency(payments: Payment[], paid: boolean) {
+  const totals: Record<string, number> = {};
+  for (const payment of payments) {
+    if (payment.paid !== paid) continue;
+    const currency = normalizePaymentCurrency(payment.currency);
+    totals[currency] = (totals[currency] ?? 0) + payment.amount;
+  }
+  return totals;
+}
+
+function formatMetricAmountValue(totalsByCurrency: Record<string, number>) {
+  const { main, extra } = formatMonthTotalsSummary(totalsByCurrency);
+  return extra ? `${main} ${extra}` : main;
 }
 
 function MobileRow({ label, value }: { label: string; value: string }) {
