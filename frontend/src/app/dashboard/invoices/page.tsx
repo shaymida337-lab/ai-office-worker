@@ -1200,10 +1200,35 @@ const JUNK_TECHNICAL_SUBSTRINGS = [
   "nan",
 ];
 
-const JUNK_SINGLE_WORD_TECHNICAL = new Set(["current", "supplier", "address", "name", "value", "text", "field"]);
+const JUNK_SINGLE_WORD_TECHNICAL = new Set([
+  "current",
+  "supplier",
+  "address",
+  "name",
+  "value",
+  "text",
+  "field",
+  "output",
+  "ocr",
+  "ai",
+  "input",
+]);
+
+const JUNK_CONTAINS_PHRASES = [
+  "ocr/ai",
+  "ocr / ai",
+  "ai output",
+  "ocr output",
+  "raw ocr",
+  "rawocr",
+];
+
+function normalizeJunkSupplierName(name: string): string {
+  return name.trim().replace(/^[\s.,:;]+|[\s.,:;]+$/g, "");
+}
 
 function isLikelyJunkSupplierNameLocal(name: string): boolean {
-  const cleaned = name.trim();
+  const cleaned = normalizeJunkSupplierName(name);
   if (!cleaned) return false;
 
   const lower = cleaned.toLowerCase();
@@ -1211,6 +1236,7 @@ function isLikelyJunkSupplierNameLocal(name: string): boolean {
   if (JUNK_UNKNOWN_SUPPLIER_NAMES.has(lower)) return true;
   if (cleaned.length > 60) return true;
   if (/^\d+\.\s/.test(cleaned)) return true;
+  if (JUNK_CONTAINS_PHRASES.some((phrase) => lower.includes(phrase))) return true;
   if (/[()[\]{}=;<>`]/.test(cleaned)) return true;
   if (JUNK_SINGLE_WORD_TECHNICAL.has(lower)) return true;
 
