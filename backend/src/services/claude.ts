@@ -707,7 +707,7 @@ function normalizeAmountValue(value: unknown): number | null {
 }
 
 function isReasonableAmount(amount: number) {
-  return Number.isFinite(amount) && amount > 0 && amount <= MAX_REASONABLE_AMOUNT;
+  return Number.isFinite(amount) && amount > 0 && amount < MAX_REASONABLE_AMOUNT;
 }
 
 function extractDueDate(text: string): string | null {

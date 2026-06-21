@@ -2,15 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { financialDocumentBlockingReason, matchExistingFinancialDocumentCandidate } from "./financialDocuments.js";
 
-test("financial document gate routes amounts over 1M to needs_review", () => {
-  const reason = financialDocumentBlockingReason({
-    supplierName: "OpenAI LLC",
-    invoiceNumber: "INV-2026-1001",
-    totalAmount: 2_000_000,
-    documentDate: "2026-06-01",
-  });
+test("financial document gate routes amounts at or over 1M to needs_review", () => {
+  for (const totalAmount of [1_000_000, 2_000_000]) {
+    const reason = financialDocumentBlockingReason({
+      supplierName: "OpenAI LLC",
+      invoiceNumber: "INV-2026-1001",
+      totalAmount,
+      documentDate: "2026-06-01",
+    });
 
-  assert.match(reason ?? "", /exceeds review threshold/);
+    assert.match(reason ?? "", /exceeds review threshold/, `expected review for amount ${totalAmount}`);
+  }
 });
 
 test("financial document gate accepts otherwise-valid amounts under 1M", () => {

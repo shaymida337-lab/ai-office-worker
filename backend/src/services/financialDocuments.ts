@@ -99,7 +99,7 @@ export function financialDocumentBlockingReason(input: {
   if (!isValidSupplierName(input.supplierName)) return "supplier name missing or invalid";
   if (!input.invoiceNumber?.trim()) return "invoice number missing";
   if (input.totalAmount == null || !Number.isFinite(input.totalAmount) || input.totalAmount <= 0) return "amount missing or invalid";
-  if (input.totalAmount > MAX_REASONABLE_FINANCIAL_AMOUNT) return "amount exceeds review threshold";
+  if (input.totalAmount >= MAX_REASONABLE_FINANCIAL_AMOUNT) return "amount exceeds review threshold";
   if (!parseDate(input.documentDate)) return "invoice date missing or invalid";
   return null;
 }

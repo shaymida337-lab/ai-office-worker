@@ -4201,7 +4201,7 @@ export function extractInvoiceAmount(text: string): { amount: number | null; rej
   const prioritizedPatterns = [
     /(?:סה["']?כ\s+לתשלום|סהכ\s+לתשלום|(?:ה)?סכום\s+לתשלום|יתרה\s+לתשלום)[^\d₪$€]{0,80}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
   ];
-  const patterns = [
+  const keywordPatterns = [
     /(?:סה["']?כ\s*(?:לתשלום)?|סך\s*הכל\s*(?:לתשלום)?|(?:ה)?סכום\s*לתשלום|יתרה\s*לתשלום|לתשלום|כולל\s*מע["']?מ|total\s*(?:due|amount|inc(?:luding)?\s*vat)?|grand\s*total|amount\s*(?:due|paid)?|balance\s*due|subtotal)[^\d₪$€]{0,60}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
     /(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)\s*([0-9][0-9,\s]*(?:[.,][0-9]{1,2})?)\s*(?:סה["']?כ|סך\s*הכל|לתשלום|total|amount)?/gi,
     /₪\s*([0-9][0-9,\s]*(?:\.[0-9]{1,2})?)/g,
@@ -4210,32 +4210,78 @@ export function extractInvoiceAmount(text: string): { amount: number | null; rej
     /([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)\s*(?:ils|nis)/gi,
   ];
   let rejectedReason: string | null = null;
-  const collectAmounts = (amountPatterns: RegExp[], requireReferenceCheck: boolean) => {
-    const amounts: number[] = [];
+  const prioritizedAmounts: number[] = [];
+  const keywordAmounts: number[] = [];
+  const fallbackAmounts: number[] = [];
+
+  const collectAmounts = (
+    amountPatterns: RegExp[],
+    target: number[],
+    options: { requireReferenceCheck: boolean }
+  ) => {
     for (const pattern of amountPatterns) {
       for (const match of normalized.matchAll(pattern)) {
-        if (requireReferenceCheck && hasReferenceNumberContext(normalized, match.index ?? 0, match[0].length)) {
+        const matchIndex = match.index ?? 0;
+        const rawAmount = match[1];
+        if (options.requireReferenceCheck && hasReferenceNumberContext(normalized, matchIndex, match[0].length)) {
           rejectedReason = "parsed amount rejected: nearby reference/document number context";
           continue;
         }
-        const amount = parseAmount(match[1]);
+        if (isLikelyIdentifierNumber(normalized, matchIndex, match[0].length, rawAmount)) {
+          rejectedReason = "parsed amount rejected: looks like identifier not amount";
+          continue;
+        }
+        const amount = parseAmount(rawAmount);
         if (amount !== null) {
           const reason = rejectedDetectedAmountReason(amount, {
-            hasDateContext: hasDateOrYearContext(normalized, match.index ?? 0, match[0].length),
+            hasDateContext: hasDateOrYearContext(normalized, matchIndex, match[0].length),
           });
           if (reason) rejectedReason = reason;
-          else amounts.push(amount);
+          else target.push(amount);
         }
       }
     }
-    return amounts;
   };
 
-  const prioritizedAmounts = collectAmounts(prioritizedPatterns, false);
-  if (prioritizedAmounts.length) return { amount: Math.max(...prioritizedAmounts), rejectedReason };
+  collectAmounts(prioritizedPatterns, prioritizedAmounts, { requireReferenceCheck: false });
+  collectAmounts(keywordPatterns, keywordAmounts, { requireReferenceCheck: true });
 
-  const amounts = collectAmounts(patterns, true);
-  return { amount: amounts.length ? Math.max(...amounts) : null, rejectedReason };
+  const amount =
+    selectExtractedInvoiceAmount(prioritizedAmounts, keywordAmounts, fallbackAmounts);
+  return { amount, rejectedReason };
+}
+
+const IDENTIFIER_LABEL_CONTEXT =
+  /(?:מ\s*ס(?:פר|\')?\s*(?:ח\s*שבון|חשבונית|עוסק)?|מספר\s*חשבון|אסמכתא|ח\.?\s*פ\.?|עוסק\s*מורשה|ת\.?\s*ז\.?|טלפון|phone|ref(?:erence)?|account)/i;
+
+function isLikelyIdentifierNumber(
+  text: string,
+  matchIndex: number,
+  matchFullLength: number,
+  rawAmount: string
+) {
+  const trimmed = rawAmount.trim();
+  const digitsOnly = trimmed.replace(/[^\d]/g, "");
+  const hasDecimal = /[.,]\d{1,2}$/.test(trimmed);
+  if (!hasDecimal && digitsOnly.length >= 9) return true;
+
+  const fullMatch = text.slice(matchIndex, matchIndex + matchFullLength);
+  const amountOffsetInMatch = fullMatch.lastIndexOf(trimmed);
+  const amountStart =
+    matchIndex + (amountOffsetInMatch >= 0 ? amountOffsetInMatch : Math.max(0, matchFullLength - trimmed.length));
+  const immediateBefore = text.slice(Math.max(0, amountStart - 25), amountStart);
+  return IDENTIFIER_LABEL_CONTEXT.test(immediateBefore);
+}
+
+function selectExtractedInvoiceAmount(
+  prioritizedAmounts: number[],
+  keywordAmounts: number[],
+  fallbackAmounts: number[]
+) {
+  if (prioritizedAmounts.length) return Math.max(...prioritizedAmounts);
+  if (keywordAmounts.length) return Math.max(...keywordAmounts);
+  if (fallbackAmounts.length) return Math.max(...fallbackAmounts);
+  return null;
 }
 
 function hasReferenceNumberContext(text: string, matchIndex: number, rawLength: number) {
@@ -4299,7 +4345,7 @@ export function rejectedDetectedAmountReason(amount: number | null | undefined, 
   if (amount == null) return null;
   if (!Number.isFinite(amount) || amount <= 0) return "parsed amount looks invalid";
   if (context?.hasDateContext === true && Number.isInteger(amount) && amount >= 2020 && amount <= 2030) return "parsed amount looks like a year";
-  if (amount > MAX_AUTO_SAVE_AMOUNT) return "parsed amount looks invalid/too large";
+  if (amount >= MAX_AUTO_SAVE_AMOUNT) return "parsed amount looks invalid/too large";
   return null;
 }
 
