@@ -1183,9 +1183,48 @@ function formatMonthTotalsSummary(totalsByCurrency: Record<string, number>) {
   return { main, extra: foreignParts.join(" ") };
 }
 
+const JUNK_UNKNOWN_SUPPLIER_NAMES = new Set(
+  ["unknown", "unknown supplier", "לא ידוע", "לא מזוהה", "n/a", "none", "ספק לא ידוע"].map((name) => name.toLowerCase())
+);
+
+const JUNK_TECHNICAL_SUBSTRINGS = [
+  "firststring",
+  "parsed",
+  "fieldsfromtext",
+  "detection",
+  "paymentsuppliername",
+  "suppliername",
+  "rawocr",
+  "null",
+  "undefined",
+  "nan",
+];
+
+const JUNK_SINGLE_WORD_TECHNICAL = new Set(["current", "supplier", "address", "name", "value", "text", "field"]);
+
+function isLikelyJunkSupplierNameLocal(name: string): boolean {
+  const cleaned = name.trim();
+  if (!cleaned) return false;
+
+  const lower = cleaned.toLowerCase();
+
+  if (JUNK_UNKNOWN_SUPPLIER_NAMES.has(lower)) return true;
+  if (cleaned.length > 60) return true;
+  if (/^\d+\.\s/.test(cleaned)) return true;
+  if (/[()[\]{}=;<>`]/.test(cleaned)) return true;
+  if (JUNK_SINGLE_WORD_TECHNICAL.has(lower)) return true;
+
+  if (!/\s/.test(cleaned)) {
+    if (JUNK_TECHNICAL_SUBSTRINGS.some((token) => lower.includes(token))) return true;
+    if (cleaned.length > 12 && /[a-z][A-Z]/.test(cleaned)) return true;
+  }
+
+  return false;
+}
+
 function isJunkInvoice(invoice: Invoice) {
   const supplier = invoice.supplierName?.trim() ?? "";
-  if (supplier.startsWith("Unknown") || supplier.startsWith("לא ידוע")) return true;
+  if (supplier && isLikelyJunkSupplierNameLocal(supplier)) return true;
   if (invoice.amount === 1_000_000 || invoice.amount === 0) return true;
   const parsedDate = new Date(invoice.date);
   if (!Number.isNaN(parsedDate.getTime()) && parsedDate.getFullYear() > new Date().getFullYear() + 1) return true;
