@@ -4113,6 +4113,345 @@ apiRouter.get("/payments", async (req, res) => {
   res.json(payments.map(enrichPaymentSources));
 });
 
+const APPOINTMENT_INCLUDE = {
+  client: { select: { id: true, name: true, whatsappNumber: true, color: true } },
+  service: { select: { id: true, name: true, color: true, durationMinutes: true } },
+} as const;
+
+const APPOINTMENT_STATUSES = new Set(["pending", "confirmed", "completed", "cancelled", "no_show"]);
+
+function parseIsoDateTime(value: unknown, fieldName: string) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${fieldName} is required`);
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Invalid ${fieldName}`);
+  }
+  return parsed;
+}
+
+function parseOptionalIsoDateTime(value: unknown, fieldName: string) {
+  if (value === undefined || value === null || value === "") return undefined;
+  return parseIsoDateTime(value, fieldName);
+}
+
+apiRouter.get("/services", async (req, res) => {
+  try {
+    const services = await prisma.service.findMany({
+      where: { organizationId: req.auth!.organizationId },
+      orderBy: { name: "asc" },
+    });
+    res.json(services);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load services" });
+  }
+});
+
+apiRouter.post("/services", async (req, res) => {
+  try {
+    const body = req.body as { name?: string; durationMinutes?: number; price?: number; color?: string };
+    const name = body.name?.trim();
+    if (!name) {
+      res.status(400).json({ error: "Service name is required" });
+      return;
+    }
+    const durationMinutes = Number.isFinite(body.durationMinutes) ? Number(body.durationMinutes) : 30;
+    if (durationMinutes <= 0) {
+      res.status(400).json({ error: "durationMinutes must be a positive number" });
+      return;
+    }
+    const service = await prisma.service.create({
+      data: {
+        organizationId: req.auth!.organizationId,
+        name,
+        durationMinutes,
+        ...(body.price !== undefined && Number.isFinite(body.price) ? { price: body.price } : {}),
+        ...(body.color?.trim() ? { color: body.color.trim() } : {}),
+      },
+    });
+    res.status(201).json(service);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create service" });
+  }
+});
+
+apiRouter.patch("/services/:id", async (req, res) => {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const existing = await prisma.service.findFirst({
+      where: { id: req.params.id, organizationId },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Service not found" });
+      return;
+    }
+    const body = req.body as {
+      name?: string;
+      durationMinutes?: number;
+      price?: number | null;
+      color?: string | null;
+      isActive?: boolean;
+    };
+    const data: Prisma.ServiceUpdateInput = {};
+    if (body.name !== undefined) {
+      const name = body.name.trim();
+      if (!name) {
+        res.status(400).json({ error: "Service name cannot be empty" });
+        return;
+      }
+      data.name = name;
+    }
+    if (body.durationMinutes !== undefined) {
+      if (!Number.isFinite(body.durationMinutes) || body.durationMinutes <= 0) {
+        res.status(400).json({ error: "durationMinutes must be a positive number" });
+        return;
+      }
+      data.durationMinutes = body.durationMinutes;
+    }
+    if (body.price !== undefined) {
+      data.price = body.price === null || !Number.isFinite(body.price) ? null : body.price;
+    }
+    if (body.color !== undefined) {
+      data.color = body.color?.trim() || null;
+    }
+    if (body.isActive !== undefined) {
+      data.isActive = Boolean(body.isActive);
+    }
+    const service = await prisma.service.update({
+      where: { id: existing.id },
+      data,
+    });
+    res.json(service);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update service" });
+  }
+});
+
+apiRouter.delete("/services/:id", async (req, res) => {
+  try {
+    const updated = await prisma.service.updateMany({
+      where: { id: req.params.id, organizationId: req.auth!.organizationId },
+      data: { isActive: false },
+    });
+    if (updated.count === 0) {
+      res.status(404).json({ error: "Service not found" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to deactivate service" });
+  }
+});
+
+apiRouter.get("/appointments", async (req, res) => {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const fromParam = typeof req.query.from === "string" ? req.query.from : undefined;
+    const toParam = typeof req.query.to === "string" ? req.query.to : undefined;
+    let startTimeFilter: Prisma.DateTimeFilter;
+
+    if (fromParam || toParam) {
+      if (!fromParam || !toParam) {
+        res.status(400).json({ error: "Both from and to query parameters are required" });
+        return;
+      }
+      const from = parseIsoDateTime(fromParam, "from");
+      const to = parseIsoDateTime(toParam, "to");
+      if (from >= to) {
+        res.status(400).json({ error: "from must be before to" });
+        return;
+      }
+      startTimeFilter = { gte: from, lt: to };
+    } else {
+      startTimeFilter = { gte: new Date() };
+    }
+
+    const appointments = await prisma.appointment.findMany({
+      where: { organizationId, startTime: startTimeFilter },
+      include: APPOINTMENT_INCLUDE,
+      orderBy: { startTime: "asc" },
+      ...(fromParam && toParam ? {} : { take: 500 }),
+    });
+    res.json(appointments);
+  } catch (err) {
+    if (err instanceof Error && (err.message.includes("from") || err.message.includes("to"))) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load appointments" });
+  }
+});
+
+apiRouter.post("/appointments", async (req, res) => {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const body = req.body as {
+      clientId?: string;
+      serviceId?: string | null;
+      startTime?: string;
+      durationMinutes?: number;
+      notes?: string | null;
+      status?: string;
+    };
+    const clientId = body.clientId?.trim();
+    if (!clientId) {
+      res.status(400).json({ error: "clientId is required" });
+      return;
+    }
+    const client = await prisma.client.findFirst({
+      where: { id: clientId, organizationId, isActive: true },
+    });
+    if (!client) {
+      res.status(404).json({ error: "Client not found" });
+      return;
+    }
+
+    const startTime = parseIsoDateTime(body.startTime, "startTime");
+    if (startTime.getTime() < Date.now()) {
+      res.status(400).json({ error: "startTime must be in the present or future" });
+      return;
+    }
+
+    let durationMinutes = Number.isFinite(body.durationMinutes) ? Number(body.durationMinutes) : undefined;
+    let serviceId: string | null = body.serviceId?.trim() || null;
+
+    if (serviceId) {
+      const service = await prisma.service.findFirst({
+        where: { id: serviceId, organizationId, isActive: true },
+      });
+      if (!service) {
+        res.status(404).json({ error: "Service not found" });
+        return;
+      }
+      if (durationMinutes === undefined) {
+        durationMinutes = service.durationMinutes;
+      }
+    }
+
+    if (durationMinutes === undefined) {
+      durationMinutes = 30;
+    }
+    if (durationMinutes <= 0) {
+      res.status(400).json({ error: "durationMinutes must be a positive number" });
+      return;
+    }
+
+    const status = body.status?.trim() || "pending";
+    if (!APPOINTMENT_STATUSES.has(status)) {
+      res.status(400).json({ error: "Invalid appointment status" });
+      return;
+    }
+
+    const appointment = await prisma.appointment.create({
+      data: {
+        organizationId,
+        clientId,
+        serviceId,
+        startTime,
+        durationMinutes,
+        status,
+        source: "manual",
+        notes: body.notes?.trim() || null,
+      },
+      include: APPOINTMENT_INCLUDE,
+    });
+    res.status(201).json(appointment);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("startTime")) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create appointment" });
+  }
+});
+
+apiRouter.patch("/appointments/:id", async (req, res) => {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const existing = await prisma.appointment.findFirst({
+      where: { id: req.params.id, organizationId },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Appointment not found" });
+      return;
+    }
+
+    const body = req.body as {
+      startTime?: string;
+      durationMinutes?: number;
+      status?: string;
+      notes?: string | null;
+      serviceId?: string | null;
+    };
+    const data: Prisma.AppointmentUpdateInput = {};
+
+    if (body.startTime !== undefined) {
+      data.startTime = parseIsoDateTime(body.startTime, "startTime");
+    }
+    if (body.durationMinutes !== undefined) {
+      if (!Number.isFinite(body.durationMinutes) || body.durationMinutes <= 0) {
+        res.status(400).json({ error: "durationMinutes must be a positive number" });
+        return;
+      }
+      data.durationMinutes = body.durationMinutes;
+    }
+    if (body.status !== undefined) {
+      if (!APPOINTMENT_STATUSES.has(body.status)) {
+        res.status(400).json({ error: "Invalid appointment status" });
+        return;
+      }
+      data.status = body.status;
+    }
+    if (body.notes !== undefined) {
+      data.notes = body.notes?.trim() || null;
+    }
+    if (body.serviceId !== undefined) {
+      const serviceId = body.serviceId?.trim() || null;
+      if (serviceId) {
+        const service = await prisma.service.findFirst({
+          where: { id: serviceId, organizationId, isActive: true },
+        });
+        if (!service) {
+          res.status(404).json({ error: "Service not found" });
+          return;
+        }
+        data.service = { connect: { id: serviceId } };
+      } else {
+        data.service = { disconnect: true };
+      }
+    }
+
+    const appointment = await prisma.appointment.update({
+      where: { id: existing.id },
+      data,
+      include: APPOINTMENT_INCLUDE,
+    });
+    res.json(appointment);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("startTime")) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update appointment" });
+  }
+});
+
+apiRouter.delete("/appointments/:id", async (req, res) => {
+  try {
+    const deleted = await prisma.appointment.deleteMany({
+      where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    });
+    if (deleted.count === 0) {
+      res.status(404).json({ error: "Appointment not found" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to delete appointment" });
+  }
+});
+
 apiRouter.get("/document-reviews", async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status : "needs_review";
   const items = await prisma.financialDocumentReview.findMany({
