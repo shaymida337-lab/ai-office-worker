@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Nav } from "@/components/Nav";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getToken } from "@/lib/api";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Calendar, ChevronLeft, ChevronRight, Clock, Plus, Trash2, X } from "lucide-react";
 
@@ -173,6 +173,8 @@ export default function CalendarPage() {
   const [serviceForm, setServiceForm] = useState(emptyServiceForm);
   const [savingService, setSavingService] = useState(false);
   const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
+  const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
+  const [connectingCalendar, setConnectingCalendar] = useState(false);
 
   const activeServices = useMemo(() => services.filter((s) => s.isActive), [services]);
 
@@ -211,6 +213,38 @@ export default function CalendarPage() {
     return map;
   }, [appointments, weekDays]);
 
+  async function loadCalendarStatus() {
+    try {
+      const status = await apiFetch<{ connected: boolean; calendarId?: string }>(
+        `/api/integrations/calendar/status?t=${Date.now()}`
+      );
+      setCalendarConnected(status.connected);
+    } catch {
+      setCalendarConnected(false);
+    }
+  }
+
+  async function connectCalendar() {
+    const token = getToken();
+    if (!token) {
+      setMessage("צריך להתחבר");
+      return;
+    }
+    setConnectingCalendar(true);
+    try {
+      const data = await apiFetch<{ url: string }>("/api/integrations/calendar/connect-url");
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setMessage("שרת לא החזיר כתובת חיבור ל-Google Calendar");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "חיבור Google Calendar נכשל");
+    } finally {
+      setConnectingCalendar(false);
+    }
+  }
+
   async function loadWeek() {
     setLoading(true);
     try {
@@ -236,6 +270,17 @@ export default function CalendarPage() {
     loadWeek().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart]);
+
+  useEffect(() => {
+    loadCalendarStatus();
+  }, []);
+
+  useEffect(() => {
+    if (!window.location.search.includes("calendar=connected")) return;
+    setMessage("היומן חובר בהצלחה ל-Google Calendar");
+    loadCalendarStatus();
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);
 
   function resetForm() {
     setShowForm(false);
@@ -382,6 +427,23 @@ export default function CalendarPage() {
           <div className="page-kicker">יומן</div>
           <h1 className="font-black text-[#111827]">היומן שלי</h1>
           <p className="font-semibold text-[#6B7280]">ניהול תורים ושירותים — תצוגת שבוע, יצירה ועריכה במקום אחד.</p>
+          {calendarConnected === true && (
+            <div className="mt-3">
+              <StatusPill tone="success">מחובר ל-Google Calendar ✓</StatusPill>
+            </div>
+          )}
+          {calendarConnected === false && (
+            <div className="mt-3">
+              <button
+                type="button"
+                className={btnSecondary}
+                disabled={connectingCalendar}
+                onClick={() => connectCalendar()}
+              >
+                {connectingCalendar ? "מתחבר..." : "חבר Google Calendar"}
+              </button>
+            </div>
+          )}
         </div>
         <button type="button" className={btnPrimary} onClick={openNewForm}>
           <Plus className="h-4 w-4" />
