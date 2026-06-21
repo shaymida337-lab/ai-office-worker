@@ -40,6 +40,7 @@ import { findDuplicateDrafts } from "../services/findDuplicateDrafts.js";
 import type { ColumnMapping } from "../services/importColumnMapper.js";
 import { synthesizeSpeech } from "../services/natalieTts.js";
 import { transcribeAudio } from "../services/natalieStt.js";
+import { createGoogleCalendarEventForAppointment } from "../services/google.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -4356,6 +4357,18 @@ apiRouter.post("/appointments", async (req, res) => {
       },
       include: APPOINTMENT_INCLUDE,
     });
+    try {
+      const googleEventId = await createGoogleCalendarEventForAppointment(appointment);
+      if (googleEventId) {
+        await prisma.appointment.update({
+          where: { id: appointment.id },
+          data: { googleEventId },
+        });
+        (appointment as { googleEventId?: string | null }).googleEventId = googleEventId;
+      }
+    } catch (syncErr) {
+      console.error("Failed to sync appointment to Google Calendar:", syncErr);
+    }
     res.status(201).json(appointment);
   } catch (err) {
     if (err instanceof Error && err.message.includes("startTime")) {

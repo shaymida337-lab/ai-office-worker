@@ -277,6 +277,60 @@ export async function getCalendarClientForOrganization(organizationId: string) {
   return google.calendar({ version: "v3", auth: oauth2 });
 }
 
+export async function createGoogleCalendarEventForAppointment(appointment: {
+  id: string;
+  organizationId: string;
+  startTime: Date;
+  durationMinutes: number;
+  notes?: string | null;
+  client?: { name?: string | null } | null;
+  service?: { name?: string | null } | null;
+}): Promise<string | null> {
+  try {
+    const calendar = await getCalendarClientForOrganization(appointment.organizationId);
+    if (!calendar) {
+      return null;
+    }
+
+    const clientName = appointment.client?.name?.trim();
+    const serviceName = appointment.service?.name?.trim();
+    let summary = "תור";
+    if (serviceName && clientName) {
+      summary = `${serviceName} - ${clientName}`;
+    } else if (clientName) {
+      summary = `תור - ${clientName}`;
+    } else if (serviceName) {
+      summary = serviceName;
+    }
+
+    const endTime = new Date(appointment.startTime.getTime() + appointment.durationMinutes * 60_000);
+
+    const result = await calendar.events.insert({
+      calendarId: "primary",
+      requestBody: {
+        summary,
+        description: appointment.notes?.trim() ?? "",
+        start: {
+          dateTime: appointment.startTime.toISOString(),
+          timeZone: "Asia/Jerusalem",
+        },
+        end: {
+          dateTime: endTime.toISOString(),
+          timeZone: "Asia/Jerusalem",
+        },
+      },
+    });
+
+    return result.data.id ?? null;
+  } catch (err) {
+    console.error(
+      `[google/calendar] Failed to create event for appointment ${appointment.id}`,
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+}
+
 export async function getGoogleClientsForClient(clientId: string) {
   const google = await loadGoogle();
   const client = await prisma.client.findUnique({ where: { id: clientId } });
