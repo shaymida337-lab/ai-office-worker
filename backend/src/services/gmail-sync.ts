@@ -12,6 +12,7 @@ import {
   uploadInvoiceAttachmentToDrive,
 } from "./driveService.js";
 import { appendSupplierPaymentToSheet, hasSupplierPaymentSheetRowData } from "./supplierPaymentsSheet.js";
+import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 import { notifyNewInvoice } from "./whatsapp.js";
 import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from "./financialDocuments.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
@@ -4134,6 +4135,7 @@ function isTaxIdLikeSupplierName(value: string, supplierTaxId?: string | null) {
 
 function isUsableSupplierName(value: string, ownerEmails: Set<string> = new Set()) {
   const cleaned = value.trim();
+  if (isLikelyJunkSupplierName(cleaned)) return false;
   const normalizedToken = cleaned.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   if (!cleaned || cleaned === "Unknown supplier") return false;
   if (/^(unknown|unknown supplier|לא\s+ידוע|לא\s+מזוהה|n\/a|null|undefined)$/i.test(cleaned)) return false;

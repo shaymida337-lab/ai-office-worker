@@ -7,6 +7,7 @@ import {
   type FinancialDocumentFingerprintInput,
 } from "./dedup/sharedMatcher.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
+import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 
 export type FinancialDocumentSource = "gmail" | "whatsapp";
 
@@ -528,6 +529,7 @@ function isInvoiceLike(type: NormalizedFinancialDocumentType) {
 function isValidSupplierName(value?: string | null) {
   const supplier = value?.trim() ?? "";
   if (!supplier) return false;
+  if (isLikelyJunkSupplierName(supplier)) return false;
   if (/^(unknown|unknown supplier|לא ידוע|לא מזוהה|n\/a|null|undefined)$/i.test(supplier)) return false;
   if (supplier === ".name" || supplier.startsWith(".")) return false;
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supplier)) return false;
