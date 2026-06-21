@@ -10,6 +10,7 @@ import { normalizeEnabledModules, type BusinessModuleId, type OrganizationSettin
 import {
   BarChart3,
   Bell,
+  Calendar,
   Camera,
   CheckSquare,
   ChevronRight,
@@ -46,6 +47,7 @@ const links: NavLink[] = [
   { id: "supplierPayments", href: "/payments", label: "תשלומי ספקים", icon: WalletCards },
   { id: "bank", href: "/dashboard/bank", label: "התאמת בנק", icon: Landmark },
   { id: "tasks", href: "/tasks", label: "משימות", icon: CheckSquare },
+  { id: "calendar", href: "/dashboard/calendar", label: "יומן", icon: Calendar },
   { id: "collections", href: "/collections", label: "גבייה", icon: CircleDollarSign },
   { id: "social", href: "/social", label: "סושיאל", icon: Megaphone },
   { id: "whatsapp", href: "/dashboard/whatsapp", label: "וואטסאפ", icon: MessageCircle, module: "whatsapp" },
