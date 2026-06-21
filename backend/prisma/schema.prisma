@@ -294,6 +294,7 @@ model FinancialDocumentReview {
   gmailMessageId      String?
   whatsappLogId       String?
   supplierPaymentId   String?
+  normalizedDocumentDate DateTime?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -301,6 +302,7 @@ model FinancialDocumentReview {
   @@index([organizationId, reviewStatus, createdAt], map: "FDR_org_reviewStatus_createdAt_idx")
   @@index([organizationId, source, createdAt], map: "FDR_org_source_createdAt_idx")
   @@index([organizationId, sourceFingerprint], map: "FDR_org_sourceFingerprint_idx")
+  @@index([organizationId, normalizedDocumentDate])
 }
 
 model CustomerInvoice {
@@ -374,6 +376,7 @@ model Invoice {
   emailId        String?
   fromEmail      String?
   gmailMessageId String?
+  normalizedDocumentDate DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -381,6 +384,7 @@ model Invoice {
   @@index([organizationId, createdAt])
   @@index([clientId, date])
   @@index([organizationId, gmailMessageId])
+  @@index([organizationId, normalizedDocumentDate])
   @@unique([organizationId, clientId, emailId, invoiceNumber])
 }
 
@@ -834,6 +838,7 @@ model GmailScanItem {
   decisionReason     String
   parsedFieldsJson   Json?    @map("parsed_fields_json")
   rawAnalysis        Json?
+  normalizedDocumentDate DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -843,6 +848,7 @@ model GmailScanItem {
   @@index([organizationId, createdAt])
   @@index([organizationId, documentType, createdAt])
   @@index([organizationId, reviewStatus, createdAt])
+  @@index([organizationId, normalizedDocumentDate])
   @@index([gmailMessageId])
   @@index([senderEmail])
 }
