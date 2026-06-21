@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
-import { ChevronDown, ChevronLeft, Download, FileText, Filter, Loader2, RefreshCcw, Search, UploadCloud } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, Download, FileText, Filter, Loader2, RefreshCcw, Search, UploadCloud } from "lucide-react";
 
 type ClientItem = { id: string; name: string; gmailConnected: boolean };
 type InvoicePaymentStatus = "paid" | "pending" | "overdue";
@@ -345,6 +345,29 @@ export default function InvoicesPage() {
     } catch (err) {
       setMessageTone("error");
       setMessage(err instanceof Error ? err.message : "עדכון סטטוס חשבונית נכשל");
+    }
+  }
+
+  async function approveInvoice(invoice: Invoice) {
+    if (invoice.source === "invoice" || isPersistedInvoice(invoice)) return;
+    setMessage("");
+    try {
+      if (invoice.source === "financial_document_review") {
+        const id = invoice.reviewSourceId ?? invoice.id.replace(/^document-review:/, "");
+        await apiFetch(`/api/document-reviews/${id}/approve`, { method: "POST" });
+      } else if (invoice.source === "gmail_scan_item") {
+        const id = invoice.reviewSourceId ?? invoice.id.replace(/^gmail-scan:/, "");
+        await apiFetch(`/api/gmail-scan-items/${id}/approve`, { method: "POST" });
+      } else {
+        return;
+      }
+      if (selected?.id === invoice.id) setSelected(null);
+      await refreshMonthsAndInvoices(Object.keys(invoicesByMonth));
+      setMessageTone("success");
+      setMessage("החשבונית אושרה");
+    } catch (err) {
+      setMessageTone("error");
+      setMessage(err instanceof Error ? err.message : "אישור החשבונית נכשל");
     }
   }
 
@@ -708,6 +731,7 @@ export default function InvoicesPage() {
                         onSelect={setSelected}
                         onToggleSelection={toggleInvoiceSelection}
                         onToggleStatus={toggleStatus}
+                        onApprove={approveInvoice}
                         onDelete={deleteInvoice}
                       />
                       <InvoiceDesktopList
@@ -720,6 +744,7 @@ export default function InvoicesPage() {
                         onToggleSelection={toggleInvoiceSelection}
                         onToggleSelectAllVisible={() => {}}
                         onToggleStatus={toggleStatus}
+                        onApprove={approveInvoice}
                         onDelete={deleteInvoice}
                         showSelectAll={false}
                       />
@@ -755,6 +780,7 @@ export default function InvoicesPage() {
                 onSelect={setSelected}
                 onToggleSelection={toggleInvoiceSelection}
                 onToggleStatus={toggleStatus}
+                onApprove={approveInvoice}
                 onDelete={deleteInvoice}
               />
               <InvoiceDesktopList
@@ -767,6 +793,7 @@ export default function InvoicesPage() {
                 onToggleSelection={toggleInvoiceSelection}
                 onToggleSelectAllVisible={() => {}}
                 onToggleStatus={toggleStatus}
+                onApprove={approveInvoice}
                 onDelete={deleteInvoice}
                 showSelectAll={false}
               />
@@ -888,6 +915,7 @@ type InvoiceListProps = {
   onSelect: (invoice: Invoice) => void;
   onToggleSelection: (invoiceId: string) => void;
   onToggleStatus: (invoice: Invoice) => void;
+  onApprove: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
 };
 
@@ -905,6 +933,7 @@ function InvoiceMobileList({
   onSelect,
   onToggleSelection,
   onToggleStatus,
+  onApprove,
   onDelete,
 }: InvoiceListProps) {
   return (
@@ -954,6 +983,17 @@ function InvoiceMobileList({
                 <span className="truncate">{invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}</span>
               </button>
             )}
+            {invoice.reviewStatus === "needs_review" && (
+              <button
+                type="button"
+                className="invoice-action inline-flex min-h-[44px] min-w-0 items-center justify-center gap-2 rounded-xl border border-[#059669] bg-[#ECFDF5] px-3 py-2 text-sm font-semibold text-[#059669] transition hover:bg-[#D1FAE5]"
+                title="אשר חשבונית"
+                onClick={() => onApprove(invoice)}
+              >
+                <Check className="h-4 w-4 shrink-0" />
+                <span className="truncate">אשר</span>
+              </button>
+            )}
             <button className="invoice-action min-h-[44px] min-w-0 rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#FECACA]" onClick={() => onDelete(invoice)} disabled={deletingId === invoice.id}>
               <span className="truncate">{deletingId === invoice.id ? "מוחק..." : "מחק"}</span>
             </button>
@@ -974,6 +1014,7 @@ function InvoiceDesktopList({
   onToggleSelection,
   onToggleSelectAllVisible,
   onToggleStatus,
+  onApprove,
   onDelete,
   showSelectAll,
 }: InvoiceDesktopListProps) {
@@ -1030,6 +1071,16 @@ function InvoiceDesktopList({
                   {documentDriveUrl(invoice) && <a className="invoice-action inline-flex min-w-0 items-center justify-center gap-1 rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3 w-3" />דרייב</a>}
                   {invoice.gmailMessageLink && <a className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>מייל</a>}
                   {isPersistedInvoice(invoice) && <button className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={(e) => { e.stopPropagation(); onToggleStatus(invoice); }}>{invoice.status === "paid" ? "ממתינה" : "שולמה"}</button>}
+                  {invoice.reviewStatus === "needs_review" && (
+                    <button
+                      type="button"
+                      className="invoice-action inline-flex items-center justify-center rounded-lg border border-[#059669] bg-[#ECFDF5] px-1.5 py-1 text-xs font-bold text-[#059669] transition hover:bg-[#D1FAE5]"
+                      title="אשר חשבונית"
+                      onClick={(e) => { e.stopPropagation(); onApprove(invoice); }}
+                    >
+                      <Check className="h-3 w-3" />
+                    </button>
+                  )}
                   <button className="invoice-action rounded-lg border border-[#B91C1C] bg-[#FEE2E2] px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); onDelete(invoice); }} disabled={deletingId === invoice.id}>{deletingId === invoice.id ? "מוחק..." : "מחק"}</button>
                 </div>
               </td>
@@ -1077,7 +1128,8 @@ function isJunkInvoice(invoice: Invoice) {
   const supplier = invoice.supplierName?.trim() ?? "";
   if (supplier.startsWith("Unknown") || supplier.startsWith("לא ידוע")) return true;
   if (invoice.amount === 1_000_000 || invoice.amount === 0) return true;
-  if ((invoice.reviewStatus ?? "approved") === "needs_review" && !supplier) return true;
+  const parsedDate = new Date(invoice.date);
+  if (!Number.isNaN(parsedDate.getTime()) && parsedDate.getFullYear() > new Date().getFullYear() + 1) return true;
   return false;
 }
 

@@ -4089,6 +4089,21 @@ apiRouter.delete("/gmail-scan-items/:id", async (req, res) => {
   res.json({ ok: true, deleted: result.deleted, verification: result.verification, unlinked: result.unlinked });
 });
 
+apiRouter.post("/gmail-scan-items/:id/approve", async (req, res) => {
+  const item = await prisma.gmailScanItem.findFirst({
+    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+  });
+  if (!item) {
+    res.status(404).json({ error: "Gmail scan item not found" });
+    return;
+  }
+  const updated = await prisma.gmailScanItem.update({
+    where: { id: item.id },
+    data: { reviewStatus: "approved" },
+  });
+  res.json({ ok: true, item: updated });
+});
+
 apiRouter.patch("/payments/:id", async (req, res) => {
   const { paid, invoiceLink, documentLink, receiptLink } = req.body as {
     paid?: boolean;
