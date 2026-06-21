@@ -4,6 +4,7 @@ import {
   buildInvoiceListQueryContext,
   buildInvoiceListWhereInput,
   buildInvoiceMonthsAggregationSql,
+  buildPaymentMonthsAggregationSql,
   buildNatalieVoiceCredentials,
   debugTopPaymentAmountsWhere,
   invoiceReviewStatusFilter,
@@ -13,6 +14,7 @@ import {
   resolveNatalieVoiceSynthesizeProvider,
   summarizeCandidatesByMonth,
   summarizeInvoiceMonthRows,
+  sumPaymentMonthCounts,
 } from "./api.js";
 
 test("debug top-amounts excludes needs_review supplier payments", () => {
@@ -149,6 +151,29 @@ test("buildInvoiceListWhereInput mirrors legacy invoice filters", () => {
       { client: { name: { contains: "acme", mode: "insensitive" } } },
     ],
   });
+});
+
+test("payment months aggregation sql groups SupplierPayment by normalizedDocumentDate", () => {
+  const { sql } = buildPaymentMonthsAggregationSql("org-1", "Asia/Jerusalem");
+  assert.match(sql, /"SupplierPayment"/);
+  assert.match(sql, /normalizedDocumentDate/);
+  assert.match(sql, /approvalStatus/);
+  assert.doesNotMatch(sql, /UNION ALL/);
+});
+
+test("summarized payment month counts equal total approved rows", () => {
+  const rows = [
+    { year: 2026, month: 6, currency: "ILS", count: 2, total: 300 },
+    { year: 2026, month: 6, currency: "USD", count: 1, total: 50 },
+    { year: 2026, month: 5, currency: "ILS", count: 1, total: 100 },
+  ];
+  const months = summarizeInvoiceMonthRows(rows);
+  assert.equal(sumPaymentMonthCounts(months), 4);
+  assert.equal(months[0]?.year, 2026);
+  assert.equal(months[0]?.month, 6);
+  assert.equal(months[0]?.count, 3);
+  assert.equal(months[0]?.totalsByCurrency.ILS, 300);
+  assert.equal(months[0]?.totalsByCurrency.USD, 50);
 });
 
 test("months aggregation sql includes dedup guards across all sources", () => {

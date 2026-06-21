@@ -3515,6 +3515,30 @@ export function summarizeInvoiceMonthRows(rows: InvoiceMonthAggregationRow[]): I
   return [...byMonth.values()].sort((a, b) => b.year - a.year || b.month - a.month);
 }
 
+export function buildPaymentMonthsAggregationSql(organizationId: string, timezone: string) {
+  const params: unknown[] = [];
+  const orgParam = pushSqlParam(params, organizationId);
+  const tzParam = pushSqlParam(params, timezone);
+  const sql = `
+  SELECT
+    EXTRACT(YEAR FROM sp."normalizedDocumentDate" AT TIME ZONE ${tzParam})::int AS year,
+    EXTRACT(MONTH FROM sp."normalizedDocumentDate" AT TIME ZONE ${tzParam})::int AS month,
+    COALESCE(NULLIF(TRIM(sp."currency"), ''), 'ILS') AS currency,
+    COUNT(*)::int AS count,
+    COALESCE(SUM(sp."amount"), 0)::double precision AS total
+  FROM "SupplierPayment" sp
+  WHERE sp."organizationId" = ${orgParam}
+    AND sp."approvalStatus" = 'approved'
+    AND sp."normalizedDocumentDate" IS NOT NULL
+  GROUP BY 1, 2, currency
+  ORDER BY year DESC, month DESC, currency`;
+  return { sql, params };
+}
+
+export function sumPaymentMonthCounts(months: InvoiceMonthSummary[]) {
+  return months.reduce((sum, month) => sum + month.count, 0);
+}
+
 type InvoiceRowForMerge = {
   gmailMessageId: string | null;
   emailId: string | null;
@@ -4035,16 +4059,56 @@ apiRouter.get("/organizations/:id/invoices/summary", async (req, res) => {
   res.json({ count: invoices.length, byStatus, byClient: Object.values(byClient) });
 });
 
+apiRouter.get("/payments/months", async (req, res) => {
+  const organizationId = req.auth!.organizationId;
+  const timezone = await loadOrganizationTimezone(organizationId);
+  const { sql, params } = buildPaymentMonthsAggregationSql(organizationId, timezone);
+  const rows = await prisma.$queryRawUnsafe<InvoiceMonthAggregationRow[]>(sql, ...params);
+  const months = summarizeInvoiceMonthRows(rows);
+  const totalApprovedWithDate = await prisma.supplierPayment.count({
+    where: {
+      organizationId,
+      approvalStatus: "approved",
+      normalizedDocumentDate: { not: null },
+    },
+  });
+  const monthCountSum = sumPaymentMonthCounts(months);
+  if (totalApprovedWithDate !== monthCountSum) {
+    console.warn(
+      `[payments] MONTH_COUNT_MISMATCH org=${organizationId} db=${totalApprovedWithDate} summed=${monthCountSum}`
+    );
+  }
+  res.json({ months });
+});
+
 apiRouter.get("/payments", async (req, res) => {
   const duplicatesOnly = req.query.duplicatesOnly === "true";
+  const monthParam = typeof req.query.month === "string" ? req.query.month : undefined;
+  const organizationId = req.auth!.organizationId;
+  const parsedMonth = monthParam ? parseInvoiceMonthParam(monthParam) : null;
+  if (monthParam && !parsedMonth) {
+    res.status(400).json({ error: "Invalid month parameter. Expected YYYY-MM." });
+    return;
+  }
+  const monthBounds = parsedMonth
+    ? await resolveInvoiceMonthBounds(
+        organizationId,
+        parsedMonth.year,
+        parsedMonth.month,
+        await loadOrganizationTimezone(organizationId)
+      )
+    : undefined;
   const payments = await prisma.supplierPayment.findMany({
     where: {
-      organizationId: req.auth!.organizationId,
+      organizationId,
       approvalStatus: "approved",
       ...(duplicatesOnly ? { duplicateDetected: true } : {}),
+      ...(monthBounds
+        ? { normalizedDocumentDate: { gte: monthBounds.gte, lt: monthBounds.lt } }
+        : {}),
     },
     orderBy: { date: "desc" },
-    take: 100,
+    ...(monthBounds ? {} : { take: 100 }),
   });
   res.json(payments.map(enrichPaymentSources));
 });
