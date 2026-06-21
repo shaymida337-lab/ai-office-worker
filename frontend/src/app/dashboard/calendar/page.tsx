@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -40,6 +40,16 @@ type ClientsResponse = {
 
 const DAY_NAMES = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "ש'"];
 const DEFAULT_COLOR = "#3B82F6";
+
+const panelClass = "rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm";
+const btnPrimary =
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] disabled:cursor-not-allowed disabled:opacity-60";
+const btnSecondary =
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6] disabled:cursor-not-allowed disabled:opacity-60";
+const btnSecondarySm =
+  "inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#F3F4F6] disabled:cursor-not-allowed disabled:opacity-60";
+const btnDanger =
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA] disabled:cursor-not-allowed disabled:opacity-60";
 
 const emptyServiceForm = {
   name: "",
@@ -118,6 +128,28 @@ function appointmentStatusTone(status: string): "success" | "warn" | "danger" | 
     default:
       return "neutral";
   }
+}
+
+function isErrorMessage(text: string) {
+  return text.includes("נכשל") || text.includes("חובה") || text.includes("יש לבחור");
+}
+
+function messageBannerClass(text: string) {
+  if (isErrorMessage(text)) {
+    return "mb-6 animate-[toastSlide_.25s_ease] rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] p-4 text-base font-semibold leading-7 text-[#7F1D1D]";
+  }
+  return "mb-6 animate-[toastSlide_.25s_ease] rounded-2xl border border-[#059669] bg-[#ECFDF5] p-4 text-base font-semibold leading-7 text-[#065F46]";
+}
+
+function CollapsePanel({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <div
+      className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+      aria-hidden={!open}
+    >
+      <div className="min-h-0 overflow-hidden">{children}</div>
+    </div>
+  );
 }
 
 export default function CalendarPage() {
@@ -348,34 +380,31 @@ export default function CalendarPage() {
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="page-kicker">יומן</div>
-          <h1>היומן שלי</h1>
-          <p>ניהול תורים ושירותים — תצוגת שבוע, יצירה ועריכה במקום אחד.</p>
+          <h1 className="font-black text-[#111827]">היומן שלי</h1>
+          <p className="font-semibold text-[#6B7280]">ניהול תורים ושירותים — תצוגת שבוע, יצירה ועריכה במקום אחד.</p>
         </div>
-        <button className="btn" onClick={openNewForm}>
+        <button type="button" className={btnPrimary} onClick={openNewForm}>
           <Plus className="h-4 w-4" />
           תור חדש
         </button>
       </div>
 
-      {message && (
-        <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">
-          {message}
-        </div>
-      )}
+      {message && <div className={messageBannerClass(message)}>{message}</div>}
 
-      {showForm && (
-        <form onSubmit={saveAppointment} className="card grid gap-3 md:grid-cols-2">
-          <div className="md:col-span-2 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">{editingId ? "עריכת תור" : "תור חדש"}</h2>
-            <button type="button" className="btn btn-secondary !w-auto !min-h-9 !px-3" onClick={resetForm}>
+      <CollapsePanel open={showForm}>
+        <form onSubmit={saveAppointment} className={`${panelClass} mb-5 grid gap-3 md:grid-cols-2`}>
+          <div className="flex items-center justify-between md:col-span-2">
+            <h2 className="text-lg font-black text-[#111827]">{editingId ? "עריכת תור" : "תור חדש"}</h2>
+            <button type="button" className={btnSecondarySm} onClick={resetForm}>
               <X className="h-4 w-4" />
               ביטול
             </button>
           </div>
-          <label>
+          <label className="font-semibold text-[#111827]">
             לקוח
             <select
               required
+              className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
               value={formClientId}
               disabled={Boolean(editingId)}
               onChange={(e) => setFormClientId(e.target.value)}
@@ -388,9 +417,13 @@ export default function CalendarPage() {
               ))}
             </select>
           </label>
-          <label>
+          <label className="font-semibold text-[#111827]">
             שירות
-            <select value={formServiceId} onChange={(e) => setFormServiceId(e.target.value)}>
+            <select
+              className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
+              value={formServiceId}
+              onChange={(e) => setFormServiceId(e.target.value)}
+            >
               <option value="">ללא שירות</option>
               {activeServices.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -400,66 +433,76 @@ export default function CalendarPage() {
             </select>
           </label>
           {selectedServiceDuration !== null && !editingId && (
-            <p className="flex items-center gap-2 text-sm text-ink-muted md:col-span-2">
+            <p className="flex items-center gap-2 text-sm font-semibold text-[#6B7280] md:col-span-2">
               <Clock className="h-4 w-4" />
               משך משוער: {selectedServiceDuration} דקות
             </p>
           )}
-          <label>
+          <label className="font-semibold text-[#111827]">
             תאריך
-            <input required type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} />
+            <input
+              required
+              type="date"
+              className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
+              value={formDate}
+              onChange={(e) => setFormDate(e.target.value)}
+            />
           </label>
-          <label>
+          <label className="font-semibold text-[#111827]">
             שעה
-            <input required type="time" value={formTime} onChange={(e) => setFormTime(e.target.value)} />
+            <input
+              required
+              type="time"
+              className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
+              value={formTime}
+              onChange={(e) => setFormTime(e.target.value)}
+            />
           </label>
-          <label className="md:col-span-2">
+          <label className="font-semibold text-[#111827] md:col-span-2">
             הערות
             <textarea
               rows={2}
+              className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
               placeholder="הערות לתור (אופציונלי)"
               value={formNotes}
               onChange={(e) => setFormNotes(e.target.value)}
             />
           </label>
           <div className="flex flex-wrap gap-2 md:col-span-2">
-            <button className="btn" type="submit" disabled={saving}>
+            <button className={btnPrimary} type="submit" disabled={saving}>
               {saving ? "שומר..." : editingId ? "עדכן תור" : "שמור תור"}
             </button>
             {editingId && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                disabled={saving}
-                onClick={() => deleteAppointment()}
-              >
+              <button type="button" className={btnDanger} disabled={saving} onClick={() => deleteAppointment()}>
                 <Trash2 className="h-4 w-4" />
                 מחק תור
               </button>
             )}
           </div>
         </form>
-      )}
+      </CollapsePanel>
 
-      <div className="card mb-5">
+      <div className={`${panelClass} mb-5`}>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-accent-primary" />
-            <h2 className="text-lg font-semibold">{weekLabel}</h2>
+            <Calendar className="h-5 w-5 text-[#1D4ED8]" />
+            <h2 className="text-lg font-black text-[#111827]">{weekLabel}</h2>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
-              className="btn btn-secondary !w-auto !min-h-9 !px-3"
+              type="button"
+              className={btnSecondarySm}
               onClick={() => setWeekStart((w) => addDays(w, -7))}
               aria-label="שבוע קודם"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
-            <button className="btn btn-secondary !w-auto" onClick={() => setWeekStart(getWeekStart(new Date()))}>
+            <button type="button" className={btnSecondarySm} onClick={() => setWeekStart(getWeekStart(new Date()))}>
               היום
             </button>
             <button
-              className="btn btn-secondary !w-auto !min-h-9 !px-3"
+              type="button"
+              className={btnSecondarySm}
               onClick={() => setWeekStart((w) => addDays(w, 7))}
               aria-label="שבוע הבא"
             >
@@ -469,135 +512,155 @@ export default function CalendarPage() {
         </div>
 
         {loading ? (
-          <div className="skeleton h-48" />
+          <div className="skeleton h-48 rounded-2xl" />
         ) : (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7" dir="rtl">
-            {weekDays.map((day, index) => {
-              const key = toDateInputValue(day);
-              const dayAppts = appointmentsByDay.get(key) ?? [];
-              const today = isSameDay(day, new Date());
-              return (
-                <div
-                  key={key}
-                  className={`min-h-[120px] rounded-xl border p-2 ${today ? "border-accent-primary/40 bg-accent-primary/5" : "border-[var(--border)] bg-surface-secondary/50"}`}
-                >
-                  <div className={`mb-2 text-center text-sm font-semibold ${today ? "text-accent-primary" : "text-ink-primary"}`}>
-                    <div>{DAY_NAMES[index]}</div>
-                    <div className="text-xs font-normal text-ink-muted">
-                      {day.toLocaleDateString("he-IL", { day: "numeric", month: "numeric" })}
+          <div
+            key={weekStart.toISOString()}
+            className="transition-opacity duration-200 animate-[toastSlide_.25s_ease]"
+          >
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7" dir="rtl">
+              {weekDays.map((day, index) => {
+                const key = toDateInputValue(day);
+                const dayAppts = appointmentsByDay.get(key) ?? [];
+                const today = isSameDay(day, new Date());
+                return (
+                  <div
+                    key={key}
+                    className={`min-h-[120px] rounded-xl border p-2 ${
+                      today
+                        ? "border-[#1D4ED8]/40 bg-[#EFF6FF]"
+                        : "border-[#E5E7EB] bg-[#F8FAFC]"
+                    }`}
+                  >
+                    <div
+                      className={`mb-2 text-center text-sm font-black ${
+                        today ? "text-[#1D4ED8]" : "text-[#111827]"
+                      }`}
+                    >
+                      <div>{DAY_NAMES[index]}</div>
+                      <div className="text-xs font-semibold text-[#6B7280]">
+                        {day.toLocaleDateString("he-IL", { day: "numeric", month: "numeric" })}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      {dayAppts.length === 0 ? (
+                        <div className="h-2" />
+                      ) : (
+                        dayAppts.map((appt) => {
+                          const color = appt.service?.color || DEFAULT_COLOR;
+                          const time = new Date(appt.startTime).toLocaleTimeString("he-IL", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          });
+                          return (
+                            <button
+                              key={appt.id}
+                              type="button"
+                              onClick={() => openEditForm(appt)}
+                              className="w-full rounded-xl border p-2 text-right text-xs transition-all duration-200 ease-out hover:-translate-y-[1px] hover:opacity-90 hover:shadow-md"
+                              style={{
+                                backgroundColor: colorWithAlpha(color, 0.15),
+                                borderColor: colorWithAlpha(color, 0.35),
+                              }}
+                            >
+                              <div className="mb-1 flex items-center justify-between gap-1">
+                                <span className="font-black" dir="ltr">
+                                  {time}
+                                </span>
+                                <StatusPill tone={appointmentStatusTone(appt.status)}>
+                                  {appointmentStatusLabel(appt.status)}
+                                </StatusPill>
+                              </div>
+                              <div className="truncate font-black text-[#111827]">{appt.client.name}</div>
+                              {appt.service && (
+                                <div className="truncate font-semibold text-[#6B7280]">{appt.service.name}</div>
+                              )}
+                            </button>
+                          );
+                        })
+                      )}
                     </div>
                   </div>
-                  <div className="space-y-1.5">
-                    {dayAppts.length === 0 ? (
-                      <div className="h-2" />
-                    ) : (
-                      dayAppts.map((appt) => {
-                        const color = appt.service?.color || DEFAULT_COLOR;
-                        const time = new Date(appt.startTime).toLocaleTimeString("he-IL", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: false,
-                        });
-                        return (
-                          <button
-                            key={appt.id}
-                            type="button"
-                            onClick={() => openEditForm(appt)}
-                            className="w-full rounded-lg border p-2 text-right text-xs transition hover:opacity-90"
-                            style={{
-                              backgroundColor: colorWithAlpha(color, 0.15),
-                              borderColor: colorWithAlpha(color, 0.35),
-                            }}
-                          >
-                            <div className="mb-1 flex items-center justify-between gap-1">
-                              <span className="font-bold" dir="ltr">
-                                {time}
-                              </span>
-                              <StatusPill tone={appointmentStatusTone(appt.status)}>
-                                {appointmentStatusLabel(appt.status)}
-                              </StatusPill>
-                            </div>
-                            <div className="truncate font-semibold text-ink-primary">{appt.client.name}</div>
-                            {appt.service && (
-                              <div className="truncate text-ink-muted">{appt.service.name}</div>
-                            )}
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
 
-      <section className="card">
+      <section className={panelClass}>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold">השירותים שלי</h2>
-          <button className="btn btn-secondary !w-auto" onClick={() => setShowServiceForm((v) => !v)}>
+          <h2 className="text-lg font-black text-[#111827]">השירותים שלי</h2>
+          <button type="button" className={btnSecondary} onClick={() => setShowServiceForm((v) => !v)}>
             <Plus className="h-4 w-4" />
             שירות חדש
           </button>
         </div>
 
-        {showServiceForm && (
-          <form onSubmit={createService} className="mb-4 grid gap-3 rounded-xl border border-[var(--border)] bg-surface-secondary/50 p-4 md:grid-cols-2">
-            <label>
+        <CollapsePanel open={showServiceForm}>
+          <form
+            onSubmit={createService}
+            className="mb-4 grid gap-3 rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] p-4 md:grid-cols-2"
+          >
+            <label className="font-semibold text-[#111827]">
               שם שירות
               <input
                 required
+                className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
                 placeholder="למשל: ייעוץ ראשוני"
                 value={serviceForm.name}
                 onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
               />
             </label>
-            <label>
+            <label className="font-semibold text-[#111827]">
               משך (דקות)
               <input
                 required
                 type="number"
                 min={1}
+                className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
                 value={serviceForm.durationMinutes}
                 onChange={(e) =>
                   setServiceForm({ ...serviceForm, durationMinutes: Number(e.target.value) || 30 })
                 }
               />
             </label>
-            <label>
+            <label className="font-semibold text-[#111827]">
               מחיר (אופציונלי)
               <input
                 type="number"
                 min={0}
                 step="0.01"
+                className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
                 placeholder="₪"
                 value={serviceForm.price}
                 onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value })}
               />
             </label>
-            <label>
+            <label className="font-semibold text-[#111827]">
               צבע
               <input
                 type="color"
+                className="mt-1 h-11 w-full rounded-xl border border-[#E5E7EB] bg-white"
                 value={serviceForm.color}
                 onChange={(e) => setServiceForm({ ...serviceForm, color: e.target.value })}
               />
             </label>
-            <button className="btn md:col-span-2" type="submit" disabled={savingService}>
+            <button className={`${btnPrimary} md:col-span-2`} type="submit" disabled={savingService}>
               {savingService ? "שומר..." : "שמור שירות"}
             </button>
           </form>
-        )}
+        </CollapsePanel>
 
         {activeServices.length === 0 ? (
-          <p className="text-sm text-ink-muted">עדיין אין שירותים. הוסף שירות ראשון כדי לקשר לתורים.</p>
+          <p className="text-sm font-semibold text-[#6B7280]">עדיין אין שירותים. הוסף שירות ראשון כדי לקשר לתורים.</p>
         ) : (
           <ul className="space-y-2">
             {activeServices.map((svc) => (
               <li
                 key={svc.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-white p-3"
+                className="flex items-center justify-between gap-3 rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <span
@@ -605,8 +668,8 @@ export default function CalendarPage() {
                     style={{ backgroundColor: svc.color || DEFAULT_COLOR }}
                   />
                   <div className="min-w-0">
-                    <div className="font-semibold text-ink-primary">{svc.name}</div>
-                    <div className="text-sm text-ink-muted">
+                    <div className="font-black text-[#111827]">{svc.name}</div>
+                    <div className="text-sm font-semibold text-[#6B7280]">
                       {svc.durationMinutes} דק׳
                       {svc.price != null ? ` · ₪${svc.price.toLocaleString("he-IL")}` : ""}
                     </div>
@@ -614,7 +677,7 @@ export default function CalendarPage() {
                 </div>
                 <button
                   type="button"
-                  className="btn btn-secondary !min-h-9 !w-auto !px-3"
+                  className={`${btnDanger} !min-h-9 !rounded-xl !px-3`}
                   disabled={deletingServiceId === svc.id}
                   onClick={() => deleteService(svc.id)}
                   aria-label={`מחק ${svc.name}`}
