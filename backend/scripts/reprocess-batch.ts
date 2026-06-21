@@ -10,6 +10,7 @@
  *     → apply all in internal chunks of 25 with pause between chunks
  */
 import "dotenv/config";
+import { writeSync } from "node:fs";
 import { prisma } from "../src/lib/prisma.js";
 import { isLikelyJunkSupplierName } from "../src/services/supplierNameValidation.js";
 import {
@@ -24,6 +25,15 @@ const MILLION = 1_000_000;
 const CHUNK_SIZE = 25;
 const CHUNK_PAUSE_MS = 2_000;
 const CHUNK_FAIL_RATIO = 0.2;
+
+/** Immediate flush — log buffers when stdout is piped (nohup → file). */
+function log(message = "") {
+  writeSync(1, `${message}\n`);
+}
+
+function logErr(message: string) {
+  writeSync(2, `${message}\n`);
+}
 
 type FlaggedRecord = {
   table: ReprocessSourceTable;
@@ -226,7 +236,7 @@ async function processOneRecord(record: FlaggedRecord, apply: boolean, stats: Ba
   stats.wouldChange++;
 
   if (!apply) {
-    console.log(
+    log(
       `[dry-run] ${record.table} id=${record.id} wouldChange=true before={${formatSnapshot(preview.before)}} after={${formatSnapshot(preview.after)}}`
     );
     return;
@@ -236,7 +246,7 @@ async function processOneRecord(record: FlaggedRecord, apply: boolean, stats: Ba
   stats.applied++;
   if (applied.updated) stats.applySucceeded++;
 
-  console.log(
+  log(
     `[apply] ${record.table} id=${record.id} updated=${applied.updated} before={${formatSnapshot(applied.before)}} after={${formatSnapshot(applied.after)}}`
   );
 }
@@ -258,12 +268,12 @@ async function processChunk(
       chunkFailed++;
       chunkProcessed++;
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[failed] ${record.table} id=${record.id} error="${message.split("\n")[0]}"`);
+      logErr(`[failed] ${record.table} id=${record.id} error="${message.split("\n")[0]}"`);
     }
   }
 
   if (apply && chunkProcessed > 0 && chunkFailed / chunkProcessed > CHUNK_FAIL_RATIO) {
-    console.error(
+    logErr(
       `\n[batch-abort] More than ${CHUNK_FAIL_RATIO * 100}% of records in chunk failed (${chunkFailed}/${chunkProcessed}). Stopping — likely a systematic issue.`
     );
     return false;
@@ -282,35 +292,42 @@ function printCandidateBreakdown(allFlagged: FlaggedRecord[], reprocessable: Fla
   const flaggedByTable = byTable(allFlagged);
   const reproByTable = byTable(reprocessable);
 
-  console.log("=== Candidate selection (same criteria as audit-invoice-junk.ts) ===");
-  console.log("Flag if ANY of:");
-  console.log("  • isLikelyJunkSupplierName(supplierName)");
-  console.log(`  • amount === ${MILLION}`);
-  console.log("  • amount === 0 or null");
-  console.log("\nSources scanned: GmailScanItem, Invoice, FinancialDocumentReview (deduped by table:id)");
-  console.log(`Total flagged (distinct): ${allFlagged.length}`);
-  console.log(
+  log("=== Candidate selection (same criteria as audit-invoice-junk.ts) ===");
+  log("Flag if ANY of:");
+  log("  • isLikelyJunkSupplierName(supplierName)");
+  log(`  • amount === ${MILLION}`);
+  log("  • amount === 0 or null");
+  log("\nSources scanned: GmailScanItem, Invoice, FinancialDocumentReview (deduped by table:id)");
+  log(`Total flagged (distinct): ${allFlagged.length}`);
+  log(
     `  GmailScanItem=${flaggedByTable.GmailScanItem} Invoice=${flaggedByTable.Invoice} FinancialDocumentReview=${flaggedByTable.FinancialDocumentReview}`
   );
-  console.log(`Skipped (no Gmail link — cannot reprocess): ${skippedNoGmailLink}`);
-  console.log(`Reprocessable candidates: ${reprocessable.length} (~462 in production audit)`);
-  console.log(
+  log(`Skipped (no Gmail link — cannot reprocess): ${skippedNoGmailLink}`);
+  log(`Reprocessable candidates: ${reprocessable.length} (~462 in production audit)`);
+  log(
     `  GmailScanItem=${reproByTable.GmailScanItem} Invoice=${reproByTable.Invoice} FinancialDocumentReview=${reproByTable.FinancialDocumentReview}`
   );
-  console.log("");
+  log("");
 }
 
 function printSummary(stats: BatchStats, mode: string) {
-  console.log("\n=== Batch summary ===");
-  console.log(`Mode: ${mode}`);
-  console.log(`Candidates (reprocessable): ${stats.candidatesTotal}`);
-  console.log(`Skipped upfront (no Gmail link): ${stats.skippedNoGmailLink}`);
-  console.log(`Processed (dry-run or apply attempt): ${stats.processed}`);
-  console.log(`Would change (needs fix): ${stats.wouldChange}`);
-  console.log(`No change needed (skipped apply): ${stats.noChange}`);
-  console.log(`Failed: ${stats.failed}`);
-  console.log(`Applied (dryRun:false calls): ${stats.applied}`);
-  console.log(`Apply succeeded (updated=true): ${stats.applySucceeded}`);
+  log("");
+  log("=== Batch summary ===");
+  log(`Mode: ${mode}`);
+  log(`Candidates (reprocessable): ${stats.candidatesTotal}`);
+  log(`Skipped upfront (no Gmail link): ${stats.skippedNoGmailLink}`);
+  log(`Processed (dry-run or apply attempt): ${stats.processed}`);
+  log(`Would change (needs fix): ${stats.wouldChange}`);
+  log(`No change needed (skipped apply): ${stats.noChange}`);
+  log(`Failed: ${stats.failed}`);
+  log(`Applied (dryRun:false calls): ${stats.applied}`);
+  log(`Apply succeeded (updated=true): ${stats.applySucceeded}`);
+  log("");
+  log("=== BATCH COMPLETE ===");
+  log(
+    `total_processed=${stats.processed} changed=${stats.wouldChange} unchanged=${stats.noChange} failed=${stats.failed}` +
+      (stats.applied > 0 ? ` applied=${stats.applied} apply_succeeded=${stats.applySucceeded}` : "")
+  );
 }
 
 async function main() {
@@ -321,7 +338,7 @@ async function main() {
       ? `APPLY --all (chunks of ${CHUNK_SIZE})`
       : `APPLY --limit=${limit}`;
 
-  console.log(`=== Batch reprocess === ${mode}\n`);
+  log(`=== Batch reprocess === ${mode}\n`);
 
   const allFlagged = await loadFlaggedRecords();
   const { reprocessable, skippedNoGmailLink } = await filterReprocessableCandidates(allFlagged);
@@ -364,12 +381,12 @@ async function main() {
         chunkFailed++;
         chunkProcessed++;
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`[failed] ${record.table} id=${record.id} error="${message.split("\n")[0]}"`);
+        logErr(`[failed] ${record.table} id=${record.id} error="${message.split("\n")[0]}"`);
       }
 
       if (chunkProcessed >= CHUNK_SIZE) {
         if (chunkProcessed > 0 && chunkFailed / chunkProcessed > CHUNK_FAIL_RATIO) {
-          console.error(
+          logErr(
             `\n[batch-abort] More than ${CHUNK_FAIL_RATIO * 100}% of records in chunk failed (${chunkFailed}/${chunkProcessed}). Stopping — likely a systematic issue.`
           );
           break;
@@ -386,10 +403,10 @@ async function main() {
   const chunks = chunkArray(reprocessable, CHUNK_SIZE);
   for (let i = 0; i < chunks.length; i++) {
     if (i > 0) {
-      console.log(`\n[batch] Pause ${CHUNK_PAUSE_MS}ms before chunk ${i + 1}/${chunks.length}...`);
+      log(`\n[batch] Pause ${CHUNK_PAUSE_MS}ms before chunk ${i + 1}/${chunks.length}...`);
       await sleep(CHUNK_PAUSE_MS);
     }
-    console.log(`\n[batch] Chunk ${i + 1}/${chunks.length} (${chunks[i]!.length} records)`);
+    log(`\n[batch] Chunk ${i + 1}/${chunks.length} (${chunks[i]!.length} records)`);
     const continueBatch = await processChunk(chunks[i]!, true, stats);
     if (!continueBatch) break;
   }
@@ -399,7 +416,9 @@ async function main() {
 
 main()
   .catch((err) => {
-    console.error("[reprocess-batch] failed", err);
+    const message = err instanceof Error ? err.stack ?? err.message : String(err);
+    logErr(`[reprocess-batch] failed: ${message}`);
+    logErr("=== BATCH FAILED (did not complete) ===");
     process.exitCode = 1;
   })
   .finally(async () => {
