@@ -75,6 +75,8 @@ model Organization {
   bankTransactions BankTransaction[]
   helpProgress    HelpProgress[]
   outgoingInvoiceDrafts OutgoingInvoiceDraft[]
+  services        Service[]
+  appointments    Appointment[]
 }
 
 model HelpProgress {
@@ -132,6 +134,7 @@ model Client {
   socialAccounts   SocialAccount[]
   socialPosts      SocialPost[]
   socialSettings   SocialSettings?
+  appointments     Appointment[]
 
   @@index([organizationId, isActive])
   @@index([organizationId, whatsappNumber])
@@ -855,4 +858,42 @@ model GmailScanItem {
   @@index([senderEmail])
 }
 
+model Service {
+  id              String   @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  durationMinutes Int      @default(30)
+  price           Float?
+  color           String?  @default("#3B82F6")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  appointments Appointment[]
+
+  @@index([organizationId, isActive])
+}
+
+model Appointment {
+  id              String   @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId        String
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  serviceId       String?
+  service         Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  startTime       DateTime
+  durationMinutes Int
+  status          String   @default("pending")
+  googleEventId   String?
+  source          String?  @default("manual")
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([organizationId, startTime])
+  @@index([organizationId, status])
+  @@index([clientId])
+}
 
