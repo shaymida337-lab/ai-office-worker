@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
@@ -49,6 +49,7 @@ type InvoiceDeleteResponse = {
 
 const reviewStatusLabels: Record<InvoiceReviewStatus, string> = { approved: "מאושר", needs_review: "דורש בדיקה", rejected: "נדחה" };
 const MISSING_VALUE = "לא זוהה";
+const REMOVAL_ANIMATION_MS = 250;
 const reviewTabs: Array<{ value: "all" | InvoiceReviewStatus; label: string }> = [
   { value: "all", label: "הכול" },
   { value: "approved", label: "מאושר" },
@@ -77,6 +78,7 @@ export default function InvoicesPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(() => new Set());
   const [selected, setSelected] = useState<Invoice | null>(null);
+  const [removingIds, setRemovingIds] = useState<Set<string>>(() => new Set());
   const skipFilterRefresh = useRef(true);
 
   function buildListQueryString() {
@@ -348,6 +350,19 @@ export default function InvoicesPage() {
     }
   }
 
+  function handleAnimatedApprove(invoice: Invoice) {
+    setRemovingIds((current) => new Set(current).add(invoice.id));
+    window.setTimeout(() => {
+      void approveInvoice(invoice).finally(() => {
+        setRemovingIds((current) => {
+          const next = new Set(current);
+          next.delete(invoice.id);
+          return next;
+        });
+      });
+    }, REMOVAL_ANIMATION_MS);
+  }
+
   async function approveInvoice(invoice: Invoice) {
     if (invoice.source === "invoice" || isPersistedInvoice(invoice)) return;
     setMessage("");
@@ -374,6 +389,8 @@ export default function InvoicesPage() {
   async function deleteInvoice(invoice: Invoice) {
     const confirmed = window.confirm("האם למחוק את החשבונית?");
     if (!confirmed) return;
+    setRemovingIds((current) => new Set(current).add(invoice.id));
+    await new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS));
     setDeletingId(invoice.id);
     setMessageTone("info");
     setMessage("");
@@ -394,6 +411,11 @@ export default function InvoicesPage() {
       setMessage(err instanceof Error ? err.message : "מחיקת החשבונית נכשלה");
     } finally {
       setDeletingId(null);
+      setRemovingIds((current) => {
+        const next = new Set(current);
+        next.delete(invoice.id);
+        return next;
+      });
     }
   }
 
@@ -433,6 +455,8 @@ export default function InvoicesPage() {
     setBulkDeleting(true);
     setMessageTone("info");
     setMessage("");
+    setRemovingIds(new Set(selectedVisibleInvoices.map((invoice) => invoice.id)));
+    await new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS));
     try {
       for (const invoice of selectedVisibleInvoices) {
         setDeletingId(invoice.id);
@@ -453,6 +477,7 @@ export default function InvoicesPage() {
     } finally {
       setDeletingId(null);
       setBulkDeleting(false);
+      setRemovingIds(new Set());
     }
   }
 
@@ -537,7 +562,6 @@ export default function InvoicesPage() {
 
         .invoice-page-safe :where(th, td) {
           border-bottom: 1px solid #e5e7eb !important;
-          font-weight: 800 !important;
         }
 
         .invoice-page-safe .invoice-muted {
@@ -579,7 +603,7 @@ export default function InvoicesPage() {
         </div>
       </div>
       {visibleMessage && (
-        <div className={`mb-6 rounded-2xl border p-4 text-base font-medium leading-7 ${messageClasses}`}>
+        <div className={`mb-6 animate-[toastSlide_.25s_ease] rounded-2xl border p-4 text-base font-medium leading-7 ${messageClasses}`}>
           <div>{visibleMessage}</div>
           {scanProgress && <div className="mt-1 flex items-center gap-2 text-base font-semibold text-[#111827]"><Loader2 className="h-4 w-4 animate-spin" />{scanProgress}</div>}
         </div>
@@ -685,23 +709,23 @@ export default function InvoicesPage() {
           const isLoading = loadingMonth.has(key);
 
           return (
-            <section key={key} className="invoice-panel overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+            <section key={key} className="invoice-panel rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
               <button
                 type="button"
-                className="flex w-full items-center justify-between gap-3 border-b border-[#E5E7EB] px-4 py-4 text-right transition hover:bg-[#F8FAFC] md:px-5"
+                className="sticky top-0 z-10 flex w-full items-center justify-between gap-3 border-b border-[#E5E7EB] bg-white/85 px-4 py-4 text-right backdrop-blur-sm transition hover:bg-white/95 md:px-5"
                 onClick={() => toggleMonthExpanded(key)}
                 aria-expanded={isExpanded}
               >
                 <div className="flex min-w-0 flex-1 items-center gap-3">
-                  {isExpanded ? <ChevronDown className="h-5 w-5 shrink-0" /> : <ChevronLeft className="h-5 w-5 shrink-0" />}
+                  {isExpanded ? <ChevronDown className="h-5 w-5 shrink-0 transition-transform duration-300 ease-out" /> : <ChevronLeft className="h-5 w-5 shrink-0 transition-transform duration-300 ease-out" />}
                   <div className="min-w-0">
                     <div className="text-lg font-black text-[#111827]">{formatMonthTitle(month.year, month.month)}</div>
-                    <div className="mt-1 text-sm font-semibold text-[#4B5563]">
+                    <div className="mt-1 text-sm font-medium text-[#6B7280]">
                       {month.count} חשבוניות
                       {totals.extra ? (
                         <span className="mr-2">
                           · {totals.main}
-                          <span className="mr-1 text-xs font-bold text-[#6B7280]">{totals.extra}</span>
+                          <span className="mr-1 text-xs font-normal text-[#9CA3AF]">{totals.extra}</span>
                         </span>
                       ) : (
                         <span className="mr-2"> · {totals.main}</span>
@@ -712,15 +736,15 @@ export default function InvoicesPage() {
                 {isLoading && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#4B5563]" />}
               </button>
 
-              {isExpanded && (
-                <div className="p-4 md:p-5">
+              <CollapsePanel open={isExpanded}>
+                <div className="overflow-hidden p-4 md:p-5">
                   {isLoading && monthInvoices.length === 0 ? (
                     <div className="flex items-center justify-center gap-2 py-8 text-sm font-bold text-[#4B5563]">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       טוען חשבוניות...
                     </div>
                   ) : monthInvoices.length === 0 ? (
-                    <p className="py-4 text-center text-sm font-bold text-[#4B5563]">אין חשבוניות להצגה בחודש זה</p>
+                    <p className="py-8 text-center text-sm text-[#9CA3AF]">אין חשבוניות להצגה בחודש זה</p>
                   ) : (
                     <>
                       <InvoiceMobileList
@@ -728,10 +752,11 @@ export default function InvoicesPage() {
                         selectedInvoiceIds={selectedInvoiceIds}
                         bulkDeleting={bulkDeleting}
                         deletingId={deletingId}
+                        removingIds={removingIds}
                         onSelect={setSelected}
                         onToggleSelection={toggleInvoiceSelection}
                         onToggleStatus={toggleStatus}
-                        onApprove={approveInvoice}
+                        onApprove={handleAnimatedApprove}
                         onDelete={deleteInvoice}
                       />
                       <InvoiceDesktopList
@@ -739,26 +764,27 @@ export default function InvoicesPage() {
                         selectedInvoiceIds={selectedInvoiceIds}
                         bulkDeleting={bulkDeleting}
                         deletingId={deletingId}
+                        removingIds={removingIds}
                         allVisibleSelected={false}
                         onSelect={setSelected}
                         onToggleSelection={toggleInvoiceSelection}
                         onToggleSelectAllVisible={() => {}}
                         onToggleStatus={toggleStatus}
-                        onApprove={approveInvoice}
+                        onApprove={handleAnimatedApprove}
                         onDelete={deleteInvoice}
                         showSelectAll={false}
                       />
                     </>
                   )}
                 </div>
-              )}
+              </CollapsePanel>
             </section>
           );
         })}
       </div>
 
       {junkInvoices.length > 0 && (
-        <section className="invoice-panel mt-6 overflow-hidden rounded-2xl border border-[#D97706] bg-white shadow-sm">
+        <section className="invoice-panel mt-6 rounded-2xl border border-[#D97706] bg-white shadow-sm">
           <button
             type="button"
             className="flex w-full items-center justify-between gap-3 bg-[#FEF3C7] px-4 py-4 text-right transition hover:bg-[#FDE68A] md:px-5"
@@ -766,21 +792,22 @@ export default function InvoicesPage() {
             aria-expanded={junkDrawerExpanded}
           >
             <div className="flex items-center gap-3">
-              {junkDrawerExpanded ? <ChevronDown className="h-5 w-5 shrink-0" /> : <ChevronLeft className="h-5 w-5 shrink-0" />}
+              {junkDrawerExpanded ? <ChevronDown className="h-5 w-5 shrink-0 transition-transform duration-300 ease-out" /> : <ChevronLeft className="h-5 w-5 shrink-0 transition-transform duration-300 ease-out" />}
               <span className="text-lg font-black text-[#111827]">דורש בדיקה ידנית ({junkInvoices.length})</span>
             </div>
           </button>
-          {junkDrawerExpanded && (
-            <div className="border-t border-[#FDE68A] p-4 md:p-5">
+          <CollapsePanel open={junkDrawerExpanded}>
+            <div className="overflow-hidden border-t border-[#FDE68A] p-4 md:p-5">
               <InvoiceMobileList
                 invoices={junkInvoices}
                 selectedInvoiceIds={selectedInvoiceIds}
                 bulkDeleting={bulkDeleting}
                 deletingId={deletingId}
+                removingIds={removingIds}
                 onSelect={setSelected}
                 onToggleSelection={toggleInvoiceSelection}
                 onToggleStatus={toggleStatus}
-                onApprove={approveInvoice}
+                onApprove={handleAnimatedApprove}
                 onDelete={deleteInvoice}
               />
               <InvoiceDesktopList
@@ -788,17 +815,18 @@ export default function InvoicesPage() {
                 selectedInvoiceIds={selectedInvoiceIds}
                 bulkDeleting={bulkDeleting}
                 deletingId={deletingId}
+                removingIds={removingIds}
                 allVisibleSelected={false}
                 onSelect={setSelected}
                 onToggleSelection={toggleInvoiceSelection}
                 onToggleSelectAllVisible={() => {}}
                 onToggleStatus={toggleStatus}
-                onApprove={approveInvoice}
+                onApprove={handleAnimatedApprove}
                 onDelete={deleteInvoice}
                 showSelectAll={false}
               />
             </div>
-          )}
+          </CollapsePanel>
         </section>
       )}
 
@@ -898,6 +926,23 @@ export default function InvoicesPage() {
   );
 }
 
+function CollapsePanel({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <div
+      className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+      aria-hidden={!open}
+    >
+      <div className="min-h-0 overflow-hidden">{children}</div>
+    </div>
+  );
+}
+
+function invoiceRemovalClass(isRemoving: boolean) {
+  return isRemoving
+    ? "pointer-events-none max-h-0 overflow-hidden border-transparent opacity-0 !p-0 !py-0"
+    : "max-h-[800px] opacity-100";
+}
+
 function Metric({ label, value, tone }: { label: string; value: string | number; tone: string }) {
   return (
     <div className="invoice-metric rounded-2xl border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-sm">
@@ -912,6 +957,7 @@ type InvoiceListProps = {
   selectedInvoiceIds: Set<string>;
   bulkDeleting: boolean;
   deletingId: string | null;
+  removingIds: Set<string>;
   onSelect: (invoice: Invoice) => void;
   onToggleSelection: (invoiceId: string) => void;
   onToggleStatus: (invoice: Invoice) => void;
@@ -930,6 +976,7 @@ function InvoiceMobileList({
   selectedInvoiceIds,
   bulkDeleting,
   deletingId,
+  removingIds,
   onSelect,
   onToggleSelection,
   onToggleStatus,
@@ -938,8 +985,13 @@ function InvoiceMobileList({
 }: InvoiceListProps) {
   return (
     <div className="grid gap-4 md:hidden">
-      {invoices.map((invoice) => (
-        <div key={invoice.id} className="invoice-mobile-row space-y-2 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm">
+      {invoices.map((invoice) => {
+        const isRemoving = removingIds.has(invoice.id);
+        return (
+        <div
+          key={invoice.id}
+          className={`invoice-mobile-row space-y-2 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm transition-all duration-[250ms] ease-out ${invoiceRemovalClass(isRemoving)}`}
+        >
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-start gap-2">
               <input
@@ -954,9 +1006,7 @@ function InvoiceMobileList({
                 <div className="truncate text-base font-semibold text-[#111827]" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</div>
               </button>
             </div>
-            <span className={`invoice-status-pill inline-flex shrink-0 items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>
-              {reviewBadgeLabel(invoice)}
-            </span>
+            <ReviewStatusPill invoice={invoice} />
           </div>
           <button type="button" className="block w-full min-w-0 text-right" onClick={() => onSelect(invoice)}>
             <div className="truncate text-sm font-normal text-[#6B7280]" title={`${formatInvoiceDate(invoice.date)} · ${invoiceMetaLine(invoice)}`}>{formatInvoiceDate(invoice.date)} · {invoiceMetaLine(invoice)}</div>
@@ -999,7 +1049,8 @@ function InvoiceMobileList({
             </button>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1009,6 +1060,7 @@ function InvoiceDesktopList({
   selectedInvoiceIds,
   bulkDeleting,
   deletingId,
+  removingIds,
   allVisibleSelected,
   onSelect,
   onToggleSelection,
@@ -1023,22 +1075,28 @@ function InvoiceDesktopList({
       <table className="w-full table-fixed bg-white text-[#111827]">
         <thead className="bg-[#F3F4F6]">
           <tr className="border-b border-[#E5E7EB]">
-            <th className="w-[4%] text-base font-black text-[#111827]">
+            <th className="w-[4%] text-base font-bold text-[#111827]">
               {showSelectAll ? (
                 <input type="checkbox" aria-label="בחר הכל בעמוד" checked={allVisibleSelected} onChange={onToggleSelectAllVisible} disabled={invoices.length === 0 || bulkDeleting} className="h-5 w-5 rounded border-[#9CA3AF]" />
               ) : null}
             </th>
-            <th className="w-[20%] text-base font-black text-[#111827]">לקוח/ספק</th>
-            <th className="w-[10%] text-base font-black text-[#111827]">תאריך</th>
-            <th className="w-[30%] text-base font-black text-[#111827]">תיאור</th>
-            <th className="w-[10%] text-base font-black text-[#111827]">סכום</th>
-            <th className="w-[11%] text-base font-black text-[#111827]">סטטוס</th>
-            <th className="w-[15%] text-base font-black text-[#111827]">פעולות</th>
+            <th className="w-[20%] text-base font-bold text-[#111827]">לקוח/ספק</th>
+            <th className="w-[10%] text-base font-bold text-[#111827]">תאריך</th>
+            <th className="w-[30%] text-base font-bold text-[#111827]">תיאור</th>
+            <th className="w-[10%] text-base font-bold text-[#111827]">סכום</th>
+            <th className="w-[11%] text-base font-bold text-[#111827]">סטטוס</th>
+            <th className="w-[15%] text-base font-bold text-[#111827]">פעולות</th>
           </tr>
         </thead>
         <tbody>
-          {invoices.map((invoice) => (
-            <tr key={invoice.id} onClick={() => onSelect(invoice)} className="cursor-pointer border-b border-[#E5E7EB] bg-white transition hover:bg-[#F8FAFC]">
+          {invoices.map((invoice) => {
+            const isRemoving = removingIds.has(invoice.id);
+            return (
+            <tr
+              key={invoice.id}
+              onClick={() => onSelect(invoice)}
+              className={`cursor-pointer border-b border-[#E5E7EB] bg-white transition-all duration-[250ms] ease-out hover:bg-[#F8FAFC] ${invoiceRemovalClass(isRemoving)}`}
+            >
               <td className="py-4">
                 <input
                   type="checkbox"
@@ -1059,13 +1117,13 @@ function InvoiceDesktopList({
                   </div>
                 </div>
               </td>
-              <td className="whitespace-nowrap py-4 text-base font-normal text-[#111827]">{formatInvoiceDate(invoice.date)}</td>
+              <td className="whitespace-nowrap py-4 text-base font-normal text-[#6B7280]">{formatInvoiceDate(invoice.date)}</td>
               <td className="min-w-0 py-4 text-[#111827]">
                 <div className="truncate text-base font-semibold" title={displayInvoiceDescription(invoice)}>{displayInvoiceDescription(invoice)}</div>
                 <div className="truncate text-xs font-normal text-[#9CA3AF]" title={systemNoteForInvoice(invoice)}>{systemNoteForInvoice(invoice)}</div>
               </td>
               <td className="whitespace-nowrap py-4 text-base font-bold text-[#111827]">{formatInvoiceAmount(invoice)}</td>
-              <td className="whitespace-nowrap py-4"><span className={`invoice-status-pill inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>{reviewBadgeLabel(invoice)}</span></td>
+              <td className="whitespace-nowrap py-4"><ReviewStatusPill invoice={invoice} /></td>
               <td className="py-4">
                 <div className="flex min-w-0 flex-nowrap gap-1">
                   {documentDriveUrl(invoice) && <a className="invoice-action inline-flex min-w-0 items-center justify-center gap-1 rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3 w-3" />דרייב</a>}
@@ -1085,7 +1143,8 @@ function InvoiceDesktopList({
                 </div>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -1226,9 +1285,25 @@ function normalizeInternalReason(reason: string | null | undefined) {
 
 function statusBadgeClass(invoice: Invoice) {
   const reviewStatus = invoice.reviewStatus ?? "approved";
-  if (reviewStatus === "needs_review") return "border border-[#D97706] bg-[#FEF3C7] text-[#111827]";
-  if (reviewStatus === "rejected") return "border border-[#DC2626] bg-[#FEE2E2] text-[#111827]";
-  return "border border-[#059669] bg-[#D1FAE5] text-[#111827]";
+  if (reviewStatus === "needs_review") return "border border-[#FDE68A] bg-[#FEF3C7] text-[#92400E]";
+  if (reviewStatus === "rejected") return "border border-[#FECACA] bg-[#FEE2E2] text-[#991B1B]";
+  return "border border-[#A7F3D0] bg-[#ECFDF5] text-[#065F46]";
+}
+
+function statusBadgeDotColor(invoice: Invoice) {
+  const reviewStatus = invoice.reviewStatus ?? "approved";
+  if (reviewStatus === "needs_review") return "#D97706";
+  if (reviewStatus === "rejected") return "#DC2626";
+  return "#059669";
+}
+
+function ReviewStatusPill({ invoice }: { invoice: Invoice }) {
+  return (
+    <span className={`invoice-status-pill inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold ${statusBadgeClass(invoice)}`}>
+      <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: statusBadgeDotColor(invoice) }} aria-hidden="true" />
+      {reviewBadgeLabel(invoice)}
+    </span>
+  );
 }
 
 function sourceLabel(source: Invoice["source"] | undefined) {
