@@ -26,6 +26,7 @@ export type ReprocessFinancialDocumentResult = {
   sourceId: string;
   gmailMessageId: string | null;
   emailMessageId: string | null;
+  gmailMessageIdResolvedVia: "direct" | "email_message" | null;
   before: FinancialSnapshot;
   after: FinancialSnapshot;
   wouldChange: boolean;
@@ -43,7 +44,7 @@ type LoadedSource = {
 };
 
 export type ReprocessFinancialDocumentDeps = {
-  prismaClient?: Pick<typeof prisma, "gmailScanItem" | "invoice" | "financialDocumentReview">;
+  prismaClient?: Pick<typeof prisma, "gmailScanItem" | "invoice" | "financialDocumentReview" | "emailMessage">;
   getGoogleClientsFn?: typeof getGoogleClients;
   parseGmailMessage?: (input: {
     organizationId: string;
@@ -51,6 +52,78 @@ export type ReprocessFinancialDocumentDeps = {
     gmailMessageId: string;
   }) => Promise<ParsedGmailFinancialFields>;
 };
+
+export type ReprocessSourceCapability = "direct_gmail" | "resolvable_via_email" | "no_gmail_link";
+
+export function normalizeEmailMessageLookupId(emailMessageId: string) {
+  const trimmed = emailMessageId.trim();
+  const base = trimmed.split(":")[0]?.trim();
+  return base || trimmed;
+}
+
+export function emailMessageLookupCandidates(emailMessageId: string | null | undefined) {
+  if (!emailMessageId?.trim()) return [] as string[];
+  const trimmed = emailMessageId.trim();
+  const base = normalizeEmailMessageLookupId(trimmed);
+  return base === trimmed ? [trimmed] : [trimmed, base];
+}
+
+export function classifyReprocessSourceCapability(
+  input: { gmailMessageId?: string | null; emailMessageId?: string | null },
+  emailGmailIdByMessageId: Map<string, string | null>
+): ReprocessSourceCapability {
+  if (input.gmailMessageId?.trim()) return "direct_gmail";
+  for (const candidateId of emailMessageLookupCandidates(input.emailMessageId)) {
+    const gmailId = emailGmailIdByMessageId.get(candidateId);
+    if (gmailId?.trim()) return "resolvable_via_email";
+  }
+  return "no_gmail_link";
+}
+
+export async function loadEmailGmailIdMap(
+  db: Pick<typeof prisma, "emailMessage">,
+  organizationId: string,
+  emailMessageIds: string[]
+): Promise<Map<string, string | null>> {
+  const lookupIds = [...new Set(emailMessageIds.flatMap((id) => emailMessageLookupCandidates(id)))];
+  const map = new Map<string, string | null>();
+  if (!lookupIds.length) return map;
+
+  const rows = await db.emailMessage.findMany({
+    where: { organizationId, id: { in: lookupIds } },
+    select: { id: true, gmailId: true },
+  });
+  for (const id of lookupIds) map.set(id, null);
+  for (const row of rows) map.set(row.id, row.gmailId?.trim() || null);
+  return map;
+}
+
+export async function resolveGmailMessageIdForReprocess(
+  db: Pick<typeof prisma, "emailMessage">,
+  input: { organizationId: string; gmailMessageId?: string | null; emailMessageId?: string | null }
+): Promise<{ gmailMessageId: string | null; resolvedVia: "direct" | "email_message" | null }> {
+  if (input.gmailMessageId?.trim()) {
+    return { gmailMessageId: input.gmailMessageId.trim(), resolvedVia: "direct" };
+  }
+
+  const emailGmailIdByMessageId = await loadEmailGmailIdMap(
+    db,
+    input.organizationId,
+    emailMessageLookupCandidates(input.emailMessageId)
+  );
+  if (classifyReprocessSourceCapability(input, emailGmailIdByMessageId) !== "resolvable_via_email") {
+    return { gmailMessageId: null, resolvedVia: null };
+  }
+
+  for (const candidateId of emailMessageLookupCandidates(input.emailMessageId)) {
+    const gmailId = emailGmailIdByMessageId.get(candidateId);
+    if (gmailId?.trim()) {
+      return { gmailMessageId: gmailId.trim(), resolvedVia: "email_message" };
+    }
+  }
+
+  return { gmailMessageId: null, resolvedVia: null };
+}
 
 function countSourceIds(params: ReprocessFinancialDocumentParams) {
   return [params.gmailScanItemId, params.invoiceId, params.financialDocumentReviewId].filter(Boolean).length;
@@ -265,15 +338,22 @@ export async function reprocessFinancialDocumentBySource(
   const parseGmailMessage = deps.parseGmailMessage ?? fetchAndParseGmailMessageFinancialFields;
 
   const source = await loadSourceRecord(db, params);
-  if (!source.gmailMessageId) {
-    throw new Error(`Record ${source.sourceTable}:${source.sourceId} has no gmailMessageId — cannot re-fetch from Gmail`);
+  const resolvedGmail = await resolveGmailMessageIdForReprocess(db, {
+    organizationId: params.organizationId,
+    gmailMessageId: source.gmailMessageId,
+    emailMessageId: source.emailMessageId,
+  });
+  if (!resolvedGmail.gmailMessageId) {
+    throw new Error(
+      `Record ${source.sourceTable}:${source.sourceId} has no gmailMessageId and emailMessageId could not be resolved via EmailMessage — cannot re-fetch from Gmail`
+    );
   }
 
   const { gmail } = await getClients(params.organizationId);
   const parsed = await parseGmailMessage({
     organizationId: params.organizationId,
     gmail,
-    gmailMessageId: source.gmailMessageId,
+    gmailMessageId: resolvedGmail.gmailMessageId,
   });
   const after = parsedFieldsToSnapshot(parsed);
   const comparison = buildReprocessComparison(source.before, after);
@@ -285,8 +365,9 @@ export async function reprocessFinancialDocumentBySource(
   return {
     sourceTable: source.sourceTable,
     sourceId: source.sourceId,
-    gmailMessageId: source.gmailMessageId,
+    gmailMessageId: resolvedGmail.gmailMessageId,
     emailMessageId: source.emailMessageId,
+    gmailMessageIdResolvedVia: resolvedGmail.resolvedVia,
     before: comparison.before,
     after: comparison.after,
     wouldChange: comparison.wouldChange,

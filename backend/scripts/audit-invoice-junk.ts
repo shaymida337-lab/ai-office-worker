@@ -5,6 +5,11 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { isLikelyJunkSupplierName } from "../src/services/supplierNameValidation.js";
+import {
+  classifyReprocessSourceCapability,
+  loadEmailGmailIdMap,
+  type ReprocessSourceCapability,
+} from "../src/services/reprocessFinancialDocument.js";
 
 const auditPrisma = new PrismaClient({ log: [] });
 
@@ -22,6 +27,8 @@ type AuditRow = {
   amount: number | null;
   date: Date | null;
   reviewStatus: string | null;
+  gmailMessageId: string | null;
+  emailMessageId: string | null;
   hasSource: boolean;
   sourceDetail: string;
   categories: Category[];
@@ -206,6 +213,8 @@ async function loadGmailScanItems(): Promise<AuditRow[]> {
       amount: row.amount,
       date: row.occurredAt,
       reviewStatus: row.reviewStatus,
+      gmailMessageId: row.gmailMessageId,
+      emailMessageId: row.emailMessageId,
       hasSource: source.hasSource,
       sourceDetail: source.sourceDetail,
       categories,
@@ -244,6 +253,8 @@ function mapInvoiceRows(rows: RawInvoiceRow[]): AuditRow[] {
       amount,
       date: toDate(row.date),
       reviewStatus: row.status,
+      gmailMessageId: row.gmailMessageId,
+      emailMessageId: row.emailId,
       hasSource: source.hasSource,
       sourceDetail: source.sourceDetail,
       categories,
@@ -354,6 +365,8 @@ function mapReviewRows(rows: RawReviewRow[], attachmentCounts: Map<string, numbe
       amount,
       date: toDate(row.documentDate),
       reviewStatus: row.reviewStatus,
+      gmailMessageId: row.gmailMessageId,
+      emailMessageId: row.emailMessageId,
       hasSource: source.hasSource,
       sourceDetail: source.sourceDetail,
       categories,
@@ -468,8 +481,80 @@ function printRecommendation(rows: AuditRow[]) {
   console.log(`  With recoverable source (gmail/email/drive/file): ${withSource.length} → candidate for re-sync / re-parse`);
   console.log(`  Orphans (no source link): ${orphans.length}`);
   console.log(`  Orphans with junk supplierName: ${clearJunkOrphans.length} → safest delete candidates if you clean up`);
-  console.log(`  With source (all categories): ${withSource.length} → try forceReprocess Gmail sync before deleting`);
-  console.log("\nSuggested order: (1) re-sync rows with gmailMessageId, (2) manually review million/zero amounts, (3) delete orphan junk only after confirming no Drive copy.");
+  console.log(`  With source (all categories): ${withSource.length} → try targeted reprocess before deleting`);
+  console.log("\nSuggested order: (1) reprocess rows with resolvable Gmail id, (2) manually review million/zero amounts, (3) delete orphan junk only after confirming no Drive copy.");
+}
+
+async function printReprocessBreakdown(rows: AuditRow[]) {
+  const uniqueKeys = new Set<string>();
+  const flagged: AuditRow[] = [];
+  for (const row of rows) {
+    const key = `${row.table}:${row.id}`;
+    if (uniqueKeys.has(key)) continue;
+    uniqueKeys.add(key);
+    flagged.push(row);
+  }
+
+  const emailGmailIdByOrg = new Map<string, Map<string, string | null>>();
+  const orgIds = [...new Set(flagged.map((row) => row.organizationId))];
+  for (const organizationId of orgIds) {
+    const orgEmailIds = flagged
+      .filter((row) => row.organizationId === organizationId)
+      .map((row) => row.emailMessageId)
+      .filter((id): id is string => Boolean(id));
+    emailGmailIdByOrg.set(organizationId, await loadEmailGmailIdMap(auditPrisma, organizationId, orgEmailIds));
+  }
+
+  const counts: Record<ReprocessSourceCapability, number> = {
+    direct_gmail: 0,
+    resolvable_via_email: 0,
+    no_gmail_link: 0,
+  };
+  const byTable = new Map<TableName, Record<ReprocessSourceCapability, number>>();
+  for (const table of ["GmailScanItem", "Invoice", "FinancialDocumentReview"] as const) {
+    byTable.set(table, { direct_gmail: 0, resolvable_via_email: 0, no_gmail_link: 0 });
+  }
+
+  for (const row of flagged) {
+    const capability = classifyReprocessSourceCapability(
+      { gmailMessageId: row.gmailMessageId, emailMessageId: row.emailMessageId },
+      emailGmailIdByOrg.get(row.organizationId) ?? new Map()
+    );
+    counts[capability]++;
+    byTable.get(row.table)![capability]++;
+  }
+
+  console.log("\n=== Reprocess capability breakdown (distinct flagged records) ===");
+  console.log(`Total distinct flagged: ${flagged.length}`);
+  console.log(`  direct gmailMessageId on record: ${counts.direct_gmail} → reprocess ready now`);
+  console.log(`  emailMessageId resolves to EmailMessage.gmailId: ${counts.resolvable_via_email} → reprocess after lookup (e.g. review_ quarantine rows)`);
+  console.log(`  no Gmail link (cannot reprocess from Gmail): ${counts.no_gmail_link}`);
+
+  for (const table of ["GmailScanItem", "Invoice", "FinancialDocumentReview"] as const) {
+    const tableCounts = byTable.get(table)!;
+    const tableTotal = tableCounts.direct_gmail + tableCounts.resolvable_via_email + tableCounts.no_gmail_link;
+    console.log(`\n  [${table}] total=${tableTotal}`);
+    console.log(`    direct gmailMessageId: ${tableCounts.direct_gmail}`);
+    console.log(`    resolvable via emailMessageId: ${tableCounts.resolvable_via_email}`);
+    console.log(`    no Gmail link: ${tableCounts.no_gmail_link}`);
+  }
+
+  const resolvableSamples = flagged
+    .filter((row) =>
+      classifyReprocessSourceCapability(
+        { gmailMessageId: row.gmailMessageId, emailMessageId: row.emailMessageId },
+        emailGmailIdByOrg.get(row.organizationId) ?? new Map()
+      ) === "resolvable_via_email"
+    )
+    .slice(0, 5);
+  if (resolvableSamples.length) {
+    console.log("\n  Sample resolvable-via-email (up to 5):");
+    for (const row of resolvableSamples) {
+      console.log(
+        `    ${row.table} id=${row.id} supplier="${row.supplierName ?? "—"}" gmailMessageId=${row.gmailMessageId ?? "null"} emailMessageId=${row.emailMessageId ?? "null"}`
+      );
+    }
+  }
 }
 
 async function main() {
@@ -494,6 +579,7 @@ async function main() {
   }
 
   printRecommendation(allRows);
+  await printReprocessBreakdown(allRows);
   console.log("\nNATALIE-JUNK-AUDIT-READY");
 }
 

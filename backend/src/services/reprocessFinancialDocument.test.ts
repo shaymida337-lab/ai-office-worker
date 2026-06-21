@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import {
   buildFinancialSnapshot,
   buildReprocessComparison,
+  classifyReprocessSourceCapability,
   financialSnapshotsEqual,
   reprocessFinancialDocumentBySource,
   reprocessParamsFromRecordId,
+  resolveGmailMessageIdForReprocess,
   type ReprocessFinancialDocumentDeps,
 } from "./reprocessFinancialDocument.js";
 
@@ -155,6 +157,91 @@ test("reprocessFinancialDocumentBySource dryRun works for FinancialDocumentRevie
   assert.equal(result.wouldChange, true);
   assert.equal(result.before.amount, 1_000_000);
   assert.equal(result.after.supplier, "OpenAI LLC");
+});
+
+test("classifyReprocessSourceCapability prefers direct gmailMessageId", () => {
+  const map = new Map<string, string | null>([["em-1", "gm-from-email"]]);
+  assert.equal(
+    classifyReprocessSourceCapability({ gmailMessageId: "gm-direct", emailMessageId: "em-1" }, map),
+    "direct_gmail"
+  );
+});
+
+test("classifyReprocessSourceCapability resolves missing gmailMessageId via emailMessageId", () => {
+  const map = new Map<string, string | null>([["em-1", "gm-from-email"]]);
+  assert.equal(
+    classifyReprocessSourceCapability({ gmailMessageId: null, emailMessageId: "em-1" }, map),
+    "resolvable_via_email"
+  );
+});
+
+test("resolveGmailMessageIdForReprocess loads gmailId from EmailMessage when only emailMessageId exists", async () => {
+  const resolved = await resolveGmailMessageIdForReprocess(
+    {
+      emailMessage: {
+        findMany: async () => [{ id: "em-wolt", gmailId: "gm-wolt-123" }],
+      },
+    } as Pick<NonNullable<ReprocessFinancialDocumentDeps["prismaClient"]>, "emailMessage">,
+    {
+      organizationId: "org-1",
+      gmailMessageId: null,
+      emailMessageId: "em-wolt",
+    }
+  );
+  assert.equal(resolved.gmailMessageId, "gm-wolt-123");
+  assert.equal(resolved.resolvedVia, "email_message");
+});
+
+test("reprocessFinancialDocumentBySource dryRun resolves gmailId via emailMessageId for review row", async () => {
+  const writes: string[] = [];
+  let parsedGmailId: string | null = null;
+  const mockPrisma = {
+    gmailScanItem: { update: async () => { writes.push("gmailScanItem.update"); } },
+    invoice: { update: async () => { writes.push("invoice.update"); } },
+    financialDocumentReview: {
+      findFirst: async () => ({
+        id: "review_0a1baf3fa3620a9a40e8",
+        gmailMessageId: null,
+        emailMessageId: "em-wolt",
+        supplierName: "Wolt",
+        totalAmount: 0,
+        documentDate: new Date("2024-02-01T00:00:00.000Z"),
+      }),
+      update: async () => {
+        writes.push("financialDocumentReview.update");
+      },
+    },
+    emailMessage: {
+      findMany: async () => [{ id: "em-wolt", gmailId: "gm-wolt-123" }],
+    },
+  };
+
+  const result = await reprocessFinancialDocumentBySource(
+    {
+      organizationId: "org-1",
+      financialDocumentReviewId: "review_0a1baf3fa3620a9a40e8",
+      dryRun: true,
+    },
+    {
+      prismaClient: mockPrisma as unknown as ReprocessFinancialDocumentDeps["prismaClient"],
+      getGoogleClientsFn: (async () => ({ gmail: {} as never, drive: {} as never, sheets: {} as never, oauth2: {} as never })) as ReprocessFinancialDocumentDeps["getGoogleClientsFn"],
+      parseGmailMessage: async ({ gmailMessageId }) => {
+        parsedGmailId = gmailMessageId;
+        return {
+          supplierName: "Wolt",
+          amount: 89.9,
+          finalTotalAmount: 89.9,
+          documentDate: new Date("2024-02-01T00:00:00.000Z"),
+          invoiceNumber: "WOLT-1",
+        };
+      },
+    }
+  );
+
+  assert.equal(writes.length, 0);
+  assert.equal(parsedGmailId, "gm-wolt-123");
+  assert.equal(result.gmailMessageIdResolvedVia, "email_message");
+  assert.equal(result.wouldChange, true);
 });
 
 test("reprocessFinancialDocumentBySource dryRun=false updates in place by id", async () => {
