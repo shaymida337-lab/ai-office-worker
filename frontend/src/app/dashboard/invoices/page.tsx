@@ -1,10 +1,10 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
-import { Download, FileText, Filter, Loader2, RefreshCcw, Search, UploadCloud } from "lucide-react";
+import { ChevronDown, ChevronLeft, Download, FileText, Filter, Loader2, RefreshCcw, Search, UploadCloud } from "lucide-react";
 
 type ClientItem = { id: string; name: string; gmailConnected: boolean };
 type InvoicePaymentStatus = "paid" | "pending" | "overdue";
@@ -31,8 +31,16 @@ type Invoice = {
   client?: { id: string; name: string; color: string | null };
 };
 
+type MonthSummary = {
+  year: number;
+  month: number;
+  count: number;
+  totalsByCurrency: Record<string, number>;
+};
+
 type ClientsResponse = { clients: ClientItem[] };
 type InvoicesResponse = { invoices: Invoice[] };
+type InvoiceMonthsResponse = { months: MonthSummary[] };
 type InvoiceDeleteResponse = {
   deleted?: { invoices?: number; gmailScanItems?: number; documentReviews?: number };
   verification?: { after?: { invoices?: number; gmailScanItems?: number; documentReviews?: number }; afterCount?: number };
@@ -49,7 +57,12 @@ const reviewTabs: Array<{ value: "all" | InvoiceReviewStatus; label: string }> =
 ];
 
 export default function InvoicesPage() {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [months, setMonths] = useState<MonthSummary[]>([]);
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set());
+  const [invoicesByMonth, setInvoicesByMonth] = useState<Record<string, Invoice[]>>({});
+  const [loadingMonth, setLoadingMonth] = useState<Set<string>>(() => new Set());
+  const [monthsLoading, setMonthsLoading] = useState(true);
+  const [junkDrawerExpanded, setJunkDrawerExpanded] = useState(false);
   const [clients, setClients] = useState<ClientItem[]>([]);
   const [clientId, setClientId] = useState("all");
   const [reviewStatus, setReviewStatus] = useState<"all" | InvoiceReviewStatus>("all");
@@ -64,14 +77,84 @@ export default function InvoicesPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(() => new Set());
   const [selected, setSelected] = useState<Invoice | null>(null);
+  const skipFilterRefresh = useRef(true);
+
+  function buildListQueryString() {
+    const params = new URLSearchParams();
+    if (clientId !== "all") params.set("clientId", clientId);
+    if (search.trim()) params.set("search", search.trim());
+    if (reviewStatus !== "all") params.set("status", reviewStatus);
+    const query = params.toString();
+    return query ? `?${query}` : "";
+  }
+
+  async function loadClients() {
+    const clientData = await apiFetch<ClientsResponse>("/api/clients");
+    setClients(clientData.clients);
+  }
+
+  async function loadMonthInvoices(monthKey: string, querySuffix = buildListQueryString()) {
+    setLoadingMonth((current) => new Set(current).add(monthKey));
+    try {
+      const connector = querySuffix ? "&" : "?";
+      const queryBody = querySuffix.replace(/^\?/, "");
+      const invoiceData = await apiFetch<InvoicesResponse>(
+        `/api/invoices?month=${monthKey}${queryBody ? `${connector}${queryBody}` : ""}`
+      );
+      setInvoicesByMonth((current) => ({ ...current, [monthKey]: invoiceData.invoices }));
+    } finally {
+      setLoadingMonth((current) => {
+        const next = new Set(current);
+        next.delete(monthKey);
+        return next;
+      });
+    }
+  }
+
+  async function loadMonthsInvoices(monthKeys: string[], querySuffix = buildListQueryString()) {
+    if (monthKeys.length === 0) {
+      setInvoicesByMonth({});
+      return;
+    }
+    setLoadingMonth(new Set(monthKeys));
+    try {
+      const connector = querySuffix ? "&" : "?";
+      const queryBody = querySuffix.replace(/^\?/, "");
+      const results = await Promise.all(
+        monthKeys.map(async (monthKey) => {
+          const invoiceData = await apiFetch<InvoicesResponse>(
+            `/api/invoices?month=${monthKey}${queryBody ? `${connector}${queryBody}` : ""}`
+          );
+          return [monthKey, invoiceData.invoices] as const;
+        })
+      );
+      setInvoicesByMonth(Object.fromEntries(results));
+    } finally {
+      setLoadingMonth(new Set());
+    }
+  }
+
+  async function refreshMonthsAndInvoices(monthKeysToLoad?: string[]) {
+    const querySuffix = buildListQueryString();
+    const monthsData = await apiFetch<InvoiceMonthsResponse>(`/api/invoices/months${querySuffix}`);
+    setMonths(monthsData.months);
+    const allKeys = monthsData.months.map((month) => monthKey(month.year, month.month));
+    const keysToLoad = monthKeysToLoad ?? allKeys;
+    setExpandedMonths((current) => {
+      const next = new Set(current);
+      for (const key of allKeys) next.add(key);
+      return next;
+    });
+    await loadMonthsInvoices(keysToLoad, querySuffix);
+  }
 
   async function load() {
-    const [invoiceData, clientData] = await Promise.all([
-      apiFetch<InvoicesResponse>("/api/invoices"),
-      apiFetch<ClientsResponse>("/api/clients"),
-    ]);
-    setInvoices(invoiceData.invoices);
-    setClients(clientData.clients);
+    setMonthsLoading(true);
+    try {
+      await Promise.all([loadClients(), refreshMonthsAndInvoices()]);
+    } finally {
+      setMonthsLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -80,6 +163,18 @@ export default function InvoicesPage() {
       setMessage(err instanceof Error ? err.message : "טעינת חשבוניות נכשלה");
     });
   }, []);
+
+  useEffect(() => {
+    if (monthsLoading) return;
+    if (skipFilterRefresh.current) {
+      skipFilterRefresh.current = false;
+      return;
+    }
+    refreshMonthsAndInvoices().catch((err) => {
+      setMessageTone("error");
+      setMessage(err instanceof Error ? err.message : "רענון חשבוניות נכשל");
+    });
+  }, [clientId, reviewStatus, search, monthsLoading]);
 
   useEffect(() => {
     if (!selected) return;
@@ -92,18 +187,62 @@ export default function InvoicesPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selected]);
 
+  const allLoadedInvoices = useMemo(
+    () => Object.values(invoicesByMonth).flat(),
+    [invoicesByMonth]
+  );
+
+  const matchesDisplayFilters = (invoice: Invoice) => {
+    const date = invoice.date.slice(0, 10);
+    return (
+      (!fromDate || date >= fromDate) &&
+      (!toDate || date <= toDate)
+    );
+  };
+
+  const junkInvoices = useMemo(() => {
+    const junk: Invoice[] = [];
+    const seen = new Set<string>();
+    for (const invoice of allLoadedInvoices) {
+      if (!isJunkInvoice(invoice) || seen.has(invoice.id)) continue;
+      seen.add(invoice.id);
+      if (matchesDisplayFilters(invoice)) junk.push(invoice);
+    }
+    return junk;
+  }, [allLoadedInvoices, fromDate, toDate]);
+
+  const monthInvoicesForDisplay = (monthKeyValue: string) => {
+    const invoices = invoicesByMonth[monthKeyValue] ?? [];
+    return invoices.filter((invoice) => !isJunkInvoice(invoice) && matchesDisplayFilters(invoice));
+  };
+
   const filtered = useMemo(() => {
-    return invoices.filter((invoice) => {
+    const regular: Invoice[] = [];
+    const seen = new Set<string>();
+    const matchesDateFilters = (invoice: Invoice) => {
       const date = invoice.date.slice(0, 10);
-      return (
-        (clientId === "all" || invoice.clientId === clientId) &&
-        (reviewStatus === "all" || (invoice.reviewStatus ?? "approved") === reviewStatus) &&
-        (!search || `${invoice.invoiceNumber ?? ""} ${invoice.description ?? ""} ${invoice.client?.name ?? ""} ${invoice.supplierName ?? ""}`.toLowerCase().includes(search.toLowerCase())) &&
-        (!fromDate || date >= fromDate) &&
-        (!toDate || date <= toDate)
-      );
-    });
-  }, [clientId, fromDate, invoices, reviewStatus, search, toDate]);
+      return (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
+    };
+    for (const month of months) {
+      const key = monthKey(month.year, month.month);
+      if (!expandedMonths.has(key)) continue;
+      for (const invoice of invoicesByMonth[key] ?? []) {
+        if (isJunkInvoice(invoice) || !matchesDateFilters(invoice) || seen.has(invoice.id)) continue;
+        seen.add(invoice.id);
+        regular.push(invoice);
+      }
+    }
+    if (junkDrawerExpanded) {
+      for (const invoice of junkInvoices) {
+        if (!seen.has(invoice.id)) {
+          seen.add(invoice.id);
+          regular.push(invoice);
+        }
+      }
+    }
+    return regular;
+  }, [expandedMonths, fromDate, invoicesByMonth, junkDrawerExpanded, junkInvoices, months, toDate]);
+
   const filteredIds = useMemo(() => filtered.map((invoice) => invoice.id), [filtered]);
   const selectedVisibleInvoices = useMemo(
     () => filtered.filter((invoice) => selectedInvoiceIds.has(invoice.id)),
@@ -127,6 +266,34 @@ export default function InvoicesPage() {
   const paid = filtered.filter((invoice) => invoice.status === "paid").reduce((sum, invoice) => sum + invoice.amount, 0);
   const pending = filtered.filter((invoice) => invoice.status !== "paid").reduce((sum, invoice) => sum + invoice.amount, 0);
   const overdue = filtered.filter((invoice) => invoice.status === "overdue").length;
+
+  function toggleMonthExpanded(monthKeyValue: string) {
+    setExpandedMonths((current) => {
+      const next = new Set(current);
+      if (next.has(monthKeyValue)) {
+        next.delete(monthKeyValue);
+      } else {
+        next.add(monthKeyValue);
+        if (!invoicesByMonth[monthKeyValue]) {
+          void loadMonthInvoices(monthKeyValue).catch((err) => {
+            setMessageTone("error");
+            setMessage(err instanceof Error ? err.message : "טעינת חשבוניות לחודש נכשלה");
+          });
+        }
+      }
+      return next;
+    });
+  }
+
+  function removeInvoiceFromLocalState(invoiceId: string) {
+    setInvoicesByMonth((current) => {
+      const next: Record<string, Invoice[]> = {};
+      for (const [key, rows] of Object.entries(current)) {
+        next[key] = rows.filter((invoice) => invoice.id !== invoiceId);
+      }
+      return next;
+    });
+  }
 
   async function scanInvoices() {
     setScanning(true);
@@ -172,7 +339,7 @@ export default function InvoicesPage() {
     setMessage("");
     try {
       await apiFetch(`/api/invoices/${invoice.id}/status`, { method: "PUT", body: JSON.stringify({ status: next }) });
-      await load();
+      await refreshMonthsAndInvoices(Object.keys(invoicesByMonth));
       setMessageTone("success");
       setMessage(next === "paid" ? "החשבונית סומנה כשולמה" : "החשבונית סומנה כממתינה");
     } catch (err) {
@@ -195,8 +362,8 @@ export default function InvoicesPage() {
         next.delete(invoice.id);
         return next;
       });
-      setInvoices((prev) => prev.filter((item) => item.id !== invoice.id));
-      await load();
+      removeInvoiceFromLocalState(invoice.id);
+      await refreshMonthsAndInvoices(Object.keys(invoicesByMonth));
       setMessageTone("success");
       setMessage(`החשבונית נמחקה. נותקו ${result.unlinked?.bankTransactions ?? 0} התאמות בנק.`);
     } catch (err) {
@@ -251,8 +418,10 @@ export default function InvoicesPage() {
       const deletedIds = new Set(selectedVisibleInvoices.map((invoice) => invoice.id));
       setSelected((current) => (current && deletedIds.has(current.id) ? null : current));
       setSelectedInvoiceIds(new Set());
-      setInvoices((prev) => prev.filter((invoice) => !deletedIds.has(invoice.id)));
-      await load();
+      for (const invoice of selectedVisibleInvoices) {
+        removeInvoiceFromLocalState(invoice.id);
+      }
+      await refreshMonthsAndInvoices(Object.keys(invoicesByMonth));
       setMessageTone("success");
       setMessage(`${deletedIds.size} חשבוניות נמחקו.`);
     } catch (err) {
@@ -468,7 +637,14 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      {filtered.length === 0 && (
+      {monthsLoading && (
+        <div className="invoice-panel mb-5 flex items-center justify-center gap-2 rounded-2xl border border-[#E5E7EB] bg-white p-8 text-[#111827] shadow-sm">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span className="text-base font-bold">טוען חודשים...</span>
+        </div>
+      )}
+
+      {!monthsLoading && months.length === 0 && junkInvoices.length === 0 && (
         <div className="invoice-panel rounded-2xl border border-[#E5E7EB] bg-white p-5 text-center text-[#111827] shadow-sm">
           <h2 className="text-[#111827]">לא נמצאו חשבוניות</h2>
           <p className="invoice-muted mt-2 text-base font-bold text-[#4B5563]">
@@ -477,114 +653,127 @@ export default function InvoicesPage() {
         </div>
       )}
 
-      <div className="grid gap-4 md:hidden">
-        {filtered.map((invoice) => (
-          <div key={invoice.id} className="invoice-mobile-row space-y-2 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex min-w-0 flex-1 items-start gap-2">
-                <input
-                  type="checkbox"
-                  checked={selectedInvoiceIds.has(invoice.id)}
-                  onChange={() => toggleInvoiceSelection(invoice.id)}
-                  disabled={bulkDeleting}
-                  className="mt-1 h-5 w-5 shrink-0 rounded border-[#9CA3AF]"
-                  aria-label="בחר חשבונית"
-                />
-                <button type="button" className="min-w-0 flex-1 text-right" onClick={() => setSelected(invoice)}>
-                  <div className="truncate text-base font-semibold text-[#111827]" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</div>
-                </button>
-              </div>
-              <span className={`invoice-status-pill inline-flex shrink-0 items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>
-                {reviewBadgeLabel(invoice)}
-              </span>
-            </div>
-            <button type="button" className="block w-full min-w-0 text-right" onClick={() => setSelected(invoice)}>
-              <div className="truncate text-sm font-normal text-[#6B7280]" title={`${formatInvoiceDate(invoice.date)} · ${invoiceMetaLine(invoice)}`}>{formatInvoiceDate(invoice.date)} · {invoiceMetaLine(invoice)}</div>
-            </button>
-            {displayInvoiceDescription(invoice) !== "—" && (
-              <button type="button" className="block w-full min-w-0 text-right" onClick={() => setSelected(invoice)}>
-                <div className="truncate text-base font-semibold text-[#111827]" title={displayInvoiceDescription(invoice)}>{displayInvoiceDescription(invoice)}</div>
-              </button>
-            )}
-            <div className="min-w-0 text-lg font-bold text-[#111827]">{formatInvoiceAmount(invoice)}</div>
-            <div className="grid grid-cols-2 gap-2">
-              {documentDriveUrl(invoice) && (
-                <a className="invoice-action inline-flex min-h-[44px] min-w-0 items-center justify-center gap-2 rounded-xl border border-[#1D4ED8] bg-[#DBEAFE] px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer">
-                  <Download className="h-4 w-4 shrink-0" /><span className="truncate">פתח בדרייב</span>
-                </a>
-              )}
-              {invoice.gmailMessageLink && (
-                <a className="invoice-action inline-flex min-h-[44px] min-w-0 items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer">
-                  <Download className="h-4 w-4 shrink-0" /><span className="truncate">פתח מייל</span>
-                </a>
-              )}
-              {isPersistedInvoice(invoice) && <button className="invoice-action min-h-[44px] min-w-0 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={() => toggleStatus(invoice)}>
-                <span className="truncate">{invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}</span>
-              </button>}
-              <button className="invoice-action min-h-[44px] min-w-0 rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#FECACA]" onClick={() => deleteInvoice(invoice)} disabled={deletingId === invoice.id}>
-                <span className="truncate">{deletingId === invoice.id ? "מוחק..." : "מחק"}</span>
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+      <div className="space-y-4">
+        {months.map((month) => {
+          const key = monthKey(month.year, month.month);
+          const isExpanded = expandedMonths.has(key);
+          const monthInvoices = monthInvoicesForDisplay(key);
+          const totals = formatMonthTotalsSummary(month.totalsByCurrency);
+          const isLoading = loadingMonth.has(key);
 
-      <div className="invoice-table-wrap hidden max-w-full overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-white pl-2 shadow-sm md:block">
-        <table className="w-full table-fixed bg-white text-[#111827]">
-          <thead className="bg-[#F3F4F6]">
-            <tr className="border-b border-[#E5E7EB]">
-              <th className="w-[4%] text-base font-black text-[#111827]"><input type="checkbox" aria-label="בחר הכל בעמוד" checked={allVisibleSelected} onChange={toggleSelectAllVisible} disabled={filtered.length === 0 || bulkDeleting} className="h-5 w-5 rounded border-[#9CA3AF]" /></th>
-              <th className="w-[20%] text-base font-black text-[#111827]">לקוח/ספק</th>
-              <th className="w-[10%] text-base font-black text-[#111827]">תאריך</th>
-              <th className="w-[30%] text-base font-black text-[#111827]">תיאור</th>
-              <th className="w-[10%] text-base font-black text-[#111827]">סכום</th>
-              <th className="w-[11%] text-base font-black text-[#111827]">סטטוס</th>
-              <th className="w-[15%] text-base font-black text-[#111827]">פעולות</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((invoice) => (
-              <tr key={invoice.id} onClick={() => setSelected(invoice)} className="cursor-pointer border-b border-[#E5E7EB] bg-white transition hover:bg-[#F8FAFC]">
-                <td className="py-4">
-                  <input
-                    type="checkbox"
-                    aria-label="בחר חשבונית"
-                    checked={selectedInvoiceIds.has(invoice.id)}
-                    onChange={() => toggleInvoiceSelection(invoice.id)}
-                    onClick={(event) => event.stopPropagation()}
-                    disabled={bulkDeleting}
-                    className="h-5 w-5 rounded border-[#9CA3AF]"
-                  />
-                </td>
-                <td className="py-4">
-                  <div className="flex max-w-full items-center gap-2 text-[#111827]">
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#E5E7EB] bg-[#F3F4F6] text-sm font-black text-[#111827]">{(invoice.client?.name ?? invoice.supplierName ?? "בדיקה").slice(0, 2)}</span>
-                    <div className="min-w-0">
-                      <div className="truncate text-base font-semibold" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</div>
-                      <div className="truncate text-xs font-normal text-[#9CA3AF]" title={invoiceMetaLine(invoice)}>{invoiceMetaLine(invoice)}</div>
+          return (
+            <section key={key} className="invoice-panel overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-3 border-b border-[#E5E7EB] px-4 py-4 text-right transition hover:bg-[#F8FAFC] md:px-5"
+                onClick={() => toggleMonthExpanded(key)}
+                aria-expanded={isExpanded}
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  {isExpanded ? <ChevronDown className="h-5 w-5 shrink-0" /> : <ChevronLeft className="h-5 w-5 shrink-0" />}
+                  <div className="min-w-0">
+                    <div className="text-lg font-black text-[#111827]">{formatMonthTitle(month.year, month.month)}</div>
+                    <div className="mt-1 text-sm font-semibold text-[#4B5563]">
+                      {month.count} חשבוניות
+                      {totals.extra ? (
+                        <span className="mr-2">
+                          · {totals.main}
+                          <span className="mr-1 text-xs font-bold text-[#6B7280]">{totals.extra}</span>
+                        </span>
+                      ) : (
+                        <span className="mr-2"> · {totals.main}</span>
+                      )}
                     </div>
                   </div>
-                </td>
-                <td className="whitespace-nowrap py-4 text-base font-normal text-[#111827]">{formatInvoiceDate(invoice.date)}</td>
-                <td className="min-w-0 py-4 text-[#111827]">
-                  <div className="truncate text-base font-semibold" title={displayInvoiceDescription(invoice)}>{displayInvoiceDescription(invoice)}</div>
-                  <div className="truncate text-xs font-normal text-[#9CA3AF]" title={systemNoteForInvoice(invoice)}>{systemNoteForInvoice(invoice)}</div>
-                </td>
-                <td className="whitespace-nowrap py-4 text-base font-bold text-[#111827]">{formatInvoiceAmount(invoice)}</td>
-                <td className="whitespace-nowrap py-4"><span className={`invoice-status-pill inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>{reviewBadgeLabel(invoice)}</span></td>
-                <td className="py-4">
-                  <div className="flex min-w-0 flex-nowrap gap-1">
-                    {documentDriveUrl(invoice) && <a className="invoice-action inline-flex min-w-0 items-center justify-center gap-1 rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3 w-3" />דרייב</a>}
-                    {invoice.gmailMessageLink && <a className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>מייל</a>}
-                    {isPersistedInvoice(invoice) && <button className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={(e) => { e.stopPropagation(); toggleStatus(invoice); }}>{invoice.status === "paid" ? "ממתינה" : "שולמה"}</button>}
-                    <button className="invoice-action rounded-lg border border-[#B91C1C] bg-[#FEE2E2] px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); deleteInvoice(invoice); }} disabled={deletingId === invoice.id}>{deletingId === invoice.id ? "מוחק..." : "מחק"}</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+                {isLoading && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#4B5563]" />}
+              </button>
+
+              {isExpanded && (
+                <div className="p-4 md:p-5">
+                  {isLoading && monthInvoices.length === 0 ? (
+                    <div className="flex items-center justify-center gap-2 py-8 text-sm font-bold text-[#4B5563]">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      טוען חשבוניות...
+                    </div>
+                  ) : monthInvoices.length === 0 ? (
+                    <p className="py-4 text-center text-sm font-bold text-[#4B5563]">אין חשבוניות להצגה בחודש זה</p>
+                  ) : (
+                    <>
+                      <InvoiceMobileList
+                        invoices={monthInvoices}
+                        selectedInvoiceIds={selectedInvoiceIds}
+                        bulkDeleting={bulkDeleting}
+                        deletingId={deletingId}
+                        onSelect={setSelected}
+                        onToggleSelection={toggleInvoiceSelection}
+                        onToggleStatus={toggleStatus}
+                        onDelete={deleteInvoice}
+                      />
+                      <InvoiceDesktopList
+                        invoices={monthInvoices}
+                        selectedInvoiceIds={selectedInvoiceIds}
+                        bulkDeleting={bulkDeleting}
+                        deletingId={deletingId}
+                        allVisibleSelected={false}
+                        onSelect={setSelected}
+                        onToggleSelection={toggleInvoiceSelection}
+                        onToggleSelectAllVisible={() => {}}
+                        onToggleStatus={toggleStatus}
+                        onDelete={deleteInvoice}
+                        showSelectAll={false}
+                      />
+                    </>
+                  )}
+                </div>
+              )}
+            </section>
+          );
+        })}
       </div>
+
+      {junkInvoices.length > 0 && (
+        <section className="invoice-panel mt-6 overflow-hidden rounded-2xl border border-[#D97706] bg-white shadow-sm">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 bg-[#FEF3C7] px-4 py-4 text-right transition hover:bg-[#FDE68A] md:px-5"
+            onClick={() => setJunkDrawerExpanded((current) => !current)}
+            aria-expanded={junkDrawerExpanded}
+          >
+            <div className="flex items-center gap-3">
+              {junkDrawerExpanded ? <ChevronDown className="h-5 w-5 shrink-0" /> : <ChevronLeft className="h-5 w-5 shrink-0" />}
+              <span className="text-lg font-black text-[#111827]">דורש בדיקה ידנית ({junkInvoices.length})</span>
+            </div>
+          </button>
+          {junkDrawerExpanded && (
+            <div className="border-t border-[#FDE68A] p-4 md:p-5">
+              <InvoiceMobileList
+                invoices={junkInvoices}
+                selectedInvoiceIds={selectedInvoiceIds}
+                bulkDeleting={bulkDeleting}
+                deletingId={deletingId}
+                onSelect={setSelected}
+                onToggleSelection={toggleInvoiceSelection}
+                onToggleStatus={toggleStatus}
+                onDelete={deleteInvoice}
+              />
+              <InvoiceDesktopList
+                invoices={junkInvoices}
+                selectedInvoiceIds={selectedInvoiceIds}
+                bulkDeleting={bulkDeleting}
+                deletingId={deletingId}
+                allVisibleSelected={false}
+                onSelect={setSelected}
+                onToggleSelection={toggleInvoiceSelection}
+                onToggleSelectAllVisible={() => {}}
+                onToggleStatus={toggleStatus}
+                onDelete={deleteInvoice}
+                showSelectAll={false}
+              />
+            </div>
+          )}
+        </section>
+      )}
 
       {selected && (
         <div className="fixed inset-0 z-[110] overflow-y-auto bg-slate-950/75 p-0 backdrop-blur-sm sm:grid sm:place-items-center sm:p-6" role="presentation" onClick={() => setSelected(null)}>
@@ -691,6 +880,167 @@ function Metric({ label, value, tone }: { label: string; value: string | number;
   );
 }
 
+type InvoiceListProps = {
+  invoices: Invoice[];
+  selectedInvoiceIds: Set<string>;
+  bulkDeleting: boolean;
+  deletingId: string | null;
+  onSelect: (invoice: Invoice) => void;
+  onToggleSelection: (invoiceId: string) => void;
+  onToggleStatus: (invoice: Invoice) => void;
+  onDelete: (invoice: Invoice) => void;
+};
+
+type InvoiceDesktopListProps = InvoiceListProps & {
+  allVisibleSelected: boolean;
+  onToggleSelectAllVisible: () => void;
+  showSelectAll: boolean;
+};
+
+function InvoiceMobileList({
+  invoices,
+  selectedInvoiceIds,
+  bulkDeleting,
+  deletingId,
+  onSelect,
+  onToggleSelection,
+  onToggleStatus,
+  onDelete,
+}: InvoiceListProps) {
+  return (
+    <div className="grid gap-4 md:hidden">
+      {invoices.map((invoice) => (
+        <div key={invoice.id} className="invoice-mobile-row space-y-2 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 flex-1 items-start gap-2">
+              <input
+                type="checkbox"
+                checked={selectedInvoiceIds.has(invoice.id)}
+                onChange={() => onToggleSelection(invoice.id)}
+                disabled={bulkDeleting}
+                className="mt-1 h-5 w-5 shrink-0 rounded border-[#9CA3AF]"
+                aria-label="בחר חשבונית"
+              />
+              <button type="button" className="min-w-0 flex-1 text-right" onClick={() => onSelect(invoice)}>
+                <div className="truncate text-base font-semibold text-[#111827]" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</div>
+              </button>
+            </div>
+            <span className={`invoice-status-pill inline-flex shrink-0 items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>
+              {reviewBadgeLabel(invoice)}
+            </span>
+          </div>
+          <button type="button" className="block w-full min-w-0 text-right" onClick={() => onSelect(invoice)}>
+            <div className="truncate text-sm font-normal text-[#6B7280]" title={`${formatInvoiceDate(invoice.date)} · ${invoiceMetaLine(invoice)}`}>{formatInvoiceDate(invoice.date)} · {invoiceMetaLine(invoice)}</div>
+          </button>
+          {displayInvoiceDescription(invoice) !== "—" && (
+            <button type="button" className="block w-full min-w-0 text-right" onClick={() => onSelect(invoice)}>
+              <div className="truncate text-base font-semibold text-[#111827]" title={displayInvoiceDescription(invoice)}>{displayInvoiceDescription(invoice)}</div>
+            </button>
+          )}
+          <div className="min-w-0 text-lg font-bold text-[#111827]">{formatInvoiceAmount(invoice)}</div>
+          <div className="grid grid-cols-2 gap-2">
+            {documentDriveUrl(invoice) && (
+              <a className="invoice-action inline-flex min-h-[44px] min-w-0 items-center justify-center gap-2 rounded-xl border border-[#1D4ED8] bg-[#DBEAFE] px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer">
+                <Download className="h-4 w-4 shrink-0" /><span className="truncate">פתח בדרייב</span>
+              </a>
+            )}
+            {invoice.gmailMessageLink && (
+              <a className="invoice-action inline-flex min-h-[44px] min-w-0 items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer">
+                <Download className="h-4 w-4 shrink-0" /><span className="truncate">פתח מייל</span>
+              </a>
+            )}
+            {isPersistedInvoice(invoice) && (
+              <button className="invoice-action min-h-[44px] min-w-0 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={() => onToggleStatus(invoice)}>
+                <span className="truncate">{invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}</span>
+              </button>
+            )}
+            <button className="invoice-action min-h-[44px] min-w-0 rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#FECACA]" onClick={() => onDelete(invoice)} disabled={deletingId === invoice.id}>
+              <span className="truncate">{deletingId === invoice.id ? "מוחק..." : "מחק"}</span>
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function InvoiceDesktopList({
+  invoices,
+  selectedInvoiceIds,
+  bulkDeleting,
+  deletingId,
+  allVisibleSelected,
+  onSelect,
+  onToggleSelection,
+  onToggleSelectAllVisible,
+  onToggleStatus,
+  onDelete,
+  showSelectAll,
+}: InvoiceDesktopListProps) {
+  return (
+    <div className="invoice-table-wrap hidden max-w-full overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-white pl-2 shadow-sm md:block">
+      <table className="w-full table-fixed bg-white text-[#111827]">
+        <thead className="bg-[#F3F4F6]">
+          <tr className="border-b border-[#E5E7EB]">
+            <th className="w-[4%] text-base font-black text-[#111827]">
+              {showSelectAll ? (
+                <input type="checkbox" aria-label="בחר הכל בעמוד" checked={allVisibleSelected} onChange={onToggleSelectAllVisible} disabled={invoices.length === 0 || bulkDeleting} className="h-5 w-5 rounded border-[#9CA3AF]" />
+              ) : null}
+            </th>
+            <th className="w-[20%] text-base font-black text-[#111827]">לקוח/ספק</th>
+            <th className="w-[10%] text-base font-black text-[#111827]">תאריך</th>
+            <th className="w-[30%] text-base font-black text-[#111827]">תיאור</th>
+            <th className="w-[10%] text-base font-black text-[#111827]">סכום</th>
+            <th className="w-[11%] text-base font-black text-[#111827]">סטטוס</th>
+            <th className="w-[15%] text-base font-black text-[#111827]">פעולות</th>
+          </tr>
+        </thead>
+        <tbody>
+          {invoices.map((invoice) => (
+            <tr key={invoice.id} onClick={() => onSelect(invoice)} className="cursor-pointer border-b border-[#E5E7EB] bg-white transition hover:bg-[#F8FAFC]">
+              <td className="py-4">
+                <input
+                  type="checkbox"
+                  aria-label="בחר חשבונית"
+                  checked={selectedInvoiceIds.has(invoice.id)}
+                  onChange={() => onToggleSelection(invoice.id)}
+                  onClick={(event) => event.stopPropagation()}
+                  disabled={bulkDeleting}
+                  className="h-5 w-5 rounded border-[#9CA3AF]"
+                />
+              </td>
+              <td className="py-4">
+                <div className="flex max-w-full items-center gap-2 text-[#111827]">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#E5E7EB] bg-[#F3F4F6] text-sm font-black text-[#111827]">{(invoice.client?.name ?? invoice.supplierName ?? "בדיקה").slice(0, 2)}</span>
+                  <div className="min-w-0">
+                    <div className="truncate text-base font-semibold" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</div>
+                    <div className="truncate text-xs font-normal text-[#9CA3AF]" title={invoiceMetaLine(invoice)}>{invoiceMetaLine(invoice)}</div>
+                  </div>
+                </div>
+              </td>
+              <td className="whitespace-nowrap py-4 text-base font-normal text-[#111827]">{formatInvoiceDate(invoice.date)}</td>
+              <td className="min-w-0 py-4 text-[#111827]">
+                <div className="truncate text-base font-semibold" title={displayInvoiceDescription(invoice)}>{displayInvoiceDescription(invoice)}</div>
+                <div className="truncate text-xs font-normal text-[#9CA3AF]" title={systemNoteForInvoice(invoice)}>{systemNoteForInvoice(invoice)}</div>
+              </td>
+              <td className="whitespace-nowrap py-4 text-base font-bold text-[#111827]">{formatInvoiceAmount(invoice)}</td>
+              <td className="whitespace-nowrap py-4"><span className={`invoice-status-pill inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-black ${statusBadgeClass(invoice)}`}>{reviewBadgeLabel(invoice)}</span></td>
+              <td className="py-4">
+                <div className="flex min-w-0 flex-nowrap gap-1">
+                  {documentDriveUrl(invoice) && <a className="invoice-action inline-flex min-w-0 items-center justify-center gap-1 rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3 w-3" />דרייב</a>}
+                  {invoice.gmailMessageLink && <a className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>מייל</a>}
+                  {isPersistedInvoice(invoice) && <button className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={(e) => { e.stopPropagation(); onToggleStatus(invoice); }}>{invoice.status === "paid" ? "ממתינה" : "שולמה"}</button>}
+                  <button className="invoice-action rounded-lg border border-[#B91C1C] bg-[#FEE2E2] px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); onDelete(invoice); }} disabled={deletingId === invoice.id}>{deletingId === invoice.id ? "מוחק..." : "מחק"}</button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function DetailCard({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
   const isMissing = value === MISSING_VALUE;
 
@@ -700,6 +1050,35 @@ function DetailCard({ label, value, highlight = false }: { label: string; value:
       <div className={`break-words text-lg font-black leading-7 ${isMissing ? "invoice-muted text-[#4B5563]" : "text-[#111827]"}`}>{value}</div>
     </div>
   );
+}
+
+function monthKey(year: number, month: number) {
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function formatMonthTitle(year: number, month: number) {
+  return new Date(year, month - 1, 1).toLocaleDateString("he-IL", { month: "long", year: "numeric" });
+}
+
+function formatMonthTotalsSummary(totalsByCurrency: Record<string, number>) {
+  const ils = totalsByCurrency.ILS ?? 0;
+  const main = formatCurrency(ils, "ILS");
+  const foreignParts = Object.entries(totalsByCurrency)
+    .filter(([currency, amount]) => currency !== "ILS" && Number.isFinite(amount) && amount > 0)
+    .map(([currency, amount]) => {
+      const symbols: Record<string, string> = { USD: "$", EUR: "€", GBP: "£" };
+      const symbol = symbols[currency] ?? currency;
+      return `+ ${symbol}${amount.toLocaleString("he-IL")}`;
+    });
+  return { main, extra: foreignParts.join(" ") };
+}
+
+function isJunkInvoice(invoice: Invoice) {
+  const supplier = invoice.supplierName?.trim() ?? "";
+  if (supplier.startsWith("Unknown") || supplier.startsWith("לא ידוע")) return true;
+  if (invoice.amount === 1_000_000 || invoice.amount === 0) return true;
+  if ((invoice.reviewStatus ?? "approved") === "needs_review" && !supplier) return true;
+  return false;
 }
 
 function formatInvoiceAmount(invoice: Invoice) {
