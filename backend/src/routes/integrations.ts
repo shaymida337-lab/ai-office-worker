@@ -5,6 +5,7 @@ import { config, hasGoogleOAuth } from "../lib/config.js";
 import { errorDetails, publicErrorMessage } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import {
+  CALENDAR_SCOPES,
   getOAuth2Client,
   GMAIL_SCOPES,
   googleOAuthMetadata,
@@ -14,6 +15,7 @@ import {
 
 export const integrationsRouter = Router();
 const GMAIL_OAUTH_STATE_COOKIE = "gmail_oauth_state";
+const CALENDAR_OAUTH_STATE_COOKIE = "calendar_oauth_state";
 const OAUTH_STATE_MAX_AGE_MS = 10 * 60 * 1000;
 
 function tokenFromRequest(req: {
@@ -32,6 +34,18 @@ function gmailAuthUrl(state?: string) {
       prompt: "consent",
       include_granted_scopes: true,
       scope: GMAIL_SCOPES,
+      state,
+    })
+  );
+}
+
+function calendarAuthUrl(state?: string) {
+  return getOAuth2Client(config.google.calendarRedirectUri).then((oauth2) =>
+    oauth2.generateAuthUrl({
+      access_type: "offline",
+      prompt: "consent",
+      include_granted_scopes: true,
+      scope: CALENDAR_SCOPES,
       state,
     })
   );
@@ -63,9 +77,33 @@ function clearGmailStateCookie(res: Response) {
   });
 }
 
+function setCalendarStateCookie(res: Response, state: string) {
+  res.cookie(CALENDAR_OAUTH_STATE_COOKIE, state, {
+    httpOnly: true,
+    sameSite: "none",
+    secure: true,
+    maxAge: OAUTH_STATE_MAX_AGE_MS,
+    path: "/api/integrations/calendar",
+  });
+}
+
+function clearCalendarStateCookie(res: Response) {
+  res.clearCookie(CALENDAR_OAUTH_STATE_COOKIE, {
+    httpOnly: true,
+    sameSite: "none",
+    secure: true,
+    path: "/api/integrations/calendar",
+  });
+}
+
 function gmailCallbackErrorRedirect(err: unknown) {
   const reason = encodeURIComponent(publicErrorMessage(err).slice(0, 500));
   return `${config.frontendUrl}/dashboard/settings?gmail=error&reason=${reason}`;
+}
+
+function calendarCallbackErrorRedirect(err: unknown) {
+  const reason = encodeURIComponent(publicErrorMessage(err).slice(0, 500));
+  return `${config.frontendUrl}/dashboard/calendar?calendar=error&reason=${reason}`;
 }
 
 function shortValue(value: string | undefined | null) {
@@ -95,6 +133,14 @@ function tokenTrace(tokens: {
 
 type GmailIntegrationState = {
   purpose: "gmail_integration";
+  userId: string;
+  organizationId: string;
+  email: string;
+  timestamp: number;
+};
+
+type CalendarIntegrationState = {
+  purpose: "calendar_integration";
   userId: string;
   organizationId: string;
   email: string;
@@ -185,6 +231,41 @@ function signGmailIntegrationState(auth: {
     email: auth.email,
     timestamp: Date.now(),
   } satisfies GmailIntegrationState, config.jwtSecret, { expiresIn: "10m" });
+}
+
+function signCalendarIntegrationState(auth: {
+  userId: string;
+  organizationId: string;
+  email: string;
+}) {
+  return jwt.sign({
+    purpose: "calendar_integration",
+    userId: auth.userId,
+    organizationId: auth.organizationId,
+    email: auth.email,
+    timestamp: Date.now(),
+  } satisfies CalendarIntegrationState, config.jwtSecret, { expiresIn: "10m" });
+}
+
+function googleCalendarIntegrationMetadata(
+  existingMetadata: string | null | undefined,
+  grantedScopeString: string | null | undefined
+) {
+  const metadata = JSON.parse(googleOAuthMetadata(existingMetadata, grantedScopeString));
+  return JSON.stringify({
+    ...metadata,
+    calendarId: "primary",
+  });
+}
+
+function calendarIdFromMetadata(metadata: string | null | undefined) {
+  if (!metadata) return undefined;
+  try {
+    const parsed = JSON.parse(metadata) as { calendarId?: unknown };
+    return typeof parsed.calendarId === "string" ? parsed.calendarId : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function runPostConnectionGmailScan(organizationId: string) {
@@ -460,5 +541,213 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
       return;
     }
     res.redirect(gmailCallbackErrorRedirect(err));
+  }
+});
+
+integrationsRouter.get("/calendar/status", authMiddleware, async (req, res) => {
+  const integration = await prisma.integration.findUnique({
+    where: {
+      organizationId_provider: {
+        organizationId: req.auth!.organizationId,
+        provider: "google_calendar",
+      },
+    },
+  });
+  const connected = Boolean(integration?.refreshToken);
+  res.json({
+    connected,
+    calendarId: connected ? calendarIdFromMetadata(integration?.metadata) ?? "primary" : undefined,
+  });
+});
+
+integrationsRouter.get("/calendar/connect-url", authMiddleware, async (req, res) => {
+  try {
+    if (!hasGoogleOAuth()) {
+      const missing = [
+        !config.google.clientId && "GOOGLE_CLIENT_ID",
+        !config.google.clientSecret && "GOOGLE_CLIENT_SECRET",
+      ].filter(Boolean);
+      const message = `Google OAuth is not configured. Missing: ${missing.join(", ")}`;
+      console.error("Calendar connect error:", message);
+      res.status(503).json({ error: message });
+      return;
+    }
+
+    const state = signCalendarIntegrationState(req.auth!);
+    const url = await calendarAuthUrl(state);
+    setCalendarStateCookie(res, state);
+    console.log(
+      `[calendar/connect-url] user=${req.auth!.userId} org=${req.auth!.organizationId} redirectUri=${config.google.calendarRedirectUri} state=${state}`
+    );
+    res.json({ url });
+  } catch (error) {
+    console.error("Calendar connect error:", errorDetails(error));
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+integrationsRouter.get("/calendar/connect", async (req, res) => {
+  if (!hasGoogleOAuth()) {
+    res.status(503).send("Google OAuth is not configured");
+    return;
+  }
+
+  const token = tokenFromRequest(req);
+  if (!token) {
+    res.status(401).send("Missing user token");
+    return;
+  }
+
+  try {
+    const auth = verifyToken(token);
+    const state = signCalendarIntegrationState(auth);
+    setCalendarStateCookie(res, state);
+    console.log(
+      `[calendar/connect] user=${auth.userId} org=${auth.organizationId} redirectUri=${config.google.calendarRedirectUri} state=${state}`
+    );
+    res.redirect(await calendarAuthUrl(state));
+  } catch {
+    res.status(401).send("Invalid user token");
+    return;
+  }
+});
+
+integrationsRouter.get("/calendar/callback", async (req, res) => {
+  const hasCode = Boolean(req.query.code);
+  const hasState = Boolean(req.query.state);
+  const traceId = `calendar-callback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    const code = req.query.code as string | undefined;
+    const state = req.query.state as string | undefined;
+    const cookieState = cookieValue(req.headers.cookie, CALENDAR_OAUTH_STATE_COOKIE);
+    console.log(
+      `[calendar/callback][${traceId}] start hasCode=${hasCode} hasState=${hasState} state=${state ?? "none"} cookieState=${cookieState ?? "none"} redirectUri=${config.google.calendarRedirectUri}`
+    );
+
+    if (!code) {
+      res.status(400).send("Missing Google OAuth code");
+      return;
+    }
+
+    let organizationId: string;
+    let decodedState: (Partial<CalendarIntegrationState> & { organizationId?: string }) | null = null;
+    if (state) {
+      decodedState = jwt.verify(state, config.jwtSecret) as Partial<CalendarIntegrationState> & { organizationId?: string };
+      if (decodedState.purpose && decodedState.purpose !== "calendar_integration") {
+        res.redirect(`${config.frontendUrl}/dashboard/calendar?calendar=invalid_state`);
+        return;
+      }
+      if (!decodedState.organizationId) {
+        res.redirect(`${config.frontendUrl}/dashboard/calendar?calendar=invalid_state`);
+        return;
+      }
+      organizationId = decodedState.organizationId;
+    } else {
+      res.redirect(`${config.frontendUrl}/dashboard/calendar?calendar=invalid_state`);
+      return;
+    }
+
+    const existingIntegration = await prisma.integration.findUnique({
+      where: {
+        organizationId_provider: {
+          organizationId,
+          provider: "google_calendar",
+        },
+      },
+    });
+
+    const oauth2 = await getOAuth2Client(config.google.calendarRedirectUri);
+    let tokens: {
+      access_token?: string | null;
+      refresh_token?: string | null;
+      expiry_date?: number | null;
+      token_type?: string | null;
+      scope?: string;
+      id_token?: string | null;
+    };
+    try {
+      const tokenResult = await oauth2.getToken(code);
+      tokens = tokenResult.tokens;
+      oauth2.setCredentials(tokens);
+      console.log(`[calendar/callback][${traceId}] exchanged tokens ${JSON.stringify(tokenTrace(tokens))}`);
+    } catch (err) {
+      console.error(`[calendar/callback][${traceId}] token exchange failed`, errorDetails(err));
+      const isInvalidGrant =
+        err instanceof Error && err.message.toLowerCase().includes("invalid_grant");
+      if (isInvalidGrant && existingIntegration?.refreshToken) {
+        clearCalendarStateCookie(res);
+        res.redirect(`${config.frontendUrl}/dashboard/calendar?calendar=connected`);
+        return;
+      }
+      throw err;
+    }
+
+    if (!tokens.refresh_token && !existingIntegration?.refreshToken) {
+      res
+        .status(400)
+        .send("Google did not return a refresh token. Reconnect and approve access.");
+      return;
+    }
+
+    const refreshToken = tokens.refresh_token ?? existingIntegration?.refreshToken;
+    if (!refreshToken) {
+      res
+        .status(400)
+        .send("Google did not return a refresh token. Reconnect and approve access.");
+      return;
+    }
+
+    const metadata = googleCalendarIntegrationMetadata(existingIntegration?.metadata, tokens.scope ?? null);
+    await prisma.$transaction(async (tx) => {
+      const saved = await tx.integration.upsert({
+        where: {
+          organizationId_provider: {
+            organizationId,
+            provider: "google_calendar",
+          },
+        },
+        create: {
+          organizationId,
+          provider: "google_calendar",
+          accessToken: tokens.access_token ?? null,
+          refreshToken,
+          expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          metadata,
+          connectedAt: new Date(),
+        },
+        update: {
+          accessToken: tokens.access_token ?? null,
+          refreshToken,
+          expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          metadata,
+          connectedAt: new Date(),
+        },
+      });
+      const verified = await tx.integration.findUnique({
+        where: {
+          organizationId_provider: {
+            organizationId,
+            provider: "google_calendar",
+          },
+        },
+      });
+      if (!verified?.refreshToken) {
+        throw new Error("Calendar integration verification failed after save: refreshToken missing");
+      }
+      return saved;
+    });
+
+    console.log(
+      `[calendar/callback][${traceId}] connected org=${organizationId} provider=google_calendar hasRefreshToken=${Boolean(refreshToken)}`
+    );
+    clearCalendarStateCookie(res);
+    res.redirect(`${config.frontendUrl}/dashboard/calendar?calendar=connected`);
+  } catch (err) {
+    console.error(`[calendar/callback][${traceId}] failed`, errorDetails(err));
+    if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.TokenExpiredError) {
+      res.redirect(`${config.frontendUrl}/dashboard/calendar?calendar=invalid_state`);
+      return;
+    }
+    res.redirect(calendarCallbackErrorRedirect(err));
   }
 });

@@ -70,6 +70,18 @@ function defaultGmailIntegrationRedirectUri(): string {
   return `${defaultBackendUrl()}/api/integrations/gmail/callback`;
 }
 
+function defaultCalendarIntegrationRedirectUri(): string {
+  const explicit = process.env.GOOGLE_CALENDAR_REDIRECT_URI;
+  if (explicit) return explicit;
+
+  const integrationRedirect = process.env.GOOGLE_INTEGRATION_REDIRECT_URI;
+  if (integrationRedirect) {
+    return integrationRedirect.replace(/\/gmail\/callback$/, "/calendar/callback");
+  }
+
+  return `${defaultBackendUrl()}/api/integrations/calendar/callback`;
+}
+
 function defaultBackendUrl(): string {
   return process.env.NODE_ENV === "production"
     ? "https://ai-office-worker-backend.onrender.com"
@@ -111,6 +123,10 @@ export const config = {
     clientGmailRedirectUri: rejectLocalhostInProduction(
       "GOOGLE_CLIENT_REDIRECT_URI",
       optional("GOOGLE_CLIENT_REDIRECT_URI", `${defaultBackendUrl()}/api/clients/gmail/callback`)
+    ),
+    calendarRedirectUri: rejectLocalhostInProduction(
+      "GOOGLE_CALENDAR_REDIRECT_URI",
+      optional("GOOGLE_CALENDAR_REDIRECT_URI", defaultCalendarIntegrationRedirectUri())
     ),
   },
 
@@ -211,6 +227,7 @@ export function validateStartupEnv() {
       ["GOOGLE_REDIRECT_URI", config.google.redirectUri],
       ["GOOGLE_INTEGRATION_REDIRECT_URI", config.google.integrationRedirectUri],
       ["GOOGLE_CLIENT_REDIRECT_URI", config.google.clientGmailRedirectUri],
+      ["GOOGLE_CALENDAR_REDIRECT_URI", config.google.calendarRedirectUri],
       ["TWILIO_WEBHOOK_URL", config.twilio.webhookUrl],
     ].filter(([, value]) => /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/i.test(String(value)));
     if (localhostValues.length) {

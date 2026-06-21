@@ -119,6 +119,12 @@ export const GMAIL_SCOPES = [
   "profile",
 ];
 
+export const CALENDAR_SCOPES = [
+  ...GMAIL_SCOPES,
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar",
+];
+
 type OutboundEmailContext = {
   provider: "gmail";
   feature: string;
@@ -207,6 +213,68 @@ function parseGoogleIntegrationMetadata(metadata: string | null | undefined): Re
   } catch {
     return {};
   }
+}
+
+export async function getCalendarClientForOrganization(organizationId: string) {
+  const google = await loadGoogle();
+  let integration = await prisma.integration.findUnique({
+    where: {
+      organizationId_provider: { organizationId, provider: "google_calendar" },
+    },
+  });
+  if (!integration?.refreshToken) {
+    return null;
+  }
+
+  const expiresAt = integration.expiresAt?.getTime() ?? 0;
+  const hasValidAccessToken = Boolean(integration.accessToken) && expiresAt > Date.now() + 60_000;
+  if (!hasValidAccessToken) {
+    const oauth2Refresh = new google.auth.OAuth2(
+      config.google.clientId,
+      config.google.clientSecret,
+      config.google.calendarRedirectUri
+    );
+    oauth2Refresh.setCredentials({
+      refresh_token: integration.refreshToken,
+    });
+    const { credentials } = await oauth2Refresh.refreshAccessToken();
+    integration = await prisma.integration.update({
+      where: {
+        organizationId_provider: { organizationId, provider: "google_calendar" },
+      },
+      data: {
+        accessToken: credentials.access_token ?? integration.accessToken,
+        refreshToken: credentials.refresh_token ?? integration.refreshToken,
+        expiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : integration.expiresAt,
+      },
+    });
+  }
+
+  const oauth2 = new google.auth.OAuth2(
+    config.google.clientId,
+    config.google.clientSecret,
+    config.google.calendarRedirectUri
+  );
+  oauth2.setCredentials({
+    access_token: integration.accessToken ?? undefined,
+    refresh_token: integration.refreshToken,
+    expiry_date: integration.expiresAt?.getTime(),
+  });
+
+  oauth2.on("tokens", async (tokens) => {
+    await prisma.integration.update({
+      where: {
+        organizationId_provider: { organizationId, provider: "google_calendar" },
+      },
+      data: {
+        accessToken: tokens.access_token ?? undefined,
+        ...(tokens.refresh_token && { refreshToken: tokens.refresh_token }),
+        expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
+      },
+    });
+  });
+
+  return google.calendar({ version: "v3", auth: oauth2 });
 }
 
 export async function getGoogleClientsForClient(clientId: string) {
