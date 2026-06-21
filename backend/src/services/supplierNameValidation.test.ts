@@ -11,6 +11,11 @@ test("isLikelyJunkSupplierName flags real-world garbage supplier values", () => 
     "rawOcrText=supplier",
     "null",
     "undefined",
+    "Unknown supplier",
+    "unknown",
+    "לא ידוע",
+    "4. Inside each supplier",
+    "a supplier (e.g. an expense the business pays like OpenAI or Netlify) does it",
   ] as const;
 
   for (const name of junk) {
@@ -23,10 +28,15 @@ test("isLikelyJunkSupplierName allows legitimate supplier names", () => {
     "חברת החשמל",
     "Wolt",
     "Anthropic PBC",
+    "Anthropic, PBC",
     "וולט אנטרפרייזס ישראל",
     "Fraud Detection Ltd",
     "Super Pharm",
     "בזק",
+    "בנק הפועלים",
+    "Dana Mida",
+    "Gett",
+    "Namecheap",
   ] as const;
 
   for (const name of valid) {
