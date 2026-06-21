@@ -5,8 +5,27 @@ import {
   buildReprocessComparison,
   financialSnapshotsEqual,
   reprocessFinancialDocumentBySource,
+  reprocessParamsFromRecordId,
   type ReprocessFinancialDocumentDeps,
 } from "./reprocessFinancialDocument.js";
+
+test("reprocessParamsFromRecordId maps review_ prefix to financialDocumentReviewId", () => {
+  assert.deepEqual(reprocessParamsFromRecordId("review_abc123"), {
+    financialDocumentReviewId: "review_abc123",
+  });
+});
+
+test("reprocessParamsFromRecordId maps invoice_ prefix to invoiceId", () => {
+  assert.deepEqual(reprocessParamsFromRecordId("invoice_abc123"), {
+    invoiceId: "invoice_abc123",
+  });
+});
+
+test("reprocessParamsFromRecordId treats other ids as gmailScanItemId", () => {
+  assert.deepEqual(reprocessParamsFromRecordId("clxyz123"), {
+    gmailScanItemId: "clxyz123",
+  });
+});
 
 test("financialSnapshotsEqual treats matching supplier, amount, and date as unchanged", () => {
   const snapshot = buildFinancialSnapshot({
@@ -89,6 +108,53 @@ test("reprocessFinancialDocumentBySource dryRun performs no prisma writes", asyn
   assert.equal(result.before.amount, 0);
   assert.equal(result.after.supplier, "חברת החשמל");
   assert.equal(result.after.amount, 486.5);
+});
+
+test("reprocessFinancialDocumentBySource dryRun works for FinancialDocumentReview id", async () => {
+  const writes: string[] = [];
+  const mockPrisma = {
+    gmailScanItem: { update: async () => { writes.push("gmailScanItem.update"); } },
+    invoice: { update: async () => { writes.push("invoice.update"); } },
+    financialDocumentReview: {
+      findFirst: async () => ({
+        id: "review_abc123",
+        gmailMessageId: "gm-review-1",
+        emailMessageId: "em-review-1",
+        supplierName: "FieldsFromText",
+        totalAmount: 1_000_000,
+        documentDate: new Date("2024-02-01T00:00:00.000Z"),
+      }),
+      update: async () => {
+        writes.push("financialDocumentReview.update");
+      },
+    },
+  };
+
+  const result = await reprocessFinancialDocumentBySource(
+    {
+      organizationId: "org-1",
+      financialDocumentReviewId: "review_abc123",
+      dryRun: true,
+    },
+    {
+      prismaClient: mockPrisma as unknown as ReprocessFinancialDocumentDeps["prismaClient"],
+      getGoogleClientsFn: (async () => ({ gmail: {} as never, drive: {} as never, sheets: {} as never, oauth2: {} as never })) as ReprocessFinancialDocumentDeps["getGoogleClientsFn"],
+      parseGmailMessage: async () => ({
+        supplierName: "OpenAI LLC",
+        amount: 120,
+        finalTotalAmount: 120,
+        documentDate: new Date("2024-02-01T00:00:00.000Z"),
+        invoiceNumber: "INV-9",
+      }),
+    }
+  );
+
+  assert.equal(writes.length, 0);
+  assert.equal(result.sourceTable, "FinancialDocumentReview");
+  assert.equal(result.sourceId, "review_abc123");
+  assert.equal(result.wouldChange, true);
+  assert.equal(result.before.amount, 1_000_000);
+  assert.equal(result.after.supplier, "OpenAI LLC");
 });
 
 test("reprocessFinancialDocumentBySource dryRun=false updates in place by id", async () => {

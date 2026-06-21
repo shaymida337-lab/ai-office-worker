@@ -56,6 +56,20 @@ function countSourceIds(params: ReprocessFinancialDocumentParams) {
   return [params.gmailScanItemId, params.invoiceId, params.financialDocumentReviewId].filter(Boolean).length;
 }
 
+export function reprocessParamsFromRecordId(recordId: string): Pick<
+  ReprocessFinancialDocumentParams,
+  "gmailScanItemId" | "invoiceId" | "financialDocumentReviewId"
+> {
+  const id = recordId.trim();
+  if (id.startsWith("review_")) {
+    return { financialDocumentReviewId: id };
+  }
+  if (id.startsWith("invoice_")) {
+    return { invoiceId: id };
+  }
+  return { gmailScanItemId: id };
+}
+
 function normalizeSnapshotAmount(amount: number | null | undefined) {
   return amount == null || !Number.isFinite(amount) ? null : amount;
 }
