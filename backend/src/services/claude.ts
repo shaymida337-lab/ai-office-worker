@@ -404,13 +404,18 @@ async function prepareImageForOcr(fileBase64: string, mimeType: string, filename
 
 async function recognizeHebrewImageText(buffer: Buffer, filename?: string) {
   try {
-    const tesseract = await import("tesseract.js");
-    const result = await tesseract.recognize(buffer, "heb+eng");
-    const text = result.data.text?.replace(/\s+/g, " ").trim() ?? "";
-    if (!text) return null;
-    const confidence = typeof result.data.confidence === "number" ? result.data.confidence / 100 : null;
-    console.log(`[claude] OCR_TEXT_EXTRACTED source=tesseract_heb_eng file="${filename ?? "image"}" confidence=${confidence ?? "unknown"} text="${truncateForLog(text)}"`);
-    return { text, confidence };
+    const { createWorker } = await import("tesseract.js");
+    const worker = await createWorker("heb+eng");
+    try {
+      const result = await worker.recognize(buffer);
+      const text = result.data.text?.replace(/\s+/g, " ").trim() ?? "";
+      if (!text) return null;
+      const confidence = typeof result.data.confidence === "number" ? result.data.confidence / 100 : null;
+      console.log(`[claude] OCR_TEXT_EXTRACTED source=tesseract_heb_eng file="${filename ?? "image"}" confidence=${confidence ?? "unknown"} text="${truncateForLog(text)}"`);
+      return { text, confidence };
+    } finally {
+      await worker.terminate();
+    }
   } catch (err) {
     console.warn(`[claude] Tesseract OCR failed for ${filename ?? "image"}`, err instanceof Error ? err.message : String(err));
     return null;
