@@ -165,7 +165,7 @@ export async function uploadInvoiceAttachmentToDrive(input: {
     requestBody: {
       name: driveFilename,
       parents: [targetFolder.folderId],
-      appProperties: {
+      appProperties: sanitizeDriveAppProperties({
         ...(input.fileSha256 ? { fileSha256: input.fileSha256 } : {}),
         ...(input.fileMd5 ? { fileMd5: input.fileMd5 } : {}),
         clientName,
@@ -175,8 +175,7 @@ export async function uploadInvoiceAttachmentToDrive(input: {
         invoiceDate: documentDate.toISOString().slice(0, 10),
         invoiceYear: String(invoiceYear),
         invoiceMonth: String(invoiceMonth).padStart(2, "0"),
-        driveFolderPath: targetFolder.folderPath,
-      },
+      }),
     },
     media: {
       mimeType: input.mimeType ?? "application/octet-stream",
@@ -1111,4 +1110,30 @@ function findDriveFolder(drive: drive_v3.Drive, q: string) {
 
 function escapeDriveQueryValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+const DRIVE_APP_PROPERTY_MAX_BYTES = 124;
+
+function utf8ByteLength(value: string): number {
+  return Buffer.byteLength(value, "utf8");
+}
+
+function truncateUtf8ToBytes(value: string, maxBytes: number): string {
+  if (maxBytes <= 0) return "";
+  if (utf8ByteLength(value) <= maxBytes) return value;
+  let end = value.length;
+  while (end > 0 && utf8ByteLength(value.slice(0, end)) > maxBytes) {
+    end--;
+  }
+  return value.slice(0, end);
+}
+
+function sanitizeDriveAppProperties(properties: Record<string, string>): Record<string, string> {
+  const sanitized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(properties)) {
+    const maxValueBytes = DRIVE_APP_PROPERTY_MAX_BYTES - utf8ByteLength(key);
+    if (maxValueBytes <= 0) continue;
+    sanitized[key] = truncateUtf8ToBytes(String(value), maxValueBytes);
+  }
+  return sanitized;
 }
