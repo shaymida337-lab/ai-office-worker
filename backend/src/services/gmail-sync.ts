@@ -5001,3 +5001,98 @@ async function saveDetectedInvoice(input: {
   return invoice;
 }
 
+export type ParsedGmailFinancialFields = {
+  supplierName: string;
+  amount: number | null;
+  finalTotalAmount: number | null;
+  documentDate: Date;
+  invoiceNumber: string | null;
+};
+
+export async function fetchAndParseGmailMessageFinancialFields(input: {
+  organizationId: string;
+  gmail: GmailClient;
+  gmailMessageId: string;
+}): Promise<ParsedGmailFinancialFields> {
+  const logStep = () => {};
+  const full = await withRetry(
+    () => input.gmail.users.messages.get({
+      userId: "me",
+      id: input.gmailMessageId,
+      format: "full",
+    }),
+    `[gmail-sync] Gmail message fetch retry message=${input.gmailMessageId}`
+  );
+
+  const headers = full.data.payload?.headers ?? [];
+  const subject = decodeMimeHeader(
+    headers.find((h) => h.name?.toLowerCase() === "subject")?.value ?? "(ללא נושא)"
+  );
+  const from = decodeMimeHeader(headers.find((h) => h.name?.toLowerCase() === "from")?.value ?? "");
+  const dateHeader = headers.find((h) => h.name?.toLowerCase() === "date")?.value ?? "";
+  const receivedAt = dateHeader ? new Date(dateHeader) : new Date();
+  const bodyText = extractBody(full.data.payload as PayloadPart | undefined);
+  const sender = parseSender(from);
+  const attachmentParts = collectAttachmentParts(full.data.payload as PayloadPart | undefined);
+
+  const organization = await prisma.organization.findUnique({
+    where: { id: input.organizationId },
+    select: { user: { select: { email: true } } },
+  });
+  const ownerEmails = new Set(
+    [organization?.user.email].filter((email): email is string => Boolean(email)).map((email) => email.toLowerCase())
+  );
+  const knownSupplierNames = await loadKnownSupplierNames(input.organizationId);
+
+  const pdfText = await extractPdfTextFromParts(input.gmail, input.gmailMessageId, attachmentParts);
+  const visualAttachmentHints = await extractVisualAttachmentHints(
+    input.gmail,
+    input.gmailMessageId,
+    attachmentParts,
+    from,
+    logStep,
+    ownerEmails
+  );
+  const visualAttachmentText = visualAttachmentHints.text;
+  const bodyForAnalysis = [bodyText, pdfText && `--- PDF ATTACHMENT TEXT ---\n${pdfText}`, visualAttachmentText && `--- VISUAL ATTACHMENT ANALYSIS ---\n${visualAttachmentText}`].filter(Boolean).join("\n\n");
+  const supplierEvidenceText = [subject, bodyForAnalysis].filter(Boolean).join("\n\n");
+
+  const analysis = await analyzeEmailContent({
+    subject,
+    body: bodyForAnalysis,
+    filenames: attachmentParts.map((part) => part.filename).filter(Boolean) as string[],
+    sender: from,
+  });
+  const extractedFields = extractHebrewInvoiceFieldsFromText(`${supplierEvidenceText}\n${analysis.supplier ?? ""}`);
+  const invoiceMatch = detectInvoice(subject, bodyForAnalysis, attachmentParts);
+  const analysisTotalAmount = normalizeDetectedAmount(analysis.totalAmount);
+  const amount = normalizeDetectedAmount(extractedFields.amount ?? invoiceMatch.amount ?? analysisTotalAmount ?? analysis.amount);
+  const finalTotalAmount = analysisTotalAmount ?? amount;
+
+  const supplierMetadata = resolveSupplierMetadata({
+    analysisSupplier: analysis.supplier,
+    analysisSupplierTaxId: analysis.supplierTaxId,
+    bodyText: supplierEvidenceText,
+    senderName: sender.name,
+    senderEmail: sender.email ?? "",
+    senderDomain: sender.domain ?? "",
+    ownerEmails,
+    knownSupplierNames,
+    logStep,
+  });
+
+  const invoiceNumberForDecision =
+    normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ??
+    extractedFields.invoiceNumber ??
+    extractInvoiceNumber([subject, bodyForAnalysis, primaryAttachmentFilename(attachmentParts) ?? ""].join("\n"));
+  const documentDateForDecision = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, receivedAt) ?? receivedAt;
+
+  return {
+    supplierName: supplierMetadata.name,
+    amount,
+    finalTotalAmount,
+    documentDate: documentDateForDecision,
+    invoiceNumber: invoiceNumberForDecision,
+  };
+}
+
