@@ -17,6 +17,7 @@ export const uiTranslations = {
   },
   modules: {
     crm: "ניהול לקוחות",
+    sales: "מכירות",
     invoices: "חשבוניות",
     supplier_management: "ספקים ותשלומים",
     tasks: "משימות",
@@ -69,6 +70,7 @@ export const uiTranslations = {
 
 export const businessModules = [
   { id: "crm", label: uiTranslations.modules.crm, description: "לקוחות, לידים ותהליך מכירה" },
+  { id: "sales", label: uiTranslations.modules.sales, description: "הצעות מחיר, משפך עסקאות והמרה ללקוח" },
   { id: "invoices", label: uiTranslations.modules.invoices, description: "חשבוניות, קבלות והכנסות" },
   { id: "supplier_management", label: uiTranslations.modules.supplier_management, description: "ספקים, תשלומים וחשבוניות חסרות" },
   { id: "tasks", label: uiTranslations.modules.tasks, description: "משימות, תזכורות ומעקב עבודה" },
@@ -87,7 +89,7 @@ export const businessSizes = [
 ] as const;
 
 export const businessPains = [
-  { id: "leads", label: uiTranslations.pains.leads, description: "יותר לידים ומעקב אחרי מתעניינים", modules: ["crm", "whatsapp"] },
+  { id: "leads", label: uiTranslations.pains.leads, description: "יותר לידים ומעקב אחרי מתעניינים", modules: ["crm", "sales", "whatsapp"] },
   { id: "invoices", label: uiTranslations.pains.invoices, description: "חשבוניות וקבלות מסודרות", modules: ["invoices", "documents"] },
   { id: "collections", label: uiTranslations.pains.collections, description: "גבייה ותזכורות תשלום", modules: ["collections", "invoices", "whatsapp"] },
   { id: "customer_service", label: uiTranslations.pains.customer_service, description: "שירות לקוחות והודעות", modules: ["crm", "whatsapp", "tasks"] },
@@ -97,14 +99,14 @@ export const businessPains = [
 ] as const;
 
 export const businessTypes = [
-  { id: "beauty_clinic", label: uiTranslations.businessTypes.beauty_clinic, modules: ["crm", "invoices", "tasks", "whatsapp", "meetings", "collections"] },
+  { id: "beauty_clinic", label: uiTranslations.businessTypes.beauty_clinic, modules: ["crm", "sales", "invoices", "tasks", "whatsapp", "meetings", "collections"] },
   { id: "accountant", label: uiTranslations.businessTypes.accountant, modules: ["crm", "invoices", "supplier_management", "tasks", "documents", "meetings"] },
   { id: "lawyer", label: uiTranslations.businessTypes.lawyer, modules: ["crm", "invoices", "tasks", "documents", "meetings", "collections"] },
   { id: "insurance_agency", label: uiTranslations.businessTypes.insurance_agency, modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "collections"] },
   { id: "real_estate", label: uiTranslations.businessTypes.real_estate, modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "meetings"] },
   { id: "ecommerce", label: uiTranslations.businessTypes.ecommerce, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "collections", "employees"] },
   { id: "importer", label: uiTranslations.businessTypes.importer, modules: ["crm", "invoices", "supplier_management", "tasks", "documents", "collections", "employees"] },
-  { id: "service_business", label: uiTranslations.businessTypes.service_business, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections"] },
+  { id: "service_business", label: uiTranslations.businessTypes.service_business, modules: ["crm", "sales", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections"] },
   { id: "renovation_contractor", label: uiTranslations.businessTypes.renovation_contractor, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections", "employees"] },
   { id: "mortgage_advisor", label: uiTranslations.businessTypes.mortgage_advisor, modules: ["crm", "invoices", "tasks", "whatsapp", "documents", "meetings", "collections"] },
   { id: "event_production", label: uiTranslations.businessTypes.event_production, modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "meetings", "employees"] },
@@ -154,7 +156,7 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
   beauty_clinic: {
     title: "מרכז צמיחה לקליניקה",
     subtitle: "לידים, תורים, וואטסאפ וגבייה למרפאת יופי.",
-    modules: ["crm", "invoices", "tasks", "whatsapp", "meetings", "collections"],
+    modules: ["crm", "sales", "invoices", "tasks", "whatsapp", "meetings", "collections"],
     dashboardKpis: [
       { id: "leads", label: "מתעניינות", detail: "לידים ומטופלות במעקב", metric: "clients", module: "crm" },
       { id: "collections", label: "גבייה פתוחה", detail: "תשלומים שצריך לסגור", metric: "moneyToReceive", module: "collections", format: "currency" },
@@ -309,7 +311,7 @@ export const businessProfiles: Record<BusinessTypeId, BusinessProfile> = {
   service_business: {
     title: "מערכת ניהול לעסקי שירות",
     subtitle: "לקוחות, חשבוניות, ספקים, משימות וגבייה.",
-    modules: ["crm", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections"],
+    modules: ["crm", "sales", "invoices", "supplier_management", "tasks", "whatsapp", "documents", "collections"],
     dashboardKpis: baseKpis,
     dashboardWidgets: [
       { id: "client-work", title: "לקוחות פעילים", description: "לקוחות, עבודה פתוחה וסטטוס טיפול.", module: "crm", metric: "clients" },

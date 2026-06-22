@@ -27,6 +27,7 @@ import {
   MessageCircle,
   Search,
   Settings,
+  TrendingUp,
   Users,
   WalletCards,
   X,
@@ -37,6 +38,7 @@ type NavLink = { id: NavItemId; href: string; label: string; icon: typeof Home; 
 const links: NavLink[] = [
   { id: "dashboard", href: "/dashboard", label: "לוח בקרה", icon: Home },
   { id: "crm", href: "/crm", label: "ניהול לקוחות", icon: CircleDollarSign, module: "crm" },
+  { id: "sales", href: "/dashboard/sales", label: "מכירות", icon: TrendingUp, module: "sales" },
   { id: "messageScans", href: "/message-scans", label: "סריקות הודעות", icon: Search },
   { id: "clients", href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
   { id: "invoices", href: "/dashboard/invoices", label: "חשבוניות", icon: FileText },
@@ -128,9 +130,13 @@ export function Nav() {
       : null;
     return !enabledModules || enabledModules.includes(module);
   };
-  const navVisible = (item: NavLink) => (
-    isNavItemVisible(item.id, organizationSettings?.businessType) && moduleAllowed(item.module)
-  );
+  const navVisible = (item: NavLink) => {
+    if (!isNavItemVisible(item.id, organizationSettings?.businessType)) return false;
+    if (item.id === "sales") {
+      return moduleAllowed("sales") || moduleAllowed("crm");
+    }
+    return moduleAllowed(item.module);
+  };
   const visibleLinks = links.filter(navVisible);
   const visibleMobileLinks = mobileLinks.filter(navVisible);
   const mobileMoreLinks = visibleLinks.filter((item) => !visibleMobileLinks.some((link) => link.href === item.href));

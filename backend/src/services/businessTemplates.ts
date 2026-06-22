@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma.js";
 
 export const BUSINESS_MODULES = [
   { id: "crm", label: "CRM", description: "Leads, clients, pipeline, and client activity." },
+  { id: "sales", label: "Sales", description: "Quotes, deal pipeline, and lead conversion." },
   { id: "invoices", label: "Invoices", description: "Customer invoices, invoice capture, and accounting sync." },
   { id: "supplier_management", label: "Supplier Management", description: "Supplier payments, missing invoices, and payment review." },
   { id: "tasks", label: "Tasks", description: "Operational tasks and follow-ups." },
@@ -20,7 +21,7 @@ export const BUSINESS_SIZES = [
 ] as const;
 
 export const BUSINESS_PAINS = [
-  { id: "leads", label: "Leads", modules: ["crm", "whatsapp"] },
+  { id: "leads", label: "Leads", modules: ["crm", "sales", "whatsapp"] },
   { id: "invoices", label: "Invoices", modules: ["invoices", "documents"] },
   { id: "collections", label: "Collections", modules: ["collections", "invoices", "whatsapp"] },
   { id: "customer_service", label: "Customer Service", modules: ["crm", "whatsapp", "tasks"] },
@@ -103,10 +104,10 @@ export function recommendedModulesFor(businessType?: unknown, businessSize?: unk
   const pain = normalizeBusinessPain(mainBusinessPain);
   const template = BUSINESS_TEMPLATES.find((item) => item.id === type);
   const painModules = BUSINESS_PAINS.find((item) => item.id === pain)?.modules ?? [];
-  const sizeModules = size === "6_20" || size === "20_plus" ? ["employees"] : [];
-  const relevantModules = new Set(template?.modules ?? DEFAULT_ENABLED_MODULES);
-  return Array.from(new Set([...(template?.modules ?? DEFAULT_ENABLED_MODULES), ...painModules, ...sizeModules]))
-    .filter((item): item is BusinessModuleId => moduleIds.has(item as BusinessModuleId) && relevantModules.has(item as BusinessModuleId));
+  const sizeModules = size === "6_20" || size === "20_plus" ? (["employees"] as const) : [];
+  const baseModules = template?.modules ?? DEFAULT_ENABLED_MODULES;
+  const relevantModules = new Set([...baseModules, ...painModules, ...sizeModules]);
+  return Array.from(relevantModules).filter((item): item is BusinessModuleId => moduleIds.has(item as BusinessModuleId));
 }
 
 export function normalizeEnabledModules(value: unknown, businessType?: unknown, businessSize?: unknown, mainBusinessPain?: unknown): BusinessModuleId[] {

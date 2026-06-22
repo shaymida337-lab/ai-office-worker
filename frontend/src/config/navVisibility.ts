@@ -20,7 +20,8 @@ export type NavItemId =
   | "adminDebug"
   | "businessSettings"
   | "settings"
-  | "calendar";
+  | "calendar"
+  | "sales";
 
 type NavVisibilityRule = {
   visible: boolean;
@@ -50,6 +51,7 @@ export const navVisibility: Record<NavItemId, NavVisibilityRule> = {
   businessSettings: { visible: false },
   settings: { visible: true },
   calendar: { visible: true },
+  sales: { visible: false },
 };
 
 export function isNavItemVisible(itemId: NavItemId, businessType?: string | null) {
