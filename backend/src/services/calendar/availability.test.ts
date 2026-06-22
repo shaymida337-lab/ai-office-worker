@@ -59,6 +59,50 @@ test("loadAppointmentBusyBlocks uses overlap-aware filtering", async () => {
   }
 });
 
+test("loadAppointmentBusyBlocks includes appointments starting more than 24h before range when they overlap", async () => {
+  const original = prisma.appointment.findMany.bind(prisma.appointment);
+  let capturedWhere: unknown;
+  const range = {
+    start: at("2026-06-20T10:00:00.000Z"),
+    end: at("2026-06-20T11:00:00.000Z"),
+  };
+  prisma.appointment.findMany = (async (args: Parameters<typeof prisma.appointment.findMany>[0]) => {
+    capturedWhere = args?.where;
+    return [
+      {
+        id: "multi-day",
+        startTime: at("2026-06-17T08:00:00.000Z"),
+        durationMinutes: 4 * 24 * 60,
+        client: { name: "Long Client" },
+        service: { name: "Retainer" },
+      },
+    ];
+  }) as unknown as typeof prisma.appointment.findMany;
+
+  try {
+    const blocks = await loadAppointmentBusyBlocks(ORG, range);
+    assert.equal(blocks.length, 1);
+    assert.equal(blocks[0]?.id, "multi-day");
+    assert.equal(blocks[0]?.clientName, "Long Client");
+
+    const startTimeFilter = (capturedWhere as { startTime: { lt: Date; gte?: Date } }).startTime;
+    assert.ok(startTimeFilter.lt.getTime() === range.end.getTime());
+    assert.equal(startTimeFilter.gte, undefined);
+
+    const availability = await checkSlotAvailability({
+      organizationId: ORG,
+      startTime: at("2026-06-20T10:30:00.000Z"),
+      durationMinutes: 60,
+      now: at("2026-06-17T00:00:00.000Z"),
+    });
+    assert.equal(availability.available, false);
+    assert.equal(availability.reason, "time_conflict");
+    assert.equal(availability.conflict?.appointmentId, "multi-day");
+  } finally {
+    prisma.appointment.findMany = original;
+  }
+});
+
 test("resolveDurationMinutes uses service duration when serviceId is provided", async () => {
   const original = prisma.service.findFirst.bind(prisma.service);
   prisma.service.findFirst = (async () => ({ durationMinutes: 60 })) as unknown as typeof prisma.service.findFirst;

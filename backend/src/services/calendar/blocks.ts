@@ -2,20 +2,16 @@ import { prisma } from "../../lib/prisma.js";
 import { appointmentEnd } from "./engine.js";
 import type { BusyBlock, TimeInterval } from "./types.js";
 
-const MAX_LOOKBACK_MS = 24 * 60 * 60 * 1000;
-
 export async function loadAppointmentBusyBlocks(
   organizationId: string,
   range: TimeInterval,
   options?: { excludeAppointmentId?: string }
 ): Promise<BusyBlock[]> {
-  const queryFrom = new Date(range.start.getTime() - MAX_LOOKBACK_MS);
-
   const appointments = await prisma.appointment.findMany({
     where: {
       organizationId,
       status: { not: "cancelled" },
-      startTime: { lt: range.end, gte: queryFrom },
+      startTime: { lt: range.end },
       ...(options?.excludeAppointmentId ? { id: { not: options.excludeAppointmentId } } : {}),
     },
     select: {
