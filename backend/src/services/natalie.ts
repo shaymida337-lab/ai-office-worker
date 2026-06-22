@@ -469,6 +469,39 @@ function formatAppointmentListLine(
   return `${index + 1}. ${when}${service ? ` — ${service}` : ""}`;
 }
 
+const TRAILING_TIME_PHRASE_PATTERNS = [
+  /\s+(?:ו)?\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?\s*$/u,
+  /\s+(?:ו)?בשעה\s+\d{1,2}(?::\d{2})?\s*$/iu,
+  /\s+(?:ו)?ב-\d{1,2}(?::\d{2})?\s*$/iu,
+  /\s+(?:ו)?ב\s+\d{1,2}(?::\d{2})?\s*$/iu,
+  /\s+(?:ו)?ביום\s+(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)\s*$/iu,
+  /\s+(?:ו)?יום\s+(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)\s*$/iu,
+  /\s+(?:ו)?מחרתיים\s*$/iu,
+  /\s+(?:ו)?שבוע\s+הבא\s*$/iu,
+  /\s+(?:ו)?מחר\s*$/iu,
+  /\s+(?:ו)?היום\s*$/iu,
+  /\s+(?:ו)?השבוע\s*$/iu,
+] as const;
+
+function stripTrailingTimePhrase(name: string): string {
+  let result = name.trim();
+
+  while (true) {
+    let changed = false;
+    for (const pattern of TRAILING_TIME_PHRASE_PATTERNS) {
+      const next = result.replace(pattern, "");
+      if (next !== result) {
+        result = next.trim();
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) break;
+  }
+
+  return result.replace(/\s+ו\s*$/u, "").trim();
+}
+
 function extractCancelAppointmentClientName(question: string): string | null {
   const normalized = question.trim().replace(/\s+/g, " ");
   if (/(?:תעביר|תעבירי|תשני|תשנה|שנה\s+מועד)/iu.test(normalized)) {
@@ -483,7 +516,9 @@ function extractCancelAppointmentClientName(question: string): string | null {
 
   for (const pattern of patterns) {
     const match = normalized.match(pattern);
-    const clientName = match?.[1]?.trim().replace(/[.?!]+$/, "");
+    const rawClientName = match?.[1]?.trim().replace(/[.?!]+$/, "");
+    if (!rawClientName) continue;
+    const clientName = stripTrailingTimePhrase(rawClientName);
     if (clientName) return clientName;
   }
 
