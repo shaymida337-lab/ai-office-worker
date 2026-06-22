@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Nav } from "@/components/Nav";
-import { apiFetch, getToken } from "@/lib/api";
+import { apiFetch, ApiError, getToken } from "@/lib/api";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Calendar, ChevronLeft, ChevronRight, Clock, Plus, Trash2, X } from "lucide-react";
 
@@ -39,6 +39,7 @@ type ClientsResponse = {
 };
 
 const DAY_NAMES = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "ש'"];
+const APPOINTMENT_STATUS_OPTIONS = ["pending", "confirmed", "completed", "cancelled", "no_show"] as const;
 const DEFAULT_COLOR = "#3B82F6";
 
 const panelClass = "rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm";
@@ -50,6 +51,8 @@ const btnSecondarySm =
   "inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#F3F4F6] disabled:cursor-not-allowed disabled:opacity-60";
 const btnDanger =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA] disabled:cursor-not-allowed disabled:opacity-60";
+const btnWarn =
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#C2410C] bg-[#FFEDD5] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#FED7AA] disabled:cursor-not-allowed disabled:opacity-60";
 
 const emptyServiceForm = {
   name: "",
@@ -166,6 +169,7 @@ export default function CalendarPage() {
   const [formDate, setFormDate] = useState("");
   const [formTime, setFormTime] = useState("");
   const [formNotes, setFormNotes] = useState("");
+  const [formStatus, setFormStatus] = useState("pending");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -290,6 +294,7 @@ export default function CalendarPage() {
     setFormDate("");
     setFormTime("");
     setFormNotes("");
+    setFormStatus("pending");
   }
 
   function openNewForm() {
@@ -299,6 +304,7 @@ export default function CalendarPage() {
     setFormDate(toDateInputValue(new Date()));
     setFormTime("");
     setFormNotes("");
+    setFormStatus("pending");
     setShowForm(true);
   }
 
@@ -310,7 +316,12 @@ export default function CalendarPage() {
     setFormDate(toDateInputValue(start));
     setFormTime(toTimeInputValue(start));
     setFormNotes(appt.notes ?? "");
+    setFormStatus(appt.status);
     setShowForm(true);
+  }
+
+  function isTimeConflictError(err: unknown): boolean {
+    return err instanceof ApiError && err.status === 409;
   }
 
   async function saveAppointment(event: React.FormEvent<HTMLFormElement>) {
@@ -330,6 +341,7 @@ export default function CalendarPage() {
             startTime,
             serviceId: formServiceId || null,
             notes: formNotes.trim() || null,
+            status: formStatus,
           }),
         });
         setMessage("התור עודכן בהצלחה");
@@ -348,7 +360,30 @@ export default function CalendarPage() {
       resetForm();
       await loadWeek();
     } catch (err) {
+      if (isTimeConflictError(err)) {
+        setMessage("קיים תור אחר בזמן הזה");
+        return;
+      }
       setMessage(err instanceof Error ? err.message : "שמירת התור נכשלה");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function cancelAppointment() {
+    if (!editingId) return;
+    setMessage("");
+    setSaving(true);
+    try {
+      await apiFetch(`/api/appointments/${editingId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "cancelled" }),
+      });
+      setMessage("התור בוטל");
+      resetForm();
+      await loadWeek();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "ביטול התור נכשל");
     } finally {
       setSaving(false);
     }
@@ -356,6 +391,7 @@ export default function CalendarPage() {
 
   async function deleteAppointment() {
     if (!editingId) return;
+    if (!window.confirm("למחוק את התור לצמיתות? לא ניתן לשחזר.")) return;
     setMessage("");
     setSaving(true);
     try {
@@ -520,6 +556,22 @@ export default function CalendarPage() {
               onChange={(e) => setFormTime(e.target.value)}
             />
           </label>
+          {editingId && (
+            <label className="font-semibold text-[#111827] md:col-span-2">
+              סטטוס
+              <select
+                className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
+                value={formStatus}
+                onChange={(e) => setFormStatus(e.target.value)}
+              >
+                {APPOINTMENT_STATUS_OPTIONS.map((status) => (
+                  <option key={status} value={status}>
+                    {appointmentStatusLabel(status)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="font-semibold text-[#111827] md:col-span-2">
             הערות
             <textarea
@@ -534,6 +586,16 @@ export default function CalendarPage() {
             <button className={btnPrimary} type="submit" disabled={saving}>
               {saving ? "שומר..." : editingId ? "עדכן תור" : "שמור תור"}
             </button>
+            {editingId && formStatus !== "cancelled" && (
+              <button
+                type="button"
+                className={btnWarn}
+                disabled={saving}
+                onClick={() => cancelAppointment()}
+              >
+                בטל תור
+              </button>
+            )}
             {editingId && (
               <button type="button" className={btnDanger} disabled={saving} onClick={() => deleteAppointment()}>
                 <Trash2 className="h-4 w-4" />
@@ -610,6 +672,7 @@ export default function CalendarPage() {
                       ) : (
                         dayAppts.map((appt) => {
                           const color = appt.service?.color || DEFAULT_COLOR;
+                          const isCancelled = appt.status === "cancelled";
                           const time = new Date(appt.startTime).toLocaleTimeString("he-IL", {
                             hour: "2-digit",
                             minute: "2-digit",
@@ -620,14 +683,14 @@ export default function CalendarPage() {
                               key={appt.id}
                               type="button"
                               onClick={() => openEditForm(appt)}
-                              className="w-full rounded-xl border p-2 text-right text-xs transition-all duration-200 ease-out hover:-translate-y-[1px] hover:opacity-90 hover:shadow-md"
+                              className={`w-full rounded-xl border p-2 text-right text-xs transition-all duration-200 ease-out hover:-translate-y-[1px] hover:opacity-90 hover:shadow-md ${isCancelled ? "opacity-50" : ""}`}
                               style={{
                                 backgroundColor: colorWithAlpha(color, 0.15),
                                 borderColor: colorWithAlpha(color, 0.35),
                               }}
                             >
                               <div className="mb-1 flex items-center justify-between gap-1">
-                                <span className="font-black" dir="ltr">
+                                <span className={`font-black ${isCancelled ? "line-through" : ""}`} dir="ltr">
                                   {time}
                                 </span>
                                 <StatusPill tone={appointmentStatusTone(appt.status)}>

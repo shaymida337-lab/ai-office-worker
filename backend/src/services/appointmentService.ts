@@ -1,6 +1,10 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
-import { createGoogleCalendarEventForAppointment } from "./google.js";
+import {
+  createGoogleCalendarEventForAppointment,
+  deleteGoogleCalendarEventForAppointment,
+  updateGoogleCalendarEventForAppointment,
+} from "./google.js";
 
 export const APPOINTMENT_INCLUDE = {
   client: { select: { id: true, name: true, whatsappNumber: true, color: true } },
@@ -10,6 +14,15 @@ export const APPOINTMENT_INCLUDE = {
 export type AppointmentWithRelations = Prisma.AppointmentGetPayload<{
   include: typeof APPOINTMENT_INCLUDE;
 }>;
+
+export class AppointmentConflictError extends Error {
+  readonly code = "time_conflict" as const;
+
+  constructor(message = "השעה הזו כבר תפוסה, אפשר לבחור זמן אחר") {
+    super(message);
+    this.name = "AppointmentConflictError";
+  }
+}
 
 type ConflictAppointment = {
   id: string;
@@ -131,6 +144,123 @@ export async function createAppointmentForOrganization(params: {
   }
 
   return appointment;
+}
+
+export async function updateAppointmentForOrganization(params: {
+  organizationId: string;
+  appointmentId: string;
+  startTime?: Date;
+  durationMinutes?: number;
+  status?: string;
+  notes?: string | null;
+  serviceId?: string | null;
+}): Promise<AppointmentWithRelations> {
+  const existing = await prisma.appointment.findFirst({
+    where: { id: params.appointmentId, organizationId: params.organizationId },
+  });
+  if (!existing) {
+    throw new Error("Appointment not found");
+  }
+
+  const effectiveStartTime = params.startTime ?? existing.startTime;
+  const effectiveDuration = params.durationMinutes ?? existing.durationMinutes;
+  const effectiveStatus = params.status ?? existing.status;
+  const timeChanged =
+    params.startTime !== undefined || params.durationMinutes !== undefined;
+
+  if (effectiveStatus !== "cancelled" && timeChanged) {
+    const conflict = await checkAppointmentConflict({
+      organizationId: params.organizationId,
+      startTime: effectiveStartTime,
+      durationMinutes: effectiveDuration,
+      excludeAppointmentId: params.appointmentId,
+    });
+    if (conflict.hasConflict) {
+      throw new AppointmentConflictError();
+    }
+  }
+
+  const data: Prisma.AppointmentUpdateInput = {};
+  if (params.startTime !== undefined) data.startTime = params.startTime;
+  if (params.durationMinutes !== undefined) data.durationMinutes = params.durationMinutes;
+  if (params.status !== undefined) data.status = params.status;
+  if (params.notes !== undefined) data.notes = params.notes?.trim() || null;
+  if (params.serviceId !== undefined) {
+    if (params.serviceId) {
+      data.service = { connect: { id: params.serviceId } };
+    } else {
+      data.service = { disconnect: true };
+    }
+  }
+
+  let appointment = await prisma.appointment.update({
+    where: { id: existing.id },
+    data,
+    include: APPOINTMENT_INCLUDE,
+  });
+
+  try {
+    if (appointment.status === "cancelled") {
+      if (appointment.googleEventId) {
+        await deleteGoogleCalendarEventForAppointment(
+          params.organizationId,
+          appointment.googleEventId
+        );
+        appointment = await prisma.appointment.update({
+          where: { id: appointment.id },
+          data: { googleEventId: null },
+          include: APPOINTMENT_INCLUDE,
+        });
+      }
+    } else if (appointment.googleEventId) {
+      await updateGoogleCalendarEventForAppointment({
+        id: appointment.id,
+        organizationId: appointment.organizationId,
+        startTime: appointment.startTime,
+        durationMinutes: appointment.durationMinutes,
+        notes: appointment.notes,
+        client: appointment.client,
+        service: appointment.service,
+        googleEventId: appointment.googleEventId,
+      });
+    } else {
+      const googleEventId = await createGoogleCalendarEventForAppointment(appointment);
+      if (googleEventId) {
+        appointment = await prisma.appointment.update({
+          where: { id: appointment.id },
+          data: { googleEventId },
+          include: APPOINTMENT_INCLUDE,
+        });
+      }
+    }
+  } catch (syncErr) {
+    console.error("Failed to sync appointment update to Google Calendar:", syncErr);
+  }
+
+  return appointment;
+}
+
+export async function deleteAppointmentForOrganization(
+  organizationId: string,
+  appointmentId: string
+): Promise<{ ok: true }> {
+  const existing = await prisma.appointment.findFirst({
+    where: { id: appointmentId, organizationId },
+  });
+  if (!existing) {
+    throw new Error("Appointment not found");
+  }
+
+  if (existing.googleEventId) {
+    try {
+      await deleteGoogleCalendarEventForAppointment(organizationId, existing.googleEventId);
+    } catch (syncErr) {
+      console.error("Failed to delete appointment from Google Calendar:", syncErr);
+    }
+  }
+
+  await prisma.appointment.delete({ where: { id: appointmentId } });
+  return { ok: true };
 }
 
 type LocalDateParts = {

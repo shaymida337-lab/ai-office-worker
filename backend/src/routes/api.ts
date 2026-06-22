@@ -42,10 +42,13 @@ import { synthesizeSpeech } from "../services/natalieTts.js";
 import { transcribeAudio } from "../services/natalieStt.js";
 import {
   APPOINTMENT_INCLUDE,
+  AppointmentConflictError,
   checkAppointmentConflict,
   createAppointmentForOrganization,
+  deleteAppointmentForOrganization,
   findClientByNameOrPhone,
   resolveAppointmentDateTime,
+  updateAppointmentForOrganization,
 } from "../services/appointmentService.js";
 
 export const apiRouter = Router();
@@ -4547,14 +4550,6 @@ apiRouter.post("/appointments", async (req, res) => {
 apiRouter.patch("/appointments/:id", async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
-    const existing = await prisma.appointment.findFirst({
-      where: { id: req.params.id, organizationId },
-    });
-    if (!existing) {
-      res.status(404).json({ error: "Appointment not found" });
-      return;
-    }
-
     const body = req.body as {
       startTime?: string;
       durationMinutes?: number;
@@ -4562,51 +4557,74 @@ apiRouter.patch("/appointments/:id", async (req, res) => {
       notes?: string | null;
       serviceId?: string | null;
     };
-    const data: Prisma.AppointmentUpdateInput = {};
 
+    let startTime: Date | undefined;
     if (body.startTime !== undefined) {
-      data.startTime = parseIsoDateTime(body.startTime, "startTime");
+      startTime = parseIsoDateTime(body.startTime, "startTime");
     }
+
+    let durationMinutes: number | undefined;
     if (body.durationMinutes !== undefined) {
       if (!Number.isFinite(body.durationMinutes) || body.durationMinutes <= 0) {
         res.status(400).json({ error: "durationMinutes must be a positive number" });
         return;
       }
-      data.durationMinutes = body.durationMinutes;
+      durationMinutes = body.durationMinutes;
     }
+
+    let status: string | undefined;
     if (body.status !== undefined) {
       if (!APPOINTMENT_STATUSES.has(body.status)) {
         res.status(400).json({ error: "Invalid appointment status" });
         return;
       }
-      data.status = body.status;
+      status = body.status;
     }
+
+    let notes: string | null | undefined;
     if (body.notes !== undefined) {
-      data.notes = body.notes?.trim() || null;
+      notes = body.notes?.trim() || null;
     }
+
+    let serviceId: string | null | undefined;
     if (body.serviceId !== undefined) {
-      const serviceId = body.serviceId?.trim() || null;
-      if (serviceId) {
+      const parsedServiceId = body.serviceId?.trim() || null;
+      if (parsedServiceId) {
         const service = await prisma.service.findFirst({
-          where: { id: serviceId, organizationId, isActive: true },
+          where: { id: parsedServiceId, organizationId, isActive: true },
         });
         if (!service) {
           res.status(404).json({ error: "Service not found" });
           return;
         }
-        data.service = { connect: { id: serviceId } };
+        serviceId = parsedServiceId;
       } else {
-        data.service = { disconnect: true };
+        serviceId = null;
       }
     }
 
-    const appointment = await prisma.appointment.update({
-      where: { id: existing.id },
-      data,
-      include: APPOINTMENT_INCLUDE,
+    const appointment = await updateAppointmentForOrganization({
+      organizationId,
+      appointmentId: req.params.id,
+      startTime,
+      durationMinutes,
+      status,
+      notes,
+      serviceId,
     });
     res.json(appointment);
   } catch (err) {
+    if (err instanceof AppointmentConflictError) {
+      res.status(409).json({
+        error: err.message,
+        code: "time_conflict",
+      });
+      return;
+    }
+    if (err instanceof Error && err.message === "Appointment not found") {
+      res.status(404).json({ error: "Appointment not found" });
+      return;
+    }
     if (err instanceof Error && err.message.includes("startTime")) {
       res.status(400).json({ error: err.message });
       return;
@@ -4617,15 +4635,13 @@ apiRouter.patch("/appointments/:id", async (req, res) => {
 
 apiRouter.delete("/appointments/:id", async (req, res) => {
   try {
-    const deleted = await prisma.appointment.deleteMany({
-      where: { id: req.params.id, organizationId: req.auth!.organizationId },
-    });
-    if (deleted.count === 0) {
+    const result = await deleteAppointmentForOrganization(req.auth!.organizationId, req.params.id);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof Error && err.message === "Appointment not found") {
       res.status(404).json({ error: "Appointment not found" });
       return;
     }
-    res.json({ ok: true });
-  } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to delete appointment" });
   }
 });

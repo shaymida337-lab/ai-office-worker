@@ -277,7 +277,7 @@ export async function getCalendarClientForOrganization(organizationId: string) {
   return google.calendar({ version: "v3", auth: oauth2 });
 }
 
-export async function createGoogleCalendarEventForAppointment(appointment: {
+type AppointmentCalendarPayload = {
   id: string;
   organizationId: string;
   startTime: Date;
@@ -285,40 +285,60 @@ export async function createGoogleCalendarEventForAppointment(appointment: {
   notes?: string | null;
   client?: { name?: string | null } | null;
   service?: { name?: string | null } | null;
-}): Promise<string | null> {
+};
+
+function buildAppointmentEventSummary(
+  appointment: Pick<AppointmentCalendarPayload, "client" | "service">
+): string {
+  const clientName = appointment.client?.name?.trim();
+  const serviceName = appointment.service?.name?.trim();
+  if (serviceName && clientName) {
+    return `${serviceName} - ${clientName}`;
+  }
+  if (clientName) {
+    return `תור - ${clientName}`;
+  }
+  if (serviceName) {
+    return serviceName;
+  }
+  return "תור";
+}
+
+function buildAppointmentEventRequestBody(appointment: AppointmentCalendarPayload) {
+  const endTime = new Date(appointment.startTime.getTime() + appointment.durationMinutes * 60_000);
+  return {
+    summary: buildAppointmentEventSummary(appointment),
+    description: appointment.notes?.trim() ?? "",
+    start: {
+      dateTime: appointment.startTime.toISOString(),
+      timeZone: "Asia/Jerusalem",
+    },
+    end: {
+      dateTime: endTime.toISOString(),
+      timeZone: "Asia/Jerusalem",
+    },
+  };
+}
+
+function isGoogleCalendarEventNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const candidate = err as { code?: number; status?: number; response?: { status?: number } };
+  const status = candidate.code ?? candidate.status ?? candidate.response?.status;
+  return status === 404 || status === 410;
+}
+
+export async function createGoogleCalendarEventForAppointment(
+  appointment: AppointmentCalendarPayload
+): Promise<string | null> {
   try {
     const calendar = await getCalendarClientForOrganization(appointment.organizationId);
     if (!calendar) {
       return null;
     }
 
-    const clientName = appointment.client?.name?.trim();
-    const serviceName = appointment.service?.name?.trim();
-    let summary = "תור";
-    if (serviceName && clientName) {
-      summary = `${serviceName} - ${clientName}`;
-    } else if (clientName) {
-      summary = `תור - ${clientName}`;
-    } else if (serviceName) {
-      summary = serviceName;
-    }
-
-    const endTime = new Date(appointment.startTime.getTime() + appointment.durationMinutes * 60_000);
-
     const result = await calendar.events.insert({
       calendarId: "primary",
-      requestBody: {
-        summary,
-        description: appointment.notes?.trim() ?? "",
-        start: {
-          dateTime: appointment.startTime.toISOString(),
-          timeZone: "Asia/Jerusalem",
-        },
-        end: {
-          dateTime: endTime.toISOString(),
-          timeZone: "Asia/Jerusalem",
-        },
-      },
+      requestBody: buildAppointmentEventRequestBody(appointment),
     });
 
     return result.data.id ?? null;
@@ -328,6 +348,59 @@ export async function createGoogleCalendarEventForAppointment(appointment: {
       err instanceof Error ? err.message : err
     );
     return null;
+  }
+}
+
+export async function updateGoogleCalendarEventForAppointment(
+  appointment: AppointmentCalendarPayload & { googleEventId: string }
+): Promise<boolean> {
+  try {
+    const calendar = await getCalendarClientForOrganization(appointment.organizationId);
+    if (!calendar || !appointment.googleEventId) {
+      return false;
+    }
+
+    await calendar.events.update({
+      calendarId: "primary",
+      eventId: appointment.googleEventId,
+      requestBody: buildAppointmentEventRequestBody(appointment),
+    });
+
+    return true;
+  } catch (err) {
+    console.error(
+      `[google/calendar] Failed to update event for appointment ${appointment.id}`,
+      err instanceof Error ? err.message : err
+    );
+    return false;
+  }
+}
+
+export async function deleteGoogleCalendarEventForAppointment(
+  organizationId: string,
+  googleEventId: string
+): Promise<boolean> {
+  try {
+    const calendar = await getCalendarClientForOrganization(organizationId);
+    if (!calendar || !googleEventId) {
+      return false;
+    }
+
+    await calendar.events.delete({
+      calendarId: "primary",
+      eventId: googleEventId,
+    });
+
+    return true;
+  } catch (err) {
+    if (isGoogleCalendarEventNotFoundError(err)) {
+      return true;
+    }
+    console.error(
+      `[google/calendar] Failed to delete event ${googleEventId} for organization ${organizationId}`,
+      err instanceof Error ? err.message : err
+    );
+    return false;
   }
 }
 
