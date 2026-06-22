@@ -77,11 +77,13 @@ type WidgetMessage = {
   id: string;
   sender: "natalie" | "user";
   text: string;
-  action?: "create_task" | "complete_task" | "show_invoice" | "issue_invoice" | "book_appointment" | "cancel_appointment" | "reschedule_appointment";
-  proposal?: TaskActionProposal | IssueInvoiceProposal | BookAppointmentProposal | CancelAppointmentProposal | RescheduleAppointmentProposal;
+  action?: "create_task" | "complete_task" | "show_invoice" | "issue_invoice" | "book_appointment" | "cancel_appointment" | "reschedule_appointment" | "suggest_available_times";
+  proposal?: TaskActionProposal | IssueInvoiceProposal | BookAppointmentProposal | CancelAppointmentProposal | RescheduleAppointmentProposal | SuggestAvailableTimesProposal;
   invoices?: NatalieInvoiceSummary[];
   actionStatus?: "pending" | "creating" | "created" | "cancelled" | "error";
   actionFeedback?: string;
+  linkedAvailabilityMessageId?: string;
+  selectedBookProposal?: BookAppointmentProposal;
 };
 
 type CreateTaskProposal = {
@@ -110,10 +112,39 @@ type IssueInvoiceProposal = {
 
 type BookAppointmentProposal = {
   clientName: string;
-  startTime: string;
+  startTime?: string;
+  dayReference?: string;
+  time?: string;
   durationMinutes?: number;
   serviceName?: string;
   notes?: string;
+};
+
+type AvailabilitySlot = {
+  startTime: string;
+  endTime: string;
+  label: string;
+  durationMinutes: number;
+};
+
+type SuggestAvailableTimesProposal = {
+  slots: AvailabilitySlot[];
+  durationMinutes: number;
+  rangeType?: "day" | "week";
+  dayReference?: string;
+  clientName?: string;
+  intent: "suggest" | "first_available" | "check_alternatives";
+  refreshParams: {
+    rangeType?: "day" | "week";
+    dayReference?: string;
+    durationMinutes?: number;
+    limit?: number;
+  };
+};
+
+type PendingAvailabilityBooking = {
+  slot: AvailabilitySlot;
+  serviceName?: string;
 };
 
 type CancelAppointmentProposal = {
@@ -166,6 +197,11 @@ type NatalieAskResponse =
   | {
       action: "reschedule_appointment";
       proposal: RescheduleAppointmentProposal;
+      answer: string;
+    }
+  | {
+      action: "suggest_available_times";
+      proposal: SuggestAvailableTimesProposal;
       answer: string;
     };
 
@@ -249,6 +285,12 @@ function isRescheduleAppointmentResponse(
   return "action" in response && response.action === "reschedule_appointment";
 }
 
+function isSuggestAvailableTimesResponse(
+  response: NatalieAskResponse
+): response is Extract<NatalieAskResponse, { action: "suggest_available_times" }> {
+  return "action" in response && response.action === "suggest_available_times";
+}
+
 function isActionableMessage(
   message: WidgetMessage
 ): message is WidgetMessage & (
@@ -283,6 +325,22 @@ function isRescheduleAppointmentActionableMessage(
   message: WidgetMessage
 ): message is WidgetMessage & { action: "reschedule_appointment"; proposal: RescheduleAppointmentProposal } {
   return message.action === "reschedule_appointment" && Boolean(message.proposal);
+}
+
+function isSuggestAvailableTimesMessage(
+  message: WidgetMessage
+): message is WidgetMessage & { action: "suggest_available_times"; proposal: SuggestAvailableTimesProposal } {
+  return message.action === "suggest_available_times" && Boolean(message.proposal);
+}
+
+function formatAppointmentWhenLabel(proposal: BookAppointmentProposal): string {
+  if (proposal.startTime?.trim()) {
+    return formatAppointmentDateTime(proposal.startTime);
+  }
+  const day = proposal.dayReference?.trim();
+  const time = proposal.time?.trim();
+  if (day && time) return `${day} בשעה ${time}`;
+  return "—";
 }
 
 function isInvoiceMessage(message: WidgetMessage): message is WidgetMessage & { action: "show_invoice"; invoices: NatalieInvoiceSummary[] } {
@@ -363,6 +421,7 @@ export function NatalieAssistantWidget() {
   const [sending, setSending] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [pendingAudioPlay, setPendingAudioPlay] = useState(false);
+  const [pendingAvailabilityBooking, setPendingAvailabilityBooking] = useState<PendingAvailabilityBooking | null>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -842,6 +901,33 @@ export function NatalieAssistantWidget() {
     const cleanText = text.trim();
     if (!cleanText || sending) return;
 
+    if (pendingAvailabilityBooking) {
+      const timestamp = Date.now();
+      const booking = pendingAvailabilityBooking;
+      setPendingAvailabilityBooking(null);
+      const userMessage: WidgetMessage = {
+        id: `user-${timestamp}`,
+        sender: "user",
+        text: cleanText,
+      };
+      const bookMessage: WidgetMessage = {
+        id: `natalie-book-${timestamp}`,
+        sender: "natalie",
+        text: `אציע לקבוע תור ל${cleanText} ב${booking.slot.label}. לאשר?`,
+        action: "book_appointment",
+        proposal: {
+          clientName: cleanText,
+          startTime: booking.slot.startTime,
+          durationMinutes: booking.slot.durationMinutes,
+          serviceName: booking.serviceName,
+        },
+        actionStatus: "pending",
+      };
+      setMessages((current) => [...current, userMessage, bookMessage]);
+      setInput("");
+      return;
+    }
+
     const timestamp = Date.now();
     const history = buildNatalieHistory(messages);
     const userMessage: WidgetMessage = {
@@ -924,6 +1010,13 @@ export function NatalieAssistantWidget() {
                     }
                   : {}),
                 ...(isRescheduleAppointmentResponse(result)
+                  ? {
+                      action: result.action,
+                      proposal: result.proposal,
+                      actionStatus: "pending" as const,
+                    }
+                  : {}),
+                ...(isSuggestAvailableTimesResponse(result)
                   ? {
                       action: result.action,
                       proposal: result.proposal,
@@ -1075,7 +1168,92 @@ export function NatalieAssistantWidget() {
     );
   }
 
-  async function approveAppointmentProposal(messageId: string, proposal: BookAppointmentProposal) {
+  async function refreshAvailabilitySlots(messageId: string, refreshParams: SuggestAvailableTimesProposal["refreshParams"]) {
+    try {
+      const refreshed = await apiFetch<{
+        slots: AvailabilitySlot[];
+        empty: boolean;
+        durationMinutes: number;
+      }>("/api/appointments/availability/slots", {
+        method: "POST",
+        body: JSON.stringify(refreshParams),
+      });
+
+      setMessages((current) =>
+        current.map((message) => {
+          if (message.id !== messageId || message.action !== "suggest_available_times" || !message.proposal) {
+            return message;
+          }
+          const proposal = message.proposal as SuggestAvailableTimesProposal;
+          if (refreshed.empty) {
+            return {
+              ...message,
+              actionFeedback: "לא נשארו זמנים פנויים בטווח הזה.",
+              proposal: { ...proposal, slots: [] },
+            };
+          }
+          return {
+            ...message,
+            actionFeedback: "עדכנתי את הזמנים הפנויים:",
+            proposal: {
+              ...proposal,
+              slots: refreshed.slots.map((slot) => ({
+                ...slot,
+                durationMinutes: refreshed.durationMinutes,
+              })),
+              durationMinutes: refreshed.durationMinutes,
+            },
+            selectedBookProposal: undefined,
+          };
+        })
+      );
+    } catch (err) {
+      console.error("[natalie] refresh availability slots failed", err);
+    }
+  }
+
+  function selectAvailabilitySlot(
+    availabilityMessageId: string,
+    slot: AvailabilitySlot,
+    proposal: SuggestAvailableTimesProposal
+  ) {
+    if (proposal.clientName?.trim()) {
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === availabilityMessageId
+            ? {
+                ...message,
+                selectedBookProposal: {
+                  clientName: proposal.clientName!.trim(),
+                  startTime: slot.startTime,
+                  durationMinutes: slot.durationMinutes,
+                  serviceName: proposal.clientName ? undefined : undefined,
+                },
+              }
+            : message
+        )
+      );
+      return;
+    }
+
+    setPendingAvailabilityBooking({
+      slot,
+    });
+    setMessages((current) => [
+      ...current,
+      {
+        id: `natalie-ask-client-${Date.now()}`,
+        sender: "natalie",
+        text: "למי לקבוע את התור?",
+      },
+    ]);
+  }
+
+  async function approveAppointmentProposal(
+    messageId: string,
+    proposal: BookAppointmentProposal,
+    linkedAvailabilityMessageId?: string
+  ) {
     setMessages((current) =>
       current.map((message) =>
         message.id === messageId ? { ...message, actionStatus: "creating", actionFeedback: undefined } : message
@@ -1100,13 +1278,26 @@ export function NatalieAssistantWidget() {
       };
 
       if (!response.ok) {
+        if (payload.code === "time_conflict" && linkedAvailabilityMessageId) {
+          const availabilityMessage = messages.find((message) => message.id === linkedAvailabilityMessageId);
+          const refreshParams =
+            availabilityMessage?.action === "suggest_available_times"
+              ? (availabilityMessage.proposal as SuggestAvailableTimesProposal | undefined)?.refreshParams
+              : undefined;
+          if (refreshParams) {
+            await refreshAvailabilitySlots(linkedAvailabilityMessageId, refreshParams);
+          }
+        }
         setMessages((current) =>
           current.map((message) =>
             message.id === messageId
               ? {
                   ...message,
                   actionStatus: "error",
-                  actionFeedback: buildAppointmentErrorFeedback(payload),
+                  actionFeedback:
+                    payload.code === "time_conflict"
+                      ? "השעה הזו כבר נתפסה. עדכנתי זמנים חלופיים — אפשר לבחור שוב."
+                      : buildAppointmentErrorFeedback(payload),
                 }
               : message
           )
@@ -1120,7 +1311,7 @@ export function NatalieAssistantWidget() {
             ? {
                 ...message,
                 actionStatus: "created",
-                actionFeedback: `✓ התור נקבע ל${proposal.clientName} ב${formatAppointmentDateTime(proposal.startTime)}`,
+                actionFeedback: `✓ התור נקבע ל${proposal.clientName} ב${formatAppointmentWhenLabel(proposal)}`,
               }
             : message
         )
@@ -1451,12 +1642,80 @@ export function NatalieAssistantWidget() {
                       )}
                     </div>
                   )}
+                  {isSuggestAvailableTimesMessage(message) && (
+                    <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
+                      <div className="mb-3 flex flex-wrap justify-end gap-2" dir="rtl">
+                        {message.proposal.slots.map((slot) => (
+                          <button
+                            key={slot.startTime}
+                            type="button"
+                            className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#d7def0] bg-[#f8faff] px-4 py-2 text-sm font-extrabold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]"
+                            onClick={() => selectAvailabilitySlot(message.id, slot, message.proposal)}
+                          >
+                            {slot.label}
+                          </button>
+                        ))}
+                      </div>
+                      {message.actionFeedback && (
+                        <div className="mb-2 text-right text-[14px] font-bold text-[#0e1116]">{message.actionFeedback}</div>
+                      )}
+                      {message.selectedBookProposal && (
+                        <div className="mt-3 rounded-xl border border-[#e6eaf2] bg-[#f8faff] p-3 text-right">
+                          <div className="mb-2 text-[14px] font-extrabold text-[#0e1116]">
+                            לקוח: {formatIssueInvoiceText(message.selectedBookProposal.clientName)}
+                          </div>
+                          <div className="mb-3 text-[13px] font-bold text-[#6b7686]">
+                            מתי: {formatAppointmentWhenLabel(message.selectedBookProposal)}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7]"
+                              onClick={() => {
+                                const bookMessageId = `${message.id}-book`;
+                                setMessages((current) => {
+                                  const existing = current.find((item) => item.id === bookMessageId);
+                                  if (existing) {
+                                    return current.map((item) =>
+                                      item.id === bookMessageId
+                                        ? {
+                                            ...item,
+                                            proposal: message.selectedBookProposal,
+                                            actionStatus: "pending" as const,
+                                            actionFeedback: undefined,
+                                            linkedAvailabilityMessageId: message.id,
+                                          }
+                                        : item
+                                    );
+                                  }
+                                  return [
+                                    ...current,
+                                    {
+                                      id: bookMessageId,
+                                      sender: "natalie",
+                                      text: `אציע לקבוע תור ל${message.selectedBookProposal!.clientName} ב${formatAppointmentWhenLabel(message.selectedBookProposal!)}. לאשר?`,
+                                      action: "book_appointment",
+                                      proposal: message.selectedBookProposal!,
+                                      actionStatus: "pending",
+                                      linkedAvailabilityMessageId: message.id,
+                                    },
+                                  ];
+                                });
+                              }}
+                            >
+                              אשר וקבע תור
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {isBookAppointmentActionableMessage(message) && (
                     <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
                       <div className="mb-3 space-y-1 text-right">
                         <div className="text-[14px] font-extrabold text-[#0e1116]">לקוח: {formatIssueInvoiceText(message.proposal.clientName)}</div>
                         <div className="text-[13px] font-bold text-[#6b7686]">
-                          מתי: {formatAppointmentDateTime(message.proposal.startTime)}
+                          מתי: {formatAppointmentWhenLabel(message.proposal)}
                         </div>
                         {message.proposal.serviceName?.trim() && (
                           <div className="text-[13px] font-bold text-[#6b7686]">
@@ -1477,7 +1736,13 @@ export function NatalieAssistantWidget() {
                           <button
                             type="button"
                             disabled={message.actionStatus === "creating"}
-                            onClick={() => approveAppointmentProposal(message.id, message.proposal)}
+                            onClick={() =>
+                              approveAppointmentProposal(
+                                message.id,
+                                message.proposal,
+                                message.linkedAvailabilityMessageId
+                              )
+                            }
                             className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
                           >
                             {message.actionStatus === "creating" ? "קובע תור..." : "אשר וקבע תור"}

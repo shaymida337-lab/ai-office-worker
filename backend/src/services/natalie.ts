@@ -8,6 +8,7 @@ import {
   resolveAppointmentDateTime,
   type AppointmentWithRelations,
 } from "./appointmentService.js";
+import { maybeBuildAvailabilityResponse } from "./natalieAvailability.js";
 
 type ShowInvoiceItem = {
   id: string;
@@ -32,6 +33,9 @@ export async function askNatalieBusinessQuestion(input: {
 
   const completeTaskResponse = await maybeBuildCompleteTaskProposal(input.organizationId, input.question);
   if (completeTaskResponse) return completeTaskResponse;
+
+  const availabilityResponse = await maybeBuildAvailabilityResponse(input.organizationId, input.question);
+  if (availabilityResponse) return availabilityResponse;
 
   const rescheduleAppointmentResponse = await maybeBuildRescheduleAppointmentProposal(
     input.organizationId,

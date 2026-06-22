@@ -141,6 +141,29 @@ export type NatalieClaudeResponse =
         newWhen?: string;
       };
       answer: string;
+    }
+  | {
+      action: "suggest_available_times";
+      proposal: {
+        slots: Array<{
+          startTime: string;
+          endTime: string;
+          label: string;
+          durationMinutes: number;
+        }>;
+        durationMinutes: number;
+        rangeType?: "day" | "week";
+        dayReference?: string;
+        clientName?: string;
+        intent: "suggest" | "first_available" | "check_alternatives";
+        refreshParams: {
+          rangeType?: "day" | "week";
+          dayReference?: string;
+          durationMinutes?: number;
+          limit?: number;
+        };
+      };
+      answer: string;
     };
 
 const NATALIE_BUSINESS_SYSTEM_PROMPT = `את נטלי, עוזרת משרדית חכמה לעסק ישראלי קטן.
@@ -725,6 +748,39 @@ export function isNatalieClaudeResponse(value: unknown): value is NatalieClaudeR
         (proposal.newTime === undefined || typeof proposal.newTime === "string") &&
         (proposal.newWhen === undefined || typeof proposal.newWhen === "string")
     );
+  }
+  if (response.action === "suggest_available_times") {
+    const proposal = response.proposal as {
+      slots?: unknown;
+      durationMinutes?: unknown;
+      intent?: unknown;
+      refreshParams?: unknown;
+    } | undefined;
+    if (!proposal || typeof proposal !== "object") return false;
+    if (typeof proposal.durationMinutes !== "number" || !Number.isFinite(proposal.durationMinutes)) return false;
+    if (
+      proposal.intent !== "suggest" &&
+      proposal.intent !== "first_available" &&
+      proposal.intent !== "check_alternatives"
+    ) {
+      return false;
+    }
+    if (!proposal.refreshParams || typeof proposal.refreshParams !== "object") return false;
+    if (!Array.isArray(proposal.slots) || proposal.slots.length === 0) return false;
+    return proposal.slots.every((slot) => {
+      if (!slot || typeof slot !== "object") return false;
+      const item = slot as Record<string, unknown>;
+      return (
+        typeof item.startTime === "string" &&
+        item.startTime.trim() &&
+        typeof item.endTime === "string" &&
+        item.endTime.trim() &&
+        typeof item.label === "string" &&
+        item.label.trim() &&
+        typeof item.durationMinutes === "number" &&
+        Number.isFinite(item.durationMinutes)
+      );
+    });
   }
   return false;
 }
