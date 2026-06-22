@@ -40,7 +40,10 @@ import { findDuplicateDrafts } from "../services/findDuplicateDrafts.js";
 import type { ColumnMapping } from "../services/importColumnMapper.js";
 import { synthesizeSpeech } from "../services/natalieTts.js";
 import { transcribeAudio } from "../services/natalieStt.js";
-import { createGoogleCalendarEventForAppointment } from "../services/google.js";
+import {
+  APPOINTMENT_INCLUDE,
+  createAppointmentForOrganization,
+} from "../services/appointmentService.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -4114,11 +4117,6 @@ apiRouter.get("/payments", async (req, res) => {
   res.json(payments.map(enrichPaymentSources));
 });
 
-const APPOINTMENT_INCLUDE = {
-  client: { select: { id: true, name: true, whatsappNumber: true, color: true } },
-  service: { select: { id: true, name: true, color: true, durationMinutes: true } },
-} as const;
-
 const APPOINTMENT_STATUSES = new Set(["pending", "confirmed", "completed", "cancelled", "no_show"]);
 
 function parseIsoDateTime(value: unknown, fieldName: string) {
@@ -4344,31 +4342,16 @@ apiRouter.post("/appointments", async (req, res) => {
       return;
     }
 
-    const appointment = await prisma.appointment.create({
-      data: {
-        organizationId,
-        clientId,
-        serviceId,
-        startTime,
-        durationMinutes,
-        status,
-        source: "manual",
-        notes: body.notes?.trim() || null,
-      },
-      include: APPOINTMENT_INCLUDE,
+    const appointment = await createAppointmentForOrganization({
+      organizationId,
+      clientId,
+      serviceId,
+      startTime,
+      durationMinutes,
+      status,
+      notes: body.notes?.trim() || null,
+      source: "manual",
     });
-    try {
-      const googleEventId = await createGoogleCalendarEventForAppointment(appointment);
-      if (googleEventId) {
-        await prisma.appointment.update({
-          where: { id: appointment.id },
-          data: { googleEventId },
-        });
-        (appointment as { googleEventId?: string | null }).googleEventId = googleEventId;
-      }
-    } catch (syncErr) {
-      console.error("Failed to sync appointment to Google Calendar:", syncErr);
-    }
     res.status(201).json(appointment);
   } catch (err) {
     if (err instanceof Error && err.message.includes("startTime")) {
