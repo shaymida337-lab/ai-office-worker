@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Nav } from "@/components/Nav";
+import { DayTimelineView } from "@/components/calendar/DayTimelineView";
 import { apiFetch, ApiError, getToken } from "@/lib/api";
+import { getDayBounds } from "@/lib/calendarUtils";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Calendar, ChevronLeft, ChevronRight, Clock, Plus, Trash2, X } from "lucide-react";
 
@@ -41,6 +43,13 @@ type ClientsResponse = {
 const DAY_NAMES = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "ש'"];
 const APPOINTMENT_STATUS_OPTIONS = ["pending", "confirmed", "completed", "cancelled", "no_show"] as const;
 const DEFAULT_COLOR = "#3B82F6";
+type CalendarViewMode = "week" | "day";
+
+function startOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 
 const panelClass = "rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm";
 const btnPrimary =
@@ -156,7 +165,9 @@ function CollapsePanel({ open, children }: { open: boolean; children: ReactNode 
 }
 
 export default function CalendarPage() {
+  const [viewMode, setViewMode] = useState<CalendarViewMode>("week");
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
+  const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()));
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [clients, setClients] = useState<ApptClient[]>([]);
@@ -249,12 +260,15 @@ export default function CalendarPage() {
     }
   }
 
-  async function loadWeek() {
+  async function loadAppointments() {
     setLoading(true);
     try {
-      const weekEnd = addDays(weekStart, 7);
-      const from = weekStart.toISOString();
-      const to = weekEnd.toISOString();
+      const range =
+        viewMode === "day"
+          ? getDayBounds(selectedDay)
+          : { from: weekStart, to: addDays(weekStart, 7) };
+      const from = range.from.toISOString();
+      const to = range.to.toISOString();
       const [apptData, svcData, clientData] = await Promise.all([
         apiFetch<Appointment[]>(`/api/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
         apiFetch<Service[]>("/api/services"),
@@ -271,9 +285,9 @@ export default function CalendarPage() {
   }
 
   useEffect(() => {
-    loadWeek().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה"));
+    loadAppointments().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart]);
+  }, [weekStart, viewMode, selectedDay]);
 
   useEffect(() => {
     loadCalendarStatus();
@@ -358,7 +372,7 @@ export default function CalendarPage() {
         setMessage("התור נוסף בהצלחה");
       }
       resetForm();
-      await loadWeek();
+      await loadAppointments();
     } catch (err) {
       if (isTimeConflictError(err)) {
         setMessage("קיים תור אחר בזמן הזה");
@@ -381,7 +395,7 @@ export default function CalendarPage() {
       });
       setMessage("התור בוטל");
       resetForm();
-      await loadWeek();
+      await loadAppointments();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "ביטול התור נכשל");
     } finally {
@@ -398,7 +412,7 @@ export default function CalendarPage() {
       await apiFetch(`/api/appointments/${editingId}`, { method: "DELETE" });
       setMessage("התור נמחק");
       resetForm();
-      await loadWeek();
+      await loadAppointments();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "מחיקת התור נכשלה");
     } finally {
@@ -462,7 +476,7 @@ export default function CalendarPage() {
         <div>
           <div className="page-kicker">יומן</div>
           <h1 className="font-black text-[#111827]">היומן שלי</h1>
-          <p className="font-semibold text-[#6B7280]">ניהול תורים ושירותים — תצוגת שבוע, יצירה ועריכה במקום אחד.</p>
+          <p className="font-semibold text-[#6B7280]">ניהול תורים ושירותים — תצוגת שבוע או יום, יצירה ועריכה במקום אחד.</p>
           {calendarConnected === true && (
             <div className="mt-3">
               <StatusPill tone="success">מחובר ל-Google Calendar ✓</StatusPill>
@@ -608,6 +622,45 @@ export default function CalendarPage() {
 
       <div className={`${panelClass} mb-5`}>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="inline-flex rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] p-1">
+            <button
+              type="button"
+              className={`rounded-lg px-4 py-2 text-sm font-black transition ${
+                viewMode === "week"
+                  ? "bg-white text-[#111827] shadow-sm"
+                  : "text-[#6B7280] hover:text-[#111827]"
+              }`}
+              onClick={() => setViewMode("week")}
+            >
+              שבוע
+            </button>
+            <button
+              type="button"
+              className={`rounded-lg px-4 py-2 text-sm font-black transition ${
+                viewMode === "day"
+                  ? "bg-white text-[#111827] shadow-sm"
+                  : "text-[#6B7280] hover:text-[#111827]"
+              }`}
+              onClick={() => setViewMode("day")}
+            >
+              יום
+            </button>
+          </div>
+        </div>
+
+        {viewMode === "day" ? (
+          <DayTimelineView
+            date={selectedDay}
+            appointments={appointments}
+            loading={loading}
+            onSelectAppointment={openEditForm}
+            onPrevDay={() => setSelectedDay((day) => startOfDay(addDays(day, -1)))}
+            onNextDay={() => setSelectedDay((day) => startOfDay(addDays(day, 1)))}
+            onToday={() => setSelectedDay(startOfDay(new Date()))}
+          />
+        ) : (
+          <>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-[#1D4ED8]" />
             <h2 className="text-lg font-black text-[#111827]">{weekLabel}</h2>
@@ -711,6 +764,8 @@ export default function CalendarPage() {
               })}
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
 
