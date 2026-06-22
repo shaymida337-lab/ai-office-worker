@@ -50,6 +50,10 @@ import {
   resolveAppointmentDateTime,
   updateAppointmentForOrganization,
 } from "../services/appointmentService.js";
+import {
+  checkSlotAvailability,
+  findAvailableSlotsForOrganization,
+} from "../services/calendar/availability.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -4742,6 +4746,114 @@ apiRouter.delete("/appointments/:id", async (req, res) => {
       return;
     }
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to delete appointment" });
+  }
+});
+
+apiRouter.post("/appointments/availability/check", async (req, res) => {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const body = req.body as {
+      startTime?: string;
+      dayReference?: string;
+      time?: string;
+      durationMinutes?: number;
+      serviceId?: string | null;
+      excludeAppointmentId?: string;
+    };
+
+    let startTime: Date | undefined;
+    if (body.startTime !== undefined) {
+      startTime = parseIsoDateTime(body.startTime, "startTime");
+    }
+
+    const result = await checkSlotAvailability({
+      organizationId,
+      startTime,
+      dayReference: typeof body.dayReference === "string" ? body.dayReference : undefined,
+      time: typeof body.time === "string" ? body.time : undefined,
+      durationMinutes:
+        body.durationMinutes !== undefined && Number.isFinite(body.durationMinutes)
+          ? Number(body.durationMinutes)
+          : undefined,
+      serviceId: typeof body.serviceId === "string" ? body.serviceId : null,
+      excludeAppointmentId:
+        typeof body.excludeAppointmentId === "string" ? body.excludeAppointmentId.trim() : undefined,
+    });
+
+    if (result.reason === "bad_datetime") {
+      res.status(400).json({ error: "Invalid or missing start time", code: "bad_datetime" });
+      return;
+    }
+
+    res.json(result);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("startTime")) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to check availability" });
+  }
+});
+
+apiRouter.post("/appointments/availability/slots", async (req, res) => {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const body = req.body as {
+      rangeType?: "day" | "week";
+      from?: string;
+      to?: string;
+      dayReference?: string;
+      durationMinutes?: number;
+      serviceId?: string | null;
+      limit?: number;
+      slotStepMinutes?: number;
+      excludeAppointmentId?: string;
+    };
+
+    let from: Date | undefined;
+    let to: Date | undefined;
+    if (body.from !== undefined || body.to !== undefined) {
+      if (!body.from || !body.to) {
+        res.status(400).json({ error: "Both from and to are required when specifying a custom range" });
+        return;
+      }
+      from = parseIsoDateTime(body.from, "from");
+      to = parseIsoDateTime(body.to, "to");
+      if (from >= to) {
+        res.status(400).json({ error: "from must be before to" });
+        return;
+      }
+    }
+
+    const rangeType = body.rangeType === "week" ? "week" : body.rangeType === "day" ? "day" : undefined;
+
+    const result = await findAvailableSlotsForOrganization({
+      organizationId,
+      rangeType,
+      from,
+      to,
+      dayReference: typeof body.dayReference === "string" ? body.dayReference : undefined,
+      durationMinutes:
+        body.durationMinutes !== undefined && Number.isFinite(body.durationMinutes)
+          ? Number(body.durationMinutes)
+          : undefined,
+      serviceId: typeof body.serviceId === "string" ? body.serviceId : null,
+      limit: body.limit !== undefined && Number.isFinite(body.limit) ? Number(body.limit) : undefined,
+      slotStepMinutes:
+        body.slotStepMinutes !== undefined && Number.isFinite(body.slotStepMinutes)
+          ? Number(body.slotStepMinutes)
+          : undefined,
+      excludeAppointmentId:
+        typeof body.excludeAppointmentId === "string" ? body.excludeAppointmentId.trim() : undefined,
+    });
+
+    res.json(result);
+  } catch (err) {
+    if (err instanceof Error && (err.message.includes("from") || err.message.includes("to"))) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to find available slots" });
   }
 });
 
