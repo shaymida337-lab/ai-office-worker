@@ -38,15 +38,14 @@ export async function checkAppointmentConflict(params: {
   durationMinutes: number;
   excludeAppointmentId?: string;
 }): Promise<{ hasConflict: boolean; conflictingAppointment?: ConflictAppointment }> {
-  const newStart = params.startTime;
-  const newEnd = new Date(newStart.getTime() + params.durationMinutes * 60_000);
-  const queryFrom = new Date(newStart.getTime() - 24 * 60 * 60 * 1000);
+  const newStartMs = params.startTime.getTime();
+  const newEndMs = newStartMs + params.durationMinutes * 60_000;
 
   const existingAppointments = await prisma.appointment.findMany({
     where: {
       organizationId: params.organizationId,
       status: { not: "cancelled" },
-      startTime: { gte: queryFrom, lt: newEnd },
+      startTime: { lt: new Date(newEndMs) },
       ...(params.excludeAppointmentId ? { id: { not: params.excludeAppointmentId } } : {}),
     },
     select: {
@@ -59,9 +58,10 @@ export async function checkAppointmentConflict(params: {
   });
 
   for (const existing of existingAppointments) {
-    const existingStart = existing.startTime;
-    const existingEnd = new Date(existingStart.getTime() + existing.durationMinutes * 60_000);
-    if (newStart < existingEnd && newEnd > existingStart) {
+    const existingStartMs = existing.startTime.getTime();
+    const existingEndMs = existingStartMs + existing.durationMinutes * 60_000;
+    if (existingEndMs <= newStartMs) continue;
+    if (newStartMs < existingEndMs && newEndMs > existingStartMs) {
       return { hasConflict: true, conflictingAppointment: existing };
     }
   }
@@ -132,6 +132,18 @@ export async function createAppointmentForOrganization(params: {
   });
   if (!client) {
     throw new Error("Client not found");
+  }
+
+  const effectiveStatus = params.status ?? "pending";
+  if (effectiveStatus !== "cancelled") {
+    const conflict = await checkAppointmentConflict({
+      organizationId: params.organizationId,
+      startTime: params.startTime,
+      durationMinutes: params.durationMinutes,
+    });
+    if (conflict.hasConflict) {
+      throw new AppointmentConflictError();
+    }
   }
 
   const appointment = await prisma.appointment.create({

@@ -44,7 +44,6 @@ import { correctClientNamesInTranscript } from "../services/nameCorrection.js";
 import {
   APPOINTMENT_INCLUDE,
   AppointmentConflictError,
-  checkAppointmentConflict,
   createAppointmentForOrganization,
   deleteAppointmentForOrganization,
   findClientByNameOrPhone,
@@ -2669,15 +2668,6 @@ apiRouter.post("/natalie/create-appointment", async (req, res) => {
       return;
     }
 
-    const conflict = await checkAppointmentConflict({ organizationId, startTime, durationMinutes });
-    if (conflict.hasConflict) {
-      res.status(409).json({
-        error: "השעה הזו כבר תפוסה, אפשר לבחור זמן אחר",
-        code: "time_conflict",
-      });
-      return;
-    }
-
     const notes = typeof body.notes === "string" ? body.notes.trim() : "";
     const appointment = await createAppointmentForOrganization({
       organizationId,
@@ -2690,6 +2680,13 @@ apiRouter.post("/natalie/create-appointment", async (req, res) => {
     });
     res.status(201).json(appointment);
   } catch (err) {
+    if (err instanceof AppointmentConflictError) {
+      res.status(409).json({
+        error: err.message,
+        code: "time_conflict",
+      });
+      return;
+    }
     console.error("[natalie/create-appointment] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Appointment creation failed" });
   }
@@ -4634,6 +4631,13 @@ apiRouter.post("/appointments", async (req, res) => {
     });
     res.status(201).json(appointment);
   } catch (err) {
+    if (err instanceof AppointmentConflictError) {
+      res.status(409).json({
+        error: err.message,
+        code: "time_conflict",
+      });
+      return;
+    }
     if (err instanceof Error && err.message.includes("startTime")) {
       res.status(400).json({ error: err.message });
       return;
