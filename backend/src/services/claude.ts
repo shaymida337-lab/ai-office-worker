@@ -112,7 +112,9 @@ export type NatalieClaudeResponse =
       action: "book_appointment";
       proposal: {
         clientName: string;
-        startTime: string;
+        dayReference?: string;
+        time?: string;
+        startTime?: string;
         durationMinutes?: number;
         serviceName?: string;
         notes?: string;
@@ -144,13 +146,15 @@ answer להצעת טיוטת חשבונית חייב לציין בדיוק את 
 בשלב זה נתמכת רק טיוטת חשבונית אחת בכל פעם. אם המשתמש מבקש כמה חשבוניות בבת אחת או מקובץ, עני שכרגע אפשר טיוטה אחת בכל פעם.
 
 אם ורק אם המשתמש מבקש בבירור לקבוע או לרשום תור ללקוח, למשל "תקבעי תור ל...", "תרשמי תור ל...", "קבעי פגישה ל...":
-{"action":"book_appointment","proposal":{"clientName":"שם הלקוח","startTime":"2026-06-19T15:00:00","durationMinutes":30,"serviceName":"שם השירות","notes":"הערות אופציונליות"},"answer":"אציע לקבוע תור ל[שם] ב-[תאריך ושעה] למשך [דקות] דקות. לאשר?"}
+{"action":"book_appointment","proposal":{"clientName":"שם הלקוח","dayReference":"יום שלישי","time":"10:00","durationMinutes":30,"serviceName":"שם השירות","notes":"הערות אופציונליות"},"answer":"אציע לקבוע תור ל[שם] ב[יום] בשעה [שעה] למשך [דקות] דקות. לאשר?"}
 אל תציעי book_appointment על רמז עקיף — רק בבקשה מפורשת לקבוע/לרשום תור.
-שדות חובה ב-proposal: clientName, startTime (ISO 8601 מלא, למשל 2026-06-19T15:00:00). durationMinutes, serviceName, notes אופציונליים.
+שדות חובה ב-proposal: clientName, dayReference, time. durationMinutes, serviceName, notes אופציונליים.
+dayReference: בדיוק מה שהמשתמש אמר לגבי היום — "היום" / "מחר" / "מחרתיים" / "יום ראשון".."יום שבת" / או תאריך מפורש אם נאמר (למשל "23.6"). אל תחשבי תאריך מספרי בעצמך.
+time: השעה שהמשתמש אמר בפורמט "HH:mm" (למשל "10:00").
+אל תחשבי את התאריך המדויק בעצמך — רק העבירי מה שהמשתמש אמר. המערכת תחשב את התאריך.
 durationMinutes חייב להיות מספר שלם בלי מרכאות ב-JSON — למשל 30 ולא "30".
-אם חסר שם לקוח או זמן — שאלי שאלת הבהרה בעברית בלי action. אל תנחשי.
-הזמן הנוכחי של העסק מופיע בהקשר בשדה currentTime וב-timezone — השתמשי בהם לפרשנות זמנים יחסיים כמו "מחר ב-3" או "בעוד שעה", והחזירי startTime ב-ISO 8601 מלא.
-לעולם אל תאמרי שקבעת תור בפועל — רק מציעה. answer חייב לנסח את ההצעה בעברית ולהסתיים במילה "לאשר?".
+אם חסר שם לקוח, יום או שעה — שאלי שאלת הבהרה בעברית בלי action. אל תנחשי.
+לעולם אל תאמרי שקבעת תור בפועל — רק מציעה. answer חייב לנסח את ההצעה בעברית (יום + שעה כפי שהמשתמש אמר) ולהסתיים במילה "לאשר?".
 
 אם המשתמש מבקש לראות/להציג חשבונית קיימת, זו פעולה לקריאה בלבד. אין ליצור חשבונית חדשה. אם נתוני חשבוניות קיימות סופקו לך בהקשר, אפשר להחזיר:
 {"action":"show_invoice","invoices":[{"id":"...","supplierName":"...","invoiceNumber":"...","amount":0,"currency":"ILS","issueDate":"YYYY-MM-DD","dueDate":null,"status":"pending","driveUrl":"..."}],"answer":"מצאתי ..."}
@@ -158,7 +162,7 @@ durationMinutes חייב להיות מספר שלם בלי מרכאות ב-JSON 
 כללי פעולה:
 - action="create_task" רק בבקשת משימה/תזכורת ברורה.
 - action="issue_invoice" רק בבקשה מפורשת להכין או להוציא חשבונית ללקוח, ורק כשיש customerName, description ו-amount חיובי שסופקו על ידי המשתמש.
-- action="book_appointment" רק בבקשה מפורשת לקבוע או לרשום תור, ורק כשיש clientName ו-startTime שסופקו על ידי המשתמש (או נגזרו מזמן יחסי לפי currentTime בהקשר).
+- action="book_appointment" רק בבקשה מפורשת לקבוע או לרשום תור, ורק כשיש clientName, dayReference ו-time שסופקו על ידי המשתמש.
 - action="show_invoice" רק להצגת חשבונית קיימת ורק אם נתוני החשבונית קיימים בהקשר.
 - אל תיצרי משימה בפועל. רק הציעי.
 - אל תיצרי חשבונית בפועל. רק הציעי טיוטה פנימית.
@@ -506,8 +510,17 @@ function normalizeBookAppointmentProposal(response: Record<string, unknown>): vo
   const clientName = normalizeOptionalString(proposal.clientName);
   if (clientName !== undefined) proposal.clientName = clientName;
 
+  const dayReference = normalizeOptionalString(proposal.dayReference);
+  if (dayReference !== undefined) proposal.dayReference = dayReference;
+  else delete proposal.dayReference;
+
+  const time = normalizeOptionalString(proposal.time);
+  if (time !== undefined) proposal.time = time;
+  else delete proposal.time;
+
   const startTime = normalizeOptionalString(proposal.startTime);
   if (startTime !== undefined) proposal.startTime = startTime;
+  else delete proposal.startTime;
 
   const durationMinutes = normalizeOptionalPositiveNumber(proposal.durationMinutes);
   if (durationMinutes !== undefined) proposal.durationMinutes = durationMinutes;
@@ -527,6 +540,8 @@ function validateBookAppointmentResponse(response: Record<string, unknown>): boo
 
   const proposal = response.proposal as {
     clientName?: unknown;
+    dayReference?: unknown;
+    time?: unknown;
     startTime?: unknown;
     durationMinutes?: unknown;
     serviceName?: unknown;
@@ -543,8 +558,37 @@ function validateBookAppointmentResponse(response: Record<string, unknown>): boo
     });
     return false;
   }
-  if (typeof proposal.startTime !== "string" || !proposal.startTime.trim()) {
-    console.warn("[natalie] book_appointment validation failed: startTime missing or empty", {
+
+  const hasDayAndTime =
+    typeof proposal.dayReference === "string" &&
+    proposal.dayReference.trim() &&
+    typeof proposal.time === "string" &&
+    proposal.time.trim();
+  const hasExplicitStartTime = typeof proposal.startTime === "string" && proposal.startTime.trim();
+
+  if (!hasDayAndTime && !hasExplicitStartTime) {
+    console.warn("[natalie] book_appointment validation failed: missing dayReference+time or startTime", {
+      dayReference: proposal.dayReference,
+      time: proposal.time,
+      startTime: proposal.startTime,
+    });
+    return false;
+  }
+
+  if (proposal.dayReference !== undefined && typeof proposal.dayReference !== "string") {
+    console.warn("[natalie] book_appointment validation failed: dayReference invalid", {
+      dayReference: proposal.dayReference,
+    });
+    return false;
+  }
+  if (proposal.time !== undefined && typeof proposal.time !== "string") {
+    console.warn("[natalie] book_appointment validation failed: time invalid", {
+      time: proposal.time,
+    });
+    return false;
+  }
+  if (proposal.startTime !== undefined && typeof proposal.startTime !== "string") {
+    console.warn("[natalie] book_appointment validation failed: startTime invalid", {
       startTime: proposal.startTime,
     });
     return false;

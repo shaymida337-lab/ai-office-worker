@@ -45,6 +45,7 @@ import {
   checkAppointmentConflict,
   createAppointmentForOrganization,
   findClientByNameOrPhone,
+  resolveAppointmentDateTime,
 } from "../services/appointmentService.js";
 
 export const apiRouter = Router();
@@ -2575,6 +2576,8 @@ apiRouter.post("/natalie/create-task", async (req, res) => {
 apiRouter.post("/natalie/create-appointment", async (req, res) => {
   const body = (req.body ?? {}) as {
     clientName?: unknown;
+    dayReference?: unknown;
+    time?: unknown;
     startTime?: unknown;
     durationMinutes?: unknown;
     serviceName?: unknown;
@@ -2587,13 +2590,26 @@ apiRouter.post("/natalie/create-appointment", async (req, res) => {
     return;
   }
 
+  const dayReference = typeof body.dayReference === "string" ? body.dayReference.trim() : "";
+  const time = typeof body.time === "string" ? body.time.trim() : "";
   const startTimeRaw = typeof body.startTime === "string" ? body.startTime.trim() : "";
-  if (!startTimeRaw) {
-    res.status(400).json({ error: "זמן התור נדרש" });
-    return;
-  }
 
   try {
+    const timeZone = await loadOrganizationTimezone(organizationId);
+    const startTime = resolveAppointmentDateTime({
+      dayReference: dayReference || undefined,
+      time: time || undefined,
+      explicitStartTime: startTimeRaw || undefined,
+      timeZone,
+    });
+    if (!startTime) {
+      res.status(400).json({
+        error: "לא הצלחתי להבין את מועד התור, אפשר לנסות שוב עם יום ושעה ברורים",
+        code: "bad_datetime",
+      });
+      return;
+    }
+
     const clients = await findClientByNameOrPhone({ organizationId, query: clientName });
     if (clients.length === 0) {
       res.status(404).json({ error: "לא נמצא לקוח בשם הזה", code: "client_not_found" });
@@ -2640,7 +2656,6 @@ apiRouter.post("/natalie/create-appointment", async (req, res) => {
       return;
     }
 
-    const startTime = new Date(startTimeRaw);
     if (Number.isNaN(startTime.getTime())) {
       res.status(400).json({ error: "זמן התור לא תקין" });
       return;

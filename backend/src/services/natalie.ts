@@ -502,9 +502,11 @@ async function getNatalieBusinessContext(organizationId: string) {
         }
       : {}),
     currentTime: formatCurrentTimeInTimezone(now, timezone),
+    currentWeekday: formatWeekdayInTimezone(now, timezone),
     timezone,
     labels: {
-      currentTime: "הזמן הנוכחי (לפרשנות תאריכים יחסיים כמו מחר/בעוד שעה)",
+      currentTime: "הזמן הנוכחי עם offset (לפרשנות תאריכים יחסיים כמו מחר/בעוד שעה)",
+      currentWeekday: "היום בשבוע לפי אזור הזמן של העסק",
       timezone: "אזור זמן של העסק",
       invoicesThisMonth: "מספר חשבוניות החודש",
       invoicesLastMonth: "מספר חשבוניות בחודש שעבר",
@@ -551,7 +553,41 @@ function formatCurrentTimeInTimezone(date: Date, timeZone: string): string {
     hour12: false,
   }).formatToParts(date);
   const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "00";
-  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
+  const localDateTime = `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
+  return `${localDateTime}${getTimezoneOffsetForDate(date, timeZone)}`;
+}
+
+function formatWeekdayInTimezone(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("he-IL", { timeZone, weekday: "long" }).format(date);
+}
+
+function getTimezoneOffsetForDate(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const getNumber = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? "0");
+  const asUtcMs = Date.UTC(
+    getNumber("year"),
+    getNumber("month") - 1,
+    getNumber("day"),
+    getNumber("hour"),
+    getNumber("minute"),
+    getNumber("second")
+  );
+  const offsetMinutes = Math.round((asUtcMs - date.getTime()) / 60_000);
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absoluteMinutes = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(absoluteMinutes / 60)).padStart(2, "0");
+  const minutes = String(absoluteMinutes % 60).padStart(2, "0");
+  return `${sign}${hours}:${minutes}`;
 }
 
 function isReasonableMoneyAmount(amount: number) {
