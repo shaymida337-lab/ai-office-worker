@@ -3233,6 +3233,91 @@ apiRouter.post("/leads/reply", async (req, res) => {
   }
 });
 
+apiRouter.get("/deals", async (req, res) => {
+  try {
+    const { listDeals } = await import("../services/sales/dealService.js");
+    res.json({ deals: await listDeals(req.auth!.organizationId, req.query as Record<string, unknown>) });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "List deals failed" });
+  }
+});
+
+apiRouter.get("/deals/:id", async (req, res) => {
+  try {
+    const { getDeal } = await import("../services/sales/dealService.js");
+    res.json({ deal: await getDeal(req.auth!.organizationId, req.params.id) });
+  } catch (err) {
+    res.status(404).json({ error: err instanceof Error ? err.message : "Deal not found" });
+  }
+});
+
+apiRouter.post("/deals", async (req, res) => {
+  try {
+    const { createDeal, createDealFromLead } = await import("../services/sales/dealService.js");
+    const body = req.body as { leadId?: string; clientId?: string; title?: string; assignedTo?: string };
+    const deal = body.leadId
+      ? await createDealFromLead(req.auth!.organizationId, body.leadId, body.assignedTo)
+      : await createDeal(req.auth!.organizationId, body);
+    res.json({ deal });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Create deal failed" });
+  }
+});
+
+apiRouter.patch("/deals/:id", async (req, res) => {
+  try {
+    const { updateDealStage } = await import("../services/sales/dealService.js");
+    const body = req.body as { stage?: string };
+    if (!body.stage) {
+      res.status(400).json({ error: "stage is required" });
+      return;
+    }
+    res.json({ deal: await updateDealStage(req.auth!.organizationId, req.params.id, body.stage) });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Update deal failed" });
+  }
+});
+
+apiRouter.get("/deals/:dealId/quotes", async (req, res) => {
+  try {
+    const { listQuotesForDeal } = await import("../services/sales/quoteService.js");
+    res.json({ quotes: await listQuotesForDeal(req.auth!.organizationId, req.params.dealId) });
+  } catch (err) {
+    res.status(404).json({ error: err instanceof Error ? err.message : "List quotes failed" });
+  }
+});
+
+apiRouter.post("/deals/:dealId/quotes", async (req, res) => {
+  try {
+    const { createQuoteForDeal } = await import("../services/sales/quoteService.js");
+    res.json({
+      quote: await createQuoteForDeal(req.auth!.organizationId, req.params.dealId, req.body as import("../services/sales/quoteService.js").CreateQuoteInput),
+    });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Create quote failed" });
+  }
+});
+
+apiRouter.get("/quotes/:id", async (req, res) => {
+  try {
+    const { getQuote } = await import("../services/sales/quoteService.js");
+    res.json({ quote: await getQuote(req.auth!.organizationId, req.params.id) });
+  } catch (err) {
+    res.status(404).json({ error: err instanceof Error ? err.message : "Quote not found" });
+  }
+});
+
+apiRouter.patch("/quotes/:id", async (req, res) => {
+  try {
+    const { updateQuote } = await import("../services/sales/quoteService.js");
+    res.json({
+      quote: await updateQuote(req.auth!.organizationId, req.params.id, req.body as import("../services/sales/quoteService.js").UpdateQuoteInput),
+    });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Update quote failed" });
+  }
+});
+
 apiRouter.post("/leads/scan-gmail", async (req, res) => {
   try {
     const keywords = ["מעוניין", "פרטים", "מחיר", "interested", "details", "price"];

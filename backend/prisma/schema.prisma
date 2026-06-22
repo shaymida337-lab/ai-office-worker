@@ -77,6 +77,7 @@ model Organization {
   outgoingInvoiceDrafts OutgoingInvoiceDraft[]
   services        Service[]
   appointments    Appointment[]
+  deals           Deal[]
 }
 
 model HelpProgress {
@@ -135,6 +136,7 @@ model Client {
   socialPosts      SocialPost[]
   socialSettings   SocialSettings?
   appointments     Appointment[]
+  deals            Deal[]
 
   @@index([organizationId, isActive])
   @@index([organizationId, whatsappNumber])
@@ -735,6 +737,7 @@ model Lead {
 
   timeline  LeadTimeline[]
   sequences LeadSequence[]
+  deal      Deal?
 
   @@index([organizationId, stage, createdAt])
   @@index([organizationId, source])
@@ -871,8 +874,86 @@ model Service {
   updatedAt       DateTime @updatedAt
 
   appointments Appointment[]
+  quoteLines   QuoteLine[]
 
   @@index([organizationId, isActive])
+}
+
+model Deal {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId         String?      @unique
+  lead           Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  clientId       String?
+  client         Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  title          String
+  stage          String       @default("open")
+  estimatedValue Float        @default(0)
+  assignedTo     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  quotes Quote[]
+  events QuoteEvent[]
+
+  @@index([organizationId, stage])
+  @@index([organizationId, updatedAt])
+}
+
+model Quote {
+  id                     String       @id @default(cuid())
+  organizationId         String
+  dealId                 String
+  deal                   Deal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  version                Int          @default(1)
+  status                 String       @default("draft")
+  validUntil             DateTime?
+  subtotal               Float        @default(0)
+  total                  Float        @default(0)
+  currency               String       @default("ILS")
+  notes                  String?
+  approvalToken          String?      @unique
+  sentAt                 DateTime?
+  viewedAt               DateTime?
+  acceptedAt             DateTime?
+  greenInvoiceDocumentId String?
+  convertedDraftId       String?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  lines  QuoteLine[]
+  events QuoteEvent[]
+
+  @@index([organizationId, status])
+  @@index([dealId, version])
+}
+
+model QuoteLine {
+  id          String   @id @default(cuid())
+  quoteId     String
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  serviceId   String?
+  service     Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  description String
+  quantity    Float    @default(1)
+  unitPrice   Float
+  sortOrder   Int      @default(0)
+
+  @@index([quoteId, sortOrder])
+}
+
+model QuoteEvent {
+  id        String   @id @default(cuid())
+  dealId    String
+  deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  quoteId   String?
+  quote     Quote?   @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  type      String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([dealId, createdAt])
 }
 
 model Appointment {
