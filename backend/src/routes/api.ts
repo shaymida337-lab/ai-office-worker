@@ -2695,6 +2695,87 @@ apiRouter.post("/natalie/create-appointment", async (req, res) => {
   }
 });
 
+apiRouter.post("/natalie/cancel-appointment", async (req, res) => {
+  const appointmentId = typeof req.body?.appointmentId === "string" ? req.body.appointmentId.trim() : "";
+  if (!appointmentId) {
+    res.status(400).json({ error: "appointmentId is required" });
+    return;
+  }
+
+  try {
+    const appointment = await updateAppointmentForOrganization({
+      organizationId: req.auth!.organizationId,
+      appointmentId,
+      status: "cancelled",
+    });
+    res.json({ ok: true, appointment });
+  } catch (err) {
+    if (err instanceof Error && err.message === "Appointment not found") {
+      res.status(404).json({ error: "התור לא נמצא", code: "appointment_not_found" });
+      return;
+    }
+    console.error("[natalie/cancel-appointment] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Appointment cancellation failed" });
+  }
+});
+
+apiRouter.post("/natalie/reschedule-appointment", async (req, res) => {
+  const body = (req.body ?? {}) as {
+    appointmentId?: unknown;
+    newDayReference?: unknown;
+    newTime?: unknown;
+    newStartTime?: unknown;
+  };
+  const organizationId = req.auth!.organizationId;
+  const appointmentId = typeof body.appointmentId === "string" ? body.appointmentId.trim() : "";
+  if (!appointmentId) {
+    res.status(400).json({ error: "appointmentId is required" });
+    return;
+  }
+
+  const newDayReference = typeof body.newDayReference === "string" ? body.newDayReference.trim() : "";
+  const newTime = typeof body.newTime === "string" ? body.newTime.trim() : "";
+  const newStartTimeRaw = typeof body.newStartTime === "string" ? body.newStartTime.trim() : "";
+
+  try {
+    const timeZone = await loadOrganizationTimezone(organizationId);
+    const startTime = resolveAppointmentDateTime({
+      dayReference: newDayReference || undefined,
+      time: newTime || undefined,
+      explicitStartTime: newStartTimeRaw || undefined,
+      timeZone,
+    });
+    if (!startTime) {
+      res.status(400).json({
+        error: "לא הצלחתי להבין את מועד התור החדש, אפשר לנסות שוב עם יום ושעה ברורים",
+        code: "bad_datetime",
+      });
+      return;
+    }
+
+    const appointment = await updateAppointmentForOrganization({
+      organizationId,
+      appointmentId,
+      startTime,
+    });
+    res.json({ ok: true, appointment });
+  } catch (err) {
+    if (err instanceof AppointmentConflictError) {
+      res.status(409).json({
+        error: "קיים תור אחר בזמן הזה",
+        code: "time_conflict",
+      });
+      return;
+    }
+    if (err instanceof Error && err.message === "Appointment not found") {
+      res.status(404).json({ error: "התור לא נמצא", code: "appointment_not_found" });
+      return;
+    }
+    console.error("[natalie/reschedule-appointment] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Appointment reschedule failed" });
+  }
+});
+
 apiRouter.post("/natalie/save-invoice-draft", async (req, res) => {
   const validation = validateInvoiceDraftInput(req.body);
   if (!validation.ok) {

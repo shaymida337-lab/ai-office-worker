@@ -91,6 +91,24 @@ export async function findClientByNameOrPhone(params: {
   });
 }
 
+export async function findUpcomingAppointmentsForClient(params: {
+  organizationId: string;
+  clientId: string;
+  limit?: number;
+}): Promise<AppointmentWithRelations[]> {
+  return prisma.appointment.findMany({
+    where: {
+      organizationId: params.organizationId,
+      clientId: params.clientId,
+      status: { not: "cancelled" },
+      startTime: { gte: new Date() },
+    },
+    include: APPOINTMENT_INCLUDE,
+    orderBy: { startTime: "asc" },
+    take: params.limit ?? 10,
+  });
+}
+
 export async function createAppointmentForOrganization(params: {
   organizationId: string;
   clientId: string;

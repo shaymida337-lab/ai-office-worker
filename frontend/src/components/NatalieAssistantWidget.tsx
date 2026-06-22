@@ -77,8 +77,8 @@ type WidgetMessage = {
   id: string;
   sender: "natalie" | "user";
   text: string;
-  action?: "create_task" | "complete_task" | "show_invoice" | "issue_invoice" | "book_appointment";
-  proposal?: TaskActionProposal | IssueInvoiceProposal | BookAppointmentProposal;
+  action?: "create_task" | "complete_task" | "show_invoice" | "issue_invoice" | "book_appointment" | "cancel_appointment" | "reschedule_appointment";
+  proposal?: TaskActionProposal | IssueInvoiceProposal | BookAppointmentProposal | CancelAppointmentProposal | RescheduleAppointmentProposal;
   invoices?: NatalieInvoiceSummary[];
   actionStatus?: "pending" | "creating" | "created" | "cancelled" | "error";
   actionFeedback?: string;
@@ -116,6 +116,21 @@ type BookAppointmentProposal = {
   notes?: string;
 };
 
+type CancelAppointmentProposal = {
+  appointmentId: string;
+  clientName: string;
+  when?: string;
+  serviceName?: string;
+};
+
+type RescheduleAppointmentProposal = {
+  appointmentId: string;
+  clientName: string;
+  newDayReference?: string;
+  newTime?: string;
+  newWhen?: string;
+};
+
 type NatalieAskResponse =
   | { answer: string }
   | {
@@ -141,6 +156,16 @@ type NatalieAskResponse =
   | {
       action: "book_appointment";
       proposal: BookAppointmentProposal;
+      answer: string;
+    }
+  | {
+      action: "cancel_appointment";
+      proposal: CancelAppointmentProposal;
+      answer: string;
+    }
+  | {
+      action: "reschedule_appointment";
+      proposal: RescheduleAppointmentProposal;
       answer: string;
     };
 
@@ -214,6 +239,16 @@ function isBookAppointmentResponse(response: NatalieAskResponse): response is Ex
   return "action" in response && response.action === "book_appointment";
 }
 
+function isCancelAppointmentResponse(response: NatalieAskResponse): response is Extract<NatalieAskResponse, { action: "cancel_appointment" }> {
+  return "action" in response && response.action === "cancel_appointment";
+}
+
+function isRescheduleAppointmentResponse(
+  response: NatalieAskResponse
+): response is Extract<NatalieAskResponse, { action: "reschedule_appointment" }> {
+  return "action" in response && response.action === "reschedule_appointment";
+}
+
 function isActionableMessage(
   message: WidgetMessage
 ): message is WidgetMessage & (
@@ -236,6 +271,18 @@ function isBookAppointmentActionableMessage(
   message: WidgetMessage
 ): message is WidgetMessage & { action: "book_appointment"; proposal: BookAppointmentProposal } {
   return message.action === "book_appointment" && Boolean(message.proposal);
+}
+
+function isCancelAppointmentActionableMessage(
+  message: WidgetMessage
+): message is WidgetMessage & { action: "cancel_appointment"; proposal: CancelAppointmentProposal } {
+  return message.action === "cancel_appointment" && Boolean(message.proposal);
+}
+
+function isRescheduleAppointmentActionableMessage(
+  message: WidgetMessage
+): message is WidgetMessage & { action: "reschedule_appointment"; proposal: RescheduleAppointmentProposal } {
+  return message.action === "reschedule_appointment" && Boolean(message.proposal);
 }
 
 function isInvoiceMessage(message: WidgetMessage): message is WidgetMessage & { action: "show_invoice"; invoices: NatalieInvoiceSummary[] } {
@@ -289,6 +336,20 @@ function buildAppointmentErrorFeedback(payload: {
       return "השעה הזו כבר תפוסה. אפשר לבחור זמן אחר.";
     default:
       return payload.error?.trim() || "לא הצלחתי לקבוע את התור, אפשר לנסות שוב.";
+  }
+}
+
+function buildAppointmentModifyErrorFeedback(payload: {
+  error?: string;
+  code?: string;
+}): string {
+  switch (payload.code) {
+    case "appointment_not_found":
+      return "לא מצאתי את התור הזה. אולי הוא כבר בוטל או נמחק.";
+    case "time_conflict":
+      return "קיים תור אחר בזמן הזה — נסי שעה אחרת.";
+    default:
+      return payload.error?.trim() || "לא הצלחתי לבצע את הפעולה, אפשר לנסות שוב.";
   }
 }
 
@@ -855,6 +916,20 @@ export function NatalieAssistantWidget() {
                       actionStatus: "pending" as const,
                     }
                   : {}),
+                ...(isCancelAppointmentResponse(result)
+                  ? {
+                      action: result.action,
+                      proposal: result.proposal,
+                      actionStatus: "pending" as const,
+                    }
+                  : {}),
+                ...(isRescheduleAppointmentResponse(result)
+                  ? {
+                      action: result.action,
+                      proposal: result.proposal,
+                      actionStatus: "pending" as const,
+                    }
+                  : {}),
                 ...(isShowInvoiceResponse(result)
                   ? {
                       action: result.action,
@@ -1080,6 +1155,169 @@ export function NatalieAssistantWidget() {
     );
   }
 
+  async function approveCancelExistingAppointmentProposal(
+    messageId: string,
+    proposal: CancelAppointmentProposal
+  ) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId ? { ...message, actionStatus: "creating", actionFeedback: undefined } : message
+      )
+    );
+
+    try {
+      const token = getToken();
+      const response = await fetch(`${API_URL}/api/natalie/cancel-appointment`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ appointmentId: proposal.appointmentId }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
+
+      if (!response.ok) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === messageId
+              ? {
+                  ...message,
+                  actionStatus: "error",
+                  actionFeedback: buildAppointmentModifyErrorFeedback(payload),
+                }
+              : message
+          )
+        );
+        return;
+      }
+
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                actionStatus: "created",
+                actionFeedback: `✓ התור של ${proposal.clientName} בוטל.`,
+              }
+            : message
+        )
+      );
+    } catch (err) {
+      console.error("[natalie] cancel_appointment failed", err);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                actionStatus: "error",
+                actionFeedback: "לא הצלחתי לבטל את התור, אפשר לנסות שוב.",
+              }
+            : message
+        )
+      );
+    }
+  }
+
+  function dismissCancelExistingAppointmentProposal(messageId: string) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              actionStatus: "cancelled",
+              actionFeedback: "בסדר, השארתי כמו שהיה.",
+            }
+          : message
+      )
+    );
+  }
+
+  async function approveRescheduleAppointmentProposal(
+    messageId: string,
+    proposal: RescheduleAppointmentProposal
+  ) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId ? { ...message, actionStatus: "creating", actionFeedback: undefined } : message
+      )
+    );
+
+    try {
+      const token = getToken();
+      const response = await fetch(`${API_URL}/api/natalie/reschedule-appointment`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          appointmentId: proposal.appointmentId,
+          newDayReference: proposal.newDayReference,
+          newTime: proposal.newTime,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
+
+      if (!response.ok) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === messageId
+              ? {
+                  ...message,
+                  actionStatus: "error",
+                  actionFeedback: buildAppointmentModifyErrorFeedback(payload),
+                }
+              : message
+          )
+        );
+        return;
+      }
+
+      const whenLabel = proposal.newWhen?.trim() || "המועד החדש";
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                actionStatus: "created",
+                actionFeedback: `✓ התור של ${proposal.clientName} הועבר ל${whenLabel}.`,
+              }
+            : message
+        )
+      );
+    } catch (err) {
+      console.error("[natalie] reschedule_appointment failed", err);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                actionStatus: "error",
+                actionFeedback: "לא הצלחתי להעביר את התור, אפשר לנסות שוב.",
+              }
+            : message
+        )
+      );
+    }
+  }
+
+  function dismissRescheduleAppointmentProposal(messageId: string) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              actionStatus: "cancelled",
+              actionFeedback: "בסדר, השארתי כמו שהיה.",
+            }
+          : message
+      )
+    );
+  }
+
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     sendMessage();
@@ -1251,6 +1489,83 @@ export function NatalieAssistantWidget() {
                             className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2 text-sm font-extrabold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             ביטול
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {isCancelAppointmentActionableMessage(message) && (
+                    <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
+                      <div className="mb-3 space-y-1 text-right">
+                        <div className="text-[14px] font-extrabold text-[#0e1116]">
+                          ביטול תור — {formatIssueInvoiceText(message.proposal.clientName)}
+                        </div>
+                        {message.proposal.when?.trim() && (
+                          <div className="text-[13px] font-bold text-[#6b7686]">
+                            מתי: {formatIssueInvoiceText(message.proposal.when)}
+                          </div>
+                        )}
+                        {message.proposal.serviceName?.trim() && (
+                          <div className="text-[13px] font-bold text-[#6b7686]">
+                            שירות: {formatIssueInvoiceText(message.proposal.serviceName)}
+                          </div>
+                        )}
+                      </div>
+                      {message.actionFeedback && (
+                        <div className="mb-2 text-right text-[14px] font-bold text-[#0e1116]">{message.actionFeedback}</div>
+                      )}
+                      {(message.actionStatus === "pending" || message.actionStatus === "creating" || message.actionStatus === "error") && (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={message.actionStatus === "creating"}
+                            onClick={() => approveCancelExistingAppointmentProposal(message.id, message.proposal)}
+                            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#dc2626] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(220,38,38,0.22)] transition hover:bg-[#b91c1c] disabled:cursor-not-allowed disabled:bg-[#f87171] disabled:shadow-none"
+                          >
+                            {message.actionStatus === "creating" ? "מבטלת..." : "אשר ביטול"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={message.actionStatus === "creating"}
+                            onClick={() => dismissCancelExistingAppointmentProposal(message.id)}
+                            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2 text-sm font-extrabold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            השאר את התור
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {isRescheduleAppointmentActionableMessage(message) && (
+                    <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
+                      <div className="mb-3 space-y-1 text-right">
+                        <div className="text-[14px] font-extrabold text-[#0e1116]">
+                          שינוי מועד — {formatIssueInvoiceText(message.proposal.clientName)}
+                        </div>
+                        <div className="text-[13px] font-bold text-[#6b7686]">
+                          ל{formatIssueInvoiceText(message.proposal.newWhen)}
+                        </div>
+                      </div>
+                      {message.actionFeedback && (
+                        <div className="mb-2 text-right text-[14px] font-bold text-[#0e1116]">{message.actionFeedback}</div>
+                      )}
+                      {(message.actionStatus === "pending" || message.actionStatus === "creating" || message.actionStatus === "error") && (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={message.actionStatus === "creating"}
+                            onClick={() => approveRescheduleAppointmentProposal(message.id, message.proposal)}
+                            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
+                          >
+                            {message.actionStatus === "creating" ? "מעבירה..." : "אשר שינוי"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={message.actionStatus === "creating"}
+                            onClick={() => dismissRescheduleAppointmentProposal(message.id)}
+                            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2 text-sm font-extrabold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            בטל
                           </button>
                         </div>
                       )}

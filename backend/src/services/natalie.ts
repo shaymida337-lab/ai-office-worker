@@ -2,6 +2,12 @@ import { answerBusinessQuestionWithClaude, type NatalieClaudeResponse } from "./
 import { getDashboardStats } from "./dashboard.js";
 import { findTasksByPartialTitle } from "./tasks.js";
 import { prisma } from "../lib/prisma.js";
+import {
+  findClientByNameOrPhone,
+  findUpcomingAppointmentsForClient,
+  resolveAppointmentDateTime,
+  type AppointmentWithRelations,
+} from "./appointmentService.js";
 
 type ShowInvoiceItem = {
   id: string;
@@ -26,6 +32,18 @@ export async function askNatalieBusinessQuestion(input: {
 
   const completeTaskResponse = await maybeBuildCompleteTaskProposal(input.organizationId, input.question);
   if (completeTaskResponse) return completeTaskResponse;
+
+  const rescheduleAppointmentResponse = await maybeBuildRescheduleAppointmentProposal(
+    input.organizationId,
+    input.question
+  );
+  if (rescheduleAppointmentResponse) return rescheduleAppointmentResponse;
+
+  const cancelAppointmentResponse = await maybeBuildCancelAppointmentProposal(
+    input.organizationId,
+    input.question
+  );
+  if (cancelAppointmentResponse) return cancelAppointmentResponse;
 
   const [stats, richerContext] = await Promise.all([
     getDashboardStats(input.organizationId),
@@ -418,6 +436,227 @@ async function maybeBuildCompleteTaskProposal(organizationId: string, question: 
       title: task.title,
     },
     answer: `מצאתי את המשימה "${task.title}". לסמן אותה כבוצעה?`,
+  };
+}
+
+async function loadOrganizationTimezone(organizationId: string): Promise<string> {
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { timezone: true },
+  });
+  return organization?.timezone?.trim() || "Asia/Jerusalem";
+}
+
+function formatAppointmentWhen(startTime: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("he-IL", {
+    timeZone,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(startTime);
+}
+
+function formatAppointmentListLine(
+  appointment: AppointmentWithRelations,
+  index: number,
+  timeZone: string
+): string {
+  const when = formatAppointmentWhen(appointment.startTime, timeZone);
+  const service = appointment.service?.name?.trim();
+  return `${index + 1}. ${when}${service ? ` — ${service}` : ""}`;
+}
+
+function extractCancelAppointmentClientName(question: string): string | null {
+  const normalized = question.trim().replace(/\s+/g, " ");
+  if (/(?:תעביר|תעבירי|תשני|תשנה|שנה\s+מועד)/iu.test(normalized)) {
+    return null;
+  }
+
+  const patterns = [
+    /(?:בטל|בטלי)\s+(?:את\s+)?(?:ה)?תור\s+(?:של|ל)\s+(.+?)(?:\s*[.?!]|$)/iu,
+    /תבטלי\s+תור\s+(?:של|ל|-)?\s*(.+?)(?:\s*[.?!]|$)/iu,
+    /ביטול\s+(?:ה)?תור\s+(?:של|ל)\s+(.+?)(?:\s*[.?!]|$)/iu,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    const clientName = match?.[1]?.trim().replace(/[.?!]+$/, "");
+    if (clientName) return clientName;
+  }
+
+  return null;
+}
+
+async function maybeBuildCancelAppointmentProposal(
+  organizationId: string,
+  question: string
+): Promise<NatalieClaudeResponse | null> {
+  const clientName = extractCancelAppointmentClientName(question);
+  if (!clientName) return null;
+
+  const clients = await findClientByNameOrPhone({ organizationId, query: clientName });
+  if (clients.length === 0) {
+    return { answer: `לא מצאתי לקוח בשם "${clientName}".` };
+  }
+  if (clients.length > 1) {
+    const list = clients.map((client, index) => `${index + 1}. ${client.name}`).join("\n");
+    return {
+      answer: `מצאתי כמה לקוחות שמתאימים ל־"${clientName}". למי לבטל את התור?\n${list}`,
+    };
+  }
+
+  const client = clients[0];
+  const appointments = await findUpcomingAppointmentsForClient({
+    organizationId,
+    clientId: client.id,
+    limit: 10,
+  });
+  if (appointments.length === 0) {
+    return { answer: `אין תור עתידי ל${client.name}.` };
+  }
+
+  const timeZone = await loadOrganizationTimezone(organizationId);
+  if (appointments.length > 1) {
+    const list = appointments
+      .map((appointment, index) => formatAppointmentListLine(appointment, index, timeZone))
+      .join("\n");
+    return {
+      answer: `מצאתי כמה תורים עתידיים ל${client.name}. איזה תור לבטל?\n${list}`,
+    };
+  }
+
+  const appointment = appointments[0];
+  const when = formatAppointmentWhen(appointment.startTime, timeZone);
+  const serviceName = appointment.service?.name?.trim() || undefined;
+  return {
+    action: "cancel_appointment",
+    proposal: {
+      appointmentId: appointment.id,
+      clientName: client.name,
+      when,
+      ...(serviceName ? { serviceName } : {}),
+    },
+    answer: `מצאתי תור ל${client.name} ב${when}. לבטל אותו?`,
+  };
+}
+
+function normalizeRescheduleTimeToken(token: string): string {
+  const trimmed = token.trim();
+  if (trimmed.includes(":")) return trimmed;
+  const hour = Number(trimmed);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return trimmed;
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
+function parseRescheduleDayAndTime(target: string): { dayReference: string; time: string } | null {
+  const normalized = target.trim().replace(/\s+/g, " ");
+  const timePatterns = [
+    /בשעה\s+(\d{1,2}(?::\d{2})?)/u,
+    /ב-(\d{1,2}(?::\d{2})?)/u,
+    /\bב\s+(\d{1,2}(?::\d{2})?)/u,
+    /(\d{1,2}:\d{2})/u,
+  ];
+
+  let time: string | null = null;
+  let remainder = normalized;
+  for (const pattern of timePatterns) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) {
+      time = normalizeRescheduleTimeToken(match[1]);
+      remainder = normalized.replace(match[0], "").trim();
+      break;
+    }
+  }
+  if (!time) return null;
+
+  const dayReference = remainder.trim() || "היום";
+  return { dayReference, time };
+}
+
+function extractRescheduleAppointment(
+  question: string
+): { clientName: string; dayReference: string; time: string } | null {
+  const normalized = question.trim().replace(/\s+/g, " ");
+  const match = normalized.match(
+    /(?:תעביר|תעבירי|תשני|תשנה|שנה\s+מועד)\s+(?:את\s+)?(?:ה)?תור\s+(?:של|ל)\s+(.+?)\s+ל(?:ש|-)?\s*(.+)$/iu
+  );
+  if (!match?.[1] || !match[2]) return null;
+
+  const clientName = match[1].trim().replace(/[.?!]+$/, "");
+  const parsedTarget = parseRescheduleDayAndTime(match[2]);
+  if (!clientName || !parsedTarget) return null;
+
+  return {
+    clientName,
+    dayReference: parsedTarget.dayReference,
+    time: parsedTarget.time,
+  };
+}
+
+async function maybeBuildRescheduleAppointmentProposal(
+  organizationId: string,
+  question: string
+): Promise<NatalieClaudeResponse | null> {
+  const parsed = extractRescheduleAppointment(question);
+  if (!parsed) return null;
+
+  const clients = await findClientByNameOrPhone({ organizationId, query: parsed.clientName });
+  if (clients.length === 0) {
+    return { answer: `לא מצאתי לקוח בשם "${parsed.clientName}".` };
+  }
+  if (clients.length > 1) {
+    const list = clients.map((client, index) => `${index + 1}. ${client.name}`).join("\n");
+    return {
+      answer: `מצאתי כמה לקוחות שמתאימים ל־"${parsed.clientName}". למי להעביר את התור?\n${list}`,
+    };
+  }
+
+  const client = clients[0];
+  const appointments = await findUpcomingAppointmentsForClient({
+    organizationId,
+    clientId: client.id,
+    limit: 10,
+  });
+  if (appointments.length === 0) {
+    return { answer: `אין תור עתידי ל${client.name}.` };
+  }
+
+  const timeZone = await loadOrganizationTimezone(organizationId);
+  if (appointments.length > 1) {
+    const list = appointments
+      .map((appointment, index) => formatAppointmentListLine(appointment, index, timeZone))
+      .join("\n");
+    return {
+      answer: `מצאתי כמה תורים עתידיים ל${client.name}. איזה תור להעביר?\n${list}`,
+    };
+  }
+
+  const appointment = appointments[0];
+  const resolvedStartTime = resolveAppointmentDateTime({
+    dayReference: parsed.dayReference,
+    time: parsed.time,
+    timeZone,
+  });
+  if (!resolvedStartTime) {
+    return {
+      answer: "לא הבנתי לאיזה מועד להעביר. תגידי יום ושעה, למשל מחר ב-4.",
+    };
+  }
+
+  const newWhen = formatAppointmentWhen(resolvedStartTime, timeZone);
+  return {
+    action: "reschedule_appointment",
+    proposal: {
+      appointmentId: appointment.id,
+      clientName: client.name,
+      newDayReference: parsed.dayReference,
+      newTime: parsed.time,
+      newWhen,
+    },
+    answer: `להעביר את התור של ${client.name} ל${newWhen}?`,
   };
 }
 

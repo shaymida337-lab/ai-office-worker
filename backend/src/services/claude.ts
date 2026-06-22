@@ -120,6 +120,27 @@ export type NatalieClaudeResponse =
         notes?: string;
       };
       answer: string;
+    }
+  | {
+      action: "cancel_appointment";
+      proposal: {
+        appointmentId: string;
+        clientName: string;
+        when?: string;
+        serviceName?: string;
+      };
+      answer: string;
+    }
+  | {
+      action: "reschedule_appointment";
+      proposal: {
+        appointmentId: string;
+        clientName: string;
+        newDayReference?: string;
+        newTime?: string;
+        newWhen?: string;
+      };
+      answer: string;
     };
 
 const NATALIE_BUSINESS_SYSTEM_PROMPT = `את נטלי, עוזרת משרדית חכמה לעסק ישראלי קטן.
@@ -668,6 +689,42 @@ export function isNatalieClaudeResponse(value: unknown): value is NatalieClaudeR
   }
   if (response.action === "book_appointment") {
     return validateBookAppointmentResponse(response);
+  }
+  if (response.action === "cancel_appointment") {
+    const proposal = response.proposal as {
+      appointmentId?: unknown;
+      clientName?: unknown;
+      when?: unknown;
+      serviceName?: unknown;
+    } | undefined;
+    return Boolean(
+      proposal &&
+        typeof proposal.appointmentId === "string" &&
+        proposal.appointmentId.trim() &&
+        typeof proposal.clientName === "string" &&
+        proposal.clientName.trim() &&
+        (proposal.when === undefined || typeof proposal.when === "string") &&
+        (proposal.serviceName === undefined || typeof proposal.serviceName === "string")
+    );
+  }
+  if (response.action === "reschedule_appointment") {
+    const proposal = response.proposal as {
+      appointmentId?: unknown;
+      clientName?: unknown;
+      newDayReference?: unknown;
+      newTime?: unknown;
+      newWhen?: unknown;
+    } | undefined;
+    return Boolean(
+      proposal &&
+        typeof proposal.appointmentId === "string" &&
+        proposal.appointmentId.trim() &&
+        typeof proposal.clientName === "string" &&
+        proposal.clientName.trim() &&
+        (proposal.newDayReference === undefined || typeof proposal.newDayReference === "string") &&
+        (proposal.newTime === undefined || typeof proposal.newTime === "string") &&
+        (proposal.newWhen === undefined || typeof proposal.newWhen === "string")
+    );
   }
   return false;
 }
