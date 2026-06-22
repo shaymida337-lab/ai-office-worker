@@ -2945,23 +2945,37 @@ apiRouter.post("/natalie/voice", async (req, res) => {
 
 const WHISPER_PROMPT_MAX_LENGTH = 800;
 
-function buildClientNamesTranscriptionPrompt(names: string[]): string | undefined {
-  const uniqueNames = [...new Set(names.map((name) => name.trim()).filter(Boolean))].slice(0, 40);
-  if (uniqueNames.length === 0) return undefined;
+const APPOINTMENT_TRANSCRIPTION_KEYWORDS =
+  "היום, מחר, מחרתיים, ראשון, שני, שלישי, רביעי, חמישי, שישי, שבת, תקבעי, תור, פגישה, בשעה, בבוקר, אחר הצהריים, בערב";
 
-  const prefix = "שיחה בעברית על קביעת תורים ללקוחות. שמות הלקוחות האפשריים: ";
-  const suffix = ".";
-  let selectedNames = [...uniqueNames];
+function buildClientNamesTranscriptionPrompt(params: {
+  clientNames: string[];
+  serviceNames: string[];
+}): string | undefined {
+  const clientNames = [...new Set(params.clientNames.map((name) => name.trim()).filter(Boolean))].slice(0, 40);
+  const serviceNames = [...new Set(params.serviceNames.map((name) => name.trim()).filter(Boolean))].slice(0, 40);
 
-  while (selectedNames.length > 0) {
-    const prompt = `${prefix}${selectedNames.join(", ")}${suffix}`;
+  const base = `שיחה בעברית על קביעת תורים. מילות מפתח: ${APPOINTMENT_TRANSCRIPTION_KEYWORDS}.`;
+  let selectedClients = [...clientNames];
+  let selectedServices = [...serviceNames];
+
+  while (true) {
+    const clientsSegment = selectedClients.length ? ` שמות לקוחות: ${selectedClients.join(", ")}.` : "";
+    const servicesSegment = selectedServices.length ? ` שמות שירותים: ${selectedServices.join(", ")}.` : "";
+    const prompt = `${base}${clientsSegment}${servicesSegment}`;
     if (prompt.length <= WHISPER_PROMPT_MAX_LENGTH) {
       return prompt;
     }
-    selectedNames = selectedNames.slice(0, -1);
+    if (selectedServices.length > 0) {
+      selectedServices = selectedServices.slice(0, -1);
+      continue;
+    }
+    if (selectedClients.length > 0) {
+      selectedClients = selectedClients.slice(0, -1);
+      continue;
+    }
+    return base.length <= WHISPER_PROMPT_MAX_LENGTH ? base : undefined;
   }
-
-  return undefined;
 }
 
 apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async (req, res) => {
@@ -2973,13 +2987,25 @@ apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async 
 
   let promptHint: string | undefined;
   try {
-    const clients = await prisma.client.findMany({
-      where: { organizationId: req.auth!.organizationId, isActive: true },
-      select: { name: true },
-      take: 100,
-      orderBy: { name: "asc" },
+    const organizationId = req.auth!.organizationId;
+    const [clients, services] = await Promise.all([
+      prisma.client.findMany({
+        where: { organizationId, isActive: true },
+        select: { name: true },
+        take: 100,
+        orderBy: { name: "asc" },
+      }),
+      prisma.service.findMany({
+        where: { organizationId, isActive: true },
+        select: { name: true },
+        take: 40,
+        orderBy: { name: "asc" },
+      }),
+    ]);
+    promptHint = buildClientNamesTranscriptionPrompt({
+      clientNames: clients.map((client) => client.name),
+      serviceNames: services.map((service) => service.name),
     });
-    promptHint = buildClientNamesTranscriptionPrompt(clients.map((client) => client.name));
   } catch (err) {
     console.warn("[natalie/transcribe] failed to build client names prompt", errorDetails(err));
   }
