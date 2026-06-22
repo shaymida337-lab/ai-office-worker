@@ -41,7 +41,8 @@ export async function transcribeAudio(
   audioBuffer: Buffer,
   mimeType: string,
   credentials: TranscribeAudioCredentials,
-  deps: TranscribeAudioDeps
+  deps: TranscribeAudioDeps,
+  promptHint?: string
 ): Promise<TranscribeResult> {
   if (!audioBuffer.length) {
     return { ok: false, status: 400, error: "Audio file is required" };
@@ -63,6 +64,10 @@ export async function transcribeAudio(
   form.append("model", WHISPER_MODEL);
   form.append("language", WHISPER_LANGUAGE);
   form.append("response_format", "json");
+  const trimmedPromptHint = promptHint?.trim();
+  if (trimmedPromptHint) {
+    form.append("prompt", trimmedPromptHint);
+  }
 
   const response = await deps.fetchFn(OPENAI_TRANSCRIPTION_URL, {
     method: "POST",

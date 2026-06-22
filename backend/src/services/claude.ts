@@ -147,6 +147,7 @@ answer להצעת טיוטת חשבונית חייב לציין בדיוק את 
 {"action":"book_appointment","proposal":{"clientName":"שם הלקוח","startTime":"2026-06-19T15:00:00","durationMinutes":30,"serviceName":"שם השירות","notes":"הערות אופציונליות"},"answer":"אציע לקבוע תור ל[שם] ב-[תאריך ושעה] למשך [דקות] דקות. לאשר?"}
 אל תציעי book_appointment על רמז עקיף — רק בבקשה מפורשת לקבוע/לרשום תור.
 שדות חובה ב-proposal: clientName, startTime (ISO 8601 מלא, למשל 2026-06-19T15:00:00). durationMinutes, serviceName, notes אופציונליים.
+durationMinutes חייב להיות מספר שלם בלי מרכאות ב-JSON — למשל 30 ולא "30".
 אם חסר שם לקוח או זמן — שאלי שאלת הבהרה בעברית בלי action. אל תנחשי.
 הזמן הנוכחי של העסק מופיע בהקשר בשדה currentTime וב-timezone — השתמשי בהם לפרשנות זמנים יחסיים כמו "מחר ב-3" או "בעוד שעה", והחזירי startTime ב-ISO 8601 מלא.
 לעולם אל תאמרי שקבעת תור בפועל — רק מציעה. answer חייב לנסח את ההצעה בעברית ולהסתיים במילה "לאשר?".
@@ -476,6 +477,104 @@ function parseJsonObject<T>(text: string, context: string): T | null {
   }
 }
 
+function normalizeOptionalPositiveNumber(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return undefined;
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || undefined;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
+function normalizeBookAppointmentProposal(response: Record<string, unknown>): void {
+  if (response.action !== "book_appointment" || !response.proposal || typeof response.proposal !== "object") return;
+
+  const proposal = response.proposal as Record<string, unknown>;
+  const clientName = normalizeOptionalString(proposal.clientName);
+  if (clientName !== undefined) proposal.clientName = clientName;
+
+  const startTime = normalizeOptionalString(proposal.startTime);
+  if (startTime !== undefined) proposal.startTime = startTime;
+
+  const durationMinutes = normalizeOptionalPositiveNumber(proposal.durationMinutes);
+  if (durationMinutes !== undefined) proposal.durationMinutes = durationMinutes;
+  else delete proposal.durationMinutes;
+
+  const serviceName = normalizeOptionalString(proposal.serviceName);
+  if (serviceName !== undefined) proposal.serviceName = serviceName;
+  else delete proposal.serviceName;
+
+  const notes = normalizeOptionalString(proposal.notes);
+  if (notes !== undefined) proposal.notes = notes;
+  else delete proposal.notes;
+}
+
+function validateBookAppointmentResponse(response: Record<string, unknown>): boolean {
+  normalizeBookAppointmentProposal(response);
+
+  const proposal = response.proposal as {
+    clientName?: unknown;
+    startTime?: unknown;
+    durationMinutes?: unknown;
+    serviceName?: unknown;
+    notes?: unknown;
+  } | undefined;
+
+  if (!proposal || typeof proposal !== "object") {
+    console.warn("[natalie] book_appointment validation failed: proposal missing or not an object");
+    return false;
+  }
+  if (typeof proposal.clientName !== "string" || !proposal.clientName.trim()) {
+    console.warn("[natalie] book_appointment validation failed: clientName missing or empty", {
+      clientName: proposal.clientName,
+    });
+    return false;
+  }
+  if (typeof proposal.startTime !== "string" || !proposal.startTime.trim()) {
+    console.warn("[natalie] book_appointment validation failed: startTime missing or empty", {
+      startTime: proposal.startTime,
+    });
+    return false;
+  }
+  if (
+    proposal.durationMinutes !== undefined &&
+    (typeof proposal.durationMinutes !== "number" ||
+      !Number.isFinite(proposal.durationMinutes) ||
+      proposal.durationMinutes <= 0)
+  ) {
+    console.warn("[natalie] book_appointment validation failed: durationMinutes invalid after normalization", {
+      durationMinutes: proposal.durationMinutes,
+    });
+    return false;
+  }
+  if (proposal.serviceName !== undefined && typeof proposal.serviceName !== "string") {
+    console.warn("[natalie] book_appointment validation failed: serviceName invalid", {
+      serviceName: proposal.serviceName,
+    });
+    return false;
+  }
+  if (proposal.notes !== undefined && typeof proposal.notes !== "string") {
+    console.warn("[natalie] book_appointment validation failed: notes invalid", {
+      notes: proposal.notes,
+    });
+    return false;
+  }
+  return true;
+}
+
 export function isNatalieClaudeResponse(value: unknown): value is NatalieClaudeResponse {
   if (!value || typeof value !== "object") return false;
   const response = value as Record<string, unknown>;
@@ -524,26 +623,7 @@ export function isNatalieClaudeResponse(value: unknown): value is NatalieClaudeR
     return true;
   }
   if (response.action === "book_appointment") {
-    const proposal = response.proposal as {
-      clientName?: unknown;
-      startTime?: unknown;
-      durationMinutes?: unknown;
-      serviceName?: unknown;
-      notes?: unknown;
-    } | undefined;
-    if (!proposal || typeof proposal.clientName !== "string" || !proposal.clientName.trim()) return false;
-    if (typeof proposal.startTime !== "string" || !proposal.startTime.trim()) return false;
-    if (
-      proposal.durationMinutes !== undefined &&
-      (typeof proposal.durationMinutes !== "number" ||
-        !Number.isFinite(proposal.durationMinutes) ||
-        proposal.durationMinutes <= 0)
-    ) {
-      return false;
-    }
-    if (proposal.serviceName !== undefined && typeof proposal.serviceName !== "string") return false;
-    if (proposal.notes !== undefined && typeof proposal.notes !== "string") return false;
-    return true;
+    return validateBookAppointmentResponse(response);
   }
   return false;
 }

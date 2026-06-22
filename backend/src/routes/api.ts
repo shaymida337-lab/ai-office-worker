@@ -2928,6 +2928,27 @@ apiRouter.post("/natalie/voice", async (req, res) => {
   res.send(result.audio);
 });
 
+const WHISPER_PROMPT_MAX_LENGTH = 800;
+
+function buildClientNamesTranscriptionPrompt(names: string[]): string | undefined {
+  const uniqueNames = [...new Set(names.map((name) => name.trim()).filter(Boolean))].slice(0, 40);
+  if (uniqueNames.length === 0) return undefined;
+
+  const prefix = "שיחה בעברית על קביעת תורים ללקוחות. שמות הלקוחות האפשריים: ";
+  const suffix = ".";
+  let selectedNames = [...uniqueNames];
+
+  while (selectedNames.length > 0) {
+    const prompt = `${prefix}${selectedNames.join(", ")}${suffix}`;
+    if (prompt.length <= WHISPER_PROMPT_MAX_LENGTH) {
+      return prompt;
+    }
+    selectedNames = selectedNames.slice(0, -1);
+  }
+
+  return undefined;
+}
+
 apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async (req, res) => {
   const file = req.file;
   if (!file?.buffer?.length) {
@@ -2935,11 +2956,25 @@ apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async 
     return;
   }
 
+  let promptHint: string | undefined;
+  try {
+    const clients = await prisma.client.findMany({
+      where: { organizationId: req.auth!.organizationId, isActive: true },
+      select: { name: true },
+      take: 100,
+      orderBy: { name: "asc" },
+    });
+    promptHint = buildClientNamesTranscriptionPrompt(clients.map((client) => client.name));
+  } catch (err) {
+    console.warn("[natalie/transcribe] failed to build client names prompt", errorDetails(err));
+  }
+
   const result = await transcribeAudio(
     file.buffer,
     file.mimetype || "application/octet-stream",
     { openAiApiKey: config.aiVoice.openAiApiKey },
-    { fetchFn: fetch }
+    { fetchFn: fetch },
+    promptHint
   );
 
   if (!result.ok) {
