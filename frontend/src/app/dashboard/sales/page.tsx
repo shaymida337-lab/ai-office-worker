@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { QuoteBuilder } from "@/components/sales/QuoteBuilder";
+import { QuotePreview } from "@/components/sales/QuotePreview";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
 import {
@@ -10,6 +12,8 @@ import {
   DEAL_STAGE_TONE,
   DEAL_STAGES,
   dealSubtitle,
+  draftQuote,
+  defaultValidUntilInputValue,
   formatIls,
   isDealStage,
   latestQuote,
@@ -234,6 +238,10 @@ export default function SalesPage() {
           deal={selected}
           onClose={() => setSelected(null)}
           onStageChange={(stage) => void updateDealStage(selected.id, stage)}
+          onDealUpdated={(deal) => {
+            setSelected(deal);
+            void load();
+          }}
         />
       )}
     </div>
@@ -279,12 +287,17 @@ function DealDrawer({
   deal,
   onClose,
   onStageChange,
+  onDealUpdated,
 }: {
   deal: SalesDeal;
   onClose: () => void;
   onStageChange: (stage: DealStage) => void;
+  onDealUpdated: (deal: SalesDeal) => void;
 }) {
   const quote = latestQuote(deal);
+  const editableDraft = draftQuote(deal);
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [previewQuote, setPreviewQuote] = useState<SalesDeal["quotes"][number] | null>(null);
 
   return (
     <div className="fixed inset-0 z-[120] grid place-items-end bg-black/70 p-4 backdrop-blur-sm sm:place-items-center">
@@ -329,9 +342,30 @@ function DealDrawer({
         )}
 
         <section>
-          <h3 className="mb-3 text-lg font-semibold text-ink-primary">הצעות מחיר</h3>
-          {deal.quotes.length === 0 && (
-            <p className="text-sm text-ink-secondary">אין הצעות עדיין — בונה הצעות יגיע ב-Sprint הבא.</p>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold text-ink-primary">הצעות מחיר</h3>
+            <button
+              type="button"
+              className="btn !w-auto"
+              onClick={() => setShowBuilder((open) => !open)}
+            >
+              {showBuilder ? "סגור עורך" : editableDraft ? "ערוך הצעה" : "צור הצעה"}
+            </button>
+          </div>
+
+          {showBuilder && (
+            <QuoteBuilder
+              deal={deal}
+              onSaved={(updated) => {
+                onDealUpdated(updated);
+                setShowBuilder(false);
+              }}
+              onCancel={() => setShowBuilder(false)}
+            />
+          )}
+
+          {deal.quotes.length === 0 && !showBuilder && (
+            <p className="text-sm text-ink-secondary">אין הצעות עדיין — לחץ &quot;צור הצעה&quot; להתחיל.</p>
           )}
           <div className="grid gap-3">
             {deal.quotes.map((item) => (
@@ -340,7 +374,18 @@ function DealDrawer({
                   <strong>
                     v{item.version} · {QUOTE_STATUS_LABELS[item.status] ?? item.status}
                   </strong>
-                  <span>{formatIls(item.total)}</span>
+                  <div className="flex items-center gap-2">
+                    <span>{formatIls(item.total)}</span>
+                    {item.lines.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary !w-auto !min-w-0 px-2 text-xs"
+                        onClick={() => setPreviewQuote(item)}
+                      >
+                        תצוגה
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {item.validUntil && (
                   <p className="text-sm text-ink-secondary">
@@ -363,6 +408,26 @@ function DealDrawer({
 
         {quote && quote.status === "accepted" && (
           <p className="mt-4 text-sm text-emerald-200">ההצעה אושרה — המרה לחשבונית תגיע ב-Sprint הבא.</p>
+        )}
+
+        {previewQuote && (
+          <QuotePreview
+            deal={deal}
+            lines={previewQuote.lines.map((line, index) => ({
+              key: line.id || `preview-${index}`,
+              description: line.description,
+              quantity: line.quantity,
+              unitPrice: line.unitPrice,
+            }))}
+            total={previewQuote.total}
+            validUntil={
+              previewQuote.validUntil
+                ? new Date(previewQuote.validUntil).toISOString().slice(0, 10)
+                : defaultValidUntilInputValue()
+            }
+            notes={previewQuote.notes ?? ""}
+            onClose={() => setPreviewQuote(null)}
+          />
         )}
       </div>
     </div>

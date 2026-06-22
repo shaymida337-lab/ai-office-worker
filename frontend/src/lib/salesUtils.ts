@@ -25,6 +25,25 @@ export const QUOTE_STATUS_LABELS: Record<string, string> = {
   superseded: "גרסה ישנה",
 };
 
+export const DEFAULT_QUOTE_VALIDITY_DAYS = 30;
+
+export type SalesService = {
+  id: string;
+  name: string;
+  durationMinutes: number;
+  price?: number | null;
+  color?: string | null;
+  isActive: boolean;
+};
+
+export type QuoteLineDraft = {
+  key: string;
+  serviceId?: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+};
+
 export type SalesDeal = {
   id: string;
   title: string;
@@ -62,6 +81,8 @@ export type SalesDeal = {
     lines: Array<{ id: string; description: string; quantity: number; unitPrice: number }>;
   }>;
 };
+
+export type SalesQuote = SalesDeal["quotes"][number];
 
 export function formatIls(amount: number) {
   return `₪${amount.toLocaleString("he-IL")}`;
@@ -107,4 +128,61 @@ export function dealSubtitle(deal: SalesDeal) {
 
 export function isDealStage(value: string): value is DealStage {
   return (DEAL_STAGES as readonly string[]).includes(value);
+}
+
+export function defaultValidUntilInputValue() {
+  const date = new Date();
+  date.setDate(date.getDate() + DEFAULT_QUOTE_VALIDITY_DAYS);
+  return date.toISOString().slice(0, 10);
+}
+
+export function draftQuote(deal: SalesDeal) {
+  return deal.quotes.find((quote) => quote.status === "draft") ?? null;
+}
+
+export function computeLinesTotal(lines: QuoteLineDraft[]) {
+  const total = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
+  return Math.round(total * 100) / 100;
+}
+
+export function linesFromQuote(quote: SalesQuote): QuoteLineDraft[] {
+  return quote.lines.map((line, index) => ({
+    key: line.id || `line-${index}`,
+    description: line.description,
+    quantity: line.quantity,
+    unitPrice: line.unitPrice,
+  }));
+}
+
+export function newLineDraft(partial?: Partial<QuoteLineDraft>): QuoteLineDraft {
+  return {
+    key: `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    description: "",
+    quantity: 1,
+    unitPrice: 0,
+    ...partial,
+  };
+}
+
+export function validateQuoteDraft(lines: QuoteLineDraft[], validUntil: string): string | null {
+  if (!lines.length) return "יש להוסיף לפחות שורה אחת";
+  for (const line of lines) {
+    if (!line.description.trim()) return "יש למלא תיאור בכל שורה";
+    if (!Number.isFinite(line.quantity) || line.quantity <= 0) return "כמות חייבת להיות גדולה מאפס";
+    if (!Number.isFinite(line.unitPrice) || line.unitPrice <= 0) return "מחיר חייב להיות גדול מאפס";
+  }
+  const expiry = new Date(validUntil);
+  if (Number.isNaN(expiry.getTime()) || expiry.getTime() <= Date.now()) {
+    return "תאריך תוקף חייב להיות בעתיד";
+  }
+  return null;
+}
+
+export function quoteLinesPayload(lines: QuoteLineDraft[]) {
+  return lines.map((line) => ({
+    ...(line.serviceId ? { serviceId: line.serviceId } : {}),
+    description: line.description.trim(),
+    quantity: line.quantity,
+    unitPrice: line.unitPrice,
+  }));
 }
