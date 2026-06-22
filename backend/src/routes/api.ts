@@ -40,6 +40,7 @@ import { findDuplicateDrafts } from "../services/findDuplicateDrafts.js";
 import type { ColumnMapping } from "../services/importColumnMapper.js";
 import { synthesizeSpeech } from "../services/natalieTts.js";
 import { transcribeAudio } from "../services/natalieStt.js";
+import { correctClientNamesInTranscript } from "../services/nameCorrection.js";
 import {
   APPOINTMENT_INCLUDE,
   AppointmentConflictError,
@@ -2989,6 +2990,7 @@ apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async 
   }
 
   let promptHint: string | undefined;
+  let clientNames: string[] = [];
   try {
     const organizationId = req.auth!.organizationId;
     const [clients, services] = await Promise.all([
@@ -3005,8 +3007,9 @@ apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async 
         orderBy: { name: "asc" },
       }),
     ]);
+    clientNames = clients.map((client) => client.name);
     promptHint = buildClientNamesTranscriptionPrompt({
-      clientNames: clients.map((client) => client.name),
+      clientNames,
       serviceNames: services.map((service) => service.name),
     });
   } catch (err) {
@@ -3026,7 +3029,18 @@ apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async 
     return;
   }
 
-  res.json({ text: result.text });
+  let text = result.text;
+  try {
+    const correctedText = correctClientNamesInTranscript(text, clientNames);
+    if (correctedText !== text) {
+      console.log("[natalie/transcribe] corrected client names", { original: text, corrected: correctedText });
+      text = correctedText;
+    }
+  } catch (err) {
+    console.warn("[natalie/transcribe] failed to correct client names in transcript", errorDetails(err));
+  }
+
+  res.json({ text });
 });
 
 apiRouter.get("/message-scans", async (req, res) => {
