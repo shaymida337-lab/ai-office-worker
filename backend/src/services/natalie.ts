@@ -454,7 +454,7 @@ async function getNatalieBusinessContext(organizationId: string) {
   const [organization, invoices, supplierPayments, customerInvoices] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { businessProfile: true },
+      select: { businessProfile: true, timezone: true },
     }),
     prisma.invoice.findMany({
       where: { organizationId },
@@ -490,6 +490,7 @@ async function getNatalieBusinessContext(organizationId: string) {
   const openCustomerInvoices = customerInvoices.filter((invoice) => !invoice.paid);
   const openSupplierPayments = supplierPayments.filter((payment) => !payment.paid && payment.paymentRequired && isReasonableMoneyAmount(payment.amount));
   const businessProfile = organization?.businessProfile?.trim();
+  const timezone = organization?.timezone?.trim() || "Asia/Jerusalem";
 
   return {
     ...(businessProfile
@@ -500,7 +501,11 @@ async function getNatalieBusinessContext(organizationId: string) {
           },
         }
       : {}),
+    currentTime: formatCurrentTimeInTimezone(now, timezone),
+    timezone,
     labels: {
+      currentTime: "הזמן הנוכחי (לפרשנות תאריכים יחסיים כמו מחר/בעוד שעה)",
+      timezone: "אזור זמן של העסק",
       invoicesThisMonth: "מספר חשבוניות החודש",
       invoicesLastMonth: "מספר חשבוניות בחודש שעבר",
       invoiceAmountThisMonth: "סכום חשבוניות החודש",
@@ -532,6 +537,21 @@ async function getNatalieBusinessContext(organizationId: string) {
 
 function isInRange(date: Date, start: Date, end: Date) {
   return date >= start && date < end;
+}
+
+function formatCurrentTimeInTimezone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "00";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
 }
 
 function isReasonableMoneyAmount(amount: number) {

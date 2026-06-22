@@ -107,6 +107,17 @@ export type NatalieClaudeResponse =
         dueDate?: string;
       };
       answer: string;
+    }
+  | {
+      action: "book_appointment";
+      proposal: {
+        clientName: string;
+        startTime: string;
+        durationMinutes?: number;
+        serviceName?: string;
+        notes?: string;
+      };
+      answer: string;
     };
 
 const NATALIE_BUSINESS_SYSTEM_PROMPT = `את נטלי, עוזרת משרדית חכמה לעסק ישראלי קטן.
@@ -132,18 +143,29 @@ answer להצעת טיוטת חשבונית חייב לציין בדיוק את 
 לעולם אל תאמרי שהנפקת, שלחת, או שהחשבונית מוכנה/הונפקה — רק מציעה ומכינה טיוטה פנימית.
 בשלב זה נתמכת רק טיוטת חשבונית אחת בכל פעם. אם המשתמש מבקש כמה חשבוניות בבת אחת או מקובץ, עני שכרגע אפשר טיוטה אחת בכל פעם.
 
+אם ורק אם המשתמש מבקש בבירור לקבוע או לרשום תור ללקוח, למשל "תקבעי תור ל...", "תרשמי תור ל...", "קבעי פגישה ל...":
+{"action":"book_appointment","proposal":{"clientName":"שם הלקוח","startTime":"2026-06-19T15:00:00","durationMinutes":30,"serviceName":"שם השירות","notes":"הערות אופציונליות"},"answer":"אציע לקבוע תור ל[שם] ב-[תאריך ושעה] למשך [דקות] דקות. לאשר?"}
+אל תציעי book_appointment על רמז עקיף — רק בבקשה מפורשת לקבוע/לרשום תור.
+שדות חובה ב-proposal: clientName, startTime (ISO 8601 מלא, למשל 2026-06-19T15:00:00). durationMinutes, serviceName, notes אופציונליים.
+אם חסר שם לקוח או זמן — שאלי שאלת הבהרה בעברית בלי action. אל תנחשי.
+הזמן הנוכחי של העסק מופיע בהקשר בשדה currentTime וב-timezone — השתמשי בהם לפרשנות זמנים יחסיים כמו "מחר ב-3" או "בעוד שעה", והחזירי startTime ב-ISO 8601 מלא.
+לעולם אל תאמרי שקבעת תור בפועל — רק מציעה. answer חייב לנסח את ההצעה בעברית ולהסתיים במילה "לאשר?".
+
 אם המשתמש מבקש לראות/להציג חשבונית קיימת, זו פעולה לקריאה בלבד. אין ליצור חשבונית חדשה. אם נתוני חשבוניות קיימות סופקו לך בהקשר, אפשר להחזיר:
 {"action":"show_invoice","invoices":[{"id":"...","supplierName":"...","invoiceNumber":"...","amount":0,"currency":"ILS","issueDate":"YYYY-MM-DD","dueDate":null,"status":"pending","driveUrl":"..."}],"answer":"מצאתי ..."}
 
 כללי פעולה:
 - action="create_task" רק בבקשת משימה/תזכורת ברורה.
 - action="issue_invoice" רק בבקשה מפורשת להכין או להוציא חשבונית ללקוח, ורק כשיש customerName, description ו-amount חיובי שסופקו על ידי המשתמש.
+- action="book_appointment" רק בבקשה מפורשת לקבוע או לרשום תור, ורק כשיש clientName ו-startTime שסופקו על ידי המשתמש (או נגזרו מזמן יחסי לפי currentTime בהקשר).
 - action="show_invoice" רק להצגת חשבונית קיימת ורק אם נתוני החשבונית קיימים בהקשר.
 - אל תיצרי משימה בפועל. רק הציעי.
 - אל תיצרי חשבונית בפועל. רק הציעי טיוטה פנימית.
+- אל תקבעי תור בפועל. רק הציעי.
 - dueDate אופציונלי. אם אין תאריך ברור, השמיטו אותו.
 - answer להצעת משימה חייב לציין בדיוק מה ייווצר ולהסתיים במילה "לאשר?".
-- answer להצעת טיוטת חשבונית חייב לציין בדיוק מה תהיה הטיוטה, לומר במפורש שזו טיוטה בלבד ושלא תונפק חשבונית מס רשמית, ולהסתיים במילה "לאשר?".`;
+- answer להצעת טיוטת חשבונית חייב לציין בדיוק מה תהיה הטיוטה, לומר במפורש שזו טיוטה בלבד ושלא תונפק חשבונית מס רשמית, ולהסתיים במילה "לאשר?".
+- answer להצעת תור חייב לציין בדיוק ללקוח מי, מתי, ולכמה זמן (אם ידוע), ולהסתיים במילה "לאשר?".`;
 
 export async function analyzeEmailContent(input: {
   subject: string;
@@ -499,6 +521,28 @@ export function isNatalieClaudeResponse(value: unknown): value is NatalieClaudeR
     if (proposal.currency !== undefined && typeof proposal.currency !== "string") return false;
     if (proposal.issueDate !== undefined && typeof proposal.issueDate !== "string") return false;
     if (proposal.dueDate !== undefined && typeof proposal.dueDate !== "string") return false;
+    return true;
+  }
+  if (response.action === "book_appointment") {
+    const proposal = response.proposal as {
+      clientName?: unknown;
+      startTime?: unknown;
+      durationMinutes?: unknown;
+      serviceName?: unknown;
+      notes?: unknown;
+    } | undefined;
+    if (!proposal || typeof proposal.clientName !== "string" || !proposal.clientName.trim()) return false;
+    if (typeof proposal.startTime !== "string" || !proposal.startTime.trim()) return false;
+    if (
+      proposal.durationMinutes !== undefined &&
+      (typeof proposal.durationMinutes !== "number" ||
+        !Number.isFinite(proposal.durationMinutes) ||
+        proposal.durationMinutes <= 0)
+    ) {
+      return false;
+    }
+    if (proposal.serviceName !== undefined && typeof proposal.serviceName !== "string") return false;
+    if (proposal.notes !== undefined && typeof proposal.notes !== "string") return false;
     return true;
   }
   return false;

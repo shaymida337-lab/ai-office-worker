@@ -42,7 +42,9 @@ import { synthesizeSpeech } from "../services/natalieTts.js";
 import { transcribeAudio } from "../services/natalieStt.js";
 import {
   APPOINTMENT_INCLUDE,
+  checkAppointmentConflict,
   createAppointmentForOrganization,
+  findClientByNameOrPhone,
 } from "../services/appointmentService.js";
 
 export const apiRouter = Router();
@@ -2567,6 +2569,110 @@ apiRouter.post("/natalie/create-task", async (req, res) => {
   } catch (err) {
     console.error("[natalie/create-task] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Task creation failed" });
+  }
+});
+
+apiRouter.post("/natalie/create-appointment", async (req, res) => {
+  const body = (req.body ?? {}) as {
+    clientName?: unknown;
+    startTime?: unknown;
+    durationMinutes?: unknown;
+    serviceName?: unknown;
+    notes?: unknown;
+  };
+  const organizationId = req.auth!.organizationId;
+  const clientName = typeof body.clientName === "string" ? body.clientName.trim() : "";
+  if (!clientName) {
+    res.status(400).json({ error: "שם לקוח נדרש" });
+    return;
+  }
+
+  const startTimeRaw = typeof body.startTime === "string" ? body.startTime.trim() : "";
+  if (!startTimeRaw) {
+    res.status(400).json({ error: "זמן התור נדרש" });
+    return;
+  }
+
+  try {
+    const clients = await findClientByNameOrPhone({ organizationId, query: clientName });
+    if (clients.length === 0) {
+      res.status(404).json({ error: "לא נמצא לקוח בשם הזה", code: "client_not_found" });
+      return;
+    }
+    if (clients.length > 1) {
+      res.status(409).json({
+        error: "נמצאו כמה לקוחות, צריך לדייק",
+        code: "multiple_clients",
+        clients,
+      });
+      return;
+    }
+    const clientId = clients[0].id;
+
+    let serviceId: string | null = null;
+    let durationMinutes =
+      typeof body.durationMinutes === "number" && Number.isFinite(body.durationMinutes)
+        ? body.durationMinutes
+        : undefined;
+
+    const serviceName = typeof body.serviceName === "string" ? body.serviceName.trim() : "";
+    if (serviceName) {
+      const service = await prisma.service.findFirst({
+        where: {
+          organizationId,
+          isActive: true,
+          name: { contains: serviceName, mode: "insensitive" },
+        },
+      });
+      if (service) {
+        serviceId = service.id;
+        if (durationMinutes === undefined) {
+          durationMinutes = service.durationMinutes;
+        }
+      }
+    }
+
+    if (durationMinutes === undefined) {
+      durationMinutes = 30;
+    }
+    if (durationMinutes <= 0) {
+      res.status(400).json({ error: "משך התור חייב להיות מספר חיובי" });
+      return;
+    }
+
+    const startTime = new Date(startTimeRaw);
+    if (Number.isNaN(startTime.getTime())) {
+      res.status(400).json({ error: "זמן התור לא תקין" });
+      return;
+    }
+    if (startTime.getTime() < Date.now()) {
+      res.status(400).json({ error: "זמן התור חייב להיות בהווה או בעתיד" });
+      return;
+    }
+
+    const conflict = await checkAppointmentConflict({ organizationId, startTime, durationMinutes });
+    if (conflict.hasConflict) {
+      res.status(409).json({
+        error: "השעה הזו כבר תפוסה, אפשר לבחור זמן אחר",
+        code: "time_conflict",
+      });
+      return;
+    }
+
+    const notes = typeof body.notes === "string" ? body.notes.trim() : "";
+    const appointment = await createAppointmentForOrganization({
+      organizationId,
+      clientId,
+      serviceId,
+      startTime,
+      durationMinutes,
+      source: "natalie",
+      notes: notes || null,
+    });
+    res.status(201).json(appointment);
+  } catch (err) {
+    console.error("[natalie/create-appointment] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Appointment creation failed" });
   }
 });
 
