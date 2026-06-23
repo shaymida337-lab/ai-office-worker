@@ -13,6 +13,7 @@ import {
   Calendar,
   Camera,
   CheckSquare,
+  ClipboardCheck,
   ChevronRight,
   ChevronDown,
   CircleDollarSign,
@@ -59,6 +60,7 @@ const links: NavLink[] = [
   { id: "camera", href: "/camera", label: "צילום חשבונית", icon: Camera, module: "documents" },
   { id: "adminDebug", href: "/dashboard/admin-debug", label: "בדיקות מנהל", icon: Settings, module: "admin" },
   { id: "accuracyDashboard", href: "/dashboard/system/accuracy", label: "לוח דיוק", icon: ShieldCheck, module: "admin" },
+  { id: "verificationDashboard", href: "/dashboard/system/verification", label: "מרכז אימות", icon: ClipboardCheck, module: "admin" },
   { id: "businessSettings", href: "/dashboard/business-settings", label: "הגדרות עסק", icon: Settings },
   { id: "settings", href: "/dashboard/settings", label: "הגדרות", icon: Settings },
 ];

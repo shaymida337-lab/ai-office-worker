@@ -68,6 +68,11 @@ import {
   getAccuracyAnalyticsForOrganization,
   parseAccuracyAnalyticsQuery,
 } from "../services/analytics/accuracyAnalytics.js";
+import {
+  getVerificationCenterForOrganization,
+  parseVerificationQuery,
+  VERIFICATION_CENTER_ROUTE_PATH,
+} from "../services/verification/verificationCenter.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -2529,6 +2534,18 @@ apiRouter.get(ACCURACY_ANALYTICS_ROUTE_PATH, async (req, res) => {
   } catch (err) {
     console.error("[internal/analytics/accuracy] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Accuracy analytics failed" });
+  }
+});
+
+apiRouter.get(VERIFICATION_CENTER_ROUTE_PATH, async (req, res) => {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const query = parseVerificationQuery(req.query as Record<string, unknown>);
+    const verification = await getVerificationCenterForOrganization(prisma, organizationId, query);
+    res.json(verification);
+  } catch (err) {
+    console.error("[internal/verification] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Verification center failed" });
   }
 });
 

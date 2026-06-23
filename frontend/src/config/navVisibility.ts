@@ -19,6 +19,7 @@ export type NavItemId =
   | "camera"
   | "adminDebug"
   | "accuracyDashboard"
+  | "verificationDashboard"
   | "businessSettings"
   | "settings"
   | "calendar"
@@ -50,6 +51,7 @@ export const navVisibility: Record<NavItemId, NavVisibilityRule> = {
   camera: { visible: false },
   adminDebug: { visible: false },
   accuracyDashboard: { visible: false },
+  verificationDashboard: { visible: false },
   businessSettings: { visible: false },
   settings: { visible: true },
   calendar: { visible: true },
