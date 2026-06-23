@@ -1316,6 +1316,7 @@ export function NatalieAssistantWidget() {
             : message
         )
       );
+      window.dispatchEvent(new Event("appointments-changed"));
     } catch (err) {
       console.error("[natalie] book_appointment failed", err);
       setMessages((current) =>
@@ -1395,6 +1396,7 @@ export function NatalieAssistantWidget() {
             : message
         )
       );
+      window.dispatchEvent(new Event("appointments-changed"));
     } catch (err) {
       console.error("[natalie] cancel_appointment failed", err);
       setMessages((current) =>
@@ -1479,6 +1481,7 @@ export function NatalieAssistantWidget() {
             : message
         )
       );
+      window.dispatchEvent(new Event("appointments-changed"));
     } catch (err) {
       console.error("[natalie] reschedule_appointment failed", err);
       setMessages((current) =>

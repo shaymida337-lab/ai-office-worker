@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Nav } from "@/components/Nav";
 import { DayTimelineView } from "@/components/calendar/DayTimelineView";
 import { apiFetch, ApiError, getToken } from "@/lib/api";
@@ -260,7 +260,7 @@ export default function CalendarPage() {
     }
   }
 
-  async function loadAppointments() {
+  const loadAppointments = useCallback(async () => {
     setLoading(true);
     try {
       const range =
@@ -282,12 +282,19 @@ export default function CalendarPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [viewMode, selectedDay, weekStart]);
 
   useEffect(() => {
     loadAppointments().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart, viewMode, selectedDay]);
+  }, [loadAppointments]);
+
+  useEffect(() => {
+    const onAppointmentsChanged = () => {
+      loadAppointments().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה"));
+    };
+    window.addEventListener("appointments-changed", onAppointmentsChanged);
+    return () => window.removeEventListener("appointments-changed", onAppointmentsChanged);
+  }, [loadAppointments]);
 
   useEffect(() => {
     loadCalendarStatus();
