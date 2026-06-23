@@ -23,12 +23,14 @@ import {
   type PipelineClassificationAction,
 } from "./classification/classifier.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
-import { resolveGmailOrgMoneyDecision, summarizeMoneyDecision } from "./amount/amountCandidates.js";
+import { mapAnalysisDocumentTypeForAmount, resolveGmailOrgMoneyDecision, summarizeMoneyDecision } from "./amount/amountCandidates.js";
 import type { MoneyDecision } from "./amount/canonicalAmount.js";
 import {
   buildPaymentLookupsFromCanonical,
 } from "./dedup/fingerprintMigration.js";
-import { normalizeSupplierTaxId } from "./dedup/sharedMatcher.js";
+import { computeCanonicalFingerprint, normalizeSupplierTaxId } from "./dedup/sharedMatcher.js";
+import { computeFinancialSanity, summarizeFinancialSanityDecision } from "./validation/financialSanity.js";
+import type { FinancialSanityContext, FinancialSanityDecision, SanityRuleId } from "./validation/sanityTypes.js";
 import { computeCanonicalSupplier } from "./supplier/canonicalSupplier.js";
 import {
   buildAnalysisSupplierCandidates,
@@ -1213,6 +1215,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         reasons: string[];
         arc: ReturnType<typeof summarizeMoneyDecision> | null;
         sir: ReturnType<typeof summarizeSupplierDecision> | null;
+        fse: ReturnType<typeof summarizeFinancialSanityDecision> | null;
       } = {
         amount: extractedFields.amount,
         invoiceNumber: extractedFields.invoiceNumber,
@@ -1222,6 +1225,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         reasons: extractedFields.reasons,
         arc: null,
         sir: null,
+        fse: null,
       };
       if (extractedFields.amount !== null) {
         logStep(`[gmail-sync] AMOUNT_EXTRACTED message=${email.gmailId} amount=${extractedFields.amount} confidence=${extractedFields.confidence}`);
@@ -1341,6 +1345,21 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       if (pipelineAction === "NEEDS_REVIEW" && !invoiceMatch.isInvoice) {
         needsReviewCount++;
         logStep(`[gmail-sync] classifier needs_review message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
+        const earlyInvoiceNumber = normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, primaryAttachmentFilename(email.parts) ?? ""].join("\n"));
+        const earlyDocumentDate = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, email.receivedAt) ?? email.receivedAt;
+        const earlyFseDecision = await runGmailOrgFinancialSanity({
+          organizationId,
+          supplierDecision: supplierMetadata.decision,
+          moneyDecision,
+          supplierName,
+          supplierTaxId: supplierMetadata.taxId,
+          invoiceNumber: earlyInvoiceNumber,
+          documentDate: earlyDocumentDate,
+          dueDate: normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null),
+          documentType: classification.documentType,
+          rawOcrText: [supplierEvidenceText, visualAttachmentText, pdfText].filter(Boolean).join("\n"),
+        });
+        parsedFieldsJson.fse = summarizeFinancialSanityDecision(earlyFseDecision);
         await recordFinancialDocumentDecision({
           organizationId,
           source: "gmail",
@@ -1350,8 +1369,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           fileSize: null,
           supplierName,
           supplierTaxId: supplierMetadata.taxId,
-          invoiceNumber: normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, primaryAttachmentFilename(email.parts) ?? ""].join("\n")),
-          documentDate: normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, email.receivedAt) ?? email.receivedAt,
+          invoiceNumber: earlyInvoiceNumber,
+          documentDate: earlyDocumentDate,
           dueDate: normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null),
           amountBeforeVat: moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? null,
           vatAmount: moneyDecision.vatAmount ?? analysis.vatAmount ?? null,
@@ -1414,11 +1433,31 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       if (classification.documentType === "receipt") receiptsFound++;
       if (classification.documentType === "payment_request") paymentRequestsFound++;
       if (classification.documentType === "supplier_message") supplierMessagesFound++;
-      if (classification.reviewStatus === "needs_review") needsReviewCount++;
       if (invoiceMatch.amount !== null) invoiceAmountsExtracted++;
       const invoiceNumberForDecision = normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
       const documentDateForDecision = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, email.receivedAt) ?? email.receivedAt;
       const dueDateForDecision = normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null);
+      const fseDecision = await runGmailOrgFinancialSanity({
+        organizationId,
+        supplierDecision: supplierMetadata.decision,
+        moneyDecision,
+        supplierName,
+        supplierTaxId: supplierMetadata.taxId,
+        invoiceNumber: invoiceNumberForDecision,
+        documentDate: documentDateForDecision,
+        dueDate: dueDateForDecision,
+        documentType: classification.documentType,
+        rawOcrText: [supplierEvidenceText, visualAttachmentText, pdfText].filter(Boolean).join("\n"),
+      });
+      parsedFieldsJson.fse = summarizeFinancialSanityDecision(fseDecision);
+      classification = applyFinancialSanityReviewGate({
+        classification,
+        fseDecision,
+        amount: finalTotalAmount,
+        rawOcrText: [supplierEvidenceText, visualAttachmentText, pdfText].filter(Boolean).join("\n"),
+      });
+      logStep(`[gmail-sync] FSE message=${email.gmailId} status=${fseDecision.overallStatus} trust=${fseDecision.trustScore} failed=${fseDecision.failedRules.join(",") || "none"}`);
+      if (classification.reviewStatus === "needs_review") needsReviewCount++;
       logStep(`[gmail-sync] CLASSIFICATION_RESULT message=${email.gmailId} documentType=${classification.documentType} review=${classification.reviewStatus} confidence=${classification.confidence} supplier="${supplierName}" amount=${amount ?? "none"} reason="${classification.decisionReason}"`);
       logStep(`[gmail-sync] PARSED_FIELDS_EXTRACTED message=${email.gmailId} supplier="${supplierName}" amount=${finalTotalAmount ?? "unknown"} invoiceNumber=${invoiceNumberForDecision ?? "unknown"} dueDate=${dueDateForDecision?.toISOString() ?? "unknown"} documentDate=${documentDateForDecision.toISOString()} documentType=${classification.documentType} review=${classification.reviewStatus}`);
       const documentValidationReason = financialDocumentBlockingReason({
@@ -2623,6 +2662,206 @@ export function applySupplierDecisionReviewGate(input: {
     decisionReason: `${input.classification.decisionReason}; supplier_${decision.status}:${decision.reasonCode}`.slice(0, 500),
     confidence: Math.min(input.classification.confidence, Math.max(decision.confidence, 0.4)),
   };
+}
+
+const FSE_REVIEW_ESCALATING_WARNING_RULES = new Set<SanityRuleId>([
+  "ocr_suspicious_patterns",
+  "vat_arithmetic",
+  "supplier_historical_range",
+  "impossible_amount",
+]);
+
+export function shouldEscalateFseWarningToReview(
+  decision: FinancialSanityDecision,
+  options?: { amount?: number | null; rawOcrText?: string | null }
+): boolean {
+  if (decision.overallStatus !== "warning") {
+    if (decision.overallStatus === "valid" && hasRepeatedDigitOcrPattern(options?.amount ?? null, options?.rawOcrText ?? "")) {
+      return true;
+    }
+    return false;
+  }
+  if (decision.failedRules.some((ruleId) => FSE_REVIEW_ESCALATING_WARNING_RULES.has(ruleId))) {
+    return true;
+  }
+  return hasRepeatedDigitOcrPattern(options?.amount ?? null, options?.rawOcrText ?? "");
+}
+
+function hasRepeatedDigitOcrPattern(amount: number | null, rawOcrText: string): boolean {
+  if (amount == null) return false;
+  const digits = String(Math.round(Math.abs(amount)));
+  if (digits.length >= 4 && /^(\d)\1+$/.test(digits)) return true;
+  if (digits.length >= 6) {
+    for (let size = 2; size <= 3; size += 1) {
+      if (digits.length % size === 0 && digits.length / size >= 2) {
+        const chunk = digits.slice(0, size);
+        if (chunk.repeat(digits.length / size) === digits) return true;
+      }
+    }
+  }
+  return /(\d{2,3})[,\s]?\1/.test(rawOcrText);
+}
+
+export function applyFinancialSanityReviewGate(input: {
+  classification: GmailScanClassification;
+  fseDecision: FinancialSanityDecision;
+  amount?: number | null;
+  rawOcrText?: string | null;
+}): GmailScanClassification {
+  const { fseDecision } = input;
+  const forceReview =
+    fseDecision.overallStatus === "error" ||
+    fseDecision.overallStatus === "review" ||
+    shouldEscalateFseWarningToReview(fseDecision, {
+      amount: input.amount,
+      rawOcrText: input.rawOcrText,
+    });
+  if (!forceReview) {
+    return input.classification;
+  }
+
+  const reason = `fse_${fseDecision.overallStatus}:${fseDecision.failedRules.join(",") || "none"}`;
+  if (input.classification.reviewStatus === "needs_review") {
+    return {
+      ...input.classification,
+      decisionReason: `${input.classification.decisionReason}; ${reason}`.slice(0, 500),
+      confidence: Math.min(input.classification.confidence, fseDecision.confidence),
+    };
+  }
+  return {
+    ...input.classification,
+    reviewStatus: "needs_review",
+    decisionReason: `${input.classification.decisionReason}; ${reason}`.slice(0, 500),
+    confidence: Math.min(input.classification.confidence, fseDecision.confidence),
+  };
+}
+
+async function loadGmailFinancialSanityContext(input: {
+  organizationId: string;
+  supplierName: string;
+  fingerprint: string | null;
+  amount: number | null;
+  documentDate: Date;
+  currency: string;
+}): Promise<FinancialSanityContext> {
+  const duplicateFingerprints: string[] = [];
+  if (input.fingerprint) {
+    const duplicate = await prisma.supplierPayment.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        documentFingerprint: input.fingerprint,
+      },
+      select: { documentFingerprint: true },
+    });
+    if (duplicate?.documentFingerprint) {
+      duplicateFingerprints.push(duplicate.documentFingerprint);
+    }
+  }
+
+  if (isUsableSupplierName(input.supplierName) && input.amount != null) {
+    const semanticKey = `${input.supplierName}|${Math.abs(input.amount)}|${input.documentDate.toISOString().slice(0, 10)}`;
+    const dayStart = new Date(input.documentDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    const semanticDuplicate = await prisma.supplierPayment.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        supplier: input.supplierName,
+        amount: input.amount,
+        date: { gte: dayStart, lt: dayEnd },
+      },
+      select: { id: true },
+    });
+    if (semanticDuplicate) {
+      duplicateFingerprints.push(semanticKey);
+    }
+  }
+
+  let supplierHistory: FinancialSanityContext["supplierHistory"] = null;
+  if (isUsableSupplierName(input.supplierName)) {
+    const payments = await prisma.supplierPayment.findMany({
+      where: {
+        organizationId: input.organizationId,
+        approvalStatus: "approved",
+        OR: [{ supplier: input.supplierName }, { supplierName: input.supplierName }],
+      },
+      select: { amount: true, currency: true, invoiceNumber: true },
+      orderBy: { date: "desc" },
+      take: 40,
+    });
+    if (payments.length > 0) {
+      const amounts = payments
+        .map((payment) => Math.abs(payment.amount))
+        .filter((value) => value > 0 && value <= MAX_REASONABLE_FINANCIAL_AMOUNT);
+      supplierHistory = {
+        invoiceCount: payments.length,
+        minAmount: amounts.length > 0 ? Math.min(...amounts) : null,
+        maxAmount: amounts.length > 0 ? Math.max(...amounts) : null,
+        averageAmount: amounts.length > 0 ? amounts.reduce((sum, value) => sum + value, 0) / amounts.length : null,
+        typicalCurrency: payments.find((payment) => payment.currency)?.currency ?? input.currency,
+        lastInvoiceNumber: payments.find((payment) => payment.invoiceNumber)?.invoiceNumber ?? null,
+        recentInvoiceNumbers: payments
+          .map((payment) => payment.invoiceNumber)
+          .filter((value): value is string => Boolean(value)),
+      };
+    }
+  }
+
+  return {
+    supplierHistory,
+    duplicateFingerprints,
+    expectedCurrency: input.currency,
+    referenceDate: new Date(),
+    vatRate: 0.18,
+  };
+}
+
+export async function runGmailOrgFinancialSanity(input: {
+  organizationId: string;
+  supplierDecision: SupplierDecision;
+  moneyDecision: MoneyDecision;
+  supplierName: string;
+  supplierTaxId: string | null;
+  invoiceNumber: string | null;
+  documentDate: Date;
+  dueDate: Date | null;
+  documentType: string;
+  rawOcrText: string;
+}): Promise<FinancialSanityDecision> {
+  const fingerprint = computeCanonicalFingerprint({
+    organizationId: input.organizationId,
+    supplierName: input.supplierName,
+    supplierTaxId: input.supplierTaxId,
+    invoiceNumber: input.invoiceNumber,
+    totalAmount: input.moneyDecision.selectedAmount,
+    documentDate: input.documentDate,
+    documentType: mapAnalysisDocumentTypeForAmount(input.documentType),
+  });
+  const context = await loadGmailFinancialSanityContext({
+    organizationId: input.organizationId,
+    supplierName: input.supplierName,
+    fingerprint: fingerprint.fingerprint,
+    amount: input.moneyDecision.selectedAmount,
+    documentDate: input.documentDate,
+    currency: input.moneyDecision.currency,
+  });
+  return computeFinancialSanity({
+    organizationId: input.organizationId,
+    supplierDecision: input.supplierDecision,
+    moneyDecision: input.moneyDecision,
+    fingerprint,
+    invoiceNumber: input.invoiceNumber,
+    documentDate: input.documentDate,
+    dueDate: input.dueDate,
+    currency: input.moneyDecision.currency,
+    invoiceData: {
+      documentType: mapAnalysisDocumentTypeForAmount(input.documentType),
+      rawOcrText: input.rawOcrText,
+      extractionSource: "gmail",
+    },
+    context,
+  });
 }
 
 type AttachmentInvoiceAnalysisResult =

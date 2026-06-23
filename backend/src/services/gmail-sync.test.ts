@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   applyBusinessReviewToInvoiceCandidate,
+  applyFinancialSanityReviewGate,
   applySupplierDecisionReviewGate,
   buildGmailFinancialPersistencePlan,
   buildGmailScanDuplicateKey,
@@ -19,6 +20,11 @@ import {
   selectInvoiceAttachmentAmount,
   supplierPaymentCreationEligibility,
 } from "./gmail-sync.js";
+import { ARC_VERSION } from "./amount/canonicalAmount.js";
+import type { MoneyDecision } from "./amount/canonicalAmount.js";
+import { computeFinancialSanity, summarizeFinancialSanityDecision } from "./validation/financialSanity.js";
+import { SIR_VERSION } from "./supplier/supplierTypes.js";
+import type { SupplierDecision } from "./supplier/supplierTypes.js";
 import type { EmailAnalysis } from "./claude.js";
 
 function analysis(overrides: Partial<EmailAnalysis> = {}): EmailAnalysis {
@@ -1219,4 +1225,233 @@ test("creates analysis tasks after review gate passes", () => {
 
   assert.equal(classification.reviewStatus, "auto_saved");
   assert.equal(plan.shouldCreateAnalysisTasks, true);
+});
+
+function gmailSirDecision(overrides: Partial<SupplierDecision> = {}): SupplierDecision {
+  return {
+    supplierName: "Acme Ltd",
+    canonicalSupplier: "acme",
+    normalizedName: "acme",
+    vatNumber: "514888888",
+    domains: ["acme.co.il"],
+    emails: ["billing@acme.co.il"],
+    phones: [],
+    aliases: [],
+    logo: null,
+    confidence: 0.92,
+    evidenceScore: 0.9,
+    reason: "test",
+    reasonCode: "AI_EXTRACTED",
+    evidence: [],
+    candidates: [],
+    rejected: [],
+    status: "resolved",
+    ambiguityFlags: [],
+    version: SIR_VERSION,
+    isStrongEnoughForAutoSave: true,
+    ...overrides,
+  };
+}
+
+function gmailArcDecision(overrides: Partial<MoneyDecision> = {}): MoneyDecision {
+  return {
+    selectedAmount: 1180,
+    amountBeforeVat: 1000,
+    vatAmount: 180,
+    currency: "ILS",
+    confidence: 0.9,
+    evidenceScore: 0.88,
+    reason: "test",
+    reasonCode: "INVOICE_TOTAL",
+    candidates: [],
+    rejected: [],
+    status: "resolved",
+    ambiguityFlags: [],
+    version: ARC_VERSION,
+    isStrongEnoughForAutoSave: true,
+    ...overrides,
+  };
+}
+
+function gmailFseInput(overrides: {
+  supplierDecision?: Partial<SupplierDecision>;
+  moneyDecision?: Partial<MoneyDecision>;
+  invoiceNumber?: string | null;
+  documentDate?: string;
+  documentType?: string;
+  rawOcrText?: string;
+} = {}) {
+  return {
+    organizationId: "org-gmail-fse",
+    supplierDecision: gmailSirDecision(overrides.supplierDecision),
+    moneyDecision: gmailArcDecision(overrides.moneyDecision),
+    fingerprint: null,
+    invoiceNumber: overrides.invoiceNumber !== undefined ? overrides.invoiceNumber : "INV-1001",
+    documentDate: overrides.documentDate ?? "2026-05-15",
+    dueDate: null,
+    currency: "ILS",
+    invoiceData: {
+      documentType: overrides.documentType ?? "tax_invoice",
+      rawOcrText: overrides.rawOcrText ?? "חשבונית מס Acme Ltd",
+      extractionSource: "gmail",
+    },
+    context: {
+      referenceDate: "2026-06-01",
+      expectedCurrency: "ILS",
+    },
+  };
+}
+
+test("Gmail FSE: future invoice date forces needs_review", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "Invoice INV-1001",
+    bodyText: "Invoice attached",
+    attachmentFilenames: ["invoice-1001.pdf"],
+    analysis: analysis({ documentType: "invoice", amount: 1180, confidence: 0.9 }),
+    amount: 1180,
+    supplierName: "Acme Ltd",
+  });
+  const fseDecision = computeFinancialSanity(
+    gmailFseInput({
+      documentDate: "2027-01-01",
+    })
+  );
+  const gated = applyFinancialSanityReviewGate({ classification, fseDecision });
+
+  assert.equal(fseDecision.overallStatus, "error");
+  assert.equal(gated.reviewStatus, "needs_review");
+  assert.match(gated.decisionReason, /fse_error/);
+});
+
+test("Gmail FSE: ambiguous ARC routes to review through FSE", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "Invoice INV-1001",
+    bodyText: "Invoice attached",
+    attachmentFilenames: ["invoice-1001.pdf"],
+    analysis: analysis({ documentType: "invoice", amount: 1180, confidence: 0.9 }),
+    amount: 1180,
+    supplierName: "Acme Ltd",
+  });
+  const fseDecision = computeFinancialSanity(
+    gmailFseInput({
+      moneyDecision: { status: "ambiguous", confidence: 0.4, selectedAmount: null, isStrongEnoughForAutoSave: false },
+    })
+  );
+  const gated = applyFinancialSanityReviewGate({ classification, fseDecision });
+
+  assert.equal(fseDecision.overallStatus, "review");
+  assert.equal(gated.reviewStatus, "needs_review");
+  assert.match(gated.decisionReason, /fse_review/);
+});
+
+test("Gmail FSE: repeated-digit OCR amount escalates warning to needs_review", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "Invoice",
+    bodyText: "Invoice attached",
+    attachmentFilenames: ["invoice.pdf"],
+    analysis: analysis({ documentType: "invoice", amount: 776776, confidence: 0.9 }),
+    amount: 776776,
+    supplierName: "Acme Ltd",
+  });
+  const fseDecision = computeFinancialSanity(
+    gmailFseInput({
+      moneyDecision: { selectedAmount: 776776, amountBeforeVat: null, vatAmount: null },
+      rawOcrText: "סה\"כ 776,776 ש\"ח חשבונית",
+    })
+  );
+  const gated = applyFinancialSanityReviewGate({
+    classification,
+    fseDecision,
+    amount: 776776,
+    rawOcrText: "סה\"כ 776,776 ש\"ח חשבונית",
+  });
+
+  assert.equal(gated.reviewStatus, "needs_review");
+  assert.match(gated.decisionReason, /fse_(warning|valid)/);
+});
+
+test("Gmail FSE: identical repeated-digit amount escalates even when FSE is valid", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "Invoice",
+    bodyText: "Invoice attached",
+    attachmentFilenames: ["invoice.pdf"],
+    analysis: analysis({ documentType: "invoice", amount: 777777, confidence: 0.9 }),
+    amount: 777777,
+    supplierName: "Acme Ltd",
+  });
+  const fseDecision = computeFinancialSanity(
+    gmailFseInput({
+      moneyDecision: { selectedAmount: 777777, amountBeforeVat: null, vatAmount: null },
+      rawOcrText: "סה\"כ 777777 ש\"ח חשבונית",
+    })
+  );
+  const gated = applyFinancialSanityReviewGate({
+    classification,
+    fseDecision,
+    amount: 777777,
+    rawOcrText: "סה\"כ 777777 ש\"ח חשבונית",
+  });
+
+  assert.equal(fseDecision.overallStatus, "warning");
+  assert.ok(fseDecision.failedRules.includes("ocr_suspicious_patterns"));
+  assert.equal(gated.reviewStatus, "needs_review");
+  assert.match(gated.decisionReason, /fse_warning/);
+});
+
+test("Gmail FSE: VAT mismatch warning escalates to needs_review", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "Invoice INV-1001",
+    bodyText: "Invoice attached",
+    attachmentFilenames: ["invoice-1001.pdf"],
+    analysis: analysis({ documentType: "invoice", amount: 1180, confidence: 0.9 }),
+    amount: 1180,
+    supplierName: "Acme Ltd",
+  });
+  const fseDecision = computeFinancialSanity(
+    gmailFseInput({
+      moneyDecision: {
+        selectedAmount: 1180,
+        amountBeforeVat: 1000,
+        vatAmount: 100,
+      },
+    })
+  );
+  const gated = applyFinancialSanityReviewGate({ classification, fseDecision });
+
+  assert.equal(fseDecision.overallStatus, "error");
+  assert.ok(fseDecision.failedRules.includes("vat_arithmetic"));
+  assert.equal(gated.reviewStatus, "needs_review");
+});
+
+test("Gmail FSE: low-risk warning on receipt without invoice number still allows auto_save", () => {
+  const classification = classifyGmailScanCandidate({
+    subject: "Receipt",
+    bodyText: "Receipt attached",
+    attachmentFilenames: ["receipt.pdf"],
+    analysis: analysis({ documentType: "receipt", confidence: 0.86 }),
+    amount: 320,
+    supplierName: "Stripe",
+  });
+  const fseDecision = computeFinancialSanity(
+    gmailFseInput({
+      invoiceNumber: null,
+      documentType: "receipt",
+      moneyDecision: { selectedAmount: 320, amountBeforeVat: null, vatAmount: null },
+    })
+  );
+  const gated = applyFinancialSanityReviewGate({ classification, fseDecision });
+
+  assert.equal(fseDecision.overallStatus, "warning");
+  assert.ok(fseDecision.failedRules.includes("missing_invoice_number"));
+  assert.equal(gated.reviewStatus, "auto_saved");
+});
+
+test("Gmail FSE: summarizeFinancialSanityDecision persists compact audit payload", () => {
+  const decision = computeFinancialSanity(gmailFseInput());
+  const summary = summarizeFinancialSanityDecision(decision);
+
+  assert.equal(summary.version, "fse-v1");
+  assert.equal(summary.overallStatus, "valid");
+  assert.ok(summary.trustScore >= 90);
+  assert.equal(summary.errors.length, 0);
 });

@@ -104,6 +104,21 @@ function computeTrustScore(ruleResults: SanityRuleResult[]): number {
   return clampScore(score);
 }
 
+export function summarizeFinancialSanityDecision(decision: FinancialSanityDecision) {
+  return {
+    version: decision.version,
+    trustScore: decision.trustScore,
+    overallStatus: decision.overallStatus,
+    confidence: decision.confidence,
+    failedRules: decision.failedRules,
+    passedRules: decision.passedRules,
+    recommendation: decision.recommendation,
+    explanation: decision.explanation,
+    warnings: decision.warnings.map(({ ruleId, message }) => ({ ruleId, message })),
+    errors: decision.errors.map(({ ruleId, message }) => ({ ruleId, message })),
+  };
+}
+
 export function computeFinancialSanity(input: FinancialSanityInput): FinancialSanityDecision {
   const ruleResults = evaluateAllSanityRules(input);
   const errors = ruleResults.filter((result) => result.severity === "error");
