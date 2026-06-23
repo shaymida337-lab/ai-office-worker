@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import {
   applyBusinessReviewToInvoiceCandidate,
   applyFinancialSanityReviewGate,
+  applyOutcomeReviewGate,
   applySupplierDecisionReviewGate,
   applyTrustReviewGate,
   buildGmailFinancialPersistencePlan,
+  buildGmailOutcomeContext,
   buildGmailScanDuplicateKey,
   buildGmailTrustContext,
   classifyOcrSupplierText,
@@ -17,12 +19,14 @@ import {
   deriveGmailTrustDuplicateRisk,
   extractHebrewInvoiceFieldsFromText,
   extractInvoiceAmount,
+  gmailOutcomeStopsPersistence,
   GmailFinancialSanityContextSessionCache,
   gmailFseSupplierCacheKey,
   isIncomingSupplierExpenseCandidate,
   isInvoiceImageAttachmentPart,
   normalizeOcrSupplierText,
   resolveSupplierMetadata,
+  runGmailOrgOutcomeDecision,
   runGmailOrgTrustDecision,
   selectInvoiceAttachmentAmount,
   shouldWriteGmailScanProgress,
@@ -34,6 +38,7 @@ import { computeCanonicalFingerprint } from "./dedup/sharedMatcher.js";
 import { computeFinancialSanity, summarizeFinancialSanityDecision } from "./validation/financialSanity.js";
 import { summarizeTrustDecision } from "./trust/trustEngine.js";
 import { TE_VERSION } from "./trust/trustTypes.js";
+import { computeDocumentOutcome, summarizeDocumentOutcome } from "./outcome/outcomeEngine.js";
 import { SIR_VERSION } from "./supplier/supplierTypes.js";
 import type { SupplierDecision } from "./supplier/supplierTypes.js";
 import type { EmailAnalysis } from "./claude.js";
@@ -1682,4 +1687,200 @@ test("Gmail TE: duplicate risk high when FSE duplicate_suspicion fails", () => {
     fingerprint,
   });
   assert.equal(context.duplicateRisk, "high");
+});
+
+function gmailOePipelineInput(overrides: {
+  supplierDecision?: Partial<SupplierDecision>;
+  moneyDecision?: Partial<MoneyDecision>;
+  documentDate?: string;
+  documentType?: string;
+  existingScanItem?: { amount: unknown } | null;
+  duplicateKey?: string | null;
+  pipelineError?: string | null;
+  processingStage?: string | null;
+  businessClassificationReason?: string | null;
+} = {}) {
+  const teInput = gmailTeTrustInput({
+    supplierDecision: overrides.supplierDecision,
+    moneyDecision: overrides.moneyDecision,
+    documentDate: overrides.documentDate,
+    documentType: overrides.documentType,
+  });
+  const trustDecision = runGmailOrgTrustDecision(teInput);
+
+  return {
+    organizationId: teInput.organizationId,
+    trustDecision,
+    fseDecision: teInput.fseDecision,
+    supplierDecision: teInput.supplierDecision,
+    moneyDecision: teInput.moneyDecision,
+    supplierName: teInput.supplierName,
+    supplierTaxId: teInput.supplierTaxId,
+    invoiceNumber: teInput.invoiceNumber,
+    documentDate: teInput.documentDate,
+    documentType: teInput.documentType,
+    classification: teInput.classification,
+    existingScanItem: overrides.existingScanItem ?? null,
+    duplicateKey: overrides.duplicateKey ?? null,
+    businessClassificationReason: overrides.businessClassificationReason ?? null,
+    pipelineError: overrides.pipelineError ?? null,
+    processingStage: overrides.processingStage ?? null,
+  };
+}
+
+test("Gmail OE: strong agreement yields SAVED", () => {
+  const outcome = runGmailOrgOutcomeDecision(gmailOePipelineInput());
+
+  assert.equal(outcome.status, "SAVED");
+  assert.equal(outcome.reasonCode, "OE_SAVED");
+});
+
+test("Gmail OE: ambiguous ARC routes to NEEDS_REVIEW", () => {
+  const outcome = runGmailOrgOutcomeDecision(
+    gmailOePipelineInput({
+      moneyDecision: {
+        status: "ambiguous",
+        confidence: 0.4,
+        selectedAmount: null,
+        isStrongEnoughForAutoSave: false,
+        reasonCode: "AMBIGUOUS",
+      },
+    })
+  );
+
+  assert.equal(outcome.status, "NEEDS_REVIEW");
+  assert.equal(outcome.reasonCode, "OE_NEEDS_REVIEW");
+});
+
+test("Gmail OE: duplicate scan item routes to DUPLICATE", () => {
+  const outcome = runGmailOrgOutcomeDecision(
+    gmailOePipelineInput({
+      existingScanItem: { amount: 1180 },
+      duplicateKey: "dup-scan-item-key",
+    })
+  );
+
+  assert.equal(outcome.status, "DUPLICATE");
+  assert.equal(outcome.reasonCode, "OE_DUPLICATE_DETECTED");
+  assert.match(outcome.description, /matched this document to an existing record/i);
+});
+
+test("Gmail OE: FSE critical error routes to BLOCKED", () => {
+  const outcome = runGmailOrgOutcomeDecision(
+    gmailOePipelineInput({
+      documentDate: "2027-01-01",
+    })
+  );
+
+  assert.equal(outcome.status, "BLOCKED");
+  assert.equal(outcome.reasonCode, "OE_TRUST_BLOCKED");
+});
+
+test("Gmail OE: missing financial evidence routes to NOT_FINANCIAL", () => {
+  const outcome = runGmailOrgOutcomeDecision(
+    gmailOePipelineInput({
+      supplierDecision: { status: "missing", supplierName: null, isStrongEnoughForAutoSave: false },
+      moneyDecision: { status: "missing", selectedAmount: null, isStrongEnoughForAutoSave: false, reasonCode: "MISSING" },
+      processingStage: "not_financial",
+      businessClassificationReason: "filtered_irrelevant newsletter",
+    })
+  );
+
+  assert.equal(outcome.status, "NOT_FINANCIAL");
+  assert.equal(outcome.reasonCode, "OE_NOT_FINANCIAL");
+});
+
+test("Gmail OE: pipeline error routes to ERROR", () => {
+  const outcome = runGmailOrgOutcomeDecision(
+    gmailOePipelineInput({
+      pipelineError: "Claude timeout after 60s",
+      processingStage: "AI Analysis",
+    })
+  );
+
+  assert.equal(outcome.status, "ERROR");
+  assert.equal(outcome.reasonCode, "OE_PIPELINE_ERROR");
+});
+
+test("Gmail OE: summarizeDocumentOutcome persists audit payload with timeline", () => {
+  const outcome = runGmailOrgOutcomeDecision(gmailOePipelineInput());
+  const summary = summarizeDocumentOutcome(outcome);
+
+  assert.equal(summary.version, "oe-v1");
+  assert.equal(summary.status, outcome.status);
+  assert.equal(summary.headline, outcome.headline);
+  assert.equal(summary.description, outcome.description);
+  assert.equal(summary.reasonCode, outcome.reasonCode);
+  assert.ok(Array.isArray(summary.timeline));
+  assert.equal(summary.timeline.length, 8);
+});
+
+test("Gmail OE: parsedFieldsJson.outcome shape persists timeline and single status", () => {
+  const outcome = runGmailOrgOutcomeDecision(gmailOePipelineInput());
+  const parsedFieldsJson = {
+    outcome: summarizeDocumentOutcome(outcome),
+  };
+
+  assert.equal(parsedFieldsJson.outcome.status, "SAVED");
+  assert.ok(parsedFieldsJson.outcome.timeline.length === 8);
+  assert.ok(parsedFieldsJson.outcome.recommendedAction.length > 0);
+});
+
+test("Gmail OE: exactly one final outcome status", () => {
+  const cases = [
+    gmailOePipelineInput(),
+    gmailOePipelineInput({ existingScanItem: { amount: 1180 } }),
+    gmailOePipelineInput({
+      moneyDecision: { status: "ambiguous", confidence: 0.4, selectedAmount: null, isStrongEnoughForAutoSave: false, reasonCode: "AMBIGUOUS" },
+    }),
+    gmailOePipelineInput({ documentDate: "2027-01-01" }),
+    gmailOePipelineInput({ pipelineError: "db timeout", processingStage: "FSE" }),
+  ];
+
+  for (const input of cases) {
+    const outcome = runGmailOrgOutcomeDecision(input);
+    assert.equal(new Set([outcome.status]).size, 1);
+  }
+});
+
+test("Gmail OE: applyOutcomeReviewGate escalates NEEDS_REVIEW", () => {
+  const gated = applyOutcomeReviewGate({
+    classification: gmailTeClassification(),
+    documentOutcome: computeDocumentOutcome({
+      fingerprint: computeCanonicalFingerprint({
+        organizationId: "org-gmail-oe",
+        supplierName: "Acme Ltd",
+        supplierTaxId: "514888888",
+        invoiceNumber: "INV-1001",
+        totalAmount: 1180,
+        documentDate: "2026-05-15",
+        documentType: "tax_invoice",
+      }),
+      moneyDecision: gmailArcDecision({ status: "ambiguous", confidence: 0.4, selectedAmount: null, isStrongEnoughForAutoSave: false, reasonCode: "AMBIGUOUS" }),
+      supplierDecision: gmailSirDecision(),
+      fseDecision: computeFinancialSanity(gmailFseInput()),
+      trustDecision: {
+        version: TE_VERSION,
+        confidence: 62,
+        decision: "NEEDS_REVIEW",
+        reason: "Upstream engine requested review",
+        reasonCode: "TE_UPSTREAM_REVIEW",
+        explanation: "ARC ambiguity requires manual review.",
+        contributors: [],
+      },
+      context: { reviewReason: "ARC ambiguity requires manual review." },
+    }),
+  });
+
+  assert.equal(gated.reviewStatus, "needs_review");
+  assert.match(gated.decisionReason, /outcome_review:OE_NEEDS_REVIEW/);
+});
+
+test("Gmail OE: terminal statuses stop persistence", () => {
+  assert.equal(gmailOutcomeStopsPersistence("BLOCKED"), true);
+  assert.equal(gmailOutcomeStopsPersistence("ERROR"), true);
+  assert.equal(gmailOutcomeStopsPersistence("DUPLICATE"), true);
+  assert.equal(gmailOutcomeStopsPersistence("NOT_FINANCIAL"), true);
+  assert.equal(gmailOutcomeStopsPersistence("SAVED"), false);
+  assert.equal(gmailOutcomeStopsPersistence("NEEDS_REVIEW"), false);
 });

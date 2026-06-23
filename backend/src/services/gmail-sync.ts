@@ -43,6 +43,8 @@ import {
 import type { SupplierDecision } from "./supplier/supplierTypes.js";
 import { computeTrustDecision, summarizeTrustDecision } from "./trust/trustEngine.js";
 import type { TrustDecision, TrustDuplicateRisk } from "./trust/trustTypes.js";
+import { computeDocumentOutcome, summarizeDocumentOutcome } from "./outcome/outcomeEngine.js";
+import type { DocumentOutcome, DocumentOutcomeStatus, OutcomeOptionalContext } from "./outcome/outcomeTypes.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
@@ -1289,6 +1291,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         sir: ReturnType<typeof summarizeSupplierDecision> | null;
         fse: ReturnType<typeof summarizeFinancialSanityDecision> | null;
         trust: ReturnType<typeof summarizeTrustDecision> | null;
+        outcome: ReturnType<typeof summarizeDocumentOutcome> | null;
       } = {
         amount: extractedFields.amount,
         invoiceNumber: extractedFields.invoiceNumber,
@@ -1300,6 +1303,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         sir: null,
         fse: null,
         trust: null,
+        outcome: null,
       };
       if (extractedFields.amount !== null) {
         logStep(`[gmail-sync] AMOUNT_EXTRACTED message=${email.gmailId} amount=${extractedFields.amount} confidence=${extractedFields.confidence}`);
@@ -1457,7 +1461,26 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         });
         parsedFieldsJson.trust = summarizeTrustDecision(earlyTrustDecision);
         classification = applyTrustReviewGate({ classification, trustDecision: earlyTrustDecision });
-        if (earlyTrustDecision.decision === "BLOCK") {
+        const earlyDocumentOutcome = runGmailOrgOutcomeDecision({
+          organizationId,
+          trustDecision: earlyTrustDecision,
+          fseDecision: earlyFseDecision,
+          supplierDecision: supplierMetadata.decision,
+          moneyDecision,
+          supplierName,
+          supplierTaxId: supplierMetadata.taxId,
+          invoiceNumber: earlyInvoiceNumber,
+          documentDate: earlyDocumentDate,
+          documentType: classification.documentType,
+          classification,
+          businessClassificationReason: businessClassification.reason,
+          visualReviewReason: visualAttachmentHints.reviewReason,
+          gmailMessageId: email.gmailId,
+          logStep,
+        });
+        parsedFieldsJson.outcome = summarizeDocumentOutcome(earlyDocumentOutcome);
+        classification = applyOutcomeReviewGate({ classification, documentOutcome: earlyDocumentOutcome });
+        if (gmailOutcomeStopsPersistence(earlyDocumentOutcome.status)) {
           await recordFinancialDocumentDecision({
             organizationId,
             source: "gmail",
@@ -1476,7 +1499,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             documentType: "payment_request",
             driveFileUrl: null,
             confidenceScore: Math.min(classification.confidence, 0.79),
-            uncertaintyReason: `trust_block:${earlyTrustDecision.reasonCode}:${earlyTrustDecision.reason}`,
+            uncertaintyReason: gmailOutcomeUncertaintyReason(earlyDocumentOutcome),
             forceNeedsReview: true,
             parsedFieldsJson,
             rawAnalysis: {
@@ -1493,7 +1516,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             where: { id: email.emailRecordId },
             data: { processedAt: new Date() },
           });
-          logStep(`[trust] blocked persistence message=${email.gmailId} reason="${earlyTrustDecision.reason}"`);
+          logStep(`[outcome] terminal path message=${email.gmailId} status=${earlyDocumentOutcome.status} reasonCode=${earlyDocumentOutcome.reasonCode}`);
           continue;
         }
         await recordFinancialDocumentDecision({
@@ -1616,7 +1639,28 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       });
       parsedFieldsJson.trust = summarizeTrustDecision(trustDecision);
       classification = applyTrustReviewGate({ classification, trustDecision });
-      if (trustDecision.decision === "BLOCK") {
+      const documentOutcome = runGmailOrgOutcomeDecision({
+        organizationId,
+        trustDecision,
+        fseDecision,
+        supplierDecision: supplierMetadata.decision,
+        moneyDecision,
+        supplierName,
+        supplierTaxId: supplierMetadata.taxId,
+        invoiceNumber: invoiceNumberForDecision,
+        documentDate: documentDateForDecision,
+        documentType: classification.documentType,
+        classification,
+        existingScanItem,
+        duplicateKey,
+        businessClassificationReason: businessClassification.reason,
+        visualReviewReason: visualAttachmentHints.reviewReason,
+        gmailMessageId: email.gmailId,
+        logStep,
+      });
+      parsedFieldsJson.outcome = summarizeDocumentOutcome(documentOutcome);
+      classification = applyOutcomeReviewGate({ classification, documentOutcome });
+      if (gmailOutcomeStopsPersistence(documentOutcome.status)) {
         await recordFinancialDocumentDecision({
           organizationId,
           source: "gmail",
@@ -1635,7 +1679,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           documentType: classification.documentType,
           driveFileUrl: null,
           confidenceScore: classification.confidence,
-          uncertaintyReason: `trust_block:${trustDecision.reasonCode}:${trustDecision.reason}`,
+          uncertaintyReason: gmailOutcomeUncertaintyReason(documentOutcome),
           forceNeedsReview: true,
           parsedFieldsJson,
           rawAnalysis: {
@@ -1652,7 +1696,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           where: { id: email.emailRecordId },
           data: { processedAt: new Date() },
         });
-        logStep(`[trust] blocked persistence message=${email.gmailId} reason="${trustDecision.reason}"`);
+        logStep(`[outcome] terminal path message=${email.gmailId} status=${documentOutcome.status} reasonCode=${documentOutcome.reasonCode}`);
         continue;
       }
       if (classification.reviewStatus === "needs_review") needsReviewCount++;
@@ -1696,7 +1740,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         gmailMessageId: email.gmailId,
       });
       const canPersistFinancialRecord = documentDecision.action === "accepted";
-      if (canPersistFinancialRecord && classification.reviewStatus === "auto_saved" && !clientId && !isIncomingSupplierExpense && classification.isRelevant && email.domain) {
+      const outcomeAllowsAutoSavePersistence = documentOutcome.status === "SAVED";
+      if (canPersistFinancialRecord && outcomeAllowsAutoSavePersistence && classification.reviewStatus === "auto_saved" && !clientId && !isIncomingSupplierExpense && classification.isRelevant && email.domain) {
         const saved = await upsertPotentialClient({
           organizationId,
           name: normalizeSupplierName(email.senderName || email.domain),
@@ -1708,7 +1753,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         clientId = saved.id;
         clientIdByDomain.set(email.domain, saved.id);
         if (saved.created) clientsCreated++;
-        if (canPersistFinancialRecord && classification.reviewStatus === "auto_saved") {
+        if (canPersistFinancialRecord && outcomeAllowsAutoSavePersistence && classification.reviewStatus === "auto_saved") {
           const leadSaved = await upsertGmailLead({
             organizationId,
             name: normalizeSupplierName(email.senderName || supplierName || email.domain),
@@ -1731,8 +1776,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       const shouldUploadAttachments =
         classification.isRelevant &&
         (
-          (classification.reviewStatus === "auto_saved" && canPersistFinancialRecord) ||
-          (classification.reviewStatus === "needs_review" && isInvoiceRecordDocument(classification.documentType) && documentDecision.action !== "filtered")
+          (classification.reviewStatus === "auto_saved" && canPersistFinancialRecord && outcomeAllowsAutoSavePersistence) ||
+          (documentOutcome.status === "NEEDS_REVIEW" && classification.reviewStatus === "needs_review" && isInvoiceRecordDocument(classification.documentType) && documentDecision.action !== "filtered")
         );
       for (const part of email.parts) {
         if (!shouldUploadAttachments) {
@@ -2065,7 +2110,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         logStep(`[gmail-sync] duplicate GmailScanItem message=${email.gmailId}; continuing idempotent invoice/payment persistence`);
       }
 
-      if (canPersistFinancialRecord && classification.reviewStatus === "auto_saved") {
+      if (canPersistFinancialRecord && outcomeAllowsAutoSavePersistence && classification.reviewStatus === "auto_saved") {
         for (const taskTitle of analysis.tasks) {
           const existingTask = await prisma.task.findUnique({
             where: {
@@ -2102,7 +2147,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         if (!clientId) {
           if (isIncomingSupplierExpense) {
             logStep(`[gmail-sync] supplier expense invoice message=${email.gmailId}; skipping Client placeholder creation supplier="${supplierName}"`);
-          } else if (canPersistFinancialRecord && classification.reviewStatus === "auto_saved") {
+          } else if (canPersistFinancialRecord && outcomeAllowsAutoSavePersistence && classification.reviewStatus === "auto_saved") {
             const saved = await ensureInvoiceClient({
               organizationId,
               supplierName,
@@ -3048,6 +3093,139 @@ export function applyTrustReviewGate(input: {
     decisionReason: `${input.classification.decisionReason}; ${reason}`.slice(0, 500),
     confidence: Math.min(input.classification.confidence, input.trustDecision.confidence / 100),
   };
+}
+
+export function buildGmailOutcomeContext(input: {
+  classification: GmailScanClassification;
+  supplierDecision: SupplierDecision;
+  moneyDecision: MoneyDecision;
+  fingerprint: ReturnType<typeof computeCanonicalFingerprint> | null;
+  existingScanItem?: { amount: unknown } | null;
+  duplicateKey?: string | null;
+  businessClassificationReason?: string | null;
+  visualReviewReason?: string | null;
+  pipelineError?: string | null;
+  processingStage?: string | null;
+}): OutcomeOptionalContext {
+  const existingAmount = Number(input.existingScanItem?.amount);
+  const duplicateDetected =
+    Boolean(input.existingScanItem) && Number.isFinite(existingAmount) && existingAmount > 0;
+  const reviewReason =
+    [
+      input.classification.reviewStatus === "needs_review" ? input.classification.decisionReason : null,
+      input.visualReviewReason,
+      input.businessClassificationReason,
+    ]
+      .filter(Boolean)
+      .join("; ") || null;
+
+  return {
+    documentType: input.classification.documentType,
+    duplicateDetected,
+    duplicateMatchIdentity: duplicateDetected
+      ? input.fingerprint?.fingerprint ?? input.duplicateKey ?? null
+      : null,
+    reviewReason,
+    pipelineError: input.pipelineError ?? null,
+    processingStage: input.processingStage ?? null,
+  };
+}
+
+export function runGmailOrgOutcomeDecision(input: {
+  organizationId: string;
+  trustDecision: TrustDecision;
+  fseDecision: FinancialSanityDecision;
+  supplierDecision: SupplierDecision;
+  moneyDecision: MoneyDecision;
+  supplierName: string;
+  supplierTaxId: string | null;
+  invoiceNumber: string | null;
+  documentDate: Date;
+  documentType: string;
+  classification: GmailScanClassification;
+  existingScanItem?: { amount: unknown } | null;
+  duplicateKey?: string | null;
+  businessClassificationReason?: string | null;
+  visualReviewReason?: string | null;
+  pipelineError?: string | null;
+  processingStage?: string | null;
+  gmailMessageId?: string;
+  logStep?: (message: string) => void;
+}): DocumentOutcome {
+  const outcomeStartedAt = Date.now();
+  if (input.gmailMessageId && input.logStep) {
+    input.logStep(`[outcome] start message=${input.gmailMessageId}`);
+  }
+
+  const fingerprint = computeCanonicalFingerprint({
+    organizationId: input.organizationId,
+    supplierName: input.supplierName,
+    supplierTaxId: input.supplierTaxId,
+    invoiceNumber: input.invoiceNumber,
+    totalAmount: input.moneyDecision.selectedAmount,
+    documentDate: input.documentDate,
+    documentType: mapAnalysisDocumentTypeForAmount(input.documentType),
+  });
+  const outcome = computeDocumentOutcome({
+    trustDecision: input.trustDecision,
+    fseDecision: input.fseDecision,
+    supplierDecision: input.supplierDecision,
+    moneyDecision: input.moneyDecision,
+    fingerprint,
+    context: buildGmailOutcomeContext({
+      classification: input.classification,
+      supplierDecision: input.supplierDecision,
+      moneyDecision: input.moneyDecision,
+      fingerprint,
+      existingScanItem: input.existingScanItem,
+      duplicateKey: input.duplicateKey,
+      businessClassificationReason: input.businessClassificationReason,
+      visualReviewReason: input.visualReviewReason,
+      pipelineError: input.pipelineError,
+      processingStage: input.processingStage,
+    }),
+  });
+
+  if (input.gmailMessageId && input.logStep) {
+    input.logStep(
+      `[outcome] status message=${input.gmailMessageId} status=${outcome.status} reasonCode=${outcome.reasonCode} durationMs=${Date.now() - outcomeStartedAt}`
+    );
+  }
+
+  return outcome;
+}
+
+export function gmailOutcomeStopsPersistence(status: DocumentOutcomeStatus): boolean {
+  return status === "BLOCKED" || status === "ERROR" || status === "DUPLICATE" || status === "NOT_FINANCIAL";
+}
+
+export function gmailOutcomeUncertaintyReason(outcome: DocumentOutcome): string {
+  return `outcome_${outcome.status}:${outcome.reasonCode}:${outcome.reason}`.slice(0, 500);
+}
+
+export function applyOutcomeReviewGate(input: {
+  classification: GmailScanClassification;
+  documentOutcome: DocumentOutcome;
+}): GmailScanClassification {
+  if (input.documentOutcome.status === "NEEDS_REVIEW" || input.documentOutcome.status === "BLOCKED") {
+    const reason =
+      input.documentOutcome.status === "BLOCKED"
+        ? `outcome_blocked:${input.documentOutcome.reasonCode}`
+        : `outcome_review:${input.documentOutcome.reasonCode}`;
+    if (input.classification.reviewStatus === "needs_review") {
+      return {
+        ...input.classification,
+        decisionReason: `${input.classification.decisionReason}; ${reason}`.slice(0, 500),
+      };
+    }
+    return {
+      ...input.classification,
+      reviewStatus: "needs_review",
+      decisionReason: `${input.classification.decisionReason}; ${reason}`.slice(0, 500),
+    };
+  }
+
+  return input.classification;
 }
 
 export function applyFinancialSanityReviewGate(input: {
