@@ -28,6 +28,17 @@ import type { MoneyDecision } from "./amount/canonicalAmount.js";
 import {
   buildPaymentLookupsFromCanonical,
 } from "./dedup/fingerprintMigration.js";
+import { normalizeSupplierTaxId } from "./dedup/sharedMatcher.js";
+import { computeCanonicalSupplier } from "./supplier/canonicalSupplier.js";
+import {
+  buildAnalysisSupplierCandidates,
+  buildDocumentLabelSupplierCandidate,
+  buildHistoricalSupplierCandidate,
+  buildOcrKeywordSupplierCandidate,
+  buildSenderSupplierCandidates,
+  summarizeSupplierDecision,
+} from "./supplier/supplierCandidates.js";
+import type { SupplierDecision } from "./supplier/supplierTypes.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
@@ -1201,6 +1212,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         confidence: number;
         reasons: string[];
         arc: ReturnType<typeof summarizeMoneyDecision> | null;
+        sir: ReturnType<typeof summarizeSupplierDecision> | null;
       } = {
         amount: extractedFields.amount,
         invoiceNumber: extractedFields.invoiceNumber,
@@ -1209,6 +1221,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         confidence: extractedFields.confidence,
         reasons: extractedFields.reasons,
         arc: null,
+        sir: null,
       };
       if (extractedFields.amount !== null) {
         logStep(`[gmail-sync] AMOUNT_EXTRACTED message=${email.gmailId} amount=${extractedFields.amount} confidence=${extractedFields.confidence}`);
@@ -1251,8 +1264,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         senderDomain: email.domain,
         ownerEmails,
         knownSupplierNames,
+        ocrKeywordMatch: ocrSupplierClassifier,
         logStep,
       });
+      parsedFieldsJson.sir = summarizeSupplierDecision(supplierMetadata.decision);
       const supplierName = supplierMetadata.name;
       const supplierBranchName = supplierBranchNameFromFolderName(supplierName);
       if (supplierMetadata.source === "unknown") {
@@ -1278,6 +1293,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       ) {
         classification = promoteImageInvoiceCandidateForReview(classification, visualAttachmentHints.reviewReason);
       }
+      classification = applySupplierDecisionReviewGate({
+        classification,
+        supplierDecision: supplierMetadata.decision,
+      });
       const legacySupplierExpenseSignal = isIncomingSupplierExpenseCandidate({
         source: email.source,
         senderEmail: email.senderEmail,
@@ -2583,6 +2602,28 @@ export type GmailScanClassification = {
   heldForFinancialSender: boolean;
   financialSenderReason: string | null;
 };
+
+export function applySupplierDecisionReviewGate(input: {
+  classification: GmailScanClassification;
+  supplierDecision: SupplierDecision;
+}): GmailScanClassification {
+  const decision = input.supplierDecision;
+  if (decision.status === "resolved" && decision.isStrongEnoughForAutoSave) {
+    return input.classification;
+  }
+  if (input.classification.reviewStatus === "needs_review") {
+    return {
+      ...input.classification,
+      decisionReason: `${input.classification.decisionReason}; supplier_${decision.status}:${decision.reasonCode}`.slice(0, 500),
+    };
+  }
+  return {
+    ...input.classification,
+    reviewStatus: "needs_review",
+    decisionReason: `${input.classification.decisionReason}; supplier_${decision.status}:${decision.reasonCode}`.slice(0, 500),
+    confidence: Math.min(input.classification.confidence, Math.max(decision.confidence, 0.4)),
+  };
+}
 
 type AttachmentInvoiceAnalysisResult =
   | { skipped: true; reason: string; attachmentText: string }
@@ -3962,8 +4003,9 @@ type SupplierMetadata = {
   name: string;
   taxId: string | null;
   confidence: number;
-  source: "keyword" | "document" | "ai" | "known_supplier" | "sender_display" | "domain" | "unknown";
+  source: "keyword" | "document" | "ai" | "known_supplier" | "sender_display" | "domain" | "unknown" | "sir";
   keyword?: string | null;
+  decision: SupplierDecision;
 };
 
 export function resolveSupplierMetadata(input: {
@@ -3975,51 +4017,97 @@ export function resolveSupplierMetadata(input: {
   senderDomain: string;
   ownerEmails: Set<string>;
   knownSupplierNames: Map<string, string>;
+  ocrKeywordMatch?: ReturnType<typeof classifyOcrSupplierText> | null;
   logStep?: (message: string) => void;
 }): SupplierMetadata {
   const taxId = input.analysisSupplierTaxId || extractSupplierTaxId(input.bodyText);
+  const supplierCandidates = buildAnalysisSupplierCandidates({
+    supplier: input.analysisSupplier,
+    supplierTaxId: taxId,
+    source: "claude_email",
+    aiConfidence: taxId ? 0.88 : 0.8,
+  });
+
   const documentSupplier = extractSupplierFromDocument(input.bodyText, input.ownerEmails);
-  if (documentSupplier) return finalizeSupplierMetadata({
-    name: documentSupplier,
-    taxId,
-    confidence: taxId ? 0.98 : 0.92,
-    source: "document",
-  }, input);
+  if (documentSupplier) {
+    supplierCandidates.push(buildDocumentLabelSupplierCandidate({
+      supplier: documentSupplier,
+      vatNumber: taxId,
+      confidence: taxId ? 0.98 : 0.92,
+    }));
+  }
 
-  const aiSupplier = normalizeSupplierName(input.analysisSupplier ?? "");
-  if (isUsableSupplierName(aiSupplier, input.ownerEmails)) return finalizeSupplierMetadata({
-    name: aiSupplier,
-    taxId,
-    confidence: taxId ? 0.88 : 0.8,
-    source: "ai",
-  }, input);
+  const keywordSupplier = input.ocrKeywordMatch ?? detectSupplierKeyword(`${input.bodyText}\n${input.analysisSupplier ?? ""}`);
+  if (keywordSupplier) {
+    supplierCandidates.push(buildOcrKeywordSupplierCandidate({
+      supplier: keywordSupplier.supplierName,
+      keyword: keywordSupplier.keyword,
+      confidence: keywordSupplier.confidence,
+    }));
+  }
 
-  const keywordSupplier = detectSupplierKeyword(`${input.bodyText}\n${input.analysisSupplier ?? ""}`);
-  if (keywordSupplier) return finalizeSupplierMetadata({
-    name: keywordSupplier.supplierName,
-    taxId,
-    confidence: keywordSupplier.confidence,
-    source: "keyword",
-    keyword: keywordSupplier.keyword,
-  }, input);
+  supplierCandidates.push(...buildSenderSupplierCandidates({
+    senderDisplayName: input.senderName,
+    senderDomain: input.senderDomain,
+  }));
 
-  const senderSupplier = normalizeSupplierName(input.senderName);
-  if (isUsableSupplierName(senderSupplier, input.ownerEmails) && !looksLikeEmailAddress(senderSupplier)) return finalizeSupplierMetadata({
-    name: senderSupplier,
-    taxId,
-    confidence: 0.52,
-    source: "sender_display",
-  }, input);
+  const knownRegistryEntries = buildKnownSupplierRegistryEntries(input.knownSupplierNames);
+  const historicalNames = new Set<string>();
+  const knownCandidates = [input.analysisSupplier, documentSupplier, keywordSupplier?.supplierName];
+  for (const knownName of knownCandidates) {
+    const key = knownName ? canonicalSupplierKey(knownName) : "";
+    if (!key) continue;
+    const historical = input.knownSupplierNames.get(key);
+    if (!historical || historicalNames.has(historical)) continue;
+    historicalNames.add(historical);
+    supplierCandidates.push(buildHistoricalSupplierCandidate({
+      supplier: historical,
+      vatNumber: taxId,
+      priorInvoiceCount: 3,
+    }));
+  }
 
-  const domainSupplier = supplierFromDomain(input.senderDomain);
-  if (isUsableSupplierName(domainSupplier, input.ownerEmails) && !isPersonalEmailDomain(input.senderDomain)) return finalizeSupplierMetadata({
-    name: domainSupplier,
-    taxId,
-    confidence: 0.35,
-    source: "domain",
-  }, input);
+  const decision = computeCanonicalSupplier({
+    organizationId: "gmail-sync",
+    channel: "gmail",
+    candidates: supplierCandidates,
+    registry: knownRegistryEntries,
+    ownerEmails: input.ownerEmails,
+  });
 
-  return { name: "Unknown supplier", taxId, confidence: 0.1, source: "unknown" };
+  input.logStep?.(
+    `[gmail-sync] SIR_DECISION status=${decision.status} supplier="${decision.supplierName ?? "none"}" reasonCode=${decision.reasonCode} confidence=${decision.confidence.toFixed(2)}`
+  );
+
+  if (decision.status !== "resolved" || !decision.supplierName || !isUsableSupplierName(decision.supplierName, input.ownerEmails)) {
+    return {
+      name: UNKNOWN_SUPPLIER_FALLBACK,
+      taxId: normalizeSupplierTaxId(taxId),
+      confidence: Math.min(decision.confidence, 0.2),
+      source: "unknown",
+      keyword: keywordSupplier?.keyword ?? null,
+      decision,
+    };
+  }
+
+  const resolvedSource = decision.reasonCode === "VAT_REGISTRY"
+    ? "document"
+    : decision.reasonCode === "OCR_KEYWORD"
+      ? "keyword"
+      : decision.reasonCode === "AI_EXTRACTED"
+        ? "ai"
+        : decision.reasonCode === "HISTORICAL_MATCH" || decision.reasonCode === "BRAND_ALIAS"
+          ? "known_supplier"
+          : "sir";
+
+  return withKnownSupplierName({
+    name: decision.supplierName,
+    taxId: normalizeSupplierTaxId(decision.vatNumber) || normalizeSupplierTaxId(taxId),
+    confidence: decision.confidence,
+    source: resolvedSource,
+    keyword: keywordSupplier?.keyword ?? null,
+    decision,
+  }, input.knownSupplierNames);
 }
 
 function finalizeSupplierMetadata(
@@ -4059,6 +4147,37 @@ function withKnownSupplierName(candidate: SupplierMetadata, knownSupplierNames: 
   if (known) return { ...candidate, name: known, source: candidate.source === "document" || candidate.source === "keyword" ? candidate.source : "known_supplier" };
   if (key) knownSupplierNames.set(key, candidate.name);
   return candidate;
+}
+
+function buildKnownSupplierRegistryEntries(knownSupplierNames: Map<string, string>) {
+  const entries = [];
+  const seen = new Set<string>();
+  for (const name of knownSupplierNames.values()) {
+    const canonical = canonicalSupplierKey(name);
+    if (!canonical || seen.has(canonical)) continue;
+    seen.add(canonical);
+    entries.push({
+      canonicalSupplier: `known:${canonical}`,
+      canonicalName: name,
+      normalizedName: canonical,
+      aliases: [name],
+      ocrVariants: [],
+      vatNumber: null,
+      emailDomains: [],
+      knownEmails: [],
+      knownPhones: [],
+      category: "other" as const,
+      isBlocklisted: false,
+      typicalLanguage: /[\u0590-\u05FF]/u.test(name) ? "he" as const : "mixed" as const,
+      typicalCurrency: "ILS",
+      historicalConfidence: 0.8,
+      correctionsCount: 0,
+      invoicesCount: 1,
+      firstSeenAt: null,
+      lastSeenAt: null,
+    });
+  }
+  return entries;
 }
 
 export function classifyOcrSupplierText(text: string) {
@@ -4177,7 +4296,7 @@ function isUsableSupplierName(value: string, ownerEmails: Set<string> = new Set(
   if (isLikelyJunkSupplierName(cleaned)) return false;
   const normalizedToken = cleaned.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   if (!cleaned || cleaned === "Unknown supplier") return false;
-  if (/^(unknown|unknown supplier|לא\s+ידוע|לא\s+מזוהה|n\/a|null|undefined)$/i.test(cleaned)) return false;
+  if (/^(unknown|unknown supplier|לא\s+ידוע|לא\s+מזוהה|לא\s+זוהה|n\/a|null|undefined)$/i.test(cleaned)) return false;
   if (cleaned === ".name" || cleaned.startsWith(".")) return false;
   if (/[\r\n]/.test(value)) return false;
   if (cleaned.length < 2 || cleaned.length > 60) return false;

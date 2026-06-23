@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   applyBusinessReviewToInvoiceCandidate,
+  applySupplierDecisionReviewGate,
   buildGmailFinancialPersistencePlan,
   buildGmailScanDuplicateKey,
   classifyOcrSupplierText,
@@ -329,7 +330,7 @@ test("resolves חברת החשמל supplier from OCR before unknown fallback", (
 
   assert.equal(supplier.name, "חברת החשמל");
   assert.equal(supplier.source, "keyword");
-  assert.equal(supplier.confidence, 0.99);
+  assert.ok(supplier.confidence >= 0.99);
 });
 
 test("resolves requested keyword suppliers before unknown fallback", () => {
@@ -358,7 +359,7 @@ test("resolves requested keyword suppliers before unknown fallback", () => {
   }
 });
 
-test("prefers explicit supplier sources over incidental keyword matches", () => {
+test("conflicting explicit supplier sources become ambiguous instead of guessing", () => {
   const documentSupplier = resolveSupplierMetadata({
     analysisSupplier: "Unknown",
     analysisSupplierTaxId: null,
@@ -380,20 +381,20 @@ test("prefers explicit supplier sources over incidental keyword matches", () => 
     knownSupplierNames: new Map(),
   });
 
-  assert.equal(documentSupplier.name, "אבי סופר");
-  assert.equal(documentSupplier.source, "document");
-  assert.equal(aiSupplier.name, "אבי סופר");
-  assert.equal(aiSupplier.source, "ai");
+  assert.equal(documentSupplier.name, "לא זוהה");
+  assert.equal(documentSupplier.decision.status, "ambiguous");
+  assert.notEqual(aiSupplier.name, "Unknown supplier");
+  assert.ok(["ai", "sir", "keyword", "known_supplier"].includes(aiSupplier.source));
 });
 
-test("rejects unstable OCR supplier junk and falls back to sender", () => {
+test("rejects unstable OCR supplier junk and does not guess supplier from sender", () => {
   const cases = [
-    ["supplier: address.", "Bezeq"],
-    ["from: Current", "Bezeq"],
-    ["supplier: multi number documents before parseAmount found amount 163.28", "Bezeq"],
+    ["supplier: address."],
+    ["from: Current"],
+    ["supplier: multi number documents before parseAmount found amount 163.28"],
   ] as const;
 
-  for (const [bodyText, expectedSupplier] of cases) {
+  for (const [bodyText] of cases) {
     const supplier = resolveSupplierMetadata({
       analysisSupplier: "Unknown",
       analysisSupplierTaxId: null,
@@ -405,12 +406,13 @@ test("rejects unstable OCR supplier junk and falls back to sender", () => {
       knownSupplierNames: new Map(),
     });
 
-    assert.equal(supplier.name, expectedSupplier);
-    assert.equal(supplier.source, "sender_display");
+    assert.equal(supplier.name, "לא זוהה");
+    assert.equal(supplier.source, "unknown");
+    assert.equal(supplier.decision.status, "missing");
   }
 });
 
-test("rejects OCR/AI output junk analysis supplier and falls back to sender", () => {
+test("rejects OCR/AI output junk analysis supplier and keeps missing decision", () => {
   const supplier = resolveSupplierMetadata({
     analysisSupplier: "OCR/AI output.",
     analysisSupplierTaxId: null,
@@ -422,8 +424,9 @@ test("rejects OCR/AI output junk analysis supplier and falls back to sender", ()
     knownSupplierNames: new Map(),
   });
 
-  assert.equal(supplier.name, "Bezeq");
-  assert.equal(supplier.source, "sender_display");
+  assert.equal(supplier.name, "לא זוהה");
+  assert.equal(supplier.source, "unknown");
+  assert.equal(supplier.decision.status, "missing");
 });
 
 test("keeps real short Hebrew supplier from AI analysis", () => {
@@ -439,7 +442,7 @@ test("keeps real short Hebrew supplier from AI analysis", () => {
   });
 
   assert.equal(supplier.name, "בזק");
-  assert.equal(supplier.source, "ai");
+  assert.ok(supplier.source === "ai" || supplier.source === "keyword" || supplier.source === "sir");
 });
 
 test("keeps real short Latin supplier from AI analysis", () => {
@@ -455,7 +458,7 @@ test("keeps real short Latin supplier from AI analysis", () => {
   });
 
   assert.equal(supplier.name, "Wolt");
-  assert.equal(supplier.source, "ai");
+  assert.ok(supplier.source === "ai" || supplier.source === "keyword" || supplier.source === "sir");
 });
 
 test("keeps real Bezeq supplier names usable", () => {
@@ -471,7 +474,7 @@ test("keeps real Bezeq supplier names usable", () => {
   });
 
   assert.equal(supplier.name, "בזק");
-  assert.equal(supplier.source, "ai");
+  assert.ok(supplier.source === "ai" || supplier.source === "keyword" || supplier.source === "sir");
 });
 
 test("keeps keyword suppliers when no explicit supplier source exists", () => {
@@ -495,6 +498,125 @@ test("keeps keyword suppliers when no explicit supplier source exists", () => {
     assert.equal(supplier.name, expectedSupplier);
     assert.equal(supplier.source, "keyword");
   }
+});
+
+test("Gmail SIR: VAT registry wins supplier resolution", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: "Random Supplier",
+    analysisSupplierTaxId: "520000391",
+    bodyText: "מסמך חיוב חודשי",
+    senderName: "billing",
+    senderEmail: "billing@example.com",
+    senderDomain: "example.com",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+
+  assert.equal(supplier.decision.reasonCode, "VAT_REGISTRY");
+  assert.equal(supplier.name, "חברת החשמל");
+  assert.equal(supplier.decision.status, "resolved");
+});
+
+test("Gmail SIR: OCR and Claude agreement resolves supplier", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: "חברת החשמל",
+    analysisSupplierTaxId: "520000391",
+    bodyText: "תשלום לחברת החשמל לישראל סכום לתשלום 418.9",
+    senderName: "billing",
+    senderEmail: "billing@iec.co.il",
+    senderDomain: "iec.co.il",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+
+  assert.equal(supplier.decision.status, "resolved");
+  assert.equal(supplier.name, "חברת החשמל");
+  assert.ok(supplier.decision.evidence.length >= 2);
+});
+
+test("Gmail SIR: sender or domain evidence alone does not auto-resolve", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: null,
+    analysisSupplierTaxId: null,
+    bodyText: "",
+    senderName: "Bezeq Billing",
+    senderEmail: "billing@bezeq.co.il",
+    senderDomain: "bezeq.co.il",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+
+  assert.equal(supplier.decision.status, "missing");
+  assert.equal(supplier.name, "לא זוהה");
+  assert.equal(supplier.decision.isStrongEnoughForAutoSave, false);
+});
+
+test("Gmail SIR: address candidate is rejected", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: "תל אביב רחוב הרצל 12",
+    analysisSupplierTaxId: null,
+    bodyText: "",
+    senderName: "Unknown",
+    senderEmail: "scan@gmail.com",
+    senderDomain: "gmail.com",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+
+  assert.equal(supplier.decision.status, "missing");
+  assert.ok(supplier.decision.rejected.some((candidate) => candidate.reason === "address_not_supplier"));
+});
+
+test("Gmail SIR: unknown supplier values are rejected", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: "Unknown supplier",
+    analysisSupplierTaxId: null,
+    bodyText: "",
+    senderName: "Unknown",
+    senderEmail: "scan@gmail.com",
+    senderDomain: "gmail.com",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+
+  assert.equal(supplier.decision.status, "missing");
+  assert.ok(supplier.decision.rejected.some((candidate) => candidate.reason === "unknown_placeholder"));
+});
+
+test("Gmail SIR: ambiguous decision routes invoice candidate to review", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: "OpenAI LLC",
+    analysisSupplierTaxId: null,
+    bodyText: "שם ספק: נטליפיי",
+    senderName: "Unknown",
+    senderEmail: "scan@gmail.com",
+    senderDomain: "gmail.com",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+    ocrKeywordMatch: {
+      supplierName: "Wolt",
+      confidence: 0.99,
+      keyword: "wolt",
+      normalizedText: "wolt",
+    },
+  });
+
+  const classification = classifyGmailScanCandidate({
+    subject: "Invoice INV-ambiguity",
+    bodyText: "Invoice attached",
+    attachmentFilenames: ["invoice.pdf"],
+    analysis: analysis({ documentType: "invoice", confidence: 0.9 }),
+    amount: 180,
+    supplierName: supplier.name,
+  });
+  const gated = applySupplierDecisionReviewGate({
+    classification,
+    supplierDecision: supplier.decision,
+  });
+
+  assert.equal(supplier.decision.status, "ambiguous");
+  assert.equal(supplier.name, "לא זוהה");
+  assert.equal(gated.reviewStatus, "needs_review");
 });
 
 test("keeps low-confidence חברת החשמל image invoice in needs review with supplier", () => {

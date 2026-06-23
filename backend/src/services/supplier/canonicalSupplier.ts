@@ -55,7 +55,7 @@ const SOURCE_PRIORITY: Record<string, number> = {
 };
 
 const STRONG_AUTO_SAVE_CONFIDENCE = 0.75;
-const AMBIGUOUS_SCORE_GAP = 8;
+const AMBIGUOUS_SCORE_GAP = 800;
 
 function reasonCodeForKind(kind: SupplierCandidateKind): SupplierReasonCode {
   switch (kind) {

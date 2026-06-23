@@ -12,6 +12,7 @@ const ADDRESS_POSTAL_PATTERN = /\b\d{5,7}\b.*[\p{L}]/u;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const DOMAIN_PATTERN = /^[\w.-]+\.[a-z]{2,}$/i;
+const OCR_AI_OUTPUT_PATTERN = /\b(?:ocr\s*\/\s*ai|ocr|ai)\s+output\b/i;
 
 const WEAK_ONLY_KINDS = new Set<SupplierCandidateKind>(["email_domain", "sender_display"]);
 
@@ -93,6 +94,7 @@ export function rejectSupplierCandidateReason(
   if (candidate.kind === "address" || looksLikeAddress(name)) return "address_not_supplier";
   if (isUnknownPlaceholder(name)) return "unknown_placeholder";
   if (isLikelyJunkSupplierName(name)) return "junk_supplier_name";
+  if (OCR_AI_OUTPUT_PATTERN.test(name)) return "ocr_ai_output_not_supplier";
   if (looksLikeEmailAddress(name)) return "email_not_supplier";
   if (candidate.kind !== "email_domain" && looksLikeDomain(name)) return "domain_not_supplier";
   if (isTaxIdLikeSupplierName(name, candidate.vatNumber)) return "tax_id_as_name";
