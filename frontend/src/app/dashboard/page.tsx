@@ -2,23 +2,28 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Activity, CalendarDays, CheckCircle2, ClipboardList, CreditCard, FileSearch } from "lucide-react";
 import { Nav } from "@/components/Nav";
 import {
-  NatalieBriefing,
-  NatalieConversationStrip,
-  NataliePrimaryAction,
-  NatalieQuietSummary,
-  NatalieTimeline,
-} from "@/components/natalie";
+  ActionCenter,
+  NatalieCommandBar,
+  NatalieHero,
+  NatalieTopBar,
+  BusinessSnapshot,
+  WorkSummary,
+} from "@/components/dashboard";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { KpiCard } from "@/components/ui/KpiCard";
 import { ScanBanner } from "@/components/ui/ScanBanner";
 import { StatusPill } from "@/components/ui/StatusPill";
-import { buildNatalieBriefing, buildQuietSummary } from "@/lib/natalie/briefing";
-import { inferReviewPresentation, natalieReviewMessage } from "@/lib/natalie/copy";
-import { formatNatalieActivities } from "@/lib/natalie/narrative";
-import type { NatalieActivityInput, NatalieBriefingInput } from "@/lib/natalie/types";
+import { buildNatalieBriefing } from "@/lib/natalie/briefing";
+import { resolveNatalieRecommendation } from "@/lib/natalie/recommendation";
+import {
+  buildDecisionItems,
+  buildHeroChips,
+  buildSnapshotMetrics,
+  buildWorkSummaryLines,
+  countUrgentDecisions,
+} from "@/lib/dashboard/decisions";
+import type { NatalieBriefingInput, NatalieRecommendationInput } from "@/lib/natalie/types";
 import {
   apiFetch,
   clearToken,
@@ -372,7 +377,6 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [invoiceAttachPaymentId, setInvoiceAttachPaymentId] = useState<string | null>(null);
   const [invoiceAttachLink, setInvoiceAttachLink] = useState("");
-  const [natalieConversation, setNatalieConversation] = useState("");
 
   useEffect(() => {
     const savedScanId = window.localStorage.getItem("activeGmailScanId");
@@ -897,64 +901,183 @@ export default function DashboardPage() {
   );
 
   const natalieBriefing = useMemo(() => buildNatalieBriefing(natalieBriefingInput), [natalieBriefingInput]);
-  const natalieQuietSummary = useMemo(() => buildQuietSummary(natalieBriefingInput), [natalieBriefingInput]);
-  const natalieTimeline = useMemo(
-    () => formatNatalieActivities(buildDashboardActivityInputs(recentInvoices, recentTasks, payments, scanStatus)),
-    [recentInvoices, recentTasks, payments, scanStatus]
+
+  const decisionItems = useMemo(
+    () =>
+      buildDecisionItems(
+        documentReviews,
+        missingInvoices,
+        payments,
+        alerts,
+        upcomingAppointments.map((appt) => ({
+          id: appt.id,
+          clientName: appt.client.name,
+          startTime: appt.startTime,
+          status: appt.status,
+        }))
+      ),
+    [documentReviews, missingInvoices, payments, alerts, upcomingAppointments]
+  );
+  const visibleDecisions = decisionItems.slice(0, 3);
+
+  const recommendationInput = useMemo<NatalieRecommendationInput>(
+    () => ({
+      gmailConnected,
+      documentReviews: documentReviews.map((item) => ({
+        id: item.id,
+        supplierName: item.supplierName,
+        reviewStatus: item.reviewStatus,
+        uncertaintyReason: item.uncertaintyReason,
+        documentType: item.documentType,
+        totalAmount: item.totalAmount,
+        currency: item.currency,
+      })),
+      unpaidPayments: unpaidPayments.map((payment) => ({
+        id: payment.id,
+        supplier: payment.supplier,
+        paid: payment.paid,
+        amount: payment.amount,
+        currency: payment.currency,
+        date: payment.date,
+      })),
+      missingInvoices: missingInvoices.map((payment) => ({
+        id: payment.id,
+        supplier: payment.supplier,
+        paid: payment.paid,
+        missingInvoice: true,
+        amount: payment.amount,
+        currency: payment.currency,
+        date: payment.date,
+      })),
+      upcomingAppointments: upcomingAppointments.map((appt) => ({
+        id: appt.id,
+        clientName: appt.client.name,
+        startTime: appt.startTime,
+        status: appt.status,
+      })),
+      openTasksCount,
+      invoicesSaved: monthPayments.length,
+      paymentsPrepared: unpaidPayments.length,
+      pendingDecisionCount: decisionItems.length,
+    }),
+    [
+      gmailConnected,
+      documentReviews,
+      unpaidPayments,
+      missingInvoices,
+      upcomingAppointments,
+      openTasksCount,
+      monthPayments.length,
+      decisionItems.length,
+    ]
   );
 
-  const priorityItems = buildPriorityItems(documentReviews, missingInvoices, payments, alerts);
-  const visiblePriorityItems = priorityItems.slice(0, 5);
-
-  const handleNataliePrimaryAction = useCallback(
-    (intent: string) => {
-      const action = natalieBriefing.primaryAction;
-      if (action.disabled) return;
-      if (action.href && intent !== "start_today") {
-        router.push(action.href);
-        return;
-      }
-      if (intent === "connect_gmail") {
-        connectGmail();
-        return;
-      }
-      document.getElementById("natalie-decisions")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    },
-    [natalieBriefing.primaryAction, router, connectGmail]
+  const natalieRecommendation = useMemo(() => resolveNatalieRecommendation(recommendationInput), [recommendationInput]);
+  const workSummaryLines = useMemo(
+    () =>
+      buildWorkSummaryLines({
+        scanLastSaved: scanStatus?.last?.saved,
+        monthPayments: monthPayments.length,
+        monthInvoices: monthPayments.length > 0 ? monthPayments.length : recentInvoices.length,
+        upcomingMeetings: upcomingMeetingsCount,
+        pendingReviews: documentReviews.length,
+        gmailConnected,
+        scanRunning,
+      }),
+    [
+      scanStatus?.last?.saved,
+      monthPayments.length,
+      recentInvoices.length,
+      upcomingMeetingsCount,
+      documentReviews.length,
+      gmailConnected,
+      scanRunning,
+    ]
   );
+
+  const heroChips = useMemo(
+    () => buildHeroChips(workSummaryLines.length, decisionItems.length, countUrgentDecisions(decisionItems)),
+    [workSummaryLines.length, decisionItems]
+  );
+
+  const snapshotMetrics = useMemo(
+    () =>
+      buildSnapshotMetrics(stats, {
+        monthPayments: monthPayments.length,
+        pendingReviews: documentReviews.length,
+        recentInvoices: recentInvoices.length,
+      }),
+    [stats, monthPayments.length, documentReviews.length, recentInvoices.length]
+  );
+
+  const businessName = organizationSettings?.name?.trim() || "העסק שלי";
+  const heroCtaLabel =
+    decisionItems.length > 0
+      ? "המשיכי לטפל בזה"
+      : natalieRecommendation.kind === "connect_gmail"
+        ? "חברי את הג׳ימייל"
+        : "מה תרצה שנטלי תעשה?";
+
+  const scrollToDecisions = useCallback(() => {
+    document.getElementById("natalie-decisions")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const handleHeroPrimary = useCallback(() => {
+    if (natalieRecommendation.kind === "connect_gmail") {
+      connectGmail();
+      return;
+    }
+    if (decisionItems.length > 0) {
+      scrollToDecisions();
+      return;
+    }
+    document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [natalieRecommendation.kind, decisionItems.length, connectGmail, scrollToDecisions]);
 
   const handleNatalieConversation = useCallback(
     (value: string) => {
       const trimmed = value.trim();
       if (!trimmed) return;
-      setNatalieConversation("");
-      if (trimmed.includes("תשלום") || trimmed.includes("שולם")) {
+      if (trimmed.includes("תשלום") || trimmed.includes("שולם") || trimmed.includes("מחכה לתשלום")) {
         router.push("/payments");
         return;
       }
-      if (trimmed.includes("ממתין") || trimmed.includes("התחל") || trimmed.includes("דחוף")) {
-        document.getElementById("natalie-decisions")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (trimmed.includes("דחוף") || trimmed.includes("ממתין") || trimmed.includes("התחל")) {
+        scrollToDecisions();
         return;
       }
-      setActionMessage("קיבלתי את הבקשה. נטלי ממשיכה לעבוד — אפשר גם לדבר איתי דרך כפתור נטלי למטה.");
+      if (trimmed.includes("יוצא") || trimmed.includes("הוצאות")) {
+        router.push("/payments");
+        return;
+      }
+      if (trimmed.includes("סרק")) {
+        runSync();
+        return;
+      }
+      setActionMessage("קיבלתי. נטלי מטפלת בזה — אפשר גם לדבר איתי דרך כפתור נטלי.");
     },
-    [router]
+    [router, scrollToDecisions, runSync]
   );
 
   return (
     <main
-      className="min-h-screen max-w-full overflow-x-clip px-4 pb-24 pt-20 md:px-8 md:pb-8 lg:mr-60"
+      className="min-h-screen max-w-full overflow-x-clip px-4 pb-32 pt-20 md:px-8 md:pb-8 lg:mr-60"
       style={{
-        backgroundColor: colors.bg,
+        background: `linear-gradient(180deg, ${colors.bgSoft} 0%, ${colors.bg} 28%, ${colors.bg} 100%)`,
         color: colors.textPrimary,
-        backgroundImage:
-          "radial-gradient(circle at top right, rgba(29,91,255,0.08), transparent 28rem), radial-gradient(circle at 10% 20%, rgba(31,170,89,0.05), transparent 22rem)",
       }}
     >
       <Nav />
 
-      <div className={`grid min-w-0 max-w-full ${spacing.section}`}>
+      <div className="mx-auto grid min-w-0 max-w-3xl gap-8">
         <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
+
+        <NatalieTopBar
+          businessName={businessName}
+          unreadCount={stats?.unreadAlerts ?? 0}
+          onNotifications={() => router.push("/message-scans")}
+          onNatalie={() => document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        />
 
         {showGmailConnect && (
           <section
@@ -976,28 +1099,14 @@ export default function DashboardPage() {
           </section>
         )}
 
-        <section
-          className={`${radius.card} ${shadow.card} ${spacing.card} border`}
-          style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
-          aria-label="היום עם נטלי"
-        >
-          <div className="mb-4">
-            <span
-              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 ${typography.badge} ${radius.pill}`}
-              style={{ backgroundColor: colors.accentSoft, color: colors.accent }}
-            >
-              העוזרת החכמה שלך פעילה
-            </span>
-          </div>
-          <div className={`natalie-briefing-shell space-y-4 [&_h1]:text-[32px] [&_h1]:font-extrabold [&_h1]:leading-tight [&_h2]:text-lg [&_h2]:font-bold [&_header>p]:mt-2 [&_header>p]:text-lg [&_header>p]:font-medium [&_header>p]:leading-8 [&_li]:text-base [&_li]:leading-7 md:[&_h1]:text-[40px]`}>
-            <NatalieBriefing
-              briefing={{
-                ...natalieBriefing,
-                greeting: `${natalieBriefing.greeting} 👋`,
-              }}
-            />
-          </div>
-        </section>
+        <NatalieHero
+          greeting={natalieBriefing.greeting}
+          subtitle="נטלי עבדה בשבילך גם כשלא היית כאן."
+          chips={heroChips}
+          ctaLabel={heroCtaLabel}
+          loading={pageLoading}
+          onCta={handleHeroPrimary}
+        />
 
         {scanBanner && (
           <ScanBanner
@@ -1009,132 +1118,20 @@ export default function DashboardPage() {
           />
         )}
 
-        <section className="grid gap-4 sm:flex sm:flex-wrap sm:items-center">
-          <NataliePrimaryAction
-            action={natalieBriefing.primaryAction}
-            onAction={handleNataliePrimaryAction}
-            className={`${radius.control} ${button.primary} w-full border border-transparent bg-[#1D5BFF] text-white shadow-[0_12px_28px_rgba(29,91,255,0.24)] sm:w-auto`}
-          />
-          <button
-            type="button"
-            onClick={runSync}
-            disabled={syncing || Boolean(activeScanId)}
-            className={`${radius.control} ${button.secondary} w-full sm:w-auto`}
-            style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.textSecondary }}
-          >
-            {syncing || activeScanId ? "סורקת..." : "סרוק עכשיו"}
-          </button>
-        </section>
+        <ActionCenter
+          items={visibleDecisions}
+          totalCount={decisionItems.length}
+          loading={pageLoading}
+          onMarkPaid={markPaymentPaid}
+          onAttachInvoice={attachInvoiceToPayment}
+          onRetry={runSync}
+        />
 
-        <section
-          className={`${radius.card} ${shadow.card} ${spacing.card} border`}
-          style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
-        >
-          <NatalieConversationStrip
-            placeholder="מה תרצה שאעשה?"
-            suggestions={natalieBriefing.suggestedQuestions}
-            value={natalieConversation}
-            onChange={setNatalieConversation}
-            onSubmit={handleNatalieConversation}
-            onSuggestionSelect={(suggestion) => {
-              setNatalieConversation(suggestion);
-              handleNatalieConversation(suggestion);
-            }}
-          />
-        </section>
+        <WorkSummary lines={workSummaryLines} loading={pageLoading} />
 
-        <section id="natalie-decisions" className={`grid ${spacing.section}`}>
-          <SectionTitle
-            icon={<ClipboardList className="h-[22px] w-[22px]" strokeWidth={2.2} />}
-            title="מה דורש את ההחלטה שלך"
-            hint="נטלי ממיינת עבורך את הדברים הדחופים ביותר"
-          />
-          {pageLoading ? (
-            <DashboardSkeletonRows count={3} />
-          ) : visiblePriorityItems.length > 0 ? (
-            <div className={`grid ${spacing.inline}`}>
-              {visiblePriorityItems.map((item) => (
-                <PriorityRow key={item.id} item={item} onMarkPaid={markPaymentPaid} onAttach={attachInvoiceToPayment} />
-              ))}
-              {priorityItems.length > visiblePriorityItems.length && (
-                <a href="/dashboard/document-reviews" className={`${typography.body} font-bold`} style={{ color: colors.accent }}>
-                  לכל מה שממתין ({priorityItems.length}) ←
-                </a>
-              )}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<CheckCircle2 className="h-6 w-6" />}
-              title="הכל מסודר כרגע ✓"
-              hint="אין מסמכים, תשלומים או התראות שדורשים את ההחלטה שלך"
-            />
-          )}
-        </section>
+        <BusinessSnapshot metrics={snapshotMetrics} loading={pageLoading} />
 
-        <section
-          className={`${radius.card} ${spacing.card} border`}
-          style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
-        >
-          <h2 className={`${typography.sectionHeader} mb-4`} style={{ color: colors.textPrimary }}>
-            סיכום שקט
-          </h2>
-          <NatalieQuietSummary chips={natalieQuietSummary} />
-        </section>
-
-        <section className={`grid grid-cols-2 md:grid-cols-4 ${spacing.inline}`}>
-          <KpiCard
-            title="מסמכים שממתינים לאישור"
-            value={formatNumber(documentReviews.length)}
-            subtitle={documentReviews.length > 0 ? "דורשים את תשומת לבך" : "הכל מאושר"}
-            accent="amber"
-            loading={pageLoading}
-            icon={<FileSearch className="h-6 w-6" strokeWidth={2.1} />}
-          />
-          <KpiCard
-            title="תשלומים החודש"
-            value={pageLoading ? "—" : formatNumber(monthPayments.length)}
-            subtitle={pageLoading ? undefined : formatShekel(monthPayments.reduce((sum, p) => sum + p.amount, 0))}
-            accent="blue"
-            loading={pageLoading}
-            icon={<CreditCard className="h-6 w-6" strokeWidth={2.1} />}
-          />
-          <KpiCard
-            title="משימות פתוחות"
-            value={formatNumber(openTasksCount)}
-            subtitle="מעקב אחרי מה שעדיין פתוח"
-            accent="green"
-            loading={pageLoading}
-            icon={<CheckCircle2 className="h-6 w-6" strokeWidth={2.1} />}
-          />
-          <KpiCard
-            title="פגישות קרובות"
-            value={formatNumber(upcomingMeetingsCount)}
-            subtitle={upcomingMeetingsCount > 0 ? "בשבועיים הקרובים" : "אין פגישות מתוכננות"}
-            accent="violet"
-            loading={pageLoading}
-            icon={<CalendarDays className="h-6 w-6" strokeWidth={2.1} />}
-          />
-        </section>
-
-        <section className={`grid ${spacing.section}`}>
-          <SectionTitle
-            icon={<Activity className="h-[22px] w-[22px]" strokeWidth={2.2} />}
-            title="מה עשיתי לאחרונה"
-            hint="עדכונים אחרונים מהעסק שלך"
-          />
-          {pageLoading ? (
-            <DashboardSkeletonRows count={4} />
-          ) : natalieTimeline.length > 0 ? (
-            <section
-              className={`${radius.card} ${shadow.card} ${spacing.card} border`}
-              style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
-            >
-              <NatalieTimeline items={natalieTimeline} title="" />
-            </section>
-          ) : (
-            <EmptyState title="עדיין אין פעילות" hint="כשאסיים לעבוד על מסמכים ותשלומים, זה יופיע כאן" compact />
-          )}
-        </section>
+        <NatalieCommandBar onSubmit={handleNatalieConversation} onScan={runSync} />
 
         <details className={`${radius.card} border`} style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}>
           <summary className="cursor-pointer list-none px-5 py-5 text-lg font-bold md:px-6" style={{ color: colors.textPrimary }}>
@@ -1286,96 +1283,6 @@ export default function DashboardPage() {
       )}
     </main>
   );
-}
-
-function SectionTitle({ title, hint, icon }: { title: string; hint?: string; icon?: ReactNode }) {
-  return (
-    <div className="space-y-2 pb-1">
-      <div className="flex items-center gap-3">
-        {icon && (
-          <span
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
-            style={{ backgroundColor: colors.accentSoft, color: colors.accent }}
-          >
-            {icon}
-          </span>
-        )}
-        <h2 className={typography.sectionHeader} style={{ color: colors.textPrimary }}>{title}</h2>
-      </div>
-      {hint && <p className={`${typography.body} pr-1`} style={{ color: colors.textSecondary }}>{hint}</p>}
-    </div>
-  );
-}
-
-function ReviewRow({ item }: { item: DocumentReview }) {
-  const title = reviewTitle(item);
-  const description = reviewDescription(item);
-  return (
-    <article
-      className={`${radius.card} ${shadow.soft} ${spacing.card}`}
-      style={{ backgroundColor: colors.surface, border: `1px solid ${colors.borderSubtle}` }}
-    >
-      <div className="grid gap-3 sm:grid-cols-4 sm:items-center">
-        <div className="sm:col-span-2">
-          <div className={`${typography.body} font-semibold`} style={{ color: colors.textPrimary }}>{title}</div>
-          <div className={`${typography.caption} mt-1.5`} style={{ color: colors.textSecondary }}>{description}</div>
-        </div>
-        <div className={typography.body} style={{ color: colors.textPrimary }}>
-          {formatMoney(item.totalAmount ?? 0, item.currency ?? "ILS")} · {formatDate(item.documentDate ?? item.createdAt)}
-        </div>
-        <div className="flex items-center justify-between gap-3 sm:justify-end">
-          <StatusPill tone="warn">{labelFor("reviewStatus", item.reviewStatus)}</StatusPill>
-          <SecondaryLink href="/dashboard/document-reviews">צפה</SecondaryLink>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function reviewTitle(item: DocumentReview) {
-  return firstText(
-    item.supplierName,
-    item.sender,
-    stringFromUnknown(item.parsedFieldsJson, ["supplierName", "supplier", "vendorName", "businessName"]),
-    stringFromUnknown(item.rawAnalysis, ["supplierName", "supplier", "vendorName", "businessName"]),
-    sourceLabel(item.source),
-    "ספק לא ידוע"
-  );
-}
-
-function reviewDescription(item: DocumentReview) {
-  const documentLabel = labelFor("documentType", item.documentType);
-  const subjectAndFile = [item.subject, item.fileName].map((value) => value?.trim()).filter(Boolean).join(" · ");
-  return firstText(
-    subjectAndFile,
-    item.subject,
-    item.fileName,
-    item.invoiceNumber ? `${documentLabel} ${item.invoiceNumber}` : null,
-    stringFromUnknown(item.parsedFieldsJson, ["description", "title", "subject", "fileName", "invoiceNumber"]),
-    stringFromUnknown(item.rawAnalysis, ["description", "title", "subject", "fileName", "invoiceNumber"]),
-    item.uncertaintyReason,
-    documentLabel,
-    "מסמך לבדיקה"
-  );
-}
-
-function sourceLabel(source: string) {
-  return source === "whatsapp" ? "וואטסאפ" : source === "gmail" ? "ג׳ימייל" : source.replace(/_/g, " ");
-}
-
-function firstText(...values: Array<string | null | undefined>) {
-  return values.map((value) => value?.trim()).find(Boolean) ?? "";
-}
-
-function stringFromUnknown(value: unknown, keys: string[]) {
-  if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  for (const key of keys) {
-    const candidate = record[key];
-    if (typeof candidate === "string" && candidate.trim()) return candidate;
-    if (typeof candidate === "number" && Number.isFinite(candidate)) return String(candidate);
-  }
-  return null;
 }
 
 function ActivityCard({ title, empty, children }: { title: string; empty: string; children: ReactNode }) {
@@ -1585,165 +1492,10 @@ function buildScanBannerState(activeScan: ScanProgressResult | null, scanStatus:
   };
 }
 
-function buildDashboardActivityInputs(
-  invoices: RecentInvoice[],
-  tasks: Task[],
-  allPayments: Payment[],
-  scan: ScanStatus | null
-): NatalieActivityInput[] {
-  const items: NatalieActivityInput[] = [];
-
-  for (const invoice of invoices.slice(0, 3)) {
-    items.push({
-      id: `invoice-${invoice.id}`,
-      kind: "invoice_saved",
-      supplierName: invoice.client?.name ?? undefined,
-      amount: invoice.amount,
-      currency: invoice.currency,
-      occurredAt: invoice.date,
-    });
-  }
-
-  for (const task of tasks.slice(0, 2)) {
-    items.push({
-      id: `task-${task.id}`,
-      kind: "task_created",
-      title: task.title,
-      occurredAt: task.updatedAt,
-    });
-  }
-
-  for (const payment of allPayments.slice(0, 2)) {
-    items.push({
-      id: `payment-${payment.id}`,
-      kind: payment.paid ? "payment_paid" : "payment_prepared",
-      supplierName: payment.supplier,
-      amount: payment.amount,
-      currency: payment.currency,
-      occurredAt: payment.date,
-    });
-  }
-
-  if (scan?.last && (scan.last.status === "success" || scan.last.status === "completed")) {
-    items.push({
-      id: `scan-${scan.last.id}`,
-      kind: "scan_completed",
-      occurredAt: scan.last.endedAt ?? scan.last.startedAt,
-    });
-  }
-
-  return items.slice(0, 6);
-}
-
 function firstNameFromLabel(value: string | null | undefined) {
   const trimmed = value?.trim();
   if (!trimmed) return null;
   return trimmed.split(/\s+/)[0] ?? null;
-}
-
-type PriorityItem = {
-  id: string;
-  kind: "review" | "missing" | "payment" | "alert";
-  title: string;
-  meta: string;
-  pill: ReactNode;
-  action?: ReactNode;
-  paymentId?: string;
-};
-
-function buildPriorityItems(
-  reviews: DocumentReview[],
-  missing: Payment[],
-  allPayments: Payment[],
-  alertItems: AlertItem[]
-): PriorityItem[] {
-  const items: PriorityItem[] = [];
-
-  for (const item of reviews.slice(0, 3)) {
-    const presentation = inferReviewPresentation({
-      reviewStatus: item.reviewStatus,
-      uncertaintyReason: item.uncertaintyReason,
-    });
-    items.push({
-      id: `review-${item.id}`,
-      kind: "review",
-      title: natalieReviewMessage(presentation, {
-        supplierName: item.supplierName,
-        uncertaintyReason: item.uncertaintyReason,
-      }).replace(/\n/g, " "),
-      meta: `${formatMoney(item.totalAmount ?? 0, item.currency ?? "ILS")} · ${formatDate(item.documentDate ?? item.createdAt)}`,
-      pill: <StatusPill tone="warn">אני צריכה את ההחלטה שלך</StatusPill>,
-      action: <SecondaryLink href="/dashboard/document-reviews">עזרי לי לבחור</SecondaryLink>,
-    });
-  }
-
-  for (const payment of missing.slice(0, 2)) {
-    items.push({
-      id: `missing-${payment.id}`,
-      kind: "missing",
-      title: payment.supplier || "ספק לא ידוע",
-      meta: `חשבונית חסרה · ${formatDate(payment.date)}`,
-      pill: <StatusPill tone="warn">חסרה</StatusPill>,
-      paymentId: payment.id,
-    });
-  }
-
-  for (const payment of allPayments.filter((p) => !p.paid).slice(0, 2)) {
-    items.push({
-      id: `payment-${payment.id}`,
-      kind: "payment",
-      title: payment.supplier || "ספק לא ידוע",
-      meta: `תשלום פתוח · ${formatShekel(payment.amount)}`,
-      pill: <StatusPill tone="warn">ממתין</StatusPill>,
-      paymentId: payment.id,
-    });
-  }
-
-  for (const alert of alertItems.slice(0, 2)) {
-    items.push({
-      id: `alert-${alert.id}`,
-      kind: "alert",
-      title: alert.title,
-      meta: alert.body ?? formatDateTime(alert.createdAt),
-      pill: <StatusPill tone={alert.type === "error" ? "danger" : "warn"}>{alertTypeLabel(alert.type)}</StatusPill>,
-    });
-  }
-
-  return items.slice(0, 6);
-}
-
-function PriorityRow({
-  item,
-  onMarkPaid,
-  onAttach,
-}: {
-  item: PriorityItem;
-  onMarkPaid: (id: string) => void;
-  onAttach: (id: string) => void;
-}) {
-  const action =
-    item.action ??
-    (item.kind === "payment" && item.paymentId ? (
-      <SecondaryButton onClick={() => onMarkPaid(item.paymentId!)}>סמן שולם</SecondaryButton>
-    ) : item.kind === "missing" && item.paymentId ? (
-      <SecondaryButton onClick={() => onAttach(item.paymentId!)}>צרף קישור</SecondaryButton>
-    ) : null);
-
-  return <DataRow title={item.title} meta={item.meta} pill={item.pill} action={action} />;
-}
-
-function DashboardSkeletonRows({ count }: { count: number }) {
-  return (
-    <div className={`grid ${spacing.inline}`}>
-      {Array.from({ length: count }).map((_, index) => (
-        <div
-          key={index}
-          className={`${radius.control} h-20 animate-pulse`}
-          style={{ backgroundColor: colors.bgSoft, border: `1px solid ${colors.borderSubtle}` }}
-        />
-      ))}
-    </div>
-  );
 }
 
 function scanProgressMessages(progress: ScanProgressResult) {

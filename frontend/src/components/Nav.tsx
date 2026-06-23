@@ -67,8 +67,7 @@ const links: NavLink[] = [
 ];
 
 const mobileLinks: NavLink[] = [
-  { id: "dashboard", href: "/dashboard", label: "בית", icon: Home },
-  { id: "clients", href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
+  { id: "dashboard", href: "/dashboard", label: "היום", icon: Home },
   { id: "invoices", href: "/dashboard/invoices", label: "חשבוניות", icon: FileText },
   { id: "supplierPayments", href: "/payments", label: "ספקים", icon: WalletCards },
 ];
@@ -269,7 +268,9 @@ export function Nav() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className="group relative flex min-h-11 items-center gap-3 rounded-xl border px-3 py-2.5 text-[15px] font-bold transition-all duration-200"
+                className={`group relative flex min-h-11 items-center gap-3 rounded-xl border px-3 py-2.5 text-[15px] font-bold transition-all duration-200 ${
+                  active ? "" : "hover:border-[#E8EDF5] hover:bg-[#EEF2FA] hover:shadow-sm"
+                }`}
                 style={
                   active
                     ? {
@@ -285,7 +286,7 @@ export function Nav() {
                 }
               >
                 <Icon
-                  className="h-[19px] w-[19px] shrink-0 transition-colors"
+                  className="h-[19px] w-[19px] shrink-0 transition-colors group-hover:text-[#1D5BFF]"
                   style={{ color: active ? colors.accent : colors.textSecondary }}
                 />
                 <span className="min-w-0 flex-1 truncate text-right">{item.label}</span>

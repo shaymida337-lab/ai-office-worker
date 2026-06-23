@@ -1,0 +1,178 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import {
+  AlertTriangle,
+  Calendar,
+  CreditCard,
+  FileSearch,
+  FileText,
+} from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { DecisionCard } from "./DecisionCard";
+import { colors, type as typography } from "@/lib/design-tokens";
+import type { DecisionCardData, DecisionKind } from "@/lib/dashboard/decisions";
+import type { LucideIcon } from "lucide-react";
+
+const kindIcons: Record<DecisionKind, LucideIcon> = {
+  urgent_payment: CreditCard,
+  payment: CreditCard,
+  blocked_review: FileSearch,
+  document_review: FileText,
+  missing_invoice: FileText,
+  appointment: Calendar,
+  alert: AlertTriangle,
+};
+
+export function ActionCenter({
+  items,
+  totalCount,
+  loading = false,
+  onMarkPaid,
+  onAttachInvoice,
+  onRetry,
+}: {
+  items: DecisionCardData[];
+  totalCount: number;
+  loading?: boolean;
+  onMarkPaid: (paymentId: string) => void;
+  onAttachInvoice: (paymentId: string) => void;
+  onRetry: () => void;
+}) {
+  const router = useRouter();
+  const remaining = totalCount - items.length;
+
+  if (loading) {
+    return (
+      <section id="natalie-decisions" className="grid gap-3" aria-label="מרכז החלטות">
+        <SectionHeader />
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-36 animate-pulse rounded-2xl border"
+            style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+          />
+        ))}
+      </section>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <section id="natalie-decisions" aria-label="מרכז החלטות">
+        <SectionHeader />
+        <EmptyState
+          icon={<FileSearch className="h-6 w-6" />}
+          title="אין החלטות ממתינות"
+          hint="נטלי מטפלת בכל השאר. אם משהו ידרוש אותך — הוא יופיע כאן."
+          compact
+        />
+      </section>
+    );
+  }
+
+  return (
+    <section id="natalie-decisions" className="grid gap-4" aria-label="מרכז החלטות">
+      <SectionHeader count={totalCount} />
+
+      <div className="grid gap-3">
+        {items.map((item, index) => {
+          const Icon = kindIcons[item.kind];
+          return (
+            <DecisionCard
+              key={item.id}
+              kind={item.kind}
+              icon={Icon}
+              typeLabel={item.typeLabel}
+              title={item.title}
+              description={item.description}
+              meta={item.meta}
+              urgent={item.urgent}
+              primaryLabel={item.primaryLabel}
+              secondaryLabel={item.secondaryLabel}
+              emphasized={index === 0 && item.urgent}
+              onPrimary={() => handlePrimary(item, router, onMarkPaid, onAttachInvoice, onRetry)}
+              onSecondary={
+                item.secondaryLabel
+                  ? () => handleSecondary(item, router, onAttachInvoice)
+                  : undefined
+              }
+            />
+          );
+        })}
+      </div>
+
+      {remaining > 0 && (
+        <div
+          className="rounded-2xl border px-5 py-4 text-center"
+          style={{ backgroundColor: colors.bgSoft, borderColor: colors.borderSubtle }}
+        >
+          <p className={`${typography.body} font-semibold`} style={{ color: colors.textSecondary }}>
+            ועוד {remaining} {remaining === 1 ? "דבר שמחכה לך" : "דברים שמחכים לך"}
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/document-reviews")}
+            className="mt-3 text-base font-bold underline-offset-2 hover:underline"
+            style={{ color: colors.accent }}
+          >
+            פתחי את כל ההחלטות
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SectionHeader({ count }: { count?: number }) {
+  return (
+    <div>
+      <h2 className={`${typography.sectionTitle} leading-snug`} style={{ color: colors.textPrimary }}>
+        מה דורש את ההחלטה שלך
+      </h2>
+      {count != null && count > 0 && (
+        <p className={`${typography.body} mt-1`} style={{ color: colors.textSecondary }}>
+          {count === 1 ? "דבר אחד מחכה לך" : `${count} דברים מחכים לך`}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function handlePrimary(
+  item: DecisionCardData,
+  router: ReturnType<typeof useRouter>,
+  onMarkPaid: (id: string) => void,
+  onAttachInvoice: (id: string) => void,
+  onRetry: () => void
+) {
+  if (item.kind === "missing_invoice" && item.paymentId) {
+    onAttachInvoice(item.paymentId);
+    return;
+  }
+  if ((item.kind === "urgent_payment" || item.kind === "payment") && item.paymentId) {
+    onMarkPaid(item.paymentId);
+    return;
+  }
+  if (item.kind === "alert") {
+    onRetry();
+    return;
+  }
+  if (item.href) {
+    router.push(item.href);
+  }
+}
+
+function handleSecondary(
+  item: DecisionCardData,
+  router: ReturnType<typeof useRouter>,
+  onAttachInvoice: (id: string) => void
+) {
+  if (item.kind === "missing_invoice" && item.paymentId) {
+    router.push("/payments");
+    return;
+  }
+  if (item.href) {
+    router.push(item.href);
+  }
+}

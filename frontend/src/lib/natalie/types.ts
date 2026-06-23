@@ -35,6 +35,7 @@ export type NatalieTimelineItem = {
   id: string;
   text: string;
   occurredAt?: string;
+  kind?: NatalieActivityInput["kind"];
 };
 
 export type NatalieQuietSummaryChip = {
@@ -118,4 +119,38 @@ export type NataliePrimaryActionInput = {
   openTaskCount?: number;
   scanRunning?: boolean;
   gmailConnected?: boolean;
+};
+
+export type NatalieRecommendationKind =
+  | "blocked_review"
+  | "urgent_payment"
+  | "document_review"
+  | "missing_invoice"
+  | "appointment"
+  | "open_tasks"
+  | "connect_gmail"
+  | "all_clear";
+
+export type NatalieRecommendation = {
+  kind: NatalieRecommendationKind;
+  title: string;
+  reason: string;
+  ctaLabel: string;
+  href?: string;
+  scrollToDecisions?: boolean;
+  emotionalNote?: string;
+};
+
+export type NatalieRecommendationInput = {
+  now?: Date;
+  gmailConnected?: boolean;
+  documentReviews?: NatalieDocumentReviewInput[];
+  unpaidPayments?: Array<NataliePaymentInput & { date?: string | null }>;
+  missingInvoices?: Array<NataliePaymentInput & { date?: string | null }>;
+  upcomingAppointments?: NatalieAppointmentInput[];
+  openTasksCount?: number;
+  alerts?: Array<{ id: string; type: string; title: string }>;
+  invoicesSaved?: number;
+  paymentsPrepared?: number;
+  pendingDecisionCount?: number;
 };
