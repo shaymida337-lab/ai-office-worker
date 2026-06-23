@@ -25,11 +25,14 @@ export function ScanBanner({
 }) {
   const text = scanBannerText(status, found, scanned, totalMatched, errors);
   return (
-    <section className={`${radius.card} ${shadow.card} ${spacing.card} border`} style={statusStyles[status]}>
-      <div className={`${type.body} max-w-full text-wrap leading-6 font-semibold`}>{text}</div>
+    <section className={`${radius.card} ${shadow.soft} ${spacing.card} border`} style={statusStyles[status]}>
+      <div className={`${type.body} max-w-full text-wrap font-semibold leading-6`}>{text}</div>
       {status === "running" && (
-        <div className={`mt-3 h-2 w-full overflow-hidden ${radius.pill}`} style={{ backgroundColor: colors.border }}>
-          <div className="h-full transition-all" style={{ width: "45%", backgroundColor: colors.accent }} />
+        <div className={`mt-3 h-2 w-full overflow-hidden ${radius.pill}`} style={{ backgroundColor: colors.borderSubtle }}>
+          <div
+            className="h-full animate-pulse rounded-full transition-all"
+            style={{ width: "45%", backgroundColor: colors.accent }}
+          />
         </div>
       )}
     </section>
@@ -43,9 +46,11 @@ function scanBannerText(
   totalMatched: number | null | undefined,
   errors: number
 ) {
-  if (status === "running") return `סורקת את המייל שלך... נמצאו ${found} מסמכים`;
+  if (status === "running") return `נטלי סורקת את המייל שלך... נמצאו ${found} מסמכים`;
   if (status === "success") return `הסריקה הסתיימה — נמצאו ${found} מסמכים`;
   if (status === "partial") return `הסריקה הסתיימה עם ${errors} שגיאות`;
-  if (status === "truncated") return `הסריקה הסתיימה — נמצאו ${found} מסמכים. נסרקו ${scanned} מתוך ${totalMatched ?? scanned} — מומלץ להריץ סריקה נוספת`;
+  if (status === "truncated") {
+    return `הסריקה הסתיימה — נמצאו ${found} מסמכים. נסרקו ${scanned} מתוך ${totalMatched ?? scanned} — מומלץ להריץ סריקה נוספת`;
+  }
   return `הסריקה נכשלה עם ${errors} שגיאות`;
 }

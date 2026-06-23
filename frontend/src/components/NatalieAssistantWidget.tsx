@@ -1926,11 +1926,16 @@ export function NatalieAssistantWidget() {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="fixed bottom-5 right-4 z-[120] grid h-14 w-14 place-items-center rounded-full bg-[linear-gradient(135deg,#3a6cff,#1d5bff,#1746c7)] text-2xl font-black text-white shadow-[0_18px_40px_rgba(29,91,255,0.30)] transition hover:scale-105 focus:outline-none focus:ring-4 focus:ring-[#1d5bff]/20 lg:right-[17rem]"
+        className="group fixed bottom-5 right-4 z-[120] grid h-[3.75rem] w-[3.75rem] place-items-center rounded-full text-2xl font-black text-white transition hover:scale-[1.03] focus:outline-none focus:ring-4 lg:bottom-6 lg:right-[17rem]"
+        style={{
+          background: "linear-gradient(135deg, #3a6cff, #1d5bff, #1746c7)",
+          boxShadow: "0 18px 40px rgba(29,91,255,0.32), 0 0 0 6px rgba(29,91,255,0.08)",
+        }}
         aria-label={open ? "סגור את נטלי" : "פתח את נטלי"}
         aria-expanded={open}
       >
-        נ
+        <span className="absolute inset-0 rounded-full opacity-0 transition group-hover:opacity-100" style={{ boxShadow: "0 0 0 8px rgba(29,91,255,0.12)" }} />
+        <span className="relative">נ</span>
       </button>
 
       {micState !== "idle" && (

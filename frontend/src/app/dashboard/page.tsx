@@ -2,6 +2,7 @@
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CalendarDays, CheckCircle2, CreditCard, FileSearch, Sparkles } from "lucide-react";
 import { Nav } from "@/components/Nav";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -252,6 +253,13 @@ type AlertItem = {
   createdAt: string;
 };
 
+type UpcomingAppointment = {
+  id: string;
+  startTime: string;
+  status: string;
+  client: { name: string };
+};
+
 type DocumentReview = {
   id: string;
   source: string;
@@ -347,6 +355,8 @@ export default function DashboardPage() {
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [documentReviews, setDocumentReviews] = useState<DocumentReview[]>([]);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<UpcomingAppointment[]>([]);
+  const [pageLoading, setPageLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState("");
   const [showGmailConnect, setShowGmailConnect] = useState(false);
   const [error, setError] = useState("");
@@ -371,7 +381,9 @@ export default function DashboardPage() {
 
   const load = useCallback(async () => {
     try {
-      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult, systemResult, reviewsResult] = await Promise.allSettled([
+      const appointmentFrom = new Date().toISOString();
+      const appointmentTo = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult, systemResult, reviewsResult, appointmentsResult] = await Promise.allSettled([
         apiFetch<DashboardStats>("/api/stats"),
         apiFetch<{ text: string }>("/api/summary/daily"),
         apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
@@ -385,6 +397,7 @@ export default function DashboardPage() {
         apiFetch<OrganizationSettings>("/api/organization/settings"),
         apiFetch<SystemHealth>("/api/system/health", { timeoutMs: 30000 }),
         apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review"),
+        apiFetch<UpcomingAppointment[]>(`/api/appointments?from=${encodeURIComponent(appointmentFrom)}&to=${encodeURIComponent(appointmentTo)}`),
       ]);
 
       setStats(statsResult.status === "fulfilled" ? statsResult.value : emptyStats);
@@ -427,6 +440,11 @@ export default function DashboardPage() {
       setRecentTasks(tasksResult.status === "fulfilled" ? tasksResult.value.slice(0, 8) : []);
       setAlerts(alertsResult.status === "fulfilled" ? alertsResult.value.slice(0, 8) : []);
       setDocumentReviews(reviewsResult.status === "fulfilled" ? reviewsResult.value.slice(0, 5) : []);
+      setUpcomingAppointments(
+        appointmentsResult.status === "fulfilled"
+          ? appointmentsResult.value.filter((appt) => appt.status !== "cancelled" && new Date(appt.startTime) >= new Date())
+          : []
+      );
 
       if (orgResult.status === "fulfilled") {
         setOrganizationSettings(orgResult.value);
@@ -450,6 +468,8 @@ export default function DashboardPage() {
       setClients(emptyClients);
       setScanStatus(emptyScanStatus());
       setError(err instanceof Error ? err.message : "טעינת הדשבורד נכשלה");
+    } finally {
+      setPageLoading(false);
     }
   }, [activeScanId, router]);
 
@@ -800,30 +820,44 @@ export default function DashboardPage() {
 
   const gmailConnected = Boolean(gmailStatus?.connected);
   const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
-  const todayGreeting = greetingForNow();
+  const ownerFirstName = firstNameFromLabel(organizationSettings?.name);
+  const todayGreeting = greetingForNow(ownerFirstName);
   const scanBanner = successScanBannerHidden ? null : buildScanBannerState(activeScan, scanStatus);
-  const approvedRecentInvoices = recentInvoices.filter((invoice) => invoice.source === "invoice" && invoice.reviewStatus === "approved");
-  const monthInvoices = approvedRecentInvoices.filter((invoice) => isThisMonth(invoice.date));
-  const unpaidSupplierTotal = payments.filter((payment) => !payment.paid).reduce((sum, payment) => sum + payment.amount, 0);
-  const paidThisMonth = payments.filter((payment) => payment.paid && isThisMonth(payment.date)).reduce((sum, payment) => sum + payment.amount, 0);
-  const monthDocumentTotal = [
-    ...payments.filter((payment) => isThisMonth(payment.date)).map((payment) => payment.amount),
-    ...monthInvoices.map((invoice) => invoice.amount),
-  ].reduce((sum, amount) => sum + amount, 0);
-  const estimatedVat = monthDocumentTotal * 0.18 / 1.18;
+  const monthPayments = payments.filter((payment) => isThisMonth(payment.date));
+  const openTasksCount = stats?.openTasks ?? recentTasks.filter((task) => task.status !== "completed" && task.status !== "done").length;
+  const upcomingMeetingsCount = upcomingAppointments.length;
+  const priorityItems = buildPriorityItems(documentReviews, missingInvoices, payments, alerts);
+  const recentActivityItems = buildRecentActivityItems(recentInvoices, recentTasks, payments, scanStatus);
 
   return (
-    <main className="px-6 pb-6 pt-20 md:px-8 md:pb-8 min-h-screen overflow-x-clip max-w-full lg:mr-60" style={{ backgroundColor: colors.bg, color: colors.textPrimary }}>
+    <main
+      className="min-h-screen max-w-full overflow-x-clip px-4 pb-24 pt-20 md:px-8 md:pb-8 lg:mr-60"
+      style={{
+        backgroundColor: colors.bg,
+        color: colors.textPrimary,
+        backgroundImage:
+          "radial-gradient(circle at top right, rgba(29,91,255,0.08), transparent 28rem), radial-gradient(circle at 10% 20%, rgba(31,170,89,0.05), transparent 22rem)",
+      }}
+    >
       <Nav />
       <PageHeader
         title={`${todayGreeting} 👋`}
-        subtitle="נטלי כאן — זה מה שקורה בעסק שלך עכשיו"
+        subtitle="נטלי מרכזת עבורך את מה שחשוב בעסק"
+        badge={
+          <span
+            className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${radius.pill}`}
+            style={{ backgroundColor: colors.accentSoft, color: colors.accent }}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            העוזרת החכמה שלך פעילה
+          </span>
+        }
         action={
           <button
             type="button"
             onClick={runSync}
             disabled={syncing || Boolean(activeScanId)}
-            className={`${radius.control} min-h-11 px-5 py-3 font-semibold disabled:opacity-60`}
+            className={`${radius.control} min-h-11 px-5 py-3 text-sm font-bold shadow-[0_12px_28px_rgba(29,91,255,0.22)] transition hover:opacity-95 disabled:opacity-60`}
             style={{ backgroundColor: colors.accent, color: colors.surface, border: `1px solid ${colors.accent}` }}
           >
             {syncing || activeScanId ? "סורקת..." : "סרוק עכשיו"}
@@ -845,159 +879,230 @@ export default function DashboardPage() {
         <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
 
         {showGmailConnect && (
-          <section className={`${radius.card} ${shadow.card} ${spacing.card}`} style={{ backgroundColor: colors.surface, border: `1px solid ${colors.warnBorder}` }}>
+          <section
+            className={`${radius.card} ${shadow.card} ${spacing.card}`}
+            style={{ backgroundColor: colors.surface, border: `1px solid ${colors.warnBorder}` }}
+          >
             <div className={typography.sectionTitle} style={{ color: colors.textPrimary }}>צריך לחבר ג׳ימייל</div>
-            <p className={`${typography.body} mt-2`} style={{ color: colors.textSecondary }}>חיבור ג׳ימייל נדרש לפני סריקת המסמכים.</p>
-            <button type="button" onClick={connectGmail} className={`${radius.control} mt-4 min-h-11 px-4 py-3 font-semibold`} style={{ backgroundColor: colors.surface, border: `1px solid ${colors.accent}`, color: colors.accent }}>
+            <p className={`${typography.body} mt-2 leading-6`} style={{ color: colors.textSecondary }}>
+              חיבור ג׳ימייל נדרש כדי שנוכל לסרוק ולארגן את המסמכים שלך.
+            </p>
+            <button
+              type="button"
+              onClick={connectGmail}
+              className={`${radius.control} mt-4 min-h-11 px-4 py-3 font-semibold`}
+              style={{ backgroundColor: colors.accent, border: `1px solid ${colors.accent}`, color: colors.surface }}
+            >
               התחבר לג׳ימייל
             </button>
           </section>
         )}
 
+        <section className={`grid grid-cols-2 md:grid-cols-4 ${spacing.inline}`}>
+          <KpiCard
+            title="מסמכים שממתינים לאישור"
+            value={formatNumber(documentReviews.length)}
+            subtitle={documentReviews.length > 0 ? "דורשים את תשומת לבך" : "הכל מאושר"}
+            accent="amber"
+            loading={pageLoading}
+            icon={<FileSearch className="h-5 w-5" />}
+          />
+          <KpiCard
+            title="תשלומים החודש"
+            value={pageLoading ? "—" : formatNumber(monthPayments.length)}
+            subtitle={pageLoading ? undefined : formatShekel(monthPayments.reduce((sum, p) => sum + p.amount, 0))}
+            accent="blue"
+            loading={pageLoading}
+            icon={<CreditCard className="h-5 w-5" />}
+          />
+          <KpiCard
+            title="משימות פתוחות"
+            value={formatNumber(openTasksCount)}
+            subtitle="מעקב אחרי מה שעדיין פתוח"
+            accent="green"
+            loading={pageLoading}
+            icon={<CheckCircle2 className="h-5 w-5" />}
+          />
+          <KpiCard
+            title="פגישות קרובות"
+            value={formatNumber(upcomingMeetingsCount)}
+            subtitle={upcomingMeetingsCount > 0 ? "בשבועיים הקרובים" : "אין פגישות מתוכננות"}
+            accent="violet"
+            loading={pageLoading}
+            icon={<CalendarDays className="h-5 w-5" />}
+          />
+        </section>
+
         <section className={`grid ${spacing.section}`}>
-          <SectionTitle title="ממתינים לאישורך" />
-          {documentReviews.length > 0 ? (
+          <SectionTitle title="מה דורש טיפול עכשיו" hint="נטלי ממיינת עבורך את הדברים הדחופים ביותר" />
+          {pageLoading ? (
+            <DashboardSkeletonRows count={3} />
+          ) : priorityItems.length > 0 ? (
             <div className={`grid ${spacing.inline}`}>
-              {documentReviews.map((item) => (
-                <ReviewRow key={item.id} item={item} />
+              {priorityItems.map((item) => (
+                <PriorityRow key={item.id} item={item} onMarkPaid={markPaymentPaid} onAttach={attachInvoiceToPayment} />
               ))}
-              <a href="/dashboard/document-reviews" className={`${typography.body} font-semibold`} style={{ color: colors.accent }}>
-                לכל המסמכים לבדיקה ←
-              </a>
             </div>
           ) : (
-            <EmptyState title="הכל מאושר ✓" hint="אין מסמכים שממתינים לבדיקה שלך" />
+            <EmptyState
+              icon={<CheckCircle2 className="h-6 w-6" />}
+              title="הכל מסודר כרגע ✓"
+              hint="אין מסמכים, תשלומים או התראות שדורשים טיפול מיידי"
+            />
           )}
         </section>
 
-        <section className={`grid grid-cols-2 md:grid-cols-4 ${spacing.inline}`}>
-          <KpiCard title="חשבוניות החודש" value={stats ? formatNumber(monthInvoices.length) : "—"} subtitle="מסמכים שנמצאו החודש" />
-          <KpiCard title="ממתין לתשלום" value={stats ? formatShekel(unpaidSupplierTotal) : "—"} subtitle="תשלומי ספקים פתוחים" />
-          <KpiCard title="שולם החודש" value={stats ? formatShekel(paidThisMonth) : "—"} subtitle="לפי תאריך המסמך" />
-          <KpiCard title="מע״מ משוער" value={stats ? formatShekel(estimatedVat) : "—"} subtitle="הערכה לפי 18% מע״מ" />
+        <section className={`grid ${spacing.section}`}>
+          <SectionTitle title="פעילות אחרונה" hint="עדכונים אחרונים מהעסק שלך" />
+          {pageLoading ? (
+            <DashboardSkeletonRows count={4} />
+          ) : recentActivityItems.length > 0 ? (
+            <ActivityCard title="" empty="">
+              {recentActivityItems.map((item) => (
+                <DataRow
+                  key={item.id}
+                  title={item.title}
+                  meta={item.meta}
+                  pill={item.pill}
+                  action={item.action}
+                />
+              ))}
+            </ActivityCard>
+          ) : (
+            <EmptyState title="עדיין אין פעילות" hint="כשנטלי תעבד מסמכים ותשלומים, הם יופיעו כאן" compact />
+          )}
         </section>
 
-        <section className={`grid ${spacing.section} lg:grid-cols-2`}>
-          <ActivityCard title="תשלומי ספקים" empty="אין תשלומי ספקים עדיין">
-            {payments.slice(0, 5).map((payment) => (
-              <DataRow
-                key={payment.id}
-                title={payment.supplier || "ספק לא ידוע"}
-                meta={`${formatDate(payment.date)} · ${formatShekel(payment.amount)}`}
-                pill={<StatusPill tone={payment.paid ? "success" : "warn"}>{labelFor("paymentStatus", payment.paid ? "paid" : "pending")}</StatusPill>}
-                action={!payment.paid ? <SecondaryButton onClick={() => markPaymentPaid(payment.id)}>סמן שולם</SecondaryButton> : null}
+        <details className={`${radius.card} border`} style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}>
+          <summary className="cursor-pointer list-none px-5 py-4 text-base font-bold md:px-6" style={{ color: colors.textPrimary }}>
+            כלים ואוטומציה
+          </summary>
+          <div className={`grid ${spacing.section} border-t p-5 md:p-6`} style={{ borderColor: colors.borderSubtle }}>
+            <section className={`grid ${spacing.section} lg:grid-cols-2`}>
+              <ActivityCard title="תשלומי ספקים" empty="אין תשלומי ספקים עדיין">
+                {payments.slice(0, 5).map((payment) => (
+                  <DataRow
+                    key={payment.id}
+                    title={payment.supplier || "ספק לא ידוע"}
+                    meta={`${formatDate(payment.date)} · ${formatShekel(payment.amount)}`}
+                    pill={<StatusPill tone={payment.paid ? "success" : "warn"}>{labelFor("paymentStatus", payment.paid ? "paid" : "pending")}</StatusPill>}
+                    action={!payment.paid ? <SecondaryButton onClick={() => markPaymentPaid(payment.id)}>סמן שולם</SecondaryButton> : null}
+                  />
+                ))}
+              </ActivityCard>
+
+              <ActivityCard title="חשבוניות חסרות" empty="אין חשבוניות חסרות">
+                {missingInvoices.slice(0, 5).map((payment) => (
+                  <DataRow
+                    key={payment.id}
+                    title={payment.supplier || "ספק לא ידוע"}
+                    meta={`${payment.subject ?? "ללא נושא"} · ${formatDate(payment.date)}`}
+                    pill={<StatusPill tone="warn">{labelFor("paymentStatus", "missing_invoice")}</StatusPill>}
+                    action={<SecondaryButton onClick={() => attachInvoiceToPayment(payment.id)}>צרף קישור</SecondaryButton>}
+                  />
+                ))}
+              </ActivityCard>
+            </section>
+
+            <section className={`grid ${spacing.section} lg:grid-cols-2`}>
+              <ActivityCard title="חשבוניות אחרונות" empty="אין חשבוניות שנשמרו">
+                {recentInvoices.slice(0, 5).map((invoice) => (
+                  <DataRow
+                    key={invoice.id}
+                    title={invoice.client?.name ?? "לקוח לא ידוע"}
+                    meta={`${formatDate(invoice.date)} · ${formatShekel(invoice.amount)}`}
+                    pill={<StatusPill tone={invoice.status === "paid" ? "success" : "warn"}>{labelFor("paymentStatus", invoice.status)}</StatusPill>}
+                    action={invoice.driveUrl ? <SecondaryLink href={invoice.driveUrl}>פתח בדרייב</SecondaryLink> : null}
+                  />
+                ))}
+              </ActivityCard>
+
+              <ActivityCard title="משימות אחרונות" empty="אין משימות פתוחות">
+                {recentTasks.slice(0, 5).map((task) => (
+                  <DataRow
+                    key={task.id}
+                    title={task.title}
+                    meta={`${task.supplier ?? "כללי"} · ${taskPriorityLabel(task.priority)}`}
+                    pill={<StatusPill tone={task.status === "completed" || task.status === "done" ? "success" : "info"}>{labelFor("scanStatus", task.status)}</StatusPill>}
+                  />
+                ))}
+              </ActivityCard>
+            </section>
+
+            <section className={`grid ${spacing.section} lg:grid-cols-2`}>
+              <ActivityCard title="כשלים ותור בדיקה" empty="אין כשלים פתוחים">
+                {alerts.slice(0, 5).map((alert) => (
+                  <DataRow
+                    key={alert.id}
+                    title={alert.title}
+                    meta={alert.body ?? formatDateTime(alert.createdAt)}
+                    pill={<StatusPill tone={alert.type === "error" ? "danger" : "warn"}>{alertTypeLabel(alert.type)}</StatusPill>}
+                    action={<SecondaryButton onClick={runSync}>נסה שוב</SecondaryButton>}
+                  />
+                ))}
+              </ActivityCard>
+
+              <ActivityCard title="לקוחות אחרונים" empty="עדיין אין לקוחות">
+                {(clients?.clients ?? []).slice(0, 5).map((client) => (
+                  <DataRow
+                    key={client.id}
+                    title={client.name}
+                    meta={`${formatShekel(client.stats?.toPay ?? 0)} לתשלום · ${client.stats?.invoices ?? 0} חשבוניות`}
+                    pill={<StatusPill tone={client.stats?.missingInvoices ? "warn" : "success"}>{client.stats?.missingInvoices ? `${client.stats.missingInvoices} חסרות` : "תקין"}</StatusPill>}
+                  />
+                ))}
+              </ActivityCard>
+            </section>
+
+            <section className={`grid ${spacing.section} lg:grid-cols-2`}>
+              <SystemCard
+                gmailConnected={gmailConnected}
+                whatsAppConnected={whatsAppConnected}
+                systemHealth={systemHealth}
+                systemChecking={systemChecking}
+                showSystemCheck={showSystemCheck}
+                onConnectGmail={connectGmail}
+                onConnectWhatsApp={() => router.push("/dashboard/whatsapp")}
+                onRunSystemCheck={runSystemCheck}
               />
-            ))}
-          </ActivityCard>
 
-          <ActivityCard title="חשבוניות חסרות" empty="אין חשבוניות חסרות">
-            {missingInvoices.slice(0, 5).map((payment) => (
-              <DataRow
-                key={payment.id}
-                title={payment.supplier || "ספק לא ידוע"}
-                meta={`${payment.subject ?? "ללא נושא"} · ${formatDate(payment.date)}`}
-                pill={<StatusPill tone="warn">{labelFor("paymentStatus", "missing_invoice")}</StatusPill>}
-                action={<SecondaryButton onClick={() => attachInvoiceToPayment(payment.id)}>צרף קישור</SecondaryButton>}
+              <WhatsAppCard
+                whatsAppConnected={whatsAppConnected}
+                whatsAppScanning={whatsAppScanning}
+                whatsAppScanRange={whatsAppScanRange}
+                whatsAppScanResult={whatsAppScanResult}
+                whatsAppStats={whatsAppStats}
+                onRangeChange={setWhatsAppScanRange}
+                onRun={runWhatsAppScan}
+                onOpen={() => router.push("/dashboard/whatsapp")}
               />
-            ))}
-          </ActivityCard>
+            </section>
 
-          <ActivityCard title="חשבוניות אחרונות" empty="אין חשבוניות שנשמרו">
-            {recentInvoices.slice(0, 5).map((invoice) => (
-              <DataRow
-                key={invoice.id}
-                title={invoice.client?.name ?? "לקוח לא ידוע"}
-                meta={`${formatDate(invoice.date)} · ${formatShekel(invoice.amount)}`}
-                pill={<StatusPill tone={invoice.status === "paid" ? "success" : "warn"}>{labelFor("paymentStatus", invoice.status)}</StatusPill>}
-                action={invoice.driveUrl ? <SecondaryLink href={invoice.driveUrl}>פתח בדרייב</SecondaryLink> : null}
-              />
-            ))}
-          </ActivityCard>
+            <section className={`grid ${spacing.section} lg:grid-cols-2`}>
+              <ActivityCard title="אוטומציה וסריקות" empty="אין נתוני סריקה עדיין">
+                <DataRow title="עודכן לאחרונה" meta={lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען"} pill={<StatusPill tone="info">פעיל</StatusPill>} />
+                <DataRow title="סריקה הבאה" meta={scanStatus ? formatDateTime(scanStatus.nextScheduledScanAt) : "טוען"} />
+                {scanStatus?.last && (
+                  <DataRow
+                    title="סריקה אחרונה"
+                    meta={`מיילים ${formatNumber(scanStatus.last.found)} · נשמרו ${formatNumber(scanStatus.last.saved)}`}
+                    pill={<StatusPill tone={scanStatus.last.status === "success" ? "success" : scanStatus.last.status === "partial" ? "warn" : "danger"}>{labelFor("scanStatus", scanStatus.last.status)}</StatusPill>}
+                    action={<SecondaryButton onClick={() => router.push("/dashboard/scan-stats")}>סטטיסטיקות</SecondaryButton>}
+                  />
+                )}
+              </ActivityCard>
 
-          <ActivityCard title="משימות אחרונות" empty="אין משימות פתוחות">
-            {recentTasks.slice(0, 5).map((task) => (
-              <DataRow
-                key={task.id}
-                title={task.title}
-                meta={`${task.supplier ?? "כללי"} · ${taskPriorityLabel(task.priority)}`}
-                pill={<StatusPill tone={task.status === "completed" || task.status === "done" ? "success" : "info"}>{labelFor("scanStatus", task.status)}</StatusPill>}
-              />
-            ))}
-          </ActivityCard>
-        </section>
-
-        <section className={`grid ${spacing.section} lg:grid-cols-2`}>
-          <ActivityCard title="כשלים ותור בדיקה" empty="אין כשלים פתוחים">
-            {alerts.slice(0, 5).map((alert) => (
-              <DataRow
-                key={alert.id}
-                title={alert.title}
-                meta={alert.body ?? formatDateTime(alert.createdAt)}
-                pill={<StatusPill tone={alert.type === "error" ? "danger" : "warn"}>{alertTypeLabel(alert.type)}</StatusPill>}
-                action={<SecondaryButton onClick={runSync}>נסה שוב</SecondaryButton>}
-              />
-            ))}
-          </ActivityCard>
-
-          <ActivityCard title="לקוחות אחרונים" empty="עדיין אין לקוחות">
-            {(clients?.clients ?? []).slice(0, 5).map((client) => (
-              <DataRow
-                key={client.id}
-                title={client.name}
-                meta={`${formatShekel(client.stats?.toPay ?? 0)} לתשלום · ${client.stats?.invoices ?? 0} חשבוניות`}
-                pill={<StatusPill tone={client.stats?.missingInvoices ? "warn" : "success"}>{client.stats?.missingInvoices ? `${client.stats.missingInvoices} חסרות` : "תקין"}</StatusPill>}
-              />
-            ))}
-          </ActivityCard>
-        </section>
-
-        <section className={`grid ${spacing.section} lg:grid-cols-2`}>
-          <SystemCard
-            gmailConnected={gmailConnected}
-            whatsAppConnected={whatsAppConnected}
-            systemHealth={systemHealth}
-            systemChecking={systemChecking}
-            showSystemCheck={showSystemCheck}
-            onConnectGmail={connectGmail}
-            onConnectWhatsApp={() => router.push("/dashboard/whatsapp")}
-            onRunSystemCheck={runSystemCheck}
-          />
-
-          <WhatsAppCard
-            whatsAppConnected={whatsAppConnected}
-            whatsAppScanning={whatsAppScanning}
-            whatsAppScanRange={whatsAppScanRange}
-            whatsAppScanResult={whatsAppScanResult}
-            whatsAppStats={whatsAppStats}
-            onRangeChange={setWhatsAppScanRange}
-            onRun={runWhatsAppScan}
-            onOpen={() => router.push("/dashboard/whatsapp")}
-          />
-        </section>
-
-        <section className={`grid ${spacing.section} lg:grid-cols-2`}>
-          <ActivityCard title="אוטומציה וסריקות" empty="אין נתוני סריקה עדיין">
-            <DataRow title="עודכן לאחרונה" meta={lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען"} pill={<StatusPill tone="info">פעיל</StatusPill>} />
-            <DataRow title="סריקה הבאה" meta={scanStatus ? formatDateTime(scanStatus.nextScheduledScanAt) : "טוען"} />
-            {scanStatus?.last && (
-              <DataRow
-                title="סריקה אחרונה"
-                meta={`מיילים ${formatNumber(scanStatus.last.found)} · נשמרו ${formatNumber(scanStatus.last.saved)}`}
-                pill={<StatusPill tone={scanStatus.last.status === "success" ? "success" : scanStatus.last.status === "partial" ? "warn" : "danger"}>{labelFor("scanStatus", scanStatus.last.status)}</StatusPill>}
-                action={<SecondaryButton onClick={() => router.push("/dashboard/scan-stats")}>סטטיסטיקות</SecondaryButton>}
-              />
-            )}
-          </ActivityCard>
-
-          <ActivityCard title="סיכום יומי" empty="אין סיכום זמין">
-            <p className={`${typography.body} whitespace-pre-wrap leading-7`} style={{ color: colors.textSecondary }}>{summary}</p>
-            <div className="flex flex-wrap gap-3">
-              <SecondaryButton onClick={scanAllClients} disabled={syncing}>סרוק לקוחות</SecondaryButton>
-              <SecondaryButton onClick={() => router.push("/camera")}>צלם חשבונית</SecondaryButton>
-              <SecondaryButton onClick={() => router.push("/dashboard/settings")}>הגדרות</SecondaryButton>
-            </div>
-          </ActivityCard>
-        </section>
+              <ActivityCard title="סיכום יומי" empty="אין סיכום זמין">
+                <p className={`${typography.body} whitespace-pre-wrap leading-7`} style={{ color: colors.textSecondary }}>{summary}</p>
+                <div className="flex flex-wrap gap-3">
+                  <SecondaryButton onClick={scanAllClients} disabled={syncing}>סרוק לקוחות</SecondaryButton>
+                  <SecondaryButton onClick={() => router.push("/camera")}>צלם חשבונית</SecondaryButton>
+                  <SecondaryButton onClick={() => router.push("/dashboard/settings")}>הגדרות</SecondaryButton>
+                </div>
+              </ActivityCard>
+            </section>
+          </div>
+        </details>
       </div>
 
       {invoiceAttachPaymentId && (
@@ -1020,15 +1125,23 @@ export default function DashboardPage() {
   );
 }
 
-function SectionTitle({ title }: { title: string }) {
-  return <h2 className={typography.sectionTitle} style={{ color: colors.textPrimary }}>{title}</h2>;
+function SectionTitle({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <div>
+      <h2 className={typography.sectionTitle} style={{ color: colors.textPrimary }}>{title}</h2>
+      {hint && <p className={`${typography.body} mt-1 leading-6`} style={{ color: colors.textMuted }}>{hint}</p>}
+    </div>
+  );
 }
 
 function ReviewRow({ item }: { item: DocumentReview }) {
   const title = reviewTitle(item);
   const description = reviewDescription(item);
   return (
-    <article className={`${radius.card} ${shadow.card} ${spacing.card}`} style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}` }}>
+    <article
+      className={`${radius.card} ${shadow.soft} ${spacing.card}`}
+      style={{ backgroundColor: colors.surface, border: `1px solid ${colors.borderSubtle}` }}
+    >
       <div className="grid gap-3 sm:grid-cols-4 sm:items-center">
         <div className="sm:col-span-2">
           <div className={`${typography.body} font-semibold`} style={{ color: colors.textPrimary }}>{title}</div>
@@ -1095,10 +1208,13 @@ function stringFromUnknown(value: unknown, keys: string[]) {
 function ActivityCard({ title, empty, children }: { title: string; empty: string; children: ReactNode }) {
   const hasChildren = Boolean(children) && (!Array.isArray(children) || children.length > 0);
   return (
-    <section className={`${radius.card} ${shadow.card} ${spacing.card}`} style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}` }}>
-      <h2 className={typography.sectionTitle} style={{ color: colors.textPrimary }}>{title}</h2>
-      <div className={`mt-4 grid ${spacing.inline}`}>
-        {hasChildren ? children : <EmptyState title={empty} />}
+    <section
+      className={`${radius.card} ${shadow.card} ${spacing.card}`}
+      style={{ backgroundColor: colors.surface, border: `1px solid ${colors.borderSubtle}` }}
+    >
+      {title ? <h2 className={typography.sectionTitle} style={{ color: colors.textPrimary }}>{title}</h2> : null}
+      <div className={`${title ? "mt-4" : ""} grid ${spacing.inline}`}>
+        {hasChildren ? children : <EmptyState title={empty} compact />}
       </div>
     </section>
   );
@@ -1106,7 +1222,10 @@ function ActivityCard({ title, empty, children }: { title: string; empty: string
 
 function DataRow({ title, meta, pill, action }: { title: ReactNode; meta: ReactNode; pill?: ReactNode; action?: ReactNode }) {
   return (
-    <div className={`${radius.control} flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between`} style={{ backgroundColor: colors.bg, border: `1px solid ${colors.border}` }}>
+    <div
+      className={`${radius.control} flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between`}
+      style={{ backgroundColor: colors.bgSoft, border: `1px solid ${colors.borderSubtle}` }}
+    >
       <div className="min-w-0 flex-1">
         <div className={`${typography.body} truncate font-semibold`} style={{ color: colors.textPrimary }}>{title}</div>
         <div className={`${typography.meta} mt-1 break-words min-w-0`} style={{ color: colors.textSecondary }}>{meta}</div>
@@ -1291,12 +1410,172 @@ function buildScanBannerState(activeScan: ScanProgressResult | null, scanStatus:
   };
 }
 
-function greetingForNow() {
+function greetingForNow(firstName?: string | null) {
   const hour = new Date().getHours();
-  if (hour >= 5 && hour < 12) return "בוקר טוב";
-  if (hour >= 12 && hour < 17) return "צהריים טובים";
-  if (hour >= 17 && hour < 22) return "ערב טוב";
-  return "לילה טוב";
+  let greeting = "לילה טוב";
+  if (hour >= 5 && hour < 12) greeting = "בוקר טוב";
+  else if (hour >= 12 && hour < 17) greeting = "צהריים טובים";
+  else if (hour >= 17 && hour < 22) greeting = "ערב טוב";
+  return firstName ? `${greeting} ${firstName}` : greeting;
+}
+
+function firstNameFromLabel(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return trimmed.split(/\s+/)[0] ?? null;
+}
+
+type PriorityItem = {
+  id: string;
+  kind: "review" | "missing" | "payment" | "alert";
+  title: string;
+  meta: string;
+  pill: ReactNode;
+  action?: ReactNode;
+  paymentId?: string;
+};
+
+function buildPriorityItems(
+  reviews: DocumentReview[],
+  missing: Payment[],
+  allPayments: Payment[],
+  alertItems: AlertItem[]
+): PriorityItem[] {
+  const items: PriorityItem[] = [];
+
+  for (const item of reviews.slice(0, 3)) {
+    items.push({
+      id: `review-${item.id}`,
+      kind: "review",
+      title: reviewTitle(item),
+      meta: `${formatMoney(item.totalAmount ?? 0, item.currency ?? "ILS")} · ${formatDate(item.documentDate ?? item.createdAt)}`,
+      pill: <StatusPill tone="warn">{labelFor("reviewStatus", item.reviewStatus)}</StatusPill>,
+      action: <SecondaryLink href="/dashboard/document-reviews">בדוק</SecondaryLink>,
+    });
+  }
+
+  for (const payment of missing.slice(0, 2)) {
+    items.push({
+      id: `missing-${payment.id}`,
+      kind: "missing",
+      title: payment.supplier || "ספק לא ידוע",
+      meta: `חשבונית חסרה · ${formatDate(payment.date)}`,
+      pill: <StatusPill tone="warn">חסרה</StatusPill>,
+      paymentId: payment.id,
+    });
+  }
+
+  for (const payment of allPayments.filter((p) => !p.paid).slice(0, 2)) {
+    items.push({
+      id: `payment-${payment.id}`,
+      kind: "payment",
+      title: payment.supplier || "ספק לא ידוע",
+      meta: `תשלום פתוח · ${formatShekel(payment.amount)}`,
+      pill: <StatusPill tone="warn">ממתין</StatusPill>,
+      paymentId: payment.id,
+    });
+  }
+
+  for (const alert of alertItems.slice(0, 2)) {
+    items.push({
+      id: `alert-${alert.id}`,
+      kind: "alert",
+      title: alert.title,
+      meta: alert.body ?? formatDateTime(alert.createdAt),
+      pill: <StatusPill tone={alert.type === "error" ? "danger" : "warn"}>{alertTypeLabel(alert.type)}</StatusPill>,
+    });
+  }
+
+  return items.slice(0, 6);
+}
+
+function PriorityRow({
+  item,
+  onMarkPaid,
+  onAttach,
+}: {
+  item: PriorityItem;
+  onMarkPaid: (id: string) => void;
+  onAttach: (id: string) => void;
+}) {
+  const action =
+    item.action ??
+    (item.kind === "payment" && item.paymentId ? (
+      <SecondaryButton onClick={() => onMarkPaid(item.paymentId!)}>סמן שולם</SecondaryButton>
+    ) : item.kind === "missing" && item.paymentId ? (
+      <SecondaryButton onClick={() => onAttach(item.paymentId!)}>צרף קישור</SecondaryButton>
+    ) : null);
+
+  return <DataRow title={item.title} meta={item.meta} pill={item.pill} action={action} />;
+}
+
+type RecentActivityItem = {
+  id: string;
+  title: string;
+  meta: string;
+  pill?: ReactNode;
+  action?: ReactNode;
+};
+
+function buildRecentActivityItems(
+  invoices: RecentInvoice[],
+  tasks: Task[],
+  allPayments: Payment[],
+  scan: ScanStatus | null
+): RecentActivityItem[] {
+  const items: RecentActivityItem[] = [];
+
+  for (const invoice of invoices.slice(0, 3)) {
+    items.push({
+      id: `invoice-${invoice.id}`,
+      title: invoice.client?.name ?? "חשבונית חדשה",
+      meta: `${formatDate(invoice.date)} · ${formatShekel(invoice.amount)}`,
+      pill: <StatusPill tone={invoice.status === "paid" ? "success" : "info"}>{labelFor("paymentStatus", invoice.status)}</StatusPill>,
+    });
+  }
+
+  for (const task of tasks.slice(0, 2)) {
+    items.push({
+      id: `task-${task.id}`,
+      title: task.title,
+      meta: `${task.supplier ?? "כללי"} · ${taskPriorityLabel(task.priority)}`,
+      pill: <StatusPill tone={task.status === "completed" || task.status === "done" ? "success" : "info"}>{labelFor("scanStatus", task.status)}</StatusPill>,
+    });
+  }
+
+  for (const payment of allPayments.slice(0, 2)) {
+    items.push({
+      id: `payment-${payment.id}`,
+      title: payment.supplier || "תשלום ספק",
+      meta: `${formatDate(payment.date)} · ${formatShekel(payment.amount)}`,
+      pill: <StatusPill tone={payment.paid ? "success" : "warn"}>{payment.paid ? "שולם" : "פתוח"}</StatusPill>,
+    });
+  }
+
+  if (scan?.last) {
+    items.push({
+      id: `scan-${scan.last.id}`,
+      title: "סריקה אחרונה",
+      meta: `מיילים ${formatNumber(scan.last.found)} · נשמרו ${formatNumber(scan.last.saved)}`,
+      pill: <StatusPill tone={scan.last.status === "success" ? "success" : "info"}>{labelFor("scanStatus", scan.last.status)}</StatusPill>,
+    });
+  }
+
+  return items.slice(0, 6);
+}
+
+function DashboardSkeletonRows({ count }: { count: number }) {
+  return (
+    <div className={`grid ${spacing.inline}`}>
+      {Array.from({ length: count }).map((_, index) => (
+        <div
+          key={index}
+          className={`${radius.control} h-20 animate-pulse`}
+          style={{ backgroundColor: colors.bgSoft, border: `1px solid ${colors.borderSubtle}` }}
+        />
+      ))}
+    </div>
+  );
 }
 
 function scanProgressMessages(progress: ScanProgressResult) {

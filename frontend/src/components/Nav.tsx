@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
+import { colors, radius } from "@/lib/design-tokens";
 import { isNavItemVisible, type NavItemId } from "@/config/navVisibility";
 import { apiFetch } from "@/lib/api";
 import { normalizeEnabledModules, type BusinessModuleId, type OrganizationSettings } from "@/lib/business-config";
@@ -241,12 +242,25 @@ export function Nav() {
 
   return (
     <>
-      <aside className="fixed right-0 top-0 z-50 hidden h-screen w-60 flex-col border-l border-[#e6eaf2] bg-white/95 px-3 py-4 shadow-[0_12px_40px_rgba(20,40,90,0.08)] backdrop-blur-xl lg:flex">
-        <Link href="/dashboard" className="mb-6 block rounded-2xl px-3 py-3 transition hover:bg-[#f4f6fb]">
+      <aside
+        className="fixed right-0 top-0 z-50 hidden h-screen w-60 flex-col border-l px-3 py-4 backdrop-blur-xl lg:flex"
+        style={{
+          borderColor: colors.border,
+          backgroundColor: "rgba(255,255,255,0.97)",
+          boxShadow: "0 12px 40px rgba(20,40,90,0.08)",
+        }}
+      >
+        <Link
+          href="/dashboard"
+          className="mb-5 block rounded-2xl px-3 py-3 transition"
+          style={{ backgroundColor: "transparent" }}
+          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = colors.bg; }}
+          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+        >
           <Logo size="md" showSubtitle />
         </Link>
 
-        <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto pb-56" aria-label="ניווט ראשי">
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto pb-56" aria-label="ניווט ראשי">
               {visibleLinks.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
@@ -255,38 +269,75 @@ export function Nav() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={[
-                  "group relative flex min-h-11 items-center gap-3 rounded-xl border px-3 py-2.5 text-[15px] font-bold transition-all duration-200",
+                className="group relative flex min-h-11 items-center gap-3 rounded-xl border px-3 py-2.5 text-[15px] font-bold transition-all duration-200"
+                style={
                   active
-                    ? "border-[#cdd9ff] bg-[#e8eeff] text-[#1d5bff] shadow-[inset_-3px_0_0_#1d5bff]"
-                    : "border-transparent text-[#0e1116] hover:border-[#e6eaf2] hover:bg-[#f4f6fb] hover:text-[#1d5bff]",
-                ].join(" ")}
+                    ? {
+                        borderColor: "#CDD9FF",
+                        backgroundColor: colors.accentSoft,
+                        color: colors.accent,
+                        boxShadow: `inset -3px 0 0 ${colors.accent}`,
+                      }
+                    : {
+                        borderColor: "transparent",
+                        color: colors.textPrimary,
+                      }
+                }
               >
-                <Icon className={["h-[19px] w-[19px] shrink-0", active ? "text-[#1d5bff]" : "text-[#6b7686] group-hover:text-[#1d5bff]"].join(" ")} />
+                <Icon
+                  className="h-[19px] w-[19px] shrink-0 transition-colors"
+                  style={{ color: active ? colors.accent : colors.textSecondary }}
+                />
                 <span className="min-w-0 flex-1 truncate text-right">{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="fixed bottom-4 right-3 z-[60] w-[13.5rem] rounded-2xl border border-[#e6eaf2] bg-white p-3 shadow-[0_12px_34px_rgba(20,40,90,0.10)]">
-          <div className="mb-3 flex min-w-0 items-center gap-3 rounded-xl bg-[#f4f6fb] p-2">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#1d5bff] text-sm font-bold text-white">חכם</span>
+        <div
+          className="fixed bottom-4 right-3 z-[60] w-[13.5rem] rounded-2xl border p-3"
+          style={{
+            borderColor: colors.border,
+            backgroundColor: colors.surface,
+            boxShadow: "0 12px 34px rgba(20,40,90,0.10)",
+          }}
+        >
+          <div
+            className="mb-3 flex min-w-0 items-center gap-3 rounded-xl p-2"
+            style={{ backgroundColor: colors.bg }}
+          >
+            <span
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-bold text-white"
+              style={{ backgroundColor: colors.accent }}
+            >
+              נ
+            </span>
             <span className="min-w-0 flex-1">
-              <span className="block whitespace-nowrap text-[14px] font-bold text-[#0e1116]">מנהל מערכת חכם</span>
-              <span className="mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold text-[#1faa59]">
-                <span className="h-2 w-2 rounded-full bg-[#1faa59]" />
-                מחובר
+              <span className="block whitespace-nowrap text-[14px] font-bold" style={{ color: colors.textPrimary }}>
+                נטלי פעילה
+              </span>
+              <span className="mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: colors.successText }}>
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.successText }} />
+                מחוברת
               </span>
             </span>
           </div>
-          <button type="button" onClick={openHelp} className="mb-3 w-full rounded-xl bg-[#1d5bff] px-4 py-2.5 text-[14px] font-bold text-white shadow-[0_12px_28px_rgba(29,91,255,0.24)] transition hover:bg-[#1746c7]">
+          <button
+            type="button"
+            onClick={openHelp}
+            className="mb-3 w-full rounded-xl px-4 py-2.5 text-[14px] font-bold text-white transition"
+            style={{
+              backgroundColor: colors.accent,
+              boxShadow: "0 12px 28px rgba(29,91,255,0.24)",
+            }}
+          >
             עזרה
           </button>
           <button
             type="button"
             onClick={logout}
-            className="flex w-full items-center justify-center rounded-xl border border-[#dc2626]/45 bg-white px-4 py-2.5 text-[14px] font-bold text-[#dc2626] transition hover:bg-red-50"
+            className="flex w-full items-center justify-center rounded-xl border bg-white px-4 py-2.5 text-[14px] font-bold transition hover:bg-red-50"
+            style={{ borderColor: "rgba(220,38,38,0.45)", color: colors.dangerText }}
           >
             התנתק
           </button>
@@ -427,11 +478,11 @@ export function Nav() {
               key={item.href}
               href={item.href}
               className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[12px] font-semibold transition active:scale-95 ${
-                active ? "bg-accent-primary/20 text-white" : "text-[#E2E8F0] hover:bg-surface-hover"
+                active ? "bg-[#E8EEFF] text-[#1D5BFF]" : "text-[#6B7686] hover:bg-[#F4F6FB]"
               }`}
               aria-current={active ? "page" : undefined}
             >
-              <Icon className={["h-5 w-5", active ? "text-accent-primary" : "text-ink-muted"].join(" ")} />
+              <Icon className={["h-5 w-5", active ? "text-[#1D5BFF]" : "text-[#8A94A6]"].join(" ")} />
               <span className="truncate">{item.label}</span>
             </Link>
           );
@@ -440,11 +491,11 @@ export function Nav() {
           type="button"
           onClick={() => setMoreOpen((open) => !open)}
           className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[12px] font-semibold transition active:scale-95 ${
-            moreActive || moreOpen ? "bg-accent-primary/20 text-white" : "text-[#E2E8F0] hover:bg-surface-hover"
+            moreActive || moreOpen ? "bg-[#E8EEFF] text-[#1D5BFF]" : "text-[#6B7686] hover:bg-[#F4F6FB]"
           }`}
           aria-expanded={moreOpen}
         >
-          <Menu className={["h-5 w-5", moreActive || moreOpen ? "text-accent-primary" : "text-ink-muted"].join(" ")} />
+          <Menu className={["h-5 w-5", moreActive || moreOpen ? "text-[#1D5BFF]" : "text-[#8A94A6]"].join(" ")} />
           <span className="truncate">עוד</span>
         </button>
       </nav>
