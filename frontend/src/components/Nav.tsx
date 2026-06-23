@@ -26,6 +26,7 @@ import {
   Megaphone,
   MessageCircle,
   Search,
+  ShieldCheck,
   Settings,
   TrendingUp,
   Users,
@@ -57,6 +58,7 @@ const links: NavLink[] = [
   { id: "accountant", href: "/dashboard/accountant", label: "רואה חשבון", icon: FileBarChart },
   { id: "camera", href: "/camera", label: "צילום חשבונית", icon: Camera, module: "documents" },
   { id: "adminDebug", href: "/dashboard/admin-debug", label: "בדיקות מנהל", icon: Settings, module: "admin" },
+  { id: "accuracyDashboard", href: "/dashboard/system/accuracy", label: "לוח דיוק", icon: ShieldCheck, module: "admin" },
   { id: "businessSettings", href: "/dashboard/business-settings", label: "הגדרות עסק", icon: Settings },
   { id: "settings", href: "/dashboard/settings", label: "הגדרות", icon: Settings },
 ];
