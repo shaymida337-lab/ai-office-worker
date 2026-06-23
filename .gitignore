@@ -32,5 +32,9 @@ tmp/
 temp/
 render.env
 
+# Golden dataset staging extracts (PII-safe workflow; never commit real extracts)
+backend/src/services/golden/fixtures/.staging/*
+!backend/src/services/golden/fixtures/.staging/.gitkeep
+
 # Local Netlify folder
 .netlify
