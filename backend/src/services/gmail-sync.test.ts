@@ -9,15 +9,19 @@ import {
   classifyOcrSupplierText,
   classifyGmailScanCandidate,
   collectAttachmentParts,
+  computeGmailScanRunningProgressPercent,
   detectMunicipalCollectionDocument,
   detectSupplierKeyword,
   extractHebrewInvoiceFieldsFromText,
   extractInvoiceAmount,
+  GmailFinancialSanityContextSessionCache,
+  gmailFseSupplierCacheKey,
   isIncomingSupplierExpenseCandidate,
   isInvoiceImageAttachmentPart,
   normalizeOcrSupplierText,
   resolveSupplierMetadata,
   selectInvoiceAttachmentAmount,
+  shouldWriteGmailScanProgress,
   supplierPaymentCreationEligibility,
 } from "./gmail-sync.js";
 import { ARC_VERSION } from "./amount/canonicalAmount.js";
@@ -1454,4 +1458,63 @@ test("Gmail FSE: summarizeFinancialSanityDecision persists compact audit payload
   assert.equal(summary.overallStatus, "valid");
   assert.ok(summary.trustScore >= 90);
   assert.equal(summary.errors.length, 0);
+});
+
+test("Gmail scan progress: running percent advances before scan items are saved", () => {
+  assert.equal(computeGmailScanRunningProgressPercent(50, 0), 5);
+  assert.equal(computeGmailScanRunningProgressPercent(50, 1), 2);
+  assert.equal(computeGmailScanRunningProgressPercent(50, 10), 20);
+  assert.equal(computeGmailScanRunningProgressPercent(50, 48), 95);
+});
+
+test("Gmail scan progress: writes during processing every 2 emails or 2s", () => {
+  assert.equal(
+    shouldWriteGmailScanProgress({
+      force: false,
+      emailDelta: 1,
+      emailInterval: 2,
+      elapsedMs: 500,
+      minIntervalMs: 2_000,
+    }),
+    false
+  );
+  assert.equal(
+    shouldWriteGmailScanProgress({
+      force: false,
+      emailDelta: 2,
+      emailInterval: 2,
+      elapsedMs: 500,
+      minIntervalMs: 2_000,
+    }),
+    true
+  );
+  assert.equal(
+    shouldWriteGmailScanProgress({
+      force: false,
+      emailDelta: 0,
+      emailInterval: 2,
+      elapsedMs: 2_500,
+      minIntervalMs: 2_000,
+    }),
+    true
+  );
+});
+
+test("Gmail FSE context cache: reuses supplier history within scan session", () => {
+  const cache = new GmailFinancialSanityContextSessionCache();
+  const history = {
+    invoiceCount: 3,
+    minAmount: 100,
+    maxAmount: 500,
+    averageAmount: 250,
+    typicalCurrency: "ILS",
+    lastInvoiceNumber: "INV-9",
+    recentInvoiceNumbers: ["INV-9", "INV-8"],
+  };
+
+  assert.equal(cache.getSupplierHistory("org-1", "Acme Ltd"), undefined);
+  cache.setSupplierHistory("org-1", "Acme Ltd", history);
+  assert.deepEqual(cache.getSupplierHistory("org-1", "Acme Ltd"), history);
+  assert.deepEqual(cache.getSupplierHistory("org-1", "ACME LTD"), history);
+  assert.equal(gmailFseSupplierCacheKey("org-1", "Acme Ltd"), gmailFseSupplierCacheKey("org-1", "ACME LTD"));
 });

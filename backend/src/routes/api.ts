@@ -6070,14 +6070,25 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
   const supplierPaymentsFound = log.paymentsCreated;
   const uploadedToDrive = log.driveUploaded;
   const processed = emailsFetched;
+  const progressNumerator = emailsSaved;
+  const scanPhase =
+    status === "running"
+      ? progressNumerator > 0 && progressNumerator < emailsFetched
+        ? "processing"
+        : progressNumerator === 0
+          ? "fetching"
+          : "processing"
+      : "completed";
   const progressPercent =
     status === "completed" || status === "partial"
       ? 100
       : status === "error"
         ? Math.min(100, processed > 0 ? 100 : 0)
         : processed > 0
-          ? Math.min(95, Math.max(5, Math.round((emailsSaved / Math.max(processed, 1)) * 100)))
-          : 5;
+          ? progressNumerator > 0
+            ? Math.min(95, Math.max(1, Math.round((progressNumerator / Math.max(processed, 1)) * 100)))
+            : 5
+          : 0;
   const emailsPerMs = processed > 0 && elapsedMs > 0 ? processed / elapsedMs : 0;
   const estimatedRemainingSeconds =
     status === "running" && emailsPerMs > 0 && progressPercent > 0
@@ -6087,6 +6098,7 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
   return {
     scanId: log.id,
     status,
+    scanPhase,
     inProgress: status === "running",
     startedAt: log.startedAt,
     finishedAt: log.finishedAt,
@@ -6129,6 +6141,7 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
       emailsScanned: emailsFetched,
       emailsFetched,
       emailsSaved,
+      scanPhase,
       recordsSaved: emailsSaved,
       invoicesFound,
       rejectedCount,

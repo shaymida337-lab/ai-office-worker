@@ -47,8 +47,53 @@ const MAX_MESSAGES_PER_RESCAN = 1_000;
 const MAX_MESSAGES_PER_QUICK_SCAN = 25;
 const MAX_MESSAGES_PER_FAST_SCAN = 20;
 const GMAIL_SCAN_BATCH_SIZE = 10;
-const GMAIL_PROGRESS_EMAIL_INTERVAL = 25;
-const GMAIL_PROGRESS_MIN_INTERVAL_MS = 30_000;
+const GMAIL_PROGRESS_FETCH_EMAIL_INTERVAL = 25;
+const GMAIL_PROGRESS_PROCESSING_EMAIL_INTERVAL = 2;
+const GMAIL_PROGRESS_FETCH_MIN_INTERVAL_MS = 30_000;
+const GMAIL_PROGRESS_PROCESSING_MIN_INTERVAL_MS = 2_000;
+
+export function gmailFseSupplierCacheKey(organizationId: string, supplierName: string): string {
+  return `${organizationId}|${normalizeSupplierName(supplierName).toLowerCase()}`;
+}
+
+export class GmailFinancialSanityContextSessionCache {
+  private supplierHistoryByKey = new Map<string, FinancialSanityContext["supplierHistory"]>();
+
+  getSupplierHistory(
+    organizationId: string,
+    supplierName: string
+  ): FinancialSanityContext["supplierHistory"] | undefined {
+    const key = gmailFseSupplierCacheKey(organizationId, supplierName);
+    if (!this.supplierHistoryByKey.has(key)) return undefined;
+    return this.supplierHistoryByKey.get(key) ?? null;
+  }
+
+  setSupplierHistory(
+    organizationId: string,
+    supplierName: string,
+    history: FinancialSanityContext["supplierHistory"]
+  ): void {
+    this.supplierHistoryByKey.set(gmailFseSupplierCacheKey(organizationId, supplierName), history);
+  }
+}
+
+export function shouldWriteGmailScanProgress(input: {
+  force: boolean;
+  emailDelta: number;
+  emailInterval: number;
+  elapsedMs: number;
+  minIntervalMs: number;
+}): boolean {
+  if (input.force) return true;
+  if (input.emailDelta >= input.emailInterval) return true;
+  return input.elapsedMs >= input.minIntervalMs;
+}
+
+export function computeGmailScanRunningProgressPercent(emailsFetched: number, progressNumerator: number): number {
+  if (emailsFetched <= 0) return 0;
+  if (progressNumerator <= 0) return 5;
+  return Math.min(95, Math.max(1, Math.round((progressNumerator / emailsFetched) * 100)));
+}
 const DRIVE_FULL_MESSAGE = "הסריקה הושלמה. לא ניתן לשמור ל-Drive - האחסון שלך מלא";
 const GMAIL_EXCLUDE_QUERY = "-category:promotions -category:social -in:spam -in:trash";
 const INVOICE_KEYWORDS = [
@@ -635,23 +680,43 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
   let sheetsUpdated = 0;
   let lastProgressWriteAt = 0;
   let lastProgressEmailsProcessed = 0;
+  let lastProgressEmailsAnalyzed = 0;
+  let emailsAnalyzedInProcessing = 0;
+  let scanProgressPhase: "fetch" | "process" = "fetch";
   let invoiceDetectionPositive = 0;
   let invoiceDetectionNegative = 0;
   let ignoredCount = 0;
   const ignoredReasons: Record<string, number> = {};
+  const fseContextCache = new GmailFinancialSanityContextSessionCache();
   const maybeSaveScanProgress = async (force = false) => {
     const now = Date.now();
-    const emailDelta = emailsProcessed - lastProgressEmailsProcessed;
+    const isProcessingPhase = scanProgressPhase === "process";
+    const emailDelta = isProcessingPhase
+      ? emailsAnalyzedInProcessing - lastProgressEmailsAnalyzed
+      : emailsProcessed - lastProgressEmailsProcessed;
+    const emailInterval = isProcessingPhase
+      ? GMAIL_PROGRESS_PROCESSING_EMAIL_INTERVAL
+      : GMAIL_PROGRESS_FETCH_EMAIL_INTERVAL;
+    const minIntervalMs = isProcessingPhase
+      ? GMAIL_PROGRESS_PROCESSING_MIN_INTERVAL_MS
+      : GMAIL_PROGRESS_FETCH_MIN_INTERVAL_MS;
     if (
-      !force &&
-      emailDelta < GMAIL_PROGRESS_EMAIL_INTERVAL &&
-      now - lastProgressWriteAt < GMAIL_PROGRESS_MIN_INTERVAL_MS
+      !shouldWriteGmailScanProgress({
+        force,
+        emailDelta,
+        emailInterval,
+        elapsedMs: now - lastProgressWriteAt,
+        minIntervalMs,
+      })
     ) {
       return;
     }
+    const progressEmailsSaved = isProcessingPhase
+      ? Math.max(emailsSavedToGmailScanItem, emailsAnalyzedInProcessing)
+      : emailsSavedToGmailScanItem;
     await saveScanProgress(log.id, {
       emailsProcessed,
-      emailsSaved: emailsSavedToGmailScanItem,
+      emailsSaved: progressEmailsSaved,
       invoicesFound: invoicesCreated,
       paymentsCreated,
       tasksCreated,
@@ -660,7 +725,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       errorsCount,
     });
     lastProgressWriteAt = now;
-    lastProgressEmailsProcessed = emailsProcessed;
+    if (isProcessingPhase) {
+      lastProgressEmailsAnalyzed = emailsAnalyzedInProcessing;
+    } else {
+      lastProgressEmailsProcessed = emailsProcessed;
+    }
   };
 
   const ignoreMessage = (reason: string, messageId?: string | null) => {
@@ -1036,6 +1105,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     await maybeSaveScanProgress(true);
 
     async function processScannedEmails(emailsToProcess: ScannedEmail[], label: "fast" | "historical") {
+    scanProgressPhase = "process";
     const senderCounts = new Map<string, { count: number; email: string; name: string; firstSeen: Date; lastSeen: Date }>();
     for (const email of emailsToProcess) {
       const current = senderCounts.get(email.domain);
@@ -1358,6 +1428,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           dueDate: normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null),
           documentType: classification.documentType,
           rawOcrText: [supplierEvidenceText, visualAttachmentText, pdfText].filter(Boolean).join("\n"),
+          gmailMessageId: email.gmailId,
+          logStep,
+          contextCache: fseContextCache,
         });
         parsedFieldsJson.fse = summarizeFinancialSanityDecision(earlyFseDecision);
         await recordFinancialDocumentDecision({
@@ -1448,6 +1521,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         dueDate: dueDateForDecision,
         documentType: classification.documentType,
         rawOcrText: [supplierEvidenceText, visualAttachmentText, pdfText].filter(Boolean).join("\n"),
+        gmailMessageId: email.gmailId,
+        logStep,
+        contextCache: fseContextCache,
       });
       parsedFieldsJson.fse = summarizeFinancialSanityDecision(fseDecision);
       classification = applyFinancialSanityReviewGate({
@@ -2478,9 +2554,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               logStep(`[gmail-sync] error message=${email.gmailId} stage=mark_scan_item_error reason="${markErr instanceof Error ? markErr.message : String(markErr)}"`);
             }
           }
+        } finally {
+          emailsAnalyzedInProcessing++;
+          await maybeSaveScanProgress();
         }
       }
-      await maybeSaveScanProgress();
     }
     }
 
@@ -2743,43 +2821,57 @@ async function loadGmailFinancialSanityContext(input: {
   amount: number | null;
   documentDate: Date;
   currency: string;
+  contextCache?: GmailFinancialSanityContextSessionCache;
 }): Promise<FinancialSanityContext> {
   const duplicateFingerprints: string[] = [];
+  const duplicateLookups: Promise<void>[] = [];
+
   if (input.fingerprint) {
-    const duplicate = await prisma.supplierPayment.findFirst({
-      where: {
-        organizationId: input.organizationId,
-        documentFingerprint: input.fingerprint,
-      },
-      select: { documentFingerprint: true },
-    });
-    if (duplicate?.documentFingerprint) {
-      duplicateFingerprints.push(duplicate.documentFingerprint);
-    }
+    duplicateLookups.push((async () => {
+      const duplicate = await prisma.supplierPayment.findFirst({
+        where: {
+          organizationId: input.organizationId,
+          documentFingerprint: input.fingerprint,
+        },
+        select: { documentFingerprint: true },
+      });
+      if (duplicate?.documentFingerprint) {
+        duplicateFingerprints.push(duplicate.documentFingerprint);
+      }
+    })());
   }
 
   if (isUsableSupplierName(input.supplierName) && input.amount != null) {
-    const semanticKey = `${input.supplierName}|${Math.abs(input.amount)}|${input.documentDate.toISOString().slice(0, 10)}`;
+    const semanticAmount = input.amount;
+    const semanticKey = `${input.supplierName}|${Math.abs(semanticAmount)}|${input.documentDate.toISOString().slice(0, 10)}`;
     const dayStart = new Date(input.documentDate);
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(dayStart);
     dayEnd.setDate(dayEnd.getDate() + 1);
-    const semanticDuplicate = await prisma.supplierPayment.findFirst({
-      where: {
-        organizationId: input.organizationId,
-        supplier: input.supplierName,
-        amount: input.amount,
-        date: { gte: dayStart, lt: dayEnd },
-      },
-      select: { id: true },
-    });
-    if (semanticDuplicate) {
-      duplicateFingerprints.push(semanticKey);
-    }
+    duplicateLookups.push((async () => {
+      const semanticDuplicate = await prisma.supplierPayment.findFirst({
+        where: {
+          organizationId: input.organizationId,
+          supplier: input.supplierName,
+          amount: semanticAmount,
+          date: { gte: dayStart, lt: dayEnd },
+        },
+        select: { id: true },
+      });
+      if (semanticDuplicate) {
+        duplicateFingerprints.push(semanticKey);
+      }
+    })());
   }
 
   let supplierHistory: FinancialSanityContext["supplierHistory"] = null;
-  if (isUsableSupplierName(input.supplierName)) {
+  const supplierHistoryLookup = (async () => {
+    if (!isUsableSupplierName(input.supplierName)) return;
+    const cachedHistory = input.contextCache?.getSupplierHistory(input.organizationId, input.supplierName);
+    if (cachedHistory !== undefined) {
+      supplierHistory = cachedHistory;
+      return;
+    }
     const payments = await prisma.supplierPayment.findMany({
       where: {
         organizationId: input.organizationId,
@@ -2806,7 +2898,10 @@ async function loadGmailFinancialSanityContext(input: {
           .filter((value): value is string => Boolean(value)),
       };
     }
-  }
+    input.contextCache?.setSupplierHistory(input.organizationId, input.supplierName, supplierHistory);
+  })();
+
+  await Promise.all([...duplicateLookups, supplierHistoryLookup]);
 
   return {
     supplierHistory,
@@ -2828,7 +2923,14 @@ export async function runGmailOrgFinancialSanity(input: {
   dueDate: Date | null;
   documentType: string;
   rawOcrText: string;
+  gmailMessageId?: string;
+  logStep?: (message: string) => void;
+  contextCache?: GmailFinancialSanityContextSessionCache;
 }): Promise<FinancialSanityDecision> {
+  const fseStartedAt = Date.now();
+  if (input.gmailMessageId && input.logStep) {
+    input.logStep(`[gmail-sync] FSE start message=${input.gmailMessageId}`);
+  }
   const fingerprint = computeCanonicalFingerprint({
     organizationId: input.organizationId,
     supplierName: input.supplierName,
@@ -2845,8 +2947,9 @@ export async function runGmailOrgFinancialSanity(input: {
     amount: input.moneyDecision.selectedAmount,
     documentDate: input.documentDate,
     currency: input.moneyDecision.currency,
+    contextCache: input.contextCache,
   });
-  return computeFinancialSanity({
+  const decision = computeFinancialSanity({
     organizationId: input.organizationId,
     supplierDecision: input.supplierDecision,
     moneyDecision: input.moneyDecision,
@@ -2862,6 +2965,12 @@ export async function runGmailOrgFinancialSanity(input: {
     },
     context,
   });
+  if (input.gmailMessageId && input.logStep) {
+    input.logStep(
+      `[gmail-sync] FSE end message=${input.gmailMessageId} durationMs=${Date.now() - fseStartedAt} status=${decision.overallStatus} trust=${decision.trustScore} failed=${decision.failedRules.join(",") || "none"}`
+    );
+  }
+  return decision;
 }
 
 type AttachmentInvoiceAnalysisResult =
