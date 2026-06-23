@@ -1,0 +1,484 @@
+{
+  "version": "golden-v1",
+  "cases": [
+    {
+      "id": "gd-001-perfect-tax-invoice",
+      "description": "Strong tax invoice with VAT registry supplier and labeled total",
+      "documentType": "tax_invoice",
+      "channel": "gmail",
+      "language": "he",
+      "input": {
+        "organizationId": "org-golden-001",
+        "currency": "ILS",
+        "invoiceNumber": "INV-1001",
+        "documentDate": "2026-05-15",
+        "rawOcrText": "חשבונית מס מספר INV-1001 Acme Ltd סה\"כ 1,180 ש\"ח",
+        "amountCandidates": [
+          { "value": 1180, "kind": "invoice_total", "source": "claude_file", "label": "total", "confidence": 0.95 }
+        ],
+        "supplierCandidates": [
+          { "name": "Acme Ltd", "kind": "vat_registry", "source": "registry", "vatNumber": "514888888", "confidence": 0.95 }
+        ],
+        "fingerprint": {
+          "organizationId": "org-golden-001",
+          "supplierName": "Acme",
+          "supplierTaxId": "514888888",
+          "invoiceNumber": "INV-1001",
+          "totalAmount": 1180,
+          "documentDate": "2026-05-15",
+          "documentType": "tax_invoice"
+        }
+      },
+      "expected": {
+        "supplierName": "Acme",
+        "amount": 1180,
+        "documentType": "tax_invoice",
+        "outcomeStatus": "SAVED",
+        "shouldAutoSave": true,
+        "shouldNeedReview": false,
+        "shouldReject": false,
+        "reason": "Strong agreement across engines should auto-save"
+      }
+    },
+    {
+      "id": "gd-002-ambiguous-amount",
+      "description": "Conflicting invoice totals should route to review",
+      "documentType": "tax_invoice",
+      "channel": "gmail",
+      "language": "he",
+      "input": {
+        "organizationId": "org-golden-002",
+        "currency": "ILS",
+        "invoiceNumber": "INV-2002",
+        "documentDate": "2026-05-10",
+        "amountCandidates": [
+          { "value": 1180, "kind": "invoice_total", "source": "claude_file", "confidence": 0.7 },
+          { "value": 1250, "kind": "invoice_total", "source": "regex_gmail", "confidence": 0.72 }
+        ],
+        "supplierCandidates": [
+          { "name": "Acme Ltd", "kind": "ai_extracted", "source": "claude_file", "vatNumber": "514888888", "confidence": 0.9 }
+        ],
+        "fingerprint": {
+          "organizationId": "org-golden-002",
+          "supplierName": "Acme",
+          "supplierTaxId": "514888888",
+          "invoiceNumber": "INV-2002",
+          "totalAmount": 1180,
+          "documentDate": "2026-05-10",
+          "documentType": "tax_invoice"
+        }
+      },
+      "expected": {
+        "supplierName": "Acme",
+        "amount": null,
+        "documentType": "tax_invoice",
+        "outcomeStatus": "NEEDS_REVIEW",
+        "shouldAutoSave": false,
+        "shouldNeedReview": true,
+        "shouldReject": false,
+        "reason": "Ambiguous ARC should force manual review"
+      }
+    },
+    {
+      "id": "gd-003-future-invoice-date",
+      "description": "Future invoice date should block through FSE and trust",
+      "documentType": "tax_invoice",
+      "channel": "gmail",
+      "language": "he",
+      "input": {
+        "organizationId": "org-golden-003",
+        "currency": "ILS",
+        "invoiceNumber": "INV-3003",
+        "documentDate": "2027-01-01",
+        "amountCandidates": [
+          { "value": 1180, "kind": "invoice_total", "source": "claude_file", "confidence": 0.92 }
+        ],
+        "supplierCandidates": [
+          { "name": "Acme Ltd", "kind": "vat_registry", "source": "registry", "vatNumber": "514888888", "confidence": 0.95 }
+        ],
+        "fingerprint": {
+          "organizationId": "org-golden-003",
+          "supplierName": "Acme",
+          "supplierTaxId": "514888888",
+          "invoiceNumber": "INV-3003",
+          "totalAmount": 1180,
+          "documentDate": "2027-01-01",
+          "documentType": "tax_invoice"
+        },
+        "fseContext": {
+          "referenceDate": "2026-06-01",
+          "expectedCurrency": "ILS"
+        }
+      },
+      "expected": {
+        "supplierName": "Acme",
+        "amount": 1180,
+        "documentType": "tax_invoice",
+        "outcomeStatus": "BLOCKED",
+        "shouldAutoSave": false,
+        "shouldNeedReview": false,
+        "shouldReject": true,
+        "reason": "Critical FSE failure should block automatic save"
+      }
+    },
+    {
+      "id": "gd-004-duplicate-detected",
+      "description": "Known duplicate identity should produce duplicate outcome",
+      "documentType": "tax_invoice",
+      "channel": "gmail",
+      "language": "he",
+      "input": {
+        "organizationId": "org-golden-004",
+        "currency": "ILS",
+        "invoiceNumber": "INV-4004",
+        "documentDate": "2026-05-15",
+        "amountCandidates": [
+          { "value": 1180, "kind": "invoice_total", "source": "claude_file", "confidence": 0.95 }
+        ],
+        "supplierCandidates": [
+          { "name": "Acme Ltd", "kind": "vat_registry", "source": "registry", "vatNumber": "514888888", "confidence": 0.95 }
+        ],
+        "fingerprint": {
+          "organizationId": "org-golden-004",
+          "supplierName": "Acme",
+          "supplierTaxId": "514888888",
+          "invoiceNumber": "INV-4004",
+          "totalAmount": 1180,
+          "documentDate": "2026-05-15",
+          "documentType": "tax_invoice"
+        },
+        "outcomeContext": {
+          "duplicateDetected": true,
+          "duplicateMatchIdentity": "scfc-v1:org-golden-004:tax-invoice:514888888:inv4004"
+        }
+      },
+      "expected": {
+        "supplierName": "Acme",
+        "amount": 1180,
+        "documentType": "tax_invoice",
+        "outcomeStatus": "DUPLICATE",
+        "shouldAutoSave": false,
+        "shouldNeedReview": false,
+        "shouldReject": true,
+        "reason": "Duplicate identity should stop new save"
+      }
+    },
+    {
+      "id": "gd-005-pipeline-error",
+      "description": "Pipeline failure should surface error outcome",
+      "documentType": "tax_invoice",
+      "channel": "gmail",
+      "language": "en",
+      "input": {
+        "organizationId": "org-golden-005",
+        "currency": "ILS",
+        "invoiceNumber": "INV-5005",
+        "documentDate": "2026-05-15",
+        "amountCandidates": [
+          { "value": 1180, "kind": "invoice_total", "source": "claude_file", "confidence": 0.95 }
+        ],
+        "supplierCandidates": [
+          { "name": "Acme Ltd", "kind": "ai_extracted", "source": "claude_file", "confidence": 0.9 }
+        ],
+        "fingerprint": {
+          "organizationId": "org-golden-005",
+          "supplierName": "Acme",
+          "supplierTaxId": "514888888",
+          "invoiceNumber": "INV-5005",
+          "totalAmount": 1180,
+          "documentDate": "2026-05-15",
+          "documentType": "tax_invoice"
+        },
+        "outcomeContext": {
+          "pipelineError": "Claude timeout after 60s",
+          "processingStage": "AI Analysis"
+        }
+      },
+      "expected": {
+        "supplierName": "Acme",
+        "amount": 1180,
+        "documentType": "tax_invoice",
+        "outcomeStatus": "ERROR",
+        "shouldAutoSave": false,
+        "shouldNeedReview": false,
+        "shouldReject": true,
+        "reason": "Pipeline errors must not produce save outcomes"
+      }
+    },
+    {
+      "id": "gd-006-not-financial",
+      "description": "Newsletter-style message without financial evidence",
+      "documentType": "supplier_message",
+      "channel": "gmail",
+      "language": "en",
+      "input": {
+        "organizationId": "org-golden-006",
+        "currency": "ILS",
+        "documentDate": "2026-05-15",
+        "rawOcrText": "Weekly product newsletter with marketing tips",
+        "amountCandidates": [],
+        "supplierCandidates": [],
+        "fingerprint": {
+          "organizationId": "org-golden-006",
+          "supplierName": "unknown",
+          "supplierTaxId": null,
+          "invoiceNumber": null,
+          "totalAmount": null,
+          "documentDate": "2026-05-15",
+          "documentType": "supplier_message"
+        },
+        "outcomeContext": {
+          "processingStage": "not_financial",
+          "reviewReason": "filtered_irrelevant newsletter"
+        }
+      },
+      "expected": {
+        "supplierName": null,
+        "amount": null,
+        "documentType": "supplier_message",
+        "outcomeStatus": "NOT_FINANCIAL",
+        "shouldAutoSave": false,
+        "shouldNeedReview": false,
+        "shouldReject": true,
+        "reason": "Non-financial content should not enter payable flow"
+      }
+    },
+    {
+      "id": "gd-007-missing-supplier",
+      "description": "Missing supplier evidence should require review",
+      "documentType": "tax_invoice",
+      "channel": "gmail",
+      "language": "he",
+      "input": {
+        "organizationId": "org-golden-007",
+        "currency": "ILS",
+        "invoiceNumber": "INV-7007",
+        "documentDate": "2026-05-12",
+        "amountCandidates": [
+          { "value": 990, "kind": "invoice_total", "source": "claude_file", "confidence": 0.88 }
+        ],
+        "supplierCandidates": [],
+        "fingerprint": {
+          "organizationId": "org-golden-007",
+          "supplierName": "unknown",
+          "supplierTaxId": null,
+          "invoiceNumber": "INV-7007",
+          "totalAmount": 990,
+          "documentDate": "2026-05-12",
+          "documentType": "tax_invoice"
+        }
+      },
+      "expected": {
+        "supplierName": null,
+        "amount": 990,
+        "documentType": "tax_invoice",
+        "outcomeStatus": "NEEDS_REVIEW",
+        "shouldAutoSave": false,
+        "shouldNeedReview": true,
+        "shouldReject": false,
+        "reason": "Missing supplier should not auto-save"
+      }
+    },
+    {
+      "id": "gd-008-receipt-wolt",
+      "description": "Food delivery receipt with strong OCR supplier keyword",
+      "documentType": "receipt",
+      "channel": "gmail",
+      "language": "he",
+      "input": {
+        "organizationId": "org-golden-008",
+        "currency": "ILS",
+        "invoiceNumber": null,
+        "documentDate": "2026-05-08",
+        "rawOcrText": "קבלה Wolt סה\"כ 84 ש\"ח",
+        "amountCandidates": [
+          { "value": 84, "kind": "invoice_total", "source": "regex_gmail", "confidence": 0.86 }
+        ],
+        "supplierCandidates": [
+          { "name": "Wolt", "kind": "ocr_keyword", "source": "ocr_keyword", "confidence": 0.9 }
+        ],
+        "fingerprint": {
+          "organizationId": "org-golden-008",
+          "supplierName": "Wolt",
+          "supplierTaxId": null,
+          "invoiceNumber": null,
+          "totalAmount": 84,
+          "documentDate": "2026-05-08",
+          "documentType": "receipt"
+        }
+      },
+      "expected": {
+        "supplierName": "Wolt",
+        "amount": 84,
+        "documentType": "receipt",
+        "outcomeStatus": "NEEDS_REVIEW",
+        "shouldAutoSave": false,
+        "shouldNeedReview": true,
+        "shouldReject": false,
+        "reason": "Receipt without invoice number stays in review"
+      }
+    },
+    {
+      "id": "gd-009-vat-mismatch",
+      "description": "Subtotal and VAT do not add up to total",
+      "documentType": "tax_invoice",
+      "channel": "gmail",
+      "language": "he",
+      "input": {
+        "organizationId": "org-golden-009",
+        "currency": "ILS",
+        "invoiceNumber": "INV-9009",
+        "documentDate": "2026-05-14",
+        "rawOcrText": "חשבונית מס Acme Ltd לפני מע\"מ 1000 מע\"מ 150 סה\"כ 1180",
+        "amountCandidates": [
+          { "value": 1180, "kind": "invoice_total", "source": "claude_file", "confidence": 0.9 },
+          { "value": 1000, "kind": "subtotal_before_vat", "source": "claude_file", "confidence": 0.88 },
+          { "value": 150, "kind": "vat_only", "source": "claude_file", "confidence": 0.88 }
+        ],
+        "supplierCandidates": [
+          { "name": "Acme Ltd", "kind": "vat_registry", "source": "registry", "vatNumber": "514888888", "confidence": 0.95 }
+        ],
+        "fingerprint": {
+          "organizationId": "org-golden-009",
+          "supplierName": "Acme",
+          "supplierTaxId": "514888888",
+          "invoiceNumber": "INV-9009",
+          "totalAmount": 1180,
+          "documentDate": "2026-05-14",
+          "documentType": "tax_invoice"
+        }
+      },
+      "expected": {
+        "supplierName": "Acme",
+        "amount": 1180,
+        "documentType": "tax_invoice",
+        "outcomeStatus": "BLOCKED",
+        "shouldAutoSave": false,
+        "shouldNeedReview": false,
+        "shouldReject": true,
+        "reason": "VAT arithmetic failure should block save"
+      }
+    },
+    {
+      "id": "gd-010-impossible-amount",
+      "description": "Absurdly high amount should fail financial sanity",
+      "documentType": "tax_invoice",
+      "channel": "gmail",
+      "language": "en",
+      "input": {
+        "organizationId": "org-golden-010",
+        "currency": "ILS",
+        "invoiceNumber": "INV-1010",
+        "documentDate": "2026-05-11",
+        "amountCandidates": [
+          { "value": 99999999, "kind": "invoice_total", "source": "claude_file", "confidence": 0.8 }
+        ],
+        "supplierCandidates": [
+          { "name": "Acme Ltd", "kind": "ai_extracted", "source": "claude_file", "vatNumber": "514888888", "confidence": 0.85 }
+        ],
+        "fingerprint": {
+          "organizationId": "org-golden-010",
+          "supplierName": "Acme",
+          "supplierTaxId": "514888888",
+          "invoiceNumber": "INV-1010",
+          "totalAmount": 99999999,
+          "documentDate": "2026-05-11",
+          "documentType": "tax_invoice"
+        }
+      },
+      "expected": {
+        "supplierName": "Acme",
+        "amount": null,
+        "documentType": "tax_invoice",
+        "outcomeStatus": "NEEDS_REVIEW",
+        "shouldAutoSave": false,
+        "shouldNeedReview": true,
+        "shouldReject": false,
+        "reason": "Impossible amount rejected upstream before save"
+      }
+    },
+    {
+      "id": "gd-011-bezeq-utility",
+      "description": "Hebrew utility invoice with labeled total",
+      "documentType": "tax_invoice",
+      "channel": "gmail",
+      "language": "he",
+      "input": {
+        "organizationId": "org-golden-011",
+        "currency": "ILS",
+        "invoiceNumber": "BZ-7788",
+        "documentDate": "2026-05-06",
+        "rawOcrText": "חשבונית בזק בע\"מ סה\"כ לתשלום 245.50 ש\"ח",
+        "amountCandidates": [
+          { "value": 245.5, "kind": "invoice_total", "source": "regex_gmail", "label": "total", "confidence": 0.9 }
+        ],
+        "supplierCandidates": [
+          { "name": "בזק", "kind": "ocr_keyword", "source": "ocr_keyword", "confidence": 0.92 },
+          { "name": "Bezeq", "kind": "brand_alias", "source": "learning", "confidence": 0.88 }
+        ],
+        "fingerprint": {
+          "organizationId": "org-golden-011",
+          "supplierName": "בזק",
+          "supplierTaxId": "520000000",
+          "invoiceNumber": "BZ-7788",
+          "totalAmount": 245.5,
+          "documentDate": "2026-05-06",
+          "documentType": "tax_invoice"
+        }
+      },
+      "expected": {
+        "supplierName": "בזק",
+        "amount": 245.5,
+        "documentType": "tax_invoice",
+        "outcomeStatus": "SAVED",
+        "shouldAutoSave": true,
+        "shouldNeedReview": false,
+        "shouldReject": false,
+        "reason": "Utility invoice with stable Hebrew supplier"
+      }
+    },
+    {
+      "id": "gd-012-fse-duplicate-suspicion",
+      "description": "FSE duplicate suspicion should route to review",
+      "documentType": "tax_invoice",
+      "channel": "gmail",
+      "language": "he",
+      "input": {
+        "organizationId": "org-golden-012",
+        "currency": "ILS",
+        "invoiceNumber": "INV-1012",
+        "documentDate": "2026-05-15",
+        "amountCandidates": [
+          { "value": 1180, "kind": "invoice_total", "source": "claude_file", "confidence": 0.93 }
+        ],
+        "supplierCandidates": [
+          { "name": "Acme Ltd", "kind": "vat_registry", "source": "registry", "vatNumber": "514888888", "confidence": 0.95 }
+        ],
+        "fingerprint": {
+          "organizationId": "org-golden-012",
+          "supplierName": "Acme",
+          "supplierTaxId": "514888888",
+          "invoiceNumber": "INV-1012",
+          "totalAmount": 1180,
+          "documentDate": "2026-05-15",
+          "documentType": "tax_invoice"
+        },
+        "fseContext": {
+          "referenceDate": "2026-06-01",
+          "expectedCurrency": "ILS",
+          "duplicateFingerprints": ["__SELF_FINGERPRINT__"]
+        }
+      },
+      "expected": {
+        "supplierName": "Acme",
+        "amount": 1180,
+        "documentType": "tax_invoice",
+        "outcomeStatus": "BLOCKED",
+        "shouldAutoSave": false,
+        "shouldNeedReview": false,
+        "shouldReject": true,
+        "reason": "Duplicate suspicion critical rule should block save"
+      }
+    }
+  ]
+}
