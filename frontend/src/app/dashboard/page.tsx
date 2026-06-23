@@ -20,6 +20,14 @@ import {
 } from "@/lib/api";
 import { colors, radius, shadow, spacing, type as typography } from "@/lib/design-tokens";
 import { labelFor } from "@/lib/labels";
+import {
+  gmailScanStillRunning,
+  isFailedGmailScanStatus,
+  isRunningScanStatusLog,
+  isTerminalGmailScanProgress,
+  isTerminalScanStatusLog,
+  normalizeScanStatusFromLog,
+} from "@/lib/gmailScanLifecycle";
 import type { OrganizationSettings } from "@/lib/business-config";
 
 type ClientSummary = {
@@ -177,7 +185,7 @@ type GmailScanResult = {
 
 type ScanProgressResult = {
   scanId: string;
-  status: "running" | "completed" | "partial" | "error" | "success" | "failed" | "cancelled";
+  status: "running" | "queued" | "completed" | "partial" | "error" | "success" | "failed" | "cancelled" | "stale";
   inProgress: boolean;
   startedAt: string;
   finishedAt: string | null;
@@ -1393,49 +1401,12 @@ function taskPriorityLabel(priority: string) {
   return labels[priority] ?? priority.replace(/_/g, " ");
 }
 
-function isCompletedGmailScanStatus(status?: string) {
-  return status === "completed" || status === "success" || status === "partial";
-}
-
-function isFailedGmailScanStatus(status?: string) {
-  return status === "error" || status === "failed" || status === "cancelled";
-}
-
-function isRunningScanStatusLog(log: { status: string; endedAt: string | null }) {
-  return log.status === "running" && !log.endedAt;
-}
-
-function isTerminalScanStatusLog(log: { status: string; endedAt: string | null }) {
-  if (log.endedAt) return true;
-  return isCompletedGmailScanStatus(log.status) || isFailedGmailScanStatus(log.status);
-}
-
-function isTerminalGmailScanProgress(progress: ScanProgressResult) {
-  if (progress.finishedAt) return true;
-  if (progress.inProgress === false) return true;
-  return isCompletedGmailScanStatus(progress.status) || isFailedGmailScanStatus(progress.status);
-}
-
 function isSuccessfulGmailScanProgress(progress: ScanProgressResult) {
-  return isCompletedGmailScanStatus(progress.status) && !isFailedGmailScanStatus(progress.status);
-}
-
-function gmailScanStillRunning(progress: ScanProgressResult) {
-  if (progress.inProgress === false) return false;
-  if (progress.finishedAt) return false;
-  if (isTerminalGmailScanProgress(progress)) return false;
-  return progress.status === "running";
-}
-
-function normalizeScanStatusFromLog(
-  logStatus: string,
-  fallback: ScanProgressResult["status"]
-): ScanProgressResult["status"] {
-  if (logStatus === "success" || logStatus === "completed") return "completed";
-  if (logStatus === "partial") return "partial";
-  if (logStatus === "failed" || logStatus === "error") return "error";
-  if (logStatus === "cancelled") return "cancelled";
-  return fallback;
+  return (
+    progress.status === "completed" ||
+    progress.status === "success" ||
+    progress.status === "partial"
+  );
 }
 
 function mapProgressToBannerStatus(progress: ScanProgressResult): "running" | "success" | "partial" | "truncated" | "error" {
@@ -1443,6 +1414,7 @@ function mapProgressToBannerStatus(progress: ScanProgressResult): "running" | "s
   const truncated = progress.windowTruncated ?? progress.summary?.windowTruncated ?? false;
   if (truncated) return "truncated";
   if (progress.status === "partial") return "partial";
+  if (progress.status === "stale" || progress.status === "cancelled") return "error";
   if (isSuccessfulGmailScanProgress(progress)) return "success";
   return "error";
 }

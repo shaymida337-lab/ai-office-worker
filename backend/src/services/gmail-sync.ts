@@ -45,6 +45,17 @@ import { computeTrustDecision, summarizeTrustDecision } from "./trust/trustEngin
 import type { TrustDecision, TrustDuplicateRisk } from "./trust/trustTypes.js";
 import { computeDocumentOutcome, summarizeDocumentOutcome } from "./outcome/outcomeEngine.js";
 import type { DocumentOutcome, DocumentOutcomeStatus, OutcomeOptionalContext } from "./outcome/outcomeTypes.js";
+import {
+  closeStaleGmailScansForOrg,
+  createQueuedGmailScanLog,
+  ensureGmailScanTerminalized,
+  finalizeGmailScanCompleted,
+  finalizeGmailScanFailed,
+  findActiveGmailScanLog,
+  handleConcurrentGmailScanExit,
+  logScanLifecycle,
+  promoteGmailScanToRunning,
+} from "./gmailScanLifecycle.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
@@ -558,35 +569,70 @@ type GmailSyncOptions = {
 };
 
 export async function syncGmailForOrganization(organizationId: string, options: GmailSyncOptions = {}) {
+  const scanLogId = options.scanLogId;
   const queuedRun = gmailScanQueue
     .catch(() => undefined)
-    .then(() => runGmailSyncForOrganization(organizationId, options));
+    .then(async () => {
+      try {
+        return await runGmailSyncForOrganization(organizationId, options);
+      } catch (err) {
+        if (scanLogId) {
+          const message = err instanceof Error ? err.message : String(err);
+          await finalizeGmailScanFailed(scanLogId, message);
+          logScanLifecycle(scanLogId, "failed", `reason=${message}`);
+        }
+        throw err;
+      }
+    });
   gmailScanQueue = queuedRun.catch(() => undefined);
   return queuedRun;
 }
 
 async function runGmailSyncForOrganization(organizationId: string, options: GmailSyncOptions = {}) {
-  const activeLog = await prisma.syncLog.findFirst({
-    where: {
-      organizationId,
-      type: "gmail_scan",
-      status: "running",
-      finishedAt: null,
-      ...(options.scanLogId ? { id: { not: options.scanLogId } } : {}),
-    },
-  });
-  if (activeLog) {
-    const staleAfterMs = 30 * 60 * 1000;
-    if (activeLog.startedAt.getTime() > Date.now() - staleAfterMs) {
-      console.log(`[gmail-sync] Existing Gmail scan still running org=${organizationId} log=${activeLog.id}`);
-      return { emailsProcessed: 0, paymentsCreated: 0, tasksCreated: 0, clientsCreated: 0, invoicesCreated: 0, uniqueSenders: 0, potentialClients: 0, invoiceEmails: 0, invoiceAmountsExtracted: 0, inProgress: true, scanSteps: ["סריקת Gmail כבר רצה"] };
+  await closeStaleGmailScansForOrg(organizationId, options.scanLogId);
+
+  const returnInProgress = async (activeScanId: string) => {
+    if (options.scanLogId) {
+      await handleConcurrentGmailScanExit({
+        organizationId,
+        scanLogId: options.scanLogId,
+        activeScanId,
+      });
     }
-    console.warn(`[gmail-sync] Closing stale Gmail scan log org=${organizationId} log=${activeLog.id}`);
-    await prisma.syncLog.update({
-      where: { id: activeLog.id },
-      data: { status: "error", errorMessage: "Stale running scan was reset", finishedAt: new Date() },
-    });
+    console.log(`[gmail-sync] Existing Gmail scan still active org=${organizationId} log=${activeScanId}`);
+    return {
+      emailsProcessed: 0,
+      paymentsCreated: 0,
+      tasksCreated: 0,
+      clientsCreated: 0,
+      invoicesCreated: 0,
+      uniqueSenders: 0,
+      potentialClients: 0,
+      invoiceEmails: 0,
+      invoiceAmountsExtracted: 0,
+      relevantEmailsFound: 0,
+      recordsSaved: 0,
+      duplicatesSkipped: 0,
+      errorsCount: 0,
+      emailsSavedToGmailScanItem: 0,
+      emailsParsed: 0,
+      driveUploadsSucceeded: 0,
+      parserRejectedCount: 0,
+      ignoredCount: 0,
+      ignoredReasons: {} as Record<string, number>,
+      sheetsUpdated: 0,
+      inProgress: true as const,
+      scanLogId: activeScanId,
+      scanSteps: ["סריקת Gmail כבר רצה"],
+    };
+  };
+
+  const activeLog = await findActiveGmailScanLog(organizationId, options.scanLogId);
+  if (activeLog) {
+    return returnInProgress(activeLog.id);
   }
+
+  let log: { id: string } | null = null;
 
   const scanSteps: string[] = [];
   const logStep = (message: string) => {
@@ -621,17 +667,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
   const ownerEmails = new Set([organization?.user.email].filter((email): email is string => Boolean(email)).map((email) => email.toLowerCase()));
   const knownSupplierNames = await loadKnownSupplierNames(organizationId);
 
-  const activeLogAfterReset = await prisma.syncLog.findFirst({
-    where: {
-      organizationId,
-      type: "gmail_scan",
-      status: "running",
-      finishedAt: null,
-      ...(options.scanLogId ? { id: { not: options.scanLogId } } : {}),
-    },
-  });
+  const activeLogAfterReset = await findActiveGmailScanLog(organizationId, options.scanLogId);
   if (activeLogAfterReset) {
-    return { emailsProcessed: 0, paymentsCreated: 0, tasksCreated: 0, clientsCreated: 0, invoicesCreated: 0, uniqueSenders: 0, potentialClients: 0, invoiceEmails: 0, invoiceAmountsExtracted: 0, inProgress: true, scanSteps: ["סריקת Gmail כבר רצה"] };
+    return returnInProgress(activeLogAfterReset.id);
   }
 
   const existingScanLog = options.scanLogId
@@ -639,19 +677,22 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         where: { id: options.scanLogId, organizationId, type: "gmail_scan" },
       })
     : null;
-  const log = existingScanLog ?? await prisma.syncLog.create({
-    data: {
-      organizationId,
-      type: "gmail_scan",
-      status: "running",
-      scanMode,
-      retryOfId: options.retryOfId,
-    },
-  });
+  if (existingScanLog) {
+    log = existingScanLog;
+  } else if (options.scanLogId) {
+    throw new Error(`Gmail scan log not found: ${options.scanLogId}`);
+  } else {
+    const created = await createQueuedGmailScanLog(organizationId, scanMode, options.retryOfId);
+    log = created.scanLog;
+  }
+
+  await promoteGmailScanToRunning(log.id);
+  logScanLifecycle(log.id, "fetch start");
+
   if (existingScanLog) {
     await prisma.syncLog.update({
       where: { id: existingScanLog.id },
-      data: { status: "running", errorMessage: null, finishedAt: null, scanMode, retryOfId: options.retryOfId },
+      data: { errorMessage: null, finishedAt: null, scanMode, retryOfId: options.retryOfId },
     });
   }
 
@@ -1015,10 +1056,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     logStep(`[gmail-sync] FAST_SCAN_FOUND_MESSAGES count=${fastMessages.length} diagnostics=${JSON.stringify(fastListing.diagnostics)}`);
     await fetchAndParseMessages(fastMessages, "fast");
     const fastScannedEmails = scannedEmails.splice(0, scannedEmails.length);
+    logScanLifecycle(log.id, "fetch end");
+    logScanLifecycle(log.id, "processing start");
     await processScannedEmails(fastScannedEmails, "fast");
     logStep(`[gmail-sync] FAST_SCAN_DONE processed=${fastMessages.length}`);
 
     if (options.fastOnly) {
+      logScanLifecycle(log.id, "processing end");
       await maybeSaveScanProgress(true);
       const recordsSaved = paymentsCreated + invoicesCreated + tasksCreated + clientsCreated;
       logStep(`Found ${relevantEmailsFound} relevant emails (${invoiceEmails} invoices, ${receiptsFound} receipts, ${paymentRequestsFound} payment requests, ${supplierMessagesFound} supplier messages)`);
@@ -1033,23 +1077,19 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       if (windowTruncated) {
         logStep(`[gmail-sync] SCAN_WINDOW_TRUNCATED scanned=${fastMessages.length} maxMessages=${fastListing.diagnostics.maxMessages}`);
       }
-      await prisma.syncLog.update({
-        where: { id: log.id },
-        data: {
-          emailsProcessed,
-          emailsSaved: emailsSavedToGmailScanItem,
-          invoicesFound: invoicesCreated,
-          paymentsCreated,
-          tasksCreated,
-          driveUploaded: driveUploadsSucceeded,
-          sheetsUpdated,
-          errorsCount,
-          windowTruncated,
-          totalMatched: fastMessages.length,
-          finishedAt: new Date(),
-          status: errorsCount > 0 ? "partial" : "success",
-        },
+      await finalizeGmailScanCompleted(log.id, {
+        emailsProcessed,
+        emailsSaved: emailsSavedToGmailScanItem,
+        invoicesFound: invoicesCreated,
+        paymentsCreated,
+        tasksCreated,
+        driveUploaded: driveUploadsSucceeded,
+        sheetsUpdated,
+        errorsCount,
+        windowTruncated,
+        totalMatched: fastMessages.length,
       });
+      logScanLifecycle(log.id, "completed");
 
       return {
         emailsProcessed,
@@ -1106,6 +1146,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     await fetchAndParseMessages(historicalMessages, "historical");
     const historicalScannedEmails = scannedEmails.splice(0, scannedEmails.length);
     await processScannedEmails(historicalScannedEmails, "historical");
+    logScanLifecycle(log.id, "processing end");
     await maybeSaveScanProgress(true);
 
     async function processScannedEmails(emailsToProcess: ScannedEmail[], label: "fast" | "historical") {
@@ -2746,23 +2787,19 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       logStep(`[gmail-sync] invoice backfill candidates=${invoiceBackfill.candidates} created=${invoiceBackfill.created} duplicates=${invoiceBackfill.duplicates} skipped=${invoiceBackfill.skipped} errors=${invoiceBackfill.errors.length}`);
     }
 
-    await prisma.syncLog.update({
-      where: { id: log.id },
-      data: {
-        emailsProcessed,
-        emailsSaved: emailsSavedToGmailScanItem,
-        invoicesFound: invoicesCreated + invoiceBackfill.created,
-        paymentsCreated,
-        tasksCreated,
-        driveUploaded: driveUploadsSucceeded,
-        sheetsUpdated,
-        errorsCount,
-        windowTruncated,
-        totalMatched: messages.length,
-        finishedAt: new Date(),
-        status: errorsCount > 0 ? "partial" : "success",
-      },
+    await finalizeGmailScanCompleted(log.id, {
+      emailsProcessed,
+      emailsSaved: emailsSavedToGmailScanItem,
+      invoicesFound: invoicesCreated + invoiceBackfill.created,
+      paymentsCreated,
+      tasksCreated,
+      driveUploaded: driveUploadsSucceeded,
+      sheetsUpdated,
+      errorsCount,
+      windowTruncated,
+      totalMatched: messages.length,
     });
+    logScanLifecycle(log.id, "completed");
 
     return {
       emailsProcessed,
@@ -2807,11 +2844,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    await prisma.syncLog.update({
-      where: { id: log.id },
-      data: { status: "error", errorMessage: message, errorsCount: Math.max(errorsCount, 1), finishedAt: new Date() },
-    });
+    if (log) {
+      await finalizeGmailScanFailed(log.id, message, { errorsCount: Math.max(errorsCount, 1) });
+      logScanLifecycle(log.id, "failed", `reason=${message}`);
+    }
     throw err;
+  } finally {
+    if (log) {
+      await ensureGmailScanTerminalized(log.id);
+    }
   }
 }
 

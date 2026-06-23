@@ -1,0 +1,289 @@
+import { prisma } from "../lib/prisma.js";
+
+export const GMAIL_SCAN_STALE_MS = 30 * 60 * 1000;
+
+export const GMAIL_SCAN_ACTIVE_STATUSES = ["queued", "running"] as const;
+export const GMAIL_SCAN_TERMINAL_STATUSES = [
+  "completed",
+  "failed",
+  "cancelled",
+  "stale",
+  // legacy rows
+  "success",
+  "partial",
+  "error",
+] as const;
+
+export type GmailScanLifecycleStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "stale";
+
+export type GmailScanProgressCounters = {
+  emailsProcessed?: number;
+  emailsSaved?: number;
+  invoicesFound?: number;
+  paymentsCreated?: number;
+  tasksCreated?: number;
+  driveUploaded?: number;
+  sheetsUpdated?: number;
+  errorsCount?: number;
+  windowTruncated?: boolean;
+  totalMatched?: number | null;
+};
+
+export function logScanLifecycle(
+  scanId: string | null | undefined,
+  event: string,
+  detail?: string
+) {
+  const suffix = detail ? ` ${detail}` : "";
+  console.log(`[scan] ${event} scanId=${scanId ?? "none"}${suffix}`);
+}
+
+export function isActiveGmailScanStatus(status: string) {
+  return (GMAIL_SCAN_ACTIVE_STATUSES as readonly string[]).includes(status);
+}
+
+export function isTerminalGmailScanDbStatus(status: string) {
+  return (GMAIL_SCAN_TERMINAL_STATUSES as readonly string[]).includes(status);
+}
+
+export function isGmailScanLogStale(startedAt: Date, now = Date.now()) {
+  return startedAt.getTime() <= now - GMAIL_SCAN_STALE_MS;
+}
+
+export function normalizeLegacyGmailScanStatus(status: string): GmailScanLifecycleStatus {
+  if (status === "success" || status === "partial") return "completed";
+  if (status === "error") return "failed";
+  if (
+    status === "queued" ||
+    status === "running" ||
+    status === "completed" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "stale"
+  ) {
+    return status;
+  }
+  return "failed";
+}
+
+export function toApiGmailScanStatus(
+  status: string,
+  options: { errorsCount?: number; errorMessage?: string | null } = {}
+): "running" | "completed" | "partial" | "error" | "failed" | "cancelled" | "stale" | "queued" {
+  const normalized = normalizeLegacyGmailScanStatus(status);
+  if (normalized === "queued") return "queued";
+  if (normalized === "running") return "running";
+  if (normalized === "cancelled") return "cancelled";
+  if (normalized === "stale") return "stale";
+  if (normalized === "failed") return "error";
+  if (normalized === "completed") {
+    return (options.errorsCount ?? 0) > 0 ? "partial" : "completed";
+  }
+  if (/stale/i.test(options.errorMessage ?? "")) return "stale";
+  return "error";
+}
+
+export async function findActiveGmailScanLog(organizationId: string, excludeScanId?: string) {
+  return prisma.syncLog.findFirst({
+    where: {
+      organizationId,
+      type: "gmail_scan",
+      status: { in: [...GMAIL_SCAN_ACTIVE_STATUSES] },
+      finishedAt: null,
+      ...(excludeScanId ? { id: { not: excludeScanId } } : {}),
+    },
+    orderBy: { startedAt: "desc" },
+  });
+}
+
+export async function closeStaleGmailScansForOrg(organizationId: string, excludeScanId?: string) {
+  const activeLogs = await prisma.syncLog.findMany({
+    where: {
+      organizationId,
+      type: "gmail_scan",
+      status: { in: [...GMAIL_SCAN_ACTIVE_STATUSES] },
+      finishedAt: null,
+      ...(excludeScanId ? { id: { not: excludeScanId } } : {}),
+    },
+  });
+
+  const closed: string[] = [];
+  for (const log of activeLogs) {
+    if (!isGmailScanLogStale(log.startedAt)) continue;
+    await finalizeGmailScanStale(
+      log.id,
+      `Scan exceeded ${GMAIL_SCAN_STALE_MS / 60_000} minute timeout without finishing`
+    );
+    closed.push(log.id);
+  }
+  return closed;
+}
+
+export async function createQueuedGmailScanLog(
+  organizationId: string,
+  scanMode: string,
+  retryOfId?: string
+) {
+  const existing = await findActiveGmailScanLog(organizationId);
+  if (existing) {
+    if (isGmailScanLogStale(existing.startedAt)) {
+      await finalizeGmailScanStale(
+        existing.id,
+        `Stale scan closed before creating a new scan (${existing.status})`
+      );
+    } else {
+      logScanLifecycle(existing.id, "queued", "reusing existing active scan");
+      return { scanLog: existing, created: false as const };
+    }
+  }
+
+  const scanLog = await prisma.syncLog.create({
+    data: {
+      organizationId,
+      type: "gmail_scan",
+      status: "queued",
+      scanMode,
+      retryOfId,
+    },
+  });
+  logScanLifecycle(scanLog.id, "created");
+  logScanLifecycle(scanLog.id, "queued");
+  return { scanLog, created: true as const };
+}
+
+export async function promoteGmailScanToRunning(scanId: string) {
+  const updated = await prisma.syncLog.updateMany({
+    where: {
+      id: scanId,
+      type: "gmail_scan",
+      status: { in: ["queued", "running"] },
+      finishedAt: null,
+    },
+    data: { status: "running", errorMessage: null },
+  });
+  if (updated.count > 0) {
+    logScanLifecycle(scanId, "running");
+  }
+  return updated.count > 0;
+}
+
+async function terminalizeGmailScan(
+  scanId: string,
+  status: GmailScanLifecycleStatus,
+  errorMessage: string | null,
+  counters: GmailScanProgressCounters = {}
+) {
+  const log = await prisma.syncLog.findFirst({
+    where: { id: scanId, type: "gmail_scan" },
+    select: { status: true, finishedAt: true, startedAt: true },
+  });
+  if (!log || log.finishedAt || isTerminalGmailScanDbStatus(log.status)) {
+    return false;
+  }
+
+  await prisma.syncLog.update({
+    where: { id: scanId },
+    data: {
+      status,
+      errorMessage,
+      finishedAt: new Date(),
+      ...counters,
+    },
+  });
+  logScanLifecycle(scanId, status, errorMessage ? `reason=${errorMessage}` : undefined);
+  return true;
+}
+
+export async function finalizeGmailScanCompleted(scanId: string, counters: GmailScanProgressCounters = {}) {
+  return terminalizeGmailScan(scanId, "completed", null, counters);
+}
+
+export async function finalizeGmailScanFailed(
+  scanId: string,
+  errorMessage: string,
+  counters: GmailScanProgressCounters = {}
+) {
+  return terminalizeGmailScan(scanId, "failed", errorMessage, {
+    errorsCount: Math.max(counters.errorsCount ?? 0, 1),
+    ...counters,
+  });
+}
+
+export async function finalizeGmailScanStale(scanId: string, errorMessage: string) {
+  return terminalizeGmailScan(scanId, "stale", errorMessage);
+}
+
+export async function finalizeGmailScanCancelled(scanId: string, errorMessage: string) {
+  return terminalizeGmailScan(scanId, "cancelled", errorMessage);
+}
+
+export async function ensureGmailScanTerminalized(scanId: string, fallbackMessage?: string) {
+  const log = await prisma.syncLog.findFirst({
+    where: { id: scanId, type: "gmail_scan" },
+    select: { status: true, finishedAt: true, startedAt: true },
+  });
+  if (!log || log.finishedAt || isTerminalGmailScanDbStatus(log.status)) {
+    return false;
+  }
+  if (isGmailScanLogStale(log.startedAt)) {
+    return finalizeGmailScanStale(
+      scanId,
+      fallbackMessage ?? "Scan terminated without completion (stale timeout)"
+    );
+  }
+  return finalizeGmailScanFailed(
+    scanId,
+    fallbackMessage ?? "Scan terminated without completion"
+  );
+}
+
+export async function terminalizeOrphanGmailScan(scanId: string, reason: string) {
+  const log = await prisma.syncLog.findFirst({
+    where: { id: scanId, type: "gmail_scan" },
+    select: { status: true, finishedAt: true, startedAt: true },
+  });
+  if (!log || log.finishedAt || isTerminalGmailScanDbStatus(log.status)) {
+    return false;
+  }
+  return finalizeGmailScanCancelled(scanId, reason);
+}
+
+export async function refreshGmailScanProgressOnRead(organizationId: string, scanId: string) {
+  const log = await prisma.syncLog.findFirst({
+    where: { id: scanId, organizationId, type: "gmail_scan" },
+  });
+  if (!log || log.finishedAt || !isActiveGmailScanStatus(log.status)) {
+    return log;
+  }
+  if (!isGmailScanLogStale(log.startedAt)) {
+    return log;
+  }
+  await finalizeGmailScanStale(
+    scanId,
+    `Scan exceeded ${GMAIL_SCAN_STALE_MS / 60_000} minute timeout (auto-closed on read)`
+  );
+  return prisma.syncLog.findFirst({
+    where: { id: scanId, organizationId, type: "gmail_scan" },
+  });
+}
+
+export async function handleConcurrentGmailScanExit(options: {
+  organizationId: string;
+  scanLogId?: string;
+  activeScanId: string;
+}) {
+  if (options.scanLogId && options.scanLogId !== options.activeScanId) {
+    await terminalizeOrphanGmailScan(
+      options.scanLogId,
+      `Cancelled because scan ${options.activeScanId} is already active`
+    );
+  }
+  logScanLifecycle(options.activeScanId, "running", "concurrent scan reused");
+  return options.activeScanId;
+}

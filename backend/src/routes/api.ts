@@ -24,6 +24,15 @@ import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } fr
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
 import { approveFinancialDocumentReview } from "../services/financialDocuments.js";
 import { initialConnectScanWindow } from "../services/scanWindow.js";
+import {
+  closeStaleGmailScansForOrg,
+  createQueuedGmailScanLog,
+  finalizeGmailScanFailed,
+  findActiveGmailScanLog,
+  logScanLifecycle,
+  refreshGmailScanProgressOnRead,
+  toApiGmailScanStatus,
+} from "../services/gmailScanLifecycle.js";
 import { askNatalieBusinessQuestion } from "../services/natalie.js";
 import { completeTask, createTask } from "../services/tasks.js";
 import {
@@ -2376,13 +2385,16 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
     endedAt: Date | null;
   };
 
+  const organizationId = req.auth!.organizationId;
+  await closeStaleGmailScansForOrg(organizationId);
+
   const [scanLogs, syncLogs] = await Promise.all([
     prisma.$queryRawUnsafe<ScanStatusLog[]>(
     'SELECT "id", "type", "status", "found", "saved", "errors", "startedAt", "endedAt" FROM "ScanLog" WHERE "orgId" = $1 ORDER BY "startedAt" DESC LIMIT 10',
     req.auth!.organizationId
     ),
     prisma.syncLog.findMany({
-      where: { organizationId: req.auth!.organizationId, type: "gmail_scan" },
+      where: { organizationId, type: "gmail_scan" },
       orderBy: { startedAt: "desc" },
       take: 10,
       select: {
@@ -2410,10 +2422,24 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
 
   const logs: ScanStatusLog[] = [
     ...scanLogs,
-    ...syncLogs.map((log) => ({
+    ...syncLogs.map((log) => {
+      const apiStatus = log.finishedAt
+        ? toApiGmailScanStatus(log.status, { errorsCount: log.errorsCount, errorMessage: log.errorMessage })
+        : toApiGmailScanStatus(log.status, { errorsCount: log.errorsCount, errorMessage: log.errorMessage });
+      const mappedStatus =
+        apiStatus === "error" || apiStatus === "failed"
+          ? "failed"
+          : apiStatus === "stale"
+            ? "stale"
+            : apiStatus === "cancelled"
+              ? "cancelled"
+              : apiStatus === "queued"
+                ? "queued"
+                : apiStatus;
+      return {
       id: log.id,
       type: log.type,
-      status: log.status === "error" ? "failed" : log.status,
+      status: mappedStatus,
       found: log.emailsProcessed,
       saved: log.emailsSaved || log.paymentsCreated + log.tasksCreated,
       invoicesFound: log.invoicesFound,
@@ -2425,7 +2451,8 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
       totalMatched: log.totalMatched,
       startedAt: log.startedAt,
       endedAt: log.finishedAt,
-    })),
+    };
+    }),
   ]
     .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
     .slice(0, 10);
@@ -5808,17 +5835,9 @@ async function scanGmail(req: Request, res: Response) {
       console.log(`[gmail-scan] invoice rescan cleanup org=${organizationId} invoicesDeleted=${cleanup.invoicesDeleted} paymentsDeleted=${cleanup.paymentsDeleted} scanItemsDeleted=${cleanup.scanItemsDeleted} emailsReset=${cleanup.emailsReset}`);
     }
 
-    const staleAfterMs = 30 * 60 * 1000;
-    const activeLog = await prisma.syncLog.findFirst({
-      where: {
-        organizationId,
-        type: "gmail_scan",
-        status: "running",
-        finishedAt: null,
-      },
-      orderBy: { startedAt: "desc" },
-    });
-    if (activeLog && activeLog.startedAt.getTime() > Date.now() - staleAfterMs) {
+    await closeStaleGmailScansForOrg(organizationId);
+    const activeLog = await findActiveGmailScanLog(organizationId);
+    if (activeLog) {
       const progress = await buildGmailScanProgress(organizationId, activeLog.id);
       console.log(`[gmail-scan] Existing scan in progress org=${organizationId} scanId=${activeLog.id}`);
       res.json({
@@ -5832,14 +5851,8 @@ async function scanGmail(req: Request, res: Response) {
       });
       return;
     }
-    if (activeLog) {
-      await prisma.syncLog.update({
-        where: { id: activeLog.id },
-        data: { status: "error", errorMessage: "Stale running scan was reset before starting a new background scan", finishedAt: new Date() },
-      });
-    }
 
-    const { scanLog, created } = await createRunningGmailScanLog(organizationId, "manual");
+    const { scanLog, created } = await createQueuedGmailScanLog(organizationId, "manual");
     if (!created) {
       const progress = await buildGmailScanProgress(organizationId, scanLog.id);
       res.json({
@@ -5853,6 +5866,7 @@ async function scanGmail(req: Request, res: Response) {
       });
       return;
     }
+    logScanLifecycle(scanLog.id, "created");
     console.log(`[gmail-scan] Step 2: background scan started org=${organizationId} scanId=${scanLog.id} daysBack=${daysBack}`);
     void syncGmailForOrganization(organizationId, {
       daysBack,
@@ -5864,10 +5878,26 @@ async function scanGmail(req: Request, res: Response) {
       scanMode: "manual",
     })
       .then((backgroundResult) => {
-        console.log(`[gmail-scan] Background processing finished org=${organizationId} scanId=${scanLog.id} emails=${backgroundResult.emailsProcessed} saved=${backgroundResult.emailsSavedToGmailScanItem ?? 0} payments=${backgroundResult.paymentsCreated} invoices=${backgroundResult.invoicesCreated} driveUploaded=${backgroundResult.driveUploadsSucceeded ?? 0} rejected=${backgroundResult.parserRejectedCount ?? backgroundResult.ignoredCount ?? 0}`);
+        if ("inProgress" in backgroundResult && backgroundResult.inProgress) {
+          logScanLifecycle(scanLog.id, "running", "background returned inProgress");
+          return;
+        }
+        const result = backgroundResult as {
+          emailsProcessed?: number;
+          emailsSavedToGmailScanItem?: number;
+          paymentsCreated?: number;
+          invoicesCreated?: number;
+          driveUploadsSucceeded?: number;
+          parserRejectedCount?: number;
+          ignoredCount?: number;
+        };
+        console.log(`[gmail-scan] Background processing finished org=${organizationId} scanId=${scanLog.id} emails=${result.emailsProcessed ?? 0} saved=${result.emailsSavedToGmailScanItem ?? 0} payments=${result.paymentsCreated ?? 0} invoices=${result.invoicesCreated ?? 0} driveUploaded=${result.driveUploadsSucceeded ?? 0} rejected=${result.parserRejectedCount ?? result.ignoredCount ?? 0}`);
       })
-      .catch((backgroundError) => {
+      .catch(async (backgroundError) => {
+        const message = backgroundError instanceof Error ? backgroundError.message : String(backgroundError);
         console.error(`[gmail-scan] Background processing failed org=${organizationId} scanId=${scanLog.id}`, backgroundError);
+        await finalizeGmailScanFailed(scanLog.id, message);
+        logScanLifecycle(scanLog.id, "failed", `reason=${message}`);
       });
 
     res.json({
@@ -5964,38 +5994,11 @@ apiRouter.post("/gmail-scan", scanGmail);
 apiRouter.post("/gmail/scan", scanGmail);
 
 async function createRunningGmailScanLog(organizationId: string, scanMode: string) {
-  try {
-    const scanLog = await prisma.syncLog.create({
-      data: {
-        organizationId,
-        type: "gmail_scan",
-        status: "running",
-        scanMode,
-      },
-    });
-    return { scanLog, created: true };
-  } catch (err) {
-    const active = await prisma.syncLog.findFirst({
-      where: {
-        organizationId,
-        type: "gmail_scan",
-        status: "running",
-        finishedAt: null,
-      },
-      orderBy: { startedAt: "desc" },
-    });
-    if (active) {
-      console.warn(`[gmail-scan] DB lock prevented duplicate running scan org=${organizationId} scanId=${active.id}`);
-      return { scanLog: active, created: false };
-    }
-    throw err;
-  }
+  return createQueuedGmailScanLog(organizationId, scanMode);
 }
 
 async function buildGmailScanProgress(organizationId: string, scanId: string) {
-  const log = await prisma.syncLog.findFirst({
-    where: { id: scanId, organizationId, type: "gmail_scan" },
-  });
+  const log = await refreshGmailScanProgressOnRead(organizationId, scanId);
   if (!log) return null;
 
   const start = log.startedAt;
@@ -6027,7 +6030,12 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
     },
   });
   const lastSuccessfulScan = await prisma.syncLog.findFirst({
-    where: { organizationId, type: "gmail_scan", status: "success", finishedAt: { not: null } },
+    where: {
+      organizationId,
+      type: "gmail_scan",
+      status: { in: ["success", "completed"] },
+      finishedAt: { not: null },
+    },
     orderBy: { finishedAt: "desc" },
     select: { finishedAt: true },
   });
@@ -6074,12 +6082,8 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
   }, {});
 
   const status = log.finishedAt
-    ? log.status === "success"
-      ? "completed"
-      : log.status === "partial"
-        ? "partial"
-        : "error"
-    : "running";
+    ? toApiGmailScanStatus(log.status, { errorsCount: log.errorsCount, errorMessage: log.errorMessage })
+    : toApiGmailScanStatus(log.status, { errorsCount: log.errorsCount, errorMessage: log.errorMessage });
   const elapsedMs = Math.max(0, end.getTime() - start.getTime());
   const emailsFetched = log.emailsProcessed;
   const emailsSaved = log.emailsSaved;
@@ -6089,7 +6093,7 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
   const processed = emailsFetched;
   const progressNumerator = emailsSaved;
   const scanPhase =
-    status === "running"
+    status === "running" || status === "queued"
       ? progressNumerator > 0 && progressNumerator < emailsFetched
         ? "processing"
         : progressNumerator === 0
@@ -6099,7 +6103,7 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
   const progressPercent =
     status === "completed" || status === "partial"
       ? 100
-      : status === "error"
+      : status === "error" || status === "failed" || status === "stale" || status === "cancelled"
         ? Math.min(100, processed > 0 ? 100 : 0)
         : processed > 0
           ? progressNumerator > 0
@@ -6116,10 +6120,13 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
     scanId: log.id,
     status,
     scanPhase,
-    inProgress: status === "running",
+    inProgress: status === "running" || status === "queued",
     startedAt: log.startedAt,
     finishedAt: log.finishedAt,
-    error: log.status === "error" ? log.errorMessage : null,
+    error:
+      status === "error" || status === "failed" || status === "stale" || status === "cancelled"
+        ? log.errorMessage
+        : null,
     progressPercent,
     estimatedRemainingSeconds,
     lastSuccessfulScanAt: lastSuccessfulScan?.finishedAt ?? null,

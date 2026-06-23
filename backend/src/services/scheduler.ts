@@ -11,6 +11,12 @@ import { clientTemplates, ownerTemplates } from "./messageTemplates.js";
 import { publishDueSocialPosts } from "./socialMedia.js";
 import { processCrmNotifications, processLeadSequences } from "./crm.js";
 import { initialConnectScanWindow } from "./scanWindow.js";
+import {
+  closeStaleGmailScansForOrg,
+  createQueuedGmailScanLog,
+  finalizeGmailScanFailed,
+  findActiveGmailScanLog,
+} from "./gmailScanLifecycle.js";
 
 const TIMEZONE = "Asia/Jerusalem";
 const MAX_RETRIES = 3;
@@ -140,24 +146,23 @@ class SchedulerService {
   }
 
   private async runAutomaticGmailScanForOrg(organizationId: string, mode: "auto_daily" | "auto_weekly" | "retry", retryAttempt: 0 | 1, retryOfId?: string) {
-    const active = await prisma.syncLog.findFirst({
-      where: { organizationId, type: "gmail_scan", status: "running", finishedAt: null },
-      orderBy: { startedAt: "desc" },
-    });
-    if (active && active.startedAt.getTime() > Date.now() - 30 * 60 * 1000) {
-      console.log(`[scheduler] automatic Gmail skipped org=${organizationId} reason=scan_already_running scanId=${active.id}`);
+    await closeStaleGmailScansForOrg(organizationId);
+    const active = await findActiveGmailScanLog(organizationId);
+    if (active) {
+      console.log(`[scheduler] automatic Gmail skipped org=${organizationId} reason=scan_already_active scanId=${active.id}`);
       return;
     }
 
     const lastSuccess = await prisma.syncLog.findFirst({
-      where: { organizationId, type: "gmail_scan", status: "success", finishedAt: { not: null } },
+      where: { organizationId, type: "gmail_scan", status: { in: ["success", "completed"] }, finishedAt: { not: null } },
       orderBy: { finishedAt: "desc" },
     });
-    const scanLog = await createRunningGmailScanLog(organizationId, mode, retryOfId);
-    if (!scanLog) {
-      console.log(`[scheduler] automatic Gmail skipped org=${organizationId} reason=db_scan_lock_active`);
+    const created = await createQueuedGmailScanLog(organizationId, mode, retryOfId);
+    if (!created.created) {
+      console.log(`[scheduler] automatic Gmail skipped org=${organizationId} reason=db_scan_lock_active scanId=${created.scanLog.id}`);
       return;
     }
+    const scanLog = created.scanLog;
 
     try {
       const fullRescan = mode === "auto_weekly";
@@ -169,18 +174,30 @@ class SchedulerService {
         daysBack: fullRescan ? 30 : 1,
         forceReprocess: fullRescan,
       });
+      if ("inProgress" in result && result.inProgress) {
+        const activeId = "scanLogId" in result ? result.scanLogId : scanLog.id;
+        console.log(`[scheduler] automatic Gmail inProgress org=${organizationId} scanId=${activeId}`);
+        return;
+      }
+      const done = result as {
+        emailsProcessed?: number;
+        emailsSavedToGmailScanItem?: number;
+        invoicesCreated?: number;
+        paymentsCreated?: number;
+        driveUploadsSucceeded?: number;
+        sheetsUpdated?: number;
+        errorsCount?: number;
+      };
       console.log(
-        `[scheduler] automatic Gmail done org=${organizationId} scanId=${scanLog.id} mode=${mode} emails=${result.emailsProcessed ?? 0} saved=${result.emailsSavedToGmailScanItem ?? 0} invoices=${result.invoicesCreated ?? 0} payments=${result.paymentsCreated ?? 0} drive=${result.driveUploadsSucceeded ?? 0} sheets=${result.sheetsUpdated ?? 0} errors=${result.errorsCount ?? 0}`
+        `[scheduler] automatic Gmail done org=${organizationId} scanId=${scanLog.id} mode=${mode} emails=${done.emailsProcessed ?? 0} saved=${done.emailsSavedToGmailScanItem ?? 0} invoices=${done.invoicesCreated ?? 0} payments=${done.paymentsCreated ?? 0} drive=${done.driveUploadsSucceeded ?? 0} sheets=${done.sheetsUpdated ?? 0} errors=${done.errorsCount ?? 0}`
       );
     } catch (err) {
       const message = errorMessage(err);
       console.error(`[scheduler] automatic Gmail failed org=${organizationId} scanId=${scanLog.id} mode=${mode}`, err);
+      await finalizeGmailScanFailed(scanLog.id, message);
       if (retryAttempt === 0) {
         const nextRetryAt = new Date(Date.now() + 30 * 60 * 1000);
-        await prisma.syncLog.update({
-          where: { id: scanLog.id },
-          data: { nextRetryAt, errorMessage: `${message}\nRetry scheduled for ${nextRetryAt.toISOString()}` },
-        });
+        console.log(`[scheduler] automatic Gmail retry scheduled org=${organizationId} at=${nextRetryAt.toISOString()}`);
         setTimeout(() => {
           void this.runAutomaticGmailScanForOrg(organizationId, "retry", 1, scanLog.id);
         }, 30 * 60 * 1000);
@@ -427,24 +444,8 @@ async function finishScanLog(id: string, update: LogUpdate) {
 }
 
 async function createRunningGmailScanLog(organizationId: string, scanMode: string, retryOfId?: string) {
-  try {
-    return await prisma.syncLog.create({
-      data: {
-        organizationId,
-        type: "gmail_scan",
-        status: "running",
-        scanMode,
-        retryOfId,
-      },
-    });
-  } catch (err) {
-    const active = await prisma.syncLog.findFirst({
-      where: { organizationId, type: "gmail_scan", status: "running", finishedAt: null },
-      orderBy: { startedAt: "desc" },
-    });
-    if (active) return null;
-    throw err;
-  }
+  const created = await createQueuedGmailScanLog(organizationId, scanMode, retryOfId);
+  return created.created ? created.scanLog : null;
 }
 
 function wait(ms: number) {
