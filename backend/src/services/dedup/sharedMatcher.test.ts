@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildFinancialDocumentFingerprint,
   buildMessageFingerprint,
+  computeCanonicalFingerprint,
   matchFinancialDocuments,
   normalizeAmount,
   normalizeDocumentDate,
@@ -41,7 +42,7 @@ test("same invoice with slightly different OCR output matches", () => {
   assert.match(result.reasons.join(","), /fingerprint_match|same_invoice_number_and_amount/);
 });
 
-test("cross-channel email and WhatsApp versions of same invoice match", () => {
+test("cross-channel email and WhatsApp versions of same invoice match via canonical fingerprint", () => {
   const emailVersion = {
     organizationId: "org-1",
     supplierName: "Netlify Inc.",
@@ -60,8 +61,8 @@ test("cross-channel email and WhatsApp versions of same invoice match", () => {
   };
 
   assert.equal(
-    buildFinancialDocumentFingerprint(emailVersion),
-    buildFinancialDocumentFingerprint(whatsAppVersion)
+    computeCanonicalFingerprint(emailVersion).fingerprint,
+    computeCanonicalFingerprint(whatsAppVersion).fingerprint
   );
   assert.equal(matchFinancialDocuments(emailVersion, whatsAppVersion).result, "MATCH");
 });

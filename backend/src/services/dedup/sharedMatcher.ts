@@ -29,6 +29,35 @@ export type FinancialDocumentMatch = {
   rightFingerprint: string;
 };
 
+export const SCFC_VERSION = "scfc-v1" as const;
+export const LEGACY_FINGERPRINT_PREFIX = "financial-document" as const;
+
+export type CanonicalFingerprintTier =
+  | "file"
+  | "invoice-amount"
+  | "tax-invoice"
+  | "supplier-amount-date"
+  | "weak"
+  | "none";
+
+export type CanonicalFingerprintResult = {
+  fingerprint: string | null;
+  tier: CanonicalFingerprintTier;
+  version: typeof SCFC_VERSION;
+  isStrongEnoughForAutoSaveDedup: boolean;
+  legacyFingerprint: string;
+  normalizedInputs: {
+    supplier: string;
+    taxId: string;
+    invoiceNumber: string;
+    amount: string;
+    date: string;
+    documentType: string;
+    fileSha256: string;
+    organizationId: string;
+  };
+};
+
 export function normalizeSupplierName(value?: string | null) {
   return (value ?? "")
     .normalize("NFKC")
@@ -81,7 +110,12 @@ export function normalizeDocumentType(value?: string | null) {
   return "document";
 }
 
-export function buildFinancialDocumentFingerprint(input: FinancialDocumentFingerprintInput) {
+type FingerprintTierResult = {
+  fingerprint: string;
+  tier: CanonicalFingerprintTier;
+};
+
+function buildFingerprintWithPrefix(prefix: string, input: FinancialDocumentFingerprintInput): FingerprintTierResult {
   const amount = normalizeAmount(input.totalAmount);
   const invoiceNumber = normalizeInvoiceNumber(input.invoiceNumber);
   const taxId = normalizeSupplierTaxId(input.supplierTaxId);
@@ -92,25 +126,69 @@ export function buildFinancialDocumentFingerprint(input: FinancialDocumentFinger
   const organizationId = (input.organizationId ?? "").trim().toLowerCase();
 
   if (fileSha256) {
-    return hashParts(["financial-document", organizationId, "file", fileSha256]);
+    return { fingerprint: hashParts([prefix, organizationId, "file", fileSha256]), tier: "file" };
   }
 
   if (hasStrongInvoiceNumber(invoiceNumber) && amount) {
-    return hashParts(["financial-document", organizationId, "invoice-amount", invoiceNumber, amount]);
+    return { fingerprint: hashParts([prefix, organizationId, "invoice-amount", invoiceNumber, amount]), tier: "invoice-amount" };
   }
 
   if (taxId && hasStrongInvoiceNumber(invoiceNumber)) {
-    return hashParts(["financial-document", organizationId, "tax-invoice", taxId, invoiceNumber]);
+    return { fingerprint: hashParts([prefix, organizationId, "tax-invoice", taxId, invoiceNumber]), tier: "tax-invoice" };
   }
 
   if (supplier && amount && date) {
     if (!hasStrongInvoiceNumber(invoiceNumber) && !fileSha256) {
-      return hashParts(["financial-document", organizationId, "supplier-amount-date", supplier, amount, documentType]);
+      return {
+        fingerprint: hashParts([prefix, organizationId, "supplier-amount-date", supplier, amount, documentType]),
+        tier: "supplier-amount-date",
+      };
     }
-    return hashParts(["financial-document", organizationId, "supplier-amount-date", supplier, amount, date, documentType]);
+    return {
+      fingerprint: hashParts([prefix, organizationId, "supplier-amount-date", supplier, amount, date, documentType]),
+      tier: "supplier-amount-date",
+    };
   }
 
-  return hashParts(["financial-document", organizationId, "weak", supplier, invoiceNumber, amount, date, documentType]);
+  if (!supplier && !invoiceNumber && !amount && !date && !taxId && !fileSha256) {
+    return { fingerprint: hashParts([prefix, organizationId, "weak", supplier, invoiceNumber, amount, date, documentType]), tier: "none" };
+  }
+
+  return { fingerprint: hashParts([prefix, organizationId, "weak", supplier, invoiceNumber, amount, date, documentType]), tier: "weak" };
+}
+
+export function buildFinancialDocumentFingerprint(input: FinancialDocumentFingerprintInput) {
+  return buildFingerprintWithPrefix(LEGACY_FINGERPRINT_PREFIX, input).fingerprint;
+}
+
+export function computeCanonicalFingerprint(input: FinancialDocumentFingerprintInput): CanonicalFingerprintResult {
+  const organizationId = (input.organizationId ?? "").trim();
+  if (!organizationId) {
+    throw new Error("computeCanonicalFingerprint requires organizationId");
+  }
+
+  const normalizedInputs = {
+    supplier: normalizeSupplierName(input.supplierName),
+    taxId: normalizeSupplierTaxId(input.supplierTaxId),
+    invoiceNumber: normalizeInvoiceNumber(input.invoiceNumber),
+    amount: normalizeAmount(input.totalAmount),
+    date: normalizeDocumentDate(input.documentDate),
+    documentType: normalizeDocumentType(input.documentType),
+    fileSha256: (input.fileSha256 ?? "").trim().toLowerCase(),
+    organizationId: organizationId.toLowerCase(),
+  };
+
+  const canonical = buildFingerprintWithPrefix(SCFC_VERSION, input);
+  const legacy = buildFingerprintWithPrefix(LEGACY_FINGERPRINT_PREFIX, input);
+
+  return {
+    fingerprint: canonical.tier === "none" ? null : canonical.fingerprint,
+    tier: canonical.tier,
+    version: SCFC_VERSION,
+    isStrongEnoughForAutoSaveDedup: canonical.tier !== "weak" && canonical.tier !== "none",
+    legacyFingerprint: legacy.fingerprint,
+    normalizedInputs,
+  };
 }
 
 export function buildMessageFingerprint(input: MessageFingerprintInput) {
@@ -137,9 +215,15 @@ export function matchFinancialDocuments(
 ): FinancialDocumentMatch {
   const leftFingerprint = buildFinancialDocumentFingerprint(left);
   const rightFingerprint = buildFinancialDocumentFingerprint(right);
+  const leftCanonical = left.organizationId ? computeCanonicalFingerprint(left).fingerprint : null;
+  const rightCanonical = right.organizationId ? computeCanonicalFingerprint(right).fingerprint : null;
   const reasons: string[] = [];
 
-  if (leftFingerprint === rightFingerprint && hasStrongFingerprintInput(left) && hasStrongFingerprintInput(right)) {
+  const fingerprintsMatch =
+    leftFingerprint === rightFingerprint ||
+    (leftCanonical !== null && rightCanonical !== null && leftCanonical === rightCanonical);
+
+  if (fingerprintsMatch && hasStrongFingerprintInput(left) && hasStrongFingerprintInput(right)) {
     reasons.push("fingerprint_match");
     return { result: "MATCH", reasons, leftFingerprint, rightFingerprint };
   }

@@ -1,11 +1,16 @@
 import { createHash } from "crypto";
 import { prisma } from "../lib/prisma.js";
 import {
-  buildFinancialDocumentFingerprint as buildSharedFinancialDocumentFingerprint,
+  computeCanonicalFingerprint,
   matchFinancialDocuments,
   type DedupMatchResult,
   type FinancialDocumentFingerprintInput,
 } from "./dedup/sharedMatcher.js";
+import {
+  buildLegacyDuplicateHashForLookup,
+  buildSupplierPaymentLookupClauses,
+  logFingerprintShadowMode,
+} from "./dedup/fingerprintMigration.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
 import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 
@@ -177,7 +182,7 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
     invoiceNumber: input.invoiceNumber,
     date: documentDate,
   });
-  const documentFingerprint = buildSharedFinancialDocumentFingerprint({
+  const canonical = computeCanonicalFingerprint({
     organizationId: input.organizationId,
     supplierName: input.supplierName ?? input.sender,
     supplierTaxId: input.supplierTaxId,
@@ -187,6 +192,20 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
     documentType,
     fileSha256: input.fileSha256,
   });
+  const legacyDuplicateHash = buildLegacyDuplicateHashForLookup({
+    organizationId: input.organizationId,
+    supplier: input.supplierName ?? input.sender ?? "unknown",
+    amount: totalAmount ?? 0,
+    dateIso: documentDate?.toISOString() ?? new Date().toISOString(),
+    subject: input.subject,
+  });
+  logFingerprintShadowMode({
+    organizationId: input.organizationId,
+    source: input.source,
+    canonical,
+    legacyDuplicateHash,
+  });
+  const documentFingerprint = canonical.fingerprint ?? canonical.legacyFingerprint;
 
   if (!isPaymentDocumentType(documentType)) {
     await upsertReview({ ...input, documentType, documentDate, dueDate, confidenceScore, sourceFingerprint, documentFingerprint, reviewStatus: "rejected", uncertaintyReason: input.uncertaintyReason ?? "מסמך לא רלוונטי" });
@@ -228,11 +247,12 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
     return { action: "needs_review" as const, documentType, sourceFingerprint, documentFingerprint, review };
   }
 
-  const duplicateCandidateWhere = buildDuplicateCandidateWhere({
-    organizationId: input.organizationId,
-    documentFingerprint,
-    legacyDocumentFingerprint,
+  const duplicateCandidateWhere = buildSupplierPaymentLookupClauses({
+    canonicalFingerprint: documentFingerprint,
+    legacySemanticFingerprint: canonical.legacyFingerprint,
+    legacyCrossSourceFingerprint: legacyDocumentFingerprint,
     sourceFingerprint,
+    legacyDuplicateHash,
     supplierName: input.supplierName,
     invoiceNumber: input.invoiceNumber,
     totalAmount,
@@ -325,46 +345,6 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
   }
 
   return { action: "accepted" as const, documentType, sourceFingerprint, documentFingerprint };
-}
-
-function buildDuplicateCandidateWhere(input: {
-  organizationId: string;
-  documentFingerprint: string;
-  legacyDocumentFingerprint: string;
-  sourceFingerprint: string;
-  supplierName?: string | null;
-  invoiceNumber?: string | null;
-  totalAmount: number | null;
-  documentDate: Date | null;
-}) {
-  const clauses: Array<Record<string, unknown>> = [
-    { documentFingerprint: input.documentFingerprint },
-    { documentFingerprint: input.legacyDocumentFingerprint },
-    { sourceFingerprint: input.sourceFingerprint },
-    { duplicateHash: input.documentFingerprint },
-    { duplicateHash: input.legacyDocumentFingerprint },
-  ];
-
-  if (input.invoiceNumber?.trim() && input.totalAmount !== null) {
-    clauses.push({
-      invoiceNumber: input.invoiceNumber,
-      amount: input.totalAmount,
-    });
-  }
-
-  if (input.supplierName?.trim() && input.totalAmount !== null && input.documentDate) {
-    const dayStart = new Date(input.documentDate);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(input.documentDate);
-    dayEnd.setHours(23, 59, 59, 999);
-    clauses.push({
-      supplier: { equals: input.supplierName, mode: "insensitive" },
-      amount: input.totalAmount,
-      date: { gte: dayStart, lte: dayEnd },
-    });
-  }
-
-  return clauses;
 }
 
 export async function approveFinancialDocumentReview(organizationId: string, reviewId: string) {
