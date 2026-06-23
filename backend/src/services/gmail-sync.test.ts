@@ -4,14 +4,17 @@ import {
   applyBusinessReviewToInvoiceCandidate,
   applyFinancialSanityReviewGate,
   applySupplierDecisionReviewGate,
+  applyTrustReviewGate,
   buildGmailFinancialPersistencePlan,
   buildGmailScanDuplicateKey,
+  buildGmailTrustContext,
   classifyOcrSupplierText,
   classifyGmailScanCandidate,
   collectAttachmentParts,
   computeGmailScanRunningProgressPercent,
   detectMunicipalCollectionDocument,
   detectSupplierKeyword,
+  deriveGmailTrustDuplicateRisk,
   extractHebrewInvoiceFieldsFromText,
   extractInvoiceAmount,
   GmailFinancialSanityContextSessionCache,
@@ -20,13 +23,17 @@ import {
   isInvoiceImageAttachmentPart,
   normalizeOcrSupplierText,
   resolveSupplierMetadata,
+  runGmailOrgTrustDecision,
   selectInvoiceAttachmentAmount,
   shouldWriteGmailScanProgress,
   supplierPaymentCreationEligibility,
 } from "./gmail-sync.js";
 import { ARC_VERSION } from "./amount/canonicalAmount.js";
 import type { MoneyDecision } from "./amount/canonicalAmount.js";
+import { computeCanonicalFingerprint } from "./dedup/sharedMatcher.js";
 import { computeFinancialSanity, summarizeFinancialSanityDecision } from "./validation/financialSanity.js";
+import { summarizeTrustDecision } from "./trust/trustEngine.js";
+import { TE_VERSION } from "./trust/trustTypes.js";
 import { SIR_VERSION } from "./supplier/supplierTypes.js";
 import type { SupplierDecision } from "./supplier/supplierTypes.js";
 import type { EmailAnalysis } from "./claude.js";
@@ -1517,4 +1524,162 @@ test("Gmail FSE context cache: reuses supplier history within scan session", () 
   assert.deepEqual(cache.getSupplierHistory("org-1", "Acme Ltd"), history);
   assert.deepEqual(cache.getSupplierHistory("org-1", "ACME LTD"), history);
   assert.equal(gmailFseSupplierCacheKey("org-1", "Acme Ltd"), gmailFseSupplierCacheKey("org-1", "ACME LTD"));
+});
+
+function gmailTeClassification() {
+  return classifyGmailScanCandidate({
+    subject: "Invoice INV-1001",
+    bodyText: "Invoice attached",
+    attachmentFilenames: ["invoice-1001.pdf"],
+    analysis: analysis({ documentType: "invoice", amount: 1180, confidence: 0.9 }),
+    amount: 1180,
+    supplierName: "Acme Ltd",
+  });
+}
+
+function gmailTeTrustInput(overrides: {
+  supplierDecision?: Partial<SupplierDecision>;
+  moneyDecision?: Partial<MoneyDecision>;
+  documentDate?: string;
+  documentType?: string;
+} = {}) {
+  const classification = gmailTeClassification();
+  const supplierDecision = gmailSirDecision(overrides.supplierDecision);
+  const moneyDecision = gmailArcDecision(overrides.moneyDecision);
+  const fseDecision = computeFinancialSanity(
+    gmailFseInput({
+      supplierDecision: overrides.supplierDecision,
+      moneyDecision: overrides.moneyDecision,
+      documentDate: overrides.documentDate,
+      documentType: overrides.documentType,
+    })
+  );
+
+  return {
+    organizationId: "org-gmail-te",
+    supplierDecision,
+    moneyDecision,
+    fseDecision,
+    supplierName: "Acme Ltd",
+    supplierTaxId: "514888888",
+    invoiceNumber: "INV-1001",
+    documentDate: new Date(overrides.documentDate ?? "2026-05-15"),
+    documentType: overrides.documentType ?? "invoice",
+    classification,
+    extractedFieldsConfidence: 0.9,
+    hasPdfOrImageAttachment: true,
+    visualNeedsReview: false,
+  };
+}
+
+test("Gmail TE: strong agreement yields AUTO_SAVE", () => {
+  const trustDecision = runGmailOrgTrustDecision(gmailTeTrustInput());
+
+  assert.equal(trustDecision.decision, "AUTO_SAVE");
+  assert.ok(trustDecision.confidence >= 75);
+});
+
+test("Gmail TE: ambiguous ARC routes to NEEDS_REVIEW", () => {
+  const trustDecision = runGmailOrgTrustDecision(
+    gmailTeTrustInput({
+      moneyDecision: {
+        status: "ambiguous",
+        confidence: 0.4,
+        selectedAmount: null,
+        isStrongEnoughForAutoSave: false,
+        reasonCode: "AMBIGUOUS",
+      },
+    })
+  );
+
+  assert.equal(trustDecision.decision, "NEEDS_REVIEW");
+  assert.equal(trustDecision.reasonCode, "TE_UPSTREAM_REVIEW");
+});
+
+test("Gmail TE: FSE critical error routes to BLOCK", () => {
+  const trustDecision = runGmailOrgTrustDecision(
+    gmailTeTrustInput({
+      documentDate: "2027-01-01",
+    })
+  );
+
+  assert.equal(trustDecision.decision, "BLOCK");
+  assert.equal(trustDecision.reasonCode, "TE_FSE_CRITICAL_ERROR");
+});
+
+test("Gmail TE: applyTrustReviewGate escalates NEEDS_REVIEW", () => {
+  const classification = gmailTeClassification();
+  const gated = applyTrustReviewGate({
+    classification,
+    trustDecision: {
+      version: TE_VERSION,
+      confidence: 62,
+      decision: "NEEDS_REVIEW",
+      reason: "Upstream engine requested review",
+      reasonCode: "TE_UPSTREAM_REVIEW",
+      explanation: "ARC ambiguity requires manual review.",
+      contributors: [],
+    },
+  });
+
+  assert.equal(gated.reviewStatus, "needs_review");
+  assert.match(gated.decisionReason, /trust_review:TE_UPSTREAM_REVIEW/);
+});
+
+test("Gmail TE: summarizeTrustDecision persists compact audit payload", () => {
+  const trustDecision = runGmailOrgTrustDecision(gmailTeTrustInput());
+  const summary = summarizeTrustDecision(trustDecision);
+
+  assert.equal(summary.version, "te-v1");
+  assert.equal(summary.decision, trustDecision.decision);
+  assert.equal(summary.confidence, trustDecision.confidence);
+  assert.equal(summary.reasonCode, trustDecision.reasonCode);
+  assert.ok(Array.isArray(summary.contributors));
+  assert.ok(summary.contributors.length > 0);
+  assert.ok(summary.contributors.every((item) => item.engine && typeof item.score === "number"));
+});
+
+test("Gmail TE: confidence and contributors are persisted in parsedFieldsJson.trust shape", () => {
+  const trustDecision = runGmailOrgTrustDecision(gmailTeTrustInput());
+  const parsedFieldsJson = {
+    trust: summarizeTrustDecision(trustDecision),
+  };
+
+  assert.equal(parsedFieldsJson.trust.confidence, trustDecision.confidence);
+  assert.ok(parsedFieldsJson.trust.contributors.length > 0);
+  assert.ok(parsedFieldsJson.trust.contributors.some((item) => item.engine === "arc"));
+  assert.ok(parsedFieldsJson.trust.contributors.some((item) => item.engine === "fse"));
+  assert.ok(parsedFieldsJson.trust.contributors.every((item) => typeof item.score === "number"));
+});
+
+test("Gmail TE: duplicate risk high when FSE duplicate_suspicion fails", () => {
+  const fingerprint = computeCanonicalFingerprint({
+    organizationId: "org-gmail-te",
+    supplierName: "Acme Ltd",
+    supplierTaxId: "514888888",
+    invoiceNumber: "INV-1001",
+    totalAmount: 1180,
+    documentDate: "2026-05-15",
+    documentType: "tax_invoice",
+  });
+  const fseDecision = computeFinancialSanity({
+    ...gmailFseInput(),
+    fingerprint,
+    context: {
+      referenceDate: "2026-06-01",
+      expectedCurrency: "ILS",
+      duplicateFingerprints: [fingerprint.fingerprint!],
+    },
+  });
+
+  assert.equal(deriveGmailTrustDuplicateRisk(fseDecision, fingerprint), "high");
+  const context = buildGmailTrustContext({
+    organizationId: "org-gmail-te",
+    supplierName: "Acme Ltd",
+    documentType: "invoice",
+    classification: gmailTeClassification(),
+    fseDecision,
+    fingerprint,
+  });
+  assert.equal(context.duplicateRisk, "high");
 });

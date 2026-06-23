@@ -46,6 +46,22 @@ function buildReason(decision: TrustDecision["decision"], reasonCode: string): s
   }
 }
 
+export function summarizeTrustDecision(decision: TrustDecision) {
+  return {
+    version: decision.version,
+    confidence: decision.confidence,
+    decision: decision.decision,
+    reasonCode: decision.reasonCode,
+    contributors: decision.contributors.map(({ engine, score, weight, impact, explanation }) => ({
+      engine,
+      score,
+      weight,
+      impact,
+      explanation,
+    })),
+  };
+}
+
 export function computeTrustDecision(input: TrustEngineInput): TrustDecision {
   const evaluation = evaluateTrustRules(input);
   const confidence = weightedConfidence(evaluation.contributors);
