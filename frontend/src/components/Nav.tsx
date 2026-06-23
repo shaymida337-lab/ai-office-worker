@@ -131,10 +131,10 @@ export function Nav() {
     return !enabledModules || enabledModules.includes(module);
   };
   const navVisible = (item: NavLink) => {
-    if (!isNavItemVisible(item.id, organizationSettings?.businessType)) return false;
     if (item.id === "sales") {
       return moduleAllowed("sales") || moduleAllowed("crm");
     }
+    if (!isNavItemVisible(item.id, organizationSettings?.businessType)) return false;
     return moduleAllowed(item.module);
   };
   const visibleLinks = links.filter(navVisible);
