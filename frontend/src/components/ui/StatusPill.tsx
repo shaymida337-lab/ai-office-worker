@@ -14,7 +14,7 @@ const toneStyles: Record<StatusPillTone, { color: string; backgroundColor: strin
 export function StatusPill({ tone, children }: { tone: StatusPillTone; children: ReactNode }) {
   return (
     <span
-      className={`inline-flex min-w-11 items-center justify-center whitespace-nowrap border px-3 py-1 font-semibold ${radius.pill} ${type.meta}`}
+      className={`inline-flex min-h-8 min-w-11 items-center justify-center whitespace-nowrap border px-3.5 py-1.5 font-bold ${radius.pill} ${type.caption}`}
       style={toneStyles[tone]}
     >
       {children}

@@ -22,34 +22,34 @@ export function KpiCard({
 
   return (
     <section
-      className={`${radius.card} ${shadow.card} ${spacing.card} relative overflow-hidden transition hover:shadow-[0_12px_36px_rgba(20,40,90,0.08)]`}
+      className={`${radius.card} ${shadow.card} ${spacing.card} relative overflow-hidden transition hover:shadow-[0_14px_44px_rgba(15,23,42,0.10)]`}
       style={{ backgroundColor: colors.surface, border: `1px solid ${colors.borderSubtle}` }}
     >
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-1"
         style={{ background: `linear-gradient(90deg, ${accentStyle.iconColor}22, ${accentStyle.iconColor}88, ${accentStyle.iconColor}22)` }}
       />
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className={`${type.meta} font-semibold leading-5`} style={{ color: colors.textMuted }}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className={type.kpiLabel} style={{ color: colors.textSecondary }}>
             {title}
           </div>
           {loading ? (
-            <div className="mt-3 h-9 w-20 animate-pulse rounded-lg" style={{ backgroundColor: colors.bgSoft }} />
+            <div className="mt-1 h-10 w-24 animate-pulse rounded-lg md:h-12" style={{ backgroundColor: colors.bgSoft }} />
           ) : (
-            <div className={`${type.kpi} mt-2 tabular-nums`} style={{ color: tone ?? colors.textPrimary }}>
+            <div className={`${type.kpiValue} pt-1`} style={{ color: tone ?? colors.textPrimary }}>
               {value}
             </div>
           )}
           {subtitle && (
-            <div className={`${type.body} mt-2 leading-5`} style={{ color: colors.textSecondary }}>
+            <div className={type.kpiDescription} style={{ color: colors.textMuted }}>
               {subtitle}
             </div>
           )}
         </div>
         {icon && (
           <div
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl"
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl md:h-[3.25rem] md:w-[3.25rem]"
             style={{ backgroundColor: accentStyle.iconBg, color: accentStyle.iconColor }}
           >
             {icon}

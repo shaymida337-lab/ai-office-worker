@@ -2,7 +2,7 @@
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, CheckCircle2, CreditCard, FileSearch, Sparkles } from "lucide-react";
+import { Activity, CalendarDays, CheckCircle2, ClipboardList, CreditCard, FileSearch, Sparkles } from "lucide-react";
 import { Nav } from "@/components/Nav";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -19,7 +19,7 @@ import {
   type Payment,
   type Task,
 } from "@/lib/api";
-import { colors, radius, shadow, spacing, type as typography } from "@/lib/design-tokens";
+import { colors, radius, shadow, spacing, button, type as typography } from "@/lib/design-tokens";
 import { labelFor } from "@/lib/labels";
 import {
   gmailScanStillRunning,
@@ -842,13 +842,13 @@ export default function DashboardPage() {
       <Nav />
       <PageHeader
         title={`${todayGreeting} 👋`}
-        subtitle="נטלי מרכזת עבורך את מה שחשוב בעסק"
+        subtitle="נטלי כבר ריכזה עבורך את כל מה שחשוב היום."
         badge={
           <span
-            className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${radius.pill}`}
+            className={`inline-flex items-center gap-2.5 rounded-full px-4 py-2 ${typography.badge} ${radius.pill}`}
             style={{ backgroundColor: colors.accentSoft, color: colors.accent }}
           >
-            <Sparkles className="h-3.5 w-3.5" />
+            <Sparkles className="h-4 w-4" strokeWidth={2.25} />
             העוזרת החכמה שלך פעילה
           </span>
         }
@@ -857,7 +857,7 @@ export default function DashboardPage() {
             type="button"
             onClick={runSync}
             disabled={syncing || Boolean(activeScanId)}
-            className={`${radius.control} min-h-11 px-5 py-3 text-sm font-bold shadow-[0_12px_28px_rgba(29,91,255,0.22)] transition hover:opacity-95 disabled:opacity-60`}
+            className={`${radius.control} ${button.primary} shadow-[0_12px_28px_rgba(29,91,255,0.24)]`}
             style={{ backgroundColor: colors.accent, color: colors.surface, border: `1px solid ${colors.accent}` }}
           >
             {syncing || activeScanId ? "סורקת..." : "סרוק עכשיו"}
@@ -883,14 +883,14 @@ export default function DashboardPage() {
             className={`${radius.card} ${shadow.card} ${spacing.card}`}
             style={{ backgroundColor: colors.surface, border: `1px solid ${colors.warnBorder}` }}
           >
-            <div className={typography.sectionTitle} style={{ color: colors.textPrimary }}>צריך לחבר ג׳ימייל</div>
-            <p className={`${typography.body} mt-2 leading-6`} style={{ color: colors.textSecondary }}>
+            <div className={typography.cardTitle} style={{ color: colors.textPrimary }}>צריך לחבר ג׳ימייל</div>
+            <p className={`${typography.body} mt-3`} style={{ color: colors.textSecondary }}>
               חיבור ג׳ימייל נדרש כדי שנוכל לסרוק ולארגן את המסמכים שלך.
             </p>
             <button
               type="button"
               onClick={connectGmail}
-              className={`${radius.control} mt-4 min-h-11 px-4 py-3 font-semibold`}
+              className={`${radius.control} mt-5 ${button.primary}`}
               style={{ backgroundColor: colors.accent, border: `1px solid ${colors.accent}`, color: colors.surface }}
             >
               התחבר לג׳ימייל
@@ -905,7 +905,7 @@ export default function DashboardPage() {
             subtitle={documentReviews.length > 0 ? "דורשים את תשומת לבך" : "הכל מאושר"}
             accent="amber"
             loading={pageLoading}
-            icon={<FileSearch className="h-5 w-5" />}
+            icon={<FileSearch className="h-6 w-6" strokeWidth={2.1} />}
           />
           <KpiCard
             title="תשלומים החודש"
@@ -913,7 +913,7 @@ export default function DashboardPage() {
             subtitle={pageLoading ? undefined : formatShekel(monthPayments.reduce((sum, p) => sum + p.amount, 0))}
             accent="blue"
             loading={pageLoading}
-            icon={<CreditCard className="h-5 w-5" />}
+            icon={<CreditCard className="h-6 w-6" strokeWidth={2.1} />}
           />
           <KpiCard
             title="משימות פתוחות"
@@ -921,7 +921,7 @@ export default function DashboardPage() {
             subtitle="מעקב אחרי מה שעדיין פתוח"
             accent="green"
             loading={pageLoading}
-            icon={<CheckCircle2 className="h-5 w-5" />}
+            icon={<CheckCircle2 className="h-6 w-6" strokeWidth={2.1} />}
           />
           <KpiCard
             title="פגישות קרובות"
@@ -929,12 +929,16 @@ export default function DashboardPage() {
             subtitle={upcomingMeetingsCount > 0 ? "בשבועיים הקרובים" : "אין פגישות מתוכננות"}
             accent="violet"
             loading={pageLoading}
-            icon={<CalendarDays className="h-5 w-5" />}
+            icon={<CalendarDays className="h-6 w-6" strokeWidth={2.1} />}
           />
         </section>
 
         <section className={`grid ${spacing.section}`}>
-          <SectionTitle title="מה דורש טיפול עכשיו" hint="נטלי ממיינת עבורך את הדברים הדחופים ביותר" />
+          <SectionTitle
+            icon={<ClipboardList className="h-[22px] w-[22px]" strokeWidth={2.2} />}
+            title="מה דורש טיפול עכשיו"
+            hint="נטלי ממיינת עבורך את הדברים הדחופים ביותר"
+          />
           {pageLoading ? (
             <DashboardSkeletonRows count={3} />
           ) : priorityItems.length > 0 ? (
@@ -953,7 +957,11 @@ export default function DashboardPage() {
         </section>
 
         <section className={`grid ${spacing.section}`}>
-          <SectionTitle title="פעילות אחרונה" hint="עדכונים אחרונים מהעסק שלך" />
+          <SectionTitle
+            icon={<Activity className="h-[22px] w-[22px]" strokeWidth={2.2} />}
+            title="פעילות אחרונה"
+            hint="עדכונים אחרונים מהעסק שלך"
+          />
           {pageLoading ? (
             <DashboardSkeletonRows count={4} />
           ) : recentActivityItems.length > 0 ? (
@@ -974,7 +982,7 @@ export default function DashboardPage() {
         </section>
 
         <details className={`${radius.card} border`} style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}>
-          <summary className="cursor-pointer list-none px-5 py-4 text-base font-bold md:px-6" style={{ color: colors.textPrimary }}>
+          <summary className="cursor-pointer list-none px-5 py-5 text-lg font-bold md:px-6" style={{ color: colors.textPrimary }}>
             כלים ואוטומציה
           </summary>
           <div className={`grid ${spacing.section} border-t p-5 md:p-6`} style={{ borderColor: colors.borderSubtle }}>
@@ -1115,7 +1123,7 @@ export default function DashboardPage() {
               <input dir="ltr" value={invoiceAttachLink} onChange={(event) => setInvoiceAttachLink(event.target.value)} placeholder="https://drive.google.com/..." autoFocus />
             </label>
             <div className="mt-4 flex flex-wrap gap-3">
-              <button className={`${radius.control} min-h-11 px-4 py-3 font-semibold`} style={{ backgroundColor: colors.accent, border: `1px solid ${colors.accent}`, color: colors.surface }} type="submit" disabled={!invoiceAttachLink.trim()}>צרף חשבונית</button>
+              <button className={`${radius.control} ${button.primary}`} style={{ backgroundColor: colors.accent, border: `1px solid ${colors.accent}`, color: colors.surface }} type="submit" disabled={!invoiceAttachLink.trim()}>צרף חשבונית</button>
               <SecondaryButton type="button" onClick={() => setInvoiceAttachPaymentId(null)}>ביטול</SecondaryButton>
             </div>
           </form>
@@ -1125,11 +1133,21 @@ export default function DashboardPage() {
   );
 }
 
-function SectionTitle({ title, hint }: { title: string; hint?: string }) {
+function SectionTitle({ title, hint, icon }: { title: string; hint?: string; icon?: ReactNode }) {
   return (
-    <div>
-      <h2 className={typography.sectionTitle} style={{ color: colors.textPrimary }}>{title}</h2>
-      {hint && <p className={`${typography.body} mt-1 leading-6`} style={{ color: colors.textMuted }}>{hint}</p>}
+    <div className="space-y-2 pb-1">
+      <div className="flex items-center gap-3">
+        {icon && (
+          <span
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
+            style={{ backgroundColor: colors.accentSoft, color: colors.accent }}
+          >
+            {icon}
+          </span>
+        )}
+        <h2 className={typography.sectionHeader} style={{ color: colors.textPrimary }}>{title}</h2>
+      </div>
+      {hint && <p className={`${typography.body} pr-1`} style={{ color: colors.textSecondary }}>{hint}</p>}
     </div>
   );
 }
@@ -1145,7 +1163,7 @@ function ReviewRow({ item }: { item: DocumentReview }) {
       <div className="grid gap-3 sm:grid-cols-4 sm:items-center">
         <div className="sm:col-span-2">
           <div className={`${typography.body} font-semibold`} style={{ color: colors.textPrimary }}>{title}</div>
-          <div className={`${typography.meta} mt-1`} style={{ color: colors.textPrimary }}>{description}</div>
+          <div className={`${typography.caption} mt-1.5`} style={{ color: colors.textSecondary }}>{description}</div>
         </div>
         <div className={typography.body} style={{ color: colors.textPrimary }}>
           {formatMoney(item.totalAmount ?? 0, item.currency ?? "ILS")} · {formatDate(item.documentDate ?? item.createdAt)}
@@ -1212,8 +1230,8 @@ function ActivityCard({ title, empty, children }: { title: string; empty: string
       className={`${radius.card} ${shadow.card} ${spacing.card}`}
       style={{ backgroundColor: colors.surface, border: `1px solid ${colors.borderSubtle}` }}
     >
-      {title ? <h2 className={typography.sectionTitle} style={{ color: colors.textPrimary }}>{title}</h2> : null}
-      <div className={`${title ? "mt-4" : ""} grid ${spacing.inline}`}>
+      {title ? <h2 className={typography.cardTitle} style={{ color: colors.textPrimary }}>{title}</h2> : null}
+      <div className={`${title ? "mt-5" : ""} grid ${spacing.inline}`}>
         {hasChildren ? children : <EmptyState title={empty} compact />}
       </div>
     </section>
@@ -1223,12 +1241,12 @@ function ActivityCard({ title, empty, children }: { title: string; empty: string
 function DataRow({ title, meta, pill, action }: { title: ReactNode; meta: ReactNode; pill?: ReactNode; action?: ReactNode }) {
   return (
     <div
-      className={`${radius.control} flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between`}
+      className={`${radius.control} flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between md:p-5`}
       style={{ backgroundColor: colors.bgSoft, border: `1px solid ${colors.borderSubtle}` }}
     >
       <div className="min-w-0 flex-1">
-        <div className={`${typography.body} truncate font-semibold`} style={{ color: colors.textPrimary }}>{title}</div>
-        <div className={`${typography.meta} mt-1 break-words min-w-0`} style={{ color: colors.textSecondary }}>{meta}</div>
+        <div className={`${typography.cardTitle} truncate`} style={{ color: colors.textPrimary }}>{title}</div>
+        <div className={`${typography.caption} mt-1.5 break-words min-w-0`} style={{ color: colors.textSecondary }}>{meta}</div>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         {pill}
@@ -1256,7 +1274,7 @@ function InlineMessage({ tone, children }: { tone: "info" | "success" | "warn" |
       : tone === "danger"
         ? { color: colors.dangerText, backgroundColor: colors.dangerBg, borderColor: colors.dangerBorder }
         : { color: colors.infoText, backgroundColor: colors.infoBg, borderColor: colors.infoBorder };
-  return <div className={`${radius.card} ${spacing.card} border ${typography.body} font-semibold`} style={style}>{children}</div>;
+  return <div className={`${radius.card} ${spacing.card} border ${typography.body} font-bold leading-7`} style={style}>{children}</div>;
 }
 
 function SecondaryButton({ children, onClick, disabled, type = "button" }: { children: ReactNode; onClick?: () => void; disabled?: boolean; type?: "button" | "submit" }) {
@@ -1265,7 +1283,7 @@ function SecondaryButton({ children, onClick, disabled, type = "button" }: { chi
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`${radius.control} min-h-11 px-4 py-3 font-semibold disabled:opacity-60`}
+      className={`${radius.control} ${button.secondary} disabled:opacity-60`}
       style={{ backgroundColor: colors.surface, border: `1px solid ${colors.accent}`, color: colors.accent }}
     >
       {children}
@@ -1277,7 +1295,7 @@ function SecondaryLink({ children, href }: { children: ReactNode; href: string }
   return (
     <a
       href={href}
-      className={`${radius.control} inline-flex min-h-11 items-center justify-center px-4 py-3 font-semibold`}
+      className={`${radius.control} inline-flex ${button.secondary} items-center justify-center`}
       style={{ backgroundColor: colors.surface, border: `1px solid ${colors.accent}`, color: colors.accent }}
       target={href.startsWith("http") ? "_blank" : undefined}
       rel={href.startsWith("http") ? "noreferrer" : undefined}
@@ -1370,7 +1388,7 @@ function WhatsAppCard({
 }
 
 function buildScanBannerState(activeScan: ScanProgressResult | null, scanStatus: ScanStatus | null): {
-  status: "running" | "success" | "partial" | "truncated" | "error";
+  status: "running" | "success" | "partial" | "truncated" | "stale" | "error";
   found: number;
   scanned: number;
   totalMatched?: number | null;
@@ -1398,11 +1416,13 @@ function buildScanBannerState(activeScan: ScanProgressResult | null, scanStatus:
   return {
     status: scanStatus.last.windowTruncated
       ? "truncated"
-      : scanStatus.last.status === "success" || scanStatus.last.status === "completed"
-        ? "success"
-        : scanStatus.last.status === "partial"
-          ? "partial"
-          : "error",
+      : scanStatus.last.status === "stale" || scanStatus.last.status === "cancelled"
+        ? "stale"
+        : scanStatus.last.status === "success" || scanStatus.last.status === "completed"
+          ? "success"
+          : scanStatus.last.status === "partial"
+            ? "partial"
+            : "error",
     found: (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0),
     scanned: scanStatus.last.found,
     totalMatched: scanStatus.last.totalMatched,
@@ -1688,12 +1708,12 @@ function isSuccessfulGmailScanProgress(progress: ScanProgressResult) {
   );
 }
 
-function mapProgressToBannerStatus(progress: ScanProgressResult): "running" | "success" | "partial" | "truncated" | "error" {
+function mapProgressToBannerStatus(progress: ScanProgressResult): "running" | "success" | "partial" | "truncated" | "stale" | "error" {
   if (gmailScanStillRunning(progress)) return "running";
   const truncated = progress.windowTruncated ?? progress.summary?.windowTruncated ?? false;
   if (truncated) return "truncated";
   if (progress.status === "partial") return "partial";
-  if (progress.status === "stale" || progress.status === "cancelled") return "error";
+  if (progress.status === "stale" || progress.status === "cancelled") return "stale";
   if (isSuccessfulGmailScanProgress(progress)) return "success";
   return "error";
 }
