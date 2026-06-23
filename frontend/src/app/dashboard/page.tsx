@@ -177,7 +177,7 @@ type GmailScanResult = {
 
 type ScanProgressResult = {
   scanId: string;
-  status: "running" | "completed" | "partial" | "error";
+  status: "running" | "completed" | "partial" | "error" | "success" | "failed" | "cancelled";
   inProgress: boolean;
   startedAt: string;
   finishedAt: string | null;
@@ -386,8 +386,19 @@ export default function DashboardPage() {
 
       if (scanStatusResult.status === "fulfilled") {
         setScanStatus(scanStatusResult.value);
-        const running = scanStatusResult.value.logs.find((log) => log.status === "running" && !log.endedAt);
-        if (running && !activeScanId) {
+        const running = scanStatusResult.value.logs.find((log) => isRunningScanStatusLog(log));
+        const trackedLog = activeScanId
+          ? scanStatusResult.value.logs.find((log) => log.id === activeScanId)
+          : null;
+
+        if (trackedLog && isTerminalScanStatusLog(trackedLog)) {
+          setActiveScanId(null);
+          setActiveScan(null);
+          setSyncing(false);
+          setFirstScanRunning(false);
+          setScanProgress([]);
+          window.localStorage.removeItem("activeGmailScanId");
+        } else if (running && !activeScanId) {
           setActiveScanId(running.id);
           window.localStorage.setItem("activeGmailScanId", running.id);
         } else if (!running) {
@@ -395,6 +406,7 @@ export default function DashboardPage() {
           setActiveScan(null);
           setSyncing(false);
           setFirstScanRunning(false);
+          setScanProgress([]);
           window.localStorage.removeItem("activeGmailScanId");
         }
       } else {
@@ -466,34 +478,71 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!activeScanId) return;
     let cancelled = false;
+
+    const completeActiveScan = async (progress: ScanProgressResult) => {
+      setFirstScanRunning(false);
+      setSyncing(false);
+      setActiveScan(null);
+      setActiveScanId(null);
+      setScanProgress([]);
+      window.localStorage.removeItem("activeGmailScanId");
+
+      if (isSuccessfulGmailScanProgress(progress)) {
+        setFirstScanSummary(formatProgressSummary(progress));
+        setScanToast({
+          type: progress.status === "partial" ? "warning" : "success",
+          text:
+            progress.status === "partial"
+              ? formatPartialScanMessage(progress)
+              : "הסריקה הסתיימה והנתונים עודכנו",
+        });
+      } else {
+        setScanToast({
+          type: "error",
+          text: progress.error ?? "הסריקה נכשלה",
+        });
+      }
+
+      await load();
+    };
+
     const poll = async () => {
       try {
         const progress = await apiFetch<ScanProgressResult>(`/api/gmail/scan/${activeScanId}`);
         if (cancelled) return;
+
+        if (isTerminalGmailScanProgress(progress)) {
+          await completeActiveScan(progress);
+          return;
+        }
+
+        try {
+          const automationStatus = await apiFetch<ScanStatus>("/api/automation/scan-status");
+          if (cancelled) return;
+          const trackedLog = automationStatus.logs.find((log) => log.id === activeScanId);
+          if (trackedLog && isTerminalScanStatusLog(trackedLog)) {
+            await completeActiveScan({
+              ...progress,
+              status: normalizeScanStatusFromLog(trackedLog.status, progress.status),
+              inProgress: false,
+              finishedAt: trackedLog.endedAt ?? progress.finishedAt,
+              error: trackedLog.errors ?? progress.error,
+            });
+            return;
+          }
+        } catch {
+          // Keep polling progress endpoint if scan-status fallback is unavailable.
+        }
+
         setActiveScan(progress);
         setScanProgress(scanProgressMessages(progress));
-        if (progress.status === "completed" || progress.status === "partial") {
-          setFirstScanRunning(false);
-          setSyncing(false);
-          setFirstScanSummary(formatProgressSummary(progress));
-          setScanToast({
-            type: progress.status === "partial" ? "warning" : "success",
-            text: progress.status === "partial" ? formatPartialScanMessage(progress) : "הסריקה הסתיימה והנתונים עודכנו",
-          });
-          setActiveScanId(null);
-          window.localStorage.removeItem("activeGmailScanId");
-          await load();
-        } else if (progress.status === "error") {
-          setFirstScanRunning(false);
-          setSyncing(false);
-          setScanToast({ type: "error", text: progress.error ?? "הסריקה נכשלה" });
-          setActiveScanId(null);
-          window.localStorage.removeItem("activeGmailScanId");
-        }
       } catch (err) {
-        if (!cancelled) setScanToast({ type: "error", text: err instanceof Error ? err.message : "טעינת סטטוס סריקה נכשלה" });
+        if (!cancelled) {
+          setScanToast({ type: "error", text: err instanceof Error ? err.message : "טעינת סטטוס סריקה נכשלה" });
+        }
       }
     };
+
     poll().catch(() => undefined);
     const interval = window.setInterval(() => poll().catch(() => undefined), 5000);
     return () => {
@@ -1201,9 +1250,8 @@ function buildScanBannerState(activeScan: ScanProgressResult | null, scanStatus:
   errors: number;
 } | null {
   if (activeScan) {
-    const truncated = activeScan.windowTruncated ?? activeScan.summary?.windowTruncated ?? false;
     return {
-      status: activeScan.status === "running" ? "running" : truncated ? "truncated" : activeScan.status === "completed" ? "success" : activeScan.status,
+      status: mapProgressToBannerStatus(activeScan),
       found: activeScan.invoicesFound + activeScan.supplierPaymentsFound,
       scanned: activeScan.emailsFetched,
       totalMatched: activeScan.totalMatched ?? activeScan.summary?.totalMatched,
@@ -1211,8 +1259,23 @@ function buildScanBannerState(activeScan: ScanProgressResult | null, scanStatus:
     };
   }
   if (!scanStatus?.last) return null;
+  if (isRunningScanStatusLog(scanStatus.last)) {
+    return {
+      status: "running",
+      found: (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0),
+      scanned: scanStatus.last.found,
+      totalMatched: scanStatus.last.totalMatched,
+      errors: scanStatus.last.errors ? 1 : 0,
+    };
+  }
   return {
-    status: scanStatus.last.status === "running" ? "running" : scanStatus.last.windowTruncated ? "truncated" : scanStatus.last.status === "success" ? "success" : scanStatus.last.status === "partial" ? "partial" : "error",
+    status: scanStatus.last.windowTruncated
+      ? "truncated"
+      : scanStatus.last.status === "success" || scanStatus.last.status === "completed"
+        ? "success"
+        : scanStatus.last.status === "partial"
+          ? "partial"
+          : "error",
     found: (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0),
     scanned: scanStatus.last.found,
     totalMatched: scanStatus.last.totalMatched,
@@ -1229,8 +1292,16 @@ function greetingForNow() {
 }
 
 function scanProgressMessages(progress: ScanProgressResult) {
+  const statusMessage = gmailScanStillRunning(progress)
+    ? "סורק ומעבד מיילים..."
+    : isFailedGmailScanStatus(progress.status)
+      ? "הסריקה נכשלה"
+      : progress.status === "partial"
+        ? `הסריקה הושלמה עם ${progress.summary?.errorsCount ?? progress.finalSummary?.errorsCount ?? 0} שגיאות`
+        : "הסריקה הושלמה";
+
   return [
-    progress.status === "running" ? "סורק ומעבד מיילים..." : progress.status === "error" ? "הסריקה נכשלה" : progress.status === "partial" ? `הסריקה הושלמה עם ${progress.summary?.errorsCount ?? progress.finalSummary?.errorsCount ?? 0} שגיאות` : "הסריקה הושלמה",
+    statusMessage,
     `התקדמות ${progress.progressPercent ?? 0}%${progress.estimatedRemainingSeconds ? ` · נותרו בערך ${Math.ceil(progress.estimatedRemainingSeconds / 60)} דק׳` : ""}`,
     `נמצאו ${progress.emailsFetched} מיילים`,
     `נשמרו ${progress.emailsSaved} פריטי סריקה`,
@@ -1324,6 +1395,56 @@ function taskPriorityLabel(priority: string) {
 
 function isCompletedGmailScanStatus(status?: string) {
   return status === "completed" || status === "success" || status === "partial";
+}
+
+function isFailedGmailScanStatus(status?: string) {
+  return status === "error" || status === "failed" || status === "cancelled";
+}
+
+function isRunningScanStatusLog(log: { status: string; endedAt: string | null }) {
+  return log.status === "running" && !log.endedAt;
+}
+
+function isTerminalScanStatusLog(log: { status: string; endedAt: string | null }) {
+  if (log.endedAt) return true;
+  return isCompletedGmailScanStatus(log.status) || isFailedGmailScanStatus(log.status);
+}
+
+function isTerminalGmailScanProgress(progress: ScanProgressResult) {
+  if (progress.finishedAt) return true;
+  if (progress.inProgress === false) return true;
+  return isCompletedGmailScanStatus(progress.status) || isFailedGmailScanStatus(progress.status);
+}
+
+function isSuccessfulGmailScanProgress(progress: ScanProgressResult) {
+  return isCompletedGmailScanStatus(progress.status) && !isFailedGmailScanStatus(progress.status);
+}
+
+function gmailScanStillRunning(progress: ScanProgressResult) {
+  if (progress.inProgress === false) return false;
+  if (progress.finishedAt) return false;
+  if (isTerminalGmailScanProgress(progress)) return false;
+  return progress.status === "running";
+}
+
+function normalizeScanStatusFromLog(
+  logStatus: string,
+  fallback: ScanProgressResult["status"]
+): ScanProgressResult["status"] {
+  if (logStatus === "success" || logStatus === "completed") return "completed";
+  if (logStatus === "partial") return "partial";
+  if (logStatus === "failed" || logStatus === "error") return "error";
+  if (logStatus === "cancelled") return "cancelled";
+  return fallback;
+}
+
+function mapProgressToBannerStatus(progress: ScanProgressResult): "running" | "success" | "partial" | "truncated" | "error" {
+  if (gmailScanStillRunning(progress)) return "running";
+  const truncated = progress.windowTruncated ?? progress.summary?.windowTruncated ?? false;
+  if (truncated) return "truncated";
+  if (progress.status === "partial") return "partial";
+  if (isSuccessfulGmailScanProgress(progress)) return "success";
+  return "error";
 }
 
 function isThisMonth(value: string) {
