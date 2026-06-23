@@ -54,6 +54,11 @@ import {
   checkSlotAvailability,
   findAvailableSlotsForOrganization,
 } from "../services/calendar/availability.js";
+import {
+  ACCURACY_ANALYTICS_ROUTE_PATH,
+  getAccuracyAnalyticsForOrganization,
+  parseAccuracyAnalyticsQuery,
+} from "../services/analytics/accuracyAnalytics.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -2486,6 +2491,18 @@ apiRouter.post("/help/auto-fix/invoices", async (req, res) => {
 apiRouter.get("/dashboard", async (req, res) => {
   const stats = await getDashboardStats(req.auth!.organizationId);
   res.json(stats);
+});
+
+apiRouter.get(ACCURACY_ANALYTICS_ROUTE_PATH, async (req, res) => {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const query = parseAccuracyAnalyticsQuery(req.query as Record<string, unknown>);
+    const analytics = await getAccuracyAnalyticsForOrganization(prisma, organizationId, query);
+    res.json(analytics);
+  } catch (err) {
+    console.error("[internal/analytics/accuracy] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Accuracy analytics failed" });
+  }
 });
 
 apiRouter.get("/stats", async (req, res) => {
