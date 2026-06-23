@@ -1,4 +1,4 @@
-import type { NatalieCopyContext } from "./types.js";
+import type { NatalieCopyContext } from "./types";
 
 /** Customer-facing language only. Never expose engine or pipeline terminology. */
 export const FORBIDDEN_CUSTOMER_TERMS = [

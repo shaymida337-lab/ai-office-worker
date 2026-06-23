@@ -1,5 +1,5 @@
-import { natalieAppointmentMessage, nataliePaymentMessage, natalieReviewMessage, natalieScanMessage, natalieTaskMessage, inferReviewPresentation } from "./copy.js";
-import type { NatalieActivityInput, NatalieTimelineItem } from "./types.js";
+import { natalieAppointmentMessage, nataliePaymentMessage, natalieReviewMessage, natalieScanMessage, natalieTaskMessage, inferReviewPresentation } from "./copy";
+import type { NatalieActivityInput, NatalieTimelineItem } from "./types";
 
 export function formatNatalieActivity(activity: NatalieActivityInput): NatalieTimelineItem {
   const text = activityLine(activity);

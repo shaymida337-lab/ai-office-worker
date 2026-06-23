@@ -3,9 +3,9 @@ import {
   inferReviewPresentation,
   natalieReviewMessage,
   natalieScanMessage,
-} from "./copy.js";
-import { resolvePrimaryAction } from "./primaryAction.js";
-import type { NatalieBriefing, NatalieBriefingInput, NatalieBriefingItem } from "./types.js";
+} from "./copy";
+import { resolvePrimaryAction } from "./primaryAction";
+import type { NatalieBriefing, NatalieBriefingInput, NatalieBriefingItem } from "./types";
 
 export function buildNatalieBriefing(input: NatalieBriefingInput): NatalieBriefing {
   const now = input.now ?? new Date();

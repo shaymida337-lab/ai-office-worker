@@ -1,14 +1,24 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Activity, CalendarDays, CheckCircle2, ClipboardList, CreditCard, FileSearch, Sparkles } from "lucide-react";
+import { Activity, CalendarDays, CheckCircle2, ClipboardList, CreditCard, FileSearch } from "lucide-react";
 import { Nav } from "@/components/Nav";
+import {
+  NatalieBriefing,
+  NatalieConversationStrip,
+  NataliePrimaryAction,
+  NatalieQuietSummary,
+  NatalieTimeline,
+} from "@/components/natalie";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { KpiCard } from "@/components/ui/KpiCard";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { ScanBanner } from "@/components/ui/ScanBanner";
 import { StatusPill } from "@/components/ui/StatusPill";
+import { buildNatalieBriefing, buildQuietSummary } from "@/lib/natalie/briefing";
+import { inferReviewPresentation, natalieReviewMessage } from "@/lib/natalie/copy";
+import { formatNatalieActivities } from "@/lib/natalie/narrative";
+import type { NatalieActivityInput, NatalieBriefingInput } from "@/lib/natalie/types";
 import {
   apiFetch,
   clearToken,
@@ -362,6 +372,7 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [invoiceAttachPaymentId, setInvoiceAttachPaymentId] = useState<string | null>(null);
   const [invoiceAttachLink, setInvoiceAttachLink] = useState("");
+  const [natalieConversation, setNatalieConversation] = useState("");
 
   useEffect(() => {
     const savedScanId = window.localStorage.getItem("activeGmailScanId");
@@ -821,13 +832,114 @@ export default function DashboardPage() {
   const gmailConnected = Boolean(gmailStatus?.connected);
   const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
   const ownerFirstName = firstNameFromLabel(organizationSettings?.name);
-  const todayGreeting = greetingForNow(ownerFirstName);
   const scanBanner = successScanBannerHidden ? null : buildScanBannerState(activeScan, scanStatus);
   const monthPayments = payments.filter((payment) => isThisMonth(payment.date));
+  const unpaidPayments = useMemo(() => payments.filter((payment) => !payment.paid), [payments]);
   const openTasksCount = stats?.openTasks ?? recentTasks.filter((task) => task.status !== "completed" && task.status !== "done").length;
   const upcomingMeetingsCount = upcomingAppointments.length;
+  const scanRunning = syncing || Boolean(activeScanId) || scanBanner?.status === "running";
+  const scanStale = scanBanner?.status === "stale";
+
+  const natalieBriefingInput = useMemo<NatalieBriefingInput>(
+    () => ({
+      screen: "today",
+      ownerFirstName,
+      gmailConnected,
+      scanRunning,
+      scanStale,
+      documentReviews: documentReviews.map((item) => ({
+        id: item.id,
+        supplierName: item.supplierName,
+        reviewStatus: item.reviewStatus,
+        uncertaintyReason: item.uncertaintyReason,
+        documentType: item.documentType,
+        totalAmount: item.totalAmount,
+        currency: item.currency,
+      })),
+      unpaidPayments: unpaidPayments.map((payment) => ({
+        id: payment.id,
+        supplier: payment.supplier,
+        paid: payment.paid,
+        missingInvoice: payment.missingInvoice,
+        amount: payment.amount,
+        currency: payment.currency,
+      })),
+      missingInvoices: missingInvoices.map((payment) => ({
+        id: payment.id,
+        supplier: payment.supplier,
+        paid: payment.paid,
+        missingInvoice: true,
+        amount: payment.amount,
+        currency: payment.currency,
+      })),
+      openTasksCount,
+      upcomingAppointments: upcomingAppointments.map((appt) => ({
+        id: appt.id,
+        clientName: appt.client.name,
+        startTime: appt.startTime,
+        status: appt.status,
+      })),
+      invoicesSaved: monthPayments.length,
+      paymentsPrepared: unpaidPayments.length,
+    }),
+    [
+      ownerFirstName,
+      gmailConnected,
+      scanRunning,
+      scanStale,
+      documentReviews,
+      unpaidPayments,
+      missingInvoices,
+      openTasksCount,
+      upcomingAppointments,
+      monthPayments.length,
+    ]
+  );
+
+  const natalieBriefing = useMemo(() => buildNatalieBriefing(natalieBriefingInput), [natalieBriefingInput]);
+  const natalieQuietSummary = useMemo(() => buildQuietSummary(natalieBriefingInput), [natalieBriefingInput]);
+  const natalieTimeline = useMemo(
+    () => formatNatalieActivities(buildDashboardActivityInputs(recentInvoices, recentTasks, payments, scanStatus)),
+    [recentInvoices, recentTasks, payments, scanStatus]
+  );
+
   const priorityItems = buildPriorityItems(documentReviews, missingInvoices, payments, alerts);
-  const recentActivityItems = buildRecentActivityItems(recentInvoices, recentTasks, payments, scanStatus);
+  const visiblePriorityItems = priorityItems.slice(0, 5);
+
+  const handleNataliePrimaryAction = useCallback(
+    (intent: string) => {
+      const action = natalieBriefing.primaryAction;
+      if (action.disabled) return;
+      if (action.href && intent !== "start_today") {
+        router.push(action.href);
+        return;
+      }
+      if (intent === "connect_gmail") {
+        connectGmail();
+        return;
+      }
+      document.getElementById("natalie-decisions")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    },
+    [natalieBriefing.primaryAction, router, connectGmail]
+  );
+
+  const handleNatalieConversation = useCallback(
+    (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      setNatalieConversation("");
+      if (trimmed.includes("תשלום") || trimmed.includes("שולם")) {
+        router.push("/payments");
+        return;
+      }
+      if (trimmed.includes("ממתין") || trimmed.includes("התחל") || trimmed.includes("דחוף")) {
+        document.getElementById("natalie-decisions")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      setActionMessage("קיבלתי את הבקשה. נטלי ממשיכה לעבוד — אפשר גם לדבר איתי דרך כפתור נטלי למטה.");
+    },
+    [router]
+  );
 
   return (
     <main
@@ -840,42 +952,8 @@ export default function DashboardPage() {
       }}
     >
       <Nav />
-      <PageHeader
-        title={`${todayGreeting} 👋`}
-        subtitle="נטלי כבר ריכזה עבורך את כל מה שחשוב היום."
-        badge={
-          <span
-            className={`inline-flex items-center gap-2.5 rounded-full px-4 py-2 ${typography.badge} ${radius.pill}`}
-            style={{ backgroundColor: colors.accentSoft, color: colors.accent }}
-          >
-            <Sparkles className="h-4 w-4" strokeWidth={2.25} />
-            העוזרת החכמה שלך פעילה
-          </span>
-        }
-        action={
-          <button
-            type="button"
-            onClick={runSync}
-            disabled={syncing || Boolean(activeScanId)}
-            className={`${radius.control} ${button.primary} shadow-[0_12px_28px_rgba(29,91,255,0.24)]`}
-            style={{ backgroundColor: colors.accent, color: colors.surface, border: `1px solid ${colors.accent}` }}
-          >
-            {syncing || activeScanId ? "סורקת..." : "סרוק עכשיו"}
-          </button>
-        }
-      />
 
       <div className={`grid min-w-0 max-w-full ${spacing.section}`}>
-        {scanBanner && (
-          <ScanBanner
-            status={scanBanner.status}
-            found={scanBanner.found}
-            scanned={scanBanner.scanned}
-            totalMatched={scanBanner.totalMatched}
-            errors={scanBanner.errors}
-          />
-        )}
-
         <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
 
         {showGmailConnect && (
@@ -897,6 +975,111 @@ export default function DashboardPage() {
             </button>
           </section>
         )}
+
+        <section
+          className={`${radius.card} ${shadow.card} ${spacing.card} border`}
+          style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+          aria-label="היום עם נטלי"
+        >
+          <div className="mb-4">
+            <span
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 ${typography.badge} ${radius.pill}`}
+              style={{ backgroundColor: colors.accentSoft, color: colors.accent }}
+            >
+              העוזרת החכמה שלך פעילה
+            </span>
+          </div>
+          <div className={`natalie-briefing-shell space-y-4 [&_h1]:text-[32px] [&_h1]:font-extrabold [&_h1]:leading-tight [&_h2]:text-lg [&_h2]:font-bold [&_header>p]:mt-2 [&_header>p]:text-lg [&_header>p]:font-medium [&_header>p]:leading-8 [&_li]:text-base [&_li]:leading-7 md:[&_h1]:text-[40px]`}>
+            <NatalieBriefing
+              briefing={{
+                ...natalieBriefing,
+                greeting: `${natalieBriefing.greeting} 👋`,
+              }}
+            />
+          </div>
+        </section>
+
+        {scanBanner && (
+          <ScanBanner
+            status={scanBanner.status}
+            found={scanBanner.found}
+            scanned={scanBanner.scanned}
+            totalMatched={scanBanner.totalMatched}
+            errors={scanBanner.errors}
+          />
+        )}
+
+        <section className="grid gap-4 sm:flex sm:flex-wrap sm:items-center">
+          <NataliePrimaryAction
+            action={natalieBriefing.primaryAction}
+            onAction={handleNataliePrimaryAction}
+            className={`${radius.control} ${button.primary} w-full border border-transparent bg-[#1D5BFF] text-white shadow-[0_12px_28px_rgba(29,91,255,0.24)] sm:w-auto`}
+          />
+          <button
+            type="button"
+            onClick={runSync}
+            disabled={syncing || Boolean(activeScanId)}
+            className={`${radius.control} ${button.secondary} w-full sm:w-auto`}
+            style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.textSecondary }}
+          >
+            {syncing || activeScanId ? "סורקת..." : "סרוק עכשיו"}
+          </button>
+        </section>
+
+        <section
+          className={`${radius.card} ${shadow.card} ${spacing.card} border`}
+          style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+        >
+          <NatalieConversationStrip
+            placeholder="מה תרצה שאעשה?"
+            suggestions={natalieBriefing.suggestedQuestions}
+            value={natalieConversation}
+            onChange={setNatalieConversation}
+            onSubmit={handleNatalieConversation}
+            onSuggestionSelect={(suggestion) => {
+              setNatalieConversation(suggestion);
+              handleNatalieConversation(suggestion);
+            }}
+          />
+        </section>
+
+        <section id="natalie-decisions" className={`grid ${spacing.section}`}>
+          <SectionTitle
+            icon={<ClipboardList className="h-[22px] w-[22px]" strokeWidth={2.2} />}
+            title="מה דורש את ההחלטה שלך"
+            hint="נטלי ממיינת עבורך את הדברים הדחופים ביותר"
+          />
+          {pageLoading ? (
+            <DashboardSkeletonRows count={3} />
+          ) : visiblePriorityItems.length > 0 ? (
+            <div className={`grid ${spacing.inline}`}>
+              {visiblePriorityItems.map((item) => (
+                <PriorityRow key={item.id} item={item} onMarkPaid={markPaymentPaid} onAttach={attachInvoiceToPayment} />
+              ))}
+              {priorityItems.length > visiblePriorityItems.length && (
+                <a href="/dashboard/document-reviews" className={`${typography.body} font-bold`} style={{ color: colors.accent }}>
+                  לכל מה שממתין ({priorityItems.length}) ←
+                </a>
+              )}
+            </div>
+          ) : (
+            <EmptyState
+              icon={<CheckCircle2 className="h-6 w-6" />}
+              title="הכל מסודר כרגע ✓"
+              hint="אין מסמכים, תשלומים או התראות שדורשים את ההחלטה שלך"
+            />
+          )}
+        </section>
+
+        <section
+          className={`${radius.card} ${spacing.card} border`}
+          style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+        >
+          <h2 className={`${typography.sectionHeader} mb-4`} style={{ color: colors.textPrimary }}>
+            סיכום שקט
+          </h2>
+          <NatalieQuietSummary chips={natalieQuietSummary} />
+        </section>
 
         <section className={`grid grid-cols-2 md:grid-cols-4 ${spacing.inline}`}>
           <KpiCard
@@ -935,49 +1118,21 @@ export default function DashboardPage() {
 
         <section className={`grid ${spacing.section}`}>
           <SectionTitle
-            icon={<ClipboardList className="h-[22px] w-[22px]" strokeWidth={2.2} />}
-            title="מה דורש טיפול עכשיו"
-            hint="נטלי ממיינת עבורך את הדברים הדחופים ביותר"
-          />
-          {pageLoading ? (
-            <DashboardSkeletonRows count={3} />
-          ) : priorityItems.length > 0 ? (
-            <div className={`grid ${spacing.inline}`}>
-              {priorityItems.map((item) => (
-                <PriorityRow key={item.id} item={item} onMarkPaid={markPaymentPaid} onAttach={attachInvoiceToPayment} />
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<CheckCircle2 className="h-6 w-6" />}
-              title="הכל מסודר כרגע ✓"
-              hint="אין מסמכים, תשלומים או התראות שדורשים טיפול מיידי"
-            />
-          )}
-        </section>
-
-        <section className={`grid ${spacing.section}`}>
-          <SectionTitle
             icon={<Activity className="h-[22px] w-[22px]" strokeWidth={2.2} />}
-            title="פעילות אחרונה"
+            title="מה עשיתי לאחרונה"
             hint="עדכונים אחרונים מהעסק שלך"
           />
           {pageLoading ? (
             <DashboardSkeletonRows count={4} />
-          ) : recentActivityItems.length > 0 ? (
-            <ActivityCard title="" empty="">
-              {recentActivityItems.map((item) => (
-                <DataRow
-                  key={item.id}
-                  title={item.title}
-                  meta={item.meta}
-                  pill={item.pill}
-                  action={item.action}
-                />
-              ))}
-            </ActivityCard>
+          ) : natalieTimeline.length > 0 ? (
+            <section
+              className={`${radius.card} ${shadow.card} ${spacing.card} border`}
+              style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+            >
+              <NatalieTimeline items={natalieTimeline} title="" />
+            </section>
           ) : (
-            <EmptyState title="עדיין אין פעילות" hint="כשנטלי תעבד מסמכים ותשלומים, הם יופיעו כאן" compact />
+            <EmptyState title="עדיין אין פעילות" hint="כשאסיים לעבוד על מסמכים ותשלומים, זה יופיע כאן" compact />
           )}
         </section>
 
@@ -1430,13 +1585,54 @@ function buildScanBannerState(activeScan: ScanProgressResult | null, scanStatus:
   };
 }
 
-function greetingForNow(firstName?: string | null) {
-  const hour = new Date().getHours();
-  let greeting = "לילה טוב";
-  if (hour >= 5 && hour < 12) greeting = "בוקר טוב";
-  else if (hour >= 12 && hour < 17) greeting = "צהריים טובים";
-  else if (hour >= 17 && hour < 22) greeting = "ערב טוב";
-  return firstName ? `${greeting} ${firstName}` : greeting;
+function buildDashboardActivityInputs(
+  invoices: RecentInvoice[],
+  tasks: Task[],
+  allPayments: Payment[],
+  scan: ScanStatus | null
+): NatalieActivityInput[] {
+  const items: NatalieActivityInput[] = [];
+
+  for (const invoice of invoices.slice(0, 3)) {
+    items.push({
+      id: `invoice-${invoice.id}`,
+      kind: "invoice_saved",
+      supplierName: invoice.client?.name ?? undefined,
+      amount: invoice.amount,
+      currency: invoice.currency,
+      occurredAt: invoice.date,
+    });
+  }
+
+  for (const task of tasks.slice(0, 2)) {
+    items.push({
+      id: `task-${task.id}`,
+      kind: "task_created",
+      title: task.title,
+      occurredAt: task.updatedAt,
+    });
+  }
+
+  for (const payment of allPayments.slice(0, 2)) {
+    items.push({
+      id: `payment-${payment.id}`,
+      kind: payment.paid ? "payment_paid" : "payment_prepared",
+      supplierName: payment.supplier,
+      amount: payment.amount,
+      currency: payment.currency,
+      occurredAt: payment.date,
+    });
+  }
+
+  if (scan?.last && (scan.last.status === "success" || scan.last.status === "completed")) {
+    items.push({
+      id: `scan-${scan.last.id}`,
+      kind: "scan_completed",
+      occurredAt: scan.last.endedAt ?? scan.last.startedAt,
+    });
+  }
+
+  return items.slice(0, 6);
 }
 
 function firstNameFromLabel(value: string | null | undefined) {
@@ -1464,13 +1660,20 @@ function buildPriorityItems(
   const items: PriorityItem[] = [];
 
   for (const item of reviews.slice(0, 3)) {
+    const presentation = inferReviewPresentation({
+      reviewStatus: item.reviewStatus,
+      uncertaintyReason: item.uncertaintyReason,
+    });
     items.push({
       id: `review-${item.id}`,
       kind: "review",
-      title: reviewTitle(item),
+      title: natalieReviewMessage(presentation, {
+        supplierName: item.supplierName,
+        uncertaintyReason: item.uncertaintyReason,
+      }).replace(/\n/g, " "),
       meta: `${formatMoney(item.totalAmount ?? 0, item.currency ?? "ILS")} · ${formatDate(item.documentDate ?? item.createdAt)}`,
-      pill: <StatusPill tone="warn">{labelFor("reviewStatus", item.reviewStatus)}</StatusPill>,
-      action: <SecondaryLink href="/dashboard/document-reviews">בדוק</SecondaryLink>,
+      pill: <StatusPill tone="warn">אני צריכה את ההחלטה שלך</StatusPill>,
+      action: <SecondaryLink href="/dashboard/document-reviews">עזרי לי לבחור</SecondaryLink>,
     });
   }
 
@@ -1527,61 +1730,6 @@ function PriorityRow({
     ) : null);
 
   return <DataRow title={item.title} meta={item.meta} pill={item.pill} action={action} />;
-}
-
-type RecentActivityItem = {
-  id: string;
-  title: string;
-  meta: string;
-  pill?: ReactNode;
-  action?: ReactNode;
-};
-
-function buildRecentActivityItems(
-  invoices: RecentInvoice[],
-  tasks: Task[],
-  allPayments: Payment[],
-  scan: ScanStatus | null
-): RecentActivityItem[] {
-  const items: RecentActivityItem[] = [];
-
-  for (const invoice of invoices.slice(0, 3)) {
-    items.push({
-      id: `invoice-${invoice.id}`,
-      title: invoice.client?.name ?? "חשבונית חדשה",
-      meta: `${formatDate(invoice.date)} · ${formatShekel(invoice.amount)}`,
-      pill: <StatusPill tone={invoice.status === "paid" ? "success" : "info"}>{labelFor("paymentStatus", invoice.status)}</StatusPill>,
-    });
-  }
-
-  for (const task of tasks.slice(0, 2)) {
-    items.push({
-      id: `task-${task.id}`,
-      title: task.title,
-      meta: `${task.supplier ?? "כללי"} · ${taskPriorityLabel(task.priority)}`,
-      pill: <StatusPill tone={task.status === "completed" || task.status === "done" ? "success" : "info"}>{labelFor("scanStatus", task.status)}</StatusPill>,
-    });
-  }
-
-  for (const payment of allPayments.slice(0, 2)) {
-    items.push({
-      id: `payment-${payment.id}`,
-      title: payment.supplier || "תשלום ספק",
-      meta: `${formatDate(payment.date)} · ${formatShekel(payment.amount)}`,
-      pill: <StatusPill tone={payment.paid ? "success" : "warn"}>{payment.paid ? "שולם" : "פתוח"}</StatusPill>,
-    });
-  }
-
-  if (scan?.last) {
-    items.push({
-      id: `scan-${scan.last.id}`,
-      title: "סריקה אחרונה",
-      meta: `מיילים ${formatNumber(scan.last.found)} · נשמרו ${formatNumber(scan.last.saved)}`,
-      pill: <StatusPill tone={scan.last.status === "success" ? "success" : "info"}>{labelFor("scanStatus", scan.last.status)}</StatusPill>,
-    });
-  }
-
-  return items.slice(0, 6);
 }
 
 function DashboardSkeletonRows({ count }: { count: number }) {

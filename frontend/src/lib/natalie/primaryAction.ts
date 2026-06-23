@@ -1,4 +1,4 @@
-import type { NataliePrimaryActionInput, NataliePrimaryActionModel, NatalieScreen } from "./types.js";
+import type { NataliePrimaryActionInput, NataliePrimaryActionModel, NatalieScreen } from "./types";
 
 type RankedAction = NataliePrimaryActionModel & { priority: number };
 
