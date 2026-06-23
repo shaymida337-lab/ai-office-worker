@@ -1,53 +1,101 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Nav } from "@/components/Nav";
+import {
+  DocumentDecisionQueue,
+  DocumentsCompletedSection,
+  DocumentsEmptyState,
+  DocumentsFilterChips,
+  DocumentsMorningContext,
+  DocumentsSearchBar,
+} from "@/components/documents";
 import { apiFetch } from "@/lib/api";
-import { reviewReasonLabel } from "@/lib/reviewReasonLabels";
+import {
+  filterDocuments,
+  isToday,
+  remainingDocumentsMessage,
+  type DocumentFilter,
+  type DocumentReviewItem,
+} from "@/lib/documents/presentation";
+import { colors, radius, type as typography } from "@/lib/design-tokens";
 
-type DocumentReview = {
-  id: string;
-  source: string;
-  sender: string | null;
-  subject: string | null;
-  fileName: string | null;
-  documentType: string;
-  supplierName: string | null;
-  totalAmount: number | null;
-  confidenceScore: number;
-  uncertaintyReason: string | null;
-  driveFileUrl: string | null;
-  reviewStatus: string;
-  createdAt: string;
-};
+const EXIT_ANIMATION_MS = 320;
 
 export default function DocumentReviewsPage() {
-  const [items, setItems] = useState<DocumentReview[]>([]);
+  const [pendingItems, setPendingItems] = useState<DocumentReviewItem[]>([]);
+  const [completedItems, setCompletedItems] = useState<DocumentReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [exitingIds, setExitingIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<DocumentFilter>("needs_decision");
+
+  const loadItems = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [pending, approved] = await Promise.all([
+        apiFetch<DocumentReviewItem[]>("/api/document-reviews?status=needs_review"),
+        apiFetch<DocumentReviewItem[]>("/api/document-reviews?status=approved"),
+      ]);
+      setPendingItems(pending);
+      setCompletedItems(approved);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "טעינת מסמכים נכשלה");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadItems();
-  }, []);
+  }, [loadItems]);
 
-  function loadItems() {
-    setLoading(true);
-    apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review")
-      .then(setItems)
-      .catch((err) => setMessage(err instanceof Error ? err.message : "טעינת מסמכים לבדיקה נכשלה"))
-      .finally(() => setLoading(false));
+  const completedToday = useMemo(
+    () => completedItems.filter((item) => isToday(item.createdAt)),
+    [completedItems]
+  );
+
+  const filtered = useMemo(
+    () => filterDocuments(pendingItems, completedItems, filter, search),
+    [pendingItems, completedItems, filter, search]
+  );
+
+  const pendingCount = pendingItems.length;
+
+  function animateRemove(id: string, onRemoved: (next: DocumentReviewItem[]) => void) {
+    setExitingIds((prev) => new Set(prev).add(id));
+    window.setTimeout(() => {
+      setPendingItems((prev) => {
+        const next = prev.filter((item) => item.id !== id);
+        onRemoved(next);
+        return next;
+      });
+      setExitingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }, EXIT_ANIMATION_MS);
   }
 
   async function approve(id: string) {
     setUpdatingId(id);
-    setMessage("");
+    setError("");
     try {
       await apiFetch(`/api/document-reviews/${id}/approve`, { method: "POST" });
-      setItems((prev) => prev.filter((item) => item.id !== id));
-      setMessage("המסמך אושר ונוסף לתשלומי הספקים");
+      const approvedItem = pendingItems.find((item) => item.id === id);
+      animateRemove(id, (next) => {
+        setStatusMessage(remainingDocumentsMessage(next.length));
+      });
+      if (approvedItem) {
+        setCompletedItems((prev) => [{ ...approvedItem, reviewStatus: "approved" }, ...prev]);
+      }
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "אישור המסמך נכשל");
+      setError(err instanceof Error ? err.message : "אישור המסמך נכשל");
     } finally {
       setUpdatingId(null);
     }
@@ -55,92 +103,111 @@ export default function DocumentReviewsPage() {
 
   async function remove(id: string) {
     setUpdatingId(id);
-    setMessage("");
+    setError("");
     try {
       await apiFetch(`/api/document-reviews/${id}`, { method: "DELETE" });
-      setItems((prev) => prev.filter((item) => item.id !== id));
-      setMessage("המסמך נמחק מרשימת הבדיקה");
+      animateRemove(id, (next) => {
+        setStatusMessage(remainingDocumentsMessage(next.length));
+      });
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "מחיקת המסמך נכשלה");
+      setError(err instanceof Error ? err.message : "הסרת המסמך נכשלה");
     } finally {
       setUpdatingId(null);
     }
   }
 
+  function openDocument(url: string) {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  const showCompletedFilter = filter === "completed";
+  const showFilteredEmpty =
+    !loading &&
+    filter !== "completed" &&
+    filtered.showQueue &&
+    filtered.queue.length === 0 &&
+    pendingCount > 0;
+
   return (
-    <div className="container">
+    <main
+      className="min-h-screen max-w-full overflow-x-clip px-4 pb-32 pt-20 md:px-8 md:pb-8 lg:mr-60"
+      style={{
+        background: `linear-gradient(180deg, ${colors.bgSoft} 0%, ${colors.bg} 28%, ${colors.bg} 100%)`,
+        color: colors.textPrimary,
+      }}
+    >
       <Nav />
-      <div className="mb-8">
-        <div className="page-kicker">דיוק מסמכים</div>
-        <h1>מסמכים לבדיקה</h1>
-        <p>מסמכים מג׳ימייל ומוואטסאפ עם רמת ודאות נמוכה או נתונים חסרים. אישור ידני יכניס אותם לתשלומי ספקים.</p>
+
+      <div className="mx-auto grid min-w-0 max-w-3xl gap-6 md:gap-8">
+        <DocumentsMorningContext
+          pendingCount={pendingCount}
+          loading={loading}
+          statusMessage={statusMessage}
+        />
+
+        <DocumentsSearchBar value={search} onChange={setSearch} />
+
+        <DocumentsFilterChips active={filter} onChange={setFilter} />
+
+        {error && (
+          <div
+            className={`${radius.lg} border px-5 py-4 ${typography.body} font-semibold leading-7`}
+            style={{
+              color: colors.dangerText,
+              backgroundColor: colors.dangerBg,
+              borderColor: colors.dangerBorder,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {loading && (
+          <div className="grid gap-4">
+            {Array.from({ length: 2 }).map((_, index) => (
+              <div
+                key={index}
+                className={`${radius.lg} h-72 animate-pulse border`}
+                style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+              />
+            ))}
+          </div>
+        )}
+
+        {!loading && !showCompletedFilter && pendingCount === 0 && filtered.queue.length === 0 && (
+          <DocumentsEmptyState />
+        )}
+
+        {!loading && showFilteredEmpty && (
+          <p className={`${typography.body} text-center font-semibold`} style={{ color: colors.textSecondary }}>
+            אין מסמכים שמתאימים לסינון הזה
+          </p>
+        )}
+
+        {!loading && filtered.showQueue && filtered.queue.length > 0 && (
+          <DocumentDecisionQueue
+            items={filtered.queue}
+            totalCount={filtered.queue.length}
+            exitingIds={exitingIds}
+            updatingId={updatingId}
+            onApprove={approve}
+            onOpen={openDocument}
+            onRemove={remove}
+          />
+        )}
+
+        {!loading && showCompletedFilter && (
+          filtered.completed.length > 0 ? (
+            <DocumentsCompletedSection items={filtered.completed} defaultOpen />
+          ) : (
+            <DocumentsEmptyState />
+          )
+        )}
+
+        {!loading && !showCompletedFilter && (
+          <DocumentsCompletedSection items={completedToday} />
+        )}
       </div>
-
-      {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-base text-ink-primary">{message}</div>}
-      {loading && <div className="card"><p>טוען מסמכים לבדיקה...</p></div>}
-      {!loading && items.length === 0 && <div className="card"><h2>אין מסמכים שממתינים לבדיקה</h2><p className="mt-2">מסמכים בטוחים נשמרים אוטומטית, ומסמכים לא רלוונטיים מסוננים.</p></div>}
-
-      {!loading && items.length > 0 && (
-        <div className="table-shell overflow-x-auto">
-          <table className="min-w-[980px]">
-            <thead>
-              <tr>
-                <th>מקור</th>
-                <th>שולח</th>
-                <th>סוג מסמך</th>
-                <th>סכום</th>
-                <th>ספק</th>
-                <th className="max-w-xs">סיבת חוסר ודאות</th>
-                <th>קובץ</th>
-                <th className="whitespace-nowrap">פעולות</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id}>
-                  <td>{sourceLabel(item.source)}</td>
-                  <td>{item.sender ?? "—"}</td>
-                  <td>{documentTypeLabel(item.documentType)}</td>
-                  <td>{item.totalAmount == null ? "—" : `₪${item.totalAmount.toLocaleString("he-IL")}`}</td>
-                  <td>{item.supplierName ?? "לא מזוהה"}</td>
-                  <td className="max-w-xs">
-                    <div className="truncate" title={item.uncertaintyReason ?? "רמת ודאות נמוכה"}>{reviewReasonLabel(item.uncertaintyReason)}</div>
-                    <div className="text-sm text-ink-secondary">{Math.round(item.confidenceScore * 100)}%</div>
-                  </td>
-                  <td>{item.driveFileUrl ? <a className="text-accent-primary underline-offset-4 hover:underline" href={item.driveFileUrl} target="_blank" rel="noreferrer">פתח</a> : "—"}</td>
-                  <td className="whitespace-nowrap">
-                    <div className="flex flex-nowrap gap-2">
-                      <button className="btn btn-secondary" type="button" disabled={updatingId === item.id} onClick={() => approve(item.id)}>
-                        אשר נתונים
-                      </button>
-                      <button className="btn btn-secondary" type="button" disabled={updatingId === item.id} onClick={() => remove(item.id)}>
-                        מחיקה
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    </main>
   );
-}
-
-function sourceLabel(source: string) {
-  return source === "whatsapp" ? "וואטסאפ" : "ג׳ימייל";
-}
-
-function documentTypeLabel(type: string) {
-  const labels: Record<string, string> = {
-    tax_invoice: "חשבונית מס",
-    invoice: "חשבונית מס",
-    receipt: "קבלה",
-    tax_invoice_receipt: "חשבונית מס קבלה",
-    payment_request: "דרישת תשלום",
-    quote: "הצעת מחיר",
-    irrelevant: "מסמך לא רלוונטי",
-  };
-  return labels[type] ?? type;
 }
