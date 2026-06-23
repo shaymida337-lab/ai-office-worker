@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { buildDuplicateHash } from "../lib/duplicate.js";
 import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { analyzeEmailContent, analyzeInvoiceFile, type EmailAnalysis, type InvoiceScanResult } from "./claude.js";
@@ -7,7 +6,9 @@ import { ensureInvoiceFolderTree, findExistingSupplierDriveDocument, uploadInvoi
 import { getGoogleClients } from "./google.js";
 import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
 import { recordFinancialDocumentDecision } from "./financialDocuments.js";
-import { matchFinancialDocuments, type DedupMatchResult, type FinancialDocumentFingerprintInput } from "./dedup/sharedMatcher.js";
+import { computeCanonicalFingerprint, matchFinancialDocuments, type DedupMatchResult, type FinancialDocumentFingerprintInput } from "./dedup/sharedMatcher.js";
+import { buildLegacyFileDuplicateHashForLookup, buildPaymentLookupsFromCanonical } from "./dedup/fingerprintMigration.js";
+import { resolveWhatsAppMoneyDecision, summarizeMoneyDecision } from "./amount/amountCandidates.js";
 import { classifyBusinessDocument, pipelineActionForClassification } from "./classification/classifier.js";
 
 type WhatsAppMediaInput = {
@@ -71,7 +72,12 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
     console.log(`[whatsapp-invoice] extraction done logId=${input.whatsappLogId} supplier="${analysis.supplier}" supplierTaxId=${analysis.supplierTaxId ?? "null"} amount=${analysis.amount ?? "null"} invoiceNumber=${analysis.invoiceNumber ?? "null"} invoiceDate=${analysis.invoiceDate ?? "null"} dueDate=${analysis.dueDate ?? "null"} documentType=${analysis.documentType} confidence=${analysis.confidence}`);
 
     const supplier = usableSupplierName(analysis.supplier) ? analysis.supplier.trim() : "Unknown supplier";
-    const amount = selectWhatsAppInvoiceAmount({ amount: analysis.amount, totalAmount: analysis.totalAmount });
+    const moneyDecision = resolveWhatsAppMoneyDecision({
+      organizationId: input.organizationId,
+      documentType: analysis.documentType,
+      analysis,
+    });
+    const amount = moneyDecision.selectedAmount;
     if (supplier === "Unknown supplier" || amount === null || !analysis.invoiceNumber) {
       console.warn("[whatsapp-invoice] extraction incomplete", {
         logId: input.whatsappLogId,
@@ -94,9 +100,9 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       invoiceNumber: analysis.invoiceNumber,
       documentDate: analysis.invoiceDate,
       dueDate: analysis.dueDate,
-      amountBeforeVat: analysis.amountBeforeVat ?? null,
-      vatAmount: analysis.vatAmount ?? null,
-      totalAmount: analysis.totalAmount ?? amount,
+      amountBeforeVat: moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? null,
+      vatAmount: moneyDecision.vatAmount ?? analysis.vatAmount ?? null,
+      totalAmount: amount,
       documentType: analysis.documentType,
       confidenceScore: analysis.confidence,
       uncertaintyReason: supplier === "Unknown supplier" || amount === null || !analysis.invoiceNumber
@@ -361,9 +367,9 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       sourceFingerprint: documentDecision.sourceFingerprint,
       documentTypeDetailed: documentDecision.documentType,
       supplierTaxId: analysis.supplierTaxId ?? null,
-      amountBeforeVat: analysis.amountBeforeVat ?? null,
-      vatAmount: analysis.vatAmount ?? null,
-      totalAmount: analysis.totalAmount ?? amount,
+      amountBeforeVat: moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? null,
+      vatAmount: moneyDecision.vatAmount ?? analysis.vatAmount ?? null,
+      totalAmount: amount,
       confidenceScore: analysis.confidence,
       fromNumber: input.fromNumber,
       filename,
@@ -396,9 +402,9 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       sourceFingerprint: documentDecision.sourceFingerprint,
       documentTypeDetailed: documentDecision.documentType,
       supplierTaxId: analysis.supplierTaxId ?? null,
-      amountBeforeVat: analysis.amountBeforeVat ?? null,
-      vatAmount: analysis.vatAmount ?? null,
-      totalAmount: analysis.totalAmount ?? amount,
+      amountBeforeVat: moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? null,
+      vatAmount: moneyDecision.vatAmount ?? analysis.vatAmount ?? null,
+      totalAmount: amount,
       confidenceScore: analysis.confidence,
       fromNumber: input.fromNumber,
       filename,
@@ -756,18 +762,29 @@ async function upsertWhatsAppSupplierPayment(input: {
   fileHash: string;
 }) {
   const date = normalizeDate(input.invoiceDate) ?? new Date();
-  const duplicateHash = input.documentFingerprint || buildDuplicateHash({
+  const paymentIdentity = buildPaymentLookupsFromCanonical({
     organizationId: input.organizationId,
-    supplier: input.supplier,
-    amount: input.amount ?? 0,
-    dateIso: input.fileHash ? "1970-01-01" : date.toISOString(),
+    canonicalFingerprint: input.documentFingerprint,
+    supplierName: input.supplier,
+    supplierTaxId: input.supplierTaxId,
+    invoiceNumber: input.invoiceNumber,
+    totalAmount: input.totalAmount ?? input.amount,
+    documentDate: date,
+    documentType: input.documentTypeDetailed,
+    fileSha256: input.fileHash,
     subject: input.fileHash ? `file:${input.fileHash}` : `whatsapp:${input.whatsappLogId}:${input.filename}:${input.invoiceNumber ?? ""}`,
+    sourceFingerprint: input.sourceFingerprint,
   });
+  const duplicateHash = paymentIdentity.duplicateHash;
   const invoiceLink = input.documentType === "invoice" || input.documentType === "receipt" || input.documentType === "tax_invoice_receipt" ? input.driveLink : null;
   const documentLink = input.documentType === "payment_request" ? input.driveLink : invoiceLink ?? input.driveLink;
 
-  const existing = await prisma.supplierPayment.findUnique({
-    where: { organizationId_duplicateHash: { organizationId: input.organizationId, duplicateHash } },
+  const existing = await prisma.supplierPayment.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      OR: paymentIdentity.lookupClauses,
+    },
+    orderBy: { createdAt: "desc" },
   });
   if (existing) {
     const updated = await prisma.supplierPayment.update({
@@ -883,17 +900,34 @@ async function findExistingCrossSourceDuplicate(input: {
     invoiceDate: input.invoiceDate,
     fileHash: input.fileHash,
   });
+  const canonical = computeCanonicalFingerprint({
+    organizationId: input.organizationId,
+    supplierName: input.supplier,
+    supplierTaxId: input.supplierTaxId,
+    invoiceNumber: input.invoiceNumber,
+    totalAmount: input.amount,
+    documentDate: input.invoiceDate,
+    fileSha256: input.fileHash,
+  });
+  const legacyFileHash = buildLegacyFileDuplicateHashForLookup({
+    organizationId: input.organizationId,
+    supplier: input.supplier,
+    fileHash: input.fileHash,
+  });
+  const fileLookupClauses: Array<Record<string, unknown>> = [
+    { duplicateHash: legacyFileHash },
+  ];
+  if (canonical.fingerprint) {
+    fileLookupClauses.push({ duplicateHash: canonical.fingerprint });
+    fileLookupClauses.push({ documentFingerprint: canonical.fingerprint });
+  }
+  fileLookupClauses.push({ documentFingerprint: canonical.legacyFingerprint });
   const byFileHash = await prisma.supplierPayment.findFirst({
     where: {
       organizationId: input.organizationId,
-      duplicateHash: buildDuplicateHash({
-        organizationId: input.organizationId,
-        supplier: input.supplier,
-        amount: input.amount ?? 0,
-        dateIso: "1970-01-01",
-        subject: `file:${input.fileHash}`,
-      }),
+      OR: fileLookupClauses,
     },
+    orderBy: { createdAt: "desc" },
   });
   if (byFileHash) {
     return matchedPaymentDuplicate(currentDocument, paymentFinancialDocumentInput(byFileHash, input.fileHash), byFileHash, "file_hash");
@@ -1225,8 +1259,26 @@ function normalizeAmount(value: number | null | undefined) {
 export function selectWhatsAppInvoiceAmount(input: {
   amount: number | null | undefined;
   totalAmount: number | null | undefined;
+  organizationId?: string;
+  documentType?: string | null;
+  currency?: string;
+  confidence?: number;
 }): number | null {
-  return normalizeAmount(input.amount) ?? normalizeAmount(input.totalAmount);
+  if (!input.organizationId) {
+    return input.totalAmount ?? input.amount ?? null;
+  }
+  return resolveWhatsAppMoneyDecision({
+    organizationId: input.organizationId,
+    documentType: input.documentType ?? "invoice",
+    analysis: {
+      amount: input.amount ?? null,
+      totalAmount: input.totalAmount ?? null,
+      amountBeforeVat: null,
+      vatAmount: null,
+      currency: input.currency ?? "ILS",
+      confidence: input.confidence ?? 0.85,
+    },
+  }).selectedAmount;
 }
 
 function normalizeDate(value: string | null | undefined) {

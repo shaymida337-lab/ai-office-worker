@@ -12,10 +12,13 @@ import {
 } from "./clientSheetsService.js";
 import { recordFinancialDocumentDecision } from "./financialDocuments.js";
 import {
+  computeCanonicalFingerprint,
   matchFinancialDocuments,
   type DedupMatchResult,
   type FinancialDocumentFingerprintInput,
 } from "./dedup/sharedMatcher.js";
+import { buildClientGmailPaymentLookupClauses } from "./dedup/fingerprintMigration.js";
+import { resolveClientGmailMoneyDecision } from "./amount/amountCandidates.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
 
 const GMAIL_QUERIES = [
@@ -48,8 +51,26 @@ export function decideClientGmailJunkAction(input: {
 export function selectClientInvoiceAmount(input: {
   amount: number | null | undefined;
   totalAmount: number | null | undefined;
+  organizationId?: string;
+  documentType?: string | null;
+  currency?: string;
+  confidence?: number;
 }): number | null {
-  return input.amount ?? input.totalAmount ?? null;
+  if (!input.organizationId) {
+    return input.totalAmount ?? input.amount ?? null;
+  }
+  return resolveClientGmailMoneyDecision({
+    organizationId: input.organizationId,
+    documentType: input.documentType ?? "invoice",
+    analysis: {
+      amount: input.amount ?? null,
+      totalAmount: input.totalAmount ?? null,
+      amountBeforeVat: null,
+      vatAmount: null,
+      currency: input.currency ?? "ILS",
+      confidence: input.confidence ?? 0.8,
+    },
+  }).selectedAmount;
 }
 
 export async function syncGmailForClient(clientId: string) {
@@ -246,19 +267,30 @@ export async function syncGmailForClient(clientId: string) {
     }
 
     if (analysis.amount != null || analysis.documentType !== "other") {
-      const duplicateHash = buildDuplicateHash({
+      const legacyDuplicateHash = buildDuplicateHash({
         organizationId,
         supplier: analysis.supplier,
         amount: analysis.amount ?? 0,
         dateIso: receivedAt.toISOString(),
         subject,
       });
+      const canonicalFingerprint = computeCanonicalFingerprint({
+        organizationId,
+        supplierName: analysis.supplier,
+        supplierTaxId: analysis.supplierTaxId,
+        invoiceNumber: analysis.invoiceNumber,
+        totalAmount: analysis.totalAmount ?? analysis.amount ?? null,
+        documentDate: analysis.invoiceDate ?? receivedAt,
+        documentType: analysis.documentType,
+      }).fingerprint ?? legacyDuplicateHash;
+      const duplicateHash = canonicalFingerprint;
 
       const duplicateCandidates = await prisma.supplierPayment.findMany({
         where: {
           organizationId,
-          OR: buildClientGmailDuplicateCandidateWhere({
-            duplicateHash,
+          OR: buildClientGmailPaymentLookupClauses({
+            canonicalFingerprint,
+            legacyDuplicateHash,
             supplier: analysis.supplier,
             invoiceNumber: analysis.invoiceNumber,
             amount: analysis.totalAmount ?? analysis.amount ?? null,
@@ -278,7 +310,8 @@ export async function syncGmailForClient(clientId: string) {
           documentDate: analysis.invoiceDate ?? receivedAt,
           documentType: analysis.documentType,
         },
-        legacyDuplicateHash: duplicateHash,
+        legacyDuplicateHash,
+        canonicalFingerprint,
         candidates: duplicateCandidates,
       });
       const existingPayment = duplicateDecision.result === "MATCH" ? duplicateDecision.candidate : null;
@@ -354,7 +387,15 @@ export async function syncGmailForClient(clientId: string) {
             }
           }
         }
-        const clientInvoiceAmount = selectClientInvoiceAmount({ amount: analysis.amount, totalAmount: analysis.totalAmount }) ?? 0;
+        const clientMoneyDecision = resolveClientGmailMoneyDecision({
+          organizationId,
+          documentType: analysis.documentType,
+          analysis,
+        });
+        const clientInvoiceAmount = clientMoneyDecision.selectedAmount;
+        if (clientInvoiceAmount == null) {
+          continue;
+        }
         await prisma.supplierPayment.create({
           data: {
             organizationId,
@@ -371,6 +412,7 @@ export async function syncGmailForClient(clientId: string) {
             paymentRequired: analysis.paymentRequired,
             missingInvoice: false,
             duplicateHash,
+            totalAmount: clientInvoiceAmount,
             subject,
             source: "gmail",
             emailMessageId: emailRecord.id,
@@ -423,11 +465,13 @@ export type ClientGmailDuplicateCandidate = {
   date?: Date | string | null;
   documentTypeDetailed?: string | null;
   duplicateHash?: string | null;
+  documentFingerprint?: string | null;
 };
 
 export function decideClientGmailFinancialDocumentDuplicate(input: {
   current: FinancialDocumentFingerprintInput;
   legacyDuplicateHash: string;
+  canonicalFingerprint: string;
   candidates: ClientGmailDuplicateCandidate[];
 }): {
   result: DedupMatchResult;
@@ -453,7 +497,10 @@ export function decideClientGmailFinancialDocumentDuplicate(input: {
     if (match.result === "UNSURE" && !unsure) {
       unsure = { candidate, reasons: match.reasons };
     }
-    if (candidate.duplicateHash === input.legacyDuplicateHash && !legacyFallback) {
+    if (
+      (candidate.duplicateHash === input.legacyDuplicateHash || candidate.duplicateHash === input.canonicalFingerprint || candidate.documentFingerprint === input.canonicalFingerprint) &&
+      !legacyFallback
+    ) {
       legacyFallback = candidate;
     }
   }
@@ -469,28 +516,6 @@ export function shouldCreateClientGmailTasksAfterDedup(input: { result: DedupMat
 
 export function shouldWriteClientGmailTaskSheetAfterDedup(input: { result: DedupMatchResult; candidate: ClientGmailDuplicateCandidate | null }) {
   return input.result === "NO_MATCH" && input.candidate === null;
-}
-
-function buildClientGmailDuplicateCandidateWhere(input: {
-  duplicateHash: string;
-  supplier?: string | null;
-  invoiceNumber?: string | null;
-  amount: number | null;
-  date: Date | string | null;
-}) {
-  const clauses: Array<Record<string, unknown>> = [{ duplicateHash: input.duplicateHash }];
-  if (input.invoiceNumber?.trim() && input.amount !== null) {
-    clauses.push({ invoiceNumber: input.invoiceNumber, amount: input.amount });
-  }
-  const date = normalizeDate(input.date);
-  if (input.supplier?.trim() && input.amount !== null && date) {
-    clauses.push({
-      supplier: { equals: input.supplier, mode: "insensitive" },
-      amount: input.amount,
-      date: { gte: startOfDay(date), lte: endOfDay(date) },
-    });
-  }
-  return clauses;
 }
 
 function normalizeDate(value: Date | string | null | undefined) {

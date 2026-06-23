@@ -4,8 +4,7 @@ import { supplierPaymentPersistenceDecision } from "./gmail-sync.js";
 
 test("supplier payment with real amount still appends to sheet", () => {
   const decision = supplierPaymentPersistenceDecision({
-    amount: 65,
-    finalTotalAmount: null,
+    selectedAmount: 65,
     needsReview: false,
   });
 
@@ -15,28 +14,26 @@ test("supplier payment with real amount still appends to sheet", () => {
   assert.equal(decision.shouldAppendToSheet, true);
 });
 
-test("missing-amount needs_review supplier payment is created but not appended to sheet", () => {
+test("missing-amount supplier payment is not created silently as zero", () => {
   const decision = supplierPaymentPersistenceDecision({
-    amount: null,
-    finalTotalAmount: null,
+    selectedAmount: null,
     needsReview: true,
   });
 
-  assert.equal(decision.paymentAmount, 0);
+  assert.equal(decision.paymentAmount, null);
   assert.equal(decision.approvalStatus, "needs_review");
-  assert.equal(decision.shouldCreatePayment, true);
+  assert.equal(decision.shouldCreatePayment, false);
   assert.equal(decision.shouldAppendToSheet, false);
 });
 
-test("needs_review supplier payment with real amount still appends to sheet", () => {
+test("needs_review supplier payment with amount still skips sheet append", () => {
   const decision = supplierPaymentPersistenceDecision({
-    amount: 992.69,
-    finalTotalAmount: null,
+    selectedAmount: 120,
     needsReview: true,
   });
 
-  assert.equal(decision.paymentAmount, 992.69);
+  assert.equal(decision.paymentAmount, 120);
   assert.equal(decision.approvalStatus, "needs_review");
   assert.equal(decision.shouldCreatePayment, true);
-  assert.equal(decision.shouldAppendToSheet, true);
+  assert.equal(decision.shouldAppendToSheet, false);
 });

@@ -8,9 +8,24 @@ import {
 } from "./clientGmailSync.js";
 
 test("selectClientInvoiceAmount falls back to total amount only when amount is missing", () => {
-  assert.equal(selectClientInvoiceAmount({ amount: null, totalAmount: 354 }), 354);
-  assert.equal(selectClientInvoiceAmount({ amount: 354, totalAmount: 999 }), 354);
-  assert.equal(selectClientInvoiceAmount({ amount: null, totalAmount: null }), null);
+  assert.equal(selectClientInvoiceAmount({
+    organizationId: "org-1",
+    amount: null,
+    totalAmount: 354,
+    documentType: "invoice",
+  }), 354);
+  assert.equal(selectClientInvoiceAmount({
+    organizationId: "org-1",
+    amount: 354,
+    totalAmount: 999,
+    documentType: "invoice",
+  }), 999);
+  assert.equal(selectClientInvoiceAmount({
+    organizationId: "org-1",
+    amount: null,
+    totalAmount: null,
+    documentType: "invoice",
+  }), null);
 });
 
 test("client Gmail dedup marks known duplicate as MATCH", () => {
@@ -18,17 +33,18 @@ test("client Gmail dedup marks known duplicate as MATCH", () => {
     current: {
       organizationId: "org-1",
       supplierName: "OpenAI LLC",
-      invoiceNumber: "INV-1001",
+      invoiceNumber: "Invoice # INV-2026-1001",
       totalAmount: 120,
       documentDate: "2026-06-01",
       documentType: "invoice",
     },
     legacyDuplicateHash: "legacy-current",
+    canonicalFingerprint: "canonical-current",
     candidates: [
       {
         id: "payment-1",
         supplier: "openai",
-        invoiceNumber: "Invoice INV-1001",
+        invoiceNumber: "inv 2026-1001",
         amount: 120,
         date: new Date("2026-06-02T10:00:00.000Z"),
         documentTypeDetailed: "tax_invoice",
@@ -53,6 +69,7 @@ test("client Gmail dedup lets new item proceed as NO_MATCH", () => {
       documentType: "invoice",
     },
     legacyDuplicateHash: "legacy-current",
+    canonicalFingerprint: "canonical-current",
     candidates: [
       {
         id: "payment-2",
@@ -82,6 +99,7 @@ test("client Gmail dedup sends borderline duplicate to review as UNSURE", () => 
       documentType: "invoice",
     },
     legacyDuplicateHash: "legacy-current",
+    canonicalFingerprint: "canonical-current",
     candidates: [
       {
         id: "payment-3",
@@ -112,6 +130,7 @@ test("client Gmail dedup keeps legacy duplicateHash fallback for old records", (
       documentType: "invoice",
     },
     legacyDuplicateHash: "legacy-current",
+    canonicalFingerprint: "canonical-current",
     candidates: [
       {
         id: "payment-4",
@@ -143,6 +162,7 @@ test("client Gmail task creation is blocked for duplicate MATCH", () => {
       documentType: "invoice",
     },
     legacyDuplicateHash: "legacy-current",
+    canonicalFingerprint: "canonical-current",
     candidates: [
       {
         id: "payment-5",

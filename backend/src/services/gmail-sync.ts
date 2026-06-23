@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "crypto";
 import { prisma } from "../lib/prisma.js";
-import { buildDuplicateHash } from "../lib/duplicate.js";
 import { analyzeEmailContent, analyzeInvoiceFile, type EmailAnalysis } from "./claude.js";
 import { getGoogleClients, isGoogleReconnectRequiredError } from "./google.js";
 import { analyzeAndSaveMessage } from "./messageScanner.js";
@@ -24,6 +23,11 @@ import {
   type PipelineClassificationAction,
 } from "./classification/classifier.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
+import { resolveGmailOrgMoneyDecision, summarizeMoneyDecision } from "./amount/amountCandidates.js";
+import type { MoneyDecision } from "./amount/canonicalAmount.js";
+import {
+  buildPaymentLookupsFromCanonical,
+} from "./dedup/fingerprintMigration.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
@@ -1189,13 +1193,22 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       logStep(`[gmail-sync] OCR_CLASSIFIER_INPUT message=${email.gmailId} chars=${ocrClassifierText.length} normalizedPreview="${truncateForLog(normalizeOcrSupplierText(ocrClassifierText), 500)}"`);
       logStep(`[gmail-sync] OCR_CLASSIFIER_RESULT message=${email.gmailId} supplier="${ocrSupplierClassifier?.supplierName ?? "none"}" confidence=${ocrSupplierClassifier?.confidence ?? 0} keyword="${ocrSupplierClassifier?.keyword ?? "none"}"`);
       const extractedFields = extractHebrewInvoiceFieldsFromText(`${supplierEvidenceText}\n${analysis.supplier ?? ""}`);
-      const parsedFieldsJson = {
+      const parsedFieldsJson: {
+        amount: number | null;
+        invoiceNumber: string | null;
+        invoiceDate: string | null;
+        dueDate: string | null;
+        confidence: number;
+        reasons: string[];
+        arc: ReturnType<typeof summarizeMoneyDecision> | null;
+      } = {
         amount: extractedFields.amount,
         invoiceNumber: extractedFields.invoiceNumber,
         invoiceDate: extractedFields.invoiceDate,
         dueDate: extractedFields.dueDate,
         confidence: extractedFields.confidence,
         reasons: extractedFields.reasons,
+        arc: null,
       };
       if (extractedFields.amount !== null) {
         logStep(`[gmail-sync] AMOUNT_EXTRACTED message=${email.gmailId} amount=${extractedFields.amount} confidence=${extractedFields.confidence}`);
@@ -1213,10 +1226,20 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       const invoiceMatch = detectInvoice(email.subject, bodyForAnalysis, email.parts);
       if (invoiceMatch.isInvoice) invoiceDetectionPositive++;
       else invoiceDetectionNegative++;
-      const analysisTotalAmount = normalizeDetectedAmount(analysis.totalAmount);
-      const amount = normalizeDetectedAmount(extractedFields.amount ?? invoiceMatch.amount ?? analysisTotalAmount ?? analysis.amount);
-      const finalTotalAmount = analysisTotalAmount ?? amount;
-      const amountRejectedReason = invoiceMatch.amountRejectedReason ?? rejectedDetectedAmountReason(extractedFields.amount ?? analysis.totalAmount ?? analysis.amount);
+      const moneyDecision = resolveGmailOrgMoneyDecision({
+        organizationId,
+        documentType: analysis.documentType,
+        analysis,
+        extractedFieldsAmount: extractedFields.amount,
+        regexDetectedAmount: invoiceMatch.amount,
+      });
+      parsedFieldsJson.arc = summarizeMoneyDecision(moneyDecision);
+      const finalTotalAmount = moneyDecision.selectedAmount;
+      const amount = finalTotalAmount;
+      const amountRejectedReason =
+        moneyDecision.status !== "resolved"
+          ? moneyDecision.reason
+          : invoiceMatch.amountRejectedReason ?? rejectedDetectedAmountReason(extractedFields.amount ?? analysis.totalAmount ?? analysis.amount);
       logStep(`[gmail-sync] invoice detection message=${email.gmailId} isInvoice=${invoiceMatch.isInvoice} detectedAmount=${invoiceMatch.amount ?? "none"} aiAmount=${analysis.amount ?? "none"} finalAmount=${amount ?? "none"} amountRejectedReason=${amountRejectedReason ?? "none"}`);
       const attachmentFilename = primaryAttachmentFilename(email.parts);
       const supplierMetadata = resolveSupplierMetadata({
@@ -1311,8 +1334,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           invoiceNumber: normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, primaryAttachmentFilename(email.parts) ?? ""].join("\n")),
           documentDate: normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, email.receivedAt) ?? email.receivedAt,
           dueDate: normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null),
-          amountBeforeVat: analysis.amountBeforeVat ?? null,
-          vatAmount: analysis.vatAmount ?? null,
+          amountBeforeVat: moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? null,
+          vatAmount: moneyDecision.vatAmount ?? analysis.vatAmount ?? null,
           totalAmount: finalTotalAmount,
           documentType: "payment_request",
           driveFileUrl: null,
@@ -1397,8 +1420,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         invoiceNumber: invoiceNumberForDecision,
         documentDate: documentDateForDecision,
         dueDate: dueDateForDecision,
-        amountBeforeVat: analysis.amountBeforeVat ?? null,
-        vatAmount: analysis.vatAmount ?? null,
+        amountBeforeVat: moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? null,
+        vatAmount: moneyDecision.vatAmount ?? analysis.vatAmount ?? null,
         totalAmount: finalTotalAmount,
         documentType: classification.documentType,
         driveFileUrl: null,
@@ -1677,9 +1700,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=financialDocumentReview:${review.id} reason=${documentDriveUploadFailureReason}`);
       }
 
-      logStep(`[gmail-sync] DB GmailScanItem upsert attempt message=${email.gmailId} duplicateKey=${duplicateKey} type=${classification.documentType}`);
+      logStep(`[gmail-sync] DB GmailScanItem upsert attempt message=${email.gmailId} duplicateKey=${documentDecision.documentFingerprint} legacyKey=${duplicateKey} type=${classification.documentType}`);
+      const scanItemDuplicateKey = documentDecision.documentFingerprint;
+      const upsertDuplicateKey = existingScanItem?.duplicateKey ?? scanItemDuplicateKey;
       const savedScanItem = await prisma.gmailScanItem.upsert({
-        where: { organizationId_duplicateKey: { organizationId, duplicateKey } },
+        where: { organizationId_duplicateKey: { organizationId, duplicateKey: upsertDuplicateKey } },
         create: {
           organizationId,
           emailMessageId: email.emailRecordId,
@@ -1697,7 +1722,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           driveUploadStatus: documentDriveUploadStatus,
           confidenceScore: classification.confidenceScore,
           reviewStatus: classification.reviewStatus,
-          duplicateKey,
+          duplicateKey: scanItemDuplicateKey,
           decisionReason: classification.decisionReason,
           parsedFieldsJson,
           rawAnalysis: {
@@ -1736,6 +1761,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           driveUploadStatus: driveLinks[0]?.link ? "uploaded" : documentDriveUploadStatus,
           confidenceScore: classification.confidenceScore,
           reviewStatus: classification.reviewStatus,
+          duplicateKey: scanItemDuplicateKey,
           decisionReason: classification.decisionReason,
           parsedFieldsJson,
           rawAnalysis: {
@@ -1875,13 +1901,14 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             continue;
           }
 
-          const isImageInvoicePart = Boolean(invoicePart && isInvoiceImageAttachmentPart(invoicePart));
-          const targetAmount = selectInvoiceAttachmentAmount({
-            isImageInvoicePart,
-            detectedAmount: targetInvoiceMatch.amount,
-            aiTotalAmount: targetAnalysis.analysis.totalAmount,
-            aiAmount: targetAnalysis.analysis.amount,
+          const attachmentMoneyDecision = resolveGmailOrgMoneyDecision({
+            organizationId,
+            documentType: targetAnalysis.analysis.documentType,
+            analysis: targetAnalysis.analysis,
+            regexDetectedAmount: targetInvoiceMatch.amount,
+            attachmentAnalysis: targetAnalysis.analysis,
           });
+          const targetAmount = attachmentMoneyDecision.selectedAmount;
           const targetSupplierMetadata = invoicePart
             ? resolveSupplierMetadata({
                 analysisSupplier: targetAnalysis.analysis.supplier,
@@ -1908,8 +1935,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             }
           }
           const targetDocumentType = normalizeInvoiceDocumentType(targetAnalysis.analysis.documentType, classification.documentType);
-          const invoiceAmount = targetAmount ?? 0;
-          const invoiceNeedsReviewSave = classification.reviewStatus === "needs_review" || targetAmount === null || !isUsableSupplierName(targetSupplierName);
+          if (targetAmount == null) {
+            logStep(`[gmail-sync] invoice amount missing message=${email.gmailId} file="${targetFilename ?? "body"}"; skipping customer invoice create`);
+            continue;
+          }
+          const invoiceAmount = targetAmount;
+          const invoiceNeedsReviewSave = classification.reviewStatus === "needs_review" || !isUsableSupplierName(targetSupplierName);
           const invoiceSupplierName = invoiceNeedsReviewSave && !isUsableSupplierName(targetSupplierName)
             ? UNKNOWN_SUPPLIER_FALLBACK
             : targetSupplierName;
@@ -1923,9 +1954,6 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                 gmailAttachmentId: targetAttachmentId,
               })
             : null;
-          if (targetAmount == null) {
-            logStep(`[gmail-sync] invoice amount missing message=${email.gmailId} file="${targetFilename ?? "body"}"; saving Invoice with amount=0 for review`);
-          }
           logStep(`[gmail-sync] DB Invoice insert attempt message=${email.gmailId} file="${targetFilename ?? "body"}" clientId=${clientId} supplier="${invoiceSupplierName}" amount=${invoiceAmount} invoiceNumber=${invoiceNumber ?? "none"} date=${invoiceDate.toISOString()} type=${targetDocumentType}`);
           try {
             const createdInvoice = await saveDetectedInvoice({
@@ -2008,24 +2036,37 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           ? UNKNOWN_SUPPLIER_FALLBACK
           : supplierName;
         const paymentDecision = supplierPaymentPersistenceDecision({
-          amount,
-          finalTotalAmount,
+          selectedAmount: finalTotalAmount,
           needsReview: supplierPaymentNeedsReview,
         });
         const paymentAmount = paymentDecision.paymentAmount;
         const paymentApprovalStatus = paymentDecision.approvalStatus;
-        const dateIso = email.receivedAt.toISOString();
-        const duplicateHash = documentDecision.documentFingerprint || duplicateKey || buildDuplicateHash({
+        if (!paymentDecision.shouldCreatePayment) {
+          logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=missing_amount status=${moneyDecision.status}`);
+        } else {
+        if (paymentAmount == null) {
+          logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=unexpected_null_amount`);
+        } else {
+        const resolvedPaymentAmount = paymentAmount;
+        const paymentIdentity = buildPaymentLookupsFromCanonical({
           organizationId,
-          supplier: paymentSupplierName,
-          amount: paymentAmount ?? 0,
-          dateIso,
+          canonicalFingerprint: documentDecision.documentFingerprint,
+          supplierName: paymentSupplierName,
+          supplierTaxId: supplierMetadata.taxId,
+          invoiceNumber: invoiceNumberForDecision,
+          totalAmount: resolvedPaymentAmount,
+          documentDate: email.receivedAt,
+          documentType: documentDecision.documentType,
           subject: email.subject,
+          legacyGmailScanDuplicateKey: duplicateKey,
+          sourceFingerprint: documentDecision.sourceFingerprint,
         });
+        const duplicateHash = paymentIdentity.duplicateHash;
 
         const existingPayment = await findExistingSupplierPayment({
           organizationId,
           duplicateHash,
+          lookupClauses: paymentIdentity.lookupClauses,
           emailMessageId: email.emailRecordId,
           supplier: paymentSupplierName,
           amount: paymentAmount,
@@ -2082,8 +2123,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               sourceFingerprint: documentDecision.sourceFingerprint,
               documentTypeDetailed: documentDecision.documentType,
               supplierTaxId: supplierMetadata.taxId ?? existingPayment.supplierTaxId,
-              amountBeforeVat: analysis.amountBeforeVat ?? existingPayment.amountBeforeVat,
-              vatAmount: analysis.vatAmount ?? existingPayment.vatAmount,
+              amountBeforeVat: moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? existingPayment.amountBeforeVat,
+              vatAmount: moneyDecision.vatAmount ?? analysis.vatAmount ?? existingPayment.vatAmount,
               totalAmount: finalTotalAmount ?? paymentAmount ?? existingPayment.totalAmount,
               confidenceScore: classification.confidence,
               parsedFieldsJson,
@@ -2145,7 +2186,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               organizationId,
               supplierName: paymentSupplierName,
               subject: email.subject,
-              amount: paymentAmount,
+              amount: resolvedPaymentAmount,
               emailMessageId: email.emailRecordId,
               gmailMessageId: email.gmailId,
             });
@@ -2158,12 +2199,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           }
         } else {
           const dueDate = dueDateForDecision;
-          logStep(`[gmail-sync] DB SupplierPayment insert attempt message=${email.gmailId} amount=${paymentAmount ?? 0} supplier="${paymentSupplierName}"`);
+          logStep(`[gmail-sync] DB SupplierPayment insert attempt message=${email.gmailId} amount=${paymentAmount} supplier="${paymentSupplierName}"`);
           const payment = await prisma.supplierPayment.create({
             data: {
               organizationId,
               supplier: paymentSupplierName,
-              amount: paymentAmount ?? 0,
+              amount: resolvedPaymentAmount,
               currency: analysis.currency,
               date: email.receivedAt,
               dueDate,
@@ -2185,8 +2226,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               sourceFingerprint: documentDecision.sourceFingerprint,
               documentTypeDetailed: documentDecision.documentType,
               supplierTaxId: supplierMetadata.taxId,
-              amountBeforeVat: analysis.amountBeforeVat ?? null,
-              vatAmount: analysis.vatAmount ?? null,
+              amountBeforeVat: moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? null,
+              vatAmount: moneyDecision.vatAmount ?? analysis.vatAmount ?? null,
               totalAmount: finalTotalAmount ?? paymentAmount ?? null,
               confidenceScore: classification.confidence,
               parsedFieldsJson,
@@ -2211,7 +2252,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               organizationId,
               paymentId: payment.id,
               supplier: paymentSupplierName,
-              amount: paymentAmount ?? 0,
+              amount: resolvedPaymentAmount,
               date: email.receivedAt,
               dueDate,
               paid: false,
@@ -2241,7 +2282,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           } else {
             logStep(`[gmail-sync] Sheets append skipped message=${email.gmailId} paymentId=${payment.id} reason="missing_amount_needs_review"`);
           }
-          logStep(`[gmail-sync] saved SupplierPayment message=${email.gmailId} id=${payment.id} amount=${paymentAmount ?? 0} supplier="${paymentSupplierName}"`);
+          logStep(`[gmail-sync] saved SupplierPayment message=${email.gmailId} id=${payment.id} amount=${paymentAmount} supplier="${paymentSupplierName}"`);
           if (supplierPaymentNeedsReview) {
             logStep(`[gmail-sync] SUPPLIER_PAYMENT_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${payment.id} reason="${classification.decisionReason}"`);
           }
@@ -2252,7 +2293,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               type: missingInvoice ? "missing_invoice" : "new_invoice",
               supplierName: paymentSupplierName,
               subject: email.subject,
-              amount: paymentAmount,
+              amount: resolvedPaymentAmount,
               gmailMessageId: email.gmailId,
             });
             if (missingInvoice) {
@@ -2260,7 +2301,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                 organizationId,
                 supplierName: paymentSupplierName,
                 subject: email.subject,
-                amount: paymentAmount,
+                amount: resolvedPaymentAmount,
                 emailMessageId: email.emailRecordId,
                 gmailMessageId: email.gmailId,
               });
@@ -2269,6 +2310,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               await notifyNewInvoice(organizationId, paymentSupplierName, paymentAmount);
             }
           }
+        }
+        }
         }
       } else {
         const reasons = [
@@ -2321,8 +2364,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           invoiceNumber: invoiceNumberForDecision,
           documentDate: documentDateForDecision,
           dueDate: dueDateForDecision,
-          amountBeforeVat: analysis.amountBeforeVat ?? null,
-          vatAmount: analysis.vatAmount ?? null,
+          amountBeforeVat: moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? null,
+          vatAmount: moneyDecision.vatAmount ?? analysis.vatAmount ?? null,
           totalAmount: finalTotalAmount,
           documentType: classification.documentType,
           driveFileUrl: driveLinks[0]?.link ?? null,
@@ -3084,20 +3127,16 @@ export function supplierPaymentCreationEligibility(input: {
 }
 
 export function supplierPaymentPersistenceDecision(input: {
-  amount: number | null | undefined;
-  finalTotalAmount: number | null | undefined;
+  selectedAmount: number | null | undefined;
   needsReview: boolean;
 }) {
-  const paymentAmount = input.needsReview
-    ? input.amount ?? input.finalTotalAmount ?? 0
-    : input.amount ?? input.finalTotalAmount ?? null;
-  const approvalStatus = input.needsReview ? "needs_review" : "approved";
-  const missingAmount = input.amount == null && input.finalTotalAmount == null;
+  const paymentAmount = input.selectedAmount ?? null;
+  const missingAmount = paymentAmount == null;
   return {
     paymentAmount,
-    approvalStatus,
-    shouldCreatePayment: true,
-    shouldAppendToSheet: !(input.needsReview && missingAmount),
+    approvalStatus: input.needsReview || missingAmount ? "needs_review" : "approved",
+    shouldCreatePayment: !missingAmount,
+    shouldAppendToSheet: !missingAmount && !input.needsReview,
   };
 }
 
@@ -4497,11 +4536,23 @@ async function upsertGmailLead(input: {
 async function findExistingSupplierPayment(input: {
   organizationId: string;
   duplicateHash: string;
+  lookupClauses?: Array<Record<string, unknown>>;
   emailMessageId: string;
   supplier: string;
   amount: number | null;
   date: Date;
 }) {
+  if (input.lookupClauses?.length) {
+    const byIdentity = await prisma.supplierPayment.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        OR: input.lookupClauses,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (byIdentity) return byIdentity;
+  }
+
   const byHash = await prisma.supplierPayment.findUnique({
     where: {
       organizationId_duplicateHash: {
@@ -4602,8 +4653,16 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
     const paymentSupplierName = paymentNeedsReview && !isUsableSupplierName(input.supplierName)
       ? UNKNOWN_SUPPLIER_FALLBACK
       : input.supplierName;
-    const paymentAmount = input.amount ?? normalizeDetectedAmount(input.analysis.totalAmount) ?? 0;
-    const paymentApprovalStatus = paymentNeedsReview ? "needs_review" : "approved";
+    const paymentDecision = supplierPaymentPersistenceDecision({
+      selectedAmount: input.amount,
+      needsReview: paymentNeedsReview,
+    });
+    if (!paymentDecision.shouldCreatePayment) {
+      input.logStep(`[gmail-sync] SUPPLIER_PAYMENT_DB_SAVE_SKIPPED message=${input.email.gmailId} file="${driveLink.filename ?? "unnamed"}" reason=missing_amount`);
+      continue;
+    }
+    const paymentAmount = paymentDecision.paymentAmount!;
+    const paymentApprovalStatus = paymentDecision.approvalStatus;
     const dueDate = input.dueDate;
     const invoiceLink = isInvoiceRecordDocument(input.classification.documentType) ? driveLink.link : null;
     const documentLink = input.classification.documentType === "payment_request" ? driveLink.link : null;
@@ -4612,19 +4671,27 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
       !invoiceLink &&
       Boolean(documentLink || input.analysis.paymentRequired);
     const documentFingerprint = input.documentDecision.documentFingerprint;
-    const duplicateHash = documentFingerprint || input.duplicateKey || buildDuplicateHash({
+    const paymentIdentity = buildPaymentLookupsFromCanonical({
       organizationId: input.organizationId,
-      supplier: paymentSupplierName,
-      amount: paymentAmount,
-      dateIso: input.email.receivedAt.toISOString(),
+      canonicalFingerprint: documentFingerprint,
+      supplierName: paymentSupplierName,
+      supplierTaxId: input.supplierMetadata.taxId,
+      invoiceNumber: input.invoiceNumber,
+      totalAmount: paymentAmount,
+      documentDate: input.email.receivedAt,
+      documentType: input.documentDecision.documentType,
       subject: input.email.subject,
+      legacyGmailScanDuplicateKey: input.duplicateKey,
+      sourceFingerprint: input.documentDecision.sourceFingerprint,
     });
+    const duplicateHash = paymentIdentity.duplicateHash;
 
     const totalAmount = normalizeDetectedAmount(input.analysis.totalAmount) ?? paymentAmount;
     const existingByFingerprintOrHash = await findSupplierPaymentByDocumentIdentity({
       organizationId: input.organizationId,
       documentFingerprint,
       duplicateHash,
+      lookupClauses: paymentIdentity.lookupClauses,
     });
     if (existingByFingerprintOrHash) {
       await updateSupplierPaymentMissingDriveFields(existingByFingerprintOrHash.id, driveLink, documentLink, invoiceLink);
@@ -4740,7 +4807,17 @@ async function findSupplierPaymentByDocumentIdentity(input: {
   organizationId: string;
   documentFingerprint: string;
   duplicateHash: string;
+  lookupClauses?: Array<Record<string, unknown>>;
 }) {
+  if (input.lookupClauses?.length) {
+    return prisma.supplierPayment.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        OR: input.lookupClauses,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
   return prisma.supplierPayment.findFirst({
     where: {
       organizationId: input.organizationId,
@@ -5065,9 +5142,15 @@ export async function fetchAndParseGmailMessageFinancialFields(input: {
   });
   const extractedFields = extractHebrewInvoiceFieldsFromText(`${supplierEvidenceText}\n${analysis.supplier ?? ""}`);
   const invoiceMatch = detectInvoice(subject, bodyForAnalysis, attachmentParts);
-  const analysisTotalAmount = normalizeDetectedAmount(analysis.totalAmount);
-  const amount = normalizeDetectedAmount(extractedFields.amount ?? invoiceMatch.amount ?? analysisTotalAmount ?? analysis.amount);
-  const finalTotalAmount = analysisTotalAmount ?? amount;
+  const moneyDecision = resolveGmailOrgMoneyDecision({
+    organizationId: input.organizationId,
+    documentType: analysis.documentType,
+    analysis,
+    extractedFieldsAmount: extractedFields.amount,
+    regexDetectedAmount: invoiceMatch.amount,
+  });
+  const finalTotalAmount = moneyDecision.selectedAmount;
+  const amount = finalTotalAmount;
 
   const supplierMetadata = resolveSupplierMetadata({
     analysisSupplier: analysis.supplier,

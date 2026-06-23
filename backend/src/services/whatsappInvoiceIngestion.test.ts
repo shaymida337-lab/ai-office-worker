@@ -3,28 +3,42 @@ import assert from "node:assert/strict";
 import { matchWhatsAppFinancialDocumentCandidate, selectWhatsAppInvoiceAmount } from "./whatsappInvoiceIngestion.js";
 
 test("selectWhatsAppInvoiceAmount falls back to total amount only when amount is missing", () => {
-  assert.equal(selectWhatsAppInvoiceAmount({ amount: null, totalAmount: 163.28 }), 163.28);
-  assert.equal(selectWhatsAppInvoiceAmount({ amount: 200, totalAmount: 163.28 }), 200);
-  assert.equal(selectWhatsAppInvoiceAmount({ amount: null, totalAmount: null }), null);
+  assert.equal(selectWhatsAppInvoiceAmount({
+    organizationId: "org-1",
+    amount: null,
+    totalAmount: 163.28,
+    documentType: "invoice",
+  }), 163.28);
+  assert.equal(selectWhatsAppInvoiceAmount({
+    organizationId: "org-1",
+    amount: 200,
+    totalAmount: 163.28,
+    documentType: "invoice",
+  }), 163.28);
+  assert.equal(selectWhatsAppInvoiceAmount({
+    organizationId: "org-1",
+    amount: null,
+    totalAmount: null,
+    documentType: "invoice",
+  }), null);
 });
 
 test("WhatsApp financial matcher detects same invoice from Gmail as MATCH", () => {
   const result = matchWhatsAppFinancialDocumentCandidate(
     {
       organizationId: "org-1",
-      supplierName: "אין קוד בלהה בע״מ",
-      invoiceNumber: "1693",
-      totalAmount: 12900,
-      documentDate: "2026-05-31",
+      supplierName: "OpenAI LLC",
+      invoiceNumber: "Invoice # INV-2026-1001",
+      totalAmount: 120,
+      documentDate: "2026-06-01",
       documentType: "invoice",
-      fileSha256: "whatsapp-file-hash",
     },
     {
       organizationId: "org-1",
-      supplierName: "אין קוד בלהה בעמ",
-      invoiceNumber: "חשבונית 1693",
-      totalAmount: "12900.00",
-      documentDate: "31/05/2026",
+      supplierName: "openai",
+      invoiceNumber: "inv 2026-1001",
+      totalAmount: 120,
+      documentDate: "2026-06-02",
       documentType: "tax_invoice",
     }
   );
@@ -42,7 +56,6 @@ test("WhatsApp financial matcher lets different invoice proceed as NO_MATCH", ()
       totalAmount: 120,
       documentDate: "2026-06-01",
       documentType: "invoice",
-      fileSha256: "whatsapp-file-hash",
     },
     {
       organizationId: "org-1",
@@ -65,7 +78,6 @@ test("WhatsApp financial matcher flags weak overlap as UNSURE", () => {
       totalAmount: 350,
       documentDate: "2026-06-01",
       documentType: "invoice",
-      fileSha256: "whatsapp-file-hash",
     },
     {
       organizationId: "org-1",
