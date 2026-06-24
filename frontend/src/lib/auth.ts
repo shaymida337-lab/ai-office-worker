@@ -1,3 +1,5 @@
+import { clearAllAuthTokens } from "./api";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export type AuthResponse = {
@@ -7,7 +9,9 @@ export type AuthResponse = {
 };
 
 export function saveToken(token: string): void {
-  localStorage.setItem("token", token);
+  if (typeof window === "undefined") return;
+  clearAllAuthTokens();
+  localStorage.setItem("token", token.trim());
 }
 
 export async function register(input: {

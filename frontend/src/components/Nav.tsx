@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { colors, radius } from "@/lib/design-tokens";
 import { isNavItemVisible, type NavItemId } from "@/config/navVisibility";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, clearAllAuthTokens } from "@/lib/api";
 import { lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
 import { normalizeEnabledModules, type BusinessModuleId, type OrganizationSettings } from "@/lib/business-config";
 import {
@@ -156,7 +156,7 @@ export function Nav() {
   }
 
   function logout() {
-    localStorage.removeItem("token");
+    clearAllAuthTokens();
     router.push("/");
   }
 

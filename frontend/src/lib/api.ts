@@ -10,21 +10,24 @@ export class ApiError extends Error {
   }
 }
 
+const AUTH_STORAGE_KEYS = ["token", "authToken", "accessToken"] as const;
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return (
-    localStorage.getItem("token") ||
-    sessionStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    sessionStorage.getItem("authToken") ||
-    localStorage.getItem("accessToken") ||
-    sessionStorage.getItem("accessToken")
-  );
+  const token = localStorage.getItem("token")?.trim();
+  return token || null;
+}
+
+export function clearAllAuthTokens(): void {
+  if (typeof window === "undefined") return;
+  for (const key of AUTH_STORAGE_KEYS) {
+    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
+  }
 }
 
 export function clearToken(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem("token");
+  clearAllAuthTokens();
 }
 
 export function isAuthError(err: unknown): boolean {
@@ -70,9 +73,14 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    const message = (err as { error?: string }).error ?? `הבקשה נכשלה עם קוד ${res.status}`;
-    console.error("[apiFetch]", message);
-    throw new ApiError(message, res.status);
+    const serverMessage = (err as { error?: string }).error ?? `הבקשה נכשלה עם קוד ${res.status}`;
+    if (res.status === 401) {
+      clearAllAuthTokens();
+      window.location.href = "/login?reason=session_expired";
+      throw new ApiError("פג תוקף ההתחברות. יש להתחבר מחדש.", 401);
+    }
+    console.error("[apiFetch]", serverMessage);
+    throw new ApiError(serverMessage, res.status);
   }
   return res.json() as Promise<T>;
 }

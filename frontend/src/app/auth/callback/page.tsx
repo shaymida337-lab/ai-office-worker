@@ -2,6 +2,8 @@
 
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { clearAllAuthTokens } from "@/lib/api";
+import { saveToken } from "@/lib/auth";
 
 function CallbackInner() {
   const router = useRouter();
@@ -9,13 +11,20 @@ function CallbackInner() {
 
   useEffect(() => {
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const token = params.get("token") ?? hashParams.get("token");
-    if (!token) {
+    const rawToken = params.get("token") ?? hashParams.get("token");
+    if (!rawToken) {
       router.replace("/?error=missing_token");
       return;
     }
 
-    localStorage.setItem("token", token);
+    const token = rawToken.trim();
+    if (token.split(".").length !== 3) {
+      clearAllAuthTokens();
+      router.replace("/login?reason=invalid_token");
+      return;
+    }
+
+    saveToken(token);
     window.location.replace("/dashboard");
   }, [params, router]);
 
