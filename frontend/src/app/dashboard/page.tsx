@@ -1113,14 +1113,19 @@ export default function DashboardPage() {
     document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
+  const handleScanDocument = useCallback(() => {
+    router.push("/camera");
+  }, [router]);
+
   const quickActions = useMemo(
     () => [
-      { id: "invoice", label: "הוסף חשבונית", icon: quickActionIcons.invoice, onClick: () => router.push("/camera") },
+      { id: "scan", label: "📷 סרוק מסמך", onClick: handleScanDocument, primary: true },
+      { id: "invoice", label: "הוסף חשבונית", icon: quickActionIcons.invoice, onClick: handleScanDocument },
       { id: "task", label: "צור משימה", icon: quickActionIcons.task, onClick: () => router.push("/tasks") },
       { id: "reminder", label: "שלח תזכורת", icon: quickActionIcons.reminder, onClick: () => router.push("/dashboard/whatsapp") },
       { id: "briefing", label: "בקש תדרוך מנטלי", icon: quickActionIcons.briefing, onClick: scrollToBriefing },
     ],
-    [router, scrollToBriefing]
+    [router, scrollToBriefing, handleScanDocument]
   );
 
   const handleHeroPrimary = useCallback(() => {
@@ -1166,7 +1171,7 @@ export default function DashboardPage() {
 
   return (
     <main
-      className="min-h-screen max-w-full overflow-x-clip px-4 pb-32 pt-16 md:px-8 md:pb-8 md:pt-20 lg:mr-60"
+      className="min-h-screen max-w-full overflow-x-hidden px-4 pb-[calc(11rem+env(safe-area-inset-bottom,0px))] pt-16 md:px-8 md:pb-8 md:pt-20 lg:mr-60"
       style={{
         background: colors.bg,
         color: colors.textPrimary,
@@ -1174,7 +1179,7 @@ export default function DashboardPage() {
     >
       <Nav />
 
-      <div className="mx-auto grid min-w-0 max-w-6xl gap-3 md:gap-5 lg:gap-6">
+      <div className="mx-auto grid min-w-0 max-w-6xl gap-3 overflow-visible pb-2 md:gap-5 md:pb-0 lg:gap-6">
         <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
 
         <NatalieTopBar
@@ -1209,6 +1214,7 @@ export default function DashboardPage() {
           loading={pageLoading}
           scanRunning={scanRunning}
           onCta={handleHeroPrimary}
+          onScan={handleScanDocument}
         />
 
         {scanBanner && (
@@ -1369,6 +1375,8 @@ export default function DashboardPage() {
             </section>
           </div>
         </details>
+
+        <div className="h-4 shrink-0 lg:hidden" aria-hidden />
       </div>
 
       {invoiceAttachPaymentId && (

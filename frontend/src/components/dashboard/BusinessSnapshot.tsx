@@ -11,17 +11,20 @@ export type SnapshotMetric = {
 export function SnapshotCard({ label, value }: { label: string; value: string }) {
   return (
     <article
-      className={`${radius.control} ${shadow.soft} flex min-h-[88px] flex-col justify-between border p-3.5 md:min-h-[96px] md:p-4`}
+      className={`${radius.control} ${shadow.soft} flex min-h-[108px] flex-col justify-between overflow-visible border p-3.5 sm:min-h-[96px] md:min-h-[100px] md:p-4`}
       style={{
         backgroundColor: colors.surface,
         borderColor: colors.borderSubtle,
       }}
     >
-      <p className={`${typography.caption} font-medium`} style={{ color: colors.textMuted }}>
+      <p
+        className={`${typography.caption} break-words font-medium leading-snug`}
+        style={{ color: colors.textMuted }}
+      >
         {label}
       </p>
       <p
-        className="mt-1 text-xl font-bold leading-tight tabular-nums md:text-2xl"
+        className="mt-2 text-lg font-bold leading-tight break-all tabular-nums sm:text-xl md:text-2xl"
         style={{ color: colors.textPrimary }}
         title={value}
       >
@@ -39,16 +42,16 @@ export function BusinessSnapshot({
   loading?: boolean;
 }) {
   return (
-    <section aria-label="תמונת מצב עסקית">
+    <section className="overflow-visible" aria-label="תמונת מצב עסקית">
       <h2 className="mb-2.5 text-lg font-bold leading-snug md:text-xl" style={{ color: colors.textPrimary }}>
         תמונת מצב
       </h2>
-      <div className="grid min-w-0 grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
+      <div className="grid min-w-0 grid-cols-2 gap-2.5 overflow-visible md:grid-cols-4 md:gap-3">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={i}
-                className="h-[88px] animate-pulse rounded-xl border"
+                className="min-h-[108px] animate-pulse rounded-xl border sm:min-h-[96px]"
                 style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
               />
             ))

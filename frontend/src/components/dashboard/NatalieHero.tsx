@@ -8,17 +8,21 @@ export function NatalieHero({
   humanMessage,
   statusLabel = "מחוברת ועובדת עכשיו",
   ctaLabel = "מה חשוב עכשיו",
+  scanLabel = "📷 סרוק מסמך",
   loading = false,
   scanRunning = false,
   onCta,
+  onScan,
 }: {
   ownerFirstName?: string | null;
   humanMessage: string;
   statusLabel?: string;
   ctaLabel?: string;
+  scanLabel?: string;
   loading?: boolean;
   scanRunning?: boolean;
   onCta: () => void;
+  onScan: () => void;
 }) {
   const greeting = ownerFirstName ? `שלום ${ownerFirstName} 👋` : "שלום 👋";
 
@@ -75,18 +79,32 @@ export function NatalieHero({
                 {humanMessage}
               </p>
 
-              <button
-                type="button"
-                onClick={onCta}
-                className={`${radius.control} ${button.primary} mt-5 min-h-[48px] w-full md:min-h-[52px] md:w-auto md:min-w-[220px]`}
-                style={{
-                  backgroundColor: colors.accent,
-                  border: `1px solid ${colors.accent}`,
-                  color: colors.surface,
-                }}
-              >
-                {ctaLabel}
-              </button>
+              <div className="mt-5 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
+                <button
+                  type="button"
+                  onClick={onScan}
+                  className={`${radius.control} ${button.primary} min-h-[48px] w-full sm:min-h-[52px] sm:w-auto sm:min-w-[200px]`}
+                  style={{
+                    backgroundColor: colors.accent,
+                    border: `1px solid ${colors.accent}`,
+                    color: colors.surface,
+                  }}
+                >
+                  {scanLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={onCta}
+                  className={`${radius.control} ${button.secondary} min-h-[48px] w-full sm:min-h-[52px] sm:w-auto sm:min-w-[200px]`}
+                  style={{
+                    backgroundColor: colors.surface,
+                    border: `1px solid ${colors.border}`,
+                    color: colors.textPrimary,
+                  }}
+                >
+                  {ctaLabel}
+                </button>
+              </div>
             </>
           )}
         </div>
