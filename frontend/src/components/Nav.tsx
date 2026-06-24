@@ -259,7 +259,7 @@ export function Nav() {
           <Logo size="md" showSubtitle />
         </Link>
 
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto pb-56" aria-label="ניווט ראשי">
+        <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto pb-56" aria-label="ניווט ראשי">
               {visibleLinks.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
@@ -268,8 +268,8 @@ export function Nav() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`group relative flex min-h-11 items-center gap-3 rounded-xl border px-3 py-2.5 text-[15px] font-bold transition-all duration-200 ${
-                  active ? "" : "hover:border-[#E8EDF5] hover:bg-[#EEF2FA] hover:shadow-sm"
+                className={`group relative flex min-h-10 items-center gap-3 rounded-xl border px-3 py-2 text-[14px] font-semibold transition-colors duration-150 ${
+                  active ? "" : "border-transparent hover:border-[#E8EDF5] hover:bg-[#F4F6FB]"
                 }`}
                 style={
                   active
@@ -286,7 +286,7 @@ export function Nav() {
                 }
               >
                 <Icon
-                  className="h-[19px] w-[19px] shrink-0 transition-colors group-hover:text-[#1D5BFF]"
+                  className="h-[18px] w-[18px] shrink-0 transition-colors"
                   style={{ color: active ? colors.accent : colors.textSecondary }}
                 />
                 <span className="min-w-0 flex-1 truncate text-right">{item.label}</span>

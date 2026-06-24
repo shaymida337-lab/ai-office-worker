@@ -12,25 +12,27 @@ export function NataliePortrait({
   showStatusDot = false,
 }: {
   className?: string;
-  size?: "default" | "hero" | "avatar";
+  size?: "default" | "hero" | "avatar" | "compact";
   showStatusDot?: boolean;
 }) {
   const [imageError, setImageError] = useState(false);
   const sizeClass =
-    size === "avatar"
-      ? "h-[72px] w-[72px] shrink-0 rounded-full md:h-[88px] md:w-[88px]"
-      : size === "hero"
-        ? "aspect-[4/5] w-full max-w-[360px] md:max-w-[420px]"
-        : "aspect-[3/4] w-full max-w-[220px]";
+    size === "compact"
+      ? "h-14 w-14 shrink-0 rounded-full sm:h-16 sm:w-16"
+      : size === "avatar"
+        ? "h-[72px] w-[72px] shrink-0 rounded-full md:h-[88px] md:w-[88px]"
+        : size === "hero"
+          ? "aspect-[4/5] w-full max-w-[360px] md:max-w-[300px]"
+          : "aspect-[3/4] w-full max-w-[220px]";
 
-  const isAvatar = size === "avatar";
+  const isRound = size === "avatar" || size === "compact";
 
   return (
     <div className={`relative shrink-0 ${className}`}>
       <div
-        className={`relative overflow-hidden ${isAvatar ? sizeClass : `${radius.lg} ${sizeClass}`}`}
+        className={`relative overflow-hidden ${isRound ? sizeClass : `${radius.lg} ${sizeClass}`}`}
         style={{
-          boxShadow: isAvatar ? "0 2px 10px rgba(15,23,42,0.07)" : "0 20px 50px rgba(29,91,255,0.18)",
+          boxShadow: isRound ? "0 2px 10px rgba(15,23,42,0.07)" : "0 12px 32px rgba(15,23,42,0.08)",
           border: `1px solid ${colors.borderSubtle}`,
           backgroundColor: colors.surface,
         }}
@@ -40,23 +42,23 @@ export function NataliePortrait({
             src={PORTRAIT_SRC}
             alt="נטלי"
             fill
-            priority={isAvatar}
+            priority={isRound}
             className="object-cover object-top"
-            sizes={isAvatar ? "88px" : "(max-width: 768px) 180px, 220px"}
+            sizes={size === "compact" ? "64px" : isRound ? "88px" : "(max-width: 768px) 180px, 300px"}
             onError={() => setImageError(true)}
           />
         ) : (
           <div
-            className={`flex h-full w-full items-center justify-center ${isAvatar ? "" : "flex-col justify-end p-6"}`}
+            className={`flex h-full w-full items-center justify-center ${isRound ? "" : "flex-col justify-end p-6"}`}
             style={{
               backgroundColor: colors.surface,
-              background: isAvatar
+              background: isRound
                 ? undefined
                 : `linear-gradient(165deg, ${colors.accentSoft} 0%, #E0E7FF 45%, ${colors.surface} 100%)`,
             }}
           >
-            {isAvatar ? (
-              <span className="text-2xl font-extrabold md:text-3xl" style={{ color: colors.accent }} aria-hidden>
+            {isRound ? (
+              <span className="text-xl font-extrabold sm:text-2xl" style={{ color: colors.accent }} aria-hidden>
                 נ
               </span>
             ) : (
@@ -84,7 +86,7 @@ export function NataliePortrait({
       </div>
       {showStatusDot && (
         <span
-          className={`absolute rounded-full border-2 ${isAvatar ? "bottom-0.5 left-0.5 h-3 w-3 md:bottom-1 md:left-1" : "bottom-3 left-3 h-3.5 w-3.5 md:bottom-4 md:left-4"}`}
+          className={`absolute rounded-full border-2 ${isRound ? "bottom-0 left-0 h-2.5 w-2.5 sm:h-3 sm:w-3" : "bottom-3 left-3 h-3.5 w-3.5 md:bottom-4 md:left-4"}`}
           style={{ backgroundColor: colors.successText, borderColor: colors.surface }}
           aria-hidden
         />

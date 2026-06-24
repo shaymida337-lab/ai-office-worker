@@ -1119,7 +1119,7 @@ export default function DashboardPage() {
 
   const quickActions = useMemo(
     () => [
-      { id: "scan", label: "📷 סרוק מסמך", onClick: handleScanDocument, primary: true },
+      { id: "scan", label: "סרוק מסמך", onClick: handleScanDocument, primary: true },
       { id: "invoice", label: "הוסף חשבונית", icon: quickActionIcons.invoice, onClick: handleScanDocument },
       { id: "task", label: "צור משימה", icon: quickActionIcons.task, onClick: () => router.push("/tasks") },
       { id: "reminder", label: "שלח תזכורת", icon: quickActionIcons.reminder, onClick: () => router.push("/dashboard/whatsapp") },
@@ -1179,7 +1179,7 @@ export default function DashboardPage() {
     >
       <Nav />
 
-      <div className="mx-auto grid min-w-0 max-w-6xl gap-3 overflow-visible pb-2 md:gap-5 md:pb-0 lg:gap-6">
+      <div className="mx-auto grid min-w-0 max-w-6xl gap-3 md:gap-4 lg:gap-5">
         <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
 
         <NatalieTopBar
@@ -1229,15 +1229,17 @@ export default function DashboardPage() {
 
         <NatalieDoneToday items={doneTodayItems} loading={pageLoading} />
 
-        <NatalieAttentionCenter
-          cards={attentionCards}
-          totalCount={attentionTotalCount}
-          loading={pageLoading}
-        />
+        <div className="grid gap-3 lg:grid-cols-2 lg:items-start lg:gap-5">
+          <NatalieAttentionCenter
+            cards={attentionCards}
+            totalCount={attentionTotalCount}
+            loading={pageLoading}
+          />
+
+          <DashboardActivityTimeline items={activityTimeline} loading={pageLoading} />
+        </div>
 
         <BusinessSnapshot metrics={snapshotMetrics} loading={pageLoading} />
-
-        <DashboardActivityTimeline items={activityTimeline} loading={pageLoading} />
 
         <DashboardQuickActions actions={quickActions} />
 

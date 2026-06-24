@@ -19,19 +19,16 @@ const urgencyStyles = {
     border: colors.dangerBorder,
     bg: colors.dangerBg,
     badge: colors.dangerText,
-    dot: colors.dangerText,
   },
   warn: {
     border: colors.warnBorder,
     bg: colors.warnBg,
     badge: colors.warnText,
-    dot: colors.warnText,
   },
   info: {
     border: colors.infoBorder,
     bg: colors.infoBg,
     badge: colors.infoText,
-    dot: colors.accent,
   },
 };
 
@@ -54,24 +51,24 @@ export function NatalieAttentionCenter({
   const titleCount = activeCount > 0 ? activeCount : totalCount > 0 ? totalCount : 3;
 
   return (
-    <section id="natalie-decisions" aria-label="מרכז תשומת לב">
-      <h2 className="text-lg font-bold leading-snug md:text-xl" style={{ color: colors.textPrimary }}>
+    <section id="natalie-decisions" className="flex h-full min-w-0 flex-col" aria-label="מרכז תשומת לב">
+      <h2 className="text-base font-bold leading-snug md:text-lg" style={{ color: colors.textPrimary }}>
         {activeCount > 0 || totalCount > 0
-          ? `נטלי ממליצה לטפל ב־${titleCount} ${titleCount === 1 ? "דבר" : "דברים"}`
-          : "נטלי ממליצה לטפל ב־3 דברים"}
+          ? `ממליצה לטפל ב־${titleCount} ${titleCount === 1 ? "דבר" : "דברים"}`
+          : "ממליצה לטפל ב־3 דברים"}
       </h2>
-      <p className="mt-0.5 text-sm leading-6" style={{ color: colors.textSecondary }}>
+      <p className="mt-1 text-sm leading-6" style={{ color: colors.textSecondary }}>
         אלה הדברים שכדאי לסגור קודם
       </p>
 
       {loading ? (
-        <div className="mt-3 grid gap-2 md:grid-cols-3 md:gap-3">
+        <div className="mt-3 grid flex-1 gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-36 animate-pulse rounded-xl border" style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }} />
+            <div key={i} className="min-h-[148px] animate-pulse rounded-xl border" style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }} />
           ))}
         </div>
       ) : (
-        <div className="mt-3 grid gap-2 md:grid-cols-3 md:gap-3">
+        <div className="mt-3 grid flex-1 gap-3">
           {cards.map((card) => {
             const style = urgencyStyles[card.urgency];
             const Icon = cardIcons[card.id] ?? FileText;
@@ -80,7 +77,7 @@ export function NatalieAttentionCenter({
             return (
               <article
                 key={card.id}
-                className={`${radius.card} ${shadow.soft} flex flex-col border p-4`}
+                className={`${radius.card} ${shadow.soft} flex min-h-[148px] flex-col border p-4`}
                 style={{
                   backgroundColor: hasItems ? style.bg : colors.surface,
                   borderColor: hasItems ? style.border : colors.borderSubtle,
@@ -103,10 +100,10 @@ export function NatalieAttentionCenter({
                   )}
                 </div>
 
-                <h3 className={`${typography.cardTitle} mt-3`} style={{ color: colors.textPrimary }}>
+                <h3 className={`${typography.cardTitle} mt-3 text-base`} style={{ color: colors.textPrimary }}>
                   {card.label}
                 </h3>
-                <p className="mt-1 flex-1 text-sm leading-6" style={{ color: colors.textSecondary }}>
+                <p className="mt-1.5 flex-1 text-sm leading-6" style={{ color: colors.textSecondary }}>
                   {card.description}
                 </p>
 

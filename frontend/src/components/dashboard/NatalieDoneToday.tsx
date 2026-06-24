@@ -21,8 +21,8 @@ export function NatalieDoneToday({
 
   return (
     <section aria-label="מה נטלי כבר עשתה היום">
-      <h2 className="mb-2.5 text-lg font-bold leading-snug md:text-xl" style={{ color: colors.textPrimary }}>
-        מה נטלי כבר עשתה היום
+      <h2 className="mb-3 text-base font-bold leading-snug md:text-lg" style={{ color: colors.textPrimary }}>
+        מה כבר עשיתי היום
       </h2>
 
       <div

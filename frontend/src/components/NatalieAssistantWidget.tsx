@@ -1558,7 +1558,7 @@ export function NatalieAssistantWidget() {
     <>
       {open && (
         <section
-          className="fixed bottom-24 right-4 z-[130] flex h-[min(480px,calc(100dvh-7.5rem))] w-[calc(100vw-2rem)] max-w-[360px] flex-col overflow-hidden rounded-[24px] border border-[#e6eaf2] bg-white font-sans text-[#0e1116] shadow-[0_24px_70px_rgba(20,40,90,0.18)] lg:right-[17rem]"
+          className="fixed bottom-[calc(10rem+env(safe-area-inset-bottom,0px))] right-4 z-[130] flex h-[min(480px,calc(100dvh-12rem))] w-[calc(100vw-2rem)] max-w-[360px] flex-col overflow-hidden rounded-[24px] border border-[#e6eaf2] bg-white font-sans text-[#0e1116] shadow-[0_24px_70px_rgba(20,40,90,0.18)] lg:bottom-24 lg:right-[17rem] lg:h-[min(480px,calc(100dvh-7.5rem))]"
           dir="rtl"
           aria-label="שיחה עם נטלי"
         >
@@ -1964,7 +1964,7 @@ export function NatalieAssistantWidget() {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="group fixed bottom-5 right-4 z-[120] grid h-[3.9rem] w-[3.9rem] place-items-center rounded-full transition hover:scale-[1.03] focus:outline-none focus:ring-4 lg:bottom-6 lg:right-[17rem]"
+        className="group fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom,0px))] right-4 z-[120] grid h-[3.75rem] w-[3.75rem] place-items-center rounded-full transition hover:scale-[1.03] focus:outline-none focus:ring-4 lg:bottom-6 lg:right-[17rem]"
         style={{
           background: "linear-gradient(135deg, #3a6cff, #1d5bff, #1746c7)",
           boxShadow: "0 18px 40px rgba(29,91,255,0.32), 0 0 0 6px rgba(29,91,255,0.08)",
