@@ -16,7 +16,6 @@ import {
   CheckSquare,
   ClipboardCheck,
   ChevronRight,
-  ChevronDown,
   CircleDollarSign,
   FileBarChart,
   FileCheck,
@@ -346,18 +345,15 @@ export function Nav() {
 
       <header className="fixed left-0 right-0 top-0 z-40 border-b border-transparent bg-surface-primary/90 backdrop-blur-xl lg:right-60">
         <div className="h-px bg-[linear-gradient(90deg,transparent,#6366F1,#8B5CF6,transparent)]" />
-        <div className="flex h-16 items-center gap-2 px-4 md:gap-3 md:px-8">
+        <div className="flex h-14 items-center gap-2 px-4 md:h-16 md:gap-3 md:px-8">
           <button
             type="button"
             onClick={goBack}
             aria-label="חזרה"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-[var(--border)] bg-surface-card text-ink-secondary hover:bg-surface-hover hover:text-ink-primary lg:hidden"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[var(--border)] bg-surface-card text-ink-secondary hover:bg-surface-hover hover:text-ink-primary lg:hidden"
           >
             <ChevronRight className="h-5 w-5" />
           </button>
-          <Link href="/dashboard" className="lg:hidden">
-            <Logo size="md" iconOnly />
-          </Link>
           <div className="relative mx-auto hidden w-full max-w-xl sm:block">
             <div className="flex h-12 items-center gap-3 rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[#0e1116] shadow-[0_8px_24px_rgba(20,40,90,0.06)] transition focus-within:border-[#1d5bff] focus-within:shadow-[0_0_0_4px_rgba(29,91,255,0.10)]">
               <Search className="h-5 w-5 shrink-0 text-[#1d5bff]" />
@@ -414,20 +410,11 @@ export function Nav() {
           <button
             type="button"
             onClick={() => router.push("/message-scans")}
-            aria-label="פתח סריקות הודעות"
-            className="relative grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-[var(--border)] bg-surface-card text-ink-secondary hover:bg-surface-hover hover:text-ink-primary"
+            aria-label="פתח התראות"
+            className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[var(--border)] bg-surface-card text-ink-secondary hover:bg-surface-hover hover:text-ink-primary"
           >
             <Bell className="h-4 w-4" />
             <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-[var(--error)]" />
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/settings")}
-            aria-label="פתח הגדרות"
-            className="hidden items-center gap-2 rounded-xl border border-[var(--border)] bg-surface-card px-3 py-2 text-sm text-ink-secondary hover:bg-surface-hover hover:text-ink-primary md:flex"
-          >
-            <span className="grid h-7 w-7 place-items-center rounded-full bg-surface-hover text-[13px] font-bold text-ink-primary">חכם</span>
-            <ChevronDown className="h-4 w-4" />
           </button>
         </div>
       </header>

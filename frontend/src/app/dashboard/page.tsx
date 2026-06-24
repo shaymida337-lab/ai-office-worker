@@ -1171,7 +1171,7 @@ export default function DashboardPage() {
 
   return (
     <main
-      className="min-h-screen max-w-full overflow-x-hidden px-3 pb-[calc(11rem+env(safe-area-inset-bottom,0px))] pt-14 md:px-8 md:pb-8 md:pt-20 lg:mr-60"
+      className="min-h-screen max-w-full overflow-x-hidden px-3 pb-[calc(11rem+env(safe-area-inset-bottom,0px))] pt-[3.75rem] md:px-8 md:pb-8 md:pt-[4.5rem] lg:mr-60 lg:pt-20"
       style={{
         background: colors.bg,
         color: colors.textPrimary,
@@ -1179,8 +1179,10 @@ export default function DashboardPage() {
     >
       <Nav />
 
-      <div className="mx-auto grid min-w-0 max-w-6xl gap-2 md:gap-4 lg:gap-5">
-        <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
+      <div className="mx-auto grid min-w-0 max-w-6xl gap-1.5 md:gap-4 lg:gap-5">
+        {(error || actionMessage || scanToast) && (
+          <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
+        )}
 
         <NatalieTopBar
           businessName={businessName}
