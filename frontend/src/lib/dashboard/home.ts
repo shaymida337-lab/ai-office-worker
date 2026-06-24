@@ -1,6 +1,81 @@
 import type { DashboardStats } from "@/lib/api";
 import type { NatalieTimelineItem } from "@/lib/natalie/types";
 
+export type DoneTodayItem = {
+  id: string;
+  text: string;
+};
+
+/** Lines for "מה נטלי כבר עשתה היום" — real work when available. */
+export function buildNatalieDoneTodayItems(input: {
+  invoicesScanned?: number;
+  paymentsMatched?: number;
+  tasksCreated?: number;
+  statsUpdated?: boolean;
+  scanRunning?: boolean;
+  gmailConnected?: boolean;
+}): DoneTodayItem[] {
+  const items: DoneTodayItem[] = [];
+
+  if (input.scanRunning) {
+    return [{ id: "scanning", text: "סורקת חשבוניות מהמיילים שלך" }];
+  }
+
+  const invoices = input.invoicesScanned ?? 0;
+  if (invoices > 0 || input.gmailConnected) {
+    items.push({
+      id: "invoices",
+      text: invoices > 0 ? `סרקה ${invoices} חשבוניות` : "סרקה חשבוניות",
+    });
+  }
+
+  const payments = input.paymentsMatched ?? 0;
+  if (payments > 0) {
+    items.push({
+      id: "payments",
+      text: payments === 1 ? "התאימה תשלום" : `התאימה ${payments} תשלומים`,
+    });
+  } else if (items.length > 0) {
+    items.push({ id: "payments-fallback", text: "התאימה תשלומים" });
+  }
+
+  const tasks = input.tasksCreated ?? 0;
+  if (tasks > 0) {
+    items.push({
+      id: "tasks",
+      text: tasks === 1 ? "יצרה משימה חדשה" : `יצרה ${tasks} משימות חדשות`,
+    });
+  } else if (items.length > 0) {
+    items.push({ id: "tasks-fallback", text: "יצרה משימות חדשות" });
+  }
+
+  if (input.statsUpdated || items.length > 0) {
+    items.push({ id: "snapshot", text: "עדכנה את תמונת המצב העסקית" });
+  }
+
+  return items.slice(0, 4);
+}
+
+export function buildHeroHumanMessage(input: {
+  completedCount?: number;
+  pendingCount?: number;
+  scanRunning?: boolean;
+}): string {
+  if (input.scanRunning) {
+    return "אני עוברת על המיילים והמסמכים שלך — אעדכן אותך ברגע שאסיים.";
+  }
+  if ((input.completedCount ?? 0) > 0 && (input.pendingCount ?? 0) > 0) {
+    return "הבוקר כבר סידרתי כמה דברים כדי שתוכל להתמקד במה שחשוב באמת. נשארו כמה דברים שמחכים לאישור שלך.";
+  }
+  if ((input.pendingCount ?? 0) > 0) {
+    return "יש כמה דברים שכדאי לסגור — אני מחכה להחלטה שלך כדי להמשיך.";
+  }
+  if ((input.completedCount ?? 0) > 0) {
+    return "הבוקר כבר סידרתי כמה דברים כדי שתוכל להתמקד במה שחשוב באמת.";
+  }
+  return "אני מוכנה לעבוד בשבילך — חברי את המייל או העלה מסמך ואתחיל מיד.";
+}
+
 export type HeroSummaryLine = {
   id: string;
   text: string;

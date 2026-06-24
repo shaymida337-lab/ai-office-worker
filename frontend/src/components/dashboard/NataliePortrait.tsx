@@ -82,9 +82,9 @@ export function NataliePortrait({
           </div>
         )}
       </div>
-      {showStatusDot && isAvatar && (
+      {showStatusDot && (
         <span
-          className="absolute bottom-0.5 left-0.5 h-3 w-3 rounded-full border-2 md:bottom-1 md:left-1"
+          className={`absolute rounded-full border-2 ${isAvatar ? "bottom-0.5 left-0.5 h-3 w-3 md:bottom-1 md:left-1" : "bottom-3 left-3 h-3.5 w-3.5 md:bottom-4 md:left-4"}`}
           style={{ backgroundColor: colors.successText, borderColor: colors.surface }}
           aria-hidden
         />

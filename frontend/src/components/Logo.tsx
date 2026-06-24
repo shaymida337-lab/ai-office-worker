@@ -31,8 +31,8 @@ export function Logo({ size = "md", showSubtitle = false, iconOnly = false, clas
       </span>
       {!iconOnly && (
         <span className="min-w-0 text-right">
-          <span className={`logo-title block whitespace-nowrap font-extrabold leading-tight tracking-tight ${sizing.title}`}>עובד משרד חכם</span>
-          {showSubtitle && <span className={`block font-medium text-ink-muted ${sizing.subtitle}`}>מערכת אוטומציה עסקית</span>}
+          <span className={`logo-title block whitespace-nowrap font-extrabold leading-tight tracking-tight ${sizing.title}`}>נטלי</span>
+          {showSubtitle && <span className={`block font-medium text-ink-muted ${sizing.subtitle}`}>עובדת המשרד שלך</span>}
         </span>
       )}
     </div>

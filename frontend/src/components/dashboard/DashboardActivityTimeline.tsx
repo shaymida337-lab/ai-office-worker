@@ -5,6 +5,9 @@ import type { NatalieTimelineItem } from "@/lib/natalie/types";
 import { formatTimelineClock } from "@/lib/dashboard/home";
 import { colors } from "@/lib/design-tokens";
 
+const EMPTY_MESSAGE =
+  "עדיין אין פעילות להצגה — נטלי תציג כאן עדכונים ברגע שהעסק יתחיל לזוז.";
+
 export function DashboardActivityTimeline({
   items,
   loading = false,
@@ -14,9 +17,9 @@ export function DashboardActivityTimeline({
 }) {
   if (loading) {
     return (
-      <section aria-label="מה נטלי עשתה היום">
+      <section aria-label="פעילות אחרונה">
         <h2 className="mb-2.5 text-lg font-bold leading-snug md:text-xl" style={{ color: colors.textPrimary }}>
-          מה נטלי עשתה היום
+          פעילות אחרונה
         </h2>
         <div className="grid gap-1.5">
           {Array.from({ length: 3 }).map((_, index) => (
@@ -33,25 +36,28 @@ export function DashboardActivityTimeline({
 
   if (items.length === 0) {
     return (
-      <section aria-label="מה נטלי עשתה היום">
+      <section aria-label="פעילות אחרונה">
         <h2 className="mb-2.5 text-lg font-bold leading-snug md:text-xl" style={{ color: colors.textPrimary }}>
-          מה נטלי עשתה היום
+          פעילות אחרונה
         </h2>
-        <p className="rounded-xl border px-4 py-3 text-sm font-medium leading-6" style={{ color: colors.textSecondary, backgroundColor: colors.bgSoft, borderColor: colors.borderSubtle }}>
-          עדיין אין פעילות להציג — ברגע שאטפל במשהו, זה יופיע כאן.
+        <p
+          className="rounded-xl border px-4 py-3 text-sm font-medium leading-6"
+          style={{ color: colors.textSecondary, backgroundColor: colors.bgSoft, borderColor: colors.borderSubtle }}
+        >
+          {EMPTY_MESSAGE}
         </p>
       </section>
     );
   }
 
-  const visible = items.slice(0, 5);
+  const visible = items.slice(0, 6);
 
   return (
-    <section aria-label="מה נטלי עשתה היום">
+    <section aria-label="פעילות אחרונה">
       <h2 className="mb-2.5 text-lg font-bold leading-snug md:text-xl" style={{ color: colors.textPrimary }}>
-        מה נטלי עשתה היום
+        פעילות אחרונה
       </h2>
-      <ol className="grid gap-0.5">
+      <ol className="grid gap-1 md:grid-cols-2 md:gap-2">
         {visible.map((item) => {
           const time = item.occurredAt ? formatTimelineClock(item.occurredAt) : "";
           return (

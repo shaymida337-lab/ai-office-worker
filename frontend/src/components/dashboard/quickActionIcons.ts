@@ -1,19 +1,19 @@
 import {
-  CalendarPlus,
   Camera,
-  CreditCard,
-  FileSpreadsheet,
   ListPlus,
   MessageCircle,
-  ScanLine,
+  Sparkles,
 } from "lucide-react";
 
 export const quickActionIcons = {
-  scan: ScanLine,
-  chat: MessageCircle,
+  invoice: Camera,
   task: ListPlus,
-  meeting: CalendarPlus,
-  payments: CreditCard,
-  import: FileSpreadsheet,
+  reminder: MessageCircle,
+  briefing: Sparkles,
+  scan: Camera,
+  chat: MessageCircle,
+  meeting: ListPlus,
+  payments: ListPlus,
+  import: Camera,
   camera: Camera,
 };

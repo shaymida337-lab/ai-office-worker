@@ -315,11 +315,10 @@ export function Nav() {
             </span>
             <span className="min-w-0 flex-1">
               <span className="block whitespace-nowrap text-[14px] font-bold" style={{ color: colors.textPrimary }}>
-                נטלי פעילה
+                נטלי
               </span>
-              <span className="mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: colors.successText }}>
-                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.successText }} />
-                מחוברת
+              <span className="mt-0.5 block text-[12px] font-semibold" style={{ color: colors.textSecondary }}>
+                AI Office Worker
               </span>
             </span>
           </div>
@@ -404,8 +403,13 @@ export function Nav() {
               </div>
             )}
           </div>
-          <div className="min-w-0 flex-1 text-center text-[15px] font-semibold text-ink-primary sm:hidden">
-            עובד משרד חכם
+          <div className="min-w-0 flex-1 text-center sm:hidden">
+            <span className="block text-[15px] font-extrabold leading-tight" style={{ color: colors.accent }}>
+              נטלי
+            </span>
+            <span className="block text-[11px] font-semibold leading-4" style={{ color: colors.textSecondary }}>
+              עובדת המשרד שלך
+            </span>
           </div>
           <button
             type="button"

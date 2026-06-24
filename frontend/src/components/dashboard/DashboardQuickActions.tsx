@@ -11,8 +11,11 @@ type QuickAction = {
 
 export function DashboardQuickActions({ actions }: { actions: QuickAction[] }) {
   return (
-    <section className="border-t pt-6" style={{ borderColor: colors.borderSubtle }} aria-label="פעולות מהירות">
-      <div className="flex flex-wrap gap-2">
+    <section aria-label="פעולות מהירות">
+      <h2 className="mb-2.5 text-lg font-bold leading-snug md:text-xl" style={{ color: colors.textPrimary }}>
+        פעולות מהירות
+      </h2>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
         {actions.map((action) => {
           const Icon = action.icon;
           return (
@@ -22,15 +25,16 @@ export function DashboardQuickActions({ actions }: { actions: QuickAction[] }) {
               onClick={action.onClick}
               disabled={action.disabled}
               title={action.label}
-              className={`inline-flex min-h-[44px] items-center gap-2 border px-3 py-2 transition hover:bg-white disabled:opacity-50 ${radius.pill}`}
+              className={`inline-flex min-h-[52px] flex-col items-center justify-center gap-2 border px-3 py-3 transition hover:brightness-[0.98] active:scale-[0.99] disabled:opacity-50 ${radius.control}`}
               style={{
-                backgroundColor: colors.bgSoft,
+                backgroundColor: colors.surface,
                 borderColor: colors.borderSubtle,
-                color: colors.textSecondary,
+                color: colors.textPrimary,
+                boxShadow: "0 4px 16px rgba(15,23,42,0.05)",
               }}
             >
-              <Icon className="h-4 w-4 shrink-0" strokeWidth={2.2} />
-              <span className={`${type.caption} font-semibold`}>{action.label}</span>
+              <Icon className="h-5 w-5 shrink-0" style={{ color: colors.accent }} strokeWidth={2.2} />
+              <span className={`${type.caption} text-center font-bold leading-5`}>{action.label}</span>
             </button>
           );
         })}

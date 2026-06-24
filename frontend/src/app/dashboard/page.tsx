@@ -4,12 +4,15 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import {
-  ActionCenter,
+  NatalieAttentionCenter,
   NatalieCommandBar,
+  NatalieDoneToday,
   NatalieHero,
   NatalieTopBar,
   BusinessSnapshot,
   DashboardActivityTimeline,
+  DashboardQuickActions,
+  quickActionIcons,
 } from "@/components/dashboard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ScanBanner } from "@/components/ui/ScanBanner";
@@ -20,9 +23,11 @@ import {
   buildDecisionItems,
 } from "@/lib/dashboard/decisions";
 import {
-  buildHeroActionSummary,
+  buildHeroHumanMessage,
+  buildNatalieDoneTodayItems,
   buildRecentActivityTimeline,
 } from "@/lib/dashboard/home";
+import type { AttentionCardData } from "@/components/dashboard";
 import type { NatalieBriefingInput, NatalieRecommendationInput } from "@/lib/natalie/types";
 import {
   apiFetch,
@@ -926,8 +931,6 @@ export default function DashboardPage() {
       ),
     [documentReviews, missingInvoices, payments, alerts, upcomingAppointments]
   );
-  const visibleDecisions = decisionItems.slice(0, 3);
-
   const recommendationInput = useMemo<NatalieRecommendationInput>(
     () => ({
       gmailConnected,
@@ -982,34 +985,95 @@ export default function DashboardPage() {
 
   const natalieRecommendation = useMemo(() => resolveNatalieRecommendation(recommendationInput), [recommendationInput]);
 
-  const heroSummaryLines = useMemo(
+  const heroHumanMessage = useMemo(
     () =>
-      buildHeroActionSummary({
-        invoicesSaved: scanStatus?.last?.invoicesFound ?? scanStatus?.last?.saved ?? recentInvoices.length,
-        paymentsPrepared: unpaidPayments.filter((payment) => !payment.missingInvoice).length,
-        appointmentsSet: upcomingAppointments.length,
-        remindersSent: whatsAppStats?.sentToday ?? 0,
+      buildHeroHumanMessage({
+        completedCount: natalieBriefing.completedItems.filter((i) => i.id !== "ready").length,
+        pendingCount: decisionItems.length,
         scanRunning,
+      }),
+    [natalieBriefing.completedItems, decisionItems.length, scanRunning]
+  );
+
+  const doneTodayItems = useMemo(
+    () =>
+      buildNatalieDoneTodayItems({
+        invoicesScanned: scanStatus?.last?.invoicesFound ?? recentInvoices.length,
+        paymentsMatched: unpaidPayments.filter((p) => !p.missingInvoice).length,
+        tasksCreated: openTasksCount,
+        statsUpdated: Boolean(stats),
+        scanRunning,
+        gmailConnected,
       }),
     [
       scanStatus?.last?.invoicesFound,
-      scanStatus?.last?.saved,
       recentInvoices.length,
       unpaidPayments,
-      upcomingAppointments.length,
-      whatsAppStats?.sentToday,
+      openTasksCount,
+      stats,
       scanRunning,
+      gmailConnected,
     ]
+  );
+
+  const attentionCards = useMemo((): AttentionCardData[] => {
+    const pendingReviews = documentReviews.length;
+    const upcomingPayments = stats?.upcomingPaymentsCount ?? unpaidPayments.length;
+    const overduePayments = stats?.overdueSupplierPayments ?? 0;
+    const tasks = openTasksCount;
+
+    return [
+      {
+        id: "invoices",
+        label: "חשבוניות שלא אושרו",
+        description:
+          pendingReviews > 0
+            ? `${pendingReviews} חשבוניות מחכות לאישור שלך`
+            : "כל החשבוניות מאושרות — מצוין",
+        count: pendingReviews,
+        urgency: pendingReviews > 2 ? "urgent" : pendingReviews > 0 ? "warn" : "info",
+        actionLabel: pendingReviews > 0 ? "אשר חשבוניות" : "פתח חשבוניות",
+        onAction: () => router.push("/dashboard/document-reviews"),
+      },
+      {
+        id: "payments",
+        label: "תשלום קרוב",
+        description:
+          overduePayments > 0
+            ? `${overduePayments} תשלומים באיחור — כדאי לטפל מיד`
+            : upcomingPayments > 0
+              ? `${upcomingPayments} תשלומים ממתינים לטיפול`
+              : "אין תשלומים דחופים כרגע",
+        count: upcomingPayments,
+        urgency: overduePayments > 0 ? "urgent" : upcomingPayments > 0 ? "warn" : "info",
+        actionLabel: upcomingPayments > 0 ? "טפל בתשלום" : "פתח תשלומים",
+        onAction: () => router.push("/payments"),
+      },
+      {
+        id: "tasks",
+        label: "משימות פתוחות",
+        description: tasks > 0 ? `${tasks} משימות פתוחות שכדאי לסגור` : "אין משימות פתוחות — הכול מסודר",
+        count: tasks,
+        urgency: tasks > 5 ? "urgent" : tasks > 0 ? "warn" : "info",
+        actionLabel: tasks > 0 ? "פתח משימות" : "צור משימה",
+        onAction: () => router.push("/tasks"),
+      },
+    ];
+  }, [documentReviews.length, stats, unpaidPayments.length, openTasksCount, router]);
+
+  const attentionTotalCount = useMemo(
+    () => attentionCards.filter((c) => c.count > 0).length,
+    [attentionCards]
   );
 
   const snapshotMetrics = useMemo(
     () => [
-      { id: "in", label: "כסף נכנס", value: formatShekel(stats?.moneyToReceive ?? 0) },
-      { id: "out", label: "כסף יוצא", value: formatShekel(stats?.moneyToPay ?? 0) },
+      { id: "in", label: "כסף נכנס החודש", value: formatShekel(stats?.moneyToReceive ?? 0) },
+      { id: "out", label: "כסף יוצא החודש", value: formatShekel(stats?.moneyToPay ?? 0) },
+      { id: "invoices", label: "חשבוניות פתוחות", value: String(stats?.pendingInvoices ?? documentReviews.length) },
       { id: "tasks", label: "משימות פתוחות", value: String(openTasksCount) },
-      { id: "reviews", label: "מסמכים לבדיקה", value: String(documentReviews.length) },
     ],
-    [stats?.moneyToReceive, stats?.moneyToPay, openTasksCount, documentReviews.length]
+    [stats?.moneyToReceive, stats?.moneyToPay, stats?.pendingInvoices, documentReviews.length, openTasksCount]
   );
 
   const activityTimeline = useMemo(
@@ -1040,9 +1104,24 @@ export default function DashboardPage() {
   );
 
   const businessName = organizationSettings?.name?.trim() || "העסק שלי";
+
   const scrollToDecisions = useCallback(() => {
     document.getElementById("natalie-decisions")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
+
+  const scrollToBriefing = useCallback(() => {
+    document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const quickActions = useMemo(
+    () => [
+      { id: "invoice", label: "הוסף חשבונית", icon: quickActionIcons.invoice, onClick: () => router.push("/camera") },
+      { id: "task", label: "צור משימה", icon: quickActionIcons.task, onClick: () => router.push("/tasks") },
+      { id: "reminder", label: "שלח תזכורת", icon: quickActionIcons.reminder, onClick: () => router.push("/dashboard/whatsapp") },
+      { id: "briefing", label: "בקש תדרוך מנטלי", icon: quickActionIcons.briefing, onClick: scrollToBriefing },
+    ],
+    [router, scrollToBriefing]
+  );
 
   const handleHeroPrimary = useCallback(() => {
     if (natalieRecommendation.kind === "connect_gmail") {
@@ -1095,7 +1174,7 @@ export default function DashboardPage() {
     >
       <Nav />
 
-      <div className="mx-auto grid min-w-0 max-w-3xl gap-3 md:gap-6">
+      <div className="mx-auto grid min-w-0 max-w-6xl gap-3 md:gap-5 lg:gap-6">
         <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
 
         <NatalieTopBar
@@ -1125,9 +1204,10 @@ export default function DashboardPage() {
         )}
 
         <NatalieHero
-          greeting={natalieBriefing.greeting}
-          completedLines={heroSummaryLines}
+          ownerFirstName={ownerFirstName}
+          humanMessage={heroHumanMessage}
           loading={pageLoading}
+          scanRunning={scanRunning}
           onCta={handleHeroPrimary}
         />
 
@@ -1141,20 +1221,23 @@ export default function DashboardPage() {
           />
         )}
 
-        <ActionCenter
-          items={visibleDecisions}
-          totalCount={decisionItems.length}
-          loading={pageLoading}
-          onMarkPaid={markPaymentPaid}
-          onAttachInvoice={attachInvoiceToPayment}
-          onRetry={runSync}
-        />
+        <NatalieDoneToday items={doneTodayItems} loading={pageLoading} />
 
-        <NatalieCommandBar onSubmit={handleNatalieConversation} onScan={runSync} />
+        <NatalieAttentionCenter
+          cards={attentionCards}
+          totalCount={attentionTotalCount}
+          loading={pageLoading}
+        />
 
         <BusinessSnapshot metrics={snapshotMetrics} loading={pageLoading} />
 
         <DashboardActivityTimeline items={activityTimeline} loading={pageLoading} />
+
+        <DashboardQuickActions actions={quickActions} />
+
+        <div id="natalie-command">
+          <NatalieCommandBar onSubmit={handleNatalieConversation} onScan={runSync} />
+        </div>
 
         <details className={`${radius.card} border`} style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}>
           <summary className="cursor-pointer list-none px-5 py-5 text-lg font-bold md:px-6" style={{ color: colors.textPrimary }}>

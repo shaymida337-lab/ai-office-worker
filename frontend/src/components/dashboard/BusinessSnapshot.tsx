@@ -1,6 +1,6 @@
 "use client";
 
-import { colors, radius, type as typography } from "@/lib/design-tokens";
+import { colors, radius, shadow, type as typography } from "@/lib/design-tokens";
 
 export type SnapshotMetric = {
   id: string;
@@ -11,7 +11,7 @@ export type SnapshotMetric = {
 export function SnapshotCard({ label, value }: { label: string; value: string }) {
   return (
     <article
-      className={`${radius.control} flex min-h-[88px] flex-col justify-between border p-3.5 md:min-h-[96px] md:p-4`}
+      className={`${radius.control} ${shadow.soft} flex min-h-[88px] flex-col justify-between border p-3.5 md:min-h-[96px] md:p-4`}
       style={{
         backgroundColor: colors.surface,
         borderColor: colors.borderSubtle,
@@ -43,7 +43,7 @@ export function BusinessSnapshot({
       <h2 className="mb-2.5 text-lg font-bold leading-snug md:text-xl" style={{ color: colors.textPrimary }}>
         תמונת מצב
       </h2>
-      <div className="grid min-w-0 grid-cols-2 gap-2 md:gap-3">
+      <div className="grid min-w-0 grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => (
               <div

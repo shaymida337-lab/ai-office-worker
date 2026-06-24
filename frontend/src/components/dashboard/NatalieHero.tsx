@@ -1,110 +1,96 @@
 "use client";
 
-import { Check } from "lucide-react";
-import type { HeroSummaryLine } from "@/lib/dashboard/home";
-import { colors, radius, button } from "@/lib/design-tokens";
+import { colors, radius, shadow, button } from "@/lib/design-tokens";
 import { NataliePortrait } from "./NataliePortrait";
 
-const MAX_COMPLETED_LINES = 3;
-
 export function NatalieHero({
-  greeting,
-  completedLines,
-  statusLabel = "עובדת בשבילך עכשיו",
+  ownerFirstName,
+  humanMessage,
+  statusLabel = "מחוברת ועובדת עכשיו",
   ctaLabel = "מה חשוב עכשיו",
   loading = false,
+  scanRunning = false,
   onCta,
 }: {
-  greeting: string;
-  completedLines: HeroSummaryLine[];
+  ownerFirstName?: string | null;
+  humanMessage: string;
   statusLabel?: string;
   ctaLabel?: string;
   loading?: boolean;
+  scanRunning?: boolean;
   onCta: () => void;
 }) {
-  const showCompleted = completedLines.length > 0 && completedLines[0]?.id !== "ready";
-  const isScanning = completedLines[0]?.id === "scanning";
-  const visibleCompleted = completedLines.slice(0, MAX_COMPLETED_LINES);
+  const greeting = ownerFirstName ? `שלום ${ownerFirstName} 👋` : "שלום 👋";
 
   return (
-    <section className="text-right" aria-label="נטלי — העובדת הדיגיטלית שלך">
-      <div className="flex items-start gap-3">
-        <NataliePortrait size="avatar" showStatusDot={!isScanning} />
-        <div className="min-w-0 flex-1">
+    <section
+      className={`${radius.card} ${shadow.card} border p-4 md:p-6 lg:p-8`}
+      style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+      aria-label="נטלי — עובדת המשרד שלך"
+    >
+      <div className="grid items-center gap-5 md:grid-cols-12 md:gap-6 lg:gap-8">
+        <div className="mx-auto w-full max-w-[200px] md:col-span-3 md:mx-0 md:max-w-none lg:col-span-2">
+          <NataliePortrait size="hero" showStatusDot={!scanRunning && !loading} className="mx-auto md:mx-0" />
+        </div>
+
+        <div className="min-w-0 text-right md:col-span-9 lg:col-span-10">
+          <p className="text-sm font-bold leading-6 md:text-base" style={{ color: colors.accent }}>
+            {greeting}
+          </p>
+
           <h1
-            className="text-[28px] font-extrabold leading-[1.15] tracking-tight md:text-[36px]"
+            className="mt-1 text-[36px] font-extrabold leading-[1.05] tracking-tight md:text-[48px] lg:text-[56px]"
             style={{ color: colors.textPrimary }}
           >
-            {greeting}
+            נטלי
           </h1>
+
+          <p className="mt-0.5 text-lg font-semibold leading-7 md:text-xl" style={{ color: colors.textSecondary }}>
+            עובדת המשרד שלך
+          </p>
+
           {!loading && (
-            <p
-              className="mt-1 flex items-center justify-end gap-1.5 text-sm font-semibold leading-6"
-              style={{ color: colors.successText }}
-            >
+            <p className="mt-2 flex items-center justify-end gap-1.5 text-sm font-semibold leading-6 md:justify-start md:text-base">
               <span
                 className="inline-block h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: isScanning ? colors.warnText : colors.successText }}
+                style={{ backgroundColor: scanRunning ? colors.warnText : colors.successText }}
                 aria-hidden
               />
-              {isScanning ? "סורקת מסמכים עבורך" : statusLabel}
+              <span style={{ color: scanRunning ? colors.warnText : colors.successText }}>
+                {scanRunning ? "סורקת מסמכים עבורך עכשיו" : statusLabel}
+              </span>
             </p>
+          )}
+
+          {loading ? (
+            <p className="mt-4 text-base font-medium leading-7" style={{ color: colors.textSecondary }}>
+              רגע, אני מסכמת את הבוקר שלך...
+            </p>
+          ) : (
+            <>
+              <p
+                className="mt-4 max-w-2xl text-[15px] font-medium leading-7 md:text-base md:leading-8"
+                style={{ color: colors.textSecondary }}
+              >
+                {humanMessage}
+              </p>
+
+              <button
+                type="button"
+                onClick={onCta}
+                className={`${radius.control} ${button.primary} mt-5 min-h-[48px] w-full md:min-h-[52px] md:w-auto md:min-w-[220px]`}
+                style={{
+                  backgroundColor: colors.accent,
+                  border: `1px solid ${colors.accent}`,
+                  color: colors.surface,
+                }}
+              >
+                {ctaLabel}
+              </button>
+            </>
           )}
         </div>
       </div>
-
-      {loading ? (
-        <p className="mt-3 text-base font-medium leading-7" style={{ color: colors.textSecondary }}>
-          רגע, אני מסכמת את הבוקר שלך...
-        </p>
-      ) : (
-        <>
-          {showCompleted && !isScanning && (
-            <ul className="mt-3 grid gap-1">
-              {visibleCompleted.map((line) => (
-                <li key={line.id} className="flex items-center justify-end gap-2">
-                  <span
-                    className="text-[15px] font-medium leading-6 md:text-base md:leading-7"
-                    style={{ color: colors.textSecondary }}
-                  >
-                    {line.text}
-                  </span>
-                  <Check
-                    className="h-3.5 w-3.5 shrink-0"
-                    style={{ color: colors.successText }}
-                    strokeWidth={2.5}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {isScanning && (
-            <p className="mt-3 text-[15px] font-medium leading-6" style={{ color: colors.textSecondary }}>
-              {completedLines[0]?.text}
-            </p>
-          )}
-
-          {!isScanning && completedLines[0]?.id === "ready" && (
-            <p className="mt-3 text-[15px] font-medium leading-6" style={{ color: colors.textSecondary }}>
-              {completedLines[0].text}
-            </p>
-          )}
-
-          <button
-            type="button"
-            onClick={onCta}
-            className={`${radius.control} ${button.primary} mt-4 min-h-[48px] w-full md:min-h-[52px] md:w-auto md:min-w-[200px]`}
-            style={{
-              backgroundColor: colors.accent,
-              border: `1px solid ${colors.accent}`,
-              color: colors.surface,
-            }}
-          >
-            {ctaLabel}
-          </button>
-        </>
-      )}
     </section>
   );
 }

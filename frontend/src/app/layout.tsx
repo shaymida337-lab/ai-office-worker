@@ -5,8 +5,8 @@ import { NatalieAssistantWidget } from "@/components/NatalieAssistantWidget";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "עובד משרד חכם",
-  description: "עוזר משרד חכם לעסקים בישראל",
+  title: "נטלי",
+  description: "נטלי — עובדת המשרד שלך. עוזרת AI לעסקים בישראל",
   manifest: "/site.webmanifest",
   icons: {
     icon: [
