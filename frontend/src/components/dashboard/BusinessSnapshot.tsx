@@ -32,7 +32,7 @@ export function SnapshotCard({ id, label, value }: SnapshotMetric) {
 
   return (
     <article
-      className={`${radius.control} ${shadow.soft} flex h-full min-h-[112px] flex-col border p-4`}
+      className={`${radius.control} ${shadow.soft} flex h-full min-h-[88px] flex-col border p-3 md:min-h-[112px] md:p-4`}
       style={{
         backgroundColor: colors.surface,
         borderColor: colors.borderSubtle,
@@ -50,7 +50,7 @@ export function SnapshotCard({ id, label, value }: SnapshotMetric) {
         </div>
       </div>
       <p
-        className="mt-auto pt-3 text-xl font-bold leading-tight tabular-nums md:text-2xl"
+        className="mt-auto pt-2 text-lg font-bold leading-tight tabular-nums md:pt-3 md:text-2xl"
         style={{ color: colors.textPrimary }}
         title={value}
       >
@@ -69,15 +69,15 @@ export function BusinessSnapshot({
 }) {
   return (
     <section aria-label="תמונת מצב עסקית">
-      <h2 className="mb-3 text-base font-bold leading-snug md:text-lg" style={{ color: colors.textPrimary }}>
+      <h2 className="mb-2 text-sm font-bold leading-snug md:mb-3 md:text-lg" style={{ color: colors.textPrimary }}>
         תמונת מצב
       </h2>
-      <div className="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid min-w-0 grid-cols-2 gap-2 md:gap-3 lg:grid-cols-4">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={i}
-                className="min-h-[112px] animate-pulse rounded-xl border"
+                className="min-h-[88px] animate-pulse rounded-xl border md:min-h-[112px]"
                 style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
               />
             ))

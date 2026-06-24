@@ -12,20 +12,24 @@ export function NataliePortrait({
   showStatusDot = false,
 }: {
   className?: string;
-  size?: "default" | "hero" | "avatar" | "compact";
+  size?: "default" | "hero" | "heroDesktop" | "avatar" | "compact" | "micro";
   showStatusDot?: boolean;
 }) {
   const [imageError, setImageError] = useState(false);
   const sizeClass =
-    size === "compact"
-      ? "h-14 w-14 shrink-0 rounded-full sm:h-16 sm:w-16"
-      : size === "avatar"
-        ? "h-[72px] w-[72px] shrink-0 rounded-full md:h-[88px] md:w-[88px]"
-        : size === "hero"
-          ? "aspect-[4/5] w-full max-w-[360px] md:max-w-[300px]"
-          : "aspect-[3/4] w-full max-w-[220px]";
+    size === "micro"
+      ? "h-10 w-10 shrink-0 rounded-full"
+      : size === "compact"
+        ? "h-14 w-14 shrink-0 rounded-full sm:h-16 sm:w-16"
+        : size === "avatar"
+          ? "h-[72px] w-[72px] shrink-0 rounded-full md:h-[88px] md:w-[88px]"
+          : size === "heroDesktop"
+            ? "h-[220px] w-[176px] shrink-0"
+            : size === "hero"
+              ? "aspect-[4/5] w-full max-w-[360px] md:max-w-[300px]"
+              : "aspect-[3/4] w-full max-w-[220px]";
 
-  const isRound = size === "avatar" || size === "compact";
+  const isRound = size === "avatar" || size === "compact" || size === "micro";
 
   return (
     <div className={`relative shrink-0 ${className}`}>
@@ -44,7 +48,7 @@ export function NataliePortrait({
             fill
             priority={isRound}
             className="object-cover object-top"
-            sizes={size === "compact" ? "64px" : isRound ? "88px" : "(max-width: 768px) 180px, 300px"}
+            sizes={size === "micro" ? "40px" : size === "compact" ? "64px" : isRound ? "88px" : size === "heroDesktop" ? "176px" : "(max-width: 768px) 180px, 300px"}
             onError={() => setImageError(true)}
           />
         ) : (
@@ -58,7 +62,7 @@ export function NataliePortrait({
             }}
           >
             {isRound ? (
-              <span className="text-xl font-extrabold sm:text-2xl" style={{ color: colors.accent }} aria-hidden>
+              <span className={`font-extrabold ${size === "micro" ? "text-sm" : "text-xl sm:text-2xl"}`} style={{ color: colors.accent }} aria-hidden>
                 נ
               </span>
             ) : (
@@ -86,7 +90,7 @@ export function NataliePortrait({
       </div>
       {showStatusDot && (
         <span
-          className={`absolute rounded-full border-2 ${isRound ? "bottom-0 left-0 h-2.5 w-2.5 sm:h-3 sm:w-3" : "bottom-3 left-3 h-3.5 w-3.5 md:bottom-4 md:left-4"}`}
+          className={`absolute rounded-full border-2 ${isRound ? (size === "micro" ? "bottom-0 left-0 h-2 w-2" : "bottom-0 left-0 h-2.5 w-2.5 sm:h-3 sm:w-3") : "bottom-3 left-3 h-3.5 w-3.5 md:bottom-4 md:left-4"}`}
           style={{ backgroundColor: colors.successText, borderColor: colors.surface }}
           aria-hidden
         />
