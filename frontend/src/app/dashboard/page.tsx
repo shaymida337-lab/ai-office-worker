@@ -27,6 +27,7 @@ import {
   buildNatalieDoneTodayItems,
   buildRecentActivityTimeline,
 } from "@/lib/dashboard/home";
+import { lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
 import type { AttentionCardData } from "@/components/dashboard";
 import type { NatalieBriefingInput, NatalieRecommendationInput } from "@/lib/natalie/types";
 import {
@@ -389,6 +390,12 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [invoiceAttachPaymentId, setInvoiceAttachPaymentId] = useState<string | null>(null);
   const [invoiceAttachLink, setInvoiceAttachLink] = useState("");
+
+  useEffect(() => {
+    if (!invoiceAttachPaymentId) return;
+    lockUiOverlay();
+    return () => unlockUiOverlay();
+  }, [invoiceAttachPaymentId]);
 
   useEffect(() => {
     const savedScanId = window.localStorage.getItem("activeGmailScanId");
@@ -1119,13 +1126,13 @@ export default function DashboardPage() {
 
   const quickActions = useMemo(
     () => [
-      { id: "scan", label: "סרוק מסמך", onClick: handleScanDocument, primary: true },
+      { id: "scan", label: "סרוק מייל", onClick: runSync, primary: true },
       { id: "invoice", label: "הוסף חשבונית", icon: quickActionIcons.invoice, onClick: handleScanDocument },
       { id: "task", label: "צור משימה", icon: quickActionIcons.task, onClick: () => router.push("/tasks") },
       { id: "reminder", label: "שלח תזכורת", icon: quickActionIcons.reminder, onClick: () => router.push("/dashboard/whatsapp") },
       { id: "briefing", label: "בקש תדרוך מנטלי", icon: quickActionIcons.briefing, onClick: scrollToBriefing },
     ],
-    [router, scrollToBriefing, handleScanDocument]
+    [router, scrollToBriefing, handleScanDocument, runSync]
   );
 
   const handleHeroPrimary = useCallback(() => {
@@ -1216,7 +1223,7 @@ export default function DashboardPage() {
           loading={pageLoading}
           scanRunning={scanRunning}
           onCta={handleHeroPrimary}
-          onScan={handleScanDocument}
+          onScan={runSync}
         />
 
         {scanBanner && (
@@ -1386,7 +1393,7 @@ export default function DashboardPage() {
       </div>
 
       {invoiceAttachPaymentId && (
-        <div className={`fixed inset-0 z-50 grid place-items-center ${spacing.page}`} style={{ backgroundColor: colors.bg }}>
+        <div className={`fixed inset-0 z-[100] grid place-items-center ${spacing.page}`} style={{ backgroundColor: colors.bg }}>
           <form className={`${radius.card} ${shadow.raised} ${spacing.card} w-full max-w-lg`} style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}` }} onSubmit={submitInvoiceAttachment}>
             <h2 className={typography.sectionTitle}>צירוף חשבונית לתשלום</h2>
             <p className={`${typography.body} mt-2`} style={{ color: colors.textSecondary }}>הדבק קישור לחשבונית בדרייב כדי לסגור את החוסר בתשלום הספק.</p>

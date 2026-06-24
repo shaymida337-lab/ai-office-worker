@@ -7,6 +7,7 @@ import { Logo } from "@/components/Logo";
 import { colors, radius } from "@/lib/design-tokens";
 import { isNavItemVisible, type NavItemId } from "@/config/navVisibility";
 import { apiFetch } from "@/lib/api";
+import { lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
 import { normalizeEnabledModules, type BusinessModuleId, type OrganizationSettings } from "@/lib/business-config";
 import {
   BarChart3,
@@ -110,6 +111,12 @@ export function Nav() {
       })
       .catch(() => setOrganizationSettings(null));
   }, [pathname, router]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    lockUiOverlay();
+    return () => unlockUiOverlay();
+  }, [moreOpen]);
 
   useEffect(() => {
     function focusSearch(event: KeyboardEvent) {
@@ -420,7 +427,7 @@ export function Nav() {
       </header>
 
       {moreOpen && (
-        <div className="fixed inset-0 z-[45] bg-black/55 backdrop-blur-sm lg:hidden" onClick={() => setMoreOpen(false)}>
+        <div className="fixed inset-0 z-[100] bg-black/55 backdrop-blur-sm lg:hidden" onClick={() => setMoreOpen(false)}>
           <div
             className="absolute bottom-24 left-4 right-4 max-h-[70vh] overflow-y-auto rounded-3xl border border-[var(--border)] bg-surface-secondary p-3 shadow-card"
             onClick={(event) => event.stopPropagation()}

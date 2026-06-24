@@ -3,19 +3,20 @@
 import { colors, radius, shadow, button } from "@/lib/design-tokens";
 import { NataliePortrait } from "./NataliePortrait";
 
+const HEADLINE = "נטלי עובדת בשבילך";
+const SUBHEADLINE = "מנהלת את המיילים, החשבוניות והמשימות של העסק שלך.";
+
 export function NatalieHero({
-  ownerFirstName,
-  humanMessage,
   statusLabel = "מחוברת ועובדת עכשיו",
   ctaLabel = "שאל את נטלי",
-  scanLabel = "סרוק מסמך",
+  scanLabel = "סרוק מייל",
   loading = false,
   scanRunning = false,
   onCta,
   onScan,
 }: {
   ownerFirstName?: string | null;
-  humanMessage: string;
+  humanMessage?: string;
   statusLabel?: string;
   ctaLabel?: string;
   scanLabel?: string;
@@ -24,8 +25,6 @@ export function NatalieHero({
   onCta: () => void;
   onScan: () => void;
 }) {
-  const greeting = ownerFirstName ? `שלום ${ownerFirstName} 👋` : "שלום 👋";
-
   const statusLine = (compact = false) => (
     <p className={`flex items-center gap-1.5 font-semibold ${compact ? "text-xs leading-4" : "text-sm leading-5"}`}>
       <span
@@ -34,29 +33,17 @@ export function NatalieHero({
         aria-hidden
       />
       <span style={{ color: scanRunning ? colors.warnText : colors.successText }}>
-        {scanRunning ? "סורקת מסמכים עכשיו" : statusLabel}
+        {scanRunning ? "סורקת מיילים עכשיו" : statusLabel}
       </span>
     </p>
   );
 
   const ctaRow = (compact = false) => (
-    <div className={`grid grid-cols-2 ${compact ? "gap-2" : "gap-2 sm:flex sm:flex-row"}`}>
-      <button
-        type="button"
-        onClick={onScan}
-        className={`${radius.control} ${button.primary} w-full font-bold ${compact ? "min-h-[36px] px-2 text-xs" : "min-h-[44px] flex-1 px-4 text-sm sm:min-h-[48px] sm:text-base"}`}
-        style={{
-          backgroundColor: colors.accent,
-          border: `1px solid ${colors.accent}`,
-          color: colors.surface,
-        }}
-      >
-        {scanLabel}
-      </button>
+    <div className={`grid grid-cols-2 gap-2 ${compact ? "" : "max-w-md"}`}>
       <button
         type="button"
         onClick={onCta}
-        className={`${radius.control} ${button.secondary} w-full font-bold ${compact ? "min-h-[36px] px-2 text-xs" : "min-h-[44px] flex-1 px-4 text-sm sm:min-h-[48px] sm:text-base"}`}
+        className={`${radius.control} ${button.secondary} w-full font-bold ${compact ? "min-h-[36px] px-2 text-xs" : "min-h-[48px] px-4 text-sm"}`}
         style={{
           backgroundColor: colors.surface,
           border: `1px solid ${colors.border}`,
@@ -65,16 +52,28 @@ export function NatalieHero({
       >
         {ctaLabel}
       </button>
+      <button
+        type="button"
+        onClick={onScan}
+        className={`${radius.control} ${button.primary} w-full font-bold ${compact ? "min-h-[36px] px-2 text-xs" : "min-h-[48px] px-4 text-sm"}`}
+        style={{
+          backgroundColor: colors.accent,
+          border: `1px solid ${colors.accent}`,
+          color: colors.surface,
+        }}
+      >
+        {scanLabel}
+      </button>
     </div>
   );
 
   return (
     <section
-      className={`${radius.card} ${shadow.soft} border md:max-h-[320px] md:overflow-hidden`}
+      className={`${radius.card} ${shadow.soft} border md:min-h-[340px]`}
       style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
       aria-label="נטלי — עובדת המשרד שלך"
     >
-      {/* Mobile — employee card, max ~180px */}
+      {/* Mobile — compact employee card */}
       <div className="max-h-[180px] overflow-hidden p-3 md:hidden">
         <div className="flex items-center gap-2.5">
           <NataliePortrait size="micro" showStatusDot={!scanRunning && !loading} />
@@ -97,34 +96,26 @@ export function NatalieHero({
         )}
       </div>
 
-      {/* Desktop — portrait right, content left, ~280–320px */}
-      <div className="hidden items-center gap-5 p-5 md:flex lg:gap-6 lg:p-6">
-        <div className="order-2 min-w-0 flex-1 text-right">
-          <p className="text-sm font-bold leading-5" style={{ color: colors.accent }}>
-            {greeting}
-          </p>
-          <h1 className="text-[32px] font-extrabold leading-tight tracking-tight lg:text-[36px]" style={{ color: colors.textPrimary }}>
-            נטלי
+      {/* Desktop — portrait right, content left */}
+      <div className="hidden min-h-[340px] items-center gap-6 p-6 md:flex lg:gap-8 lg:p-7">
+        <div className="order-2 flex min-w-0 flex-1 flex-col justify-center text-right">
+          <h1 className="text-[30px] font-extrabold leading-tight tracking-tight lg:text-[34px]" style={{ color: colors.textPrimary }}>
+            {HEADLINE}
           </h1>
-          <p className="text-base font-semibold leading-6" style={{ color: colors.textSecondary }}>
-            עובדת המשרד שלך
+          <p className="mt-2 max-w-xl text-base font-medium leading-7" style={{ color: colors.textSecondary }}>
+            {SUBHEADLINE}
           </p>
-          {!loading && statusLine()}
+          {!loading && <div className="mt-3">{statusLine()}</div>}
           {loading ? (
-            <p className="text-sm font-medium leading-6" style={{ color: colors.textSecondary }}>
+            <p className="mt-4 text-sm font-medium leading-6" style={{ color: colors.textSecondary }}>
               רגע, אני מסכמת את הבוקר שלך...
             </p>
           ) : (
-            <>
-              <p className="line-clamp-2 max-w-xl text-sm font-medium leading-6" style={{ color: colors.textSecondary }}>
-                {humanMessage}
-              </p>
-              <div className="pt-1">{ctaRow()}</div>
-            </>
+            <div className="mt-5">{ctaRow()}</div>
           )}
         </div>
 
-        <div className="order-1 shrink-0">
+        <div className="order-1 shrink-0 self-center">
           <NataliePortrait size="heroDesktop" showStatusDot={!scanRunning && !loading} />
         </div>
       </div>

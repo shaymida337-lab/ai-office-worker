@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Mic, SendHorizontal, Volume2, VolumeX, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { apiFetch, API_URL, getToken } from "@/lib/api";
+import { isUiOverlayOpen, lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
 
 type MicState = "idle" | "recording" | "transcribing";
 
@@ -668,6 +669,24 @@ export function NatalieAssistantWidget() {
       releaseRecordingResources();
     };
   }, []);
+
+  const [uiOverlayOpen, setUiOverlayOpen] = useState(false);
+
+  useEffect(() => {
+    const syncOverlayState = () => setUiOverlayOpen(isUiOverlayOpen());
+    syncOverlayState();
+    const observer = new MutationObserver(syncOverlayState);
+    observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (micState === "idle") return;
+    lockUiOverlay();
+    return () => unlockUiOverlay();
+  }, [micState]);
+
+  const showFloatingAvatar = !uiOverlayOpen && micState === "idle";
 
   if (!shouldShowWidget(pathname)) return null;
 
@@ -1558,7 +1577,7 @@ export function NatalieAssistantWidget() {
     <>
       {open && (
         <section
-          className="fixed bottom-[calc(168px+env(safe-area-inset-bottom,0px))] right-4 z-[130] flex h-[min(480px,calc(100dvh-12rem))] w-[calc(100vw-2rem)] max-w-[360px] flex-col overflow-hidden rounded-[24px] border border-[#e6eaf2] bg-white font-sans text-[#0e1116] shadow-[0_24px_70px_rgba(20,40,90,0.18)] lg:bottom-24 lg:right-[17rem] lg:h-[min(480px,calc(100dvh-7.5rem))]"
+          className="fixed bottom-[calc(168px+env(safe-area-inset-bottom,0px))] right-4 z-[100] flex h-[min(480px,calc(100dvh-12rem))] w-[calc(100vw-2rem)] max-w-[360px] flex-col overflow-hidden rounded-[24px] border border-[#e6eaf2] bg-white font-sans text-[#0e1116] shadow-[0_24px_70px_rgba(20,40,90,0.18)] lg:bottom-24 lg:right-[17rem] lg:h-[min(480px,calc(100dvh-7.5rem))]"
           dir="rtl"
           aria-label="שיחה עם נטלי"
         >
@@ -1961,10 +1980,11 @@ export function NatalieAssistantWidget() {
         </section>
       )}
 
+      {showFloatingAvatar && (
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="group fixed bottom-[calc(96px+env(safe-area-inset-bottom,0px))] right-4 z-[120] grid h-[3.75rem] w-[3.75rem] place-items-center rounded-full transition hover:scale-[1.03] focus:outline-none focus:ring-4 lg:bottom-6 lg:right-[17rem]"
+        className="group fixed bottom-[calc(96px+env(safe-area-inset-bottom,0px))] right-4 z-50 grid h-[3.75rem] w-[3.75rem] place-items-center rounded-full transition hover:scale-[1.03] focus:outline-none focus:ring-4 lg:bottom-6 lg:right-[17rem]"
         style={{
           background: "linear-gradient(135deg, #3a6cff, #1d5bff, #1746c7)",
           boxShadow: "0 18px 40px rgba(29,91,255,0.32), 0 0 0 6px rgba(29,91,255,0.08)",
@@ -1978,9 +1998,10 @@ export function NatalieAssistantWidget() {
           <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-[#1faa59]" />
         </span>
       </button>
+      )}
 
       {micState !== "idle" && (
-        <div className="fixed inset-0 z-[180] grid place-items-center bg-[rgba(15,24,48,0.32)] p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="מצב הקלטה">
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-[rgba(15,24,48,0.32)] p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="מצב הקלטה">
           <div className="natalie-message-enter w-full max-w-sm rounded-[28px] border border-[#e6eaf2] bg-white p-8 text-center shadow-[0_30px_90px_rgba(20,40,90,0.22)]" dir="rtl">
             <div className="relative mx-auto mb-6 grid h-36 w-36 place-items-center">
               <span className="absolute h-24 w-24 animate-ping rounded-full bg-[#1d5bff]/15" />
