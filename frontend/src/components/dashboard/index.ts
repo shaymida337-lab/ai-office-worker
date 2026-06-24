@@ -1,5 +1,6 @@
 export { ActionCenter } from "./ActionCenter";
 export { BusinessSnapshot, SnapshotCard } from "./BusinessSnapshot";
+export { DashboardActivityTimeline } from "./DashboardActivityTimeline";
 export { DecisionCard } from "./DecisionCard";
 export { DashboardHero } from "./DashboardHero";
 export { DashboardQuickActions, quickActionIcons } from "./DashboardQuickActions";
@@ -7,6 +8,7 @@ export { DashboardQuietSummary } from "./DashboardQuietSummary";
 export { DashboardSectionHeader } from "./DashboardSectionHeader";
 export { NatalieCommandBar } from "./NatalieCommandBar";
 export { NatalieHero } from "./NatalieHero";
+export { NataliePortrait } from "./NataliePortrait";
 export { NatalieRecommendationCard } from "./NatalieRecommendationCard";
 export { NatalieTopBar } from "./NatalieTopBar";
 export { PriorityInboxItem, type PriorityInboxKind } from "./PriorityInboxItem";
