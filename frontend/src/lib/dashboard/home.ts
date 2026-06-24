@@ -61,7 +61,10 @@ export function buildHeroActionSummary(input: {
   if (invoices > 0) {
     lines.push({
       id: "invoices",
-      text: invoices === 1 ? "שמרתי חשבונית אחת" : `שמרתי ${invoices} חשבוניות`,
+      text:
+        invoices === 1
+          ? "שמרתי עבורך חשבונית חדשה"
+          : `שמרתי עבורך ${invoices} חשבוניות`,
     });
   }
 
@@ -69,7 +72,7 @@ export function buildHeroActionSummary(input: {
   if (payments > 0) {
     lines.push({
       id: "payments",
-      text: payments === 1 ? "הכנתי תשלום אחד" : `הכנתי ${payments} תשלומים`,
+      text: payments === 1 ? "הכנתי תשלום" : `הכנתי ${payments} תשלומים`,
     });
   }
 
@@ -77,7 +80,7 @@ export function buildHeroActionSummary(input: {
   if (appointments > 0) {
     lines.push({
       id: "appointments",
-      text: appointments === 1 ? "קבעתי פגישה אחת" : `קבעתי ${appointments} פגישות`,
+      text: appointments === 1 ? "סידרתי פגישה" : `סידרתי ${appointments} פגישות`,
     });
   }
 
@@ -85,7 +88,7 @@ export function buildHeroActionSummary(input: {
   if (reminders > 0) {
     lines.push({
       id: "reminders",
-      text: reminders === 1 ? "שלחתי תזכורת ללקוח" : `שלחתי ${reminders} תזכורות ללקוחות`,
+      text: reminders === 1 ? "שלחתי תזכורת ללקוח" : `שלחתי ${reminders} תזכורות`,
     });
   }
 
@@ -93,7 +96,7 @@ export function buildHeroActionSummary(input: {
     lines.push({ id: "ready", text: "אני מוכנה לעבוד — תגיד לי מה לעשות" });
   }
 
-  return lines.slice(0, 5);
+  return lines.slice(0, 3);
 }
 
 export function countHeroWorkItems(lines: HeroSummaryLine[]) {

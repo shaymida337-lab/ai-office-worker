@@ -13,24 +13,22 @@ export function NatalieTopBar({
   onNotifications: () => void;
 }) {
   return (
-    <header className="flex min-w-0 items-center justify-between gap-3 py-1" aria-label="סרגל עליון">
-      <div className="min-w-0 flex-1 text-right">
-        <p className="truncate text-lg font-extrabold leading-tight md:text-xl" style={{ color: colors.textPrimary }}>
-          {businessName}
-        </p>
-      </div>
+    <header className="flex min-w-0 items-center justify-between gap-2 py-0.5" aria-label="סרגל עליון">
+      <p className="min-w-0 flex-1 truncate text-right text-base font-bold leading-tight md:text-lg" style={{ color: colors.textPrimary }}>
+        {businessName}
+      </p>
 
       <button
         type="button"
         onClick={onNotifications}
         aria-label="התראות"
-        className={`relative grid h-11 w-11 shrink-0 place-items-center ${radius.control} border transition active:scale-[0.98]`}
+        className={`relative grid h-10 w-10 shrink-0 place-items-center ${radius.control} border transition active:scale-[0.98]`}
         style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle, color: colors.textSecondary }}
       >
-        <Bell className="h-5 w-5" strokeWidth={2} />
+        <Bell className="h-[18px] w-[18px]" strokeWidth={2} />
         {unreadCount > 0 && (
           <span
-            className="absolute left-2 top-2 h-2.5 w-2.5 rounded-full"
+            className="absolute left-1.5 top-1.5 h-2 w-2 rounded-full"
             style={{ backgroundColor: colors.dangerText }}
             aria-hidden
           />

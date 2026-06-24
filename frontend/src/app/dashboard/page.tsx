@@ -1092,15 +1092,15 @@ export default function DashboardPage() {
 
   return (
     <main
-      className="min-h-screen max-w-full overflow-x-clip px-4 pb-32 pt-20 md:px-8 md:pb-8 lg:mr-60"
+      className="min-h-screen max-w-full overflow-x-clip px-4 pb-28 pt-16 md:px-8 md:pb-8 md:pt-20 lg:mr-60"
       style={{
-        background: `linear-gradient(180deg, ${colors.bgSoft} 0%, ${colors.bg} 28%, ${colors.bg} 100%)`,
+        background: colors.bg,
         color: colors.textPrimary,
       }}
     >
       <Nav />
 
-      <div className="mx-auto grid min-w-0 max-w-3xl gap-8 md:gap-10">
+      <div className="mx-auto grid min-w-0 max-w-3xl gap-3 md:gap-6">
         <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
 
         <NatalieTopBar
@@ -1157,9 +1157,18 @@ export default function DashboardPage() {
           onRetry={runSync}
         />
 
-        <DashboardActivityTimeline items={activityTimeline} loading={pageLoading} />
-
         <BusinessSnapshot chips={businessChips} loading={pageLoading} />
+
+        {(pageLoading || activityTimeline.length > 0) && (
+          <details className="rounded-xl border px-3 py-2 md:px-4" style={{ borderColor: colors.borderSubtle, backgroundColor: colors.surface }}>
+            <summary className="cursor-pointer list-none text-sm font-bold leading-7 marker:content-none md:text-base" style={{ color: colors.textPrimary }}>
+              מה כבר סיימתי עבורך
+            </summary>
+            <div className="mt-2 border-t pt-2" style={{ borderColor: colors.borderSubtle }}>
+              <DashboardActivityTimeline items={activityTimeline} loading={pageLoading} compact />
+            </div>
+          </details>
+        )}
 
         <NatalieCommandBar onSubmit={handleNatalieConversation} onScan={runSync} />
 

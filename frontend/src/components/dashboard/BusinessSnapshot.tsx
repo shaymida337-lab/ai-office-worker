@@ -53,40 +53,32 @@ export function BusinessSnapshot({
 }) {
   return (
     <section aria-label="תמונת מצב עסקית">
-      <h2 className={`${typography.caption} mb-3 font-semibold uppercase tracking-wide`} style={{ color: colors.textMuted }}>
-        תמונת מצב
-      </h2>
-
-      {loading ? (
-        <div className="flex flex-wrap gap-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-9 w-28 animate-pulse rounded-full border"
-              style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {chips.map((chip) => (
-            <span
-              key={chip.id}
-              className={`inline-flex items-center gap-2 ${radius.pill} border px-3.5 py-2`}
-              style={{
-                backgroundColor: colors.surface,
-                borderColor: colors.borderSubtle,
-                color: colors.textSecondary,
-              }}
-            >
-              <span className={`${typography.caption} font-semibold`}>{chip.label}</span>
-              <span className={`${typography.caption} font-bold tabular-nums`} style={{ color: colors.textPrimary }}>
-                {chip.value}
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto pb-0.5 md:flex-wrap md:overflow-visible">
+        {loading
+          ? Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-8 w-24 shrink-0 animate-pulse rounded-full border"
+                style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+              />
+            ))
+          : chips.map((chip) => (
+              <span
+                key={chip.id}
+                className={`inline-flex shrink-0 items-center gap-1.5 ${radius.pill} border px-2.5 py-1.5 md:px-3`}
+                style={{
+                  backgroundColor: colors.surface,
+                  borderColor: colors.borderSubtle,
+                  color: colors.textSecondary,
+                }}
+              >
+                <span className="text-xs font-medium">{chip.label}</span>
+                <span className="text-xs font-bold tabular-nums" style={{ color: colors.textPrimary }}>
+                  {chip.value}
+                </span>
               </span>
-            </span>
-          ))}
-        </div>
-      )}
+            ))}
+      </div>
     </section>
   );
 }

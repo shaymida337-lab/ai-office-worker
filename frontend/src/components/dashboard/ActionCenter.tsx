@@ -43,12 +43,12 @@ export function ActionCenter({
 
   if (loading) {
     return (
-      <section id="natalie-decisions" className="grid gap-3" aria-label="דורש את תשומת הלב שלך">
+      <section id="natalie-decisions" className="grid gap-2" aria-label="מרכז ההחלטות">
         <SectionHeader />
         {Array.from({ length: 2 }).map((_, i) => (
           <div
             key={i}
-            className="h-36 animate-pulse rounded-2xl border"
+            className="h-24 animate-pulse rounded-xl border"
             style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
           />
         ))}
@@ -58,14 +58,11 @@ export function ActionCenter({
 
   if (items.length === 0) {
     return (
-      <section id="natalie-decisions" className="grid gap-4" aria-label="דורש את תשומת הלב שלך">
+      <section id="natalie-decisions" className="grid gap-2" aria-label="מרכז ההחלטות">
         <SectionHeader count={0} />
-        <div
-          className="rounded-2xl border px-5 py-4 text-center"
-          style={{ backgroundColor: colors.bgSoft, borderColor: colors.borderSubtle }}
-        >
-          <p className={`${typography.body} font-semibold`} style={{ color: colors.textSecondary }}>
-            כרגע אין משהו דחוף שדורש החלטה
+        <div className="rounded-xl border px-4 py-3 text-center" style={{ backgroundColor: colors.bgSoft, borderColor: colors.borderSubtle }}>
+          <p className={`${typography.body} text-sm font-semibold`} style={{ color: colors.textSecondary }}>
+            כרגע אין משהו שדורש החלטה — הכול מסודר.
           </p>
         </div>
       </section>
@@ -73,10 +70,10 @@ export function ActionCenter({
   }
 
   return (
-    <section id="natalie-decisions" className="grid gap-4" aria-label="דורש את תשומת הלב שלך">
+    <section id="natalie-decisions" className="grid gap-2 md:gap-3" aria-label="מרכז ההחלטות">
       <SectionHeader count={totalCount} />
 
-      <div className="grid gap-3">
+      <div className="grid gap-2">
         {items.map((item, index) => {
           const Icon = kindIcons[item.kind];
           return (
@@ -99,22 +96,14 @@ export function ActionCenter({
       </div>
 
       {remaining > 0 && (
-        <div
-          className="rounded-2xl border px-5 py-4 text-center"
-          style={{ backgroundColor: colors.bgSoft, borderColor: colors.borderSubtle }}
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/document-reviews")}
+          className="py-2 text-sm font-bold underline-offset-2 hover:underline"
+          style={{ color: colors.accent }}
         >
-          <p className={`${typography.body} font-semibold`} style={{ color: colors.textSecondary }}>
-            ועוד {remaining} {remaining === 1 ? "דבר שמחכה לך" : "דברים שמחכים לך"}
-          </p>
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/document-reviews")}
-            className="mt-3 text-base font-bold underline-offset-2 hover:underline"
-            style={{ color: colors.accent }}
-          >
-            פתחי את כל ההחלטות
-          </button>
-        </div>
+          ועוד {remaining} {remaining === 1 ? "החלטה" : "החלטות"}
+        </button>
       )}
     </section>
   );
@@ -123,11 +112,11 @@ export function ActionCenter({
 function SectionHeader({ count }: { count?: number }) {
   return (
     <div>
-      <h2 className={`${typography.sectionTitle} leading-snug`} style={{ color: colors.textPrimary }}>
+      <h2 className="text-lg font-bold leading-snug md:text-xl" style={{ color: colors.textPrimary }}>
         מרכז ההחלטות
       </h2>
       {count != null && count > 0 && (
-        <p className={`${typography.body} mt-1`} style={{ color: colors.textSecondary }}>
+        <p className="mt-0.5 hidden text-sm md:block" style={{ color: colors.textSecondary }}>
           {count === 1 ? "דבר אחד שצריך את ההחלטה שלך" : `${count} דברים שצריכים את ההחלטה שלך`}
         </p>
       )}

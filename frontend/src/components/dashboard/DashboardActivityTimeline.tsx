@@ -8,64 +8,50 @@ import { colors, type as typography } from "@/lib/design-tokens";
 export function DashboardActivityTimeline({
   items,
   loading = false,
+  compact = false,
 }: {
   items: NatalieTimelineItem[];
   loading?: boolean;
+  compact?: boolean;
 }) {
   if (loading) {
     return (
-      <section aria-label="מה כבר סיימתי עבורך">
-        <h2 className={`${typography.sectionTitle} mb-4 leading-snug`} style={{ color: colors.textPrimary }}>
-          מה כבר סיימתי עבורך
-        </h2>
-        <div className="grid gap-2">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              className="h-10 animate-pulse rounded-lg border"
-              style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
-            />
-          ))}
-        </div>
-      </section>
+      <div className="grid gap-1.5">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div
+            key={index}
+            className="h-8 animate-pulse rounded-lg border"
+            style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+          />
+        ))}
+      </div>
     );
   }
 
   if (items.length === 0) return null;
 
+  const visible = compact ? items.slice(0, 4) : items;
+
   return (
-    <section aria-label="מה כבר סיימתי עבורך">
-      <h2 className={`${typography.sectionTitle} mb-4 leading-snug`} style={{ color: colors.textPrimary }}>
-        מה כבר סיימתי עבורך
-      </h2>
-      <ol className="grid gap-1">
-        {items.map((item) => {
-          const time = item.occurredAt ? formatTimelineClock(item.occurredAt) : "";
-          return (
-            <li key={item.id} className="flex items-start justify-end gap-3 py-2">
-              <div className="min-w-0 flex-1 text-right">
-                <p className={`${typography.body} leading-7`} style={{ color: colors.textPrimary }}>
-                  {item.text}
-                </p>
-                {time && (
-                  <time
-                    className="text-xs font-medium tabular-nums"
-                    style={{ color: colors.textMuted }}
-                    dateTime={item.occurredAt}
-                  >
-                    {time}
-                  </time>
-                )}
-              </div>
-              <Check
-                className="mt-1 h-4 w-4 shrink-0"
-                style={{ color: colors.successText }}
-                strokeWidth={2.5}
-              />
-            </li>
-          );
-        })}
-      </ol>
-    </section>
+    <ol className="grid gap-0.5">
+      {visible.map((item) => {
+        const time = item.occurredAt ? formatTimelineClock(item.occurredAt) : "";
+        return (
+          <li key={item.id} className="flex items-center justify-end gap-2 py-1.5">
+            <div className="min-w-0 flex-1 text-right">
+              <p className={`${compact ? "text-sm leading-6" : typography.body} leading-7`} style={{ color: colors.textPrimary }}>
+                {item.text}
+              </p>
+              {time && !compact && (
+                <time className="text-xs font-medium tabular-nums" style={{ color: colors.textMuted }} dateTime={item.occurredAt}>
+                  {time}
+                </time>
+              )}
+            </div>
+            <Check className="h-3.5 w-3.5 shrink-0" style={{ color: colors.successText }} strokeWidth={2.5} />
+          </li>
+        );
+      })}
+    </ol>
   );
 }
