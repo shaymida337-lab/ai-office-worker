@@ -17,6 +17,28 @@ const VAD_CHECK_INTERVAL_MS = 100;
 const TTS_UNLOCK_SILENT_AUDIO =
   "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
 
+function NatalieIdentityAvatar({
+  sizeClass,
+  roundedClass = "rounded-full",
+}: {
+  sizeClass: string;
+  roundedClass?: string;
+}) {
+  return (
+    <span
+      className={`relative block shrink-0 overflow-hidden ${sizeClass} ${roundedClass}`}
+      style={{
+        backgroundColor: "#E0E7FF",
+        backgroundImage: "url(/natalie-portrait.png)",
+        backgroundPosition: "center top",
+        backgroundSize: "cover",
+        border: "1px solid #dbe5ff",
+      }}
+      aria-hidden
+    />
+  );
+}
+
 function pickRecorderMimeType(): string {
   if (typeof MediaRecorder === "undefined") return "";
   for (const candidate of RECORDER_MIME_CANDIDATES) {
@@ -214,7 +236,7 @@ const initialMessages: WidgetMessage[] = [
   {
     id: "welcome",
     sender: "natalie",
-    text: "שלום, אני נטלי. אפשר לשאול אותי על חשבוניות, משימות, תשלומים או מה דורש טיפול היום.",
+    text: "שלום, אני נטלי — עובדת המשרד שלך. כבר עברתי על הדברים החשובים של היום, ואפשר להמשיך יחד מפה.",
   },
   {
     id: "welcome-mic-tip",
@@ -251,7 +273,7 @@ function shouldShowWidget(pathname: string) {
 
 function buildNatalieHistory(messages: WidgetMessage[]): NatalieHistoryMessage[] {
   return messages
-    .filter((message) => message.text !== "נטלי חושבת..." && message.text !== "מצטערת, לא הצלחתי להתחבר כרגע. נסה שוב.")
+    .filter((message) => message.text !== "נטלי בודקת עבורך..." && message.text !== "מצטערת, לא הצלחתי להתחבר כרגע. נסה שוב.")
     .map<NatalieHistoryMessage>((message) => ({
       role: message.sender === "user" ? "user" : "assistant",
       content: message.text,
@@ -846,7 +868,7 @@ export function NatalieAssistantWidget() {
 
   async function speakNatalieReply(text: string) {
     const cleanText = text.trim();
-    if (!voiceEnabled || !cleanText || cleanText === "נטלי חושבת...") return;
+    if (!voiceEnabled || !cleanText || cleanText === "נטלי בודקת עבורך...") return;
 
     releaseCurrentAudio();
 
@@ -939,7 +961,7 @@ export function NatalieAssistantWidget() {
     const loadingMessage: WidgetMessage = {
       id: `natalie-loading-${timestamp}`,
       sender: "natalie",
-      text: "נטלי חושבת...",
+      text: "נטלי בודקת עבורך...",
     };
 
     setMessages((current) => [...current, userMessage, loadingMessage]);
@@ -1527,14 +1549,15 @@ export function NatalieAssistantWidget() {
         >
           <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e6eaf2] bg-white px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] bg-[linear-gradient(135deg,#3a6cff,#1d5bff,#1746c7)] text-xl font-black text-white shadow-[0_12px_24px_rgba(29,91,255,0.25)]">
-                נ
+              <div className="relative">
+                <NatalieIdentityAvatar sizeClass="h-11 w-11" roundedClass="rounded-[16px]" />
+                <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-[#1faa59]" />
               </div>
               <div className="min-w-0">
                 <div className="text-lg font-extrabold leading-tight">נטלי</div>
                 <div className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold text-[#6b7686]">
                   <span className="h-2 w-2 rounded-full bg-[#1faa59]" />
-                  כאן לעזור
+                  עובדת המשרד שלך
                 </div>
               </div>
             </div>
@@ -1926,7 +1949,7 @@ export function NatalieAssistantWidget() {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="group fixed bottom-5 right-4 z-[120] grid h-[3.75rem] w-[3.75rem] place-items-center rounded-full text-2xl font-black text-white transition hover:scale-[1.03] focus:outline-none focus:ring-4 lg:bottom-6 lg:right-[17rem]"
+        className="group fixed bottom-5 right-4 z-[120] grid h-[3.9rem] w-[3.9rem] place-items-center rounded-full transition hover:scale-[1.03] focus:outline-none focus:ring-4 lg:bottom-6 lg:right-[17rem]"
         style={{
           background: "linear-gradient(135deg, #3a6cff, #1d5bff, #1746c7)",
           boxShadow: "0 18px 40px rgba(29,91,255,0.32), 0 0 0 6px rgba(29,91,255,0.08)",
@@ -1935,7 +1958,10 @@ export function NatalieAssistantWidget() {
         aria-expanded={open}
       >
         <span className="absolute inset-0 rounded-full opacity-0 transition group-hover:opacity-100" style={{ boxShadow: "0 0 0 8px rgba(29,91,255,0.12)" }} />
-        <span className="relative">נ</span>
+        <span className="relative">
+          <NatalieIdentityAvatar sizeClass="h-[3.35rem] w-[3.35rem]" />
+          <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-[#1faa59]" />
+        </span>
       </button>
 
       {micState !== "idle" && (

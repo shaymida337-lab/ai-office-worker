@@ -8,7 +8,6 @@ import {
   FileSearch,
   FileText,
 } from "lucide-react";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { DecisionCard } from "./DecisionCard";
 import { colors, type as typography } from "@/lib/design-tokens";
 import type { DecisionCardData, DecisionKind } from "@/lib/dashboard/decisions";
@@ -44,7 +43,7 @@ export function ActionCenter({
 
   if (loading) {
     return (
-      <section id="natalie-decisions" className="grid gap-3" aria-label="מרכז החלטות">
+      <section id="natalie-decisions" className="grid gap-3" aria-label="דורש את תשומת הלב שלך">
         <SectionHeader />
         {Array.from({ length: 2 }).map((_, i) => (
           <div
@@ -59,20 +58,22 @@ export function ActionCenter({
 
   if (items.length === 0) {
     return (
-      <section id="natalie-decisions" aria-label="מרכז החלטות">
-        <SectionHeader />
-        <EmptyState
-          icon={<FileSearch className="h-6 w-6" />}
-          title="אין החלטות ממתינות"
-          hint="נטלי מטפלת בכל השאר. אם משהו ידרוש אותך — הוא יופיע כאן."
-          compact
-        />
+      <section id="natalie-decisions" className="grid gap-4" aria-label="דורש את תשומת הלב שלך">
+        <SectionHeader count={0} />
+        <div
+          className="rounded-2xl border px-5 py-4 text-center"
+          style={{ backgroundColor: colors.bgSoft, borderColor: colors.borderSubtle }}
+        >
+          <p className={`${typography.body} font-semibold`} style={{ color: colors.textSecondary }}>
+            כרגע אין משהו דחוף שדורש החלטה
+          </p>
+        </div>
       </section>
     );
   }
 
   return (
-    <section id="natalie-decisions" className="grid gap-4" aria-label="מרכז החלטות">
+    <section id="natalie-decisions" className="grid gap-4" aria-label="דורש את תשומת הלב שלך">
       <SectionHeader count={totalCount} />
 
       <div className="grid gap-3">
@@ -128,11 +129,11 @@ function SectionHeader({ count }: { count?: number }) {
   return (
     <div>
       <h2 className={`${typography.sectionTitle} leading-snug`} style={{ color: colors.textPrimary }}>
-        מה דורש את ההחלטה שלך
+        דורש את תשומת הלב שלך
       </h2>
       {count != null && count > 0 && (
         <p className={`${typography.body} mt-1`} style={{ color: colors.textSecondary }}>
-          {count === 1 ? "דבר אחד מחכה לך" : `${count} דברים מחכים לך`}
+          {count === 1 ? "דבר אחד שצריך החלטה" : `${count} דברים שצריכים החלטה`}
         </p>
       )}
     </div>

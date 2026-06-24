@@ -9,7 +9,7 @@ import {
   NatalieHero,
   NatalieTopBar,
   BusinessSnapshot,
-  WorkSummary,
+  DashboardActivityTimeline,
 } from "@/components/dashboard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ScanBanner } from "@/components/ui/ScanBanner";
@@ -18,11 +18,13 @@ import { buildNatalieBriefing } from "@/lib/natalie/briefing";
 import { resolveNatalieRecommendation } from "@/lib/natalie/recommendation";
 import {
   buildDecisionItems,
-  buildHeroChips,
-  buildSnapshotMetrics,
-  buildWorkSummaryLines,
-  countUrgentDecisions,
 } from "@/lib/dashboard/decisions";
+import {
+  buildFinancialSnapshot,
+  buildHeroActionSummary,
+  buildRecentActivityTimeline,
+  countHeroWorkItems,
+} from "@/lib/dashboard/home";
 import type { NatalieBriefingInput, NatalieRecommendationInput } from "@/lib/natalie/types";
 import {
   apiFetch,
@@ -107,6 +109,12 @@ type ScanStatus = {
 type WhatsAppAssistantStats = {
   sentToday: number;
   activeChats: number;
+};
+
+type AccountantSummary = {
+  profit: number;
+  vatDue: number;
+  vat?: { netVAT: number };
 };
 
 type SystemComponentStatus = {
@@ -348,6 +356,7 @@ export default function DashboardPage() {
   const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
   const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings | null>(null);
   const [whatsAppStats, setWhatsAppStats] = useState<WhatsAppAssistantStats | null>(null);
+  const [accountantSummary, setAccountantSummary] = useState<AccountantSummary | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [systemChecking, setSystemChecking] = useState(false);
   const [showSystemCheck, setShowSystemCheck] = useState(false);
@@ -398,7 +407,7 @@ export default function DashboardPage() {
     try {
       const appointmentFrom = new Date().toISOString();
       const appointmentTo = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult, systemResult, reviewsResult, appointmentsResult] = await Promise.allSettled([
+      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult, systemResult, reviewsResult, appointmentsResult, accountantResult] = await Promise.allSettled([
         apiFetch<DashboardStats>("/api/stats"),
         apiFetch<{ text: string }>("/api/summary/daily"),
         apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
@@ -413,6 +422,7 @@ export default function DashboardPage() {
         apiFetch<SystemHealth>("/api/system/health", { timeoutMs: 30000 }),
         apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review"),
         apiFetch<UpcomingAppointment[]>(`/api/appointments?from=${encodeURIComponent(appointmentFrom)}&to=${encodeURIComponent(appointmentTo)}`),
+        apiFetch<AccountantSummary>("/api/accountant/summary"),
       ]);
 
       setStats(statsResult.status === "fulfilled" ? statsResult.value : emptyStats);
@@ -470,6 +480,7 @@ export default function DashboardPage() {
       }
 
       setSystemHealth(systemResult.status === "fulfilled" ? systemResult.value : null);
+      setAccountantSummary(accountantResult.status === "fulfilled" ? accountantResult.value : null);
       apiFetch<WhatsAppAssistantStats>("/api/whatsapp-assistant/stats").then(setWhatsAppStats).catch(() => undefined);
       setLastUpdatedAt(new Date());
       setError("");
@@ -840,7 +851,6 @@ export default function DashboardPage() {
   const monthPayments = payments.filter((payment) => isThisMonth(payment.date));
   const unpaidPayments = useMemo(() => payments.filter((payment) => !payment.paid), [payments]);
   const openTasksCount = stats?.openTasks ?? recentTasks.filter((task) => task.status !== "completed" && task.status !== "done").length;
-  const upcomingMeetingsCount = upcomingAppointments.length;
   const scanRunning = syncing || Boolean(activeScanId) || scanBanner?.status === "running";
   const scanStale = scanBanner?.status === "stale";
 
@@ -973,50 +983,69 @@ export default function DashboardPage() {
   );
 
   const natalieRecommendation = useMemo(() => resolveNatalieRecommendation(recommendationInput), [recommendationInput]);
-  const workSummaryLines = useMemo(
+
+  const heroSummaryLines = useMemo(
     () =>
-      buildWorkSummaryLines({
-        scanLastSaved: scanStatus?.last?.saved,
-        monthPayments: monthPayments.length,
-        monthInvoices: monthPayments.length > 0 ? monthPayments.length : recentInvoices.length,
-        upcomingMeetings: upcomingMeetingsCount,
-        pendingReviews: documentReviews.length,
-        gmailConnected,
+      buildHeroActionSummary({
+        invoicesScanned: scanStatus?.last?.invoicesFound ?? scanStatus?.last?.saved ?? recentInvoices.length,
+        appointmentsSet: upcomingAppointments.length,
+        remindersSent: whatsAppStats?.sentToday ?? 0,
+        pendingPayments: unpaidPayments.length,
+        missingDocuments: documentReviews.length + missingInvoices.length,
         scanRunning,
       }),
     [
+      scanStatus?.last?.invoicesFound,
       scanStatus?.last?.saved,
-      monthPayments.length,
       recentInvoices.length,
-      upcomingMeetingsCount,
+      upcomingAppointments.length,
+      whatsAppStats?.sentToday,
+      unpaidPayments.length,
       documentReviews.length,
-      gmailConnected,
+      missingInvoices.length,
       scanRunning,
     ]
   );
 
-  const heroChips = useMemo(
-    () => buildHeroChips(workSummaryLines.length, decisionItems.length, countUrgentDecisions(decisionItems)),
-    [workSummaryLines.length, decisionItems]
+  const heroWorkCount = useMemo(() => countHeroWorkItems(heroSummaryLines), [heroSummaryLines]);
+
+  const financialSnapshot = useMemo(
+    () => buildFinancialSnapshot(stats, accountantSummary),
+    [stats, accountantSummary]
   );
 
-  const snapshotMetrics = useMemo(
+  const activityTimeline = useMemo(
     () =>
-      buildSnapshotMetrics(stats, {
-        monthPayments: monthPayments.length,
-        pendingReviews: documentReviews.length,
-        recentInvoices: recentInvoices.length,
+      buildRecentActivityTimeline({
+        scanLogs: scanStatus?.logs,
+        recentInvoices: recentInvoices.slice(0, 5).map((invoice) => ({
+          id: invoice.id,
+          date: invoice.date,
+          client: invoice.client,
+          amount: invoice.amount,
+        })),
+        paidPayments: payments.map((payment) => ({
+          id: payment.id,
+          supplier: payment.supplier,
+          date: payment.date,
+          paid: payment.paid,
+        })),
+        appointments: upcomingAppointments.map((appt) => ({
+          id: appt.id,
+          startTime: appt.startTime,
+          clientName: appt.client.name,
+          status: appt.status,
+        })),
+        remindersSentToday: whatsAppStats?.sentToday,
       }),
-    [stats, monthPayments.length, documentReviews.length, recentInvoices.length]
+    [scanStatus?.logs, recentInvoices, payments, upcomingAppointments, whatsAppStats?.sentToday]
   );
 
   const businessName = organizationSettings?.name?.trim() || "העסק שלי";
   const heroCtaLabel =
-    decisionItems.length > 0
-      ? "המשיכי לטפל בזה"
-      : natalieRecommendation.kind === "connect_gmail"
-        ? "חברי את הג׳ימייל"
-        : "מה תרצה שנטלי תעשה?";
+    natalieRecommendation.kind === "connect_gmail"
+      ? "חברי את הג׳ימייל"
+      : "מה תרצי שאעשה עכשיו?";
 
   const scrollToDecisions = useCallback(() => {
     document.getElementById("natalie-decisions")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1069,7 +1098,7 @@ export default function DashboardPage() {
     >
       <Nav />
 
-      <div className="mx-auto grid min-w-0 max-w-3xl gap-8">
+      <div className="mx-auto grid min-w-0 max-w-6xl gap-6 md:gap-7">
         <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
 
         <NatalieTopBar
@@ -1101,8 +1130,8 @@ export default function DashboardPage() {
 
         <NatalieHero
           greeting={natalieBriefing.greeting}
-          subtitle="נטלי עבדה בשבילך גם כשלא היית כאן."
-          chips={heroChips}
+          workCount={heroWorkCount}
+          summaryLines={heroSummaryLines}
           ctaLabel={heroCtaLabel}
           loading={pageLoading}
           onCta={handleHeroPrimary}
@@ -1118,20 +1147,44 @@ export default function DashboardPage() {
           />
         )}
 
-        <ActionCenter
-          items={visibleDecisions}
-          totalCount={decisionItems.length}
-          loading={pageLoading}
-          onMarkPaid={markPaymentPaid}
-          onAttachInvoice={attachInvoiceToPayment}
-          onRetry={runSync}
-        />
+        <div className="grid gap-4 lg:grid-cols-12 lg:gap-5">
+          <section
+            className={`${radius.card} border p-4 md:p-5 lg:col-span-7`}
+            style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle, boxShadow: "0 10px 36px rgba(15,23,42,0.06)" }}
+          >
+            <ActionCenter
+              items={visibleDecisions}
+              totalCount={decisionItems.length}
+              loading={pageLoading}
+              onMarkPaid={markPaymentPaid}
+              onAttachInvoice={attachInvoiceToPayment}
+              onRetry={runSync}
+            />
+          </section>
 
-        <WorkSummary lines={workSummaryLines} loading={pageLoading} />
+          <section
+            className={`${radius.card} border p-4 md:p-5 lg:col-span-5`}
+            style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle, boxShadow: "0 10px 36px rgba(15,23,42,0.06)" }}
+          >
+            <BusinessSnapshot metrics={financialSnapshot} loading={pageLoading} />
+          </section>
+        </div>
 
-        <BusinessSnapshot metrics={snapshotMetrics} loading={pageLoading} />
+        <div className="grid gap-4 lg:grid-cols-12 lg:gap-5">
+          <section
+            className={`${radius.card} border p-4 md:p-5 lg:col-span-7`}
+            style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle, boxShadow: "0 10px 36px rgba(15,23,42,0.06)" }}
+          >
+            <DashboardActivityTimeline items={activityTimeline} loading={pageLoading} />
+          </section>
 
-        <NatalieCommandBar onSubmit={handleNatalieConversation} onScan={runSync} />
+          <section
+            className={`${radius.card} border p-4 md:p-5 lg:col-span-5`}
+            style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle, boxShadow: "0 10px 36px rgba(15,23,42,0.06)" }}
+          >
+            <NatalieCommandBar onSubmit={handleNatalieConversation} onScan={runSync} />
+          </section>
+        </div>
 
         <details className={`${radius.card} border`} style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}>
           <summary className="cursor-pointer list-none px-5 py-5 text-lg font-bold md:px-6" style={{ color: colors.textPrimary }}>
