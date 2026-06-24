@@ -452,13 +452,13 @@ export function Nav() {
                     key={item.href}
                     href={item.href}
                     onClick={() => setMoreOpen(false)}
-                    className={`flex min-h-14 items-center gap-3 rounded-2xl border px-3 py-3 text-[16px] font-semibold transition active:scale-95 ${
+                    className={`flex min-h-14 items-center gap-3 rounded-2xl border px-3 py-3 text-[16px] font-bold transition active:scale-95 ${
                       active
-                        ? "border-accent-primary/40 bg-accent-primary/20 text-white"
-                        : "border-[var(--border)] bg-surface-card text-[#E2E8F0]"
+                        ? "border-accent-primary/40 bg-accent-primary/20 text-[#111827]"
+                        : "border-[var(--border)] bg-surface-card text-[#111827]"
                     }`}
                   >
-                    <Icon className={["h-5 w-5 shrink-0", active ? "text-accent-primary" : "text-ink-muted"].join(" ")} />
+                    <Icon className="h-5 w-5 shrink-0 text-[#64748b]" />
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                   </Link>
                 );
