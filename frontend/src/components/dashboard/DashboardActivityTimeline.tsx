@@ -23,9 +23,9 @@ export function DashboardActivityTimeline({
 
   if (loading) {
     return (
-      <section className="flex h-full min-w-0 flex-col" aria-label="פעילות אחרונה">
+      <section className="flex h-auto min-w-0 flex-col overflow-visible" aria-label="פעילות אחרונה">
         {header}
-        <div className={`${radius.card} ${shadow.soft} mt-3 flex-1 space-y-2 border p-3`} style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}>
+        <div className={`${radius.card} ${shadow.soft} mt-3 space-y-2 border p-3`} style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}>
           {Array.from({ length: 4 }).map((_, index) => (
             <div key={index} className="h-12 animate-pulse rounded-lg" style={{ backgroundColor: colors.bgSoft }} />
           ))}
@@ -36,10 +36,10 @@ export function DashboardActivityTimeline({
 
   if (items.length === 0) {
     return (
-      <section className="flex h-full min-w-0 flex-col" aria-label="פעילות אחרונה">
+      <section className="flex h-auto min-w-0 flex-col overflow-visible" aria-label="פעילות אחרונה">
         {header}
         <div
-          className={`${radius.card} ${shadow.soft} mt-3 flex min-h-[148px] flex-1 items-center border p-4`}
+          className={`${radius.card} ${shadow.soft} mt-3 flex min-h-[148px] items-center border p-4`}
           style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
         >
           <p className="text-sm font-medium leading-7" style={{ color: colors.textSecondary }}>
@@ -53,10 +53,10 @@ export function DashboardActivityTimeline({
   const visible = items.slice(0, 6);
 
   return (
-    <section className="flex h-full min-w-0 flex-col" aria-label="פעילות אחרונה">
+    <section className="flex h-auto min-w-0 flex-col overflow-visible" aria-label="פעילות אחרונה">
       {header}
       <div
-        className={`${radius.card} ${shadow.soft} mt-3 flex-1 border p-3 md:p-4`}
+        className={`${radius.card} ${shadow.soft} mt-3 border p-3 md:p-4`}
         style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
       >
         <ol className="grid gap-2">

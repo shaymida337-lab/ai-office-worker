@@ -51,7 +51,7 @@ export function NatalieAttentionCenter({
   const titleCount = activeCount > 0 ? activeCount : totalCount > 0 ? totalCount : 3;
 
   return (
-    <section id="natalie-decisions" className="flex h-full min-w-0 flex-col" aria-label="מרכז תשומת לב">
+    <section id="natalie-decisions" className="flex h-auto min-w-0 flex-col overflow-visible" aria-label="מרכז תשומת לב">
       <h2 className="text-base font-bold leading-snug md:text-lg" style={{ color: colors.textPrimary }}>
         {activeCount > 0 || totalCount > 0
           ? `ממליצה לטפל ב־${titleCount} ${titleCount === 1 ? "דבר" : "דברים"}`
@@ -62,13 +62,13 @@ export function NatalieAttentionCenter({
       </p>
 
       {loading ? (
-        <div className="mt-3 grid flex-1 gap-3">
+        <div className="mt-3 grid gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="min-h-[148px] animate-pulse rounded-xl border" style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }} />
           ))}
         </div>
       ) : (
-        <div className="mt-3 grid flex-1 gap-3">
+        <div className="mt-3 grid gap-3">
           {cards.map((card) => {
             const style = urgencyStyles[card.urgency];
             const Icon = cardIcons[card.id] ?? FileText;
