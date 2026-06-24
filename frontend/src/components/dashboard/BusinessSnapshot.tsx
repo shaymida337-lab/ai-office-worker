@@ -1,41 +1,28 @@
 "use client";
 
-import type { BusinessChip, FinancialSnapshotMetric } from "@/lib/dashboard/home";
 import { colors, radius, type as typography } from "@/lib/design-tokens";
 
-const accentMap = {
-  blue: { bg: colors.accentSoft, color: colors.accent },
-  green: { bg: colors.successBg, color: colors.successText },
-  orange: { bg: colors.warnBg, color: colors.warnText },
-  purple: { bg: "#F3E8FF", color: "#6D28D9" },
-} as const;
-
-export function SnapshotCard({
-  label,
-  value,
-  accent = "blue",
-}: {
+export type SnapshotMetric = {
+  id: string;
   label: string;
   value: string;
-  accent?: FinancialSnapshotMetric["accent"];
-}) {
-  const tone = accentMap[accent];
+};
 
+export function SnapshotCard({ label, value }: { label: string; value: string }) {
   return (
     <article
-      className={`${radius.lg} flex min-h-[148px] flex-col justify-between border p-5 md:min-h-[160px] md:p-6`}
+      className={`${radius.control} flex min-h-[88px] flex-col justify-between border p-3.5 md:min-h-[96px] md:p-4`}
       style={{
         backgroundColor: colors.surface,
         borderColor: colors.borderSubtle,
-        boxShadow: "0 8px 28px rgba(15,23,42,0.05)",
       }}
     >
-      <p className={`${typography.caption} font-semibold leading-5`} style={{ color: colors.textMuted }}>
+      <p className={`${typography.caption} font-medium`} style={{ color: colors.textMuted }}>
         {label}
       </p>
       <p
-        className="mt-3 text-[32px] font-extrabold leading-none tracking-tight md:text-[36px]"
-        style={{ color: tone.color }}
+        className="mt-1 text-xl font-bold leading-tight tabular-nums md:text-2xl"
+        style={{ color: colors.textPrimary }}
         title={value}
       >
         {value}
@@ -45,38 +32,28 @@ export function SnapshotCard({
 }
 
 export function BusinessSnapshot({
-  chips,
+  metrics,
   loading = false,
 }: {
-  chips: BusinessChip[];
+  metrics: SnapshotMetric[];
   loading?: boolean;
 }) {
   return (
     <section aria-label="תמונת מצב עסקית">
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto pb-0.5 md:flex-wrap md:overflow-visible">
+      <h2 className="mb-2.5 text-lg font-bold leading-snug md:text-xl" style={{ color: colors.textPrimary }}>
+        תמונת מצב
+      </h2>
+      <div className="grid min-w-0 grid-cols-2 gap-2 md:gap-3">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={i}
-                className="h-8 w-24 shrink-0 animate-pulse rounded-full border"
+                className="h-[88px] animate-pulse rounded-xl border"
                 style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
               />
             ))
-          : chips.map((chip) => (
-              <span
-                key={chip.id}
-                className={`inline-flex shrink-0 items-center gap-1.5 ${radius.pill} border px-2.5 py-1.5 md:px-3`}
-                style={{
-                  backgroundColor: colors.surface,
-                  borderColor: colors.borderSubtle,
-                  color: colors.textSecondary,
-                }}
-              >
-                <span className="text-xs font-medium">{chip.label}</span>
-                <span className="text-xs font-bold tabular-nums" style={{ color: colors.textPrimary }}>
-                  {chip.value}
-                </span>
-              </span>
+          : metrics.map((metric) => (
+              <SnapshotCard key={metric.id} label={metric.label} value={metric.value} />
             ))}
       </div>
     </section>

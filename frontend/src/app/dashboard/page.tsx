@@ -20,7 +20,6 @@ import {
   buildDecisionItems,
 } from "@/lib/dashboard/decisions";
 import {
-  buildCompactBusinessChips,
   buildHeroActionSummary,
   buildRecentActivityTimeline,
 } from "@/lib/dashboard/home";
@@ -1003,15 +1002,14 @@ export default function DashboardPage() {
     ]
   );
 
-  const businessChips = useMemo(
-    () =>
-      buildCompactBusinessChips({
-        moneyToPay: stats?.moneyToPay ?? 0,
-        documentsThisMonth: monthPayments.length,
-        appointments: upcomingAppointments.length,
-        openTasks: openTasksCount,
-      }),
-    [stats?.moneyToPay, monthPayments.length, upcomingAppointments.length, openTasksCount]
+  const snapshotMetrics = useMemo(
+    () => [
+      { id: "in", label: "כסף נכנס", value: formatShekel(stats?.moneyToReceive ?? 0) },
+      { id: "out", label: "כסף יוצא", value: formatShekel(stats?.moneyToPay ?? 0) },
+      { id: "tasks", label: "משימות פתוחות", value: String(openTasksCount) },
+      { id: "reviews", label: "מסמכים לבדיקה", value: String(documentReviews.length) },
+    ],
+    [stats?.moneyToReceive, stats?.moneyToPay, openTasksCount, documentReviews.length]
   );
 
   const activityTimeline = useMemo(
@@ -1042,13 +1040,6 @@ export default function DashboardPage() {
   );
 
   const businessName = organizationSettings?.name?.trim() || "העסק שלי";
-  const heroCtaLabel =
-    natalieRecommendation.kind === "connect_gmail"
-      ? "חברי את הג׳ימייל"
-      : decisionItems.length > 0
-        ? "טפלי בזה עכשיו"
-        : "";
-
   const scrollToDecisions = useCallback(() => {
     document.getElementById("natalie-decisions")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
@@ -1069,16 +1060,20 @@ export default function DashboardPage() {
     (value: string) => {
       const trimmed = value.trim();
       if (!trimmed) return;
-      if (trimmed.includes("תשלום") || trimmed.includes("שולם") || trimmed.includes("מחכה לתשלום")) {
-        router.push("/payments");
-        return;
-      }
-      if (trimmed.includes("דחוף") || trimmed.includes("ממתין") || trimmed.includes("התחל")) {
+      if (trimmed.includes("דחוף") || trimmed.includes("מה חשוב")) {
         scrollToDecisions();
         return;
       }
-      if (trimmed.includes("יוצא") || trimmed.includes("הוצאות")) {
+      if (trimmed.includes("תשלום") || trimmed.includes("שולם") || trimmed.includes("פתוח")) {
         router.push("/payments");
+        return;
+      }
+      if (trimmed.includes("משימה") || trimmed.includes("משימות")) {
+        router.push("/tasks");
+        return;
+      }
+      if (trimmed.includes("פגישה") || trimmed.includes("יומן") || trimmed.includes("קבע")) {
+        router.push("/dashboard/calendar");
         return;
       }
       if (trimmed.includes("סרק")) {
@@ -1092,7 +1087,7 @@ export default function DashboardPage() {
 
   return (
     <main
-      className="min-h-screen max-w-full overflow-x-clip px-4 pb-28 pt-16 md:px-8 md:pb-8 md:pt-20 lg:mr-60"
+      className="min-h-screen max-w-full overflow-x-clip px-4 pb-32 pt-16 md:px-8 md:pb-8 md:pt-20 lg:mr-60"
       style={{
         background: colors.bg,
         color: colors.textPrimary,
@@ -1132,8 +1127,6 @@ export default function DashboardPage() {
         <NatalieHero
           greeting={natalieBriefing.greeting}
           completedLines={heroSummaryLines}
-          decisionCount={decisionItems.length}
-          ctaLabel={heroCtaLabel}
           loading={pageLoading}
           onCta={handleHeroPrimary}
         />
@@ -1157,20 +1150,11 @@ export default function DashboardPage() {
           onRetry={runSync}
         />
 
-        <BusinessSnapshot chips={businessChips} loading={pageLoading} />
-
-        {(pageLoading || activityTimeline.length > 0) && (
-          <details className="rounded-xl border px-3 py-2 md:px-4" style={{ borderColor: colors.borderSubtle, backgroundColor: colors.surface }}>
-            <summary className="cursor-pointer list-none text-sm font-bold leading-7 marker:content-none md:text-base" style={{ color: colors.textPrimary }}>
-              מה כבר סיימתי עבורך
-            </summary>
-            <div className="mt-2 border-t pt-2" style={{ borderColor: colors.borderSubtle }}>
-              <DashboardActivityTimeline items={activityTimeline} loading={pageLoading} compact />
-            </div>
-          </details>
-        )}
-
         <NatalieCommandBar onSubmit={handleNatalieConversation} onScan={runSync} />
+
+        <BusinessSnapshot metrics={snapshotMetrics} loading={pageLoading} />
+
+        <DashboardActivityTimeline items={activityTimeline} loading={pageLoading} />
 
         <details className={`${radius.card} border`} style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}>
           <summary className="cursor-pointer list-none px-5 py-5 text-lg font-bold md:px-6" style={{ color: colors.textPrimary }}>

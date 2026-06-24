@@ -113,11 +113,11 @@ function SectionHeader({ count }: { count?: number }) {
   return (
     <div>
       <h2 className="text-lg font-bold leading-snug md:text-xl" style={{ color: colors.textPrimary }}>
-        מרכז ההחלטות
+        דורש את תשומת לבך
       </h2>
       {count != null && count > 0 && (
-        <p className="mt-0.5 hidden text-sm md:block" style={{ color: colors.textSecondary }}>
-          {count === 1 ? "דבר אחד שצריך את ההחלטה שלך" : `${count} דברים שצריכים את ההחלטה שלך`}
+        <p className="mt-0.5 text-sm leading-6" style={{ color: colors.textSecondary }}>
+          {count === 1 ? "החלטה אחת — אני מחכה לך" : `${count} החלטות — אני מחכה לך`}
         </p>
       )}
     </div>
