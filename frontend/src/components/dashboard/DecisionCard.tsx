@@ -25,6 +25,7 @@ export function DecisionCard({
   icon: Icon,
   kind,
   emphasized = false,
+  briefingMode = false,
   onPrimary,
   onSecondary,
 }: {
@@ -38,6 +39,7 @@ export function DecisionCard({
   icon: LucideIcon;
   kind: DecisionKind;
   emphasized?: boolean;
+  briefingMode?: boolean;
   onPrimary: () => void;
   onSecondary?: () => void;
 }) {
@@ -49,58 +51,61 @@ export function DecisionCard({
       style={{
         backgroundColor: colors.surface,
         borderColor: emphasized ? colors.accent : urgent ? colors.warnBorder : colors.borderSubtle,
-        boxShadow: emphasized
-          ? "0 12px 36px rgba(29,91,255,0.12)"
-          : "0 6px 24px rgba(15,23,42,0.05)",
+        boxShadow: emphasized ? "0 8px 24px rgba(29,91,255,0.08)" : "0 2px 12px rgba(15,23,42,0.04)",
       }}
     >
-      <div className="flex flex-col gap-4 p-5">
-        <div className="flex min-w-0 items-start gap-4">
-          <span
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl"
-            style={{ backgroundColor: tone.bg, color: tone.color }}
-          >
-            <Icon className="h-5 w-5" strokeWidth={2.2} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`${radius.pill} px-2.5 py-1 text-xs font-bold`}
-                style={{
-                  backgroundColor: urgent ? colors.warnBg : colors.bgSoft,
-                  color: urgent ? colors.warnText : colors.textMuted,
-                }}
-              >
-                {typeLabel}
-              </span>
-              {urgent && (
-                <span className="text-xs font-bold" style={{ color: colors.dangerText }}>
-                  דחוף
-                </span>
-              )}
-            </div>
-            <h3
-              className={`${typography.cardTitle} mt-2 break-words`}
-              style={{ color: colors.textPrimary }}
+      <div className="flex flex-col gap-4 p-4 md:p-5">
+        <div className="flex min-w-0 items-start gap-3 text-right">
+          {!briefingMode && (
+            <span
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl"
+              style={{ backgroundColor: tone.bg, color: tone.color }}
             >
+              <Icon className="h-5 w-5" strokeWidth={2.2} />
+            </span>
+          )}
+          <div className="min-w-0 flex-1">
+            {briefingMode ? (
+              <p className={`${typography.caption} font-bold`} style={{ color: colors.textMuted }}>
+                {typeLabel}
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`${radius.pill} px-2.5 py-1 text-xs font-bold`}
+                  style={{
+                    backgroundColor: urgent ? colors.warnBg : colors.bgSoft,
+                    color: urgent ? colors.warnText : colors.textMuted,
+                  }}
+                >
+                  {typeLabel}
+                </span>
+                {urgent && (
+                  <span className="text-xs font-bold" style={{ color: colors.dangerText }}>
+                    דחוף
+                  </span>
+                )}
+              </div>
+            )}
+            <h3 className={`${typography.cardTitle} mt-1 break-words`} style={{ color: colors.textPrimary }}>
               {title}
             </h3>
-            <p className={`${typography.body} mt-1.5 leading-7`} style={{ color: colors.textSecondary }}>
+            <p className={`${typography.body} mt-1 leading-7`} style={{ color: colors.textSecondary }}>
               {description}
             </p>
             {meta && (
-              <p className={`${typography.caption} mt-2 font-semibold tabular-nums`} style={{ color: colors.textMuted }}>
+              <p className={`${typography.caption} mt-1.5 font-semibold tabular-nums`} style={{ color: colors.textMuted }}>
                 {meta}
               </p>
             )}
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        <div className="flex justify-end">
           <button
             type="button"
             onClick={onPrimary}
-            className={`${radius.control} ${button.primary} w-full sm:w-auto`}
+            className={`${radius.control} ${button.primary} w-full sm:w-auto sm:min-w-[120px]`}
             style={{
               backgroundColor: colors.accent,
               border: `1px solid ${colors.accent}`,
@@ -109,11 +114,11 @@ export function DecisionCard({
           >
             {primaryLabel}
           </button>
-          {secondaryLabel && onSecondary && (
+          {!briefingMode && secondaryLabel && onSecondary && (
             <button
               type="button"
               onClick={onSecondary}
-              className={`${radius.control} ${button.secondary} w-full sm:w-auto`}
+              className={`${radius.control} ${button.secondary} mt-2 w-full sm:mt-0 sm:w-auto`}
               style={{
                 backgroundColor: colors.surface,
                 border: `1px solid ${colors.border}`,

@@ -1,6 +1,6 @@
 "use client";
 
-import type { FinancialSnapshotMetric } from "@/lib/dashboard/home";
+import type { BusinessChip, FinancialSnapshotMetric } from "@/lib/dashboard/home";
 import { colors, radius, type as typography } from "@/lib/design-tokens";
 
 const accentMap = {
@@ -45,32 +45,45 @@ export function SnapshotCard({
 }
 
 export function BusinessSnapshot({
-  metrics,
+  chips,
   loading = false,
 }: {
-  metrics: FinancialSnapshotMetric[];
+  chips: BusinessChip[];
   loading?: boolean;
 }) {
   return (
     <section aria-label="תמונת מצב עסקית">
-      <h2 className={`${typography.sectionTitle} mb-5 leading-snug`} style={{ color: colors.textPrimary }}>
-        תמונת מצב עסקית
+      <h2 className={`${typography.caption} mb-3 font-semibold uppercase tracking-wide`} style={{ color: colors.textMuted }}>
+        תמונת מצב
       </h2>
 
       {loading ? (
-        <div className="grid grid-cols-2 gap-3 md:gap-4">
+        <div className="flex flex-wrap gap-2">
           {Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
-              className="h-[148px] animate-pulse rounded-2xl border md:h-[160px]"
+              className="h-9 w-28 animate-pulse rounded-full border"
               style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
             />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 md:gap-4">
-          {metrics.map((metric) => (
-            <SnapshotCard key={metric.id} label={metric.label} value={metric.value} accent={metric.accent} />
+        <div className="flex flex-wrap gap-2">
+          {chips.map((chip) => (
+            <span
+              key={chip.id}
+              className={`inline-flex items-center gap-2 ${radius.pill} border px-3.5 py-2`}
+              style={{
+                backgroundColor: colors.surface,
+                borderColor: colors.borderSubtle,
+                color: colors.textSecondary,
+              }}
+            >
+              <span className={`${typography.caption} font-semibold`}>{chip.label}</span>
+              <span className={`${typography.caption} font-bold tabular-nums`} style={{ color: colors.textPrimary }}>
+                {chip.value}
+              </span>
+            </span>
           ))}
         </div>
       )}

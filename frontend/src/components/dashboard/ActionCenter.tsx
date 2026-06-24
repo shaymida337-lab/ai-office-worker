@@ -90,14 +90,9 @@ export function ActionCenter({
               meta={item.meta}
               urgent={item.urgent}
               primaryLabel={item.primaryLabel}
-              secondaryLabel={item.secondaryLabel}
+              briefingMode
               emphasized={index === 0 && item.urgent}
               onPrimary={() => handlePrimary(item, router, onMarkPaid, onAttachInvoice, onRetry)}
-              onSecondary={
-                item.secondaryLabel
-                  ? () => handleSecondary(item, router, onAttachInvoice)
-                  : undefined
-              }
             />
           );
         })}
@@ -129,11 +124,11 @@ function SectionHeader({ count }: { count?: number }) {
   return (
     <div>
       <h2 className={`${typography.sectionTitle} leading-snug`} style={{ color: colors.textPrimary }}>
-        דורש את תשומת הלב שלך
+        מרכז ההחלטות
       </h2>
       {count != null && count > 0 && (
         <p className={`${typography.body} mt-1`} style={{ color: colors.textSecondary }}>
-          {count === 1 ? "דבר אחד שצריך החלטה" : `${count} דברים שצריכים החלטה`}
+          {count === 1 ? "דבר אחד שצריך את ההחלטה שלך" : `${count} דברים שצריכים את ההחלטה שלך`}
         </p>
       )}
     </div>

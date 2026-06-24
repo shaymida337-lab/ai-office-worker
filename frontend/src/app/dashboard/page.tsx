@@ -20,10 +20,9 @@ import {
   buildDecisionItems,
 } from "@/lib/dashboard/decisions";
 import {
-  buildFinancialSnapshot,
+  buildCompactBusinessChips,
   buildHeroActionSummary,
   buildRecentActivityTimeline,
-  countHeroWorkItems,
 } from "@/lib/dashboard/home";
 import type { NatalieBriefingInput, NatalieRecommendationInput } from "@/lib/natalie/types";
 import {
@@ -987,31 +986,32 @@ export default function DashboardPage() {
   const heroSummaryLines = useMemo(
     () =>
       buildHeroActionSummary({
-        invoicesScanned: scanStatus?.last?.invoicesFound ?? scanStatus?.last?.saved ?? recentInvoices.length,
+        invoicesSaved: scanStatus?.last?.invoicesFound ?? scanStatus?.last?.saved ?? recentInvoices.length,
+        paymentsPrepared: unpaidPayments.filter((payment) => !payment.missingInvoice).length,
         appointmentsSet: upcomingAppointments.length,
         remindersSent: whatsAppStats?.sentToday ?? 0,
-        pendingPayments: unpaidPayments.length,
-        missingDocuments: documentReviews.length + missingInvoices.length,
         scanRunning,
       }),
     [
       scanStatus?.last?.invoicesFound,
       scanStatus?.last?.saved,
       recentInvoices.length,
+      unpaidPayments,
       upcomingAppointments.length,
       whatsAppStats?.sentToday,
-      unpaidPayments.length,
-      documentReviews.length,
-      missingInvoices.length,
       scanRunning,
     ]
   );
 
-  const heroWorkCount = useMemo(() => countHeroWorkItems(heroSummaryLines), [heroSummaryLines]);
-
-  const financialSnapshot = useMemo(
-    () => buildFinancialSnapshot(stats, accountantSummary),
-    [stats, accountantSummary]
+  const businessChips = useMemo(
+    () =>
+      buildCompactBusinessChips({
+        moneyToPay: stats?.moneyToPay ?? 0,
+        documentsThisMonth: monthPayments.length,
+        appointments: upcomingAppointments.length,
+        openTasks: openTasksCount,
+      }),
+    [stats?.moneyToPay, monthPayments.length, upcomingAppointments.length, openTasksCount]
   );
 
   const activityTimeline = useMemo(
@@ -1045,7 +1045,9 @@ export default function DashboardPage() {
   const heroCtaLabel =
     natalieRecommendation.kind === "connect_gmail"
       ? "חברי את הג׳ימייל"
-      : "מה תרצי שאעשה עכשיו?";
+      : decisionItems.length > 0
+        ? "טפלי בזה עכשיו"
+        : "";
 
   const scrollToDecisions = useCallback(() => {
     document.getElementById("natalie-decisions")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1098,14 +1100,13 @@ export default function DashboardPage() {
     >
       <Nav />
 
-      <div className="mx-auto grid min-w-0 max-w-6xl gap-6 md:gap-7">
+      <div className="mx-auto grid min-w-0 max-w-3xl gap-8 md:gap-10">
         <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
 
         <NatalieTopBar
           businessName={businessName}
           unreadCount={stats?.unreadAlerts ?? 0}
           onNotifications={() => router.push("/message-scans")}
-          onNatalie={() => document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" })}
         />
 
         {showGmailConnect && (
@@ -1130,8 +1131,8 @@ export default function DashboardPage() {
 
         <NatalieHero
           greeting={natalieBriefing.greeting}
-          workCount={heroWorkCount}
-          summaryLines={heroSummaryLines}
+          completedLines={heroSummaryLines}
+          decisionCount={decisionItems.length}
           ctaLabel={heroCtaLabel}
           loading={pageLoading}
           onCta={handleHeroPrimary}
@@ -1147,44 +1148,20 @@ export default function DashboardPage() {
           />
         )}
 
-        <div className="grid gap-4 lg:grid-cols-12 lg:gap-5">
-          <section
-            className={`${radius.card} border p-4 md:p-5 lg:col-span-7`}
-            style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle, boxShadow: "0 10px 36px rgba(15,23,42,0.06)" }}
-          >
-            <ActionCenter
-              items={visibleDecisions}
-              totalCount={decisionItems.length}
-              loading={pageLoading}
-              onMarkPaid={markPaymentPaid}
-              onAttachInvoice={attachInvoiceToPayment}
-              onRetry={runSync}
-            />
-          </section>
+        <ActionCenter
+          items={visibleDecisions}
+          totalCount={decisionItems.length}
+          loading={pageLoading}
+          onMarkPaid={markPaymentPaid}
+          onAttachInvoice={attachInvoiceToPayment}
+          onRetry={runSync}
+        />
 
-          <section
-            className={`${radius.card} border p-4 md:p-5 lg:col-span-5`}
-            style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle, boxShadow: "0 10px 36px rgba(15,23,42,0.06)" }}
-          >
-            <BusinessSnapshot metrics={financialSnapshot} loading={pageLoading} />
-          </section>
-        </div>
+        <DashboardActivityTimeline items={activityTimeline} loading={pageLoading} />
 
-        <div className="grid gap-4 lg:grid-cols-12 lg:gap-5">
-          <section
-            className={`${radius.card} border p-4 md:p-5 lg:col-span-7`}
-            style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle, boxShadow: "0 10px 36px rgba(15,23,42,0.06)" }}
-          >
-            <DashboardActivityTimeline items={activityTimeline} loading={pageLoading} />
-          </section>
+        <BusinessSnapshot chips={businessChips} loading={pageLoading} />
 
-          <section
-            className={`${radius.card} border p-4 md:p-5 lg:col-span-5`}
-            style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle, boxShadow: "0 10px 36px rgba(15,23,42,0.06)" }}
-          >
-            <NatalieCommandBar onSubmit={handleNatalieConversation} onScan={runSync} />
-          </section>
-        </div>
+        <NatalieCommandBar onSubmit={handleNatalieConversation} onScan={runSync} />
 
         <details className={`${radius.card} border`} style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}>
           <summary className="cursor-pointer list-none px-5 py-5 text-lg font-bold md:px-6" style={{ color: colors.textPrimary }}>

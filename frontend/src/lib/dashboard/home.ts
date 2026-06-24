@@ -13,6 +13,12 @@ export type FinancialSnapshotMetric = {
   accent: "blue" | "green" | "orange" | "purple";
 };
 
+export type BusinessChip = {
+  id: string;
+  label: string;
+  value: string;
+};
+
 export type HomeActivityInput = {
   now?: Date;
   scanLogs?: Array<{ id: string; status: string; endedAt: string | null; invoicesFound?: number; saved?: number }>;
@@ -36,12 +42,12 @@ function isToday(value: string, now: Date) {
   );
 }
 
+/** Completed work lines for the morning briefing — first-person voice only. */
 export function buildHeroActionSummary(input: {
-  invoicesScanned?: number;
+  invoicesSaved?: number;
+  paymentsPrepared?: number;
   appointmentsSet?: number;
   remindersSent?: number;
-  pendingPayments?: number;
-  missingDocuments?: number;
   scanRunning?: boolean;
 }): HeroSummaryLine[] {
   const lines: HeroSummaryLine[] = [];
@@ -51,11 +57,19 @@ export function buildHeroActionSummary(input: {
     return lines;
   }
 
-  const invoices = input.invoicesScanned ?? 0;
+  const invoices = input.invoicesSaved ?? 0;
   if (invoices > 0) {
     lines.push({
       id: "invoices",
-      text: invoices === 1 ? "נסרקה חשבונית אחת" : `נסרקו ${invoices} חשבוניות`,
+      text: invoices === 1 ? "שמרתי חשבונית אחת" : `שמרתי ${invoices} חשבוניות`,
+    });
+  }
+
+  const payments = input.paymentsPrepared ?? 0;
+  if (payments > 0) {
+    lines.push({
+      id: "payments",
+      text: payments === 1 ? "הכנתי תשלום אחד" : `הכנתי ${payments} תשלומים`,
     });
   }
 
@@ -63,7 +77,7 @@ export function buildHeroActionSummary(input: {
   if (appointments > 0) {
     lines.push({
       id: "appointments",
-      text: appointments === 1 ? "נקבעה פגישה אחת" : `נקבעו ${appointments} פגישות`,
+      text: appointments === 1 ? "קבעתי פגישה אחת" : `קבעתי ${appointments} פגישות`,
     });
   }
 
@@ -71,23 +85,7 @@ export function buildHeroActionSummary(input: {
   if (reminders > 0) {
     lines.push({
       id: "reminders",
-      text: reminders === 1 ? "נשלחה תזכורת ללקוח" : `נשלחו ${reminders} תזכורות ללקוחות`,
-    });
-  }
-
-  const pending = input.pendingPayments ?? 0;
-  if (pending > 0) {
-    lines.push({
-      id: "payments",
-      text: pending === 1 ? "תשלום אחד ממתין לאישור" : `${pending} תשלומים ממתינים לאישור`,
-    });
-  }
-
-  const missing = input.missingDocuments ?? 0;
-  if (missing > 0) {
-    lines.push({
-      id: "missing",
-      text: missing === 1 ? "נמצא מסמך אחד שחסר בו משהו" : `נמצאו ${missing} מסמכים שחסרים`,
+      text: reminders === 1 ? "שלחתי תזכורת ללקוח" : `שלחתי ${reminders} תזכורות ללקוחות`,
     });
   }
 
@@ -102,6 +100,20 @@ export function countHeroWorkItems(lines: HeroSummaryLine[]) {
   if (lines.length === 1 && lines[0]?.id === "ready") return 0;
   if (lines.length === 1 && lines[0]?.id === "scanning") return 0;
   return lines.length;
+}
+
+export function buildCompactBusinessChips(input: {
+  moneyToPay?: number;
+  documentsThisMonth?: number;
+  appointments?: number;
+  openTasks?: number;
+}): BusinessChip[] {
+  return [
+    { id: "pay", label: "₪ לתשלום", value: formatShekel(input.moneyToPay ?? 0) },
+    { id: "docs", label: "מסמכים החודש", value: String(input.documentsThisMonth ?? 0) },
+    { id: "appts", label: "פגישות", value: String(input.appointments ?? 0) },
+    { id: "tasks", label: "משימות", value: String(input.openTasks ?? 0) },
+  ];
 }
 
 export function buildFinancialSnapshot(
@@ -152,7 +164,7 @@ export function buildRecentActivityTimeline(input: HomeActivityInput): NatalieTi
     const count = log.invoicesFound ?? log.saved ?? 0;
     items.push({
       id: `scan-${log.id}`,
-      text: count > 0 ? `נסרקו ${count} מסמכים מהמייל` : "סיימתי לעבור על המיילים",
+      text: count > 0 ? `שמרתי ${count} מסמכים מהמייל` : "סיימתי לעבור על המיילים",
       occurredAt: log.endedAt,
       kind: "scan_completed",
       sortKey: ended.getTime(),
@@ -166,7 +178,7 @@ export function buildRecentActivityTimeline(input: HomeActivityInput): NatalieTi
     const client = invoice.client?.name?.trim() || "לקוח";
     items.push({
       id: `invoice-${invoice.id}`,
-      text: `נסרקה חשבונית של ${client}`,
+      text: `שמרתי חשבונית מס של ${client}`,
       occurredAt: when,
       kind: "invoice_saved",
       sortKey: date.getTime(),
@@ -180,7 +192,7 @@ export function buildRecentActivityTimeline(input: HomeActivityInput): NatalieTi
     const supplier = payment.supplier?.trim() || "ספק";
     items.push({
       id: `paid-${payment.id}`,
-      text: `אושר תשלום ל${supplier}`,
+      text: `הכנתי תשלום ל${supplier}`,
       occurredAt: when,
       kind: "payment_paid",
       sortKey: date.getTime(),
@@ -194,7 +206,7 @@ export function buildRecentActivityTimeline(input: HomeActivityInput): NatalieTi
     const client = appt.clientName?.trim() || "לקוח";
     items.push({
       id: `appt-${appt.id}`,
-      text: `נקבעה פגישה עם ${client}`,
+      text: `קבעתי פגישה עם ${client}`,
       occurredAt: when,
       kind: "appointment_scheduled",
       sortKey: date.getTime(),
@@ -207,7 +219,7 @@ export function buildRecentActivityTimeline(input: HomeActivityInput): NatalieTi
     const count = input.remindersSentToday ?? 0;
     items.push({
       id: "reminders-today",
-      text: count === 1 ? "נשלחה תזכורת ללקוח" : `נשלחו ${count} תזכורות ללקוחות`,
+      text: count === 1 ? "שלחתי תזכורת ללקוח" : `שלחתי ${count} תזכורות ללקוחות`,
       occurredAt: sentAt.toISOString(),
       kind: "task_created",
       sortKey: sentAt.getTime(),
