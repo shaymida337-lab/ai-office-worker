@@ -83,6 +83,12 @@ function isVadSupported(): boolean {
   return typeof AudioContext !== "undefined";
 }
 
+function isIosDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) return true;
+  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+}
+
 type NatalieInvoiceSummary = {
   id: string;
   supplierName: string | null;
@@ -719,7 +725,8 @@ export function NatalieAssistantWidget() {
     setSpeechError("");
     recordedChunksRef.current = [];
 
-    const vadAvailable = prepareAudioContextInUserGesture();
+    const useVad = !isIosDevice();
+    const vadAvailable = useVad ? prepareAudioContextInUserGesture() : false;
     unlockTtsAudioInUserGesture();
 
     try {
@@ -727,14 +734,18 @@ export function NatalieAssistantWidget() {
         await audioContextRef.current.resume();
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 1,
-        },
-      });
+      const stream = await navigator.mediaDevices.getUserMedia(
+        isIosDevice()
+          ? { audio: true }
+          : {
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                channelCount: 1,
+              },
+            }
+      );
       mediaStreamRef.current = stream;
 
       const preferredMimeType = pickRecorderMimeType();
@@ -775,8 +786,12 @@ export function NatalieAssistantWidget() {
         setMicState("idle");
       };
 
-      recorder.start();
-      if (vadAvailable) {
+      if (isIosDevice()) {
+        recorder.start(1000);
+      } else {
+        recorder.start();
+      }
+      if (useVad && vadAvailable) {
         await startVadMonitoring(stream);
       }
       setMicState("recording");
