@@ -1178,7 +1178,7 @@ export default function DashboardPage() {
 
   return (
     <main
-      className="h-auto min-h-screen max-w-full overflow-x-hidden overflow-y-visible px-3 pb-[calc(11rem+env(safe-area-inset-bottom,0px))] pt-[3.75rem] md:px-8 md:pb-[120px] md:pt-[4.5rem] lg:mr-60 lg:pt-20"
+      className="dashboard-shell h-auto min-h-screen max-w-full overflow-x-hidden px-3 pb-[calc(11rem+env(safe-area-inset-bottom,0px))] pt-[3.75rem] md:px-8 md:pt-[4.5rem] lg:mr-60 lg:overflow-x-clip lg:overflow-y-visible lg:pb-32 lg:pt-20"
       style={{
         background: colors.bg,
         color: colors.textPrimary,

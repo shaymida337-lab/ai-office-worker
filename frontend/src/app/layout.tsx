@@ -30,7 +30,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="he" dir="rtl">
-      <body className="h-auto overflow-x-hidden">
+      <body className="h-auto overflow-x-hidden lg:overflow-x-clip lg:overflow-y-visible">
         <BackendWarmup />
         {children}
         <HelpCenter />
