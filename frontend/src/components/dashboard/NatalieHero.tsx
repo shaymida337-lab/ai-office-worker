@@ -25,37 +25,39 @@ export function NatalieHero({
 
   return (
     <section className="text-right" aria-label="תדרוך בוקר מנטלי">
-      <div className="flex items-start gap-3 md:gap-4">
-        <NataliePortrait size="avatar" className="mt-1" />
-        <div className="min-w-0 flex-1">
-          <h1
-            className="text-[32px] font-extrabold leading-[1.1] tracking-tight md:text-[40px]"
-            style={{ color: colors.textPrimary }}
-          >
-            {greeting} 👋
-          </h1>
-        </div>
+      <div className="mb-4 flex justify-end">
+        <NataliePortrait size="avatar" />
       </div>
 
+      <h1
+        className="text-[30px] font-extrabold leading-[1.12] tracking-tight md:text-[40px]"
+        style={{ color: colors.textPrimary }}
+      >
+        {greeting} 👋
+      </h1>
+
       {loading ? (
-        <p className="mt-3 text-base font-medium leading-7" style={{ color: colors.textSecondary }}>
+        <p className="mt-4 text-base font-medium leading-7" style={{ color: colors.textSecondary }}>
           רגע, אני מסכמת את הבוקר שלך...
         </p>
       ) : (
         <>
           {showCompleted && !isScanning && (
-            <div className="mt-3">
-              <p className="text-base font-bold leading-7" style={{ color: colors.textSecondary }}>
+            <div className="mt-4">
+              <p className="text-base font-semibold leading-7" style={{ color: colors.textSecondary }}>
                 בזמן שלא היית:
               </p>
-              <ul className="mt-1.5 grid gap-0.5">
+              <ul className="mt-2 grid gap-1.5">
                 {completedLines.map((line) => (
-                  <li key={line.id} className="flex items-center justify-end gap-2">
-                    <span className="text-lg font-semibold leading-8" style={{ color: colors.textPrimary }}>
+                  <li key={line.id} className="flex items-center justify-end gap-2.5">
+                    <span
+                      className="text-lg font-semibold leading-8 md:text-xl md:leading-8"
+                      style={{ color: colors.textPrimary }}
+                    >
                       {line.text}
                     </span>
                     <Check
-                      className="h-4 w-4 shrink-0"
+                      className="h-[18px] w-[18px] shrink-0"
                       style={{ color: colors.successText }}
                       strokeWidth={2.5}
                     />
@@ -66,20 +68,20 @@ export function NatalieHero({
           )}
 
           {isScanning && (
-            <p className="mt-3 text-base font-medium leading-7" style={{ color: colors.textSecondary }}>
+            <p className="mt-4 text-lg font-medium leading-8" style={{ color: colors.textSecondary }}>
               {completedLines[0]?.text}
             </p>
           )}
 
           {!isScanning && completedLines[0]?.id === "ready" && (
-            <p className="mt-3 text-base font-medium leading-7" style={{ color: colors.textSecondary }}>
+            <p className="mt-4 text-lg font-medium leading-8" style={{ color: colors.textSecondary }}>
               {completedLines[0].text}
             </p>
           )}
 
           {decisionCount > 0 && (
             <p
-              className="mt-3 text-xl font-bold leading-snug md:text-2xl"
+              className="mt-4 text-[22px] font-bold leading-snug md:text-2xl"
               style={{ color: colors.textPrimary }}
             >
               {decisionCount === 1
@@ -92,7 +94,7 @@ export function NatalieHero({
             <button
               type="button"
               onClick={onCta}
-              className={`${radius.control} ${button.primary} mt-4 w-full sm:w-auto sm:min-w-[200px]`}
+              className={`${radius.control} ${button.primary} mt-4 w-full md:w-auto md:min-w-[220px]`}
               style={{
                 backgroundColor: colors.accent,
                 border: `1px solid ${colors.accent}`,

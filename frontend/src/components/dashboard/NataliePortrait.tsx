@@ -27,8 +27,9 @@ export function NataliePortrait({
     <div
       className={`relative overflow-hidden ${isAvatar ? sizeClass : `${radius.lg} ${sizeClass}`} ${className}`}
       style={{
-        boxShadow: isAvatar ? "0 4px 16px rgba(15,23,42,0.1)" : "0 20px 50px rgba(29,91,255,0.18)",
-        border: `1px solid ${colors.borderSubtle}`,
+        boxShadow: isAvatar ? "0 4px 14px rgba(15,23,42,0.08)" : "0 20px 50px rgba(29,91,255,0.18)",
+        border: `1px solid ${isAvatar ? colors.borderSubtle : colors.borderSubtle}`,
+        backgroundColor: isAvatar ? colors.surface : undefined,
       }}
     >
       {!imageError ? (
@@ -45,8 +46,9 @@ export function NataliePortrait({
         <div
           className={`flex h-full w-full items-center justify-center ${isAvatar ? "" : "flex-col justify-end p-6"}`}
           style={{
+            backgroundColor: isAvatar ? colors.surface : undefined,
             background: isAvatar
-              ? `linear-gradient(135deg, ${colors.accentSoft} 0%, #E0E7FF 100%)`
+              ? undefined
               : `linear-gradient(165deg, ${colors.accentSoft} 0%, #E0E7FF 45%, ${colors.surface} 100%)`,
           }}
         >
@@ -64,8 +66,8 @@ export function NataliePortrait({
           >
             <svg
               viewBox="0 0 64 64"
-              className={isAvatar ? "h-10 w-10" : "h-16 w-16"}
-              style={{ color: isAvatar ? colors.accent : "white" }}
+              className={isAvatar ? "h-9 w-9 md:h-10 md:w-10" : "h-16 w-16"}
+              style={{ color: isAvatar ? colors.textMuted : "white" }}
               fill="currentColor"
             >
               <circle cx="32" cy="22" r="12" opacity="0.95" />
