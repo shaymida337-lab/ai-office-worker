@@ -28,6 +28,7 @@ export const colors = {
 
 export const radius = {
   card: "rounded-2xl",
+  lg: "rounded-2xl",
   control: "rounded-xl",
   pill: "rounded-full",
 } as const;
