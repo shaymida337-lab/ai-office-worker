@@ -67,3 +67,11 @@ export const ONBOARDING_ACTION_CARDS = [
   { label: "הציגי תשלומים", href: "/payments" },
   { label: "דברי איתי", href: "/dashboard" },
 ] as const;
+
+export const ONBOARDING_EXIT_TRANSITION_STEPS = [
+  "יוצרת סביבת עבודה",
+  "מכינה את הדשבורד",
+  "מסדרת את היומן",
+  "מכינה משימות ראשונות",
+  "מוכנה להתחיל לעבוד",
+] as const;
