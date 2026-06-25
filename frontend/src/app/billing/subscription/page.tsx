@@ -1,69 +1,101 @@
 "use client";
 
-import Link from "next/link";
-import { BillingRouteGuard, InlineErrorCard, LoadingSkeleton, useBilling } from "@/components/billing";
+import {
+  BillingRouteGuard,
+  InlineErrorCard,
+  LoadingSkeleton,
+  useBilling,
+} from "@/components/billing";
+import {
+  BillingCTAGroup,
+  BillingHero,
+  BillingPageShell,
+  BillingPrimaryLink,
+  BillingSecondaryLink,
+  BillingValueCard,
+} from "@/components/billing/ui";
 import { BILLING_ROUTES } from "@/lib/billing/model";
 
 export default function BillingSubscriptionPage() {
-  const { loading, error, summary, billingHistory, empty } = useBilling();
+  const { loading, error, summary, billingHistory, empty, valueMetrics } = useBilling();
+
+  const hours = valueMetrics.find((metric) => metric.id === "hours")?.value ?? "0";
+  const documents = valueMetrics.find((metric) => metric.id === "documents")?.value ?? "0";
+  const payments = valueMetrics.find((metric) => metric.id === "payments")?.value ?? "0";
+
+  const recentHistory = billingHistory.slice(0, 3);
+
   return (
     <BillingRouteGuard allowedStates={["active", "reactivated"]}>
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 md:p-8">
-        <h2 className="text-2xl font-extrabold text-slate-900">המנוי שלך פעיל</h2>
-        <p className="mt-3 text-sm leading-7 text-slate-600">הכל עובד כרגיל. אפשר לעדכן אמצעי תשלום או לנהל את המנוי.</p>
-        {loading && <div className="mt-6"><LoadingSkeleton /></div>}
-        {!!error && <div className="mt-6"><InlineErrorCard message={error} /></div>}
+      <BillingPageShell tone="calm">
+        {loading && <LoadingSkeleton />}
+        {!!error && <InlineErrorCard message={error} />}
+
         {!loading && !error && (
-          <>
-            <div className="mt-6 grid gap-3 text-sm md:grid-cols-3">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="font-semibold text-slate-600">מסלול</p>
-                <p className="mt-2 text-lg font-bold text-slate-900">{summary.planName ?? "לא זמין"}</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="font-semibold text-slate-600">מצב נוכחי</p>
-                <p className="mt-2 text-lg font-bold text-slate-900">{summary.status}</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="font-semibold text-slate-600">חיוב הבא</p>
-                <p className="mt-2 text-lg font-bold text-slate-900">
-                  {summary.nextBillingAt ? new Date(summary.nextBillingAt).toLocaleDateString("he-IL") : "לא זמין"}
-                </p>
+          <div className="grid gap-10">
+            <BillingHero
+              headline="המנוי שלך פעיל"
+              subheadline="נטלי ממשיכה לעבוד איתך כרגיל."
+            />
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <BillingValueCard label="מסלול נוכחי" value={summary.planName ?? "—"} accent="emerald" />
+              <BillingValueCard
+                label="חיוב הבא"
+                value={summary.nextBillingAt ? new Date(summary.nextBillingAt).toLocaleDateString("he-IL") : "—"}
+                accent="blue"
+              />
+              <BillingValueCard label="שעות שנחסכו מאז החיוב האחרון" value={hours} accent="violet" icon="⏱️" />
+            </div>
+
+            <div className="grid gap-4">
+              <h3 className="text-xl font-extrabold text-slate-900 md:text-2xl">מה נטלי עשתה מאז החיוב האחרון</h3>
+              <div className="grid gap-4 md:grid-cols-3">
+                <BillingValueCard label="מסמכים שטופלו" value={documents} accent="blue" icon="📄" />
+                <BillingValueCard label="תשלומים שזוהו" value={payments} accent="indigo" icon="💳" />
+                <BillingValueCard label="שעות שנחסכו" value={hours} accent="violet" icon="⏱️" />
               </div>
             </div>
-            <div className="mt-6">
-              <h3 className="text-sm font-bold text-slate-700">היסטוריית חיובים</h3>
+
+            <div className="grid gap-4">
+              <h3 className="text-xl font-extrabold text-slate-900">היסטוריית חיובים</h3>
               {empty || billingHistory.length === 0 ? (
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-5 text-base text-slate-600">
                   אין כרגע היסטוריית חיובים להצגה.
                 </div>
               ) : (
-                <ul className="mt-3 grid gap-2">
-                  {billingHistory.map((item) => (
-                    <li key={item.id} className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-slate-900">{item.description}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${item.status === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-                          {item.status === "paid" ? "שולם" : "בהמתנה"}
-                        </span>
+                <ul className="grid gap-3">
+                  {recentHistory.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div>
+                        <p className="text-base font-bold text-slate-900">{item.description}</p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {new Date(item.date).toLocaleDateString("he-IL")} · ₪{item.amount}
+                        </p>
                       </div>
-                      <p className="mt-1 text-slate-600">₪{item.amount} · {new Date(item.date).toLocaleDateString("he-IL")}</p>
+                      <span
+                        className={`inline-flex w-fit rounded-full px-3 py-1 text-sm font-bold ${
+                          item.status === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"
+                        }`}
+                      >
+                        {item.status === "paid" ? "שולם" : "בהמתנה"}
+                      </span>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link href={BILLING_ROUTES["payment-method"]} className="rounded-xl bg-blue-600 px-5 py-3 text-center text-sm font-bold text-white">
-                עדכון אמצעי תשלום
-              </Link>
-              <Link href={BILLING_ROUTES.manage} className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-center text-sm font-bold text-slate-800">
-                ניהול מנוי
-              </Link>
-            </div>
-          </>
+
+            <BillingCTAGroup
+              primary={<BillingPrimaryLink href={BILLING_ROUTES.manage}>ניהול המנוי</BillingPrimaryLink>}
+              secondary={<BillingSecondaryLink href={BILLING_ROUTES["payment-method"]}>עדכון אמצעי תשלום</BillingSecondaryLink>}
+            />
+          </div>
         )}
-      </section>
+      </BillingPageShell>
     </BillingRouteGuard>
   );
 }

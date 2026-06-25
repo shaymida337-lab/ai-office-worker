@@ -1,15 +1,28 @@
 "use client";
 
-import Link from "next/link";
-import { InlineErrorCard, LoadingSkeleton, useBilling } from "@/components/billing";
+import {
+  InlineErrorCard,
+  LoadingSkeleton,
+  useBilling,
+} from "@/components/billing";
+import {
+  BillingAccessPanels,
+  BillingCTAGroup,
+  BillingHero,
+  BillingHighlightQuote,
+  BillingPageShell,
+  BillingPrimaryLink,
+  BillingSecondaryLink,
+  BillingValueCard,
+} from "@/components/billing/ui";
 import { BILLING_ROUTES } from "@/lib/billing/model";
 
 export default function BillingIndexPage() {
   const { summary, loading, error, valueMetrics } = useBilling();
 
-  const invoicesHandled = valueMetrics.find((metric) => metric.id === "documents")?.value ?? "0";
-  const paymentsFound = valueMetrics.find((metric) => metric.id === "payments")?.value ?? "0";
-  const hoursSaved = valueMetrics.find((metric) => metric.id === "hours")?.value ?? "0";
+  const documents = valueMetrics.find((metric) => metric.id === "documents")?.value ?? "0";
+  const payments = valueMetrics.find((metric) => metric.id === "payments")?.value ?? "0";
+  const hours = valueMetrics.find((metric) => metric.id === "hours")?.value ?? "0";
 
   const isTrial = summary.status === "trial" || summary.status === "trial_ending";
   const isActive = summary.status === "active" || summary.status === "reactivated";
@@ -21,134 +34,91 @@ export default function BillingIndexPage() {
     : 0;
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-6 md:p-10">
+    <BillingPageShell>
       {loading && <LoadingSkeleton />}
       {!loading && !!error && <InlineErrorCard message={error} />}
 
       {!loading && !error && isTrial && (
-        <div className="grid gap-8">
-          <div className="grid gap-3">
-            <h2 className="text-3xl font-extrabold leading-tight text-slate-900 md:text-4xl">נטלי כבר התחילה לעבוד בשבילך</h2>
-            <p className="text-base font-semibold text-slate-700">נותרו {daysLeft} ימים לניסיון</p>
-            <p className="max-w-2xl text-base leading-8 text-slate-700">
-              אני כבר מכירה את העסק שלך. אפשר לבחור מסלול כדי שאמשיך לעבוד איתך ללא הפסקה.
-            </p>
+        <div className="grid gap-10">
+          <BillingHero
+            showPortrait
+            badge={`נותרו ${daysLeft} ימים לניסיון`}
+            headline="נטלי כבר התחילה לעבוד בשבילך"
+            subheadline="בזמן תקופת הניסיון נטלי כבר סידרה מסמכים, זיהתה תשלומים וחסכה לך שעות עבודה. עכשיו אפשר לבחור מסלול כדי שהיא תמשיך לעבוד איתך ללא הפסקה."
+          />
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <BillingValueCard label="מסמכים שטופלו" value={documents} accent="blue" icon="📄" />
+            <BillingValueCard label="תשלומים שזוהו" value={payments} accent="indigo" icon="💳" />
+            <BillingValueCard label="שעות שנחסכו" value={hours} accent="violet" icon="⏱️" />
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <p className="text-sm font-semibold text-slate-600">חשבוניות שטופלו</p>
-              <p className="mt-2 text-3xl font-extrabold text-slate-900">{invoicesHandled}</p>
-            </article>
-            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <p className="text-sm font-semibold text-slate-600">תשלומים שזוהו</p>
-              <p className="mt-2 text-3xl font-extrabold text-slate-900">{paymentsFound}</p>
-            </article>
-            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <p className="text-sm font-semibold text-slate-600">שעות שנחסכו</p>
-              <p className="mt-2 text-3xl font-extrabold text-slate-900">{hoursSaved}</p>
-            </article>
-          </div>
+          <BillingHighlightQuote>
+            אני כבר מכירה את העסק שלך. אם תרצה, אני יכולה להמשיך בדיוק מאיפה שהפסקנו.
+          </BillingHighlightQuote>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Link href={BILLING_ROUTES.plans} className="rounded-xl bg-blue-600 px-6 py-3 text-center text-sm font-bold text-white">
-              בחירת מסלול
-            </Link>
-            <Link href={BILLING_ROUTES["value-report"]} className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-center text-sm font-bold text-slate-800">
-              צפייה בדוח הערך האישי
-            </Link>
-          </div>
+          <BillingCTAGroup
+            primary={<BillingPrimaryLink href={BILLING_ROUTES.plans}>בחירת מסלול</BillingPrimaryLink>}
+            secondary={<BillingSecondaryLink href={BILLING_ROUTES["value-report"]}>צפייה בדוח הערך האישי</BillingSecondaryLink>}
+          />
         </div>
       )}
 
       {!loading && !error && isActive && (
-        <div className="grid gap-8">
-          <div className="grid gap-3">
-            <h2 className="text-3xl font-extrabold leading-tight text-slate-900 md:text-4xl">המנוי שלך פעיל</h2>
-            <p className="max-w-2xl text-base leading-8 text-slate-700">
-              הכל ממשיך לעבוד בצורה רציפה. כאן אפשר לנהל את המנוי ואת אמצעי התשלום.
-            </p>
+        <div className="grid gap-10">
+          <BillingHero
+            headline="המנוי שלך פעיל"
+            subheadline="נטלי ממשיכה לעבוד איתך כרגיל. הכל מסודר — אפשר לנהל את המנוי ואת אמצעי התשלום בקלות."
+          />
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <BillingValueCard label="מסלול נוכחי" value={summary.planName ?? "—"} accent="emerald" />
+            <BillingValueCard
+              label="חיוב הבא"
+              value={summary.nextBillingAt ? new Date(summary.nextBillingAt).toLocaleDateString("he-IL") : "—"}
+              accent="blue"
+            />
+            <BillingValueCard label="שעות שנחסכו מאז החיוב האחרון" value={hours} accent="violet" />
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <p className="text-sm font-semibold text-slate-600">מסלול נוכחי</p>
-              <p className="mt-2 text-2xl font-extrabold text-slate-900">{summary.planName ?? "לא זמין"}</p>
-            </article>
-            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <p className="text-sm font-semibold text-slate-600">חיוב הבא</p>
-              <p className="mt-2 text-2xl font-extrabold text-slate-900">
-                {summary.nextBillingAt ? new Date(summary.nextBillingAt).toLocaleDateString("he-IL") : "לא זמין"}
-              </p>
-            </article>
-            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <p className="text-sm font-semibold text-slate-600">ערך מאז החיוב האחרון</p>
-              <p className="mt-2 text-2xl font-extrabold text-slate-900">{hoursSaved} שעות</p>
-            </article>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Link href={BILLING_ROUTES.manage} className="rounded-xl bg-blue-600 px-6 py-3 text-center text-sm font-bold text-white">
-              ניהול המנוי
-            </Link>
-            <Link href={BILLING_ROUTES["payment-method"]} className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-center text-sm font-bold text-slate-800">
-              עדכון אמצעי תשלום
-            </Link>
-          </div>
+          <BillingCTAGroup
+            primary={<BillingPrimaryLink href={BILLING_ROUTES.manage}>ניהול המנוי</BillingPrimaryLink>}
+            secondary={<BillingSecondaryLink href={BILLING_ROUTES["payment-method"]}>עדכון אמצעי תשלום</BillingSecondaryLink>}
+          />
         </div>
       )}
 
       {!loading && !error && isRestricted && (
-        <div className="grid gap-8">
-          <div className="grid gap-3">
-            <h2 className="text-3xl font-extrabold leading-tight text-slate-900 md:text-4xl">נטלי ממתינה לחזור לעבוד איתך</h2>
-            <p className="max-w-2xl text-base leading-8 text-slate-700">
-              אפשר להמשיך לצפות בנתונים הקיימים. כדי לחזור לעבודה מלאה צריך להפעיל מנוי מחדש.
-            </p>
-          </div>
+        <div className="grid gap-10">
+          <BillingHero
+            headline="נטלי ממתינה לחזור לעבוד איתך"
+            subheadline="המידע שלך שמור. אפשר לצפות בנתונים קיימים, וכשתרצה להחזיר את נטלי לעבודה — זה ייקח רגע."
+          />
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <article className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-              <p className="text-sm font-bold text-emerald-800">זמין כרגע</p>
-              <ul className="mt-2 grid gap-1 text-sm text-emerald-800">
-                <li>• צפייה בדוחות ובחשבוניות</li>
-                <li>• גישה להיסטוריית פעילות</li>
-              </ul>
-            </article>
-            <article className="rounded-2xl border border-amber-300 bg-amber-50 p-5">
-              <p className="text-sm font-bold text-amber-900">נעול כרגע</p>
-              <ul className="mt-2 grid gap-1 text-sm text-amber-900">
-                <li>• יצירה ועריכה של פריטים</li>
-                <li>• הפעלת אוטומציות חדשות</li>
-              </ul>
-            </article>
-          </div>
+          <BillingAccessPanels
+            availableItems={["צפייה בדוחות ובחשבוניות", "גישה להיסטוריית פעילות", "כל הנתונים שכבר נאספו"]}
+            lockedItems={["יצירה ועריכה של פריטים חדשים", "הפעלת אוטומציות חדשות", "עבודה שוטפת עם נטלי"]}
+          />
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Link href={BILLING_ROUTES.reactivate} className="rounded-xl bg-blue-600 px-6 py-3 text-center text-sm font-bold text-white">
-              הפעלת מנוי מחדש
-            </Link>
-            <Link href="/dashboard" className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-center text-sm font-bold text-slate-800">
-              צפייה בנתונים
-            </Link>
-          </div>
+          <BillingCTAGroup
+            primary={<BillingPrimaryLink href={BILLING_ROUTES.reactivate}>הפעלת מנוי מחדש</BillingPrimaryLink>}
+            secondary={<BillingSecondaryLink href="/dashboard">צפייה בנתונים</BillingSecondaryLink>}
+          />
         </div>
       )}
 
       {!loading && !error && isPastDue && (
-        <div className="grid gap-6">
-          <h2 className="text-3xl font-extrabold leading-tight text-slate-900 md:text-4xl">התשלום האחרון לא הושלם</h2>
-          <p className="max-w-2xl text-base leading-8 text-slate-700">אפשר לנסות שוב תשלום או לעדכן אמצעי תשלום כדי לחזור לעבודה מלאה.</p>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Link href={BILLING_ROUTES.failed} className="rounded-xl bg-blue-600 px-6 py-3 text-center text-sm font-bold text-white">
-              המשך לטיפול בתשלום
-            </Link>
-            <Link href={BILLING_ROUTES["payment-method"]} className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-center text-sm font-bold text-slate-800">
-              עדכון אמצעי תשלום
-            </Link>
-          </div>
+        <div className="grid gap-8">
+          <BillingHero
+            headline="התשלום האחרון לא הושלם"
+            subheadline="אפשר לנסות שוב תשלום או לעדכן אמצעי תשלום כדי שנטלי תמשיך לעבוד איתך ללא הפרעה."
+          />
+          <BillingCTAGroup
+            primary={<BillingPrimaryLink href={BILLING_ROUTES.failed}>המשך לטיפול בתשלום</BillingPrimaryLink>}
+            secondary={<BillingSecondaryLink href={BILLING_ROUTES["payment-method"]}>עדכון אמצעי תשלום</BillingSecondaryLink>}
+          />
         </div>
       )}
-    </section>
+    </BillingPageShell>
   );
 }

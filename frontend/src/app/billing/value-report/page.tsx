@@ -1,45 +1,75 @@
 "use client";
 
-import Link from "next/link";
-import { BillingRouteGuard, InlineErrorCard, LoadingSkeleton, useBilling } from "@/components/billing";
+import {
+  BillingRouteGuard,
+  InlineErrorCard,
+  LoadingSkeleton,
+  useBilling,
+} from "@/components/billing";
+import {
+  BillingCTAGroup,
+  BillingHero,
+  BillingPageShell,
+  BillingPrimaryLink,
+  BillingSecondaryLink,
+  BillingValueCard,
+} from "@/components/billing/ui";
 import { BILLING_ROUTES } from "@/lib/billing/model";
+
+const REPORT_CARDS = [
+  { id: "documents", label: "קראתי וסידרתי מסמכים", accent: "blue" as const, icon: "📄" },
+  { id: "payments", label: "זיהיתי תשלומים", accent: "indigo" as const, icon: "💳" },
+  { id: "hours", label: "חסכתי לך זמן", accent: "violet" as const, icon: "⏱️" },
+  { id: "tasks", label: "הכנתי את העסק להמשך עבודה מסודרת", accent: "emerald" as const, icon: "✨" },
+] as const;
 
 export default function BillingValueReportPage() {
   const { loading, error, empty, valueMetrics } = useBilling();
+
+  const metricValue = (id: string) => valueMetrics.find((metric) => metric.id === id)?.value ?? "—";
+
   return (
     <BillingRouteGuard allowedStates={["trial", "trial_ending"]}>
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 md:p-8">
-        <h2 className="text-2xl font-extrabold text-slate-900">הערך שכבר קיבלת מ-Natalie</h2>
-        <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
-          הנתונים האלו מסכמים את הערך הפרקטי שקיבלת עד עכשיו כדי לעזור בהחלטת המסלול.
-        </p>
-        {loading && <div className="mt-6"><LoadingSkeleton /></div>}
-        {!!error && <div className="mt-6"><InlineErrorCard message={error} /></div>}
-        {!loading && !error && empty && (
-          <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">
-            עדיין אין מספיק נתונים לדוח אישי. אפשר להמשיך לבחירת מסלול ולהתחיל לצבור ערך.
+      <BillingPageShell>
+        {loading && <LoadingSkeleton />}
+        {!!error && <InlineErrorCard message={error} />}
+
+        {!loading && !error && (
+          <div className="grid gap-10">
+            <BillingHero
+              headline="זה מה שנטלי כבר עשתה בשבילך"
+              subheadline="בזמן הניסיון נטלי התחילה להוריד ממך עבודה משרדית אמיתית."
+            />
+
+            {empty ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-6 text-base leading-8 text-slate-700">
+                עדיין אין מספיק נתונים לדוח אישי — אבל נטלי ממשיכה לעבוד. אפשר להמשיך לבחירת מסלול ולתת לה להמשיך מאיפה שהפסיקה.
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {REPORT_CARDS.map((card) => (
+                  <BillingValueCard
+                    key={card.id}
+                    label={card.label}
+                    value={metricValue(card.id)}
+                    accent={card.accent}
+                    icon={card.icon}
+                  />
+                ))}
+              </div>
+            )}
+
+            <p className="text-center text-lg font-semibold leading-9 text-slate-700 md:text-xl">
+              זו רק ההתחלה. ככל שנטלי עובדת יותר, היא מכירה את העסק שלך טוב יותר.
+            </p>
+
+            <BillingCTAGroup
+              primary={<BillingPrimaryLink href={BILLING_ROUTES.plans}>המשך לבחירת מסלול</BillingPrimaryLink>}
+              secondary={<BillingSecondaryLink href="/billing">חזרה</BillingSecondaryLink>}
+            />
           </div>
         )}
-        {!loading && !error && !empty && (
-          <div className="mt-6 grid gap-3 md:grid-cols-2">
-            {valueMetrics.map((metric) => (
-              <article key={metric.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-600">{metric.label}</p>
-                <p className="mt-2 text-2xl font-extrabold text-slate-900">{metric.value}</p>
-                <p className="mt-1 text-xs text-slate-500">{metric.helper}</p>
-              </article>
-            ))}
-          </div>
-        )}
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <Link href={BILLING_ROUTES.plans} className="rounded-xl bg-blue-600 px-5 py-3 text-center text-sm font-bold text-white">
-            המשך לבחירת מסלול
-          </Link>
-          <Link href={BILLING_ROUTES.trial} className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-center text-sm font-bold text-slate-800">
-            חזרה
-          </Link>
-        </div>
-      </section>
+      </BillingPageShell>
     </BillingRouteGuard>
   );
 }
