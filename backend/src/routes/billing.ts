@@ -15,11 +15,25 @@ export const billingRouter = Router();
 
 billingRouter.use(authMiddleware);
 
-billingRouter.get("/subscription-status", async (req, res, next) => {
+function billingErrorMessage(err: unknown) {
+  const message = err instanceof Error ? err.message : "Billing request failed";
+  if (/Stripe is not configured|Missing STRIPE_/i.test(message)) {
+    return {
+      status: 503,
+      error: message,
+      hint:
+        "Set STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_STARTER, STRIPE_PRICE_GROWTH and retry.",
+    };
+  }
+  return { status: 500, error: message };
+}
+
+billingRouter.get("/subscription-status", async (req, res) => {
   try {
     res.json(await getBillingSummary(req.auth!.organizationId));
   } catch (err) {
-    next(err);
+    const payload = billingErrorMessage(err);
+    res.status(payload.status).json(payload);
   }
 });
 
@@ -36,7 +50,7 @@ billingRouter.get("/plans", async (_req, res) => {
   res.json(plans);
 });
 
-billingRouter.post("/checkout-session", async (req, res, next) => {
+billingRouter.post("/checkout-session", async (req, res) => {
   try {
     const planId = req.body?.planId as "starter" | "growth" | undefined;
     if (!planId || !["starter", "growth"].includes(planId)) {
@@ -55,11 +69,12 @@ billingRouter.post("/checkout-session", async (req, res, next) => {
       })
     );
   } catch (err) {
-    next(err);
+    const payload = billingErrorMessage(err);
+    res.status(payload.status).json(payload);
   }
 });
 
-billingRouter.post("/payment-method/session", async (req, res, next) => {
+billingRouter.post("/payment-method/session", async (req, res) => {
   try {
     const origin = config.frontendUrl;
     res.json(
@@ -70,11 +85,12 @@ billingRouter.post("/payment-method/session", async (req, res, next) => {
       })
     );
   } catch (err) {
-    next(err);
+    const payload = billingErrorMessage(err);
+    res.status(payload.status).json(payload);
   }
 });
 
-billingRouter.post("/subscription/action", async (req, res, next) => {
+billingRouter.post("/subscription/action", async (req, res) => {
   try {
     const action = req.body?.action as "pause" | "cancel" | "reactivate" | undefined;
     if (!action || !["pause", "cancel", "reactivate"].includes(action)) {
@@ -83,22 +99,25 @@ billingRouter.post("/subscription/action", async (req, res, next) => {
     }
     res.json(await applySubscriptionAction(req.auth!.organizationId, action));
   } catch (err) {
-    next(err);
+    const payload = billingErrorMessage(err);
+    res.status(payload.status).json(payload);
   }
 });
 
-billingRouter.get("/history", async (req, res, next) => {
+billingRouter.get("/history", async (req, res) => {
   try {
     res.json(await getBillingHistory(req.auth!.organizationId));
   } catch (err) {
-    next(err);
+    const payload = billingErrorMessage(err);
+    res.status(payload.status).json(payload);
   }
 });
 
-billingRouter.get("/value-report", async (req, res, next) => {
+billingRouter.get("/value-report", async (req, res) => {
   try {
     res.json(await getValueReport(req.auth!.organizationId));
   } catch (err) {
-    next(err);
+    const payload = billingErrorMessage(err);
+    res.status(payload.status).json(payload);
   }
 });
