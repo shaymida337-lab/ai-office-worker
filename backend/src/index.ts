@@ -50,7 +50,16 @@ function createApp(configModule: ConfigModule, prismaModule: PrismaModule) {
       credentials: true,
     })
   );
-  app.use(express.json());
+  app.use(
+    express.json({
+      verify: (req, _res, buf) => {
+        const url = (req as { originalUrl?: string; url?: string }).originalUrl ?? req.url ?? "";
+        if (url.includes("/webhook/stripe") || url.includes("/webhooks/stripe")) {
+          (req as express.Request & { rawBody?: string }).rawBody = buf.toString("utf8");
+        }
+      },
+    })
+  );
   app.use(express.urlencoded({ extended: true }));
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
@@ -89,6 +98,7 @@ async function registerRoutes(app: express.Express) {
     const [
       { authRouter },
       { apiRouter },
+      { billingRouter },
       { cronRouter },
       { integrationsRouter },
       { webhooksRouter },
@@ -98,6 +108,7 @@ async function registerRoutes(app: express.Express) {
     ] = await Promise.all([
       import("./routes/auth.js"),
       import("./routes/api.js"),
+      import("./routes/billing.js"),
       import("./routes/cron.js"),
       import("./routes/integrations.js"),
       import("./routes/webhooks.js"),
@@ -109,6 +120,7 @@ async function registerRoutes(app: express.Express) {
     app.use("/auth", authRouter);
     app.use("/api/auth", authRouter);
     app.use("/api/integrations", integrationsRouter);
+    app.use("/api/billing", billingRouter);
     app.use("/api/clients", clientsRouter);
     app.use("/api/clients", clientWhatsappRouter);
     app.use("/api/social", socialRouter);

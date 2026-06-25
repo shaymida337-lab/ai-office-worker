@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   BILLING_MOCK_HISTORY,
@@ -14,6 +14,15 @@ import {
   type BillingValueMetric,
   isBillingSubscriptionState,
 } from "@/lib/billing/model";
+import {
+  createBillingCheckoutSession,
+  createBillingPaymentMethodSession,
+  getBillingHistory,
+  getBillingPlans,
+  getBillingSummary,
+  getBillingValueReport,
+  runBillingSubscriptionAction,
+} from "@/lib/api";
 
 type BillingContextValue = {
   loading: boolean;
@@ -25,6 +34,10 @@ type BillingContextValue = {
   billingHistory: BillingHistoryItem[];
   selectedPlanId: BillingPlan["id"];
   setSelectedPlanId: (next: BillingPlan["id"]) => void;
+  refresh: () => Promise<void>;
+  beginCheckout: () => Promise<void>;
+  beginPaymentMethodUpdate: () => Promise<void>;
+  runSubscriptionAction: (action: "pause" | "cancel" | "reactivate") => Promise<void>;
   setMockState: (next: BillingSubscriptionState) => void;
 };
 
@@ -41,29 +54,145 @@ function getInitialMockState(searchValue: string | null): BillingSubscriptionSta
 export function BillingProvider({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const queryState = searchParams.get("mockState");
-  const queryLoading = searchParams.get("mockLoading");
-  const queryError = searchParams.get("mockError");
-  const queryEmpty = searchParams.get("mockEmpty");
+  const useMockData = searchParams.get("mock") === "1";
   const [mockState, setMockStateValue] = useState<BillingSubscriptionState>(() => getInitialMockState(queryState));
+  const [loading, setLoading] = useState(!useMockData);
+  const [error, setError] = useState("");
+  const [summary, setSummary] = useState<BillingSummary>(BILLING_MOCK_SUMMARY_BY_STATE[mockState]);
+  const [plans, setPlans] = useState<BillingPlan[]>(BILLING_MOCK_PLANS);
+  const [valueMetrics, setValueMetrics] = useState<BillingValueMetric[]>(BILLING_MOCK_VALUE_METRICS);
+  const [billingHistory, setBillingHistory] = useState<BillingHistoryItem[]>(BILLING_MOCK_HISTORY);
   const [selectedPlanId, setSelectedPlanId] = useState<BillingPlan["id"]>("growth");
+  const [busyAction, setBusyAction] = useState<"" | "checkout" | "payment_method" | "subscription_action">("");
+
+  const applyMockState = useCallback(
+    (state: BillingSubscriptionState) => {
+      setSummary(BILLING_MOCK_SUMMARY_BY_STATE[state]);
+      setPlans(BILLING_MOCK_PLANS);
+      setValueMetrics(BILLING_MOCK_VALUE_METRICS);
+      setBillingHistory(BILLING_MOCK_HISTORY);
+      setError("");
+      setLoading(false);
+    },
+    []
+  );
+
+  const refresh = useCallback(async () => {
+    if (useMockData) {
+      applyMockState(mockState);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const [summaryRes, plansRes, historyRes, valueRes] = await Promise.all([
+        getBillingSummary(),
+        getBillingPlans(),
+        getBillingHistory(),
+        getBillingValueReport(),
+      ]);
+      setSummary(summaryRes);
+      setPlans(plansRes as BillingPlan[]);
+      setBillingHistory(historyRes as BillingHistoryItem[]);
+      setValueMetrics(valueRes as BillingValueMetric[]);
+      if (plansRes.length > 0 && !plansRes.some((plan) => plan.id === selectedPlanId)) {
+        setSelectedPlanId(plansRes[0]!.id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "אירעה תקלה זמנית בטעינת נתוני החיוב.");
+    } finally {
+      setLoading(false);
+    }
+  }, [applyMockState, mockState, selectedPlanId, useMockData]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const beginCheckout = useCallback(async () => {
+    if (busyAction) return;
+    setBusyAction("checkout");
+    setError("");
+    try {
+      const result = await createBillingCheckoutSession(selectedPlanId);
+      if (!result.url) throw new Error("חסרה כתובת מעבר לעמוד התשלום.");
+      window.location.href = result.url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "לא הצלחתי להתחיל תשלום.");
+    } finally {
+      setBusyAction("");
+    }
+  }, [busyAction, selectedPlanId]);
+
+  const beginPaymentMethodUpdate = useCallback(async () => {
+    if (busyAction) return;
+    setBusyAction("payment_method");
+    setError("");
+    try {
+      const result = await createBillingPaymentMethodSession();
+      if (!result.url) throw new Error("חסרה כתובת לעדכון אמצעי תשלום.");
+      window.location.href = result.url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "לא הצלחתי לפתוח עדכון אמצעי תשלום.");
+    } finally {
+      setBusyAction("");
+    }
+  }, [busyAction]);
+
+  const runSubscriptionAction = useCallback(
+    async (action: "pause" | "cancel" | "reactivate") => {
+      if (busyAction) return;
+      setBusyAction("subscription_action");
+      setError("");
+      try {
+        await runBillingSubscriptionAction(action);
+        await refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "פעולת המנוי נכשלה.");
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [busyAction, refresh]
+  );
 
   const value = useMemo<BillingContextValue>(
     () => ({
-      loading: queryLoading === "1",
-      error: queryError === "1" ? "אירעה תקלה זמנית בטעינת נתוני החיוב." : "",
-      empty: queryEmpty === "1",
-      summary: BILLING_MOCK_SUMMARY_BY_STATE[mockState],
-      plans: BILLING_MOCK_PLANS,
-      valueMetrics: queryEmpty === "1" ? [] : BILLING_MOCK_VALUE_METRICS,
-      billingHistory: queryEmpty === "1" ? [] : BILLING_MOCK_HISTORY,
+      loading: loading || busyAction !== "",
+      error,
+      empty: !loading && !error && valueMetrics.length === 0 && billingHistory.length === 0,
+      summary,
+      plans,
+      valueMetrics,
+      billingHistory,
       selectedPlanId,
       setSelectedPlanId,
+      refresh,
+      beginCheckout,
+      beginPaymentMethodUpdate,
+      runSubscriptionAction,
       setMockState: (next) => {
         setMockStateValue(next);
         if (typeof window !== "undefined") window.localStorage.setItem(BILLING_STATE_STORAGE_KEY, next);
+        if (useMockData) applyMockState(next);
       },
     }),
-    [mockState, queryLoading, queryError, queryEmpty, selectedPlanId]
+    [
+      applyMockState,
+      beginCheckout,
+      beginPaymentMethodUpdate,
+      billingHistory,
+      busyAction,
+      error,
+      loading,
+      plans,
+      refresh,
+      runSubscriptionAction,
+      selectedPlanId,
+      summary,
+      useMockData,
+      valueMetrics,
+    ]
   );
 
   return <BillingContext.Provider value={value}>{children}</BillingContext.Provider>;

@@ -6,7 +6,7 @@ import { BillingRouteGuard, InlineErrorCard, LoadingSkeleton, useBilling } from 
 import { BILLING_ROUTES } from "@/lib/billing/model";
 
 export default function BillingManagePage() {
-  const { loading, error, empty } = useBilling();
+  const { loading, error, empty, runSubscriptionAction } = useBilling();
   const [confirmType, setConfirmType] = useState<"pause" | "cancel" | null>(null);
   return (
     <BillingRouteGuard allowedStates={["active", "reactivated"]}>
@@ -58,8 +58,16 @@ export default function BillingManagePage() {
               <button type="button" onClick={() => setConfirmType(null)} className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-800">
                 סגור
               </button>
-              <button type="button" onClick={() => setConfirmType(null)} className="flex-1 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white">
-                הבנתי
+              <button
+                type="button"
+                onClick={() => {
+                  const action = confirmType === "pause" ? "pause" : "cancel";
+                  void runSubscriptionAction(action);
+                  setConfirmType(null);
+                }}
+                className="flex-1 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white"
+              >
+                אשר
               </button>
             </div>
           </div>

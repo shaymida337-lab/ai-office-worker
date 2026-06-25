@@ -198,6 +198,13 @@ export const config = {
   },
 
   driveRootFolder: optional("GOOGLE_DRIVE_ROOT", "AI Office Worker"),
+  stripe: {
+    secretKey: optional("STRIPE_SECRET_KEY"),
+    webhookSecret: optional("STRIPE_WEBHOOK_SECRET"),
+    starterPriceId: optional("STRIPE_PRICE_STARTER"),
+    growthPriceId: optional("STRIPE_PRICE_GROWTH"),
+    customerPortalReturnUrl: optional("STRIPE_CUSTOMER_PORTAL_RETURN_URL", `${defaultFrontendUrl()}/billing/subscription`),
+  },
 };
 
 export function validateStartupEnv() {

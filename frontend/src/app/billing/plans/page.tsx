@@ -5,7 +5,7 @@ import { BillingRouteGuard, InlineErrorCard, LoadingSkeleton, PlanCard, useBilli
 import { BILLING_ROUTES } from "@/lib/billing/model";
 
 export default function BillingPlansPage() {
-  const { loading, error, plans, selectedPlanId, setSelectedPlanId, empty } = useBilling();
+  const { loading, error, plans, selectedPlanId, setSelectedPlanId, empty, beginCheckout } = useBilling();
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? plans[0];
   return (
     <BillingRouteGuard allowedStates={["trial", "trial_ending", "restricted", "cancelled", "past_due", "paused"]}>
@@ -35,9 +35,13 @@ export default function BillingPlansPage() {
           </>
         )}
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <Link href={BILLING_ROUTES.checkout} className="rounded-xl bg-blue-600 px-5 py-3 text-center text-sm font-bold text-white">
+          <button
+            type="button"
+            onClick={() => void beginCheckout()}
+            className="rounded-xl bg-blue-600 px-5 py-3 text-center text-sm font-bold text-white"
+          >
             המשך לתשלום
-          </Link>
+          </button>
           <Link href={BILLING_ROUTES["value-report"]} className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-center text-sm font-bold text-slate-800">
             חזרה לדוח הערך
           </Link>

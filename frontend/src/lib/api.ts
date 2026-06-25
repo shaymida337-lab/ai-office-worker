@@ -210,3 +210,83 @@ export type SocialDraft = {
   status: string;
   createdAt: string;
 };
+
+export type BillingSubscriptionState =
+  | "trial"
+  | "trial_ending"
+  | "active"
+  | "past_due"
+  | "restricted"
+  | "paused"
+  | "cancelled"
+  | "reactivated";
+
+export type BillingSummaryResponse = {
+  organizationName: string;
+  planName: string | null;
+  trialEndsAt: string | null;
+  nextBillingAt: string | null;
+  readOnly: boolean;
+  status: BillingSubscriptionState;
+};
+
+export type BillingPlanResponse = {
+  id: "starter" | "growth";
+  name: string;
+  priceMonthly: number;
+  description: string;
+  highlights: string[];
+  recommended?: boolean;
+  available?: boolean;
+};
+
+export type BillingHistoryResponse = {
+  id: string;
+  date: string;
+  amount: number;
+  status: "paid" | "pending";
+  description: string;
+};
+
+export type BillingValueMetricResponse = {
+  id: "documents" | "tasks" | "payments" | "hours";
+  label: string;
+  value: string;
+  helper: string;
+};
+
+export async function getBillingSummary() {
+  return apiFetch<BillingSummaryResponse>("/api/billing/subscription-status");
+}
+
+export async function getBillingPlans() {
+  return apiFetch<BillingPlanResponse[]>("/api/billing/plans");
+}
+
+export async function getBillingHistory() {
+  return apiFetch<BillingHistoryResponse[]>("/api/billing/history");
+}
+
+export async function getBillingValueReport() {
+  return apiFetch<BillingValueMetricResponse[]>("/api/billing/value-report");
+}
+
+export async function createBillingCheckoutSession(planId: "starter" | "growth") {
+  return apiFetch<{ sessionId: string; url: string | null }>("/api/billing/checkout-session", {
+    method: "POST",
+    body: JSON.stringify({ planId }),
+  });
+}
+
+export async function createBillingPaymentMethodSession() {
+  return apiFetch<{ sessionId: string; url: string | null }>("/api/billing/payment-method/session", {
+    method: "POST",
+  });
+}
+
+export async function runBillingSubscriptionAction(action: "pause" | "cancel" | "reactivate") {
+  return apiFetch<BillingSummaryResponse>("/api/billing/subscription/action", {
+    method: "POST",
+    body: JSON.stringify({ action }),
+  });
+}

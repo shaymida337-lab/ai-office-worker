@@ -13,8 +13,17 @@ import { analyzeAndSaveMessage } from "../services/messageScanner.js";
 import { ingestWhatsAppInvoiceMedia, parseTwilioMedia } from "../services/whatsappInvoiceIngestion.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "../services/classification/junkFilter.js";
 import { recordFinancialDocumentDecision } from "../services/financialDocuments.js";
+import { processStripeWebhookEvent, verifyStripeWebhookSignature } from "../services/billing.js";
 
 export const webhooksRouter = Router();
+
+declare global {
+  namespace Express {
+    interface Request {
+      rawBody?: string;
+    }
+  }
+}
 
 function whatsappWebhookHealth(_req: Request, res: Response) {
   const configuration = getWhatsAppConfigurationStatus();
@@ -291,6 +300,19 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
   res.type("text/xml").send(twiml.toString());
 }
 
+async function handleStripeWebhook(req: Request, res: Response) {
+  try {
+    const signature = req.header("stripe-signature");
+    const rawBody = req.rawBody ?? JSON.stringify(req.body ?? {});
+    const event = verifyStripeWebhookSignature(rawBody, signature);
+    const result = await processStripeWebhookEvent(event);
+    res.status(200).json({ received: true, ...result });
+  } catch (err) {
+    console.error("[webhook] Stripe processing failed", err instanceof Error ? err.message : String(err));
+    res.status(400).json({ error: err instanceof Error ? err.message : "Invalid Stripe webhook" });
+  }
+}
+
 async function findAssistantByOwnerPhone(phone: string) {
   const rows = await prisma.$queryRawUnsafe<Array<{ organizationId: string }>>(
     'SELECT "organizationId" FROM "WhatsAppAssistant" WHERE "ownerPhone" = $1 AND "isActive" = true LIMIT 1',
@@ -490,5 +512,6 @@ async function scanWhatsAppMessage(organizationId: string, logId: string, phone:
 
 webhooksRouter.post("/twilio/whatsapp", handleTwilioWhatsApp);
 webhooksRouter.post("/whatsapp", handleTwilioWhatsApp);
+webhooksRouter.post("/stripe", handleStripeWebhook);
 webhooksRouter.get("/twilio/whatsapp", whatsappWebhookHealth);
 webhooksRouter.get("/whatsapp", whatsappWebhookHealth);

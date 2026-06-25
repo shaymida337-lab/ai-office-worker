@@ -1,11 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { BillingRouteGuard, InlineErrorCard, LoadingSkeleton, PlanCard, useBilling } from "@/components/billing";
 import { BILLING_ROUTES } from "@/lib/billing/model";
 
 export default function BillingReactivatePage() {
-  const { loading, error, empty, plans, selectedPlanId, setSelectedPlanId } = useBilling();
+  const { loading, error, empty, plans, selectedPlanId, setSelectedPlanId, beginCheckout } = useBilling();
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? plans[0];
   return (
     <BillingRouteGuard allowedStates={["restricted", "paused", "cancelled", "past_due"]}>
@@ -35,12 +34,16 @@ export default function BillingReactivatePage() {
           </>
         )}
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <Link href={BILLING_ROUTES.checkout} className="rounded-xl bg-blue-600 px-5 py-3 text-center text-sm font-bold text-white">
+          <button
+            type="button"
+            onClick={() => void beginCheckout()}
+            className="rounded-xl bg-blue-600 px-5 py-3 text-center text-sm font-bold text-white"
+          >
             המשך לתשלום וחידוש
-          </Link>
-          <Link href={BILLING_ROUTES.restricted} className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-center text-sm font-bold text-slate-800">
+          </button>
+          <a href={BILLING_ROUTES.restricted} className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-center text-sm font-bold text-slate-800">
             חזרה לקריאה בלבד
-          </Link>
+          </a>
         </div>
       </section>
     </BillingRouteGuard>
