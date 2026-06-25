@@ -127,6 +127,16 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
     [persistProgress]
   );
 
+  const goBack = useCallback(() => {
+    if (step <= 1) return;
+    if (step === 5 || step === 6) {
+      prepStartedRef.current = false;
+      setPrepAnimationDone(false);
+      setPrepSaveOk(false);
+    }
+    goToStep((step - 1) as OnboardingStepId);
+  }, [goToStep, step]);
+
   useEffect(() => {
     const saved = readOnboardingProgress();
     if (saved) {
@@ -392,7 +402,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
         <NatalieFirstDayShell
         step={2}
         footerCentered
-        onBack={() => goToStep(1)}
+        onBack={goBack}
         onPrimary={() => goToStep(3)}
         primaryDisabled={!firstName.trim() || !businessName.trim()}
       >
@@ -440,7 +450,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
         {debugToolbar}
         <NatalieFirstDayShell
         step={3}
-        onBack={() => goToStep(2)}
+        onBack={goBack}
         onPrimary={() => goToStep(4)}
         primaryDisabled={helpAreas.length === 0}
       >
@@ -472,7 +482,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
     return (
       <>
         {debugToolbar}
-        <NatalieFirstDayShell step={4} onBack={() => goToStep(3)} onPrimary={() => goToStep(5)} primaryLabel="המשך">
+        <NatalieFirstDayShell step={4} onBack={goBack} onPrimary={() => goToStep(5)} primaryLabel="המשך">
         <div className="grid gap-2">
           <h2 className="text-2xl font-extrabold text-slate-900">בואו נחבר את נטלי לעבודה שלך</h2>
           <NatalieFirstDayMicrocopy>רק השירותים שכבר זמינים היום. אפשר לחבר עכשיו או אחר כך מההגדרות.</NatalieFirstDayMicrocopy>
@@ -527,7 +537,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
     return (
       <>
         {debugToolbar}
-        <NatalieFirstDayShell step={5} hideFooter>
+        <NatalieFirstDayShell step={5} hideFooter onBack={goBack}>
         <div className="grid gap-2">
           <h2 className="text-2xl font-extrabold text-slate-900">נטלי מכינה את המשרד שלך</h2>
           <NatalieFirstDayMicrocopy>עוד רגע — ואתחיל לעבוד בשבילך.</NatalieFirstDayMicrocopy>
@@ -578,6 +588,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
         portraitTight
         density="compact"
         hideFooter
+        onBack={goBack}
         stickyFooter={step6Actions}
       >
       <div className="grid gap-2 text-center">

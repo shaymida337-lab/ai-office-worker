@@ -1,8 +1,22 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { ChevronRight } from "lucide-react";
 import { NataliePortrait } from "@/components/dashboard/NataliePortrait";
 import { ONBOARDING_TOTAL_STEPS } from "./onboardingContent";
+
+function OnboardingTopBackButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+    >
+      <ChevronRight className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
+      חזור
+    </button>
+  );
+}
 
 export function NatalieFirstDayShell({
   children,
@@ -59,6 +73,12 @@ export function NatalieFirstDayShell({
         <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-blue-50/80 to-transparent" aria-hidden />
 
         <div className={`relative flex min-h-0 flex-1 flex-col ${sectionGap}`}>
+          {onBack && step > 1 && (
+            <div className="shrink-0 flex justify-end">
+              <OnboardingTopBackButton onClick={onBack} />
+            </div>
+          )}
+
           {showProgress && (
             <div className="shrink-0 grid gap-2 text-right">
               <div className="flex items-center justify-between gap-3">
@@ -110,50 +130,24 @@ export function NatalieFirstDayShell({
 
           {stickyFooter && <div className="shrink-0 border-t border-slate-100 pt-3 sm:pt-4">{stickyFooter}</div>}
 
-          {!hideFooter && (onBack || onPrimary) && (
+          {!hideFooter && onPrimary && (
             <div className="shrink-0 border-t border-slate-100 pt-3 sm:pt-4">
               {footerCentered ? (
-                <div className="flex flex-col-reverse gap-3 sm:relative sm:min-h-[3.25rem] sm:items-center sm:justify-center">
-                  {onBack && (
-                    <button
-                      type="button"
-                      onClick={onBack}
-                      className="inline-flex min-h-[3.25rem] w-full items-center justify-center rounded-2xl border border-slate-300 bg-white px-6 py-3 text-base font-bold text-slate-800 transition hover:bg-slate-50 sm:absolute sm:end-0 sm:w-[8.75rem]"
-                    >
-                      חזרה
-                    </button>
-                  )}
-                  {onPrimary && (
-                    <NatalieFirstDayPrimaryButton
-                      onClick={onPrimary}
-                      disabled={primaryDisabled}
-                      className="sm:min-w-[10.5rem]"
-                    >
-                      {primaryLabel}
-                    </NatalieFirstDayPrimaryButton>
-                  )}
+                <div className="flex justify-center">
+                  <NatalieFirstDayPrimaryButton
+                    onClick={onPrimary}
+                    disabled={primaryDisabled}
+                    className="sm:min-w-[10.5rem]"
+                  >
+                    {primaryLabel}
+                  </NatalieFirstDayPrimaryButton>
                 </div>
               ) : (
-                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-stretch sm:justify-between">
-                  {onBack ? (
-                    <button
-                      type="button"
-                      onClick={onBack}
-                      className="inline-flex min-h-[3.25rem] w-full items-center justify-center rounded-2xl border border-slate-300 bg-white px-6 py-3 text-base font-bold text-slate-800 transition hover:bg-slate-50 sm:w-[8.75rem] sm:shrink-0"
-                    >
-                      חזרה
-                    </button>
-                  ) : (
-                    <span className="hidden sm:block sm:w-[8.75rem] sm:shrink-0" />
-                  )}
-                  <div className="grid gap-3 sm:ml-auto sm:flex sm:items-center">
-                    {secondaryAction}
-                    {onPrimary && (
-                      <NatalieFirstDayPrimaryButton onClick={onPrimary} disabled={primaryDisabled} className="sm:min-w-[10rem]">
-                        {primaryLabel}
-                      </NatalieFirstDayPrimaryButton>
-                    )}
-                  </div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-end">
+                  {secondaryAction}
+                  <NatalieFirstDayPrimaryButton onClick={onPrimary} disabled={primaryDisabled} className="sm:min-w-[10rem]">
+                    {primaryLabel}
+                  </NatalieFirstDayPrimaryButton>
                 </div>
               )}
             </div>
