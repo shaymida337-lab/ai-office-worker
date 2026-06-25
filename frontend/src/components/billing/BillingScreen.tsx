@@ -41,7 +41,7 @@ export function BillingScreen({
               plan={{
                 id: "growth",
                 name: "Growth",
-                priceMonthly: 299,
+                priceMonthly: 199,
                 description: "מסך Placeholder",
                 highlights: ["ללא אינטגרציה בספרינט זה"],
                 recommended: true,
