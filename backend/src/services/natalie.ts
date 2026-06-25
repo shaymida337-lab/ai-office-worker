@@ -28,6 +28,9 @@ export async function askNatalieBusinessQuestion(input: {
   question: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
 }): Promise<NatalieClaudeResponse> {
+  const businessFactsResponse = await maybeBuildBusinessFactsResponse(input.organizationId, input.question);
+  if (businessFactsResponse) return businessFactsResponse;
+
   const showInvoiceResponse = await maybeBuildShowInvoiceResponse(input.organizationId, input.question);
   if (showInvoiceResponse) return showInvoiceResponse;
 
@@ -255,30 +258,281 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
   };
 }
 
-function extractShowInvoiceSearchTerm(question: string) {
-  const quotedName = question.match(/["'״׳](.+?)["'״׳]/)?.[1]?.trim();
-  if (quotedName && isShowInvoiceRequest(question)) return quotedName;
+export function extractShowInvoiceSearchTerm(question: string) {
   if (!isShowInvoiceRequest(question)) return "";
 
-  const afterOf = question.match(/(?:^|\s)של\s+(.+)$/i)?.[1];
-  const candidate =
-    afterOf ??
-    question.replace(
-      /(תראי|תראה|תוציאי|תציגי|הציגי|הראי|הראה|חפשי|חפש|מצא|מצאי|למצוא|לראות|לפתוח|להציג|חשבונית|invoice|בבקשה|נא|נטלי|לי|את|the|me|for|of|show|open|find|search|display|latest|אחרונה|האחרונה|החדשה|החדש ביותר)/gi,
-      ""
-    );
+  const supplier = extractSupplierSearchTerm(question);
+  if (supplier) return supplier;
+
+  const candidate = question.replace(
+    /(תראי|תראה|תוציאי|תוציא|תציגי|תציג|הציגי|הראי|הראה|חפשי|חפש|מצא לי|מצא|מצאי|למצוא|לראות|לפתוח|להציג|חשבוניות|חשבונית|קבלות|קבלה|invoices?|receipts?|בבקשה|נא|נטלי|לי|את|the|me|for|of|show|open|find|search|display|latest|אחרונה|האחרונה|החדשה|החדש ביותר)/gi,
+    ""
+  );
 
   return candidate
-    .replace(/(בבקשה|נא|חשבונית|את|לי|של|invoice|the|of|for|me|show|open|find|search|display|latest|אחרונה|האחרונה|החדשה|החדש ביותר)/gi, "")
+    .replace(/(בבקשה|נא|חשבוניות|חשבונית|קבלות|קבלה|invoices?|receipts?|את|לי|של|מספק|ספק|invoice|the|of|for|me|show|open|find|search|display|latest|אחרונה|האחרונה|החדשה|החדש ביותר)/gi, "")
     .replace(/[.?!؟,،]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function isShowInvoiceRequest(question: string) {
-  const mentionsInvoice = /(חשבונית|invoice)/i.test(question);
-  const hasShowVerb = /(תראי|תראה|הראי|הראה לי|הראה|תראה לי|תציגי|הציגי|תפתחי|פתחי|תמצאי|חפשי|להציג|לראות|לפתוח|show|open|find|search|display|תוציאי|תוציא|תציעי|תציע|תביאי|תביא)/i.test(question);
-  return mentionsInvoice && hasShowVerb;
+export function extractSupplierSearchTerm(question: string): string {
+  const quotedName = question.match(/["'״׳](.+?)["'״׳]/)?.[1]?.trim();
+  if (quotedName) return normalizeSupplierSearchTerm(quotedName);
+
+  const patterns = [
+    /(?:^|\s)של\s+(.+?)[?.!]?$/i,
+    /(?:^|\s)מספק\s+(.+?)[?.!]?$/i,
+    /\sמ(?!ה(?:חשבונית|\s))([^\s?.,]+)/i,
+    /ל(?!י(?:\s|[?.!]|$))([^\s?.,]+?)(?:\s+(?:החודש|השנה|בחודש|בשנה))?(?:[?.!]|$)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = question.match(pattern);
+    const raw = match?.[1]?.trim();
+    if (!raw) continue;
+    const normalized = normalizeSupplierSearchTerm(raw);
+    if (normalized) return normalized;
+  }
+
+  return "";
+}
+
+function normalizeSupplierSearchTerm(term: string): string {
+  return term
+    .replace(/[?.!,،]+/g, "")
+    .replace(/\s+(החודש|השנה|בחודש|בשנה)$/i, "")
+    .replace(/^(ה|את|האחרונה|הכי יקרה)$/i, "")
+    .trim();
+}
+
+export function isShowInvoiceRequest(question: string) {
+  if (/כמה\s+/i.test(question)) return false;
+  if (/מה\s+החשבונית/i.test(question)) return false;
+
+  const mentionsDocument = /(חשבוניות|חשבונית|invoices?|קבלות?|קבלה|receipts?)/i.test(question);
+  const hasShowVerb =
+    /(תראי|תראה|הראי|הראה לי|הראה|תראה לי|תציגי|תציג|הציגי|הציג|תפתחי|פתחי|תמצאי|מצאי|מצא לי|מצא|חפשי|חפש|להציג|לראות|לפתוח|show|open|find|search|display|תוציאי|תוציא|תציעי|תציע|תביאי|תביא)/i.test(
+      question
+    );
+  const hasOwnershipPattern = /יש\s+לי\s+(?:חשבוניות|חשבונית|קבלות?|קבלה)/i.test(question);
+  return mentionsDocument && (hasShowVerb || hasOwnershipPattern);
+}
+
+async function maybeBuildBusinessFactsResponse(
+  organizationId: string,
+  question: string
+): Promise<NatalieClaudeResponse | null> {
+  const q = question.trim();
+  const now = new Date();
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const yearStart = new Date(now.getFullYear(), 0, 1);
+  const nextYearStart = new Date(now.getFullYear() + 1, 0, 1);
+  const supplierTerm = extractSupplierSearchTerm(q);
+
+  if (supplierTerm && isSupplierPaidAmountQuestion(q)) {
+    const searchTerms = await resolveInvoiceSearchTerms(organizationId, supplierTerm);
+    const range = resolvePaidAmountDateRange(q, now);
+    const sum = await prisma.supplierPayment.aggregate({
+      where: {
+        organizationId,
+        paid: true,
+        date: { gte: range.start, lt: range.end },
+        OR: buildSupplierPaymentSearchFilter(searchTerms),
+      },
+      _sum: { amount: true },
+    });
+    const total = sum._sum.amount ?? 0;
+    return { answer: `שילמת ${formatMoney(total)} ₪ ל${supplierTerm} ${range.label}.` };
+  }
+
+  if (supplierTerm && isSupplierInvoiceCountQuestion(q)) {
+    const searchTerms = await resolveInvoiceSearchTerms(organizationId, supplierTerm);
+    const [invoiceCount, paymentCount, reviewCount] = await Promise.all([
+      prisma.invoice.count({
+        where: { organizationId, OR: buildInvoiceSearchFilter(searchTerms) },
+      }),
+      prisma.supplierPayment.count({
+        where: { organizationId, OR: buildSupplierPaymentSearchFilter(searchTerms) },
+      }),
+      prisma.financialDocumentReview.count({
+        where: {
+          organizationId,
+          reviewStatus: "needs_review",
+          OR: buildInvoiceSearchFilter(searchTerms),
+        },
+      }),
+    ]);
+    const total = invoiceCount + paymentCount + reviewCount;
+    return { answer: `יש לך ${total} חשבוניות של ${supplierTerm} במערכת.` };
+  }
+
+  if (supplierTerm && isSupplierHighestInvoiceQuestion(q)) {
+    const searchTerms = await resolveInvoiceSearchTerms(organizationId, supplierTerm);
+    const [topInvoice, topPayment] = await Promise.all([
+      prisma.invoice.findFirst({
+        where: { organizationId, OR: buildInvoiceSearchFilter(searchTerms) },
+        orderBy: { amount: "desc" },
+        select: { supplierName: true, amount: true },
+      }),
+      prisma.supplierPayment.findFirst({
+        where: { organizationId, OR: buildSupplierPaymentSearchFilter(searchTerms) },
+        orderBy: { amount: "desc" },
+        select: { supplierName: true, supplier: true, amount: true },
+      }),
+    ]);
+    const invoiceAmount = topInvoice?.amount ?? 0;
+    const paymentAmount = topPayment?.amount ?? 0;
+    const topAmount = Math.max(invoiceAmount, paymentAmount);
+    if (!topAmount) {
+      return { answer: `לא מצאתי חשבוניות של ${supplierTerm} במערכת.` };
+    }
+    return { answer: `החשבונית הכי יקרה של ${supplierTerm} היא ${formatMoney(topAmount)} ₪.` };
+  }
+
+  if (isPaymentCountThisMonthQuestion(q)) {
+    const count = await prisma.supplierPayment.count({
+      where: {
+        organizationId,
+        date: { gte: thisMonthStart, lt: nextMonthStart },
+      },
+    });
+    return { answer: `יש לך ${count} תשלומי ספקים החודש.` };
+  }
+
+  if (isTotalInvoiceCountQuestion(q)) {
+    const count = await prisma.invoice.count({ where: { organizationId } });
+    return { answer: `יש לך ${count} חשבוניות שמורות במערכת.` };
+  }
+
+  if (isHighestSupplierQuestion(q)) {
+    const top = await findHighestInvoiceSupplier(organizationId);
+    if (!top) return { answer: "אין עדיין חשבוניות שמורות במערכת." };
+    return { answer: `הספק עם החשבונית הגבוהה ביותר הוא ${top.name} — ${formatMoney(top.amount)} ₪.` };
+  }
+
+  if (isUnapprovedInvoicesQuestion(q)) {
+    const [invoiceCount, reviewCount] = await Promise.all([
+      prisma.invoice.count({
+        where: { organizationId, status: "needs_review" },
+      }),
+      prisma.financialDocumentReview.count({
+        where: { organizationId, reviewStatus: "needs_review" },
+      }),
+    ]);
+    const total = invoiceCount + reviewCount;
+    if (total === 0) return { answer: "אין כרגע חשבוניות שממתינות לאישור." };
+    return { answer: `יש ${total} חשבוניות שממתינות לאישור שלך (${invoiceCount} שמורות ו-${reviewCount} מסמכים לבדיקה).` };
+  }
+
+  return null;
+}
+
+function isPaymentCountThisMonthQuestion(question: string) {
+  return /כמה\s+תשלומים/i.test(question) && /(?:ה)?חודש/i.test(question);
+}
+
+function isSupplierPaidAmountQuestion(question: string) {
+  return /כמה\s+שילמתי/i.test(question);
+}
+
+function isSupplierInvoiceCountQuestion(question: string) {
+  return /כמה\s+חשבוניות/i.test(question) && !!extractSupplierSearchTerm(question);
+}
+
+function isSupplierHighestInvoiceQuestion(question: string) {
+  return /(?:מה\s+)?החשבונית\s+הכי\s+יקר/i.test(question) && !!extractSupplierSearchTerm(question);
+}
+
+function isTotalInvoiceCountQuestion(question: string) {
+  return (
+    /כמה\s+חשבוניות/i.test(question) &&
+    !isSupplierInvoiceCountQuestion(question) &&
+    !isShowInvoiceRequest(question)
+  );
+}
+
+function isHighestSupplierQuestion(question: string) {
+  return /(?:מי\s+)?(?:ה)?ספק\s+הכי\s+יקר/i.test(question) || /הספק\s+הכי\s+יקר/i.test(question);
+}
+
+function isUnapprovedInvoicesQuestion(question: string) {
+  return (
+    /חשבוניות?.{0,24}(?:לא\s+אושרו|ממתינות|דורשות|לא\s+אושר)/i.test(question) ||
+    /(?:לא\s+אושרו|ממתינות\s+לאישור)/i.test(question)
+  );
+}
+
+async function findHighestInvoiceSupplier(organizationId: string) {
+  const [topInvoice, topPayment] = await Promise.all([
+    prisma.invoice.findFirst({
+      where: { organizationId },
+      orderBy: { amount: "desc" },
+      select: { supplierName: true, amount: true },
+    }),
+    prisma.supplierPayment.findFirst({
+      where: { organizationId },
+      orderBy: { amount: "desc" },
+      select: { supplierName: true, supplier: true, amount: true },
+    }),
+  ]);
+
+  const invoiceCandidate = topInvoice
+    ? { name: topInvoice.supplierName?.trim() || "ספק לא ידוע", amount: topInvoice.amount }
+    : null;
+  const paymentCandidate = topPayment
+    ? {
+        name: topPayment.supplierName?.trim() || topPayment.supplier.trim() || "ספק לא ידוע",
+        amount: topPayment.amount,
+      }
+    : null;
+
+  if (!invoiceCandidate) return paymentCandidate;
+  if (!paymentCandidate) return invoiceCandidate;
+  return paymentCandidate.amount > invoiceCandidate.amount ? paymentCandidate : invoiceCandidate;
+}
+
+function formatMoney(amount: number) {
+  return Number.isFinite(amount) ? amount.toLocaleString("he-IL", { maximumFractionDigits: 2 }) : "0";
+}
+
+async function resolveInvoiceSearchTerms(organizationId: string, supplierTerm: string) {
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { businessProfile: true },
+  });
+  return expandInvoiceSearchTerms(supplierTerm, organization?.businessProfile);
+}
+
+function buildInvoiceSearchFilter(searchTerms: string[]) {
+  return searchTerms.flatMap((term) => [
+    { supplierName: { contains: term, mode: "insensitive" as const } },
+    { invoiceNumber: { contains: term, mode: "insensitive" as const } },
+  ]);
+}
+
+function buildSupplierPaymentSearchFilter(searchTerms: string[]) {
+  return searchTerms.flatMap((term) => [
+    { supplier: { contains: term, mode: "insensitive" as const } },
+    { supplierName: { contains: term, mode: "insensitive" as const } },
+    { invoiceNumber: { contains: term, mode: "insensitive" as const } },
+  ]);
+}
+
+function resolvePaidAmountDateRange(question: string, now: Date) {
+  if (/(?:ה)?שנה/i.test(question)) {
+    return {
+      start: new Date(now.getFullYear(), 0, 1),
+      end: new Date(now.getFullYear() + 1, 0, 1),
+      label: "השנה",
+    };
+  }
+  return {
+    start: new Date(now.getFullYear(), now.getMonth(), 1),
+    end: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+    label: "החודש",
+  };
 }
 
 export function expandInvoiceSearchTerms(term: string, businessProfile?: string | null) {

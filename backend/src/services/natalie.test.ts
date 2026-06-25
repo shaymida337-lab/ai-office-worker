@@ -5,6 +5,9 @@ import { prisma } from "../lib/prisma.js";
 import {
   askNatalieBusinessQuestion,
   expandInvoiceSearchTerms,
+  extractShowInvoiceSearchTerm,
+  extractSupplierSearchTerm,
+  isShowInvoiceRequest,
   mapSupplierPaymentToShowInvoiceItem,
   mergeShowInvoiceItems,
   selectNatalieInvoiceDriveUrl,
@@ -122,6 +125,310 @@ test("show_invoice uses driveFileUrl when driveUrl is missing", () => {
 test("expands Pango supplier aliases bidirectionally", () => {
   assert.ok(expandInvoiceSearchTerms("פנגו").includes("Pango"));
   assert.ok(expandInvoiceSearchTerms("Pango").includes("פנגו"));
+});
+
+test("isShowInvoiceRequest accepts Hebrew plural invoices and masculine verbs", () => {
+  assert.equal(isShowInvoiceRequest("מצא חשבוניות מספק וולט"), true);
+  assert.equal(isShowInvoiceRequest("תוציא לי חשבוניות של פנגו"), true);
+  assert.equal(isShowInvoiceRequest("כמה חשבוניות יש לי"), false);
+});
+
+test("extractShowInvoiceSearchTerm parses Hebrew supplier invoice queries", () => {
+  assert.equal(extractShowInvoiceSearchTerm("מצא חשבוניות מספק וולט"), "וולט");
+  assert.equal(extractShowInvoiceSearchTerm("תוציא לי חשבוניות של פנגו"), "פנגו");
+  assert.equal(extractShowInvoiceSearchTerm("תראה לי חשבוניות של וולט"), "וולט");
+  assert.equal(extractShowInvoiceSearchTerm("מצא לי חשבוניות של וולט"), "וולט");
+  assert.equal(extractShowInvoiceSearchTerm("יש לי חשבוניות מוולט?"), "וולט");
+  assert.equal(extractShowInvoiceSearchTerm("תציג את החשבונית האחרונה של וולט"), "וולט");
+  assert.equal(extractShowInvoiceSearchTerm("יש לי קבלה מוולט?"), "וולט");
+});
+
+test("extractSupplierSearchTerm parses Hebrew preposition variants", () => {
+  assert.equal(extractSupplierSearchTerm("כמה חשבוניות יש לי מוולט?"), "וולט");
+  assert.equal(extractSupplierSearchTerm("כמה שילמתי לוולט החודש?"), "וולט");
+  assert.equal(extractSupplierSearchTerm("כמה שילמתי לפנגו השנה?"), "פנגו");
+  assert.equal(extractSupplierSearchTerm("מה החשבונית הכי יקרה של וולט?"), "וולט");
+});
+
+test("isShowInvoiceRequest routes natural Hebrew show/list phrasing", () => {
+  assert.equal(isShowInvoiceRequest("תראה לי חשבוניות של וולט"), true);
+  assert.equal(isShowInvoiceRequest("מצא לי חשבוניות של וולט"), true);
+  assert.equal(isShowInvoiceRequest("יש לי חשבוניות מוולט?"), true);
+  assert.equal(isShowInvoiceRequest("תציג את החשבונית האחרונה של וולט"), true);
+  assert.equal(isShowInvoiceRequest("יש לי קבלה מוולט?"), true);
+  assert.equal(isShowInvoiceRequest("כמה חשבוניות יש לי מוולט?"), false);
+  assert.equal(isShowInvoiceRequest("מה החשבונית הכי יקרה של וולט?"), false);
+  assert.equal(isShowInvoiceRequest("כמה שילמתי לוולט החודש?"), false);
+});
+
+test("show_invoice handles Hebrew Wolt supplier query", async () => {
+  const restore = installShowInvoicePrismaStub({
+    invoices: [approvedWoltInvoice],
+  });
+  try {
+    const result = await askNatalieBusinessQuestion({
+      organizationId: ORG,
+      question: "מצא חשבוניות מספק וולט",
+    });
+
+    assert.ok("action" in result && result.action === "show_invoice");
+    if (!("action" in result) || result.action !== "show_invoice") return;
+    assert.equal(result.invoices[0]?.supplierName, "Wolt");
+  } finally {
+    restore();
+  }
+});
+
+test("show_invoice handles Hebrew Pango supplier query", async () => {
+  const restore = installShowInvoicePrismaStub({
+    supplierPayments: [
+      {
+        id: "payment-pango-1",
+        supplier: "Pango",
+        supplierName: null,
+        invoiceNumber: "P-100",
+        amount: 144,
+        currency: "ILS",
+        date: new Date("2026-06-01T00:00:00.000Z"),
+        dueDate: null,
+        paid: false,
+        driveFileUrl: null,
+        invoiceLink: null,
+        documentLink: null,
+      },
+    ],
+  });
+  try {
+    const result = await askNatalieBusinessQuestion({
+      organizationId: ORG,
+      question: "תוציא לי חשבוניות של פנגו",
+    });
+
+    assert.ok("action" in result && result.action === "show_invoice");
+    if (!("action" in result) || result.action !== "show_invoice") return;
+    assert.equal(result.invoices[0]?.supplierName, "Pango");
+  } finally {
+    restore();
+  }
+});
+
+function installBusinessFactsPrismaStub(overrides: {
+  supplierPaymentCount?: number;
+  invoiceCount?: number;
+  supplierInvoiceCount?: number;
+  supplierPaymentMatchCount?: number;
+  supplierReviewCount?: number;
+  paidAmountSum?: number;
+  topInvoice?: { supplierName: string | null; amount: number } | null;
+  topPayment?: { supplierName: string | null; supplier: string; amount: number } | null;
+  needsReviewInvoiceCount?: number;
+  needsReviewDocumentCount?: number;
+}) {
+  const originals = {
+    organizationFindUnique: prisma.organization.findUnique.bind(prisma.organization),
+    supplierPaymentCount: prisma.supplierPayment.count.bind(prisma.supplierPayment),
+    supplierPaymentAggregate: prisma.supplierPayment.aggregate.bind(prisma.supplierPayment),
+    invoiceCount: prisma.invoice.count.bind(prisma.invoice),
+    invoiceFindFirst: prisma.invoice.findFirst.bind(prisma.invoice),
+    supplierPaymentFindFirst: prisma.supplierPayment.findFirst.bind(prisma.supplierPayment),
+    financialDocumentReviewCount: prisma.financialDocumentReview.count.bind(prisma.financialDocumentReview),
+  };
+
+  prisma.organization.findUnique = (async () => ({ businessProfile: null })) as unknown as typeof prisma.organization.findUnique;
+  prisma.supplierPayment.count = (async (args) => {
+    if (args?.where && typeof args.where === "object" && "OR" in args.where) {
+      return overrides.supplierPaymentMatchCount ?? 0;
+    }
+    return overrides.supplierPaymentCount ?? 0;
+  }) as typeof prisma.supplierPayment.count;
+  prisma.supplierPayment.aggregate = (async () => ({
+    _sum: { amount: overrides.paidAmountSum ?? 0 },
+  })) as unknown as typeof prisma.supplierPayment.aggregate;
+  prisma.invoice.count = (async (args) => {
+    if (args?.where && typeof args.where === "object" && "status" in args.where) {
+      return overrides.needsReviewInvoiceCount ?? 0;
+    }
+    if (args?.where && typeof args.where === "object" && "OR" in args.where) {
+      return overrides.supplierInvoiceCount ?? 0;
+    }
+    return overrides.invoiceCount ?? 0;
+  }) as typeof prisma.invoice.count;
+  prisma.invoice.findFirst = (async () => overrides.topInvoice ?? null) as typeof prisma.invoice.findFirst;
+  prisma.supplierPayment.findFirst = (async () => overrides.topPayment ?? null) as typeof prisma.supplierPayment.findFirst;
+  prisma.financialDocumentReview.count = (async (args) => {
+    if (args?.where && typeof args.where === "object" && "OR" in args.where) {
+      return overrides.supplierReviewCount ?? 0;
+    }
+    return overrides.needsReviewDocumentCount ?? 0;
+  }) as typeof prisma.financialDocumentReview.count;
+
+  return () => {
+    prisma.organization.findUnique = originals.organizationFindUnique;
+    prisma.supplierPayment.count = originals.supplierPaymentCount;
+    prisma.supplierPayment.aggregate = originals.supplierPaymentAggregate;
+    prisma.invoice.count = originals.invoiceCount;
+    prisma.invoice.findFirst = originals.invoiceFindFirst;
+    prisma.supplierPayment.findFirst = originals.supplierPaymentFindFirst;
+    prisma.financialDocumentReview.count = originals.financialDocumentReviewCount;
+  };
+}
+
+test("business facts: payments this month", async () => {
+  const restore = installBusinessFactsPrismaStub({ supplierPaymentCount: 4 });
+  try {
+    const result = await askNatalieBusinessQuestion({
+      organizationId: ORG,
+      question: "כמה תשלומים יש לי החודש",
+    });
+    assert.match(result.answer, /4/);
+    assert.match(result.answer, /תשלומי ספקים החודש/);
+  } finally {
+    restore();
+  }
+});
+
+test("business facts: total invoice count", async () => {
+  const restore = installBusinessFactsPrismaStub({ invoiceCount: 12 });
+  try {
+    const result = await askNatalieBusinessQuestion({
+      organizationId: ORG,
+      question: "כמה חשבוניות יש לי",
+    });
+    assert.match(result.answer, /12/);
+  } finally {
+    restore();
+  }
+});
+
+test("business facts: highest supplier", async () => {
+  const restore = installBusinessFactsPrismaStub({
+    topInvoice: { supplierName: "Wolt", amount: 500 },
+    topPayment: { supplierName: null, supplier: "Pango", amount: 120 },
+  });
+  try {
+    const result = await askNatalieBusinessQuestion({
+      organizationId: ORG,
+      question: "מי הספק הכי יקר שלי",
+    });
+    assert.match(result.answer, /Wolt/);
+    assert.match(result.answer, /500/);
+  } finally {
+    restore();
+  }
+});
+
+test("business facts: unapproved invoices", async () => {
+  const restore = installBusinessFactsPrismaStub({
+    needsReviewInvoiceCount: 2,
+    needsReviewDocumentCount: 1,
+  });
+  try {
+    const result = await askNatalieBusinessQuestion({
+      organizationId: ORG,
+      question: "חשבוניות שלא אושרו",
+    });
+    assert.match(result.answer, /3/);
+    assert.match(result.answer, /ממתינות לאישור/);
+  } finally {
+    restore();
+  }
+});
+
+const HEBREW_SHOW_INVOICE_PHRASES = [
+  "תראה לי חשבוניות של וולט",
+  "מצא לי חשבוניות של וולט",
+  "יש לי חשבוניות מוולט?",
+  "תציג את החשבונית האחרונה של וולט",
+  "יש לי קבלה מוולט?",
+] as const;
+
+for (const question of HEBREW_SHOW_INVOICE_PHRASES) {
+  test(`Hebrew launch QA show_invoice: ${question}`, async () => {
+    const restore = installShowInvoicePrismaStub({
+      invoices: [approvedWoltInvoice],
+    });
+    try {
+      const result = await askNatalieBusinessQuestion({
+        organizationId: ORG,
+        question,
+      });
+      assert.ok("action" in result && result.action === "show_invoice", `expected show_invoice for: ${question}`);
+      if (!("action" in result) || result.action !== "show_invoice") return;
+      assert.equal(result.invoices[0]?.supplierName, "Wolt");
+      assert.doesNotMatch(result.answer, /לא מצאתי מידע/);
+    } finally {
+      restore();
+    }
+  });
+}
+
+test("Hebrew launch QA: supplier invoice count", async () => {
+  const restore = installBusinessFactsPrismaStub({
+    supplierInvoiceCount: 2,
+    supplierPaymentMatchCount: 1,
+    supplierReviewCount: 0,
+  });
+  try {
+    const result = await askNatalieBusinessQuestion({
+      organizationId: ORG,
+      question: "כמה חשבוניות יש לי מוולט?",
+    });
+    assert.match(result.answer, /3/);
+    assert.match(result.answer, /וולט/);
+    assert.doesNotMatch(result.answer, /לא מצאתי מידע/);
+  } finally {
+    restore();
+  }
+});
+
+test("Hebrew launch QA: supplier highest invoice", async () => {
+  const restore = installBusinessFactsPrismaStub({
+    topInvoice: { supplierName: "Wolt", amount: 420 },
+    topPayment: { supplierName: null, supplier: "Wolt", amount: 99 },
+  });
+  try {
+    const result = await askNatalieBusinessQuestion({
+      organizationId: ORG,
+      question: "מה החשבונית הכי יקרה של וולט?",
+    });
+    assert.match(result.answer, /420/);
+    assert.match(result.answer, /וולט/);
+    assert.doesNotMatch(result.answer, /לא מצאתי מידע/);
+  } finally {
+    restore();
+  }
+});
+
+test("Hebrew launch QA: paid amount this month", async () => {
+  const restore = installBusinessFactsPrismaStub({ paidAmountSum: 250.5 });
+  try {
+    const result = await askNatalieBusinessQuestion({
+      organizationId: ORG,
+      question: "כמה שילמתי לוולט החודש?",
+    });
+    assert.match(result.answer, /250/);
+    assert.match(result.answer, /וולט/);
+    assert.match(result.answer, /החודש/);
+    assert.doesNotMatch(result.answer, /לא מצאתי מידע/);
+  } finally {
+    restore();
+  }
+});
+
+test("Hebrew launch QA: paid amount this year", async () => {
+  const restore = installBusinessFactsPrismaStub({ paidAmountSum: 1800 });
+  try {
+    const result = await askNatalieBusinessQuestion({
+      organizationId: ORG,
+      question: "כמה שילמתי לפנגו השנה?",
+    });
+    assert.match(result.answer, /1,?800/);
+    assert.match(result.answer, /פנגו/);
+    assert.match(result.answer, /השנה/);
+    assert.doesNotMatch(result.answer, /לא מצאתי מידע/);
+  } finally {
+    restore();
+  }
 });
 
 test("maps SupplierPayment to show_invoice item shape", () => {
