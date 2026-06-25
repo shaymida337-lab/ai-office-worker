@@ -120,6 +120,11 @@ export function clearOnboardingProgress() {
   window.localStorage.removeItem(ONBOARDING_PROGRESS_KEY);
 }
 
+export function clearFirstDayData() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(FIRST_DAY_STORAGE_KEY);
+}
+
 export function readFirstDayData(): FirstDayData | null {
   if (typeof window === "undefined") return null;
   try {

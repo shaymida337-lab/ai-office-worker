@@ -1,9 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarDays, HardDrive, Mail, MessageCircle } from "lucide-react";
+import {
+  Building2,
+  CalendarDays,
+  CheckSquare,
+  FileScan,
+  HardDrive,
+  Mail,
+  MessageCircle,
+  UserRound,
+  Wallet,
+} from "lucide-react";
 import { API_URL, apiFetch, getToken, type GmailStatus } from "@/lib/api";
 import {
   businessTypes,
@@ -15,6 +24,7 @@ import {
   type OrganizationSettings,
 } from "@/lib/business-config";
 import {
+  clearFirstDayData,
   clearOnboardingProgress,
   helpAreasToLegacyPains,
   helpAreasToMainPain,
@@ -35,14 +45,28 @@ import {
 } from "./NatalieFirstDayShell";
 import {
   ONBOARDING_ACTION_CARDS,
+  ONBOARDING_EXIT_TRANSITION_STEPS,
   ONBOARDING_HELP_OPTIONS,
   ONBOARDING_INTEGRATIONS,
   ONBOARDING_PREP_STEPS,
   ONBOARDING_SUMMARY_AREAS,
   ONBOARDING_TEAM_SIZE_OPTIONS,
 } from "./onboardingContent";
+import { OnboardingChecklist } from "./OnboardingChecklist";
+import { OnboardingDebugToolbar } from "./OnboardingDebugToolbar";
 
-const PREP_STEP_MS = 4000;
+const PREP_ITEM_MS = 4000;
+const EXIT_ITEM_MS = 560;
+
+const HELP_ICONS = {
+  documents: FileScan,
+  tasks: CheckSquare,
+  calendar: CalendarDays,
+  clients: UserRound,
+  suppliers: Building2,
+  payments: Wallet,
+  chat: MessageCircle,
+} as const;
 
 const INTEGRATION_ICONS = {
   gmail: Mail,
@@ -64,8 +88,10 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
   const [businessType, setBusinessType] = useState<BusinessTypeId>("service_business");
   const [businessSize, setBusinessSize] = useState<BusinessSizeId>("solo");
   const [helpAreas, setHelpAreas] = useState<OnboardingHelpId[]>([]);
-  const [prepIndex, setPrepIndex] = useState(-1);
-  const [prepDone, setPrepDone] = useState(false);
+  const [prepAnimationDone, setPrepAnimationDone] = useState(false);
+  const [prepSaveOk, setPrepSaveOk] = useState(false);
+  const [exitDestination, setExitDestination] = useState<string | null>(null);
+  const [exitTransitionDone, setExitTransitionDone] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
@@ -73,6 +99,9 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const prepStartedRef = useRef(false);
+
+  const handlePrepAnimationComplete = useCallback(() => setPrepAnimationDone(true), []);
+  const handleExitTransitionComplete = useCallback(() => setExitTransitionDone(true), []);
 
   const driveConnected = Boolean(gmailStatus?.connected && !(gmailStatus.missingDriveScopes?.length ?? 0));
 
@@ -184,34 +213,26 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
   useEffect(() => {
     if (step !== 5) {
       prepStartedRef.current = false;
+      setPrepAnimationDone(false);
+      setPrepSaveOk(false);
       return;
     }
     if (prepStartedRef.current) return;
     prepStartedRef.current = true;
 
-    setPrepIndex(0);
-    setPrepDone(false);
-    let index = 0;
-    const interval = window.setInterval(() => {
-      index += 1;
-      if (index >= ONBOARDING_PREP_STEPS.length) {
-        window.clearInterval(interval);
-        setPrepDone(true);
-        return;
-      }
-      setPrepIndex(index);
-    }, PREP_STEP_MS);
-
-    void finishOnboarding();
-
-    return () => window.clearInterval(interval);
-  }, [step]);
+    void finishOnboarding().then((ok) => setPrepSaveOk(ok));
+  }, [finishOnboarding, step]);
 
   useEffect(() => {
-    if (step !== 5 || !prepDone || saving || error) return;
-    const timeout = window.setTimeout(() => goToStep(6), 600);
+    if (step !== 5 || !prepAnimationDone || !prepSaveOk) return;
+    const timeout = window.setTimeout(() => goToStep(6), 400);
     return () => window.clearTimeout(timeout);
-  }, [error, goToStep, prepDone, saving, step]);
+  }, [goToStep, prepAnimationDone, prepSaveOk, step]);
+
+  useEffect(() => {
+    if (!exitDestination || !exitTransitionDone) return;
+    router.push(exitDestination);
+  }, [exitDestination, exitTransitionDone, router]);
 
   const connectGmail = () => {
     const token = getToken();
@@ -260,20 +281,95 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
     router.push("/dashboard/settings?tab=whatsapp");
   };
 
+  const handleActionSelect = (href: string) => {
+    setExitDestination(href);
+    setExitTransitionDone(false);
+  };
+
+  const debugGoToStep = useCallback(
+    (target: OnboardingStepId) => {
+      prepStartedRef.current = false;
+      setPrepAnimationDone(false);
+      setPrepSaveOk(false);
+      setExitDestination(null);
+      setExitTransitionDone(false);
+      setError("");
+      goToStep(target);
+    },
+    [goToStep]
+  );
+
+  const debugReset = useCallback(() => {
+    clearOnboardingProgress();
+    clearFirstDayData();
+  }, []);
+
+  const debugRestart = useCallback(() => {
+    debugReset();
+    prepStartedRef.current = false;
+    setPrepAnimationDone(false);
+    setPrepSaveOk(false);
+    setExitDestination(null);
+    setExitTransitionDone(false);
+    setError("");
+    setFirstName("");
+    setBusinessName("");
+    setBusinessType("service_business");
+    setBusinessSize("solo");
+    setHelpAreas([]);
+    setStep(1);
+  }, [debugReset]);
+
+  const debugToolbar = (
+    <OnboardingDebugToolbar
+      currentStep={exitDestination ? 6 : step}
+      onGoToStep={debugGoToStep}
+      onReset={debugReset}
+      onRestart={debugRestart}
+    />
+  );
+
+  if (exitDestination) {
+    return (
+      <>
+        {debugToolbar}
+        <NatalieFirstDayShell step={6} hideFooter hideProgress density="compact">
+        <div className="grid gap-3 text-center">
+          <h2 className="text-2xl font-extrabold leading-tight text-slate-900 sm:text-3xl">
+            מצוין, נטלי סיימה להכיר את העסק שלך.
+            <br />
+            עכשיו אני מכינה עבורך את סביבת העבודה האישית.
+          </h2>
+        </div>
+        <OnboardingChecklist
+          items={ONBOARDING_EXIT_TRANSITION_STEPS}
+          itemMs={EXIT_ITEM_MS}
+          onComplete={handleExitTransitionComplete}
+        />
+      </NatalieFirstDayShell>
+      </>
+    );
+  }
+
   if (!hydrated) {
     return (
-      <NatalieFirstDayShell step={1} hideFooter showPortrait portraitSize="large">
-        <div className="py-8 text-center text-slate-500">טוענת את סביבת העבודה שלך...</div>
+      <>
+        {debugToolbar}
+        <NatalieFirstDayShell step={1} hideFooter showPortrait portraitSize="large" portraitTight>
+        <div className="py-4 text-center text-slate-500">טוענת את סביבת העבודה שלך...</div>
       </NatalieFirstDayShell>
+      </>
     );
   }
 
   if (step === 1) {
     return (
-      <NatalieFirstDayShell step={1} showPortrait portraitSize="large" hideFooter>
-        <div className="grid gap-4 text-center">
-          <h1 className="text-3xl font-extrabold text-slate-900 sm:text-4xl">ברוך הבא לנטלי</h1>
-          <NatalieFirstDayMicrocopy>
+      <>
+        {debugToolbar}
+        <NatalieFirstDayShell step={1} showPortrait portraitSize="large" portraitTight hideFooter>
+        <div className="grid gap-3 text-center">
+          <h1 className="text-2xl font-extrabold text-slate-900 sm:text-3xl md:text-4xl">ברוך הבא לנטלי</h1>
+          <NatalieFirstDayMicrocopy compact>
             אני הולכת להיות עובדת המשרד החדשה שלך.
             <br />
             לפני שנתחיל לעבוד יחד, אני רוצה להכיר את העסק שלך כדי שאוכל לעבוד בדיוק בדרך שמתאימה לך.
@@ -281,26 +377,30 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
             <span className="font-semibold text-slate-800">זה ייקח בערך 2 דקות.</span>
           </NatalieFirstDayMicrocopy>
         </div>
-        <div className="flex justify-center pt-2">
+        <div className="flex justify-center pt-1">
           <NatalieFirstDayPrimaryButton onClick={() => goToStep(2)}>בואו נתחיל</NatalieFirstDayPrimaryButton>
         </div>
       </NatalieFirstDayShell>
+      </>
     );
   }
 
   if (step === 2) {
     return (
-      <NatalieFirstDayShell
+      <>
+        {debugToolbar}
+        <NatalieFirstDayShell
         step={2}
+        footerCentered
         onBack={() => goToStep(1)}
         onPrimary={() => goToStep(3)}
         primaryDisabled={!firstName.trim() || !businessName.trim()}
       >
-        <div className="grid gap-2">
+        <div className="mb-2 grid gap-2">
           <h2 className="text-2xl font-extrabold text-slate-900">בואו נכיר את העסק שלך</h2>
           <NatalieFirstDayMicrocopy>כמה פרטים קצרים — ואוכל להתאים את העבודה שלי בדיוק אליך.</NatalieFirstDayMicrocopy>
         </div>
-        <div className="grid gap-4">
+        <div className="grid w-full gap-4">
           <NatalieFirstDayField label="שם העסק" value={businessName} onChange={setBusinessName} placeholder="שם העסק" />
           <NatalieFirstDayField label="השם שלך" value={firstName} onChange={setFirstName} placeholder="שם מלא" />
           <NatalieFirstDaySelect
@@ -309,7 +409,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
             onChange={(value) => setBusinessType(normalizeBusinessTypeId(value))}
             options={businessTypes.map((type) => ({ value: type.id, label: type.label }))}
           />
-          <div className="grid gap-2">
+          <div className="grid w-full gap-2">
             <span className="text-base font-bold text-slate-900 sm:text-lg">כמה עובדים יש?</span>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {ONBOARDING_TEAM_SIZE_OPTIONS.map((option) => (
@@ -317,9 +417,9 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
                   key={option.id}
                   type="button"
                   onClick={() => setBusinessSize(option.id)}
-                  className={`rounded-2xl border px-3 py-3 text-center text-sm font-bold transition hover:-translate-y-0.5 sm:text-base ${
+                  className={`min-h-[3.25rem] rounded-2xl border px-3 py-3 text-center text-sm font-bold transition duration-300 hover:-translate-y-0.5 sm:text-base ${
                     businessSize === option.id
-                      ? "border-blue-400 bg-blue-50 text-blue-900 shadow-sm"
+                      ? "border-blue-300 bg-blue-50 text-blue-900 shadow-sm"
                       : "border-slate-200 bg-white text-slate-800 hover:border-blue-200"
                   }`}
                 >
@@ -330,12 +430,15 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
           </div>
         </div>
       </NatalieFirstDayShell>
+      </>
     );
   }
 
   if (step === 3) {
     return (
-      <NatalieFirstDayShell
+      <>
+        {debugToolbar}
+        <NatalieFirstDayShell
         step={3}
         onBack={() => goToStep(2)}
         onPrimary={() => goToStep(4)}
@@ -345,24 +448,31 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
           <h2 className="text-2xl font-extrabold text-slate-900">במה תרצה שנטלי תעזור לך?</h2>
           <NatalieFirstDayMicrocopy>אפשר לבחור כמה תחומים — ואתמקד בהם מהיום הראשון.</NatalieFirstDayMicrocopy>
         </div>
-        <div className="grid gap-3">
-          {ONBOARDING_HELP_OPTIONS.map((option) => (
-            <NatalieOnboardingChoiceCard
-              key={option.id}
-              selected={helpAreas.includes(option.id)}
-              onClick={() => toggleHelpArea(option.id)}
-            >
-              {option.label}
-            </NatalieOnboardingChoiceCard>
-          ))}
+        <div className="grid auto-rows-fr gap-3 sm:grid-cols-2">
+          {ONBOARDING_HELP_OPTIONS.map((option) => {
+            const Icon = HELP_ICONS[option.id];
+            return (
+              <NatalieOnboardingChoiceCard
+                key={option.id}
+                selected={helpAreas.includes(option.id)}
+                onClick={() => toggleHelpArea(option.id)}
+                icon={<Icon className="h-5 w-5" strokeWidth={2} aria-hidden />}
+              >
+                {option.label}
+              </NatalieOnboardingChoiceCard>
+            );
+          })}
         </div>
       </NatalieFirstDayShell>
+      </>
     );
   }
 
   if (step === 4) {
     return (
-      <NatalieFirstDayShell step={4} onBack={() => goToStep(3)} onPrimary={() => goToStep(5)} primaryLabel="המשך">
+      <>
+        {debugToolbar}
+        <NatalieFirstDayShell step={4} onBack={() => goToStep(3)} onPrimary={() => goToStep(5)} primaryLabel="המשך">
         <div className="grid gap-2">
           <h2 className="text-2xl font-extrabold text-slate-900">בואו נחבר את נטלי לעבודה שלך</h2>
           <NatalieFirstDayMicrocopy>רק השירותים שכבר זמינים היום. אפשר לחבר עכשיו או אחר כך מההגדרות.</NatalieFirstDayMicrocopy>
@@ -409,89 +519,92 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
         </div>
         {error && <p className="text-sm font-semibold text-red-600">{error}</p>}
       </NatalieFirstDayShell>
+      </>
     );
   }
 
   if (step === 5) {
     return (
-      <NatalieFirstDayShell step={5} hideFooter>
+      <>
+        {debugToolbar}
+        <NatalieFirstDayShell step={5} hideFooter>
         <div className="grid gap-2">
           <h2 className="text-2xl font-extrabold text-slate-900">נטלי מכינה את המשרד שלך</h2>
           <NatalieFirstDayMicrocopy>עוד רגע — ואתחיל לעבוד בשבילך.</NatalieFirstDayMicrocopy>
         </div>
-        <ul className="grid gap-3">
-          {ONBOARDING_PREP_STEPS.map((item, index) => {
-            const done = prepDone || index <= prepIndex;
-            const active = index === prepIndex && !prepDone;
-            return (
-              <li
-                key={item}
-                className={`flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-base transition duration-500 ${
-                  done
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                    : "border-slate-200 bg-white text-slate-500"
-                } ${active ? "ring-2 ring-blue-200" : ""}`}
-              >
-                <span
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                    done ? "bg-emerald-600 text-white" : "border border-slate-300 bg-white text-slate-400"
-                  }`}
-                  aria-hidden
-                >
-                  {done ? "✓" : index + 1}
-                </span>
-                <span className="min-w-0 break-words font-semibold">{item}</span>
-              </li>
-            );
-          })}
-        </ul>
+        <OnboardingChecklist
+          items={ONBOARDING_PREP_STEPS}
+          itemMs={PREP_ITEM_MS}
+          onComplete={handlePrepAnimationComplete}
+        />
         {error && (
           <div className="grid gap-3">
             <p className="text-sm font-semibold text-red-600">{error}</p>
-            <NatalieFirstDayPrimaryButton onClick={() => void finishOnboarding()}>נסו שוב</NatalieFirstDayPrimaryButton>
+            <NatalieFirstDayPrimaryButton onClick={() => void finishOnboarding().then((ok) => setPrepSaveOk(ok))}>
+              נסו שוב
+            </NatalieFirstDayPrimaryButton>
           </div>
         )}
         {saving && !error && <p className="text-sm font-semibold text-slate-500">שומרת את ההגדרות שלך...</p>}
       </NatalieFirstDayShell>
+      </>
     );
   }
 
+  const step6Actions = (
+    <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+      {ONBOARDING_ACTION_CARDS.map((action, index) => (
+        <button
+          key={action.label}
+          type="button"
+          onClick={() => handleActionSelect(action.href)}
+          className={`inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-gradient-to-l from-blue-600 to-blue-700 px-3 py-3 text-center text-sm font-bold text-white shadow-[0_12px_32px_-12px_rgba(29,91,235,0.45)] transition hover:from-blue-700 hover:to-blue-800 sm:min-h-[3.25rem] sm:px-4 sm:text-base ${
+            index === ONBOARDING_ACTION_CARDS.length - 1 ? "col-span-2" : ""
+          }`}
+        >
+          {action.label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
-    <NatalieFirstDayShell step={6} showPortrait hideFooter>
-      <div className="grid gap-4 text-center">
-        <h2 className="text-3xl font-extrabold text-slate-900 sm:text-4xl">
+    <>
+      {debugToolbar}
+      <NatalieFirstDayShell
+        step={6}
+        showPortrait
+        portraitSize="xlarge"
+        portraitTight
+        density="compact"
+        hideFooter
+        stickyFooter={step6Actions}
+      >
+      <div className="grid gap-2 text-center">
+        <h2 className="text-2xl font-extrabold text-slate-900 sm:text-3xl">
           מושלם!
           <br />
           מעכשיו אני עובדת בשבילך.
         </h2>
-        <NatalieFirstDayMicrocopy>המשרד שלך מוכן. בחרו איך להתחיל — ואני על זה.</NatalieFirstDayMicrocopy>
+        <NatalieFirstDayMicrocopy compact>המשרד שלך מוכן. בחרו איך להתחיל — ואני על זה.</NatalieFirstDayMicrocopy>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {ONBOARDING_SUMMARY_AREAS.map((area) => (
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5">
+        {ONBOARDING_SUMMARY_AREAS.map((area, index) => (
           <div
             key={area.label}
-            className="flex min-h-[5.5rem] flex-col items-center justify-center rounded-2xl border border-slate-200/90 bg-slate-50/80 px-3 py-4 text-center shadow-sm"
+            className={`flex min-h-[4.25rem] flex-col items-center justify-center rounded-xl border border-slate-200/90 bg-slate-50/80 px-2 py-2.5 text-center shadow-sm sm:min-h-[4.5rem] sm:rounded-2xl sm:px-3 sm:py-3 ${
+              index === ONBOARDING_SUMMARY_AREAS.length - 1 ? "col-span-2 sm:col-span-1 sm:col-start-2" : ""
+            }`}
           >
-            <span className="text-2xl" aria-hidden>
+            <span className="text-xl sm:text-2xl" aria-hidden>
               {area.icon}
             </span>
-            <span className="mt-2 text-sm font-bold text-slate-800">{area.label}</span>
+            <span className="mt-1 text-xs font-bold text-slate-800 sm:mt-1.5 sm:text-sm">{area.label}</span>
           </div>
         ))}
       </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        {ONBOARDING_ACTION_CARDS.map((action) => (
-          <Link
-            key={action.label}
-            href={action.href}
-            className="flex min-h-[3.25rem] items-center justify-center rounded-2xl bg-gradient-to-l from-blue-600 to-blue-700 px-5 py-3.5 text-center text-sm font-bold text-white shadow-[0_12px_32px_-12px_rgba(29,91,235,0.45)] transition hover:from-blue-700 hover:to-blue-800 sm:text-base"
-          >
-            {action.label}
-          </Link>
-        ))}
-      </div>
     </NatalieFirstDayShell>
+    </>
   );
 }
