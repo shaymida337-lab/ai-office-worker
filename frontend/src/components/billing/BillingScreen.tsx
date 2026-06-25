@@ -28,8 +28,25 @@ export function BillingScreen({
         {!!error && <div className="mt-4"><InlineErrorCard message={error} /></div>}
         {showPlanCards && (
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <PlanCard name="Starter" price="₪149 / חודש" />
-            <PlanCard name="Growth" price="₪299 / חודש" highlighted />
+            <PlanCard
+              plan={{
+                id: "starter",
+                name: "Starter",
+                priceMonthly: 149,
+                description: "מסך Placeholder",
+                highlights: ["ללא אינטגרציה בספרינט זה"],
+              }}
+            />
+            <PlanCard
+              plan={{
+                id: "growth",
+                name: "Growth",
+                priceMonthly: 299,
+                description: "מסך Placeholder",
+                highlights: ["ללא אינטגרציה בספרינט זה"],
+                recommended: true,
+              }}
+            />
           </div>
         )}
       </section>

@@ -20,6 +20,30 @@ export type BillingSummary = {
   status: BillingSubscriptionState;
 };
 
+export type BillingValueMetric = {
+  id: "documents" | "tasks" | "payments" | "hours";
+  label: string;
+  value: string;
+  helper: string;
+};
+
+export type BillingPlan = {
+  id: "starter" | "growth";
+  name: string;
+  priceMonthly: number;
+  description: string;
+  highlights: string[];
+  recommended?: boolean;
+};
+
+export type BillingHistoryItem = {
+  id: string;
+  date: string;
+  amount: number;
+  status: "paid" | "pending";
+  description: string;
+};
+
 export type BillingRouteKey =
   | "trial"
   | "trial-ending"
@@ -122,6 +146,55 @@ export const BILLING_MOCK_SUMMARY_BY_STATE: Record<BillingSubscriptionState, Bil
     status: "reactivated",
   },
 };
+
+export const BILLING_MOCK_VALUE_METRICS: BillingValueMetric[] = [
+  { id: "documents", label: "מסמכים שעובדו", value: "218", helper: "נסרקו, סווגו ונשמרו בצורה מסודרת" },
+  { id: "tasks", label: "משימות שבוצעו", value: "34", helper: "כולל תזכורות ומעקב ספקים" },
+  { id: "payments", label: "תשלומים שזוהו", value: "67", helper: "עם זיהוי ספק, סכום ומועד" },
+  { id: "hours", label: "שעות שנחסכו", value: "22", helper: "הערכה לפי אוטומציה ועבודה ידנית שנחסכה" },
+];
+
+export const BILLING_MOCK_PLANS: BillingPlan[] = [
+  {
+    id: "starter",
+    name: "Starter",
+    priceMonthly: 149,
+    description: "לעסקים קטנים שרוצים שליטה שקטה בתזרים ובמסמכים.",
+    highlights: ["עד 1,000 מסמכים בחודש", "צ'אט AI מובנה", "ניהול ספקים ותשלומים"],
+  },
+  {
+    id: "growth",
+    name: "Growth",
+    priceMonthly: 299,
+    description: "לעסקים בצמיחה שצריכים יותר נפח, יותר תובנות ויותר מהירות.",
+    highlights: ["עד 5,000 מסמכים בחודש", "ניתוח מתקדם ותובנות", "תמיכה בעדיפות גבוהה"],
+    recommended: true,
+  },
+];
+
+export const BILLING_MOCK_HISTORY: BillingHistoryItem[] = [
+  {
+    id: "b1",
+    date: plusDays(-40),
+    amount: 299,
+    status: "paid",
+    description: "חיוב חודשי — Growth",
+  },
+  {
+    id: "b2",
+    date: plusDays(-10),
+    amount: 299,
+    status: "paid",
+    description: "חיוב חודשי — Growth",
+  },
+  {
+    id: "b3",
+    date: plusDays(20),
+    amount: 299,
+    status: "pending",
+    description: "חיוב מתוכנן — Growth",
+  },
+];
 
 export function isBillingSubscriptionState(value: string | null): value is BillingSubscriptionState {
   return !!value && (BILLING_SUBSCRIPTION_STATES as readonly string[]).includes(value);
