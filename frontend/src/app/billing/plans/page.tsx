@@ -10,8 +10,8 @@ import {
 import { formatPlanPrice, getPlanDisplayName } from "@/components/billing/conversionCopy";
 import {
   BillingPlansClosingSection,
+  BillingPlansFeaturesSection,
   BillingPlansHero,
-  BillingPlansReliefSection,
   BillingPlansTrustSection,
   BillingPlansWorkdaySection,
 } from "@/components/billing/plans";
@@ -24,7 +24,7 @@ export default function BillingPlansPage() {
 
   const handlePlanChoose = (planId: typeof selectedPlanId) => {
     setSelectedPlanId(planId);
-    document.getElementById("closing-cta")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    document.getElementById("closing-cta")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
 
   return (
@@ -37,12 +37,12 @@ export default function BillingPlansPage() {
       {!!error && <InlineErrorCard message={error} />}
 
       {!loading && !error && (
-        <div className="grid gap-14 md:gap-16 lg:gap-20">
+        <div className="grid min-w-0 gap-12 overflow-visible md:gap-16 lg:gap-20">
           <BillingPlansHero />
-          <BillingPlansReliefSection />
+          <BillingPlansFeaturesSection />
           <BillingPlansWorkdaySection />
 
-          <section id="pricing" className="scroll-mt-24 grid gap-10">
+          <section id="pricing" className="scroll-mt-28 grid gap-8 overflow-visible md:gap-10">
             <div className="grid gap-4 text-right">
               <h2 className="text-2xl font-extrabold text-slate-900 md:text-4xl lg:text-[2.5rem]">
                 כמה עבודה אתה רוצה שנטלי תיקח ממך?
@@ -58,7 +58,7 @@ export default function BillingPlansPage() {
               </div>
             ) : (
               <>
-                <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
+                <div className="grid min-w-0 items-stretch gap-8 overflow-visible pt-2 lg:grid-cols-2 lg:gap-10 lg:pt-4">
                   {sortedPlans.map((plan) => (
                     <PlanCard
                       key={plan.id}
@@ -81,18 +81,18 @@ export default function BillingPlansPage() {
             )}
           </section>
 
-          <div id="closing-cta" className="scroll-mt-24">
+          <div id="closing-cta" className="scroll-mt-28 pb-4">
             <BillingPlansClosingSection>
               <button
                 type="button"
                 onClick={() => void beginCheckout()}
-                className="inline-flex min-h-[3.5rem] w-full items-center justify-center rounded-2xl bg-white px-8 py-4 text-center text-base font-bold text-blue-700 shadow-lg transition hover:bg-blue-50 sm:w-auto md:text-lg"
+                className="inline-flex min-h-[3.25rem] w-full items-center justify-center rounded-2xl bg-white px-8 py-3.5 text-center text-base font-bold text-blue-700 shadow-lg transition hover:bg-blue-50 sm:w-auto sm:min-w-[14rem]"
               >
-                התחילו לעבוד עם נטלי
+                התחל לעבוד עם נטלי
               </button>
               <Link
                 href="/dashboard"
-                className="inline-flex min-h-[3.5rem] w-full items-center justify-center rounded-2xl border-2 border-white/40 bg-transparent px-8 py-4 text-center text-base font-bold text-white transition hover:bg-white/10 sm:w-auto md:text-lg"
+                className="inline-flex min-h-[3.25rem] w-full items-center justify-center rounded-2xl border-2 border-white/40 bg-transparent px-8 py-3.5 text-center text-base font-bold text-white transition hover:bg-white/10 sm:w-auto"
               >
                 חזרה ללוח הבקרה
               </Link>

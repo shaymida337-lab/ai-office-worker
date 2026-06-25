@@ -1,19 +1,15 @@
-import { PLANS_TRUST_ITEMS } from "../conversionCopy";
+import { LANDING_TRUST_STRIP } from "./plansContent";
 
 export function BillingPlansTrustSection() {
   return (
-    <section className="grid gap-5">
-      <h3 className="text-center text-xl font-extrabold text-slate-900 md:text-2xl">אפשר לסמוך על נטלי</h3>
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {PLANS_TRUST_ITEMS.map((item) => (
-          <li
-            key={item.label}
-            className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200/80 bg-white px-4 py-5 text-center shadow-sm"
-          >
-            <span className="text-2xl" aria-hidden>
-              {item.icon}
+    <section className="overflow-visible rounded-2xl border border-slate-200/80 bg-slate-50/70 px-5 py-6 md:px-8 md:py-7">
+      <ul className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+        {LANDING_TRUST_STRIP.map((item) => (
+          <li key={item} className="flex items-center gap-2 text-sm font-bold text-slate-700 md:text-base">
+            <span className="text-emerald-600" aria-hidden>
+              ✓
             </span>
-            <span className="text-sm font-bold leading-6 text-slate-700 md:text-base">{item.label}</span>
+            <span>{item}</span>
           </li>
         ))}
       </ul>
