@@ -43,7 +43,7 @@ export default function BillingValueReportPage() {
 
             {empty ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-6 text-base leading-8 text-slate-700">
-                עדיין אין מספיק נתונים לדוח אישי — אבל נטלי ממשיכה לעבוד. אפשר להמשיך לבחירת מסלול ולתת לה להמשיך מאיפה שהפסיקה.
+                עדיין אין מספיק נתונים לדוח אישי — אבל נטלי ממשיכה לעבוד. אפשר להמשיך ולתת לה להמשיך מאיפה שהפסיקה.
               </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
@@ -64,7 +64,7 @@ export default function BillingValueReportPage() {
             </p>
 
             <BillingCTAGroup
-              primary={<BillingPrimaryLink href={BILLING_ROUTES.plans}>המשך לבחירת מסלול</BillingPrimaryLink>}
+              primary={<BillingPrimaryLink href={BILLING_ROUTES.plans}>כמה עבודה להוריד מהכתפיים?</BillingPrimaryLink>}
               secondary={<BillingSecondaryLink href="/billing">חזרה</BillingSecondaryLink>}
             />
           </div>

@@ -7,9 +7,12 @@ import {
   PlanCard,
   useBilling,
 } from "@/components/billing";
+import { getPlanDisplayName } from "@/components/billing/conversionCopy";
 import {
-  BillingCTAGroup,
-  BillingHero,
+  BillingConversionHero,
+  BillingDayTimeline,
+  BillingEmotionalBlock,
+  BillingFinalCTA,
   BillingPageShell,
   BillingPrimaryButton,
   BillingSecondaryLink,
@@ -20,7 +23,6 @@ import { BILLING_ROUTES } from "@/lib/billing/model";
 export default function BillingPlansPage() {
   const { loading, error, plans, selectedPlanId, setSelectedPlanId, empty, beginCheckout } = useBilling();
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? plans[0];
-
   const sortedPlans = [...plans].sort((a, b) => (a.recommended === b.recommended ? 0 : a.recommended ? -1 : 1));
 
   return (
@@ -30,15 +32,13 @@ export default function BillingPlansPage() {
         {!!error && <InlineErrorCard message={error} />}
 
         {!loading && !error && (
-          <div className="grid gap-10">
-            <BillingHero
-              headline="בחר את הדרך שבה נטלי תעבוד איתך"
-              subheadline="שני מסלולים פשוטים. בלי התחייבות. אפשר לשנות או לבטל בכל רגע."
-            />
+          <div className="grid gap-12 md:gap-14">
+            <BillingConversionHero />
+            <BillingDayTimeline />
 
             {empty ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-6 text-base text-slate-700">
-                כרגע לא ניתן להציג מסלולים. נסה שוב בעוד רגע.
+                כרגע לא ניתן להציג אפשרויות. נסה שוב בעוד רגע.
               </div>
             ) : (
               <>
@@ -55,18 +55,19 @@ export default function BillingPlansPage() {
 
                 {selectedPlan && (
                   <p className="text-center text-base font-semibold text-slate-600">
-                    בחרת ב־{selectedPlan.name} · ₪{selectedPlan.priceMonthly} לחודש
+                    בחרת ב{getPlanDisplayName(selectedPlan.id)} · ₪{selectedPlan.priceMonthly} לחודש
                   </p>
                 )}
 
+                <BillingEmotionalBlock />
                 <BillingTrustStrip />
               </>
             )}
 
-            <BillingCTAGroup
-              primary={<BillingPrimaryButton onClick={() => void beginCheckout()}>המשך לתשלום</BillingPrimaryButton>}
-              secondary={<BillingSecondaryLink href={BILLING_ROUTES["value-report"]}>חזרה לדוח הערך</BillingSecondaryLink>}
-            />
+            <BillingFinalCTA>
+              <BillingPrimaryButton onClick={() => void beginCheckout()}>המשך עם נטלי</BillingPrimaryButton>
+              <BillingSecondaryLink href={BILLING_ROUTES["value-report"]}>חזרה לדוח הערך</BillingSecondaryLink>
+            </BillingFinalCTA>
           </div>
         )}
       </BillingPageShell>

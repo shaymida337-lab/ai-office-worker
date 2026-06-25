@@ -7,8 +7,10 @@ import {
   PlanCard,
   useBilling,
 } from "@/components/billing";
+import { getPlanDisplayName } from "@/components/billing/conversionCopy";
 import {
-  BillingCTAGroup,
+  BillingEmotionalBlock,
+  BillingFinalCTA,
   BillingHero,
   BillingPageShell,
   BillingPrimaryButton,
@@ -29,15 +31,16 @@ export default function BillingReactivatePage() {
         {!!error && <InlineErrorCard message={error} />}
 
         {!loading && !error && (
-          <div className="grid gap-10">
+          <div className="grid gap-12">
             <BillingHero
+              showPortrait
               headline="נחזיר את נטלי לעבודה תוך רגע"
-              subheadline="בחר מסלול והמשך לחידוש. כל הנתונים שלך כבר שמורים — נטלי תמשיך מאיפה שהפסיקה."
+              subheadline="כל הנתונים שלך שמורים. נטלי תמשיך בדיוק מאיפה שהפסיקה — רק צריך להחליט כמה עבודה היא תיקח מהכתפיים שלך."
             />
 
             {empty ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-6 text-base text-slate-700">
-                אין כרגע נתוני מסלול להצגה. נסה שוב בעוד רגע.
+                אין כרגע אפשרויות להצגה. נסה שוב בעוד רגע.
               </div>
             ) : (
               <>
@@ -54,18 +57,19 @@ export default function BillingReactivatePage() {
 
                 {selectedPlan && (
                   <p className="text-center text-base font-semibold text-slate-600">
-                    חידוש עם {selectedPlan.name} · ₪{selectedPlan.priceMonthly} לחודש
+                    חידוש עם {getPlanDisplayName(selectedPlan.id)} · ₪{selectedPlan.priceMonthly} לחודש
                   </p>
                 )}
 
+                <BillingEmotionalBlock />
                 <BillingTrustStrip />
               </>
             )}
 
-            <BillingCTAGroup
-              primary={<BillingPrimaryButton onClick={() => void beginCheckout()}>המשך לחידוש</BillingPrimaryButton>}
-              secondary={<BillingSecondaryLink href={BILLING_ROUTES.restricted}>חזרה</BillingSecondaryLink>}
-            />
+            <BillingFinalCTA headline="מוכן להחזיר את נטלי לעבודה?">
+              <BillingPrimaryButton onClick={() => void beginCheckout()}>המשך לחידוש</BillingPrimaryButton>
+              <BillingSecondaryLink href={BILLING_ROUTES.restricted}>חזרה</BillingSecondaryLink>
+            </BillingFinalCTA>
           </div>
         )}
       </BillingPageShell>

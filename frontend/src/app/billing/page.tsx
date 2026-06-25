@@ -15,6 +15,7 @@ import {
   BillingSecondaryLink,
   BillingValueCard,
 } from "@/components/billing/ui";
+import { getPlanDisplayName } from "@/components/billing/conversionCopy";
 import { BILLING_ROUTES } from "@/lib/billing/model";
 
 export default function BillingIndexPage() {
@@ -44,7 +45,7 @@ export default function BillingIndexPage() {
             showPortrait
             badge={`נותרו ${daysLeft} ימים לניסיון`}
             headline="נטלי כבר התחילה לעבוד בשבילך"
-            subheadline="בזמן תקופת הניסיון נטלי כבר סידרה מסמכים, זיהתה תשלומים וחסכה לך שעות עבודה. עכשיו אפשר לבחור מסלול כדי שהיא תמשיך לעבוד איתך ללא הפסקה."
+            subheadline="בזמן הניסיון נטלי כבר הורידה ממך עבודה משרדית אמיתית — סידרה מסמכים, זיהתה תשלומים וחסכה לך שעות. עכשיו אפשר להחליט כמה עבודה נטלי תמשיך לקחת מהכתפיים שלך."
           />
 
           <div className="grid gap-4 md:grid-cols-3">
@@ -58,7 +59,7 @@ export default function BillingIndexPage() {
           </BillingHighlightQuote>
 
           <BillingCTAGroup
-            primary={<BillingPrimaryLink href={BILLING_ROUTES.plans}>בחירת מסלול</BillingPrimaryLink>}
+            primary={<BillingPrimaryLink href={BILLING_ROUTES.plans}>כמה עבודה להוריד מהכתפיים?</BillingPrimaryLink>}
             secondary={<BillingSecondaryLink href={BILLING_ROUTES["value-report"]}>צפייה בדוח הערך האישי</BillingSecondaryLink>}
           />
         </div>
@@ -72,7 +73,7 @@ export default function BillingIndexPage() {
           />
 
           <div className="grid gap-4 md:grid-cols-3">
-            <BillingValueCard label="מסלול נוכחי" value={summary.planName ?? "—"} accent="emerald" />
+            <BillingValueCard label="איך נטלי עובדת איתך" value={getPlanDisplayName(summary.planName)} accent="emerald" />
             <BillingValueCard
               label="חיוב הבא"
               value={summary.nextBillingAt ? new Date(summary.nextBillingAt).toLocaleDateString("he-IL") : "—"}

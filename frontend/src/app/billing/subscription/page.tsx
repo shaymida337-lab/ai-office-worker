@@ -14,6 +14,7 @@ import {
   BillingSecondaryLink,
   BillingValueCard,
 } from "@/components/billing/ui";
+import { getPlanDisplayName } from "@/components/billing/conversionCopy";
 import { BILLING_ROUTES } from "@/lib/billing/model";
 
 export default function BillingSubscriptionPage() {
@@ -39,7 +40,7 @@ export default function BillingSubscriptionPage() {
             />
 
             <div className="grid gap-4 md:grid-cols-3">
-              <BillingValueCard label="מסלול נוכחי" value={summary.planName ?? "—"} accent="emerald" />
+              <BillingValueCard label="איך נטלי עובדת איתך" value={getPlanDisplayName(summary.planName)} accent="emerald" />
               <BillingValueCard
                 label="חיוב הבא"
                 value={summary.nextBillingAt ? new Date(summary.nextBillingAt).toLocaleDateString("he-IL") : "—"}
