@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 export function BillingPlansClosingSection({ children }: { children: ReactNode }) {
   return (
-    <section className="overflow-visible rounded-[2rem] border border-blue-200/60 bg-gradient-to-l from-blue-600 to-indigo-700 px-5 py-10 text-center text-white shadow-[0_32px_64px_-32px_rgba(29,91,255,0.5)] sm:px-10 sm:py-12 md:px-12 md:py-14">
+    <section className="overflow-visible rounded-[1.75rem] border border-blue-200/50 bg-gradient-to-l from-blue-600 to-blue-700 px-5 py-10 text-center text-white shadow-[0_24px_56px_-32px_rgba(37,99,235,0.5)] sm:px-10 sm:py-12">
       <h2 className="text-2xl font-extrabold leading-tight sm:text-3xl md:text-4xl">
         העסק שלך עובד קשה.
         <br />
