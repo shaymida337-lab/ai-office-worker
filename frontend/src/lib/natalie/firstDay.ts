@@ -1,6 +1,29 @@
+import type { BusinessModuleId, BusinessPainId, BusinessSizeId, BusinessTypeId } from "@/lib/business-config";
+
 export const FIRST_DAY_STORAGE_KEY = "natalie.firstDay";
+export const ONBOARDING_PROGRESS_KEY = "natalie.onboarding.progress";
 
 export type FirstDayCommunication = "write" | "voice" | "both";
+
+export type OnboardingHelpId =
+  | "documents"
+  | "tasks"
+  | "calendar"
+  | "clients"
+  | "suppliers"
+  | "payments"
+  | "chat";
+
+export type OnboardingStepId = 1 | 2 | 3 | 4 | 5 | 6;
+
+export type OnboardingProgress = {
+  step: OnboardingStepId;
+  businessName: string;
+  firstName: string;
+  businessType: BusinessTypeId;
+  businessSize: BusinessSizeId;
+  helpAreas: OnboardingHelpId[];
+};
 
 export type FirstDayData = {
   firstName: string;
@@ -27,6 +50,76 @@ export const FIRST_DAY_COMMUNICATION_OPTIONS: { id: FirstDayCommunication; label
   { id: "both", label: "גם וגם" },
 ];
 
+const HELP_TO_PAIN: Record<OnboardingHelpId, string> = {
+  documents: "לרדוף אחרי חשבוניות וקבלות",
+  tasks: "להבין מה קורה בעסק בלי לחפור בנתונים",
+  calendar: "להבין מה קורה בעסק בלי לחפור בנתונים",
+  clients: "להבין מה קורה בעסק בלי לחפור בנתונים",
+  suppliers: "לזכור תשלומים לספקים",
+  payments: "לזכור תשלומים לספקים",
+  chat: "להבין מה קורה בעסק בלי לחפור בנתונים",
+};
+
+const HELP_TO_MODULES: Record<OnboardingHelpId, BusinessModuleId[]> = {
+  documents: ["documents", "invoices"],
+  tasks: ["tasks"],
+  calendar: ["meetings"],
+  clients: ["crm"],
+  suppliers: ["supplier_management"],
+  payments: ["collections", "supplier_management"],
+  chat: ["whatsapp"],
+};
+
+const HELP_TO_BUSINESS_PAIN: Record<OnboardingHelpId, BusinessPainId> = {
+  documents: "documents",
+  tasks: "tasks",
+  calendar: "tasks",
+  clients: "leads",
+  suppliers: "collections",
+  payments: "collections",
+  chat: "whatsapp",
+};
+
+export function helpAreasToModules(helpAreas: OnboardingHelpId[]): BusinessModuleId[] {
+  const modules = new Set<BusinessModuleId>();
+  for (const area of helpAreas) {
+    for (const moduleId of HELP_TO_MODULES[area]) {
+      modules.add(moduleId);
+    }
+  }
+  return Array.from(modules);
+}
+
+export function helpAreasToMainPain(helpAreas: OnboardingHelpId[]): BusinessPainId {
+  const first = helpAreas[0];
+  return first ? HELP_TO_BUSINESS_PAIN[first] : "documents";
+}
+
+export function helpAreasToLegacyPains(helpAreas: OnboardingHelpId[]): string[] {
+  return Array.from(new Set(helpAreas.map((area) => HELP_TO_PAIN[area])));
+}
+
+export function readOnboardingProgress(): OnboardingProgress | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(ONBOARDING_PROGRESS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as OnboardingProgress;
+  } catch {
+    return null;
+  }
+}
+
+export function writeOnboardingProgress(progress: OnboardingProgress) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ONBOARDING_PROGRESS_KEY, JSON.stringify(progress));
+}
+
+export function clearOnboardingProgress() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(ONBOARDING_PROGRESS_KEY);
+}
+
 export function readFirstDayData(): FirstDayData | null {
   if (typeof window === "undefined") return null;
   try {
@@ -44,7 +137,7 @@ export function writeFirstDayData(data: FirstDayData) {
 }
 
 export function getFirstNameForGreeting(settingsName?: string | null): string | null {
-  const stored = readFirstDayData()?.firstName?.trim();
+  const stored = readFirstDayData()?.firstName?.trim() || readOnboardingProgress()?.firstName?.trim();
   if (stored) return stored;
   const fromSettings = settingsName?.trim().split(/\s+/)[0];
   return fromSettings || null;
