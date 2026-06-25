@@ -48,7 +48,7 @@ export default function BillingPlansPage() {
                 כמה עבודה אתה רוצה שנטלי תיקח ממך?
               </h2>
               <p className="max-w-2xl text-base leading-8 text-slate-600 md:text-lg">
-                אפשר להתחיל מסודר — או לתת לנטלי לנהל יותר מהעבודה המשרדית כבר עכשיו.
+                אפשר להתחיל מסודר — או לתת לנטלי לקחת יותר אחריות על העבודה המשרדית.
               </p>
             </div>
 

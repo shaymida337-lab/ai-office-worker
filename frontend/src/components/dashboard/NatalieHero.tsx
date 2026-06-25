@@ -3,10 +3,12 @@
 import { colors, radius, shadow, button } from "@/lib/design-tokens";
 import { NataliePortrait } from "./NataliePortrait";
 
-const HEADLINE = "נטלי עובדת בשבילך";
-const SUBHEADLINE = "מנהלת את המיילים, החשבוניות והמשימות של העסק שלך.";
+const DEFAULT_HEADLINE = "נטלי עובדת בשבילך";
+const DEFAULT_SUBHEADLINE = "מנהלת את המיילים, החשבוניות והמשימות של העסק שלך.";
 
 export function NatalieHero({
+  ownerFirstName,
+  humanMessage,
   statusLabel = "מחוברת ועובדת עכשיו",
   ctaLabel = "שאל את נטלי",
   scanLabel = "סרוק מייל",
@@ -25,6 +27,8 @@ export function NatalieHero({
   onCta: () => void;
   onScan: () => void;
 }) {
+  const headline = ownerFirstName ? `בוקר טוב, ${ownerFirstName}. אני כאן.` : DEFAULT_HEADLINE;
+  const subheadline = humanMessage?.trim() || DEFAULT_SUBHEADLINE;
   const statusLine = (compact = false) => (
     <p className={`flex items-center gap-1.5 font-semibold ${compact ? "text-xs leading-4" : "text-sm leading-5"}`}>
       <span
@@ -79,10 +83,10 @@ export function NatalieHero({
           <NataliePortrait size="micro" showStatusDot={!scanRunning && !loading} />
           <div className="min-w-0 flex-1">
             <h1 className="text-base font-extrabold leading-tight" style={{ color: colors.textPrimary }}>
-              נטלי
+              {ownerFirstName ? `היי, ${ownerFirstName}` : "נטלי"}
             </h1>
-            <p className="text-xs font-semibold leading-4" style={{ color: colors.textSecondary }}>
-              עובדת המשרד שלך
+            <p className="text-xs font-semibold leading-4 line-clamp-2" style={{ color: colors.textSecondary }}>
+              {subheadline}
             </p>
             {!loading && <div className="mt-0.5">{statusLine(true)}</div>}
           </div>
@@ -100,10 +104,10 @@ export function NatalieHero({
       <div className="hidden min-h-[340px] items-center gap-6 p-6 md:flex lg:gap-8 lg:p-7">
         <div className="order-2 flex min-w-0 flex-1 flex-col justify-center text-right">
           <h1 className="text-[30px] font-extrabold leading-tight tracking-tight lg:text-[34px]" style={{ color: colors.textPrimary }}>
-            {HEADLINE}
+            {headline}
           </h1>
           <p className="mt-2 max-w-xl text-base font-medium leading-7" style={{ color: colors.textSecondary }}>
-            {SUBHEADLINE}
+            {subheadline}
           </p>
           {!loading && <div className="mt-3">{statusLine()}</div>}
           {loading ? (

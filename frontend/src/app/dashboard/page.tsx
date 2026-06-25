@@ -8,6 +8,7 @@ import {
   NatalieCommandBar,
   NatalieDoneToday,
   NatalieHero,
+  NatalieConversationExamples,
   NatalieTopBar,
   BusinessSnapshot,
   DashboardActivityTimeline,
@@ -18,6 +19,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ScanBanner } from "@/components/ui/ScanBanner";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { buildNatalieBriefing } from "@/lib/natalie/briefing";
+import { getFirstNameForGreeting } from "@/lib/natalie/firstDay";
 import { resolveNatalieRecommendation } from "@/lib/natalie/recommendation";
 import {
   buildDecisionItems,
@@ -856,7 +858,7 @@ export default function DashboardPage() {
 
   const gmailConnected = Boolean(gmailStatus?.connected);
   const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
-  const ownerFirstName = firstNameFromLabel(organizationSettings?.name);
+  const ownerFirstName = getFirstNameForGreeting(organizationSettings?.name) ?? firstNameFromLabel(organizationSettings?.name);
   const scanBanner = successScanBannerHidden ? null : buildScanBannerState(activeScan, scanStatus);
   const monthPayments = payments.filter((payment) => isThisMonth(payment.date));
   const unpaidPayments = useMemo(() => payments.filter((payment) => !payment.paid), [payments]);
@@ -1227,6 +1229,8 @@ export default function DashboardPage() {
           onCta={handleHeroPrimary}
           onScan={runSync}
         />
+
+        <NatalieConversationExamples />
 
         {scanBanner && (
           <ScanBanner

@@ -43,16 +43,19 @@ export default function BillingIndexPage() {
         <div className="grid gap-10">
           <BillingHero
             showPortrait
-            badge={`נותרו ${daysLeft} ימים לניסיון`}
+            badge="נטלי בתקופת היכרות איתך"
             headline="נטלי כבר התחילה לעבוד בשבילך"
             subheadline="בזמן הניסיון נטלי כבר הורידה ממך עבודה משרדית אמיתית — סידרה מסמכים, זיהתה תשלומים וחסכה לך שעות. עכשיו אפשר להחליט כמה עבודה נטלי תמשיך לקחת מהכתפיים שלך."
           />
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <BillingValueCard label="מסמכים שטופלו" value={documents} accent="blue" icon="📄" />
             <BillingValueCard label="תשלומים שזוהו" value={payments} accent="indigo" icon="💳" />
-            <BillingValueCard label="שעות שנחסכו" value={hours} accent="violet" icon="⏱️" />
+            <BillingValueCard label="שאלות שנענו" value={hours} accent="violet" icon="💬" helper="הערכה לפי פעילות" />
+            <BillingValueCard label="זמן שנחסך" value={hours} accent="emerald" icon="⏱️" helper="הערכה לפי עבודה שנטלי לקחה" />
           </div>
+
+          <p className="text-center text-base font-semibold text-slate-600">זה מה שכבר הספקתי לעשות בשבילך</p>
 
           <BillingHighlightQuote>
             אני כבר מכירה את העסק שלך. אם תרצה, אני יכולה להמשיך בדיוק מאיפה שהפסקנו.

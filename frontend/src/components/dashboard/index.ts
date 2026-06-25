@@ -11,6 +11,7 @@ export type { AttentionCardData } from "./NatalieAttentionCenter";
 export { NatalieCommandBar } from "./NatalieCommandBar";
 export { NatalieDoneToday } from "./NatalieDoneToday";
 export type { DoneTodayItem } from "./NatalieDoneToday";
+export { NatalieConversationExamples } from "./NatalieConversationExamples";
 export { NatalieHero } from "./NatalieHero";
 export { NataliePortrait } from "./NataliePortrait";
 export { NatalieRecommendationCard } from "./NatalieRecommendationCard";

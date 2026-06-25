@@ -1,34 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { BusinessOnboardingForm } from "@/components/BusinessOnboardingForm";
-import { Nav } from "@/components/Nav";
-import { apiFetch } from "@/lib/api";
-import type { OrganizationSettings } from "@/lib/business-config";
+import { NatalieFirstDayFlow } from "@/components/natalie-first-day";
 
 export default function OnboardingPage() {
-  const router = useRouter();
-  const [settings, setSettings] = useState<OrganizationSettings | null>(null);
-  const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    apiFetch<OrganizationSettings>("/api/organization/settings")
-      .then(setSettings)
-      .catch((err) => setMessage(err instanceof Error ? err.message : "טעינת ההגדרות נכשלה"));
-  }, []);
-
   return (
-    <div className="container">
-      <Nav />
-      <div className="mb-8">
-        <div className="page-kicker">התאמת העסק</div>
-        <h1>התאמת עובד משרד חכם לעסק שלך</h1>
-        <p>שלושה צעדים קצרים: סוג עסק, גודל העסק, והכאב המרכזי. משם נבנה דשבורד ומודולים מומלצים.</p>
-      </div>
-
-      {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
-      <BusinessOnboardingForm initialSettings={settings} mode="onboarding" onSaved={() => router.push("/dashboard")} />
-    </div>
+    <main className="min-h-screen bg-gradient-to-b from-blue-50/60 via-slate-50 to-white">
+      <NatalieFirstDayFlow onComplete={() => {}} />
+    </main>
   );
 }
