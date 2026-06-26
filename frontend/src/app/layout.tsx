@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
+import { GoogleAnalytics, GoogleAnalyticsPageView } from "@/components/analytics";
 import { BackendWarmup } from "@/components/BackendWarmup";
 import { HelpCenter } from "@/components/HelpCenter";
 import { NatalieAssistantWidget } from "@/components/NatalieAssistantWidget";
@@ -31,6 +33,10 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl">
       <body className="h-auto overflow-x-hidden lg:overflow-x-clip lg:overflow-y-visible">
+        <GoogleAnalytics />
+        <Suspense fallback={null}>
+          <GoogleAnalyticsPageView />
+        </Suspense>
         <BackendWarmup />
         {children}
         <HelpCenter />
