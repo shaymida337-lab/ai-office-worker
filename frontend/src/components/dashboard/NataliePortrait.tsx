@@ -18,7 +18,7 @@ export function NataliePortrait({
   const [imageError, setImageError] = useState(false);
   const sizeClass =
     size === "micro"
-      ? "h-10 w-10 shrink-0 rounded-full"
+      ? "h-11 w-11 shrink-0 rounded-full"
       : size === "compact"
         ? "h-14 w-14 shrink-0 rounded-full sm:h-16 sm:w-16"
         : size === "avatar"
@@ -48,7 +48,7 @@ export function NataliePortrait({
             fill
             priority={isRound}
             className="object-cover object-top"
-            sizes={size === "micro" ? "40px" : size === "compact" ? "64px" : isRound ? "88px" : size === "heroDesktop" ? "176px" : "(max-width: 768px) 180px, 300px"}
+            sizes={size === "micro" ? "44px" : size === "compact" ? "64px" : isRound ? "88px" : size === "heroDesktop" ? "176px" : "(max-width: 768px) 180px, 300px"}
             onError={() => setImageError(true)}
           />
         ) : (
