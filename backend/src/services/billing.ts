@@ -133,7 +133,7 @@ export function getBillingPlans() {
     {
       id: "growth",
       name: "Growth",
-      priceMonthly: 299,
+      priceMonthly: 199,
       description: "לעסקים בצמיחה שצריכים יותר נפח, יותר תובנות ויותר מהירות.",
       highlights: ["עד 5,000 מסמכים בחודש", "ניתוח מתקדם ותובנות", "תמיכה בעדיפות גבוהה"],
       recommended: true,
