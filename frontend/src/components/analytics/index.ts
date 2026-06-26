@@ -1,2 +1,2 @@
-export { GoogleAnalytics } from "./GoogleAnalytics";
-export { GoogleAnalyticsPageView } from "./GoogleAnalyticsPageView";
+export { GtmPageView } from "./GtmPageView";
+export { GoogleTagManagerBody, GoogleTagManagerHead } from "./GoogleTagManager";

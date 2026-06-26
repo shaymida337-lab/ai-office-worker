@@ -1,3 +1,3 @@
-export const GA_MEASUREMENT_ID = "G-5YJ7VHK33K";
+export const GTM_CONTAINER_ID = "GTM-WK6B677Q";
 
-export const isGoogleAnalyticsEnabled = process.env.NODE_ENV === "production";
+export const isGoogleTagManagerEnabled = process.env.NODE_ENV === "production";
