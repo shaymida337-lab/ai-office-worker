@@ -1,114 +1,101 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PublicTrustLayout, TrustList, TrustSection } from "@/components/trust";
+import { TRUST_LAST_UPDATED, TRUST_SUPPORT_EMAIL } from "@/lib/trust/constants";
 
 export const metadata: Metadata = {
-  title: "תנאי שימוש | עובד משרד חכם",
-  description: "תנאי השימוש של עובד משרד חכם",
+  title: "תנאי שימוש | נטלי",
+  description: "תנאי השימוש של נטלי — עובדת המשרד הדיגיטלית לעסקים בישראל",
 };
 
 export default function TermsPage() {
   return (
-    <main className="container">
-      <article className="card mx-auto max-w-4xl">
-        <div className="page-kicker">תנאי שימוש</div>
-        <h1>תנאי שימוש - עובד משרד חכם</h1>
-        <p className="mt-3 text-sm text-ink-muted">עודכן לאחרונה: מאי 2026</p>
+    <PublicTrustLayout kicker="תנאי שימוש" title="תנאי השימוש בנטלי" updatedAt={TRUST_LAST_UPDATED}>
+      <TrustSection title="קבלת תנאי השימוש">
+        <p>
+          השימוש בנטלי כפוף לתנאים אלה. בכניסה לשירות, בפתיחת חשבון או בהמשך שימוש — המשתמש מאשר שקרא והבין את
+          התנאים. אם אינך מסכים, אין להשתמש בשירות.
+        </p>
+      </TrustSection>
 
-        <section className="mt-8 grid gap-6 text-ink-secondary">
-          <LegalSection title="קבלת התנאים">
-            <p>
-              השימוש בעובד משרד חכם כפוף לתנאים אלה. אם אינך מסכים לתנאים, אין להשתמש בשירות.
-            </p>
-          </LegalSection>
+      <TrustSection title="מה נטלי עושה">
+        <p>
+          נטלי היא עובדת משרד דיגיטלית שעוזרת לבעלי עסקים קטנים בניהול עבודה משרדית: מסמכים, חשבוניות, תשלומים,
+          משימות וסדר בעסק. השירות עשוי לכלול חיבור לחשבון Google של המשתמש — לאחר אישור מפורש — לקריאת מיילים,
+          שמירת מסמכים ב-Drive ועדכון גיליונות Sheets.
+        </p>
+        <p className="font-semibold text-slate-800">תחזור לנהל את העסק. נטלי תנהל את המשרד.</p>
+      </TrustSection>
 
-          <LegalSection title="תיאור השירות">
-            <p>
-              עובד משרד חכם הוא שירות אוטומציה עסקית שמסייע בניהול מיילים עסקיים, חשבוניות, מסמכי ספקים, לקוחות,
-              משימות, גבייה, דוחות ותקשורת עסקית. השירות עשוי להשתמש בחשבון Google של המשתמש, לאחר אישור מפורש,
-              כדי לקרוא מיילים, ליצור תוויות, לשלוח מיילים, לשמור קבצים בדרייב ולעדכן גיליונות שיטס.
-            </p>
-            <p className="mt-3">
-              מפעיל השירות: Shay Mida. ליצירת קשר:{" "}
-              <a href="mailto:shaymida337@gmail.com">shaymida337@gmail.com</a>.
-            </p>
-          </LegalSection>
+      <TrustSection title="אחריות המשתמש">
+        <TrustList
+          items={[
+            "לספק מידע נכון ומעודכן.",
+            "לבדוק מידע פיננסי, חשבוניות ותשלומים לפני קבלת החלטות עסקיות.",
+            "לשמור על אבטחת חשבון המשתמש וחשבון Google המחובר.",
+            "להשתמש בשירות בהתאם לדין החל.",
+          ]}
+        />
+      </TrustSection>
 
-          <LegalSection title="אחריות המשתמש">
-            <ul className="list-inside list-disc space-y-2">
-              <li>לספק מידע נכון ומעודכן.</li>
-              <li>לבדוק מידע פיננסי, חשבוניות ותשלומים לפני קבלת החלטות עסקיות.</li>
-              <li>לא להשתמש בשירות לפעילות בלתי חוקית, פוגענית או מפרה זכויות.</li>
-              <li>לשמור על אבטחת חשבון המשתמש וחשבון Google המחובר.</li>
-            </ul>
-          </LegalSection>
+      <TrustSection title="שימוש מותר ואסור">
+        <p>שימוש מותר: ניהול עבודה משרדית עסקית לגיטימית באמצעות הכלים שהשירות מספק.</p>
+        <TrustList
+          items={[
+            "אסור להשתמש בשירות לפעילות בלתי חוקית, פוגענית או מפרה זכויות.",
+            "אסור לנסות לעקוף מנגנוני אבטחה, לפגוע בשירות או בצדדים שלישיים.",
+            "אסור להעביר גישה לחשבון ללא הרשאה מתאימה.",
+          ]}
+        />
+      </TrustSection>
 
-          <LegalSection title="הרשאות Google">
-            <p>
-              השירות מבקש הרשאות Google רק כדי להפעיל את יכולות המוצר: סריקת מיילים עסקיים, יצירת תוויות,
-              שליחת מיילים שהמשתמש מפעיל, שמירת קבצים בדרייב ועדכון גיליונות שיטס. ניתן לנתק את הגישה בכל עת
-              דרך הגדרות השירות או דרך חשבון Google.
-            </p>
-            <p className="mt-3">
-              השימוש בנתוני Google כפוף גם למדיניות הפרטיות שלנו ולדרישות Google API Services User Data Policy,
-              כולל Limited Use.
-            </p>
-          </LegalSection>
+      <TrustSection title="תשלומים ומנויים">
+        <p>
+          חלק מהשירותים עשויים להיות כרוכים בתשלום חודשי או בתקופת ניסיון, כפי שמוצג בעת ההרשמה או בעמודי החיוב.
+          המחירים, התכונות והתנאים המסחריים עשויים להשתנות — והגרסה המעודכנת תוצג למשתמש לפני חיוב.
+        </p>
+      </TrustSection>
 
-          <LegalSection title="דיוק מידע ואוטומציה">
-            <p>
-              השירות כולל ניתוח אוטומטי של מידע עסקי. ייתכנו טעויות בזיהוי מסמכים, סכומים, תאריכים או סטטוסים.
-              המשתמש אחראי לבדוק תוצרים לפני שימוש חשבונאי, משפטי או פיננסי.
-            </p>
-          </LegalSection>
+      <TrustSection title="ביטול מנוי">
+        <p>
+          ניתן לבטל מנוי בהתאם לאפשרויות שמוצגות בממשק החיוב או בפנייה לתמיכה. ביטול עשוי להיכנס לתוקף בתחילת
+          מחזור החיוב הבא, בהתאם למדיניות התשלום הרלוונטית.
+        </p>
+      </TrustSection>
 
-          <LegalSection title="הגבלת אחריות">
-            <p>
-              השירות מסופק כפי שהוא. ככל שמותר לפי דין, לא נהיה אחראים לנזקים עקיפים, אובדן רווחים, אובדן נתונים,
-              טעויות עסקיות או הסתמכות על מידע אוטומטי ללא בדיקה.
-            </p>
-          </LegalSection>
+      <TrustSection title="זמינות השירות">
+        <p>
+          אנו שואפים לספק שירות יציב וזמין, אך ייתכנו תקלות, עדכונים או השבתות זמניות. השירות מסופק ללא התחייבות
+          לזמינות רציפה או ללא הפרעות.
+        </p>
+      </TrustSection>
 
-          <LegalSection title="הפסקת שימוש ומחיקת נתונים">
-            <p>
-              ניתן להפסיק שימוש בשירות בכל עת. למחיקת חשבון או נתונים ניתן לפנות אלינו בכתובת התמיכה. ניתוק
-              הרשאות Google אפשרי גם דרך חשבון Google של המשתמש.
-            </p>
-          </LegalSection>
+      <TrustSection title="הגבלת אחריות">
+        <p>
+          השירות כולל ניתוח אוטומטי ועיבוד מסמכים — ייתכנו טעויות. השירות מסופק &quot;כפי שהוא&quot;. ככל שמותר
+          לפי דין, לא נהיה אחראים לנזקים עקיפים, אובדן רווחים, אובדן נתונים או הסתמכות על מידע אוטומטי ללא בדיקה.
+        </p>
+      </TrustSection>
 
-          <LegalSection title="שינויים בתנאים">
-            <p>
-              אנו עשויים לעדכן תנאים אלה מעת לעת. המשך שימוש בשירות לאחר עדכון התנאים מהווה הסכמה לתנאים המעודכנים.
-            </p>
-          </LegalSection>
+      <TrustSection title="שינויים בתנאים">
+        <p>
+          אנו עשויים לעדכן תנאים אלה מעת לעת. המשך שימוש בשירות לאחר עדכון מהווה הסכמה לתנאים המעודכנים. שינויים
+          מהותיים יוצגו למשתמשים בדרך סבירה.
+        </p>
+      </TrustSection>
 
-          <LegalSection title="יצירת קשר">
-            <p>
-              לשאלות בנוגע לתנאי השימוש: <a href="mailto:shaymida337@gmail.com">shaymida337@gmail.com</a>
-            </p>
-          </LegalSection>
-        </section>
-
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link className="btn btn-secondary" href="/">
-            חזרה לדף הבית
-          </Link>
-          <Link className="btn btn-secondary" href="/privacy-policy">
-            מדיניות פרטיות
-          </Link>
-          <Link className="btn btn-secondary" href="/data-deletion">
-            מחיקת נתונים
-          </Link>
-        </div>
-      </article>
-    </main>
-  );
-}
-
-function LegalSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <h2>{title}</h2>
-      <div className="mt-3 leading-8">{children}</div>
-    </section>
+      <TrustSection title="יצירת קשר">
+        <p>
+          לשאלות בנוגע לתנאי השימוש:{" "}
+          <a href={`mailto:${TRUST_SUPPORT_EMAIL}`} className="font-semibold text-blue-700 hover:underline">
+            {TRUST_SUPPORT_EMAIL}
+          </a>
+        </p>
+        <p>
+          ראו גם <Link href="/privacy" className="font-semibold text-blue-700 hover:underline">מדיניות הפרטיות</Link> ו-
+          <Link href="/contact" className="font-semibold text-blue-700 hover:underline">יצירת קשר</Link>.
+        </p>
+      </TrustSection>
+    </PublicTrustLayout>
   );
 }

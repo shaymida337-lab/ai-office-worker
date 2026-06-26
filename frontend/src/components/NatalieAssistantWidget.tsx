@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Mic, SendHorizontal, Volume2, VolumeX, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { apiFetch, API_URL, getToken } from "@/lib/api";
+import { formatNatalieResponseOrFallback } from "@/lib/natalie/formatResponse";
 import { isUiOverlayOpen, lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
 
 type MicState = "idle" | "recording" | "transcribing";
@@ -266,7 +267,13 @@ const hiddenPrefixes = [
   "/login",
   "/signup",
   "/terms",
+  "/privacy",
   "/privacy-policy",
+  "/cookies",
+  "/security",
+  "/about",
+  "/contact",
+  "/status",
   "/data-deletion",
   "/company",
   "/auth",
@@ -1029,7 +1036,7 @@ export function NatalieAssistantWidget() {
     }
 
     try {
-      const answer = result.answer?.trim() || "לא מצאתי תשובה לפי הנתונים הקיימים כרגע.";
+      const answer = formatNatalieResponseOrFallback(result.answer);
       void speakNatalieReply(answer);
       setMessages((current) =>
         current.map((message) =>
@@ -1091,7 +1098,7 @@ export function NatalieAssistantWidget() {
       );
     } catch (err) {
       console.error("[natalie] ask response processing failed", err);
-      const fallbackAnswer = result.answer?.trim() || "לא מצאתי תשובה לפי הנתונים הקיימים כרגע.";
+      const fallbackAnswer = formatNatalieResponseOrFallback(result.answer);
       setMessages((current) =>
         current.map((message) =>
           message.id === loadingMessage.id ? { ...message, text: fallbackAnswer } : message
@@ -1636,7 +1643,7 @@ export function NatalieAssistantWidget() {
                         : "rounded-[18px] rounded-br-[5px] border border-[#e6eaf2] bg-white px-4 py-2.5 text-right text-[15px] font-semibold leading-6 text-[#0e1116] shadow-[0_8px_20px_rgba(20,40,90,0.06)]"
                     }
                   >
-                    {message.text}
+                    {message.sender === "user" ? message.text : formatNatalieResponseOrFallback(message.text)}
                   </div>
                   {isActionableMessage(message) && (
                     <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
