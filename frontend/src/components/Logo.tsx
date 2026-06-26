@@ -11,28 +11,47 @@ const sizeMap = {
   lg: { icon: "h-14 w-14", title: "text-[28px]", subtitle: "text-[13px]" },
 };
 
+/** Official Natalie mark — matches public/favicon.svg */
+function NatalieMark({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 256 256" aria-hidden="true" className={className}>
+      <defs>
+        <linearGradient id="natalie-logo-gradient" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#3a6cff" />
+          <stop offset="0.55" stopColor="#1d5bff" />
+          <stop offset="1" stopColor="#143cbf" />
+        </linearGradient>
+      </defs>
+      <rect width="256" height="256" rx="56" fill="url(#natalie-logo-gradient)" />
+      <path
+        d="M64 192 L128 70 L192 192"
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth="30"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M80 154 H176" stroke="#34d399" strokeWidth="28" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function Logo({ size = "md", showSubtitle = false, iconOnly = false, className = "" }: LogoProps) {
   const sizing = sizeMap[size];
 
   return (
     <div className={`flex items-center gap-3 ${className}`} dir="rtl">
-      <span className={`${sizing.icon} logo-icon`}>
-        <svg viewBox="0 0 48 48" aria-hidden="true" className="h-full w-full">
-          <defs>
-            <linearGradient id={`logo-gradient-${size}`} x1="8" y1="6" x2="42" y2="42" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#6366F1" />
-              <stop offset="1" stopColor="#8B5CF6" />
-            </linearGradient>
-          </defs>
-          <rect width="48" height="48" rx="14" fill={`url(#logo-gradient-${size})`} />
-          <path d="M14 31.5 20.4 16h3.2L30 31.5h-3.5l-1.2-3.2h-6.6l-1.2 3.2H14Zm5.7-6h4.6L22 19.4l-2.3 6.1ZM32 16h3.4v15.5H32V16Z" fill="white" />
-          <path d="M13.5 34.5h21" stroke="white" strokeOpacity=".42" strokeWidth="2" strokeLinecap="round" />
-        </svg>
+      <span className={`${sizing.icon} logo-icon overflow-hidden`}>
+        <NatalieMark className="h-full w-full" />
       </span>
       {!iconOnly && (
         <span className="min-w-0 text-right">
-          <span className={`logo-title block whitespace-nowrap font-extrabold leading-tight tracking-tight ${sizing.title}`}>נטלי</span>
-          {showSubtitle && <span className={`block font-medium text-ink-muted ${sizing.subtitle}`}>עובדת המשרד שלך</span>}
+          <span className={`logo-title block whitespace-nowrap font-extrabold leading-tight tracking-tight ${sizing.title}`}>
+            נטלי
+          </span>
+          {showSubtitle && (
+            <span className={`block font-medium text-ink-muted ${sizing.subtitle}`}>עובדת המשרד שלך</span>
+          )}
         </span>
       )}
     </div>

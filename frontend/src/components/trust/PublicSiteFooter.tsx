@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Logo } from "@/components/Logo";
 import { LEGAL_NAV_LINKS } from "@/lib/trust/links";
 import {
   TRUST_COMPANY_NAME,
@@ -24,6 +25,9 @@ export function PublicSiteFooter({ variant = "light", className = "" }: PublicSi
       } ${className}`}
     >
       <div className="mx-auto flex w-full max-w-4xl flex-col items-center gap-5 text-center">
+        <Link href="/" className="inline-flex" aria-label="נטלי — דף הבית">
+          <Logo size="sm" iconOnly />
+        </Link>
         <nav
           className={`flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm font-semibold ${
             isLight ? "text-slate-600" : "text-ink-secondary"

@@ -6,7 +6,10 @@ import { HelpCenter } from "@/components/HelpCenter";
 import { NatalieAssistantWidget } from "@/components/NatalieAssistantWidget";
 import "./globals.css";
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://ai-office-worker.com";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "נטלי",
   description: "נטלי — עובדת המשרד שלך. עוזרת AI לעסקים בישראל",
   manifest: "/site.webmanifest",
