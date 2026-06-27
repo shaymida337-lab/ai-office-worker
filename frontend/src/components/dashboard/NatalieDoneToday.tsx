@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2 } from "lucide-react";
-import { colors, radius, shadow, type as typography } from "@/lib/design-tokens";
+import { colors, radius, shadow, dashboardHome } from "@/lib/design-tokens";
 
 export type DoneTodayItem = {
   id: string;
@@ -21,7 +21,7 @@ export function NatalieDoneToday({
 
   return (
     <section aria-label="מה נטלי כבר עשתה היום">
-      <h2 className="mb-3 text-base font-bold leading-snug md:text-lg" style={{ color: colors.textPrimary }}>
+      <h2 className={`mb-3 ${dashboardHome.sectionTitle}`} style={{ color: colors.textPrimary }}>
         מה כבר עשיתי היום
       </h2>
 
@@ -36,7 +36,7 @@ export function NatalieDoneToday({
             ))}
           </div>
         ) : showFallback ? (
-          <p className={`${typography.body} text-sm leading-7`} style={{ color: colors.textSecondary }}>
+          <p className={dashboardHome.sectionSubtitle} style={{ color: colors.textSecondary }}>
             {fallbackText ?? "מחכה לנתונים ראשונים מהעסק שלך"}
           </p>
         ) : (
@@ -48,7 +48,7 @@ export function NatalieDoneToday({
                 style={{ backgroundColor: colors.successBg, borderColor: colors.successBorder }}
               >
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" style={{ color: colors.successText }} strokeWidth={2.4} />
-                <span className="text-sm font-semibold leading-6" style={{ color: colors.textPrimary }}>
+                <span className={dashboardHome.listItem} style={{ color: colors.textPrimary }}>
                   {item.text}
                 </span>
               </li>

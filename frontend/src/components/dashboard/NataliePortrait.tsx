@@ -12,32 +12,39 @@ export function NataliePortrait({
   showStatusDot = false,
 }: {
   className?: string;
-  size?: "default" | "hero" | "heroDesktop" | "avatar" | "compact" | "micro";
+  size?: "default" | "hero" | "heroDesktop" | "heroMobile" | "avatar" | "compact" | "micro";
   showStatusDot?: boolean;
 }) {
   const [imageError, setImageError] = useState(false);
   const sizeClass =
-    size === "micro"
-      ? "h-11 w-11 shrink-0 rounded-full"
-      : size === "compact"
-        ? "h-14 w-14 shrink-0 rounded-full sm:h-16 sm:w-16"
-        : size === "avatar"
-          ? "h-[72px] w-[72px] shrink-0 rounded-full md:h-[88px] md:w-[88px]"
-          : size === "heroDesktop"
-            ? "h-[220px] w-[176px] shrink-0"
-            : size === "hero"
-              ? "aspect-[4/5] w-full max-w-[360px] md:max-w-[300px]"
-              : "aspect-[3/4] w-full max-w-[220px]";
+    size === "heroMobile"
+      ? "h-[104px] w-[104px] shrink-0 rounded-full"
+      : size === "micro"
+        ? "h-[104px] w-[104px] shrink-0 rounded-full"
+        : size === "compact"
+          ? "h-14 w-14 shrink-0 rounded-full sm:h-16 sm:w-16"
+          : size === "avatar"
+            ? "h-[72px] w-[72px] shrink-0 rounded-full md:h-[88px] md:w-[88px]"
+            : size === "heroDesktop"
+              ? "h-[220px] w-[176px] shrink-0"
+              : size === "hero"
+                ? "aspect-[4/5] w-full max-w-[360px] md:max-w-[300px]"
+                : "aspect-[3/4] w-full max-w-[220px]";
 
-  const isRound = size === "avatar" || size === "compact" || size === "micro";
+  const isRound = size === "avatar" || size === "compact" || size === "micro" || size === "heroMobile";
+  const isHeroMobile = size === "heroMobile" || size === "micro";
 
   return (
     <div className={`relative shrink-0 ${className}`}>
       <div
         className={`relative overflow-hidden ${isRound ? sizeClass : `${radius.lg} ${sizeClass}`}`}
         style={{
-          boxShadow: isRound ? "0 2px 10px rgba(15,23,42,0.07)" : "0 12px 32px rgba(15,23,42,0.08)",
-          border: `1px solid ${colors.borderSubtle}`,
+          boxShadow: isHeroMobile
+            ? "0 6px 20px rgba(29,91,255,0.18), 0 0 0 3px rgba(29,91,255,0.14)"
+            : isRound
+              ? "0 2px 10px rgba(15,23,42,0.07)"
+              : "0 12px 32px rgba(15,23,42,0.08)",
+          border: `2px solid ${isHeroMobile ? colors.accentSoft : colors.borderSubtle}`,
           backgroundColor: colors.surface,
         }}
       >
@@ -48,7 +55,17 @@ export function NataliePortrait({
             fill
             priority={isRound}
             className="object-cover object-top"
-            sizes={size === "micro" ? "44px" : size === "compact" ? "64px" : isRound ? "88px" : size === "heroDesktop" ? "176px" : "(max-width: 768px) 180px, 300px"}
+            sizes={
+              isHeroMobile
+                ? "104px"
+                : size === "compact"
+                  ? "64px"
+                  : isRound
+                    ? "88px"
+                    : size === "heroDesktop"
+                      ? "176px"
+                      : "(max-width: 768px) 180px, 300px"
+            }
             onError={() => setImageError(true)}
           />
         ) : (
@@ -62,7 +79,11 @@ export function NataliePortrait({
             }}
           >
             {isRound ? (
-              <span className={`font-extrabold ${size === "micro" ? "text-sm" : "text-xl sm:text-2xl"}`} style={{ color: colors.accent }} aria-hidden>
+              <span
+                className={`font-extrabold ${isHeroMobile ? "text-4xl" : "text-xl sm:text-2xl"}`}
+                style={{ color: colors.accent }}
+                aria-hidden
+              >
                 נ
               </span>
             ) : (
@@ -90,7 +111,13 @@ export function NataliePortrait({
       </div>
       {showStatusDot && (
         <span
-          className={`absolute rounded-full border-2 ${isRound ? (size === "micro" ? "bottom-0 left-0 h-2 w-2" : "bottom-0 left-0 h-2.5 w-2.5 sm:h-3 sm:w-3") : "bottom-3 left-3 h-3.5 w-3.5 md:bottom-4 md:left-4"}`}
+          className={`absolute rounded-full border-2 ${
+            isHeroMobile
+              ? "bottom-1 left-1 h-3.5 w-3.5"
+              : isRound
+                ? "bottom-0 left-0 h-2.5 w-2.5 sm:h-3 sm:w-3"
+                : "bottom-3 left-3 h-3.5 w-3.5 md:bottom-4 md:left-4"
+          }`}
           style={{ backgroundColor: colors.successText, borderColor: colors.surface }}
           aria-hidden
         />

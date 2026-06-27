@@ -1,7 +1,7 @@
 "use client";
 
 import { Bell } from "lucide-react";
-import { colors, radius } from "@/lib/design-tokens";
+import { colors, radius, dashboardHome } from "@/lib/design-tokens";
 
 export function NatalieTopBar({
   businessName,
@@ -15,7 +15,7 @@ export function NatalieTopBar({
   return (
     <header className="flex min-w-0 items-center justify-between gap-2 py-0 md:gap-3 md:py-0.5" aria-label="סרגל דשבורד">
       <div className="min-w-0 flex-1 text-right">
-        <p className="truncate text-[15px] font-bold leading-tight md:text-lg" style={{ color: colors.textPrimary }}>
+        <p className={`truncate ${dashboardHome.pageSectionLabel} md:text-lg md:font-bold md:leading-tight`} style={{ color: colors.textPrimary }}>
           {businessName || "העסק שלי"}
         </p>
         <p className="hidden text-sm font-medium leading-5 md:block" style={{ color: colors.textMuted }}>

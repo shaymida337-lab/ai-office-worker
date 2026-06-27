@@ -1180,7 +1180,7 @@ export default function DashboardPage() {
 
   return (
     <main
-      className="dashboard-shell h-auto min-h-screen max-w-full overflow-x-hidden px-3 pb-[calc(11rem+env(safe-area-inset-bottom,0px))] pt-[3.75rem] md:px-8 md:pt-[4.5rem] lg:mr-60 lg:overflow-x-clip lg:overflow-y-visible lg:pb-32 lg:pt-20"
+      className="dashboard-shell h-auto min-h-screen max-w-full overflow-x-hidden px-3 pb-[calc(12rem+env(safe-area-inset-bottom,0px))] pt-[3.75rem] md:px-8 md:pt-[4.5rem] lg:mr-60 lg:overflow-x-clip lg:overflow-y-visible lg:pb-32 lg:pt-20"
       style={{
         background: colors.bg,
         color: colors.textPrimary,
@@ -1190,7 +1190,7 @@ export default function DashboardPage() {
     >
       <Nav />
 
-      <div className="mx-auto grid h-auto min-w-0 max-w-6xl gap-1.5 overflow-visible md:gap-4 lg:gap-5">
+      <div className="mx-auto grid h-auto min-w-0 max-w-6xl gap-3 overflow-visible md:gap-4 lg:gap-5">
         {(error || actionMessage || scanToast) && (
           <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
         )}

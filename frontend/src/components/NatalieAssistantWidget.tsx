@@ -1596,7 +1596,7 @@ export function NatalieAssistantWidget() {
               </div>
               <div className="min-w-0">
                 <div className="text-lg font-extrabold leading-tight">נטלי</div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold text-[#6b7686]">
+                <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#6b7686]">
                   <span className="h-2 w-2 rounded-full bg-[#1faa59]" />
                   עובדת המשרד שלך
                 </div>
@@ -1639,8 +1639,8 @@ export function NatalieAssistantWidget() {
                   <div
                     className={
                       message.sender === "user"
-                        ? "rounded-[18px] rounded-bl-[5px] bg-[#1d5bff] px-4 py-2.5 text-right text-[15px] font-semibold leading-6 text-white shadow-[0_12px_24px_rgba(29,91,255,0.18)]"
-                        : "rounded-[18px] rounded-br-[5px] border border-[#e6eaf2] bg-white px-4 py-2.5 text-right text-[15px] font-semibold leading-6 text-[#0e1116] shadow-[0_8px_20px_rgba(20,40,90,0.06)]"
+                        ? "rounded-[20px] rounded-bl-[6px] bg-[#1d5bff] px-5 py-3.5 text-right text-base font-medium leading-[1.6] text-white shadow-[0_12px_24px_rgba(29,91,255,0.18)]"
+                        : "rounded-[20px] rounded-br-[6px] border border-[#e6eaf2] bg-white px-5 py-3.5 text-right text-base font-medium leading-[1.6] text-[#0e1116] shadow-[0_8px_20px_rgba(20,40,90,0.06)]"
                     }
                   >
                     {message.sender === "user" ? message.text : formatNatalieResponseOrFallback(message.text)}
@@ -1648,7 +1648,7 @@ export function NatalieAssistantWidget() {
                   {isActionableMessage(message) && (
                     <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
                       {message.actionFeedback && (
-                        <div className="mb-2 text-right text-[14px] font-bold text-[#0e1116]">{message.actionFeedback}</div>
+                        <div className="mb-2 text-right text-sm font-bold text-[#0e1116]">{message.actionFeedback}</div>
                       )}
                       {(message.actionStatus === "pending" || message.actionStatus === "creating" || message.actionStatus === "error") && (
                         <div className="flex flex-wrap gap-2">
@@ -1656,7 +1656,7 @@ export function NatalieAssistantWidget() {
                             type="button"
                             disabled={message.actionStatus === "creating"}
                             onClick={() => approveTaskProposal(message.id, message.action, message.proposal)}
-                            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
+                            className="inline-flex min-h-[56px] items-center justify-center rounded-xl bg-[#1d5bff] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
                           >
                             {message.actionStatus === "creating" ? (message.action === "create_task" ? "יוצרת..." : "מסמנת...") : "אשר ✓"}
                           </button>
@@ -1664,7 +1664,7 @@ export function NatalieAssistantWidget() {
                             type="button"
                             disabled={message.actionStatus === "creating"}
                             onClick={() => cancelTaskProposal(message.id)}
-                            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2 text-sm font-extrabold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex min-h-[56px] items-center justify-center rounded-xl border border-[#d7def0] bg-white px-5 py-3 text-sm font-semibold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             ביטול
                           </button>
@@ -1674,18 +1674,18 @@ export function NatalieAssistantWidget() {
                   )}
                   {isIssueInvoiceActionableMessage(message) && (
                     <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
-                      <div className="mb-3 rounded-xl border border-[#f5d565] bg-[#fff8db] px-3 py-2 text-right text-[13px] font-extrabold leading-6 text-[#8a6400]">
+                      <div className="mb-3 rounded-xl border border-[#f5d565] bg-[#fff8db] px-3 py-2 text-right text-xs font-extrabold leading-6 text-[#8a6400]">
                         ⚠️ טיוטה פנימית — לא חשבונית מס רשמית
                       </div>
                       <div className="mb-3 space-y-1 text-right">
-                        <div className="text-[14px] font-extrabold text-[#0e1116]">לקוח: {formatIssueInvoiceText(message.proposal.customerName)}</div>
-                        <div className="text-[13px] font-bold text-[#6b7686]">תיאור: {formatIssueInvoiceText(message.proposal.description)}</div>
-                        <div className="text-[13px] font-bold text-[#6b7686]">
+                        <div className="text-sm font-extrabold text-[#0e1116]">לקוח: {formatIssueInvoiceText(message.proposal.customerName)}</div>
+                        <div className="text-xs font-bold text-[#6b7686]">תיאור: {formatIssueInvoiceText(message.proposal.description)}</div>
+                        <div className="text-xs font-bold text-[#6b7686]">
                           סכום: {formatIssueInvoiceAmount(message.proposal.amount)} {message.proposal.currency ?? "ILS"}
                         </div>
                       </div>
                       {message.actionFeedback && (
-                        <div className="mb-2 text-right text-[14px] font-bold text-[#0e1116]">{message.actionFeedback}</div>
+                        <div className="mb-2 text-right text-sm font-bold text-[#0e1116]">{message.actionFeedback}</div>
                       )}
                       {(message.actionStatus === "pending" || message.actionStatus === "creating" || message.actionStatus === "error") && (
                         <div className="flex flex-wrap gap-2">
@@ -1693,7 +1693,7 @@ export function NatalieAssistantWidget() {
                             type="button"
                             disabled={message.actionStatus === "creating"}
                             onClick={() => approveIssueInvoiceProposal(message.id, message.proposal)}
-                            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
+                            className="inline-flex min-h-[56px] items-center justify-center rounded-xl bg-[#1d5bff] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
                           >
                             {message.actionStatus === "creating" ? "שומרת..." : "אשר ✓"}
                           </button>
@@ -1701,7 +1701,7 @@ export function NatalieAssistantWidget() {
                             type="button"
                             disabled={message.actionStatus === "creating"}
                             onClick={() => cancelIssueInvoiceProposal(message.id)}
-                            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2 text-sm font-extrabold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex min-h-[56px] items-center justify-center rounded-xl border border-[#d7def0] bg-white px-5 py-3 text-sm font-semibold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             ביטול
                           </button>
@@ -1716,7 +1716,7 @@ export function NatalieAssistantWidget() {
                           <button
                             key={slot.startTime}
                             type="button"
-                            className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#d7def0] bg-[#f8faff] px-4 py-2 text-sm font-extrabold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]"
+                            className="inline-flex min-h-[56px] items-center justify-center rounded-full border border-[#d7def0] bg-[#f8faff] px-5 py-3 text-sm font-semibold text-[#0e1116] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff]"
                             onClick={() => selectAvailabilitySlot(message.id, slot, message.proposal)}
                           >
                             {slot.label}
@@ -1724,20 +1724,20 @@ export function NatalieAssistantWidget() {
                         ))}
                       </div>
                       {message.actionFeedback && (
-                        <div className="mb-2 text-right text-[14px] font-bold text-[#0e1116]">{message.actionFeedback}</div>
+                        <div className="mb-2 text-right text-sm font-bold text-[#0e1116]">{message.actionFeedback}</div>
                       )}
                       {message.selectedBookProposal && (
                         <div className="mt-3 rounded-xl border border-[#e6eaf2] bg-[#f8faff] p-3 text-right">
-                          <div className="mb-2 text-[14px] font-extrabold text-[#0e1116]">
+                          <div className="mb-2 text-sm font-extrabold text-[#0e1116]">
                             לקוח: {formatIssueInvoiceText(message.selectedBookProposal.clientName)}
                           </div>
-                          <div className="mb-3 text-[13px] font-bold text-[#6b7686]">
+                          <div className="mb-3 text-xs font-bold text-[#6b7686]">
                             מתי: {formatAppointmentWhenLabel(message.selectedBookProposal)}
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7]"
+                              className="inline-flex min-h-[56px] items-center justify-center rounded-xl bg-[#1d5bff] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7]"
                               onClick={() => {
                                 const bookMessageId = `${message.id}-book`;
                                 setMessages((current) => {
@@ -1780,23 +1780,23 @@ export function NatalieAssistantWidget() {
                   {isBookAppointmentActionableMessage(message) && (
                     <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
                       <div className="mb-3 space-y-1 text-right">
-                        <div className="text-[14px] font-extrabold text-[#0e1116]">לקוח: {formatIssueInvoiceText(message.proposal.clientName)}</div>
-                        <div className="text-[13px] font-bold text-[#6b7686]">
+                        <div className="text-sm font-extrabold text-[#0e1116]">לקוח: {formatIssueInvoiceText(message.proposal.clientName)}</div>
+                        <div className="text-xs font-bold text-[#6b7686]">
                           מתי: {formatAppointmentWhenLabel(message.proposal)}
                         </div>
                         {message.proposal.serviceName?.trim() && (
-                          <div className="text-[13px] font-bold text-[#6b7686]">
+                          <div className="text-xs font-bold text-[#6b7686]">
                             שירות: {formatIssueInvoiceText(message.proposal.serviceName)}
                           </div>
                         )}
                         {typeof message.proposal.durationMinutes === "number" && Number.isFinite(message.proposal.durationMinutes) && (
-                          <div className="text-[13px] font-bold text-[#6b7686]">
+                          <div className="text-xs font-bold text-[#6b7686]">
                             משך: {message.proposal.durationMinutes} דקות
                           </div>
                         )}
                       </div>
                       {message.actionFeedback && (
-                        <div className="mb-2 text-right text-[14px] font-bold text-[#0e1116]">{message.actionFeedback}</div>
+                        <div className="mb-2 text-right text-sm font-bold text-[#0e1116]">{message.actionFeedback}</div>
                       )}
                       {(message.actionStatus === "pending" || message.actionStatus === "creating" || message.actionStatus === "error") && (
                         <div className="flex flex-wrap gap-2">
@@ -1810,7 +1810,7 @@ export function NatalieAssistantWidget() {
                                 message.linkedAvailabilityMessageId
                               )
                             }
-                            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
+                            className="inline-flex min-h-[56px] items-center justify-center rounded-xl bg-[#1d5bff] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
                           >
                             {message.actionStatus === "creating" ? "קובע תור..." : "אשר וקבע תור"}
                           </button>
@@ -1818,7 +1818,7 @@ export function NatalieAssistantWidget() {
                             type="button"
                             disabled={message.actionStatus === "creating"}
                             onClick={() => cancelAppointmentProposal(message.id)}
-                            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2 text-sm font-extrabold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex min-h-[56px] items-center justify-center rounded-xl border border-[#d7def0] bg-white px-5 py-3 text-sm font-semibold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             ביטול
                           </button>
@@ -1829,22 +1829,22 @@ export function NatalieAssistantWidget() {
                   {isCancelAppointmentActionableMessage(message) && (
                     <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
                       <div className="mb-3 space-y-1 text-right">
-                        <div className="text-[14px] font-extrabold text-[#0e1116]">
+                        <div className="text-sm font-extrabold text-[#0e1116]">
                           ביטול תור — {formatIssueInvoiceText(message.proposal.clientName)}
                         </div>
                         {message.proposal.when?.trim() && (
-                          <div className="text-[13px] font-bold text-[#6b7686]">
+                          <div className="text-xs font-bold text-[#6b7686]">
                             מתי: {formatIssueInvoiceText(message.proposal.when)}
                           </div>
                         )}
                         {message.proposal.serviceName?.trim() && (
-                          <div className="text-[13px] font-bold text-[#6b7686]">
+                          <div className="text-xs font-bold text-[#6b7686]">
                             שירות: {formatIssueInvoiceText(message.proposal.serviceName)}
                           </div>
                         )}
                       </div>
                       {message.actionFeedback && (
-                        <div className="mb-2 text-right text-[14px] font-bold text-[#0e1116]">{message.actionFeedback}</div>
+                        <div className="mb-2 text-right text-sm font-bold text-[#0e1116]">{message.actionFeedback}</div>
                       )}
                       {(message.actionStatus === "pending" || message.actionStatus === "creating" || message.actionStatus === "error") && (
                         <div className="flex flex-wrap gap-2">
@@ -1852,7 +1852,7 @@ export function NatalieAssistantWidget() {
                             type="button"
                             disabled={message.actionStatus === "creating"}
                             onClick={() => approveCancelExistingAppointmentProposal(message.id, message.proposal)}
-                            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#dc2626] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(220,38,38,0.22)] transition hover:bg-[#b91c1c] disabled:cursor-not-allowed disabled:bg-[#f87171] disabled:shadow-none"
+                            className="inline-flex min-h-[56px] items-center justify-center rounded-xl bg-[#dc2626] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(220,38,38,0.22)] transition hover:bg-[#b91c1c] disabled:cursor-not-allowed disabled:bg-[#f87171] disabled:shadow-none"
                           >
                             {message.actionStatus === "creating" ? "מבטלת..." : "אשר ביטול"}
                           </button>
@@ -1860,7 +1860,7 @@ export function NatalieAssistantWidget() {
                             type="button"
                             disabled={message.actionStatus === "creating"}
                             onClick={() => dismissCancelExistingAppointmentProposal(message.id)}
-                            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2 text-sm font-extrabold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex min-h-[56px] items-center justify-center rounded-xl border border-[#d7def0] bg-white px-5 py-3 text-sm font-semibold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             השאר את התור
                           </button>
@@ -1871,15 +1871,15 @@ export function NatalieAssistantWidget() {
                   {isRescheduleAppointmentActionableMessage(message) && (
                     <div className="mt-2 rounded-[16px] border border-[#e6eaf2] bg-white p-3 shadow-[0_8px_20px_rgba(20,40,90,0.06)]">
                       <div className="mb-3 space-y-1 text-right">
-                        <div className="text-[14px] font-extrabold text-[#0e1116]">
+                        <div className="text-sm font-extrabold text-[#0e1116]">
                           שינוי מועד — {formatIssueInvoiceText(message.proposal.clientName)}
                         </div>
-                        <div className="text-[13px] font-bold text-[#6b7686]">
+                        <div className="text-xs font-bold text-[#6b7686]">
                           ל{formatIssueInvoiceText(message.proposal.newWhen)}
                         </div>
                       </div>
                       {message.actionFeedback && (
-                        <div className="mb-2 text-right text-[14px] font-bold text-[#0e1116]">{message.actionFeedback}</div>
+                        <div className="mb-2 text-right text-sm font-bold text-[#0e1116]">{message.actionFeedback}</div>
                       )}
                       {(message.actionStatus === "pending" || message.actionStatus === "creating" || message.actionStatus === "error") && (
                         <div className="flex flex-wrap gap-2">
@@ -1887,7 +1887,7 @@ export function NatalieAssistantWidget() {
                             type="button"
                             disabled={message.actionStatus === "creating"}
                             onClick={() => approveRescheduleAppointmentProposal(message.id, message.proposal)}
-                            className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
+                            className="inline-flex min-h-[56px] items-center justify-center rounded-xl bg-[#1d5bff] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
                           >
                             {message.actionStatus === "creating" ? "מעבירה..." : "אשר שינוי"}
                           </button>
@@ -1895,7 +1895,7 @@ export function NatalieAssistantWidget() {
                             type="button"
                             disabled={message.actionStatus === "creating"}
                             onClick={() => dismissRescheduleAppointmentProposal(message.id)}
-                            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#d7def0] bg-white px-4 py-2 text-sm font-extrabold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex min-h-[56px] items-center justify-center rounded-xl border border-[#d7def0] bg-white px-5 py-3 text-sm font-semibold text-[#6b7686] transition hover:border-[#1d5bff] hover:bg-[#e8eeff] hover:text-[#1d5bff] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             בטל
                           </button>
@@ -1908,11 +1908,11 @@ export function NatalieAssistantWidget() {
                       <div className="space-y-3 text-right">
                         {message.invoices.map((invoice) => (
                           <div key={invoice.id} className="rounded-xl border border-[#e6eaf2] bg-[#f8faff] p-3">
-                            <div className="text-[14px] font-extrabold text-[#0e1116]">
+                            <div className="text-sm font-extrabold text-[#0e1116]">
                               {invoice.supplierName ?? "ספק לא ידוע"}
                               {invoice.invoiceNumber ? ` · ${invoice.invoiceNumber}` : ""}
                             </div>
-                            <div className="mt-1 text-[13px] font-bold text-[#6b7686]">
+                            <div className="mt-1 text-xs font-bold text-[#6b7686]">
                               {invoice.amount.toLocaleString("he-IL")} {invoice.currency} · {formatInvoiceDate(invoice.issueDate)}
                             </div>
                             {invoice.driveUrl && (
@@ -1920,7 +1920,7 @@ export function NatalieAssistantWidget() {
                                 href={invoice.driveUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="mt-3 inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7]"
+                                className="mt-3 inline-flex min-h-[56px] items-center justify-center rounded-xl bg-[#1d5bff] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7]"
                               >
                                 פתחי ב-Drive
                               </a>
@@ -1940,7 +1940,7 @@ export function NatalieAssistantWidget() {
               <button
                 type="button"
                 onClick={() => void playPendingAudio()}
-                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#d7def0] bg-white px-3 py-2 text-[13px] font-extrabold text-[#1d5bff] transition hover:border-[#1d5bff] hover:bg-[#e8eeff]"
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#d7def0] bg-white px-3 py-2 text-xs font-extrabold text-[#1d5bff] transition hover:border-[#1d5bff] hover:bg-[#e8eeff]"
                 aria-label="הקש כדי לשמוע את תשובת נטלי"
               >
                 <Volume2 className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -1966,13 +1966,13 @@ export function NatalieAssistantWidget() {
                 onChange={(event) => setInput(event.target.value)}
                 disabled={sending}
                 placeholder="כתוב הודעה לנטלי…"
-                className="min-h-11 flex-1 rounded-[14px] border border-[#e6eaf2] bg-[#f4f6fb] px-3 py-2 text-[15px] font-semibold text-[#0e1116] outline-none placeholder:text-[#6b7686] focus:border-[#1d5bff] focus:bg-white focus:shadow-[0_0_0_4px_rgba(29,91,255,0.10)]"
+                className="min-h-[56px] flex-1 rounded-[14px] border border-[#e6eaf2] bg-[#f4f6fb] px-4 py-3.5 text-base font-medium text-[#0e1116] outline-none placeholder:text-[#6b7686] focus:border-[#1d5bff] focus:bg-white focus:shadow-[0_0_0_4px_rgba(29,91,255,0.10)]"
                 aria-label="הודעה לנטלי"
               />
               <button
                 type="submit"
                 disabled={!input.trim() || sending}
-                className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[#1d5bff] text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
+                className="grid h-14 w-14 shrink-0 place-items-center rounded-[14px] bg-[#1d5bff] text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
                 aria-label="שלח הודעה"
               >
                 <SendHorizontal className="h-5 w-5 rotate-180" />
@@ -1991,7 +1991,11 @@ export function NatalieAssistantWidget() {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="group fixed bottom-[calc(96px+env(safe-area-inset-bottom,0px))] right-4 z-50 grid h-[3.75rem] w-[3.75rem] place-items-center rounded-full transition hover:scale-[1.03] focus:outline-none focus:ring-4 lg:bottom-6 lg:right-[17rem]"
+        className={`group fixed z-50 grid place-items-center rounded-full transition hover:scale-[1.03] focus:outline-none focus:ring-4 lg:bottom-6 lg:right-[17rem] ${
+          pathname === "/dashboard"
+            ? "bottom-[calc(112px+env(safe-area-inset-bottom,0px))] right-3 h-[5rem] w-[5rem]"
+            : "bottom-[calc(96px+env(safe-area-inset-bottom,0px))] right-4 h-[4.25rem] w-[4.25rem]"
+        }`}
         style={{
           background: "linear-gradient(135deg, #3a6cff, #1d5bff, #1746c7)",
           boxShadow: "0 18px 40px rgba(29,91,255,0.32), 0 0 0 6px rgba(29,91,255,0.08)",
@@ -2001,8 +2005,8 @@ export function NatalieAssistantWidget() {
       >
         <span className="absolute inset-0 rounded-full opacity-0 transition group-hover:opacity-100" style={{ boxShadow: "0 0 0 8px rgba(29,91,255,0.12)" }} />
         <span className="relative">
-          <NatalieIdentityAvatar sizeClass="h-[3.35rem] w-[3.35rem]" />
-          <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-[#1faa59]" />
+          <NatalieIdentityAvatar sizeClass={pathname === "/dashboard" ? "h-[4.5rem] w-[4.5rem]" : "h-[3.85rem] w-[3.85rem]"} />
+          <span className="absolute bottom-0 right-0 h-4 w-4 rounded-full border-2 border-white bg-[#1faa59]" />
         </span>
       </button>
       )}
@@ -2033,7 +2037,7 @@ export function NatalieAssistantWidget() {
               type="button"
               onClick={stopAudioRecording}
               disabled={micState === "transcribing"}
-              className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#1d5bff] px-6 py-2.5 text-base font-extrabold text-white shadow-[0_12px_28px_rgba(29,91,255,0.24)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
+              className="mt-6 inline-flex min-h-[56px] items-center justify-center rounded-xl bg-[#1d5bff] px-6 py-2.5 text-base font-extrabold text-white shadow-[0_12px_28px_rgba(29,91,255,0.24)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
             >
               {micState === "transcribing" ? "מתמלל…" : "עצור"}
             </button>

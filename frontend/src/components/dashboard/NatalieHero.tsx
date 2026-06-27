@@ -1,6 +1,6 @@
 "use client";
 
-import { colors, radius, shadow, button } from "@/lib/design-tokens";
+import { colors, radius, shadow, button, dashboardHome } from "@/lib/design-tokens";
 import { NataliePortrait } from "./NataliePortrait";
 
 const DEFAULT_HEADLINE = "נטלי עובדת בשבילך";
@@ -29,10 +29,10 @@ export function NatalieHero({
 }) {
   const headline = ownerFirstName ? `בוקר טוב, ${ownerFirstName}. אני כאן.` : DEFAULT_HEADLINE;
   const subheadline = humanMessage?.trim() || DEFAULT_SUBHEADLINE;
-  const statusLine = (compact = false) => (
-    <p className={`flex items-center gap-1.5 font-semibold ${compact ? "text-sm leading-5" : "text-sm leading-5"}`}>
+  const statusLine = () => (
+    <p className={`flex items-center gap-2.5 ${dashboardHome.heroStatus}`}>
       <span
-        className={`inline-block shrink-0 rounded-full ${compact ? "h-2 w-2" : "h-2 w-2"}`}
+        className="inline-block h-3 w-3 shrink-0 rounded-full"
         style={{ backgroundColor: scanRunning ? colors.warnText : colors.successText }}
         aria-hidden
       />
@@ -42,12 +42,12 @@ export function NatalieHero({
     </p>
   );
 
-  const ctaRow = (compact = false) => (
-    <div className={`grid grid-cols-2 gap-2 ${compact ? "" : "max-w-md"}`}>
+  const ctaRow = () => (
+    <div className="grid grid-cols-2 gap-3 md:max-w-md">
       <button
         type="button"
         onClick={onCta}
-        className={`${radius.control} ${button.secondary} w-full font-bold ${compact ? "min-h-[44px] px-3 text-sm" : "min-h-[48px] px-4 text-sm"}`}
+        className={`${radius.control} ${button.secondary} ${dashboardHome.heroButton} w-full min-h-[52px]`}
         style={{
           backgroundColor: colors.surface,
           border: `1px solid ${colors.border}`,
@@ -59,7 +59,7 @@ export function NatalieHero({
       <button
         type="button"
         onClick={onScan}
-        className={`${radius.control} ${button.primary} w-full font-bold ${compact ? "min-h-[44px] px-3 text-sm" : "min-h-[48px] px-4 text-sm"}`}
+        className={`${radius.control} ${button.primary} ${dashboardHome.heroButton} w-full min-h-[52px]`}
         style={{
           backgroundColor: colors.accent,
           border: `1px solid ${colors.accent}`,
@@ -77,45 +77,45 @@ export function NatalieHero({
       style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
       aria-label="נטלי — עובדת המשרד שלך"
     >
-      {/* Mobile — compact employee card */}
-      <div className="p-4 md:hidden">
-        <div className="flex items-start gap-3">
-          <NataliePortrait size="micro" showStatusDot={!scanRunning && !loading} />
-          <div className="min-w-0 flex-1 text-right">
-            <h1 className="text-xl font-extrabold leading-snug tracking-tight" style={{ color: colors.textPrimary }}>
+      {/* Mobile — premium employee card */}
+      <div className="space-y-5 p-6 md:hidden">
+        <div className="flex items-start gap-4">
+          <NataliePortrait size="heroMobile" showStatusDot={!scanRunning && !loading} />
+          <div className="min-w-0 flex-1 space-y-2.5 text-right">
+            <h1 className={dashboardHome.heroGreeting} style={{ color: colors.textPrimary }}>
               {ownerFirstName ? `היי, ${ownerFirstName}` : "נטלי"}
             </h1>
-            <p className="mt-1.5 text-base font-medium leading-7 line-clamp-3" style={{ color: colors.textSecondary }}>
+            <p className={dashboardHome.heroBody} style={{ color: colors.textSecondary }}>
               {subheadline}
             </p>
-            {!loading && <div className="mt-2">{statusLine(true)}</div>}
+            {!loading && statusLine()}
           </div>
         </div>
         {loading ? (
-          <p className="mt-3 text-sm font-medium leading-6" style={{ color: colors.textSecondary }}>
+          <p className={dashboardHome.heroBody} style={{ color: colors.textSecondary }}>
             טוען...
           </p>
         ) : (
-          <div className="mt-3">{ctaRow(true)}</div>
+          ctaRow()
         )}
       </div>
 
       {/* Desktop — portrait right, content left */}
       <div className="hidden min-h-[340px] items-center gap-6 p-6 md:flex lg:gap-8 lg:p-7">
-        <div className="order-2 flex min-w-0 flex-1 flex-col justify-center text-right">
-          <h1 className="text-[30px] font-extrabold leading-tight tracking-tight lg:text-[34px]" style={{ color: colors.textPrimary }}>
+        <div className="order-2 flex min-w-0 flex-1 flex-col justify-center space-y-3 text-right">
+          <h1 className={dashboardHome.heroGreeting} style={{ color: colors.textPrimary }}>
             {headline}
           </h1>
-          <p className="mt-2 max-w-xl text-base font-medium leading-7" style={{ color: colors.textSecondary }}>
+          <p className={`${dashboardHome.heroBody} max-w-xl`} style={{ color: colors.textSecondary }}>
             {subheadline}
           </p>
-          {!loading && <div className="mt-3">{statusLine()}</div>}
+          {!loading && statusLine()}
           {loading ? (
-            <p className="mt-4 text-sm font-medium leading-6" style={{ color: colors.textSecondary }}>
+            <p className={dashboardHome.heroBody} style={{ color: colors.textSecondary }}>
               רגע, אני מסכמת את הבוקר שלך...
             </p>
           ) : (
-            <div className="mt-5">{ctaRow()}</div>
+            <div className="pt-2">{ctaRow()}</div>
           )}
         </div>
 

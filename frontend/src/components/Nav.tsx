@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
-import { colors, radius } from "@/lib/design-tokens";
+import { colors, radius, type, dashboardHome } from "@/lib/design-tokens";
 import { isNavItemVisible, type NavItemId } from "@/config/navVisibility";
 import { apiFetch, clearAllAuthTokens } from "@/lib/api";
 import { lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
@@ -86,6 +86,7 @@ type SearchResult = { id: string; type: string; title: string; subtitle: string;
 
 export function Nav() {
   const pathname = usePathname();
+  const isDashboardHome = pathname === "/dashboard";
   const router = useRouter();
   const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -407,10 +408,16 @@ export function Nav() {
             )}
           </div>
           <div className="min-w-0 flex-1 text-center sm:hidden">
-            <span className="block text-[15px] font-extrabold leading-tight" style={{ color: colors.accent }}>
+            <span
+              className={`block leading-tight ${isDashboardHome ? dashboardHome.topHeaderTitle : type.cardTitle}`}
+              style={{ color: colors.accent }}
+            >
               נטלי
             </span>
-            <span className="block text-[11px] font-semibold leading-4" style={{ color: colors.textSecondary }}>
+            <span
+              className={`block ${isDashboardHome ? dashboardHome.topHeaderSubtitle : `${type.caption} font-semibold`}`}
+              style={{ color: colors.textSecondary }}
+            >
               עובדת המשרד שלך
             </span>
           </div>
@@ -452,7 +459,7 @@ export function Nav() {
                     key={item.href}
                     href={item.href}
                     onClick={() => setMoreOpen(false)}
-                    className={`flex min-h-14 items-center gap-3 rounded-2xl border px-3 py-3 text-[16px] font-bold transition active:scale-95 ${
+                    className={`flex min-h-[56px] items-center gap-3 rounded-2xl border px-4 py-3 text-base font-bold transition active:scale-95 ${
                       active
                         ? "border-accent-primary/40 bg-accent-primary/20 text-[#111827]"
                         : "border-[var(--border)] bg-surface-card text-[#111827]"
@@ -476,7 +483,9 @@ export function Nav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[12px] font-semibold transition active:scale-95 ${
+              className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl px-1 py-2 transition active:scale-95 ${
+                isDashboardHome ? dashboardHome.navLabel : "text-xs font-semibold leading-[1.45]"
+              } ${
                 active ? "bg-[#E8EEFF] text-[#1D5BFF]" : "text-[#6B7686] hover:bg-[#F4F6FB]"
               }`}
               aria-current={active ? "page" : undefined}
@@ -489,7 +498,9 @@ export function Nav() {
         <button
           type="button"
           onClick={() => setMoreOpen((open) => !open)}
-          className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[12px] font-semibold transition active:scale-95 ${
+          className={`flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl px-1 py-2 transition active:scale-95 ${
+            isDashboardHome ? dashboardHome.navLabel : "text-xs font-semibold leading-[1.45]"
+          } ${
             moreActive || moreOpen ? "bg-[#E8EEFF] text-[#1D5BFF]" : "text-[#6B7686] hover:bg-[#F4F6FB]"
           }`}
           aria-expanded={moreOpen}

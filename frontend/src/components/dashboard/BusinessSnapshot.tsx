@@ -2,7 +2,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import { CheckSquare, FileText, TrendingDown, TrendingUp } from "lucide-react";
-import { colors, radius, shadow, type as typography } from "@/lib/design-tokens";
+import { colors, radius, shadow, dashboardHome } from "@/lib/design-tokens";
 
 export type SnapshotMetric = {
   id: string;
@@ -39,7 +39,7 @@ export function SnapshotCard({ id, label, value }: SnapshotMetric) {
       }}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className={`${typography.caption} min-w-0 flex-1 break-words font-semibold leading-snug`} style={{ color: colors.textMuted }}>
+        <p className={`${dashboardHome.conversation} min-w-0 flex-1 break-words font-semibold`} style={{ color: colors.textMuted }}>
           {label}
         </p>
         <div
@@ -69,7 +69,7 @@ export function BusinessSnapshot({
 }) {
   return (
     <section aria-label="תמונת מצב עסקית">
-      <h2 className="mb-2 text-sm font-bold leading-snug md:mb-3 md:text-lg" style={{ color: colors.textPrimary }}>
+      <h2 className={`mb-3 md:mb-4 ${dashboardHome.sectionTitle}`} style={{ color: colors.textPrimary }}>
         תמונת מצב
       </h2>
       <div className="grid min-w-0 grid-cols-2 gap-2 md:gap-3 lg:grid-cols-4">

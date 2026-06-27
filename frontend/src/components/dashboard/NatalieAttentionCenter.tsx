@@ -2,7 +2,7 @@
 
 import { AlertTriangle, CheckSquare, FileText } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { colors, radius, button, shadow, type as typography } from "@/lib/design-tokens";
+import { colors, radius, button, shadow, dashboardHome } from "@/lib/design-tokens";
 
 export type AttentionCardData = {
   id: string;
@@ -52,12 +52,12 @@ export function NatalieAttentionCenter({
 
   return (
     <section id="natalie-decisions" className="flex h-auto min-w-0 flex-col overflow-visible" aria-label="מרכז תשומת לב">
-      <h2 className="text-base font-bold leading-snug md:text-lg" style={{ color: colors.textPrimary }}>
+      <h2 className={dashboardHome.sectionTitle} style={{ color: colors.textPrimary }}>
         {activeCount > 0 || totalCount > 0
           ? `ממליצה לטפל ב־${titleCount} ${titleCount === 1 ? "דבר" : "דברים"}`
           : "ממליצה לטפל ב־3 דברים"}
       </h2>
-      <p className="mt-1 text-sm leading-6" style={{ color: colors.textSecondary }}>
+      <p className={`mt-1 ${dashboardHome.sectionSubtitle}`} style={{ color: colors.textSecondary }}>
         אלה הדברים שכדאי לסגור קודם
       </p>
 
@@ -100,17 +100,17 @@ export function NatalieAttentionCenter({
                   )}
                 </div>
 
-                <h3 className={`${typography.cardTitle} mt-3 text-base`} style={{ color: colors.textPrimary }}>
+                <h3 className={`${dashboardHome.actionLabel} mt-3`} style={{ color: colors.textPrimary }}>
                   {card.label}
                 </h3>
-                <p className="mt-1.5 flex-1 text-sm leading-6" style={{ color: colors.textSecondary }}>
+                <p className={`mt-1.5 flex-1 ${dashboardHome.conversation}`} style={{ color: colors.textSecondary }}>
                   {card.description}
                 </p>
 
                 <button
                   type="button"
                   onClick={card.onAction}
-                  className={`${radius.control} ${button.primary} mt-4 min-h-[44px] w-full text-sm`}
+                  className={`${radius.control} ${button.primary} ${dashboardHome.heroButton} mt-4 min-h-[44px] w-full`}
                   style={{
                     backgroundColor: hasItems ? colors.accent : colors.bgSoft,
                     border: `1px solid ${hasItems ? colors.accent : colors.borderSubtle}`,

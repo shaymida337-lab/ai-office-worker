@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { colors, radius, type } from "@/lib/design-tokens";
+import { colors, radius, dashboardHome } from "@/lib/design-tokens";
 
 type QuickAction = {
   id: string;
@@ -13,7 +13,7 @@ type QuickAction = {
 export function DashboardQuickActions({ actions }: { actions: QuickAction[] }) {
   return (
     <section className="overflow-visible" aria-label="פעולות מהירות">
-      <h2 className="mb-3 text-base font-bold leading-snug md:text-lg" style={{ color: colors.textPrimary }}>
+      <h2 className={`mb-3 ${dashboardHome.sectionTitle}`} style={{ color: colors.textPrimary }}>
         פעולות מהירות
       </h2>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -45,7 +45,7 @@ export function DashboardQuickActions({ actions }: { actions: QuickAction[] }) {
                   strokeWidth={2.2}
                 />
               ) : null}
-              <span className={`${type.caption} text-center font-bold leading-5`}>{action.label}</span>
+              <span className={`${dashboardHome.actionLabel} text-center`}>{action.label}</span>
             </button>
           );
         })}

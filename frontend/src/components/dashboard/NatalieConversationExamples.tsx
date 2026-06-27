@@ -1,5 +1,7 @@
 "use client";
 
+import { colors, dashboardHome } from "@/lib/design-tokens";
+
 const EXAMPLES = [
   {
     user: "נטלי, מה אני צריך לשלם השבוע?",
@@ -18,23 +20,33 @@ const EXAMPLES = [
 export function NatalieConversationExamples() {
   return (
     <section
-      className="rounded-2xl border p-5 md:p-6"
-      style={{ backgroundColor: "var(--surface, #fff)", borderColor: "var(--border-subtle, #e2e8f0)" }}
+      className="rounded-2xl border p-6 md:p-7"
+      style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
       aria-label="דוגמאות לשיחה עם נטלי"
     >
-      <div className="mb-4 text-right">
-        <h2 className="text-xl font-extrabold text-slate-900 md:text-2xl">פשוט מבקשים מנטלי</h2>
-        <p className="mt-1 text-sm text-slate-600 md:text-base">מדברים איתה כמו עם עובדת משרד — בלי ללמוד מערכת.</p>
+      <div className="mb-5 space-y-2.5 text-right">
+        <h2 className={dashboardHome.mainSectionTitle} style={{ color: colors.textPrimary }}>
+          פשוט מבקשים מנטלי
+        </h2>
+        <p className={dashboardHome.sectionSubtitle} style={{ color: colors.textSecondary }}>
+          מדברים איתה כמו עם עובדת משרד — בלי ללמוד מערכת.
+        </p>
       </div>
-      <div className="grid gap-3">
+      <div className="grid gap-4">
         {EXAMPLES.map((example) => (
-          <article key={example.user} className="grid gap-2 rounded-2xl bg-slate-50 p-4">
-            <p className="text-right text-sm font-semibold text-slate-800 md:text-base">
-              <span className="text-slate-500">אתה: </span>
+          <article
+            key={example.user}
+            className="grid gap-3.5 rounded-2xl p-5 md:p-6"
+            style={{ backgroundColor: colors.bgSoft }}
+          >
+            <p className={`${dashboardHome.prompt} text-right`} style={{ color: colors.textPrimary }}>
+              <span style={{ color: colors.textMuted }}>אתה: </span>
               {example.user}
             </p>
-            <p className="text-right text-sm leading-7 text-slate-700 md:text-base">
-              <span className="font-bold text-blue-700">נטלי: </span>
+            <p className={`${dashboardHome.conversation} text-right`} style={{ color: colors.textSecondary }}>
+              <span className="font-bold" style={{ color: colors.accent }}>
+                נטלי:{" "}
+              </span>
               {example.natalie}
             </p>
           </article>

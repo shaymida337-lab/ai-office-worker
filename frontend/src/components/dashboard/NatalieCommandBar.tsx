@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { colors, radius, button, type as typography } from "@/lib/design-tokens";
+import { colors, radius, button, dashboardHome } from "@/lib/design-tokens";
 
 const defaultSuggestions = [
   "מה דחוף היום?",
@@ -51,7 +51,7 @@ export function NatalieCommandBar({
           onChange={(event) => setValue(event.target.value)}
           placeholder="בקש משהו מנטלי..."
           dir="rtl"
-          className={`min-h-[52px] min-w-0 w-full border px-4 py-3 text-base ${radius.control}`}
+          className={`min-h-[52px] min-w-0 w-full border px-4 py-3 ${dashboardHome.prompt} ${radius.control}`}
           style={{
             backgroundColor: colors.surface,
             borderColor: colors.border,
@@ -61,7 +61,7 @@ export function NatalieCommandBar({
         />
         <button
           type="submit"
-          className={`${radius.control} ${button.primary} min-h-[48px] w-full shrink-0 px-5 sm:hidden`}
+          className={`${radius.control} ${button.primary} ${dashboardHome.heroButton} min-h-[48px] w-full shrink-0 px-5 sm:hidden`}
           style={{
             backgroundColor: colors.accent,
             border: `1px solid ${colors.accent}`,
@@ -78,7 +78,7 @@ export function NatalieCommandBar({
             <button
               type="button"
               onClick={() => handleSuggestion(suggestion)}
-              className={`${radius.pill} min-h-[36px] border px-3 py-1.5 text-xs font-semibold`}
+              className={`${radius.pill} min-h-[36px] border px-3 py-1.5 ${dashboardHome.prompt}`}
               style={{
                 backgroundColor: colors.surface,
                 borderColor: colors.borderSubtle,

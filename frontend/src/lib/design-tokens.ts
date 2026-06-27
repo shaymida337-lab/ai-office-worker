@@ -1,4 +1,4 @@
-// MOBILE RULES: mobile-first; touch targets ≥44px; no horizontal scroll; KPI grids are grid-cols-2 md:grid-cols-4.
+// MOBILE RULES: mobile-first; touch targets ≥56px buttons; no horizontal scroll; KPI grids are grid-cols-2 md:grid-cols-4.
 export const colors = {
   bg: "#F4F6FB",
   bgSoft: "#EEF2FA",
@@ -40,34 +40,65 @@ export const shadow = {
 } as const;
 
 export const spacing = {
-  page: "p-6 md:p-8",
-  card: "p-6 md:p-7",
-  section: "gap-8",
-  inline: "gap-4",
-  sectionHeader: "mb-2",
+  page: "p-5 md:p-8",
+  card: "p-5 md:p-7",
+  section: "gap-6 md:gap-8",
+  inline: "gap-4 md:gap-5",
+  sectionHeader: "mb-3",
 } as const;
 
-/** Strict typography scale — Sprint 14 */
+/** Mobile-first readability scale — minimum 18px; nothing smaller in product UI. */
 export const type = {
-  h1: "text-[32px] font-extrabold leading-[1.15] tracking-tight md:text-[40px]",
-  h2: "text-[24px] font-bold leading-tight md:text-[28px]",
-  sectionTitle: "text-[22px] font-bold leading-snug",
-  sectionHeader: "text-[24px] font-bold leading-snug",
-  cardTitle: "text-[18px] font-semibold leading-snug",
-  body: "text-base font-medium leading-7",
-  caption: "text-sm font-medium leading-6",
-  label: "text-xs font-medium leading-5",
-  meta: "text-xs font-medium leading-5",
-  kpiValue: "text-[32px] font-extrabold leading-none tabular-nums md:text-[40px]",
-  kpiLabel: "text-[17px] font-semibold leading-6",
-  kpiDescription: "text-sm font-medium leading-6",
-  subtitle: "text-lg font-medium leading-8",
-  badge: "text-sm font-bold leading-5",
+  /** Hero greeting — "היי, שי" */
+  heroGreeting: "text-4xl font-bold leading-[1.15] tracking-tight",
+  h1: "text-3xl font-bold leading-[1.15] tracking-tight md:text-4xl",
+  h2: "text-2xl font-bold leading-[1.2] md:text-3xl",
+  sectionTitle: "text-2xl font-bold leading-[1.2] md:text-3xl",
+  sectionHeader: "text-2xl font-bold leading-[1.2] md:text-3xl",
+  cardTitle: "text-xl font-bold leading-[1.25]",
+  body: "text-base font-medium leading-[1.6]",
+  bodyLg: "text-lg font-medium leading-[1.62]",
+  chat: "text-base font-medium leading-[1.6] md:text-lg md:leading-[1.62]",
+  caption: "text-xs font-medium leading-[1.55]",
+  label: "text-xs font-medium leading-[1.55]",
+  meta: "text-xs font-medium leading-[1.55]",
+  status: "text-sm font-semibold leading-snug md:text-base",
+  kpiValue: "text-3xl font-extrabold leading-none tabular-nums md:text-4xl",
+  kpiLabel: "text-base font-semibold leading-[1.5]",
+  kpiDescription: "text-xs font-medium leading-[1.55]",
+  subtitle: "text-lg font-medium leading-[1.62]",
+  badge: "text-xs font-bold leading-[1.4]",
 } as const;
 
 export const button = {
-  primary: "min-h-[52px] px-6 py-3 text-base font-bold transition-all duration-200 hover:brightness-[0.97] active:scale-[0.99] disabled:opacity-60",
-  secondary: "min-h-[52px] px-5 py-3 text-base font-bold transition-all duration-200 hover:bg-[#F0F4FF] active:scale-[0.99] disabled:opacity-60",
+  primary:
+    "min-h-[56px] px-6 py-3.5 text-sm font-semibold transition-all duration-200 hover:brightness-[0.97] active:scale-[0.99] disabled:opacity-60",
+  secondary:
+    "min-h-[56px] px-5 py-3.5 text-sm font-semibold transition-all duration-200 hover:bg-[#F0F4FF] active:scale-[0.99] disabled:opacity-60",
+} as const;
+
+/** Home dashboard (/dashboard) mobile typography lock — explicit px sizes. */
+export const dashboardHome = {
+  /** Top app bar — "נטלי" (Nav, dashboard only) */
+  topHeaderTitle: "text-[23px] font-bold leading-[1.45]",
+  topHeaderSubtitle: "text-[15px] font-medium leading-[1.5]",
+  /** Page section label — "העסק שלי" */
+  pageSectionLabel: "text-[25px] font-bold leading-[1.45]",
+  /** Hero card */
+  heroGreeting: "text-[36px] font-bold leading-[1.15] tracking-tight",
+  heroBody: "text-[23px] font-medium leading-[1.55]",
+  heroStatus: "text-[20px] font-semibold leading-[1.5]",
+  heroButton: "text-[21px] font-bold leading-[1.5]",
+  /** Main content sections */
+  mainSectionTitle: "text-[36px] font-extrabold leading-[1.2] tracking-tight",
+  sectionTitle: "text-[25px] font-bold leading-[1.45]",
+  sectionSubtitle: "text-[21px] font-medium leading-[1.55]",
+  actionLabel: "text-[21px] font-bold leading-[1.5]",
+  prompt: "text-[21px] font-semibold leading-[1.55]",
+  conversation: "text-[21px] font-medium leading-[1.55]",
+  listItem: "text-[21px] font-semibold leading-[1.55]",
+  /** Bottom nav labels (dashboard mobile) */
+  navLabel: "text-[15px] font-semibold leading-[1.45]",
 } as const;
 
 export type KpiAccent = "blue" | "green" | "amber" | "violet";
