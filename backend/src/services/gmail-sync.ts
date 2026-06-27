@@ -762,7 +762,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     await saveScanProgress(log.id, {
       emailsProcessed,
       emailsSaved: progressEmailsSaved,
-      invoicesFound: invoicesCreated,
+      invoicesFound: invoicesCreated + needsReviewCount,
       paymentsCreated,
       tasksCreated,
       driveUploaded: driveUploadsSucceeded,
@@ -1080,7 +1080,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       await finalizeGmailScanCompleted(log.id, {
         emailsProcessed,
         emailsSaved: emailsSavedToGmailScanItem,
-        invoicesFound: invoicesCreated,
+        invoicesFound: invoicesCreated + needsReviewCount,
         paymentsCreated,
         tasksCreated,
         driveUploaded: driveUploadsSucceeded,
@@ -2790,7 +2790,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     await finalizeGmailScanCompleted(log.id, {
       emailsProcessed,
       emailsSaved: emailsSavedToGmailScanItem,
-      invoicesFound: invoicesCreated + invoiceBackfill.created,
+      invoicesFound: invoicesCreated + needsReviewCount + invoiceBackfill.created,
       paymentsCreated,
       tasksCreated,
       driveUploaded: driveUploadsSucceeded,

@@ -1,3 +1,30 @@
+export function scanDocumentsFound(progress: {
+  documentsFound?: number;
+  invoicesFound?: number;
+  supplierPaymentsFound?: number;
+  summary?: {
+    classifiedCount?: number;
+    rejectedCount?: number;
+    documentsFound?: number;
+    needsReviewCount?: number;
+    invoicesFound?: number;
+  };
+}): number {
+  if (typeof progress.documentsFound === "number") {
+    return progress.documentsFound + (progress.supplierPaymentsFound ?? 0);
+  }
+  if (typeof progress.summary?.documentsFound === "number") {
+    return progress.summary.documentsFound + (progress.supplierPaymentsFound ?? 0);
+  }
+  const fromSummary =
+    (progress.summary?.classifiedCount ?? 0) +
+    (progress.summary?.rejectedCount ?? progress.summary?.needsReviewCount ?? 0);
+  if (fromSummary > 0) {
+    return fromSummary + (progress.supplierPaymentsFound ?? 0);
+  }
+  return (progress.invoicesFound ?? progress.summary?.invoicesFound ?? 0) + (progress.supplierPaymentsFound ?? 0);
+}
+
 export function isCompletedGmailScanStatus(status?: string) {
   return status === "completed" || status === "success" || status === "partial";
 }

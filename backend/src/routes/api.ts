@@ -33,6 +33,7 @@ import {
   refreshGmailScanProgressOnRead,
   toApiGmailScanStatus,
 } from "../services/gmailScanLifecycle.js";
+import { resolveDocumentsFound } from "../services/gmailScanProgressCounts.js";
 import { askNatalieBusinessQuestion } from "../services/natalie.js";
 import { completeTask, createTask } from "../services/tasks.js";
 import {
@@ -6104,7 +6105,12 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
   const elapsedMs = Math.max(0, end.getTime() - start.getTime());
   const emailsFetched = log.emailsProcessed;
   const emailsSaved = log.emailsSaved;
-  const invoicesFound = log.invoicesFound;
+  const documentsFound = resolveDocumentsFound({
+    classifiedCount,
+    rejectedCount,
+    persistedInvoicesFound: log.invoicesFound,
+  });
+  const invoicesFound = documentsFound;
   const supplierPaymentsFound = log.paymentsCreated;
   const uploadedToDrive = log.driveUploaded;
   const processed = emailsFetched;
@@ -6137,7 +6143,7 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
     scanId: log.id,
     status,
     scanPhase,
-    inProgress: status === "running" || status === "queued",
+    inProgress: !log.finishedAt && (status === "running" || status === "queued"),
     startedAt: log.startedAt,
     finishedAt: log.finishedAt,
     error:
@@ -6149,6 +6155,7 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
     lastSuccessfulScanAt: lastSuccessfulScan?.finishedAt ?? null,
     emailsFetched,
     emailsSaved,
+    documentsFound,
     invoicesFound,
     supplierPaymentsFound,
     clientsFound: 0,
@@ -6162,6 +6169,7 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
       ? {
           emailsFetched,
           emailsSaved,
+          documentsFound,
           invoicesFound,
           rejectedCount,
           classifiedCount,
@@ -6184,6 +6192,7 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
       emailsSaved,
       scanPhase,
       recordsSaved: emailsSaved,
+      documentsFound,
       invoicesFound,
       rejectedCount,
       classifiedCount,

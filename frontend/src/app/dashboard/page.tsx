@@ -35,6 +35,7 @@ import type { AttentionCardData } from "@/components/dashboard";
 import type { NatalieBriefingInput, NatalieRecommendationInput } from "@/lib/natalie/types";
 import {
   apiFetch,
+  ApiError,
   clearToken,
   getToken,
   isAuthError,
@@ -52,6 +53,7 @@ import {
   isTerminalGmailScanProgress,
   isTerminalScanStatusLog,
   normalizeScanStatusFromLog,
+  scanDocumentsFound,
 } from "@/lib/gmailScanLifecycle";
 import type { OrganizationSettings } from "@/lib/business-config";
 
@@ -181,6 +183,9 @@ type GmailScanSummary = {
   invoicesSaved: number;
   duplicatesSkipped: number;
   needsReviewCount?: number;
+  classifiedCount?: number;
+  rejectedCount?: number;
+  documentsFound?: number;
   errorsCount?: number;
   emailsFetched?: number;
   emailsSaved?: number;
@@ -223,6 +228,7 @@ type ScanProgressResult = {
   error: string | null;
   emailsFetched: number;
   emailsSaved: number;
+  documentsFound?: number;
   invoicesFound: number;
   supplierPaymentsFound: number;
   clientsFound: number;
@@ -604,7 +610,7 @@ export default function DashboardPage() {
       setFirstScanPhase(null);
       window.localStorage.removeItem("activeGmailScanId");
 
-      const found = (progress.invoicesFound ?? 0) + (progress.supplierPaymentsFound ?? 0);
+      const found = scanDocumentsFound(progress);
 
       if (isSuccessfulGmailScanProgress(progress)) {
         setFirstScanSummary(formatProgressSummary(progress));
@@ -670,6 +676,16 @@ export default function DashboardPage() {
         }
       } catch (err) {
         if (!cancelled) {
+          if (err instanceof ApiError && err.status === 404) {
+            setActiveScanId(null);
+            setActiveScan(null);
+            setSyncing(false);
+            setFirstScanRunning(false);
+            setScanProgress([]);
+            window.localStorage.removeItem("activeGmailScanId");
+            await load();
+            return;
+          }
           setScanToast({ type: "error", text: err instanceof Error ? err.message : "טעינת סטטוס סריקה נכשלה" });
         }
       }
@@ -937,7 +953,11 @@ export default function DashboardPage() {
   const gmailConnected = Boolean(gmailStatus?.connected);
   const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
   const ownerFirstName = getFirstNameForGreeting(organizationSettings?.name) ?? firstNameFromLabel(organizationSettings?.name);
-  const scanBanner = successScanBannerHidden ? null : buildScanBannerState(activeScan, scanStatus);
+  const scanBannerBase = successScanBannerHidden ? null : buildScanBannerState(activeScan, scanStatus, documentReviews.length);
+  const scanBanner =
+    scanBannerBase && scanBannerBase.found === 0 && documentReviews.length > 0
+      ? { ...scanBannerBase, found: documentReviews.length }
+      : scanBannerBase;
   const monthPayments = payments.filter((payment) => isThisMonth(payment.date));
   const unpaidPayments = useMemo(() => payments.filter((payment) => !payment.paid), [payments]);
   const openTasksCount = stats?.openTasks ?? recentTasks.filter((task) => task.status !== "completed" && task.status !== "done").length;
@@ -1706,17 +1726,23 @@ function WhatsAppCard({
   );
 }
 
-function buildScanBannerState(activeScan: ScanProgressResult | null, scanStatus: ScanStatus | null): {
+function buildScanBannerState(
+  activeScan: ScanProgressResult | null,
+  scanStatus: ScanStatus | null,
+  documentReviewCount = 0
+): {
   status: "running" | "success" | "partial" | "truncated" | "stale" | "error";
   found: number;
   scanned: number;
   totalMatched?: number | null;
   errors: number;
 } | null {
+  const withReviewFallback = (found: number) => Math.max(found, documentReviewCount);
+
   if (activeScan) {
     return {
       status: mapProgressToBannerStatus(activeScan),
-      found: activeScan.invoicesFound + activeScan.supplierPaymentsFound,
+      found: withReviewFallback(scanDocumentsFound(activeScan)),
       scanned: activeScan.emailsFetched,
       totalMatched: activeScan.totalMatched ?? activeScan.summary?.totalMatched,
       errors: activeScan.summary?.errorsCount ?? activeScan.finalSummary?.errorsCount ?? 0,
@@ -1726,7 +1752,9 @@ function buildScanBannerState(activeScan: ScanProgressResult | null, scanStatus:
   if (isRunningScanStatusLog(scanStatus.last)) {
     return {
       status: "running",
-      found: (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0),
+      found: withReviewFallback(
+        (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0)
+      ),
       scanned: scanStatus.last.found,
       totalMatched: scanStatus.last.totalMatched,
       errors: scanStatus.last.errors ? 1 : 0,
@@ -1742,7 +1770,9 @@ function buildScanBannerState(activeScan: ScanProgressResult | null, scanStatus:
           : scanStatus.last.status === "partial"
             ? "partial"
             : "error",
-    found: (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0),
+    found: withReviewFallback(
+      (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0)
+    ),
     scanned: scanStatus.last.found,
     totalMatched: scanStatus.last.totalMatched,
     errors: scanStatus.last.errors ? 1 : 0,
