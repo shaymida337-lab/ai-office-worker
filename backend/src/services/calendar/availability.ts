@@ -1,5 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
-import { loadAppointmentBusyBlocks } from "./blocks.js";
+import { loadCombinedBusyBlocks } from "./calendarEventBlocks.js";
 import {
   appointmentEnd,
   checkConflict,
@@ -67,6 +67,8 @@ export async function checkSlotAvailability(params: {
   durationMinutes?: number;
   serviceId?: string | null;
   excludeAppointmentId?: string;
+  excludeCalendarEventId?: string;
+  assignedUserId?: string | null;
   now?: Date;
 }): Promise<CheckSlotAvailabilityResult> {
   const rules = await getCalendarRulesForOrganization(params.organizationId);
@@ -120,12 +122,14 @@ export async function checkSlotAvailability(params: {
     return { ...base, available: false, reason: "outside_working_hours" };
   }
 
-  const busyBlocks = await loadAppointmentBusyBlocks(params.organizationId, candidate, {
+  const busyBlocks = await loadCombinedBusyBlocks(params.organizationId, candidate, {
     excludeAppointmentId: params.excludeAppointmentId,
+    excludeCalendarEventId: params.excludeCalendarEventId,
+    assignedUserId: params.assignedUserId,
   });
 
   const conflictResult = checkConflict(candidate, busyBlocks, {
-    excludeId: params.excludeAppointmentId,
+    excludeId: params.excludeCalendarEventId ?? params.excludeAppointmentId,
     allowBackToBack: rules.allowBackToBack,
   });
 
@@ -152,6 +156,8 @@ export async function findAvailableSlotsForOrganization(params: {
   limit?: number;
   slotStepMinutes?: number;
   excludeAppointmentId?: string;
+  excludeCalendarEventId?: string;
+  assignedUserId?: string | null;
   now?: Date;
 }): Promise<FindAvailableSlotsResult> {
   const rules = await getCalendarRulesForOrganization(params.organizationId);
@@ -188,15 +194,17 @@ export async function findAvailableSlotsForOrganization(params: {
     range = { ...range, start: now };
   }
 
-  const busyBlocks = await loadAppointmentBusyBlocks(params.organizationId, range, {
+  const busyBlocks = await loadCombinedBusyBlocks(params.organizationId, range, {
     excludeAppointmentId: params.excludeAppointmentId,
+    excludeCalendarEventId: params.excludeCalendarEventId,
+    assignedUserId: params.assignedUserId,
   });
 
   const slots = findAvailableSlots(range, durationMinutes, busyBlocks, rules, {
     limit,
     slotStepMinutes,
     now,
-    excludeId: params.excludeAppointmentId,
+    excludeId: params.excludeCalendarEventId ?? params.excludeAppointmentId,
   });
 
   return {

@@ -404,6 +404,94 @@ export async function deleteGoogleCalendarEventForAppointment(
   }
 }
 
+export type CalendarEngineGoogleEventPayload = {
+  summary: string;
+  description: string;
+  location?: string;
+  start: { dateTime: string; timeZone: string };
+  end: { dateTime: string; timeZone: string };
+};
+
+export async function insertCalendarEngineGoogleEvent(
+  organizationId: string,
+  requestBody: CalendarEngineGoogleEventPayload
+): Promise<string | null> {
+  try {
+    const calendar = await getCalendarClientForOrganization(organizationId);
+    if (!calendar) {
+      return null;
+    }
+
+    const result = await calendar.events.insert({
+      calendarId: "primary",
+      requestBody,
+    });
+
+    return result.data.id ?? null;
+  } catch (err) {
+    console.error(
+      `[google/calendar-engine] Failed to create event for organization ${organizationId}`,
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+}
+
+export async function updateCalendarEngineGoogleEvent(
+  organizationId: string,
+  googleEventId: string,
+  requestBody: CalendarEngineGoogleEventPayload
+): Promise<boolean> {
+  try {
+    const calendar = await getCalendarClientForOrganization(organizationId);
+    if (!calendar || !googleEventId) {
+      return false;
+    }
+
+    await calendar.events.update({
+      calendarId: "primary",
+      eventId: googleEventId,
+      requestBody,
+    });
+
+    return true;
+  } catch (err) {
+    console.error(
+      `[google/calendar-engine] Failed to update event ${googleEventId} for organization ${organizationId}`,
+      err instanceof Error ? err.message : err
+    );
+    return false;
+  }
+}
+
+export async function deleteCalendarEngineGoogleEvent(
+  organizationId: string,
+  googleEventId: string
+): Promise<boolean> {
+  try {
+    const calendar = await getCalendarClientForOrganization(organizationId);
+    if (!calendar || !googleEventId) {
+      return false;
+    }
+
+    await calendar.events.delete({
+      calendarId: "primary",
+      eventId: googleEventId,
+    });
+
+    return true;
+  } catch (err) {
+    if (isGoogleCalendarEventNotFoundError(err)) {
+      return true;
+    }
+    console.error(
+      `[google/calendar-engine] Failed to delete event ${googleEventId} for organization ${organizationId}`,
+      err instanceof Error ? err.message : err
+    );
+    return false;
+  }
+}
+
 export async function getGoogleClientsForClient(clientId: string) {
   const google = await loadGoogle();
   const client = await prisma.client.findUnique({ where: { id: clientId } });

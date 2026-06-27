@@ -61,9 +61,15 @@ import {
   updateAppointmentForOrganization,
 } from "../services/appointmentService.js";
 import {
-  checkSlotAvailability,
-  findAvailableSlotsForOrganization,
-} from "../services/calendar/availability.js";
+  bookAppointmentViaNatalie,
+  cancelAppointmentViaNatalie,
+  checkUnifiedSlotAvailability,
+  findUnifiedAvailableSlots,
+  rescheduleAppointmentViaNatalie,
+  SchedulingFacadeError,
+} from "../services/scheduling/schedulingFacade.js";
+import { getBriefingSchedulingSnapshot } from "../services/scheduling/briefingSchedulingReader.js";
+import { getSchedulingCapabilities } from "../services/scheduling/schedulingCapabilities.js";
 import {
   ACCURACY_ANALYTICS_ROUTE_PATH,
   getAccuracyAnalyticsForOrganization,
@@ -74,6 +80,7 @@ import {
   parseVerificationQuery,
   VERIFICATION_CENTER_ROUTE_PATH,
 } from "../services/verification/verificationCenter.js";
+import { calendarEngineRouter } from "./calendarEngineRoutes.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -131,6 +138,7 @@ apiRouter.get("/debug/payments/open-classification-inputs", async (req, res, nex
 });
 
 apiRouter.use(authMiddleware);
+apiRouter.use(calendarEngineRouter);
 
 apiRouter.get("/business/templates", async (_req, res) => {
   res.json(getBusinessTemplates());
@@ -2653,99 +2661,65 @@ apiRouter.post("/natalie/create-appointment", async (req, res) => {
     notes?: unknown;
   };
   const organizationId = req.auth!.organizationId;
-  const clientName = typeof body.clientName === "string" ? body.clientName.trim() : "";
-  if (!clientName) {
-    res.status(400).json({ error: "שם לקוח נדרש" });
-    return;
-  }
-
-  const dayReference = typeof body.dayReference === "string" ? body.dayReference.trim() : "";
-  const time = typeof body.time === "string" ? body.time.trim() : "";
-  const startTimeRaw = typeof body.startTime === "string" ? body.startTime.trim() : "";
+  const userId = req.auth!.userId;
 
   try {
-    const timeZone = await loadOrganizationTimezone(organizationId);
-    const startTime = resolveAppointmentDateTime({
-      dayReference: dayReference || undefined,
-      time: time || undefined,
-      explicitStartTime: startTimeRaw || undefined,
-      timeZone,
-    });
-    if (!startTime) {
-      res.status(400).json({
-        error: "לא הצלחתי להבין את מועד התור, אפשר לנסות שוב עם יום ושעה ברורים",
-        code: "bad_datetime",
-      });
-      return;
-    }
-
-    const clients = await findClientByNameOrPhone({ organizationId, query: clientName });
-    if (clients.length === 0) {
-      res.status(404).json({ error: "לא נמצא לקוח בשם הזה", code: "client_not_found" });
-      return;
-    }
-    if (clients.length > 1) {
-      res.status(409).json({
-        error: "נמצאו כמה לקוחות, צריך לדייק",
-        code: "multiple_clients",
-        clients,
-      });
-      return;
-    }
-    const clientId = clients[0].id;
-
-    let serviceId: string | null = null;
-    let durationMinutes =
-      typeof body.durationMinutes === "number" && Number.isFinite(body.durationMinutes)
-        ? body.durationMinutes
-        : undefined;
-
-    const serviceName = typeof body.serviceName === "string" ? body.serviceName.trim() : "";
-    if (serviceName) {
-      const service = await prisma.service.findFirst({
-        where: {
-          organizationId,
-          isActive: true,
-          name: { contains: serviceName, mode: "insensitive" },
-        },
-      });
-      if (service) {
-        serviceId = service.id;
-        if (durationMinutes === undefined) {
-          durationMinutes = service.durationMinutes;
-        }
-      }
-    }
-
-    if (durationMinutes === undefined) {
-      durationMinutes = 30;
-    }
-    if (durationMinutes <= 0) {
-      res.status(400).json({ error: "משך התור חייב להיות מספר חיובי" });
-      return;
-    }
-
-    if (Number.isNaN(startTime.getTime())) {
-      res.status(400).json({ error: "זמן התור לא תקין" });
-      return;
-    }
-    if (startTime.getTime() < Date.now()) {
-      res.status(400).json({ error: "זמן התור חייב להיות בהווה או בעתיד" });
-      return;
-    }
-
-    const notes = typeof body.notes === "string" ? body.notes.trim() : "";
-    const appointment = await createAppointmentForOrganization({
+    const result = await bookAppointmentViaNatalie({
       organizationId,
-      clientId,
-      serviceId,
-      startTime,
-      durationMinutes,
-      source: "natalie",
-      notes: notes || null,
+      userId,
+      clientName: typeof body.clientName === "string" ? body.clientName : "",
+      dayReference: typeof body.dayReference === "string" ? body.dayReference : undefined,
+      time: typeof body.time === "string" ? body.time : undefined,
+      startTime: typeof body.startTime === "string" ? body.startTime : undefined,
+      durationMinutes:
+        typeof body.durationMinutes === "number" && Number.isFinite(body.durationMinutes)
+          ? body.durationMinutes
+          : undefined,
+      serviceName: typeof body.serviceName === "string" ? body.serviceName : undefined,
+      notes: typeof body.notes === "string" ? body.notes : undefined,
     });
-    res.status(201).json(appointment);
+
+    if (!result.engine) {
+      res.status(201).json(result.appointment);
+      return;
+    }
+
+    res.status(201).json({
+      id: result.calendarEventId,
+      organizationId,
+      clientId: result.clientId,
+      startTime: result.startTime,
+      durationMinutes: result.durationMinutes,
+      status: result.status,
+      source: "natalie",
+      engineMode: true,
+      pendingApproval: result.pendingApproval,
+      decisionId: result.decisionId,
+      queueType: result.queueType,
+      message: result.message,
+      workCaseId: result.workCaseId,
+    });
   } catch (err) {
+    if (err instanceof SchedulingFacadeError) {
+      if (err.code === "client_not_found") {
+        res.status(404).json({ error: err.message, code: err.code });
+        return;
+      }
+      if (err.code === "multiple_clients") {
+        res.status(409).json({
+          error: err.message,
+          code: err.code,
+          clients: err.details?.clients,
+        });
+        return;
+      }
+      if (err.code === "bad_datetime") {
+        res.status(400).json({ error: err.message, code: err.code });
+        return;
+      }
+      res.status(400).json({ error: err.message, code: err.code });
+      return;
+    }
     if (err instanceof AppointmentConflictError) {
       res.status(409).json({
         error: err.message,
@@ -2766,15 +2740,32 @@ apiRouter.post("/natalie/cancel-appointment", async (req, res) => {
   }
 
   try {
-    const appointment = await updateAppointmentForOrganization({
+    const result = await cancelAppointmentViaNatalie({
       organizationId: req.auth!.organizationId,
-      appointmentId,
-      status: "cancelled",
+      userId: req.auth!.userId,
+      schedulingItemId: appointmentId,
     });
-    res.json({ ok: true, appointment });
+
+    if (!result.engine) {
+      res.json({ ok: true, appointment: result.appointment });
+      return;
+    }
+
+    res.json({
+      ok: true,
+      pendingApproval: result.pendingApproval,
+      decisionId: result.decisionId,
+      queueType: result.queueType,
+      message: result.message,
+      engineMode: true,
+    });
   } catch (err) {
-    if (err instanceof Error && err.message === "Appointment not found") {
+    if (err instanceof SchedulingFacadeError && err.code === "appointment_not_found") {
       res.status(404).json({ error: "התור לא נמצא", code: "appointment_not_found" });
+      return;
+    }
+    if (err instanceof SchedulingFacadeError) {
+      res.status(400).json({ error: err.message, code: err.code });
       return;
     }
     console.error("[natalie/cancel-appointment] failed", errorDetails(err));
@@ -2796,32 +2787,29 @@ apiRouter.post("/natalie/reschedule-appointment", async (req, res) => {
     return;
   }
 
-  const newDayReference = typeof body.newDayReference === "string" ? body.newDayReference.trim() : "";
-  const newTime = typeof body.newTime === "string" ? body.newTime.trim() : "";
-  const newStartTimeRaw = typeof body.newStartTime === "string" ? body.newStartTime.trim() : "";
-
   try {
-    const timeZone = await loadOrganizationTimezone(organizationId);
-    const startTime = resolveAppointmentDateTime({
-      dayReference: newDayReference || undefined,
-      time: newTime || undefined,
-      explicitStartTime: newStartTimeRaw || undefined,
-      timeZone,
+    const result = await rescheduleAppointmentViaNatalie({
+      organizationId,
+      userId: req.auth!.userId,
+      schedulingItemId: appointmentId,
+      newDayReference: typeof body.newDayReference === "string" ? body.newDayReference : undefined,
+      newTime: typeof body.newTime === "string" ? body.newTime : undefined,
+      newStartTime: typeof body.newStartTime === "string" ? body.newStartTime : undefined,
     });
-    if (!startTime) {
-      res.status(400).json({
-        error: "לא הצלחתי להבין את מועד התור החדש, אפשר לנסות שוב עם יום ושעה ברורים",
-        code: "bad_datetime",
-      });
+
+    if (!result.engine) {
+      res.json({ ok: true, appointment: result.appointment });
       return;
     }
 
-    const appointment = await updateAppointmentForOrganization({
-      organizationId,
-      appointmentId,
-      startTime,
+    res.json({
+      ok: true,
+      pendingApproval: result.pendingApproval,
+      decisionId: result.decisionId,
+      queueType: result.queueType,
+      message: result.message,
+      engineMode: true,
     });
-    res.json({ ok: true, appointment });
   } catch (err) {
     if (err instanceof AppointmentConflictError) {
       res.status(409).json({
@@ -2830,8 +2818,12 @@ apiRouter.post("/natalie/reschedule-appointment", async (req, res) => {
       });
       return;
     }
-    if (err instanceof Error && err.message === "Appointment not found") {
+    if (err instanceof SchedulingFacadeError && err.code === "appointment_not_found") {
       res.status(404).json({ error: "התור לא נמצא", code: "appointment_not_found" });
+      return;
+    }
+    if (err instanceof SchedulingFacadeError) {
+      res.status(400).json({ error: err.message, code: err.code });
       return;
     }
     console.error("[natalie/reschedule-appointment] failed", errorDetails(err));
@@ -4671,6 +4663,39 @@ apiRouter.delete("/services/:id", async (req, res) => {
   }
 });
 
+apiRouter.get("/scheduling/capabilities", async (req, res) => {
+  try {
+    const capabilities = await getSchedulingCapabilities(req.auth!.organizationId);
+    res.json(capabilities);
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Failed to load scheduling capabilities",
+    });
+  }
+});
+
+apiRouter.get("/scheduling/briefing", async (req, res) => {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const fromParam = typeof req.query.from === "string" ? req.query.from : undefined;
+    const toParam = typeof req.query.to === "string" ? req.query.to : undefined;
+    const now = new Date();
+    const from = fromParam ? parseIsoDateTime(fromParam, "from") : now;
+    const to = toParam
+      ? parseIsoDateTime(toParam, "to")
+      : new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    if (from >= to) {
+      res.status(400).json({ error: "from must be before to" });
+      return;
+    }
+
+    const snapshot = await getBriefingSchedulingSnapshot(organizationId, { from, to, now });
+    res.json(snapshot);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load scheduling briefing" });
+  }
+});
+
 apiRouter.get("/appointments", async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
@@ -4913,7 +4938,7 @@ apiRouter.post("/appointments/availability/check", async (req, res) => {
       startTime = parseIsoDateTime(body.startTime, "startTime");
     }
 
-    const result = await checkSlotAvailability({
+    const result = await checkUnifiedSlotAvailability({
       organizationId,
       startTime,
       dayReference: typeof body.dayReference === "string" ? body.dayReference : undefined,
@@ -4974,7 +4999,7 @@ apiRouter.post("/appointments/availability/slots", async (req, res) => {
 
     const rangeType = body.rangeType === "week" ? "week" : body.rangeType === "day" ? "day" : undefined;
 
-    const result = await findAvailableSlotsForOrganization({
+    const result = await findUnifiedAvailableSlots({
       organizationId,
       rangeType,
       from,

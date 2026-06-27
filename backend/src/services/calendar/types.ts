@@ -3,7 +3,7 @@ export type TimeInterval = {
   end: Date;
 };
 
-export type BusyBlockSource = "appointment";
+export type BusyBlockSource = "appointment" | "calendar_event";
 
 export type BusyBlock = TimeInterval & {
   source: BusyBlockSource;

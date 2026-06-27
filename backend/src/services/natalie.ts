@@ -4,10 +4,9 @@ import { findTasksByPartialTitle } from "./tasks.js";
 import { prisma } from "../lib/prisma.js";
 import {
   findClientByNameOrPhone,
-  findUpcomingAppointmentsForClient,
   resolveAppointmentDateTime,
-  type AppointmentWithRelations,
 } from "./appointmentService.js";
+import { findUpcomingSchedulingForClient, type UpcomingSchedulingItem } from "./scheduling/schedulingFacade.js";
 import { maybeBuildAvailabilityResponse } from "./natalieAvailability.js";
 
 type ShowInvoiceItem = {
@@ -718,12 +717,12 @@ function formatAppointmentWhen(startTime: Date, timeZone: string): string {
 }
 
 function formatAppointmentListLine(
-  appointment: AppointmentWithRelations,
+  item: UpcomingSchedulingItem,
   index: number,
   timeZone: string
 ): string {
-  const when = formatAppointmentWhen(appointment.startTime, timeZone);
-  const service = appointment.service?.name?.trim();
+  const when = formatAppointmentWhen(item.startTime, timeZone);
+  const service = item.serviceName?.trim();
   return `${index + 1}. ${when}${service ? ` — ${service}` : ""}`;
 }
 
@@ -802,7 +801,7 @@ async function maybeBuildCancelAppointmentProposal(
   }
 
   const client = clients[0];
-  const appointments = await findUpcomingAppointmentsForClient({
+  const appointments = await findUpcomingSchedulingForClient({
     organizationId,
     clientId: client.id,
     limit: 10,
@@ -823,7 +822,7 @@ async function maybeBuildCancelAppointmentProposal(
 
   const appointment = appointments[0];
   const when = formatAppointmentWhen(appointment.startTime, timeZone);
-  const serviceName = appointment.service?.name?.trim() || undefined;
+  const serviceName = appointment.serviceName?.trim() || undefined;
   return {
     action: "cancel_appointment",
     proposal: {
@@ -908,7 +907,7 @@ async function maybeBuildRescheduleAppointmentProposal(
   }
 
   const client = clients[0];
-  const appointments = await findUpcomingAppointmentsForClient({
+  const appointments = await findUpcomingSchedulingForClient({
     organizationId,
     clientId: client.id,
     limit: 10,
