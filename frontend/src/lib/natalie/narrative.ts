@@ -7,6 +7,7 @@ export function formatNatalieActivity(activity: NatalieActivityInput): NatalieTi
     id: activity.id,
     text,
     occurredAt: activity.occurredAt ?? undefined,
+    kind: activity.kind,
   };
 }
 

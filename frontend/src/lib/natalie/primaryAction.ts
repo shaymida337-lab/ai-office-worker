@@ -70,8 +70,18 @@ export function rankPrimaryActions(input: NataliePrimaryActionInput): RankedActi
     });
   }
 
+  const schedulingDecisions = input.pendingSchedulingDecisionCount ?? 0;
+  if (schedulingDecisions > 0) {
+    actions.push({
+      label: schedulingDecisions === 1 ? "אשר החלטת יומן" : `אשר ${schedulingDecisions} החלטות יומן`,
+      intent: "confirm_scheduling_decision",
+      href: input.primarySchedulingDecisionHref ?? "/dashboard/calendar",
+      priority: 62,
+    });
+  }
+
   const appointments = input.pendingAppointmentCount ?? 0;
-  if (appointments > 0) {
+  if (appointments > 0 && schedulingDecisions === 0) {
     actions.push({
       label: appointments === 1 ? "אשר פגישה אחת" : `אשר ${appointments} פגישות`,
       intent: "confirm_appointment",

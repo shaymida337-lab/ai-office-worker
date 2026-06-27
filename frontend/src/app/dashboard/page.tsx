@@ -34,6 +34,11 @@ import { lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
 import type { AttentionCardData } from "@/components/dashboard";
 import type { NatalieBriefingInput, NatalieRecommendationInput } from "@/lib/natalie/types";
 import {
+  fetchBriefingSchedulingSnapshot,
+  type BriefingSchedulingSnapshot,
+  mapBriefingToAppointmentInputs,
+} from "@/lib/scheduling/briefing";
+import {
   apiFetch,
   ApiError,
   clearToken,
@@ -294,6 +299,9 @@ type UpcomingAppointment = {
   startTime: string;
   status: string;
   client: { name: string };
+  source?: "appointment" | "calendar_event";
+  statusLabel?: string;
+  pendingOwnerApproval?: boolean;
 };
 
 type DocumentReview = {
@@ -392,6 +400,7 @@ export default function DashboardPage() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [documentReviews, setDocumentReviews] = useState<DocumentReview[]>([]);
   const [upcomingAppointments, setUpcomingAppointments] = useState<UpcomingAppointment[]>([]);
+  const [briefingScheduling, setBriefingScheduling] = useState<BriefingSchedulingSnapshot | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState("");
   const [showGmailConnect, setShowGmailConnect] = useState(false);
@@ -442,7 +451,7 @@ export default function DashboardPage() {
     try {
       const appointmentFrom = new Date().toISOString();
       const appointmentTo = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult, systemResult, reviewsResult, appointmentsResult, accountantResult] = await Promise.allSettled([
+      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult, systemResult, reviewsResult, briefingResult, accountantResult] = await Promise.allSettled([
         apiFetch<DashboardStats>("/api/stats"),
         apiFetch<{ text: string }>("/api/summary/daily"),
         apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
@@ -456,7 +465,7 @@ export default function DashboardPage() {
         apiFetch<OrganizationSettings>("/api/organization/settings"),
         apiFetch<SystemHealth>("/api/system/health", { timeoutMs: 30000 }),
         apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review"),
-        apiFetch<UpcomingAppointment[]>(`/api/appointments?from=${encodeURIComponent(appointmentFrom)}&to=${encodeURIComponent(appointmentTo)}`),
+        fetchBriefingSchedulingSnapshot(appointmentFrom, appointmentTo),
         apiFetch<AccountantSummary>("/api/accountant/summary"),
       ]);
 
@@ -503,11 +512,23 @@ export default function DashboardPage() {
       setRecentTasks(tasksResult.status === "fulfilled" ? tasksResult.value.slice(0, 8) : []);
       setAlerts(alertsResult.status === "fulfilled" ? alertsResult.value.slice(0, 8) : []);
       setDocumentReviews(reviewsResult.status === "fulfilled" ? reviewsResult.value.slice(0, 5) : []);
-      setUpcomingAppointments(
-        appointmentsResult.status === "fulfilled"
-          ? appointmentsResult.value.filter((appt) => appt.status !== "cancelled" && new Date(appt.startTime) >= new Date())
-          : []
-      );
+      if (briefingResult.status === "fulfilled") {
+        setBriefingScheduling(briefingResult.value);
+        setUpcomingAppointments(
+          briefingResult.value.upcoming.map((item) => ({
+            id: item.id,
+            startTime: item.startTime,
+            status: item.status,
+            client: { name: item.clientName },
+            source: item.source,
+            statusLabel: item.statusLabel,
+            pendingOwnerApproval: item.pendingOwnerApproval,
+          }))
+        );
+      } else {
+        setBriefingScheduling(null);
+        setUpcomingAppointments([]);
+      }
 
       if (orgResult.status === "fulfilled") {
         setOrganizationSettings(orgResult.value);
@@ -997,12 +1018,31 @@ export default function DashboardPage() {
         currency: payment.currency,
       })),
       openTasksCount,
-      upcomingAppointments: upcomingAppointments.map((appt) => ({
-        id: appt.id,
-        clientName: appt.client.name,
-        startTime: appt.startTime,
-        status: appt.status,
-      })),
+      upcomingAppointments: mapBriefingToAppointmentInputs(
+        briefingScheduling ?? {
+          engineReadEnabled: false,
+          upcoming: upcomingAppointments.map((appt) => ({
+            id: appt.id,
+            source: appt.source ?? "appointment",
+            clientName: appt.client.name,
+            startTime: appt.startTime,
+            durationMinutes: 30,
+            status: appt.status,
+            statusLabel: appt.statusLabel ?? appt.status,
+            pendingOwnerApproval: appt.pendingOwnerApproval ?? appt.status === "pending",
+          })),
+          pendingDecisions: [],
+          todaySummary: {
+            upcomingCount: upcomingAppointments.length,
+            pendingDecisionCount: 0,
+            todayCompletedCount: 0,
+            todayNoShowCount: 0,
+            todayCancelledCount: 0,
+          },
+        }
+      ),
+      pendingSchedulingDecisions: briefingScheduling?.pendingDecisions ?? [],
+      schedulingTodaySummary: briefingScheduling?.todaySummary,
       invoicesSaved: monthPayments.length,
       paymentsPrepared: unpaidPayments.length,
     }),
@@ -1016,6 +1056,7 @@ export default function DashboardPage() {
       missingInvoices,
       openTasksCount,
       upcomingAppointments,
+      briefingScheduling,
       monthPayments.length,
     ]
   );
@@ -1034,9 +1075,12 @@ export default function DashboardPage() {
           clientName: appt.client.name,
           startTime: appt.startTime,
           status: appt.status,
-        }))
+          source: appt.source,
+          pendingOwnerApproval: appt.pendingOwnerApproval,
+        })),
+        briefingScheduling?.pendingDecisions ?? []
       ),
-    [documentReviews, missingInvoices, payments, alerts, upcomingAppointments]
+    [documentReviews, missingInvoices, payments, alerts, upcomingAppointments, briefingScheduling]
   );
   const recommendationInput = useMemo<NatalieRecommendationInput>(
     () => ({
@@ -1067,12 +1111,30 @@ export default function DashboardPage() {
         currency: payment.currency,
         date: payment.date,
       })),
-      upcomingAppointments: upcomingAppointments.map((appt) => ({
-        id: appt.id,
-        clientName: appt.client.name,
-        startTime: appt.startTime,
-        status: appt.status,
-      })),
+      upcomingAppointments: mapBriefingToAppointmentInputs(
+        briefingScheduling ?? {
+          engineReadEnabled: false,
+          upcoming: upcomingAppointments.map((appt) => ({
+            id: appt.id,
+            source: appt.source ?? "appointment",
+            clientName: appt.client.name,
+            startTime: appt.startTime,
+            durationMinutes: 30,
+            status: appt.status,
+            statusLabel: appt.statusLabel ?? appt.status,
+            pendingOwnerApproval: appt.pendingOwnerApproval ?? appt.status === "pending",
+          })),
+          pendingDecisions: [],
+          todaySummary: {
+            upcomingCount: upcomingAppointments.length,
+            pendingDecisionCount: 0,
+            todayCompletedCount: 0,
+            todayNoShowCount: 0,
+            todayCancelledCount: 0,
+          },
+        }
+      ),
+      pendingSchedulingDecisions: briefingScheduling?.pendingDecisions ?? [],
       openTasksCount,
       invoicesSaved: monthPayments.length,
       paymentsPrepared: unpaidPayments.length,
@@ -1084,6 +1146,7 @@ export default function DashboardPage() {
       unpaidPayments,
       missingInvoices,
       upcomingAppointments,
+      briefingScheduling,
       openTasksCount,
       monthPayments.length,
       decisionItems.length,
@@ -1247,12 +1310,16 @@ export default function DashboardPage() {
       void connectGmail();
       return;
     }
+    if (natalieRecommendation.href) {
+      router.push(natalieRecommendation.href);
+      return;
+    }
     if (decisionItems.length > 0) {
       scrollToDecisions();
       return;
     }
     document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [firstVisitMode, gmailConnected, natalieRecommendation.kind, decisionItems.length, scrollToDecisions]);
+  }, [firstVisitMode, gmailConnected, natalieRecommendation.kind, natalieRecommendation.href, decisionItems.length, scrollToDecisions, router]);
 
   const handleHeroScan = useCallback(() => {
     if (gmailConnected) {

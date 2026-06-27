@@ -20,6 +20,7 @@ const kindIcons: Record<DecisionKind, LucideIcon> = {
   document_review: FileText,
   missing_invoice: FileText,
   appointment: Calendar,
+  scheduling_decision: Calendar,
   alert: AlertTriangle,
 };
 

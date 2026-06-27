@@ -79,6 +79,20 @@ export type NatalieAppointmentInput = {
   clientName?: string | null;
   startTime: string;
   status?: string | null;
+  source?: "appointment" | "calendar_event";
+  statusLabel?: string;
+  pendingOwnerApproval?: boolean;
+};
+
+export type NatalieSchedulingDecisionInput = {
+  id: string;
+  type: string;
+  typeLabel: string;
+  title: string;
+  reason?: string | null;
+  calendarEventId?: string | null;
+  createdAt: string;
+  href: string;
 };
 
 export type NatalieActivityInput = {
@@ -104,6 +118,12 @@ export type NatalieBriefingInput = {
   missingInvoices?: NataliePaymentInput[];
   openTasksCount?: number;
   upcomingAppointments?: NatalieAppointmentInput[];
+  pendingSchedulingDecisions?: NatalieSchedulingDecisionInput[];
+  schedulingTodaySummary?: {
+    todayCompletedCount?: number;
+    todayNoShowCount?: number;
+    todayCancelledCount?: number;
+  };
   recentActivity?: NatalieActivityInput[];
   emailsChecked?: number;
   invoicesSaved?: number;
@@ -116,6 +136,8 @@ export type NataliePrimaryActionInput = {
   unpaidPaymentCount?: number;
   missingInvoiceCount?: number;
   pendingAppointmentCount?: number;
+  pendingSchedulingDecisionCount?: number;
+  primarySchedulingDecisionHref?: string;
   openTaskCount?: number;
   scanRunning?: boolean;
   gmailConnected?: boolean;
@@ -148,6 +170,7 @@ export type NatalieRecommendationInput = {
   unpaidPayments?: Array<NataliePaymentInput & { date?: string | null }>;
   missingInvoices?: Array<NataliePaymentInput & { date?: string | null }>;
   upcomingAppointments?: NatalieAppointmentInput[];
+  pendingSchedulingDecisions?: NatalieSchedulingDecisionInput[];
   openTasksCount?: number;
   alerts?: Array<{ id: string; type: string; title: string }>;
   invoicesSaved?: number;

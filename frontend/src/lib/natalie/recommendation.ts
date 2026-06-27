@@ -112,7 +112,24 @@ export function resolveNatalieRecommendation(input: NatalieRecommendationInput):
   const reviews = input.documentReviews ?? [];
   const unpaid = (input.unpaidPayments ?? []).filter((p) => !p.paid);
   const missing = input.missingInvoices ?? [];
-  const pendingAppts = (input.upcomingAppointments ?? []).filter((a) => (a.status ?? "").toLowerCase() === "pending");
+  const pendingAppts = (input.upcomingAppointments ?? []).filter((a) => {
+    const legacyPending = (a.status ?? "").toLowerCase() === "pending";
+    const enginePending = a.pendingOwnerApproval === true;
+    return legacyPending || enginePending;
+  });
+  const schedulingDecisions = input.pendingSchedulingDecisions ?? [];
+
+  if (schedulingDecisions.length > 0) {
+    const decision = schedulingDecisions[0];
+    return {
+      kind: "appointment",
+      title: `${decision.typeLabel}: ${decision.title}`,
+      reason: "הבקשה ממתינה לאישורך לפני שתיקבע ביומן.",
+      ctaLabel: "טפלי בזה עכשיו",
+      href: decision.href,
+      scrollToDecisions: true,
+    };
+  }
 
   if (!input.gmailConnected) {
     return {

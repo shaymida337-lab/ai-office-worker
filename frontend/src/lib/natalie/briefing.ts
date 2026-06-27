@@ -26,7 +26,9 @@ export function buildNatalieBriefing(input: NatalieBriefingInput): NatalieBriefi
     documentReviewCount: input.documentReviews?.length ?? 0,
     unpaidPaymentCount: input.unpaidPayments?.length ?? 0,
     missingInvoiceCount: input.missingInvoices?.length ?? 0,
-    pendingAppointmentCount: countPendingAppointments(input.upcomingAppointments),
+    pendingAppointmentCount: countPendingAppointments(input.upcomingAppointments, input.pendingSchedulingDecisions),
+    pendingSchedulingDecisionCount: input.pendingSchedulingDecisions?.length ?? 0,
+    primarySchedulingDecisionHref: input.pendingSchedulingDecisions?.[0]?.href,
     openTaskCount: input.openTasksCount ?? 0,
     scanRunning: input.scanRunning,
     gmailConnected: input.gmailConnected,
@@ -109,12 +111,23 @@ function buildPendingItems(input: NatalieBriefingInput): NatalieBriefingItem[] {
   }
 
   for (const appointment of input.upcomingAppointments ?? []) {
-    if ((appointment.status ?? "").toLowerCase() === "pending") {
+    const pendingLegacy = (appointment.status ?? "").toLowerCase() === "pending";
+    const pendingEngine = appointment.pendingOwnerApproval === true;
+    if (pendingLegacy || pendingEngine) {
       items.push({
         id: `appt-${appointment.id}`,
-        text: `יש פגישה עם ${appointment.clientName?.trim() || "לקוח"} שצריך לאשר.`,
+        text: pendingEngine
+          ? `יש תור עם ${appointment.clientName?.trim() || "לקוח"} — ממתין לאישורך.`
+          : `יש פגישה עם ${appointment.clientName?.trim() || "לקוח"} שצריך לאשר.`,
       });
     }
+  }
+
+  for (const decision of input.pendingSchedulingDecisions ?? []) {
+    items.push({
+      id: `sched-decision-${decision.id}`,
+      text: `${decision.typeLabel}: ${decision.title} — ממתין לאישורך.`,
+    });
   }
 
   if ((input.openTasksCount ?? 0) > 0) {
@@ -127,8 +140,14 @@ function buildPendingItems(input: NatalieBriefingInput): NatalieBriefingItem[] {
   return items.slice(0, 8);
 }
 
-function countPendingAppointments(appointments: NatalieBriefingInput["upcomingAppointments"]): number {
-  return (appointments ?? []).filter((a) => (a.status ?? "").toLowerCase() === "pending").length;
+function countPendingAppointments(
+  appointments: NatalieBriefingInput["upcomingAppointments"],
+  pendingDecisions?: NatalieBriefingInput["pendingSchedulingDecisions"]
+): number {
+  const legacyPending = (appointments ?? []).filter((a) => (a.status ?? "").toLowerCase() === "pending").length;
+  const enginePending = (appointments ?? []).filter((a) => a.pendingOwnerApproval).length;
+  const decisionPending = pendingDecisions?.length ?? 0;
+  return Math.max(legacyPending, enginePending, decisionPending);
 }
 
 function suggestedQuestionsForScreen(screen: NatalieBriefingInput["screen"], pendingCount: number): string[] {
@@ -170,5 +189,10 @@ export function buildQuietSummary(input: NatalieBriefingInput): { id: string; la
       label: "פגישות קרובות",
       value: String(input.upcomingAppointments?.length ?? 0),
     },
-  ];
+    {
+      id: "scheduling-decisions",
+      label: "החלטות יומן",
+      value: String(input.pendingSchedulingDecisions?.length ?? 0),
+    },
+  ].filter((chip) => chip.id !== "scheduling-decisions" || chip.value !== "0");
 }

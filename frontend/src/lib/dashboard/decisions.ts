@@ -8,6 +8,7 @@ export type DecisionKind =
   | "document_review"
   | "missing_invoice"
   | "appointment"
+  | "scheduling_decision"
   | "alert";
 
 export type DecisionCardData = {
@@ -60,6 +61,18 @@ type AppointmentLike = {
   clientName: string;
   startTime: string;
   status: string;
+  source?: "appointment" | "calendar_event";
+  pendingOwnerApproval?: boolean;
+};
+
+type SchedulingDecisionLike = {
+  id: string;
+  type: string;
+  typeLabel: string;
+  title: string;
+  reason?: string | null;
+  createdAt: string;
+  href: string;
 };
 
 function startOfDay(date: Date) {
@@ -141,6 +154,7 @@ export function buildDecisionItems(
   allPayments: PaymentLike[],
   alerts: AlertLike[],
   appointments: AppointmentLike[],
+  schedulingDecisions: SchedulingDecisionLike[] = [],
   now = new Date()
 ): DecisionCardData[] {
   const items: DecisionCardData[] = [];
@@ -210,18 +224,39 @@ export function buildDecisionItems(
     });
   }
 
-  for (const appt of appointments.filter((a) => (a.status ?? "").toLowerCase() === "pending")) {
+  for (const decision of schedulingDecisions) {
+    items.push({
+      id: `sched-decision-${decision.id}`,
+      kind: "scheduling_decision",
+      typeLabel: decision.typeLabel,
+      title: decision.title,
+      description: decision.reason?.trim() || "ממתין לאישורך",
+      meta: formatDate(decision.createdAt),
+      urgent: false,
+      primaryLabel: "אשרי",
+      secondaryLabel: "פתחי יומן",
+      href: decision.href,
+      priority: 6,
+    });
+  }
+
+  for (const appt of appointments.filter((a) => {
+    const legacyPending = (a.status ?? "").toLowerCase() === "pending";
+    const enginePending = a.pendingOwnerApproval === true;
+    return legacyPending || enginePending;
+  })) {
+    const engineItem = appt.source === "calendar_event" || appt.pendingOwnerApproval;
     items.push({
       id: `appt-${appt.id}`,
       kind: "appointment",
       typeLabel: "פגישה",
       title: appt.clientName?.trim() || "לקוח",
-      description: "פגישה שצריך לאשר",
+      description: engineItem ? "ממתין לאישורך" : "פגישה שצריך לאשר",
       meta: formatDate(appt.startTime),
       urgent: false,
       primaryLabel: "אשרי",
       secondaryLabel: "פתחי יומן",
-      href: "/dashboard/calendar",
+      href: engineItem ? "/dashboard/calendar" : "/dashboard/calendar",
       priority: 7,
     });
   }

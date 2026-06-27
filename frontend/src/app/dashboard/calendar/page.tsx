@@ -2,8 +2,36 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Nav } from "@/components/Nav";
+import { CalendarEventDrawer } from "@/components/calendar/CalendarEventDrawer";
 import { DayTimelineView } from "@/components/calendar/DayTimelineView";
+import { OwnerDecisionQueuePanel } from "@/components/calendar/OwnerDecisionQueuePanel";
 import { apiFetch, ApiError, getToken } from "@/lib/api";
+import {
+  buildEndAtIso,
+  calendarEventsToDisplayItems,
+  type CalendarDisplayItem,
+  isEngineDisplayItem,
+} from "@/lib/calendarEngine/adapters";
+import {
+  CalendarEngineUnavailableError,
+  createCalendarEventDraft,
+  fetchCalendarEvents,
+  resolveCalendarCreateStrategy,
+  resolveCalendarLoadStrategy,
+  submitCalendarEventForConfirmation,
+  submitConfirmationUserMessage,
+} from "@/lib/calendarEngine/api";
+import {
+  CALENDAR_ENGINE_DISABLED_MESSAGE,
+  calendarEventStatusLabel,
+  calendarEventStatusTone,
+} from "@/lib/calendarEngine";
+import {
+  effectiveCalendarEngineRead,
+  effectiveCalendarEngineWrite,
+  fetchSchedulingCapabilities,
+  type SchedulingCapabilities,
+} from "@/lib/scheduling/capabilities";
 import { getDayBounds } from "@/lib/calendarUtils";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Calendar, ChevronLeft, ChevronRight, Clock, Plus, Trash2, X } from "lucide-react";
@@ -35,6 +63,10 @@ type Appointment = {
   client: ApptClient;
   service?: { id: string; name: string; color?: string | null; durationMinutes: number } | null;
 };
+
+function appointmentToDisplayItem(appt: Appointment): CalendarDisplayItem {
+  return { ...appt, source: "appointment" };
+}
 
 type ClientsResponse = {
   clients: ApptClient[];
@@ -165,10 +197,15 @@ function CollapsePanel({ open, children }: { open: boolean; children: ReactNode 
 }
 
 export default function CalendarPage() {
+  const [highlightDecisionId, setHighlightDecisionId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<CalendarViewMode>("week");
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
   const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()));
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [appointments, setAppointments] = useState<CalendarDisplayItem[]>([]);
+  const [selectedEngineEventId, setSelectedEngineEventId] = useState<string | null>(null);
+  const [queueRefreshKey, setQueueRefreshKey] = useState(0);
+  const [drawerRefreshKey, setDrawerRefreshKey] = useState(0);
+  const [engineDisabledBanner, setEngineDisabledBanner] = useState<string | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [clients, setClients] = useState<ApptClient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -190,6 +227,10 @@ export default function CalendarPage() {
   const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [connectingCalendar, setConnectingCalendar] = useState(false);
+  const [schedulingCapabilities, setSchedulingCapabilities] = useState<SchedulingCapabilities | null>(null);
+
+  const engineReadEnabled = effectiveCalendarEngineRead(schedulingCapabilities);
+  const engineWriteEnabled = effectiveCalendarEngineWrite(schedulingCapabilities);
 
   const activeServices = useMemo(() => services.filter((s) => s.isActive), [services]);
 
@@ -211,8 +252,11 @@ export default function CalendarPage() {
     return `${from} – ${to}`;
   }, [weekStart]);
 
+  const statusLabelFn = engineReadEnabled ? calendarEventStatusLabel : appointmentStatusLabel;
+  const statusToneFn = engineReadEnabled ? calendarEventStatusTone : appointmentStatusTone;
+
   const appointmentsByDay = useMemo(() => {
-    const map = new Map<string, Appointment[]>();
+    const map = new Map<string, CalendarDisplayItem[]>();
     for (const day of weekDays) {
       map.set(toDateInputValue(day), []);
     }
@@ -263,6 +307,7 @@ export default function CalendarPage() {
 
   const loadAppointments = useCallback(async () => {
     setLoading(true);
+    setEngineDisabledBanner(null);
     try {
       const range =
         viewMode === "day"
@@ -270,20 +315,48 @@ export default function CalendarPage() {
           : { from: weekStart, to: addDays(weekStart, 7) };
       const from = range.from.toISOString();
       const to = range.to.toISOString();
-      const [apptData, svcData, clientData] = await Promise.all([
-        apiFetch<Appointment[]>(`/api/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+      const loadStrategy = resolveCalendarLoadStrategy(engineReadEnabled);
+
+      const [svcData, clientData] = await Promise.all([
         apiFetch<Service[]>("/api/services"),
         apiFetch<ClientsResponse>("/api/clients"),
       ]);
-      setAppointments(apptData);
       setServices(svcData);
       setClients(clientData.clients);
+
+      if (loadStrategy === "calendar_engine") {
+        try {
+          const events = await fetchCalendarEvents(from, to);
+          setAppointments(calendarEventsToDisplayItems(events));
+        } catch (err) {
+          if (err instanceof CalendarEngineUnavailableError) {
+            setEngineDisabledBanner(CALENDAR_ENGINE_DISABLED_MESSAGE);
+            const apptData = await apiFetch<Appointment[]>(
+              `/api/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+            );
+            setAppointments(apptData.map(appointmentToDisplayItem));
+            return;
+          }
+          throw err;
+        }
+      } else {
+        const apptData = await apiFetch<Appointment[]>(
+          `/api/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+        );
+        setAppointments(apptData.map(appointmentToDisplayItem));
+      }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה");
     } finally {
       setLoading(false);
     }
-  }, [viewMode, selectedDay, weekStart]);
+  }, [viewMode, selectedDay, weekStart, engineReadEnabled]);
+
+  useEffect(() => {
+    fetchSchedulingCapabilities()
+      .then(setSchedulingCapabilities)
+      .catch(() => setSchedulingCapabilities(null));
+  }, []);
 
   useEffect(() => {
     loadAppointments().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה"));
@@ -308,6 +381,11 @@ export default function CalendarPage() {
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setHighlightDecisionId(params.get("decisionId"));
+  }, []);
+
   function resetForm() {
     setShowForm(false);
     setEditingId(null);
@@ -330,7 +408,11 @@ export default function CalendarPage() {
     setShowForm(true);
   }
 
-  function openEditForm(appt: Appointment) {
+  function openEditForm(appt: CalendarDisplayItem) {
+    if (isEngineDisplayItem(appt)) {
+      setSelectedEngineEventId(appt.engineEventId ?? appt.id);
+      return;
+    }
     const start = new Date(appt.startTime);
     setEditingId(appt.id);
     setFormClientId(appt.clientId);
@@ -340,6 +422,18 @@ export default function CalendarPage() {
     setFormNotes(appt.notes ?? "");
     setFormStatus(appt.status);
     setShowForm(true);
+  }
+
+  function refreshEngineSurfaces() {
+    setQueueRefreshKey((k) => k + 1);
+    setDrawerRefreshKey((k) => k + 1);
+  }
+
+  function handleDecisionResolved() {
+    refreshEngineSurfaces();
+    loadAppointments().catch((err) =>
+      setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה")
+    );
   }
 
   function isTimeConflictError(err: unknown): boolean {
@@ -367,6 +461,20 @@ export default function CalendarPage() {
           }),
         });
         setMessage("התור עודכן בהצלחה");
+      } else if (resolveCalendarCreateStrategy(engineWriteEnabled) === "calendar_engine_draft") {
+        const duration = selectedServiceDuration ?? 30;
+        const endAt = buildEndAtIso(startTime, duration);
+        const client = clients.find((c) => c.id === formClientId);
+        const draft = await createCalendarEventDraft({
+          startAt: startTime,
+          endAt,
+          clientId: formClientId,
+          serviceId: formServiceId || null,
+          title: client?.name ?? null,
+        });
+        const result = await submitCalendarEventForConfirmation(draft.id);
+        setMessage(submitConfirmationUserMessage(result));
+        refreshEngineSurfaces();
       } else {
         await apiFetch("/api/appointments", {
           method: "POST",
@@ -384,6 +492,10 @@ export default function CalendarPage() {
     } catch (err) {
       if (isTimeConflictError(err)) {
         setMessage("קיים תור אחר בזמן הזה");
+        return;
+      }
+      if (err instanceof CalendarEngineUnavailableError) {
+        setMessage(CALENDAR_ENGINE_DISABLED_MESSAGE);
         return;
       }
       setMessage(err instanceof Error ? err.message : "שמירת התור נכשלה");
@@ -511,6 +623,33 @@ export default function CalendarPage() {
 
       {message && <div className={messageBannerClass(message)}>{message}</div>}
 
+      {engineDisabledBanner && (
+        <div
+          className="mb-6 rounded-2xl border border-[#C2410C] bg-[#FFEDD5] p-4 text-base font-semibold leading-7 text-[#7C2D12]"
+          data-testid="engine-disabled-banner"
+        >
+          {engineDisabledBanner}
+        </div>
+      )}
+
+      {engineReadEnabled && (
+        <div className="mb-5">
+          <OwnerDecisionQueuePanel
+            refreshKey={queueRefreshKey}
+            highlightDecisionId={highlightDecisionId}
+            onDecisionResolved={handleDecisionResolved}
+            onSelectEvent={(eventId) => setSelectedEngineEventId(eventId)}
+          />
+        </div>
+      )}
+
+      <CalendarEventDrawer
+        eventId={selectedEngineEventId}
+        refreshKey={drawerRefreshKey}
+        onClose={() => setSelectedEngineEventId(null)}
+        onMutation={handleDecisionResolved}
+      />
+
       <CollapsePanel open={showForm}>
         <form onSubmit={saveAppointment} className={`${panelClass} mb-5 grid gap-3 md:grid-cols-2`}>
           <div className="flex items-center justify-between md:col-span-2">
@@ -606,7 +745,13 @@ export default function CalendarPage() {
           </label>
           <div className="flex flex-wrap gap-2 md:col-span-2">
             <button className={btnPrimary} type="submit" disabled={saving}>
-              {saving ? "שומר..." : editingId ? "עדכן תור" : "שמור תור"}
+              {saving
+                ? "שומר..."
+                : editingId
+                  ? "עדכן תור"
+                  : engineWriteEnabled
+                    ? "שלח לאישור"
+                    : "שמור תור"}
             </button>
             {editingId && formStatus !== "cancelled" && (
               <button
@@ -665,6 +810,8 @@ export default function CalendarPage() {
             onPrevDay={() => setSelectedDay((day) => startOfDay(addDays(day, -1)))}
             onNextDay={() => setSelectedDay((day) => startOfDay(addDays(day, 1)))}
             onToday={() => setSelectedDay(startOfDay(new Date()))}
+            statusLabel={statusLabelFn}
+            statusTone={statusToneFn}
           />
         ) : (
           <>
@@ -754,8 +901,8 @@ export default function CalendarPage() {
                                 <span className={`font-black ${isCancelled ? "line-through" : ""}`} dir="ltr">
                                   {time}
                                 </span>
-                                <StatusPill tone={appointmentStatusTone(appt.status)}>
-                                  {appointmentStatusLabel(appt.status)}
+                                <StatusPill tone={statusToneFn(appt.status)}>
+                                  {statusLabelFn(appt.status)}
                                 </StatusPill>
                               </div>
                               <div className="truncate font-black text-[#111827]">{appt.client.name}</div>

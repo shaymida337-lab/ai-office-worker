@@ -57,6 +57,8 @@ type DayTimelineViewProps<T extends TimelineAppointment> = {
   onPrevDay: () => void;
   onNextDay: () => void;
   onToday: () => void;
+  statusLabel?: (status: string) => string;
+  statusTone?: (status: string) => "success" | "warn" | "danger" | "info" | "neutral";
 };
 
 export function DayTimelineView<T extends TimelineAppointment>({
@@ -67,6 +69,8 @@ export function DayTimelineView<T extends TimelineAppointment>({
   onPrevDay,
   onNextDay,
   onToday,
+  statusLabel = appointmentStatusLabel,
+  statusTone = appointmentStatusTone,
 }: DayTimelineViewProps<T>) {
   const timelineHeightPx = getTimelineHeightPx();
   const hours = getTimelineHours();
@@ -163,8 +167,8 @@ export function DayTimelineView<T extends TimelineAppointment>({
                         <span className={`shrink-0 font-black ${isCancelled ? "line-through" : ""}`} dir="ltr">
                           {time}
                         </span>
-                        <StatusPill tone={appointmentStatusTone(appt.status)}>
-                          {appointmentStatusLabel(appt.status)}
+                        <StatusPill tone={statusTone(appt.status)}>
+                          {statusLabel(appt.status)}
                         </StatusPill>
                       </div>
                       <div className={`truncate font-black text-[#111827] ${isCancelled ? "line-through" : ""}`}>
