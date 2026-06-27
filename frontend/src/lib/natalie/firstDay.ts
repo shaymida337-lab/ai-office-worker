@@ -2,6 +2,19 @@ import type { BusinessModuleId, BusinessPainId, BusinessSizeId, BusinessTypeId }
 
 export const FIRST_DAY_STORAGE_KEY = "natalie.firstDay";
 export const ONBOARDING_PROGRESS_KEY = "natalie.onboarding.progress";
+export const FIRST_DASHBOARD_VISIT_KEY = "natalie.dashboard.firstVisit";
+
+export function markFirstDashboardVisit() {
+  if (typeof window === "undefined" || !window.sessionStorage) return;
+  window.sessionStorage.setItem(FIRST_DASHBOARD_VISIT_KEY, "1");
+}
+
+export function consumeFirstDashboardVisit(): boolean {
+  if (typeof window === "undefined" || !window.sessionStorage) return false;
+  const pending = window.sessionStorage.getItem(FIRST_DASHBOARD_VISIT_KEY) === "1";
+  if (pending) window.sessionStorage.removeItem(FIRST_DASHBOARD_VISIT_KEY);
+  return pending;
+}
 
 export type FirstDayCommunication = "write" | "voice" | "both";
 

@@ -56,11 +56,37 @@ export function buildNatalieDoneTodayItems(input: {
   return items.slice(0, 4);
 }
 
+export const FIRST_VISIT_WELCOME_CONNECTED =
+  "מושלם. הכול מוכן. עכשיו אסרוק את הג׳ימייל שלך ואסדר את העסק.";
+
+export const FIRST_VISIT_WELCOME_DISCONNECTED =
+  "מושלם. הכול מוכן. כדי להתחיל, חברי את ג׳ימייל ואז אסרוק ואסדר את המסמכים.";
+
+export function formatFirstScanEmptyMessage(emailsScanned: number) {
+  const scanned =
+    emailsScanned > 0
+      ? `סיימתי לעבור על ${emailsScanned} מיילים`
+      : "סיימתי לסרוק את הג׳ימייל";
+  return `${scanned}, אבל לא מצאתי חשבוניות או קבלות בחודש האחרון. זה יכול לקרות אם המיילים בלי קבצים מצורפים, בתיקיות אחרות, או מחוץ לטווח הסריקה. אפשר להעלות מסמך ידנית או לנסות שוב מאוחר יותר.`;
+}
+
 export function buildHeroHumanMessage(input: {
   completedCount?: number;
   pendingCount?: number;
   scanRunning?: boolean;
+  firstVisit?: boolean;
+  gmailConnected?: boolean;
+  firstScanPhase?: string | null;
 }): string {
+  if (input.firstScanPhase) {
+    return input.firstScanPhase;
+  }
+  if (input.firstVisit) {
+    if (input.scanRunning) {
+      return "אני סורקת עכשיו את הג׳ימייל שלך ומחפשת חשבוניות, קבלות ודרישות תשלום...";
+    }
+    return input.gmailConnected ? FIRST_VISIT_WELCOME_CONNECTED : FIRST_VISIT_WELCOME_DISCONNECTED;
+  }
   if (input.scanRunning) {
     return "אני עוברת על המיילים והמסמכים שלך — אעדכן אותך ברגע שאסיים.";
   }

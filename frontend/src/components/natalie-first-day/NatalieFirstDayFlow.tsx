@@ -34,6 +34,7 @@ import {
   type OnboardingStepId,
   writeFirstDayData,
   writeOnboardingProgress,
+  markFirstDashboardVisit,
 } from "@/lib/natalie/firstDay";
 import {
   NatalieFirstDayField,
@@ -44,12 +45,10 @@ import {
   NatalieOnboardingChoiceCard,
 } from "./NatalieFirstDayShell";
 import {
-  ONBOARDING_ACTION_CARDS,
   ONBOARDING_EXIT_TRANSITION_STEPS,
   ONBOARDING_HELP_OPTIONS,
   ONBOARDING_INTEGRATIONS,
   ONBOARDING_PREP_STEPS,
-  ONBOARDING_SUMMARY_AREAS,
   ONBOARDING_TEAM_SIZE_OPTIONS,
 } from "./onboardingContent";
 import { OnboardingChecklist } from "./OnboardingChecklist";
@@ -192,7 +191,14 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
 
     if (gmail === "error" || calendar === "error") {
       const providerLabel = gmail === "error" ? "ג׳ימייל" : "Google Calendar";
-      setError(reason ? decodeURIComponent(reason) : `חיבור ${providerLabel} נכשל. נסו שוב.`);
+      const decoded = reason ? decodeURIComponent(reason) : "";
+      const cancelled =
+        decoded.toLowerCase().includes("access_denied") || decoded.toLowerCase().includes("cancel");
+      setError(
+        cancelled
+          ? "ביטלת את החיבור לגוגל. אפשר לנסות שוב מתי שתרצה."
+          : decoded || `חיבור ${providerLabel} נכשל. נסו שוב.`
+      );
       window.history.replaceState(null, "", "/onboarding");
       return;
     }
@@ -250,6 +256,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
       });
 
       clearOnboardingProgress();
+      markFirstDashboardVisit();
       onComplete();
       return true;
     } catch (err) {
@@ -275,9 +282,12 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
 
   useEffect(() => {
     if (step !== 5 || !prepAnimationDone || !prepSaveOk) return;
-    const timeout = window.setTimeout(() => goToStep(6), 400);
+    const timeout = window.setTimeout(() => {
+      setExitDestination("/dashboard?firstVisit=1");
+      setExitTransitionDone(false);
+    }, 600);
     return () => window.clearTimeout(timeout);
-  }, [goToStep, prepAnimationDone, prepSaveOk, step]);
+  }, [prepAnimationDone, prepSaveOk, step]);
 
   useEffect(() => {
     if (!exitDestination || !exitTransitionDone) return;
@@ -331,13 +341,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
       void connectCalendar();
       return;
     }
-    persistProgress(4);
-    router.push("/dashboard/settings?tab=whatsapp");
-  };
-
-  const handleActionSelect = (href: string) => {
-    setExitDestination(href);
-    setExitTransitionDone(false);
+    setError("חיבור וואטסאפ יהיה זמין מהדשבורד אחרי סיום ההתחברות. אפשר להמשיך בינתיים.");
   };
 
   const debugGoToStep = useCallback(
@@ -390,10 +394,11 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
         <NatalieFirstDayShell step={6} hideFooter hideProgress density="compact">
         <div className="grid gap-3 text-center">
           <h2 className="text-2xl font-extrabold leading-tight text-slate-900 sm:text-3xl">
-            מצוין, נטלי סיימה להכיר את העסק שלך.
+            מושלם!
             <br />
-            עכשיו אני מכינה עבורך את סביבת העבודה האישית.
+            מעכשיו אני עובדת בשבילך.
           </h2>
+          <NatalieFirstDayMicrocopy compact>עוד רגע נכנסים לדשבורד ומתחילים לסרוק את הג׳ימייל.</NatalieFirstDayMicrocopy>
         </div>
         <OnboardingChecklist
           items={ONBOARDING_EXIT_TRANSITION_STEPS}
@@ -605,61 +610,5 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
     );
   }
 
-  const step6Actions = (
-    <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-      {ONBOARDING_ACTION_CARDS.map((action, index) => (
-        <button
-          key={action.label}
-          type="button"
-          onClick={() => handleActionSelect(action.href)}
-          className={`inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-gradient-to-l from-blue-600 to-blue-700 px-3 py-3 text-center text-sm font-bold text-white shadow-[0_12px_32px_-12px_rgba(29,91,235,0.45)] transition hover:from-blue-700 hover:to-blue-800 sm:min-h-[3.25rem] sm:px-4 sm:text-base ${
-            index === ONBOARDING_ACTION_CARDS.length - 1 ? "col-span-2" : ""
-          }`}
-        >
-          {action.label}
-        </button>
-      ))}
-    </div>
-  );
-
-  return (
-    <>
-      {debugToolbar}
-      <NatalieFirstDayShell
-        step={6}
-        showPortrait
-        portraitSize="xlarge"
-        portraitTight
-        density="compact"
-        hideFooter
-        onBack={goBack}
-        stickyFooter={step6Actions}
-      >
-      <div className="grid gap-2 text-center">
-        <h2 className="text-2xl font-extrabold text-slate-900 sm:text-3xl">
-          מושלם!
-          <br />
-          מעכשיו אני עובדת בשבילך.
-        </h2>
-        <NatalieFirstDayMicrocopy compact>המשרד שלך מוכן. בחרו איך להתחיל — ואני על זה.</NatalieFirstDayMicrocopy>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5">
-        {ONBOARDING_SUMMARY_AREAS.map((area, index) => (
-          <div
-            key={area.label}
-            className={`flex min-h-[4.25rem] flex-col items-center justify-center rounded-xl border border-slate-200/90 bg-slate-50/80 px-2 py-2.5 text-center shadow-sm sm:min-h-[4.5rem] sm:rounded-2xl sm:px-3 sm:py-3 ${
-              index === ONBOARDING_SUMMARY_AREAS.length - 1 ? "col-span-2 sm:col-span-1 sm:col-start-2" : ""
-            }`}
-          >
-            <span className="text-xl sm:text-2xl" aria-hidden>
-              {area.icon}
-            </span>
-            <span className="mt-1 text-xs font-bold text-slate-800 sm:mt-1.5 sm:text-sm">{area.label}</span>
-          </div>
-        ))}
-      </div>
-    </NatalieFirstDayShell>
-    </>
-  );
+  return null;
 }

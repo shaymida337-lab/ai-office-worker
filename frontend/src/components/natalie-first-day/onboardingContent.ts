@@ -60,18 +60,10 @@ export const ONBOARDING_SUMMARY_AREAS = [
   { icon: "💰", label: "תשלומים" },
 ] as const;
 
-export const ONBOARDING_ACTION_CARDS = [
-  { label: "סרקי את כל המיילים שלי", href: "/message-scans" },
-  { label: "פתחי את היומן", href: "/dashboard/calendar" },
-  { label: "הציגי משימות", href: "/tasks" },
-  { label: "הציגי תשלומים", href: "/payments" },
-  { label: "דברי איתי", href: "/dashboard" },
-] as const;
-
+/** Post-onboarding exit animation — user always lands on /dashboard. */
 export const ONBOARDING_EXIT_TRANSITION_STEPS = [
-  "יוצרת סביבת עבודה",
-  "מכינה את הדשבורד",
-  "מסדרת את היומן",
-  "מכינה משימות ראשונות",
+  "מכינה את הדשבורד שלך",
+  "מחברת את השירותים",
+  "מפעילה את הסריקה הראשונה",
   "מוכנה להתחיל לעבוד",
 ] as const;

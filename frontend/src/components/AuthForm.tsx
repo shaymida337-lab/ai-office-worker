@@ -32,6 +32,10 @@ export function AuthForm({ mode }: { mode: Mode }) {
       saveToken(result.token);
       const searchParams = new URLSearchParams(window.location.search);
       const next = searchParams.get("next");
+      if (mode === "signup") {
+        router.push("/onboarding");
+        return;
+      }
       router.push(next?.startsWith("/") ? next : "/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");

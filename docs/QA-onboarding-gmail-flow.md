@@ -1,35 +1,37 @@
-# QA Checklist — Onboarding, OAuth Return, Gmail Scan
+# QA Checklist — First 5 Minutes (Onboarding → Dashboard → First Scan)
 
-Manual verification for the first-user journey and dashboard Gmail actions.
+## Signup & entry
 
-## New user onboarding
+- [ ] New user signs up at `/signup` → lands on `/onboarding` (not `/dashboard` first)
+- [ ] Returning user login without `next` → `/dashboard`
+- [ ] JWT stored in `localStorage.token`
 
-- [ ] New user logs in and lands on `/onboarding`
-- [ ] Connect Gmail from onboarding step 4 → Google consent → returns to `/onboarding` (not dashboard/calendar)
-- [ ] Connect Calendar from onboarding step 4 → Google consent → returns to `/onboarding`
-- [ ] User can advance to final onboarding success screen (steps 5–6)
-- [ ] OAuth failure shows Hebrew error on onboarding and allows retry
+## Onboarding conversation
 
-## Dashboard — Gmail connect / scan
+- [ ] Steps 1–4 progress persists across refresh (`natalie.onboarding.progress`)
+- [ ] Gmail connect from step 4 → Google → returns to `/onboarding` with connected state
+- [ ] Calendar connect (optional) → returns to `/onboarding`
+- [ ] OAuth cancel shows Hebrew retry message on onboarding
+- [ ] WhatsApp button does **not** leave onboarding (shows info message only)
+- [ ] Step 5 save completes → exit animation → **automatic** `/dashboard?firstVisit=1`
+- [ ] User is **never** sent to `/message-scans`, `/calendar`, or `/settings` from onboarding
 
-- [ ] User without Gmail sees connect CTA (`התחבר לג׳ימייל`) on hero and quick actions
-- [ ] Clicking connect starts Google OAuth (`/api/integrations/gmail/connect-url` or redirect)
-- [ ] After OAuth from dashboard, user returns to `/dashboard?gmail=connected`
-- [ ] Connected user sees `סרוק מייל` on hero and quick actions
-- [ ] Clicking scan sends `POST /api/gmail/scan` and shows loading / toast
-- [ ] Success or useful Hebrew error is shown (no silent failure)
-- [ ] `?connect=gmail` after login auto-starts connect flow
+## First dashboard visit
 
-## Existing entry points (unchanged behavior)
+- [ ] Natalie welcome: "מושלם. הכול מוכן..."
+- [ ] If Gmail connected: first scan starts automatically (Network: `POST /api/gmail/scan`)
+- [ ] If Gmail not connected: single obvious CTA "התחבר לג׳ימייל"
+- [ ] Quick actions / conversation examples hidden until first scan settles
+- [ ] Scan progress visible (banner + hero message phases)
+- [ ] Zero results: clear Hebrew explanation (not silent empty state)
+- [ ] Scan error: toast with Hebrew message
 
-- [ ] Settings Gmail connect returns to `/dashboard/settings?gmail=connected`
-- [ ] Calendar connect returns to `/dashboard/calendar?calendar=connected`
+## Regression
 
-## Console / Network
-
-- [ ] No React error #418 / hydration mismatch on `/dashboard` and `/onboarding`
-- [ ] CTA click creates Network request or OAuth navigation
-- [ ] Backend logs: `[gmail/connect-url] returnTo=...`, `[gmail/callback] redirect returnTo=...`, `[dashboard] gmail scan clicked`
+- [ ] Settings Gmail connect still returns to `/dashboard/settings?gmail=connected`
+- [ ] Calendar page connect still returns to `/dashboard/calendar?calendar=connected`
+- [ ] No React #418 on `/onboarding` and `/dashboard`
+- [ ] CTA clicks always produce Network request or OAuth navigation
 
 ## Automated
 
@@ -37,4 +39,6 @@ Manual verification for the first-user journey and dashboard Gmail actions.
 npm run build -w backend
 npm run build -w frontend
 node --import tsx --test backend/src/lib/oauthReturn.test.ts
+node --import tsx --test frontend/src/lib/natalie/firstDay.test.ts
+node --import tsx --test frontend/src/lib/dashboard/home.test.ts
 ```

@@ -19,7 +19,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ScanBanner } from "@/components/ui/ScanBanner";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { buildNatalieBriefing } from "@/lib/natalie/briefing";
-import { getFirstNameForGreeting } from "@/lib/natalie/firstDay";
+import { getFirstNameForGreeting, consumeFirstDashboardVisit } from "@/lib/natalie/firstDay";
 import { resolveNatalieRecommendation } from "@/lib/natalie/recommendation";
 import {
   buildDecisionItems,
@@ -28,6 +28,7 @@ import {
   buildHeroHumanMessage,
   buildNatalieDoneTodayItems,
   buildRecentActivityTimeline,
+  formatFirstScanEmptyMessage,
 } from "@/lib/dashboard/home";
 import { lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
 import type { AttentionCardData } from "@/components/dashboard";
@@ -392,11 +393,22 @@ export default function DashboardPage() {
   const [invoiceAttachPaymentId, setInvoiceAttachPaymentId] = useState<string | null>(null);
   const [invoiceAttachLink, setInvoiceAttachLink] = useState("");
   const [clientMounted, setClientMounted] = useState(false);
+  const [firstVisitMode, setFirstVisitMode] = useState(false);
+  const [firstScanSettled, setFirstScanSettled] = useState(false);
+  const [firstScanPhase, setFirstScanPhase] = useState<string | null>(null);
   const connectGmailTriggeredRef = useRef(false);
+  const autoFirstScanRef = useRef(false);
 
   useEffect(() => {
     setClientMounted(true);
-  }, []);
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("firstVisit") === "1";
+    const fromSession = consumeFirstDashboardVisit();
+    if (fromUrl || fromSession) {
+      setFirstVisitMode(true);
+      if (fromUrl) router.replace("/dashboard");
+    }
+  }, [router]);
 
   useEffect(() => {
     if (!invoiceAttachPaymentId) return;
@@ -546,6 +558,23 @@ export default function DashboardPage() {
   }, [pageLoading, gmailStatus?.connected, router]);
 
   useEffect(() => {
+    if (pageLoading || !firstVisitMode || autoFirstScanRef.current) return;
+    if (!gmailStatus?.connected) return;
+    if (activeScanId || syncing) {
+      autoFirstScanRef.current = true;
+      return;
+    }
+    const running = scanStatus?.logs?.some((log) => isRunningScanStatusLog(log));
+    if (running) {
+      autoFirstScanRef.current = true;
+      return;
+    }
+    autoFirstScanRef.current = true;
+    console.log("[dashboard] auto-start first gmail scan after onboarding");
+    void runSync();
+  }, [pageLoading, firstVisitMode, gmailStatus?.connected, activeScanId, syncing, scanStatus?.logs]);
+
+  useEffect(() => {
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") {
         refreshGmailStatus().catch(() => undefined);
@@ -572,22 +601,34 @@ export default function DashboardPage() {
       setActiveScan(null);
       setActiveScanId(null);
       setScanProgress([]);
+      setFirstScanPhase(null);
       window.localStorage.removeItem("activeGmailScanId");
+
+      const found = (progress.invoicesFound ?? 0) + (progress.supplierPaymentsFound ?? 0);
 
       if (isSuccessfulGmailScanProgress(progress)) {
         setFirstScanSummary(formatProgressSummary(progress));
-        setScanToast({
-          type: progress.status === "partial" ? "warning" : "success",
-          text:
-            progress.status === "partial"
-              ? formatPartialScanMessage(progress)
-              : "הסריקה הסתיימה והנתונים עודכנו",
-        });
+        if (firstVisitMode && found === 0) {
+          setActionMessage(formatFirstScanEmptyMessage(progress.emailsFetched ?? 0));
+          setScanToast({ type: "info", text: "הסריקה הסתיימה — לא נמצאו מסמכים להצגה בחודש האחרון." });
+        } else {
+          setScanToast({
+            type: progress.status === "partial" ? "warning" : "success",
+            text:
+              progress.status === "partial"
+                ? formatPartialScanMessage(progress)
+                : "הסריקה הסתיימה והנתונים עודכנו",
+          });
+        }
       } else {
         setScanToast({
           type: "error",
           text: progress.error ?? "הסריקה נכשלה",
         });
+      }
+
+      if (firstVisitMode) {
+        setFirstScanSettled(true);
       }
 
       await load();
@@ -623,6 +664,10 @@ export default function DashboardPage() {
 
         setActiveScan(progress);
         setScanProgress(scanProgressMessages(progress));
+        if (firstVisitMode) {
+          setFirstScanPhase(phaseLabelForScanProgress(progress, syncing));
+          setActionMessage(phaseLabelForScanProgress(progress, syncing));
+        }
       } catch (err) {
         if (!cancelled) {
           setScanToast({ type: "error", text: err instanceof Error ? err.message : "טעינת סטטוס סריקה נכשלה" });
@@ -636,7 +681,7 @@ export default function DashboardPage() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [activeScanId, load]);
+  }, [activeScanId, firstVisitMode, load, syncing]);
 
   useEffect(() => {
     const banner = buildScanBannerState(activeScan, scanStatus);
@@ -743,6 +788,11 @@ export default function DashboardPage() {
 
     setSyncing(true);
     setError("");
+    if (firstVisitMode) {
+      const preparing = "מתחברת לג׳ימייל ומכינה את הסריקה...";
+      setFirstScanPhase(preparing);
+      setActionMessage(preparing);
+    }
     setScanToast({ type: "info", text: "סורק ג׳ימייל ומחפש חשבוניות, קבלות ודרישות תשלום..." });
     try {
       const result = await apiFetch<GmailScanResult>("/api/gmail/scan", { method: "POST" });
@@ -766,6 +816,9 @@ export default function DashboardPage() {
       setScanToast({ type: "error", text: message });
       if (message.includes("Gmail") || message.includes("ג׳ימייל") || message.includes("הרשאות") || message.includes("מחובר")) {
         setShowGmailConnect(true);
+      }
+      if (firstVisitMode) {
+        setFirstScanSettled(true);
       }
     } finally {
       setSyncing(false);
@@ -1022,11 +1075,21 @@ export default function DashboardPage() {
   const heroHumanMessage = useMemo(
     () =>
       buildHeroHumanMessage({
+        firstVisit: firstVisitMode,
+        gmailConnected,
+        firstScanPhase,
         completedCount: natalieBriefing.completedItems.filter((i) => i.id !== "ready").length,
         pendingCount: decisionItems.length,
         scanRunning,
       }),
-    [natalieBriefing.completedItems, decisionItems.length, scanRunning]
+    [
+      firstVisitMode,
+      gmailConnected,
+      firstScanPhase,
+      natalieBriefing.completedItems,
+      decisionItems.length,
+      scanRunning,
+    ]
   );
 
   const doneTodayItems = useMemo(
@@ -1152,6 +1215,14 @@ export default function DashboardPage() {
   }, [router]);
 
   const handleHeroPrimary = useCallback(() => {
+    if (firstVisitMode) {
+      if (gmailConnected) {
+        void runSync();
+      } else {
+        void connectGmail();
+      }
+      return;
+    }
     if (natalieRecommendation.kind === "connect_gmail") {
       void connectGmail();
       return;
@@ -1161,7 +1232,7 @@ export default function DashboardPage() {
       return;
     }
     document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [natalieRecommendation.kind, decisionItems.length, scrollToDecisions]);
+  }, [firstVisitMode, gmailConnected, natalieRecommendation.kind, decisionItems.length, scrollToDecisions]);
 
   const handleHeroScan = useCallback(() => {
     if (gmailConnected) {
@@ -1171,9 +1242,14 @@ export default function DashboardPage() {
     void connectGmail();
   }, [gmailConnected]);
 
-  const heroCtaLabel =
-    natalieRecommendation.kind === "connect_gmail" ? natalieRecommendation.ctaLabel : "שאל את נטלי";
-  const heroScanLabel = gmailConnected ? "סרוק מייל" : "התחבר לג׳ימייל";
+  const primaryScanLabel = gmailConnected ? "סרוק מייל" : "התחבר לג׳ימייל";
+  const heroCtaLabel = firstVisitMode
+    ? primaryScanLabel
+    : natalieRecommendation.kind === "connect_gmail"
+      ? natalieRecommendation.ctaLabel
+      : "שאל את נטלי";
+  const heroScanLabel = firstVisitMode ? primaryScanLabel : gmailConnected ? "סרוק מייל" : "התחבר לג׳ימייל";
+  const showFirstVisitExtras = !(firstVisitMode && !firstScanSettled);
 
   const quickActions = useMemo(
     () => [
@@ -1270,11 +1346,11 @@ export default function DashboardPage() {
           scanLabel={heroScanLabel}
           loading={pageLoading}
           scanRunning={scanRunning}
-          onCta={handleHeroPrimary}
+          onCta={firstVisitMode ? handleHeroScan : handleHeroPrimary}
           onScan={handleHeroScan}
         />
 
-        <NatalieConversationExamples />
+        {showFirstVisitExtras && <NatalieConversationExamples />}
 
         {scanBanner && (
           <ScanBanner
@@ -1298,15 +1374,19 @@ export default function DashboardPage() {
           <DashboardActivityTimeline items={activityTimeline} loading={pageLoading} />
         </div>
 
-        <div className="hidden md:block">
-          <NatalieDoneToday items={doneTodayItems} loading={pageLoading} />
-        </div>
+        {showFirstVisitExtras && (
+          <div className="hidden md:block">
+            <NatalieDoneToday items={doneTodayItems} loading={pageLoading} />
+          </div>
+        )}
 
-        <DashboardQuickActions actions={quickActions} />
+        {showFirstVisitExtras && <DashboardQuickActions actions={quickActions} />}
 
-        <div id="natalie-command">
-          <NatalieCommandBar onSubmit={handleNatalieConversation} onScan={runSync} />
-        </div>
+        {showFirstVisitExtras && (
+          <div id="natalie-command">
+            <NatalieCommandBar onSubmit={handleNatalieConversation} onScan={runSync} />
+          </div>
+        )}
 
         <details className={`${radius.card} border`} style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}>
           <summary className="cursor-pointer list-none px-5 py-5 text-lg font-bold md:px-6" style={{ color: colors.textPrimary }}>
@@ -1667,6 +1747,17 @@ function buildScanBannerState(activeScan: ScanProgressResult | null, scanStatus:
     totalMatched: scanStatus.last.totalMatched,
     errors: scanStatus.last.errors ? 1 : 0,
   };
+}
+
+function phaseLabelForScanProgress(progress: ScanProgressResult, preparing: boolean) {
+  if (preparing && (progress.progressPercent ?? 0) < 5) {
+    return "מתחברת לג׳ימייל ומכינה את הסריקה...";
+  }
+  const pct = progress.progressPercent ?? 0;
+  if (pct < 20) return "סורקת את הג׳ימייל...";
+  if (pct < 75) return "מנתחת מסמכים וחשבוניות...";
+  if (pct < 100) return "שומרת תוצאות...";
+  return "מסיימת את הסריקה...";
 }
 
 function firstNameFromLabel(value: string | null | undefined) {
