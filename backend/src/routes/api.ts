@@ -5832,7 +5832,7 @@ async function scanGmail(req: Request, res: Response) {
     }
     if (!gmailIntegration?.refreshToken && !gmailIntegration?.accessToken) {
       console.warn(`[gmail-scan] Gmail not connected org=${organizationId}`);
-      res.status(409).json({ error: "Please connect Gmail account first", code: "GMAIL_NOT_CONNECTED" });
+      res.status(409).json({ error: "יש לחבר חשבון ג׳ימייל לפני הסריקה", code: "GMAIL_NOT_CONNECTED" });
       return;
     }
 
@@ -5944,7 +5944,7 @@ async function scanGmail(req: Request, res: Response) {
     const code = classifyGmailScanError(message);
     if (code === "GMAIL_NOT_CONNECTED") {
       console.log("[gmail-scan] Gmail not connected");
-      res.status(409).json({ error: "Please connect Gmail account first", code: "GMAIL_NOT_CONNECTED" });
+      res.status(409).json({ error: "יש לחבר חשבון ג׳ימייל לפני הסריקה", code: "GMAIL_NOT_CONNECTED" });
       return;
     }
     console.error("[gmail-scan] Scan failed", err);

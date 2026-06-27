@@ -215,7 +215,7 @@ export default function SettingsPage() {
       router.push(`/login?next=${encodeURIComponent("/dashboard/settings?tab=integrations")}`);
       return;
     }
-    const url = `${API_URL}/api/integrations/gmail/connect?token=${encodeURIComponent(token)}`;
+    const url = `${API_URL}/api/integrations/gmail/connect?token=${encodeURIComponent(token)}&returnTo=${encodeURIComponent("/dashboard/settings")}`;
     console.log("GOOGLE_AUTH_REDIRECT_STARTED", url);
     window.location.href = url;
   }

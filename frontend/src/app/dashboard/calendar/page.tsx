@@ -247,7 +247,8 @@ export default function CalendarPage() {
     }
     setConnectingCalendar(true);
     try {
-      const data = await apiFetch<{ url: string }>("/api/integrations/calendar/connect-url");
+      const returnTo = encodeURIComponent("/dashboard/calendar");
+      const data = await apiFetch<{ url: string }>(`/api/integrations/calendar/connect-url?returnTo=${returnTo}`);
       if (data.url) {
         window.location.href = data.url;
         return;

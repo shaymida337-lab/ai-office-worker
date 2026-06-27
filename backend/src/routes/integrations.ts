@@ -3,6 +3,11 @@ import jwt from "jsonwebtoken";
 import { authMiddleware, verifyToken } from "../lib/auth.js";
 import { config, hasGoogleOAuth } from "../lib/config.js";
 import { errorDetails, publicErrorMessage } from "../lib/errors.js";
+import {
+  normalizeOAuthReturnTo,
+  oauthIntegrationRedirect,
+  type OAuthReturnTarget,
+} from "../lib/oauthReturn.js";
 import { prisma } from "../lib/prisma.js";
 import {
   CALENDAR_SCOPES,
@@ -96,14 +101,14 @@ function clearCalendarStateCookie(res: Response) {
   });
 }
 
-function gmailCallbackErrorRedirect(err: unknown) {
-  const reason = encodeURIComponent(publicErrorMessage(err).slice(0, 500));
-  return `${config.frontendUrl}/dashboard/settings?gmail=error&reason=${reason}`;
+function gmailCallbackErrorRedirect(err: unknown, returnTo?: unknown) {
+  const reason = publicErrorMessage(err).slice(0, 500);
+  return oauthIntegrationRedirect("gmail", "error", returnTo, reason);
 }
 
-function calendarCallbackErrorRedirect(err: unknown) {
-  const reason = encodeURIComponent(publicErrorMessage(err).slice(0, 500));
-  return `${config.frontendUrl}/dashboard/calendar?calendar=error&reason=${reason}`;
+function calendarCallbackErrorRedirect(err: unknown, returnTo?: unknown) {
+  const reason = publicErrorMessage(err).slice(0, 500);
+  return oauthIntegrationRedirect("calendar", "error", returnTo, reason);
 }
 
 function shortValue(value: string | undefined | null) {
@@ -137,6 +142,7 @@ type GmailIntegrationState = {
   organizationId: string;
   email: string;
   timestamp: number;
+  returnTo?: OAuthReturnTarget;
 };
 
 type CalendarIntegrationState = {
@@ -145,6 +151,7 @@ type CalendarIntegrationState = {
   organizationId: string;
   email: string;
   timestamp: number;
+  returnTo?: OAuthReturnTarget;
 };
 
 async function findGmailIntegrationForAuth(auth: {
@@ -219,31 +226,39 @@ async function findGmailIntegrationForAuth(auth: {
   return moved;
 }
 
-function signGmailIntegrationState(auth: {
-  userId: string;
-  organizationId: string;
-  email: string;
-}) {
+function signGmailIntegrationState(
+  auth: {
+    userId: string;
+    organizationId: string;
+    email: string;
+  },
+  returnTo?: OAuthReturnTarget | null
+) {
   return jwt.sign({
     purpose: "gmail_integration",
     userId: auth.userId,
     organizationId: auth.organizationId,
     email: auth.email,
     timestamp: Date.now(),
+    ...(returnTo ? { returnTo } : {}),
   } satisfies GmailIntegrationState, config.jwtSecret, { expiresIn: "10m" });
 }
 
-function signCalendarIntegrationState(auth: {
-  userId: string;
-  organizationId: string;
-  email: string;
-}) {
+function signCalendarIntegrationState(
+  auth: {
+    userId: string;
+    organizationId: string;
+    email: string;
+  },
+  returnTo?: OAuthReturnTarget | null
+) {
   return jwt.sign({
     purpose: "calendar_integration",
     userId: auth.userId,
     organizationId: auth.organizationId,
     email: auth.email,
     timestamp: Date.now(),
+    ...(returnTo ? { returnTo } : {}),
   } satisfies CalendarIntegrationState, config.jwtSecret, { expiresIn: "10m" });
 }
 
@@ -324,11 +339,12 @@ integrationsRouter.get("/gmail/connect-url", authMiddleware, async (req, res) =>
       return;
     }
 
-    const state = signGmailIntegrationState(req.auth!);
+    const returnTo = normalizeOAuthReturnTo(req.query.returnTo);
+    const state = signGmailIntegrationState(req.auth!, returnTo);
     const url = await gmailAuthUrl(state);
     setGmailStateCookie(res, state);
     console.log(
-      `[gmail/connect-url] user=${req.auth!.userId} org=${req.auth!.organizationId} clientId=${config.google.clientId} secretConfigured=${Boolean(config.google.clientSecret)} redirectUri=${config.google.integrationRedirectUri} state=${state}`
+      `[gmail/connect-url] user=${req.auth!.userId} org=${req.auth!.organizationId} returnTo=${returnTo ?? "default"} clientId=${config.google.clientId} secretConfigured=${Boolean(config.google.clientSecret)} redirectUri=${config.google.integrationRedirectUri} state=${state}`
     );
     res.json({ url });
   } catch (error) {
@@ -351,10 +367,11 @@ integrationsRouter.get("/gmail/connect", async (req, res) => {
 
   try {
     const auth = verifyToken(token);
-    const state = signGmailIntegrationState(auth);
+    const returnTo = normalizeOAuthReturnTo(req.query.returnTo);
+    const state = signGmailIntegrationState(auth, returnTo);
     setGmailStateCookie(res, state);
     console.log(
-      `[gmail/connect] user=${auth.userId} org=${auth.organizationId} clientId=${config.google.clientId} secretConfigured=${Boolean(config.google.clientSecret)} redirectUri=${config.google.integrationRedirectUri} state=${state}`
+      `[gmail/connect] user=${auth.userId} org=${auth.organizationId} returnTo=${returnTo ?? "default"} clientId=${config.google.clientId} secretConfigured=${Boolean(config.google.clientSecret)} redirectUri=${config.google.integrationRedirectUri} state=${state}`
     );
     res.redirect(await gmailAuthUrl(state));
   } catch {
@@ -388,16 +405,16 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
         `[gmail/callback][${traceId}] decodedState purpose=${decodedState.purpose ?? "none"} userId=${decodedState.userId ?? "none"} email=${decodedState.email ?? "none"} organizationId=${decodedState.organizationId ?? "none"} timestamp=${decodedState.timestamp ?? "none"}`
       );
       if (decodedState.purpose && decodedState.purpose !== "gmail_integration") {
-        res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
+        res.redirect(oauthIntegrationRedirect("gmail", "invalid_state", decodedState.returnTo));
         return;
       }
       if (!decodedState.organizationId) {
-        res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
+        res.redirect(oauthIntegrationRedirect("gmail", "invalid_state", decodedState.returnTo));
         return;
       }
       organizationId = decodedState.organizationId;
     } else {
-      res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
+      res.redirect(oauthIntegrationRedirect("gmail", "invalid_state", null));
       return;
     }
 
@@ -437,7 +454,7 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
           `[gmail/callback][${traceId}] invalid_grant after existing refreshToken org=${organizationId}; likely duplicate callback/code replay, returning connected state=${state ?? "none"}`
         );
         clearGmailStateCookie(res);
-        res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=connected`);
+        res.redirect(oauthIntegrationRedirect("gmail", "connected", decodedState?.returnTo));
         return;
       }
       throw err;
@@ -533,14 +550,21 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
     runPostConnectionGmailScan(organizationId);
 
     clearGmailStateCookie(res);
-    res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=connected`);
+    console.log(
+      `[gmail/callback][${traceId}] redirect returnTo=${decodedState?.returnTo ?? "default"} org=${organizationId}`
+    );
+    res.redirect(oauthIntegrationRedirect("gmail", "connected", decodedState?.returnTo));
   } catch (err) {
     console.error(`[gmail/callback][${traceId}] failed`, errorDetails(err));
+    const failedReturnTo =
+      typeof req.query.state === "string"
+        ? (jwt.decode(req.query.state) as Partial<GmailIntegrationState> | null)?.returnTo
+        : undefined;
     if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.TokenExpiredError) {
-      res.redirect(`${config.frontendUrl}/dashboard/settings?gmail=invalid_state`);
+      res.redirect(oauthIntegrationRedirect("gmail", "invalid_state", failedReturnTo));
       return;
     }
-    res.redirect(gmailCallbackErrorRedirect(err));
+    res.redirect(gmailCallbackErrorRedirect(err, failedReturnTo));
   }
 });
 
@@ -573,11 +597,12 @@ integrationsRouter.get("/calendar/connect-url", authMiddleware, async (req, res)
       return;
     }
 
-    const state = signCalendarIntegrationState(req.auth!);
+    const returnTo = normalizeOAuthReturnTo(req.query.returnTo);
+    const state = signCalendarIntegrationState(req.auth!, returnTo);
     const url = await calendarAuthUrl(state);
     setCalendarStateCookie(res, state);
     console.log(
-      `[calendar/connect-url] user=${req.auth!.userId} org=${req.auth!.organizationId} redirectUri=${config.google.calendarRedirectUri} state=${state}`
+      `[calendar/connect-url] user=${req.auth!.userId} org=${req.auth!.organizationId} returnTo=${returnTo ?? "default"} redirectUri=${config.google.calendarRedirectUri} state=${state}`
     );
     res.json({ url });
   } catch (error) {
@@ -600,10 +625,11 @@ integrationsRouter.get("/calendar/connect", async (req, res) => {
 
   try {
     const auth = verifyToken(token);
-    const state = signCalendarIntegrationState(auth);
+    const returnTo = normalizeOAuthReturnTo(req.query.returnTo);
+    const state = signCalendarIntegrationState(auth, returnTo);
     setCalendarStateCookie(res, state);
     console.log(
-      `[calendar/connect] user=${auth.userId} org=${auth.organizationId} redirectUri=${config.google.calendarRedirectUri} state=${state}`
+      `[calendar/connect] user=${auth.userId} org=${auth.organizationId} returnTo=${returnTo ?? "default"} redirectUri=${config.google.calendarRedirectUri} state=${state}`
     );
     res.redirect(await calendarAuthUrl(state));
   } catch {
@@ -634,16 +660,16 @@ integrationsRouter.get("/calendar/callback", async (req, res) => {
     if (state) {
       decodedState = jwt.verify(state, config.jwtSecret) as Partial<CalendarIntegrationState> & { organizationId?: string };
       if (decodedState.purpose && decodedState.purpose !== "calendar_integration") {
-        res.redirect(`${config.frontendUrl}/dashboard/calendar?calendar=invalid_state`);
+        res.redirect(oauthIntegrationRedirect("calendar", "invalid_state", decodedState.returnTo));
         return;
       }
       if (!decodedState.organizationId) {
-        res.redirect(`${config.frontendUrl}/dashboard/calendar?calendar=invalid_state`);
+        res.redirect(oauthIntegrationRedirect("calendar", "invalid_state", decodedState.returnTo));
         return;
       }
       organizationId = decodedState.organizationId;
     } else {
-      res.redirect(`${config.frontendUrl}/dashboard/calendar?calendar=invalid_state`);
+      res.redirect(oauthIntegrationRedirect("calendar", "invalid_state", null));
       return;
     }
 
@@ -676,7 +702,7 @@ integrationsRouter.get("/calendar/callback", async (req, res) => {
         err instanceof Error && err.message.toLowerCase().includes("invalid_grant");
       if (isInvalidGrant && existingIntegration?.refreshToken) {
         clearCalendarStateCookie(res);
-        res.redirect(`${config.frontendUrl}/dashboard/calendar?calendar=connected`);
+        res.redirect(oauthIntegrationRedirect("calendar", "connected", decodedState?.returnTo));
         return;
       }
       throw err;
@@ -741,13 +767,20 @@ integrationsRouter.get("/calendar/callback", async (req, res) => {
       `[calendar/callback][${traceId}] connected org=${organizationId} provider=google_calendar hasRefreshToken=${Boolean(refreshToken)}`
     );
     clearCalendarStateCookie(res);
-    res.redirect(`${config.frontendUrl}/dashboard/calendar?calendar=connected`);
+    console.log(
+      `[calendar/callback][${traceId}] redirect returnTo=${decodedState?.returnTo ?? "default"} org=${organizationId}`
+    );
+    res.redirect(oauthIntegrationRedirect("calendar", "connected", decodedState?.returnTo));
   } catch (err) {
     console.error(`[calendar/callback][${traceId}] failed`, errorDetails(err));
+    const failedReturnTo =
+      typeof req.query.state === "string"
+        ? (jwt.decode(req.query.state) as Partial<CalendarIntegrationState> | null)?.returnTo
+        : undefined;
     if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.TokenExpiredError) {
-      res.redirect(`${config.frontendUrl}/dashboard/calendar?calendar=invalid_state`);
+      res.redirect(oauthIntegrationRedirect("calendar", "invalid_state", failedReturnTo));
       return;
     }
-    res.redirect(calendarCallbackErrorRedirect(err));
+    res.redirect(calendarCallbackErrorRedirect(err, failedReturnTo));
   }
 });

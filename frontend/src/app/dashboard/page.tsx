@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import {
@@ -349,8 +349,7 @@ const emptyClients: ClientsResponse = {
 };
 
 function emptyScanStatus(): ScanStatus {
-  const nextScheduledScanAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  return { last: null, logs: [], nextScheduledScanAt };
+  return { last: null, logs: [], nextScheduledScanAt: "" };
 }
 
 export default function DashboardPage() {
@@ -392,6 +391,12 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [invoiceAttachPaymentId, setInvoiceAttachPaymentId] = useState<string | null>(null);
   const [invoiceAttachLink, setInvoiceAttachLink] = useState("");
+  const [clientMounted, setClientMounted] = useState(false);
+  const connectGmailTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    setClientMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!invoiceAttachPaymentId) return;
@@ -440,6 +445,9 @@ export default function DashboardPage() {
       setStats(statsResult.status === "fulfilled" ? statsResult.value : emptyStats);
       setSummary(summaryResult.status === "fulfilled" ? summaryResult.value.text : "לא ניתן לטעון סיכום כרגע.");
       setGmailStatus(gmailResult.status === "fulfilled" ? gmailResult.value : { googleConfigured: true, connected: false, connectedAt: null });
+      if (gmailResult.status === "fulfilled" && !gmailResult.value.connected) {
+        setShowGmailConnect(true);
+      }
       setClients(clientsResult.status === "fulfilled" ? clientsResult.value : emptyClients);
 
       if (scanStatusResult.status === "fulfilled") {
@@ -512,7 +520,8 @@ export default function DashboardPage() {
   }, [activeScanId, router]);
 
   useEffect(() => {
-    if (window.location.search.includes("gmail=connected")) {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("gmail") === "connected") {
       setScanToast({ type: "success", text: "ג׳ימייל חובר בהצלחה" });
       refreshGmailStatus().catch(() => undefined);
       router.replace("/dashboard");
@@ -523,6 +532,18 @@ export default function DashboardPage() {
     }, 5 * 60 * 1000);
     return () => window.clearInterval(interval);
   }, [load, refreshGmailStatus, router]);
+
+  useEffect(() => {
+    if (pageLoading || connectGmailTriggeredRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connect") !== "gmail") return;
+    connectGmailTriggeredRef.current = true;
+    router.replace("/dashboard");
+    if (!gmailStatus?.connected) {
+      console.log("[dashboard] auto-trigger gmail connect from ?connect=gmail");
+      void connectGmail();
+    }
+  }, [pageLoading, gmailStatus?.connected, router]);
 
   useEffect(() => {
     const refreshWhenVisible = () => {
@@ -683,8 +704,10 @@ export default function DashboardPage() {
 
     try {
       setError("");
+      console.log("[dashboard] gmail oauth start returnTo=/dashboard");
       const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-      const res = await fetch(`${apiUrl}/api/integrations/gmail/connect-url`, {
+      const returnTo = encodeURIComponent("/dashboard");
+      const res = await fetch(`${apiUrl}/api/integrations/gmail/connect-url?returnTo=${returnTo}`, {
         method: "GET",
         credentials: "include",
         headers: {
@@ -708,6 +731,7 @@ export default function DashboardPage() {
   }
 
   async function runSync() {
+    console.log("[dashboard] gmail scan clicked");
     const freshGmailStatus = gmailStatus?.connected ? gmailStatus : await refreshGmailStatus().catch(() => gmailStatus);
     if (freshGmailStatus && !freshGmailStatus.connected) {
       const message = "יש לחבר חשבון ג׳ימייל לפני הסריקה";
@@ -737,6 +761,7 @@ export default function DashboardPage() {
       setScanToast({ type: "success", text: message });
     } catch (e) {
       const message = e instanceof Error ? e.message : "סריקת ג׳ימייל נכשלה";
+      console.warn("[dashboard] gmail scan failed:", message);
       setError(message);
       setScanToast({ type: "error", text: message });
       if (message.includes("Gmail") || message.includes("ג׳ימייל") || message.includes("הרשאות") || message.includes("מחובר")) {
@@ -1126,20 +1151,9 @@ export default function DashboardPage() {
     router.push("/camera");
   }, [router]);
 
-  const quickActions = useMemo(
-    () => [
-      { id: "scan", label: "סרוק מייל", onClick: runSync, primary: true },
-      { id: "invoice", label: "הוסף חשבונית", icon: quickActionIcons.invoice, onClick: handleScanDocument },
-      { id: "task", label: "צור משימה", icon: quickActionIcons.task, onClick: () => router.push("/tasks") },
-      { id: "reminder", label: "שלח תזכורת", icon: quickActionIcons.reminder, onClick: () => router.push("/dashboard/whatsapp") },
-      { id: "briefing", label: "בקש תדרוך מנטלי", icon: quickActionIcons.briefing, onClick: scrollToBriefing },
-    ],
-    [router, scrollToBriefing, handleScanDocument, runSync]
-  );
-
   const handleHeroPrimary = useCallback(() => {
     if (natalieRecommendation.kind === "connect_gmail") {
-      connectGmail();
+      void connectGmail();
       return;
     }
     if (decisionItems.length > 0) {
@@ -1147,7 +1161,35 @@ export default function DashboardPage() {
       return;
     }
     document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [natalieRecommendation.kind, decisionItems.length, connectGmail, scrollToDecisions]);
+  }, [natalieRecommendation.kind, decisionItems.length, scrollToDecisions]);
+
+  const handleHeroScan = useCallback(() => {
+    if (gmailConnected) {
+      void runSync();
+      return;
+    }
+    void connectGmail();
+  }, [gmailConnected]);
+
+  const heroCtaLabel =
+    natalieRecommendation.kind === "connect_gmail" ? natalieRecommendation.ctaLabel : "שאל את נטלי";
+  const heroScanLabel = gmailConnected ? "סרוק מייל" : "התחבר לג׳ימייל";
+
+  const quickActions = useMemo(
+    () => [
+      {
+        id: "scan",
+        label: gmailConnected ? "סרוק מייל" : "התחבר לג׳ימייל",
+        onClick: handleHeroScan,
+        primary: true,
+      },
+      { id: "invoice", label: "הוסף חשבונית", icon: quickActionIcons.invoice, onClick: handleScanDocument },
+      { id: "task", label: "צור משימה", icon: quickActionIcons.task, onClick: () => router.push("/tasks") },
+      { id: "reminder", label: "שלח תזכורת", icon: quickActionIcons.reminder, onClick: () => router.push("/dashboard/whatsapp") },
+      { id: "briefing", label: "בקש תדרוך מנטלי", icon: quickActionIcons.briefing, onClick: scrollToBriefing },
+    ],
+    [router, scrollToBriefing, handleScanDocument, handleHeroScan, gmailConnected]
+  );
 
   const handleNatalieConversation = useCallback(
     (value: string) => {
@@ -1224,10 +1266,12 @@ export default function DashboardPage() {
         <NatalieHero
           ownerFirstName={ownerFirstName}
           humanMessage={heroHumanMessage}
+          ctaLabel={heroCtaLabel}
+          scanLabel={heroScanLabel}
           loading={pageLoading}
           scanRunning={scanRunning}
           onCta={handleHeroPrimary}
-          onScan={runSync}
+          onScan={handleHeroScan}
         />
 
         <NatalieConversationExamples />
@@ -1371,8 +1415,8 @@ export default function DashboardPage() {
 
             <section className={`grid ${spacing.section} lg:grid-cols-2`}>
               <ActivityCard title="אוטומציה וסריקות" empty="אין נתוני סריקה עדיין">
-                <DataRow title="עודכן לאחרונה" meta={lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען"} pill={<StatusPill tone="info">פעיל</StatusPill>} />
-                <DataRow title="סריקה הבאה" meta={scanStatus ? formatDateTime(scanStatus.nextScheduledScanAt) : "טוען"} />
+                <DataRow title="עודכן לאחרונה" meta={clientMounted && lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען"} pill={<StatusPill tone="info">פעיל</StatusPill>} />
+                <DataRow title="סריקה הבאה" meta={clientMounted && scanStatus?.nextScheduledScanAt ? formatDateTime(scanStatus.nextScheduledScanAt) : "טוען"} />
                 {scanStatus?.last && (
                   <DataRow
                     title="סריקה אחרונה"

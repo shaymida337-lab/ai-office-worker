@@ -165,6 +165,46 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
 
   useEffect(() => {
     if (!hydrated) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const gmail = params.get("gmail");
+    const calendar = params.get("calendar");
+    const reason = params.get("reason");
+
+    if (!gmail && !calendar) return;
+
+    if (gmail === "connected" || calendar === "connected") {
+      if (gmail === "connected") {
+        apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`)
+          .then(setGmailStatus)
+          .catch(() => undefined);
+      }
+      if (calendar === "connected") {
+        apiFetch<{ connected: boolean }>(`/api/integrations/calendar/status?t=${Date.now()}`)
+          .then((status) => setCalendarConnected(status.connected))
+          .catch(() => undefined);
+      }
+      setError("");
+      persistProgress(4);
+      window.history.replaceState(null, "", "/onboarding");
+      return;
+    }
+
+    if (gmail === "error" || calendar === "error") {
+      const providerLabel = gmail === "error" ? "ג׳ימייל" : "Google Calendar";
+      setError(reason ? decodeURIComponent(reason) : `חיבור ${providerLabel} נכשל. נסו שוב.`);
+      window.history.replaceState(null, "", "/onboarding");
+      return;
+    }
+
+    if (gmail === "invalid_state" || calendar === "invalid_state") {
+      setError("פג תוקף החיבור. נסו להתחבר שוב.");
+      window.history.replaceState(null, "", "/onboarding");
+    }
+  }, [hydrated, persistProgress]);
+
+  useEffect(() => {
+    if (!hydrated) return;
     if (step === 1) return;
     persistProgress(step);
   }, [businessName, businessSize, businessType, firstName, helpAreas, hydrated, persistProgress, step]);
@@ -250,7 +290,9 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
       router.push(`/login?next=${encodeURIComponent("/onboarding")}`);
       return;
     }
-    window.location.href = `${API_URL}/api/integrations/gmail/connect?token=${encodeURIComponent(token)}`;
+    console.log("[onboarding] gmail oauth start returnTo=/onboarding");
+    const returnTo = encodeURIComponent("/onboarding");
+    window.location.href = `${API_URL}/api/integrations/gmail/connect?token=${encodeURIComponent(token)}&returnTo=${returnTo}`;
   };
 
   const connectCalendar = async () => {
@@ -260,7 +302,9 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
       return;
     }
     try {
-      const data = await apiFetch<{ url: string }>("/api/integrations/calendar/connect-url");
+      console.log("[onboarding] calendar oauth start returnTo=/onboarding");
+      const returnTo = encodeURIComponent("/onboarding");
+      const data = await apiFetch<{ url: string }>(`/api/integrations/calendar/connect-url?returnTo=${returnTo}`);
       if (data.url) window.location.href = data.url;
     } catch (err) {
       setError(err instanceof Error ? err.message : "חיבור Google Calendar נכשל");
