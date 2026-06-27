@@ -205,6 +205,11 @@ export const config = {
     growthPriceId: optional("STRIPE_PRICE_GROWTH"),
     customerPortalReturnUrl: optional("STRIPE_CUSTOMER_PORTAL_RETURN_URL", `${defaultFrontendUrl()}/billing/subscription`),
   },
+
+  calendarEngine: {
+    v1Read: optional("CALENDAR_ENGINE_V1_READ", "false").toLowerCase() === "true",
+    v1Write: optional("CALENDAR_ENGINE_V1_WRITE", "false").toLowerCase() === "true",
+  },
 };
 
 export function validateStartupEnv() {

@@ -36,6 +36,8 @@ services:
         value: "22"
       - key: NODE_ENV
         value: production
+      # Natalie Calendar Engine flags intentionally omitted — remain disabled until cutover.
+      # Do NOT set CALENDAR_ENGINE_V1_READ/WRITE in production before UI + migration plan.
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL

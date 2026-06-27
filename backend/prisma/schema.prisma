@@ -19,6 +19,9 @@ model User {
 
   organization Organization?
   helpProgress HelpProgress[]
+  assignedWorkCases WorkCase[] @relation("WorkCaseAssignedUser")
+  assignedCalendarEvents CalendarEvent[] @relation("CalendarEventAssignedUser")
+  createdCalendarEvents CalendarEvent[] @relation("CalendarEventCreatedBy")
 }
 
 model Organization {
@@ -46,6 +49,11 @@ model Organization {
   sendMonthlyReport Boolean  @default(true)
   reportDay         Int      @default(1)
   businessProfile   String?
+  calendarAutonomyJson Json @default("{\"calendarAutonomy\":{\"autoConfirmWhenFullyReady\":false,\"autoSendFollowUp\":false,\"autoSyncGoogleOnConfirm\":true,\"autoCreateFollowUpTask\":true}}") @map("calendar_autonomy_json")
+  calendarEngineReadEnabled Boolean @default(false) @map("calendar_engine_read_enabled")
+  calendarEngineWriteEnabled Boolean @default(false) @map("calendar_engine_write_enabled")
+  calendarEngineGoogleMirrorEnabled Boolean @default(false) @map("calendar_engine_google_mirror_enabled")
+  calendarEnginePilotNotes String? @map("calendar_engine_pilot_notes")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -78,6 +86,11 @@ model Organization {
   services        Service[]
   appointments    Appointment[]
   deals           Deal[]
+  workCases       WorkCase[]
+  calendarEvents  CalendarEvent[]
+  calendarEventAudits CalendarEventAudit[]
+  workCaseTimelineEntries WorkCaseTimelineEntry[]
+  ownerDecisionQueueItems OwnerDecisionQueueItem[]
 }
 
 model HelpProgress {
@@ -137,6 +150,8 @@ model Client {
   socialSettings   SocialSettings?
   appointments     Appointment[]
   deals            Deal[]
+  workCases        WorkCase[]
+  calendarEvents   CalendarEvent[]
 
   @@index([organizationId, isActive])
   @@index([organizationId, whatsappNumber])
@@ -502,13 +517,17 @@ model Task {
   clientId       String?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   client         Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workCaseId     String?
+  workCase       WorkCase? @relation(fields: [workCaseId], references: [id], onDelete: SetNull)
+  calendarEventId String?
+  calendarEvent  CalendarEvent? @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
   title          String
   description    String?
   supplier       String?
   priority       String   @default("medium") // low | medium | high
   status         String   @default("open") // open | completed
   dueDate        DateTime?
-  source         String   @default("gmail")
+  source         String   @default("gmail") // gmail | post_event | manual | decision_rejected
   emailMessageId String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -517,6 +536,7 @@ model Task {
   @@index([organizationId, status])
   @@index([organizationId, createdAt])
   @@index([clientId, status])
+  @@index([workCaseId, status])
 }
 
 model SyncLog {
@@ -738,6 +758,8 @@ model Lead {
   timeline  LeadTimeline[]
   sequences LeadSequence[]
   deal      Deal?
+  workCases WorkCase[]
+  calendarEvents CalendarEvent[]
 
   @@index([organizationId, stage, createdAt])
   @@index([organizationId, source])
@@ -875,6 +897,7 @@ model Service {
 
   appointments Appointment[]
   quoteLines   QuoteLine[]
+  calendarEvents CalendarEvent[]
 
   @@index([organizationId, isActive])
 }
@@ -976,5 +999,251 @@ model Appointment {
   @@index([organizationId, startTime])
   @@index([organizationId, status])
   @@index([clientId])
+}
+
+// --- Natalie Calendar Engine (Phase 1) — does not replace Appointment ---
+
+enum CalendarEventStatus {
+  draft
+  pending_readiness
+  confirmed
+  in_progress
+  completed
+  cancelled
+  no_show
+  rescheduled
+}
+
+enum EventSource {
+  manual
+  ai_chat
+  voice
+  whatsapp
+  email
+  booking_page
+  migration
+  system
+}
+
+enum DecisionQueueType {
+  confirm_appointment
+  reschedule_appointment
+  cancel_appointment
+  create_invoice_placeholder
+  send_follow_up_message
+  override_conflict
+}
+
+enum DecisionQueueStatus {
+  pending
+  approved
+  rejected
+  expired
+  superseded
+}
+
+enum TimelineEntryType {
+  work_case_created
+  event_created
+  prerequisite_passed
+  prerequisite_failed
+  approval_requested
+  approval_granted
+  approval_rejected
+  status_changed
+  event_completed
+  event_no_show
+  event_cancelled
+  event_rescheduled
+  task_spawned
+  invoice_requested
+  google_sync_success
+  google_sync_failed
+  note_added
+  natalie_command
+}
+
+enum WorkCaseStatus {
+  open
+  in_progress
+  completed
+  cancelled
+}
+
+enum CompletionOutcome {
+  completed_success
+  completed_early
+  no_show
+  cancelled_by_customer
+  cancelled_by_business
+}
+
+enum GoogleSyncStatus {
+  skipped
+  pending
+  synced
+  failed
+  deleted
+}
+
+enum DecisionItemSource {
+  manual
+  natalie_command
+  system
+}
+
+enum TimelineActorType {
+  user
+  system
+  natalie
+}
+
+model WorkCase {
+  id                    String         @id @default(cuid())
+  organizationId        String
+  organization          Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title                 String
+  status                WorkCaseStatus @default(open)
+  clientId              String?
+  client                Client?        @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  leadId                String?
+  lead                  Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  assignedUserId        String?
+  assignedUser          User?          @relation("WorkCaseAssignedUser", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  source                String         @default("calendar")
+  description           String?
+  priority              String?
+  invoiceDraftRequested Boolean        @default(false)
+  closedAt              DateTime?
+  closedReason          String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  calendarEvents        CalendarEvent[]
+  timelineEntries       WorkCaseTimelineEntry[]
+  decisionQueueItems    OwnerDecisionQueueItem[]
+  tasks                 Task[]
+
+  @@index([organizationId, status])
+  @@index([clientId])
+  @@index([assignedUserId])
+}
+
+model CalendarEvent {
+  id                  String              @id @default(cuid())
+  organizationId      String
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventType           String              @default("appointment")
+  status              CalendarEventStatus @default(draft)
+  title               String?
+  startAt             DateTime
+  endAt               DateTime
+  timezone            String              @default("Asia/Jerusalem")
+  workCaseId          String
+  workCase            WorkCase            @relation(fields: [workCaseId], references: [id], onDelete: Restrict)
+  clientId            String?
+  client              Client?             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  leadId              String?
+  lead                Lead?               @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  assignedUserId      String?
+  assignedUser        User?               @relation("CalendarEventAssignedUser", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  serviceId           String?
+  service             Service?            @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  locationType        String?             @default("office")
+  address             String?
+  remoteLink          String?
+  prerequisitesJson   Json                @default("[]")
+  completionNotes     String?
+  completionOutcome   CompletionOutcome?
+  rescheduledFromId   String?             @unique
+  rescheduledFrom     CalendarEvent?      @relation("CalendarEventRescheduleChain", fields: [rescheduledFromId], references: [id], onDelete: SetNull)
+  rescheduledTo       CalendarEvent?      @relation("CalendarEventRescheduleChain")
+  googleEventId       String?
+  googleSyncStatus    GoogleSyncStatus    @default(skipped)
+  lastSyncedAt        DateTime?
+  source              EventSource
+  internalNotes       String?
+  legacyAppointmentId String?             @unique
+  createdByUserId     String?
+  createdByUser       User?               @relation("CalendarEventCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  commandSessionId    String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  auditEntries        CalendarEventAudit[]
+  timelineEntries     WorkCaseTimelineEntry[]
+  decisionQueueItems  OwnerDecisionQueueItem[]
+  tasks               Task[]
+
+  @@index([organizationId, startAt])
+  @@index([organizationId, status])
+  @@index([workCaseId])
+  @@index([assignedUserId, startAt])
+  @@index([clientId])
+}
+
+model CalendarEventAudit {
+  id              String              @id @default(cuid())
+  calendarEventId String
+  calendarEvent   CalendarEvent       @relation(fields: [calendarEventId], references: [id], onDelete: Cascade)
+  organizationId  String
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorUserId     String?
+  actorType       TimelineActorType
+  action          String
+  fromStatus      CalendarEventStatus?
+  toStatus        CalendarEventStatus?
+  changesJson     Json?
+  createdAt       DateTime            @default(now())
+
+  @@index([calendarEventId, createdAt])
+  @@index([organizationId, createdAt])
+}
+
+model WorkCaseTimelineEntry {
+  id              String            @id @default(cuid())
+  organizationId  String
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workCaseId      String
+  workCase        WorkCase          @relation(fields: [workCaseId], references: [id], onDelete: Cascade)
+  calendarEventId String?
+  calendarEvent   CalendarEvent?    @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
+  type            TimelineEntryType
+  summary         String
+  actorType       TimelineActorType
+  actorUserId     String?
+  metaJson        Json?
+  createdAt       DateTime          @default(now())
+
+  @@index([workCaseId, createdAt])
+  @@index([organizationId, createdAt])
+}
+
+model OwnerDecisionQueueItem {
+  id                  String              @id @default(cuid())
+  organizationId      String
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workCaseId          String
+  workCase            WorkCase            @relation(fields: [workCaseId], references: [id], onDelete: Cascade)
+  calendarEventId     String?
+  calendarEvent       CalendarEvent?      @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
+  type                DecisionQueueType
+  status              DecisionQueueStatus @default(pending)
+  title               String
+  reason              String?
+  preparedPayloadJson Json?
+  source              DecisionItemSource
+  executionIdempotencyKey String?
+  metaJson            Json?
+  expiresAt           DateTime?
+  resolvedAt          DateTime?
+  resolvedByUserId    String?
+  resolutionNote      String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([organizationId, status, createdAt])
+  @@index([calendarEventId, status])
+  @@index([workCaseId, status])
 }
 
