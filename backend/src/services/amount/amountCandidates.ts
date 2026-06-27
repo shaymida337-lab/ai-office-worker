@@ -195,6 +195,16 @@ export function resolveClientGmailMoneyDecision(input: {
   });
 }
 
+export function resolvePersistedTotalAmount(moneyDecision: MoneyDecision): number | null {
+  if (moneyDecision.status !== "resolved" || moneyDecision.selectedAmount == null) return null;
+  return moneyDecision.selectedAmount;
+}
+
+export function moneyDecisionUncertaintySuffix(moneyDecision: MoneyDecision): string | null {
+  if (moneyDecision.status === "resolved") return null;
+  return `amount_${moneyDecision.status}:${moneyDecision.reasonCode}`;
+}
+
 export function summarizeMoneyDecision(decision: MoneyDecision) {
   return {
     selectedAmount: decision.selectedAmount,

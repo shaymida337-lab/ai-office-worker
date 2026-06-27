@@ -56,6 +56,24 @@ test("extractInvoiceAmount ignores long identifier-only numbers", () => {
   assert.equal(extractInvoiceAmount("מספר חשבון 1000000").amount, null);
 });
 
+test("extractInvoiceAmount rejects ambiguous MAX-style dot separator total", () => {
+  const result = extractInvoiceAmount(`
+    MAX
+    סה"כ לתשלום 110.723 ₪
+  `);
+
+  assert.equal(result.amount, null);
+});
+
+test("extractInvoiceAmount accepts clear MAX-style grouped total", () => {
+  const result = extractInvoiceAmount(`
+    MAX
+    סה"כ לתשלום 1,107.23 ₪
+  `);
+
+  assert.equal(result.amount, 1107.23);
+});
+
 test("financialDocumentBlockingReason flags amount at 1M threshold for needs_review", () => {
   const reason = financialDocumentBlockingReason({
     supplierName: "OpenAI LLC",

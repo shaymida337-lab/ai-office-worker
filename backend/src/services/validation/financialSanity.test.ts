@@ -9,6 +9,7 @@ import { computeFinancialSanity } from "./financialSanity.js";
 import {
   evaluateCreditNoteValidation,
   evaluateCurrencyMismatch,
+  evaluateDocumentTypeCeiling,
   evaluateDuplicateSuspicion,
   evaluateFutureInvoiceDate,
   evaluateImpossibleAmount,
@@ -126,8 +127,8 @@ test("computeFinancialSanity returns fse-v1 decision with all rule results", () 
   assert.equal(result.version, "fse-v1");
   assert.equal(result.overallStatus, "valid");
   assert.equal(result.errors.length, 0);
-  assert.equal(result.ruleResults.length, 11);
-  assert.equal(result.passedRules.length, 11);
+  assert.equal(result.ruleResults.length, 12);
+  assert.equal(result.passedRules.length, 12);
   assert.equal(result.failedRules.length, 0);
   assert.ok(result.trustScore >= 90);
   assert.ok(result.confidence > 0.8);
@@ -430,4 +431,17 @@ test("computeFinancialSanity aggregates failed rules and lowers trust score", ()
   assert.ok(result.failedRules.includes("missing_invoice_number"));
   assert.ok(result.trustScore < 50);
   assert.match(result.explanation, /blocking issue/);
+});
+
+test("FSE document_type_ceiling warns when receipt exceeds conservative ceiling", () => {
+  const result = evaluateDocumentTypeCeiling(
+    baseInput({
+      invoiceData: { documentType: "receipt" },
+      moneyDecision: moneyDecision({ selectedAmount: 30_000 }),
+    })
+  );
+
+  assert.equal(result.ruleId, "document_type_ceiling");
+  assert.equal(result.severity, "warning");
+  assert.match(result.message, /exceeds the conservative receipt review ceiling/);
 });

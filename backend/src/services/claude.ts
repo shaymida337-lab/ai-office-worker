@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
+import { parseAmountOrNull, parseLabeledAmount } from "./amount/parseAmount.js";
 
 export type EmailAnalysis = {
   supplier: string;
@@ -933,11 +934,18 @@ function extractAmount(text: string): number | null {
   collectAmountMatches(normalized, /([0-9][0-9.,\s]*)\s*(?:₪|ils|nis|ש["״']?ח)/gi, 80, candidates);
 
   const amounts = candidates
-    .map((candidate) => ({ amount: parseAmount(candidate.raw), score: candidate.score, hasDateContext: candidate.hasDateContext }))
+    .map((candidate) => {
+      const parsed = parseLabeledAmount(candidate.raw);
+      return {
+        amount: parsed.ambiguous ? null : parsed.parsedAmount,
+        score: candidate.score,
+        hasDateContext: candidate.hasDateContext,
+      };
+    })
     .filter((candidate): candidate is { amount: number; score: number; hasDateContext: boolean } => candidate.amount !== null && candidate.amount > 0)
     .filter((candidate) => !looksLikeDateOrYear(candidate.amount, candidate.hasDateContext));
   if (!amounts.length) return null;
-  amounts.sort((a, b) => b.score - a.score || b.amount - a.amount);
+  amounts.sort((a, b) => b.score - a.score);
   return amounts[0].amount;
 }
 
@@ -967,24 +975,7 @@ function hasDateOrYearContext(text: string, matchIndex: number, rawLength: numbe
   return /(?:20\d{2}[-/.][01]?\d[-/.][0-3]?\d|[0-3]?\d[-/.][01]?\d[-/.]20\d{2}|תאריך|מועד|חודש|שנה|date|due|period|year|month)/i.test(context);
 }
 
-export function parseAmount(raw: string): number | null {
-  const cleaned = raw.replace(/[^\d.,]/g, "").replace(/[.,]+$/, "");
-  if (!cleaned) return null;
-  const lastComma = cleaned.lastIndexOf(",");
-  const lastDot = cleaned.lastIndexOf(".");
-  const decimalSeparator = lastComma > lastDot ? "," : ".";
-  let normalized = cleaned;
-  if (lastComma !== -1 && lastDot !== -1) {
-    normalized = cleaned.replace(new RegExp(`\\${decimalSeparator === "," ? "." : ","}`, "g"), "").replace(decimalSeparator, ".");
-  } else if (lastComma !== -1) {
-    normalized = cleaned.length - lastComma - 1 === 2 ? cleaned.replace(",", ".") : cleaned.replace(/,/g, "");
-  } else if (lastDot !== -1) {
-    const decimals = cleaned.length - lastDot - 1;
-    normalized = decimals >= 1 && decimals <= 2 ? cleaned : cleaned.replace(/\./g, "");
-  }
-  const amount = Number(normalized);
-  return isReasonableAmount(amount) ? amount : null;
-}
+export { parseAmountOrNull as parseAmount } from "./amount/parseAmount.js";
 
 function normalizeAmountValue(value: unknown): number | null {
   if (typeof value === "number") return isReasonableAmount(value) ? value : null;

@@ -15,7 +15,8 @@ export type SanityRuleId =
   | "negative_invoice_validation"
   | "credit_note_validation"
   | "invoice_sequence_anomaly"
-  | "ocr_suspicious_patterns";
+  | "ocr_suspicious_patterns"
+  | "document_type_ceiling";
 
 export type SanityOverallStatus = "valid" | "warning" | "error" | "review";
 

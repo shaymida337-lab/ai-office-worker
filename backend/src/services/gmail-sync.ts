@@ -23,8 +23,9 @@ import {
   type PipelineClassificationAction,
 } from "./classification/classifier.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
-import { mapAnalysisDocumentTypeForAmount, resolveGmailOrgMoneyDecision, summarizeMoneyDecision } from "./amount/amountCandidates.js";
+import { mapAnalysisDocumentTypeForAmount, moneyDecisionUncertaintySuffix, resolveGmailOrgMoneyDecision, resolvePersistedTotalAmount, summarizeMoneyDecision } from "./amount/amountCandidates.js";
 import type { MoneyDecision } from "./amount/canonicalAmount.js";
+import { parseAmountOrNull, parseLabeledAmount, parseAmount } from "./amount/parseAmount.js";
 import {
   buildPaymentLookupsFromCanonical,
 } from "./dedup/fingerprintMigration.js";
@@ -1370,7 +1371,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         regexDetectedAmount: invoiceMatch.amount,
       });
       parsedFieldsJson.arc = summarizeMoneyDecision(moneyDecision);
-      const finalTotalAmount = moneyDecision.selectedAmount;
+      const finalTotalAmount = resolvePersistedTotalAmount(moneyDecision);
       const amount = finalTotalAmount;
       const amountRejectedReason =
         moneyDecision.status !== "resolved"
@@ -1767,7 +1768,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         documentType: classification.documentType,
         driveFileUrl: null,
         confidenceScore: classification.confidence,
-        uncertaintyReason: documentValidationReason ?? (classification.reviewStatus === "needs_review" ? classification.decisionReason : null),
+        uncertaintyReason:
+          documentValidationReason ??
+          moneyDecisionUncertaintySuffix(moneyDecision) ??
+          (classification.reviewStatus === "needs_review" ? classification.decisionReason : null),
         forceNeedsReview: invoiceNeedsBusinessReview,
         parsedFieldsJson,
         rawAnalysis: {
@@ -5226,8 +5230,11 @@ export function extractInvoiceAmount(text: string): { amount: number | null; rej
           rejectedReason = "parsed amount rejected: looks like identifier not amount";
           continue;
         }
-        const amount = parseAmount(rawAmount);
-        if (amount !== null) {
+        const parsed = options.requireReferenceCheck
+          ? parseAmount(rawAmount)
+          : parseLabeledAmount(rawAmount);
+        const amount = parsed.parsedAmount;
+        if (amount !== null && !parsed.ambiguous) {
           const reason = rejectedDetectedAmountReason(amount, {
             hasDateContext: hasDateOrYearContext(normalized, matchIndex, match[0].length),
           });
@@ -5273,10 +5280,17 @@ function selectExtractedInvoiceAmount(
   keywordAmounts: number[],
   fallbackAmounts: number[]
 ) {
-  if (prioritizedAmounts.length) return Math.max(...prioritizedAmounts);
-  if (keywordAmounts.length) return Math.max(...keywordAmounts);
-  if (fallbackAmounts.length) return Math.max(...fallbackAmounts);
-  return null;
+  const pickConsensus = (values: number[]) => {
+    if (!values.length) return null;
+    const unique = [...new Set(values.map((v) => Number(v.toFixed(2))))];
+    if (unique.length === 1) return unique[0];
+    return null;
+  };
+  return (
+    pickConsensus(prioritizedAmounts) ??
+    pickConsensus(keywordAmounts) ??
+    pickConsensus(fallbackAmounts)
+  );
 }
 
 function hasReferenceNumberContext(text: string, matchIndex: number, rawLength: number) {
@@ -5300,24 +5314,7 @@ function extractPhoneFromText(text: string) {
   return text.match(/(?:\+972|0)(?:[-\s]?\d){8,10}/)?.[0]?.replace(/[\s-]/g, "") ?? undefined;
 }
 
-export function parseAmount(raw: string) {
-  const cleaned = raw.replace(/[^\d.,]/g, "").replace(/[.,]+$/, "");
-  const lastComma = cleaned.lastIndexOf(",");
-  const lastDot = cleaned.lastIndexOf(".");
-  const decimalSeparator = lastComma > lastDot ? "," : ".";
-  let compact = cleaned;
-  if (lastComma !== -1 && lastDot !== -1) {
-    compact = cleaned.replace(new RegExp(`\\${decimalSeparator === "," ? "." : ","}`, "g"), "").replace(decimalSeparator, ".");
-  } else if (lastComma !== -1) {
-    compact = cleaned.length - lastComma - 1 === 2 ? cleaned.replace(",", ".") : cleaned.replace(/,/g, "");
-  } else if (lastDot !== -1) {
-    const decimals = cleaned.length - lastDot - 1;
-    compact = decimals >= 1 && decimals <= 2 ? cleaned : cleaned.replace(/\./g, "");
-  }
-  compact = compact.replace(/\s/g, "");
-  const amount = Number(compact);
-  return Number.isFinite(amount) && amount > 0 ? amount : null;
-}
+export { parseAmountOrNull as parseAmount } from "./amount/parseAmount.js";
 
 function normalizeDetectedAmount(amount: number | null | undefined) {
   if (amount == null) return null;
@@ -6105,7 +6102,7 @@ export async function fetchAndParseGmailMessageFinancialFields(input: {
     extractedFieldsAmount: extractedFields.amount,
     regexDetectedAmount: invoiceMatch.amount,
   });
-  const finalTotalAmount = moneyDecision.selectedAmount;
+  const finalTotalAmount = resolvePersistedTotalAmount(moneyDecision);
   const amount = finalTotalAmount;
 
   const supplierMetadata = resolveSupplierMetadata({

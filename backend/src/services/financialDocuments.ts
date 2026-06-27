@@ -350,6 +350,20 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
 export async function approveFinancialDocumentReview(organizationId: string, reviewId: string) {
   const review = await prisma.financialDocumentReview.findFirst({ where: { id: reviewId, organizationId } });
   if (!review) throw new Error("Document review item not found");
+  if (review.totalAmount == null || !Number.isFinite(review.totalAmount) || review.totalAmount <= 0) {
+    throw new Error("Cannot approve document without a verified total amount");
+  }
+  const arcStatus =
+    review.parsedFieldsJson &&
+    typeof review.parsedFieldsJson === "object" &&
+    review.parsedFieldsJson !== null &&
+    "arc" in review.parsedFieldsJson &&
+    typeof (review.parsedFieldsJson as { arc?: { status?: string } }).arc?.status === "string"
+      ? (review.parsedFieldsJson as { arc: { status: string } }).arc.status
+      : null;
+  if (arcStatus === "ambiguous" || arcStatus === "missing" || arcStatus === "rejected") {
+    throw new Error("Cannot approve document while amount resolution is ambiguous or missing");
+  }
   if (!isPaymentDocumentType(normalizeFinancialDocumentType(review.documentType))) {
     return prisma.financialDocumentReview.update({ where: { id: review.id }, data: { reviewStatus: "rejected", uncertaintyReason: "מסמך לא רלוונטי" } });
   }

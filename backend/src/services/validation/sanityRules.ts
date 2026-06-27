@@ -1,4 +1,4 @@
-import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "../financialAmountLimits.js";
+import { MAX_REASONABLE_FINANCIAL_AMOUNT, documentTypeReviewCeiling } from "../financialAmountLimits.js";
 import type {
   FinancialSanityInput,
   SanityRuleId,
@@ -507,9 +507,29 @@ export function evaluateOcrSuspiciousPatterns(input: FinancialSanityInput): Sani
   return pass("ocr_suspicious_patterns", "No suspicious OCR artifact patterns were detected.");
 }
 
+export function evaluateDocumentTypeCeiling(input: FinancialSanityInput): SanityRuleResult {
+  const amount = input.moneyDecision.selectedAmount;
+  if (amount == null) {
+    return pass("document_type_ceiling", "Document-type ceiling skipped because no amount was resolved.");
+  }
+  const ceiling = documentTypeReviewCeiling(input.invoiceData.documentType);
+  if (ceiling == null) {
+    return pass("document_type_ceiling", "No document-type ceiling configured for this document.");
+  }
+  if (Math.abs(amount) > ceiling) {
+    return warn(
+      "document_type_ceiling",
+      `Amount ${formatMoney(Math.abs(amount), input.moneyDecision.currency)} exceeds the conservative ${input.invoiceData.documentType} review ceiling of ${formatMoney(ceiling, input.moneyDecision.currency)}.`,
+      { amount, ceiling, documentType: input.invoiceData.documentType }
+    );
+  }
+  return pass("document_type_ceiling", "Amount is within the document-type review ceiling.");
+}
+
 export const SANITY_RULE_ORDER: SanityRuleId[] = [
   "vat_arithmetic",
   "impossible_amount",
+  "document_type_ceiling",
   "supplier_historical_range",
   "future_invoice_date",
   "duplicate_suspicion",
@@ -533,6 +553,7 @@ export const SANITY_RULE_EVALUATORS: Record<SanityRuleId, (input: FinancialSanit
   credit_note_validation: evaluateCreditNoteValidation,
   invoice_sequence_anomaly: evaluateInvoiceSequenceAnomaly,
   ocr_suspicious_patterns: evaluateOcrSuspiciousPatterns,
+  document_type_ceiling: evaluateDocumentTypeCeiling,
 };
 
 export function evaluateAllSanityRules(input: FinancialSanityInput): SanityRuleResult[] {

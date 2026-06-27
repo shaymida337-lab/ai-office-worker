@@ -4,6 +4,7 @@ import { computeCanonicalAmount, type AmountCandidate } from "./canonicalAmount.
 import {
   buildAnalysisAmountCandidates,
   resolveClientGmailMoneyDecision,
+  resolveGmailOrgMoneyDecision,
   resolveWhatsAppMoneyDecision,
 } from "./amountCandidates.js";
 
@@ -71,7 +72,7 @@ test("ARC flags ambiguous when multiple top totals diverge", () => {
 
   assert.equal(result.selectedAmount, null);
   assert.equal(result.status, "ambiguous");
-  assert.equal(result.reasonCode, "AMBIGUOUS");
+  assert.equal(result.reasonCode, "DECIMAL_SHIFT");
 });
 
 test("ARC accepts credit note negative totals", () => {
@@ -97,6 +98,63 @@ test("ARC limits confidence for foreign currency", () => {
   assert.equal(result.currency, "EUR");
   assert.ok(result.confidence <= 0.79);
   assert.ok(result.ambiguityFlags.includes("foreign_currency"));
+  assert.equal(result.isStrongEnoughForAutoSave, false);
+});
+
+test("ARC flags decimal shift between AI and regex (MAX receipt scenario)", () => {
+  const result = decision([
+    { value: 110723, kind: "ai_total", source: "claude_email", confidence: 0.9 },
+    { value: 1107.23, kind: "regex_labeled", source: "regex_gmail", label: "סה\"כ לתשלום", confidence: 0.72 },
+  ], "receipt");
+
+  assert.equal(result.selectedAmount, null);
+  assert.equal(result.status, "ambiguous");
+  assert.ok(result.reasonCode === "DECIMAL_SHIFT" || result.reasonCode === "SOURCE_CONFLICT");
+  assert.ok(result.ambiguityFlags.includes("decimal_shift_suspicion") || result.ambiguityFlags.includes("source_conflict"));
+});
+
+test("ARC selects VAT-confirmed total for receipt", () => {
+  const result = decision(
+    [
+      { value: 1107.23, kind: "ai_total", source: "claude_file", confidence: 0.9 },
+      { value: 946.35, kind: "subtotal_before_vat", source: "claude_file", confidence: 0.85 },
+      { value: 160.88, kind: "vat_only", source: "claude_file", confidence: 0.85 },
+    ],
+    "receipt"
+  );
+
+  assert.equal(result.selectedAmount, 1107.23);
+  assert.equal(result.status, "resolved");
+});
+
+test("ARC does not pick largest of conflicting unlabeled totals", () => {
+  const result = decision([
+    { value: 500, kind: "regex_currency", source: "regex_gmail", confidence: 0.7 },
+    { value: 50000, kind: "regex_currency", source: "regex_gmail", confidence: 0.68 },
+  ]);
+
+  assert.equal(result.selectedAmount, null);
+  assert.equal(result.status, "ambiguous");
+});
+
+test("resolveGmailOrgMoneyDecision blocks MAX-style wrong total", () => {
+  const result = resolveGmailOrgMoneyDecision({
+    organizationId: "org-max",
+    documentType: "receipt",
+    analysis: {
+      amount: 110723,
+      totalAmount: 110723,
+      amountBeforeVat: null,
+      vatAmount: null,
+      currency: "ILS",
+      confidence: 0.9,
+    },
+    extractedFieldsAmount: 1107.23,
+    regexDetectedAmount: 1107.23,
+  });
+
+  assert.equal(result.selectedAmount, null);
+  assert.equal(result.status, "ambiguous");
   assert.equal(result.isStrongEnoughForAutoSave, false);
 });
 
@@ -162,13 +220,14 @@ test("buildAnalysisAmountCandidates always prefers totalAmount tier over amount"
   assert.equal(result.selectedAmount, 354);
 });
 
-test("ARC flags VAT mismatch without rejecting a labeled total", () => {
+test("ARC flags VAT mismatch and routes to review", () => {
   const result = decision([
     { value: 354, kind: "invoice_total", source: "claude_file", confidence: 0.9 },
     { value: 300, kind: "subtotal_before_vat", source: "claude_file", confidence: 0.9 },
     { value: 60, kind: "vat_only", source: "claude_file", confidence: 0.9 },
   ]);
 
-  assert.equal(result.selectedAmount, 354);
+  assert.equal(result.selectedAmount, null);
+  assert.equal(result.status, "ambiguous");
   assert.ok(result.ambiguityFlags.includes("vat_mismatch"));
 });

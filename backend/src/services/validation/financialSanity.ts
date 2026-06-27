@@ -25,6 +25,7 @@ const RULE_RECOMMENDATIONS: Record<SanityRuleId, string> = {
   credit_note_validation: "Validate credit note totals and the referenced original invoice.",
   invoice_sequence_anomaly: "Review invoice numbering for gaps, reversals, or OCR misreads.",
   ocr_suspicious_patterns: "Manually review OCR-extracted fields because the text quality looks unreliable.",
+  document_type_ceiling: "Confirm this amount is correct for the document type before approving.",
 };
 
 function clampScore(value: number): number {

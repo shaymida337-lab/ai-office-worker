@@ -1,5 +1,6 @@
 ﻿import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
+import { parseLabeledAmount } from "./amount/parseAmount.js";
 
 export type InvoiceStatus = "paid" | "pending" | "overdue" | "needs_review";
 
@@ -160,12 +161,19 @@ function extractAmount(text: string): number | null {
   collectMatches(normalized, /(?:€|eur)\s*([0-9][0-9.,\s]*)|([0-9][0-9.,\s]*)\s*(?:€|eur)/gi, 70, candidates);
 
   const amounts = candidates
-    .map((candidate) => ({ amount: parseAmount(candidate.raw), score: candidate.score, hasDateContext: candidate.hasDateContext }))
+    .map((candidate) => {
+      const parsed = parseLabeledAmount(candidate.raw);
+      return {
+        amount: parsed.ambiguous ? null : parsed.parsedAmount,
+        score: candidate.score,
+        hasDateContext: candidate.hasDateContext,
+      };
+    })
     .filter((candidate): candidate is { amount: number; score: number; hasDateContext: boolean } => candidate.amount !== null && candidate.amount >= 0)
     .filter((candidate) => !looksLikeDateOrYear(candidate.amount, candidate.hasDateContext));
 
   if (!amounts.length) return null;
-  amounts.sort((a, b) => b.score - a.score || b.amount - a.amount);
+  amounts.sort((a, b) => b.score - a.score);
   return amounts[0].amount;
 }
 
@@ -176,29 +184,7 @@ function collectMatches(text: string, pattern: RegExp, score: number, out: Array
   }
 }
 
-export function parseAmount(raw: string): number | null {
-  const cleaned = raw.replace(/[^\d.,]/g, "");
-  if (!cleaned) return null;
-  const lastComma = cleaned.lastIndexOf(",");
-  const lastDot = cleaned.lastIndexOf(".");
-  const decimalSeparator = lastComma > lastDot ? "," : ".";
-  let normalized = cleaned;
-
-  if (lastComma !== -1 && lastDot !== -1) {
-    normalized = cleaned
-      .replace(new RegExp(`\\${decimalSeparator === "," ? "." : ","}`, "g"), "")
-      .replace(decimalSeparator, ".");
-  } else if (lastComma !== -1) {
-    const decimals = cleaned.length - lastComma - 1;
-    normalized = decimals === 2 ? cleaned.replace(",", ".") : cleaned.replace(/,/g, "");
-  } else if (lastDot !== -1) {
-    const decimals = cleaned.length - lastDot - 1;
-    normalized = decimals >= 1 && decimals <= 2 ? cleaned : cleaned.replace(/\./g, "");
-  }
-
-  const amount = Number(normalized);
-  return Number.isFinite(amount) ? amount : null;
-}
+export { parseAmountOrNull as parseAmount } from "./amount/parseAmount.js";
 
 function looksLikeDateOrYear(amount: number, hasDateContext: boolean) {
   return hasDateContext && Number.isInteger(amount) && amount >= 2020 && amount <= 2030;

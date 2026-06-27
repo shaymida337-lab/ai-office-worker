@@ -1,6 +1,12 @@
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "../financialAmountLimits.js";
+import {
+  amountsMateriallyConflict,
+  detectDecimalShift,
+  findDecimalShiftAmongCandidates,
+} from "./decimalShift.js";
+import { roundMoney } from "./parseAmountHelpers.js";
 
-export const ARC_VERSION = "arc-v1" as const;
+export const ARC_VERSION = "arc-v2" as const;
 
 export type AmountCandidateKind =
   | "invoice_total"
@@ -39,6 +45,8 @@ export type AmountReasonCode =
   | "REGEX_CURRENCY"
   | "USER_PROVIDED"
   | "AMBIGUOUS"
+  | "DECIMAL_SHIFT"
+  | "SOURCE_CONFLICT"
   | "MISSING"
   | "REJECTED_INVALID";
 
@@ -129,9 +137,14 @@ const SOURCE_PRIORITY: Record<AmountCandidateSource, number> = {
 const AMOUNT_TOLERANCE = 0.05;
 const AMBIGUOUS_RELATIVE_GAP = 0.05;
 
-function roundMoney(value: number) {
-  return Number(value.toFixed(2));
-}
+const AI_KINDS = new Set<AmountCandidateKind>(["ai_total", "ai_inferred"]);
+const REGEX_KINDS = new Set<AmountCandidateKind>(["regex_labeled", "regex_currency"]);
+const STRONG_LABEL_KINDS = new Set<AmountCandidateKind>([
+  "invoice_total",
+  "amount_due",
+  "total_including_vat",
+  "regex_labeled",
+]);
 
 function normalizePositiveAmount(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return null;
@@ -139,11 +152,8 @@ function normalizePositiveAmount(value: number | null | undefined) {
   return roundMoney(value);
 }
 
-function rejectReason(value: number, context?: { hasDateContext?: boolean }) {
+function rejectReason(value: number) {
   if (!Number.isFinite(value) || value === 0) return "parsed amount looks invalid";
-  if (context?.hasDateContext && Number.isInteger(value) && value >= 2020 && value <= 2030) {
-    return "parsed amount looks like a year";
-  }
   if (Math.abs(value) >= MAX_REASONABLE_FINANCIAL_AMOUNT) return "parsed amount looks invalid/too large";
   return null;
 }
@@ -261,6 +271,107 @@ function maybeComputedTotal(subtotal: RankedAmountCandidate | null, vat: RankedA
   };
 }
 
+function isSubordinateAmountKind(kind: AmountCandidateKind) {
+  return kind === "ai_inferred" || kind === "subtotal_before_vat" || kind === "line_item" || kind === "vat_only";
+}
+
+function sourceFamily(source: AmountCandidateSource) {
+  if (source === "regex_gmail" || source === "regex_legacy") return "regex";
+  if (source === "claude_file" || source === "claude_email") return "ai";
+  return source;
+}
+
+function buildAmbiguousDecision(input: {
+  currency: string;
+  ranked: RankedAmountCandidate[];
+  rejected: RejectedAmountCandidate[];
+  subtotal: RankedAmountCandidate | null;
+  vat: RankedAmountCandidate | null;
+  reason: string;
+  reasonCode: AmountReasonCode;
+  ambiguityFlags: string[];
+  evidenceScore?: number;
+}): MoneyDecision {
+  return {
+    selectedAmount: null,
+    amountBeforeVat: input.subtotal?.value ?? null,
+    vatAmount: input.vat?.value ?? null,
+    currency: input.currency,
+    confidence: 0.4,
+    evidenceScore: input.evidenceScore ?? input.ranked.length,
+    reason: input.reason,
+    reasonCode: input.reasonCode,
+    candidates: input.ranked,
+    rejected: input.rejected,
+    status: "ambiguous",
+    ambiguityFlags: input.ambiguityFlags,
+    version: ARC_VERSION,
+    isStrongEnoughForAutoSave: false,
+  };
+}
+
+function findConsensusCluster(payable: RankedAmountCandidate[]) {
+  const clusters: RankedAmountCandidate[][] = [];
+  for (const candidate of payable) {
+    const cluster = clusters.find((group) => group.some((item) => amountsClose(item.value, candidate.value)));
+    if (cluster) cluster.push(candidate);
+    else clusters.push([candidate]);
+  }
+
+  return clusters
+    .map((group) => {
+      const families = new Set(group.map((c) => sourceFamily(c.source)));
+      const hasStrongLabel = group.some((c) => STRONG_LABEL_KINDS.has(c.kind));
+      const hasRegex = group.some((c) => REGEX_KINDS.has(c.kind));
+      const hasAi = group.some((c) => AI_KINDS.has(c.kind));
+      const avgConfidence =
+        group.reduce((sum, c) => sum + (c.confidence ?? 0.5), 0) / Math.max(group.length, 1);
+      return {
+        group,
+        families: families.size,
+        hasStrongLabel,
+        hasRegex,
+        hasAi,
+        avgConfidence,
+        value: roundMoney(group[0].value),
+      };
+    })
+    .sort((left, right) => {
+      const leftScore =
+        (left.families >= 2 ? 100 : 0) +
+        (left.hasStrongLabel ? 50 : 0) +
+        (left.hasRegex && left.hasAi ? 40 : 0) +
+        left.avgConfidence * 10;
+      const rightScore =
+        (right.families >= 2 ? 100 : 0) +
+        (right.hasStrongLabel ? 50 : 0) +
+        (right.hasRegex && right.hasAi ? 40 : 0) +
+        right.avgConfidence * 10;
+      return rightScore - leftScore;
+    });
+}
+
+function detectCrossSourceConflict(payable: RankedAmountCandidate[]) {
+  const aiValues = payable.filter((c) => AI_KINDS.has(c.kind)).map((c) => c.value);
+  const regexValues = payable.filter((c) => REGEX_KINDS.has(c.kind)).map((c) => c.value);
+  if (!aiValues.length || !regexValues.length) return null;
+
+  for (const ai of aiValues) {
+    for (const regex of regexValues) {
+      if (amountsMateriallyConflict(ai, regex)) {
+        const shift = detectDecimalShift(ai, regex) ?? detectDecimalShift(regex, ai);
+        return {
+          ai,
+          regex,
+          shift,
+          flags: shift ? ["decimal_shift_suspicion", "source_conflict"] : ["source_conflict"],
+        };
+      }
+    }
+  }
+  return null;
+}
+
 export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecision {
   const currency = (input.currency ?? "ILS").trim() || "ILS";
   const rejected: RejectedAmountCandidate[] = [];
@@ -285,22 +396,18 @@ export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecisi
       rejected.push({ ...candidate, reason: invalidReason });
       continue;
     }
-    if (candidate.kind === "vat_only" || candidate.kind === "subtotal_before_vat") {
-      accepted.push(candidate);
-      continue;
-    }
     accepted.push(candidate);
   }
 
   const ranked = accepted
     .map((candidate) => rankCandidate(candidate, input.documentType))
-    .sort((left, right) => right.score - left.score || right.value - left.value);
+    .sort((left, right) => right.score - left.score);
 
   const { subtotal, vat } = pickBestSubtotalAndVat(ranked);
   const computed = maybeComputedTotal(subtotal, vat);
   if (computed) {
     ranked.push(rankCandidate(computed, input.documentType));
-    ranked.sort((left, right) => right.score - left.score || right.value - left.value);
+    ranked.sort((left, right) => right.score - left.score);
   }
 
   const payableRanked = ranked.filter(
@@ -326,44 +433,189 @@ export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecisi
     };
   }
 
-  const topTier = payableRanked[0].tier;
-  const topTierCandidates = payableRanked.filter((candidate) => candidate.tier === topTier);
-  const ambiguityFlags: string[] = [];
+  const payableValues = payableRanked.map((c) => c.value);
+  const decimalShift = findDecimalShiftAmongCandidates(payableValues);
+  if (decimalShift) {
+    return buildAmbiguousDecision({
+      currency,
+      ranked,
+      rejected,
+      subtotal,
+      vat,
+      reason: decimalShift.reason,
+      reasonCode: "DECIMAL_SHIFT",
+      ambiguityFlags: ["decimal_shift_suspicion"],
+    });
+  }
 
-  if (topTierCandidates.length > 1) {
-    const values = topTierCandidates.map((candidate) => candidate.value);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    if (max > 0 && (max - min) / max > AMBIGUOUS_RELATIVE_GAP) {
-      ambiguityFlags.push("multiple_totals_conflict");
-      return {
-        selectedAmount: null,
-        amountBeforeVat: subtotal?.value ?? null,
-        vatAmount: vat?.value ?? null,
+  const crossConflict = detectCrossSourceConflict(payableRanked);
+  if (crossConflict) {
+    return buildAmbiguousDecision({
+      currency,
+      ranked,
+      rejected,
+      subtotal,
+      vat,
+      reason: crossConflict.shift?.reason ?? `AI and regex totals conflict (${crossConflict.ai} vs ${crossConflict.regex})`,
+      reasonCode: crossConflict.shift ? "DECIMAL_SHIFT" : "SOURCE_CONFLICT",
+      ambiguityFlags: crossConflict.flags,
+    });
+  }
+
+  if (subtotal && vat) {
+    const computedTotal = roundMoney(subtotal.value + vat.value);
+    const conflictingTotal = payableRanked.find(
+      (candidate) =>
+        !isSubordinateAmountKind(candidate.kind) &&
+        !amountsClose(candidate.value, computedTotal) &&
+        (amountsMateriallyConflict(candidate.value, computedTotal) ||
+          detectDecimalShift(candidate.value, computedTotal) !== null)
+    );
+    if (conflictingTotal) {
+      return buildAmbiguousDecision({
         currency,
-        confidence: 0.45,
-        evidenceScore: topTierCandidates.length,
-        reason: "Multiple conflicting totals",
-        reasonCode: "AMBIGUOUS",
-        candidates: ranked,
+        ranked,
         rejected,
-        status: "ambiguous",
-        ambiguityFlags,
-        version: ARC_VERSION,
-        isStrongEnoughForAutoSave: false,
-      };
+        subtotal,
+        vat,
+        reason: `Total ${conflictingTotal.value} conflicts with subtotal+VAT ${computedTotal}`,
+        reasonCode: "SOURCE_CONFLICT",
+        ambiguityFlags: ["vat_total_conflict"],
+      });
     }
   }
 
-  const winner = topTierCandidates.sort((left, right) => {
+  if (subtotal && vat) {
+    const computedTotal = roundMoney(subtotal.value + vat.value);
+    const labeledTotal = payableRanked.find((candidate) =>
+      ["invoice_total", "amount_due", "total_including_vat", "ai_total", "regex_labeled"].includes(candidate.kind)
+    );
+    if (
+      labeledTotal &&
+      !amountsClose(labeledTotal.value, computedTotal)
+    ) {
+      return buildAmbiguousDecision({
+        currency,
+        ranked,
+        rejected,
+        subtotal,
+        vat,
+        reason: `Labeled total ${labeledTotal.value} conflicts with subtotal+VAT ${computedTotal}`,
+        reasonCode: "SOURCE_CONFLICT",
+        ambiguityFlags: ["vat_mismatch"],
+      });
+    }
+  }
+
+  const clusters = findConsensusCluster(payableRanked);
+  let best = clusters[0];
+  if (!best) {
+    return buildAmbiguousDecision({
+      currency,
+      ranked,
+      rejected,
+      subtotal,
+      vat,
+      reason: "No consensus cluster",
+      reasonCode: "AMBIGUOUS",
+      ambiguityFlags: ["no_consensus"],
+    });
+  }
+
+  if (subtotal && vat) {
+    const computedTotal = roundMoney(subtotal.value + vat.value);
+    const vatConfirmed = clusters.find((cluster) => amountsClose(cluster.value, computedTotal));
+    const labeledConflict = payableRanked.find(
+      (candidate) =>
+        STRONG_LABEL_KINDS.has(candidate.kind) &&
+        !amountsClose(candidate.value, computedTotal)
+    );
+    if (labeledConflict && vatConfirmed && !amountsClose(vatConfirmed.value, labeledConflict.value)) {
+      return buildAmbiguousDecision({
+        currency,
+        ranked,
+        rejected,
+        subtotal,
+        vat,
+        reason: `Labeled total ${labeledConflict.value} conflicts with subtotal+VAT ${computedTotal}`,
+        reasonCode: "SOURCE_CONFLICT",
+        ambiguityFlags: ["vat_mismatch"],
+      });
+    }
+    if (vatConfirmed) best = vatConfirmed;
+  }
+
+  if (clusters.length > 1 && amountsMateriallyConflict(clusters[0].value, clusters[1].value)) {
+    const computedTotal = subtotal && vat ? roundMoney(subtotal.value + vat.value) : null;
+    const vatConfirmed = computedTotal
+      ? clusters.find((cluster) => amountsClose(cluster.value, computedTotal))
+      : null;
+    const primaryClusters = clusters.filter((cluster) =>
+      cluster.group.some((candidate) => !isSubordinateAmountKind(candidate.kind))
+    );
+    if (vatConfirmed && amountsClose(vatConfirmed.value, best.value)) {
+      best = vatConfirmed;
+    } else if (primaryClusters.length === 1) {
+      best = primaryClusters[0];
+    } else {
+      return buildAmbiguousDecision({
+        currency,
+        ranked,
+        rejected,
+        subtotal,
+        vat,
+        reason: `Conflicting payable totals (${clusters[0].value} vs ${clusters[1].value})`,
+        reasonCode: findDecimalShiftAmongCandidates([clusters[0].value, clusters[1].value])
+          ? "DECIMAL_SHIFT"
+          : "SOURCE_CONFLICT",
+        ambiguityFlags: findDecimalShiftAmongCandidates([clusters[0].value, clusters[1].value])
+          ? ["decimal_shift_suspicion", "multiple_totals_conflict"]
+          : ["multiple_totals_conflict"],
+      });
+    }
+  }
+
+  const multiSourceAgree =
+    best.families >= 2 ||
+    (best.hasRegex && best.hasAi) ||
+    best.group.length >= 2;
+  const singleStrongLabeled =
+    best.hasStrongLabel && best.avgConfidence >= 0.85 && best.group.length === 1;
+  const singleCandidate = payableRanked.length === 1;
+  const vatConfirmedSingle =
+    Boolean(subtotal && vat) &&
+    amountsClose(best.value, roundMoney((subtotal?.value ?? 0) + (vat?.value ?? 0)));
+
+  const nonSubordinatePayable = payableRanked.filter((candidate) => !isSubordinateAmountKind(candidate.kind));
+  const singlePrimaryCandidate = nonSubordinatePayable.length === 1;
+
+  if (!multiSourceAgree && !singleStrongLabeled && !singleCandidate && !singlePrimaryCandidate && !vatConfirmedSingle) {
+    const distinctValues = [...new Set(payableValues.map((v) => roundMoney(v)))];
+    if (distinctValues.length > 1) {
+      return buildAmbiguousDecision({
+        currency,
+        ranked,
+        rejected,
+        subtotal,
+        vat,
+        reason: "Insufficient agreement between amount sources",
+        reasonCode: "AMBIGUOUS",
+        ambiguityFlags: ["insufficient_source_agreement"],
+        evidenceScore: best.group.length,
+      });
+    }
+  }
+
+  const winner = best.group.sort((left, right) => {
     const leftConfidence = left.confidence ?? 0;
     const rightConfidence = right.confidence ?? 0;
     if (rightConfidence !== leftConfidence) return rightConfidence - leftConfidence;
     return (SOURCE_PRIORITY[right.source] ?? 0) - (SOURCE_PRIORITY[left.source] ?? 0);
   })[0];
 
-  let confidence = Math.min(0.99, 0.55 + (winner.confidence ?? 0.5) * 0.35 + Math.min(topTier, 100) / 500);
-  let evidenceScore = payableRanked.length;
+  const ambiguityFlags: string[] = [];
+  let confidence = Math.min(0.99, 0.55 + (winner.confidence ?? 0.5) * 0.35 + (multiSourceAgree ? 0.15 : 0));
+  let evidenceScore = best.group.length;
 
   if (subtotal && vat) {
     const computedTotal = roundMoney(subtotal.value + vat.value);
@@ -385,11 +637,25 @@ export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecisi
     confidence = Math.min(confidence, 0.79);
   }
 
+  if (ambiguityFlags.includes("vat_mismatch")) {
+    return buildAmbiguousDecision({
+      currency,
+      ranked,
+      rejected,
+      subtotal,
+      vat,
+      reason: "VAT breakdown does not match selected total",
+      reasonCode: "SOURCE_CONFLICT",
+      ambiguityFlags,
+    });
+  }
+
   const reasonCode = reasonCodeForKind(winner.kind);
   const reason = reasonLabelForKind(winner.kind);
   const isStrongEnoughForAutoSave =
     confidence >= 0.8 &&
     ambiguityFlags.length === 0 &&
+    multiSourceAgree &&
     input.documentType !== "quote" &&
     (currency === "ILS" || confidence >= 0.9);
 
