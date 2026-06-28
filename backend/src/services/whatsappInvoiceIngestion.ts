@@ -6,6 +6,11 @@ import { ensureInvoiceFolderTree, findExistingSupplierDriveDocument, uploadInvoi
 import { getGoogleClients } from "./google.js";
 import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
 import { recordFinancialDocumentDecision } from "./financialDocuments.js";
+import {
+  createSupplierPaymentIfTrusted,
+  evaluateFinanceTrustGates,
+} from "./trust/financeTrustPersistence.js";
+import { parseTrustGatesFromParsedFields, trustGatesFailClosedReason } from "./trust/trustGatePersistence.js";
 import { computeCanonicalFingerprint, matchFinancialDocuments, type DedupMatchResult, type FinancialDocumentFingerprintInput } from "./dedup/sharedMatcher.js";
 import { buildLegacyFileDuplicateHashForLookup, buildPaymentLookupsFromCanonical } from "./dedup/fingerprintMigration.js";
 import { resolveWhatsAppMoneyDecision, summarizeMoneyDecision } from "./amount/amountCandidates.js";
@@ -410,7 +415,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
       filename,
     }) : null;
     console.log(`[whatsapp-invoice] invoice upsert done logId=${input.whatsappLogId} invoiceId=${invoice?.id ?? "skipped_no_client"} created=${invoice?.created ?? false}`);
-    if (payment) {
+    if (payment?.id) {
       await syncPaymentToSheet(input.organizationId, payment.id, {
         supplierTaxId: analysis.supplierTaxId ?? null,
         invoiceNumber: analysis.invoiceNumber,
@@ -760,7 +765,20 @@ async function upsertWhatsAppSupplierPayment(input: {
   fromNumber: string;
   filename: string;
   fileHash: string;
+  parsedFieldsJson?: unknown;
 }) {
+  const trustEvaluation = evaluateFinanceTrustGates({
+    parsedFieldsJson: input.parsedFieldsJson,
+    selectedAmount: input.totalAmount ?? input.amount,
+    needsReview: false,
+    documentType: input.documentTypeDetailed,
+    confidenceScore: input.confidenceScore,
+  });
+  if (!trustEvaluation.shouldCreatePayment) {
+    console.log(`[whatsapp-invoice] payment blocked reason=${trustEvaluation.blockReason ?? trustGatesFailClosedReason(parseTrustGatesFromParsedFields(input.parsedFieldsJson))}`);
+    return { id: null, created: false };
+  }
+
   const date = normalizeDate(input.invoiceDate) ?? new Date();
   const paymentIdentity = buildPaymentLookupsFromCanonical({
     organizationId: input.organizationId,
@@ -831,7 +849,8 @@ async function upsertWhatsAppSupplierPayment(input: {
     return { id: updated.id, created: false };
   }
 
-  const created = await prisma.supplierPayment.create({
+  const createResult = await createSupplierPaymentIfTrusted({
+    evaluation: trustEvaluation,
     data: {
       organizationId: input.organizationId,
       clientId: input.clientId,
@@ -877,9 +896,14 @@ async function upsertWhatsAppSupplierPayment(input: {
       firstSeenAt: new Date(),
       lastSeenAt: new Date(),
       emailMessageId: `whatsapp:${input.whatsappLogId}`,
+      parsedFieldsJson: input.parsedFieldsJson as any,
     },
   });
-  return { id: created.id, created: true };
+  if (createResult.skipped || !createResult.payment) {
+    console.log(`[whatsapp-invoice] payment blocked reason=${createResult.reason ?? "trust_gate_blocked"}`);
+    return { id: null, created: false };
+  }
+  return { id: createResult.payment.id, created: true };
 }
 
 async function findExistingCrossSourceDuplicate(input: {

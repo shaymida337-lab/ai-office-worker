@@ -1115,9 +1115,8 @@ test("allows needs-review invoice SupplierPayment with missing amount and suppli
 
   assert.equal(classification.documentType, "invoice");
   assert.equal(classification.reviewStatus, "needs_review");
-  assert.equal(paymentEligibility.allowed, true);
-  assert.equal(paymentEligibility.persistAsNeedsReview, true);
-  assert.equal(plan.supplierPaymentsToCreateOrUpdate, 1);
+  assert.equal(paymentEligibility.allowed, false);
+  assert.equal(plan.supplierPaymentsToCreateOrUpdate, 0);
 });
 
 test("detected OCR supplier keeps SupplierPayment plan on supplier instead of unknown fallback", () => {

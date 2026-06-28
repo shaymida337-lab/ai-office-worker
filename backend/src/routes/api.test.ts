@@ -8,6 +8,7 @@ import {
   buildNatalieVoiceCredentials,
   debugTopPaymentAmountsWhere,
   invoiceReviewStatusFilter,
+  mapDocumentReviewToInvoiceCandidate,
   mapGmailScanItemToInvoiceCandidate,
   mergeInvoiceListCandidates,
   parseInvoiceMonthParam,
@@ -68,6 +69,81 @@ test("gmail scan item maps to needs_review invoice candidate", () => {
   assert.equal(candidate.status, "needs_review");
   assert.equal(candidate.reviewStatus, "needs_review");
   assert.equal(candidate.source, "gmail_scan_item");
+});
+
+test("gmail scan item with null amount does not map to zero", () => {
+  const now = new Date("2026-06-09T09:00:00.000Z");
+  const candidate = mapGmailScanItemToInvoiceCandidate({
+    id: "scan-null-amount",
+    gmailMessageId: "gmail-null",
+    emailMessageId: "email-null",
+    gmailMessageLink: "https://mail.google.com/mail/u/0/#inbox/gmail-null",
+    sender: "supplier@example.com",
+    senderEmail: "supplier@example.com",
+    subject: "Invoice missing amount",
+    occurredAt: now,
+    amount: null,
+    supplierName: "Supplier",
+    attachmentFilename: "invoice.pdf",
+    driveFileLink: null,
+    confidenceScore: "medium",
+    reviewStatus: "needs_review",
+    decisionReason: "amount_unresolved",
+    rawAnalysis: {
+      analysis: { totalAmount: 999, currency: "ILS" },
+      parsed_fields_json: { amount: 999, arc: { status: "missing", selectedAmount: null } },
+    },
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  assert.equal(candidate.amount, null);
+  assert.equal(candidate.amountLabel, "סכום חסר");
+  assert.equal(candidate.amountResolved, false);
+});
+
+test("document review candidate uses canonical totalAmount display", () => {
+  const now = new Date("2026-06-09T09:00:00.000Z");
+  const candidate = mapDocumentReviewToInvoiceCandidate({
+    id: "review-1",
+    sender: "supplier@example.com",
+    subject: "Invoice",
+    fileName: "invoice.pdf",
+    invoiceNumber: "123",
+    documentDate: now,
+    dueDate: null,
+    totalAmount: 250.5,
+    currency: "ILS",
+    driveFileUrl: null,
+    supplierName: "Supplier",
+    confidenceScore: 0.9,
+    reviewStatus: "needs_review",
+    uncertaintyReason: null,
+    emailMessageId: "email-1",
+    gmailMessageId: "gmail-1",
+    parsedFieldsJson: { arc: { status: "resolved", selectedAmount: 250.5, reasonCode: "INVOICE_TOTAL" } },
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  assert.equal(candidate.amount, 250.5);
+  assert.equal(candidate.amountLabel, "₪250.50");
+  assert.equal(candidate.amountResolved, true);
+});
+
+test("month totals exclude unresolved invoice amounts", () => {
+  const june = new Date("2026-06-15T10:00:00.000Z");
+  const merged = [
+    { date: june, amount: 100, currency: "ILS" },
+    { date: june, amount: null as number | null, currency: "ILS" },
+    { date: june, amount: 0, currency: "ILS" },
+  ];
+  const months = summarizeCandidatesByMonth(
+    merged.filter((row): row is { date: Date; amount: number; currency: string } => row.amount != null && row.amount > 0),
+    (candidate) => candidate.date
+  );
+  assert.equal(months[0]?.count, 1);
+  assert.equal(months[0]?.totalsByCurrency.ILS, 100);
 });
 
 test("resolveNatalieVoiceSynthesizeProvider maps supported config providers", () => {

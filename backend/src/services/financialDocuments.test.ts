@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { financialDocumentBlockingReason, matchExistingFinancialDocumentCandidate } from "./financialDocuments.js";
+import { ARC_VERSION } from "./amount/canonicalAmount.js";
+import { financialDocumentBlockingReason, financialDocumentTrustGatesBlockingReason, matchExistingFinancialDocumentCandidate } from "./financialDocuments.js";
+import { TRUST_AMOUNT_GATE_MISSING } from "./trust/trustGatePersistence.js";
+
+test("financial document trust gates block empty parsed fields", () => {
+  assert.equal(financialDocumentTrustGatesBlockingReason({}), TRUST_AMOUNT_GATE_MISSING);
+});
 
 test("financial document gate routes amounts at or over 1M to needs_review", () => {
   for (const totalAmount of [1_000_000, 2_000_000]) {
@@ -11,7 +17,7 @@ test("financial document gate routes amounts at or over 1M to needs_review", () 
       documentDate: "2026-06-01",
     });
 
-    assert.match(reason ?? "", /exceeds review threshold/, `expected review for amount ${totalAmount}`);
+    assert.equal(reason, "amount.threshold_exceeded", `expected review for amount ${totalAmount}`);
   }
 });
 
@@ -24,6 +30,32 @@ test("financial document gate accepts otherwise-valid amounts under 1M", () => {
   });
 
   assert.equal(reason, null);
+});
+
+test("financial document gate uses amount gate reason codes", () => {
+  const reason = financialDocumentBlockingReason({
+    supplierName: "OpenAI LLC",
+    invoiceNumber: "INV-1",
+    totalAmount: null,
+    documentDate: "2026-06-01",
+    moneyDecision: {
+      selectedAmount: null,
+      amountBeforeVat: null,
+      vatAmount: null,
+      currency: "ILS",
+      confidence: 0,
+      evidenceScore: 0,
+      reason: "missing",
+      reasonCode: "MISSING",
+      candidates: [],
+      rejected: [],
+      status: "missing",
+      ambiguityFlags: [],
+      version: ARC_VERSION,
+      isStrongEnoughForAutoSave: false,
+    },
+  });
+  assert.equal(reason, "amount.arc_missing");
 });
 
 test("financial document matcher marks known duplicate as MATCH", () => {

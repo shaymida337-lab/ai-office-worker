@@ -86,7 +86,8 @@ export type NatalieClaudeResponse =
         id: string;
         supplierName: string | null;
         invoiceNumber: string | null;
-        amount: number;
+        amount: number | null;
+        amountLabel?: string;
         currency: string;
         issueDate: string | Date;
         dueDate: string | Date | null;
@@ -793,7 +794,7 @@ function isNatalieInvoiceSummary(value: unknown) {
     typeof invoice.id === "string" &&
     (invoice.supplierName === null || typeof invoice.supplierName === "string") &&
     (invoice.invoiceNumber === null || typeof invoice.invoiceNumber === "string") &&
-    typeof invoice.amount === "number" &&
+    (invoice.amount === null || typeof invoice.amount === "number") &&
     typeof invoice.currency === "string" &&
     (typeof invoice.issueDate === "string" || invoice.issueDate instanceof Date) &&
     (invoice.dueDate === null || typeof invoice.dueDate === "string" || invoice.dueDate instanceof Date) &&

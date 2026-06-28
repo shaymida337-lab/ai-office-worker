@@ -12,9 +12,47 @@ import {
   logFingerprintShadowMode,
 } from "./dedup/fingerprintMigration.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
+import {
+  amountGatePasses,
+  evaluateAmountGate,
+  FINANCE_AMOUNT_UNRESOLVED_REASON,
+  parseAmountGateFromParsedFields,
+  type AmountGateSnapshot,
+  type FseSummaryForAmountGate,
+} from "./amount/amountGate.js";
+import type { MoneyDecision } from "./amount/canonicalAmount.js";
+import {
+  evaluateSupplierGate,
+  parseSupplierGateFromParsedFields,
+  supplierGatePasses,
+  type SupplierGateSnapshot,
+} from "./supplier/supplierGate.js";
+import type { SupplierDecision } from "./supplier/supplierTypes.js";
+import {
+  buildFingerprintGateInputFromReview,
+  evaluateFingerprintGate,
+  fingerprintGatePasses,
+  type FingerprintGateSnapshot,
+} from "./dedup/fingerprintGate.js";
+import type { FingerprintIdentityStability } from "./dedup/fingerprintGate.js";
+import {
+  duplicateGatePasses,
+  fseDuplicateSuspicionFlags,
+  type DuplicateGateInput,
+  type DuplicateGateSnapshot,
+} from "./dedup/duplicateGate.js";
+import {
+  allTrustGatesPass,
+  parseTrustGatesFromParsedFields,
+  trustGatesFailClosedReason,
+} from "./trust/trustGatePersistence.js";
+import {
+  createSupplierPaymentIfTrusted,
+  evaluateFreshTrustGatesForManualApproval,
+} from "./trust/financeTrustPersistence.js";
 import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 
-export type FinancialDocumentSource = "gmail" | "whatsapp";
+export type FinancialDocumentSource = "gmail" | "whatsapp" | "camera";
 
 export type NormalizedFinancialDocumentType =
   | "tax_invoice"
@@ -95,16 +133,123 @@ export function buildCrossSourceFinancialFingerprint(input: Omit<Parameters<type
   ]);
 }
 
+export function financialDocumentAmountBlockingReason(input: {
+  moneyDecision?: MoneyDecision | null;
+  fseSummary?: FseSummaryForAmountGate;
+  amountGate?: AmountGateSnapshot | null;
+}): string | null {
+  const gate =
+    input.amountGate ??
+    (input.moneyDecision
+      ? evaluateAmountGate({ moneyDecision: input.moneyDecision, fseSummary: input.fseSummary })
+      : null);
+  if (!gate || amountGatePasses(gate)) return null;
+  return gate.reasonCode;
+}
+
+export function financialDocumentSupplierBlockingReason(input: {
+  supplierDecision?: SupplierDecision | null;
+  supplierName?: string | null;
+  supplierGate?: SupplierGateSnapshot | null;
+  ownerEmails?: Set<string>;
+}): string | null {
+  if (input.supplierGate) {
+    return supplierGatePasses(input.supplierGate) ? null : input.supplierGate.reasonCode;
+  }
+  if (input.supplierDecision) {
+    const gate = evaluateSupplierGate({
+      supplierDecision: input.supplierDecision,
+      supplierName: input.supplierName,
+      ownerEmails: input.ownerEmails,
+    });
+    return supplierGatePasses(gate) ? null : gate.reasonCode;
+  }
+  if (!isValidSupplierName(input.supplierName)) return "supplier.sir_missing";
+  return null;
+}
+
+export function financialDocumentFingerprintBlockingReason(input: {
+  fingerprintGate?: FingerprintGateSnapshot | null;
+  fingerprintGateInput?: Parameters<typeof evaluateFingerprintGate>[0] | null;
+}): string | null {
+  if (input.fingerprintGate) {
+    return fingerprintGatePasses(input.fingerprintGate) ? null : input.fingerprintGate.reasonCode;
+  }
+  if (input.fingerprintGateInput) {
+    const gate = evaluateFingerprintGate(input.fingerprintGateInput);
+    return fingerprintGatePasses(gate) ? null : gate.reasonCode;
+  }
+  return null;
+}
+
+export function financialDocumentDuplicateBlockingReason(input: {
+  duplicateGate?: DuplicateGateSnapshot | null;
+}): string | null {
+  if (input.duplicateGate) {
+    return duplicateGatePasses(input.duplicateGate) ? null : input.duplicateGate.reasonCode;
+  }
+  return null;
+}
+
+export function financialDocumentTrustGatesBlockingReason(parsedFieldsJson: unknown): string | null {
+  if (parsedFieldsJson === undefined) return null;
+  return trustGatesFailClosedReason(parseTrustGatesFromParsedFields(parsedFieldsJson));
+}
+
 export function financialDocumentBlockingReason(input: {
   supplierName?: string | null;
   invoiceNumber?: string | null;
   totalAmount?: number | null;
   documentDate?: Date | string | null;
+  moneyDecision?: MoneyDecision | null;
+  fseSummary?: FseSummaryForAmountGate;
+  amountGate?: AmountGateSnapshot | null;
+  supplierDecision?: SupplierDecision | null;
+  supplierGate?: SupplierGateSnapshot | null;
+  fingerprintGate?: FingerprintGateSnapshot | null;
+  fingerprintGateInput?: Parameters<typeof evaluateFingerprintGate>[0] | null;
+  duplicateGate?: DuplicateGateSnapshot | null;
+  ownerEmails?: Set<string>;
+  parsedFieldsJson?: unknown;
 }) {
-  if (!isValidSupplierName(input.supplierName)) return "supplier name missing or invalid";
+  const gates = input.parsedFieldsJson !== undefined ? parseTrustGatesFromParsedFields(input.parsedFieldsJson) : {
+    amountGate: null,
+    supplierGate: null,
+    fingerprintGate: null,
+    duplicateGate: null,
+  };
+  const amountReason = financialDocumentAmountBlockingReason({
+    moneyDecision: input.moneyDecision,
+    fseSummary: input.fseSummary,
+    amountGate: input.amountGate ?? gates.amountGate,
+  });
+  if (amountReason) return amountReason;
+
+  const supplierReason = financialDocumentSupplierBlockingReason({
+    supplierDecision: input.supplierDecision,
+    supplierName: input.supplierName,
+    supplierGate: input.supplierGate ?? gates.supplierGate,
+    ownerEmails: input.ownerEmails,
+  });
+  if (supplierReason) return supplierReason;
+
+  const fingerprintReason = financialDocumentFingerprintBlockingReason({
+    fingerprintGate: input.fingerprintGate ?? gates.fingerprintGate,
+    fingerprintGateInput: input.fingerprintGateInput,
+  });
+  if (fingerprintReason) return fingerprintReason;
+
+  const duplicateReason = financialDocumentDuplicateBlockingReason({
+    duplicateGate: input.duplicateGate ?? gates.duplicateGate,
+  });
+  if (duplicateReason) return duplicateReason;
+
+  if (!isValidSupplierName(input.supplierName)) return "supplier.sir_missing";
   if (!input.invoiceNumber?.trim()) return "invoice number missing";
-  if (input.totalAmount == null || !Number.isFinite(input.totalAmount) || input.totalAmount <= 0) return "amount missing or invalid";
-  if (input.totalAmount >= MAX_REASONABLE_FINANCIAL_AMOUNT) return "amount exceeds review threshold";
+  if (input.totalAmount == null || !Number.isFinite(input.totalAmount) || input.totalAmount <= 0) {
+    return FINANCE_AMOUNT_UNRESOLVED_REASON;
+  }
+  if (input.totalAmount >= MAX_REASONABLE_FINANCIAL_AMOUNT) return "amount.threshold_exceeded";
   if (!parseDate(input.documentDate)) return "invoice date missing or invalid";
   return null;
 }
@@ -155,18 +300,132 @@ export function matchExistingFinancialDocumentCandidate(input: {
   return { result: "NO_MATCH", candidate: null, reasons: ["no_candidate_match"] };
 }
 
+export async function buildDuplicateGateInput(input: {
+  organizationId: string;
+  source: FinancialDocumentSource;
+  sender?: string | null;
+  supplierName?: string | null;
+  supplierTaxId?: string | null;
+  invoiceNumber?: string | null;
+  totalAmount?: number | null;
+  documentDate?: Date | string | null;
+  documentType?: string;
+  fileSha256?: string | null;
+  documentFingerprint: string;
+  legacyDuplicateHash: string;
+  legacyDuplicateKey?: string | null;
+  scfcFingerprint?: string | null;
+  emailMessageId?: string | null;
+  forceReprocess?: boolean;
+  identityStability?: FingerprintIdentityStability;
+  amountRecoveredOnRescan?: boolean;
+  parsedFieldsJson?: unknown;
+  sameEmailAttachmentMatch?: boolean;
+}): Promise<DuplicateGateInput> {
+  const documentType = normalizeFinancialDocumentType(input.documentType);
+  const totalAmount = input.totalAmount ?? null;
+  const documentDate = parseDate(input.documentDate);
+  const sourceFingerprint = buildFinancialDocumentFingerprint({
+    source: input.source,
+    sender: input.sender,
+    fileName: null,
+    fileSize: null,
+    amount: totalAmount,
+    invoiceNumber: input.invoiceNumber,
+    date: documentDate,
+  });
+  const legacyDocumentFingerprint = buildCrossSourceFinancialFingerprint({
+    sender: input.supplierName ?? input.sender,
+    amount: totalAmount,
+    invoiceNumber: input.invoiceNumber,
+    date: documentDate,
+  });
+  const duplicateCandidateWhere = buildSupplierPaymentLookupClauses({
+    canonicalFingerprint: input.documentFingerprint,
+    legacySemanticFingerprint: input.scfcFingerprint ?? input.documentFingerprint,
+    legacyCrossSourceFingerprint: legacyDocumentFingerprint,
+    sourceFingerprint,
+    legacyDuplicateHash: input.legacyDuplicateHash,
+    supplierName: input.supplierName,
+    invoiceNumber: input.invoiceNumber,
+    totalAmount,
+    documentDate,
+  });
+  const duplicateCandidates = await prisma.supplierPayment.findMany({
+    where: {
+      organizationId: input.organizationId,
+      OR: duplicateCandidateWhere,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+  const duplicateMatch = matchExistingFinancialDocumentCandidate({
+    current: {
+      organizationId: input.organizationId,
+      supplierName: input.supplierName ?? input.sender,
+      supplierTaxId: input.supplierTaxId,
+      invoiceNumber: input.invoiceNumber,
+      totalAmount,
+      documentDate,
+      documentType,
+      fileSha256: input.fileSha256,
+    },
+    candidates: duplicateCandidates,
+  });
+  const duplicateSuspicion = fseDuplicateSuspicionFlags(input.parsedFieldsJson);
+  const fullCandidate = duplicateMatch.candidate
+    ? duplicateCandidates.find((candidate) => candidate.id === duplicateMatch.candidate?.id) ?? null
+    : null;
+  const candidateSource = fullCandidate?.lastSource ?? fullCandidate?.source ?? null;
+  const crossChannelUnsure =
+    duplicateMatch.result === "UNSURE" &&
+    Boolean(candidateSource && candidateSource !== input.source);
+  return {
+    matchResult: duplicateMatch.result,
+    matchReasons: duplicateMatch.reasons,
+    matchedCandidate: fullCandidate
+      ? {
+          id: fullCandidate.id,
+          source: fullCandidate.source,
+          lastSource: fullCandidate.lastSource,
+          sourcesJson: fullCandidate.sourcesJson,
+          documentFingerprint: fullCandidate.documentFingerprint,
+          emailMessageId: fullCandidate.emailMessageId,
+        }
+      : null,
+    documentFingerprint: input.documentFingerprint,
+    legacyDuplicateKey: input.legacyDuplicateKey ?? null,
+    scfcFingerprint: input.scfcFingerprint ?? null,
+    forceReprocess: input.forceReprocess,
+    identityStability: input.identityStability,
+    amountRecoveredOnRescan: input.amountRecoveredOnRescan,
+    duplicateSuspicionFailed: duplicateSuspicion.failed,
+    duplicateSuspicionWarning: duplicateSuspicion.warning,
+    sameEmailAttachmentMatch: input.sameEmailAttachmentMatch,
+    crossChannelUnsure,
+    invoiceNumber: input.invoiceNumber,
+    currentSource: input.source,
+  };
+}
+
 export async function recordFinancialDocumentDecision(input: FinancialDocumentInput) {
   const documentType = normalizeFinancialDocumentType(input.documentType);
   const totalAmount = input.totalAmount ?? null;
   const documentDate = parseDate(input.documentDate);
   const dueDate = parseDate(input.dueDate);
   const confidenceScore = clampConfidence(input.confidenceScore);
-  const blockingReason = financialDocumentBlockingReason({
-    supplierName: input.supplierName,
-    invoiceNumber: input.invoiceNumber,
-    totalAmount,
-    documentDate,
-  });
+  const trustReason = trustGatesFailClosedReason(
+    parseTrustGatesFromParsedFields(input.parsedFieldsJson ?? null)
+  );
+  const blockingReason =
+    trustReason ??
+    financialDocumentBlockingReason({
+      supplierName: input.supplierName,
+      invoiceNumber: input.invoiceNumber,
+      totalAmount,
+      documentDate,
+      parsedFieldsJson: input.parsedFieldsJson,
+    });
   const sourceFingerprint = buildFinancialDocumentFingerprint({
     source: input.source,
     sender: input.sender,
@@ -286,6 +545,8 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
 
   if (existingPayment) {
     const sources = mergeSources(existingPayment.sourcesJson, input.source);
+    const trustGates = parseTrustGatesFromParsedFields(input.parsedFieldsJson);
+    const canPromoteApproval = allTrustGatesPass(trustGates);
     const updated = await prisma.supplierPayment.update({
       where: { id: existingPayment.id },
       data: {
@@ -308,7 +569,11 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
         totalAmount: totalAmount ?? existingPayment.totalAmount,
         confidenceScore: Math.max(existingPayment.confidenceScore ?? 0, confidenceScore),
         parsedFieldsJson: input.parsedFieldsJson as any,
-        approvalStatus: "approved",
+        approvalStatus: canPromoteApproval
+          ? "approved"
+          : existingPayment.approvalStatus === "approved"
+            ? "needs_review"
+            : existingPayment.approvalStatus ?? "needs_review",
         driveFileUrl: input.driveFileUrl ?? existingPayment.driveFileUrl,
         invoiceLink: isInvoiceLike(documentType) ? input.driveFileUrl ?? existingPayment.invoiceLink : existingPayment.invoiceLink,
         documentLink: input.driveFileUrl ?? existingPayment.documentLink,
@@ -353,26 +618,61 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
   if (review.totalAmount == null || !Number.isFinite(review.totalAmount) || review.totalAmount <= 0) {
     throw new Error("Cannot approve document without a verified total amount");
   }
-  const arcStatus =
-    review.parsedFieldsJson &&
-    typeof review.parsedFieldsJson === "object" &&
-    review.parsedFieldsJson !== null &&
-    "arc" in review.parsedFieldsJson &&
-    typeof (review.parsedFieldsJson as { arc?: { status?: string } }).arc?.status === "string"
-      ? (review.parsedFieldsJson as { arc: { status: string } }).arc.status
-      : null;
-  if (arcStatus === "ambiguous" || arcStatus === "missing" || arcStatus === "rejected") {
-    throw new Error("Cannot approve document while amount resolution is ambiguous or missing");
-  }
   if (!isPaymentDocumentType(normalizeFinancialDocumentType(review.documentType))) {
     return prisma.financialDocumentReview.update({ where: { id: review.id }, data: { reviewStatus: "rejected", uncertaintyReason: "מסמך לא רלוונטי" } });
   }
-  const payment = await prisma.supplierPayment.upsert({
-    where: { organizationId_documentFingerprint: { organizationId, documentFingerprint: review.documentFingerprint } },
-    create: {
+  const approvedSupplierName =
+    parseSupplierGateFromParsedFields(review.parsedFieldsJson)?.canonicalSupplierName ??
+    review.supplierName?.trim() ??
+    null;
+  if (!approvedSupplierName) {
+    throw new Error("Cannot approve document without a verified supplier name");
+  }
+  if (!review.documentFingerprint?.trim()) {
+    throw new Error("Cannot approve document without a verified document fingerprint");
+  }
+  const duplicateGateInput = await buildDuplicateGateInput({
+    organizationId,
+    source: review.source as FinancialDocumentSource,
+    sender: review.sender,
+    supplierName: review.supplierName,
+    supplierTaxId: review.supplierTaxId,
+    invoiceNumber: review.invoiceNumber,
+    totalAmount: review.totalAmount,
+    documentDate: review.documentDate,
+    documentType: review.documentType,
+    documentFingerprint: review.documentFingerprint,
+    legacyDuplicateHash: review.documentFingerprint,
+    scfcFingerprint: review.documentFingerprint,
+    parsedFieldsJson: review.parsedFieldsJson,
+  });
+  const trustEvaluation = evaluateFreshTrustGatesForManualApproval({
+    parsedFieldsJson: review.parsedFieldsJson,
+    totalAmount: review.totalAmount,
+    supplierName: review.supplierName,
+    fingerprintGateInput: buildFingerprintGateInputFromReview({
       organizationId,
-      supplier: review.supplierName || "לא מזוהה",
-      amount: review.totalAmount ?? 0,
+      supplierName: review.supplierName,
+      supplierTaxId: review.supplierTaxId,
+      invoiceNumber: review.invoiceNumber,
+      totalAmount: review.totalAmount,
+      documentDate: review.documentDate,
+      documentType: review.documentType,
+      documentFingerprint: review.documentFingerprint,
+      parsedFieldsJson: review.parsedFieldsJson,
+    }),
+    duplicateGateInput,
+  });
+  if (trustEvaluation.outcome !== "pass" || !trustEvaluation.shouldCreatePayment) {
+    const reason = trustEvaluation.blockReason ?? trustEvaluation.reasonCode ?? "trust gate blocked";
+    throw new Error(`לא ניתן לאשר מסמך — בדיקת אמון נכשלה (${reason})`);
+  }
+  const createResult = await createSupplierPaymentIfTrusted({
+    evaluation: trustEvaluation,
+    data: {
+      organizationId,
+      supplier: approvedSupplierName,
+      amount: review.totalAmount,
       currency: review.currency,
       date: review.documentDate ?? new Date(),
       dueDate: review.dueDate,
@@ -402,14 +702,21 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
       sourcesJson: [review.source],
       emailMessageId: review.emailMessageId,
     },
-    update: {
-      approvalStatus: "approved",
-      driveUploadStatus: review.driveUploadStatus,
-      confidenceScore: review.confidenceScore,
-      parsedFieldsJson: review.parsedFieldsJson as any,
-      lastSeenAt: new Date(),
+    upsert: {
+      where: { organizationId_documentFingerprint: { organizationId, documentFingerprint: review.documentFingerprint } },
+      update: {
+        approvalStatus: "approved",
+        driveUploadStatus: review.driveUploadStatus,
+        confidenceScore: review.confidenceScore,
+        parsedFieldsJson: review.parsedFieldsJson as any,
+        lastSeenAt: new Date(),
+      },
     },
   });
+  if (createResult.skipped || !createResult.payment) {
+    throw new Error(`לא ניתן לאשר מסמך — יצירת תשלום נחסמה (${createResult.reason ?? "trust gate blocked"})`);
+  }
+  const payment = createResult.payment;
   console.log(`[financial-document] manually_approved reviewId=${review.id} paymentId=${payment.id}`);
   return prisma.financialDocumentReview.update({ where: { id: review.id }, data: { reviewStatus: "approved", supplierPaymentId: payment.id } });
 }

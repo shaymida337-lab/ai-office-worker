@@ -151,6 +151,8 @@ export function summarizeSupplierDecision(decision: {
   version: string;
   evidence: Array<{ type: string; label: string; value: string; matched: boolean }>;
   aliases: string[];
+  isStrongEnoughForAutoSave?: boolean;
+  candidates?: Array<{ kind?: string | null }>;
 }) {
   return {
     supplierName: decision.supplierName,
@@ -165,5 +167,7 @@ export function summarizeSupplierDecision(decision: {
     version: decision.version,
     evidence: decision.evidence,
     aliases: decision.aliases,
+    isStrongEnoughForAutoSave: decision.isStrongEnoughForAutoSave ?? false,
+    winnerKind: decision.candidates?.[0]?.kind ?? null,
   };
 }

@@ -8,12 +8,14 @@ import {
 } from "./appointmentService.js";
 import { findUpcomingSchedulingForClient, type UpcomingSchedulingItem } from "./scheduling/schedulingFacade.js";
 import { maybeBuildAvailabilityResponse } from "./natalieAvailability.js";
+import { resolveFinanceDisplayAmount } from "./amount/financeDisplayAmount.js";
 
 type ShowInvoiceItem = {
   id: string;
   supplierName: string | null;
   invoiceNumber: string | null;
-  amount: number;
+  amount: number | null;
+  amountLabel: string;
   currency: string;
   issueDate: Date;
   dueDate: Date | null;
@@ -228,11 +230,16 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
     const driveUrl = selectNatalieInvoiceDriveUrl(invoice);
     const fallbackKey = driveUrl ? null : invoicePaymentDriveFallbackKey(invoice.gmailMessageId, invoice.amount);
     const fallback = fallbackKey ? paymentDriveFallbackByInvoiceKey.get(fallbackKey) : undefined;
+    const display = resolveFinanceDisplayAmount({
+      totalAmount: invoice.amount,
+      currency: invoice.currency,
+    });
     return {
       id: invoice.id,
       supplierName: invoice.supplierName,
       invoiceNumber: invoice.invoiceNumber,
-      amount: invoice.amount,
+      amount: display.amount,
+      amountLabel: display.amountLabel,
       currency: invoice.currency,
       issueDate: invoice.date,
       dueDate: invoice.dueDate,
@@ -572,12 +579,19 @@ export function mapFinancialDocumentReviewToShowInvoiceItem(review: {
   dueDate: Date | null;
   driveFileUrl: string | null;
   createdAt: Date;
+  parsedFieldsJson?: unknown;
 }): ShowInvoiceItem {
+  const display = resolveFinanceDisplayAmount({
+    totalAmount: review.totalAmount,
+    parsedFieldsJson: review.parsedFieldsJson,
+    currency: review.currency,
+  });
   return {
     id: `financial-document-review:${review.id}`,
     supplierName: review.supplierName,
     invoiceNumber: review.invoiceNumber,
-    amount: review.totalAmount ?? 0,
+    amount: display.amount,
+    amountLabel: display.amountLabel,
     currency: review.currency,
     issueDate: review.documentDate ?? review.createdAt,
     dueDate: review.dueDate,
@@ -616,11 +630,16 @@ export function mapSupplierPaymentToShowInvoiceItem(payment: {
   invoiceLink: string | null;
   documentLink: string | null;
 }): ShowInvoiceItem {
+  const display = resolveFinanceDisplayAmount({
+    totalAmount: payment.amount,
+    currency: payment.currency,
+  });
   return {
     id: `supplier-payment:${payment.id}`,
     supplierName: payment.supplierName ?? payment.supplier,
     invoiceNumber: payment.invoiceNumber,
-    amount: payment.amount,
+    amount: display.amount,
+    amountLabel: display.amountLabel,
     currency: payment.currency,
     issueDate: payment.date,
     dueDate: payment.dueDate,

@@ -184,7 +184,7 @@ export function buildDecisionItems(
     items.push({
       id: `review-${review.id}`,
       ...copy,
-      meta: `${formatMoney(review.totalAmount ?? 0, review.currency ?? "ILS")} · ${formatDate(review.documentDate ?? review.createdAt)}`,
+      meta: `${review.totalAmount != null && review.totalAmount > 0 ? formatMoney(review.totalAmount, review.currency ?? "ILS") : "סכום חסר"} · ${formatDate(review.documentDate ?? review.createdAt)}`,
       href: "/dashboard/document-reviews",
     });
   }

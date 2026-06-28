@@ -23,6 +23,8 @@ import { matchTransactions } from "../services/bank-matcher.js";
 import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } from "../services/paymentClassificationDebug.js";
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
 import { approveFinancialDocumentReview } from "../services/financialDocuments.js";
+import { recordFinancialDocumentDecision } from "../services/financialDocuments.js";
+import { resolveFinanceDisplayAmount } from "../services/amount/financeDisplayAmount.js";
 import { initialConnectScanWindow } from "../services/scanWindow.js";
 import {
   closeStaleGmailScansForOrg,
@@ -3460,7 +3462,9 @@ type ReviewInvoiceCandidate = {
   id: string;
   clientId: string;
   invoiceNumber: string | null;
-  amount: number;
+  amount: number | null;
+  amountLabel: string;
+  amountResolved: boolean;
   currency: string;
   date: Date;
   dueDate: Date | null;
@@ -3511,16 +3515,25 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
 }): ReviewInvoiceCandidate {
   const raw = asRecord(item.rawAnalysis);
   const analysis = asRecord(raw?.analysis);
+  const parsedFieldsJson = asRecord(raw?.parsed_fields_json) ?? asRecord(raw?.parsedFieldsJson);
   const invoiceNumber = stringValue(raw?.invoiceNumber) ?? stringValue(analysis?.invoiceNumber);
   const date = dateValue(raw?.invoiceDate) ?? dateValue(analysis?.invoiceDate) ?? item.occurredAt;
   const dueDate = dateValue(raw?.dueDate) ?? dateValue(analysis?.dueDate);
+  const currency = stringValue(analysis?.currency) ?? "ILS";
+  const display = resolveFinanceDisplayAmount({
+    totalAmount: item.amount,
+    parsedFieldsJson,
+    currency,
+  });
 
   return {
     id: `gmail-scan:${item.id}`,
     clientId: "",
     invoiceNumber,
-    amount: item.amount ?? numberValue(analysis?.totalAmount) ?? 0,
-    currency: stringValue(analysis?.currency) ?? "ILS",
+    amount: display.amount,
+    amountLabel: display.amountLabel,
+    amountResolved: display.resolved,
+    currency,
     date,
     dueDate,
     status: item.reviewStatus,
@@ -3560,14 +3573,23 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
   uncertaintyReason: string | null;
   emailMessageId: string | null;
   gmailMessageId: string | null;
+  parsedFieldsJson?: unknown;
   createdAt: Date;
   updatedAt: Date;
 }): ReviewInvoiceCandidate {
+  const display = resolveFinanceDisplayAmount({
+    totalAmount: item.totalAmount,
+    parsedFieldsJson: item.parsedFieldsJson,
+    currency: item.currency,
+  });
+
   return {
     id: `document-review:${item.id}`,
     clientId: "",
     invoiceNumber: item.invoiceNumber,
-    amount: item.totalAmount ?? 0,
+    amount: display.amount,
+    amountLabel: display.amountLabel,
+    amountResolved: display.resolved,
     currency: item.currency,
     date: item.documentDate ?? item.createdAt,
     dueDate: item.dueDate,
@@ -3875,11 +3897,13 @@ export function buildInvoiceMonthsAggregationSql(ctx: InvoiceListQueryContext, t
   if (ctx.includeReviewCandidates) {
     parts.push(`SELECT
       gsi."normalizedDocumentDate" AS doc_date,
-      COALESCE(
-        gsi."amount",
-        NULLIF(gsi."rawAnalysis"->'analysis'->>'totalAmount', '')::double precision,
-        0
-      )::double precision AS amount,
+      CASE
+        WHEN gsi."amount" IS NOT NULL AND gsi."amount" > 0 THEN gsi."amount"::double precision
+        WHEN NULLIF(gsi."rawAnalysis"->'analysis'->>'totalAmount', '') IS NOT NULL
+          AND NULLIF(gsi."rawAnalysis"->'analysis'->>'totalAmount', '')::double precision > 0
+          THEN NULLIF(gsi."rawAnalysis"->'analysis'->>'totalAmount', '')::double precision
+        ELSE NULL
+      END AS amount,
       COALESCE(NULLIF(TRIM(gsi."rawAnalysis"->'analysis'->>'currency'), ''), 'ILS') AS currency
     FROM "GmailScanItem" gsi
     WHERE gsi."organizationId" = ${orgParam}
@@ -3889,7 +3913,10 @@ export function buildInvoiceMonthsAggregationSql(ctx: InvoiceListQueryContext, t
 
     parts.push(`SELECT
       fdr."normalizedDocumentDate" AS doc_date,
-      COALESCE(fdr."totalAmount", 0)::double precision AS amount,
+      CASE
+        WHEN fdr."totalAmount" IS NOT NULL AND fdr."totalAmount" > 0 THEN fdr."totalAmount"::double precision
+        ELSE NULL
+      END AS amount,
       COALESCE(NULLIF(TRIM(fdr."currency"), ''), 'ILS') AS currency
     FROM "FinancialDocumentReview" fdr
     WHERE fdr."organizationId" = ${orgParam}
@@ -4143,7 +4170,10 @@ export function summarizeCandidatesByMonth<T extends { date: Date; amount: numbe
       byMonth.set(key, summary);
     }
     summary.count += 1;
-    summary.totalsByCurrency[candidate.currency] = (summary.totalsByCurrency[candidate.currency] ?? 0) + candidate.amount;
+    if (candidate.amount != null && candidate.amount > 0) {
+      summary.totalsByCurrency[candidate.currency] =
+        (summary.totalsByCurrency[candidate.currency] ?? 0) + candidate.amount;
+    }
   }
   return [...byMonth.values()].sort((a, b) => b.year - a.year || b.month - a.month);
 }
@@ -6430,27 +6460,33 @@ apiRouter.post("/camera/invoices", async (req, res) => {
       documentLink = `/uploads/camera-invoices/${storedName}`;
     }
 
-    const payment = await prisma.supplierPayment.create({
-      data: {
-        organizationId: req.auth!.organizationId,
-        supplier: body.supplier,
-        amount: body.amount,
-        currency: body.currency || "ILS",
-        date: invoiceDate,
-        dueDate,
-        paid: false,
-        documentLink,
-        invoiceLink: documentLink,
-        paymentRequired: true,
-        missingInvoice: false,
-        source: "camera",
-        subject: body.invoiceNumber
-          ? `Camera invoice scan #${body.invoiceNumber}`
-          : "Camera invoice scan",
-      },
+    const documentDecision = await recordFinancialDocumentDecision({
+      organizationId: req.auth!.organizationId,
+      source: "camera",
+      sender: null,
+      subject: body.invoiceNumber
+        ? `Camera invoice scan #${body.invoiceNumber}`
+        : "Camera invoice scan",
+      fileName: body.filename ?? null,
+      supplierName: body.supplier,
+      invoiceNumber: body.invoiceNumber ?? null,
+      documentDate: invoiceDate,
+      dueDate,
+      totalAmount: body.amount,
+      documentType: "tax_invoice",
+      driveFileUrl: documentLink ?? null,
+      confidenceScore: 0.7,
+      uncertaintyReason: "trust.gates_missing",
+      parsedFieldsJson: {},
     });
 
-    res.json(payment);
+    res.status(documentDecision.action === "accepted" ? 201 : 202).json({
+      reviewOnly: documentDecision.action !== "accepted",
+      action: documentDecision.action,
+      uncertaintyReason: documentDecision.action === "needs_review" ? "trust.gates_missing" : null,
+      reviewId: "review" in documentDecision ? documentDecision.review?.id ?? null : null,
+      message: "המסמך נשמר לבדיקה — דורש בדיקה לפני יצירת תשלום",
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Camera scan failed";
     res.status(500).json({ error: message });

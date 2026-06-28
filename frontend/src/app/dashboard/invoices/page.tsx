@@ -15,7 +15,9 @@ type Invoice = {
   id: string;
   clientId: string;
   invoiceNumber: string | null;
-  amount: number;
+  amount: number | null;
+  amountLabel?: string;
+  amountResolved?: boolean;
   currency: string;
   date: string;
   dueDate: string | null;
@@ -266,8 +268,12 @@ export default function InvoicesPage() {
     const date = new Date(invoice.date);
     return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
   });
-  const paid = filtered.filter((invoice) => invoice.status === "paid").reduce((sum, invoice) => sum + invoice.amount, 0);
-  const pending = filtered.filter((invoice) => invoice.status !== "paid").reduce((sum, invoice) => sum + invoice.amount, 0);
+  const paid = filtered
+    .filter((invoice) => invoice.status === "paid" && invoice.amount != null && invoice.amount > 0)
+    .reduce((sum, invoice) => sum + invoice.amount!, 0);
+  const pending = filtered
+    .filter((invoice) => invoice.status !== "paid" && invoice.amount != null && invoice.amount > 0)
+    .reduce((sum, invoice) => sum + invoice.amount!, 0);
   const overdue = filtered.filter((invoice) => invoice.status === "overdue").length;
 
   function toggleMonthExpanded(monthKeyValue: string) {
@@ -1187,14 +1193,15 @@ function formatMonthTotalsSummary(totalsByCurrency: Record<string, number>) {
 function isJunkInvoice(invoice: Invoice) {
   const supplier = invoice.supplierName?.trim() ?? "";
   if (supplier && isLikelyJunkSupplierNameLocal(supplier)) return true;
-  if (invoice.amount === 1_000_000 || invoice.amount === 0) return true;
+  if (invoice.amount === 1_000_000) return true;
   const parsedDate = new Date(invoice.date);
   if (!Number.isNaN(parsedDate.getTime()) && parsedDate.getFullYear() > new Date().getFullYear() + 1) return true;
   return false;
 }
 
 function formatInvoiceAmount(invoice: Invoice) {
-  if (!Number.isFinite(invoice.amount)) return MISSING_VALUE;
+  if (invoice.amountLabel) return invoice.amountLabel;
+  if (invoice.amount == null || !Number.isFinite(invoice.amount)) return "סכום חסר";
   return formatCurrency(invoice.amount, invoice.currency);
 }
 
@@ -1264,7 +1271,7 @@ function systemNoteForInvoice(invoice: Invoice) {
     if (rawReason.includes("no valid amount") || rawReason.includes("missing amount") || rawReason.includes("amount") || rawReason.includes("total") || rawReason.includes("sum")) return "לא זוהה סכום תקין";
     if (rawReason.includes("confidence below") || rawReason.includes("medium confidence")) return "רמת ודאות בינונית";
     if (rawReason.includes("held for review") || rawReason.includes("needs review") || rawReason.includes("classifier") || rawReason.includes("unknown or unusable supplier")) return "נדרש אימות ידני";
-    if (!Number.isFinite(invoice.amount) || invoice.amount <= 0) return "לא זוהה סכום תקין";
+    if (invoice.amount == null || !Number.isFinite(invoice.amount) || invoice.amount <= 0) return "לא זוהה סכום תקין";
 
     if (!invoice.supplierName && !invoice.client?.name) return "נדרש אימות ידני של הספק";
     if (!invoice.invoiceNumber) return "נדרש אימות ידני של מספר החשבונית";

@@ -393,47 +393,45 @@ export async function syncGmailForClient(clientId: string) {
           analysis,
         });
         const clientInvoiceAmount = clientMoneyDecision.selectedAmount;
-        if (clientInvoiceAmount == null) {
-          continue;
-        }
-        await prisma.supplierPayment.create({
-          data: {
-            organizationId,
-            clientId,
-            supplier: analysis.supplier,
-            amount: clientInvoiceAmount,
-            currency: analysis.currency,
-            date: receivedAt,
-            dueDate: analysis.dueDate ? new Date(analysis.dueDate) : null,
-            paid: false,
-            documentLink: driveLinks[0],
-            invoiceLink: driveLinks[0],
-            emailSender: from,
-            paymentRequired: analysis.paymentRequired,
-            missingInvoice: false,
-            duplicateHash,
-            totalAmount: clientInvoiceAmount,
-            subject,
-            source: "gmail",
-            emailMessageId: emailRecord.id,
-          },
+        await recordFinancialDocumentDecision({
+          organizationId,
+          source: "gmail",
+          sender: from,
+          subject,
+          supplierName: analysis.supplier,
+          supplierTaxId: analysis.supplierTaxId,
+          invoiceNumber: analysis.invoiceNumber,
+          documentDate: analysis.invoiceDate ?? receivedAt,
+          dueDate: analysis.dueDate,
+          amountBeforeVat: analysis.amountBeforeVat,
+          vatAmount: analysis.vatAmount,
+          totalAmount: clientInvoiceAmount,
+          documentType: analysis.documentType,
+          driveFileUrl: driveLinks[0],
+          confidenceScore: analysis.confidence,
+          uncertaintyReason: "trust.gates_missing",
+          parsedFieldsJson: {},
+          rawAnalysis: analysis,
+          emailMessageId: emailRecord.id,
+          gmailMessageId: msgRef.id,
         });
         try {
-          await writeClientInvoiceToSheet(clientId, {
-            date: receivedAt,
-            supplier: analysis.supplier,
-            amount: clientInvoiceAmount,
-            currency: analysis.currency,
-            driveFileUrl: driveLinks[0],
-            driveFolderUrl: client.driveFolderUrl,
-            emailSubject: subject,
-            status: "ממתין",
-            notes: analysis.tasks.join(", "),
-          });
+          if (clientInvoiceAmount != null) {
+            await writeClientInvoiceToSheet(clientId, {
+              date: receivedAt,
+              supplier: analysis.supplier,
+              amount: clientInvoiceAmount,
+              currency: analysis.currency,
+              driveFileUrl: driveLinks[0],
+              driveFolderUrl: client.driveFolderUrl,
+              emailSubject: subject,
+              status: "ממתין",
+              notes: analysis.tasks.join(", "),
+            });
+          }
         } catch (err) {
           console.error("Client invoice sheet write failed; continuing Gmail sync", err);
         }
-        paymentsCreated++;
       }
     }
 

@@ -114,3 +114,33 @@ export function isValidSupplierCandidate(
 ) {
   return rejectSupplierCandidateReason(candidate, ownerEmails) === null;
 }
+
+export function isValidSupplierNameShared(value?: string | null): boolean {
+  const supplier = value?.trim() ?? "";
+  if (!supplier) return false;
+  if (isLikelyJunkSupplierName(supplier)) return false;
+  if (isUnknownPlaceholder(supplier)) return false;
+  if (looksLikeEmailAddress(supplier)) return false;
+  if (looksLikeDomain(supplier)) return false;
+  return supplier.replace(/[^\p{L}\p{N}]/gu, "").length >= 2;
+}
+
+export function isUsableSupplierNameShared(value: string, ownerEmails: Set<string> = new Set()): boolean {
+  const cleaned = value.trim();
+  if (!isValidSupplierNameShared(cleaned)) return false;
+  if (isLikelyJunkSupplierName(cleaned)) return false;
+  if (cleaned.length < 2 || cleaned.length > 60) return false;
+  if (/[\r\n]/.test(value)) return false;
+  if ([...ownerEmails].some((email) => cleaned.toLowerCase().includes(email.toLowerCase()))) return false;
+  if (/^(invoice|receipt|payment|support|noreply|no reply|billing|accounts?|gmail|googlemail|outlook|hotmail|yahoo)$/i.test(cleaned)) {
+    return false;
+  }
+  if (cleaned.includes("/")) return false;
+  if (OCR_AI_OUTPUT_PATTERN.test(cleaned)) return false;
+  const normalizedToken = cleaned.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  if (/\boutput\b/i.test(normalizedToken)) return false;
+  if (looksLikePhoneNumber(cleaned)) return false;
+  if (looksLikeAddress(cleaned)) return false;
+  if (isTaxIdLikeSupplierName(cleaned)) return false;
+  return /[\p{L}]/u.test(cleaned);
+}

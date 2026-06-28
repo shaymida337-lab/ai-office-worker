@@ -24,12 +24,47 @@ import {
 } from "./classification/classifier.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
 import { mapAnalysisDocumentTypeForAmount, moneyDecisionUncertaintySuffix, resolveGmailOrgMoneyDecision, resolvePersistedTotalAmount, summarizeMoneyDecision } from "./amount/amountCandidates.js";
+import {
+  attachSupplierGateToParsedFields,
+  parseSupplierGateFromParsedFields,
+  type SupplierGateSnapshot,
+} from "./supplier/supplierGate.js";
+import {
+  attachAmountGateToParsedFields,
+  FINANCE_AMOUNT_UNRESOLVED_REASON,
+  parseAmountGateFromParsedFields,
+  type AmountGateSnapshot,
+} from "./amount/amountGate.js";
+import {
+  isCanonicalFinanceAmountResolved,
+} from "./amount/financeDisplayAmount.js";
 import type { MoneyDecision } from "./amount/canonicalAmount.js";
 import { parseAmountOrNull, parseLabeledAmount, parseAmount } from "./amount/parseAmount.js";
 import {
   buildPaymentLookupsFromCanonical,
+  buildLegacyDuplicateHashForLookup,
 } from "./dedup/fingerprintMigration.js";
 import { computeCanonicalFingerprint, normalizeSupplierTaxId } from "./dedup/sharedMatcher.js";
+import {
+  attachFingerprintGateToParsedFields,
+  detectScanIdentityInstability,
+  parseFingerprintGateFromParsedFields,
+  summarizeScfcResult,
+  type FingerprintGateSnapshot,
+} from "./dedup/fingerprintGate.js";
+import {
+  attachDuplicateGateToParsedFields,
+  detectAmountRecoveredOnRescan,
+  parseDuplicateGateFromParsedFields,
+  type DuplicateGateSnapshot,
+} from "./dedup/duplicateGate.js";
+import { buildDuplicateGateInput } from "./financialDocuments.js";
+import {
+  createSupplierPaymentIfTrusted,
+  evaluateFinanceTrustGates,
+} from "./trust/financeTrustPersistence.js";
+import { supplierPaymentPersistenceDecision } from "./trust/trustGatePersistence.js";
+export { supplierPaymentPersistenceDecision };
 import { computeFinancialSanity, summarizeFinancialSanityDecision } from "./validation/financialSanity.js";
 import type { FinancialSanityContext, FinancialSanityDecision, SanityRuleId } from "./validation/sanityTypes.js";
 import { computeCanonicalSupplier } from "./supplier/canonicalSupplier.js";
@@ -1334,6 +1369,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         fse: ReturnType<typeof summarizeFinancialSanityDecision> | null;
         trust: ReturnType<typeof summarizeTrustDecision> | null;
         outcome: ReturnType<typeof summarizeDocumentOutcome> | null;
+        gates?: Array<AmountGateSnapshot | SupplierGateSnapshot | FingerprintGateSnapshot>;
+        scfc?: ReturnType<typeof summarizeScfcResult>;
       } = {
         amount: extractedFields.amount,
         invoiceNumber: extractedFields.invoiceNumber,
@@ -1483,6 +1520,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           contextCache: fseContextCache,
         });
         parsedFieldsJson.fse = summarizeFinancialSanityDecision(earlyFseDecision);
+        attachAmountGateToParsedFields(parsedFieldsJson, {
+          moneyDecision,
+          fseSummary: parsedFieldsJson.fse,
+        });
+        attachSupplierGateToParsedFields(parsedFieldsJson, {
+          supplierDecision: supplierMetadata.decision,
+          supplierName,
+          ownerEmails,
+        });
         const earlyTrustDecision = runGmailOrgTrustDecision({
           organizationId,
           supplierDecision: supplierMetadata.decision,
@@ -1654,6 +1700,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         contextCache: fseContextCache,
       });
       parsedFieldsJson.fse = summarizeFinancialSanityDecision(fseDecision);
+      const amountGate = attachAmountGateToParsedFields(parsedFieldsJson, {
+        moneyDecision,
+        fseSummary: parsedFieldsJson.fse,
+      });
+      const supplierGate = attachSupplierGateToParsedFields(parsedFieldsJson, {
+        supplierDecision: supplierMetadata.decision,
+        supplierName,
+        ownerEmails,
+      });
       classification = applyFinancialSanityReviewGate({
         classification,
         fseDecision,
@@ -1744,11 +1799,83 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       if (classification.reviewStatus === "needs_review") needsReviewCount++;
       logStep(`[gmail-sync] CLASSIFICATION_RESULT message=${email.gmailId} documentType=${classification.documentType} review=${classification.reviewStatus} confidence=${classification.confidence} supplier="${supplierName}" amount=${amount ?? "none"} reason="${classification.decisionReason}"`);
       logStep(`[gmail-sync] PARSED_FIELDS_EXTRACTED message=${email.gmailId} supplier="${supplierName}" amount=${finalTotalAmount ?? "unknown"} invoiceNumber=${invoiceNumberForDecision ?? "unknown"} dueDate=${dueDateForDecision?.toISOString() ?? "unknown"} documentDate=${documentDateForDecision.toISOString()} documentType=${classification.documentType} review=${classification.reviewStatus}`);
+      const scfcResult = computeCanonicalFingerprint({
+        organizationId,
+        supplierName,
+        supplierTaxId: supplierMetadata.taxId,
+        invoiceNumber: invoiceNumberForDecision,
+        totalAmount: finalTotalAmount,
+        documentDate: documentDateForDecision,
+        documentType: classification.documentType,
+      });
+      parsedFieldsJson.scfc = summarizeScfcResult(scfcResult);
+      const identityStability = detectScanIdentityInstability({
+        existingScanItem,
+        current: {
+          amount: finalTotalAmount,
+          supplierName,
+          documentDate: documentDateForDecision,
+        },
+      });
+      let fingerprintGate = attachFingerprintGateToParsedFields(parsedFieldsJson, {
+        scfc: scfcResult,
+        documentFingerprint: scfcResult.fingerprint ?? scfcResult.legacyFingerprint,
+        forceReprocess: options.forceReprocess,
+        identityStability,
+        hasAttachment: hasPdfOrImageAttachment,
+      });
+      const legacyDuplicateHash = buildLegacyDuplicateHashForLookup({
+        organizationId,
+        supplier: supplierName ?? "unknown",
+        amount: finalTotalAmount ?? 0,
+        dateIso: documentDateForDecision?.toISOString() ?? email.receivedAt.toISOString(),
+        subject: email.subject,
+      });
+      const sameEmailPayment = email.emailRecordId
+        ? await prisma.supplierPayment.findFirst({
+            where: { organizationId, emailMessageId: email.emailRecordId },
+            select: { id: true },
+          })
+        : null;
+      const duplicateGateInput = await buildDuplicateGateInput({
+        organizationId,
+        source: "gmail",
+        sender: email.senderEmail || email.from || null,
+        supplierName,
+        supplierTaxId: supplierMetadata.taxId,
+        invoiceNumber: invoiceNumberForDecision,
+        totalAmount: finalTotalAmount,
+        documentDate: documentDateForDecision,
+        documentType: classification.documentType,
+        fileSha256: null,
+        documentFingerprint: scfcResult.fingerprint ?? scfcResult.legacyFingerprint,
+        legacyDuplicateHash,
+        legacyDuplicateKey: duplicateKey,
+        scfcFingerprint: scfcResult.fingerprint,
+        emailMessageId: email.emailRecordId,
+        forceReprocess: options.forceReprocess,
+        identityStability,
+        amountRecoveredOnRescan: detectAmountRecoveredOnRescan({
+          existingScanItem,
+          currentAmount: finalTotalAmount,
+        }),
+        parsedFieldsJson,
+        sameEmailAttachmentMatch: Boolean(sameEmailPayment),
+      });
+      let duplicateGate = attachDuplicateGateToParsedFields(parsedFieldsJson, duplicateGateInput);
       const documentValidationReason = financialDocumentBlockingReason({
         supplierName,
         invoiceNumber: invoiceNumberForDecision,
         totalAmount: finalTotalAmount,
         documentDate: documentDateForDecision,
+        moneyDecision,
+        fseSummary: parsedFieldsJson.fse,
+        amountGate,
+        supplierDecision: supplierMetadata.decision,
+        supplierGate,
+        fingerprintGate,
+        duplicateGate,
+        ownerEmails,
       });
       const documentDecision = await recordFinancialDocumentDecision({
         organizationId,
@@ -1784,6 +1911,27 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         emailMessageId: email.emailRecordId,
         gmailMessageId: email.gmailId,
       });
+      if (documentDecision.action === "duplicate") {
+        fingerprintGate = attachFingerprintGateToParsedFields(parsedFieldsJson, {
+          scfc: scfcResult,
+          documentFingerprint: documentDecision.documentFingerprint,
+          forceReprocess: options.forceReprocess,
+          identityStability,
+          confirmedDuplicate: true,
+          hasAttachment: hasPdfOrImageAttachment,
+        });
+        duplicateGate = attachDuplicateGateToParsedFields(parsedFieldsJson, {
+          ...duplicateGateInput,
+          matchResult: "MATCH",
+          matchReasons: ["fingerprint_match"],
+          matchedCandidate: {
+            id:
+              ("payment" in documentDecision && documentDecision.payment?.id) ||
+              duplicateGate.matchedPaymentId ||
+              "confirmed-duplicate",
+          },
+        });
+      }
       const canPersistFinancialRecord = documentDecision.action === "accepted";
       const outcomeAllowsAutoSavePersistence = documentOutcome.status === "SAVED";
       if (canPersistFinancialRecord && outcomeAllowsAutoSavePersistence && classification.reviewStatus === "auto_saved" && !clientId && !isIncomingSupplierExpense && classification.isRelevant && email.domain) {
@@ -2374,21 +2522,28 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         amount,
         supplierName,
         senderIsOwner,
+        supplierGate,
+        fingerprintGate,
+        duplicateGate,
       });
       const canPersistSupplierPayment = documentDecision.action !== "filtered" && !isCustomerInvoice && paymentEligibility.allowed;
       if (canPersistSupplierPayment) {
         const supplierPaymentNeedsReview = paymentEligibility.persistAsNeedsReview;
-        const paymentSupplierName = supplierPaymentNeedsReview && !isUsableSupplierName(supplierName)
-          ? UNKNOWN_SUPPLIER_FALLBACK
-          : supplierName;
-        const paymentDecision = supplierPaymentPersistenceDecision({
+        const paymentSupplierName = supplierGate.canonicalSupplierName ?? supplierName;
+        const paymentEvaluation = evaluateFinanceTrustGates({
           selectedAmount: finalTotalAmount,
           needsReview: supplierPaymentNeedsReview,
+          amountGate,
+          supplierGate,
+          fingerprintGate,
+          duplicateGate,
+          documentType: documentDecision.documentType,
+          confidenceScore: classification.confidence,
         });
-        const paymentAmount = paymentDecision.paymentAmount;
-        const paymentApprovalStatus = paymentDecision.approvalStatus;
-        if (!paymentDecision.shouldCreatePayment) {
-          logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=missing_amount status=${moneyDecision.status}`);
+        const paymentAmount = paymentEvaluation.paymentAmount;
+        const paymentApprovalStatus = paymentEvaluation.approvalStatus;
+        if (!paymentEvaluation.shouldCreatePayment) {
+          logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=${paymentEvaluation.blockReason ?? FINANCE_AMOUNT_UNRESOLVED_REASON} status=${moneyDecision.status}`);
         } else {
         if (paymentAmount == null) {
           logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=unexpected_null_amount`);
@@ -2492,7 +2647,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           if (updatedPayment.driveUploadStatus === "pending_retry") {
             console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=supplierPayment:${updatedPayment.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
           }
-          if (paymentDecision.shouldAppendToSheet) {
+          if (paymentEvaluation.shouldAppendToSheet) {
             await appendSupplierPaymentToSheet({
               organizationId,
               paymentId: existingPayment.id,
@@ -2546,7 +2701,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         } else {
           const dueDate = dueDateForDecision;
           logStep(`[gmail-sync] DB SupplierPayment insert attempt message=${email.gmailId} amount=${paymentAmount} supplier="${paymentSupplierName}"`);
-          const payment = await prisma.supplierPayment.create({
+          const createResult = await createSupplierPaymentIfTrusted({
+            evaluation: paymentEvaluation,
             data: {
               organizationId,
               supplier: paymentSupplierName,
@@ -2588,12 +2744,16 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               emailMessageId: email.emailRecordId,
             },
           });
+          if (createResult.skipped || !createResult.payment) {
+            logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=${createResult.reason ?? "trust_gate_blocked"}`);
+          } else {
+          const payment = createResult.payment;
           paymentsCreated++;
           paymentPersistedForPilot = true;
           if (payment.driveUploadStatus === "pending_retry") {
             console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=supplierPayment:${payment.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
           }
-          if (paymentDecision.shouldAppendToSheet) {
+          if (paymentEvaluation.shouldAppendToSheet) {
             await appendSupplierPaymentToSheet({
               organizationId,
               paymentId: payment.id,
@@ -2655,6 +2815,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             if (!missingInvoice) {
               await notifyNewInvoice(organizationId, paymentSupplierName, paymentAmount);
             }
+          }
           }
         }
         }
@@ -3977,8 +4138,42 @@ export function supplierPaymentCreationEligibility(input: {
   amount: number | null;
   supplierName: string;
   senderIsOwner?: boolean;
+  supplierGate?: SupplierGateSnapshot | null;
+  fingerprintGate?: FingerprintGateSnapshot | null;
+  duplicateGate?: DuplicateGateSnapshot | null;
 }): { allowed: true; reasons: []; persistAsNeedsReview: boolean } | { allowed: false; reasons: string[]; persistAsNeedsReview: false } {
+  if (input.duplicateGate && input.duplicateGate.verdict !== "pass") {
+    return {
+      allowed: false,
+      reasons: [input.duplicateGate.reasonCode],
+      persistAsNeedsReview: false,
+    };
+  }
+
+  if (input.fingerprintGate && input.fingerprintGate.verdict !== "pass") {
+    return {
+      allowed: false,
+      reasons: [input.fingerprintGate.reasonCode],
+      persistAsNeedsReview: false,
+    };
+  }
+
+  if (input.supplierGate && input.supplierGate.verdict !== "pass") {
+    return {
+      allowed: false,
+      reasons: [input.supplierGate.reasonCode],
+      persistAsNeedsReview: false,
+    };
+  }
+
   if (isInvoiceRecordDocument(input.classification.documentType)) {
+    if (!isUsableSupplierName(input.supplierName)) {
+      return {
+        allowed: false,
+        reasons: ["supplier.sir_missing"],
+        persistAsNeedsReview: false,
+      };
+    }
     return {
       allowed: true,
       reasons: [],
@@ -3987,8 +4182,7 @@ export function supplierPaymentCreationEligibility(input: {
         input.classification.reviewStatus !== "auto_saved" ||
         input.classification.confidence < 0.8 ||
         !input.classification.audit.strictPaymentEvidence ||
-        input.amount === null ||
-        !isUsableSupplierName(input.supplierName),
+        input.amount === null,
     };
   }
 
@@ -4006,20 +4200,6 @@ export function supplierPaymentCreationEligibility(input: {
   return reasons.length === 0
     ? { allowed: true, reasons: [], persistAsNeedsReview: false }
     : { allowed: false, reasons, persistAsNeedsReview: false };
-}
-
-export function supplierPaymentPersistenceDecision(input: {
-  selectedAmount: number | null | undefined;
-  needsReview: boolean;
-}) {
-  const paymentAmount = input.selectedAmount ?? null;
-  const missingAmount = paymentAmount == null;
-  return {
-    paymentAmount,
-    approvalStatus: input.needsReview || missingAmount ? "needs_review" : "approved",
-    shouldCreatePayment: !missingAmount,
-    shouldAppendToSheet: !missingAmount && !input.needsReview,
-  };
 }
 
 export type ExtractedHebrewInvoiceFields = {
@@ -5603,19 +5783,28 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
       input.classification.confidence < 0.8 ||
       input.amount === null ||
       !isUsableSupplierName(input.supplierName);
-    const paymentSupplierName = paymentNeedsReview && !isUsableSupplierName(input.supplierName)
-      ? UNKNOWN_SUPPLIER_FALLBACK
-      : input.supplierName;
-    const paymentDecision = supplierPaymentPersistenceDecision({
+    const amountGate = parseAmountGateFromParsedFields(input.parsedFieldsJson);
+    const supplierGate = parseSupplierGateFromParsedFields(input.parsedFieldsJson);
+    const fingerprintGate = parseFingerprintGateFromParsedFields(input.parsedFieldsJson);
+    const duplicateGate = parseDuplicateGateFromParsedFields(input.parsedFieldsJson);
+    const paymentEvaluation = evaluateFinanceTrustGates({
       selectedAmount: input.amount,
       needsReview: paymentNeedsReview,
+      amountGate,
+      supplierGate,
+      fingerprintGate,
+      duplicateGate,
+      documentType: input.documentDecision.documentType,
+      confidenceScore: input.classification.confidence,
+      parsedFieldsJson: input.parsedFieldsJson,
     });
-    if (!paymentDecision.shouldCreatePayment) {
-      input.logStep(`[gmail-sync] SUPPLIER_PAYMENT_DB_SAVE_SKIPPED message=${input.email.gmailId} file="${driveLink.filename ?? "unnamed"}" reason=missing_amount`);
+    if (!paymentEvaluation.shouldCreatePayment) {
+      input.logStep(`[gmail-sync] SUPPLIER_PAYMENT_DB_SAVE_SKIPPED message=${input.email.gmailId} file="${driveLink.filename ?? "unnamed"}" reason=${paymentEvaluation.blockReason ?? FINANCE_AMOUNT_UNRESOLVED_REASON}`);
       continue;
     }
-    const paymentAmount = paymentDecision.paymentAmount!;
-    const paymentApprovalStatus = paymentDecision.approvalStatus;
+    const paymentAmount = paymentEvaluation.paymentAmount!;
+    const paymentApprovalStatus = paymentEvaluation.approvalStatus;
+    const paymentSupplierName = supplierGate?.canonicalSupplierName ?? input.supplierName;
     const dueDate = input.dueDate;
     const invoiceLink = isInvoiceRecordDocument(input.classification.documentType) ? driveLink.link : null;
     const documentLink = input.classification.documentType === "payment_request" ? driveLink.link : null;
@@ -5655,7 +5844,8 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
     input.logStep(`[gmail-sync] SUPPLIER_PAYMENT_DB_SAVE_ATTEMPT message=${input.email.gmailId} file="${driveLink.filename ?? "unnamed"}" driveFileId=${driveLink.fileId ?? "none"} supplier="${paymentSupplierName}" amount=${paymentAmount} invoiceNumber=${input.invoiceNumber ?? "none"} dueDate=${dueDate?.toISOString() ?? "none"} status=${paymentApprovalStatus}`);
     let payment;
     try {
-      payment = await prisma.supplierPayment.create({
+      const createResult = await createSupplierPaymentIfTrusted({
+        evaluation: paymentEvaluation,
         data: {
           organizationId: input.organizationId,
           supplier: paymentSupplierName,
@@ -5697,6 +5887,11 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
           emailMessageId: input.email.emailRecordId,
         },
       });
+      if (createResult.skipped || !createResult.payment) {
+        input.logStep(`[gmail-sync] SUPPLIER_PAYMENT_DB_SAVE_SKIPPED message=${input.email.gmailId} file="${driveLink.filename ?? "unnamed"}" reason=${createResult.reason ?? "trust_gate_blocked"}`);
+        continue;
+      }
+      payment = createResult.payment;
     } catch (err) {
       const existingAfterRace = isPrismaUniqueConstraintError(err)
         ? await findSupplierPaymentByDocumentIdentity({

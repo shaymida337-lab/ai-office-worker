@@ -15,6 +15,7 @@ export type DocumentReviewItem = {
   driveFileUrl: string | null;
   reviewStatus: string;
   createdAt: string;
+  parsedFieldsJson?: unknown;
 };
 
 export type DocumentFilter =
@@ -54,10 +55,40 @@ export function documentTypeLabel(type: string) {
   return labels[type] ?? "מסמך";
 }
 
-export function formatDocumentAmount(amount: number | null, currency = "ILS") {
-  if (amount == null) return "סכום לא ידוע";
-  if (currency === "ILS") return `₪${Math.round(amount).toLocaleString("he-IL")}`;
-  return `${Math.round(amount).toLocaleString("he-IL")} ${currency}`;
+export function formatDocumentAmount(amount: number | null, currency = "ILS", parsedFieldsJson?: unknown) {
+  const gate = parseAmountGateLabel(parsedFieldsJson);
+  if (gate) return gate;
+  if (amount == null) return "סכום חסר";
+  const formatted = amount.toLocaleString("he-IL", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  if (currency === "ILS") return `₪${formatted}`;
+  return `${formatted} ${currency}`;
+}
+
+const AMOUNT_GATE_MISSING_REASONS = new Set([
+  "amount.unresolved",
+  "amount.zero",
+  "amount.arc_missing",
+  "amount.invalid",
+  "amount.negative",
+]);
+
+function parseAmountGateLabel(parsedFieldsJson: unknown): string | null {
+  if (!parsedFieldsJson || typeof parsedFieldsJson !== "object" || parsedFieldsJson === null) {
+    return null;
+  }
+  const gates = (parsedFieldsJson as { gates?: unknown }).gates;
+  if (!Array.isArray(gates)) return null;
+  for (const entry of gates) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    if (record.gate !== "amount" || record.verdict !== "review") continue;
+    const reasonCode = typeof record.reasonCode === "string" ? record.reasonCode : "amount.unresolved";
+    return AMOUNT_GATE_MISSING_REASONS.has(reasonCode) ? "סכום חסר" : "דורש בדיקה";
+  }
+  return null;
 }
 
 export function formatDocumentDate(value: string) {
@@ -129,7 +160,7 @@ export function presentDocument(item: DocumentReviewItem): DocumentPresentation 
   return {
     typeLabel,
     supplier,
-    amountLabel: formatDocumentAmount(item.totalAmount, item.currency ?? "ILS"),
+    amountLabel: formatDocumentAmount(item.totalAmount, item.currency ?? "ILS", item.parsedFieldsJson),
     documentTypeLabel: documentTypeLabel(item.documentType),
     reason,
     primaryLabel,
