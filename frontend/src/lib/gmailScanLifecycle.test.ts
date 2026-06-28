@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   gmailScanStillRunning,
+  isSuccessfulGmailScanProgress,
   isTerminalGmailScanProgress,
   isTerminalGmailScanStatus,
   isTerminalScanStatusLog,
@@ -45,6 +46,20 @@ test("frontend polling continues only for active running states", () => {
   assert.equal(gmailScanStillRunning({ status: "running", inProgress: true }), true);
   assert.equal(gmailScanStillRunning({ status: "queued", inProgress: true }), true);
   assert.equal(gmailScanStillRunning({ status: "completed", finishedAt: null, inProgress: false }), false);
+});
+
+test("completed scan with zero results is terminal progress", () => {
+  assert.equal(
+    isTerminalGmailScanProgress({
+      status: "completed",
+      finishedAt: "2026-06-25T12:00:00.000Z",
+      inProgress: false,
+      emailsFetched: 0,
+      emailsSaved: 0,
+    }),
+    true
+  );
+  assert.equal(isSuccessfulGmailScanProgress({ status: "completed" }), true);
 });
 
 test("scan-status log terminal detection includes stale and cancelled", () => {

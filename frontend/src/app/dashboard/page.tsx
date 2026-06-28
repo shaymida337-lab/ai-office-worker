@@ -52,6 +52,11 @@ import {
 import { colors, radius, shadow, spacing, button, type as typography } from "@/lib/design-tokens";
 import { labelFor } from "@/lib/labels";
 import {
+  buildScanBannerState,
+  isSuccessfulGmailScanProgress,
+  resolveDashboardGmailScanRunning,
+} from "@/lib/gmailScanBanner";
+import {
   gmailScanStillRunning,
   isFailedGmailScanStatus,
   isRunningScanStatusLog,
@@ -982,7 +987,13 @@ export default function DashboardPage() {
   const monthPayments = payments.filter((payment) => isThisMonth(payment.date));
   const unpaidPayments = useMemo(() => payments.filter((payment) => !payment.paid), [payments]);
   const openTasksCount = stats?.openTasks ?? recentTasks.filter((task) => task.status !== "completed" && task.status !== "done").length;
-  const scanRunning = syncing || Boolean(activeScanId) || scanBanner?.status === "running";
+  const scanRunning = resolveDashboardGmailScanRunning({
+    syncing,
+    activeScanId,
+    activeScan,
+    scanBanner: scanBannerBase,
+    scanLogs: scanStatus?.logs,
+  });
   const scanStale = scanBanner?.status === "stale";
 
   const natalieBriefingInput = useMemo<NatalieBriefingInput>(
@@ -1793,59 +1804,6 @@ function WhatsAppCard({
   );
 }
 
-function buildScanBannerState(
-  activeScan: ScanProgressResult | null,
-  scanStatus: ScanStatus | null,
-  documentReviewCount = 0
-): {
-  status: "running" | "success" | "partial" | "truncated" | "stale" | "error";
-  found: number;
-  scanned: number;
-  totalMatched?: number | null;
-  errors: number;
-} | null {
-  const withReviewFallback = (found: number) => Math.max(found, documentReviewCount);
-
-  if (activeScan) {
-    return {
-      status: mapProgressToBannerStatus(activeScan),
-      found: withReviewFallback(scanDocumentsFound(activeScan)),
-      scanned: activeScan.emailsFetched,
-      totalMatched: activeScan.totalMatched ?? activeScan.summary?.totalMatched,
-      errors: activeScan.summary?.errorsCount ?? activeScan.finalSummary?.errorsCount ?? 0,
-    };
-  }
-  if (!scanStatus?.last) return null;
-  if (isRunningScanStatusLog(scanStatus.last)) {
-    return {
-      status: "running",
-      found: withReviewFallback(
-        (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0)
-      ),
-      scanned: scanStatus.last.found,
-      totalMatched: scanStatus.last.totalMatched,
-      errors: scanStatus.last.errors ? 1 : 0,
-    };
-  }
-  return {
-    status: scanStatus.last.windowTruncated
-      ? "truncated"
-      : scanStatus.last.status === "stale" || scanStatus.last.status === "cancelled"
-        ? "stale"
-        : scanStatus.last.status === "success" || scanStatus.last.status === "completed"
-          ? "success"
-          : scanStatus.last.status === "partial"
-            ? "partial"
-            : "error",
-    found: withReviewFallback(
-      (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0)
-    ),
-    scanned: scanStatus.last.found,
-    totalMatched: scanStatus.last.totalMatched,
-    errors: scanStatus.last.errors ? 1 : 0,
-  };
-}
-
 function phaseLabelForScanProgress(progress: ScanProgressResult, preparing: boolean) {
   if (preparing && (progress.progressPercent ?? 0) < 5) {
     return "מתחברת לג׳ימייל ומכינה את הסריקה...";
@@ -1963,24 +1921,6 @@ function alertTypeLabel(type: string) {
 function taskPriorityLabel(priority: string) {
   const labels: Record<string, string> = { low: "עדיפות נמוכה", medium: "עדיפות בינונית", high: "עדיפות גבוהה" };
   return labels[priority] ?? priority.replace(/_/g, " ");
-}
-
-function isSuccessfulGmailScanProgress(progress: ScanProgressResult) {
-  return (
-    progress.status === "completed" ||
-    progress.status === "success" ||
-    progress.status === "partial"
-  );
-}
-
-function mapProgressToBannerStatus(progress: ScanProgressResult): "running" | "success" | "partial" | "truncated" | "stale" | "error" {
-  if (gmailScanStillRunning(progress)) return "running";
-  const truncated = progress.windowTruncated ?? progress.summary?.windowTruncated ?? false;
-  if (truncated) return "truncated";
-  if (progress.status === "partial") return "partial";
-  if (progress.status === "stale" || progress.status === "cancelled") return "stale";
-  if (isSuccessfulGmailScanProgress(progress)) return "success";
-  return "error";
 }
 
 function isThisMonth(value: string) {

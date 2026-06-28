@@ -29,6 +29,16 @@ export function isCompletedGmailScanStatus(status?: string) {
   return status === "completed" || status === "success" || status === "partial";
 }
 
+export function isSuccessfulGmailScanProgress(progress: {
+  status?: string;
+}) {
+  return (
+    progress.status === "completed" ||
+    progress.status === "success" ||
+    progress.status === "partial"
+  );
+}
+
 export function isFailedGmailScanStatus(status?: string) {
   return (
     status === "error" ||

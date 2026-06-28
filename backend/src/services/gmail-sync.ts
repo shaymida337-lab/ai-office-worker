@@ -147,6 +147,10 @@ export function computeGmailScanRunningProgressPercent(emailsFetched: number, pr
 }
 const DRIVE_FULL_MESSAGE = "הסריקה הושלמה. לא ניתן לשמור ל-Drive - האחסון שלך מלא";
 const GMAIL_EXCLUDE_QUERY = "-category:promotions -category:social -in:spam -in:trash";
+import {
+  buildFastScanQueries,
+  FAST_SCAN_DATE_FILTER,
+} from "./gmailFastScanQuery.js";
 const INVOICE_KEYWORDS = [
   "חשבונית מס קבלה",
   "חשבונית",
@@ -1083,7 +1087,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     };
 
     const fastScanMaxMessages = options.maxMessages ?? MAX_MESSAGES_PER_FAST_SCAN;
-    logStep(`[gmail-sync] FAST_SCAN_STARTED query=newer_than:2h maxResults=${fastScanMaxMessages} mode=${scanMode}`);
+    logStep(`[gmail-sync] FAST_SCAN_STARTED query=${FAST_SCAN_DATE_FILTER} maxResults=${fastScanMaxMessages} mode=${scanMode}`);
     const fastListing = await listFastCandidateMessages(gmail, fastScanMaxMessages, {
       scanAllMail: options.scanAllMail,
     });
@@ -4342,13 +4346,8 @@ async function listFastCandidateMessages(
   options: { scanAllMail?: boolean } = {}
 ): Promise<{ messages: GmailMessageRef[]; diagnostics: GmailListingDiagnostics }> {
   const byId = new Map<string, GmailMessageRef>();
-  const dateFilter = "newer_than:2h";
-  const excludeQuery = options.scanAllMail ? "-in:spam -in:trash" : GMAIL_EXCLUDE_QUERY;
-  const subjectTerms = ["חשבונית", "invoice", "receipt", "קבלה", "\"דרישת תשלום\""];
-  const queries = [
-    `${dateFilter} has:attachment ${excludeQuery}`,
-    ...subjectTerms.map((term) => `${dateFilter} subject:${term} ${excludeQuery}`),
-  ];
+  const dateFilter = FAST_SCAN_DATE_FILTER;
+  const queries = buildFastScanQueries(options);
   let totalPagesScanned = 0;
   let totalMessagesSeen = 0;
   let totalNextPageTokenUses = 0;

@@ -1,0 +1,112 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  buildScanBannerState,
+  resolveDashboardGmailScanRunning,
+} from "./gmailScanBanner.js";
+
+test("completed scan with zero saved documents is not treated as running", () => {
+  const progress = {
+    status: "completed",
+    inProgress: false,
+    finishedAt: "2026-06-25T12:00:00.000Z",
+    emailsFetched: 0,
+    emailsSaved: 0,
+    documentsFound: 0,
+    invoicesFound: 0,
+    supplierPaymentsFound: 0,
+  };
+
+  const banner = buildScanBannerState(progress, null);
+  assert.equal(banner?.status, "success");
+  assert.equal(banner?.found, 0);
+  assert.equal(
+    resolveDashboardGmailScanRunning({
+      syncing: false,
+      activeScanId: "scan-1",
+      activeScan: progress,
+      scanBanner: banner,
+      scanLogs: [
+        {
+          id: "scan-1",
+          status: "completed",
+          found: 0,
+          saved: 0,
+          endedAt: "2026-06-25T12:00:00.000Z",
+          errors: null,
+        },
+      ],
+    }),
+    false
+  );
+});
+
+test("scan banner clears running state when last sync log is terminal with zero saved", () => {
+  const banner = buildScanBannerState(null, {
+    last: {
+      id: "scan-zero",
+      status: "completed",
+      found: 0,
+      saved: 0,
+      invoicesFound: 0,
+      paymentsFound: 0,
+      errors: null,
+      endedAt: "2026-06-25T12:00:00.000Z",
+    },
+  });
+
+  assert.equal(banner?.status, "success");
+  assert.equal(banner?.scanned, 0);
+  assert.equal(
+    resolveDashboardGmailScanRunning({
+      syncing: false,
+      activeScanId: null,
+      activeScan: null,
+      scanBanner: banner,
+    }),
+    false
+  );
+});
+
+test("active queued scan without terminal log still shows running", () => {
+  const progress = {
+    status: "running",
+    inProgress: true,
+    finishedAt: null,
+    emailsFetched: 0,
+  };
+  const banner = buildScanBannerState(progress, null);
+  assert.equal(banner?.status, "running");
+  assert.equal(
+    resolveDashboardGmailScanRunning({
+      syncing: false,
+      activeScanId: "scan-active",
+      activeScan: progress,
+      scanBanner: banner,
+    }),
+    true
+  );
+});
+
+test("stale activeScanId clears when scan log already completed", () => {
+  assert.equal(
+    resolveDashboardGmailScanRunning({
+      syncing: false,
+      activeScanId: "scan-done",
+      activeScan: null,
+      scanBanner: { status: "running", found: 0, scanned: 0, errors: 0 },
+      scanLogs: [
+        {
+          id: "scan-done",
+          status: "completed",
+          found: 0,
+          saved: 0,
+          endedAt: "2026-06-25T12:00:00.000Z",
+          errors: null,
+        },
+      ],
+    }),
+    false
+  );
+});
