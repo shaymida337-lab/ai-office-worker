@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 
 import { prisma } from "../lib/prisma.js";
@@ -29,16 +29,19 @@ function installAvailabilityPrismaStub(options?: {
   const originals = {
     organizationFindUnique: prisma.organization.findUnique.bind(prisma.organization),
     appointmentFindMany: prisma.appointment.findMany.bind(prisma.appointment),
+    calendarEventFindMany: prisma.calendarEvent.findMany.bind(prisma.calendarEvent),
     serviceFindFirst: prisma.service.findFirst.bind(prisma.service),
   };
 
   prisma.organization.findUnique = (async () => ({ timezone: "UTC" })) as unknown as typeof prisma.organization.findUnique;
   prisma.appointment.findMany = (async () => options?.appointments ?? []) as unknown as typeof prisma.appointment.findMany;
+  prisma.calendarEvent.findMany = (async () => []) as unknown as typeof prisma.calendarEvent.findMany;
   prisma.service.findFirst = (async () => null) as unknown as typeof prisma.service.findFirst;
 
   return () => {
     prisma.organization.findUnique = originals.organizationFindUnique;
     prisma.appointment.findMany = originals.appointmentFindMany;
+    prisma.calendarEvent.findMany = originals.calendarEventFindMany;
     prisma.service.findFirst = originals.serviceFindFirst;
   };
 }
@@ -256,6 +259,7 @@ test("maybeBuildAvailabilityResponse handles past slot check", async () => {
 
 test("askNatalieBusinessQuestion routes availability before reschedule handler", async () => {
   const restore = installAvailabilityPrismaStub();
+  mock.timers.enable({ apis: ["Date"], now: FIXED_NOW });
   try {
     const result = await askNatalieBusinessQuestion({
       organizationId: ORG,
@@ -263,6 +267,7 @@ test("askNatalieBusinessQuestion routes availability before reschedule handler",
     });
     assert.equal("action" in result && result.action, "suggest_available_times");
   } finally {
+    mock.timers.reset();
     restore();
   }
 });

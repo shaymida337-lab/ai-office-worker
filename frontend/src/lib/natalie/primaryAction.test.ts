@@ -40,3 +40,15 @@ test("natalie primary action: screen defaults", () => {
   assert.equal(resolvePrimaryAction({ screen: "calendar" }).label, "אשר פגישה");
   assert.equal(resolvePrimaryAction({ screen: "payments" }).label, "אשר תשלומים");
 });
+
+test("natalie primary action: engine ON links to decision queue", () => {
+  const action = resolvePrimaryAction({
+    screen: "today",
+    pendingSchedulingDecisionCount: 1,
+    primarySchedulingDecisionHref: "/dashboard/calendar?decisionId=dec-1",
+  });
+
+  assert.match(action.label, /החלטת יומן/);
+  assert.equal(action.href, "/dashboard/calendar?decisionId=dec-1");
+  assert.equal(action.intent, "confirm_scheduling_decision");
+});

@@ -81,3 +81,26 @@ test("natalie briefing: quiet summary chips", () => {
   assert.equal(chips.find((c) => c.id === "reviews")?.value, "1");
   assert.equal(chips.find((c) => c.id === "tasks")?.value, "3");
 });
+
+test("natalie briefing: pending scheduling decisions use Hebrew copy", () => {
+  const briefing = buildNatalieBriefing({
+    screen: "today",
+    gmailConnected: true,
+    documentReviews: [],
+    unpaidPayments: [],
+    openTasksCount: 0,
+    pendingSchedulingDecisions: [
+      {
+        id: "dec-1",
+        type: "confirm_appointment",
+        typeLabel: "אישור תור",
+        title: "תור לדנה",
+        createdAt: "2026-06-21T10:00:00.000Z",
+        href: "/dashboard/calendar?decisionId=dec-1",
+      },
+    ],
+  });
+
+  assert.ok(briefing.pendingItems.some((item) => item.text.includes("ממתין לאישורך")));
+  assert.match(briefing.primaryAction.label, /החלטת יומן|אשר/);
+});
