@@ -300,3 +300,63 @@ test("confirmed duplicate is BLOCK", () => {
   assert.equal(gate.verdict, "block");
   assert.equal(gate.reasonCode, "fingerprint.confirmed_duplicate");
 });
+
+test("Gmail image attachment without file hash passes when invoice-amount tier is strong", () => {
+  const scfc = computeCanonicalFingerprint({
+    organizationId: orgId,
+    supplierName: "OpenAI",
+    invoiceNumber: "INV-1001",
+    totalAmount: 65,
+    documentDate: "2026-06-01",
+    documentType: "invoice",
+    fileSha256: null,
+  });
+  assert.equal(scfc.tier, "invoice-amount");
+  const gate = evaluateFingerprintGate({
+    scfc,
+    documentFingerprint: scfc.fingerprint,
+    hasAttachment: true,
+    fileSha256: null,
+  });
+  assert.equal(gate.verdict, "pass");
+  assert.equal(gate.reasonCode, "fingerprint.resolved");
+  assert.notEqual(gate.reasonCode, "fingerprint.file_hash_missing");
+});
+
+test("Gmail image attachment without file hash passes when supplier-amount-date tier is strong", () => {
+  const scfc = computeCanonicalFingerprint({
+    organizationId: orgId,
+    supplierName: "Acme Supplies",
+    totalAmount: 250,
+    documentDate: "2026-06-15",
+    documentType: "receipt",
+    fileSha256: null,
+  });
+  assert.equal(scfc.tier, "supplier-amount-date");
+  const gate = evaluateFingerprintGate({
+    scfc,
+    documentFingerprint: scfc.fingerprint,
+    hasAttachment: true,
+    fileSha256: null,
+  });
+  assert.equal(gate.verdict, "pass");
+  assert.notEqual(gate.reasonCode, "fingerprint.file_hash_missing");
+});
+
+test("Gmail image attachment without stable identity stays REVIEW", () => {
+  const scfc = computeCanonicalFingerprint({
+    organizationId: orgId,
+    supplierName: "X",
+    totalAmount: 10,
+    fileSha256: null,
+  });
+  assert.equal(scfc.tier, "weak");
+  const gate = evaluateFingerprintGate({
+    scfc,
+    documentFingerprint: scfc.fingerprint,
+    hasAttachment: true,
+    fileSha256: null,
+  });
+  assert.equal(gate.verdict, "review");
+  assert.notEqual(gate.reasonCode, "fingerprint.file_hash_missing");
+});

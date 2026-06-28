@@ -203,10 +203,6 @@ export function evaluateFingerprintGate(input: FingerprintGateInput): Fingerprin
     return buildSnapshot("review", "fingerprint.missing_tier_fields", documentFingerprint, tier);
   }
 
-  if (input.hasAttachment && !input.fileSha256 && tier !== "file") {
-    return buildSnapshot("review", "fingerprint.file_hash_missing", documentFingerprint, tier);
-  }
-
   if (!scfc.isStrongEnoughForAutoSaveDedup) {
     return buildSnapshot("review", "fingerprint.weak_tier", documentFingerprint, tier);
   }
