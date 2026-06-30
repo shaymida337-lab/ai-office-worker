@@ -1,6 +1,7 @@
 import {
   gmailScanStillRunning,
   isCompletedGmailScanStatus,
+  isPausedGmailScanStatus,
   isSuccessfulGmailScanProgress,
   isTerminalGmailScanProgress,
   isTerminalScanStatusLog,
@@ -45,7 +46,7 @@ export type ScanProgressLike = {
 };
 
 export type ScanBannerState = {
-  status: "running" | "success" | "partial" | "truncated" | "stale" | "error";
+  status: "running" | "success" | "partial" | "truncated" | "paused" | "stale" | "error";
   found: number;
   scanned: number;
   totalMatched?: number | null;
@@ -119,15 +120,18 @@ export function buildScanBannerState(
   }
 
   return {
-    status: scanStatus.last.windowTruncated
-      ? "truncated"
-      : scanStatus.last.status === "stale" || scanStatus.last.status === "cancelled"
-        ? "stale"
-        : scanStatus.last.status === "success" || scanStatus.last.status === "completed"
-          ? "success"
-          : scanStatus.last.status === "partial"
-            ? "partial"
-            : "error",
+    status:
+      scanStatus.last.status === "paused"
+        ? "paused"
+        : scanStatus.last.windowTruncated
+          ? "truncated"
+          : scanStatus.last.status === "stale" || scanStatus.last.status === "cancelled"
+            ? "stale"
+            : scanStatus.last.status === "success" || scanStatus.last.status === "completed"
+              ? "success"
+              : scanStatus.last.status === "partial"
+                ? "partial"
+                : "error",
     found: withReviewFallback(
       (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0)
     ),
@@ -141,6 +145,7 @@ function mapProgressToBannerStatus(
   progress: ScanProgressLike
 ): ScanBannerState["status"] {
   if (isTerminalGmailScanProgress(progress)) {
+    if (isPausedGmailScanStatus(progress.status)) return "paused";
     const truncated = progress.windowTruncated ?? progress.summary?.windowTruncated ?? false;
     if (truncated) return "truncated";
     if (progress.status === "partial") return "partial";
@@ -153,6 +158,7 @@ function mapProgressToBannerStatus(
 
   if (gmailScanStillRunning(progress)) return "running";
 
+  if (isPausedGmailScanStatus(progress.status)) return "paused";
   const truncated = progress.windowTruncated ?? progress.summary?.windowTruncated ?? false;
   if (truncated) return "truncated";
   if (progress.status === "partial") return "partial";

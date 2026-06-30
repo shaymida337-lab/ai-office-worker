@@ -20,7 +20,7 @@ export const FORBIDDEN_CUSTOMER_TERMS = [
   "verification",
 ] as const;
 
-export type NatalieScanPresentation = "checking_email" | "finished" | "unfinished" | "idle";
+export type NatalieScanPresentation = "checking_email" | "finished" | "unfinished" | "backlog" | "idle";
 
 export type NatalieReviewPresentation =
   | "ambiguous_supplier"
@@ -44,6 +44,8 @@ export function natalieScanMessage(state: NatalieScanPresentation): string {
       return "אני עדיין בודקת את המיילים שלך.";
     case "unfinished":
       return "הסריקה הקודמת לא הסתיימה. אפשר לנסות שוב מתי שנוח לך.";
+    case "backlog":
+      return "עדיין יש מיילים לבדוק. אפשר להריץ סריקה נוספת כשתרצה.";
     case "finished":
       return "סיימתי לעבור על המיילים.";
     default:

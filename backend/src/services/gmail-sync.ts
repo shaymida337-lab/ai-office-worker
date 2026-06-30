@@ -83,11 +83,13 @@ import type { TrustDecision, TrustDuplicateRisk } from "./trust/trustTypes.js";
 import { computeDocumentOutcome, summarizeDocumentOutcome } from "./outcome/outcomeEngine.js";
 import type { DocumentOutcome, DocumentOutcomeStatus, OutcomeOptionalContext } from "./outcome/outcomeTypes.js";
 import {
+  checkGmailScanShouldStop,
   closeStaleGmailScansForOrg,
   createQueuedGmailScanLog,
   ensureGmailScanTerminalized,
   finalizeGmailScanCompleted,
   finalizeGmailScanFailed,
+  finalizeGmailScanPaused,
   findActiveGmailScanLog,
   handleConcurrentGmailScanExit,
   logScanLifecycle,
@@ -730,6 +732,53 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
   await promoteGmailScanToRunning(log.id);
   logScanLifecycle(log.id, "fetch start");
 
+  const scanStartedAt =
+    existingScanLog?.startedAt ??
+    (
+      await prisma.syncLog.findFirst({
+        where: { id: log.id },
+        select: { startedAt: true },
+      })
+    )?.startedAt ??
+    new Date();
+  let deadlineTruncated = false;
+  let externalTerminalStop = false;
+  let plannedTotalMatched: number | undefined;
+  const shouldStopScan = async () => {
+    const result = await checkGmailScanShouldStop(log.id, scanStartedAt);
+    if (result.stop && result.reason === "deadline") deadlineTruncated = true;
+    if (result.stop && result.reason === "external_terminal") externalTerminalStop = true;
+    return result.stop;
+  };
+  const buildEarlyExitResult = () => ({
+    emailsProcessed,
+    paymentsCreated,
+    tasksCreated,
+    clientsCreated,
+    invoicesCreated,
+    uniqueSenders,
+    potentialClients,
+    invoiceEmails,
+    invoiceAmountsExtracted,
+    relevantEmailsFound: relevantEmailsFound,
+    recordsSaved: paymentsCreated + invoicesCreated + tasksCreated + clientsCreated,
+    duplicatesSkipped,
+    errorsCount,
+    emailsSavedToGmailScanItem,
+    emailsParsed,
+    driveUploadsAttempted,
+    driveUploadsSucceeded,
+    driveUploadsSkipped,
+    driveUploadsFailed,
+    sheetsUpdated,
+    parserRejectedCount,
+    ignoredCount,
+    ignoredReasons,
+    scanSteps,
+    inProgress: false as const,
+    scanLogId: log!.id,
+  });
+
   if (existingScanLog) {
     await prisma.syncLog.update({
       where: { id: existingScanLog.id },
@@ -954,6 +1003,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       let fetchBatchNumber = 0;
       const totalBatches = Math.ceil(messagesToFetch.length / GMAIL_SCAN_BATCH_SIZE);
       for (const batch of chunkArray(messagesToFetch, GMAIL_SCAN_BATCH_SIZE)) {
+        if (await shouldStopScan()) break;
         fetchBatchNumber++;
         logStep(`[gmail-sync] fetch ${label} batch ${fetchBatchNumber}/${totalBatches} size=${batch.length}`);
       for (const msgRef of batch) {
@@ -1102,6 +1152,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     await processScannedEmails(fastScannedEmails, "fast");
     logStep(`[gmail-sync] FAST_SCAN_DONE processed=${fastMessages.length}`);
 
+    if (externalTerminalStop) {
+      return buildEarlyExitResult();
+    }
+
     if (options.fastOnly) {
       logScanLifecycle(log.id, "processing end");
       await maybeSaveScanProgress(true);
@@ -1118,7 +1172,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       if (windowTruncated) {
         logStep(`[gmail-sync] SCAN_WINDOW_TRUNCATED scanned=${fastMessages.length} maxMessages=${fastListing.diagnostics.maxMessages}`);
       }
-      await finalizeGmailScanCompleted(log.id, {
+      const fastFinalizeCounters = {
         emailsProcessed,
         emailsSaved: emailsSavedToGmailScanItem,
         invoicesFound: invoicesCreated + needsReviewCount,
@@ -1127,10 +1181,21 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         driveUploaded: driveUploadsSucceeded,
         sheetsUpdated,
         errorsCount,
-        windowTruncated,
         totalMatched: fastMessages.length,
-      });
-      logScanLifecycle(log.id, "completed");
+      };
+      if (deadlineTruncated) {
+        await finalizeGmailScanPaused(
+          log.id,
+          { ...fastFinalizeCounters, windowTruncated: true },
+          { phase: scanProgressPhase }
+        );
+      } else {
+        await finalizeGmailScanCompleted(
+          log.id,
+          { ...fastFinalizeCounters, windowTruncated },
+          { phase: scanProgressPhase }
+        );
+      }
 
       return {
         emailsProcessed,
@@ -1165,6 +1230,57 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       };
     }
 
+    if (deadlineTruncated) {
+      await maybeSaveScanProgress(true);
+      await finalizeGmailScanPaused(
+        log.id,
+        {
+          emailsProcessed,
+          emailsSaved: emailsSavedToGmailScanItem,
+          invoicesFound: invoicesCreated + needsReviewCount,
+          paymentsCreated,
+          tasksCreated,
+          driveUploaded: driveUploadsSucceeded,
+          sheetsUpdated,
+          errorsCount,
+          windowTruncated: true,
+          totalMatched: fastMessages.length,
+        },
+        { phase: scanProgressPhase }
+      );
+      return {
+        emailsProcessed,
+        totalEmailsChecked: emailsProcessed,
+        relevantEmailsFound,
+        recordsSaved: paymentsCreated + invoicesCreated + tasksCreated + clientsCreated,
+        clientsCreated,
+        invoicesCreated,
+        paymentsCreated,
+        tasksCreated,
+        uniqueSenders,
+        potentialClients,
+        invoiceEmails,
+        invoiceAmountsExtracted,
+        needsReviewCount,
+        duplicatesSkipped,
+        driveUploadsAttempted,
+        driveUploadsSucceeded,
+        driveUploadsFailed,
+        driveUploadsSkipped,
+        sheetsUpdated,
+        parserRejectedCount,
+        ignoredCount,
+        ignoredReasons,
+        errorsCount,
+        scanSteps,
+        emailsParsed,
+        emailsSavedToGmailScanItem,
+        windowTruncated: true,
+        totalMatched: fastMessages.length,
+        inProgress: false,
+      };
+    }
+
     logStep(`[gmail-sync] Searching Gmail from last ${daysBack} days`);
     const listing = await listCandidateMessages(gmail, daysBack, options.maxMessages ?? MAX_MESSAGES_PER_SYNC, since, {
       scanAllMail: options.scanAllMail,
@@ -1178,9 +1294,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       return true;
     });
     const messages = [...fastMessages, ...historicalMessages];
+    plannedTotalMatched = messages.length;
     logStep(`[gmail-sync] Gmail listing diagnostics ${JSON.stringify(listing.diagnostics)}`);
     logStep(`[gmail-sync] total emails fetched from Gmail=${messages.length} fast=${fastMessages.length} historical=${historicalMessages.length}`);
-    const windowTruncated = listingDiagnosticsWindowTruncated(fastListing.diagnostics) || listingDiagnosticsWindowTruncated(listing.diagnostics);
+    const listingTruncated =
+      listingDiagnosticsWindowTruncated(fastListing.diagnostics) ||
+      listingDiagnosticsWindowTruncated(listing.diagnostics);
+    const windowTruncated = listingTruncated;
     if (windowTruncated) {
       logStep(`[gmail-sync] SCAN_WINDOW_TRUNCATED scanned=${messages.length} maxMessages=${Math.max(fastListing.diagnostics.maxMessages, listing.diagnostics.maxMessages)}`);
     }
@@ -1189,6 +1309,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     await processScannedEmails(historicalScannedEmails, "historical");
     logScanLifecycle(log.id, "processing end");
     await maybeSaveScanProgress(true);
+
+    if (externalTerminalStop) {
+      return buildEarlyExitResult();
+    }
 
     async function processScannedEmails(emailsToProcess: ScannedEmail[], label: "fast" | "historical") {
     scanProgressPhase = "process";
@@ -1224,6 +1348,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
 
     let processBatchNumber = 0;
     for (const batch of chunkArray(emailsToProcess, GMAIL_SCAN_BATCH_SIZE)) {
+      if (await shouldStopScan()) break;
       processBatchNumber++;
       logStep(`[gmail-sync] process ${label} batch ${processBatchNumber}/${Math.ceil(emailsToProcess.length / GMAIL_SCAN_BATCH_SIZE)} size=${batch.length}`);
       for (const email of batch) {
@@ -2961,7 +3086,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       logStep(`[gmail-sync] invoice backfill candidates=${invoiceBackfill.candidates} created=${invoiceBackfill.created} duplicates=${invoiceBackfill.duplicates} skipped=${invoiceBackfill.skipped} errors=${invoiceBackfill.errors.length}`);
     }
 
-    await finalizeGmailScanCompleted(log.id, {
+    const fullFinalizeCounters = {
       emailsProcessed,
       emailsSaved: emailsSavedToGmailScanItem,
       invoicesFound: invoicesCreated + needsReviewCount + invoiceBackfill.created,
@@ -2970,10 +3095,21 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       driveUploaded: driveUploadsSucceeded,
       sheetsUpdated,
       errorsCount,
-      windowTruncated,
-      totalMatched: messages.length,
-    });
-    logScanLifecycle(log.id, "completed");
+      totalMatched: plannedTotalMatched ?? messages.length,
+    };
+    if (deadlineTruncated) {
+      await finalizeGmailScanPaused(
+        log.id,
+        { ...fullFinalizeCounters, windowTruncated: true },
+        { phase: scanProgressPhase }
+      );
+    } else {
+      await finalizeGmailScanCompleted(
+        log.id,
+        { ...fullFinalizeCounters, windowTruncated },
+        { phase: scanProgressPhase }
+      );
+    }
 
     return {
       emailsProcessed,
@@ -3019,8 +3155,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     if (log) {
-      await finalizeGmailScanFailed(log.id, message, { errorsCount: Math.max(errorsCount, 1) });
-      logScanLifecycle(log.id, "failed", `reason=${message}`);
+      await finalizeGmailScanFailed(log.id, message, {
+        errorsCount: Math.max(errorsCount, 1),
+        emailsProcessed,
+        emailsSaved: emailsSavedToGmailScanItem,
+        totalMatched: plannedTotalMatched ?? undefined,
+      }, { phase: scanProgressPhase, reason: message });
     }
     throw err;
   } finally {

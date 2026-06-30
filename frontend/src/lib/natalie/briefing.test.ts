@@ -45,6 +45,23 @@ test("natalie briefing: empty pending state", () => {
   assert.equal(briefing.primaryAction.label, "בוא נתחיל");
 });
 
+test("natalie briefing: scan backlog does not claim finished", () => {
+  const briefing = buildNatalieBriefing({
+    screen: "today",
+    gmailConnected: true,
+    scanRunning: false,
+    scanBacklog: true,
+    documentReviews: [],
+    unpaidPayments: [],
+    openTasksCount: 0,
+  });
+
+  const emailItem = briefing.completedItems.find((item) => item.id === "emails");
+  assert.ok(emailItem);
+  assert.match(emailItem!.text, /עדיין יש מיילים לבדוק/);
+  assert.doesNotMatch(emailItem!.text, /סיימתי/);
+});
+
 test("natalie briefing: customer copy stays clean", () => {
   const briefing = buildNatalieBriefing({
     screen: "today",

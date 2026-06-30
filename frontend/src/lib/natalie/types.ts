@@ -113,6 +113,7 @@ export type NatalieBriefingInput = {
   gmailConnected?: boolean;
   scanRunning?: boolean;
   scanStale?: boolean;
+  scanBacklog?: boolean;
   documentReviews?: NatalieDocumentReviewInput[];
   unpaidPayments?: NataliePaymentInput[];
   missingInvoices?: NataliePaymentInput[];
@@ -176,4 +177,7 @@ export type NatalieRecommendationInput = {
   invoicesSaved?: number;
   paymentsPrepared?: number;
   pendingDecisionCount?: number;
+  scanRunning?: boolean;
+  scanStale?: boolean;
+  scanBacklog?: boolean;
 };

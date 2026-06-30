@@ -1,13 +1,14 @@
 import { ScanLine } from "lucide-react";
 import { colors, radius, shadow, spacing, type } from "@/lib/design-tokens";
 
-type ScanBannerStatus = "running" | "success" | "partial" | "truncated" | "stale" | "error";
+type ScanBannerStatus = "running" | "success" | "partial" | "truncated" | "paused" | "stale" | "error";
 
 const statusStyles: Record<ScanBannerStatus, { color: string; backgroundColor: string; borderColor: string }> = {
   running: { color: colors.infoText, backgroundColor: colors.infoBg, borderColor: colors.infoBorder },
   success: { color: colors.successText, backgroundColor: colors.successBg, borderColor: colors.successBorder },
   partial: { color: colors.warnText, backgroundColor: colors.warnBg, borderColor: colors.warnBorder },
   truncated: { color: colors.warnText, backgroundColor: colors.warnBg, borderColor: colors.warnBorder },
+  paused: { color: colors.warnText, backgroundColor: colors.warnBg, borderColor: colors.warnBorder },
   stale: { color: colors.warnText, backgroundColor: colors.warnBg, borderColor: colors.warnBorder },
   error: { color: colors.dangerText, backgroundColor: colors.dangerBg, borderColor: colors.dangerBorder },
 };
@@ -65,6 +66,9 @@ function scanBannerText(
   if (status === "success") return `הסריקה הסתיימה בהצלחה — נמצאו ${found} מסמכים`;
   if (status === "partial") return `הסריקה הסתיימה עם ${errors} בעיות שדורשות בדיקה`;
   if (status === "stale") return "הסריקה הקודמת לא הסתיימה. אפשר לנסות שוב מתי שנוח לך.";
+  if (status === "paused") {
+    return `עברתי על ${scanned} מתוך ${totalMatched ?? scanned} מיילים — נשאר עוד. אפשר להריץ סריקה נוספת כשתרצה.`;
+  }
   if (status === "truncated") {
     return `הסריקה הסתיימה — נמצאו ${found} מסמכים. נסרקו ${scanned} מתוך ${totalMatched ?? scanned}. מומלץ להריץ סריקה נוספת`;
   }

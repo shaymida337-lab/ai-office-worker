@@ -31,6 +31,7 @@ import {
   createQueuedGmailScanLog,
   finalizeGmailScanFailed,
   findActiveGmailScanLog,
+  findLastGmailScanSuccessCursor,
   logScanLifecycle,
   refreshGmailScanProgressOnRead,
   toApiGmailScanStatus,
@@ -2447,11 +2448,13 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
           ? "failed"
           : apiStatus === "stale"
             ? "stale"
-            : apiStatus === "cancelled"
-              ? "cancelled"
-              : apiStatus === "queued"
-                ? "queued"
-                : apiStatus;
+            : apiStatus === "paused"
+              ? "paused"
+              : apiStatus === "cancelled"
+                ? "cancelled"
+                : apiStatus === "queued"
+                  ? "queued"
+                  : apiStatus;
       return {
       id: log.id,
       type: log.type,
@@ -6102,16 +6105,7 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
       occurredAt: true,
     },
   });
-  const lastSuccessfulScan = await prisma.syncLog.findFirst({
-    where: {
-      organizationId,
-      type: "gmail_scan",
-      status: { in: ["success", "completed"] },
-      finishedAt: { not: null },
-    },
-    orderBy: { finishedAt: "desc" },
-    select: { finishedAt: true },
-  });
+  const lastSuccessfulScan = await findLastGmailScanSuccessCursor(organizationId);
   const [classifiedCount, rejectedCount, uniqueSupplierRows] = await Promise.all([
     prisma.gmailScanItem.count({
       where: {
@@ -6181,13 +6175,19 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
   const progressPercent =
     status === "completed" || status === "partial"
       ? 100
-      : status === "error" || status === "failed" || status === "stale" || status === "cancelled"
-        ? Math.min(100, processed > 0 ? 100 : 0)
-        : processed > 0
-          ? progressNumerator > 0
-            ? Math.min(95, Math.max(1, Math.round((progressNumerator / Math.max(processed, 1)) * 100)))
-            : 5
-          : 0;
+      : status === "paused"
+        ? log.totalMatched && log.totalMatched > 0
+          ? Math.min(100, Math.round((emailsFetched / log.totalMatched) * 100))
+          : processed > 0
+            ? 50
+            : 0
+        : status === "error" || status === "failed" || status === "stale" || status === "cancelled"
+          ? Math.min(100, processed > 0 ? 100 : 0)
+          : processed > 0
+            ? progressNumerator > 0
+              ? Math.min(95, Math.max(1, Math.round((progressNumerator / Math.max(processed, 1)) * 100)))
+              : 5
+            : 0;
   const emailsPerMs = processed > 0 && elapsedMs > 0 ? processed / elapsedMs : 0;
   const estimatedRemainingSeconds =
     status === "running" && emailsPerMs > 0 && progressPercent > 0

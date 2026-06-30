@@ -1,5 +1,6 @@
 ﻿import cron from "node-cron";
 import { prisma } from "../lib/prisma.js";
+import { findLastGmailScanSuccessCursor } from "./gmailScanLifecycle.js";
 import { syncGmailForOrganization } from "./gmail-sync.js";
 import { scanForInvoices, detectUrgent } from "./invoiceScanner.js";
 import { sendDailySummary, buildDailySummary } from "./summary.js";
@@ -153,10 +154,7 @@ class SchedulerService {
       return;
     }
 
-    const lastSuccess = await prisma.syncLog.findFirst({
-      where: { organizationId, type: "gmail_scan", status: { in: ["success", "completed"] }, finishedAt: { not: null } },
-      orderBy: { finishedAt: "desc" },
-    });
+    const lastSuccess = await findLastGmailScanSuccessCursor(organizationId);
     const created = await createQueuedGmailScanLog(organizationId, mode, retryOfId);
     if (!created.created) {
       console.log(`[scheduler] automatic Gmail skipped org=${organizationId} reason=db_scan_lock_active scanId=${created.scanLog.id}`);

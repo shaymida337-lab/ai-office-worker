@@ -110,3 +110,45 @@ test("stale activeScanId clears when scan log already completed", () => {
     false
   );
 });
+
+test("paused scan clears running state and shows paused banner", () => {
+  const banner = buildScanBannerState(null, {
+    last: {
+      id: "scan-paused",
+      status: "paused",
+      found: 120,
+      saved: 2,
+      invoicesFound: 2,
+      paymentsFound: 0,
+      errors: null,
+      windowTruncated: true,
+      totalMatched: 500,
+      endedAt: "2026-06-30T15:53:11.000Z",
+    },
+  });
+
+  assert.equal(banner?.status, "paused");
+  assert.equal(banner?.scanned, 120);
+  assert.equal(banner?.totalMatched, 500);
+  assert.equal(
+    resolveDashboardGmailScanRunning({
+      syncing: false,
+      activeScanId: "scan-paused",
+      activeScan: null,
+      scanBanner: banner,
+      scanLogs: [
+        {
+          id: "scan-paused",
+          status: "paused",
+          found: 120,
+          saved: 2,
+          endedAt: "2026-06-30T15:53:11.000Z",
+          errors: null,
+          windowTruncated: true,
+          totalMatched: 500,
+        },
+      ],
+    }),
+    false
+  );
+});

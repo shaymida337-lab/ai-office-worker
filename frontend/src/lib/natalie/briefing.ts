@@ -48,7 +48,14 @@ function buildCompletedItems(input: NatalieBriefingInput): NatalieBriefingItem[]
   const items: NatalieBriefingItem[] = [];
 
   if (input.gmailConnected) {
-    items.push({ id: "emails", text: input.scanRunning ? natalieScanMessage("checking_email") : "בדקתי את המיילים שלך" });
+    const emailText = input.scanRunning
+      ? natalieScanMessage("checking_email")
+      : input.scanStale
+        ? natalieScanMessage("unfinished")
+        : input.scanBacklog
+          ? natalieScanMessage("backlog")
+          : "בדקתי את המיילים שלך";
+    items.push({ id: "emails", text: emailText });
   }
 
   if ((input.invoicesSaved ?? 0) > 0) {

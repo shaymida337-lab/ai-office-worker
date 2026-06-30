@@ -29,6 +29,14 @@ export function isCompletedGmailScanStatus(status?: string) {
   return status === "completed" || status === "success" || status === "partial";
 }
 
+export function isPausedGmailScanStatus(status?: string) {
+  return status === "paused";
+}
+
+export function hasGmailScanBacklog(log: { status: string; windowTruncated?: boolean | null }) {
+  return isPausedGmailScanStatus(log.status) || (isCompletedGmailScanStatus(log.status) && Boolean(log.windowTruncated));
+}
+
 export function isSuccessfulGmailScanProgress(progress: {
   status?: string;
 }) {
@@ -53,7 +61,7 @@ export function isRunningGmailScanStatus(status?: string) {
 }
 
 export function isTerminalGmailScanStatus(status?: string) {
-  return isCompletedGmailScanStatus(status) || isFailedGmailScanStatus(status);
+  return isCompletedGmailScanStatus(status) || isFailedGmailScanStatus(status) || isPausedGmailScanStatus(status);
 }
 
 export function isTerminalGmailScanProgress(progress: {
@@ -97,11 +105,13 @@ export function normalizeScanStatusFromLog(
     | "failed"
     | "cancelled"
     | "stale"
+    | "paused"
     | "success"
 ) {
   if (logStatus === "success" || logStatus === "completed") return "completed";
   if (logStatus === "partial") return "partial";
   if (logStatus === "stale") return "stale";
+  if (logStatus === "paused") return "paused";
   if (logStatus === "cancelled") return "cancelled";
   if (logStatus === "queued") return "queued";
   if (logStatus === "failed" || logStatus === "error") return "error";

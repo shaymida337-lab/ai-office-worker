@@ -1,4 +1,4 @@
-import { inferReviewPresentation } from "./copy";
+import { inferReviewPresentation, natalieScanMessage } from "./copy";
 import type {
   NatalieBriefingInput,
   NatalieBriefingItem,
@@ -41,7 +41,13 @@ export function buildProactiveDoneItems(input: NatalieBriefingInput, now = input
   if (input.gmailConnected) {
     items.push({
       id: "emails",
-      text: input.scanRunning ? "אני עדיין בודקת את המיילים שלך" : "סיימתי לעבור על המיילים שלך",
+      text: input.scanRunning
+        ? "אני עדיין בודקת את המיילים שלך"
+        : input.scanStale
+          ? natalieScanMessage("unfinished")
+          : input.scanBacklog
+            ? natalieScanMessage("backlog")
+            : "סיימתי לעבור על המיילים שלך",
     });
   }
 

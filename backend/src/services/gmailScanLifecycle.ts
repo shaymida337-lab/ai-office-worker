@@ -8,6 +8,7 @@ export const GMAIL_SCAN_TERMINAL_STATUSES = [
   "failed",
   "cancelled",
   "stale",
+  "paused",
   // legacy rows
   "success",
   "partial",
@@ -20,7 +21,8 @@ export type GmailScanLifecycleStatus =
   | "completed"
   | "failed"
   | "cancelled"
-  | "stale";
+  | "stale"
+  | "paused";
 
 export type GmailScanProgressCounters = {
   emailsProcessed?: number;
@@ -35,6 +37,29 @@ export type GmailScanProgressCounters = {
   totalMatched?: number | null;
 };
 
+export type GmailScanLifecyclePhase = "fetch" | "process";
+
+export type GmailScanStopReason = "deadline" | "external_terminal";
+
+export type GmailScanLifecycleTelemetryEvent =
+  | "scan_started"
+  | "scan_paused_deadline"
+  | "scan_completed"
+  | "scan_failed"
+  | "scan_stale";
+
+export type GmailScanLifecycleTelemetry = {
+  scanId: string;
+  organizationId?: string;
+  scanMode?: string | null;
+  phase?: GmailScanLifecyclePhase | null;
+  emailsProcessed?: number;
+  emailsSaved?: number;
+  totalMatched?: number | null;
+  elapsedMs?: number;
+  reason?: string | null;
+};
+
 export function logScanLifecycle(
   scanId: string | null | undefined,
   event: string,
@@ -42,6 +67,13 @@ export function logScanLifecycle(
 ) {
   const suffix = detail ? ` ${detail}` : "";
   console.log(`[scan] ${event} scanId=${scanId ?? "none"}${suffix}`);
+}
+
+export function logGmailScanLifecycleEvent(
+  event: GmailScanLifecycleTelemetryEvent,
+  payload: GmailScanLifecycleTelemetry
+) {
+  console.log(`[gmail-scan-lifecycle] ${event} ${JSON.stringify(payload)}`);
 }
 
 export function isActiveGmailScanStatus(status: string) {
@@ -56,6 +88,53 @@ export function isGmailScanLogStale(startedAt: Date, now = Date.now()) {
   return startedAt.getTime() <= now - GMAIL_SCAN_STALE_MS;
 }
 
+export function mergeGmailScanWindowTruncated(listingTruncated: boolean, deadlineTruncated: boolean) {
+  return listingTruncated || deadlineTruncated;
+}
+
+export function isGmailScanSuccessCursor(log: { status: string; windowTruncated?: boolean | null }) {
+  return (
+    (log.status === "success" || log.status === "completed") &&
+    !log.windowTruncated
+  );
+}
+
+export async function findLastGmailScanSuccessCursor(organizationId: string) {
+  return prisma.syncLog.findFirst({
+    where: {
+      organizationId,
+      type: "gmail_scan",
+      status: { in: ["success", "completed"] },
+      windowTruncated: false,
+      finishedAt: { not: null },
+    },
+    orderBy: { finishedAt: "desc" },
+    select: { id: true, finishedAt: true, status: true, windowTruncated: true },
+  });
+}
+
+export async function checkGmailScanShouldStop(
+  scanId: string,
+  startedAt: Date,
+  now = Date.now()
+): Promise<{ stop: boolean; reason?: GmailScanStopReason }> {
+  if (isGmailScanLogStale(startedAt, now)) {
+    return { stop: true, reason: "deadline" };
+  }
+
+  const log = await prisma.syncLog.findFirst({
+    where: { id: scanId, type: "gmail_scan" },
+    select: { status: true, finishedAt: true },
+  });
+  if (!log) {
+    return { stop: true, reason: "external_terminal" };
+  }
+  if (log.finishedAt || isTerminalGmailScanDbStatus(log.status)) {
+    return { stop: true, reason: "external_terminal" };
+  }
+  return { stop: false };
+}
+
 export function normalizeLegacyGmailScanStatus(status: string): GmailScanLifecycleStatus {
   if (status === "success" || status === "partial") return "completed";
   if (status === "error") return "failed";
@@ -65,7 +144,8 @@ export function normalizeLegacyGmailScanStatus(status: string): GmailScanLifecyc
     status === "completed" ||
     status === "failed" ||
     status === "cancelled" ||
-    status === "stale"
+    status === "stale" ||
+    status === "paused"
   ) {
     return status;
   }
@@ -75,12 +155,13 @@ export function normalizeLegacyGmailScanStatus(status: string): GmailScanLifecyc
 export function toApiGmailScanStatus(
   status: string,
   options: { errorsCount?: number; errorMessage?: string | null } = {}
-): "running" | "completed" | "partial" | "error" | "failed" | "cancelled" | "stale" | "queued" {
+): "running" | "completed" | "partial" | "error" | "failed" | "cancelled" | "stale" | "paused" | "queued" {
   const normalized = normalizeLegacyGmailScanStatus(status);
   if (normalized === "queued") return "queued";
   if (normalized === "running") return "running";
   if (normalized === "cancelled") return "cancelled";
   if (normalized === "stale") return "stale";
+  if (normalized === "paused") return "paused";
   if (normalized === "failed") return "error";
   if (normalized === "completed") {
     return (options.errorsCount ?? 0) > 0 ? "partial" : "completed";
@@ -158,6 +239,10 @@ export async function createQueuedGmailScanLog(
 }
 
 export async function promoteGmailScanToRunning(scanId: string) {
+  const existing = await prisma.syncLog.findFirst({
+    where: { id: scanId, type: "gmail_scan" },
+    select: { organizationId: true, scanMode: true, startedAt: true },
+  });
   const updated = await prisma.syncLog.updateMany({
     where: {
       id: scanId,
@@ -169,19 +254,49 @@ export async function promoteGmailScanToRunning(scanId: string) {
   });
   if (updated.count > 0) {
     logScanLifecycle(scanId, "running");
+    if (existing) {
+      logGmailScanLifecycleEvent("scan_started", {
+        scanId,
+        organizationId: existing.organizationId,
+        scanMode: existing.scanMode,
+        elapsedMs: 0,
+      });
+    }
   }
   return updated.count > 0;
+}
+
+type TerminalizeTelemetryContext = {
+  phase?: GmailScanLifecyclePhase | null;
+  reason?: string | null;
+};
+
+function lifecycleTelemetryEventForStatus(
+  status: GmailScanLifecycleStatus
+): GmailScanLifecycleTelemetryEvent | null {
+  if (status === "completed") return "scan_completed";
+  if (status === "paused") return "scan_paused_deadline";
+  if (status === "failed") return "scan_failed";
+  if (status === "stale") return "scan_stale";
+  return null;
 }
 
 async function terminalizeGmailScan(
   scanId: string,
   status: GmailScanLifecycleStatus,
   errorMessage: string | null,
-  counters: GmailScanProgressCounters = {}
+  counters: GmailScanProgressCounters = {},
+  telemetry: TerminalizeTelemetryContext = {}
 ) {
   const log = await prisma.syncLog.findFirst({
     where: { id: scanId, type: "gmail_scan" },
-    select: { status: true, finishedAt: true, startedAt: true },
+    select: {
+      status: true,
+      finishedAt: true,
+      startedAt: true,
+      organizationId: true,
+      scanMode: true,
+    },
   });
   if (!log || log.finishedAt || isTerminalGmailScanDbStatus(log.status)) {
     return false;
@@ -197,26 +312,63 @@ async function terminalizeGmailScan(
     },
   });
   logScanLifecycle(scanId, status, errorMessage ? `reason=${errorMessage}` : undefined);
+
+  const telemetryEvent = lifecycleTelemetryEventForStatus(status);
+  if (telemetryEvent) {
+    logGmailScanLifecycleEvent(telemetryEvent, {
+      scanId,
+      organizationId: log.organizationId,
+      scanMode: log.scanMode,
+      phase: telemetry.phase ?? null,
+      emailsProcessed: counters.emailsProcessed,
+      emailsSaved: counters.emailsSaved,
+      totalMatched: counters.totalMatched,
+      elapsedMs: Math.max(0, Date.now() - log.startedAt.getTime()),
+      reason: telemetry.reason ?? errorMessage,
+    });
+  }
+
   return true;
 }
 
-export async function finalizeGmailScanCompleted(scanId: string, counters: GmailScanProgressCounters = {}) {
-  return terminalizeGmailScan(scanId, "completed", null, counters);
+export async function finalizeGmailScanCompleted(
+  scanId: string,
+  counters: GmailScanProgressCounters = {},
+  telemetry: TerminalizeTelemetryContext = {}
+) {
+  return terminalizeGmailScan(scanId, "completed", null, counters, telemetry);
+}
+
+export async function finalizeGmailScanPaused(
+  scanId: string,
+  counters: GmailScanProgressCounters = {},
+  telemetry: TerminalizeTelemetryContext = {}
+) {
+  return terminalizeGmailScan(scanId, "paused", null, counters, {
+    ...telemetry,
+    reason: telemetry.reason ?? "deadline",
+  });
 }
 
 export async function finalizeGmailScanFailed(
   scanId: string,
   errorMessage: string,
-  counters: GmailScanProgressCounters = {}
+  counters: GmailScanProgressCounters = {},
+  telemetry: TerminalizeTelemetryContext = {}
 ) {
   return terminalizeGmailScan(scanId, "failed", errorMessage, {
     errorsCount: Math.max(counters.errorsCount ?? 0, 1),
     ...counters,
+  }, {
+    ...telemetry,
+    reason: telemetry.reason ?? errorMessage,
   });
 }
 
 export async function finalizeGmailScanStale(scanId: string, errorMessage: string) {
-  return terminalizeGmailScan(scanId, "stale", errorMessage);
+  return terminalizeGmailScan(scanId, "stale", errorMessage, {}, {
+    reason: errorMessage,
+  });
 }
 
 export async function finalizeGmailScanCancelled(scanId: string, errorMessage: string) {

@@ -63,6 +63,7 @@ import {
   isTerminalGmailScanProgress,
   isTerminalScanStatusLog,
   normalizeScanStatusFromLog,
+  hasGmailScanBacklog,
   scanDocumentsFound,
 } from "@/lib/gmailScanLifecycle";
 import type { OrganizationSettings } from "@/lib/business-config";
@@ -231,7 +232,7 @@ type GmailScanResult = {
 
 type ScanProgressResult = {
   scanId: string;
-  status: "running" | "queued" | "completed" | "partial" | "error" | "success" | "failed" | "cancelled" | "stale";
+  status: "running" | "queued" | "completed" | "partial" | "error" | "success" | "failed" | "cancelled" | "stale" | "paused";
   inProgress: boolean;
   startedAt: string;
   finishedAt: string | null;
@@ -995,6 +996,7 @@ export default function DashboardPage() {
     scanLogs: scanStatus?.logs,
   });
   const scanStale = scanBanner?.status === "stale";
+  const scanBacklog = scanStatus?.last ? hasGmailScanBacklog(scanStatus.last) : false;
 
   const natalieBriefingInput = useMemo<NatalieBriefingInput>(
     () => ({
@@ -1003,6 +1005,7 @@ export default function DashboardPage() {
       gmailConnected,
       scanRunning,
       scanStale,
+      scanBacklog,
       documentReviews: documentReviews.map((item) => ({
         id: item.id,
         supplierName: item.supplierName,
@@ -1062,6 +1065,7 @@ export default function DashboardPage() {
       gmailConnected,
       scanRunning,
       scanStale,
+      scanBacklog,
       documentReviews,
       unpaidPayments,
       missingInvoices,
@@ -1096,6 +1100,9 @@ export default function DashboardPage() {
   const recommendationInput = useMemo<NatalieRecommendationInput>(
     () => ({
       gmailConnected,
+      scanRunning,
+      scanStale,
+      scanBacklog,
       documentReviews: documentReviews.map((item) => ({
         id: item.id,
         supplierName: item.supplierName,
@@ -1153,6 +1160,9 @@ export default function DashboardPage() {
     }),
     [
       gmailConnected,
+      scanRunning,
+      scanStale,
+      scanBacklog,
       documentReviews,
       unpaidPayments,
       missingInvoices,
