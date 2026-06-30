@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "crypto";
 import { prisma } from "../lib/prisma.js";
+import { stripNulBytesDeep } from "../lib/postgresTextSanitizer.js";
 import { analyzeEmailContent, analyzeInvoiceFile, type EmailAnalysis } from "./claude.js";
 import { getGoogleClients, isGoogleReconnectRequiredError } from "./google.js";
 import { analyzeAndSaveMessage } from "./messageScanner.js";
@@ -2913,6 +2914,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           if (!scanItemPersisted) {
             try {
               await saveRejectedScanItem(email, `process_save_failed: ${err instanceof Error ? err.message : String(err)}`);
+              await prisma.emailMessage.update({
+                where: { id: email.emailRecordId },
+                data: { processedAt: new Date() },
+              });
             } catch (fallbackErr) {
               console.error(`[gmail-sync] fallback GmailScanItem save failed message=${email.gmailId}`, fallbackErr);
               logStep(`[gmail-sync] error message=${email.gmailId} stage=fallback_scan_item_save reason="${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}"`);
@@ -5568,19 +5573,20 @@ async function upsertPotentialClient(input: {
   firstSeen: Date;
   lastSeen: Date;
 }) {
+  const sanitized = stripNulBytesDeep(input);
   const existing = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
     'SELECT "id" FROM "Client" WHERE "organizationId" = $1 AND ("email" = $2 OR "domain" = $3) AND "isActive" = true ORDER BY "createdAt" ASC LIMIT 1',
-    input.organizationId,
-    input.email,
-    input.domain
+    sanitized.organizationId,
+    sanitized.email,
+    sanitized.domain
   );
   if (existing[0]?.id) {
     await prisma.$executeRawUnsafe(
       'UPDATE "Client" SET "domain" = COALESCE("domain", $2), "firstSeen" = COALESCE("firstSeen", $3), "lastSeen" = GREATEST(COALESCE("lastSeen", $4), $4), "updatedAt" = NOW() WHERE "id" = $1',
       existing[0].id,
-      input.domain,
-      input.firstSeen,
-      input.lastSeen
+      sanitized.domain,
+      sanitized.firstSeen,
+      sanitized.lastSeen
     );
     return { id: existing[0].id, created: false };
   }
@@ -5589,12 +5595,12 @@ async function upsertPotentialClient(input: {
   await prisma.$executeRawUnsafe(
     'INSERT INTO "Client" ("id","organizationId","name","email","domain","firstSeen","lastSeen","gmailConnected","color","isActive","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,true,NOW(),NOW())',
     id,
-    input.organizationId,
-    input.name || input.domain,
-    input.email,
-    input.domain,
-    input.firstSeen,
-    input.lastSeen,
+    sanitized.organizationId,
+    sanitized.name || sanitized.domain,
+    sanitized.email,
+    sanitized.domain,
+    sanitized.firstSeen,
+    sanitized.lastSeen,
     "#6366F1"
   );
   return { id, created: true };
