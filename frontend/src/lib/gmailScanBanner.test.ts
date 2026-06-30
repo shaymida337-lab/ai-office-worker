@@ -152,3 +152,44 @@ test("paused scan clears running state and shows paused banner", () => {
     false
   );
 });
+
+test("read-side deadline close for manual scan shows paused not stale", () => {
+  const banner = buildScanBannerState(null, {
+    last: {
+      id: "cmr0v9kiv00adjs2bnhi72qq5",
+      status: "paused",
+      found: 342,
+      saved: 2,
+      invoicesFound: 2,
+      paymentsFound: 0,
+      errors: null,
+      windowTruncated: true,
+      totalMatched: 500,
+      endedAt: "2026-06-30T17:04:32.271Z",
+    },
+  });
+
+  assert.equal(banner?.status, "paused");
+  assert.notEqual(banner?.status, "stale");
+  assert.equal(
+    resolveDashboardGmailScanRunning({
+      syncing: false,
+      activeScanId: "cmr0v9kiv00adjs2bnhi72qq5",
+      activeScan: null,
+      scanBanner: banner,
+      scanLogs: [
+        {
+          id: "cmr0v9kiv00adjs2bnhi72qq5",
+          status: "paused",
+          found: 342,
+          saved: 2,
+          endedAt: "2026-06-30T17:04:32.271Z",
+          errors: null,
+          windowTruncated: true,
+          totalMatched: 500,
+        },
+      ],
+    }),
+    false
+  );
+});

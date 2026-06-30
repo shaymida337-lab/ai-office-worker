@@ -2,12 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   GMAIL_SCAN_STALE_MS,
+  classifyOverdueGmailScanClose,
   isActiveGmailScanStatus,
   isGmailScanLogStale,
   isGmailScanSuccessCursor,
   isTerminalGmailScanDbStatus,
   mergeGmailScanWindowTruncated,
   normalizeLegacyGmailScanStatus,
+  shouldFinalizeGmailScanAsPausedOnDeadline,
   toApiGmailScanStatus,
 } from "./gmailScanLifecycle.js";
 
@@ -60,4 +62,30 @@ test("mergeGmailScanWindowTruncated combines listing and deadline flags", () => 
   assert.equal(mergeGmailScanWindowTruncated(true, false), true);
   assert.equal(mergeGmailScanWindowTruncated(false, true), true);
   assert.equal(mergeGmailScanWindowTruncated(true, true), true);
+});
+
+test("classifyOverdueGmailScanClose pauses advancing manual scans and stales orphans", () => {
+  assert.equal(classifyOverdueGmailScanClose({ scanMode: "manual", emailsProcessed: 342 }), "paused");
+  assert.equal(classifyOverdueGmailScanClose({ scanMode: "first_time", emailsProcessed: 12 }), "paused");
+  assert.equal(classifyOverdueGmailScanClose({ scanMode: "manual", emailsProcessed: 0 }), "stale");
+  assert.equal(classifyOverdueGmailScanClose({ scanMode: "fast_recurring", emailsProcessed: 2 }), "stale");
+});
+
+test("shouldFinalizeGmailScanAsPausedOnDeadline covers worker race after 30 minutes", () => {
+  const startedAt = new Date("2026-06-30T16:34:07.783Z");
+  const afterDeadline = startedAt.getTime() + GMAIL_SCAN_STALE_MS + 5_000;
+  assert.equal(shouldFinalizeGmailScanAsPausedOnDeadline(startedAt, false, afterDeadline), true);
+  assert.equal(shouldFinalizeGmailScanAsPausedOnDeadline(startedAt, true, startedAt.getTime() + 60_000), true);
+  assert.equal(
+    shouldFinalizeGmailScanAsPausedOnDeadline(startedAt, false, startedAt.getTime() + 10 * 60_000),
+    false
+  );
+});
+
+test("read-side paused manual scan maps to API paused not stale", () => {
+  assert.equal(toApiGmailScanStatus("paused"), "paused");
+  assert.equal(
+    toApiGmailScanStatus("paused", { errorMessage: "Scan exceeded 30 minute timeout (auto-closed on read)" }),
+    "paused"
+  );
 });

@@ -88,6 +88,61 @@ export function isGmailScanLogStale(startedAt: Date, now = Date.now()) {
   return startedAt.getTime() <= now - GMAIL_SCAN_STALE_MS;
 }
 
+/** Long scans that may legitimately run until the cooperative deadline. */
+export function isNormalLongGmailScanMode(scanMode?: string | null) {
+  return scanMode !== "fast_recurring";
+}
+
+/**
+ * Read-side overdue close: pause honest long scans; reserve stale for orphans.
+ */
+export function classifyOverdueGmailScanClose(log: {
+  scanMode?: string | null;
+  emailsProcessed?: number;
+}): "paused" | "stale" {
+  if (log.scanMode === "fast_recurring") {
+    return "stale";
+  }
+  if ((log.emailsProcessed ?? 0) === 0) {
+    return "stale";
+  }
+  return "paused";
+}
+
+export function shouldFinalizeGmailScanAsPausedOnDeadline(
+  startedAt: Date,
+  deadlineTruncated: boolean,
+  now = Date.now()
+) {
+  return deadlineTruncated || isGmailScanLogStale(startedAt, now);
+}
+
+export function gmailScanCountersFromLog(log: {
+  emailsProcessed: number;
+  emailsSaved: number;
+  invoicesFound: number;
+  paymentsCreated: number;
+  tasksCreated: number;
+  driveUploaded: number;
+  sheetsUpdated: number;
+  errorsCount: number;
+  totalMatched?: number | null;
+  windowTruncated?: boolean;
+}): GmailScanProgressCounters {
+  return {
+    emailsProcessed: log.emailsProcessed,
+    emailsSaved: log.emailsSaved,
+    invoicesFound: log.invoicesFound,
+    paymentsCreated: log.paymentsCreated,
+    tasksCreated: log.tasksCreated,
+    driveUploaded: log.driveUploaded,
+    sheetsUpdated: log.sheetsUpdated,
+    errorsCount: log.errorsCount,
+    totalMatched: log.totalMatched,
+    windowTruncated: log.windowTruncated,
+  };
+}
+
 export function mergeGmailScanWindowTruncated(listingTruncated: boolean, deadlineTruncated: boolean) {
   return listingTruncated || deadlineTruncated;
 }
@@ -183,6 +238,42 @@ export async function findActiveGmailScanLog(organizationId: string, excludeScan
   });
 }
 
+export async function closeOverdueActiveGmailScan(
+  log: {
+    id: string;
+    startedAt: Date;
+    scanMode?: string | null;
+    emailsProcessed: number;
+    emailsSaved: number;
+    invoicesFound: number;
+    paymentsCreated: number;
+    tasksCreated: number;
+    driveUploaded: number;
+    sheetsUpdated: number;
+    errorsCount: number;
+    totalMatched?: number | null;
+  },
+  now = Date.now()
+): Promise<"paused" | "stale" | null> {
+  if (!isGmailScanLogStale(log.startedAt, now)) {
+    return null;
+  }
+
+  const counters = gmailScanCountersFromLog(log);
+  const closeAs = classifyOverdueGmailScanClose(log);
+  if (closeAs === "paused") {
+    await finalizeGmailScanPaused(log.id, { ...counters, windowTruncated: true }, {
+      reason: "deadline_read_side",
+    });
+  } else {
+    await finalizeGmailScanStale(
+      log.id,
+      `Scan exceeded ${GMAIL_SCAN_STALE_MS / 60_000} minute timeout without finishing`
+    );
+  }
+  return closeAs;
+}
+
 export async function closeStaleGmailScansForOrg(organizationId: string, excludeScanId?: string) {
   const activeLogs = await prisma.syncLog.findMany({
     where: {
@@ -196,12 +287,8 @@ export async function closeStaleGmailScansForOrg(organizationId: string, exclude
 
   const closed: string[] = [];
   for (const log of activeLogs) {
-    if (!isGmailScanLogStale(log.startedAt)) continue;
-    await finalizeGmailScanStale(
-      log.id,
-      `Scan exceeded ${GMAIL_SCAN_STALE_MS / 60_000} minute timeout without finishing`
-    );
-    closed.push(log.id);
+    const result = await closeOverdueActiveGmailScan(log);
+    if (result) closed.push(log.id);
   }
   return closed;
 }
@@ -214,10 +301,7 @@ export async function createQueuedGmailScanLog(
   const existing = await findActiveGmailScanLog(organizationId);
   if (existing) {
     if (isGmailScanLogStale(existing.startedAt)) {
-      await finalizeGmailScanStale(
-        existing.id,
-        `Stale scan closed before creating a new scan (${existing.status})`
-      );
+      await closeOverdueActiveGmailScan(existing);
     } else {
       logScanLifecycle(existing.id, "queued", "reusing existing active scan");
       return { scanLog: existing, created: false as const };
@@ -350,6 +434,23 @@ export async function finalizeGmailScanPaused(
   });
 }
 
+export async function finalizeGmailScanWithDeadlineGuard(
+  scanId: string,
+  startedAt: Date,
+  deadlineTruncated: boolean,
+  counters: GmailScanProgressCounters = {},
+  telemetry: TerminalizeTelemetryContext = {}
+) {
+  if (shouldFinalizeGmailScanAsPausedOnDeadline(startedAt, deadlineTruncated)) {
+    return finalizeGmailScanPaused(
+      scanId,
+      { ...counters, windowTruncated: true },
+      telemetry
+    );
+  }
+  return finalizeGmailScanCompleted(scanId, counters, telemetry);
+}
+
 export async function finalizeGmailScanFailed(
   scanId: string,
   errorMessage: string,
@@ -384,6 +485,13 @@ export async function ensureGmailScanTerminalized(scanId: string, fallbackMessag
     return false;
   }
   if (isGmailScanLogStale(log.startedAt)) {
+    const full = await prisma.syncLog.findFirst({
+      where: { id: scanId, type: "gmail_scan" },
+    });
+    if (full) {
+      const closeAs = await closeOverdueActiveGmailScan(full);
+      if (closeAs) return true;
+    }
     return finalizeGmailScanStale(
       scanId,
       fallbackMessage ?? "Scan terminated without completion (stale timeout)"
@@ -416,10 +524,7 @@ export async function refreshGmailScanProgressOnRead(organizationId: string, sca
   if (!isGmailScanLogStale(log.startedAt)) {
     return log;
   }
-  await finalizeGmailScanStale(
-    scanId,
-    `Scan exceeded ${GMAIL_SCAN_STALE_MS / 60_000} minute timeout (auto-closed on read)`
-  );
+  await closeOverdueActiveGmailScan(log);
   return prisma.syncLog.findFirst({
     where: { id: scanId, organizationId, type: "gmail_scan" },
   });

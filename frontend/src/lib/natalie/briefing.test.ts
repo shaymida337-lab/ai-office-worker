@@ -62,6 +62,24 @@ test("natalie briefing: scan backlog does not claim finished", () => {
   assert.doesNotMatch(emailItem!.text, /סיימתי/);
 });
 
+test("natalie briefing: paused manual deadline uses backlog not stale copy", () => {
+  const briefing = buildNatalieBriefing({
+    screen: "today",
+    gmailConnected: true,
+    scanRunning: false,
+    scanStale: false,
+    scanBacklog: true,
+    documentReviews: [],
+    unpaidPayments: [],
+    openTasksCount: 0,
+  });
+
+  const emailItem = briefing.completedItems.find((item) => item.id === "emails");
+  assert.ok(emailItem);
+  assert.match(emailItem!.text, /עדיין יש מיילים לבדוק/);
+  assert.doesNotMatch(emailItem!.text, /לא הסתיימה/);
+});
+
 test("natalie briefing: customer copy stays clean", () => {
   const briefing = buildNatalieBriefing({
     screen: "today",
