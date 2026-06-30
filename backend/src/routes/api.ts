@@ -25,7 +25,7 @@ import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusine
 import { approveFinancialDocumentReview } from "../services/financialDocuments.js";
 import { recordFinancialDocumentDecision } from "../services/financialDocuments.js";
 import { resolveFinanceDisplayAmount } from "../services/amount/financeDisplayAmount.js";
-import { initialConnectScanWindow } from "../services/scanWindow.js";
+import { initialConnectScanWindow, isHistoricalGmailScanRequest, resolveHistoricalGmailScanWindow } from "../services/scanWindow.js";
 import {
   closeStaleGmailScansForOrg,
   createQueuedGmailScanLog,
@@ -34,6 +34,7 @@ import {
   findLastGmailScanSuccessCursor,
   logScanLifecycle,
   refreshGmailScanProgressOnRead,
+  resolveIncrementalGmailScanWindow,
   toApiGmailScanStatus,
 } from "../services/gmailScanLifecycle.js";
 import { resolveDocumentsFound } from "../services/gmailScanProgressCounts.js";
@@ -5896,14 +5897,47 @@ async function scanGmail(req: Request, res: Response) {
     }
 
     const rescanInvoices = req.body?.rescanInvoices === true || req.query.rescanInvoices === "true";
+    const historical =
+      req.body?.historical === true ||
+      req.query.historical === "true" ||
+      req.body?.historical === "1" ||
+      req.query.historical === "1";
     const rawDaysBackValue = req.body?.daysBack ?? req.query.daysBack;
     const rawDaysBack = Number(rawDaysBackValue);
-    const initialWindow = initialConnectScanWindow();
     const hasExplicitDaysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0;
-    const daysBack = hasExplicitDaysBack ? Math.ceil(rawDaysBack) : rescanInvoices ? 90 : initialWindow.daysBack;
-    const since = hasExplicitDaysBack || rescanInvoices ? undefined : initialWindow.since;
+    const useHistoricalScan = isHistoricalGmailScanRequest({
+      historical,
+      rescanInvoices,
+      hasExplicitDaysBack,
+      rawDaysBack,
+    });
+
+    let daysBack: number;
+    let since: Date | undefined;
+    let scanMode: "manual" | "manual_incremental";
+    let incrementalCursorSource: string | undefined;
+
+    if (useHistoricalScan) {
+      const historicalWindow = resolveHistoricalGmailScanWindow({
+        hasExplicitDaysBack,
+        rawDaysBack,
+        rescanInvoices,
+      });
+      daysBack = historicalWindow.daysBack;
+      since = historicalWindow.since;
+      scanMode = "manual";
+    } else {
+      const incrementalWindow = await resolveIncrementalGmailScanWindow(organizationId);
+      daysBack = incrementalWindow.daysBack;
+      since = incrementalWindow.since;
+      scanMode = "manual_incremental";
+      incrementalCursorSource = incrementalWindow.cursorSource;
+    }
+
     const maxMessages = rescanInvoices ? 1000 : undefined;
-    console.log(`[gmail-scan] POST /api/gmail/scan org=${organizationId} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack}`);
+    console.log(
+      `[gmail-scan] POST /api/gmail/scan org=${organizationId} scanMode=${scanMode} historical=${useHistoricalScan} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack} since=${since?.toISOString() ?? "none"} cursorSource=${incrementalCursorSource ?? "n/a"}`
+    );
     console.log("[gmail-scan] Step 1: checking Gmail authentication");
 
     const cleanup = rescanInvoices ? await cleanupGmailInvoiceArtifacts(organizationId) : null;
@@ -5928,7 +5962,7 @@ async function scanGmail(req: Request, res: Response) {
       return;
     }
 
-    const { scanLog, created } = await createQueuedGmailScanLog(organizationId, "manual");
+    const { scanLog, created } = await createQueuedGmailScanLog(organizationId, scanMode);
     if (!created) {
       const progress = await buildGmailScanProgress(organizationId, scanLog.id);
       res.json({
@@ -5951,7 +5985,7 @@ async function scanGmail(req: Request, res: Response) {
       scanAllMail: rescanInvoices,
       maxMessages,
       scanLogId: scanLog.id,
-      scanMode: "manual",
+      scanMode,
     })
       .then((backgroundResult) => {
         if ("inProgress" in backgroundResult && backgroundResult.inProgress) {

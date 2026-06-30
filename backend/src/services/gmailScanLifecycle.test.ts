@@ -66,6 +66,7 @@ test("mergeGmailScanWindowTruncated combines listing and deadline flags", () => 
 
 test("classifyOverdueGmailScanClose pauses advancing manual scans and stales orphans", () => {
   assert.equal(classifyOverdueGmailScanClose({ scanMode: "manual", emailsProcessed: 342 }), "paused");
+  assert.equal(classifyOverdueGmailScanClose({ scanMode: "manual_incremental", emailsProcessed: 12 }), "paused");
   assert.equal(classifyOverdueGmailScanClose({ scanMode: "first_time", emailsProcessed: 12 }), "paused");
   assert.equal(classifyOverdueGmailScanClose({ scanMode: "manual", emailsProcessed: 0 }), "stale");
   assert.equal(classifyOverdueGmailScanClose({ scanMode: "fast_recurring", emailsProcessed: 2 }), "stale");

@@ -606,7 +606,7 @@ type GmailSyncOptions = {
   scanAllMail?: boolean;
   maxMessages?: number;
   scanLogId?: string;
-  scanMode?: "manual" | "auto_daily" | "auto_weekly" | "retry" | "first_time" | "fast_recurring";
+  scanMode?: "manual" | "manual_incremental" | "auto_daily" | "auto_weekly" | "retry" | "first_time" | "fast_recurring";
   retryOfId?: string;
   fastOnly?: boolean;
 };

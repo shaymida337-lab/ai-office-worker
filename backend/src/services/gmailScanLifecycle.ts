@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { buildIncrementalGmailScanWindow } from "./scanWindow.js";
 
 export const GMAIL_SCAN_STALE_MS = 30 * 60 * 1000;
 
@@ -165,6 +166,22 @@ export async function findLastGmailScanSuccessCursor(organizationId: string) {
     },
     orderBy: { finishedAt: "desc" },
     select: { id: true, finishedAt: true, status: true, windowTruncated: true },
+  });
+}
+
+export async function resolveIncrementalGmailScanWindow(organizationId: string, now = new Date()) {
+  const [lastSuccess, integration] = await Promise.all([
+    findLastGmailScanSuccessCursor(organizationId),
+    prisma.integration.findUnique({
+      where: { organizationId_provider: { organizationId, provider: "gmail" } },
+      select: { connectedAt: true },
+    }),
+  ]);
+
+  return buildIncrementalGmailScanWindow({
+    lastSuccessFinishedAt: lastSuccess?.finishedAt ?? null,
+    connectedAt: integration?.connectedAt ?? null,
+    now,
   });
 }
 
