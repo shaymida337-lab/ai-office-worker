@@ -45,13 +45,46 @@ export type ScanProgressLike = {
   supplierPaymentsFound?: number;
 };
 
+export type ScanBannerStatus = "running" | "success" | "partial" | "truncated" | "paused" | "stale" | "error";
+
 export type ScanBannerState = {
-  status: "running" | "success" | "partial" | "truncated" | "paused" | "stale" | "error";
+  status: ScanBannerStatus;
   found: number;
   scanned: number;
   totalMatched?: number | null;
   errors: number;
 };
+
+export function formatScanBannerText(
+  status: ScanBannerStatus,
+  found: number,
+  scanned: number,
+  totalMatched: number | null | undefined,
+  errors: number
+): string {
+  if (status === "running") {
+    return `נטלי סורקת את המייל שלך… עברתי על ${scanned} מיילים ומצאתי ${found} מסמכים`;
+  }
+  if (status === "success") {
+    if (found === 0 && scanned > 0) {
+      return `הסריקה הסתיימה — עברתי על ${scanned} מיילים ולא מצאתי מסמכים חדשים`;
+    }
+    return `הסריקה הסתיימה — עברתי על ${scanned} מיילים ומצאתי ${found} מסמכים`;
+  }
+  if (status === "partial") {
+    return `הסריקה הסתיימה עם ${errors} בעיות שדורשות בדיקה — עברתי על ${scanned} מיילים ומצאתי ${found} מסמכים`;
+  }
+  if (status === "stale") {
+    return "הסריקה הקודמת לא הסתיימה. אפשר לנסות שוב מתי שנוח לך.";
+  }
+  if (status === "paused") {
+    return `עברתי על ${scanned} מתוך ${totalMatched ?? scanned} מיילים — נשאר עוד. אפשר להריץ סריקה נוספת כשתרצה.`;
+  }
+  if (status === "truncated") {
+    return `הסריקה הסתיימה חלקית — עברתי על ${scanned} מתוך ${totalMatched ?? scanned} מיילים ומצאתי ${found} מסמכים. מומלץ להריץ סריקה נוספת`;
+  }
+  return "הסריקה לא הושלמה. נסה שוב בעוד רגע, ונטלי תמשיך מאיפה שעצרנו";
+}
 
 export function resolveDashboardGmailScanRunning(input: {
   syncing: boolean;
@@ -90,15 +123,12 @@ export function resolveDashboardGmailScanRunning(input: {
 
 export function buildScanBannerState(
   activeScan: ScanProgressLike | null,
-  scanStatus: { last: ScanStatusLog | null } | null,
-  documentReviewCount = 0
+  scanStatus: { last: ScanStatusLog | null } | null
 ): ScanBannerState | null {
-  const withReviewFallback = (found: number) => Math.max(found, documentReviewCount);
-
   if (activeScan) {
     return {
       status: mapProgressToBannerStatus(activeScan),
-      found: withReviewFallback(scanDocumentsFound(activeScan)),
+      found: scanDocumentsFound(activeScan),
       scanned: activeScan.emailsFetched ?? 0,
       totalMatched: activeScan.totalMatched ?? activeScan.summary?.totalMatched,
       errors: activeScan.summary?.errorsCount ?? activeScan.finalSummary?.errorsCount ?? 0,
@@ -110,9 +140,7 @@ export function buildScanBannerState(
   if (isRunningScanStatusLog(scanStatus.last)) {
     return {
       status: "running",
-      found: withReviewFallback(
-        (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0)
-      ),
+      found: (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0),
       scanned: scanStatus.last.found,
       totalMatched: scanStatus.last.totalMatched,
       errors: scanStatus.last.errors ? 1 : 0,
@@ -132,9 +160,7 @@ export function buildScanBannerState(
               : scanStatus.last.status === "partial"
                 ? "partial"
                 : "error",
-    found: withReviewFallback(
-      (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0)
-    ),
+    found: (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0),
     scanned: scanStatus.last.found,
     totalMatched: scanStatus.last.totalMatched,
     errors: scanStatus.last.errors ? 1 : 0,
@@ -143,7 +169,7 @@ export function buildScanBannerState(
 
 function mapProgressToBannerStatus(
   progress: ScanProgressLike
-): ScanBannerState["status"] {
+): ScanBannerStatus {
   if (isTerminalGmailScanProgress(progress)) {
     if (isPausedGmailScanStatus(progress.status)) return "paused";
     const truncated = progress.windowTruncated ?? progress.summary?.windowTruncated ?? false;

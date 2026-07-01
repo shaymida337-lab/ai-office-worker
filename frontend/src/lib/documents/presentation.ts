@@ -9,6 +9,9 @@ export type DocumentReviewItem = {
   documentType: string;
   supplierName: string | null;
   totalAmount: number | null;
+  displayAmount?: number | null;
+  amountLabel?: string;
+  amountResolved?: boolean;
   currency?: string | null;
   confidenceScore: number;
   uncertaintyReason: string | null;
@@ -17,6 +20,11 @@ export type DocumentReviewItem = {
   createdAt: string;
   parsedFieldsJson?: unknown;
 };
+
+export function documentReviewAmountLabel(item: DocumentReviewItem): string {
+  if (item.amountLabel) return item.amountLabel;
+  return formatDocumentAmount(item.displayAmount ?? item.totalAmount, item.currency ?? "ILS", item.parsedFieldsJson);
+}
 
 export type DocumentFilter =
   | "all"
@@ -160,7 +168,7 @@ export function presentDocument(item: DocumentReviewItem): DocumentPresentation 
   return {
     typeLabel,
     supplier,
-    amountLabel: formatDocumentAmount(item.totalAmount, item.currency ?? "ILS", item.parsedFieldsJson),
+    amountLabel: documentReviewAmountLabel(item),
     documentTypeLabel: documentTypeLabel(item.documentType),
     reason,
     primaryLabel,
@@ -201,7 +209,8 @@ export function matchesDocumentSearch(item: DocumentReviewItem, query: string) {
     item.subject,
     item.fileName,
     documentTypeLabel(item.documentType),
-    item.totalAmount != null ? String(item.totalAmount) : "",
+    item.displayAmount != null ? String(item.displayAmount) : item.totalAmount != null ? String(item.totalAmount) : "",
+    item.amountLabel ?? "",
     formatDocumentDate(item.createdAt),
   ]
     .filter(Boolean)
@@ -222,8 +231,9 @@ export function matchesDocumentSearch(item: DocumentReviewItem, query: string) {
   }
 
   const amountMatch = q.match(/(\d+)/);
-  if (amountMatch && item.totalAmount != null) {
-    return item.totalAmount >= Number(amountMatch[1]);
+  const searchableAmount = item.displayAmount ?? item.totalAmount;
+  if (amountMatch && searchableAmount != null) {
+    return searchableAmount >= Number(amountMatch[1]);
   }
 
   return false;
@@ -271,4 +281,11 @@ export function remainingDocumentsMessage(count: number) {
   if (count === 1) return "נשאר עוד מסמך אחד.";
   if (count === 2) return "נשארו עוד שני מסמכים.";
   return `נשארו עוד ${count} מסמכים.`;
+}
+
+export function formatReviewQueueHeadline(visibleCount: number, totalCount: number): string {
+  if (totalCount <= 0) return "";
+  if (totalCount === 1) return "מסמך אחד מחכה להחלטה שלך";
+  if (totalCount <= visibleCount) return `${totalCount} מסמכים מחכים להחלטה שלך`;
+  return `מציג ${visibleCount} מתוך ${totalCount} מסמכים שמחכים להחלטה שלך`;
 }

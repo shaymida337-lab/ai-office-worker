@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildScanBannerState,
+  formatScanBannerText,
   resolveDashboardGmailScanRunning,
 } from "./gmailScanBanner.js";
 
@@ -192,4 +193,44 @@ test("read-side deadline close for manual scan shows paused not stale", () => {
     }),
     false
   );
+});
+
+test("buildScanBannerState does not inflate found from pending review queue size", () => {
+  const banner = buildScanBannerState(null, {
+    last: {
+      id: "scan-zero",
+      status: "completed",
+      found: 4,
+      saved: 0,
+      invoicesFound: 0,
+      paymentsFound: 0,
+      errors: null,
+      endedAt: "2026-07-01T08:00:00.000Z",
+    },
+  });
+
+  assert.equal(banner?.found, 0);
+  assert.equal(banner?.scanned, 4);
+});
+
+test("scan banner copy distinguishes emails processed from documents found", () => {
+  const running = formatScanBannerText("running", 2, 5, null, 0);
+  assert.match(running, /5 מיילים/);
+  assert.match(running, /2 מסמכים/);
+  assert.doesNotMatch(running, /5 מסמכים/);
+
+  const success = formatScanBannerText("success", 1, 3, null, 0);
+  assert.match(success, /3 מיילים/);
+  assert.match(success, /1 מסמכים/);
+
+  const empty = formatScanBannerText("success", 0, 5, null, 0);
+  assert.match(empty, /5 מיילים/);
+  assert.match(empty, /לא מצאתי מסמכים חדשים/);
+});
+
+test("truncated scan banner reports emails and documents separately", () => {
+  const text = formatScanBannerText("truncated", 2, 120, 500, 0);
+  assert.match(text, /120 מתוך 500 מיילים/);
+  assert.match(text, /2 מסמכים/);
+  assert.doesNotMatch(text, /נסרקו 2/);
 });

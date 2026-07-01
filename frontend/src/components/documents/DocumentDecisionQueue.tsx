@@ -1,7 +1,10 @@
 "use client";
 
 import { colors, type as typography } from "@/lib/design-tokens";
-import type { DocumentReviewItem } from "@/lib/documents/presentation";
+import {
+  formatReviewQueueHeadline,
+  type DocumentReviewItem,
+} from "@/lib/documents/presentation";
 import { DocumentDecisionCard } from "./DocumentDecisionCard";
 
 const MAX_VISIBLE = 5;
@@ -35,7 +38,7 @@ export function DocumentDecisionQueue({
           מה דורש את ההחלטה שלך
         </h2>
         <p className={`${typography.body} mt-1`} style={{ color: colors.textSecondary }}>
-          {totalCount === 1 ? "מסמך אחד מחכה לך" : `${totalCount} מסמכים מחכים לך`}
+          {formatReviewQueueHeadline(visible.length, totalCount)}
         </p>
       </div>
 

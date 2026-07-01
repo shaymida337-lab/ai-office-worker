@@ -980,11 +980,7 @@ export default function DashboardPage() {
   const gmailConnected = Boolean(gmailStatus?.connected);
   const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
   const ownerFirstName = getFirstNameForGreeting(organizationSettings?.name) ?? firstNameFromLabel(organizationSettings?.name);
-  const scanBannerBase = successScanBannerHidden ? null : buildScanBannerState(activeScan, scanStatus, documentReviews.length);
-  const scanBanner =
-    scanBannerBase && scanBannerBase.found === 0 && documentReviews.length > 0
-      ? { ...scanBannerBase, found: documentReviews.length }
-      : scanBannerBase;
+  const scanBanner = successScanBannerHidden ? null : buildScanBannerState(activeScan, scanStatus);
   const monthPayments = payments.filter((payment) => isThisMonth(payment.date));
   const unpaidPayments = useMemo(() => payments.filter((payment) => !payment.paid), [payments]);
   const openTasksCount = stats?.openTasks ?? recentTasks.filter((task) => task.status !== "completed" && task.status !== "done").length;
@@ -992,7 +988,7 @@ export default function DashboardPage() {
     syncing,
     activeScanId,
     activeScan,
-    scanBanner: scanBannerBase,
+    scanBanner,
     scanLogs: scanStatus?.logs,
   });
   const scanStale = scanBanner?.status === "stale";
