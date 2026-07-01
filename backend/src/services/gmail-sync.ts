@@ -32,6 +32,11 @@ import {
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
 import { mapAnalysisDocumentTypeForAmount, moneyDecisionUncertaintySuffix, resolveGmailOrgMoneyDecision, resolvePersistedTotalAmount, summarizeMoneyDecision } from "./amount/amountCandidates.js";
 import {
+  invoiceScanToAttachmentAnalysis,
+  mergeVisualAttachmentAnalyses,
+  type VisualAttachmentAnalysis,
+} from "./amount/visualAttachmentAmount.js";
+import {
   attachSupplierGateToParsedFields,
   parseSupplierGateFromParsedFields,
   type SupplierGateSnapshot,
@@ -50,6 +55,7 @@ import { parseAmountOrNull, parseLabeledAmount, parseAmount } from "./amount/par
 import {
   buildPaymentLookupsFromCanonical,
   buildLegacyDuplicateHashForLookup,
+  buildLegacyDuplicateHashForGmailLookup,
 } from "./dedup/fingerprintMigration.js";
 import { computeCanonicalFingerprint, normalizeSupplierTaxId } from "./dedup/sharedMatcher.js";
 import {
@@ -1692,6 +1698,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         analysis,
         extractedFieldsAmount: extractedFields.amount,
         regexDetectedAmount: invoiceMatch.amount,
+        attachmentAnalysis: visualAttachmentHints.attachmentAnalysis,
       });
       parsedFieldsJson.arc = summarizeMoneyDecision(moneyDecision);
       const finalTotalAmount = resolvePersistedTotalAmount(moneyDecision);
@@ -2099,12 +2106,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         identityStability,
         hasAttachment: hasPdfOrImageDocumentEvidence,
       });
-      const legacyDuplicateHash = buildLegacyDuplicateHashForLookup({
+      const legacyDuplicateHash = buildLegacyDuplicateHashForGmailLookup({
         organizationId,
         supplier: supplierName ?? "unknown",
-        amount: finalTotalAmount ?? 0,
+        totalAmount: finalTotalAmount,
         dateIso: documentDateForDecision?.toISOString() ?? email.receivedAt.toISOString(),
         subject: email.subject,
+        gmailMessageId: email.gmailId,
       });
       const sameEmailPayment = email.emailRecordId
         ? await prisma.supplierPayment.findFirst({
@@ -2866,6 +2874,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           duplicateHash,
           lookupClauses: paymentIdentity.lookupClauses,
           emailMessageId: email.emailRecordId,
+          gmailMessageId: email.gmailId,
           supplier: paymentSupplierName,
           amount: paymentAmount,
           date: email.receivedAt,
@@ -3000,6 +3009,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           logStep(`[gmail-sync] DB SupplierPayment insert attempt message=${email.gmailId} amount=${paymentAmount} supplier="${paymentSupplierName}"`);
           const createResult = await createSupplierPaymentIfTrusted({
             evaluation: paymentEvaluation,
+            sourceLookup: { gmailMessageId: email.gmailId },
             data: {
               organizationId,
               supplier: paymentSupplierName,
@@ -5243,12 +5253,19 @@ async function extractVisualAttachmentHints(
   sender: string,
   logStep: (message: string) => void,
   ownerEmails: Set<string>
-) {
+): Promise<{
+  text: string;
+  invoiceCandidateFound: boolean;
+  needsReview: boolean;
+  reviewReason: string;
+  attachmentAnalysis: VisualAttachmentAnalysis | null;
+}> {
   const visualParts = parts.filter(isInvoiceImageAttachmentPart);
   const hints: string[] = [];
   let invoiceCandidateFound = false;
   let needsReview = false;
   let reviewReason = "image invoice OCR candidate";
+  let attachmentAnalysis: VisualAttachmentAnalysis | null = null;
   for (const part of visualParts) {
     const filename = attachmentFilenameForPart(part);
     const imageMimeType = imageMimeTypeForPart(part);
@@ -5267,6 +5284,10 @@ async function extractVisualAttachmentHints(
       }
       const keywordSupplier = detectSupplierKeyword(`${result.ocrText ?? ""}\n${result.supplier}`);
       const amount = normalizeDetectedAmount(result.totalAmount ?? result.amount);
+      attachmentAnalysis = mergeVisualAttachmentAnalyses(
+        attachmentAnalysis,
+        invoiceScanToAttachmentAnalysis(result)
+      );
       const hasSupplier = isUsableSupplierName(result.supplier, ownerEmails) || Boolean(keywordSupplier);
       const hasInvoiceNumber = Boolean(result.invoiceNumber?.trim());
       const isInvoiceCandidate = isInvoiceScanResultDocument(result.documentType) || amount !== null || hasInvoiceNumber || (hasSupplier && result.paymentRequired === true);
@@ -5290,7 +5311,7 @@ async function extractVisualAttachmentHints(
       }
     }
   }
-  return { text: hints.join("\n"), invoiceCandidateFound, needsReview, reviewReason };
+  return { text: hints.join("\n"), invoiceCandidateFound, needsReview, reviewReason, attachmentAnalysis };
 }
 
 async function attachmentData(gmail: GmailClient, messageId: string, part: PayloadPart) {
@@ -5983,6 +6004,7 @@ async function findExistingSupplierPayment(input: {
   duplicateHash: string;
   lookupClauses?: Array<Record<string, unknown>>;
   emailMessageId: string;
+  gmailMessageId?: string;
   supplier: string;
   amount: number | null;
   date: Date;
@@ -6008,6 +6030,27 @@ async function findExistingSupplierPayment(input: {
   });
   if (byHash) return byHash;
 
+  if (input.gmailMessageId) {
+    const emailRows = await prisma.emailMessage.findMany({
+      where: {
+        organizationId: input.organizationId,
+        gmailId: input.gmailMessageId,
+      },
+      select: { id: true },
+    });
+    for (const emailRow of emailRows) {
+      const byGmailEmail = await prisma.supplierPayment.findFirst({
+        where: {
+          organizationId: input.organizationId,
+          emailMessageId: emailRow.id,
+          approvalStatus: { not: "rejected" },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      if (byGmailEmail) return byGmailEmail;
+    }
+  }
+
   const dayStart = new Date(input.date);
   dayStart.setHours(0, 0, 0, 0);
   const dayEnd = new Date(input.date);
@@ -6017,7 +6060,9 @@ async function findExistingSupplierPayment(input: {
     where: {
       organizationId: input.organizationId,
       emailMessageId: input.emailMessageId,
+      approvalStatus: { not: "rejected" },
     },
+    orderBy: { createdAt: "asc" },
   });
   if (bySameEmail) return bySameEmail;
 
@@ -6028,6 +6073,7 @@ async function findExistingSupplierPayment(input: {
         supplier: input.supplier,
         amount: input.amount,
         date: { gte: dayStart, lte: dayEnd },
+        approvalStatus: { not: "rejected" },
       },
       orderBy: { createdAt: "asc" },
     });
@@ -6158,6 +6204,7 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
     try {
       const createResult = await createSupplierPaymentIfTrusted({
         evaluation: paymentEvaluation,
+        sourceLookup: { gmailMessageId: input.email.gmailId },
         data: {
           organizationId: input.organizationId,
           supplier: paymentSupplierName,
@@ -6608,6 +6655,7 @@ export async function fetchAndParseGmailMessageFinancialFields(input: {
     analysis,
     extractedFieldsAmount: extractedFields.amount,
     regexDetectedAmount: invoiceMatch.amount,
+    attachmentAnalysis: visualAttachmentHints.attachmentAnalysis,
   });
   const finalTotalAmount = resolvePersistedTotalAmount(moneyDecision);
   const amount = finalTotalAmount;

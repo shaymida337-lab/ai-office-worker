@@ -88,7 +88,8 @@ function fallbackInvoiceData(
 ): InvoiceData {
   const text = `${subject}\n${emailBody}`;
   const amount = extractAmount(text);
-  const amountMissing = amount === null;
+  const hasExplicitZeroAmount = hasExplicitZeroInvoiceTotal(text);
+  const amountMissing = amount === null && !hasExplicitZeroAmount;
   return {
     clientName: clientFallback?.name ?? null,
     clientEmail: clientFallback?.email ?? null,
@@ -97,7 +98,7 @@ function fallbackInvoiceData(
       text.match(/(?:invoice|receipt|חשבונית|קבלה)[^\dA-Z]{0,12}([A-Z0-9-]{3,})/i)?.[1] ??
       attachments.find((item) => item.filename)?.filename?.replace(/\.[^.]+$/, "") ??
       null,
-    amount: amount ?? 0,
+    amount: amount ?? (hasExplicitZeroAmount ? 0 : 0),
     amountMissing,
     currency: /usd|\$/i.test(text) ? "USD" : /eur|€/i.test(text) ? "EUR" : "ILS",
     date: extractDate(text) ?? new Date().toISOString().slice(0, 10),
@@ -175,6 +176,12 @@ function extractAmount(text: string): number | null {
   if (!amounts.length) return null;
   amounts.sort((a, b) => b.score - a.score);
   return amounts[0].amount;
+}
+
+function hasExplicitZeroInvoiceTotal(text: string): boolean {
+  return /(?:סה["״']?כ|סך\s*הכל|סכום\s*(?:לתשלום)?|לתשלום|total\s*(?:due|amount)?|amount\s*(?:due)?|balance\s*due|grand\s*total)[^\d₪$€]{0,40}(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur)?\s*0(?:\s*(?:₪|ils|nis|ש["״']?ח|\$|usd|€|eur))?\b/i.test(
+    text
+  );
 }
 
 function collectMatches(text: string, pattern: RegExp, score: number, out: Array<{ raw: string; score: number; hasDateContext: boolean }>) {

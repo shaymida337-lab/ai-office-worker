@@ -2,12 +2,23 @@ import type { Prisma, SupplierPayment } from "@prisma/client";
 
 import { prisma } from "../../lib/prisma.js";
 import {
+  recordPlatformAudit,
+  paymentAuditSnapshot,
+  aiAuditContext,
+  resolveWorkflowCorrelationId,
+  type PlatformAuditActorContext,
+} from "../auditLog/index.js";
+import {
   evaluateAmountGate,
   FINANCE_AMOUNT_UNRESOLVED_REASON,
   type AmountGateSnapshot,
   type FseSummaryForAmountGate,
 } from "../amount/amountGate.js";
 import { ARC_VERSION } from "../amount/canonicalAmount.js";
+import {
+  duplicateSupplierPaymentBlockReason,
+  findActiveSupplierPaymentForSource,
+} from "../dedup/supplierPaymentSourceDedup.js";
 import {
   evaluateDuplicateGate,
   type DuplicateGateInput,
@@ -291,6 +302,10 @@ export async function createSupplierPaymentIfTrusted(input: {
     where: Prisma.SupplierPaymentWhereUniqueInput;
     update?: Prisma.SupplierPaymentUncheckedUpdateInput;
   };
+  audit?: PlatformAuditActorContext;
+  sourceLookup?: {
+    gmailMessageId?: string | null;
+  };
 }): Promise<CreateSupplierPaymentIfTrustedResult> {
   const { evaluation } = input;
   if (!evaluation.shouldCreatePayment || evaluation.outcome !== "pass") {
@@ -302,16 +317,86 @@ export async function createSupplierPaymentIfTrusted(input: {
     };
   }
 
+  const organizationId = typeof input.data.organizationId === "string" ? input.data.organizationId : null;
+  const emailMessageId =
+    typeof input.data.emailMessageId === "string" ? input.data.emailMessageId : null;
+  const documentFingerprint =
+    typeof input.data.documentFingerprint === "string" ? input.data.documentFingerprint : null;
+
+  if (organizationId) {
+    const existingSourcePayment = await findActiveSupplierPaymentForSource({
+      organizationId,
+      emailMessageId,
+      gmailMessageId: input.sourceLookup?.gmailMessageId ?? null,
+      documentFingerprint,
+    });
+    if (existingSourcePayment && !input.upsert) {
+      return {
+        payment: existingSourcePayment,
+        skipped: true,
+        reason: duplicateSupplierPaymentBlockReason(existingSourcePayment),
+        evaluation,
+      };
+    }
+  }
+
   if (input.upsert) {
+    const existing = await prisma.supplierPayment.findUnique({
+      where: input.upsert.where,
+      select: {
+        id: true,
+        supplier: true,
+        amount: true,
+        currency: true,
+        paid: true,
+        approvalStatus: true,
+        emailMessageId: true,
+        documentFingerprint: true,
+        organizationId: true,
+      },
+    });
     const payment = await prisma.supplierPayment.upsert({
       where: input.upsert.where,
       create: input.data,
       update: input.upsert.update ?? {},
     });
+    const auditCtx =
+      input.audit ??
+      aiAuditContext(
+        FINANCE_TRUST_PERSISTENCE_MODULE,
+        resolveWorkflowCorrelationId({
+          emailMessageId: typeof input.data.emailMessageId === "string" ? input.data.emailMessageId : null,
+        }),
+      );
+    recordPlatformAudit({
+      ...auditCtx,
+      organizationId: payment.organizationId,
+      entityType: "supplier_payment",
+      entityId: payment.id,
+      action: existing ? "payment_updated" : "payment_created",
+      beforeState: existing ? paymentAuditSnapshot(existing) : null,
+      afterState: paymentAuditSnapshot(payment),
+    });
     return { payment, skipped: false, reason: null, evaluation };
   }
 
   const payment = await prisma.supplierPayment.create({ data: input.data });
+  const auditCtx =
+    input.audit ??
+    aiAuditContext(
+      FINANCE_TRUST_PERSISTENCE_MODULE,
+      resolveWorkflowCorrelationId({
+        emailMessageId: typeof input.data.emailMessageId === "string" ? input.data.emailMessageId : null,
+      }),
+    );
+  recordPlatformAudit({
+    ...auditCtx,
+    organizationId: payment.organizationId,
+    entityType: "supplier_payment",
+    entityId: payment.id,
+    action: "payment_created",
+    afterState: paymentAuditSnapshot(payment),
+  });
   return { payment, skipped: false, reason: null, evaluation };
 }
 

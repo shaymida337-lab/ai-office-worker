@@ -115,6 +115,32 @@ export function buildLegacyDuplicateHashForLookup(input: {
   return buildDuplicateHash(input);
 }
 
+export function buildLegacyDuplicateHashForGmailLookup(input: {
+  organizationId: string;
+  supplier: string;
+  totalAmount: number | null;
+  dateIso: string;
+  subject?: string | null;
+  gmailMessageId: string;
+}) {
+  if (input.totalAmount != null && input.totalAmount > 0) {
+    return buildLegacyDuplicateHashForLookup({
+      organizationId: input.organizationId,
+      supplier: input.supplier,
+      amount: input.totalAmount,
+      dateIso: input.dateIso,
+      subject: input.subject,
+    });
+  }
+  return buildLegacyDuplicateHashForLookup({
+    organizationId: input.organizationId,
+    supplier: input.supplier,
+    amount: 0,
+    dateIso: input.dateIso,
+    subject: `${input.subject ?? "unknown"}|gmail:${input.gmailMessageId}`,
+  });
+}
+
 export function buildLegacyFileDuplicateHashForLookup(input: {
   organizationId: string;
   supplier: string;
