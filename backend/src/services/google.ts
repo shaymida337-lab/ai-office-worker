@@ -1,6 +1,10 @@
 import type { drive_v3 } from "googleapis";
 import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
+import {
+  assertGmailIntegrationIsolatedForScan,
+  assertIntegrationBelongsToOrganization,
+} from "./gmailIntegrationIsolation.js";
 
 type ScopeAwareOAuth2Client = {
   getAccessToken(): Promise<{ token?: string | null } | string | null | undefined>;
@@ -16,6 +20,7 @@ async function loadGoogle() {
 export async function getGoogleClients(organizationId: string) {
   const google = await loadGoogle();
   const integration = await ensureGmailAccessToken(organizationId);
+  assertIntegrationBelongsToOrganization(integration, organizationId);
   if (!integration.refreshToken) {
     throw new Error("Gmail not connected");
   }
@@ -56,14 +61,7 @@ export async function getGoogleClients(organizationId: string) {
 
 export async function ensureGmailAccessToken(organizationId: string) {
   const google = await loadGoogle();
-  const integration = await prisma.integration.findUnique({
-    where: {
-      organizationId_provider: { organizationId, provider: "gmail" },
-    },
-  });
-  if (!integration?.refreshToken) {
-    throw new Error("Gmail not connected");
-  }
+  const integration = await assertGmailIntegrationIsolatedForScan(organizationId);
 
   const expiresAt = integration.expiresAt?.getTime() ?? 0;
   const hasValidAccessToken = Boolean(integration.accessToken) && expiresAt > Date.now() + 60_000;
@@ -154,11 +152,18 @@ export function missingRequiredGoogleDriveScopes(scopes: readonly string[] | nul
   return REQUIRED_GOOGLE_DRIVE_SCOPES.filter((scope) => !granted.has(scope));
 }
 
-export function googleOAuthMetadata(existingMetadata: string | null | undefined, grantedScopeString: string | null | undefined) {
+export function googleOAuthMetadata(
+  existingMetadata: string | null | undefined,
+  grantedScopeString: string | null | undefined,
+  googleAccountEmail?: string | null
+) {
   const existing = parseGoogleIntegrationMetadata(existingMetadata);
   const grantedScopes = grantedScopeString?.split(/\s+/).map((scope) => scope.trim()).filter(Boolean) ?? [];
+  const normalizedEmail =
+    typeof googleAccountEmail === "string" ? googleAccountEmail.trim().toLowerCase() : null;
   return JSON.stringify({
     ...existing,
+    ...(normalizedEmail ? { googleAccountEmail: normalizedEmail } : {}),
     googleOAuthScopes: grantedScopes,
     googleDriveRequiredScopes: REQUIRED_GOOGLE_DRIVE_SCOPES,
     googleOAuthScopesUpdatedAt: new Date().toISOString(),
@@ -205,7 +210,7 @@ export async function assertRequiredGoogleDriveScopes(
   throw error;
 }
 
-function parseGoogleIntegrationMetadata(metadata: string | null | undefined): Record<string, unknown> {
+export function parseGoogleIntegrationMetadata(metadata: string | null | undefined): Record<string, unknown> {
   if (!metadata) return {};
   try {
     const parsed = JSON.parse(metadata);

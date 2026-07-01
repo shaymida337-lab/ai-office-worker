@@ -11,6 +11,10 @@ import { hashPassword, verifyPassword } from "../lib/password.js";
 import { sendAuthSuccess } from "../lib/auth-response.js";
 import { errorDetails, publicErrorMessage } from "../lib/errors.js";
 import { markOrganizationNeedsOnboarding } from "../services/businessTemplates.js";
+import {
+  assertRefreshTokenCanBindToOrganization,
+  GmailIntegrationIsolationError,
+} from "../services/gmailIntegrationIsolation.js";
 
 export const authRouter = Router();
 
@@ -336,9 +340,13 @@ authRouter.get("/google/callback", async (req, res) => {
       where: {
         organizationId_provider: { organizationId: org.id, provider: "gmail" },
       },
-      select: { metadata: true },
+      select: { metadata: true, refreshToken: true },
     });
     const metadata = googleOAuthMetadata(existingLoginIntegration?.metadata, tokens.scope ?? null);
+    const refreshToken = tokens.refresh_token ?? existingLoginIntegration?.refreshToken ?? null;
+    if (refreshToken) {
+      await assertRefreshTokenCanBindToOrganization(org.id, refreshToken);
+    }
     const savedIntegration = await prisma.integration.upsert({
       where: {
         organizationId_provider: { organizationId: org.id, provider: "gmail" },

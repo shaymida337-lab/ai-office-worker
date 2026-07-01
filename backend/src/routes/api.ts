@@ -497,24 +497,8 @@ apiRouter.get("/gmail/invoice-diagnostics", async (req, res) => {
 });
 
 async function debugGmailIntegrationForAuth(auth: { userId: string; organizationId: string; email: string }) {
-  const current = await prisma.integration.findUnique({
-    where: { organizationId_provider: { organizationId: auth.organizationId, provider: "gmail" } },
-  });
-  const fallback = current?.refreshToken
-    ? null
-    : await prisma.integration.findFirst({
-        where: {
-          provider: "gmail",
-          OR: [
-            { organization: { userId: auth.userId } },
-            { organization: { user: { email: auth.email } } },
-          ],
-          refreshToken: { not: null },
-        },
-        orderBy: { updatedAt: "desc" },
-      });
-
-  return current?.refreshToken || current?.accessToken ? current : fallback ?? current;
+  const { findGmailIntegrationForOrganization } = await import("../services/gmailIntegrationIsolation.js");
+  return findGmailIntegrationForOrganization(auth.organizationId);
 }
 
 function debugGmailBase(auth: { userId: string; organizationId: string; email: string }, integration: Awaited<ReturnType<typeof debugGmailIntegrationForAuth>>) {
@@ -2180,6 +2164,7 @@ apiRouter.get("/debug/invoices-auth", async (req, res) => {
 });
 
 apiRouter.post("/debug/gmail/test-fetch", async (req, res) => {
+  const organizationId = req.auth!.organizationId;
   const integration = await debugGmailIntegrationForAuth(req.auth!);
   const base = debugGmailBase(req.auth!, integration);
   if (!integration?.refreshToken) {
@@ -2189,7 +2174,7 @@ apiRouter.post("/debug/gmail/test-fetch", async (req, res) => {
 
   try {
     const { getGoogleClients } = await import("../services/google.js");
-    const { gmail } = await getGoogleClients(integration.organizationId);
+    const { gmail } = await getGoogleClients(organizationId);
     const result = await gmail.users.messages.list({
       userId: "me",
       q: "newer_than:90d -category:promotions -category:social -in:spam -in:trash",
@@ -2205,7 +2190,7 @@ apiRouter.post("/debug/gmail/test-fetch", async (req, res) => {
     let emailsSaved = 0;
 
     if (firstMessage?.id) {
-      console.log(`[debug/gmail/test-fetch] trace start org=${integration.organizationId} message=${firstMessage.id}`);
+      console.log(`[debug/gmail/test-fetch] trace start org=${organizationId} message=${firstMessage.id}`);
       const full = await gmail.users.messages.get({
         userId: "me",
         id: firstMessage.id,
@@ -2226,12 +2211,12 @@ apiRouter.post("/debug/gmail/test-fetch", async (req, res) => {
       const emailRecord = await prisma.emailMessage.upsert({
         where: {
           organizationId_gmailId: {
-            organizationId: integration.organizationId,
+            organizationId,
             gmailId: firstMessage.id,
           },
         },
         create: {
-          organizationId: integration.organizationId,
+          organizationId,
           gmailId: firstMessage.id,
           threadId: full.data.threadId ?? undefined,
           subject,
@@ -2258,12 +2243,12 @@ apiRouter.post("/debug/gmail/test-fetch", async (req, res) => {
       const scanItem = await prisma.gmailScanItem.upsert({
         where: {
           organizationId_duplicateKey: {
-            organizationId: integration.organizationId,
+            organizationId,
             duplicateKey,
           },
         },
         create: {
-          organizationId: integration.organizationId,
+          organizationId,
           emailMessageId: emailRecord.id,
           gmailMessageId: firstMessage.id,
           gmailMessageLink: `https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(firstMessage.id)}`,
@@ -2339,6 +2324,7 @@ apiRouter.post("/debug/gmail/test-fetch", async (req, res) => {
 });
 
 apiRouter.post("/debug/gmail/scan-90", async (req, res) => {
+  const organizationId = req.auth!.organizationId;
   const integration = await debugGmailIntegrationForAuth(req.auth!);
   const base = debugGmailBase(req.auth!, integration);
   if (!integration?.refreshToken) {
@@ -2348,15 +2334,15 @@ apiRouter.post("/debug/gmail/scan-90", async (req, res) => {
 
   try {
     const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
-    const { scanLog, created } = await createRunningGmailScanLog(integration.organizationId, "manual");
+    const { scanLog, created } = await createRunningGmailScanLog(organizationId, "manual");
     if (created) {
-      void syncGmailForOrganization(integration.organizationId, {
+      void syncGmailForOrganization(organizationId, {
         daysBack: 90,
         forceReprocess: true,
         scanLogId: scanLog.id,
         scanMode: "manual",
       }).catch((err) => {
-        console.error(`[debug/gmail/scan-90] background scan failed org=${integration.organizationId} scanId=${scanLog.id}`, err);
+        console.error(`[debug/gmail/scan-90] background scan failed org=${organizationId} scanId=${scanLog.id}`, err);
       });
     }
     res.json({
@@ -5869,53 +5855,10 @@ async function scanGmail(req: Request, res: Response) {
   try {
     const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
     const organizationId = req.auth!.organizationId;
-    let gmailIntegration = await prisma.integration.findUnique({
+    const gmailIntegration = await prisma.integration.findUnique({
       where: { organizationId_provider: { organizationId, provider: "gmail" } },
       select: { refreshToken: true, accessToken: true, organizationId: true },
     });
-    if (!gmailIntegration?.refreshToken && req.auth?.userId && req.auth?.email) {
-      const matchingUserIntegration = await prisma.integration.findFirst({
-        where: {
-          provider: "gmail",
-          OR: [
-            { organization: { userId: req.auth.userId } },
-            { organization: { user: { email: req.auth.email } } },
-          ],
-          refreshToken: { not: null },
-        },
-        orderBy: { updatedAt: "desc" },
-      });
-      if (matchingUserIntegration && matchingUserIntegration.organizationId !== organizationId) {
-        console.warn(`[gmail-scan] moving Gmail integration from org=${matchingUserIntegration.organizationId} to current org=${organizationId} user=${req.auth.userId}`);
-        const movedIntegration = await prisma.integration.upsert({
-          where: { organizationId_provider: { organizationId, provider: "gmail" } },
-          create: {
-            organizationId,
-            provider: "gmail",
-            accessToken: matchingUserIntegration.accessToken,
-            refreshToken: matchingUserIntegration.refreshToken,
-            expiresAt: matchingUserIntegration.expiresAt,
-            metadata: matchingUserIntegration.metadata,
-            connectedAt: matchingUserIntegration.connectedAt,
-          },
-          update: {
-            accessToken: matchingUserIntegration.accessToken,
-            refreshToken: matchingUserIntegration.refreshToken,
-            expiresAt: matchingUserIntegration.expiresAt,
-            metadata: matchingUserIntegration.metadata,
-          },
-          select: { refreshToken: true, accessToken: true, organizationId: true },
-        });
-        await prisma.integration.deleteMany({
-          where: {
-            id: matchingUserIntegration.id,
-            organizationId: { not: organizationId },
-            provider: "gmail",
-          },
-        });
-        gmailIntegration = movedIntegration;
-      }
-    }
     if (!gmailIntegration?.refreshToken && !gmailIntegration?.accessToken) {
       console.warn(`[gmail-scan] Gmail not connected org=${organizationId}`);
       res.status(409).json({ error: "יש לחבר חשבון ג׳ימייל לפני הסריקה", code: "GMAIL_NOT_CONNECTED" });

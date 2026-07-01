@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "crypto";
 import { prisma } from "../lib/prisma.js";
 import { stripNulBytesDeep } from "../lib/postgresTextSanitizer.js";
 import { analyzeEmailContent, analyzeInvoiceFile, type EmailAnalysis } from "./claude.js";
-import { getGoogleClients, isGoogleReconnectRequiredError } from "./google.js";
+import { getGoogleClients, googleOAuthMetadata, isGoogleReconnectRequiredError } from "./google.js";
 import { analyzeAndSaveMessage } from "./messageScanner.js";
 import {
   ensureInvoiceFolderTree,
@@ -632,6 +632,9 @@ export async function syncGmailForOrganization(organizationId: string, options: 
 }
 
 async function runGmailSyncForOrganization(organizationId: string, options: GmailSyncOptions = {}) {
+  const { assertGmailIntegrationIsolatedForScan } = await import("./gmailIntegrationIsolation.js");
+  await assertGmailIntegrationIsolatedForScan(organizationId);
+
   await closeStaleGmailScansForOrg(organizationId, options.scanLogId);
 
   const returnInProgress = async (activeScanId: string) => {
@@ -982,7 +985,37 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
 
   try {
     logStep("[gmail-sync] Checking Gmail token and creating Google clients");
-    const { gmail, drive } = await getGoogleClients(organizationId);
+    const { gmail, drive, oauth2 } = await getGoogleClients(organizationId);
+    const { assertGmailConnectedAccountNotShared, GmailIntegrationIsolationError } = await import(
+      "./gmailIntegrationIsolation.js"
+    );
+    try {
+      const google = await import("googleapis").then((module) => module.google);
+      const oauth2api = google.oauth2({ version: "v2", auth: oauth2 });
+      const profile = await oauth2api.userinfo.get();
+      const mailboxEmail = profile.data.email;
+      if (mailboxEmail) {
+        await assertGmailConnectedAccountNotShared(organizationId, mailboxEmail);
+        const integration = await prisma.integration.findUnique({
+          where: { organizationId_provider: { organizationId, provider: "gmail" } },
+          select: { metadata: true },
+        });
+        const metadata = googleOAuthMetadata(integration?.metadata, null, mailboxEmail);
+        if (integration && metadata !== integration.metadata) {
+          await prisma.integration.update({
+            where: { organizationId_provider: { organizationId, provider: "gmail" } },
+            data: { metadata },
+          });
+        }
+        logStep(`[gmail-sync] Gmail mailbox isolation verified mailbox=${mailboxEmail}`);
+      }
+    } catch (err) {
+      if (err instanceof GmailIntegrationIsolationError) {
+        throw err;
+      }
+      console.error(`[gmail-sync] Gmail mailbox isolation check failed org=${organizationId}`, err);
+      throw err;
+    }
     let rootId: string | null = null;
     try {
       logStep("[gmail-sync] Checking Drive invoice folder");
