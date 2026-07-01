@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "data-integrity-watch-core-v1",
+  "generatedAt": "2026-06-01T12:00:00.000Z",
+  "mode": "manual",
+  "dryRun": false,
+  "organizationsScanned": 1,
+  "overallIntegrityScore": 85,
+  "criticalFindings": 1,
+  "warningFindings": 0,
+  "infoFindings": 0,
+  "organizationReports": [
+    {
+      "organizationId": "org-example",
+      "integrityScore": 85,
+      "criticalCount": 1,
+      "warningCount": 0,
+      "infoCount": 0,
+      "checksRun": 8,
+      "passed": false,
+      "findings": []
+    }
+  ],
+  "checksRun": 8,
+  "checksImplemented": 8,
+  "passed": false
+}

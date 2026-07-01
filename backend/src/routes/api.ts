@@ -86,6 +86,7 @@ import {
 } from "../services/verification/verificationCenter.js";
 import { calendarEngineRouter } from "./calendarEngineRoutes.js";
 import { scannerHealthRouter } from "./scannerHealthRoutes.js";
+import { integrityWatchRouter } from "./dataIntegrityWatchRoutes.js";
 
 export const apiRouter = Router();
 const bankUpload = multer({
@@ -145,6 +146,7 @@ apiRouter.get("/debug/payments/open-classification-inputs", async (req, res, nex
 apiRouter.use(authMiddleware);
 apiRouter.use(calendarEngineRouter);
 apiRouter.use(scannerHealthRouter);
+apiRouter.use(integrityWatchRouter);
 
 apiRouter.get("/business/templates", async (_req, res) => {
   res.json(getBusinessTemplates());
