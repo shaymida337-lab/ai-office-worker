@@ -51,6 +51,10 @@ import {
   evaluateFreshTrustGatesForManualApproval,
 } from "./trust/financeTrustPersistence.js";
 import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
+import {
+  isCanonicalFinanceAmountResolved,
+  resolveDocumentReviewDisplayAmount,
+} from "./amount/financeDisplayAmount.js";
 
 export type FinancialDocumentSource = "gmail" | "whatsapp" | "camera";
 
@@ -615,7 +619,15 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
 export async function approveFinancialDocumentReview(organizationId: string, reviewId: string) {
   const review = await prisma.financialDocumentReview.findFirst({ where: { id: reviewId, organizationId } });
   if (!review) throw new Error("Document review item not found");
-  if (review.totalAmount == null || !Number.isFinite(review.totalAmount) || review.totalAmount <= 0) {
+  const displayAmount = resolveDocumentReviewDisplayAmount({
+    totalAmount: review.totalAmount,
+    amountBeforeVat: review.amountBeforeVat,
+    vatAmount: review.vatAmount,
+    parsedFieldsJson: review.parsedFieldsJson,
+    currency: review.currency,
+  });
+  const approvedAmount = review.totalAmount ?? displayAmount.amount;
+  if (!isCanonicalFinanceAmountResolved(approvedAmount)) {
     throw new Error("Cannot approve document without a verified total amount");
   }
   if (!isPaymentDocumentType(normalizeFinancialDocumentType(review.documentType))) {
@@ -638,7 +650,7 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
     supplierName: review.supplierName,
     supplierTaxId: review.supplierTaxId,
     invoiceNumber: review.invoiceNumber,
-    totalAmount: review.totalAmount,
+    totalAmount: approvedAmount,
     documentDate: review.documentDate,
     documentType: review.documentType,
     documentFingerprint: review.documentFingerprint,
@@ -648,14 +660,14 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
   });
   const trustEvaluation = evaluateFreshTrustGatesForManualApproval({
     parsedFieldsJson: review.parsedFieldsJson,
-    totalAmount: review.totalAmount,
+    totalAmount: approvedAmount,
     supplierName: review.supplierName,
     fingerprintGateInput: buildFingerprintGateInputFromReview({
       organizationId,
       supplierName: review.supplierName,
       supplierTaxId: review.supplierTaxId,
       invoiceNumber: review.invoiceNumber,
-      totalAmount: review.totalAmount,
+      totalAmount: approvedAmount,
       documentDate: review.documentDate,
       documentType: review.documentType,
       documentFingerprint: review.documentFingerprint,
@@ -663,16 +675,30 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
     }),
     duplicateGateInput,
   });
-  if (trustEvaluation.outcome !== "pass" || !trustEvaluation.shouldCreatePayment) {
+  const canOverrideSourceConflict =
+    (trustEvaluation.reasonCode === "amount.source_conflict" ||
+      trustEvaluation.blockReason === "amount.source_conflict") &&
+    isCanonicalFinanceAmountResolved(displayAmount.amount) &&
+    approvedAmount === displayAmount.amount;
+  const effectiveEvaluation = canOverrideSourceConflict
+    ? {
+        ...trustEvaluation,
+        outcome: "pass" as const,
+        shouldCreatePayment: true,
+        reasonCode: null,
+        blockReason: null,
+      }
+    : trustEvaluation;
+  if (effectiveEvaluation.outcome !== "pass" || !effectiveEvaluation.shouldCreatePayment) {
     const reason = trustEvaluation.blockReason ?? trustEvaluation.reasonCode ?? "trust gate blocked";
     throw new Error(`לא ניתן לאשר מסמך — בדיקת אמון נכשלה (${reason})`);
   }
   const createResult = await createSupplierPaymentIfTrusted({
-    evaluation: trustEvaluation,
+    evaluation: effectiveEvaluation,
     data: {
       organizationId,
       supplier: approvedSupplierName,
-      amount: review.totalAmount,
+      amount: approvedAmount,
       currency: review.currency,
       date: review.documentDate ?? new Date(),
       dueDate: review.dueDate,
@@ -695,7 +721,7 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
       supplierTaxId: review.supplierTaxId,
       amountBeforeVat: review.amountBeforeVat,
       vatAmount: review.vatAmount,
-      totalAmount: review.totalAmount,
+      totalAmount: approvedAmount,
       confidenceScore: review.confidenceScore,
       parsedFieldsJson: review.parsedFieldsJson as any,
       approvalStatus: "approved",

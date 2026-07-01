@@ -1,8 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ARC_VERSION } from "./amount/canonicalAmount.js";
-import { financialDocumentBlockingReason, financialDocumentTrustGatesBlockingReason, matchExistingFinancialDocumentCandidate } from "./financialDocuments.js";
+import {
+  approveFinancialDocumentReview,
+  financialDocumentBlockingReason,
+  financialDocumentTrustGatesBlockingReason,
+  matchExistingFinancialDocumentCandidate,
+} from "./financialDocuments.js";
 import { TRUST_AMOUNT_GATE_MISSING } from "./trust/trustGatePersistence.js";
+import { buildPassingTrustGateSnapshots } from "./trust/trustGatePersistence.js";
+import { prisma } from "../lib/prisma.js";
 
 test("financial document trust gates block empty parsed fields", () => {
   assert.equal(financialDocumentTrustGatesBlockingReason({}), TRUST_AMOUNT_GATE_MISSING);
@@ -133,4 +140,161 @@ test("financial document matcher sends borderline candidate to review as UNSURE"
   assert.equal(result.result, "UNSURE");
   assert.equal(result.candidate?.id, "payment-3");
   assert.match(result.reasons.join(","), /same_supplier/);
+});
+
+test("approveFinancialDocumentReview uses VAT fallback amount for source_conflict", async () => {
+  const snapshots = buildPassingTrustGateSnapshots();
+  const review = {
+    id: "review-1",
+    organizationId: "org-1",
+    source: "gmail",
+    sender: "sender@example.com",
+    subject: "invoice",
+    fileName: "inv.pdf",
+    fileSize: 100,
+    supplierName: "Acme Ltd",
+    supplierTaxId: "123456789",
+    invoiceNumber: "INV-1",
+    documentDate: new Date("2026-07-01T00:00:00.000Z"),
+    dueDate: null,
+    amountBeforeVat: 849,
+    vatAmount: 144.33,
+    totalAmount: null,
+    documentType: "tax_invoice",
+    driveFileUrl: "https://drive.test/inv.pdf",
+    driveUploadStatus: "uploaded",
+    confidenceScore: 0.9,
+    reviewStatus: "needs_review",
+    uncertaintyReason: "amount.source_conflict",
+    sourceFingerprint: "source-fp",
+    documentFingerprint: "doc-fp",
+    parsedFieldsJson: {
+      arc: { status: "ambiguous", selectedAmount: null, reasonCode: "SOURCE_CONFLICT" },
+      gates: [
+        { ...snapshots.amountGate, verdict: "review", reasonCode: "amount.source_conflict", normalizedAmount: null },
+        snapshots.supplierGate,
+        snapshots.fingerprintGate,
+        snapshots.duplicateGate,
+      ],
+      sir: {
+        status: "resolved",
+        canonicalSupplier: "Acme Ltd",
+        supplierName: "Acme Ltd",
+        isStrongEnoughForAutoSave: true,
+      },
+    },
+    rawAnalysis: null,
+    emailMessageId: "email-1",
+    gmailMessageId: "gmail-1",
+    whatsappLogId: null,
+    supplierPaymentId: null,
+    currency: "ILS",
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+    normalizedDocumentDate: null,
+  };
+
+  const original = {
+    findFirst: prisma.financialDocumentReview.findFirst,
+    update: prisma.financialDocumentReview.update,
+    paymentFindMany: prisma.supplierPayment.findMany,
+    paymentUpsert: prisma.supplierPayment.upsert,
+  };
+
+  let capturedCreateAmount: number | null = null;
+  let capturedCreateTotalAmount: number | null = null;
+
+  try {
+    (prisma.financialDocumentReview.findFirst as any) = async () => review;
+    (prisma.financialDocumentReview.update as any) = async ({ data }: any) => ({ ...review, ...data });
+    (prisma.supplierPayment.findMany as any) = async () => [];
+    (prisma.supplierPayment.upsert as any) = async ({ create }: any) => {
+      capturedCreateAmount = create.amount;
+      capturedCreateTotalAmount = create.totalAmount;
+      return { id: "payment-1", ...create };
+    };
+
+    const approved = await approveFinancialDocumentReview("org-1", "review-1");
+    assert.equal(approved.reviewStatus, "approved");
+    assert.equal(approved.supplierPaymentId, "payment-1");
+    assert.equal(capturedCreateAmount, 993.33);
+    assert.equal(capturedCreateTotalAmount, 993.33);
+  } finally {
+    (prisma.financialDocumentReview.findFirst as any) = original.findFirst;
+    (prisma.financialDocumentReview.update as any) = original.update;
+    (prisma.supplierPayment.findMany as any) = original.paymentFindMany;
+    (prisma.supplierPayment.upsert as any) = original.paymentUpsert;
+  }
+});
+
+test("approveFinancialDocumentReview blocks arc_missing with no fallback amount", async () => {
+  const snapshots = buildPassingTrustGateSnapshots();
+  const review = {
+    id: "review-2",
+    organizationId: "org-1",
+    source: "gmail",
+    sender: "sender@example.com",
+    subject: "invoice",
+    fileName: "inv.pdf",
+    fileSize: 100,
+    supplierName: "Acme Ltd",
+    supplierTaxId: "123456789",
+    invoiceNumber: "INV-2",
+    documentDate: new Date("2026-07-01T00:00:00.000Z"),
+    dueDate: null,
+    amountBeforeVat: null,
+    vatAmount: null,
+    totalAmount: null,
+    documentType: "tax_invoice",
+    driveFileUrl: "https://drive.test/inv.pdf",
+    driveUploadStatus: "uploaded",
+    confidenceScore: 0.9,
+    reviewStatus: "needs_review",
+    uncertaintyReason: "amount.arc_missing",
+    sourceFingerprint: "source-fp",
+    documentFingerprint: "doc-fp-2",
+    parsedFieldsJson: {
+      arc: { status: "missing", selectedAmount: null, reasonCode: "MISSING" },
+      gates: [
+        { ...snapshots.amountGate, verdict: "review", reasonCode: "amount.arc_missing", normalizedAmount: null },
+        snapshots.supplierGate,
+        snapshots.fingerprintGate,
+        snapshots.duplicateGate,
+      ],
+      sir: {
+        status: "resolved",
+        canonicalSupplier: "Acme Ltd",
+        supplierName: "Acme Ltd",
+        isStrongEnoughForAutoSave: true,
+      },
+    },
+    rawAnalysis: null,
+    emailMessageId: "email-2",
+    gmailMessageId: "gmail-2",
+    whatsappLogId: null,
+    supplierPaymentId: null,
+    currency: "ILS",
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+    normalizedDocumentDate: null,
+  };
+
+  const originalFindFirst = prisma.financialDocumentReview.findFirst;
+  const originalPaymentUpsert = prisma.supplierPayment.upsert;
+  let upsertCalled = false;
+  try {
+    (prisma.financialDocumentReview.findFirst as any) = async () => review;
+    (prisma.supplierPayment.upsert as any) = async () => {
+      upsertCalled = true;
+      return { id: "payment-2" };
+    };
+    await assert.rejects(
+      () => approveFinancialDocumentReview("org-1", "review-2"),
+      /Cannot approve document without a verified total amount/
+    );
+    assert.equal(upsertCalled, false);
+  } finally {
+    (prisma.financialDocumentReview.findFirst as any) = originalFindFirst;
+    (prisma.supplierPayment.upsert as any) = originalPaymentUpsert;
+  }
 });

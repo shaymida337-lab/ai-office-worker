@@ -5105,7 +5105,9 @@ apiRouter.post("/document-reviews/:id/approve", async (req, res) => {
     const item = await approveFinancialDocumentReview(req.auth!.organizationId, req.params.id);
     res.json({ ok: true, item: mapDocumentReviewForApi(item) });
   } catch (err) {
-    res.status(404).json({ error: err instanceof Error ? err.message : "Document review item not found" });
+    const message = err instanceof Error ? err.message : "Document review approval failed";
+    const notFound = message === "Document review item not found";
+    res.status(notFound ? 404 : 422).json({ error: message });
   }
 });
 
