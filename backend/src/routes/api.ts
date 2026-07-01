@@ -24,7 +24,7 @@ import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } fr
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
 import { approveFinancialDocumentReview } from "../services/financialDocuments.js";
 import { recordFinancialDocumentDecision } from "../services/financialDocuments.js";
-import { resolveFinanceDisplayAmount } from "../services/amount/financeDisplayAmount.js";
+import { resolveFinanceDisplayAmount, resolveDocumentReviewDisplayAmount } from "../services/amount/financeDisplayAmount.js";
 import { initialConnectScanWindow, isHistoricalGmailScanRequest, resolveHistoricalGmailScanWindow } from "../services/scanWindow.js";
 import {
   closeStaleGmailScansForOrg,
@@ -5073,13 +5073,37 @@ apiRouter.get("/document-reviews", async (req, res) => {
     orderBy: { createdAt: "desc" },
     take: 200,
   });
-  res.json(items);
+  res.json(items.map(mapDocumentReviewForApi));
 });
+
+function mapDocumentReviewForApi<
+  T extends {
+    totalAmount: number | null;
+    amountBeforeVat?: number | null;
+    vatAmount?: number | null;
+    parsedFieldsJson?: unknown;
+    currency?: string;
+  },
+>(item: T) {
+  const display = resolveDocumentReviewDisplayAmount({
+    totalAmount: item.totalAmount,
+    amountBeforeVat: item.amountBeforeVat,
+    vatAmount: item.vatAmount,
+    parsedFieldsJson: item.parsedFieldsJson,
+    currency: item.currency,
+  });
+  return {
+    ...item,
+    displayAmount: display.amount,
+    amountLabel: display.amountLabel,
+    amountResolved: display.resolved,
+  };
+}
 
 apiRouter.post("/document-reviews/:id/approve", async (req, res) => {
   try {
     const item = await approveFinancialDocumentReview(req.auth!.organizationId, req.params.id);
-    res.json({ ok: true, item });
+    res.json({ ok: true, item: mapDocumentReviewForApi(item) });
   } catch (err) {
     res.status(404).json({ error: err instanceof Error ? err.message : "Document review item not found" });
   }

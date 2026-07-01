@@ -3,8 +3,8 @@
 import { CheckCircle2 } from "lucide-react";
 import { colors, radius, type as typography } from "@/lib/design-tokens";
 import {
+  documentReviewAmountLabel,
   documentTypeLabel,
-  formatDocumentAmount,
   formatDocumentDate,
   type DocumentReviewItem,
 } from "@/lib/documents/presentation";
@@ -46,7 +46,7 @@ export function DocumentsCompletedSection({
               {item.supplierName?.trim() || item.sender?.trim() || "מסמך"}
             </span>
             <span className={`${typography.caption} font-semibold tabular-nums`} style={{ color: colors.textMuted }}>
-              {formatDocumentAmount(item.totalAmount, item.currency ?? "ILS")} · {documentTypeLabel(item.documentType)} ·{" "}
+              {documentReviewAmountLabel(item)} · {documentTypeLabel(item.documentType)} ·{" "}
               {formatDocumentDate(item.createdAt)}
             </span>
           </li>

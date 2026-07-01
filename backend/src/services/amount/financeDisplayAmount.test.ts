@@ -8,6 +8,7 @@ import {
   formatFinanceAmountLabel,
   isCanonicalFinanceAmountResolved,
   resolveCanonicalFinanceAmount,
+  resolveDocumentReviewDisplayAmount,
   resolveFinanceDisplayAmount,
 } from "./financeDisplayAmount.js";
 import { evaluateAmountGate } from "./amountGate.js";
@@ -150,4 +151,113 @@ test("isCanonicalFinanceAmountResolved rejects non-positive values", () => {
 
 test("formatFinanceAmountLabel uses missing label for null", () => {
   assert.equal(formatFinanceAmountLabel(null), FINANCE_AMOUNT_MISSING_LABEL);
+});
+
+test("document review display shows vat sum for source conflict while review stays unresolved", () => {
+  const display = resolveDocumentReviewDisplayAmount({
+    totalAmount: null,
+    amountBeforeVat: 849,
+    vatAmount: 144.33,
+    currency: "ILS",
+    parsedFieldsJson: {
+      arc: {
+        status: "ambiguous",
+        selectedAmount: null,
+        reasonCode: "SOURCE_CONFLICT",
+      },
+      gates: [
+        {
+          gate: "amount",
+          verdict: "review",
+          reasonCode: "amount.source_conflict",
+          normalizedAmount: null,
+        },
+      ],
+    },
+  });
+  assert.equal(display.amount, 993.33);
+  assert.equal(display.amountLabel, "₪993.33");
+  assert.equal(display.resolved, false);
+  assert.equal(display.arcReasonCode, "SOURCE_CONFLICT");
+});
+
+test("document review display keeps סכום חסר for amount.arc_missing", () => {
+  const display = resolveDocumentReviewDisplayAmount({
+    totalAmount: null,
+    amountBeforeVat: null,
+    vatAmount: null,
+    parsedFieldsJson: {
+      arc: { status: "missing", selectedAmount: null, reasonCode: "MISSING" },
+      gates: [
+        {
+          gate: "amount",
+          verdict: "review",
+          reasonCode: "amount.arc_missing",
+          normalizedAmount: null,
+        },
+      ],
+    },
+  });
+  assert.equal(display.amount, null);
+  assert.equal(display.amountLabel, FINANCE_AMOUNT_MISSING_LABEL);
+  assert.equal(display.resolved, false);
+});
+
+test("document review display uses totalAmount when present", () => {
+  const display = resolveDocumentReviewDisplayAmount({
+    totalAmount: 29.7,
+    parsedFieldsJson: {
+      arc: { status: "resolved", selectedAmount: 29.7, reasonCode: "AI_TOTAL" },
+      gates: [
+        {
+          gate: "amount",
+          verdict: "pass",
+          reasonCode: "amount.resolved",
+          normalizedAmount: 29.7,
+        },
+      ],
+    },
+  });
+  assert.equal(display.amount, 29.7);
+  assert.equal(display.amountLabel, "₪29.70");
+  assert.equal(display.resolved, true);
+});
+
+test("resolveFinanceDisplayAmount unchanged for vat mismatch review gate", () => {
+  const display = resolveFinanceDisplayAmount({
+    totalAmount: 500,
+    parsedFieldsJson: {
+      arc: { status: "resolved", selectedAmount: 500, reasonCode: "INVOICE_TOTAL" },
+      gates: [
+        {
+          gate: "amount",
+          verdict: "review",
+          reasonCode: "amount.vat_mismatch",
+          normalizedAmount: 500,
+        },
+      ],
+    },
+  });
+  assert.equal(display.amount, null);
+  assert.equal(display.amountLabel, FINANCE_AMOUNT_REVIEW_LABEL);
+});
+
+test("document review display shows total for vat mismatch review gate", () => {
+  const display = resolveDocumentReviewDisplayAmount({
+    totalAmount: 500,
+    parsedFieldsJson: {
+      arc: { status: "resolved", selectedAmount: 500, reasonCode: "INVOICE_TOTAL" },
+      gates: [
+        {
+          gate: "amount",
+          verdict: "review",
+          reasonCode: "amount.vat_mismatch",
+          normalizedAmount: 500,
+        },
+      ],
+    },
+  });
+  assert.equal(display.amount, 500);
+  assert.equal(display.amountLabel, "₪500.00");
+  assert.equal(display.resolved, false);
 });

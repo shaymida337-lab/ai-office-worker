@@ -23,9 +23,61 @@ export type ArcAmountSnapshot = {
 export type FinanceDisplayAmountInput = {
   totalAmount?: number | null;
   amount?: number | null;
+  amountBeforeVat?: number | null;
+  vatAmount?: number | null;
   parsedFieldsJson?: unknown;
   currency?: string | null;
 };
+
+export function isAmountGateMissingReason(reasonCode: string | null | undefined): boolean {
+  return reasonCode != null && AMOUNT_GATE_MISSING_REASONS.has(reasonCode);
+}
+
+function resolveConsistentVatTotal(
+  amountBeforeVat?: number | null,
+  vatAmount?: number | null
+): number | null {
+  if (!isCanonicalFinanceAmountResolved(amountBeforeVat)) return null;
+  const vat = vatAmount ?? 0;
+  if (!Number.isFinite(vat) || vat < 0) return null;
+  return roundMoney(amountBeforeVat + vat);
+}
+
+/** Review-queue display amount — does not affect payment persistence or gate verdicts. */
+export function resolveReviewQueueDisplayAmount(input: FinanceDisplayAmountInput): number | null {
+  const gate = parseAmountGateFromParsedFields(input.parsedFieldsJson);
+
+  if (
+    gate?.verdict === "pass" &&
+    gate.normalizedAmount != null &&
+    isCanonicalFinanceAmountResolved(gate.normalizedAmount)
+  ) {
+    return roundMoney(gate.normalizedAmount);
+  }
+
+  const canonical = resolveCanonicalFinanceAmount(input);
+  if (canonical != null) return canonical;
+
+  if (gate?.normalizedAmount != null && isCanonicalFinanceAmountResolved(gate.normalizedAmount)) {
+    return roundMoney(gate.normalizedAmount);
+  }
+
+  const arc = parseArcAmountSnapshot(input.parsedFieldsJson);
+  if (arc?.status === "resolved" && isCanonicalFinanceAmountResolved(arc.selectedAmount)) {
+    return roundMoney(arc.selectedAmount);
+  }
+
+  return resolveConsistentVatTotal(input.amountBeforeVat, input.vatAmount);
+}
+
+function formatResolvedCurrencyAmount(amount: number, currency = "ILS"): string {
+  const formatted = amount.toLocaleString("he-IL", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  if (currency === "ILS") return `₪${formatted}`;
+  return `${formatted} ${currency}`;
+}
 
 export type FinanceDisplayAmount = {
   amount: number | null;
@@ -112,6 +164,33 @@ export function resolveFinanceDisplayAmount(input: FinanceDisplayAmountInput): F
     amount: gateBlocksDisplay ? null : amount,
     amountLabel: formatFinanceAmountLabel(amount, currency, input.parsedFieldsJson),
     resolved: gate?.verdict === "pass" || (!gate && amount != null),
+    arcStatus: arc?.status ?? null,
+    arcReasonCode: arc?.reasonCode ?? null,
+  };
+}
+
+/** Document review list/detail display — shows reliable fallbacks without changing review status. */
+export function resolveDocumentReviewDisplayAmount(input: FinanceDisplayAmountInput): FinanceDisplayAmount {
+  const arc = parseArcAmountSnapshot(input.parsedFieldsJson);
+  const gate = parseAmountGateFromParsedFields(input.parsedFieldsJson);
+  const currency = input.currency ?? "ILS";
+
+  if (gate?.verdict === "review" && isAmountGateMissingReason(gate.reasonCode)) {
+    return {
+      amount: null,
+      amountLabel: FINANCE_AMOUNT_MISSING_LABEL,
+      resolved: false,
+      arcStatus: arc?.status ?? null,
+      arcReasonCode: arc?.reasonCode ?? null,
+    };
+  }
+
+  const amount = resolveReviewQueueDisplayAmount(input);
+  return {
+    amount,
+    amountLabel:
+      amount == null ? FINANCE_AMOUNT_MISSING_LABEL : formatResolvedCurrencyAmount(amount, currency),
+    resolved: gate?.verdict === "pass",
     arcStatus: arc?.status ?? null,
     arcReasonCode: arc?.reasonCode ?? null,
   };
