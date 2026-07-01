@@ -114,3 +114,94 @@ cronRouter.get("/gmail-mailbox-verification", async (_req, res) => {
     canonicalMappingProposal: canonicalProposal,
   });
 });
+
+/** Controlled single-org incremental Gmail scan (cron auth). No cleanup. */
+cronRouter.post("/gmail-scan-incremental", async (req, res) => {
+  const organizationId =
+    typeof req.body?.organizationId === "string" ? req.body.organizationId.trim() : null;
+  if (!organizationId) {
+    res.status(400).json({ error: "organizationId required" });
+    return;
+  }
+
+  const gmailIntegration = await prisma.integration.findUnique({
+    where: { organizationId_provider: { organizationId, provider: "gmail" } },
+    select: { refreshToken: true, accessToken: true },
+  });
+  if (!gmailIntegration?.refreshToken && !gmailIntegration?.accessToken) {
+    res.status(409).json({ error: "GMAIL_NOT_CONNECTED", organizationId });
+    return;
+  }
+
+  const {
+    closeStaleGmailScansForOrg,
+    createQueuedGmailScanLog,
+    findActiveGmailScanLog,
+    logScanLifecycle,
+    resolveIncrementalGmailScanWindow,
+  } = await import("../services/gmailScanLifecycle.js");
+  const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
+
+  const incrementalWindow = await resolveIncrementalGmailScanWindow(organizationId);
+  const scanMode = "manual_incremental" as const;
+  const { daysBack, since, cursorSource } = incrementalWindow;
+
+  console.log(
+    `[cron/gmail-scan-incremental] org=${organizationId} scanMode=${scanMode} daysBack=${daysBack} since=${since?.toISOString() ?? "none"} cursorSource=${cursorSource}`
+  );
+
+  await closeStaleGmailScansForOrg(organizationId);
+  const activeLog = await findActiveGmailScanLog(organizationId);
+  if (activeLog) {
+    res.json({
+      organizationId,
+      scanId: activeLog.id,
+      status: "running",
+      inProgress: true,
+      scanMode,
+      daysBack,
+      since: since?.toISOString() ?? null,
+      cursorSource,
+    });
+    return;
+  }
+
+  const { scanLog, created } = await createQueuedGmailScanLog(organizationId, scanMode);
+  if (!created) {
+    res.json({
+      organizationId,
+      scanId: scanLog.id,
+      status: "running",
+      inProgress: true,
+      scanMode,
+      daysBack,
+      since: since?.toISOString() ?? null,
+      cursorSource,
+    });
+    return;
+  }
+
+  logScanLifecycle(scanLog.id, "created");
+  void syncGmailForOrganization(organizationId, {
+    daysBack,
+    since,
+    scanLogId: scanLog.id,
+    scanMode,
+  }).catch((err) => {
+    console.error(
+      `[cron/gmail-scan-incremental] failed org=${organizationId} scanId=${scanLog.id}`,
+      err
+    );
+  });
+
+  res.json({
+    organizationId,
+    scanId: scanLog.id,
+    status: "started",
+    inProgress: true,
+    scanMode,
+    daysBack,
+    since: since?.toISOString() ?? null,
+    cursorSource,
+  });
+});
