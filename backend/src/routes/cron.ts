@@ -87,3 +87,30 @@ cronRouter.post("/upcoming-alerts", async (_req, res) => {
   }
   res.json({ ok: true });
 });
+
+/** Read-only remediation helper: live Gmail mailbox profile per integration. No DB writes. */
+cronRouter.get("/gmail-mailbox-verification", async (_req, res) => {
+  const {
+    verifyAllGmailMailboxesReadOnly,
+    proposeCanonicalMailboxMapping,
+    CONTAMINATED_CLUSTER_ORG_IDS,
+  } = await import("../services/gmailMailboxVerification.js");
+
+  const verification = await verifyAllGmailMailboxesReadOnly();
+  const canonicalProposal = proposeCanonicalMailboxMapping(verification);
+
+  res.json({
+    readOnly: true,
+    verifiedAt: new Date().toISOString(),
+    contaminatedClusterOrganizationIds: CONTAMINATED_CLUSTER_ORG_IDS,
+    verificationTable: verification.rows.map((row) => ({
+      ...row,
+      inContaminatedCluster: CONTAMINATED_CLUSTER_ORG_IDS.includes(
+        row.organizationId as (typeof CONTAMINATED_CLUSTER_ORG_IDS)[number]
+      ),
+    })),
+    sharedRefreshTokenHashes: verification.sharedRefreshTokenHashes,
+    sharedMailboxEmails: verification.sharedMailboxEmails,
+    canonicalMappingProposal: canonicalProposal,
+  });
+});
