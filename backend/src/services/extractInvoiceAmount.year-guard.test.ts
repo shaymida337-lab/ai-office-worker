@@ -82,5 +82,5 @@ test("financialDocumentBlockingReason flags amount at 1M threshold for needs_rev
     documentDate: "2026-06-01",
   });
 
-  assert.match(reason ?? "", /exceeds review threshold/);
+  assert.equal(reason, "amount.threshold_exceeded");
 });

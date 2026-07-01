@@ -20,6 +20,10 @@ import {
   findActiveSupplierPaymentForSource,
 } from "../dedup/supplierPaymentSourceDedup.js";
 import {
+  BLOCKED_OUTCOME_PERSISTENCE_REASON,
+  isBlockedDocumentOutcome,
+} from "./blockedOutcomeGuard.js";
+import {
   evaluateDuplicateGate,
   type DuplicateGateInput,
   type DuplicateGateSnapshot,
@@ -127,6 +131,7 @@ export function requireAllFinanceGatesPass(gates: TrustGateSet): boolean {
 
 export function evaluateFinanceTrustGates(input: {
   parsedFieldsJson?: unknown;
+  uncertaintyReason?: string | null;
   amountGate?: AmountGateSnapshot | null;
   supplierGate?: SupplierGateSnapshot | null;
   fingerprintGate?: FingerprintGateSnapshot | null;
@@ -143,6 +148,19 @@ export function evaluateFinanceTrustGates(input: {
     needsReview: input.needsReview ?? false,
     ...gates,
   });
+
+  if (isBlockedDocumentOutcome(input.parsedFieldsJson, input.uncertaintyReason)) {
+    return {
+      outcome: "block",
+      reasonCode: BLOCKED_OUTCOME_PERSISTENCE_REASON,
+      gates,
+      paymentAmount: persistence.paymentAmount,
+      approvalStatus: persistence.approvalStatus,
+      shouldCreatePayment: false,
+      shouldAppendToSheet: false,
+      blockReason: BLOCKED_OUTCOME_PERSISTENCE_REASON,
+    };
+  }
 
   if (gateFailureResult) {
     return {
@@ -306,13 +324,24 @@ export async function createSupplierPaymentIfTrusted(input: {
   sourceLookup?: {
     gmailMessageId?: string | null;
   };
+  parsedFieldsJson?: unknown;
+  uncertaintyReason?: string | null;
 }): Promise<CreateSupplierPaymentIfTrustedResult> {
   const { evaluation } = input;
-  if (!evaluation.shouldCreatePayment || evaluation.outcome !== "pass") {
+  const parsedFieldsJson = input.parsedFieldsJson;
+  const uncertaintyReason = input.uncertaintyReason ?? null;
+
+  if (
+    !evaluation.shouldCreatePayment ||
+    evaluation.outcome !== "pass" ||
+    isBlockedDocumentOutcome(parsedFieldsJson, uncertaintyReason)
+  ) {
     return {
       payment: null,
       skipped: true,
-      reason: evaluation.blockReason ?? evaluation.reasonCode,
+      reason: isBlockedDocumentOutcome(parsedFieldsJson, uncertaintyReason)
+        ? BLOCKED_OUTCOME_PERSISTENCE_REASON
+        : evaluation.blockReason ?? evaluation.reasonCode,
       evaluation,
     };
   }

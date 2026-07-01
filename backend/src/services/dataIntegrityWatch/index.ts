@@ -39,5 +39,6 @@ export { DEFAULT_INTEGRITY_SIGNAL_CONFIG, DEFAULT_ORPHAN_GRACE_PERIOD_MS } from 
 export { classifyOrphanEmailMessage, orphanDispositionToSeverity } from "./integrityOrphanClassifier.js";
 export { computeFindingConfidence } from "./integrityConfidence.js";
 export { buildNoiseAnalytics } from "./integrityNoiseAnalytics.js";
-export { buildSignalQualityComparison, PROD_BASELINE_PRE_TUNING } from "./integritySignalComparison.js";
+export { buildSignalQualityComparison, PROD_BASELINE_PRE_TUNING, PROD_BASELINE_POST_2_3B } from "./integritySignalComparison.js";
+export { analyzeOrphanAttachments } from "./integrityAttachmentSignals.js";
 export { INTEGRITY_SEVERITY_FRAMEWORK } from "./integritySeverity.js";

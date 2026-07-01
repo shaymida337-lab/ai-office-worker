@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "natalie-trust-v1",
+  "generatedAt": "2026-07-01T18:00:00.000Z",
+  "commitHash": "abc123def456",
+  "deployId": "deploy-trust-001",
+  "reliabilityScore": 0.96,
+  "trustScore": 99.4,
+  "goldenResult": "pass",
+  "journeyResult": "pass",
+  "integrityResult": "pass",
+  "permissionsResult": "pass",
+  "securityResult": "pass",
+  "auditResult": "pass",
+  "recoveryResult": "pass",
+  "dependenciesResult": "pass",
+  "configurationResult": "pass",
+  "businessRulesResult": "pass",
+  "approvedBy": "operator@natalie.internal",
+  "releaseDecision": "approved",
+  "blockers": [],
+  "warnings": []
+}

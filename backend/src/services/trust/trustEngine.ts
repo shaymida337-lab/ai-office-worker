@@ -5,6 +5,15 @@ import { TE_VERSION } from "./trustTypes.js";
 const AUTO_SAVE_CONFIDENCE_THRESHOLD = 82;
 const STRONG_AGREEMENT_AUTO_SAVE_THRESHOLD = 75;
 
+function coreFinancialEnginesClear(input: TrustEngineInput): boolean {
+  if (input.context?.duplicateRisk === "high") return false;
+  return (
+    input.moneyDecision.status === "resolved" &&
+    input.supplierDecision.status === "resolved" &&
+    input.fseDecision.overallStatus === "valid"
+  );
+}
+
 function buildExplanation(input: {
   decision: TrustDecision["decision"];
   confidence: number;
@@ -79,6 +88,24 @@ export function computeTrustDecision(input: TrustEngineInput): TrustDecision {
         strongAgreement: evaluation.strongAgreement,
         uncertaintyCount: evaluation.uncertaintyFlags.length,
         reasonCode: "TE_FSE_CRITICAL_ERROR",
+      }),
+      contributors: evaluation.contributors,
+    };
+  }
+
+  if (coreFinancialEnginesClear(input)) {
+    return {
+      version: TE_VERSION,
+      confidence,
+      decision: "AUTO_SAVE",
+      reason: buildReason("AUTO_SAVE", "TE_AUTO_SAVE"),
+      reasonCode: "TE_AUTO_SAVE",
+      explanation: buildExplanation({
+        decision: "AUTO_SAVE",
+        confidence,
+        strongAgreement: evaluation.strongAgreement,
+        uncertaintyCount: evaluation.uncertaintyFlags.length,
+        reasonCode: "TE_AUTO_SAVE",
       }),
       contributors: evaluation.contributors,
     };

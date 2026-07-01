@@ -11,6 +11,21 @@ export type IntegrityEmailMessageRow = {
   processedAt: Date | null;
 };
 
+export type IntegrityEmailAttachmentRow = {
+  emailMessageId: string;
+  filename: string;
+  mimeType: string | null;
+};
+
+export type IntegritySiblingArtifactSummary = {
+  hasArtifact: boolean;
+  siblingOrganizationCount: number;
+  gsiCount: number;
+  fdrCount: number;
+  artifactSummary: string;
+  organizationIds: string[];
+};
+
 /** Read-only Prisma surface — no write operations permitted. */
 export type IntegrityReadOnlyDb = Pick<
   PrismaClient,
@@ -20,6 +35,7 @@ export type IntegrityReadOnlyDb = Pick<
   | "gmailScanItem"
   | "invoice"
   | "emailMessage"
+  | "emailAttachment"
   | "integration"
   | "syncLog"
 >;
@@ -71,6 +87,8 @@ export type IntegritySyncLogRow = {
 
 export type IntegrityOrgData = ScannerIsolationCheckData & {
   emailMessages: IntegrityEmailMessageRow[];
+  emailAttachmentsByEmailId: Map<string, IntegrityEmailAttachmentRow[]>;
+  siblingArtifactsByGmailId: Map<string, IntegritySiblingArtifactSummary>;
   payments: IntegrityPaymentRow[];
   invoiceDetails: IntegrityInvoiceRow[];
   integrations: IntegrityIntegrationRow[];
@@ -107,6 +125,7 @@ export async function loadIntegrityOrgData(
     take: 5000,
   });
 
+  const emailIds = emailMessages.map((e) => e.id);
   const gmailIds = [...new Set(emailMessages.map((e) => e.gmailId))];
   const crossOrgEmailMessages =
     gmailIds.length > 0
@@ -115,6 +134,43 @@ export async function loadIntegrityOrgData(
           select: { id: true, organizationId: true, gmailId: true },
         })
       : [];
+
+  const [emailAttachments, crossOrgGmailScanItems, crossOrgFinancialDocumentReviews] = await Promise.all([
+    emailIds.length
+      ? db.emailAttachment.findMany({
+          where: { emailMessageId: { in: emailIds } },
+          select: { emailMessageId: true, filename: true, mimeType: true },
+        })
+      : [],
+    gmailIds.length
+      ? db.gmailScanItem.findMany({
+          where: { gmailMessageId: { in: gmailIds }, organizationId: { not: organizationId } },
+          select: {
+            gmailMessageId: true,
+            organizationId: true,
+            reviewStatus: true,
+            documentType: true,
+          },
+        })
+      : [],
+    gmailIds.length
+      ? db.financialDocumentReview.findMany({
+          where: { gmailMessageId: { in: gmailIds }, organizationId: { not: organizationId } },
+          select: {
+            gmailMessageId: true,
+            organizationId: true,
+            reviewStatus: true,
+          },
+        })
+      : [],
+  ]);
+
+  const emailAttachmentsByEmailId = groupAttachmentsByEmailId(emailAttachments);
+  const siblingArtifactsByGmailId = buildSiblingArtifactsByGmailId(
+    gmailIds,
+    crossOrgGmailScanItems,
+    crossOrgFinancialDocumentReviews,
+  );
 
   const [
     stuckActiveScans,
@@ -238,6 +294,8 @@ export async function loadIntegrityOrgData(
     gmailScanItems,
     financialDocumentReviews,
     emailMessages,
+    emailAttachmentsByEmailId,
+    siblingArtifactsByGmailId,
     crossOrgEmailMessages,
     gmailIntegration,
     organizationUserEmail: organization?.user?.email ?? null,
@@ -254,4 +312,70 @@ export async function loadIntegrityOrgData(
 export async function listOrganizationIds(db: IntegrityReadOnlyDb): Promise<string[]> {
   const orgs = await db.organization.findMany({ select: { id: true } });
   return orgs.map((o) => o.id);
+}
+
+function groupAttachmentsByEmailId(
+  attachments: IntegrityEmailAttachmentRow[],
+): Map<string, IntegrityEmailAttachmentRow[]> {
+  const map = new Map<string, IntegrityEmailAttachmentRow[]>();
+  for (const attachment of attachments) {
+    const list = map.get(attachment.emailMessageId) ?? [];
+    list.push(attachment);
+    map.set(attachment.emailMessageId, list);
+  }
+  return map;
+}
+
+function buildSiblingArtifactsByGmailId(
+  gmailIds: string[],
+  crossOrgGmailScanItems: Array<{
+    gmailMessageId: string;
+    organizationId: string;
+    reviewStatus: string;
+    documentType: string;
+  }>,
+  crossOrgFinancialDocumentReviews: Array<{
+    gmailMessageId: string | null;
+    organizationId: string;
+    reviewStatus: string;
+  }>,
+): Map<string, IntegritySiblingArtifactSummary> {
+  const map = new Map<string, IntegritySiblingArtifactSummary>();
+
+  for (const gmailId of gmailIds) {
+    const gsiRows = crossOrgGmailScanItems.filter((row) => row.gmailMessageId === gmailId);
+    const fdrRows = crossOrgFinancialDocumentReviews.filter((row) => row.gmailMessageId === gmailId);
+    const organizationIds = [
+      ...new Set([
+        ...gsiRows.map((row) => row.organizationId),
+        ...fdrRows.map((row) => row.organizationId),
+      ]),
+    ];
+    const gsiCount = gsiRows.length;
+    const fdrCount = fdrRows.length;
+    const hasArtifact = gsiCount > 0 || fdrCount > 0;
+    const primaryGsi = gsiRows[0];
+    const primaryFdr = fdrRows[0];
+    const artifactSummary = hasArtifact
+      ? [
+          gsiCount > 0
+            ? `GSI ${primaryGsi?.reviewStatus ?? "unknown"}/${primaryGsi?.documentType ?? "unknown"}`
+            : null,
+          fdrCount > 0 ? `FDR ${primaryFdr?.reviewStatus ?? "unknown"}` : null,
+        ]
+          .filter(Boolean)
+          .join("; ")
+      : "none";
+
+    map.set(gmailId, {
+      hasArtifact,
+      siblingOrganizationCount: organizationIds.length,
+      gsiCount,
+      fdrCount,
+      artifactSummary,
+      organizationIds,
+    });
+  }
+
+  return map;
 }

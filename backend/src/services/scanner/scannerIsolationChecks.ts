@@ -7,6 +7,7 @@ import {
   type ScannerHealthDateRange,
 } from "./scannerHealthQueries.js";
 import { normalizeDecisionBucket } from "./scannerStageTypes.js";
+import { isBlockedDocumentOutcome } from "../trust/blockedOutcomeGuard.js";
 
 export type ScannerIsolationSeverity = "critical" | "warning" | "info";
 
@@ -156,10 +157,7 @@ function outcomeStatusFromParsed(parsedFieldsJson: unknown): string | null {
 }
 
 function isBlockedOutcome(parsedFieldsJson: unknown, uncertaintyReason?: string | null): boolean {
-  const outcomeStatus = outcomeStatusFromParsed(parsedFieldsJson);
-  if (outcomeStatus === "BLOCKED") return true;
-  const uncertainty = uncertaintyReason?.toLowerCase() ?? "";
-  return uncertainty.includes("outcome_blocked") || uncertainty.includes("oe_trust_blocked");
+  return isBlockedDocumentOutcome(parsedFieldsJson, uncertaintyReason);
 }
 
 function isNotFinancialExclusion(parsedFieldsJson: unknown, uncertaintyReason?: string | null): boolean {

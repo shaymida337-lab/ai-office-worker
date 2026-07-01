@@ -26,7 +26,7 @@ import {
   severityToReliabilityEventSeverity,
 } from "./index.js";
 import { buildIntegrityFinding } from "./integrityFinding.js";
-import { emptyIntegrityOrgData, emailRow, paymentRow } from "./integrityTestFixtures.js";
+import { emptyIntegrityOrgData, emailRow, attachmentRow, paymentRow } from "./integrityTestFixtures.js";
 import type { IntegrityReadOnlyDb } from "./integrityDb.js";
 import { runIntegrityWatchForOrganization } from "./integrityRunner.js";
 
@@ -143,15 +143,16 @@ test("integrity core: validator 6 — stuck scan", () => {
 });
 
 test("integrity core: validator 7 — orphan Gmail message", () => {
+  const email = emailRow({
+    id: "em-orphan",
+    subject: "חשבונית",
+    fromAddress: "vendor@example.com",
+    processedAt: new Date(NOW.getTime() - 48 * 60 * 60 * 1000),
+  });
   const data = emptyIntegrityOrgData({
     now: NOW,
-    emailMessages: [
-      emailRow({
-        subject: "חשבונית",
-        fromAddress: "vendor@example.com",
-        processedAt: new Date(NOW.getTime() - 48 * 60 * 60 * 1000),
-      }),
-    ],
+    emailMessages: [email],
+    emailAttachmentsByEmailId: new Map([["em-orphan", [attachmentRow({ emailMessageId: "em-orphan" })]]]),
     gsiGmailIds: new Set(),
     fdrGmailIds: new Set(),
   });

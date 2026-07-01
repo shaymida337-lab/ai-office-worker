@@ -23,7 +23,17 @@ export const INTEGRITY_SEVERITY_FRAMEWORK = {
   warning: [
     "historical_duplicate_rescan",
     "shared_mailbox_history",
+    "sibling_org_artifact",
+    "invoice_subject_no_financial_attachment",
+    "test_subject_investigation_candidate",
     "unexpected_but_explainable",
   ],
-  info: ["test_traffic", "non_financial_processed", "operational_observation"],
+  info: [
+    "test_traffic",
+    "test_sender",
+    "test_subject_no_financial_attachment",
+    "unsupported_attachment_only",
+    "non_financial_processed",
+    "operational_observation",
+  ],
 } as const;

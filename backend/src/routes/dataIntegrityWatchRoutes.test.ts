@@ -8,6 +8,7 @@ import type { IntegrityReadOnlyDb } from "../services/dataIntegrityWatch/integri
 import { buildIntegrityWatchReport } from "../services/dataIntegrityWatch/integrityReport.js";
 import { buildIntegrityOrgReport } from "../services/dataIntegrityWatch/integrityScore.js";
 import { INTEGRITY_WATCH_VERSION } from "../services/dataIntegrityWatch/integrityTypes.js";
+import { allowAllPermissionsMiddleware } from "../services/rbac/rbacMiddleware.js";
 
 const ORG_A = "org-integrity-a";
 const ORG_B = "org-integrity-b";
@@ -36,6 +37,7 @@ function createMockDeps() {
         calls.push(organizationId);
         return sampleReport(organizationId);
       },
+      requirePermission: () => allowAllPermissionsMiddleware(),
     }),
   };
 }
@@ -94,6 +96,8 @@ test("GET /integrity/watch returns expected response shape", async () => {
     assert.equal(typeof res.body.health.integrityScore, "number");
     assert.equal(typeof res.body.health.criticalFindings, "number");
     assert.ok(res.body.report.noiseAnalytics);
+    assert.equal(typeof res.body.report.noiseAnalytics.ignoredPercentage, "number");
+    assert.ok(Array.isArray(res.body.report.noiseAnalytics.investigationCandidates));
     assert.ok(res.body.report.signalQualityComparison);
     assert.equal(typeof res.body.health.importantFindings, "number");
     assert.ok(res.body.summary);

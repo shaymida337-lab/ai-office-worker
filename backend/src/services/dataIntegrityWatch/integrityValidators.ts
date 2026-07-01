@@ -264,7 +264,10 @@ export function runCoreScannerValidators(
     const hasFdr = data.fdrGmailIds.has(email.gmailId);
     if (hasGsi || hasFdr) continue;
 
-    const classification = classifyOrphanEmailMessage(email, now, config);
+    const classification = classifyOrphanEmailMessage(email, now, config, {
+      attachments: data.emailAttachmentsByEmailId.get(email.id) ?? [],
+      siblingArtifacts: data.siblingArtifactsByGmailId.get(email.gmailId) ?? null,
+    });
     if (classification.disposition === "IGNORED") {
       ignored.push({
         checkId: "scan-orphan-gmail-message",
@@ -286,15 +289,19 @@ export function runCoreScannerValidators(
         entityType: "EmailMessage",
         entityId: email.id,
         explanation: `${classification.reason} (${classification.signals.join(", ")})`,
-        probableRootCause: classification.disposition.toLowerCase(),
+        probableRootCause: classification.probableRootCause,
         suggestedAction:
           severity === "critical"
-            ? "Investigate why invoice-like email has no scan or review artifact."
-            : "Monitor; likely non-financial or test traffic.",
+            ? "Investigate why invoice-like email with financial attachment has no scan or review artifact."
+            : severity === "warning"
+              ? "Review shared-mailbox or partial-scan condition; likely not active customer-money risk."
+              : "Monitor; likely non-financial, test traffic, or expected shared-mailbox behavior.",
         signalDisposition: classification.disposition,
         findingConfidence: computeFindingConfidence({
           baseConfidence: classification.findingConfidence,
           signalCount: classification.signals.length,
+          crossValidated: classification.signals.includes("financial_attachment_present"),
+          historicalEvidence: classification.signals.includes("sibling_org_artifact"),
         }),
       }),
     );

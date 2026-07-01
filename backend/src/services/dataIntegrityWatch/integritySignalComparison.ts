@@ -15,6 +15,17 @@ export const PROD_BASELINE_PRE_TUNING = {
   ],
 } as const;
 
+/** Production baseline after Phase 2.3B deploy (org cmqxujfuj034ndy2czu9tjoko). */
+export const PROD_BASELINE_POST_2_3B = {
+  label: "phase-2.3b-post-tuning",
+  criticalFindings: 17,
+  warningFindings: 2,
+  infoFindings: 349,
+  importantFindings: 0,
+  ignoredOrphansEstimate: 18,
+  topCriticalChecks: [{ checkId: "scan-orphan-gmail-message", count: 17 }],
+} as const;
+
 export function buildSignalQualityComparison(
   report: IntegrityWatchReport,
 ): IntegritySignalQualityComparison {

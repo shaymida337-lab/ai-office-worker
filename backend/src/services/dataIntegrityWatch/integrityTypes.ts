@@ -4,7 +4,7 @@
  */
 import type { ReliabilityEventSeverity } from "../reliability/reliabilityTypes.js";
 
-export const INTEGRITY_WATCH_VERSION = "data-integrity-watch-signal-v1" as const;
+export const INTEGRITY_WATCH_VERSION = "data-integrity-watch-signal-v2" as const;
 
 export const INTEGRITY_READ_ONLY_GUARANTEE = true as const;
 
@@ -68,8 +68,10 @@ export type IntegrityRunOptions = {
 export type IntegrityNoiseAnalytics = {
   ignoredCount: number;
   ignoredByCheck: Record<string, number>;
+  ignoredPercentage: number;
   falsePositiveCandidates: Array<{ checkId: string; count: number; reason: string }>;
-  topNoisyValidators: Array<{ checkId: string; count: number }>;
+  investigationCandidates: Array<{ checkId: string; count: number; reason: string }>;
+  topNoisyValidators: Array<{ checkId: string; count: number; ignoredRate: number | null }>;
   severityCounts: Record<IntegritySeverity, number>;
   criticalTrendNote: string | null;
   warningTrendNote: string | null;

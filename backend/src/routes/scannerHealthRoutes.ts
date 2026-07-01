@@ -9,11 +9,13 @@ import {
   type ScannerHealthFailuresApiResponse,
   type ScannerHealthServiceDb,
 } from "../services/scanner/scannerHealthService.js";
+import { requirePermissionMiddleware } from "../services/rbac/rbacMiddleware.js";
 
 export type ScannerHealthRouteDeps = {
   db: ScannerHealthServiceDb;
   getHealth: typeof getScannerHealthResponse;
   getFailures: typeof getScannerHealthFailuresResponse;
+  requirePermission?: typeof requirePermissionMiddleware;
 };
 
 const defaultDeps: ScannerHealthRouteDeps = {
@@ -30,8 +32,9 @@ export function createScannerHealthRouter(
   deps: ScannerHealthRouteDeps = defaultDeps,
 ): Router {
   const router = Router();
+  const guard = deps.requirePermission ?? requirePermissionMiddleware;
 
-  router.get("/scanner/health", async (req: Request, res: Response) => {
+  router.get("/scanner/health", guard("reliability.view"), async (req: Request, res: Response) => {
     const organizationId = req.auth!.organizationId;
     const now = new Date();
     const range = parseScannerHealthRange(queryRecord(req), now);
@@ -48,7 +51,7 @@ export function createScannerHealthRouter(
     }
   });
 
-  router.get("/scanner/health/failures", async (req: Request, res: Response) => {
+  router.get("/scanner/health/failures", guard("reliability.view"), async (req: Request, res: Response) => {
     const organizationId = req.auth!.organizationId;
     const now = new Date();
     const range = parseScannerHealthRange(queryRecord(req), now);

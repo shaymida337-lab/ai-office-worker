@@ -24,6 +24,14 @@ import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } fr
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
 import { approveFinancialDocumentReview } from "../services/financialDocuments.js";
 import { recordFinancialDocumentDecision } from "../services/financialDocuments.js";
+import {
+  invoiceAuditSnapshot,
+  paymentAuditSnapshot,
+  recordPlatformAudit,
+  resolveWorkflowCorrelationId,
+  reviewAuditSnapshot,
+  userAuditContext,
+} from "../services/auditLog/index.js";
 import { resolveFinanceDisplayAmount, resolveDocumentReviewDisplayAmount } from "../services/amount/financeDisplayAmount.js";
 import { initialConnectScanWindow, isHistoricalGmailScanRequest, resolveHistoricalGmailScanWindow } from "../services/scanWindow.js";
 import {
@@ -87,8 +95,18 @@ import {
 import { calendarEngineRouter } from "./calendarEngineRoutes.js";
 import { scannerHealthRouter } from "./scannerHealthRoutes.js";
 import { integrityWatchRouter } from "./dataIntegrityWatchRoutes.js";
+import { auditLogRouter } from "./auditLogRoutes.js";
+import { membershipRouter } from "./membershipRoutes.js";
+import { confidenceRouter } from "./confidenceRoutes.js";
+import { auditorRouter } from "./auditorRoutes.js";
+import { releaseCertificateRouter } from "./releaseCertificateRoutes.js";
+import { requirePerm } from "../services/rbac/index.js";
 
 export const apiRouter = Router();
+
+function routeId(req: Request, key = "id"): string {
+  return String(req.params[key]);
+}
 const bankUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -147,6 +165,11 @@ apiRouter.use(authMiddleware);
 apiRouter.use(calendarEngineRouter);
 apiRouter.use(scannerHealthRouter);
 apiRouter.use(integrityWatchRouter);
+apiRouter.use(auditLogRouter);
+apiRouter.use(membershipRouter);
+apiRouter.use(confidenceRouter);
+apiRouter.use(auditorRouter);
+apiRouter.use(releaseCertificateRouter);
 
 apiRouter.get("/business/templates", async (_req, res) => {
   res.json(getBusinessTemplates());
@@ -156,7 +179,7 @@ apiRouter.get("/organization/settings", async (req, res) => {
   res.json(await getOrganizationSettings(req.auth!.organizationId));
 });
 
-apiRouter.put("/organization/settings", async (req, res) => {
+apiRouter.put("/organization/settings", requirePerm("organization.settings"), async (req, res) => {
   res.json(await updateOrganizationBusinessSettings(req.auth!.organizationId, req.body as Record<string, unknown>));
 });
 
@@ -168,7 +191,7 @@ apiRouter.get("/settings/business-profile", async (req, res) => {
   res.json({ businessProfile: organization?.businessProfile ?? "" });
 });
 
-apiRouter.put("/settings/business-profile", async (req, res) => {
+apiRouter.put("/settings/business-profile", requirePerm("organization.settings"), async (req, res) => {
   const businessProfile = typeof req.body?.businessProfile === "string" ? req.body.businessProfile : "";
   const organization = await prisma.organization.update({
     where: { id: req.auth!.organizationId },
@@ -1202,7 +1225,7 @@ function normalizeGreenInvoiceEnv(value: unknown): GreenInvoiceEnv | null {
   return null;
 }
 
-apiRouter.post("/green-invoice/connect", async (req, res) => {
+apiRouter.post("/green-invoice/connect", requirePerm("organization.settings"), async (req, res) => {
   const orgId = req.auth!.organizationId;
   const body = (req.body ?? {}) as GreenInvoiceConnectBody;
   const apiKeyId = typeof body.apiKeyId === "string" ? body.apiKeyId.trim() : "";
@@ -1265,7 +1288,7 @@ apiRouter.get("/green-invoice/status", async (req, res) => {
   }
 });
 
-apiRouter.post("/green-invoice/test", async (req, res) => {
+apiRouter.post("/green-invoice/test", requirePerm("organization.settings"), async (req, res) => {
   const orgId = req.auth!.organizationId;
   try {
     const organization = await prisma.organization.findUnique({
@@ -1295,7 +1318,7 @@ apiRouter.post("/green-invoice/test", async (req, res) => {
   }
 });
 
-apiRouter.post("/bank/upload", bankUpload.single("file"), async (req, res) => {
+apiRouter.post("/bank/upload", requirePerm("payment.create"), bankUpload.single("file"), async (req, res) => {
   const organizationId = req.auth!.organizationId;
   const file = req.file;
   if (!file) {
@@ -1394,7 +1417,7 @@ apiRouter.get("/bank/statements/:id", async (req, res) => {
   const organizationId = req.auth!.organizationId;
   try {
     const statement = await prisma.bankStatement.findFirst({
-      where: { id: req.params.id, organizationId },
+      where: { id: routeId(req), organizationId },
       include: {
         transactions: {
           orderBy: { date: "desc" },
@@ -1467,13 +1490,13 @@ apiRouter.get("/bank/statements/:id", async (req, res) => {
   }
 });
 
-apiRouter.post("/bank/transactions/:id/confirm", async (req, res) => {
+apiRouter.post("/bank/transactions/:id/confirm", requirePerm("payment.update"), async (req, res) => {
   const organizationId = req.auth!.organizationId;
   const body = (req.body ?? {}) as { matchedRecordType?: unknown; matchedRecordId?: unknown };
 
   try {
     const transaction = await prisma.bankTransaction.findFirst({
-      where: { id: req.params.id, organizationId },
+      where: { id: routeId(req), organizationId },
     });
     if (!transaction) {
       res.status(404).json({ error: "Bank transaction not found" });
@@ -1518,11 +1541,11 @@ apiRouter.post("/bank/transactions/:id/confirm", async (req, res) => {
   }
 });
 
-apiRouter.post("/bank/transactions/:id/reject", async (req, res) => {
+apiRouter.post("/bank/transactions/:id/reject", requirePerm("review.reject"), async (req, res) => {
   const organizationId = req.auth!.organizationId;
   try {
     const transaction = await prisma.bankTransaction.findFirst({
-      where: { id: req.params.id, organizationId },
+      where: { id: routeId(req), organizationId },
       select: { id: true },
     });
     if (!transaction) {
@@ -2585,7 +2608,7 @@ apiRouter.get("/stats", async (req, res) => {
   });
 });
 
-apiRouter.post("/natalie/ask", async (req, res) => {
+apiRouter.post("/natalie/ask", requirePerm("chat.use"), async (req, res) => {
   const question = typeof req.body?.question === "string" ? req.body.question.trim() : "";
   const history = Array.isArray(req.body?.history)
     ? req.body.history
@@ -2827,7 +2850,7 @@ apiRouter.post("/natalie/reschedule-appointment", async (req, res) => {
   }
 });
 
-apiRouter.post("/natalie/save-invoice-draft", async (req, res) => {
+apiRouter.post("/natalie/save-invoice-draft", requirePerm("payment.create"), async (req, res) => {
   const validation = validateInvoiceDraftInput(req.body);
   if (!validation.ok) {
     res.status(400).json({ error: validation.reason });
@@ -2870,7 +2893,7 @@ apiRouter.post("/natalie/invoice-import/preview", bankUpload.single("file"), asy
   }
 });
 
-apiRouter.post("/natalie/invoice-import/save", async (req, res) => {
+apiRouter.post("/natalie/invoice-import/save", requirePerm("payment.create"), async (req, res) => {
   const body = req.body as { rows?: unknown; mappings?: unknown };
   if (!Array.isArray(body.rows) || !Array.isArray(body.mappings)) {
     res.status(400).json({ error: "rows and mappings are required arrays" });
@@ -2928,11 +2951,11 @@ apiRouter.get("/natalie/invoice-drafts", async (req, res) => {
   }
 });
 
-apiRouter.delete("/natalie/invoice-drafts/:id", async (req, res) => {
+apiRouter.delete("/natalie/invoice-drafts/:id", requirePerm("payment.delete"), async (req, res) => {
   try {
     const result = await deleteOutgoingInvoiceDraft({
       organizationId: req.auth!.organizationId,
-      id: req.params.id,
+      id: routeId(req),
     });
     if (!result.deleted) {
       res.status(404).json({ error: "טיוטה לא נמצאה" });
@@ -2945,9 +2968,9 @@ apiRouter.delete("/natalie/invoice-drafts/:id", async (req, res) => {
   }
 });
 
-apiRouter.post("/natalie/invoice-drafts/:id/issue", async (req, res) => {
+apiRouter.post("/natalie/invoice-drafts/:id/issue", requirePerm("payment.create"), async (req, res) => {
   const organizationId = req.auth!.organizationId;
-  const draftId = req.params.id;
+  const draftId = routeId(req);
   const result = await issueDraftHandler({
     draftId,
     organizationId,
@@ -3430,7 +3453,7 @@ apiRouter.get("/accountant/summary", async (req, res) => {
   res.json(await buildAccountantSummary(req.auth!.organizationId, period));
 });
 
-apiRouter.post("/accountant/generate", async (req, res) => {
+apiRouter.post("/accountant/generate", requirePerm("report.export"), async (req, res) => {
   const period = typeof req.body?.period === "string" ? req.body.period : undefined;
   const { generateAccountantReport } = await import("../services/accountantReports.js");
   res.json(await generateAccountantReport(req.auth!.organizationId, period));
@@ -3445,7 +3468,7 @@ apiRouter.get("/accountant/download.zip", async (req, res) => {
   res.send(buffer);
 });
 
-apiRouter.post("/accountant/send", async (req, res) => {
+apiRouter.post("/accountant/send", requirePerm("report.export"), async (req, res) => {
   const period = typeof req.body?.period === "string" ? req.body.period : undefined;
   const { generateAccountantReport } = await import("../services/accountantReports.js");
   const report = await generateAccountantReport(req.auth!.organizationId, period);
@@ -4222,20 +4245,30 @@ apiRouter.get("/invoices", async (req, res) => {
   res.json({ invoices: responseInvoices });
 });
 
-apiRouter.put("/invoices/:id/status", async (req, res) => {
+apiRouter.put("/invoices/:id/status", requirePerm("invoice.update"), async (req, res) => {
   const body = req.body as { status?: string };
   if (!body.status || !["paid", "pending", "overdue"].includes(body.status)) {
     res.status(400).json({ error: "Invalid invoice status" });
     return;
   }
   const invoice = await prisma.invoice.findFirst({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    where: { id: routeId(req), organizationId: req.auth!.organizationId },
   });
   if (!invoice) {
     res.status(404).json({ error: "Invoice not found" });
     return;
   }
   const updated = await prisma.invoice.update({ where: { id: invoice.id }, data: { status: body.status } });
+  recordPlatformAudit({
+    ...userAuditContext(req.auth!.userId, "api", "PUT /invoices/:id/status", resolveWorkflowCorrelationId({ gmailMessageId: invoice.gmailMessageId, emailMessageId: invoice.emailId })),
+    organizationId: req.auth!.organizationId,
+    entityType: "invoice",
+    entityId: invoice.id,
+    action: "invoice_updated",
+    beforeState: invoiceAuditSnapshot(invoice),
+    afterState: invoiceAuditSnapshot(updated),
+    metadata: { field: "status", previousStatus: invoice.status, nextStatus: body.status },
+  });
   try {
     const { updateInvoiceStatusInSheets } = await import("../services/clientSheetsService.js");
     await updateInvoiceStatusInSheets(invoice.clientId, invoice.sheetsRow, body.status);
@@ -4470,11 +4503,26 @@ function dateDayWhere(date: Date) {
   return { gte: start, lt: end };
 }
 
-apiRouter.delete("/invoices/:id", async (req, res) => {
-  const result = await deleteInvoiceArtifacts(req.auth!.organizationId, { invoiceId: req.params.id });
+apiRouter.delete("/invoices/:id", requirePerm("invoice.delete"), async (req, res) => {
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: routeId(req), organizationId: req.auth!.organizationId },
+    select: { id: true, status: true, amount: true, currency: true, gmailMessageId: true, emailId: true },
+  });
+  const result = await deleteInvoiceArtifacts(req.auth!.organizationId, { invoiceId: routeId(req) });
   if (!result.found) {
     res.status(404).json({ error: "Invoice not found" });
     return;
+  }
+  if (invoice) {
+    recordPlatformAudit({
+      ...userAuditContext(req.auth!.userId, "api", "DELETE /invoices/:id", resolveWorkflowCorrelationId({ gmailMessageId: invoice.gmailMessageId, emailMessageId: invoice.emailId })),
+      organizationId: req.auth!.organizationId,
+      entityType: "invoice",
+      entityId: invoice.id,
+      action: "invoice_deleted",
+      beforeState: invoiceAuditSnapshot(invoice),
+      afterState: null,
+    });
   }
   res.json({
     ok: true,
@@ -4623,7 +4671,7 @@ apiRouter.patch("/services/:id", async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
     const existing = await prisma.service.findFirst({
-      where: { id: req.params.id, organizationId },
+      where: { id: routeId(req), organizationId },
     });
     if (!existing) {
       res.status(404).json({ error: "Service not found" });
@@ -4674,7 +4722,7 @@ apiRouter.patch("/services/:id", async (req, res) => {
 apiRouter.delete("/services/:id", async (req, res) => {
   try {
     const updated = await prisma.service.updateMany({
-      where: { id: req.params.id, organizationId: req.auth!.organizationId },
+      where: { id: routeId(req), organizationId: req.auth!.organizationId },
       data: { isActive: false },
     });
     if (updated.count === 0) {
@@ -5090,9 +5138,12 @@ function mapDocumentReviewForApi<
   };
 }
 
-apiRouter.post("/document-reviews/:id/approve", async (req, res) => {
+apiRouter.post("/document-reviews/:id/approve", requirePerm("review.approve"), async (req, res) => {
   try {
-    const item = await approveFinancialDocumentReview(req.auth!.organizationId, req.params.id);
+    const item = await approveFinancialDocumentReview(req.auth!.organizationId, routeId(req), {
+      userId: req.auth!.userId,
+      sourceRoute: "POST /document-reviews/:id/approve",
+    });
     res.json({ ok: true, item: mapDocumentReviewForApi(item) });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Document review approval failed";
@@ -5101,8 +5152,8 @@ apiRouter.post("/document-reviews/:id/approve", async (req, res) => {
   }
 });
 
-apiRouter.delete("/document-reviews/:id", async (req, res) => {
-  const result = await deleteInvoiceArtifacts(req.auth!.organizationId, { documentReviewId: req.params.id });
+apiRouter.delete("/document-reviews/:id", requirePerm("review.reject"), async (req, res) => {
+  const result = await deleteInvoiceArtifacts(req.auth!.organizationId, { documentReviewId: routeId(req) });
   if (!result.found) {
     res.status(404).json({ error: "Document review item not found" });
     return;
@@ -5110,8 +5161,8 @@ apiRouter.delete("/document-reviews/:id", async (req, res) => {
   res.json({ ok: true, deleted: result.deleted, verification: result.verification, unlinked: result.unlinked });
 });
 
-apiRouter.delete("/gmail-scan-items/:id", async (req, res) => {
-  const result = await deleteInvoiceArtifacts(req.auth!.organizationId, { gmailScanItemId: req.params.id });
+apiRouter.delete("/gmail-scan-items/:id", requirePerm("review.reject"), async (req, res) => {
+  const result = await deleteInvoiceArtifacts(req.auth!.organizationId, { gmailScanItemId: routeId(req) });
   if (!result.found) {
     res.status(404).json({ error: "Gmail scan item not found" });
     return;
@@ -5119,9 +5170,9 @@ apiRouter.delete("/gmail-scan-items/:id", async (req, res) => {
   res.json({ ok: true, deleted: result.deleted, verification: result.verification, unlinked: result.unlinked });
 });
 
-apiRouter.post("/gmail-scan-items/:id/approve", async (req, res) => {
+apiRouter.post("/gmail-scan-items/:id/approve", requirePerm("review.approve"), async (req, res) => {
   const item = await prisma.gmailScanItem.findFirst({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    where: { id: routeId(req), organizationId: req.auth!.organizationId },
   });
   if (!item) {
     res.status(404).json({ error: "Gmail scan item not found" });
@@ -5134,7 +5185,7 @@ apiRouter.post("/gmail-scan-items/:id/approve", async (req, res) => {
   res.json({ ok: true, item: updated });
 });
 
-apiRouter.patch("/payments/:id", async (req, res) => {
+apiRouter.patch("/payments/:id", requirePerm("payment.update"), async (req, res) => {
   const { paid, invoiceLink, documentLink, receiptLink } = req.body as {
     paid?: boolean;
     invoiceLink?: string;
@@ -5142,7 +5193,7 @@ apiRouter.patch("/payments/:id", async (req, res) => {
     receiptLink?: string;
   };
   const existingPayment = await prisma.supplierPayment.findFirst({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    where: { id: routeId(req), organizationId: req.auth!.organizationId },
   });
   if (!existingPayment) {
     res.status(404).json({ error: "Payment not found" });
@@ -5156,6 +5207,20 @@ apiRouter.patch("/payments/:id", async (req, res) => {
       ...(documentLink !== undefined && { documentLink }),
       ...(receiptLink !== undefined && { documentLink: receiptLink }),
     },
+  });
+  recordPlatformAudit({
+    ...userAuditContext(
+      req.auth!.userId,
+      "api",
+      "PATCH /payments/:id",
+      resolveWorkflowCorrelationId({ emailMessageId: existingPayment.emailMessageId }),
+    ),
+    organizationId: req.auth!.organizationId,
+    entityType: "supplier_payment",
+    entityId: updatedPayment.id,
+    action: "payment_updated",
+    beforeState: paymentAuditSnapshot(existingPayment),
+    afterState: paymentAuditSnapshot(updatedPayment),
   });
   if ((invoiceLink !== undefined || paid === true) && existingPayment.emailMessageId) {
     await prisma.task.updateMany({
@@ -5203,13 +5268,22 @@ apiRouter.patch("/payments/:id", async (req, res) => {
 });
 
 async function deleteSupplierPaymentHandler(req: Request, res: Response) {
-  const paymentId = String(req.params.id);
+  const paymentId = routeId(req);
   const beforeCount = await prisma.supplierPayment.count({
     where: { id: paymentId, organizationId: req.auth!.organizationId },
   });
   const payment = await prisma.supplierPayment.findFirst({
     where: { id: paymentId, organizationId: req.auth!.organizationId },
-    select: { id: true, emailMessageId: true },
+    select: {
+      id: true,
+      supplier: true,
+      amount: true,
+      currency: true,
+      paid: true,
+      approvalStatus: true,
+      emailMessageId: true,
+      documentFingerprint: true,
+    },
   });
   if (!payment) {
     res.status(404).json({ error: "Payment not found" });
@@ -5241,6 +5315,21 @@ async function deleteSupplierPaymentHandler(req: Request, res: Response) {
   });
   console.log(`[payments] delete id=${paymentId} org=${req.auth!.organizationId} before=${beforeCount} deleted=${deleted.count} after=${afterCount}`);
 
+  recordPlatformAudit({
+    ...userAuditContext(
+      req.auth!.userId,
+      "api",
+      "DELETE /payments/:id",
+      resolveWorkflowCorrelationId({ emailMessageId: payment.emailMessageId }),
+    ),
+    organizationId: req.auth!.organizationId,
+    entityType: "supplier_payment",
+    entityId: payment.id,
+    action: "payment_deleted",
+    beforeState: paymentAuditSnapshot(payment),
+    afterState: null,
+  });
+
   res.json({
     ok: true,
     deleted: {
@@ -5255,8 +5344,8 @@ async function deleteSupplierPaymentHandler(req: Request, res: Response) {
   });
 }
 
-apiRouter.post("/payments/:id/delete", deleteSupplierPaymentHandler);
-apiRouter.delete("/payments/:id", deleteSupplierPaymentHandler);
+apiRouter.post("/payments/:id/delete", requirePerm("payment.delete"), deleteSupplierPaymentHandler);
+apiRouter.delete("/payments/:id", requirePerm("payment.delete"), deleteSupplierPaymentHandler);
 
 apiRouter.get("/tasks", async (req, res) => {
   const tasks = await prisma.task.findMany({
@@ -5270,7 +5359,7 @@ apiRouter.get("/tasks", async (req, res) => {
 apiRouter.patch("/tasks/:id", async (req, res) => {
   const { status } = req.body as { status?: string };
   const updated = await prisma.task.updateMany({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    where: { id: routeId(req), organizationId: req.auth!.organizationId },
     data: { status: status ?? "completed" },
   });
   if (updated.count === 0) {
@@ -5299,7 +5388,7 @@ apiRouter.put("/tasks/:id", async (req, res) => {
     return;
   }
   const updated = await prisma.task.updateMany({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    where: { id: routeId(req), organizationId: req.auth!.organizationId },
     data: {
       title,
       description: body.description?.trim() || null,
@@ -5317,7 +5406,7 @@ apiRouter.put("/tasks/:id", async (req, res) => {
 
 apiRouter.delete("/tasks/:id", async (req, res) => {
   const deleted = await prisma.task.deleteMany({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    where: { id: routeId(req), organizationId: req.auth!.organizationId },
   });
   if (deleted.count === 0) {
     res.status(404).json({ error: "Task not found" });
@@ -6432,7 +6521,7 @@ apiRouter.post("/camera/invoices/preview", async (req, res) => {
   }
 });
 
-apiRouter.post("/camera/invoices", async (req, res) => {
+apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, res) => {
   try {
     const body = req.body as {
       supplier?: string;
@@ -6567,7 +6656,7 @@ apiRouter.get("/customer-invoices", async (req, res) => {
   res.json(invoices);
 });
 
-apiRouter.post("/customer-invoices", async (req, res) => {
+apiRouter.post("/customer-invoices", requirePerm("payment.create"), async (req, res) => {
   const body = req.body as {
     customer?: string;
     amount?: number;
@@ -6593,10 +6682,10 @@ apiRouter.post("/customer-invoices", async (req, res) => {
   res.json(invoice);
 });
 
-apiRouter.patch("/customer-invoices/:id", async (req, res) => {
+apiRouter.patch("/customer-invoices/:id", requirePerm("invoice.update"), async (req, res) => {
   const body = req.body as { paid?: boolean; reminderSent?: boolean };
   const invoice = await prisma.customerInvoice.updateMany({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    where: { id: routeId(req), organizationId: req.auth!.organizationId },
     data: {
       ...(body.paid !== undefined && { paid: body.paid }),
       ...(body.reminderSent && { reminderSentAt: new Date() }),
@@ -6607,7 +6696,7 @@ apiRouter.patch("/customer-invoices/:id", async (req, res) => {
 
 apiRouter.post("/customer-invoices/:id/reminder", async (req, res) => {
   const invoice = await prisma.customerInvoice.findFirst({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    where: { id: routeId(req), organizationId: req.auth!.organizationId },
   });
   if (!invoice) {
     res.status(404).json({ error: "Customer invoice not found" });
@@ -6660,7 +6749,7 @@ apiRouter.post("/social-drafts", async (req, res) => {
 apiRouter.patch("/social-drafts/:id", async (req, res) => {
   const body = req.body as { status?: string; content?: string };
   const draft = await prisma.socialDraft.updateMany({
-    where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    where: { id: routeId(req), organizationId: req.auth!.organizationId },
     data: {
       ...(body.status && { status: body.status }),
       ...(body.content && { content: body.content }),

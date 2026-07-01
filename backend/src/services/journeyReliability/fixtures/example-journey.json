@@ -1,0 +1,61 @@
+{
+  "journeyId": "cj-fin-001-gmail-invoice-to-payment",
+  "version": "journey-reliability-v1",
+  "category": "financial_documents",
+  "title": "Gmail tax invoice → scan → extraction → decision → drive → review → supplier payment",
+  "description": "Full financial document lifecycle from Gmail ingestion through supplier payment persistence.",
+  "criticality": "critical",
+  "steps": [
+    { "stepId": "s1", "kind": "gmail_ingest", "subsystem": "gmail", "label": "Gmail message received" },
+    { "stepId": "s2", "kind": "scan", "subsystem": "scanner", "label": "Scanner ingests attachment" },
+    { "stepId": "s3", "kind": "ai_extraction", "subsystem": "claude_extraction", "label": "Claude extracts fields" },
+    { "stepId": "s4", "kind": "decision", "subsystem": "outcome_engine", "label": "Outcome engine decides" },
+    { "stepId": "s5", "kind": "drive_upload", "subsystem": "drive", "label": "Document archived to Drive" },
+    { "stepId": "s6", "kind": "review", "subsystem": "invoice_creation", "label": "Review queue (if needed)" },
+    { "stepId": "s7", "kind": "persistence", "subsystem": "payments", "label": "Supplier payment persisted" },
+    { "stepId": "s8", "kind": "dashboard_visibility", "subsystem": "dashboard", "label": "Visible on dashboard" },
+    { "stepId": "s9", "kind": "audit_log", "subsystem": "scanner", "label": "Audit trail recorded" }
+  ],
+  "assertions": [
+    "no_duplicate_records",
+    "correct_fingerprint",
+    "organization_isolation",
+    "correct_supplier",
+    "correct_amount",
+    "correct_payment_direction",
+    "correct_review_state",
+    "dashboard_state",
+    "audit_log_present",
+    "correct_persistence"
+  ],
+  "expectedOutcome": {
+    "persistenceAction": "auto_save_payment",
+    "reviewStatus": "auto_saved",
+    "decisionOutcome": "SAVED",
+    "dashboardVisible": true,
+    "supplierName": "Acme",
+    "amount": 1180,
+    "currency": "ILS",
+    "paymentDirection": "incoming_expense",
+    "recordCount": 1,
+    "auditLogEntries": 1
+  },
+  "failureScenarios": [
+    {
+      "scenarioId": "fi-claude-timeout",
+      "injection": "claude_timeout",
+      "atStepId": "s3",
+      "description": "Claude API times out during extraction",
+      "expectedBehavior": {
+        "noIncorrectPersistence": true,
+        "noDataCorruption": true,
+        "properReviewRouting": true,
+        "reliabilityEventExpected": true,
+        "recoveryPathDeclared": true
+      }
+    }
+  ],
+  "tags": ["gmail", "invoice", "auto-save", "financial"],
+  "goldenSuiteCaseId": "gs-001-perfect-tax-invoice",
+  "implemented": true
+}

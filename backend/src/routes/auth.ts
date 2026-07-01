@@ -11,6 +11,8 @@ import { hashPassword, verifyPassword } from "../lib/password.js";
 import { sendAuthSuccess } from "../lib/auth-response.js";
 import { errorDetails, publicErrorMessage } from "../lib/errors.js";
 import { markOrganizationNeedsOnboarding } from "../services/businessTemplates.js";
+import { recordPlatformAudit, userAuditContext } from "../services/auditLog/index.js";
+import { ensureOwnerMembership } from "../services/rbac/index.js";
 import {
   assertRefreshTokenCanBindToOrganization,
   GmailIntegrationIsolationError,
@@ -84,9 +86,22 @@ authRouter.post("/register", async (req, res) => {
       },
       include: { organization: true },
     });
-    if (user.organization) await markOrganizationNeedsOnboarding(user.organization.id);
+    if (user.organization) {
+      await markOrganizationNeedsOnboarding(user.organization.id);
+      await ensureOwnerMembership(user.organization.id, user.id);
+    }
 
-    sendAuthSuccess(res, user);
+    recordPlatformAudit({
+      ...userAuditContext(user.id, "auth", "POST /auth/register"),
+      organizationId: user.organization!.id,
+      entityType: "organization",
+      entityId: user.organization!.id,
+      action: "organization_created",
+      afterState: { id: user.organization!.id, name: user.organization!.name },
+      metadata: { userId: user.id, email: user.email },
+    });
+
+    await sendAuthSuccess(res, user);
   } catch (err) {
     console.error("[auth/register]", errorDetails(err));
     res.status(500).json({ error: "Registration failed", detail: publicErrorMessage(err) });
@@ -132,6 +147,7 @@ authRouter.post("/login", async (req, res) => {
         data: { userId: user.id, name: user.name ?? "My Business" },
       });
       await markOrganizationNeedsOnboarding(organization.id);
+      await ensureOwnerMembership(organization.id, user.id);
       const refreshed = await prisma.user.findUnique({
         where: { id: user.id },
         include: { organization: true },
@@ -140,11 +156,28 @@ authRouter.post("/login", async (req, res) => {
         res.status(500).json({ error: "Organization missing" });
         return;
       }
-      sendAuthSuccess(res, refreshed);
+      recordPlatformAudit({
+        ...userAuditContext(refreshed.id, "auth", "POST /auth/login"),
+        organizationId: refreshed.organization.id,
+        entityType: "user",
+        entityId: refreshed.id,
+        action: "user_login",
+        metadata: { email: refreshed.email, organizationCreatedOnLogin: true },
+      });
+      await sendAuthSuccess(res, refreshed);
       return;
     }
 
-    sendAuthSuccess(res, user);
+    recordPlatformAudit({
+      ...userAuditContext(user.id, "auth", "POST /auth/login"),
+      organizationId: user.organization.id,
+      entityType: "user",
+      entityId: user.id,
+      action: "user_login",
+      metadata: { email: user.email },
+    });
+
+    await sendAuthSuccess(res, user);
   } catch (err) {
     console.error("[auth/login]", errorDetails(err));
     res.status(500).json({ error: "Login failed", detail: publicErrorMessage(err) });

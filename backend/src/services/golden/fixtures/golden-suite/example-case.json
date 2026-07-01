@@ -1,0 +1,34 @@
+{
+  "caseId": "gs-001-perfect-tax-invoice",
+  "version": "golden-suite-v1",
+  "sourceChannel": "gmail",
+  "documentFileRef": "fixtures/pdf/synthetic-inv-1001.pdf",
+  "originalMessageMetadata": {
+    "subject": "חשבונית מס INV-1001",
+    "senderEmail": "billing@example-supplier.test",
+    "gmailMessageId": "golden-msg-001",
+    "receivedAt": "2026-05-15T08:30:00.000Z",
+    "attachmentFilenames": ["invoice-1001.pdf"],
+    "bodySnippet": "מצורפת חשבונית מס"
+  },
+  "expectedSupplierName": "Acme",
+  "expectedAmount": 1180,
+  "expectedCurrency": "ILS",
+  "expectedDocumentType": "tax_invoice",
+  "expectedInvoiceNumber": "INV-1001",
+  "expectedDocumentDate": "2026-05-15",
+  "expectedPaymentDirection": "incoming_expense",
+  "expectedFingerprint": "fp-golden-001",
+  "expectedDecisionOutcome": "SAVED",
+  "expectedReviewStatus": "auto_saved",
+  "expectedPersistenceAction": "auto_save_payment",
+  "allowedVariance": {
+    "supplierName": true,
+    "confidenceScoreDelta": 0.05
+  },
+  "requiredConfidenceThreshold": 0.85,
+  "criticality": "critical",
+  "tags": ["invoice", "gmail", "hebrew", "auto-save"],
+  "notes": "Synthetic case bridged to golden-v1 gd-001-perfect-tax-invoice",
+  "pipelineCaseId": "gd-001-perfect-tax-invoice"
+}

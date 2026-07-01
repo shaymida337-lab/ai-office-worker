@@ -50,11 +50,19 @@ import {
   createSupplierPaymentIfTrusted,
   evaluateFreshTrustGatesForManualApproval,
 } from "./trust/financeTrustPersistence.js";
+import { isBlockedDocumentOutcome } from "./trust/blockedOutcomeGuard.js";
 import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 import {
   isCanonicalFinanceAmountResolved,
   resolveDocumentReviewDisplayAmount,
 } from "./amount/financeDisplayAmount.js";
+import {
+  aiAuditContext,
+  recordPlatformAudit,
+  resolveWorkflowCorrelationId,
+  reviewAuditSnapshot,
+  userAuditContext,
+} from "./auditLog/index.js";
 
 export type FinancialDocumentSource = "gmail" | "whatsapp" | "camera";
 
@@ -471,7 +479,16 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
   const documentFingerprint = canonical.fingerprint ?? canonical.legacyFingerprint;
 
   if (!isPaymentDocumentType(documentType)) {
-    await upsertReview({ ...input, documentType, documentDate, dueDate, confidenceScore, sourceFingerprint, documentFingerprint, reviewStatus: "rejected", uncertaintyReason: input.uncertaintyReason ?? "מסמך לא רלוונטי" });
+    const review = await upsertReview({ ...input, documentType, documentDate, dueDate, confidenceScore, sourceFingerprint, documentFingerprint, reviewStatus: "rejected", uncertaintyReason: input.uncertaintyReason ?? "מסמך לא רלוונטי" });
+    recordPlatformAudit({
+      ...aiAuditContext("financialDocuments", resolveWorkflowCorrelationId({ gmailMessageId: input.gmailMessageId, emailMessageId: input.emailMessageId })),
+      organizationId: input.organizationId,
+      entityType: "financial_document_review",
+      entityId: review.id,
+      action: "document_rejected",
+      afterState: reviewAuditSnapshot(review),
+      reason: input.uncertaintyReason ?? "מסמך לא רלוונטי",
+    });
     console.log(`[financial-document] filtered_irrelevant source=${input.source} fingerprint=${documentFingerprint} type=${documentType}`);
     return { action: "filtered" as const, documentType, sourceFingerprint, documentFingerprint };
   }
@@ -616,7 +633,11 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
   return { action: "accepted" as const, documentType, sourceFingerprint, documentFingerprint };
 }
 
-export async function approveFinancialDocumentReview(organizationId: string, reviewId: string) {
+export async function approveFinancialDocumentReview(
+  organizationId: string,
+  reviewId: string,
+  options?: { userId?: string; sourceRoute?: string },
+) {
   const review = await prisma.financialDocumentReview.findFirst({ where: { id: reviewId, organizationId } });
   if (!review) throw new Error("Document review item not found");
   const displayAmount = resolveDocumentReviewDisplayAmount({
@@ -631,7 +652,21 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
     throw new Error("Cannot approve document without a verified total amount");
   }
   if (!isPaymentDocumentType(normalizeFinancialDocumentType(review.documentType))) {
-    return prisma.financialDocumentReview.update({ where: { id: review.id }, data: { reviewStatus: "rejected", uncertaintyReason: "מסמך לא רלוונטי" } });
+    const rejected = await prisma.financialDocumentReview.update({ where: { id: review.id }, data: { reviewStatus: "rejected", uncertaintyReason: "מסמך לא רלוונטי" } });
+    const auditCtx = options?.userId
+      ? userAuditContext(options.userId, "financialDocuments", options.sourceRoute, resolveWorkflowCorrelationId({ gmailMessageId: review.gmailMessageId, emailMessageId: review.emailMessageId }))
+      : aiAuditContext("financialDocuments", resolveWorkflowCorrelationId({ gmailMessageId: review.gmailMessageId, emailMessageId: review.emailMessageId }));
+    recordPlatformAudit({
+      ...auditCtx,
+      organizationId,
+      entityType: "financial_document_review",
+      entityId: rejected.id,
+      action: "document_rejected",
+      beforeState: reviewAuditSnapshot(review),
+      afterState: reviewAuditSnapshot(rejected),
+      reason: "מסמך לא רלוונטי",
+    });
+    return rejected;
   }
   const approvedSupplierName =
     parseSupplierGateFromParsedFields(review.parsedFieldsJson)?.canonicalSupplierName ??
@@ -642,6 +677,9 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
   }
   if (!review.documentFingerprint?.trim()) {
     throw new Error("Cannot approve document without a verified document fingerprint");
+  }
+  if (isBlockedDocumentOutcome(review.parsedFieldsJson, review.uncertaintyReason)) {
+    throw new Error("לא ניתן לאשר מסמך — תוצאת עיבוד חסומה (BLOCKED)");
   }
   const duplicateGateInput = await buildDuplicateGateInput({
     organizationId,
@@ -695,6 +733,17 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
   }
   const createResult = await createSupplierPaymentIfTrusted({
     evaluation: effectiveEvaluation,
+    audit: options?.userId
+      ? userAuditContext(
+          options.userId,
+          "financialDocuments",
+          options.sourceRoute,
+          resolveWorkflowCorrelationId({ gmailMessageId: review.gmailMessageId, emailMessageId: review.emailMessageId }),
+        )
+      : aiAuditContext(
+          "financialDocuments",
+          resolveWorkflowCorrelationId({ gmailMessageId: review.gmailMessageId, emailMessageId: review.emailMessageId }),
+        ),
     data: {
       organizationId,
       supplier: approvedSupplierName,
@@ -744,7 +793,35 @@ export async function approveFinancialDocumentReview(organizationId: string, rev
   }
   const payment = createResult.payment;
   console.log(`[financial-document] manually_approved reviewId=${review.id} paymentId=${payment.id}`);
-  return prisma.financialDocumentReview.update({ where: { id: review.id }, data: { reviewStatus: "approved", supplierPaymentId: payment.id } });
+  const approved = await prisma.financialDocumentReview.update({ where: { id: review.id }, data: { reviewStatus: "approved", supplierPaymentId: payment.id } });
+  const correlationId = resolveWorkflowCorrelationId({ gmailMessageId: review.gmailMessageId, emailMessageId: review.emailMessageId });
+  const auditCtx = options?.userId
+    ? userAuditContext(options.userId, "financialDocuments", options.sourceRoute, correlationId)
+    : aiAuditContext("financialDocuments", correlationId);
+  recordPlatformAudit({
+    ...auditCtx,
+    organizationId,
+    entityType: "financial_document_review",
+    entityId: approved.id,
+    action: "document_approved",
+    beforeState: reviewAuditSnapshot(review),
+    afterState: reviewAuditSnapshot(approved),
+    metadata: { supplierPaymentId: payment.id },
+  });
+  if (canOverrideSourceConflict) {
+    recordPlatformAudit({
+      ...auditCtx,
+      organizationId,
+      entityType: "financial_document_review",
+      entityId: approved.id,
+      action: "review_overridden",
+      beforeState: reviewAuditSnapshot(review),
+      afterState: reviewAuditSnapshot(approved),
+      reason: "amount.source_conflict",
+      metadata: { supplierPaymentId: payment.id },
+    });
+  }
+  return approved;
 }
 
 export async function deleteFinancialDocumentReview(organizationId: string, reviewId: string) {

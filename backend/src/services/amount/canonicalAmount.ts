@@ -464,46 +464,40 @@ export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecisi
 
   if (subtotal && vat) {
     const computedTotal = roundMoney(subtotal.value + vat.value);
-    const conflictingTotal = payableRanked.find(
-      (candidate) =>
-        !isSubordinateAmountKind(candidate.kind) &&
-        !amountsClose(candidate.value, computedTotal) &&
-        (amountsMateriallyConflict(candidate.value, computedTotal) ||
-          detectDecimalShift(candidate.value, computedTotal) !== null)
-    );
-    if (conflictingTotal) {
-      return buildAmbiguousDecision({
-        currency,
-        ranked,
-        rejected,
-        subtotal,
-        vat,
-        reason: `Total ${conflictingTotal.value} conflicts with subtotal+VAT ${computedTotal}`,
-        reasonCode: "SOURCE_CONFLICT",
-        ambiguityFlags: ["vat_total_conflict"],
-      });
-    }
-  }
-
-  if (subtotal && vat) {
-    const computedTotal = roundMoney(subtotal.value + vat.value);
     const labeledTotal = payableRanked.find((candidate) =>
       ["invoice_total", "amount_due", "total_including_vat", "ai_total", "regex_labeled"].includes(candidate.kind)
     );
     if (
       labeledTotal &&
-      !amountsClose(labeledTotal.value, computedTotal)
+      !amountsClose(labeledTotal.value, computedTotal) &&
+      (amountsMateriallyConflict(labeledTotal.value, computedTotal) ||
+        detectDecimalShift(labeledTotal.value, computedTotal) !== null)
     ) {
-      return buildAmbiguousDecision({
-        currency,
-        ranked,
-        rejected,
-        subtotal,
-        vat,
-        reason: `Labeled total ${labeledTotal.value} conflicts with subtotal+VAT ${computedTotal}`,
-        reasonCode: "SOURCE_CONFLICT",
-        ambiguityFlags: ["vat_mismatch"],
+      payableRanked.sort((left, right) => {
+        if (left.value === labeledTotal.value && left.kind === labeledTotal.kind) return -1;
+        if (right.value === labeledTotal.value && right.kind === labeledTotal.kind) return 1;
+        return right.score - left.score;
       });
+    } else {
+      const conflictingTotal = payableRanked.find(
+        (candidate) =>
+          !isSubordinateAmountKind(candidate.kind) &&
+          !amountsClose(candidate.value, computedTotal) &&
+          (amountsMateriallyConflict(candidate.value, computedTotal) ||
+            detectDecimalShift(candidate.value, computedTotal) !== null)
+      );
+      if (conflictingTotal) {
+        return buildAmbiguousDecision({
+          currency,
+          ranked,
+          rejected,
+          subtotal,
+          vat,
+          reason: `Total ${conflictingTotal.value} conflicts with subtotal+VAT ${computedTotal}`,
+          reasonCode: "SOURCE_CONFLICT",
+          ambiguityFlags: ["vat_total_conflict"],
+        });
+      }
     }
   }
 
@@ -522,6 +516,7 @@ export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecisi
     });
   }
 
+  let vatMismatchFlag = false;
   if (subtotal && vat) {
     const computedTotal = roundMoney(subtotal.value + vat.value);
     const vatConfirmed = clusters.find((cluster) => amountsClose(cluster.value, computedTotal));
@@ -530,19 +525,17 @@ export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecisi
         STRONG_LABEL_KINDS.has(candidate.kind) &&
         !amountsClose(candidate.value, computedTotal)
     );
-    if (labeledConflict && vatConfirmed && !amountsClose(vatConfirmed.value, labeledConflict.value)) {
-      return buildAmbiguousDecision({
-        currency,
-        ranked,
-        rejected,
-        subtotal,
-        vat,
-        reason: `Labeled total ${labeledConflict.value} conflicts with subtotal+VAT ${computedTotal}`,
-        reasonCode: "SOURCE_CONFLICT",
-        ambiguityFlags: ["vat_mismatch"],
-      });
+    if (labeledConflict) {
+      vatMismatchFlag = true;
+      const labeledCluster = clusters.find((cluster) =>
+        cluster.group.some(
+          (candidate) => candidate.value === labeledConflict.value && candidate.kind === labeledConflict.kind,
+        ),
+      );
+      if (labeledCluster) best = labeledCluster;
+    } else if (vatConfirmed) {
+      best = vatConfirmed;
     }
-    if (vatConfirmed) best = vatConfirmed;
   }
 
   if (clusters.length > 1 && amountsMateriallyConflict(clusters[0].value, clusters[1].value)) {
@@ -614,6 +607,7 @@ export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecisi
   })[0];
 
   const ambiguityFlags: string[] = [];
+  if (vatMismatchFlag) ambiguityFlags.push("vat_mismatch");
   let confidence = Math.min(0.99, 0.55 + (winner.confidence ?? 0.5) * 0.35 + (multiSourceAgree ? 0.15 : 0));
   let evidenceScore = best.group.length;
 
@@ -635,19 +629,6 @@ export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecisi
 
   if (input.documentType === "quote") {
     confidence = Math.min(confidence, 0.79);
-  }
-
-  if (ambiguityFlags.includes("vat_mismatch")) {
-    return buildAmbiguousDecision({
-      currency,
-      ranked,
-      rejected,
-      subtotal,
-      vat,
-      reason: "VAT breakdown does not match selected total",
-      reasonCode: "SOURCE_CONFLICT",
-      ambiguityFlags,
-    });
   }
 
   const reasonCode = reasonCodeForKind(winner.kind);

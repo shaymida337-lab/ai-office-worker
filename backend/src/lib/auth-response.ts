@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import { signToken } from "./auth.js";
+import { getEffectivePermissions, resolveMembershipRole } from "../services/rbac/index.js";
 
 type UserWithOrg = {
   id: string;
@@ -8,12 +9,16 @@ type UserWithOrg = {
   organization: { id: string; name: string } | null;
 };
 
-export function sendAuthSuccess(res: Response, user: UserWithOrg) {
+export async function sendAuthSuccess(res: Response, user: UserWithOrg) {
   const org = user.organization;
   if (!org) {
     res.status(500).json({ error: "Organization missing" });
     return;
   }
+
+  const membership = await resolveMembershipRole(user.id, org.id);
+  const role = membership?.role ?? "owner";
+  const permissions = getEffectivePermissions(role);
 
   const token = signToken({
     userId: user.id,
@@ -32,5 +37,7 @@ export function sendAuthSuccess(res: Response, user: UserWithOrg) {
       id: org.id,
       name: org.name,
     },
+    role,
+    permissions,
   });
 }

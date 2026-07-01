@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 
 import { authMiddleware, type JwtPayload } from "../lib/auth.js";
 import { createScannerHealthRouter } from "./scannerHealthRoutes.js";
+import { allowAllPermissionsMiddleware } from "../services/rbac/rbacMiddleware.js";
 import type {
   ScannerHealthApiResponse,
   ScannerHealthFailuresApiResponse,
@@ -85,6 +86,7 @@ function createMockDeps() {
     calls,
     router: createScannerHealthRouter({
       db,
+      requirePermission: () => allowAllPermissionsMiddleware(),
       getHealth: async (_db, input) => {
         calls.push({ kind: "health", organizationId: input.organizationId });
         if (input.organizationId === ORG_A) {

@@ -23,6 +23,8 @@ import {
   findGmailIntegrationForOrganization,
   GmailIntegrationIsolationError,
 } from "../services/gmailIntegrationIsolation.js";
+import { recordPlatformAudit, userAuditContext } from "../services/auditLog/index.js";
+import { requirePerm } from "../services/rbac/index.js";
 
 export const integrationsRouter = Router();
 const GMAIL_OAUTH_STATE_COOKIE = "gmail_oauth_state";
@@ -258,17 +260,37 @@ integrationsRouter.get("/gmail/status", authMiddleware, async (req, res) => {
   });
 });
 
-integrationsRouter.delete("/gmail", authMiddleware, async (req, res) => {
+integrationsRouter.delete("/gmail", authMiddleware, requirePerm("integrations.gmail.disconnect"), async (req, res) => {
+  const existing = await prisma.integration.findUnique({
+    where: {
+      organizationId_provider: {
+        organizationId: req.auth!.organizationId,
+        provider: "gmail",
+      },
+    },
+  });
   await prisma.integration.deleteMany({
     where: {
       organizationId: req.auth!.organizationId,
       provider: "gmail",
     },
   });
+  if (existing) {
+    recordPlatformAudit({
+      ...userAuditContext(req.auth!.userId, "integrations", "DELETE /integrations/gmail"),
+      organizationId: req.auth!.organizationId,
+      entityType: "integration",
+      entityId: existing.id,
+      action: "integration_disconnected",
+      beforeState: { provider: "gmail", connectedAt: existing.connectedAt?.toISOString() ?? null },
+      afterState: null,
+      metadata: { gmail: true, drive: true },
+    });
+  }
   res.json({ ok: true });
 });
 
-integrationsRouter.get("/gmail/connect-url", authMiddleware, async (req, res) => {
+integrationsRouter.get("/gmail/connect-url", authMiddleware, requirePerm("integrations.gmail.connect"), async (req, res) => {
   try {
     if (!hasGoogleOAuth()) {
       const missing = [
@@ -495,6 +517,21 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
     console.log(
       `[gmail/callback][${traceId}] connected stateUser=${decodedState?.userId ?? "none"} stateEmail=${decodedState?.email ?? "none"} stateOrg=${organizationId} savedOrg=${savedIntegration.organizationId} persistedOrg=${persistedIntegration?.organizationId ?? "none"} provider=${savedIntegration.provider} hasAccessToken=${Boolean(persistedIntegration?.accessToken)} hasRefreshToken=${Boolean(persistedIntegration?.refreshToken)} connectedAt=${persistedIntegration?.connectedAt.toISOString() ?? "none"} expiresAt=${persistedIntegration?.expiresAt?.toISOString() ?? "none"}`
     );
+    if (decodedState?.userId) {
+      recordPlatformAudit({
+        ...userAuditContext(decodedState.userId, "integrations", "GET /integrations/gmail/callback"),
+        organizationId,
+        entityType: "integration",
+        entityId: savedIntegration.id,
+        action: "integration_connected",
+        afterState: {
+          provider: "gmail",
+          connectedAt: savedIntegration.connectedAt?.toISOString() ?? null,
+          googleAccountEmail,
+        },
+        metadata: { gmail: true, drive: true, reconnect: Boolean(existingIntegration?.refreshToken) },
+      });
+    }
     runPostConnectionGmailScan(organizationId);
 
     clearGmailStateCookie(res);

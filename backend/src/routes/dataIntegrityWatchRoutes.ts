@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Request, type Response, type RequestHandler } from "express";
 import { errorDetails } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import type { IntegrityReadOnlyDb } from "../services/dataIntegrityWatch/integrityDb.js";
@@ -6,10 +6,13 @@ import { runIntegrityWatchForOrganization } from "../services/dataIntegrityWatch
 import { buildIntegrityHealthExtension } from "../services/dataIntegrityWatch/integrityReliability.js";
 import { formatIntegrityWatchReport } from "../services/dataIntegrityWatch/integrityReport.js";
 import { integrityResultForTrustCertificate } from "../services/dataIntegrityWatch/integrityTrust.js";
+import { requirePerm, requirePermissionMiddleware } from "../services/rbac/index.js";
+import type { PlatformPermission } from "../services/rbac/permissions.js";
 
 export type IntegrityWatchRouteDeps = {
   db: IntegrityReadOnlyDb;
   runForOrg: typeof runIntegrityWatchForOrganization;
+  requirePermission?: (permission: PlatformPermission) => RequestHandler;
 };
 
 const defaultDeps: IntegrityWatchRouteDeps = {
@@ -25,8 +28,10 @@ export function createIntegrityWatchRouter(
   deps: IntegrityWatchRouteDeps = defaultDeps,
 ): Router {
   const router = Router();
+  const guard = (permission: PlatformPermission) =>
+    deps.requirePermission?.(permission) ?? requirePermissionMiddleware(permission);
 
-  router.get("/integrity/watch", async (req: Request, res: Response) => {
+  router.get("/integrity/watch", guard("reliability.view"), async (req: Request, res: Response) => {
     const organizationId = req.auth!.organizationId;
     const dryRun = queryDryRun(req);
     try {

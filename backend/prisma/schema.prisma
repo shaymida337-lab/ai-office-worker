@@ -22,6 +22,7 @@ model User {
   assignedWorkCases WorkCase[] @relation("WorkCaseAssignedUser")
   assignedCalendarEvents CalendarEvent[] @relation("CalendarEventAssignedUser")
   createdCalendarEvents CalendarEvent[] @relation("CalendarEventCreatedBy")
+  organizationMemberships OrganizationMember[]
 }
 
 model Organization {
@@ -50,6 +51,8 @@ model Organization {
   reportDay         Int      @default(1)
   businessProfile   String?
   calendarAutonomyJson Json @default("{\"calendarAutonomy\":{\"autoConfirmWhenFullyReady\":false,\"autoSendFollowUp\":false,\"autoSyncGoogleOnConfirm\":true,\"autoCreateFollowUpTask\":true}}") @map("calendar_autonomy_json")
+  confidenceThresholdsJson Json? @map("confidence_thresholds_json")
+  aiAuditorConfigJson Json? @map("ai_auditor_config_json")
   calendarEngineReadEnabled Boolean @default(false) @map("calendar_engine_read_enabled")
   calendarEngineWriteEnabled Boolean @default(false) @map("calendar_engine_write_enabled")
   calendarEngineGoogleMirrorEnabled Boolean @default(false) @map("calendar_engine_google_mirror_enabled")
@@ -89,8 +92,27 @@ model Organization {
   workCases       WorkCase[]
   calendarEvents  CalendarEvent[]
   calendarEventAudits CalendarEventAudit[]
+  platformAuditLogs PlatformAuditLog[]
+  releaseCertificates ReleaseCertificateRecord[]
   workCaseTimelineEntries WorkCaseTimelineEntry[]
   ownerDecisionQueueItems OwnerDecisionQueueItem[]
+  members OrganizationMember[]
+}
+
+/// Organization-scoped RBAC membership (Phase 2.5).
+model OrganizationMember {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@index([organizationId, role])
 }
 
 model HelpProgress {
@@ -1198,6 +1220,58 @@ model CalendarEventAudit {
 
   @@index([calendarEventId, createdAt])
   @@index([organizationId, createdAt])
+}
+
+/// Immutable platform audit trail — append-only (no application updates/deletes).
+model PlatformAuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  correlationId  String?
+  actorType      String
+  actorId        String?
+  entityType     String
+  entityId       String
+  action         String
+  severity       String       @default("info")
+  sourceModule   String
+  sourceRoute    String?
+  beforeState    Json?
+  afterState     Json?
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, correlationId])
+  @@index([organizationId, action])
+  @@index([organizationId, actorId])
+  @@index([organizationId, severity])
+}
+
+/// Phase 2.8 — Release Certificate history (append-only).
+model ReleaseCertificateRecord {
+  id                    String       @id @default(cuid())
+  organizationId        String
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  certificateId         String       @unique
+  timestamp             DateTime     @default(now())
+  commitHash            String?
+  deployId              String?
+  environment           String
+  overallStatus         String
+  overallScore          Float
+  gateResultsJson       Json         @map("gate_results_json")
+  failedGatesJson       Json         @map("failed_gates_json")
+  warningGatesJson      Json         @map("warning_gates_json")
+  releaseRecommendation String
+  explanation           String
+  certificateJson       Json         @map("certificate_json")
+  createdAt             DateTime     @default(now())
+
+  @@index([organizationId, timestamp])
+  @@index([organizationId, overallStatus])
 }
 
 model WorkCaseTimelineEntry {

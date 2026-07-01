@@ -1,4 +1,5 @@
 import type { IntegrityOrgData } from "./integrityDb.js";
+import type { IntegrityEmailAttachmentRow } from "./integrityDb.js";
 
 const NOW = new Date("2026-06-01T12:00:00.000Z");
 
@@ -12,6 +13,8 @@ export function emptyIntegrityOrgData(overrides: Partial<IntegrityOrgData> = {})
     gmailScanItems: [],
     financialDocumentReviews: [],
     emailMessages: [],
+    emailAttachmentsByEmailId: new Map(),
+    siblingArtifactsByGmailId: new Map(),
     crossOrgEmailMessages: [],
     gmailIntegration: null,
     organizationUserEmail: "user@example.com",
@@ -36,6 +39,17 @@ export function emailRow(
     subject: "חשבונית",
     fromAddress: "vendor@example.com",
     processedAt: new Date("2026-05-01T11:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+export function attachmentRow(
+  overrides: Partial<IntegrityEmailAttachmentRow> = {},
+): IntegrityEmailAttachmentRow {
+  return {
+    emailMessageId: "em-1",
+    filename: "invoice.pdf",
+    mimeType: "application/pdf",
     ...overrides,
   };
 }

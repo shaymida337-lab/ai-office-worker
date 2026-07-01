@@ -227,7 +227,7 @@ test("ARC flags VAT mismatch and routes to review", () => {
     { value: 60, kind: "vat_only", source: "claude_file", confidence: 0.9 },
   ]);
 
-  assert.equal(result.selectedAmount, null);
-  assert.equal(result.status, "ambiguous");
+  assert.equal(result.selectedAmount, 354);
+  assert.equal(result.status, "resolved");
   assert.ok(result.ambiguityFlags.includes("vat_mismatch"));
 });

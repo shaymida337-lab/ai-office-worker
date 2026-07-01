@@ -16,7 +16,7 @@ import {
 import { buildIntegrityFinding } from "./integrityFinding.js";
 import { buildIntegrityWatchReport } from "./integrityReport.js";
 import { buildIntegrityOrgReport } from "./integrityScore.js";
-import { emptyIntegrityOrgData, emailRow, paymentRow } from "./integrityTestFixtures.js";
+import { emptyIntegrityOrgData, emailRow, attachmentRow, paymentRow } from "./integrityTestFixtures.js";
 import { mapCoreIsolationViolationsToFindings } from "./integrityValidators.js";
 
 const NOW = new Date("2026-06-01T12:00:00.000Z");
@@ -41,16 +41,24 @@ test("signal quality: grace period ignores in-flight orphan emails", () => {
 
 test("signal quality: invoice subject past grace is CRITICAL orphan", () => {
   const email = emailRow({
+    id: "em-invoice",
     subject: "חשבונית מס",
     fromAddress: "vendor@supplier.co.il",
     processedAt: new Date(NOW.getTime() - DEFAULT_ORPHAN_GRACE_PERIOD_MS - 1000),
   });
-  const classification = classifyOrphanEmailMessage(email, NOW);
+  const classification = classifyOrphanEmailMessage(email, NOW, undefined, {
+    attachments: [attachmentRow({ emailMessageId: "em-invoice", filename: "invoice.pdf" })],
+  });
   assert.equal(classification.disposition, "CRITICAL");
   assert.equal(orphanDispositionToSeverity(classification.disposition), "critical");
 
+  const attachments = new Map([["em-invoice", [attachmentRow({ emailMessageId: "em-invoice" })]]]);
   const findings = runCoreScannerValidators(
-    emptyIntegrityOrgData({ now: NOW, emailMessages: [email] }),
+    emptyIntegrityOrgData({
+      now: NOW,
+      emailMessages: [email],
+      emailAttachmentsByEmailId: attachments,
+    }),
   );
   assert.equal(findings.length, 1);
   assert.equal(findings[0]?.severity, "critical");
@@ -244,4 +252,83 @@ test("signal quality: score penalizes important less than critical", () => {
     }),
   ]);
   assert.ok(criticalOnly < importantOnly);
+});
+
+test("signal quality 2.3D: internal QA sender is INFO", () => {
+  const email = emailRow({
+    fromAddress: "shaykedma@gmail.com",
+    subject: "חשבונית שכירות",
+    processedAt: new Date(NOW.getTime() - DEFAULT_ORPHAN_GRACE_PERIOD_MS - 1000),
+  });
+  assert.equal(classifyOrphanEmailMessage(email, NOW).disposition, "INFO");
+});
+
+test("signal quality 2.3D: test subject without financial attachment is INFO", () => {
+  const email = emailRow({
+    subject: "חשבונית לבדיקה",
+    fromAddress: "vendor@supplier.co.il",
+    processedAt: new Date(NOW.getTime() - DEFAULT_ORPHAN_GRACE_PERIOD_MS - 1000),
+  });
+  assert.equal(
+    classifyOrphanEmailMessage(email, NOW, undefined, {
+      attachments: [attachmentRow({ filename: "natalie-website-final.html", mimeType: "text/html" })],
+    }).disposition,
+    "INFO",
+  );
+});
+
+test("signal quality 2.3D: html-only invoice subject is INFO", () => {
+  const email = emailRow({
+    subject: "חשבונית מס",
+    fromAddress: "vendor@supplier.co.il",
+    processedAt: new Date(NOW.getTime() - DEFAULT_ORPHAN_GRACE_PERIOD_MS - 1000),
+  });
+  assert.equal(
+    classifyOrphanEmailMessage(email, NOW, undefined, {
+      attachments: [attachmentRow({ filename: "page.html", mimeType: "text/html" })],
+    }).disposition,
+    "INFO",
+  );
+});
+
+test("signal quality 2.3D: sibling org artifact downgrades to WARNING", () => {
+  const email = emailRow({
+    gmailId: "g-shared",
+    subject: "חשבונית מס",
+    fromAddress: "vendor@supplier.co.il",
+    processedAt: new Date(NOW.getTime() - DEFAULT_ORPHAN_GRACE_PERIOD_MS - 1000),
+  });
+  const result = classifyOrphanEmailMessage(email, NOW, undefined, {
+    attachments: [attachmentRow({ filename: "invoice.pdf" })],
+    siblingArtifacts: {
+      hasArtifact: true,
+      siblingOrganizationCount: 1,
+      gsiCount: 1,
+      fdrCount: 0,
+      artifactSummary: "GSI auto_saved/invoice",
+      organizationIds: ["other-org"],
+    },
+  });
+  assert.equal(result.disposition, "WARNING");
+  assert.equal(result.probableRootCause, "sibling_org_artifact");
+});
+
+test("signal quality 2.3D: noise analytics includes investigation candidates", () => {
+  const email = emailRow({
+    id: "em-critical",
+    subject: "חשבונית",
+    fromAddress: "vendor@supplier.co.il",
+    processedAt: new Date(NOW.getTime() - DEFAULT_ORPHAN_GRACE_PERIOD_MS - 1000),
+  });
+  const { findings, ignored } = runAllIntegrityValidators(
+    emptyIntegrityOrgData({
+      now: NOW,
+      emailMessages: [email],
+      emailAttachmentsByEmailId: new Map([["em-critical", [attachmentRow({ emailMessageId: "em-critical" })]]]),
+    }),
+  );
+  const noise = buildNoiseAnalytics(findings, ignored);
+  assert.equal(typeof noise.ignoredPercentage, "number");
+  assert.ok(noise.investigationCandidates.length >= 1);
+  assert.ok(noise.criticalTrendNote?.includes("critical"));
 });
