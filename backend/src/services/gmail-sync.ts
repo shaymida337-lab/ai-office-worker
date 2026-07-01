@@ -18,8 +18,10 @@ import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
 import {
   evaluateGmailDriveLinkInvoiceEvidence,
+  primaryStrictDriveLinkUrl,
   shouldRejectPersonalEmailWithoutDocumentEvidence,
 } from "./gmailDriveLinkEvidence.js";
+import { upsertDriveLinkBlockedScanItemMirror } from "./gmailDriveLinkReviewMirror.js";
 import { initialConnectScanWindow } from "./scanWindow.js";
 import {
   classifyBusinessDocument,
@@ -1389,6 +1391,98 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     }
     logStep(`Found ${potentialClients} potential clients`);
 
+    const finalizeDriveLinkTerminalOutcome = async (
+      scannedEmail: ScannedEmail,
+      driveLinkEvidence: ReturnType<typeof evaluateGmailDriveLinkInvoiceEvidence>,
+      input: {
+        uncertaintyReason: string;
+        documentType: string;
+        attachmentFilenameForRecord: string | null;
+        supplierName: string;
+        supplierTaxId: string | null;
+        invoiceNumber: string | null;
+        documentDate: Date;
+        dueDate: Date | null;
+        amountBeforeVat: number | null;
+        vatAmount: number | null;
+        totalAmount: number | null;
+        confidenceScore: number;
+        parsedFieldsJson: Record<string, unknown>;
+        rawAnalysis: Record<string, unknown>;
+        classificationDecisionReason: string;
+        confidenceScoreBucket: string;
+      },
+    ) => {
+      const driveFileUrl = primaryStrictDriveLinkUrl(driveLinkEvidence);
+      await recordFinancialDocumentDecision({
+        organizationId,
+        source: "gmail",
+        sender: scannedEmail.senderEmail || scannedEmail.from || null,
+        subject: scannedEmail.subject,
+        fileName: input.attachmentFilenameForRecord,
+        fileSize: null,
+        supplierName: input.supplierName,
+        supplierTaxId: input.supplierTaxId,
+        invoiceNumber: input.invoiceNumber,
+        documentDate: input.documentDate,
+        dueDate: input.dueDate,
+        amountBeforeVat: input.amountBeforeVat,
+        vatAmount: input.vatAmount,
+        totalAmount: input.totalAmount,
+        documentType: input.documentType,
+        driveFileUrl: driveFileUrl ?? null,
+        confidenceScore: input.confidenceScore,
+        uncertaintyReason: input.uncertaintyReason,
+        forceNeedsReview: true,
+        parsedFieldsJson: input.parsedFieldsJson,
+        rawAnalysis: input.rawAnalysis,
+        emailMessageId: scannedEmail.emailRecordId,
+        gmailMessageId: scannedEmail.gmailId,
+      });
+      const mirrorDuplicateKey = buildGmailScanDuplicateKey({
+        gmailMessageId: scannedEmail.gmailId,
+        attachmentFilename: input.attachmentFilenameForRecord,
+        supplierName: input.supplierName,
+        amount: input.totalAmount,
+        subject: scannedEmail.subject,
+        occurredAt: scannedEmail.receivedAt,
+      });
+      const mirrored = await upsertDriveLinkBlockedScanItemMirror(prisma, {
+        organizationId,
+        duplicateKey: mirrorDuplicateKey,
+        email: {
+          gmailId: scannedEmail.gmailId,
+          emailRecordId: scannedEmail.emailRecordId,
+          from: scannedEmail.from,
+          senderEmail: scannedEmail.senderEmail,
+          subject: scannedEmail.subject,
+          receivedAt: scannedEmail.receivedAt,
+        },
+        driveLinkEvidence,
+        outcomeStopsPersistence: true,
+        outcomeUncertaintyReason: input.uncertaintyReason,
+        documentType: input.documentType,
+        confidenceScore: input.confidenceScoreBucket,
+        classificationDecisionReason: input.classificationDecisionReason,
+        attachmentFilename: input.attachmentFilenameForRecord,
+        supplierName: input.supplierName,
+        amount: input.totalAmount,
+        parsedFieldsJson: input.parsedFieldsJson,
+        rawAnalysis: input.rawAnalysis,
+      });
+      if (mirrored) {
+        emailsSavedToGmailScanItem++;
+        dbGmailScanItemUpserts++;
+        logStep(
+          `[gmail-sync] DRIVE_LINK_BLOCKED_MIRROR message=${scannedEmail.gmailId} gsi=${mirrored.id} drive=${driveFileUrl ?? "none"}`
+        );
+      }
+      await prisma.emailMessage.update({
+        where: { id: scannedEmail.emailRecordId },
+        data: { processedAt: new Date() },
+      });
+    };
+
     let processBatchNumber = 0;
     let stopProcessing = false;
     for (const batch of chunkArray(emailsToProcess, GMAIL_SCAN_BATCH_SIZE)) {
@@ -1771,13 +1865,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         parsedFieldsJson.outcome = summarizeDocumentOutcome(earlyDocumentOutcome);
         classification = applyOutcomeReviewGate({ classification, documentOutcome: earlyDocumentOutcome });
         if (gmailOutcomeStopsPersistence(earlyDocumentOutcome.status)) {
-          await recordFinancialDocumentDecision({
-            organizationId,
-            source: "gmail",
-            sender: email.senderEmail || email.from || null,
-            subject: email.subject,
-            fileName: primaryAttachmentFilename(email.parts),
-            fileSize: null,
+          await finalizeDriveLinkTerminalOutcome(email, driveLinkEvidence, {
+            uncertaintyReason: gmailOutcomeUncertaintyReason(earlyDocumentOutcome),
+            documentType: "payment_request",
+            attachmentFilenameForRecord:
+              primaryAttachmentFilename(email.parts) ?? driveLinkEvidence.virtualAttachmentFilenames[0] ?? null,
             supplierName,
             supplierTaxId: supplierMetadata.taxId,
             invoiceNumber: earlyInvoiceNumber,
@@ -1786,11 +1878,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             amountBeforeVat: moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? null,
             vatAmount: moneyDecision.vatAmount ?? analysis.vatAmount ?? null,
             totalAmount: finalTotalAmount,
-            documentType: "payment_request",
-            driveFileUrl: null,
             confidenceScore: Math.min(classification.confidence, 0.79),
-            uncertaintyReason: gmailOutcomeUncertaintyReason(earlyDocumentOutcome),
-            forceNeedsReview: true,
             parsedFieldsJson,
             rawAnalysis: {
               analysis,
@@ -1799,12 +1887,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               parsed_fields_json: parsedFieldsJson,
               gmailMessageId: email.gmailId,
             },
-            emailMessageId: email.emailRecordId,
-            gmailMessageId: email.gmailId,
-          });
-          await prisma.emailMessage.update({
-            where: { id: email.emailRecordId },
-            data: { processedAt: new Date() },
+            classificationDecisionReason: classification.decisionReason,
+            confidenceScoreBucket: classification.confidenceScore,
           });
           logStep(`[outcome] terminal path message=${email.gmailId} status=${earlyDocumentOutcome.status} reasonCode=${earlyDocumentOutcome.reasonCode}`);
           continue;
@@ -1960,13 +2044,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       parsedFieldsJson.outcome = summarizeDocumentOutcome(documentOutcome);
       classification = applyOutcomeReviewGate({ classification, documentOutcome });
       if (gmailOutcomeStopsPersistence(documentOutcome.status)) {
-        await recordFinancialDocumentDecision({
-          organizationId,
-          source: "gmail",
-          sender: email.senderEmail || email.from || null,
-          subject: email.subject,
-          fileName: attachmentFilename,
-          fileSize: null,
+        await finalizeDriveLinkTerminalOutcome(email, driveLinkEvidence, {
+          uncertaintyReason: gmailOutcomeUncertaintyReason(documentOutcome),
+          documentType: classification.documentType,
+          attachmentFilenameForRecord: attachmentFilename,
           supplierName,
           supplierTaxId: supplierMetadata.taxId,
           invoiceNumber: invoiceNumberForDecision,
@@ -1975,11 +2056,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           amountBeforeVat: moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? null,
           vatAmount: moneyDecision.vatAmount ?? analysis.vatAmount ?? null,
           totalAmount: finalTotalAmount,
-          documentType: classification.documentType,
-          driveFileUrl: null,
           confidenceScore: classification.confidence,
-          uncertaintyReason: gmailOutcomeUncertaintyReason(documentOutcome),
-          forceNeedsReview: true,
           parsedFieldsJson,
           rawAnalysis: {
             analysis,
@@ -1988,12 +2065,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             parsed_fields_json: parsedFieldsJson,
             gmailMessageId: email.gmailId,
           },
-          emailMessageId: email.emailRecordId,
-          gmailMessageId: email.gmailId,
-        });
-        await prisma.emailMessage.update({
-          where: { id: email.emailRecordId },
-          data: { processedAt: new Date() },
+          classificationDecisionReason: classification.decisionReason,
+          confidenceScoreBucket: classification.confidenceScore,
         });
         logStep(`[outcome] terminal path message=${email.gmailId} status=${documentOutcome.status} reasonCode=${documentOutcome.reasonCode}`);
         continue;

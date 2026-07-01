@@ -108,3 +108,28 @@ export function shouldRejectPersonalEmailWithoutDocumentEvidence(input: {
 export function bodyMentionsDocumentFilename(bodyText: string): boolean {
   return DOCUMENT_FILENAME_PATTERN.test(bodyText);
 }
+
+export function primaryStrictDriveLinkUrl(
+  driveEvidence: GmailDriveLinkInvoiceEvidence,
+): string | null {
+  if (!driveEvidence.hasStrictDriveInvoiceEvidence) return null;
+  const link = driveEvidence.links.find((candidate) => candidate.documentKind !== "unknown");
+  return link?.url ?? null;
+}
+
+export function shouldMirrorDriveLinkBlockedScanItem(
+  driveEvidence: GmailDriveLinkInvoiceEvidence,
+  outcomeStopsPersistence: boolean,
+): boolean {
+  return driveEvidence.hasStrictDriveInvoiceEvidence && outcomeStopsPersistence;
+}
+
+export function buildDriveLinkBlockedScanItemDecisionReason(
+  outcomeUncertaintyReason: string,
+  classificationDecisionReason?: string | null,
+): string {
+  const classificationSuffix = classificationDecisionReason?.trim()
+    ? `; ${classificationDecisionReason.trim()}`
+    : "";
+  return `Blocked for review: ${outcomeUncertaintyReason}${classificationSuffix}`.slice(0, 2000);
+}
