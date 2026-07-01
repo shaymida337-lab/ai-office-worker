@@ -2,6 +2,15 @@ import type { PrismaClient } from "@prisma/client";
 import { GMAIL_SCAN_ACTIVE_STATUSES, GMAIL_SCAN_STALE_MS } from "../gmailScanLifecycle.js";
 import type { ScannerIsolationCheckData } from "../scanner/scannerIsolationChecks.js";
 
+export type IntegrityEmailMessageRow = {
+  id: string;
+  gmailId: string;
+  receivedAt: Date;
+  subject: string;
+  fromAddress: string;
+  processedAt: Date | null;
+};
+
 /** Read-only Prisma surface — no write operations permitted. */
 export type IntegrityReadOnlyDb = Pick<
   PrismaClient,
@@ -61,6 +70,7 @@ export type IntegritySyncLogRow = {
 };
 
 export type IntegrityOrgData = ScannerIsolationCheckData & {
+  emailMessages: IntegrityEmailMessageRow[];
   payments: IntegrityPaymentRow[];
   invoiceDetails: IntegrityInvoiceRow[];
   integrations: IntegrityIntegrationRow[];
@@ -85,7 +95,15 @@ export async function loadIntegrityOrgData(
 
   const emailMessages = await db.emailMessage.findMany({
     where: { organizationId },
-    select: { id: true, gmailId: true, receivedAt: true },
+    select: {
+      id: true,
+      gmailId: true,
+      receivedAt: true,
+      subject: true,
+      fromAddress: true,
+      processedAt: true,
+    },
+    orderBy: { receivedAt: "desc" },
     take: 5000,
   });
 

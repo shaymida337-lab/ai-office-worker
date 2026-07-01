@@ -4,10 +4,11 @@ import { listImplementedIntegrityCheckIds } from "./integrityRegistry.js";
 export function computeOrgIntegrityScore(findings: IntegrityFinding[]): number {
   const failed = findings.filter((f) => f.status === "fail");
   const critical = failed.filter((f) => f.severity === "critical").length;
+  const important = failed.filter((f) => f.severity === "important").length;
   const warning = failed.filter((f) => f.severity === "warning").length;
   const info = failed.filter((f) => f.severity === "info").length;
 
-  const penalty = critical * 15 + warning * 5 + info * 1;
+  const penalty = critical * 15 + important * 8 + warning * 5 + info * 1;
   return Math.max(0, Math.min(100, Math.round((100 - penalty) * 10) / 10));
 }
 
@@ -21,6 +22,7 @@ export function buildIntegrityOrgReport(
     integrityScore: computeOrgIntegrityScore(findings),
     findings,
     criticalCount: failed.filter((f) => f.severity === "critical").length,
+    importantCount: failed.filter((f) => f.severity === "important").length,
     warningCount: failed.filter((f) => f.severity === "warning").length,
     infoCount: failed.filter((f) => f.severity === "info").length,
     checksRun: listImplementedIntegrityCheckIds().length,

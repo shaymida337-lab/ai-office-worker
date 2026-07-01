@@ -58,8 +58,10 @@ function mapFindingToSubsystem(finding: IntegrityFinding): ReliabilityEvent["sub
 export function buildIntegrityHealthExtension(report: IntegrityWatchReport): IntegrityHealthExtension {
   return {
     integrityScore: report.overallIntegrityScore,
-    integrityFailures: report.criticalFindings + report.warningFindings,
+    integrityFailures:
+      report.criticalFindings + report.importantFindings + report.warningFindings,
     criticalFindings: report.criticalFindings,
+    importantFindings: report.importantFindings,
     warningFindings: report.warningFindings,
   };
 }

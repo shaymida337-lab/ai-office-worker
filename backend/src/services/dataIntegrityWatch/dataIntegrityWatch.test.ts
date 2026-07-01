@@ -26,11 +26,12 @@ import {
   severityToReliabilityEventSeverity,
 } from "./index.js";
 import { buildIntegrityFinding } from "./integrityFinding.js";
-import { emptyIntegrityOrgData, paymentRow } from "./integrityTestFixtures.js";
+import { emptyIntegrityOrgData, emailRow, paymentRow } from "./integrityTestFixtures.js";
 import type { IntegrityReadOnlyDb } from "./integrityDb.js";
 import { runIntegrityWatchForOrganization } from "./integrityRunner.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const NOW = new Date("2026-06-01T12:00:00.000Z");
 
 test("integrity core: 8 implemented validators in registry", () => {
   assert.equal(CORE_INTEGRITY_CHECKS.length, 8);
@@ -68,6 +69,8 @@ test("integrity core: validator 1 — payment without source document", () => {
 });
 
 test("integrity core: validator 2 — payment after BLOCKED via isolation mapping", () => {
+  const fdrAt = new Date("2026-07-01T13:00:00.000Z");
+  const payAt = new Date("2026-07-01T09:00:00.000Z");
   const data = emptyIntegrityOrgData({
     financialDocumentReviews: [
       {
@@ -76,17 +79,17 @@ test("integrity core: validator 2 — payment after BLOCKED via isolation mappin
         gmailMessageId: "g-1",
         reviewStatus: "blocked",
         uncertaintyReason: null,
-        documentFingerprint: null,
+        documentFingerprint: "fp-1",
         supplierPaymentId: "pay-1",
         parsedFieldsJson: { outcome: { status: "BLOCKED" } },
-        createdAt: new Date(),
+        createdAt: fdrAt,
       },
     ],
-    supplierPayments: [{ id: "pay-1", documentFingerprint: null, emailMessageId: "em-1", createdAt: new Date() }],
-    payments: [paymentRow({ id: "pay-1" })],
+    supplierPayments: [{ id: "pay-1", documentFingerprint: "fp-1", emailMessageId: "em-1", createdAt: payAt }],
+    payments: [paymentRow({ id: "pay-1", documentFingerprint: "fp-1", createdAt: payAt })],
   });
-  const findings = runAllIntegrityValidators(data);
-  assert.ok(findings.some((f) => f.checkId === "fin-payment-after-blocked"));
+  const { findings } = runAllIntegrityValidators(data);
+  assert.ok(findings.some((f) => f.checkId === "fin-payment-after-blocked" && f.severity === "warning"));
 });
 
 test("integrity core: validator 3 — duplicate fingerprint", () => {
@@ -122,9 +125,11 @@ test("integrity core: validator 4 — zero amount on financial document", () => 
 test("integrity core: validator 5 — cross-org reference", () => {
   const data = emptyIntegrityOrgData({
     crossOrgEmailMessages: [{ id: "x-1", organizationId: "other-org", gmailId: "g-shared" }],
+    gmailMessageIds: new Set(["g-shared"]),
+    emailMessages: [emailRow({ gmailId: "g-shared" })],
   });
   const findings = runCoreOrganizationValidators(data);
-  assert.ok(findings.some((f) => f.checkId === "org-cross-org-reference" && f.severity === "critical"));
+  assert.ok(findings.some((f) => f.checkId === "org-cross-org-reference" && f.severity === "info"));
 });
 
 test("integrity core: validator 6 — stuck scan", () => {
@@ -139,7 +144,14 @@ test("integrity core: validator 6 — stuck scan", () => {
 
 test("integrity core: validator 7 — orphan Gmail message", () => {
   const data = emptyIntegrityOrgData({
-    emailMessages: [{ id: "em-1", gmailId: "g-1", receivedAt: new Date() }],
+    now: NOW,
+    emailMessages: [
+      emailRow({
+        subject: "חשבונית",
+        fromAddress: "vendor@example.com",
+        processedAt: new Date(NOW.getTime() - 48 * 60 * 60 * 1000),
+      }),
+    ],
     gsiGmailIds: new Set(),
     fdrGmailIds: new Set(),
   });
@@ -305,10 +317,11 @@ test("integrity core: dedupe removes duplicate check+entity findings", () => {
 });
 
 test("integrity core: runAllIntegrityValidators returns finding shape", () => {
-  const findings = runAllIntegrityValidators(emptyIntegrityOrgData());
+  const { findings } = runAllIntegrityValidators(emptyIntegrityOrgData());
   for (const f of findings) {
     assert.ok(f.checkId);
     assert.equal(f.organizationId, "org-test");
     assert.equal(f.autoRecoverable, false);
+    assert.ok(typeof f.findingConfidence === "number");
   }
 });

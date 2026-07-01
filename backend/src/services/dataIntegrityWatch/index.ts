@@ -2,9 +2,11 @@ export { INTEGRITY_READ_ONLY_GUARANTEE, INTEGRITY_WATCH_VERSION, severityToRelia
 export type {
   IntegrityFinding,
   IntegrityHealthExtension,
+  IntegrityNoiseAnalytics,
   IntegrityOrgReport,
   IntegrityRunMode,
   IntegrityRunOptions,
+  IntegritySignalQualityComparison,
   IntegrityWatchReport,
 } from "./integrityTypes.js";
 export {
@@ -17,7 +19,7 @@ export {
   getIntegrityCheckDefinition,
 } from "./integrityRegistry.js";
 export { buildIntegrityFinding, filterFailedFindings } from "./integrityFinding.js";
-export type { IntegrityOrgData, IntegrityReadOnlyDb } from "./integrityDb.js";
+export type { IntegrityEmailMessageRow, IntegrityOrgData, IntegrityReadOnlyDb } from "./integrityDb.js";
 export { loadIntegrityOrgData, listOrganizationIds } from "./integrityDb.js";
 export {
   runAllIntegrityValidators,
@@ -27,8 +29,15 @@ export {
   runCoreIntegrationValidators,
   mapCoreIsolationViolationsToFindings,
 } from "./integrityValidators.js";
+export type { IntegrityValidatorResult } from "./integrityValidators.js";
 export { computeOrgIntegrityScore, buildIntegrityOrgReport, computeOverallIntegrityScore, classifyIntegrityResult } from "./integrityScore.js";
 export { buildIntegrityWatchReport, formatIntegrityWatchReport } from "./integrityReport.js";
 export { mapIntegrityFindingsToReliabilityEvents, buildIntegrityHealthExtension } from "./integrityReliability.js";
 export { runIntegrityWatchForOrganization } from "./integrityRunner.js";
 export { dedupeFindings } from "./integrityRunnerUtils.js";
+export { DEFAULT_INTEGRITY_SIGNAL_CONFIG, DEFAULT_ORPHAN_GRACE_PERIOD_MS } from "./integritySignalConfig.js";
+export { classifyOrphanEmailMessage, orphanDispositionToSeverity } from "./integrityOrphanClassifier.js";
+export { computeFindingConfidence } from "./integrityConfidence.js";
+export { buildNoiseAnalytics } from "./integrityNoiseAnalytics.js";
+export { buildSignalQualityComparison, PROD_BASELINE_PRE_TUNING } from "./integritySignalComparison.js";
+export { INTEGRITY_SEVERITY_FRAMEWORK } from "./integritySeverity.js";

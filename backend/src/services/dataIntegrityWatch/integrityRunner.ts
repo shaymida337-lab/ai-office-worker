@@ -15,14 +15,15 @@ export async function runIntegrityWatchForOrganization(
   assertReadOnlyGuarantee();
   const now = options.now ?? new Date();
   const data = await loadIntegrityOrgData(db, { organizationId, now });
-  const findings = dedupeFindings(runAllIntegrityValidators(data));
-  const orgReport = buildIntegrityOrgReport(organizationId, findings);
+  const { findings, ignored } = runAllIntegrityValidators(data);
+  const orgReport = buildIntegrityOrgReport(organizationId, dedupeFindings(findings));
 
   return buildIntegrityWatchReport({
     mode: options.mode ?? "manual",
     dryRun: options.dryRun ?? false,
     organizationReports: [orgReport],
     generatedAt: now.toISOString(),
+    ignored,
   });
 }
 
@@ -34,11 +35,13 @@ export async function runIntegrityWatchGlobal(
   const now = options.now ?? new Date();
   const orgIds = await listOrganizationIds(db);
   const reports = [];
+  const allIgnored = [];
 
   for (const organizationId of orgIds) {
     const data = await loadIntegrityOrgData(db, { organizationId, now });
-    const findings = dedupeFindings(runAllIntegrityValidators(data));
-    reports.push(buildIntegrityOrgReport(organizationId, findings));
+    const { findings, ignored } = runAllIntegrityValidators(data);
+    allIgnored.push(...ignored);
+    reports.push(buildIntegrityOrgReport(organizationId, dedupeFindings(findings)));
   }
 
   return buildIntegrityWatchReport({
@@ -46,6 +49,7 @@ export async function runIntegrityWatchGlobal(
     dryRun: options.dryRun ?? false,
     organizationReports: reports,
     generatedAt: now.toISOString(),
+    ignored: allIgnored,
   });
 }
 

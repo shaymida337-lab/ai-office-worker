@@ -26,6 +26,20 @@ export function emptyIntegrityOrgData(overrides: Partial<IntegrityOrgData> = {})
   };
 }
 
+export function emailRow(
+  overrides: Partial<IntegrityOrgData["emailMessages"][number]> = {},
+): IntegrityOrgData["emailMessages"][number] {
+  return {
+    id: "em-1",
+    gmailId: "g-1",
+    receivedAt: new Date("2026-05-01T10:00:00.000Z"),
+    subject: "חשבונית",
+    fromAddress: "vendor@example.com",
+    processedAt: new Date("2026-05-01T11:00:00.000Z"),
+    ...overrides,
+  };
+}
+
 export function paymentRow(
   overrides: Partial<IntegrityOrgData["payments"][number]> = {},
 ): IntegrityOrgData["payments"][number] {

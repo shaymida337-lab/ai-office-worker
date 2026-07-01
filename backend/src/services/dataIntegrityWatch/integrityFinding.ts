@@ -1,4 +1,10 @@
-import type { IntegrityCheckCategory, IntegrityFinding, IntegrityFindingStatus, IntegritySeverity } from "./integrityTypes.js";
+import type {
+  IntegrityCheckCategory,
+  IntegrityFinding,
+  IntegrityFindingStatus,
+  IntegritySeverity,
+  OrphanSignalDisposition,
+} from "./integrityTypes.js";
 
 export function buildIntegrityFinding(input: {
   checkId: string;
@@ -13,6 +19,8 @@ export function buildIntegrityFinding(input: {
   suggestedAction?: string | null;
   correlationId?: string | null;
   detectedAt?: string;
+  findingConfidence?: number;
+  signalDisposition?: OrphanSignalDisposition | null;
 }): IntegrityFinding {
   return {
     checkId: input.checkId,
@@ -28,6 +36,8 @@ export function buildIntegrityFinding(input: {
     autoRecoverable: false,
     correlationId: input.correlationId ?? null,
     detectedAt: input.detectedAt ?? new Date().toISOString(),
+    findingConfidence: input.findingConfidence ?? 0.8,
+    signalDisposition: input.signalDisposition ?? null,
   };
 }
 

@@ -3,9 +3,16 @@ import {
   type ScannerIsolationViolation,
   type ScannerIsolationViolationType,
 } from "../scanner/scannerIsolationChecks.js";
+import { computeFindingConfidence } from "./integrityConfidence.js";
 import { buildIntegrityFinding } from "./integrityFinding.js";
 import type { IntegrityOrgData } from "./integrityDb.js";
 import type { IntegrityFinding } from "./integrityTypes.js";
+import {
+  classifyOrphanEmailMessage,
+  orphanDispositionToSeverity,
+} from "./integrityOrphanClassifier.js";
+import { DEFAULT_INTEGRITY_SIGNAL_CONFIG } from "./integritySignalConfig.js";
+import type { IntegrityIgnoredRecord } from "./integrityNoiseAnalytics.js";
 
 const CORE_ISOLATION_VIOLATIONS = new Set<ScannerIsolationViolationType>([
   "blocked_outcome_persisted",
@@ -15,15 +22,28 @@ const ISOLATION_CHECK_MAP: Partial<Record<ScannerIsolationViolationType, string>
   blocked_outcome_persisted: "fin-payment-after-blocked",
 };
 
-/** Phase 2.3A — runs only the 8 core validators. */
-export function runAllIntegrityValidators(data: IntegrityOrgData): IntegrityFinding[] {
-  return [
+export type IntegrityValidatorResult = {
+  findings: IntegrityFinding[];
+  ignored: IntegrityIgnoredRecord[];
+};
+
+export function runAllIntegrityValidators(data: IntegrityOrgData): IntegrityValidatorResult {
+  const ignored: IntegrityIgnoredRecord[] = [];
+  const scanner = runCoreScannerValidators(data, ignored);
+
+  const findings = [
     ...runCoreFinancialValidators(data),
     ...runCoreOrganizationValidators(data),
-    ...runCoreScannerValidators(data),
+    ...scanner,
     ...runCoreIntegrationValidators(data),
-    ...mapCoreIsolationViolationsToFindings(data.organizationId, runScannerIsolationChecks(data)),
+    ...mapCoreIsolationViolationsToFindings(
+      data.organizationId,
+      runScannerIsolationChecks(data),
+      data,
+    ),
   ];
+
+  return { findings, ignored };
 }
 
 /** @phase 2.3B — not implemented */
@@ -72,6 +92,11 @@ export function runCoreFinancialValidators(data: IntegrityOrgData): IntegrityFin
           explanation: `Payment ${payment.id} has no linked source document.`,
           probableRootCause: "persistence_without_ingestion_trail",
           suggestedAction: "Verify FDR/GSI linkage before keeping payment row.",
+          findingConfidence: computeFindingConfidence({
+            baseConfidence: 0.92,
+            signalCount: 2,
+            crossValidated: true,
+          }),
         }),
       );
     }
@@ -88,6 +113,7 @@ export function runCoreFinancialValidators(data: IntegrityOrgData): IntegrityFin
           explanation: `Payment ${payment.id} has zero amount.`,
           probableRootCause: "amount_extraction_failure",
           suggestedAction: "Review amount before approval.",
+          findingConfidence: 0.95,
         }),
       );
     }
@@ -106,6 +132,7 @@ export function runCoreFinancialValidators(data: IntegrityOrgData): IntegrityFin
           explanation: `Invoice ${invoice.id} has zero amount.`,
           probableRootCause: "amount_extraction_failure",
           suggestedAction: "Review amount before approval.",
+          findingConfidence: 0.95,
         }),
       );
     }
@@ -125,6 +152,11 @@ export function runCoreFinancialValidators(data: IntegrityOrgData): IntegrityFin
         explanation: `${ids.length} payments share fingerprint ${fingerprint}.`,
         correlationId: fingerprint,
         suggestedAction: "Manual deduplication review required.",
+        findingConfidence: computeFindingConfidence({
+          baseConfidence: 0.9,
+          signalCount: ids.length,
+          crossValidated: true,
+        }),
       }),
     );
   }
@@ -134,27 +166,80 @@ export function runCoreFinancialValidators(data: IntegrityOrgData): IntegrityFin
 
 export function runCoreOrganizationValidators(data: IntegrityOrgData): IntegrityFinding[] {
   const findings: IntegrityFinding[] = [];
-  if (data.crossOrgEmailMessages.length > 0) {
-    findings.push(
-      buildIntegrityFinding({
-        checkId: "org-cross-org-reference",
-        category: "organization",
-        severity: "critical",
-        organizationId: data.organizationId,
-        entityType: "EmailMessage",
-        entityId: data.crossOrgEmailMessages[0]?.id ?? null,
-        explanation: `${data.crossOrgEmailMessages.length} cross-org email references detected.`,
-        probableRootCause: "shared_mailbox_or_token_reuse",
-        suggestedAction: "Audit Gmail integration isolation immediately.",
-      }),
-    );
+  const orgId = data.organizationId;
+
+  for (const payment of data.payments) {
+    if (payment.emailMessageId && !data.emailIds.has(payment.emailMessageId)) {
+      findings.push(
+        buildIntegrityFinding({
+          checkId: "org-cross-org-reference",
+          category: "organization",
+          severity: "critical",
+          organizationId: orgId,
+          entityType: "SupplierPayment",
+          entityId: payment.id,
+          explanation: `Payment ${payment.id} references emailMessageId outside this organization.`,
+          probableRootCause: "cross_tenant_financial_reference",
+          suggestedAction: "Audit payment source linkage and quarantine if foreign org data.",
+          findingConfidence: computeFindingConfidence({
+            baseConfidence: 0.93,
+            signalCount: 2,
+            crossValidated: true,
+          }),
+        }),
+      );
+    }
   }
+
+  if (data.crossOrgEmailMessages.length === 0) {
+    return findings;
+  }
+
+  const sharedGmailIds = new Set(
+    data.crossOrgEmailMessages
+      .filter((row) => data.gmailMessageIds.has(row.gmailId))
+      .map((row) => row.gmailId),
+  );
+  const affectedOrganizations = [
+    ...new Set(data.crossOrgEmailMessages.map((row) => row.organizationId)),
+  ];
+
+  if (sharedGmailIds.size === 0) {
+    return findings;
+  }
+
+  const hasFinancialLeak = findings.some((f) => f.probableRootCause === "cross_tenant_financial_reference");
+  findings.push(
+    buildIntegrityFinding({
+      checkId: "org-cross-org-reference",
+      category: "organization",
+      severity: hasFinancialLeak ? "warning" : "info",
+      organizationId: orgId,
+      entityType: "EmailMessage",
+      entityId: data.crossOrgEmailMessages[0]?.id ?? null,
+      explanation: `Shared mailbox history: ${sharedGmailIds.size} gmailId(s) appear across ${affectedOrganizations.length + 1} organization(s) (${data.crossOrgEmailMessages.length} foreign EmailMessage rows).`,
+      probableRootCause: "shared_mailbox_history",
+      suggestedAction: "Review Gmail integration isolation; confirm no financial rows cross tenants.",
+      correlationId: `shared-mailbox:${sharedGmailIds.size}:${affectedOrganizations.length}`,
+      findingConfidence: computeFindingConfidence({
+        baseConfidence: 0.82,
+        signalCount: 3,
+        historicalEvidence: true,
+      }),
+    }),
+  );
+
   return findings;
 }
 
-export function runCoreScannerValidators(data: IntegrityOrgData): IntegrityFinding[] {
+export function runCoreScannerValidators(
+  data: IntegrityOrgData,
+  ignored: IntegrityIgnoredRecord[] = [],
+): IntegrityFinding[] {
   const findings: IntegrityFinding[] = [];
   const orgId = data.organizationId;
+  const now = data.now ?? new Date();
+  const config = DEFAULT_INTEGRITY_SIGNAL_CONFIG;
 
   for (const scan of data.stuckActiveScans) {
     findings.push(
@@ -169,6 +254,7 @@ export function runCoreScannerValidators(data: IntegrityOrgData): IntegrityFindi
         probableRootCause: "stuck_active_scan",
         suggestedAction: "Inspect SyncLog row and worker health.",
         correlationId: `stuck:${scan.id}`,
+        findingConfidence: 0.94,
       }),
     );
   }
@@ -176,20 +262,42 @@ export function runCoreScannerValidators(data: IntegrityOrgData): IntegrityFindi
   for (const email of data.emailMessages) {
     const hasGsi = data.gsiGmailIds.has(email.gmailId);
     const hasFdr = data.fdrGmailIds.has(email.gmailId);
-    if (!hasGsi && !hasFdr) {
-      findings.push(
-        buildIntegrityFinding({
-          checkId: "scan-orphan-gmail-message",
-          category: "scanner",
-          severity: "critical",
-          organizationId: orgId,
-          entityType: "EmailMessage",
-          entityId: email.id,
-          explanation: `Email ${email.id} has no GSI or FDR.`,
-          suggestedAction: "Verify scan pipeline or mark as non-financial.",
-        }),
-      );
+    if (hasGsi || hasFdr) continue;
+
+    const classification = classifyOrphanEmailMessage(email, now, config);
+    if (classification.disposition === "IGNORED") {
+      ignored.push({
+        checkId: "scan-orphan-gmail-message",
+        reason: classification.reason,
+        entityId: email.id,
+      });
+      continue;
     }
+
+    const severity = orphanDispositionToSeverity(classification.disposition);
+    if (!severity) continue;
+
+    findings.push(
+      buildIntegrityFinding({
+        checkId: "scan-orphan-gmail-message",
+        category: "scanner",
+        severity,
+        organizationId: orgId,
+        entityType: "EmailMessage",
+        entityId: email.id,
+        explanation: `${classification.reason} (${classification.signals.join(", ")})`,
+        probableRootCause: classification.disposition.toLowerCase(),
+        suggestedAction:
+          severity === "critical"
+            ? "Investigate why invoice-like email has no scan or review artifact."
+            : "Monitor; likely non-financial or test traffic.",
+        signalDisposition: classification.disposition,
+        findingConfidence: computeFindingConfidence({
+          baseConfidence: classification.findingConfidence,
+          signalCount: classification.signals.length,
+        }),
+      }),
+    );
   }
 
   return findings;
@@ -213,6 +321,7 @@ export function runCoreIntegrationValidators(data: IntegrityOrgData): IntegrityF
         explanation: "Gmail integration not connected.",
         probableRootCause: "gmail_disconnected",
         suggestedAction: "Connect Gmail for scanning.",
+        findingConfidence: 0.98,
       }),
     );
     return findings;
@@ -230,6 +339,7 @@ export function runCoreIntegrationValidators(data: IntegrityOrgData): IntegrityF
         explanation: "Gmail OAuth token expired.",
         probableRootCause: "oauth_expired",
         suggestedAction: "Refresh Gmail integration token.",
+        findingConfidence: 0.97,
       }),
     );
   }
@@ -246,6 +356,7 @@ export function runCoreIntegrationValidators(data: IntegrityOrgData): IntegrityF
         explanation: "Gmail integration metadata indicates invalid or revoked state.",
         probableRootCause: "oauth_invalid",
         suggestedAction: "Reconnect Gmail integration.",
+        findingConfidence: 0.9,
       }),
     );
   }
@@ -256,34 +367,77 @@ export function runCoreIntegrationValidators(data: IntegrityOrgData): IntegrityF
 export function mapCoreIsolationViolationsToFindings(
   organizationId: string,
   violations: ScannerIsolationViolation[],
+  data: IntegrityOrgData,
 ): IntegrityFinding[] {
+  const paymentCreatedAt = new Map(data.payments.map((p) => [p.id, p.createdAt]));
+  const fdrCreatedAt = new Map(data.financialDocumentReviews.map((f) => [f.id, f.createdAt]));
+  const fdrIds = new Set(data.financialDocumentReviews.map((f) => f.id));
+  const paymentIds = new Set(data.payments.map((p) => p.id));
+
   return violations
     .filter((v) => CORE_ISOLATION_VIOLATIONS.has(v.violationType))
     .flatMap((v) => {
       const checkId = ISOLATION_CHECK_MAP[v.violationType] ?? `scan-${v.violationType}`;
-      return v.affectedIds.map((entityId) =>
-        buildIntegrityFinding({
+      const blockedFdrId = v.affectedIds.find((id) => fdrIds.has(id));
+      const blockedAt = blockedFdrId ? fdrCreatedAt.get(blockedFdrId) : null;
+
+      return v.affectedIds.map((entityId) => {
+        const isPayment = paymentIds.has(entityId);
+        const paymentAt = isPayment ? paymentCreatedAt.get(entityId) : null;
+        const activePersistence =
+          isPayment &&
+          blockedAt != null &&
+          paymentAt != null &&
+          paymentAt.getTime() > blockedAt.getTime();
+
+        const severity = isPayment
+          ? activePersistence
+            ? "critical"
+            : "warning"
+          : fdrIds.has(entityId)
+            ? "warning"
+            : "warning";
+
+        const probableRootCause = isPayment
+          ? activePersistence
+            ? "blocked_outcome_persisted"
+            : "duplicate_rescan"
+          : "blocked_outcome_persisted";
+
+        return buildIntegrityFinding({
           checkId,
           category: "financial",
-          severity: "critical",
+          severity,
           organizationId,
-          entityType: v.violationType,
+          entityType: isPayment ? "SupplierPayment" : fdrIds.has(entityId) ? "FinancialDocumentReview" : v.violationType,
           entityId,
-          explanation: v.explanation,
-          probableRootCause: v.violationType,
-          suggestedAction: v.recommendedAction,
+          explanation: activePersistence
+            ? `${v.explanation} Payment persisted after BLOCKED decision.`
+            : `${v.explanation} Historical ordering — payment predates blocked review (duplicate-rescan pattern).`,
+          probableRootCause,
+          suggestedAction: activePersistence
+            ? v.recommendedAction
+            : "Review duplicate-rescan history; no active write-through detected.",
           correlationId: `isolation:${v.violationType}:${entityId}`,
-        }),
-      );
+          findingConfidence: computeFindingConfidence({
+            baseConfidence: activePersistence ? 0.95 : 0.85,
+            signalCount: activePersistence ? 3 : 2,
+            crossValidated: true,
+            historicalEvidence: !activePersistence,
+          }),
+        });
+      });
     });
 }
 
-/** @deprecated Use mapCoreIsolationViolationsToFindings — full mapping reserved for Phase 2.3B */
+/** @deprecated Use mapCoreIsolationViolationsToFindings — full mapping reserved for future phases */
 export function mapIsolationViolationsToFindings(
   organizationId: string,
   violations: ScannerIsolationViolation[],
+  data?: IntegrityOrgData,
 ): IntegrityFinding[] {
-  return mapCoreIsolationViolationsToFindings(organizationId, violations);
+  if (!data) return [];
+  return mapCoreIsolationViolationsToFindings(organizationId, violations, data);
 }
 
 function groupByFingerprint(payments: IntegrityOrgData["payments"]): Map<string, string[]> {

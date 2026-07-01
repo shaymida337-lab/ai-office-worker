@@ -93,8 +93,9 @@ test("GET /integrity/watch returns expected response shape", async () => {
     assert.ok(res.body.health);
     assert.equal(typeof res.body.health.integrityScore, "number");
     assert.equal(typeof res.body.health.criticalFindings, "number");
-    assert.equal(typeof res.body.health.warningFindings, "number");
-    assert.ok(res.body.trustStatus);
+    assert.ok(res.body.report.noiseAnalytics);
+    assert.ok(res.body.report.signalQualityComparison);
+    assert.equal(typeof res.body.health.importantFindings, "number");
     assert.ok(res.body.summary);
   });
 });

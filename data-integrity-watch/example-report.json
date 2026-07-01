@@ -1,26 +1,92 @@
 {
-  "schemaVersion": "data-integrity-watch-core-v1",
+  "schemaVersion": "data-integrity-watch-signal-v1",
   "generatedAt": "2026-06-01T12:00:00.000Z",
   "mode": "manual",
   "dryRun": false,
   "organizationsScanned": 1,
-  "overallIntegrityScore": 85,
-  "criticalFindings": 1,
-  "warningFindings": 0,
-  "infoFindings": 0,
+  "overallIntegrityScore": 72,
+  "criticalFindings": 2,
+  "importantFindings": 0,
+  "warningFindings": 1,
+  "infoFindings": 3,
   "organizationReports": [
     {
       "organizationId": "org-example",
-      "integrityScore": 85,
-      "criticalCount": 1,
-      "warningCount": 0,
-      "infoCount": 0,
+      "integrityScore": 72,
+      "criticalCount": 2,
+      "importantCount": 0,
+      "warningCount": 1,
+      "infoCount": 3,
       "checksRun": 8,
       "passed": false,
-      "findings": []
+      "findings": [
+        {
+          "checkId": "scan-orphan-gmail-message",
+          "category": "scanner",
+          "severity": "critical",
+          "organizationId": "org-example",
+          "entityType": "EmailMessage",
+          "entityId": "email-invoice-orphan",
+          "status": "fail",
+          "explanation": "Invoice-like email past grace period with no GmailScanItem or FinancialDocumentReview. (invoice_subject, past_grace_period, no_gsi_or_fdr)",
+          "probableRootCause": "critical",
+          "suggestedAction": "Investigate why invoice-like email has no scan or review artifact.",
+          "autoRecoverable": false,
+          "correlationId": null,
+          "detectedAt": "2026-06-01T12:00:00.000Z",
+          "findingConfidence": 0.93,
+          "signalDisposition": "CRITICAL"
+        }
+      ]
     }
   ],
   "checksRun": 8,
   "checksImplemented": 8,
-  "passed": false
+  "passed": false,
+  "noiseAnalytics": {
+    "ignoredCount": 12,
+    "ignoredByCheck": {
+      "scan-orphan-gmail-message": 12
+    },
+    "falsePositiveCandidates": [
+      {
+        "checkId": "scan-orphan-gmail-message",
+        "count": 12,
+        "reason": "Ignored via grace period or system/junk classification"
+      }
+    ],
+    "topNoisyValidators": [
+      { "checkId": "scan-orphan-gmail-message", "count": 3 }
+    ],
+    "severityCounts": {
+      "critical": 2,
+      "important": 0,
+      "warning": 1,
+      "info": 3
+    },
+    "criticalTrendNote": null,
+    "warningTrendNote": null
+  },
+  "signalQualityComparison": {
+    "before": {
+      "label": "phase-2.3a-pre-tuning",
+      "criticalFindings": 386,
+      "warningFindings": 0,
+      "infoFindings": 0,
+      "importantFindings": 0,
+      "ignoredOrphansEstimate": 0
+    },
+    "after": {
+      "criticalFindings": 2,
+      "warningFindings": 1,
+      "infoFindings": 3,
+      "importantFindings": 0,
+      "ignoredCount": 12
+    },
+    "criticalCountReduction": 384,
+    "warningIncrease": 1,
+    "infoIncrease": 3,
+    "falsePositiveReductionEstimate": 384,
+    "topRemainingRisks": []
+  }
 }

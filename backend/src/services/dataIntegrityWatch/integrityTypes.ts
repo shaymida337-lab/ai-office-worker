@@ -1,10 +1,10 @@
 /**
- * Data Integrity Watch v1 — read-only production verification layer.
+ * Data Integrity Watch — read-only production verification layer.
  * Never modifies production data.
  */
 import type { ReliabilityEventSeverity } from "../reliability/reliabilityTypes.js";
 
-export const INTEGRITY_WATCH_VERSION = "data-integrity-watch-core-v1" as const;
+export const INTEGRITY_WATCH_VERSION = "data-integrity-watch-signal-v1" as const;
 
 export const INTEGRITY_READ_ONLY_GUARANTEE = true as const;
 
@@ -22,9 +22,13 @@ export const INTEGRITY_FINDING_STATUSES = ["fail", "warn", "pass"] as const;
 
 export type IntegrityFindingStatus = (typeof INTEGRITY_FINDING_STATUSES)[number];
 
-export const INTEGRITY_SEVERITIES = ["critical", "warning", "info"] as const;
+export const INTEGRITY_SEVERITIES = ["critical", "important", "warning", "info"] as const;
 
 export type IntegritySeverity = (typeof INTEGRITY_SEVERITIES)[number];
+
+export const ORPHAN_SIGNAL_DISPOSITIONS = ["CRITICAL", "WARNING", "INFO", "IGNORED"] as const;
+
+export type OrphanSignalDisposition = (typeof ORPHAN_SIGNAL_DISPOSITIONS)[number];
 
 export type IntegrityCheckId = string;
 
@@ -42,6 +46,8 @@ export type IntegrityFinding = {
   autoRecoverable: false;
   correlationId: string | null;
   detectedAt: string;
+  findingConfidence: number;
+  signalDisposition?: OrphanSignalDisposition | null;
 };
 
 export type IntegrityRunMode =
@@ -59,15 +65,50 @@ export type IntegrityRunOptions = {
   now?: Date;
 };
 
+export type IntegrityNoiseAnalytics = {
+  ignoredCount: number;
+  ignoredByCheck: Record<string, number>;
+  falsePositiveCandidates: Array<{ checkId: string; count: number; reason: string }>;
+  topNoisyValidators: Array<{ checkId: string; count: number }>;
+  severityCounts: Record<IntegritySeverity, number>;
+  criticalTrendNote: string | null;
+  warningTrendNote: string | null;
+};
+
 export type IntegrityOrgReport = {
   organizationId: string;
   integrityScore: number;
   findings: IntegrityFinding[];
   criticalCount: number;
+  importantCount: number;
   warningCount: number;
   infoCount: number;
   checksRun: number;
   passed: boolean;
+};
+
+export type IntegritySignalQualityComparison = {
+  before: {
+    label: string;
+    criticalFindings: number;
+    warningFindings: number;
+    infoFindings: number;
+    importantFindings: number;
+    ignoredOrphansEstimate: number;
+    topCriticalChecks: ReadonlyArray<{ checkId: string; count: number }>;
+  };
+  after: {
+    criticalFindings: number;
+    warningFindings: number;
+    infoFindings: number;
+    importantFindings: number;
+    ignoredCount: number;
+  };
+  criticalCountReduction: number;
+  warningIncrease: number;
+  infoIncrease: number;
+  falsePositiveReductionEstimate: number;
+  topRemainingRisks: Array<{ checkId: string; count: number }>;
 };
 
 export type IntegrityWatchReport = {
@@ -78,18 +119,22 @@ export type IntegrityWatchReport = {
   organizationsScanned: number;
   overallIntegrityScore: number;
   criticalFindings: number;
+  importantFindings: number;
   warningFindings: number;
   infoFindings: number;
   organizationReports: IntegrityOrgReport[];
   checksRun: number;
   checksImplemented: number;
   passed: boolean;
+  noiseAnalytics: IntegrityNoiseAnalytics;
+  signalQualityComparison: IntegritySignalQualityComparison | null;
 };
 
 export type IntegrityHealthExtension = {
   integrityScore: number;
   integrityFailures: number;
   criticalFindings: number;
+  importantFindings: number;
   warningFindings: number;
 };
 
@@ -109,6 +154,8 @@ export function severityToReliabilityEventSeverity(
   switch (severity) {
     case "critical":
       return "CRITICAL";
+    case "important":
+      return "IMPORTANT";
     case "warning":
       return "IMPORTANT";
     case "info":
