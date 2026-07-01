@@ -248,6 +248,15 @@ export default function PaymentsPage() {
           />
         )}
 
+        {!loading && (
+          <div
+            className={`${radius.lg} border px-5 py-4 ${typography.body} font-semibold leading-7`}
+            style={{ color: colors.textSecondary, backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+          >
+            חשבוניות ספקים שאושרו במסמכים לבדיקה מופיעות כאן כתשלומים לספקים.
+          </div>
+        )}
+
         {error && (
           <div
             className={`${radius.lg} border px-5 py-4 ${typography.body} font-semibold leading-7`}
@@ -282,7 +291,7 @@ export default function PaymentsPage() {
               אין כרגע תשלומים שמחכים לך
             </p>
             <p className={`${typography.body} mt-3 leading-7`} style={{ color: colors.textSecondary }}>
-              כשאזהה דרישות תשלום מהמיילים, אכין אותן כאן.
+              כשאזהה דרישות תשלום וחשבוניות ספקים מהמיילים, אכין אותן כאן.
             </p>
           </section>
         )}

@@ -59,6 +59,7 @@ const reviewTabs: Array<{ value: "all" | InvoiceReviewStatus; label: string }> =
   { value: "needs_review", label: "דורש בדיקה" },
   { value: "rejected", label: "נדחה" },
 ];
+const UNGROUPED_MONTH_KEY = "__ungrouped__";
 
 export default function InvoicesPage() {
   const [months, setMonths] = useState<MonthSummary[]>([]);
@@ -144,6 +145,12 @@ export default function InvoicesPage() {
     const monthsData = await apiFetch<InvoiceMonthsResponse>(`/api/invoices/months${querySuffix}`);
     setMonths(monthsData.months);
     const allKeys = monthsData.months.map((month) => monthKey(month.year, month.month));
+    if (allKeys.length === 0) {
+      const fallback = await apiFetch<InvoicesResponse>(`/api/invoices${querySuffix}`);
+      setInvoicesByMonth({ [UNGROUPED_MONTH_KEY]: fallback.invoices });
+      setExpandedMonths(new Set([UNGROUPED_MONTH_KEY]));
+      return;
+    }
     const keysToLoad = monthKeysToLoad ?? allKeys;
     setExpandedMonths((current) => {
       const next = new Set(current);
@@ -228,8 +235,10 @@ export default function InvoicesPage() {
       const date = invoice.date.slice(0, 10);
       return (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
     };
-    for (const month of months) {
-      const key = monthKey(month.year, month.month);
+    const monthKeys = months.length > 0
+      ? months.map((month) => monthKey(month.year, month.month))
+      : (invoicesByMonth[UNGROUPED_MONTH_KEY] ? [UNGROUPED_MONTH_KEY] : []);
+    for (const key of monthKeys) {
       if (!expandedMonths.has(key)) continue;
       for (const invoice of invoicesByMonth[key] ?? []) {
         if (isJunkInvoice(invoice) || !matchesDateFilters(invoice) || seen.has(invoice.id)) continue;
@@ -247,6 +256,11 @@ export default function InvoicesPage() {
     }
     return regular;
   }, [expandedMonths, fromDate, invoicesByMonth, junkDrawerExpanded, junkInvoices, months, toDate]);
+  const ungroupedInvoices = useMemo(
+    () => (invoicesByMonth[UNGROUPED_MONTH_KEY] ?? []).filter((invoice) => !isJunkInvoice(invoice) && matchesDisplayFilters(invoice)),
+    [invoicesByMonth, fromDate, toDate]
+  );
+
 
   const filteredIds = useMemo(() => filtered.map((invoice) => invoice.id), [filtered]);
   const selectedVisibleInvoices = useMemo(
@@ -591,9 +605,9 @@ export default function InvoicesPage() {
       <Nav />
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="page-kicker text-[#111827]">חוכמת חשבוניות</div>
-          <h1 className="text-[#111827]">חשבוניות</h1>
-          <p className="text-[17px] font-medium leading-8 text-[#111827]">מעקב, סינון וסריקה של חשבוניות מכל הלקוחות.</p>
+          <div className="page-kicker text-[#111827]">חשבוניות לקוחות</div>
+          <h1 className="text-[#111827]">חשבוניות לקוחות</h1>
+          <p className="text-[17px] font-medium leading-8 text-[#111827]">מעקב, סינון וסריקה של חשבוניות יוצאות ללקוחות.</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link
@@ -700,11 +714,63 @@ export default function InvoicesPage() {
 
       {!monthsLoading && months.length === 0 && junkInvoices.length === 0 && (
         <div className="invoice-panel rounded-2xl border border-[#E5E7EB] bg-white p-5 text-center text-[#111827] shadow-sm">
-          <h2 className="text-[#111827]">לא נמצאו חשבוניות</h2>
+          <h2 className="text-[#111827]">לא נמצאו חשבוניות לקוחות להצגה</h2>
           <p className="invoice-muted mt-2 text-base font-bold text-[#4B5563]">
-            נסה לשנות את הסינון או להפעיל סריקת חשבוניות ללקוחות עם ג׳ימייל מחובר.
+            חשבוניות ספקים ותשלומים מופיעים במסך &quot;חשבוניות ספקים / תשלומים לספקים&quot;.
           </p>
         </div>
+      )}
+
+      {!monthsLoading && months.length === 0 && ungroupedInvoices.length > 0 && (
+        <section className="invoice-panel rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+          <button
+            type="button"
+            className="sticky top-0 z-10 flex w-full items-center justify-between gap-3 border-b border-[#E5E7EB] bg-white/85 px-4 py-4 text-right backdrop-blur-sm transition hover:bg-white/95 md:px-5"
+            onClick={() => toggleMonthExpanded(UNGROUPED_MONTH_KEY)}
+            aria-expanded={expandedMonths.has(UNGROUPED_MONTH_KEY)}
+          >
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              {expandedMonths.has(UNGROUPED_MONTH_KEY) ? <ChevronDown className="h-5 w-5 shrink-0 transition-transform duration-300 ease-out" /> : <ChevronLeft className="h-5 w-5 shrink-0 transition-transform duration-300 ease-out" />}
+              <div className="min-w-0">
+                <div className="text-lg font-black text-[#111827]">חשבוניות לקוחות ללא שיוך חודש</div>
+                <div className="mt-1 text-sm font-medium text-[#6B7280]">
+                  {ungroupedInvoices.length} חשבוניות
+                </div>
+              </div>
+            </div>
+          </button>
+          <CollapsePanel open={expandedMonths.has(UNGROUPED_MONTH_KEY)}>
+            <div className="overflow-hidden p-4 md:p-5">
+              <InvoiceMobileList
+                invoices={ungroupedInvoices}
+                selectedInvoiceIds={selectedInvoiceIds}
+                bulkDeleting={bulkDeleting}
+                deletingId={deletingId}
+                removingIds={removingIds}
+                onSelect={setSelected}
+                onToggleSelection={toggleInvoiceSelection}
+                onToggleStatus={toggleStatus}
+                onApprove={handleAnimatedApprove}
+                onDelete={deleteInvoice}
+              />
+              <InvoiceDesktopList
+                invoices={ungroupedInvoices}
+                selectedInvoiceIds={selectedInvoiceIds}
+                bulkDeleting={bulkDeleting}
+                deletingId={deletingId}
+                removingIds={removingIds}
+                allVisibleSelected={false}
+                onSelect={setSelected}
+                onToggleSelection={toggleInvoiceSelection}
+                onToggleSelectAllVisible={() => {}}
+                onToggleStatus={toggleStatus}
+                onApprove={handleAnimatedApprove}
+                onDelete={deleteInvoice}
+                showSelectAll={false}
+              />
+            </div>
+          </CollapsePanel>
+        </section>
       )}
 
       <div className="space-y-4">

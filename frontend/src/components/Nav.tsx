@@ -44,12 +44,12 @@ const links: NavLink[] = [
   { id: "sales", href: "/dashboard/sales", label: "מכירות", icon: TrendingUp, module: "sales" },
   { id: "messageScans", href: "/message-scans", label: "סריקות הודעות", icon: Search },
   { id: "clients", href: "/dashboard/clients", label: "לקוחות", icon: Users, module: "crm" },
-  { id: "invoices", href: "/dashboard/invoices", label: "חשבוניות", icon: FileText },
+  { id: "invoices", href: "/dashboard/invoices", label: "חשבוניות לקוחות", icon: FileText },
   { id: "invoiceImport", href: "/dashboard/invoice-import", label: "ייבוא חשבוניות", icon: FileSpreadsheet },
   { id: "invoiceDrafts", href: "/dashboard/invoice-drafts", label: "טיוטות חשבונית", icon: FileCheck },
   { id: "invoiceDiagnostics", href: "/dashboard/invoice-diagnostics", label: "אבחון חשבוניות", icon: Search, module: "invoices" },
   { id: "documentReviews", href: "/dashboard/document-reviews", label: "מסמכים לבדיקה", icon: Search },
-  { id: "supplierPayments", href: "/payments", label: "תשלומי ספקים", icon: WalletCards },
+  { id: "supplierPayments", href: "/payments", label: "חשבוניות ספקים / תשלומים לספקים", icon: WalletCards },
   { id: "bank", href: "/dashboard/bank", label: "התאמת בנק", icon: Landmark },
   { id: "tasks", href: "/tasks", label: "משימות", icon: CheckSquare },
   { id: "calendar", href: "/dashboard/calendar", label: "יומן", icon: Calendar },
@@ -68,7 +68,7 @@ const links: NavLink[] = [
 
 const mobileLinks: NavLink[] = [
   { id: "dashboard", href: "/dashboard", label: "היום", icon: Home },
-  { id: "invoices", href: "/dashboard/invoices", label: "חשבוניות", icon: FileText },
+  { id: "invoices", href: "/dashboard/invoices", label: "לקוחות", icon: FileText },
   { id: "supplierPayments", href: "/payments", label: "ספקים", icon: WalletCards },
 ];
 
