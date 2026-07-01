@@ -16,6 +16,10 @@ import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 import { notifyNewInvoice } from "./whatsapp.js";
 import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from "./financialDocuments.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
+import {
+  evaluateGmailDriveLinkInvoiceEvidence,
+  shouldRejectPersonalEmailWithoutDocumentEvidence,
+} from "./gmailDriveLinkEvidence.js";
 import { initialConnectScanWindow } from "./scanWindow.js";
 import {
   classifyBusinessDocument,
@@ -1465,8 +1469,22 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       const visualAttachmentHints = await extractVisualAttachmentHints(gmail, email.gmailId, email.parts, email.from, logStep, ownerEmails);
       const visualAttachmentText = visualAttachmentHints.text;
       const bodyForAnalysis = [email.bodyText, pdfText && `--- PDF ATTACHMENT TEXT ---\n${pdfText}`, visualAttachmentText && `--- VISUAL ATTACHMENT ANALYSIS ---\n${visualAttachmentText}`].filter(Boolean).join("\n\n");
+      const driveLinkEvidence = evaluateGmailDriveLinkInvoiceEvidence({
+        subject: email.subject,
+        bodyText: email.bodyText,
+      });
+      const gmailAttachmentFilenames = email.parts.map((part) => part.filename).filter(Boolean) as string[];
+      const attachmentFilenamesForClassification = [
+        ...gmailAttachmentFilenames,
+        ...driveLinkEvidence.virtualAttachmentFilenames,
+      ];
       const supplierEvidenceText = [email.subject, bodyForAnalysis].filter(Boolean).join("\n\n");
       logStep(`[gmail-sync] parsed message=${email.gmailId} bodyLength=${email.bodyText.length} pdfTextLength=${pdfText.length} visualTextLength=${visualAttachmentText.length}`);
+      if (driveLinkEvidence.links.length > 0) {
+        logStep(
+          `[gmail-sync] drive link scan message=${email.gmailId} links=${driveLinkEvidence.links.length} documentLinks=${driveLinkEvidence.virtualAttachmentFilenames.length} strictInvoiceEvidence=${driveLinkEvidence.hasStrictDriveInvoiceEvidence}`
+        );
+      }
       const junkDecision = classifyJunk({
         sender: email.senderEmail || email.from,
         subject: email.subject,
@@ -1518,7 +1536,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       const analysis = await analyzeEmailContent({
         subject: email.subject,
         body: bodyForAnalysis,
-        filenames: email.parts.map((p) => p.filename).filter(Boolean) as string[],
+        filenames: attachmentFilenamesForClassification,
         sender: email.from,
       });
       logStep(`[gmail-sync] ai message=${email.gmailId} supplier="${analysis.supplier}" amount=${analysis.amount ?? "unknown"} documentType=${analysis.documentType} paymentRequired=${analysis.paymentRequired} confidence=${analysis.confidence}`);
@@ -1589,7 +1607,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           ? moneyDecision.reason
           : invoiceMatch.amountRejectedReason ?? rejectedDetectedAmountReason(extractedFields.amount ?? analysis.totalAmount ?? analysis.amount);
       logStep(`[gmail-sync] invoice detection message=${email.gmailId} isInvoice=${invoiceMatch.isInvoice} detectedAmount=${invoiceMatch.amount ?? "none"} aiAmount=${analysis.amount ?? "none"} finalAmount=${amount ?? "none"} amountRejectedReason=${amountRejectedReason ?? "none"}`);
-      const attachmentFilename = primaryAttachmentFilename(email.parts);
+      const attachmentFilename =
+        primaryAttachmentFilename(email.parts) ?? driveLinkEvidence.virtualAttachmentFilenames[0] ?? null;
       const supplierMetadata = resolveSupplierMetadata({
         analysisSupplier: analysis.supplier,
         analysisSupplierTaxId: analysis.supplierTaxId,
@@ -1613,7 +1632,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       let classification = classifyGmailScanCandidate({
         subject: email.subject,
         bodyText: bodyForAnalysis,
-        attachmentFilenames: email.parts.map((part) => part.filename).filter(Boolean) as string[],
+        attachmentFilenames: attachmentFilenamesForClassification,
         analysis,
         amount,
         supplierName,
@@ -1664,8 +1683,17 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         pipelineAction,
       });
       const hasPdfOrImageAttachment = email.parts.some((part) => isPdfAttachmentPart(part) || isInvoiceImageAttachmentPart(part));
+      const hasPdfOrImageDocumentEvidence =
+        hasPdfOrImageAttachment || driveLinkEvidence.virtualAttachmentFilenames.length > 0;
       const hasStrictPaymentEvidence = Boolean(classification.audit.strictPaymentEvidence);
-      if (!hasPdfOrImageAttachment && isPersonalEmailSender(email.senderEmail, email.domain) && !hasStrictPaymentEvidence) {
+      if (
+        shouldRejectPersonalEmailWithoutDocumentEvidence({
+          isPersonalSender: isPersonalEmailSender(email.senderEmail, email.domain),
+          hasPdfOrImageAttachment,
+          strictPaymentEvidence: hasStrictPaymentEvidence,
+          driveEvidence: driveLinkEvidence,
+        })
+      ) {
         logStep(`[gmail-sync] REJECTED no-attachment personal email without strict evidence message=${email.gmailId}`);
         await prisma.emailMessage.update({
           where: { id: email.emailRecordId },
@@ -1715,7 +1743,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           documentType: classification.documentType,
           classification,
           extractedFieldsConfidence: extractedFields.confidence,
-          hasPdfOrImageAttachment: email.parts.some((part) => isPdfAttachmentPart(part) || isInvoiceImageAttachmentPart(part)),
+          hasPdfOrImageAttachment: hasPdfOrImageDocumentEvidence,
           visualNeedsReview: visualAttachmentHints.needsReview,
           contextCache: fseContextCache,
           gmailMessageId: email.gmailId,
@@ -1902,7 +1930,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         documentType: classification.documentType,
         classification,
         extractedFieldsConfidence: extractedFields.confidence,
-        hasPdfOrImageAttachment,
+        hasPdfOrImageAttachment: hasPdfOrImageDocumentEvidence,
         visualNeedsReview: visualAttachmentHints.needsReview,
         contextCache: fseContextCache,
         gmailMessageId: email.gmailId,
@@ -1996,7 +2024,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         documentFingerprint: scfcResult.fingerprint ?? scfcResult.legacyFingerprint,
         forceReprocess: options.forceReprocess,
         identityStability,
-        hasAttachment: hasPdfOrImageAttachment,
+        hasAttachment: hasPdfOrImageDocumentEvidence,
       });
       const legacyDuplicateHash = buildLegacyDuplicateHashForLookup({
         organizationId,
@@ -2092,7 +2120,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           forceReprocess: options.forceReprocess,
           identityStability,
           confirmedDuplicate: true,
-          hasAttachment: hasPdfOrImageAttachment,
+          hasAttachment: hasPdfOrImageDocumentEvidence,
         });
         duplicateGate = attachDuplicateGateToParsedFields(parsedFieldsJson, {
           ...duplicateGateInput,
@@ -2341,11 +2369,33 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         }
       }
 
+      if (driveLinks.length === 0 && driveLinkEvidence.hasStrictDriveInvoiceEvidence) {
+        for (const link of driveLinkEvidence.links) {
+          if (link.documentKind === "unknown") continue;
+          driveLinks.push({
+            type: folderForDocumentType(classification.documentType),
+            link: link.url,
+            filename: link.inferredFilename,
+            gmailAttachmentId: null,
+            mimeType: link.documentKind === "pdf" ? "application/pdf" : "image/jpeg",
+            fileId: link.fileId,
+            fileSize: null,
+          });
+        }
+        if (driveLinks.length > 0) {
+          logStep(
+            `[gmail-sync] DRIVE_LINK_BODY_REFERENCE message=${email.gmailId} link=${driveLinks[0]?.link ?? "none"} file="${driveLinks[0]?.filename ?? "unknown"}"`
+          );
+        }
+      }
+
       const primaryDriveLink = driveLinks[0]?.link ?? null;
       const documentDriveUploadStatus =
         shouldUploadAttachments
           ? primaryDriveLink
-            ? "uploaded"
+            ? driveLinkEvidence.hasStrictDriveInvoiceEvidence && email.parts.length === 0
+              ? "not_required"
+              : "uploaded"
             : email.parts.length > 0
               ? "pending_retry"
               : "not_required"
