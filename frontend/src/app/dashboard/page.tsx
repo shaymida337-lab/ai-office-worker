@@ -10,7 +10,7 @@ import {
   BusinessSnapshot,
   DashboardActivityTimeline,
 } from "@/components/dashboard";
-import { DashboardSystemHealthCard } from "@/components/dashboard/DashboardSystemHealthCard";
+import { DashboardHomeStatus } from "@/components/dashboard/home/DashboardHomeStatus";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ScanBanner } from "@/components/ui/ScanBanner";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -77,7 +77,13 @@ export default function DashboardPage() {
           onCta={d.handleHeroCta}
         />
 
-        <DashboardSystemHealthCard state={d.dashboardSyncState} loading={d.pageLoading} />
+        <DashboardHomeStatus
+          state={d.dashboardSyncState}
+          loading={d.pageLoading}
+          onConnectGmail={() => void d.connectGmail()}
+          onRetrySync={() => void d.runSync()}
+          onOpenSettings={() => d.router.push("/dashboard/settings")}
+        />
 
         {d.dashboardSyncState.showScanBanner && d.dashboardSyncState.scanBanner ? (
           <div id="gmail-scan-progress" className="dashboard-fade-in">
