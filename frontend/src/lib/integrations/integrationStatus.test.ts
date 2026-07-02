@@ -4,6 +4,8 @@ import { buildGmailIntegrationStatus } from "./integrationStatus";
 
 test("buildGmailIntegrationStatus returns disconnected state with connect guidance", () => {
   const model = buildGmailIntegrationStatus({
+    statusKnown: true,
+    statusStale: false,
     connected: false,
     connecting: false,
     scanRunning: false,
@@ -25,12 +27,14 @@ test("buildGmailIntegrationStatus returns disconnected state with connect guidan
   });
 
   assert.equal(model.connectionState, "disconnected");
-  assert.equal(model.metrics.find((item) => item.key === "org")?.value, "Alpha Org");
-  assert.equal(model.badges.some((badge) => badge.label === "דורש פעולה"), true);
+  assert.equal(model.metrics.length, 0);
+  assert.equal(model.badges.length, 0);
 });
 
 test("buildGmailIntegrationStatus returns connecting state and pending status", () => {
   const model = buildGmailIntegrationStatus({
+    statusKnown: true,
+    statusStale: false,
     connected: false,
     connecting: true,
     scanRunning: false,
@@ -58,6 +62,8 @@ test("buildGmailIntegrationStatus returns connecting state and pending status", 
 
 test("buildGmailIntegrationStatus returns warning when reconnect required", () => {
   const model = buildGmailIntegrationStatus({
+    statusKnown: true,
+    statusStale: false,
     connected: true,
     connecting: false,
     scanRunning: false,
@@ -84,6 +90,8 @@ test("buildGmailIntegrationStatus returns warning when reconnect required", () =
 
 test("buildGmailIntegrationStatus returns scanning state while scan running", () => {
   const model = buildGmailIntegrationStatus({
+    statusKnown: true,
+    statusStale: false,
     connected: true,
     connecting: false,
     scanRunning: true,
@@ -110,6 +118,8 @@ test("buildGmailIntegrationStatus returns scanning state while scan running", ()
 
 test("buildGmailIntegrationStatus returns error state with explicit failure", () => {
   const model = buildGmailIntegrationStatus({
+    statusKnown: true,
+    statusStale: false,
     connected: true,
     connecting: false,
     scanRunning: false,
@@ -132,5 +142,33 @@ test("buildGmailIntegrationStatus returns error state with explicit failure", ()
 
   assert.equal(model.healthState, "error");
   assert.equal(model.details.find((item) => item.key === "syncHealth")?.value, "שגיאה");
-  assert.equal(model.metrics.find((item) => item.key === "status")?.value, "החיבור נכשל");
+  assert.equal(model.details.find((item) => item.key === "status")?.value, "החיבור נכשל");
+});
+
+test("buildGmailIntegrationStatus returns checking state when status is unknown", () => {
+  const model = buildGmailIntegrationStatus({
+    statusKnown: false,
+    statusStale: true,
+    connected: false,
+    connecting: false,
+    scanRunning: false,
+    hasWarning: false,
+    hasError: false,
+    reconnectRequired: false,
+    gmailAddress: null,
+    organizationName: "Alpha Org",
+    lastSuccessfulScanAt: null,
+    lastSyncAt: null,
+    scannedEmails: null,
+    extractedDocuments: null,
+    scanStatusLabel: "לא ידוע",
+    connectedSince: null,
+    scopesSummary: null,
+    lastOauthAt: null,
+    lastScanDurationLabel: null,
+    lastSyncDurationLabel: null,
+  });
+
+  assert.equal(model.title, "בודק חיבור Gmail...");
+  assert.equal(model.connectionState, "connecting");
 });

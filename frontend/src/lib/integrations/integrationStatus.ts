@@ -48,6 +48,8 @@ export type IntegrationStatusModel = {
 };
 
 type BuildGmailStatusInput = {
+  statusKnown: boolean;
+  statusStale: boolean;
   connected: boolean;
   connecting: boolean;
   scanRunning: boolean;
@@ -79,6 +81,21 @@ function metricValue(value: number | null): string {
 }
 
 export function buildGmailIntegrationStatus(input: BuildGmailStatusInput): IntegrationStatusModel {
+  if (!input.statusKnown) {
+    return {
+      connectionState: "connecting",
+      syncState: "idle",
+      healthState: "unknown",
+      title: "בודק חיבור Gmail...",
+      description: "טוען מצב חיבור כדי להציג נתונים מדויקים.",
+      badges: [
+        { key: "sync", label: "בודק סטטוס", tone: "info" },
+      ],
+      metrics: [],
+      details: [],
+    };
+  }
+
   if (input.connecting) {
     return {
       connectionState: "connecting",
@@ -92,11 +109,8 @@ export function buildGmailIntegrationStatus(input: BuildGmailStatusInput): Integ
       ],
       metrics: [
         { key: "email", label: "חשבון", value: input.gmailAddress ?? "ממתין להרשאה" },
-        { key: "org", label: "ארגון", value: input.organizationName },
-        { key: "scan", label: "סטטוס סריקה", value: "ממתין" },
       ],
       details: [
-        { key: "connectedSince", label: "מחובר מאז", value: dateValue(input.connectedSince) },
         { key: "scopes", label: "Scopes", value: input.scopesSummary ?? "ממתין להרשאה" },
       ],
     };
@@ -109,19 +123,9 @@ export function buildGmailIntegrationStatus(input: BuildGmailStatusInput): Integ
       healthState: "unknown",
       title: "Gmail לא מחובר",
       description: "חיבור Gmail מאפשר לנטלי לסרוק מסמכים באופן אוטומטי ולהציג סטטוס אמין בזמן אמת.",
-      badges: [
-        { key: "connection", label: "לא מחובר", tone: "warn" },
-        { key: "health", label: "דורש פעולה", tone: "warn" },
-      ],
-      metrics: [
-        { key: "email", label: "חשבון", value: "לא מחובר" },
-        { key: "org", label: "ארגון", value: input.organizationName },
-        { key: "scan", label: "סטטוס סריקה", value: "לא פעיל" },
-      ],
-      details: [
-        { key: "lastScan", label: "סריקה אחרונה", value: dateValue(input.lastSuccessfulScanAt) },
-        { key: "lastSync", label: "סנכרון אחרון", value: dateValue(input.lastSyncAt) },
-      ],
+      badges: [],
+      metrics: [],
+      details: [],
     };
   }
 
@@ -147,26 +151,22 @@ export function buildGmailIntegrationStatus(input: BuildGmailStatusInput): Integ
     badges: [
       { key: "connection", label: "מחובר", tone: "success" },
       {
-        key: "scan",
-        label: input.scanRunning ? "סורק כעת" : input.scanStatusLabel,
-        tone: input.scanRunning ? "info" : error ? "danger" : warning ? "warn" : "success",
-      },
-      {
         key: "health",
-        label: error ? "תקלה" : warning ? "אזהרה" : "תקין",
+        label: input.scanRunning ? "סורק כעת" : error ? "תקלה" : warning ? "אזהרה" : "תקין",
         tone: error ? "danger" : warning ? "warn" : "success",
       },
+      ...(input.statusStale ? [{ key: "stale", label: "מציג מצב אחרון", tone: "info" as const }] : []),
     ],
     metrics: [
       { key: "email", label: "חשבון Gmail", value: input.gmailAddress ?? "לא זמין" },
-      { key: "org", label: "ארגון מחובר", value: input.organizationName },
       { key: "lastScan", label: "סריקה אחרונה", value: dateValue(input.lastSuccessfulScanAt) },
-      { key: "lastSync", label: "סנכרון אחרון", value: dateValue(input.lastSyncAt) },
-      { key: "emails", label: "מיילים שנסרקו", value: metricValue(input.scannedEmails) },
-      { key: "docs", label: "מסמכים שחולצו", value: metricValue(input.extractedDocuments) },
-      { key: "status", label: "מצב סריקה", value: statusLabel },
+      { key: "docs", label: "מסמכים", value: metricValue(input.extractedDocuments) },
     ],
     details: [
+      { key: "org", label: "ארגון מחובר", value: input.organizationName },
+      { key: "lastSync", label: "סנכרון אחרון", value: dateValue(input.lastSyncAt) },
+      { key: "emails", label: "מיילים שנסרקו", value: metricValue(input.scannedEmails) },
+      { key: "status", label: "מצב סריקה", value: statusLabel },
       { key: "connectedSince", label: "מחובר מאז", value: dateValue(input.connectedSince) },
       { key: "scopes", label: "Scopes שניתנו", value: input.scopesSummary ?? "לא זמין" },
       { key: "lastOauth", label: "OAuth אחרון", value: dateValue(input.lastOauthAt) },

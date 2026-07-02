@@ -108,18 +108,22 @@ export function IntegrationStatusCard({
             {model.title} · {model.description}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {model.badges.map((badge) => (
-            <StatusPill key={badge.key} tone={toneMap[badge.tone]}>
-              {badge.label}
-            </StatusPill>
-          ))}
-        </div>
+        {model.badges.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {model.badges.map((badge) => (
+              <StatusPill key={badge.key} tone={toneMap[badge.tone]}>
+                {badge.label}
+              </StatusPill>
+            ))}
+          </div>
+        ) : null}
       </div>
 
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {renderMetricRows(model.metrics)}
-      </div>
+      {model.metrics.length > 0 ? (
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {renderMetricRows(model.metrics)}
+        </div>
+      ) : null}
 
       <div className="mt-4 flex flex-wrap gap-2">
         {primaryAction ? (
@@ -132,16 +136,18 @@ export function IntegrationStatusCard({
         ))}
       </div>
 
-      <details
-        className="mt-4"
-        open={expanded}
-        onToggle={(event) => setExpanded((event.currentTarget as HTMLDetailsElement).open)}
-      >
-        <summary className={`${typography.caption} cursor-pointer font-bold`} style={{ color: colors.accent }}>
-          {detailsTitle}
-        </summary>
-        <div className="mt-3 grid gap-2">{renderDetailRows(model.details)}</div>
-      </details>
+      {model.details.length > 0 ? (
+        <details
+          className="mt-4"
+          open={expanded}
+          onToggle={(event) => setExpanded((event.currentTarget as HTMLDetailsElement).open)}
+        >
+          <summary className={`${typography.caption} cursor-pointer font-bold`} style={{ color: colors.accent }}>
+            {detailsTitle}
+          </summary>
+          <div className="mt-3 grid gap-2">{renderDetailRows(model.details)}</div>
+        </details>
+      ) : null}
     </section>
   );
 }

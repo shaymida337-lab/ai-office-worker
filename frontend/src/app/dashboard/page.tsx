@@ -69,6 +69,7 @@ import {
 } from "@/lib/gmailScanLifecycle";
 import type { OrganizationSettings } from "@/lib/business-config";
 import { buildGmailIntegrationStatus, type IntegrationStatusModel } from "@/lib/integrations/integrationStatus";
+import { resolveGmailStatusFromSettled } from "@/lib/integrations/gmailConnectionTruth";
 
 type ClientSummary = {
   id: string;
@@ -380,6 +381,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [summary, setSummary] = useState("");
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
+  const [gmailStatusKnown, setGmailStatusKnown] = useState(false);
+  const [gmailStatusStale, setGmailStatusStale] = useState(false);
   const [clients, setClients] = useState<ClientsResponse | null>(null);
   const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
   const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings | null>(null);
@@ -446,15 +449,25 @@ export default function DashboardPage() {
   }, []);
 
   const refreshGmailStatus = useCallback(async () => {
-    const status = await apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`);
-    setGmailStatus(status);
-    if (status.connected) {
-      setShowGmailConnect(false);
-      setError("");
-      setScanToast((current) => current?.type === "error" && current.text.includes("ג׳ימייל") ? null : current);
+    try {
+      const status = await apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`);
+      setGmailStatus(status);
+      setGmailStatusKnown(true);
+      setGmailStatusStale(false);
+      if (status.connected) {
+        setShowGmailConnect(false);
+        setError("");
+        setScanToast((current) => current?.type === "error" && current.text.includes("ג׳ימייל") ? null : current);
+      }
+      return status;
+    } catch (refreshError) {
+      setGmailStatusStale(true);
+      if (!gmailStatus) {
+        setGmailStatusKnown(false);
+      }
+      throw refreshError;
     }
-    return status;
-  }, []);
+  }, [gmailStatus]);
 
   const load = useCallback(async () => {
     try {
@@ -480,8 +493,11 @@ export default function DashboardPage() {
 
       setStats(statsResult.status === "fulfilled" ? statsResult.value : emptyStats);
       setSummary(summaryResult.status === "fulfilled" ? summaryResult.value.text : "לא ניתן לטעון סיכום כרגע.");
-      setGmailStatus(gmailResult.status === "fulfilled" ? gmailResult.value : { googleConfigured: true, connected: false, connectedAt: null });
-      if (gmailResult.status === "fulfilled" && !gmailResult.value.connected) {
+      const gmailResolved = resolveGmailStatusFromSettled(gmailStatus, gmailResult);
+      setGmailStatus(gmailResolved.nextStatus);
+      setGmailStatusKnown(gmailResolved.known);
+      setGmailStatusStale(gmailResolved.stale);
+      if (gmailResolved.known && !gmailResolved.nextStatus?.connected) {
         setShowGmailConnect(true);
       }
       setClients(clientsResult.status === "fulfilled" ? clientsResult.value : emptyClients);
@@ -565,7 +581,7 @@ export default function DashboardPage() {
     } finally {
       setPageLoading(false);
     }
-  }, [activeScanId, router]);
+  }, [activeScanId, router, gmailStatus]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1030,6 +1046,8 @@ export default function DashboardPage() {
   const gmailIntegrationModel: IntegrationStatusModel = useMemo(
     () =>
       buildGmailIntegrationStatus({
+        statusKnown: gmailStatusKnown,
+        statusStale: gmailStatusStale,
         connected: gmailConnected,
         connecting: connectingGmail,
         scanRunning,
@@ -1053,6 +1071,8 @@ export default function DashboardPage() {
       }),
     [
       gmailConnected,
+      gmailStatusKnown,
+      gmailStatusStale,
       connectingGmail,
       scanRunning,
       gmailStatus?.reconnectRequired,
@@ -1077,6 +1097,7 @@ export default function DashboardPage() {
   );
   const gmailCardActions = useMemo(
     () => {
+      if (!gmailStatusKnown) return [];
       if (!gmailConnected) {
         return [
           { id: "connect", label: "חבר Gmail", onClick: () => void connectGmail(), disabled: connectingGmail || syncing, priority: "primary" as const },
@@ -1089,7 +1110,7 @@ export default function DashboardPage() {
         { id: "disconnect", label: "נתק Gmail", onClick: () => router.push("/dashboard/settings") },
       ];
     },
-    [gmailConnected, connectingGmail, syncing, router]
+    [gmailStatusKnown, gmailConnected, connectingGmail, syncing, router]
   );
 
   const natalieBriefingInput = useMemo<NatalieBriefingInput>(
@@ -1519,14 +1540,6 @@ export default function DashboardPage() {
           onNotifications={() => router.push("/message-scans")}
         />
 
-        <IntegrationStatusCard
-          icon="📬"
-          title="Gmail"
-          model={gmailIntegrationModel}
-          actions={gmailCardActions}
-          detailsTitle="פרטי חיבור מתקדמים"
-        />
-
         <NatalieHero
           ownerFirstName={ownerFirstName}
           humanMessage={heroHumanMessage}
@@ -1575,6 +1588,16 @@ export default function DashboardPage() {
             <NatalieCommandBar onSubmit={handleNatalieConversation} onScan={runSync} />
           </div>
         )}
+
+        <section className="lg:max-w-3xl">
+          <IntegrationStatusCard
+            icon="📬"
+            title="Gmail"
+            model={gmailIntegrationModel}
+            actions={gmailCardActions}
+            detailsTitle="פרטי חיבור מתקדמים"
+          />
+        </section>
 
         <details className={`${radius.card} border`} style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}>
           <summary className="cursor-pointer list-none px-5 py-5 text-lg font-bold md:px-6" style={{ color: colors.textPrimary }}>
