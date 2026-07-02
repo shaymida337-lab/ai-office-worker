@@ -1,9 +1,13 @@
+import type { YourDayActionKey } from "./yourDayRoutes";
+import { resolveYourDayHref } from "./yourDayRoutes";
+
 export type YourDayItem = {
   id: string;
   text: string;
   priority: number;
   urgency: "urgent" | "warn" | "calm";
-  onAction?: () => void;
+  actionKey: YourDayActionKey;
+  href: string | null;
 };
 
 type AppointmentInput = {
@@ -20,6 +24,15 @@ type BuildYourDayInput = {
   overduePayments?: number;
   openTasks?: number;
 };
+
+function withRoute(
+  item: Omit<YourDayItem, "href"> & { actionKey: YourDayActionKey }
+): YourDayItem {
+  return {
+    ...item,
+    href: resolveYourDayHref(item.actionKey),
+  };
+}
 
 function minutesUntil(startTime: string, now: Date) {
   const start = new Date(startTime);
@@ -49,60 +62,76 @@ export function buildYourDayItems(input: BuildYourDayInput): YourDayItem[] {
 
   if (nextAppointment) {
     const minutes = minutesUntil(nextAppointment.startTime, now) ?? 0;
-    items.push({
-      id: `appt-${nextAppointment.id}`,
-      text: formatAppointmentWait(minutes),
-      priority: minutes <= 60 ? 1 : 2,
-      urgency: minutes <= 60 ? "urgent" : "warn",
-    });
+    items.push(
+      withRoute({
+        id: `appt-${nextAppointment.id}`,
+        text: formatAppointmentWait(minutes),
+        priority: minutes <= 60 ? 1 : 2,
+        urgency: minutes <= 60 ? "urgent" : "warn",
+        actionKey: "appointment",
+      })
+    );
   }
 
   const overdue = input.overduePayments ?? 0;
   const pendingPayments = input.pendingPayments ?? 0;
   if (overdue > 0) {
-    items.push({
-      id: "payments-overdue",
-      text: overdue === 1 ? "תשלום אחד באיחור" : `${overdue} תשלומים באיחור`,
-      priority: 1,
-      urgency: "urgent",
-    });
+    items.push(
+      withRoute({
+        id: "payments-overdue",
+        text: overdue === 1 ? "תשלום אחד באיחור" : `${overdue} תשלומים באיחור`,
+        priority: 1,
+        urgency: "urgent",
+        actionKey: "payment_overdue",
+      })
+    );
   } else if (pendingPayments > 0) {
-    items.push({
-      id: "payments-pending",
-      text: pendingPayments === 1 ? "תשלום אחד ממתין" : `${pendingPayments} תשלומים ממתינים`,
-      priority: 2,
-      urgency: "warn",
-    });
+    items.push(
+      withRoute({
+        id: "payments-pending",
+        text: pendingPayments === 1 ? "תשלום אחד ממתין" : `${pendingPayments} תשלומים ממתינים`,
+        priority: 2,
+        urgency: "warn",
+        actionKey: "payment_pending",
+      })
+    );
   }
 
   const documents = input.pendingDocuments ?? 0;
   if (documents > 0) {
-    items.push({
-      id: "documents",
-      text: documents === 1 ? "מסמך אחד מחכה לאישור" : `${documents} מסמכים לאישור`,
-      priority: 2,
-      urgency: documents > 2 ? "urgent" : "warn",
-    });
+    items.push(
+      withRoute({
+        id: "documents",
+        text: documents === 1 ? "מסמך אחד מחכה לאישור" : `${documents} מסמכים לאישור`,
+        priority: 2,
+        urgency: documents > 2 ? "urgent" : "warn",
+        actionKey: "document_review",
+      })
+    );
   }
 
   const tasks = input.openTasks ?? 0;
   if (tasks > 0) {
-    items.push({
-      id: "tasks",
-      text: tasks === 1 ? "משימה אחת פתוחה" : `${tasks} משימות פתוחות`,
-      priority: 3,
-      urgency: tasks > 5 ? "urgent" : "warn",
-    });
+    items.push(
+      withRoute({
+        id: "tasks",
+        text: tasks === 1 ? "משימה אחת פתוחה" : `${tasks} משימות פתוחות`,
+        priority: 3,
+        urgency: tasks > 5 ? "urgent" : "warn",
+        actionKey: "open_task",
+      })
+    );
   }
 
   if (items.length === 0) {
     return [
-      {
+      withRoute({
         id: "all-clear",
         text: nextAppointment ? "אין משימות דחופות מעבר לפגישה" : "אין משימות דחופות — היום פנוי כרגע",
         priority: 9,
         urgency: "calm",
-      },
+        actionKey: "all_clear",
+      }),
     ];
   }
 

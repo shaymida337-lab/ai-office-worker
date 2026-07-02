@@ -80,6 +80,70 @@ test("snapshotMetrics returns 4 KPI items with formatted values", () => {
   assert.equal(vm.snapshotMetrics[3]?.value, "2");
 });
 
+test("snapshotMetrics uses stats only when documentReviews list differs", () => {
+  const vm = buildDashboardHomeViewModel(
+    minimalInput({
+      stats: { ...emptyStats, pendingInvoices: 9, openTasks: 1 },
+      documentReviews: [
+        {
+          id: "dr-1",
+          source: "gmail",
+          sender: null,
+          subject: null,
+          fileName: null,
+          documentType: "invoice",
+          supplierName: "ספק",
+          totalAmount: 100,
+          confidenceScore: 0.9,
+          uncertaintyReason: null,
+          driveFileUrl: null,
+          reviewStatus: "needs_review",
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    })
+  );
+  assert.equal(vm.snapshotMetrics.find((m) => m.id === "invoices")?.value, "9");
+});
+
+test("yourDayItems include href for actionable rows", () => {
+  const vm = buildDashboardHomeViewModel(
+    minimalInput({
+      stats: { ...emptyStats, upcomingPaymentsCount: 5, overdueSupplierPayments: 1, openTasks: 4 },
+      documentReviews: [
+        {
+          id: "dr-1",
+          source: "gmail",
+          sender: null,
+          subject: null,
+          fileName: null,
+          documentType: "invoice",
+          supplierName: "ספק",
+          totalAmount: 100,
+          confidenceScore: 0.9,
+          uncertaintyReason: null,
+          driveFileUrl: null,
+          reviewStatus: "needs_review",
+          createdAt: new Date().toISOString(),
+        },
+      ],
+      upcomingAppointments: [
+        {
+          id: "appt-1",
+          startTime: new Date(Date.now() + 3_600_000).toISOString(),
+          status: "confirmed",
+          client: { name: "דנה" },
+        },
+      ],
+    })
+  );
+
+  assert.ok(vm.yourDayItems.length > 0);
+  const actionable = vm.yourDayItems.filter((item) => item.href);
+  assert.ok(actionable.length > 0);
+  assert.ok(actionable.every((item) => typeof item.href === "string" && item.href.startsWith("/")));
+});
+
 test("yourDayItems passthrough reflects pending counts from input", () => {
   const vm = buildDashboardHomeViewModel(
     minimalInput({

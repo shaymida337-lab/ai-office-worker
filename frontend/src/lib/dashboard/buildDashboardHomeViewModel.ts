@@ -30,6 +30,7 @@ import { buildDashboardSyncSurfaces } from "@/lib/dashboard/dashboardSyncPresent
 import { buildMorningGreeting } from "@/lib/dashboard/morningBrief";
 import { buildAlreadyWorkedSummary } from "@/lib/dashboard/alreadyWorked";
 import { buildYourDayItems } from "@/lib/dashboard/yourDay";
+import { buildSnapshotMetrics, resolveOpenTasksCount } from "@/lib/dashboard/dashboardMetrics";
 import { buildSmartSuggestions, isMonthEndApproaching } from "@/lib/dashboard/smartSuggestions";
 import { buildHeroBriefing, type HeroBriefing } from "./heroBriefing";
 import type { HeroTrustState } from "./heroTrust";
@@ -167,7 +168,7 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
   const scanStale = scanBanner?.status === "stale";
   const monthPayments = payments.filter((payment) => isThisMonth(payment.date));
   const unpaidPayments = payments.filter((payment) => !payment.paid);
-  const openTasksCount = stats?.openTasks ?? recentTasks.filter((task) => task.status !== "completed" && task.status !== "done").length;
+  const openTasksCount = resolveOpenTasksCount(stats);
   const scanRunning = resolveDashboardGmailScanRunning({
     syncing,
     activeScanId,
@@ -350,8 +351,8 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
       startTime: appt.startTime,
       clientName: appt.client.name,
     })),
-    pendingDocuments: documentReviews.length,
-    pendingPayments: stats?.upcomingPaymentsCount ?? unpaidPayments.length,
+    pendingDocuments: documentReviews.length > 0 ? documentReviews.length : 0,
+    pendingPayments: stats?.upcomingPaymentsCount ?? 0,
     overduePayments: stats?.overdueSupplierPayments ?? 0,
     openTasks: openTasksCount,
   });
@@ -381,12 +382,7 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     monthEndApproaching: isMonthEndApproaching(),
   });
 
-  const snapshotMetrics = [
-    { id: "in", label: "כסף נכנס החודש", value: formatShekel(stats?.moneyToReceive ?? 0) },
-    { id: "out", label: "כסף יוצא החודש", value: formatShekel(stats?.moneyToPay ?? 0) },
-    { id: "invoices", label: "חשבוניות פתוחות", value: String(stats?.pendingInvoices ?? documentReviews.length) },
-    { id: "tasks", label: "משימות פתוחות", value: String(openTasksCount) },
-  ];
+  const snapshotMetrics = buildSnapshotMetrics({ stats, pageLoading });
 
   const activityTimeline = buildRecentActivityTimeline({
     scanLogs: scanStatus?.logs,
