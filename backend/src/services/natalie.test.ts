@@ -7,6 +7,7 @@ import {
   expandInvoiceSearchTerms,
   extractShowInvoiceSearchTerm,
   extractSupplierSearchTerm,
+  isLikelyConversationalQuestion,
   isShowInvoiceRequest,
   mapSupplierPaymentToShowInvoiceItem,
   mergeShowInvoiceItems,
@@ -15,6 +16,19 @@ import {
 
 const ORG = "org-natalie-test";
 const OTHER_ORG = "org-other";
+
+test("conversational greeting is detected and answered without Claude", async () => {
+  assert.equal(isLikelyConversationalQuestion("שלום נטלי, מה שלומך?"), true);
+  assert.equal(isLikelyConversationalQuestion("כמה חשבוניות יש לי?"), false);
+
+  const result = await askNatalieBusinessQuestion({
+    organizationId: ORG,
+    question: "שלום נטלי, מה שלומך?",
+  });
+  assert.equal("answer" in result, true);
+  if (!("answer" in result)) return;
+  assert.match(result.answer, /שלום/);
+});
 
 const woltReviewRow = {
   id: "fdr-wolt-1",

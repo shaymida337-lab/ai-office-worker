@@ -274,7 +274,7 @@ export async function answerBusinessQuestionWithClaude(input: {
   const messages: Array<{ role: "user" | "assistant"; content: string }> = [
     {
       role: "user",
-      content: `מספרי העסק:\n${JSON.stringify(input.businessContext, null, 2)}`,
+      content: `מספרי העסק:\n${JSON.stringify(input.businessContext)}`,
     },
     ...(input.history ?? []),
     {
@@ -289,13 +289,13 @@ export async function answerBusinessQuestionWithClaude(input: {
       const finalMessage = await anthropic.messages.create(
         {
           model: config.anthropic.model,
-          max_tokens: 500,
+          max_tokens: 300,
           system: NATALIE_BUSINESS_SYSTEM_PROMPT,
           messages,
         },
         {
-          maxRetries: 4,
-          timeout: 60000,
+          maxRetries: 2,
+          timeout: 45000,
         }
       );
       const firstBlock = finalMessage.content[0];

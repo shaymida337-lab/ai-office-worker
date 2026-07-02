@@ -1,5 +1,4 @@
 import { answerBusinessQuestionWithClaude, type NatalieClaudeResponse } from "./claude.js";
-import { getDashboardStats } from "./dashboard.js";
 import { findTasksByPartialTitle } from "./tasks.js";
 import { prisma } from "../lib/prisma.js";
 import {
@@ -53,8 +52,11 @@ export async function askNatalieBusinessQuestion(input: {
   );
   if (cancelAppointmentResponse) return cancelAppointmentResponse;
 
+  const conversationalResponse = maybeBuildConversationalResponse(input.question);
+  if (conversationalResponse) return conversationalResponse;
+
   const [stats, richerContext] = await Promise.all([
-    getDashboardStats(input.organizationId),
+    getNatalieAskDashboardSnapshot(input.organizationId),
     getNatalieBusinessContext(input.organizationId).catch((err) => {
       console.warn("[natalie] richer business context failed", err instanceof Error ? err.message : String(err));
       return {};
@@ -712,6 +714,184 @@ async function maybeBuildCompleteTaskProposal(organizationId: string, question: 
       title: task.title,
     },
     answer: `מצאתי את המשימה "${task.title}". לסמן אותה כבוצעה?`,
+  };
+}
+
+export function isLikelyConversationalQuestion(question: string): boolean {
+  const normalized = question.trim().replace(/\s+/g, " ");
+  if (!normalized) return false;
+  if (
+    /(כמה|חשבונית|חשבוניות|תור|תורים|תשלום|ספק|לקוח|משימה|גבייה|מייל|סריק|invoice|payment|appointment|calendar|gmail|whatsapp)/i.test(
+      normalized
+    )
+  ) {
+    return false;
+  }
+  return /(שלום|היי|מה שלומך|מה נשמע|בוקר טוב|ערב טוב|תודה|תודה רבה|איך הולך|נעים להכיר)/i.test(
+    normalized
+  );
+}
+
+function maybeBuildConversationalResponse(question: string): NatalieClaudeResponse | null {
+  if (!isLikelyConversationalQuestion(question)) return null;
+  if (/תודה/i.test(question)) {
+    return { answer: "בכיף! אני כאן אם תצטרך עוד משהו." };
+  }
+  return { answer: "שלום! אני כאן לעזור לך עם העסק. במה אוכל לסייע?" };
+}
+
+async function getNatalieAskDashboardSnapshot(organizationId: string) {
+  const now = new Date();
+  const in7days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  const [
+    openTasks,
+    totalInvoices,
+    scansCompleted,
+    driveUploads,
+    clients,
+    unreadAlerts,
+    supplierPaymentsCount,
+    paidPayments,
+    unpaidPayments,
+    moneyToPayAgg,
+    moneyToReceiveAgg,
+    missingInvoicesCount,
+    upcomingPaymentsCount,
+    overdueSupplierPayments,
+    overdueCustomerInvoices,
+    invoicesFromGmail,
+    invoicesFromWhatsApp,
+    suspiciousPaymentsCount,
+    customerInvoiceCount,
+  ] = await Promise.all([
+    prisma.task.count({ where: { organizationId, status: "open" } }),
+    prisma.invoice.count({ where: { organizationId } }),
+    prisma.syncLog.count({ where: { organizationId, type: "gmail_scan", status: "success" } }),
+    prisma.emailAttachment.count({ where: { driveLink: { not: null }, emailMessage: { organizationId } } }),
+    prisma.client.count({ where: { organizationId } }),
+    prisma.alert.count({ where: { organizationId, read: false } }),
+    prisma.supplierPayment.count({ where: { organizationId, approvalStatus: "approved" } }),
+    prisma.supplierPayment.count({ where: { organizationId, approvalStatus: "approved", paid: true } }),
+    prisma.supplierPayment.count({
+      where: { organizationId, approvalStatus: "approved", paid: false },
+    }),
+    prisma.supplierPayment.aggregate({
+      where: {
+        organizationId,
+        approvalStatus: "approved",
+        paid: false,
+        paymentRequired: true,
+        amount: { gte: 0, lte: 1_000_000 },
+      },
+      _sum: { amount: true },
+    }),
+    prisma.customerInvoice.aggregate({
+      where: { organizationId, paid: false },
+      _sum: { amount: true },
+    }),
+    prisma.supplierPayment.count({
+      where: {
+        organizationId,
+        approvalStatus: "approved",
+        missingInvoice: true,
+        paid: false,
+        duplicateDetected: false,
+      },
+    }),
+    prisma.supplierPayment.count({
+      where: {
+        organizationId,
+        approvalStatus: "approved",
+        paid: false,
+        paymentRequired: true,
+        dueDate: { gte: now, lte: in7days },
+        amount: { gte: 0, lte: 1_000_000 },
+      },
+    }),
+    prisma.supplierPayment.count({
+      where: {
+        organizationId,
+        approvalStatus: "approved",
+        paid: false,
+        paymentRequired: true,
+        dueDate: { lt: now },
+        amount: { gte: 0, lte: 1_000_000 },
+      },
+    }),
+    prisma.customerInvoice.count({
+      where: { organizationId, paid: false, dueDate: { lt: now } },
+    }),
+    prisma.supplierPayment.count({
+      where: {
+        organizationId,
+        OR: [
+          { source: "gmail" },
+          { source: "both" },
+          { firstSource: "gmail" },
+          { lastSource: "gmail" },
+        ],
+      },
+    }),
+    prisma.supplierPayment.count({
+      where: {
+        organizationId,
+        OR: [
+          { source: "whatsapp" },
+          { source: "both" },
+          { firstSource: "whatsapp" },
+          { lastSource: "whatsapp" },
+        ],
+      },
+    }),
+    prisma.supplierPayment.count({
+      where: {
+        organizationId,
+        approvalStatus: "approved",
+        OR: [{ amount: { lt: 0 } }, { amount: { gt: 1_000_000 } }],
+      },
+    }),
+    prisma.customerInvoice.count({ where: { organizationId } }),
+  ]);
+
+  const moneyToPay = moneyToPayAgg._sum.amount ?? 0;
+  const moneyToReceive = moneyToReceiveAgg._sum.amount ?? 0;
+  const businessHealthScore = Math.max(
+    0,
+    Math.min(
+      100,
+      100 -
+        missingInvoicesCount * 8 -
+        overdueSupplierPayments * 10 -
+        overdueCustomerInvoices * 10 -
+        Math.min(openTasks, 10) * 2
+    )
+  );
+
+  return {
+    moneyToPay,
+    moneyToReceive,
+    pendingInvoices: unpaidPayments,
+    missingInvoicesCount,
+    upcomingPaymentsCount,
+    openTasks,
+    unreadAlerts,
+    businessHealthScore,
+    overdueCustomerInvoices,
+    overdueSupplierPayments,
+    supplierPaymentsCount,
+    totalInvoices,
+    unpaidPayments,
+    paidPayments,
+    scansCompleted,
+    driveUploads,
+    documentsInDrive: driveUploads,
+    invoicesFromGmail,
+    invoicesFromWhatsApp,
+    clients,
+    suspiciousPaymentsCount,
+    hoursSavedThisWeek: Math.round((supplierPaymentsCount + customerInvoiceCount + openTasks) * 0.25),
+    currency: "ILS",
   };
 }
 
