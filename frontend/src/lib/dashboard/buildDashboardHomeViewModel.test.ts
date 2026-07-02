@@ -73,7 +73,7 @@ test("snapshotMetrics returns 4 KPI items with formatted values", () => {
   assert.equal(vm.snapshotMetrics.length, 4);
   assert.deepEqual(
     vm.snapshotMetrics.map((metric) => metric.id),
-    ["in", "out", "invoices", "tasks"]
+    ["in", "out", "documents", "tasks"]
   );
   assert.match(vm.snapshotMetrics[0]?.value ?? "", /₪/);
   assert.equal(vm.snapshotMetrics[2]?.value, "3");
@@ -103,7 +103,7 @@ test("snapshotMetrics uses stats only when documentReviews list differs", () => 
       ],
     })
   );
-  assert.equal(vm.snapshotMetrics.find((m) => m.id === "invoices")?.value, "9");
+  assert.equal(vm.snapshotMetrics.find((m) => m.id === "documents")?.value, "9");
 });
 
 test("yourDayItems include href for actionable rows", () => {

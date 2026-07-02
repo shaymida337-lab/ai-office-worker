@@ -54,7 +54,7 @@ test("dashboard home hook input with stats yields 4 snapshot KPI metrics", () =>
   assert.equal(vm.snapshotMetrics.length, 4);
   assert.equal(vm.snapshotMetrics[0]?.id, "in");
   assert.equal(vm.snapshotMetrics[1]?.id, "out");
-  assert.equal(vm.snapshotMetrics[2]?.id, "invoices");
+  assert.equal(vm.snapshotMetrics[2]?.id, "documents");
   assert.equal(vm.snapshotMetrics[3]?.id, "tasks");
   assert.match(vm.snapshotMetrics[0]?.value ?? "", /₪/);
 });
