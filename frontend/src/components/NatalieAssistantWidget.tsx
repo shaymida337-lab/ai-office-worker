@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { Component, FormEvent, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Mic, SendHorizontal, Volume2, VolumeX, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { apiFetch, API_URL, getToken } from "@/lib/api";
 import { formatNatalieResponseOrFallback } from "@/lib/natalie/formatResponse";
+import { normalizeAvailabilityProposal, normalizeNatalieResponse } from "@/lib/natalie/responseGuard";
 import { isUiOverlayOpen, lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
 
 type MicState = "idle" | "recording" | "transcribing";
@@ -300,7 +301,11 @@ function isTaskActionResponse(response: NatalieAskResponse): response is Extract
 }
 
 function isShowInvoiceResponse(response: NatalieAskResponse): response is Extract<NatalieAskResponse, { action: "show_invoice" }> {
-  return "action" in response && response.action === "show_invoice";
+  return (
+    "action" in response &&
+    response.action === "show_invoice" &&
+    Array.isArray((response as { invoices?: unknown }).invoices)
+  );
 }
 
 function isIssueInvoiceResponse(response: NatalieAskResponse): response is Extract<NatalieAskResponse, { action: "issue_invoice" }> {
@@ -308,7 +313,12 @@ function isIssueInvoiceResponse(response: NatalieAskResponse): response is Extra
 }
 
 function isBookAppointmentResponse(response: NatalieAskResponse): response is Extract<NatalieAskResponse, { action: "book_appointment" }> {
-  return "action" in response && response.action === "book_appointment";
+  return (
+    "action" in response &&
+    response.action === "book_appointment" &&
+    Boolean((response as { proposal?: unknown }).proposal) &&
+    typeof (response as { proposal?: { clientName?: unknown } }).proposal?.clientName === "string"
+  );
 }
 
 function isCancelAppointmentResponse(response: NatalieAskResponse): response is Extract<NatalieAskResponse, { action: "cancel_appointment" }> {
@@ -335,7 +345,9 @@ function isActionableMessage(
 ) {
   return (
     ((message.action === "create_task" && Boolean(message.proposal)) ||
-      (message.action === "complete_task" && Boolean(message.proposal)))
+      (message.action === "complete_task" &&
+        Boolean(message.proposal) &&
+        typeof (message.proposal as { taskId?: unknown }).taskId === "string"))
   );
 }
 
@@ -366,7 +378,11 @@ function isRescheduleAppointmentActionableMessage(
 function isSuggestAvailableTimesMessage(
   message: WidgetMessage
 ): message is WidgetMessage & { action: "suggest_available_times"; proposal: SuggestAvailableTimesProposal } {
-  return message.action === "suggest_available_times" && Boolean(message.proposal);
+  return (
+    message.action === "suggest_available_times" &&
+    Boolean(message.proposal) &&
+    Array.isArray((message.proposal as { slots?: unknown }).slots)
+  );
 }
 
 function formatAppointmentWhenLabel(proposal: BookAppointmentProposal): string {
@@ -381,6 +397,35 @@ function formatAppointmentWhenLabel(proposal: BookAppointmentProposal): string {
 
 function isInvoiceMessage(message: WidgetMessage): message is WidgetMessage & { action: "show_invoice"; invoices: NatalieInvoiceSummary[] } {
   return message.action === "show_invoice" && Array.isArray(message.invoices) && message.invoices.length > 0;
+}
+
+type NatalieWidgetBoundaryProps = { children: ReactNode };
+type NatalieWidgetBoundaryState = { hasError: boolean };
+
+class NatalieWidgetBoundary extends Component<NatalieWidgetBoundaryProps, NatalieWidgetBoundaryState> {
+  state: NatalieWidgetBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): NatalieWidgetBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown, errorInfo: ErrorInfo) {
+    console.error("[natalie-widget] render crash prevented", {
+      error: error instanceof Error ? error.message : String(error),
+      componentStack: errorInfo.componentStack,
+    });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <section className="fixed bottom-6 right-4 z-50 max-w-xs rounded-2xl border border-[#e6eaf2] bg-white p-4 text-right shadow-[0_8px_20px_rgba(20,40,90,0.12)]" dir="rtl">
+          <p className="text-sm font-semibold text-[#0e1116]">נטלי זמינה חלקית כרגע. אפשר להמשיך לעבוד בדשבורד ולנסות שוב בעוד רגע.</p>
+        </section>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 function formatInvoiceDate(date: string | Date) {
@@ -447,7 +492,7 @@ function buildAppointmentModifyErrorFeedback(payload: {
   }
 }
 
-export function NatalieAssistantWidget() {
+function NatalieAssistantWidgetInner() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [micState, setMicState] = useState<MicState>("idle");
@@ -1016,9 +1061,9 @@ export function NatalieAssistantWidget() {
       window.speechSynthesis.speak(unlock);
     }
 
-    let result: NatalieAskResponse;
+    let result: unknown;
     try {
-      result = await apiFetch<NatalieAskResponse>("/api/natalie/ask", {
+      result = await apiFetch<unknown>("/api/natalie/ask", {
         method: "POST",
         body: JSON.stringify({ question: cleanText, history }),
       });
@@ -1036,7 +1081,8 @@ export function NatalieAssistantWidget() {
     }
 
     try {
-      const answer = formatNatalieResponseOrFallback(result.answer);
+      const normalized = normalizeNatalieResponse(result) as NatalieAskResponse;
+      const answer = formatNatalieResponseOrFallback(normalized.answer);
       void speakNatalieReply(answer);
       setMessages((current) =>
         current.map((message) =>
@@ -1044,52 +1090,52 @@ export function NatalieAssistantWidget() {
             ? {
                 ...message,
                 text: answer,
-                ...(isTaskActionResponse(result)
+                ...(isTaskActionResponse(normalized)
                   ? {
-                      action: result.action,
-                      proposal: result.proposal,
+                      action: normalized.action,
+                      proposal: normalized.proposal,
                       actionStatus: "pending" as const,
                     }
                   : {}),
-                ...(isIssueInvoiceResponse(result)
+                ...(isIssueInvoiceResponse(normalized)
                   ? {
-                      action: result.action,
-                      proposal: result.proposal,
+                      action: normalized.action,
+                      proposal: normalized.proposal,
                       actionStatus: "pending" as const,
                     }
                   : {}),
-                ...(isBookAppointmentResponse(result)
+                ...(isBookAppointmentResponse(normalized)
                   ? {
-                      action: result.action,
-                      proposal: result.proposal,
+                      action: normalized.action,
+                      proposal: normalized.proposal,
                       actionStatus: "pending" as const,
                     }
                   : {}),
-                ...(isCancelAppointmentResponse(result)
+                ...(isCancelAppointmentResponse(normalized)
                   ? {
-                      action: result.action,
-                      proposal: result.proposal,
+                      action: normalized.action,
+                      proposal: normalized.proposal,
                       actionStatus: "pending" as const,
                     }
                   : {}),
-                ...(isRescheduleAppointmentResponse(result)
+                ...(isRescheduleAppointmentResponse(normalized)
                   ? {
-                      action: result.action,
-                      proposal: result.proposal,
+                      action: normalized.action,
+                      proposal: normalized.proposal,
                       actionStatus: "pending" as const,
                     }
                   : {}),
-                ...(isSuggestAvailableTimesResponse(result)
+                ...(isSuggestAvailableTimesResponse(normalized)
                   ? {
-                      action: result.action,
-                      proposal: result.proposal,
+                      action: normalized.action,
+                      proposal: normalizeAvailabilityProposal(normalized.proposal) as SuggestAvailableTimesProposal,
                       actionStatus: "pending" as const,
                     }
                   : {}),
-                ...(isShowInvoiceResponse(result)
+                ...(isShowInvoiceResponse(normalized)
                   ? {
-                      action: result.action,
-                      invoices: result.invoices,
+                      action: normalized.action,
+                      invoices: normalized.invoices as NatalieInvoiceSummary[],
                     }
                   : {}),
               }
@@ -1098,7 +1144,7 @@ export function NatalieAssistantWidget() {
       );
     } catch (err) {
       console.error("[natalie] ask response processing failed", err);
-      const fallbackAnswer = formatNatalieResponseOrFallback(result.answer);
+      const fallbackAnswer = "קיבלתי תשובה חלקית מנטלי. אפשר לנסות שוב.";
       setMessages((current) =>
         current.map((message) =>
           message.id === loadingMessage.id ? { ...message, text: fallbackAnswer } : message
@@ -2045,5 +2091,13 @@ export function NatalieAssistantWidget() {
         </div>
       )}
     </>
+  );
+}
+
+export function NatalieAssistantWidget() {
+  return (
+    <NatalieWidgetBoundary>
+      <NatalieAssistantWidgetInner />
+    </NatalieWidgetBoundary>
   );
 }
