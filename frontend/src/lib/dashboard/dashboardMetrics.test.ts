@@ -22,6 +22,17 @@ test("KPI labels match approved copy", () => {
   assert.deepEqual(metrics.map((metric) => metric.id), ["in", "out", "documents", "tasks"]);
 });
 
+test("outgoing money KPI label is כסף יוצא mapped to moneyToPay", () => {
+  const metrics = buildSnapshotMetrics({
+    stats: { ...emptyStats, moneyToPay: 4_200 },
+    pageLoading: false,
+  });
+  const out = metrics.find((metric) => metric.id === "out");
+  assert.equal(out?.label, "כסף יוצא");
+  assert.notEqual(out?.label, "כסף יש");
+  assert.match(out?.value ?? "", /₪/);
+});
+
 test("KPI uses stats-only values", () => {
   const metrics = buildSnapshotMetrics({
     stats: {
