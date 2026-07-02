@@ -18,6 +18,7 @@ import {
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ScanBanner } from "@/components/ui/ScanBanner";
 import { StatusPill } from "@/components/ui/StatusPill";
+import { IntegrationStatusCard } from "@/components/ui/IntegrationStatusCard";
 import { buildNatalieBriefing } from "@/lib/natalie/briefing";
 import { getFirstNameForGreeting, consumeFirstDashboardVisit } from "@/lib/natalie/firstDay";
 import { resolveNatalieRecommendation } from "@/lib/natalie/recommendation";
@@ -67,6 +68,7 @@ import {
   scanDocumentsFound,
 } from "@/lib/gmailScanLifecycle";
 import type { OrganizationSettings } from "@/lib/business-config";
+import { buildGmailIntegrationStatus, type IntegrationStatusModel } from "@/lib/integrations/integrationStatus";
 
 type ClientSummary = {
   id: string;
@@ -410,6 +412,7 @@ export default function DashboardPage() {
   const [pageLoading, setPageLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState("");
   const [showGmailConnect, setShowGmailConnect] = useState(false);
+  const [connectingGmail, setConnectingGmail] = useState(false);
   const [error, setError] = useState("");
   const [invoiceAttachPaymentId, setInvoiceAttachPaymentId] = useState<string | null>(null);
   const [invoiceAttachLink, setInvoiceAttachLink] = useState("");
@@ -568,7 +571,11 @@ export default function DashboardPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("gmail") === "connected") {
       setScanToast({ type: "success", text: "ג׳ימייל חובר בהצלחה" });
-      refreshGmailStatus().catch(() => undefined);
+      refreshGmailStatus()
+        .then(() => load())
+        .then(() => delay(1200))
+        .then(() => refreshGmailStatus())
+        .catch(() => undefined);
       router.replace("/dashboard");
     }
     load();
@@ -784,6 +791,7 @@ export default function DashboardPage() {
   }
 
   async function connectGmail() {
+    if (connectingGmail) return;
     const token = getToken();
     if (!token) {
       router.push(`/login?next=${encodeURIComponent("/dashboard?connect=gmail")}`);
@@ -791,6 +799,7 @@ export default function DashboardPage() {
     }
 
     try {
+      setConnectingGmail(true);
       setError("");
       console.log("[dashboard] gmail oauth start returnTo=/dashboard");
       const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -815,6 +824,8 @@ export default function DashboardPage() {
       setError(message);
       setScanToast({ type: "error", text: message });
       setShowGmailConnect(true);
+    } finally {
+      setConnectingGmail(false);
     }
   }
 
@@ -993,6 +1004,93 @@ export default function DashboardPage() {
   });
   const scanStale = scanBanner?.status === "stale";
   const scanBacklog = scanStatus?.last ? hasGmailScanBacklog(scanStatus.last) : false;
+  const gmailStatusWithOptional = gmailStatus as (GmailStatus & {
+    connectedEmail?: string | null;
+    accountEmail?: string | null;
+    email?: string | null;
+  }) | null;
+  const connectedGmailAddress = gmailStatusWithOptional?.connectedEmail
+    ?? gmailStatusWithOptional?.accountEmail
+    ?? gmailStatusWithOptional?.email
+    ?? null;
+  const successfulScanLog = useMemo(
+    () =>
+      (scanStatus?.logs ?? []).find((log) => {
+        const normalized = normalizeScanStatusFromLog(log.status, "running");
+        return normalized === "success" || normalized === "partial";
+      }) ?? null,
+    [scanStatus?.logs]
+  );
+  const scanStatusLabel = activeScan
+    ? labelFor("scanStatus", activeScan.status)
+    : scanStatus?.last
+      ? labelFor("scanStatus", scanStatus.last.status)
+      : "לא התחיל";
+  const businessName = organizationSettings?.name?.trim() || "העסק שלי";
+  const gmailIntegrationModel: IntegrationStatusModel = useMemo(
+    () =>
+      buildGmailIntegrationStatus({
+        connected: gmailConnected,
+        connecting: connectingGmail,
+        scanRunning,
+        hasWarning: Boolean(gmailStatus?.reconnectRequired) || scanBacklog || scanStale || showGmailConnect,
+        hasError: Boolean(error) && error.includes("ג׳ימייל"),
+        reconnectRequired: Boolean(gmailStatus?.reconnectRequired),
+        gmailAddress: connectedGmailAddress,
+        organizationName: businessName,
+        lastSuccessfulScanAt: successfulScanLog?.endedAt ?? null,
+        lastSyncAt: scanStatus?.last?.endedAt ?? null,
+        scannedEmails: activeScan?.emailsFetched ?? scanStatus?.last?.found ?? null,
+        extractedDocuments: activeScan?.documentsFound ?? scanStatus?.last?.saved ?? null,
+        scanStatusLabel,
+        connectedSince: gmailStatus?.connectedAt ?? null,
+        scopesSummary: gmailStatus?.missingDriveScopes?.length
+          ? `חסרים: ${gmailStatus.missingDriveScopes.join(", ")}`
+          : "gmail.readonly, drive.file",
+        lastOauthAt: gmailStatus?.connectedAt ?? null,
+        lastScanDurationLabel: formatDurationFromRange(successfulScanLog?.startedAt ?? null, successfulScanLog?.endedAt ?? null),
+        lastSyncDurationLabel: formatDurationFromRange(scanStatus?.last?.startedAt ?? null, scanStatus?.last?.endedAt ?? null),
+      }),
+    [
+      gmailConnected,
+      connectingGmail,
+      scanRunning,
+      gmailStatus?.reconnectRequired,
+      gmailStatus?.missingDriveScopes,
+      gmailStatus?.connectedAt,
+      scanBacklog,
+      scanStale,
+      showGmailConnect,
+      error,
+      connectedGmailAddress,
+      businessName,
+      successfulScanLog?.endedAt,
+      successfulScanLog?.startedAt,
+      scanStatus?.last?.endedAt,
+      scanStatus?.last?.startedAt,
+      scanStatus?.last?.found,
+      scanStatus?.last?.saved,
+      activeScan?.emailsFetched,
+      activeScan?.documentsFound,
+      scanStatusLabel,
+    ]
+  );
+  const gmailCardActions = useMemo(
+    () => {
+      if (!gmailConnected) {
+        return [
+          { id: "connect", label: "חבר Gmail", onClick: () => void connectGmail(), disabled: connectingGmail || syncing, priority: "primary" as const },
+        ];
+      }
+      return [
+        { id: "scan", label: "סרוק עכשיו", onClick: () => void runSync(), disabled: syncing, priority: "primary" as const },
+        { id: "manage", label: "נהל חיבור", onClick: () => router.push("/dashboard/settings") },
+        { id: "reconnect", label: "התחבר מחדש", onClick: () => void connectGmail(), disabled: connectingGmail },
+        { id: "disconnect", label: "נתק Gmail", onClick: () => router.push("/dashboard/settings") },
+      ];
+    },
+    [gmailConnected, connectingGmail, syncing, router]
+  );
 
   const natalieBriefingInput = useMemo<NatalieBriefingInput>(
     () => ({
@@ -1300,8 +1398,6 @@ export default function DashboardPage() {
     [scanStatus?.logs, recentInvoices, payments, upcomingAppointments, whatsAppStats?.sentToday]
   );
 
-  const businessName = organizationSettings?.name?.trim() || "העסק שלי";
-
   const scrollToDecisions = useCallback(() => {
     document.getElementById("natalie-decisions")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
@@ -1423,25 +1519,13 @@ export default function DashboardPage() {
           onNotifications={() => router.push("/message-scans")}
         />
 
-        {showGmailConnect && (
-          <section
-            className={`${radius.card} ${shadow.card} ${spacing.card}`}
-            style={{ backgroundColor: colors.surface, border: `1px solid ${colors.warnBorder}` }}
-          >
-            <div className={typography.cardTitle} style={{ color: colors.textPrimary }}>צריך לחבר ג׳ימייל</div>
-            <p className={`${typography.body} mt-3`} style={{ color: colors.textSecondary }}>
-              חיבור ג׳ימייל נדרש כדי שנוכל לסרוק ולארגן את המסמכים שלך.
-            </p>
-            <button
-              type="button"
-              onClick={connectGmail}
-              className={`${radius.control} mt-5 ${button.primary}`}
-              style={{ backgroundColor: colors.accent, border: `1px solid ${colors.accent}`, color: colors.surface }}
-            >
-              התחבר לג׳ימייל
-            </button>
-          </section>
-        )}
+        <IntegrationStatusCard
+          icon="📬"
+          title="Gmail"
+          model={gmailIntegrationModel}
+          actions={gmailCardActions}
+          detailsTitle="פרטי חיבור מתקדמים"
+        />
 
         <NatalieHero
           ownerFirstName={ownerFirstName}
@@ -1963,6 +2047,18 @@ function relativeTime(date: Date) {
   if (minutes < 60) return `לפני ${minutes} דקות`;
   const hours = Math.round(minutes / 60);
   return `לפני ${hours} שעות`;
+}
+
+function formatDurationFromRange(start: string | null, end: string | null) {
+  if (!start || !end) return null;
+  const diffMs = new Date(end).getTime() - new Date(start).getTime();
+  if (!Number.isFinite(diffMs) || diffMs <= 0) return null;
+  const seconds = Math.round(diffMs / 1000);
+  if (seconds < 60) return `${seconds} שניות`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  if (!remainder) return `${minutes} דקות`;
+  return `${minutes} דק׳ ${remainder} שנ׳`;
 }
 
 function delay(ms: number) {
