@@ -40,7 +40,11 @@ function TodayRowContent({ item }: { item: YourDayItem }) {
       >
         <Icon className="h-4 w-4" strokeWidth={2.2} />
       </div>
-      <p className={`${dashboardHome.listItem} flex-1 text-right`} style={{ color: colors.textPrimary }}>
+      <p
+        className={`${dashboardHome.listItem} min-w-0 flex-1 text-right line-clamp-2 break-words`}
+        style={{ color: colors.textPrimary }}
+        title={item.text}
+      >
         {item.text}
       </p>
     </>
@@ -50,7 +54,7 @@ function TodayRowContent({ item }: { item: YourDayItem }) {
 function TodayRow({ item, index }: { item: YourDayItem; index: number }) {
   const style = urgencyStyles[item.urgency];
   const actionable = isYourDayItemActionable(item.actionKey) && Boolean(item.href);
-  const rowClassName = `dashboard-chip-in flex min-h-11 items-center gap-3 rounded-xl border px-3 py-3 md:px-4`;
+  const rowClassName = `dashboard-chip-in flex min-h-11 min-w-0 items-center gap-3 rounded-xl border px-3 py-3 md:px-4`;
 
   if (!actionable || !item.href) {
     return (

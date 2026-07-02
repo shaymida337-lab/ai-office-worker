@@ -58,7 +58,9 @@ export function DashboardStatusPill({
           outlineColor: colors.accent,
         }}
       >
-        <span className="min-w-0 truncate font-bold leading-snug">{label}</span>
+        <span className="min-w-0 truncate font-bold leading-snug" title={label}>
+          {label}
+        </span>
       </button>
     </div>
   );

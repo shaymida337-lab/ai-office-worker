@@ -20,7 +20,7 @@ function HealthRow({ label, value }: { label: string; value: string }) {
       <span className="font-semibold" style={{ color: colors.textMuted }}>
         {label}:
       </span>
-      <span className="text-end font-bold" style={{ color: colors.textPrimary }}>
+      <span className="min-w-0 truncate text-end font-bold" style={{ color: colors.textPrimary }} title={value}>
         {value}
       </span>
     </div>
@@ -40,11 +40,11 @@ function ModalButton({
     <button
       type="button"
       onClick={onClick}
-      className={`${radius.control} ${primary ? button.primary : button.secondary} min-h-11 px-4 py-2`}
+      className={`${radius.control} ${primary ? button.primary : button.secondary} min-h-11 px-4 py-2 transition duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2`}
       style={
         primary
-          ? { backgroundColor: colors.accent, border: `1px solid ${colors.accent}`, color: colors.surface }
-          : { backgroundColor: colors.surface, border: `1px solid ${colors.accent}`, color: colors.accent }
+          ? { backgroundColor: colors.accent, border: `1px solid ${colors.accent}`, color: colors.surface, outlineColor: colors.surface }
+          : { backgroundColor: colors.surface, border: `1px solid ${colors.accent}`, color: colors.accent, outlineColor: colors.accent }
       }
     >
       {children}
@@ -111,7 +111,7 @@ export function DashboardStatusDetailsModal({
         aria-modal="true"
         aria-labelledby="dashboard-status-modal-title"
         data-testid="dashboard-status-modal"
-        className={`${radius.card} ${shadow.raised} max-h-[92vh] w-full max-w-lg overflow-y-auto outline-none sm:max-h-[85vh]`}
+        className={`${radius.card} ${shadow.raised} max-h-[92vh] w-full max-w-lg overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom,0px)] outline-none sm:max-h-[85vh]`}
         style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}` }}
         onClick={(event) => event.stopPropagation()}
       >
@@ -128,8 +128,8 @@ export function DashboardStatusDetailsModal({
             type="button"
             onClick={onClose}
             aria-label="סגור"
-            className={`${radius.control} flex h-11 w-11 shrink-0 items-center justify-center text-2xl font-bold`}
-            style={{ color: colors.textMuted, backgroundColor: colors.bgSoft }}
+            className={`${radius.control} flex h-11 w-11 shrink-0 items-center justify-center text-2xl font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2`}
+            style={{ color: colors.textMuted, backgroundColor: colors.bgSoft, outlineColor: colors.accent }}
           >
             ×
           </button>

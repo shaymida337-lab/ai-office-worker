@@ -17,8 +17,8 @@ test("DashboardQuickActions uses equal mobile 2+1 and desktop one-row grid", asy
   const { readFile } = await import("node:fs/promises");
   const source = await readFile("src/components/dashboard/DashboardQuickActions.tsx", "utf8");
   assert.match(source, /grid-cols-2/);
-  assert.match(source, /sm:grid-cols-3/);
-  assert.match(source, /col-span-2 sm:col-span-1/);
+  assert.match(source, /min-\[430px\]:grid-cols-3/);
+  assert.match(source, /max-\[429px\]:col-span-2/);
   assert.match(source, /min-h-11/);
 });
 

@@ -35,7 +35,7 @@ export function NatalieMorningBrief({
 
   return (
     <section
-      className={`dashboard-fade-in ${radius.card} ${shadow.soft} max-w-full overflow-hidden border`}
+      className={`dashboard-fade-in ${radius.card} ${shadow.soft} min-w-0 max-w-full overflow-hidden border`}
       style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
       aria-label="תדרוך בוקר מנטלי"
       data-testid="natalie-morning-brief"

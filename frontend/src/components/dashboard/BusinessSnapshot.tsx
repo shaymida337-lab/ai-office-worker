@@ -38,7 +38,7 @@ export function SnapshotCard({ id, label, value }: SnapshotMetric) {
     <article
       data-testid={`dashboard-kpi-${kpiId}`}
       aria-label={`${label}: ${value}`}
-      className={`${radius.control} ${shadow.card} flex h-full min-h-[84px] items-center gap-3 border p-3.5 md:p-4`}
+      className={`${radius.control} ${shadow.card} flex h-full min-h-[84px] min-w-0 items-center gap-3 border p-3.5 md:p-4`}
       style={{
         backgroundColor: colors.surface,
         borderColor: colors.borderSubtle,
@@ -81,7 +81,7 @@ export function BusinessSnapshot({
       </h2>
       <div
         data-testid="dashboard-kpi-grid"
-        className="grid min-w-0 grid-cols-2 gap-2.5 lg:grid-cols-4 lg:gap-3"
+        className="grid min-w-0 auto-rows-fr grid-cols-2 gap-2.5 md:gap-3 lg:grid-cols-4"
       >
         {loading
           ? Array.from({ length: 4 }).map((_, i) => (

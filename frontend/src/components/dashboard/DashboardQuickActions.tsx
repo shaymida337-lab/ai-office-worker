@@ -29,7 +29,7 @@ export function DashboardQuickActions({ actions }: { actions: DashboardQuickActi
       </h2>
       <div
         data-testid="dashboard-quick-actions-grid"
-        className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3"
+        className="grid grid-cols-2 gap-2.5 min-[430px]:grid-cols-3 min-[430px]:gap-3"
       >
         {visibleActions.map((action, index) => {
           const Icon = action.icon;
@@ -43,8 +43,8 @@ export function DashboardQuickActions({ actions }: { actions: DashboardQuickActi
               onClick={action.onClick}
               disabled={action.disabled}
               aria-label={action.label}
-              className={`${radius.control} ${shadow.soft} inline-flex min-h-11 flex-col items-center justify-center gap-2 border px-3 py-3 transition duration-200 hover:brightness-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 md:min-h-[52px] md:py-3.5 ${
-                isThirdOnMobile ? "col-span-2 sm:col-span-1" : ""
+              className={`${radius.control} ${shadow.soft} inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-2 border px-3 py-3 transition duration-200 hover:brightness-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 md:min-h-[52px] md:py-3.5 ${
+                isThirdOnMobile ? "col-span-2 max-[429px]:col-span-2 min-[430px]:col-span-1" : ""
               }`}
               style={{
                 backgroundColor: colors.surface,
@@ -61,7 +61,7 @@ export function DashboardQuickActions({ actions }: { actions: DashboardQuickActi
                   aria-hidden
                 />
               ) : null}
-              <span className={`${dashboardHome.actionLabel} text-center leading-snug`}>{action.label}</span>
+              <span className={`${dashboardHome.actionLabel} line-clamp-2 text-center leading-snug`}>{action.label}</span>
             </button>
           );
         })}

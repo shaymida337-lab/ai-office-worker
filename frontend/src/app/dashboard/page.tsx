@@ -45,7 +45,7 @@ export default function DashboardPage() {
 
   return (
     <main
-      className="dashboard-shell h-auto min-h-screen max-w-full overflow-x-hidden px-3 pb-[calc(12rem+env(safe-area-inset-bottom,0px))] pt-[3.75rem] md:px-8 md:pt-[4.5rem] lg:mr-60 lg:overflow-x-clip lg:overflow-y-visible lg:pb-32 lg:pt-20"
+      className="dashboard-shell h-auto min-h-screen max-w-full overflow-x-clip px-3 pb-[calc(12rem+env(safe-area-inset-bottom,0px))] pt-[3.75rem] md:px-8 md:pt-[4.5rem] lg:mr-60 lg:overflow-x-clip lg:overflow-y-visible lg:pb-32 lg:pt-20"
       style={{
         background: colors.bg,
         color: colors.textPrimary,
@@ -55,7 +55,7 @@ export default function DashboardPage() {
     >
       <Nav />
 
-      <div className="dashboard-home-stack mx-auto grid h-auto min-w-0 max-w-6xl gap-4 overflow-x-hidden md:gap-5 lg:gap-6">
+      <div className="dashboard-home-stack mx-auto grid h-auto min-w-0 max-w-6xl gap-4 overflow-x-clip md:gap-5 lg:gap-6">
         {(d.pageError || d.displayActionMessage || d.displayToast) && (
           <MessageStack error={d.pageError} actionMessage={d.displayActionMessage} toast={d.displayToast} />
         )}
@@ -134,7 +134,7 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="dashboard-home-section hidden md:block">
+        <div className="dashboard-home-section hidden md:block" data-activity-mobile="hidden">
           <DashboardActivityTimeline items={d.activityTimeline} loading={d.pageLoading} />
         </div>
 
