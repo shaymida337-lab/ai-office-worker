@@ -29,7 +29,9 @@ import {
   helpAreasToLegacyPains,
   helpAreasToMainPain,
   helpAreasToModules,
+  isActiveOnboardingStep,
   readOnboardingProgress,
+  resolveOnboardingHydration,
   type OnboardingHelpId,
   type OnboardingStepId,
   writeFirstDayData,
@@ -97,6 +99,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [redirectingToDashboard, setRedirectingToDashboard] = useState(false);
   const prepStartedRef = useRef(false);
 
   const handlePrepAnimationComplete = useCallback(() => setPrepAnimationDone(true), []);
@@ -137,17 +140,45 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
   }, [goToStep, step]);
 
   useEffect(() => {
-    const saved = readOnboardingProgress();
-    if (saved) {
+    const hydration = resolveOnboardingHydration(readOnboardingProgress());
+    if (hydration.action === "redirect_dashboard") {
+      clearOnboardingProgress();
+      setRedirectingToDashboard(true);
+      router.replace("/dashboard?firstVisit=1");
+      setHydrated(true);
+      return;
+    }
+    if (hydration.action === "reset_step_1") {
+      clearOnboardingProgress();
+      setStep(1);
+      setHydrated(true);
+      return;
+    }
+    if (hydration.action === "apply") {
+      const saved = hydration.progress;
       setStep(saved.step);
-      setFirstName(saved.firstName);
-      setBusinessName(saved.businessName);
+      setFirstName(saved.firstName ?? "");
+      setBusinessName(saved.businessName ?? "");
       setBusinessType(normalizeBusinessTypeId(saved.businessType));
       setBusinessSize(normalizeSize(saved.businessSize));
       setHelpAreas(saved.helpAreas);
     }
     setHydrated(true);
-  }, []);
+  }, [router]);
+
+  useEffect(() => {
+    if (!hydrated || exitDestination || redirectingToDashboard) return;
+    if (step === 6) {
+      clearOnboardingProgress();
+      setRedirectingToDashboard(true);
+      router.replace("/dashboard?firstVisit=1");
+      return;
+    }
+    if (!isActiveOnboardingStep(step)) {
+      clearOnboardingProgress();
+      setStep(1);
+    }
+  }, [exitDestination, hydrated, redirectingToDashboard, router, step]);
 
   useEffect(() => {
     if (!hydrated || step < 4) return;
@@ -410,12 +441,14 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
     );
   }
 
-  if (!hydrated) {
+  if (!hydrated || redirectingToDashboard) {
     return (
       <>
         {debugToolbar}
         <NatalieFirstDayShell step={1} hideFooter showPortrait portraitSize="large" portraitTight>
-        <div className="py-4 text-center text-slate-500">טוענת את סביבת העבודה שלך...</div>
+        <div className="py-4 text-center text-slate-500">
+          {redirectingToDashboard ? "מעבירה אותך לדשבורד..." : "טוענת את סביבת העבודה שלך..."}
+        </div>
       </NatalieFirstDayShell>
       </>
     );
@@ -610,5 +643,12 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
     );
   }
 
-  return null;
+  return (
+    <>
+      {debugToolbar}
+      <NatalieFirstDayShell step={1} hideFooter>
+        <div className="py-4 text-center text-slate-500">טוענת את סביבת העבודה שלך...</div>
+      </NatalieFirstDayShell>
+    </>
+  );
 }

@@ -112,6 +112,29 @@ export function helpAreasToLegacyPains(helpAreas: OnboardingHelpId[]): string[] 
   return Array.from(new Set(helpAreas.map((area) => HELP_TO_PAIN[area])));
 }
 
+export function isActiveOnboardingStep(step: unknown): step is 1 | 2 | 3 | 4 | 5 {
+  return typeof step === "number" && Number.isInteger(step) && step >= 1 && step <= 5;
+}
+
+export type OnboardingHydrationResult =
+  | { action: "none" }
+  | { action: "redirect_dashboard" }
+  | { action: "reset_step_1" }
+  | { action: "apply"; progress: OnboardingProgress };
+
+export function resolveOnboardingHydration(saved: OnboardingProgress | null): OnboardingHydrationResult {
+  if (!saved) return { action: "none" };
+  if (saved.step === 6) return { action: "redirect_dashboard" };
+  if (!isActiveOnboardingStep(saved.step)) return { action: "reset_step_1" };
+  return {
+    action: "apply",
+    progress: {
+      ...saved,
+      helpAreas: Array.isArray(saved.helpAreas) ? saved.helpAreas : [],
+    },
+  };
+}
+
 export function readOnboardingProgress(): OnboardingProgress | null {
   if (typeof window === "undefined") return null;
   try {
