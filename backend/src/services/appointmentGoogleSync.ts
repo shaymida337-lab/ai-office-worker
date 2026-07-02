@@ -4,7 +4,7 @@ import {
   GoogleCalendarSyncError,
   upsertGoogleCalendarEventForAppointmentStrict,
 } from "./google.js";
-import { recordPlatformAudit, systemAuditContext } from "./auditLog/index.js";
+import { recordCalendarAudit } from "./calendar/calendarAudit.js";
 
 export const APPOINTMENT_GOOGLE_SYNC_STATUSES = ["pending", "synced", "failed", "retrying", "disabled"] as const;
 export type AppointmentGoogleSyncStatus = (typeof APPOINTMENT_GOOGLE_SYNC_STATUSES)[number];
@@ -65,12 +65,13 @@ function auditGoogleSyncEvent(input: {
   metadata?: Record<string, unknown>;
   reason?: string;
 }) {
-  recordPlatformAudit({
+  recordCalendarAudit({
     organizationId: input.organizationId,
     entityType: "appointment",
     entityId: input.appointmentId,
     action: input.action,
-    ...systemAuditContext("calendar-google-sync"),
+    actor: { actorType: "system" },
+    sourceModule: "calendar-google-sync",
     reason: input.reason ?? null,
     metadata: input.metadata ?? null,
   });

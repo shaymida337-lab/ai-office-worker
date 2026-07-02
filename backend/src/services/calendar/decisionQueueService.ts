@@ -24,6 +24,7 @@ import {
   summaryInvoiceRequested,
 } from "./timelineSummaries.js";
 import { scheduleDecisionGoogleMirrorSideEffects } from "./calendarGoogleMirrorService.js";
+import { recordCalendarAudit } from "./calendarAudit.js";
 
 const DECISION_INCLUDE = {
   workCase: { select: { id: true, title: true } },
@@ -120,6 +121,22 @@ export async function createPendingDecision(
       tx,
     });
 
+    recordCalendarAudit({
+      organizationId: input.organizationId,
+      entityType: "decision_queue",
+      entityId: item.id,
+      action: "calendar_decision_created",
+      actor: {
+        actorType: input.actor.actorType === "user" ? "user" : input.actor.actorType === "natalie" ? "natalie" : "system",
+        actorUserId: input.actor.actorUserId ?? null,
+      },
+      sourceModule: "calendar-decision-queue",
+      metadata: {
+        decisionId: item.id,
+        decisionType: item.type,
+        calendarEventId: item.calendarEventId,
+      },
+    });
     return item;
   };
 
@@ -341,7 +358,26 @@ export async function approveDecisionQueueItem(
       calendarEventStatus: item.calendarEvent?.status as CalendarEventStatus | undefined,
     });
 
-    const executionResult = await executeApprovedDecision(item, actor, tx);
+    let executionResult: Record<string, unknown>;
+    try {
+      executionResult = await executeApprovedDecision(item, actor, tx);
+    } catch (err) {
+      recordCalendarAudit({
+        organizationId,
+        entityType: "decision_queue",
+        entityId: item.id,
+        action: "calendar_decision_execution_failed",
+        actor: { actorType: actor.actorType, actorUserId: actor.actorUserId ?? null },
+        sourceModule: "calendar-decision-queue",
+        reason: err instanceof Error ? err.message : String(err),
+        metadata: {
+          decisionId: item.id,
+          decisionType: item.type,
+          calendarEventId: item.calendarEventId,
+        },
+      });
+      throw err;
+    }
 
     await tx.ownerDecisionQueueItem.update({
       where: { id: item.id },
@@ -373,12 +409,26 @@ export async function approveDecisionQueueItem(
       tx,
     });
 
-    return {
+    const response = {
       decisionId: item.id,
       type: item.type,
       executed: true,
       result: executionResult,
     };
+    recordCalendarAudit({
+      organizationId,
+      entityType: "decision_queue",
+      entityId: item.id,
+      action: "calendar_decision_approved",
+      actor: { actorType: actor.actorType, actorUserId: actor.actorUserId ?? null },
+      sourceModule: "calendar-decision-queue",
+      metadata: {
+        decisionId: item.id,
+        decisionType: item.type,
+        executed: true,
+      },
+    });
+    return response;
   });
 
   scheduleDecisionGoogleMirrorSideEffects({
@@ -426,6 +476,19 @@ export async function rejectDecisionQueueItem(
       tx,
     });
 
+    recordCalendarAudit({
+      organizationId,
+      entityType: "decision_queue",
+      entityId: item.id,
+      action: "calendar_decision_rejected",
+      actor: { actorType: actor.actorType, actorUserId: actor.actorUserId ?? null },
+      sourceModule: "calendar-decision-queue",
+      reason: options?.resolutionNote ?? null,
+      metadata: {
+        decisionId: item.id,
+        decisionType: item.type,
+      },
+    });
     return updated;
   });
 }
@@ -441,11 +504,24 @@ export async function supersedeDecisionQueueItem(
     const item = await requireDecision(organizationId, decisionId, tx);
     validateDecisionQueueSupersede(item.status);
 
-    return tx.ownerDecisionQueueItem.update({
+    const updated = await tx.ownerDecisionQueueItem.update({
       where: { id: item.id },
       data: { status: "superseded", resolvedAt: new Date() },
       include: DECISION_INCLUDE,
     });
+    recordCalendarAudit({
+      organizationId,
+      entityType: "decision_queue",
+      entityId: item.id,
+      action: "calendar_decision_expired",
+      actor: { actorType: actor.actorType, actorUserId: actor.actorUserId ?? null },
+      sourceModule: "calendar-decision-queue",
+      metadata: {
+        decisionId: item.id,
+        decisionType: item.type,
+      },
+    });
+    return updated;
   });
 }
 

@@ -73,6 +73,7 @@ import {
   updateAppointmentForOrganization,
 } from "../services/appointmentService.js";
 import { runAppointmentGoogleSync } from "../services/appointmentGoogleSync.js";
+import { recordCalendarAudit } from "../services/calendar/calendarAudit.js";
 import {
   bookAppointmentViaNatalie,
   cancelAppointmentViaNatalie,
@@ -2692,6 +2693,20 @@ apiRouter.post("/natalie/create-appointment", requireCalendarCreate, async (req,
   };
   const organizationId = req.auth!.organizationId;
   const userId = req.auth!.userId;
+  recordCalendarAudit({
+    organizationId,
+    entityType: "natalie_calendar",
+    entityId: userId,
+    action: "natalie_calendar_intent_detected",
+    actor: { actorType: "AI", actorUserId: userId },
+    sourceModule: "natalie-api",
+    sourceRoute: "POST /natalie/create-appointment",
+    metadata: {
+      intent: "create_appointment",
+      customerName: typeof body.clientName === "string" ? body.clientName : null,
+      source: "natalie",
+    },
+  });
 
   try {
     const response = await handleIdempotentRequest({
@@ -2741,6 +2756,17 @@ apiRouter.post("/natalie/create-appointment", requireCalendarCreate, async (req,
     });
     res.status(response.statusCode).json(response.body);
   } catch (err) {
+    recordCalendarAudit({
+      organizationId,
+      entityType: "natalie_calendar",
+      entityId: userId,
+      action: "natalie_calendar_action_failed",
+      actor: { actorType: "AI", actorUserId: userId },
+      sourceModule: "natalie-api",
+      sourceRoute: "POST /natalie/create-appointment",
+      reason: err instanceof Error ? err.message : String(err),
+      metadata: { intent: "create_appointment", source: "natalie" },
+    });
     if (err instanceof SchedulingFacadeError) {
       if (err.code === "client_not_found") {
         res.status(404).json({ error: err.message, code: err.code });
@@ -2780,6 +2806,16 @@ apiRouter.post("/natalie/cancel-appointment", requireCalendarCancel, async (req,
     return;
   }
 
+  recordCalendarAudit({
+    organizationId: req.auth!.organizationId,
+    entityType: "natalie_calendar",
+    entityId: req.auth!.userId,
+    action: "natalie_calendar_intent_detected",
+    actor: { actorType: "AI", actorUserId: req.auth!.userId },
+    sourceModule: "natalie-api",
+    sourceRoute: "POST /natalie/cancel-appointment",
+    metadata: { intent: "cancel_appointment", appointmentId, source: "natalie" },
+  });
   try {
     const response = await handleIdempotentRequest({
       req,
@@ -2812,6 +2848,17 @@ apiRouter.post("/natalie/cancel-appointment", requireCalendarCancel, async (req,
     });
     res.status(response.statusCode).json(response.body);
   } catch (err) {
+    recordCalendarAudit({
+      organizationId: req.auth!.organizationId,
+      entityType: "natalie_calendar",
+      entityId: req.auth!.userId,
+      action: "natalie_calendar_action_failed",
+      actor: { actorType: "AI", actorUserId: req.auth!.userId },
+      sourceModule: "natalie-api",
+      sourceRoute: "POST /natalie/cancel-appointment",
+      reason: err instanceof Error ? err.message : String(err),
+      metadata: { intent: "cancel_appointment", appointmentId, source: "natalie" },
+    });
     if (err instanceof SchedulingFacadeError && err.code === "appointment_not_found") {
       res.status(404).json({ error: "התור לא נמצא", code: "appointment_not_found" });
       return;
@@ -2839,6 +2886,16 @@ apiRouter.post("/natalie/reschedule-appointment", requireCalendarReschedule, asy
     return;
   }
 
+  recordCalendarAudit({
+    organizationId,
+    entityType: "natalie_calendar",
+    entityId: req.auth!.userId,
+    action: "natalie_calendar_intent_detected",
+    actor: { actorType: "AI", actorUserId: req.auth!.userId },
+    sourceModule: "natalie-api",
+    sourceRoute: "POST /natalie/reschedule-appointment",
+    metadata: { intent: "reschedule_appointment", appointmentId, source: "natalie" },
+  });
   try {
     const response = await handleIdempotentRequest({
       req,
@@ -2874,6 +2931,17 @@ apiRouter.post("/natalie/reschedule-appointment", requireCalendarReschedule, asy
     });
     res.status(response.statusCode).json(response.body);
   } catch (err) {
+    recordCalendarAudit({
+      organizationId,
+      entityType: "natalie_calendar",
+      entityId: req.auth!.userId,
+      action: "natalie_calendar_action_failed",
+      actor: { actorType: "AI", actorUserId: req.auth!.userId },
+      sourceModule: "natalie-api",
+      sourceRoute: "POST /natalie/reschedule-appointment",
+      reason: err instanceof Error ? err.message : String(err),
+      metadata: { intent: "reschedule_appointment", appointmentId, source: "natalie" },
+    });
     if (err instanceof AppointmentConflictError) {
       res.status(409).json({
         error: "קיים תור אחר בזמן הזה",
@@ -4701,10 +4769,40 @@ async function handleIdempotentRequest(params: {
       body: params.body,
     });
   } catch (err) {
-    return idempotencyErrorResponse(err);
+    const idempotencyKey =
+      typeof params.req.headers["idempotency-key"] === "string" ? params.req.headers["idempotency-key"] : null;
+    const mapped = idempotencyErrorResponse(err);
+    if (mapped.body.code === "idempotency_mismatch") {
+      recordCalendarAudit({
+        organizationId: params.organizationId,
+        entityType: "idempotency",
+        entityId: params.routeKey,
+        action: "calendar_idempotency_conflict",
+        actor: { actorType: "user", actorUserId: params.req.auth?.userId ?? null },
+        sourceModule: "api",
+        sourceRoute: `${params.req.method} ${params.req.path}`,
+        reason: mapped.body.error,
+        metadata: { routeKey: params.routeKey, idempotencyKey },
+      });
+    }
+    return mapped;
   }
 
   if (begun.mode === "replay") {
+    recordCalendarAudit({
+      organizationId: params.organizationId,
+      entityType: "idempotency",
+      entityId: params.routeKey,
+      action: "calendar_idempotency_replay",
+      actor: { actorType: "user", actorUserId: params.req.auth?.userId ?? null },
+      sourceModule: "api",
+      sourceRoute: `${params.req.method} ${params.req.path}`,
+      metadata: {
+        routeKey: params.routeKey,
+        idempotencyKey:
+          typeof params.req.headers["idempotency-key"] === "string" ? params.req.headers["idempotency-key"] : null,
+      },
+    });
     return { statusCode: begun.statusCode, body: begun.responseBody };
   }
 
@@ -4996,6 +5094,29 @@ apiRouter.post("/appointments", requireCalendarCreate, async (req, res) => {
           notes: body.notes?.trim() || null,
           source: "manual",
         });
+        recordCalendarAudit({
+          organizationId,
+          entityType: "appointment",
+          entityId: appointment.id,
+          action: "appointment_created",
+          actor: { actorType: "user", actorUserId: req.auth?.userId ?? null },
+          sourceModule: "appointments",
+          sourceRoute: "POST /appointments",
+          metadata: {
+            appointmentId: appointment.id,
+            serviceId: appointment.serviceId,
+            customerName: appointment.client?.name ?? null,
+            customerPhone: appointment.client?.whatsappNumber ?? null,
+            source: appointment.source,
+            routeKey: "POST:/appointments",
+            idempotencyKey:
+              typeof req.headers["idempotency-key"] === "string" ? req.headers["idempotency-key"] : null,
+            googleEventId: appointment.googleEventId,
+            googleSyncStatus: (appointment as { googleSyncStatus?: string }).googleSyncStatus ?? null,
+            durationMinutes: appointment.durationMinutes,
+            newStartTime: appointment.startTime.toISOString(),
+          },
+        });
         return { statusCode: 201, body: appointment };
       },
     });
@@ -5103,6 +5224,10 @@ apiRouter.patch("/appointments/:id", requireCalendarReschedule, async (req, res)
       organizationId,
       body: { appointmentId: routeId(req), startTime: body.startTime, durationMinutes, status, notes, serviceId },
       execute: async () => {
+        const before = await prisma.appointment.findFirst({
+          where: { id: routeId(req), organizationId },
+          select: { id: true, startTime: true, status: true },
+        });
         const appointment = await updateAppointmentForOrganization({
           organizationId,
           appointmentId: routeId(req),
@@ -5111,6 +5236,37 @@ apiRouter.patch("/appointments/:id", requireCalendarReschedule, async (req, res)
           status,
           notes,
           serviceId,
+        });
+        const becameCancelled = before?.status !== "cancelled" && appointment.status === "cancelled";
+        const rescheduled = before && before.startTime.getTime() !== appointment.startTime.getTime();
+        const action = becameCancelled
+          ? "appointment_cancelled"
+          : rescheduled
+            ? "appointment_rescheduled"
+            : "appointment_updated";
+        recordCalendarAudit({
+          organizationId,
+          entityType: "appointment",
+          entityId: appointment.id,
+          action,
+          actor: { actorType: "user", actorUserId: req.auth?.userId ?? null },
+          sourceModule: "appointments",
+          sourceRoute: "PATCH /appointments/:id",
+          metadata: {
+            appointmentId: appointment.id,
+            serviceId: appointment.serviceId,
+            customerName: appointment.client?.name ?? null,
+            customerPhone: appointment.client?.whatsappNumber ?? null,
+            source: appointment.source,
+            routeKey: "PATCH:/appointments/:id",
+            idempotencyKey:
+              typeof req.headers["idempotency-key"] === "string" ? req.headers["idempotency-key"] : null,
+            googleEventId: appointment.googleEventId,
+            googleSyncStatus: (appointment as { googleSyncStatus?: string }).googleSyncStatus ?? null,
+            previousStartTime: before?.startTime?.toISOString() ?? null,
+            newStartTime: appointment.startTime.toISOString(),
+            durationMinutes: appointment.durationMinutes,
+          },
         });
         return { statusCode: 200, body: appointment };
       },
@@ -5143,13 +5299,39 @@ apiRouter.patch("/appointments/:id", requireCalendarReschedule, async (req, res)
 apiRouter.delete("/appointments/:id", requireCalendarCancel, async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
+    const appointmentId = routeId(req);
+    recordCalendarAudit({
+      organizationId,
+      entityType: "appointment",
+      entityId: appointmentId,
+      action: "appointment_delete_requested",
+      actor: { actorType: "user", actorUserId: req.auth?.userId ?? null },
+      sourceModule: "appointments",
+      sourceRoute: "DELETE /appointments/:id",
+      metadata: {
+        appointmentId,
+        routeKey: "DELETE:/appointments/:id",
+        idempotencyKey:
+          typeof req.headers["idempotency-key"] === "string" ? req.headers["idempotency-key"] : null,
+      },
+    });
     const response = await handleIdempotentRequest({
       req,
       routeKey: "DELETE:/appointments/:id",
       organizationId,
-      body: { appointmentId: routeId(req) },
+      body: { appointmentId },
       execute: async () => {
-        const result = await deleteAppointmentForOrganization(organizationId, routeId(req));
+        const result = await deleteAppointmentForOrganization(organizationId, appointmentId);
+        recordCalendarAudit({
+          organizationId,
+          entityType: "appointment",
+          entityId: appointmentId,
+          action: "appointment_delete_completed",
+          actor: { actorType: "user", actorUserId: req.auth?.userId ?? null },
+          sourceModule: "appointments",
+          sourceRoute: "DELETE /appointments/:id",
+          metadata: { appointmentId, routeKey: "DELETE:/appointments/:id" },
+        });
         return { statusCode: 200, body: result };
       },
     });
@@ -5172,6 +5354,23 @@ apiRouter.post("/appointments/:id/google-sync/retry", requireCalendarUpdate, asy
       select: { id: true },
     });
     if (!existing) {
+      const crossOrg = await prisma.appointment.findUnique({
+        where: { id: appointmentId },
+        select: { organizationId: true },
+      });
+      if (crossOrg && crossOrg.organizationId !== organizationId) {
+        recordCalendarAudit({
+          organizationId,
+          entityType: "appointment",
+          entityId: appointmentId,
+          action: "calendar_cross_org_attempt",
+          actor: { actorType: "user", actorUserId: req.auth?.userId ?? null },
+          sourceModule: "appointments",
+          sourceRoute: "POST /appointments/:id/google-sync/retry",
+          reason: "cross organization appointment retry attempt",
+          metadata: { appointmentId, routeKey: "POST:/appointments/:id/google-sync/retry" },
+        });
+      }
       res.status(404).json({ error: "Appointment not found" });
       return;
     }

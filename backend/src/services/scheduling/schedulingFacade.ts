@@ -30,6 +30,7 @@ import { createPendingDecision } from "../calendar/decisionQueueService.js";
 import type { CalendarEventActor } from "../calendar/calendarEventMutations.js";
 import { CalendarEngineServiceError } from "../calendar/serviceErrors.js";
 import { getCalendarRulesForOrganization } from "../calendar/rules.js";
+import { recordCalendarAudit } from "../calendar/calendarAudit.js";
 
 export type UpcomingSchedulingItem = {
   id: string;
@@ -233,7 +234,31 @@ export class SchedulingFacadeError extends Error {
 }
 
 export async function bookAppointmentViaNatalie(input: NatalieBookInput): Promise<NatalieBookResult> {
-  const ctx = await resolveNatalieBookingContext(input);
+  recordCalendarAudit({
+    organizationId: input.organizationId,
+    entityType: "natalie_calendar",
+    entityId: input.userId,
+    action: "natalie_appointment_create_requested",
+    actor: { actorType: "AI", actorUserId: input.userId },
+    sourceModule: "scheduling-facade",
+    metadata: { source: "natalie", customerName: input.clientName },
+  });
+  let ctx;
+  try {
+    ctx = await resolveNatalieBookingContext(input);
+  } catch (err) {
+    recordCalendarAudit({
+      organizationId: input.organizationId,
+      entityType: "natalie_calendar",
+      entityId: input.userId,
+      action: "natalie_calendar_action_failed",
+      actor: { actorType: "AI", actorUserId: input.userId },
+      sourceModule: "scheduling-facade",
+      reason: err instanceof Error ? err.message : String(err),
+      metadata: { action: "create", source: "natalie", customerName: input.clientName },
+    });
+    throw err;
+  }
 
   const availability = await checkSlotAvailability({
     organizationId: ctx.organizationId,
@@ -266,6 +291,20 @@ export async function bookAppointmentViaNatalie(input: NatalieBookInput): Promis
       source: "natalie",
       notes: ctx.notes,
     });
+    recordCalendarAudit({
+      organizationId: input.organizationId,
+      entityType: "appointment",
+      entityId: appointment.id,
+      action: "natalie_appointment_created",
+      actor: { actorType: "AI", actorUserId: input.userId },
+      sourceModule: "scheduling-facade",
+      metadata: {
+        appointmentId: appointment.id,
+        customerName: appointment.client.name,
+        newStartTime: appointment.startTime.toISOString(),
+        durationMinutes: appointment.durationMinutes,
+      },
+    });
     return { engine: false, appointment };
   }
 
@@ -290,8 +329,8 @@ export async function bookAppointmentViaNatalie(input: NatalieBookInput): Promis
 
   const confirmation = await submitCalendarEventForConfirmation(ctx.organizationId, event.id, actor);
 
-  return {
-    engine: true,
+  const output = {
+    engine: true as const,
     calendarEventId: event.id,
     workCaseId: event.workCaseId,
     status: confirmation.mode === "confirmed" ? confirmation.event.status : "pending_readiness",
@@ -303,6 +342,21 @@ export async function bookAppointmentViaNatalie(input: NatalieBookInput): Promis
     queueType: confirmation.mode === "queued" ? confirmation.queueType : undefined,
     message: formatBookMessage(confirmation),
   };
+  recordCalendarAudit({
+    organizationId: input.organizationId,
+    entityType: "calendar_event",
+    entityId: event.id,
+    action: "natalie_appointment_created",
+    actor: { actorType: "AI", actorUserId: input.userId },
+    sourceModule: "scheduling-facade",
+    metadata: {
+      calendarEventId: event.id,
+      decisionId: output.decisionId ?? null,
+      newStartTime: ctx.startTime.toISOString(),
+      durationMinutes: ctx.durationMinutes,
+    },
+  });
+  return output;
 }
 
 async function requireSchedulingItem(
@@ -367,13 +421,46 @@ export async function cancelAppointmentViaNatalie(params: {
   userId: string;
   schedulingItemId: string;
 }): Promise<NatalieCancelResult> {
-  const item = await requireSchedulingItem(params.organizationId, params.schedulingItemId);
+  recordCalendarAudit({
+    organizationId: params.organizationId,
+    entityType: "natalie_calendar",
+    entityId: params.schedulingItemId,
+    action: "natalie_appointment_cancel_requested",
+    actor: { actorType: "AI", actorUserId: params.userId },
+    sourceModule: "scheduling-facade",
+    metadata: { source: "natalie", appointmentId: params.schedulingItemId },
+  });
+  let item;
+  try {
+    item = await requireSchedulingItem(params.organizationId, params.schedulingItemId);
+  } catch (err) {
+    recordCalendarAudit({
+      organizationId: params.organizationId,
+      entityType: "natalie_calendar",
+      entityId: params.schedulingItemId,
+      action: "natalie_calendar_action_failed",
+      actor: { actorType: "AI", actorUserId: params.userId },
+      sourceModule: "scheduling-facade",
+      reason: err instanceof Error ? err.message : String(err),
+      metadata: { action: "cancel", source: "natalie", appointmentId: params.schedulingItemId },
+    });
+    throw err;
+  }
 
   if (item.kind === "appointment") {
     const appointment = await updateAppointmentForOrganization({
       organizationId: params.organizationId,
       appointmentId: item.appointment.id,
       status: "cancelled",
+    });
+    recordCalendarAudit({
+      organizationId: params.organizationId,
+      entityType: "appointment",
+      entityId: appointment.id,
+      action: "natalie_appointment_cancelled",
+      actor: { actorType: "AI", actorUserId: params.userId },
+      sourceModule: "scheduling-facade",
+      metadata: { appointmentId: appointment.id },
     });
     return { engine: false, ok: true, appointment };
   }
@@ -382,14 +469,24 @@ export async function cancelAppointmentViaNatalie(params: {
 
   if (item.status === "confirmed") {
     const result = await requestCalendarEventCancel(params.organizationId, item.id, actor);
-    return {
-      engine: true,
-      ok: true,
-      pendingApproval: true,
+    const output = {
+      engine: true as const,
+      ok: true as const,
+      pendingApproval: true as const,
       decisionId: result.decisionId,
       queueType: result.queueType,
       message: "שלחתי בקשת ביטול לאישור — התור יבוטל רק אחרי שתאשר.",
     };
+    recordCalendarAudit({
+      organizationId: params.organizationId,
+      entityType: "calendar_event",
+      entityId: item.id,
+      action: "natalie_appointment_cancelled",
+      actor: { actorType: "AI", actorUserId: params.userId },
+      sourceModule: "scheduling-facade",
+      metadata: { calendarEventId: item.id, decisionId: output.decisionId },
+    });
+    return output;
   }
 
   if (item.status === "pending_readiness" || item.status === "draft") {
@@ -405,14 +502,24 @@ export async function cancelAppointmentViaNatalie(params: {
       source: "natalie_command",
       actor,
     });
-    return {
-      engine: true,
-      ok: true,
-      pendingApproval: true,
+    const output = {
+      engine: true as const,
+      ok: true as const,
+      pendingApproval: true as const,
       decisionId: decision.id,
       queueType: "cancel_appointment",
       message: "שלחתי בקשת ביטול לאישור — התור יבוטל רק אחרי שתאשר.",
     };
+    recordCalendarAudit({
+      organizationId: params.organizationId,
+      entityType: "calendar_event",
+      entityId: item.id,
+      action: "natalie_appointment_cancelled",
+      actor: { actorType: "AI", actorUserId: params.userId },
+      sourceModule: "scheduling-facade",
+      metadata: { calendarEventId: item.id, decisionId: output.decisionId },
+    });
+    return output;
   }
 
   throw new SchedulingFacadeError("INVALID_TRANSITION", "לא ניתן לבטל תור במצב הנוכחי");
@@ -426,6 +533,15 @@ export async function rescheduleAppointmentViaNatalie(params: {
   newTime?: string;
   newStartTime?: string;
 }): Promise<NatalieRescheduleResult> {
+  recordCalendarAudit({
+    organizationId: params.organizationId,
+    entityType: "natalie_calendar",
+    entityId: params.schedulingItemId,
+    action: "natalie_appointment_reschedule_requested",
+    actor: { actorType: "AI", actorUserId: params.userId },
+    sourceModule: "scheduling-facade",
+    metadata: { source: "natalie", appointmentId: params.schedulingItemId },
+  });
   const item = await requireSchedulingItem(params.organizationId, params.schedulingItemId);
 
   const timeZone = (await getCalendarRulesForOrganization(params.organizationId)).timeZone;
@@ -448,6 +564,18 @@ export async function rescheduleAppointmentViaNatalie(params: {
       organizationId: params.organizationId,
       appointmentId: item.appointment.id,
       startTime,
+    });
+    recordCalendarAudit({
+      organizationId: params.organizationId,
+      entityType: "appointment",
+      entityId: appointment.id,
+      action: "natalie_appointment_rescheduled",
+      actor: { actorType: "AI", actorUserId: params.userId },
+      sourceModule: "scheduling-facade",
+      metadata: {
+        appointmentId: appointment.id,
+        newStartTime: appointment.startTime.toISOString(),
+      },
     });
     return { engine: false, ok: true, appointment };
   }
@@ -500,14 +628,29 @@ export async function rescheduleAppointmentViaNatalie(params: {
     actor
   );
 
-  return {
-    engine: true,
-    ok: true,
-    pendingApproval: true,
+  const output = {
+    engine: true as const,
+    ok: true as const,
+    pendingApproval: true as const,
     decisionId: result.decisionId,
     queueType: result.queueType,
     message: "שלחתי בקשת דחייה לאישור — המועד החדש ייקבע רק אחרי שתאשר.",
   };
+  recordCalendarAudit({
+    organizationId: params.organizationId,
+    entityType: "calendar_event",
+    entityId: item.id,
+    action: "natalie_appointment_rescheduled",
+    actor: { actorType: "AI", actorUserId: params.userId },
+    sourceModule: "scheduling-facade",
+    metadata: {
+      calendarEventId: item.id,
+      decisionId: output.decisionId,
+      newStartTime: startTime.toISOString(),
+      durationMinutes,
+    },
+  });
+  return output;
 }
 
 export type UnifiedAvailabilityParams = Parameters<typeof checkSlotAvailability>[0];

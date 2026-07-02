@@ -38,6 +38,29 @@ export const PLATFORM_AUDIT_ACTIONS = [
   "google_sync_retry_succeeded",
   "google_sync_retry_failed",
   "google_sync_dead_letter",
+  "appointment_created",
+  "appointment_updated",
+  "appointment_cancelled",
+  "appointment_rescheduled",
+  "appointment_delete_requested",
+  "appointment_delete_completed",
+  "natalie_calendar_intent_detected",
+  "natalie_appointment_create_requested",
+  "natalie_appointment_created",
+  "natalie_appointment_cancel_requested",
+  "natalie_appointment_cancelled",
+  "natalie_appointment_reschedule_requested",
+  "natalie_appointment_rescheduled",
+  "natalie_calendar_action_failed",
+  "calendar_decision_created",
+  "calendar_decision_approved",
+  "calendar_decision_rejected",
+  "calendar_decision_expired",
+  "calendar_decision_execution_failed",
+  "calendar_permission_denied",
+  "calendar_cross_org_attempt",
+  "calendar_idempotency_replay",
+  "calendar_idempotency_conflict",
 ] as const;
 
 export type PlatformAuditAction = (typeof PLATFORM_AUDIT_ACTIONS)[number];
@@ -130,9 +153,14 @@ export function defaultSeverityForAction(action: PlatformAuditAction): PlatformA
     action === "document_rejected" ||
     action === "permissions_changed" ||
     action === "permission_denied" ||
+    action === "calendar_permission_denied" ||
+    action === "calendar_cross_org_attempt" ||
+    action === "calendar_idempotency_conflict" ||
     action === "review_overridden" ||
     action === "google_sync_failed" ||
-    action === "google_sync_retry_failed"
+    action === "google_sync_retry_failed" ||
+    action === "natalie_calendar_action_failed" ||
+    action === "calendar_decision_execution_failed"
   ) {
     return "important";
   }
@@ -140,7 +168,8 @@ export function defaultSeverityForAction(action: PlatformAuditAction): PlatformA
     action === "payment_created" ||
     action === "document_approved" ||
     action === "invoice_created" ||
-    action === "google_sync_dead_letter"
+    action === "google_sync_dead_letter" ||
+    action === "appointment_delete_requested"
   ) {
     return "important";
   }

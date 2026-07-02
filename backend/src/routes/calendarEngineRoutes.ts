@@ -42,6 +42,7 @@ import {
   validateEventTimeRange,
 } from "./calendarEngineValidation.js";
 import { requirePerm } from "../services/rbac/index.js";
+import { recordCalendarAudit } from "../services/calendar/calendarAudit.js";
 
 export const calendarEngineRouter = Router();
 const requireCalendarViewPermission = requirePerm("calendar.view");
@@ -321,6 +322,23 @@ calendarEngineRouter.post(
       },
       actorFromRequest(req)
     );
+    recordCalendarAudit({
+      organizationId,
+      entityType: "calendar_event",
+      entityId: event.id,
+      action: "appointment_created",
+      actor: { actorType: "user", actorUserId: req.auth!.userId },
+      sourceModule: "calendar-engine-routes",
+      sourceRoute: "POST /calendar/events",
+      metadata: {
+        appointmentId: event.id,
+        serviceId: event.serviceId,
+        customerName: event.client?.name ?? null,
+        source: event.source,
+        newStartTime: event.startAt.toISOString(),
+        durationMinutes: Math.max(1, Math.round((event.endAt.getTime() - event.startAt.getTime()) / 60_000)),
+      },
+    });
 
     sendCalendarEngineSuccess(res, 201, event);
   })
@@ -361,6 +379,22 @@ calendarEngineRouter.patch(
       patch,
       actorFromRequest(req)
     );
+    const action =
+      patch.startAt instanceof Date && patch.endAt instanceof Date ? "appointment_rescheduled" : "appointment_updated";
+    recordCalendarAudit({
+      organizationId,
+      entityType: "calendar_event",
+      entityId: updated.id,
+      action,
+      actor: { actorType: "user", actorUserId: req.auth!.userId },
+      sourceModule: "calendar-engine-routes",
+      sourceRoute: "PATCH /calendar/events/:id",
+      metadata: {
+        appointmentId: updated.id,
+        newStartTime: updated.startAt.toISOString(),
+        durationMinutes: Math.max(1, Math.round((updated.endAt.getTime() - updated.startAt.getTime()) / 60_000)),
+      },
+    });
     sendCalendarEngineSuccess(res, 200, updated);
   })
 );
@@ -393,6 +427,16 @@ calendarEngineRouter.post(
       actorFromRequest(req),
       { reason: parseOptionalString(body.reason) }
     );
+    recordCalendarAudit({
+      organizationId: req.auth!.organizationId,
+      entityType: "calendar_event",
+      entityId: routeParam(req.params.id, "id"),
+      action: "appointment_cancelled",
+      actor: { actorType: "user", actorUserId: req.auth!.userId },
+      sourceModule: "calendar-engine-routes",
+      sourceRoute: "POST /calendar/events/:id/request-cancel",
+      metadata: { decisionId: result.decisionId, queueType: result.queueType },
+    });
     sendCalendarEngineSuccess(res, 200, result);
   })
 );
@@ -416,6 +460,21 @@ calendarEngineRouter.post(
       { startAt, endAt, reason: parseOptionalString(body.reason) },
       actorFromRequest(req)
     );
+    recordCalendarAudit({
+      organizationId,
+      entityType: "calendar_event",
+      entityId: routeParam(req.params.id, "id"),
+      action: "appointment_rescheduled",
+      actor: { actorType: "user", actorUserId: req.auth!.userId },
+      sourceModule: "calendar-engine-routes",
+      sourceRoute: "POST /calendar/events/:id/request-reschedule",
+      metadata: {
+        decisionId: result.decisionId,
+        queueType: result.queueType,
+        newStartTime: startAt.toISOString(),
+        durationMinutes: Math.max(1, Math.round((endAt.getTime() - startAt.getTime()) / 60_000)),
+      },
+    });
     sendCalendarEngineSuccess(res, 200, result);
   })
 );

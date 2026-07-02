@@ -4,6 +4,7 @@ import { checkPermission as defaultCheckPermission, forbiddenResponseBody } from
 import type { PermissionCheckResult } from "./authorization.js";
 import { recordPermissionDeniedAudit } from "./rbacAudit.js";
 import { emitPermissionDeniedReliability } from "./rbacReliability.js";
+import { recordCalendarAudit } from "../calendar/calendarAudit.js";
 
 export type RbacMiddlewareDeps = {
   checkPermission?: typeof defaultCheckPermission;
@@ -50,6 +51,22 @@ export function requirePermissionMiddleware(
         role: result.role,
         reason: result.reason,
       });
+      if (String(result.permission).startsWith("calendar.")) {
+        recordCalendarAudit({
+          organizationId: req.auth.organizationId,
+          entityType: "permission",
+          entityId: String(result.permission),
+          action: "calendar_permission_denied",
+          actor: { actorType: "user", actorUserId: req.auth.userId, actorRole: result.role },
+          sourceModule: "rbac",
+          sourceRoute,
+          reason: result.reason,
+          metadata: {
+            permission: String(result.permission),
+            role: result.role,
+          },
+        });
+      }
       res.status(403).json(forbiddenResponseBody(result));
       return;
     }
