@@ -172,3 +172,33 @@ test("buildGmailIntegrationStatus returns checking state when status is unknown"
   assert.equal(model.title, "בודק חיבור Gmail...");
   assert.equal(model.connectionState, "connecting");
 });
+
+test("buildGmailIntegrationStatus returns ambiguous checking state when Gmail documents exist", () => {
+  const model = buildGmailIntegrationStatus({
+    statusKnown: true,
+    statusStale: false,
+    connected: false,
+    connectionAmbiguous: true,
+    connecting: false,
+    scanRunning: false,
+    hasWarning: false,
+    hasError: false,
+    reconnectRequired: false,
+    gmailAddress: null,
+    organizationName: "Alpha Org",
+    lastSuccessfulScanAt: null,
+    lastSyncAt: null,
+    scannedEmails: null,
+    extractedDocuments: 5,
+    scanStatusLabel: "הושלם",
+    connectedSince: null,
+    scopesSummary: null,
+    lastOauthAt: null,
+    lastScanDurationLabel: null,
+    lastSyncDurationLabel: null,
+  });
+
+  assert.equal(model.title, "נמצאו מסמכים מ-Gmail");
+  assert.equal(model.connectionState, "connecting");
+  assert.equal(model.metrics.find((item) => item.key === "docs")?.value, "5");
+});

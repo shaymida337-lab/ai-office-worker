@@ -1,4 +1,5 @@
 type BuildSmartSuggestionsInput = {
+  gmailConnectionPhase?: "unknown" | "connected" | "disconnected" | "evidence_ambiguous";
   gmailConnected?: boolean;
   scanRunning?: boolean;
   hasAppointmentsToday?: boolean;
@@ -11,12 +12,14 @@ const BASE_SUGGESTIONS = ["מה דחוף היום?", "כמה אני צריך ל�
 
 export function buildSmartSuggestions(input: BuildSmartSuggestionsInput): string[] {
   const suggestions: string[] = [];
+  const phase = input.gmailConnectionPhase;
+  const connected = phase ? phase === "connected" : Boolean(input.gmailConnected);
 
-  if (!input.gmailConnected) {
+  if (phase === "disconnected" || (!phase && !input.gmailConnected)) {
     suggestions.push("חבר את Gmail");
   } else if (input.scanRunning) {
     suggestions.push("הצג התקדמות סריקה");
-  } else {
+  } else if (connected) {
     suggestions.push("סרקי את Gmail");
   }
 

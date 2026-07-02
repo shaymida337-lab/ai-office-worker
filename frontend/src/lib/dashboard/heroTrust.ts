@@ -1,3 +1,5 @@
+import type { GmailConnectionPhase } from "@/lib/integrations/gmailConnectionTruth";
+
 export type HeroStatusTone = "success" | "warn" | "danger" | "info" | "neutral";
 
 export type HeroCtaAction = "ask_natalie" | "connect_gmail" | "show_scan_progress" | "retry_sync";
@@ -13,7 +15,7 @@ type ResolveHeroTrustInput = {
   pageLoading?: boolean;
   gmailStatusKnown: boolean;
   gmailStatusStale?: boolean;
-  gmailConnected: boolean;
+  gmailConnectionPhase: GmailConnectionPhase;
   scanStatusKnown?: boolean;
   scanStatusStale?: boolean;
   scanRunning: boolean;
@@ -22,15 +24,16 @@ type ResolveHeroTrustInput = {
 };
 
 const CHECKING_LABEL = "בודקת את מצב החיבור...";
+const EVIDENCE_CHECKING_LABEL = "נמצאו מסמכים מ-Gmail, בודקת את מצב החיבור";
 const CONNECTED_LABEL = "מחוברת, סורקת ועובדת עבורך";
 
 function isCheckingState(input: ResolveHeroTrustInput) {
   return (
     Boolean(input.pageLoading) ||
-    !input.gmailStatusKnown ||
+    input.gmailConnectionPhase === "unknown" ||
     Boolean(input.gmailStatusStale) ||
     Boolean(input.scanStatusStale) ||
-    (input.gmailConnected && input.scanStatusKnown === false)
+    (input.gmailConnectionPhase === "connected" && input.scanStatusKnown === false)
   );
 }
 
@@ -41,6 +44,15 @@ export function resolveHeroTrustState(input: ResolveHeroTrustInput): HeroTrustSt
       statusTone: "info",
       ctaLabel: "חבר Gmail",
       ctaAction: "connect_gmail",
+    };
+  }
+
+  if (input.gmailConnectionPhase === "evidence_ambiguous") {
+    return {
+      statusLabel: EVIDENCE_CHECKING_LABEL,
+      statusTone: "neutral",
+      ctaLabel: "שאל את נטלי",
+      ctaAction: "ask_natalie",
     };
   }
 
@@ -62,7 +74,7 @@ export function resolveHeroTrustState(input: ResolveHeroTrustInput): HeroTrustSt
     };
   }
 
-  if (input.hasSyncIssue && input.gmailConnected) {
+  if (input.hasSyncIssue && input.gmailConnectionPhase === "connected") {
     return {
       statusLabel: "יש בעיית סנכרון — אפשר לנסות שוב.",
       statusTone: "danger",
@@ -71,7 +83,7 @@ export function resolveHeroTrustState(input: ResolveHeroTrustInput): HeroTrustSt
     };
   }
 
-  if (!input.gmailConnected) {
+  if (input.gmailConnectionPhase === "disconnected") {
     return {
       statusLabel: "חבר Gmail כדי שאתחיל לסרוק עבורך מסמכים",
       statusTone: "warn",

@@ -51,6 +51,7 @@ type BuildGmailStatusInput = {
   statusKnown: boolean;
   statusStale: boolean;
   connected: boolean;
+  connectionAmbiguous?: boolean;
   connecting: boolean;
   scanRunning: boolean;
   hasWarning: boolean;
@@ -92,6 +93,21 @@ export function buildGmailIntegrationStatus(input: BuildGmailStatusInput): Integ
         { key: "sync", label: "בודק סטטוס", tone: "info" },
       ],
       metrics: [],
+      details: [],
+    };
+  }
+
+  if (input.connectionAmbiguous) {
+    return {
+      connectionState: "connecting",
+      syncState: "idle",
+      healthState: "unknown",
+      title: "נמצאו מסמכים מ-Gmail",
+      description: "בודקת את מצב החיבור כדי להציג את המצב המדויק.",
+      badges: [{ key: "sync", label: "בודק חיבור", tone: "info" }],
+      metrics: [
+        { key: "docs", label: "מסמכים", value: metricValue(input.extractedDocuments) },
+      ],
       details: [],
     };
   }

@@ -5,7 +5,7 @@ import { resolveHeroTrustState } from "./heroTrust";
 test("resolveHeroTrustState shows disconnected guidance when Gmail is not connected", () => {
   const state = resolveHeroTrustState({
     gmailStatusKnown: true,
-    gmailConnected: false,
+    gmailConnectionPhase: "disconnected",
     scanRunning: false,
     hasSyncIssue: false,
   });
@@ -18,7 +18,7 @@ test("resolveHeroTrustState shows disconnected guidance when Gmail is not connec
 test("resolveHeroTrustState shows connected working message", () => {
   const state = resolveHeroTrustState({
     gmailStatusKnown: true,
-    gmailConnected: true,
+    gmailConnectionPhase: "connected",
     scanStatusKnown: true,
     scanRunning: false,
     hasSyncIssue: false,
@@ -31,7 +31,7 @@ test("resolveHeroTrustState shows connected working message", () => {
 test("resolveHeroTrustState prioritizes scanning state", () => {
   const state = resolveHeroTrustState({
     gmailStatusKnown: true,
-    gmailConnected: true,
+    gmailConnectionPhase: "connected",
     scanStatusKnown: true,
     scanRunning: true,
     hasSyncIssue: false,
@@ -43,7 +43,7 @@ test("resolveHeroTrustState prioritizes scanning state", () => {
 test("resolveHeroTrustState shows sync issue only when confirmed and connected", () => {
   const state = resolveHeroTrustState({
     gmailStatusKnown: true,
-    gmailConnected: true,
+    gmailConnectionPhase: "connected",
     scanStatusKnown: true,
     scanRunning: false,
     hasSyncIssue: true,
@@ -56,7 +56,7 @@ test("resolveHeroTrustState shows checking while page is loading", () => {
   const state = resolveHeroTrustState({
     pageLoading: true,
     gmailStatusKnown: true,
-    gmailConnected: true,
+    gmailConnectionPhase: "connected",
     scanRunning: false,
     hasSyncIssue: true,
   });
@@ -68,7 +68,7 @@ test("resolveHeroTrustState does not show sync issue when Gmail status is stale"
   const state = resolveHeroTrustState({
     gmailStatusKnown: true,
     gmailStatusStale: true,
-    gmailConnected: true,
+    gmailConnectionPhase: "connected",
     scanStatusKnown: true,
     scanRunning: false,
     hasSyncIssue: true,
@@ -79,7 +79,7 @@ test("resolveHeroTrustState does not show sync issue when Gmail status is stale"
 test("resolveHeroTrustState does not show sync issue when scan status is stale", () => {
   const state = resolveHeroTrustState({
     gmailStatusKnown: true,
-    gmailConnected: true,
+    gmailConnectionPhase: "connected",
     scanStatusKnown: true,
     scanStatusStale: true,
     scanRunning: false,
@@ -91,7 +91,7 @@ test("resolveHeroTrustState does not show sync issue when scan status is stale",
 test("resolveHeroTrustState does not show sync issue when scan status is unknown", () => {
   const state = resolveHeroTrustState({
     gmailStatusKnown: true,
-    gmailConnected: true,
+    gmailConnectionPhase: "connected",
     scanStatusKnown: false,
     scanRunning: false,
     hasSyncIssue: true,
@@ -102,9 +102,21 @@ test("resolveHeroTrustState does not show sync issue when scan status is unknown
 test("resolveHeroTrustState preserves unknown Gmail as checking not disconnected", () => {
   const state = resolveHeroTrustState({
     gmailStatusKnown: false,
-    gmailConnected: false,
+    gmailConnectionPhase: "unknown",
     scanRunning: false,
     hasSyncIssue: false,
   });
   assert.match(state.statusLabel, /בודקת את מצב החיבור/);
+});
+
+test("resolveHeroTrustState shows evidence ambiguous without connect CTA", () => {
+  const state = resolveHeroTrustState({
+    gmailStatusKnown: true,
+    gmailConnectionPhase: "evidence_ambiguous",
+    scanRunning: false,
+    hasSyncIssue: false,
+  });
+  assert.match(state.statusLabel, /נמצאו מסמכים מ-Gmail/);
+  assert.equal(state.ctaAction, "ask_natalie");
+  assert.notEqual(state.ctaAction, "connect_gmail");
 });

@@ -61,7 +61,7 @@ import {
 } from "@/lib/gmailScanLifecycle";
 import type { OrganizationSettings } from "@/lib/business-config";
 import { buildGmailIntegrationStatus, type IntegrationStatusModel } from "@/lib/integrations/integrationStatus";
-import { resolveGmailStatusFromSettled } from "@/lib/integrations/gmailConnectionTruth";
+import { resolveGmailStatusFromSettled, resolveGmailConnectionTruth, hasGmailActivityEvidence } from "@/lib/integrations/gmailConnectionTruth";
 import { resolveHeroTrustState } from "@/lib/dashboard/heroTrust";
 import { resolveConfirmedSyncIssue, resolveScanStatusFromSettled } from "@/lib/dashboard/scanStatusTruth";
 import { buildMorningGreeting } from "@/lib/dashboard/morningBrief";
@@ -1009,7 +1009,37 @@ export default function DashboardPage() {
     }
   }
 
-  const gmailConnected = Boolean(gmailStatus?.connected);
+  const gmailApiConnected = Boolean(gmailStatus?.connected);
+  const gmailActivityEvidence = useMemo(
+    () =>
+      hasGmailActivityEvidence({
+        scanLogs: scanStatus?.logs,
+        scanLast: scanStatus?.last,
+        documentReviewCount: documentReviews.length,
+        extractedDocuments: activeScan?.documentsFound ?? scanStatus?.last?.saved ?? null,
+      }),
+    [scanStatus?.logs, scanStatus?.last, documentReviews.length, activeScan?.documentsFound]
+  );
+  const gmailConnection = useMemo(
+    () =>
+      resolveGmailConnectionTruth({
+        pageLoading,
+        statusKnown: gmailStatusKnown,
+        statusStale: gmailStatusStale,
+        apiConnected: gmailApiConnected,
+        connectedAt: gmailStatus?.connectedAt,
+        hasGmailActivityEvidence: gmailActivityEvidence,
+      }),
+    [
+      pageLoading,
+      gmailStatusKnown,
+      gmailStatusStale,
+      gmailApiConnected,
+      gmailStatus?.connectedAt,
+      gmailActivityEvidence,
+    ]
+  );
+
   const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
   const ownerFirstName = getFirstNameForGreeting(organizationSettings?.name) ?? firstNameFromLabel(organizationSettings?.name);
   const scanBanner = successScanBannerHidden ? null : buildScanBannerState(activeScan, scanStatus);
@@ -1037,7 +1067,7 @@ export default function DashboardPage() {
         pageLoading,
         gmailStatusKnown,
         gmailStatusStale,
-        gmailConnected,
+        gmailConnectionPhase: gmailConnection.phase,
         scanStatusKnown,
         scanStatusStale,
         scanRunning,
@@ -1048,7 +1078,7 @@ export default function DashboardPage() {
       pageLoading,
       gmailStatusKnown,
       gmailStatusStale,
-      gmailConnected,
+      gmailConnection.phase,
       scanStatusKnown,
       scanStatusStale,
       scanRunning,
@@ -1084,7 +1114,8 @@ export default function DashboardPage() {
       buildGmailIntegrationStatus({
         statusKnown: gmailStatusKnown,
         statusStale: gmailStatusStale,
-        connected: gmailConnected,
+        connected: gmailConnection.phase === "connected",
+        connectionAmbiguous: gmailConnection.phase === "evidence_ambiguous",
         connecting: connectingGmail,
         scanRunning,
         hasWarning: Boolean(gmailStatus?.reconnectRequired) || scanBacklog || scanStale || showGmailConnect,
@@ -1106,7 +1137,7 @@ export default function DashboardPage() {
         lastSyncDurationLabel: formatDurationFromRange(scanStatus?.last?.startedAt ?? null, scanStatus?.last?.endedAt ?? null),
       }),
     [
-      gmailConnected,
+      gmailConnection.phase,
       gmailStatusKnown,
       gmailStatusStale,
       connectingGmail,
@@ -1133,8 +1164,10 @@ export default function DashboardPage() {
   );
   const gmailCardActions = useMemo(
     () => {
-      if (!gmailStatusKnown) return [];
-      if (!gmailConnected) {
+      if (!gmailStatusKnown || gmailConnection.phase === "unknown" || gmailConnection.phase === "evidence_ambiguous") {
+        return [];
+      }
+      if (gmailConnection.phase === "disconnected") {
         return [
           { id: "connect", label: "חבר Gmail", onClick: () => void connectGmail(), disabled: connectingGmail || syncing, priority: "primary" as const },
         ];
@@ -1146,7 +1179,7 @@ export default function DashboardPage() {
         { id: "disconnect", label: "נתק Gmail", onClick: () => router.push("/dashboard/settings") },
       ];
     },
-    [gmailStatusKnown, gmailConnected, connectingGmail, syncing, router]
+    [gmailStatusKnown, gmailConnection.phase, connectingGmail, syncing, router]
   );
 
   const decisionItems = useMemo(
@@ -1170,7 +1203,7 @@ export default function DashboardPage() {
   );
   const recommendationInput = useMemo<NatalieRecommendationInput>(
     () => ({
-      gmailConnected,
+      gmailConnected: gmailConnection.phase !== "disconnected",
       scanRunning,
       scanStale,
       scanBacklog,
@@ -1230,7 +1263,7 @@ export default function DashboardPage() {
       pendingDecisionCount: decisionItems.length,
     }),
     [
-      gmailConnected,
+      gmailConnection.phase,
       scanRunning,
       scanStale,
       scanBacklog,
@@ -1252,7 +1285,7 @@ export default function DashboardPage() {
       scanStatus?.last?.endedAt && isTodayValue(scanStatus.last.endedAt) ? scanStatus.last : null;
 
     return buildAlreadyWorkedSummary({
-      gmailConnected,
+      gmailConnected: gmailConnection.phase !== "disconnected",
       scanRunning,
       emailsScanned: lastScanToday?.found ?? activeScan?.emailsFetched,
       invoicesFound: lastScanToday?.invoicesFound ?? activeScan?.invoicesFound,
@@ -1262,7 +1295,7 @@ export default function DashboardPage() {
       newDocuments: documentReviews.length,
     });
   }, [
-    gmailConnected,
+    gmailConnection.phase,
     scanRunning,
     scanStatus?.last,
     activeScan?.emailsFetched,
@@ -1302,7 +1335,8 @@ export default function DashboardPage() {
   const smartSuggestions = useMemo(
     () =>
       buildSmartSuggestions({
-        gmailConnected,
+        gmailConnectionPhase: gmailConnection.phase,
+        gmailConnected: gmailApiConnected,
         scanRunning,
         hasAppointmentsToday: upcomingAppointments.some((appt) => isTodayValue(appt.startTime)),
         pendingPayments: unpaidPayments.length,
@@ -1310,7 +1344,7 @@ export default function DashboardPage() {
         monthEndApproaching: isMonthEndApproaching(),
       }),
     [
-      gmailConnected,
+      gmailConnection.phase,
       scanRunning,
       upcomingAppointments,
       unpaidPayments.length,
@@ -1602,7 +1636,8 @@ export default function DashboardPage() {
 
             <section className={`grid ${spacing.section} lg:grid-cols-2`}>
               <SystemCard
-                gmailConnected={gmailConnected}
+                gmailConnected={gmailConnection.phase === "connected" || gmailApiConnected}
+                gmailConnectAllowed={gmailConnection.phase === "disconnected"}
                 whatsAppConnected={whatsAppConnected}
                 systemHealth={systemHealth}
                 systemChecking={systemChecking}
@@ -1757,6 +1792,7 @@ function SecondaryLink({ children, href }: { children: ReactNode; href: string }
 
 function SystemCard({
   gmailConnected,
+  gmailConnectAllowed = true,
   whatsAppConnected,
   systemHealth,
   systemChecking,
@@ -1766,6 +1802,7 @@ function SystemCard({
   onRunSystemCheck,
 }: {
   gmailConnected: boolean;
+  gmailConnectAllowed?: boolean;
   whatsAppConnected: boolean;
   systemHealth: SystemHealth | null;
   systemChecking: boolean;
@@ -1789,7 +1826,7 @@ function SystemCard({
           title={systemComponentLabel(component.label)}
           meta={systemReasonLabel(component.reason) ?? "הבדיקה החיה עברה בהצלחה"}
           pill={<StatusPill tone={component.connected ? "success" : "danger"}>{component.connected ? "מחובר" : "לא מחובר"}</StatusPill>}
-          action={!component.connected && component.name === "gmail" ? <SecondaryButton onClick={onConnectGmail}>חבר</SecondaryButton> : !component.connected && component.name === "whatsapp" ? <SecondaryButton onClick={onConnectWhatsApp}>חבר</SecondaryButton> : null}
+          action={!component.connected && component.name === "gmail" && gmailConnectAllowed ? <SecondaryButton onClick={onConnectGmail}>חבר</SecondaryButton> : !component.connected && component.name === "whatsapp" ? <SecondaryButton onClick={onConnectWhatsApp}>חבר</SecondaryButton> : null}
         />
       ))}
       <div className="flex flex-wrap gap-3">

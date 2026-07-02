@@ -3,8 +3,18 @@ import test from "node:test";
 import { buildSmartSuggestions, isMonthEndApproaching } from "./smartSuggestions";
 
 test("buildSmartSuggestions prioritizes Gmail connect when disconnected", () => {
-  const suggestions = buildSmartSuggestions({ gmailConnected: false });
+  const suggestions = buildSmartSuggestions({ gmailConnectionPhase: "disconnected" });
   assert.equal(suggestions[0], "חבר את Gmail");
+});
+
+test("buildSmartSuggestions does not suggest Gmail connect when evidence is ambiguous", () => {
+  const suggestions = buildSmartSuggestions({ gmailConnectionPhase: "evidence_ambiguous" });
+  assert.ok(!suggestions.includes("חבר את Gmail"));
+});
+
+test("buildSmartSuggestions does not suggest Gmail connect when status is unknown", () => {
+  const suggestions = buildSmartSuggestions({ gmailConnectionPhase: "unknown" });
+  assert.ok(!suggestions.includes("חבר את Gmail"));
 });
 
 test("buildSmartSuggestions adds accountant prep near month end", () => {

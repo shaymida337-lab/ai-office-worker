@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { GmailStatus } from "@/lib/api";
-import { resolveGmailStatusFromSettled } from "./gmailConnectionTruth";
+import {
+  hasGmailActivityEvidence,
+  resolveGmailConnectionTruth,
+  resolveGmailStatusFromSettled,
+} from "./gmailConnectionTruth";
 
 const connectedStatus: GmailStatus = {
   googleConfigured: true,
@@ -39,4 +43,86 @@ test("resolveGmailStatusFromSettled remains unknown when first request fails", (
   assert.equal(result.known, false);
   assert.equal(result.stale, true);
   assert.equal(result.nextStatus, null);
+});
+
+test("resolveGmailConnectionTruth shows connected when API reports connected", () => {
+  const truth = resolveGmailConnectionTruth({
+    statusKnown: true,
+    statusStale: false,
+    apiConnected: true,
+    hasGmailActivityEvidence: false,
+  });
+  assert.equal(truth.phase, "connected");
+  assert.equal(truth.showConnectCta, false);
+});
+
+test("resolveGmailConnectionTruth shows disconnected when API reports disconnected without evidence", () => {
+  const truth = resolveGmailConnectionTruth({
+    statusKnown: true,
+    statusStale: false,
+    apiConnected: false,
+    hasGmailActivityEvidence: false,
+  });
+  assert.equal(truth.phase, "disconnected");
+  assert.equal(truth.showConnectCta, true);
+});
+
+test("resolveGmailConnectionTruth preserves last known connected state when status fetch fails", () => {
+  const truth = resolveGmailConnectionTruth({
+    statusKnown: true,
+    statusStale: true,
+    apiConnected: true,
+    hasGmailActivityEvidence: false,
+  });
+  assert.equal(truth.phase, "unknown");
+  assert.equal(truth.showConnectCta, false);
+  assert.equal(truth.treatAsConnectedForUi, true);
+});
+
+test("resolveGmailConnectionTruth avoids connect CTA when Gmail documents exist but status says disconnected", () => {
+  const truth = resolveGmailConnectionTruth({
+    statusKnown: true,
+    statusStale: false,
+    apiConnected: false,
+    hasGmailActivityEvidence: true,
+  });
+  assert.equal(truth.phase, "evidence_ambiguous");
+  assert.equal(truth.showConnectCta, false);
+});
+
+test("resolveGmailConnectionTruth avoids connect CTA when connectedAt exists without refresh token signal", () => {
+  const truth = resolveGmailConnectionTruth({
+    statusKnown: true,
+    statusStale: false,
+    apiConnected: false,
+    connectedAt: "2026-06-01T10:00:00.000Z",
+    hasGmailActivityEvidence: false,
+  });
+  assert.equal(truth.phase, "evidence_ambiguous");
+  assert.equal(truth.showConnectCta, false);
+});
+
+test("resolveGmailConnectionTruth stays unknown on first status fetch failure", () => {
+  const truth = resolveGmailConnectionTruth({
+    statusKnown: false,
+    statusStale: true,
+    apiConnected: false,
+    hasGmailActivityEvidence: true,
+  });
+  assert.equal(truth.phase, "unknown");
+  assert.equal(truth.showConnectCta, false);
+});
+
+test("hasGmailActivityEvidence detects document reviews", () => {
+  assert.equal(hasGmailActivityEvidence({ documentReviewCount: 5 }), true);
+  assert.equal(hasGmailActivityEvidence({ documentReviewCount: 0 }), false);
+});
+
+test("hasGmailActivityEvidence detects successful scan logs", () => {
+  assert.equal(
+    hasGmailActivityEvidence({
+      scanLogs: [{ status: "success", saved: 3 }],
+    }),
+    true
+  );
 });
