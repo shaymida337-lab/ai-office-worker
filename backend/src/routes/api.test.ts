@@ -6,6 +6,7 @@ import {
   buildInvoiceMonthsAggregationSql,
   buildPaymentMonthsAggregationSql,
   buildNatalieVoiceCredentials,
+  buildReviewCandidateStatuses,
   debugTopPaymentAmountsWhere,
   invoiceReviewStatusFilter,
   mapDocumentReviewToInvoiceCandidate,
@@ -187,16 +188,36 @@ test("invoice list query context preserves existing include flags", () => {
   const defaultCtx = buildInvoiceListQueryContext({ organizationId: "org-1" });
   assert.equal(defaultCtx.includeApprovedInvoices, true);
   assert.equal(defaultCtx.includeReviewCandidates, true);
+  assert.deepEqual(defaultCtx.reviewCandidateStatuses, ["needs_review", "rejected", "approved"]);
 
   const needsReviewCtx = buildInvoiceListQueryContext({ organizationId: "org-1", status: "needs_review" });
   assert.equal(needsReviewCtx.includeApprovedInvoices, false);
   assert.equal(needsReviewCtx.includeReviewCandidates, true);
-  assert.equal(needsReviewCtx.reviewCandidateStatus, "needs_review");
+  assert.deepEqual(needsReviewCtx.reviewCandidateStatuses, ["needs_review"]);
+
+  const approvedCtx = buildInvoiceListQueryContext({ organizationId: "org-1", status: "approved" });
+  assert.equal(approvedCtx.includeApprovedInvoices, true);
+  assert.equal(approvedCtx.includeReviewCandidates, true);
+  assert.deepEqual(approvedCtx.reviewCandidateStatuses, ["approved"]);
 
   const paidCtx = buildInvoiceListQueryContext({ organizationId: "org-1", status: "paid" });
   assert.equal(paidCtx.includeApprovedInvoices, true);
   assert.equal(paidCtx.includeReviewCandidates, false);
   assert.equal(paidCtx.paymentStatus, "paid");
+});
+
+test("buildReviewCandidateStatuses keeps approved items out of needs_review", () => {
+  assert.deepEqual(buildReviewCandidateStatuses("needs_review"), ["needs_review"]);
+  assert.deepEqual(buildReviewCandidateStatuses("approved"), ["approved"]);
+  assert.deepEqual(buildReviewCandidateStatuses(undefined), ["needs_review", "rejected", "approved"]);
+});
+
+test("buildInvoiceListWhereInput loads manually approved gmail scan items in approved tab", () => {
+  const where = buildInvoiceListWhereInput(
+    buildInvoiceListQueryContext({ organizationId: "org-1", status: "approved" })
+  );
+  assert.deepEqual(where.gmailScanItemWhere.reviewStatus, { in: ["approved"] });
+  assert.deepEqual(where.financialDocumentReviewWhere.reviewStatus, { in: ["approved"] });
 });
 
 test("parseInvoiceMonthParam accepts YYYY-MM only", () => {
@@ -366,4 +387,38 @@ test("summarized month counts equal total deduped records", () => {
     { year: 2026, month: 5, currency: "USD", count: 1, total: 50 },
   ]);
   assert.equal(aggregationRows.reduce((sum, month) => sum + month.count, 0), 3);
+});
+
+test("approved gmail scan items remain visible in merged invoice list", () => {
+  const approvedAt = new Date("2026-06-12T09:00:00.000Z");
+  const merged = mergeInvoiceListCandidates({
+    invoiceRows: [],
+    gmailScanItems: [
+      {
+        id: "scan-approved",
+        gmailMessageId: "gmail-approved",
+        emailMessageId: "email-approved",
+        gmailMessageLink: "https://mail.google.com/mail/u/0/#inbox/gmail-approved",
+        sender: "supplier@example.com",
+        senderEmail: "supplier@example.com",
+        subject: "Approved invoice",
+        occurredAt: approvedAt,
+        amount: 250,
+        supplierName: "Supplier Ltd",
+        attachmentFilename: "invoice.pdf",
+        driveFileLink: null,
+        confidenceScore: "high",
+        reviewStatus: "approved",
+        decisionReason: "manual approval",
+        rawAnalysis: {},
+        createdAt: approvedAt,
+        updatedAt: approvedAt,
+      },
+    ],
+    documentReviews: [],
+  });
+
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]?.reviewStatus, "approved");
+  assert.equal(merged[0]?.source, "gmail_scan_item");
 });

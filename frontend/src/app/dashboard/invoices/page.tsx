@@ -1,9 +1,10 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
+import { buildFallbackMonthGroups } from "@/lib/invoices/monthGrouping";
 import { isLikelyJunkSupplierNameLocal } from "@/lib/junkSupplier";
 import { Check, ChevronDown, ChevronLeft, Download, FileText, Filter, Loader2, RefreshCcw, Search, UploadCloud } from "lucide-react";
 
@@ -20,6 +21,11 @@ type Invoice = {
   amountResolved?: boolean;
   currency: string;
   date: string;
+  normalizedDocumentDate?: string | null;
+  invoiceDate?: string | null;
+  documentDate?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
   dueDate: string | null;
   status: InvoiceStatus;
   reviewStatus?: InvoiceReviewStatus;
@@ -59,8 +65,6 @@ const reviewTabs: Array<{ value: "all" | InvoiceReviewStatus; label: string }> =
   { value: "needs_review", label: "דורש בדיקה" },
   { value: "rejected", label: "נדחה" },
 ];
-const UNGROUPED_MONTH_KEY = "__ungrouped__";
-
 export default function InvoicesPage() {
   const [months, setMonths] = useState<MonthSummary[]>([]);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set());
@@ -147,8 +151,10 @@ export default function InvoicesPage() {
     const allKeys = monthsData.months.map((month) => monthKey(month.year, month.month));
     if (allKeys.length === 0) {
       const fallback = await apiFetch<InvoicesResponse>(`/api/invoices${querySuffix}`);
-      setInvoicesByMonth({ [UNGROUPED_MONTH_KEY]: fallback.invoices });
-      setExpandedMonths(new Set([UNGROUPED_MONTH_KEY]));
+      const grouped = buildFallbackMonthGroups(fallback.invoices);
+      setMonths(grouped.months);
+      setInvoicesByMonth(grouped.invoicesByMonth);
+      setExpandedMonths(new Set(grouped.months.map((month) => monthKey(month.year, month.month))));
       return;
     }
     const keysToLoad = monthKeysToLoad ?? allKeys;
@@ -235,9 +241,7 @@ export default function InvoicesPage() {
       const date = invoice.date.slice(0, 10);
       return (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
     };
-    const monthKeys = months.length > 0
-      ? months.map((month) => monthKey(month.year, month.month))
-      : (invoicesByMonth[UNGROUPED_MONTH_KEY] ? [UNGROUPED_MONTH_KEY] : []);
+    const monthKeys = months.map((month) => monthKey(month.year, month.month));
     for (const key of monthKeys) {
       if (!expandedMonths.has(key)) continue;
       for (const invoice of invoicesByMonth[key] ?? []) {
@@ -256,11 +260,6 @@ export default function InvoicesPage() {
     }
     return regular;
   }, [expandedMonths, fromDate, invoicesByMonth, junkDrawerExpanded, junkInvoices, months, toDate]);
-  const ungroupedInvoices = useMemo(
-    () => (invoicesByMonth[UNGROUPED_MONTH_KEY] ?? []).filter((invoice) => !isJunkInvoice(invoice) && matchesDisplayFilters(invoice)),
-    [invoicesByMonth, fromDate, toDate]
-  );
-
 
   const filteredIds = useMemo(() => filtered.map((invoice) => invoice.id), [filtered]);
   const selectedVisibleInvoices = useMemo(
@@ -719,58 +718,6 @@ export default function InvoicesPage() {
             חשבוניות ספקים ותשלומים מופיעים במסך &quot;חשבוניות ספקים / תשלומים לספקים&quot;.
           </p>
         </div>
-      )}
-
-      {!monthsLoading && months.length === 0 && ungroupedInvoices.length > 0 && (
-        <section className="invoice-panel rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
-          <button
-            type="button"
-            className="sticky top-0 z-10 flex w-full items-center justify-between gap-3 border-b border-[#E5E7EB] bg-white/85 px-4 py-4 text-right backdrop-blur-sm transition hover:bg-white/95 md:px-5"
-            onClick={() => toggleMonthExpanded(UNGROUPED_MONTH_KEY)}
-            aria-expanded={expandedMonths.has(UNGROUPED_MONTH_KEY)}
-          >
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              {expandedMonths.has(UNGROUPED_MONTH_KEY) ? <ChevronDown className="h-5 w-5 shrink-0 transition-transform duration-300 ease-out" /> : <ChevronLeft className="h-5 w-5 shrink-0 transition-transform duration-300 ease-out" />}
-              <div className="min-w-0">
-                <div className="text-lg font-black text-[#111827]">חשבוניות לקוחות ללא שיוך חודש</div>
-                <div className="mt-1 text-sm font-medium text-[#6B7280]">
-                  {ungroupedInvoices.length} חשבוניות
-                </div>
-              </div>
-            </div>
-          </button>
-          <CollapsePanel open={expandedMonths.has(UNGROUPED_MONTH_KEY)}>
-            <div className="overflow-hidden p-4 md:p-5">
-              <InvoiceMobileList
-                invoices={ungroupedInvoices}
-                selectedInvoiceIds={selectedInvoiceIds}
-                bulkDeleting={bulkDeleting}
-                deletingId={deletingId}
-                removingIds={removingIds}
-                onSelect={setSelected}
-                onToggleSelection={toggleInvoiceSelection}
-                onToggleStatus={toggleStatus}
-                onApprove={handleAnimatedApprove}
-                onDelete={deleteInvoice}
-              />
-              <InvoiceDesktopList
-                invoices={ungroupedInvoices}
-                selectedInvoiceIds={selectedInvoiceIds}
-                bulkDeleting={bulkDeleting}
-                deletingId={deletingId}
-                removingIds={removingIds}
-                allVisibleSelected={false}
-                onSelect={setSelected}
-                onToggleSelection={toggleInvoiceSelection}
-                onToggleSelectAllVisible={() => {}}
-                onToggleStatus={toggleStatus}
-                onApprove={handleAnimatedApprove}
-                onDelete={deleteInvoice}
-                showSelectAll={false}
-              />
-            </div>
-          </CollapsePanel>
-        </section>
       )}
 
       <div className="space-y-4">

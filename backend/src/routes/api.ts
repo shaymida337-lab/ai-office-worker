@@ -3651,6 +3651,8 @@ function dateValue(value: unknown) {
 const DEFAULT_ORGANIZATION_TIMEZONE = "Asia/Jerusalem";
 const INVOICE_MONTH_PARAM_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
+export type InvoiceReviewCandidateStatus = "needs_review" | "rejected" | "approved";
+
 export type InvoiceListQueryContext = {
   organizationId: string;
   clientId?: string;
@@ -3658,8 +3660,18 @@ export type InvoiceListQueryContext = {
   paymentStatus?: string;
   includeApprovedInvoices: boolean;
   includeReviewCandidates: boolean;
-  reviewCandidateStatus?: "needs_review" | "rejected";
+  reviewCandidateStatuses?: InvoiceReviewCandidateStatus[];
 };
+
+export function buildReviewCandidateStatuses(
+  reviewStatus: InvoiceReviewCandidateStatus | undefined
+): InvoiceReviewCandidateStatus[] | undefined {
+  if (reviewStatus === "needs_review") return ["needs_review"];
+  if (reviewStatus === "rejected") return ["rejected"];
+  if (reviewStatus === "approved") return ["approved"];
+  if (!reviewStatus) return ["needs_review", "rejected", "approved"];
+  return undefined;
+}
 
 export type InvoiceListMonthBounds = { gte: Date; lt: Date };
 
@@ -3694,6 +3706,7 @@ export function buildInvoiceListQueryContext(input: {
 }): InvoiceListQueryContext {
   const reviewStatus = invoiceReviewStatusFilter(input.status);
   const paymentStatus = input.status && input.status !== "all" && !reviewStatus ? input.status : undefined;
+  const reviewCandidateStatuses = buildReviewCandidateStatuses(reviewStatus);
   return {
     organizationId: input.organizationId,
     clientId: input.clientId,
@@ -3701,10 +3714,8 @@ export function buildInvoiceListQueryContext(input: {
     paymentStatus,
     includeApprovedInvoices: !reviewStatus || reviewStatus === "approved",
     includeReviewCandidates:
-      !paymentStatus &&
-      !input.clientId &&
-      (!reviewStatus || reviewStatus === "needs_review" || reviewStatus === "rejected"),
-    reviewCandidateStatus: reviewStatus === "needs_review" || reviewStatus === "rejected" ? reviewStatus : undefined,
+      !paymentStatus && !input.clientId && reviewCandidateStatuses !== undefined,
+    reviewCandidateStatuses,
   };
 }
 
@@ -3773,9 +3784,9 @@ export function buildInvoiceListWhereInput(
     organizationId: ctx.organizationId,
     ...(normalizedDocumentDate && { normalizedDocumentDate }),
     documentType: { in: ["invoice", "receipt", "unknown_needs_review"] },
-    ...(ctx.reviewCandidateStatus
-      ? { reviewStatus: ctx.reviewCandidateStatus }
-      : { reviewStatus: { in: ["needs_review", "rejected"] } }),
+    ...(ctx.reviewCandidateStatuses?.length
+      ? { reviewStatus: { in: ctx.reviewCandidateStatuses } }
+      : {}),
     ...(ctx.search && {
       OR: [
         { subject: { contains: ctx.search, mode: "insensitive" } },
@@ -3791,9 +3802,9 @@ export function buildInvoiceListWhereInput(
     organizationId: ctx.organizationId,
     ...(normalizedDocumentDate && { normalizedDocumentDate }),
     documentType: { in: ["tax_invoice", "receipt", "tax_invoice_receipt"] },
-    ...(ctx.reviewCandidateStatus
-      ? { reviewStatus: ctx.reviewCandidateStatus }
-      : { reviewStatus: { in: ["needs_review", "rejected"] } }),
+    ...(ctx.reviewCandidateStatuses?.length
+      ? { reviewStatus: { in: ctx.reviewCandidateStatuses } }
+      : {}),
     ...(ctx.search && {
       OR: [
         { subject: { contains: ctx.search, mode: "insensitive" } },
@@ -3842,10 +3853,9 @@ function appendInvoiceSqlFilters(alias: string, ctx: InvoiceListQueryContext, pa
 
 function appendGmailScanItemSqlFilters(alias: string, ctx: InvoiceListQueryContext, params: unknown[]) {
   let sql = ` AND ${alias}."documentType" IN ('invoice', 'receipt', 'unknown_needs_review')`;
-  if (ctx.reviewCandidateStatus) {
-    sql += ` AND ${alias}."reviewStatus" = ${pushSqlParam(params, ctx.reviewCandidateStatus)}`;
-  } else {
-    sql += ` AND ${alias}."reviewStatus" IN ('needs_review', 'rejected')`;
+  if (ctx.reviewCandidateStatuses?.length) {
+    const statusParams = ctx.reviewCandidateStatuses.map((status) => pushSqlParam(params, status));
+    sql += ` AND ${alias}."reviewStatus" IN (${statusParams.join(", ")})`;
   }
   if (ctx.search) {
     const searchParam = pushSqlParam(params, `%${ctx.search}%`);
@@ -3863,10 +3873,9 @@ function appendGmailScanItemSqlFilters(alias: string, ctx: InvoiceListQueryConte
 
 function appendFinancialDocumentReviewSqlFilters(alias: string, ctx: InvoiceListQueryContext, params: unknown[]) {
   let sql = ` AND ${alias}."documentType" IN ('tax_invoice', 'receipt', 'tax_invoice_receipt')`;
-  if (ctx.reviewCandidateStatus) {
-    sql += ` AND ${alias}."reviewStatus" = ${pushSqlParam(params, ctx.reviewCandidateStatus)}`;
-  } else {
-    sql += ` AND ${alias}."reviewStatus" IN ('needs_review', 'rejected')`;
+  if (ctx.reviewCandidateStatuses?.length) {
+    const statusParams = ctx.reviewCandidateStatuses.map((status) => pushSqlParam(params, status));
+    sql += ` AND ${alias}."reviewStatus" IN (${statusParams.join(", ")})`;
   }
   if (ctx.search) {
     const searchParam = pushSqlParam(params, `%${ctx.search}%`);
