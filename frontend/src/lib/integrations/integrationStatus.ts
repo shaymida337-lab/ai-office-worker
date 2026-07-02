@@ -103,7 +103,7 @@ export function buildGmailIntegrationStatus(input: BuildGmailStatusInput): Integ
       syncState: "idle",
       healthState: "unknown",
       title: "נמצאו מסמכים מ-Gmail",
-      description: "בודקת את מצב החיבור כדי להציג את המצב המדויק.",
+      description: "מצאתי מסמכים מהאימייל שלך. מוודאת שהחיבור פעיל.",
       badges: [{ key: "sync", label: "בודק חיבור", tone: "info" }],
       metrics: [
         { key: "docs", label: "מסמכים", value: metricValue(input.extractedDocuments) },

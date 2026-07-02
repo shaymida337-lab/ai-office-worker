@@ -61,7 +61,7 @@ import {
 } from "@/lib/gmailScanLifecycle";
 import type { OrganizationSettings } from "@/lib/business-config";
 import { buildGmailIntegrationStatus, type IntegrationStatusModel } from "@/lib/integrations/integrationStatus";
-import { resolveGmailStatusFromSettled, resolveGmailConnectionTruth, hasGmailActivityEvidence } from "@/lib/integrations/gmailConnectionTruth";
+import { resolveGmailStatusFromSettled, resolveGmailConnectionTruth, resolveGmailTruthAfterLoad, shouldAutoTriggerGmailConnect, hasGmailActivityEvidence } from "@/lib/integrations/gmailConnectionTruth";
 import { resolveHeroTrustState } from "@/lib/dashboard/heroTrust";
 import { resolveConfirmedSyncIssue, resolveScanStatusFromSettled } from "@/lib/dashboard/scanStatusTruth";
 import { buildMorningGreeting } from "@/lib/dashboard/morningBrief";
@@ -497,9 +497,6 @@ export default function DashboardPage() {
       setGmailStatus(gmailResolved.nextStatus);
       setGmailStatusKnown(gmailResolved.known);
       setGmailStatusStale(gmailResolved.stale);
-      if (gmailResolved.known && !gmailResolved.nextStatus?.connected) {
-        setShowGmailConnect(true);
-      }
       setClients(clientsResult.status === "fulfilled" ? clientsResult.value : emptyClients);
 
       if (scanStatusResult.status === "fulfilled") {
@@ -542,6 +539,19 @@ export default function DashboardPage() {
       setRecentTasks(tasksResult.status === "fulfilled" ? tasksResult.value.slice(0, 8) : []);
       setAlerts(alertsResult.status === "fulfilled" ? alertsResult.value.slice(0, 8) : []);
       setDocumentReviews(reviewsResult.status === "fulfilled" ? reviewsResult.value.slice(0, 5) : []);
+      const loadTruth = resolveGmailTruthAfterLoad({
+        gmailResolved,
+        scanLogs:
+          scanStatusResult.status === "fulfilled"
+            ? scanStatusResult.value.logs
+            : resolveScanStatusFromSettled(scanStatus, scanStatusResult).nextStatus?.logs,
+        scanLast:
+          scanStatusResult.status === "fulfilled"
+            ? scanStatusResult.value.last
+            : resolveScanStatusFromSettled(scanStatus, scanStatusResult).nextStatus?.last ?? null,
+        documentReviewCount: reviewsResult.status === "fulfilled" ? reviewsResult.value.length : 0,
+      });
+      setShowGmailConnect(loadTruth.showConnectCta);
       if (briefingResult.status === "fulfilled") {
         setBriefingScheduling(briefingResult.value);
         setUpcomingAppointments(
@@ -605,18 +615,6 @@ export default function DashboardPage() {
     }, 5 * 60 * 1000);
     return () => window.clearInterval(interval);
   }, [load, refreshGmailStatus, router]);
-
-  useEffect(() => {
-    if (pageLoading || connectGmailTriggeredRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("connect") !== "gmail") return;
-    connectGmailTriggeredRef.current = true;
-    router.replace("/dashboard");
-    if (!gmailStatus?.connected) {
-      console.log("[dashboard] auto-trigger gmail connect from ?connect=gmail");
-      void connectGmail();
-    }
-  }, [pageLoading, gmailStatus?.connected, router]);
 
   useEffect(() => {
     if (pageLoading || !firstVisitMode || autoFirstScanRef.current) return;
@@ -1039,6 +1037,30 @@ export default function DashboardPage() {
       gmailActivityEvidence,
     ]
   );
+
+  useEffect(() => {
+    if (pageLoading || !gmailStatusKnown) return;
+    setShowGmailConnect(gmailConnection.showConnectCta);
+  }, [pageLoading, gmailStatusKnown, gmailConnection.showConnectCta]);
+
+  useEffect(() => {
+    if (connectGmailTriggeredRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (
+      !shouldAutoTriggerGmailConnect({
+        connectParam: params.get("connect"),
+        pageLoading,
+        alreadyTriggered: connectGmailTriggeredRef.current,
+        gmailConnectionPhase: gmailConnection.phase,
+      })
+    ) {
+      return;
+    }
+    connectGmailTriggeredRef.current = true;
+    router.replace("/dashboard");
+    console.log("[dashboard] auto-trigger gmail connect from ?connect=gmail");
+    void connectGmail();
+  }, [pageLoading, gmailConnection.phase, router]);
 
   const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
   const ownerFirstName = getFirstNameForGreeting(organizationSettings?.name) ?? firstNameFromLabel(organizationSettings?.name);

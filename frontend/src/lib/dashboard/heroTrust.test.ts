@@ -116,7 +116,7 @@ test("resolveHeroTrustState shows evidence ambiguous without connect CTA", () =>
     scanRunning: false,
     hasSyncIssue: false,
   });
-  assert.match(state.statusLabel, /נמצאו מסמכים מ-Gmail/);
+  assert.match(state.statusLabel, /מצאתי מסמכים מהאימייל שלך/);
   assert.equal(state.ctaAction, "ask_natalie");
   assert.notEqual(state.ctaAction, "connect_gmail");
 });

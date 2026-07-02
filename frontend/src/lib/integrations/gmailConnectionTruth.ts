@@ -126,3 +126,36 @@ export function resolveGmailConnectionTruth(input: ResolveGmailConnectionTruthIn
     treatAsConnectedForUi: false,
   };
 }
+
+export type GmailTruthAfterLoadInput = {
+  gmailResolved: GmailStatusResolution;
+  scanLogs?: GmailActivityEvidenceInput["scanLogs"];
+  scanLast?: GmailActivityEvidenceInput["scanLast"];
+  documentReviewCount: number;
+};
+
+export function resolveGmailTruthAfterLoad(input: GmailTruthAfterLoadInput): GmailConnectionTruth {
+  return resolveGmailConnectionTruth({
+    pageLoading: false,
+    statusKnown: input.gmailResolved.known,
+    statusStale: input.gmailResolved.stale,
+    apiConnected: Boolean(input.gmailResolved.nextStatus?.connected),
+    connectedAt: input.gmailResolved.nextStatus?.connectedAt,
+    hasGmailActivityEvidence: hasGmailActivityEvidence({
+      scanLogs: input.scanLogs,
+      scanLast: input.scanLast,
+      documentReviewCount: input.documentReviewCount,
+    }),
+  });
+}
+
+export function shouldAutoTriggerGmailConnect(input: {
+  connectParam: string | null;
+  pageLoading: boolean;
+  alreadyTriggered: boolean;
+  gmailConnectionPhase: GmailConnectionPhase;
+}): boolean {
+  if (input.pageLoading || input.alreadyTriggered) return false;
+  if (input.connectParam !== "gmail") return false;
+  return input.gmailConnectionPhase === "disconnected";
+}

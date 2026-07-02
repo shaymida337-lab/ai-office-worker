@@ -5,6 +5,8 @@ import {
   hasGmailActivityEvidence,
   resolveGmailConnectionTruth,
   resolveGmailStatusFromSettled,
+  resolveGmailTruthAfterLoad,
+  shouldAutoTriggerGmailConnect,
 } from "./gmailConnectionTruth";
 
 const connectedStatus: GmailStatus = {
@@ -124,5 +126,86 @@ test("hasGmailActivityEvidence detects successful scan logs", () => {
       scanLogs: [{ status: "success", saved: 3 }],
     }),
     true
+  );
+});
+
+test("resolveGmailTruthAfterLoad avoids connect CTA when API disconnected but Gmail documents exist", () => {
+  const truth = resolveGmailTruthAfterLoad({
+    gmailResolved: {
+      nextStatus: {
+        googleConfigured: true,
+        connected: false,
+        connectedAt: null,
+        reconnectRequired: false,
+        missingDriveScopes: [],
+      },
+      known: true,
+      stale: false,
+    },
+    documentReviewCount: 12,
+  });
+  assert.equal(truth.phase, "evidence_ambiguous");
+  assert.equal(truth.showConnectCta, false);
+});
+
+test("resolveGmailTruthAfterLoad shows connect CTA only when disconnected without evidence", () => {
+  const truth = resolveGmailTruthAfterLoad({
+    gmailResolved: {
+      nextStatus: {
+        googleConfigured: true,
+        connected: false,
+        connectedAt: null,
+        reconnectRequired: false,
+        missingDriveScopes: [],
+      },
+      known: true,
+      stale: false,
+    },
+    documentReviewCount: 0,
+  });
+  assert.equal(truth.phase, "disconnected");
+  assert.equal(truth.showConnectCta, true);
+});
+
+test("resolveGmailTruthAfterLoad keeps connected UI when API confirms connection", () => {
+  const truth = resolveGmailTruthAfterLoad({
+    gmailResolved: {
+      nextStatus: connectedStatus,
+      known: true,
+      stale: false,
+    },
+    documentReviewCount: 139,
+  });
+  assert.equal(truth.phase, "connected");
+  assert.equal(truth.showConnectCta, false);
+});
+
+test("shouldAutoTriggerGmailConnect only when confirmed disconnected", () => {
+  assert.equal(
+    shouldAutoTriggerGmailConnect({
+      connectParam: "gmail",
+      pageLoading: false,
+      alreadyTriggered: false,
+      gmailConnectionPhase: "disconnected",
+    }),
+    true
+  );
+  assert.equal(
+    shouldAutoTriggerGmailConnect({
+      connectParam: "gmail",
+      pageLoading: false,
+      alreadyTriggered: false,
+      gmailConnectionPhase: "evidence_ambiguous",
+    }),
+    false
+  );
+  assert.equal(
+    shouldAutoTriggerGmailConnect({
+      connectParam: "gmail",
+      pageLoading: true,
+      alreadyTriggered: false,
+      gmailConnectionPhase: "disconnected",
+    }),
+    false
   );
 });

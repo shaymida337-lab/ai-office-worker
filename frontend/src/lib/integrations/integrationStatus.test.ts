@@ -199,6 +199,7 @@ test("buildGmailIntegrationStatus returns ambiguous checking state when Gmail do
   });
 
   assert.equal(model.title, "נמצאו מסמכים מ-Gmail");
+  assert.match(model.description, /מצאתי מסמכים מהאימייל שלך/);
   assert.equal(model.connectionState, "connecting");
   assert.equal(model.metrics.find((item) => item.key === "docs")?.value, "5");
 });

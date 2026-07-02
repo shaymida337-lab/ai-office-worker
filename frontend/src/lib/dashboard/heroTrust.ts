@@ -24,7 +24,7 @@ type ResolveHeroTrustInput = {
 };
 
 const CHECKING_LABEL = "בודקת את מצב החיבור...";
-const EVIDENCE_CHECKING_LABEL = "נמצאו מסמכים מ-Gmail, בודקת את מצב החיבור";
+const EVIDENCE_CHECKING_LABEL = "מצאתי מסמכים מהאימייל שלך. מוודאת שהחיבור פעיל.";
 const CONNECTED_LABEL = "מחוברת, סורקת ועובדת עבורך";
 
 function isCheckingState(input: ResolveHeroTrustInput) {
