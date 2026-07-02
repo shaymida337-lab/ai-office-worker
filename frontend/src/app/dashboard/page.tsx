@@ -66,14 +66,9 @@ export default function DashboardPage() {
 
         <NatalieMorningBrief
           greeting={d.morningGreeting.headline}
-          leadIn={d.firstScanPhase ?? d.morningGreeting.leadIn}
-          statusLabel={d.heroTrust.statusLabel}
-          statusTone={d.heroTrust.statusTone}
-          ctaLabel={d.heroTrust.ctaLabel}
+          recommendation={d.heroBriefing.recommendation}
+          ctaLabel={d.heroBriefing.ctaLabel}
           loading={d.pageLoading}
-          workItems={d.alreadyWorkedSummary.items}
-          emptyWorkMessage={d.alreadyWorkedSummary.emptyMessage}
-          workLoading={d.pageLoading}
           onCta={d.handleHeroCta}
         />
 

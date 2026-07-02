@@ -797,6 +797,7 @@ export function useDashboardHome() {
     gmailIntegrationModel,
     decisionItems,
     natalieRecommendation,
+    heroBriefing,
     alreadyWorkedSummary,
     morningGreeting,
     yourDayItems,
@@ -863,35 +864,36 @@ export function useDashboardHome() {
   }, []);
 
   const handleHeroCta = useCallback(() => {
-    switch (heroTrust.ctaAction) {
+    switch (heroBriefing.ctaIntent) {
       case "connect_gmail":
         void connectGmail();
         return;
-      case "show_scan_progress":
-        scrollToScanProgress();
-        return;
-      case "retry_sync":
+      case "run_scan":
         void runSync();
         return;
-      case "ask_natalie":
-      default:
+      case "navigate":
         if (natalieRecommendation.href) {
           router.push(natalieRecommendation.href);
           return;
         }
-        if (decisionItems.length > 0) {
-          scrollToDecisions();
-          return;
-        }
-        document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        break;
+      case "ask_natalie":
+      default:
+        break;
     }
+    if (natalieRecommendation.scrollToDecisions || decisionItems.length > 0) {
+      scrollToDecisions();
+      return;
+    }
+    document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [
-    heroTrust.ctaAction,
+    heroBriefing.ctaIntent,
     natalieRecommendation.href,
+    natalieRecommendation.scrollToDecisions,
     decisionItems.length,
     scrollToDecisions,
-    scrollToScanProgress,
     router,
+    runSync,
   ]);
 
   useEffect(() => {
@@ -982,6 +984,7 @@ export function useDashboardHome() {
     displayToast,
     businessName,
     heroTrust,
+    heroBriefing,
     dashboardSyncState,
     morningGreeting,
     alreadyWorkedSummary,

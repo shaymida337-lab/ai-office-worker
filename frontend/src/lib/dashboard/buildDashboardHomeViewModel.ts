@@ -31,7 +31,8 @@ import { buildMorningGreeting } from "@/lib/dashboard/morningBrief";
 import { buildAlreadyWorkedSummary } from "@/lib/dashboard/alreadyWorked";
 import { buildYourDayItems } from "@/lib/dashboard/yourDay";
 import { buildSmartSuggestions, isMonthEndApproaching } from "@/lib/dashboard/smartSuggestions";
-import type { HeroTrustState } from "@/lib/dashboard/heroTrust";
+import { buildHeroBriefing, type HeroBriefing } from "./heroBriefing";
+import type { HeroTrustState } from "./heroTrust";
 import type {
   AlertItem,
   DocumentReview,
@@ -100,6 +101,7 @@ export type DashboardHomeViewModel = {
   gmailIntegrationModel: IntegrationStatusModel;
   decisionItems: ReturnType<typeof buildDecisionItems>;
   natalieRecommendation: ReturnType<typeof resolveNatalieRecommendation>;
+  heroBriefing: HeroBriefing;
   alreadyWorkedSummary: ReturnType<typeof buildAlreadyWorkedSummary>;
   morningGreeting: ReturnType<typeof buildMorningGreeting>;
   yourDayItems: ReturnType<typeof buildYourDayItems>;
@@ -342,12 +344,6 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     newDocuments: documentReviews.length,
   });
 
-  const morningGreeting = buildMorningGreeting({
-    ownerFirstName,
-    returningUser: !firstVisitMode && !pageLoading,
-    hasWorkToday: alreadyWorkedSummary.items.length > 0,
-  });
-
   const yourDayItems = buildYourDayItems({
     upcomingAppointments: upcomingAppointments.map((appt) => ({
       id: appt.id,
@@ -358,6 +354,21 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     pendingPayments: stats?.upcomingPaymentsCount ?? unpaidPayments.length,
     overduePayments: stats?.overdueSupplierPayments ?? 0,
     openTasks: openTasksCount,
+  });
+
+  const morningGreeting = buildMorningGreeting({
+    ownerFirstName,
+    returningUser: !firstVisitMode && !pageLoading,
+    hasWorkToday: decisionItems.length > 0 || yourDayItems.some((item) => item.urgency !== "calm"),
+  });
+
+  const heroBriefing = buildHeroBriefing({
+    recommendation: natalieRecommendation,
+    scanRunning,
+    gmailConnected: gmailConnection.phase !== "disconnected",
+    firstVisitMode,
+    pendingDecisionCount: decisionItems.length,
+    ownerFirstName,
   });
 
   const smartSuggestions = buildSmartSuggestions({
@@ -416,6 +427,7 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     gmailIntegrationModel,
     decisionItems,
     natalieRecommendation,
+    heroBriefing,
     alreadyWorkedSummary,
     morningGreeting,
     yourDayItems,
