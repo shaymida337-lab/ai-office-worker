@@ -4,11 +4,9 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import {
-  NatalieAttentionCenter,
-  NatalieCommandBar,
-  NatalieDoneToday,
-  NatalieHero,
-  NatalieConversationExamples,
+  NatalieMorningBrief,
+  NatalieYourDay,
+  NatalieSmartSuggestions,
   NatalieTopBar,
   BusinessSnapshot,
   DashboardActivityTimeline,
@@ -17,21 +15,17 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ScanBanner } from "@/components/ui/ScanBanner";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { IntegrationStatusCard } from "@/components/ui/IntegrationStatusCard";
-import { buildNatalieBriefing } from "@/lib/natalie/briefing";
 import { getFirstNameForGreeting, consumeFirstDashboardVisit } from "@/lib/natalie/firstDay";
 import { resolveNatalieRecommendation } from "@/lib/natalie/recommendation";
 import {
   buildDecisionItems,
 } from "@/lib/dashboard/decisions";
 import {
-  buildHeroHumanMessage,
-  buildNatalieDoneTodayItems,
   buildRecentActivityTimeline,
   formatFirstScanEmptyMessage,
 } from "@/lib/dashboard/home";
 import { lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
-import type { AttentionCardData } from "@/components/dashboard";
-import type { NatalieBriefingInput, NatalieRecommendationInput } from "@/lib/natalie/types";
+import type { NatalieRecommendationInput } from "@/lib/natalie/types";
 import {
   fetchBriefingSchedulingSnapshot,
   type BriefingSchedulingSnapshot,
@@ -69,6 +63,10 @@ import type { OrganizationSettings } from "@/lib/business-config";
 import { buildGmailIntegrationStatus, type IntegrationStatusModel } from "@/lib/integrations/integrationStatus";
 import { resolveGmailStatusFromSettled } from "@/lib/integrations/gmailConnectionTruth";
 import { resolveHeroTrustState } from "@/lib/dashboard/heroTrust";
+import { buildMorningGreeting } from "@/lib/dashboard/morningBrief";
+import { buildAlreadyWorkedSummary } from "@/lib/dashboard/alreadyWorked";
+import { buildYourDayItems } from "@/lib/dashboard/yourDay";
+import { buildSmartSuggestions, isMonthEndApproaching } from "@/lib/dashboard/smartSuggestions";
 
 type ClientSummary = {
   id: string;
@@ -1130,86 +1128,6 @@ export default function DashboardPage() {
     [gmailStatusKnown, gmailConnected, connectingGmail, syncing, router]
   );
 
-  const natalieBriefingInput = useMemo<NatalieBriefingInput>(
-    () => ({
-      screen: "today",
-      ownerFirstName,
-      gmailConnected,
-      scanRunning,
-      scanStale,
-      scanBacklog,
-      documentReviews: documentReviews.map((item) => ({
-        id: item.id,
-        supplierName: item.supplierName,
-        reviewStatus: item.reviewStatus,
-        uncertaintyReason: item.uncertaintyReason,
-        documentType: item.documentType,
-        totalAmount: item.totalAmount,
-        currency: item.currency,
-      })),
-      unpaidPayments: unpaidPayments.map((payment) => ({
-        id: payment.id,
-        supplier: payment.supplier,
-        paid: payment.paid,
-        missingInvoice: payment.missingInvoice,
-        amount: payment.amount,
-        currency: payment.currency,
-      })),
-      missingInvoices: missingInvoices.map((payment) => ({
-        id: payment.id,
-        supplier: payment.supplier,
-        paid: payment.paid,
-        missingInvoice: true,
-        amount: payment.amount,
-        currency: payment.currency,
-      })),
-      openTasksCount,
-      upcomingAppointments: mapBriefingToAppointmentInputs(
-        briefingScheduling ?? {
-          engineReadEnabled: false,
-          upcoming: upcomingAppointments.map((appt) => ({
-            id: appt.id,
-            source: appt.source ?? "appointment",
-            clientName: appt.client.name,
-            startTime: appt.startTime,
-            durationMinutes: 30,
-            status: appt.status,
-            statusLabel: appt.statusLabel ?? appt.status,
-            pendingOwnerApproval: appt.pendingOwnerApproval ?? appt.status === "pending",
-          })),
-          pendingDecisions: [],
-          todaySummary: {
-            upcomingCount: upcomingAppointments.length,
-            pendingDecisionCount: 0,
-            todayCompletedCount: 0,
-            todayNoShowCount: 0,
-            todayCancelledCount: 0,
-          },
-        }
-      ),
-      pendingSchedulingDecisions: briefingScheduling?.pendingDecisions ?? [],
-      schedulingTodaySummary: briefingScheduling?.todaySummary,
-      invoicesSaved: monthPayments.length,
-      paymentsPrepared: unpaidPayments.length,
-    }),
-    [
-      ownerFirstName,
-      gmailConnected,
-      scanRunning,
-      scanStale,
-      scanBacklog,
-      documentReviews,
-      unpaidPayments,
-      missingInvoices,
-      openTasksCount,
-      upcomingAppointments,
-      briefingScheduling,
-      monthPayments.length,
-    ]
-  );
-
-  const natalieBriefing = useMemo(() => buildNatalieBriefing(natalieBriefingInput), [natalieBriefingInput]);
-
   const decisionItems = useMemo(
     () =>
       buildDecisionItems(
@@ -1308,91 +1226,76 @@ export default function DashboardPage() {
 
   const natalieRecommendation = useMemo(() => resolveNatalieRecommendation(recommendationInput), [recommendationInput]);
 
-  const heroHumanMessage = useMemo(
-    () =>
-      buildHeroHumanMessage({
-        firstVisit: firstVisitMode,
-        gmailConnected,
-        firstScanPhase,
-        completedCount: natalieBriefing.completedItems.filter((i) => i.id !== "ready").length,
-        pendingCount: decisionItems.length,
-        scanRunning,
-      }),
-    [
-      firstVisitMode,
+  const alreadyWorkedSummary = useMemo(() => {
+    const lastScanToday =
+      scanStatus?.last?.endedAt && isTodayValue(scanStatus.last.endedAt) ? scanStatus.last : null;
+
+    return buildAlreadyWorkedSummary({
       gmailConnected,
-      firstScanPhase,
-      natalieBriefing.completedItems,
-      decisionItems.length,
       scanRunning,
-    ]
+      emailsScanned: lastScanToday?.found ?? activeScan?.emailsFetched,
+      invoicesFound: lastScanToday?.invoicesFound ?? activeScan?.invoicesFound,
+      paymentsUpdated: payments.filter((payment) => payment.paid && isTodayValue(payment.date)).length,
+      appointmentsSet: upcomingAppointments.filter((appt) => isTodayValue(appt.startTime)).length,
+      tasksCreated: recentTasks.filter((task) => isTodayValue(task.updatedAt)).length,
+      newDocuments: documentReviews.length,
+    });
+  }, [
+    gmailConnected,
+    scanRunning,
+    scanStatus?.last,
+    activeScan?.emailsFetched,
+    activeScan?.invoicesFound,
+    payments,
+    upcomingAppointments,
+    recentTasks,
+    documentReviews.length,
+  ]);
+
+  const morningGreeting = useMemo(
+    () =>
+      buildMorningGreeting({
+        ownerFirstName,
+        returningUser: !firstVisitMode && !pageLoading,
+        hasWorkToday: alreadyWorkedSummary.items.length > 0,
+      }),
+    [ownerFirstName, firstVisitMode, pageLoading, alreadyWorkedSummary.items.length]
   );
 
-  const doneTodayItems = useMemo(
+  const yourDayItems = useMemo(
     () =>
-      buildNatalieDoneTodayItems({
-        invoicesScanned: scanStatus?.last?.invoicesFound ?? recentInvoices.length,
-        paymentsMatched: unpaidPayments.filter((p) => !p.missingInvoice).length,
-        tasksCreated: openTasksCount,
-        statsUpdated: Boolean(stats),
-        scanRunning,
-        gmailConnected,
+      buildYourDayItems({
+        upcomingAppointments: upcomingAppointments.map((appt) => ({
+          id: appt.id,
+          startTime: appt.startTime,
+          clientName: appt.client.name,
+        })),
+        pendingDocuments: documentReviews.length,
+        pendingPayments: stats?.upcomingPaymentsCount ?? unpaidPayments.length,
+        overduePayments: stats?.overdueSupplierPayments ?? 0,
+        openTasks: openTasksCount,
       }),
-    [
-      scanStatus?.last?.invoicesFound,
-      recentInvoices.length,
-      unpaidPayments,
-      openTasksCount,
-      stats,
-      scanRunning,
-      gmailConnected,
-    ]
+    [upcomingAppointments, documentReviews.length, stats, unpaidPayments.length, openTasksCount]
   );
 
-  const attentionCards = useMemo((): AttentionCardData[] => {
-    const pendingReviews = documentReviews.length;
-    const upcomingPayments = stats?.upcomingPaymentsCount ?? unpaidPayments.length;
-    const overduePayments = stats?.overdueSupplierPayments ?? 0;
-    const tasks = openTasksCount;
-
-    return [
-      {
-        id: "invoices",
-        label: "חשבוניות שלא אושרו",
-        description:
-          pendingReviews > 0
-            ? `${pendingReviews} חשבוניות מחכות לאישור שלך`
-            : "כל החשבוניות מאושרות — מצוין",
-        count: pendingReviews,
-        urgency: pendingReviews > 2 ? "urgent" : pendingReviews > 0 ? "warn" : "info",
-        actionLabel: pendingReviews > 0 ? "אשר חשבוניות" : "פתח חשבוניות",
-        onAction: () => router.push("/dashboard/document-reviews"),
-      },
-      {
-        id: "payments",
-        label: "תשלום קרוב",
-        description:
-          overduePayments > 0
-            ? `${overduePayments} תשלומים באיחור — כדאי לטפל מיד`
-            : upcomingPayments > 0
-              ? `${upcomingPayments} תשלומים ממתינים לטיפול`
-              : "אין תשלומים דחופים כרגע",
-        count: upcomingPayments,
-        urgency: overduePayments > 0 ? "urgent" : upcomingPayments > 0 ? "warn" : "info",
-        actionLabel: upcomingPayments > 0 ? "טפל בתשלום" : "פתח תשלומים",
-        onAction: () => router.push("/payments"),
-      },
-      {
-        id: "tasks",
-        label: "משימות פתוחות",
-        description: tasks > 0 ? `${tasks} משימות פתוחות שכדאי לסגור` : "אין משימות פתוחות — הכול מסודר",
-        count: tasks,
-        urgency: tasks > 5 ? "urgent" : tasks > 0 ? "warn" : "info",
-        actionLabel: tasks > 0 ? "פתח משימות" : "צור משימה",
-        onAction: () => router.push("/tasks"),
-      },
-    ];
-  }, [documentReviews.length, stats, unpaidPayments.length, openTasksCount, router]);
+  const smartSuggestions = useMemo(
+    () =>
+      buildSmartSuggestions({
+        gmailConnected,
+        scanRunning,
+        hasAppointmentsToday: upcomingAppointments.some((appt) => isTodayValue(appt.startTime)),
+        pendingPayments: unpaidPayments.length,
+        pendingDocuments: documentReviews.length,
+        monthEndApproaching: isMonthEndApproaching(),
+      }),
+    [
+      gmailConnected,
+      scanRunning,
+      upcomingAppointments,
+      unpaidPayments.length,
+      documentReviews.length,
+    ]
+  );
 
   const snapshotMetrics = useMemo(
     () => [
@@ -1471,8 +1374,6 @@ export default function DashboardPage() {
     router,
   ]);
 
-  const showFirstVisitExtras = !(firstVisitMode && !firstScanSettled);
-
   const handleNatalieConversation = useCallback(
     (value: string) => {
       const trimmed = value.trim();
@@ -1491,6 +1392,18 @@ export default function DashboardPage() {
       }
       if (trimmed.includes("פגישה") || trimmed.includes("יומן") || trimmed.includes("קבע")) {
         router.push("/dashboard/calendar");
+        return;
+      }
+      if (trimmed.includes("רואה החשבון") || trimmed.includes("חודש לרואה")) {
+        router.push("/dashboard/accountant");
+        return;
+      }
+      if (trimmed.includes("מגיע היום") || trimmed.includes("מי מגיע")) {
+        router.push("/dashboard/calendar");
+        return;
+      }
+      if (trimmed.includes("מה מחכה") || trimmed.includes("לאישור")) {
+        router.push("/dashboard/document-reviews");
         return;
       }
       if (trimmed.includes("סרק")) {
@@ -1525,53 +1438,63 @@ export default function DashboardPage() {
           onNotifications={() => router.push("/message-scans")}
         />
 
-        <NatalieHero
-          ownerFirstName={ownerFirstName}
-          humanMessage={heroHumanMessage}
+        <NatalieMorningBrief
+          greeting={morningGreeting.headline}
+          leadIn={firstScanPhase ?? morningGreeting.leadIn}
           statusLabel={heroTrust.statusLabel}
           statusTone={heroTrust.statusTone}
           ctaLabel={heroTrust.ctaLabel}
           loading={pageLoading}
+          workItems={alreadyWorkedSummary.items}
+          emptyWorkMessage={alreadyWorkedSummary.emptyMessage}
+          workLoading={pageLoading}
           onCta={handleHeroCta}
         />
 
-        {showFirstVisitExtras && <NatalieConversationExamples />}
+        {scanRunning || scanBanner?.status === "error" || scanBanner?.status === "stale" ? (
+          <div id="gmail-scan-progress" className="dashboard-fade-in">
+            {scanBanner ? (
+              <ScanBanner
+                status={scanBanner.status}
+                found={scanBanner.found}
+                scanned={scanBanner.scanned}
+                totalMatched={scanBanner.totalMatched}
+                errors={scanBanner.errors}
+              />
+            ) : null}
+          </div>
+        ) : (
+          <div id="gmail-scan-progress" />
+        )}
 
-        <div id="gmail-scan-progress">
-          {scanBanner && (
-            <ScanBanner
-              status={scanBanner.status}
-              found={scanBanner.found}
-              scanned={scanBanner.scanned}
-              totalMatched={scanBanner.totalMatched}
-              errors={scanBanner.errors}
-            />
-          )}
-        </div>
+        <NatalieYourDay items={yourDayItems} loading={pageLoading} />
 
         <BusinessSnapshot metrics={snapshotMetrics} loading={pageLoading} />
 
-        <NatalieDoneToday items={doneTodayItems} loading={pageLoading} />
+        <div id="natalie-command">
+          <NatalieSmartSuggestions
+            suggestions={smartSuggestions}
+            onSubmit={handleNatalieConversation}
+            onScan={runSync}
+            onConnect={() => void connectGmail()}
+          />
+        </div>
 
-        <div className="grid gap-2 md:gap-3 lg:grid-cols-2 lg:items-start lg:gap-5">
-          <NatalieAttentionCenter cards={attentionCards} loading={pageLoading} />
-
+        <div className="hidden md:block">
           <DashboardActivityTimeline items={activityTimeline} loading={pageLoading} />
         </div>
 
-        {showFirstVisitExtras && (
-          <div id="natalie-command">
-            <NatalieCommandBar onSubmit={handleNatalieConversation} onScan={runSync} />
-          </div>
-        )}
-
-        <section className="lg:max-w-3xl">
+        <section className="dashboard-fade-in lg:max-w-2xl">
+          <p className={`mb-2 ${typography.caption} font-semibold`} style={{ color: colors.textMuted }}>
+            חיבורים
+          </p>
           <IntegrationStatusCard
             icon="📬"
             title="Gmail"
+            compact
             model={gmailIntegrationModel}
             actions={gmailCardActions}
-            detailsTitle="פרטי חיבור מתקדמים"
+            detailsTitle="פרטים נוספים"
           />
         </section>
 
@@ -1581,7 +1504,7 @@ export default function DashboardPage() {
           </summary>
           <div className={`grid ${spacing.section} border-t p-5 md:p-6`} style={{ borderColor: colors.borderSubtle }}>
             <section className={`grid ${spacing.section} lg:grid-cols-2`}>
-              <ActivityCard title="תשלומי ספקים" empty="אין תשלומי ספקים עדיין">
+              <ActivityCard title="תשלומי ספקים" empty="ברגע שיגיעו תשלומים חדשים אציג אותם כאן.">
                 {payments.slice(0, 5).map((payment) => (
                   <DataRow
                     key={payment.id}
@@ -1607,7 +1530,7 @@ export default function DashboardPage() {
             </section>
 
             <section className={`grid ${spacing.section} lg:grid-cols-2`}>
-              <ActivityCard title="חשבוניות אחרונות" empty="אין חשבוניות שנשמרו">
+              <ActivityCard title="חשבוניות אחרונות" empty="ברגע שיגיעו מסמכים חדשים אציג אותם כאן.">
                 {recentInvoices.slice(0, 5).map((invoice) => (
                   <DataRow
                     key={invoice.id}
@@ -1619,7 +1542,7 @@ export default function DashboardPage() {
                 ))}
               </ActivityCard>
 
-              <ActivityCard title="משימות אחרונות" empty="אין משימות פתוחות">
+              <ActivityCard title="משימות אחרונות" empty="היום פנוי ממשימות פתוחות.">
                 {recentTasks.slice(0, 5).map((task) => (
                   <DataRow
                     key={task.id}
@@ -1644,7 +1567,7 @@ export default function DashboardPage() {
                 ))}
               </ActivityCard>
 
-              <ActivityCard title="לקוחות אחרונים" empty="עדיין אין לקוחות">
+              <ActivityCard title="לקוחות אחרונים" empty="ברגע שיתווספו לקוחות חדשים אציג אותם כאן.">
                 {(clients?.clients ?? []).slice(0, 5).map((client) => (
                   <DataRow
                     key={client.id}
@@ -2016,6 +1939,17 @@ function isThisMonth(value: string) {
   const date = new Date(value);
   const now = new Date();
   return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+}
+
+function isTodayValue(value: string) {
+  const date = new Date(value);
+  const now = new Date();
+  if (Number.isNaN(date.getTime())) return false;
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  );
 }
 
 function formatShekel(amount: number) {

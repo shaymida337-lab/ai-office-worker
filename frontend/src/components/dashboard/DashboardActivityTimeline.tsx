@@ -6,7 +6,7 @@ import { formatTimelineClock } from "@/lib/dashboard/home";
 import { colors, radius, shadow } from "@/lib/design-tokens";
 
 const EMPTY_MESSAGE =
-  "עדיין אין פעילות להצגה — נטלי תציג כאן עדכונים ברגע שהעסק יתחיל לזוז.";
+  "ברגע שאסיים משהו חדש בשבילך, אראה את זה כאן.";
 
 export function DashboardActivityTimeline({
   items,

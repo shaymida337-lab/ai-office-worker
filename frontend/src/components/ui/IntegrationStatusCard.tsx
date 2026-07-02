@@ -19,6 +19,7 @@ type IntegrationStatusCardProps = {
   model: IntegrationStatusModel;
   actions: IntegrationAction[];
   detailsTitle?: string;
+  compact?: boolean;
 };
 
 const toneMap: Record<IntegrationStatusBadge["tone"], "success" | "warn" | "danger" | "info"> = {
@@ -84,6 +85,7 @@ export function IntegrationStatusCard({
   model,
   actions,
   detailsTitle = "פרטי חיבור",
+  compact = false,
 }: IntegrationStatusCardProps) {
   const [expanded, setExpanded] = useState(false);
   const primaryAction = useMemo(() => actions.find((action) => action.priority === "primary") ?? actions[0], [actions]);
@@ -94,17 +96,17 @@ export function IntegrationStatusCard({
 
   return (
     <section
-      className={`${radius.card} ${shadow.card} ${spacing.card}`}
+      className={`${radius.card} ${compact ? shadow.soft : shadow.card} ${compact ? "p-4" : spacing.card}`}
       style={{ backgroundColor: colors.surface, border: `1px solid ${colors.borderSubtle}` }}
       aria-live="polite"
       data-testid="integration-status-card"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className={typography.cardTitle} style={{ color: colors.textPrimary }}>
+          <h2 className={compact ? typography.body : typography.cardTitle} style={{ color: colors.textPrimary }}>
             {icon} {title}
           </h2>
-          <p className={`${typography.body} mt-2`} style={{ color: colors.textSecondary }}>
+          <p className={`${compact ? typography.caption : typography.body} mt-1.5`} style={{ color: colors.textSecondary }}>
             {model.title} · {model.description}
           </p>
         </div>
@@ -119,13 +121,13 @@ export function IntegrationStatusCard({
         ) : null}
       </div>
 
-      {model.metrics.length > 0 ? (
+      {!compact && model.metrics.length > 0 ? (
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {renderMetricRows(model.metrics)}
         </div>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className={`${compact ? "mt-3" : "mt-4"} flex flex-wrap gap-2`}>
         {primaryAction ? (
           <ActionButton action={{ ...primaryAction, priority: "primary" }}>
             {primaryAction.label}

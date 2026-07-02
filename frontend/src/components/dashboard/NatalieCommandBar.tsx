@@ -39,7 +39,7 @@ export function NatalieCommandBar({
   }
 
   return (
-    <section id="natalie-command" className="text-right" aria-label="בקשה מנטלי">
+    <section className="text-right" aria-label="בקשה מנטלי">
       <form onSubmit={handleSubmit} className="flex flex-col gap-2">
         <label htmlFor="natalie-command-input" className="sr-only">
           בקש משהו מנטלי

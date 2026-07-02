@@ -1005,6 +1005,50 @@ mark {
   }
 }
 
+@keyframes dashboardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dashboardChipIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dashboard-fade-in {
+  animation: dashboardFadeIn 0.35s ease-out both;
+}
+
+.dashboard-chip-in {
+  animation: dashboardChipIn 0.28s ease-out both;
+}
+
+.dashboard-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.dashboard-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: shimmer 1.4s infinite;
+}
+
 @media (max-width: 640px) {
   .global-help-button {
     top: auto;
