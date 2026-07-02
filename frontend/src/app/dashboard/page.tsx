@@ -63,6 +63,7 @@ import type { OrganizationSettings } from "@/lib/business-config";
 import { buildGmailIntegrationStatus, type IntegrationStatusModel } from "@/lib/integrations/integrationStatus";
 import { resolveGmailStatusFromSettled } from "@/lib/integrations/gmailConnectionTruth";
 import { resolveHeroTrustState } from "@/lib/dashboard/heroTrust";
+import { resolveConfirmedSyncIssue, resolveScanStatusFromSettled } from "@/lib/dashboard/scanStatusTruth";
 import { buildMorningGreeting } from "@/lib/dashboard/morningBrief";
 import { buildAlreadyWorkedSummary } from "@/lib/dashboard/alreadyWorked";
 import { buildYourDayItems } from "@/lib/dashboard/yourDay";
@@ -382,6 +383,8 @@ export default function DashboardPage() {
   const [gmailStatusStale, setGmailStatusStale] = useState(false);
   const [clients, setClients] = useState<ClientsResponse | null>(null);
   const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
+  const [scanStatusKnown, setScanStatusKnown] = useState(false);
+  const [scanStatusStale, setScanStatusStale] = useState(false);
   const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings | null>(null);
   const [whatsAppStats, setWhatsAppStats] = useState<WhatsAppAssistantStats | null>(null);
   const [accountantSummary, setAccountantSummary] = useState<AccountantSummary | null>(null);
@@ -501,6 +504,8 @@ export default function DashboardPage() {
 
       if (scanStatusResult.status === "fulfilled") {
         setScanStatus(scanStatusResult.value);
+        setScanStatusKnown(true);
+        setScanStatusStale(false);
         const running = scanStatusResult.value.logs.find((log) => isRunningScanStatusLog(log));
         const trackedLog = activeScanId
           ? scanStatusResult.value.logs.find((log) => log.id === activeScanId)
@@ -525,7 +530,10 @@ export default function DashboardPage() {
           window.localStorage.removeItem("activeGmailScanId");
         }
       } else {
-        setScanStatus(emptyScanStatus());
+        const scanResolved = resolveScanStatusFromSettled(scanStatus, scanStatusResult);
+        setScanStatus(scanResolved.nextStatus ?? emptyScanStatus());
+        setScanStatusKnown(scanResolved.known);
+        setScanStatusStale(scanResolved.stale);
       }
 
       setPayments(paymentsResult.status === "fulfilled" ? paymentsResult.value : []);
@@ -1017,23 +1025,36 @@ export default function DashboardPage() {
   });
   const scanStale = scanBanner?.status === "stale";
   const scanBacklog = scanStatus?.last ? hasGmailScanBacklog(scanStatus.last) : false;
-  const hasSyncIssue =
-    Boolean(gmailStatus?.reconnectRequired) ||
-    scanStale ||
-    scanBacklog ||
-    (scanBanner?.errors ?? 0) > 0 ||
-    scanBanner?.status === "error" ||
-    Boolean(scanStatus?.last?.errors);
+  const hasSyncIssue = resolveConfirmedSyncIssue({
+    reconnectRequired: Boolean(gmailStatus?.reconnectRequired),
+    scanBannerStatus: scanBanner?.status ?? null,
+    scanBannerErrors: scanBanner?.errors ?? 0,
+    lastScanStatus: scanStatus?.last?.status ?? null,
+  });
   const heroTrust = useMemo(
     () =>
       resolveHeroTrustState({
+        pageLoading,
         gmailStatusKnown,
+        gmailStatusStale,
         gmailConnected,
+        scanStatusKnown,
+        scanStatusStale,
         scanRunning,
         hasSyncIssue,
         connectingGmail,
       }),
-    [gmailStatusKnown, gmailConnected, scanRunning, hasSyncIssue, connectingGmail]
+    [
+      pageLoading,
+      gmailStatusKnown,
+      gmailStatusStale,
+      gmailConnected,
+      scanStatusKnown,
+      scanStatusStale,
+      scanRunning,
+      hasSyncIssue,
+      connectingGmail,
+    ]
   );
   const gmailStatusWithOptional = gmailStatus as (GmailStatus & {
     connectedEmail?: string | null;
@@ -1427,7 +1448,7 @@ export default function DashboardPage() {
     >
       <Nav />
 
-      <div className="mx-auto grid h-auto min-w-0 max-w-6xl gap-3 overflow-visible md:gap-4 lg:gap-5">
+      <div className="mx-auto grid h-auto min-w-0 max-w-6xl gap-3 overflow-x-hidden md:gap-4 lg:gap-5">
         {(error || actionMessage || scanToast) && (
           <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
         )}

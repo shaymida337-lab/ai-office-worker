@@ -137,6 +137,12 @@
 }
 
 @layer components {
+  @media (max-width: 1023px) {
+    .dashboard-shell {
+      overflow-x: clip;
+    }
+  }
+
   @media (min-width: 1024px) {
     .dashboard-shell {
       min-height: 100vh;

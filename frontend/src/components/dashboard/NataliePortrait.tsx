@@ -18,7 +18,7 @@ export function NataliePortrait({
   const [imageError, setImageError] = useState(false);
   const sizeClass =
     size === "heroMobile"
-      ? "h-[104px] w-[104px] shrink-0 rounded-full"
+      ? "h-[72px] w-[72px] shrink-0 rounded-full sm:h-[88px] sm:w-[88px]"
       : size === "micro"
         ? "h-[104px] w-[104px] shrink-0 rounded-full"
         : size === "compact"
@@ -57,7 +57,7 @@ export function NataliePortrait({
             className="object-cover object-top"
             sizes={
               isHeroMobile
-                ? "104px"
+                ? "(max-width: 640px) 72px, 88px"
                 : size === "compact"
                   ? "64px"
                   : isRound

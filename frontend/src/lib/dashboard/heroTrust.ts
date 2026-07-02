@@ -10,12 +10,29 @@ export type HeroTrustState = {
 };
 
 type ResolveHeroTrustInput = {
+  pageLoading?: boolean;
   gmailStatusKnown: boolean;
+  gmailStatusStale?: boolean;
   gmailConnected: boolean;
+  scanStatusKnown?: boolean;
+  scanStatusStale?: boolean;
   scanRunning: boolean;
   hasSyncIssue: boolean;
   connectingGmail?: boolean;
 };
+
+const CHECKING_LABEL = "בודקת את מצב החיבור...";
+const CONNECTED_LABEL = "מחוברת, סורקת ועובדת עבורך";
+
+function isCheckingState(input: ResolveHeroTrustInput) {
+  return (
+    Boolean(input.pageLoading) ||
+    !input.gmailStatusKnown ||
+    Boolean(input.gmailStatusStale) ||
+    Boolean(input.scanStatusStale) ||
+    (input.gmailConnected && input.scanStatusKnown === false)
+  );
+}
 
 export function resolveHeroTrustState(input: ResolveHeroTrustInput): HeroTrustState {
   if (input.connectingGmail) {
@@ -27,9 +44,9 @@ export function resolveHeroTrustState(input: ResolveHeroTrustInput): HeroTrustSt
     };
   }
 
-  if (!input.gmailStatusKnown) {
+  if (isCheckingState(input)) {
     return {
-      statusLabel: "בודקת את חיבור Gmail...",
+      statusLabel: CHECKING_LABEL,
       statusTone: "neutral",
       ctaLabel: "שאל את נטלי",
       ctaAction: "ask_natalie",
@@ -64,7 +81,7 @@ export function resolveHeroTrustState(input: ResolveHeroTrustInput): HeroTrustSt
   }
 
   return {
-    statusLabel: "מחוברת, סורקת מיילים ועובדת עבורך",
+    statusLabel: CONNECTED_LABEL,
     statusTone: "success",
     ctaLabel: "שאל את נטלי",
     ctaAction: "ask_natalie",

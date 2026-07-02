@@ -25,7 +25,7 @@ export function NatalieSmartSuggestions({
         </p>
       </div>
 
-      <ul className="flex flex-wrap justify-end gap-2">
+      <ul className="flex min-w-0 flex-wrap justify-end gap-2">
         {suggestions.map((suggestion, index) => (
           <li key={suggestion} className="dashboard-chip-in" style={{ animationDelay: `${index * 40}ms` }}>
             <button
