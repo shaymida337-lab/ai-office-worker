@@ -11,6 +11,7 @@ import {
   BusinessSnapshot,
   DashboardActivityTimeline,
 } from "@/components/dashboard";
+import { DashboardSystemHealthCard } from "@/components/dashboard/DashboardSystemHealthCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ScanBanner } from "@/components/ui/ScanBanner";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -67,8 +68,14 @@ import {
   cleanGmailOAuthReturnUrl,
   shouldHandleGmailOAuthReturn,
 } from "@/lib/integrations/gmailOAuthReturn";
-import { resolveHeroTrustState } from "@/lib/dashboard/heroTrust";
-import { resolveConfirmedSyncIssue, resolveScanStatusFromSettled } from "@/lib/dashboard/scanStatusTruth";
+import {
+  resolveDashboardSyncState,
+  resolveGmailConnectionCanonicalState,
+  isSyncRelatedDashboardMessage,
+} from "@/lib/dashboard/dashboardSyncState";
+import { buildDashboardSyncSurfaces } from "@/lib/dashboard/dashboardSyncPresentation";
+import { createDashboardSyncRetryRequest } from "@/lib/dashboard/dashboardSyncRetry";
+import { resolveScanStatusFromSettled } from "@/lib/dashboard/scanStatusTruth";
 import { buildMorningGreeting } from "@/lib/dashboard/morningBrief";
 import { buildAlreadyWorkedSummary } from "@/lib/dashboard/alreadyWorked";
 import { buildYourDayItems } from "@/lib/dashboard/yourDay";
@@ -408,7 +415,6 @@ export default function DashboardPage() {
   const [scanRangeDays, setScanRangeDays] = useState(90);
   const [activeScanId, setActiveScanId] = useState<string | null>(null);
   const [activeScan, setActiveScan] = useState<ScanProgressResult | null>(null);
-  const [successScanBannerHidden, setSuccessScanBannerHidden] = useState(false);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [missingInvoices, setMissingInvoices] = useState<Payment[]>([]);
   const [recentInvoices, setRecentInvoices] = useState<RecentInvoice[]>([]);
@@ -784,17 +790,6 @@ export default function DashboardPage() {
     };
   }, [activeScanId, firstVisitMode, load, syncing]);
 
-  useEffect(() => {
-    const banner = buildScanBannerState(activeScan, scanStatus);
-    if (banner?.status !== "success" || banner.errors > 0) {
-      setSuccessScanBannerHidden(false);
-      return;
-    }
-    setSuccessScanBannerHidden(false);
-    const timeout = window.setTimeout(() => setSuccessScanBannerHidden(true), 8000);
-    return () => window.clearTimeout(timeout);
-  }, [activeScan, scanStatus]);
-
   async function startFirstScan() {
     const freshGmailStatus = gmailStatus?.connected ? gmailStatus : await refreshGmailStatus().catch(() => gmailStatus);
     if (freshGmailStatus && !freshGmailStatus.connected) {
@@ -899,20 +894,19 @@ export default function DashboardPage() {
       setActionMessage(preparing);
     }
     setScanToast({ type: "info", text: "סורק ג׳ימייל ומחפש חשבוניות, קבלות ודרישות תשלום..." });
+    const retryRequest = createDashboardSyncRetryRequest();
     try {
-      const result = await apiFetch<GmailScanResult>("/api/gmail/scan", { method: "POST" });
+      const result = await apiFetch<GmailScanResult>(retryRequest.path, { method: retryRequest.method });
       if (result.scanId) {
         setActiveScanId(result.scanId);
         window.localStorage.setItem("activeGmailScanId", result.scanId);
         const message = result.inProgress ? "סריקת המיילים מתבצעת כעת..." : "סריקת ג׳ימייל התחילה ברקע.";
-        setError(message);
         setScanToast({ type: "info", text: message });
         return;
       }
       await load();
       const summary = scanSummaryFromResult(result);
       const message = result.message ?? (result.backgroundProcessing ? `נמצאו ${summary.emailsScanned} מיילים בג׳ימייל. העיבוד המלא ממשיך ברקע ויעדכן חשבוניות/תשלומים.` : formatScanSuccess(summary));
-      setError(message);
       setScanToast({ type: "success", text: message });
     } catch (e) {
       const message = e instanceof Error ? e.message : "סריקת ג׳ימייל נכשלה";
@@ -1096,7 +1090,8 @@ export default function DashboardPage() {
 
   const whatsAppConnected = Boolean(systemHealth?.components.whatsapp.connected);
   const ownerFirstName = getFirstNameForGreeting(organizationSettings?.name) ?? firstNameFromLabel(organizationSettings?.name);
-  const scanBanner = successScanBannerHidden ? null : buildScanBannerState(activeScan, scanStatus);
+  const scanBanner = buildScanBannerState(activeScan, scanStatus);
+  const scanStale = scanBanner?.status === "stale";
   const monthPayments = payments.filter((payment) => isThisMonth(payment.date));
   const unpaidPayments = useMemo(() => payments.filter((payment) => !payment.paid), [payments]);
   const openTasksCount = stats?.openTasks ?? recentTasks.filter((task) => task.status !== "completed" && task.status !== "done").length;
@@ -1107,39 +1102,79 @@ export default function DashboardPage() {
     scanBanner,
     scanLogs: scanStatus?.logs,
   });
-  const scanStale = scanBanner?.status === "stale";
   const scanBacklog = scanStatus?.last ? hasGmailScanBacklog(scanStatus.last) : false;
-  const hasSyncIssue = resolveConfirmedSyncIssue({
-    reconnectRequired: Boolean(gmailStatus?.reconnectRequired),
-    scanBannerStatus: scanBanner?.status ?? null,
-    scanBannerErrors: scanBanner?.errors ?? 0,
-    lastScanStatus: scanStatus?.last?.status ?? null,
-  });
-  const heroTrust = useMemo(
+  const syncingPhase = firstScanPhase ?? scanProgress[scanProgress.length - 1] ?? null;
+  const gmailConnectionCanonical = useMemo(
     () =>
-      resolveHeroTrustState({
-        pageLoading,
+      resolveGmailConnectionCanonicalState({
+        phase: gmailConnection.phase,
+        reconnectRequired: Boolean(gmailStatus?.reconnectRequired),
+        connecting: connectingGmail,
+        statusKnown: gmailStatusKnown,
+      }),
+    [gmailConnection.phase, gmailStatus?.reconnectRequired, connectingGmail, gmailStatusKnown]
+  );
+  const successfulScanLog = useMemo(
+    () =>
+      (scanStatus?.logs ?? []).find((log) => {
+        const normalized = normalizeScanStatusFromLog(log.status, "running");
+        return normalized === "success" || normalized === "partial";
+      }) ?? null,
+    [scanStatus?.logs]
+  );
+  const dashboardSyncState = useMemo(
+    () =>
+      resolveDashboardSyncState({
+        gmailConnectionState: gmailConnectionCanonical,
         gmailStatusKnown,
         gmailStatusStale,
-        gmailConnectionPhase: gmailConnection.phase,
         scanStatusKnown,
         scanStatusStale,
         scanRunning,
-        hasSyncIssue,
-        connectingGmail,
+        scanBanner,
+        scanBacklog,
+        lastScanStatus: scanStatus?.last?.status ?? null,
+        transientToast: scanToast,
+        syncingPhase,
+        gmailConnected: gmailConnection.treatAsConnectedForUi,
+        lastSuccessfulScanAt: successfulScanLog?.endedAt ?? null,
+        lastSyncAt: scanStatus?.last?.endedAt ?? null,
+        scannedEmails: activeScan?.emailsFetched ?? scanStatus?.last?.found ?? null,
+        extractedDocuments: activeScan?.documentsFound ?? scanStatus?.last?.saved ?? null,
+        backendHealthy: systemHealth ? systemHealth.allPassed : undefined,
       }),
     [
-      pageLoading,
+      gmailConnectionCanonical,
       gmailStatusKnown,
       gmailStatusStale,
-      gmailConnection.phase,
       scanStatusKnown,
       scanStatusStale,
       scanRunning,
-      hasSyncIssue,
-      connectingGmail,
+      scanBanner,
+      scanBacklog,
+      scanStatus?.last?.status,
+      scanStatus?.last?.endedAt,
+      scanStatus?.last?.found,
+      scanStatus?.last?.saved,
+      scanToast,
+      syncingPhase,
+      gmailConnection.treatAsConnectedForUi,
+      activeScan?.emailsFetched,
+      activeScan?.documentsFound,
+      systemHealth,
+      successfulScanLog?.endedAt,
     ]
   );
+  const heroTrust = dashboardSyncState.heroTrust;
+  const dashboardSurfaces = useMemo(
+    () =>
+      buildDashboardSyncSurfaces(dashboardSyncState, {
+        pageError: error && !isSyncRelatedDashboardMessage(error) ? error : "",
+        actionMessage,
+      }),
+    [dashboardSyncState, error, actionMessage]
+  );
+  const { error: pageError, actionMessage: displayActionMessage, toast: displayToast } = dashboardSurfaces.messageStack;
   const gmailStatusWithOptional = gmailStatus as (GmailStatus & {
     connectedEmail?: string | null;
     accountEmail?: string | null;
@@ -1149,14 +1184,6 @@ export default function DashboardPage() {
     ?? gmailStatusWithOptional?.accountEmail
     ?? gmailStatusWithOptional?.email
     ?? null;
-  const successfulScanLog = useMemo(
-    () =>
-      (scanStatus?.logs ?? []).find((log) => {
-        const normalized = normalizeScanStatusFromLog(log.status, "running");
-        return normalized === "success" || normalized === "partial";
-      }) ?? null,
-    [scanStatus?.logs]
-  );
   const scanStatusLabel = activeScan
     ? labelFor("scanStatus", activeScan.status)
     : scanStatus?.last
@@ -1172,9 +1199,10 @@ export default function DashboardPage() {
         connectionAmbiguous: gmailConnection.phase === "evidence_ambiguous",
         connecting: connectingGmail,
         scanRunning,
-        hasWarning: Boolean(gmailStatus?.reconnectRequired) || scanBacklog || scanStale || showGmailConnect,
-        hasError: Boolean(error) && error.includes("ג׳ימייל"),
+        hasWarning: dashboardSyncState.integrationHasWarning,
+        hasError: dashboardSyncState.integrationHasError,
         reconnectRequired: Boolean(gmailStatus?.reconnectRequired),
+        syncMessage: dashboardSyncState.message,
         gmailAddress: connectedGmailAddress,
         organizationName: businessName,
         lastSuccessfulScanAt: successfulScanLog?.endedAt ?? null,
@@ -1196,13 +1224,15 @@ export default function DashboardPage() {
       gmailStatusStale,
       connectingGmail,
       scanRunning,
+      dashboardSyncState.integrationHasWarning,
+      dashboardSyncState.integrationHasError,
+      dashboardSyncState.message,
       gmailStatus?.reconnectRequired,
       gmailStatus?.missingDriveScopes,
       gmailStatus?.connectedAt,
       scanBacklog,
       scanStale,
       showGmailConnect,
-      error,
       connectedGmailAddress,
       businessName,
       successfulScanLog?.endedAt,
@@ -1483,6 +1513,18 @@ export default function DashboardPage() {
     router,
   ]);
 
+  useEffect(() => {
+    if (dashboardSyncState.status === "ERROR" && scanToast?.type === "success") {
+      setScanToast(null);
+    }
+  }, [dashboardSyncState.status, scanToast]);
+
+  useEffect(() => {
+    if (!scanToast || scanToast.type !== "success" || !dashboardSyncState.allowsSuccessToast) return;
+    const timeout = window.setTimeout(() => setScanToast(null), 6000);
+    return () => window.clearTimeout(timeout);
+  }, [scanToast, dashboardSyncState.allowsSuccessToast]);
+
   const handleNatalieConversation = useCallback(
     (value: string) => {
       const trimmed = value.trim();
@@ -1537,8 +1579,8 @@ export default function DashboardPage() {
       <Nav />
 
       <div className="mx-auto grid h-auto min-w-0 max-w-6xl gap-3 overflow-x-hidden md:gap-4 lg:gap-5">
-        {(error || actionMessage || scanToast) && (
-          <MessageStack error={error} actionMessage={actionMessage} toast={scanToast} />
+        {(pageError || displayActionMessage || displayToast) && (
+          <MessageStack error={pageError} actionMessage={displayActionMessage} toast={displayToast} />
         )}
 
         <NatalieTopBar
@@ -1560,17 +1602,17 @@ export default function DashboardPage() {
           onCta={handleHeroCta}
         />
 
-        {scanRunning || scanBanner?.status === "error" || scanBanner?.status === "stale" ? (
+        <DashboardSystemHealthCard state={dashboardSyncState} loading={pageLoading} />
+
+        {dashboardSyncState.showScanBanner && dashboardSyncState.scanBanner ? (
           <div id="gmail-scan-progress" className="dashboard-fade-in">
-            {scanBanner ? (
-              <ScanBanner
-                status={scanBanner.status}
-                found={scanBanner.found}
-                scanned={scanBanner.scanned}
-                totalMatched={scanBanner.totalMatched}
-                errors={scanBanner.errors}
-              />
-            ) : null}
+            <ScanBanner
+              status={dashboardSyncState.scanBanner.status}
+              found={dashboardSyncState.scanBanner.found}
+              scanned={dashboardSyncState.scanBanner.scanned}
+              totalMatched={dashboardSyncState.scanBanner.totalMatched}
+              errors={dashboardSyncState.scanBanner.errors}
+            />
           </div>
         ) : (
           <div id="gmail-scan-progress" />

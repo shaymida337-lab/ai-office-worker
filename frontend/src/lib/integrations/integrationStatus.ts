@@ -69,6 +69,7 @@ type BuildGmailStatusInput = {
   lastOauthAt: string | null;
   lastScanDurationLabel: string | null;
   lastSyncDurationLabel: string | null;
+  syncMessage?: string | null;
 };
 
 function dateValue(value: string | null): string {
@@ -150,13 +151,16 @@ export function buildGmailIntegrationStatus(input: BuildGmailStatusInput): Integ
   const healthState: IntegrationHealthState = error ? "error" : warning ? "warning" : "healthy";
   const syncState: IntegrationSyncState = input.scanRunning ? "syncing" : error ? "error" : warning ? "warning" : "idle";
 
-  const statusLabel = input.scanRunning
-    ? "סורק מיילים..."
-    : error
-      ? "החיבור נכשל"
-      : warning
-        ? "יש בעיית סנכרון"
-        : "מערכת תקינה";
+  const statusLabel = input.syncMessage
+    ?? (input.scanRunning
+      ? "סורק מיילים..."
+      : error
+        ? "החיבור נכשל"
+        : warning
+          ? input.reconnectRequired
+            ? "נדרש חיבור מחדש ל-Gmail (OAuth פג תוקף או הרשאות)"
+            : "יש לשים לב"
+          : "מערכת תקינה");
 
   return {
     connectionState: "connected",
