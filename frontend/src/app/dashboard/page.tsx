@@ -62,6 +62,11 @@ import {
 import type { OrganizationSettings } from "@/lib/business-config";
 import { buildGmailIntegrationStatus, type IntegrationStatusModel } from "@/lib/integrations/integrationStatus";
 import { resolveGmailStatusFromSettled, resolveGmailConnectionTruth, resolveGmailTruthAfterLoad, shouldAutoTriggerGmailConnect, hasGmailActivityEvidence } from "@/lib/integrations/gmailConnectionTruth";
+import {
+  buildOptimisticGmailConnectedStatus,
+  cleanGmailOAuthReturnUrl,
+  shouldHandleGmailOAuthReturn,
+} from "@/lib/integrations/gmailOAuthReturn";
 import { resolveHeroTrustState } from "@/lib/dashboard/heroTrust";
 import { resolveConfirmedSyncIssue, resolveScanStatusFromSettled } from "@/lib/dashboard/scanStatusTruth";
 import { buildMorningGreeting } from "@/lib/dashboard/morningBrief";
@@ -424,6 +429,7 @@ export default function DashboardPage() {
   const [firstScanSettled, setFirstScanSettled] = useState(false);
   const [firstScanPhase, setFirstScanPhase] = useState<string | null>(null);
   const connectGmailTriggeredRef = useRef(false);
+  const gmailOAuthReturnHandledRef = useRef(false);
   const autoFirstScanRef = useRef(false);
 
   useEffect(() => {
@@ -598,23 +604,49 @@ export default function DashboardPage() {
     }
   }, [activeScanId, router, gmailStatus]);
 
+  const loadRef = useRef(load);
+  const refreshGmailStatusRef = useRef(refreshGmailStatus);
+  loadRef.current = load;
+  refreshGmailStatusRef.current = refreshGmailStatus;
+
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("gmail") === "connected") {
+    const search = window.location.search;
+    const handleOAuthReturn = shouldHandleGmailOAuthReturn({
+      search,
+      alreadyHandled: gmailOAuthReturnHandledRef.current,
+    });
+
+    if (handleOAuthReturn) {
+      gmailOAuthReturnHandledRef.current = true;
+      const cleanPath = cleanGmailOAuthReturnUrl();
+      window.history.replaceState(null, "", cleanPath);
+      router.replace(cleanPath);
+
       setScanToast({ type: "success", text: "ג׳ימייל חובר בהצלחה" });
-      refreshGmailStatus()
-        .then(() => load())
-        .then(() => delay(1200))
-        .then(() => refreshGmailStatus())
-        .catch(() => undefined);
-      router.replace("/dashboard");
+      setGmailStatus((current) => buildOptimisticGmailConnectedStatus(current));
+      setGmailStatusKnown(true);
+      setGmailStatusStale(false);
+      setShowGmailConnect(false);
+
+      void (async () => {
+        try {
+          await refreshGmailStatusRef.current();
+          await loadRef.current();
+          await delay(1200);
+          await refreshGmailStatusRef.current();
+        } catch {
+          // Keep optimistic connected state; resolver stays neutral instead of disconnected.
+        }
+      })();
+    } else {
+      void loadRef.current();
     }
-    load();
+
     const interval = window.setInterval(() => {
-      load().catch(() => undefined);
+      loadRef.current().catch(() => undefined);
     }, 5 * 60 * 1000);
     return () => window.clearInterval(interval);
-  }, [load, refreshGmailStatus, router]);
+  }, [router]);
 
   useEffect(() => {
     if (pageLoading || !firstVisitMode || autoFirstScanRef.current) return;
