@@ -1,8 +1,9 @@
 "use client";
 
-import { AlertTriangle, CheckSquare, FileText } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CheckSquare, FileText } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { colors, radius, button, shadow, dashboardHome } from "@/lib/design-tokens";
+import { buildAttentionCenterHeading } from "@/lib/dashboard/attentionCenterHeading";
 
 export type AttentionCardData = {
   id: string;
@@ -40,70 +41,77 @@ const cardIcons: Record<string, LucideIcon> = {
 
 export function NatalieAttentionCenter({
   cards,
-  totalCount,
   loading = false,
 }: {
   cards: AttentionCardData[];
-  totalCount: number;
+  totalCount?: number;
   loading?: boolean;
 }) {
-  const activeCount = cards.filter((c) => c.count > 0).length;
-  const titleCount = activeCount > 0 ? activeCount : totalCount > 0 ? totalCount : 3;
+  const activeCards = cards.filter((card) => card.count > 0);
+  const urgentCount = activeCards.length;
+  const heading = buildAttentionCenterHeading(urgentCount);
 
   return (
     <section id="natalie-decisions" className="flex h-auto min-w-0 flex-col overflow-visible" aria-label="מרכז תשומת לב">
       <h2 className={dashboardHome.sectionTitle} style={{ color: colors.textPrimary }}>
-        {activeCount > 0 || totalCount > 0
-          ? `ממליצה לטפל ב־${titleCount} ${titleCount === 1 ? "דבר" : "דברים"}`
-          : "ממליצה לטפל ב־3 דברים"}
+        {heading.title}
       </h2>
-      <p className={`mt-1 ${dashboardHome.sectionSubtitle}`} style={{ color: colors.textSecondary }}>
-        אלה הדברים שכדאי לסגור קודם
-      </p>
+      {heading.subtitle ? (
+        <p className={`mt-1 ${dashboardHome.sectionSubtitle}`} style={{ color: colors.textSecondary }}>
+          {heading.subtitle}
+        </p>
+      ) : null}
 
       {loading ? (
         <div className="mt-3 grid gap-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="min-h-[148px] animate-pulse rounded-xl border" style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }} />
+          {Array.from({ length: Math.min(activeCards.length || 1, 3) }).map((_, i) => (
+            <div key={i} className="min-h-[120px] animate-pulse rounded-xl border" style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }} />
           ))}
+        </div>
+      ) : urgentCount === 0 ? (
+        <div
+          className={`${radius.card} ${shadow.soft} mt-3 flex items-center gap-3 border p-4`}
+          style={{ backgroundColor: colors.successBg, borderColor: colors.successBorder }}
+        >
+          <CheckCircle2 className="h-5 w-5 shrink-0" style={{ color: colors.successText }} strokeWidth={2.4} />
+          <p className={dashboardHome.conversation} style={{ color: colors.successText }}>
+            נטלי עוקבת אחרי העסק — אין כרגע דברים דחופים לטיפול.
+          </p>
         </div>
       ) : (
         <div className="mt-3 grid gap-3">
-          {cards.map((card) => {
+          {activeCards.map((card) => {
             const style = urgencyStyles[card.urgency];
             const Icon = cardIcons[card.id] ?? FileText;
-            const hasItems = card.count > 0;
 
             return (
               <article
                 key={card.id}
-                className={`${radius.card} ${shadow.soft} flex min-h-[148px] flex-col border p-4`}
+                className={`${radius.card} ${shadow.soft} flex flex-col border p-4`}
                 style={{
-                  backgroundColor: hasItems ? style.bg : colors.surface,
-                  borderColor: hasItems ? style.border : colors.borderSubtle,
+                  backgroundColor: style.bg,
+                  borderColor: style.border,
                 }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div
                     className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
-                    style={{ backgroundColor: hasItems ? colors.surface : colors.bgSoft, color: style.badge }}
+                    style={{ backgroundColor: colors.surface, color: style.badge }}
                   >
                     <Icon className="h-4 w-4" strokeWidth={2.2} />
                   </div>
-                  {hasItems && (
-                    <span
-                      className={`${radius.pill} px-2 py-0.5 text-xs font-bold tabular-nums`}
-                      style={{ backgroundColor: colors.surface, color: style.badge }}
-                    >
-                      {card.count}
-                    </span>
-                  )}
+                  <span
+                    className={`${radius.pill} px-2 py-0.5 text-xs font-bold tabular-nums`}
+                    style={{ backgroundColor: colors.surface, color: style.badge }}
+                  >
+                    {card.count}
+                  </span>
                 </div>
 
                 <h3 className={`${dashboardHome.actionLabel} mt-3`} style={{ color: colors.textPrimary }}>
                   {card.label}
                 </h3>
-                <p className={`mt-1.5 flex-1 ${dashboardHome.conversation}`} style={{ color: colors.textSecondary }}>
+                <p className={`mt-1.5 ${dashboardHome.conversation}`} style={{ color: colors.textSecondary }}>
                   {card.description}
                 </p>
 
@@ -112,9 +120,9 @@ export function NatalieAttentionCenter({
                   onClick={card.onAction}
                   className={`${radius.control} ${button.primary} ${dashboardHome.heroButton} mt-4 min-h-[44px] w-full`}
                   style={{
-                    backgroundColor: hasItems ? colors.accent : colors.bgSoft,
-                    border: `1px solid ${hasItems ? colors.accent : colors.borderSubtle}`,
-                    color: hasItems ? colors.surface : colors.textSecondary,
+                    backgroundColor: colors.accent,
+                    border: `1px solid ${colors.accent}`,
+                    color: colors.surface,
                   }}
                 >
                   {card.actionLabel}

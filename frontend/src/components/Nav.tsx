@@ -68,7 +68,7 @@ const links: NavLink[] = [
 
 const mobileLinks: NavLink[] = [
   { id: "dashboard", href: "/dashboard", label: "היום", icon: Home },
-  { id: "invoices", href: "/dashboard/invoices", label: "לקוחות", icon: FileText },
+  { id: "invoices", href: "/dashboard/invoices", label: "חשבוניות", icon: FileText },
   { id: "supplierPayments", href: "/payments", label: "ספקים", icon: WalletCards },
 ];
 

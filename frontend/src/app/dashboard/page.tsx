@@ -12,8 +12,6 @@ import {
   NatalieTopBar,
   BusinessSnapshot,
   DashboardActivityTimeline,
-  DashboardQuickActions,
-  quickActionIcons,
 } from "@/components/dashboard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ScanBanner } from "@/components/ui/ScanBanner";
@@ -70,6 +68,7 @@ import {
 import type { OrganizationSettings } from "@/lib/business-config";
 import { buildGmailIntegrationStatus, type IntegrationStatusModel } from "@/lib/integrations/integrationStatus";
 import { resolveGmailStatusFromSettled } from "@/lib/integrations/gmailConnectionTruth";
+import { resolveHeroTrustState } from "@/lib/dashboard/heroTrust";
 
 type ClientSummary = {
   id: string;
@@ -1020,6 +1019,24 @@ export default function DashboardPage() {
   });
   const scanStale = scanBanner?.status === "stale";
   const scanBacklog = scanStatus?.last ? hasGmailScanBacklog(scanStatus.last) : false;
+  const hasSyncIssue =
+    Boolean(gmailStatus?.reconnectRequired) ||
+    scanStale ||
+    scanBacklog ||
+    (scanBanner?.errors ?? 0) > 0 ||
+    scanBanner?.status === "error" ||
+    Boolean(scanStatus?.last?.errors);
+  const heroTrust = useMemo(
+    () =>
+      resolveHeroTrustState({
+        gmailStatusKnown,
+        gmailConnected,
+        scanRunning,
+        hasSyncIssue,
+        connectingGmail,
+      }),
+    [gmailStatusKnown, gmailConnected, scanRunning, hasSyncIssue, connectingGmail]
+  );
   const gmailStatusWithOptional = gmailStatus as (GmailStatus & {
     connectedEmail?: string | null;
     accountEmail?: string | null;
@@ -1377,11 +1394,6 @@ export default function DashboardPage() {
     ];
   }, [documentReviews.length, stats, unpaidPayments.length, openTasksCount, router]);
 
-  const attentionTotalCount = useMemo(
-    () => attentionCards.filter((c) => c.count > 0).length,
-    [attentionCards]
-  );
-
   const snapshotMetrics = useMemo(
     () => [
       { id: "in", label: "כסף נכנס החודש", value: formatShekel(stats?.moneyToReceive ?? 0) },
@@ -1423,70 +1435,43 @@ export default function DashboardPage() {
     document.getElementById("natalie-decisions")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
-  const scrollToBriefing = useCallback(() => {
-    document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const scrollToScanProgress = useCallback(() => {
+    document.getElementById("gmail-scan-progress")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
-  const handleScanDocument = useCallback(() => {
-    router.push("/camera");
-  }, [router]);
-
-  const handleHeroPrimary = useCallback(() => {
-    if (firstVisitMode) {
-      if (gmailConnected) {
-        void runSync();
-      } else {
+  const handleHeroCta = useCallback(() => {
+    switch (heroTrust.ctaAction) {
+      case "connect_gmail":
         void connectGmail();
-      }
-      return;
+        return;
+      case "show_scan_progress":
+        scrollToScanProgress();
+        return;
+      case "retry_sync":
+        void runSync();
+        return;
+      case "ask_natalie":
+      default:
+        if (natalieRecommendation.href) {
+          router.push(natalieRecommendation.href);
+          return;
+        }
+        if (decisionItems.length > 0) {
+          scrollToDecisions();
+          return;
+        }
+        document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-    if (natalieRecommendation.kind === "connect_gmail") {
-      void connectGmail();
-      return;
-    }
-    if (natalieRecommendation.href) {
-      router.push(natalieRecommendation.href);
-      return;
-    }
-    if (decisionItems.length > 0) {
-      scrollToDecisions();
-      return;
-    }
-    document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [firstVisitMode, gmailConnected, natalieRecommendation.kind, natalieRecommendation.href, decisionItems.length, scrollToDecisions, router]);
+  }, [
+    heroTrust.ctaAction,
+    natalieRecommendation.href,
+    decisionItems.length,
+    scrollToDecisions,
+    scrollToScanProgress,
+    router,
+  ]);
 
-  const handleHeroScan = useCallback(() => {
-    if (gmailConnected) {
-      void runSync();
-      return;
-    }
-    void connectGmail();
-  }, [gmailConnected]);
-
-  const primaryScanLabel = gmailConnected ? "סרוק מייל" : "התחבר לג׳ימייל";
-  const heroCtaLabel = firstVisitMode
-    ? primaryScanLabel
-    : natalieRecommendation.kind === "connect_gmail"
-      ? natalieRecommendation.ctaLabel
-      : "שאל את נטלי";
-  const heroScanLabel = firstVisitMode ? primaryScanLabel : gmailConnected ? "סרוק מייל" : "התחבר לג׳ימייל";
   const showFirstVisitExtras = !(firstVisitMode && !firstScanSettled);
-
-  const quickActions = useMemo(
-    () => [
-      {
-        id: "scan",
-        label: gmailConnected ? "סרוק מייל" : "התחבר לג׳ימייל",
-        onClick: handleHeroScan,
-        primary: true,
-      },
-      { id: "invoice", label: "הוסף חשבונית", icon: quickActionIcons.invoice, onClick: handleScanDocument },
-      { id: "task", label: "צור משימה", icon: quickActionIcons.task, onClick: () => router.push("/tasks") },
-      { id: "reminder", label: "שלח תזכורת", icon: quickActionIcons.reminder, onClick: () => router.push("/dashboard/whatsapp") },
-      { id: "briefing", label: "בקש תדרוך מנטלי", icon: quickActionIcons.briefing, onClick: scrollToBriefing },
-    ],
-    [router, scrollToBriefing, handleScanDocument, handleHeroScan, gmailConnected]
-  );
 
   const handleNatalieConversation = useCallback(
     (value: string) => {
@@ -1543,45 +1528,36 @@ export default function DashboardPage() {
         <NatalieHero
           ownerFirstName={ownerFirstName}
           humanMessage={heroHumanMessage}
-          ctaLabel={heroCtaLabel}
-          scanLabel={heroScanLabel}
+          statusLabel={heroTrust.statusLabel}
+          statusTone={heroTrust.statusTone}
+          ctaLabel={heroTrust.ctaLabel}
           loading={pageLoading}
-          scanRunning={scanRunning}
-          onCta={firstVisitMode ? handleHeroScan : handleHeroPrimary}
-          onScan={handleHeroScan}
+          onCta={handleHeroCta}
         />
 
         {showFirstVisitExtras && <NatalieConversationExamples />}
 
-        {scanBanner && (
-          <ScanBanner
-            status={scanBanner.status}
-            found={scanBanner.found}
-            scanned={scanBanner.scanned}
-            totalMatched={scanBanner.totalMatched}
-            errors={scanBanner.errors}
-          />
-        )}
+        <div id="gmail-scan-progress">
+          {scanBanner && (
+            <ScanBanner
+              status={scanBanner.status}
+              found={scanBanner.found}
+              scanned={scanBanner.scanned}
+              totalMatched={scanBanner.totalMatched}
+              errors={scanBanner.errors}
+            />
+          )}
+        </div>
 
         <BusinessSnapshot metrics={snapshotMetrics} loading={pageLoading} />
 
+        <NatalieDoneToday items={doneTodayItems} loading={pageLoading} />
+
         <div className="grid gap-2 md:gap-3 lg:grid-cols-2 lg:items-start lg:gap-5">
-          <NatalieAttentionCenter
-            cards={attentionCards}
-            totalCount={attentionTotalCount}
-            loading={pageLoading}
-          />
+          <NatalieAttentionCenter cards={attentionCards} loading={pageLoading} />
 
           <DashboardActivityTimeline items={activityTimeline} loading={pageLoading} />
         </div>
-
-        {showFirstVisitExtras && (
-          <div className="hidden md:block">
-            <NatalieDoneToday items={doneTodayItems} loading={pageLoading} />
-          </div>
-        )}
-
-        {showFirstVisitExtras && <DashboardQuickActions actions={quickActions} />}
 
         {showFirstVisitExtras && (
           <div id="natalie-command">
