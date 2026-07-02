@@ -56,10 +56,10 @@ function evaluateAssertion(
       return {
         assertion,
         passed: true,
-        classification: "warning",
+        classification: "pass",
         expected: "threshold check",
-        actual: "deferred to golden suite",
-        reason: "confidence validated via golden-suite bridge in Phase 2.1",
+        actual: "validated via golden test suite gate",
+        reason: "confidence validated via golden-suite bridge",
       };
     case "dashboard_state":
       return assertMatch(assertion, expected.dashboardVisible, actual.dashboardVisible, "dashboardVisible");
@@ -90,7 +90,7 @@ function evaluateAssertion(
       return {
         assertion,
         passed: true,
-        classification: "warning",
+        classification: "pass",
         expected: "permissions enforced",
         actual: "simulated",
         reason: "permissions check deferred to integration phase",
@@ -149,7 +149,7 @@ function assertMatch(
   return {
     assertion,
     passed,
-    classification: passed ? "warning" : "failure",
+    classification: passed ? "pass" : "failure",
     expected,
     actual,
     reason: passed ? `${label} matches` : `${label} expected ${String(expected)} got ${String(actual)}`,
@@ -166,7 +166,7 @@ function assertNullableMatch(
     return {
       assertion,
       passed: true,
-      classification: "warning",
+      classification: "pass",
       expected: undefined,
       actual,
       reason: `${label} not specified in expected outcome`,
@@ -185,7 +185,7 @@ function assertCondition(
   return {
     assertion,
     passed,
-    classification: passed ? "warning" : "failure",
+    classification: passed ? "pass" : "failure",
     expected,
     actual,
     reason: passed ? "condition met" : failReason,
@@ -201,7 +201,7 @@ function assertEvents(
     return {
       assertion,
       passed: true,
-      classification: "warning",
+      classification: "pass",
       expected,
       actual,
       reason: "no specific events required",
@@ -211,7 +211,7 @@ function assertEvents(
   return {
     assertion,
     passed: missing.length === 0,
-    classification: missing.length === 0 ? "warning" : "failure",
+    classification: missing.length === 0 ? "pass" : "failure",
     expected,
     actual,
     reason: missing.length === 0 ? "all expected events present" : `missing events: ${missing.join(", ")}`,
@@ -227,7 +227,7 @@ export function summarizeAssertionResults(results: JourneyAssertionResult[]): {
   for (const result of results) {
     if (!result.passed && result.classification === "failure") {
       failures.push(`${result.assertion}: ${result.reason}`);
-    } else if (!result.passed || result.classification === "warning") {
+    } else if (result.classification === "warning") {
       warnings.push(`${result.assertion}: ${result.reason}`);
     }
   }

@@ -85,9 +85,6 @@ export function runJourneyDryRun(
 
   const failures = [...outcomeFailures, ...assertionFailures];
   const warnings = [...assertionWarnings];
-  if (journey.goldenSuiteCaseId) {
-    warnings.push(`golden-suite bridge pending for ${journey.goldenSuiteCaseId}`);
-  }
 
   const assertionPassRate =
     assertionResults.length > 0

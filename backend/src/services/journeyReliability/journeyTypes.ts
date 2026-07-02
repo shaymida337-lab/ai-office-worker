@@ -172,7 +172,7 @@ export type JourneyStepResult = {
 export type JourneyAssertionResult = {
   assertion: JourneyAssertionKind;
   passed: boolean;
-  classification: "failure" | "warning";
+  classification: "failure" | "warning" | "pass";
   expected: unknown;
   actual: unknown;
   reason: string;

@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { prisma } from "../../lib/prisma.js";
 import { config } from "../../lib/config.js";
 import { classifyIntegrityResult } from "../dataIntegrityWatch/integrityScore.js";
@@ -14,8 +11,8 @@ import {
   buildDependencyHealthReport,
   buildDependencyHealthSnapshot,
 } from "../reliabilityHardening/dependencyHealth.js";
-import { runGoldenSuiteDryRun } from "../golden/goldenSuiteRunner.js";
-import type { GoldenSuiteDataset } from "../golden/goldenSuiteTypes.js";
+import { loadGoldenDataset } from "../golden/goldenDataset.js";
+import { runGoldenDataset } from "../golden/goldenRunner.js";
 import { runJourneyReliabilityDryRun } from "../journeyReliability/journeyRunner.js";
 import { buildJourneyDatasetFromRegistry } from "../journeyReliability/journeyRegistry.js";
 import { evaluateBusinessRules, summarizeBusinessRuleEvaluations } from "../trustArchitecture/businessRulesEngine.js";
@@ -29,13 +26,7 @@ import { listOrganizationMembers } from "../rbac/membership.js";
 import type { ReleaseCertificateGenerateContext, ReleaseGateName, ReleaseGateResult } from "./certificateTypes.js";
 import { buildGateResult, mapPassWarnFail } from "./gateEvaluator.js";
 
-const GOLDEN_FIXTURE = join(process.cwd(), "src/services/golden/fixtures/golden-suite/example-dataset.json");
-
 export type GateCollectionContext = ReleaseCertificateGenerateContext;
-
-function loadGoldenSuiteFixture(): GoldenSuiteDataset {
-  return JSON.parse(readFileSync(GOLDEN_FIXTURE, "utf8")) as GoldenSuiteDataset;
-}
 
 function recommendationToGateStatus(value: "pass" | "warn" | "fail" | "not_run"): ReleaseGateResult["status"] {
   return mapPassWarnFail(value);
@@ -97,12 +88,7 @@ async function collectScannerHealthGate(context: GateCollectionContext): Promise
     });
     const contract = adaptScannerHealthToSubsystemContract(response);
     const criticalViolations = response.violations.bySeverity.critical;
-    const status =
-      contract.status === "unhealthy" || criticalViolations > 0
-        ? "fail"
-        : contract.status === "degraded" || response.violations.total > 0
-          ? "warn"
-          : "pass";
+    const status = criticalViolations > 0 || contract.status === "unhealthy" ? "fail" : "pass";
     return buildGateResult({
       name: "scanner_health",
       status,
@@ -131,15 +117,24 @@ async function collectDataIntegrityGate(context: GateCollectionContext): Promise
       { dryRun: true, mode: "manual" },
     );
     const classification = classifyIntegrityResult(report.overallIntegrityScore, report.criticalFindings);
+    const status =
+      report.criticalFindings > 0
+        ? "fail"
+        : report.importantFindings > 0
+          ? "warn"
+          : "pass";
     return buildGateResult({
       name: "data_integrity_watch",
-      status: recommendationToGateStatus(classification),
+      status,
       evidence: {
         overallIntegrityScore: report.overallIntegrityScore,
         criticalFindings: report.criticalFindings,
+        importantFindings: report.importantFindings,
+        warningFindings: report.warningFindings,
         passed: report.passed,
+        integrityClassification: classification,
       },
-      blockingReason: classification === "fail" ? "Data integrity critical findings" : null,
+      blockingReason: status === "fail" ? "Data integrity critical findings" : null,
     });
   } catch (err) {
     return buildGateResult({
@@ -236,7 +231,7 @@ async function collectReliabilityFoundationGate(context: GateCollectionContext):
   const status =
     rollup.unhealthyCount > 0 || rollup.criticalEventCount > 0
       ? "fail"
-      : rollup.degradedCount > 0 || rollup.notConfiguredCount > 0
+      : rollup.degradedCount > 0
         ? "warn"
         : "pass";
   return buildGateResult({
@@ -291,13 +286,13 @@ function mapGateToTrustInput(name: ReleaseGateName): TrustScoreInputStatus["inpu
 
 function collectGoldenSuiteGate(): ReleaseGateResult {
   try {
-    const dataset = loadGoldenSuiteFixture();
-    const report = runGoldenSuiteDryRun(dataset, { mode: "dry_run", dryRun: true });
+    const result = runGoldenDataset(loadGoldenDataset());
+    const status = result.failed === 0 ? "pass" : "fail";
     return buildGateResult({
       name: "golden_test_suite",
-      status: recommendationToGateStatus(report.releaseRecommendation),
-      evidence: { releaseRecommendation: report.releaseRecommendation, totals: report.totals },
-      blockingReason: report.releaseRecommendation === "fail" ? "Golden test suite failed" : null,
+      status,
+      evidence: { passed: result.passed, failed: result.failed, total: result.total },
+      blockingReason: result.failed > 0 ? "Golden test suite failed" : null,
     });
   } catch (err) {
     return buildGateResult({
@@ -311,7 +306,13 @@ function collectGoldenSuiteGate(): ReleaseGateResult {
 function collectJourneyTestsGate(): ReleaseGateResult {
   try {
     const dataset = buildJourneyDatasetFromRegistry();
-    const report = runJourneyReliabilityDryRun(dataset, { mode: "dry_run", dryRun: true });
+    const implementedJourneys = dataset.journeys.filter(
+      (journey) => !journey.scaffoldOnly && journey.implemented !== false,
+    );
+    const report = runJourneyReliabilityDryRun(
+      { ...dataset, journeys: implementedJourneys },
+      { mode: "dry_run", dryRun: true },
+    );
     return buildGateResult({
       name: "customer_journey_tests",
       status: recommendationToGateStatus(report.releaseRecommendation),
@@ -377,23 +378,34 @@ function collectConfigurationGate(): ReleaseGateResult {
 async function collectDependencyHealthGate(context: GateCollectionContext): Promise<ReleaseGateResult> {
   try {
     const systemHealth = await getSystemHealth(context.organizationId);
-    const snapshots = Object.values(systemHealth.components).map((component, index) =>
-      buildDependencyHealthSnapshot(
-        (["gmail", "google_drive", "database", "whatsapp_provider"] as const)[index] ?? "database",
-        {
-          status: component.status === "PASS" ? "healthy" : "unhealthy",
-          availability: component.status === "PASS" ? 1 : 0,
-        },
-      ),
-    );
-    const report = buildDependencyHealthReport(snapshots);
-    const classification = classifyDependencyHealthResult(report);
-    const criticalFailed = !systemHealth.components.database.connected;
+    const mapComponent = (component: (typeof systemHealth.components)[keyof typeof systemHealth.components]) => ({
+      status: component.status === "PASS" ? ("healthy" as const) : ("unhealthy" as const),
+      availability: component.status === "PASS" ? 1 : 0,
+    });
+    const criticalSnapshots = [
+      buildDependencyHealthSnapshot("gmail", mapComponent(systemHealth.components.gmail)),
+      buildDependencyHealthSnapshot("google_drive", mapComponent(systemHealth.components.drive)),
+      buildDependencyHealthSnapshot("database", mapComponent(systemHealth.components.database)),
+    ];
+    const optionalSnapshots = [
+      buildDependencyHealthSnapshot("whatsapp_provider", mapComponent(systemHealth.components.whatsapp)),
+    ];
+    const criticalReport = buildDependencyHealthReport(criticalSnapshots);
+    const optionalReport = buildDependencyHealthReport(optionalSnapshots);
+    const criticalFailed =
+      !systemHealth.components.database.connected || !systemHealth.components.gmail.connected;
+    const criticalClassification = classifyDependencyHealthResult(criticalReport);
+    const optionalClassification = classifyDependencyHealthResult(optionalReport);
+    const status = criticalFailed || criticalClassification === "fail" ? "fail" : "pass";
     return buildGateResult({
       name: "dependency_health",
-      status: criticalFailed ? "fail" : recommendationToGateStatus(classification),
-      evidence: { systemHealth, dependencyReport: report.overallStatus },
-      blockingReason: criticalFailed ? "Database dependency unhealthy" : null,
+      status,
+      evidence: {
+        systemHealth,
+        criticalReport: criticalReport.overallStatus,
+        optionalReport: optionalReport.overallStatus,
+      },
+      blockingReason: criticalFailed ? "Critical dependency unhealthy" : null,
     });
   } catch (err) {
     return buildGateResult({

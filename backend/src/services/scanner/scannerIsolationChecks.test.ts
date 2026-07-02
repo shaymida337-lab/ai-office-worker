@@ -85,11 +85,50 @@ test("detectBlockedOutcomePersistedViolations flags blocked FDR with linked paym
       },
     ],
     [],
-    [{ id: "pay-1", documentFingerprint: "fp-blocked", emailMessageId: "em-1", createdAt: NOW }],
+    [
+      {
+        id: "pay-1",
+        documentFingerprint: "fp-blocked",
+        emailMessageId: "em-1",
+        approvalStatus: "approved",
+        createdAt: NOW,
+      },
+    ],
     [],
   );
   assert.equal(violations.length, 1);
   assert.equal(violations[0]?.violationType, "blocked_outcome_persisted");
+});
+
+test("detectBlockedOutcomePersistedViolations ignores rejected payments linked by fingerprint", () => {
+  const violations = detectBlockedOutcomePersistedViolations(
+    ORG_ID,
+    [
+      {
+        id: "fdr-1",
+        source: "gmail",
+        gmailMessageId: "gmail-1",
+        reviewStatus: "needs_review",
+        uncertaintyReason: "outcome_BLOCKED:OE_TRUST_BLOCKED",
+        documentFingerprint: "fp-blocked",
+        supplierPaymentId: null,
+        parsedFieldsJson: { outcome: { status: "BLOCKED" } },
+        createdAt: NOW,
+      },
+    ],
+    [],
+    [
+      {
+        id: "pay-rejected",
+        documentFingerprint: "fp-blocked",
+        emailMessageId: "em-1",
+        approvalStatus: "rejected",
+        createdAt: NOW,
+      },
+    ],
+    [],
+  );
+  assert.equal(violations.length, 0);
 });
 
 test("detectAutoSavedWithoutAttachmentViolations flags auto_saved without attachment evidence", () => {

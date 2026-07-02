@@ -194,7 +194,7 @@ export async function loadIntegrityOrgData(
     }),
     db.supplierPayment.findMany({
       where: { organizationId },
-      select: { id: true, documentFingerprint: true, emailMessageId: true, createdAt: true },
+      select: { id: true, documentFingerprint: true, emailMessageId: true, approvalStatus: true, createdAt: true },
     }),
     db.invoice.findMany({
       where: { organizationId },

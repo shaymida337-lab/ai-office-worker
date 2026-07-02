@@ -50,6 +50,7 @@ export type ScannerIsolationSupplierPaymentRow = {
   id: string;
   documentFingerprint: string | null;
   emailMessageId: string | null;
+  approvalStatus: string | null;
   createdAt: Date;
 };
 
@@ -259,6 +260,10 @@ export function detectDuplicateSupplierPaymentViolations(
   return violations;
 }
 
+function isActiveSupplierPayment(payment: ScannerIsolationSupplierPaymentRow): boolean {
+  return payment.approvalStatus !== "rejected";
+}
+
 export function detectBlockedOutcomePersistedViolations(
   organizationId: string,
   reviews: ScannerIsolationFinancialDocumentReviewRow[],
@@ -267,8 +272,10 @@ export function detectBlockedOutcomePersistedViolations(
   invoices: ScannerIsolationInvoiceRow[],
 ): ScannerIsolationViolation[] {
   const violations: ScannerIsolationViolation[] = [];
+  const activePayments = payments.filter(isActiveSupplierPayment);
+  const activePaymentIds = new Set(activePayments.map((payment) => payment.id));
   const paymentsByFingerprint = new Map<string, string[]>();
-  for (const payment of payments) {
+  for (const payment of activePayments) {
     const fingerprint = payment.documentFingerprint?.trim();
     if (!fingerprint) continue;
     const ids = paymentsByFingerprint.get(fingerprint) ?? [];
@@ -287,7 +294,9 @@ export function detectBlockedOutcomePersistedViolations(
   for (const review of reviews) {
     if (!isBlockedOutcome(review.parsedFieldsJson, review.uncertaintyReason)) continue;
     const affected = new Set<string>([review.id]);
-    if (review.supplierPaymentId) affected.add(review.supplierPaymentId);
+    if (review.supplierPaymentId && activePaymentIds.has(review.supplierPaymentId)) {
+      affected.add(review.supplierPaymentId);
+    }
     for (const paymentId of paymentsByFingerprint.get(review.documentFingerprint) ?? []) {
       affected.add(paymentId);
     }
@@ -550,6 +559,7 @@ export async function fetchScannerIsolationViolations(
         id: true,
         documentFingerprint: true,
         emailMessageId: true,
+        approvalStatus: true,
         createdAt: true,
       },
     }),

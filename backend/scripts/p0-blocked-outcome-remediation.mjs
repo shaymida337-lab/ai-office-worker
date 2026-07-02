@@ -27,12 +27,23 @@ function isBlockedReview(row) {
       : null;
   if (typeof status === "string" && status.toUpperCase() === "BLOCKED") return true;
   const uncertainty = (row.uncertaintyReason ?? "").toLowerCase();
-  return uncertainty.includes("outcome_blocked") || uncertainty.includes("oe_trust_blocked");
+  if (uncertainty.includes("outcome_blocked") || uncertainty.includes("oe_trust_blocked")) return true;
+  if (row.supplierPaymentId) {
+    const bucket =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? String((parsed as { outcome?: { status?: string } }).outcome?.status ?? "").toUpperCase()
+        : "";
+    if (bucket === "BLOCKED") return true;
+  }
+  return false;
 }
 
 async function main() {
   const reviews = await prisma.financialDocumentReview.findMany({
-    where: organizationId ? { organizationId } : undefined,
+    where: {
+      ...(organizationId ? { organizationId } : {}),
+      OR: [{ supplierPaymentId: { not: null } }, { documentFingerprint: { not: null } }],
+    },
     select: {
       id: true,
       organizationId: true,
