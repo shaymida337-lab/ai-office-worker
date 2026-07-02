@@ -1,12 +1,24 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Check } from "lucide-react";
 import type { NatalieTimelineItem } from "@/lib/natalie/types";
 import { formatTimelineClock } from "@/lib/dashboard/home";
-import { colors, radius, shadow } from "@/lib/design-tokens";
+import { colors, radius, shadow, dashboardHome } from "@/lib/design-tokens";
 
 const EMPTY_MESSAGE =
   "ברגע שאסיים משהו חדש בשבילך, אראה את זה כאן.";
+
+function TimelineCard({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className={`${radius.card} ${shadow.soft} border p-3.5 md:p-4`}
+      style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export function DashboardActivityTimeline({
   items,
@@ -16,36 +28,37 @@ export function DashboardActivityTimeline({
   loading?: boolean;
 }) {
   const header = (
-    <h2 className="text-base font-bold leading-snug md:text-lg" style={{ color: colors.textPrimary }}>
+    <h2 className={dashboardHome.sectionTitle} style={{ color: colors.textPrimary }}>
       פעילות אחרונה
     </h2>
   );
 
   if (loading) {
     return (
-      <section className="flex h-auto min-w-0 flex-col overflow-visible" aria-label="פעילות אחרונה">
+      <section className="dashboard-fade-in flex h-auto min-w-0 flex-col overflow-visible" aria-label="פעילות אחרונה">
         {header}
-        <div className={`${radius.card} ${shadow.soft} mt-3 space-y-2 border p-3`} style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}>
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="h-12 animate-pulse rounded-lg" style={{ backgroundColor: colors.bgSoft }} />
-          ))}
-        </div>
+        <TimelineCard>
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="dashboard-shimmer h-12 rounded-xl" style={{ backgroundColor: colors.bgSoft }} />
+            ))}
+          </div>
+        </TimelineCard>
       </section>
     );
   }
 
   if (items.length === 0) {
     return (
-      <section className="flex h-auto min-w-0 flex-col overflow-visible" aria-label="פעילות אחרונה">
+      <section className="dashboard-fade-in flex h-auto min-w-0 flex-col overflow-visible" aria-label="פעילות אחרונה">
         {header}
-        <div
-          className={`${radius.card} ${shadow.soft} mt-3 flex min-h-[148px] items-center border p-4`}
-          style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
-        >
-          <p className="text-sm font-medium leading-7" style={{ color: colors.textSecondary }}>
-            {EMPTY_MESSAGE}
-          </p>
-        </div>
+        <TimelineCard>
+          <div className="flex min-h-[120px] items-center">
+            <p className={dashboardHome.conversation} style={{ color: colors.textSecondary }}>
+              {EMPTY_MESSAGE}
+            </p>
+          </div>
+        </TimelineCard>
       </section>
     );
   }
@@ -53,12 +66,9 @@ export function DashboardActivityTimeline({
   const visible = items.slice(0, 6);
 
   return (
-    <section className="flex h-auto min-w-0 flex-col overflow-visible" aria-label="פעילות אחרונה">
+    <section className="dashboard-fade-in flex h-auto min-w-0 flex-col overflow-visible" aria-label="פעילות אחרונה">
       {header}
-      <div
-        className={`${radius.card} ${shadow.soft} mt-3 border p-3 md:p-4`}
-        style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
-      >
+      <TimelineCard>
         <ol className="grid gap-2">
           {visible.map((item) => {
             const time = item.occurredAt ? formatTimelineClock(item.occurredAt) : "";
@@ -69,21 +79,25 @@ export function DashboardActivityTimeline({
                 style={{ backgroundColor: colors.bgSoft }}
               >
                 <div className="min-w-0 flex-1 text-right">
-                  <p className="text-sm font-medium leading-6" style={{ color: colors.textPrimary }}>
+                  <p className={`${dashboardHome.conversation} leading-snug`} style={{ color: colors.textPrimary }}>
                     {item.text}
                   </p>
                   {time && (
-                    <time className="text-xs tabular-nums leading-5" style={{ color: colors.textMuted }} dateTime={item.occurredAt}>
+                    <time
+                      className="text-xs tabular-nums leading-5"
+                      style={{ color: colors.textMuted }}
+                      dateTime={item.occurredAt}
+                    >
                       {time}
                     </time>
                   )}
                 </div>
-                <Check className="mt-1 h-3.5 w-3.5 shrink-0" style={{ color: colors.successText }} strokeWidth={2.5} />
+                <Check className="mt-1 h-3.5 w-3.5 shrink-0" style={{ color: colors.successText }} strokeWidth={2.5} aria-hidden />
               </li>
             );
           })}
         </ol>
-      </div>
+      </TimelineCard>
     </section>
   );
 }

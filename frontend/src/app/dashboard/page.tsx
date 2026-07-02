@@ -5,11 +5,13 @@ import { Nav } from "@/components/Nav";
 import {
   NatalieMorningBrief,
   NatalieYourDay,
-  NatalieSmartSuggestions,
-  NatalieTopBar,
   BusinessSnapshot,
   DashboardActivityTimeline,
+  DashboardQuickActions,
+  quickActionIcons,
+  NatalieTopBar,
 } from "@/components/dashboard";
+import { NatalieCommandBar } from "@/components/dashboard/NatalieCommandBar";
 import { DashboardHomeStatus } from "@/components/dashboard/home/DashboardHomeStatus";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ScanBanner } from "@/components/ui/ScanBanner";
@@ -53,7 +55,7 @@ export default function DashboardPage() {
     >
       <Nav />
 
-      <div className="mx-auto grid h-auto min-w-0 max-w-6xl gap-3 overflow-x-hidden md:gap-4 lg:gap-5">
+      <div className="dashboard-home-stack mx-auto grid h-auto min-w-0 max-w-6xl gap-4 overflow-x-hidden md:gap-5 lg:gap-6">
         {(d.pageError || d.displayActionMessage || d.displayToast) && (
           <MessageStack error={d.pageError} actionMessage={d.displayActionMessage} toast={d.displayToast} />
         )}
@@ -91,38 +93,68 @@ export default function DashboardPage() {
             />
           </div>
         ) : (
-          <div id="gmail-scan-progress" />
+          <div id="gmail-scan-progress" className="dashboard-home-section" />
         )}
-
-        <NatalieYourDay items={d.yourDayItems} loading={d.pageLoading} />
 
         <BusinessSnapshot metrics={d.snapshotMetrics} loading={d.pageLoading} />
 
-        <div id="natalie-command">
-          <NatalieSmartSuggestions
-            suggestions={d.smartSuggestions}
+        <NatalieYourDay items={d.yourDayItems} loading={d.pageLoading} />
+
+        <div id="natalie-command" className="dashboard-home-section space-y-4">
+          <DashboardQuickActions
+            actions={[
+              {
+                id: "ask-natalie",
+                label: "שאל את נטלי",
+                icon: quickActionIcons.ask,
+                onClick: () => {
+                  document.getElementById("natalie-command")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  window.setTimeout(() => document.getElementById("natalie-command-input")?.focus(), 280);
+                },
+              },
+              {
+                id: "scan-email",
+                label: "סרוק מיילים",
+                icon: quickActionIcons.scan,
+                onClick: () => void d.runSync(),
+                disabled: d.syncing,
+              },
+              {
+                id: "upload-document",
+                label: "העלה מסמך",
+                icon: quickActionIcons.upload,
+                onClick: () => d.router.push("/camera"),
+              },
+            ]}
+          />
+          <NatalieCommandBar
             onSubmit={d.handleNatalieConversation}
             onScan={d.runSync}
-            onConnect={() => void d.connectGmail()}
+            suggestions={[]}
           />
         </div>
 
-        <div className="hidden md:block">
+        <div className="dashboard-home-section hidden md:block">
           <DashboardActivityTimeline items={d.activityTimeline} loading={d.pageLoading} />
         </div>
 
-        <section className="dashboard-fade-in lg:max-w-2xl">
-          <p className={`mb-2 ${typography.caption} font-semibold`} style={{ color: colors.textMuted }}>
+        <section className="dashboard-fade-in dashboard-home-section lg:max-w-2xl">
+          <h2 className={`mb-2.5 ${typography.sectionTitle}`} style={{ color: colors.textPrimary }}>
             חיבורים
-          </p>
-          <IntegrationStatusCard
-            icon="📬"
-            title="Gmail"
-            compact
-            model={d.gmailIntegrationModel}
-            actions={d.gmailCardActions}
-            detailsTitle="פרטים נוספים"
-          />
+          </h2>
+          <div
+            className={`${radius.card} ${shadow.soft} border p-4 md:p-5`}
+            style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+          >
+            <IntegrationStatusCard
+              icon="📬"
+              title="Gmail"
+              compact
+              model={d.gmailIntegrationModel}
+              actions={d.gmailCardActions}
+              detailsTitle="פרטים נוספים"
+            />
+          </div>
         </section>
 
         <details className={`${radius.card} border`} style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}>

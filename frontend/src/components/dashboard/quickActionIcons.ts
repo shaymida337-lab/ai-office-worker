@@ -1,19 +1,8 @@
-import {
-  Camera,
-  ListPlus,
-  MessageCircle,
-  Sparkles,
-} from "lucide-react";
+import { Mail, MessageCircle, Upload } from "lucide-react";
 
+/** Locked Home Dashboard quick action icons — one size family. */
 export const quickActionIcons = {
-  invoice: Camera,
-  task: ListPlus,
-  reminder: MessageCircle,
-  briefing: Sparkles,
-  scan: Camera,
-  chat: MessageCircle,
-  meeting: ListPlus,
-  payments: ListPlus,
-  import: Camera,
-  camera: Camera,
+  ask: MessageCircle,
+  scan: Mail,
+  upload: Upload,
 };

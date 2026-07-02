@@ -102,15 +102,15 @@ export function NatalieYourDay({
 }) {
   return (
     <section id="natalie-decisions" className="dashboard-fade-in" aria-label="היום שלך">
-      <h2 className={dashboardHome.sectionTitle} style={{ color: colors.textPrimary }}>
+      <h2 className={`mb-2.5 ${dashboardHome.sectionTitle}`} style={{ color: colors.textPrimary }}>
         היום שלך
       </h2>
-      <p className={`mt-1 ${dashboardHome.sectionSubtitle}`} style={{ color: colors.textSecondary }}>
+      <p className={`mb-3 ${dashboardHome.sectionSubtitle}`} style={{ color: colors.textSecondary }}>
         מה מחכה לך עכשיו
       </p>
 
       <div
-        className={`${radius.card} ${shadow.soft} mt-3 border p-3 md:p-4`}
+        className={`${radius.card} ${shadow.soft} border p-3.5 md:p-4`}
         style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
       >
         {loading ? (

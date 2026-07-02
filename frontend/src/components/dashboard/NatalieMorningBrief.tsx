@@ -21,11 +21,12 @@ export function NatalieMorningBrief({
       type="button"
       onClick={onCta}
       disabled={loading}
-      className={`${radius.control} ${button.primary} ${dashboardHome.heroButton} w-full min-h-[52px] max-w-full md:max-w-sm`}
+      className={`${radius.control} ${button.primary} ${dashboardHome.heroButton} w-full min-h-[52px] max-w-full transition duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 active:scale-[0.99] md:max-w-sm`}
       style={{
         backgroundColor: colors.accent,
         border: `1px solid ${colors.accent}`,
         color: colors.surface,
+        outlineColor: colors.surface,
       }}
     >
       {ctaLabel}

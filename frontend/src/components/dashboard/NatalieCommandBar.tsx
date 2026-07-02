@@ -39,8 +39,8 @@ export function NatalieCommandBar({
   }
 
   return (
-    <section className="text-right" aria-label="בקשה מנטלי">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+    <section className="dashboard-fade-in min-w-0 text-right" aria-label="בקשה מנטלי">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2.5">
         <label htmlFor="natalie-command-input" className="sr-only">
           בקש משהו מנטלי
         </label>
@@ -51,45 +51,50 @@ export function NatalieCommandBar({
           onChange={(event) => setValue(event.target.value)}
           placeholder="בקש משהו מנטלי..."
           dir="rtl"
-          className={`min-h-[52px] min-w-0 w-full border px-4 py-3 ${dashboardHome.prompt} ${radius.control}`}
+          className={`min-h-11 min-w-0 w-full border px-4 py-3 transition duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${dashboardHome.prompt} ${radius.control}`}
           style={{
             backgroundColor: colors.surface,
             borderColor: colors.border,
             color: colors.textPrimary,
             boxShadow: "0 2px 8px rgba(15,23,42,0.04)",
+            outlineColor: colors.accent,
           }}
         />
         <button
           type="submit"
-          className={`${radius.control} ${button.primary} ${dashboardHome.heroButton} min-h-[48px] w-full shrink-0 px-5 sm:hidden`}
+          className={`${radius.control} ${button.primary} ${dashboardHome.heroButton} min-h-11 w-full shrink-0 px-5 transition duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 active:scale-[0.99] sm:hidden`}
           style={{
             backgroundColor: colors.accent,
             border: `1px solid ${colors.accent}`,
             color: colors.surface,
+            outlineColor: colors.surface,
           }}
         >
           שלח לנטלי
         </button>
       </form>
 
-      <ul className="mt-2.5 flex flex-wrap justify-end gap-1.5">
-        {suggestions.map((suggestion) => (
-          <li key={suggestion}>
-            <button
-              type="button"
-              onClick={() => handleSuggestion(suggestion)}
-              className={`${radius.pill} min-h-[36px] border px-3 py-1.5 ${dashboardHome.prompt}`}
-              style={{
-                backgroundColor: colors.surface,
-                borderColor: colors.borderSubtle,
-                color: colors.textSecondary,
-              }}
-            >
-              {suggestion}
-            </button>
-          </li>
-        ))}
-      </ul>
+      {suggestions.length > 0 ? (
+        <ul className="mt-2.5 flex flex-wrap justify-end gap-1.5">
+          {suggestions.map((suggestion) => (
+            <li key={suggestion}>
+              <button
+                type="button"
+                onClick={() => handleSuggestion(suggestion)}
+                className={`${radius.pill} min-h-11 border px-3 py-1.5 transition duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${dashboardHome.prompt}`}
+                style={{
+                  backgroundColor: colors.surface,
+                  borderColor: colors.borderSubtle,
+                  color: colors.textSecondary,
+                  outlineColor: colors.accent,
+                }}
+              >
+                {suggestion}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </section>
   );
 }

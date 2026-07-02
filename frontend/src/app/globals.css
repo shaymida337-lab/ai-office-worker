@@ -1037,6 +1037,18 @@ mark {
   animation: dashboardFadeIn 0.35s ease-out both;
 }
 
+.dashboard-home-stack > .dashboard-home-section,
+.dashboard-home-stack > section,
+.dashboard-home-stack > .dashboard-fade-in {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dashboard-home-section {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .dashboard-chip-in {
   animation: dashboardChipIn 0.28s ease-out both;
 }
