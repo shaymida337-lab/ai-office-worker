@@ -88,6 +88,14 @@ cronRouter.post("/upcoming-alerts", async (_req, res) => {
   res.json({ ok: true });
 });
 
+cronRouter.post("/calendar-google-sync-retries", async (req, res) => {
+  const rawLimit = Number(req.body?.limit);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 500) : 50;
+  const { runDueAppointmentGoogleSyncRetries } = await import("../services/appointmentGoogleSync.js");
+  const result = await runDueAppointmentGoogleSyncRetries(limit);
+  res.json({ ok: true, ...result });
+});
+
 /** Read-only remediation helper: live Gmail mailbox profile per integration. No DB writes. */
 cronRouter.get("/gmail-mailbox-verification", async (_req, res) => {
   const {

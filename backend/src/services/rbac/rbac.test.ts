@@ -146,3 +146,27 @@ test("forbidden financial actions for employee role", () => {
     assert.equal(roleGrantsPermission("employee", permission), false, permission);
   }
 });
+
+test("calendar permissions matrix is explicit and consistent", () => {
+  const calendarPermissions: PlatformPermission[] = [
+    "calendar.view",
+    "calendar.create",
+    "calendar.update",
+    "calendar.cancel",
+    "calendar.reschedule",
+    "calendar.approve_decision",
+  ];
+
+  for (const permission of calendarPermissions) {
+    assert.equal(roleGrantsPermission("owner", permission), true, `owner should allow ${permission}`);
+    assert.equal(roleGrantsPermission("admin", permission), true, `admin should allow ${permission}`);
+  }
+
+  assert.equal(roleGrantsPermission("employee", "calendar.view"), true);
+  assert.equal(roleGrantsPermission("employee", "calendar.create"), true);
+  assert.equal(roleGrantsPermission("employee", "calendar.approve_decision"), false);
+
+  assert.equal(roleGrantsPermission("read_only", "calendar.view"), true);
+  assert.equal(roleGrantsPermission("read_only", "calendar.create"), false);
+  assert.equal(roleGrantsPermission("read_only", "calendar.cancel"), false);
+});

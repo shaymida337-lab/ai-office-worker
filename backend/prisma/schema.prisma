@@ -93,6 +93,7 @@ model Organization {
   calendarEvents  CalendarEvent[]
   calendarEventAudits CalendarEventAudit[]
   platformAuditLogs PlatformAuditLog[]
+  apiIdempotencyKeys ApiIdempotencyKey[]
   releaseCertificates ReleaseCertificateRecord[]
   workCaseTimelineEntries WorkCaseTimelineEntry[]
   ownerDecisionQueueItems OwnerDecisionQueueItem[]
@@ -1013,6 +1014,11 @@ model Appointment {
   durationMinutes Int
   status          String   @default("pending")
   googleEventId   String?
+  googleSyncStatus String @default("disabled")
+  lastGoogleSyncError String?
+  lastGoogleSyncAt DateTime?
+  googleSyncAttemptCount Int @default(0)
+  nextGoogleSyncRetryAt DateTime?
   source          String?  @default("manual")
   notes           String?
   createdAt       DateTime @default(now())
@@ -1020,6 +1026,7 @@ model Appointment {
 
   @@index([organizationId, startTime])
   @@index([organizationId, status])
+  @@index([organizationId, googleSyncStatus, nextGoogleSyncRetryAt])
   @@index([clientId])
 }
 
@@ -1319,5 +1326,23 @@ model OwnerDecisionQueueItem {
   @@index([organizationId, status, createdAt])
   @@index([calendarEventId, status])
   @@index([workCaseId, status])
+}
+
+model ApiIdempotencyKey {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  routeKey       String
+  idempotencyKey String
+  requestHash    String
+  statusCode     Int?
+  responseBodyJson Json?
+  completedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, routeKey, idempotencyKey])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, routeKey, createdAt])
 }
 

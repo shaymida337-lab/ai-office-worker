@@ -38,6 +38,17 @@ function mockFindMany(rows: ReturnType<typeof existingRow>[]) {
   };
 }
 
+function mockSchedulingTransaction() {
+  const originalTransaction = prisma.$transaction.bind(prisma);
+  const originalExecuteRaw = prisma.$executeRaw.bind(prisma);
+  prisma.$transaction = (async (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma)) as typeof prisma.$transaction;
+  prisma.$executeRaw = (async () => 1) as typeof prisma.$executeRaw;
+  return () => {
+    prisma.$transaction = originalTransaction;
+    prisma.$executeRaw = originalExecuteRaw;
+  };
+}
+
 test("checkAppointmentConflict detects overlapping appointments", async () => {
   const restore = mockFindMany([existingRow("a1", at("2026-06-20T10:00:00.000Z"), 60)]);
   try {
@@ -118,6 +129,7 @@ test("checkAppointmentConflict detects long-duration appointments that started b
 
 test("createAppointmentForOrganization blocks manual overlapping creation", async () => {
   const restoreFindMany = mockFindMany([existingRow("existing", at("2026-06-20T10:00:00.000Z"), 60)]);
+  const restoreTx = mockSchedulingTransaction();
   const originalFindClient = prisma.client.findFirst.bind(prisma.client);
   const originalCreate = prisma.appointment.create.bind(prisma.appointment);
 
@@ -139,6 +151,7 @@ test("createAppointmentForOrganization blocks manual overlapping creation", asyn
       (err: unknown) => err instanceof AppointmentConflictError && err.code === "time_conflict"
     );
   } finally {
+    restoreTx();
     restoreFindMany();
     prisma.client.findFirst = originalFindClient;
     prisma.appointment.create = originalCreate;
@@ -147,6 +160,7 @@ test("createAppointmentForOrganization blocks manual overlapping creation", asyn
 
 test("createAppointmentForOrganization blocks Natalie overlapping creation", async () => {
   const restoreFindMany = mockFindMany([existingRow("existing", at("2026-06-20T14:00:00.000Z"), 30)]);
+  const restoreTx = mockSchedulingTransaction();
   const originalFindClient = prisma.client.findFirst.bind(prisma.client);
   const originalCreate = prisma.appointment.create.bind(prisma.appointment);
 
@@ -168,6 +182,7 @@ test("createAppointmentForOrganization blocks Natalie overlapping creation", asy
       (err: unknown) => err instanceof AppointmentConflictError
     );
   } finally {
+    restoreTx();
     restoreFindMany();
     prisma.client.findFirst = originalFindClient;
     prisma.appointment.create = originalCreate;
@@ -176,6 +191,7 @@ test("createAppointmentForOrganization blocks Natalie overlapping creation", asy
 
 test("createAppointmentForOrganization creates non-overlapping appointments", async () => {
   const restoreFindMany = mockFindMany([]);
+  const restoreTx = mockSchedulingTransaction();
   const originalFindClient = prisma.client.findFirst.bind(prisma.client);
   const originalCreate = prisma.appointment.create.bind(prisma.appointment);
   const originalIntegration = prisma.integration.findUnique.bind(prisma.integration);
@@ -212,6 +228,7 @@ test("createAppointmentForOrganization creates non-overlapping appointments", as
     });
     assert.equal(result.id, "new-appt");
   } finally {
+    restoreTx();
     restoreFindMany();
     prisma.client.findFirst = originalFindClient;
     prisma.appointment.create = originalCreate;
@@ -220,6 +237,7 @@ test("createAppointmentForOrganization creates non-overlapping appointments", as
 });
 
 test("createAppointmentForOrganization skips conflict check for cancelled status", async () => {
+  const restoreTx = mockSchedulingTransaction();
   const originalFindMany = prisma.appointment.findMany.bind(prisma.appointment);
   const originalFindClient = prisma.client.findFirst.bind(prisma.client);
   const originalCreate = prisma.appointment.create.bind(prisma.appointment);
@@ -264,6 +282,7 @@ test("createAppointmentForOrganization skips conflict check for cancelled status
     assert.equal(result.status, "cancelled");
     assert.equal(conflictChecked, false);
   } finally {
+    restoreTx();
     prisma.appointment.findMany = originalFindMany;
     prisma.client.findFirst = originalFindClient;
     prisma.appointment.create = originalCreate;

@@ -10,6 +10,7 @@ const ORG_A = "org-api-a";
 const ORG_B = "org-api-b";
 const AUTH_A: JwtPayload = { organizationId: ORG_A, userId: "user-a", email: "a@example.com" };
 const AUTH_B: JwtPayload = { organizationId: ORG_B, userId: "user-b", email: "b@example.com" };
+const AUTH_READ_ONLY: JwtPayload = { organizationId: ORG_A, userId: "user-read", email: "read@example.com" };
 
 type Store = ReturnType<typeof createStore>;
 
@@ -33,6 +34,7 @@ function installMocks(store: Store) {
     appointmentFindMany: prisma.appointment.findMany.bind(prisma.appointment),
     organizationFindFirst: prisma.organization.findFirst.bind(prisma.organization),
     organizationFindUnique: prisma.organization.findUnique.bind(prisma.organization),
+    organizationMemberFindUnique: prisma.organizationMember.findUnique.bind(prisma.organizationMember),
     workCaseCreate: prisma.workCase.create.bind(prisma.workCase),
     workCaseFindMany: prisma.workCase.findMany.bind(prisma.workCase),
     workCaseFindFirst: prisma.workCase.findFirst.bind(prisma.workCase),
@@ -57,7 +59,8 @@ function installMocks(store: Store) {
   prisma.organization.findUnique = (async (args) => {
     const orgId = args?.where?.id as string | undefined;
     if (orgId !== ORG_A && orgId !== ORG_B) return null;
-    return {
+      return {
+        userId: orgId === ORG_A ? AUTH_A.userId : AUTH_B.userId,
       calendarEngineReadEnabled: true,
       calendarEngineWriteEnabled: true,
       calendarEngineGoogleMirrorEnabled: true,
@@ -72,6 +75,20 @@ function installMocks(store: Store) {
       },
     };
   }) as typeof prisma.organization.findUnique;
+  prisma.organizationMember.findUnique = (async (args) => {
+    const orgId = args?.where?.organizationId_userId?.organizationId;
+    const userId = args?.where?.organizationId_userId?.userId;
+    if (
+      (orgId === ORG_A && userId === AUTH_A.userId) ||
+      (orgId === ORG_B && userId === AUTH_B.userId)
+    ) {
+      return { id: "membership-1", role: "owner" };
+    }
+    if (orgId === ORG_A && userId === AUTH_READ_ONLY.userId) {
+      return { id: "membership-read", role: "read_only" };
+    }
+    return null;
+  }) as typeof prisma.organizationMember.findUnique;
   prisma.organization.findFirst = (async (args) => {
     const orgId = args?.where?.id as string;
     if (orgId === ORG_A) {
@@ -315,6 +332,7 @@ function installMocks(store: Store) {
 
   return () => {
     Object.assign(prisma, originals);
+    prisma.organizationMember.findUnique = originals.organizationMemberFindUnique;
   };
 }
 
@@ -363,6 +381,8 @@ function disableFlags() {
 
 test("calendar engine routes return 503 when flags disabled", async () => {
   disableFlags();
+  const store = createStore();
+  const restore = installMocks(store);
   try {
     await withServer(AUTH_A, async (baseUrl) => {
       const res = await api(baseUrl, "/work-cases");
@@ -370,6 +390,7 @@ test("calendar engine routes return 503 when flags disabled", async () => {
       assert.equal(res.body.code, "CALENDAR_ENGINE_DISABLED");
     });
   } finally {
+    restore();
     enableFlags();
   }
 });
@@ -391,6 +412,28 @@ test("POST /calendar/events rejects organizationId from body", async () => {
       });
       assert.equal(res.status, 403);
       assert.equal(res.body.code, "FORBIDDEN");
+    });
+  } finally {
+    restore();
+  }
+});
+
+test("read_only cannot create calendar event (403)", async () => {
+  enableFlags();
+  const store = createStore();
+  const restore = installMocks(store);
+  try {
+    await withServer(AUTH_READ_ONLY, async (baseUrl) => {
+      const res = await api(baseUrl, "/calendar/events", {
+        method: "POST",
+        body: JSON.stringify({
+          startAt: "2026-06-25T10:00:00.000Z",
+          endAt: "2026-06-25T11:00:00.000Z",
+          clientId: "client-1",
+        }),
+      });
+      assert.equal(res.status, 403);
+      assert.equal(res.body.error, "Forbidden");
     });
   } finally {
     restore();

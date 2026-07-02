@@ -292,6 +292,25 @@ type AppointmentCalendarPayload = {
   service?: { name?: string | null } | null;
 };
 
+export class GoogleCalendarSyncError extends Error {
+  readonly code:
+    | "calendar_disabled"
+    | "google_not_found"
+    | "google_api_error";
+  readonly statusCode?: number;
+
+  constructor(
+    code: "calendar_disabled" | "google_not_found" | "google_api_error",
+    message: string,
+    statusCode?: number
+  ) {
+    super(message);
+    this.name = "GoogleCalendarSyncError";
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
 function buildAppointmentEventSummary(
   appointment: Pick<AppointmentCalendarPayload, "client" | "service">
 ): string {
@@ -330,6 +349,83 @@ function isGoogleCalendarEventNotFoundError(err: unknown): boolean {
   const candidate = err as { code?: number; status?: number; response?: { status?: number } };
   const status = candidate.code ?? candidate.status ?? candidate.response?.status;
   return status === 404 || status === 410;
+}
+
+function googleErrorStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const candidate = err as { code?: number; status?: number; response?: { status?: number } };
+  return candidate.code ?? candidate.status ?? candidate.response?.status;
+}
+
+export async function upsertGoogleCalendarEventForAppointmentStrict(
+  appointment: AppointmentCalendarPayload & { googleEventId?: string | null }
+): Promise<string> {
+  const calendar = await getCalendarClientForOrganization(appointment.organizationId);
+  if (!calendar) {
+    throw new GoogleCalendarSyncError(
+      "calendar_disabled",
+      "Google Calendar integration is not connected for organization"
+    );
+  }
+
+  try {
+    if (appointment.googleEventId) {
+      await calendar.events.update({
+        calendarId: "primary",
+        eventId: appointment.googleEventId,
+        requestBody: buildAppointmentEventRequestBody(appointment),
+      });
+      return appointment.googleEventId;
+    }
+
+    const created = await calendar.events.insert({
+      calendarId: "primary",
+      requestBody: buildAppointmentEventRequestBody(appointment),
+    });
+    const newId = created.data.id ?? null;
+    if (!newId) {
+      throw new GoogleCalendarSyncError("google_api_error", "Google Calendar did not return an event id");
+    }
+    return newId;
+  } catch (err) {
+    const status = googleErrorStatus(err);
+    if (status === 404 || status === 410) {
+      throw new GoogleCalendarSyncError("google_not_found", "Google Calendar event not found", status);
+    }
+    throw new GoogleCalendarSyncError(
+      "google_api_error",
+      err instanceof Error ? err.message : "Unknown Google Calendar API error",
+      status
+    );
+  }
+}
+
+export async function deleteGoogleCalendarEventForAppointmentStrict(
+  organizationId: string,
+  googleEventId: string
+): Promise<void> {
+  const calendar = await getCalendarClientForOrganization(organizationId);
+  if (!calendar) {
+    throw new GoogleCalendarSyncError(
+      "calendar_disabled",
+      "Google Calendar integration is not connected for organization"
+    );
+  }
+
+  try {
+    await calendar.events.delete({
+      calendarId: "primary",
+      eventId: googleEventId,
+    });
+  } catch (err) {
+    const status = googleErrorStatus(err);
+    if (status === 404 || status === 410) return;
+    throw new GoogleCalendarSyncError(
+      "google_api_error",
+      err instanceof Error ? err.message : "Unknown Google Calendar API error",
+      status
+    );
+  }
 }
 
 export async function createGoogleCalendarEventForAppointment(

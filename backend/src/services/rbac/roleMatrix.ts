@@ -10,6 +10,7 @@ const VIEW_AND_REPORT: readonly PlatformPermission[] = [
   "document.view",
   "dashboard.view",
   "report.view",
+  "calendar.view",
 ];
 
 /**
@@ -29,6 +30,11 @@ export const ROLE_PERMISSION_MATRIX: Readonly<Record<PlatformRole, readonly Plat
     "invoice.update",
     "audit.view",
     "work.view",
+    "calendar.create",
+    "calendar.update",
+    "calendar.cancel",
+    "calendar.reschedule",
+    "calendar.approve_decision",
   ],
 
   employee: [
@@ -40,6 +46,11 @@ export const ROLE_PERMISSION_MATRIX: Readonly<Record<PlatformRole, readonly Plat
     "payment.view",
     "invoice.view",
     "review.view",
+    "calendar.view",
+    "calendar.create",
+    "calendar.update",
+    "calendar.cancel",
+    "calendar.reschedule",
   ],
 
   read_only: [...VIEW_AND_REPORT],

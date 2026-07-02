@@ -41,8 +41,15 @@ import {
   rejectOrganizationIdInBody,
   validateEventTimeRange,
 } from "./calendarEngineValidation.js";
+import { requirePerm } from "../services/rbac/index.js";
 
 export const calendarEngineRouter = Router();
+const requireCalendarViewPermission = requirePerm("calendar.view");
+const requireCalendarCreatePermission = requirePerm("calendar.create");
+const requireCalendarUpdatePermission = requirePerm("calendar.update");
+const requireCalendarCancelPermission = requirePerm("calendar.cancel");
+const requireCalendarReschedulePermission = requirePerm("calendar.reschedule");
+const requireCalendarApproveDecisionPermission = requirePerm("calendar.approve_decision");
 
 function requireCalendarEngineRead(req: Request, res: Response, next: NextFunction) {
   void resolveCalendarEngineFlags(req.auth!.organizationId)
@@ -97,6 +104,7 @@ function handleRoute(handler: (req: Request, res: Response) => Promise<void>) {
 
 calendarEngineRouter.get(
   "/work-cases",
+  requireCalendarViewPermission,
   requireCalendarEngineRead,
   handleRoute(async (req, res) => {
     const organizationId = req.auth!.organizationId;
@@ -131,6 +139,7 @@ calendarEngineRouter.get(
 
 calendarEngineRouter.post(
   "/work-cases",
+  requireCalendarCreatePermission,
   requireCalendarEngineWrite,
   handleRoute(async (req, res) => {
     const organizationId = req.auth!.organizationId;
@@ -157,6 +166,7 @@ calendarEngineRouter.post(
 
 calendarEngineRouter.get(
   "/work-cases/:id",
+  requireCalendarViewPermission,
   requireCalendarEngineRead,
   handleRoute(async (req, res) => {
     const workCase = await getWorkCaseById(req.auth!.organizationId, routeParam(req.params.id, "id"));
@@ -166,6 +176,7 @@ calendarEngineRouter.get(
 
 calendarEngineRouter.get(
   "/work-cases/:id/timeline",
+  requireCalendarViewPermission,
   requireCalendarEngineRead,
   handleRoute(async (req, res) => {
     const organizationId = req.auth!.organizationId;
@@ -199,6 +210,7 @@ calendarEngineRouter.get(
 
 calendarEngineRouter.post(
   "/work-cases/:id/notes",
+  requireCalendarUpdatePermission,
   requireCalendarEngineWrite,
   handleRoute(async (req, res) => {
     const organizationId = req.auth!.organizationId;
@@ -223,6 +235,7 @@ calendarEngineRouter.post(
 
 calendarEngineRouter.post(
   "/calendar/events/check-conflicts",
+  requireCalendarViewPermission,
   requireCalendarEngineRead,
   handleRoute(async (req, res) => {
     const organizationId = req.auth!.organizationId;
@@ -248,6 +261,7 @@ calendarEngineRouter.post(
 
 calendarEngineRouter.get(
   "/calendar/events",
+  requireCalendarViewPermission,
   requireCalendarEngineRead,
   handleRoute(async (req, res) => {
     const organizationId = req.auth!.organizationId;
@@ -276,6 +290,7 @@ calendarEngineRouter.get(
 
 calendarEngineRouter.post(
   "/calendar/events",
+  requireCalendarCreatePermission,
   requireCalendarEngineWrite,
   handleRoute(async (req, res) => {
     const organizationId = req.auth!.organizationId;
@@ -313,6 +328,7 @@ calendarEngineRouter.post(
 
 calendarEngineRouter.get(
   "/calendar/events/:id",
+  requireCalendarViewPermission,
   requireCalendarEngineRead,
   handleRoute(async (req, res) => {
     const event = await getCalendarEventById(req.auth!.organizationId, routeParam(req.params.id, "id"));
@@ -322,6 +338,7 @@ calendarEngineRouter.get(
 
 calendarEngineRouter.patch(
   "/calendar/events/:id",
+  requireCalendarUpdatePermission,
   requireCalendarEngineWrite,
   handleRoute(async (req, res) => {
     const organizationId = req.auth!.organizationId;
@@ -350,6 +367,7 @@ calendarEngineRouter.patch(
 
 calendarEngineRouter.post(
   "/calendar/events/:id/submit-for-confirmation",
+  requireCalendarApproveDecisionPermission,
   requireCalendarEngineWrite,
   handleRoute(async (req, res) => {
     const result = await submitCalendarEventForConfirmation(
@@ -363,6 +381,7 @@ calendarEngineRouter.post(
 
 calendarEngineRouter.post(
   "/calendar/events/:id/request-cancel",
+  requireCalendarCancelPermission,
   requireCalendarEngineWrite,
   handleRoute(async (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -380,6 +399,7 @@ calendarEngineRouter.post(
 
 calendarEngineRouter.post(
   "/calendar/events/:id/request-reschedule",
+  requireCalendarReschedulePermission,
   requireCalendarEngineWrite,
   handleRoute(async (req, res) => {
     const organizationId = req.auth!.organizationId;
@@ -402,6 +422,7 @@ calendarEngineRouter.post(
 
 calendarEngineRouter.post(
   "/calendar/events/:id/complete",
+  requireCalendarUpdatePermission,
   requireCalendarEngineWrite,
   handleRoute(async (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -422,6 +443,7 @@ calendarEngineRouter.post(
 
 calendarEngineRouter.post(
   "/calendar/events/:id/no-show",
+  requireCalendarUpdatePermission,
   requireCalendarEngineWrite,
   handleRoute(async (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -439,6 +461,7 @@ calendarEngineRouter.post(
 
 calendarEngineRouter.post(
   "/calendar/events/:id/prerequisites/:itemId/pass",
+  requireCalendarUpdatePermission,
   requireCalendarEngineWrite,
   handleRoute(async (req, res) => {
     const organizationId = req.auth!.organizationId;
@@ -469,6 +492,7 @@ calendarEngineRouter.post(
 
 calendarEngineRouter.get(
   "/owner-decisions",
+  requireCalendarViewPermission,
   requireCalendarEngineRead,
   handleRoute(async (req, res) => {
     const organizationId = req.auth!.organizationId;
@@ -498,6 +522,7 @@ calendarEngineRouter.get(
 
 calendarEngineRouter.get(
   "/owner-decisions/:id",
+  requireCalendarViewPermission,
   requireCalendarEngineRead,
   handleRoute(async (req, res) => {
     const item = await getDecisionQueueItemById(req.auth!.organizationId, routeParam(req.params.id, "id"));
@@ -507,6 +532,7 @@ calendarEngineRouter.get(
 
 calendarEngineRouter.post(
   "/owner-decisions/:id/approve",
+  requireCalendarApproveDecisionPermission,
   requireCalendarEngineWrite,
   handleRoute(async (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -527,6 +553,7 @@ calendarEngineRouter.post(
 
 calendarEngineRouter.post(
   "/owner-decisions/:id/reject",
+  requireCalendarApproveDecisionPermission,
   requireCalendarEngineWrite,
   handleRoute(async (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;

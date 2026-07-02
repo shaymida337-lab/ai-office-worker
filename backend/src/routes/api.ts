@@ -72,6 +72,7 @@ import {
   resolveAppointmentDateTime,
   updateAppointmentForOrganization,
 } from "../services/appointmentService.js";
+import { runAppointmentGoogleSync } from "../services/appointmentGoogleSync.js";
 import {
   bookAppointmentViaNatalie,
   cancelAppointmentViaNatalie,
@@ -82,6 +83,11 @@ import {
 } from "../services/scheduling/schedulingFacade.js";
 import { getBriefingSchedulingSnapshot } from "../services/scheduling/briefingSchedulingReader.js";
 import { getSchedulingCapabilities } from "../services/scheduling/schedulingCapabilities.js";
+import {
+  beginIdempotentRequest,
+  completeIdempotentRequest,
+  idempotencyErrorResponse,
+} from "../services/idempotency.js";
 import {
   ACCURACY_ANALYTICS_ROUTE_PATH,
   getAccuracyAnalyticsForOrganization,
@@ -103,6 +109,11 @@ import { releaseCertificateRouter } from "./releaseCertificateRoutes.js";
 import { requirePerm } from "../services/rbac/index.js";
 
 export const apiRouter = Router();
+const requireCalendarView = requirePerm("calendar.view");
+const requireCalendarCreate = requirePerm("calendar.create");
+const requireCalendarUpdate = requirePerm("calendar.update");
+const requireCalendarCancel = requirePerm("calendar.cancel");
+const requireCalendarReschedule = requirePerm("calendar.reschedule");
 
 function routeId(req: Request, key = "id"): string {
   return String(req.params[key]);
@@ -2669,7 +2680,7 @@ apiRouter.post("/natalie/create-task", async (req, res) => {
   }
 });
 
-apiRouter.post("/natalie/create-appointment", async (req, res) => {
+apiRouter.post("/natalie/create-appointment", requireCalendarCreate, async (req, res) => {
   const body = (req.body ?? {}) as {
     clientName?: unknown;
     dayReference?: unknown;
@@ -2683,41 +2694,52 @@ apiRouter.post("/natalie/create-appointment", async (req, res) => {
   const userId = req.auth!.userId;
 
   try {
-    const result = await bookAppointmentViaNatalie({
+    const response = await handleIdempotentRequest({
+      req,
+      routeKey: "POST:/natalie/create-appointment",
       organizationId,
-      userId,
-      clientName: typeof body.clientName === "string" ? body.clientName : "",
-      dayReference: typeof body.dayReference === "string" ? body.dayReference : undefined,
-      time: typeof body.time === "string" ? body.time : undefined,
-      startTime: typeof body.startTime === "string" ? body.startTime : undefined,
-      durationMinutes:
-        typeof body.durationMinutes === "number" && Number.isFinite(body.durationMinutes)
-          ? body.durationMinutes
-          : undefined,
-      serviceName: typeof body.serviceName === "string" ? body.serviceName : undefined,
-      notes: typeof body.notes === "string" ? body.notes : undefined,
-    });
+      body: body as Record<string, unknown>,
+      execute: async () => {
+        const result = await bookAppointmentViaNatalie({
+          organizationId,
+          userId,
+          clientName: typeof body.clientName === "string" ? body.clientName : "",
+          dayReference: typeof body.dayReference === "string" ? body.dayReference : undefined,
+          time: typeof body.time === "string" ? body.time : undefined,
+          startTime: typeof body.startTime === "string" ? body.startTime : undefined,
+          durationMinutes:
+            typeof body.durationMinutes === "number" && Number.isFinite(body.durationMinutes)
+              ? body.durationMinutes
+              : undefined,
+          serviceName: typeof body.serviceName === "string" ? body.serviceName : undefined,
+          notes: typeof body.notes === "string" ? body.notes : undefined,
+        });
 
-    if (!result.engine) {
-      res.status(201).json(result.appointment);
-      return;
-    }
+        if (!result.engine) {
+          return { statusCode: 201, body: result.appointment };
+        }
 
-    res.status(201).json({
-      id: result.calendarEventId,
-      organizationId,
-      clientId: result.clientId,
-      startTime: result.startTime,
-      durationMinutes: result.durationMinutes,
-      status: result.status,
-      source: "natalie",
-      engineMode: true,
-      pendingApproval: result.pendingApproval,
-      decisionId: result.decisionId,
-      queueType: result.queueType,
-      message: result.message,
-      workCaseId: result.workCaseId,
+        return {
+          statusCode: 201,
+          body: {
+            id: result.calendarEventId,
+            organizationId,
+            clientId: result.clientId,
+            startTime: result.startTime,
+            durationMinutes: result.durationMinutes,
+            status: result.status,
+            source: "natalie",
+            engineMode: true,
+            pendingApproval: result.pendingApproval,
+            decisionId: result.decisionId,
+            queueType: result.queueType,
+            message: result.message,
+            workCaseId: result.workCaseId,
+          },
+        };
+      },
     });
+    res.status(response.statusCode).json(response.body);
   } catch (err) {
     if (err instanceof SchedulingFacadeError) {
       if (err.code === "client_not_found") {
@@ -2751,7 +2773,7 @@ apiRouter.post("/natalie/create-appointment", async (req, res) => {
   }
 });
 
-apiRouter.post("/natalie/cancel-appointment", async (req, res) => {
+apiRouter.post("/natalie/cancel-appointment", requireCalendarCancel, async (req, res) => {
   const appointmentId = typeof req.body?.appointmentId === "string" ? req.body.appointmentId.trim() : "";
   if (!appointmentId) {
     res.status(400).json({ error: "appointmentId is required" });
@@ -2759,25 +2781,36 @@ apiRouter.post("/natalie/cancel-appointment", async (req, res) => {
   }
 
   try {
-    const result = await cancelAppointmentViaNatalie({
+    const response = await handleIdempotentRequest({
+      req,
+      routeKey: "POST:/natalie/cancel-appointment",
       organizationId: req.auth!.organizationId,
-      userId: req.auth!.userId,
-      schedulingItemId: appointmentId,
-    });
+      body: { appointmentId },
+      execute: async () => {
+        const result = await cancelAppointmentViaNatalie({
+          organizationId: req.auth!.organizationId,
+          userId: req.auth!.userId,
+          schedulingItemId: appointmentId,
+        });
 
-    if (!result.engine) {
-      res.json({ ok: true, appointment: result.appointment });
-      return;
-    }
+        if (!result.engine) {
+          return { statusCode: 200, body: { ok: true, appointment: result.appointment } };
+        }
 
-    res.json({
-      ok: true,
-      pendingApproval: result.pendingApproval,
-      decisionId: result.decisionId,
-      queueType: result.queueType,
-      message: result.message,
-      engineMode: true,
+        return {
+          statusCode: 200,
+          body: {
+            ok: true,
+            pendingApproval: result.pendingApproval,
+            decisionId: result.decisionId,
+            queueType: result.queueType,
+            message: result.message,
+            engineMode: true,
+          },
+        };
+      },
     });
+    res.status(response.statusCode).json(response.body);
   } catch (err) {
     if (err instanceof SchedulingFacadeError && err.code === "appointment_not_found") {
       res.status(404).json({ error: "התור לא נמצא", code: "appointment_not_found" });
@@ -2792,7 +2825,7 @@ apiRouter.post("/natalie/cancel-appointment", async (req, res) => {
   }
 });
 
-apiRouter.post("/natalie/reschedule-appointment", async (req, res) => {
+apiRouter.post("/natalie/reschedule-appointment", requireCalendarReschedule, async (req, res) => {
   const body = (req.body ?? {}) as {
     appointmentId?: unknown;
     newDayReference?: unknown;
@@ -2807,28 +2840,39 @@ apiRouter.post("/natalie/reschedule-appointment", async (req, res) => {
   }
 
   try {
-    const result = await rescheduleAppointmentViaNatalie({
+    const response = await handleIdempotentRequest({
+      req,
+      routeKey: "POST:/natalie/reschedule-appointment",
       organizationId,
-      userId: req.auth!.userId,
-      schedulingItemId: appointmentId,
-      newDayReference: typeof body.newDayReference === "string" ? body.newDayReference : undefined,
-      newTime: typeof body.newTime === "string" ? body.newTime : undefined,
-      newStartTime: typeof body.newStartTime === "string" ? body.newStartTime : undefined,
-    });
+      body: body as Record<string, unknown>,
+      execute: async () => {
+        const result = await rescheduleAppointmentViaNatalie({
+          organizationId,
+          userId: req.auth!.userId,
+          schedulingItemId: appointmentId,
+          newDayReference: typeof body.newDayReference === "string" ? body.newDayReference : undefined,
+          newTime: typeof body.newTime === "string" ? body.newTime : undefined,
+          newStartTime: typeof body.newStartTime === "string" ? body.newStartTime : undefined,
+        });
 
-    if (!result.engine) {
-      res.json({ ok: true, appointment: result.appointment });
-      return;
-    }
+        if (!result.engine) {
+          return { statusCode: 200, body: { ok: true, appointment: result.appointment } };
+        }
 
-    res.json({
-      ok: true,
-      pendingApproval: result.pendingApproval,
-      decisionId: result.decisionId,
-      queueType: result.queueType,
-      message: result.message,
-      engineMode: true,
+        return {
+          statusCode: 200,
+          body: {
+            ok: true,
+            pendingApproval: result.pendingApproval,
+            decisionId: result.decisionId,
+            queueType: result.queueType,
+            message: result.message,
+            engineMode: true,
+          },
+        };
+      },
     });
+    res.status(response.statusCode).json(response.body);
   } catch (err) {
     if (err instanceof AppointmentConflictError) {
       res.status(409).json({
@@ -4636,7 +4680,48 @@ function parseOptionalIsoDateTime(value: unknown, fieldName: string) {
   return parseIsoDateTime(value, fieldName);
 }
 
-apiRouter.get("/services", async (req, res) => {
+async function handleIdempotentRequest(params: {
+  req: Request;
+  routeKey: string;
+  organizationId: string;
+  body: unknown;
+  execute: () => Promise<{ statusCode: number; body: unknown }>;
+}): Promise<{ statusCode: number; body: unknown }> {
+  let begun;
+  try {
+    begun = await beginIdempotentRequest({
+      prisma,
+      organizationId: params.organizationId,
+      routeKey: params.routeKey,
+      method: params.req.method,
+      idempotencyKeyHeader:
+        typeof params.req.headers["idempotency-key"] === "string"
+          ? params.req.headers["idempotency-key"]
+          : undefined,
+      body: params.body,
+    });
+  } catch (err) {
+    return idempotencyErrorResponse(err);
+  }
+
+  if (begun.mode === "replay") {
+    return { statusCode: begun.statusCode, body: begun.responseBody };
+  }
+
+  const result = await params.execute();
+  if (begun.mode === "active") {
+    await completeIdempotentRequest({
+      prisma,
+      recordId: begun.recordId,
+      statusCode: result.statusCode,
+      responseBody: result.body,
+    });
+  }
+  return result;
+}
+
+
+apiRouter.get("/services", requireCalendarView, async (req, res) => {
   try {
     const services = await prisma.service.findMany({
       where: { organizationId: req.auth!.organizationId },
@@ -4648,7 +4733,7 @@ apiRouter.get("/services", async (req, res) => {
   }
 });
 
-apiRouter.post("/services", async (req, res) => {
+apiRouter.post("/services", requireCalendarCreate, async (req, res) => {
   try {
     const body = req.body as { name?: string; durationMinutes?: number; price?: number; color?: string };
     const name = body.name?.trim();
@@ -4676,7 +4761,7 @@ apiRouter.post("/services", async (req, res) => {
   }
 });
 
-apiRouter.patch("/services/:id", async (req, res) => {
+apiRouter.patch("/services/:id", requireCalendarUpdate, async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
     const existing = await prisma.service.findFirst({
@@ -4728,7 +4813,7 @@ apiRouter.patch("/services/:id", async (req, res) => {
   }
 });
 
-apiRouter.delete("/services/:id", async (req, res) => {
+apiRouter.delete("/services/:id", requireCalendarCancel, async (req, res) => {
   try {
     const updated = await prisma.service.updateMany({
       where: { id: routeId(req), organizationId: req.auth!.organizationId },
@@ -4744,7 +4829,7 @@ apiRouter.delete("/services/:id", async (req, res) => {
   }
 });
 
-apiRouter.get("/scheduling/capabilities", async (req, res) => {
+apiRouter.get("/scheduling/capabilities", requireCalendarView, async (req, res) => {
   try {
     const capabilities = await getSchedulingCapabilities(req.auth!.organizationId);
     res.json(capabilities);
@@ -4755,7 +4840,7 @@ apiRouter.get("/scheduling/capabilities", async (req, res) => {
   }
 });
 
-apiRouter.get("/scheduling/briefing", async (req, res) => {
+apiRouter.get("/scheduling/briefing", requireCalendarView, async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
     const fromParam = typeof req.query.from === "string" ? req.query.from : undefined;
@@ -4777,7 +4862,7 @@ apiRouter.get("/scheduling/briefing", async (req, res) => {
   }
 });
 
-apiRouter.get("/appointments", async (req, res) => {
+apiRouter.get("/appointments", requireCalendarView, async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
     const fromParam = typeof req.query.from === "string" ? req.query.from : undefined;
@@ -4816,7 +4901,7 @@ apiRouter.get("/appointments", async (req, res) => {
   }
 });
 
-apiRouter.post("/appointments", async (req, res) => {
+apiRouter.post("/appointments", requireCalendarCreate, async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
     const body = req.body as {
@@ -4876,17 +4961,45 @@ apiRouter.post("/appointments", async (req, res) => {
       return;
     }
 
-    const appointment = await createAppointmentForOrganization({
+    if (status !== "cancelled") {
+      const availability = await checkUnifiedSlotAvailability({
+        organizationId,
+        startTime,
+        durationMinutes,
+        serviceId,
+      });
+      if (!availability.available) {
+        if (availability.reason === "time_conflict") {
+          res.status(409).json({ error: "השעה הזו כבר תפוסה, אפשר לבחור זמן אחר", code: "time_conflict" });
+          return;
+        }
+        if (availability.reason === "outside_working_hours") {
+          res.status(400).json({ error: "השעה מחוץ לשעות הפעילות", code: "outside_working_hours" });
+          return;
+        }
+      }
+    }
+
+    const response = await handleIdempotentRequest({
+      req,
+      routeKey: "POST:/appointments",
       organizationId,
-      clientId,
-      serviceId,
-      startTime,
-      durationMinutes,
-      status,
-      notes: body.notes?.trim() || null,
-      source: "manual",
+      body: body as Record<string, unknown>,
+      execute: async () => {
+        const appointment = await createAppointmentForOrganization({
+          organizationId,
+          clientId,
+          serviceId,
+          startTime,
+          durationMinutes,
+          status,
+          notes: body.notes?.trim() || null,
+          source: "manual",
+        });
+        return { statusCode: 201, body: appointment };
+      },
     });
-    res.status(201).json(appointment);
+    res.status(response.statusCode).json(response.body);
   } catch (err) {
     if (err instanceof AppointmentConflictError) {
       res.status(409).json({
@@ -4899,11 +5012,15 @@ apiRouter.post("/appointments", async (req, res) => {
       res.status(400).json({ error: err.message });
       return;
     }
+    if (err instanceof Error && err.message.includes("outside working hours")) {
+      res.status(400).json({ error: err.message, code: "outside_working_hours" });
+      return;
+    }
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create appointment" });
   }
 });
 
-apiRouter.patch("/appointments/:id", async (req, res) => {
+apiRouter.patch("/appointments/:id", requireCalendarReschedule, async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
     const body = req.body as {
@@ -4959,16 +5076,46 @@ apiRouter.patch("/appointments/:id", async (req, res) => {
       }
     }
 
-    const appointment = await updateAppointmentForOrganization({
+    const shouldCheckAvailability = status !== "cancelled" && (startTime !== undefined || durationMinutes !== undefined);
+    if (shouldCheckAvailability) {
+      const availability = await checkUnifiedSlotAvailability({
+        organizationId,
+        startTime,
+        durationMinutes,
+        serviceId,
+        excludeAppointmentId: routeId(req),
+      });
+      if (!availability.available) {
+        if (availability.reason === "time_conflict") {
+          res.status(409).json({ error: "השעה הזו כבר תפוסה, אפשר לבחור זמן אחר", code: "time_conflict" });
+          return;
+        }
+        if (availability.reason === "outside_working_hours") {
+          res.status(400).json({ error: "השעה מחוץ לשעות הפעילות", code: "outside_working_hours" });
+          return;
+        }
+      }
+    }
+
+    const response = await handleIdempotentRequest({
+      req,
+      routeKey: "PATCH:/appointments/:id",
       organizationId,
-      appointmentId: req.params.id,
-      startTime,
-      durationMinutes,
-      status,
-      notes,
-      serviceId,
+      body: { appointmentId: routeId(req), startTime: body.startTime, durationMinutes, status, notes, serviceId },
+      execute: async () => {
+        const appointment = await updateAppointmentForOrganization({
+          organizationId,
+          appointmentId: routeId(req),
+          startTime,
+          durationMinutes,
+          status,
+          notes,
+          serviceId,
+        });
+        return { statusCode: 200, body: appointment };
+      },
     });
-    res.json(appointment);
+    res.status(response.statusCode).json(response.body);
   } catch (err) {
     if (err instanceof AppointmentConflictError) {
       res.status(409).json({
@@ -4985,14 +5132,28 @@ apiRouter.patch("/appointments/:id", async (req, res) => {
       res.status(400).json({ error: err.message });
       return;
     }
+    if (err instanceof Error && err.message.includes("outside working hours")) {
+      res.status(400).json({ error: err.message, code: "outside_working_hours" });
+      return;
+    }
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update appointment" });
   }
 });
 
-apiRouter.delete("/appointments/:id", async (req, res) => {
+apiRouter.delete("/appointments/:id", requireCalendarCancel, async (req, res) => {
   try {
-    const result = await deleteAppointmentForOrganization(req.auth!.organizationId, req.params.id);
-    res.json(result);
+    const organizationId = req.auth!.organizationId;
+    const response = await handleIdempotentRequest({
+      req,
+      routeKey: "DELETE:/appointments/:id",
+      organizationId,
+      body: { appointmentId: routeId(req) },
+      execute: async () => {
+        const result = await deleteAppointmentForOrganization(organizationId, routeId(req));
+        return { statusCode: 200, body: result };
+      },
+    });
+    res.status(response.statusCode).json(response.body);
   } catch (err) {
     if (err instanceof Error && err.message === "Appointment not found") {
       res.status(404).json({ error: "Appointment not found" });
@@ -5002,7 +5163,44 @@ apiRouter.delete("/appointments/:id", async (req, res) => {
   }
 });
 
-apiRouter.post("/appointments/availability/check", async (req, res) => {
+apiRouter.post("/appointments/:id/google-sync/retry", requireCalendarUpdate, async (req, res) => {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const appointmentId = routeId(req);
+    const existing = await prisma.appointment.findFirst({
+      where: { id: appointmentId, organizationId },
+      select: { id: true },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Appointment not found" });
+      return;
+    }
+
+    const result = await runAppointmentGoogleSync(appointmentId, { reason: "manual_retry" });
+    const refreshed = await prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      select: {
+        id: true,
+        organizationId: true,
+        googleSyncStatus: true,
+        googleSyncAttemptCount: true,
+        lastGoogleSyncError: true,
+        lastGoogleSyncAt: true,
+        nextGoogleSyncRetryAt: true,
+        googleEventId: true,
+      },
+    });
+    res.json({
+      ok: result.ok,
+      appointment: refreshed,
+      retryScheduled: Boolean(!result.ok && "nextRetryAt" in result && result.nextRetryAt),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to retry appointment Google sync" });
+  }
+});
+
+apiRouter.post("/appointments/availability/check", requireCalendarView, async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
     const body = req.body as {
@@ -5048,7 +5246,7 @@ apiRouter.post("/appointments/availability/check", async (req, res) => {
   }
 });
 
-apiRouter.post("/appointments/availability/slots", async (req, res) => {
+apiRouter.post("/appointments/availability/slots", requireCalendarView, async (req, res) => {
   try {
     const organizationId = req.auth!.organizationId;
     const body = req.body as {

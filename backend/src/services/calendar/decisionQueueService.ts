@@ -232,6 +232,19 @@ async function executeApprovedDecision(
       });
       if (!existing) throw notFound("CalendarEvent");
 
+      const conflict = await checkCalendarEventConflict({
+        organizationId: item.organizationId,
+        startAt,
+        endAt,
+        excludeCalendarEventId: existing.id,
+        assignedUserId: existing.assignedUserId,
+      });
+      if (conflict.hasConflict) {
+        throw new CalendarEngineServiceError("TIME_CONFLICT", "Time conflict still exists", {
+          conflict: conflict.conflict,
+        });
+      }
+
       await applyCalendarEventStatusTransition({
         organizationId: item.organizationId,
         calendarEventId: existing.id,
@@ -310,6 +323,7 @@ export async function approveDecisionQueueItem(
   await assertCalendarEngineWrite(organizationId);
 
   const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`calendar-engine:${organizationId}`}))`;
     const item = await requireDecision(organizationId, decisionId, tx);
 
     if (item.status === "approved") {

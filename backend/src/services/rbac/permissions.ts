@@ -34,6 +34,12 @@ export const PLATFORM_PERMISSIONS = [
   "chat.use",
   "work.view",
   "billing.manage",
+  "calendar.view",
+  "calendar.create",
+  "calendar.update",
+  "calendar.cancel",
+  "calendar.reschedule",
+  "calendar.approve_decision",
 ] as const;
 
 export type PlatformPermission = (typeof PLATFORM_PERMISSIONS)[number];

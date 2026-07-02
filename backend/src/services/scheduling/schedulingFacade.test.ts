@@ -97,6 +97,8 @@ test("bookAppointmentViaNatalie uses legacy appointment path when engine OFF", a
   const originalCreate = prisma.appointment.create.bind(prisma.appointment);
   const originalUpdate = prisma.appointment.update.bind(prisma.appointment);
   const originalGoogle = prisma.appointment.findFirst.bind(prisma.appointment);
+  const originalTransaction = prisma.$transaction.bind(prisma);
+  const originalExecuteRaw = prisma.$executeRaw.bind(prisma);
 
   prisma.client.findFirst = (async () => ({
     id: CLIENT_ID,
@@ -123,6 +125,8 @@ test("bookAppointmentViaNatalie uses legacy appointment path when engine OFF", a
 
   prisma.appointment.update = originalUpdate;
   prisma.appointment.findFirst = (async () => null) as typeof prisma.appointment.findFirst;
+  prisma.$transaction = (async (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma)) as typeof prisma.$transaction;
+  prisma.$executeRaw = (async () => 1) as typeof prisma.$executeRaw;
 
   try {
     const result = await bookAppointmentViaNatalie({
@@ -142,6 +146,8 @@ test("bookAppointmentViaNatalie uses legacy appointment path when engine OFF", a
     prisma.appointment.create = originalCreate;
     prisma.appointment.update = originalUpdate;
     prisma.appointment.findFirst = originalGoogle;
+    prisma.$transaction = originalTransaction;
+    prisma.$executeRaw = originalExecuteRaw;
     enableEngineFlags();
   }
 });

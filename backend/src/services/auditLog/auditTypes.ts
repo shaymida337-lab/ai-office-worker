@@ -30,6 +30,14 @@ export const PLATFORM_AUDIT_ACTIONS = [
   "ai_auditor_evaluated",
   "release_certificate_generated",
   "release_blocked",
+  "google_sync_started",
+  "google_sync_succeeded",
+  "google_sync_failed",
+  "google_sync_retry_scheduled",
+  "google_sync_retry_started",
+  "google_sync_retry_succeeded",
+  "google_sync_retry_failed",
+  "google_sync_dead_letter",
 ] as const;
 
 export type PlatformAuditAction = (typeof PLATFORM_AUDIT_ACTIONS)[number];
@@ -122,11 +130,18 @@ export function defaultSeverityForAction(action: PlatformAuditAction): PlatformA
     action === "document_rejected" ||
     action === "permissions_changed" ||
     action === "permission_denied" ||
-    action === "review_overridden"
+    action === "review_overridden" ||
+    action === "google_sync_failed" ||
+    action === "google_sync_retry_failed"
   ) {
     return "important";
   }
-  if (action === "payment_created" || action === "document_approved" || action === "invoice_created") {
+  if (
+    action === "payment_created" ||
+    action === "document_approved" ||
+    action === "invoice_created" ||
+    action === "google_sync_dead_letter"
+  ) {
     return "important";
   }
   return "info";

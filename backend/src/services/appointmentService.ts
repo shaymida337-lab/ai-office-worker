@@ -1,10 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
-import {
-  createGoogleCalendarEventForAppointment,
-  deleteGoogleCalendarEventForAppointment,
-  updateGoogleCalendarEventForAppointment,
-} from "./google.js";
+import { runAppointmentGoogleSync } from "./appointmentGoogleSync.js";
 import { loadAppointmentBusyBlocks } from "./calendar/blocks.js";
 import { appointmentEnd, checkConflict } from "./calendar/engine.js";
 
@@ -26,6 +22,16 @@ export class AppointmentConflictError extends Error {
     super(message);
     this.name = "AppointmentConflictError";
   }
+}
+
+async function withOrganizationSchedulingLock<T>(
+  organizationId: string,
+  action: (tx: Prisma.TransactionClient) => Promise<T>
+): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`calendar-scheduling:${organizationId}`}))`;
+    return action(tx);
+  });
 }
 
 type ConflictAppointment = {
@@ -127,56 +133,48 @@ export async function createAppointmentForOrganization(params: {
     throw new Error("durationMinutes must be a positive number");
   }
 
-  const client = await prisma.client.findFirst({
-    where: {
-      id: params.clientId,
-      organizationId: params.organizationId,
-      isActive: true,
-    },
-  });
-  if (!client) {
-    throw new Error("Client not found");
-  }
-
-  const effectiveStatus = params.status ?? "pending";
-  if (effectiveStatus !== "cancelled") {
-    const conflict = await checkAppointmentConflict({
-      organizationId: params.organizationId,
-      startTime: params.startTime,
-      durationMinutes: params.durationMinutes,
+  const appointment = await withOrganizationSchedulingLock(params.organizationId, async (tx) => {
+    const client = await tx.client.findFirst({
+      where: {
+        id: params.clientId,
+        organizationId: params.organizationId,
+        isActive: true,
+      },
     });
-    if (conflict.hasConflict) {
-      throw new AppointmentConflictError();
+    if (!client) {
+      throw new Error("Client not found");
     }
-  }
 
-  const appointment = await prisma.appointment.create({
-    data: {
-      organizationId: params.organizationId,
-      clientId: params.clientId,
-      serviceId: params.serviceId ?? null,
-      startTime: params.startTime,
-      durationMinutes: params.durationMinutes,
-      status: params.status ?? "pending",
-      source: params.source ?? "manual",
-      notes: params.notes?.trim() || null,
-    },
-    include: APPOINTMENT_INCLUDE,
+    const effectiveStatus = params.status ?? "pending";
+    if (effectiveStatus !== "cancelled") {
+      const conflict = await checkAppointmentConflict({
+        organizationId: params.organizationId,
+        startTime: params.startTime,
+        durationMinutes: params.durationMinutes,
+      });
+      if (conflict.hasConflict) {
+        throw new AppointmentConflictError();
+      }
+    }
+
+    return tx.appointment.create({
+      data: {
+        organizationId: params.organizationId,
+        clientId: params.clientId,
+        serviceId: params.serviceId ?? null,
+        startTime: params.startTime,
+        durationMinutes: params.durationMinutes,
+        status: params.status ?? "pending",
+        source: params.source ?? "manual",
+        notes: params.notes?.trim() || null,
+      },
+      include: APPOINTMENT_INCLUDE,
+    });
   });
 
-  try {
-    const googleEventId = await createGoogleCalendarEventForAppointment(appointment);
-    if (googleEventId) {
-      await prisma.appointment.update({
-        where: { id: appointment.id },
-        data: { googleEventId },
-      });
-      appointment.googleEventId = googleEventId;
-    }
-  } catch (syncErr) {
+  void runAppointmentGoogleSync(appointment.id, { reason: "create" }).catch((syncErr) => {
     console.error("Failed to sync appointment to Google Calendar:", syncErr);
-  }
-
+  });
   return appointment;
 }
 
@@ -189,88 +187,57 @@ export async function updateAppointmentForOrganization(params: {
   notes?: string | null;
   serviceId?: string | null;
 }): Promise<AppointmentWithRelations> {
-  const existing = await prisma.appointment.findFirst({
-    where: { id: params.appointmentId, organizationId: params.organizationId },
-  });
-  if (!existing) {
-    throw new Error("Appointment not found");
-  }
-
-  const effectiveStartTime = params.startTime ?? existing.startTime;
-  const effectiveDuration = params.durationMinutes ?? existing.durationMinutes;
-  const effectiveStatus = params.status ?? existing.status;
-  const timeChanged =
-    params.startTime !== undefined || params.durationMinutes !== undefined;
-
-  if (effectiveStatus !== "cancelled" && timeChanged) {
-    const conflict = await checkAppointmentConflict({
-      organizationId: params.organizationId,
-      startTime: effectiveStartTime,
-      durationMinutes: effectiveDuration,
-      excludeAppointmentId: params.appointmentId,
+  const appointment = await withOrganizationSchedulingLock(params.organizationId, async (tx) => {
+    const existing = await tx.appointment.findFirst({
+      where: { id: params.appointmentId, organizationId: params.organizationId },
     });
-    if (conflict.hasConflict) {
-      throw new AppointmentConflictError();
+    if (!existing) {
+      throw new Error("Appointment not found");
     }
-  }
 
-  const data: Prisma.AppointmentUpdateInput = {};
-  if (params.startTime !== undefined) data.startTime = params.startTime;
-  if (params.durationMinutes !== undefined) data.durationMinutes = params.durationMinutes;
-  if (params.status !== undefined) data.status = params.status;
-  if (params.notes !== undefined) data.notes = params.notes?.trim() || null;
-  if (params.serviceId !== undefined) {
-    if (params.serviceId) {
-      data.service = { connect: { id: params.serviceId } };
-    } else {
-      data.service = { disconnect: true };
+    const effectiveStartTime = params.startTime ?? existing.startTime;
+    const effectiveDuration = params.durationMinutes ?? existing.durationMinutes;
+    const effectiveStatus = params.status ?? existing.status;
+    const timeChanged =
+      params.startTime !== undefined || params.durationMinutes !== undefined;
+
+    if (effectiveStatus !== "cancelled" && timeChanged) {
+      const conflict = await checkAppointmentConflict({
+        organizationId: params.organizationId,
+        startTime: effectiveStartTime,
+        durationMinutes: effectiveDuration,
+        excludeAppointmentId: params.appointmentId,
+      });
+      if (conflict.hasConflict) {
+        throw new AppointmentConflictError();
+      }
     }
-  }
 
-  let appointment = await prisma.appointment.update({
-    where: { id: existing.id },
-    data,
-    include: APPOINTMENT_INCLUDE,
+    const data: Prisma.AppointmentUpdateInput = {};
+    if (params.startTime !== undefined) data.startTime = params.startTime;
+    if (params.durationMinutes !== undefined) data.durationMinutes = params.durationMinutes;
+    if (params.status !== undefined) data.status = params.status;
+    if (params.notes !== undefined) data.notes = params.notes?.trim() || null;
+    if (params.serviceId !== undefined) {
+      if (params.serviceId) {
+        data.service = { connect: { id: params.serviceId } };
+      } else {
+        data.service = { disconnect: true };
+      }
+    }
+
+    return tx.appointment.update({
+      where: { id: existing.id },
+      data,
+      include: APPOINTMENT_INCLUDE,
+    });
   });
 
-  try {
-    if (appointment.status === "cancelled") {
-      if (appointment.googleEventId) {
-        await deleteGoogleCalendarEventForAppointment(
-          params.organizationId,
-          appointment.googleEventId
-        );
-        appointment = await prisma.appointment.update({
-          where: { id: appointment.id },
-          data: { googleEventId: null },
-          include: APPOINTMENT_INCLUDE,
-        });
-      }
-    } else if (appointment.googleEventId) {
-      await updateGoogleCalendarEventForAppointment({
-        id: appointment.id,
-        organizationId: appointment.organizationId,
-        startTime: appointment.startTime,
-        durationMinutes: appointment.durationMinutes,
-        notes: appointment.notes,
-        client: appointment.client,
-        service: appointment.service,
-        googleEventId: appointment.googleEventId,
-      });
-    } else {
-      const googleEventId = await createGoogleCalendarEventForAppointment(appointment);
-      if (googleEventId) {
-        appointment = await prisma.appointment.update({
-          where: { id: appointment.id },
-          data: { googleEventId },
-          include: APPOINTMENT_INCLUDE,
-        });
-      }
-    }
-  } catch (syncErr) {
+  void runAppointmentGoogleSync(appointment.id, {
+    reason: appointment.status === "cancelled" ? "cancel" : "update",
+  }).catch((syncErr) => {
     console.error("Failed to sync appointment update to Google Calendar:", syncErr);
-  }
-
+  });
   return appointment;
 }
 
@@ -278,21 +245,16 @@ export async function deleteAppointmentForOrganization(
   organizationId: string,
   appointmentId: string
 ): Promise<{ ok: true }> {
-  const existing = await prisma.appointment.findFirst({
-    where: { id: appointmentId, organizationId },
-  });
-  if (!existing) {
-    throw new Error("Appointment not found");
-  }
-
-  if (existing.googleEventId) {
-    try {
-      await deleteGoogleCalendarEventForAppointment(organizationId, existing.googleEventId);
-    } catch (syncErr) {
-      console.error("Failed to delete appointment from Google Calendar:", syncErr);
+  const existing = await withOrganizationSchedulingLock(organizationId, async (tx) => {
+    const row = await tx.appointment.findFirst({
+      where: { id: appointmentId, organizationId },
+    });
+    if (!row) {
+      throw new Error("Appointment not found");
     }
-  }
+    await tx.appointment.delete({ where: { id: appointmentId } });
+    return row;
+  });
 
-  await prisma.appointment.delete({ where: { id: appointmentId } });
   return { ok: true };
 }

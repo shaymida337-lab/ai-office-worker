@@ -62,6 +62,8 @@ type Appointment = {
   notes?: string | null;
   client: ApptClient;
   service?: { id: string; name: string; color?: string | null; durationMinutes: number } | null;
+  googleSyncStatus?: "pending" | "synced" | "failed" | "retrying" | "disabled";
+  lastGoogleSyncError?: string | null;
 };
 
 function appointmentToDisplayItem(appt: Appointment): CalendarDisplayItem {
@@ -172,6 +174,26 @@ function appointmentStatusTone(status: string): "success" | "warn" | "danger" | 
     default:
       return "neutral";
   }
+}
+
+function appointmentGoogleSyncStatusLabel(status?: Appointment["googleSyncStatus"]): string | null {
+  switch (status) {
+    case "pending":
+      return "Google: ממתין";
+    case "failed":
+      return "Google: נכשל";
+    case "retrying":
+      return "Google: בניסיון חוזר";
+    case "disabled":
+      return "Google: כבוי";
+    default:
+      return null;
+  }
+}
+
+function appointmentGoogleSyncStatusForDisplay(item: CalendarDisplayItem): Appointment["googleSyncStatus"] | undefined {
+  if (isEngineDisplayItem(item)) return undefined;
+  return (item as Appointment).googleSyncStatus;
 }
 
 function isErrorMessage(text: string) {
@@ -886,6 +908,7 @@ export default function CalendarPage() {
                             minute: "2-digit",
                             hour12: false,
                           });
+                          const googleSyncStatus = appointmentGoogleSyncStatusForDisplay(appt);
                           return (
                             <button
                               key={appt.id}
@@ -901,9 +924,24 @@ export default function CalendarPage() {
                                 <span className={`font-black ${isCancelled ? "line-through" : ""}`} dir="ltr">
                                   {time}
                                 </span>
-                                <StatusPill tone={statusToneFn(appt.status)}>
-                                  {statusLabelFn(appt.status)}
-                                </StatusPill>
+                                <div className="flex items-center gap-1">
+                                  <StatusPill tone={statusToneFn(appt.status)}>
+                                    {statusLabelFn(appt.status)}
+                                  </StatusPill>
+                                  {appointmentGoogleSyncStatusLabel(googleSyncStatus) && (
+                                    <StatusPill
+                                      tone={
+                                        googleSyncStatus === "failed"
+                                          ? "danger"
+                                          : googleSyncStatus === "retrying"
+                                            ? "warn"
+                                            : "neutral"
+                                      }
+                                    >
+                                      {appointmentGoogleSyncStatusLabel(googleSyncStatus)}
+                                    </StatusPill>
+                                  )}
+                                </div>
                               </div>
                               <div className="truncate font-black text-[#111827]">{appt.client.name}</div>
                               {appt.service && (
