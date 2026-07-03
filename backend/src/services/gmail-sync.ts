@@ -13,6 +13,7 @@ import {
 } from "./driveService.js";
 import { appendSupplierPaymentToSheet, hasSupplierPaymentSheetRowData } from "./supplierPaymentsSheet.js";
 import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
+import { GENERIC_SENDER_TOKENS } from "./supplier/supplierValidation.js";
 import { notifyNewInvoice } from "./whatsapp.js";
 import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from "./financialDocuments.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
@@ -564,6 +565,71 @@ const OCR_SUPPLIER_KEYWORD_RULES: OcrSupplierKeywordRule[] = [
     patterns: [
       /וולט/u,
       /wolt/u,
+    ],
+  },
+  {
+    supplierName: "פרטנר",
+    confidence: 0.98,
+    patterns: [
+      /פרטנר/u,
+      /(?:^|\s)partner(?:\s|$)/iu,
+      /partner\s+communications/iu,
+      /012\s*mobile/iu,
+    ],
+    contextPatterns: [
+      /חשבונית|חשבון|קבלה|תשלום|חיוב|תקשורת|סלולר|אינטרנט|invoice|bill|payment|mobile|internet/u,
+    ],
+  },
+  {
+    supplierName: "גולן טלקום",
+    confidence: 0.98,
+    patterns: [
+      /גולן\s*טלקום/u,
+      /golan\s*telecom/iu,
+    ],
+  },
+  {
+    supplierName: "מי אביבים",
+    confidence: 0.98,
+    patterns: [
+      /מי\s*אביבים/u,
+      /mei\s*avivim/iu,
+    ],
+  },
+  {
+    supplierName: "מקורות",
+    confidence: 0.97,
+    patterns: [
+      /(?:^|\s)מקורות(?:\s|$)/u,
+      /mekorot/iu,
+    ],
+    contextPatterns: [
+      /מים|חשבון|חשבונית|תשלום|חיוב|water|invoice|bill|payment/u,
+    ],
+  },
+  {
+    supplierName: "כאל",
+    confidence: 0.97,
+    patterns: [
+      /כ\.א\.ל/u,
+      /ויזה\s*כאל/u,
+      /visa\s*cal/iu,
+      /cal-online/iu,
+    ],
+    contextPatterns: [
+      /אשראי|כרטיס|חיוב|דף\s*חשבון|credit|card|statement|charge/u,
+    ],
+  },
+  {
+    supplierName: "ביטוח לאומי",
+    confidence: 0.97,
+    patterns: [
+      /(?:ה)?מוסד\s+לביטוח\s+לאומי/u,
+      /ביטוח\s+לאומי/u,
+      /bituach\s*leumi/iu,
+    ],
+    contextPatterns: [
+      /תשלום|דרישת|חוב|גבייה|גביה|שובר|מקדמות|דמי\s+ביטוח|payment|debt|installment/u,
     ],
   },
 ];
@@ -5710,6 +5776,7 @@ function isUsableSupplierName(value: string, ownerEmails: Set<string> = new Set(
   if (/^(address|current|name|details|document|documents|number|supplier|vendor|issuer|company|business name|from)$/i.test(normalizedToken)) return false;
   if (/^multi\s+number\s+documents\b/i.test(normalizedToken)) return false;
   if (/^(invoice|receipt|payment|support|noreply|no reply|billing|accounts?|gmail|googlemail|outlook|hotmail|yahoo)$/i.test(cleaned)) return false;
+  if (GENERIC_SENDER_TOKENS.has(normalizedToken)) return false;
   if (cleaned.includes("/")) return false;
   if (/ocr\/ai/i.test(cleaned) || /^(ocr|ai)\b/i.test(normalizedToken)) return false;
   if (/\boutput\b/i.test(normalizedToken)) return false;

@@ -6,6 +6,7 @@ import { ensureInvoiceFolderTree, findExistingSupplierDriveDocument, uploadInvoi
 import { getGoogleClients } from "./google.js";
 import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
 import { recordFinancialDocumentDecision } from "./financialDocuments.js";
+import { isValidSupplierNameShared } from "./supplier/supplierValidation.js";
 import {
   createSupplierPaymentIfTrusted,
   evaluateFinanceTrustGates,
@@ -1269,11 +1270,11 @@ function whatsAppDocumentFilename(logId: string, index: number, mimeType: string
 function usableSupplierName(value: string | null | undefined) {
   const supplier = value?.trim() ?? "";
   if (!supplier) return false;
-  if (/^(לא ידוע|לא מזוהה|unknown|unknown supplier|n\/a|null|undefined)$/i.test(supplier)) return false;
+  if (/^(null|undefined)$/i.test(supplier)) return false;
   if (supplier === ".name" || supplier.startsWith(".")) return false;
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supplier)) return false;
-  if (/^[\w.-]+\.[a-z]{2,}$/i.test(supplier)) return false;
-  return supplier.replace(/[^\p{L}\p{N}]/gu, "").length >= 2;
+  // ולידציה משותפת: חוסמת גם זבל טכני (isLikelyJunkSupplierName), placeholders,
+  // כתובות מייל ודומיינים — בעבר המסלול הזה דילג על בדיקת הזבל לגמרי.
+  return isValidSupplierNameShared(supplier);
 }
 
 function normalizeAmount(value: number | null | undefined) {

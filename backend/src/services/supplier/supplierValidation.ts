@@ -16,6 +16,42 @@ const OCR_AI_OUTPUT_PATTERN = /\b(?:ocr\s*\/\s*ai|ocr|ai)\s+output\b/i;
 
 const WEAK_ONLY_KINDS = new Set<SupplierCandidateKind>(["email_domain", "sender_display"]);
 
+/**
+ * טוקנים גנריים של תיבות שולח ("Info", "Team", "צוות", "מערכת") שלעולם אינם
+ * שם ספק בפני עצמם. התאמה מדויקת בלבד על הטוקן המנורמל — שם עסק שמכיל את
+ * המילה כחלק משם ארוך יותר ("שירות מוניציפלי בע"מ") אינו נחסם.
+ */
+export const GENERIC_SENDER_TOKENS = new Set(
+  [
+    "info",
+    "team",
+    "admin",
+    "office",
+    "mail",
+    "mailer",
+    "notification",
+    "notifications",
+    "alert",
+    "alerts",
+    "update",
+    "updates",
+    "newsletter",
+    "service",
+    "services",
+    "system",
+    "do not reply",
+    "donotreply",
+    "no reply",
+    "noreply",
+    "צוות",
+    "מערכת",
+    "עדכונים",
+    "התראות",
+    "שירות לקוחות",
+    "אין להשיב",
+  ].map((token) => token.toLowerCase())
+);
+
 export function normalizeSupplierDisplayName(value: string) {
   return value
     .normalize("NFKC")
@@ -100,6 +136,7 @@ export function rejectSupplierCandidateReason(
   if (isTaxIdLikeSupplierName(name, candidate.vatNumber)) return "tax_id_as_name";
 
   const normalizedToken = name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  if (GENERIC_SENDER_TOKENS.has(normalizedToken)) return "generic_sender_token";
   if ([...ownerEmails].some((email) => name.toLowerCase().includes(email.toLowerCase()))) return "owner_email_match";
   if (name.length < 2 || name.length > 60) return "invalid_length";
   if (/[\r\n]/.test(name)) return "multiline_name";
@@ -138,6 +175,7 @@ export function isUsableSupplierNameShared(value: string, ownerEmails: Set<strin
   if (cleaned.includes("/")) return false;
   if (OCR_AI_OUTPUT_PATTERN.test(cleaned)) return false;
   const normalizedToken = cleaned.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  if (GENERIC_SENDER_TOKENS.has(normalizedToken)) return false;
   if (/\boutput\b/i.test(normalizedToken)) return false;
   if (looksLikePhoneNumber(cleaned)) return false;
   if (looksLikeAddress(cleaned)) return false;
