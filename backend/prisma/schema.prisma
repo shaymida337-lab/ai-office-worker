@@ -23,6 +23,7 @@ model User {
   assignedCalendarEvents CalendarEvent[] @relation("CalendarEventAssignedUser")
   createdCalendarEvents CalendarEvent[] @relation("CalendarEventCreatedBy")
   organizationMemberships OrganizationMember[]
+  natalieConversationSessions NatalieConversationSession[]
 }
 
 model Organization {
@@ -76,6 +77,7 @@ model Organization {
   whatsAppAssistant WhatsAppAssistant?
   whatsAppNotifications WhatsAppNotification[]
   whatsAppConversations WhatsAppConversation[]
+  natalieConversationSessions NatalieConversationSession[]
   notificationRules NotificationRules?
   leads           Lead[]
   messageTemplates MessageTemplate[]
@@ -729,6 +731,25 @@ model WhatsAppConversation {
   updatedAt      DateTime @updatedAt
 
   @@unique([organizationId, phone])
+  @@index([organizationId, lastMessageAt])
+}
+
+model NatalieConversationSession {
+  id                  String   @id @default(cuid())
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentChannel      String   @default("web_chat")
+  structuredHistory   Json     @default("[]")
+  pendingAction       Json?
+  pendingConfirmation Json?
+  interruptionState   Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  lastMessageAt       DateTime @default(now())
+
+  @@index([organizationId, userId, lastMessageAt])
   @@index([organizationId, lastMessageAt])
 }
 

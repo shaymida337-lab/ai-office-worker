@@ -46,7 +46,8 @@ import {
   toApiGmailScanStatus,
 } from "../services/gmailScanLifecycle.js";
 import { resolveDocumentsFound } from "../services/gmailScanProgressCounts.js";
-import { askNatalieBusinessQuestion } from "../services/natalie.js";
+import { processNatalieTurn } from "../services/conversation/index.js";
+import { processVoiceTurn } from "../services/conversation/voice/index.js";
 import { completeTask, createTask } from "../services/tasks.js";
 import {
   INVOICE_DRAFT_SAVED_CONFIRMATION_MESSAGE,
@@ -62,7 +63,7 @@ import { findDuplicateDrafts } from "../services/findDuplicateDrafts.js";
 import type { ColumnMapping } from "../services/importColumnMapper.js";
 import { synthesizeSpeech } from "../services/natalieTts.js";
 import { transcribeAudio } from "../services/natalieStt.js";
-import { correctClientNamesInTranscript } from "../services/nameCorrection.js";
+import { buildWhisperPromptHint, loadSttVocabulary, processTranscriptAccuracy } from "../services/sttAccuracy/index.js";
 import {
   APPOINTMENT_INCLUDE,
   AppointmentConflictError,
@@ -2632,21 +2633,61 @@ apiRouter.post("/natalie/ask", requirePerm("chat.use"), async (req, res) => {
         .map((item: { role: "user" | "assistant"; content: string }) => ({ role: item.role, content: item.content.trim() }))
         .slice(-10)
     : [];
+  const sessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId.trim() : null;
+  const channel = req.body?.channel === "web_voice" ? "web_voice" : "web_chat";
+  const modality = req.body?.modality === "voice" ? "voice" : "text";
   if (!question) {
     res.status(400).json({ error: "question is required" });
     return;
   }
 
   try {
-    const result = await askNatalieBusinessQuestion({
+    const result = await processNatalieTurn({
       organizationId: req.auth!.organizationId,
-      question,
-      history,
+      userId: req.auth!.userId,
+      channel,
+      modality,
+      message: question,
+      sessionId,
+      legacyHistory: sessionId ? undefined : history,
     });
     res.json(result);
   } catch (err) {
     console.error("[natalie/ask] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Natalie failed to answer" });
+  }
+});
+
+apiRouter.post("/natalie/voice/turn", requirePerm("chat.use"), async (req, res) => {
+  const transcript = typeof req.body?.transcript === "string" ? req.body.transcript.trim() : "";
+  const sessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId.trim() : null;
+  const history = Array.isArray(req.body?.history)
+    ? req.body.history
+        .filter((item: unknown): item is { role: "user" | "assistant"; content: string } => {
+          if (!item || typeof item !== "object") return false;
+          const message = item as { role?: unknown; content?: unknown };
+          return (message.role === "user" || message.role === "assistant") && typeof message.content === "string" && message.content.trim().length > 0;
+        })
+        .map((item: { role: "user" | "assistant"; content: string }) => ({ role: item.role, content: item.content.trim() }))
+        .slice(-10)
+    : [];
+  if (!transcript) {
+    res.status(400).json({ error: "transcript is required" });
+    return;
+  }
+
+  try {
+    const result = await processVoiceTurn({
+      organizationId: req.auth!.organizationId,
+      userId: req.auth!.userId,
+      transcript,
+      sessionId,
+      legacyHistory: sessionId ? undefined : history,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error("[natalie/voice/turn] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Natalie voice turn failed" });
   }
 });
 
@@ -3214,41 +3255,6 @@ apiRouter.post("/natalie/voice", async (req, res) => {
   res.send(result.audio);
 });
 
-const WHISPER_PROMPT_MAX_LENGTH = 800;
-
-const APPOINTMENT_TRANSCRIPTION_KEYWORDS =
-  "היום, מחר, מחרתיים, ראשון, שני, שלישי, רביעי, חמישי, שישי, שבת, תקבעי, תור, פגישה, בשעה, בבוקר, אחר הצהריים, בערב";
-
-function buildClientNamesTranscriptionPrompt(params: {
-  clientNames: string[];
-  serviceNames: string[];
-}): string | undefined {
-  const clientNames = [...new Set(params.clientNames.map((name) => name.trim()).filter(Boolean))].slice(0, 40);
-  const serviceNames = [...new Set(params.serviceNames.map((name) => name.trim()).filter(Boolean))].slice(0, 40);
-
-  const base = `שיחה בעברית על קביעת תורים. מילות מפתח: ${APPOINTMENT_TRANSCRIPTION_KEYWORDS}.`;
-  let selectedClients = [...clientNames];
-  let selectedServices = [...serviceNames];
-
-  while (true) {
-    const clientsSegment = selectedClients.length ? ` שמות לקוחות: ${selectedClients.join(", ")}.` : "";
-    const servicesSegment = selectedServices.length ? ` שמות שירותים: ${selectedServices.join(", ")}.` : "";
-    const prompt = `${base}${clientsSegment}${servicesSegment}`;
-    if (prompt.length <= WHISPER_PROMPT_MAX_LENGTH) {
-      return prompt;
-    }
-    if (selectedServices.length > 0) {
-      selectedServices = selectedServices.slice(0, -1);
-      continue;
-    }
-    if (selectedClients.length > 0) {
-      selectedClients = selectedClients.slice(0, -1);
-      continue;
-    }
-    return base.length <= WHISPER_PROMPT_MAX_LENGTH ? base : undefined;
-  }
-}
-
 apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async (req, res) => {
   const file = req.file;
   if (!file?.buffer?.length) {
@@ -3256,31 +3262,14 @@ apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async 
     return;
   }
 
+  const organizationId = req.auth!.organizationId;
+  let vocabulary;
   let promptHint: string | undefined;
-  let clientNames: string[] = [];
   try {
-    const organizationId = req.auth!.organizationId;
-    const [clients, services] = await Promise.all([
-      prisma.client.findMany({
-        where: { organizationId, isActive: true },
-        select: { name: true },
-        take: 100,
-        orderBy: { name: "asc" },
-      }),
-      prisma.service.findMany({
-        where: { organizationId, isActive: true },
-        select: { name: true },
-        take: 40,
-        orderBy: { name: "asc" },
-      }),
-    ]);
-    clientNames = clients.map((client) => client.name);
-    promptHint = buildClientNamesTranscriptionPrompt({
-      clientNames,
-      serviceNames: services.map((service) => service.name),
-    });
+    vocabulary = await loadSttVocabulary(organizationId);
+    promptHint = buildWhisperPromptHint(vocabulary);
   } catch (err) {
-    console.warn("[natalie/transcribe] failed to build client names prompt", errorDetails(err));
+    console.warn("[natalie/transcribe] failed to build STT vocabulary", errorDetails(err));
   }
 
   const result = await transcribeAudio(
@@ -3296,18 +3285,25 @@ apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async 
     return;
   }
 
-  let text = result.text;
   try {
-    const correctedText = correctClientNamesInTranscript(text, clientNames);
-    if (correctedText !== text) {
-      console.log("[natalie/transcribe] corrected client names", { original: text, corrected: correctedText });
-      text = correctedText;
-    }
+    const accuracy = await processTranscriptAccuracy({
+      organizationId,
+      rawTranscript: result.text,
+      vocabulary,
+      skipClarification: true,
+    });
+    res.json({
+      text: accuracy.normalizedTranscript,
+      confidence: accuracy.confidence,
+      confidenceLevel: accuracy.confidenceLevel,
+      clarificationRequired: accuracy.clarificationRequired,
+      actionBlocked: accuracy.actionBlocked,
+      correctionsApplied: accuracy.corrections.length,
+    });
   } catch (err) {
-    console.warn("[natalie/transcribe] failed to correct client names in transcript", errorDetails(err));
+    console.warn("[natalie/transcribe] failed to normalize transcript", errorDetails(err));
+    res.json({ text: result.text });
   }
-
-  res.json({ text });
 });
 
 apiRouter.get("/message-scans", async (req, res) => {
