@@ -9,6 +9,13 @@ import {
   type PlatformAuditActorContext,
 } from "../auditLog/index.js";
 import {
+  completeCoreWorkflowStage,
+  createCoreWorkflowTrace,
+  emitCoreWorkflowAudit,
+  emitCoreWorkflowFailure,
+  resolveCoreWorkflowCorrelationId,
+} from "../reliability/core/index.js";
+import {
   evaluateAmountGate,
   FINANCE_AMOUNT_UNRESOLVED_REASON,
   type AmountGateSnapshot,
@@ -330,25 +337,40 @@ export async function createSupplierPaymentIfTrusted(input: {
   const { evaluation } = input;
   const parsedFieldsJson = input.parsedFieldsJson;
   const uncertaintyReason = input.uncertaintyReason ?? null;
+  const organizationId = typeof input.data.organizationId === "string" ? input.data.organizationId : null;
+  const emailMessageId =
+    typeof input.data.emailMessageId === "string" ? input.data.emailMessageId : null;
+  const workflowTrace = createCoreWorkflowTrace({
+    subsystem: "payment_creation",
+    organizationId,
+    gmailMessageId: input.sourceLookup?.gmailMessageId ?? null,
+    emailMessageId,
+    workflow: "payment_creation",
+  });
+  emitCoreWorkflowAudit(workflowTrace, "started", "create_payment");
 
   if (
     !evaluation.shouldCreatePayment ||
     evaluation.outcome !== "pass" ||
     isBlockedDocumentOutcome(parsedFieldsJson, uncertaintyReason)
   ) {
+    const reason = isBlockedDocumentOutcome(parsedFieldsJson, uncertaintyReason)
+      ? BLOCKED_OUTCOME_PERSISTENCE_REASON
+      : evaluation.blockReason ?? evaluation.reasonCode;
+    completeCoreWorkflowStage(workflowTrace, "create_payment", "skipped", {
+      message: reason,
+      health: "Degraded",
+      metadata: { reason },
+    });
     return {
       payment: null,
       skipped: true,
-      reason: isBlockedDocumentOutcome(parsedFieldsJson, uncertaintyReason)
-        ? BLOCKED_OUTCOME_PERSISTENCE_REASON
-        : evaluation.blockReason ?? evaluation.reasonCode,
+      reason,
       evaluation,
     };
   }
 
-  const organizationId = typeof input.data.organizationId === "string" ? input.data.organizationId : null;
-  const emailMessageId =
-    typeof input.data.emailMessageId === "string" ? input.data.emailMessageId : null;
+  try {
   const documentFingerprint =
     typeof input.data.documentFingerprint === "string" ? input.data.documentFingerprint : null;
 
@@ -360,6 +382,11 @@ export async function createSupplierPaymentIfTrusted(input: {
       documentFingerprint,
     });
     if (existingSourcePayment && !input.upsert) {
+      completeCoreWorkflowStage(workflowTrace, "create_payment", "skipped", {
+        message: duplicateSupplierPaymentBlockReason(existingSourcePayment),
+        health: "Healthy",
+        metadata: { existingPaymentId: existingSourcePayment.id },
+      });
       return {
         payment: existingSourcePayment,
         skipped: true,
@@ -393,8 +420,9 @@ export async function createSupplierPaymentIfTrusted(input: {
       input.audit ??
       aiAuditContext(
         FINANCE_TRUST_PERSISTENCE_MODULE,
-        resolveWorkflowCorrelationId({
-          emailMessageId: typeof input.data.emailMessageId === "string" ? input.data.emailMessageId : null,
+        resolveCoreWorkflowCorrelationId({
+          emailMessageId,
+          gmailMessageId: input.sourceLookup?.gmailMessageId ?? null,
         }),
       );
     recordPlatformAudit({
@@ -406,6 +434,10 @@ export async function createSupplierPaymentIfTrusted(input: {
       beforeState: existing ? paymentAuditSnapshot(existing) : null,
       afterState: paymentAuditSnapshot(payment),
     });
+    completeCoreWorkflowStage(workflowTrace, "create_payment", "completed", {
+      health: "Healthy",
+      metadata: { paymentId: payment.id, action: existing ? "payment_updated" : "payment_created" },
+    });
     return { payment, skipped: false, reason: null, evaluation };
   }
 
@@ -414,8 +446,9 @@ export async function createSupplierPaymentIfTrusted(input: {
     input.audit ??
     aiAuditContext(
       FINANCE_TRUST_PERSISTENCE_MODULE,
-      resolveWorkflowCorrelationId({
-        emailMessageId: typeof input.data.emailMessageId === "string" ? input.data.emailMessageId : null,
+      resolveCoreWorkflowCorrelationId({
+        emailMessageId,
+        gmailMessageId: input.sourceLookup?.gmailMessageId ?? null,
       }),
     );
   recordPlatformAudit({
@@ -426,7 +459,15 @@ export async function createSupplierPaymentIfTrusted(input: {
     action: "payment_created",
     afterState: paymentAuditSnapshot(payment),
   });
+  completeCoreWorkflowStage(workflowTrace, "create_payment", "completed", {
+    health: "Healthy",
+    metadata: { paymentId: payment.id, action: "payment_created" },
+  });
   return { payment, skipped: false, reason: null, evaluation };
+  } catch (error) {
+    emitCoreWorkflowFailure(workflowTrace, "create_payment", error);
+    throw error;
+  }
 }
 
 export function financeIngestionPathsForStaticGuard(): string[] {

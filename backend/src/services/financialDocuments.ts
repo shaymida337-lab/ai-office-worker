@@ -63,6 +63,12 @@ import {
   reviewAuditSnapshot,
   userAuditContext,
 } from "./auditLog/index.js";
+import {
+  completeCoreWorkflowStage,
+  createCoreWorkflowTrace,
+  emitCoreWorkflowAudit,
+  emitCoreWorkflowFailure,
+} from "./reliability/core/index.js";
 
 export type FinancialDocumentSource = "gmail" | "whatsapp" | "camera";
 
@@ -421,6 +427,16 @@ export async function buildDuplicateGateInput(input: {
 }
 
 export async function recordFinancialDocumentDecision(input: FinancialDocumentInput) {
+  const workflowTrace = createCoreWorkflowTrace({
+    subsystem: "review_queue",
+    organizationId: input.organizationId,
+    gmailMessageId: input.gmailMessageId,
+    emailMessageId: input.emailMessageId,
+    workflow: "review_queue",
+  });
+  emitCoreWorkflowAudit(workflowTrace, "started", "record_decision");
+
+  try {
   const documentType = normalizeFinancialDocumentType(input.documentType);
   const totalAmount = input.totalAmount ?? null;
   const documentDate = parseDate(input.documentDate);
@@ -490,6 +506,10 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
       reason: input.uncertaintyReason ?? "מסמך לא רלוונטי",
     });
     console.log(`[financial-document] filtered_irrelevant source=${input.source} fingerprint=${documentFingerprint} type=${documentType}`);
+    completeCoreWorkflowStage(workflowTrace, "record_decision", "skipped", {
+      health: "Healthy",
+      metadata: { action: "filtered" },
+    });
     return { action: "filtered" as const, documentType, sourceFingerprint, documentFingerprint };
   }
 
@@ -507,6 +527,10 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
       uncertaintyReason: input.uncertaintyReason ?? blockingReason,
     });
     console.log(`[financial-document] needs_review source=${input.source} reviewId=${review.id} reason="${blockingReason}"`);
+    completeCoreWorkflowStage(workflowTrace, "record_decision", "completed", {
+      health: "Degraded",
+      metadata: { action: "needs_review", reviewId: review.id },
+    });
     return { action: "needs_review" as const, documentType, sourceFingerprint, documentFingerprint, review };
   }
 
@@ -524,6 +548,10 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
       uncertaintyReason: input.uncertaintyReason ?? "needs review requested by classifier",
     });
     console.log(`[financial-document] needs_review source=${input.source} reviewId=${review.id} reason="${input.uncertaintyReason ?? "forced_review"}"`);
+    completeCoreWorkflowStage(workflowTrace, "record_decision", "completed", {
+      health: "Degraded",
+      metadata: { action: "needs_review", reviewId: review.id, forced: true },
+    });
     return { action: "needs_review" as const, documentType, sourceFingerprint, documentFingerprint, review };
   }
 
@@ -603,6 +631,10 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
     });
     await upsertReview({ ...input, documentType, documentDate, dueDate, confidenceScore, sourceFingerprint, documentFingerprint, reviewStatus: "duplicate", supplierPaymentId: updated.id, uncertaintyReason: "זוהתה כפילות - הרשומה הקיימת עודכנה" });
     console.log(`[financial-document] duplicate source=${input.source} paymentId=${updated.id} fingerprint=${documentFingerprint} reasons=${duplicateMatch.reasons.join(",")}`);
+    completeCoreWorkflowStage(workflowTrace, "record_decision", "completed", {
+      health: "Healthy",
+      metadata: { action: "duplicate", paymentId: updated.id },
+    });
     return { action: "duplicate" as const, documentType, sourceFingerprint, documentFingerprint, payment: updated };
   }
 
@@ -621,16 +653,32 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
       uncertaintyReason: input.uncertaintyReason ?? `possible duplicate: ${duplicateMatch.reasons.join(", ")}`,
     });
     console.log(`[financial-document] possible_duplicate_review source=${input.source} reviewId=${review.id} candidatePaymentId=${duplicateMatch.candidate?.id ?? "none"} reasons=${duplicateMatch.reasons.join(",")}`);
+    completeCoreWorkflowStage(workflowTrace, "record_decision", "completed", {
+      health: "Degraded",
+      metadata: { action: "needs_review", reviewId: review.id, possibleDuplicate: true },
+    });
     return { action: "needs_review" as const, documentType, sourceFingerprint, documentFingerprint, review };
   }
 
   if (confidenceScore < 0.8) {
     const review = await upsertReview({ ...input, documentType, documentDate, dueDate, confidenceScore, parsedFieldsJson: input.parsedFieldsJson, sourceFingerprint, documentFingerprint, reviewStatus: "needs_review", uncertaintyReason: input.uncertaintyReason ?? `confidence below 80% (${Math.round(confidenceScore * 100)}%)` });
     console.log(`[financial-document] needs_review source=${input.source} reviewId=${review.id} confidence=${confidenceScore}`);
+    completeCoreWorkflowStage(workflowTrace, "record_decision", "completed", {
+      health: "Degraded",
+      metadata: { action: "needs_review", reviewId: review.id, lowConfidence: true },
+    });
     return { action: "needs_review" as const, documentType, sourceFingerprint, documentFingerprint, review };
   }
 
+  completeCoreWorkflowStage(workflowTrace, "record_decision", "completed", {
+    health: "Healthy",
+    metadata: { action: "accepted" },
+  });
   return { action: "accepted" as const, documentType, sourceFingerprint, documentFingerprint };
+  } catch (error) {
+    emitCoreWorkflowFailure(workflowTrace, "record_decision", error);
+    throw error;
+  }
 }
 
 export async function approveFinancialDocumentReview(
@@ -638,8 +686,18 @@ export async function approveFinancialDocumentReview(
   reviewId: string,
   options?: { userId?: string; sourceRoute?: string },
 ) {
+  try {
   const review = await prisma.financialDocumentReview.findFirst({ where: { id: reviewId, organizationId } });
   if (!review) throw new Error("Document review item not found");
+  const workflowTrace = createCoreWorkflowTrace({
+    subsystem: "review_queue",
+    organizationId,
+    entityId: review.id,
+    gmailMessageId: review.gmailMessageId,
+    emailMessageId: review.emailMessageId,
+    workflow: "review_approval",
+  });
+  emitCoreWorkflowAudit(workflowTrace, "started", "approve_review");
   const displayAmount = resolveDocumentReviewDisplayAmount({
     totalAmount: review.totalAmount,
     amountBeforeVat: review.amountBeforeVat,
@@ -821,7 +879,21 @@ export async function approveFinancialDocumentReview(
       metadata: { supplierPaymentId: payment.id },
     });
   }
+  completeCoreWorkflowStage(workflowTrace, "approve_review", "completed", {
+    health: "Healthy",
+    metadata: { reviewId: approved.id, paymentId: payment.id },
+  });
   return approved;
+  } catch (error) {
+    const failureTrace = createCoreWorkflowTrace({
+      subsystem: "review_queue",
+      organizationId,
+      entityId: reviewId,
+      workflow: "review_approval",
+    });
+    emitCoreWorkflowFailure(failureTrace, "approve_review", error, { userFacing: true });
+    throw error;
+  }
 }
 
 export async function deleteFinancialDocumentReview(organizationId: string, reviewId: string) {

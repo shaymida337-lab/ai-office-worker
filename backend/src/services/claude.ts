@@ -2,6 +2,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
 import { parseAmountOrNull, parseLabeledAmount } from "./amount/parseAmount.js";
+import {
+  createCoreWorkflowTrace,
+  emitCoreWorkflowAudit,
+  emitCoreWorkflowFailure,
+  reportCoreWorkflowHealth,
+} from "./reliability/core/index.js";
 
 export type EmailAnalysis = {
   supplier: string;
@@ -321,13 +327,34 @@ export async function analyzeInvoiceFile(input: {
   fileBase64: string;
   mimeType: string;
   filename?: string;
+  correlationId?: string | null;
 }): Promise<InvoiceScanResult> {
+  const trace = createCoreWorkflowTrace({
+    subsystem: "claude_extraction",
+    explicit: input.correlationId,
+    workflow: "claude_extraction",
+  });
+  emitCoreWorkflowAudit(trace, "started", "extraction");
+
   if (!anthropic) {
-    throw new Error("ANTHROPIC_API_KEY is not configured");
+    const err = new Error("ANTHROPIC_API_KEY is not configured");
+    emitCoreWorkflowFailure(trace, "extraction", err);
+    throw err;
   }
 
+  try {
   const prepared = isImageMimeType(input.mimeType)
-    ? await prepareImageForOcr(input.fileBase64, input.mimeType, input.filename)
+    ? await (async () => {
+        emitCoreWorkflowAudit(trace, "started", "ocr");
+        const ocrPrepared = await prepareImageForOcr(input.fileBase64, input.mimeType, input.filename);
+        emitCoreWorkflowAudit(trace, "completed", "ocr", {
+          metadata: {
+            hasOcrText: Boolean(ocrPrepared.ocrText),
+            confidence: ocrPrepared.ocrConfidence,
+          },
+        });
+        return ocrPrepared;
+      })()
     : {
         fileBase64: input.fileBase64,
         mimeType: input.mimeType,
@@ -380,6 +407,7 @@ ${prepared.ocrText ? `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמ
           },
         };
 
+  emitCoreWorkflowAudit(trace, "started", "claude_request");
   const message = await anthropic.messages.create({
     model: config.anthropic.model,
     max_tokens: 700,
@@ -396,6 +424,8 @@ ${prepared.ocrText ? `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמ
       },
     ],
   });
+
+  emitCoreWorkflowAudit(trace, "completed", "claude_request");
 
   const text =
     message.content[0]?.type === "text" ? message.content[0].text : "{}";
@@ -422,7 +452,7 @@ ${prepared.ocrText ? `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמ
   const rawDocumentType = firstString(parsed, ["documentType", "document_type", "סוג מסמך"]);
   const documentType = normalizeDocumentType(rawDocumentType);
 
-  return {
+  const result = {
     supplier: supplier || "לא ידוע",
     supplierTaxId,
     amount,
@@ -438,6 +468,13 @@ ${prepared.ocrText ? `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמ
     ocrText: prepared.ocrText,
     ocrConfidence: prepared.ocrConfidence,
   };
+  emitCoreWorkflowAudit(trace, "completed", "extraction");
+  reportCoreWorkflowHealth(trace, "Healthy");
+  return result;
+  } catch (error) {
+    emitCoreWorkflowFailure(trace, "extraction", error);
+    throw error;
+  }
 }
 
 async function prepareImageForOcr(fileBase64: string, mimeType: string, filename?: string) {

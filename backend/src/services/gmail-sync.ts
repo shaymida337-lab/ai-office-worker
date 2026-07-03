@@ -107,6 +107,14 @@ import {
   logScanLifecycle,
   promoteGmailScanToRunning,
 } from "./gmailScanLifecycle.js";
+import {
+  completeCoreWorkflowStage,
+  createCoreWorkflowTrace,
+  emitCoreWorkflowAudit,
+  emitCoreWorkflowFailure,
+  reportCoreWorkflowHealth,
+  resolveCoreWorkflowCorrelationId,
+} from "./reliability/core/index.js";
 
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
@@ -691,6 +699,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
   }
 
   let log: { id: string } | null = null;
+  let syncTrace: ReturnType<typeof createCoreWorkflowTrace> | null = null;
 
   const scanSteps: string[] = [];
   const logStep = (message: string) => {
@@ -746,6 +755,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
 
   await promoteGmailScanToRunning(log.id);
   logScanLifecycle(log.id, "fetch start");
+  syncTrace = createCoreWorkflowTrace({
+    subsystem: "gmail_sync",
+    organizationId,
+    entityId: log.id,
+    explicit: `gmail-sync:${log.id}`,
+    workflow: "gmail_sync",
+  });
+  emitCoreWorkflowAudit(syncTrace, "started", "sync_run");
+  reportCoreWorkflowHealth(syncTrace, "Recovering");
 
   const scanStartedAt =
     existingScanLog?.startedAt ??
@@ -1500,6 +1518,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       logStep(`[gmail-sync] process ${label} batch ${processBatchNumber}/${Math.ceil(emailsToProcess.length / GMAIL_SCAN_BATCH_SIZE)} size=${batch.length}`);
       for (const email of batch) {
         if (stopProcessing) break;
+        const messageTrace = createCoreWorkflowTrace({
+          subsystem: "scanner_pipeline",
+          organizationId,
+          gmailMessageId: email.gmailId,
+          emailMessageId: email.emailRecordId,
+          workflow: "scanner_pipeline",
+        });
+        const messageCorrelationId = messageTrace.correlationId;
+        emitCoreWorkflowAudit(messageTrace, "started", "message_process");
         let scanItemPersisted = false;
         let currentDuplicateKey: string | null = null;
         let savedScanItemId: string | null = null;
@@ -1557,6 +1584,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           ]);
           if (!pendingRepairCounts.some((count) => count > 0)) {
             logStep(`[gmail-sync] fast scan skip already-processed message=${email.gmailId} reason=no_pending_repair`);
+            completeCoreWorkflowStage(messageTrace, "message_process", "skipped", {
+              message: "already_processed",
+              health: "Healthy",
+            });
             continue;
           }
           logStep(`[gmail-sync] fast scan reprocess already-processed message=${email.gmailId} reason=pending_repair`);
@@ -1566,7 +1597,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       }
 
       const pdfText = await extractPdfTextFromParts(gmail, email.gmailId, email.parts);
-      const visualAttachmentHints = await extractVisualAttachmentHints(gmail, email.gmailId, email.parts, email.from, logStep, ownerEmails);
+      const visualAttachmentHints = await extractVisualAttachmentHints(
+        gmail,
+        email.gmailId,
+        email.parts,
+        email.from,
+        logStep,
+        ownerEmails,
+        messageCorrelationId,
+      );
       const visualAttachmentText = visualAttachmentHints.text;
       const bodyForAnalysis = [email.bodyText, pdfText && `--- PDF ATTACHMENT TEXT ---\n${pdfText}`, visualAttachmentText && `--- VISUAL ATTACHMENT ANALYSIS ---\n${visualAttachmentText}`].filter(Boolean).join("\n\n");
       const driveLinkEvidence = evaluateGmailDriveLinkInvoiceEvidence({
@@ -3204,6 +3243,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         data: { processedAt: new Date() },
       });
       logStep(`[gmail-sync] DB mark processed success message=${email.gmailId}`);
+      completeCoreWorkflowStage(messageTrace, "message_process", "completed", { health: "Healthy" });
       if (classification.isRelevant && (savedScanItemId || invoicePersistedForPilot || paymentPersistedForPilot)) {
         logStep(
           `[gmail-sync] PILOT_FLOW_SUCCESS org=${organizationId} message=${email.gmailId} scanItem=${savedScanItemId ?? "none"} invoice=${invoicePersistedForPilot} payment=${paymentPersistedForPilot} drive=${driveSavedForPilot || Boolean(driveLinks[0]?.link)} sheets=${sheetsUpdatedForPilot} type=${classification.documentType} review=${classification.reviewStatus}`
@@ -3211,6 +3251,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       }
         } catch (err) {
           errorsCount++;
+          emitCoreWorkflowFailure(messageTrace, "message_process", err);
           console.error(`[gmail-sync] processing failed message=${email.gmailId}`, err);
           logStep(`[gmail-sync] error message=${email.gmailId} stage=process_save reason="${err instanceof Error ? err.message : String(err)}"`);
           if (!scanItemPersisted) {
@@ -3288,6 +3329,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       { phase: scanProgressPhase }
     );
 
+    if (syncTrace) {
+      completeCoreWorkflowStage(syncTrace, "sync_run", "completed", { health: "Healthy" });
+    }
     return {
       emailsProcessed,
       totalEmailsChecked: emailsProcessed,
@@ -3331,6 +3375,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    if (syncTrace) emitCoreWorkflowFailure(syncTrace, "sync_run", err);
     if (log) {
       await finalizeGmailScanFailed(log.id, message, {
         errorsCount: Math.max(errorsCount, 1),
@@ -5165,6 +5210,7 @@ async function analyzeInvoiceAttachmentForEmail(input: {
   subject: string;
   bodyText: string;
   sender: string;
+  correlationId?: string | null;
 }): Promise<AttachmentInvoiceAnalysisResult> {
   const imageMimeType = imageMimeTypeForPart(input.part);
   if (imageMimeType) {
@@ -5176,6 +5222,9 @@ async function analyzeInvoiceAttachmentForEmail(input: {
         fileBase64: buffer.toString("base64"),
         mimeType: imageMimeType,
         filename: input.part.filename ?? undefined,
+        correlationId:
+          input.correlationId ??
+          resolveCoreWorkflowCorrelationId({ gmailMessageId: input.gmailMessageId }),
       });
     } catch (err) {
       if (!isClaudeVisionSupportedImageMime(imageMimeType)) {
@@ -5252,7 +5301,8 @@ async function extractVisualAttachmentHints(
   parts: PayloadPart[],
   sender: string,
   logStep: (message: string) => void,
-  ownerEmails: Set<string>
+  ownerEmails: Set<string>,
+  correlationId?: string | null,
 ): Promise<{
   text: string;
   invoiceCandidateFound: boolean;
@@ -5278,6 +5328,7 @@ async function extractVisualAttachmentHints(
         fileBase64: buffer.toString("base64"),
         mimeType: imageMimeType ?? "image/jpeg",
         filename: part.filename ?? undefined,
+        correlationId: correlationId ?? resolveCoreWorkflowCorrelationId({ gmailMessageId: messageId }),
       });
       if (result.ocrText) {
         logStep(`[gmail-sync] OCR_TEXT_EXTRACTED message=${messageId} file="${filename}" source=tesseract_heb_eng confidence=${result.ocrConfidence ?? "unknown"} text="${truncateForLog(result.ocrText)}"`);
