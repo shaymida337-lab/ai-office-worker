@@ -14,6 +14,7 @@ import {
 import { appendSupplierPaymentToSheet, hasSupplierPaymentSheetRowData } from "./supplierPaymentsSheet.js";
 import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 import { GENERIC_SENDER_TOKENS } from "./supplier/supplierValidation.js";
+import { normalizeBusinessDate } from "./dates/businessDate.js";
 import { notifyNewInvoice } from "./whatsapp.js";
 import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from "./financialDocuments.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
@@ -5975,15 +5976,8 @@ function isReasonableDetectedAmount(amount: number) {
   return rejectedDetectedAmountReason(amount) === null;
 }
 
-function normalizeBusinessDate(value: string | null | undefined, fallback: Date | null) {
-  if (!value) return fallback;
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return fallback;
-  const now = Date.now();
-  const twoYearsMs = 2 * 365 * 24 * 60 * 60 * 1000;
-  if (date.getTime() < now - twoYearsMs || date.getTime() > now + twoYearsMs) return fallback;
-  return date;
-}
+// normalizeBusinessDate עבר למודול המשותף services/dates/businessDate.ts (F4) —
+// אותו כלל ±2 שנים חל עכשיו גם על WhatsApp ומצלמה.
 
 async function loadKnownSupplierNames(organizationId: string) {
   const [payments, invoices] = await Promise.all([

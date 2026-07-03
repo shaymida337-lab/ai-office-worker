@@ -1,6 +1,7 @@
 ﻿import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
 import { parseLabeledAmount } from "./amount/parseAmount.js";
+import { clampBusinessDateString } from "./dates/businessDate.js";
 
 export type InvoiceStatus = "paid" | "pending" | "overdue" | "needs_review";
 
@@ -38,8 +39,8 @@ Body: ${emailBody.slice(0, 8000)}
 Attachments: ${attachments.map((item) => item.filename).filter(Boolean).join(", ") || "none"}
 
 Return exactly:
-{"clientName":null,"clientEmail":null,"supplierName":null,"invoiceNumber":null,"amount":0,"currency":"ILS","date":"YYYY-MM-DD","dueDate":null,"status":"pending","description":null}
-supplierName is the supplier/vendor/issuer business that issued the invoice, NOT the client/customer. If the supplier cannot be determined, return null. If a field is missing, use null. Amount must be numeric. Status: paid, pending, overdue.`;
+{"clientName":null,"clientEmail":null,"supplierName":null,"invoiceNumber":null,"amount":null,"currency":"ILS","date":"YYYY-MM-DD","dueDate":null,"status":"pending","description":null}
+supplierName is the supplier/vendor/issuer business that issued the invoice, NOT the client/customer. If the supplier cannot be determined, return null. If a field is missing, use null. Amount must be numeric when present; if the total amount cannot be determined, return null for amount — never guess and never return 0 unless the document explicitly shows a zero total. Status: paid, pending, overdue.`;
 
   try {
     const message = await anthropic.messages.create({
@@ -60,8 +61,9 @@ function normalizeInvoiceData(
   fallback: InvoiceData,
   clientFallback?: { name?: string | null; email?: string | null }
 ): InvoiceData {
-  const date = normalizeDate(firstString(parsed, ["date", "invoiceDate"])) ?? fallback.date;
-  const dueDate = normalizeDate(firstString(parsed, ["dueDate", "due_date"])) ?? fallback.dueDate;
+  // F4: גם תאריכים שמגיעים מתשובת המודל עוברים את גבול ±2 השנים המשותף.
+  const date = clampBusinessDateString(normalizeDate(firstString(parsed, ["date", "invoiceDate"]))) ?? fallback.date;
+  const dueDate = clampBusinessDateString(normalizeDate(firstString(parsed, ["dueDate", "due_date"]))) ?? fallback.dueDate;
   const parsedAmount = firstNumber(parsed, ["amount", "total", "sum", "totalAmount", "amountDue", "balanceDue"]);
   const hasParsedPositiveAmount = parsedAmount !== null && parsedAmount > 0;
   const amountMissing = hasParsedPositiveAmount ? false : fallback.amountMissing;
@@ -98,10 +100,14 @@ function fallbackInvoiceData(
       text.match(/(?:invoice|receipt|חשבונית|קבלה)[^\dA-Z]{0,12}([A-Z0-9-]{3,})/i)?.[1] ??
       attachments.find((item) => item.filename)?.filename?.replace(/\.[^.]+$/, "") ??
       null,
-    amount: amount ?? (hasExplicitZeroAmount ? 0 : 0),
+    // F2: הפרדה מפורשת בין "אפס אמיתי" (סה"כ 0 מופיע במסמך) לבין "לא זוהה סכום".
+    // בשני המקרים הערך המספרי הוא 0 (הסכמה דורשת מספר), אבל amountMissing=true
+    // רק כשלא זוהה — וזה מנתב את הסטטוס ל-needs_review ולא לשמירה שקטה.
+    amount: amount ?? 0,
     amountMissing,
     currency: /usd|\$/i.test(text) ? "USD" : /eur|€/i.test(text) ? "EUR" : "ILS",
-    date: extractDate(text) ?? new Date().toISOString().slice(0, 10),
+    // F4: תאריך שחולץ מהטקסט חייב לעמוד בגבול ±2 שנים; אחרת נופלים להיום.
+    date: clampBusinessDateString(extractDate(text)) ?? new Date().toISOString().slice(0, 10),
     dueDate: extractDueDate(text),
     status: amountMissing ? "needs_review" : /paid|שולם|קבלה/i.test(text) ? "paid" : "pending",
     description: subject || null,

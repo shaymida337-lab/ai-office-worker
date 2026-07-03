@@ -7,6 +7,7 @@ import { getGoogleClients } from "./google.js";
 import { appendSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
 import { recordFinancialDocumentDecision } from "./financialDocuments.js";
 import { isValidSupplierNameShared } from "./supplier/supplierValidation.js";
+import { clampBusinessDateString } from "./dates/businessDate.js";
 import {
   createSupplierPaymentIfTrusted,
   evaluateFinanceTrustGates,
@@ -76,6 +77,16 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
     console.log(`[whatsapp-invoice] extraction start logId=${input.whatsappLogId} index=${index} filename="${filename}" mime=${mimeType} bytes=${buffer.length}`);
     const analysis = await analyzeWhatsAppDocument({ body: input.body, filename, mimeType, buffer, fromNumber: input.fromNumber });
     console.log(`[whatsapp-invoice] extraction done logId=${input.whatsappLogId} supplier="${analysis.supplier}" supplierTaxId=${analysis.supplierTaxId ?? "null"} amount=${analysis.amount ?? "null"} invoiceNumber=${analysis.invoiceNumber ?? "null"} invoiceDate=${analysis.invoiceDate ?? "null"} dueDate=${analysis.dueDate ?? "null"} documentType=${analysis.documentType} confidence=${analysis.confidence}`);
+
+    // F4: גבול שפיות ±2 שנים על תאריכים — זהה למסלול Gmail, דרך המודול המשותף.
+    // תאריך מחוץ לטווח מתאפס ל-null (ולא נשמר כתאריך עתידי/עתיק שגוי).
+    const rawInvoiceDate = analysis.invoiceDate;
+    const rawDueDate = analysis.dueDate;
+    analysis.invoiceDate = clampBusinessDateString(analysis.invoiceDate);
+    analysis.dueDate = clampBusinessDateString(analysis.dueDate);
+    if (rawInvoiceDate !== analysis.invoiceDate || rawDueDate !== analysis.dueDate) {
+      console.warn(`[whatsapp-invoice] date outside ±2y window dropped logId=${input.whatsappLogId} invoiceDate="${rawInvoiceDate}" dueDate="${rawDueDate}"`);
+    }
 
     const supplier = usableSupplierName(analysis.supplier) ? analysis.supplier.trim() : "Unknown supplier";
     const moneyDecision = resolveWhatsAppMoneyDecision({

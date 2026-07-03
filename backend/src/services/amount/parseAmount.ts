@@ -99,7 +99,9 @@ export function parseAmount(raw: string, options: ParseAmountOptions = {}): Pars
 
   const ambiguousSeparator = hasAmbiguousTrailingSegment(cleaned);
 
-  if (ambiguousSeparator && !options.stronglyLabeled) {
+  // כלל הכרעה שמרני (F3): צורה דו-משמעית (110.723 / 110,723 / 11.800) לעולם
+  // אינה נפרשת — גם לא כשהיא צמודה לתווית חזקה. בספק → null → review, לא ניחוש.
+  if (ambiguousSeparator) {
     return {
       raw: rawInput,
       parsedAmount: null,
@@ -127,12 +129,12 @@ export function parseAmount(raw: string, options: ParseAmountOptions = {}): Pars
       compact = cleaned.replace(",", ".");
       parseMethod = "plain_decimal";
     } else if (decimals === 3 && options.stronglyLabeled) {
-      compact = cleaned.replace(/,/g, "");
-      parseMethod = "us_grouped_decimal";
-    } else if (options.stronglyLabeled) {
+      // מגיע לכאן רק לצורות בטוחות בסגנון "1,500" (isUsThousandsOnly) —
+      // פסיק+3 ספרות עם 1-2 ספרות מובילות הוא אלפים בקונבנציה הישראלית.
       compact = cleaned.replace(/,/g, "");
       parseMethod = "us_grouped_decimal";
     } else {
+      // F3: אין יותר מעקף תווית לצורות פסיק אחרות ("1,5" ⇒ 15) — בספק → review.
       return {
         raw: rawInput,
         parsedAmount: null,
@@ -146,13 +148,9 @@ export function parseAmount(raw: string, options: ParseAmountOptions = {}): Pars
     if (decimals >= 1 && decimals <= 2) {
       compact = cleaned;
       parseMethod = "plain_decimal";
-    } else if (decimals === 3 && options.stronglyLabeled) {
-      compact = cleaned.replace(/\./g, "");
-      parseMethod = "us_grouped_decimal";
-    } else if (options.stronglyLabeled) {
-      compact = cleaned.replace(/\./g, "");
-      parseMethod = "us_grouped_decimal";
     } else {
+      // F3: נקודה עם 3+ ספרות אחרי ("110.723", "1.5000") לעולם לא מנוחשת
+      // כאלפים — גם עם תווית חזקה. בספק → review.
       return {
         raw: rawInput,
         parsedAmount: null,
@@ -187,16 +185,14 @@ export function parseAmount(raw: string, options: ParseAmountOptions = {}): Pars
   }
 
   const rounded = roundMoney(amount);
-  const isAmbiguous = Boolean(
-    ambiguousSeparator || (options.stronglyLabeled && hasAmbiguousTrailingSegment(cleaned))
-  );
 
+  // צורות דו-משמעיות חוזרות מוקדם עם null — ערך שנפרש עד כאן אינו דו-משמעי.
   return {
     raw: rawInput,
     parsedAmount: rounded,
     parseMethod,
-    ambiguous: isAmbiguous,
-    warningReason: isAmbiguous ? "ambiguous_thousands_or_decimal_separator" : null,
+    ambiguous: false,
+    warningReason: null,
   };
 }
 

@@ -46,6 +46,8 @@ import {
   toApiGmailScanStatus,
 } from "../services/gmailScanLifecycle.js";
 import { resolveDocumentsFound } from "../services/gmailScanProgressCounts.js";
+import { isWithinBusinessDateWindow } from "../services/dates/businessDate.js";
+import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "../services/financialAmountLimits.js";
 import { processNatalieTurn } from "../services/conversation/index.js";
 import { processVoiceTurn } from "../services/conversation/voice/index.js";
 import { completeTask, createTask } from "../services/tasks.js";
@@ -6941,10 +6943,21 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
       res.status(400).json({ error: "Supplier and amount are required" });
       return;
     }
+    // F2: אפס/שלילי אינו סכום חשבונית תקין בקלט ידני — דחייה מפורשת במקום שמירת אפס שקטה.
+    if (!Number.isFinite(body.amount) || body.amount <= 0 || body.amount >= MAX_REASONABLE_FINANCIAL_AMOUNT) {
+      res.status(400).json({ error: "סכום החשבונית חייב להיות גדול מאפס וקטן ממיליון" });
+      return;
+    }
     const invoiceDate = body.invoiceDate ? new Date(body.invoiceDate) : new Date();
     const dueDate = body.dueDate ? new Date(body.dueDate) : null;
     if (Number.isNaN(invoiceDate.getTime()) || (dueDate && Number.isNaN(dueDate.getTime()))) {
       res.status(400).json({ error: "Invalid invoice date" });
+      return;
+    }
+    // F4: אותו גבול ±2 שנים כמו ב-Gmail/WhatsApp. בקלט ידני — שגיאה מפורשת למשתמש,
+    // לא החלפה שקטה של התאריך שהוקלד.
+    if (!isWithinBusinessDateWindow(invoiceDate) || (dueDate && !isWithinBusinessDateWindow(dueDate))) {
+      res.status(400).json({ error: "תאריך החשבונית מחוץ לטווח סביר (עד שנתיים אחורה או קדימה)" });
       return;
     }
 
