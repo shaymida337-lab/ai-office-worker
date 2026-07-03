@@ -38,3 +38,17 @@ backend/src/services/golden/fixtures/.staging/*
 
 # Local Netlify folder
 .netlify
+
+# Scratch scripts and local investigation artifacts
+backend/scripts/_tmp-*
+backend/scripts/remediation-snapshots/
+/test-output.txt
+/test-out2.txt
+/diff_classifier_fix.txt
+
+# Visual QA artifacts (screenshots and comparison outputs)
+frontend/_visual-qa/screenshots/
+frontend/_visual-qa/phase*-compare/
+frontend/_visual-qa/phase*-live-*/
+frontend/_visual-qa/*-report.json
+frontend/test-results/
