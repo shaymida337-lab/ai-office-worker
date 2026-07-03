@@ -188,7 +188,8 @@ test("invoice list query context preserves existing include flags", () => {
   const defaultCtx = buildInvoiceListQueryContext({ organizationId: "org-1" });
   assert.equal(defaultCtx.includeApprovedInvoices, true);
   assert.equal(defaultCtx.includeReviewCandidates, true);
-  assert.deepEqual(defaultCtx.reviewCandidateStatuses, ["needs_review", "rejected", "approved"]);
+  // שלב 6: auto_saved נכלל תמיד — רשומות שאושרו אוטומטית לא נעלמות מאף טאב
+  assert.deepEqual(defaultCtx.reviewCandidateStatuses, ["needs_review", "rejected", "approved", "auto_saved"]);
 
   const needsReviewCtx = buildInvoiceListQueryContext({ organizationId: "org-1", status: "needs_review" });
   assert.equal(needsReviewCtx.includeApprovedInvoices, false);
@@ -198,7 +199,7 @@ test("invoice list query context preserves existing include flags", () => {
   const approvedCtx = buildInvoiceListQueryContext({ organizationId: "org-1", status: "approved" });
   assert.equal(approvedCtx.includeApprovedInvoices, true);
   assert.equal(approvedCtx.includeReviewCandidates, true);
-  assert.deepEqual(approvedCtx.reviewCandidateStatuses, ["approved"]);
+  assert.deepEqual(approvedCtx.reviewCandidateStatuses, ["approved", "auto_saved"]);
 
   const paidCtx = buildInvoiceListQueryContext({ organizationId: "org-1", status: "paid" });
   assert.equal(paidCtx.includeApprovedInvoices, true);
@@ -208,16 +209,18 @@ test("invoice list query context preserves existing include flags", () => {
 
 test("buildReviewCandidateStatuses keeps approved items out of needs_review", () => {
   assert.deepEqual(buildReviewCandidateStatuses("needs_review"), ["needs_review"]);
-  assert.deepEqual(buildReviewCandidateStatuses("approved"), ["approved"]);
-  assert.deepEqual(buildReviewCandidateStatuses(undefined), ["needs_review", "rejected", "approved"]);
+  // שלב 6: טאב "מאושר" כולל גם auto_saved — רשומות שאושרו אוטומטית לא נעלמות
+  assert.deepEqual(buildReviewCandidateStatuses("approved"), ["approved", "auto_saved"]);
+  assert.deepEqual(buildReviewCandidateStatuses(undefined), ["needs_review", "rejected", "approved", "auto_saved"]);
 });
 
 test("buildInvoiceListWhereInput loads manually approved gmail scan items in approved tab", () => {
   const where = buildInvoiceListWhereInput(
     buildInvoiceListQueryContext({ organizationId: "org-1", status: "approved" })
   );
-  assert.deepEqual(where.gmailScanItemWhere.reviewStatus, { in: ["approved"] });
-  assert.deepEqual(where.financialDocumentReviewWhere.reviewStatus, { in: ["approved"] });
+  // שלב 6: הטאב "מאושר" טוען גם auto_saved (GSI); ל-FDR אין auto_saved — הפילטר in לא מזיק
+  assert.deepEqual(where.gmailScanItemWhere.reviewStatus, { in: ["approved", "auto_saved"] });
+  assert.deepEqual(where.financialDocumentReviewWhere.reviewStatus, { in: ["approved", "auto_saved"] });
 });
 
 test("parseInvoiceMonthParam accepts YYYY-MM only", () => {

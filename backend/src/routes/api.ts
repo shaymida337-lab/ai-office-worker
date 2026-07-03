@@ -48,6 +48,7 @@ import {
 import { resolveDocumentsFound } from "../services/gmailScanProgressCounts.js";
 import { isWithinBusinessDateWindow } from "../services/dates/businessDate.js";
 import { resolveDriveLink } from "../services/drive/driveLinkResolver.js";
+import { presentedReviewStatus, reviewCandidateStatusesForTab } from "../services/reviewStatusPolicy.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "../services/financialAmountLimits.js";
 import { processNatalieTurn } from "../services/conversation/index.js";
 import { processVoiceTurn } from "../services/conversation/voice/index.js";
@@ -3664,8 +3665,9 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
     currency,
     date,
     dueDate,
-    status: item.reviewStatus,
-    reviewStatus: item.reviewStatus,
+    // שלב 6: auto_saved מוצג כ"מאושר" — שכבת הצגה בלבד, הערך ב-DB לא משתנה.
+    status: presentedReviewStatus(item.reviewStatus),
+    reviewStatus: presentedReviewStatus(item.reviewStatus),
     source: "gmail_scan_item",
     reviewSourceId: item.id,
     description: [item.subject, item.attachmentFilename].filter(Boolean).join(" · ") || null,
@@ -3771,17 +3773,15 @@ export type InvoiceListQueryContext = {
   paymentStatus?: string;
   includeApprovedInvoices: boolean;
   includeReviewCandidates: boolean;
-  reviewCandidateStatuses?: InvoiceReviewCandidateStatus[];
+  reviewCandidateStatuses?: string[];
 };
 
 export function buildReviewCandidateStatuses(
   reviewStatus: InvoiceReviewCandidateStatus | undefined
-): InvoiceReviewCandidateStatus[] | undefined {
-  if (reviewStatus === "needs_review") return ["needs_review"];
-  if (reviewStatus === "rejected") return ["rejected"];
-  if (reviewStatus === "approved") return ["approved"];
-  if (!reviewStatus) return ["needs_review", "rejected", "approved"];
-  return undefined;
+): string[] | undefined {
+  // שלב 6: מקור האמת הוא reviewStatusPolicy — טאב "מאושר" כולל auto_saved,
+  // כדי שרשומות שאושרו אוטומטית לא ייעלמו מכל הטאבים (הבאג המקורי).
+  return reviewCandidateStatusesForTab(reviewStatus);
 }
 
 export type InvoiceListMonthBounds = { gte: Date; lt: Date };

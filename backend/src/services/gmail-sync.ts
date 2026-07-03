@@ -3352,10 +3352,19 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               console.error(`[gmail-sync] fallback GmailScanItem save failed message=${email.gmailId}`, fallbackErr);
               logStep(`[gmail-sync] error message=${email.gmailId} stage=fallback_scan_item_save reason="${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}"`);
             }
-          } else if (currentDuplicateKey) {
+          } else if (invoicePersistedForPilot || paymentPersistedForPilot) {
+            // F14: הרשומה הפיננסית כבר נשמרה בהצלחה — הכשל היה בצעד צדדי מאוחר
+            // (Sheets/משימות/התראות). דריסת auto_saved ל-needs_review כאן הייתה
+            // מעלימה את החשבונית מטאב "מאושר" למרות שנקלטה תקין.
+            logStep(`[gmail-sync] late-step failure after financial record persisted message=${email.gmailId} — keeping reviewStatus unchanged`);
+          } else if (savedScanItemId || currentDuplicateKey) {
             try {
+              // עדכון לפי id כשידוע — currentDuplicateKey הוא המפתח ה-legacy
+              // בעוד שהרשומה נשמרת עם מפתח SCFC, כך שעדכון לפי המפתח החטיא.
               await prisma.gmailScanItem.update({
-                where: { organizationId_duplicateKey: { organizationId, duplicateKey: currentDuplicateKey } },
+                where: savedScanItemId
+                  ? { id: savedScanItemId }
+                  : { organizationId_duplicateKey: { organizationId, duplicateKey: currentDuplicateKey! } },
                 data: {
                   reviewStatus: "needs_review",
                   decisionReason: `process_save_failed: ${err instanceof Error ? err.message : String(err)}`,
