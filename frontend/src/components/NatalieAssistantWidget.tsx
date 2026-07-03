@@ -6,19 +6,41 @@ import { usePathname } from "next/navigation";
 import { apiFetch, API_URL, getToken } from "@/lib/api";
 import { formatNatalieResponseOrFallback } from "@/lib/natalie/formatResponse";
 import { normalizeAvailabilityProposal, normalizeNatalieResponse } from "@/lib/natalie/responseGuard";
+import {
+  computeAnalyserRms,
+  createInitialChunkVadState,
+  createInitialVadTickState,
+  evaluateChunkVadTick,
+  evaluateVadTick,
+  getVadConfig,
+  getVadDeviceProfile,
+  isIosSafari,
+  shouldUseRecorderTimeslice,
+  type ChunkVadState,
+  type VadConfig,
+  type VadTickState,
+} from "@/lib/natalie/voiceRecordingVad";
+import { logVoiceDebug, shouldLogPeriodicSample } from "@/lib/natalie/voiceRecordingDebug";
 import { isUiOverlayOpen, lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
+import { VoiceDebugPanel } from "@/components/VoiceDebugPanel";
 
 type MicState = "idle" | "recording" | "transcribing";
 
 const RECORDER_MIME_CANDIDATES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"];
 
-const VAD_SILENCE_DURATION_MS = 2500;
-const VAD_VOLUME_THRESHOLD = 0.015;
-const VAD_MIN_SPEECH_MS = 400;
-const VAD_MAX_RECORDING_MS = 30000;
-const VAD_CHECK_INTERVAL_MS = 100;
 const TTS_UNLOCK_SILENT_AUDIO =
   "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+const NATALIE_SESSION_STORAGE_KEY = "natalie.conversationSessionId";
+
+function readConversationSessionId(): string | null {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem(NATALIE_SESSION_STORAGE_KEY);
+}
+
+function persistConversationSessionId(sessionId: string) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(NATALIE_SESSION_STORAGE_KEY, sessionId);
+}
 
 function NatalieIdentityAvatar({
   sizeClass,
@@ -63,15 +85,17 @@ function releaseMediaStream(stream: MediaStream | null) {
   stream?.getTracks().forEach((track) => track.stop());
 }
 
-function computeAnalyserRms(analyser: AnalyserNode): number {
-  const data = new Uint8Array(analyser.fftSize);
-  analyser.getByteTimeDomainData(data);
-  let sum = 0;
-  for (let i = 0; i < data.length; i++) {
-    const normalized = (data[i]! - 128) / 128;
-    sum += normalized * normalized;
+function createBrowserAudioContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const AudioContextCtor =
+    window.AudioContext ||
+    (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) return null;
+  try {
+    return new AudioContextCtor();
+  } catch {
+    return null;
   }
-  return Math.sqrt(sum / data.length);
 }
 
 function isMicRecordingSupported(): boolean {
@@ -83,13 +107,7 @@ function isMicRecordingSupported(): boolean {
 }
 
 function isVadSupported(): boolean {
-  return typeof AudioContext !== "undefined";
-}
-
-function isIosDevice(): boolean {
-  if (typeof navigator === "undefined") return false;
-  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) return true;
-  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  return createBrowserAudioContext() !== null;
 }
 
 type NatalieInvoiceSummary = {
@@ -515,16 +533,27 @@ function NatalieAssistantWidgetInner() {
   const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const vadIntervalRef = useRef<number | null>(null);
-  const silenceStartedAtRef = useRef<number | null>(null);
-  const hasDetectedSpeechRef = useRef(false);
-  const speechStartedAtRef = useRef<number | null>(null);
-  const recordingStartedAtRef = useRef<number | null>(null);
-  const stopAudioRecordingRef = useRef<() => void>(() => {});
+  const fallbackStopTimerRef = useRef<number | null>(null);
+  const vadConfigRef = useRef<VadConfig>(getVadConfig("desktop"));
+  const vadTickStateRef = useRef<VadTickState>(createInitialVadTickState(0));
+  const chunkVadStateRef = useRef<ChunkVadState>(createInitialChunkVadState());
+  const useChunkVadFallbackRef = useRef(false);
+  const stopRequestedRef = useRef(false);
+  const transcribeStartedRef = useRef(false);
+  const vadDebugTickCountRef = useRef(0);
+  const vadDebugHadSpeechRef = useRef(false);
+  const vadDebugSilenceStartedAtRef = useRef<number | null>(null);
+  const chunkDebugHadSpeechRef = useRef(false);
+  const stopAudioRecordingRef = useRef<(trigger?: string) => void>(() => {});
 
   function stopVadMonitoring() {
     if (vadIntervalRef.current !== null) {
       clearInterval(vadIntervalRef.current);
       vadIntervalRef.current = null;
+    }
+    if (fallbackStopTimerRef.current !== null) {
+      clearTimeout(fallbackStopTimerRef.current);
+      fallbackStopTimerRef.current = null;
     }
     try {
       mediaStreamSourceRef.current?.disconnect();
@@ -533,10 +562,9 @@ function NatalieAssistantWidgetInner() {
     }
     mediaStreamSourceRef.current = null;
     analyserRef.current = null;
-    silenceStartedAtRef.current = null;
-    hasDetectedSpeechRef.current = false;
-    speechStartedAtRef.current = null;
-    recordingStartedAtRef.current = null;
+    vadTickStateRef.current = createInitialVadTickState(0);
+    chunkVadStateRef.current = createInitialChunkVadState();
+    useChunkVadFallbackRef.current = false;
 
     const audioContext = audioContextRef.current;
     audioContextRef.current = null;
@@ -589,25 +617,105 @@ function NatalieAssistantWidgetInner() {
 
   function prepareAudioContextInUserGesture(): boolean {
     if (!isVadSupported()) {
-      console.warn("[natalie][vad] AudioContext not supported — manual stop only");
+      console.warn("[natalie][vad] AudioContext not supported — chunk/max-duration fallback only");
+      logVoiceDebug("audio_context_unavailable", { reason: "not_supported" });
       return false;
     }
 
     try {
       stopVadMonitoring();
-      audioContextRef.current = new AudioContext();
-      return true;
+      audioContextRef.current = createBrowserAudioContext();
+      if (audioContextRef.current) {
+        logVoiceDebug("audio_context_created", {
+          state: audioContextRef.current.state,
+          sampleRate: audioContextRef.current.sampleRate,
+        });
+      } else {
+        logVoiceDebug("audio_context_unavailable", { reason: "create_returned_null" });
+      }
+      return audioContextRef.current !== null;
     } catch (err) {
-      console.warn("[natalie][vad] AudioContext creation failed — manual stop only", err);
+      console.warn("[natalie][vad] AudioContext creation failed — chunk/max-duration fallback only", err);
+      logVoiceDebug("audio_context_unavailable", {
+        reason: "create_failed",
+        error: err instanceof Error ? err.message : String(err),
+      });
       audioContextRef.current = null;
       return false;
     }
   }
 
+  function scheduleFallbackMaxDurationStop() {
+    const config = vadConfigRef.current;
+    if (fallbackStopTimerRef.current !== null) {
+      clearTimeout(fallbackStopTimerRef.current);
+    }
+    logVoiceDebug("fallback_max_timer_scheduled", {
+      timeoutMs: config.fallbackMaxRecordingMs,
+    });
+    fallbackStopTimerRef.current = window.setTimeout(() => {
+      fallbackStopTimerRef.current = null;
+      logVoiceDebug("auto_stop_requested", { trigger: "fallback_max" });
+      stopAudioRecordingRef.current("fallback_max");
+    }, config.fallbackMaxRecordingMs);
+  }
+
+  function handleChunkVad(chunkSize: number) {
+    if (!useChunkVadFallbackRef.current) return;
+    const now = Date.now();
+    const previous = chunkVadStateRef.current;
+    const result = evaluateChunkVadTick(chunkSize, now, previous, vadConfigRef.current);
+    chunkVadStateRef.current = result.nextState;
+
+    if (!previous.hasDetectedSpeech && result.nextState.hasDetectedSpeech) {
+      chunkDebugHadSpeechRef.current = true;
+      logVoiceDebug("chunk_speech_detected", {
+        chunkSize,
+        speechChunkMinBytes: vadConfigRef.current.speechChunkMinBytes,
+      });
+    }
+    if (
+      previous.silenceStartedAt === null &&
+      result.nextState.silenceStartedAt !== null
+    ) {
+      logVoiceDebug("chunk_silence_timer_started", {
+        chunkSize,
+        quietChunkMaxBytes: vadConfigRef.current.quietChunkMaxBytes,
+        consecutiveQuietChunks: result.nextState.consecutiveQuietChunks,
+      });
+    }
+
+    if (result.action === "stop_silence" || result.action === "stop_max_duration") {
+      logVoiceDebug("auto_stop_requested", {
+        trigger: result.action === "stop_silence" ? "chunk_silence" : "chunk_max_duration",
+        chunkSize,
+        consecutiveQuietChunks: result.nextState.consecutiveQuietChunks,
+      });
+      stopVadMonitoring();
+      stopAudioRecordingRef.current(result.action === "stop_silence" ? "chunk_silence" : "chunk_max_duration");
+    }
+  }
+
   async function startVadMonitoring(stream: MediaStream) {
+    const config = vadConfigRef.current;
+    vadDebugTickCountRef.current = 0;
+    vadDebugHadSpeechRef.current = false;
+    vadDebugSilenceStartedAtRef.current = null;
+    chunkDebugHadSpeechRef.current = false;
+    scheduleFallbackMaxDurationStop();
+
     const audioContext = audioContextRef.current;
     if (!audioContext || audioContext.state === "closed") {
-      console.warn("[natalie][vad] no AudioContext available — manual stop only");
+      console.warn("[natalie][vad] no AudioContext available — using chunk fallback");
+      useChunkVadFallbackRef.current = true;
+      vadTickStateRef.current = createInitialVadTickState(Date.now());
+      chunkVadStateRef.current = createInitialChunkVadState();
+      logVoiceDebug("chunk_fallback_enabled", { reason: "no_audio_context" });
+      logVoiceDebug("vad_monitoring_started", {
+        mode: "chunk_only",
+        checkIntervalMs: config.checkIntervalMs,
+        recorderTimesliceMs: config.recorderTimesliceMs,
+      });
       return;
     }
 
@@ -622,69 +730,150 @@ function NatalieAssistantWidgetInner() {
     }
     mediaStreamSourceRef.current = null;
     analyserRef.current = null;
-    silenceStartedAtRef.current = null;
-    hasDetectedSpeechRef.current = false;
-    speechStartedAtRef.current = null;
-    recordingStartedAtRef.current = null;
+    useChunkVadFallbackRef.current = false;
+    vadTickStateRef.current = createInitialVadTickState(Date.now());
+    chunkVadStateRef.current = createInitialChunkVadState();
 
     if (audioContext.state === "suspended") {
       await audioContext.resume();
+      logVoiceDebug("audio_context_resumed", { state: audioContext.state });
     }
 
-    const source = audioContext.createMediaStreamSource(stream);
-    mediaStreamSourceRef.current = source;
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
-    analyser.smoothingTimeConstant = 0.8;
-    source.connect(analyser);
-    analyserRef.current = analyser;
+    try {
+      const source = audioContext.createMediaStreamSource(stream);
+      mediaStreamSourceRef.current = source;
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.75;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+      logVoiceDebug("analyser_created", {
+        fftSize: analyser.fftSize,
+        audioContextState: audioContext.state,
+      });
+      if (config.recorderTimesliceMs > 0) {
+        useChunkVadFallbackRef.current = true;
+        logVoiceDebug("chunk_fallback_enabled", { reason: "mobile_parallel" });
+      }
+    } catch (err) {
+      console.warn("[natalie][vad] analyser setup failed — using chunk fallback", err);
+      useChunkVadFallbackRef.current = true;
+      logVoiceDebug("analyser_failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      logVoiceDebug("chunk_fallback_enabled", { reason: "analyser_failed" });
+      logVoiceDebug("vad_monitoring_started", {
+        mode: "chunk_only",
+        checkIntervalMs: config.checkIntervalMs,
+        recorderTimesliceMs: config.recorderTimesliceMs,
+      });
+      return;
+    }
 
-    recordingStartedAtRef.current = Date.now();
-    silenceStartedAtRef.current = null;
-    hasDetectedSpeechRef.current = false;
-    speechStartedAtRef.current = null;
+    logVoiceDebug("vad_monitoring_started", {
+      mode: useChunkVadFallbackRef.current ? "analyser_and_chunk" : "analyser_only",
+      checkIntervalMs: config.checkIntervalMs,
+      volumeThreshold: config.volumeThreshold,
+      silenceDurationMs: config.silenceDurationMs,
+      minSpeechMs: config.minSpeechMs,
+      recorderTimesliceMs: config.recorderTimesliceMs,
+      audioContextState: audioContext.state,
+    });
 
     vadIntervalRef.current = window.setInterval(() => {
+      vadDebugTickCountRef.current += 1;
       const currentAnalyser = analyserRef.current;
       const recorder = mediaRecorderRef.current;
       if (!currentAnalyser || !recorder || recorder.state !== "recording") {
+        if (shouldLogPeriodicSample(vadDebugTickCountRef.current, 25)) {
+          logVoiceDebug("vad_tick_skipped", {
+            tick: vadDebugTickCountRef.current,
+            hasAnalyser: Boolean(currentAnalyser),
+            hasRecorder: Boolean(recorder),
+            recorderState: recorder?.state ?? "missing",
+          });
+        }
         return;
       }
 
       const now = Date.now();
-      const rms = computeAnalyserRms(currentAnalyser);
+      const previousState = vadTickStateRef.current;
+      const rms = computeAnalyserRms(
+        currentAnalyser as {
+          fftSize: number;
+          getByteTimeDomainData: (data: Uint8Array) => void;
+        }
+      );
+      const result = evaluateVadTick(
+        rms,
+        now,
+        previousState,
+        config
+      );
+      vadTickStateRef.current = result.nextState;
 
-      if (rms > VAD_VOLUME_THRESHOLD) {
-        if (!hasDetectedSpeechRef.current) {
-          hasDetectedSpeechRef.current = true;
-          speechStartedAtRef.current = now;
-        }
-        silenceStartedAtRef.current = null;
-      } else if (
-        hasDetectedSpeechRef.current &&
-        speechStartedAtRef.current !== null &&
-        now - speechStartedAtRef.current >= VAD_MIN_SPEECH_MS
-      ) {
-        if (silenceStartedAtRef.current === null) {
-          silenceStartedAtRef.current = now;
-        } else if (now - silenceStartedAtRef.current >= VAD_SILENCE_DURATION_MS) {
-          stopVadMonitoring();
-          stopAudioRecordingRef.current();
-        }
+      if (shouldLogPeriodicSample(vadDebugTickCountRef.current, 6)) {
+        logVoiceDebug("rms_sample", {
+          tick: vadDebugTickCountRef.current,
+          rms: Number(rms.toFixed(5)),
+          threshold: config.volumeThreshold,
+          hasDetectedSpeech: result.nextState.hasDetectedSpeech,
+          silenceStartedAt: result.nextState.silenceStartedAt,
+        });
+      }
+
+      if (!vadDebugHadSpeechRef.current && result.nextState.hasDetectedSpeech) {
+        vadDebugHadSpeechRef.current = true;
+        logVoiceDebug("speech_detected", {
+          tick: vadDebugTickCountRef.current,
+          rms: Number(rms.toFixed(5)),
+          threshold: config.volumeThreshold,
+        });
       }
 
       if (
-        recordingStartedAtRef.current !== null &&
-        now - recordingStartedAtRef.current >= VAD_MAX_RECORDING_MS
+        vadDebugSilenceStartedAtRef.current === null &&
+        result.nextState.silenceStartedAt !== null
       ) {
-        stopVadMonitoring();
-        stopAudioRecordingRef.current();
+        vadDebugSilenceStartedAtRef.current = result.nextState.silenceStartedAt;
+        logVoiceDebug("silence_timer_started", {
+          tick: vadDebugTickCountRef.current,
+          rms: Number(rms.toFixed(5)),
+          silenceStartedAt: result.nextState.silenceStartedAt,
+        });
+      } else if (
+        vadDebugSilenceStartedAtRef.current !== null &&
+        result.nextState.silenceStartedAt === null
+      ) {
+        logVoiceDebug("silence_timer_cancelled", {
+          tick: vadDebugTickCountRef.current,
+          rms: Number(rms.toFixed(5)),
+          previousSilenceStartedAt: vadDebugSilenceStartedAtRef.current,
+        });
+        vadDebugSilenceStartedAtRef.current = null;
       }
-    }, VAD_CHECK_INTERVAL_MS);
+
+      if (result.action === "stop_silence" || result.action === "stop_max_duration") {
+        logVoiceDebug("auto_stop_requested", {
+          trigger: result.action === "stop_silence" ? "vad_silence" : "vad_max_duration",
+          tick: vadDebugTickCountRef.current,
+          rms: Number(rms.toFixed(5)),
+          silenceDurationMs:
+            result.nextState.silenceStartedAt !== null
+              ? now - result.nextState.silenceStartedAt
+              : null,
+        });
+        stopVadMonitoring();
+        stopAudioRecordingRef.current(
+          result.action === "stop_silence" ? "vad_silence" : "vad_max_duration"
+        );
+      }
+    }, config.checkIntervalMs);
   }
 
   function releaseRecordingResources() {
     stopVadMonitoring();
+    stopRequestedRef.current = false;
 
     const recorder = mediaRecorderRef.current;
     if (recorder) {
@@ -743,6 +932,19 @@ function NatalieAssistantWidgetInner() {
   if (!shouldShowWidget(pathname)) return null;
 
   async function transcribeRecordedAudio(blob: Blob, mimeType: string) {
+    if (transcribeStartedRef.current) {
+      logVoiceDebug("transcription_skipped_duplicate", {
+        blobSize: blob.size,
+        mimeType,
+      });
+      return;
+    }
+    transcribeStartedRef.current = true;
+    logVoiceDebug("transcription_started", {
+      blobSize: blob.size,
+      mimeType,
+    });
+
     try {
       const token = getToken();
       const formData = new FormData();
@@ -771,7 +973,7 @@ function NatalieAssistantWidgetInner() {
       setInput(text);
       setSpeechError("");
       if (!sending) {
-        void sendMessage(text);
+        void sendVoiceTurn(text);
       }
     } catch (err) {
       console.error("[natalie] transcription failed", err);
@@ -795,24 +997,48 @@ function NatalieAssistantWidgetInner() {
 
     setSpeechError("");
     recordedChunksRef.current = [];
+    stopRequestedRef.current = false;
+    transcribeStartedRef.current = false;
 
-    const useVad = !isIosDevice();
-    const vadAvailable = useVad ? prepareAudioContextInUserGesture() : false;
+    const deviceProfile = getVadDeviceProfile({
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+      maxTouchPoints: typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0,
+      innerWidth: typeof window !== "undefined" ? window.innerWidth : 1024,
+    });
+    const vadConfig = getVadConfig(deviceProfile);
+    vadConfigRef.current = vadConfig;
+    logVoiceDebug("session_start", {
+      deviceProfile,
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+      maxTouchPoints: typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0,
+      innerWidth: typeof window !== "undefined" ? window.innerWidth : null,
+      vadConfig,
+    });
+
+    const vadAvailable = prepareAudioContextInUserGesture();
     unlockTtsAudioInUserGesture();
 
     try {
       if (vadAvailable && audioContextRef.current) {
         await audioContextRef.current.resume();
+        logVoiceDebug("audio_context_resumed", {
+          state: audioContextRef.current.state,
+          phase: "after_get_user_media",
+        });
       }
 
+      const iosDevice =
+        typeof navigator !== "undefined" &&
+        isIosSafari(navigator.userAgent, navigator.maxTouchPoints);
+
       const stream = await navigator.mediaDevices.getUserMedia(
-        isIosDevice()
+        iosDevice
           ? { audio: true }
           : {
               audio: {
                 echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
+                noiseSuppression: deviceProfile === "desktop",
+                autoGainControl: deviceProfile === "desktop",
                 channelCount: 1,
               },
             }
@@ -830,11 +1056,30 @@ function NatalieAssistantWidgetInner() {
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
+          logVoiceDebug("chunk_received", {
+            chunkSize: event.data.size,
+            chunkFallbackEnabled: useChunkVadFallbackRef.current,
+            chunkIndex: recordedChunksRef.current.length,
+          });
+          handleChunkVad(event.data.size);
         }
       };
 
       recorder.onstop = () => {
+        logVoiceDebug("recorder_onstop_fired", {
+          chunkCount: recordedChunksRef.current.length,
+          transcribeStarted: transcribeStartedRef.current,
+          stopRequested: stopRequestedRef.current,
+        });
         stopVadMonitoring();
+        if (transcribeStartedRef.current) {
+          releaseMediaStream(mediaStreamRef.current);
+          mediaStreamRef.current = null;
+          mediaRecorderRef.current = null;
+          recordedChunksRef.current = [];
+          return;
+        }
+
         const chunks = recordedChunksRef.current;
         recordedChunksRef.current = [];
         releaseMediaStream(mediaStreamRef.current);
@@ -857,14 +1102,22 @@ function NatalieAssistantWidgetInner() {
         setMicState("idle");
       };
 
-      if (isIosDevice()) {
-        recorder.start(1000);
+      const timeslice = shouldUseRecorderTimeslice(vadConfig);
+      if (timeslice) {
+        recorder.start(timeslice);
       } else {
         recorder.start();
       }
-      if (useVad && vadAvailable) {
-        await startVadMonitoring(stream);
-      }
+      logVoiceDebug("media_recorder_started", {
+        mimeType: resolvedMimeType,
+        timesliceMs: timeslice ?? null,
+        recorderState: recorder.state,
+        streamTrackCount: stream.getAudioTracks().length,
+        streamTrackEnabled: stream.getAudioTracks()[0]?.enabled ?? null,
+        streamTrackReadyState: stream.getAudioTracks()[0]?.readyState ?? null,
+      });
+
+      await startVadMonitoring(stream);
       setMicState("recording");
     } catch (err) {
       releaseRecordingResources();
@@ -879,11 +1132,24 @@ function NatalieAssistantWidgetInner() {
     }
   }
 
-  function stopAudioRecording() {
+  function stopAudioRecording(trigger = "manual") {
+    logVoiceDebug("stop_requested", {
+      trigger,
+      stopAlreadyRequested: stopRequestedRef.current,
+      recorderState: mediaRecorderRef.current?.state ?? "missing",
+      micState,
+    });
+    if (stopRequestedRef.current) return;
+    stopRequestedRef.current = true;
     stopVadMonitoring();
 
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state !== "recording") {
+      logVoiceDebug("recorder_stop_called", {
+        trigger,
+        skipped: true,
+        reason: !recorder ? "no_recorder" : `recorder_state_${recorder.state}`,
+      });
       if (micState === "recording") {
         releaseRecordingResources();
         setMicState("idle");
@@ -893,8 +1159,19 @@ function NatalieAssistantWidgetInner() {
 
     setMicState("transcribing");
     try {
+      logVoiceDebug("recorder_stop_called", {
+        trigger,
+        skipped: false,
+        recorderState: recorder.state,
+      });
       recorder.stop();
-    } catch {
+    } catch (err) {
+      logVoiceDebug("recorder_stop_called", {
+        trigger,
+        skipped: false,
+        failed: true,
+        error: err instanceof Error ? err.message : String(err),
+      });
       releaseRecordingResources();
       setMicState("idle");
       setSpeechError("לא הצלחתי לעצור את ההקלטה. נסה שוב.");
@@ -1065,7 +1342,11 @@ function NatalieAssistantWidgetInner() {
     try {
       result = await apiFetch<unknown>("/api/natalie/ask", {
         method: "POST",
-        body: JSON.stringify({ question: cleanText, history }),
+        body: JSON.stringify({
+          question: cleanText,
+          history,
+          sessionId: readConversationSessionId(),
+        }),
       });
     } catch (err) {
       console.error("[natalie] ask network failed", err);
@@ -1082,6 +1363,13 @@ function NatalieAssistantWidgetInner() {
 
     try {
       const normalized = normalizeNatalieResponse(result) as NatalieAskResponse;
+      if (
+        result &&
+        typeof result === "object" &&
+        typeof (result as { conversationSessionId?: unknown }).conversationSessionId === "string"
+      ) {
+        persistConversationSessionId((result as { conversationSessionId: string }).conversationSessionId);
+      }
       const answer = formatNatalieResponseOrFallback(normalized.answer);
       void speakNatalieReply(answer);
       setMessages((current) =>
@@ -1144,6 +1432,151 @@ function NatalieAssistantWidgetInner() {
       );
     } catch (err) {
       console.error("[natalie] ask response processing failed", err);
+      const fallbackAnswer = "קיבלתי תשובה חלקית מנטלי. אפשר לנסות שוב.";
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === loadingMessage.id ? { ...message, text: fallbackAnswer } : message
+        )
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function sendVoiceTurn(text: string) {
+    const cleanText = text.trim();
+    if (!cleanText || sending) return;
+
+    const timestamp = Date.now();
+    const history = buildNatalieHistory(messages);
+    const userMessage: WidgetMessage = {
+      id: `user-${timestamp}`,
+      sender: "user",
+      text: cleanText,
+    };
+    const loadingMessage: WidgetMessage = {
+      id: `natalie-loading-${timestamp}`,
+      sender: "natalie",
+      text: "נטלי בודקת עבורך...",
+    };
+
+    setMessages((current) => [...current, userMessage, loadingMessage]);
+    setInput("");
+    setSending(true);
+
+    if (voiceEnabled && typeof window !== "undefined" && "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined") {
+      const unlock = new SpeechSynthesisUtterance(" ");
+      unlock.volume = 0;
+      unlock.lang = "he-IL";
+      window.speechSynthesis.speak(unlock);
+    }
+
+    let result: unknown;
+    try {
+      result = await apiFetch<unknown>("/api/natalie/voice/turn", {
+        method: "POST",
+        body: JSON.stringify({
+          transcript: cleanText,
+          history,
+          sessionId: readConversationSessionId(),
+        }),
+      });
+    } catch (err) {
+      console.error("[natalie] voice turn network failed", err);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === loadingMessage.id
+            ? { ...message, text: "מצטערת, לא הצלחתי להתחבר כרגע. נסה שוב." }
+            : message
+        )
+      );
+      setSending(false);
+      return;
+    }
+
+    try {
+      const normalized = normalizeNatalieResponse(result) as NatalieAskResponse;
+      if (
+        result &&
+        typeof result === "object" &&
+        typeof (result as { conversationSessionId?: unknown }).conversationSessionId === "string"
+      ) {
+        persistConversationSessionId((result as { conversationSessionId: string }).conversationSessionId);
+      }
+      const answer = formatNatalieResponseOrFallback(normalized.answer);
+      const spoken =
+        result &&
+        typeof result === "object" &&
+        typeof (result as { spokenResponse?: unknown }).spokenResponse === "string" &&
+        (result as { spokenResponse: string }).spokenResponse.trim()
+          ? (result as { spokenResponse: string }).spokenResponse
+          : answer;
+      const executed =
+        result &&
+        typeof result === "object" &&
+        (result as { executed?: unknown }).executed === true;
+      void speakNatalieReply(spoken);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === loadingMessage.id
+            ? {
+                ...message,
+                text: answer,
+                ...(executed ? { actionStatus: "created" as const, actionFeedback: answer } : {}),
+                ...(!executed && isTaskActionResponse(normalized)
+                  ? {
+                      action: normalized.action,
+                      proposal: normalized.proposal,
+                      actionStatus: "pending" as const,
+                    }
+                  : {}),
+                ...(!executed && isIssueInvoiceResponse(normalized)
+                  ? {
+                      action: normalized.action,
+                      proposal: normalized.proposal,
+                      actionStatus: "pending" as const,
+                    }
+                  : {}),
+                ...(!executed && isBookAppointmentResponse(normalized)
+                  ? {
+                      action: normalized.action,
+                      proposal: normalized.proposal,
+                      actionStatus: "pending" as const,
+                    }
+                  : {}),
+                ...(!executed && isCancelAppointmentResponse(normalized)
+                  ? {
+                      action: normalized.action,
+                      proposal: normalized.proposal,
+                      actionStatus: "pending" as const,
+                    }
+                  : {}),
+                ...(!executed && isRescheduleAppointmentResponse(normalized)
+                  ? {
+                      action: normalized.action,
+                      proposal: normalized.proposal,
+                      actionStatus: "pending" as const,
+                    }
+                  : {}),
+                ...(!executed && isSuggestAvailableTimesResponse(normalized)
+                  ? {
+                      action: normalized.action,
+                      proposal: normalizeAvailabilityProposal(normalized.proposal) as SuggestAvailableTimesProposal,
+                      actionStatus: "pending" as const,
+                    }
+                  : {}),
+                ...(!executed && isShowInvoiceResponse(normalized)
+                  ? {
+                      action: normalized.action,
+                      invoices: normalized.invoices as NatalieInvoiceSummary[],
+                    }
+                  : {}),
+              }
+            : message
+        )
+      );
+    } catch (err) {
+      console.error("[natalie] voice turn response processing failed", err);
       const fallbackAnswer = "קיבלתי תשובה חלקית מנטלי. אפשר לנסות שוב.";
       setMessages((current) =>
         current.map((message) =>
@@ -2081,7 +2514,7 @@ function NatalieAssistantWidgetInner() {
             )}
             <button
               type="button"
-              onClick={stopAudioRecording}
+              onClick={() => stopAudioRecording("manual")}
               disabled={micState === "transcribing"}
               className="mt-6 inline-flex min-h-[56px] items-center justify-center rounded-xl bg-[#1d5bff] px-6 py-2.5 text-base font-extrabold text-white shadow-[0_12px_28px_rgba(29,91,255,0.24)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
             >
@@ -2090,6 +2523,8 @@ function NatalieAssistantWidgetInner() {
           </div>
         </div>
       )}
+
+      <VoiceDebugPanel />
     </>
   );
 }
