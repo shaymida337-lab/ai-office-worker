@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { prisma } from "../lib/prisma.js";
 import {
+  buildWeakDocumentFallbackFingerprint,
   computeCanonicalFingerprint,
   matchFinancialDocuments,
   type DedupMatchResult,
@@ -492,7 +493,21 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
     canonical,
     legacyDuplicateHash,
   });
-  const documentFingerprint = canonical.fingerprint ?? canonical.legacyFingerprint;
+  // F7: כשאין זהות קנונית (טיר weak/none) — מפתח fallback ייחודי פר-מקור, כדי
+  // שמסמכים שונים חסרי-זהות לא יידרסו זה את זה ב-upsert של רשומת הביקורת.
+  const documentFingerprint =
+    canonical.fingerprint ??
+    buildWeakDocumentFallbackFingerprint({
+      organizationId: input.organizationId,
+      legacyFingerprint: canonical.legacyFingerprint,
+      uniqueHint:
+        input.gmailMessageId ??
+        input.whatsappLogId ??
+        input.emailMessageId ??
+        input.fileName ??
+        input.subject ??
+        null,
+    });
 
   if (!isPaymentDocumentType(documentType)) {
     const review = await upsertReview({ ...input, documentType, documentDate, dueDate, confidenceScore, sourceFingerprint, documentFingerprint, reviewStatus: "rejected", uncertaintyReason: input.uncertaintyReason ?? "מסמך לא רלוונטי" });

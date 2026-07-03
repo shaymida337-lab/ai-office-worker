@@ -6961,13 +6961,20 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
       return;
     }
 
+    // F5: חישוב SHA256 לקובץ המצלמה — אותה טביעת אצבע קובץ כמו Gmail/WhatsApp,
+    // כך שאותו מסמך שמגיע גם במייל/וואטסאפ ייתפס ככפילות בין-מסלולית (טיר file).
+    const cameraFileBuffer = body.fileBase64 ? Buffer.from(body.fileBase64, "base64") : null;
+    const cameraFileSha256 = cameraFileBuffer
+      ? createHash("sha256").update(cameraFileBuffer).digest("hex")
+      : null;
+
     let documentLink: string | undefined;
-    if (body.fileBase64 && body.filename) {
+    if (cameraFileBuffer && body.filename) {
       const uploadDir = path.join(process.cwd(), "uploads", "camera-invoices");
       await mkdir(uploadDir, { recursive: true });
       const safeName = body.filename.replace(/[\\/:*?"<>|]/g, "-");
       const storedName = `${Date.now()}_${safeName}`;
-      await writeFile(path.join(uploadDir, storedName), Buffer.from(body.fileBase64, "base64"));
+      await writeFile(path.join(uploadDir, storedName), cameraFileBuffer);
       documentLink = `/uploads/camera-invoices/${storedName}`;
     }
 
@@ -6979,6 +6986,8 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
         ? `Camera invoice scan #${body.invoiceNumber}`
         : "Camera invoice scan",
       fileName: body.filename ?? null,
+      fileSize: cameraFileBuffer?.length ?? null,
+      fileSha256: cameraFileSha256,
       supplierName: body.supplier,
       invoiceNumber: body.invoiceNumber ?? null,
       documentDate: invoiceDate,

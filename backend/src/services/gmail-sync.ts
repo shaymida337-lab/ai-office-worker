@@ -2059,9 +2059,23 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         occurredAt: email.receivedAt,
       });
       currentDuplicateKey = duplicateKey;
-      const existingScanItem = await prisma.gmailScanItem.findUnique({
-        where: { organizationId_duplicateKey: { organizationId, duplicateKey } },
-      });
+      // F6: הרשומות נשמרות עם duplicateKey = טביעת אצבע קנונית (SCFC), אבל
+      // הבדיקה המוקדמת חישבה מפתח legacy — כך שהחיפוש כמעט תמיד החטיא, ואם
+      // הזהות נסחפה בין סריקות (סכום שהתאושש, ספק שתוקן) נוצרה שורה שנייה
+      // לאותה הודעה. גשר: אם המפתח ה-legacy לא נמצא, מאתרים את הרשומה הקיימת
+      // לפי מזהה ההודעה + שם הקובץ — וה-upsert ממשיך להשתמש במפתח שלה.
+      const existingScanItem =
+        (await prisma.gmailScanItem.findUnique({
+          where: { organizationId_duplicateKey: { organizationId, duplicateKey } },
+        })) ??
+        (await prisma.gmailScanItem.findFirst({
+          where: {
+            organizationId,
+            gmailMessageId: email.gmailId,
+            attachmentFilename: attachmentFilename ?? null,
+          },
+          orderBy: { createdAt: "asc" },
+        }));
       if (existingScanItem) {
         logStep(`[gmail-sync] decision duplicate message=${email.gmailId} type=${existingScanItem.documentType} supplier="${existingScanItem.supplierName}" amount=${existingScanItem.amount ?? "unknown"}`);
         const existingScanItemAmount = Number(existingScanItem.amount);

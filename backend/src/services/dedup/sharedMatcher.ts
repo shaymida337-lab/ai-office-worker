@@ -138,12 +138,10 @@ function buildFingerprintWithPrefix(prefix: string, input: FinancialDocumentFing
   }
 
   if (supplier && amount && date) {
-    if (!hasStrongInvoiceNumber(invoiceNumber) && !fileSha256) {
-      return {
-        fingerprint: hashParts([prefix, organizationId, "supplier-amount-date", supplier, amount, documentType]),
-        tier: "supplier-amount-date",
-      };
-    }
+    // התאריך חייב להיכלל במפתח: בלעדיו שני חיובים חודשיים זהים (אותו ספק,
+    // אותו סכום, בלי מספר חשבונית) מתמזגים לכפילות-שווא וה-unique חוסם את
+    // החיוב הלגיטימי השני. אותו מסמך שנסרק שוב עם תאריך OCR שגוי עדיין
+    // ייתפס ע"י duplicateGate הסמנטי (ספק+סכום+קרבת תאריך) → review, לא נחסם.
     return {
       fingerprint: hashParts([prefix, organizationId, "supplier-amount-date", supplier, amount, date, documentType]),
       tier: "supplier-amount-date",
@@ -250,17 +248,37 @@ export function matchFinancialDocuments(
   const sameAmount = Boolean(leftNormalized.amount && leftNormalized.amount === rightNormalized.amount);
   const sameDate = Boolean(leftNormalized.date && leftNormalized.date === rightNormalized.date);
   const sameInvoice = Boolean(leftNormalized.invoiceNumber && leftNormalized.invoiceNumber === rightNormalized.invoiceNumber);
+  // אותו ספק+סכום עם תאריכים קרובים (סטיית OCR/עיבוד) — חשד סביר → review.
+  // תאריכים רחוקים (חיוב חודשי זהה) — לא כפילות. בעבר זה מוזג ברמת ה-fingerprint
+  // (חסימה קשה!) — עכשיו זה UNSURE בלבד, בהתאם למדיניות: ודאי→חסימה, סביר→review.
+  const closeDates = datesWithinDays(leftNormalized.date, rightNormalized.date, DATE_PROXIMITY_DAYS);
 
-  if ((sameSupplier && sameAmount && sameDate) || (sameInvoice && (sameSupplier || sameAmount || sameDate)) || (sameAmount && sameDate && (leftNormalized.supplier || rightNormalized.supplier))) {
+  if (
+    (sameSupplier && sameAmount && sameDate) ||
+    (sameSupplier && sameAmount && closeDates) ||
+    (sameInvoice && (sameSupplier || sameAmount || sameDate)) ||
+    (sameAmount && sameDate && (leftNormalized.supplier || rightNormalized.supplier))
+  ) {
     if (sameSupplier) reasons.push("same_supplier");
     if (sameAmount) reasons.push("same_amount");
     if (sameDate) reasons.push("same_date");
+    if (!sameDate && closeDates && sameSupplier && sameAmount) reasons.push("close_dates");
     if (sameInvoice) reasons.push("same_invoice_number");
     return { result: "UNSURE", reasons, leftFingerprint, rightFingerprint };
   }
 
   reasons.push("insufficient_overlap");
   return { result: "NO_MATCH", reasons, leftFingerprint, rightFingerprint };
+}
+
+const DATE_PROXIMITY_DAYS = 7;
+
+function datesWithinDays(left: string, right: string, days: number): boolean {
+  if (!left || !right || left === right) return false;
+  const leftMs = Date.parse(left);
+  const rightMs = Date.parse(right);
+  if (!Number.isFinite(leftMs) || !Number.isFinite(rightMs)) return false;
+  return Math.abs(leftMs - rightMs) <= days * 24 * 60 * 60 * 1000;
 }
 
 function normalizedFinancialDocument(input: FinancialDocumentFingerprintInput) {
@@ -310,4 +328,24 @@ function parseLooseDate(value: string) {
 function hashParts(parts: Array<string | number | null | undefined>) {
   const normalized = parts.map((part) => String(part ?? "").trim().toLowerCase()).join("|");
   return createHash("sha256").update(normalized).digest("hex").slice(0, 48);
+}
+
+/**
+ * F7: מפתח fallback ייחודי לרשומות ביקורת ללא זהות קנונית (טיר weak/none).
+ * בלי זה, כל המסמכים חסרי-הזהות של ארגון חולקים את אותו legacyFingerprint —
+ * וה-upsert של FinancialDocumentReview דורס רשומה קיימת של מסמך *אחר*
+ * (רשומות נעלמות). ה-uniqueHint (מזהה הודעה/קובץ) מבדל מסמכים שונים,
+ * בעוד שאותו מסמך שנסרק שוב שומר על אותו מפתח ומתעדכן במקום להתפצל.
+ */
+export function buildWeakDocumentFallbackFingerprint(input: {
+  organizationId: string;
+  legacyFingerprint: string;
+  uniqueHint?: string | null;
+}): string {
+  return hashParts([
+    "weak-doc",
+    input.organizationId,
+    input.legacyFingerprint,
+    input.uniqueHint ?? "",
+  ]);
 }

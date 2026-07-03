@@ -154,7 +154,9 @@ test("same invoice number with conflicting amount is unsure", () => {
   assert.match(result.reasons.join(","), /same_invoice_number/);
 });
 
-test("same supplier+amount+type without invoice number matches across different dates", () => {
+test("same supplier+amount across close dates: distinct fingerprints, UNSURE match (review not block)", () => {
+  // מדיניות שלב 4: התאריך כלול במפתח — כפילות-תאריך-קרוב היא "זיהוי סביר"
+  // שמנותב ל-review דרך ה-matcher, לא חסימה קשה דרך ה-unique constraint.
   const dayOne = {
     organizationId: "org-1",
     supplierName: "514812502",
@@ -170,10 +172,30 @@ test("same supplier+amount+type without invoice number matches across different 
     documentType: "receipt",
   };
 
-  assert.equal(
+  assert.notEqual(
     buildFinancialDocumentFingerprint(dayOne),
     buildFinancialDocumentFingerprint(dayTwo)
   );
+  const match = matchFinancialDocuments(dayOne, dayTwo);
+  assert.equal(match.result, "UNSURE");
+  assert.match(match.reasons.join(","), /close_dates/);
+});
+
+test("identical monthly charges a month apart are NOT duplicates (legit recurring billing)", () => {
+  const june = {
+    organizationId: "org-1",
+    supplierName: "חברת החשמל",
+    totalAmount: 354,
+    documentDate: "2026-06-01",
+    documentType: "receipt",
+  };
+  const july = { ...june, documentDate: "2026-07-01" };
+
+  assert.notEqual(
+    buildFinancialDocumentFingerprint(june),
+    buildFinancialDocumentFingerprint(july)
+  );
+  assert.equal(matchFinancialDocuments(june, july).result, "NO_MATCH");
 });
 
 test("same supplier+type without invoice number stays distinct when amounts differ", () => {
