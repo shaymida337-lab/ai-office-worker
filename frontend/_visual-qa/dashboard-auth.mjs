@@ -140,7 +140,9 @@ export async function loginDashboardViaApi(context, page, { apiUrl, email, passw
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? `Login failed (${res.status})`);
   await injectDashboardAuth(context, data.token);
-  if (page) await installDashboardApiMocks(page);
+  if (page && process.env.VISUAL_QA_MOCK_API !== "0") {
+    await installDashboardApiMocks(page);
+  }
   return data.token;
 }
 
