@@ -47,6 +47,7 @@ import {
 } from "../services/gmailScanLifecycle.js";
 import { resolveDocumentsFound } from "../services/gmailScanProgressCounts.js";
 import { isWithinBusinessDateWindow } from "../services/dates/businessDate.js";
+import { resolveDriveLink } from "../services/drive/driveLinkResolver.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "../services/financialAmountLimits.js";
 import { processNatalieTurn } from "../services/conversation/index.js";
 import { processVoiceTurn } from "../services/conversation/voice/index.js";
@@ -3668,8 +3669,8 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
     source: "gmail_scan_item",
     reviewSourceId: item.id,
     description: [item.subject, item.attachmentFilename].filter(Boolean).join(" · ") || null,
-    driveUrl: item.driveFileLink,
-    driveFileUrl: item.driveFileLink,
+    driveUrl: resolveDriveLink(item),
+    driveFileUrl: resolveDriveLink(item),
     client: null,
     supplierName: item.supplierName,
     fromEmail: item.senderEmail ?? item.sender,
@@ -3725,8 +3726,8 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
     source: "financial_document_review",
     reviewSourceId: item.id,
     description: [item.subject, item.fileName].filter(Boolean).join(" · ") || null,
-    driveUrl: item.driveFileUrl,
-    driveFileUrl: item.driveFileUrl,
+    driveUrl: resolveDriveLink(item),
+    driveFileUrl: resolveDriveLink(item),
     client: null,
     supplierName: item.supplierName,
     fromEmail: item.sender,
@@ -4157,7 +4158,7 @@ export function mergeInvoiceListCandidates<
 
   return [
     ...input.invoiceRows.map((invoice) => {
-      const invoiceDriveFileUrl = invoice.driveFileUrl ?? invoice.driveUrl ?? null;
+      const invoiceDriveFileUrl = resolveDriveLink(invoice);
       const fallbackKey = invoiceDriveFileUrl ? null : invoicePaymentDriveFallbackKey(invoice.gmailMessageId, invoice.amount);
       const fallback = fallbackKey ? paymentDriveFallbackByInvoiceKey.get(fallbackKey) : undefined;
       const driveFileUrl = invoiceDriveFileUrl ?? (fallback && !fallback.ambiguous ? fallback.link : null);
@@ -4230,7 +4231,7 @@ async function fetchInvoiceListSourceRows(
 async function buildPaymentDriveFallbackByInvoiceKey(organizationId: string, invoiceRows: Array<{ driveFileUrl?: string | null; driveUrl?: string | null; gmailMessageId: string | null; amount: number }>) {
   const missingDriveInvoiceGmailIds = Array.from(new Set(
     invoiceRows
-      .filter((invoice) => !invoice.driveFileUrl && !invoice.driveUrl && invoice.gmailMessageId)
+      .filter((invoice) => !resolveDriveLink(invoice) && invoice.gmailMessageId)
       .map((invoice) => invoice.gmailMessageId!)
   ));
   const paymentDriveFallbackByInvoiceKey = new Map<string, { link: string | null; ambiguous: boolean }>();
@@ -4272,7 +4273,7 @@ async function buildPaymentDriveFallbackByInvoiceKey(organizationId: string, inv
   for (const payment of supplierPaymentsWithDrive) {
     const gmailMessageId = payment.emailMessageId ? gmailIdByEmailMessageId.get(payment.emailMessageId) : null;
     const fallbackKey = invoicePaymentDriveFallbackKey(gmailMessageId, Number(payment.amount));
-    const link = payment.driveFileUrl ?? payment.invoiceLink ?? payment.documentLink ?? null;
+    const link = resolveDriveLink(payment);
     if (!fallbackKey || !link) continue;
     const existing = paymentDriveFallbackByInvoiceKey.get(fallbackKey);
     if (existing) {
@@ -6978,6 +6979,44 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
       documentLink = `/uploads/camera-invoices/${storedName}`;
     }
 
+    // שלב 5: מסלול המצלמה לא העלה ל-Drive בכלל (100% חסר ב-baseline). מעלים
+    // כמו במסלול Gmail; כשל Drive לעולם לא מפיל את קליטת החשבונית — הקובץ
+    // המקומי נשמר והרשומה מסומנת pending_retry להשלמה מאוחרת.
+    let cameraDriveFileUrl: string | null = null;
+    let cameraDriveUploadStatus: "uploaded" | "pending_retry" | null = null;
+    if (cameraFileBuffer) {
+      try {
+        const { getGoogleClients } = await import("../services/google.js");
+        const { ensureInvoiceFolderTree, uploadInvoiceAttachmentToDrive } = await import("../services/driveService.js");
+        const { drive } = await getGoogleClients(req.auth!.organizationId);
+        const rootFolderId = await ensureInvoiceFolderTree(drive);
+        const upload = await uploadInvoiceAttachmentToDrive({
+          organizationId: req.auth!.organizationId,
+          drive,
+          rootFolderId,
+          supplier: body.supplier,
+          documentType: "tax_invoice",
+          reviewStatus: "needs_review",
+          filename: body.filename ?? `camera-invoice-${Date.now()}.jpg`,
+          mimeType: body.mimeType ?? null,
+          receivedAt: new Date(),
+          documentDate: invoiceDate,
+          invoiceNumber: body.invoiceNumber ?? null,
+          amount: body.amount,
+          totalAmount: body.amount,
+          buffer: cameraFileBuffer,
+          fileSha256: cameraFileSha256,
+        });
+        cameraDriveFileUrl = upload.webViewLink ?? null;
+        cameraDriveUploadStatus = cameraDriveFileUrl ? "uploaded" : "pending_retry";
+      } catch (err) {
+        cameraDriveUploadStatus = "pending_retry";
+        console.warn(
+          `DRIVE UPLOAD FAILED org=${req.auth!.organizationId} doc=cameraInvoice filename="${body.filename ?? "-"}" reason=${err instanceof Error ? err.message : String(err)} (ingestion continues, local file kept)`
+        );
+      }
+    }
+
     const documentDecision = await recordFinancialDocumentDecision({
       organizationId: req.auth!.organizationId,
       source: "camera",
@@ -6994,11 +7033,26 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
       dueDate,
       totalAmount: body.amount,
       documentType: "tax_invoice",
-      driveFileUrl: documentLink ?? null,
+      driveFileUrl: cameraDriveFileUrl ?? documentLink ?? null,
       confidenceScore: 0.7,
       uncertaintyReason: "trust.gates_missing",
       parsedFieldsJson: {},
     });
+
+    // סימון סטטוס ההעלאה על רשומת הביקורת — רשומת "ממתין ל-Drive" ניתנת
+    // לאיתור (find-pending-drive.ts) ולעולם לא נעלמת בשקט.
+    const cameraReviewId = "review" in documentDecision ? documentDecision.review?.id ?? null : null;
+    if (cameraReviewId && cameraDriveUploadStatus) {
+      await prisma.financialDocumentReview.update({
+        where: { id: cameraReviewId },
+        data: { driveUploadStatus: cameraDriveUploadStatus },
+      });
+      if (cameraDriveUploadStatus === "pending_retry") {
+        console.warn(
+          `DRIVE_PENDING org=${req.auth!.organizationId} doc=financialDocumentReview:${cameraReviewId} source=camera localFile=${documentLink ?? "-"}`
+        );
+      }
+    }
 
     res.status(documentDecision.action === "accepted" ? 201 : 202).json({
       reviewOnly: documentDecision.action !== "accepted",

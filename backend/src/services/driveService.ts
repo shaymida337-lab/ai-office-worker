@@ -286,7 +286,83 @@ export async function retryPendingDriveUploads(organizationId: string) {
     }
   }
 
-  return { attempted: pendingAttachments.length, uploaded, failed };
+  // שלב 5: ה-retry מוגבל ל-20 בכל ריצה — backlog שנשאר מאחור חייב להיות
+  // גלוי, לא לחכות בשקט לנצח.
+  const remainingBacklog = await prisma.emailAttachment.count({
+    where: { driveUploadStatus: "pending_retry", emailMessage: { organizationId } },
+  });
+  if (remainingBacklog > 0) {
+    console.warn(`DRIVE_RETRY_BACKLOG org=${organizationId} remaining=${remainingBacklog} (run find-pending-drive.ts for details)`);
+  }
+
+  return { attempted: pendingAttachments.length, uploaded, failed, remainingBacklog };
+}
+
+/**
+ * שלב 5: השלמת העלאות Drive לרשומות מצלמה שנכשלו בזמן הקליטה.
+ * רשומות camera עם driveUploadStatus=pending_retry שומרות קובץ מקומי
+ * תחת uploads/camera-invoices — מעלים אותו ומעדכנים את הקישור.
+ */
+export async function retryPendingCameraDriveUploads(organizationId: string) {
+  const pendingReviews = await prisma.financialDocumentReview.findMany({
+    where: {
+      organizationId,
+      source: "camera",
+      driveUploadStatus: "pending_retry",
+      driveFileUrl: { startsWith: "/uploads/" },
+    },
+    orderBy: { createdAt: "asc" },
+    take: 10,
+  });
+  if (!pendingReviews.length) return { attempted: 0, uploaded: 0, failed: 0 };
+
+  const { drive } = await getGoogleClients(organizationId);
+  const rootFolderId = await ensureInvoiceFolderTree(drive);
+  const { readFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  let uploaded = 0;
+  let failed = 0;
+
+  for (const review of pendingReviews) {
+    try {
+      const localPath = join(process.cwd(), review.driveFileUrl!.replace(/^\//, ""));
+      const buffer = await readFile(localPath);
+      const upload = await uploadInvoiceAttachmentToDrive({
+        organizationId,
+        drive,
+        rootFolderId,
+        supplier: review.supplierName ?? "לא זוהה",
+        supplierTaxId: review.supplierTaxId,
+        documentType: review.documentType,
+        reviewStatus: review.reviewStatus === "needs_review" ? "needs_review" : "auto_saved",
+        filename: review.fileName ?? `camera-invoice-${review.id}.jpg`,
+        receivedAt: review.createdAt,
+        documentDate: review.documentDate,
+        invoiceNumber: review.invoiceNumber,
+        amount: review.totalAmount,
+        totalAmount: review.totalAmount,
+        buffer,
+        fileSha256: createHash("sha256").update(buffer).digest("hex"),
+      });
+      await prisma.financialDocumentReview.update({
+        where: { id: review.id },
+        data: { driveFileUrl: upload.webViewLink, driveUploadStatus: "uploaded" },
+      });
+      if (review.supplierPaymentId) {
+        await prisma.supplierPayment.updateMany({
+          where: { id: review.supplierPaymentId, organizationId },
+          data: { driveFileUrl: upload.webViewLink, driveUploadStatus: "uploaded" },
+        });
+      }
+      console.log(`INVOICE_DRIVE_LINK_SAVED target=financialDocumentReview:${review.id} source=camera_retry link=${upload.webViewLink}`);
+      uploaded++;
+    } catch (err) {
+      failed++;
+      console.warn(`DRIVE UPLOAD FAILED org=${organizationId} doc=financialDocumentReview:${review.id} source=camera_retry reason=${shortDriveFailureReason(err)}`);
+    }
+  }
+
+  return { attempted: pendingReviews.length, uploaded, failed };
 }
 
 type RetryUploadMetadata = {

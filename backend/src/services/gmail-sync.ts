@@ -7,6 +7,7 @@ import { analyzeAndSaveMessage } from "./messageScanner.js";
 import {
   ensureInvoiceFolderTree,
   folderForDocumentType,
+  retryPendingCameraDriveUploads,
   retryPendingDriveUploads,
   supplierBranchNameFromFolderName,
   uploadInvoiceAttachmentToDrive,
@@ -778,6 +779,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     const retryResult = await retryPendingDriveUploads(organizationId);
     if (retryResult.attempted > 0) {
       logStep(`[gmail-sync] Drive pending retry attempted=${retryResult.attempted} uploaded=${retryResult.uploaded} failed=${retryResult.failed}`);
+    }
+    // שלב 5: השלמת העלאות Drive גם לרשומות מצלמה שממתינות (pending_retry)
+    const cameraRetryResult = await retryPendingCameraDriveUploads(organizationId);
+    if (cameraRetryResult.attempted > 0) {
+      logStep(`[gmail-sync] camera Drive pending retry attempted=${cameraRetryResult.attempted} uploaded=${cameraRetryResult.uploaded} failed=${cameraRetryResult.failed}`);
     }
   } catch (err) {
     console.error(`[gmail-sync] pending Drive retry failed org=${organizationId}`, err);
