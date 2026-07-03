@@ -5,7 +5,7 @@ import { customerCopyContainsForbiddenTerms } from "./copy.js";
 
 test("recommendation: urgent payment wins over generic review", () => {
   const rec = resolveNatalieRecommendation({
-    gmailConnected: true,
+    gmailConnectionState: "Connected",
     unpaidPayments: [{ id: "1", supplier: "ספק א", paid: false, date: new Date().toISOString() }],
     documentReviews: [{ id: "r1", supplierName: "ספק ב" }],
   });
@@ -15,7 +15,7 @@ test("recommendation: urgent payment wins over generic review", () => {
 
 test("recommendation: blocked review beats ordinary review", () => {
   const rec = resolveNatalieRecommendation({
-    gmailConnected: true,
+    gmailConnectionState: "Connected",
     documentReviews: [
       { id: "r1", supplierName: "ספק א", uncertaintyReason: "ambiguous supplier" },
       { id: "r2", supplierName: "ספק ב" },
@@ -25,7 +25,7 @@ test("recommendation: blocked review beats ordinary review", () => {
 });
 
 test("recommendation: all clear is calm", () => {
-  const rec = resolveNatalieRecommendation({ gmailConnected: true });
+  const rec = resolveNatalieRecommendation({ gmailConnectionState: "Connected" });
   assert.equal(rec.kind, "all_clear");
   assert.match(rec.reason, /אין|סיימתי/);
 });
@@ -33,7 +33,7 @@ test("recommendation: all clear is calm", () => {
 test("recommendation: proactive invoice copy suggests starting urgent", () => {
   const items = buildProactiveDoneItems({
     screen: "today",
-    gmailConnected: false,
+    gmailConnectionState: "Disconnected",
     invoicesSaved: 8,
     documentReviews: [{ id: "1" }, { id: "2" }],
   });
@@ -43,7 +43,7 @@ test("recommendation: proactive invoice copy suggests starting urgent", () => {
 
 test("recommendation: customer copy stays clean", () => {
   const rec = resolveNatalieRecommendation({
-    gmailConnected: true,
+    gmailConnectionState: "Connected",
     documentReviews: [{ id: "1", supplierName: "ספק" }],
     unpaidPayments: [{ id: "p1", supplier: "ספק", paid: false, date: new Date().toISOString() }],
   });

@@ -2,28 +2,29 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildGmailIntegrationStatus } from "./integrationStatus";
 
+const baseInput = {
+  statusStale: false,
+  scanRunning: false,
+  hasScanWarning: false,
+  hasError: false,
+  gmailAddress: null as string | null,
+  organizationName: "Alpha Org",
+  lastSuccessfulScanAt: null as string | null,
+  lastSyncAt: null as string | null,
+  scannedEmails: null as number | null,
+  extractedDocuments: null as number | null,
+  scanStatusLabel: "לא פעיל",
+  connectedSince: null as string | null,
+  scopesSummary: null as string | null,
+  lastOauthAt: null as string | null,
+  lastScanDurationLabel: null as string | null,
+  lastSyncDurationLabel: null as string | null,
+};
+
 test("buildGmailIntegrationStatus returns disconnected state with connect guidance", () => {
   const model = buildGmailIntegrationStatus({
-    statusKnown: true,
-    statusStale: false,
-    connected: false,
-    connecting: false,
-    scanRunning: false,
-    hasWarning: false,
-    hasError: false,
-    reconnectRequired: false,
-    gmailAddress: null,
-    organizationName: "Alpha Org",
-    lastSuccessfulScanAt: null,
-    lastSyncAt: null,
-    scannedEmails: null,
-    extractedDocuments: null,
-    scanStatusLabel: "לא פעיל",
-    connectedSince: null,
-    scopesSummary: null,
-    lastOauthAt: null,
-    lastScanDurationLabel: null,
-    lastSyncDurationLabel: null,
+    ...baseInput,
+    gmailConnectionState: "Disconnected",
   });
 
   assert.equal(model.connectionState, "disconnected");
@@ -33,26 +34,8 @@ test("buildGmailIntegrationStatus returns disconnected state with connect guidan
 
 test("buildGmailIntegrationStatus returns connecting state and pending status", () => {
   const model = buildGmailIntegrationStatus({
-    statusKnown: true,
-    statusStale: false,
-    connected: false,
-    connecting: true,
-    scanRunning: false,
-    hasWarning: false,
-    hasError: false,
-    reconnectRequired: false,
-    gmailAddress: null,
-    organizationName: "Alpha Org",
-    lastSuccessfulScanAt: null,
-    lastSyncAt: null,
-    scannedEmails: null,
-    extractedDocuments: null,
-    scanStatusLabel: "לא פעיל",
-    connectedSince: null,
-    scopesSummary: null,
-    lastOauthAt: null,
-    lastScanDurationLabel: null,
-    lastSyncDurationLabel: null,
+    ...baseInput,
+    gmailConnectionState: "Connecting",
   });
 
   assert.equal(model.connectionState, "connecting");
@@ -62,16 +45,9 @@ test("buildGmailIntegrationStatus returns connecting state and pending status", 
 
 test("buildGmailIntegrationStatus returns warning when reconnect required", () => {
   const model = buildGmailIntegrationStatus({
-    statusKnown: true,
-    statusStale: false,
-    connected: true,
-    connecting: false,
-    scanRunning: false,
-    hasWarning: false,
-    hasError: false,
-    reconnectRequired: true,
+    ...baseInput,
+    gmailConnectionState: "ReconnectRequired",
     gmailAddress: "user@gmail.com",
-    organizationName: "Alpha Org",
     lastSuccessfulScanAt: "2026-07-02T09:00:00.000Z",
     lastSyncAt: "2026-07-02T09:04:00.000Z",
     scannedEmails: 120,
@@ -90,16 +66,10 @@ test("buildGmailIntegrationStatus returns warning when reconnect required", () =
 
 test("buildGmailIntegrationStatus returns scanning state while scan running", () => {
   const model = buildGmailIntegrationStatus({
-    statusKnown: true,
-    statusStale: false,
-    connected: true,
-    connecting: false,
+    ...baseInput,
+    gmailConnectionState: "Connected",
     scanRunning: true,
-    hasWarning: false,
-    hasError: false,
-    reconnectRequired: false,
     gmailAddress: "user@gmail.com",
-    organizationName: "Alpha Org",
     lastSuccessfulScanAt: "2026-07-02T09:00:00.000Z",
     lastSyncAt: "2026-07-02T09:04:00.000Z",
     scannedEmails: 120,
@@ -118,16 +88,10 @@ test("buildGmailIntegrationStatus returns scanning state while scan running", ()
 
 test("buildGmailIntegrationStatus returns error state with explicit failure", () => {
   const model = buildGmailIntegrationStatus({
-    statusKnown: true,
-    statusStale: false,
-    connected: true,
-    connecting: false,
-    scanRunning: false,
-    hasWarning: false,
+    ...baseInput,
+    gmailConnectionState: "Connected",
     hasError: true,
-    reconnectRequired: false,
     gmailAddress: "user@gmail.com",
-    organizationName: "Alpha Org",
     lastSuccessfulScanAt: "2026-07-02T09:00:00.000Z",
     lastSyncAt: "2026-07-02T09:04:00.000Z",
     scannedEmails: 120,
@@ -147,59 +111,24 @@ test("buildGmailIntegrationStatus returns error state with explicit failure", ()
 
 test("buildGmailIntegrationStatus returns checking state when status is unknown", () => {
   const model = buildGmailIntegrationStatus({
-    statusKnown: false,
+    ...baseInput,
+    gmailConnectionState: "Checking",
     statusStale: true,
-    connected: false,
-    connecting: false,
-    scanRunning: false,
-    hasWarning: false,
-    hasError: false,
-    reconnectRequired: false,
-    gmailAddress: null,
-    organizationName: "Alpha Org",
-    lastSuccessfulScanAt: null,
-    lastSyncAt: null,
-    scannedEmails: null,
-    extractedDocuments: null,
     scanStatusLabel: "לא ידוע",
-    connectedSince: null,
-    scopesSummary: null,
-    lastOauthAt: null,
-    lastScanDurationLabel: null,
-    lastSyncDurationLabel: null,
   });
 
   assert.equal(model.title, "בודק חיבור Gmail...");
   assert.equal(model.connectionState, "connecting");
 });
 
-test("buildGmailIntegrationStatus returns ambiguous checking state when Gmail documents exist", () => {
+test("buildGmailIntegrationStatus returns checking state during evidence verification", () => {
   const model = buildGmailIntegrationStatus({
-    statusKnown: true,
-    statusStale: false,
-    connected: false,
-    connectionAmbiguous: true,
-    connecting: false,
-    scanRunning: false,
-    hasWarning: false,
-    hasError: false,
-    reconnectRequired: false,
-    gmailAddress: null,
-    organizationName: "Alpha Org",
-    lastSuccessfulScanAt: null,
-    lastSyncAt: null,
-    scannedEmails: null,
+    ...baseInput,
+    gmailConnectionState: "Checking",
     extractedDocuments: 5,
     scanStatusLabel: "הושלם",
-    connectedSince: null,
-    scopesSummary: null,
-    lastOauthAt: null,
-    lastScanDurationLabel: null,
-    lastSyncDurationLabel: null,
   });
 
-  assert.equal(model.title, "נמצאו מסמכים מ-Gmail");
-  assert.match(model.description, /מצאתי מסמכים מהאימייל שלך/);
+  assert.equal(model.title, "בודק חיבור Gmail...");
   assert.equal(model.connectionState, "connecting");
-  assert.equal(model.metrics.find((item) => item.key === "docs")?.value, "5");
 });

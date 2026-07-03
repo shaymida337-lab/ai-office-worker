@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import { API_URL, apiFetch, getToken, type GmailStatus } from "@/lib/api";
+import {
+  buildGmailConnectionFromStatus,
+  gmailConnectionBadgeLabel,
+  gmailReconnectActionLabel,
+  type GmailConnectionStateModel,
+} from "@/lib/integrations/gmailConnection";
 import { businessTypeLabel, type OrganizationSettings } from "@/lib/business-config";
 
 type AccountantSettings = {
@@ -106,6 +112,15 @@ export default function SettingsPage() {
   const [greenInvoiceLoading, setGreenInvoiceLoading] = useState(false);
   const [greenInvoiceMessage, setGreenInvoiceMessage] = useState("");
   const [greenInvoiceError, setGreenInvoiceError] = useState("");
+  const gmailConnection = useMemo(
+    () =>
+      buildGmailConnectionFromStatus(gmailStatus, {
+        statusKnown: gmailStatus !== null,
+        statusStale: false,
+        connecting: false,
+      }),
+    [gmailStatus]
+  );
 
   async function refreshGmailStatus() {
     const status = await apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`);
@@ -376,6 +391,7 @@ export default function SettingsPage() {
             </div>
             <div className="grid gap-4 xl:grid-cols-2">
               <GmailIntegrationCard
+                connection={gmailConnection}
                 status={gmailStatus}
                 onConnect={connectGmail}
                 onDisconnect={disconnectGmail}
@@ -672,16 +688,17 @@ function IntegrationCard({
 }
 
 function GmailIntegrationCard({
+  connection,
   status,
   onConnect,
   onDisconnect,
 }: {
+  connection: GmailConnectionStateModel;
   status: GmailStatus | null;
   onConnect: () => void;
   onDisconnect: () => void;
 }) {
-  const connected = Boolean(status?.connected);
-  const reconnectRequired = Boolean(status?.reconnectRequired);
+  const connected = connection.treatAsConnectedForUi;
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-4">
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -690,7 +707,7 @@ function GmailIntegrationCard({
           <p className="mt-1 text-sm">חובה לסריקת מיילים, יצירת לידים, זיהוי ספקים וחשבוניות.</p>
         </div>
         <span className={`badge ${connected ? "badge-ok" : "badge-warn"}`}>
-          {connected ? "מחובר" : status?.googleConfigured === false ? "התחברות גוגל לא מוגדרת" : "לא מחובר"}
+          {gmailConnectionBadgeLabel(connection, { googleConfigured: status?.googleConfigured })}
         </span>
       </div>
       <p className="mb-4 break-words text-sm text-ink-muted">
@@ -701,17 +718,17 @@ function GmailIntegrationCard({
       {connected ? (
         <div className="grid gap-2 sm:flex sm:flex-wrap">
           <button type="button" className="btn btn-secondary" onClick={onConnect}>
-            {reconnectRequired ? "חבר מחדש את גוגל" : "חבר ג׳ימייל מחדש"}
+            {gmailReconnectActionLabel(connection)}
           </button>
           <button type="button" className="btn btn-danger" onClick={onDisconnect}>
             נתק ג׳ימייל
           </button>
         </div>
-      ) : (
+      ) : connection.state === "Disconnected" ? (
         <button type="button" className="btn min-h-[56px] w-full bg-[#2563EB] text-base shadow-[0_16px_32px_rgba(37,99,235,0.35)] hover:bg-[#1D4ED8]" onClick={onConnect}>
           חבר ג׳ימייל
         </button>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { API_URL, apiFetch, getToken, type GmailStatus } from "@/lib/api";
+import { buildGmailConnectionFromStatus, isGmailContentOperational } from "@/lib/integrations/gmailConnection";
 import {
   businessTypes,
   normalizeBusinessTypeId,
@@ -105,7 +106,19 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
   const handlePrepAnimationComplete = useCallback(() => setPrepAnimationDone(true), []);
   const handleExitTransitionComplete = useCallback(() => setExitTransitionDone(true), []);
 
-  const driveConnected = Boolean(gmailStatus?.connected && !(gmailStatus.missingDriveScopes?.length ?? 0));
+  const gmailConnection = useMemo(
+    () =>
+      buildGmailConnectionFromStatus(gmailStatus, {
+        statusKnown: gmailStatus !== null,
+        statusStale: false,
+        connecting: false,
+      }),
+    [gmailStatus]
+  );
+
+  const driveConnected = Boolean(
+    isGmailContentOperational(gmailConnection.state) && !(gmailStatus?.missingDriveScopes?.length ?? 0)
+  );
 
   const persistProgress = useCallback(
     (nextStep: OnboardingStepId) => {
@@ -354,12 +367,12 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
 
   const integrationConnected = useMemo(
     () => ({
-      gmail: Boolean(gmailStatus?.connected),
+      gmail: isGmailContentOperational(gmailConnection.state),
       drive: driveConnected,
       calendar: calendarConnected,
       whatsapp: whatsappConnected,
     }),
-    [calendarConnected, driveConnected, gmailStatus?.connected, whatsappConnected]
+    [calendarConnected, driveConnected, gmailConnection.state, whatsappConnected]
   );
 
   const handleIntegrationConnect = (id: (typeof ONBOARDING_INTEGRATIONS)[number]["id"]) => {

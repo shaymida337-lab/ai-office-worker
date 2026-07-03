@@ -56,34 +56,35 @@ test("buildGmailOAuthReturnRefreshPlan runs refresh before load", () => {
 test("optimistic connected status avoids connect CTA if refresh temporarily fails", () => {
   const optimistic = buildOptimisticGmailConnectedStatus(null);
   const truth = resolveGmailConnectionTruth({
+    pageLoading: false,
     statusKnown: true,
     statusStale: true,
-    apiConnected: optimistic.connected,
+    status: optimistic,
     hasGmailActivityEvidence: false,
   });
   assert.equal(truth.showConnectCta, false);
   assert.equal(truth.treatAsConnectedForUi, true);
 });
 
-test("connected phase prevents auto OAuth re-trigger after return", () => {
+test("connected state prevents auto OAuth re-trigger after return", () => {
   assert.equal(
     shouldAutoTriggerGmailConnect({
       connectParam: "gmail",
       pageLoading: false,
-      alreadyHandled: false,
-      gmailConnectionPhase: "connected",
+      alreadyTriggered: false,
+      gmailConnectionState: "Connected",
     }),
     false
   );
 });
 
-test("evidence ambiguous prevents auto OAuth re-trigger after return", () => {
+test("checking state prevents auto OAuth re-trigger after return", () => {
   assert.equal(
     shouldAutoTriggerGmailConnect({
       connectParam: "gmail",
       pageLoading: false,
-      alreadyHandled: false,
-      gmailConnectionPhase: "evidence_ambiguous",
+      alreadyTriggered: false,
+      gmailConnectionState: "Checking",
     }),
     false
   );
@@ -91,11 +92,9 @@ test("evidence ambiguous prevents auto OAuth re-trigger after return", () => {
 
 test("reconnectRequired connected state remains warning not disconnected", () => {
   const hero = resolveHeroTrustState({
-    gmailStatusKnown: true,
-    gmailConnectionPhase: "connected",
+    gmailConnectionState: "ReconnectRequired",
     scanStatusKnown: true,
     scanRunning: false,
-    hasSyncIssue: true,
   });
   assert.equal(hero.ctaAction, "retry_sync");
   assert.notEqual(hero.ctaAction, "connect_gmail");
@@ -103,12 +102,9 @@ test("reconnectRequired connected state remains warning not disconnected", () =>
 
 test("first post-connect loading state stays neutral when status is stale", () => {
   const hero = resolveHeroTrustState({
-    gmailStatusKnown: true,
-    gmailStatusStale: true,
-    gmailConnectionPhase: "connected",
+    gmailConnectionState: "Checking",
     scanStatusKnown: true,
     scanRunning: false,
-    hasSyncIssue: false,
   });
   assert.match(hero.statusLabel, /בודקת את מצב החיבור/);
   assert.notEqual(hero.ctaAction, "connect_gmail");

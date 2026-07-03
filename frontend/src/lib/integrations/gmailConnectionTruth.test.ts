@@ -51,10 +51,10 @@ test("resolveGmailConnectionTruth shows connected when API reports connected", (
   const truth = resolveGmailConnectionTruth({
     statusKnown: true,
     statusStale: false,
-    apiConnected: true,
+    status: { connected: true, reconnectRequired: false },
     hasGmailActivityEvidence: false,
   });
-  assert.equal(truth.phase, "connected");
+  assert.equal(truth.state, "Connected");
   assert.equal(truth.showConnectCta, false);
 });
 
@@ -62,10 +62,10 @@ test("resolveGmailConnectionTruth shows disconnected when API reports disconnect
   const truth = resolveGmailConnectionTruth({
     statusKnown: true,
     statusStale: false,
-    apiConnected: false,
+    status: { connected: false, reconnectRequired: false },
     hasGmailActivityEvidence: false,
   });
-  assert.equal(truth.phase, "disconnected");
+  assert.equal(truth.state, "Disconnected");
   assert.equal(truth.showConnectCta, true);
 });
 
@@ -73,10 +73,10 @@ test("resolveGmailConnectionTruth preserves last known connected state when stat
   const truth = resolveGmailConnectionTruth({
     statusKnown: true,
     statusStale: true,
-    apiConnected: true,
+    status: { connected: true, reconnectRequired: false },
     hasGmailActivityEvidence: false,
   });
-  assert.equal(truth.phase, "unknown");
+  assert.equal(truth.state, "Checking");
   assert.equal(truth.showConnectCta, false);
   assert.equal(truth.treatAsConnectedForUi, true);
 });
@@ -85,10 +85,10 @@ test("resolveGmailConnectionTruth avoids connect CTA when Gmail documents exist 
   const truth = resolveGmailConnectionTruth({
     statusKnown: true,
     statusStale: false,
-    apiConnected: false,
+    status: { connected: false, reconnectRequired: false },
     hasGmailActivityEvidence: true,
   });
-  assert.equal(truth.phase, "evidence_ambiguous");
+  assert.equal(truth.state, "Checking");
   assert.equal(truth.showConnectCta, false);
 });
 
@@ -96,22 +96,22 @@ test("resolveGmailConnectionTruth avoids connect CTA when connectedAt exists wit
   const truth = resolveGmailConnectionTruth({
     statusKnown: true,
     statusStale: false,
-    apiConnected: false,
+    status: { connected: false, reconnectRequired: false },
     connectedAt: "2026-06-01T10:00:00.000Z",
     hasGmailActivityEvidence: false,
   });
-  assert.equal(truth.phase, "evidence_ambiguous");
+  assert.equal(truth.state, "Checking");
   assert.equal(truth.showConnectCta, false);
 });
 
-test("resolveGmailConnectionTruth stays unknown on first status fetch failure", () => {
+test("resolveGmailConnectionTruth stays checking on first status fetch failure", () => {
   const truth = resolveGmailConnectionTruth({
     statusKnown: false,
     statusStale: true,
-    apiConnected: false,
+    status: null,
     hasGmailActivityEvidence: true,
   });
-  assert.equal(truth.phase, "unknown");
+  assert.equal(truth.state, "Checking");
   assert.equal(truth.showConnectCta, false);
 });
 
@@ -144,7 +144,7 @@ test("resolveGmailTruthAfterLoad avoids connect CTA when API disconnected but Gm
     },
     documentReviewCount: 12,
   });
-  assert.equal(truth.phase, "evidence_ambiguous");
+  assert.equal(truth.state, "Checking");
   assert.equal(truth.showConnectCta, false);
 });
 
@@ -163,7 +163,7 @@ test("resolveGmailTruthAfterLoad shows connect CTA only when disconnected withou
     },
     documentReviewCount: 0,
   });
-  assert.equal(truth.phase, "disconnected");
+  assert.equal(truth.state, "Disconnected");
   assert.equal(truth.showConnectCta, true);
 });
 
@@ -176,7 +176,7 @@ test("resolveGmailTruthAfterLoad keeps connected UI when API confirms connection
     },
     documentReviewCount: 139,
   });
-  assert.equal(truth.phase, "connected");
+  assert.equal(truth.state, "Connected");
   assert.equal(truth.showConnectCta, false);
 });
 
@@ -186,7 +186,7 @@ test("shouldAutoTriggerGmailConnect only when confirmed disconnected", () => {
       connectParam: "gmail",
       pageLoading: false,
       alreadyTriggered: false,
-      gmailConnectionPhase: "disconnected",
+      gmailConnectionState: "Disconnected",
     }),
     true
   );
@@ -195,7 +195,7 @@ test("shouldAutoTriggerGmailConnect only when confirmed disconnected", () => {
       connectParam: "gmail",
       pageLoading: false,
       alreadyTriggered: false,
-      gmailConnectionPhase: "evidence_ambiguous",
+      gmailConnectionState: "Checking",
     }),
     false
   );
@@ -204,7 +204,7 @@ test("shouldAutoTriggerGmailConnect only when confirmed disconnected", () => {
       connectParam: "gmail",
       pageLoading: true,
       alreadyTriggered: false,
-      gmailConnectionPhase: "disconnected",
+      gmailConnectionState: "Disconnected",
     }),
     false
   );

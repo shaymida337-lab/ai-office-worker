@@ -8,7 +8,7 @@ test("natalie briefing: builds greeting summary and primary action", () => {
     screen: "today",
     ownerFirstName: "שי",
     now: new Date("2026-06-23T08:00:00+03:00"),
-    gmailConnected: true,
+    gmailConnectionState: "Connected",
     invoicesSaved: 2,
     paymentsPrepared: 1,
     documentReviews: [
@@ -34,7 +34,7 @@ test("natalie briefing: builds greeting summary and primary action", () => {
 test("natalie briefing: empty pending state", () => {
   const briefing = buildNatalieBriefing({
     screen: "today",
-    gmailConnected: true,
+    gmailConnectionState: "Connected",
     documentReviews: [],
     unpaidPayments: [],
     openTasksCount: 0,
@@ -48,7 +48,7 @@ test("natalie briefing: empty pending state", () => {
 test("natalie briefing: scan backlog does not claim finished", () => {
   const briefing = buildNatalieBriefing({
     screen: "today",
-    gmailConnected: true,
+    gmailConnectionState: "Connected",
     scanRunning: false,
     scanBacklog: true,
     documentReviews: [],
@@ -65,7 +65,7 @@ test("natalie briefing: scan backlog does not claim finished", () => {
 test("natalie briefing: paused manual deadline uses backlog not stale copy", () => {
   const briefing = buildNatalieBriefing({
     screen: "today",
-    gmailConnected: true,
+    gmailConnectionState: "Connected",
     scanRunning: false,
     scanStale: false,
     scanBacklog: true,
@@ -84,7 +84,7 @@ test("natalie briefing: customer copy stays clean", () => {
   const briefing = buildNatalieBriefing({
     screen: "today",
     ownerFirstName: "שי",
-    gmailConnected: true,
+    gmailConnectionState: "Connected",
     scanRunning: true,
     documentReviews: [{ id: "1", supplierName: "X", reviewStatus: "needs_review" }],
     unpaidPayments: [{ id: "p1", supplier: "Y", paid: false }],
@@ -120,7 +120,7 @@ test("natalie briefing: quiet summary chips", () => {
 test("natalie briefing: pending scheduling decisions use Hebrew copy", () => {
   const briefing = buildNatalieBriefing({
     screen: "today",
-    gmailConnected: true,
+    gmailConnectionState: "Connected",
     documentReviews: [],
     unpaidPayments: [],
     openTasksCount: 0,
