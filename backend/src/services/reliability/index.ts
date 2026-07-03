@@ -8,3 +8,4 @@ export * from "./reliabilityValidation.js";
 export * from "./reliabilityDashboard.js";
 export * from "./legacyAdapters.js";
 export * from "./scannerReliabilityAdapter.js";
+export * from "./core/index.js";
