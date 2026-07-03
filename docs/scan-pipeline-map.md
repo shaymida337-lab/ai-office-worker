@@ -1,7 +1,8 @@
 # מפת צינור סריקת החשבוניות (Gmail → Drive)
 
-> שלב 0 של פרויקט חיזוק הצינור. נכון ל-2026-07-03, HEAD `87e9aee`.
-> מיפוי read-only — אין כאן שינויי קוד. מספרי שורות מקורבים לנקודת הזמן הזו.
+> נכתב בשלב 0 של פרויקט ההקשחה (2026-07-03, HEAD `87e9aee`) ועודכן בשלב 7
+> אחרי השלמת התיקונים (שלבים 2-6, commits `0b2adeb`..`dd798e9`).
+> סעיף 6 מכיל את סטטוס הסגירה של כל נקודות הכשל. מספרי שורות מקורבים למיפוי המקורי.
 
 ---
 
@@ -188,25 +189,28 @@ documentFingerprint → legacy fingerprints → sourceFingerprint → legacyDupl
 
 ---
 
-## 6. נקודות כשל אפשריות (ממופה → שלבי התיקון)
+## 6. נקודות כשל — סטטוס סגירה (עודכן בשלב 7)
 
-| # | נקודת כשל | מיקום | שלב מתקן |
+| # | נקודת כשל | סטטוס | פירוט |
 |---|---|---|---|
-| F1 | ספק junk: דליפת ערכים טכניים מ-Claude/OCR, fallback לשולח, שמות דבוקים | supplierCandidates, supplierNameValidation | שלב 2 |
-| F2 | fallback רגקס של invoiceExtractor: תאריך=היום כשאין תאריך; amount=0 גם ל"אין התאמה" וגם לאפס מפורש (invoiceExtractor.ts:101-104) | invoiceExtractor | שלבים 2-3 |
-| F3 | סכום ambiguous עם תווית חזקה עדיין נפרש (110.723→110723) | parseAmount.ts:149 | שלב 3 |
-| F4 | תאריך בלי גבולות ב-WhatsApp ובמצלמה (עתידי/עתיק נכנס ל-DB) | whatsappInvoiceIngestion.ts:106, api.ts:6944 | שלב 3 |
-| F5 | מצלמה בלי fileSha256 → טיר fingerprint חלש → dedup חלש | api.ts camera endpoint | שלב 4 |
-| F6 | GSI duplicateKey legacy בבדיקה מוקדמת מול SCFC בשמירה — שני מפתחות שונים לאותו פריט | gmail-sync.ts:1986 מול :2541 | שלב 4 |
-| F7 | FDR כפול: recordFinancialDocumentDecision על אותו מסמך פעמיים (unique רק על documentFingerprint — טיר weak/none → fingerprint null → אין הגנה) | financialDocuments.ts | שלב 4 |
-| F8 | Invoice לקוח: unique [org,client,emailId,invoiceNumber] — emailId יכול להיות null | schema.prisma:398 | שלב 4 |
-| F9 | OutgoingInvoiceDraft — אין dedup לפני יצירה (רק קיבוץ אחרי) | findDuplicateDrafts.ts | מחוץ להיקף? לתעד |
-| F10 | כשל Drive → pending_retry אבל retry מוגבל ל-20 ואין התראה מצטברת | driveService.ts:211 | שלב 5 |
-| F11 | קישור Drive נשמר ב-5 סכימות שמות שונות; חלק מהמסלולים לא מעדכנים את כולן | ר' טבלה §4 | שלב 5 |
-| F12 | auto_saved לא מוצג באף רשימה; approved של GSI לא בדף document-reviews | api.ts:3774, frontend | שלב 6 |
-| F13 | early-NEEDS_REVIEW path לא יוצר GSI — הפריט קיים רק כ-FDR (ספירות שונות בין מסכים) | gmail-sync.ts:1844 | שלב 6 |
-| F14 | שגיאת עיבוד אחרי scanItemPersisted → GSI נדרס ל-needs_review גם אם כבר auto_saved | gmail-sync.ts:3262 | שלב 6 |
-| F15 | clientGmailSync במנגנון dedup נפרד (legacy) — עלול לייצר רשומות שהצינור הראשי לא רואה | clientGmailSync.ts:270 | שלב 4 (לתעד לפחות) |
+| F1 | ספק junk: דליפת ערכים טכניים מ-Claude/OCR, fallback לשולח, קטעי משפט | ✅ **נסגר** `0b2adeb` | placeholders עברית/אנגלית, שברי JSON, זיהוי קטעי-משפט, word-boundary (תוקנו גם FP כמו "Data Supplier Ltd"), ולידציה משותפת גם ב-WhatsApp, טוקנים גנריים של שולח, הרחבת רשימת OCR |
+| F2 | amount=0 דו-משמעי + תאריך=היום ב-fallback של invoiceExtractor | ✅ **נסגר** `0b2adeb`+`afcd052` | amountMissing מפורש → needs_review; פרומפט מחזיר null ולא 0; מצלמה דוחה סכום ≤0/≥1M ב-400 |
+| F3 | סכום ambiguous עם תווית חזקה נפרש (110.723→110,723) | ✅ **נסגר** `afcd052` | צורה דו-משמעית לעולם לא מנוחשת → null → review. בוטלו גם "1,5"→15 ו-"1.5000"→15,000 |
+| F4 | גבול ±2 שנים על תאריכים קיים רק ב-Gmail | ✅ **נסגר** `afcd052` | מודול משותף `dates/businessDate` — Gmail (ללא שינוי), WhatsApp (drop+log), מצלמה (400 מפורש), extractor (clamp) |
+| F5 | מצלמה בלי fileSha256 → dedup חלש | ✅ **נסגר** `832c430` | SHA256+fileSize מחושבים → טיר file → כפילות בין-מסלולית נתפסת |
+| F6 | בדיקה במפתח legacy מול שמירה במפתח SCFC | ✅ **נסגר** `832c430` | גשר לפי gmailMessageId+attachmentFilename — סריקה חוזרת מעדכנת ולא מפצלת |
+| F7 | התנגשות מפתחות weak — reviews דורסים זה את זה | ✅ **נסגר** `832c430` | מפתח fallback פר-הודעה (יציב בסריקה חוזרת, ייחודי בין הודעות) |
+| F8 | Invoice: unique עם emailId null | 🟡 **מנוטרל** `832c430` | אומת: כל מסלולי הסריקה קובעים emailId תמיד. סיכון שרידי רק ביצירה ידנית מחוץ להיקף הסריקה — מתועד |
+| F9 | OutgoingInvoiceDraft בלי dedup לפני יצירה | ⬜ **פתוח בכוונה** | חשבוניות-לקוח יוצאות — מחוץ להיקף צינור הסריקה. מומלץ לטפל בפרויקט נפרד |
+| F10 | retry של Drive מוותר אחרי 20 בלי התראה | ✅ **נסגר** `71ea345` | לוג `DRIVE_RETRY_BACKLOG remaining=N` אחרי כל ריצה + סקריפט `find-pending-drive.ts` |
+| F11 | 5 סכימות שמות לשדה קישור Drive | 🟡 **מנוטרל** `71ea345` | שכבת קריאה אחידה (`driveLinkResolver`) הוחלה בכל נקודות ה-API. הסכימות ב-DB נשארו בכוונה (בלי מיגרציה) — איחוד סכימה מומלץ כפרויקט עתידי |
+| F12 | auto_saved לא מופיע באף טאב; approved לא עקבי בין מסכים | ✅ **נסגר** `dd798e9` | מדיניות אחת (`reviewStatusPolicy`): auto_saved נטען ומוצג כ"מאושר"; סטטוס לא מוכר → needs_review (לעולם לא נעלם); טסטים מקבעים |
+| F13 | early-NEEDS_REVIEW לא יוצר GSI — ספירות שונות בין מסכים | 🟡 **מנוטרל (מתועד)** `dd798e9` | לפי המדיניות: ביתו של פריט כזה הוא דף document-reviews (בית אחד בדיוק). פער הספירות בין דשבורדים נשאר — מומלץ ליישר ספירות על בסיס FDR+GSI יחד |
+| F14 | שגיאה מאוחרת דורסת auto_saved ל-needs_review | ✅ **נסגר** `dd798e9` | אם הרשומה הפיננסית נשמרה — הסטטוס נשמר; דריסה מוצדקת מכוונת לפי id (המפתח הישן החטיא). סקריפט `fix-review-status-consistency.ts` משחזר רשומות ישנות |
+| F15 | clientGmailSync על מנגנון dedup נפרד (legacy) | ⬜ **פתוח בכוונה** | שינוי במנגנון legacy חי מסוכן ללא בדיקות ייעודיות. מומלץ: איחוד ל-recordFinancialDocumentDecision בפרויקט המשך |
+| F16* | (התגלה בשלב 4) טיר supplier-amount-date השמיט את התאריך — חיובים חודשיים זהים נחסמו כפילות-שווא | ✅ **נסגר** `832c430` | התאריך במפתח; חשד תאריך-קרוב (≤7 ימים) → UNSURE→review דרך ה-matcher |
+
+**פריט פתוח נוסף (נוצר בשלב 5):** ה-retry של העלאות מצלמה רץ מתוך סנכרון Gmail — ארגון שמשתמש רק במצלמה בלי Gmail מחובר לא ייהנה ממנו. מומלץ hook תקופתי עצמאי.
 
 ---
 
