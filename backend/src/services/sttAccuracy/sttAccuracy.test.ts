@@ -8,6 +8,7 @@ import {
   correctBusinessNamesInTranscript,
 } from "./sttNameCorrection.js";
 import { getSttAccuracyMetricSnapshots, recordSttAccuracyMetric, resetSttAccuracyMetrics } from "./sttMetrics.js";
+import { filterSupplierNamesForStt } from "./supplierNameValidation.js";
 import { processTranscriptAccuracy } from "./sttNormalizer.js";
 import type { SttVocabulary } from "./sttAccuracyTypes.js";
 
@@ -168,14 +169,25 @@ describe("natalie stt accuracy", () => {
       supplierNames: [...vocabulary.supplierNames, "normalizeDetectedAmount(result.totalAmount"],
     };
     assert.doesNotThrow(() =>
-      correctBusinessNamesInTranscript("שלום", pollutedVocabulary)
+      correctBusinessNamesInTranscript("שלום", pollutedVocabulary, { organizationId: "org-1" })
     );
-    await processTranscriptAccuracy({
+    const result = await processTranscriptAccuracy({
       organizationId: "org-1",
       rawTranscript: "כמה שילמתי החודש",
       vocabulary: pollutedVocabulary,
       skipClarification: true,
+      requestId: "req-test",
     });
+    assert.match(result.normalizedTranscript, /כמה שילמתי החודש/);
+  });
+
+  it("filters corrupted supplier names when building vocabulary list", () => {
+    const filtered = filterSupplierNamesForStt([
+      "בזק",
+      "normalizeDetectedAmount(result.totalAmount",
+      "חברת החשמל",
+    ]);
+    assert.deepEqual(filtered.accepted, ["בזק", "חברת החשמל"]);
   });
 
   it("preserves invoice-like identifiers in transcript", async () => {

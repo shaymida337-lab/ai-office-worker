@@ -31,6 +31,7 @@ export type ProcessVoiceTurnInput = {
   legacyHistory?: Array<{ role: "user" | "assistant"; content: string }>;
   role?: string | null;
   permissions?: string[];
+  requestId?: string | null;
 };
 
 export type ProcessVoiceTurnResult = ProcessNatalieTurnResult & {
@@ -356,6 +357,7 @@ export async function processVoiceTurn(
     organizationId: input.organizationId,
     rawTranscript: transcript,
     sessionId: input.sessionId,
+    requestId: input.requestId ?? null,
   });
 
   if (accuracy.clarificationRequired && accuracy.clarificationMessage) {

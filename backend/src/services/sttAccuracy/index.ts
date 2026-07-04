@@ -1,4 +1,5 @@
 export * from "./sttAccuracyTypes.js";
+export * from "./supplierNameValidation.js";
 export * from "./sttVocabulary.js";
 export * from "./sttHebrewNumbers.js";
 export * from "./sttNameCorrection.js";

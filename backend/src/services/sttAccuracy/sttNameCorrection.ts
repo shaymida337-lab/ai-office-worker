@@ -98,29 +98,13 @@ function correctSupplierPhrases(text: string, vocabulary: SttVocabulary, correct
   return normalized;
 }
 
-export function correctBusinessNamesInTranscript(
+function correctSupplierNamesOnly(
   text: string,
-  vocabulary: SttVocabulary
-): {
-  text: string;
-  corrections: SttCorrection[];
-  ambiguousSuggestions: string[];
-} {
-  const corrections: SttCorrection[] = [];
-  const ambiguousSuggestions: string[] = [];
-
-  let normalized = correctClientNamesInTranscript(text, vocabulary.clientNames);
-  if (normalized !== text) {
-    corrections.push({
-      kind: "client_name",
-      original: text,
-      corrected: normalized,
-      confidence: 0.86,
-      ambiguous: false,
-    });
-  }
-
-  normalized = correctSupplierPhrases(normalized, vocabulary, corrections);
+  vocabulary: SttVocabulary,
+  corrections: SttCorrection[],
+  ambiguousSuggestions: string[]
+): string {
+  let normalized = correctSupplierPhrases(text, vocabulary, corrections);
 
   const words = normalized.split(/\s+/).filter(Boolean);
   for (const word of words) {
@@ -144,6 +128,71 @@ export function correctBusinessNamesInTranscript(
       ambiguousSuggestions.push(...supplierMatches.slice(0, 2));
     }
   }
+
+  return normalized;
+}
+
+export type SttNameCorrectionContext = {
+  organizationId?: string;
+  requestId?: string | null;
+};
+
+export function safeCorrectSupplierNamesInTranscript(
+  text: string,
+  vocabulary: SttVocabulary,
+  context?: SttNameCorrectionContext
+): {
+  text: string;
+  corrections: SttCorrection[];
+  ambiguousSuggestions: string[];
+} {
+  const corrections: SttCorrection[] = [];
+  const ambiguousSuggestions: string[] = [];
+  try {
+    const normalized = correctSupplierNamesOnly(text, vocabulary, corrections, ambiguousSuggestions);
+    return {
+      text: normalized,
+      corrections,
+      ambiguousSuggestions: [...new Set(ambiguousSuggestions)],
+    };
+  } catch (err) {
+    console.warn("[stt/supplier-normalization] skipped due to error", {
+      organizationId: context?.organizationId ?? vocabulary.organizationId,
+      requestId: context?.requestId ?? null,
+      name: err instanceof Error ? err.name : "Error",
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return { text, corrections: [], ambiguousSuggestions: [] };
+  }
+}
+
+export function correctBusinessNamesInTranscript(
+  text: string,
+  vocabulary: SttVocabulary,
+  context?: SttNameCorrectionContext
+): {
+  text: string;
+  corrections: SttCorrection[];
+  ambiguousSuggestions: string[];
+} {
+  const corrections: SttCorrection[] = [];
+  const ambiguousSuggestions: string[] = [];
+
+  let normalized = correctClientNamesInTranscript(text, vocabulary.clientNames);
+  if (normalized !== text) {
+    corrections.push({
+      kind: "client_name",
+      original: text,
+      corrected: normalized,
+      confidence: 0.86,
+      ambiguous: false,
+    });
+  }
+
+  const supplierResult = safeCorrectSupplierNamesInTranscript(normalized, vocabulary, context);
+  normalized = supplierResult.text;
+  corrections.push(...supplierResult.corrections);
+  ambiguousSuggestions.push(...supplierResult.ambiguousSuggestions);
 
   return { text: normalized, corrections, ambiguousSuggestions: [...new Set(ambiguousSuggestions)] };
 }

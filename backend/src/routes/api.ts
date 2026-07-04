@@ -7,6 +7,7 @@ import type { Prisma } from "@prisma/client";
 import { authMiddleware } from "../lib/auth.js";
 import { config } from "../lib/config.js";
 import { errorDetails } from "../lib/errors.js";
+import { readRequestId } from "../lib/requestId.js";
 import { databaseHost, prisma } from "../lib/prisma.js";
 import { getDashboardStats, getMissingInvoicesReport } from "../services/dashboard.js";
 import { buildDailySummary } from "../services/summary.js";
@@ -2687,6 +2688,7 @@ apiRouter.post("/natalie/voice/turn", requirePerm("chat.use"), async (req, res) 
       transcript,
       sessionId,
       legacyHistory: sessionId ? undefined : history,
+      requestId: readRequestId(req),
     });
     res.json(result);
   } catch (err) {
@@ -3295,6 +3297,7 @@ apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async 
       rawTranscript: result.text,
       vocabulary,
       skipClarification: true,
+      requestId: readRequestId(req),
     });
     res.json({
       text: accuracy.normalizedTranscript,
@@ -3305,7 +3308,11 @@ apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async 
       correctionsApplied: accuracy.corrections.length,
     });
   } catch (err) {
-    console.warn("[natalie/transcribe] failed to normalize transcript", errorDetails(err));
+    console.warn("[natalie/transcribe] failed to normalize transcript", {
+      organizationId,
+      requestId: readRequestId(req) ?? null,
+      ...errorDetails(err),
+    });
     res.json({ text: result.text });
   }
 });

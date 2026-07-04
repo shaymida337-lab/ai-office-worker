@@ -1,5 +1,9 @@
 import { prisma } from "../../lib/prisma.js";
 import type { SttVocabulary } from "./sttAccuracyTypes.js";
+import {
+  filterSupplierNamesForStt,
+  recordSupplierNameHygieneScan,
+} from "./supplierNameValidation.js";
 
 export const DEFAULT_BUSINESS_TERMS = [
   "חשבונית",
@@ -81,11 +85,17 @@ export async function loadSttVocabulary(organizationId: string): Promise<SttVoca
     }),
   ]);
 
-  const supplierNames = uniqueTrimmed([
+  const rawSupplierNames = uniqueTrimmed([
     ...invoices.map((row) => row.supplierName ?? ""),
     ...supplierPayments.map((row) => row.supplierName ?? row.supplier ?? ""),
     ...documentReviews.map((row) => row.supplierName ?? ""),
   ]);
+  const supplierFilter = filterSupplierNamesForStt(rawSupplierNames);
+  recordSupplierNameHygieneScan({
+    candidateCount: rawSupplierNames.length,
+    ignoredCount: supplierFilter.ignoredCount,
+    ignoredByReason: supplierFilter.ignoredByReason,
+  });
 
   const profileTerms =
     organization?.businessProfile
@@ -98,7 +108,7 @@ export async function loadSttVocabulary(organizationId: string): Promise<SttVoca
     organizationId,
     organizationName: organization?.name ?? null,
     clientNames: clients.map((client) => client.name),
-    supplierNames,
+    supplierNames: supplierFilter.accepted,
     serviceNames: services.map((service) => service.name),
     memberNames: members.map((member) => member.user.name).filter(Boolean) as string[],
     businessTerms: uniqueTrimmed([...DEFAULT_BUSINESS_TERMS, ...profileTerms]),
