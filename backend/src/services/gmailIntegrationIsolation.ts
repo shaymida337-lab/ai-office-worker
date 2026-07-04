@@ -28,6 +28,49 @@ export function hashGmailRefreshToken(refreshToken: string): string {
   return createHash("sha256").update(refreshToken, "utf8").digest("hex");
 }
 
+/**
+ * הלוגיקה הטהורה של שער-הטוקן: אילו שורות Integration מתנגשות עם הטוקן הנכנס.
+ * ערך נכנס ריק לעולם אינו "משותף" (הקשחה); שורות עם טוקן ריק לעולם אינן חוסמות.
+ * מחולץ כפונקציה טהורה כדי ש-fix-gmail-connection.ts יסמלץ את השער בדיוק.
+ */
+export function collectRefreshTokenConflicts(
+  rows: Array<{ id: string; organizationId: string; refreshToken: string | null }>,
+  refreshToken: string | null | undefined,
+  options: { excludeOrganizationId?: string } = {}
+): Array<{ organizationId: string; integrationId: string }> {
+  if (!refreshToken || !refreshToken.trim()) return [];
+  const hash = hashGmailRefreshToken(refreshToken);
+  return rows
+    .filter(
+      (row) =>
+        (!options.excludeOrganizationId || row.organizationId !== options.excludeOrganizationId) &&
+        Boolean(row.refreshToken) &&
+        hashGmailRefreshToken(row.refreshToken!) === hash
+    )
+    .map((row) => ({ organizationId: row.organizationId, integrationId: row.id }));
+}
+
+/**
+ * הלוגיקה הטהורה של שער-התיבה: אילו שורות מחזיקות את אותו חשבון Gmail.
+ * אימייל נכנס ריק או אימייל שמור ריק — לעולם לא חוסמים (זהה להתנהגות המקורית).
+ */
+export function collectMailboxConflicts(
+  rows: Array<{ organizationId: string; metadata: string | null; refreshToken?: string | null }>,
+  googleAccountEmail: string | null | undefined,
+  excludeOrganizationId?: string
+): string[] {
+  const normalized = (googleAccountEmail ?? "").trim().toLowerCase();
+  if (!normalized) return [];
+  return rows
+    .filter((row) => {
+      if (excludeOrganizationId && row.organizationId === excludeOrganizationId) return false;
+      if (row.refreshToken !== undefined && !row.refreshToken) return false;
+      const storedEmail = parseIntegrationMetadata(row.metadata).googleAccountEmail;
+      return typeof storedEmail === "string" && storedEmail.toLowerCase() === normalized;
+    })
+    .map((row) => row.organizationId);
+}
+
 export function assertIntegrationBelongsToOrganization(
   integration: { organizationId: string },
   organizationId: string
@@ -53,7 +96,6 @@ export async function findOrganizationsSharingRefreshToken(
   refreshToken: string,
   options: { excludeOrganizationId?: string } = {}
 ): Promise<Array<{ organizationId: string; integrationId: string }>> {
-  const hash = hashGmailRefreshToken(refreshToken);
   const integrations = await prisma.integration.findMany({
     where: {
       provider: "gmail",
@@ -65,12 +107,7 @@ export async function findOrganizationsSharingRefreshToken(
     select: { id: true, organizationId: true, refreshToken: true },
   });
 
-  return integrations
-    .filter((integration) => integration.refreshToken && hashGmailRefreshToken(integration.refreshToken) === hash)
-    .map((integration) => ({
-      organizationId: integration.organizationId,
-      integrationId: integration.id,
-    }));
+  return collectRefreshTokenConflicts(integrations, refreshToken, options);
 }
 
 export async function assertGmailRefreshTokenNotShared(
@@ -137,16 +174,11 @@ export async function assertGmailConnectedAccountNotShared(
     select: { organizationId: true, metadata: true },
   });
 
-  const conflicts = integrations.filter((integration) => {
-    const storedEmail = parseIntegrationMetadata(integration.metadata).googleAccountEmail;
-    return typeof storedEmail === "string" && storedEmail.toLowerCase() === normalized;
-  });
+  const otherOrganizationIds = collectMailboxConflicts(integrations, normalized);
 
-  if (conflicts.length === 0) {
+  if (otherOrganizationIds.length === 0) {
     return;
   }
-
-  const otherOrganizationIds = conflicts.map((integration) => integration.organizationId);
   console.error(
     `[gmail-isolation] shared Gmail mailbox detected org=${organizationId} mailbox=${normalized} otherOrgs=${otherOrganizationIds.join(",")}`
   );
