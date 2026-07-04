@@ -154,6 +154,7 @@ export type GmailStatus = {
   connectedAt: string | null;
   reconnectRequired?: boolean;
   missingDriveScopes?: string[];
+  googleAccountEmail?: string | null;
 };
 
 export type Payment = {

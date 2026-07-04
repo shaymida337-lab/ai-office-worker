@@ -65,6 +65,17 @@ test("warning state renders correctly for backlog", () => {
   assert.match(state.message, /חלקית|מיילים/);
 });
 
+test("warning state renders for missing drive scopes without reconnect", () => {
+  const state = resolveDashboardSyncState(
+    baseInput({
+      missingDriveScopes: ["https://www.googleapis.com/auth/drive.file"],
+    })
+  );
+  assert.equal(state.status, "WARNING");
+  assert.match(state.message, /Drive/);
+  assert.equal(state.integrationHasError, false);
+});
+
 test("error state renders with explicit reason for reconnect", () => {
   const state = resolveDashboardSyncState(
     baseInput({

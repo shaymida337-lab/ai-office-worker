@@ -57,6 +57,7 @@ type BuildGmailStatusInput = {
   hasWarning: boolean;
   hasError: boolean;
   reconnectRequired: boolean;
+  missingDriveScopes?: string[];
   gmailAddress: string | null;
   organizationName: string;
   lastSuccessfulScanAt: string | null;
@@ -146,7 +147,9 @@ export function buildGmailIntegrationStatus(input: BuildGmailStatusInput): Integ
     };
   }
 
-  const warning = input.hasWarning || input.reconnectRequired;
+  const driveScopeWarning =
+    input.connected && !input.reconnectRequired && (input.missingDriveScopes?.length ?? 0) > 0;
+  const warning = input.hasWarning || input.reconnectRequired || driveScopeWarning;
   const error = input.hasError;
   const healthState: IntegrationHealthState = error ? "error" : warning ? "warning" : "healthy";
   const syncState: IntegrationSyncState = input.scanRunning ? "syncing" : error ? "error" : warning ? "warning" : "idle";
@@ -159,7 +162,9 @@ export function buildGmailIntegrationStatus(input: BuildGmailStatusInput): Integ
         : warning
           ? input.reconnectRequired
             ? "נדרש חיבור מחדש ל-Gmail (OAuth פג תוקף או הרשאות)"
-            : "יש לשים לב"
+            : driveScopeWarning
+              ? "Gmail מחובר — חסרות הרשאות Drive לשמירת קבצים"
+              : "יש לשים לב"
           : "מערכת תקינה");
 
   return {

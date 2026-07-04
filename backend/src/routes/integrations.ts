@@ -14,8 +14,6 @@ import {
   getOAuth2Client,
   GMAIL_SCOPES,
   googleOAuthMetadata,
-  googleOAuthScopesFromMetadata,
-  missingRequiredGoogleDriveScopes,
 } from "../services/google.js";
 import {
   assertGmailConnectedAccountNotShared,
@@ -23,6 +21,10 @@ import {
   findGmailIntegrationForOrganization,
   GmailIntegrationIsolationError,
 } from "../services/gmailIntegrationIsolation.js";
+import {
+  googleAccountEmailFromMetadata,
+  resolveGmailConnectionStatus,
+} from "../services/gmailConnectionStatus.js";
 import { recordPlatformAudit, userAuditContext } from "../services/auditLog/index.js";
 import { requirePerm } from "../services/rbac/index.js";
 
@@ -244,19 +246,19 @@ function runPostConnectionGmailScan(organizationId: string) {
 
 integrationsRouter.get("/gmail/status", authMiddleware, async (req, res) => {
   const integration = await findGmailIntegrationForAuth(req.auth!);
-  const grantedScopes = googleOAuthScopesFromMetadata(integration?.metadata);
-  const missingDriveScopes = missingRequiredGoogleDriveScopes(grantedScopes);
-  const reconnectRequired = Boolean(integration?.refreshToken) && (grantedScopes.length === 0 || missingDriveScopes.length > 0);
+  const status = await resolveGmailConnectionStatus(req.auth!.organizationId);
+  const googleAccountEmail = googleAccountEmailFromMetadata(integration?.metadata);
   console.log(
-    `[gmail/status] user=${req.auth!.userId} org=${req.auth!.organizationId} connected=${Boolean(integration?.refreshToken)} integrationOrg=${integration?.organizationId ?? "none"} hasAccessToken=${Boolean(integration?.accessToken)} hasRefreshToken=${Boolean(integration?.refreshToken)} connectedAt=${integration?.connectedAt?.toISOString() ?? "none"} reconnectRequired=${reconnectRequired} missingDriveScopes="${missingDriveScopes.join(" ")}"`
+    `[gmail/status] user=${req.auth!.userId} org=${req.auth!.organizationId} connected=${status.connected} integrationOrg=${integration?.organizationId ?? "none"} hasAccessToken=${Boolean(integration?.accessToken)} hasRefreshToken=${Boolean(integration?.refreshToken)} connectedAt=${status.connectedAt?.toISOString() ?? "none"} reconnectRequired=${status.reconnectRequired} scopeSource=${status.scopeSource} grantedScopeCount=${status.grantedScopes.length} missingDriveScopes="${status.missingDriveScopes.join(" ")}"`
   );
 
   res.json({
-    googleConfigured: hasGoogleOAuth(),
-    connected: Boolean(integration?.refreshToken),
-    connectedAt: integration?.connectedAt ?? null,
-    reconnectRequired,
-    missingDriveScopes,
+    googleConfigured: status.googleConfigured,
+    connected: status.connected,
+    connectedAt: status.connectedAt,
+    reconnectRequired: status.reconnectRequired,
+    missingDriveScopes: status.missingDriveScopes,
+    googleAccountEmail,
   });
 });
 

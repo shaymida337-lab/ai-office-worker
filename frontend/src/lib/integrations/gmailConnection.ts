@@ -97,6 +97,7 @@ export function gmailConnectionBadgeLabel(
     case "Disconnected":
       return options?.googleConfigured === false ? "התחברות גוגל לא מוגדרת" : "לא מחובר";
     case "ReconnectRequired":
+      return "נדרש חיבור מחדש";
     case "Connected":
       return "מחובר";
   }

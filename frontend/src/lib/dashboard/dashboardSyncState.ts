@@ -71,6 +71,7 @@ export type DashboardSyncStateInput = {
   transientToast?: DashboardSyncToast | null;
   syncingPhase?: string | null;
   gmailConnected: boolean;
+  missingDriveScopes?: string[];
   lastSuccessfulScanAt?: string | null;
   lastSyncAt?: string | null;
   scannedEmails?: number | null;
@@ -116,6 +117,12 @@ function resolveErrorReason(input: DashboardSyncStateInput): string | null {
 }
 
 function resolveWarningReason(input: DashboardSyncStateInput): string | null {
+  if (
+    input.gmailConnectionState === "Connected" &&
+    (input.missingDriveScopes?.length ?? 0) > 0
+  ) {
+    return "Gmail מחובר — חסרות הרשאות Drive לשמירת קבצים";
+  }
   if (input.scanBacklog) {
     return "נשארו מיילים שלא נסרקו — מומלץ להריץ סריקה נוספת";
   }

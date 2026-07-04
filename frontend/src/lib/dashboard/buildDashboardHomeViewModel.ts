@@ -202,6 +202,7 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     transientToast: scanToast,
     syncingPhase,
     gmailConnected: gmailConnection.treatAsConnectedForUi,
+    missingDriveScopes: gmailStatus?.missingDriveScopes ?? [],
     lastSuccessfulScanAt: successfulScanLog?.endedAt ?? null,
     lastSyncAt: scanStatus?.last?.endedAt ?? null,
     scannedEmails: activeScan?.emailsFetched ?? scanStatus?.last?.found ?? null,
@@ -219,7 +220,8 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     accountEmail?: string | null;
     email?: string | null;
   }) | null;
-  const connectedGmailAddress = gmailStatusWithOptional?.connectedEmail
+  const connectedGmailAddress = gmailStatusWithOptional?.googleAccountEmail
+    ?? gmailStatusWithOptional?.connectedEmail
     ?? gmailStatusWithOptional?.accountEmail
     ?? gmailStatusWithOptional?.email
     ?? null;
@@ -239,6 +241,7 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     hasWarning: dashboardSyncState.integrationHasWarning,
     hasError: dashboardSyncState.integrationHasError,
     reconnectRequired: Boolean(gmailStatus?.reconnectRequired),
+    missingDriveScopes: gmailStatus?.missingDriveScopes ?? [],
     syncMessage: dashboardSyncState.message,
     gmailAddress: connectedGmailAddress,
     organizationName: businessName,

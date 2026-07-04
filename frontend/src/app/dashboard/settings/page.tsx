@@ -699,6 +699,12 @@ function GmailIntegrationCard({
   onDisconnect: () => void;
 }) {
   const connected = connection.treatAsConnectedForUi;
+  const badgeTone =
+    connection.state === "ReconnectRequired"
+      ? "badge-warn"
+      : connected
+        ? "badge-ok"
+        : "badge-warn";
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-4">
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -706,10 +712,15 @@ function GmailIntegrationCard({
           <h3 className="text-lg font-semibold text-ink-primary">ג׳ימייל</h3>
           <p className="mt-1 text-sm">חובה לסריקת מיילים, יצירת לידים, זיהוי ספקים וחשבוניות.</p>
         </div>
-        <span className={`badge ${connected ? "badge-ok" : "badge-warn"}`}>
+        <span className={`badge ${badgeTone}`}>
           {gmailConnectionBadgeLabel(connection, { googleConfigured: status?.googleConfigured })}
         </span>
       </div>
+      {connection.state === "ReconnectRequired" && (
+        <p className="mb-4 text-sm font-semibold text-amber-700">
+          נדרש חיבור מחדש ל-Gmail כדי לשמור על סנכרון אמין.
+        </p>
+      )}
       <p className="mb-4 break-words text-sm text-ink-muted">
         {connected && status?.connectedAt
           ? `חובר בתאריך ${new Date(status.connectedAt).toLocaleString("he-IL")}`
