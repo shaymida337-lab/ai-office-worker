@@ -158,7 +158,15 @@ export function googleOAuthMetadata(
   googleAccountEmail?: string | null
 ) {
   const existing = parseGoogleIntegrationMetadata(existingMetadata);
-  const grantedScopes = grantedScopeString?.split(/\s+/).map((scope) => scope.trim()).filter(Boolean) ?? [];
+  const parsedScopes = grantedScopeString?.split(/\s+/).map((scope) => scope.trim()).filter(Boolean) ?? [];
+  const existingScopes = Array.isArray(existing.googleOAuthScopes)
+    ? existing.googleOAuthScopes.filter((scope): scope is string => typeof scope === "string")
+    : [];
+  // תשובת הטוקן של גוגל לא תמיד כוללת scope (בעיקר בחיבור-מחדש בלי הסכמה
+  // חדשה). קלט ריק/חסר משמר את ה-scopes הידועים במקום למחוק אותם — מחיקה
+  // הדליקה reconnectRequired שווא לצמיתות אחרי reconnect מוצלח. תשובה עם
+  // scope בפועל עדיין דורסת במלואה (כולל צמצום הרשאות אמיתי).
+  const grantedScopes = parsedScopes.length > 0 ? parsedScopes : existingScopes;
   const normalizedEmail =
     typeof googleAccountEmail === "string" ? googleAccountEmail.trim().toLowerCase() : null;
   return JSON.stringify({

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { config } from "../lib/config.js";
-import { assertOutboundEmailAllowed, GMAIL_SCOPES } from "./google.js";
+import { assertOutboundEmailAllowed, GMAIL_SCOPES, googleOAuthMetadata } from "./google.js";
 
 test("GMAIL_SCOPES do not request Gmail send permissions", () => {
   assert.ok(GMAIL_SCOPES.includes("https://www.googleapis.com/auth/gmail.readonly"));
@@ -40,4 +40,43 @@ test("outbound email sends are blocked unless explicitly enabled", () => {
     config.outboundEmail.allowSend = originalAllowSend;
     console.warn = originalWarn;
   }
+});
+
+test("googleOAuthMetadata: null/empty scope response preserves existing scopes (reconnect bug)", () => {
+  const existing = googleOAuthMetadata(null, "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/drive.file");
+
+  // גוגל לא החזירה scope בתשובת הטוקן — ה-scopes הקיימים חייבים להישמר,
+  // אחרת reconnectRequired נדלק לצמיתות אחרי חיבור-מחדש מוצלח.
+  for (const emptyInput of [null, undefined, "", "   "]) {
+    const merged = JSON.parse(googleOAuthMetadata(existing, emptyInput as string | null | undefined));
+    assert.deepEqual(
+      merged.googleOAuthScopes,
+      ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/drive.file"],
+      `empty scope input (${JSON.stringify(emptyInput)}) must preserve existing scopes`
+    );
+  }
+});
+
+test("googleOAuthMetadata: real scope response still fully overwrites (incl. narrowing)", () => {
+  const existing = googleOAuthMetadata(null, "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/drive.file");
+
+  const updated = JSON.parse(googleOAuthMetadata(existing, "https://www.googleapis.com/auth/gmail.readonly"));
+  assert.deepEqual(updated.googleOAuthScopes, ["https://www.googleapis.com/auth/gmail.readonly"]);
+});
+
+test("googleOAuthMetadata: no existing scopes + empty input stays empty (no invented grants)", () => {
+  const result = JSON.parse(googleOAuthMetadata(null, null));
+  assert.deepEqual(result.googleOAuthScopes, []);
+});
+
+test("googleOAuthMetadata: calendar delegation pattern — merge protects both callers", () => {
+  // googleCalendarIntegrationMetadata (integrations.ts) מאציל לפונקציה הזו —
+  // התיקון בנקודה האחת מגן גם על מסלול ה-Calendar callback שמעביר tokens.scope ?? null.
+  const existing = JSON.stringify({
+    ...JSON.parse(googleOAuthMetadata(null, "openid email https://www.googleapis.com/auth/calendar")),
+    calendarId: "primary",
+  });
+  const merged = JSON.parse(googleOAuthMetadata(existing, null));
+  assert.deepEqual(merged.googleOAuthScopes, ["openid", "email", "https://www.googleapis.com/auth/calendar"]);
+  assert.equal(merged.calendarId, "primary");
 });
