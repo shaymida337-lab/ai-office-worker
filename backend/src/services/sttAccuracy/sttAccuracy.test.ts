@@ -162,6 +162,22 @@ describe("natalie stt accuracy", () => {
     assert.ok(result.corrections.length <= 2);
   });
 
+  it("handles supplier names with regex metacharacters without throwing", async () => {
+    const pollutedVocabulary: SttVocabulary = {
+      ...vocabulary,
+      supplierNames: [...vocabulary.supplierNames, "normalizeDetectedAmount(result.totalAmount"],
+    };
+    assert.doesNotThrow(() =>
+      correctBusinessNamesInTranscript("שלום", pollutedVocabulary)
+    );
+    await processTranscriptAccuracy({
+      organizationId: "org-1",
+      rawTranscript: "כמה שילמתי החודש",
+      vocabulary: pollutedVocabulary,
+      skipClarification: true,
+    });
+  });
+
   it("preserves invoice-like identifiers in transcript", async () => {
     const result = await processTranscriptAccuracy({
       organizationId: "org-1",

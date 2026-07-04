@@ -1,6 +1,10 @@
 import { correctClientNamesInTranscript } from "../nameCorrection.js";
 import type { SttCorrection, SttVocabulary } from "./sttAccuracyTypes.js";
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 const KNOWN_SUPPLIER_ALIASES: Record<string, string> = {
   "חשמל ישראל": "חברת החשמל",
   "חברת חשמל": "חברת החשמל",
@@ -76,7 +80,7 @@ function correctSupplierPhrases(text: string, vocabulary: SttVocabulary, correct
       if (token.length < 4) continue;
       const matches = findSupplierMatches(token, vocabulary.supplierNames);
       if (matches.length === 1 && matches[0] === supplierName) {
-        const pattern = new RegExp(`\\b${token}\\b`, "iu");
+        const pattern = new RegExp(`\\b${escapeRegExp(token)}\\b`, "iu");
         if (pattern.test(normalized)) {
           corrections.push({
             kind: "supplier_name",
@@ -132,7 +136,7 @@ export function correctBusinessNamesInTranscript(
           confidence: score,
           ambiguous: false,
         });
-        normalized = normalized.replace(new RegExp(`\\b${word}\\b`, "u"), supplierMatches[0]!);
+        normalized = normalized.replace(new RegExp(`\\b${escapeRegExp(word)}\\b`, "u"), supplierMatches[0]!);
       } else if (score >= 0.72) {
         ambiguousSuggestions.push(supplierMatches[0]!);
       }
