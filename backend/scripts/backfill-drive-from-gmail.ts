@@ -38,6 +38,8 @@ function argValue(flag: string): string | null {
 }
 const LIMIT = Number(argValue("--limit") ?? 100);
 const INCLUDE_SUSPECTS = process.argv.includes("--include-suspects");
+// הגבלת ארגון: ב---apply זו חובה — לא מבזבזים קריאות Gmail/Drive על ארגוני בדיקה.
+const ORG_FILTER = argValue("--org");
 const BATCH_SIZE = 25;
 const ITEM_DELAY_MS = 250;
 const BATCH_DELAY_MS = 3_000;
@@ -130,8 +132,12 @@ async function propagateLink(target: Target, link: string) {
 }
 
 async function main() {
-  console.log(`backfill-drive-from-gmail | ${new Date().toISOString()} | mode=${APPLY ? "APPLY" : "DRY-RUN"} | limit=${LIMIT}`);
+  console.log(`backfill-drive-from-gmail | ${new Date().toISOString()} | mode=${APPLY ? "APPLY" : "DRY-RUN"} | limit=${LIMIT} | org=${ORG_FILTER ?? "ALL"}`);
   if (!APPLY) console.log("(dry-run: אפס הורדות/העלאות/כתיבות. לביצוע: --apply)\n");
+  if (APPLY && !ORG_FILTER) {
+    console.error("🛑 --apply דורש --org <orgId> — לא מעלים קבצים לכל הארגונים (כולל ארגוני בדיקה) בבת אחת.");
+    process.exit(1);
+  }
 
   // ── בחירת מטרות ב-4 שאילתות bulk (לא N+1 — בפרודקשן זה ההבדל בין
   //    שניות לשעות: אין אינדקס על gmailMessageId ב-FDR, ו-connection_limit=1) ──
@@ -186,6 +192,7 @@ async function main() {
   const targets: Target[] = [];
   for (const att of attachments) {
     const { organizationId } = att.emailMessage;
+    if (ORG_FILTER && organizationId !== ORG_FILTER) continue;
     const gsiRows = lookup(gsiIndex, organizationId, att.emailMessage.id, att.emailMessage.gmailId);
     const fdrRows = lookup(fdrIndex, organizationId, att.emailMessage.id, att.emailMessage.gmailId);
     const paymentRows = lookup(paymentIndex, organizationId, att.emailMessage.id, att.emailMessage.gmailId);
@@ -240,7 +247,25 @@ async function main() {
   console.log(`רשומות תלויות שיקבלו קישור: GSI=${depTotals.gsi} FDR=${depTotals.fdr} Payments=${depTotals.payments}\n`);
 
   if (!APPLY) {
-    console.log("--- דוגמית (עד 15 ראשונות ל-Phase 1) ---");
+    // פילוח פר-ארגון — מזהה ארגוני-רפאים לפני כל apply
+    const orgNames = new Map(
+      (await prisma.organization.findMany({ select: { id: true, name: true } })).map((o) => [o.id, o.name])
+    );
+    const perOrg = new Map<string, { phase0: number; clean: number; suspects: number }>();
+    for (const t of propagateOnly) {
+      const e = perOrg.get(t.organizationId) ?? { phase0: 0, clean: 0, suspects: 0 };
+      e.phase0++; perOrg.set(t.organizationId, e);
+    }
+    for (const t of uploadCandidates) {
+      const e = perOrg.get(t.organizationId) ?? { phase0: 0, clean: 0, suspects: 0 };
+      if (isSuspectFile(t)) e.suspects++; else e.clean++;
+      perOrg.set(t.organizationId, e);
+    }
+    console.log("\n--- פילוח לפי ארגון (phase0 / נקיים / ספק-זבל) ---");
+    for (const [orgId, counts] of [...perOrg.entries()].sort((a, b) => (b[1].phase0 + b[1].clean) - (a[1].phase0 + a[1].clean))) {
+      console.log(`  ${orgId} ("${orgNames.get(orgId) ?? "?"}") | phase0=${counts.phase0} | clean=${counts.clean} | suspects=${counts.suspects}`);
+    }
+    console.log("\n--- דוגמית (עד 15 ראשונות ל-Phase 1) ---");
     for (const t of needUpload.slice(0, 15)) {
       console.log(`  ${t.organizationId} | "${t.filename}" | supplier="${t.metadata.supplierName}" | deps: gsi=${t.dependents.gsi} fdr=${t.dependents.fdr} pay=${t.dependents.payments}`);
     }
