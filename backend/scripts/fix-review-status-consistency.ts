@@ -23,6 +23,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
+import { isUsableSupplierNameShared } from "../src/services/supplier/supplierValidation.js";
 
 const APPLY = process.argv.includes("--apply");
 const backendRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -56,10 +57,31 @@ async function main() {
     orderBy: { createdAt: "asc" },
   });
 
+  // קריטריון מחודד (אחרי dry-run ראשון בפרודקשן שתפס רשומות זבל):
+  // משחזרים רק רשומה שהיא *עצמה* מסמך תקין שנשמר בהצלחה —
+  //   1. ספק תקין (לא מייל/מספר עוסק/זבל — אותה ולידציה של הצינור)
+  //   2. סכום חיובי
+  //   3. תשלום/חשבונית מקושרים לאותה הודעה עם *אותו סכום* (±0.01) —
+  //      הוכחה שהמסמך הזה עצמו נקלט, לא "אח" שלו מאותה הודעה.
+  // רשומות שכשלו בעיבוד (JSON-fail / prisma-create-fail) נופלות באחד
+  // מהמסננים האלה ונשארות ב-needs_review — שם מקומן.
   const candidates: typeof downgraded = [];
+  const skipped = { junkSupplier: 0, missingAmount: 0, noMatchingRecord: 0 };
+  const skippedExamples: string[] = [];
   for (const item of downgraded) {
-    // משוחזר רק אם רשומה פיננסית אכן קיימת עבור אותה הודעה:
-    // SupplierPayment מקושר דרך EmailMessage (אין לו gmailMessageId ישיר).
+    const supplierOk = Boolean(item.supplierName) && isUsableSupplierNameShared(item.supplierName);
+    if (!supplierOk) {
+      skipped.junkSupplier++;
+      skippedExamples.push(`  SKIP (ספק לא תקין) ${item.id} | supplier="${item.supplierName}" | amount=${item.amount ?? "-"}`);
+      continue;
+    }
+    const amountOk = typeof item.amount === "number" && Number.isFinite(item.amount) && item.amount > 0;
+    if (!amountOk) {
+      skipped.missingAmount++;
+      skippedExamples.push(`  SKIP (סכום חסר/אפס) ${item.id} | supplier="${item.supplierName}" | amount=${item.amount ?? "-"}`);
+      continue;
+    }
+    const amountWindow = { gte: item.amount! - 0.01, lte: item.amount! + 0.01 };
     const email = await prisma.emailMessage.findFirst({
       where: { organizationId: item.organizationId, gmailId: item.gmailMessageId },
       select: { id: true },
@@ -67,20 +89,31 @@ async function main() {
     const [payment, invoice] = await Promise.all([
       email
         ? prisma.supplierPayment.findFirst({
-            where: { organizationId: item.organizationId, emailMessageId: email.id },
+            where: { organizationId: item.organizationId, emailMessageId: email.id, amount: amountWindow },
             select: { id: true },
           })
         : Promise.resolve(null),
       prisma.invoice.findFirst({
-        where: { organizationId: item.organizationId, gmailMessageId: item.gmailMessageId },
+        where: { organizationId: item.organizationId, gmailMessageId: item.gmailMessageId, amount: amountWindow },
         select: { id: true },
       }),
     ]);
-    if (payment || invoice) candidates.push(item);
+    if (payment || invoice) {
+      candidates.push(item);
+    } else {
+      skipped.noMatchingRecord++;
+      skippedExamples.push(`  SKIP (אין רשומה מקושרת באותו סכום) ${item.id} | supplier="${item.supplierName}" | amount=${item.amount}`);
+    }
   }
 
   console.log(`GSI שנדרסו ע"י שגיאה מאוחרת: ${downgraded.length}`);
-  console.log(`מתוכם עם רשומה פיננסית קיימת (מועמדים לשחזור ל-auto_saved): ${candidates.length}\n`);
+  console.log(`נפסלו — ספק זבל/מייל/ח"פ: ${skipped.junkSupplier} | סכום חסר/אפס: ${skipped.missingAmount} | אין רשומה מקושרת תואמת-סכום: ${skipped.noMatchingRecord}`);
+  console.log(`מועמדים לשחזור ל-auto_saved (עברו את כל המסננים): ${candidates.length}\n`);
+  if (skippedExamples.length) {
+    console.log("--- נפסלו (נשארים ב-needs_review, שם מקומם) ---");
+    for (const line of skippedExamples) console.log(line);
+    console.log("");
+  }
 
   for (const item of candidates) {
     console.log(
