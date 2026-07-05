@@ -11,6 +11,9 @@ import {
   type GmailConnectionStateModel,
 } from "@/lib/integrations/gmailConnection";
 import { businessTypeLabel, type OrganizationSettings } from "@/lib/business-config";
+import { oauthReturnMessage } from "@/lib/integrations/oauthReturnMessages";
+
+type SettingsMessage = { text: string; tone: "success" | "error" };
 
 type AccountantSettings = {
   accountantEmail?: string | null;
@@ -95,7 +98,9 @@ export default function SettingsPage() {
     noMessagesOnSaturday: true,
     noMessagesOnHolidays: true,
   });
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<SettingsMessage | null>(null);
+  const [savingAccountant, setSavingAccountant] = useState(false);
+  const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>("integrations");
   const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings | null>(null);
   const [businessProfile, setBusinessProfile] = useState("");
@@ -129,24 +134,29 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
-    if (window.location.search.includes("gmail=connected")) {
-      setMessage("ג׳ימייל חובר בהצלחה!");
-      setGmailStatus((current) => ({
-        googleConfigured: current?.googleConfigured ?? true,
-        connected: true,
-        connectedAt: current?.connectedAt ?? new Date().toISOString(),
-      }));
-      refreshGmailStatus().catch(() => undefined);
+    // תיקון הבאג הנבלע: כל תוצאות ה-OAuth (connected / invalid_state /
+    // error+reason, כולל token_already_bound) מוצגות למשתמש — לא רק הצלחה.
+    const oauthResult = oauthReturnMessage(window.location.search);
+    if (oauthResult) {
+      setMessage({ text: oauthResult.text, tone: oauthResult.tone });
+      if (oauthResult.provider === "gmail" && oauthResult.tone === "success") {
+        setGmailStatus((current) => ({
+          googleConfigured: current?.googleConfigured ?? true,
+          connected: true,
+          connectedAt: current?.connectedAt ?? new Date().toISOString(),
+        }));
+        refreshGmailStatus().catch(() => undefined);
+      }
       router.replace("/dashboard/settings");
     }
     apiFetch<AccountantSettings>("/api/accountant/settings")
       .then(setForm)
-      .catch((err) => setMessage(err instanceof Error ? err.message : "טעינת הגדרות נכשלה"));
+      .catch((err) => setMessage({ text: err instanceof Error ? err.message : "טעינת הגדרות נכשלה", tone: "error" }));
     apiFetch<OrganizationSettings>("/api/organization/settings")
       .then(setOrganizationSettings)
       .catch(() => undefined);
     apiFetch<{ businessProfile: string }>("/api/settings/business-profile")
-      .then((data) => setBusinessProfile(data.businessProfile))
+      .then((data) => setBusinessProfile(data?.businessProfile ?? ""))
       .catch(() => undefined);
     apiFetch<WhatsAppAssistantSettings>("/api/whatsapp-assistant/settings")
       .then(setWhatsapp)
@@ -158,7 +168,7 @@ export default function SettingsPage() {
       .then(setWhatsappStatus)
       .catch(() => undefined);
     apiFetch<{ platforms: SocialPlatformStatus[] }>("/api/social/status")
-      .then((data) => setSocialStatus(data.platforms))
+      .then((data) => setSocialStatus(Array.isArray(data?.platforms) ? data.platforms : []))
       .catch(() => undefined);
     apiFetch<GreenInvoiceStatus>("/api/green-invoice/status")
       .then((status) => {
@@ -170,31 +180,37 @@ export default function SettingsPage() {
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("");
+    setMessage(null);
+    setSavingAccountant(true);
     try {
       const next = await apiFetch<AccountantSettings>("/api/accountant/settings", {
         method: "PUT",
         body: JSON.stringify(form),
       });
       setForm(next);
-      setMessage("הגדרות רואה החשבון נשמרו");
+      setMessage({ text: "הגדרות רואה החשבון נשמרו", tone: "success" });
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "שמירת הגדרות נכשלה");
+      setMessage({ text: err instanceof Error ? err.message : "שמירת הגדרות נכשלה", tone: "error" });
+    } finally {
+      setSavingAccountant(false);
     }
   }
 
   async function saveWhatsapp(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("");
+    setMessage(null);
+    setSavingWhatsapp(true);
     try {
       const next = await apiFetch<WhatsAppAssistantSettings>("/api/whatsapp-assistant/settings", {
         method: "PUT",
         body: JSON.stringify(whatsapp),
       });
       setWhatsapp(next);
-      setMessage("הגדרות עוזר וואטסאפ נשמרו");
+      setMessage({ text: "הגדרות עוזר וואטסאפ נשמרו", tone: "success" });
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "שמירת הגדרות וואטסאפ נכשלה");
+      setMessage({ text: err instanceof Error ? err.message : "שמירת הגדרות וואטסאפ נכשלה", tone: "error" });
+    } finally {
+      setSavingWhatsapp(false);
     }
   }
 
@@ -213,17 +229,17 @@ export default function SettingsPage() {
   }
 
   async function testWhatsapp(type: "morning" | "number") {
-    setMessage("");
+    setMessage(null);
     try {
       await apiFetch(`/api/whatsapp-assistant/test/${type}`, { method: "POST" });
-      setMessage("הודעת בדיקה נשלחה");
+      setMessage({ text: "הודעת בדיקה נשלחה", tone: "success" });
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "שליחת בדיקה נכשלה");
+      setMessage({ text: err instanceof Error ? err.message : "שליחת בדיקה נכשלה", tone: "error" });
     }
   }
 
   async function connectGmail() {
-    setMessage("");
+    setMessage(null);
     console.log("GOOGLE_RECONNECT_CLICKED");
     const token = getToken();
     if (!token) {
@@ -236,13 +252,13 @@ export default function SettingsPage() {
   }
 
   async function disconnectGmail() {
-    setMessage("");
+    setMessage(null);
     try {
       await apiFetch("/api/integrations/gmail", { method: "DELETE" });
       setGmailStatus((current) => current ? { ...current, connected: false, connectedAt: null } : current);
-      setMessage("ג׳ימייל נותק בהצלחה");
+      setMessage({ text: "ג׳ימייל נותק בהצלחה", tone: "success" });
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "ניתוק ג׳ימייל נכשל");
+      setMessage({ text: err instanceof Error ? err.message : "ניתוק ג׳ימייל נכשל", tone: "error" });
     }
   }
 
@@ -312,7 +328,18 @@ export default function SettingsPage() {
     <div className="container">
       <Nav />
       <div className="mb-8"><div className="page-kicker">בקרת סביבת עבודה</div><h1>הגדרות</h1></div>
-      {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
+      {message && (
+        <div
+          role={message.tone === "error" ? "alert" : "status"}
+          className={`mb-6 rounded-2xl border p-4 text-sm font-medium ${
+            message.tone === "error"
+              ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#991B1B]"
+              : "border-[#6EE7B7] bg-[#ECFDF5] text-[#065F46]"
+          }`}
+        >
+          {message.text}
+        </div>
+      )}
 
       <div className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border border-[var(--border)] bg-surface-card p-2 shadow-card md:flex-wrap">
         {tabs.map((tab) => (
@@ -323,8 +350,8 @@ export default function SettingsPage() {
             className={[
               "shrink-0 rounded-xl px-4 py-3 text-[15px] font-semibold transition",
               activeTab === tab.id
-                ? "bg-[#6366F1] text-white shadow-[inset_0_-3px_0_rgba(255,255,255,0.32),0_12px_28px_rgba(99,102,241,0.28)]"
-                : "text-[#6b7686] hover:text-[#0e1116]",
+                ? "bg-[#E8EEFF] font-bold text-accent-primary shadow-[inset_0_-3px_0_var(--accent-primary)]"
+                : "text-ink-secondary hover:text-ink-primary",
             ].join(" ")}
           >
             {tab.label}
@@ -370,7 +397,7 @@ export default function SettingsPage() {
               value={businessProfile}
               onChange={(event) => setBusinessProfile(event.target.value)}
               rows={6}
-              className="w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 py-3 font-sans text-base text-ink-primary shadow-sm outline-none placeholder:text-[#6b7686] focus:border-accent-primary focus:ring-2 focus:ring-[rgba(29,91,255,0.12)]"
+              className="w-full rounded-2xl border border-[var(--border)] bg-white px-4 py-3 font-sans text-base text-ink-primary shadow-sm outline-none placeholder:text-ink-muted focus:border-accent-primary focus:ring-2 focus:ring-[rgba(29,91,255,0.12)]"
               placeholder="לדוגמה: הספק 'יוסי' הוא יוסי כהן מהדפוס; לקוחות VIP מקבלים מענה באותו יום..."
             />
             <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -542,7 +569,7 @@ export default function SettingsPage() {
             <input className="w-auto" type="checkbox" checked={form.sendMonthlyReport ?? true} onChange={(e) => setForm({ ...form, sendMonthlyReport: e.target.checked })} />
             שלח דוח חודשי
           </label>
-          <button className="btn" type="submit">שמור הגדרות רואה חשבון</button>
+          <button className="btn" type="submit" disabled={savingAccountant}>{savingAccountant ? "שומר..." : "שמור הגדרות רואה חשבון"}</button>
         </form>
       )}
 
@@ -624,7 +651,7 @@ export default function SettingsPage() {
           </section>
 
           <div className="grid gap-3 sm:flex sm:flex-wrap">
-            <button className="btn" type="submit">שמור הגדרות וואטסאפ</button>
+            <button className="btn" type="submit" disabled={savingWhatsapp}>{savingWhatsapp ? "שומר..." : "שמור הגדרות וואטסאפ"}</button>
             <button className="btn btn-secondary" type="button" onClick={() => testWhatsapp("morning")}>
               שלח דוח בוקר לעצמי עכשיו
             </button>
