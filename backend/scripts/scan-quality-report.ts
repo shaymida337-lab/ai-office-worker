@@ -83,15 +83,22 @@ function pct(n: number, total: number): string {
   return total ? `${((100 * n) / total).toFixed(1)}%` : "-";
 }
 
+// --org <orgId>: מסנן את כל הדוח לארגון אחד (למשל להפריד עסק אמיתי מארגוני בדיקה)
+const orgFilterIdx = process.argv.indexOf("--org");
+const ORG_FILTER = orgFilterIdx >= 0 && process.argv[orgFilterIdx + 1] ? process.argv[orgFilterIdx + 1] : null;
+const orgWhere = ORG_FILTER ? { organizationId: ORG_FILTER } : {};
+
 async function loadRows(): Promise<Row[]> {
   const [gsi, fdr, sp, inv] = await Promise.all([
     prisma.gmailScanItem.findMany({
+      where: orgWhere,
       select: {
         organizationId: true, supplierName: true, amount: true, occurredAt: true,
         normalizedDocumentDate: true, driveFileLink: true, reviewStatus: true, gmailMessageId: true,
       },
     }),
     prisma.financialDocumentReview.findMany({
+      where: orgWhere,
       select: {
         organizationId: true, source: true, supplierName: true, totalAmount: true, documentDate: true,
         normalizedDocumentDate: true, driveFileUrl: true, reviewStatus: true, gmailMessageId: true,
@@ -99,12 +106,14 @@ async function loadRows(): Promise<Row[]> {
       },
     }),
     prisma.supplierPayment.findMany({
+      where: orgWhere,
       select: {
         id: true, organizationId: true, source: true, supplier: true, amount: true, totalAmount: true, date: true,
         normalizedDocumentDate: true, driveFileUrl: true, documentLink: true, invoiceLink: true, approvalStatus: true,
       },
     }),
     prisma.invoice.findMany({
+      where: orgWhere,
       select: {
         organizationId: true, supplierName: true, amount: true, date: true,
         normalizedDocumentDate: true, driveUrl: true, driveFileUrl: true, status: true,
@@ -158,7 +167,7 @@ async function main() {
   const tables = ["GmailScanItem", "FinancialDocumentReview", "SupplierPayment", "Invoice"];
   const byTable = new Map(tables.map((t) => [t, rows.filter((r) => r.table === t)]));
 
-  console.log(`scan-quality-report | ${now.toISOString()} | host=${host}`);
+  console.log(`scan-quality-report | ${now.toISOString()} | host=${host} | org=${ORG_FILTER ?? "ALL"}`);
   console.log(tables.map((t) => `${t}=${byTable.get(t)!.length}`).join(" | "));
 
   // ---- 1. ספקים ----
