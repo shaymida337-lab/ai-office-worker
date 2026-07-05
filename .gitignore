@@ -61,3 +61,7 @@ _deploy-check.html
 
 # כלי QA מקומי להשוואות טוקנים — נשאר על הדיסק, לא ב-repo
 frontend/_visual-qa/token-unification-capture.mjs
+
+# STT benchmark — אודיו ותוצאות מקומיים בלבד (לא לגיט)
+backend/benchmark-audio/
+backend/stt-benchmark-results/
