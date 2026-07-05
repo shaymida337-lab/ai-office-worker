@@ -8,6 +8,7 @@ import { config } from "../lib/config.js";
 import {
   createInboundWhatsAppLogOnce,
   handleUnmappedWhatsAppSender,
+  shouldContinueAfterWhatsAppJunkGate,
   verifyTwilioWebhookSignature,
 } from "../routes/webhooks.js";
 import {
@@ -20,6 +21,8 @@ import {
 } from "../services/whatsappSafety.js";
 import { evaluateFinanceTrustGates } from "../services/trust/financeTrustPersistence.js";
 import { pipelineActionForClassification } from "../services/classification/classifier.js";
+import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "../services/classification/junkFilter.js";
+import { hasWhatsAppMediaEvidence } from "../routes/webhooks.js";
 
 function twilioTestSignature(url: string, params: Record<string, string>, authToken: string) {
   const sortedKeys = Object.keys(params).sort();
@@ -206,4 +209,49 @@ test("WhatsApp logs mask phone numbers and message body by default", () => {
 test("WhatsApp media failure message is Hebrew and generic", () => {
   assert.match(WHATSAPP_MEDIA_DOWNLOAD_FAILED_MESSAGE, /קיבלתי את הקובץ/);
   assert.doesNotMatch(WHATSAPP_MEDIA_DOWNLOAD_FAILED_MESSAGE, /Error|stack|twilio/i);
+});
+
+test("WhatsApp image with empty body and filename=null bypasses pre-download junk gate", async () => {
+  assert.equal(
+    hasWhatsAppMediaEvidence([
+      {
+        url: "https://api.twilio.com/2010-04-01/Accounts/ACtest/Messages/MMtest/Media/MEtest",
+        contentType: "image/jpeg",
+        filename: null,
+      },
+    ]),
+    true
+  );
+
+  const allowed = await shouldContinueAfterWhatsAppJunkGate({
+    organizationId: "org-whatsapp",
+    whatsappLogId: "log-media-1",
+    fromNumber: "whatsapp:+972544427244",
+    body: "",
+    media: [
+      {
+        url: "https://api.twilio.com/2010-04-01/Accounts/ACtest/Messages/MMtest/Media/MEtest",
+        contentType: "image/jpeg",
+        filename: null,
+      },
+    ],
+  });
+
+  assert.equal(allowed, true);
+});
+
+test("text-only empty WhatsApp message keeps pre-download junk safety and blocks OCR path", () => {
+  assert.equal(hasWhatsAppMediaEvidence([]), false);
+
+  const decision = classifyJunk({
+    sender: "whatsapp:+972544427244",
+    subject: "",
+    body: "",
+    channel: "whatsapp",
+    attachmentFilenames: [],
+  });
+
+  assert.equal(decision.bucket, "UNSURE");
+  assert.equal(decision.reason, "insufficient_signal");
+  assert.equal(shouldAutoClassifyAfterJunkFilter(decision), false);
 });

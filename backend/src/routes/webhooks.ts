@@ -342,13 +342,23 @@ export async function hasProcessedInboundWhatsAppMessage(organizationId: string,
   return Boolean(await findProcessedInboundWhatsAppMessage(organizationId, providerMessageSid, db));
 }
 
-async function shouldContinueAfterWhatsAppJunkGate(input: {
+export function hasWhatsAppMediaEvidence(
+  media: Array<{ filename?: string | null; contentType: string; url: string }>
+) {
+  return media.some((item) => Boolean(item.url?.trim()));
+}
+
+export async function shouldContinueAfterWhatsAppJunkGate(input: {
   organizationId: string;
   whatsappLogId: string;
   fromNumber: string;
   body: string;
   media: Array<{ filename?: string | null; contentType: string; url: string }>;
 }) {
+  if (hasWhatsAppMediaEvidence(input.media)) {
+    return true;
+  }
+
   const decision = classifyJunk({
     sender: input.fromNumber,
     subject: input.body.slice(0, 120),
