@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
-import { test as nodeTest } from "node:test";
-// WIP — ממתין למימוש gmailConnectionState; להסיר skip במימוש
-const test = ((name: string, fn: () => void) => nodeTest(name, { skip: "WIP gmailConnectionState" }, fn)) as typeof nodeTest;
+import test from "node:test";
 import { resolveHeroTrustState } from "../dashboard/heroTrust";
 import { resolveGmailConnectionTruth, shouldAutoTriggerGmailConnect } from "./gmailConnectionTruth";
 import {
   buildGmailOAuthReturnRefreshPlan,
   buildOptimisticGmailConnectedStatus,
   cleanGmailOAuthReturnUrl,
+  gmailOAuthErrorMessage,
   isGmailOAuthConnectedReturn,
+  isGmailOAuthErrorReturn,
+  parseGmailOAuthReturn,
+  shouldHandleGmailOAuthErrorReturn,
   shouldHandleGmailOAuthReturn,
 } from "./gmailOAuthReturn";
 
@@ -16,6 +18,37 @@ test("isGmailOAuthConnectedReturn matches gmail=connected only", () => {
   assert.equal(isGmailOAuthConnectedReturn("?gmail=connected"), true);
   assert.equal(isGmailOAuthConnectedReturn("?gmail=error"), false);
   assert.equal(isGmailOAuthConnectedReturn(""), false);
+});
+
+test("isGmailOAuthErrorReturn matches error and invalid_state", () => {
+  assert.equal(isGmailOAuthErrorReturn("?gmail=error&reason=OAuth"), true);
+  assert.equal(isGmailOAuthErrorReturn("?gmail=invalid_state"), true);
+  assert.equal(isGmailOAuthErrorReturn("?gmail=connected"), false);
+});
+
+test("gmailOAuthErrorMessage prefers reason and falls back to Hebrew defaults", () => {
+  assert.equal(gmailOAuthErrorMessage("token expired", "error"), "token expired");
+  assert.match(gmailOAuthErrorMessage(null, "invalid_state"), /Gmail/);
+  assert.match(gmailOAuthErrorMessage(null, "error"), /נכשל/);
+});
+
+test("shouldHandleGmailOAuthErrorReturn runs once per error return", () => {
+  assert.equal(
+    shouldHandleGmailOAuthErrorReturn({ search: "?gmail=error", alreadyHandled: false }),
+    true
+  );
+  assert.equal(
+    shouldHandleGmailOAuthErrorReturn({ search: "?gmail=error", alreadyHandled: true }),
+    false
+  );
+});
+
+test("parseGmailOAuthReturn extracts status and reason", () => {
+  assert.deepEqual(parseGmailOAuthReturn("?gmail=error&reason=bad"), {
+    status: "error",
+    reason: "bad",
+  });
+  assert.deepEqual(parseGmailOAuthReturn(""), { status: null, reason: null });
 });
 
 test("shouldHandleGmailOAuthReturn runs once per return", () => {
@@ -61,7 +94,7 @@ test("optimistic connected status avoids connect CTA if refresh temporarily fail
     pageLoading: false,
     statusKnown: true,
     statusStale: true,
-    status: optimistic,
+    apiConnected: optimistic.connected,
     hasGmailActivityEvidence: false,
   });
   assert.equal(truth.showConnectCta, false);

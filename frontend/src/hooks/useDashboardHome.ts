@@ -35,8 +35,12 @@ import { resolveGmailStatusFromSettled, resolveGmailTruthAfterLoad, shouldAutoTr
 import {
   buildOptimisticGmailConnectedStatus,
   cleanGmailOAuthReturnUrl,
+  gmailOAuthErrorMessage,
+  parseGmailOAuthReturn,
+  shouldHandleGmailOAuthErrorReturn,
   shouldHandleGmailOAuthReturn,
 } from "@/lib/integrations/gmailOAuthReturn";
+import { MAX_GMAIL_SCAN_POLL_ATTEMPTS, GMAIL_SCAN_POLL_INTERVAL_MS } from "@/lib/dashboard/scanPollLimits";
 import { createDashboardSyncRetryRequest } from "@/lib/dashboard/dashboardSyncRetry";
 import { resolveScanStatusFromSettled } from "@/lib/dashboard/scanStatusTruth";
 import { buildDashboardHomeViewModel } from "@/lib/dashboard/buildDashboardHomeViewModel";
@@ -300,12 +304,23 @@ export function useDashboardHome() {
 
   useEffect(() => {
     const search = window.location.search;
-    const handleOAuthReturn = shouldHandleGmailOAuthReturn({
-      search,
-      alreadyHandled: gmailOAuthReturnHandledRef.current,
-    });
 
-    if (handleOAuthReturn) {
+    if (shouldHandleGmailOAuthErrorReturn({ search, alreadyHandled: gmailOAuthReturnHandledRef.current })) {
+      gmailOAuthReturnHandledRef.current = true;
+      const { status, reason } = parseGmailOAuthReturn(search);
+      const cleanPath = cleanGmailOAuthReturnUrl();
+      window.history.replaceState(null, "", cleanPath);
+      router.replace(cleanPath);
+      if (status) {
+        setScanToast({ type: "error", text: gmailOAuthErrorMessage(reason, status) });
+      }
+      void loadRef.current();
+    } else if (
+      shouldHandleGmailOAuthReturn({
+        search,
+        alreadyHandled: gmailOAuthReturnHandledRef.current,
+      })
+    ) {
       gmailOAuthReturnHandledRef.current = true;
       const cleanPath = cleanGmailOAuthReturnUrl();
       window.history.replaceState(null, "", cleanPath);
@@ -324,7 +339,11 @@ export function useDashboardHome() {
           await delay(1200);
           await refreshGmailStatusRef.current();
         } catch {
-          // Keep optimistic connected state; resolver stays neutral instead of disconnected.
+          setGmailStatusStale(true);
+          setScanToast({
+            type: "warning",
+            text: "ג׳ימייל חובר — מאמתים את החיבור...",
+          });
         }
       })();
     } else {
@@ -374,6 +393,7 @@ export function useDashboardHome() {
   useEffect(() => {
     if (!activeScanId) return;
     let cancelled = false;
+    let pollAttempts = 0;
 
     const completeActiveScan = async (progress: ScanProgressResult) => {
       setFirstScanRunning(false);
@@ -415,6 +435,24 @@ export function useDashboardHome() {
     };
 
     const poll = async () => {
+      pollAttempts += 1;
+      if (pollAttempts > MAX_GMAIL_SCAN_POLL_ATTEMPTS) {
+        if (cancelled) return;
+        setActiveScanId(null);
+        setActiveScan(null);
+        setSyncing(false);
+        setFirstScanRunning(false);
+        setScanProgress([]);
+        setFirstScanPhase(null);
+        window.localStorage.removeItem("activeGmailScanId");
+        setScanToast({
+          type: "error",
+          text: "הסריקה נמשכה זמן רב מדי — מציגים את המצב האחרון",
+        });
+        await load();
+        return;
+      }
+
       try {
         const progress = await apiFetch<ScanProgressResult>(`/api/gmail/scan/${activeScanId}`);
         if (cancelled) return;
@@ -466,7 +504,7 @@ export function useDashboardHome() {
     };
 
     poll().catch(() => undefined);
-    const interval = window.setInterval(() => poll().catch(() => undefined), 5000);
+    const interval = window.setInterval(() => poll().catch(() => undefined), GMAIL_SCAN_POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -613,7 +651,7 @@ export function useDashboardHome() {
     try {
       const result = await apiFetch<{ success: boolean; results?: Array<{ message?: string }> }>("/api/clients/scan-all", { method: "POST" });
       await load();
-      setError(result.results?.find((item) => item.message)?.message ?? "סריקת כל הלקוחות הסתיימה");
+      setActionMessage(result.results?.find((item) => item.message)?.message ?? "סריקת כל הלקוחות הסתיימה");
     } catch (e) {
       setError(e instanceof Error ? e.message : "סריקת לקוחות נכשלה");
     } finally {

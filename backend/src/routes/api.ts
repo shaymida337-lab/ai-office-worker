@@ -2417,6 +2417,7 @@ apiRouter.post("/automation/first-scan", async (req, res) => {
 });
 
 apiRouter.get("/automation/scan-status", async (req, res) => {
+  try {
   type ScanStatusLog = {
     id: string;
     type: string;
@@ -2513,6 +2514,10 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
   nextDaily.setHours(3, 0, 0, 0);
   if (nextDaily <= new Date()) nextDaily.setDate(nextDaily.getDate() + 1);
   res.json({ last, logs, nextScheduledScanAt: nextDaily.toISOString() });
+  } catch (err) {
+    console.error("[automation/scan-status] failed", err);
+    res.json({ last: null, logs: [], nextScheduledScanAt: null, degraded: true });
+  }
 });
 
 apiRouter.post("/help/auto-fix/invoices", async (req, res) => {
@@ -5760,15 +5765,21 @@ apiRouter.post("/payments/:id/delete", requirePerm("payment.delete"), deleteSupp
 apiRouter.delete("/payments/:id", requirePerm("payment.delete"), deleteSupplierPaymentHandler);
 
 apiRouter.get("/tasks", async (req, res) => {
-  const tasks = await prisma.task.findMany({
-    where: { organizationId: req.auth!.organizationId },
-    orderBy: { createdAt: "desc" },
-    take: 500,
-  });
-  res.json(tasks);
+  try {
+    const tasks = await prisma.task.findMany({
+      where: { organizationId: req.auth!.organizationId },
+      orderBy: { createdAt: "desc" },
+      take: 500,
+    });
+    res.json(tasks);
+  } catch (err) {
+    console.error("[tasks] list failed", err);
+    res.status(500).json({ error: "Failed to load tasks" });
+  }
 });
 
 apiRouter.patch("/tasks/:id", async (req, res) => {
+  try {
   const { status } = req.body as { status?: string };
   const updated = await prisma.task.updateMany({
     where: { id: routeId(req), organizationId: req.auth!.organizationId },
@@ -5779,9 +5790,14 @@ apiRouter.patch("/tasks/:id", async (req, res) => {
     return;
   }
   res.json({ ok: true });
+  } catch (err) {
+    console.error("[tasks] patch failed", err);
+    res.status(500).json({ error: "Failed to update task" });
+  }
 });
 
 apiRouter.put("/tasks/:id", async (req, res) => {
+  try {
   const body = req.body as {
     title?: string;
     description?: string | null;
@@ -5814,9 +5830,14 @@ apiRouter.put("/tasks/:id", async (req, res) => {
     return;
   }
   res.json({ ok: true });
+  } catch (err) {
+    console.error("[tasks] put failed", err);
+    res.status(500).json({ error: "Failed to update task" });
+  }
 });
 
 apiRouter.delete("/tasks/:id", async (req, res) => {
+  try {
   const deleted = await prisma.task.deleteMany({
     where: { id: routeId(req), organizationId: req.auth!.organizationId },
   });
@@ -5825,6 +5846,10 @@ apiRouter.delete("/tasks/:id", async (req, res) => {
     return;
   }
   res.json({ ok: true });
+  } catch (err) {
+    console.error("[tasks] delete failed", err);
+    res.status(500).json({ error: "Failed to delete task" });
+  }
 });
 
 apiRouter.get("/reports/missing-invoices", async (req, res) => {
@@ -6015,13 +6040,23 @@ apiRouter.get("/whatsapp-assistant/stats", async (req, res) => {
 });
 
 apiRouter.get("/system/health", async (req, res) => {
-  const { getSystemHealth } = await import("../services/systemHealth.js");
-  res.json(await getSystemHealth(req.auth!.organizationId));
+  try {
+    const { getSystemHealth } = await import("../services/systemHealth.js");
+    res.json(await getSystemHealth(req.auth!.organizationId));
+  } catch (err) {
+    console.error("[system/health] failed", err);
+    res.status(503).json({ error: "System health check failed" });
+  }
 });
 
 apiRouter.post("/system/health/check", async (req, res) => {
-  const { getSystemHealth } = await import("../services/systemHealth.js");
-  res.json(await getSystemHealth(req.auth!.organizationId));
+  try {
+    const { getSystemHealth } = await import("../services/systemHealth.js");
+    res.json(await getSystemHealth(req.auth!.organizationId));
+  } catch (err) {
+    console.error("[system/health/check] failed", err);
+    res.status(503).json({ error: "System health check failed" });
+  }
 });
 
 apiRouter.post("/whatsapp/scan", async (req, res) => {

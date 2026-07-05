@@ -1,6 +1,7 @@
 export const OPENAI_TRANSCRIPTION_URL = "https://api.openai.com/v1/audio/transcriptions";
 export const WHISPER_MODEL = "whisper-1";
 export const WHISPER_LANGUAGE = "he";
+export const WHISPER_REQUEST_TIMEOUT_MS = 60_000;
 
 export type TranscribeAudioCredentials = {
   openAiApiKey?: string;
@@ -69,13 +70,32 @@ export async function transcribeAudio(
     form.append("prompt", trimmedPromptHint);
   }
 
-  const response = await deps.fetchFn(OPENAI_TRANSCRIPTION_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${openAiApiKey}`,
-    },
-    body: form,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WHISPER_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await deps.fetchFn(OPENAI_TRANSCRIPTION_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    const aborted = err instanceof Error && err.name === "AbortError";
+    console.error("[natalieStt] provider request failed", {
+      aborted,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      ok: false,
+      status: aborted ? 504 : 502,
+      error: aborted ? "Transcription timed out" : "Transcription request failed",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     let errorText = response.statusText;

@@ -64,17 +64,25 @@ cronRouter.post("/gmail-sync-all", async (_req, res) => {
 cronRouter.post("/whatsapp-morning", async (_req, res) => {
   const orgs = await prisma.organization.findMany();
   for (const org of orgs) {
-    const { sendDailySummary } = await import("../services/summary.js");
-    await sendDailySummary(org.id, "morning");
+    try {
+      const { sendDailySummary } = await import("../services/summary.js");
+      await sendDailySummary(org.id, "morning");
+    } catch (err) {
+      console.error(`[cron/whatsapp-morning] org=${org.id} failed`, err);
+    }
   }
   res.json({ ok: true, count: orgs.length });
 });
 
 cronRouter.post("/whatsapp-evening", async (_req, res) => {
   const orgs = await prisma.organization.findMany();
-  const { sendDailySummary } = await import("../services/summary.js");
   for (const org of orgs) {
-    await sendDailySummary(org.id, "evening");
+    try {
+      const { sendDailySummary } = await import("../services/summary.js");
+      await sendDailySummary(org.id, "evening");
+    } catch (err) {
+      console.error(`[cron/whatsapp-evening] org=${org.id} failed`, err);
+    }
   }
   res.json({ ok: true, count: orgs.length });
 });
@@ -82,8 +90,12 @@ cronRouter.post("/whatsapp-evening", async (_req, res) => {
 cronRouter.post("/upcoming-alerts", async (_req, res) => {
   const orgs = await prisma.organization.findMany();
   for (const org of orgs) {
-    const { checkUpcomingPaymentAlerts } = await import("../services/summary.js");
-    await checkUpcomingPaymentAlerts(org.id);
+    try {
+      const { checkUpcomingPaymentAlerts } = await import("../services/summary.js");
+      await checkUpcomingPaymentAlerts(org.id);
+    } catch (err) {
+      console.error(`[cron/upcoming-alerts] org=${org.id} failed`, err);
+    }
   }
   res.json({ ok: true });
 });

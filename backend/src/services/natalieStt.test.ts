@@ -115,3 +115,16 @@ test("transcribeAudio returns ok:false 502 when OpenAI response is not ok", asyn
     assert.match(result.error, /rate limit exceeded|failed/i);
   }
 });
+
+test("transcribeAudio passes AbortSignal to provider fetch", async () => {
+  const { fetchFn, calls } = createMockFetch({ json: { text: "שלום" } });
+
+  await transcribeAudio(
+    Buffer.from([0x1a, 0x45, 0xdf, 0xa3]),
+    "audio/webm",
+    credentials,
+    { fetchFn }
+  );
+
+  assert.ok(calls[0]?.init?.signal instanceof AbortSignal);
+});

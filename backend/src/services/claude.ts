@@ -408,22 +408,28 @@ ${prepared.ocrText ? `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמ
         };
 
   emitCoreWorkflowAudit(trace, "started", "claude_request");
-  const message = await anthropic.messages.create({
-    model: config.anthropic.model,
-    max_tokens: 700,
-    messages: [
-      {
-        role: "user",
-        content: [
-          fileBlock,
-          {
-            type: "text",
-            text: `${prompt}\nשם קובץ: ${input.filename ?? "לא ידוע"}\npreprocessing=${prepared.preprocessingNotes}`,
-          },
-        ] as any,
-      },
-    ],
-  });
+  const message = await anthropic.messages.create(
+    {
+      model: config.anthropic.model,
+      max_tokens: 700,
+      messages: [
+        {
+          role: "user",
+          content: [
+            fileBlock,
+            {
+              type: "text",
+              text: `${prompt}\nשם קובץ: ${input.filename ?? "לא ידוע"}\npreprocessing=${prepared.preprocessingNotes}`,
+            },
+          ] as any,
+        },
+      ],
+    },
+    {
+      maxRetries: 2,
+      timeout: 45000,
+    }
+  );
 
   emitCoreWorkflowAudit(trace, "completed", "claude_request");
 

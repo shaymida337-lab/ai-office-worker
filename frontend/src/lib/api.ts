@@ -66,7 +66,7 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
       ? "השרת לא ענה בזמן. נסה שוב בעוד רגע."
       : "אי אפשר להתחבר לשרת כרגע. בדוק שהמערכת פעילה ונסה שוב.";
     console.error("[apiFetch]", message, err);
-    throw new Error(message);
+    throw new ApiError(message, 0);
   } finally {
     window.clearTimeout(timeout);
   }
@@ -82,7 +82,12 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
     console.error("[apiFetch]", serverMessage);
     throw new ApiError(serverMessage, res.status);
   }
-  return res.json() as Promise<T>;
+
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new ApiError("תשובה לא תקינה מהשרת", res.status);
+  }
 }
 
 export type IssueDraftResponse = {

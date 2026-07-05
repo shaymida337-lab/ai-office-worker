@@ -155,6 +155,14 @@ async function start() {
   try {
     await connectPrisma();
     await registerRoutes(app);
+
+    app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      console.error("[express] Unhandled route error", formatStartupError(err));
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+
     const { scheduler } = await import("./services/scheduler.js");
 
     const server = app.listen(config.port, () => {
