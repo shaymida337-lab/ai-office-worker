@@ -10,6 +10,8 @@ export * from "./calendarAutonomy.js";
 export * from "./workCaseService.js";
 export * from "./calendarEventService.js";
 export * from "./calendarEventConflict.js";
+export * from "./schedulingConflict.js";
+export * from "./schedulingLock.js";
 export * from "./decisionQueueService.js";
 export * from "./timelineWriter.js";
 export * from "./auditWriter.js";

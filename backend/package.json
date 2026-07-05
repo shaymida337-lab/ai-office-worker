@@ -11,6 +11,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "test:gmail": "tsx --test src/services/gmail-sync.test.ts src/services/gmailDriveLinkEvidence.test.ts src/services/gmailDriveLinkReviewMirror.test.ts",
+    "test:scheduling-stress": "tsx --test src/stress/schedulingConcurrency.stress.test.ts",
     "worker": "tsx src/worker.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
     "db:generate": "prisma generate",

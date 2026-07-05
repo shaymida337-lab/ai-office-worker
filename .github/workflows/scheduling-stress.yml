@@ -1,0 +1,79 @@
+name: Scheduling stress tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/src/services/appointmentService.ts"
+      - "backend/src/services/calendar/**"
+      - "backend/src/stress/**"
+      - "backend/prisma/**"
+      - ".github/workflows/scheduling-stress.yml"
+  pull_request:
+    paths:
+      - "backend/src/services/appointmentService.ts"
+      - "backend/src/services/calendar/**"
+      - "backend/src/stress/**"
+      - "backend/prisma/**"
+      - ".github/workflows/scheduling-stress.yml"
+  workflow_dispatch:
+
+jobs:
+  scheduling-stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ai_office_worker_stress
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ai_office_worker_stress"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      STRESS_DB: "1"
+      JWT_SECRET: stress-ci-jwt-secret
+      CALENDAR_ENGINE_V1_READ: "true"
+      CALENDAR_ENGINE_V1_WRITE: "true"
+      PRISMA_CONNECTION_LIMIT: "120"
+      PRISMA_POOL_TIMEOUT: "60"
+      PRISMA_TRANSACTION_MAX_WAIT_MS: "120000"
+      PRISMA_TRANSACTION_TIMEOUT_MS: "120000"
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ai_office_worker_stress?schema=public
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/ai_office_worker_stress?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate -w backend
+
+      - name: Apply migrations
+        run: npm run db:migrate:deploy -w backend
+
+      - name: Run scheduling concurrency stress suite
+        run: npm run test:scheduling-stress -w backend
+
+      - name: Upload stress reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduling-stress-reports
+          path: backend/stress-reports/*.json
+          if-no-files-found: ignore
