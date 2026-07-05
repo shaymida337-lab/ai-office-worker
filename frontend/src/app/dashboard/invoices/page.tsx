@@ -59,6 +59,16 @@ type InvoiceDeleteResponse = {
 
 const reviewStatusLabels: Record<InvoiceReviewStatus, string> = { approved: "מאושר", needs_review: "דורש בדיקה", rejected: "נדחה" };
 const MISSING_VALUE = "לא זוהה";
+// תוויות "חסר" מובחנות — במקום אותה מילה "לא זוהה" לשלושה שדות שונים.
+const MISSING_SUPPLIER = "ספק לא זוהה";
+const MISSING_NUMBER = "ללא מספר";
+const MISSING_DATE = "ללא תאריך";
+
+/** מפתח תאריך בטוח לסינון — הטיפוס אומר string אבל רשומות GSI/FDR עלולות
+ *  להגיע בלי תאריך; בלי ההגנה הזו invoice.date.slice קורס. */
+function invoiceDateKey(invoice: { date?: string | null }): string {
+  return typeof invoice.date === "string" ? invoice.date.slice(0, 10) : "";
+}
 const REMOVAL_ANIMATION_MS = 250;
 const reviewTabs: Array<{ value: "all" | InvoiceReviewStatus; label: string }> = [
   { value: "all", label: "הכול" },
@@ -212,7 +222,7 @@ export default function InvoicesPage() {
   );
 
   const matchesDisplayFilters = (invoice: Invoice) => {
-    const date = invoice.date.slice(0, 10);
+    const date = invoiceDateKey(invoice);
     return (
       (!fromDate || date >= fromDate) &&
       (!toDate || date <= toDate)
@@ -239,7 +249,7 @@ export default function InvoicesPage() {
     const regular: Invoice[] = [];
     const seen = new Set<string>();
     const matchesDateFilters = (invoice: Invoice) => {
-      const date = invoice.date.slice(0, 10);
+      const date = invoiceDateKey(invoice);
       return (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
     };
     const monthKeys = months.map((month) => monthKey(month.year, month.month));
@@ -279,7 +289,9 @@ export default function InvoicesPage() {
 
   const now = new Date();
   const thisMonth = filtered.filter((invoice) => {
+    if (!invoice.date) return false;
     const date = new Date(invoice.date);
+    if (Number.isNaN(date.getTime())) return false;
     return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
   });
   const paid = filtered
@@ -478,24 +490,39 @@ export default function InvoicesPage() {
     setMessage("");
     setRemovingIds(new Set(selectedVisibleInvoices.map((invoice) => invoice.id)));
     await new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS));
+    // מחיקה סדרתית — עוקבים אחרי מה שנמחק בפועל כדי לדווח מצב חלקי במדויק
+    // במקום כשל שקט שמשאיר חלק מהרשומות מחוקות והמשתמש לא יודע כמה.
+    const total = selectedVisibleInvoices.length;
+    const deletedIds = new Set<string>();
+    let failure: unknown = null;
     try {
       for (const invoice of selectedVisibleInvoices) {
         setDeletingId(invoice.id);
-        await deleteInvoiceRecord(invoice);
+        try {
+          await deleteInvoiceRecord(invoice);
+          deletedIds.add(invoice.id);
+        } catch (err) {
+          failure = err;
+          break;
+        }
       }
-      const deletedIds = new Set(selectedVisibleInvoices.map((invoice) => invoice.id));
+    } finally {
       setSelected((current) => (current && deletedIds.has(current.id) ? null : current));
       setSelectedInvoiceIds(new Set());
-      for (const invoice of selectedVisibleInvoices) {
-        removeInvoiceFromLocalState(invoice.id);
+      for (const id of deletedIds) removeInvoiceFromLocalState(id);
+      await refreshMonthsAndInvoices(Object.keys(invoicesByMonth)).catch(() => undefined);
+      if (failure) {
+        setMessageTone("error");
+        const reason = failure instanceof Error ? failure.message : "שגיאה לא ידועה";
+        setMessage(
+          deletedIds.size > 0
+            ? `נמחקו ${deletedIds.size} מתוך ${total} חשבוניות. השאר לא נמחקו (${reason}). נסה שוב את הנותרות.`
+            : `מחיקת החשבוניות נכשלה: ${reason}`
+        );
+      } else {
+        setMessageTone("success");
+        setMessage(`${deletedIds.size} חשבוניות נמחקו.`);
       }
-      await refreshMonthsAndInvoices(Object.keys(invoicesByMonth));
-      setMessageTone("success");
-      setMessage(`${deletedIds.size} חשבוניות נמחקו.`);
-    } catch (err) {
-      setMessageTone("error");
-      setMessage(err instanceof Error ? err.message : "מחיקת החשבוניות נכשלה");
-    } finally {
       setDeletingId(null);
       setBulkDeleting(false);
       setRemovingIds(new Set());
@@ -870,7 +897,7 @@ export default function InvoicesPage() {
                 <div>
                   <p className="text-sm font-extrabold uppercase tracking-wide text-[#111827]">פרטי חשבונית</p>
                   <h2 id="invoice-details-title" className="mt-1 text-2xl font-black leading-tight text-[#111827] sm:text-3xl">
-                    {selected.supplierName || selected.client?.name || MISSING_VALUE}
+                    {selected.supplierName || selected.client?.name || MISSING_SUPPLIER}
                   </h2>
                   <p className="mt-2 text-base font-semibold leading-7 text-[#111827]">
                     {selected.reviewStatus === "needs_review" ? "חשבונית שמורה וממתינה לאישור" : reviewStatusLabels[selected.reviewStatus ?? "approved"]}
@@ -889,9 +916,9 @@ export default function InvoicesPage() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <DetailCard label="ספק" value={selected.supplierName || MISSING_VALUE} />
+              <DetailCard label="ספק" value={selected.supplierName || MISSING_SUPPLIER} />
               <DetailCard label="סכום" value={formatInvoiceAmount(selected)} highlight />
-              <DetailCard label="מספר חשבונית" value={selected.invoiceNumber || MISSING_VALUE} />
+              <DetailCard label="מספר חשבונית" value={selected.invoiceNumber || MISSING_NUMBER} />
               <DetailCard label="תאריך" value={formatInvoiceDate(selected.date)} />
               <DetailCard label="מקור" value={sourceLabel(selected.source)} />
               <DetailCard label="סטטוס" value={reviewBadgeLabel(selected)} />
@@ -1024,7 +1051,7 @@ function InvoiceMobileList({
                 aria-label="בחר חשבונית"
               />
               <button type="button" className="min-w-0 flex-1 text-right" onClick={() => onSelect(invoice)}>
-                <div className="truncate text-base font-semibold text-[#111827]" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</div>
+                <div className="truncate text-base font-semibold text-[#111827]" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_SUPPLIER}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_SUPPLIER}</div>
               </button>
             </div>
             <ReviewStatusPill invoice={invoice} />
@@ -1133,7 +1160,7 @@ function InvoiceDesktopList({
                 <div className="flex max-w-full items-center gap-2 text-[#111827]">
                   <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#E5E7EB] bg-[#F3F4F6] text-sm font-black text-[#111827]">{(invoice.client?.name ?? invoice.supplierName ?? "בדיקה").slice(0, 2)}</span>
                   <div className="min-w-0">
-                    <div className="truncate text-base font-semibold" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_VALUE}</div>
+                    <div className="truncate text-base font-semibold" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_SUPPLIER}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_SUPPLIER}</div>
                     <div className="truncate text-xs font-normal text-[#9CA3AF]" title={invoiceMetaLine(invoice)}>{invoiceMetaLine(invoice)}</div>
                   </div>
                 </div>
@@ -1220,9 +1247,9 @@ function formatInvoiceAmount(invoice: Invoice) {
 }
 
 function formatInvoiceDate(date: string | null | undefined) {
-  if (!date) return MISSING_VALUE;
+  if (!date) return MISSING_DATE;
   const parsed = new Date(date);
-  if (Number.isNaN(parsed.getTime())) return MISSING_VALUE;
+  if (Number.isNaN(parsed.getTime())) return MISSING_DATE;
   return parsed.toLocaleDateString("he-IL");
 }
 
