@@ -83,6 +83,9 @@ function pct(n: number, total: number): string {
   return total ? `${((100 * n) / total).toFixed(1)}%` : "-";
 }
 
+// גרסת סקריפט — מודפסת בכותרת כדי לזהות מיד Render Shell שרץ על קונטיינר ישן
+const SCRIPT_VERSION = "v2-org-filter";
+
 // --org <orgId>: מסנן את כל הדוח לארגון אחד (למשל להפריד עסק אמיתי מארגוני בדיקה)
 const orgFilterIdx = process.argv.indexOf("--org");
 const ORG_FILTER = orgFilterIdx >= 0 && process.argv[orgFilterIdx + 1] ? process.argv[orgFilterIdx + 1] : null;
@@ -167,8 +170,18 @@ async function main() {
   const tables = ["GmailScanItem", "FinancialDocumentReview", "SupplierPayment", "Invoice"];
   const byTable = new Map(tables.map((t) => [t, rows.filter((r) => r.table === t)]));
 
-  console.log(`scan-quality-report | ${now.toISOString()} | host=${host} | org=${ORG_FILTER ?? "ALL"}`);
+  console.log(`scan-quality-report ${SCRIPT_VERSION} | ${now.toISOString()} | host=${host} | org=${ORG_FILTER ?? "ALL"}`);
   console.log(tables.map((t) => `${t}=${byTable.get(t)!.length}`).join(" | "));
+
+  // בדיקת שפיות: כשמסננים לארגון — אף שורה לא יכולה להשתייך לארגון אחר
+  if (ORG_FILTER) {
+    const foreign = rows.filter((r) => r.organizationId !== ORG_FILTER).length;
+    if (foreign > 0) {
+      console.error(`🛑 SANITY FAILURE: ${foreign} rows belong to other orgs despite --org filter — aborting`);
+      process.exit(1);
+    }
+    console.log(`(פילטר ארגון פעיל ואומת — כל השורות שייכות ל-${ORG_FILTER})`);
+  }
 
   // ---- 1. ספקים ----
   printSection("1. ספק חסר / זבל");
