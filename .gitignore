@@ -58,3 +58,6 @@ frontend/test-results/
 *test-output.txt
 *-report.json
 _deploy-check.html
+
+# כלי QA מקומי להשוואות טוקנים — נשאר על הדיסק, לא ב-repo
+frontend/_visual-qa/token-unification-capture.mjs
