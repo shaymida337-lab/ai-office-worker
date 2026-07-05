@@ -48,12 +48,25 @@ function resolveRescheduleMessage(result: NatalieRescheduleResult): string {
   return name ? `התור של ${name} עודכן.` : "התור עודכן.";
 }
 
+import {
+  isCalendarProposalExecutable,
+  withIdentityConfirmedProposal,
+} from "../../scheduling/calendarAppointmentSafety.js";
+
 export async function executeNataliePendingProposal(input: {
   organizationId: string;
   userId: string;
   action: string;
   proposal: Record<string, unknown>;
 }): Promise<NatalieProposalExecutionResult> {
+  if (!isCalendarProposalExecutable(input.proposal)) {
+    return {
+      ok: false,
+      action: input.action,
+      message: "נדרש אישור זהות לפני ביצוע פעולת יומן.",
+    };
+  }
+
   switch (input.action) {
     case "create_task": {
       const title = typeof input.proposal.title === "string" ? input.proposal.title.trim() : "";

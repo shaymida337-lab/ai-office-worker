@@ -27,6 +27,13 @@ import type {
 } from "./conversationTypes.js";
 import { evaluateZeroWrongAction } from "./conversationZeroWrongAction.js";
 import { tryHandleAvailabilityContinuation } from "./conversationAvailabilityContinuation.js";
+import {
+  applyFuzzyCalendarClientResponse,
+  buildCalendarPendingConfirmation,
+  extractCalendarBrainResponse,
+  tryHandleCalendarConfirmationTurn,
+} from "./calendarConfirmationContinuation.js";
+import { shouldDeferCalendarActionForFuzzyGate } from "../scheduling/calendarActionProposal.js";
 
 export type ProcessNatalieTurnDeps = {
   ask?: typeof askNatalieBusinessQuestion;
@@ -95,6 +102,57 @@ export async function processNatalieTurn(
   });
 
   try {
+    const calendarConfirmation = await tryHandleCalendarConfirmationTurn({
+      session,
+      message: normalizedMessage,
+      channel,
+      organizationId: input.organizationId,
+      userId: input.userId,
+      role,
+      permissions: input.permissions,
+    });
+    if (calendarConfirmation.handled && calendarConfirmation.result && calendarConfirmation.updatedSession) {
+      const adapter = getChannelAdapter(channel);
+      const continuation = calendarConfirmation.result;
+      const displayResponse =
+        continuation.displayResponse ??
+        adapter.renderDisplay(continuation as NatalieClaudeResponse, continuation.confirmation);
+      const spokenResponse =
+        continuation.spokenResponse ??
+        adapter.renderSpoken(continuation as NatalieClaudeResponse, continuation.confirmation);
+
+      const updatedSession = await saveSession(calendarConfirmation.updatedSession);
+
+      completeCoreWorkflowStage(trace, "turn", "completed", {
+        health: continuation.zeroWrongAction?.ready === false ? "Degraded" : "Healthy",
+        metadata: { turnId, calendarConfirmation: true },
+      });
+
+      recordConversationMetric({
+        sessionId: updatedSession.id,
+        channel,
+        turnCount: updatedSession.structuredHistory.length,
+        confirmationRequired: continuation.confirmation?.required ?? false,
+        recoveryCount: 0,
+        interruptionCount: updatedSession.interruptionState?.interrupted ? 1 : 0,
+        durationMs: sessionDurationMs(updatedSession),
+        success: true,
+      });
+
+      return {
+        ...continuation,
+        conversationSessionId: updatedSession.id,
+        displayResponse,
+        spokenResponse,
+        reliability: {
+          correlationId: trace.correlationId,
+          sessionId: updatedSession.id,
+          turnId,
+          health: continuation.zeroWrongAction?.ready === false ? "Degraded" : "Healthy",
+        },
+      };
+    }
+
     const availabilityContinuation = tryHandleAvailabilityContinuation({
       session,
       message: normalizedMessage,
@@ -160,9 +218,18 @@ export async function processNatalieTurn(
       organizationId: input.organizationId,
       question: normalizedMessage,
       history: brainHistory,
+      conversationContext: {
+        pendingAction: session.pendingAction,
+        structuredHistory: historyWithUser.map((turn) => ({
+          role: turn.role,
+          content: turn.text,
+          action: turn.action,
+          proposal: turn.proposal,
+        })),
+      },
     });
 
-    const extracted = extractActionFromBrainResponse(brainResponse as Record<string, unknown>);
+    const extracted = extractCalendarBrainResponse(brainResponse as Record<string, unknown>);
     const confirmation = evaluateConfirmationPolicy({
       action: extracted.action,
       channel,
@@ -178,7 +245,10 @@ export async function processNatalieTurn(
     });
 
     const adapter = getChannelAdapter(channel);
-    let effectiveResponse: NatalieClaudeResponse = brainResponse;
+    let effectiveResponse: NatalieClaudeResponse = applyFuzzyCalendarClientResponse(
+      brainResponse,
+      extracted.proposal
+    );
     if (!zeroWrongAction.ready && zeroWrongAction.followUpQuestion) {
       effectiveResponse = { answer: zeroWrongAction.followUpQuestion };
     } else if (!confirmation.allowed && extracted.action) {
@@ -187,8 +257,22 @@ export async function processNatalieTurn(
       };
     }
 
+    const pendingConfirmation =
+      extracted.action && extracted.proposal
+        ? buildCalendarPendingConfirmation(
+            extracted.action,
+            extracted.proposal,
+            channel,
+            role,
+            input.permissions
+          )
+        : null;
+
     const displayResponse = adapter.renderDisplay(effectiveResponse, confirmation);
-    const spokenResponse = adapter.renderSpoken(effectiveResponse, confirmation);
+    const spokenResponse =
+      pendingConfirmation?.spokenPrompt && shouldDeferCalendarActionForFuzzyGate(extracted.proposal)
+        ? pendingConfirmation.spokenPrompt
+        : adapter.renderSpoken(effectiveResponse, confirmation);
 
     const assistantTurn = createConversationTurn({
       role: "assistant",
@@ -198,11 +282,6 @@ export async function processNatalieTurn(
       proposal: extracted.proposal,
       confirmationState: confirmation.required ? "pending" : "none",
     });
-
-    const pendingConfirmation =
-      extracted.action && extracted.proposal
-        ? buildPendingConfirmation(extracted.action, extracted.proposal, confirmation)
-        : null;
 
     const updatedSession = await saveSession({
       ...session,

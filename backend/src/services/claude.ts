@@ -134,6 +134,7 @@ export type NatalieClaudeResponse =
       proposal: {
         appointmentId: string;
         clientName: string;
+        clientId?: string;
         when?: string;
         serviceName?: string;
       };
@@ -144,6 +145,7 @@ export type NatalieClaudeResponse =
       proposal: {
         appointmentId: string;
         clientName: string;
+        clientId?: string;
         newDayReference?: string;
         newTime?: string;
         newWhen?: string;

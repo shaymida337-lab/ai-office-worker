@@ -2,11 +2,23 @@ import { answerBusinessQuestionWithClaude, type NatalieClaudeResponse } from "./
 import { findTasksByPartialTitle } from "./tasks.js";
 import { prisma } from "../lib/prisma.js";
 import { resolveAppointmentDateTime } from "./appointmentService.js";
-import { findUpcomingSchedulingForClient, type UpcomingSchedulingItem } from "./scheduling/schedulingFacade.js";
+import { findUpcomingSchedulingForClient, findUpcomingSchedulingForOrganization, type UpcomingSchedulingItem } from "./scheduling/schedulingFacade.js";
 import {
   formatAmbiguousCustomerMessage,
   searchSchedulingCustomers,
 } from "./scheduling/schedulingCustomer.js";
+import {
+  extractActiveCalendarContext,
+  findAmbiguousAppointmentNameMatches,
+  isPronounCalendarReference,
+  resolveAppointmentCustomerName,
+  type ActiveCalendarContext,
+  normalizeHebrewAppointmentText,
+} from "./scheduling/calendarAppointmentResolver.js";
+import {
+  buildCalendarActionProposal,
+  formatAmbiguousAppointmentMessage,
+} from "./scheduling/calendarActionProposal.js";
 import { maybeBuildAvailabilityResponse } from "./natalieAvailability.js";
 import { resolveFinanceDisplayAmount } from "./amount/financeDisplayAmount.js";
 
@@ -28,6 +40,15 @@ export async function askNatalieBusinessQuestion(input: {
   organizationId: string;
   question: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
+  conversationContext?: {
+    pendingAction?: { action: string; proposal: Record<string, unknown> } | null;
+    structuredHistory?: Array<{
+      role: "user" | "assistant";
+      content: string;
+      action?: string | null;
+      proposal?: Record<string, unknown> | null;
+    }>;
+  };
 }): Promise<NatalieClaudeResponse> {
   const businessFactsResponse = await maybeBuildBusinessFactsResponse(input.organizationId, input.question);
   if (businessFactsResponse) return businessFactsResponse;
@@ -41,15 +62,25 @@ export async function askNatalieBusinessQuestion(input: {
   const availabilityResponse = await maybeBuildAvailabilityResponse(input.organizationId, input.question);
   if (availabilityResponse) return availabilityResponse;
 
+  const calendarContext = extractActiveCalendarContext({
+    history: input.conversationContext?.structuredHistory ?? input.history?.map((turn) => ({
+      role: turn.role,
+      content: turn.content,
+    })),
+    pendingAction: input.conversationContext?.pendingAction ?? null,
+  });
+
   const rescheduleAppointmentResponse = await maybeBuildRescheduleAppointmentProposal(
     input.organizationId,
-    input.question
+    input.question,
+    calendarContext
   );
   if (rescheduleAppointmentResponse) return rescheduleAppointmentResponse;
 
   const cancelAppointmentResponse = await maybeBuildCancelAppointmentProposal(
     input.organizationId,
-    input.question
+    input.question,
+    calendarContext
   );
   if (cancelAppointmentResponse) return cancelAppointmentResponse;
 
@@ -964,11 +995,15 @@ function extractCancelAppointmentClientName(question: string): string | null {
   if (/(?:תעביר|תעבירי|תשני|תשנה|שנה\s+מועד)/iu.test(normalized)) {
     return null;
   }
+  if (isPronounCalendarReference(normalized)) {
+    return null;
+  }
 
   const patterns = [
     /(?:בטל|בטלי)\s+(?:את\s+)?(?:ה)?תור\s+(?:של|ל)\s+(.+?)(?:\s*[.?!]|$)/iu,
     /תבטלי\s+תור\s+(?:של|ל|-)?\s*(.+?)(?:\s*[.?!]|$)/iu,
     /ביטול\s+(?:ה)?תור\s+(?:של|ל)\s+(.+?)(?:\s*[.?!]|$)/iu,
+    /(?:תעביר|תעבירי|תבטל|תבטלי|בטל|בטלי)\s+(?:את\s+)?(.+?)(?:\s*[.?!]|$)/iu,
   ];
 
   for (const pattern of patterns) {
@@ -976,35 +1011,122 @@ function extractCancelAppointmentClientName(question: string): string | null {
     const rawClientName = match?.[1]?.trim().replace(/[.?!]+$/, "");
     if (!rawClientName) continue;
     const clientName = stripTrailingTimePhrase(rawClientName);
-    if (clientName) return clientName;
+    if (clientName && !isPronounCalendarReference(clientName)) return clientName;
   }
 
   return null;
 }
 
+function isCancelPronounCommand(question: string): boolean {
+  const normalized = question.trim().replace(/\s+/g, " ");
+  if (/(?:תעביר|תעבירי|תשני|תשנה|שנה\s+מועד)/iu.test(normalized)) return false;
+  return /(?:תבטל|תבטלי|בטל|בטלי)\s+(?:אותו|אותה|לו|לה)(?:\s*[.?!]|$)/iu.test(normalized);
+}
+
+async function resolveCalendarCommandCustomer(input: {
+  organizationId: string;
+  question: string;
+  spokenName: string | null;
+  activeContext: ActiveCalendarContext | null;
+}) {
+  const upcomingAppointments = await findUpcomingSchedulingForOrganization({
+    organizationId: input.organizationId,
+  });
+  const nameResolution = await resolveAppointmentCustomerName({
+    organizationId: input.organizationId,
+    spokenName: input.spokenName,
+    originalTranscript: input.question,
+    upcomingAppointments,
+    activeContext: input.activeContext,
+  });
+  if (!nameResolution) {
+    if (input.spokenName) {
+      const ambiguousCustomers = await searchSchedulingCustomers({
+        organizationId: input.organizationId,
+        query: input.spokenName,
+      });
+      if (ambiguousCustomers.length > 1) {
+        return { kind: "ambiguous" as const, spokenName: input.spokenName, clients: ambiguousCustomers };
+      }
+      const ambiguousAppointments = findAmbiguousAppointmentNameMatches(
+        input.spokenName,
+        upcomingAppointments
+      );
+      if (ambiguousAppointments.kind === "ambiguous") {
+        return {
+          kind: "ambiguous_appointments" as const,
+          spokenName: input.spokenName,
+          candidates: ambiguousAppointments.candidates,
+        };
+      }
+      return { kind: "not_found" as const, spokenName: input.spokenName };
+    }
+    return { kind: "not_found" as const, spokenName: "" };
+  }
+
+  const appointments = nameResolution.clientId
+    ? await findUpcomingSchedulingForClient({
+        organizationId: input.organizationId,
+        clientId: nameResolution.clientId,
+        limit: 10,
+      })
+    : upcomingAppointments.filter(
+        (item) =>
+          normalizeHebrewAppointmentText(item.clientName) ===
+          normalizeHebrewAppointmentText(nameResolution.clientName)
+      );
+  if (appointments.length === 0 && input.activeContext?.appointmentId) {
+    const contextual = upcomingAppointments.find(
+      (item) => item.id === input.activeContext?.appointmentId && item.clientId === nameResolution.clientId
+    );
+    if (contextual) {
+      return {
+        kind: "resolved" as const,
+        nameResolution,
+        appointments: [contextual],
+      };
+    }
+  }
+
+  return {
+    kind: "resolved" as const,
+    nameResolution,
+    appointments,
+  };
+}
+
 async function maybeBuildCancelAppointmentProposal(
   organizationId: string,
-  question: string
+  question: string,
+  activeContext: ActiveCalendarContext | null
 ): Promise<NatalieClaudeResponse | null> {
+  const pronounCommand = isCancelPronounCommand(question);
   const clientName = extractCancelAppointmentClientName(question);
-  if (!clientName) return null;
+  if (!clientName && !pronounCommand) return null;
 
-  const clients = await searchSchedulingCustomers({ organizationId, query: clientName });
-  if (clients.length === 0) {
-    return { answer: `לא מצאתי לקוח בשם "${clientName}". אפשר לקבוע תור חדש בשם הזה.` };
-  }
-  if (clients.length > 1) {
-    return { answer: formatAmbiguousCustomerMessage(clientName, clients) };
-  }
-
-  const client = clients[0];
-  const appointments = await findUpcomingSchedulingForClient({
+  const resolved = await resolveCalendarCommandCustomer({
     organizationId,
-    clientId: client.id,
-    limit: 10,
+    question,
+    spokenName: clientName,
+    activeContext,
   });
+
+  if (resolved.kind === "ambiguous") {
+    return { answer: formatAmbiguousCustomerMessage(resolved.spokenName, resolved.clients) };
+  }
+  if (resolved.kind === "ambiguous_appointments") {
+    return { answer: formatAmbiguousAppointmentMessage(resolved.spokenName, resolved.candidates) };
+  }
+  if (resolved.kind === "not_found") {
+    if (pronounCommand) {
+      return { answer: "לא מצאתי תור פעיל מהשיחה האחרונה. למי לבטל את התור?" };
+    }
+    return { answer: `לא מצאתי תור שמתאים ל"${resolved.spokenName}". למי התכוונת?` };
+  }
+
+  const { nameResolution, appointments } = resolved;
   if (appointments.length === 0) {
-    return { answer: `אין תור עתידי ל${client.name}.` };
+    return { answer: `אין תור עתידי ל${nameResolution.clientName}.` };
   }
 
   const timeZone = await loadOrganizationTimezone(organizationId);
@@ -1013,23 +1135,20 @@ async function maybeBuildCancelAppointmentProposal(
       .map((appointment, index) => formatAppointmentListLine(appointment, index, timeZone))
       .join("\n");
     return {
-      answer: `מצאתי כמה תורים עתידיים ל${client.name}. איזה תור לבטל?\n${list}`,
+      answer: `מצאתי כמה תורים עתידיים ל${nameResolution.clientName}. איזה תור לבטל?\n${list}`,
     };
   }
 
-  const appointment = appointments[0];
+  const appointment = appointments[0]!;
   const when = formatAppointmentWhen(appointment.startTime, timeZone);
-  const serviceName = appointment.serviceName?.trim() || undefined;
-  return {
+  return buildCalendarActionProposal({
     action: "cancel_appointment",
-    proposal: {
-      appointmentId: appointment.id,
-      clientName: client.name,
-      when,
-      ...(serviceName ? { serviceName } : {}),
-    },
-    answer: `מצאתי תור ל${client.name} ב${when}. לבטל אותו?`,
-  };
+    appointment,
+    nameResolution,
+    timeZone,
+    when,
+    defaultAnswer: `מצאתי תור ל${nameResolution.clientName} ב${when}. לבטל אותו?`,
+  });
 }
 
 function normalizeRescheduleTimeToken(token: string): string {
@@ -1040,10 +1159,38 @@ function normalizeRescheduleTimeToken(token: string): string {
   return `${String(hour).padStart(2, "0")}:00`;
 }
 
+function parseHebrewHourWord(value: string): string | null {
+  const map: Record<string, number> = {
+    אחת: 1,
+    אחד: 1,
+    שתיים: 2,
+    שניים: 2,
+    שלוש: 3,
+    שלושה: 3,
+    ארבע: 4,
+    ארבעה: 4,
+    חמש: 5,
+    חמישה: 5,
+    שש: 6,
+    שישה: 6,
+    שבע: 7,
+    שבעה: 7,
+    שמונה: 8,
+    תשע: 9,
+    תשעה: 9,
+    עשר: 10,
+    עשרה: 10,
+  };
+  const hour = map[value.trim().toLowerCase()];
+  if (!hour) return null;
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
 function parseRescheduleDayAndTime(target: string): { dayReference: string; time: string } | null {
   const normalized = target.trim().replace(/\s+/g, " ");
   const timePatterns = [
     /בשעה\s+(\d{1,2}(?::\d{2})?)/u,
+    /בשעה\s+([\u0590-\u05FF]+)/u,
     /ב-(\d{1,2}(?::\d{2})?)/u,
     /\bב\s+(\d{1,2}(?::\d{2})?)/u,
     /(\d{1,2}:\d{2})/u,
@@ -1054,7 +1201,10 @@ function parseRescheduleDayAndTime(target: string): { dayReference: string; time
   for (const pattern of timePatterns) {
     const match = normalized.match(pattern);
     if (match?.[1]) {
-      time = normalizeRescheduleTimeToken(match[1]);
+      time = /^\d/.test(match[1])
+        ? normalizeRescheduleTimeToken(match[1])
+        : parseHebrewHourWord(match[1]);
+      if (!time) continue;
       remainder = normalized.replace(match[0], "").trim();
       break;
     }
@@ -1067,47 +1217,71 @@ function parseRescheduleDayAndTime(target: string): { dayReference: string; time
 
 function extractRescheduleAppointment(
   question: string
-): { clientName: string; dayReference: string; time: string } | null {
+): { clientName: string | null; dayReference: string; time: string } | null {
   const normalized = question.trim().replace(/\s+/g, " ");
-  const match = normalized.match(
-    /(?:תעביר|תעבירי|תשני|תשנה|שנה\s+מועד)\s+(?:את\s+)?(?:ה)?תור\s+(?:של|ל)\s+(.+?)\s+ל(?:ש|-)?\s*(.+)$/iu
-  );
-  if (!match?.[1] || !match[2]) return null;
+  const pronounPatterns = [
+    /(?:תעביר|תעבירי|תזיז|תזיזי|תשני|תשנה|שנה\s+מועד)\s+(?:את\s+)?(?:ה)?(?:תור\s+)?(?:אותו|אותה|לו|לה)\s+ל(?:ש|-)?\s*(.+)$/iu,
+    /(?:תעביר|תעבירי|תזיז|תזיזי|תשני|תשנה|שנה\s+מועד)\s+(?:את\s+)?(?:ה)?תור\s+ל(?:ש|-)?\s*(.+)$/iu,
+  ];
+  for (const pattern of pronounPatterns) {
+    const match = normalized.match(pattern);
+    const parsedTarget = match?.[1] ? parseRescheduleDayAndTime(match[1]) : null;
+    if (parsedTarget) {
+      return { clientName: null, dayReference: parsedTarget.dayReference, time: parsedTarget.time };
+    }
+  }
 
-  const clientName = match[1].trim().replace(/[.?!]+$/, "");
-  const parsedTarget = parseRescheduleDayAndTime(match[2]);
-  if (!clientName || !parsedTarget) return null;
+  const namedPatterns = [
+    /(?:תעביר|תעבירי|תשני|תשנה|שנה\s+מועד)\s+(?:את\s+)?(?:ה)?תור\s+(?:של|ל)\s+(.+?)\s+ל(?:ש|-)?\s*(.+)$/iu,
+    /(?:תעביר|תעבירי|תזיז|תזיזי)\s+(?:את\s+)?(.+?)\s+ל(?:ש|-)?\s*(.+)$/iu,
+  ];
+  for (const pattern of namedPatterns) {
+    const match = normalized.match(pattern);
+    if (!match?.[1] || !match[2]) continue;
+    const clientName = stripTrailingTimePhrase(match[1].trim().replace(/[.?!]+$/, ""));
+    const parsedTarget = parseRescheduleDayAndTime(match[2]);
+    if (!clientName || !parsedTarget || isPronounCalendarReference(clientName)) continue;
+    return {
+      clientName,
+      dayReference: parsedTarget.dayReference,
+      time: parsedTarget.time,
+    };
+  }
 
-  return {
-    clientName,
-    dayReference: parsedTarget.dayReference,
-    time: parsedTarget.time,
-  };
+  return null;
 }
 
 async function maybeBuildRescheduleAppointmentProposal(
   organizationId: string,
-  question: string
+  question: string,
+  activeContext: ActiveCalendarContext | null
 ): Promise<NatalieClaudeResponse | null> {
   const parsed = extractRescheduleAppointment(question);
   if (!parsed) return null;
 
-  const clients = await searchSchedulingCustomers({ organizationId, query: parsed.clientName });
-  if (clients.length === 0) {
-    return { answer: `לא מצאתי לקוח בשם "${parsed.clientName}". אפשר לקבוע תור חדש בשם הזה.` };
+  const resolved = await resolveCalendarCommandCustomer({
+    organizationId,
+    question,
+    spokenName: parsed.clientName,
+    activeContext,
+  });
+
+  if (resolved.kind === "ambiguous") {
+    return { answer: formatAmbiguousCustomerMessage(resolved.spokenName, resolved.clients) };
   }
-  if (clients.length > 1) {
-    return { answer: formatAmbiguousCustomerMessage(parsed.clientName, clients) };
+  if (resolved.kind === "ambiguous_appointments") {
+    return { answer: formatAmbiguousAppointmentMessage(resolved.spokenName, resolved.candidates) };
+  }
+  if (resolved.kind === "not_found") {
+    if (!parsed.clientName) {
+      return { answer: "לא מצאתי תור פעיל מהשיחה האחרונה. לאיזה תור להעביר?" };
+    }
+    return { answer: `לא מצאתי תור שמתאים ל"${parsed.clientName}". למי התכוונת?` };
   }
 
-  const client = clients[0];
-  const appointments = await findUpcomingSchedulingForClient({
-    organizationId,
-    clientId: client.id,
-    limit: 10,
-  });
+  const { nameResolution, appointments } = resolved;
   if (appointments.length === 0) {
-    return { answer: `אין תור עתידי ל${client.name}.` };
+    return { answer: `אין תור עתידי ל${nameResolution.clientName}.` };
   }
 
   const timeZone = await loadOrganizationTimezone(organizationId);
@@ -1116,11 +1290,11 @@ async function maybeBuildRescheduleAppointmentProposal(
       .map((appointment, index) => formatAppointmentListLine(appointment, index, timeZone))
       .join("\n");
     return {
-      answer: `מצאתי כמה תורים עתידיים ל${client.name}. איזה תור להעביר?\n${list}`,
+      answer: `מצאתי כמה תורים עתידיים ל${nameResolution.clientName}. איזה תור להעביר?\n${list}`,
     };
   }
 
-  const appointment = appointments[0];
+  const appointment = appointments[0]!;
   const resolvedStartTime = resolveAppointmentDateTime({
     dayReference: parsed.dayReference,
     time: parsed.time,
@@ -1133,17 +1307,19 @@ async function maybeBuildRescheduleAppointmentProposal(
   }
 
   const newWhen = formatAppointmentWhen(resolvedStartTime, timeZone);
-  return {
+  return buildCalendarActionProposal({
     action: "reschedule_appointment",
-    proposal: {
-      appointmentId: appointment.id,
-      clientName: client.name,
+    appointment,
+    nameResolution,
+    timeZone,
+    when: formatAppointmentWhen(appointment.startTime, timeZone),
+    reschedule: {
       newDayReference: parsed.dayReference,
       newTime: parsed.time,
       newWhen,
     },
-    answer: `להעביר את התור של ${client.name} ל${newWhen}?`,
-  };
+    defaultAnswer: `להעביר את התור של ${nameResolution.clientName} ל${newWhen}?`,
+  });
 }
 
 function extractCompleteTaskTitle(question: string) {

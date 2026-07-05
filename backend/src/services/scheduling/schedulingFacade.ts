@@ -103,6 +103,64 @@ function formatBookMessage(result: SubmitConfirmationResult): string {
   return "התור אושר ונקבע.";
 }
 
+export async function findUpcomingSchedulingForOrganization(params: {
+  organizationId: string;
+  limit?: number;
+}): Promise<Array<UpcomingSchedulingItem & { clientId: string }>> {
+  const limit = params.limit ?? 50;
+  if (!(await usesCalendarEngineScheduling(params.organizationId))) {
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        organizationId: params.organizationId,
+        status: { not: "cancelled" },
+        startTime: { gte: new Date() },
+      },
+      include: {
+        client: { select: { id: true, name: true } },
+        service: { select: { name: true } },
+      },
+      orderBy: { startTime: "asc" },
+      take: limit,
+    });
+    return appointments.map((appointment) => ({
+      id: appointment.id,
+      startTime: appointment.startTime,
+      durationMinutes: appointment.durationMinutes,
+      clientName: appointment.client.name,
+      serviceName: appointment.service?.name ?? undefined,
+      clientId: appointment.client.id,
+    }));
+  }
+
+  const events = await prisma.calendarEvent.findMany({
+    where: {
+      organizationId: params.organizationId,
+      status: { in: ["pending_readiness", "confirmed"] },
+      startAt: { gte: new Date() },
+    },
+    include: {
+      client: { select: { id: true, name: true } },
+      service: { select: { name: true, durationMinutes: true } },
+    },
+    orderBy: { startAt: "asc" },
+    take: limit,
+  });
+
+  return events.map((event) => ({
+    id: event.id,
+    startTime: event.startAt,
+    durationMinutes: Math.max(
+      1,
+      Math.round((event.endAt.getTime() - event.startAt.getTime()) / 60_000) ||
+        event.service?.durationMinutes ||
+        30
+    ),
+    clientName: event.client?.name ?? "לקוח",
+    serviceName: event.service?.name ?? undefined,
+    clientId: event.client?.id ?? "",
+  }));
+}
+
 export async function findUpcomingSchedulingForClient(params: {
   organizationId: string;
   clientId: string;

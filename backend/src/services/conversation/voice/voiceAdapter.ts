@@ -28,6 +28,7 @@ import {
   saveSessionAfterConfirmationExecution,
   VOICE_ALREADY_EXECUTED_MESSAGE,
 } from "./voiceConfirmationExecution.js";
+import { withIdentityConfirmedProposal } from "../../scheduling/calendarAppointmentSafety.js";
 
 export type ProcessVoiceTurnInput = {
   organizationId: string;
@@ -318,7 +319,7 @@ async function handleVoiceConfirmationTurn(input: {
       organizationId: input.organizationId,
       userId: input.userId,
       action: pendingConfirmation.action,
-      proposal: pendingConfirmation.proposal,
+      proposal: withIdentityConfirmedProposal(pendingConfirmation.proposal),
     });
   } catch (error) {
     if (claim.mode === "claimed") {
