@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
+import { formatAmount } from "@/lib/format/amount";
 
 type TaskStatus = "todo" | "in-progress" | "done" | "open";
 type TaskPriority = "low" | "medium" | "high";
@@ -545,7 +546,6 @@ function nextTaskStatusAction(status: TaskStatus) {
   return "פתח מחדש";
 }
 
-function formatCurrency(amount: number, currency: string) {
-  const symbols: Record<string, string> = { ILS: "₪", USD: "$", EUR: "€", GBP: "£" };
-  return `${symbols[currency] ?? currency} ${amount.toLocaleString("he-IL")}`;
+function formatCurrency(amount: number | null | undefined, currency: string) {
+  return formatAmount(amount, currency, "סכום חסר");
 }

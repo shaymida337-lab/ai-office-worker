@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
 import { buildFallbackMonthGroups } from "@/lib/invoices/monthGrouping";
+import { formatAmount } from "@/lib/format/amount";
 import { isLikelyJunkSupplierNameLocal } from "@/lib/junkSupplier";
 import { Check, ChevronDown, ChevronLeft, Download, FileText, Filter, Loader2, RefreshCcw, Search, UploadCloud } from "lucide-react";
 
@@ -1238,9 +1239,8 @@ function invoiceMetaLine(invoice: Invoice) {
   return parts.join(" · ");
 }
 
-function formatCurrency(amount: number, currency: string) {
-  const symbols: Record<string, string> = { ILS: "₪", USD: "$", EUR: "€", GBP: "£" };
-  return `${symbols[currency] ?? currency} ${amount.toLocaleString("he-IL")}`;
+function formatCurrency(amount: number | null | undefined, currency: string) {
+  return formatAmount(amount, currency, "סכום חסר");
 }
 
 function isPersistedInvoice(invoice: Invoice) {

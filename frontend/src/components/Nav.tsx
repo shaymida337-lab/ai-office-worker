@@ -7,6 +7,7 @@ import { Logo } from "@/components/Logo";
 import { colors, radius, type, dashboardHome } from "@/lib/design-tokens";
 import { isNavItemVisible, type NavItemId } from "@/config/navVisibility";
 import { apiFetch, clearAllAuthTokens } from "@/lib/api";
+import { formatAmount } from "@/lib/format/amount";
 import { lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
 import { normalizeEnabledModules, type BusinessModuleId, type OrganizationSettings } from "@/lib/business-config";
 import {
@@ -220,7 +221,7 @@ export function Nav() {
         id: `invoice-${invoice.id}`,
         type: "חשבונית",
         title: invoice.invoiceNumber || invoice.client?.name || "חשבונית",
-        subtitle: `${invoice.client?.name ?? "ללא לקוח"} · ${formatCurrency(invoice.amount, invoice.currency)}`,
+        subtitle: `${invoice.client?.name ?? "ללא לקוח"} · ${formatAmount(invoice.amount, invoice.currency, "סכום חסר")}`,
         href: "/dashboard/invoices",
       }));
 
@@ -524,7 +525,4 @@ function taskStatusLabel(status: string) {
   return labels[status] ?? status;
 }
 
-function formatCurrency(amount: number, currency: string) {
-  const symbols: Record<string, string> = { ILS: "₪", USD: "$", EUR: "€", GBP: "£" };
-  return `${symbols[currency] ?? currency} ${amount.toLocaleString("he-IL")}`;
-}
+// formatCurrency הוחלף ב-formatAmount המשותף (lib/format/amount) — עמיד ל-null.
