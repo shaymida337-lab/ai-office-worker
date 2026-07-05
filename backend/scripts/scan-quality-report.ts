@@ -28,9 +28,14 @@ function loadDatabaseUrl(): string {
 
 const databaseUrl = loadDatabaseUrl();
 const host = new URL(databaseUrl.replace(/^postgresql:/, "http:")).hostname;
-if (host !== "localhost" && host !== "127.0.0.1") {
-  console.error(`REFUSING TO RUN: DATABASE_URL host is "${host}" (not localhost). This report is local-only.`);
+const allowRemote = process.env.ALLOW_REMOTE_READONLY_REPORT === "1";
+if (host !== "localhost" && host !== "127.0.0.1" && !allowRemote) {
+  console.error(`REFUSING TO RUN: DATABASE_URL host is "${host}" (not localhost).`);
+  console.error("להרצת baseline בפרודקשן (Render Shell, קריאה בלבד): ALLOW_REMOTE_READONLY_REPORT=1");
   process.exit(1);
+}
+if (allowRemote && host !== "localhost" && host !== "127.0.0.1") {
+  console.error(`⚠️  REMOTE READ-ONLY MODE: running against host "${host}". הסקריפט מבצע קריאות בלבד.`);
 }
 
 const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
