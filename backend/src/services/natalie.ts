@@ -1,11 +1,12 @@
 import { answerBusinessQuestionWithClaude, type NatalieClaudeResponse } from "./claude.js";
 import { findTasksByPartialTitle } from "./tasks.js";
 import { prisma } from "../lib/prisma.js";
-import {
-  findClientByNameOrPhone,
-  resolveAppointmentDateTime,
-} from "./appointmentService.js";
+import { resolveAppointmentDateTime } from "./appointmentService.js";
 import { findUpcomingSchedulingForClient, type UpcomingSchedulingItem } from "./scheduling/schedulingFacade.js";
+import {
+  formatAmbiguousCustomerMessage,
+  searchSchedulingCustomers,
+} from "./scheduling/schedulingCustomer.js";
 import { maybeBuildAvailabilityResponse } from "./natalieAvailability.js";
 import { resolveFinanceDisplayAmount } from "./amount/financeDisplayAmount.js";
 
@@ -988,15 +989,12 @@ async function maybeBuildCancelAppointmentProposal(
   const clientName = extractCancelAppointmentClientName(question);
   if (!clientName) return null;
 
-  const clients = await findClientByNameOrPhone({ organizationId, query: clientName });
+  const clients = await searchSchedulingCustomers({ organizationId, query: clientName });
   if (clients.length === 0) {
-    return { answer: `לא מצאתי לקוח בשם "${clientName}".` };
+    return { answer: `לא מצאתי לקוח בשם "${clientName}". אפשר לקבוע תור חדש בשם הזה.` };
   }
   if (clients.length > 1) {
-    const list = clients.map((client, index) => `${index + 1}. ${client.name}`).join("\n");
-    return {
-      answer: `מצאתי כמה לקוחות שמתאימים ל־"${clientName}". למי לבטל את התור?\n${list}`,
-    };
+    return { answer: formatAmbiguousCustomerMessage(clientName, clients) };
   }
 
   const client = clients[0];
@@ -1094,15 +1092,12 @@ async function maybeBuildRescheduleAppointmentProposal(
   const parsed = extractRescheduleAppointment(question);
   if (!parsed) return null;
 
-  const clients = await findClientByNameOrPhone({ organizationId, query: parsed.clientName });
+  const clients = await searchSchedulingCustomers({ organizationId, query: parsed.clientName });
   if (clients.length === 0) {
-    return { answer: `לא מצאתי לקוח בשם "${parsed.clientName}".` };
+    return { answer: `לא מצאתי לקוח בשם "${parsed.clientName}". אפשר לקבוע תור חדש בשם הזה.` };
   }
   if (clients.length > 1) {
-    const list = clients.map((client, index) => `${index + 1}. ${client.name}`).join("\n");
-    return {
-      answer: `מצאתי כמה לקוחות שמתאימים ל־"${parsed.clientName}". למי להעביר את התור?\n${list}`,
-    };
+    return { answer: formatAmbiguousCustomerMessage(parsed.clientName, clients) };
   }
 
   const client = clients[0];

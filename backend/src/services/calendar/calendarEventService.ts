@@ -22,9 +22,12 @@ import { summaryConflictDetected, summaryEventCreated, summaryWorkCaseCreated } 
 import { LifecycleError } from "./lifecycleErrors.js";
 import { scheduleCalendarEventGoogleMirrorOnConfirmed } from "./calendarGoogleMirrorService.js";
 import { scheduleCalendarEventGoogleUpdateIfConfirmed } from "./calendarGoogleMirrorService.js";
+import { withOrganizationSchedulingLock } from "./schedulingLock.js";
 
 export type { CalendarEventConflictResult } from "./calendarEventConflict.js";
 export { checkCalendarEventConflict } from "./calendarEventConflict.js";
+
+const BLOCKING_SCHEDULING_STATUSES: CalendarEventStatus[] = ["pending_readiness", "confirmed"];
 
 const CALENDAR_EVENT_INCLUDE = {
   client: { select: { id: true, name: true } },
@@ -73,13 +76,15 @@ export async function createDraftCalendarEvent(
     serviceId?: string | null;
     source: EventSource;
     createdByUserId?: string | null;
+    address?: string | null;
     prerequisitesJson?: Prisma.InputJsonValue;
   },
-  actor: CalendarEventActor
+  actor: CalendarEventActor,
+  options?: { tx?: Prisma.TransactionClient }
 ): Promise<CalendarEventWithRelations> {
   await assertCalendarEngineWrite(organizationId);
 
-  return prisma.$transaction(async (tx) => {
+  const run = async (tx: Prisma.TransactionClient) => {
     let workCaseId = input.workCaseId;
     if (!workCaseId) {
       const workCase = await tx.workCase.create({
@@ -125,6 +130,7 @@ export async function createDraftCalendarEvent(
         source: input.source,
         createdByUserId: input.createdByUserId ?? null,
         status: "draft",
+        address: input.address ?? null,
         prerequisitesJson: input.prerequisitesJson ?? [],
       },
       include: CALENDAR_EVENT_INCLUDE,
@@ -152,7 +158,10 @@ export async function createDraftCalendarEvent(
     });
 
     return event;
-  });
+  };
+
+  if (options?.tx) return run(options.tx);
+  return prisma.$transaction(run);
 }
 
 export async function getCalendarEventById(
@@ -183,7 +192,29 @@ export async function updateCalendarEventFields(
   await assertCalendarEngineWrite(organizationId);
   const existing = await requireCalendarEvent(organizationId, calendarEventId);
 
-  const updated = await prisma.$transaction(async (tx) => {
+  const nextStartAt = input.startAt ?? existing.startAt;
+  const nextEndAt = input.endAt ?? existing.endAt;
+  const timeChanged =
+    (input.startAt !== undefined && input.startAt.getTime() !== existing.startAt.getTime()) ||
+    (input.endAt !== undefined && input.endAt.getTime() !== existing.endAt.getTime());
+  const blocksAvailability = BLOCKING_SCHEDULING_STATUSES.includes(existing.status as CalendarEventStatus);
+
+  const runUpdate = async (tx: Prisma.TransactionClient) => {
+    if (timeChanged && blocksAvailability) {
+      const conflict = await checkCalendarEventConflict({
+        organizationId,
+        startAt: nextStartAt,
+        endAt: nextEndAt,
+        excludeCalendarEventId: calendarEventId,
+        assignedUserId: input.assignedUserId ?? existing.assignedUserId,
+      });
+      if (conflict.hasConflict) {
+        throw new CalendarEngineServiceError("TIME_CONFLICT", "Time conflict", {
+          conflict: conflict.conflict,
+        });
+      }
+    }
+
     const event = await tx.calendarEvent.update({
       where: { id: calendarEventId },
       data: {
@@ -214,7 +245,12 @@ export async function updateCalendarEventFields(
     });
 
     return event;
-  });
+  };
+
+  const updated =
+    timeChanged && blocksAvailability
+      ? await withOrganizationSchedulingLock(organizationId, runUpdate)
+      : await prisma.$transaction(runUpdate);
 
   scheduleCalendarEventGoogleUpdateIfConfirmed({
     organizationId,
@@ -257,11 +293,35 @@ export async function transitionCalendarEventStatus(
     completionOutcome?: CompletionOutcome | null;
     now?: Date;
     skipFollowUpTask?: boolean;
+    skipConflictCheck?: boolean;
   }
 ): Promise<CalendarEventWithRelations> {
   await assertCalendarEngineWrite(organizationId);
 
-  const record = await prisma.$transaction(async (tx) => {
+  const entersBlockingSchedule = BLOCKING_SCHEDULING_STATUSES.includes(toStatus);
+
+  const runTransition = async (tx: Prisma.TransactionClient) => {
+    if (entersBlockingSchedule && !options?.skipConflictCheck) {
+      const event = await tx.calendarEvent.findFirst({
+        where: { id: calendarEventId, organizationId },
+        select: { id: true, startAt: true, endAt: true, assignedUserId: true },
+      });
+      if (!event) throw notFound("CalendarEvent");
+
+      const conflict = await checkCalendarEventConflict({
+        organizationId,
+        startAt: event.startAt,
+        endAt: event.endAt,
+        excludeCalendarEventId: event.id,
+        assignedUserId: event.assignedUserId,
+      });
+      if (conflict.hasConflict) {
+        throw new CalendarEngineServiceError("TIME_CONFLICT", "Time conflict", {
+          conflict: conflict.conflict,
+        });
+      }
+    }
+
     return applyCalendarEventStatusTransition({
       organizationId,
       calendarEventId,
@@ -273,7 +333,11 @@ export async function transitionCalendarEventStatus(
       skipFollowUpTask: options?.skipFollowUpTask,
       tx,
     });
-  });
+  };
+
+  const record = entersBlockingSchedule
+    ? await withOrganizationSchedulingLock(organizationId, runTransition)
+    : await prisma.$transaction(runTransition);
 
   if (record.status === "confirmed") {
     scheduleCalendarEventGoogleMirrorOnConfirmed({
@@ -294,87 +358,139 @@ export async function submitCalendarEventForConfirmation(
   organizationId: string,
   calendarEventId: string,
   actor: CalendarEventActor,
-  options?: { now?: Date; skipConflictCheck?: boolean }
+  options?: { now?: Date; skipConflictCheck?: boolean; tx?: Prisma.TransactionClient }
 ): Promise<SubmitConfirmationResult> {
   await assertCalendarEngineWrite(organizationId);
 
   const autonomy = await getOrganizationAutonomy(organizationId);
-  const event = await requireCalendarEvent(organizationId, calendarEventId);
 
-  if (event.status === "draft") {
-    await transitionCalendarEventStatus(organizationId, calendarEventId, "pending_readiness", actor, {
-      now: options?.now,
-    });
-  } else if (event.status !== "pending_readiness") {
-    throw new CalendarEngineServiceError(
-      "INVALID_TRANSITION",
-      `Cannot submit event in status ${event.status} for confirmation`
-    );
-  }
+  const run = async (tx: Prisma.TransactionClient): Promise<SubmitConfirmationResult> => {
+    let event = await requireCalendarEvent(organizationId, calendarEventId, tx);
 
-  const refreshed = await requireCalendarEvent(organizationId, calendarEventId);
+    if (event.status === "draft") {
+      if (!allRequiredPrerequisitesPassed(event.prerequisitesJson)) {
+        const failed = failedRequiredPrerequisites(event.prerequisitesJson);
+        throw new CalendarEngineServiceError("VALIDATION_FAILED", "Required prerequisites are not complete", {
+          failedPrerequisites: failed.map((item) => item.id),
+        });
+      }
 
-  if (!allRequiredPrerequisitesPassed(refreshed.prerequisitesJson)) {
-    const failed = failedRequiredPrerequisites(refreshed.prerequisitesJson);
-    throw new CalendarEngineServiceError("VALIDATION_FAILED", "Required prerequisites are not complete", {
-      failedPrerequisites: failed.map((item) => item.id),
-    });
-  }
+      if (!options?.skipConflictCheck) {
+        const conflict = await checkCalendarEventConflict({
+          organizationId,
+          startAt: event.startAt,
+          endAt: event.endAt,
+          excludeCalendarEventId: event.id,
+          assignedUserId: event.assignedUserId,
+        });
 
-  if (!options?.skipConflictCheck) {
-    const conflict = await checkCalendarEventConflict({
-      organizationId,
-      startAt: refreshed.startAt,
-      endAt: refreshed.endAt,
-      excludeCalendarEventId: refreshed.id,
-      assignedUserId: refreshed.assignedUserId,
-    });
+        if (conflict.hasConflict) {
+          const decision = await createPendingDecision({
+            organizationId,
+            workCaseId: event.workCaseId,
+            calendarEventId: event.id,
+            type: "override_conflict",
+            title: event.title ?? "אירוע יומן",
+            reason: summaryConflictDetected(conflict.conflict?.clientName),
+            preparedPayloadJson: {
+              targetStatus: "confirmed",
+              overrideConflict: true,
+              conflict: conflict.conflict,
+            },
+            source: "system",
+            actor,
+            tx,
+          });
 
-    if (conflict.hasConflict) {
-      const decision = await createPendingDecision({
+          return { mode: "queued", decisionId: decision.id, queueType: "override_conflict" };
+        }
+      }
+
+      await applyCalendarEventStatusTransition({
         organizationId,
-        workCaseId: refreshed.workCaseId,
-        calendarEventId: refreshed.id,
-        type: "override_conflict",
-        title: refreshed.title ?? "אירוע יומן",
-        reason: summaryConflictDetected(conflict.conflict?.clientName),
-        preparedPayloadJson: {
-          targetStatus: "confirmed",
-          overrideConflict: true,
-          conflict: conflict.conflict,
-        },
-        source: "system",
+        calendarEventId,
+        toStatus: "pending_readiness",
         actor,
+        now: options?.now,
+        tx,
+      });
+      event = await requireCalendarEvent(organizationId, calendarEventId, tx);
+    } else if (event.status !== "pending_readiness") {
+      throw new CalendarEngineServiceError(
+        "INVALID_TRANSITION",
+        `Cannot submit event in status ${event.status} for confirmation`
+      );
+    }
+
+    if (!allRequiredPrerequisitesPassed(event.prerequisitesJson)) {
+      const failed = failedRequiredPrerequisites(event.prerequisitesJson);
+      throw new CalendarEngineServiceError("VALIDATION_FAILED", "Required prerequisites are not complete", {
+        failedPrerequisites: failed.map((item) => item.id),
+      });
+    }
+
+    if (!options?.skipConflictCheck) {
+      const conflict = await checkCalendarEventConflict({
+        organizationId,
+        startAt: event.startAt,
+        endAt: event.endAt,
+        excludeCalendarEventId: event.id,
+        assignedUserId: event.assignedUserId,
       });
 
-      return { mode: "queued", decisionId: decision.id, queueType: "override_conflict" };
+      if (conflict.hasConflict) {
+        const decision = await createPendingDecision({
+          organizationId,
+          workCaseId: event.workCaseId,
+          calendarEventId: event.id,
+          type: "override_conflict",
+          title: event.title ?? "אירוע יומן",
+          reason: summaryConflictDetected(conflict.conflict?.clientName),
+          preparedPayloadJson: {
+            targetStatus: "confirmed",
+            overrideConflict: true,
+            conflict: conflict.conflict,
+          },
+          source: "system",
+          actor,
+          tx,
+        });
+
+        return { mode: "queued", decisionId: decision.id, queueType: "override_conflict" };
+      }
     }
-  }
 
-  if (autonomy.autoConfirmWhenFullyReady) {
-    const confirmed = await transitionCalendarEventStatus(
+    if (autonomy.autoConfirmWhenFullyReady) {
+      await applyCalendarEventStatusTransition({
+        organizationId,
+        calendarEventId,
+        toStatus: "confirmed",
+        actor,
+        now: options?.now,
+        tx,
+      });
+      const confirmed = await requireCalendarEvent(organizationId, calendarEventId, tx);
+      return { mode: "confirmed", event: confirmed };
+    }
+
+    const decision = await createPendingDecision({
       organizationId,
-      calendarEventId,
-      "confirmed",
+      workCaseId: event.workCaseId,
+      calendarEventId: event.id,
+      type: "confirm_appointment",
+      title: event.title ?? "אירוע יומן",
+      reason: "נדרש אישור לפני אישור סופי של האירוע",
+      preparedPayloadJson: { targetStatus: "confirmed" },
+      source: "manual",
       actor,
-      { now: options?.now }
-    );
-    return { mode: "confirmed", event: confirmed };
-  }
+      tx,
+    });
 
-  const decision = await createPendingDecision({
-    organizationId,
-    workCaseId: refreshed.workCaseId,
-    calendarEventId: refreshed.id,
-    type: "confirm_appointment",
-    title: refreshed.title ?? "אירוע יומן",
-    reason: "נדרש אישור לפני אישור סופי של האירוע",
-    preparedPayloadJson: { targetStatus: "confirmed" },
-    source: "manual",
-    actor,
-  });
+    return { mode: "queued", decisionId: decision.id, queueType: "confirm_appointment" };
+  };
 
-  return { mode: "queued", decisionId: decision.id, queueType: "confirm_appointment" };
+  if (options?.tx) return run(options.tx);
+  return withOrganizationSchedulingLock(organizationId, run);
 }
 
 async function assertNoPendingDecisionForEvent(

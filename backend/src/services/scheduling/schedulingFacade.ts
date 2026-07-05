@@ -1,14 +1,12 @@
 import { prisma } from "../../lib/prisma.js";
 import {
   AppointmentConflictError,
-  createAppointmentForOrganization,
-  findClientByNameOrPhone,
   findUpcomingAppointmentsForClient,
   resolveAppointmentDateTime,
   updateAppointmentForOrganization,
   type AppointmentWithRelations,
 } from "../appointmentService.js";
-import { appointmentEnd } from "../calendar/engine.js";
+import { runAppointmentGoogleSync } from "../appointmentGoogleSync.js";
 import {
   checkSlotAvailability,
   findAvailableSlotsForOrganization,
@@ -20,17 +18,24 @@ import type {
 } from "../calendar/types.js";
 import { resolveCalendarEngineFlags } from "../calendar/calendarEngineFlags.js";
 import {
-  createDraftCalendarEvent,
   requestCalendarEventCancel,
   requestCalendarEventReschedule,
-  submitCalendarEventForConfirmation,
   type SubmitConfirmationResult,
 } from "../calendar/calendarEventService.js";
 import { createPendingDecision } from "../calendar/decisionQueueService.js";
 import type { CalendarEventActor } from "../calendar/calendarEventMutations.js";
 import { CalendarEngineServiceError } from "../calendar/serviceErrors.js";
 import { getCalendarRulesForOrganization } from "../calendar/rules.js";
+import { appointmentEnd } from "../calendar/engine.js";
 import { recordCalendarAudit } from "../calendar/calendarAudit.js";
+import { scheduleNatalieAppointmentAtomic } from "./schedulingBookWorkflow.js";
+import {
+  formatAmbiguousCustomerMessage,
+  resolveSchedulingCustomerMatches,
+} from "./schedulingCustomer.js";
+import { SchedulingFacadeError } from "./schedulingErrors.js";
+
+export { SchedulingFacadeError } from "./schedulingErrors.js";
 
 export type UpcomingSchedulingItem = {
   id: string;
@@ -44,6 +49,10 @@ export type NatalieBookInput = {
   organizationId: string;
   userId: string;
   clientName: string;
+  clientId?: string;
+  clientPhone?: string | null;
+  clientEmail?: string | null;
+  address?: string | null;
   dayReference?: string;
   time?: string;
   startTime?: string;
@@ -139,7 +148,7 @@ export async function findUpcomingSchedulingForClient(params: {
   }));
 }
 
-async function resolveNatalieBookingContext(input: NatalieBookInput) {
+async function resolveNatalieSchedulingSlot(input: NatalieBookInput) {
   const organizationId = input.organizationId;
   const clientName = input.clientName.trim();
   if (!clientName) {
@@ -159,14 +168,6 @@ async function resolveNatalieBookingContext(input: NatalieBookInput) {
       "bad_datetime",
       "לא הצלחתי להבין את מועד התור, אפשר לנסות שוב עם יום ושעה ברורים"
     );
-  }
-
-  const clients = await findClientByNameOrPhone({ organizationId, query: clientName });
-  if (clients.length === 0) {
-    throw new SchedulingFacadeError("client_not_found", "לא נמצא לקוח בשם הזה");
-  }
-  if (clients.length > 1) {
-    throw new SchedulingFacadeError("multiple_clients", "נמצאו כמה לקוחות, צריך לדייק", { clients });
   }
 
   let serviceId: string | null = null;
@@ -211,26 +212,13 @@ async function resolveNatalieBookingContext(input: NatalieBookInput) {
 
   return {
     organizationId,
-    clientId: clients[0].id,
-    clientName: clients[0].name,
+    clientName,
     startTime,
     durationMinutes,
     serviceId,
     notes: input.notes?.trim() || null,
     timeZone,
   };
-}
-
-export class SchedulingFacadeError extends Error {
-  readonly code: string;
-  readonly details?: Record<string, unknown>;
-
-  constructor(code: string, message: string, details?: Record<string, unknown>) {
-    super(message);
-    this.name = "SchedulingFacadeError";
-    this.code = code;
-    this.details = details;
-  }
 }
 
 export async function bookAppointmentViaNatalie(input: NatalieBookInput): Promise<NatalieBookResult> {
@@ -243,9 +231,23 @@ export async function bookAppointmentViaNatalie(input: NatalieBookInput): Promis
     sourceModule: "scheduling-facade",
     metadata: { source: "natalie", customerName: input.clientName },
   });
-  let ctx;
+  let slot;
   try {
-    ctx = await resolveNatalieBookingContext(input);
+    slot = await resolveNatalieSchedulingSlot(input);
+    const ambiguous = await resolveSchedulingCustomerMatches({
+      organizationId: input.organizationId,
+      name: slot.clientName,
+      clientId: input.clientId,
+      phone: input.clientPhone,
+      email: input.clientEmail,
+    });
+    if (ambiguous.length > 1) {
+      throw new SchedulingFacadeError(
+        "multiple_clients",
+        formatAmbiguousCustomerMessage(slot.clientName, ambiguous),
+        { clients: ambiguous }
+      );
+    }
   } catch (err) {
     recordCalendarAudit({
       organizationId: input.organizationId,
@@ -261,10 +263,10 @@ export async function bookAppointmentViaNatalie(input: NatalieBookInput): Promis
   }
 
   const availability = await checkSlotAvailability({
-    organizationId: ctx.organizationId,
-    startTime: ctx.startTime,
-    durationMinutes: ctx.durationMinutes,
-    serviceId: ctx.serviceId,
+    organizationId: slot.organizationId,
+    startTime: slot.startTime,
+    durationMinutes: slot.durationMinutes,
+    serviceId: slot.serviceId,
   });
 
   if (!availability.available) {
@@ -281,62 +283,76 @@ export async function bookAppointmentViaNatalie(input: NatalieBookInput): Promis
     );
   }
 
-  if (!(await usesCalendarEngineScheduling(input.organizationId))) {
-    const appointment = await createAppointmentForOrganization({
-      organizationId: ctx.organizationId,
-      clientId: ctx.clientId,
-      serviceId: ctx.serviceId,
-      startTime: ctx.startTime,
-      durationMinutes: ctx.durationMinutes,
-      source: "natalie",
-      notes: ctx.notes,
+  const engineEnabled = await usesCalendarEngineScheduling(input.organizationId);
+  let booked;
+  try {
+    booked = await scheduleNatalieAppointmentAtomic({
+      organizationId: input.organizationId,
+      userId: input.userId,
+      slot: {
+        organizationId: slot.organizationId,
+        startTime: slot.startTime,
+        durationMinutes: slot.durationMinutes,
+        serviceId: slot.serviceId,
+        timeZone: slot.timeZone,
+      },
+      customer: {
+        clientName: slot.clientName,
+        clientId: input.clientId,
+        clientPhone: input.clientPhone,
+        clientEmail: input.clientEmail,
+        notes: slot.notes,
+        address: input.address,
+      },
+      engineEnabled,
+    });
+  } catch (err) {
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      (err as { code?: string }).code === "multiple_clients"
+    ) {
+      throw new SchedulingFacadeError(
+        "multiple_clients",
+        err instanceof Error ? err.message : "נמצאו כמה לקוחות",
+        (err as { details?: Record<string, unknown> }).details
+      );
+    }
+    throw err;
+  }
+
+  if (!booked.engine) {
+    void runAppointmentGoogleSync(booked.appointment.id, { reason: "create" }).catch((syncErr) => {
+      console.error("Failed to sync appointment to Google Calendar:", syncErr);
     });
     recordCalendarAudit({
       organizationId: input.organizationId,
       entityType: "appointment",
-      entityId: appointment.id,
+      entityId: booked.appointment.id,
       action: "natalie_appointment_created",
       actor: { actorType: "AI", actorUserId: input.userId },
       sourceModule: "scheduling-facade",
       metadata: {
-        appointmentId: appointment.id,
-        customerName: appointment.client.name,
-        newStartTime: appointment.startTime.toISOString(),
-        durationMinutes: appointment.durationMinutes,
+        appointmentId: booked.appointment.id,
+        customerName: booked.appointment.client.name,
+        clientCreated: booked.clientCreated,
+        newStartTime: booked.appointment.startTime.toISOString(),
+        durationMinutes: booked.appointment.durationMinutes,
       },
     });
-    return { engine: false, appointment };
+    return { engine: false, appointment: booked.appointment };
   }
 
-  const endAt = appointmentEnd(ctx.startTime, ctx.durationMinutes);
-  const actor = natalieActor(input.userId);
-
-  const event = await createDraftCalendarEvent(
-    ctx.organizationId,
-    {
-      title: ctx.clientName,
-      startAt: ctx.startTime,
-      endAt,
-      timezone: ctx.timeZone,
-      clientId: ctx.clientId,
-      serviceId: ctx.serviceId,
-      source: "ai_chat",
-      createdByUserId: input.userId,
-      workCaseTitle: `תיק יומן — ${ctx.clientName}`,
-    },
-    actor
-  );
-
-  const confirmation = await submitCalendarEventForConfirmation(ctx.organizationId, event.id, actor);
-
+  const confirmation = booked.confirmation;
   const output = {
     engine: true as const,
-    calendarEventId: event.id,
-    workCaseId: event.workCaseId,
-    status: confirmation.mode === "confirmed" ? confirmation.event.status : "pending_readiness",
-    startTime: ctx.startTime.toISOString(),
-    durationMinutes: ctx.durationMinutes,
-    clientId: ctx.clientId,
+    calendarEventId: booked.calendarEventId,
+    workCaseId: booked.workCaseId,
+    status: booked.status,
+    startTime: booked.startTime,
+    durationMinutes: booked.durationMinutes,
+    clientId: booked.clientId,
     pendingApproval: confirmation.mode === "queued",
     decisionId: confirmation.mode === "queued" ? confirmation.decisionId : undefined,
     queueType: confirmation.mode === "queued" ? confirmation.queueType : undefined,
@@ -345,15 +361,16 @@ export async function bookAppointmentViaNatalie(input: NatalieBookInput): Promis
   recordCalendarAudit({
     organizationId: input.organizationId,
     entityType: "calendar_event",
-    entityId: event.id,
+    entityId: booked.calendarEventId,
     action: "natalie_appointment_created",
     actor: { actorType: "AI", actorUserId: input.userId },
     sourceModule: "scheduling-facade",
     metadata: {
-      calendarEventId: event.id,
+      calendarEventId: booked.calendarEventId,
       decisionId: output.decisionId ?? null,
-      newStartTime: ctx.startTime.toISOString(),
-      durationMinutes: ctx.durationMinutes,
+      clientCreated: booked.clientCreated,
+      newStartTime: booked.startTime,
+      durationMinutes: booked.durationMinutes,
     },
   });
   return output;

@@ -32,9 +32,12 @@ function existingRow(
 
 function mockFindMany(rows: ReturnType<typeof existingRow>[]) {
   const original = prisma.appointment.findMany.bind(prisma.appointment);
+  const originalEvents = prisma.calendarEvent.findMany.bind(prisma.calendarEvent);
   prisma.appointment.findMany = (async () => rows) as unknown as typeof prisma.appointment.findMany;
+  prisma.calendarEvent.findMany = (async () => []) as typeof prisma.calendarEvent.findMany;
   return () => {
     prisma.appointment.findMany = original;
+    prisma.calendarEvent.findMany = originalEvents;
   };
 }
 
@@ -94,11 +97,13 @@ test("checkAppointmentConflict allows back-to-back appointments", async () => {
 
 test("checkAppointmentConflict ignores cancelled appointments", async () => {
   const original = prisma.appointment.findMany.bind(prisma.appointment);
+  const originalEvents = prisma.calendarEvent.findMany.bind(prisma.calendarEvent);
   let capturedWhere: unknown;
   prisma.appointment.findMany = (async (args: Parameters<typeof prisma.appointment.findMany>[0]) => {
     capturedWhere = args?.where;
     return [];
   }) as unknown as typeof prisma.appointment.findMany;
+  prisma.calendarEvent.findMany = (async () => []) as typeof prisma.calendarEvent.findMany;
   try {
     const result = await checkAppointmentConflict({
       organizationId: ORG,
@@ -109,6 +114,37 @@ test("checkAppointmentConflict ignores cancelled appointments", async () => {
     assert.deepEqual((capturedWhere as { status: { not: string } }).status, { not: "cancelled" });
   } finally {
     prisma.appointment.findMany = original;
+    prisma.calendarEvent.findMany = originalEvents;
+  }
+});
+
+test("checkAppointmentConflict detects overlapping calendar engine events", async () => {
+  const originalAppt = prisma.appointment.findMany.bind(prisma.appointment);
+  const originalEvent = prisma.calendarEvent.findMany.bind(prisma.calendarEvent);
+
+  prisma.appointment.findMany = (async () => []) as typeof prisma.appointment.findMany;
+  prisma.calendarEvent.findMany = (async () => [
+    {
+      id: "engine-evt",
+      startAt: at("2026-06-20T10:00:00.000Z"),
+      endAt: at("2026-06-20T11:00:00.000Z"),
+      client: { name: "Engine Client" },
+      service: null,
+    },
+  ]) as typeof prisma.calendarEvent.findMany;
+
+  try {
+    const result = await checkAppointmentConflict({
+      organizationId: ORG,
+      startTime: at("2026-06-20T10:30:00.000Z"),
+      durationMinutes: 60,
+    });
+    assert.equal(result.hasConflict, true);
+    assert.equal(result.conflictingAppointment?.id, "engine-evt");
+    assert.equal(result.conflictingAppointment?.client.name, "Engine Client");
+  } finally {
+    prisma.appointment.findMany = originalAppt;
+    prisma.calendarEvent.findMany = originalEvent;
   }
 });
 
@@ -267,6 +303,7 @@ test("createAppointmentForOrganization skips conflict check for cancelled status
     conflictChecked = true;
     return [existingRow("existing", at("2026-06-20T10:00:00.000Z"), 60)];
   }) as unknown as typeof prisma.appointment.findMany;
+  prisma.calendarEvent.findMany = (async () => []) as typeof prisma.calendarEvent.findMany;
   prisma.appointment.create = (async () => created) as unknown as typeof prisma.appointment.create;
   prisma.integration.findUnique = (async () => null) as unknown as typeof prisma.integration.findUnique;
 

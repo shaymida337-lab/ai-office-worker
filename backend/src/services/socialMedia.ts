@@ -3,6 +3,7 @@ import axios from "axios";
 import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
+import { getClientDeliverableEmail } from "./clientContact.js";
 
 type Platform = "instagram" | "facebook" | "linkedin";
 type SocialPostRow = {
@@ -106,7 +107,15 @@ export async function generateSocialPosts(clientId: string, organizationId: stri
     posts.push(rows[0]);
   }
 
-  await sendApprovalEmail(client.email, client.name, token, posts);
+  const deliverableEmail = getClientDeliverableEmail(client);
+  if (deliverableEmail) {
+    await sendApprovalEmail(deliverableEmail, client.name, token, posts);
+  } else {
+    console.log("[social] Skipped approval email — client has no deliverable email", {
+      clientId,
+      clientName: client.name,
+    });
+  }
   return { posts, approvalToken: token, approvalUrl: `${config.frontendUrl}/social/approve/${token}` };
 }
 

@@ -42,7 +42,7 @@ function mockEmptyCombinedBlocks() {
 function mockClientLookup() {
   const original = prisma.client.findMany.bind(prisma.client);
   prisma.client.findMany = (async () => [
-    { id: CLIENT_ID, name: "לקוח בדיקה", whatsappNumber: null },
+    { id: CLIENT_ID, name: "לקוח בדיקה", whatsappNumber: null, email: "client@example.com", emailIsPlaceholder: false },
   ]) as typeof prisma.client.findMany;
   return () => {
     prisma.client.findMany = original;
@@ -194,7 +194,7 @@ test("bookAppointmentViaNatalie uses calendar engine when engine ON", async () =
     calendarEngineWriteEnabled: true,
     calendarEngineGoogleMirrorEnabled: true,
   })) as typeof prisma.organization.findUnique;
-  prisma.client.findMany = (async () => [{ id: CLIENT_ID, name: "לקוח בדיקה", whatsappNumber: null }]) as typeof prisma.client.findMany;
+  prisma.client.findMany = (async () => [{ id: CLIENT_ID, name: "לקוח בדיקה", whatsappNumber: null, email: "client@example.com", emailIsPlaceholder: false }]) as typeof prisma.client.findMany;
   prisma.appointment.findMany = (async () => []) as typeof prisma.appointment.findMany;
   prisma.calendarEvent.findMany = (async () => []) as typeof prisma.calendarEvent.findMany;
   prisma.service.findFirst = (async () => null) as typeof prisma.service.findFirst;

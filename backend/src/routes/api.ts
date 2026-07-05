@@ -2736,6 +2736,10 @@ apiRouter.post("/natalie/create-task", async (req, res) => {
 apiRouter.post("/natalie/create-appointment", requireCalendarCreate, async (req, res) => {
   const body = (req.body ?? {}) as {
     clientName?: unknown;
+    clientId?: unknown;
+    clientPhone?: unknown;
+    clientEmail?: unknown;
+    address?: unknown;
     dayReference?: unknown;
     time?: unknown;
     startTime?: unknown;
@@ -2771,6 +2775,10 @@ apiRouter.post("/natalie/create-appointment", requireCalendarCreate, async (req,
           organizationId,
           userId,
           clientName: typeof body.clientName === "string" ? body.clientName : "",
+          clientId: typeof body.clientId === "string" ? body.clientId : undefined,
+          clientPhone: typeof body.clientPhone === "string" ? body.clientPhone : undefined,
+          clientEmail: typeof body.clientEmail === "string" ? body.clientEmail : undefined,
+          address: typeof body.address === "string" ? body.address : undefined,
           dayReference: typeof body.dayReference === "string" ? body.dayReference : undefined,
           time: typeof body.time === "string" ? body.time : undefined,
           startTime: typeof body.startTime === "string" ? body.startTime : undefined,
@@ -2820,10 +2828,6 @@ apiRouter.post("/natalie/create-appointment", requireCalendarCreate, async (req,
       metadata: { intent: "create_appointment", source: "natalie" },
     });
     if (err instanceof SchedulingFacadeError) {
-      if (err.code === "client_not_found") {
-        res.status(404).json({ error: err.message, code: err.code });
-        return;
-      }
       if (err.code === "multiple_clients") {
         res.status(409).json({
           error: err.message,

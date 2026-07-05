@@ -1,8 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { searchSchedulingCustomers } from "./scheduling/schedulingCustomer.js";
 import { runAppointmentGoogleSync } from "./appointmentGoogleSync.js";
-import { loadAppointmentBusyBlocks } from "./calendar/blocks.js";
-import { appointmentEnd, checkConflict } from "./calendar/engine.js";
+import {
+  checkUnifiedSchedulingConflictByDuration,
+} from "./calendar/schedulingConflict.js";
+import { withOrganizationSchedulingLock } from "./calendar/schedulingLock.js";
 
 export { resolveAppointmentDateTime } from "./calendar/datetime.js";
 
@@ -24,16 +27,6 @@ export class AppointmentConflictError extends Error {
   }
 }
 
-async function withOrganizationSchedulingLock<T>(
-  organizationId: string,
-  action: (tx: Prisma.TransactionClient) => Promise<T>
-): Promise<T> {
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`calendar-scheduling:${organizationId}`}))`;
-    return action(tx);
-  });
-}
-
 type ConflictAppointment = {
   id: string;
   startTime: Date;
@@ -48,28 +41,21 @@ export async function checkAppointmentConflict(params: {
   durationMinutes: number;
   excludeAppointmentId?: string;
 }): Promise<{ hasConflict: boolean; conflictingAppointment?: ConflictAppointment }> {
-  const candidate = {
-    start: params.startTime,
-    end: appointmentEnd(params.startTime, params.durationMinutes),
-  };
-
-  const busyBlocks = await loadAppointmentBusyBlocks(params.organizationId, candidate, {
+  const result = await checkUnifiedSchedulingConflictByDuration({
+    organizationId: params.organizationId,
+    startTime: params.startTime,
+    durationMinutes: params.durationMinutes,
     excludeAppointmentId: params.excludeAppointmentId,
   });
 
-  const result = checkConflict(candidate, busyBlocks, {
-    excludeId: params.excludeAppointmentId,
-    allowBackToBack: true,
-  });
-
-  if (!result.available && result.conflict) {
+  if (result.hasConflict && result.conflict) {
     const block = result.conflict;
     return {
       hasConflict: true,
       conflictingAppointment: {
         id: block.id,
-        startTime: block.start,
-        durationMinutes: block.durationMinutes ?? Math.round((block.end.getTime() - block.start.getTime()) / 60_000),
+        startTime: block.startTime,
+        durationMinutes: block.durationMinutes ?? 60,
         status: "confirmed",
         client: { name: block.clientName ?? "לקוח" },
       },
@@ -83,22 +69,12 @@ export async function findClientByNameOrPhone(params: {
   organizationId: string;
   query: string;
 }): Promise<Array<{ id: string; name: string; whatsappNumber: string | null }>> {
-  const query = params.query.trim();
-  if (!query) return [];
-
-  return prisma.client.findMany({
-    where: {
-      organizationId: params.organizationId,
-      isActive: true,
-      OR: [
-        { name: { contains: query, mode: "insensitive" } },
-        { whatsappNumber: { contains: query } },
-      ],
-    },
-    select: { id: true, name: true, whatsappNumber: true },
-    take: 5,
-    orderBy: { name: "asc" },
-  });
+  const matches = await searchSchedulingCustomers(params);
+  return matches.map((match) => ({
+    id: match.id,
+    name: match.name,
+    whatsappNumber: match.whatsappNumber,
+  }));
 }
 
 export async function findUpcomingAppointmentsForClient(params: {

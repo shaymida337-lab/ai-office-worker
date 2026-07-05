@@ -144,7 +144,8 @@ model Client {
   organizationId     String
   organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name               String
-  email              String
+  email              String?
+  emailIsPlaceholder Boolean  @default(false)
   domain             String?
   firstSeen          DateTime?
   lastSeen           DateTime?

@@ -1,4 +1,5 @@
 import axios, { AxiosError } from "axios";
+import { getClientDeliverableEmail } from "./clientContact.js";
 
 export type GreenInvoiceEnv = "sandbox" | "production";
 
@@ -118,6 +119,7 @@ export async function createDocument(
 }
 
 function toCreateDocumentPayload(params: GreenInvoiceCreateDocumentParams) {
+  const deliverableEmail = getClientDeliverableEmail(params.client);
   return {
     type: params.documentType,
     lang: params.language ?? "he",
@@ -125,7 +127,7 @@ function toCreateDocumentPayload(params: GreenInvoiceCreateDocumentParams) {
     date: params.date,
     client: {
       name: params.client.name,
-      ...(params.client.email ? { emails: [params.client.email] } : {}),
+      ...(deliverableEmail ? { emails: [deliverableEmail] } : {}),
       ...(params.client.taxId ? { taxId: params.client.taxId } : {}),
     },
     income: params.income.map((item) => ({

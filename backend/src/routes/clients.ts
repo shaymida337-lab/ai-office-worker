@@ -8,6 +8,11 @@ import { getOAuth2Client, GMAIL_SCOPES } from "../services/google.js";
 import { syncGmailForClient } from "../services/clientGmailSync.js";
 import { scanForInvoices } from "../services/invoiceScanner.js";
 import { normalizeWhatsAppNumber, sendClientWhatsAppMessage } from "../services/whatsapp.js";
+import {
+  findClientByRealEmail,
+  getClientDeliverableEmail,
+  normalizeClientEmailInput,
+} from "../services/clientContact.js";
 
 export const clientsRouter = Router();
 
@@ -100,7 +105,7 @@ async function redirectToClientGmailOAuth(req: Parameters<RequestHandler>[0], re
     include_granted_scopes: true,
     scope: GMAIL_SCOPES,
     state,
-    login_hint: client.email,
+    login_hint: getClientDeliverableEmail(client) ?? undefined,
   });
   res.redirect(url);
 }
@@ -250,12 +255,17 @@ clientsRouter.post("/", authMiddleware, async (req, res) => {
     driveFolderUrl?: string;
   };
 
-  if (!name?.trim() || !email?.trim()) {
-    res.status(400).json({ error: "Name and email are required" });
+  if (!name?.trim()) {
+    res.status(400).json({ error: "Name is required" });
     return;
   }
-  const normalizedEmail = email.trim().toLowerCase();
-  if (!isValidEmail(normalizedEmail)) {
+
+  const normalizedEmail = email?.trim() ? normalizeClientEmailInput(email) : null;
+  if (email?.trim() && !normalizedEmail) {
+    res.status(400).json({ error: "Invalid email" });
+    return;
+  }
+  if (normalizedEmail && !isValidEmail(normalizedEmail)) {
     res.status(400).json({ error: "Invalid email" });
     return;
   }
@@ -266,6 +276,7 @@ clientsRouter.post("/", authMiddleware, async (req, res) => {
       organizationId,
       name: name.trim(),
       email: normalizedEmail,
+      emailIsPlaceholder: false,
       whatsappNumber: whatsappNumber?.trim() ? normalizeWhatsAppNumber(whatsappNumber) : null,
       color: color || COLORS[count % COLORS.length],
       invoiceSheetUrl: invoiceSheetUrl?.trim() || null,
@@ -302,7 +313,7 @@ clientsRouter.get("/:clientId/connect-gmail-url", authMiddleware, checkClientOwn
     include_granted_scopes: true,
     scope: GMAIL_SCOPES,
     state,
-    login_hint: client.email,
+    login_hint: getClientDeliverableEmail(client) ?? undefined,
   });
   res.json({ url });
 });
@@ -346,7 +357,8 @@ clientsRouter.get("/gmail/callback", async (req, res) => {
     );
     const me = await oauth2api.userinfo.get();
     const connectedEmail = me.data.email?.trim().toLowerCase();
-    if (connectedEmail && connectedEmail !== client.email.trim().toLowerCase()) {
+    const clientEmail = getClientDeliverableEmail(client);
+    if (connectedEmail && clientEmail && connectedEmail !== clientEmail) {
       res.redirect(`${config.frontendUrl}/dashboard/clients/${client.id}?error=gmail_account_mismatch`);
       return;
     }
@@ -590,33 +602,62 @@ clientsRouter.get("/:clientId", authMiddleware, checkClientOwnership, async (req
 clientsRouter.put("/:clientId", authMiddleware, checkClientOwnership, async (req, res) => {
   const client = res.locals.client;
   const body = req.body as Record<string, string | undefined>;
-  if (body.email !== undefined && !isValidEmail(body.email.trim().toLowerCase())) {
-    res.status(400).json({ error: "Invalid email" });
-    return;
+  if (body.email !== undefined) {
+    const normalized = body.email.trim() ? normalizeClientEmailInput(body.email) : null;
+    if (body.email.trim() && !normalized) {
+      res.status(400).json({ error: "Invalid email" });
+      return;
+    }
+    if (normalized && !isValidEmail(normalized)) {
+      res.status(400).json({ error: "Invalid email" });
+      return;
+    }
+  }
+
+  if (body.email !== undefined) {
+    const normalized = body.email.trim() ? normalizeClientEmailInput(body.email) : null;
+    if (normalized) {
+      const duplicate = await findClientByRealEmail(prisma, {
+        organizationId: req.auth!.organizationId,
+        email: normalized,
+        excludeClientId: client.id,
+      });
+      if (duplicate) {
+        res.status(409).json({ error: "Another customer already uses this email" });
+        return;
+      }
+    }
+  }
+
+  const updateData: Record<string, unknown> = {
+    ...(body.name && { name: body.name.trim() }),
+    ...(body.whatsappNumber !== undefined && {
+      whatsappNumber: body.whatsappNumber?.trim() ? normalizeWhatsAppNumber(body.whatsappNumber) : null,
+    }),
+    ...(body.color && { color: body.color }),
+    ...(body.invoiceSheetUrl !== undefined && {
+      invoiceSheetUrl: body.invoiceSheetUrl?.trim() || null,
+      invoiceSheetId: parseSheetId(body.invoiceSheetUrl),
+    }),
+    ...(body.taskSheetUrl !== undefined && {
+      taskSheetUrl: body.taskSheetUrl?.trim() || null,
+      taskSheetId: parseSheetId(body.taskSheetUrl),
+    }),
+    ...(body.driveFolderUrl !== undefined && {
+      driveFolderUrl: body.driveFolderUrl?.trim() || null,
+      driveFolderId: parseFolderId(body.driveFolderUrl),
+    }),
+  };
+
+  if (body.email !== undefined) {
+    const normalized = body.email.trim() ? normalizeClientEmailInput(body.email) : null;
+    updateData.email = normalized;
+    updateData.emailIsPlaceholder = false;
   }
 
   const updated = await prisma.client.update({
     where: { id: client.id },
-    data: {
-      ...(body.name && { name: body.name.trim() }),
-      ...(body.email && { email: body.email.trim().toLowerCase() }),
-      ...(body.whatsappNumber !== undefined && {
-        whatsappNumber: body.whatsappNumber?.trim() ? normalizeWhatsAppNumber(body.whatsappNumber) : null,
-      }),
-      ...(body.color && { color: body.color }),
-      ...(body.invoiceSheetUrl !== undefined && {
-        invoiceSheetUrl: body.invoiceSheetUrl?.trim() || null,
-        invoiceSheetId: parseSheetId(body.invoiceSheetUrl),
-      }),
-      ...(body.taskSheetUrl !== undefined && {
-        taskSheetUrl: body.taskSheetUrl?.trim() || null,
-        taskSheetId: parseSheetId(body.taskSheetUrl),
-      }),
-      ...(body.driveFolderUrl !== undefined && {
-        driveFolderUrl: body.driveFolderUrl?.trim() || null,
-        driveFolderId: parseFolderId(body.driveFolderUrl),
-      }),
-    },
+    data: updateData,
   });
 
   res.json({ client: { ...updated, stats: await clientStats(req.auth!.organizationId, updated.id) } });

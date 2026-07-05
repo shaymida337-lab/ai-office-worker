@@ -1,4 +1,5 @@
-﻿import { prisma } from "../lib/prisma.js";
+﻿import { getClientDeliverableEmail } from "./clientContact.js";
+import { prisma } from "../lib/prisma.js";
 import { getGoogleClientsForClient } from "./google.js";
 import { extractInvoiceData } from "./invoiceExtractor.js";
 import { saveInvoiceToDrive } from "./driveOrganizer.js";
@@ -96,7 +97,7 @@ async function runInvoiceScanForClient(clientId: string, client: ClientForInvoic
         bodyForExtraction,
         subject,
         parts.map((part) => ({ filename: part.filename, mimeType: part.mimeType })),
-        { name: client.name, email: client.email }
+        { name: client.name, email: getClientDeliverableEmail(client) ?? undefined }
       );
       invoice.pdfAttachment = attachments[0]?.buffer;
 

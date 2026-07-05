@@ -6,6 +6,9 @@ import {
   type CalendarEventActor,
 } from "./calendarEventMutations.js";
 import { checkCalendarEventConflict } from "./calendarEventConflict.js";
+import {
+  organizationSchedulingLockKey,
+} from "./schedulingLock.js";
 import type { CalendarEventStatus, DecisionQueueType } from "./enums.js";
 import {
   validateDecisionQueueApprove,
@@ -174,25 +177,35 @@ async function executeApprovedDecision(
       }
 
       const overrideConflict = item.type === "override_conflict" || payload.overrideConflict === true;
-      if (!overrideConflict) {
-        const event = await tx.calendarEvent.findFirst({
-          where: { id: item.calendarEventId, organizationId: item.organizationId },
-          select: { startAt: true, endAt: true, assignedUserId: true },
-        });
-        if (!event) throw notFound("CalendarEvent");
+      const existing = await tx.calendarEvent.findFirst({
+        where: { id: item.calendarEventId, organizationId: item.organizationId },
+        select: { startAt: true, endAt: true, assignedUserId: true, status: true },
+      });
+      if (!existing) throw notFound("CalendarEvent");
 
+      if (!overrideConflict) {
         const conflict = await checkCalendarEventConflict({
           organizationId: item.organizationId,
-          startAt: event.startAt,
-          endAt: event.endAt,
+          startAt: existing.startAt,
+          endAt: existing.endAt,
           excludeCalendarEventId: item.calendarEventId,
-          assignedUserId: event.assignedUserId,
+          assignedUserId: existing.assignedUserId,
         });
         if (conflict.hasConflict) {
           throw new CalendarEngineServiceError("TIME_CONFLICT", "Time conflict still exists", {
             conflict: conflict.conflict,
           });
         }
+      }
+
+      if (existing.status === "draft") {
+        await applyCalendarEventStatusTransition({
+          organizationId: item.organizationId,
+          calendarEventId: item.calendarEventId,
+          toStatus: "pending_readiness",
+          actor,
+          tx,
+        });
       }
 
       await applyCalendarEventStatusTransition({
@@ -340,7 +353,7 @@ export async function approveDecisionQueueItem(
   await assertCalendarEngineWrite(organizationId);
 
   const result = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`calendar-engine:${organizationId}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${organizationSchedulingLockKey(organizationId)}))`;
     const item = await requireDecision(organizationId, decisionId, tx);
 
     if (item.status === "approved") {

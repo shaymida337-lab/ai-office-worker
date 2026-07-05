@@ -1,5 +1,4 @@
-import { checkConflict } from "./engine.js";
-import { loadCombinedBusyBlocks } from "./calendarEventBlocks.js";
+import { checkUnifiedSchedulingConflict } from "./schedulingConflict.js";
 
 export type CalendarEventConflictResult = {
   hasConflict: boolean;
@@ -19,26 +18,23 @@ export async function checkCalendarEventConflict(params: {
   excludeCalendarEventId?: string;
   assignedUserId?: string | null;
 }): Promise<CalendarEventConflictResult> {
-  const range = { start: params.startAt, end: params.endAt };
-  const busyBlocks = await loadCombinedBusyBlocks(params.organizationId, range, {
+  const result = await checkUnifiedSchedulingConflict({
+    organizationId: params.organizationId,
+    start: params.startAt,
+    end: params.endAt,
     excludeCalendarEventId: params.excludeCalendarEventId,
     assignedUserId: params.assignedUserId,
   });
 
-  const result = checkConflict(range, busyBlocks, {
-    excludeId: params.excludeCalendarEventId,
-    allowBackToBack: true,
-  });
-
-  if (!result.available && result.conflict) {
+  if (result.hasConflict && result.conflict) {
     return {
       hasConflict: true,
       conflict: {
         id: result.conflict.id,
         source: result.conflict.source,
         clientName: result.conflict.clientName,
-        startTime: result.conflict.start.toISOString(),
-        endTime: result.conflict.end.toISOString(),
+        startTime: result.conflict.startTime.toISOString(),
+        endTime: result.conflict.endTime.toISOString(),
       },
     };
   }

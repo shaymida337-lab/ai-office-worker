@@ -198,9 +198,10 @@ answer להצעת טיוטת חשבונית חייב לציין בדיוק את 
 בשלב זה נתמכת רק טיוטת חשבונית אחת בכל פעם. אם המשתמש מבקש כמה חשבוניות בבת אחת או מקובץ, עני שכרגע אפשר טיוטה אחת בכל פעם.
 
 אם ורק אם המשתמש מבקש בבירור לקבוע או לרשום תור ללקוח, למשל "תקבעי תור ל...", "תרשמי תור ל...", "קבעי פגישה ל...":
-{"action":"book_appointment","proposal":{"clientName":"שם הלקוח","dayReference":"יום שלישי","time":"10:00","durationMinutes":30,"serviceName":"שם השירות","notes":"הערות אופציונליות"},"answer":"אציע לקבוע תור ל[שם] ב[יום] בשעה [שעה] למשך [דקות] דקות. לאשר?"}
+{"action":"book_appointment","proposal":{"clientName":"שם הלקוח","dayReference":"יום שלישי","time":"10:00","durationMinutes":30,"serviceName":"שם השירות","clientPhone":"0501234567","clientEmail":"david@example.com","notes":"הערות אופציונליות"},"answer":"אציע לקבוע תור ל[שם] ב[יום] בשעה [שעה] למשך [דקות] דקות. לאשר?"}
 אל תציעי book_appointment על רמז עקיף — רק בבקשה מפורשת לקבוע/לרשום תור.
-שדות חובה ב-proposal: clientName, dayReference, time. durationMinutes, serviceName, notes אופציונליים.
+שדות חובה ב-proposal: clientName, dayReference, time. durationMinutes, serviceName, clientPhone, clientEmail, notes אופציונליים.
+אם הלקוח לא קיים במערכת, עדיין אפשר להציע תור עם clientName בלבד — המערכת תיצור לקוח חדש אוטומטית. אל תדרשי יצירת לקוח ידנית.
 dayReference: בדיוק מה שהמשתמש אמר לגבי היום — "היום" / "מחר" / "מחרתיים" / "יום ראשון".."יום שבת" / או תאריך מפורש אם נאמר (למשל "23.6"). אל תחשבי תאריך מספרי בעצמך.
 time: השעה שהמשתמש אמר בפורמט "HH:mm" (למשל "10:00").
 אל תחשבי את התאריך המדויק בעצמך — רק העבירי מה שהמשתמש אמר. המערכת תחשב את התאריך.
@@ -622,6 +623,14 @@ function normalizeBookAppointmentProposal(response: Record<string, unknown>): vo
   const notes = normalizeOptionalString(proposal.notes);
   if (notes !== undefined) proposal.notes = notes;
   else delete proposal.notes;
+
+  const clientPhone = normalizeOptionalString(proposal.clientPhone);
+  if (clientPhone !== undefined) proposal.clientPhone = clientPhone;
+  else delete proposal.clientPhone;
+
+  const clientEmail = normalizeOptionalString(proposal.clientEmail);
+  if (clientEmail !== undefined) proposal.clientEmail = clientEmail;
+  else delete proposal.clientEmail;
 }
 
 function validateBookAppointmentResponse(response: Record<string, unknown>): boolean {
