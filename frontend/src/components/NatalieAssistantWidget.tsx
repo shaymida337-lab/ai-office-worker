@@ -3,7 +3,7 @@
 import { Component, FormEvent, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Mic, SendHorizontal, Volume2, VolumeX, X } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { apiFetch, API_URL, getToken } from "@/lib/api";
+import { apiFetch, API_URL, ApiError, getToken } from "@/lib/api";
 import { formatNatalieResponseOrFallback } from "@/lib/natalie/formatResponse";
 import { normalizeAvailabilityProposal, normalizeNatalieResponse } from "@/lib/natalie/responseGuard";
 import {
@@ -510,6 +510,13 @@ function buildAppointmentModifyErrorFeedback(payload: {
   }
 }
 
+function createVoiceTurnId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `turn-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function NatalieAssistantWidgetInner() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -521,6 +528,7 @@ function NatalieAssistantWidgetInner() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [pendingAudioPlay, setPendingAudioPlay] = useState(false);
   const [pendingAvailabilityBooking, setPendingAvailabilityBooking] = useState<PendingAvailabilityBooking | null>(null);
+  const pendingVoiceTurnRef = useRef<{ turnId: string; text: string } | null>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -1443,9 +1451,12 @@ function NatalieAssistantWidgetInner() {
     }
   }
 
-  async function sendVoiceTurn(text: string) {
+  async function sendVoiceTurn(text: string, options?: { retryTurnId?: string }) {
     const cleanText = text.trim();
     if (!cleanText || sending) return;
+
+    const turnId = options?.retryTurnId ?? createVoiceTurnId();
+    pendingVoiceTurnRef.current = { turnId, text: cleanText };
 
     const timestamp = Date.now();
     const history = buildNatalieHistory(messages);
@@ -1472,26 +1483,40 @@ function NatalieAssistantWidgetInner() {
     }
 
     let result: unknown;
-    try {
-      result = await apiFetch<unknown>("/api/natalie/voice/turn", {
-        method: "POST",
-        body: JSON.stringify({
-          transcript: cleanText,
-          history,
-          sessionId: readConversationSessionId(),
-        }),
-      });
-    } catch (err) {
-      console.error("[natalie] voice turn network failed", err);
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === loadingMessage.id
-            ? { ...message, text: "מצטערת, לא הצלחתי להתחבר כרגע. נסה שוב." }
-            : message
-        )
-      );
-      setSending(false);
-      return;
+    let networkAttempt = 0;
+    while (networkAttempt < 2) {
+      try {
+        result = await apiFetch<unknown>("/api/natalie/voice/turn", {
+          method: "POST",
+          headers: {
+            "X-Request-Id": turnId,
+          },
+          body: JSON.stringify({
+            transcript: cleanText,
+            history,
+            sessionId: readConversationSessionId(),
+            turnId,
+          }),
+        });
+        pendingVoiceTurnRef.current = null;
+        break;
+      } catch (err) {
+        networkAttempt += 1;
+        const retryable = err instanceof ApiError && err.status === 0 && networkAttempt < 2;
+        if (!retryable) {
+          console.error("[natalie] voice turn network failed", err);
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === loadingMessage.id
+                ? { ...message, text: "מצטערת, לא הצלחתי להתחבר כרגע. נסה שוב." }
+                : message
+            )
+          );
+          setSending(false);
+          return;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 1200));
+      }
     }
 
     try {

@@ -754,6 +754,26 @@ model NatalieConversationSession {
   @@index([organizationId, lastMessageAt])
 }
 
+model NatalieConfirmationExecution {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  sessionId      String
+  confirmationId String    @unique
+  turnId         String?
+  action         String
+  status         String    @default("processing")
+  ok             Boolean?
+  resultMessage  String?
+  resultPayload  Json?
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  @@index([organizationId, userId])
+  @@index([sessionId])
+  @@index([organizationId, userId, turnId])
+}
+
 model NotificationRules {
   id                    String  @id @default(cuid())
   organizationId        String  @unique

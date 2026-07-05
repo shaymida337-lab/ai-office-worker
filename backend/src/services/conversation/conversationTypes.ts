@@ -29,6 +29,7 @@ export type ConversationTurn = {
 };
 
 export type PendingConfirmation = {
+  confirmationId: string;
   action: string;
   proposal: Record<string, unknown>;
   confirmationType: ConfirmationType;

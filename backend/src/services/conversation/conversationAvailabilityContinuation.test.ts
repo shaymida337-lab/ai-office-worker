@@ -6,6 +6,11 @@ import { processNatalieTurn } from "./conversationRuntime.js";
 import type { ConversationSessionRecord } from "./conversationTypes.js";
 import { processVoiceTurn } from "./voice/voiceAdapter.js";
 import { tryHandleAvailabilityContinuation } from "./conversationAvailabilityContinuation.js";
+import {
+  claimConfirmationExecution,
+  completeConfirmationExecution,
+  releaseConfirmationExecution,
+} from "./voice/voiceConfirmationExecution.js";
 
 const sampleSlots = [
   {
@@ -166,6 +171,7 @@ describe("conversation availability continuation", () => {
         userId: "user-1",
         transcript: "12:30",
         sessionId,
+        turnId: randomUUID(),
         role: "owner",
       },
       {
@@ -192,12 +198,41 @@ describe("conversation availability continuation", () => {
     assert.equal("action" in slotResult && slotResult.action, "book_appointment");
     assert.equal(slotResult.confirmation.required, true);
 
+    const confirmationRows = new Map<string, { id: string; status: string; confirmationId: string }>();
+    const mockPrisma = {
+      natalieConfirmationExecution: {
+        create: async (args: { data: { confirmationId: string; organizationId: string; userId: string; sessionId: string; turnId: string | null; action: string; status: string } }) => {
+          if (confirmationRows.has(args.data.confirmationId)) {
+            const err = new Error("duplicate");
+            (err as { code?: string }).code = "P2002";
+            throw err;
+          }
+          const id = `conf-${confirmationRows.size + 1}`;
+          confirmationRows.set(args.data.confirmationId, { id, status: args.data.status, confirmationId: args.data.confirmationId });
+          return { id };
+        },
+        findUnique: async (args: { where: { confirmationId: string } }) => confirmationRows.get(args.where.confirmationId) ?? null,
+        update: async (args: { where: { id: string }; data: { status?: string; ok?: boolean; resultMessage?: string } }) => {
+          const row = [...confirmationRows.values()].find((item) => item.id === args.where.id);
+          if (row) Object.assign(row, args.data);
+        },
+        deleteMany: async (args: { where: { id: string; status: string } }) => {
+          const entry = [...confirmationRows.entries()].find(([, row]) => row.id === args.where.id);
+          if (entry) confirmationRows.delete(entry[0]);
+          return { count: 1 };
+        },
+      },
+      natalieConversationSession: { updateMany: async () => ({ count: 1 }) },
+      $transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
+    };
+
     const confirmResult = await processVoiceTurn(
       {
         organizationId: "org-1",
         userId: "user-1",
         transcript: "כן בבקשה",
         sessionId,
+        turnId: randomUUID(),
         role: "owner",
       },
       {
@@ -209,6 +244,26 @@ describe("conversation availability continuation", () => {
         executeProposal: async () => {
           executeCalls += 1;
           return { ok: true, action: "book_appointment", message: "התור נקבע." };
+        },
+        claimConfirmationExecutionFn: (input) => claimConfirmationExecution(input, { prisma: mockPrisma as never }),
+        releaseConfirmationExecutionFn: (recordId) => releaseConfirmationExecution(recordId, { prisma: mockPrisma as never }),
+        saveSessionAfterConfirmationExecutionFn: async (input: {
+          recordId: string;
+          ok: boolean;
+          resultMessage: string;
+          sessionPatch: { structuredHistory: unknown };
+        }) => {
+          await completeConfirmationExecution(
+            { recordId: input.recordId, ok: input.ok, resultMessage: input.resultMessage },
+            { prisma: mockPrisma as never }
+          );
+          const current = sessions.get(sessionId)!;
+          sessions.set(sessionId, {
+            ...current,
+            structuredHistory: input.sessionPatch.structuredHistory as ConversationSessionRecord["structuredHistory"],
+            pendingConfirmation: null,
+            pendingAction: null,
+          });
         },
         ask: async () => {
           throw new Error("brain should not run on confirmation");

@@ -9,6 +9,7 @@ import { buildVoiceSpokenResponse, buildVoiceExecutionSpokenResponse } from "./v
 import { getVoiceMetricsSnapshots, recordVoiceTurnMetric, resetVoiceMetrics } from "./voiceMetrics.js";
 import { processVoiceTurn } from "./voiceAdapter.js";
 import { evaluateVoiceExecutionReadiness } from "./voiceZeroWrongAction.js";
+import { createMockVoicePrisma } from "./voiceTestPrismaMock.js";
 
 describe("natalie voice phase 2", () => {
   beforeEach(() => {
@@ -96,6 +97,7 @@ describe("natalie voice phase 2", () => {
         organizationId: "org-1",
         userId: "user-1",
         transcript: "כמה משימות יש לי?",
+        turnId: randomUUID(),
         role: "owner",
       },
       {
@@ -128,6 +130,7 @@ describe("natalie voice phase 2", () => {
         proposal: { title: "להתקשר לספק", notes: "" },
       },
       pendingConfirmation: {
+        confirmationId: randomUUID(),
         action: "create_task",
         proposal: { title: "להתקשר לספק", notes: "" },
         confirmationType: "soft",
@@ -141,17 +144,24 @@ describe("natalie voice phase 2", () => {
       lastMessageAt: new Date().toISOString(),
     };
 
+    const { confirmationDeps } = createMockVoicePrisma();
+
     const result = await processVoiceTurn(
       {
         organizationId: "org-1",
         userId: "user-1",
         transcript: "כן",
         sessionId,
+        turnId: randomUUID(),
         role: "owner",
       },
       {
         getSession: async () => session,
         saveSession: async (value) => value,
+        ...confirmationDeps,
+        saveSessionAfterConfirmationExecutionFn: async (input) => {
+          await confirmationDeps.saveSessionAfterConfirmationExecutionFn(input);
+        },
         executeProposal: async () => ({
           ok: true,
           action: "create_task",
@@ -185,6 +195,7 @@ describe("natalie voice phase 2", () => {
       structuredHistory: [],
       pendingAction: { action: "create_task", proposal: { title: "x" } },
       pendingConfirmation: {
+        confirmationId: randomUUID(),
         action: "create_task",
         proposal: { title: "x" },
         confirmationType: "soft",

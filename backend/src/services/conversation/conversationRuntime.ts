@@ -46,6 +46,7 @@ function buildPendingConfirmation(
 ): PendingConfirmation | null {
   if (!confirmation.required) return null;
   return {
+    confirmationId: randomUUID(),
     action,
     proposal,
     confirmationType: confirmation.confirmationType,

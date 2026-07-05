@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import type { NatalieClaudeResponse } from "../claude.js";
 import type { SuggestAvailableTimesProposal } from "../natalieAvailability.js";
 import { evaluateConfirmationPolicy } from "./conversationConfirmationPolicy.js";
@@ -10,6 +11,7 @@ import type {
 } from "./conversationTypes.js";
 import { evaluateZeroWrongAction } from "./conversationZeroWrongAction.js";
 import { parseVoiceConfirmationIntent } from "./voice/voiceConfirmation.js";
+import { newConfirmationId } from "./voice/voiceConfirmationExecution.js";
 import {
   parseSlotLabelParts,
   resolveAvailabilitySlotFromUtterance,
@@ -104,6 +106,7 @@ function buildPendingConfirmation(
   confirmation: ReturnType<typeof evaluateConfirmationPolicy>
 ): PendingConfirmation {
   return {
+    confirmationId: newConfirmationId(),
     action: "book_appointment",
     proposal,
     confirmationType: confirmation.confirmationType,

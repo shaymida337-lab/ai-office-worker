@@ -114,6 +114,10 @@ import { confidenceRouter } from "./confidenceRoutes.js";
 import { auditorRouter } from "./auditorRoutes.js";
 import { releaseCertificateRouter } from "./releaseCertificateRoutes.js";
 import { requirePerm } from "../services/rbac/index.js";
+import {
+  beginVoiceTurnIdempotency,
+  completeVoiceTurnIdempotency,
+} from "../services/conversation/voice/voiceIdempotency.js";
 
 export const apiRouter = Router();
 const requireCalendarView = requirePerm("calendar.view");
@@ -2671,6 +2675,7 @@ apiRouter.post("/natalie/ask", requirePerm("chat.use"), async (req, res) => {
 apiRouter.post("/natalie/voice/turn", requirePerm("chat.use"), async (req, res) => {
   const transcript = typeof req.body?.transcript === "string" ? req.body.transcript.trim() : "";
   const sessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId.trim() : null;
+  const turnId = typeof req.body?.turnId === "string" ? req.body.turnId.trim() : "";
   const history = Array.isArray(req.body?.history)
     ? req.body.history
         .filter((item: unknown): item is { role: "user" | "assistant"; content: string } => {
@@ -2685,17 +2690,51 @@ apiRouter.post("/natalie/voice/turn", requirePerm("chat.use"), async (req, res) 
     res.status(400).json({ error: "transcript is required" });
     return;
   }
+  if (!turnId) {
+    res.status(400).json({ error: "turnId is required" });
+    return;
+  }
+
+  const requestId = readRequestId(req);
+  const idempotencyBody = { transcript, sessionId, turnId };
 
   try {
+    const idempotency = await beginVoiceTurnIdempotency({
+      prisma,
+      organizationId: req.auth!.organizationId,
+      turnId,
+      body: idempotencyBody,
+    });
+
+    if (idempotency.mode === "replay") {
+      res.json({
+        ...(typeof idempotency.responseBody === "object" && idempotency.responseBody
+          ? idempotency.responseBody
+          : { answer: String(idempotency.responseBody ?? "") }),
+        idempotentReplay: true,
+      });
+      return;
+    }
+
     const result = await processVoiceTurn({
       organizationId: req.auth!.organizationId,
       userId: req.auth!.userId,
       transcript,
       sessionId,
+      turnId,
       legacyHistory: sessionId ? undefined : history,
-      requestId: readRequestId(req),
+      requestId,
     });
-    res.json(result);
+
+    const responseBody = { ...result, requestId: requestId ?? null, turnId };
+    if (idempotency.mode === "active") {
+      await completeVoiceTurnIdempotency({
+        prisma,
+        recordId: idempotency.recordId,
+        responseBody,
+      });
+    }
+    res.json(responseBody);
   } catch (err) {
     console.error("[natalie/voice/turn] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Natalie voice turn failed" });

@@ -22,12 +22,19 @@ import {
 } from "./voiceSpokenResponse.js";
 import { evaluateVoiceExecutionReadiness } from "./voiceZeroWrongAction.js";
 import { processTranscriptAccuracy } from "../../sttAccuracy/index.js";
+import {
+  claimConfirmationExecution,
+  releaseConfirmationExecution,
+  saveSessionAfterConfirmationExecution,
+  VOICE_ALREADY_EXECUTED_MESSAGE,
+} from "./voiceConfirmationExecution.js";
 
 export type ProcessVoiceTurnInput = {
   organizationId: string;
   userId: string;
   transcript: string;
   sessionId?: string | null;
+  turnId?: string | null;
   legacyHistory?: Array<{ role: "user" | "assistant"; content: string }>;
   role?: string | null;
   permissions?: string[];
@@ -39,6 +46,8 @@ export type ProcessVoiceTurnResult = ProcessNatalieTurnResult & {
   modality: "voice";
   confirmationHandled?: "accepted" | "rejected" | "cancelled" | null;
   executed?: boolean;
+  duplicateExecution?: boolean;
+  idempotentReplay?: boolean;
   latencyMs: number;
 };
 
@@ -47,6 +56,9 @@ export type ProcessVoiceTurnDeps = ProcessNatalieTurnDeps & {
   saveSession?: typeof saveConversationSession;
   executeProposal?: typeof executeNataliePendingProposal;
   processTranscriptAccuracyFn?: typeof processTranscriptAccuracy;
+  claimConfirmationExecutionFn?: typeof claimConfirmationExecution;
+  releaseConfirmationExecutionFn?: typeof releaseConfirmationExecution;
+  saveSessionAfterConfirmationExecutionFn?: typeof saveSessionAfterConfirmationExecution;
 };
 
 function buildSttClarificationVoiceResult(input: {
@@ -101,6 +113,7 @@ async function handleVoiceConfirmationTurn(input: {
   userId: string;
   sessionId: string;
   transcript: string;
+  voiceTurnId?: string | null;
   confirmationIntent: "accept" | "reject" | "cancel";
   role?: string | null;
   permissions?: string[];
@@ -109,6 +122,10 @@ async function handleVoiceConfirmationTurn(input: {
   const getSession = input.deps.getSession ?? getConversationSession;
   const saveSession = input.deps.saveSession ?? saveConversationSession;
   const executeProposal = input.deps.executeProposal ?? executeNataliePendingProposal;
+  const claimConfirmation = input.deps.claimConfirmationExecutionFn ?? claimConfirmationExecution;
+  const releaseConfirmation = input.deps.releaseConfirmationExecutionFn ?? releaseConfirmationExecution;
+  const saveAfterExecution =
+    input.deps.saveSessionAfterConfirmationExecutionFn ?? saveSessionAfterConfirmationExecution;
 
   const session = await getSession({
     sessionId: input.sessionId,
@@ -241,16 +258,82 @@ async function handleVoiceConfirmationTurn(input: {
     };
   }
 
-  const execution = await executeProposal({
+  const pendingConfirmation = session.pendingConfirmation;
+  const confirmationId =
+    pendingConfirmation.confirmationId ?? `legacy:${session.id}:${pendingConfirmation.createdAt}`;
+
+  const claim = await claimConfirmation({
     organizationId: input.organizationId,
     userId: input.userId,
-    action: session.pendingConfirmation.action,
-    proposal: session.pendingConfirmation.proposal,
+    sessionId: session.id,
+    confirmationId,
+    turnId: input.voiceTurnId ?? null,
+    action: pendingConfirmation.action,
   });
+
+  if (claim.mode === "replay") {
+    const duplicateExecution = !claim.duplicateTurn;
+    const spokenResponse =
+      claim.record.status === "completed"
+        ? duplicateExecution
+          ? VOICE_ALREADY_EXECUTED_MESSAGE
+          : claim.record.resultMessage ?? VOICE_ALREADY_EXECUTED_MESSAGE
+        : claim.record.resultMessage ?? "לא הצלחתי לאשר את הפעולה.";
+    completeCoreWorkflowStage(trace, "voice_confirmation", "skipped", {
+      health: "Healthy",
+      metadata: { confirmationId, duplicateExecution, status: claim.record.status },
+    });
+    return {
+      answer: spokenResponse,
+      conversationSessionId: session.id,
+      displayResponse: spokenResponse,
+      spokenResponse,
+      confirmation: {
+        required: false,
+        confirmationType: "none",
+        riskLevel: "read_only",
+        spokenPrompt: "",
+        uiPrompt: "",
+        allowed: true,
+      },
+      zeroWrongAction: { ready: true, violations: [] },
+      reliability: {
+        correlationId: trace.correlationId,
+        sessionId: session.id,
+        turnId,
+        health: "Healthy",
+      },
+      channel: "web_voice",
+      modality: "voice",
+      confirmationHandled: claim.record.status === "completed" ? "accepted" : null,
+      executed: claim.record.ok ?? false,
+      duplicateExecution: claim.record.status === "completed" ? duplicateExecution : false,
+      latencyMs: 0,
+    };
+  }
+
+  let execution;
+  try {
+    execution = await executeProposal({
+      organizationId: input.organizationId,
+      userId: input.userId,
+      action: pendingConfirmation.action,
+      proposal: pendingConfirmation.proposal,
+    });
+  } catch (error) {
+    if (claim.mode === "claimed") {
+      await releaseConfirmation(claim.recordId);
+    }
+    throw error;
+  }
+
+  if (!execution.ok && claim.mode === "claimed") {
+    await releaseConfirmation(claim.recordId);
+  }
 
   const spokenResponse = execution.ok
     ? buildVoiceExecutionSpokenResponse({
-        action: session.pendingConfirmation.action,
+        action: pendingConfirmation.action,
         successMessage: execution.message,
       })
     : execution.message;
@@ -259,29 +342,50 @@ async function handleVoiceConfirmationTurn(input: {
     role: "assistant",
     text: spokenResponse,
     channel: "web_voice",
-    action: session.pendingConfirmation.action,
-    proposal: session.pendingConfirmation.proposal,
+    action: pendingConfirmation.action,
+    proposal: pendingConfirmation.proposal,
     confirmationState: execution.ok ? "confirmed" : "rejected",
   });
+  const structuredHistory = appendTurn(historyWithUser, assistantTurn);
 
-  const updatedSession = await saveSession({
-    ...session,
-    currentChannel: "web_voice",
-    structuredHistory: appendTurn(historyWithUser, assistantTurn),
-    pendingAction: null,
-    pendingConfirmation: null,
-    interruptionState: session.interruptionState,
-    lastMessageAt: new Date().toISOString(),
-  });
+  if (execution.ok && claim.mode === "claimed") {
+    await saveAfterExecution({
+      sessionId: session.id,
+      organizationId: input.organizationId,
+      userId: input.userId,
+      recordId: claim.recordId,
+      ok: true,
+      resultMessage: spokenResponse,
+      resultPayload: execution.payload,
+      sessionPatch: {
+        currentChannel: "web_voice",
+        structuredHistory,
+        pendingAction: null,
+        pendingConfirmation: null,
+        interruptionState: session.interruptionState,
+        lastMessageAt: new Date().toISOString(),
+      },
+    });
+  } else {
+    await saveSession({
+      ...session,
+      currentChannel: "web_voice",
+      structuredHistory,
+      pendingAction: execution.ok ? null : session.pendingAction,
+      pendingConfirmation: execution.ok ? null : session.pendingConfirmation,
+      interruptionState: session.interruptionState,
+      lastMessageAt: new Date().toISOString(),
+    });
+  }
 
   completeCoreWorkflowStage(trace, "voice_confirmation", execution.ok ? "completed" : "failed", {
     health: execution.ok ? "Healthy" : "Failed",
-    metadata: { action: session.pendingConfirmation.action },
+    metadata: { action: pendingConfirmation.action, confirmationId },
   });
 
   return {
     answer: spokenResponse,
-    conversationSessionId: updatedSession.id,
+    conversationSessionId: session.id,
     displayResponse: spokenResponse,
     spokenResponse,
     confirmation: {
@@ -295,7 +399,7 @@ async function handleVoiceConfirmationTurn(input: {
     zeroWrongAction: { ready: execution.ok, violations: execution.ok ? [] : ["execution_failed"] },
     reliability: {
       correlationId: trace.correlationId,
-      sessionId: updatedSession.id,
+      sessionId: session.id,
       turnId,
       health: execution.ok ? "Healthy" : "Failed",
     },
@@ -334,6 +438,7 @@ export async function processVoiceTurn(
         userId: input.userId,
         sessionId: input.sessionId,
         transcript,
+        voiceTurnId: input.turnId,
         confirmationIntent,
         role,
         permissions: input.permissions,
