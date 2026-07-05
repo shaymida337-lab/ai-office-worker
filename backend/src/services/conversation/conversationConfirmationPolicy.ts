@@ -94,7 +94,7 @@ function hasPermission(
   if (permissions?.length) {
     return permissions.includes(permission);
   }
-  if (!role) return true;
+  if (!role) return false;
   return roleGrantsPermission(role as PlatformRole, permission);
 }
 

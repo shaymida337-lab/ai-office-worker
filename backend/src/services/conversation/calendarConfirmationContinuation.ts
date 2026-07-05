@@ -17,12 +17,18 @@ import { saveConversationSession } from "./conversationSession.js";
 import { parseVoiceConfirmationIntent } from "./voice/voiceConfirmation.js";
 import { executeNataliePendingProposal } from "./voice/natalieProposalExecution.js";
 import {
+  claimConfirmationExecution,
+  releaseConfirmationExecution,
+  saveSessionAfterConfirmationExecution,
+  VOICE_ALREADY_EXECUTED_MESSAGE,
+} from "./voice/voiceConfirmationExecution.js";
+import {
   resolveCalendarConfirmationPrompt,
   shouldDeferCalendarActionForFuzzyGate,
 } from "../scheduling/calendarActionProposal.js";
-import {
-  withIdentityConfirmedProposal,
-} from "../scheduling/calendarAppointmentSafety.js";
+import { withIdentityConfirmedProposal } from "../scheduling/calendarAppointmentSafety.js";
+import { evaluateVoiceExecutionReadiness } from "./voice/voiceZeroWrongAction.js";
+import { hebrewSafetyFallback } from "./natalieSafetyEvaluation.js";
 
 function buildPendingConfirmation(
   action: string,
@@ -114,13 +120,111 @@ export async function tryHandleCalendarConfirmationTurn(input: {
 
   if (intent !== "accept") return { handled: false };
 
-  const executableProposal = withIdentityConfirmedProposal(pending.proposal);
-  const execution = await executeNataliePendingProposal({
+  const readiness = evaluateVoiceExecutionReadiness({
+    session: input.session,
+    pendingConfirmation: pending,
+    role: input.role,
+    permissions: input.permissions,
+  });
+  if (!readiness.ready) {
+    const answer = readiness.followUpQuestion ?? hebrewSafetyFallback(readiness.violations);
+    const assistantTurn = createConversationTurn({
+      role: "assistant",
+      text: answer,
+      channel: input.channel,
+      confirmationState: "pending",
+    });
+    const updatedSession = await saveConversationSession({
+      ...input.session,
+      currentChannel: input.channel,
+      structuredHistory: appendTurn(historyWithUser, assistantTurn),
+      lastMessageAt: new Date().toISOString(),
+    });
+    return {
+      handled: true,
+      updatedSession,
+      result: {
+        answer,
+        conversationSessionId: updatedSession.id,
+        displayResponse: answer,
+        spokenResponse: answer,
+        confirmation: evaluateConfirmationPolicy({
+          action: pending.action,
+          channel: input.channel,
+          role: input.role,
+          permissions: input.permissions,
+        }),
+        zeroWrongAction: readiness,
+        reliability: {
+          correlationId: randomUUID(),
+          sessionId: updatedSession.id,
+          turnId: randomUUID(),
+          health: "Degraded",
+        },
+      },
+    };
+  }
+
+  const confirmationId =
+    pending.confirmationId ?? `legacy:${input.session.id}:${pending.createdAt}`;
+  const claim = await claimConfirmationExecution({
     organizationId: input.organizationId,
     userId: input.userId,
+    sessionId: input.session.id,
+    confirmationId,
     action: pending.action,
-    proposal: executableProposal,
   });
+
+  if (claim.mode === "replay") {
+    const answer =
+      claim.record.status === "completed"
+        ? claim.record.resultMessage ?? VOICE_ALREADY_EXECUTED_MESSAGE
+        : claim.record.resultMessage ?? hebrewSafetyFallback(["execution_failed"]);
+    return {
+      handled: true,
+      updatedSession: input.session,
+      result: {
+        answer,
+        conversationSessionId: input.session.id,
+        displayResponse: answer,
+        spokenResponse: answer,
+        confirmation: evaluateConfirmationPolicy({
+          action: null,
+          channel: input.channel,
+          role: input.role,
+          permissions: input.permissions,
+        }),
+        zeroWrongAction: { ready: true, violations: [] },
+        reliability: {
+          correlationId: randomUUID(),
+          sessionId: input.session.id,
+          turnId: randomUUID(),
+          health: "Healthy",
+        },
+      },
+    };
+  }
+
+  const executableProposal = withIdentityConfirmedProposal(pending.proposal);
+  let execution;
+  try {
+    execution = await executeNataliePendingProposal({
+      organizationId: input.organizationId,
+      userId: input.userId,
+      action: pending.action,
+      proposal: executableProposal,
+    });
+  } catch (error) {
+    if (claim.mode === "claimed") {
+      await releaseConfirmationExecution(claim.recordId);
+    }
+    throw error;
+  }
+
+  if (!execution.ok && claim.mode === "claimed") {
+    await releaseConfirmationExecution(claim.recordId);
+  }
+
   const answer = execution.message;
   const assistantTurn = createConversationTurn({
     role: "assistant",
@@ -130,15 +234,47 @@ export async function tryHandleCalendarConfirmationTurn(input: {
     proposal: executableProposal,
     confirmationState: execution.ok ? "confirmed" : "rejected",
   });
-  const updatedSession = await saveConversationSession({
-    ...input.session,
-    currentChannel: input.channel,
-    structuredHistory: appendTurn(historyWithUser, assistantTurn),
-    pendingAction: null,
-    pendingConfirmation: null,
-    interruptionState: input.session.interruptionState,
-    lastMessageAt: new Date().toISOString(),
-  });
+  const structuredHistory = appendTurn(historyWithUser, assistantTurn);
+
+  let updatedSession: ConversationSessionRecord;
+  if (execution.ok && claim.mode === "claimed") {
+    await saveSessionAfterConfirmationExecution({
+      sessionId: input.session.id,
+      organizationId: input.organizationId,
+      userId: input.userId,
+      recordId: claim.recordId,
+      ok: true,
+      resultMessage: answer,
+      resultPayload: execution.payload,
+      sessionPatch: {
+        currentChannel: input.channel,
+        structuredHistory,
+        pendingAction: null,
+        pendingConfirmation: null,
+        interruptionState: input.session.interruptionState,
+        lastMessageAt: new Date().toISOString(),
+      },
+    });
+    updatedSession = {
+      ...input.session,
+      currentChannel: input.channel,
+      structuredHistory,
+      pendingAction: null,
+      pendingConfirmation: null,
+      lastMessageAt: new Date().toISOString(),
+    };
+  } else {
+    updatedSession = await saveConversationSession({
+      ...input.session,
+      currentChannel: input.channel,
+      structuredHistory,
+      pendingAction: execution.ok ? null : input.session.pendingAction,
+      pendingConfirmation: execution.ok ? null : input.session.pendingConfirmation,
+      interruptionState: input.session.interruptionState,
+      lastMessageAt: new Date().toISOString(),
+    });
+  }
+
   const confirmation = evaluateConfirmationPolicy({
     action: null,
     channel: input.channel,

@@ -22,6 +22,14 @@ import {
 import { maybeBuildAvailabilityResponse } from "./natalieAvailability.js";
 import { resolveFinanceDisplayAmount } from "./amount/financeDisplayAmount.js";
 
+const SHOW_INVOICE_DEBUG = process.env.NATALIE_SHOW_INVOICE_DEBUG === "true";
+
+function logShowInvoiceDebug(label: string, payload: Record<string, unknown>) {
+  if (SHOW_INVOICE_DEBUG) {
+    console.log(`[SHOW_INVOICE_DEBUG] ${label}`, payload);
+  }
+}
+
 type ShowInvoiceItem = {
   id: string;
   supplierName: string | null;
@@ -106,9 +114,9 @@ export async function askNatalieBusinessQuestion(input: {
 }
 
 async function maybeBuildShowInvoiceResponse(organizationId: string, question: string): Promise<NatalieClaudeResponse | null> {
-  console.log("[SHOW_INVOICE_DEBUG] incoming", { organizationId, question });
+  logShowInvoiceDebug("incoming", { organizationId, question });
   const supplierName = extractShowInvoiceSearchTerm(question);
-  console.log("[SHOW_INVOICE_DEBUG] extracted supplierName", { supplierName });
+  logShowInvoiceDebug("extracted supplierName", { supplierName });
   if (!supplierName) return null;
 
   const organization = await prisma.organization.findUnique({
@@ -116,7 +124,7 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
     select: { businessProfile: true },
   });
   const searchTerms = expandInvoiceSearchTerms(supplierName, organization?.businessProfile);
-  console.log("[SHOW_INVOICE_DEBUG] searchTerms", { searchTerms });
+  logShowInvoiceDebug("searchTerms", { searchTerms });
   const invoices = await prisma.invoice.findMany({
     where: {
       organizationId,
@@ -197,15 +205,15 @@ async function maybeBuildShowInvoiceResponse(organizationId: string, question: s
         take: remainingFinancialDocumentReviewSlots,
       })
     : [];
-  console.log("[SHOW_INVOICE_DEBUG] invoices returned", {
+  logShowInvoiceDebug("invoices returned", {
     count: invoices.length,
     supplierNames: invoices.map((invoice) => invoice.supplierName),
   });
-  console.log("[SHOW_INVOICE_DEBUG] supplier payments returned", {
+  logShowInvoiceDebug("supplier payments returned", {
     count: supplierPayments.length,
     supplierNames: supplierPayments.map((payment) => payment.supplierName ?? payment.supplier),
   });
-  console.log("[SHOW_INVOICE_DEBUG] financial document reviews returned", {
+  logShowInvoiceDebug("financial document reviews returned", {
     count: financialDocumentReviews.length,
     supplierNames: financialDocumentReviews.map((review) => review.supplierName),
   });

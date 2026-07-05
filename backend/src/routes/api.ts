@@ -2741,7 +2741,7 @@ apiRouter.post("/natalie/voice/turn", requirePerm("chat.use"), async (req, res) 
   }
 });
 
-apiRouter.post("/natalie/create-task", async (req, res) => {
+apiRouter.post("/natalie/create-task", requirePerm("chat.use"), async (req, res) => {
   const body = (req.body ?? {}) as { title?: unknown; dueDate?: unknown; notes?: unknown };
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const notes = typeof body.notes === "string" ? body.notes.trim() : "";
@@ -3214,7 +3214,7 @@ apiRouter.post("/natalie/invoice-drafts/:id/issue", requirePerm("payment.create"
   res.status(result.status).json(result.body);
 });
 
-apiRouter.post("/natalie/complete-task", async (req, res) => {
+apiRouter.post("/natalie/complete-task", requirePerm("chat.use"), async (req, res) => {
   const body = (req.body ?? {}) as { taskId?: unknown };
   const taskId = typeof body.taskId === "string" ? body.taskId.trim() : "";
   if (!taskId) {
@@ -3275,7 +3275,7 @@ export function buildNatalieVoiceCredentials(aiVoice: NatalieVoiceCredentialsInp
   };
 }
 
-apiRouter.post("/natalie/voice", async (req, res) => {
+apiRouter.post("/natalie/voice", requirePerm("chat.use"), async (req, res) => {
   const body = req.body as { text?: string };
   const text = body.text?.trim();
   if (!text) {
@@ -3309,7 +3309,7 @@ apiRouter.post("/natalie/voice", async (req, res) => {
   res.send(result.audio);
 });
 
-apiRouter.post("/natalie/transcribe", natalieAudioUpload.single("audio"), async (req, res) => {
+apiRouter.post("/natalie/transcribe", requirePerm("chat.use"), natalieAudioUpload.single("audio"), async (req, res) => {
   const file = req.file;
   if (!file?.buffer?.length) {
     res.status(400).json({ error: "Audio file is required" });
