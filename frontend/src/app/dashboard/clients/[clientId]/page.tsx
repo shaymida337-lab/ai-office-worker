@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
+import {
+  buildClientUpdatePayload,
+  clientToFormValues,
+  formatClientEmailDisplay,
+  type ClientFormValues,
+  validateClientForm,
+} from "@/lib/clients/clientForm";
 import { formatAmount } from "@/lib/format/amount";
 
 type TaskStatus = "todo" | "in-progress" | "done" | "open";
@@ -59,7 +66,7 @@ type ClientDetail = {
   client: {
     id: string;
     name: string;
-    email: string;
+    email: string | null;
     whatsappNumber: string | null;
     color: string | null;
     gmailConnected: boolean;
@@ -117,6 +124,9 @@ export default function ClientDetailPage() {
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [whatsappText, setWhatsappText] = useState("");
   const [form, setForm] = useState(emptyTask);
+  const [editingClient, setEditingClient] = useState(false);
+  const [clientForm, setClientForm] = useState<ClientFormValues | null>(null);
+  const [savingClient, setSavingClient] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -293,6 +303,37 @@ export default function ClientDetailPage() {
     setHealth(next);
   }
 
+  async function saveClientProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!clientForm) return;
+    const validation = validateClientForm(clientForm);
+    if (!validation.ok) {
+      setMessage(validation.error);
+      return;
+    }
+    setSavingClient(true);
+    setMessage("");
+    try {
+      await apiFetch(`/api/clients/${clientId}`, {
+        method: "PUT",
+        body: JSON.stringify(buildClientUpdatePayload(clientForm)),
+      });
+      setEditingClient(false);
+      setMessage("פרטי הלקוח עודכנו");
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "עדכון הלקוח נכשל");
+    } finally {
+      setSavingClient(false);
+    }
+  }
+
+  function startClientEdit() {
+    if (!data) return;
+    setClientForm(clientToFormValues(data.client));
+    setEditingClient(true);
+  }
+
   async function sendWhatsAppMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const body = whatsappText.trim();
@@ -329,10 +370,51 @@ export default function ClientDetailPage() {
           <div className="page-kicker">מרכז לקוח</div>
           <h1 className="break-words">{data.client.name}</h1>
           <p><strong className="text-emerald-300">● פעיל</strong> · עודכן לאחרונה: {lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}</p>
-          <p className="break-words">ג׳ימייל: {data.client.email} · וואטסאפ: {data.client.whatsappNumber || "לא מוגדר"}</p>
+          <p className="break-words">ג׳ימייל: {formatClientEmailDisplay(data.client.email)} · וואטסאפ: {data.client.whatsappNumber || "לא מוגדר"}</p>
+          <button className="btn btn-secondary mt-3" type="button" onClick={startClientEdit}>
+            ערוך פרטי לקוח
+          </button>
         </div>
       </div>
       {message && <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200">{message}</div>}
+
+      {editingClient && clientForm && (
+        <form onSubmit={saveClientProfile} className="card mb-6 grid gap-3 md:grid-cols-2">
+          <label>
+            שם לקוח
+            <input
+              required
+              value={clientForm.name}
+              onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })}
+            />
+          </label>
+          <label>
+            אימייל (אופציונלי)
+            <input
+              dir="ltr"
+              type="email"
+              value={clientForm.email}
+              onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
+            />
+          </label>
+          <label>
+            וואטסאפ
+            <input
+              dir="ltr"
+              value={clientForm.whatsappNumber}
+              onChange={(e) => setClientForm({ ...clientForm, whatsappNumber: e.target.value })}
+            />
+          </label>
+          <div className="flex gap-2 md:col-span-2">
+            <button className="btn" type="submit" disabled={savingClient}>
+              {savingClient ? "שומר..." : "שמור פרטים"}
+            </button>
+            <button className="btn btn-secondary" type="button" onClick={() => setEditingClient(false)}>
+              ביטול
+            </button>
+          </div>
+        </form>
+      )}
 
       <div className="card">
         <h2>ציון בריאות לקוח</h2>

@@ -3,18 +3,16 @@
 import { useEffect, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
+import {
+  buildClientCreatePayload,
+  formatClientEmailDisplay,
+  type ClientRecord,
+  validateClientForm,
+} from "@/lib/clients/clientForm";
 import { Mail, Plus, RefreshCcw, Search, ShieldCheck, Users } from "lucide-react";
 
-type ClientItem = {
-  id: string;
-  name: string;
-  email: string;
-  whatsappNumber: string | null;
-  color: string | null;
+type ClientItem = ClientRecord & {
   gmailConnected: boolean;
-  invoiceSheetUrl: string | null;
-  taskSheetUrl: string | null;
-  driveFolderUrl: string | null;
   stats?: {
     toPay: number;
     openTasks: number;
@@ -65,11 +63,16 @@ export default function ClientsPage() {
   async function createClient(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
+    const validation = validateClientForm(form);
+    if (!validation.ok) {
+      setMessage(validation.error);
+      return;
+    }
     setSaving(true);
     try {
       await apiFetch("/api/clients", {
         method: "POST",
-        body: JSON.stringify(form),
+        body: JSON.stringify(buildClientCreatePayload(form)),
       });
       setForm(emptyForm);
       setShowForm(false);
@@ -109,7 +112,7 @@ export default function ClientsPage() {
   }
 
   const filteredClients = (data?.clients ?? []).filter((client) =>
-    `${client.name} ${client.email} ${client.whatsappNumber ?? ""}`.toLowerCase().includes(query.toLowerCase())
+    `${client.name} ${client.email ?? ""} ${client.whatsappNumber ?? ""}`.toLowerCase().includes(query.toLowerCase())
   );
 
   return (
@@ -151,9 +154,9 @@ export default function ClientsPage() {
             />
           </label>
           <label>
-            אימייל
+            אימייל (אופציונלי)
             <input
-              required
+              dir="ltr"
               type="email"
               placeholder="כתובת מייל"
               value={form.email}
@@ -228,7 +231,7 @@ export default function ClientsPage() {
                   <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] text-sm font-bold text-white">{client.name.slice(0, 2)}</span>
                   <div className="min-w-0">
                     <strong className="block truncate text-lg text-ink-primary">{client.name}</strong>
-                    <p className="flex min-w-0 items-center gap-2 text-sm"><Mail className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{client.email}</span></p>
+                    <p className="flex min-w-0 items-center gap-2 text-sm"><Mail className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{formatClientEmailDisplay(client.email)}</span></p>
                   </div>
                 </div>
                 <span className={`badge w-fit ${client.gmailConnected ? "badge-ok" : "badge-warn"}`}>{client.gmailConnected ? "ג׳ימייל מחובר" : "חיבור חסר"}</span>

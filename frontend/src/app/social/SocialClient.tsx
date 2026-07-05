@@ -5,7 +5,7 @@ import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
 import { BarChart3, BriefcaseBusiness, CalendarDays, Check, Megaphone, Send, Sparkles, Users, X } from "lucide-react";
 
-type ClientItem = { id: string; name: string; email: string };
+type ClientItem = { id: string; name: string; email: string | null };
 type SocialAccount = { id: string; platform: string; pageId: string | null; isActive: boolean };
 type SocialPost = {
   id: string;

@@ -47,14 +47,7 @@ type WhatsAppTestResult = {
   error?: unknown;
 };
 
-type ClientItem = {
-  id: string;
-  name: string;
-  email: string;
-  whatsappNumber: string | null;
-  whatsappUnread?: number;
-  whatsappLastMessage?: { body: string; createdAt: string } | null;
-};
+type ClientItem = { id: string; name: string; email: string | null; whatsappNumber: string | null; whatsappUnread?: number; whatsappLastMessage?: { body: string; createdAt: string } | null };
 
 export default function WhatsAppSettingsPage() {
   const [status, setStatus] = useState<WhatsAppStatus | null>(null);
