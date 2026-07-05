@@ -178,8 +178,8 @@ export function writeFirstDayData(data: FirstDayData) {
 }
 
 export function getFirstNameForGreeting(settingsName?: string | null): string | null {
-  const stored = readFirstDayData()?.firstName?.trim() || readOnboardingProgress()?.firstName?.trim();
-  if (stored) return stored;
   const fromSettings = settingsName?.trim().split(/\s+/)[0];
-  return fromSettings || null;
+  if (fromSettings) return fromSettings;
+  const stored = readFirstDayData()?.firstName?.trim() || readOnboardingProgress()?.firstName?.trim();
+  return stored || null;
 }

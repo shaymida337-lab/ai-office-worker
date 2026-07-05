@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   consumeFirstDashboardVisit,
+  getFirstNameForGreeting,
   markFirstDashboardVisit,
   FIRST_DASHBOARD_VISIT_KEY,
+  ONBOARDING_PROGRESS_KEY,
   isActiveOnboardingStep,
   resolveOnboardingHydration,
   type OnboardingProgress,
@@ -17,6 +19,29 @@ const baseProgress: OnboardingProgress = {
   businessSize: "solo",
   helpAreas: ["documents"],
 };
+
+test("getFirstNameForGreeting prefers current organization name over stale localStorage", () => {
+  const storage = new Map<string, string>();
+  const originalWindow = globalThis.window;
+  // @ts-expect-error test shim
+  globalThis.window = {
+    localStorage: {
+      setItem: (key: string, value: string) => storage.set(key, value),
+      getItem: (key: string) => storage.get(key) ?? null,
+      removeItem: (key: string) => storage.delete(key),
+    },
+  };
+
+  try {
+    storage.set(
+      ONBOARDING_PROGRESS_KEY,
+      JSON.stringify({ ...baseProgress, firstName: "שרון" })
+    );
+    assert.equal(getFirstNameForGreeting("שי"), "שי");
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
 
 test("markFirstDashboardVisit and consumeFirstDashboardVisit are one-shot", () => {
   const storage = new Map<string, string>();
