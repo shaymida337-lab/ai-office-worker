@@ -26,6 +26,7 @@ import type {
   ProcessNatalieTurnResult,
 } from "./conversationTypes.js";
 import { evaluateZeroWrongAction } from "./conversationZeroWrongAction.js";
+import { tryHandleAvailabilityContinuation } from "./conversationAvailabilityContinuation.js";
 
 export type ProcessNatalieTurnDeps = {
   ask?: typeof askNatalieBusinessQuestion;
@@ -93,6 +94,59 @@ export async function processNatalieTurn(
   });
 
   try {
+    const availabilityContinuation = tryHandleAvailabilityContinuation({
+      session,
+      message: normalizedMessage,
+      channel,
+      role,
+      permissions: input.permissions,
+    });
+    if (availabilityContinuation.handled && availabilityContinuation.result && availabilityContinuation.updatedSession) {
+      const adapter = getChannelAdapter(channel);
+      const continuation = availabilityContinuation.result;
+      const displayResponse =
+        continuation.displayResponse ??
+        adapter.renderDisplay(continuation as NatalieClaudeResponse, continuation.confirmation);
+      const spokenResponse =
+        continuation.spokenResponse ??
+        adapter.renderSpoken(continuation as NatalieClaudeResponse, continuation.confirmation);
+
+      const updatedSession = await saveSession(availabilityContinuation.updatedSession);
+
+      completeCoreWorkflowStage(trace, "turn", "completed", {
+        health: continuation.zeroWrongAction?.ready === false ? "Degraded" : "Healthy",
+        metadata: {
+          turnId,
+          action: "action" in continuation ? continuation.action : undefined,
+          availabilityContinuation: true,
+        },
+      });
+
+      recordConversationMetric({
+        sessionId: updatedSession.id,
+        channel,
+        turnCount: updatedSession.structuredHistory.length,
+        confirmationRequired: continuation.confirmation?.required ?? false,
+        recoveryCount: 0,
+        interruptionCount: updatedSession.interruptionState?.interrupted ? 1 : 0,
+        durationMs: sessionDurationMs(updatedSession),
+        success: true,
+      });
+
+      return {
+        ...continuation,
+        conversationSessionId: updatedSession.id,
+        displayResponse,
+        spokenResponse,
+        reliability: {
+          correlationId: trace.correlationId,
+          sessionId: updatedSession.id,
+          turnId,
+          health: continuation.zeroWrongAction?.ready === false ? "Degraded" : "Healthy",
+        },
+      };
+    }
+
     const userTurn = createConversationTurn({
       role: "user",
       text: normalizedMessage,

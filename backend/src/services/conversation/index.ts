@@ -6,4 +6,6 @@ export * from "./conversationZeroWrongAction.js";
 export * from "./conversationAdapters.js";
 export * from "./conversationMetrics.js";
 export * from "./conversationRuntime.js";
+export * from "./conversationAvailabilityContinuation.js";
+export * from "./availabilitySlotSelection.js";
 export * from "./voice/index.js";

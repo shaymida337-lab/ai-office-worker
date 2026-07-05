@@ -2,10 +2,13 @@ export type VoiceConfirmationIntent = "accept" | "reject" | "cancel" | "none";
 
 const ACCEPT_PATTERNS = [
   /^כן$/,
+  /^כן\s+בבקשה$/,
+  /^בבקשה$/,
   /^נכון$/,
   /^אשר$/,
   /^מאשר$/,
   /^מאשרת$/,
+  /^מאשרים$/,
   /^בסדר$/,
   /^יאללה$/,
   /^ok$/i,
