@@ -29,6 +29,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
+import { isUsableSupplierNameShared } from "../src/services/supplier/supplierValidation.js";
 
 const APPLY = process.argv.includes("--apply");
 function argValue(flag: string): string | null {
@@ -36,6 +37,7 @@ function argValue(flag: string): string | null {
   return idx >= 0 && process.argv[idx + 1] ? process.argv[idx + 1] : null;
 }
 const LIMIT = Number(argValue("--limit") ?? 100);
+const INCLUDE_SUSPECTS = process.argv.includes("--include-suspects");
 const BATCH_SIZE = 25;
 const ITEM_DELAY_MS = 250;
 const BATCH_DELAY_MS = 3_000;
@@ -74,6 +76,23 @@ type Target = {
 
 function missingLink(value: string | null): boolean {
   return !value || !value.trim() || value.trim().startsWith("/uploads/");
+}
+
+// סינון ספק-זבל ל-Phase 1: קבצים שכנראה אינם מסמכים (לוגו/חתימת מייל/תמונת
+// פוסט) לא מועלים כברירת מחדל — Gmail נשאר הארכיון שלהם. PDF תמיד עובר.
+// תמונה עוברת רק אם שם הקובץ לא זבל-מובהק וגם יש ספק תקין או סכום חיובי.
+const SUSPECT_IMAGE_NAME = /logo|banner|icon|signature|footer|header|avatar|^image0*\d+\.|^post_?\d+|\.gif$/i;
+function isSuspectFile(target: Target): boolean {
+  const name = target.filename.toLowerCase();
+  const mime = (target.mimeType ?? "").toLowerCase();
+  const isPdf = mime === "application/pdf" || name.endsWith(".pdf");
+  if (isPdf) return false;
+  const isImage = mime.startsWith("image/") || /\.(jpe?g|png|webp|gif|bmp|tiff?)$/i.test(name);
+  if (!isImage) return true; // html/ics/וכו' — לא מסמך חשבונית
+  if (SUSPECT_IMAGE_NAME.test(name)) return true;
+  const supplierOk = isUsableSupplierNameShared(target.metadata.supplierName);
+  const amountOk = typeof target.metadata.totalAmount === "number" && target.metadata.totalAmount > 0;
+  return !supplierOk && !amountOk;
 }
 
 async function propagateLink(target: Target, link: string) {
@@ -198,12 +217,22 @@ async function main() {
   }
 
   const propagateOnly = targets.filter((t) => t.driveLink && !missingLink(t.driveLink));
-  const needUpload = targets.filter((t) => missingLink(t.driveLink)).slice(0, LIMIT);
+  const uploadCandidates = targets.filter((t) => missingLink(t.driveLink));
+  const suspects = uploadCandidates.filter((t) => isSuspectFile(t));
+  const clean = uploadCandidates.filter((t) => !isSuspectFile(t));
+  const needUpload = (INCLUDE_SUSPECTS ? uploadCandidates : clean).slice(0, LIMIT);
   const byOrg = new Map<string, Target[]>();
   for (const t of needUpload) byOrg.set(t.organizationId, [...(byOrg.get(t.organizationId) ?? []), t]);
 
   console.log(`Phase 0 — הפצת קישור קיים בלבד (בלי API): ${propagateOnly.length} צרופות`);
-  console.log(`Phase 1 — הורדה מ-Gmail + העלאה ל-Drive: ${needUpload.length} צרופות (limit=${LIMIT}) ב-${byOrg.size} ארגונים`);
+  console.log(`Phase 1 — מועמדים להורדה+העלאה: ${uploadCandidates.length} | נקיים: ${clean.length} | ספק-זבל (מדולגים${INCLUDE_SUSPECTS ? " — נכללים עם --include-suspects" : ""}): ${suspects.length}`);
+  console.log(`Phase 1 — ירוצו בפועל: ${needUpload.length} (limit=${LIMIT}) ב-${byOrg.size} ארגונים`);
+  if (suspects.length) {
+    console.log("--- דוגמיות ספק-זבל (עד 15, נשארים ב-Gmail — לא אבודים) ---");
+    for (const t of suspects.slice(0, 15)) {
+      console.log(`  SUSPECT "${t.filename}" | supplier="${t.metadata.supplierName}" | amount=${t.metadata.totalAmount ?? "-"}`);
+    }
+  }
   const depTotals = targets.reduce(
     (acc, t) => ({ gsi: acc.gsi + t.dependents.gsi, fdr: acc.fdr + t.dependents.fdr, payments: acc.payments + t.dependents.payments }),
     { gsi: 0, fdr: 0, payments: 0 }
