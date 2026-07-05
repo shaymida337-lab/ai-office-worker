@@ -24,6 +24,7 @@ const labels: Record<LabelDomain, Record<string, string>> = {
     unpaid: "ממתין לתשלום",
     pending: "ממתין לתשלום",
     missing_invoice: "חסרה חשבונית",
+    needs_review: "דורש בדיקה",
   },
   scanStatus: {
     draft: "טיוטה",

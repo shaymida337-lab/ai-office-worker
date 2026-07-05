@@ -22,3 +22,14 @@ test("buildMorningGreeting welcomes returning users", () => {
   });
   assert.match(greeting.headline, /ברוך הבא חזרה, שי/);
 });
+
+test("buildMorningGreeting uses stable headline before client clock is ready", () => {
+  const greeting = buildMorningGreeting({
+    ownerFirstName: "שי",
+    returningUser: true,
+    hasWorkToday: true,
+    clockReady: false,
+    now: new Date("2026-07-02T08:00:00"),
+  });
+  assert.equal(greeting.headline, "שלום, שי");
+});

@@ -8,6 +8,8 @@ type BuildMorningGreetingInput = {
   returningUser?: boolean;
   hasWorkToday?: boolean;
   now?: Date;
+  /** When false, avoid time-of-day text so SSR and client hydration match. */
+  clockReady?: boolean;
 };
 
 function greetingPrefix(now: Date, returningUser: boolean): string {
@@ -22,12 +24,19 @@ function greetingPrefix(now: Date, returningUser: boolean): string {
 }
 
 export function buildMorningGreeting(input: BuildMorningGreetingInput): MorningGreeting {
-  const now = input.now ?? new Date();
-  const returningUser = Boolean(input.returningUser);
-  const prefix = greetingPrefix(now, returningUser);
   const name = input.ownerFirstName?.trim();
-  const emoji = returningUser ? "" : " 👋";
-  const headline = name ? `${prefix}, ${name}${emoji}` : `${prefix}${emoji}`;
+  const returningUser = Boolean(input.returningUser);
+  const clockReady = input.clockReady !== false;
+
+  let headline: string;
+  if (!clockReady) {
+    headline = name ? `שלום, ${name}` : "שלום";
+  } else {
+    const now = input.now ?? new Date();
+    const prefix = greetingPrefix(now, returningUser);
+    const emoji = returningUser ? "" : " 👋";
+    headline = name ? `${prefix}, ${name}${emoji}` : `${prefix}${emoji}`;
+  }
 
   const leadIn = input.hasWorkToday
     ? "הנה מה שכבר עשיתי עבורך היום"

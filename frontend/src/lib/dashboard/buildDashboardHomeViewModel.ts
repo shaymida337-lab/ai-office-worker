@@ -84,6 +84,8 @@ export type BuildDashboardHomeViewModelInput = {
   recentInvoices: RecentInvoice[];
   whatsAppStats: WhatsAppAssistantStats | null;
   firstVisitMode: boolean;
+  clientMounted?: boolean;
+  systemHealthFetchFailed?: boolean;
 };
 
 export type DashboardHomeViewModel = {
@@ -145,7 +147,12 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     recentInvoices,
     whatsAppStats,
     firstVisitMode,
+    clientMounted = false,
+    systemHealthFetchFailed = false,
   } = input;
+
+  const clockReady = clientMounted && !pageLoading;
+  const isToday = (value: string) => clockReady && isTodayValue(value);
 
   const gmailApiConnected = Boolean(gmailStatus?.connected);
   const gmailActivityEvidence = hasGmailActivityEvidence({
@@ -163,7 +170,9 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     hasGmailActivityEvidence: gmailActivityEvidence,
   });
 
-  const ownerFirstName = getFirstNameForGreeting(organizationSettings?.name) ?? firstNameFromLabel(organizationSettings?.name);
+  const ownerFirstName = clockReady
+    ? getFirstNameForGreeting(organizationSettings?.name) ?? firstNameFromLabel(organizationSettings?.name)
+    : firstNameFromLabel(organizationSettings?.name);
   const scanBanner = buildScanBannerState(activeScan, scanStatus);
   const scanStale = scanBanner?.status === "stale";
   const monthPayments = payments.filter((payment) => isThisMonth(payment.date));
@@ -208,6 +217,8 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     scannedEmails: activeScan?.emailsFetched ?? scanStatus?.last?.found ?? null,
     extractedDocuments: activeScan?.documentsFound ?? scanStatus?.last?.saved ?? null,
     backendHealthy: systemHealth ? systemHealth.allPassed : undefined,
+    backendHealthFetchFailed: systemHealthFetchFailed,
+    clockReady,
   });
   const heroTrust = dashboardSyncState.heroTrust;
   const dashboardSurfaces = buildDashboardSyncSurfaces(dashboardSyncState, {
@@ -336,15 +347,15 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
   const natalieRecommendation = resolveNatalieRecommendation(recommendationInput);
 
   const lastScanToday =
-    scanStatus?.last?.endedAt && isTodayValue(scanStatus.last.endedAt) ? scanStatus.last : null;
+    scanStatus?.last?.endedAt && isToday(scanStatus.last.endedAt) ? scanStatus.last : null;
   const alreadyWorkedSummary = buildAlreadyWorkedSummary({
     gmailConnected: gmailConnection.phase !== "disconnected",
     scanRunning,
     emailsScanned: lastScanToday?.found ?? activeScan?.emailsFetched,
     invoicesFound: lastScanToday?.invoicesFound ?? activeScan?.invoicesFound,
-    paymentsUpdated: payments.filter((payment) => payment.paid && isTodayValue(payment.date)).length,
-    appointmentsSet: upcomingAppointments.filter((appt) => isTodayValue(appt.startTime)).length,
-    tasksCreated: recentTasks.filter((task) => isTodayValue(task.updatedAt)).length,
+    paymentsUpdated: clockReady ? payments.filter((payment) => payment.paid && isTodayValue(payment.date)).length : 0,
+    appointmentsSet: clockReady ? upcomingAppointments.filter((appt) => isTodayValue(appt.startTime)).length : 0,
+    tasksCreated: clockReady ? recentTasks.filter((task) => isTodayValue(task.updatedAt)).length : 0,
     newDocuments: documentReviews.length,
   });
 
@@ -364,6 +375,7 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     ownerFirstName,
     returningUser: !firstVisitMode && !pageLoading,
     hasWorkToday: decisionItems.length > 0 || yourDayItems.some((item) => item.urgency !== "calm"),
+    clockReady,
   });
 
   const heroBriefing = buildHeroBriefing({
@@ -379,10 +391,10 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     gmailConnectionPhase: gmailConnection.phase,
     gmailConnected: gmailApiConnected,
     scanRunning,
-    hasAppointmentsToday: upcomingAppointments.some((appt) => isTodayValue(appt.startTime)),
+    hasAppointmentsToday: clockReady && upcomingAppointments.some((appt) => isTodayValue(appt.startTime)),
     pendingPayments: unpaidPayments.length,
     pendingDocuments: documentReviews.length,
-    monthEndApproaching: isMonthEndApproaching(),
+    monthEndApproaching: clockReady ? isMonthEndApproaching() : false,
   });
 
   const snapshotMetrics = buildSnapshotMetrics({ stats, pageLoading });

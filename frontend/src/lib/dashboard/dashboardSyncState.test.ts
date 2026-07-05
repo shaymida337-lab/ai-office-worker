@@ -204,3 +204,37 @@ test("error survives refresh semantics via persistent reconnect state", () => {
   assert.equal(state.status, "ERROR");
   assert.equal(state.displayError, state.message);
 });
+
+test("health subcomponent failure does not show server unavailable banner", () => {
+  const state = resolveDashboardSyncState(
+    baseInput({
+      backendHealthy: false,
+      backendHealthFetchFailed: false,
+    })
+  );
+  assert.equal(state.status, "CONNECTED");
+  assert.equal(state.reason, null);
+  assert.equal(state.displayError, null);
+});
+
+test("health fetch failure shows server unavailable banner", () => {
+  const state = resolveDashboardSyncState(
+    baseInput({
+      backendHealthy: undefined,
+      backendHealthFetchFailed: true,
+    })
+  );
+  assert.equal(state.status, "ERROR");
+  assert.match(state.reason ?? "", /השרת אינו זמין/);
+});
+
+test("relative last scan time is stable before client clock is ready", () => {
+  const state = resolveDashboardSyncState(
+    baseInput({
+      clockReady: false,
+      lastSuccessfulScanAt: new Date(Date.now() - 18_000).toISOString(),
+    })
+  );
+  const lastScan = state.healthRows.find((row) => row.key === "lastScan");
+  assert.equal(lastScan?.value, "לא זמין");
+});

@@ -81,6 +81,7 @@ export function useDashboardHome() {
   const [whatsAppStats, setWhatsAppStats] = useState<WhatsAppAssistantStats | null>(null);
   const [accountantSummary, setAccountantSummary] = useState<AccountantSummary | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [systemHealthFetchFailed, setSystemHealthFetchFailed] = useState(false);
   const [systemChecking, setSystemChecking] = useState(false);
   const [showSystemCheck, setShowSystemCheck] = useState(false);
   const [whatsAppScanRange, setWhatsAppScanRange] = useState("30");
@@ -271,6 +272,7 @@ export function useDashboardHome() {
       }
 
       setSystemHealth(systemResult.status === "fulfilled" ? systemResult.value : null);
+      setSystemHealthFetchFailed(systemResult.status !== "fulfilled");
       setAccountantSummary(accountantResult.status === "fulfilled" ? accountantResult.value : null);
       apiFetch<WhatsAppAssistantStats>("/api/whatsapp-assistant/stats").then(setWhatsAppStats).catch(() => undefined);
       setLastUpdatedAt(new Date());
@@ -750,6 +752,8 @@ export function useDashboardHome() {
         recentInvoices,
         whatsAppStats,
         firstVisitMode,
+        clientMounted,
+        systemHealthFetchFailed,
       }),
     [
       pageLoading,
@@ -782,6 +786,8 @@ export function useDashboardHome() {
       recentInvoices,
       whatsAppStats,
       firstVisitMode,
+      clientMounted,
+      systemHealthFetchFailed,
     ]
   );
 

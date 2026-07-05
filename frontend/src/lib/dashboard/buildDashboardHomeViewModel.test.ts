@@ -217,3 +217,14 @@ test("sync state reflects scan running input", () => {
   assert.equal(vm.dashboardSyncState.status, "SYNCING");
   assert.equal(vm.scanRunning, true);
 });
+
+test("view model keeps greeting stable before client mount", () => {
+  const vm = buildDashboardHomeViewModel(
+    minimalInput({
+      clientMounted: false,
+      organizationSettings: { name: "שי" } as BuildDashboardHomeViewModelInput["organizationSettings"],
+    })
+  );
+
+  assert.equal(vm.morningGreeting.headline, "שלום, שי");
+});

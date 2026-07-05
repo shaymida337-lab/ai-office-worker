@@ -78,6 +78,8 @@ export type DashboardSyncStateInput = {
   extractedDocuments?: number | null;
   aiHealthy?: boolean;
   backendHealthy?: boolean;
+  backendHealthFetchFailed?: boolean;
+  clockReady?: boolean;
 };
 
 function isCheckingState(input: DashboardSyncStateInput): boolean {
@@ -110,7 +112,7 @@ function resolveErrorReason(input: DashboardSyncStateInput): string | null {
   if (input.backendError?.trim()) {
     return input.backendError.trim();
   }
-  if (input.backendHealthy === false) {
+  if (input.backendHealthFetchFailed) {
     return "השרת אינו זמין כרגע";
   }
   return null;
@@ -198,8 +200,9 @@ function buildHeroTrust(input: {
   };
 }
 
-function formatRelativeTime(value: string | null | undefined): string {
+function formatRelativeTime(value: string | null | undefined, clockReady = true): string {
   if (!value) return "לא זמין";
+  if (!clockReady) return "לא זמין";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "לא זמין";
   const diffMs = Date.now() - date.getTime();
@@ -322,7 +325,7 @@ export function resolveDashboardSyncState(input: DashboardSyncStateInput): Dashb
     {
       key: "lastScan",
       label: "סריקה אחרונה",
-      value: formatRelativeTime(input.lastSuccessfulScanAt ?? input.lastSyncAt ?? null),
+      value: formatRelativeTime(input.lastSuccessfulScanAt ?? input.lastSyncAt ?? null, input.clockReady !== false),
     },
     {
       key: "documents",
