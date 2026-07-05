@@ -7,18 +7,20 @@
 :root {
   --font-heebo: "Heebo";
   --font-inter: "Inter";
+  /* הערכים מסונכרנים עם design-system/tokens/colors.ts (semanticColorsLight) —
+     אל תשנה כאן בלי לעדכן שם. איחוד שכבות הטוקנים: docs/token-unification-plan.md */
   --bg-primary: #f4f6fb;
   --bg-secondary: #ffffff;
   --bg-card: #ffffff;
-  --bg-hover: #eaf0ff;
-  --border: #e6eaf2;
-  --border-subtle: #edf1f7;
+  --bg-hover: #f0f4ff;
+  --border: #dde3ee;
+  --border-subtle: #e8edf5;
   --accent-primary: #1d5bff;
   --accent-secondary: #1746c7;
   --accent-gradient: linear-gradient(135deg, #1d5bff, #1746c7);
-  --text-primary: #0e1116;
-  --text-secondary: #6b7686;
-  --text-muted: #8a94a6;
+  --text-primary: #0a0d12;
+  --text-secondary: #4b5563;
+  --text-muted: #5c6678;
   --success: #1faa59;
   --warning: #f5a623;
   --error: #dc2626;

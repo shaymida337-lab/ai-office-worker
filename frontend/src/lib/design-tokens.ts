@@ -1,30 +1,12 @@
 // MOBILE RULES: mobile-first; touch targets ≥56px buttons; no horizontal scroll; KPI grids are grid-cols-2 md:grid-cols-4.
-export const colors = {
-  bg: "#F4F6FB",
-  bgSoft: "#EEF2FA",
-  surface: "#FFFFFF",
-  border: "#DDE3EE",
-  borderSubtle: "#E8EDF5",
-  textPrimary: "#0A0D12",
-  textSecondary: "#4B5563",
-  textMuted: "#5C6678",
-  accent: "#1D5BFF",
-  accentHover: "#1746C7",
-  accentSoft: "#E8EEFF",
-  accentMuted: "#F0F4FF",
-  successText: "#065F46",
-  successBg: "#ECFDF5",
-  successBorder: "#6EE7B7",
-  warnText: "#92400E",
-  warnBg: "#FFFBEB",
-  warnBorder: "#FCD34D",
-  dangerText: "#991B1B",
-  dangerBg: "#FEF2F2",
-  dangerBorder: "#FCA5A5",
-  infoText: "#1E40AF",
-  infoBg: "#EFF6FF",
-  infoBorder: "#93C5FD",
-} as const;
+import { legacyColorMap } from "@/design-system/tokens/colors";
+
+/**
+ * מקור האמת לצבעים: design-system/tokens/colors (איחוד שכבות הטוקנים, שלב 1
+ * של מבצע ייצוב המסכים). הקובץ הזה נשאר ה-API שכל המסכים צורכים —
+ * אותם שמות שדות בדיוק — אבל הערכים מגיעים מהמערכת הסמנטית.
+ */
+export const colors = legacyColorMap;
 
 export const radius = {
   card: "rounded-2xl",

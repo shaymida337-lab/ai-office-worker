@@ -736,7 +736,7 @@ function GmailIntegrationCard({
           </button>
         </div>
       ) : connection.state === "Disconnected" ? (
-        <button type="button" className="btn min-h-[56px] w-full bg-[#2563EB] text-base shadow-[0_16px_32px_rgba(37,99,235,0.35)] hover:bg-[#1D4ED8]" onClick={onConnect}>
+        <button type="button" className="btn min-h-[56px] w-full text-base" onClick={onConnect}>
           חבר ג׳ימייל
         </button>
       ) : null}
