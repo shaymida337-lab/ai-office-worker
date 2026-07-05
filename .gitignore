@@ -52,3 +52,9 @@ frontend/_visual-qa/phase*-compare/
 frontend/_visual-qa/phase*-live-*/
 frontend/_visual-qa/*-report.json
 frontend/test-results/
+
+# Local artifacts that keep reappearing (repo cleanup)
+*build-output.txt
+*test-output.txt
+*-report.json
+_deploy-check.html
