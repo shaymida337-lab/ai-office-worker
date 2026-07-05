@@ -4,10 +4,15 @@ import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import {
   findClientByWhatsAppNumber,
-  findOrCreateClientByWhatsAppNumber,
   getWhatsAppConfigurationStatus,
   normalizeWhatsAppNumber,
 } from "../services/whatsapp.js";
+import {
+  buildWhatsAppWebhookLogContext,
+  WHATSAPP_GENERIC_ERROR_MESSAGE,
+  WHATSAPP_MEDIA_DOWNLOAD_FAILED_MESSAGE,
+  WHATSAPP_UNMAPPED_SENDER_MESSAGE,
+} from "../services/whatsappSafety.js";
 import { handleClientMessage, handleOwnerMessage } from "../services/whatsappChatEngine.js";
 import { analyzeAndSaveMessage } from "../services/messageScanner.js";
 import { ingestWhatsAppInvoiceMedia, parseTwilioMedia } from "../services/whatsappInvoiceIngestion.js";
@@ -53,7 +58,7 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
     return;
   }
 
-  if (!isValidTwilioSignature(req, signature)) {
+  if (!verifyTwilioWebhookSignature(req, signature)) {
     res.status(403).send("Invalid Twilio signature");
     return;
   }
@@ -66,19 +71,23 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
   const profileName = typeof req.body.ProfileName === "string" ? req.body.ProfileName : undefined;
   const normalizedFrom = normalizeWhatsAppNumber(from);
   const normalizedTo = normalizeWhatsAppNumber(to || config.twilio.whatsappFrom);
-  console.log("[webhook] WhatsApp message received", {
-    sid: messageSid,
-    from: normalizedFrom,
-    to: normalizedTo,
-    configuredSandboxNumber: config.twilio.whatsappFrom,
-    mediaCount: media.length,
-    bodyPreview: body.slice(0, 240),
-    processingEnabled: config.twilio.messageProcessingEnabled,
-    mediaIngestionEnabled: config.twilio.mediaIngestionEnabled,
-    autoReplyEnabled: config.twilio.autoReplyEnabled,
-    createClientsEnabled: config.twilio.createClientsEnabled,
-    path: req.originalUrl,
-  });
+  console.log(
+    "[webhook] WhatsApp message received",
+    buildWhatsAppWebhookLogContext({
+      sid: messageSid,
+      from: normalizedFrom,
+      to: normalizedTo,
+      mediaCount: media.length,
+      body,
+      extra: {
+        configuredSandboxNumber: maskWhatsAppWebhookNumber(config.twilio.whatsappFrom),
+        processingEnabled: config.twilio.messageProcessingEnabled,
+        mediaIngestionEnabled: config.twilio.mediaIngestionEnabled,
+        autoReplyEnabled: config.twilio.autoReplyEnabled,
+        path: req.originalUrl,
+      },
+    })
+  );
 
   if (!config.twilio.messageProcessingEnabled) {
     res.type("text/xml").send(new twilio.twiml.MessagingResponse().toString());
@@ -88,17 +97,23 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
   const twiml = new twilio.twiml.MessagingResponse();
   const configuredSandboxNumber = normalizeWhatsAppNumber(config.twilio.whatsappFrom);
   if (normalizedTo !== configuredSandboxNumber) {
-    console.log("[webhook] WhatsApp inbound ignored because it was not sent to the configured Twilio Sandbox number", {
-      sid: messageSid,
-      from: normalizedFrom,
-      to: normalizedTo,
-      configuredSandboxNumber,
-    });
+    console.log(
+      "[webhook] WhatsApp inbound ignored because it was not sent to the configured Twilio Sandbox number",
+      buildWhatsAppWebhookLogContext({
+        sid: messageSid,
+        from: normalizedFrom,
+        to: normalizedTo,
+        mediaCount: media.length,
+        extra: { configuredSandboxNumber: maskWhatsAppWebhookNumber(configuredSandboxNumber) },
+      })
+    );
     res.type("text/xml").send(twiml.toString());
     return;
   }
   const assistant = await findAssistantByOwnerPhone(normalizedFrom);
-  console.log(`[webhook] WhatsApp inbound accepted sid=${messageSid} from=${normalizedFrom} media=${media.length} path=${req.originalUrl}`);
+  console.log(
+    `[webhook] WhatsApp inbound accepted sid=${messageSid} from=${maskWhatsAppWebhookNumber(normalizedFrom)} media=${media.length} path=${req.originalUrl}`
+  );
 
   if (assistant) {
     const inboundLog = await createInboundWhatsAppLogOnce({
@@ -220,84 +235,40 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
     return;
   }
 
-  if (!config.twilio.createClientsEnabled) {
-    console.log("[webhook] WhatsApp inbound ignored because client creation is disabled", {
-      sid: messageSid,
-      from: normalizedFrom,
-      to: normalizedTo,
-    });
-    res.type("text/xml").send(twiml.toString());
-    return;
+  await handleUnmappedWhatsAppSender({
+    twiml,
+    res,
+    messageSid,
+    normalizedFrom,
+    normalizedTo,
+    profileName,
+  });
+}
+
+export async function handleUnmappedWhatsAppSender(input: {
+  twiml: twilio.twiml.MessagingResponse;
+  res: Response;
+  messageSid: string;
+  normalizedFrom: string;
+  normalizedTo: string;
+  profileName?: string;
+}) {
+  console.log(
+    "[webhook] WhatsApp unmapped sender — no assistant/client match; no data written",
+    buildWhatsAppWebhookLogContext({
+      sid: input.messageSid,
+      from: input.normalizedFrom,
+      to: input.normalizedTo,
+      mediaCount: 0,
+      extra: { profileNamePresent: Boolean(input.profileName?.trim()) },
+    })
+  );
+
+  if (config.twilio.autoReplyEnabled) {
+    input.twiml.message(WHATSAPP_UNMAPPED_SENDER_MESSAGE);
   }
 
-  const organization = await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
-  if (organization) {
-    if (await hasProcessedInboundWhatsAppMessage(organization.id, messageSid)) {
-      console.log("[webhook] WhatsApp duplicate webhook skipped", {
-        organizationId: organization.id,
-        sid: messageSid,
-      });
-      res.type("text/xml").send(twiml.toString());
-      return;
-    }
-    const inboundLog = await createInboundWhatsAppLogOnce({
-      organizationId: organization.id,
-      body,
-      fromNumber: normalizedFrom,
-      toNumber: config.twilio.whatsappFrom,
-      providerMessageSid: messageSid,
-      mediaCount: media.length,
-      mediaJson: media,
-    });
-    if (inboundLog.duplicate) {
-      res.type("text/xml").send(twiml.toString());
-      return;
-    }
-    if (!(await shouldContinueAfterWhatsAppJunkGate({
-      organizationId: organization.id,
-      whatsappLogId: inboundLog.id,
-      fromNumber: normalizedFrom,
-      body,
-      media,
-    }))) {
-      res.type("text/xml").send(twiml.toString());
-      return;
-    }
-    const { client: newClient, created } = await findOrCreateClientByWhatsAppNumber(organization.id, normalizedFrom, profileName);
-    await prisma.whatsAppLog.update({
-      where: { id: inboundLog.id },
-      data: { clientId: newClient.id },
-    });
-    await scanWhatsAppMessage(organization.id, inboundLog.id, normalizedFrom, body, true);
-    const mediaResult = config.twilio.mediaIngestionEnabled ? await safeMediaIngestion({
-      organizationId: organization.id,
-      clientId: newClient.id,
-      whatsappLogId: inboundLog.id,
-      fromNumber: normalizedFrom,
-      body,
-      media,
-    }) : { reply: null };
-    if (config.twilio.autoReplyEnabled) {
-      const reply = mediaResult.reply ?? await safeReply(() => handleClientMessage(body, newClient.id, organization.id, normalizedFrom));
-      twiml.message(created ? `שלום ${newClient.name}, קיבלנו את ההודעה ונפתח לך כרטיס לקוח במערכת.\n${reply}` : reply);
-      await prisma.whatsAppLog.create({
-        data: {
-          organizationId: organization.id,
-          clientId: newClient.id,
-          direction: "outbound",
-          body: created ? `שלום ${newClient.name}, קיבלנו את ההודעה ונפתח לך כרטיס לקוח במערכת.\n${reply}` : reply,
-          fromNumber: config.twilio.whatsappFrom,
-          toNumber: normalizedFrom,
-          aiGenerated: true,
-          read: true,
-        },
-      });
-    }
-    res.type("text/xml").send(twiml.toString());
-    return;
-  }
-
-  res.type("text/xml").send(twiml.toString());
+  input.res.type("text/xml").send(input.twiml.toString());
 }
 
 async function handleStripeWebhook(req: Request, res: Response) {
@@ -448,7 +419,7 @@ function isUsableProviderMessageSid(value: string | null | undefined) {
   return Boolean(sid && sid !== "unknown");
 }
 
-function isValidTwilioSignature(req: Request, signature: string) {
+export function verifyTwilioWebhookSignature(req: Request, signature: string) {
   if (!config.twilio.authToken) return false;
   const protocol = String(req.headers["x-forwarded-proto"] ?? req.protocol ?? "https").split(",")[0];
   const host = req.headers["x-forwarded-host"] ?? req.headers.host;
@@ -462,12 +433,21 @@ function isValidTwilioSignature(req: Request, signature: string) {
   return candidates.some((url) => validateRequest(config.twilio.authToken!, signature, url, req.body));
 }
 
+function maskWhatsAppWebhookNumber(phone: string) {
+  return buildWhatsAppWebhookLogContext({
+    sid: "n/a",
+    from: phone,
+    to: phone,
+    mediaCount: 0,
+  }).from;
+}
+
 async function safeReply(run: () => Promise<string>) {
   try {
     return await run();
   } catch (err) {
     console.error("[webhook] WhatsApp assistant reply failed", err);
-    return "תודה על ההודעה. הייתה תקלה רגעית, נסה שוב בעוד דקה.";
+    return WHATSAPP_GENERIC_ERROR_MESSAGE;
   }
 }
 
@@ -490,7 +470,7 @@ async function safeMediaIngestion(input: Parameters<typeof ingestWhatsAppInvoice
     return {
       processed: [],
       skipped: input.media.length,
-      reply: "קיבלתי את הקובץ, אבל הייתה תקלה בשמירה או חילוץ הנתונים. נסה לשלוח שוב בעוד רגע.",
+      reply: WHATSAPP_MEDIA_DOWNLOAD_FAILED_MESSAGE,
     };
   }
 }

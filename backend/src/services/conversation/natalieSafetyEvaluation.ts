@@ -62,7 +62,7 @@ export function evaluateNatalieSafety(input: {
     confirmationRequired: confirmation.required,
     executionReady,
     violations: zeroWrong.violations,
-    denialReason: confirmation.allowed ? null : confirmation.denialReason,
+    denialReason: confirmation.allowed ? null : (confirmation.denialReason ?? null),
   };
 }
 

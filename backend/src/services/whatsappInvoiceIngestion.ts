@@ -17,6 +17,7 @@ import { computeCanonicalFingerprint, matchFinancialDocuments, type DedupMatchRe
 import { buildLegacyFileDuplicateHashForLookup, buildPaymentLookupsFromCanonical } from "./dedup/fingerprintMigration.js";
 import { resolveWhatsAppMoneyDecision, summarizeMoneyDecision } from "./amount/amountCandidates.js";
 import { classifyBusinessDocument, pipelineActionForClassification } from "./classification/classifier.js";
+import { maskSupplierForLog } from "./whatsappSafety.js";
 
 type WhatsAppMediaInput = {
   organizationId: string;
@@ -76,7 +77,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput) {
     const fileMd5 = md5(buffer);
     console.log(`[whatsapp-invoice] extraction start logId=${input.whatsappLogId} index=${index} filename="${filename}" mime=${mimeType} bytes=${buffer.length}`);
     const analysis = await analyzeWhatsAppDocument({ body: input.body, filename, mimeType, buffer, fromNumber: input.fromNumber });
-    console.log(`[whatsapp-invoice] extraction done logId=${input.whatsappLogId} supplier="${analysis.supplier}" supplierTaxId=${analysis.supplierTaxId ?? "null"} amount=${analysis.amount ?? "null"} invoiceNumber=${analysis.invoiceNumber ?? "null"} invoiceDate=${analysis.invoiceDate ?? "null"} dueDate=${analysis.dueDate ?? "null"} documentType=${analysis.documentType} confidence=${analysis.confidence}`);
+    console.log(`[whatsapp-invoice] extraction done logId=${input.whatsappLogId} supplier="${maskSupplierForLog(analysis.supplier)}" amount=${analysis.amount ?? "null"} invoiceNumber=${analysis.invoiceNumber ? "present" : "null"} documentType=${analysis.documentType} confidence=${analysis.confidence}`);
 
     // F4: גבול שפיות ±2 שנים על תאריכים — זהה למסלול Gmail, דרך המודול המשותף.
     // תאריך מחוץ לטווח מתאפס ל-null (ולא נשמר כתאריך עתידי/עתיק שגוי).
@@ -617,23 +618,14 @@ async function findSupplierClientForWhatsAppDocument(input: {
   }
 
   if (!config.twilio.createClientsEnabled) {
-    console.log(`[whatsapp-invoice] supplier client creation disabled supplier="${input.supplier}" from=${input.fromNumber}`);
+    console.log(`[whatsapp-invoice] supplier client not linked supplier="${maskSupplierForLog(input.supplier)}"`);
     return null;
   }
 
-  const digits = input.fromNumber.replace(/\D/g, "").slice(-10) || String(Date.now());
-  const created = await prisma.client.create({
-    data: {
-      organizationId: input.organizationId,
-      name: input.supplier,
-      email: `whatsapp-supplier-${digits}@whatsapp.local`,
-      firstSeen: new Date(),
-      lastSeen: new Date(),
-      color: "#F59E0B",
-    },
-    select: { id: true },
-  });
-  return created.id;
+  console.warn(
+    `[whatsapp-invoice] supplier client auto-create blocked for pilot safety supplier="${maskSupplierForLog(input.supplier)}"`
+  );
+  return null;
 }
 
 async function upsertWhatsAppInvoiceRecord(input: {
