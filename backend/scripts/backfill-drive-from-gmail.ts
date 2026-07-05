@@ -114,41 +114,62 @@ async function main() {
   console.log(`backfill-drive-from-gmail | ${new Date().toISOString()} | mode=${APPLY ? "APPLY" : "DRY-RUN"} | limit=${LIMIT}`);
   if (!APPLY) console.log("(dry-run: אפס הורדות/העלאות/כתיבות. לביצוע: --apply)\n");
 
-  // ── בחירת מטרות: צרופות עם עוגן Gmail + רשומות תלויות חסרות קישור ──
-  const attachments = await prisma.emailAttachment.findMany({
-    where: { gmailAttachmentId: { not: null } },
-    select: {
-      id: true, gmailAttachmentId: true, filename: true, mimeType: true, driveLink: true,
-      emailMessage: { select: { id: true, organizationId: true, gmailId: true, receivedAt: true } },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  // ── בחירת מטרות ב-4 שאילתות bulk (לא N+1 — בפרודקשן זה ההבדל בין
+  //    שניות לשעות: אין אינדקס על gmailMessageId ב-FDR, ו-connection_limit=1) ──
+  const [attachments, gsiAll, fdrAll, paymentsAll] = await Promise.all([
+    prisma.emailAttachment.findMany({
+      where: { gmailAttachmentId: { not: null } },
+      select: {
+        id: true, gmailAttachmentId: true, filename: true, mimeType: true, driveLink: true,
+        emailMessage: { select: { id: true, organizationId: true, gmailId: true, receivedAt: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.gmailScanItem.findMany({
+      where: { driveFileLink: null },
+      select: { organizationId: true, emailMessageId: true, gmailMessageId: true, supplierName: true, documentType: true, amount: true, reviewStatus: true, normalizedDocumentDate: true },
+    }),
+    prisma.financialDocumentReview.findMany({
+      where: { driveFileUrl: null },
+      select: { organizationId: true, emailMessageId: true, gmailMessageId: true, supplierName: true, documentType: true, totalAmount: true, invoiceNumber: true, documentDate: true, reviewStatus: true },
+    }),
+    prisma.supplierPayment.findMany({
+      where: { driveFileUrl: null, documentLink: null, invoiceLink: null, emailMessageId: { not: null } },
+      select: { organizationId: true, emailMessageId: true, supplier: true, amount: true, invoiceNumber: true, date: true },
+    }),
+  ]);
+  console.log(`נטענו: ${attachments.length} צרופות עם עוגן Gmail | חסרות-קישור: GSI=${gsiAll.length} FDR=${fdrAll.length} Payments=${paymentsAll.length}`);
+
+  // אינדוקס בזיכרון לפי org|emailMessageId ו-org|gmailMessageId
+  function indexRows<T extends { organizationId: string; emailMessageId?: string | null; gmailMessageId?: string | null }>(rows: T[]) {
+    const map = new Map<string, T[]>();
+    for (const row of rows) {
+      if (row.emailMessageId) {
+        const k = `${row.organizationId}|e|${row.emailMessageId}`;
+        map.set(k, [...(map.get(k) ?? []), row]);
+      }
+      if (row.gmailMessageId) {
+        const k = `${row.organizationId}|g|${row.gmailMessageId}`;
+        map.set(k, [...(map.get(k) ?? []), row]);
+      }
+    }
+    return map;
+  }
+  const gsiIndex = indexRows(gsiAll);
+  const fdrIndex = indexRows(fdrAll);
+  const paymentIndex = indexRows(paymentsAll);
+  function lookup<T>(index: Map<string, T[]>, organizationId: string, emailMessageId: string, gmailId: string): T[] {
+    const byEmail = index.get(`${organizationId}|e|${emailMessageId}`) ?? [];
+    const byGmail = index.get(`${organizationId}|g|${gmailId}`) ?? [];
+    return byEmail.length || byGmail.length ? [...new Set([...byEmail, ...byGmail])] : [];
+  }
 
   const targets: Target[] = [];
   for (const att of attachments) {
     const { organizationId } = att.emailMessage;
-    const [gsiRows, fdrRows, paymentRows] = await Promise.all([
-      prisma.gmailScanItem.findMany({
-        where: {
-          organizationId,
-          OR: [{ emailMessageId: att.emailMessage.id }, { gmailMessageId: att.emailMessage.gmailId }],
-          driveFileLink: null,
-        },
-        select: { id: true, supplierName: true, documentType: true, amount: true, reviewStatus: true, normalizedDocumentDate: true },
-      }),
-      prisma.financialDocumentReview.findMany({
-        where: {
-          organizationId,
-          OR: [{ emailMessageId: att.emailMessage.id }, { gmailMessageId: att.emailMessage.gmailId }],
-          driveFileUrl: null,
-        },
-        select: { id: true, supplierName: true, documentType: true, totalAmount: true, invoiceNumber: true, documentDate: true, reviewStatus: true },
-      }),
-      prisma.supplierPayment.findMany({
-        where: { organizationId, emailMessageId: att.emailMessage.id, driveFileUrl: null, documentLink: null, invoiceLink: null },
-        select: { id: true, supplier: true, amount: true, invoiceNumber: true, date: true },
-      }),
-    ]);
+    const gsiRows = lookup(gsiIndex, organizationId, att.emailMessage.id, att.emailMessage.gmailId);
+    const fdrRows = lookup(fdrIndex, organizationId, att.emailMessage.id, att.emailMessage.gmailId);
+    const paymentRows = lookup(paymentIndex, organizationId, att.emailMessage.id, att.emailMessage.gmailId);
     if (!gsiRows.length && !fdrRows.length && !paymentRows.length) continue; // אין תלויות חסרות — לא נוגעים
 
     const fdr = fdrRows[0];
