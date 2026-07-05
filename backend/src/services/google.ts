@@ -59,6 +59,25 @@ export async function getGoogleClients(organizationId: string) {
   };
 }
 
+export type GoogleClients = Awaited<ReturnType<typeof getGoogleClients>>;
+
+export async function getGoogleClientsIfAvailable(
+  organizationId: string,
+  context = "optional_google_clients"
+): Promise<GoogleClients | null> {
+  try {
+    return await getGoogleClients(organizationId);
+  } catch (err) {
+    console.warn(JSON.stringify({
+      event: "google_clients_unavailable",
+      organizationId,
+      context,
+      reason: err instanceof Error ? err.message : String(err),
+    }));
+    return null;
+  }
+}
+
 export async function ensureGmailAccessToken(organizationId: string) {
   const google = await loadGoogle();
   const integration = await assertGmailIntegrationIsolatedForScan(organizationId);
