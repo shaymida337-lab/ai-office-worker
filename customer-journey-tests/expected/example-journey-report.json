@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "journey-reliability-v1",
+  "generatedAt": "2026-07-01T14:00:00.000Z",
+  "mode": "dry_run",
+  "totals": {
+    "journeys": 9,
+    "passed": 8,
+    "failed": 0,
+    "warnings": 8,
+    "criticalFailures": 0,
+    "failureInjectionPassed": 2,
+    "failureInjectionFailed": 0
+  },
+  "journeyPassRate": 0.89,
+  "averageProcessingDurationMs": 145,
+  "reliabilityScore": 0.97,
+  "releaseRecommendation": "warn",
+  "results": [
+    {
+      "journeyId": "cj-fin-001-gmail-invoice-to-payment",
+      "category": "financial_documents",
+      "criticality": "critical",
+      "passed": true,
+      "warnings": ["golden-suite bridge pending for gs-001-perfect-tax-invoice"],
+      "failures": [],
+      "processingDurationMs": 210,
+      "reliabilityScore": 0.97,
+      "tags": ["gmail", "invoice", "auto-save", "financial"]
+    },
+    {
+      "journeyId": "cj-wa-001-image-to-payment",
+      "category": "whatsapp",
+      "criticality": "critical",
+      "passed": true,
+      "warnings": ["scaffold-only journey — awaiting implementation"],
+      "failures": [],
+      "processingDurationMs": 5,
+      "reliabilityScore": null,
+      "tags": ["whatsapp", "image", "design-only"]
+    }
+  ],
+  "baselineDiff": null,
+  "failedJourneyLinks": []
+}

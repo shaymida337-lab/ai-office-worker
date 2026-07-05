@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "golden-suite-v1",
+  "generatedAt": "2026-07-01T12:00:00.000Z",
+  "mode": "dry_run",
+  "totals": {
+    "cases": 2,
+    "passed": 1,
+    "failed": 1,
+    "warnings": 1,
+    "criticalFailures": 1
+  },
+  "releaseRecommendation": "fail",
+  "results": [
+    {
+      "caseId": "gs-001-perfect-tax-invoice",
+      "criticality": "critical",
+      "passed": false,
+      "warnings": [],
+      "failures": [
+        "paymentDirection expected \"incoming_expense\" got \"unknown\""
+      ],
+      "changedFields": [
+        {
+          "field": "paymentDirection",
+          "expected": "incoming_expense",
+          "actual": "unknown",
+          "classification": "failure",
+          "reason": "strict field mismatch on gs-001-perfect-tax-invoice"
+        }
+      ],
+      "tags": ["invoice", "gmail", "hebrew", "auto-save"]
+    },
+    {
+      "caseId": "gs-scaffold-non-financial",
+      "criticality": "standard",
+      "passed": true,
+      "warnings": ["scaffold-only case — awaiting fixture/pipeline bridge"],
+      "failures": [],
+      "changedFields": [],
+      "tags": ["non-financial", "scaffold"]
+    }
+  ],
+  "baselineDiff": null,
+  "failedCaseLinks": [
+    {
+      "caseId": "gs-001-perfect-tax-invoice",
+      "criticality": "critical",
+      "detailPath": "golden-tests/cases/**/gs-001-perfect-tax-invoice.golden.json"
+    }
+  ]
+}
