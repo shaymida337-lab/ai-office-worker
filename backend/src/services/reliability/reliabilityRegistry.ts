@@ -146,7 +146,7 @@ export const RELIABILITY_REGISTRY: readonly ReliabilityRegistryEntry[] = [
     label: "Calendar",
     description: "Calendar engine, Google mirror, and decision queue.",
     category: "surface",
-    monitored: false,
+    monitored: true,
     placeholder: false,
     stages: CALENDAR_STAGES,
     recovery: defaultRecoveryCapabilities("calendar", {

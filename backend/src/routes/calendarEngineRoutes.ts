@@ -4,9 +4,7 @@ import {
   resolveCalendarEngineFlags,
 } from "../services/calendar/calendarEngineFlags.js";
 import {
-  checkCalendarEventConflict,
   completeCalendarEvent,
-  createDraftCalendarEvent,
   getCalendarEventById,
   markCalendarEventNoShow,
   markCalendarEventPrerequisitePassed,
@@ -15,6 +13,8 @@ import {
   submitCalendarEventForConfirmation,
   updateCalendarEventFields,
 } from "../services/calendar/calendarEventService.js";
+import { CalendarEngine } from "../services/calendar/calendarEngineFacade.js";
+import { getCalendarEngineHealthApiResponse } from "../services/calendar/calendarEngineHealth.js";
 import {
   approveDecisionQueueItem,
   getDecisionQueueItemById,
@@ -27,7 +27,7 @@ import {
 } from "../services/calendar/enums.js";
 import { createWorkCase, getWorkCaseById } from "../services/calendar/workCaseService.js";
 import { appendWorkCaseTimelineEntry } from "../services/calendar/timelineWriter.js";
-import { sendCalendarEngineError, sendCalendarEngineSuccess } from "./calendarEngineErrors.js";
+import { sendCalendarEngineError, sendCalendarEngineFacadeFailure, sendCalendarEngineSuccess } from "./calendarEngineErrors.js";
 import {
   CalendarEngineValidationError,
   DEFAULT_CALENDAR_TIMEZONE,
@@ -44,6 +44,7 @@ import {
 } from "./calendarEngineValidation.js";
 import { requirePerm } from "../services/rbac/index.js";
 import { recordCalendarAudit } from "../services/calendar/calendarAudit.js";
+import { requirePermissionMiddleware } from "../services/rbac/rbacMiddleware.js";
 
 export const calendarEngineRouter = Router();
 const requireCalendarViewPermission = requirePerm("calendar.view");
@@ -95,6 +96,20 @@ function actorFromRequest(req: Request) {
   return {
     actorType: "user" as const,
     actorUserId: req.auth!.userId,
+  };
+}
+
+function engineContextFromRequest(req: Request, source: "ui" | "api" = "ui") {
+  const idempotencyHeader = req.headers["idempotency-key"];
+  return {
+    organizationId: req.auth!.organizationId,
+    source,
+    actor: actorFromRequest(req),
+    correlationId:
+      typeof req.headers["x-correlation-id"] === "string" ? req.headers["x-correlation-id"] : undefined,
+    idempotencyKey: typeof idempotencyHeader === "string" ? idempotencyHeader : null,
+    sourceModule: "calendar-engine-routes",
+    sourceRoute: req.originalUrl,
   };
 }
 
@@ -243,6 +258,14 @@ calendarEngineRouter.post(
   })
 );
 
+calendarEngineRouter.get(
+  "/calendar/engine/health",
+  requirePermissionMiddleware("reliability.view"),
+  handleRoute(async (req, res) => {
+    sendCalendarEngineSuccess(res, 200, getCalendarEngineHealthApiResponse(req.auth!.organizationId));
+  })
+);
+
 calendarEngineRouter.post(
   "/calendar/events/check-conflicts",
   requireCalendarViewPermission,
@@ -258,16 +281,23 @@ calendarEngineRouter.post(
       await loadOrganizationTimeZone(organizationId)
     );
 
-    const result = await checkCalendarEventConflict({
-      organizationId,
+    const result = await CalendarEngine.detectConflicts(engineContextFromRequest(req), {
       startAt,
       endAt,
-      excludeCalendarEventId: parseOptionalString(body.excludeCalendarEventId) ?? undefined,
+      clientId: body.clientId === undefined ? undefined : (parseOptionalString(body.clientId) ?? null),
       assignedUserId:
         body.assignedUserId === undefined ? undefined : (parseOptionalString(body.assignedUserId) ?? null),
+      serviceId: body.serviceId === undefined ? undefined : (parseOptionalString(body.serviceId) ?? null),
+    }, {
+      excludeCalendarEventId: parseOptionalString(body.excludeCalendarEventId) ?? undefined,
     });
 
-    sendCalendarEngineSuccess(res, 200, result);
+    if (!result.ok) {
+      sendCalendarEngineFacadeFailure(res, result);
+      return;
+    }
+
+    sendCalendarEngineSuccess(res, 200, result.data);
   })
 );
 
@@ -315,43 +345,50 @@ calendarEngineRouter.post(
       await loadOrganizationTimeZone(organizationId)
     );
 
-    const event = await createDraftCalendarEvent(
-      organizationId,
-      {
-        title: parseOptionalString(body.title),
-        startAt,
-        endAt,
-        timezone: parseOptionalString(body.timezone) ?? undefined,
-        workCaseId: parseOptionalString(body.workCaseId) ?? undefined,
-        workCaseTitle: parseOptionalString(body.workCaseTitle) ?? undefined,
-        clientId: body.clientId === undefined ? undefined : (parseOptionalString(body.clientId) ?? null),
-        leadId: body.leadId === undefined ? undefined : (parseOptionalString(body.leadId) ?? null),
-        assignedUserId:
-          body.assignedUserId === undefined ? undefined : (parseOptionalString(body.assignedUserId) ?? null),
-        serviceId: body.serviceId === undefined ? undefined : (parseOptionalString(body.serviceId) ?? null),
-        source: parseClientEventSource(body.source),
-        createdByUserId: req.auth!.userId,
-        prerequisitesJson: Array.isArray(body.prerequisitesJson) ? body.prerequisitesJson : undefined,
-      },
-      actorFromRequest(req)
-    );
-    recordCalendarAudit({
-      organizationId,
-      entityType: "calendar_event",
-      entityId: event.id,
-      action: "appointment_created",
-      actor: { actorType: "user", actorUserId: req.auth!.userId },
-      sourceModule: "calendar-engine-routes",
-      sourceRoute: "POST /calendar/events",
-      metadata: {
-        appointmentId: event.id,
-        serviceId: event.serviceId,
-        customerName: event.client?.name ?? null,
-        source: event.source,
-        newStartTime: event.startAt.toISOString(),
-        durationMinutes: Math.max(1, Math.round((event.endAt.getTime() - event.startAt.getTime()) / 60_000)),
-      },
+    const eventResult = await CalendarEngine.createEvent(engineContextFromRequest(req), {
+      title: parseOptionalString(body.title),
+      startAt,
+      endAt,
+      timezone: parseOptionalString(body.timezone) ?? undefined,
+      workCaseId: parseOptionalString(body.workCaseId) ?? undefined,
+      workCaseTitle: parseOptionalString(body.workCaseTitle) ?? undefined,
+      clientId: body.clientId === undefined ? undefined : (parseOptionalString(body.clientId) ?? null),
+      leadId: body.leadId === undefined ? undefined : (parseOptionalString(body.leadId) ?? null),
+      assignedUserId:
+        body.assignedUserId === undefined ? undefined : (parseOptionalString(body.assignedUserId) ?? null),
+      serviceId: body.serviceId === undefined ? undefined : (parseOptionalString(body.serviceId) ?? null),
+      source: parseClientEventSource(body.source),
+      createdByUserId: req.auth!.userId,
+      prerequisitesJson: Array.isArray(body.prerequisitesJson) ? body.prerequisitesJson : undefined,
     });
+
+    if (!eventResult.ok) {
+      sendCalendarEngineFacadeFailure(res, eventResult);
+      return;
+    }
+
+    const event = eventResult.data;
+    if (!eventResult.idempotentReplay) {
+      recordCalendarAudit({
+        organizationId,
+        entityType: "calendar_event",
+        entityId: event.id,
+        action: "appointment_created",
+        actor: { actorType: "user", actorUserId: req.auth!.userId },
+        sourceModule: "calendar-engine-routes",
+        sourceRoute: "POST /calendar/events",
+        correlationId: eventResult.correlationId,
+        afterState: { id: event.id, status: event.status, startAt: event.startAt.toISOString() },
+        metadata: {
+          appointmentId: event.id,
+          serviceId: event.serviceId,
+          customerName: event.client?.name ?? null,
+          source: event.source,
+          newStartTime: event.startAt.toISOString(),
+          durationMinutes: Math.max(1, Math.round((event.endAt.getTime() - event.startAt.getTime()) / 60_000)),
+        },
+      });
+    }
 
     sendCalendarEngineSuccess(res, 201, event);
   })

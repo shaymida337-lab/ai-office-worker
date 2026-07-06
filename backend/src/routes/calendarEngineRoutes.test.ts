@@ -52,10 +52,25 @@ function installMocks(store: Store) {
     decisionUpdate: prisma.ownerDecisionQueueItem.update.bind(prisma.ownerDecisionQueueItem),
     taskCreate: prisma.task.create.bind(prisma.task),
     taskCount: prisma.task.count.bind(prisma.task),
+    clientFindFirst: prisma.client.findFirst.bind(prisma.client),
+    userFindFirst: prisma.user.findFirst.bind(prisma.user),
+    appointmentFindFirst: prisma.appointment.findFirst.bind(prisma.appointment),
   };
 
   prisma.$transaction = (async (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma)) as typeof prisma.$transaction;
   prisma.appointment.findMany = (async () => []) as typeof prisma.appointment.findMany;
+  prisma.appointment.findFirst = (async () => null) as typeof prisma.appointment.findFirst;
+  prisma.client.findFirst = (async (args) => {
+    const id = args?.where?.id as string | undefined;
+    const orgId = args?.where?.organizationId as string | undefined;
+    if (id === "client-1" && (orgId === ORG_A || orgId === ORG_B)) return { id: "client-1" };
+    return null;
+  }) as typeof prisma.client.findFirst;
+  prisma.user.findFirst = (async (args) => {
+    const id = args?.where?.id as string | undefined;
+    if (id === AUTH_A.userId || id === AUTH_B.userId) return { id };
+    return null;
+  }) as typeof prisma.user.findFirst;
   prisma.organization.findUnique = (async (args) => {
     const orgId = args?.where?.id as string | undefined;
     if (orgId !== ORG_A && orgId !== ORG_B) return null;
@@ -64,7 +79,7 @@ function installMocks(store: Store) {
       calendarEngineReadEnabled: true,
       calendarEngineWriteEnabled: true,
       calendarEngineGoogleMirrorEnabled: true,
-      timezone: "UTC",
+      timezone: "Asia/Jerusalem",
       calendarAutonomyJson: {
         calendarAutonomy: {
           autoConfirmWhenFullyReady: false,
@@ -405,8 +420,8 @@ test("POST /calendar/events rejects organizationId from body", async () => {
         method: "POST",
         body: JSON.stringify({
           organizationId: ORG_B,
-          startAt: "2026-06-25T10:00:00.000Z",
-          endAt: "2026-06-25T11:00:00.000Z",
+          startAt: "2026-08-15T10:00:00.000Z",
+          endAt: "2026-08-15T11:00:00.000Z",
           clientId: "client-1",
         }),
       });
@@ -427,8 +442,8 @@ test("read_only cannot create calendar event (403)", async () => {
       const res = await api(baseUrl, "/calendar/events", {
         method: "POST",
         body: JSON.stringify({
-          startAt: "2026-06-25T10:00:00.000Z",
-          endAt: "2026-06-25T11:00:00.000Z",
+          startAt: "2026-08-15T10:00:00.000Z",
+          endAt: "2026-08-15T11:00:00.000Z",
           clientId: "client-1",
         }),
       });
@@ -449,8 +464,8 @@ test("POST /calendar/events rejects source=ai_chat", async () => {
       const res = await api(baseUrl, "/calendar/events", {
         method: "POST",
         body: JSON.stringify({
-          startAt: "2026-06-25T10:00:00.000Z",
-          endAt: "2026-06-25T11:00:00.000Z",
+          startAt: "2026-08-15T10:00:00.000Z",
+          endAt: "2026-08-15T11:00:00.000Z",
           clientId: "client-1",
           source: "ai_chat",
         }),
@@ -473,8 +488,8 @@ test("PATCH /calendar/events/:id rejects direct status change", async () => {
         method: "POST",
         body: JSON.stringify({
           title: "Consult",
-          startAt: "2026-06-25T10:00:00.000Z",
-          endAt: "2026-06-25T11:00:00.000Z",
+          startAt: "2026-08-15T10:00:00.000Z",
+          endAt: "2026-08-15T11:00:00.000Z",
           clientId: "client-1",
         }),
       });
@@ -510,8 +525,8 @@ test("create work case and draft calendar event via API", async () => {
         body: JSON.stringify({
           title: "API Event",
           workCaseId: workCaseRes.body.id,
-          startAt: "2026-06-25T10:00:00.000Z",
-          endAt: "2026-06-25T11:00:00.000Z",
+          startAt: "2026-08-15T10:00:00.000Z",
+          endAt: "2026-08-15T11:00:00.000Z",
           clientId: "client-1",
           prerequisitesJson: [{ id: "client", label: "Client", required: true, passed: true }],
         }),
@@ -534,8 +549,8 @@ test("submit for confirmation creates decision queue item", async () => {
         method: "POST",
         body: JSON.stringify({
           title: "Confirm Me",
-          startAt: "2026-06-25T10:00:00.000Z",
-          endAt: "2026-06-25T11:00:00.000Z",
+          startAt: "2026-08-15T10:00:00.000Z",
+          endAt: "2026-08-15T11:00:00.000Z",
           clientId: "client-1",
           prerequisitesJson: [{ id: "client", label: "Client", required: true, passed: true }],
         }),
@@ -562,8 +577,8 @@ test("approve confirm decision transitions event to confirmed", async () => {
       const eventRes = await api(baseUrl, "/calendar/events", {
         method: "POST",
         body: JSON.stringify({
-          startAt: "2026-06-25T10:00:00.000Z",
-          endAt: "2026-06-25T11:00:00.000Z",
+          startAt: "2026-08-15T10:00:00.000Z",
+          endAt: "2026-08-15T11:00:00.000Z",
           clientId: "client-1",
           prerequisitesJson: [{ id: "client", label: "Client", required: true, passed: true }],
         }),
@@ -595,7 +610,7 @@ test("conflict during confirmation creates override decision", async () => {
   prisma.appointment.findMany = (async () => [
     {
       id: "appt-1",
-      startTime: new Date("2026-06-25T10:30:00.000Z"),
+      startTime: new Date("2026-08-15T10:30:00.000Z"),
       durationMinutes: 60,
       client: { name: "Busy Client" },
       service: { name: "Cut" },
@@ -607,12 +622,23 @@ test("conflict during confirmation creates override decision", async () => {
       const eventRes = await api(baseUrl, "/calendar/events", {
         method: "POST",
         body: JSON.stringify({
-          startAt: "2026-06-25T10:00:00.000Z",
-          endAt: "2026-06-25T11:00:00.000Z",
+          startAt: "2026-08-15T12:00:00.000Z",
+          endAt: "2026-08-15T13:00:00.000Z",
           clientId: "client-1",
           prerequisitesJson: [{ id: "client", label: "Client", required: true, passed: true }],
         }),
       });
+      assert.equal(eventRes.status, 201);
+
+      const patchRes = await api(baseUrl, `/calendar/events/${eventRes.body.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          startAt: "2026-08-15T10:00:00.000Z",
+          endAt: "2026-08-15T11:00:00.000Z",
+        }),
+      });
+      assert.equal(patchRes.status, 200);
+
       const submitRes = await api(baseUrl, `/calendar/events/${eventRes.body.id}/submit-for-confirmation`, {
         method: "POST",
         body: JSON.stringify({}),
@@ -634,8 +660,8 @@ test("reject decision writes timeline entry", async () => {
       const eventRes = await api(baseUrl, "/calendar/events", {
         method: "POST",
         body: JSON.stringify({
-          startAt: "2026-06-25T10:00:00.000Z",
-          endAt: "2026-06-25T11:00:00.000Z",
+          startAt: "2026-08-15T10:00:00.000Z",
+          endAt: "2026-08-15T11:00:00.000Z",
           clientId: "client-1",
           prerequisitesJson: [{ id: "client", label: "Client", required: true, passed: true }],
         }),
@@ -688,8 +714,8 @@ test("cross-org access returns 404", async () => {
       const eventRes = await api(baseUrl, "/calendar/events", {
         method: "POST",
         body: JSON.stringify({
-          startAt: "2026-06-25T10:00:00.000Z",
-          endAt: "2026-06-25T11:00:00.000Z",
+          startAt: "2026-08-15T10:00:00.000Z",
+          endAt: "2026-08-15T11:00:00.000Z",
           clientId: "client-1",
         }),
       });
@@ -715,8 +741,8 @@ test("approve same decision twice is idempotent", async () => {
       const eventRes = await api(baseUrl, "/calendar/events", {
         method: "POST",
         body: JSON.stringify({
-          startAt: "2026-06-25T10:00:00.000Z",
-          endAt: "2026-06-25T11:00:00.000Z",
+          startAt: "2026-08-15T10:00:00.000Z",
+          endAt: "2026-08-15T11:00:00.000Z",
           clientId: "client-1",
           prerequisitesJson: [{ id: "client", label: "Client", required: true, passed: true }],
         }),
@@ -754,8 +780,8 @@ test("calendar engine complete and no-show routes transition confirmed events", 
       const eventRes = await api(baseUrl, "/calendar/events", {
         method: "POST",
         body: JSON.stringify({
-          startAt: "2026-06-20T10:00:00.000Z",
-          endAt: "2026-06-20T11:00:00.000Z",
+          startAt: "2026-08-15T10:00:00.000Z",
+          endAt: "2026-08-15T11:00:00.000Z",
           clientId: "client-1",
           prerequisitesJson: [{ id: "client", label: "Client", required: true, passed: true }],
         }),
@@ -768,6 +794,12 @@ test("calendar engine complete and no-show routes transition confirmed events", 
         method: "POST",
         body: JSON.stringify({}),
       });
+
+      const stored = store.events.get(String(eventRes.body.id));
+      if (stored) {
+        stored.startAt = new Date("2026-07-01T07:00:00.000Z");
+        stored.endAt = new Date("2026-07-01T08:00:00.000Z");
+      }
 
       const completeRes = await api(baseUrl, `/calendar/events/${eventRes.body.id}/complete`, {
         method: "POST",
@@ -795,8 +827,8 @@ test("calendar engine no-show route rejects missing notes", async () => {
       const eventRes = await api(baseUrl, "/calendar/events", {
         method: "POST",
         body: JSON.stringify({
-          startAt: "2026-06-20T10:00:00.000Z",
-          endAt: "2026-06-20T11:00:00.000Z",
+          startAt: "2026-08-15T10:00:00.000Z",
+          endAt: "2026-08-15T11:00:00.000Z",
           clientId: "client-1",
           prerequisitesJson: [{ id: "client", label: "Client", required: true, passed: true }],
         }),

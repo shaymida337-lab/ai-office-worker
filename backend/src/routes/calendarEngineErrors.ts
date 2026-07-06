@@ -4,6 +4,8 @@ import { LifecycleError } from "../services/calendar/lifecycleErrors.js";
 import { CalendarEngineServiceError } from "../services/calendar/serviceErrors.js";
 import { CalendarEngineValidationError } from "./calendarEngineValidation.js";
 
+import type { CalendarEngineFailure } from "../services/calendar/calendarEngineTypes.js";
+
 export type CalendarEngineErrorEnvelope = {
   error: string;
   code: string;
@@ -62,6 +64,37 @@ export function mapCalendarEngineError(err: unknown): { status: number; body: Ca
     };
   }
   return { status: 500, body: envelope("INTERNAL_ERROR") };
+}
+
+export function mapCalendarEngineFacadeFailure(
+  failure: CalendarEngineFailure
+): { status: number; body: CalendarEngineErrorEnvelope & { validation?: unknown; conflict?: unknown } } {
+  const status =
+    failure.code === "NOT_FOUND"
+      ? 404
+      : failure.code === "TIME_CONFLICT"
+        ? 409
+        : failure.code === "VALIDATION_FAILED"
+          ? 400
+          : failure.classification === "idempotency"
+            ? 409
+            : 422;
+
+  return {
+    status,
+    body: {
+      error: HEBREW_BY_CODE[failure.code] ?? failure.message,
+      code: failure.code,
+      ...(failure.details ? { details: failure.details } : {}),
+      ...(failure.validation ? { validation: failure.validation } : {}),
+      ...(failure.conflict ? { conflict: failure.conflict } : {}),
+    },
+  };
+}
+
+export function sendCalendarEngineFacadeFailure(res: Response, failure: CalendarEngineFailure) {
+  const mapped = mapCalendarEngineFacadeFailure(failure);
+  res.status(mapped.status).json(mapped.body);
 }
 
 export function sendCalendarEngineError(res: Response, err: unknown) {

@@ -132,7 +132,7 @@ test("registry lists all required subsystems with integrity", () => {
   assert.ok(getReliabilityRegistryEntry("scanner"));
   assert.ok(getReliabilityRegistryEntry("whatsapp")?.placeholder);
   assert.ok(getReliabilityRegistryEntry("voice")?.placeholder);
-  assert.equal(listMonitoredReliabilitySubsystems().length, 3);
+  assert.equal(listMonitoredReliabilitySubsystems().length, 4);
 });
 
 test("registry placeholder subsystems are not monitored", () => {
