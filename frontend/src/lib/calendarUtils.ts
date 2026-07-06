@@ -194,3 +194,172 @@ export function layoutDayAppointments<T extends TimelineAppointment>(
 export function getTimelineHours(startHour = TIMELINE_START_HOUR, endHour = TIMELINE_END_HOUR): number[] {
   return Array.from({ length: endHour - startHour }, (_, index) => startHour + index);
 }
+
+export type CalendarViewMode = "day" | "week" | "month";
+
+export const DAY_NAMES_SHORT = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "ש'"] as const;
+
+const STATUS_BORDER_COLORS: Record<string, string> = {
+  pending: "#F59E0B",
+  confirmed: "#3B82F6",
+  completed: "#10B981",
+  cancelled: "#EF4444",
+  no_show: "#6B7280",
+};
+
+export type MonthAppointmentSummary = {
+  id: string;
+  startTime: string;
+  clientName: string;
+  status: string;
+  serviceColor: string;
+};
+
+export function startOfMonth(date: Date): Date {
+  const d = new Date(date);
+  d.setDate(1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+export function addMonths(date: Date, months: number): Date {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + months);
+  return d;
+}
+
+export function isSameMonth(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+}
+
+export function getMonthBounds(monthAnchor: Date): DayBounds {
+  const from = startOfMonth(monthAnchor);
+  const to = addMonths(from, 1);
+  return { from, to };
+}
+
+export function buildMonthGrid(monthAnchor: Date): Date[] {
+  const first = startOfMonth(monthAnchor);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + index);
+    return day;
+  });
+}
+
+export function formatMonthTitle(monthAnchor: Date, timeZone?: string): string {
+  return monthAnchor.toLocaleDateString("he-IL", {
+    month: "long",
+    year: "numeric",
+    ...(timeZone ? { timeZone } : {}),
+  });
+}
+
+export function formatAppointmentTime(startTimeIso: string, timeZone?: string): string {
+  return new Date(startTimeIso).toLocaleTimeString("he-IL", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    ...(timeZone ? { timeZone } : {}),
+  });
+}
+
+export function appointmentStatusBorderColor(status: string): string {
+  return STATUS_BORDER_COLORS[status] ?? "#94A3B8";
+}
+
+export function toAppointmentMonthSummary(appointment: TimelineAppointment): MonthAppointmentSummary {
+  return {
+    id: appointment.id,
+    startTime: appointment.startTime,
+    clientName: appointment.client.name,
+    status: appointment.status,
+    serviceColor: appointment.service?.color || "#3B82F6",
+  };
+}
+
+export function sliceMonthDayAppointments<T>(appointments: T[], maxVisible: number): { visible: T[]; overflowCount: number } {
+  if (appointments.length <= maxVisible) {
+    return { visible: appointments, overflowCount: 0 };
+  }
+  return {
+    visible: appointments.slice(0, maxVisible),
+    overflowCount: appointments.length - maxVisible,
+  };
+}
+
+export type AppointmentInterval = {
+  id: string;
+  clientName: string;
+  startMinutes: number;
+  endMinutes: number;
+  status: string;
+};
+
+export function toAppointmentInterval(
+  appointment: TimelineAppointment,
+  dayKey: string
+): AppointmentInterval | null {
+  if (getAppointmentDayKey(appointment.startTime) !== dayKey) return null;
+  const startDate = new Date(appointment.startTime);
+  const startMinutes = getMinutesFromMidnight(startDate);
+  return {
+    id: appointment.id,
+    clientName: appointment.client.name,
+    startMinutes,
+    endMinutes: startMinutes + appointment.durationMinutes,
+    status: appointment.status,
+  };
+}
+
+export function findSchedulingConflicts(appointments: TimelineAppointment[], dayKey: string): Array<{ a: string; b: string; clientA: string; clientB: string }> {
+  const active = appointments
+    .map((appt) => toAppointmentInterval(appt, dayKey))
+    .filter((item): item is AppointmentInterval => item !== null && item.status !== "cancelled");
+
+  const conflicts: Array<{ a: string; b: string; clientA: string; clientB: string }> = [];
+  for (let i = 0; i < active.length; i += 1) {
+    for (let j = i + 1; j < active.length; j += 1) {
+      const left = active[i]!;
+      const right = active[j]!;
+      if (left.startMinutes < right.endMinutes && right.startMinutes < left.endMinutes) {
+        conflicts.push({
+          a: left.id,
+          b: right.id,
+          clientA: left.clientName,
+          clientB: right.clientName,
+        });
+      }
+    }
+  }
+  return conflicts;
+}
+
+export function computeFreeMinutesToday(
+  appointments: TimelineAppointment[],
+  dayKey: string,
+  workStartHour = 8,
+  workEndHour = 18
+): number {
+  const workStart = workStartHour * 60;
+  const workEnd = workEndHour * 60;
+  const busy = appointments
+    .map((appt) => toAppointmentInterval(appt, dayKey))
+    .filter((item): item is AppointmentInterval => item !== null && item.status !== "cancelled")
+    .sort((a, b) => a.startMinutes - b.startMinutes);
+
+  if (busy.length === 0) return workEnd - workStart;
+
+  let free = 0;
+  let cursor = workStart;
+  for (const block of busy) {
+    const start = Math.max(block.startMinutes, workStart);
+    const end = Math.min(block.endMinutes, workEnd);
+    if (start > cursor) free += start - cursor;
+    cursor = Math.max(cursor, end);
+  }
+  if (cursor < workEnd) free += workEnd - cursor;
+  return Math.max(0, free);
+}

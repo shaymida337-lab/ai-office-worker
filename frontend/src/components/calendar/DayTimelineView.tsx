@@ -2,12 +2,11 @@
 
 import { useMemo } from "react";
 import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
-import { StatusPill } from "@/components/ui/StatusPill";
+import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import {
   TIMELINE_END_HOUR,
   TIMELINE_START_HOUR,
   PX_PER_MINUTE,
-  colorWithAlpha,
   formatDayLabel,
   formatHourLabel,
   getTimelineHeightPx,
@@ -15,63 +14,36 @@ import {
   layoutDayAppointments,
   type TimelineAppointment,
 } from "@/lib/calendarUtils";
-import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
-
-const DEFAULT_COLOR = "#3B82F6";
+import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
+import { CalendarEventCard, type CalendarEventCardAppointment } from "./CalendarEventCard";
 
 const btnSecondarySm =
   "inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#F3F4F6] disabled:cursor-not-allowed disabled:opacity-60";
 
-function appointmentStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    pending: "ממתין",
-    confirmed: "מאושר",
-    completed: "הושלם",
-    cancelled: "בוטל",
-    no_show: "לא הגיע",
-  };
-  return labels[status] ?? status;
-}
-
-function appointmentStatusTone(status: string): "success" | "warn" | "danger" | "info" | "neutral" {
-  switch (status) {
-    case "completed":
-      return "success";
-    case "confirmed":
-      return "info";
-    case "pending":
-      return "warn";
-    case "cancelled":
-      return "danger";
-    case "no_show":
-      return "neutral";
-    default:
-      return "neutral";
-  }
-}
-
-type DayTimelineViewProps<T extends TimelineAppointment> = {
+type DayTimelineViewProps<T extends CalendarEventCardAppointment> = {
   date: Date;
   appointments: T[];
   loading: boolean;
   onSelectAppointment: (appointment: T) => void;
+  onQuickConfirm?: (appointment: T) => void;
   onPrevDay: () => void;
   onNextDay: () => void;
   onToday: () => void;
-  statusLabel?: (status: string) => string;
-  statusTone?: (status: string) => "success" | "warn" | "danger" | "info" | "neutral";
+  statusLabel: (status: string) => string;
+  statusTone: (status: string) => "success" | "warn" | "danger" | "info" | "neutral";
 };
 
-export function DayTimelineView<T extends TimelineAppointment>({
+export function DayTimelineView<T extends CalendarEventCardAppointment>({
   date,
   appointments,
   loading,
   onSelectAppointment,
+  onQuickConfirm,
   onPrevDay,
   onNextDay,
   onToday,
-  statusLabel = appointmentStatusLabel,
-  statusTone = appointmentStatusTone,
+  statusLabel,
+  statusTone,
 }: DayTimelineViewProps<T>) {
   const orgTimezone = useOrganizationTimezone();
   const timelineHeightPx = getTimelineHeightPx();
@@ -110,7 +82,7 @@ export function DayTimelineView<T extends TimelineAppointment>({
       ) : (
         <div
           key={date.toISOString()}
-          className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] transition-opacity duration-200 animate-[toastSlide_.25s_ease]"
+          className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] shadow-[0_6px_24px_rgba(15,23,42,0.06)] transition-opacity duration-200 animate-[toastSlide_.25s_ease]"
         >
           <div className="max-h-[min(70vh,560px)] overflow-y-auto overscroll-contain">
             <div className="flex min-w-0" dir="rtl">
@@ -131,60 +103,46 @@ export function DayTimelineView<T extends TimelineAppointment>({
                 />
 
                 {!hasAppointments && (
-                  <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
-                    <p className="text-sm font-semibold text-[#6B7280]">אין תורים ביום זה</p>
+                  <div
+                    className="absolute inset-0 flex items-center justify-center p-6 text-center"
+                    data-testid="calendar-day-empty"
+                  >
+                    <div className="max-w-xs rounded-2xl border border-dashed border-[#BFDBFE] bg-[#EFF6FF] px-5 py-6">
+                      <p className="text-base font-black text-[#111827]">היום שלך פנוי 😊</p>
+                      <p className="mt-2 text-sm font-semibold text-[#6B7280]">רוצה שאעזור לך לקבוע פגישה?</p>
+                      <button
+                        type="button"
+                        className="mt-4 inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1D4ED8] px-4 text-sm font-black text-white"
+                        onClick={() => openNatalieAssistant("עזרי לי לקבוע פגישה חדשה")}
+                      >
+                        בקש מנטלי
+                      </button>
+                    </div>
                   </div>
                 )}
 
                 {positionedAppointments.map((block) => {
                   const appt = block.appointment;
-                  const color = appt.service?.color || DEFAULT_COLOR;
-                  const isCancelled = appt.status === "cancelled";
-                  const time = new Date(appt.startTime).toLocaleTimeString("he-IL", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: false,
-                    timeZone: orgTimezone,
-                  });
                   const widthPercent = 100 / block.columnCount;
                   const rightPercent = block.columnIndex * widthPercent;
 
                   return (
-                    <button
+                    <CalendarEventCard
                       key={appt.id}
-                      type="button"
-                      onClick={() => onSelectAppointment(appt)}
-                      className={`absolute z-10 overflow-hidden rounded-xl border p-2 text-right text-xs shadow-sm transition hover:z-20 hover:shadow-md ${
-                        isCancelled ? "opacity-50" : ""
-                      }`}
+                      appointment={appt}
+                      variant="timeline"
+                      statusLabel={statusLabel}
+                      statusTone={statusTone}
+                      onSelect={() => onSelectAppointment(appt)}
+                      onQuickConfirm={onQuickConfirm ? () => onQuickConfirm(appt) : undefined}
+                      className="absolute z-10 !rounded-xl !p-0 hover:z-20"
                       style={{
                         top: block.topPx,
                         height: block.heightPx,
                         right: `calc(${rightPercent}% + 4px)`,
                         width: `calc(${widthPercent}% - 8px)`,
-                        backgroundColor: colorWithAlpha(color, 0.15),
-                        borderColor: colorWithAlpha(color, 0.35),
                       }}
-                    >
-                      <div className="mb-1 flex items-center justify-between gap-1">
-                        <span className={`shrink-0 font-black ${isCancelled ? "line-through" : ""}`} dir="ltr">
-                          {time}
-                        </span>
-                        <StatusPill tone={statusTone(appt.status)}>
-                          {statusLabel(appt.status)}
-                        </StatusPill>
-                      </div>
-                      <div className={`truncate font-black text-[#111827] ${isCancelled ? "line-through" : ""}`}>
-                        {appt.client.name}
-                      </div>
-                      {appt.service?.name && (
-                        <div
-                          className={`truncate font-semibold text-[#6B7280] ${isCancelled ? "line-through" : ""}`}
-                        >
-                          {appt.service.name}
-                        </div>
-                      )}
-                    </button>
+                    />
                   );
                 })}
               </div>

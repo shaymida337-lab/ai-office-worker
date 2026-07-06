@@ -3,8 +3,14 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Nav } from "@/components/Nav";
 import { CalendarEventDrawer } from "@/components/calendar/CalendarEventDrawer";
+import { CalendarToolbar } from "@/components/calendar/CalendarToolbar";
 import { DayTimelineView } from "@/components/calendar/DayTimelineView";
+import { MonthCalendarView } from "@/components/calendar/MonthCalendarView";
+import { NatalieCalendarActionCenter } from "@/components/calendar/NatalieCalendarActionCenter";
+import { NatalieCalendarDailyBrief } from "@/components/calendar/NatalieCalendarDailyBrief";
+import { NatalieRequestButton } from "@/components/calendar/NatalieRequestButton";
 import { OwnerDecisionQueuePanel } from "@/components/calendar/OwnerDecisionQueuePanel";
+import { WeekCalendarEmptyState, WeekCalendarView } from "@/components/calendar/WeekCalendarView";
 import { apiFetch, ApiError, getToken } from "@/lib/api";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { dateInputValueInTimeZone, timeInputValueInTimeZone } from "@/lib/orgTimezone";
@@ -34,9 +40,14 @@ import {
   fetchSchedulingCapabilities,
   type SchedulingCapabilities,
 } from "@/lib/scheduling/capabilities";
-import { getDayBounds } from "@/lib/calendarUtils";
+import { getDayBounds, getMonthBounds, startOfMonth, addMonths, formatMonthTitle, type CalendarViewMode } from "@/lib/calendarUtils";
+import { buildCalendarDailyBrief, type CalendarDailyBrief } from "@/lib/calendar/calendarBrief";
+import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
+import { fetchBriefingSchedulingSnapshot, type BriefingSchedulingSnapshot } from "@/lib/scheduling/briefing";
+import { firstNameFromLabel } from "@/lib/dashboard/homePageHelpers";
+import { colors, radius, shadow } from "@/lib/design-tokens";
 import { StatusPill } from "@/components/ui/StatusPill";
-import { Calendar, ChevronLeft, ChevronRight, Clock, Plus, Trash2, X } from "lucide-react";
+import { Clock, Plus, Trash2, X } from "lucide-react";
 
 type Service = {
   id: string;
@@ -76,10 +87,11 @@ type ClientsResponse = {
   clients: ApptClient[];
 };
 
-const DAY_NAMES = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "ש'"];
 const APPOINTMENT_STATUS_OPTIONS = ["pending", "confirmed", "completed", "cancelled", "no_show"] as const;
 const DEFAULT_COLOR = "#3B82F6";
-type CalendarViewMode = "week" | "day";
+
+type Task = { id: string; status: string };
+type OrganizationSettings = { name?: string | null };
 
 function startOfDay(date: Date): Date {
   const d = new Date(date);
@@ -87,7 +99,6 @@ function startOfDay(date: Date): Date {
   return d;
 }
 
-const panelClass = "rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm";
 const btnPrimary =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] disabled:cursor-not-allowed disabled:opacity-60";
 const btnSecondary =
@@ -132,19 +143,6 @@ function buildStartTimeIso(date: string, time: string): string {
   return `${date}T${time}`;
 }
 
-function isSameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-
-function colorWithAlpha(hex: string, alpha: number): string {
-  const h = hex.replace("#", "");
-  if (h.length !== 6) return `rgba(59, 130, 246, ${alpha})`;
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 function appointmentStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     pending: "ממתין",
@@ -173,26 +171,6 @@ function appointmentStatusTone(status: string): "success" | "warn" | "danger" | 
   }
 }
 
-function appointmentGoogleSyncStatusLabel(status?: Appointment["googleSyncStatus"]): string | null {
-  switch (status) {
-    case "pending":
-      return "Google: ממתין";
-    case "failed":
-      return "Google: נכשל";
-    case "retrying":
-      return "Google: בניסיון חוזר";
-    case "disabled":
-      return "Google: כבוי";
-    default:
-      return null;
-  }
-}
-
-function appointmentGoogleSyncStatusForDisplay(item: CalendarDisplayItem): Appointment["googleSyncStatus"] | undefined {
-  if (isEngineDisplayItem(item)) return undefined;
-  return (item as Appointment).googleSyncStatus;
-}
-
 function isErrorMessage(text: string) {
   return text.includes("נכשל") || text.includes("חובה") || text.includes("יש לבחור");
 }
@@ -219,8 +197,14 @@ export default function CalendarPage() {
   const [highlightDecisionId, setHighlightDecisionId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<CalendarViewMode>("week");
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
+  const [monthAnchor, setMonthAnchor] = useState(() => startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()));
   const [appointments, setAppointments] = useState<CalendarDisplayItem[]>([]);
+  const [briefingSnapshot, setBriefingSnapshot] = useState<BriefingSchedulingSnapshot | null>(null);
+  const [dailyBrief, setDailyBrief] = useState<CalendarDailyBrief | null>(null);
+  const [openTasksCount, setOpenTasksCount] = useState(0);
+  const [ownerFirstName, setOwnerFirstName] = useState<string | null>(null);
+  const [briefLoading, setBriefLoading] = useState(true);
   const [selectedEngineEventId, setSelectedEngineEventId] = useState<string | null>(null);
   const [queueRefreshKey, setQueueRefreshKey] = useState(0);
   const [drawerRefreshKey, setDrawerRefreshKey] = useState(0);
@@ -272,25 +256,38 @@ export default function CalendarPage() {
     return `${from} – ${to}`;
   }, [weekStart, orgTimezone]);
 
+  const calendarTitle = useMemo(() => {
+    if (viewMode === "day") {
+      return selectedDay.toLocaleDateString("he-IL", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        timeZone: orgTimezone,
+      });
+    }
+    if (viewMode === "month") {
+      return formatMonthTitle(monthAnchor, orgTimezone);
+    }
+    return weekLabel;
+  }, [viewMode, selectedDay, monthAnchor, weekLabel, orgTimezone]);
+
+  const monthPickerValue = useMemo(() => {
+    const y = monthAnchor.getFullYear();
+    const m = String(monthAnchor.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
+  }, [monthAnchor]);
+
+  const hasWeekAppointments = useMemo(() => {
+    if (viewMode !== "week") return true;
+    return appointments.some((appt) => {
+      const key = toDateInputValue(new Date(appt.startTime));
+      return weekDays.some((day) => toDateInputValue(day) === key);
+    });
+  }, [appointments, viewMode, weekDays]);
+
   const statusLabelFn = engineReadEnabled ? calendarEventStatusLabel : appointmentStatusLabel;
   const statusToneFn = engineReadEnabled ? calendarEventStatusTone : appointmentStatusTone;
-
-  const appointmentsByDay = useMemo(() => {
-    const map = new Map<string, CalendarDisplayItem[]>();
-    for (const day of weekDays) {
-      map.set(toDateInputValue(day), []);
-    }
-    for (const appt of appointments) {
-      const key = toDateInputValue(new Date(appt.startTime));
-      if (map.has(key)) {
-        map.get(key)!.push(appt);
-      }
-    }
-    for (const [, list] of map) {
-      list.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-    }
-    return map;
-  }, [appointments, weekDays]);
 
   async function loadCalendarStatus() {
     try {
@@ -332,7 +329,9 @@ export default function CalendarPage() {
       const range =
         viewMode === "day"
           ? getDayBounds(selectedDay)
-          : { from: weekStart, to: addDays(weekStart, 7) };
+          : viewMode === "month"
+            ? getMonthBounds(monthAnchor)
+            : { from: weekStart, to: addDays(weekStart, 7) };
       const from = range.from.toISOString();
       const to = range.to.toISOString();
       const loadStrategy = resolveCalendarLoadStrategy(engineReadEnabled);
@@ -370,7 +369,28 @@ export default function CalendarPage() {
     } finally {
       setLoading(false);
     }
-  }, [viewMode, selectedDay, weekStart, engineReadEnabled]);
+  }, [viewMode, selectedDay, weekStart, monthAnchor, engineReadEnabled]);
+
+  const loadBriefData = useCallback(async () => {
+    setBriefLoading(true);
+    try {
+      const todayBounds = getDayBounds(new Date());
+      const from = todayBounds.from.toISOString();
+      const to = addDays(todayBounds.from, 1).toISOString();
+      const [briefing, tasks, orgSettings] = await Promise.all([
+        fetchBriefingSchedulingSnapshot(from, to).catch(() => null),
+        apiFetch<Task[]>("/api/tasks").catch(() => [] as Task[]),
+        apiFetch<OrganizationSettings>("/api/organization/settings").catch(() => ({ name: null })),
+      ]);
+      setBriefingSnapshot(briefing);
+      setOpenTasksCount(tasks.filter((task) => task.status !== "done" && task.status !== "completed").length);
+      setOwnerFirstName(firstNameFromLabel(orgSettings.name));
+    } catch {
+      setBriefingSnapshot(null);
+    } finally {
+      setBriefLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchSchedulingCapabilities()
@@ -381,6 +401,22 @@ export default function CalendarPage() {
   useEffect(() => {
     loadAppointments().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה"));
   }, [loadAppointments]);
+
+  useEffect(() => {
+    loadBriefData().catch(() => undefined);
+  }, [loadBriefData]);
+
+  useEffect(() => {
+    setDailyBrief(
+      buildCalendarDailyBrief({
+        ownerFirstName,
+        timeZone: orgTimezone,
+        todayAppointments: appointments,
+        briefing: briefingSnapshot,
+        openTaskCount: openTasksCount,
+      })
+    );
+  }, [appointments, briefingSnapshot, openTasksCount, ownerFirstName, orgTimezone]);
 
   useEffect(() => {
     const onAppointmentsChanged = () => {
@@ -609,70 +645,138 @@ export default function CalendarPage() {
     }
   }
 
+  async function quickConfirmAppointment(appt: CalendarDisplayItem) {
+    if (isEngineDisplayItem(appt)) {
+      setSelectedEngineEventId(appt.engineEventId ?? appt.id);
+      return;
+    }
+    setMessage("");
+    try {
+      await apiFetch(`/api/appointments/${appt.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "confirmed" }),
+      });
+      setMessage("התור אושר");
+      await loadAppointments();
+      await loadBriefData();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "אישור התור נכשל");
+    }
+  }
+
+  function handleCalendarPrev() {
+    if (viewMode === "day") {
+      setSelectedDay((day) => startOfDay(addDays(day, -1)));
+      return;
+    }
+    if (viewMode === "month") {
+      setMonthAnchor((month) => addMonths(month, -1));
+      return;
+    }
+    setWeekStart((week) => addDays(week, -7));
+  }
+
+  function handleCalendarNext() {
+    if (viewMode === "day") {
+      setSelectedDay((day) => startOfDay(addDays(day, 1)));
+      return;
+    }
+    if (viewMode === "month") {
+      setMonthAnchor((month) => addMonths(month, 1));
+      return;
+    }
+    setWeekStart((week) => addDays(week, 7));
+  }
+
+  function handleCalendarToday() {
+    const today = startOfDay(new Date());
+    setSelectedDay(today);
+    setWeekStart(getWeekStart(today));
+    setMonthAnchor(startOfMonth(today));
+  }
+
+  function handleMonthPickerChange(value: string) {
+    const [year, month] = value.split("-").map(Number);
+    if (!year || !month) return;
+    setMonthAnchor(new Date(year, month - 1, 1));
+  }
+
+  function handleMonthDayClick(day: Date) {
+    setSelectedDay(startOfDay(day));
+    setViewMode("day");
+  }
+
   return (
-    <div className="container">
+    <main
+      className="min-h-screen pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] pt-[3.75rem] md:pb-10 md:pt-20"
+      style={{ backgroundColor: colors.bg, color: colors.textPrimary }}
+      data-testid="calendar-page"
+    >
       <Nav />
 
-      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <div className="page-kicker">יומן</div>
-          <h1 className="font-black text-[#111827]">היומן שלי</h1>
-          <p className="font-semibold text-[#6B7280]">ניהול תורים ושירותים — תצוגת שבוע או יום, יצירה ועריכה במקום אחד.</p>
-          {calendarConnected === true && (
-            <div className="mt-3">
-              <StatusPill tone="success">מחובר ל-Google Calendar ✓</StatusPill>
-            </div>
-          )}
-          {calendarConnected === false && (
-            <div className="mt-3">
-              <button
-                type="button"
-                className={btnSecondary}
-                disabled={connectingCalendar}
-                onClick={() => connectCalendar()}
-              >
-                {connectingCalendar ? "מתחבר..." : "חבר Google Calendar"}
-              </button>
-            </div>
-          )}
-        </div>
-        <button type="button" className={btnPrimary} onClick={openNewForm}>
-          <Plus className="h-4 w-4" />
-          תור חדש
-        </button>
-      </div>
+      <div className="container mx-auto max-w-7xl space-y-5 px-3 md:px-6">
+        <NatalieCalendarDailyBrief
+          brief={dailyBrief}
+          loading={briefLoading || loading}
+          onAskNatalie={() => openNatalieAssistant()}
+        />
 
-      {message && <div className={messageBannerClass(message)}>{message}</div>}
+        {message && <div className={messageBannerClass(message)}>{message}</div>}
 
-      {engineDisabledBanner && (
-        <div
-          className="mb-6 rounded-2xl border border-[#C2410C] bg-[#FFEDD5] p-4 text-base font-semibold leading-7 text-[#7C2D12]"
-          data-testid="engine-disabled-banner"
-        >
-          {engineDisabledBanner}
-        </div>
-      )}
+        {engineDisabledBanner && (
+          <div
+            className="rounded-2xl border border-[#C2410C] bg-[#FFEDD5] p-4 text-base font-semibold leading-7 text-[#7C2D12]"
+            data-testid="engine-disabled-banner"
+          >
+            {engineDisabledBanner}
+          </div>
+        )}
 
-      {engineReadEnabled && (
-        <div className="mb-5">
-          <OwnerDecisionQueuePanel
-            refreshKey={queueRefreshKey}
-            highlightDecisionId={highlightDecisionId}
-            onDecisionResolved={handleDecisionResolved}
-            onSelectEvent={(eventId) => setSelectedEngineEventId(eventId)}
-          />
-        </div>
-      )}
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="space-y-5">
+            {engineReadEnabled && (
+              <OwnerDecisionQueuePanel
+                refreshKey={queueRefreshKey}
+                highlightDecisionId={highlightDecisionId}
+                onDecisionResolved={handleDecisionResolved}
+                onSelectEvent={(eventId) => setSelectedEngineEventId(eventId)}
+              />
+            )}
 
-      <CalendarEventDrawer
-        eventId={selectedEngineEventId}
-        refreshKey={drawerRefreshKey}
-        onClose={() => setSelectedEngineEventId(null)}
-        onMutation={handleDecisionResolved}
-      />
+            <CalendarEventDrawer
+              eventId={selectedEngineEventId}
+              refreshKey={drawerRefreshKey}
+              onClose={() => setSelectedEngineEventId(null)}
+              onMutation={handleDecisionResolved}
+            />
 
-      <CollapsePanel open={showForm}>
-        <form onSubmit={saveAppointment} className={`${panelClass} mb-5 grid gap-3 md:grid-cols-2`}>
+            <div className={`${radius.card} ${shadow.soft} border border-[#E5E7EB] bg-white p-4 md:p-5`}>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-bold text-[#1D4ED8]">יומן העסק</div>
+                  <h1 className="text-2xl font-black text-[#111827] md:text-3xl">מרכז התורים שלך</h1>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {calendarConnected === true && <StatusPill tone="success">Google Calendar ✓</StatusPill>}
+                  {calendarConnected === false && (
+                    <button
+                      type="button"
+                      className={btnSecondary}
+                      disabled={connectingCalendar}
+                      onClick={() => connectCalendar()}
+                    >
+                      {connectingCalendar ? "מתחבר..." : "חבר Google Calendar"}
+                    </button>
+                  )}
+                  <button type="button" className={btnPrimary} onClick={openNewForm}>
+                    <Plus className="h-4 w-4" />
+                    תור חדש
+                  </button>
+                </div>
+              </div>
+
+              <CollapsePanel open={showForm}>
+                <form onSubmit={saveAppointment} className="mb-5 grid gap-3 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] p-4 md:grid-cols-2">
           <div className="flex items-center justify-between md:col-span-2">
             <h2 className="text-lg font-black text-[#111827]">{editingId ? "עריכת תור" : "תור חדש"}</h2>
             <button type="button" className={btnSecondarySm} onClick={resetForm}>
@@ -792,177 +896,59 @@ export default function CalendarPage() {
             )}
           </div>
         </form>
-      </CollapsePanel>
+              </CollapsePanel>
 
-      <div className={`${panelClass} mb-5`}>
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="inline-flex rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] p-1">
-            <button
-              type="button"
-              className={`rounded-lg px-4 py-2 text-sm font-black transition ${
-                viewMode === "week"
-                  ? "bg-white text-[#111827] shadow-sm"
-                  : "text-[#6B7280] hover:text-[#111827]"
-              }`}
-              onClick={() => setViewMode("week")}
-            >
-              שבוע
-            </button>
-            <button
-              type="button"
-              className={`rounded-lg px-4 py-2 text-sm font-black transition ${
-                viewMode === "day"
-                  ? "bg-white text-[#111827] shadow-sm"
-                  : "text-[#6B7280] hover:text-[#111827]"
-              }`}
-              onClick={() => setViewMode("day")}
-            >
-              יום
-            </button>
-          </div>
-        </div>
+              <CalendarToolbar
+                viewMode={viewMode}
+                title={calendarTitle}
+                onViewModeChange={setViewMode}
+                onPrev={handleCalendarPrev}
+                onNext={handleCalendarNext}
+                onToday={handleCalendarToday}
+                monthPickerValue={monthPickerValue}
+                onMonthPickerChange={handleMonthPickerChange}
+              />
 
-        {viewMode === "day" ? (
-          <DayTimelineView
-            date={selectedDay}
-            appointments={appointments}
-            loading={loading}
-            onSelectAppointment={openEditForm}
-            onPrevDay={() => setSelectedDay((day) => startOfDay(addDays(day, -1)))}
-            onNextDay={() => setSelectedDay((day) => startOfDay(addDays(day, 1)))}
-            onToday={() => setSelectedDay(startOfDay(new Date()))}
-            statusLabel={statusLabelFn}
-            statusTone={statusToneFn}
-          />
-        ) : (
-          <>
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-[#1D4ED8]" />
-            <h2 className="text-lg font-black text-[#111827]">{weekLabel}</h2>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={btnSecondarySm}
-              onClick={() => setWeekStart((w) => addDays(w, -7))}
-              aria-label="שבוע קודם"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            <button type="button" className={btnSecondarySm} onClick={() => setWeekStart(getWeekStart(new Date()))}>
-              היום
-            </button>
-            <button
-              type="button"
-              className={btnSecondarySm}
-              onClick={() => setWeekStart((w) => addDays(w, 7))}
-              aria-label="שבוע הבא"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="skeleton h-48 rounded-2xl" />
-        ) : (
-          <div
-            key={weekStart.toISOString()}
-            className="transition-opacity duration-200 animate-[toastSlide_.25s_ease]"
-          >
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7" dir="rtl">
-              {weekDays.map((day, index) => {
-                const key = toDateInputValue(day);
-                const dayAppts = appointmentsByDay.get(key) ?? [];
-                const today = isSameDay(day, new Date());
-                return (
-                  <div
-                    key={key}
-                    className={`min-h-[120px] rounded-xl border p-2 ${
-                      today
-                        ? "border-[#1D4ED8]/40 bg-[#EFF6FF]"
-                        : "border-[#E5E7EB] bg-[#F8FAFC]"
-                    }`}
-                  >
-                    <div
-                      className={`mb-2 text-center text-sm font-black ${
-                        today ? "text-[#1D4ED8]" : "text-[#111827]"
-                      }`}
-                    >
-                      <div>{DAY_NAMES[index]}</div>
-                      <div className="text-xs font-semibold text-[#6B7280]">
-                        {day.toLocaleDateString("he-IL", { day: "numeric", month: "numeric", timeZone: orgTimezone })}
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      {dayAppts.length === 0 ? (
-                        <div className="h-2" />
-                      ) : (
-                        dayAppts.map((appt) => {
-                          const color = appt.service?.color || DEFAULT_COLOR;
-                          const isCancelled = appt.status === "cancelled";
-                          const time = new Date(appt.startTime).toLocaleTimeString("he-IL", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: false,
-                            timeZone: orgTimezone,
-                          });
-                          const googleSyncStatus = appointmentGoogleSyncStatusForDisplay(appt);
-                          return (
-                            <button
-                              key={appt.id}
-                              type="button"
-                              onClick={() => openEditForm(appt)}
-                              className={`w-full rounded-xl border p-2 text-right text-xs transition-all duration-200 ease-out hover:-translate-y-[1px] hover:opacity-90 hover:shadow-md ${isCancelled ? "opacity-50" : ""}`}
-                              style={{
-                                backgroundColor: colorWithAlpha(color, 0.15),
-                                borderColor: colorWithAlpha(color, 0.35),
-                              }}
-                            >
-                              <div className="mb-1 flex items-center justify-between gap-1">
-                                <span className={`font-black ${isCancelled ? "line-through" : ""}`} dir="ltr">
-                                  {time}
-                                </span>
-                                <div className="flex items-center gap-1">
-                                  <StatusPill tone={statusToneFn(appt.status)}>
-                                    {statusLabelFn(appt.status)}
-                                  </StatusPill>
-                                  {appointmentGoogleSyncStatusLabel(googleSyncStatus) && (
-                                    <StatusPill
-                                      tone={
-                                        googleSyncStatus === "failed"
-                                          ? "danger"
-                                          : googleSyncStatus === "retrying"
-                                            ? "warn"
-                                            : "neutral"
-                                      }
-                                    >
-                                      {appointmentGoogleSyncStatusLabel(googleSyncStatus)}
-                                    </StatusPill>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="truncate font-black text-[#111827]">{appt.client.name}</div>
-                              {appt.service && (
-                                <div className="truncate font-semibold text-[#6B7280]">{appt.service.name}</div>
-                              )}
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {viewMode === "day" ? (
+                <DayTimelineView
+                  date={selectedDay}
+                  appointments={appointments}
+                  loading={loading}
+                  onSelectAppointment={openEditForm}
+                  onQuickConfirm={quickConfirmAppointment}
+                  onPrevDay={() => setSelectedDay((day) => startOfDay(addDays(day, -1)))}
+                  onNextDay={() => setSelectedDay((day) => startOfDay(addDays(day, 1)))}
+                  onToday={() => setSelectedDay(startOfDay(new Date()))}
+                  statusLabel={statusLabelFn}
+                  statusTone={statusToneFn}
+                />
+              ) : viewMode === "month" ? (
+                <MonthCalendarView
+                  monthAnchor={monthAnchor}
+                  selectedDay={selectedDay}
+                  appointments={appointments}
+                  loading={loading}
+                  onDayClick={handleMonthDayClick}
+                  onDayDoubleClick={handleMonthDayClick}
+                  onSelectAppointment={openEditForm}
+                />
+              ) : (
+                <>
+                  {!loading && !hasWeekAppointments && <WeekCalendarEmptyState onSchedule={openNewForm} />}
+                  <WeekCalendarView
+                    weekDays={weekDays}
+                    appointments={appointments}
+                    loading={loading}
+                    statusLabel={statusLabelFn}
+                    statusTone={statusToneFn}
+                    onSelectAppointment={openEditForm}
+                    onQuickConfirm={quickConfirmAppointment}
+                  />
+                </>
+              )}
             </div>
-          </div>
-        )}
-          </>
-        )}
-      </div>
 
-      <section className={panelClass}>
+            <section className={`${radius.card} ${shadow.soft} border border-[#E5E7EB] bg-white p-4 md:p-5`}>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-black text-[#111827]">השירותים שלי</h2>
           <button type="button" className={btnSecondary} onClick={() => setShowServiceForm((v) => !v)}>
@@ -1061,7 +1047,49 @@ export default function CalendarPage() {
             ))}
           </ul>
         )}
-      </section>
-    </div>
+            </section>
+          </div>
+
+          <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+            <div className="hidden xl:block">
+              <NatalieRequestButton />
+            </div>
+            <NatalieCalendarActionCenter
+              appointments={appointments}
+              pendingDecisions={briefingSnapshot?.pendingDecisions}
+              loading={briefLoading || loading}
+              onSelectAppointment={(id) => {
+                const appt = appointments.find((item) => item.id === id);
+                if (appt) openEditForm(appt);
+              }}
+              onApproveAppointment={(id) => {
+                const appt = appointments.find((item) => item.id === id);
+                if (appt) void quickConfirmAppointment(appt);
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="xl:hidden">
+          <NatalieCalendarActionCenter
+            appointments={appointments}
+            pendingDecisions={briefingSnapshot?.pendingDecisions}
+            loading={briefLoading || loading}
+            onSelectAppointment={(id) => {
+              const appt = appointments.find((item) => item.id === id);
+              if (appt) openEditForm(appt);
+            }}
+            onApproveAppointment={(id) => {
+              const appt = appointments.find((item) => item.id === id);
+              if (appt) void quickConfirmAppointment(appt);
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] left-3 right-3 z-40 xl:hidden">
+        <NatalieRequestButton />
+      </div>
+    </main>
   );
 }

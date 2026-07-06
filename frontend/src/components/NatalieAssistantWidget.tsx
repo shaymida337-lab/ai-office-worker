@@ -914,6 +914,19 @@ function NatalieAssistantWidgetInner() {
   }, [open]);
 
   useEffect(() => {
+    const onOpenAssistant = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: string }>).detail;
+      setOpen(true);
+      if (detail?.message) {
+        setInput(detail.message);
+        window.setTimeout(() => inputRef.current?.focus(), 120);
+      }
+    };
+    window.addEventListener("open-natalie-assistant", onOpenAssistant);
+    return () => window.removeEventListener("open-natalie-assistant", onOpenAssistant);
+  }, []);
+
+  useEffect(() => {
     return () => {
       releaseRecordingResources();
     };
