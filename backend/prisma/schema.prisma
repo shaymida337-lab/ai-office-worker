@@ -100,6 +100,7 @@ model Organization {
   workCaseTimelineEntries WorkCaseTimelineEntry[]
   ownerDecisionQueueItems OwnerDecisionQueueItem[]
   members OrganizationMember[]
+  communicationEvents CommunicationEvent[]
 }
 
 /// Organization-scoped RBAC membership (Phase 2.5).
@@ -1386,5 +1387,30 @@ model ApiIdempotencyKey {
   @@unique([organizationId, routeKey, idempotencyKey])
   @@index([organizationId, createdAt])
   @@index([organizationId, routeKey, createdAt])
+}
+
+/// Phase 1 — Communication Core trace layer (append-oriented; idempotent on channel + externalMessageId).
+model CommunicationEvent {
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channel           String
+  direction         String
+  externalMessageId String
+  correlationId     String
+  sender            String?
+  recipient         String?
+  subject           String?
+  bodyPreview       String?
+  metadataJson      Json?
+  sourceReference   String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([organizationId, channel, externalMessageId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, correlationId])
+  @@index([organizationId, channel])
+  @@index([externalMessageId])
 }
 

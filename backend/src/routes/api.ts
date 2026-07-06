@@ -53,6 +53,11 @@ import { presentedReviewStatus, reviewCandidateStatusesForTab } from "../service
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "../services/financialAmountLimits.js";
 import { processNatalieTurn } from "../services/conversation/index.js";
 import { processVoiceTurn } from "../services/conversation/voice/index.js";
+import { communicationService } from "../services/communication/communicationService.js";
+import {
+  recordVoiceCommunication,
+  recordWebChatCommunication,
+} from "../services/communication/recordCommunicationTrace.js";
 import { completeTask, createTask } from "../services/tasks.js";
 import {
   INVOICE_DRAFT_SAVED_CONFIRMATION_MESSAGE,
@@ -2635,6 +2640,48 @@ apiRouter.get("/stats", async (req, res) => {
   });
 });
 
+apiRouter.get("/communications", requirePerm("chat.use"), async (req, res) => {
+  const channel = typeof req.query.channel === "string" ? req.query.channel.trim() : undefined;
+  const direction = typeof req.query.direction === "string" ? req.query.direction.trim() : undefined;
+  const correlationId =
+    typeof req.query.correlationId === "string" ? req.query.correlationId.trim() : undefined;
+  const fromRaw = typeof req.query.from === "string" ? req.query.from.trim() : undefined;
+  const toRaw = typeof req.query.to === "string" ? req.query.to.trim() : undefined;
+  const page = Math.max(1, Number.parseInt(String(req.query.page ?? "1"), 10) || 1);
+  const limit = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit ?? "50"), 10) || 50));
+  const fromDate = fromRaw ? new Date(fromRaw) : undefined;
+  const toDate = toRaw ? new Date(toRaw) : undefined;
+
+  if (fromDate && Number.isNaN(fromDate.getTime())) {
+    res.status(400).json({ error: "Invalid from date" });
+    return;
+  }
+  if (toDate && Number.isNaN(toDate.getTime())) {
+    res.status(400).json({ error: "Invalid to date" });
+    return;
+  }
+
+  try {
+    const result = await communicationService.loadCommunicationHistory({
+      organizationId: req.auth!.organizationId,
+      channel: channel || undefined,
+      direction: direction || undefined,
+      correlationId: correlationId || undefined,
+      fromDate,
+      toDate,
+      offset: (page - 1) * limit,
+      limit,
+    });
+    res.json({
+      ...result,
+      page,
+    });
+  } catch (err) {
+    console.error("[communications] list failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load communications" });
+  }
+});
+
 apiRouter.post("/natalie/ask", requirePerm("chat.use"), async (req, res) => {
   const question = typeof req.body?.question === "string" ? req.body.question.trim() : "";
   const history = Array.isArray(req.body?.history)
@@ -2656,6 +2703,13 @@ apiRouter.post("/natalie/ask", requirePerm("chat.use"), async (req, res) => {
   }
 
   try {
+    await recordWebChatCommunication({
+      organizationId: req.auth!.organizationId,
+      userId: req.auth!.userId,
+      message: question,
+      sessionId,
+      correlationId: sessionId ?? undefined,
+    });
     const result = await processNatalieTurn({
       organizationId: req.auth!.organizationId,
       userId: req.auth!.userId,
@@ -2715,6 +2769,15 @@ apiRouter.post("/natalie/voice/turn", requirePerm("chat.use"), async (req, res) 
       });
       return;
     }
+
+    await recordVoiceCommunication({
+      organizationId: req.auth!.organizationId,
+      userId: req.auth!.userId,
+      turnId,
+      transcript,
+      sessionId,
+      correlationId: turnId,
+    });
 
     const result = await processVoiceTurn({
       organizationId: req.auth!.organizationId,

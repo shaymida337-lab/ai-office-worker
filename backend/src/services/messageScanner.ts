@@ -3,6 +3,7 @@ import { config, hasClaude } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { createCrmLead, handleLeadReply } from "./crm.js";
 import { normalizeWhatsAppNumber } from "./whatsapp.js";
+import { recordGmailCommunication } from "./communication/recordCommunicationTrace.js";
 
 const anthropic = hasClaude() ? new Anthropic({ apiKey: config.anthropic.apiKey }) : null;
 
@@ -58,6 +59,19 @@ const SYSTEM_PROMPT = `אתה מנוע סריקה עסקי של AI Office Worker
 - urgency high רק אם יש תלונה חריפה, דדליין, תשלום דחוף, "בהול", "urgent", "asap".`;
 
 export async function analyzeAndSaveMessage(input: MessageScanInput) {
+  if (input.channel === "gmail" && input.emailMessageId) {
+    await recordGmailCommunication({
+      organizationId: input.organizationId,
+      gmailMessageId: input.externalId,
+      emailMessageId: input.emailMessageId,
+      from: input.from ?? input.senderEmail ?? "",
+      subject: input.subject,
+      bodyText: input.bodyText,
+      occurredAt: input.occurredAt,
+      correlationId: input.externalId,
+    });
+  }
+
   const cleanBody = cleanText(input.bodyText);
   const sender = normalizeSender(input);
   const existingClient = await findExistingClient(input.organizationId, sender.email, sender.phone);

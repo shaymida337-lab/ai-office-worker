@@ -15,6 +15,7 @@ import {
 } from "../services/whatsappSafety.js";
 import { handleClientMessage, handleOwnerMessage } from "../services/whatsappChatEngine.js";
 import { analyzeAndSaveMessage } from "../services/messageScanner.js";
+import { recordInboundWhatsAppCommunication } from "../services/communication/recordCommunicationTrace.js";
 import { ingestWhatsAppInvoiceMedia, parseTwilioMedia } from "../services/whatsappInvoiceIngestion.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "../services/classification/junkFilter.js";
 import { recordFinancialDocumentDecision } from "../services/financialDocuments.js";
@@ -129,6 +130,16 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       res.type("text/xml").send(twiml.toString());
       return;
     }
+    await recordInboundWhatsAppCommunication({
+      organizationId: assistant.organizationId,
+      providerMessageSid: messageSid,
+      fromNumber: normalizedFrom,
+      toNumber: config.twilio.whatsappFrom,
+      body,
+      whatsappLogId: inboundLog.id,
+      media,
+      correlationId: messageSid,
+    });
     if (!(await shouldContinueAfterWhatsAppJunkGate({
       organizationId: assistant.organizationId,
       whatsappLogId: inboundLog.id,
@@ -195,6 +206,16 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       res.type("text/xml").send(twiml.toString());
       return;
     }
+    await recordInboundWhatsAppCommunication({
+      organizationId: client.organizationId,
+      providerMessageSid: messageSid,
+      fromNumber: normalizedFrom,
+      toNumber: config.twilio.whatsappFrom,
+      body,
+      whatsappLogId: inboundLog.id,
+      media,
+      correlationId: messageSid,
+    });
     if (!(await shouldContinueAfterWhatsAppJunkGate({
       organizationId: client.organizationId,
       whatsappLogId: inboundLog.id,
