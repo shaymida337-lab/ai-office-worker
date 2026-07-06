@@ -56,7 +56,25 @@ export function isEngineDisplayItem(item: CalendarDisplayItem): boolean {
   return item.source === "calendar_engine";
 }
 
+const NAIVE_START_REGEX = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+
 export function buildEndAtIso(startAt: string, durationMinutes: number): string {
+  const naive = startAt.match(NAIVE_START_REGEX);
+  if (naive) {
+    // startAt נאיבי: חשבון שעון-קיר טהור (Date.UTC בלי אזור הדפדפן) כדי
+    // שה-endAt יישאר נאיבי וה-backend יגזור את המשך מהפרש שתי המחרוזות.
+    const end = new Date(
+      Date.UTC(
+        Number(naive[1]),
+        Number(naive[2]) - 1,
+        Number(naive[3]),
+        Number(naive[4]),
+        Number(naive[5])
+      ) + durationMinutes * 60_000
+    );
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${end.getUTCFullYear()}-${pad(end.getUTCMonth() + 1)}-${pad(end.getUTCDate())}T${pad(end.getUTCHours())}:${pad(end.getUTCMinutes())}`;
+  }
   const start = new Date(startAt);
   return new Date(start.getTime() + durationMinutes * 60_000).toISOString();
 }

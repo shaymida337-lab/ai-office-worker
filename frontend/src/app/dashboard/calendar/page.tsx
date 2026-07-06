@@ -129,10 +129,9 @@ function toTimeInputValue(d: Date): string {
 }
 
 function buildStartTimeIso(date: string, time: string): string {
-  const [year, month, day] = date.split("-").map(Number);
-  const [hours, minutes] = time.split(":").map(Number);
-  const dt = new Date(year, month - 1, day, hours, minutes, 0, 0);
-  return dt.toISOString();
+  // מחרוזת נאיבית (בלי Z/offset) — ה-backend מפרש אותה ב-timezone של הארגון,
+  // לא בשעון הדפדפן ולא בשעון השרת (H3).
+  return `${date}T${time}`;
 }
 
 function isSameDay(a: Date, b: Date): boolean {

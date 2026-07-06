@@ -13,6 +13,7 @@ import {
   requestCalendarEventReschedule,
   requestDecisionUserMessage,
 } from "@/lib/calendarEngine/api";
+import { buildEndAtIso } from "@/lib/calendarEngine/adapters";
 import type { CalendarEngineEvent, CalendarPrerequisite, OwnerDecisionQueueItem, WorkCaseTimelineEntry } from "@/lib/calendarEngine/types";
 import {
   calendarEventStatusLabel,
@@ -78,9 +79,10 @@ function toTimeInputValue(iso: string): string {
 }
 
 function buildRescheduleIso(date: string, time: string, durationMs: number): { startAt: string; endAt: string } {
-  const start = new Date(`${date}T${time}:00`);
-  const end = new Date(start.getTime() + durationMs);
-  return { startAt: start.toISOString(), endAt: end.toISOString() };
+  // מחרוזות נאיביות (בלי Z/offset) — ה-backend מפרש אותן ב-timezone של הארגון
+  // וגוזר את משך האירוע מהפרש שעון-הקיר בין שתיהן (H3).
+  const startAt = `${date}T${time}`;
+  return { startAt, endAt: buildEndAtIso(startAt, Math.round(durationMs / 60_000)) };
 }
 
 type CalendarEventDrawerProps = {

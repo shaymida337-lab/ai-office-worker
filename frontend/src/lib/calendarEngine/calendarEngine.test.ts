@@ -6,7 +6,7 @@ import {
   resolveCalendarLoadStrategy,
   submitConfirmationUserMessage,
 } from "./api.js";
-import { calendarEventToDisplayItem, durationMinutesFromRange } from "./adapters.js";
+import { buildEndAtIso, calendarEventToDisplayItem, durationMinutesFromRange } from "./adapters.js";
 import { isCalendarEngineReadEnabled, isCalendarEngineWriteEnabled } from "./flags.js";
 import {
   calendarEventStatusLabel,
@@ -65,6 +65,18 @@ test("calendar event adapter maps to timeline display shape", () => {
 
 test("durationMinutesFromRange computes from start/end", () => {
   assert.equal(durationMinutesFromRange("2026-06-25T09:00:00.000Z", "2026-06-25T09:45:00.000Z"), 45);
+});
+
+test("buildEndAtIso keeps naive start naive with wall-clock arithmetic", () => {
+  assert.equal(buildEndAtIso("2026-07-10T14:00", 45), "2026-07-10T14:45");
+});
+
+test("buildEndAtIso crosses midnight in naive mode with full date rollover", () => {
+  assert.equal(buildEndAtIso("2026-07-10T23:30", 60), "2026-07-11T00:30");
+});
+
+test("buildEndAtIso keeps legacy Z behavior for absolute timestamps", () => {
+  assert.equal(buildEndAtIso("2026-06-25T09:00:00.000Z", 45), "2026-06-25T09:45:00.000Z");
 });
 
 test("Hebrew status labels for engine statuses", () => {
