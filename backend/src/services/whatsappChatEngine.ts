@@ -43,17 +43,25 @@ export async function handleOwnerMessage(message: string, organizationId: string
 }
 
 export async function handleClientMessage(message: string, clientId: string, organizationId: string, phone?: string) {
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, organizationId, isActive: true },
+    select: { id: true },
+  });
+  if (!client) {
+    return sanitizeWhatsAppText("לא מצאתי את הלקוח הזה במערכת.");
+  }
+
   const text = message.toLowerCase().trim();
   let response: string;
 
   if (text.includes("חשבונית") || text.includes("תשלום")) {
-    response = await clientInvoiceStatus(clientId);
+    response = await clientInvoiceStatus(clientId, organizationId);
   } else if (text.includes("משימה") || text.includes("לעשות")) {
-    response = await clientTasks(clientId);
+    response = await clientTasks(clientId, organizationId);
   } else if (text.includes("מה יש לי") || text.includes("סטטוס")) {
-    response = await clientSummary(clientId);
+    response = await clientSummary(clientId, organizationId);
   } else {
-    const context = await buildClientContext(clientId);
+    const context = await buildClientContext(clientId, organizationId);
     response = await callClaude(
       [
         "אתה עוזר עסקי מקצועי.",
@@ -95,23 +103,35 @@ async function ownerIncome(organizationId: string) {
   return `הכנסות החודש: ₪${(sum._sum.amount ?? 0).toLocaleString("he-IL")}`;
 }
 
-async function clientInvoiceStatus(clientId: string) {
-  const invoices = await prisma.invoice.findMany({ where: { clientId, status: { not: "paid" } }, take: 5, orderBy: { dueDate: "asc" } });
+async function clientInvoiceStatus(clientId: string, organizationId: string) {
+  const invoices = await prisma.invoice.findMany({
+    where: { clientId, organizationId, status: { not: "paid" } },
+    take: 5,
+    orderBy: { dueDate: "asc" },
+  });
   return invoices.length
     ? invoices.map((invoice) => `• ${invoice.invoiceNumber ?? "חשבונית"} ₪${invoice.amount.toLocaleString("he-IL")} (${invoice.status})`).join("\n")
     : "אין חשבוניות פתוחות כרגע.";
 }
 
-async function clientTasks(clientId: string) {
-  const tasks = await prisma.task.findMany({ where: { clientId, status: "open" }, take: 5, orderBy: { createdAt: "desc" } });
+async function clientTasks(clientId: string, organizationId: string) {
+  const tasks = await prisma.task.findMany({
+    where: { clientId, organizationId, status: "open" },
+    take: 5,
+    orderBy: { createdAt: "desc" },
+  });
   return tasks.length ? tasks.map((task) => `• ${task.title}`).join("\n") : "אין משימות פתוחות כרגע.";
 }
 
-async function clientSummary(clientId: string) {
-  const client = await prisma.client.findUnique({ where: { id: clientId } });
+async function clientSummary(clientId: string, organizationId: string) {
+  const client = await prisma.client.findFirst({ where: { id: clientId, organizationId }, select: { name: true } });
   const [tasks, invoices] = await Promise.all([
-    prisma.task.count({ where: { clientId, status: "open" } }),
-    prisma.invoice.aggregate({ where: { clientId, status: { not: "paid" } }, _sum: { amount: true }, _count: true }),
+    prisma.task.count({ where: { clientId, organizationId, status: "open" } }),
+    prisma.invoice.aggregate({
+      where: { clientId, organizationId, status: { not: "paid" } },
+      _sum: { amount: true },
+      _count: true,
+    }),
   ]);
   return `סטטוס ${client?.name ?? "לקוח"}:\nמשימות פתוחות: ${tasks}\nחשבוניות פתוחות: ${invoices._count}\nסכום פתוח: ₪${(invoices._sum.amount ?? 0).toLocaleString("he-IL")}`;
 }
@@ -125,11 +145,15 @@ async function buildOwnerContext(organizationId: string) {
   return { ...stats, activeClients, unreadAlerts };
 }
 
-async function buildClientContext(clientId: string) {
+async function buildClientContext(clientId: string, organizationId: string) {
   const [client, openTasks, openInvoices] = await Promise.all([
-    prisma.client.findUnique({ where: { id: clientId }, select: { name: true, email: true } }),
-    prisma.task.count({ where: { clientId, status: "open" } }),
-    prisma.invoice.aggregate({ where: { clientId, status: { not: "paid" } }, _sum: { amount: true }, _count: true }),
+    prisma.client.findFirst({ where: { id: clientId, organizationId }, select: { name: true, email: true } }),
+    prisma.task.count({ where: { clientId, organizationId, status: "open" } }),
+    prisma.invoice.aggregate({
+      where: { clientId, organizationId, status: { not: "paid" } },
+      _sum: { amount: true },
+      _count: true,
+    }),
   ]);
   return { client, openTasks, openInvoices: openInvoices._count, openAmount: openInvoices._sum.amount ?? 0 };
 }

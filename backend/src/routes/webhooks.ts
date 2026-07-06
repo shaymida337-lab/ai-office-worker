@@ -189,7 +189,7 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       return;
     }
     await prisma.client.update({
-      where: { id: client.id },
+      where: { id: client.id, organizationId: client.organizationId },
       data: { lastSeen: new Date(), whatsappNumber: client.whatsappNumber ?? normalizedFrom },
     });
     const inboundLog = await createInboundWhatsAppLogOnce({
@@ -307,10 +307,11 @@ async function handleStripeWebhook(req: Request, res: Response) {
 
 async function findAssistantByOwnerPhone(phone: string) {
   const rows = await prisma.$queryRawUnsafe<Array<{ organizationId: string }>>(
-    'SELECT "organizationId" FROM "WhatsAppAssistant" WHERE "ownerPhone" = $1 AND "isActive" = true LIMIT 1',
+    'SELECT "organizationId" FROM "WhatsAppAssistant" WHERE "ownerPhone" = $1 AND "isActive" = true LIMIT 2',
     phone
   );
-  return rows[0] ?? null;
+  if (rows.length !== 1) return null;
+  return rows[0];
 }
 
 type InboundWhatsAppLogInput = {

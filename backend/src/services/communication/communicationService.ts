@@ -27,15 +27,34 @@ export function bodyPreview(body: string | null | undefined, max = BODY_PREVIEW_
   return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max)}…`;
 }
 
+const METADATA_STRING_MAX = 500;
+const SENSITIVE_METADATA_KEYS = /(token|secret|password|authorization|api[_-]?key|refresh|access|jwt|ocr|prompt|invoiceText|bodyText)/i;
+
+export function sanitizeMetadataJson(value: Record<string, unknown>): Prisma.InputJsonValue {
+  const out: Record<string, unknown> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (SENSITIVE_METADATA_KEYS.test(key)) {
+      out[key] = "[redacted]";
+      continue;
+    }
+    if (typeof raw === "string") {
+      out[key] = raw.length <= METADATA_STRING_MAX ? raw : `${raw.slice(0, METADATA_STRING_MAX)}…`;
+      continue;
+    }
+    out[key] = raw;
+  }
+  return out as Prisma.InputJsonValue;
+}
+
 function buildMetadata(envelope: CommunicationEnvelope, stage: string): Prisma.InputJsonValue {
   const base = envelope.metadata && typeof envelope.metadata === "object" ? { ...envelope.metadata } : {};
   const attachments = Array.isArray(envelope.attachments) ? envelope.attachments : [];
-  return {
+  return sanitizeMetadataJson({
     ...base,
     stage,
     attachments,
     occurredAt: envelope.occurredAt ? new Date(envelope.occurredAt).toISOString() : undefined,
-  } satisfies Prisma.InputJsonValue;
+  });
 }
 
 function toRecord(row: CommunicationEventRecord): CommunicationEventRecord {
@@ -130,14 +149,14 @@ export class CommunicationService {
       existing[0].metadataJson && typeof existing[0].metadataJson === "object"
         ? (existing[0].metadataJson as Record<string, unknown>)
         : {};
-    const metadataJson = {
+    const metadataJson = sanitizeMetadataJson({
       ...currentMeta,
       ...(patch.metadata ?? {}),
       ...(patch.stage ? { stage: patch.stage } : {}),
-    };
+    });
 
     const updated = await this.db.communicationEvent.update({
-      where: { id: eventId },
+      where: { id: eventId, organizationId },
       data: {
         bodyPreview: patch.bodyPreview === undefined ? undefined : patch.bodyPreview,
         sourceReference: patch.sourceReference === undefined ? undefined : patch.sourceReference,
@@ -150,7 +169,7 @@ export class CommunicationService {
       organizationId: updated.organizationId,
       channel: updated.channel,
       externalMessageId: updated.externalMessageId,
-      stage: patch.stage ?? String(metadataJson.stage ?? "updated"),
+      stage: patch.stage ?? String((metadataJson as Record<string, unknown>).stage ?? "updated"),
       eventId: updated.id,
     });
 

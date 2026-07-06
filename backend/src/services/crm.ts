@@ -286,7 +286,7 @@ export async function addLeadTimeline(organizationId: string, leadId: string, in
       createdBy: userId,
     },
   });
-  await recalculateLeadScore(leadId);
+  await recalculateLeadScore(organizationId, leadId);
   return item;
 }
 
@@ -323,7 +323,7 @@ export async function handleLeadReply(organizationId: string, value: { phone?: s
       channel: value.channel || (phone ? "whatsapp" : "email"),
     },
   });
-  await recalculateLeadScore(lead.id);
+  await recalculateLeadScore(organizationId, lead.id);
   await notifyAgent(organizationId, `הליד ${lead.name} ענה! הודעה: "${value.message ?? ""}"`);
   return getCrmLead(organizationId, lead.id);
 }
@@ -559,11 +559,11 @@ async function notifyAgentOnce(organizationId: string, type: string, message: st
   return true;
 }
 
-async function recalculateLeadScore(leadId: string) {
-  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+async function recalculateLeadScore(organizationId: string, leadId: string) {
+  const lead = await prisma.lead.findFirst({ where: { id: leadId, organizationId } });
   if (!lead) return null;
   const score = scoreLead(lead);
-  return prisma.lead.update({ where: { id: leadId }, data: { score, priorityStars: starsFromScore(score) } });
+  return prisma.lead.update({ where: { id: leadId, organizationId }, data: { score, priorityStars: starsFromScore(score) } });
 }
 
 function normalizeLeadInput(input: LeadInput, partial: true): Partial<NormalizedLeadInput>;

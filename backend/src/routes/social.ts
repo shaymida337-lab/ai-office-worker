@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authMiddleware } from "../lib/auth.js";
 import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
+import { requirePerm } from "../services/rbac/index.js";
 import {
   approvePost,
   connectSocialAccount,
@@ -19,16 +20,20 @@ socialRouter.get("/approval/:token", async (req, res) => {
   res.json({ posts: await getApprovalBatch(req.params.token) });
 });
 
-socialRouter.post("/approve/:postId", async (req, res) => {
-  await approvePost(req.params.postId);
+socialRouter.use(authMiddleware);
+
+socialRouter.post("/approve/:postId", requirePerm("work.view"), async (req, res) => {
+  const postId = String(req.params.postId);
+  await assertPost(postId, req.auth!.organizationId);
+  await approvePost(postId);
   res.json({ ok: true });
 });
 
-socialRouter.post("/reject/:postId", async (req, res) => {
-  res.json(await rejectPost(req.params.postId));
+socialRouter.post("/reject/:postId", requirePerm("work.view"), async (req, res) => {
+  const postId = String(req.params.postId);
+  await assertPost(postId, req.auth!.organizationId);
+  res.json(await rejectPost(postId));
 });
-
-socialRouter.use(authMiddleware);
 
 socialRouter.get("/status", async (req, res) => {
   const clients = await prisma.client.findMany({
@@ -99,9 +104,13 @@ socialRouter.get("/calendar/:clientId", async (req, res) => {
   res.json({ posts: await getSocialCalendar(req.params.clientId) });
 });
 
-socialRouter.post("/approve-all/:token", async (req, res) => {
-  const posts = await getApprovalBatch(req.params.token);
-  for (const post of posts) await approvePost(post.id);
+socialRouter.post("/approve-all/:token", requirePerm("work.view"), async (req, res) => {
+  const token = String(req.params.token);
+  const posts = await getApprovalBatch(token);
+  for (const post of posts) {
+    await assertPost(post.id, req.auth!.organizationId);
+    await approvePost(post.id);
+  }
   res.json({ ok: true, approved: posts.length });
 });
 

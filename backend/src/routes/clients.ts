@@ -8,6 +8,7 @@ import { getOAuth2Client, GMAIL_SCOPES } from "../services/google.js";
 import { syncGmailForClient } from "../services/clientGmailSync.js";
 import { scanForInvoices } from "../services/invoiceScanner.js";
 import { normalizeWhatsAppNumber, sendClientWhatsAppMessage } from "../services/whatsapp.js";
+import { stripClientGoogleTokens } from "../lib/integrationSecrets.js";
 import {
   findClientByRealEmail,
   getClientDeliverableEmail,
@@ -475,7 +476,7 @@ clientsRouter.post("/:clientId/whatsapp/send", authMiddleware, checkClientOwners
     return;
   }
   try {
-    const result = await sendClientWhatsAppMessage(client.id, text);
+    const result = await sendClientWhatsAppMessage(client.organizationId, client.id, text);
     if (!result.sent) {
       res.status(400).json({ error: result.reason });
       return;
@@ -660,7 +661,7 @@ clientsRouter.put("/:clientId", authMiddleware, checkClientOwnership, async (req
     data: updateData,
   });
 
-  res.json({ client: { ...updated, stats: await clientStats(req.auth!.organizationId, updated.id) } });
+  res.json({ client: { ...stripClientGoogleTokens(updated), stats: await clientStats(req.auth!.organizationId, updated.id) } });
 });
 
 clientsRouter.post("/:clientId/scan", authMiddleware, checkClientOwnership, async (_req, res) => {

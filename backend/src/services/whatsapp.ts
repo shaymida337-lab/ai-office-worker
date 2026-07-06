@@ -1,4 +1,5 @@
 import { config, hasTwilio, missingTwilioEnvVars, twilioEnvDiagnostics } from "../lib/config.js";
+import { isProduction } from "../lib/productionGuard.js";
 import { prisma } from "../lib/prisma.js";
 import { getDashboardStats } from "./dashboard.js";
 import {
@@ -112,7 +113,9 @@ export function getWhatsAppConfigurationStatus() {
       `${config.twilio.webhookUrl.replace(/\/(?:api\/)?webhook\/whatsapp$/, "")}/webhook/twilio/whatsapp`,
       `${config.twilio.webhookUrl.replace(/\/(?:api\/)?webhook\/whatsapp$/, "")}/api/webhook/twilio/whatsapp`,
     ],
-    envDiagnostics: twilioEnvDiagnostics(),
+    envDiagnostics: isProduction()
+      ? { configured: missingVariables.length === 0 }
+      : twilioEnvDiagnostics(),
   };
 }
 
@@ -204,21 +207,32 @@ export async function getWhatsAppSettings(organizationId: string) {
     webhookUrl: configuration.webhookUrl,
     webhookUrls: configuration.webhookUrls,
     connectedAt: integration?.connectedAt ?? null,
-    diagnostics: {
-      accountSid: configuration.envDiagnostics.TWILIO_ACCOUNT_SID,
-      authToken: configuration.envDiagnostics.TWILIO_AUTH_TOKEN,
-      whatsappNumber: configuration.envDiagnostics.TWILIO_WHATSAPP_NUMBER,
-      whatsappFrom: configuration.envDiagnostics.TWILIO_WHATSAPP_FROM,
-      twilioApiStatus: connection.connected ? "PASS" : "FAIL",
-      account: connection.account,
-      lastError: connection.reason,
-      missingVariables: configuration.missingVariables,
-      messageProcessingEnabled: configuration.messageProcessingEnabled,
-      mediaIngestionEnabled: configuration.mediaIngestionEnabled,
-      autoReplyEnabled: configuration.autoReplyEnabled,
-      createClientsEnabled: configuration.createClientsEnabled,
-      webEnabled: configuration.webEnabled,
-    },
+    diagnostics: isProduction()
+      ? {
+          twilioApiStatus: connection.connected ? "PASS" : "FAIL",
+          configured: configuration.configured,
+          missingVariables: configuration.missingVariables,
+          messageProcessingEnabled: configuration.messageProcessingEnabled,
+          mediaIngestionEnabled: configuration.mediaIngestionEnabled,
+          autoReplyEnabled: configuration.autoReplyEnabled,
+          createClientsEnabled: configuration.createClientsEnabled,
+          webEnabled: configuration.webEnabled,
+        }
+      : {
+          accountSid: (configuration.envDiagnostics as ReturnType<typeof twilioEnvDiagnostics>).TWILIO_ACCOUNT_SID,
+          authToken: (configuration.envDiagnostics as ReturnType<typeof twilioEnvDiagnostics>).TWILIO_AUTH_TOKEN,
+          whatsappNumber: (configuration.envDiagnostics as ReturnType<typeof twilioEnvDiagnostics>).TWILIO_WHATSAPP_NUMBER,
+          whatsappFrom: (configuration.envDiagnostics as ReturnType<typeof twilioEnvDiagnostics>).TWILIO_WHATSAPP_FROM,
+          twilioApiStatus: connection.connected ? "PASS" : "FAIL",
+          account: connection.account,
+          lastError: connection.reason,
+          missingVariables: configuration.missingVariables,
+          messageProcessingEnabled: configuration.messageProcessingEnabled,
+          mediaIngestionEnabled: configuration.mediaIngestionEnabled,
+          autoReplyEnabled: configuration.autoReplyEnabled,
+          createClientsEnabled: configuration.createClientsEnabled,
+          webEnabled: configuration.webEnabled,
+        },
   };
 }
 
@@ -256,27 +270,40 @@ export async function findOrganizationByWhatsAppNumber(fromNumber: string) {
     where: { provider: "twilio" },
     select: { organizationId: true, metadata: true },
   });
-  const match = integrations.find((integration) => parseMetadata(integration.metadata).ownerWhatsApp === normalized);
-  if (match) return match.organizationId;
+  const matches = integrations.filter((integration) => parseMetadata(integration.metadata).ownerWhatsApp === normalized);
+  if (matches.length === 1) return matches[0].organizationId;
 
-  if (config.twilio.ownerWhatsApp && normalizeWhatsAppNumber(config.twilio.ownerWhatsApp) === normalized) {
-    const org = await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
-    return org?.id ?? null;
+  if (
+    config.twilio.ownerWhatsApp &&
+    normalizeWhatsAppNumber(config.twilio.ownerWhatsApp) === normalized
+  ) {
+    const assistants = await prisma.$queryRawUnsafe<Array<{ organizationId: string }>>(
+      'SELECT "organizationId" FROM "WhatsAppAssistant" WHERE "ownerPhone" = $1 AND "isActive" = true LIMIT 2',
+      normalized
+    );
+    if (assistants.length === 1) return assistants[0].organizationId;
   }
   return null;
 }
 
-export async function findClientByWhatsAppNumber(fromNumber: string) {
+export async function findClientByWhatsAppNumber(fromNumber: string, organizationId?: string) {
   const normalized = normalizeWhatsAppNumber(fromNumber);
-  return prisma.client.findFirst({
+  const matches = await prisma.client.findMany({
     where: {
+      ...(organizationId ? { organizationId } : {}),
       isActive: true,
       OR: [
         { whatsappNumber: normalized },
         { whatsappNumber: fromNumber },
       ],
     },
+    take: 2,
   });
+  if (organizationId) {
+    return matches[0] ?? null;
+  }
+  if (matches.length !== 1) return null;
+  return matches[0];
 }
 
 export async function findOrCreateClientByWhatsAppNumber(organizationId: string, fromNumber: string, profileName?: string) {
@@ -457,8 +484,15 @@ export async function sendWhatsAppToPhone(organizationId: string, phone: string,
   return { sent: true, sid: message.sid };
 }
 
-export async function sendClientWhatsAppMessage(clientId: string, body: string, aiGenerated = false) {
-  const clientRecord = await prisma.client.findUnique({ where: { id: clientId } });
+export async function sendClientWhatsAppMessage(
+  organizationId: string,
+  clientId: string,
+  body: string,
+  aiGenerated = false
+) {
+  const clientRecord = await prisma.client.findFirst({
+    where: { id: clientId, organizationId, isActive: true },
+  });
   if (!clientRecord?.whatsappNumber) return { sent: false, reason: "Client WhatsApp number is missing" };
 
   const twilioClient = await getTwilioClient();

@@ -2,6 +2,12 @@ import type { drive_v3 } from "googleapis";
 import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import {
+  decryptClientGoogleTokens,
+  decryptIntegrationTokens,
+  encryptClientGoogleTokens,
+  encryptIntegrationTokens,
+} from "../lib/integrationSecrets.js";
+import {
   assertGmailIntegrationIsolatedForScan,
   assertIntegrationBelongsToOrganization,
 } from "./gmailIntegrationIsolation.js";
@@ -41,11 +47,10 @@ export async function getGoogleClients(organizationId: string) {
       where: {
         organizationId_provider: { organizationId, provider: "gmail" },
       },
-      data: {
+      data: encryptIntegrationTokens({
         accessToken: tokens.access_token ?? undefined,
-        ...(tokens.refresh_token && { refreshToken: tokens.refresh_token }),
-        expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
-      },
+        refreshToken: tokens.refresh_token ?? undefined,
+      }),
     });
   });
 
@@ -80,17 +85,15 @@ export async function getGoogleClientsIfAvailable(
 
 export async function ensureGmailAccessToken(organizationId: string) {
   const google = await loadGoogle();
-  const integration = await assertGmailIntegrationIsolatedForScan(organizationId);
+  const rawIntegration = await assertGmailIntegrationIsolatedForScan(organizationId);
+  const integration = decryptIntegrationTokens(rawIntegration);
 
   const expiresAt = integration.expiresAt?.getTime() ?? 0;
   const hasValidAccessToken = Boolean(integration.accessToken) && expiresAt > Date.now() + 60_000;
   if (hasValidAccessToken) {
-    console.log("Gmail token status: valid");
     return integration;
   }
 
-  console.log("Gmail token status: expired");
-  console.log("Gmail token: expired, refreshing...");
   const oauth2 = new google.auth.OAuth2(
     config.google.clientId,
     config.google.clientSecret,
@@ -101,16 +104,19 @@ export async function ensureGmailAccessToken(organizationId: string) {
   });
 
   const { credentials } = await oauth2.refreshAccessToken();
-  return prisma.integration.update({
+  const updated = await prisma.integration.update({
     where: {
       organizationId_provider: { organizationId, provider: "gmail" },
     },
     data: {
-      accessToken: credentials.access_token ?? integration.accessToken,
-      refreshToken: credentials.refresh_token ?? integration.refreshToken,
+      ...encryptIntegrationTokens({
+        accessToken: credentials.access_token ?? integration.accessToken,
+        refreshToken: credentials.refresh_token ?? integration.refreshToken,
+      }),
       expiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : integration.expiresAt,
     },
   });
+  return decryptIntegrationTokens(updated);
 }
 
 export async function getOAuth2Client(redirectUri = config.google.redirectUri) {
@@ -249,14 +255,15 @@ export function parseGoogleIntegrationMetadata(metadata: string | null | undefin
 
 export async function getCalendarClientForOrganization(organizationId: string) {
   const google = await loadGoogle();
-  let integration = await prisma.integration.findUnique({
+  const rawIntegration = await prisma.integration.findUnique({
     where: {
       organizationId_provider: { organizationId, provider: "google_calendar" },
     },
   });
-  if (!integration?.refreshToken) {
+  if (!rawIntegration?.refreshToken) {
     return null;
   }
+  let integration = decryptIntegrationTokens(rawIntegration);
 
   const expiresAt = integration.expiresAt?.getTime() ?? 0;
   const hasValidAccessToken = Boolean(integration.accessToken) && expiresAt > Date.now() + 60_000;
@@ -270,16 +277,19 @@ export async function getCalendarClientForOrganization(organizationId: string) {
       refresh_token: integration.refreshToken,
     });
     const { credentials } = await oauth2Refresh.refreshAccessToken();
-    integration = await prisma.integration.update({
+    const updated = await prisma.integration.update({
       where: {
         organizationId_provider: { organizationId, provider: "google_calendar" },
       },
       data: {
-        accessToken: credentials.access_token ?? integration.accessToken,
-        refreshToken: credentials.refresh_token ?? integration.refreshToken,
+        ...encryptIntegrationTokens({
+          accessToken: credentials.access_token ?? integration.accessToken,
+          refreshToken: credentials.refresh_token ?? integration.refreshToken,
+        }),
         expiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : integration.expiresAt,
       },
     });
+    integration = decryptIntegrationTokens(updated);
   }
 
   const oauth2 = new google.auth.OAuth2(
@@ -298,11 +308,10 @@ export async function getCalendarClientForOrganization(organizationId: string) {
       where: {
         organizationId_provider: { organizationId, provider: "google_calendar" },
       },
-      data: {
+      data: encryptIntegrationTokens({
         accessToken: tokens.access_token ?? undefined,
-        ...(tokens.refresh_token && { refreshToken: tokens.refresh_token }),
-        expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
-      },
+        refreshToken: tokens.refresh_token ?? undefined,
+      }),
     });
   });
 
@@ -622,7 +631,8 @@ export async function deleteCalendarEngineGoogleEvent(
 
 export async function getGoogleClientsForClient(clientId: string) {
   const google = await loadGoogle();
-  const client = await prisma.client.findUnique({ where: { id: clientId } });
+  const rawClient = await prisma.client.findUnique({ where: { id: clientId } });
+  const client = rawClient ? decryptClientGoogleTokens(rawClient) : null;
   if (!client?.googleRefreshToken) {
     throw new Error("Client Gmail not connected");
   }
@@ -640,10 +650,10 @@ export async function getGoogleClientsForClient(clientId: string) {
   oauth2.on("tokens", async (tokens) => {
     await prisma.client.update({
       where: { id: clientId },
-      data: {
+      data: encryptClientGoogleTokens({
         googleAccessToken: tokens.access_token ?? undefined,
-        ...(tokens.refresh_token && { googleRefreshToken: tokens.refresh_token }),
-      },
+        googleRefreshToken: tokens.refresh_token ?? undefined,
+      }),
     });
   });
 

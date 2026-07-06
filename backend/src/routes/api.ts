@@ -119,6 +119,9 @@ import { confidenceRouter } from "./confidenceRoutes.js";
 import { auditorRouter } from "./auditorRoutes.js";
 import { releaseCertificateRouter } from "./releaseCertificateRoutes.js";
 import { requirePerm } from "../services/rbac/index.js";
+import { verifyLeadsWebhook } from "../lib/webhookAuth.js";
+import { requireNonProduction } from "../lib/productionGuard.js";
+import { secureRouteGuards } from "../middleware/secureRouteGuards.js";
 import {
   beginVoiceTurnIdempotency,
   completeVoiceTurnIdempotency,
@@ -143,15 +146,13 @@ const natalieAudioUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-apiRouter.post("/leads/webhook", async (req, res) => {
+apiRouter.post("/leads/webhook", verifyLeadsWebhook, async (req, res) => {
   try {
     const { createCrmLead } = await import("../services/crm.js");
-    const body = req.body as { organizationId?: string; name?: string; phone?: string; email?: string; source?: string; message?: string };
-    const organization = body.organizationId
-      ? await prisma.organization.findUnique({ where: { id: body.organizationId } })
-      : await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
+    const body = req.body as { organizationId: string; name?: string; phone?: string; email?: string; source?: string; message?: string };
+    const organization = await prisma.organization.findUnique({ where: { id: body.organizationId } });
     if (!organization) {
-      res.status(400).json({ error: "Organization is required" });
+      res.status(400).json({ error: "Organization not found" });
       return;
     }
     const lead = await createCrmLead(organization.id, {
@@ -168,7 +169,7 @@ apiRouter.post("/leads/webhook", async (req, res) => {
   }
 });
 
-apiRouter.get("/debug/payments/open-classification-inputs", async (req, res, next) => {
+apiRouter.get("/debug/payments/open-classification-inputs", requireNonProduction, async (req, res, next) => {
   const orgId = typeof req.query.orgId === "string" ? req.query.orgId.trim() : "";
   const token = typeof req.query.token === "string" ? req.query.token : "";
   if (!orgId && !token) {
@@ -189,6 +190,7 @@ apiRouter.get("/debug/payments/open-classification-inputs", async (req, res, nex
 });
 
 apiRouter.use(authMiddleware);
+apiRouter.use(secureRouteGuards);
 apiRouter.use(calendarEngineRouter);
 apiRouter.use(scannerHealthRouter);
 apiRouter.use(integrityWatchRouter);
@@ -2644,7 +2646,11 @@ apiRouter.get("/communications", requirePerm("chat.use"), async (req, res) => {
   const channel = typeof req.query.channel === "string" ? req.query.channel.trim() : undefined;
   const direction = typeof req.query.direction === "string" ? req.query.direction.trim() : undefined;
   const correlationId =
-    typeof req.query.correlationId === "string" ? req.query.correlationId.trim() : undefined;
+    typeof req.query.correlationId === "string" ? req.query.correlationId.trim().slice(0, 128) : undefined;
+  if (correlationId && !/^[a-zA-Z0-9:_-]+$/.test(correlationId)) {
+    res.status(400).json({ error: "Invalid correlationId" });
+    return;
+  }
   const fromRaw = typeof req.query.from === "string" ? req.query.from.trim() : undefined;
   const toRaw = typeof req.query.to === "string" ? req.query.to.trim() : undefined;
   const page = Math.max(1, Number.parseInt(String(req.query.page ?? "1"), 10) || 1);

@@ -105,6 +105,12 @@ export const config = {
     .map((origin) => origin.trim())
     .filter(Boolean),
   cronSecret: optional("CRON_SECRET", process.env.NODE_ENV === "production" ? "" : "dev-cron-secret"),
+  secrets: {
+    encryptionKey: optional("SECRETS_ENCRYPTION_KEY"),
+  },
+  webhooks: {
+    leadsSecret: optional("LEADS_WEBHOOK_SECRET"),
+  },
   debug: {
     classificationInvestigationToken: optional("DEBUG_CLASSIFICATION_TOKEN"),
   },
