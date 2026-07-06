@@ -25,6 +25,7 @@ import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } fr
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
 import { approveFinancialDocumentReview } from "../services/financialDocuments.js";
 import { recordManualEntryFinancialDocument } from "../services/financialDocuments.js";
+import { resolveReviewSupplierContext } from "../services/reviewSupplierResolution.js";
 import {
   invoiceAuditSnapshot,
   paymentAuditSnapshot,
@@ -5672,6 +5673,10 @@ function mapDocumentReviewForApi<
     currency?: string;
     organizationId?: string;
     driveFileUrl?: string | null;
+    supplierName?: string | null;
+    sender?: string | null;
+    supplierTaxId?: string | null;
+    rawAnalysis?: unknown;
   },
 >(item: T) {
   const display = resolveDocumentReviewDisplayAmount({
@@ -5681,6 +5686,13 @@ function mapDocumentReviewForApi<
     parsedFieldsJson: item.parsedFieldsJson,
     currency: item.currency,
   });
+  const supplier = resolveReviewSupplierContext({
+    supplierName: item.supplierName,
+    sender: item.sender,
+    supplierTaxId: item.supplierTaxId,
+    parsedFieldsJson: item.parsedFieldsJson,
+    rawAnalysis: item.rawAnalysis,
+  });
   return {
     ...item,
     // נתיב /uploads מקומי יוצא רק כ-URL חתום וקשור-ארגון; קישורי Drive לא משתנים
@@ -5688,14 +5700,23 @@ function mapDocumentReviewForApi<
     displayAmount: display.amount,
     amountLabel: display.amountLabel,
     amountResolved: display.resolved,
+    supplierDisplayName: supplier.displaySupplierName,
+    rawSupplierName: supplier.rawSupplierName,
+    supplierConfidence: supplier.supplierConfidence,
+    supplierNeedsConfirmation: supplier.supplierNeedsConfirmation,
+    supplierUncertain: supplier.supplierUncertain,
+    confirmedSupplierName: supplier.confirmedSupplierName,
   };
 }
 
 apiRouter.post("/document-reviews/:id/approve", requirePerm("review.approve"), async (req, res) => {
   try {
+    const confirmedSupplierName =
+      typeof req.body?.supplierName === "string" ? req.body.supplierName.trim() : undefined;
     const item = await approveFinancialDocumentReview(req.auth!.organizationId, routeId(req), {
       userId: req.auth!.userId,
       sourceRoute: "POST /document-reviews/:id/approve",
+      confirmedSupplierName,
     });
     res.json({ ok: true, item: mapDocumentReviewForApi(item) });
   } catch (err) {

@@ -269,6 +269,88 @@ test("approveFinancialDocumentReview blocks cross-organization access", async ()
   }
 });
 
+test("approveFinancialDocumentReview uses confirmed supplier name for payment", async () => {
+  const snapshots = buildPassingTrustGateSnapshots();
+  const review = {
+    id: "review-supplier-confirm",
+    organizationId: "org-1",
+    source: "camera",
+    sender: null,
+    subject: "receipt",
+    fileName: "paz.jpg",
+    fileSize: 100,
+    supplierName: "פרייזון",
+    supplierTaxId: null,
+    invoiceNumber: null,
+    documentDate: new Date("2026-07-01T00:00:00.000Z"),
+    dueDate: null,
+    amountBeforeVat: null,
+    vatAmount: null,
+    totalAmount: 215.14,
+    documentType: "receipt",
+    driveFileUrl: "/uploads/camera-invoices/paz.jpg",
+    driveUploadStatus: "uploaded",
+    confidenceScore: 0.9,
+    reviewStatus: "needs_review",
+    uncertaintyReason: "supplier.sir_weak_evidence",
+    sourceFingerprint: "source-fp-paz",
+    documentFingerprint: "doc-fp-paz",
+    parsedFieldsJson: {
+      rawOcrText: "קבלה תחנת פז דלק",
+      gates: [
+        snapshots.amountGate,
+        { ...snapshots.supplierGate, verdict: "review", reasonCode: "supplier.sir_weak_evidence" },
+        snapshots.fingerprintGate,
+        snapshots.duplicateGate,
+      ],
+      sir: {
+        status: "resolved",
+        canonicalSupplier: "פרייזון",
+        supplierName: "פרייזון",
+        isStrongEnoughForAutoSave: false,
+      },
+    },
+    rawAnalysis: null,
+    emailMessageId: null,
+    gmailMessageId: null,
+    whatsappLogId: null,
+    supplierPaymentId: null,
+    currency: "ILS",
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+    normalizedDocumentDate: null,
+  };
+
+  const original = {
+    findFirst: prisma.financialDocumentReview.findFirst,
+    update: prisma.financialDocumentReview.update,
+    paymentFindMany: prisma.supplierPayment.findMany,
+    paymentUpsert: prisma.supplierPayment.upsert,
+  };
+
+  let capturedSupplier: string | null = null;
+
+  try {
+    (prisma.financialDocumentReview.findFirst as any) = async () => review;
+    (prisma.financialDocumentReview.update as any) = async ({ data }: any) => ({ ...review, ...data });
+    (prisma.supplierPayment.findMany as any) = async () => [];
+    (prisma.supplierPayment.upsert as any) = async ({ create }: any) => {
+      capturedSupplier = create.supplier;
+      return { id: "payment-paz", ...create };
+    };
+
+    await approveFinancialDocumentReview("org-1", "review-supplier-confirm", {
+      confirmedSupplierName: "פז",
+    });
+    assert.equal(capturedSupplier, "פז");
+  } finally {
+    (prisma.financialDocumentReview.findFirst as any) = original.findFirst;
+    (prisma.financialDocumentReview.update as any) = original.update;
+    (prisma.supplierPayment.findMany as any) = original.paymentFindMany;
+    (prisma.supplierPayment.upsert as any) = original.paymentUpsert;
+  }
+});
+
 test("approveFinancialDocumentReview blocks arc_missing with no fallback amount", async () => {
   const snapshots = buildPassingTrustGateSnapshots();
   const review = {

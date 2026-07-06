@@ -59,6 +59,10 @@ import {
   evaluateFreshTrustGatesForManualApproval,
 } from "./trust/financeTrustPersistence.js";
 import { isBlockedDocumentOutcome } from "./trust/blockedOutcomeGuard.js";
+import {
+  mergeReviewSupplierConfirmation,
+  resolveSupplierNameForApproval,
+} from "./reviewSupplierResolution.js";
 import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 import {
   isCanonicalFinanceAmountResolved,
@@ -959,10 +963,10 @@ export async function recordManualEntryFinancialDocument(input: ManualEntryFinan
 export async function approveFinancialDocumentReview(
   organizationId: string,
   reviewId: string,
-  options?: { userId?: string; sourceRoute?: string },
+  options?: { userId?: string; sourceRoute?: string; confirmedSupplierName?: string },
 ) {
   try {
-  const review = await prisma.financialDocumentReview.findFirst({ where: { id: reviewId, organizationId } });
+  let review = await prisma.financialDocumentReview.findFirst({ where: { id: reviewId, organizationId } });
   if (!review) throw new Error("Document review item not found");
   if (review.reviewStatus === "approved" && review.supplierPaymentId) {
     return review;
@@ -1004,10 +1008,48 @@ export async function approveFinancialDocumentReview(
     });
     return rejected;
   }
-  const approvedSupplierName =
-    parseSupplierGateFromParsedFields(review.parsedFieldsJson)?.canonicalSupplierName ??
-    review.supplierName?.trim() ??
-    null;
+  const approvedSupplierName = resolveSupplierNameForApproval(
+    {
+      supplierName: review.supplierName,
+      sender: review.sender,
+      supplierTaxId: review.supplierTaxId,
+      parsedFieldsJson: review.parsedFieldsJson,
+      rawAnalysis: review.rawAnalysis,
+    },
+    options?.confirmedSupplierName,
+  );
+  let parsedFieldsForApproval =
+    review.parsedFieldsJson && typeof review.parsedFieldsJson === "object" && !Array.isArray(review.parsedFieldsJson)
+      ? { ...(review.parsedFieldsJson as Record<string, unknown>) }
+      : {};
+  if (options?.confirmedSupplierName) {
+    parsedFieldsForApproval = mergeReviewSupplierConfirmation(parsedFieldsForApproval, {
+      rawExtractedName: review.supplierName,
+      confirmedName: approvedSupplierName,
+      userId: options.userId ?? null,
+    });
+    attachSupplierGateToParsedFields(parsedFieldsForApproval, {
+      sirSummary: {
+        supplierName: approvedSupplierName,
+        canonicalSupplier: approvedSupplierName,
+        status: "resolved",
+        isStrongEnoughForAutoSave: true,
+      },
+      supplierName: approvedSupplierName,
+    });
+    await prisma.financialDocumentReview.update({
+      where: { id: review.id },
+      data: {
+        supplierName: approvedSupplierName,
+        parsedFieldsJson: parsedFieldsForApproval as any,
+      },
+    });
+    review = {
+      ...review,
+      supplierName: approvedSupplierName,
+      parsedFieldsJson: parsedFieldsForApproval as any,
+    };
+  }
   if (!approvedSupplierName) {
     throw new Error("Cannot approve document without a verified supplier name");
   }
@@ -1021,7 +1063,7 @@ export async function approveFinancialDocumentReview(
     organizationId,
     source: review.source as FinancialDocumentSource,
     sender: review.sender,
-    supplierName: review.supplierName,
+    supplierName: approvedSupplierName,
     supplierTaxId: review.supplierTaxId,
     invoiceNumber: review.invoiceNumber,
     totalAmount: approvedAmount,
@@ -1035,10 +1077,10 @@ export async function approveFinancialDocumentReview(
   const trustEvaluation = evaluateFreshTrustGatesForManualApproval({
     parsedFieldsJson: review.parsedFieldsJson,
     totalAmount: approvedAmount,
-    supplierName: review.supplierName,
+    supplierName: approvedSupplierName,
     fingerprintGateInput: buildFingerprintGateInputFromReview({
       organizationId,
-      supplierName: review.supplierName,
+      supplierName: approvedSupplierName,
       supplierTaxId: review.supplierTaxId,
       invoiceNumber: review.invoiceNumber,
       totalAmount: approvedAmount,
@@ -1083,6 +1125,7 @@ export async function approveFinancialDocumentReview(
     data: {
       organizationId,
       supplier: approvedSupplierName,
+      supplierName: approvedSupplierName,
       amount: approvedAmount,
       currency: review.currency,
       date: review.documentDate ?? new Date(),

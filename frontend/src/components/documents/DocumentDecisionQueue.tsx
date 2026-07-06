@@ -22,7 +22,7 @@ export function DocumentDecisionQueue({
   totalCount: number;
   exitingIds: Set<string>;
   updatingId: string | null;
-  onApprove: (id: string) => void;
+  onApprove: (id: string, supplierName: string) => void;
   onOpen: (url: string) => void;
   onRemove: (id: string) => void;
 }) {

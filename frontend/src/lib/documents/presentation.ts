@@ -6,6 +6,12 @@ export type DocumentReviewItem = {
   fileName: string | null;
   documentType: string;
   supplierName: string | null;
+  supplierDisplayName?: string | null;
+  rawSupplierName?: string | null;
+  supplierConfidence?: "high" | "low" | "missing";
+  supplierNeedsConfirmation?: boolean;
+  supplierUncertain?: boolean;
+  confirmedSupplierName?: string | null;
   totalAmount: number | null;
   displayAmount?: number | null;
   amountLabel?: string;
@@ -35,7 +41,11 @@ export type ReviewMissingField = {
   blocking: boolean;
 };
 
-export type ReviewPrimaryActionKind = "complete_details" | "ready_to_approve" | "needs_special_review";
+export type ReviewPrimaryActionKind =
+  | "complete_details"
+  | "ready_to_approve"
+  | "needs_special_review"
+  | "edit_supplier";
 
 export type ReviewPrimaryAction = {
   kind: ReviewPrimaryActionKind;
@@ -44,6 +54,7 @@ export type ReviewPrimaryAction = {
   secondaryLabel: string | null;
   rejectLabel: string;
   canApprove: boolean;
+  canEditSupplier: boolean;
   missingFields: ReviewMissingField[];
   advisoryFields: ReviewMissingField[];
 };
@@ -58,8 +69,26 @@ const PAYMENT_DOCUMENT_TYPES = new Set([
   "payment_request",
 ]);
 
+export function reviewSupplierDisplayName(item: DocumentReviewItem): string {
+  return (
+    item.confirmedSupplierName?.trim() ||
+    item.supplierDisplayName?.trim() ||
+    item.supplierName?.trim() ||
+    ""
+  );
+}
+
 function normalizedSupplierName(item: DocumentReviewItem): string {
-  return item.supplierName?.trim() || item.sender?.trim() || "";
+  return reviewSupplierDisplayName(item);
+}
+
+function supplierNeedsUserConfirmation(item: DocumentReviewItem): boolean {
+  if (item.confirmedSupplierName?.trim()) return false;
+  return Boolean(
+    item.supplierNeedsConfirmation ||
+      item.supplierUncertain ||
+      item.supplierConfidence === "low"
+  );
 }
 
 function hasVerifiedSupplier(item: DocumentReviewItem): boolean {
@@ -144,6 +173,9 @@ export function getReviewMissingFields(item: DocumentReviewItem): {
       blocking: false,
     });
   }
+  if (supplierNeedsUserConfirmation(item) && hasVerifiedSupplier(item)) {
+    advisory.push({ id: "supplier", labelHebrew: "ספק לא בטוח", blocking: false });
+  }
 
   return { blocking, advisory };
 }
@@ -169,6 +201,7 @@ export function getReviewPrimaryAction(item: DocumentReviewItem): ReviewPrimaryA
       secondaryLabel: null,
       rejectLabel,
       canApprove: false,
+      canEditSupplier: false,
       missingFields: [],
       advisoryFields: [],
     };
@@ -182,6 +215,7 @@ export function getReviewPrimaryAction(item: DocumentReviewItem): ReviewPrimaryA
       secondaryLabel: item.driveFileUrl ? "פתח מסמך" : null,
       rejectLabel,
       canApprove: false,
+      canEditSupplier: true,
       missingFields: [{ id: "supplier", labelHebrew: "חסר ספק", blocking: true }],
       advisoryFields: advisory,
     };
@@ -195,7 +229,22 @@ export function getReviewPrimaryAction(item: DocumentReviewItem): ReviewPrimaryA
       secondaryLabel: item.driveFileUrl ? "פתח מסמך" : null,
       rejectLabel,
       canApprove: false,
+      canEditSupplier: blocking.some((field) => field.id === "supplier") || hasVerifiedSupplier(item),
       missingFields: blocking,
+      advisoryFields: advisory,
+    };
+  }
+
+  if (supplierNeedsUserConfirmation(item)) {
+    return {
+      kind: "edit_supplier",
+      statusLabel: "ספק לא בטוח",
+      primaryLabel: "ערוך ספק",
+      secondaryLabel: item.driveFileUrl ? "פתח מסמך" : null,
+      rejectLabel,
+      canApprove: false,
+      canEditSupplier: true,
+      missingFields: [],
       advisoryFields: advisory,
     };
   }
@@ -207,6 +256,7 @@ export function getReviewPrimaryAction(item: DocumentReviewItem): ReviewPrimaryA
     secondaryLabel: "ערוך פרטים",
     rejectLabel,
     canApprove: true,
+    canEditSupplier: true,
     missingFields: [],
     advisoryFields: advisory,
   };
@@ -228,6 +278,7 @@ export type DocumentFilter =
 export type DocumentPresentation = {
   typeLabel: string;
   supplier: string;
+  rawSupplierName: string | null;
   amountLabel: string;
   documentTypeLabel: string;
   reason: string;
@@ -235,6 +286,7 @@ export type DocumentPresentation = {
   secondaryLabel: string | null;
   rejectLabel: string;
   canApprove: boolean;
+  canEditSupplier: boolean;
   missingFields: ReviewMissingField[];
   advisoryFields: ReviewMissingField[];
   isBlocked: boolean;
@@ -393,6 +445,9 @@ export function specificReviewReasonHebrew(
 export function approvalErrorHebrew(message: string): string {
   if (message.includes("verified total amount")) return "אי אפשר לאשר כי הסכום לא זוהה בצורה בטוחה";
   if (message.includes("verified supplier name")) return "אי אפשר לאשר כי הספק לא זוהה";
+  if (message.includes("supplier.needs_confirmation")) {
+    return "יש לאשר או לערוך את שם הספק לפני האישור";
+  }
   if (message.includes("verified document fingerprint")) return "אי אפשר לאשר כי חסרים פרטים מזהים במסמך";
   const codeMatch = message.match(/\(([^)]+)\)\s*$/);
   const mapped = codeMatch ? mapReasonCodeToHebrew(codeMatch[1]) : null;
@@ -413,6 +468,11 @@ export function presentDocument(item: DocumentReviewItem): DocumentPresentation 
     reason =
       specific ??
       "יש חשד שהמסמך כבר קיים — אפשר לאשר אם זה מסמך חדש, או לדחות אם זו כפילות.";
+  } else if (action.kind === "edit_supplier") {
+    reason = "ספק לא בטוח — אשר את השם או ערוך לפני האישור.";
+    if (item.rawSupplierName && item.rawSupplierName !== supplier) {
+      reason += ` (זוהה במקור: ${item.rawSupplierName})`;
+    }
   } else if (action.kind === "ready_to_approve" && action.canApprove) {
     reason = "המסמך מוכן לאישור";
     if (action.advisoryFields.length > 0) {
@@ -435,6 +495,7 @@ export function presentDocument(item: DocumentReviewItem): DocumentPresentation 
   return {
     typeLabel: action.statusLabel,
     supplier,
+    rawSupplierName: item.rawSupplierName?.trim() || item.supplierName?.trim() || null,
     amountLabel: documentReviewAmountLabel(item),
     documentTypeLabel: documentTypeLabel(item.documentType),
     reason,
@@ -442,9 +503,13 @@ export function presentDocument(item: DocumentReviewItem): DocumentPresentation 
     secondaryLabel: action.secondaryLabel,
     rejectLabel: action.rejectLabel,
     canApprove: action.canApprove,
+    canEditSupplier: action.canEditSupplier,
     missingFields: action.missingFields,
     advisoryFields: action.advisoryFields,
-    isBlocked: action.kind === "complete_details" || action.kind === "needs_special_review",
+    isBlocked:
+      action.kind === "complete_details" ||
+      action.kind === "needs_special_review" ||
+      action.kind === "edit_supplier",
     isDuplicate,
   };
 }

@@ -83,11 +83,14 @@ export default function DocumentReviewsPage() {
     }, EXIT_ANIMATION_MS);
   }
 
-  async function approve(id: string) {
+  async function approve(id: string, supplierName: string) {
     setUpdatingId(id);
     setError("");
     try {
-      await apiFetch(`/api/document-reviews/${id}/approve`, { method: "POST" });
+      await apiFetch(`/api/document-reviews/${id}/approve`, {
+        method: "POST",
+        body: JSON.stringify({ supplierName }),
+      });
       const approvedItem = pendingItems.find((item) => item.id === id);
       animateRemove(id, (next) => {
         setStatusMessage("המסמך אושר והועבר לחשבוניות");

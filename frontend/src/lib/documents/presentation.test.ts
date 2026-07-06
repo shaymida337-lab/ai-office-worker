@@ -192,10 +192,70 @@ test("review missing amount shows חסר סכום and השלם פרטים", () =
   assert.equal(action.canApprove, false);
 });
 
+test("low confidence supplier prevents ready state in presentation", () => {
+  const action = getReviewPrimaryAction({
+    ...baseItem,
+    supplierName: "פרייזון",
+    supplierDisplayName: "פז",
+    rawSupplierName: "פרייזון",
+    supplierConfidence: "low",
+    supplierNeedsConfirmation: true,
+    supplierUncertain: true,
+    totalAmount: 215.14,
+    displayAmount: 215.14,
+    amountLabel: "₪215.14",
+    driveFileUrl: "https://drive.google.com/file/d/abc/view",
+    documentType: "receipt",
+  });
+  assert.equal(action.primaryLabel, "ערוך ספק");
+  assert.equal(action.canApprove, false);
+});
+
+test("Paz receipt displays פז not פרייזון in presentation", () => {
+  const view = presentDocument({
+    ...baseItem,
+    supplierName: "פרייזון",
+    supplierDisplayName: "פז",
+    rawSupplierName: "פרייזון",
+    supplierConfidence: "low",
+    supplierNeedsConfirmation: true,
+    supplierUncertain: true,
+    totalAmount: 215.14,
+    displayAmount: 215.14,
+    amountLabel: "₪215.14",
+    driveFileUrl: "https://drive.google.com/file/d/abc/view",
+    documentType: "receipt",
+  });
+  assert.equal(view.supplier, "פז");
+  assert.equal(view.rawSupplierName, "פרייזון");
+});
+
+test("Electric company review displays חברת החשמל", () => {
+  const view = presentDocument({
+    ...baseItem,
+    supplierName: 'חברת החשמל לישראל בע"מ',
+    supplierDisplayName: "חברת החשמל",
+    rawSupplierName: 'חברת החשמל לישראל בע"מ',
+    supplierConfidence: "high",
+    supplierNeedsConfirmation: false,
+    supplierUncertain: false,
+    totalAmount: 326.32,
+    displayAmount: 326.32,
+    amountLabel: "₪326.32",
+    driveFileUrl: "https://drive.google.com/file/d/iec/view",
+    documentType: "invoice",
+  });
+  assert.equal(view.supplier, "חברת החשמל");
+  assert.equal(view.primaryLabel, "אשר והעבר לחשבוניות");
+});
+
 test("trust.gates_missing with supplier amount and image shows approve action", () => {
   const item: DocumentReviewItem = {
     ...baseItem,
     supplierName: "פז",
+    supplierDisplayName: "פז",
+    supplierConfidence: "high",
+    supplierNeedsConfirmation: false,
     totalAmount: 215.14,
     displayAmount: 215.14,
     amountLabel: "₪215.14",
