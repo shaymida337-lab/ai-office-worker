@@ -225,7 +225,7 @@ test("health fetch failure shows server unavailable banner", () => {
     })
   );
   assert.equal(state.status, "ERROR");
-  assert.match(state.reason ?? "", /השרת אינו זמין/);
+  assert.match(state.reason ?? "", /עדכון מערכת/);
 });
 
 test("relative last scan time is stable before client clock is ready", () => {

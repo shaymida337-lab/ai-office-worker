@@ -2,6 +2,7 @@
 
 import { type ReactNode } from "react";
 import { Nav } from "@/components/Nav";
+import { SystemDeployBanner } from "@/components/SystemDeployBanner";
 import {
   NatalieMorningBrief,
   NatalieYourDay,
@@ -54,6 +55,7 @@ export default function DashboardPage() {
       }}
     >
       <Nav />
+      <SystemDeployBanner />
 
       <div className="dashboard-home-stack mx-auto grid h-auto min-w-0 max-w-6xl gap-4 overflow-x-clip md:gap-5 lg:gap-6">
         {(d.pageError || d.displayActionMessage || d.displayToast) && (

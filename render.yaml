@@ -27,9 +27,9 @@ services:
     plan: free
     region: oregon
     autoDeploy: true
-    buildCommand: "export DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} && cd backend && npm install && npm run db:generate && npm run build"
-    preDeployCommand: "export DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} && cd backend && npx prisma migrate deploy"
-    startCommand: "export DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} && cd backend && node dist/index.js"
+    buildCommand: "npm install --include=dev && npm run db:generate -w backend && npm run build -w backend"
+    preDeployCommand: 'export DIRECT_URL="${DIRECT_URL:-${DATABASE_URL//-pooler/}}" && cd backend && DATABASE_URL="$DIRECT_URL" PRISMA_MIGRATE_ADVISORY_LOCK_TIMEOUT=60000 npx prisma migrate deploy'
+    startCommand: "npm run start -w backend"
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
@@ -101,7 +101,7 @@ services:
     plan: free
     region: oregon
     autoDeploy: true
-    buildCommand: npm install --include=dev && npm run build -w frontend
+    buildCommand: "export NEXT_PUBLIC_APP_COMMIT=$RENDER_GIT_COMMIT && npm install --include=dev && npm run build -w frontend"
     startCommand: cd frontend && npx next start -p $PORT
     healthCheckPath: /
     envVars:

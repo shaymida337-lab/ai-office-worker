@@ -113,7 +113,7 @@ function resolveErrorReason(input: DashboardSyncStateInput): string | null {
     return input.backendError.trim();
   }
   if (input.backendHealthFetchFailed) {
-    return "השרת אינו זמין כרגע";
+    return "יש עדכון מערכת שלא הושלם — אנחנו מטפלים בזה";
   }
   return null;
 }

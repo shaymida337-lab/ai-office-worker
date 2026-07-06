@@ -4,6 +4,7 @@ import path from "path";
 
 type ConfigModule = typeof import("./lib/config.js");
 type PrismaModule = typeof import("./lib/prisma.js");
+type BuildInfoModule = typeof import("./lib/buildInfo.js");
 
 process.on("unhandledRejection", (reason) => {
   console.error("[startup] Unhandled promise rejection", formatStartupError(reason));
@@ -25,9 +26,10 @@ function formatStartupError(err: unknown) {
   return { message: String(err) };
 }
 
-function createApp(configModule: ConfigModule, prismaModule: PrismaModule) {
+function createApp(configModule: ConfigModule, prismaModule: PrismaModule, buildInfoModule: BuildInfoModule) {
   const { config } = configModule;
   const { databaseHost, isPrismaConnected, prisma } = prismaModule;
+  const { getHealthPayload } = buildInfoModule;
   const app = express();
 
   app.use(
@@ -66,11 +68,10 @@ function createApp(configModule: ConfigModule, prismaModule: PrismaModule) {
   async function healthHandler(_req: express.Request, res: express.Response) {
     try {
       await prisma.$queryRaw`SELECT 1`;
-      res.json({ status: "ok", database: "connected" });
+      res.json(getHealthPayload({ status: "ok", database: "connected" }));
     } catch (err) {
       res.status(503).json({
-        status: "error",
-        database: "disconnected",
+        ...getHealthPayload({ status: "error", database: "disconnected" }),
         host: databaseHost(),
         error: err instanceof Error ? err.message : String(err),
       });
@@ -139,10 +140,12 @@ async function registerRoutes(app: express.Express) {
 async function start() {
   let configModule: ConfigModule;
   let prismaModule: PrismaModule;
+  let buildInfoModule: BuildInfoModule;
   try {
     configModule = await import("./lib/config.js");
     configModule.validateStartupEnv();
     prismaModule = await import("./lib/prisma.js");
+    buildInfoModule = await import("./lib/buildInfo.js");
   } catch (err) {
     console.error("[startup] Failed to load configuration or Prisma", formatStartupError(err));
     process.exit(1);
@@ -150,7 +153,7 @@ async function start() {
 
   const { config } = configModule;
   const { connectPrisma, databaseHost } = prismaModule;
-  const app = createApp(configModule, prismaModule);
+  const app = createApp(configModule, prismaModule, buildInfoModule);
 
   try {
     await connectPrisma();

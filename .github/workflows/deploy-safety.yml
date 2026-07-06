@@ -1,0 +1,42 @@
+name: Deploy Safety
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate -w backend
+
+      - name: Backend build
+        run: npm run build -w backend
+
+      - name: Frontend build
+        run: npm run build -w frontend
+        env:
+          NEXT_PUBLIC_API_URL: https://ai-office-worker-backend.onrender.com
+          NEXT_PUBLIC_APP_COMMIT: ${{ github.sha }}
+
+      - name: Backend deploy-safety tests
+        run: |
+          npx tsx --test \
+            backend/src/lib/buildInfo.test.ts \
+            backend/src/services/communication/communicationService.test.ts \
+            backend/src/services/communication/communicationPhase1.test.ts \
+            frontend/src/lib/systemDeployStatus.test.ts \
+            frontend/src/lib/dashboard/dashboardSyncState.test.ts

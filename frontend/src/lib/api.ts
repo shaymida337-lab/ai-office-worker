@@ -1,3 +1,10 @@
+import {
+  getFrontendCommit,
+  resolveSystemDeployStatus,
+  systemDeployBannerMessage,
+  type PublicHealthResponse,
+} from "./systemDeployStatus";
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export class ApiError extends Error {
@@ -36,6 +43,32 @@ export function isAuthError(err: unknown): boolean {
 
 type ApiFetchInit = RequestInit & { timeoutMs?: number };
 
+async function resolveApiConnectivityMessage(err: unknown): Promise<string> {
+  const deployBanner = "יש עדכון מערכת שלא הושלם — אנחנו מטפלים בזה";
+  try {
+    const healthRes = await fetch(`${API_URL}/health`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(4000),
+    });
+    const health = (await healthRes.json().catch(() => null)) as PublicHealthResponse | null;
+    const deployStatus = resolveSystemDeployStatus({
+      health,
+      healthOk: healthRes.ok,
+      frontendCommit: getFrontendCommit(),
+    });
+    const banner = systemDeployBannerMessage(deployStatus);
+    if (banner) return banner;
+    if (!healthRes.ok) return deployBanner;
+  } catch {
+    return deployBanner;
+  }
+
+  if (err instanceof DOMException && err.name === "AbortError") {
+    return "השרת לא ענה בזמן. נסה שוב בעוד רגע.";
+  }
+  return "אי אפשר להתחבר לשרת כרגע. בדוק שהמערכת פעילה ונסה שוב.";
+}
+
 export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T> {
   const token = getToken();
   if (!token) {
@@ -62,9 +95,7 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
       },
     });
   } catch (err) {
-    const message = err instanceof DOMException && err.name === "AbortError"
-      ? "השרת לא ענה בזמן. נסה שוב בעוד רגע."
-      : "אי אפשר להתחבר לשרת כרגע. בדוק שהמערכת פעילה ונסה שוב.";
+    const message = await resolveApiConnectivityMessage(err);
     console.error("[apiFetch]", message, err);
     throw new ApiError(message, 0);
   } finally {

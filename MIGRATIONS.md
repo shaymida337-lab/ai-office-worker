@@ -28,9 +28,12 @@ Migrations run automatically on deploy via `preDeployCommand`. Manual `prisma mi
 The backend service runs this after build and before start:
 
 ```bash
+export DIRECT_URL="${DIRECT_URL:-${DATABASE_URL//-pooler/}}"
 cd backend
-npx prisma migrate deploy
+DATABASE_URL="$DIRECT_URL" PRISMA_MIGRATE_ADVISORY_LOCK_TIMEOUT=60000 npx prisma migrate deploy
 ```
+
+Neon pooler URLs cannot hold Prisma migration advisory locks — always migrate via direct host. See `DEPLOYMENT_SAFETY.md`.
 
 For emergency manual runs, use the Render Shell for the backend service, where `DATABASE_URL` points to the production database.
 
