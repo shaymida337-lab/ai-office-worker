@@ -24,7 +24,7 @@ import { matchTransactions } from "../services/bank-matcher.js";
 import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } from "../services/paymentClassificationDebug.js";
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
 import { approveFinancialDocumentReview } from "../services/financialDocuments.js";
-import { recordFinancialDocumentDecision } from "../services/financialDocuments.js";
+import { recordManualEntryFinancialDocument } from "../services/financialDocuments.js";
 import {
   invoiceAuditSnapshot,
   paymentAuditSnapshot,
@@ -7220,10 +7220,12 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
       }
     }
 
-    const documentDecision = await recordFinancialDocumentDecision({
+    // H: המצלמה עוברת דרך אותה שרשרת שערי אמון של Gmail/WhatsApp — לא עוד
+    // confidence 0.7 קשיח ו-gates ריקים שניתבו כל מסמך ל-review עם
+    // trust.gates_missing בלי קשר לאיכות הנתונים.
+    const documentDecision = await recordManualEntryFinancialDocument({
       organizationId: req.auth!.organizationId,
       source: "camera",
-      sender: null,
       subject: body.invoiceNumber
         ? `Camera invoice scan #${body.invoiceNumber}`
         : "Camera invoice scan",
@@ -7235,11 +7237,12 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
       documentDate: invoiceDate,
       dueDate,
       totalAmount: body.amount,
+      currency: body.currency ?? null,
       documentType: "tax_invoice",
       driveFileUrl: cameraDriveFileUrl ?? documentLink ?? null,
-      confidenceScore: 0.7,
-      uncertaintyReason: "trust.gates_missing",
-      parsedFieldsJson: {},
+      driveUploadStatus: cameraDriveUploadStatus,
+      userId: req.auth!.userId,
+      sourceRoute: "POST /camera/invoices",
     });
 
     // סימון סטטוס ההעלאה על רשומת הביקורת — רשומת "ממתין ל-Drive" ניתנת
@@ -7258,12 +7261,20 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
       }
     }
 
-    res.status(documentDecision.action === "accepted" ? 201 : 202).json({
-      reviewOnly: documentDecision.action !== "accepted",
+    const cameraAccepted = documentDecision.action === "accepted";
+    const cameraReview = "review" in documentDecision ? documentDecision.review ?? null : null;
+    res.status(cameraAccepted ? 201 : 202).json({
+      reviewOnly: !cameraAccepted,
       action: documentDecision.action,
-      uncertaintyReason: documentDecision.action === "needs_review" ? "trust.gates_missing" : null,
-      reviewId: "review" in documentDecision ? documentDecision.review?.id ?? null : null,
-      message: "המסמך נשמר לבדיקה — דורש בדיקה לפני יצירת תשלום",
+      // הסיבה האמיתית מהשרשרת (למשל "invoice number missing"), לא קבוע גורף
+      uncertaintyReason: cameraReview?.uncertaintyReason ?? null,
+      reviewId: cameraReview?.id ?? null,
+      paymentId: "payment" in documentDecision ? documentDecision.payment?.id ?? null : null,
+      message: cameraAccepted
+        ? "החשבונית נקלטה ואושרה — מופיעה ברשימת התשלומים"
+        : documentDecision.action === "duplicate"
+          ? "זוהתה כפילות — הרשומה הקיימת עודכנה"
+          : "המסמך נשמר לבדיקה — דורש בדיקה לפני יצירת תשלום",
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Camera scan failed";

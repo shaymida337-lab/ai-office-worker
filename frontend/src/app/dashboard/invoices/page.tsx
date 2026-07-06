@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
+import { approvalErrorHebrew } from "@/lib/documents/presentation";
 import { buildFallbackMonthGroups } from "@/lib/invoices/monthGrouping";
 import { formatAmount } from "@/lib/format/amount";
 import { isLikelyJunkSupplierNameLocal } from "@/lib/junkSupplier";
@@ -415,7 +416,7 @@ export default function InvoicesPage() {
       setMessage("החשבונית אושרה");
     } catch (err) {
       setMessageTone("error");
-      setMessage(err instanceof Error ? err.message : "אישור החשבונית נכשל");
+      setMessage(err instanceof Error ? approvalErrorHebrew(err.message) : "אישור החשבונית נכשל");
     }
   }
 

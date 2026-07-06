@@ -12,6 +12,7 @@ import {
 } from "@/components/documents";
 import { apiFetch } from "@/lib/api";
 import {
+  approvalErrorHebrew,
   filterDocuments,
   isToday,
   remainingDocumentsMessage,
@@ -95,7 +96,7 @@ export default function DocumentReviewsPage() {
         setCompletedItems((prev) => [{ ...approvedItem, reviewStatus: "approved" }, ...prev]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "אישור המסמך נכשל");
+      setError(err instanceof Error ? approvalErrorHebrew(err.message) : "אישור המסמך נכשל");
     } finally {
       setUpdatingId(null);
     }

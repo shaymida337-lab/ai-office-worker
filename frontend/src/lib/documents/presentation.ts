@@ -118,6 +118,93 @@ function isDuplicateReason(reason: string | null | undefined) {
   return (reason ?? "").toLowerCase().includes("duplicate") || (reason ?? "").includes("כפיל");
 }
 
+/**
+ * מיפוי קודי סיבה טכניים (uncertaintyReason / gates[].reasonCode) לעברית
+ * ספציפית — במקום "חסרים פרטים" גנרי. סדר הבדיקות חשוב: הספציפי לפני הכללי.
+ */
+function mapReasonCodeToHebrew(raw: string): string | null {
+  const reason = raw.trim();
+  if (!reason) return null;
+  const lower = reason.toLowerCase();
+
+  if (lower.includes("invoice number missing")) return "חסר מספר חשבונית";
+  if (lower.includes("invoice date missing")) return "חסר תאריך מסמך";
+
+  if (lower.includes("duplicate") || reason.includes("כפיל")) return "יש חשד שהמסמך כבר קיים";
+
+  if (lower.includes("supplier.sir_weak_evidence")) return "הספק זוהה, אבל הראיות לזיהוי חלשות";
+  if (lower.includes("supplier.sir_ambiguous")) return "נמצאו כמה ספקים אפשריים במסמך";
+  if (lower.includes("supplier.not_supplier") || lower.includes("supplier.sir_rejected")) {
+    return "השולח לא זוהה כספק";
+  }
+  if (lower.startsWith("supplier.") || lower.includes("supplier.sir_missing")) {
+    return "לא זוהה ספק בצורה מספיק בטוחה";
+  }
+
+  if (lower.includes("amount.vat_mismatch")) return "יש אי־התאמה בסכום או במע״מ";
+  if (lower.includes("amount.arc_ambiguous") || lower.includes("amount.source_conflict")) {
+    return "נמצאו כמה סכומים אפשריים במסמך";
+  }
+  if (lower.includes("amount.threshold_exceeded")) return "הסכום גבוה באופן חריג";
+  if (lower.includes("amount.decimal_shift") || lower.includes("amount.weird_decimals")) {
+    return "הסכום שזוהה נראה שגוי";
+  }
+  if (lower.startsWith("amount.")) return "לא זוהה סכום לתשלום";
+
+  if (lower.startsWith("fingerprint.")) return "חסרים פרטים מזהים במסמך (מספר חשבונית או תאריך)";
+
+  if (lower.startsWith("trust.")) return "בדיקות האמון של המסמך לא הושלמו";
+  if (lower.includes("confidence below")) return "רמת הביטחון בזיהוי המסמך נמוכה מדי";
+  if (lower.startsWith("classifier:")) return "הסיווג האוטומטי ביקש בדיקה נוספת";
+
+  // טקסט עברי חופשי (למשל מוואטסאפ) — מוצג כמו שהוא
+  if (/[֐-׿]/.test(reason)) return reason;
+
+  return null;
+}
+
+function firstGateReviewReasonCode(parsedFieldsJson: unknown): string | null {
+  if (!parsedFieldsJson || typeof parsedFieldsJson !== "object") return null;
+  const gates = (parsedFieldsJson as { gates?: unknown }).gates;
+  if (!Array.isArray(gates)) return null;
+  for (const entry of gates) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    if (record.verdict !== "review" && record.verdict !== "block") continue;
+    if (typeof record.reasonCode === "string") return record.reasonCode;
+  }
+  return null;
+}
+
+/**
+ * הסיבה הספציפית בעברית שבגללה המסמך מחכה לבדיקה, או null כשאין מיפוי.
+ * מסמך שכבר אושר לא מציג סיבה ישנה כבעיה פעילה.
+ */
+export function specificReviewReasonHebrew(
+  item: Pick<DocumentReviewItem, "uncertaintyReason" | "reviewStatus" | "parsedFieldsJson">
+): string | null {
+  const status = (item.reviewStatus ?? "").toLowerCase();
+  if (status === "approved" || status === "auto_saved") return null;
+  const fromReason = item.uncertaintyReason ? mapReasonCodeToHebrew(item.uncertaintyReason) : null;
+  if (fromReason) return fromReason;
+  const gateCode = firstGateReviewReasonCode(item.parsedFieldsJson);
+  return gateCode ? mapReasonCodeToHebrew(gateCode) : null;
+}
+
+/**
+ * הודעת כשל אישור ידידותית: מתרגמת את הודעות ה-422 של השרת (כולל קוד הסיבה
+ * שבסוגריים) לעברית ספציפית, במקום "אישור המסמך נכשל" גנרי.
+ */
+export function approvalErrorHebrew(message: string): string {
+  if (message.includes("verified total amount")) return "אי אפשר לאשר כי הסכום לא זוהה בצורה בטוחה";
+  if (message.includes("verified supplier name")) return "אי אפשר לאשר כי הספק לא זוהה";
+  if (message.includes("verified document fingerprint")) return "אי אפשר לאשר כי חסרים פרטים מזהים במסמך";
+  const codeMatch = message.match(/\(([^)]+)\)\s*$/);
+  const mapped = codeMatch ? mapReasonCodeToHebrew(codeMatch[1]) : null;
+  if (mapped) return `אי אפשר לאשר את המסמך — ${mapped}`;
+  return message.trim() || "אישור המסמך נכשל";
+}
+
 function isInvoiceReceiptUncertain(item: DocumentReviewItem) {
   const reason = (item.uncertaintyReason ?? "").toLowerCase();
   const type = item.documentType.toLowerCase();
@@ -167,6 +254,12 @@ export function presentDocument(item: DocumentReviewItem): DocumentPresentation 
     reason = `הכנתי את המסמך מ${supplier} לאישור שלך.`;
     primaryLabel = "אשרי";
     secondaryLabel = "פתחי מסמך";
+  }
+
+  // סיבה ספציפית גוברת על הטקסט הגנרי — רק למסמכים שעדיין מחכים להחלטה
+  const specific = specificReviewReasonHebrew(item);
+  if (specific && presentation !== "already_handled" && presentation !== "ready_to_approve") {
+    reason = presentation === "missing_details" ? `${specific}. תוכל לעזור לי להשלים?` : specific;
   }
 
   return {

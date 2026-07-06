@@ -21,15 +21,19 @@ import {
   type AmountGateSnapshot,
   type FseSummaryForAmountGate,
 } from "./amount/amountGate.js";
+import { upsertFinanceGateSnapshot } from "./trust/financeGateSnapshots.js";
 import type { MoneyDecision } from "./amount/canonicalAmount.js";
 import {
+  attachSupplierGateToParsedFields,
   evaluateSupplierGate,
   parseSupplierGateFromParsedFields,
   supplierGatePasses,
+  type SirSummaryForSupplierGate,
   type SupplierGateSnapshot,
 } from "./supplier/supplierGate.js";
 import type { SupplierDecision } from "./supplier/supplierTypes.js";
 import {
+  attachFingerprintGateToParsedFields,
   buildFingerprintGateInputFromReview,
   evaluateFingerprintGate,
   fingerprintGatePasses,
@@ -37,6 +41,7 @@ import {
 } from "./dedup/fingerprintGate.js";
 import type { FingerprintIdentityStability } from "./dedup/fingerprintGate.js";
 import {
+  attachDuplicateGateToParsedFields,
   duplicateGatePasses,
   fseDuplicateSuspicionFlags,
   type DuplicateGateInput,
@@ -49,6 +54,8 @@ import {
 } from "./trust/trustGatePersistence.js";
 import {
   createSupplierPaymentIfTrusted,
+  evaluateFinanceTrustGates,
+  evaluateFreshAmountGateForManualApproval,
   evaluateFreshTrustGatesForManualApproval,
 } from "./trust/financeTrustPersistence.js";
 import { isBlockedDocumentOutcome } from "./trust/blockedOutcomeGuard.js";
@@ -694,6 +701,259 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
     emitCoreWorkflowFailure(workflowTrace, "record_decision", error);
     throw error;
   }
+}
+
+/**
+ * ביטחון של מסמך שהמשתמש הקליד/אישר ידנית (מצלמה): גבוה מסף ה-80%, אבל לא 1.0 —
+ * ההחלטה האמיתית נופלת על שערי האמון, לא על המספר הזה.
+ */
+export const MANUAL_ENTRY_CONFIDENCE = 0.95;
+
+/**
+ * SIR סינתטי למסמך שהוזן ידנית: המשתמש הוא מקור הזהות של הספק, ולכן הרזולוציה
+ * "resolved" — אבל היוריסטיקות איכות השם (placeholder/אימייל/טלפון/זבל OCR)
+ * עדיין רצות במלואן בתוך evaluateSupplierGate ויפילו שם לא תקין ל-review.
+ */
+export function buildManualEntrySirSummary(supplierName: string): SirSummaryForSupplierGate {
+  return {
+    supplierName,
+    canonicalSupplier: supplierName,
+    status: "resolved",
+    reasonCode: "MANUAL_USER_ENTRY",
+    isStrongEnoughForAutoSave: true,
+    winnerKind: null,
+  };
+}
+
+export type ManualEntryFinancialDocumentInput = {
+  organizationId: string;
+  source: FinancialDocumentSource;
+  subject?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  supplierName: string;
+  supplierTaxId?: string | null;
+  invoiceNumber?: string | null;
+  documentDate?: Date | null;
+  dueDate?: Date | null;
+  totalAmount: number;
+  currency?: string | null;
+  documentType: string;
+  driveFileUrl?: string | null;
+  driveUploadStatus?: string | null;
+  fileSha256?: string | null;
+  userId?: string | null;
+  sourceRoute?: string | null;
+};
+
+/**
+ * בונה parsedFieldsJson עם ארבעת שערי האמון האמיתיים (סכום/ספק/טביעת אצבע/כפילות)
+ * עבור מסמך שהוזן ידנית — אותם שערים שהצינור של Gmail עובר, בלי להרפות אף סף.
+ * מחליף את המצב הישן שבו המצלמה שלחה parsedFieldsJson ריק ונפלה תמיד על
+ * trust.gates_missing בלי קשר לאיכות הנתונים.
+ */
+export async function buildManualEntryParsedFields(input: {
+  organizationId: string;
+  source: FinancialDocumentSource;
+  supplierName: string;
+  supplierTaxId?: string | null;
+  invoiceNumber?: string | null;
+  totalAmount: number;
+  documentDate?: Date | null;
+  documentType: string;
+  fileSha256?: string | null;
+  subject?: string | null;
+}): Promise<{ parsedFieldsJson: Record<string, unknown>; documentFingerprint: string }> {
+  const documentType = normalizeFinancialDocumentType(input.documentType);
+  const sirSummary = buildManualEntrySirSummary(input.supplierName);
+  const parsedFieldsJson: Record<string, unknown> = { sir: sirSummary };
+
+  upsertFinanceGateSnapshot(
+    parsedFieldsJson,
+    evaluateFreshAmountGateForManualApproval({ totalAmount: input.totalAmount })
+  );
+  attachSupplierGateToParsedFields(parsedFieldsJson, {
+    sirSummary,
+    supplierName: input.supplierName,
+  });
+  attachFingerprintGateToParsedFields(
+    parsedFieldsJson,
+    buildFingerprintGateInputFromReview({
+      organizationId: input.organizationId,
+      supplierName: input.supplierName,
+      supplierTaxId: input.supplierTaxId,
+      invoiceNumber: input.invoiceNumber,
+      totalAmount: input.totalAmount,
+      documentDate: input.documentDate ?? null,
+      documentType: input.documentType,
+      fileSha256: input.fileSha256,
+    })
+  );
+
+  const canonical = computeCanonicalFingerprint({
+    organizationId: input.organizationId,
+    supplierName: input.supplierName,
+    supplierTaxId: input.supplierTaxId,
+    invoiceNumber: input.invoiceNumber,
+    totalAmount: input.totalAmount,
+    documentDate: input.documentDate ?? null,
+    documentType,
+    fileSha256: input.fileSha256,
+  });
+  const documentFingerprint =
+    canonical.fingerprint ??
+    buildWeakDocumentFallbackFingerprint({
+      organizationId: input.organizationId,
+      legacyFingerprint: canonical.legacyFingerprint,
+      uniqueHint: input.subject ?? input.supplierName,
+    });
+  const duplicateGateInput = await buildDuplicateGateInput({
+    organizationId: input.organizationId,
+    source: input.source,
+    sender: null,
+    supplierName: input.supplierName,
+    supplierTaxId: input.supplierTaxId,
+    invoiceNumber: input.invoiceNumber,
+    totalAmount: input.totalAmount,
+    documentDate: input.documentDate ?? null,
+    documentType: input.documentType,
+    fileSha256: input.fileSha256,
+    documentFingerprint,
+    legacyDuplicateHash: buildLegacyDuplicateHashForLookup({
+      organizationId: input.organizationId,
+      supplier: input.supplierName,
+      amount: input.totalAmount,
+      dateIso: (input.documentDate ?? new Date()).toISOString(),
+      subject: input.subject,
+    }),
+    scfcFingerprint: canonical.legacyFingerprint,
+    parsedFieldsJson,
+  });
+  attachDuplicateGateToParsedFields(parsedFieldsJson, duplicateGateInput);
+
+  return { parsedFieldsJson, documentFingerprint };
+}
+
+/**
+ * קליטת מסמך שהוזן ידנית (מצלמה) דרך אותה שרשרת החלטה של Gmail/WhatsApp:
+ * שערי אמון אמיתיים → recordFinancialDocumentDecision (ולידציית שדות, כפילויות,
+ * סף ביטחון) → ובמסלול accepted יצירת SupplierPayment מאושר, כמו שהערוצים
+ * האחרים עושים אחרי accepted. מסמך לא-שלם/לא-ודאי ממשיך ל-review עם סיבה
+ * ספציפית במקום trust.gates_missing גורף.
+ */
+export async function recordManualEntryFinancialDocument(input: ManualEntryFinancialDocumentInput) {
+  const { parsedFieldsJson } = await buildManualEntryParsedFields(input);
+  const baseDecisionInput: FinancialDocumentInput = {
+    organizationId: input.organizationId,
+    source: input.source,
+    sender: null,
+    subject: input.subject,
+    fileName: input.fileName,
+    fileSize: input.fileSize,
+    supplierName: input.supplierName,
+    supplierTaxId: input.supplierTaxId,
+    invoiceNumber: input.invoiceNumber,
+    documentDate: input.documentDate,
+    dueDate: input.dueDate,
+    totalAmount: input.totalAmount,
+    documentType: input.documentType,
+    driveFileUrl: input.driveFileUrl,
+    confidenceScore: MANUAL_ENTRY_CONFIDENCE,
+    uncertaintyReason: null,
+    parsedFieldsJson,
+    fileSha256: input.fileSha256,
+  };
+  const decision = await recordFinancialDocumentDecision(baseDecisionInput);
+
+  if (decision.action !== "accepted") {
+    return { ...decision, parsedFieldsJson };
+  }
+
+  // accepted לא שומר כלום בתוך recordFinancialDocumentDecision — הקורא יוצר את
+  // התשלום (כמו Gmail/WhatsApp). כל השערים עברו והמשתמש אישר את הפרטים בעצמו.
+  const normalizedType = decision.documentType;
+  const correlationId = resolveWorkflowCorrelationId({});
+  const auditCtx = input.userId
+    ? userAuditContext(input.userId, "financialDocuments", input.sourceRoute ?? undefined, correlationId)
+    : aiAuditContext("financialDocuments", correlationId);
+  const createResult = await createSupplierPaymentIfTrusted({
+    evaluation: evaluateFinanceTrustGates({
+      parsedFieldsJson,
+      selectedAmount: input.totalAmount,
+      needsReview: false,
+      confidenceScore: MANUAL_ENTRY_CONFIDENCE,
+      documentType: input.documentType,
+    }),
+    audit: auditCtx,
+    parsedFieldsJson,
+    data: {
+      organizationId: input.organizationId,
+      supplier: input.supplierName,
+      amount: input.totalAmount,
+      currency: input.currency ?? "ILS",
+      date: input.documentDate ?? new Date(),
+      dueDate: input.dueDate ?? null,
+      paid: normalizedType === "receipt" || normalizedType === "tax_invoice_receipt",
+      documentLink: input.driveFileUrl ?? null,
+      invoiceLink: isInvoiceLike(normalizedType) ? input.driveFileUrl ?? null : null,
+      driveUploadStatus: input.driveUploadStatus ?? null,
+      emailSender: null,
+      paymentRequired: normalizedType !== "receipt",
+      missingInvoice: normalizedType === "payment_request",
+      duplicateHash: decision.documentFingerprint,
+      subject: input.subject ?? null,
+      source: input.source,
+      firstSource: input.source,
+      lastSource: input.source,
+      sourceCount: 1,
+      documentFingerprint: decision.documentFingerprint,
+      sourceFingerprint: decision.sourceFingerprint,
+      documentTypeDetailed: input.documentType,
+      supplierTaxId: input.supplierTaxId ?? null,
+      totalAmount: input.totalAmount,
+      confidenceScore: MANUAL_ENTRY_CONFIDENCE,
+      parsedFieldsJson: parsedFieldsJson as never,
+      approvalStatus: "approved",
+      sourcesJson: [input.source],
+    },
+    upsert: {
+      where: {
+        organizationId_documentFingerprint: {
+          organizationId: input.organizationId,
+          documentFingerprint: decision.documentFingerprint,
+        },
+      },
+      update: {
+        approvalStatus: "approved",
+        confidenceScore: MANUAL_ENTRY_CONFIDENCE,
+        parsedFieldsJson: parsedFieldsJson as never,
+        lastSeenAt: new Date(),
+      },
+    },
+  });
+
+  if (createResult.skipped || !createResult.payment) {
+    // fail-safe: אם יצירת התשלום נחסמה בכל זאת, המסמך לא נעלם — נופל ל-review
+    // עם הסיבה האמיתית של החסימה.
+    const fallback = await recordFinancialDocumentDecision({
+      ...baseDecisionInput,
+      forceNeedsReview: true,
+      uncertaintyReason: createResult.reason ?? "trust gate blocked",
+    });
+    return { ...fallback, parsedFieldsJson };
+  }
+
+  console.log(
+    `[financial-document] manual_entry_accepted source=${input.source} paymentId=${createResult.payment.id} fingerprint=${decision.documentFingerprint}`
+  );
+  return {
+    action: "accepted" as const,
+    documentType: decision.documentType,
+    sourceFingerprint: decision.sourceFingerprint,
+    documentFingerprint: decision.documentFingerprint,
+    payment: createResult.payment,
+    parsedFieldsJson,
+  };
 }
 
 export async function approveFinancialDocumentReview(
