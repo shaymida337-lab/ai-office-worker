@@ -23,7 +23,7 @@ import { parseBankStatementFile } from "../services/bank-parser.js";
 import { matchTransactions } from "../services/bank-matcher.js";
 import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } from "../services/paymentClassificationDebug.js";
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
-import { approveFinancialDocumentReview } from "../services/financialDocuments.js";
+import { approveFinancialDocumentReview, evaluateReviewApprovalReadiness } from "../services/financialDocuments.js";
 import { recordManualEntryFinancialDocument } from "../services/financialDocuments.js";
 import { resolveReviewSupplierContext } from "../services/reviewSupplierResolution.js";
 import {
@@ -5672,7 +5672,33 @@ apiRouter.get("/document-reviews", async (req, res) => {
     orderBy: { createdAt: "desc" },
     take: 200,
   });
-  res.json(items.map(mapDocumentReviewForApi));
+  // חוזה readiness מהשרת: canApprove/blockReason/recommendedAction מחושבים
+  // מאותן ולידציות של האישור עצמו — ה-UI מציג, לא מנחש.
+  const mapped = await Promise.all(
+    items.map(async (item) => {
+      const base = mapDocumentReviewForApi(item);
+      if (item.reviewStatus !== "needs_review") {
+        return { ...base, canApprove: false, blockReason: null, recommendedAction: "approve" as const };
+      }
+      try {
+        const readiness = await evaluateReviewApprovalReadiness(item);
+        return {
+          ...base,
+          canApprove: readiness.canApprove,
+          blockReason: readiness.blockReason,
+          recommendedAction: readiness.recommendedAction,
+          supplierNeedsConfirmation: readiness.supplierNeedsConfirmation || base.supplierNeedsConfirmation,
+        };
+      } catch (err) {
+        console.warn(
+          `[document-reviews] readiness evaluation failed reviewId=${item.id} reason=${err instanceof Error ? err.message : String(err)}`
+        );
+        // fail-closed: בלי הערכה אין אישור בקליק אחד
+        return { ...base, canApprove: false, blockReason: "readiness_unavailable", recommendedAction: "complete_details" as const };
+      }
+    })
+  );
+  res.json(mapped);
 });
 
 function mapDocumentReviewForApi<

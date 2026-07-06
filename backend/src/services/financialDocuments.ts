@@ -981,6 +981,174 @@ function resolveReviewNormalizedDocumentDate(review: { documentDate: Date | null
   return date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
 }
 
+export type ReviewRecommendedAction = "approve" | "edit_supplier" | "complete_details" | "reject";
+
+export type ReviewApprovalReadiness = {
+  canApprove: boolean;
+  blockReason: string | null;
+  supplierNeedsConfirmation: boolean;
+  recommendedAction: ReviewRecommendedAction;
+};
+
+export type ReviewRowForReadiness = {
+  organizationId: string;
+  reviewStatus: string;
+  source: string;
+  documentType: string;
+  totalAmount: number | null;
+  amountBeforeVat: number | null;
+  vatAmount: number | null;
+  currency: string;
+  parsedFieldsJson: unknown;
+  rawAnalysis?: unknown;
+  supplierName: string | null;
+  sender: string | null;
+  supplierTaxId: string | null;
+  invoiceNumber: string | null;
+  documentDate: Date | null;
+  documentFingerprint: string | null;
+  uncertaintyReason: string | null;
+};
+
+/**
+ * הרצה יבשה (ללא כתיבות) של בדיוק אותן ולידציות ש-approveFinancialDocumentReview
+ * מריץ, באותו סדר ועם אותם primitives. זה חוזה ה-readiness של ה-UI: אם כאן
+ * canApprove=true — קריאת האישור על אותם נתונים תעבור; אם היא תיכשל — הסיבה
+ * נחשפת כאן לפני שהמשתמש לוחץ. כל שינוי בוולידציות של האישור חייב להשתקף כאן
+ * (טסט ה-parity שומר על זה).
+ */
+export async function evaluateReviewApprovalReadiness(
+  review: ReviewRowForReadiness
+): Promise<ReviewApprovalReadiness> {
+  const status = review.reviewStatus?.toLowerCase() ?? "";
+  if (status !== "needs_review") {
+    // approved/auto_saved/rejected/duplicate — אין פעולה זמינה; ה-UI מציג לפי הסטטוס
+    return { canApprove: false, blockReason: null, supplierNeedsConfirmation: false, recommendedAction: "approve" };
+  }
+
+  // מראה לענף ה-rejected של האישור (מסמך לא רלוונטי) — שם זה מבוצע עם side effect
+  if (!isPaymentDocumentType(normalizeFinancialDocumentType(review.documentType))) {
+    return { canApprove: false, blockReason: "מסמך לא רלוונטי", supplierNeedsConfirmation: false, recommendedAction: "reject" };
+  }
+
+  // מראה לבדיקת הסכום של האישור
+  const displayAmount = resolveDocumentReviewDisplayAmount({
+    totalAmount: review.totalAmount,
+    amountBeforeVat: review.amountBeforeVat,
+    vatAmount: review.vatAmount,
+    parsedFieldsJson: review.parsedFieldsJson,
+    currency: review.currency,
+  });
+  const approvedAmount = review.totalAmount ?? displayAmount.amount;
+  if (!isCanonicalFinanceAmountResolved(approvedAmount)) {
+    return {
+      canApprove: false,
+      blockReason: FINANCE_AMOUNT_UNRESOLVED_REASON,
+      supplierNeedsConfirmation: false,
+      recommendedAction: "complete_details",
+    };
+  }
+
+  // מראה ל-resolveSupplierNameForApproval — אותה פונקציה בדיוק, נתפסת במקום לזרוק
+  const supplierReviewInput = {
+    supplierName: review.supplierName,
+    sender: review.sender,
+    supplierTaxId: review.supplierTaxId,
+    parsedFieldsJson: review.parsedFieldsJson,
+    rawAnalysis: review.rawAnalysis,
+  };
+  let approvedSupplierName: string;
+  try {
+    approvedSupplierName = resolveSupplierNameForApproval(supplierReviewInput);
+  } catch {
+    return {
+      canApprove: false,
+      blockReason: "supplier.needs_confirmation",
+      supplierNeedsConfirmation: true,
+      recommendedAction: "edit_supplier",
+    };
+  }
+
+  if (!review.documentFingerprint?.trim()) {
+    return {
+      canApprove: false,
+      blockReason: "fingerprint.missing",
+      supplierNeedsConfirmation: false,
+      recommendedAction: "complete_details",
+    };
+  }
+  if (isBlockedDocumentOutcome(review.parsedFieldsJson, review.uncertaintyReason)) {
+    return { canApprove: false, blockReason: "blocked_outcome", supplierNeedsConfirmation: false, recommendedAction: "reject" };
+  }
+
+  // מראה להערכת שערי האמון של האישור — אותה טרנספורמציית parsedFields על עותק
+  let parsedFieldsForApproval =
+    review.parsedFieldsJson && typeof review.parsedFieldsJson === "object" && !Array.isArray(review.parsedFieldsJson)
+      ? { ...(review.parsedFieldsJson as Record<string, unknown>) }
+      : {};
+  parsedFieldsForApproval = mergeReviewSupplierConfirmation(parsedFieldsForApproval, {
+    rawExtractedName: review.supplierName,
+    confirmedName: approvedSupplierName,
+    userId: null,
+  });
+  attachSupplierGateToParsedFields(parsedFieldsForApproval, {
+    sirSummary: {
+      supplierName: approvedSupplierName,
+      canonicalSupplier: approvedSupplierName,
+      status: "resolved",
+      isStrongEnoughForAutoSave: true,
+    },
+    supplierName: approvedSupplierName,
+  });
+  const duplicateGateInput = await buildDuplicateGateInput({
+    organizationId: review.organizationId,
+    source: review.source as FinancialDocumentSource,
+    sender: review.sender,
+    supplierName: approvedSupplierName,
+    supplierTaxId: review.supplierTaxId,
+    invoiceNumber: review.invoiceNumber,
+    totalAmount: approvedAmount,
+    documentDate: review.documentDate,
+    documentType: review.documentType,
+    documentFingerprint: review.documentFingerprint,
+    legacyDuplicateHash: review.documentFingerprint,
+    scfcFingerprint: review.documentFingerprint,
+    parsedFieldsJson: { ...parsedFieldsForApproval },
+  });
+  const trustEvaluation = evaluateFreshTrustGatesForManualApproval({
+    parsedFieldsJson: parsedFieldsForApproval,
+    totalAmount: approvedAmount,
+    supplierName: approvedSupplierName,
+    fingerprintGateInput: buildFingerprintGateInputFromReview({
+      organizationId: review.organizationId,
+      supplierName: approvedSupplierName,
+      supplierTaxId: review.supplierTaxId,
+      invoiceNumber: review.invoiceNumber,
+      totalAmount: approvedAmount,
+      documentDate: review.documentDate,
+      documentType: review.documentType,
+      documentFingerprint: review.documentFingerprint,
+      parsedFieldsJson: parsedFieldsForApproval,
+    }),
+    duplicateGateInput,
+  });
+  const canOverrideSourceConflict =
+    (trustEvaluation.reasonCode === "amount.source_conflict" ||
+      trustEvaluation.blockReason === "amount.source_conflict") &&
+    isCanonicalFinanceAmountResolved(displayAmount.amount) &&
+    approvedAmount === displayAmount.amount;
+  if (!canOverrideSourceConflict && (trustEvaluation.outcome !== "pass" || !trustEvaluation.shouldCreatePayment)) {
+    return {
+      canApprove: false,
+      blockReason: trustEvaluation.blockReason ?? trustEvaluation.reasonCode ?? "trust gate blocked",
+      supplierNeedsConfirmation: false,
+      recommendedAction: "complete_details",
+    };
+  }
+
+  return { canApprove: true, blockReason: null, supplierNeedsConfirmation: false, recommendedAction: "approve" };
+}
+
 export async function approveFinancialDocumentReview(
   organizationId: string,
   reviewId: string,

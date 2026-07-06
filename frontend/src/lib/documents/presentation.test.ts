@@ -9,6 +9,7 @@ import {
   getReviewMissingFields,
   getReviewPrimaryAction,
   presentDocument,
+  readinessBlockReasonHebrew,
   specificReviewReasonHebrew,
   type DocumentReviewItem,
 } from "./presentation.js";
@@ -348,4 +349,101 @@ test("approvalErrorHebrew translates backend 422 messages to specific Hebrew", (
   );
   // הודעה לא מוכרת נשארת כמו שהיא — לא מוחלפת בגנרי
   assert.equal(approvalErrorHebrew("שגיאה אחרת"), "שגיאה אחרת");
+});
+
+// --- server-side readiness contract (H fix: single source of truth) ---
+
+test("server contract: canApprove=true shows approve CTA regardless of local uncertainty text", () => {
+  const view = presentDocument({
+    ...baseItem,
+    uncertaintyReason: "supplier.sir_weak_evidence",
+    totalAmount: 500,
+    displayAmount: 500,
+    amountLabel: "₪500.00",
+    canApprove: true,
+    blockReason: null,
+    recommendedAction: "approve",
+    supplierNeedsConfirmation: false,
+    supplierUncertain: false,
+  });
+  assert.equal(view.canApprove, true);
+  assert.equal(view.primaryLabel, "אשר והעבר לחשבוניות");
+  assert.equal(view.typeLabel, "מוכן לאישור");
+});
+
+test("server contract: edit_supplier shows ערוך ספק and never the approve CTA", () => {
+  const view = presentDocument({
+    ...baseItem,
+    totalAmount: 500,
+    displayAmount: 500,
+    amountLabel: "₪500.00",
+    canApprove: false,
+    blockReason: "supplier.needs_confirmation",
+    recommendedAction: "edit_supplier",
+    supplierNeedsConfirmation: true,
+  });
+  assert.equal(view.canApprove, false);
+  assert.equal(view.primaryLabel, "ערוך ספק");
+  assert.notEqual(view.primaryLabel, "אשר והעבר לחשבוניות");
+});
+
+test("server contract: complete_details shows השלם פרטים with Hebrew block reason", () => {
+  const view = presentDocument({
+    ...baseItem,
+    amountLabel: "סכום חסר",
+    displayAmount: null,
+    totalAmount: null,
+    canApprove: false,
+    blockReason: "amount.unresolved",
+    recommendedAction: "complete_details",
+    supplierNeedsConfirmation: false,
+    supplierUncertain: false,
+  });
+  assert.equal(view.canApprove, false);
+  assert.equal(view.primaryLabel, "השלם פרטים");
+  assert.match(view.reason, /לא זוהה סכום לתשלום/);
+});
+
+test("server contract guard: approve action with open supplier confirmation falls back to ערוך ספק", () => {
+  const view = presentDocument({
+    ...baseItem,
+    totalAmount: 500,
+    displayAmount: 500,
+    amountLabel: "₪500.00",
+    canApprove: true,
+    blockReason: null,
+    recommendedAction: "approve",
+    supplierNeedsConfirmation: true,
+  });
+  assert.equal(view.canApprove, false);
+  assert.equal(view.primaryLabel, "ערוך ספק");
+});
+
+test("readinessBlockReasonHebrew maps contract reasons to Hebrew", () => {
+  assert.equal(
+    readinessBlockReasonHebrew({ blockReason: "supplier.needs_confirmation" }),
+    "יש לאשר או לערוך את שם הספק לפני האישור"
+  );
+  assert.equal(
+    readinessBlockReasonHebrew({ blockReason: "duplicate.semantic_unsure" }),
+    "יש חשד שהמסמך כבר קיים"
+  );
+  assert.equal(readinessBlockReasonHebrew({ blockReason: null }), null);
+  assert.equal(
+    readinessBlockReasonHebrew({ blockReason: "totally.unknown_code" }),
+    "המסמך דורש בדיקה נוספת לפני אישור"
+  );
+});
+
+test("server contract absent: local fallback still decides (deploy-skew safety)", () => {
+  const view = presentDocument({
+    ...baseItem,
+    totalAmount: 500,
+    displayAmount: 500,
+    amountLabel: "₪500.00",
+    driveFileUrl: "https://drive.google.com/file/d/abc/view",
+    supplierNeedsConfirmation: false,
+    supplierUncertain: false,
+  });
+  assert.equal(view.canApprove, true);
 });

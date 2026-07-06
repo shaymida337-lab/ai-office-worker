@@ -1,0 +1,187 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  approveFinancialDocumentReview,
+  evaluateReviewApprovalReadiness,
+} from "./financialDocuments.js";
+import { buildPassingTrustGateSnapshots } from "./trust/trustGatePersistence.js";
+import { prisma } from "../lib/prisma.js";
+
+const ORG = "org-readiness";
+
+function buildReadyReview(overrides: Record<string, unknown> = {}) {
+  const snapshots = buildPassingTrustGateSnapshots({
+    amountGate: { normalizedAmount: 993.33 },
+    supplierGate: { canonicalSupplierName: "Acme Ltd" },
+  });
+  return {
+    id: "review-ready-1",
+    organizationId: ORG,
+    source: "gmail",
+    sender: "billing@acme.example",
+    subject: "Invoice",
+    fileName: "inv.pdf",
+    fileSize: 100,
+    supplierName: "Acme Ltd",
+    supplierTaxId: null,
+    invoiceNumber: "INV-77",
+    documentDate: new Date("2026-07-01T00:00:00.000Z"),
+    dueDate: null,
+    amountBeforeVat: null,
+    vatAmount: null,
+    totalAmount: 993.33,
+    documentType: "tax_invoice",
+    driveFileUrl: "https://drive.test/inv.pdf",
+    driveUploadStatus: "uploaded",
+    confidenceScore: 0.9,
+    reviewStatus: "needs_review",
+    uncertaintyReason: null,
+    sourceFingerprint: "source-fp-r1",
+    documentFingerprint: "doc-fp-r1",
+    parsedFieldsJson: {
+      gates: [snapshots.amountGate, snapshots.supplierGate, snapshots.fingerprintGate, snapshots.duplicateGate],
+      sir: {
+        status: "resolved",
+        canonicalSupplier: "Acme Ltd",
+        supplierName: "Acme Ltd",
+        isStrongEnoughForAutoSave: true,
+      },
+    },
+    rawAnalysis: null,
+    emailMessageId: "email-r1",
+    gmailMessageId: "gmail-r1",
+    whatsappLogId: null,
+    supplierPaymentId: null,
+    currency: "ILS",
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+    normalizedDocumentDate: null,
+    ...overrides,
+  };
+}
+
+function withPrismaMocks<T>(
+  review: Record<string, unknown>,
+  fn: (state: { updateCalled: boolean; upsertCalled: boolean }) => Promise<T>
+): Promise<T> {
+  const original = {
+    findFirst: prisma.financialDocumentReview.findFirst,
+    update: prisma.financialDocumentReview.update,
+    paymentFindMany: prisma.supplierPayment.findMany,
+    paymentFindFirst: prisma.supplierPayment.findFirst,
+    paymentUpsert: prisma.supplierPayment.upsert,
+    auditCreate: prisma.platformAuditLog.create,
+  };
+  const state = { updateCalled: false, upsertCalled: false };
+  (prisma.financialDocumentReview.findFirst as unknown) = async () => review;
+  (prisma.financialDocumentReview.update as unknown) = async ({ data }: { data: Record<string, unknown> }) => {
+    state.updateCalled = true;
+    return { ...review, ...data };
+  };
+  (prisma.supplierPayment.findMany as unknown) = async () => [];
+  (prisma.supplierPayment.findFirst as unknown) = async () => null;
+  (prisma.supplierPayment.upsert as unknown) = async ({ create }: { create: Record<string, unknown> }) => {
+    state.upsertCalled = true;
+    return { id: "payment-readiness-1", ...create };
+  };
+  (prisma.platformAuditLog.create as unknown) = async () => ({ id: "audit-1" });
+  return fn(state).finally(() => {
+    (prisma.financialDocumentReview.findFirst as unknown) = original.findFirst;
+    (prisma.financialDocumentReview.update as unknown) = original.update;
+    (prisma.supplierPayment.findMany as unknown) = original.paymentFindMany;
+    (prisma.supplierPayment.findFirst as unknown) = original.paymentFindFirst;
+    (prisma.supplierPayment.upsert as unknown) = original.paymentUpsert;
+    (prisma.platformAuditLog.create as unknown) = original.auditCreate;
+  });
+}
+
+test("parity: readiness canApprove=true means approval succeeds on the same data", async () => {
+  const review = buildReadyReview();
+  await withPrismaMocks(review, async (state) => {
+    const readiness = await evaluateReviewApprovalReadiness(review as never);
+    assert.equal(readiness.canApprove, true, `expected ready, got block: ${readiness.blockReason}`);
+    assert.equal(readiness.blockReason, null);
+    assert.equal(readiness.recommendedAction, "approve");
+
+    const approved = await approveFinancialDocumentReview(ORG, "review-ready-1");
+    assert.equal(approved.review.reviewStatus, "approved");
+    assert.equal(state.upsertCalled, true);
+  });
+});
+
+test("parity: supplier needing confirmation blocks readiness AND approval, review stays needs_review", async () => {
+  const review = buildReadyReview({
+    parsedFieldsJson: {
+      gates: [
+        buildPassingTrustGateSnapshots().amountGate,
+        { ...buildPassingTrustGateSnapshots().supplierGate, verdict: "review", reasonCode: "supplier.sir_weak_evidence" },
+        buildPassingTrustGateSnapshots().fingerprintGate,
+        buildPassingTrustGateSnapshots().duplicateGate,
+      ],
+      sir: {
+        status: "resolved",
+        canonicalSupplier: "Acme Ltd",
+        supplierName: "Acme Ltd",
+        isStrongEnoughForAutoSave: false,
+      },
+    },
+  });
+  await withPrismaMocks(review, async (state) => {
+    const readiness = await evaluateReviewApprovalReadiness(review as never);
+    assert.equal(readiness.canApprove, false);
+    assert.equal(readiness.supplierNeedsConfirmation, true);
+    assert.equal(readiness.recommendedAction, "edit_supplier");
+    assert.equal(readiness.blockReason, "supplier.needs_confirmation");
+
+    await assert.rejects(
+      () => approveFinancialDocumentReview(ORG, "review-ready-1"),
+      /supplier\.needs_confirmation/
+    );
+    assert.equal(state.updateCalled, false, "failed approval must not touch the review row");
+    assert.equal(state.upsertCalled, false);
+  });
+});
+
+test("parity: unresolved amount blocks readiness AND approval with the same reason", async () => {
+  const review = buildReadyReview({
+    totalAmount: null,
+    parsedFieldsJson: {
+      arc: { status: "missing", selectedAmount: null, reasonCode: "MISSING" },
+      gates: [],
+      sir: { status: "resolved", canonicalSupplier: "Acme Ltd", supplierName: "Acme Ltd", isStrongEnoughForAutoSave: true },
+    },
+  });
+  await withPrismaMocks(review, async (state) => {
+    const readiness = await evaluateReviewApprovalReadiness(review as never);
+    assert.equal(readiness.canApprove, false);
+    assert.equal(readiness.blockReason, "amount.unresolved");
+    assert.equal(readiness.recommendedAction, "complete_details");
+
+    await assert.rejects(
+      () => approveFinancialDocumentReview(ORG, "review-ready-1"),
+      /verified total amount/
+    );
+    assert.equal(state.upsertCalled, false);
+  });
+});
+
+test("non-payment document type is recommended for rejection", async () => {
+  const review = buildReadyReview({ documentType: "quote" });
+  const readiness = await evaluateReviewApprovalReadiness(review as never);
+  assert.equal(readiness.canApprove, false);
+  assert.equal(readiness.recommendedAction, "reject");
+  assert.equal(readiness.blockReason, "מסמך לא רלוונטי");
+});
+
+test("already-approved review reports no available action (idempotency preserved)", async () => {
+  const review = buildReadyReview({ reviewStatus: "approved", supplierPaymentId: "payment-9" });
+  const readiness = await evaluateReviewApprovalReadiness(review as never);
+  assert.equal(readiness.canApprove, false);
+  assert.equal(readiness.blockReason, null);
+
+  await withPrismaMocks(review, async (state) => {
+    const approved = await approveFinancialDocumentReview(ORG, "review-ready-1");
+    assert.equal(approved.paymentId, "payment-9");
+    assert.equal(state.upsertCalled, false, "idempotent approve must not recreate the payment");
+  });
+});

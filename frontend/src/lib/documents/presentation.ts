@@ -25,6 +25,10 @@ export type DocumentReviewItem = {
   parsedFieldsJson?: unknown;
   documentDate?: string | null;
   invoiceNumber?: string | null;
+  // חוזה readiness מהשרת — מקור האמת היחיד לזמינות אישור (H fix)
+  canApprove?: boolean;
+  blockReason?: string | null;
+  recommendedAction?: "approve" | "edit_supplier" | "complete_details" | "reject";
 };
 
 export type ReviewMissingFieldId =
@@ -188,6 +192,79 @@ function isAmbiguousSupplierReason(item: DocumentReviewItem): boolean {
   );
 }
 
+/** האם הפריט נושא את חוזה ה-readiness מהשרת (גרסת API חדשה). */
+function hasServerReadiness(item: DocumentReviewItem): boolean {
+  return typeof item.canApprove === "boolean" && item.recommendedAction !== undefined;
+}
+
+function serverDrivenPrimaryAction(
+  item: DocumentReviewItem,
+  blocking: ReviewMissingField[],
+  advisory: ReviewMissingField[],
+  rejectLabel: string
+): ReviewPrimaryAction {
+  // עקביות מעל הכול: גם אם השרת אמר approve, אישור-ספק פתוח גובר (הגנה כפולה)
+  const action =
+    item.recommendedAction === "approve" && supplierNeedsUserConfirmation(item)
+      ? "edit_supplier"
+      : item.recommendedAction;
+
+  if (action === "approve" && item.canApprove) {
+    return {
+      kind: "ready_to_approve",
+      statusLabel: "מוכן לאישור",
+      primaryLabel: "אשר והעבר לחשבוניות",
+      secondaryLabel: "ערוך פרטים",
+      rejectLabel,
+      canApprove: true,
+      canEditSupplier: true,
+      missingFields: [],
+      advisoryFields: advisory,
+    };
+  }
+
+  if (action === "edit_supplier") {
+    return {
+      kind: "edit_supplier",
+      statusLabel: "ספק לא בטוח",
+      primaryLabel: "ערוך ספק",
+      secondaryLabel: item.driveFileUrl ? "פתח מסמך" : null,
+      rejectLabel,
+      canApprove: false,
+      canEditSupplier: true,
+      missingFields: [],
+      advisoryFields: advisory,
+    };
+  }
+
+  if (action === "reject") {
+    return {
+      kind: "complete_details",
+      statusLabel: "לא רלוונטי לאישור",
+      primaryLabel: item.driveFileUrl ? "פתח מסמך" : rejectLabel,
+      secondaryLabel: null,
+      rejectLabel,
+      canApprove: false,
+      canEditSupplier: false,
+      missingFields: blocking,
+      advisoryFields: advisory,
+    };
+  }
+
+  // complete_details (או שרת שסימן canApprove=false בלי פעולה מוכרת)
+  return {
+    kind: "complete_details",
+    statusLabel: "דורש השלמה",
+    primaryLabel: "השלם פרטים",
+    secondaryLabel: item.driveFileUrl ? "פתח מסמך" : null,
+    rejectLabel,
+    canApprove: false,
+    canEditSupplier: blocking.some((field) => field.id === "supplier") || hasVerifiedSupplier(item),
+    missingFields: blocking,
+    advisoryFields: advisory,
+  };
+}
+
 export function getReviewPrimaryAction(item: DocumentReviewItem): ReviewPrimaryAction {
   const status = (item.reviewStatus ?? "").toLowerCase();
   const { blocking, advisory } = getReviewMissingFields(item);
@@ -205,6 +282,11 @@ export function getReviewPrimaryAction(item: DocumentReviewItem): ReviewPrimaryA
       missingFields: [],
       advisoryFields: [],
     };
+  }
+
+  // מקור אמת מהשרת: כשהחוזה קיים — ההיוריסטיקות המקומיות משמשות רק לצ'יפים
+  if (hasServerReadiness(item)) {
+    return serverDrivenPrimaryAction(item, blocking, advisory, rejectLabel);
   }
 
   if (isAmbiguousSupplierReason(item)) {
@@ -439,6 +521,21 @@ export function specificReviewReasonHebrew(
 }
 
 /**
+ * תרגום blockReason של חוזה ה-readiness מהשרת לעברית להצגה על הכרטיס.
+ * ספציפי לפני כללי; קוד לא מוכר נופל למיפוי הקיים ואז לניסוח זהיר.
+ */
+export function readinessBlockReasonHebrew(item: Pick<DocumentReviewItem, "blockReason">): string | null {
+  const reason = item.blockReason?.trim();
+  if (!reason) return null;
+  if (reason === "supplier.needs_confirmation") return "יש לאשר או לערוך את שם הספק לפני האישור";
+  if (reason === "blocked_outcome") return "המסמך נחסם בעיבוד — מומלץ לדחות";
+  if (reason === "fingerprint.missing") return "חסרים פרטים מזהים במסמך";
+  if (reason === "readiness_unavailable") return "לא הצלחתי לבדוק את המסמך כרגע — נסה לרענן";
+  if (reason.startsWith("trust.")) return "בדיקות האמון של המסמך לא הושלמו";
+  return mapReasonCodeToHebrew(reason) ?? "המסמך דורש בדיקה נוספת לפני אישור";
+}
+
+/**
  * הודעת כשל אישור ידידותית: מתרגמת את הודעות ה-422 של השרת (כולל קוד הסיבה
  * שבסוגריים) לעברית ספציפית, במקום "אישור המסמך נכשל" גנרי.
  */
@@ -460,9 +557,15 @@ export function presentDocument(item: DocumentReviewItem): DocumentPresentation 
   const supplier = normalizedSupplierName(item) || "ספק לא ידוע";
   const isDuplicate = isDuplicateReason(item.uncertaintyReason);
 
+  const serverBlockReason = readinessBlockReasonHebrew(item);
+
   let reason = "";
   if (action.missingFields.length > 0) {
     reason = action.missingFields.map((field) => field.labelHebrew).join(" · ");
+    // הסיבה החוסמת מהשרת מדויקת יותר מרשימת השדות המקומית — מציגים גם אותה
+    if (serverBlockReason && !action.canApprove) {
+      reason = `${serverBlockReason} · ${reason}`;
+    }
   } else if (isDuplicate) {
     const specific = specificReviewReasonHebrew(item);
     reason =
@@ -483,6 +586,7 @@ export function presentDocument(item: DocumentReviewItem): DocumentPresentation 
   } else {
     const specific = specificReviewReasonHebrew(item);
     reason =
+      serverBlockReason ??
       specific ??
       (action.missingFields.length > 0
         ? action.missingFields.map((field) => field.labelHebrew).join(" · ")
