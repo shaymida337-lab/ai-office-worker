@@ -62,6 +62,17 @@ cronRouter.post("/gmail-sync-all", async (_req, res) => {
 });
 
 cronRouter.post("/whatsapp-morning", async (_req, res) => {
+  const {
+    logMorningSummarySchedulerEvent,
+    MORNING_SUMMARY_TIMEZONE,
+  } = await import("../services/whatsapp/morningSummaryScheduler.js");
+  logMorningSummarySchedulerEvent({
+    trigger: "cron_external",
+    decision: { action: "send", reason: "cron_job_started" },
+    now: new Date(),
+    timeZone: MORNING_SUMMARY_TIMEZONE,
+  });
+
   const orgs = await prisma.organization.findMany();
   for (const org of orgs) {
     try {

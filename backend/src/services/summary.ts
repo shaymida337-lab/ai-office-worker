@@ -1,10 +1,19 @@
 import { buildNatalieDailySummaryMessage } from "./whatsapp/natalieWhatsAppData.js";
+import { requestMorningSummarySend } from "./whatsapp/morningSummaryScheduler.js";
 
 export async function buildDailySummary(organizationId: string): Promise<string> {
   return buildNatalieDailySummaryMessage(organizationId);
 }
 
 export async function sendDailySummary(organizationId: string, period: "morning" | "evening") {
+  if (period === "morning") {
+    const decision = await requestMorningSummarySend({
+      organizationId,
+      trigger: "send_daily_summary",
+    });
+    if (decision.action === "skip") return;
+  }
+
   const text = await buildDailySummary(organizationId);
   const { sendWhatsAppMessage } = await import("./whatsapp.js");
   await sendWhatsAppMessage(organizationId, text);

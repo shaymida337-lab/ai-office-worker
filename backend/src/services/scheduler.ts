@@ -3,13 +3,18 @@ import { prisma } from "../lib/prisma.js";
 import { findLastGmailScanSuccessCursor } from "./gmailScanLifecycle.js";
 import { syncGmailForOrganization } from "./gmail-sync.js";
 import { scanForInvoices, detectUrgent } from "./invoiceScanner.js";
-import { sendDailySummary } from "./summary.js";
 import { buildNatalieDailySummaryMessage, buildNatalieMonthlyReportMessage } from "./whatsapp/natalieWhatsAppData.js";
 import { buildNatalieUrgentEmailAlert } from "./whatsapp/natalieWhatsAppUx.js";
 import { sendWhatsAppMessage, sendWhatsAppToPhone } from "./whatsapp.js";
 import { generateAccountantReport } from "./accountantReports.js";
 import { previousMonth } from "./vatService.js";
 import { notificationGuard } from "./notificationGuard.js";
+import {
+  logMorningSummarySchedulerEvent,
+  MORNING_SUMMARY_CRON_EXPRESSION,
+  MORNING_SUMMARY_TIMEZONE,
+  requestMorningSummarySend,
+} from "./whatsapp/morningSummaryScheduler.js";
 import { clientTemplates } from "./messageTemplates.js";
 import { publishDueSocialPosts } from "./socialMedia.js";
 import { processCrmNotifications, processLeadSequences } from "./crm.js";
@@ -58,8 +63,24 @@ class SchedulerService {
     cron.schedule("30 4 * * *", () => this.withRetry("health", () => this.updateAllHealthScores()), { timezone: TIMEZONE });
     cron.schedule("0 8 1 * *", () => this.withRetry("monthly", () => this.generateMonthlyReport()), { timezone: TIMEZONE });
     cron.schedule("0 6 1 * *", () => this.withRetry("monthly", () => this.generateMonthlyAccountantReports()), { timezone: TIMEZONE });
-    cron.schedule("30 7 * * 0-5", () => this.withRetry("whatsapp", () => this.sendOwnerMorningReports()), { timezone: TIMEZONE });
-    cron.schedule("0 8 * * 0-5", () => this.withRetry("whatsapp", () => this.sendClientMorningBriefs()), { timezone: TIMEZONE });
+    cron.schedule(MORNING_SUMMARY_CRON_EXPRESSION, () => {
+      logMorningSummarySchedulerEvent({
+        trigger: "cron_scheduler_owner",
+        decision: { action: "send", reason: "cron_job_started" },
+        now: new Date(),
+        timeZone: MORNING_SUMMARY_TIMEZONE,
+      });
+      return this.withRetry("whatsapp", () => this.sendOwnerMorningReports());
+    }, { timezone: TIMEZONE });
+    cron.schedule("15 8 * * 0-5", () => {
+      logMorningSummarySchedulerEvent({
+        trigger: "cron_scheduler_client",
+        decision: { action: "send", reason: "cron_job_started" },
+        now: new Date(),
+        timeZone: MORNING_SUMMARY_TIMEZONE,
+      });
+      return this.withRetry("whatsapp", () => this.sendClientMorningBriefs());
+    }, { timezone: TIMEZONE });
     cron.schedule("0 10 * * 0-5", () => this.withRetry("whatsapp", () => this.sendPaymentReminders()), { timezone: TIMEZONE });
     cron.schedule("0 * * * *", () => this.withRetry("social", () => this.publishApprovedSocialPosts()), { timezone: TIMEZONE });
     cron.schedule("*/15 * * * *", () => this.withRetry("crm", () => this.processCrmSequences()), { timezone: TIMEZONE });
@@ -219,7 +240,6 @@ class SchedulerService {
           saved += result.saved;
           errors.push(...result.errors.map((item) => item.error));
         }
-        await sendDailySummary(org.id, "morning");
         await finishScanLog(logId, { status: errors.length ? "partial" : "success", found, saved, errors });
         console.log(`[scheduler] Daily scan done org=${org.id}`);
       } catch (err) {
@@ -312,6 +332,13 @@ class SchedulerService {
       try {
         const flags = await getRuleFlags(assistant.organizationId);
         if (!flags.ownerMorningReport) continue;
+
+        const morningDecision = await requestMorningSummarySend({
+          organizationId: assistant.organizationId,
+          trigger: "cron_scheduler_owner",
+        });
+        if (morningDecision.action === "skip") continue;
+
         // RULE: Max 2 messages per day per number
         // RULE: No messages 21:00-07:00
         // RULE: No messages on Saturday

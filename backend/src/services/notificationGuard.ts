@@ -1,4 +1,6 @@
 import { prisma } from "../lib/prisma.js";
+import { getDayBounds, getLocalTimeParts } from "./calendar/datetime.js";
+import { getLocalWeekday, MORNING_SUMMARY_TIMEZONE } from "./whatsapp/morningSummaryScheduler.js";
 
 type Rules = {
   maxMessagesPerDay: number;
@@ -9,21 +11,24 @@ type Rules = {
 
 class NotificationGuard {
   async canSend(phone: string, organizationId: string, type: string): Promise<{ allowed: boolean; reason?: string }> {
-    const rules = await getRules(organizationId);
+    const [rules, org] = await Promise.all([
+      getRules(organizationId),
+      prisma.organization.findUnique({ where: { id: organizationId }, select: { timezone: true } }),
+    ]);
+    const timeZone = org?.timezone?.trim() || MORNING_SUMMARY_TIMEZONE;
     const now = new Date();
 
-    // RULE: No messages 21:00-07:00
-    if (isInQuietHours(now, rules.quietHoursStart, rules.quietHoursEnd)) {
+    // RULE: No messages 21:00-07:00 (organization local time)
+    if (isInQuietHours(now, rules.quietHoursStart, rules.quietHoursEnd, timeZone)) {
       return { allowed: false, reason: "quiet_hours" };
     }
 
-    // RULE: No messages on Saturday
-    if (now.getDay() === 6 && rules.noMessagesOnSaturday) {
+    // RULE: No messages on Saturday (organization local time)
+    if (getLocalWeekday(now, timeZone) === 6 && rules.noMessagesOnSaturday) {
       return { allowed: false, reason: "saturday" };
     }
 
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
+    const { start: todayStart } = getDayBounds(now, timeZone);
 
     const todayCount = await countNotifications(phone, todayStart);
     // RULE: Max 2 messages per day per number
@@ -81,8 +86,9 @@ async function findRecentNotification(phone: string, type: string, since: Date) 
   return rows[0] ?? null;
 }
 
-function isInQuietHours(date: Date, start: string, end: string) {
-  const current = date.getHours() * 60 + date.getMinutes();
+function isInQuietHours(date: Date, start: string, end: string, timeZone: string) {
+  const local = getLocalTimeParts(date, timeZone);
+  const current = local.hour * 60 + local.minute;
   const startMinutes = parseTime(start);
   const endMinutes = parseTime(end);
   return startMinutes > endMinutes ? current >= startMinutes || current < endMinutes : current >= startMinutes && current < endMinutes;
