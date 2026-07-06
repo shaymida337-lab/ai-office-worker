@@ -245,6 +245,22 @@ export function resolveReviewSupplierContext(input: ReviewSupplierInput): Review
     sir?.isStrongEnoughForAutoSave === false;
 
   if (supplierGateVerdict === "pass") {
+    const displayDiffersFromRaw =
+      Boolean(rawSupplierName && displaySupplierName) &&
+      !suppliersEquivalentForReview(displaySupplierName!, rawSupplierName!);
+    if (displayDiffersFromRaw || normalized.normalizationApplied) {
+      return {
+        rawSupplierName,
+        displaySupplierName,
+        confirmedSupplierName,
+        supplierConfidence: "low",
+        supplierNeedsConfirmation: true,
+        supplierUncertain: true,
+        normalizationApplied: normalized.normalizationApplied,
+        ocrHintSupplier: normalized.ocrHintSupplier,
+        supplierGateVerdict,
+      };
+    }
     return {
       rawSupplierName,
       displaySupplierName,
@@ -322,7 +338,19 @@ export function resolveSupplierNameForApproval(
   confirmedSupplierName?: string | null
 ): string {
   const trimmed = confirmedSupplierName?.trim();
-  if (trimmed) return normalizeIsraeliReviewSupplierAlias(trimmed);
+  if (trimmed) {
+    const normalized = normalizeIsraeliReviewSupplierAlias(trimmed);
+    const context = resolveReviewSupplierContext(review);
+    if (context.supplierNeedsConfirmation) {
+      const acceptableDisplay = context.displaySupplierName;
+      if (!acceptableDisplay || !suppliersEquivalentForReview(normalized, acceptableDisplay)) {
+        throw new Error(
+          "לא ניתן לאשר מסמך — יש לאשר או לערוך את שם הספק לפני האישור (supplier.needs_confirmation)"
+        );
+      }
+    }
+    return normalized;
+  }
 
   const context = resolveReviewSupplierContext(review);
   if (context.confirmedSupplierName) return context.confirmedSupplierName;

@@ -960,16 +960,41 @@ export async function recordManualEntryFinancialDocument(input: ManualEntryFinan
   };
 }
 
+export type FinancialDocumentApprovalTarget = "invoices" | "payments";
+
+export type ApproveFinancialDocumentReviewResult = {
+  review: NonNullable<Awaited<ReturnType<typeof prisma.financialDocumentReview.findFirst>>>;
+  paymentId: string;
+  targetScreen: FinancialDocumentApprovalTarget;
+};
+
+function resolveApprovalTargetScreen(documentType: string): FinancialDocumentApprovalTarget {
+  const normalized = normalizeFinancialDocumentType(documentType);
+  if (normalized === "receipt" || normalized === "tax_invoice" || normalized === "tax_invoice_receipt") {
+    return "invoices";
+  }
+  return "payments";
+}
+
+function resolveReviewNormalizedDocumentDate(review: { documentDate: Date | null; createdAt: Date }): Date {
+  const date = review.documentDate ?? review.createdAt;
+  return date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
+}
+
 export async function approveFinancialDocumentReview(
   organizationId: string,
   reviewId: string,
   options?: { userId?: string; sourceRoute?: string; confirmedSupplierName?: string },
-) {
+): Promise<ApproveFinancialDocumentReviewResult> {
   try {
   let review = await prisma.financialDocumentReview.findFirst({ where: { id: reviewId, organizationId } });
   if (!review) throw new Error("Document review item not found");
   if (review.reviewStatus === "approved" && review.supplierPaymentId) {
-    return review;
+    return {
+      review,
+      paymentId: review.supplierPaymentId,
+      targetScreen: resolveApprovalTargetScreen(review.documentType),
+    };
   }
   const workflowTrace = createCoreWorkflowTrace({
     subsystem: "review_queue",
@@ -1006,50 +1031,43 @@ export async function approveFinancialDocumentReview(
       afterState: reviewAuditSnapshot(rejected),
       reason: "מסמך לא רלוונטי",
     });
-    return rejected;
+    throw new Error("מסמך לא רלוונטי");
   }
+  const supplierReviewInput = {
+    supplierName: review.supplierName,
+    sender: review.sender,
+    supplierTaxId: review.supplierTaxId,
+    parsedFieldsJson: review.parsedFieldsJson,
+    rawAnalysis: review.rawAnalysis,
+  };
   const approvedSupplierName = resolveSupplierNameForApproval(
-    {
-      supplierName: review.supplierName,
-      sender: review.sender,
-      supplierTaxId: review.supplierTaxId,
-      parsedFieldsJson: review.parsedFieldsJson,
-      rawAnalysis: review.rawAnalysis,
-    },
+    supplierReviewInput,
     options?.confirmedSupplierName,
   );
+  const rawExtractedSupplier = review.supplierName;
   let parsedFieldsForApproval =
     review.parsedFieldsJson && typeof review.parsedFieldsJson === "object" && !Array.isArray(review.parsedFieldsJson)
       ? { ...(review.parsedFieldsJson as Record<string, unknown>) }
       : {};
-  if (options?.confirmedSupplierName) {
-    parsedFieldsForApproval = mergeReviewSupplierConfirmation(parsedFieldsForApproval, {
-      rawExtractedName: review.supplierName,
-      confirmedName: approvedSupplierName,
-      userId: options.userId ?? null,
-    });
-    attachSupplierGateToParsedFields(parsedFieldsForApproval, {
-      sirSummary: {
-        supplierName: approvedSupplierName,
-        canonicalSupplier: approvedSupplierName,
-        status: "resolved",
-        isStrongEnoughForAutoSave: true,
-      },
+  parsedFieldsForApproval = mergeReviewSupplierConfirmation(parsedFieldsForApproval, {
+    rawExtractedName: rawExtractedSupplier,
+    confirmedName: approvedSupplierName,
+    userId: options?.userId ?? null,
+  });
+  attachSupplierGateToParsedFields(parsedFieldsForApproval, {
+    sirSummary: {
       supplierName: approvedSupplierName,
-    });
-    await prisma.financialDocumentReview.update({
-      where: { id: review.id },
-      data: {
-        supplierName: approvedSupplierName,
-        parsedFieldsJson: parsedFieldsForApproval as any,
-      },
-    });
-    review = {
-      ...review,
-      supplierName: approvedSupplierName,
-      parsedFieldsJson: parsedFieldsForApproval as any,
-    };
-  }
+      canonicalSupplier: approvedSupplierName,
+      status: "resolved",
+      isStrongEnoughForAutoSave: true,
+    },
+    supplierName: approvedSupplierName,
+  });
+  review = {
+    ...review,
+    supplierName: approvedSupplierName,
+    parsedFieldsJson: parsedFieldsForApproval as typeof review.parsedFieldsJson,
+  };
   if (!approvedSupplierName) {
     throw new Error("Cannot approve document without a verified supplier name");
   }
@@ -1075,7 +1093,7 @@ export async function approveFinancialDocumentReview(
     parsedFieldsJson: review.parsedFieldsJson,
   });
   const trustEvaluation = evaluateFreshTrustGatesForManualApproval({
-    parsedFieldsJson: review.parsedFieldsJson,
+    parsedFieldsJson: parsedFieldsForApproval,
     totalAmount: approvedAmount,
     supplierName: approvedSupplierName,
     fingerprintGateInput: buildFingerprintGateInputFromReview({
@@ -1109,6 +1127,7 @@ export async function approveFinancialDocumentReview(
     const reason = trustEvaluation.blockReason ?? trustEvaluation.reasonCode ?? "trust gate blocked";
     throw new Error(`לא ניתן לאשר מסמך — בדיקת אמון נכשלה (${reason})`);
   }
+  const normalizedDocumentDate = resolveReviewNormalizedDocumentDate(review);
   const createResult = await createSupplierPaymentIfTrusted({
     evaluation: effectiveEvaluation,
     audit: options?.userId
@@ -1129,6 +1148,7 @@ export async function approveFinancialDocumentReview(
       amount: approvedAmount,
       currency: review.currency,
       date: review.documentDate ?? new Date(),
+      normalizedDocumentDate,
       dueDate: review.dueDate,
       paid: review.documentType === "receipt" || review.documentType === "tax_invoice_receipt",
       documentLink: review.driveFileUrl,
@@ -1151,7 +1171,7 @@ export async function approveFinancialDocumentReview(
       vatAmount: review.vatAmount,
       totalAmount: approvedAmount,
       confidenceScore: review.confidenceScore,
-      parsedFieldsJson: review.parsedFieldsJson as any,
+      parsedFieldsJson: parsedFieldsForApproval as any,
       approvalStatus: "approved",
       sourcesJson: [review.source],
       emailMessageId: review.emailMessageId,
@@ -1160,9 +1180,15 @@ export async function approveFinancialDocumentReview(
       where: { organizationId_documentFingerprint: { organizationId, documentFingerprint: review.documentFingerprint } },
       update: {
         approvalStatus: "approved",
+        supplier: approvedSupplierName,
+        supplierName: approvedSupplierName,
+        amount: approvedAmount,
+        totalAmount: approvedAmount,
+        normalizedDocumentDate,
         driveUploadStatus: review.driveUploadStatus,
+        documentLink: review.driveFileUrl,
         confidenceScore: review.confidenceScore,
-        parsedFieldsJson: review.parsedFieldsJson as any,
+        parsedFieldsJson: parsedFieldsForApproval as any,
         lastSeenAt: new Date(),
       },
     },
@@ -1172,7 +1198,16 @@ export async function approveFinancialDocumentReview(
   }
   const payment = createResult.payment;
   console.log(`[financial-document] manually_approved reviewId=${review.id} paymentId=${payment.id}`);
-  const approved = await prisma.financialDocumentReview.update({ where: { id: review.id }, data: { reviewStatus: "approved", supplierPaymentId: payment.id } });
+  const approved = await prisma.financialDocumentReview.update({
+    where: { id: review.id },
+    data: {
+      reviewStatus: "approved",
+      supplierPaymentId: payment.id,
+      supplierName: approvedSupplierName,
+      normalizedDocumentDate,
+      parsedFieldsJson: parsedFieldsForApproval as any,
+    },
+  });
   const correlationId = resolveWorkflowCorrelationId({ gmailMessageId: review.gmailMessageId, emailMessageId: review.emailMessageId });
   const auditCtx = options?.userId
     ? userAuditContext(options.userId, "financialDocuments", options.sourceRoute, correlationId)
@@ -1204,7 +1239,11 @@ export async function approveFinancialDocumentReview(
     health: "Healthy",
     metadata: { reviewId: approved.id, paymentId: payment.id },
   });
-  return approved;
+  return {
+    review: approved,
+    paymentId: payment.id,
+    targetScreen: resolveApprovalTargetScreen(approved.documentType),
+  };
   } catch (error) {
     const failureTrace = createCoreWorkflowTrace({
       subsystem: "review_queue",

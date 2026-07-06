@@ -3726,7 +3726,7 @@ type ReviewInvoiceCandidate = {
   dueDate: Date | null;
   status: string;
   reviewStatus: string;
-  source: "gmail_scan_item" | "financial_document_review";
+  source: "gmail_scan_item" | "financial_document_review" | "supplier_payment";
   reviewSourceId: string;
   description: string | null;
   driveUrl: string | null;
@@ -3825,12 +3825,16 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
   currency: string;
   driveFileUrl: string | null;
   supplierName: string | null;
+  supplierTaxId?: string | null;
   confidenceScore: number;
   reviewStatus: string;
   uncertaintyReason: string | null;
   emailMessageId: string | null;
   gmailMessageId: string | null;
   parsedFieldsJson?: unknown;
+  rawAnalysis?: unknown;
+  supplierPaymentId?: string | null;
+  normalizedDocumentDate?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }, organizationId?: string): ReviewInvoiceCandidate {
@@ -3839,26 +3843,33 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
     parsedFieldsJson: item.parsedFieldsJson,
     currency: item.currency,
   });
+  const supplier = resolveReviewSupplierContext({
+    supplierName: item.supplierName,
+    sender: item.sender,
+    supplierTaxId: item.supplierTaxId,
+    parsedFieldsJson: item.parsedFieldsJson,
+    rawAnalysis: item.rawAnalysis,
+  });
 
   return {
-    id: `document-review:${item.id}`,
+    id: item.supplierPaymentId ? `supplier-payment:${item.supplierPaymentId}` : `document-review:${item.id}`,
     clientId: "",
     invoiceNumber: item.invoiceNumber,
     amount: display.amount,
     amountLabel: display.amountLabel,
     amountResolved: display.resolved,
     currency: item.currency,
-    date: item.documentDate ?? item.createdAt,
+    date: item.normalizedDocumentDate ?? item.documentDate ?? item.createdAt,
     dueDate: item.dueDate,
-    status: item.reviewStatus,
-    reviewStatus: item.reviewStatus,
-    source: "financial_document_review",
+    status: presentedReviewStatus(item.reviewStatus),
+    reviewStatus: presentedReviewStatus(item.reviewStatus),
+    source: item.supplierPaymentId ? "supplier_payment" : "financial_document_review",
     reviewSourceId: item.id,
     description: [item.subject, item.fileName].filter(Boolean).join(" · ") || null,
     driveUrl: signLocalUploadUrlIfNeeded(resolveDriveLink(item), organizationId ?? null),
     driveFileUrl: signLocalUploadUrlIfNeeded(resolveDriveLink(item), organizationId ?? null),
     client: null,
-    supplierName: item.supplierName,
+    supplierName: supplier.displaySupplierName ?? item.supplierName,
     fromEmail: item.sender,
     gmailMessageId: item.gmailMessageId,
     confidenceScore: item.confidenceScore,
@@ -5713,12 +5724,17 @@ apiRouter.post("/document-reviews/:id/approve", requirePerm("review.approve"), a
   try {
     const confirmedSupplierName =
       typeof req.body?.supplierName === "string" ? req.body.supplierName.trim() : undefined;
-    const item = await approveFinancialDocumentReview(req.auth!.organizationId, routeId(req), {
+    const result = await approveFinancialDocumentReview(req.auth!.organizationId, routeId(req), {
       userId: req.auth!.userId,
       sourceRoute: "POST /document-reviews/:id/approve",
       confirmedSupplierName,
     });
-    res.json({ ok: true, item: mapDocumentReviewForApi(item) });
+    res.json({
+      ok: true,
+      item: mapDocumentReviewForApi(result.review),
+      paymentId: result.paymentId,
+      targetScreen: result.targetScreen,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Document review approval failed";
     const notFound = message === "Document review item not found";
@@ -5778,15 +5794,21 @@ apiRouter.post("/gmail-scan-items/:id/approve", requirePerm("review.approve"), a
   }
 
   try {
-    const approved = await approveFinancialDocumentReview(organizationId, review.id, {
+    const result = await approveFinancialDocumentReview(organizationId, review.id, {
       userId: req.auth!.userId,
       sourceRoute: "POST /api/gmail-scan-items/:id/approve",
     });
     const updated = await prisma.gmailScanItem.update({
       where: { id: item.id },
-      data: { reviewStatus: approved.reviewStatus === "approved" ? "approved" : item.reviewStatus },
+      data: { reviewStatus: result.review.reviewStatus === "approved" ? "approved" : item.reviewStatus },
     });
-    res.json({ ok: true, item: updated, review: approved });
+    res.json({
+      ok: true,
+      item: updated,
+      review: result.review,
+      paymentId: result.paymentId,
+      targetScreen: result.targetScreen,
+    });
   } catch (err) {
     res.status(400).json({
       error: err instanceof Error ? err.message : "Failed to approve linked document review",

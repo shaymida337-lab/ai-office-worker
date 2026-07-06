@@ -87,13 +87,19 @@ export default function DocumentReviewsPage() {
     setUpdatingId(id);
     setError("");
     try {
-      await apiFetch(`/api/document-reviews/${id}/approve`, {
+      const result = await apiFetch<{
+        ok: boolean;
+        item: DocumentReviewItem;
+        paymentId: string;
+        targetScreen: "invoices" | "payments";
+      }>(`/api/document-reviews/${id}/approve`, {
         method: "POST",
         body: JSON.stringify({ supplierName }),
       });
       const approvedItem = pendingItems.find((item) => item.id === id);
       animateRemove(id, (next) => {
-        setStatusMessage("המסמך אושר והועבר לחשבוניות");
+        const targetLabel = result.targetScreen === "payments" ? "תשלומים" : "חשבוניות";
+        setStatusMessage(`המסמך אושר והועבר ל${targetLabel} (מזהה: ${result.paymentId})`);
         if (next.length > 0) {
           window.setTimeout(() => {
             setStatusMessage(remainingDocumentsMessage(next.length));
@@ -101,7 +107,10 @@ export default function DocumentReviewsPage() {
         }
       });
       if (approvedItem) {
-        setCompletedItems((prev) => [{ ...approvedItem, reviewStatus: "approved" }, ...prev]);
+        setCompletedItems((prev) => [
+          { ...approvedItem, ...result.item, reviewStatus: "approved" },
+          ...prev,
+        ]);
       }
     } catch (err) {
       setError(err instanceof Error ? approvalErrorHebrew(err.message) : "אישור המסמך נכשל");

@@ -12,8 +12,15 @@ const KNOWN_OCR_MISREADS: Record<string, string> = {
   פריזון: "פז",
   "paz yellow": "פז",
   "yellow paz": "פז",
+  paz: "פז",
+  yellow: "פז",
+  "פז ילו": "פז",
+  "פז-ילו": "פז",
+  פזילו: "פז",
   "israel electric": "חברת החשמל",
+  "israel electric corporation": "חברת החשמל",
   iec: "חברת החשמל",
+  "חברת החשמל לישראל": "חברת החשמל",
 };
 
 const FUEL_CONTEXT =
