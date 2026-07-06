@@ -5,7 +5,7 @@ import { requirePerm } from "../services/rbac/index.js";
 const DEBUG_PREFIXES = ["/debug/", "/automation/", "/help/auto-fix"];
 const CRM_WRITE = [/^\/leads(?:\/|$)/, /^\/deals(?:\/|$)/, /^\/quotes(?:\/|$)/];
 const GMAIL_SCAN = [/^\/gmail(?:\/|$)/, /^\/gmail-scan$/, /^\/sync\/gmail$/];
-const WHATSAPP_TEST = /\/whatsapp\/test|\/integrations\/whatsapp\/test/;
+const WHATSAPP_TEST = /\/whatsapp\/test|\/integrations\/whatsapp\/test|\/whatsapp-assistant\/test/;
 const WHATSAPP_WRITE = [/^\/whatsapp-assistant\/settings$/, /^\/integrations\/whatsapp\/settings$/, /^\/settings\/whatsapp$/];
 
 function matchesAny(path: string, patterns: RegExp[]) {
