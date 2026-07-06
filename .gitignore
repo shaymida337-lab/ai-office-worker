@@ -67,3 +67,8 @@ frontend/_visual-qa/token-unification-capture.mjs
 # STT benchmark — אודיו ותוצאות מקומיים בלבד (לא לגיט)
 backend/benchmark-audio/
 backend/stt-benchmark-results/
+
+# Scratch investigation scripts — must live under ops/archive if kept
+backend/scripts/_tmp-*
+backend/scripts/**/_tmp-*
+!backend/scripts/ops/archive/**/_tmp-*
