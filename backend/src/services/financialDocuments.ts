@@ -964,6 +964,9 @@ export async function approveFinancialDocumentReview(
   try {
   const review = await prisma.financialDocumentReview.findFirst({ where: { id: reviewId, organizationId } });
   if (!review) throw new Error("Document review item not found");
+  if (review.reviewStatus === "approved" && review.supplierPaymentId) {
+    return review;
+  }
   const workflowTrace = createCoreWorkflowTrace({
     subsystem: "review_queue",
     organizationId,

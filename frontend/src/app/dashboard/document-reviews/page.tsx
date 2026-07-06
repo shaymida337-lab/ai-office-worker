@@ -90,7 +90,12 @@ export default function DocumentReviewsPage() {
       await apiFetch(`/api/document-reviews/${id}/approve`, { method: "POST" });
       const approvedItem = pendingItems.find((item) => item.id === id);
       animateRemove(id, (next) => {
-        setStatusMessage(remainingDocumentsMessage(next.length));
+        setStatusMessage("המסמך אושר והועבר לחשבוניות");
+        if (next.length > 0) {
+          window.setTimeout(() => {
+            setStatusMessage(remainingDocumentsMessage(next.length));
+          }, 2400);
+        }
       });
       if (approvedItem) {
         setCompletedItems((prev) => [{ ...approvedItem, reviewStatus: "approved" }, ...prev]);

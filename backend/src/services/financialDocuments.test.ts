@@ -227,6 +227,48 @@ test("approveFinancialDocumentReview uses VAT fallback amount for source_conflic
   }
 });
 
+test("approveFinancialDocumentReview is idempotent when already approved", async () => {
+  const review = {
+    id: "review-approved",
+    organizationId: "org-1",
+    reviewStatus: "approved",
+    supplierPaymentId: "payment-existing",
+  };
+
+  const originalFindFirst = prisma.financialDocumentReview.findFirst;
+  const originalPaymentUpsert = prisma.supplierPayment.upsert;
+  let upsertCalled = false;
+
+  try {
+    (prisma.financialDocumentReview.findFirst as any) = async () => review;
+    (prisma.supplierPayment.upsert as any) = async () => {
+      upsertCalled = true;
+      return { id: "payment-dup" };
+    };
+
+    const result = await approveFinancialDocumentReview("org-1", "review-approved");
+    assert.equal(result.reviewStatus, "approved");
+    assert.equal(result.supplierPaymentId, "payment-existing");
+    assert.equal(upsertCalled, false);
+  } finally {
+    (prisma.financialDocumentReview.findFirst as any) = originalFindFirst;
+    (prisma.supplierPayment.upsert as any) = originalPaymentUpsert;
+  }
+});
+
+test("approveFinancialDocumentReview blocks cross-organization access", async () => {
+  const originalFindFirst = prisma.financialDocumentReview.findFirst;
+  try {
+    (prisma.financialDocumentReview.findFirst as any) = async () => null;
+    await assert.rejects(
+      () => approveFinancialDocumentReview("org-other", "review-1"),
+      /Document review item not found/,
+    );
+  } finally {
+    (prisma.financialDocumentReview.findFirst as any) = originalFindFirst;
+  }
+});
+
 test("approveFinancialDocumentReview blocks arc_missing with no fallback amount", async () => {
   const snapshots = buildPassingTrustGateSnapshots();
   const review = {

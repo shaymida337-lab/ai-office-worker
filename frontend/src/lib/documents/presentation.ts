@@ -1,5 +1,3 @@
-import { inferReviewPresentation, natalieReviewMessage } from "@/lib/natalie/copy";
-
 export type DocumentReviewItem = {
   id: string;
   source: string;
@@ -19,7 +17,176 @@ export type DocumentReviewItem = {
   reviewStatus: string;
   createdAt: string;
   parsedFieldsJson?: unknown;
+  documentDate?: string | null;
+  invoiceNumber?: string | null;
 };
+
+export type ReviewMissingFieldId =
+  | "supplier"
+  | "amount"
+  | "document_date"
+  | "document_type"
+  | "invoice_number";
+
+export type ReviewMissingField = {
+  id: ReviewMissingFieldId;
+  labelHebrew: string;
+  blocking: boolean;
+};
+
+export type ReviewPrimaryActionKind = "complete_details" | "ready_to_approve" | "needs_special_review";
+
+export type ReviewPrimaryAction = {
+  kind: ReviewPrimaryActionKind;
+  statusLabel: string;
+  primaryLabel: string;
+  secondaryLabel: string | null;
+  rejectLabel: string;
+  canApprove: boolean;
+  missingFields: ReviewMissingField[];
+  advisoryFields: ReviewMissingField[];
+};
+
+const PLACEHOLDER_SUPPLIER_NAMES = new Set(["לא זוהה", "ספק לא ידוע", "unknown", ""]);
+
+const PAYMENT_DOCUMENT_TYPES = new Set([
+  "tax_invoice",
+  "invoice",
+  "receipt",
+  "tax_invoice_receipt",
+  "payment_request",
+]);
+
+function normalizedSupplierName(item: DocumentReviewItem): string {
+  return item.supplierName?.trim() || item.sender?.trim() || "";
+}
+
+function hasVerifiedSupplier(item: DocumentReviewItem): boolean {
+  const name = normalizedSupplierName(item);
+  if (!name || PLACEHOLDER_SUPPLIER_NAMES.has(name)) return false;
+  return true;
+}
+
+function hasVerifiedAmount(item: DocumentReviewItem): boolean {
+  if (item.amountLabel === "סכום חסר") return false;
+  const amount = item.displayAmount ?? item.totalAmount;
+  return amount != null && Number.isFinite(amount) && amount > 0;
+}
+
+function hasVerifiedDocumentType(item: DocumentReviewItem): boolean {
+  const type = item.documentType?.trim().toLowerCase();
+  if (!type || type === "irrelevant" || type === "unknown") return false;
+  return PAYMENT_DOCUMENT_TYPES.has(type);
+}
+
+function hasDocumentDateField(item: DocumentReviewItem): boolean {
+  if (item.documentDate) {
+    const parsed = new Date(item.documentDate);
+    if (!Number.isNaN(parsed.getTime())) return true;
+  }
+  const reason = (item.uncertaintyReason ?? "").toLowerCase();
+  return !reason.includes("invoice date missing") && !reason.includes("חסר תאריך");
+}
+
+function hasInvoiceNumberField(item: DocumentReviewItem): boolean {
+  if (item.invoiceNumber?.trim()) return true;
+  const reason = (item.uncertaintyReason ?? "").toLowerCase();
+  return !reason.includes("invoice number missing") && !reason.includes("חסר מספר");
+}
+
+export function getReviewMissingFields(item: DocumentReviewItem): {
+  blocking: ReviewMissingField[];
+  advisory: ReviewMissingField[];
+} {
+  const blocking: ReviewMissingField[] = [];
+  const advisory: ReviewMissingField[] = [];
+
+  if (!hasVerifiedSupplier(item)) {
+    blocking.push({ id: "supplier", labelHebrew: "חסר ספק", blocking: true });
+  }
+  if (!hasVerifiedAmount(item)) {
+    blocking.push({ id: "amount", labelHebrew: "חסר סכום", blocking: true });
+  }
+  if (!hasVerifiedDocumentType(item)) {
+    blocking.push({ id: "document_type", labelHebrew: "חסר סוג מסמך", blocking: true });
+  }
+  if (!hasDocumentDateField(item)) {
+    advisory.push({ id: "document_date", labelHebrew: "חסר תאריך", blocking: false });
+  }
+  if (!hasInvoiceNumberField(item)) {
+    advisory.push({
+      id: "invoice_number",
+      labelHebrew: "מספר מסמך חסר — ניתן לאשר ידנית",
+      blocking: false,
+    });
+  }
+
+  return { blocking, advisory };
+}
+
+function isAmbiguousSupplierReason(item: DocumentReviewItem): boolean {
+  const reason = (item.uncertaintyReason ?? "").toLowerCase();
+  return (
+    reason.includes("supplier") &&
+    (reason.includes("ambiguous") || reason.includes("possible") || reason.includes("שני"))
+  );
+}
+
+export function getReviewPrimaryAction(item: DocumentReviewItem): ReviewPrimaryAction {
+  const status = (item.reviewStatus ?? "").toLowerCase();
+  const { blocking, advisory } = getReviewMissingFields(item);
+  const rejectLabel = "דחה";
+
+  if (status === "approved" || status === "auto_saved") {
+    return {
+      kind: "ready_to_approve",
+      statusLabel: "אושר והועבר לחשבוניות",
+      primaryLabel: "אושר והועבר לחשבוניות",
+      secondaryLabel: null,
+      rejectLabel,
+      canApprove: false,
+      missingFields: [],
+      advisoryFields: [],
+    };
+  }
+
+  if (isAmbiguousSupplierReason(item)) {
+    return {
+      kind: "needs_special_review",
+      statusLabel: "דורש השלמה",
+      primaryLabel: "השלם פרטים",
+      secondaryLabel: item.driveFileUrl ? "פתח מסמך" : null,
+      rejectLabel,
+      canApprove: false,
+      missingFields: [{ id: "supplier", labelHebrew: "חסר ספק", blocking: true }],
+      advisoryFields: advisory,
+    };
+  }
+
+  if (blocking.length > 0) {
+    return {
+      kind: "complete_details",
+      statusLabel: "דורש השלמה",
+      primaryLabel: "השלם פרטים",
+      secondaryLabel: item.driveFileUrl ? "פתח מסמך" : null,
+      rejectLabel,
+      canApprove: false,
+      missingFields: blocking,
+      advisoryFields: advisory,
+    };
+  }
+
+  return {
+    kind: "ready_to_approve",
+    statusLabel: "מוכן לאישור",
+    primaryLabel: "אשר והעבר לחשבוניות",
+    secondaryLabel: "ערוך פרטים",
+    rejectLabel,
+    canApprove: true,
+    missingFields: [],
+    advisoryFields: advisory,
+  };
+}
 
 export function documentReviewAmountLabel(item: DocumentReviewItem): string {
   if (item.amountLabel) return item.amountLabel;
@@ -41,7 +208,11 @@ export type DocumentPresentation = {
   documentTypeLabel: string;
   reason: string;
   primaryLabel: string;
-  secondaryLabel: string;
+  secondaryLabel: string | null;
+  rejectLabel: string;
+  canApprove: boolean;
+  missingFields: ReviewMissingField[];
+  advisoryFields: ReviewMissingField[];
   isBlocked: boolean;
   isDuplicate: boolean;
 };
@@ -205,73 +376,48 @@ export function approvalErrorHebrew(message: string): string {
   return message.trim() || "אישור המסמך נכשל";
 }
 
-function isInvoiceReceiptUncertain(item: DocumentReviewItem) {
-  const reason = (item.uncertaintyReason ?? "").toLowerCase();
-  const type = item.documentType.toLowerCase();
-  return (
-    reason.includes("receipt") ||
-    reason.includes("invoice") ||
-    reason.includes("קבלה") ||
-    reason.includes("חשבונית") ||
-    (type.includes("receipt") && type.includes("invoice"))
-  );
-}
-
 export function presentDocument(item: DocumentReviewItem): DocumentPresentation {
-  const presentation = inferReviewPresentation(item);
-  const supplier = item.supplierName?.trim() || item.sender?.trim() || "ספק לא ידוע";
-  const reasonRaw = natalieReviewMessage(presentation, {
-    supplierName: item.supplierName,
-    uncertaintyReason: item.uncertaintyReason,
-  }).replace(/\n/g, " ");
+  const action = getReviewPrimaryAction(item);
+  const supplier = normalizedSupplierName(item) || "ספק לא ידוע";
+  const isDuplicate = isDuplicateReason(item.uncertaintyReason);
 
-  let reason = reasonRaw;
-  let primaryLabel = "אשרי";
-  let secondaryLabel = "פתחי מסמך";
-  let typeLabel = "מסמך לאישור";
-
-  if (presentation === "ambiguous_supplier") {
-    typeLabel = "ספק לא ברור";
-    reason = "מצאתי שני ספקים אפשריים. אפשר שתעזור לי לבחור?";
-    primaryLabel = "בחר ספק";
-    secondaryLabel = "פתח מסמך";
-  } else if (presentation === "missing_details") {
-    typeLabel = "חסרים פרטים";
-    reason = `חסרים לי פרטים במסמך מ${supplier}. תוכל לעזור לי להשלים?`;
-    primaryLabel = "השלימי פרטים";
-    secondaryLabel = "פתחי מסמך";
-  } else if (isInvoiceReceiptUncertain(item) && presentation === "needs_confirmation") {
-    typeLabel = "סוג מסמך";
-    reason = "אני לא בטוחה אם זו חשבונית או קבלה.";
-    primaryLabel = "בדוק";
-    secondaryLabel = "פתחי מסמך";
-  } else if (isDuplicateReason(item.uncertaintyReason)) {
-    typeLabel = "חשד לכפילות";
-    reason = "נראה שמסמך דומה כבר קיים. תעזור לי להחליט?";
-    primaryLabel = "בדוק";
-    secondaryLabel = "פתחי מסמך";
-  } else if (presentation === "ready_to_approve") {
-    reason = `הכנתי את המסמך מ${supplier} לאישור שלך.`;
-    primaryLabel = "אשרי";
-    secondaryLabel = "פתחי מסמך";
-  }
-
-  // סיבה ספציפית גוברת על הטקסט הגנרי — רק למסמכים שעדיין מחכים להחלטה
-  const specific = specificReviewReasonHebrew(item);
-  if (specific && presentation !== "already_handled" && presentation !== "ready_to_approve") {
-    reason = presentation === "missing_details" ? `${specific}. תוכל לעזור לי להשלים?` : specific;
+  let reason = "";
+  if (action.missingFields.length > 0) {
+    reason = `חסר: ${action.missingFields.map((field) => field.labelHebrew).join(" · ")}`;
+  } else if (isDuplicate) {
+    const specific = specificReviewReasonHebrew(item);
+    reason =
+      specific ??
+      "יש חשד שהמסמך כבר קיים — אפשר לאשר אם זה מסמך חדש, או לדחות אם זו כפילות.";
+  } else if (action.kind === "ready_to_approve" && action.canApprove) {
+    reason = `המסמך מ${supplier} מוכן לאישור והעברה לחשבוניות.`;
+    if (action.advisoryFields.length > 0) {
+      reason += ` (${action.advisoryFields.map((field) => field.labelHebrew).join(" · ")})`;
+    }
+  } else if (action.kind === "ready_to_approve") {
+    reason = "כבר טיפלתי במסמך הזה.";
+  } else {
+    const specific = specificReviewReasonHebrew(item);
+    reason = specific ?? "אשמח שתעזור לי לוודא שהפרטים נכונים.";
+    if (action.advisoryFields.length > 0) {
+      reason += ` (${action.advisoryFields.map((field) => field.labelHebrew).join(" · ")})`;
+    }
   }
 
   return {
-    typeLabel,
+    typeLabel: action.statusLabel,
     supplier,
     amountLabel: documentReviewAmountLabel(item),
     documentTypeLabel: documentTypeLabel(item.documentType),
     reason,
-    primaryLabel,
-    secondaryLabel,
-    isBlocked: presentation === "ambiguous_supplier" || presentation === "missing_details",
-    isDuplicate: isDuplicateReason(item.uncertaintyReason),
+    primaryLabel: action.primaryLabel,
+    secondaryLabel: action.secondaryLabel,
+    rejectLabel: action.rejectLabel,
+    canApprove: action.canApprove,
+    missingFields: action.missingFields,
+    advisoryFields: action.advisoryFields,
+    isBlocked: action.kind === "complete_details" || action.kind === "needs_special_review",
+    isDuplicate,
   };
 }
 

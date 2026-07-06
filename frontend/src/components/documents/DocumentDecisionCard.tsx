@@ -29,15 +29,13 @@ export function DocumentDecisionCard({
   const previewUrl = drivePreviewUrl(item.driveFileUrl);
 
   function handlePrimary() {
-    if (view.primaryLabel === "אשרי") {
+    if (view.canApprove) {
       onApprove(item.id);
       return;
     }
     if (previewUrl) {
       onOpen(previewUrl);
-      return;
     }
-    onApprove(item.id);
   }
 
   function handleSecondary() {
@@ -88,7 +86,10 @@ export function DocumentDecisionCard({
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`${radius.pill} px-2.5 py-1 text-xs font-bold`}
-              style={{ backgroundColor: colors.warnBg, color: colors.warnText }}
+              style={{
+                backgroundColor: view.canApprove ? colors.accentSoft : colors.warnBg,
+                color: view.canApprove ? colors.accent : colors.warnText,
+              }}
             >
               {view.typeLabel}
             </span>
@@ -109,6 +110,22 @@ export function DocumentDecisionCard({
             </p>
           </div>
 
+          {view.missingFields.length > 0 && (
+            <ul className={`${typography.body} list-disc space-y-1 pr-5 leading-7`} style={{ color: colors.dangerText }}>
+              {view.missingFields.map((field) => (
+                <li key={field.id}>{field.labelHebrew}</li>
+              ))}
+            </ul>
+          )}
+
+          {view.advisoryFields.length > 0 && view.missingFields.length === 0 && (
+            <ul className={`${typography.caption} list-disc space-y-1 pr-5 leading-6`} style={{ color: colors.textSecondary }}>
+              {view.advisoryFields.map((field) => (
+                <li key={field.id}>{field.labelHebrew}</li>
+              ))}
+            </ul>
+          )}
+
           <p className={`${typography.body} leading-7`} style={{ color: colors.textSecondary }}>
             {view.reason}
           </p>
@@ -125,9 +142,9 @@ export function DocumentDecisionCard({
                 color: colors.surface,
               }}
             >
-              {updating ? "מעדכנת..." : view.primaryLabel}
+              {updating ? "מעדכן..." : view.primaryLabel}
             </button>
-            {item.driveFileUrl && (
+            {view.secondaryLabel && (previewUrl || view.secondaryLabel === "ערוך פרטים") && (
               <button
                 type="button"
                 disabled={updating || exiting}
@@ -139,21 +156,24 @@ export function DocumentDecisionCard({
                   color: colors.textSecondary,
                 }}
               >
-                <ExternalLink className="h-4 w-4" />
+                {previewUrl ? <ExternalLink className="h-4 w-4" /> : null}
                 {view.secondaryLabel}
               </button>
             )}
+            <button
+              type="button"
+              disabled={updating || exiting}
+              onClick={() => onRemove(item.id)}
+              className={`${radius.control} ${button.secondary} w-full sm:w-auto`}
+              style={{
+                backgroundColor: colors.surface,
+                border: `1px solid ${colors.dangerBorder}`,
+                color: colors.dangerText,
+              }}
+            >
+              {view.rejectLabel}
+            </button>
           </div>
-
-          <button
-            type="button"
-            disabled={updating || exiting}
-            onClick={() => onRemove(item.id)}
-            className={`self-start text-sm font-semibold underline-offset-2 hover:underline`}
-            style={{ color: colors.textMuted }}
-          >
-            לא רלוונטי — הסר
-          </button>
         </div>
       </div>
     </article>

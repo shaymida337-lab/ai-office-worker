@@ -6,6 +6,8 @@ import {
   documentReviewAmountLabel,
   drivePreviewUrl,
   formatReviewQueueHeadline,
+  getReviewMissingFields,
+  getReviewPrimaryAction,
   presentDocument,
   specificReviewReasonHebrew,
   type DocumentReviewItem,
@@ -38,16 +40,16 @@ test("presentDocument uses API amountLabel for conflict row", () => {
   assert.equal(view.amountLabel, "₪993.33");
 });
 
-test("presentDocument keeps needs_review status semantics via uncertainty reason", () => {
+test("presentDocument shows ready-to-approve when supplier and amount exist despite source_conflict", () => {
   const view = presentDocument({
     ...baseItem,
     displayAmount: 993.33,
     amountLabel: "₪993.33",
     amountResolved: false,
   });
-  assert.equal(baseItem.reviewStatus, "needs_review");
-  // amount.source_conflict ממופה עכשיו לסיבה ספציפית במקום ניסוח גנרי
-  assert.equal(view.reason, "נמצאו כמה סכומים אפשריים במסמך");
+  assert.equal(view.primaryLabel, "אשר והעבר לחשבוניות");
+  assert.equal(view.canApprove, true);
+  assert.equal(view.typeLabel, "מוכן לאישור");
 });
 
 test("presentDocument shows סכום חסר when API sends missing label", () => {
@@ -60,6 +62,8 @@ test("presentDocument shows סכום חסר when API sends missing label", () =>
     amountResolved: false,
   });
   assert.equal(view.amountLabel, "סכום חסר");
+  assert.equal(view.primaryLabel, "השלם פרטים");
+  assert.ok(view.missingFields.some((field) => field.id === "amount"));
 });
 
 test("documentReviewAmountLabel prefers API amountLabel", () => {
@@ -145,12 +149,60 @@ test("approved review does not surface old uncertainty reason as an active probl
   assert.equal(view.reason, "כבר טיפלתי במסמך הזה.");
 });
 
-test("presentDocument renders the specific reason for a pending document (DocumentDecisionCard view model)", () => {
-  const view = presentDocument({
+test("review with supplier amount and image shows approve action", () => {
+  const action = getReviewPrimaryAction({
     ...baseItem,
+    totalAmount: 500,
+    displayAmount: 500,
+    amountLabel: "₪500.00",
+    driveFileUrl: "https://drive.google.com/file/d/abc/view",
     uncertaintyReason: "invoice number missing",
   });
-  assert.match(view.reason, /חסר מספר חשבונית/);
+  assert.equal(action.primaryLabel, "אשר והעבר לחשבוניות");
+  assert.equal(action.canApprove, true);
+
+  const view = presentDocument({
+    ...baseItem,
+    totalAmount: 500,
+    displayAmount: 500,
+    amountLabel: "₪500.00",
+    driveFileUrl: "https://drive.google.com/file/d/abc/view",
+    uncertaintyReason: "invoice number missing",
+  });
+  assert.equal(view.primaryLabel, "אשר והעבר לחשבוניות");
+  assert.ok(view.advisoryFields.some((field) => field.id === "invoice_number"));
+});
+
+test("review missing amount shows חסר סכום and השלם פרטים", () => {
+  const { blocking } = getReviewMissingFields({
+    ...baseItem,
+    amountLabel: "סכום חסר",
+    displayAmount: null,
+    totalAmount: null,
+  });
+  assert.ok(blocking.some((field) => field.labelHebrew === "חסר סכום"));
+
+  const action = getReviewPrimaryAction({
+    ...baseItem,
+    amountLabel: "סכום חסר",
+    displayAmount: null,
+    totalAmount: null,
+  });
+  assert.equal(action.primaryLabel, "השלם פרטים");
+  assert.equal(action.canApprove, false);
+});
+
+test("invoice number missing does not block approval when supplier and amount exist", () => {
+  const view = presentDocument({
+    ...baseItem,
+    totalAmount: 993.33,
+    displayAmount: 993.33,
+    amountLabel: "₪993.33",
+    uncertaintyReason: "invoice number missing",
+  });
+  assert.equal(view.canApprove, true);
+  assert.doesNotMatch(view.primaryLabel, /השלם/);
+  assert.match(view.advisoryFields[0]?.labelHebrew ?? "", /מספר מסמך חסר/);
 });
 
 test("specificReviewReasonHebrew falls back to gate reason codes from parsedFieldsJson", () => {
