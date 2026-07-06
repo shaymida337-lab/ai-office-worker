@@ -1,13 +1,16 @@
+import {
+  buildNatalieErrorFallback,
+  buildNatalieMediaDownloadFailedMessage,
+  buildNatalieUnmappedSenderMessage,
+} from "./whatsapp/natalieWhatsAppUx.js";
+
 const WHATSAPP_DEBUG_PII = process.env.WHATSAPP_DEBUG_PII === "true";
 
-export const WHATSAPP_UNMAPPED_SENDER_MESSAGE =
-  "המספר הזה עדיין לא מחובר לעסק במערכת. חבר את WhatsApp בהגדרות העסק ונסה שוב.";
+export const WHATSAPP_UNMAPPED_SENDER_MESSAGE = buildNatalieUnmappedSenderMessage();
 
-export const WHATSAPP_MEDIA_DOWNLOAD_FAILED_MESSAGE =
-  "קיבלתי את הקובץ, אבל הייתה תקלה בשמירה או חילוץ הנתונים. נסה לשלוח שוב בעוד רגע.";
+export const WHATSAPP_MEDIA_DOWNLOAD_FAILED_MESSAGE = buildNatalieMediaDownloadFailedMessage();
 
-export const WHATSAPP_GENERIC_ERROR_MESSAGE =
-  "תודה על ההודעה. הייתה תקלה רגעית, נסה שוב בעוד דקה.";
+export const WHATSAPP_GENERIC_ERROR_MESSAGE = buildNatalieErrorFallback();
 
 export function isWhatsAppPiiDebugEnabled() {
   return WHATSAPP_DEBUG_PII;

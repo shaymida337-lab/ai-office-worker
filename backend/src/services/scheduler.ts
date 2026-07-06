@@ -3,12 +3,14 @@ import { prisma } from "../lib/prisma.js";
 import { findLastGmailScanSuccessCursor } from "./gmailScanLifecycle.js";
 import { syncGmailForOrganization } from "./gmail-sync.js";
 import { scanForInvoices, detectUrgent } from "./invoiceScanner.js";
-import { sendDailySummary, buildDailySummary } from "./summary.js";
+import { sendDailySummary } from "./summary.js";
+import { buildNatalieDailySummaryMessage } from "./whatsapp/natalieWhatsAppData.js";
+import { buildNatalieMonthlyReportIntro, buildNatalieUrgentEmailAlert } from "./whatsapp/natalieWhatsAppUx.js";
 import { sendWhatsAppMessage, sendWhatsAppToPhone } from "./whatsapp.js";
 import { generateAccountantReport } from "./accountantReports.js";
 import { previousMonth } from "./vatService.js";
 import { notificationGuard } from "./notificationGuard.js";
-import { clientTemplates, ownerTemplates } from "./messageTemplates.js";
+import { clientTemplates } from "./messageTemplates.js";
 import { publishDueSocialPosts } from "./socialMedia.js";
 import { processCrmNotifications, processLeadSequences } from "./crm.js";
 import { initialConnectScanWindow } from "./scanWindow.js";
@@ -247,7 +249,7 @@ class SchedulerService {
           orderBy: { receivedAt: "desc" },
         });
         if (urgent && detectUrgent({ subject: urgent.subject, body: urgent.bodyText })) {
-          await sendWhatsAppMessage(org.id, `⚠️ מייל דחוף מ-${urgent.fromAddress}: ${urgent.subject}`);
+          await sendWhatsAppMessage(org.id, buildNatalieUrgentEmailAlert());
         }
         await finishScanLog(logId, { status: errors.length ? "partial" : "success", found, saved, errors });
       } catch (err) {
@@ -275,8 +277,8 @@ class SchedulerService {
     for (const org of orgs) {
       const logId = await createScanLog(org.id, "monthly");
       try {
-        const report = await buildDailySummary(org.id);
-        await sendWhatsAppMessage(org.id, `סיכום חודשי\n\n${report}`);
+        const report = await buildNatalieDailySummaryMessage(org.id);
+        await sendWhatsAppMessage(org.id, `${buildNatalieMonthlyReportIntro()}\n\n${report}`);
         await finishScanLog(logId, { status: "success" });
       } catch (err) {
         await finishScanLog(logId, { status: "failed", errors: [errorMessage(err)] });
@@ -316,9 +318,7 @@ class SchedulerService {
         const canSend = await notificationGuard.canSend(assistant.ownerPhone, assistant.organizationId, "morning_report");
         if (!canSend.allowed) continue;
 
-        const data = await buildOwnerReportData(assistant.organizationId);
-        // RULE: Only send if content is relevant
-        const message = ownerTemplates.morningReport(data);
+        const message = await buildNatalieDailySummaryMessage(assistant.organizationId);
         const sent = await sendWhatsAppToPhone(assistant.organizationId, assistant.ownerPhone, message, undefined, true);
         if (sent.sent) await notificationGuard.logSent(assistant.ownerPhone, assistant.organizationId, "morning_report", message, undefined, true);
       } catch (err) {
@@ -452,33 +452,6 @@ function wait(ms: number) {
 
 function errorMessage(err: unknown) {
   return err instanceof Error ? err.message : String(err);
-}
-
-async function buildOwnerReportData(organizationId: string) {
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-
-  const [activeClients, income, pendingPayments, newEmails, todayTasks, urgentAlert] = await Promise.all([
-    prisma.client.count({ where: { organizationId, isActive: true } }),
-    prisma.invoice.aggregate({ where: { organizationId, date: { gte: monthStart } }, _sum: { amount: true } }),
-    prisma.invoice.count({ where: { organizationId, status: { not: "paid" } } }),
-    prisma.emailMessage.count({ where: { organizationId, receivedAt: { gte: todayStart } } }),
-    prisma.task.count({ where: { organizationId, status: "open", dueDate: { lte: new Date() } } }),
-    prisma.alert.findFirst({ where: { organizationId, read: false }, orderBy: { createdAt: "desc" } }),
-  ]);
-
-  return {
-    activeClients,
-    monthlyIncome: income._sum.amount ?? 0,
-    pendingPayments,
-    newEmails,
-    todayTasks,
-    urgentClient: urgentAlert?.type,
-    urgentReason: urgentAlert?.title,
-  };
 }
 
 async function buildClientBriefData(clientId: string) {

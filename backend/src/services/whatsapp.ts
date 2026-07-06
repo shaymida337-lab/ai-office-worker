@@ -1,6 +1,15 @@
 import { config, hasTwilio, missingTwilioEnvVars, twilioEnvDiagnostics } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { getDashboardStats } from "./dashboard.js";
+import {
+  buildNatalieCommandHelp,
+  buildNatalieErrorFallback,
+  buildNatalieInvoiceFound,
+  buildNatalieTestMessage,
+  buildNatalieUnknownCommand,
+  formatSupplierDisplayName,
+  sanitizeWhatsAppText,
+} from "./whatsapp/natalieWhatsAppUx.js";
 
 type WhatsAppMetadata = { ownerWhatsApp?: string };
 type TwilioAccountClient = TwilioMessageClient & {
@@ -306,12 +315,13 @@ export async function sendWhatsAppMessage(organizationId: string, body: string) 
   const settings = await getWhatsAppSettings(organizationId);
   if (!client || !settings.ownerWhatsApp) return { sent: false, reason: "Twilio is not configured" };
 
+  const sanitizedBody = sanitizeWhatsAppText(body);
   const message = await sendTwilioMessageWithRetry(
     client as TwilioMessageClient,
     {
       from: config.twilio.whatsappFrom,
       to: settings.ownerWhatsApp,
-      body,
+      body: sanitizedBody,
     },
     { organizationId, to: settings.ownerWhatsApp, target: "owner" }
   );
@@ -320,7 +330,7 @@ export async function sendWhatsAppMessage(organizationId: string, body: string) 
     data: {
       organizationId,
       direction: "outbound",
-      body,
+      body: sanitizedBody,
       toNumber: settings.ownerWhatsApp,
       fromNumber: config.twilio.whatsappFrom,
     },
@@ -376,7 +386,7 @@ export async function testWhatsAppConnection(organizationId: string) {
   try {
     const result = await sendWhatsAppMessage(
       organizationId,
-      "✅ הודעת בדיקה מ-AI Office Worker. חיבור WhatsApp עובד בהצלחה."
+      buildNatalieTestMessage()
     );
     return {
       ...result,
@@ -420,12 +430,13 @@ export async function sendWhatsAppToPhone(organizationId: string, phone: string,
   if (!twilioClient) return { sent: false, reason: "Twilio is not configured" };
   if (!normalized) return { sent: false, reason: "WhatsApp number is missing" };
 
+  const sanitizedBody = sanitizeWhatsAppText(body);
   const message = await sendTwilioMessageWithRetry(
     twilioClient as TwilioMessageClient,
     {
       from: config.twilio.whatsappFrom,
       to: normalized,
-      body,
+      body: sanitizedBody,
     },
     { organizationId, clientId, to: normalized, target: clientId ? "client" : "owner", aiGenerated }
   );
@@ -435,7 +446,7 @@ export async function sendWhatsAppToPhone(organizationId: string, phone: string,
       organizationId,
       clientId,
       direction: "outbound",
-      body,
+      body: sanitizedBody,
       fromNumber: config.twilio.whatsappFrom,
       toNumber: normalized,
       aiGenerated,
@@ -454,12 +465,13 @@ export async function sendClientWhatsAppMessage(clientId: string, body: string, 
   if (!twilioClient) return { sent: false, reason: "Twilio is not configured" };
 
   try {
+    const sanitizedBody = sanitizeWhatsAppText(body);
     const message = await sendTwilioMessageWithRetry(
       twilioClient as TwilioMessageClient,
       {
         from: config.twilio.whatsappFrom,
         to: clientRecord.whatsappNumber,
-        body,
+        body: sanitizedBody,
       },
       {
         organizationId: clientRecord.organizationId,
@@ -474,7 +486,7 @@ export async function sendClientWhatsAppMessage(clientId: string, body: string, 
         organizationId: clientRecord.organizationId,
         clientId,
         direction: "outbound",
-        body,
+        body: sanitizedBody,
         fromNumber: config.twilio.whatsappFrom,
         toNumber: clientRecord.whatsappNumber,
         aiGenerated,
@@ -496,14 +508,14 @@ export async function sendClientWhatsAppMessage(clientId: string, body: string, 
 
 export async function generateWhatsAppReply(body: string) {
   const text = body.trim();
-  if (!text) return "תודה על הודעתך, נחזור אליך בקרוב";
+  if (!text) return buildNatalieErrorFallback();
   if (/חשבונית|invoice|קבלה|receipt/i.test(text)) {
-    return "תודה, קיבלנו את המסמך. נבדוק אותו ונעדכן אם חסר משהו.";
+    return sanitizeWhatsAppText("תודה, קיבלתי את המסמך 😊 אבדוק אותו ואעדכן אם חסר משהו.");
   }
   if (/סטטוס|status/i.test(text)) {
-    return "תודה על הפנייה. נבדוק את הסטטוס ונחזור אליך בקרוב.";
+    return sanitizeWhatsAppText("קיבלתי את הפנייה. אבדוק את הסטטוס ואחזור אליך בקרוב.");
   }
-  return "תודה על הודעתך, נחזור אליך בקרוב";
+  return sanitizeWhatsAppText("תודה על ההודעה! אחזור אליך בהקדם 😊");
 }
 
 export async function notifyNewInvoice(
@@ -511,7 +523,11 @@ export async function notifyNewInvoice(
   supplier: string,
   amount: number | null
 ) {
-  const msg = `🧾 חשבונית חדשה\nספק: ${supplier}\nסכום: ₪${amount ?? "לא זוהה"}`;
+  const msg = buildNatalieInvoiceFound({
+    clientName: "",
+    amount: amount ?? 0,
+    from: formatSupplierDisplayName(supplier),
+  });
   await sendWhatsAppMessage(organizationId, msg);
 }
 
@@ -534,11 +550,18 @@ export async function handleWhatsAppCommand(
   switch (cmd) {
     case "HELP":
     case "עזרה":
-      return `פקודות:\nSTATUS — מצב\nSUMMARY — סיכום\nSYNC — סריקת Gmail\nPAYMENTS — לשלם\nMISSING — חשבוניות חסרות`;
+      return buildNatalieCommandHelp();
     case "STATUS":
     case "מצב": {
       const s = await getDashboardStats(organizationId);
-      return `לשלם: ₪${s.moneyToPay}\nחסרות: ${s.missingInvoicesCount}\nמשימות: ${s.openTasks}`;
+      return sanitizeWhatsAppText(
+        [
+          "מבט מהיר על העסק:",
+          `💰 לתשלום: ₪${s.moneyToPay.toLocaleString("he-IL")}`,
+          `📄 חשבוניות חסרות: ${s.missingInvoicesCount}`,
+          `✅ משימות פתוחות: ${s.openTasks}`,
+        ].join("\n")
+      );
     }
     case "SUMMARY":
     case "סיכום": {
@@ -549,7 +572,7 @@ export async function handleWhatsAppCommand(
     case "סנכרון": {
       const { syncGmailForOrganization } = await import("./gmail-sync.js");
       const r = await syncGmailForOrganization(organizationId);
-      return `סונכרן: ${r.emailsProcessed} מיילים, ${r.paymentsCreated} תשלומים חדשים`;
+      return sanitizeWhatsAppText(`סיימתי לסנכרן את המיילים 📬\nנמצאו ${r.emailsProcessed} מיילים ו-${r.paymentsCreated} תשלומים חדשים.`);
     }
     case "PAYMENTS":
     case "תשלומים": {
@@ -558,10 +581,17 @@ export async function handleWhatsAppCommand(
         take: 10,
         orderBy: { dueDate: "asc" },
       });
-      if (!open.length) return "אין תשלומים פתוחים";
-      return open
-        .map((p) => `• ${p.supplier} ₪${p.amount}${p.dueDate ? ` עד ${p.dueDate.toLocaleDateString("he-IL")}` : ""}`)
-        .join("\n");
+      if (!open.length) return sanitizeWhatsAppText("אין תשלומים פתוחים כרגע 👍");
+      return sanitizeWhatsAppText(
+        open
+          .map(
+            (p) =>
+              `• ${formatSupplierDisplayName(p.supplier)} — ₪${p.amount.toLocaleString("he-IL")}${
+                p.dueDate ? ` עד ${p.dueDate.toLocaleDateString("he-IL")}` : ""
+              }`
+          )
+          .join("\n")
+      );
     }
     case "MISSING":
     case "חסרות": {
@@ -569,10 +599,12 @@ export async function handleWhatsAppCommand(
         where: { organizationId, missingInvoice: true, paid: false },
         take: 10,
       });
-      if (!m.length) return "אין חשבוניות חסרות";
-      return m.map((p) => `• ${p.supplier} ₪${p.amount}`).join("\n");
+      if (!m.length) return sanitizeWhatsAppText("אין חשבוניות חסרות כרגע 👍");
+      return sanitizeWhatsAppText(
+        m.map((p) => `• ${formatSupplierDisplayName(p.supplier)} — ₪${p.amount.toLocaleString("he-IL")}`).join("\n")
+      );
     }
     default:
-      return `לא הכרתי את הפקודה. שלח HELP`;
+      return buildNatalieUnknownCommand();
   }
 }

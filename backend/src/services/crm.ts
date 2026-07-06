@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { assertOutboundEmailAllowed } from "./google.js";
+import { buildNatalieLeadReminder, buildNatalieStaleLeadsBatch, NATALIE_BRAND } from "./whatsapp/natalieWhatsAppUx.js";
 import { sendWhatsAppMessage, sendWhatsAppToPhone } from "./whatsapp.js";
 
 export const LEAD_STAGES = ["חדש", "יצירת קשר", "בטיפול", "הצעת מחיר", "סגור", "הפסד"] as const;
@@ -400,13 +401,16 @@ export async function processCrmNotifications() {
       }),
     ]);
 
-    for (const lead of staleLeads) {
-      const wasCreated = await notifyAgentOnce(org.id, "crm_stale_lead", `ליד לא טופל מעל 48 שעות: ${lead.name}`);
+    if (staleLeads.length > 0) {
+      const message = buildNatalieStaleLeadsBatch(staleLeads.length);
+      const wasCreated = await notifyAgentOnce(org.id, "crm_stale_lead", message);
       if (wasCreated) created++;
     }
 
     for (const lead of upcomingReminders) {
-      const wasCreated = await notifyAgentOnce(org.id, "crm_reminder", `תזכורת קרובה לליד ${lead.name}: ${lead.nextReminderAt?.toLocaleString("he-IL")}`);
+      const when = lead.nextReminderAt?.toLocaleString("he-IL") ?? "";
+      const message = buildNatalieLeadReminder({ leadName: lead.name, when });
+      const wasCreated = await notifyAgentOnce(org.id, "crm_reminder", message);
       if (wasCreated) created++;
     }
   }
@@ -509,7 +513,7 @@ async function buildSequenceMessage(organizationId: string, lead: { name: string
   return content
     .replaceAll("{{שם}}", lead.name)
     .replaceAll("{{שירות}}", "השירות שלכם")
-    .replaceAll("{{שם_עסק}}", "AI Office Worker")
+    .replaceAll("{{שם_עסק}}", NATALIE_BRAND)
     .replaceAll("{{תחום}}", "אוטומציה עסקית")
     .replaceAll("{{מספר}}", "עשרות")
     .replaceAll("{{תוצאה}}", "יותר פניות וסדר במכירות")

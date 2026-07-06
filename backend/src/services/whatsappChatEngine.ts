@@ -2,6 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { getDashboardStats } from "./dashboard.js";
+import { buildNatalieDailySummaryMessage } from "./whatsapp/natalieWhatsAppData.js";
+import { NATALIE_BRAND, sanitizeWhatsAppText } from "./whatsapp/natalieWhatsAppUx.js";
 import { normalizeWhatsAppNumber } from "./whatsapp.js";
 
 const anthropic = hasClaude() ? new Anthropic({ apiKey: config.anthropic.apiKey }) : null;
@@ -29,8 +31,9 @@ export async function handleOwnerMessage(message: string, organizationId: string
   const context = await buildOwnerContext(organizationId);
   const response = await callClaude(
     [
-      "אתה עוזר עסקי חכם של מערכת AI Office Worker.",
-      "ענה בעברית, קצר ומקצועי. מקסימום 5 שורות.",
+      `את ${NATALIE_BRAND}, עוזרת אישית לבעל העסק.`,
+      "עני בגוף ראשון, בעברית טבעית, קצר וידידותי. מקסימום 5 שורות.",
+      "לעולם אל תזכירי AI Office Worker או מונחים טכניים.",
       `מידע על העסק: ${JSON.stringify(context)}`,
       `שאלת הבעלים: ${message}`,
     ].join("\n"),
@@ -66,8 +69,7 @@ export async function handleClientMessage(message: string, clientId: string, org
 }
 
 async function ownerReport(organizationId: string) {
-  const stats = await getDashboardStats(organizationId);
-  return `דוח קצר:\nלתשלום: ₪${stats.moneyToPay.toLocaleString("he-IL")}\nלקבל: ₪${stats.moneyToReceive.toLocaleString("he-IL")}\nמשימות פתוחות: ${stats.openTasks}\nבריאות עסקית: ${stats.businessHealthScore}/100`;
+  return buildNatalieDailySummaryMessage(organizationId);
 }
 
 async function ownerClients(organizationId: string) {
@@ -82,7 +84,7 @@ async function ownerTasks(organizationId: string) {
 
 async function ownerAlerts(organizationId: string) {
   const alerts = await prisma.alert.findMany({ where: { organizationId, read: false }, take: 8, orderBy: { createdAt: "desc" } });
-  return alerts.length ? alerts.map((alert) => `• ${alert.title}`).join("\n") : "אין התראות פתוחות.";
+  return alerts.length ? alerts.map((alert) => `• ${sanitizeWhatsAppText(alert.title ?? "")}`).join("\n") : "אין התראות פתוחות.";
 }
 
 async function ownerIncome(organizationId: string) {

@@ -1,5 +1,7 @@
 import { prisma } from "../lib/prisma.js";
-import { clientTemplates, ownerTemplates } from "./messageTemplates.js";
+import { clientTemplates } from "./messageTemplates.js";
+import { buildNatalieDailySummaryMessage } from "./whatsapp/natalieWhatsAppData.js";
+import { buildNatalieTestMessage } from "./whatsapp/natalieWhatsAppUx.js";
 import { notificationGuard } from "./notificationGuard.js";
 import { normalizeWhatsAppNumber, sendWhatsAppToPhone } from "./whatsapp.js";
 
@@ -145,8 +147,8 @@ export async function sendAssistantTest(organizationId: string, type: "morning" 
   if (!settings.ownerPhone) return { sent: false, reason: "Owner WhatsApp number is missing" };
   const message =
     type === "morning"
-      ? ownerTemplates.morningReport({ activeClients: 0, monthlyIncome: 0, pendingPayments: 0, newEmails: 0, todayTasks: 0 })
-      : clientTemplates.urgentAlert({ clientName: "בדיקה", message: "בדיקת WhatsApp Assistant עברה בהצלחה." });
+      ? await buildNatalieDailySummaryMessage(organizationId)
+      : clientTemplates.urgentAlert({ clientName: "בדיקה", message: buildNatalieTestMessage() });
 
   const canSend = await notificationGuard.canSend(settings.ownerPhone, organizationId, "test");
   if (!canSend.allowed) return { sent: false, reason: canSend.reason };
