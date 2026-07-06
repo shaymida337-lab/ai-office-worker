@@ -333,13 +333,28 @@ export function mergeReviewSupplierConfirmation(
   return base;
 }
 
+/**
+ * מפתחות פנימיים של ה-registry (למשל "known:פז" מ-SIR ב-gmail-sync) לעולם אינם
+ * שם ספק לתצוגה או לתשלום — מוסרים את הקידומת ומשאירים את השם בלבד.
+ * ראיה מפרודקשן: SupplierPayment נשמר עם supplier="known:פז" במקום "פז".
+ */
+const INTERNAL_SUPPLIER_KEY_REGEX = /^(?:known|canonical):\s*/i;
+
+export function stripInternalSupplierKey(name: string): string {
+  let cleaned = name.trim();
+  while (INTERNAL_SUPPLIER_KEY_REGEX.test(cleaned)) {
+    cleaned = cleaned.replace(INTERNAL_SUPPLIER_KEY_REGEX, "").trim();
+  }
+  return cleaned;
+}
+
 export function resolveSupplierNameForApproval(
   review: ReviewSupplierInput,
   confirmedSupplierName?: string | null
 ): string {
   const trimmed = confirmedSupplierName?.trim();
   if (trimmed) {
-    const normalized = normalizeIsraeliReviewSupplierAlias(trimmed);
+    const normalized = normalizeIsraeliReviewSupplierAlias(stripInternalSupplierKey(trimmed));
     const context = resolveReviewSupplierContext(review);
     if (context.supplierNeedsConfirmation) {
       const acceptableDisplay = context.displaySupplierName;
@@ -353,16 +368,19 @@ export function resolveSupplierNameForApproval(
   }
 
   const context = resolveReviewSupplierContext(review);
-  if (context.confirmedSupplierName) return context.confirmedSupplierName;
+  if (context.confirmedSupplierName) return stripInternalSupplierKey(context.confirmedSupplierName);
 
   if (context.supplierNeedsConfirmation || context.supplierConfidence === "low") {
     throw new Error("לא ניתן לאשר מסמך — יש לאשר או לערוך את שם הספק לפני האישור (supplier.needs_confirmation)");
   }
 
   const gateCanonical = parseSupplierGateFromParsedFields(review.parsedFieldsJson)?.canonicalSupplierName?.trim();
-  if (gateCanonical) return normalizeIsraeliReviewSupplierAlias(gateCanonical);
+  if (gateCanonical) {
+    const cleaned = stripInternalSupplierKey(gateCanonical);
+    if (cleaned) return normalizeIsraeliReviewSupplierAlias(cleaned);
+  }
 
-  if (context.displaySupplierName) return context.displaySupplierName;
+  if (context.displaySupplierName) return stripInternalSupplierKey(context.displaySupplierName);
 
   throw new Error("Cannot approve document without a verified supplier name");
 }

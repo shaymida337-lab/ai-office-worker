@@ -173,6 +173,47 @@ test("non-payment document type is recommended for rejection", async () => {
   assert.equal(readiness.blockReason, "מסמך לא רלוונטי");
 });
 
+test("approval strips internal registry keys: canonicalSupplierName 'known:פז' creates payment with supplier 'פז'", async () => {
+  const snapshots = buildPassingTrustGateSnapshots({
+    amountGate: { normalizedAmount: 301.32 },
+    supplierGate: { canonicalSupplierName: "known:פז" },
+  });
+  // שחזור מדויק של רשומת הפרודקשן cmr0upvdp02jbik2dtf5uq9pd
+  const review = buildReadyReview({
+    supplierName: "פז",
+    totalAmount: 301.32,
+    documentType: "receipt",
+    parsedFieldsJson: {
+      gates: [snapshots.amountGate, snapshots.supplierGate, snapshots.fingerprintGate, snapshots.duplicateGate],
+      sir: {
+        status: "resolved",
+        canonicalSupplier: "known:פז",
+        supplierName: "פז",
+        isStrongEnoughForAutoSave: true,
+      },
+    },
+  });
+  let paymentCreate: Record<string, unknown> | null = null;
+  await withPrismaMocks(review, async () => {
+    const readiness = await evaluateReviewApprovalReadiness(review as never);
+    assert.equal(readiness.canApprove, true, `expected ready, got: ${readiness.blockReason}`);
+    const originalUpsert = prisma.supplierPayment.upsert;
+    (prisma.supplierPayment.upsert as unknown) = async (args: { create: Record<string, unknown> }) => {
+      paymentCreate = args.create;
+      return { id: "payment-paz-1", ...args.create };
+    };
+    try {
+      await approveFinancialDocumentReview(ORG, "review-ready-1");
+    } finally {
+      (prisma.supplierPayment.upsert as unknown) = originalUpsert;
+    }
+  });
+  assert.ok(paymentCreate, "expected payment creation");
+  const created = paymentCreate as Record<string, unknown>;
+  assert.equal(created.supplier, "פז", `supplier must not carry internal key, got: ${created.supplier}`);
+  assert.equal(created.supplierName, "פז");
+});
+
 test("already-approved review reports no available action (idempotency preserved)", async () => {
   const review = buildReadyReview({ reviewStatus: "approved", supplierPaymentId: "payment-9" });
   const readiness = await evaluateReviewApprovalReadiness(review as never);
