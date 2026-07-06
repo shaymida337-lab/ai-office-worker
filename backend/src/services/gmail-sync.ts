@@ -32,6 +32,7 @@ import {
   listCrossOrgContaminatedGmailMessageIds,
   CROSS_ORG_QUARANTINE_MARKER,
 } from "./p0/crossOrgGmailQuarantine.js";
+import { attachPreviewToFinancialDocumentReview } from "./documents/documentReviewPreview.js";
 import {
   classifyBusinessDocument,
   pipelineActionForClassification,
@@ -2624,11 +2625,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           ? driveUploadFailureReason ?? "upload_missing_link"
           : null;
       if ("review" in documentDecision && documentDecision.review && primaryDriveLink) {
-        const review = await prisma.financialDocumentReview.update({
-          where: { id: documentDecision.review.id },
-          data: { driveFileUrl: primaryDriveLink, driveUploadStatus: "uploaded" },
+        await attachPreviewToFinancialDocumentReview(documentDecision.review.id, {
+          previewUrl: primaryDriveLink,
+          driveUploadStatus: "uploaded",
         });
-        logStep(`[gmail-sync] INVOICE_DRIVE_LINK_SAVED org=${organizationId} target=financialDocumentReview id=${review.id} message=${email.gmailId} driveUrl=${primaryDriveLink}`);
+        logStep(`[gmail-sync] INVOICE_DRIVE_LINK_SAVED org=${organizationId} target=financialDocumentReview id=${documentDecision.review.id} message=${email.gmailId} driveUrl=${primaryDriveLink}`);
       } else if ("review" in documentDecision && documentDecision.review && documentDriveUploadStatus === "pending_retry") {
         const review = await prisma.financialDocumentReview.update({
           where: { id: documentDecision.review.id },

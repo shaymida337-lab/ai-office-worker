@@ -33,16 +33,16 @@ export function DocumentDecisionCard({
       onApprove(item.id);
       return;
     }
-    if (item.driveFileUrl) {
-      onOpen(item.driveFileUrl);
+    if (previewUrl) {
+      onOpen(previewUrl);
       return;
     }
     onApprove(item.id);
   }
 
   function handleSecondary() {
-    if (item.driveFileUrl) {
-      onOpen(item.driveFileUrl);
+    if (previewUrl) {
+      onOpen(previewUrl);
     }
   }
 

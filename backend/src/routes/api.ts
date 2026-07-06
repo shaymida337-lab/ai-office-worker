@@ -7160,12 +7160,12 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
 
     let documentLink: string | undefined;
     if (cameraFileBuffer && body.filename) {
-      const uploadDir = path.join(process.cwd(), "uploads", "camera-invoices");
-      await mkdir(uploadDir, { recursive: true });
-      const safeName = body.filename.replace(/[\\/:*?"<>|]/g, "-");
-      const storedName = `${Date.now()}_${safeName}`;
-      await writeFile(path.join(uploadDir, storedName), cameraFileBuffer);
-      documentLink = `/uploads/camera-invoices/${storedName}`;
+      const { saveLocalIngestedDocument } = await import("../services/documents/documentReviewPreview.js");
+      documentLink = await saveLocalIngestedDocument({
+        channel: "camera",
+        filename: body.filename,
+        buffer: cameraFileBuffer,
+      });
     }
 
     // שלב 5: מסלול המצלמה לא העלה ל-Drive בכלל (100% חסר ב-baseline). מעלים
@@ -7232,9 +7232,10 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
     // לאיתור (find-pending-drive.ts) ולעולם לא נעלמת בשקט.
     const cameraReviewId = "review" in documentDecision ? documentDecision.review?.id ?? null : null;
     if (cameraReviewId && cameraDriveUploadStatus) {
-      await prisma.financialDocumentReview.update({
-        where: { id: cameraReviewId },
-        data: { driveUploadStatus: cameraDriveUploadStatus },
+      const { attachPreviewToFinancialDocumentReview } = await import("../services/documents/documentReviewPreview.js");
+      await attachPreviewToFinancialDocumentReview(cameraReviewId, {
+        previewUrl: cameraDriveFileUrl ?? documentLink ?? null,
+        driveUploadStatus: cameraDriveUploadStatus,
       });
       if (cameraDriveUploadStatus === "pending_retry") {
         console.warn(

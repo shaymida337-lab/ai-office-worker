@@ -19,6 +19,10 @@ import { buildLegacyFileDuplicateHashForLookup, buildPaymentLookupsFromCanonical
 import { resolveWhatsAppMoneyDecision, summarizeMoneyDecision } from "./amount/amountCandidates.js";
 import { classifyBusinessDocument, pipelineActionForClassification } from "./classification/classifier.js";
 import { maskSupplierForLog } from "./whatsappSafety.js";
+import {
+  persistIngestedDocumentPreview,
+  syncFinancialDocumentReviewPreview,
+} from "./documents/documentReviewPreview.js";
 
 type WhatsAppMediaInput = {
   organizationId: string;
@@ -79,6 +83,7 @@ export type WhatsAppInvoiceIngestionDeps = {
   findExistingSupplierDriveDocumentFn?: typeof findExistingSupplierDriveDocument;
   uploadInvoiceAttachmentToDriveFn?: typeof uploadInvoiceAttachmentToDrive;
   upsertWhatsAppSupplierPaymentFn?: typeof upsertWhatsAppSupplierPayment;
+  syncFinancialDocumentReviewPreviewFn?: typeof syncFinancialDocumentReviewPreview;
   organizationLookup?: (organizationId: string) => Promise<{ businessName: string | null } | null>;
 };
 
@@ -124,6 +129,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
   const findExistingDriveDocument = deps.findExistingSupplierDriveDocumentFn ?? findExistingSupplierDriveDocument;
   const uploadToDrive = deps.uploadInvoiceAttachmentToDriveFn ?? uploadInvoiceAttachmentToDrive;
   const upsertSupplierPayment = deps.upsertWhatsAppSupplierPaymentFn ?? upsertWhatsAppSupplierPayment;
+  const syncReviewPreview = deps.syncFinancialDocumentReviewPreviewFn ?? syncFinancialDocumentReviewPreview;
 
   const supportedMedia = input.media.filter((item) => isSupportedDocumentMedia(item));
   if (!supportedMedia.length) {
@@ -185,6 +191,35 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
         documentType: analysis.documentType,
       });
     }
+
+    const driveCtx = await resolveDriveContext();
+    const preview = await persistIngestedDocumentPreview({
+      channel: "whatsapp",
+      organizationId: input.organizationId,
+      buffer,
+      filename,
+      mimeType,
+      supplier,
+      supplierTaxId: analysis.supplierTaxId ?? null,
+      documentType: analysis.documentType,
+      documentDate: analysis.invoiceDate,
+      invoiceNumber: analysis.invoiceNumber,
+      amount,
+      totalAmount: analysis.totalAmount ?? amount,
+      fileSha256: fileHash,
+      fileMd5,
+      clientId: input.clientId ?? null,
+      drive: driveCtx?.drive ?? null,
+      rootFolderId: driveCtx?.rootFolderId ?? null,
+      findExistingDriveDocumentFn: findExistingDriveDocument,
+      uploadToDriveFn: uploadToDrive,
+    });
+    if (preview.previewUrl) {
+      console.log(
+        `[whatsapp-invoice] preview persisted logId=${input.whatsappLogId} status=${preview.driveUploadStatus} duplicate=${preview.duplicateDetected}`,
+      );
+    }
+
     const documentDecision = await recordDocumentDecision({
       organizationId: input.organizationId,
       source: "whatsapp",
@@ -201,6 +236,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
       vatAmount: moneyDecision.vatAmount ?? analysis.vatAmount ?? null,
       totalAmount: amount,
       documentType: analysis.documentType,
+      driveFileUrl: preview.previewUrl,
       confidenceScore: analysis.confidence,
       uncertaintyReason: supplier === "Unknown supplier" || amount === null || !analysis.invoiceNumber
         ? "חסרים פרטי ספק, סכום או מספר חשבונית"
@@ -209,6 +245,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
       whatsappLogId: input.whatsappLogId,
       fileSha256: fileHash,
     });
+    await syncReviewPreview(documentDecision, preview);
     if (documentDecision.action !== "accepted") {
       processed.push({
         filename,
@@ -217,7 +254,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
         invoiceNumber: analysis.invoiceNumber,
         documentType: analysis.documentType,
         documentDate: analysis.invoiceDate,
-        driveLink: null,
+        driveLink: preview.previewUrl,
         paymentId: documentDecision.action === "duplicate" ? documentDecision.payment.id : null,
         invoiceId: null,
         created: false,
@@ -257,12 +294,14 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
         vatAmount: analysis.vatAmount ?? null,
         totalAmount: analysis.totalAmount ?? amount,
         documentType: "payment_request",
+        driveFileUrl: preview.previewUrl,
         confidenceScore: Math.min(analysis.confidence, 0.79),
         uncertaintyReason: `classifier:${businessClassification.reason}`,
         rawAnalysis: { analysis, businessClassification, whatsappLogId: input.whatsappLogId },
         whatsappLogId: input.whatsappLogId,
         fileSha256: fileHash,
       });
+      await syncReviewPreview(reviewDecision, preview);
       processed.push({
         filename,
         supplier,
@@ -270,7 +309,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
         invoiceNumber: analysis.invoiceNumber,
         documentType: analysis.documentType,
         documentDate: analysis.invoiceDate,
-        driveLink: null,
+        driveLink: preview.previewUrl,
         paymentId: null,
         invoiceId: null,
         created: false,
@@ -314,12 +353,14 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
         vatAmount: analysis.vatAmount ?? null,
         totalAmount: analysis.totalAmount ?? amount,
         documentType: analysis.documentType,
+        driveFileUrl: preview.previewUrl,
         confidenceScore: Math.min(analysis.confidence, 0.79),
         uncertaintyReason: `possible duplicate: ${duplicate.reason}`,
         rawAnalysis: { analysis, whatsappLogId: input.whatsappLogId, duplicateReasons: duplicate.reasons },
         whatsappLogId: input.whatsappLogId,
         fileSha256: fileHash,
       });
+      await syncReviewPreview(reviewDecision, preview);
       processed.push({
         filename,
         supplier,
@@ -327,7 +368,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
         invoiceNumber: analysis.invoiceNumber,
         documentType: analysis.documentType,
         documentDate: analysis.invoiceDate,
-        driveLink: null,
+        driveLink: preview.previewUrl,
         paymentId: null,
         invoiceId: null,
         created: false,
@@ -384,8 +425,8 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
       continue;
     }
 
-    const driveCtx = await resolveDriveContext();
-    if (!driveCtx) {
+    if (preview.duplicateDetected && preview.duplicateReason === "google_drive_existing_file") {
+      console.log(`[whatsapp-invoice] stop=drive_existing_file_without_payment_create logId=${input.whatsappLogId} driveFileId=${preview.driveFileId ?? "null"}`);
       processed.push({
         filename,
         supplier,
@@ -393,71 +434,34 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
         invoiceNumber: analysis.invoiceNumber,
         documentType: analysis.documentType,
         documentDate: analysis.invoiceDate,
-        driveLink: null,
-        paymentId: null,
-        invoiceId: null,
-        created: false,
-        duplicateDetected: false,
-        duplicateReason: "google_not_connected",
-      });
-      continue;
-    }
-    const { drive, rootFolderId } = driveCtx;
-
-    const existingDriveFile = await findExistingDriveDocument({
-      organizationId: input.organizationId,
-      drive,
-      rootFolderId,
-      clientId: invoiceClientId,
-      supplier,
-      supplierTaxId: analysis.supplierTaxId ?? null,
-      documentType: analysis.documentType,
-      filename,
-      fileSha256: fileHash,
-      fileMd5,
-      documentDate: analysis.invoiceDate,
-      invoiceNumber: analysis.invoiceNumber,
-      amount,
-      totalAmount: analysis.totalAmount ?? amount,
-    });
-    if (existingDriveFile) {
-      console.log(`[whatsapp-invoice] stop=drive_existing_file_without_payment_create logId=${input.whatsappLogId} driveFileId=${existingDriveFile.id ?? "null"}`);
-      processed.push({
-        filename,
-        supplier,
-        amount,
-        invoiceNumber: analysis.invoiceNumber,
-        documentType: analysis.documentType,
-        documentDate: analysis.invoiceDate,
-        driveLink: existingDriveFile.webViewLink ?? (existingDriveFile.id ? `https://drive.google.com/file/d/${existingDriveFile.id}/view` : null),
+        driveLink: preview.previewUrl,
         paymentId: null,
         invoiceId: null,
         created: false,
         duplicateDetected: true,
-        duplicateReason: "google_drive_existing_file",
+        duplicateReason: preview.duplicateReason,
       });
       continue;
     }
 
-    const upload = await uploadToDrive({
-      organizationId: input.organizationId,
-      drive,
-      rootFolderId,
-      clientId: invoiceClientId,
-      supplier,
-      supplierTaxId: analysis.supplierTaxId ?? null,
-      documentType: analysis.documentType,
-      filename,
-      mimeType,
-      receivedAt: new Date(),
-      documentDate: analysis.invoiceDate,
-      invoiceNumber: analysis.invoiceNumber,
-      amount,
-      totalAmount: analysis.totalAmount ?? amount,
-      buffer,
-      fileSha256: fileHash,
-      fileMd5,
-    });
+    const upload = preview.upload;
+    if (!upload?.webViewLink) {
+      processed.push({
+        filename,
+        supplier,
+        amount,
+        invoiceNumber: analysis.invoiceNumber,
+        documentType: analysis.documentType,
+        documentDate: analysis.invoiceDate,
+        driveLink: preview.previewUrl,
+        paymentId: null,
+        invoiceId: null,
+        created: false,
+        duplicateDetected: false,
+        duplicateReason: preview.driveUploadStatus === "pending_retry" ? "drive_pending_retry" : "google_not_connected",
+      });
+      continue;
+    }
     console.log(`[whatsapp-invoice] drive upload done logId=${input.whatsappLogId} driveFileId=${upload.fileId ?? "null"} folderPath="${upload.folderPath}"`);
 
     const payment = isSupplierExpense ? await upsertSupplierPayment({

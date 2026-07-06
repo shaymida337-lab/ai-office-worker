@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { documentReviewAmountLabel, formatReviewQueueHeadline, presentDocument, type DocumentReviewItem } from "./presentation.js";
+import { documentReviewAmountLabel, drivePreviewUrl, formatReviewQueueHeadline, presentDocument, type DocumentReviewItem } from "./presentation.js";
 
 const baseItem: DocumentReviewItem = {
   id: "review-1",
@@ -73,4 +73,15 @@ test("formatReviewQueueHeadline shows visible slice separate from scan results",
 test("review queue headline does not use scan language", () => {
   const headline = formatReviewQueueHeadline(5, 144);
   assert.doesNotMatch(headline, /נסרק|סריקה/i);
+});
+
+test("drivePreviewUrl resolves local upload paths through API base", () => {
+  assert.equal(
+    drivePreviewUrl("/uploads/whatsapp-invoices/1_invoice.jpg", "https://api.example.com"),
+    "https://api.example.com/uploads/whatsapp-invoices/1_invoice.jpg",
+  );
+  assert.equal(
+    drivePreviewUrl("https://drive.google.com/file/d/abc123/view", "https://api.example.com"),
+    "https://drive.google.com/file/d/abc123/preview",
+  );
 });

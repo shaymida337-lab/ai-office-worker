@@ -103,10 +103,14 @@ export function formatDocumentDate(value: string) {
   return new Date(value).toLocaleDateString("he-IL", { day: "numeric", month: "short" });
 }
 
-export function drivePreviewUrl(url: string | null): string | null {
+export function drivePreviewUrl(url: string | null, apiBase?: string | null): string | null {
   if (!url) return null;
   const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
   if (match) return `https://drive.google.com/file/d/${match[1]}/preview`;
+  if (url.startsWith("/uploads/")) {
+    const base = (apiBase ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
+    return `${base}${url}`;
+  }
   return url;
 }
 
