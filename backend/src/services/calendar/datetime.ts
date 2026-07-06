@@ -198,7 +198,11 @@ export function wallClockToDate(
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function parseExplicitStartTime(value: string, timeZone: string): Date | null {
+/**
+ * מחרוזת עם Z/offset מפורש נשמרת כמו שהיא (new Date, תאימות לאחור מלאה);
+ * מחרוזת נאיבית בפורמט ISO מתפרשת כשעון-קיר ב-timeZone הנתון (לא בשל השרת).
+ */
+export function parseExplicitStartTime(value: string, timeZone: string): Date | null {
   if (/[zZ]$/.test(value) || /[+-]\d{2}:\d{2}$/.test(value)) {
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;

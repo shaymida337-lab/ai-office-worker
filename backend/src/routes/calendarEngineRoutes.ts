@@ -30,15 +30,16 @@ import { appendWorkCaseTimelineEntry } from "../services/calendar/timelineWriter
 import { sendCalendarEngineError, sendCalendarEngineSuccess } from "./calendarEngineErrors.js";
 import {
   CalendarEngineValidationError,
+  DEFAULT_CALENDAR_TIMEZONE,
   parseClientEventSource,
   parseCompletionOutcome,
   parseDateRangeQuery,
-  parseIsoDateTime,
   parseNonEmptyString,
   parseOptionalString,
   parsePaginationLimit,
   pickAllowedPatchFields,
   rejectOrganizationIdInBody,
+  resolveEventTimeRange,
   validateEventTimeRange,
 } from "./calendarEngineValidation.js";
 import { requirePerm } from "../services/rbac/index.js";
@@ -80,6 +81,14 @@ function requireCalendarEngineWrite(req: Request, res: Response, next: NextFunct
       next();
     })
     .catch(next);
+}
+
+async function loadOrganizationTimeZone(organizationId: string): Promise<string> {
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { timezone: true },
+  });
+  return organization?.timezone?.trim() || DEFAULT_CALENDAR_TIMEZONE;
 }
 
 function actorFromRequest(req: Request) {
@@ -243,9 +252,11 @@ calendarEngineRouter.post(
     const body = (req.body ?? {}) as Record<string, unknown>;
     rejectOrganizationIdInBody(body);
 
-    const startAt = parseIsoDateTime(body.startAt, "startAt");
-    const endAt = parseIsoDateTime(body.endAt, "endAt");
-    validateEventTimeRange(startAt, endAt);
+    const { startAt, endAt } = resolveEventTimeRange(
+      body.startAt,
+      body.endAt,
+      await loadOrganizationTimeZone(organizationId)
+    );
 
     const result = await checkCalendarEventConflict({
       organizationId,
@@ -298,9 +309,11 @@ calendarEngineRouter.post(
     const body = (req.body ?? {}) as Record<string, unknown>;
     rejectOrganizationIdInBody(body);
 
-    const startAt = parseIsoDateTime(body.startAt, "startAt");
-    const endAt = parseIsoDateTime(body.endAt, "endAt");
-    validateEventTimeRange(startAt, endAt);
+    const { startAt, endAt } = resolveEventTimeRange(
+      body.startAt,
+      body.endAt,
+      await loadOrganizationTimeZone(organizationId)
+    );
 
     const event = await createDraftCalendarEvent(
       organizationId,
@@ -363,7 +376,7 @@ calendarEngineRouter.patch(
     const body = (req.body ?? {}) as Record<string, unknown>;
     rejectOrganizationIdInBody(body);
 
-    const patch = pickAllowedPatchFields(body);
+    const patch = pickAllowedPatchFields(body, await loadOrganizationTimeZone(organizationId));
     if (patch.startAt && patch.endAt) {
       validateEventTimeRange(patch.startAt, patch.endAt);
     } else if (patch.startAt || patch.endAt) {
@@ -450,9 +463,11 @@ calendarEngineRouter.post(
     const body = (req.body ?? {}) as Record<string, unknown>;
     rejectOrganizationIdInBody(body);
 
-    const startAt = parseIsoDateTime(body.startAt, "startAt");
-    const endAt = parseIsoDateTime(body.endAt, "endAt");
-    validateEventTimeRange(startAt, endAt);
+    const { startAt, endAt } = resolveEventTimeRange(
+      body.startAt,
+      body.endAt,
+      await loadOrganizationTimeZone(organizationId)
+    );
 
     const result = await requestCalendarEventReschedule(
       organizationId,

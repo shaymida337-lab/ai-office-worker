@@ -111,6 +111,7 @@ import {
   VERIFICATION_CENTER_ROUTE_PATH,
 } from "../services/verification/verificationCenter.js";
 import { calendarEngineRouter } from "./calendarEngineRoutes.js";
+import { parseWallClockAwareDateTime } from "./calendarEngineValidation.js";
 import { scannerHealthRouter } from "./scannerHealthRoutes.js";
 import { integrityWatchRouter } from "./dataIntegrityWatchRoutes.js";
 import { auditLogRouter } from "./auditLogRoutes.js";
@@ -5146,7 +5147,11 @@ apiRouter.post("/appointments", requireCalendarCreate, async (req, res) => {
       return;
     }
 
-    const startTime = parseIsoDateTime(body.startTime, "startTime");
+    const startTime = parseWallClockAwareDateTime(
+      body.startTime,
+      "startTime",
+      await loadOrganizationTimezone(organizationId)
+    );
     if (startTime.getTime() < Date.now()) {
       res.status(400).json({ error: "startTime must be in the present or future" });
       return;
@@ -5277,7 +5282,11 @@ apiRouter.patch("/appointments/:id", requireCalendarReschedule, async (req, res)
 
     let startTime: Date | undefined;
     if (body.startTime !== undefined) {
-      startTime = parseIsoDateTime(body.startTime, "startTime");
+      startTime = parseWallClockAwareDateTime(
+        body.startTime,
+        "startTime",
+        await loadOrganizationTimezone(organizationId)
+      );
     }
 
     let durationMinutes: number | undefined;
