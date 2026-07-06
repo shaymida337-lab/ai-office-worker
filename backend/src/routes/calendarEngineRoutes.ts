@@ -414,13 +414,14 @@ calendarEngineRouter.patch(
     }
 
     const existing = await getCalendarEventById(organizationId, calendarEventId);
-    const timeMove = patch.startAt instanceof Date && patch.endAt instanceof Date;
+    const moveTimes =
+      patch.startAt instanceof Date && patch.endAt instanceof Date
+        ? { startAt: patch.startAt, endAt: patch.endAt }
+        : null;
+    const timeMove = moveTimes !== null;
     const result =
-      timeMove && existing.status === "confirmed"
-        ? await CalendarEngine.moveEvent(ctx, calendarEventId, {
-            startAt: patch.startAt,
-            endAt: patch.endAt,
-          })
+      moveTimes && existing.status === "confirmed"
+        ? await CalendarEngine.moveEvent(ctx, calendarEventId, moveTimes)
         : await CalendarEngine.updateEvent(ctx, calendarEventId, patch);
 
     if (!result.ok) {
