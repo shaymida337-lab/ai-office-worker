@@ -7,8 +7,13 @@ import {
   type AppointmentWithRelations,
 } from "../appointmentService.js";
 import { appointmentEnd } from "../calendar/engine.js";
-import { createDraftCalendarEvent, submitCalendarEventForConfirmation } from "../calendar/calendarEventService.js";
+import { submitCalendarEventForConfirmation } from "../calendar/calendarEventService.js";
 import type { CalendarEventActor } from "../calendar/calendarEventMutations.js";
+import { CalendarEngine } from "../calendar/calendarEngineFacade.js";
+import {
+  buildNatalieEngineContext,
+  throwSchedulingFacadeFromEngineFailure,
+} from "../calendar/calendarEngineRouting.js";
 import { withOrganizationSchedulingLock } from "../calendar/schedulingLock.js";
 import {
   formatAmbiguousCustomerMessage,
@@ -109,7 +114,7 @@ export async function scheduleNatalieAppointmentAtomic(params: {
       confirmation: Awaited<ReturnType<typeof submitCalendarEventForConfirmation>>;
     }
 > {
-  const actor: CalendarEventActor = { actorType: "user", actorUserId: params.userId };
+  const actor: CalendarEventActor = { actorType: "natalie", actorUserId: params.userId };
 
   return withOrganizationSchedulingLock(params.organizationId, async (tx) => {
     const { client, created, appointmentNotes } = await resolveOrCreateSchedulingCustomerInTx(tx, {
@@ -136,29 +141,31 @@ export async function scheduleNatalieAppointmentAtomic(params: {
     }
 
     const endAt = appointmentEnd(params.slot.startTime, params.slot.durationMinutes);
-    const event = await createDraftCalendarEvent(
-      params.organizationId,
-      {
-        title: client.name,
-        startAt: params.slot.startTime,
-        endAt,
-        timezone: params.slot.timeZone,
-        clientId: client.id,
-        serviceId: params.slot.serviceId,
-        source: "ai_chat",
-        createdByUserId: params.userId,
-        workCaseTitle: `תיק יומן — ${client.name}`,
-        address: params.customer.address?.trim() || null,
-      },
-      actor,
-      { tx }
-    );
+    const ctx = buildNatalieEngineContext({
+      organizationId: params.organizationId,
+      userId: params.userId,
+    });
+    const eventResult = await CalendarEngine.createEvent(ctx, {
+      title: client.name,
+      startAt: params.slot.startTime,
+      endAt,
+      timezone: params.slot.timeZone,
+      clientId: client.id,
+      serviceId: params.slot.serviceId,
+      source: "ai_chat",
+      createdByUserId: params.userId,
+      workCaseTitle: `תיק יומן — ${client.name}`,
+      address: params.customer.address?.trim() || null,
+    });
+    if (!eventResult.ok) {
+      throwSchedulingFacadeFromEngineFailure(eventResult);
+    }
+    const event = eventResult.data;
 
     const confirmation = await submitCalendarEventForConfirmation(
       params.organizationId,
       event.id,
-      actor,
-      { tx }
+      actor
     );
 
     return {

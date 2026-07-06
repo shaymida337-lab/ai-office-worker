@@ -2,6 +2,13 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { searchSchedulingCustomers } from "./scheduling/schedulingCustomer.js";
 import { runAppointmentGoogleSync } from "./appointmentGoogleSync.js";
+import { resolveCalendarEngineFlags } from "./calendar/calendarEngineFlags.js";
+import {
+  checkAppointmentConflictViaCalendarEngine,
+  createAppointmentViaCalendarEngine,
+  deleteAppointmentViaCalendarEngine,
+  updateAppointmentViaCalendarEngine,
+} from "./calendar/calendarEngineAppointmentBridge.js";
 import {
   checkUnifiedSchedulingConflictByDuration,
 } from "./calendar/schedulingConflict.js";
@@ -40,7 +47,19 @@ export async function checkAppointmentConflict(params: {
   startTime: Date;
   durationMinutes: number;
   excludeAppointmentId?: string;
+  userId?: string;
 }): Promise<{ hasConflict: boolean; conflictingAppointment?: ConflictAppointment }> {
+  const flags = await resolveCalendarEngineFlags(params.organizationId);
+  if (flags.writeEnabled && params.userId) {
+    return checkAppointmentConflictViaCalendarEngine({
+      organizationId: params.organizationId,
+      userId: params.userId,
+      startTime: params.startTime,
+      durationMinutes: params.durationMinutes,
+      excludeAppointmentId: params.excludeAppointmentId,
+    });
+  }
+
   const result = await checkUnifiedSchedulingConflictByDuration({
     organizationId: params.organizationId,
     startTime: params.startTime,
@@ -97,6 +116,7 @@ export async function findUpcomingAppointmentsForClient(params: {
 
 export async function createAppointmentForOrganization(params: {
   organizationId: string;
+  userId?: string;
   clientId: string;
   serviceId?: string | null;
   startTime: Date;
@@ -107,6 +127,24 @@ export async function createAppointmentForOrganization(params: {
 }): Promise<AppointmentWithRelations> {
   if (!Number.isFinite(params.durationMinutes) || params.durationMinutes <= 0) {
     throw new Error("durationMinutes must be a positive number");
+  }
+
+  const flags = await resolveCalendarEngineFlags(params.organizationId);
+  if (flags.writeEnabled) {
+    if (!params.userId) {
+      throw new Error("userId is required when calendar engine write is enabled");
+    }
+    return createAppointmentViaCalendarEngine({
+      organizationId: params.organizationId,
+      userId: params.userId,
+      clientId: params.clientId,
+      serviceId: params.serviceId,
+      startTime: params.startTime,
+      durationMinutes: params.durationMinutes,
+      status: params.status,
+      notes: params.notes,
+      source: params.source,
+    });
   }
 
   const appointment = await withOrganizationSchedulingLock(params.organizationId, async (tx) => {
@@ -156,6 +194,7 @@ export async function createAppointmentForOrganization(params: {
 
 export async function updateAppointmentForOrganization(params: {
   organizationId: string;
+  userId?: string;
   appointmentId: string;
   startTime?: Date;
   durationMinutes?: number;
@@ -163,6 +202,23 @@ export async function updateAppointmentForOrganization(params: {
   notes?: string | null;
   serviceId?: string | null;
 }): Promise<AppointmentWithRelations> {
+  const flags = await resolveCalendarEngineFlags(params.organizationId);
+  if (flags.writeEnabled) {
+    if (!params.userId) {
+      throw new Error("userId is required when calendar engine write is enabled");
+    }
+    return updateAppointmentViaCalendarEngine({
+      organizationId: params.organizationId,
+      userId: params.userId,
+      appointmentId: params.appointmentId,
+      startTime: params.startTime,
+      durationMinutes: params.durationMinutes,
+      status: params.status,
+      notes: params.notes,
+      serviceId: params.serviceId,
+    });
+  }
+
   const appointment = await withOrganizationSchedulingLock(params.organizationId, async (tx) => {
     const existing = await tx.appointment.findFirst({
       where: { id: params.appointmentId, organizationId: params.organizationId },
@@ -219,8 +275,21 @@ export async function updateAppointmentForOrganization(params: {
 
 export async function deleteAppointmentForOrganization(
   organizationId: string,
-  appointmentId: string
+  appointmentId: string,
+  userId?: string
 ): Promise<{ ok: true }> {
+  const flags = await resolveCalendarEngineFlags(organizationId);
+  if (flags.writeEnabled) {
+    if (!userId) {
+      throw new Error("userId is required when calendar engine write is enabled");
+    }
+    return deleteAppointmentViaCalendarEngine({
+      organizationId,
+      userId,
+      appointmentId,
+    });
+  }
+
   const existing = await withOrganizationSchedulingLock(organizationId, async (tx) => {
     const row = await tx.appointment.findFirst({
       where: { id: appointmentId, organizationId },

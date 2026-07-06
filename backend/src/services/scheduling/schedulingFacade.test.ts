@@ -195,6 +195,14 @@ test("bookAppointmentViaNatalie uses calendar engine when engine ON", async () =
     calendarEngineGoogleMirrorEnabled: true,
   })) as typeof prisma.organization.findUnique;
   prisma.client.findMany = (async () => [{ id: CLIENT_ID, name: "לקוח בדיקה", whatsappNumber: null, email: "client@example.com", emailIsPlaceholder: false }]) as typeof prisma.client.findMany;
+  prisma.client.findFirst = (async (args) => {
+    const id = args?.where?.id as string | undefined;
+    const orgId = args?.where?.organizationId as string | undefined;
+    if (id === CLIENT_ID && orgId === ORG) {
+      return { id: CLIENT_ID, organizationId: ORG, isActive: true };
+    }
+    return null;
+  }) as typeof prisma.client.findFirst;
   prisma.appointment.findMany = (async () => []) as typeof prisma.appointment.findMany;
   prisma.calendarEvent.findMany = (async () => []) as typeof prisma.calendarEvent.findMany;
   prisma.service.findFirst = (async () => null) as typeof prisma.service.findFirst;
@@ -286,6 +294,7 @@ test("bookAppointmentViaNatalie uses calendar engine when engine ON", async () =
     prisma.organization.findFirst = originals.organizationFindFirst;
     prisma.organization.findUnique = originals.organizationFindUnique;
     prisma.client.findMany = originals.clientFindMany;
+    prisma.client.findFirst = originals.clientFindFirst;
     prisma.appointment.findMany = originals.appointmentFindMany;
     prisma.calendarEvent.findMany = originals.calendarEventFindMany;
     prisma.service.findFirst = originals.serviceFindFirst;
@@ -448,17 +457,27 @@ test("rescheduleAppointmentViaNatalie creates owner decision when engine ON", as
     createdAt: new Date(),
   })) as typeof prisma.workCaseTimelineEntry.create;
 
-  prisma.calendarEvent.findFirst = (async () => ({
-    id: "evt-confirmed",
-    organizationId: ORG,
-    status: "confirmed",
-    workCaseId: "wc-1",
-    title: "תור",
-    startAt: at("2026-12-01T10:00:00.000Z"),
-    endAt: at("2026-12-01T11:00:00.000Z"),
-    serviceId: null,
-    assignedUserId: null,
-  })) as typeof prisma.calendarEvent.findFirst;
+  prisma.calendarEvent.findFirst = (async (args) => {
+    const where = args?.where as Record<string, unknown> | undefined;
+    const id = where?.id;
+    if (typeof id === "object" && id && "not" in id) {
+      return null;
+    }
+    if (id !== "evt-confirmed") {
+      return null;
+    }
+    return {
+      id: "evt-confirmed",
+      organizationId: ORG,
+      status: "confirmed",
+      workCaseId: "wc-1",
+      title: "תור",
+      startAt: at("2026-12-01T10:00:00.000Z"),
+      endAt: at("2026-12-01T11:00:00.000Z"),
+      serviceId: null,
+      assignedUserId: null,
+    };
+  }) as typeof prisma.calendarEvent.findFirst;
 
   let createdType = "";
   prisma.ownerDecisionQueueItem.create = (async (args) => {

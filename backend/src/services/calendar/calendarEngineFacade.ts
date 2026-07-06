@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { createPendingDecision } from "./decisionQueueService.js";
 import {
   createDraftCalendarEvent,
   getCalendarEventById,
@@ -30,6 +31,9 @@ import type {
   CalendarEngineUpdateResult,
 } from "./calendarEngineTypes.js";
 import { CalendarEngineServiceError } from "./serviceErrors.js";
+import type { CalendarEventStatus } from "./enums.js";
+
+const BLOCKING_SCHEDULING_STATUSES: CalendarEventStatus[] = ["pending_readiness", "confirmed"];
 
 function actorFromEngine(ctx: CalendarEngineRequestContext): CalendarEventActor {
   return {
@@ -225,8 +229,9 @@ export async function calendarEngineUpdateEvent(
   const timeChanged =
     (patch.startAt && patch.startAt.getTime() !== existing.startAt.getTime()) ||
     (patch.endAt && patch.endAt.getTime() !== existing.endAt.getTime());
+  const blocksAvailability = BLOCKING_SCHEDULING_STATUSES.includes(existing.status as CalendarEventStatus);
 
-  if (timeChanged) {
+  if (timeChanged && blocksAvailability) {
     const guard = await guardValidationAndConflicts({
       ctx,
       input: {
@@ -268,19 +273,22 @@ export async function calendarEngineMoveEvent(
     return failure(new CalendarEngineServiceError("NOT_FOUND", "CalendarEvent not found"), ctx.correlationId ?? "", 0);
   }
 
-  const guard = await guardValidationAndConflicts({
-    ctx,
-    input: {
-      startAt: input.startAt,
-      endAt: input.endAt,
-      clientId: existing.clientId,
-      assignedUserId: existing.assignedUserId,
-      serviceId: existing.serviceId,
-      source: existing.source,
-    },
-    excludeCalendarEventId: calendarEventId,
-  });
-  if (guard) return guard;
+  const blocksAvailability = BLOCKING_SCHEDULING_STATUSES.includes(existing.status as CalendarEventStatus);
+  if (blocksAvailability) {
+    const guard = await guardValidationAndConflicts({
+      ctx,
+      input: {
+        startAt: input.startAt,
+        endAt: input.endAt,
+        clientId: existing.clientId,
+        assignedUserId: existing.assignedUserId,
+        serviceId: existing.serviceId,
+        source: existing.source,
+      },
+      excludeCalendarEventId: calendarEventId,
+    });
+    if (guard) return guard;
+  }
 
   try {
     const idempotent = await runCalendarEngineIdempotent({
@@ -322,6 +330,10 @@ export async function calendarEngineMoveEvent(
     });
 
     const { event, correlationId, durationMs } = normalizeMoveResult(idempotent.result);
+    const decision =
+      "decision" in idempotent.result
+        ? (idempotent.result.decision as { decisionId: string; queueType: string })
+        : undefined;
     await scheduleCalendarGoogleSyncViaPort({
       organizationId: ctx.organizationId,
       calendarEventId: event.id,
@@ -329,7 +341,17 @@ export async function calendarEngineMoveEvent(
       actor: actorFromEngine(ctx),
       correlationId,
     });
-    return success(event, correlationId, durationMs, idempotent.replay);
+    return success(
+      {
+        ...event,
+        ...(decision
+          ? { decisionId: decision.decisionId, queueType: decision.queueType }
+          : {}),
+      },
+      correlationId,
+      durationMs,
+      idempotent.replay
+    );
   } catch (err) {
     const idempotencyFailure = toIdempotencyFailure(err);
     if (idempotencyFailure) return idempotencyFailure;
@@ -337,10 +359,36 @@ export async function calendarEngineMoveEvent(
   }
 }
 
+async function assertNoPendingCancelOrRescheduleDecision(
+  organizationId: string,
+  calendarEventId: string
+): Promise<void> {
+  const pending = await prisma.ownerDecisionQueueItem.findFirst({
+    where: {
+      organizationId,
+      calendarEventId,
+      status: "pending",
+      type: { in: ["cancel_appointment", "reschedule_appointment"] },
+    },
+    select: { id: true, type: true },
+  });
+  if (pending) {
+    throw new CalendarEngineServiceError("VALIDATION_FAILED", "Pending decision already exists for this event", {
+      pendingDecisionId: pending.id,
+      pendingDecisionType: pending.type,
+    });
+  }
+}
+
 export async function calendarEngineCancelEvent(
   ctx: CalendarEngineRequestContext,
   calendarEventId: string,
-  options?: { reason?: string | null }
+  options?: {
+    reason?: string | null;
+    queueNonConfirmed?: boolean;
+    nonConfirmedDecisionSource?: "manual" | "natalie_command";
+    nonConfirmedReason?: string;
+  }
 ): Promise<CalendarEngineOperationResult<CalendarEngineCancelResult>> {
   const existing = await getCalendarEventById(ctx.organizationId, calendarEventId).catch(() => null);
   if (!existing) {
@@ -362,6 +410,32 @@ export async function calendarEngineCancelEvent(
             options
           );
           return { status: existing.status, decisionId: decision.decisionId, queueType: decision.queueType };
+        }
+
+        if (
+          options?.queueNonConfirmed &&
+          (existing.status === "draft" || existing.status === "pending_readiness")
+        ) {
+          await assertNoPendingCancelOrRescheduleDecision(ctx.organizationId, calendarEventId);
+          const decision = await createPendingDecision({
+            organizationId: ctx.organizationId,
+            workCaseId: existing.workCaseId,
+            calendarEventId,
+            type: "cancel_appointment",
+            title: existing.title ?? "ביטול תור",
+            reason:
+              options?.reason?.trim() ||
+              options?.nonConfirmedReason ||
+              "נדרש אישור לפני ביטול התור",
+            preparedPayloadJson: { targetStatus: "cancelled" },
+            source: options?.nonConfirmedDecisionSource ?? "manual",
+            actor: actorFromEngine(ctx),
+          });
+          return {
+            status: existing.status,
+            decisionId: decision.id,
+            queueType: "cancel_appointment" as const,
+          };
         }
 
         const { result, correlationId, durationMs } = await runCalendarEngineOperation({

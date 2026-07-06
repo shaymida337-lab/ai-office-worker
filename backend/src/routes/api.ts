@@ -5190,6 +5190,7 @@ apiRouter.post("/appointments", requireCalendarCreate, async (req, res) => {
     if (status !== "cancelled") {
       const availability = await checkUnifiedSlotAvailability({
         organizationId,
+        userId: req.auth!.userId,
         startTime,
         durationMinutes,
         serviceId,
@@ -5214,6 +5215,7 @@ apiRouter.post("/appointments", requireCalendarCreate, async (req, res) => {
       execute: async () => {
         const appointment = await createAppointmentForOrganization({
           organizationId,
+          userId: req.auth!.userId,
           clientId,
           serviceId,
           startTime,
@@ -5333,6 +5335,7 @@ apiRouter.patch("/appointments/:id", requireCalendarReschedule, async (req, res)
     if (shouldCheckAvailability) {
       const availability = await checkUnifiedSlotAvailability({
         organizationId,
+        userId: req.auth!.userId,
         startTime,
         durationMinutes,
         serviceId,
@@ -5362,6 +5365,7 @@ apiRouter.patch("/appointments/:id", requireCalendarReschedule, async (req, res)
         });
         const appointment = await updateAppointmentForOrganization({
           organizationId,
+          userId: req.auth!.userId,
           appointmentId: routeId(req),
           startTime,
           durationMinutes,
@@ -5453,7 +5457,7 @@ apiRouter.delete("/appointments/:id", requireCalendarCancel, async (req, res) =>
       organizationId,
       body: { appointmentId },
       execute: async () => {
-        const result = await deleteAppointmentForOrganization(organizationId, appointmentId);
+        const result = await deleteAppointmentForOrganization(organizationId, appointmentId, req.auth!.userId);
         recordCalendarAudit({
           organizationId,
           entityType: "appointment",
@@ -5550,6 +5554,7 @@ apiRouter.post("/appointments/availability/check", requireCalendarView, async (r
 
     const result = await checkUnifiedSlotAvailability({
       organizationId,
+      userId: req.auth!.userId,
       startTime,
       dayReference: typeof body.dayReference === "string" ? body.dayReference : undefined,
       time: typeof body.time === "string" ? body.time : undefined,

@@ -148,7 +148,10 @@ export type CalendarEngineFailure = {
 export type CalendarEngineOperationResult<T> = CalendarEngineSuccess<T> | CalendarEngineFailure;
 
 export type CalendarEngineCreateResult = CalendarEventWithRelations;
-export type CalendarEngineMoveResult = CalendarEventWithRelations;
+export type CalendarEngineMoveResult = CalendarEventWithRelations & {
+  decisionId?: string;
+  queueType?: string;
+};
 export type CalendarEngineUpdateResult = CalendarEventWithRelations;
 export type CalendarEngineCancelResult = { decisionId?: string; queueType?: string; status: string };
 export type CalendarEngineDeleteResult = { calendarEventId: string; status: string };

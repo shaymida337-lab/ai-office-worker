@@ -8,12 +8,10 @@ import {
   getCalendarEventById,
   markCalendarEventNoShow,
   markCalendarEventPrerequisitePassed,
-  requestCalendarEventCancel,
-  requestCalendarEventReschedule,
   submitCalendarEventForConfirmation,
-  updateCalendarEventFields,
 } from "../services/calendar/calendarEventService.js";
 import { CalendarEngine } from "../services/calendar/calendarEngineFacade.js";
+import { buildEngineContextFromHttp } from "../services/calendar/calendarEngineRouting.js";
 import { getCalendarEngineHealthApiResponse } from "../services/calendar/calendarEngineHealth.js";
 import {
   approveDecisionQueueItem,
@@ -100,17 +98,7 @@ function actorFromRequest(req: Request) {
 }
 
 function engineContextFromRequest(req: Request, source: "ui" | "api" = "ui") {
-  const idempotencyHeader = req.headers["idempotency-key"];
-  return {
-    organizationId: req.auth!.organizationId,
-    source,
-    actor: actorFromRequest(req),
-    correlationId:
-      typeof req.headers["x-correlation-id"] === "string" ? req.headers["x-correlation-id"] : undefined,
-    idempotencyKey: typeof idempotencyHeader === "string" ? idempotencyHeader : null,
-    sourceModule: "calendar-engine-routes",
-    sourceRoute: req.originalUrl,
-  };
+  return buildEngineContextFromHttp(req, source);
 }
 
 function routeParam(value: string | string[], fieldName: string): string {
@@ -413,24 +401,36 @@ calendarEngineRouter.patch(
     const body = (req.body ?? {}) as Record<string, unknown>;
     rejectOrganizationIdInBody(body);
 
+    const calendarEventId = routeParam(req.params.id, "id");
+    const ctx = engineContextFromRequest(req, "ui");
     const patch = pickAllowedPatchFields(body, await loadOrganizationTimeZone(organizationId));
     if (patch.startAt && patch.endAt) {
       validateEventTimeRange(patch.startAt, patch.endAt);
     } else if (patch.startAt || patch.endAt) {
-      const existing = await getCalendarEventById(organizationId, routeParam(req.params.id, "id"));
+      const existing = await getCalendarEventById(organizationId, calendarEventId);
       const startAt = patch.startAt ?? existing.startAt;
       const endAt = patch.endAt ?? existing.endAt;
       validateEventTimeRange(startAt, endAt);
     }
 
-    const updated = await updateCalendarEventFields(
-      organizationId,
-      routeParam(req.params.id, "id"),
-      patch,
-      actorFromRequest(req)
-    );
+    const existing = await getCalendarEventById(organizationId, calendarEventId);
+    const timeMove = patch.startAt instanceof Date && patch.endAt instanceof Date;
+    const result =
+      timeMove && existing.status === "confirmed"
+        ? await CalendarEngine.moveEvent(ctx, calendarEventId, {
+            startAt: patch.startAt,
+            endAt: patch.endAt,
+          })
+        : await CalendarEngine.updateEvent(ctx, calendarEventId, patch);
+
+    if (!result.ok) {
+      sendCalendarEngineFacadeFailure(res, result);
+      return;
+    }
+
+    const updated = result.data;
     const action =
-      patch.startAt instanceof Date && patch.endAt instanceof Date ? "appointment_rescheduled" : "appointment_updated";
+      timeMove && existing.status === "confirmed" ? "appointment_rescheduled" : "appointment_updated";
     recordCalendarAudit({
       organizationId,
       entityType: "calendar_event",
@@ -439,6 +439,7 @@ calendarEngineRouter.patch(
       actor: { actorType: "user", actorUserId: req.auth!.userId },
       sourceModule: "calendar-engine-routes",
       sourceRoute: "PATCH /calendar/events/:id",
+      correlationId: result.correlationId,
       metadata: {
         appointmentId: updated.id,
         newStartTime: updated.startAt.toISOString(),
@@ -471,23 +472,33 @@ calendarEngineRouter.post(
     const body = (req.body ?? {}) as Record<string, unknown>;
     rejectOrganizationIdInBody(body);
 
-    const result = await requestCalendarEventCancel(
-      req.auth!.organizationId,
-      routeParam(req.params.id, "id"),
-      actorFromRequest(req),
-      { reason: parseOptionalString(body.reason) }
-    );
+    const calendarEventId = routeParam(req.params.id, "id");
+    const ctx = engineContextFromRequest(req, "ui");
+    const result = await CalendarEngine.cancelEvent(ctx, calendarEventId, {
+      reason: parseOptionalString(body.reason),
+    });
+    if (!result.ok) {
+      sendCalendarEngineFacadeFailure(res, result);
+      return;
+    }
     recordCalendarAudit({
       organizationId: req.auth!.organizationId,
       entityType: "calendar_event",
-      entityId: routeParam(req.params.id, "id"),
+      entityId: calendarEventId,
       action: "appointment_cancelled",
       actor: { actorType: "user", actorUserId: req.auth!.userId },
       sourceModule: "calendar-engine-routes",
       sourceRoute: "POST /calendar/events/:id/request-cancel",
-      metadata: { decisionId: result.decisionId, queueType: result.queueType },
+      correlationId: result.correlationId,
+      metadata: {
+        decisionId: result.data.decisionId ?? null,
+        queueType: result.data.queueType ?? null,
+      },
     });
-    sendCalendarEngineSuccess(res, 200, result);
+    sendCalendarEngineSuccess(res, 200, {
+      decisionId: result.data.decisionId,
+      queueType: result.data.queueType ?? "cancel_appointment",
+    });
   })
 );
 
@@ -500,34 +511,43 @@ calendarEngineRouter.post(
     const body = (req.body ?? {}) as Record<string, unknown>;
     rejectOrganizationIdInBody(body);
 
+    const calendarEventId = routeParam(req.params.id, "id");
+    const ctx = engineContextFromRequest(req, "ui");
     const { startAt, endAt } = resolveEventTimeRange(
       body.startAt,
       body.endAt,
       await loadOrganizationTimeZone(organizationId)
     );
 
-    const result = await requestCalendarEventReschedule(
-      organizationId,
-      routeParam(req.params.id, "id"),
-      { startAt, endAt, reason: parseOptionalString(body.reason) },
-      actorFromRequest(req)
-    );
+    const result = await CalendarEngine.moveEvent(ctx, calendarEventId, {
+      startAt,
+      endAt,
+      reason: parseOptionalString(body.reason),
+    });
+    if (!result.ok) {
+      sendCalendarEngineFacadeFailure(res, result);
+      return;
+    }
     recordCalendarAudit({
       organizationId,
       entityType: "calendar_event",
-      entityId: routeParam(req.params.id, "id"),
+      entityId: calendarEventId,
       action: "appointment_rescheduled",
       actor: { actorType: "user", actorUserId: req.auth!.userId },
       sourceModule: "calendar-engine-routes",
       sourceRoute: "POST /calendar/events/:id/request-reschedule",
+      correlationId: result.correlationId,
       metadata: {
-        decisionId: result.decisionId,
-        queueType: result.queueType,
+        decisionId: result.data.decisionId ?? null,
+        queueType: result.data.queueType ?? null,
         newStartTime: startAt.toISOString(),
         durationMinutes: Math.max(1, Math.round((endAt.getTime() - startAt.getTime()) / 60_000)),
       },
     });
-    sendCalendarEngineSuccess(res, 200, result);
+    sendCalendarEngineSuccess(res, 200, {
+      decisionId: result.data.decisionId,
+      queueType: result.data.queueType ?? "reschedule_appointment",
+    });
   })
 );
 

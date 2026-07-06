@@ -12,19 +12,20 @@ import {
   findAvailableSlotsForOrganization,
   resolveDurationMinutes,
 } from "../calendar/availability.js";
+import { resolveSlotTime } from "../calendar/datetime.js";
 import type {
   CheckSlotAvailabilityResult,
   FindAvailableSlotsResult,
 } from "../calendar/types.js";
 import { resolveCalendarEngineFlags } from "../calendar/calendarEngineFlags.js";
+import { CalendarEngine } from "../calendar/calendarEngineFacade.js";
 import {
-  requestCalendarEventCancel,
-  requestCalendarEventReschedule,
-  type SubmitConfirmationResult,
-} from "../calendar/calendarEventService.js";
-import { createPendingDecision } from "../calendar/decisionQueueService.js";
-import type { CalendarEventActor } from "../calendar/calendarEventMutations.js";
-import { CalendarEngineServiceError } from "../calendar/serviceErrors.js";
+  buildApiEngineContext,
+  buildNatalieEngineContext,
+  checkSlotViaCalendarEngine,
+  mapEngineFailureToSchedulingError,
+} from "../calendar/calendarEngineRouting.js";
+import type { SubmitConfirmationResult } from "../calendar/calendarEventService.js";
 import { getCalendarRulesForOrganization } from "../calendar/rules.js";
 import { appointmentEnd } from "../calendar/engine.js";
 import { recordCalendarAudit } from "../calendar/calendarAudit.js";
@@ -92,8 +93,8 @@ export async function usesCalendarEngineScheduling(organizationId: string): Prom
 
 export { checkSlotAvailability, findAvailableSlotsForOrganization };
 
-function natalieActor(userId: string): CalendarEventActor {
-  return { actorType: "user", actorUserId: userId };
+function natalieEngineContext(organizationId: string, userId: string) {
+  return buildNatalieEngineContext({ organizationId, userId });
 }
 
 function formatBookMessage(result: SubmitConfirmationResult): string {
@@ -320,12 +321,23 @@ export async function bookAppointmentViaNatalie(input: NatalieBookInput): Promis
     throw err;
   }
 
-  const availability = await checkSlotAvailability({
-    organizationId: slot.organizationId,
-    startTime: slot.startTime,
-    durationMinutes: slot.durationMinutes,
-    serviceId: slot.serviceId,
-  });
+  const engineEnabled = await usesCalendarEngineScheduling(input.organizationId);
+  let availability;
+  if (engineEnabled) {
+    availability = await checkSlotViaCalendarEngine(natalieEngineContext(input.organizationId, input.userId), {
+      organizationId: slot.organizationId,
+      startTime: slot.startTime,
+      durationMinutes: slot.durationMinutes,
+      serviceId: slot.serviceId,
+    });
+  } else {
+    availability = await checkSlotAvailability({
+      organizationId: slot.organizationId,
+      startTime: slot.startTime,
+      durationMinutes: slot.durationMinutes,
+      serviceId: slot.serviceId,
+    });
+  }
 
   if (!availability.available) {
     if (availability.reason === "time_conflict") {
@@ -341,7 +353,6 @@ export async function bookAppointmentViaNatalie(input: NatalieBookInput): Promis
     );
   }
 
-  const engineEnabled = await usesCalendarEngineScheduling(input.organizationId);
   let booked;
   try {
     booked = await scheduleNatalieAppointmentAtomic({
@@ -476,21 +487,6 @@ async function requireSchedulingItem(
   return { kind: "calendar_event", ...event };
 }
 
-async function assertNoPendingCancelOrReschedule(organizationId: string, calendarEventId: string) {
-  const pending = await prisma.ownerDecisionQueueItem.findFirst({
-    where: {
-      organizationId,
-      calendarEventId,
-      status: "pending",
-      type: { in: ["cancel_appointment", "reschedule_appointment"] },
-    },
-    select: { id: true },
-  });
-  if (pending) {
-    throw new SchedulingFacadeError("VALIDATION_FAILED", "כבר קיימת בקשה ממתינה לתור הזה");
-  }
-}
-
 export async function cancelAppointmentViaNatalie(params: {
   organizationId: string;
   userId: string;
@@ -540,64 +536,37 @@ export async function cancelAppointmentViaNatalie(params: {
     return { engine: false, ok: true, appointment };
   }
 
-  const actor = natalieActor(params.userId);
-
-  if (item.status === "confirmed") {
-    const result = await requestCalendarEventCancel(params.organizationId, item.id, actor);
-    const output = {
-      engine: true as const,
-      ok: true as const,
-      pendingApproval: true as const,
-      decisionId: result.decisionId,
-      queueType: result.queueType,
-      message: "שלחתי בקשת ביטול לאישור — התור יבוטל רק אחרי שתאשר.",
-    };
-    recordCalendarAudit({
-      organizationId: params.organizationId,
-      entityType: "calendar_event",
-      entityId: item.id,
-      action: "natalie_appointment_cancelled",
-      actor: { actorType: "AI", actorUserId: params.userId },
-      sourceModule: "scheduling-facade",
-      metadata: { calendarEventId: item.id, decisionId: output.decisionId },
-    });
-    return output;
+  const ctx = natalieEngineContext(params.organizationId, params.userId);
+  const cancelResult = await CalendarEngine.cancelEvent(ctx, item.id, {
+    reason: "בקשת ביטול דרך נטלי",
+    queueNonConfirmed: item.status === "draft" || item.status === "pending_readiness",
+    nonConfirmedDecisionSource: "natalie_command",
+    nonConfirmedReason: "בקשת ביטול דרך נטלי",
+  });
+  if (!cancelResult.ok) {
+    throw mapEngineFailureToSchedulingError(cancelResult);
   }
-
-  if (item.status === "pending_readiness" || item.status === "draft") {
-    await assertNoPendingCancelOrReschedule(params.organizationId, item.id);
-    const decision = await createPendingDecision({
-      organizationId: params.organizationId,
-      workCaseId: item.workCaseId,
-      calendarEventId: item.id,
-      type: "cancel_appointment",
-      title: item.title ?? "ביטול תור",
-      reason: "בקשת ביטול דרך נטלי",
-      preparedPayloadJson: { targetStatus: "cancelled" },
-      source: "natalie_command",
-      actor,
-    });
-    const output = {
-      engine: true as const,
-      ok: true as const,
-      pendingApproval: true as const,
-      decisionId: decision.id,
-      queueType: "cancel_appointment",
-      message: "שלחתי בקשת ביטול לאישור — התור יבוטל רק אחרי שתאשר.",
-    };
-    recordCalendarAudit({
-      organizationId: params.organizationId,
-      entityType: "calendar_event",
-      entityId: item.id,
-      action: "natalie_appointment_cancelled",
-      actor: { actorType: "AI", actorUserId: params.userId },
-      sourceModule: "scheduling-facade",
-      metadata: { calendarEventId: item.id, decisionId: output.decisionId },
-    });
-    return output;
+  if (!cancelResult.data.decisionId) {
+    throw new SchedulingFacadeError("INVALID_TRANSITION", "לא ניתן לבטל תור במצב הנוכחי");
   }
-
-  throw new SchedulingFacadeError("INVALID_TRANSITION", "לא ניתן לבטל תור במצב הנוכחי");
+  const output = {
+    engine: true as const,
+    ok: true as const,
+    pendingApproval: true as const,
+    decisionId: cancelResult.data.decisionId,
+    queueType: cancelResult.data.queueType ?? "cancel_appointment",
+    message: "שלחתי בקשת ביטול לאישור — התור יבוטל רק אחרי שתאשר.",
+  };
+  recordCalendarAudit({
+    organizationId: params.organizationId,
+    entityType: "calendar_event",
+    entityId: item.id,
+    action: "natalie_appointment_cancelled",
+    actor: { actorType: "AI", actorUserId: params.userId },
+    sourceModule: "scheduling-facade",
+    metadata: { calendarEventId: item.id, decisionId: output.decisionId, engineSource: "natalie_ai" },
+  });
+  return output;
 }
 
 export async function rescheduleAppointmentViaNatalie(params: {
@@ -675,14 +644,27 @@ export async function rescheduleAppointmentViaNatalie(params: {
     Math.round((existing.endAt.getTime() - existing.startAt.getTime()) / 60_000)
   );
 
-  const availability = await checkSlotAvailability({
-    organizationId: params.organizationId,
-    startTime,
-    durationMinutes,
-    serviceId: existing.serviceId,
-    excludeCalendarEventId: item.id,
-    assignedUserId: existing.assignedUserId,
-  });
+  const engineEnabled = await usesCalendarEngineScheduling(params.organizationId);
+  let availability;
+  if (engineEnabled) {
+    availability = await checkSlotViaCalendarEngine(natalieEngineContext(params.organizationId, params.userId), {
+      organizationId: params.organizationId,
+      startTime,
+      durationMinutes,
+      serviceId: existing.serviceId,
+      assignedUserId: existing.assignedUserId,
+      excludeCalendarEventId: item.id,
+    });
+  } else {
+    availability = await checkSlotAvailability({
+      organizationId: params.organizationId,
+      startTime,
+      durationMinutes,
+      serviceId: existing.serviceId,
+      excludeCalendarEventId: item.id,
+      assignedUserId: existing.assignedUserId,
+    });
+  }
 
   if (!availability.available) {
     if (availability.reason === "time_conflict") {
@@ -695,20 +677,24 @@ export async function rescheduleAppointmentViaNatalie(params: {
   }
 
   const endAt = appointmentEnd(startTime, durationMinutes);
-  const actor = natalieActor(params.userId);
-  const result = await requestCalendarEventReschedule(
-    params.organizationId,
+  const moveResult = await CalendarEngine.moveEvent(
+    natalieEngineContext(params.organizationId, params.userId),
     item.id,
-    { startAt: startTime, endAt },
-    actor
+    { startAt: startTime, endAt }
   );
+  if (!moveResult.ok) {
+    throw mapEngineFailureToSchedulingError(moveResult);
+  }
+  if (!moveResult.data.decisionId) {
+    throw new SchedulingFacadeError("INVALID_TRANSITION", "לא ניתן לדחות תור במצב הנוכחי");
+  }
 
   const output = {
     engine: true as const,
     ok: true as const,
     pendingApproval: true as const,
-    decisionId: result.decisionId,
-    queueType: result.queueType,
+    decisionId: moveResult.data.decisionId,
+    queueType: moveResult.data.queueType ?? "reschedule_appointment",
     message: "שלחתי בקשת דחייה לאישור — המועד החדש ייקבע רק אחרי שתאשר.",
   };
   recordCalendarAudit({
@@ -723,17 +709,80 @@ export async function rescheduleAppointmentViaNatalie(params: {
       decisionId: output.decisionId,
       newStartTime: startTime.toISOString(),
       durationMinutes,
+      engineSource: "natalie_ai",
     },
   });
   return output;
 }
 
-export type UnifiedAvailabilityParams = Parameters<typeof checkSlotAvailability>[0];
+export type UnifiedAvailabilityParams = Parameters<typeof checkSlotAvailability>[0] & {
+  userId?: string;
+};
 export type UnifiedSlotsParams = Parameters<typeof findAvailableSlotsForOrganization>[0];
 
 export async function checkUnifiedSlotAvailability(
   params: UnifiedAvailabilityParams
 ): Promise<CheckSlotAvailabilityResult> {
+  if (await usesCalendarEngineScheduling(params.organizationId)) {
+    const rules = await getCalendarRulesForOrganization(params.organizationId);
+    const now = params.now ?? new Date();
+    let startTime = params.startTime ?? null;
+    if (!startTime) {
+      startTime = resolveSlotTime({
+        dayReference: params.dayReference,
+        time: params.time,
+        timeZone: rules.timeZone,
+        now,
+      });
+    }
+    if (!startTime || Number.isNaN(startTime.getTime())) {
+      const durationMinutes = await resolveDurationMinutes({
+        organizationId: params.organizationId,
+        durationMinutes: params.durationMinutes,
+        serviceId: params.serviceId,
+        defaultDurationMinutes: rules.defaultDurationMinutes,
+      });
+      return {
+        available: false,
+        reason: "bad_datetime",
+        startTime: "",
+        endTime: "",
+        durationMinutes,
+        timeZone: rules.timeZone,
+      };
+    }
+
+    const durationMinutes = await resolveDurationMinutes({
+      organizationId: params.organizationId,
+      durationMinutes: params.durationMinutes,
+      serviceId: params.serviceId,
+      defaultDurationMinutes: rules.defaultDurationMinutes,
+    });
+
+    const ctx = params.userId
+      ? buildApiEngineContext({
+          organizationId: params.organizationId,
+          userId: params.userId,
+          sourceRoute: "availability-check",
+        })
+      : {
+          organizationId: params.organizationId,
+          source: "api" as const,
+          actor: { actorType: "system" as const },
+          sourceModule: "scheduling-facade",
+        };
+
+    return checkSlotViaCalendarEngine(ctx, {
+      organizationId: params.organizationId,
+      startTime,
+      durationMinutes,
+      serviceId: params.serviceId,
+      assignedUserId: params.assignedUserId,
+      excludeCalendarEventId: params.excludeCalendarEventId,
+      excludeAppointmentId: params.excludeAppointmentId,
+    });
+  }
+
   return checkSlotAvailability(params);
 }
 
