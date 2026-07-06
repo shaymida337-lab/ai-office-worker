@@ -527,6 +527,7 @@ export async function notifyNewInvoice(
     clientName: "",
     amount: amount ?? 0,
     from: formatSupplierDisplayName(supplier),
+    workflowStatus: "needs_review",
   });
   await sendWhatsAppMessage(organizationId, msg);
 }

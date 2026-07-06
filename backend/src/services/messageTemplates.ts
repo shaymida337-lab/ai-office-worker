@@ -8,7 +8,7 @@ import {
 } from "./whatsapp/natalieWhatsAppUx.js";
 
 export const ownerTemplates = {
-  criticalAlert: (data: { clientName: string; issue: string; action: string }) =>
+  criticalAlert: (data: { ownerFirstName?: string; clientName: string; issue: string; action: string }) =>
     buildNatalieCriticalAlert(data),
 
   weeklyReport: (data: { week: string; income: number; newClients: number; completedTasks: number; topClient: string }) =>

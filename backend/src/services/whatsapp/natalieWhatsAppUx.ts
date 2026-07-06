@@ -10,6 +10,23 @@ const FORBIDDEN_PHRASES = [
   "OpenAI",
 ];
 
+export const NATALIE_CLOSINGS = [
+  "שיהיה יום מוצלח 🌷",
+  "בהצלחה היום!",
+  "רוצה שאטפל בזה?",
+  "אפשר לסגור את זה עכשיו.",
+  "אני ממשיכה לעקוב בשבילך.",
+  "אם תרצה, אני כבר יכולה להכין את השלב הבא.",
+] as const;
+
+export type NatalieInvoiceWorkflowStatus = "needs_review" | "pending_approval" | "processing";
+
+const INVOICE_WORKFLOW_LINES: Record<NatalieInvoiceWorkflowStatus, string> = {
+  needs_review: "הוספתי אותה לרשימת המסמכים לבדיקה.",
+  pending_approval: "בדקתי אותה והיא ממתינה לאישור שלך.",
+  processing: "אני כבר מתחילה לעבד אותה.",
+};
+
 export function extractFirstName(fullName: string | null | undefined, fallback = "שם"): string {
   const trimmed = (fullName ?? "").trim();
   if (!trimmed) return fallback;
@@ -17,8 +34,7 @@ export function extractFirstName(fullName: string | null | undefined, fallback =
 }
 
 export function formatHebrewWeekday(date: Date, timeZone = "Asia/Jerusalem"): string {
-  const weekday = new Intl.DateTimeFormat("he-IL", { timeZone, weekday: "long" }).format(date);
-  return weekday;
+  return new Intl.DateTimeFormat("he-IL", { timeZone, weekday: "long" }).format(date);
 }
 
 export function formatHebrewDateLabel(date: Date, timeZone = "Asia/Jerusalem"): string {
@@ -28,6 +44,10 @@ export function formatHebrewDateLabel(date: Date, timeZone = "Asia/Jerusalem"): 
     month: "long",
     year: "numeric",
   }).format(date);
+}
+
+export function formatHebrewMonthLabel(date: Date, timeZone = "Asia/Jerusalem"): string {
+  return new Intl.DateTimeFormat("he-IL", { timeZone, month: "long", year: "numeric" }).format(date);
 }
 
 export function isUnknownLike(value: string | null | undefined): boolean {
@@ -60,16 +80,15 @@ export function sanitizeWhatsAppText(text: string): string {
   return result.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export function natalieGreetingBlock(firstName: string, weekday: string, dateLabel: string): string {
-  return [
-    `🌅 בוקר טוב, ${firstName}!`,
-    `אני ${NATALIE_BRAND} 😊`,
-    `הנה הסיכום היומי שלך ליום ${weekday}, ${dateLabel}.`,
-  ].join("\n");
+export function pickNatalieClosing(seed = ""): string {
+  const key = seed.trim() || new Date().toISOString().slice(0, 10);
+  const hash = [...key].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  return NATALIE_CLOSINGS[Math.abs(hash) % NATALIE_CLOSINGS.length];
 }
 
-export function natalieClosingBlock(): string {
-  return "מאחלת לך יום מוצלח! 🌷\nאני כאן אם תצטרך משהו.";
+/** @deprecated Use pickNatalieClosing(seed) */
+export function natalieClosingBlock(seed = ""): string {
+  return pickNatalieClosing(seed);
 }
 
 export type NatalieDailySummaryData = {
@@ -95,69 +114,198 @@ export type NatalieDailySummaryData = {
   attentionItems: string[];
 };
 
+export type NatalieMonthlyReportData = {
+  firstName: string;
+  monthLabel: string;
+  payments: {
+    paidThisMonth: number;
+    outstanding: number;
+    urgentCount: number;
+  };
+  documents: {
+    processed: number;
+    pendingReview: number;
+  };
+  leads: {
+    newCount: number;
+    closedCount: number;
+    awaiting: number;
+  };
+  incomeThisMonth: number;
+  highlights: string[];
+  openIssues: string[];
+};
+
 function formatShekel(amount: number): string {
   return `₪${Math.round(amount).toLocaleString("he-IL")}`;
 }
 
-function sectionLine(label: string, value: string): string {
-  return `• ${label}: ${value}`;
+function compactPaymentsLine(data: NatalieDailySummaryData): string {
+  if (data.payments.totalAmount <= 0 && data.payments.urgentCount === 0) {
+    return "💰 אין תשלומים דחופים";
+  }
+  const amount = formatShekel(data.payments.totalAmount);
+  return data.payments.urgentCount > 0
+    ? `💰 ${amount} · ${data.payments.urgentCount} דחופים`
+    : `💰 ${amount} לתשלום`;
+}
+
+function compactDocumentsLine(data: NatalieDailySummaryData): string {
+  if (data.invoices.pending === 0 && data.invoices.needsReview === 0 && data.invoices.newToday === 0) {
+    return "📄 הכל מעודכן";
+  }
+  const parts: string[] = [];
+  if (data.invoices.pending > 0) parts.push(`${data.invoices.pending} ממתינות`);
+  if (data.invoices.needsReview > 0) parts.push(`${data.invoices.needsReview} לבדיקה`);
+  if (data.invoices.newToday > 0 && parts.length < 2) parts.push(`${data.invoices.newToday} חדשות`);
+  return `📄 ${parts.join(" · ")}`;
+}
+
+function compactLeadsLine(data: NatalieDailySummaryData): string {
+  if (data.leads.needsHandlingCount === 0 && data.leads.newCount === 0) {
+    return "👥 אין לידים ממתינים";
+  }
+  const parts: string[] = [];
+  if (data.leads.needsHandlingCount > 0) parts.push(`${data.leads.needsHandlingCount} ממתינים`);
+  if (data.leads.newCount > 0) parts.push(`${data.leads.newCount} חדשים`);
+  return `👥 ${parts.join(" · ")}`;
+}
+
+function compactMeetingsLine(data: NatalieDailySummaryData): string {
+  const count = data.todayMeetings.length;
+  if (count === 0) return "📅 אין פגישות";
+  if (count === 1) {
+    const m = data.todayMeetings[0];
+    return `📅 פגישה אחת · ${m.time}`;
+  }
+  return `📅 ${count} פגישות`;
+}
+
+function compactTasksLine(data: NatalieDailySummaryData): string {
+  return data.openTasks > 0 ? `✅ ${data.openTasks} משימות` : "✅ אין משימות פתוחות";
+}
+
+function buildProactiveAttention(data: NatalieDailySummaryData): string[] {
+  const items: string[] = [];
+
+  if (data.leads.needsHandlingCount > 0) {
+    items.push(
+      data.leads.needsHandlingCount === 1
+        ? "יש ליד אחד שממתין לטיפול — רוצה שאציג אותו?"
+        : `יש ${data.leads.needsHandlingCount} לידים שממתינים לטיפול — רוצה שאציג לפי דחיפות?`
+    );
+  }
+
+  if (data.payments.urgentCount > 0 && items.length < 2) {
+    items.push(
+      data.payments.urgentCount === 1
+        ? "יש תשלום דחוף שכדאי לסגור הבוקר — לפתוח?"
+        : `יש ${data.payments.urgentCount} תשלומים שכדאי לסגור הבוקר — לפתוח?`
+    );
+  }
+
+  for (const item of data.attentionItems) {
+    if (items.length >= 2) break;
+    const cleaned = sanitizeWhatsAppText(item);
+    if (!cleaned) continue;
+    const duplicate = items.some((existing) => existing.includes(cleaned.slice(0, 12)));
+    if (!duplicate) items.push(cleaned);
+  }
+
+  return items.slice(0, 2);
 }
 
 export function buildNatalieOwnerDailySummary(data: NatalieDailySummaryData): string {
+  const closingSeed = `${data.firstName}:${data.dateLabel}:daily`;
+  const attention = buildProactiveAttention(data);
+
   const lines: string[] = [
-    natalieGreetingBlock(data.firstName, data.weekday, data.dateLabel),
+    `🌅 בוקר טוב, ${data.firstName}!`,
+    `אני ${NATALIE_BRAND} 😊`,
     "",
-    "💰 לתשלום",
-    sectionLine("סכום כולל", formatShekel(data.payments.totalAmount)),
-    sectionLine("תשלומים דחופים", String(data.payments.urgentCount)),
-    sectionLine("תשלומים קרובים", String(data.payments.upcomingCount)),
-    "",
-    "📄 חשבוניות",
-    sectionLine("ממתינות", String(data.invoices.pending)),
-    sectionLine("דורשות בדיקה", String(data.invoices.needsReview)),
-    sectionLine("חדשות", String(data.invoices.newToday)),
-    "",
-    "👥 לידים",
-    sectionLine("חדשים", String(data.leads.newCount)),
-    sectionLine("דורשים טיפול", String(data.leads.needsHandlingCount)),
-    "",
-    "📅 פגישות היום",
+    "היום מחכים לך:",
+    compactPaymentsLine(data),
+    compactDocumentsLine(data),
+    compactLeadsLine(data),
+    compactMeetingsLine(data),
+    compactTasksLine(data),
   ];
 
-  if (data.todayMeetings.length === 0) {
-    lines.push("• אין פגישות מתוכננות");
-  } else {
-    for (const meeting of data.todayMeetings.slice(0, 5)) {
-      lines.push(`• ${meeting.time} — ${meeting.title}`);
-    }
-    if (data.todayMeetings.length > 5) {
-      lines.push(`• ועוד ${data.todayMeetings.length - 5} פגישות`);
-    }
-  }
-
-  lines.push("", "✅ משימות פתוחות", sectionLine("סה״כ", String(data.openTasks)));
-
-  if (data.attentionItems.length > 0) {
-    lines.push("", "⚠️ דורש את תשומת הלב שלך");
-    for (const item of data.attentionItems.slice(0, 5)) {
+  if (attention.length > 0) {
+    lines.push("", "⚠️ דורש תשומת לב");
+    for (const item of attention) {
       lines.push(`• ${item}`);
     }
   }
 
-  lines.push("", natalieClosingBlock());
+  lines.push("", pickNatalieClosing(closingSeed));
+  return sanitizeWhatsAppText(lines.join("\n"));
+}
+
+export function buildNatalieMonthlyReport(data: NatalieMonthlyReportData): string {
+  const closingSeed = `${data.firstName}:${data.monthLabel}:monthly`;
+  const highlights =
+    data.highlights.length > 0
+      ? data.highlights
+      : data.incomeThisMonth > 0
+        ? [`הכנסות החודש: ${formatShekel(data.incomeThisMonth)}`]
+        : ["החודש עבר בקצב יציב"];
+
+  const openIssues =
+    data.openIssues.length > 0
+      ? data.openIssues
+      : data.payments.urgentCount > 0
+        ? [`${data.payments.urgentCount} תשלומים דחופים פתוחים`]
+        : [];
+
+  let recommendation = "להמשיך באותו קצב — העסק במסלול טוב.";
+  if (data.payments.urgentCount > 0) {
+    recommendation = "לסגור את התשלומים הדחופים עוד השבוע.";
+  } else if (data.leads.awaiting > 0) {
+    recommendation = "להקדיש זמן ללידים שממתינים — שם כנראה ההזדמנות הבאה.";
+  } else if (data.documents.pendingReview > 0) {
+    recommendation = "לנקות את המסמכים שממתינים לבדיקה לפני סוף החודש.";
+  }
+
+  const lines: string[] = [
+    `📊 סיכום חודש — ${data.monthLabel}`,
+    `${data.firstName}, הנה התמונה החודשית:`,
+    "",
+    `💰 ${formatShekel(data.payments.paidThisMonth)} שולמו · ${formatShekel(data.payments.outstanding)} פתוחים${
+      data.payments.urgentCount > 0 ? ` · ${data.payments.urgentCount} דחופים` : ""
+    }`,
+    `📄 ${data.documents.processed} עובדו · ${data.documents.pendingReview} לבדיקה`,
+    `👥 ${data.leads.newCount} חדשים · ${data.leads.closedCount} נסגרו · ${data.leads.awaiting} ממתינים`,
+    "",
+    "📈 בולט החודש:",
+    ...highlights.slice(0, 2).map((h) => `• ${h}`),
+  ];
+
+  if (openIssues.length > 0) {
+    lines.push("", "⚠️ פתוח:");
+    for (const issue of openIssues.slice(0, 2)) {
+      lines.push(`• ${issue}`);
+    }
+  }
+
+  lines.push("", `המלצה שלי: ${recommendation}`);
+  lines.push("", "רוצה שאכין גם דוח לרואה החשבון?");
+  lines.push("", pickNatalieClosing(closingSeed));
   return sanitizeWhatsAppText(lines.join("\n"));
 }
 
 export function buildNatalieStaleLeadsBatch(count: number): string {
   if (count <= 0) return "";
   if (count === 1) {
-    return sanitizeWhatsAppText("⚠️ יש ליד אחד שלא טופל מעל 48 שעות.\nרוצה שאציג אותו?");
+    return sanitizeWhatsAppText("יש ליד אחד שממתין לטיפול.\nרוצה שאציג אותו לפי סדר דחיפות?");
   }
-  return sanitizeWhatsAppText(`⚠️ יש ${count} לידים שלא טופלו מעל 48 שעות.\nרוצה שאציג אותם?`);
+  return sanitizeWhatsAppText(
+    `יש ${count} לידים שממתינים לטיפול.\nרוצה שאציג אותם לפי סדר דחיפות?`
+  );
 }
 
 export function buildNatalieUrgentEmailAlert(): string {
-  return sanitizeWhatsAppText("⚠️ הגיע מייל שדורש תשומת לב דחופה.\nרוצה שאסכם לך אותו?");
+  return sanitizeWhatsAppText("הגיע מייל שנראה דחוף.\nרוצה שאסכם לך אותו עכשיו?");
 }
 
 export function buildNatalieMonthlyReportIntro(): string {
@@ -165,7 +313,7 @@ export function buildNatalieMonthlyReportIntro(): string {
 }
 
 export function buildNatalieTestMessage(): string {
-  return sanitizeWhatsAppText(`✅ הכל תקין! זו הודעת בדיקה מ${NATALIE_BRAND}.\nחיבור הוואטסאפ עובד כמו שצריך.`);
+  return sanitizeWhatsAppText(`✅ הכל תקין מצד הוואטסאפ — ${NATALIE_BRAND} כאן ומוכנה.`);
 }
 
 export function buildNataliePaymentReminder(input: {
@@ -174,17 +322,13 @@ export function buildNataliePaymentReminder(input: {
   daysOverdue: number;
 }): string {
   const name = extractFirstName(input.clientName, input.clientName);
-  return sanitizeWhatsAppText(
-    [
-      `שלום ${name},`,
-      `כאן ${NATALIE_BRAND}.`,
-      `רציתי להזכיר שיש חשבונית פתוחה על סך ${formatShekel(input.amount)}.`,
-      input.daysOverdue > 0 ? `עברו ${input.daysOverdue} ימים מאז מועד התשלום.` : "",
-      "אשמח לעזור אם צריך פרטים נוספים.",
-    ]
-      .filter(Boolean)
-      .join("\n")
-  );
+  const lines = [`היי ${name},`];
+  lines.push(`רציתי להזכיר בנימוס על חשבונית של ${formatShekel(input.amount)} שעדיין פתוחה.`);
+  if (input.daysOverdue > 0) {
+    lines.push(`עברו ${input.daysOverdue} ימים מאז מועד התשלום.`);
+  }
+  lines.push("אשמח לעזור אם צריך פרטים או קישור לתשלום.");
+  return sanitizeWhatsAppText(lines.join("\n"));
 }
 
 export function buildNatalieClientMorningBrief(input: {
@@ -196,28 +340,37 @@ export function buildNatalieClientMorningBrief(input: {
   const name = extractFirstName(input.clientName, input.clientName);
   const lines = [`🌅 בוקר טוב, ${name}!`, `כאן ${NATALIE_BRAND} 😊`, ""];
   if (input.tasksToday > 0) {
-    lines.push(`📋 יש ${input.tasksToday} משימות פתוחות להיום.`);
+    lines.push(`📋 ${input.tasksToday} משימות פתוחות להיום.`);
   } else {
-    lines.push("✨ אין משימות דחופות להיום.");
+    lines.push("✨ יום נקי ממשימות דחופות.");
   }
   if (input.pendingInvoice && input.pendingInvoice > 0) {
     lines.push(`💳 חשבונית פתוחה: ${formatShekel(input.pendingInvoice)}`);
   }
   if (input.tip?.trim()) {
-    lines.push("", `💡 ${sanitizeWhatsAppText(input.tip)}`);
+    lines.push(`💡 ${sanitizeWhatsAppText(input.tip)}`);
   }
-  lines.push("", natalieClosingBlock());
+  lines.push("", pickNatalieClosing(`${name}:client-brief`));
   return sanitizeWhatsAppText(lines.join("\n"));
 }
 
-export function buildNatalieCriticalAlert(input: { clientName: string; issue: string; action: string }): string {
+export function buildNatalieCriticalAlert(input: {
+  ownerFirstName?: string;
+  clientName: string;
+  issue: string;
+  action: string;
+}): string {
+  const owner = extractFirstName(input.ownerFirstName, "שם");
+  const client = extractFirstName(input.clientName, input.clientName);
+  const issue = sanitizeWhatsAppText(input.issue);
+  const action = sanitizeWhatsAppText(input.action);
+
   return sanitizeWhatsAppText(
     [
-      "🚨 דורש תשומת לב",
-      "",
-      `לקוח: ${extractFirstName(input.clientName, input.clientName)}`,
-      `מה קורה: ${sanitizeWhatsAppText(input.issue)}`,
-      `מה מומלץ: ${sanitizeWhatsAppText(input.action)}`,
+      `🚨 ${owner},`,
+      `שמתי לב ש${client} ${issue}.`,
+      `אני ממליצה ${action}.`,
+      "רוצה שאפתח את הפרטים?",
     ].join("\n")
   );
 }
@@ -232,14 +385,13 @@ export function buildNatalieWeeklyReport(input: {
   return sanitizeWhatsAppText(
     [
       `📊 סיכום שבועי — ${input.week}`,
-      `אני ${NATALIE_BRAND} 😊`,
       "",
-      `💰 הכנסות השבוע: ${formatShekel(input.income)}`,
+      `💰 הכנסות: ${formatShekel(input.income)}`,
       `🆕 לקוחות חדשים: ${input.newClients}`,
       `✅ משימות שהושלמו: ${input.completedTasks}`,
       `⭐ לקוח מוביל: ${extractFirstName(input.topClient, input.topClient)}`,
       "",
-      natalieClosingBlock(),
+      pickNatalieClosing(`weekly:${input.week}`),
     ].join("\n")
   );
 }
@@ -248,21 +400,25 @@ export function buildNatalieInvoiceFound(input: {
   clientName: string;
   amount: number;
   from: string;
+  workflowStatus?: NatalieInvoiceWorkflowStatus;
 }): string {
+  const status = input.workflowStatus ?? "needs_review";
   return sanitizeWhatsAppText(
     [
-      `🧾 חשבונית חדשה נקלטה`,
-      "",
-      `מאת: ${formatSupplierDisplayName(input.from)}`,
+      `🧾 חשבונית חדשה מ${formatSupplierDisplayName(input.from)}`,
       `סכום: ${formatShekel(input.amount)}`,
-      "שמרתי אותה בצורה מסודרת עבורך.",
-    ].join("\n")
+      INVOICE_WORKFLOW_LINES[status],
+      status === "pending_approval" ? "רוצה לאשר אותה עכשיו?" : "",
+    ]
+      .filter(Boolean)
+      .join("\n")
   );
 }
 
 export function buildNatalieUrgentClientAlert(input: { clientName: string; message: string }): string {
+  const name = extractFirstName(input.clientName, input.clientName);
   return sanitizeWhatsAppText(
-    [`⚠️ עדכון חשוב`, "", sanitizeWhatsAppText(input.message), "", natalieClosingBlock()].join("\n")
+    [`${name}, עדכון חשוב:`, sanitizeWhatsAppText(input.message), pickNatalieClosing(`${name}:urgent`)].join("\n")
   );
 }
 
@@ -272,26 +428,22 @@ export function buildNatalieMeetingReminder(input: {
   title: string;
 }): string {
   const name = extractFirstName(input.firstName, input.firstName);
+  const title = sanitizeWhatsAppText(input.title);
   return sanitizeWhatsAppText(
-    [
-      `היי ${name},`,
-      `כאן ${NATALIE_BRAND} 😊`,
-      `תזכורת: יש לך פגישה היום בשעה ${input.time} — ${sanitizeWhatsAppText(input.title)}.`,
-      "מאחלת לך פגישה מוצלחת! 🌷",
-    ].join("\n")
+    `${name}, תזכורת קטנה — בשעה ${input.time} יש לך ${title}.\nבהצלחה בפגישה! 🌷`
   );
 }
 
 export function buildNatalieLeadReminder(input: { leadName: string; when: string }): string {
   const name = extractFirstName(input.leadName, input.leadName);
   return sanitizeWhatsAppText(
-    `📌 תזכורת: הגיע הזמן לחזור לליד ${name} (${input.when}).\nרוצה שאכין לך הודעה?`
+    `📌 הגיע הזמן לחזור ל${name} (${input.when}).\nרוצה שאכין לך הודעה מוכנה?`
   );
 }
 
 export function buildNatalieErrorFallback(): string {
   return sanitizeWhatsAppText(
-    "מצטערת, משהו לא הסתדר כרגע 😔\nאני כאן איתך — נסה שוב בעוד רגע, או כתוב לי מה אתה צריך."
+    "אופס, משהו נתקע לרגע 😔\nנסה שוב בעוד רגע — אני כאן."
   );
 }
 
@@ -311,17 +463,17 @@ export function buildNatalieCommandHelp(): string {
   return sanitizeWhatsAppText(
     [
       `היי! אני ${NATALIE_BRAND} 😊`,
-      "אפשר לשאול אותי:",
-      "• סיכום — הסיכום היומי",
-      "• מצב — מבט מהיר על העסק",
-      "• תשלומים — מה ממתין לתשלום",
-      "• חסרות — חשבוניות שחסרות",
+      "כתוב לי:",
+      "• סיכום",
+      "• מצב",
+      "• תשלומים",
+      "• חסרות",
     ].join("\n")
   );
 }
 
 export function buildNatalieUnknownCommand(): string {
-  return sanitizeWhatsAppText(`לא הכרתי את הבקשה. כתוב "עזרה" ואראה מה אפשר לעשות 😊`);
+  return sanitizeWhatsAppText(`לא הבנתי את הבקשה — כתוב "עזרה" ואכוון אותך 😊`);
 }
 
 export function validateNatalieWhatsAppBrand(text: string): string[] {
@@ -334,9 +486,40 @@ export function validateNatalieWhatsAppBrand(text: string): string[] {
     { label: "undefined", pattern: /\bundefined\b/i },
     { label: "JSON fragment", pattern: /\{"/ },
     { label: "stack trace", pattern: /at\s+\S+\s+\(/ },
+    { label: "system labels", pattern: /^(לקוח|מה קורה|מה מומלץ):/m },
   ];
   for (const check of checks) {
     if (check.pattern.test(text)) issues.push(check.label);
   }
   return issues;
+}
+
+/** v1 verbose summary — kept for QA before/after comparison only */
+export function buildNatalieOwnerDailySummaryV1(data: NatalieDailySummaryData): string {
+  const sectionLine = (label: string, value: string) => `• ${label}: ${value}`;
+  const lines: string[] = [
+    `🌅 בוקר טוב, ${data.firstName}!`,
+    `אני ${NATALIE_BRAND} 😊`,
+    `הנה הסיכום היומי שלך ליום ${data.weekday}, ${data.dateLabel}.`,
+    "",
+    "💰 לתשלום",
+    sectionLine("סכום כולל", formatShekel(data.payments.totalAmount)),
+    sectionLine("תשלומים דחופים", String(data.payments.urgentCount)),
+    "",
+    "📄 חשבוניות",
+    sectionLine("ממתינות", String(data.invoices.pending)),
+    "",
+    "👥 לידים",
+    sectionLine("דורשים טיפול", String(data.leads.needsHandlingCount)),
+    "",
+    "📅 פגישות היום",
+    data.todayMeetings.length ? `• ${data.todayMeetings.length} פגישות` : "• אין פגישות",
+    "",
+    "✅ משימות פתוחות",
+    sectionLine("סה״כ", String(data.openTasks)),
+    "",
+    "מאחלת לך יום מוצלח! 🌷",
+    "אני כאן אם תצטרך משהו.",
+  ];
+  return sanitizeWhatsAppText(lines.join("\n"));
 }

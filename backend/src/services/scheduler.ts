@@ -4,8 +4,8 @@ import { findLastGmailScanSuccessCursor } from "./gmailScanLifecycle.js";
 import { syncGmailForOrganization } from "./gmail-sync.js";
 import { scanForInvoices, detectUrgent } from "./invoiceScanner.js";
 import { sendDailySummary } from "./summary.js";
-import { buildNatalieDailySummaryMessage } from "./whatsapp/natalieWhatsAppData.js";
-import { buildNatalieMonthlyReportIntro, buildNatalieUrgentEmailAlert } from "./whatsapp/natalieWhatsAppUx.js";
+import { buildNatalieDailySummaryMessage, buildNatalieMonthlyReportMessage } from "./whatsapp/natalieWhatsAppData.js";
+import { buildNatalieUrgentEmailAlert } from "./whatsapp/natalieWhatsAppUx.js";
 import { sendWhatsAppMessage, sendWhatsAppToPhone } from "./whatsapp.js";
 import { generateAccountantReport } from "./accountantReports.js";
 import { previousMonth } from "./vatService.js";
@@ -277,8 +277,8 @@ class SchedulerService {
     for (const org of orgs) {
       const logId = await createScanLog(org.id, "monthly");
       try {
-        const report = await buildNatalieDailySummaryMessage(org.id);
-        await sendWhatsAppMessage(org.id, `${buildNatalieMonthlyReportIntro()}\n\n${report}`);
+        const report = await buildNatalieMonthlyReportMessage(org.id);
+        await sendWhatsAppMessage(org.id, report);
         await finishScanLog(logId, { status: "success" });
       } catch (err) {
         await finishScanLog(logId, { status: "failed", errors: [errorMessage(err)] });
