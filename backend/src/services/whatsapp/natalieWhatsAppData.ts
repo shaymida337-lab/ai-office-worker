@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { buildRealStaleLeadWhere } from "../crm/leadQuality.js";
 import { getDashboardStats } from "../dashboard.js";
 import {
   buildNatalieMonthlyReport,
@@ -92,12 +93,7 @@ export async function loadNatalieMonthlyReportData(organizationId: string): Prom
       },
     }),
     prisma.lead.count({
-      where: {
-        organizationId,
-        repliedAt: null,
-        stage: { notIn: ["סגור", "הפסד"] },
-        OR: [{ lastContactAt: null }, { lastContactAt: { lt: in48h } }],
-      },
+      where: buildRealStaleLeadWhere(organizationId, in48h),
     }),
     prisma.invoice.aggregate({
       where: { organizationId, date: { gte: monthStart, lt: monthEnd } },
@@ -202,12 +198,7 @@ export async function loadNatalieDailySummaryData(organizationId: string): Promi
       },
     }),
     prisma.lead.count({
-      where: {
-        organizationId,
-        repliedAt: null,
-        stage: { notIn: ["סגור", "הפסד"] },
-        OR: [{ lastContactAt: null }, { lastContactAt: { lt: in48h } }],
-      },
+      where: buildRealStaleLeadWhere(organizationId, in48h),
     }),
     prisma.task.count({ where: { organizationId, status: "open" } }),
     prisma.appointment.findMany({

@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
+import { QUALIFIED_LEAD_TAG, shouldCreateLeadFromMessageScan } from "./crm/leadQuality.js";
 import { createCrmLead, handleLeadReply } from "./crm.js";
 import { normalizeWhatsAppNumber } from "./whatsapp.js";
 import { recordGmailCommunication } from "./communication/recordCommunicationTrace.js";
@@ -250,7 +251,15 @@ async function applyScanSideEffects(
     await handleLeadReply(input.organizationId, { phone: sender.phone, message: input.bodyText, channel: "whatsapp" }).catch(() => undefined);
   }
 
-  if (!input.createLead || analysis.contactType !== "lead") return;
+  if (!input.createLead) return;
+  if (!shouldCreateLeadFromMessageScan(analysis, {
+    email: sender.email,
+    name: sender.name,
+    subject: input.subject,
+    notes: input.bodyText,
+  })) {
+    return;
+  }
 
   const existingLead = await prisma.lead.findFirst({
     where: {
@@ -269,6 +278,7 @@ async function applyScanSideEffects(
     phone: sender.phone,
     whatsapp: sender.phone,
     source: input.channel === "gmail" ? "email" : "whatsapp",
+    tags: input.channel === "gmail" ? [QUALIFIED_LEAD_TAG] : undefined,
     notes: `${input.subject ?? ""}\n\n${input.bodyText}`.trim().slice(0, 1200),
   }, undefined, true).catch((err) => {
     console.warn("[message-scanner] lead creation failed", err instanceof Error ? err.message : String(err));

@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { buildRealStaleLeadWhere } from "./crm/leadQuality.js";
 import { assertOutboundEmailAllowed } from "./google.js";
 import { buildNatalieLeadReminder, buildNatalieStaleLeadsBatch, NATALIE_BRAND } from "./whatsapp/natalieWhatsAppUx.js";
 import { sendWhatsAppMessage, sendWhatsAppToPhone } from "./whatsapp.js";
@@ -379,14 +380,11 @@ export async function processCrmNotifications() {
   let created = 0;
 
   for (const org of orgs) {
-    const [staleLeads, upcomingReminders] = await Promise.all([
+    const staleWhere = buildRealStaleLeadWhere(org.id, staleThreshold);
+    const [staleLeadCount, _staleLeadPreview, upcomingReminders] = await Promise.all([
+      prisma.lead.count({ where: staleWhere }),
       prisma.lead.findMany({
-        where: {
-          organizationId: org.id,
-          repliedAt: null,
-          stage: { notIn: ["סגור", "הפסד"] },
-          OR: [{ lastContactAt: null }, { lastContactAt: { lt: staleThreshold } }],
-        },
+        where: staleWhere,
         take: 20,
         orderBy: { lastContactAt: "asc" },
       }),
@@ -401,8 +399,8 @@ export async function processCrmNotifications() {
       }),
     ]);
 
-    if (staleLeads.length > 0) {
-      const message = buildNatalieStaleLeadsBatch(staleLeads.length);
+    if (staleLeadCount > 0) {
+      const message = buildNatalieStaleLeadsBatch(staleLeadCount);
       const wasCreated = await notifyAgentOnce(org.id, "crm_stale_lead", message);
       if (wasCreated) created++;
     }

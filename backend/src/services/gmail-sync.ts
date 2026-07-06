@@ -4,6 +4,7 @@ import { stripNulBytesDeep } from "../lib/postgresTextSanitizer.js";
 import { analyzeEmailContent, analyzeInvoiceFile, type EmailAnalysis } from "./claude.js";
 import { getGoogleClients, googleOAuthMetadata, isGoogleReconnectRequiredError } from "./google.js";
 import { analyzeAndSaveMessage } from "./messageScanner.js";
+import { shouldCreateLeadFromGmailEmail } from "./crm/leadQuality.js";
 import {
   ensureInvoiceFolderTree,
   folderForDocumentType,
@@ -2355,17 +2356,6 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         clientId = saved.id;
         clientIdByDomain.set(email.domain, saved.id);
         if (saved.created) clientsCreated++;
-        if (canPersistFinancialRecord && outcomeAllowsAutoSavePersistence && classification.reviewStatus === "auto_saved") {
-          const leadSaved = await upsertGmailLead({
-            organizationId,
-            name: normalizeSupplierName(email.senderName || supplierName || email.domain),
-            company: supplierName || email.domain,
-            email: email.senderEmail,
-            phone: extractPhoneFromText(bodyForAnalysis),
-            notes: `${email.subject}\n\n${bodyForAnalysis}`.slice(0, 1200),
-          });
-          logStep(`[gmail-sync] DB upsert Lead success message=${email.gmailId} id=${leadSaved.id} created=${leadSaved.created}`);
-        }
         await prisma.emailMessage.update({
           where: { id: email.emailRecordId },
           data: { clientId },
@@ -6103,6 +6093,14 @@ async function upsertGmailLead(input: {
   phone?: string;
   notes: string;
 }) {
+  if (!shouldCreateLeadFromGmailEmail({
+    email: input.email,
+    name: input.name,
+    notes: input.notes,
+  })) {
+    return { id: null, created: false, skipped: true as const };
+  }
+
   const existing = await prisma.lead.findFirst({
     where: {
       organizationId: input.organizationId,
