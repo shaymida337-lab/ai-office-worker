@@ -56,12 +56,13 @@ export function getMinutesFromMidnight(date: Date): number {
   return date.getHours() * 60 + date.getMinutes();
 }
 
-export function formatDayLabel(date: Date): string {
+export function formatDayLabel(date: Date, timeZone?: string): string {
   const formatted = date.toLocaleDateString("he-IL", {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
+    ...(timeZone ? { timeZone } : {}),
   });
   if (isSameCalendarDay(date, new Date())) {
     return `היום — ${formatted}`;

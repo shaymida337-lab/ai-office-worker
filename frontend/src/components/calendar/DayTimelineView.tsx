@@ -15,6 +15,7 @@ import {
   layoutDayAppointments,
   type TimelineAppointment,
 } from "@/lib/calendarUtils";
+import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 
 const DEFAULT_COLOR = "#3B82F6";
 
@@ -72,6 +73,7 @@ export function DayTimelineView<T extends TimelineAppointment>({
   statusLabel = appointmentStatusLabel,
   statusTone = appointmentStatusTone,
 }: DayTimelineViewProps<T>) {
+  const orgTimezone = useOrganizationTimezone();
   const timelineHeightPx = getTimelineHeightPx();
   const hours = getTimelineHours();
   const hourBlockPx = 60 * PX_PER_MINUTE;
@@ -88,7 +90,7 @@ export function DayTimelineView<T extends TimelineAppointment>({
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <Calendar className="h-5 w-5 text-[#1D4ED8]" />
-          <h2 className="text-lg font-black text-[#111827]">{formatDayLabel(date)}</h2>
+          <h2 className="text-lg font-black text-[#111827]">{formatDayLabel(date, orgTimezone)}</h2>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" className={btnSecondarySm} onClick={onPrevDay} aria-label="יום קודם">
@@ -142,6 +144,7 @@ export function DayTimelineView<T extends TimelineAppointment>({
                     hour: "2-digit",
                     minute: "2-digit",
                     hour12: false,
+                    timeZone: orgTimezone,
                   });
                   const widthPercent = 100 / block.columnCount;
                   const rightPercent = block.columnIndex * widthPercent;

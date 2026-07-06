@@ -14,6 +14,8 @@ import {
   requestDecisionUserMessage,
 } from "@/lib/calendarEngine/api";
 import { buildEndAtIso } from "@/lib/calendarEngine/adapters";
+import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
+import { dateInputValueInTimeZone, timeInputValueInTimeZone } from "@/lib/orgTimezone";
 import type { CalendarEngineEvent, CalendarPrerequisite, OwnerDecisionQueueItem, WorkCaseTimelineEntry } from "@/lib/calendarEngine/types";
 import {
   calendarEventStatusLabel,
@@ -49,33 +51,24 @@ function parsePrerequisites(raw: unknown): CalendarPrerequisite[] {
     .filter((item) => item.id.length > 0);
 }
 
-function formatEventRange(startAt: string, endAt: string): string {
+function formatEventRange(startAt: string, endAt: string, timeZone: string): string {
   const start = new Date(startAt);
   const end = new Date(endAt);
-  const date = start.toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long" });
-  const fromTime = start.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false });
-  const toTime = end.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const date = start.toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long", timeZone });
+  const fromTime = start.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone });
+  const toTime = end.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone });
   return `${date} · ${fromTime}–${toTime}`;
 }
 
-function formatTimelineTime(iso: string): string {
+function formatTimelineTime(iso: string, timeZone: string): string {
   return new Date(iso).toLocaleString("he-IL", {
     day: "numeric",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    timeZone,
   });
-}
-
-function toDateInputValue(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function toTimeInputValue(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 function buildRescheduleIso(date: string, time: string, durationMs: number): { startAt: string; endAt: string } {
@@ -108,6 +101,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
   const [completeNotes, setCompleteNotes] = useState("");
   const [completeOutcome, setCompleteOutcome] = useState("completed_success");
   const [noShowNotes, setNoShowNotes] = useState("");
+  const orgTimezone = useOrganizationTimezone();
 
   const load = useCallback(async (id: string) => {
     setLoading(true);
@@ -125,8 +119,9 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
       } else {
         setTimeline([]);
       }
-      setRescheduleDate(toDateInputValue(evt.startAt));
-      setRescheduleTime(toTimeInputValue(evt.startAt));
+      // prefill ב-timezone הארגון — כמו שהשמירה כותבת (round-trip שלם)
+      setRescheduleDate(dateInputValueInTimeZone(new Date(evt.startAt), orgTimezone));
+      setRescheduleTime(timeInputValueInTimeZone(new Date(evt.startAt), orgTimezone));
     } catch (err) {
       setError(err instanceof Error ? err.message : "טעינת האירוע נכשלה");
       setEvent(null);
@@ -135,7 +130,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [orgTimezone]);
 
   useEffect(() => {
     if (!eventId) {
@@ -295,7 +290,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
 
             <div className="flex items-start gap-2 text-sm font-semibold text-[#374151]">
               <Clock className="mt-0.5 h-4 w-4 shrink-0 text-[#6B7280]" />
-              <span>{formatEventRange(event.startAt, event.endAt)}</span>
+              <span>{formatEventRange(event.startAt, event.endAt, orgTimezone)}</span>
             </div>
 
             {event.service?.name && (
@@ -496,7 +491,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
                   {timeline.map((entry) => (
                     <li key={entry.id} className="text-sm">
                       <p className="font-semibold text-[#111827]">{entry.summary}</p>
-                      <p className="text-xs font-semibold text-[#6B7280]">{formatTimelineTime(entry.createdAt)}</p>
+                      <p className="text-xs font-semibold text-[#6B7280]">{formatTimelineTime(entry.createdAt, orgTimezone)}</p>
                     </li>
                   ))}
                 </ol>

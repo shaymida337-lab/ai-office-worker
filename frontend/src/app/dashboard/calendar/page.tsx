@@ -6,6 +6,8 @@ import { CalendarEventDrawer } from "@/components/calendar/CalendarEventDrawer";
 import { DayTimelineView } from "@/components/calendar/DayTimelineView";
 import { OwnerDecisionQueuePanel } from "@/components/calendar/OwnerDecisionQueuePanel";
 import { apiFetch, ApiError, getToken } from "@/lib/api";
+import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
+import { dateInputValueInTimeZone, timeInputValueInTimeZone } from "@/lib/orgTimezone";
 import {
   buildEndAtIso,
   calendarEventsToDisplayItems,
@@ -122,10 +124,6 @@ function toDateInputValue(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-function toTimeInputValue(d: Date): string {
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 function buildStartTimeIso(date: string, time: string): string {
@@ -252,6 +250,7 @@ export default function CalendarPage() {
 
   const engineReadEnabled = effectiveCalendarEngineRead(schedulingCapabilities);
   const engineWriteEnabled = effectiveCalendarEngineWrite(schedulingCapabilities);
+  const orgTimezone = useOrganizationTimezone();
 
   const activeServices = useMemo(() => services.filter((s) => s.isActive), [services]);
 
@@ -268,10 +267,10 @@ export default function CalendarPage() {
 
   const weekLabel = useMemo(() => {
     const weekEnd = addDays(weekStart, 6);
-    const from = weekStart.toLocaleDateString("he-IL", { day: "numeric", month: "short" });
-    const to = weekEnd.toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "numeric" });
+    const from = weekStart.toLocaleDateString("he-IL", { day: "numeric", month: "short", timeZone: orgTimezone });
+    const to = weekEnd.toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "numeric", timeZone: orgTimezone });
     return `${from} – ${to}`;
-  }, [weekStart]);
+  }, [weekStart, orgTimezone]);
 
   const statusLabelFn = engineReadEnabled ? calendarEventStatusLabel : appointmentStatusLabel;
   const statusToneFn = engineReadEnabled ? calendarEventStatusTone : appointmentStatusTone;
@@ -422,7 +421,7 @@ export default function CalendarPage() {
     setEditingId(null);
     setFormClientId("");
     setFormServiceId("");
-    setFormDate(toDateInputValue(new Date()));
+    setFormDate(dateInputValueInTimeZone(new Date(), orgTimezone));
     setFormTime("");
     setFormNotes("");
     setFormStatus("pending");
@@ -438,8 +437,9 @@ export default function CalendarPage() {
     setEditingId(appt.id);
     setFormClientId(appt.clientId);
     setFormServiceId(appt.serviceId ?? "");
-    setFormDate(toDateInputValue(start));
-    setFormTime(toTimeInputValue(start));
+    // prefill ב-timezone הארגון — כמו שהשמירה כותבת (round-trip שלם)
+    setFormDate(dateInputValueInTimeZone(start, orgTimezone));
+    setFormTime(timeInputValueInTimeZone(start, orgTimezone));
     setFormNotes(appt.notes ?? "");
     setFormStatus(appt.status);
     setShowForm(true);
@@ -892,7 +892,7 @@ export default function CalendarPage() {
                     >
                       <div>{DAY_NAMES[index]}</div>
                       <div className="text-xs font-semibold text-[#6B7280]">
-                        {day.toLocaleDateString("he-IL", { day: "numeric", month: "numeric" })}
+                        {day.toLocaleDateString("he-IL", { day: "numeric", month: "numeric", timeZone: orgTimezone })}
                       </div>
                     </div>
                     <div className="space-y-1.5">
@@ -906,6 +906,7 @@ export default function CalendarPage() {
                             hour: "2-digit",
                             minute: "2-digit",
                             hour12: false,
+                            timeZone: orgTimezone,
                           });
                           const googleSyncStatus = appointmentGoogleSyncStatusForDisplay(appt);
                           return (

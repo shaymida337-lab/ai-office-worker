@@ -11,6 +11,7 @@ import {
 } from "@/lib/calendarEngine/api";
 import type { OwnerDecisionQueueItem } from "@/lib/calendarEngine/types";
 import { CALENDAR_ENGINE_DISABLED_MESSAGE } from "@/lib/calendarEngine/statusLabels";
+import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 
 const btnPrimarySm =
   "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-[#1D4ED8] bg-[#DBEAFE] px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#BFDBFE] disabled:cursor-not-allowed disabled:opacity-60";
@@ -24,16 +25,16 @@ const DECISION_TYPE_LABELS: Record<string, string> = {
   reschedule_appointment: "דחיית תור",
 };
 
-function formatPreparedPayload(item: OwnerDecisionQueueItem): string | null {
+function formatPreparedPayload(item: OwnerDecisionQueueItem, timeZone: string): string | null {
   const payload = item.preparedPayloadJson;
   if (!payload || typeof payload !== "object") return null;
   const record = payload as Record<string, unknown>;
   if (typeof record.startAt === "string" && typeof record.endAt === "string") {
     const start = new Date(record.startAt);
     const end = new Date(record.endAt);
-    const date = start.toLocaleDateString("he-IL", { day: "numeric", month: "short" });
-    const fromTime = start.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const toTime = end.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const date = start.toLocaleDateString("he-IL", { day: "numeric", month: "short", timeZone });
+    const fromTime = start.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone });
+    const toTime = end.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone });
     return `מועד מוצע: ${date} · ${fromTime}–${toTime}`;
   }
   if (record.targetStatus === "cancelled") {
@@ -46,13 +47,14 @@ function decisionTypeLabel(type: string): string {
   return DECISION_TYPE_LABELS[type] ?? "החלטה";
 }
 
-function formatDecisionTime(iso: string): string {
+function formatDecisionTime(iso: string, timeZone: string): string {
   return new Date(iso).toLocaleString("he-IL", {
     day: "numeric",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    timeZone,
   });
 }
 
@@ -69,6 +71,7 @@ export function OwnerDecisionQueuePanel({
   onDecisionResolved,
   onSelectEvent,
 }: OwnerDecisionQueuePanelProps) {
+  const orgTimezone = useOrganizationTimezone();
   const [items, setItems] = useState<OwnerDecisionQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [disabledMessage, setDisabledMessage] = useState<string | null>(null);
@@ -181,14 +184,14 @@ export function OwnerDecisionQueuePanel({
                   <div>
                     <p className="font-black">{item.title}</p>
                     <p className="text-xs font-semibold text-[#6B7280]">
-                      {decisionTypeLabel(item.type)} · {formatDecisionTime(item.createdAt)}
+                      {decisionTypeLabel(item.type)} · {formatDecisionTime(item.createdAt, orgTimezone)}
                     </p>
                     {item.reason && (
                       <p className="mt-1 text-sm font-semibold text-[#374151]">{item.reason}</p>
                     )}
-                    {formatPreparedPayload(item) && (
+                    {formatPreparedPayload(item, orgTimezone) && (
                       <p className="mt-1 text-sm font-semibold text-[#1D4ED8]" data-testid="decision-prepared-payload">
-                        {formatPreparedPayload(item)}
+                        {formatPreparedPayload(item, orgTimezone)}
                       </p>
                     )}
                   </div>
