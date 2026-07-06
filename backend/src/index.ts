@@ -1,6 +1,5 @@
 import express from "express";
 import cors from "cors";
-import path from "path";
 
 type ConfigModule = typeof import("./lib/config.js");
 type PrismaModule = typeof import("./lib/prisma.js");
@@ -63,7 +62,8 @@ function createApp(configModule: ConfigModule, prismaModule: PrismaModule, build
     })
   );
   app.use(express.urlencoded({ extended: true }));
-  app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+  // /uploads כבר לא סטטי-ציבורי: מוגש דרך uploadsRouter עם חתימת HMAC קשורת-ארגון
+  // (ראו registerRoutes) — סגירת גישה לא-מאומתת לקבצי חשבוניות עם שמות ניתנים לניחוש.
 
   async function healthHandler(_req: express.Request, res: express.Response) {
     try {
@@ -106,6 +106,7 @@ async function registerRoutes(app: express.Express) {
       { clientsRouter },
       { clientWhatsappRouter },
       { socialRouter },
+      { uploadsRouter },
     ] = await Promise.all([
       import("./routes/auth.js"),
       import("./routes/api.js"),
@@ -116,6 +117,7 @@ async function registerRoutes(app: express.Express) {
       import("./routes/clients.js"),
       import("./routes/clientWhatsapp.js"),
       import("./routes/social.js"),
+      import("./routes/uploadsRoutes.js"),
     ]);
 
     app.use("/auth", authRouter);
@@ -128,6 +130,7 @@ async function registerRoutes(app: express.Express) {
     app.use("/api/webhook", webhooksRouter);
     app.use("/api/webhooks", webhooksRouter);
     app.use("/api", apiRouter);
+    app.use("/uploads", uploadsRouter);
     app.use("/cron", cronRouter);
     app.use("/webhook", webhooksRouter);
     app.use("/webhooks", webhooksRouter);

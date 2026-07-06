@@ -112,6 +112,7 @@ import {
 } from "../services/verification/verificationCenter.js";
 import { calendarEngineRouter } from "./calendarEngineRoutes.js";
 import { parseWallClockAwareDateTime } from "./calendarEngineValidation.js";
+import { signLocalUploadUrlIfNeeded } from "./uploadsRoutes.js";
 import { scannerHealthRouter } from "./scannerHealthRoutes.js";
 import { integrityWatchRouter } from "./dataIntegrityWatchRoutes.js";
 import { auditLogRouter } from "./auditLogRoutes.js";
@@ -3766,7 +3767,7 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
   rawAnalysis: unknown;
   createdAt: Date;
   updatedAt: Date;
-}): ReviewInvoiceCandidate {
+}, organizationId?: string): ReviewInvoiceCandidate {
   const raw = asRecord(item.rawAnalysis);
   const analysis = asRecord(raw?.analysis);
   const parsedFieldsJson = asRecord(raw?.parsed_fields_json) ?? asRecord(raw?.parsedFieldsJson);
@@ -3796,8 +3797,8 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
     source: "gmail_scan_item",
     reviewSourceId: item.id,
     description: [item.subject, item.attachmentFilename].filter(Boolean).join(" · ") || null,
-    driveUrl: resolveDriveLink(item),
-    driveFileUrl: resolveDriveLink(item),
+    driveUrl: signLocalUploadUrlIfNeeded(resolveDriveLink(item), organizationId ?? null),
+    driveFileUrl: signLocalUploadUrlIfNeeded(resolveDriveLink(item), organizationId ?? null),
     client: null,
     supplierName: item.supplierName,
     fromEmail: item.senderEmail ?? item.sender,
@@ -3831,7 +3832,7 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
   parsedFieldsJson?: unknown;
   createdAt: Date;
   updatedAt: Date;
-}): ReviewInvoiceCandidate {
+}, organizationId?: string): ReviewInvoiceCandidate {
   const display = resolveFinanceDisplayAmount({
     totalAmount: item.totalAmount,
     parsedFieldsJson: item.parsedFieldsJson,
@@ -3853,8 +3854,8 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
     source: "financial_document_review",
     reviewSourceId: item.id,
     description: [item.subject, item.fileName].filter(Boolean).join(" · ") || null,
-    driveUrl: resolveDriveLink(item),
-    driveFileUrl: resolveDriveLink(item),
+    driveUrl: signLocalUploadUrlIfNeeded(resolveDriveLink(item), organizationId ?? null),
+    driveFileUrl: signLocalUploadUrlIfNeeded(resolveDriveLink(item), organizationId ?? null),
     client: null,
     supplierName: item.supplierName,
     fromEmail: item.sender,
@@ -4270,6 +4271,7 @@ export function mergeInvoiceListCandidates<
   gmailScanItems: TGmailScanItem[];
   documentReviews: TDocumentReview[];
   paymentDriveFallbackByInvoiceKey?: Map<string, { link: string | null; ambiguous: boolean }>;
+  organizationId?: string;
 }) {
   const invoicePaymentDriveFallbackKey = (gmailMessageId: string | null | undefined, amount: number | null | undefined) => {
     const normalizedAmount = Number(amount);
@@ -4286,7 +4288,10 @@ export function mergeInvoiceListCandidates<
       const invoiceDriveFileUrl = resolveDriveLink(invoice);
       const fallbackKey = invoiceDriveFileUrl ? null : invoicePaymentDriveFallbackKey(invoice.gmailMessageId, invoice.amount);
       const fallback = fallbackKey ? paymentDriveFallbackByInvoiceKey.get(fallbackKey) : undefined;
-      const driveFileUrl = invoiceDriveFileUrl ?? (fallback && !fallback.ambiguous ? fallback.link : null);
+      const driveFileUrl = signLocalUploadUrlIfNeeded(
+        invoiceDriveFileUrl ?? (fallback && !fallback.ambiguous ? fallback.link : null),
+        input.organizationId ?? null
+      );
       return {
         ...invoice,
         driveUrl: driveFileUrl,
@@ -4301,7 +4306,7 @@ export function mergeInvoiceListCandidates<
       .map((item) => {
         if (item.gmailMessageId) usedReviewRefs.add(`gmail:${item.gmailMessageId}`);
         if (item.emailMessageId) usedReviewRefs.add(`email:${item.emailMessageId}`);
-        return mapGmailScanItemToInvoiceCandidate(item);
+        return mapGmailScanItemToInvoiceCandidate(item, input.organizationId);
       }),
     ...input.documentReviews
       .filter((item) => {
@@ -4310,7 +4315,7 @@ export function mergeInvoiceListCandidates<
         refs.forEach((ref) => usedReviewRefs.add(ref));
         return true;
       })
-      .map(mapDocumentReviewToInvoiceCandidate),
+      .map((item) => mapDocumentReviewToInvoiceCandidate(item, input.organizationId)),
   ];
 }
 
@@ -4479,6 +4484,7 @@ apiRouter.get("/invoices", async (req, res) => {
     gmailScanItems,
     documentReviews,
     paymentDriveFallbackByInvoiceKey,
+    organizationId,
   })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -5664,6 +5670,8 @@ function mapDocumentReviewForApi<
     vatAmount?: number | null;
     parsedFieldsJson?: unknown;
     currency?: string;
+    organizationId?: string;
+    driveFileUrl?: string | null;
   },
 >(item: T) {
   const display = resolveDocumentReviewDisplayAmount({
@@ -5675,6 +5683,8 @@ function mapDocumentReviewForApi<
   });
   return {
     ...item,
+    // נתיב /uploads מקומי יוצא רק כ-URL חתום וקשור-ארגון; קישורי Drive לא משתנים
+    driveFileUrl: signLocalUploadUrlIfNeeded(item.driveFileUrl ?? null, item.organizationId ?? null),
     displayAmount: display.amount,
     amountLabel: display.amountLabel,
     amountResolved: display.resolved,
@@ -7315,7 +7325,18 @@ async function sendBusinessHealth(req: Request, res: Response) {
   });
 }
 
-function enrichPaymentSources<T extends { source: string; subject: string | null; duplicateDetected?: boolean; duplicateReason?: string | null }>(payment: T) {
+function enrichPaymentSources<
+  T extends {
+    source: string;
+    subject: string | null;
+    duplicateDetected?: boolean;
+    duplicateReason?: string | null;
+    organizationId?: string;
+    documentLink?: string | null;
+    invoiceLink?: string | null;
+    driveFileUrl?: string | null;
+  },
+>(payment: T) {
   const source = payment.source || "gmail";
   const sources = source === "both"
     ? ["Gmail", "WhatsApp"]
@@ -7325,8 +7346,13 @@ function enrichPaymentSources<T extends { source: string; subject: string | null
         ? ["Gmail"]
         : [source];
   const duplicateReason = payment.duplicateReason ?? payment.subject?.match(/\[duplicate:([^\]]+)\]/)?.[1] ?? null;
+  const organizationId = payment.organizationId ?? null;
   return {
     ...payment,
+    // קבצים מקומיים (/uploads) יוצאים רק כ-URL חתום; קישורי Drive לא משתנים
+    documentLink: signLocalUploadUrlIfNeeded(payment.documentLink ?? null, organizationId),
+    invoiceLink: signLocalUploadUrlIfNeeded(payment.invoiceLink ?? null, organizationId),
+    driveFileUrl: signLocalUploadUrlIfNeeded(payment.driveFileUrl ?? null, organizationId),
     sources,
     duplicateDetected: Boolean(payment.duplicateDetected || duplicateReason),
     duplicateReason,
