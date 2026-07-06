@@ -59,11 +59,11 @@ export async function validateEvent(params: ValidateEventParams): Promise<Calend
   }
 
   if (input.assignedUserId) {
-    const user = await prisma.user.findFirst({
-      where: { id: input.assignedUserId, organizationId },
+    const member = await prisma.organizationMember.findFirst({
+      where: { organizationId, userId: input.assignedUserId },
       select: { id: true },
     });
-    if (!user) {
+    if (!member) {
       issues.push(issue("INVALID_ATTENDEE", "assignedUserId does not belong to organization", "assignedUserId"));
     }
   }

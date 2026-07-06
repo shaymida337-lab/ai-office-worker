@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import type { EventSource } from "./enums.js";
 import type { CalendarEventWithRelations } from "./calendarEventService.js";
 import type { SuggestedSlot } from "./types.js";
@@ -108,7 +109,7 @@ export type CalendarEngineEventInput = {
   source: EventSource;
   createdByUserId?: string | null;
   address?: string | null;
-  prerequisitesJson?: unknown;
+  prerequisitesJson?: Prisma.InputJsonValue;
 };
 
 export type CalendarEngineRequestContext = {
