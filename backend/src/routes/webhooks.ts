@@ -343,21 +343,40 @@ export async function createInboundWhatsAppLogOnce(input: InboundWhatsAppLogInpu
     return { id: existing.id, duplicate: true, created: false };
   }
 
-  const created = await db.whatsAppLog.create({
-    data: {
-      organizationId: input.organizationId,
-      clientId: input.clientId ?? undefined,
-      direction: "inbound",
-      body: input.body,
-      fromNumber: input.fromNumber,
-      toNumber: input.toNumber,
-      providerMessageSid: input.providerMessageSid,
-      mediaCount: input.mediaCount,
-      mediaJson: input.mediaJson,
-    },
-    select: { id: true },
-  });
-  return { id: created.id, duplicate: false, created: true };
+  try {
+    const created = await db.whatsAppLog.create({
+      data: {
+        organizationId: input.organizationId,
+        clientId: input.clientId ?? undefined,
+        direction: "inbound",
+        body: input.body,
+        fromNumber: input.fromNumber,
+        toNumber: input.toNumber,
+        providerMessageSid: input.providerMessageSid,
+        mediaCount: input.mediaCount,
+        mediaJson: input.mediaJson,
+      },
+      select: { id: true },
+    });
+    return { id: created.id, duplicate: false, created: true };
+  } catch (error) {
+    if (isPrismaUniqueConstraintError(error)) {
+      const raced = await findProcessedInboundWhatsAppMessage(input.organizationId, input.providerMessageSid, db);
+      if (raced) {
+        return { id: raced.id, duplicate: true, created: false };
+      }
+    }
+    throw error;
+  }
+}
+
+function isPrismaUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code: string }).code === "P2002"
+  );
 }
 
 export async function hasProcessedInboundWhatsAppMessage(organizationId: string, providerMessageSid: string, db: WhatsAppLogStore = prisma) {

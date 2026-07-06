@@ -33,9 +33,9 @@ import { runIntegrityWatchForOrganization } from "./integrityRunner.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const NOW = new Date("2026-06-01T12:00:00.000Z");
 
-test("integrity core: 8 implemented validators in registry", () => {
-  assert.equal(CORE_INTEGRITY_CHECKS.length, 8);
-  assert.equal(listImplementedIntegrityCheckIds().length, 8);
+test("integrity core: 11 implemented validators in registry", () => {
+  assert.equal(CORE_INTEGRITY_CHECKS.length, 11);
+  assert.equal(listImplementedIntegrityCheckIds().length, 11);
   for (const check of CORE_INTEGRITY_CHECKS) {
     assert.equal(check.implemented, true);
     assert.equal(check.readOnly, true);
@@ -120,6 +120,37 @@ test("integrity core: validator 4 — zero amount on financial document", () => 
   });
   const findings = runCoreFinancialValidators(data);
   assert.equal(findings.filter((f) => f.checkId === "fin-zero-amount-forbidden").length, 2);
+});
+
+test("integrity core: validator — FDR needs_review with active payment", () => {
+  const data = emptyIntegrityOrgData({
+    financialDocumentReviews: [
+      {
+        id: "fdr-mismatch",
+        source: "gmail",
+        gmailMessageId: "g-1",
+        reviewStatus: "needs_review",
+        uncertaintyReason: null,
+        documentFingerprint: "fp-1",
+        supplierPaymentId: "pay-1",
+        parsedFieldsJson: null,
+        createdAt: new Date(),
+      },
+    ],
+    supplierPayments: [
+      { id: "pay-1", documentFingerprint: "fp-1", emailMessageId: "em-1", approvalStatus: "approved", createdAt: new Date() },
+    ],
+  });
+  const findings = runCoreFinancialValidators(data);
+  assert.ok(findings.some((f) => f.checkId === "fin-fdr-payment-status-mismatch"));
+});
+
+test("integrity core: validator — null document fingerprint", () => {
+  const data = emptyIntegrityOrgData({
+    payments: [paymentRow({ id: "pay-null-fp", documentFingerprint: null })],
+  });
+  const findings = runCoreFinancialValidators(data);
+  assert.ok(findings.some((f) => f.checkId === "fin-null-document-fingerprint"));
 });
 
 test("integrity core: validator 5 — cross-org reference", () => {
@@ -208,7 +239,7 @@ test("integrity core: report generation without trend", () => {
     generatedAt: "2026-06-01T12:00:00Z",
   });
   assert.equal(report.schemaVersion, INTEGRITY_WATCH_VERSION);
-  assert.equal(report.checksImplemented, 8);
+  assert.equal(report.checksImplemented, 11);
   assert.equal(report.criticalFindings, 0);
   assert.equal(report.warningFindings, 0);
   assert.equal(!("trend" in report), true);

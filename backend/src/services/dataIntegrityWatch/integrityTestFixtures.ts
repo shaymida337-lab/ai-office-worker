@@ -70,6 +70,8 @@ export function paymentRow(
     driveFileId: null,
     duplicateDetected: false,
     duplicateHash: null,
+    duplicateReason: null,
+    approvalStatus: "approved",
     clientId: "client-1",
     parsedFieldsJson: null,
     source: "gmail",

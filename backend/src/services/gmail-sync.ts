@@ -28,6 +28,11 @@ import {
 import { upsertDriveLinkBlockedScanItemMirror } from "./gmailDriveLinkReviewMirror.js";
 import { initialConnectScanWindow } from "./scanWindow.js";
 import {
+  isCrossOrgContaminatedGmailMessageId,
+  listCrossOrgContaminatedGmailMessageIds,
+  CROSS_ORG_QUARANTINE_MARKER,
+} from "./p0/crossOrgGmailQuarantine.js";
+import {
   classifyBusinessDocument,
   pipelineActionForClassification,
   type ClassificationResult,
@@ -1489,6 +1494,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     }
     logStep(`Found ${potentialClients} potential clients`);
 
+    const crossOrgContaminatedGmailIds = new Set(await listCrossOrgContaminatedGmailMessageIds());
+
     const finalizeDriveLinkTerminalOutcome = async (
       scannedEmail: ScannedEmail,
       driveLinkEvidence: ReturnType<typeof evaluateGmailDriveLinkInvoiceEvidence>,
@@ -1609,6 +1616,21 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         let invoicePersistedForPilot = false;
         let paymentPersistedForPilot = false;
         try {
+      if (
+        await isCrossOrgContaminatedGmailMessageId(email.gmailId, organizationId, crossOrgContaminatedGmailIds)
+      ) {
+        logStep(`[gmail-sync] cross-org contaminated gmailMessageId=${email.gmailId} skipped payment/scan persistence`);
+        await prisma.emailMessage.update({
+          where: { id: email.emailRecordId },
+          data: { processedAt: new Date() },
+        });
+        completeCoreWorkflowStage(messageTrace, "message_process", "skipped", {
+          health: "Degraded",
+          metadata: { reason: CROSS_ORG_QUARANTINE_MARKER, gmailMessageId: email.gmailId },
+        });
+        continue;
+      }
+
       let clientId = clientIdByDomain.get(email.domain);
       if (clientId) {
         await prisma.emailMessage.update({

@@ -49,6 +49,38 @@ test("WhatsApp webhook idempotency processes same providerMessageSid once", asyn
   assert.equal(fake.logs.length, 1);
 });
 
+test("WhatsApp webhook idempotency handles unique constraint race", async () => {
+  const fake = createFakeWhatsAppLogStore();
+  const input = {
+    organizationId: "org-1",
+    body: "hello",
+    fromNumber: "972501111111",
+    toNumber: "14155238886",
+    providerMessageSid: "SM-RACE",
+    mediaCount: 0,
+    mediaJson: [],
+  };
+
+  const originalCreate = fake.store.whatsAppLog.create;
+  let createCalls = 0;
+  fake.store.whatsAppLog.create = async (args: any) => {
+    createCalls += 1;
+    if (createCalls === 1) {
+      const created = { id: "log-race-1", ...args.data };
+      fake.logs.push(created);
+      const err = new Error("Unique constraint failed") as Error & { code: string };
+      err.code = "P2002";
+      throw err;
+    }
+    return originalCreate(args);
+  };
+
+  const result = await createInboundWhatsAppLogOnce(input, fake.store);
+  assert.equal(result.duplicate, true);
+  assert.equal(result.created, false);
+  assert.equal(result.id, "log-race-1");
+});
+
 test("WhatsApp webhook idempotency processes different providerMessageSid values", async () => {
   const fake = createFakeWhatsAppLogStore();
   const base = {

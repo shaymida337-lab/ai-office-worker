@@ -39,8 +39,10 @@ backend/src/services/golden/fixtures/.staging/*
 # Local Netlify folder
 .netlify
 
-# Scratch scripts and local investigation artifacts
-backend/scripts/_tmp-*
+# Local production backup exports (may contain secrets)
+backend/backups/
+backend/data/p0-integrity-backup/
+
 backend/scripts/remediation-snapshots/
 /test-output.txt
 /test-out2.txt

@@ -1,4 +1,13 @@
 import {
+  isQuarantinedGmailScanItem,
+  isQuarantinedSupplierPayment,
+} from "../p0/crossOrgGmailQuarantine.js";
+import {
+  hasDocumentFingerprint,
+  isPositivePaymentAmount,
+  NULL_FINGERPRINT_DATA_QUALITY_MARKER,
+} from "../p0/supplierPaymentQuality.js";
+import {
   runScannerIsolationChecks,
   type ScannerIsolationViolation,
   type ScannerIsolationViolationType,
@@ -101,7 +110,7 @@ export function runCoreFinancialValidators(data: IntegrityOrgData): IntegrityFin
       );
     }
 
-    if (payment.amount === 0) {
+    if (!isPositivePaymentAmount(payment.amount)) {
       findings.push(
         buildIntegrityFinding({
           checkId: "fin-zero-amount-forbidden",
@@ -110,13 +119,57 @@ export function runCoreFinancialValidators(data: IntegrityOrgData): IntegrityFin
           organizationId: orgId,
           entityType: "SupplierPayment",
           entityId: payment.id,
-          explanation: `Payment ${payment.id} has zero amount.`,
+          explanation: `Payment ${payment.id} has zero or missing amount.`,
           probableRootCause: "amount_extraction_failure",
           suggestedAction: "Review amount before approval.",
           findingConfidence: 0.95,
         }),
       );
     }
+
+    if (!hasDocumentFingerprint(payment.documentFingerprint)) {
+      findings.push(
+        buildIntegrityFinding({
+          checkId: "fin-null-document-fingerprint",
+          category: "financial",
+          severity: "warning",
+          organizationId: orgId,
+          entityType: "SupplierPayment",
+          entityId: payment.id,
+          explanation: `Payment ${payment.id} is missing documentFingerprint.`,
+          probableRootCause: "legacy_persistence_gap",
+          suggestedAction: "Backfill fingerprint or quarantine before dedup relies on it.",
+          correlationId: NULL_FINGERPRINT_DATA_QUALITY_MARKER,
+          findingConfidence: 0.9,
+        }),
+      );
+    }
+  }
+
+  const activePaymentById = new Map(
+    data.supplierPayments
+      .filter((payment) => payment.approvalStatus !== "rejected")
+      .map((payment) => [payment.id, payment]),
+  );
+  for (const review of data.financialDocumentReviews) {
+    if (review.reviewStatus !== "needs_review" || !review.supplierPaymentId) continue;
+    const linked = activePaymentById.get(review.supplierPaymentId);
+    if (!linked || linked.approvalStatus !== "approved") continue;
+    findings.push(
+      buildIntegrityFinding({
+        checkId: "fin-fdr-payment-status-mismatch",
+        category: "financial",
+        severity: "critical",
+        organizationId: orgId,
+        entityType: "FinancialDocumentReview",
+        entityId: review.id,
+        explanation: `Review ${review.id} is needs_review but links active payment ${linked.id}.`,
+        probableRootCause: "approval_status_divergence",
+        suggestedAction: "Align FDR status with payment or detach invalid payment link.",
+        correlationId: linked.id,
+        findingConfidence: 0.94,
+      }),
+    );
   }
 
   for (const invoice of data.invoiceDetails) {
@@ -203,6 +256,48 @@ export function runCoreOrganizationValidators(data: IntegrityOrgData): Integrity
   const affectedOrganizations = [
     ...new Set(data.crossOrgEmailMessages.map((row) => row.organizationId)),
   ];
+
+  for (const scanItem of data.gmailScanItems) {
+    const gmailId = scanItem.gmailMessageId;
+    if (!gmailId || isQuarantinedGmailScanItem(scanItem)) continue;
+    const sibling = data.siblingArtifactsByGmailId.get(gmailId);
+    if (!sibling || sibling.siblingOrganizationCount === 0) continue;
+    findings.push(
+      buildIntegrityFinding({
+        checkId: "org-cross-org-gmail-id",
+        category: "organization",
+        severity: "critical",
+        organizationId: orgId,
+        entityType: "GmailScanItem",
+        entityId: scanItem.id,
+        explanation: `Gmail scan item ${scanItem.id} uses gmailMessageId shared across ${sibling.siblingOrganizationCount + 1} organization(s).`,
+        probableRootCause: "cross_org_gmail_ingestion",
+        suggestedAction: "Quarantine artifact and exclude from payment flows.",
+        correlationId: gmailId,
+        findingConfidence: 0.96,
+      }),
+    );
+  }
+
+  for (const payment of data.payments) {
+    if (!isQuarantinedSupplierPayment(payment)) continue;
+    if (payment.duplicateReason?.includes("Quarantined: cross-org gmail ingestion")) {
+      findings.push(
+        buildIntegrityFinding({
+          checkId: "org-cross-org-gmail-id",
+          category: "organization",
+          severity: "warning",
+          organizationId: orgId,
+          entityType: "SupplierPayment",
+          entityId: payment.id,
+          explanation: `Payment ${payment.id} is quarantined for cross-org gmail contamination.`,
+          probableRootCause: "cross_org_gmail_ingestion",
+          suggestedAction: "Keep excluded from payable KPIs until ownership verified.",
+          findingConfidence: 0.95,
+        }),
+      );
+    }
+  }
 
   if (sharedGmailIds.size === 0) {
     return findings;

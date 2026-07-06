@@ -958,7 +958,7 @@ async function upsertWhatsAppSupplierPayment(input: {
       organizationId: input.organizationId,
       clientId: input.clientId,
       supplier: input.supplier,
-      amount: input.amount ?? 0,
+      amount: input.amount as number,
       currency: "ILS",
       date,
       dueDate: normalizeDate(input.dueDate),

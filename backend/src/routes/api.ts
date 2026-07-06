@@ -5700,18 +5700,53 @@ apiRouter.delete("/gmail-scan-items/:id", requirePerm("review.reject"), async (r
 });
 
 apiRouter.post("/gmail-scan-items/:id/approve", requirePerm("review.approve"), async (req, res) => {
+  const organizationId = req.auth!.organizationId;
   const item = await prisma.gmailScanItem.findFirst({
-    where: { id: routeId(req), organizationId: req.auth!.organizationId },
+    where: { id: routeId(req), organizationId },
   });
   if (!item) {
     res.status(404).json({ error: "Gmail scan item not found" });
     return;
   }
-  const updated = await prisma.gmailScanItem.update({
-    where: { id: item.id },
-    data: { reviewStatus: "approved" },
+  if (item.reviewStatus === "rejected") {
+    res.status(409).json({ error: "Cannot approve a rejected scan item" });
+    return;
+  }
+
+  const review = await prisma.financialDocumentReview.findFirst({
+    where: {
+      organizationId,
+      OR: [
+        { gmailMessageId: item.gmailMessageId },
+        { documentFingerprint: item.duplicateKey },
+      ],
+    },
+    orderBy: { updatedAt: "desc" },
   });
-  res.json({ ok: true, item: updated });
+
+  if (!review) {
+    res.status(409).json({
+      error: "No financial document review is linked to this scan item. Approve via document review queue.",
+      code: "GSI_APPROVE_REQUIRES_REVIEW",
+    });
+    return;
+  }
+
+  try {
+    const approved = await approveFinancialDocumentReview(organizationId, review.id, {
+      userId: req.auth!.userId,
+      sourceRoute: "POST /api/gmail-scan-items/:id/approve",
+    });
+    const updated = await prisma.gmailScanItem.update({
+      where: { id: item.id },
+      data: { reviewStatus: approved.reviewStatus === "approved" ? "approved" : item.reviewStatus },
+    });
+    res.json({ ok: true, item: updated, review: approved });
+  } catch (err) {
+    res.status(400).json({
+      error: err instanceof Error ? err.message : "Failed to approve linked document review",
+    });
+  }
 });
 
 apiRouter.patch("/payments/:id", requirePerm("payment.update"), async (req, res) => {

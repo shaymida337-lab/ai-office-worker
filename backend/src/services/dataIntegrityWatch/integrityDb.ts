@@ -53,6 +53,8 @@ export type IntegrityPaymentRow = {
   driveFileId: string | null;
   duplicateDetected: boolean;
   duplicateHash: string | null;
+  duplicateReason: string | null;
+  approvalStatus: string;
   clientId: string | null;
   parsedFieldsJson: unknown;
   source: string;
@@ -261,6 +263,8 @@ export async function loadIntegrityOrgData(
         driveFileId: true,
         duplicateDetected: true,
         duplicateHash: true,
+        duplicateReason: true,
+        approvalStatus: true,
         clientId: true,
         parsedFieldsJson: true,
         source: true,

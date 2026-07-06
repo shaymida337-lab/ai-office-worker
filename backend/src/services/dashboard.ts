@@ -1,11 +1,12 @@
 import { prisma } from "../lib/prisma.js";
+import { isPayableSupplierPayment } from "./p0/supplierPaymentQuality.js";
 
 export async function getDashboardStats(organizationId: string) {
   const payments = await prisma.supplierPayment.findMany({
     where: { organizationId, approvalStatus: "approved" },
   });
 
-  const validPayments = payments.filter((p) => isReasonableMoneyAmount(p.amount));
+  const validPayments = payments.filter((p) => isPayableSupplierPayment(p) && isReasonableMoneyAmount(p.amount));
   const suspiciousPaymentsCount = payments.length - validPayments.length;
   const openPayments = validPayments.filter((p) => !p.paid);
   const moneyToPay = openPayments

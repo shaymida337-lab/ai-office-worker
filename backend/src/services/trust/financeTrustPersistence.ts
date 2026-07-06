@@ -30,6 +30,7 @@ import {
   BLOCKED_OUTCOME_PERSISTENCE_REASON,
   isBlockedDocumentOutcome,
 } from "./blockedOutcomeGuard.js";
+import { assertNewSupplierPaymentQuality } from "../p0/supplierPaymentQuality.js";
 import {
   evaluateDuplicateGate,
   type DuplicateGateInput,
@@ -373,6 +374,12 @@ export async function createSupplierPaymentIfTrusted(input: {
   try {
   const documentFingerprint =
     typeof input.data.documentFingerprint === "string" ? input.data.documentFingerprint : null;
+
+  assertNewSupplierPaymentQuality({
+    amount: typeof input.data.amount === "number" ? input.data.amount : null,
+    documentFingerprint,
+    documentType: typeof input.data.documentTypeDetailed === "string" ? input.data.documentTypeDetailed : null,
+  });
 
   if (organizationId) {
     const existingSourcePayment = await findActiveSupplierPaymentForSource({
