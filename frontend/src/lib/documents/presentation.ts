@@ -26,6 +26,7 @@ export type ReviewMissingFieldId =
   | "amount"
   | "document_date"
   | "document_type"
+  | "document_file"
   | "invoice_number";
 
 export type ReviewMissingField = {
@@ -70,13 +71,33 @@ function hasVerifiedSupplier(item: DocumentReviewItem): boolean {
 function hasVerifiedAmount(item: DocumentReviewItem): boolean {
   if (item.amountLabel === "סכום חסר") return false;
   const amount = item.displayAmount ?? item.totalAmount;
-  return amount != null && Number.isFinite(amount) && amount > 0;
+  if (amount != null && Number.isFinite(amount) && amount > 0) return true;
+  if (item.amountLabel) {
+    const match = item.amountLabel.replace(/,/g, "").match(/(\d+(?:\.\d+)?)/);
+    if (match && Number(match[1]) > 0) return true;
+  }
+  return false;
+}
+
+function normalizeReviewDocumentType(type: string): string {
+  const normalized = type.trim().toLowerCase();
+  if (/tax_invoice_receipt|invoice_receipt|חשבונית\s*מס\s*קבלה/.test(normalized)) return "tax_invoice_receipt";
+  if (/payment_request|payment request|דרישת|בקשת/.test(normalized)) return "payment_request";
+  if (/receipt|קבלה/.test(normalized)) return "receipt";
+  if (/invoice|tax_invoice|חשבונית/.test(normalized)) return "tax_invoice";
+  return normalized;
 }
 
 function hasVerifiedDocumentType(item: DocumentReviewItem): boolean {
-  const type = item.documentType?.trim().toLowerCase();
+  const type = normalizeReviewDocumentType(item.documentType ?? "");
   if (!type || type === "irrelevant" || type === "unknown") return false;
   return PAYMENT_DOCUMENT_TYPES.has(type);
+}
+
+function hasDocumentFile(item: DocumentReviewItem): boolean {
+  if (item.driveFileUrl?.trim()) return true;
+  if (item.fileName?.trim()) return true;
+  return false;
 }
 
 function hasDocumentDateField(item: DocumentReviewItem): boolean {
@@ -109,6 +130,9 @@ export function getReviewMissingFields(item: DocumentReviewItem): {
   }
   if (!hasVerifiedDocumentType(item)) {
     blocking.push({ id: "document_type", labelHebrew: "חסר סוג מסמך", blocking: true });
+  }
+  if (!hasDocumentFile(item)) {
+    blocking.push({ id: "document_file", labelHebrew: "חסר קובץ מסמך", blocking: true });
   }
   if (!hasDocumentDateField(item)) {
     advisory.push({ id: "document_date", labelHebrew: "חסר תאריך", blocking: false });
@@ -324,7 +348,7 @@ function mapReasonCodeToHebrew(raw: string): string | null {
 
   if (lower.startsWith("fingerprint.")) return "חסרים פרטים מזהים במסמך (מספר חשבונית או תאריך)";
 
-  if (lower.startsWith("trust.")) return "בדיקות האמון של המסמך לא הושלמו";
+  if (lower.startsWith("trust.")) return null;
   if (lower.includes("confidence below")) return "רמת הביטחון בזיהוי המסמך נמוכה מדי";
   if (lower.startsWith("classifier:")) return "הסיווג האוטומטי ביקש בדיקה נוספת";
 
@@ -383,14 +407,14 @@ export function presentDocument(item: DocumentReviewItem): DocumentPresentation 
 
   let reason = "";
   if (action.missingFields.length > 0) {
-    reason = `חסר: ${action.missingFields.map((field) => field.labelHebrew).join(" · ")}`;
+    reason = action.missingFields.map((field) => field.labelHebrew).join(" · ");
   } else if (isDuplicate) {
     const specific = specificReviewReasonHebrew(item);
     reason =
       specific ??
       "יש חשד שהמסמך כבר קיים — אפשר לאשר אם זה מסמך חדש, או לדחות אם זו כפילות.";
   } else if (action.kind === "ready_to_approve" && action.canApprove) {
-    reason = `המסמך מ${supplier} מוכן לאישור והעברה לחשבוניות.`;
+    reason = "המסמך מוכן לאישור";
     if (action.advisoryFields.length > 0) {
       reason += ` (${action.advisoryFields.map((field) => field.labelHebrew).join(" · ")})`;
     }
@@ -398,7 +422,11 @@ export function presentDocument(item: DocumentReviewItem): DocumentPresentation 
     reason = "כבר טיפלתי במסמך הזה.";
   } else {
     const specific = specificReviewReasonHebrew(item);
-    reason = specific ?? "אשמח שתעזור לי לוודא שהפרטים נכונים.";
+    reason =
+      specific ??
+      (action.missingFields.length > 0
+        ? action.missingFields.map((field) => field.labelHebrew).join(" · ")
+        : "אשמח שתעזור לי לוודא שהפרטים נכונים.");
     if (action.advisoryFields.length > 0) {
       reason += ` (${action.advisoryFields.map((field) => field.labelHebrew).join(" · ")})`;
     }

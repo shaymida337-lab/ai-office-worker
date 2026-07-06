@@ -102,8 +102,8 @@ test("drivePreviewUrl resolves local upload paths through API base", () => {
 // --- specific Hebrew review reasons (H fix) ---
 
 test("specificReviewReasonHebrew maps technical reason codes to specific Hebrew", () => {
-  const cases: Array<[string, string]> = [
-    ["trust.gates_missing", "בדיקות האמון של המסמך לא הושלמו"],
+  const cases: Array<[string, string | null]> = [
+    ["trust.gates_missing", null],
     ["confidence below 80% (70%)", "רמת הביטחון בזיהוי המסמך נמוכה מדי"],
     ["supplier.sir_missing", "לא זוהה ספק בצורה מספיק בטוחה"],
     ["supplier.sir_weak_evidence", "הספק זוהה, אבל הראיות לזיהוי חלשות"],
@@ -192,17 +192,65 @@ test("review missing amount shows חסר סכום and השלם פרטים", () =
   assert.equal(action.canApprove, false);
 });
 
-test("invoice number missing does not block approval when supplier and amount exist", () => {
+test("trust.gates_missing with supplier amount and image shows approve action", () => {
+  const item: DocumentReviewItem = {
+    ...baseItem,
+    supplierName: "פז",
+    totalAmount: 215.14,
+    displayAmount: 215.14,
+    amountLabel: "₪215.14",
+    driveFileUrl: "https://drive.google.com/file/d/abc123/view",
+    uncertaintyReason: "trust.gates_missing",
+    documentType: "receipt",
+  };
+  const view = presentDocument(item);
+  assert.equal(view.primaryLabel, "אשר והעבר לחשבוניות");
+  assert.equal(view.canApprove, true);
+  assert.equal(view.typeLabel, "מוכן לאישור");
+  assert.equal(view.reason, "המסמך מוכן לאישור");
+});
+
+test("invoice number missing with full data shows approve not השלם פרטים", () => {
   const view = presentDocument({
     ...baseItem,
-    totalAmount: 993.33,
-    displayAmount: 993.33,
-    amountLabel: "₪993.33",
+    supplierName: "חברת החשמל",
+    totalAmount: 326.32,
+    displayAmount: 326.32,
+    amountLabel: "₪326.32",
+    driveFileUrl: "/uploads/whatsapp-invoices/inv.jpg",
+    fileName: "inv.jpg",
     uncertaintyReason: "invoice number missing",
+    documentType: "tax_invoice",
   });
-  assert.equal(view.canApprove, true);
+  assert.equal(view.primaryLabel, "אשר והעבר לחשבוניות");
   assert.doesNotMatch(view.primaryLabel, /השלם/);
-  assert.match(view.advisoryFields[0]?.labelHebrew ?? "", /מספר מסמך חסר/);
+});
+
+test("missing document file shows חסר קובץ מסמך", () => {
+  const view = presentDocument({
+    ...baseItem,
+    supplierName: "Rnet",
+    totalAmount: 354,
+    displayAmount: 354,
+    amountLabel: "₪354.00",
+    driveFileUrl: null,
+    fileName: null,
+    documentType: "invoice",
+  });
+  assert.equal(view.primaryLabel, "השלם פרטים");
+  assert.ok(view.missingFields.some((field) => field.labelHebrew === "חסר קובץ מסמך"));
+});
+
+test("Hebrew document type label is accepted as valid type", () => {
+  const action = getReviewPrimaryAction({
+    ...baseItem,
+    totalAmount: 4800,
+    displayAmount: 4800,
+    amountLabel: "₪4,800.00",
+    driveFileUrl: "https://drive.google.com/file/d/x/view",
+    documentType: "חשבונית מס",
+  });
+  assert.equal(action.canApprove, true);
 });
 
 test("specificReviewReasonHebrew falls back to gate reason codes from parsedFieldsJson", () => {
