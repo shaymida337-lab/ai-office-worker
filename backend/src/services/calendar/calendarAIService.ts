@@ -20,6 +20,7 @@ import {
   searchAppointments,
 } from "./calendarSchedulingService.js";
 import { validateParsedCommand } from "./calendarValidationService.js";
+import { calendarMessages } from "./calendarMessages.js";
 import { SchedulingFacadeError } from "../scheduling/schedulingErrors.js";
 import { processNatalieTurn } from "../conversation/conversationRuntime.js";
 import { isCalendarFollowUpPhrase } from "./calendarPendingIntent.js";
@@ -110,7 +111,7 @@ function mapExtractionToCommand(extraction: CalendarIntentExtraction): ParsedCal
 
 function buildCreateConfirmation(extraction: CalendarIntentExtraction): string {
   const day = formatDayReference(extraction.dayReference ?? undefined);
-  return `הבנתי: לקבוע תור ל${extraction.customerName} ${day} בשעה ${extraction.time}. לאשר?`;
+  return calendarMessages.createConfirmation(extraction.customerName ?? "", day, extraction.time ?? "");
 }
 
 function buildClarificationQuestion(extraction: CalendarIntentExtraction): string {

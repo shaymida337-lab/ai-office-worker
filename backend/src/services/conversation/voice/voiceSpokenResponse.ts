@@ -81,8 +81,10 @@ export function buildVoiceExecutionSpokenResponse(input: {
       return `סימנתי את המשימה כבוצעה. ${input.successMessage}`;
     case "issue_invoice":
       return `הטיוטה נשמרה. ${input.successMessage}`;
+    // The booking success message now self-describes ("קבעתי. הפגישה עם…"),
+    // so prefixing "התור נקבע." would duplicate the confirmation.
     case "book_appointment":
-      return `התור נקבע. ${input.successMessage}`;
+      return input.successMessage;
     case "cancel_appointment":
       return `התור בוטל. ${input.successMessage}`;
     case "reschedule_appointment":

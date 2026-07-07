@@ -30,10 +30,28 @@ function resolveSchedulingItemId(proposal: Record<string, unknown>): string {
   return "";
 }
 
-function resolveBookMessage(result: NatalieBookResult, clientName: string): string {
+function resolveBookMessage(
+  result: NatalieBookResult,
+  proposal: Record<string, unknown>,
+  clientName: string
+): string {
+  const name =
+    (!result.engine ? result.appointment.client?.name : undefined) ??
+    (typeof proposal.clientName === "string" ? proposal.clientName : "") ??
+    clientName;
+  const dayLabel = typeof proposal.dayReference === "string" ? proposal.dayReference.trim() : "";
+  const time = typeof proposal.time === "string" ? proposal.time.trim() : "";
+  const serviceName = typeof proposal.serviceName === "string" ? proposal.serviceName : null;
+  const notes = typeof proposal.notes === "string" ? proposal.notes : null;
+
+  // Always echo participant + day + time in clean, natural Hebrew.
+  if (name && dayLabel && time) {
+    return calendarMessages.createSuccess({ clientName: name, dayLabel, time, serviceName, notes });
+  }
+  // Fallback when the proposal carried an absolute startTime instead of day/time
+  // strings: keep the engine's own confirmation, else a minimal natural line.
   if (result.engine) return result.message;
-  const name = result.appointment.client?.name ?? clientName;
-  return `התור נקבע עבור ${name}.`;
+  return name ? `קבעתי את הפגישה עם ${name}.` : "קבעתי את הפגישה.";
 }
 
 function resolveCancelMessage(result: NatalieCancelResult): string {
@@ -139,7 +157,7 @@ export async function executeNataliePendingProposal(input: {
       return {
         ok: true,
         action: input.action,
-        message: resolveBookMessage(result, clientName),
+        message: resolveBookMessage(result, input.proposal, clientName),
         payload: result,
       };
     }

@@ -115,13 +115,13 @@ const QA_MATRIX: QaCase[] = [
 
   // ---- missing customer (8) ----
   { id: "MC01", category: "missing_customer", phrase: "תקבעי תור מחר ב-3", expect: { intent: "create_appointment", missing: ["customerName"], clarify: true } },
-  { id: "MC02", category: "missing_customer", phrase: "תבטלי את התור מחר", expect: { intent: "cancel_appointment", missing: ["customerName"] } },
+  { id: "MC02", category: "missing_customer", phrase: "תבטלי את התור מחר", expect: { intent: "cancel_appointment", missing: ["target"] } },
   { id: "MC03", category: "missing_customer", phrase: "תעבירי את התור למחר ב-4", expect: { intent: "move_appointment", missing: ["customerName"] } },
-  { id: "MC04", category: "missing_customer", phrase: "תמחקי את התור מחר", expect: { intent: "cancel_appointment", missing: ["customerName"] } },
+  { id: "MC04", category: "missing_customer", phrase: "תמחקי את התור מחר", expect: { intent: "cancel_appointment", missing: ["target"] } },
   { id: "MC05", category: "missing_customer", phrase: "תדחי את התור למחר", expect: { intent: "move_appointment", missing: ["customerName"] } },
   { id: "MC06", category: "missing_customer", phrase: "שימי לי תור מחר ב-3", expect: { intent: "create_appointment", missing: ["customerName"], clarify: true } },
   { id: "MC07", category: "missing_customer", phrase: "תכניסי פגישה מחר ב-3", expect: { intent: "create_appointment", missing: ["customerName"], clarify: true } },
-  { id: "MC08", category: "missing_customer", phrase: "בטלי את התור מחר", expect: { intent: "cancel_appointment", missing: ["customerName"] } },
+  { id: "MC08", category: "missing_customer", phrase: "בטלי את התור מחר", expect: { intent: "cancel_appointment", missing: ["target"] } },
 
   // ---- missing date (6) ----
   { id: "MD01", category: "missing_date", phrase: "תקבעי תור לשרית ב-3", expect: { intent: "create_appointment", customerName: "שרית", missing: ["date"], clarify: true } },

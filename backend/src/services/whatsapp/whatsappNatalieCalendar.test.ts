@@ -13,10 +13,10 @@ const OWNER_USER = "user-owner-1";
 
 function fakeTurnResult(overrides: Partial<ProcessNatalieTurnResult> = {}): ProcessNatalieTurnResult {
   return {
-    answer: "הבנתי: לקבוע תור לשרית מחר בשעה 15:00. לאשר?",
+    answer: "הבנתי שברצונך לקבוע פגישה עם שרית מחר בשעה 15:00.\nלאשר?",
     conversationSessionId: "sess-1",
-    displayResponse: "הבנתי: לקבוע תור לשרית מחר בשעה 15:00. לאשר?",
-    spokenResponse: "הבנתי: לקבוע תור לשרית מחר בשעה 15:00. לאשר?",
+    displayResponse: "הבנתי שברצונך לקבוע פגישה עם שרית מחר בשעה 15:00.\nלאשר?",
+    spokenResponse: "הבנתי שברצונך לקבוע פגישה עם שרית מחר בשעה 15:00.\nלאשר?",
     confirmation: { required: true, allowed: true, confirmationType: "soft" } as never,
     zeroWrongAction: { ready: true, violations: [] } as never,
     reliability: { correlationId: "c", sessionId: "sess-1", turnId: "t", health: "Healthy" } as never,
@@ -116,13 +116,13 @@ test("'כן' WITH a pending confirmation routes to the brain (confirmation conti
       loadLatestSession: async () => ({ id: "sess-42", hasPendingConfirmation: true }),
       processTurn: (async (input: Record<string, unknown>) => {
         calls.push(input);
-        return fakeTurnResult({ displayResponse: "התור נקבע עבור שרית.", answer: "התור נקבע עבור שרית." });
+        return fakeTurnResult({ displayResponse: "קבעתי. הפגישה עם שרית מחר בשעה 15:00.", answer: "קבעתי. הפגישה עם שרית מחר בשעה 15:00." });
       }) as unknown as WhatsAppCalendarDeps["processTurn"],
     })
   );
   assert.equal(calls.length, 1);
   assert.equal(calls[0].sessionId, "sess-42");
-  assert.match(reply ?? "", /נקבע/);
+  assert.match(reply ?? "", /שרית/);
 });
 
 test("'כן' WITHOUT a pending confirmation routes to the brain for a clarification (never silent)", async () => {

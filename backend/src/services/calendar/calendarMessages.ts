@@ -13,10 +13,42 @@ export type CalendarListEntry = {
   serviceName?: string;
 };
 
+export type CalendarSuccessDetails = {
+  clientName: string;
+  dayLabel: string;
+  time: string;
+  serviceName?: string | null;
+  notes?: string | null;
+};
+
+/**
+ * Format a day reference with a natural Hebrew preposition.
+ * Relative days ("מחר", "היום") stay as-is; weekdays gain "ב" ("ביום חמישי");
+ * explicit dates get a "ב-" prefix. Pure string formatting — no date math.
+ */
+export function formatDayLabel(dayReference: string): string {
+  const day = dayReference.trim();
+  if (!day) return "";
+  if (["מחר", "מחרתיים", "היום", "אתמול"].includes(day)) return day;
+  if (/^יום\s/u.test(day)) return `ב${day}`;
+  if (/^ב/u.test(day)) return day;
+  return `ב-${day}`;
+}
+
 export const calendarMessages = {
   // ---- Create ----
   createConfirmation(clientName: string, dayLabel: string, time: string): string {
-    return `הבנתי: לקבוע תור ל${clientName} ${dayLabel} בשעה ${time}. לאשר?`;
+    return `הבנתי שברצונך לקבוע פגישה עם ${clientName} ${formatDayLabel(dayLabel)} בשעה ${time}.\nלאשר?`;
+  },
+  createSuccess(details: CalendarSuccessDetails): string {
+    const lines = [
+      `קבעתי. הפגישה עם ${details.clientName} ${formatDayLabel(details.dayLabel)} בשעה ${details.time}.`,
+    ];
+    const service = details.serviceName?.trim();
+    if (service) lines.push(`שירות: ${service}`);
+    const notes = details.notes?.trim();
+    if (notes) lines.push(`הערה: ${notes}`);
+    return lines.join("\n");
   },
   createMissingCustomer(): string {
     return "לא הבנתי למי לקבוע את התור. מה שם הלקוח/ה?";

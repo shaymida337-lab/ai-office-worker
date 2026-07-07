@@ -13,7 +13,7 @@ import {
   type CalendarPendingIntent,
 } from "../calendar/calendarPendingIntent.js";
 import { parseCalendarIntent } from "../calendar/calendarIntentParser.js";
-import { fulfillCalendarPendingIntent } from "../natalie.js";
+import { extractRescheduleAppointment, fulfillCalendarPendingIntent } from "../natalie.js";
 import { getChannelAdapter } from "./conversationAdapters.js";
 import { evaluateConfirmationPolicy } from "./conversationConfirmationPolicy.js";
 import {
@@ -270,6 +270,14 @@ export async function tryHandleCalendarIntentContinuation(input: {
 
     const initial = parseInitialCalendarPendingIntent(input.message);
     if (!initial) {
+      return { handled: false };
+    }
+
+    // A fresh move whose target is resolvable by the fuzzy/pronoun reschedule
+    // builder (e.g. "תעביר את רוסי פיטון ליום חמישי") must NOT be intercepted as
+    // "missing customer" here — the deterministic parser doesn't fuzzy-match
+    // names, so let the main brain run its identity-confirmation reschedule flow.
+    if (initial.intent === "move_appointment" && extractRescheduleAppointment(input.message)) {
       return { handled: false };
     }
 

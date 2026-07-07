@@ -23,7 +23,7 @@ test("create: 'תקבעי תור לשרית מחר ב-3' → book_appointment ש
   assert.equal(res.proposal.clientName, "שרית");
   assert.equal(res.proposal.dayReference, "מחר");
   assert.equal(res.proposal.time, "15:00");
-  assert.equal(res.answer, "הבנתי: לקבוע תור לשרית מחר בשעה 15:00. לאשר?");
+  assert.equal(res.answer, "הבנתי שברצונך לקבוע פגישה עם שרית מחר בשעה 15:00.\nלאשר?");
 });
 
 test("create: 'תקבעי לשרית מחר בשלוש' → 15:00", () => {
