@@ -141,16 +141,8 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       media,
       correlationId: messageSid,
     });
-    if (!(await shouldContinueAfterWhatsAppJunkGate({
-      organizationId: assistant.organizationId,
-      whatsappLogId: inboundLog.id,
-      fromNumber: normalizedFrom,
-      body,
-      media,
-    }))) {
-      res.type("text/xml").send(twiml.toString());
-      return;
-    }
+    // Mapped owner phones are trusted. The junk gate is for unmapped/client senders;
+    // Hebrew calendar commands (e.g. "תקבעי תור…") are REAL but fail the junk filter.
     await scanWhatsAppMessage(assistant.organizationId, inboundLog.id, normalizedFrom, body, false);
     const mediaResult = config.twilio.mediaIngestionEnabled ? await safeMediaIngestion({
       organizationId: assistant.organizationId,

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createInboundWhatsAppLogOnce, resolveOwnerAssistantWhatsAppReply } from "./webhooks.js";
+import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "../services/classification/junkFilter.js";
 
 function createFakeWhatsAppLogStore() {
   const logs: Array<{ id: string } & Record<string, any>> = [];
@@ -154,4 +155,14 @@ test("owner WhatsApp falls back to owner chat when auto-reply is enabled", async
   );
 
   assert.equal(reply, "owner-chat");
+});
+
+test("Hebrew calendar commands are not junk-filter REAL (owner path bypasses junk gate)", () => {
+  const decision = classifyJunk({
+    body: "תקבעי תור לשרית מחר ב-3",
+    sender: "whatsapp:+972501111111",
+    channel: "whatsapp",
+  });
+  assert.equal(decision.bucket, "UNSURE");
+  assert.equal(shouldAutoClassifyAfterJunkFilter(decision), false);
 });
