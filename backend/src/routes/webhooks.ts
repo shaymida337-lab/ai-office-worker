@@ -14,6 +14,7 @@ import {
   WHATSAPP_UNMAPPED_SENDER_MESSAGE,
 } from "../services/whatsappSafety.js";
 import { handleClientMessage, handleOwnerMessage } from "../services/whatsappChatEngine.js";
+import { maybeHandleWhatsAppCalendarMessage } from "../services/whatsapp/whatsappNatalieCalendar.js";
 import { analyzeAndSaveMessage } from "../services/messageScanner.js";
 import { recordInboundWhatsAppCommunication } from "../services/communication/recordCommunicationTrace.js";
 import { ingestWhatsAppInvoiceMedia, parseTwilioMedia } from "../services/whatsappInvoiceIngestion.js";
@@ -160,7 +161,19 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
     }) : { reply: null };
 
     if (config.twilio.autoReplyEnabled) {
-      const reply = mediaResult.reply ?? await safeReply(() => handleOwnerMessage(body, assistant.organizationId, normalizedFrom));
+      const reply =
+        mediaResult.reply ??
+        (await safeReply(async () => {
+          // Calendar commands (and confirmations of a pending proposal) go
+          // through the SAME Natalie brain as web chat/voice. Everything else
+          // stays on the existing owner chat engine.
+          const calendarReply = await maybeHandleWhatsAppCalendarMessage({
+            organizationId: assistant.organizationId,
+            message: body,
+            phone: normalizedFrom,
+          });
+          return calendarReply ?? (await handleOwnerMessage(body, assistant.organizationId, normalizedFrom));
+        }));
       twiml.message(reply);
       await prisma.whatsAppLog.create({
         data: {
