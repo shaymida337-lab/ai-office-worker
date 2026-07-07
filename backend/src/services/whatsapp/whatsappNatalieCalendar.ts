@@ -17,6 +17,7 @@ import { isAvailabilityQuestion } from "../natalieAvailability.js";
 import { parseVoiceConfirmationIntent } from "../conversation/voice/voiceConfirmation.js";
 import { processNatalieTurn } from "../conversation/conversationRuntime.js";
 import { sanitizeWhatsAppText } from "./natalieWhatsAppUx.js";
+import { calendarMessages } from "../calendar/calendarMessages.js";
 
 /** Minimal shape of the persisted Natalie session this bridge needs. */
 type WhatsAppNatalieSession = {
@@ -103,7 +104,13 @@ export async function maybeHandleWhatsAppCalendarMessage(
   // Only take over when this is a real calendar command, a calendar-topic message
   // that needs clarification, or a yes/no reply to a pending calendar confirmation.
   // A bare "כן" with no pending proposal falls through to the normal owner chat engine.
-  if (!isCalendarCommand && !isConfirmationReply && !isCalendarTopic) return null;
+  // Vague calendar-topic text (e.g. "אולי משהו עם יומן") gets one deterministic
+  // clarification — not the general Natalie Q&A path.
+  if (isCalendarTopic && !isCalendarCommand && !isConfirmationReply) {
+    return sanitizeWhatsAppText(calendarMessages.unsupportedCalendar());
+  }
+
+  if (!isCalendarCommand && !isConfirmationReply) return null;
 
   const result = await processTurn({
     organizationId: input.organizationId,
