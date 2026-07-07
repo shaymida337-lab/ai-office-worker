@@ -5,6 +5,7 @@ import { ChevronDown, ChevronLeft, Loader2 } from "lucide-react";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { colors, radius, type as typography } from "@/lib/design-tokens";
 import { apiFetch, type Payment } from "@/lib/api";
+import { removeRowAfterAction } from "@/lib/invoices/animatedRemoval";
 import { isJunkPayment } from "@/lib/junkSupplier";
 import { labelFor } from "@/lib/labels";
 
@@ -185,31 +186,40 @@ export function PaymentsArchiveSection() {
     if (!confirmed) return;
     setDeletingId(payment.id);
     setMessage("");
-    setRemovingIds((current) => new Set(current).add(payment.id));
+    let result: {
+      deleted?: { supplierPayments?: number; documentReviews?: number };
+      verification?: { beforeCount?: number; afterCount?: number };
+      unlinked?: { bankTransactions?: number; tasks?: number };
+    } | null = null;
     try {
-      await new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS));
-      const result = await apiFetch<{
-        deleted?: { supplierPayments?: number; documentReviews?: number };
-        verification?: { beforeCount?: number; afterCount?: number };
-        unlinked?: { bankTransactions?: number; tasks?: number };
-      }>(`/api/payments/${payment.id}/delete`, { method: "POST" });
-      if ((result.deleted?.supplierPayments ?? 0) < 1 || (result.verification?.afterCount ?? 1) !== 0) {
-        throw new Error(
-          `השרת לא מחק את הרשומה. נמחקו ${result.deleted?.supplierPayments ?? 0}, נשארו ${result.verification?.afterCount ?? "לא ידוע"}.`
-        );
-      }
-      const loadedKeys = Object.keys(paymentsByMonth);
-      await refreshMonthsAndPayments(loadedKeys.length > 0 ? loadedKeys : undefined);
-      setMessage(`נמחקו ${result.deleted?.supplierPayments ?? 1} תשלומי ספקים. נותקו ${result.unlinked?.bankTransactions ?? 0} התאמות בנק.`);
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "מחיקת התשלום נכשלה");
+      await removeRowAfterAction({
+        performAction: async () => {
+          result = await apiFetch<NonNullable<typeof result>>(`/api/payments/${payment.id}/delete`, { method: "POST" });
+          if ((result.deleted?.supplierPayments ?? 0) < 1 || (result.verification?.afterCount ?? 1) !== 0) {
+            throw new Error(
+              `השרת לא מחק את הרשומה. נמחקו ${result.deleted?.supplierPayments ?? 0}, נשארו ${result.verification?.afterCount ?? "לא ידוע"}.`
+            );
+          }
+        },
+        beginExitAnimation: () => setRemovingIds((current) => new Set(current).add(payment.id)),
+        waitForExitAnimation: () => new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS)),
+        finalize: async () => {
+          const loadedKeys = Object.keys(paymentsByMonth);
+          await refreshMonthsAndPayments(loadedKeys.length > 0 ? loadedKeys : undefined);
+          setMessage(`נמחקו ${result?.deleted?.supplierPayments ?? 1} תשלומי ספקים. נותקו ${result?.unlinked?.bankTransactions ?? 0} התאמות בנק.`);
+        },
+        endExitAnimation: () =>
+          setRemovingIds((current) => {
+            const next = new Set(current);
+            next.delete(payment.id);
+            return next;
+          }),
+        reportError: (err) => {
+          setMessage(err instanceof Error ? `מחיקת התשלום נכשלה: ${err.message}` : "מחיקת התשלום נכשלה");
+        },
+      });
     } finally {
       setDeletingId(null);
-      setRemovingIds((current) => {
-        const next = new Set(current);
-        next.delete(payment.id);
-        return next;
-      });
     }
   }
 

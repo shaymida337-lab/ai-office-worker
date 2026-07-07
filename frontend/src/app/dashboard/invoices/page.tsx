@@ -6,6 +6,7 @@ import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
 import { approvalErrorHebrew } from "@/lib/documents/presentation";
 import { buildFallbackMonthGroups } from "@/lib/invoices/monthGrouping";
+import { removeRowAfterAction } from "@/lib/invoices/animatedRemoval";
 import { formatAmount } from "@/lib/format/amount";
 import { isLikelyJunkSupplierNameLocal } from "@/lib/junkSupplier";
 import { Check, ChevronDown, ChevronLeft, Download, FileText, Filter, Loader2, RefreshCcw, Search, UploadCloud } from "lucide-react";
@@ -385,71 +386,84 @@ export default function InvoicesPage() {
   }
 
   function handleAnimatedApprove(invoice: Invoice) {
-    setRemovingIds((current) => new Set(current).add(invoice.id));
-    window.setTimeout(() => {
-      void approveInvoice(invoice).finally(() => {
+    if (invoice.source === "invoice" || isPersistedInvoice(invoice)) return;
+    setMessage("");
+    void removeRowAfterAction({
+      performAction: () => approveInvoiceRequest(invoice),
+      beginExitAnimation: () => setRemovingIds((current) => new Set(current).add(invoice.id)),
+      waitForExitAnimation: () => new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS)),
+      finalize: async () => {
+        if (selected?.id === invoice.id) setSelected(null);
+        await refreshMonthsAndInvoices(Object.keys(invoicesByMonth));
+        setMessageTone("success");
+        setMessage("החשבונית אושרה");
+      },
+      endExitAnimation: () =>
         setRemovingIds((current) => {
           const next = new Set(current);
           next.delete(invoice.id);
           return next;
-        });
-      });
-    }, REMOVAL_ANIMATION_MS);
+        }),
+      reportError: (err) => {
+        setMessageTone("error");
+        setMessage(err instanceof Error ? approvalErrorHebrew(err.message) : "אישור החשבונית נכשל");
+      },
+    });
   }
 
-  async function approveInvoice(invoice: Invoice) {
-    if (invoice.source === "invoice" || isPersistedInvoice(invoice)) return;
-    setMessage("");
-    try {
-      if (invoice.source === "financial_document_review") {
-        const id = invoice.reviewSourceId ?? invoice.id.replace(/^document-review:/, "");
-        await apiFetch(`/api/document-reviews/${id}/approve`, { method: "POST" });
-      } else if (invoice.source === "gmail_scan_item") {
-        const id = invoice.reviewSourceId ?? invoice.id.replace(/^gmail-scan:/, "");
-        await apiFetch(`/api/gmail-scan-items/${id}/approve`, { method: "POST" });
-      } else {
-        return;
-      }
-      if (selected?.id === invoice.id) setSelected(null);
-      await refreshMonthsAndInvoices(Object.keys(invoicesByMonth));
-      setMessageTone("success");
-      setMessage("החשבונית אושרה");
-    } catch (err) {
-      setMessageTone("error");
-      setMessage(err instanceof Error ? approvalErrorHebrew(err.message) : "אישור החשבונית נכשל");
+  async function approveInvoiceRequest(invoice: Invoice): Promise<void> {
+    if (invoice.source === "financial_document_review") {
+      const id = invoice.reviewSourceId ?? invoice.id.replace(/^document-review:/, "");
+      await apiFetch(`/api/document-reviews/${id}/approve`, { method: "POST" });
+      return;
     }
+    if (invoice.source === "gmail_scan_item") {
+      const id = invoice.reviewSourceId ?? invoice.id.replace(/^gmail-scan:/, "");
+      await apiFetch(`/api/gmail-scan-items/${id}/approve`, { method: "POST" });
+      return;
+    }
+    throw new Error("לא ניתן לאשר חשבונית מסוג זה");
   }
 
   async function deleteInvoice(invoice: Invoice) {
     const confirmed = window.confirm("האם למחוק את החשבונית?");
     if (!confirmed) return;
-    setRemovingIds((current) => new Set(current).add(invoice.id));
-    await new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS));
     setDeletingId(invoice.id);
     setMessageTone("info");
     setMessage("");
+    let result: InvoiceDeleteResponse | null = null;
     try {
-      const result = await deleteInvoiceRecord(invoice);
-      setSelected(null);
-      setSelectedInvoiceIds((current) => {
-        const next = new Set(current);
-        next.delete(invoice.id);
-        return next;
+      await removeRowAfterAction({
+        performAction: async () => {
+          result = await deleteInvoiceRecord(invoice);
+        },
+        beginExitAnimation: () => setRemovingIds((current) => new Set(current).add(invoice.id)),
+        waitForExitAnimation: () => new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS)),
+        finalize: async () => {
+          setSelected(null);
+          setSelectedInvoiceIds((current) => {
+            const next = new Set(current);
+            next.delete(invoice.id);
+            return next;
+          });
+          removeInvoiceFromLocalState(invoice.id);
+          await refreshMonthsAndInvoices(Object.keys(invoicesByMonth));
+          setMessageTone("success");
+          setMessage(`החשבונית נמחקה. נותקו ${result?.unlinked?.bankTransactions ?? 0} התאמות בנק.`);
+        },
+        endExitAnimation: () =>
+          setRemovingIds((current) => {
+            const next = new Set(current);
+            next.delete(invoice.id);
+            return next;
+          }),
+        reportError: (err) => {
+          setMessageTone("error");
+          setMessage(err instanceof Error ? `מחיקת החשבונית נכשלה: ${err.message}` : "מחיקת החשבונית נכשלה");
+        },
       });
-      removeInvoiceFromLocalState(invoice.id);
-      await refreshMonthsAndInvoices(Object.keys(invoicesByMonth));
-      setMessageTone("success");
-      setMessage(`החשבונית נמחקה. נותקו ${result.unlinked?.bankTransactions ?? 0} התאמות בנק.`);
-    } catch (err) {
-      setMessageTone("error");
-      setMessage(err instanceof Error ? err.message : "מחיקת החשבונית נכשלה");
     } finally {
       setDeletingId(null);
-      setRemovingIds((current) => {
-        const next = new Set(current);
-        next.delete(invoice.id);
-        return next;
-      });
     }
   }
 
@@ -489,10 +503,10 @@ export default function InvoicesPage() {
     setBulkDeleting(true);
     setMessageTone("info");
     setMessage("");
-    setRemovingIds(new Set(selectedVisibleInvoices.map((invoice) => invoice.id)));
-    await new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS));
     // מחיקה סדרתית — עוקבים אחרי מה שנמחק בפועל כדי לדווח מצב חלקי במדויק
     // במקום כשל שקט שמשאיר חלק מהרשומות מחוקות והמשתמש לא יודע כמה.
+    // אנימציית ההסרה מופעלת רק אחרי שהמחיקה של אותה שורה אושרה בשרת,
+    // כדי ששורה שהמחיקה שלה נכשלה לא תיעלם מהמסך.
     const total = selectedVisibleInvoices.length;
     const deletedIds = new Set<string>();
     let failure: unknown = null;
@@ -502,10 +516,14 @@ export default function InvoicesPage() {
         try {
           await deleteInvoiceRecord(invoice);
           deletedIds.add(invoice.id);
+          setRemovingIds((current) => new Set(current).add(invoice.id));
         } catch (err) {
           failure = err;
           break;
         }
+      }
+      if (deletedIds.size > 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS));
       }
     } finally {
       setSelected((current) => (current && deletedIds.has(current.id) ? null : current));
