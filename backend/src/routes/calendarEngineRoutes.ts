@@ -43,6 +43,7 @@ import {
 import { requirePerm } from "../services/rbac/index.js";
 import { recordCalendarAudit } from "../services/calendar/calendarAudit.js";
 import { requirePermissionMiddleware } from "../services/rbac/rbacMiddleware.js";
+import { processCalendarCommand } from "../services/calendar/calendarAIService.js";
 
 export const calendarEngineRouter = Router();
 const requireCalendarViewPermission = requirePerm("calendar.view");
@@ -701,5 +702,22 @@ calendarEngineRouter.post(
       }
     );
     sendCalendarEngineSuccess(res, 200, item);
+  })
+);
+
+calendarEngineRouter.post(
+  "/calendar/ai/command",
+  requireCalendarViewPermission,
+  handleRoute(async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    rejectOrganizationIdInBody(body);
+    const text = parseNonEmptyString(body.text, "text");
+
+    const response = await processCalendarCommand({
+      organizationId: req.auth!.organizationId,
+      userId: req.auth!.userId,
+      text,
+    });
+    sendCalendarEngineSuccess(res, 200, response);
   })
 );
