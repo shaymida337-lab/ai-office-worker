@@ -27,6 +27,7 @@ import {
   validateExtraction,
   extractDayReference as extractCalendarDayReference,
   type CalendarIntentExtraction,
+  type CalendarListRange,
 } from "./calendar/calendarIntentParser.js";
 
 /** Injectable dependencies for deterministic testing of the Natalie brain. */
@@ -80,6 +81,15 @@ export async function askNatalieBusinessQuestion(input: {
     deps
   );
   if (createAppointmentResponse) return createAppointmentResponse;
+
+  // Deterministic read handler: "מה יש לי מחר ביומן?" / "מה התורים שלי?" never
+  // reaches Claude and always reads the unified appointment source of truth.
+  const listAppointmentsResponse = await maybeBuildListAppointmentsResponse(
+    input.organizationId,
+    input.question,
+    deps
+  );
+  if (listAppointmentsResponse) return listAppointmentsResponse;
 
   const businessFactsResponse = await maybeBuildBusinessFactsResponse(input.organizationId, input.question);
   if (businessFactsResponse) return businessFactsResponse;
@@ -1061,6 +1071,137 @@ function formatAppointmentListLine(
   return `${index + 1}. ${when}${service ? ` — ${service}` : ""}`;
 }
 
+/** YYYY-MM-DD wall-clock date in the business timezone. */
+function localDateInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** HH:MM wall-clock time in the business timezone. */
+function formatTimeOnly(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("he-IL", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+const HEBREW_SHORT_WEEKDAY_TO_INDEX: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
+/** Local date (YYYY-MM-DD) of the coming Saturday, i.e. end of the current Hebrew week. */
+function endOfCurrentWeekLocalDate(now: Date, timeZone: string): string {
+  const weekdayShort = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(now);
+  const dayOfWeek = HEBREW_SHORT_WEEKDAY_TO_INDEX[weekdayShort] ?? 0;
+  const daysUntilSaturday = 6 - dayOfWeek;
+  return localDateInTimeZone(new Date(now.getTime() + daysUntilSaturday * 86_400_000), timeZone);
+}
+
+/**
+ * Filter merged upcoming items to the requested list window. Deterministic and
+ * timezone-aware. Items are already upcoming (>= now) from the read repository.
+ */
+function filterAppointmentsForListRange(
+  items: Array<UpcomingSchedulingItem & { clientId?: string }>,
+  params: { rangeType?: CalendarListRange; dayReference: string | null; timeZone: string; now: Date }
+): Array<UpcomingSchedulingItem & { clientId?: string }> {
+  if (params.rangeType === "week") {
+    const endLocal = endOfCurrentWeekLocalDate(params.now, params.timeZone);
+    return items.filter((item) => localDateInTimeZone(item.startTime, params.timeZone) <= endLocal);
+  }
+  if (params.dayReference) {
+    const target = resolveAppointmentDateTime({
+      dayReference: params.dayReference,
+      time: "12:00",
+      timeZone: params.timeZone,
+      now: params.now,
+    });
+    if (!target) return items;
+    const targetLocal = localDateInTimeZone(target, params.timeZone);
+    return items.filter((item) => localDateInTimeZone(item.startTime, params.timeZone) === targetLocal);
+  }
+  return items;
+}
+
+/** Hebrew label for the list header/empty message based on the requested window. */
+function listRangeLabel(rangeType: CalendarListRange | undefined, dayReference: string | null): {
+  header: string;
+  empty: string;
+  includeDate: boolean;
+} {
+  if (rangeType === "week") {
+    return { header: "התורים שלך השבוע:", empty: "אין לך תורים השבוע.", includeDate: true };
+  }
+  if (dayReference) {
+    return {
+      header: `התורים שלך ל${dayReference}:`,
+      empty: `אין לך תורים ל${dayReference}.`,
+      includeDate: false,
+    };
+  }
+  return { header: "התורים הקרובים שלך:", empty: "אין לך תורים קרובים ביומן.", includeDate: true };
+}
+
+function formatListEntry(
+  item: UpcomingSchedulingItem,
+  timeZone: string,
+  includeDate: boolean
+): string {
+  const when = includeDate
+    ? formatAppointmentWhen(item.startTime, timeZone)
+    : formatTimeOnly(item.startTime, timeZone);
+  const service = item.serviceName?.trim();
+  return `• ${when} — ${item.clientName}${service ? ` (${service})` : ""}`;
+}
+
+/**
+ * Deterministic read handler for "what's on my calendar" questions. Runs before
+ * Claude, reads the unified source of truth (both Appointment + CalendarEvent),
+ * and never writes anything.
+ */
+async function maybeBuildListAppointmentsResponse(
+  organizationId: string,
+  question: string,
+  deps?: AskNatalieDeps
+): Promise<NatalieClaudeResponse | null> {
+  const now = deps?.now ?? new Date();
+  const intent = parseCalendarIntent(question, { now });
+  if (intent.intent !== "list_appointments") return null;
+
+  const loadTimezone = deps?.loadTimezone ?? loadOrganizationTimezone;
+  const timeZone = await loadTimezone(organizationId);
+
+  const items = await findUpcomingSchedulingForOrganization({ organizationId });
+  const filtered = filterAppointmentsForListRange(items, {
+    rangeType: intent.rangeType,
+    dayReference: intent.dayReference,
+    timeZone,
+    now,
+  });
+
+  const { header, empty, includeDate } = listRangeLabel(intent.rangeType, intent.dayReference);
+  if (filtered.length === 0) {
+    return { answer: empty };
+  }
+
+  const lines = filtered.map((item) => formatListEntry(item, timeZone, includeDate));
+  return { answer: `${header}\n${lines.join("\n")}` };
+}
+
 const TRAILING_TIME_PHRASE_PATTERNS = [
   /\s+(?:ו)?\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?\s*$/u,
   /\s+(?:ו)?בשעה\s+\d{1,2}(?::\d{2})?\s*$/iu,
@@ -1132,6 +1273,8 @@ async function resolveCalendarCommandCustomer(input: {
   question: string;
   spokenName: string | null;
   activeContext: ActiveCalendarContext | null;
+  /** When set, narrow the customer's appointments to the referenced day. */
+  filterDayReference?: string | null;
 }) {
   const upcomingAppointments = await findUpcomingSchedulingForOrganization({
     organizationId: input.organizationId,
@@ -1168,7 +1311,7 @@ async function resolveCalendarCommandCustomer(input: {
     return { kind: "not_found" as const, spokenName: "" };
   }
 
-  const appointments = nameResolution.clientId
+  const allClientAppointments = nameResolution.clientId
     ? await findUpcomingSchedulingForClient({
         organizationId: input.organizationId,
         clientId: nameResolution.clientId,
@@ -1179,6 +1322,25 @@ async function resolveCalendarCommandCustomer(input: {
           normalizeHebrewAppointmentText(item.clientName) ===
           normalizeHebrewAppointmentText(nameResolution.clientName)
       );
+
+  // Day-scoping: "תבטלי את התור של שרית מחר" must target only tomorrow's
+  // appointment. A single unambiguous appointment is kept even if the parsed day
+  // doesn't match (so cross-day moves and loose phrasing still work).
+  let appointments = allClientAppointments;
+  if (input.filterDayReference && allClientAppointments.length > 0) {
+    const timeZone = await loadOrganizationTimezone(input.organizationId);
+    const sameDay = filterAppointmentsForListRange(allClientAppointments, {
+      dayReference: input.filterDayReference,
+      timeZone,
+      now: new Date(),
+    });
+    if (sameDay.length >= 1) {
+      appointments = sameDay;
+    } else if (allClientAppointments.length > 1) {
+      appointments = sameDay; // empty → force a clean "no appointment that day" answer
+    }
+  }
+
   if (appointments.length === 0 && input.activeContext?.appointmentId) {
     const contextual = upcomingAppointments.find(
       (item) => item.id === input.activeContext?.appointmentId && item.clientId === nameResolution.clientId
@@ -1208,11 +1370,13 @@ async function maybeBuildCancelAppointmentProposal(
   const clientName = extractCancelAppointmentClientName(question);
   if (!clientName && !pronounCommand) return null;
 
+  const cancelIntent = parseCalendarIntent(question);
   const resolved = await resolveCalendarCommandCustomer({
     organizationId,
     question,
     spokenName: clientName,
     activeContext,
+    filterDayReference: cancelIntent.dayReference,
   });
 
   if (resolved.kind === "ambiguous") {
@@ -1322,6 +1486,26 @@ export function extractRescheduleAppointment(
   return null;
 }
 
+/**
+ * Which day identifies the EXISTING appointment in a move command.
+ * - Explicit "מ<day>" form → that from-day.
+ * - "...ל<day> <time>" target form → the day (if any) BEFORE the target clause.
+ * - Otherwise ("ביום שני לשלוש") → the single day mentioned.
+ * Returns null when only a target day is present, so the existing appointment
+ * isn't accidentally filtered out (multi-appointment ambiguity is preserved).
+ */
+function extractExistingMoveDayReference(question: string): string | null {
+  const intent = parseCalendarIntent(question);
+  if (intent.fromDayReference) return intent.fromDayReference;
+
+  const parts = question.split(/(?:^|\s)ל(?=מחר|מחרתיים|היום|יום\s)/u);
+  if (parts.length > 1) {
+    const beforeTarget = parts.slice(0, -1).join(" ");
+    return extractCalendarDayReference(beforeTarget);
+  }
+  return extractCalendarDayReference(question);
+}
+
 async function maybeBuildRescheduleAppointmentProposal(
   organizationId: string,
   question: string,
@@ -1335,6 +1519,7 @@ async function maybeBuildRescheduleAppointmentProposal(
     question,
     spokenName: parsed.clientName,
     activeContext,
+    filterDayReference: extractExistingMoveDayReference(question),
   });
 
   if (resolved.kind === "ambiguous") {

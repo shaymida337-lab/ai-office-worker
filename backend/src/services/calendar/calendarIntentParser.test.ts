@@ -104,3 +104,45 @@ test("conservative: uncertain input yields low confidence and missing fields", (
   assert.ok(result.missingFields.includes("customerName"));
   assert.ok(result.missingFields.includes("time"));
 });
+
+test('list: "מה יש לי מחר ביומן?" → list_appointments / day / מחר', () => {
+  const result = parseCalendarIntent("מה יש לי מחר ביומן?", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.rangeType, "day");
+  assert.equal(result.dayReference, "מחר");
+});
+
+test('list: "מה התורים שלי?" → list_appointments / all', () => {
+  const result = parseCalendarIntent("מה התורים שלי?", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.rangeType, "all");
+  assert.equal(result.dayReference, null);
+});
+
+test('list: "מה יש לי ביום שני?" → list_appointments / יום שני', () => {
+  const result = parseCalendarIntent("מה יש לי ביום שני?", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.rangeType, "day");
+  assert.equal(result.dayReference, "יום שני");
+});
+
+test('list: "תראי לי את התורים של מחר" → list_appointments / מחר', () => {
+  const result = parseCalendarIntent("תראי לי את התורים של מחר", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.dayReference, "מחר");
+});
+
+test('list: "כמה תורים יש לי השבוע?" → list_appointments / week', () => {
+  const result = parseCalendarIntent("כמה תורים יש לי השבוע?", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.rangeType, "week");
+});
+
+test("list detection never hijacks a create/cancel/move command", () => {
+  assert.equal(parseCalendarIntent("תקבעי תור לשרית מחר ב-3", OPTS).intent, "create_appointment");
+  assert.equal(parseCalendarIntent("תבטלי את התור של שרית מחר", OPTS).intent, "cancel_appointment");
+  assert.equal(
+    parseCalendarIntent("תזיזי את התור של שרית ממחר בשלוש למחר בארבע", OPTS).intent,
+    "move_appointment"
+  );
+});

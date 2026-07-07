@@ -1,7 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import {
   AppointmentConflictError,
-  findUpcomingAppointmentsForClient,
   resolveAppointmentDateTime,
   updateAppointmentForOrganization,
   type AppointmentWithRelations,
@@ -34,6 +33,10 @@ import {
   formatAmbiguousCustomerMessage,
   resolveSchedulingCustomerMatches,
 } from "./schedulingCustomer.js";
+import {
+  getUpcomingSchedulingForClient,
+  getUpcomingSchedulingForOrganization,
+} from "./schedulingReadRepository.js";
 import { SchedulingFacadeError } from "./schedulingErrors.js";
 
 export { SchedulingFacadeError } from "./schedulingErrors.js";
@@ -108,57 +111,19 @@ export async function findUpcomingSchedulingForOrganization(params: {
   organizationId: string;
   limit?: number;
 }): Promise<Array<UpcomingSchedulingItem & { clientId: string }>> {
-  const limit = params.limit ?? 50;
-  if (!(await usesCalendarEngineScheduling(params.organizationId))) {
-    const appointments = await prisma.appointment.findMany({
-      where: {
-        organizationId: params.organizationId,
-        status: { not: "cancelled" },
-        startTime: { gte: new Date() },
-      },
-      include: {
-        client: { select: { id: true, name: true } },
-        service: { select: { name: true } },
-      },
-      orderBy: { startTime: "asc" },
-      take: limit,
-    });
-    return appointments.map((appointment) => ({
-      id: appointment.id,
-      startTime: appointment.startTime,
-      durationMinutes: appointment.durationMinutes,
-      clientName: appointment.client.name,
-      serviceName: appointment.service?.name ?? undefined,
-      clientId: appointment.client.id,
-    }));
-  }
-
-  const events = await prisma.calendarEvent.findMany({
-    where: {
-      organizationId: params.organizationId,
-      status: { in: ["pending_readiness", "confirmed"] },
-      startAt: { gte: new Date() },
-    },
-    include: {
-      client: { select: { id: true, name: true } },
-      service: { select: { name: true, durationMinutes: true } },
-    },
-    orderBy: { startAt: "asc" },
-    take: limit,
+  // Single source of truth: always merge legacy Appointment + CalendarEvent so
+  // Natalie finds bookings regardless of which table (or engine flag) stored them.
+  const items = await getUpcomingSchedulingForOrganization({
+    organizationId: params.organizationId,
+    limit: params.limit ?? 50,
   });
-
-  return events.map((event) => ({
-    id: event.id,
-    startTime: event.startAt,
-    durationMinutes: Math.max(
-      1,
-      Math.round((event.endAt.getTime() - event.startAt.getTime()) / 60_000) ||
-        event.service?.durationMinutes ||
-        30
-    ),
-    clientName: event.client?.name ?? "לקוח",
-    serviceName: event.service?.name ?? undefined,
-    clientId: event.client?.id ?? "",
+  return items.map((item) => ({
+    id: item.id,
+    startTime: item.startTime,
+    durationMinutes: item.durationMinutes,
+    clientName: item.clientName,
+    serviceName: item.serviceName,
+    clientId: item.clientId ?? "",
   }));
 }
 
@@ -167,43 +132,17 @@ export async function findUpcomingSchedulingForClient(params: {
   clientId: string;
   limit?: number;
 }): Promise<UpcomingSchedulingItem[]> {
-  if (!(await usesCalendarEngineScheduling(params.organizationId))) {
-    const appointments = await findUpcomingAppointmentsForClient(params);
-    return appointments.map((appointment) => ({
-      id: appointment.id,
-      startTime: appointment.startTime,
-      durationMinutes: appointment.durationMinutes,
-      clientName: appointment.client.name,
-      serviceName: appointment.service?.name ?? undefined,
-    }));
-  }
-
-  const events = await prisma.calendarEvent.findMany({
-    where: {
-      organizationId: params.organizationId,
-      clientId: params.clientId,
-      status: { in: ["pending_readiness", "confirmed"] },
-      startAt: { gte: new Date() },
-    },
-    include: {
-      client: { select: { name: true } },
-      service: { select: { name: true, durationMinutes: true } },
-    },
-    orderBy: { startAt: "asc" },
-    take: params.limit ?? 10,
+  const items = await getUpcomingSchedulingForClient({
+    organizationId: params.organizationId,
+    clientId: params.clientId,
+    limit: params.limit ?? 10,
   });
-
-  return events.map((event) => ({
-    id: event.id,
-    startTime: event.startAt,
-    durationMinutes: Math.max(
-      1,
-      Math.round((event.endAt.getTime() - event.startAt.getTime()) / 60_000) ||
-        event.service?.durationMinutes ||
-        30
-    ),
-    clientName: event.client?.name ?? "לקוח",
-    serviceName: event.service?.name ?? undefined,
+  return items.map((item) => ({
+    id: item.id,
+    startTime: item.startTime,
+    durationMinutes: item.durationMinutes,
+    clientName: item.clientName,
+    serviceName: item.serviceName,
   }));
 }
 
@@ -458,17 +397,18 @@ async function requireSchedulingItem(
       title: string | null;
     }
 > {
-  if (!(await usesCalendarEngineScheduling(organizationId))) {
-    const appointment = await prisma.appointment.findFirst({
-      where: { id: schedulingItemId, organizationId },
-      include: {
-        client: { select: { id: true, name: true, whatsappNumber: true, color: true } },
-        service: { select: { id: true, name: true, color: true, durationMinutes: true } },
-      },
-    });
-    if (!appointment) {
-      throw new SchedulingFacadeError("appointment_not_found", "התור לא נמצא");
-    }
+  // Table-agnostic lookup: a scheduling item resolved via the unified read
+  // repository may live in EITHER table, so try both and route execution by the
+  // table it actually lives in (not by the engine flag). Org scope is always
+  // enforced, preserving organization isolation.
+  const appointment = await prisma.appointment.findFirst({
+    where: { id: schedulingItemId, organizationId },
+    include: {
+      client: { select: { id: true, name: true, whatsappNumber: true, color: true } },
+      service: { select: { id: true, name: true, color: true, durationMinutes: true } },
+    },
+  });
+  if (appointment) {
     return { kind: "appointment", appointment };
   }
 

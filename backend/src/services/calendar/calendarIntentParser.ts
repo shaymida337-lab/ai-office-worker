@@ -4,7 +4,11 @@ export type CalendarIntentAction =
   | "create_appointment"
   | "cancel_appointment"
   | "move_appointment"
+  | "list_appointments"
   | "unknown";
+
+/** Time window for a list/read request. */
+export type CalendarListRange = "day" | "week" | "all";
 
 export type CalendarIntentConfidence = "high" | "medium" | "low";
 
@@ -19,6 +23,8 @@ export type CalendarIntentExtraction = {
   time: string | null;
   fromDayReference?: string | null;
   fromTime?: string | null;
+  /** For list_appointments: the requested time window. */
+  rangeType?: CalendarListRange;
   durationMinutes: number | null;
   serviceName: string | null;
   notes: string | null;
@@ -210,7 +216,27 @@ export function extractCustomerName(text: string): string | null {
   return candidate;
 }
 
+/** Read-only "what's on my calendar" phrasings — must run before create/cancel/move. */
+const LIST_PATTERNS: RegExp[] = [
+  /מה\s+התורים/u,
+  /ה?תורים\s+של\s+(?:היום|מחר|מחרתיים|יום|השבוע)/u,
+  /תראי?\s+לי\s+(?:את\s+)?(?:ה)?תורים/u,
+  /כמה\s+תורים/u,
+  /מה\s+יש\s+לי\s+[^?]*(?:ביומן|יומן|תור|היום|מחר|מחרתיים|השבוע|ביום)/u,
+];
+
+function isListIntent(text: string): boolean {
+  // Never treat a scheduling/mutation command as a list request.
+  if (/(?:תקבע|קבע|תזמן|תזמני|תרשמ|תרשום|רשמ|רשום|לקבוע|לזמן|תזיז|תעביר|תשנ|תבטל|בטל|ביטול|לבטל|לדחות)/u.test(text)) {
+    return false;
+  }
+  return LIST_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 function detectIntent(text: string): CalendarIntentAction {
+  if (isListIntent(text)) {
+    return "list_appointments";
+  }
   if (/(?:תזיז|תזיזי|תעביר|תעבירי|תשני|תשנה|שנה\s+מועד|לשנות\s+את\s+התור|לדחות)/u.test(text)) {
     return "move_appointment";
   }
@@ -348,10 +374,18 @@ export function parseCalendarIntent(
       dayReference = extractDayReference(moveMatch[3]);
       time = parseHebrewTime(moveMatch[4]);
     } else {
-      // Fallback: only a single target ("תזיזי את התור של שרית למחר בארבע").
+      // Fallback: only a single target ("תזיזי את התור של שרית למחר בארבע") or a
+      // same-day time change ("...ביום שני לשלוש" → existing day + to-time).
       const targetSegment = text.split(/(?:^|\s)ל(?=מחר|מחרתיים|היום|יום\s)/u).pop() ?? text;
       dayReference = extractDayReference(targetSegment) ?? extractDayReference(text);
-      time = parseHebrewTime(targetSegment);
+      // The "to" time can use the "ל" preposition ("לשלוש", "לשעה 3", "ל-4"),
+      // which the base time parser (expecting a "ב" prefix) misses. Rewrite the
+      // to-time "ל" → "ב" locally so it parses without touching global behavior.
+      const toTimeText = targetSegment.replace(
+        /(?:^|\s)ל(?=-?\s?\d|שעה|שלוש|שלושה|ארבע|ארבעה|חמש|חמישה|שש|שישה|שבע|שבעה|שמונה|תשע|תשעה|עשר|עשרה|אחת|שתיים|שתים|שניים)/u,
+        " ב"
+      );
+      time = parseHebrewTime(toTimeText);
     }
 
     const missingFields: string[] = [];
@@ -368,6 +402,23 @@ export function parseCalendarIntent(
       fromTime,
       confidence: missingFields.length === 0 && customerName ? "high" : "low",
       missingFields,
+    };
+  }
+
+  if (intent === "list_appointments") {
+    const dayReference = extractDayReference(text);
+    const rangeType: CalendarListRange = /השבוע|שבוע\s+הבא/u.test(text)
+      ? "week"
+      : dayReference
+        ? "day"
+        : "all";
+    return {
+      ...base,
+      dayReference,
+      date: resolveDate(dayReference, null, timeZone, now),
+      rangeType,
+      confidence: "high",
+      missingFields: [],
     };
   }
 
