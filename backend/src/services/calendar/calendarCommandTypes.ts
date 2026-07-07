@@ -36,4 +36,21 @@ export type CalendarAIResponse = {
   parsed: ParsedCalendarCommand;
   result: CalendarAIExecutionResult;
   message: string;
+  /** True when the assistant is asking the user to confirm before any DB write. */
+  requiresConfirmation?: boolean;
+  /** Structured, deterministic extraction shown to the user before creation. */
+  extraction?: {
+    intent: string;
+    customerName: string | null;
+    date: string | null;
+    dayReference: string | null;
+    time: string | null;
+    fromDayReference?: string | null;
+    fromTime?: string | null;
+    durationMinutes: number | null;
+    serviceName: string | null;
+    notes: string | null;
+    confidence: "high" | "medium" | "low";
+    missingFields: string[];
+  };
 };

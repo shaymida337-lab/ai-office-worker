@@ -712,11 +712,13 @@ calendarEngineRouter.post(
     const body = (req.body ?? {}) as Record<string, unknown>;
     rejectOrganizationIdInBody(body);
     const text = parseNonEmptyString(body.text, "text");
+    const confirm = body.confirm === true;
 
     const response = await processCalendarCommand({
       organizationId: req.auth!.organizationId,
       userId: req.auth!.userId,
       text,
+      confirm,
     });
     sendCalendarEngineSuccess(res, 200, response);
   })

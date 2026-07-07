@@ -1,5 +1,10 @@
 import { checkSlotAvailability } from "./availability.js";
 import { parseCalendarCommand } from "./calendarCommandParser.js";
+import {
+  parseCalendarIntent,
+  validateExtraction,
+  type CalendarIntentExtraction,
+} from "./calendarIntentParser.js";
 import type { CalendarAIResponse, ParsedCalendarCommand } from "./calendarCommandTypes.js";
 import {
   getFreeSlots,
@@ -22,6 +27,8 @@ export type ProcessCalendarCommandInput = {
   userId: string;
   text: string;
   now?: Date;
+  /** Must be explicitly true for any mutation (create/move/cancel) to write to the DB. */
+  confirm?: boolean;
 };
 
 function formatDayReference(dayReference?: string): string {
@@ -55,8 +62,177 @@ function formatAvailabilitySuccess(params: { available: boolean; dayReference?: 
   return formatConflictMessage({ dayReference: params.dayReference, time: params.time });
 }
 
+const INTENT_TO_ACTION: Record<string, ParsedCalendarCommand["action"]> = {
+  create_appointment: "create",
+  cancel_appointment: "cancel",
+  move_appointment: "move",
+};
+
+function toExtractionPayload(extraction: CalendarIntentExtraction): CalendarAIResponse["extraction"] {
+  return {
+    intent: extraction.intent,
+    customerName: extraction.customerName,
+    date: extraction.date,
+    dayReference: extraction.dayReference,
+    time: extraction.time,
+    fromDayReference: extraction.fromDayReference ?? null,
+    fromTime: extraction.fromTime ?? null,
+    durationMinutes: extraction.durationMinutes,
+    serviceName: extraction.serviceName,
+    notes: extraction.notes,
+    confidence: extraction.confidence,
+    missingFields: extraction.missingFields,
+  };
+}
+
+function mapExtractionToCommand(extraction: CalendarIntentExtraction): ParsedCalendarCommand {
+  return {
+    action: INTENT_TO_ACTION[extraction.intent] ?? "unknown",
+    rawText: extraction.rawText,
+    confidence: extraction.confidence,
+    customer: extraction.customerName ?? undefined,
+    dayReference: extraction.dayReference ?? undefined,
+    time: extraction.time ?? undefined,
+    durationMinutes: extraction.durationMinutes ?? undefined,
+    notes: extraction.notes ?? undefined,
+  };
+}
+
+function buildCreateConfirmation(extraction: CalendarIntentExtraction): string {
+  const day = formatDayReference(extraction.dayReference ?? undefined);
+  return `הבנתי: לקבוע תור ל${extraction.customerName} ${day} בשעה ${extraction.time}. לאשר?`;
+}
+
+function buildClarificationQuestion(extraction: CalendarIntentExtraction): string {
+  const missing = extraction.missingFields;
+  const who = extraction.customerName ? ` ל${extraction.customerName}` : "";
+  if (missing.includes("customerName")) {
+    return "לא הבנתי לְמי לקבוע את התור. מה שם הלקוח/ה?";
+  }
+  if (missing.includes("time")) {
+    return `באיזו שעה לקבוע את התור${who}?`;
+  }
+  if (missing.includes("date")) {
+    return `לְאיזה יום לקבוע את התור${who}?`;
+  }
+  return "לא הבנתי את הבקשה במלואה. אפשר לנסח שוב עם שם הלקוח, היום והשעה?";
+}
+
+function pendingConfirmation(
+  extraction: CalendarIntentExtraction,
+  message: string
+): CalendarAIResponse {
+  return {
+    parsed: mapExtractionToCommand(extraction),
+    result: {
+      ok: false,
+      action: INTENT_TO_ACTION[extraction.intent] ?? "unknown",
+      code: "NEEDS_CONFIRMATION",
+      message: "Awaiting user confirmation before any write.",
+    },
+    message,
+    requiresConfirmation: true,
+    extraction: toExtractionPayload(extraction),
+  };
+}
+
+/**
+ * Natural-language entry point. Uses a deterministic Hebrew pre-parser and,
+ * for any mutation, requires explicit confirmation before writing to the DB.
+ */
 export async function processCalendarCommand(input: ProcessCalendarCommandInput): Promise<CalendarAIResponse> {
+  const extraction = parseCalendarIntent(input.text, { now: input.now });
+
+  // Deterministic Hebrew handling for mutating intents (create/cancel/move).
+  if (extraction.intent !== "unknown") {
+    const validation = validateExtraction(extraction);
+
+    // Conservative: if uncertain, incomplete, or the safety net flagged the
+    // extraction, ask one short question and never write.
+    const uncertain =
+      !validation.valid ||
+      extraction.confidence !== "high" ||
+      extraction.missingFields.length > 0;
+
+    if (extraction.intent === "create_appointment") {
+      if (uncertain) {
+        return pendingConfirmation(extraction, buildClarificationQuestion(extraction));
+      }
+      if (!input.confirm) {
+        return pendingConfirmation(extraction, buildCreateConfirmation(extraction));
+      }
+      return executeParsedCalendarCommand({
+        organizationId: input.organizationId,
+        userId: input.userId,
+        parsed: mapExtractionToCommand(extraction),
+        now: input.now,
+      });
+    }
+
+    if (extraction.intent === "cancel_appointment") {
+      if (!extraction.customerName || !validation.valid) {
+        return pendingConfirmation(
+          extraction,
+          "לא הבנתי איזה תור לבטל. של מי התור?"
+        );
+      }
+      if (!input.confirm) {
+        const day = extraction.dayReference ? ` ${formatDayReference(extraction.dayReference)}` : "";
+        return pendingConfirmation(
+          extraction,
+          `הבנתי: לבטל את התור של ${extraction.customerName}${day}. לאשר?`
+        );
+      }
+      return executeParsedCalendarCommand({
+        organizationId: input.organizationId,
+        userId: input.userId,
+        parsed: mapExtractionToCommand(extraction),
+        now: input.now,
+      });
+    }
+
+    if (extraction.intent === "move_appointment") {
+      if (uncertain) {
+        return pendingConfirmation(
+          extraction,
+          "לא הבנתי לאן להזיז את התור. של מי התור, ולאיזה יום ושעה?"
+        );
+      }
+      if (!input.confirm) {
+        const day = formatDayReference(extraction.dayReference ?? undefined);
+        return pendingConfirmation(
+          extraction,
+          `הבנתי: להזיז את התור של ${extraction.customerName} ל${day} בשעה ${extraction.time}. לאשר?`
+        );
+      }
+      return executeParsedCalendarCommand({
+        organizationId: input.organizationId,
+        userId: input.userId,
+        parsed: mapExtractionToCommand(extraction),
+        now: input.now,
+      });
+    }
+  }
+
+  // Fallback to the legacy parser for English + non-mutating intents
+  // (availability lookup, list, search) which do not write to the DB.
   const parsed = parseCalendarCommand(input.text);
+  if (parsed.action === "create" || parsed.action === "move" || parsed.action === "cancel") {
+    // Legacy parser reached a mutation we could not deterministically verify.
+    // Stay conservative: ask for confirmation instead of writing.
+    return {
+      parsed,
+      result: {
+        ok: false,
+        action: parsed.action,
+        code: "NEEDS_CONFIRMATION",
+        message: "Awaiting user confirmation before any write.",
+      },
+      message: "אני רוצה לוודא לפני שאני קובעת ביומן. אפשר לאשר את הפרטים?",
+      requiresConfirmation: true,
+    };
+  }
+
   return executeParsedCalendarCommand({
     organizationId: input.organizationId,
     userId: input.userId,
