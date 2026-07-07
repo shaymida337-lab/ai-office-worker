@@ -84,6 +84,91 @@ test("parseInitialCalendarPendingIntent captures partial cancel", () => {
   assert.deepEqual(pending?.missingFields, ["target"]);
 });
 
+test("PROD BUG: create follow-up 'עם רונן' merges customer into pending create", () => {
+  const pending = parseInitialCalendarPendingIntent("תקבעי לי פגישה ביום חמישי ב 10:00", {
+    timeZone: "Asia/Jerusalem",
+    now: new Date("2026-07-07T06:00:00.000Z"),
+  });
+  assert.ok(pending);
+  assert.equal(pending?.intent, "create_appointment");
+  assert.ok(pending?.missingFields.includes("customerName"));
+  // Date + time captured up front must survive the merge.
+  assert.equal(pending?.dayReference, "יום חמישי");
+  assert.equal(pending?.time, "10:00");
+
+  const merged = mergeCalendarPendingIntent(pending!, "עם רונן");
+  assert.equal(merged.customerName, "רונן");
+  assert.equal(merged.dayReference, "יום חמישי");
+  assert.equal(merged.time, "10:00");
+  assert.deepEqual(merged.missingFields, []);
+});
+
+test("create follow-up bare name 'רונן' also merges", () => {
+  const pending: CalendarPendingIntent = {
+    intent: "create_appointment",
+    action: "create_appointment",
+    cancelTarget: null,
+    customerName: null,
+    dayReference: "יום חמישי",
+    date: "2026-07-09",
+    time: "10:00",
+    fromDayReference: null,
+    fromTime: null,
+    missingFields: ["customerName"],
+    originalUserText: "תקבעי לי פגישה ביום חמישי ב 10:00",
+    lastAssistantQuestion: "לא הבנתי למי לקבוע את התור. מה שם הלקוח/ה?",
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+  };
+  const merged = mergeCalendarPendingIntent(pending, "רונן");
+  assert.equal(merged.customerName, "רונן");
+  assert.deepEqual(merged.missingFields, []);
+});
+
+test("create follow-up time 'בשעה 4' merges into pending create", () => {
+  const pending: CalendarPendingIntent = {
+    intent: "create_appointment",
+    action: "create_appointment",
+    cancelTarget: null,
+    customerName: "רונן",
+    dayReference: "יום חמישי",
+    date: "2026-07-09",
+    time: null,
+    fromDayReference: null,
+    fromTime: null,
+    missingFields: ["time"],
+    originalUserText: "תקבעי פגישה עם רונן ביום חמישי",
+    lastAssistantQuestion: "באיזו שעה לקבוע את התור?",
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+  };
+  const merged = mergeCalendarPendingIntent(pending, "בשעה 4");
+  assert.equal(merged.time, "16:00");
+  assert.deepEqual(merged.missingFields, []);
+});
+
+test("follow-up customer for cancel keeps single target", () => {
+  const pending: CalendarPendingIntent = {
+    intent: "cancel_appointment",
+    action: "cancel_appointment",
+    cancelTarget: null,
+    customerName: null,
+    dayReference: "יום חמישי",
+    date: "2026-07-09",
+    time: null,
+    fromDayReference: null,
+    fromTime: null,
+    missingFields: ["target"],
+    originalUserText: "בטלי לי את הפגישות ביום חמישי",
+    lastAssistantQuestion: "לא הבנתי למי לבטל. מה שם הלקוח/ה?",
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+  };
+  const merged = mergeCalendarPendingIntent(pending, "את שרית");
+  assert.equal(merged.customerName, "שרית");
+  assert.equal(merged.cancelTarget, "single");
+});
+
 test("recomputeMissingFields: cancel all requires date only", () => {
   const fields = recomputeMissingFields({
     intent: "cancel_appointment",

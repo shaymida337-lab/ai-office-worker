@@ -158,6 +158,7 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       normalizedFrom,
       mediaReply: mediaResult.reply,
       autoReplyEnabled: config.twilio.autoReplyEnabled,
+      correlationId: messageSid,
     });
     if (reply) {
       twiml.message(reply);
@@ -517,6 +518,7 @@ export async function resolveOwnerAssistantWhatsAppReply(
     normalizedFrom: string;
     mediaReply: string | null;
     autoReplyEnabled: boolean;
+    correlationId?: string;
   },
   deps: OwnerAssistantWhatsAppReplyDeps = {}
 ): Promise<string | null> {
@@ -530,6 +532,7 @@ export async function resolveOwnerAssistantWhatsAppReply(
       organizationId: input.organizationId,
       message: input.body,
       phone: input.normalizedFrom,
+      correlationId: input.correlationId,
     });
     return reply ?? "";
   });

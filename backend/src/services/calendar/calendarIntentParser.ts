@@ -62,6 +62,15 @@ const CUSTOMER_NAME_STOPWORDS = [
   "בלילה",
   "אתמול",
   "עכשיו",
+  "יום",
+  "ראשון",
+  "שני",
+  "שלישי",
+  "רביעי",
+  "חמישי",
+  "שישי",
+  "שבת",
+  "השבוע",
 ];
 
 const TIME_CONTEXT = {
@@ -95,7 +104,7 @@ const HEBREW_HOUR_WORDS: Record<string, number> = {
 };
 
 const DATE_TIME_BOUNDARY =
-  /(?:^|\s)(?:ממחרתיים|ממחר|מהיום|למחרתיים|למחר|להיום|ליום|מחרתיים|מחר|היום|ביום|בשעה|ב-?\d|ב\s+\d|בבוקר|בערב|בצהריים|בצהרים|בלילה|ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת|בשלושה|בשלוש|בארבעה|בארבע|בחמישה|בחמש|בשישה|בשש|בשבעה|בשבע|בשמונה|בתשעה|בתשע|בעשרה|בעשר|באחת|בשתיים|בשניים|\d{1,2}[:.]\d{2}|\d{1,2}[./]\d{1,2})/u;
+  /(?:^|\s)(?:ממחרתיים|ממחר|מהיום|מיום|למחרתיים|למחר|להיום|ליום|מחרתיים|מחר|היום|ביום|בשעה|ב-?\d|ב\s+\d|בבוקר|בערב|בצהריים|בצהרים|בלילה|ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת|בשלושה|בשלוש|בארבעה|בארבע|בחמישה|בחמש|בשישה|בשש|בשבעה|בשבע|בשמונה|בתשעה|בתשע|בעשרה|בעשר|באחת|בשתיים|בשניים|\d{1,2}[:.]\d{2}|\d{1,2}[./]\d{1,2})/u;
 
 function normalize(text: string): string {
   return text.trim().replace(/\s+/g, " ");
@@ -189,25 +198,33 @@ function looksLikeStopword(name: string): boolean {
   });
 }
 
-/** Extract a customer name after the "ל" preposition, cutting at date/time markers. */
+/** Extract a customer name after עם / ל / של, cutting at date/time markers. */
 export function extractCustomerName(text: string): string | null {
   const normalized = normalize(text);
+  // "פגישה עם רונן", "תור עם רונן", "עם רונן" — highest priority, most natural.
+  const afterWith = normalized.match(
+    /(?:^|\s)עם\s+(?!עצמי(?:\s|$))([^\s].*)$/u
+  );
   // Most specific patterns first — avoid "התור למחר" being read as a customer.
   const afterCancelMove = normalized.match(
     /(?:של)\s+ל?([^\s].*)$/u
   );
   const afterMoveToClient = normalized.match(
-    /(?:תזיז|תזיזי|תעביר|תעבירי|תדחי|תדחה)\s+ל(?!לי\s)([^\s]+)\s+את\s+(?:ה)?(?:תור|פגישה)/u
+    /(?:תזיז|תזיזי|תעביר|תעבירי|תדחי|תדחה)\s+ל(?!י\s)([^\s]+)\s+את\s+(?:ה)?(?:תור|פגישה)/u
   );
-  const afterPutForMe = normalized.match(/שימי\s+לי\s+(?:תור\s+)?ל([^\s].*)$/u);
+  const afterPutForMe = normalized.match(/שימי\s+לי\s+(?:תור\s+)?ל(?!י\s)([^\s].*)$/u);
+  // "תקבעי לי פגישה עם ..." is handled by afterWith. Here allow an optional
+  // "לי", "פגישה", "תור" filler between the verb and the "ל<name>" clause, and
+  // never treat "לי" itself as the name.
   const afterVerb = normalized.match(
-    /(?:תקבעי|תקבע|קבעי|קבע|תזמני|תזמן|תרשמי|תרשום|רשמי|רשום|תכניסי|תכניס)\s+ל([^\s].*)$/u
+    /(?:תקבעי|תקבע|קבעי|קבע|תזמני|תזמן|תרשמי|תרשום|רשמי|רשום|תכניסי|תכניס)\s+(?:לי\s+)?(?:פגישה\s+|תור\s+)?ל(?!י\s|מחר|מחרתיים|היום|יום\s)([^\s].*)$/u
   );
   const afterAppointmentNoun = normalized.match(
-    /(?:תור|פגישה)\s+ל(?!מחר|מחרתיים|היום|יום\s)([^\s].*)$/u
+    /(?:תור|פגישה)\s+ל(?!י\s|מחר|מחרתיים|היום|יום\s)([^\s].*)$/u
   );
 
   const raw =
+    afterWith?.[1] ??
     afterCancelMove?.[1] ??
     afterMoveToClient?.[1] ??
     afterPutForMe?.[1] ??
@@ -239,7 +256,7 @@ export function extractCustomerName(text: string): string | null {
 }
 
 // Verb families (Hebrew synonyms) shared by intent detection.
-const MOVE_VERBS = /(?:תזיז|תזיזי|להזיז|תעביר|תעבירי|להעביר|תשני|תשנה|שנה\s+מועד|לשנות\s+את\s+התור|תדחי|תדחה|לדחות)/u;
+const MOVE_VERBS = /(?:תזיז|תזיזי|להזיז|תעביר|תעבירי|להעביר|תשני|תשנה|שני\s+את|שנה\s+את|שנה\s+מועד|לשנות\s+את\s+התור|תדחי|תדחה|לדחות)/u;
 const CANCEL_VERBS = /(?:תבטל|תבטלי|בטל|בטלי|ביטול|לבטל|תמחק|תמחקי|למחוק|תוריד|תורידי|להוריד)/u;
 const CREATE_VERBS = /(?:תקבעי|תקבע|קבעי|קבע|תזמני|תזמן|תרשמי|תרשום|רשמי|רשום|לקבוע|לזמן|תכניסי|תכניס|להכניס|שימי\s+לי|שים\s+לי)/u;
 
@@ -251,6 +268,10 @@ const LIST_PATTERNS: RegExp[] = [
   /כמה\s+(?:תורים|פגישות)/u,
   /מה\s+קורה\s+ביומן/u,
   /מה\s+יש\s+לי\s+[^?]*(?:ביומן|יומן|תור|פגיש|היום|מחר|מחרתיים|השבוע|ביום)/u,
+  // "איזה/אילו פגישות יש לי ביום חמישי", "איזה תורים יש לי מחר"
+  /(?:איזה|אילו|כמה)\s+(?:ה)?(?:תורים|פגישות)/u,
+  // "מי קבוע לי היום", "מי יש לי מחר"
+  /מי\s+(?:קבוע|יש)\s+לי/u,
 ];
 
 function isListIntent(text: string): boolean {

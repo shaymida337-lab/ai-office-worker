@@ -33,6 +33,12 @@ export const calendarMessages = {
   unsupportedCalendar(): string {
     return "לא הבנתי את הבקשה ליומן. אפשר לנסח שוב עם שם, יום ושעה?";
   },
+  processingError(): string {
+    return "סליחה, הייתה לי תקלה רגעית בטיפול בהודעה. אפשר לשלוח שוב?";
+  },
+  processingTimeout(): string {
+    return "זה לוקח לי יותר מדי זמן כרגע. אפשר לשלוח שוב בעוד רגע?";
+  },
 
   // ---- Cancel ----
   cancelMissingCustomer(): string {

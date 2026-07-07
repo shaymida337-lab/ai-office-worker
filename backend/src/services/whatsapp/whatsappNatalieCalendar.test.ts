@@ -125,20 +125,31 @@ test("'כן' WITH a pending confirmation routes to the brain (confirmation conti
   assert.match(reply ?? "", /נקבע/);
 });
 
-test("'כן' WITHOUT a pending confirmation → null (bare yes stays on owner engine)", async () => {
+test("'כן' WITHOUT a pending confirmation routes to the brain for a clarification (never silent)", async () => {
+  // Spec: a lone "כן" must produce a terminal outcome (the brain asks what to
+  // confirm) — it must NOT be silently dropped. The bareYesWithoutPending guard
+  // lives in the shared brain, so the bridge routes and returns its reply.
   let called = false;
   const reply = await maybeHandleWhatsAppCalendarMessage(
     { organizationId: ORG, message: "כן" },
     makeDeps({
-      loadLatestSession: async () => ({ id: "sess-9", hasPendingConfirmation: false }),
+      loadLatestSession: async () => ({
+        id: "sess-9",
+        hasPendingConfirmation: false,
+        hasPendingCalendarIntent: false,
+      }),
       processTurn: (async () => {
         called = true;
-        return fakeTurnResult();
+        return fakeTurnResult({
+          answer: "כדי לאשר צריך קודם בקשה. מה תרצה שאעשה ביומן?",
+          displayResponse: "כדי לאשר צריך קודם בקשה. מה תרצה שאעשה ביומן?",
+        });
       }) as unknown as WhatsAppCalendarDeps["processTurn"],
     })
   );
-  assert.equal(reply, null);
-  assert.equal(called, false);
+  assert.equal(called, true);
+  assert.notEqual(reply, null);
+  assert.match(reply ?? "", /תרצה|לאשר/);
 });
 
 test("existing whatsapp session is reused so multi-turn confirmation works", async () => {

@@ -146,3 +146,73 @@ test("list detection never hijacks a create/cancel/move command", () => {
     "move_appointment"
   );
 });
+
+// ---- World-class command set (real production failures) ----
+
+test('PROD BUG: "תקבעי לי פגישה עם רונן ביום חמישי ב 10:00 בבוקר" → complete, no clarification', () => {
+  const result = parseCalendarIntent(
+    "תקבעי לי פגישה עם רונן ביום חמישי ב 10:00 בבוקר",
+    OPTS
+  );
+  assert.equal(result.intent, "create_appointment");
+  assert.equal(result.customerName, "רונן");
+  assert.equal(result.dayReference, "יום חמישי");
+  assert.equal(result.time, "10:00");
+  assert.deepEqual(result.missingFields, []);
+  assert.equal(result.confidence, "high");
+});
+
+test('customer after עם / לרונן / של — never asks for the name that is present', () => {
+  assert.equal(extractCustomerName("תקבעי לי פגישה עם רונן ביום חמישי ב 10:00 בבוקר"), "רונן");
+  assert.equal(extractCustomerName("תקבעי תור לרונן מחר ב-3"), "רונן");
+  assert.equal(extractCustomerName("קבעי לי תור עם שרית ביום ראשון בשעה 12"), "שרית");
+  assert.equal(extractCustomerName("בטלי לי את התור של רונן מחר"), "רונן");
+});
+
+test('"לי" is never mistaken for a customer name', () => {
+  const result = parseCalendarIntent("תקבעי לי פגישה ביום חמישי ב 10:00", OPTS);
+  assert.equal(result.intent, "create_appointment");
+  assert.equal(result.customerName, null);
+  assert.ok(result.missingFields.includes("customerName"));
+});
+
+test('PROD BUG: "איזה פגישות יש לי ביום חמישי" → list (was unanswered)', () => {
+  const result = parseCalendarIntent("איזה פגישות יש לי ביום חמישי", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.dayReference, "יום חמישי");
+  assert.deepEqual(result.missingFields, []);
+});
+
+test('list: "מי קבוע לי היום" → list / היום', () => {
+  const result = parseCalendarIntent("מי קבוע לי היום", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.dayReference, "היום");
+});
+
+test('reschedule with עם and bare שני: "שני את הפגישה של דנה ליום ראשון ב 10"', () => {
+  const result = parseCalendarIntent("שני את הפגישה של דנה ליום ראשון ב 10", OPTS);
+  assert.equal(result.intent, "move_appointment");
+  assert.equal(result.customerName, "דנה");
+  assert.equal(result.dayReference, "יום ראשון");
+  assert.equal(result.time, "10:00");
+});
+
+test('reschedule: "תעבירי את הפגישה עם רונן מיום חמישי לשעה 12"', () => {
+  const result = parseCalendarIntent("תעבירי את הפגישה עם רונן מיום חמישי לשעה 12", OPTS);
+  assert.equal(result.intent, "move_appointment");
+  assert.equal(result.customerName, "רונן");
+  assert.equal(result.time, "12:00");
+});
+
+test('cancel-all: "תבטלי את כולם ביום חמישי" → cancelTarget all, no customer', () => {
+  const result = parseCalendarIntent("תבטלי את כולם ביום חמישי", OPTS);
+  assert.equal(result.intent, "cancel_appointment");
+  assert.equal(result.cancelTarget, "all");
+  assert.equal(result.customerName, null);
+  assert.equal(result.dayReference, "יום חמישי");
+  assert.deepEqual(result.missingFields, []);
+});
+
+test('"ב 10:00 בבוקר" resolves to 10:00, never 22:00', () => {
+  assert.equal(parseHebrewTime("ב 10:00 בבוקר"), "10:00");
+});

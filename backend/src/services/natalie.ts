@@ -1456,6 +1456,38 @@ function buildSyntheticMoveQuestion(intent: CalendarPendingIntent): string {
   return `תעבירי את התור של ${intent.customerName} ${day} ל-${time}`;
 }
 
+function buildCreateResponseFromPendingIntent(
+  intent: CalendarPendingIntent
+): NatalieClaudeResponse {
+  const extraction: CalendarIntentExtraction = {
+    intent: "create_appointment",
+    customerName: intent.customerName,
+    dayReference: intent.dayReference,
+    date: intent.date,
+    time: intent.time,
+    durationMinutes: null,
+    serviceName: null,
+    notes: null,
+    confidence:
+      intent.customerName && intent.dayReference && intent.time ? "high" : "low",
+    missingFields: recomputeCreateMissingFields(intent),
+    rawText: intent.originalUserText,
+  };
+  return (
+    buildCreateAppointmentResponse(extraction) ?? {
+      answer: buildCreateClarification(extraction),
+    }
+  );
+}
+
+function recomputeCreateMissingFields(intent: CalendarPendingIntent): string[] {
+  const missing: string[] = [];
+  if (!intent.customerName) missing.push("customerName");
+  if (!intent.dayReference) missing.push("date");
+  if (!intent.time) missing.push("time");
+  return missing;
+}
+
 export async function fulfillCalendarPendingIntent(
   organizationId: string,
   intent: CalendarPendingIntent,
@@ -1481,6 +1513,9 @@ export async function fulfillCalendarPendingIntent(
         activeContext
       )) ?? { answer: calendarMessages.rescheduleMissingCustomer() }
     );
+  }
+  if (intent.intent === "create_appointment") {
+    return buildCreateResponseFromPendingIntent(intent);
   }
   return { answer: calendarMessages.unsupportedCalendar() };
 }

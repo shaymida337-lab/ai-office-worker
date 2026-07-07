@@ -301,6 +301,67 @@ test("F: bare כן without pending confirmation does not cancel", async () => {
   }
 });
 
+test("CREATE complete: 'תקבעי לי פגישה עם רונן ביום חמישי ב 10:00 בבוקר' proposes booking, no name question", async () => {
+  const restore = installMocks([]);
+  const store = createSessionStore();
+  try {
+    const turn = await processNatalieTurn(
+      {
+        organizationId: ORG,
+        userId: USER,
+        channel: "web_chat",
+        modality: "text",
+        message: "תקבעי לי פגישה עם רונן ביום חמישי ב 10:00 בבוקר",
+        role: "owner",
+      },
+      { resolveSession: store.resolveSession, saveSession: store.saveSession }
+    );
+    assert.equal("action" in turn && turn.action, "book_appointment");
+    assert.doesNotMatch(turn.answer ?? "", /מה שם הלקוח/);
+    assert.match(turn.answer ?? "", /רונן/);
+    assert.match(turn.answer ?? "", /10:00/);
+  } finally {
+    restore();
+  }
+});
+
+test("CREATE follow-up: missing customer then 'עם רונן' merges and proposes booking", async () => {
+  const restore = installMocks([]);
+  const store = createSessionStore();
+  try {
+    const turn1 = await processNatalieTurn(
+      {
+        organizationId: ORG,
+        userId: USER,
+        channel: "web_chat",
+        modality: "text",
+        message: "תקבעי לי פגישה ביום חמישי ב 10:00",
+        role: "owner",
+      },
+      { resolveSession: store.resolveSession, saveSession: store.saveSession }
+    );
+    assert.match(turn1.answer ?? "", /מה שם הלקוח/);
+
+    const turn2 = await processNatalieTurn(
+      {
+        organizationId: ORG,
+        userId: USER,
+        channel: "web_chat",
+        modality: "text",
+        message: "עם רונן",
+        sessionId: turn1.conversationSessionId,
+        role: "owner",
+      },
+      { resolveSession: store.resolveSession, saveSession: store.saveSession }
+    );
+    assert.equal("action" in turn2 && turn2.action, "book_appointment");
+    assert.match(turn2.answer ?? "", /רונן/);
+    assert.match(turn2.answer ?? "", /10:00/);
+  } finally {
+    restore();
+  }
+});
+
 test("batch cancel execution clears only targeted IDs", async () => {
   const appointments = [
     appointmentOn("e1", "יום חמישי", "10:00", { id: "c1", name: "שרית" }),

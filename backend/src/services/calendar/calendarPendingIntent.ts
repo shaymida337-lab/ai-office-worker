@@ -30,7 +30,11 @@ export type CalendarPendingIntent = {
 };
 
 const FOLLOW_UP_CUSTOMER_PATTERNS = [
-  /^(?:את|רק\s+את|רק)\s+([א-ת][א-ת\s'-]{1,30})$/u,
+  // "עם רונן", "את רונן", "של רונן", "רק את רונן", "רק רונן"
+  /^(?:עם|את|של|רק\s+את|רק)\s+([א-ת][א-ת\s'-]{1,30})$/u,
+  // "לרונן" — prefix attaches to the name with no space.
+  /^ל([א-ת][א-ת'-]{1,30})$/u,
+  // Bare name: "רונן"
   /^([א-ת][א-ת'-]{1,30})$/u,
 ];
 
@@ -49,14 +53,20 @@ export function isCalendarFollowUpPhrase(text: string): boolean {
   return false;
 }
 
+const FOLLOW_UP_NAME_STOPWORDS =
+  /^(?:יום|מחר|מחרתיים|היום|אתמול|כולם|כול|כל|ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת|השבוע|בבוקר|בערב|בצהריים|בצהרים|בלילה|שעה|בשעה|כן|לא|מאשר|מאשרת|תאשרי)$/u;
+
 function extractFollowUpCustomerName(text: string): string | null {
   const normalized = normalize(text);
+  // A follow-up that carries a time/day is not a customer-name reply.
+  if (parseHebrewTime(normalized)) return null;
   for (const pattern of FOLLOW_UP_CUSTOMER_PATTERNS) {
     const match = normalized.match(pattern);
     const name = match?.[1]?.trim();
     if (!name) continue;
     if (isCancelAllTarget(name) || /^(?:כולם|כל)$/u.test(name)) continue;
-    if (/^(?:יום|מחר|היום)/u.test(name)) continue;
+    if (FOLLOW_UP_NAME_STOPWORDS.test(name)) continue;
+    if (extractDayReference(name)) continue;
     return name;
   }
   return null;
@@ -126,10 +136,12 @@ export function mergeCalendarPendingIntent(
   }
 
   const followUpCustomer = extractFollowUpCustomerName(normalized);
-  if (followUpCustomer && pending.intent === "cancel_appointment") {
-    patch.cancelTarget = "single";
+  if (followUpCustomer && !patch.customerName) {
     patch.customerName = followUpCustomer;
-    patch.action = "cancel_appointment";
+    if (pending.intent === "cancel_appointment") {
+      patch.cancelTarget = "single";
+      patch.action = "cancel_appointment";
+    }
   }
 
   const dayReference = extractDayReference(normalized);
@@ -137,6 +149,12 @@ export function mergeCalendarPendingIntent(
     patch.dayReference = dayReference;
     const resolved = parseCalendarIntent(`בדיקה ${dayReference}`, { timeZone, now });
     patch.date = resolved.date;
+  }
+
+  // Bare time follow-ups ("בשעה 4", "ב-10 בבוקר") complete a create/move intent.
+  if (pending.intent === "create_appointment" || pending.intent === "move_appointment") {
+    const followUpTime = parseHebrewTime(normalized);
+    if (followUpTime) patch.time = followUpTime;
   }
 
   if (/^לא\s*[,،]/u.test(normalized)) {
