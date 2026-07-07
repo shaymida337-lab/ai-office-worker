@@ -11,7 +11,6 @@ import {
 } from "../scheduling/schedulingFacade.js";
 import { resolveSchedulingCustomerMatches } from "../scheduling/schedulingCustomer.js";
 import { SchedulingFacadeError } from "../scheduling/schedulingErrors.js";
-import { withOrganizationSchedulingLock } from "./schedulingLock.js";
 import {
   resolveValidatedStartTime,
   validateParsedCommand,
@@ -100,20 +99,19 @@ export async function createAppointment(input: CreateAppointmentInput): Promise<
     );
   }
 
-  return withOrganizationSchedulingLock(input.organizationId, async () =>
-    bookAppointmentViaNatalie({
-      organizationId: input.organizationId,
-      userId: input.userId,
-      clientName: input.clientName,
-      clientId: input.clientId,
-      dayReference: input.dayReference,
-      time: input.time,
-      startTime: input.startTime,
-      durationMinutes: input.durationMinutes,
-      serviceName: input.serviceName,
-      notes: input.notes,
-    })
-  );
+  // bookAppointmentViaNatalie already opens its own org scheduling-lock transaction.
+  return bookAppointmentViaNatalie({
+    organizationId: input.organizationId,
+    userId: input.userId,
+    clientName: input.clientName,
+    clientId: input.clientId,
+    dayReference: input.dayReference,
+    time: input.time,
+    startTime: input.startTime,
+    durationMinutes: input.durationMinutes,
+    serviceName: input.serviceName,
+    notes: input.notes,
+  });
 }
 
 export async function moveAppointment(input: MoveAppointmentInput): Promise<NatalieRescheduleResult> {
@@ -139,26 +137,22 @@ export async function moveAppointment(input: MoveAppointmentInput): Promise<Nata
     }
   }
 
-  return withOrganizationSchedulingLock(input.organizationId, async () =>
-    rescheduleAppointmentViaNatalie({
-      organizationId: input.organizationId,
-      userId: input.userId,
-      schedulingItemId: input.schedulingItemId,
-      newDayReference: input.newDayReference,
-      newTime: input.newTime,
-      newStartTime: input.newStartTime,
-    })
-  );
+  return rescheduleAppointmentViaNatalie({
+    organizationId: input.organizationId,
+    userId: input.userId,
+    schedulingItemId: input.schedulingItemId,
+    newDayReference: input.newDayReference,
+    newTime: input.newTime,
+    newStartTime: input.newStartTime,
+  });
 }
 
 export async function cancelAppointment(input: CancelAppointmentInput): Promise<NatalieCancelResult> {
-  return withOrganizationSchedulingLock(input.organizationId, async () =>
-    cancelAppointmentViaNatalie({
-      organizationId: input.organizationId,
-      userId: input.userId,
-      schedulingItemId: input.schedulingItemId,
-    })
-  );
+  return cancelAppointmentViaNatalie({
+    organizationId: input.organizationId,
+    userId: input.userId,
+    schedulingItemId: input.schedulingItemId,
+  });
 }
 
 export async function searchAppointments(

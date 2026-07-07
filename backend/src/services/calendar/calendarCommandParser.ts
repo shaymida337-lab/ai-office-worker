@@ -10,13 +10,13 @@ function base(action: CalendarCommandAction, rawText: string, confidence: Calend
 }
 
 function extractDayReference(normalized: string): string | undefined {
-  if (/(?:^|\s)today(?:\s|$|[?.!,])/iu.test(normalized)) return "today";
-  if (/(?:^|\s)tomorrow(?:\s|$|[?.!,])/iu.test(normalized)) return "tomorrow";
-  if (/(?:^|\s)היום(?:\s|$|[?.!,])/u.test(normalized)) return "היום";
-  if (/(?:^|\s)מחרתיים(?:\s|$|[?.!,])/u.test(normalized)) return "מחרתיים";
-  if (/(?:^|\s)מחר(?:\s|$|[?.!,])/u.test(normalized)) return "מחר";
+  if (/(?:^|\s)ל?today(?:\s|$|[?.!,])/iu.test(normalized)) return "today";
+  if (/(?:^|\s)ל?tomorrow(?:\s|$|[?.!,])/iu.test(normalized)) return "tomorrow";
+  if (/(?:^|\s)ל?היום(?:\s|$|[?.!,])/u.test(normalized)) return "היום";
+  if (/(?:^|\s)ל?מחרתיים(?:\s|$|[?.!,])/u.test(normalized)) return "מחרתיים";
+  if (/(?:^|\s)ל?מחר(?:\s|$|[?.!,])/u.test(normalized)) return "מחר";
   const weekday = normalized.match(
-    /(?:יום\s+)?(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)|(?:on\s+)?(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)/iu
+    /(?:ל?יום\s+)?(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)|(?:on\s+)?(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)/iu
   );
   if (weekday) return weekday[0].trim();
   const dateMatch = normalized.match(/(\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?)/u);

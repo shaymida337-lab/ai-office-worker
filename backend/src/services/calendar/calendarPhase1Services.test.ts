@@ -35,7 +35,10 @@ test("parseCalendarCommand maps English create request", () => {
 
 test("parseCalendarCommand maps cancel and move intents", () => {
   assert.equal(parseCalendarCommand("בטלי את התור של דוד").action, "cancel");
-  assert.equal(parseCalendarCommand("תעביר את התור של מיכל למחר בשעה 16:00").action, "move");
+  const move = parseCalendarCommand("תעביר את התור של מיכל למחר בשעה 16:00");
+  assert.equal(move.action, "move");
+  assert.equal(move.dayReference, "מחר");
+  assert.equal(move.time, "16:00");
 });
 
 test("parseCalendarCommand maps availability lookup", () => {
