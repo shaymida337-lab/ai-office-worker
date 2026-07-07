@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createInboundWhatsAppLogOnce } from "./webhooks.js";
+import { createInboundWhatsAppLogOnce, resolveOwnerAssistantWhatsAppReply } from "./webhooks.js";
 
 function createFakeWhatsAppLogStore() {
   const logs: Array<{ id: string } & Record<string, any>> = [];
@@ -100,4 +100,58 @@ test("WhatsApp webhook idempotency processes different providerMessageSid values
   assert.equal(first.duplicate, false);
   assert.equal(second.duplicate, false);
   assert.equal(fake.logs.length, 2);
+});
+
+test("owner WhatsApp calendar reply is sent even when auto-reply is disabled", async () => {
+  const reply = await resolveOwnerAssistantWhatsAppReply(
+    {
+      organizationId: "org-1",
+      body: "תקבעי תור לשרית מחר ב-3",
+      normalizedFrom: "972501111111",
+      mediaReply: null,
+      autoReplyEnabled: false,
+    },
+    {
+      maybeHandleCalendar: async () => "לאשר לקבוע תור לשרית מחר ב-15:00?",
+      handleOwner: async () => "owner-chat-should-not-run",
+    }
+  );
+
+  assert.equal(reply, "לאשר לקבוע תור לשרית מחר ב-15:00?");
+});
+
+test("owner WhatsApp non-calendar chatter stays behind auto-reply gate", async () => {
+  const reply = await resolveOwnerAssistantWhatsAppReply(
+    {
+      organizationId: "org-1",
+      body: "שלום",
+      normalizedFrom: "972501111111",
+      mediaReply: null,
+      autoReplyEnabled: false,
+    },
+    {
+      maybeHandleCalendar: async () => null,
+      handleOwner: async () => "owner-chat",
+    }
+  );
+
+  assert.equal(reply, null);
+});
+
+test("owner WhatsApp falls back to owner chat when auto-reply is enabled", async () => {
+  const reply = await resolveOwnerAssistantWhatsAppReply(
+    {
+      organizationId: "org-1",
+      body: "שלום",
+      normalizedFrom: "972501111111",
+      mediaReply: null,
+      autoReplyEnabled: true,
+    },
+    {
+      maybeHandleCalendar: async () => null,
+      handleOwner: async () => "owner-chat",
+    }
+  );
+
+  assert.equal(reply, "owner-chat");
 });

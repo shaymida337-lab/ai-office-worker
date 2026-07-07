@@ -160,20 +160,14 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       media,
     }) : { reply: null };
 
-    if (config.twilio.autoReplyEnabled) {
-      const reply =
-        mediaResult.reply ??
-        (await safeReply(async () => {
-          // Calendar commands (and confirmations of a pending proposal) go
-          // through the SAME Natalie brain as web chat/voice. Everything else
-          // stays on the existing owner chat engine.
-          const calendarReply = await maybeHandleWhatsAppCalendarMessage({
-            organizationId: assistant.organizationId,
-            message: body,
-            phone: normalizedFrom,
-          });
-          return calendarReply ?? (await handleOwnerMessage(body, assistant.organizationId, normalizedFrom));
-        }));
+    const reply = await resolveOwnerAssistantWhatsAppReply({
+      organizationId: assistant.organizationId,
+      body,
+      normalizedFrom,
+      mediaReply: mediaResult.reply,
+      autoReplyEnabled: config.twilio.autoReplyEnabled,
+    });
+    if (reply) {
       twiml.message(reply);
       await prisma.whatsAppLog.create({
         data: {
@@ -513,6 +507,45 @@ async function safeReply(run: () => Promise<string>) {
     console.error("[webhook] WhatsApp assistant reply failed", err);
     return WHATSAPP_GENERIC_ERROR_MESSAGE;
   }
+}
+
+export type OwnerAssistantWhatsAppReplyDeps = {
+  maybeHandleCalendar?: typeof maybeHandleWhatsAppCalendarMessage;
+  handleOwner?: typeof handleOwnerMessage;
+};
+
+/**
+ * Owner WhatsApp replies: calendar commands always get a TwiML reply (even when
+ * general auto-reply is off). Non-calendar chatter stays behind autoReplyEnabled.
+ */
+export async function resolveOwnerAssistantWhatsAppReply(
+  input: {
+    organizationId: string;
+    body: string;
+    normalizedFrom: string;
+    mediaReply: string | null;
+    autoReplyEnabled: boolean;
+  },
+  deps: OwnerAssistantWhatsAppReplyDeps = {}
+): Promise<string | null> {
+  if (input.mediaReply) return input.mediaReply;
+
+  const maybeHandleCalendar = deps.maybeHandleCalendar ?? maybeHandleWhatsAppCalendarMessage;
+  const handleOwner = deps.handleOwner ?? handleOwnerMessage;
+
+  const calendarReply = await safeReply(async () => {
+    const reply = await maybeHandleCalendar({
+      organizationId: input.organizationId,
+      message: input.body,
+      phone: input.normalizedFrom,
+    });
+    return reply ?? "";
+  });
+  if (calendarReply) return calendarReply;
+
+  if (!input.autoReplyEnabled) return null;
+
+  return safeReply(() => handleOwner(input.body, input.organizationId, input.normalizedFrom));
 }
 
 async function safeMediaIngestion(input: Parameters<typeof ingestWhatsAppInvoiceMedia>[0]) {
