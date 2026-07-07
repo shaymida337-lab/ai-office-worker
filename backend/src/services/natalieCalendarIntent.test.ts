@@ -148,3 +148,30 @@ test("LIVE reschedule extraction bypasses Claude for the complex phrase", async 
   );
   assert.ok(parsed && parsed.clientName === "שרית" && parsed.time === "16:00");
 });
+
+test("move synonym: 'תעבירי לי את הפגישה של שרית ליום שני בשלוש' → 15:00", () => {
+  const parsed = extractRescheduleAppointment("תעבירי לי את הפגישה של שרית ליום שני בשלוש");
+  assert.ok(parsed);
+  assert.equal(parsed!.clientName, "שרית");
+  assert.equal(parsed!.dayReference, "יום שני");
+  assert.equal(parsed!.time, "15:00");
+});
+
+test("cancel synonym: 'תמחקי את התור של דני' parses cancel intent with דני", () => {
+  const intent = parseCalendarIntent("תמחקי את התור של דני", { timeZone: TZ, now: NOW });
+  assert.equal(intent.intent, "cancel_appointment");
+  assert.equal(intent.customerName, "דני");
+});
+
+test("list: 'מה יש לי מחר?' without ביומן", () => {
+  const intent = parseCalendarIntent("מה יש לי מחר?", { timeZone: TZ, now: NOW });
+  assert.equal(intent.intent, "list_appointments");
+  assert.equal(intent.dayReference, "מחר");
+});
+
+test("corrupted STT create still extracts שרית at 15:00", () => {
+  const res = createFor("תקווי תור לשרית מחר ב-3");
+  assert.ok(res && "action" in res && res.action === "book_appointment");
+  assert.equal(res.proposal.clientName, "שרית");
+  assert.equal(res.proposal.time, "15:00");
+});

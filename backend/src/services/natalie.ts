@@ -29,6 +29,7 @@ import {
   type CalendarIntentExtraction,
   type CalendarListRange,
 } from "./calendar/calendarIntentParser.js";
+import { calendarMessages } from "./calendar/calendarMessages.js";
 
 /** Injectable dependencies for deterministic testing of the Natalie brain. */
 export type AskNatalieDeps = {
@@ -90,6 +91,9 @@ export async function askNatalieBusinessQuestion(input: {
     deps
   );
   if (listAppointmentsResponse) return listAppointmentsResponse;
+
+  const partialCalendarResponse = maybeBuildPartialCalendarClarification(input.question);
+  if (partialCalendarResponse) return partialCalendarResponse;
 
   const businessFactsResponse = await maybeBuildBusinessFactsResponse(input.organizationId, input.question);
   if (businessFactsResponse) return businessFactsResponse;
@@ -157,15 +161,15 @@ function formatCreateDayLabel(dayReference: string | null): string {
 function buildCreateClarification(extraction: CalendarIntentExtraction): string {
   const who = extraction.customerName ? ` ל${extraction.customerName}` : "";
   if (extraction.missingFields.includes("customerName")) {
-    return "לא הבנתי למי לקבוע את התור. מה שם הלקוח/ה?";
+    return calendarMessages.createMissingCustomer();
   }
   if (extraction.missingFields.includes("time")) {
-    return `באיזו שעה לקבוע את התור${who}?`;
+    return calendarMessages.createMissingTime(who);
   }
   if (extraction.missingFields.includes("date")) {
-    return `לאיזה יום לקבוע את התור${who}?`;
+    return calendarMessages.createMissingDate(who);
   }
-  return "לא הבנתי את הבקשה במלואה. אפשר לחזור עם שם הלקוח, היום והשעה?";
+  return calendarMessages.createUnclear();
 }
 
 /**
@@ -200,7 +204,7 @@ export function buildCreateAppointmentResponse(
       time: extraction.time!,
       ...(extraction.durationMinutes ? { durationMinutes: extraction.durationMinutes } : {}),
     },
-    answer: `הבנתי: לקבוע תור ל${extraction.customerName} ${dayLabel} בשעה ${extraction.time}. לאשר?`,
+    answer: calendarMessages.createConfirmation(extraction.customerName!, dayLabel, extraction.time!),
   };
 }
 
@@ -1144,16 +1148,16 @@ function listRangeLabel(rangeType: CalendarListRange | undefined, dayReference: 
   includeDate: boolean;
 } {
   if (rangeType === "week") {
-    return { header: "התורים שלך השבוע:", empty: "אין לך תורים השבוע.", includeDate: true };
+    return { header: calendarMessages.listHeaderWeek(), empty: calendarMessages.listEmptyWeek(), includeDate: true };
   }
   if (dayReference) {
     return {
-      header: `התורים שלך ל${dayReference}:`,
-      empty: `אין לך תורים ל${dayReference}.`,
+      header: calendarMessages.listHeaderDay(dayReference),
+      empty: calendarMessages.listEmptyDay(dayReference),
       includeDate: false,
     };
   }
-  return { header: "התורים הקרובים שלך:", empty: "אין לך תורים קרובים ביומן.", includeDate: true };
+  return { header: calendarMessages.listHeaderAll(), empty: calendarMessages.listEmptyAll(), includeDate: true };
 }
 
 function formatListEntry(
@@ -1164,8 +1168,11 @@ function formatListEntry(
   const when = includeDate
     ? formatAppointmentWhen(item.startTime, timeZone)
     : formatTimeOnly(item.startTime, timeZone);
-  const service = item.serviceName?.trim();
-  return `• ${when} — ${item.clientName}${service ? ` (${service})` : ""}`;
+  return calendarMessages.listEntry({
+    when,
+    clientName: item.clientName,
+    serviceName: item.serviceName,
+  });
 }
 
 /**
@@ -1200,6 +1207,32 @@ async function maybeBuildListAppointmentsResponse(
 
   const lines = filtered.map((item) => formatListEntry(item, timeZone, includeDate));
   return { answer: `${header}\n${lines.join("\n")}` };
+}
+
+/**
+ * One short templated clarification for incomplete move/cancel commands — never
+ * Claude prose, never guessed values.
+ */
+function maybeBuildPartialCalendarClarification(question: string): NatalieClaudeResponse | null {
+  const intent = parseCalendarIntent(question);
+  if (intent.intent === "move_appointment") {
+    // Let the reschedule handler (incl. fuzzy name resolution) run when we already
+    // parsed a target — even if the deterministic intent lost the customer name.
+    if (extractRescheduleAppointment(question)) return null;
+    if (!intent.customerName) return { answer: calendarMessages.rescheduleMissingCustomer() };
+    if (intent.missingFields.includes("date")) return { answer: calendarMessages.rescheduleMissingDate() };
+    if (intent.missingFields.includes("time")) return { answer: calendarMessages.rescheduleMissingTime() };
+    return null;
+  }
+  if (
+    intent.intent === "cancel_appointment" &&
+    !intent.customerName &&
+    !extractCancelAppointmentClientName(question) &&
+    !isCancelPronounCommand(question)
+  ) {
+    return { answer: calendarMessages.cancelMissingCustomer() };
+  }
+  return null;
 }
 
 const TRAILING_TIME_PHRASE_PATTERNS = [
@@ -1237,7 +1270,7 @@ function stripTrailingTimePhrase(name: string): string {
 
 function extractCancelAppointmentClientName(question: string): string | null {
   const normalized = question.trim().replace(/\s+/g, " ");
-  if (/(?:תעביר|תעבירי|תשני|תשנה|שנה\s+מועד)/iu.test(normalized)) {
+  if (/(?:תעביר|תעבירי|תדחי|תדחה|תשני|תשנה|שנה\s+מועד)/iu.test(normalized)) {
     return null;
   }
   if (isPronounCalendarReference(normalized)) {
@@ -1245,10 +1278,9 @@ function extractCancelAppointmentClientName(question: string): string | null {
   }
 
   const patterns = [
-    /(?:בטל|בטלי)\s+(?:את\s+)?(?:ה)?תור\s+(?:של|ל)\s+(.+?)(?:\s*[.?!]|$)/iu,
-    /תבטלי\s+תור\s+(?:של|ל|-)?\s*(.+?)(?:\s*[.?!]|$)/iu,
-    /ביטול\s+(?:ה)?תור\s+(?:של|ל)\s+(.+?)(?:\s*[.?!]|$)/iu,
-    /(?:תעביר|תעבירי|תבטל|תבטלי|בטל|בטלי)\s+(?:את\s+)?(.+?)(?:\s*[.?!]|$)/iu,
+    /(?:בטל|בטלי|תבטל|תבטלי|תמחק|תמחקי|תוריד|תורידי)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:תור|פגישה)\s+(?:של|ל)\s+(.+?)(?:\s*[.?!]|$)/iu,
+    /תבטלי\s+(?:תור|פגישה)\s+(?:של|ל|-)?\s*(.+?)(?:\s*[.?!]|$)/iu,
+    /ביטול\s+(?:ה)?(?:תור|פגישה)\s+(?:של|ל)\s+(.+?)(?:\s*[.?!]|$)/iu,
   ];
 
   for (const pattern of patterns) {
@@ -1366,11 +1398,14 @@ async function maybeBuildCancelAppointmentProposal(
   question: string,
   activeContext: ActiveCalendarContext | null
 ): Promise<NatalieClaudeResponse | null> {
-  const pronounCommand = isCancelPronounCommand(question);
-  const clientName = extractCancelAppointmentClientName(question);
-  if (!clientName && !pronounCommand) return null;
-
   const cancelIntent = parseCalendarIntent(question);
+  const pronounCommand = isCancelPronounCommand(question);
+  const clientName = extractCancelAppointmentClientName(question) ?? cancelIntent.customerName;
+  if (cancelIntent.intent !== "cancel_appointment" && !clientName && !pronounCommand) return null;
+  if (cancelIntent.intent === "cancel_appointment" && !clientName && !pronounCommand) {
+    return { answer: calendarMessages.cancelMissingCustomer() };
+  }
+
   const resolved = await resolveCalendarCommandCustomer({
     organizationId,
     question,
@@ -1387,14 +1422,14 @@ async function maybeBuildCancelAppointmentProposal(
   }
   if (resolved.kind === "not_found") {
     if (pronounCommand) {
-      return { answer: "לא מצאתי תור פעיל מהשיחה האחרונה. למי לבטל את התור?" };
+      return { answer: calendarMessages.cancelPronounNotFound() };
     }
-    return { answer: `לא מצאתי תור שמתאים ל"${resolved.spokenName}". למי התכוונת?` };
+    return { answer: calendarMessages.notFoundNamed(resolved.spokenName) };
   }
 
   const { nameResolution, appointments } = resolved;
   if (appointments.length === 0) {
-    return { answer: `אין תור עתידי ל${nameResolution.clientName}.` };
+    return { answer: calendarMessages.noUpcomingForClient(nameResolution.clientName) };
   }
 
   const timeZone = await loadOrganizationTimezone(organizationId);
@@ -1402,9 +1437,7 @@ async function maybeBuildCancelAppointmentProposal(
     const list = appointments
       .map((appointment, index) => formatAppointmentListLine(appointment, index, timeZone))
       .join("\n");
-    return {
-      answer: `מצאתי כמה תורים עתידיים ל${nameResolution.clientName}. איזה תור לבטל?\n${list}`,
-    };
+    return { answer: calendarMessages.chooseCancel(nameResolution.clientName, list) };
   }
 
   const appointment = appointments[0]!;
@@ -1415,7 +1448,7 @@ async function maybeBuildCancelAppointmentProposal(
     nameResolution,
     timeZone,
     when,
-    defaultAnswer: `מצאתי תור ל${nameResolution.clientName} ב${when}. לבטל אותו?`,
+    defaultAnswer: calendarMessages.cancelConfirmation(nameResolution.clientName, when),
   });
 }
 
@@ -1443,20 +1476,19 @@ export function extractRescheduleAppointment(
   if (
     intent.intent === "move_appointment" &&
     intent.customerName &&
-    intent.dayReference &&
     intent.time
   ) {
     return {
       clientName: intent.customerName,
-      dayReference: intent.dayReference,
+      dayReference: intent.dayReference ?? extractCalendarDayReference(question) ?? "היום",
       time: intent.time,
     };
   }
 
   const normalized = question.trim().replace(/\s+/g, " ");
   const pronounPatterns = [
-    /(?:תעביר|תעבירי|תזיז|תזיזי|תשני|תשנה|שנה\s+מועד)\s+(?:את\s+)?(?:ה)?(?:תור\s+)?(?:אותו|אותה|לו|לה)\s+ל(?:ש|-)?\s*(.+)$/iu,
-    /(?:תעביר|תעבירי|תזיז|תזיזי|תשני|תשנה|שנה\s+מועד)\s+(?:את\s+)?(?:ה)?תור\s+ל(?:ש|-)?\s*(.+)$/iu,
+    /(?:תעביר|תעבירי|תדחי|תדחה|תזיז|תזיזי|תשני|תשנה|שנה\s+מועד)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:תור|פגישה\s+)?(?:אותו|אותה|לו|לה)\s+ל(?:ש|-)?\s*(.+)$/iu,
+    /(?:תעביר|תעבירי|תדחי|תדחה|תזיז|תזיזי|תשני|תשנה|שנה\s+מועד)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:תור|פגישה)\s+ל(?:ש|-)?\s*(.+)$/iu,
   ];
   for (const pattern of pronounPatterns) {
     const match = normalized.match(pattern);
@@ -1467,8 +1499,8 @@ export function extractRescheduleAppointment(
   }
 
   const namedPatterns = [
-    /(?:תעביר|תעבירי|תשני|תשנה|שנה\s+מועד)\s+(?:את\s+)?(?:ה)?תור\s+(?:של|ל)\s+(.+?)\s+ל(?:ש|-)?\s*(.+)$/iu,
-    /(?:תעביר|תעבירי|תזיז|תזיזי)\s+(?:את\s+)?(.+?)\s+ל(?:ש|-)?\s*(.+)$/iu,
+    /(?:תעביר|תעבירי|תדחי|תדחה|תשני|תשנה|שנה\s+מועד)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:תור|פגישה)\s+(?:של|ל)\s+(.+?)\s+ל(?:ש|-)?\s*(.+)$/iu,
+    /(?:תעביר|תעבירי|תדחי|תדחה|תזיז|תזיזי)\s+(?:לי\s+)?(?:את\s+)?(.+?)\s+ל(?:ש|-)?\s*(.+)$/iu,
   ];
   for (const pattern of namedPatterns) {
     const match = normalized.match(pattern);
@@ -1530,14 +1562,14 @@ async function maybeBuildRescheduleAppointmentProposal(
   }
   if (resolved.kind === "not_found") {
     if (!parsed.clientName) {
-      return { answer: "לא מצאתי תור פעיל מהשיחה האחרונה. לאיזה תור להעביר?" };
+      return { answer: calendarMessages.reschedulePronounNotFound() };
     }
-    return { answer: `לא מצאתי תור שמתאים ל"${parsed.clientName}". למי התכוונת?` };
+    return { answer: calendarMessages.notFoundNamed(parsed.clientName) };
   }
 
   const { nameResolution, appointments } = resolved;
   if (appointments.length === 0) {
-    return { answer: `אין תור עתידי ל${nameResolution.clientName}.` };
+    return { answer: calendarMessages.noUpcomingForClient(nameResolution.clientName) };
   }
 
   const timeZone = await loadOrganizationTimezone(organizationId);
@@ -1545,9 +1577,7 @@ async function maybeBuildRescheduleAppointmentProposal(
     const list = appointments
       .map((appointment, index) => formatAppointmentListLine(appointment, index, timeZone))
       .join("\n");
-    return {
-      answer: `מצאתי כמה תורים עתידיים ל${nameResolution.clientName}. איזה תור להעביר?\n${list}`,
-    };
+    return { answer: calendarMessages.chooseReschedule(nameResolution.clientName, list) };
   }
 
   const appointment = appointments[0]!;
@@ -1557,9 +1587,7 @@ async function maybeBuildRescheduleAppointmentProposal(
     timeZone,
   });
   if (!resolvedStartTime) {
-    return {
-      answer: "לא הבנתי לאיזה מועד להעביר. תגידי יום ושעה, למשל מחר ב-4.",
-    };
+    return { answer: calendarMessages.rescheduleBadDatetime() };
   }
 
   const newWhen = formatAppointmentWhen(resolvedStartTime, timeZone);
@@ -1574,7 +1602,7 @@ async function maybeBuildRescheduleAppointmentProposal(
       newTime: parsed.time,
       newWhen,
     },
-    defaultAnswer: `להעביר את התור של ${nameResolution.clientName} ל${newWhen}?`,
+    defaultAnswer: calendarMessages.rescheduleConfirmation(nameResolution.clientName, newWhen),
   });
 }
 

@@ -1,0 +1,108 @@
+/**
+ * Centralized Hebrew response templates for Natalie's calendar commands.
+ *
+ * Every supported calendar reply (confirmation, success, clarification, not
+ * found, conflict, list, empty) is built here so wording stays consistent and
+ * Apple-clean. Rules: one short clarification question, no example times unless
+ * strictly needed, no free-form LLM prose for supported commands.
+ */
+
+export type CalendarListEntry = {
+  when: string;
+  clientName: string;
+  serviceName?: string;
+};
+
+export const calendarMessages = {
+  // ---- Create ----
+  createConfirmation(clientName: string, dayLabel: string, time: string): string {
+    return `הבנתי: לקבוע תור ל${clientName} ${dayLabel} בשעה ${time}. לאשר?`;
+  },
+  createMissingCustomer(): string {
+    return "לא הבנתי למי לקבוע את התור. מה שם הלקוח/ה?";
+  },
+  createMissingTime(whoSuffix: string): string {
+    return `באיזו שעה לקבוע את התור${whoSuffix}?`;
+  },
+  createMissingDate(whoSuffix: string): string {
+    return `לאיזה יום לקבוע את התור${whoSuffix}?`;
+  },
+  createUnclear(): string {
+    return "לא הבנתי את הבקשה במלואה. אפשר לחזור עם שם הלקוח, היום והשעה?";
+  },
+  unsupportedCalendar(): string {
+    return "לא הבנתי את הבקשה ליומן. אפשר לנסח שוב עם שם, יום ושעה?";
+  },
+
+  // ---- Cancel ----
+  cancelMissingCustomer(): string {
+    return "לא הבנתי למי לבטל. מה שם הלקוח/ה?";
+  },
+  cancelConfirmation(clientName: string, when: string): string {
+    return `מצאתי תור ל${clientName} ב${when}. לבטל אותו?`;
+  },
+  cancelPronounNotFound(): string {
+    return "לא מצאתי תור פעיל מהשיחה האחרונה. למי לבטל את התור?";
+  },
+  chooseCancel(clientName: string, list: string): string {
+    return `מצאתי כמה תורים עתידיים ל${clientName}. איזה תור לבטל?\n${list}`;
+  },
+
+  // ---- Move / reschedule ----
+  rescheduleMissingCustomer(): string {
+    return "לא הבנתי למי להעביר. מה שם הלקוח/ה?";
+  },
+  rescheduleMissingTime(): string {
+    return "לאיזה שעה להעביר את התור?";
+  },
+  rescheduleMissingDate(): string {
+    return "לאיזה יום להעביר את התור?";
+  },
+  rescheduleConfirmation(clientName: string, newWhen: string): string {
+    return `להעביר את התור של ${clientName} ל${newWhen}?`;
+  },
+  rescheduleBadDatetime(): string {
+    return "לא הבנתי לאיזה מועד להעביר. תגידי יום ושעה.";
+  },
+  reschedulePronounNotFound(): string {
+    return "לא מצאתי תור פעיל מהשיחה האחרונה. לאיזה תור להעביר?";
+  },
+  chooseReschedule(clientName: string, list: string): string {
+    return `מצאתי כמה תורים עתידיים ל${clientName}. איזה תור להעביר?\n${list}`;
+  },
+
+  // ---- Shared resolution ----
+  notFoundNamed(spokenName: string): string {
+    return `לא מצאתי תור שמתאים ל"${spokenName}". למי התכוונת?`;
+  },
+  noUpcomingForClient(clientName: string): string {
+    return `אין תור עתידי ל${clientName}.`;
+  },
+
+  // ---- List / read ----
+  listHeaderDay(dayReference: string): string {
+    return `התורים שלך ל${dayReference}:`;
+  },
+  listHeaderWeek(): string {
+    return "התורים שלך השבוע:";
+  },
+  listHeaderAll(): string {
+    return "התורים הקרובים שלך:";
+  },
+  listEmptyDay(dayReference: string): string {
+    return `אין לך תורים ל${dayReference}.`;
+  },
+  listEmptyWeek(): string {
+    return "אין לך תורים השבוע.";
+  },
+  listEmptyAll(): string {
+    return "אין לך תורים קרובים ביומן.";
+  },
+  listEntry(entry: CalendarListEntry): string {
+    const service = entry.serviceName?.trim();
+    return `• ${entry.when} — ${entry.clientName}${service ? ` (${service})` : ""}`;
+  },
+  listBlock(header: string, entries: CalendarListEntry[]): string {
+    return `${header}\n${entries.map((entry) => calendarMessages.listEntry(entry)).join("\n")}`;
+  },
+} as const;

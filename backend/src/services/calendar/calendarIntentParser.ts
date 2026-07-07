@@ -190,19 +190,39 @@ function looksLikeStopword(name: string): boolean {
 /** Extract a customer name after the "ל" preposition, cutting at date/time markers. */
 export function extractCustomerName(text: string): string | null {
   const normalized = normalize(text);
-  const afterAppointmentNoun = normalized.match(/(?:תור|פגישה)\s+ל([^\s].*)$/u);
-  const afterVerb = normalized.match(
-    /(?:תקבעי|תקבע|קבעי|קבע|תזמני|תזמן|תרשמי|תרשום|רשמי|רשום)\s+ל([^\s].*)$/u
-  );
+  // Most specific patterns first — avoid "התור למחר" being read as a customer.
   const afterCancelMove = normalized.match(
     /(?:של)\s+ל?([^\s].*)$/u
   );
+  const afterMoveToClient = normalized.match(
+    /(?:תזיז|תזיזי|תעביר|תעבירי|תדחי|תדחה)\s+ל(?!לי\s)([^\s]+)\s+את\s+(?:ה)?(?:תור|פגישה)/u
+  );
+  const afterPutForMe = normalized.match(/שימי\s+לי\s+(?:תור\s+)?ל([^\s].*)$/u);
+  const afterVerb = normalized.match(
+    /(?:תקבעי|תקבע|קבעי|קבע|תזמני|תזמן|תרשמי|תרשום|רשמי|רשום|תכניסי|תכניס)\s+ל([^\s].*)$/u
+  );
+  const afterAppointmentNoun = normalized.match(
+    /(?:תור|פגישה)\s+ל(?!מחר|מחרתיים|היום|יום\s)([^\s].*)$/u
+  );
 
-  const raw = afterAppointmentNoun?.[1] ?? afterVerb?.[1] ?? afterCancelMove?.[1] ?? null;
+  const raw =
+    afterCancelMove?.[1] ??
+    afterMoveToClient?.[1] ??
+    afterPutForMe?.[1] ??
+    afterVerb?.[1] ??
+    afterAppointmentNoun?.[1] ??
+    null;
   if (!raw) return null;
 
   // Cut at the first date/time boundary token.
-  const boundary = raw.search(DATE_TIME_BOUNDARY);
+  let boundary = raw.search(DATE_TIME_BOUNDARY);
+  // Target-only move times use "לשלוש" / "ל-4" without a day — cut before that clause.
+  const targetTimeBoundary = raw.search(
+    /\s+ל(?=שלוש|שלושה|ארבע|ארבעה|חמש|חמישה|שש|שישה|שבע|שבעה|שמונה|תשע|תשעה|עשר|עשרה|אחת|שתיים|שתים|שניים|-?\s?\d|שעה)/u
+  );
+  if (targetTimeBoundary >= 0 && (boundary < 0 || targetTimeBoundary < boundary)) {
+    boundary = targetTimeBoundary;
+  }
   let candidate = (boundary >= 0 ? raw.slice(0, boundary) : raw).trim();
   candidate = candidate.replace(/[.?!,]+$/u, "").trim();
 
@@ -216,18 +236,24 @@ export function extractCustomerName(text: string): string | null {
   return candidate;
 }
 
+// Verb families (Hebrew synonyms) shared by intent detection.
+const MOVE_VERBS = /(?:תזיז|תזיזי|להזיז|תעביר|תעבירי|להעביר|תשני|תשנה|שנה\s+מועד|לשנות\s+את\s+התור|תדחי|תדחה|לדחות)/u;
+const CANCEL_VERBS = /(?:תבטל|תבטלי|בטל|בטלי|ביטול|לבטל|תמחק|תמחקי|למחוק|תוריד|תורידי|להוריד)/u;
+const CREATE_VERBS = /(?:תקבעי|תקבע|קבעי|קבע|תזמני|תזמן|תרשמי|תרשום|רשמי|רשום|לקבוע|לזמן|תכניסי|תכניס|להכניס|שימי\s+לי|שים\s+לי)/u;
+
 /** Read-only "what's on my calendar" phrasings — must run before create/cancel/move. */
 const LIST_PATTERNS: RegExp[] = [
-  /מה\s+התורים/u,
-  /ה?תורים\s+של\s+(?:היום|מחר|מחרתיים|יום|השבוע)/u,
-  /תראי?\s+לי\s+(?:את\s+)?(?:ה)?תורים/u,
-  /כמה\s+תורים/u,
-  /מה\s+יש\s+לי\s+[^?]*(?:ביומן|יומן|תור|היום|מחר|מחרתיים|השבוע|ביום)/u,
+  /מה\s+ה?(?:תורים|פגישות)/u,
+  /ה?(?:תורים|פגישות)\s+של\s+(?:היום|מחר|מחרתיים|יום|השבוע)/u,
+  /תראי?\s+לי\s+(?:את\s+)?(?:ה)?(?:תורים|פגישות|יומן|יום)/u,
+  /כמה\s+(?:תורים|פגישות)/u,
+  /מה\s+קורה\s+ביומן/u,
+  /מה\s+יש\s+לי\s+[^?]*(?:ביומן|יומן|תור|פגיש|היום|מחר|מחרתיים|השבוע|ביום)/u,
 ];
 
 function isListIntent(text: string): boolean {
   // Never treat a scheduling/mutation command as a list request.
-  if (/(?:תקבע|קבע|תזמן|תזמני|תרשמ|תרשום|רשמ|רשום|לקבוע|לזמן|תזיז|תעביר|תשנ|תבטל|בטל|ביטול|לבטל|לדחות)/u.test(text)) {
+  if (CREATE_VERBS.test(text) || MOVE_VERBS.test(text) || CANCEL_VERBS.test(text)) {
     return false;
   }
   return LIST_PATTERNS.some((pattern) => pattern.test(text));
@@ -237,15 +263,21 @@ function detectIntent(text: string): CalendarIntentAction {
   if (isListIntent(text)) {
     return "list_appointments";
   }
-  if (/(?:תזיז|תזיזי|תעביר|תעבירי|תשני|תשנה|שנה\s+מועד|לשנות\s+את\s+התור|לדחות)/u.test(text)) {
+  if (MOVE_VERBS.test(text)) {
     return "move_appointment";
   }
-  if (/(?:תבטל|תבטלי|בטל|בטלי|ביטול|לבטל)/u.test(text)) {
+  if (CANCEL_VERBS.test(text)) {
     return "cancel_appointment";
   }
+  if (CREATE_VERBS.test(text) && /(?:תור|פגישה|ל[א-ת])/u.test(text)) {
+    return "create_appointment";
+  }
+  // Shorthand / noisy STT: "תקווי תור לשרית מחר ב-3" still reads as booking.
   if (
-    /(?:תקבעי|תקבע|קבעי|קבע|תזמני|תזמן|תרשמי|תרשום|רשמי|רשום|לקבוע|לזמן)/u.test(text) &&
-    /(?:תור|פגישה|ל[א-ת])/u.test(text)
+    !MOVE_VERBS.test(text) &&
+    !CANCEL_VERBS.test(text) &&
+    /(?:תור|פגישה)\s+ל[א-ת]/u.test(text) &&
+    /(?:מחר|היום|ביום|ב-|בשעה|\d{1,2}[:.]\d{2})/u.test(text)
   ) {
     return "create_appointment";
   }
