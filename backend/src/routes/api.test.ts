@@ -11,6 +11,7 @@ import {
   invoiceReviewStatusFilter,
   mapDocumentReviewToInvoiceCandidate,
   mapGmailScanItemToInvoiceCandidate,
+  mapSupplierPaymentToInvoiceCandidate,
   mergeInvoiceListCandidates,
   parseInvoiceMonthParam,
   resolveNatalieVoiceSynthesizeProvider,
@@ -221,6 +222,15 @@ test("buildInvoiceListWhereInput loads manually approved gmail scan items in app
   // שלב 6: הטאב "מאושר" טוען גם auto_saved (GSI); ל-FDR אין auto_saved — הפילטר in לא מזיק
   assert.deepEqual(where.gmailScanItemWhere.reviewStatus, { in: ["approved", "auto_saved"] });
   assert.deepEqual(where.financialDocumentReviewWhere.reviewStatus, { in: ["approved", "auto_saved"] });
+  assert.equal(where.includeApprovedSupplierPayments, true);
+  assert.equal(where.supplierPaymentWhere.approvalStatus, "approved");
+});
+
+test("buildInvoiceListWhereInput excludes supplier payments on needs_review tab", () => {
+  const where = buildInvoiceListWhereInput(
+    buildInvoiceListQueryContext({ organizationId: "org-1", status: "needs_review" })
+  );
+  assert.equal(where.includeApprovedSupplierPayments, false);
 });
 
 test("parseInvoiceMonthParam accepts YYYY-MM only", () => {
@@ -424,4 +434,125 @@ test("approved gmail scan items remain visible in merged invoice list", () => {
   assert.equal(merged.length, 1);
   assert.equal(merged[0]?.reviewStatus, "approved");
   assert.equal(merged[0]?.source, "gmail_scan_item");
+});
+
+test("approved supplier payment stays visible when linked review is deduped", () => {
+  const approvedAt = new Date("2026-07-07T08:00:00.000Z");
+  const supplierPayments = [
+    {
+      id: "payment-ondo",
+      supplier: "אונדו",
+      supplierName: "אונדו",
+      amount: 48,
+      totalAmount: 48,
+      currency: "ILS",
+      date: approvedAt,
+      normalizedDocumentDate: approvedAt,
+      dueDate: null,
+      invoiceNumber: null,
+      documentTypeDetailed: "receipt",
+      documentLink: "/uploads/gmail-invoices/ondo.pdf",
+      invoiceLink: "/uploads/gmail-invoices/ondo.pdf",
+      driveFileUrl: null,
+      emailSender: "billing@ondo.example",
+      emailMessageId: "email-ondo",
+      subject: "קבלה",
+      confidenceScore: 0.8,
+      parsedFieldsJson: null,
+      createdAt: approvedAt,
+      updatedAt: approvedAt,
+    },
+  ];
+  const documentReviews = [
+    {
+      id: "review-ondo",
+      sender: "billing@ondo.example",
+      subject: "קבלה",
+      fileName: "ondo.pdf",
+      invoiceNumber: null,
+      documentDate: approvedAt,
+      dueDate: null,
+      totalAmount: 48,
+      currency: "ILS",
+      driveFileUrl: "/uploads/gmail-invoices/ondo.pdf",
+      supplierName: "אונדו",
+      confidenceScore: 0.8,
+      reviewStatus: "approved",
+      uncertaintyReason: null,
+      emailMessageId: "email-ondo",
+      gmailMessageId: "gmail-ondo",
+      supplierPaymentId: "payment-ondo",
+      normalizedDocumentDate: approvedAt,
+      createdAt: approvedAt,
+      updatedAt: approvedAt,
+    },
+  ];
+  const gmailScanItems = [
+    {
+      id: "scan-ondo",
+      gmailMessageId: "gmail-ondo",
+      emailMessageId: "email-ondo",
+      gmailMessageLink: "https://mail.google.com/mail/u/0/#inbox/gmail-ondo",
+      sender: "billing@ondo.example",
+      senderEmail: "billing@ondo.example",
+      subject: "קבלה",
+      occurredAt: approvedAt,
+      amount: 48,
+      supplierName: "אונדו",
+      attachmentFilename: "ondo.pdf",
+      driveFileLink: null,
+      confidenceScore: "medium",
+      reviewStatus: "needs_review",
+      decisionReason: "trust.amount_gate_missing",
+      rawAnalysis: { analysis: { currency: "ILS", totalAmount: 48 } },
+      createdAt: approvedAt,
+      updatedAt: approvedAt,
+    },
+  ];
+
+  const merged = mergeInvoiceListCandidates({
+    invoiceRows: [],
+    gmailScanItems,
+    documentReviews,
+    supplierPayments,
+  });
+
+  const paymentRow = merged.find((row) => row.id === "supplier-payment:payment-ondo");
+  assert.ok(paymentRow, "approved supplier payment must appear in invoice list");
+  assert.equal(paymentRow?.source, "supplier_payment");
+  assert.equal(
+    merged.filter((row) => row.id === "document-review:review-ondo").length,
+    0,
+    "linked review row should not duplicate the supplier payment",
+  );
+});
+
+test("mapSupplierPaymentToInvoiceCandidate maps approved receipt to invoice row", () => {
+  const approvedAt = new Date("2026-07-07T08:00:00.000Z");
+  const row = mapSupplierPaymentToInvoiceCandidate({
+    id: "payment-1",
+    supplier: "אונדו",
+    supplierName: "אונדו",
+    amount: 48,
+    totalAmount: 48,
+    currency: "ILS",
+    date: approvedAt,
+    normalizedDocumentDate: approvedAt,
+    dueDate: null,
+    invoiceNumber: null,
+    documentTypeDetailed: "receipt",
+    documentLink: "/uploads/ondo.pdf",
+    invoiceLink: "/uploads/ondo.pdf",
+    driveFileUrl: null,
+    emailSender: "billing@ondo.example",
+    emailMessageId: "email-1",
+    subject: "קבלה",
+    confidenceScore: 0.8,
+    parsedFieldsJson: null,
+    createdAt: approvedAt,
+    updatedAt: approvedAt,
+  });
+  assert.equal(row.id, "supplier-payment:payment-1");
+  assert.equal(row.reviewStatus, "approved");
+  assert.equal(row.source, "supplier_payment");
 });

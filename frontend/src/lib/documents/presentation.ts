@@ -241,7 +241,21 @@ export function getReviewPrimaryAction(item: DocumentReviewItem): ReviewPrimaryA
 
   const decision = item.decision;
   if (!decision) {
-    // אין חוזה מהשרת (למשל דילוג גרסאות בזמן deploy) — fail-closed
+    // תאימות: שדות שטוחים מהשרת כשאובייקט decision חסר (deploy skew / cache)
+    if (item.canApprove === true && item.recommendedAction === "approve") {
+      return {
+        kind: "ready_to_approve",
+        statusLabel: "מוכן לאישור",
+        primaryLabel: "אשר והעבר לחשבוניות",
+        secondaryLabel: "ערוך פרטים",
+        rejectLabel,
+        canApprove: true,
+        canEditSupplier: true,
+        missingFields: [],
+        advisoryFields: advisory,
+      };
+    }
+    // אין חוזה מהשרת — fail-closed
     return {
       kind: "complete_details",
       statusLabel: "דורש השלמה",
@@ -309,6 +323,45 @@ export function getReviewPrimaryAction(item: DocumentReviewItem): ReviewPrimaryA
     missingFields: blocking,
     advisoryFields: advisory,
   };
+}
+
+/** האם השרת אישר אישור בקליק אחד — מקור אמת: decision, עם fallback לשדות שטוחים. */
+export function isServerApproveReady(item: DocumentReviewItem): boolean {
+  const decision = item.decision;
+  if (decision) {
+    return decision.primaryAction === "approve" && decision.canApprove && !decision.supplierNeedsConfirmation;
+  }
+  return item.canApprove === true && item.recommendedAction === "approve";
+}
+
+export type DocumentPrimaryClickAction =
+  | { type: "approve"; supplierName: string }
+  | { type: "edit_supplier" }
+  | { type: "open_preview" }
+  | { type: "noop" };
+
+/** לוגיקת כפתור ראשי — נבדק ב-unit tests; הכרטיס קורא ל-onApprove רק כש-type=approve. */
+export function resolveDocumentPrimaryClick(input: {
+  item: DocumentReviewItem;
+  view: Pick<DocumentPresentation, "canApprove" | "primaryLabel" | "canEditSupplier" | "supplier">;
+  editingSupplier: boolean;
+  supplierDraft: string;
+  hasPreviewUrl: boolean;
+}): DocumentPrimaryClickAction {
+  const supplierName = input.supplierDraft.trim() || input.view.supplier;
+  if (isServerApproveReady(input.item) || input.view.canApprove) {
+    return { type: "approve", supplierName };
+  }
+  if (
+    input.view.canEditSupplier &&
+    (input.editingSupplier || input.view.primaryLabel === "ערוך ספק")
+  ) {
+    return { type: "edit_supplier" };
+  }
+  if (input.hasPreviewUrl) {
+    return { type: "open_preview" };
+  }
+  return { type: "noop" };
 }
 
 export function documentReviewAmountLabel(item: DocumentReviewItem): string {
@@ -580,7 +633,7 @@ export function presentDocument(item: DocumentReviewItem): DocumentPresentation 
     primaryLabel: action.primaryLabel,
     secondaryLabel: action.secondaryLabel,
     rejectLabel: action.rejectLabel,
-    canApprove: action.canApprove,
+    canApprove: action.canApprove || isServerApproveReady(item),
     canEditSupplier: action.canEditSupplier,
     missingFields: action.missingFields,
     advisoryFields: action.advisoryFields,

@@ -11,6 +11,24 @@ import { TRUST_AMOUNT_GATE_MISSING } from "./trust/trustGatePersistence.js";
 import { buildPassingTrustGateSnapshots } from "./trust/trustGatePersistence.js";
 import { prisma } from "../lib/prisma.js";
 
+function withApprovalTransactionMocks() {
+  const original = {
+    transaction: prisma.$transaction,
+    paymentFindFirst: prisma.supplierPayment.findFirst,
+  };
+  (prisma.$transaction as unknown) = async (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma);
+  (prisma.supplierPayment.findFirst as unknown) = async (args?: { where?: { approvalStatus?: string; id?: string } }) => {
+    if (args?.where?.approvalStatus === "approved") {
+      return { id: args.where.id ?? "payment-1" };
+    }
+    return null;
+  };
+  return () => {
+    (prisma.$transaction as unknown) = original.transaction;
+    (prisma.supplierPayment.findFirst as unknown) = original.paymentFindFirst;
+  };
+}
+
 test("financial document trust gates block empty parsed fields", () => {
   assert.equal(financialDocumentTrustGatesBlockingReason({}), TRUST_AMOUNT_GATE_MISSING);
 });
@@ -206,6 +224,7 @@ test("approveFinancialDocumentReview uses VAT fallback amount for source_conflic
   let capturedNormalizedDocumentDate: Date | null = null;
 
   try {
+    const restoreTransaction = withApprovalTransactionMocks();
     (prisma.financialDocumentReview.findFirst as any) = async () => review;
     (prisma.financialDocumentReview.update as any) = async ({ data }: any) => ({ ...review, ...data });
     (prisma.supplierPayment.findMany as any) = async () => [];
@@ -217,6 +236,7 @@ test("approveFinancialDocumentReview uses VAT fallback amount for source_conflic
     };
 
     const approved = await approveFinancialDocumentReview("org-1", "review-1");
+    restoreTransaction();
     assert.equal(approved.review.reviewStatus, "approved");
     assert.equal(approved.review.supplierPaymentId, "payment-1");
     assert.equal(approved.paymentId, "payment-1");
@@ -243,16 +263,20 @@ test("approveFinancialDocumentReview is idempotent when already approved", async
 
   const originalFindFirst = prisma.financialDocumentReview.findFirst;
   const originalPaymentUpsert = prisma.supplierPayment.upsert;
+  const originalPaymentFindFirst = prisma.supplierPayment.findFirst;
   let upsertCalled = false;
 
   try {
+    const restoreTransaction = withApprovalTransactionMocks();
     (prisma.financialDocumentReview.findFirst as any) = async () => review;
     (prisma.supplierPayment.upsert as any) = async () => {
       upsertCalled = true;
       return { id: "payment-dup" };
     };
+    (prisma.supplierPayment.findFirst as any) = async () => ({ id: "payment-existing" });
 
     const result = await approveFinancialDocumentReview("org-1", "review-approved");
+    restoreTransaction();
     assert.equal(result.review.reviewStatus, "approved");
     assert.equal(result.review.supplierPaymentId, "payment-existing");
     assert.equal(result.paymentId, "payment-existing");
@@ -261,6 +285,7 @@ test("approveFinancialDocumentReview is idempotent when already approved", async
   } finally {
     (prisma.financialDocumentReview.findFirst as any) = originalFindFirst;
     (prisma.supplierPayment.upsert as any) = originalPaymentUpsert;
+    (prisma.supplierPayment.findFirst as any) = originalPaymentFindFirst;
   }
 });
 
@@ -339,6 +364,7 @@ test("approveFinancialDocumentReview uses confirmed supplier name for payment", 
   let capturedSupplier: string | null = null;
 
   try {
+    const restoreTransaction = withApprovalTransactionMocks();
     (prisma.financialDocumentReview.findFirst as any) = async () => review;
     (prisma.financialDocumentReview.update as any) = async ({ data }: any) => ({ ...review, ...data });
     (prisma.supplierPayment.findMany as any) = async () => [];
@@ -350,6 +376,7 @@ test("approveFinancialDocumentReview uses confirmed supplier name for payment", 
     const result = await approveFinancialDocumentReview("org-1", "review-supplier-confirm", {
       confirmedSupplierName: "פז",
     });
+    restoreTransaction();
     assert.equal(capturedSupplier, "פז");
     assert.equal(result.paymentId, "payment-paz");
     assert.equal(result.targetScreen, "invoices");
@@ -489,6 +516,7 @@ test("approveFinancialDocumentReview failure does not mark review approved", asy
   let approvedUpdate = false;
 
   try {
+    const restoreTransaction = withApprovalTransactionMocks();
     (prisma.financialDocumentReview.findFirst as any) = async () => review;
     (prisma.financialDocumentReview.update as any) = async ({ data }: any) => {
       if (data.reviewStatus === "approved") approvedUpdate = true;
@@ -503,6 +531,7 @@ test("approveFinancialDocumentReview failure does not mark review approved", asy
       () => approveFinancialDocumentReview("org-1", "review-fail", { confirmedSupplierName: "פז" }),
       /db write failed/,
     );
+    restoreTransaction();
     assert.equal(approvedUpdate, false);
   } finally {
     (prisma.financialDocumentReview.findFirst as any) = original.findFirst;

@@ -72,6 +72,7 @@ function withPrismaMocks<T>(
     paymentFindFirst: prisma.supplierPayment.findFirst,
     paymentUpsert: prisma.supplierPayment.upsert,
     auditCreate: prisma.platformAuditLog.create,
+    transaction: prisma.$transaction,
   };
   const state = { updateCalled: false, upsertCalled: false };
   (prisma.financialDocumentReview.findFirst as unknown) = async () => review;
@@ -80,11 +81,15 @@ function withPrismaMocks<T>(
     return { ...review, ...data };
   };
   (prisma.supplierPayment.findMany as unknown) = async () => [];
-  (prisma.supplierPayment.findFirst as unknown) = async () => null;
+  (prisma.supplierPayment.findFirst as unknown) = async (args?: { where?: { approvalStatus?: string } }) => {
+    if (args?.where?.approvalStatus === "approved") return { id: "payment-readiness-1" };
+    return null;
+  };
   (prisma.supplierPayment.upsert as unknown) = async ({ create }: { create: Record<string, unknown> }) => {
     state.upsertCalled = true;
     return { id: "payment-readiness-1", ...create };
   };
+  (prisma.$transaction as unknown) = async (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma);
   (prisma.platformAuditLog.create as unknown) = async () => ({ id: "audit-1" });
   return fn(state).finally(() => {
     (prisma.financialDocumentReview.findFirst as unknown) = original.findFirst;
@@ -92,6 +97,7 @@ function withPrismaMocks<T>(
     (prisma.supplierPayment.findMany as unknown) = original.paymentFindMany;
     (prisma.supplierPayment.findFirst as unknown) = original.paymentFindFirst;
     (prisma.supplierPayment.upsert as unknown) = original.paymentUpsert;
+    (prisma.$transaction as unknown) = original.transaction;
     (prisma.platformAuditLog.create as unknown) = original.auditCreate;
   });
 }

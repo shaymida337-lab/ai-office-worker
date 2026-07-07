@@ -321,6 +321,8 @@ export function evaluateFreshTrustGatesForManualApproval(input: {
   });
 }
 
+export type FinanceTrustPaymentDb = Pick<typeof prisma, "supplierPayment">;
+
 export async function createSupplierPaymentIfTrusted(input: {
   evaluation: FinanceTrustEvaluation;
   data: Prisma.SupplierPaymentUncheckedCreateInput;
@@ -334,8 +336,11 @@ export async function createSupplierPaymentIfTrusted(input: {
   };
   parsedFieldsJson?: unknown;
   uncertaintyReason?: string | null;
+  /** When set, payment writes run inside the caller's transaction. */
+  db?: FinanceTrustPaymentDb;
 }): Promise<CreateSupplierPaymentIfTrustedResult> {
   const { evaluation } = input;
+  const db = input.db ?? prisma;
   const parsedFieldsJson = input.parsedFieldsJson;
   const uncertaintyReason = input.uncertaintyReason ?? null;
   const organizationId = typeof input.data.organizationId === "string" ? input.data.organizationId : null;
@@ -404,7 +409,7 @@ export async function createSupplierPaymentIfTrusted(input: {
   }
 
   if (input.upsert) {
-    const existing = await prisma.supplierPayment.findUnique({
+    const existing = await db.supplierPayment.findUnique({
       where: input.upsert.where,
       select: {
         id: true,
@@ -418,7 +423,7 @@ export async function createSupplierPaymentIfTrusted(input: {
         organizationId: true,
       },
     });
-    const payment = await prisma.supplierPayment.upsert({
+    const payment = await db.supplierPayment.upsert({
       where: input.upsert.where,
       create: input.data,
       update: input.upsert.update ?? {},
@@ -448,7 +453,7 @@ export async function createSupplierPaymentIfTrusted(input: {
     return { payment, skipped: false, reason: null, evaluation };
   }
 
-  const payment = await prisma.supplierPayment.create({ data: input.data });
+  const payment = await db.supplierPayment.create({ data: input.data });
   const auditCtx =
     input.audit ??
     aiAuditContext(

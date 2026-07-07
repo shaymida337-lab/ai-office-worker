@@ -1256,7 +1256,17 @@ export async function approveFinancialDocumentReview(
   try {
   let review = await prisma.financialDocumentReview.findFirst({ where: { id: reviewId, organizationId } });
   if (!review) throw new Error("Document review item not found");
-  if (review.reviewStatus === "approved" && review.supplierPaymentId) {
+  if (review.reviewStatus === "approved") {
+    if (!review.supplierPaymentId) {
+      throw new Error("המסמך מסומן מאושר אך ללא תשלום מקושר — לא ניתן להשלים את האישור");
+    }
+    const existingPayment = await prisma.supplierPayment.findFirst({
+      where: { id: review.supplierPaymentId, organizationId, approvalStatus: "approved" },
+      select: { id: true },
+    });
+    if (!existingPayment) {
+      throw new Error("המסמך מסומן מאושר אך התשלום המקושר לא נמצא — לא ניתן להשלים את האישור");
+    }
     return {
       review,
       paymentId: review.supplierPaymentId,
@@ -1395,86 +1405,102 @@ export async function approveFinancialDocumentReview(
     throw new Error(`לא ניתן לאשר מסמך — בדיקת אמון נכשלה (${reason})`);
   }
   const normalizedDocumentDate = resolveReviewNormalizedDocumentDate(review);
-  const createResult = await createSupplierPaymentIfTrusted({
-    evaluation: effectiveEvaluation,
-    audit: options?.userId
-      ? userAuditContext(
-          options.userId,
-          "financialDocuments",
-          options.sourceRoute,
-          resolveWorkflowCorrelationId({ gmailMessageId: review.gmailMessageId, emailMessageId: review.emailMessageId }),
-        )
-      : aiAuditContext(
-          "financialDocuments",
-          resolveWorkflowCorrelationId({ gmailMessageId: review.gmailMessageId, emailMessageId: review.emailMessageId }),
-        ),
-    data: {
-      organizationId,
-      supplier: approvedSupplierName,
-      supplierName: approvedSupplierName,
-      amount: approvedAmount,
-      currency: review.currency,
-      date: review.documentDate ?? new Date(),
-      normalizedDocumentDate,
-      dueDate: review.dueDate,
-      paid: review.documentType === "receipt" || review.documentType === "tax_invoice_receipt",
-      documentLink: review.driveFileUrl,
-      invoiceLink: isInvoiceLike(normalizeFinancialDocumentType(review.documentType)) ? review.driveFileUrl : null,
-      driveUploadStatus: review.driveUploadStatus,
-      emailSender: review.sender,
-      paymentRequired: review.documentType !== "receipt",
-      missingInvoice: review.documentType === "payment_request",
-      duplicateHash: review.documentFingerprint,
-      subject: review.subject,
-      source: review.source,
-      firstSource: review.source,
-      lastSource: review.source,
-      sourceCount: 1,
-      documentFingerprint: review.documentFingerprint,
-      sourceFingerprint: review.sourceFingerprint,
-      documentTypeDetailed: review.documentType,
-      supplierTaxId: review.supplierTaxId,
-      amountBeforeVat: review.amountBeforeVat,
-      vatAmount: review.vatAmount,
-      totalAmount: approvedAmount,
-      confidenceScore: review.confidenceScore,
-      parsedFieldsJson: parsedFieldsForApproval as any,
-      approvalStatus: "approved",
-      sourcesJson: [review.source],
-      emailMessageId: review.emailMessageId,
-    },
-    upsert: {
-      where: { organizationId_documentFingerprint: { organizationId, documentFingerprint: review.documentFingerprint } },
-      update: {
-        approvalStatus: "approved",
+  const approvalTraceId = workflowTrace.correlationId;
+  console.log(
+    `[review-approval] traceId=${approvalTraceId} reviewId=${review.id} org=${organizationId} phase=transaction_start`,
+  );
+  const { payment, approved } = await prisma.$transaction(async (tx) => {
+    const createResult = await createSupplierPaymentIfTrusted({
+      evaluation: effectiveEvaluation,
+      db: tx,
+      audit: options?.userId
+        ? userAuditContext(
+            options.userId,
+            "financialDocuments",
+            options.sourceRoute,
+            resolveWorkflowCorrelationId({ gmailMessageId: review.gmailMessageId, emailMessageId: review.emailMessageId }),
+          )
+        : aiAuditContext(
+            "financialDocuments",
+            resolveWorkflowCorrelationId({ gmailMessageId: review.gmailMessageId, emailMessageId: review.emailMessageId }),
+          ),
+      data: {
+        organizationId,
         supplier: approvedSupplierName,
         supplierName: approvedSupplierName,
         amount: approvedAmount,
-        totalAmount: approvedAmount,
+        currency: review.currency,
+        date: review.documentDate ?? new Date(),
         normalizedDocumentDate,
-        driveUploadStatus: review.driveUploadStatus,
+        dueDate: review.dueDate,
+        paid: review.documentType === "receipt" || review.documentType === "tax_invoice_receipt",
         documentLink: review.driveFileUrl,
+        invoiceLink: isInvoiceLike(normalizeFinancialDocumentType(review.documentType)) ? review.driveFileUrl : null,
+        driveUploadStatus: review.driveUploadStatus,
+        emailSender: review.sender,
+        paymentRequired: review.documentType !== "receipt",
+        missingInvoice: review.documentType === "payment_request",
+        duplicateHash: review.documentFingerprint,
+        subject: review.subject,
+        source: review.source,
+        firstSource: review.source,
+        lastSource: review.source,
+        sourceCount: 1,
+        documentFingerprint: review.documentFingerprint,
+        sourceFingerprint: review.sourceFingerprint,
+        documentTypeDetailed: review.documentType,
+        supplierTaxId: review.supplierTaxId,
+        amountBeforeVat: review.amountBeforeVat,
+        vatAmount: review.vatAmount,
+        totalAmount: approvedAmount,
         confidenceScore: review.confidenceScore,
         parsedFieldsJson: parsedFieldsForApproval as any,
-        lastSeenAt: new Date(),
+        approvalStatus: "approved",
+        sourcesJson: [review.source],
+        emailMessageId: review.emailMessageId,
       },
-    },
+      upsert: {
+        where: { organizationId_documentFingerprint: { organizationId, documentFingerprint: review.documentFingerprint } },
+        update: {
+          approvalStatus: "approved",
+          supplier: approvedSupplierName,
+          supplierName: approvedSupplierName,
+          amount: approvedAmount,
+          totalAmount: approvedAmount,
+          normalizedDocumentDate,
+          driveUploadStatus: review.driveUploadStatus,
+          documentLink: review.driveFileUrl,
+          confidenceScore: review.confidenceScore,
+          parsedFieldsJson: parsedFieldsForApproval as any,
+          lastSeenAt: new Date(),
+        },
+      },
+    });
+    if (createResult.skipped || !createResult.payment) {
+      throw new Error(`לא ניתן לאשר מסמך — יצירת תשלום נחסמה (${createResult.reason ?? "trust gate blocked"})`);
+    }
+    const linkedReview = await tx.financialDocumentReview.update({
+      where: { id: review.id },
+      data: {
+        reviewStatus: "approved",
+        supplierPaymentId: createResult.payment.id,
+        supplierName: approvedSupplierName,
+        normalizedDocumentDate,
+        parsedFieldsJson: parsedFieldsForApproval as any,
+      },
+    });
+    return { payment: createResult.payment, approved: linkedReview };
   });
-  if (createResult.skipped || !createResult.payment) {
-    throw new Error(`לא ניתן לאשר מסמך — יצירת תשלום נחסמה (${createResult.reason ?? "trust gate blocked"})`);
+  const verifiedPayment = await prisma.supplierPayment.findFirst({
+    where: { id: payment.id, organizationId, approvalStatus: "approved" },
+    select: { id: true },
+  });
+  if (!verifiedPayment) {
+    throw new Error("אישור המסמך נכשל — התשלום לא נשמר במערכת");
   }
-  const payment = createResult.payment;
-  console.log(`[financial-document] manually_approved reviewId=${review.id} paymentId=${payment.id}`);
-  const approved = await prisma.financialDocumentReview.update({
-    where: { id: review.id },
-    data: {
-      reviewStatus: "approved",
-      supplierPaymentId: payment.id,
-      supplierName: approvedSupplierName,
-      normalizedDocumentDate,
-      parsedFieldsJson: parsedFieldsForApproval as any,
-    },
-  });
+  console.log(
+    `[review-approval] traceId=${approvalTraceId} reviewId=${review.id} org=${organizationId} paymentId=${payment.id} phase=completed`,
+  );
   const correlationId = resolveWorkflowCorrelationId({ gmailMessageId: review.gmailMessageId, emailMessageId: review.emailMessageId });
   const auditCtx = options?.userId
     ? userAuditContext(options.userId, "financialDocuments", options.sourceRoute, correlationId)

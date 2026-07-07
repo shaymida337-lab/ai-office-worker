@@ -19,6 +19,12 @@ import {
   type DocumentFilter,
   type DocumentReviewItem,
 } from "@/lib/documents/presentation";
+import {
+  APPROVAL_FAILURE_MESSAGE,
+  APPROVAL_SUCCESS_MESSAGE,
+  isConfirmedApprovalResponse,
+  type DocumentReviewApprovalResponse,
+} from "@/lib/documents/approvalFlow";
 import { colors, radius, type as typography } from "@/lib/design-tokens";
 
 const EXIT_ANIMATION_MS = 320;
@@ -34,8 +40,8 @@ export default function DocumentReviewsPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<DocumentFilter>("needs_decision");
 
-  const loadItems = useCallback(async () => {
-    setLoading(true);
+  const loadItems = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
     setError("");
     try {
       const [pending, approved] = await Promise.all([
@@ -47,7 +53,7 @@ export default function DocumentReviewsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "טעינת מסמכים נכשלה");
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
   }, []);
 
@@ -84,36 +90,38 @@ export default function DocumentReviewsPage() {
   }
 
   async function approve(id: string, supplierName: string) {
+    if (updatingId) return;
     setUpdatingId(id);
     setError("");
     try {
-      const result = await apiFetch<{
-        ok: boolean;
+      const result = await apiFetch<DocumentReviewApprovalResponse & {
         item: DocumentReviewItem;
-        paymentId: string;
         targetScreen: "invoices" | "payments";
       }>(`/api/document-reviews/${id}/approve`, {
         method: "POST",
         body: JSON.stringify({ supplierName }),
       });
+      if (!isConfirmedApprovalResponse(result)) {
+        throw new Error(APPROVAL_FAILURE_MESSAGE);
+      }
       const approvedItem = pendingItems.find((item) => item.id === id);
       animateRemove(id, (next) => {
-        const targetLabel = result.targetScreen === "payments" ? "תשלומים" : "חשבוניות";
-        setStatusMessage(`המסמך אושר והועבר ל${targetLabel} (מזהה: ${result.paymentId})`);
+        setStatusMessage(APPROVAL_SUCCESS_MESSAGE);
         if (next.length > 0) {
           window.setTimeout(() => {
             setStatusMessage(remainingDocumentsMessage(next.length));
           }, 2400);
         }
       });
-      if (approvedItem) {
+      void loadItems({ silent: true });
+      if (approvedItem && result.item) {
         setCompletedItems((prev) => [
           { ...approvedItem, ...result.item, reviewStatus: "approved" },
           ...prev,
         ]);
       }
     } catch (err) {
-      setError(err instanceof Error ? approvalErrorHebrew(err.message) : "אישור המסמך נכשל");
+      setError(err instanceof Error ? approvalErrorHebrew(err.message) : APPROVAL_FAILURE_MESSAGE);
     } finally {
       setUpdatingId(null);
     }

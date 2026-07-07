@@ -3880,6 +3880,65 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
   };
 }
 
+export function mapSupplierPaymentToInvoiceCandidate(item: {
+  id: string;
+  supplier: string;
+  supplierName: string | null;
+  amount: number;
+  totalAmount: number | null;
+  currency: string;
+  date: Date;
+  normalizedDocumentDate: Date | null;
+  dueDate: Date | null;
+  invoiceNumber: string | null;
+  documentTypeDetailed: string | null;
+  documentLink: string | null;
+  invoiceLink: string | null;
+  driveFileUrl: string | null;
+  emailSender: string | null;
+  emailMessageId: string | null;
+  subject: string | null;
+  confidenceScore: number | null;
+  parsedFieldsJson: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}, organizationId?: string): ReviewInvoiceCandidate {
+  const display = resolveFinanceDisplayAmount({
+    totalAmount: item.totalAmount ?? item.amount,
+    parsedFieldsJson: item.parsedFieldsJson,
+    currency: item.currency,
+  });
+  const docDate = item.normalizedDocumentDate ?? item.date ?? item.createdAt;
+
+  return {
+    id: `supplier-payment:${item.id}`,
+    clientId: "",
+    invoiceNumber: item.invoiceNumber,
+    amount: display.amount,
+    amountLabel: display.amountLabel,
+    amountResolved: display.resolved,
+    currency: item.currency,
+    date: docDate,
+    dueDate: item.dueDate,
+    status: "approved",
+    reviewStatus: "approved",
+    source: "supplier_payment",
+    reviewSourceId: item.id,
+    description: item.subject,
+    driveUrl: signLocalUploadUrlIfNeeded(resolveDriveLink(item), organizationId ?? null),
+    driveFileUrl: signLocalUploadUrlIfNeeded(resolveDriveLink(item), organizationId ?? null),
+    client: null,
+    supplierName: item.supplierName ?? item.supplier,
+    fromEmail: item.emailSender,
+    gmailMessageId: null,
+    confidenceScore: item.confidenceScore,
+    decisionReason: null,
+    attachmentFilename: null,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
 function asRecord(value: unknown): RawRecord | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as RawRecord : null;
 }
@@ -3903,6 +3962,9 @@ const DEFAULT_ORGANIZATION_TIMEZONE = "Asia/Jerusalem";
 const INVOICE_MONTH_PARAM_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
 export type InvoiceReviewCandidateStatus = "needs_review" | "rejected" | "approved";
+
+/** Document types that belong on the חשבוניות screen after manual approval. */
+export const INVOICE_LIKE_SUPPLIER_PAYMENT_TYPES = ["tax_invoice", "receipt", "tax_invoice_receipt"] as const;
 
 export type InvoiceListQueryContext = {
   organizationId: string;
@@ -3928,8 +3990,10 @@ export type InvoiceListWhereInput = {
   invoiceWhere: Prisma.InvoiceWhereInput;
   gmailScanItemWhere: Prisma.GmailScanItemWhereInput;
   financialDocumentReviewWhere: Prisma.FinancialDocumentReviewWhereInput;
+  supplierPaymentWhere: Prisma.SupplierPaymentWhereInput;
   includeApprovedInvoices: boolean;
   includeReviewCandidates: boolean;
+  includeApprovedSupplierPayments: boolean;
 };
 
 export type InvoiceMonthAggregationRow = {
@@ -4065,12 +4129,32 @@ export function buildInvoiceListWhereInput(
       ],
     }),
   };
+  const supplierPaymentWhere: Prisma.SupplierPaymentWhereInput = {
+    organizationId: ctx.organizationId,
+    approvalStatus: "approved",
+    documentTypeDetailed: { in: [...INVOICE_LIKE_SUPPLIER_PAYMENT_TYPES] },
+    ...(normalizedDocumentDate && { normalizedDocumentDate }),
+    ...(ctx.search && {
+      OR: [
+        { subject: { contains: ctx.search, mode: "insensitive" } },
+        { supplierName: { contains: ctx.search, mode: "insensitive" } },
+        { supplier: { contains: ctx.search, mode: "insensitive" } },
+        { emailSender: { contains: ctx.search, mode: "insensitive" } },
+        { invoiceNumber: { contains: ctx.search, mode: "insensitive" } },
+      ],
+    }),
+  };
   return {
     invoiceWhere,
     gmailScanItemWhere,
     financialDocumentReviewWhere,
+    supplierPaymentWhere,
     includeApprovedInvoices: ctx.includeApprovedInvoices,
     includeReviewCandidates: ctx.includeReviewCandidates,
+    includeApprovedSupplierPayments:
+      !ctx.paymentStatus &&
+      !ctx.clientId &&
+      (!ctx.reviewCandidateStatuses?.length || ctx.reviewCandidateStatuses.includes("approved")),
   };
 }
 
@@ -4278,10 +4362,12 @@ export function mergeInvoiceListCandidates<
   TInvoice extends InvoiceRowForMerge,
   TGmailScanItem extends Parameters<typeof mapGmailScanItemToInvoiceCandidate>[0],
   TDocumentReview extends Parameters<typeof mapDocumentReviewToInvoiceCandidate>[0],
+  TSupplierPayment extends Parameters<typeof mapSupplierPaymentToInvoiceCandidate>[0],
 >(input: {
   invoiceRows: TInvoice[];
   gmailScanItems: TGmailScanItem[];
   documentReviews: TDocumentReview[];
+  supplierPayments?: TSupplierPayment[];
   paymentDriveFallbackByInvoiceKey?: Map<string, { link: string | null; ambiguous: boolean }>;
   organizationId?: string;
 }) {
@@ -4293,7 +4379,19 @@ export function mergeInvoiceListCandidates<
     input.invoiceRows.flatMap((invoice) => [invoice.gmailMessageId, invoice.emailId].filter((value): value is string => Boolean(value)))
   );
   const usedReviewRefs = new Set<string>();
+  const usedPaymentIds = new Set<string>();
   const paymentDriveFallbackByInvoiceKey = input.paymentDriveFallbackByInvoiceKey ?? new Map();
+
+  const fromSupplierPayments = (input.supplierPayments ?? [])
+    .filter((payment) => {
+      if (payment.emailMessageId && existingInvoiceRefs.has(payment.emailMessageId)) return false;
+      return true;
+    })
+    .map((payment) => {
+      usedPaymentIds.add(payment.id);
+      if (payment.emailMessageId) usedReviewRefs.add(`email:${payment.emailMessageId}`);
+      return mapSupplierPaymentToInvoiceCandidate(payment, input.organizationId);
+    });
 
   return [
     ...input.invoiceRows.map((invoice) => {
@@ -4320,8 +4418,10 @@ export function mergeInvoiceListCandidates<
         if (item.emailMessageId) usedReviewRefs.add(`email:${item.emailMessageId}`);
         return mapGmailScanItemToInvoiceCandidate(item, input.organizationId);
       }),
+    ...fromSupplierPayments,
     ...input.documentReviews
       .filter((item) => {
+        if (item.supplierPaymentId && usedPaymentIds.has(item.supplierPaymentId)) return false;
         const refs = [item.gmailMessageId && `gmail:${item.gmailMessageId}`, item.emailMessageId && `email:${item.emailMessageId}`].filter((value): value is string => Boolean(value));
         if (refs.some((ref) => existingInvoiceRefs.has(ref.replace(/^(gmail|email):/, "")) || usedReviewRefs.has(ref))) return false;
         refs.forEach((ref) => usedReviewRefs.add(ref));
@@ -4339,10 +4439,19 @@ async function loadOrganizationTimezone(organizationId: string) {
   return organization?.timezone || DEFAULT_ORGANIZATION_TIMEZONE;
 }
 
+type InvoiceListSupplierPaymentRow = Parameters<typeof mapSupplierPaymentToInvoiceCandidate>[0];
+
 async function fetchInvoiceListSourceRows(
   whereInput: InvoiceListWhereInput,
   options: { limit?: number }
-) {
+): Promise<
+  [
+    Awaited<ReturnType<typeof prisma.invoice.findMany>>,
+    Awaited<ReturnType<typeof prisma.gmailScanItem.findMany>>,
+    Awaited<ReturnType<typeof prisma.financialDocumentReview.findMany>>,
+    InvoiceListSupplierPaymentRow[],
+  ]
+> {
   const listQuery = {
     orderBy: { createdAt: "desc" as const },
     ...(options.limit ? { take: options.limit } : {}),
@@ -4364,6 +4473,12 @@ async function fetchInvoiceListSourceRows(
     whereInput.includeReviewCandidates
       ? prisma.financialDocumentReview.findMany({
           where: whereInput.financialDocumentReviewWhere,
+          ...listQuery,
+        })
+      : Promise.resolve([]),
+    whereInput.includeApprovedSupplierPayments
+      ? prisma.supplierPayment.findMany({
+          where: whereInput.supplierPaymentWhere,
           ...listQuery,
         })
       : Promise.resolve([]),
@@ -4486,7 +4601,7 @@ apiRouter.get("/invoices", async (req, res) => {
     ? await resolveInvoiceMonthBounds(organizationId, parsedMonth.year, parsedMonth.month, await loadOrganizationTimezone(organizationId))
     : undefined;
   const whereInput = buildInvoiceListWhereInput(ctx, monthBounds);
-  const [invoiceRows, gmailScanItems, documentReviews] = await fetchInvoiceListSourceRows(whereInput, {
+  const [invoiceRows, gmailScanItems, documentReviews, supplierPayments] = await fetchInvoiceListSourceRows(whereInput, {
     limit: monthBounds ? undefined : 100,
   });
   const paymentDriveFallbackByInvoiceKey = await buildPaymentDriveFallbackByInvoiceKey(organizationId, invoiceRows);
@@ -4495,6 +4610,7 @@ apiRouter.get("/invoices", async (req, res) => {
     invoiceRows,
     gmailScanItems,
     documentReviews,
+    supplierPayments,
     paymentDriveFallbackByInvoiceKey,
     organizationId,
   })
@@ -5793,6 +5909,10 @@ apiRouter.post("/document-reviews/:id/approve", requirePerm("review.approve"), a
       confirmedSupplierName,
     });
     res.json({
+      success: true,
+      reviewId: result.review.id,
+      supplierPaymentId: result.paymentId,
+      status: result.review.reviewStatus,
       ok: true,
       item: mapDocumentReviewForApi(result.review),
       paymentId: result.paymentId,

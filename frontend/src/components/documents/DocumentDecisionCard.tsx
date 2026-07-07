@@ -7,6 +7,7 @@ import {
   drivePreviewUrl,
   formatDocumentDate,
   presentDocument,
+  resolveDocumentPrimaryClick,
   sourceLabel,
   type DocumentReviewItem,
 } from "@/lib/documents/presentation";
@@ -37,15 +38,28 @@ export function DocumentDecisionCard({
   }, [item.id, view.supplier]);
 
   function handlePrimary() {
-    if (view.canApprove) {
-      onApprove(item.id, supplierDraft.trim() || view.supplier);
+    const action = resolveDocumentPrimaryClick({
+      item,
+      view,
+      editingSupplier,
+      supplierDraft,
+      hasPreviewUrl: Boolean(previewUrl),
+    });
+    if (action.type === "approve") {
+      console.info("[document-review] approve_click", {
+        reviewId: item.id,
+        supplierName: action.supplierName,
+        decisionCanApprove: item.decision?.canApprove ?? null,
+        viewCanApprove: view.canApprove,
+      });
+      onApprove(item.id, action.supplierName);
       return;
     }
-    if (view.canEditSupplier && (editingSupplier || view.primaryLabel === "ערוך ספק")) {
+    if (action.type === "edit_supplier") {
       setEditingSupplier(true);
       return;
     }
-    if (previewUrl) {
+    if (action.type === "open_preview" && previewUrl) {
       onOpen(previewUrl);
     }
   }
@@ -64,6 +78,11 @@ export function DocumentDecisionCard({
     const next = supplierDraft.trim();
     if (!next) return;
     setEditingSupplier(false);
+    console.info("[document-review] approve_click", {
+      reviewId: item.id,
+      supplierName: next,
+      source: "confirm_supplier_edit",
+    });
     onApprove(item.id, next);
   }
 
@@ -87,7 +106,7 @@ export function DocumentDecisionCard({
             <iframe
               title={`תצוגה מקדימה — ${view.supplier}`}
               src={previewUrl}
-              className="h-full min-h-[220px] w-full lg:min-h-[320px]"
+              className="pointer-events-none h-full min-h-[220px] w-full lg:min-h-[320px]"
               loading="lazy"
             />
           ) : (
@@ -186,7 +205,7 @@ export function DocumentDecisionCard({
             {view.reason}
           </p>
 
-          <div className="mt-auto flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <div className="relative z-10 mt-auto flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             {editingSupplier ? (
               <>
                 <button

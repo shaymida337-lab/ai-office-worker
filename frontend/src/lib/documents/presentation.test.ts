@@ -8,8 +8,10 @@ import {
   formatReviewQueueHeadline,
   getReviewMissingFields,
   getReviewPrimaryAction,
+  isServerApproveReady,
   presentDocument,
   readinessBlockReasonHebrew,
+  resolveDocumentPrimaryClick,
   specificReviewReasonHebrew,
   type DocumentReviewItem,
 } from "./presentation.js";
@@ -492,4 +494,106 @@ test("blocked_duplicate explains the exact matched duplicate and hides approve",
   assert.match(view.reason, /חברת החשמל/);
   assert.match(view.reason, /326.32/);
   assert.equal(view.isDuplicate, true);
+});
+
+const ondoItem: DocumentReviewItem = {
+  id: "cmr9pspkh0095mg2dc44dzi2v",
+  source: "gmail",
+  sender: "billing@ondo.example",
+  subject: "קבלה",
+  fileName: "ondo.pdf",
+  documentType: "receipt",
+  supplierName: "אונדו",
+  totalAmount: 48,
+  displayAmount: 48,
+  amountLabel: "₪48.00",
+  currency: "ILS",
+  confidenceScore: 0.8,
+  uncertaintyReason: "trust.amount_gate_missing",
+  driveFileUrl: "/uploads/gmail-invoices/ondo.pdf?sig=test",
+  reviewStatus: "needs_review",
+  createdAt: "2026-07-07T08:00:00.000Z",
+  decision: {
+    canApprove: true,
+    primaryAction: "approve",
+    blockReason: null,
+    displaySupplierName: "אונדו",
+    confirmedSupplierName: null,
+    supplierNeedsConfirmation: false,
+    duplicate: null,
+  },
+};
+
+test("Ondo review: server decision marks approve-ready", () => {
+  assert.equal(isServerApproveReady(ondoItem), true);
+  const view = presentDocument(ondoItem);
+  assert.equal(view.canApprove, true);
+  assert.equal(view.primaryLabel, "אשר והעבר לחשבוניות");
+});
+
+test("resolveDocumentPrimaryClick calls approve path for Ondo decision", () => {
+  const view = presentDocument(ondoItem);
+  const action = resolveDocumentPrimaryClick({
+    item: ondoItem,
+    view,
+    editingSupplier: false,
+    supplierDraft: "אונדו",
+    hasPreviewUrl: true,
+  });
+  assert.deepEqual(action, { type: "approve", supplierName: "אונדו" });
+});
+
+test("resolveDocumentPrimaryClick approves via decision even if view.canApprove was stale false", () => {
+  const action = resolveDocumentPrimaryClick({
+    item: ondoItem,
+    view: {
+      canApprove: false,
+      primaryLabel: "השלם פרטים",
+      canEditSupplier: true,
+      supplier: "אונדו",
+    },
+    editingSupplier: false,
+    supplierDraft: "",
+    hasPreviewUrl: true,
+  });
+  assert.equal(action.type, "approve");
+  if (action.type === "approve") {
+    assert.equal(action.supplierName, "אונדו");
+  }
+});
+
+test("resolveDocumentPrimaryClick opens preview instead of approve when server not ready", () => {
+  const blocked = {
+    ...ondoItem,
+    decision: decisionOf({ canApprove: false, primaryAction: "complete_details", blockReason: "amount.unresolved" }),
+  };
+  const view = presentDocument(blocked);
+  const action = resolveDocumentPrimaryClick({
+    item: blocked,
+    view,
+    editingSupplier: false,
+    supplierDraft: "",
+    hasPreviewUrl: true,
+  });
+  assert.equal(action.type, "open_preview");
+});
+
+test("flat canApprove fallback when decision object missing", () => {
+  const legacy = {
+    ...ondoItem,
+    decision: undefined,
+    canApprove: true,
+    recommendedAction: "approve" as const,
+  };
+  assert.equal(isServerApproveReady(legacy), true);
+  const view = presentDocument(legacy);
+  assert.equal(view.canApprove, true);
+  const action = resolveDocumentPrimaryClick({
+    item: legacy,
+    view,
+    editingSupplier: false,
+    supplierDraft: "אונדו",
+    hasPreviewUrl: false,
+  });
+  assert.equal(action.type, "approve");
 });
