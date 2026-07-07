@@ -5,6 +5,7 @@ import {
   askNatalieBusinessQuestion,
   buildCreateAppointmentResponse,
   parseRescheduleDayAndTime,
+  extractRescheduleAppointment,
 } from "./natalie.js";
 import { parseCalendarIntent } from "./calendar/calendarIntentParser.js";
 
@@ -109,4 +110,41 @@ test("reschedule time parse: 'מחר בארבע' → 16:00, 'מחר ב-3' → 15
   assert.deepEqual(parseRescheduleDayAndTime("מחר בארבע"), { dayReference: "מחר", time: "16:00" });
   assert.deepEqual(parseRescheduleDayAndTime("מחר ב-3"), { dayReference: "מחר", time: "15:00" });
   assert.deepEqual(parseRescheduleDayAndTime("היום בשעה 10"), { dayReference: "היום", time: "10:00" });
+});
+
+test("move (complex from→to): 'תזיזי את התור של שרית ממחר בשלוש למחר בארבע'", () => {
+  const parsed = extractRescheduleAppointment("תזיזי את התור של שרית ממחר בשלוש למחר בארבע");
+  assert.ok(parsed, "should extract a reschedule");
+  assert.equal(parsed!.clientName, "שרית");
+  assert.equal(parsed!.dayReference, "מחר");
+  assert.equal(parsed!.time, "16:00");
+
+  // Full deterministic move extraction (from + to) also available on the parser.
+  const intent = parseCalendarIntent("תזיזי את התור של שרית ממחר בשלוש למחר בארבע", {
+    timeZone: TZ,
+    now: NOW,
+  });
+  assert.equal(intent.intent, "move_appointment");
+  assert.equal(intent.customerName, "שרית");
+  assert.equal(intent.fromDayReference, "מחר");
+  assert.equal(intent.fromTime, "15:00");
+  assert.equal(intent.dayReference, "מחר");
+  assert.equal(intent.time, "16:00");
+});
+
+test("move (simple): 'תעבירי את התור של שרית למחר בארבע' still works", () => {
+  const parsed = extractRescheduleAppointment("תעבירי את התור של שרית למחר בארבע");
+  assert.ok(parsed, "should extract a reschedule");
+  assert.equal(parsed!.clientName, "שרית");
+  assert.equal(parsed!.dayReference, "מחר");
+  assert.equal(parsed!.time, "16:00");
+});
+
+test("LIVE reschedule extraction bypasses Claude for the complex phrase", async () => {
+  // The reschedule regex path historically failed this phrase and would fall
+  // through to Claude. Prove the extractor now resolves it deterministically.
+  const parsed = extractRescheduleAppointment(
+    "תזיזי את התור של שרית ממחר בשלוש למחר בארבע"
+  );
+  assert.ok(parsed && parsed.clientName === "שרית" && parsed.time === "16:00");
 });

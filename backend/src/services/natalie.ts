@@ -1266,9 +1266,29 @@ export function parseRescheduleDayAndTime(target: string): { dayReference: strin
   return { dayReference, time };
 }
 
-function extractRescheduleAppointment(
+export function extractRescheduleAppointment(
   question: string
 ): { clientName: string | null; dayReference: string; time: string } | null {
+  // Deterministic Hebrew parser handles complex "from ... to ..." phrasing
+  // (e.g. "תזיזי את התור של שרית ממחר בשלוש למחר בארבע") without Claude, using
+  // the TO day/time as the reschedule target. Only trust it when it cleanly
+  // extracted a customer name (the "של <שם>" form); otherwise fall through to
+  // the regex path below, which also handles "תעביר את <שם>" and pronoun/fuzzy
+  // cases resolved downstream.
+  const intent = parseCalendarIntent(question);
+  if (
+    intent.intent === "move_appointment" &&
+    intent.customerName &&
+    intent.dayReference &&
+    intent.time
+  ) {
+    return {
+      clientName: intent.customerName,
+      dayReference: intent.dayReference,
+      time: intent.time,
+    };
+  }
+
   const normalized = question.trim().replace(/\s+/g, " ");
   const pronounPatterns = [
     /(?:תעביר|תעבירי|תזיז|תזיזי|תשני|תשנה|שנה\s+מועד)\s+(?:את\s+)?(?:ה)?(?:תור\s+)?(?:אותו|אותה|לו|לה)\s+ל(?:ש|-)?\s*(.+)$/iu,
