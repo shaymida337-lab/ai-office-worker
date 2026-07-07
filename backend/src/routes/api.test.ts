@@ -8,6 +8,7 @@ import {
   buildNatalieVoiceCredentials,
   buildReviewCandidateStatuses,
   debugTopPaymentAmountsWhere,
+  includeApprovedSupplierPayments,
   invoiceReviewStatusFilter,
   mapDocumentReviewToInvoiceCandidate,
   mapGmailScanItemToInvoiceCandidate,
@@ -293,7 +294,20 @@ test("months aggregation sql includes dedup guards across all sources", () => {
   assert.match(sql, /NOT EXISTS/);
   assert.match(sql, /"GmailScanItem"/);
   assert.match(sql, /"FinancialDocumentReview"/);
+  assert.match(sql, /"SupplierPayment"/);
   assert.match(sql, /normalizedDocumentDate/);
+});
+
+test("includeApprovedSupplierPayments is false on needs_review tab only", () => {
+  assert.equal(includeApprovedSupplierPayments(buildInvoiceListQueryContext({ organizationId: "org-1" })), true);
+  assert.equal(
+    includeApprovedSupplierPayments(buildInvoiceListQueryContext({ organizationId: "org-1", status: "approved" })),
+    true
+  );
+  assert.equal(
+    includeApprovedSupplierPayments(buildInvoiceListQueryContext({ organizationId: "org-1", status: "needs_review" })),
+    false
+  );
 });
 
 test("summarized month counts equal total deduped records", () => {

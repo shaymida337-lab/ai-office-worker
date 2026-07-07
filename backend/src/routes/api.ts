@@ -4151,10 +4151,7 @@ export function buildInvoiceListWhereInput(
     supplierPaymentWhere,
     includeApprovedInvoices: ctx.includeApprovedInvoices,
     includeReviewCandidates: ctx.includeReviewCandidates,
-    includeApprovedSupplierPayments:
-      !ctx.paymentStatus &&
-      !ctx.clientId &&
-      (!ctx.reviewCandidateStatuses?.length || ctx.reviewCandidateStatuses.includes("approved")),
+    includeApprovedSupplierPayments: includeApprovedSupplierPayments(ctx),
   };
 }
 
@@ -4222,6 +4219,45 @@ function appendFinancialDocumentReviewSqlFilters(alias: string, ctx: InvoiceList
     )`;
   }
   return sql;
+}
+
+function appendSupplierPaymentSqlFilters(alias: string, ctx: InvoiceListQueryContext, params: unknown[]) {
+  let sql = ` AND ${alias}."approvalStatus" = 'approved'`;
+  sql += ` AND ${alias}."documentTypeDetailed" IN ('tax_invoice', 'receipt', 'tax_invoice_receipt')`;
+  if (ctx.search) {
+    const searchParam = pushSqlParam(params, `%${ctx.search}%`);
+    sql += ` AND (
+      ${alias}."subject" ILIKE ${searchParam}
+      OR ${alias}."supplierName" ILIKE ${searchParam}
+      OR ${alias}."supplier" ILIKE ${searchParam}
+      OR ${alias}."emailSender" ILIKE ${searchParam}
+      OR ${alias}."invoiceNumber" ILIKE ${searchParam}
+    )`;
+  }
+  return sql;
+}
+
+export function includeApprovedSupplierPayments(ctx: InvoiceListQueryContext): boolean {
+  return (
+    !ctx.paymentStatus &&
+    !ctx.clientId &&
+    (!ctx.reviewCandidateStatuses?.length || ctx.reviewCandidateStatuses.includes("approved"))
+  );
+}
+
+function supplierPaymentInvoiceDedupExistsSql(
+  paymentAlias: string,
+  invoiceAlias: string,
+  ctx: InvoiceListQueryContext,
+  params: unknown[]
+) {
+  return `EXISTS (
+    SELECT 1 FROM "Invoice" ${invoiceAlias}
+    WHERE ${invoiceAlias}."organizationId" = ${paymentAlias}."organizationId"
+      AND ${paymentAlias}."emailMessageId" IS NOT NULL
+      AND ${invoiceAlias}."emailId" = ${paymentAlias}."emailMessageId"
+      ${appendInvoiceSqlFilters(invoiceAlias, ctx, params)}
+  )`;
 }
 
 function invoiceDedupExistsSql(sourceAlias: string, invoiceAlias: string, ctx: InvoiceListQueryContext, params: unknown[]) {
@@ -4292,6 +4328,22 @@ export function buildInvoiceMonthsAggregationSql(ctx: InvoiceListQueryContext, t
           )
           AND NOT ${invoiceDedupExistsSql("gsi", "i2", ctx, params)}
       )`);
+  }
+
+  if (includeApprovedSupplierPayments(ctx)) {
+    parts.push(`SELECT
+      sp."normalizedDocumentDate" AS doc_date,
+      CASE
+        WHEN sp."totalAmount" IS NOT NULL AND sp."totalAmount" > 0 THEN sp."totalAmount"::double precision
+        WHEN sp."amount" IS NOT NULL AND sp."amount" > 0 THEN sp."amount"::double precision
+        ELSE NULL
+      END AS amount,
+      COALESCE(NULLIF(TRIM(sp."currency"), ''), 'ILS') AS currency
+    FROM "SupplierPayment" sp
+    WHERE sp."organizationId" = ${orgParam}
+      AND sp."normalizedDocumentDate" IS NOT NULL
+      ${appendSupplierPaymentSqlFilters("sp", ctx, params)}
+      AND NOT ${supplierPaymentInvoiceDedupExistsSql("sp", "i", ctx, params)}`);
   }
 
   const sql = `WITH deduped AS (
