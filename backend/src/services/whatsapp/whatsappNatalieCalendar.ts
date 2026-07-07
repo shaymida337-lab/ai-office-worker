@@ -45,6 +45,10 @@ export function isWhatsAppCalendarCommand(message: string): boolean {
   return isAvailabilityQuestion(text);
 }
 
+function mentionsCalendarTopic(message: string): boolean {
+  return /יומן|תורים?|תור\b|פגישה|פנוי/i.test(message.trim());
+}
+
 async function defaultLoadOwnerUserId(organizationId: string): Promise<string | null> {
   const org = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -94,11 +98,12 @@ export async function maybeHandleWhatsAppCalendarMessage(
   const isCalendarCommand = isWhatsAppCalendarCommand(message);
   const isConfirmationReply =
     !!session?.hasPendingConfirmation && parseVoiceConfirmationIntent(message) !== "none";
+  const isCalendarTopic = mentionsCalendarTopic(message);
 
-  // Only take over when this is a real calendar command, or a yes/no reply to a
-  // pending calendar confirmation. A bare "כן" with no pending proposal falls
-  // through to the normal owner chat engine.
-  if (!isCalendarCommand && !isConfirmationReply) return null;
+  // Only take over when this is a real calendar command, a calendar-topic message
+  // that needs clarification, or a yes/no reply to a pending calendar confirmation.
+  // A bare "כן" with no pending proposal falls through to the normal owner chat engine.
+  if (!isCalendarCommand && !isConfirmationReply && !isCalendarTopic) return null;
 
   const result = await processTurn({
     organizationId: input.organizationId,

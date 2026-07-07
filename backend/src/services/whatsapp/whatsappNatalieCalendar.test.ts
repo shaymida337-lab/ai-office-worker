@@ -50,6 +50,26 @@ test("isWhatsAppCalendarCommand: non-calendar owner chatter → false", () => {
   assert.equal(isWhatsAppCalendarCommand("כמה הכנסות היו לי החודש?"), false);
   assert.equal(isWhatsAppCalendarCommand("כן"), false);
   assert.equal(isWhatsAppCalendarCommand(""), false);
+  assert.equal(isWhatsAppCalendarCommand("אולי משהו עם יומן"), false);
+});
+
+test("ambiguous calendar-topic message routes to the brain for clarification", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const reply = await maybeHandleWhatsAppCalendarMessage(
+    { organizationId: ORG, message: "אולי משהו עם יומן", phone: "+972500000000" },
+    makeDeps({
+      processTurn: async (input) => {
+        calls.push(input as Record<string, unknown>);
+        return fakeTurnResult({
+          displayResponse: "לא הבנתי את הבקשה ליומן. אפשר לנסח שוב עם שם, יום ושעה?",
+          answer: "לא הבנתי את הבקשה ליומן. אפשר לנסח שוב עם שם, יום ושעה?",
+        });
+      },
+    })
+  );
+
+  assert.equal(calls.length, 1);
+  assert.match(reply ?? "", /\?/);
 });
 
 // ---- Routing decisions ----
