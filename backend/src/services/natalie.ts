@@ -1216,6 +1216,16 @@ async function maybeBuildListAppointmentsResponse(
 function maybeBuildPartialCalendarClarification(question: string): NatalieClaudeResponse | null {
   const intent = parseCalendarIntent(question);
   if (intent.intent === "move_appointment") {
+    // Move with a clean customer + time but NO target day (e.g. "תעבירי את התור
+    // של שרית לשלוש"): ask which day rather than silently defaulting to "היום".
+    // Must run before the reschedule handler, which would otherwise guess today.
+    if (
+      intent.customerName &&
+      intent.missingFields.includes("date") &&
+      !extractCalendarDayReference(question)
+    ) {
+      return { answer: calendarMessages.rescheduleMissingDate() };
+    }
     // Let the reschedule handler (incl. fuzzy name resolution) run when we already
     // parsed a target — even if the deterministic intent lost the customer name.
     if (extractRescheduleAppointment(question)) return null;

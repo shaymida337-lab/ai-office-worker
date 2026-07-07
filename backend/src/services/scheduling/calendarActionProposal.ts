@@ -8,6 +8,7 @@ import {
   type AppointmentResolutionMetadata,
 } from "./calendarAppointmentSafety.js";
 import type { AppointmentNameResolution } from "./calendarAppointmentResolver.js";
+import { calendarMessages } from "../calendar/calendarMessages.js";
 
 export function formatAmbiguousAppointmentMessage(
   spokenName: string,
@@ -16,7 +17,7 @@ export function formatAmbiguousAppointmentMessage(
   const list = candidates
     .map((candidate, index) => `${index + 1}. ${candidate.appointment.clientName}`)
     .join("\n");
-  return `מצאתי כמה תורים שמתאימים ל"${spokenName}". למי התכוונת?\n${list}`;
+  return calendarMessages.ambiguousAppointment(spokenName, list);
 }
 
 export function buildCalendarActionProposal(input: {

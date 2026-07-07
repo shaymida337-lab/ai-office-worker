@@ -8,6 +8,7 @@ import {
 } from "../clientContact.js";
 import { normalizeWhatsAppNumber } from "../whatsapp.js";
 import { SchedulingFacadeError } from "./schedulingErrors.js";
+import { calendarMessages } from "../calendar/calendarMessages.js";
 
 export type SchedulingCustomerCandidate = {
   id: string;
@@ -50,19 +51,18 @@ export function formatAmbiguousCustomerMessage(
   query: string,
   matches: SchedulingCustomerCandidate[]
 ): string {
-  if (matches.length === 0) return `לא מצאתי לקוח בשם "${query}".`;
+  if (matches.length === 0) return calendarMessages.ambiguousCustomerNoMatch(query);
   const firstName = matches[0]?.name?.trim();
   const sameDisplayName =
     firstName &&
     matches.every(
       (match) => normalizeSchedulingCustomerName(match.name) === normalizeSchedulingCustomerName(firstName)
     );
-  if (sameDisplayName) {
-    const list = matches.map((match, index) => `${index + 1}. ${match.name}`).join("\n");
-    return `מצאתי ${matches.length} לקוחות בשם ${firstName}. למי התכוונת?\n${list}`;
-  }
   const list = matches.map((match, index) => `${index + 1}. ${match.name}`).join("\n");
-  return `מצאתי כמה לקוחות שמתאימים ל״${query}״. למי התכוונת?\n${list}`;
+  if (sameDisplayName) {
+    return calendarMessages.ambiguousCustomerSameName(matches.length, firstName, list);
+  }
+  return calendarMessages.ambiguousCustomerDifferentNames(query, list);
 }
 
 function phoneMatchesQuery(stored: string | null | undefined, normalizedPhone: string): boolean {

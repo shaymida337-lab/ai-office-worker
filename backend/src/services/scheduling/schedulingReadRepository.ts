@@ -117,6 +117,13 @@ function mergeAndCap(
   events: SchedulingItem[],
   limit: number
 ): SchedulingItem[] {
+  // FUTURE WORK (cross-table dedup): a single booking could theoretically exist
+  // in BOTH tables (e.g. mid-migration or a double-write). We intentionally do
+  // NOT dedup here yet — dedup needs a stable cross-table identity (clientId +
+  // startTime + duration) and careful handling of near-duplicate times, which
+  // is out of scope for Calendar V1. Today the read paths simply surface both;
+  // duplicates are rare and non-destructive (reads only, writes still require
+  // confirmation). Revisit once a canonical booking key exists.
   return [...appointments, ...events]
     .sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
     .slice(0, limit);

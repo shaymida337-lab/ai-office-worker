@@ -4,6 +4,7 @@ import {
   findAvailableSlotsForOrganization,
 } from "./calendar/availability.js";
 import type { FindAvailableSlotsResult, SuggestedSlot } from "./calendar/types.js";
+import { calendarMessages } from "./calendar/calendarMessages.js";
 
 export type AvailabilityIntentKind = "none" | "check" | "suggest";
 
@@ -329,13 +330,13 @@ type SuggestAvailableTimesProposalSlots = SuggestAvailableTimesProposal["slots"]
 function formatReasonMessage(reason: string): string {
   switch (reason) {
     case "outside_working_hours":
-      return "השעה הזו מחוץ לשעות הפעילות (07:00–21:00).";
+      return calendarMessages.availabilityOutsideHours();
     case "past":
-      return "השעה הזו כבר עברה.";
+      return calendarMessages.availabilityPast();
     case "bad_datetime":
-      return "לא הבנתי את התאריך או השעה. אפשר לנסות שוב עם יום ושעה ברורים, למשל מחר ב-10:00.";
+      return calendarMessages.availabilityBadDatetime();
     default:
-      return "לא הצלחתי לבדוק את הזמינות כרגע.";
+      return calendarMessages.availabilityCheckFailed();
   }
 }
 
@@ -362,16 +363,15 @@ async function buildSlotsResponse(
     const scope =
       intent.dayReference ??
       (intent.rangeType === "week" ? "השבוע" : "היום");
-    return {
-      answer: `לא מצאתי זמנים פנויים ב${scope}. אפשר לנסות יום אחר או טווח רחב יותר.`,
-    };
+    return { answer: calendarMessages.availabilityEmpty(scope) };
   }
 
   const slots = mapSlots(result.slots, result.durationMinutes);
   const prefix = options?.answerPrefix?.trim();
+  const labels = slots.map((slot) => slot.label).join(", ");
   const answer = prefix
-    ? `${prefix} ${slots.map((slot) => slot.label).join(", ")}.`
-    : `מצאתי ${slots.length} זמנים פנויים: ${slots.map((slot) => slot.label).join(", ")}.`;
+    ? `${prefix} ${labels}.`
+    : calendarMessages.availabilitySlots(slots.length, labels);
 
   return buildSuggestResponse({
     slots,
@@ -425,13 +425,11 @@ export async function maybeBuildAvailabilityResponse(
           minute: "2-digit",
           hour12: false,
         }).format(new Date(check.startTime));
-      return { answer: `כן, השעה פנויה${label ? ` — ${label}` : ""}.` };
+      return { answer: calendarMessages.availabilitySlotFree(label) };
     }
 
     const conflictName = check.conflict?.clientName?.trim();
-    const prefix = conflictName
-      ? `לא, השעה תפוסה${conflictName ? ` (תור ל${conflictName})` : ""}. אלה זמנים חלופיים:`
-      : "לא, השעה תפוסה. אלה זמנים חלופיים:";
+    const prefix = calendarMessages.availabilitySlotTakenPrefix(conflictName);
 
     return buildSlotsResponse(
       organizationId,

@@ -105,4 +105,47 @@ export const calendarMessages = {
   listBlock(header: string, entries: CalendarListEntry[]): string {
     return `${header}\n${entries.map((entry) => calendarMessages.listEntry(entry)).join("\n")}`;
   },
+
+  // ---- Availability ----
+  availabilityOutsideHours(): string {
+    return "השעה הזו מחוץ לשעות הפעילות (07:00–21:00).";
+  },
+  availabilityPast(): string {
+    return "השעה הזו כבר עברה.";
+  },
+  availabilityBadDatetime(): string {
+    return "לא הבנתי את התאריך או השעה. אפשר לנסות שוב עם יום ושעה ברורים, למשל מחר ב-10:00.";
+  },
+  availabilityCheckFailed(): string {
+    return "לא הצלחתי לבדוק את הזמינות כרגע.";
+  },
+  availabilitySlotFree(label?: string | null): string {
+    return `כן, השעה פנויה${label ? ` — ${label}` : ""}.`;
+  },
+  availabilitySlotTakenPrefix(conflictName?: string | null): string {
+    const who = conflictName?.trim();
+    return who
+      ? `לא, השעה תפוסה (תור ל${who}). אלה זמנים חלופיים:`
+      : "לא, השעה תפוסה. אלה זמנים חלופיים:";
+  },
+  availabilityEmpty(scope: string): string {
+    return `לא מצאתי זמנים פנויים ב${scope}. אפשר לנסות יום אחר או טווח רחב יותר.`;
+  },
+  availabilitySlots(count: number, labels: string): string {
+    return `מצאתי ${count} זמנים פנויים: ${labels}.`;
+  },
+
+  // ---- Ambiguous customer / appointment ----
+  ambiguousCustomerNoMatch(query: string): string {
+    return `לא מצאתי לקוח בשם "${query}".`;
+  },
+  ambiguousCustomerSameName(count: number, firstName: string, list: string): string {
+    return `מצאתי ${count} לקוחות בשם ${firstName}. למי התכוונת?\n${list}`;
+  },
+  ambiguousCustomerDifferentNames(query: string, list: string): string {
+    return `מצאתי כמה לקוחות שמתאימים ל״${query}״. למי התכוונת?\n${list}`;
+  },
+  ambiguousAppointment(spokenName: string, list: string): string {
+    return `מצאתי כמה תורים שמתאימים ל"${spokenName}". למי התכוונת?\n${list}`;
+  },
 } as const;

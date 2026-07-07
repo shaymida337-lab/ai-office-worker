@@ -165,6 +165,23 @@ test("move with day filter targets only the matching day", async () => {
   }
 });
 
+test("move without an explicit target day asks which day instead of defaulting", async () => {
+  const restore = installMocks([
+    appointmentOn("appt-tomorrow", "מחר", "15:00", { id: CLIENT_SARIT, name: "שרית" }),
+  ]);
+  try {
+    const res = await askNatalieBusinessQuestion(
+      { organizationId: ORG, question: "תעבירי את התור של שרית לשלוש" },
+      throwingClaude
+    );
+    // No write proposal and no silent default to today — one clean question.
+    assert.ok(!("action" in res) || !res.action);
+    assert.match(res.answer ?? "", /לאיזה יום/);
+  } finally {
+    restore();
+  }
+});
+
 test("CalendarEvent-stored booking is discoverable by Natalie's list", async () => {
   const originalOrg = prisma.organization.findUnique.bind(prisma.organization);
   const originalClient = prisma.client.findMany.bind(prisma.client);
