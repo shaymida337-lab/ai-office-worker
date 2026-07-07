@@ -22,6 +22,7 @@ import {
 } from "./voiceSpokenResponse.js";
 import { evaluateVoiceExecutionReadiness } from "./voiceZeroWrongAction.js";
 import { processTranscriptAccuracy } from "../../sttAccuracy/index.js";
+import { parseCalendarIntent } from "../../calendar/calendarIntentParser.js";
 import {
   claimConfirmationExecution,
   releaseConfirmationExecution,
@@ -458,11 +459,16 @@ export async function processVoiceTurn(
     }
   }
 
+  // For calendar commands (create/cancel/move) keep the spoken customer name
+  // verbatim — never fuzzy-route it to a supplier/vocab name.
+  const isCalendarCommand = parseCalendarIntent(transcript).intent !== "unknown";
+
   const processAccuracy = deps.processTranscriptAccuracyFn ?? processTranscriptAccuracy;
   const accuracy = await processAccuracy({
     organizationId: input.organizationId,
     rawTranscript: transcript,
     sessionId: input.sessionId,
+    skipNameCorrection: isCalendarCommand,
     requestId: input.requestId ?? null,
   });
 

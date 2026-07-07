@@ -21,6 +21,20 @@ import {
 } from "./scheduling/calendarActionProposal.js";
 import { maybeBuildAvailabilityResponse } from "./natalieAvailability.js";
 import { resolveFinanceDisplayAmount } from "./amount/financeDisplayAmount.js";
+import {
+  parseCalendarIntent,
+  parseHebrewTime,
+  validateExtraction,
+  extractDayReference as extractCalendarDayReference,
+  type CalendarIntentExtraction,
+} from "./calendar/calendarIntentParser.js";
+
+/** Injectable dependencies for deterministic testing of the Natalie brain. */
+export type AskNatalieDeps = {
+  askClaude?: typeof answerBusinessQuestionWithClaude;
+  loadTimezone?: (organizationId: string) => Promise<string>;
+  now?: Date;
+};
 
 const SHOW_INVOICE_DEBUG = process.env.NATALIE_SHOW_INVOICE_DEBUG === "true";
 
@@ -57,7 +71,16 @@ export async function askNatalieBusinessQuestion(input: {
       proposal?: Record<string, unknown> | null;
     }>;
   };
-}): Promise<NatalieClaudeResponse> {
+}, deps?: AskNatalieDeps): Promise<NatalieClaudeResponse> {
+  // Deterministic Hebrew create handler runs FIRST so booking commands never
+  // reach Claude (no invented names, no defaulted times, no context bleed).
+  const createAppointmentResponse = await maybeBuildCreateAppointmentProposal(
+    input.organizationId,
+    input.question,
+    deps
+  );
+  if (createAppointmentResponse) return createAppointmentResponse;
+
   const businessFactsResponse = await maybeBuildBusinessFactsResponse(input.organizationId, input.question);
   if (businessFactsResponse) return businessFactsResponse;
 
@@ -103,7 +126,8 @@ export async function askNatalieBusinessQuestion(input: {
     }),
   ]);
 
-  return answerBusinessQuestionWithClaude({
+  const askClaude = deps?.askClaude ?? answerBusinessQuestionWithClaude;
+  return askClaude({
     question: input.question,
     history: input.history,
     businessContext: {
@@ -111,6 +135,78 @@ export async function askNatalieBusinessQuestion(input: {
       richerBusinessData: richerContext,
     },
   });
+}
+
+/** Hebrew day-reference → user-facing label for the confirmation template. */
+function formatCreateDayLabel(dayReference: string | null): string {
+  if (!dayReference) return "";
+  return dayReference;
+}
+
+/** One short, clean, templated clarification — never free LLM text, never guessed values. */
+function buildCreateClarification(extraction: CalendarIntentExtraction): string {
+  const who = extraction.customerName ? ` ל${extraction.customerName}` : "";
+  if (extraction.missingFields.includes("customerName")) {
+    return "לא הבנתי למי לקבוע את התור. מה שם הלקוח/ה?";
+  }
+  if (extraction.missingFields.includes("time")) {
+    return `באיזו שעה לקבוע את התור${who}?`;
+  }
+  if (extraction.missingFields.includes("date")) {
+    return `לאיזה יום לקבוע את התור${who}?`;
+  }
+  return "לא הבנתי את הבקשה במלואה. אפשר לחזור עם שם הלקוח, היום והשעה?";
+}
+
+/**
+ * Pure builder: turn a deterministic calendar extraction into a booking proposal
+ * (or a templated clarification). Never returns a booking when values are
+ * uncertain, incomplete, or fail the noise/name safety guard.
+ */
+export function buildCreateAppointmentResponse(
+  extraction: CalendarIntentExtraction
+): NatalieClaudeResponse | null {
+  if (extraction.intent !== "create_appointment") return null;
+
+  const validation = validateExtraction(extraction);
+  const uncertain =
+    !validation.valid ||
+    extraction.confidence !== "high" ||
+    extraction.missingFields.length > 0 ||
+    !extraction.customerName ||
+    !extraction.dayReference ||
+    !extraction.time;
+
+  if (uncertain) {
+    return { answer: buildCreateClarification(extraction) };
+  }
+
+  const dayLabel = formatCreateDayLabel(extraction.dayReference);
+  return {
+    action: "book_appointment",
+    proposal: {
+      clientName: extraction.customerName!,
+      dayReference: extraction.dayReference!,
+      time: extraction.time!,
+      ...(extraction.durationMinutes ? { durationMinutes: extraction.durationMinutes } : {}),
+    },
+    answer: `הבנתי: לקבוע תור ל${extraction.customerName} ${dayLabel} בשעה ${extraction.time}. לאשר?`,
+  };
+}
+
+async function maybeBuildCreateAppointmentProposal(
+  organizationId: string,
+  question: string,
+  deps?: AskNatalieDeps
+): Promise<NatalieClaudeResponse | null> {
+  // Cheap, DB-free intent gate: only act on explicit create commands.
+  const preview = parseCalendarIntent(question, { now: deps?.now });
+  if (preview.intent !== "create_appointment") return null;
+
+  const loadTimezone = deps?.loadTimezone ?? loadOrganizationTimezone;
+  const timeZone = await loadTimezone(organizationId);
+  const extraction = parseCalendarIntent(question, { timeZone, now: deps?.now });
+  return buildCreateAppointmentResponse(extraction);
 }
 
 async function maybeBuildShowInvoiceResponse(organizationId: string, question: string): Promise<NatalieClaudeResponse | null> {
@@ -1159,67 +1255,14 @@ async function maybeBuildCancelAppointmentProposal(
   });
 }
 
-function normalizeRescheduleTimeToken(token: string): string {
-  const trimmed = token.trim();
-  if (trimmed.includes(":")) return trimmed;
-  const hour = Number(trimmed);
-  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return trimmed;
-  return `${String(hour).padStart(2, "0")}:00`;
-}
-
-function parseHebrewHourWord(value: string): string | null {
-  const map: Record<string, number> = {
-    אחת: 1,
-    אחד: 1,
-    שתיים: 2,
-    שניים: 2,
-    שלוש: 3,
-    שלושה: 3,
-    ארבע: 4,
-    ארבעה: 4,
-    חמש: 5,
-    חמישה: 5,
-    שש: 6,
-    שישה: 6,
-    שבע: 7,
-    שבעה: 7,
-    שמונה: 8,
-    תשע: 9,
-    תשעה: 9,
-    עשר: 10,
-    עשרה: 10,
-  };
-  const hour = map[value.trim().toLowerCase()];
-  if (!hour) return null;
-  return `${String(hour).padStart(2, "0")}:00`;
-}
-
-function parseRescheduleDayAndTime(target: string): { dayReference: string; time: string } | null {
+export function parseRescheduleDayAndTime(target: string): { dayReference: string; time: string } | null {
   const normalized = target.trim().replace(/\s+/g, " ");
-  const timePatterns = [
-    /בשעה\s+(\d{1,2}(?::\d{2})?)/u,
-    /בשעה\s+([\u0590-\u05FF]+)/u,
-    /ב-(\d{1,2}(?::\d{2})?)/u,
-    /\bב\s+(\d{1,2}(?::\d{2})?)/u,
-    /(\d{1,2}:\d{2})/u,
-  ];
-
-  let time: string | null = null;
-  let remainder = normalized;
-  for (const pattern of timePatterns) {
-    const match = normalized.match(pattern);
-    if (match?.[1]) {
-      time = /^\d/.test(match[1])
-        ? normalizeRescheduleTimeToken(match[1])
-        : parseHebrewHourWord(match[1]);
-      if (!time) continue;
-      remainder = normalized.replace(match[0], "").trim();
-      break;
-    }
-  }
+  // Single deterministic Hebrew time parser (ב-3/בשלוש → 15:00, ב-4 → 16:00,
+  // ב-8 בערב → 20:00, ב-10 → 10:00) — replaces the old logic that padded ב-3 → 03:00.
+  const time = parseHebrewTime(normalized);
   if (!time) return null;
 
-  const dayReference = remainder.trim() || "היום";
+  const dayReference = extractCalendarDayReference(normalized) ?? "היום";
   return { dayReference, time };
 }
 

@@ -73,6 +73,12 @@ export async function processTranscriptAccuracy(input: {
   sessionId?: string | null;
   vocabulary?: SttVocabulary;
   skipClarification?: boolean;
+  /**
+   * When true, do NOT fuzzy-rewrite client/supplier names in the transcript and
+   * do not raise name-ambiguity clarifications. Used for calendar commands so a
+   * spoken customer name (e.g. "שרית") is never silently routed to a vocab name.
+   */
+  skipNameCorrection?: boolean;
   requestId?: string | null;
 }): Promise<SttAccuracyResult> {
   const rawTranscript = input.rawTranscript.trim();
@@ -90,11 +96,17 @@ export async function processTranscriptAccuracy(input: {
     normalizedTranscript = numberResult.text;
     corrections.push(...numberResult.corrections);
 
-    const nameResult = correctBusinessNamesInTranscript(normalizedTranscript, vocabulary, correctionContext);
+    const nameResult = input.skipNameCorrection
+      ? { text: normalizedTranscript, corrections: [], ambiguousSuggestions: [] as string[] }
+      : correctBusinessNamesInTranscript(normalizedTranscript, vocabulary, correctionContext);
     normalizedTranscript = nameResult.text;
     corrections.push(...nameResult.corrections);
 
-    const termResult = applyBusinessTermHints(normalizedTranscript, vocabulary);
+    // Business-term hints also rewrite tokens; skip for calendar commands so a
+    // spoken customer name cannot be reshaped into a supplier/term.
+    const termResult = input.skipNameCorrection
+      ? { text: normalizedTranscript, corrections: [] as typeof corrections }
+      : applyBusinessTermHints(normalizedTranscript, vocabulary);
     normalizedTranscript = termResult.text;
     corrections.push(...termResult.corrections);
 

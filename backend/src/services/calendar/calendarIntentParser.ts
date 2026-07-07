@@ -105,8 +105,9 @@ function applyHourContext(hour: number, contextText: string): number {
   if (TIME_CONTEXT.evening.test(contextText) || TIME_CONTEXT.night.test(contextText)) {
     return hour >= 1 && hour <= 11 ? hour + 12 : hour;
   }
-  // No explicit context: business default — treat 1–11 as afternoon.
-  if (hour >= 1 && hour <= 11) return hour + 12;
+  // No explicit context: business default — single-digit hours 1–9 are read as
+  // afternoon (3 → 15:00), while 10/11 stay morning business hours (10 → 10:00).
+  if (hour >= 1 && hour <= 9) return hour + 12;
   return hour;
 }
 
@@ -161,7 +162,7 @@ export function parseHebrewTime(segment: string): string | null {
   return toTime(adjusted, 0);
 }
 
-function extractDayReference(text: string): string | null {
+export function extractDayReference(text: string): string | null {
   if (/(?:^|\s)ל?מחרתיים(?:\s|$|[?.!,])/u.test(text)) return "מחרתיים";
   if (/(?:^|\s)ל?מחר(?:\s|$|[?.!,])/u.test(text)) return "מחר";
   if (/(?:^|\s)ל?היום(?:\s|$|[?.!,])/u.test(text)) return "היום";
