@@ -14,6 +14,21 @@ import {
   type DocumentReviewItem,
 } from "./presentation.js";
 
+function decisionOf(
+  overrides: Partial<NonNullable<DocumentReviewItem["decision"]>> = {}
+): NonNullable<DocumentReviewItem["decision"]> {
+  return {
+    canApprove: true,
+    primaryAction: "approve",
+    blockReason: null,
+    displaySupplierName: 'אור אלישיב, עו"ד',
+    confirmedSupplierName: null,
+    supplierNeedsConfirmation: false,
+    duplicate: null,
+    ...overrides,
+  };
+}
+
 const baseItem: DocumentReviewItem = {
   id: "review-1",
   source: "gmail",
@@ -47,6 +62,7 @@ test("presentDocument shows ready-to-approve when supplier and amount exist desp
     displayAmount: 993.33,
     amountLabel: "₪993.33",
     amountResolved: false,
+    decision: decisionOf(),
   });
   assert.equal(view.primaryLabel, "אשר והעבר לחשבוניות");
   assert.equal(view.canApprove, true);
@@ -158,6 +174,7 @@ test("review with supplier amount and image shows approve action", () => {
     amountLabel: "₪500.00",
     driveFileUrl: "https://drive.google.com/file/d/abc/view",
     uncertaintyReason: "invoice number missing",
+    decision: decisionOf(),
   });
   assert.equal(action.primaryLabel, "אשר והעבר לחשבוניות");
   assert.equal(action.canApprove, true);
@@ -169,6 +186,7 @@ test("review with supplier amount and image shows approve action", () => {
     amountLabel: "₪500.00",
     driveFileUrl: "https://drive.google.com/file/d/abc/view",
     uncertaintyReason: "invoice number missing",
+    decision: decisionOf(),
   });
   assert.equal(view.primaryLabel, "אשר והעבר לחשבוניות");
   assert.ok(view.advisoryFields.some((field) => field.id === "invoice_number"));
@@ -207,6 +225,7 @@ test("low confidence supplier prevents ready state in presentation", () => {
     amountLabel: "₪215.14",
     driveFileUrl: "https://drive.google.com/file/d/abc/view",
     documentType: "receipt",
+    decision: decisionOf({ canApprove: false, primaryAction: "edit_supplier", blockReason: "supplier.needs_confirmation", supplierNeedsConfirmation: true, displaySupplierName: "פז" }),
   });
   assert.equal(action.primaryLabel, "ערוך ספק");
   assert.equal(action.canApprove, false);
@@ -226,6 +245,7 @@ test("Paz receipt displays פז not פרייזון in presentation", () => {
     amountLabel: "₪215.14",
     driveFileUrl: "https://drive.google.com/file/d/abc/view",
     documentType: "receipt",
+    decision: decisionOf({ canApprove: false, primaryAction: "edit_supplier", supplierNeedsConfirmation: true, displaySupplierName: "פז" }),
   });
   assert.equal(view.supplier, "פז");
   assert.equal(view.rawSupplierName, "פרייזון");
@@ -245,6 +265,7 @@ test("Electric company review displays חברת החשמל", () => {
     amountLabel: "₪326.32",
     driveFileUrl: "https://drive.google.com/file/d/iec/view",
     documentType: "invoice",
+    decision: decisionOf({ displaySupplierName: "חברת החשמל" }),
   });
   assert.equal(view.supplier, "חברת החשמל");
   assert.equal(view.primaryLabel, "אשר והעבר לחשבוניות");
@@ -263,6 +284,7 @@ test("trust.gates_missing with supplier amount and image shows approve action", 
     driveFileUrl: "https://drive.google.com/file/d/abc123/view",
     uncertaintyReason: "trust.gates_missing",
     documentType: "receipt",
+    decision: decisionOf({ displaySupplierName: "פז" }),
   };
   const view = presentDocument(item);
   assert.equal(view.primaryLabel, "אשר והעבר לחשבוניות");
@@ -282,6 +304,7 @@ test("invoice number missing with full data shows approve not השלם פרטי�
     fileName: "inv.jpg",
     uncertaintyReason: "invoice number missing",
     documentType: "tax_invoice",
+    decision: decisionOf({ displaySupplierName: "חברת החשמל" }),
   });
   assert.equal(view.primaryLabel, "אשר והעבר לחשבוניות");
   assert.doesNotMatch(view.primaryLabel, /השלם/);
@@ -310,6 +333,7 @@ test("Hebrew document type label is accepted as valid type", () => {
     amountLabel: "₪4,800.00",
     driveFileUrl: "https://drive.google.com/file/d/x/view",
     documentType: "חשבונית מס",
+    decision: decisionOf(),
   });
   assert.equal(action.canApprove, true);
 });
@@ -360,9 +384,7 @@ test("server contract: canApprove=true shows approve CTA regardless of local unc
     totalAmount: 500,
     displayAmount: 500,
     amountLabel: "₪500.00",
-    canApprove: true,
-    blockReason: null,
-    recommendedAction: "approve",
+    decision: decisionOf(),
     supplierNeedsConfirmation: false,
     supplierUncertain: false,
   });
@@ -377,10 +399,7 @@ test("server contract: edit_supplier shows ערוך ספק and never the approve
     totalAmount: 500,
     displayAmount: 500,
     amountLabel: "₪500.00",
-    canApprove: false,
-    blockReason: "supplier.needs_confirmation",
-    recommendedAction: "edit_supplier",
-    supplierNeedsConfirmation: true,
+    decision: decisionOf({ canApprove: false, primaryAction: "edit_supplier", blockReason: "supplier.needs_confirmation", supplierNeedsConfirmation: true }),
   });
   assert.equal(view.canApprove, false);
   assert.equal(view.primaryLabel, "ערוך ספק");
@@ -393,9 +412,7 @@ test("server contract: complete_details shows השלם פרטים with Hebrew bl
     amountLabel: "סכום חסר",
     displayAmount: null,
     totalAmount: null,
-    canApprove: false,
-    blockReason: "amount.unresolved",
-    recommendedAction: "complete_details",
+    decision: decisionOf({ canApprove: false, primaryAction: "complete_details", blockReason: "amount.unresolved" }),
     supplierNeedsConfirmation: false,
     supplierUncertain: false,
   });
@@ -410,10 +427,7 @@ test("server contract guard: approve action with open supplier confirmation fall
     totalAmount: 500,
     displayAmount: 500,
     amountLabel: "₪500.00",
-    canApprove: true,
-    blockReason: null,
-    recommendedAction: "approve",
-    supplierNeedsConfirmation: true,
+    decision: decisionOf({ supplierNeedsConfirmation: true }),
   });
   assert.equal(view.canApprove, false);
   assert.equal(view.primaryLabel, "ערוך ספק");
@@ -435,7 +449,7 @@ test("readinessBlockReasonHebrew maps contract reasons to Hebrew", () => {
   );
 });
 
-test("server contract absent: local fallback still decides (deploy-skew safety)", () => {
+test("no server decision => fail-closed: never approve from local heuristics", () => {
   const view = presentDocument({
     ...baseItem,
     totalAmount: 500,
@@ -445,5 +459,37 @@ test("server contract absent: local fallback still decides (deploy-skew safety)"
     supplierNeedsConfirmation: false,
     supplierUncertain: false,
   });
-  assert.equal(view.canApprove, true);
+  assert.equal(view.canApprove, false);
+  assert.equal(view.primaryLabel, "השלם פרטים");
+});
+
+test("blocked_duplicate explains the exact matched duplicate and hides approve", () => {
+  const view = presentDocument({
+    ...baseItem,
+    supplierName: "חברת החשמל",
+    totalAmount: 326.32,
+    displayAmount: 326.32,
+    amountLabel: "₪326.32",
+    driveFileUrl: "https://drive.google.com/file/d/iec/view",
+    documentType: "tax_invoice",
+    decision: decisionOf({
+      canApprove: false,
+      primaryAction: "blocked_duplicate",
+      blockReason: "duplicate.confirmed_match",
+      displaySupplierName: "חברת החשמל",
+      duplicate: {
+        matchedPaymentId: "payment-iec-1",
+        supplier: "חברת החשמל",
+        amount: 326.32,
+        date: "2026-06-15T00:00:00.000Z",
+        paid: false,
+      },
+    }),
+  });
+  assert.equal(view.canApprove, false);
+  assert.notEqual(view.primaryLabel, "אשר והעבר לחשבוניות");
+  assert.equal(view.typeLabel, "חשד לכפילות");
+  assert.match(view.reason, /חברת החשמל/);
+  assert.match(view.reason, /326.32/);
+  assert.equal(view.isDuplicate, true);
 });

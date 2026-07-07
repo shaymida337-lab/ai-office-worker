@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   approveFinancialDocumentReview,
+  buildReviewDecision,
   evaluateReviewApprovalReadiness,
 } from "./financialDocuments.js";
 import { buildPassingTrustGateSnapshots } from "./trust/trustGatePersistence.js";
@@ -212,6 +213,101 @@ test("approval strips internal registry keys: canonicalSupplierName 'known:פז'
   const created = paymentCreate as Record<string, unknown>;
   assert.equal(created.supplier, "פז", `supplier must not carry internal key, got: ${created.supplier}`);
   assert.equal(created.supplierName, "פז");
+});
+
+test("supplier shown equals supplier approved: decision.displaySupplierName === payment.supplier", async () => {
+  const snapshots = buildPassingTrustGateSnapshots({
+    supplierGate: { canonicalSupplierName: "known:פז" },
+  });
+  const review = buildReadyReview({
+    supplierName: "פז",
+    documentType: "receipt",
+    parsedFieldsJson: {
+      gates: [snapshots.amountGate, snapshots.supplierGate, snapshots.fingerprintGate, snapshots.duplicateGate],
+      sir: { status: "resolved", canonicalSupplier: "known:פז", supplierName: "פז", isStrongEnoughForAutoSave: true },
+    },
+  });
+  let paymentCreate: Record<string, unknown> | null = null;
+  await withPrismaMocks(review, async () => {
+    const decision = await buildReviewDecision(review as never);
+    assert.equal(decision.canApprove, true);
+    assert.equal(decision.primaryAction, "approve");
+    assert.equal(decision.displaySupplierName, "פז");
+
+    const originalUpsert = prisma.supplierPayment.upsert;
+    (prisma.supplierPayment.upsert as unknown) = async (args: { create: Record<string, unknown> }) => {
+      paymentCreate = args.create;
+      return { id: "payment-eq-1", ...args.create };
+    };
+    try {
+      await approveFinancialDocumentReview(ORG, "review-ready-1");
+    } finally {
+      (prisma.supplierPayment.upsert as unknown) = originalUpsert;
+    }
+    assert.equal((paymentCreate as Record<string, unknown> | null)?.supplier, decision.displaySupplierName);
+  });
+});
+
+test("approval creates a VISIBLE payment: approvalStatus approved + normalizedDocumentDate set", async () => {
+  const review = buildReadyReview();
+  let paymentCreate: Record<string, unknown> | null = null;
+  await withPrismaMocks(review, async () => {
+    const originalUpsert = prisma.supplierPayment.upsert;
+    (prisma.supplierPayment.upsert as unknown) = async (args: { create: Record<string, unknown> }) => {
+      paymentCreate = args.create;
+      return { id: "payment-vis-1", ...args.create };
+    };
+    try {
+      await approveFinancialDocumentReview(ORG, "review-ready-1");
+    } finally {
+      (prisma.supplierPayment.upsert as unknown) = originalUpsert;
+    }
+  });
+  const created = paymentCreate as Record<string, unknown> | null;
+  assert.ok(created, "expected payment creation");
+  assert.equal(created?.approvalStatus, "approved");
+  assert.ok(created?.normalizedDocumentDate instanceof Date, "normalizedDocumentDate must be set for month visibility");
+});
+
+test("blocked_duplicate decision surfaces the exact matched payment", async () => {
+  const review = buildReadyReview();
+  const existingPayment = {
+    id: "payment-existing-dup",
+    supplier: "Acme Ltd",
+    supplierName: "Acme Ltd",
+    invoiceNumber: "INV-77",
+    amount: 993.33,
+    totalAmount: 993.33,
+    date: new Date("2026-06-15T00:00:00.000Z"),
+    paid: false,
+    documentTypeDetailed: "tax_invoice",
+    source: "gmail",
+    lastSource: "gmail",
+    sourcesJson: ["gmail"],
+    documentFingerprint: "doc-fp-existing",
+    emailMessageId: null,
+    approvalStatus: "approved",
+    createdAt: new Date("2026-06-15T00:00:00.000Z"),
+  };
+  const original = {
+    paymentFindMany: prisma.supplierPayment.findMany,
+    paymentFindFirst: prisma.supplierPayment.findFirst,
+  };
+  (prisma.supplierPayment.findMany as unknown) = async () => [existingPayment];
+  (prisma.supplierPayment.findFirst as unknown) = async () => existingPayment;
+  try {
+    const decision = await buildReviewDecision(review as never);
+    assert.equal(decision.canApprove, false);
+    assert.equal(decision.primaryAction, "blocked_duplicate");
+    assert.match(String(decision.blockReason), /^duplicate\./);
+    assert.ok(decision.duplicate, "expected matched duplicate details");
+    assert.equal(decision.duplicate?.matchedPaymentId, "payment-existing-dup");
+    assert.equal(decision.duplicate?.supplier, "Acme Ltd");
+    assert.equal(decision.duplicate?.amount, 993.33);
+  } finally {
+    (prisma.supplierPayment.findMany as unknown) = original.paymentFindMany;
+    (prisma.supplierPayment.findFirst as unknown) = original.paymentFindFirst;
+  }
 });
 
 test("already-approved review reports no available action (idempotency preserved)", async () => {

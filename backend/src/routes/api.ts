@@ -23,7 +23,7 @@ import { parseBankStatementFile } from "../services/bank-parser.js";
 import { matchTransactions } from "../services/bank-matcher.js";
 import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } from "../services/paymentClassificationDebug.js";
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
-import { approveFinancialDocumentReview, evaluateReviewApprovalReadiness } from "../services/financialDocuments.js";
+import { approveFinancialDocumentReview, buildReviewDecision } from "../services/financialDocuments.js";
 import { recordManualEntryFinancialDocument } from "../services/financialDocuments.js";
 import { resolveReviewSupplierContext } from "../services/reviewSupplierResolution.js";
 import {
@@ -5672,33 +5672,70 @@ apiRouter.get("/document-reviews", async (req, res) => {
     orderBy: { createdAt: "desc" },
     take: 200,
   });
-  // חוזה readiness מהשרת: canApprove/blockReason/recommendedAction מחושבים
-  // מאותן ולידציות של האישור עצמו — ה-UI מציג, לא מנחש.
+  // אובייקט החלטה יחיד מהשרת (decision) — מקור האמת הבלעדי של ה-UI לזמינות
+  // אישור, שם ספק לתצוגה, וסיבת חסימה (כולל פרטי הכפיל שנמצא).
   const mapped = await Promise.all(
     items.map(async (item) => {
       const base = mapDocumentReviewForApi(item);
-      if (item.reviewStatus !== "needs_review") {
-        return { ...base, canApprove: false, blockReason: null, recommendedAction: "approve" as const };
-      }
       try {
-        const readiness = await evaluateReviewApprovalReadiness(item);
+        const decision = await buildReviewDecision(item);
         return {
           ...base,
-          canApprove: readiness.canApprove,
-          blockReason: readiness.blockReason,
-          recommendedAction: readiness.recommendedAction,
-          supplierNeedsConfirmation: readiness.supplierNeedsConfirmation || base.supplierNeedsConfirmation,
+          decision,
+          // שדות שטוחים לתאימות לאחור בזמן ה-deploy בלבד; ה-UI קורא רק את decision
+          canApprove: decision.canApprove,
+          blockReason: decision.blockReason,
+          recommendedAction: decision.primaryAction === "blocked_duplicate" ? "complete_details" : decision.primaryAction,
+          supplierNeedsConfirmation: decision.supplierNeedsConfirmation,
         };
       } catch (err) {
         console.warn(
-          `[document-reviews] readiness evaluation failed reviewId=${item.id} reason=${err instanceof Error ? err.message : String(err)}`
+          `[document-reviews] decision evaluation failed reviewId=${item.id} reason=${err instanceof Error ? err.message : String(err)}`
         );
         // fail-closed: בלי הערכה אין אישור בקליק אחד
-        return { ...base, canApprove: false, blockReason: "readiness_unavailable", recommendedAction: "complete_details" as const };
+        const decision = {
+          canApprove: false,
+          primaryAction: "complete_details" as const,
+          blockReason: "readiness_unavailable",
+          displaySupplierName: item.supplierName ?? "",
+          confirmedSupplierName: null,
+          supplierNeedsConfirmation: false,
+          duplicate: null,
+        };
+        return { ...base, decision, canApprove: false, blockReason: decision.blockReason, recommendedAction: "complete_details" as const };
       }
     })
   );
   res.json(mapped);
+});
+
+// endpoint דיבאג: אובייקט ההחלטה המלא + הקלטים שלו לרשומה אחת — לחקירת פרודקשן
+apiRouter.get("/document-reviews/:id/decision", requirePerm("review.approve"), async (req, res) => {
+  const review = await prisma.financialDocumentReview.findFirst({
+    where: { id: routeId(req), organizationId: req.auth!.organizationId },
+  });
+  if (!review) {
+    res.status(404).json({ error: "Document review item not found" });
+    return;
+  }
+  try {
+    const decision = await buildReviewDecision(review);
+    const payload = {
+      reviewId: review.id,
+      organizationId: review.organizationId,
+      reviewStatus: review.reviewStatus,
+      supplierName: review.supplierName,
+      totalAmount: review.totalAmount,
+      documentType: review.documentType,
+      uncertaintyReason: review.uncertaintyReason,
+      supplierPaymentId: review.supplierPaymentId,
+      decision,
+    };
+    console.log(`[review-decision] ${JSON.stringify(payload)}`);
+    res.json(payload);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "decision evaluation failed" });
+  }
 });
 
 function mapDocumentReviewForApi<

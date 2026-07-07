@@ -25,10 +25,28 @@ export type DocumentReviewItem = {
   parsedFieldsJson?: unknown;
   documentDate?: string | null;
   invoiceNumber?: string | null;
-  // חוזה readiness מהשרת — מקור האמת היחיד לזמינות אישור (H fix)
+  // חוזה readiness מהשרת — שדות שטוחים ישנים (תאימות בלבד)
   canApprove?: boolean;
   blockReason?: string | null;
   recommendedAction?: "approve" | "edit_supplier" | "complete_details" | "reject";
+  // אובייקט ההחלטה היחיד מהשרת — מקור האמת הבלעדי של הכרטיס
+  decision?: ReviewServerDecision;
+};
+
+export type ReviewServerDecision = {
+  canApprove: boolean;
+  primaryAction: "approve" | "complete_details" | "edit_supplier" | "blocked_duplicate";
+  blockReason: string | null;
+  displaySupplierName: string;
+  confirmedSupplierName: string | null;
+  supplierNeedsConfirmation: boolean;
+  duplicate: {
+    matchedPaymentId: string;
+    supplier: string | null;
+    amount: number | null;
+    date: string | null;
+    paid: boolean | null;
+  } | null;
 };
 
 export type ReviewMissingFieldId =
@@ -184,87 +202,24 @@ export function getReviewMissingFields(item: DocumentReviewItem): {
   return { blocking, advisory };
 }
 
-function isAmbiguousSupplierReason(item: DocumentReviewItem): boolean {
-  const reason = (item.uncertaintyReason ?? "").toLowerCase();
-  return (
-    reason.includes("supplier") &&
-    (reason.includes("ambiguous") || reason.includes("possible") || reason.includes("שני"))
-  );
+/** הסבר כפילות מדויק מתוך אובייקט ההחלטה — מול איזו רשומה קיימת זוהתה ההתאמה. */
+export function duplicateExplanationHebrew(decision: ReviewServerDecision | undefined): string | null {
+  if (!decision || decision.primaryAction !== "blocked_duplicate") return null;
+  const dup = decision.duplicate;
+  if (!dup) return "נמצאה התאמה לתשלום קיים — לא ניתן לאשר שוב.";
+  const parts: string[] = [];
+  if (dup.supplier) parts.push(dup.supplier);
+  if (dup.amount != null) parts.push(`₪${dup.amount.toLocaleString("he-IL", { minimumFractionDigits: 2 })}`);
+  if (dup.date) parts.push(new Date(dup.date).toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "numeric" }));
+  const details = parts.length ? parts.join(" · ") : dup.matchedPaymentId;
+  return `המסמך זהה לתשלום שכבר קיים במערכת: ${details}${dup.paid ? " (סומן כשולם)" : ""}`;
 }
 
-/** האם הפריט נושא את חוזה ה-readiness מהשרת (גרסת API חדשה). */
-function hasServerReadiness(item: DocumentReviewItem): boolean {
-  return typeof item.canApprove === "boolean" && item.recommendedAction !== undefined;
-}
-
-function serverDrivenPrimaryAction(
-  item: DocumentReviewItem,
-  blocking: ReviewMissingField[],
-  advisory: ReviewMissingField[],
-  rejectLabel: string
-): ReviewPrimaryAction {
-  // עקביות מעל הכול: גם אם השרת אמר approve, אישור-ספק פתוח גובר (הגנה כפולה)
-  const action =
-    item.recommendedAction === "approve" && supplierNeedsUserConfirmation(item)
-      ? "edit_supplier"
-      : item.recommendedAction;
-
-  if (action === "approve" && item.canApprove) {
-    return {
-      kind: "ready_to_approve",
-      statusLabel: "מוכן לאישור",
-      primaryLabel: "אשר והעבר לחשבוניות",
-      secondaryLabel: "ערוך פרטים",
-      rejectLabel,
-      canApprove: true,
-      canEditSupplier: true,
-      missingFields: [],
-      advisoryFields: advisory,
-    };
-  }
-
-  if (action === "edit_supplier") {
-    return {
-      kind: "edit_supplier",
-      statusLabel: "ספק לא בטוח",
-      primaryLabel: "ערוך ספק",
-      secondaryLabel: item.driveFileUrl ? "פתח מסמך" : null,
-      rejectLabel,
-      canApprove: false,
-      canEditSupplier: true,
-      missingFields: [],
-      advisoryFields: advisory,
-    };
-  }
-
-  if (action === "reject") {
-    return {
-      kind: "complete_details",
-      statusLabel: "לא רלוונטי לאישור",
-      primaryLabel: item.driveFileUrl ? "פתח מסמך" : rejectLabel,
-      secondaryLabel: null,
-      rejectLabel,
-      canApprove: false,
-      canEditSupplier: false,
-      missingFields: blocking,
-      advisoryFields: advisory,
-    };
-  }
-
-  // complete_details (או שרת שסימן canApprove=false בלי פעולה מוכרת)
-  return {
-    kind: "complete_details",
-    statusLabel: "דורש השלמה",
-    primaryLabel: "השלם פרטים",
-    secondaryLabel: item.driveFileUrl ? "פתח מסמך" : null,
-    rejectLabel,
-    canApprove: false,
-    canEditSupplier: blocking.some((field) => field.id === "supplier") || hasVerifiedSupplier(item),
-    missingFields: blocking,
-    advisoryFields: advisory,
-  };
-}
-
+/**
+ * מקור האמת הבלעדי: אובייקט ההחלטה מהשרת (item.decision). אין יותר לוגיקת
+ * readiness מקומית — ההיוריסטיקות המקומיות משמשות אך ורק לצ'יפים של שדות
+ * חסרים (תצוגה). בלי decision — fail-closed: אין אישור בקליק אחד.
+ */
 export function getReviewPrimaryAction(item: DocumentReviewItem): ReviewPrimaryAction {
   const status = (item.reviewStatus ?? "").toLowerCase();
   const { blocking, advisory } = getReviewMissingFields(item);
@@ -284,26 +239,9 @@ export function getReviewPrimaryAction(item: DocumentReviewItem): ReviewPrimaryA
     };
   }
 
-  // מקור אמת מהשרת: כשהחוזה קיים — ההיוריסטיקות המקומיות משמשות רק לצ'יפים
-  if (hasServerReadiness(item)) {
-    return serverDrivenPrimaryAction(item, blocking, advisory, rejectLabel);
-  }
-
-  if (isAmbiguousSupplierReason(item)) {
-    return {
-      kind: "needs_special_review",
-      statusLabel: "דורש השלמה",
-      primaryLabel: "השלם פרטים",
-      secondaryLabel: item.driveFileUrl ? "פתח מסמך" : null,
-      rejectLabel,
-      canApprove: false,
-      canEditSupplier: true,
-      missingFields: [{ id: "supplier", labelHebrew: "חסר ספק", blocking: true }],
-      advisoryFields: advisory,
-    };
-  }
-
-  if (blocking.length > 0) {
+  const decision = item.decision;
+  if (!decision) {
+    // אין חוזה מהשרת (למשל דילוג גרסאות בזמן deploy) — fail-closed
     return {
       kind: "complete_details",
       statusLabel: "דורש השלמה",
@@ -311,13 +249,27 @@ export function getReviewPrimaryAction(item: DocumentReviewItem): ReviewPrimaryA
       secondaryLabel: item.driveFileUrl ? "פתח מסמך" : null,
       rejectLabel,
       canApprove: false,
-      canEditSupplier: blocking.some((field) => field.id === "supplier") || hasVerifiedSupplier(item),
+      canEditSupplier: true,
       missingFields: blocking,
       advisoryFields: advisory,
     };
   }
 
-  if (supplierNeedsUserConfirmation(item)) {
+  if (decision.primaryAction === "approve" && decision.canApprove && !decision.supplierNeedsConfirmation) {
+    return {
+      kind: "ready_to_approve",
+      statusLabel: "מוכן לאישור",
+      primaryLabel: "אשר והעבר לחשבוניות",
+      secondaryLabel: "ערוך פרטים",
+      rejectLabel,
+      canApprove: true,
+      canEditSupplier: true,
+      missingFields: [],
+      advisoryFields: advisory,
+    };
+  }
+
+  if (decision.primaryAction === "edit_supplier" || decision.supplierNeedsConfirmation) {
     return {
       kind: "edit_supplier",
       statusLabel: "ספק לא בטוח",
@@ -331,15 +283,30 @@ export function getReviewPrimaryAction(item: DocumentReviewItem): ReviewPrimaryA
     };
   }
 
+  if (decision.primaryAction === "blocked_duplicate") {
+    return {
+      kind: "complete_details",
+      statusLabel: "חשד לכפילות",
+      primaryLabel: item.driveFileUrl ? "פתח מסמך" : rejectLabel,
+      secondaryLabel: null,
+      rejectLabel,
+      canApprove: false,
+      canEditSupplier: false,
+      missingFields: [],
+      advisoryFields: advisory,
+    };
+  }
+
+  // complete_details
   return {
-    kind: "ready_to_approve",
-    statusLabel: "מוכן לאישור",
-    primaryLabel: "אשר והעבר לחשבוניות",
-    secondaryLabel: "ערוך פרטים",
+    kind: "complete_details",
+    statusLabel: "דורש השלמה",
+    primaryLabel: "השלם פרטים",
+    secondaryLabel: item.driveFileUrl ? "פתח מסמך" : null,
     rejectLabel,
-    canApprove: true,
-    canEditSupplier: true,
-    missingFields: [],
+    canApprove: false,
+    canEditSupplier: blocking.some((field) => field.id === "supplier") || hasVerifiedSupplier(item),
+    missingFields: blocking,
     advisoryFields: advisory,
   };
 }
@@ -554,13 +521,20 @@ export function approvalErrorHebrew(message: string): string {
 
 export function presentDocument(item: DocumentReviewItem): DocumentPresentation {
   const action = getReviewPrimaryAction(item);
-  const supplier = normalizedSupplierName(item) || "ספק לא ידוע";
-  const isDuplicate = isDuplicateReason(item.uncertaintyReason);
+  // שם הספק שמוצג = שם הספק שהאישור ישתמש בו (decision.displaySupplierName)
+  const supplier = item.decision?.displaySupplierName?.trim() || normalizedSupplierName(item) || "ספק לא ידוע";
+  const isDuplicate =
+    item.decision?.primaryAction === "blocked_duplicate" || isDuplicateReason(item.uncertaintyReason);
 
-  const serverBlockReason = readinessBlockReasonHebrew(item);
+  const serverBlockReason = readinessBlockReasonHebrew({
+    blockReason: item.decision?.blockReason ?? item.blockReason,
+  });
+  const duplicateExplanation = duplicateExplanationHebrew(item.decision);
 
   let reason = "";
-  if (action.missingFields.length > 0) {
+  if (duplicateExplanation) {
+    reason = duplicateExplanation;
+  } else if (action.missingFields.length > 0) {
     reason = action.missingFields.map((field) => field.labelHebrew).join(" · ");
     // הסיבה החוסמת מהשרת מדויקת יותר מרשימת השדות המקומית — מציגים גם אותה
     if (serverBlockReason && !action.canApprove) {

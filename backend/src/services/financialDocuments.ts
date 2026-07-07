@@ -61,7 +61,9 @@ import {
 import { isBlockedDocumentOutcome } from "./trust/blockedOutcomeGuard.js";
 import {
   mergeReviewSupplierConfirmation,
+  resolveReviewSupplierContext,
   resolveSupplierNameForApproval,
+  stripInternalSupplierKey,
 } from "./reviewSupplierResolution.js";
 import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 import {
@@ -988,6 +990,8 @@ export type ReviewApprovalReadiness = {
   blockReason: string | null;
   supplierNeedsConfirmation: boolean;
   recommendedAction: ReviewRecommendedAction;
+  /** כשהחסימה היא כפילות — מזהה התשלום הקיים שמולו זוהתה ההתאמה */
+  matchedDuplicatePaymentId?: string | null;
 };
 
 export type ReviewRowForReadiness = {
@@ -1138,15 +1142,110 @@ export async function evaluateReviewApprovalReadiness(
     isCanonicalFinanceAmountResolved(displayAmount.amount) &&
     approvedAmount === displayAmount.amount;
   if (!canOverrideSourceConflict && (trustEvaluation.outcome !== "pass" || !trustEvaluation.shouldCreatePayment)) {
+    const blockReason = trustEvaluation.blockReason ?? trustEvaluation.reasonCode ?? "trust gate blocked";
     return {
       canApprove: false,
-      blockReason: trustEvaluation.blockReason ?? trustEvaluation.reasonCode ?? "trust gate blocked",
+      blockReason,
       supplierNeedsConfirmation: false,
       recommendedAction: "complete_details",
+      matchedDuplicatePaymentId: blockReason.startsWith("duplicate.")
+        ? duplicateGateInput.matchedCandidate?.id ?? null
+        : null,
     };
   }
 
   return { canApprove: true, blockReason: null, supplierNeedsConfirmation: false, recommendedAction: "approve" };
+}
+
+export type ReviewServerPrimaryAction = "approve" | "complete_details" | "edit_supplier" | "blocked_duplicate";
+
+export type ReviewDecision = {
+  canApprove: boolean;
+  primaryAction: ReviewServerPrimaryAction;
+  blockReason: string | null;
+  displaySupplierName: string;
+  confirmedSupplierName: string | null;
+  supplierNeedsConfirmation: boolean;
+  duplicate: {
+    matchedPaymentId: string;
+    supplier: string | null;
+    amount: number | null;
+    date: string | null;
+    paid: boolean | null;
+  } | null;
+};
+
+/**
+ * אובייקט ההחלטה היחיד שה-frontend מרנדר ממנו — מקור אמת אחד: אותן ולידציות
+ * של האישור, שם התצוגה שהוא גם שם האישור (אחרי ניקוי מפתחות פנימיים), ובחסימת
+ * כפילות — פרטי הרשומה הקיימת שמולה זוהתה ההתאמה.
+ */
+export async function buildReviewDecision(
+  review: ReviewRowForReadiness & { id?: string }
+): Promise<ReviewDecision> {
+  const supplierContext = resolveReviewSupplierContext({
+    supplierName: review.supplierName,
+    sender: review.sender,
+    supplierTaxId: review.supplierTaxId,
+    parsedFieldsJson: review.parsedFieldsJson,
+    rawAnalysis: review.rawAnalysis,
+  });
+  const displaySupplierName =
+    (supplierContext.displaySupplierName && stripInternalSupplierKey(supplierContext.displaySupplierName)) ||
+    review.supplierName?.trim() ||
+    "";
+
+  if (review.reviewStatus?.toLowerCase() !== "needs_review") {
+    return {
+      canApprove: false,
+      primaryAction: "approve",
+      blockReason: null,
+      displaySupplierName,
+      confirmedSupplierName: supplierContext.confirmedSupplierName,
+      supplierNeedsConfirmation: false,
+      duplicate: null,
+    };
+  }
+
+  const readiness = await evaluateReviewApprovalReadiness(review);
+  const isDuplicateBlock = Boolean(readiness.blockReason?.startsWith("duplicate."));
+
+  let duplicate: ReviewDecision["duplicate"] = null;
+  if (isDuplicateBlock && readiness.matchedDuplicatePaymentId) {
+    const matched = await prisma.supplierPayment.findFirst({
+      where: { id: readiness.matchedDuplicatePaymentId, organizationId: review.organizationId },
+      select: { id: true, supplier: true, totalAmount: true, amount: true, date: true, paid: true },
+    });
+    if (matched) {
+      duplicate = {
+        matchedPaymentId: matched.id,
+        supplier: matched.supplier,
+        amount: matched.totalAmount ?? matched.amount,
+        date: matched.date ? matched.date.toISOString() : null,
+        paid: matched.paid,
+      };
+    } else {
+      duplicate = { matchedPaymentId: readiness.matchedDuplicatePaymentId, supplier: null, amount: null, date: null, paid: null };
+    }
+  }
+
+  const primaryAction: ReviewServerPrimaryAction = isDuplicateBlock
+    ? "blocked_duplicate"
+    : readiness.recommendedAction === "edit_supplier"
+      ? "edit_supplier"
+      : readiness.recommendedAction === "approve" && readiness.canApprove
+        ? "approve"
+        : "complete_details";
+
+  return {
+    canApprove: readiness.canApprove,
+    primaryAction,
+    blockReason: readiness.blockReason,
+    displaySupplierName,
+    confirmedSupplierName: supplierContext.confirmedSupplierName,
+    supplierNeedsConfirmation: readiness.supplierNeedsConfirmation || supplierContext.supplierNeedsConfirmation,
+    duplicate,
+  };
 }
 
 export async function approveFinancialDocumentReview(
