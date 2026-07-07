@@ -858,7 +858,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
   let externalTerminalStop = false;
   let plannedTotalMatched: number | undefined;
   const shouldStopScan = async () => {
-    const result = await checkGmailScanShouldStop(log.id, scanStartedAt);
+    const result = await checkGmailScanShouldStop(log.id, scanStartedAt, scanMode);
     if (result.stop && result.reason === "deadline") deadlineTruncated = true;
     if (result.stop && result.reason === "external_terminal") externalTerminalStop = true;
     return result.stop;
@@ -1293,6 +1293,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
 
     const fastScanMaxMessages = options.maxMessages ?? MAX_MESSAGES_PER_FAST_SCAN;
     logStep(`[gmail-sync] FAST_SCAN_STARTED query=${FAST_SCAN_DATE_FILTER} maxResults=${fastScanMaxMessages} mode=${scanMode}`);
+    await maybeSaveScanProgress(true);
     const fastListing = await listFastCandidateMessages(gmail, fastScanMaxMessages, {
       scanAllMail: options.scanAllMail,
     });
@@ -1431,6 +1432,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     }
 
     logStep(`[gmail-sync] Searching Gmail from last ${daysBack} days`);
+    await maybeSaveScanProgress(true);
     const listing = await listCandidateMessages(gmail, daysBack, options.maxMessages ?? MAX_MESSAGES_PER_SYNC, since, {
       scanAllMail: options.scanAllMail,
     });

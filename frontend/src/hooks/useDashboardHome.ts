@@ -24,6 +24,7 @@ import {
   isSuccessfulGmailScanProgress,
 } from "@/lib/gmailScanBanner";
 import {
+  isPausedGmailScanStatus,
   isRunningScanStatusLog,
   isTerminalGmailScanProgress,
   isTerminalScanStatusLog,
@@ -40,7 +41,7 @@ import {
   shouldHandleGmailOAuthErrorReturn,
   shouldHandleGmailOAuthReturn,
 } from "@/lib/integrations/gmailOAuthReturn";
-import { MAX_GMAIL_SCAN_POLL_ATTEMPTS, GMAIL_SCAN_POLL_INTERVAL_MS } from "@/lib/dashboard/scanPollLimits";
+import { GMAIL_SCAN_POLL_INTERVAL_MS } from "@/lib/dashboard/scanPollLimits";
 import { createDashboardSyncRetryRequest } from "@/lib/dashboard/dashboardSyncRetry";
 import { resolveScanStatusFromSettled } from "@/lib/dashboard/scanStatusTruth";
 import { buildDashboardHomeViewModel } from "@/lib/dashboard/buildDashboardHomeViewModel";
@@ -393,7 +394,6 @@ export function useDashboardHome() {
   useEffect(() => {
     if (!activeScanId) return;
     let cancelled = false;
-    let pollAttempts = 0;
 
     const completeActiveScan = async (progress: ScanProgressResult) => {
       setFirstScanRunning(false);
@@ -420,6 +420,11 @@ export function useDashboardHome() {
                 : "הסריקה הסתיימה והנתונים עודכנו",
           });
         }
+      } else if (isPausedGmailScanStatus(progress.status)) {
+        setScanToast({
+          type: "warning",
+          text: formatPartialScanMessage(progress),
+        });
       } else {
         setScanToast({
           type: "error",
@@ -435,24 +440,6 @@ export function useDashboardHome() {
     };
 
     const poll = async () => {
-      pollAttempts += 1;
-      if (pollAttempts > MAX_GMAIL_SCAN_POLL_ATTEMPTS) {
-        if (cancelled) return;
-        setActiveScanId(null);
-        setActiveScan(null);
-        setSyncing(false);
-        setFirstScanRunning(false);
-        setScanProgress([]);
-        setFirstScanPhase(null);
-        window.localStorage.removeItem("activeGmailScanId");
-        setScanToast({
-          type: "error",
-          text: "הסריקה נמשכה זמן רב מדי — מציגים את המצב האחרון",
-        });
-        await load();
-        return;
-      }
-
       try {
         const progress = await apiFetch<ScanProgressResult>(`/api/gmail/scan/${activeScanId}`);
         if (cancelled) return;
