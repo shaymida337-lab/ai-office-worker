@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   resolveReviewSupplierContext,
   resolveSupplierNameForApproval,
+  normalizeSupplierPaymentKey,
 } from "./reviewSupplierResolution.js";
 
 test("Paz receipt with OCR misread displays פז and requires confirmation", () => {
@@ -88,4 +89,73 @@ test("manual supplier confirmation allows approval with confirmed name", () => {
     "פז"
   );
   assert.equal(approved, "פז");
+});
+
+test("Claude=פז with IEC mention in OCR stays פז", () => {
+  const result = resolveReviewSupplierContext({
+    supplierName: "פז",
+    rawAnalysis: { analysis: { supplier: "פז" } },
+    parsedFieldsJson: {
+      rawOcrText:
+        "קבלה תחנת פז דלק yellow סה\"כ 215.14\nחשבון חשמל חברת החשמל לישראל מוזכר בטעות",
+      sir: {
+        supplierName: "פז",
+        canonicalSupplier: "known:פז",
+        status: "resolved",
+        isStrongEnoughForAutoSave: true,
+        reasonCode: "OCR_KEYWORD",
+      },
+    },
+  });
+
+  assert.equal(result.displaySupplierName, "פז");
+});
+
+test("עיריית רמת גן with incidental IEC OCR does not become חברת החשמל", () => {
+  const result = resolveReviewSupplierContext({
+    supplierName: "עיריית רמת-גן",
+    rawAnalysis: { analysis: { supplier: "לא ידוע" } },
+    parsedFieldsJson: {
+      rawOcrText: "דרישת תשלום עיריית רמת גן\nאזכור שולי: חברת החשמל",
+    },
+  });
+
+  assert.equal(result.displaySupplierName, "עיריית רמת-גן");
+  assert.notEqual(result.displaySupplierName, "חברת החשמל");
+});
+
+test("Claude=לא ידוע with weak IEC OCR does not auto-display חברת החשמל", () => {
+  const result = resolveReviewSupplierContext({
+    supplierName: "לא זוהה",
+    rawAnalysis: { analysis: { supplier: "לא ידוע" } },
+    parsedFieldsJson: {
+      rawOcrText: "detection noise חברת החשמל random footer",
+      sir: { status: "ambiguous", reasonCode: "AMBIGUOUS" },
+    },
+  });
+
+  assert.equal(result.displaySupplierName, "לא זוהה");
+  assert.notEqual(result.displaySupplierName, "חברת החשמל");
+});
+
+test("known:מירמתגן displays as מי רמת גן via SIR supplierName", () => {
+  const result = resolveReviewSupplierContext({
+    supplierName: "מי רמת גן",
+    parsedFieldsJson: {
+      sir: {
+        supplierName: "מי רמת גן",
+        canonicalSupplier: "known:מירמתגן",
+        status: "resolved",
+        isStrongEnoughForAutoSave: true,
+        reasonCode: "VAT_REGISTRY",
+      },
+    },
+  });
+
+  assert.equal(result.displaySupplierName, "מי רמת גן");
+});
+
+test("normalizeSupplierPaymentKey maps yellow to פז", () => {
+  assert.equal(normalizeSupplierPaymentKey("yellow"), "פז");
+  assert.equal(normalizeSupplierPaymentKey("known:פז"), "פז");
 });

@@ -24,3 +24,11 @@ test("matchIsraeliSupplierFromOcrText detects Paz and IEC from document text", (
     "חברת החשמל"
   );
 });
+
+test("matchIsraeliSupplierFromOcrText ignores incidental IEC mentions without bill context", () => {
+  assert.equal(
+    matchIsraeliSupplierFromOcrText("דרישת תשלום עיריית רמת גן אזכור חברת החשמל"),
+    null
+  );
+  assert.equal(matchIsraeliSupplierFromOcrText("random iec noise in footer"), null);
+});

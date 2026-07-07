@@ -63,7 +63,7 @@ import {
   mergeReviewSupplierConfirmation,
   resolveReviewSupplierContext,
   resolveSupplierNameForApproval,
-  stripInternalSupplierKey,
+  normalizeSupplierPaymentKey,
 } from "./reviewSupplierResolution.js";
 import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 import {
@@ -633,8 +633,12 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
         sourcesJson: sources,
         duplicateDetected: false,
         duplicateReason: null,
-        supplier: input.supplierName ?? existingPayment.supplier,
-        supplierName: input.supplierName ?? existingPayment.supplierName,
+        supplier: input.supplierName
+          ? normalizeSupplierPaymentKey(input.supplierName)
+          : existingPayment.supplier,
+        supplierName: input.supplierName
+          ? normalizeSupplierPaymentKey(input.supplierName)
+          : existingPayment.supplierName,
         invoiceNumber: input.invoiceNumber ?? existingPayment.invoiceNumber,
         amount: totalAmount ?? existingPayment.amount,
         date: documentDate ?? existingPayment.date,
@@ -1191,9 +1195,7 @@ export async function buildReviewDecision(
     rawAnalysis: review.rawAnalysis,
   });
   const displaySupplierName =
-    (supplierContext.displaySupplierName && stripInternalSupplierKey(supplierContext.displaySupplierName)) ||
-    review.supplierName?.trim() ||
-    "";
+    supplierContext.displaySupplierName ?? review.supplierName?.trim() ?? "";
 
   if (review.reviewStatus?.toLowerCase() !== "needs_review") {
     return {

@@ -31,6 +31,7 @@ import {
   isBlockedDocumentOutcome,
 } from "./blockedOutcomeGuard.js";
 import { assertNewSupplierPaymentQuality } from "../p0/supplierPaymentQuality.js";
+import { normalizeSupplierPaymentKey } from "../reviewSupplierResolution.js";
 import {
   evaluateDuplicateGate,
   type DuplicateGateInput,
@@ -323,6 +324,36 @@ export function evaluateFreshTrustGatesForManualApproval(input: {
 
 export type FinanceTrustPaymentDb = Pick<typeof prisma, "supplierPayment">;
 
+function normalizeSupplierPaymentWriteData(
+  data: Prisma.SupplierPaymentUncheckedCreateInput
+): Prisma.SupplierPaymentUncheckedCreateInput {
+  const supplier =
+    typeof data.supplier === "string" && data.supplier.trim()
+      ? normalizeSupplierPaymentKey(data.supplier)
+      : data.supplier;
+  const supplierName =
+    typeof data.supplierName === "string" && data.supplierName.trim()
+      ? normalizeSupplierPaymentKey(data.supplierName)
+      : data.supplierName;
+  if (supplier === data.supplier && supplierName === data.supplierName) return data;
+  return { ...data, supplier, supplierName };
+}
+
+function normalizeSupplierPaymentUpdateData(
+  update: Prisma.SupplierPaymentUncheckedUpdateInput
+): Prisma.SupplierPaymentUncheckedUpdateInput {
+  const supplier =
+    typeof update.supplier === "string" && update.supplier.trim()
+      ? normalizeSupplierPaymentKey(update.supplier)
+      : update.supplier;
+  const supplierName =
+    typeof update.supplierName === "string" && update.supplierName.trim()
+      ? normalizeSupplierPaymentKey(update.supplierName)
+      : update.supplierName;
+  if (supplier === update.supplier && supplierName === update.supplierName) return update;
+  return { ...update, supplier, supplierName };
+}
+
 export async function createSupplierPaymentIfTrusted(input: {
   evaluation: FinanceTrustEvaluation;
   data: Prisma.SupplierPaymentUncheckedCreateInput;
@@ -423,10 +454,14 @@ export async function createSupplierPaymentIfTrusted(input: {
         organizationId: true,
       },
     });
+    const normalizedCreate = normalizeSupplierPaymentWriteData(input.data);
+    const normalizedUpdate = input.upsert.update
+      ? normalizeSupplierPaymentUpdateData(input.upsert.update)
+      : {};
     const payment = await db.supplierPayment.upsert({
       where: input.upsert.where,
-      create: input.data,
-      update: input.upsert.update ?? {},
+      create: normalizedCreate,
+      update: normalizedUpdate,
     });
     const auditCtx =
       input.audit ??
@@ -453,7 +488,9 @@ export async function createSupplierPaymentIfTrusted(input: {
     return { payment, skipped: false, reason: null, evaluation };
   }
 
-  const payment = await db.supplierPayment.create({ data: input.data });
+  const payment = await db.supplierPayment.create({
+    data: normalizeSupplierPaymentWriteData(input.data),
+  });
   const auditCtx =
     input.audit ??
     aiAuditContext(

@@ -105,6 +105,83 @@ function resolveRawExtractedName(input: ReviewSupplierInput, reviewState: Review
   return sir?.supplierName?.trim() || null;
 }
 
+const UNKNOWN_SUPPLIER_PATTERN = /^(?:לא\s*ידוע|לא\s*זוהה|unknown|לא\s*נמצא)/iu;
+
+function readClaudeSupplier(rawAnalysis: unknown): string | null {
+  if (!rawAnalysis || typeof rawAnalysis !== "object") return null;
+  const analysis = (rawAnalysis as { analysis?: unknown }).analysis;
+  if (!analysis || typeof analysis !== "object") return null;
+  const supplier = (analysis as { supplier?: unknown }).supplier;
+  return typeof supplier === "string" ? supplier.trim() : null;
+}
+
+function isWeakUnknownSupplier(name: string | null | undefined): boolean {
+  const trimmed = name?.trim();
+  if (!trimmed) return true;
+  return UNKNOWN_SUPPLIER_PATTERN.test(trimmed);
+}
+
+/**
+ * מפתחות פנימיים של ה-registry (למשל "known:פז" מ-SIR ב-gmail-sync) לעולם אינם
+ * שם ספק לתצוגה או לתשלום — מוסרים את הקידומת ומשאירים את השם בלבד.
+ * ראיה מפרודקשן: SupplierPayment נשמר עם supplier="known:פז" במקום "פז".
+ */
+const INTERNAL_SUPPLIER_KEY_REGEX = /^(?:known|canonical):\s*/i;
+
+export function stripInternalSupplierKey(name: string): string {
+  let cleaned = name.trim();
+  while (INTERNAL_SUPPLIER_KEY_REGEX.test(cleaned)) {
+    cleaned = cleaned.replace(INTERNAL_SUPPLIER_KEY_REGEX, "").trim();
+  }
+  return cleaned;
+}
+
+function toDisplaySupplierName(name: string, preferredName?: string | null): string {
+  const preferred = preferredName?.trim();
+  if (preferred && !INTERNAL_SUPPLIER_KEY_REGEX.test(preferred)) {
+    return normalizeIsraeliReviewSupplierAlias(preferred);
+  }
+  const stripped = stripInternalSupplierKey(name);
+  const registry = buildGlobalSupplierDnaSeed();
+  const byAlias = lookupSupplierByAlias(registry, stripped);
+  if (byAlias) return resolveCanonicalDisplayName(byAlias, stripped);
+  return normalizeIsraeliReviewSupplierAlias(stripped);
+}
+
+/** מנרמל מפתח supplier לפני שמירה ב-SupplierPayment (כולל yellow→פז, known: stripping). */
+export function normalizeSupplierPaymentKey(name: string): string {
+  return normalizeIsraeliReviewSupplierAlias(stripInternalSupplierKey(name));
+}
+
+function shouldAllowOcrSupplierOverride(
+  input: ReviewSupplierInput,
+  raw: string | null,
+  sir: ReturnType<typeof readSirSummary>,
+  ocrHint: string
+): boolean {
+  if (sir?.status === "ambiguous" || sir?.status === "rejected") return false;
+
+  const claude = readClaudeSupplier(input.rawAnalysis);
+  if (claude && !isWeakUnknownSupplier(claude) && !suppliersEquivalentForReview(ocrHint, claude)) {
+    return false;
+  }
+
+  if (raw && !isWeakUnknownSupplier(raw) && !suppliersEquivalentForReview(ocrHint, raw)) {
+    return false;
+  }
+
+  if (
+    sir?.supplierName &&
+    sir.status === "resolved" &&
+    !isWeakUnknownSupplier(sir.supplierName) &&
+    !suppliersEquivalentForReview(ocrHint, sir.supplierName)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 function resolveNormalizedDisplayName(raw: string | null, input: ReviewSupplierInput): {
   display: string | null;
   normalizationApplied: boolean;
@@ -114,9 +191,14 @@ function resolveNormalizedDisplayName(raw: string | null, input: ReviewSupplierI
   if (!raw) {
     const ocrText = extractOcrText(input);
     const ocrHint = ocrText ? matchIsraeliSupplierFromOcrText(ocrText) : null;
+    const sir = readSirSummary(input.parsedFieldsJson);
+    const display =
+      ocrHint && shouldAllowOcrSupplierOverride(input, raw, sir, ocrHint)
+        ? toDisplaySupplierName(ocrHint)
+        : null;
     return {
-      display: ocrHint,
-      normalizationApplied: Boolean(ocrHint),
+      display,
+      normalizationApplied: Boolean(display),
       registryNormalized: false,
       ocrHintSupplier: ocrHint,
     };
@@ -125,7 +207,7 @@ function resolveNormalizedDisplayName(raw: string | null, input: ReviewSupplierI
   const registry = buildGlobalSupplierDnaSeed();
   const byVat = lookupSupplierByVat(registry, input.supplierTaxId);
   if (byVat) {
-    const display = resolveCanonicalDisplayName(byVat, raw);
+    const display = toDisplaySupplierName(resolveCanonicalDisplayName(byVat, raw));
     return {
       display,
       normalizationApplied: !suppliersEquivalentForReview(display, raw),
@@ -136,7 +218,7 @@ function resolveNormalizedDisplayName(raw: string | null, input: ReviewSupplierI
 
   const byAlias = lookupSupplierByAlias(registry, raw);
   if (byAlias) {
-    const display = resolveCanonicalDisplayName(byAlias, raw);
+    const display = toDisplaySupplierName(resolveCanonicalDisplayName(byAlias, raw));
     return {
       display,
       normalizationApplied: !suppliersEquivalentForReview(display, raw),
@@ -145,7 +227,7 @@ function resolveNormalizedDisplayName(raw: string | null, input: ReviewSupplierI
     };
   }
 
-  const aliasNormalized = normalizeIsraeliReviewSupplierAlias(raw);
+  const aliasNormalized = toDisplaySupplierName(raw);
   if (!suppliersEquivalentForReview(aliasNormalized, raw)) {
     return {
       display: aliasNormalized,
@@ -159,7 +241,7 @@ function resolveNormalizedDisplayName(raw: string | null, input: ReviewSupplierI
   const sirCanonical = sir?.canonicalSupplier?.trim();
   if (sirCanonical && !suppliersEquivalentForReview(sirCanonical, raw)) {
     return {
-      display: normalizeIsraeliReviewSupplierAlias(sirCanonical),
+      display: toDisplaySupplierName(sirCanonical, sir?.supplierName),
       normalizationApplied: true,
       registryNormalized: false,
       ocrHintSupplier: null,
@@ -169,8 +251,9 @@ function resolveNormalizedDisplayName(raw: string | null, input: ReviewSupplierI
   const supplierGate = parseSupplierGateFromParsedFields(input.parsedFieldsJson);
   const gateCanonical = supplierGate?.canonicalSupplierName?.trim();
   if (gateCanonical && supplierGate?.verdict === "pass") {
+    const display = toDisplaySupplierName(gateCanonical);
     return {
-      display: normalizeIsraeliReviewSupplierAlias(gateCanonical),
+      display,
       normalizationApplied: !suppliersEquivalentForReview(gateCanonical, raw),
       registryNormalized: false,
       ocrHintSupplier: null,
@@ -179,9 +262,9 @@ function resolveNormalizedDisplayName(raw: string | null, input: ReviewSupplierI
 
   const ocrText = extractOcrText(input);
   const ocrHint = ocrText ? matchIsraeliSupplierFromOcrText(ocrText) : null;
-  if (ocrHint && !suppliersEquivalentForReview(ocrHint, raw)) {
+  if (ocrHint && shouldAllowOcrSupplierOverride(input, raw, sir, ocrHint) && !suppliersEquivalentForReview(ocrHint, raw)) {
     return {
-      display: ocrHint,
+      display: toDisplaySupplierName(ocrHint),
       normalizationApplied: true,
       registryNormalized: false,
       ocrHintSupplier: ocrHint,
@@ -206,7 +289,7 @@ export function resolveReviewSupplierContext(input: ReviewSupplierInput): Review
 
   const normalized = resolveNormalizedDisplayName(rawSupplierName, input);
   const displaySupplierName = confirmedSupplierName
-    ? normalizeIsraeliReviewSupplierAlias(confirmedSupplierName)
+    ? toDisplaySupplierName(confirmedSupplierName)
     : normalized.display;
 
   if (!displaySupplierName) {
@@ -333,28 +416,13 @@ export function mergeReviewSupplierConfirmation(
   return base;
 }
 
-/**
- * מפתחות פנימיים של ה-registry (למשל "known:פז" מ-SIR ב-gmail-sync) לעולם אינם
- * שם ספק לתצוגה או לתשלום — מוסרים את הקידומת ומשאירים את השם בלבד.
- * ראיה מפרודקשן: SupplierPayment נשמר עם supplier="known:פז" במקום "פז".
- */
-const INTERNAL_SUPPLIER_KEY_REGEX = /^(?:known|canonical):\s*/i;
-
-export function stripInternalSupplierKey(name: string): string {
-  let cleaned = name.trim();
-  while (INTERNAL_SUPPLIER_KEY_REGEX.test(cleaned)) {
-    cleaned = cleaned.replace(INTERNAL_SUPPLIER_KEY_REGEX, "").trim();
-  }
-  return cleaned;
-}
-
 export function resolveSupplierNameForApproval(
   review: ReviewSupplierInput,
   confirmedSupplierName?: string | null
 ): string {
   const trimmed = confirmedSupplierName?.trim();
   if (trimmed) {
-    const normalized = normalizeIsraeliReviewSupplierAlias(stripInternalSupplierKey(trimmed));
+    const normalized = normalizeSupplierPaymentKey(trimmed);
     const context = resolveReviewSupplierContext(review);
     if (context.supplierNeedsConfirmation) {
       const acceptableDisplay = context.displaySupplierName;
@@ -368,7 +436,7 @@ export function resolveSupplierNameForApproval(
   }
 
   const context = resolveReviewSupplierContext(review);
-  if (context.confirmedSupplierName) return stripInternalSupplierKey(context.confirmedSupplierName);
+  if (context.confirmedSupplierName) return normalizeSupplierPaymentKey(context.confirmedSupplierName);
 
   if (context.supplierNeedsConfirmation || context.supplierConfidence === "low") {
     throw new Error("לא ניתן לאשר מסמך — יש לאשר או לערוך את שם הספק לפני האישור (supplier.needs_confirmation)");
@@ -376,11 +444,11 @@ export function resolveSupplierNameForApproval(
 
   const gateCanonical = parseSupplierGateFromParsedFields(review.parsedFieldsJson)?.canonicalSupplierName?.trim();
   if (gateCanonical) {
-    const cleaned = stripInternalSupplierKey(gateCanonical);
-    if (cleaned) return normalizeIsraeliReviewSupplierAlias(cleaned);
+    const cleaned = normalizeSupplierPaymentKey(gateCanonical);
+    if (cleaned) return cleaned;
   }
 
-  if (context.displaySupplierName) return stripInternalSupplierKey(context.displaySupplierName);
+  if (context.displaySupplierName) return normalizeSupplierPaymentKey(context.displaySupplierName);
 
   throw new Error("Cannot approve document without a verified supplier name");
 }

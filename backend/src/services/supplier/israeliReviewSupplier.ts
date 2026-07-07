@@ -26,7 +26,13 @@ const KNOWN_OCR_MISREADS: Record<string, string> = {
 const FUEL_CONTEXT =
   /חשבונית|חשבון|קבלה|תשלום|חיוב|דלק|תחנה|תדלוק|fuel|gas|station|invoice|receipt|payment|yellow/u;
 const PAZ_PATTERN = /(?:^|\s)פז(?:\s|$)|(?:^|\s)paz(?:\s|$)|yellow/u;
-const IEC_PATTERN = /חברת\s*החשמל|חברתהחשמל|israel\s+electric|(?:^|\s)iec(?:\s|$)/u;
+/** דורש הקשר חשבון חשמל — בניגוד ל-PAZ, מונע false positive על אזכור שולי ב-OCR. */
+const IEC_CONTEXT =
+  /חשבון\s*חשמל|חשבונית\s*חשמל|צריכת\s*חשמל|מונה\s*חשמל|קילו?וואט|\bkwh\b|חיוב\s*חשמל|תעריף\s*חשמל|electric(?:ity)?\s+bill|utility\s+bill|israel\s+electric/u;
+const IEC_STRONG_NAME_PATTERN =
+  /חברת\s+החשמל\s+לישראל|חברתהחשמללישראל|israel\s+electric(?:\s+corporation)?/u;
+const IEC_NAME_PATTERN = /חברת\s+החשמל|חברתהחשמל/u;
+const IEC_STANDALONE_PATTERN = /(?:^|\s)iec(?:\s|$)/u;
 
 export function normalizeIsraeliReviewSupplierAlias(name: string): string {
   const trimmed = name.trim();
@@ -52,7 +58,17 @@ export function matchIsraeliSupplierFromOcrText(text: string): string | null {
       return "פז";
     }
   }
-  if (IEC_PATTERN.test(normalized) || IEC_PATTERN.test(compact)) {
+  const hasIecContext = IEC_CONTEXT.test(normalized) || IEC_CONTEXT.test(compact);
+  if (IEC_STRONG_NAME_PATTERN.test(normalized) || IEC_STRONG_NAME_PATTERN.test(compact)) {
+    return "חברת החשמל";
+  }
+  if (
+    hasIecContext &&
+    (IEC_NAME_PATTERN.test(normalized) ||
+      IEC_NAME_PATTERN.test(compact) ||
+      IEC_STANDALONE_PATTERN.test(normalized) ||
+      IEC_STANDALONE_PATTERN.test(compact))
+  ) {
     return "חברת החשמל";
   }
   return null;
