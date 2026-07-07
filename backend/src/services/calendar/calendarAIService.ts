@@ -21,12 +21,15 @@ import {
 } from "./calendarSchedulingService.js";
 import { validateParsedCommand } from "./calendarValidationService.js";
 import { SchedulingFacadeError } from "../scheduling/schedulingErrors.js";
+import { processNatalieTurn } from "../conversation/conversationRuntime.js";
+import { isCalendarFollowUpPhrase } from "./calendarPendingIntent.js";
 
 export type ProcessCalendarCommandInput = {
   organizationId: string;
   userId: string;
   text: string;
   now?: Date;
+  sessionId?: string | null;
   /** Must be explicitly true for any mutation (create/move/cancel) to write to the DB. */
   confirm?: boolean;
 };
@@ -66,6 +69,13 @@ const INTENT_TO_ACTION: Record<string, ParsedCalendarCommand["action"]> = {
   create_appointment: "create",
   cancel_appointment: "cancel",
   move_appointment: "move",
+};
+
+const NATALIE_ACTION_TO_API: Record<string, ParsedCalendarCommand["action"]> = {
+  book_appointment: "create",
+  cancel_appointment: "cancel",
+  cancel_appointments: "cancel",
+  reschedule_appointment: "move",
 };
 
 function toExtractionPayload(extraction: CalendarIntentExtraction): CalendarAIResponse["extraction"] {
@@ -142,6 +152,44 @@ function pendingConfirmation(
  */
 export async function processCalendarCommand(input: ProcessCalendarCommandInput): Promise<CalendarAIResponse> {
   const extraction = parseCalendarIntent(input.text, { now: input.now });
+  const shouldUseNatalieTurn =
+    extraction.intent === "create_appointment" ||
+    extraction.intent === "cancel_appointment" ||
+    extraction.intent === "move_appointment" ||
+    extraction.intent === "list_appointments" ||
+    isCalendarFollowUpPhrase(input.text) ||
+    input.confirm === true;
+
+  if (shouldUseNatalieTurn) {
+    const turn = await processNatalieTurn({
+      organizationId: input.organizationId,
+      userId: input.userId,
+      channel: "api",
+      modality: "text",
+      message: input.text,
+      sessionId: input.sessionId ?? null,
+      role: "owner",
+    });
+    return {
+      parsed: mapExtractionToCommand(extraction),
+      result: {
+        ok: !turn.confirmation?.required,
+        action:
+          ("action" in turn && typeof turn.action === "string"
+            ? NATALIE_ACTION_TO_API[turn.action] ?? "unknown"
+            : undefined) ??
+          INTENT_TO_ACTION[extraction.intent] ??
+          "unknown",
+        code: turn.confirmation?.required ? "NEEDS_CONFIRMATION" : "OK",
+        message: turn.answer ?? turn.displayResponse,
+        data: { sessionId: turn.conversationSessionId },
+      },
+      message: turn.displayResponse || turn.answer || "",
+      requiresConfirmation: Boolean(turn.confirmation?.required),
+      extraction: toExtractionPayload(extraction),
+      sessionId: turn.conversationSessionId,
+    };
+  }
 
   // Deterministic Hebrew handling for mutating intents (create/cancel/move).
   if (extraction.intent !== "unknown") {

@@ -30,6 +30,8 @@ export type CalendarIntentExtraction = {
   notes: string | null;
   confidence: CalendarIntentConfidence;
   missingFields: string[];
+  /** cancel_appointment only: all appointments on a day vs one customer. */
+  cancelTarget?: "all" | "single" | null;
   rawText: string;
 };
 
@@ -259,6 +261,18 @@ function isListIntent(text: string): boolean {
   return LIST_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+const CANCEL_ALL_PATTERNS = [
+  /^את\s+כולם(?:\s+ביום|\s+ל?מחר|\s+ל?היום|\s|$)/u,
+  /^כולם(?:\s+ביום|\s+ל?מחר|\s+ל?היום|\s|$)/u,
+  /(?:את\s+)?כל\s+(?:ה)?(?:תורים|פגישות)/u,
+  /(?:תבטל|תבטלי|בטל|בטלי|ביטול|לבטל)\s+(?:לי\s+)?(?:את\s+)?(?:כולם|כל\s+(?:ה)?(?:תורים|פגישות))/u,
+];
+
+export function isCancelAllTarget(text: string): boolean {
+  const normalized = text.trim().replace(/\s+/g, " ");
+  return CANCEL_ALL_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 function detectIntent(text: string): CalendarIntentAction {
   if (isListIntent(text)) {
     return "list_appointments";
@@ -456,14 +470,30 @@ export function parseCalendarIntent(
 
   if (intent === "cancel_appointment") {
     const dayReference = extractDayReference(text);
+    const cancelAll = isCancelAllTarget(text);
     const missingFields: string[] = [];
-    if (!customerName) missingFields.push("customerName");
+
+    if (cancelAll) {
+      if (!dayReference) missingFields.push("date");
+      return {
+        ...base,
+        customerName: null,
+        cancelTarget: "all",
+        dayReference,
+        date: resolveDate(dayReference, null, timeZone, now),
+        confidence: missingFields.length === 0 ? "high" : "low",
+        missingFields,
+      };
+    }
+
+    if (!customerName) missingFields.push("target");
     return {
       ...base,
       customerName,
+      cancelTarget: customerName ? "single" : null,
       dayReference,
       date: resolveDate(dayReference, null, timeZone, now),
-      confidence: customerName ? "high" : "low",
+      confidence: customerName && dayReference ? "high" : customerName || dayReference ? "medium" : "low",
       missingFields,
     };
   }

@@ -16,13 +16,15 @@ import { parseCalendarIntent } from "../calendar/calendarIntentParser.js";
 import { isAvailabilityQuestion } from "../natalieAvailability.js";
 import { parseVoiceConfirmationIntent } from "../conversation/voice/voiceConfirmation.js";
 import { processNatalieTurn } from "../conversation/conversationRuntime.js";
-import { sanitizeWhatsAppText } from "./natalieWhatsAppUx.js";
+import { isCalendarFollowUpPhrase } from "../calendar/calendarPendingIntent.js";
 import { calendarMessages } from "../calendar/calendarMessages.js";
+import { sanitizeWhatsAppText } from "./natalieWhatsAppUx.js";
 
 /** Minimal shape of the persisted Natalie session this bridge needs. */
 type WhatsAppNatalieSession = {
   id: string;
   hasPendingConfirmation: boolean;
+  hasPendingCalendarIntent: boolean;
 };
 
 export type WhatsAppCalendarDeps = {
@@ -65,13 +67,19 @@ async function defaultLoadLatestSession(
   const row = await prisma.natalieConversationSession.findFirst({
     where: { organizationId, userId, currentChannel: "whatsapp" },
     orderBy: { lastMessageAt: "desc" },
-    select: { id: true, pendingConfirmation: true },
+    select: { id: true, pendingConfirmation: true, pendingAction: true },
   });
   if (!row) return null;
   const pending = row.pendingConfirmation;
   const hasPendingConfirmation =
     !!pending && typeof pending === "object" && !Array.isArray(pending);
-  return { id: row.id, hasPendingConfirmation };
+  const pendingAction = row.pendingAction;
+  const hasPendingCalendarIntent =
+    !!pendingAction &&
+    typeof pendingAction === "object" &&
+    !Array.isArray(pendingAction) &&
+    (pendingAction as { action?: string }).action === "calendar_intent_continuation";
+  return { id: row.id, hasPendingConfirmation, hasPendingCalendarIntent };
 }
 
 /**
@@ -101,16 +109,18 @@ export async function maybeHandleWhatsAppCalendarMessage(
     !!session?.hasPendingConfirmation && parseVoiceConfirmationIntent(message) !== "none";
   const isCalendarTopic = mentionsCalendarTopic(message);
 
-  // Only take over when this is a real calendar command, a calendar-topic message
-  // that needs clarification, or a yes/no reply to a pending calendar confirmation.
-  // A bare "כן" with no pending proposal falls through to the normal owner chat engine.
-  // Vague calendar-topic text (e.g. "אולי משהו עם יומן") gets one deterministic
-  // clarification — not the general Natalie Q&A path.
-  if (isCalendarTopic && !isCalendarCommand && !isConfirmationReply) {
+  const shouldRoute =
+    isCalendarCommand ||
+    isConfirmationReply ||
+    session?.hasPendingCalendarIntent ||
+    isCalendarFollowUpPhrase(message) ||
+    (isCalendarTopic && !isCalendarCommand && !isConfirmationReply);
+
+  if (!shouldRoute) return null;
+
+  if (isCalendarTopic && !isCalendarCommand && !isConfirmationReply && !session?.hasPendingCalendarIntent) {
     return sanitizeWhatsAppText(calendarMessages.unsupportedCalendar());
   }
-
-  if (!isCalendarCommand && !isConfirmationReply) return null;
 
   const result = await processTurn({
     organizationId: input.organizationId,

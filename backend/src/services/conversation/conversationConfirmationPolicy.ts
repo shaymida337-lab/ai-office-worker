@@ -14,6 +14,7 @@ const ACTION_PERMISSION: Record<string, PlatformPermission> = {
   issue_invoice: "payment.create",
   book_appointment: "calendar.create",
   cancel_appointment: "calendar.cancel",
+  cancel_appointments: "calendar.cancel",
   reschedule_appointment: "calendar.reschedule",
   create_task: "chat.use",
   complete_task: "chat.use",
@@ -26,6 +27,7 @@ const ACTION_RISK: Record<string, ActionRisk> = {
   issue_invoice: "financial",
   book_appointment: "reversible",
   cancel_appointment: "destructive",
+  cancel_appointments: "destructive",
   reschedule_appointment: "destructive",
   suggest_available_times: "read_only",
 };

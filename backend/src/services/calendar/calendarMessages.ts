@@ -47,6 +47,18 @@ export const calendarMessages = {
   chooseCancel(clientName: string, list: string): string {
     return `מצאתי כמה תורים עתידיים ל${clientName}. איזה תור לבטל?\n${list}`;
   },
+  cancelEmptyDay(dayReference: string): string {
+    return `בדקתי את היומן שלך ולא מצאתי פגישות ב${dayReference}.`;
+  },
+  cancelAllConfirmation(dayReference: string, count: number, summary: string): string {
+    return `מצאתי ${count} פגישות ב${dayReference}: ${summary}. לבטל את כולן?`;
+  },
+  cancelAllSuccess(count: number): string {
+    return count === 1 ? "הפגישה בוטלה." : `ביטלתי ${count} פגישות.`;
+  },
+  bareYesWithoutPending(): string {
+    return "לא הבנתי למה התכוונת. מה תרצי שאעשה ביומן?";
+  },
 
   // ---- Move / reschedule ----
   rescheduleMissingCustomer(): string {

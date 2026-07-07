@@ -30,6 +30,7 @@ import {
   type CalendarListRange,
 } from "./calendar/calendarIntentParser.js";
 import { calendarMessages } from "./calendar/calendarMessages.js";
+import type { CalendarPendingIntent } from "./calendar/calendarPendingIntent.js";
 
 /** Injectable dependencies for deterministic testing of the Natalie brain. */
 export type AskNatalieDeps = {
@@ -1238,7 +1239,8 @@ function maybeBuildPartialCalendarClarification(question: string): NatalieClaude
     intent.intent === "cancel_appointment" &&
     !intent.customerName &&
     !extractCancelAppointmentClientName(question) &&
-    !isCancelPronounCommand(question)
+    !isCancelPronounCommand(question) &&
+    !intent.cancelTarget
   ) {
     return { answer: calendarMessages.cancelMissingCustomer() };
   }
@@ -1403,17 +1405,109 @@ async function resolveCalendarCommandCustomer(input: {
   };
 }
 
+async function buildCancelAllAppointmentsProposal(
+  organizationId: string,
+  dayReference: string
+): Promise<NatalieClaudeResponse> {
+  const timeZone = await loadOrganizationTimezone(organizationId);
+  const now = new Date();
+  const items = await findUpcomingSchedulingForOrganization({ organizationId });
+  const filtered = filterAppointmentsForListRange(items, {
+    dayReference,
+    timeZone,
+    now,
+  });
+
+  if (filtered.length === 0) {
+    return { answer: calendarMessages.cancelEmptyDay(dayReference) };
+  }
+
+  const summary = filtered
+    .map((item) => `${formatTimeOnly(item.startTime, timeZone)} ${item.clientName}`)
+    .join(", ");
+
+  return {
+    action: "cancel_appointments",
+    proposal: {
+      appointmentIds: filtered.map((item) => item.id),
+      dayReference,
+      cancelTarget: "all",
+      appointmentResolution: {
+        source: "exact",
+        matchScore: 1,
+        spokenName: "כולם",
+        matchedName: "כולם",
+        fuzzyIdentityConfirmationPending: false,
+        identityConfirmed: true,
+      },
+    },
+    answer: calendarMessages.cancelAllConfirmation(dayReference, filtered.length, summary),
+  } as NatalieClaudeResponse;
+}
+
+function buildSyntheticCancelQuestion(intent: CalendarPendingIntent): string {
+  const day = intent.dayReference ? ` ${intent.dayReference}` : "";
+  return `תבטלי את התור של ${intent.customerName}${day}`;
+}
+
+function buildSyntheticMoveQuestion(intent: CalendarPendingIntent): string {
+  const day = intent.dayReference ?? "מחר";
+  const time = intent.time ?? "16:00";
+  return `תעבירי את התור של ${intent.customerName} ${day} ל-${time}`;
+}
+
+export async function fulfillCalendarPendingIntent(
+  organizationId: string,
+  intent: CalendarPendingIntent,
+  activeContext: ActiveCalendarContext | null
+): Promise<NatalieClaudeResponse> {
+  if (intent.action === "cancel_appointments" && intent.cancelTarget === "all" && intent.dayReference) {
+    return buildCancelAllAppointmentsProposal(organizationId, intent.dayReference);
+  }
+  if (intent.intent === "cancel_appointment" && intent.customerName) {
+    return (
+      (await maybeBuildCancelAppointmentProposal(
+        organizationId,
+        buildSyntheticCancelQuestion(intent),
+        activeContext
+      )) ?? { answer: calendarMessages.cancelMissingCustomer() }
+    );
+  }
+  if (intent.intent === "move_appointment") {
+    return (
+      (await maybeBuildRescheduleAppointmentProposal(
+        organizationId,
+        buildSyntheticMoveQuestion(intent),
+        activeContext
+      )) ?? { answer: calendarMessages.rescheduleMissingCustomer() }
+    );
+  }
+  return { answer: calendarMessages.unsupportedCalendar() };
+}
+
 async function maybeBuildCancelAppointmentProposal(
   organizationId: string,
   question: string,
   activeContext: ActiveCalendarContext | null
 ): Promise<NatalieClaudeResponse | null> {
   const cancelIntent = parseCalendarIntent(question);
+  if (
+    cancelIntent.intent === "cancel_appointment" &&
+    cancelIntent.cancelTarget === "all" &&
+    cancelIntent.dayReference
+  ) {
+    return buildCancelAllAppointmentsProposal(organizationId, cancelIntent.dayReference);
+  }
   const pronounCommand = isCancelPronounCommand(question);
   const clientName = extractCancelAppointmentClientName(question) ?? cancelIntent.customerName;
   if (cancelIntent.intent !== "cancel_appointment" && !clientName && !pronounCommand) return null;
-  if (cancelIntent.intent === "cancel_appointment" && !clientName && !pronounCommand) {
-    return { answer: calendarMessages.cancelMissingCustomer() };
+  if (
+    cancelIntent.intent === "cancel_appointment" &&
+    !clientName &&
+    !pronounCommand &&
+    cancelIntent.cancelTarget !== "all"
+  ) {
+    return null;
   }
 
   const resolved = await resolveCalendarCommandCustomer({

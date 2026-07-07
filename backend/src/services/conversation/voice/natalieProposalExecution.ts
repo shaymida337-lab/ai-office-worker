@@ -52,6 +52,7 @@ import {
   isCalendarProposalExecutable,
   withIdentityConfirmedProposal,
 } from "../../scheduling/calendarAppointmentSafety.js";
+import { calendarMessages } from "../../calendar/calendarMessages.js";
 
 export async function executeNataliePendingProposal(input: {
   organizationId: string;
@@ -157,6 +158,30 @@ export async function executeNataliePendingProposal(input: {
         action: input.action,
         message: resolveCancelMessage(result),
         payload: result,
+      };
+    }
+    case "cancel_appointments": {
+      const ids = Array.isArray(input.proposal.appointmentIds)
+        ? input.proposal.appointmentIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+        : [];
+      if (!ids.length) {
+        return { ok: false, action: input.action, message: "חסר מזהה תור." };
+      }
+      const results = [];
+      for (const schedulingItemId of ids) {
+        results.push(
+          await cancelAppointmentViaNatalie({
+            organizationId: input.organizationId,
+            userId: input.userId,
+            schedulingItemId,
+          })
+        );
+      }
+      return {
+        ok: true,
+        action: input.action,
+        message: calendarMessages.cancelAllSuccess(results.length),
+        payload: results,
       };
     }
     case "reschedule_appointment": {

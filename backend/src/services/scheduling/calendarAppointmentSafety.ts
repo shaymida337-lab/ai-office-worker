@@ -49,6 +49,9 @@ export function buildFuzzyIdentityConfirmationPrompt(
 }
 
 export function isCalendarProposalExecutable(proposal: Record<string, unknown>): boolean {
+  if (Array.isArray(proposal.appointmentIds) && proposal.appointmentIds.length > 0) {
+    return true;
+  }
   const metadata = proposal.appointmentResolution as AppointmentResolutionMetadata | undefined;
   if (!metadata?.fuzzyIdentityConfirmationPending) return true;
   return metadata.identityConfirmed === true;

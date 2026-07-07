@@ -53,4 +53,5 @@ export type CalendarAIResponse = {
     confidence: "high" | "medium" | "low";
     missingFields: string[];
   };
+  sessionId?: string;
 };

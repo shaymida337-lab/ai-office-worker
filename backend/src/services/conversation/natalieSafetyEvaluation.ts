@@ -49,7 +49,7 @@ export function evaluateNatalieSafety(input: {
   const calendarExecutable =
     !input.action ||
     !input.proposal ||
-    !["cancel_appointment", "reschedule_appointment"].includes(input.action) ||
+    !["cancel_appointment", "cancel_appointments", "reschedule_appointment"].includes(input.action) ||
     isCalendarProposalExecutable(input.proposal);
 
   const executionReady = zeroWrong.ready && confirmation.allowed && calendarExecutable;

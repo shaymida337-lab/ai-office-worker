@@ -27,6 +27,7 @@ import type {
 } from "./conversationTypes.js";
 import { evaluateZeroWrongAction } from "./conversationZeroWrongAction.js";
 import { tryHandleAvailabilityContinuation } from "./conversationAvailabilityContinuation.js";
+import { tryHandleCalendarIntentContinuation } from "./conversationCalendarContinuation.js";
 import {
   applyFuzzyCalendarClientResponse,
   buildCalendarPendingConfirmation,
@@ -153,7 +154,63 @@ export async function processNatalieTurn(
       };
     }
 
-    const availabilityContinuation = tryHandleAvailabilityContinuation({
+    const calendarIntentContinuation = await tryHandleCalendarIntentContinuation({
+      session,
+      message: normalizedMessage,
+      channel,
+      organizationId: input.organizationId,
+      userId: input.userId,
+      role,
+      permissions: input.permissions,
+      saveSession,
+    });
+    if (calendarIntentContinuation.handled && calendarIntentContinuation.result && calendarIntentContinuation.updatedSession) {
+      const adapter = getChannelAdapter(channel);
+      const continuation = calendarIntentContinuation.result;
+      const displayResponse =
+        continuation.displayResponse ??
+        adapter.renderDisplay(continuation as NatalieClaudeResponse, continuation.confirmation);
+      const spokenResponse =
+        continuation.spokenResponse ??
+        adapter.renderSpoken(continuation as NatalieClaudeResponse, continuation.confirmation);
+
+      const updatedSession = await saveSession(calendarIntentContinuation.updatedSession);
+
+      completeCoreWorkflowStage(trace, "turn", "completed", {
+        health: continuation.zeroWrongAction?.ready === false ? "Degraded" : "Healthy",
+        metadata: {
+          turnId,
+          action: "action" in continuation ? continuation.action : undefined,
+          calendarIntentContinuation: true,
+        },
+      });
+
+      recordConversationMetric({
+        sessionId: updatedSession.id,
+        channel,
+        turnCount: updatedSession.structuredHistory.length,
+        confirmationRequired: continuation.confirmation?.required ?? false,
+        recoveryCount: 0,
+        interruptionCount: updatedSession.interruptionState?.interrupted ? 1 : 0,
+        durationMs: sessionDurationMs(updatedSession),
+        success: true,
+      });
+
+      return {
+        ...continuation,
+        conversationSessionId: updatedSession.id,
+        displayResponse,
+        spokenResponse,
+        reliability: {
+          correlationId: trace.correlationId,
+          sessionId: updatedSession.id,
+          turnId,
+          health: continuation.zeroWrongAction?.ready === false ? "Degraded" : "Healthy",
+        },
+      };
+    }
+
+    const availabilityContinuation = await tryHandleAvailabilityContinuation({
       session,
       message: normalizedMessage,
       channel,

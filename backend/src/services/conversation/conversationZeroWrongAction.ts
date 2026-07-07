@@ -55,6 +55,10 @@ function validateProposal(action: string, proposal: Record<string, unknown>): st
       return typeof proposal.appointmentId === "string" && proposal.appointmentId.trim()
         ? []
         : ["appointment_id_missing"];
+    case "cancel_appointments":
+      return Array.isArray(proposal.appointmentIds) && proposal.appointmentIds.length > 0
+        ? []
+        : ["appointment_id_missing"];
     case "suggest_available_times":
       return Array.isArray(proposal.slots) ? [] : ["availability_slots_missing"];
     default:
