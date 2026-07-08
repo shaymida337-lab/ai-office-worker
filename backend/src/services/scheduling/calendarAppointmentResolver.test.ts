@@ -72,3 +72,16 @@ test("extractActiveCalendarContext walks structured history backwards", () => {
   });
   assert.equal(context?.clientName, "יוסי ביטון");
 });
+
+test("extractActiveCalendarContext reads client from list bullet response", () => {
+  const context = extractActiveCalendarContext({
+    history: [
+      { role: "user", content: "מה יש לי לעשות היום" },
+      {
+        role: "assistant",
+        content: "התורים שלך להיום:\n• 16:00 — שרית",
+      },
+    ],
+  });
+  assert.equal(context?.clientName, "שרית");
+});

@@ -243,6 +243,11 @@ export function extractActiveCalendarContext(input: {
     }
 
     if (turn.role !== "assistant") continue;
+    const listed = Array.from(turn.content.matchAll(/•\s*\d{1,2}:\d{2}\s*[—-]\s*([^\n,.?!]{2,40})/gu));
+    const listedName = listed.at(-1)?.[1]?.trim();
+    if (listedName && listedName.length >= 2) {
+      return { appointmentId: "", clientId: "", clientName: listedName };
+    }
     const mention = turn.content.match(/(?:תור\s+(?:של|ל)|ל)([^\n,.?!]{2,40})/u);
     const clientName = mention?.[1]?.trim();
     if (clientName && clientName.length >= 3) {
