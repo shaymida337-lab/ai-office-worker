@@ -5,6 +5,7 @@ import {
   appointmentEnd,
   checkConflict,
   findAvailableSlots,
+  findAvailableSlotsNearTime,
   generateSlotGrid,
   intervalsOverlap,
   isInPast,
@@ -162,4 +163,25 @@ test("findAvailableSlots returns slots on later free days when earlier days are 
   });
   assert.equal(slots.length, 3);
   assert.equal(slots[0]?.start.toISOString().slice(0, 10), "2026-06-22");
+});
+
+test("findAvailableSlotsNearTime balances before and after requested time", () => {
+  const range = {
+    start: at("2026-06-21T00:00:00.000Z"),
+    end: at("2026-06-22T00:00:00.000Z"),
+  };
+  const busy = [block("busy", "2026-06-21T10:00:00.000Z", 30)];
+  const requested = at("2026-06-21T10:00:00.000Z");
+  const slots = findAvailableSlotsNearTime(requested, range, 30, busy, RULES, {
+    limit: 3,
+    now: at("2026-06-20T08:00:00.000Z"),
+  });
+  assert.deepEqual(
+    slots.map((slot) => slot.start.toISOString()),
+    [
+      "2026-06-21T09:30:00.000Z",
+      "2026-06-21T10:30:00.000Z",
+      "2026-06-21T11:00:00.000Z",
+    ]
+  );
 });

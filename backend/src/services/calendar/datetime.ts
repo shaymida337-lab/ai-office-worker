@@ -131,6 +131,44 @@ export function formatSlotLabel(start: Date, timeZone: string, now: Date = new D
   return `${dayLabel}, ${timeLabel}`;
 }
 
+/** e.g. "10:00 מחר" — used when repeating the user's requested slot in availability replies. */
+export function formatRequestedSlotLabel(start: Date, timeZone: string, now: Date = new Date()): string {
+  const startDay = getLocalDateParts(start, timeZone);
+  const today = getLocalDateParts(now, timeZone);
+  const tomorrow = addCalendarDays(today, 1);
+
+  const timeLabel = new Intl.DateTimeFormat("he-IL", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(start);
+
+  let dayLabel: string;
+  if (
+    startDay.year === today.year &&
+    startDay.month === today.month &&
+    startDay.day === today.day
+  ) {
+    dayLabel = "היום";
+  } else if (
+    startDay.year === tomorrow.year &&
+    startDay.month === tomorrow.month &&
+    startDay.day === tomorrow.day
+  ) {
+    dayLabel = "מחר";
+  } else {
+    dayLabel = new Intl.DateTimeFormat("he-IL", {
+      timeZone,
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }).format(start);
+  }
+
+  return `${timeLabel} ${dayLabel}`;
+}
+
 export function getLocalDateParts(date: Date, timeZone: string): LocalDateParts {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,

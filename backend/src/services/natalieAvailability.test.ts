@@ -154,13 +154,13 @@ test("maybeBuildAvailabilityResponse returns answer-only for available check", a
   }
 });
 
-test("maybeBuildAvailabilityResponse returns alternatives when check finds conflict", async () => {
+test("maybeBuildAvailabilityResponse returns nearby alternatives when check finds conflict", async () => {
   const restore = installAvailabilityPrismaStub({
     appointments: [
       {
         id: "busy",
         startTime: at("2026-06-21T10:00:00.000Z"),
-        durationMinutes: 60,
+        durationMinutes: 30,
         client: { name: "דנה" },
         service: null,
       },
@@ -174,9 +174,83 @@ test("maybeBuildAvailabilityResponse returns alternatives when check finds confl
     assert.equal("action" in result && result.action, "suggest_available_times");
     if (!("action" in result) || result.action !== "suggest_available_times") return;
     assert.equal(result.proposal.intent, "check_alternatives");
-    assert.match(result.answer, /לא, השעה תפוסה/);
+    assert.match(result.answer, /השעה 10:00 מחר תפוסה/);
+    assert.match(result.answer, /בגלל פגישה עם דנה/);
+    assert.equal(result.proposal.slots.length, 3);
+    const starts = result.proposal.slots.map((slot) => new Date(slot.startTime).toISOString());
+    assert.deepEqual(starts, [
+      "2026-06-21T09:30:00.000Z",
+      "2026-06-21T10:30:00.000Z",
+      "2026-06-21T11:00:00.000Z",
+    ]);
+  } finally {
+    restore();
+  }
+});
+
+test("maybeBuildAvailabilityResponse falls back to next day when requested day is fully booked", async () => {
+  const restore = installAvailabilityPrismaStub();
+  const rows: Array<{
+    id: string;
+    startTime: Date;
+    durationMinutes: number;
+    client: { name: string };
+    service: null;
+  }> = [];
+  for (let hour = 7; hour < 21; hour++) {
+    for (const minute of [0, 30]) {
+      rows.push({
+        id: `busy-${hour}-${minute}`,
+        startTime: at(`2026-06-21T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00.000Z`),
+        durationMinutes: 30,
+        client: { name: "Client" },
+        service: null,
+      });
+    }
+  }
+  prisma.appointment.findMany = (async () => rows) as unknown as typeof prisma.appointment.findMany;
+  try {
+    const result = await maybeBuildAvailabilityResponse(ORG, "יש מקום מחר ב-10?", {
+      now: FIXED_NOW,
+    });
+    assert.ok(result);
+    assert.equal("action" in result && result.action, "suggest_available_times");
+    if (!("action" in result) || result.action !== "suggest_available_times") return;
+    assert.match(result.answer, /השעה 10:00 מחר תפוסה/);
+    assert.match(result.answer, /לא מצאתי מקום באותו יום/);
     assert.ok(result.proposal.slots.length > 0);
-    assert.ok(result.proposal.refreshParams.limit !== undefined);
+    const firstStart = new Date(result.proposal.slots[0]!.startTime);
+    assert.equal(firstStart.toISOString().slice(0, 10), "2026-06-22");
+  } finally {
+    restore();
+  }
+});
+
+test("maybeBuildAvailabilityResponse does not suggest slots outside working hours", async () => {
+  const restore = installAvailabilityPrismaStub({
+    appointments: [
+      {
+        id: "busy",
+        startTime: at("2026-06-21T10:00:00.000Z"),
+        durationMinutes: 30,
+        client: { name: "דנה" },
+        service: null,
+      },
+    ],
+  });
+  try {
+    const result = await maybeBuildAvailabilityResponse(ORG, "יש מקום מחר ב-10?", {
+      now: FIXED_NOW,
+    });
+    assert.ok(result);
+    if (!("action" in result) || result.action !== "suggest_available_times") return;
+    for (const slot of result.proposal.slots) {
+      const start = new Date(slot.startTime);
+      const hour = start.getUTCHours();
+      const minute = start.getUTCMinutes();
+      assert.ok(hour >= 7 && (hour < 21 || (hour === 21 && minute === 0)));
+      assert.ok(hour < 21 || (hour === 21 && minute === 0));
+    }
   } finally {
     restore();
   }

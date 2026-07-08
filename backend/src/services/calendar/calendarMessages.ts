@@ -209,6 +209,22 @@ export const calendarMessages = {
       ? `לא, השעה תפוסה (תור ל${who}). אלה זמנים חלופיים:`
       : "לא, השעה תפוסה. אלה זמנים חלופיים:";
   },
+  availabilityRequestedSlotTaken(params: {
+    requestedTimeLabel: string;
+    conflictName?: string | null;
+    alternativeLabels: string;
+    fellBackToNextDay?: boolean;
+  }): string {
+    const who = params.conflictName?.trim();
+    const opening = who
+      ? `השעה ${params.requestedTimeLabel} תפוסה בגלל פגישה עם ${who}.`
+      : `השעה ${params.requestedTimeLabel} תפוסה.`;
+    if (!params.alternativeLabels.trim()) return opening;
+    const alternatives = params.fellBackToNextDay
+      ? `לא מצאתי מקום באותו יום, אלה זמנים ביום הבא: ${params.alternativeLabels}.`
+      : `אלה זמנים חלופיים: ${params.alternativeLabels}.`;
+    return `${opening} ${alternatives}`;
+  },
   availabilityEmpty(scope: string): string {
     return `לא מצאתי זמנים פנויים ב${scope}. אפשר לנסות יום אחר או טווח רחב יותר.`;
   },

@@ -4,14 +4,18 @@ import {
   appointmentEnd,
   checkConflict,
   findAvailableSlots,
+  findAvailableSlotsNearTime,
   isInPast,
   isWithinWorkingHours,
 } from "./engine.js";
 import {
+  addCalendarDays,
   formatSlotLabel,
   getDayBounds,
+  getLocalDateParts,
   getWeekBounds,
   resolveSlotTime,
+  wallClockToDate,
 } from "./datetime.js";
 import { getCalendarRulesForOrganization } from "./rules.js";
 import type {
@@ -270,6 +274,146 @@ export async function findAvailableSlotsForOrganization(params: {
     })),
     empty: slots.length === 0,
     googleReadStatus: busyRead.google.status,
+    googleReadDegraded: false,
+  };
+}
+
+export type NearbyAlternativeSlotsResult = FindAvailableSlotsResult & {
+  fellBackToNextDay: boolean;
+};
+
+const NEARBY_ALTERNATIVE_HOURS = 3;
+
+export async function findNearbyAlternativeSlots(params: {
+  organizationId: string;
+  requestedStart: Date;
+  durationMinutes?: number;
+  serviceId?: string | null;
+  limit?: number;
+  nearbyHours?: number;
+  now?: Date;
+  skipGoogle?: boolean;
+  googleBlocks?: BusyBlock[];
+}): Promise<NearbyAlternativeSlotsResult> {
+  const rules = await getCalendarRulesForOrganization(params.organizationId);
+  const now = params.now ?? new Date();
+  const durationMinutes = await resolveDurationMinutes({
+    organizationId: params.organizationId,
+    durationMinutes: params.durationMinutes,
+    serviceId: params.serviceId,
+    defaultDurationMinutes: rules.defaultDurationMinutes,
+  });
+  const limit = params.limit ?? 3;
+  const nearbyHours = params.nearbyHours ?? NEARBY_ALTERNATIVE_HOURS;
+
+  const sameDayRange = getDayBounds(params.requestedStart, rules.timeZone);
+  const busyReadSameDay = await loadCombinedBusyBlocksDetailed(params.organizationId, sameDayRange, {
+    skipGoogle: params.skipGoogle,
+    googleBlocks: params.googleBlocks,
+  });
+
+  if (busyReadSameDay.google.degraded) {
+    return {
+      timeZone: rules.timeZone,
+      durationMinutes,
+      searchedFrom: sameDayRange.start.toISOString(),
+      searchedTo: sameDayRange.end.toISOString(),
+      slots: [],
+      empty: false,
+      fellBackToNextDay: false,
+      googleReadStatus: busyReadSameDay.google.status,
+      googleReadDegraded: true,
+      googleReadReason: busyReadSameDay.google.reason,
+      googleReadStatusCode: busyReadSameDay.google.statusCode,
+      googleReadMessageHe: busyReadSameDay.google.messageHe,
+    };
+  }
+
+  let slotCandidates = findAvailableSlotsNearTime(
+    params.requestedStart,
+    sameDayRange,
+    durationMinutes,
+    busyReadSameDay.blocks,
+    rules,
+    { nearbyHours, limit, now }
+  );
+  let fellBackToNextDay = false;
+  let searchedFrom = sameDayRange.start;
+  let searchedTo = sameDayRange.end;
+
+  if (slotCandidates.length === 0) {
+    fellBackToNextDay = true;
+    const nextDayParts = addCalendarDays(getLocalDateParts(params.requestedStart, rules.timeZone), 1);
+    const nextDayAnchor = wallClockToDate(
+      nextDayParts.year,
+      nextDayParts.month,
+      nextDayParts.day,
+      0,
+      0,
+      rules.timeZone
+    );
+    if (!nextDayAnchor) {
+      return {
+        timeZone: rules.timeZone,
+        durationMinutes,
+        searchedFrom: sameDayRange.start.toISOString(),
+        searchedTo: sameDayRange.end.toISOString(),
+        slots: [],
+        empty: true,
+        fellBackToNextDay: true,
+        googleReadStatus: busyReadSameDay.google.status,
+        googleReadDegraded: false,
+      };
+    }
+
+    const nextDayRange = getDayBounds(nextDayAnchor, rules.timeZone);
+    searchedFrom = nextDayRange.start;
+    searchedTo = nextDayRange.end;
+
+    const busyReadNextDay = await loadCombinedBusyBlocksDetailed(params.organizationId, nextDayRange, {
+      skipGoogle: params.skipGoogle,
+      googleBlocks: params.googleBlocks,
+    });
+
+    if (busyReadNextDay.google.degraded) {
+      return {
+        timeZone: rules.timeZone,
+        durationMinutes,
+        searchedFrom: nextDayRange.start.toISOString(),
+        searchedTo: nextDayRange.end.toISOString(),
+        slots: [],
+        empty: false,
+        fellBackToNextDay: true,
+        googleReadStatus: busyReadNextDay.google.status,
+        googleReadDegraded: true,
+        googleReadReason: busyReadNextDay.google.reason,
+        googleReadStatusCode: busyReadNextDay.google.statusCode,
+        googleReadMessageHe: busyReadNextDay.google.messageHe,
+      };
+    }
+
+    slotCandidates = findAvailableSlots(
+      nextDayRange,
+      durationMinutes,
+      busyReadNextDay.blocks,
+      rules,
+      { limit, now }
+    );
+  }
+
+  return {
+    timeZone: rules.timeZone,
+    durationMinutes,
+    searchedFrom: searchedFrom.toISOString(),
+    searchedTo: searchedTo.toISOString(),
+    slots: slotCandidates.map((slot) => ({
+      startTime: slot.start.toISOString(),
+      endTime: slot.end.toISOString(),
+      label: formatSlotLabel(slot.start, rules.timeZone, now),
+    })),
+    empty: slotCandidates.length === 0,
+    fellBackToNextDay,
+    googleReadStatus: busyReadSameDay.google.status,
     googleReadDegraded: false,
   };
 }

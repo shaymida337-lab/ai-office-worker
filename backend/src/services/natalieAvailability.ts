@@ -2,9 +2,11 @@ import type { NatalieClaudeResponse } from "./claude.js";
 import {
   checkSlotAvailability,
   findAvailableSlotsForOrganization,
+  findNearbyAlternativeSlots,
 } from "./calendar/availability.js";
-import type { FindAvailableSlotsResult, SuggestedSlot } from "./calendar/types.js";
+import type { CheckSlotAvailabilityResult, FindAvailableSlotsResult, SuggestedSlot } from "./calendar/types.js";
 import { calendarMessages } from "./calendar/calendarMessages.js";
+import { formatRequestedSlotLabel } from "./calendar/datetime.js";
 
 export type AvailabilityIntentKind = "none" | "check" | "suggest";
 
@@ -403,6 +405,76 @@ async function buildSlotsResponse(
   });
 }
 
+async function buildNearbyAlternativesResponse(
+  organizationId: string,
+  intent: AvailabilityIntent,
+  check: CheckSlotAvailabilityResult,
+  options?: {
+    now?: Date;
+    requestId?: string | null;
+  }
+): Promise<NatalieClaudeResponse> {
+  const now = options?.now ?? new Date();
+  const requestedStart = new Date(check.startTime);
+  const result = await findNearbyAlternativeSlots({
+    organizationId,
+    requestedStart,
+    durationMinutes: intent.durationMinutes,
+    limit: 3,
+    now,
+  });
+
+  console.info("[natalie/google-truth] availability_nearby_alternatives", {
+    requestId: options?.requestId ?? null,
+    organizationId,
+    googleStatus: result.googleReadStatus ?? null,
+    degraded: result.googleReadDegraded ?? false,
+    reason: result.googleReadReason ?? null,
+    statusCode: result.googleReadStatusCode ?? null,
+    sourceUsed: result.googleReadStatus === "full" ? "google+local" : "local_or_partial",
+    fellBackToNextDay: result.fellBackToNextDay,
+  });
+
+  if (result.googleReadDegraded) {
+    return {
+      answer: calendarMessages.availabilityUnknownGoogle(result.googleReadMessageHe),
+    };
+  }
+
+  const requestedTimeLabel = formatRequestedSlotLabel(requestedStart, check.timeZone, now);
+  const conflictName = check.conflict?.clientName?.trim() ?? null;
+
+  if (result.empty) {
+    const scope = intent.dayReference ?? "היום";
+    return {
+      answer: calendarMessages.availabilityRequestedSlotTaken({
+        requestedTimeLabel,
+        conflictName,
+        alternativeLabels: "",
+      }).concat(` ${calendarMessages.availabilityEmpty(scope)}`),
+    };
+  }
+
+  const slots = mapSlots(result.slots, result.durationMinutes);
+  const alternativeLabels = slots.map((slot) => slot.label).join(", ");
+  const answer = calendarMessages.availabilityRequestedSlotTaken({
+    requestedTimeLabel,
+    conflictName,
+    alternativeLabels,
+    fellBackToNextDay: result.fellBackToNextDay,
+  });
+
+  return buildSuggestResponse({
+    slots,
+    result,
+    answer,
+    intent: "check_alternatives",
+    refreshParams: buildRefreshParams(intent),
+    dayReference: intent.dayReference,
+    rangeType: intent.dayReference ? "day" : "week",
+  });
+}
+
 export async function maybeBuildAvailabilityResponse(
   organizationId: string,
   question: string,
@@ -459,23 +531,11 @@ export async function maybeBuildAvailabilityResponse(
     }
 
     const conflictName = check.conflict?.clientName?.trim();
-    const prefix = calendarMessages.availabilitySlotTakenPrefix(conflictName);
 
-    return buildSlotsResponse(
-      organizationId,
-      {
-        ...intent,
-        kind: "suggest",
-        limit: Math.max(intent.limit, 3),
-        rangeType: intent.dayReference ? "day" : "week",
-      },
-      {
-        answerPrefix: prefix,
-        intentTag: "check_alternatives",
-        now,
-        requestId: options?.requestId,
-      }
-    );
+    return buildNearbyAlternativesResponse(organizationId, intent, check, {
+      now,
+      requestId: options?.requestId,
+    });
   }
 
   return buildSlotsResponse(organizationId, intent, { now, requestId: options?.requestId });
