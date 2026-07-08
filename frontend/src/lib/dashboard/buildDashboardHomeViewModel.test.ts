@@ -228,3 +228,78 @@ test("view model keeps greeting stable before client mount", () => {
 
   assert.equal(vm.morningGreeting.headline, "שלום, שי");
 });
+
+test("old timeout (stale) last scan does not put the dashboard in ERROR after recovery", () => {
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const vm = buildDashboardHomeViewModel(
+    minimalInput({
+      scanStatus: {
+        logs: [],
+        last: {
+          id: "cmrbtbxbv02boh32akawol5z2",
+          type: "gmail",
+          status: "stale",
+          found: 0,
+          saved: 0,
+          errors: "Scan exceeded 30 minute timeout without finishing",
+          startedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+          endedAt: twoHoursAgo,
+        },
+        nextScheduledScanAt: null,
+      },
+    })
+  );
+
+  assert.equal(vm.dashboardSyncState.scanBanner, null);
+  assert.notEqual(vm.dashboardSyncState.status, "ERROR");
+});
+
+test("old failed last scan does not trigger ERROR via lastScanStatus fallback", () => {
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const vm = buildDashboardHomeViewModel(
+    minimalInput({
+      scanStatus: {
+        logs: [],
+        last: {
+          id: "cmr1jn86y0h4jjy1sa3rkzqkz",
+          type: "gmail",
+          status: "failed",
+          found: 0,
+          saved: 0,
+          errors: "Gmail not connected",
+          startedAt: weekAgo,
+          endedAt: weekAgo,
+        },
+        nextScheduledScanAt: null,
+      },
+    })
+  );
+
+  assert.equal(vm.dashboardSyncState.scanBanner, null);
+  assert.notEqual(vm.dashboardSyncState.status, "ERROR");
+});
+
+test("fresh failed scan still surfaces ERROR — real failures are not hidden", () => {
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const vm = buildDashboardHomeViewModel(
+    minimalInput({
+      scanStatus: {
+        logs: [],
+        last: {
+          id: "fresh-fail",
+          type: "gmail",
+          status: "failed",
+          found: 0,
+          saved: 0,
+          errors: "boom",
+          startedAt: fiveMinutesAgo,
+          endedAt: fiveMinutesAgo,
+        },
+        nextScheduledScanAt: null,
+      },
+    })
+  );
+
+  assert.equal(vm.dashboardSyncState.scanBanner?.status, "error");
+  assert.equal(vm.dashboardSyncState.status, "ERROR");
+});

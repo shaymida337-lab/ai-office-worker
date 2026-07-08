@@ -47,6 +47,20 @@ export type ScanProgressLike = {
 
 export type ScanBannerStatus = "running" | "success" | "partial" | "truncated" | "paused" | "stale" | "error";
 
+// באנר כשל/timeout ישן לא נשאר על המסך לנצח: אחרי שעה בלי סריקה פעילה — המערכת התאוששה
+export const SCAN_FAILURE_BANNER_TTL_MS = 60 * 60 * 1000;
+
+export function isScanFailureStillRelevant(
+  log: Pick<ScanStatusLog, "endedAt">,
+  now: number = Date.now(),
+  ttlMs: number = SCAN_FAILURE_BANNER_TTL_MS
+): boolean {
+  if (!log.endedAt) return false;
+  const endedAt = Date.parse(log.endedAt);
+  if (!Number.isFinite(endedAt)) return false;
+  return now - endedAt <= ttlMs;
+}
+
 export type ScanBannerState = {
   status: ScanBannerStatus;
   found: number;
@@ -123,7 +137,8 @@ export function resolveDashboardGmailScanRunning(input: {
 
 export function buildScanBannerState(
   activeScan: ScanProgressLike | null,
-  scanStatus: { last: ScanStatusLog | null } | null
+  scanStatus: { last: ScanStatusLog | null } | null,
+  now: number = Date.now()
 ): ScanBannerState | null {
   if (activeScan) {
     return {
@@ -147,19 +162,26 @@ export function buildScanBannerState(
     };
   }
 
+  const lastStatus: ScanBannerStatus =
+    scanStatus.last.status === "paused"
+      ? "paused"
+      : scanStatus.last.windowTruncated
+        ? "truncated"
+        : scanStatus.last.status === "stale" || scanStatus.last.status === "cancelled"
+          ? "stale"
+          : scanStatus.last.status === "success" || scanStatus.last.status === "completed"
+            ? "success"
+            : scanStatus.last.status === "partial"
+              ? "partial"
+              : "error";
+
+  // סריקה שנכשלה/לא הסתיימה מזמן היא היסטוריה, לא מצב נוכחי — בלי באנר
+  if ((lastStatus === "stale" || lastStatus === "error") && !isScanFailureStillRelevant(scanStatus.last, now)) {
+    return null;
+  }
+
   return {
-    status:
-      scanStatus.last.status === "paused"
-        ? "paused"
-        : scanStatus.last.windowTruncated
-          ? "truncated"
-          : scanStatus.last.status === "stale" || scanStatus.last.status === "cancelled"
-            ? "stale"
-            : scanStatus.last.status === "success" || scanStatus.last.status === "completed"
-              ? "success"
-              : scanStatus.last.status === "partial"
-                ? "partial"
-                : "error",
+    status: lastStatus,
     found: (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0),
     scanned: scanStatus.last.found,
     totalMatched: scanStatus.last.totalMatched,

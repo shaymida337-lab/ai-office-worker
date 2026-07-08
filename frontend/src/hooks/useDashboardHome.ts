@@ -442,9 +442,13 @@ export function useDashboardHome() {
           text: formatPartialScanMessage(progress),
         });
       } else {
+        // לא מציגים errorMessage גולמי מהשרת (אנגלית/טכני) — הודעה בעברית לפי הסטטוס
         setScanToast({
           type: "error",
-          text: progress.error ?? "הסריקה נכשלה",
+          text:
+            progress.status === "stale" || progress.status === "cancelled"
+              ? "הסריקה הקודמת לא הסתיימה. אפשר להריץ סריקה חדשה מתי שנוח לך."
+              : "הסריקה נכשלה. אפשר לנסות שוב בעוד רגע.",
         });
       }
 
@@ -961,6 +965,14 @@ export function useDashboardHome() {
       setScanToast(null);
     }
   }, [dashboardSyncState.status, scanToast]);
+
+  // התאוששות: אין סריקה פעילה והמצב חזר לתקין — טוסט שגיאה ישן לא נשאר על המסך
+  useEffect(() => {
+    if (scanToast?.type !== "error") return;
+    if (activeScanId || syncing) return;
+    if (dashboardSyncState.status !== "CONNECTED") return;
+    setScanToast(null);
+  }, [scanToast, activeScanId, syncing, dashboardSyncState.status]);
 
   useEffect(() => {
     if (!scanToast || scanToast.type !== "success" || !dashboardSyncState.allowsSuccessToast) return;

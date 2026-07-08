@@ -234,3 +234,90 @@ test("truncated scan banner reports emails and documents separately", () => {
   assert.match(text, /2 מסמכים/);
   assert.doesNotMatch(text, /נסרקו 2/);
 });
+
+// --- TTL על באנרי כשל: timeout ישן לא מוצג אחרי שהמערכת התאוששה ---
+
+const STALE_LAST_LOG = {
+  id: "cmrbtbxbv02boh32akawol5z2",
+  status: "stale",
+  found: 0,
+  saved: 0,
+  invoicesFound: 0,
+  paymentsFound: 0,
+  errors: "Scan exceeded 30 minute timeout without finishing",
+  endedAt: "2026-07-08T08:55:27.063Z",
+};
+
+test("fresh stale scan (within TTL) still shows the stale banner", () => {
+  const now = Date.parse("2026-07-08T09:10:00.000Z"); // ~15 דקות אחרי הסגירה
+  const banner = buildScanBannerState(null, { last: STALE_LAST_LOG }, now);
+  assert.equal(banner?.status, "stale");
+});
+
+test("old stale scan (past TTL) produces no banner — system recovered", () => {
+  const now = Date.parse("2026-07-08T10:55:28.000Z"); // שעתיים אחרי
+  const banner = buildScanBannerState(null, { last: STALE_LAST_LOG }, now);
+  assert.equal(banner, null);
+});
+
+test("old failed scan (past TTL) produces no banner", () => {
+  const now = Date.parse("2026-07-08T09:00:00.000Z");
+  const banner = buildScanBannerState(
+    null,
+    {
+      last: {
+        id: "cmr1jn86y0h4jjy1sa3rkzqkz",
+        status: "failed",
+        found: 0,
+        saved: 0,
+        errors: "Gmail not connected",
+        endedAt: "2026-07-01T03:56:36.000Z", // לפני שבוע
+      },
+    },
+    now
+  );
+  assert.equal(banner, null);
+});
+
+test("fresh failed scan (within TTL) still shows the error banner", () => {
+  const now = Date.parse("2026-07-08T09:00:00.000Z");
+  const banner = buildScanBannerState(
+    null,
+    {
+      last: {
+        id: "fresh-fail",
+        status: "failed",
+        found: 3,
+        saved: 0,
+        errors: "boom",
+        endedAt: "2026-07-08T08:50:00.000Z",
+      },
+    },
+    now
+  );
+  assert.equal(banner?.status, "error");
+});
+
+test("terminal failed log with no endedAt is treated as history, not current state", () => {
+  const banner = buildScanBannerState(null, {
+    last: {
+      id: "no-ended-at",
+      status: "failed",
+      found: 0,
+      saved: 0,
+      errors: "watchdog: scan interrupted (process restart or hang)",
+      endedAt: null,
+    },
+  });
+  assert.equal(banner, null);
+});
+
+test("old success/paused banners are NOT hidden by the failure TTL", () => {
+  const now = Date.parse("2026-07-08T09:00:00.000Z");
+  const success = buildScanBannerState(
+    null,
+    { last: { id: "s1", status: "success", found: 2, saved: 2, errors: null, endedAt: "2026-06-25T12:00:00.000Z" } },
+    now
+  );
+  assert.equal(success?.status, "success");
+});

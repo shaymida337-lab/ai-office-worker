@@ -11,6 +11,7 @@ import type { DashboardStats, GmailStatus, Payment, Task } from "@/lib/api";
 import { labelFor } from "@/lib/labels";
 import {
   buildScanBannerState,
+  isScanFailureStillRelevant,
   resolveDashboardGmailScanRunning,
 } from "@/lib/gmailScanBanner";
 import {
@@ -115,6 +116,16 @@ export type DashboardHomeViewModel = {
   unpaidPayments: Payment[];
 };
 
+// כשל ישן ב-scan-status לא גורר מצב ERROR — רק כשל טרי נחשב מצב נוכחי
+function resolveLastScanStatusForSync(last: ScanStatus["last"] | null): string | null {
+  if (!last) return null;
+  const normalized = last.status?.toLowerCase() ?? "";
+  if ((normalized === "failed" || normalized === "error") && !isScanFailureStillRelevant(last)) {
+    return null;
+  }
+  return last.status ?? null;
+}
+
 export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelInput): DashboardHomeViewModel {
   const {
     pageLoading,
@@ -207,7 +218,7 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     scanRunning,
     scanBanner,
     scanBacklog,
-    lastScanStatus: scanStatus?.last?.status ?? null,
+    lastScanStatus: resolveLastScanStatusForSync(scanStatus?.last ?? null),
     transientToast: scanToast,
     syncingPhase,
     gmailConnected: gmailConnection.treatAsConnectedForUi,
