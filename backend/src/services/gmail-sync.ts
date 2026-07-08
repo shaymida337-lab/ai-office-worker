@@ -4842,12 +4842,17 @@ async function listFastCandidateMessages(
       if (remaining <= 0) break;
       queryPages++;
       totalPagesScanned++;
-      const result = await gmail.users.messages.list({
-        userId: "me",
-        q,
-        maxResults: Math.min(MAX_MESSAGES_PER_FAST_SCAN, remaining),
-        pageToken,
-      });
+      // P0 watchdog: קריאת Gmail בלי timeout יכולה להיתקע לנצח ולתקוע את תור הסריקות
+      const result = await withTimeout(
+        gmail.users.messages.list({
+          userId: "me",
+          q,
+          maxResults: Math.min(MAX_MESSAGES_PER_FAST_SCAN, remaining),
+          pageToken,
+        }),
+        60_000,
+        "Gmail messages.list timed out after 60s"
+      );
 
       const pageMessages = result.data.messages ?? [];
       queryMessagesSeen += pageMessages.length;
@@ -4930,12 +4935,17 @@ async function listCandidateMessages(
       if (remaining <= 0) break;
       queryPages++;
       totalPagesScanned++;
-      const result = await gmail.users.messages.list({
-        userId: "me",
-        q,
-        maxResults: Math.min(100, remaining),
-        pageToken,
-      });
+      // P0 watchdog: קריאת Gmail בלי timeout יכולה להיתקע לנצח ולתקוע את תור הסריקות
+      const result = await withTimeout(
+        gmail.users.messages.list({
+          userId: "me",
+          q,
+          maxResults: Math.min(100, remaining),
+          pageToken,
+        }),
+        60_000,
+        "Gmail messages.list timed out after 60s"
+      );
 
       const pageMessages = result.data.messages ?? [];
       queryMessagesSeen += pageMessages.length;
@@ -5479,11 +5489,16 @@ async function extractVisualAttachmentHints(
 async function attachmentData(gmail: GmailClient, messageId: string, part: PayloadPart) {
   if (part.body?.data) return part.body.data;
   if (!part.body?.attachmentId) throw new Error(`Attachment ${part.filename ?? "unnamed"} is missing attachmentId and inline data`);
-  const attachment = await gmail.users.messages.attachments.get({
-    userId: "me",
-    messageId,
-    id: part.body.attachmentId,
-  });
+  // P0 watchdog: הורדת קובץ מצורף בלי timeout יכולה להיתקע לנצח
+  const attachment = await withTimeout(
+    gmail.users.messages.attachments.get({
+      userId: "me",
+      messageId,
+      id: part.body.attachmentId,
+    }),
+    120_000,
+    "Gmail attachments.get timed out after 120s"
+  );
   return attachment.data.data ?? "";
 }
 

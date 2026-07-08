@@ -83,6 +83,24 @@ export function isRunningScanStatusLog(log: { status: string; endedAt: string | 
   return isRunningGmailScanStatus(log.status) && !log.endedAt;
 }
 
+/**
+ * P0: לוג "running" עתיק הוא זומבי (תהליך שמת באמצע) — אסור לאמץ אותו כסריקה
+ * פעילה ב-UI, אחרת הדשבורד מציג "סורק..." לנצח על סריקה שלא קיימת.
+ */
+export const SCAN_LOG_ADOPTION_MAX_AGE_MS = 30 * 60 * 1000;
+
+export function isAdoptableRunningScanLog(
+  log: { status: string; endedAt: string | null; startedAt?: string | Date | null },
+  now = Date.now(),
+  maxAgeMs = SCAN_LOG_ADOPTION_MAX_AGE_MS
+) {
+  if (!isRunningScanStatusLog(log)) return false;
+  if (!log.startedAt) return true;
+  const startedMs = new Date(log.startedAt).getTime();
+  if (Number.isNaN(startedMs)) return true;
+  return now - startedMs <= maxAgeMs;
+}
+
 export function gmailScanStillRunning(progress: {
   status?: string;
   finishedAt?: string | null;

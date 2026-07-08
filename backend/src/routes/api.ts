@@ -38,6 +38,7 @@ import { resolveFinanceDisplayAmount, resolveDocumentReviewDisplayAmount } from 
 import { initialConnectScanWindow, isHistoricalGmailScanRequest, resolveHistoricalGmailScanWindow } from "../services/scanWindow.js";
 import {
   closeStaleGmailScansForOrg,
+  reapOverdueLegacyScanLogsThrottled,
   createQueuedGmailScanLog,
   finalizeGmailScanFailed,
   findActiveGmailScanLog,
@@ -2455,6 +2456,11 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
 
   const organizationId = req.auth!.organizationId;
   await closeStaleGmailScansForOrg(organizationId);
+  // watchdog: סוגר זומבים בטבלת ScanLog הישנה (אין לה מנגנון סגירה אחר) —
+  // בלעדיו שורת "running" יתומה מציגה "סורק..." לנצח בדשבורד. ממוסת ל-5 דק'.
+  await reapOverdueLegacyScanLogsThrottled().catch((err) =>
+    console.warn(`[scan-watchdog] reap failed: ${err instanceof Error ? err.message : String(err)}`)
+  );
 
   const [scanLogs, syncLogs] = await Promise.all([
     prisma.$queryRawUnsafe<ScanStatusLog[]>(

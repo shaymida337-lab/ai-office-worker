@@ -24,6 +24,7 @@ import {
   isSuccessfulGmailScanProgress,
 } from "@/lib/gmailScanBanner";
 import {
+  isAdoptableRunningScanLog,
   isPausedGmailScanStatus,
   isRunningScanStatusLog,
   isTerminalGmailScanProgress,
@@ -41,7 +42,7 @@ import {
   shouldHandleGmailOAuthErrorReturn,
   shouldHandleGmailOAuthReturn,
 } from "@/lib/integrations/gmailOAuthReturn";
-import { GMAIL_SCAN_POLL_INTERVAL_MS } from "@/lib/dashboard/scanPollLimits";
+import { GMAIL_SCAN_POLL_INTERVAL_MS, MAX_GMAIL_SCAN_POLL_ATTEMPTS } from "@/lib/dashboard/scanPollLimits";
 import { createDashboardSyncRetryRequest } from "@/lib/dashboard/dashboardSyncRetry";
 import { resolveScanStatusFromSettled } from "@/lib/dashboard/scanStatusTruth";
 import { buildDashboardHomeViewModel } from "@/lib/dashboard/buildDashboardHomeViewModel";
@@ -201,7 +202,8 @@ export function useDashboardHome() {
         setScanStatus(scanStatusResult.value);
         setScanStatusKnown(true);
         setScanStatusStale(false);
-        const running = scanStatusResult.value.logs.find((log) => isRunningScanStatusLog(log));
+        // P0: אימוץ רק של סריקות רצות טריות — לוג "running" עתיק הוא זומבי של תהליך שמת
+        const running = scanStatusResult.value.logs.find((log) => isAdoptableRunningScanLog(log));
         const trackedLog = activeScanId
           ? scanStatusResult.value.logs.find((log) => log.id === activeScanId)
           : null;
@@ -394,6 +396,20 @@ export function useDashboardHome() {
   useEffect(() => {
     if (!activeScanId) return;
     let cancelled = false;
+    // P0: הלולאה חייבת גבולות — בלעדיהם ספינר "סורק..." יכול לרוץ לנצח
+    let pollAttempts = 0;
+    let consecutivePollFailures = 0;
+
+    const abandonScanTracking = (toastText: string) => {
+      setActiveScanId(null);
+      setActiveScan(null);
+      setSyncing(false);
+      setFirstScanRunning(false);
+      setScanProgress([]);
+      setFirstScanPhase(null);
+      window.localStorage.removeItem("activeGmailScanId");
+      setScanToast({ type: "warning", text: toastText });
+    };
 
     const completeActiveScan = async (progress: ScanProgressResult) => {
       setFirstScanRunning(false);
@@ -440,9 +456,16 @@ export function useDashboardHome() {
     };
 
     const poll = async () => {
+      pollAttempts += 1;
+      if (pollAttempts > MAX_GMAIL_SCAN_POLL_ATTEMPTS) {
+        // תקרת הזמן הכוללת (דדליין הסריקה) נחצתה — לא ממשיכים לנצח
+        abandonScanTracking("הסריקה נמשכת זמן רב מהרגיל — הפסקתי את המעקב. אפשר להריץ סריקה חדשה.");
+        return;
+      }
       try {
         const progress = await apiFetch<ScanProgressResult>(`/api/gmail/scan/${activeScanId}`);
         if (cancelled) return;
+        consecutivePollFailures = 0;
 
         if (isTerminalGmailScanProgress(progress)) {
           await completeActiveScan(progress);
@@ -483,6 +506,12 @@ export function useDashboardHome() {
             setScanProgress([]);
             window.localStorage.removeItem("activeGmailScanId");
             await load();
+            return;
+          }
+          // P0: שגיאות רצופות (5xx/רשת) לא ירדפו לנצח — אחרי 6 עוצרים את המעקב
+          consecutivePollFailures += 1;
+          if (consecutivePollFailures >= 6) {
+            abandonScanTracking("איבדתי קשר עם סטטוס הסריקה — הפסקתי את המעקב. רענון הדף יציג את המצב העדכני.");
             return;
           }
           setScanToast({ type: "error", text: err instanceof Error ? err.message : "טעינת סטטוס סריקה נכשלה" });

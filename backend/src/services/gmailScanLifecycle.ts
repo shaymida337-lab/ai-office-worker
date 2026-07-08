@@ -18,6 +18,44 @@ export const GMAIL_SCAN_TERMINAL_STATUSES = [
   "error",
 ] as const;
 
+/**
+ * Watchdog לטבלת ScanLog הישנה (סריקות scheduler: quick/daily/health).
+ * שורש ה-P0: לשורות "running" בטבלה הזו אין שום מנגנון סגירה — תהליך שמת
+ * באמצע (deploy של Render) משאיר זומבי לנצח, ו-/automation/scan-status מגיש
+ * אותו לדשבורד ⇒ "סורק..." אינסופי. הראיה: 12 שורות running בגיל 34-946 שעות.
+ * SyncLog לא זקוק לזה — יש לו closeStaleGmailScansForOrg (אומת: 0 פעילים תקועים).
+ */
+export const LEGACY_SCANLOG_STALE_MS = 30 * 60 * 1000;
+const LEGACY_SCANLOG_REAP_INTERVAL_MS = 5 * 60 * 1000;
+let lastLegacyReapAtMs = 0;
+
+export async function reapOverdueLegacyScanLogs(now = Date.now()): Promise<number> {
+  const cutoff = new Date(now - LEGACY_SCANLOG_STALE_MS);
+  const result = await prisma.scanLog.updateMany({
+    where: { status: "running", startedAt: { lt: cutoff } },
+    data: {
+      status: "failed",
+      endedAt: new Date(now),
+      errors: "watchdog: scan interrupted (process restart or hang)",
+    },
+  });
+  if (result.count > 0) {
+    console.warn(`[scan-watchdog] closed ${result.count} orphan legacy ScanLog rows (running > ${LEGACY_SCANLOG_STALE_MS / 60000}min)`);
+  }
+  return result.count;
+}
+
+/** גרסה ממוסתת — לכל היותר ריצה אחת ל-5 דקות פר-אינסטנס (נקראת מכל קריאת scan-status). */
+export async function reapOverdueLegacyScanLogsThrottled(now = Date.now()): Promise<number> {
+  if (now - lastLegacyReapAtMs < LEGACY_SCANLOG_REAP_INTERVAL_MS) return 0;
+  lastLegacyReapAtMs = now;
+  return reapOverdueLegacyScanLogs(now);
+}
+
+export function resetLegacyScanLogReapThrottleForTests() {
+  lastLegacyReapAtMs = 0;
+}
+
 export type GmailScanLifecycleStatus =
   | "queued"
   | "running"

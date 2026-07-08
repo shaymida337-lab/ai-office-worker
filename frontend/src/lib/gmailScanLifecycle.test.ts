@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   gmailScanStillRunning,
+  isAdoptableRunningScanLog,
   hasGmailScanBacklog,
   isPausedGmailScanStatus,
   isSuccessfulGmailScanProgress,
@@ -81,4 +82,34 @@ test("hasGmailScanBacklog detects paused and truncated completed scans", () => {
   assert.equal(hasGmailScanBacklog({ status: "paused", windowTruncated: true }), true);
   assert.equal(hasGmailScanBacklog({ status: "completed", windowTruncated: true }), true);
   assert.equal(hasGmailScanBacklog({ status: "completed", windowTruncated: false }), false);
+});
+
+// --- P0 watchdog: zombie scan logs must not be adopted by the UI ---
+
+test("isAdoptableRunningScanLog rejects zombie running logs older than the deadline", () => {
+  const now = Date.parse("2026-07-08T08:00:00.000Z");
+  const fresh = { status: "running", endedAt: null, startedAt: new Date(now - 5 * 60_000).toISOString() };
+  const zombie34h = { status: "running", endedAt: null, startedAt: new Date(now - 34 * 3600_000).toISOString() };
+  const zombie39d = { status: "running", endedAt: null, startedAt: new Date(now - 946 * 3600_000).toISOString() };
+  assert.equal(isAdoptableRunningScanLog(fresh, now), true);
+  assert.equal(isAdoptableRunningScanLog(zombie34h, now), false);
+  assert.equal(isAdoptableRunningScanLog(zombie39d, now), false);
+});
+
+test("isAdoptableRunningScanLog ignores terminal logs regardless of age", () => {
+  const now = Date.now();
+  assert.equal(
+    isAdoptableRunningScanLog({ status: "completed", endedAt: new Date(now).toISOString(), startedAt: new Date(now - 60_000).toISOString() }, now),
+    false
+  );
+  assert.equal(
+    isAdoptableRunningScanLog({ status: "failed", endedAt: null, startedAt: new Date(now - 60_000).toISOString() }, now),
+    false
+  );
+});
+
+test("isAdoptableRunningScanLog is permissive when startedAt is missing or invalid", () => {
+  const now = Date.now();
+  assert.equal(isAdoptableRunningScanLog({ status: "running", endedAt: null }, now), true);
+  assert.equal(isAdoptableRunningScanLog({ status: "running", endedAt: null, startedAt: "not-a-date" }, now), true);
 });
