@@ -639,10 +639,26 @@ export type GoogleCalendarReadEvent = {
 };
 
 export type GoogleCalendarReadResult =
-  | { ok: true; events: GoogleCalendarReadEvent[]; calendarId: string }
+  | {
+      ok: true;
+      events: GoogleCalendarReadEvent[];
+      calendarId: string;
+      partial: boolean;
+      messageHe?: string;
+    }
   | {
       ok: false;
-      reason: "not_connected" | "permission_denied" | "api_error";
+      reason:
+        | "not_connected"
+        | "unauthorized"
+        | "forbidden"
+        | "not_found"
+        | "rate_limited"
+        | "server_error"
+        | "network_error"
+        | "timeout"
+        | "api_error";
+      statusCode?: number;
       messageHe: string;
     };
 
@@ -717,21 +733,70 @@ export async function listGoogleCalendarEventsInRange(
       console.warn(`[google/calendar] read timeout org=${organizationId}`);
       return {
         ok: false,
-        reason: "api_error",
-        messageHe: "לא הצלחתי לקרוא את Google Calendar כרגע, אז הרשימה עלולה להיות חלקית.",
+        reason: "timeout",
+        messageHe: "הקריאה ליומן Google נכשלה בגלל timeout, ולכן התמונה כרגע חלקית.",
       };
     }
     const status = googleErrorStatus(err);
-    if (status === 401 || status === 403) {
+    if (status === 401) {
       console.warn(
-        `[google/calendar] read permission denied org=${organizationId} status=${status}`,
+        `[google/calendar] read unauthorized org=${organizationId} status=${status}`,
         err instanceof Error ? err.message : err
       );
       return {
         ok: false,
-        reason: "permission_denied",
+        reason: "unauthorized",
+        statusCode: status,
         messageHe:
-          "אין לי הרשאה לקרוא את Google Calendar. חברי מחדש את היומן בהגדרות כדי שאוכל לראות תורים שנוצרו שם.",
+          "פג תוקף ההרשאה ל-Google Calendar (401), ולכן לא ניתן לאמת כרגע תמונת יומן מלאה.",
+      };
+    }
+    if (status === 403) {
+      console.warn(
+        `[google/calendar] read forbidden org=${organizationId} status=${status}`,
+        err instanceof Error ? err.message : err
+      );
+      return {
+        ok: false,
+        reason: "forbidden",
+        statusCode: status,
+        messageHe:
+          "אין לי הרשאת גישה ל-Google Calendar (403), ולכן לא ניתן לאמת כרגע תמונת יומן מלאה.",
+      };
+    }
+    if (status === 404) {
+      return {
+        ok: false,
+        reason: "not_found",
+        statusCode: status,
+        messageHe: "יומן Google לא נמצא (404), ולכן לא ניתן לאמת כרגע תמונת יומן מלאה.",
+      };
+    }
+    if (status === 429) {
+      return {
+        ok: false,
+        reason: "rate_limited",
+        statusCode: status,
+        messageHe: "Google Calendar מגביל כרגע בקשות (429), ולכן התמונה כרגע חלקית.",
+      };
+    }
+    if (typeof status === "number" && status >= 500) {
+      return {
+        ok: false,
+        reason: "server_error",
+        statusCode: status,
+        messageHe: "אירעה תקלה בצד Google Calendar, ולכן התמונה כרגע חלקית.",
+      };
+    }
+    const nodeCode =
+      err && typeof err === "object" && "code" in err
+        ? String((err as { code?: unknown }).code ?? "")
+        : "";
+    if (["ENOTFOUND", "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN"].includes(nodeCode)) {
+      return {
+        ok: false,
+        reason: "network_error",
+        messageHe: "הייתה תקלה ברשת מול Google Calendar, ולכן לא ניתן לאמת כרגע תמונת יומן מלאה.",
       };
     }
     console.error(
@@ -741,7 +806,7 @@ export async function listGoogleCalendarEventsInRange(
     return {
       ok: false,
       reason: "api_error",
-      messageHe: "לא הצלחתי לקרוא את Google Calendar כרגע, אז הרשימה עלולה להיות חלקית.",
+      messageHe: "לא הצלחתי לקרוא את Google Calendar כרגע, ולכן לא ניתן לאמת תמונת יומן מלאה.",
     };
   }
 }
@@ -760,7 +825,7 @@ async function listGoogleCalendarEventsInRangeUnbounded(
     return {
       ok: false,
       reason: "not_connected",
-      messageHe: "אין חיבור ל-Google Calendar, אז אני לא יכולה לראות אירועים שנוצרו שם ישירות.",
+      messageHe: "Google Calendar לא מחובר, ולכן המידע מבוסס רק על נתונים מקומיים.",
     };
   }
 
@@ -770,9 +835,10 @@ async function listGoogleCalendarEventsInRangeUnbounded(
   if (scopes.length > 0 && !hasGoogleCalendarReadScopes(scopes)) {
     return {
       ok: false,
-      reason: "permission_denied",
+      reason: "forbidden",
+      statusCode: 403,
       messageHe:
-        "אין לי הרשאה לקרוא את Google Calendar. חברי מחדש את היומן בהגדרות כדי שאוכל לראות תורים שנוצרו שם.",
+        "אין הרשאת קריאה ל-Google Calendar, ולכן לא ניתן לאמת כרגע תמונת יומן מלאה.",
     };
   }
 
@@ -781,7 +847,7 @@ async function listGoogleCalendarEventsInRangeUnbounded(
     return {
       ok: false,
       reason: "not_connected",
-      messageHe: "אין חיבור ל-Google Calendar, אז אני לא יכולה לראות אירועים שנוצרו שם ישירות.",
+      messageHe: "Google Calendar לא מחובר, ולכן המידע מבוסס רק על נתונים מקומיים.",
     };
   }
 
@@ -833,7 +899,16 @@ async function listGoogleCalendarEventsInRangeUnbounded(
     if (!pageToken) break;
   }
 
-  return { ok: true, events, calendarId };
+  const partial = Boolean(pageToken);
+  return {
+    ok: true,
+    events,
+    calendarId,
+    partial,
+    messageHe: partial
+      ? "Google Calendar החזיר תוצאה חלקית, ולכן התמונה כרגע אינה מלאה."
+      : undefined,
+  };
 }
 
 export async function getGoogleClientsForClient(clientId: string) {

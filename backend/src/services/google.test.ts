@@ -64,8 +64,8 @@ test("listGoogleCalendarEventsInRange soft-fails on hung Google client (timeout)
     const elapsed = Date.now() - started;
     assert.equal(result.ok, false);
     if (!result.ok) {
-      assert.equal(result.reason, "api_error");
-      assert.match(result.messageHe, /Google Calendar/);
+      assert.equal(result.reason, "timeout");
+      assert.match(result.messageHe, /Google/);
     }
     assert.ok(elapsed < 8_000, `timeout too slow: ${elapsed}ms`);
   } finally {

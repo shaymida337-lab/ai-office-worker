@@ -23,7 +23,12 @@ export type CalendarRules = {
   allowBackToBack: boolean;
 };
 
-export type AvailabilityReason = "time_conflict" | "outside_working_hours" | "past" | "bad_datetime";
+export type AvailabilityReason =
+  | "time_conflict"
+  | "outside_working_hours"
+  | "past"
+  | "bad_datetime"
+  | "google_unavailable";
 
 export type EngineAvailabilityResult = {
   available: boolean;
@@ -51,6 +56,11 @@ export type CheckSlotAvailabilityResult = {
   durationMinutes: number;
   timeZone: string;
   conflict?: AvailabilityConflictResponse;
+  googleReadStatus?: "full" | "partial" | "local_only" | "unavailable";
+  googleReadDegraded?: boolean;
+  googleReadReason?: string;
+  googleReadStatusCode?: number;
+  googleReadMessageHe?: string;
 };
 
 export type SuggestedSlot = {
@@ -66,4 +76,9 @@ export type FindAvailableSlotsResult = {
   searchedTo: string;
   slots: SuggestedSlot[];
   empty: boolean;
+  googleReadStatus?: "full" | "partial" | "local_only" | "unavailable";
+  googleReadDegraded?: boolean;
+  googleReadReason?: string;
+  googleReadStatusCode?: number;
+  googleReadMessageHe?: string;
 };

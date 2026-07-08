@@ -198,6 +198,13 @@ test('"לי" is never mistaken for a customer name', () => {
   assert.ok(result.missingFields.includes("customerName"));
 });
 
+test('"לשלוש" is never mistaken for a customer name in move commands', () => {
+  const result = parseCalendarIntent("תעבירי את התור של שרית ביום שני לשלוש", OPTS);
+  assert.equal(result.intent, "move_appointment");
+  assert.equal(result.customerName, "שרית");
+  assert.equal(result.time, "15:00");
+});
+
 test('PROD BUG: "איזה פגישות יש לי ביום חמישי" → list (was unanswered)', () => {
   const result = parseCalendarIntent("איזה פגישות יש לי ביום חמישי", OPTS);
   assert.equal(result.intent, "list_appointments");

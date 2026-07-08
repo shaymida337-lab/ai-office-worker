@@ -34,8 +34,12 @@ export type SchedulingItem = {
 
 export type UpcomingSchedulingReadResult = {
   items: SchedulingItem[];
-  /** Set when Google was connected but could not be fully read. */
+  /** Legacy warning string kept for compatibility with existing callers. */
   googleReadWarningHe?: string;
+  googleReadStatus: "full" | "partial" | "local_only" | "unavailable";
+  googleReadDegraded: boolean;
+  googleReadReason?: string;
+  googleReadStatusCode?: number;
 };
 
 /** Appointment statuses that should never surface as an upcoming booking. */
@@ -139,16 +143,37 @@ async function readGoogleOnlyEvents(params: {
   organizationId: string;
   from: Date;
   until: Date;
-}): Promise<{ items: SchedulingItem[]; warningHe?: string }> {
+}): Promise<{
+  items: SchedulingItem[];
+  warningHe?: string;
+  status: "full" | "partial" | "local_only" | "unavailable";
+  degraded: boolean;
+  reason?: string;
+  statusCode?: number;
+}> {
   const result = await listGoogleCalendarEventsInRange(params.organizationId, {
     start: params.from,
     end: params.until,
   });
   if (!result.ok) {
     if (result.reason === "not_connected") {
-      return { items: [] };
+      return {
+        items: [],
+        warningHe: result.messageHe,
+        status: "local_only",
+        degraded: false,
+        reason: result.reason,
+        statusCode: result.statusCode,
+      };
     }
-    return { items: [], warningHe: result.messageHe };
+    return {
+      items: [],
+      warningHe: result.messageHe,
+      status: "unavailable",
+      degraded: true,
+      reason: result.reason,
+      statusCode: result.statusCode,
+    };
   }
 
   const items: SchedulingItem[] = result.events
@@ -164,7 +189,13 @@ async function readGoogleOnlyEvents(params: {
       googleEventId: event.googleEventId,
     }));
 
-  return { items };
+  return {
+    items,
+    warningHe: result.partial ? result.messageHe : undefined,
+    status: result.partial ? "partial" : "full",
+    degraded: result.partial,
+    reason: result.partial ? "partial_response" : undefined,
+  };
 }
 
 export function mergeAndCap(
@@ -210,15 +241,33 @@ export async function getUpcomingSchedulingForOrganizationDetailed(
     readAppointments({ organizationId: params.organizationId, from, limit }),
     readCalendarEvents({ organizationId: params.organizationId, from, limit }),
     params.googleItems
-      ? Promise.resolve({ items: params.googleItems, warningHe: undefined as string | undefined })
+      ? Promise.resolve({
+          items: params.googleItems,
+          warningHe: undefined as string | undefined,
+          status: "full" as const,
+          degraded: false,
+          reason: undefined as string | undefined,
+          statusCode: undefined as number | undefined,
+        })
       : params.skipGoogle
-        ? Promise.resolve({ items: [] as SchedulingItem[], warningHe: undefined as string | undefined })
+        ? Promise.resolve({
+            items: [] as SchedulingItem[],
+            warningHe: undefined as string | undefined,
+            status: "local_only" as const,
+            degraded: false,
+            reason: "skip_google",
+            statusCode: undefined as number | undefined,
+          })
         : readGoogleOnlyEvents({ organizationId: params.organizationId, from, until }),
   ]);
 
   return {
     items: mergeAndCap(appointments, events, limit, google.items, params.organizationId),
     googleReadWarningHe: google.warningHe,
+    googleReadStatus: google.status,
+    googleReadDegraded: google.degraded,
+    googleReadReason: google.reason,
+    googleReadStatusCode: google.statusCode,
   };
 }
 

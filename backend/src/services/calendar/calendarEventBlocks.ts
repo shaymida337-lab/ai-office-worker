@@ -100,7 +100,14 @@ async function loadKnownGoogleEventIds(
 export async function loadGoogleCalendarBusyBlocks(
   organizationId: string,
   range: TimeInterval
-): Promise<BusyBlock[]> {
+): Promise<{
+  blocks: BusyBlock[];
+  status: "full" | "partial" | "local_only" | "unavailable";
+  degraded: boolean;
+  reason?: string;
+  statusCode?: number;
+  messageHe?: string;
+}> {
   const result = await listGoogleCalendarEventsInRange(organizationId, range);
   if (!result.ok) {
     if (result.reason !== "not_connected") {
@@ -108,7 +115,14 @@ export async function loadGoogleCalendarBusyBlocks(
         `[calendar/busy] google read skipped org=${organizationId} reason=${result.reason}`
       );
     }
-    return [];
+    return {
+      blocks: [],
+      status: result.reason === "not_connected" ? "local_only" : "unavailable",
+      degraded: result.reason === "not_connected" ? false : true,
+      reason: result.reason,
+      statusCode: result.statusCode,
+      messageHe: result.messageHe,
+    };
   }
 
   const mirroredIds = await loadKnownGoogleEventIds(organizationId, range);
@@ -125,7 +139,13 @@ export async function loadGoogleCalendarBusyBlocks(
       googleEventId: event.googleEventId,
     });
   }
-  return blocks;
+  return {
+    blocks,
+    status: result.partial ? "partial" : "full",
+    degraded: result.partial,
+    reason: result.partial ? "partial_response" : undefined,
+    messageHe: result.messageHe,
+  };
 }
 
 export async function loadCombinedBusyBlocks(
@@ -141,6 +161,32 @@ export async function loadCombinedBusyBlocks(
     googleBlocks?: BusyBlock[];
   }
 ): Promise<BusyBlock[]> {
+  const detailed = await loadCombinedBusyBlocksDetailed(organizationId, range, options);
+  return detailed.blocks;
+}
+
+export async function loadCombinedBusyBlocksDetailed(
+  organizationId: string,
+  range: TimeInterval,
+  options?: {
+    excludeAppointmentId?: string;
+    excludeCalendarEventId?: string;
+    assignedUserId?: string | null;
+    /** When true, skip Google read-through (tests / dial-down). Default false. */
+    skipGoogle?: boolean;
+    /** Test-only: inject Google blocks instead of calling the Google API. */
+    googleBlocks?: BusyBlock[];
+  }
+): Promise<{
+  blocks: BusyBlock[];
+  google: {
+    status: "full" | "partial" | "local_only" | "unavailable";
+    degraded: boolean;
+    reason?: string;
+    statusCode?: number;
+    messageHe?: string;
+  };
+}> {
   const [appointments, calendarEvents, googleBlocks] = await Promise.all([
     loadAppointmentBusyBlocks(organizationId, range, {
       excludeAppointmentId: options?.excludeAppointmentId,
@@ -150,16 +196,30 @@ export async function loadCombinedBusyBlocks(
       assignedUserId: options?.assignedUserId,
     }),
     options?.googleBlocks
-      ? Promise.resolve(options.googleBlocks)
+      ? Promise.resolve({
+          blocks: options.googleBlocks,
+          status: "full" as const,
+          degraded: false,
+          reason: undefined as string | undefined,
+          statusCode: undefined as number | undefined,
+          messageHe: undefined as string | undefined,
+        })
       : options?.skipGoogle
-        ? Promise.resolve([] as BusyBlock[])
+        ? Promise.resolve({
+            blocks: [] as BusyBlock[],
+            status: "local_only" as const,
+            degraded: false,
+            reason: "skip_google",
+            statusCode: undefined as number | undefined,
+            messageHe: "קריאת Google Calendar לא בוצעה, ולכן התמונה מבוססת על נתונים מקומיים בלבד.",
+          })
         : loadGoogleCalendarBusyBlocks(organizationId, range),
   ]);
 
   // Soft dedup among local+google by googleEventId / slot identity so mirrored
   // outbound events + Google read-through do not double-block the same window.
   const merged = dedupeSchedulingItems(
-    [...appointments, ...calendarEvents, ...googleBlocks].map((block) => ({
+    [...appointments, ...calendarEvents, ...googleBlocks.blocks].map((block) => ({
       id: block.id,
       organizationId,
       source: block.source,
@@ -174,11 +234,22 @@ export async function loadCombinedBusyBlocks(
   );
 
   const byId = new Map(
-    [...appointments, ...calendarEvents, ...googleBlocks].map((block) => [block.id, block] as const)
+    [...appointments, ...calendarEvents, ...googleBlocks.blocks].map((block) => [block.id, block] as const)
   );
 
-  return merged
+  const blocks = merged
     .map((item) => byId.get(item.id))
     .filter((block): block is BusyBlock => Boolean(block))
     .sort((a, b) => a.start.getTime() - b.start.getTime());
+
+  return {
+    blocks,
+    google: {
+      status: googleBlocks.status,
+      degraded: googleBlocks.degraded,
+      reason: googleBlocks.reason,
+      statusCode: googleBlocks.statusCode,
+      messageHe: googleBlocks.messageHe,
+    },
+  };
 }

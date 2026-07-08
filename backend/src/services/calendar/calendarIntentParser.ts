@@ -216,7 +216,7 @@ export function extractCustomerName(text: string): string | null {
     /(?:^|\s)ללקוח(?:ה)?\s+([^\s].*)$/u
   );
   const directLName = normalized.match(
-    /(?:^|\s)ל(?!י(?:\s|$)|מחר(?:\s|$)|מחרתיים(?:\s|$)|היום(?:\s|$)|יום\s|שעה(?:\s|$)|[-\s]?\d)([א-ת][א-ת'"-]{1,30})(?=\s|$)/u
+    /(?:^|\s)ל(?!י(?:\s|$)|מחר(?:\s|$)|מחרתיים(?:\s|$)|היום(?:\s|$)|יום\s|שעה(?:\s|$)|(?:אחת|שתיים|שתים|שניים|שלוש|שלושה|ארבע|ארבעה|חמש|חמישה|שש|שישה|שבע|שבעה|שמונה|תשע|תשעה|עשר|עשרה)(?:\s|$)|[-\s]?\d)([א-ת][א-ת'"-]{1,30})(?=\s|$)/u
   );
   // Most specific patterns first — avoid "התור למחר" being read as a customer.
   const afterCancelMove = normalized.match(

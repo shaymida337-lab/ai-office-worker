@@ -129,7 +129,8 @@ test('list: empty day answers clearly', async () => {
       throwingClaude
     );
     assert.ok(!("action" in res));
-    assert.match(res.answer ?? "", /אין לך תורים/);
+    assert.match(res.answer ?? "", /איני יכולה להתחייב שאין פגישות/);
+    assert.match(res.answer ?? "", /נתונים מקומיים בלבד/);
   } finally {
     restore();
   }

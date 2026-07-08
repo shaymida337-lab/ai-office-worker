@@ -73,6 +73,7 @@ type ShowInvoiceItem = {
 export async function askNatalieBusinessQuestion(input: {
   organizationId: string;
   question: string;
+  requestId?: string | null;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
   conversationContext?: {
     pendingAction?: { action: string; proposal: Record<string, unknown> } | null;
@@ -98,7 +99,8 @@ export async function askNatalieBusinessQuestion(input: {
   const listAppointmentsResponse = await maybeBuildListAppointmentsResponse(
     input.organizationId,
     input.question,
-    deps
+    deps,
+    input.requestId ?? null
   );
   if (listAppointmentsResponse) return listAppointmentsResponse;
 
@@ -142,7 +144,9 @@ export async function askNatalieBusinessQuestion(input: {
   const completeTaskResponse = await maybeBuildCompleteTaskProposal(input.organizationId, input.question);
   if (completeTaskResponse) return completeTaskResponse;
 
-  const availabilityResponse = await maybeBuildAvailabilityResponse(input.organizationId, input.question);
+  const availabilityResponse = await maybeBuildAvailabilityResponse(input.organizationId, input.question, {
+    requestId: input.requestId ?? null,
+  });
   if (availabilityResponse) return availabilityResponse;
 
   const calendarContext = extractActiveCalendarContext({
@@ -1244,7 +1248,8 @@ function formatListEntry(
 async function maybeBuildListAppointmentsResponse(
   organizationId: string,
   question: string,
-  deps?: AskNatalieDeps
+  deps?: AskNatalieDeps,
+  requestId?: string | null
 ): Promise<NatalieClaudeResponse | null> {
   const now = deps?.now ?? new Date();
   const intent = parseCalendarIntent(question, { now });
@@ -1272,20 +1277,42 @@ async function maybeBuildListAppointmentsResponse(
 
   const { header, empty, includeDate } = listRangeLabel(intent.rangeType, intent.dayReference);
   const googleWarning = detailed.googleReadWarningHe;
+  const sourceLine =
+    detailed.googleReadStatus === "full"
+      ? calendarMessages.listSourceFull()
+      : detailed.googleReadStatus === "partial"
+        ? calendarMessages.listSourcePartial(googleWarning)
+        : detailed.googleReadStatus === "local_only"
+          ? calendarMessages.listSourceLocalOnly()
+          : calendarMessages.listSourceUnavailable(googleWarning);
+
+  console.info("[natalie/google-truth] list", {
+    requestId: requestId ?? null,
+    organizationId,
+    googleStatus: detailed.googleReadStatus,
+    degraded: detailed.googleReadDegraded,
+    reason: detailed.googleReadReason ?? null,
+    statusCode: detailed.googleReadStatusCode ?? null,
+    sourceUsed: detailed.googleReadStatus === "full" ? "google+local" : "local_or_partial",
+  });
 
   if (filtered.length === 0) {
-    if (googleWarning) {
+    if (detailed.googleReadStatus !== "full") {
       return {
-        answer: calendarMessages.listEmptyWithGoogleWarning(empty, googleWarning),
+        answer: `${calendarMessages.listCannotGuaranteeEmpty(googleWarning)}\n\n${sourceLine}`,
       };
     }
-    return { answer: empty };
+    const answer = googleWarning
+      ? calendarMessages.listEmptyWithGoogleWarning(empty, googleWarning)
+      : empty;
+    return { answer: `${answer}\n\n${sourceLine}` };
   }
 
   const lines = filtered.map((item) => formatListEntry(item, timeZone, includeDate));
   const answer = googleWarning
     ? calendarMessages.listWithGoogleWarning(header, lines.join("\n"), googleWarning)
     : `${header}\n${lines.join("\n")}`;
+  const answerWithSource = `${answer}\n\n${sourceLine}`;
   const listedPending = buildLastListedAppointmentsPendingAction(filtered);
   return {
     action: "last_listed_appointments",
@@ -1301,7 +1328,7 @@ async function maybeBuildListAppointmentsResponse(
       }>;
       listedAt?: string;
     },
-    answer,
+    answer: answerWithSource,
   };
 }
 

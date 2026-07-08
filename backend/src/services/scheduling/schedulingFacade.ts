@@ -54,6 +54,10 @@ export type UpcomingSchedulingItem = {
 export type UpcomingSchedulingOrgResult = {
   items: Array<UpcomingSchedulingItem & { clientId: string }>;
   googleReadWarningHe?: string;
+  googleReadStatus: "full" | "partial" | "local_only" | "unavailable";
+  googleReadDegraded: boolean;
+  googleReadReason?: string;
+  googleReadStatusCode?: number;
 };
 
 export type NatalieBookInput = {
@@ -144,6 +148,10 @@ export async function findUpcomingSchedulingForOrganizationDetailed(params: {
       source: item.source,
     })),
     googleReadWarningHe: detailed.googleReadWarningHe,
+    googleReadStatus: detailed.googleReadStatus,
+    googleReadDegraded: detailed.googleReadDegraded,
+    googleReadReason: detailed.googleReadReason,
+    googleReadStatusCode: detailed.googleReadStatusCode,
   };
 }
 

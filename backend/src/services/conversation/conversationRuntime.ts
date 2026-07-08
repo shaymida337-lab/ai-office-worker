@@ -312,6 +312,7 @@ export async function processNatalieTurn(
     const brainResponse = await ask({
       organizationId: input.organizationId,
       question: normalizedMessage,
+      requestId,
       history: brainHistory,
       conversationContext: {
         pendingAction: activeSession.pendingAction,

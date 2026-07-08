@@ -335,6 +335,8 @@ function formatReasonMessage(reason: string): string {
       return calendarMessages.availabilityPast();
     case "bad_datetime":
       return calendarMessages.availabilityBadDatetime();
+    case "google_unavailable":
+      return calendarMessages.availabilityUnknownGoogle();
     default:
       return calendarMessages.availabilityCheckFailed();
   }
@@ -348,6 +350,7 @@ async function buildSlotsResponse(
     intentTag?: SuggestAvailableTimesProposal["intent"];
     clientName?: string;
     now?: Date;
+    requestId?: string | null;
   }
 ): Promise<NatalieClaudeResponse> {
   const result = await findAvailableSlotsForOrganization({
@@ -358,6 +361,21 @@ async function buildSlotsResponse(
     limit: intent.limit,
     now: options?.now,
   });
+  console.info("[natalie/google-truth] availability_suggest", {
+    requestId: options?.requestId ?? null,
+    organizationId,
+    googleStatus: result.googleReadStatus ?? null,
+    degraded: result.googleReadDegraded ?? false,
+    reason: result.googleReadReason ?? null,
+    statusCode: result.googleReadStatusCode ?? null,
+    sourceUsed: result.googleReadStatus === "full" ? "google+local" : "local_or_partial",
+  });
+
+  if (result.googleReadDegraded) {
+    return {
+      answer: calendarMessages.availabilityUnknownGoogle(result.googleReadMessageHe),
+    };
+  }
 
   if (result.empty) {
     const scope =
@@ -388,7 +406,7 @@ async function buildSlotsResponse(
 export async function maybeBuildAvailabilityResponse(
   organizationId: string,
   question: string,
-  options?: { now?: Date }
+  options?: { now?: Date; requestId?: string | null }
 ): Promise<NatalieClaudeResponse | null> {
   const intent = parseAvailabilityIntent(question);
   if (intent.kind === "none") return null;
@@ -402,6 +420,15 @@ export async function maybeBuildAvailabilityResponse(
       durationMinutes: intent.durationMinutes,
       now,
     });
+    console.info("[natalie/google-truth] availability_check", {
+      requestId: options?.requestId ?? null,
+      organizationId,
+      googleStatus: check.googleReadStatus ?? null,
+      degraded: check.googleReadDegraded ?? false,
+      reason: check.googleReadReason ?? check.reason ?? null,
+      statusCode: check.googleReadStatusCode ?? null,
+      sourceUsed: check.googleReadStatus === "full" ? "google+local" : "local_or_partial",
+    });
 
     if (check.reason === "bad_datetime") {
       return { answer: formatReasonMessage("bad_datetime") };
@@ -411,6 +438,9 @@ export async function maybeBuildAvailabilityResponse(
     }
     if (check.reason === "past") {
       return { answer: formatReasonMessage("past") };
+    }
+    if (check.reason === "google_unavailable" || check.googleReadDegraded) {
+      return { answer: calendarMessages.availabilityUnknownGoogle(check.googleReadMessageHe) };
     }
 
     if (check.available) {
@@ -443,9 +473,10 @@ export async function maybeBuildAvailabilityResponse(
         answerPrefix: prefix,
         intentTag: "check_alternatives",
         now,
+        requestId: options?.requestId,
       }
     );
   }
 
-  return buildSlotsResponse(organizationId, intent, { now });
+  return buildSlotsResponse(organizationId, intent, { now, requestId: options?.requestId });
 }

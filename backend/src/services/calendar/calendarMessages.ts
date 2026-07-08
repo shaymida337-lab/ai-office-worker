@@ -158,6 +158,27 @@ export const calendarMessages = {
   listWithGoogleWarning(header: string, entries: string, warning: string): string {
     return `${header}\n${entries}\n\n${warning}`;
   },
+  listSourceFull(): string {
+    return "מקור נתונים: Google Calendar אומת בהצלחה (תמונה מלאה).";
+  },
+  listSourcePartial(detail?: string): string {
+    return detail
+      ? `מקור נתונים: Google Calendar חלקי. ${detail}`
+      : "מקור נתונים: Google Calendar חלקי, ולכן התמונה אינה מלאה.";
+  },
+  listSourceLocalOnly(): string {
+    return "מקור נתונים: נתונים מקומיים בלבד (Google Calendar לא אומת בהצלחה).";
+  },
+  listSourceUnavailable(detail?: string): string {
+    return detail
+      ? `מקור נתונים: Google Calendar לא זמין כרגע. ${detail}`
+      : "מקור נתונים: Google Calendar לא זמין כרגע ולכן התמונה אינה מלאה.";
+  },
+  listCannotGuaranteeEmpty(detail?: string): string {
+    return detail
+      ? `לא הצלחתי לאמת כרגע את היומן ב-Google, לכן איני יכולה להתחייב שאין פגישות. ${detail}`
+      : "לא הצלחתי לאמת כרגע את היומן ב-Google, לכן איני יכולה להתחייב שאין פגישות.";
+  },
   listEntry(entry: CalendarListEntry): string {
     const service = entry.serviceName?.trim();
     return `• ${entry.when} — ${entry.clientName}${service ? ` (${service})` : ""}`;
@@ -193,6 +214,11 @@ export const calendarMessages = {
   },
   availabilitySlots(count: number, labels: string): string {
     return `מצאתי ${count} זמנים פנויים: ${labels}.`;
+  },
+  availabilityUnknownGoogle(detail?: string): string {
+    return detail
+      ? `לא הצלחתי לאמת כרגע את היומן ב-Google, לכן איני יכולה להתחייב שהתמונה מלאה. ${detail}`
+      : "לא הצלחתי לאמת כרגע את היומן ב-Google, לכן איני יכולה להתחייב שהתמונה מלאה.";
   },
 
   // ---- Ambiguous customer / appointment ----

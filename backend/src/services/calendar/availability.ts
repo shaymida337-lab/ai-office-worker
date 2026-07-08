@@ -1,5 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
-import { loadCombinedBusyBlocks } from "./calendarEventBlocks.js";
+import { loadCombinedBusyBlocksDetailed } from "./calendarEventBlocks.js";
 import {
   appointmentEnd,
   checkConflict,
@@ -126,13 +126,14 @@ export async function checkSlotAvailability(params: {
     return { ...base, available: false, reason: "outside_working_hours" };
   }
 
-  const busyBlocks = await loadCombinedBusyBlocks(params.organizationId, candidate, {
+  const busyRead = await loadCombinedBusyBlocksDetailed(params.organizationId, candidate, {
     excludeAppointmentId: params.excludeAppointmentId,
     excludeCalendarEventId: params.excludeCalendarEventId,
     assignedUserId: params.assignedUserId,
     skipGoogle: params.skipGoogle,
     googleBlocks: params.googleBlocks,
   });
+  const busyBlocks = busyRead.blocks;
 
   const conflictResult = checkConflict(candidate, busyBlocks, {
     excludeId: params.excludeCalendarEventId ?? params.excludeAppointmentId,
@@ -145,10 +146,33 @@ export async function checkSlotAvailability(params: {
       available: false,
       reason: conflictResult.reason ?? "time_conflict",
       conflict: conflictResult.conflict ? toConflictResponse(conflictResult.conflict) : undefined,
+      googleReadStatus: busyRead.google.status,
+      googleReadDegraded: busyRead.google.degraded,
+      googleReadReason: busyRead.google.reason,
+      googleReadStatusCode: busyRead.google.statusCode,
+      googleReadMessageHe: busyRead.google.messageHe,
     };
   }
 
-  return { ...base, available: true };
+  if (busyRead.google.degraded) {
+    return {
+      ...base,
+      available: false,
+      reason: "google_unavailable",
+      googleReadStatus: busyRead.google.status,
+      googleReadDegraded: true,
+      googleReadReason: busyRead.google.reason,
+      googleReadStatusCode: busyRead.google.statusCode,
+      googleReadMessageHe: busyRead.google.messageHe,
+    };
+  }
+
+  return {
+    ...base,
+    available: true,
+    googleReadStatus: busyRead.google.status,
+    googleReadDegraded: false,
+  };
 }
 
 export async function findAvailableSlotsForOrganization(params: {
@@ -202,13 +226,14 @@ export async function findAvailableSlotsForOrganization(params: {
     range = { ...range, start: now };
   }
 
-  const busyBlocks = await loadCombinedBusyBlocks(params.organizationId, range, {
+  const busyRead = await loadCombinedBusyBlocksDetailed(params.organizationId, range, {
     excludeAppointmentId: params.excludeAppointmentId,
     excludeCalendarEventId: params.excludeCalendarEventId,
     assignedUserId: params.assignedUserId,
     skipGoogle: params.skipGoogle,
     googleBlocks: params.googleBlocks,
   });
+  const busyBlocks = busyRead.blocks;
 
   const slots = findAvailableSlots(range, durationMinutes, busyBlocks, rules, {
     limit,
@@ -216,6 +241,22 @@ export async function findAvailableSlotsForOrganization(params: {
     now,
     excludeId: params.excludeCalendarEventId ?? params.excludeAppointmentId,
   });
+
+  if (busyRead.google.degraded) {
+    return {
+      timeZone: rules.timeZone,
+      durationMinutes,
+      searchedFrom: range.start.toISOString(),
+      searchedTo: range.end.toISOString(),
+      slots: [],
+      empty: false,
+      googleReadStatus: busyRead.google.status,
+      googleReadDegraded: true,
+      googleReadReason: busyRead.google.reason,
+      googleReadStatusCode: busyRead.google.statusCode,
+      googleReadMessageHe: busyRead.google.messageHe,
+    };
+  }
 
   return {
     timeZone: rules.timeZone,
@@ -228,5 +269,7 @@ export async function findAvailableSlotsForOrganization(params: {
       label: formatSlotLabel(slot.start, rules.timeZone, now),
     })),
     empty: slots.length === 0,
+    googleReadStatus: busyRead.google.status,
+    googleReadDegraded: false,
   };
 }
