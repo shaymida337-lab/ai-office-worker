@@ -279,6 +279,16 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       durationMs: Date.now() - startedAt,
       error: err instanceof Error ? err.message : String(err),
     });
+    void import("../services/reliability/center/reliabilitySelfHealing.js")
+      .then(({ noteWhatsAppEmptyOrFailedReply }) =>
+        noteWhatsAppEmptyOrFailedReply({
+          organizationId: null,
+          correlationId,
+          reason: "processing_failed",
+          technicalMessage: err instanceof Error ? err.message : String(err),
+        })
+      )
+      .catch(() => undefined);
     if (!res.headersSent) {
       twiml.message(WHATSAPP_GENERIC_ERROR_MESSAGE);
       res.type("text/xml").send(twiml.toString());
@@ -527,11 +537,24 @@ function buildWhatsAppCorrelationId(messageSid: string): string {
   return `WA-${date}-${sidTail}-${suffix}`;
 }
 
-async function safeReply(run: () => Promise<string>) {
+async function safeReply(run: () => Promise<string>, context?: {
+  organizationId?: string | null;
+  correlationId?: string | null;
+}) {
   try {
     return await run();
   } catch (err) {
     console.error("[webhook] WhatsApp assistant reply failed", err);
+    void import("../services/reliability/center/reliabilitySelfHealing.js")
+      .then(({ noteWhatsAppEmptyOrFailedReply }) =>
+        noteWhatsAppEmptyOrFailedReply({
+          organizationId: context?.organizationId ?? null,
+          correlationId: context?.correlationId ?? null,
+          reason: "safe_reply_failed",
+          technicalMessage: err instanceof Error ? err.message : String(err),
+        })
+      )
+      .catch(() => undefined);
     return WHATSAPP_GENERIC_ERROR_MESSAGE;
   }
 }
@@ -561,20 +584,39 @@ export async function resolveOwnerAssistantWhatsAppReply(
   const maybeHandleCalendar = deps.maybeHandleCalendar ?? maybeHandleWhatsAppCalendarMessage;
   const handleOwner = deps.handleOwner ?? handleOwnerMessage;
 
-  const calendarReply = await safeReply(async () => {
-    const reply = await maybeHandleCalendar({
-      organizationId: input.organizationId,
-      message: input.body,
-      phone: input.normalizedFrom,
-      correlationId: input.correlationId,
-    });
-    return reply ?? "";
-  });
+  const calendarReply = await safeReply(
+    async () => {
+      const reply = await maybeHandleCalendar({
+        organizationId: input.organizationId,
+        message: input.body,
+        phone: input.normalizedFrom,
+        correlationId: input.correlationId,
+      });
+      // EmptyCalendar/brain reply is customer-visible and must be tracked.
+      if (reply != null && !String(reply).trim()) {
+        void import("../services/reliability/center/reliabilitySelfHealing.js")
+          .then(({ noteWhatsAppEmptyOrFailedReply }) =>
+            noteWhatsAppEmptyOrFailedReply({
+              organizationId: input.organizationId,
+              correlationId: input.correlationId,
+              reason: "empty_reply",
+              technicalMessage: "calendar/brain returned empty reply",
+            })
+          )
+          .catch(() => undefined);
+      }
+      return reply ?? "";
+    },
+    { organizationId: input.organizationId, correlationId: input.correlationId }
+  );
   if (calendarReply) return calendarReply;
 
   if (!input.autoReplyEnabled) return null;
 
-  return safeReply(() => handleOwner(input.body, input.organizationId, input.normalizedFrom));
+  return safeReply(() => handleOwner(input.body, input.organizationId, input.normalizedFrom), {
+    organizationId: input.organizationId,
+    correlationId: input.correlationId,
+  });
 }
 
 async function safeMediaIngestion(input: Parameters<typeof ingestWhatsAppInvoiceMedia>[0]) {

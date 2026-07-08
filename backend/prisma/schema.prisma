@@ -102,6 +102,45 @@ model Organization {
   members OrganizationMember[]
   communicationEvents CommunicationEvent[]
   knowledgeDocuments KnowledgeDocument[]
+  reliabilityEvents ReliabilityEvent[]
+}
+
+/// Natalie Reliability Center V1 — persistent, aggregated production incident store.
+/// Failures must live in DB (not console-only) so Natalie can detect, self-heal,
+/// and summarize health before customers report bugs.
+model ReliabilityEvent {
+  id                  String       @id @default(cuid())
+  organizationId      String?
+  organization        Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId              String?
+  module              String
+  severity            String // info | warning | error | critical
+  errorCode           String
+  userVisibleMessage  String?
+  technicalMessage    String?
+  route               String?
+  component           String?
+  job                 String?
+  correlationId       String?
+  status              String       @default("open") // open | resolved
+  fingerprint         String
+  firstSeenAt         DateTime     @default(now())
+  lastSeenAt          DateTime     @default(now())
+  resolvedAt          DateTime?
+  occurrences         Int          @default(1)
+  autoHealed          Boolean      @default(false)
+  customerVisible     Boolean      @default(false)
+  metadata            Json?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([fingerprint, status], map: "reliability_events_fingerprint_status_idx")
+  @@index([organizationId, status, lastSeenAt], map: "reliability_events_org_status_lastSeen_idx")
+  @@index([organizationId, module, status], map: "reliability_events_org_module_status_idx")
+  @@index([severity, status, lastSeenAt], map: "reliability_events_severity_status_lastSeen_idx")
+  @@index([errorCode, status], map: "reliability_events_errorCode_status_idx")
+  @@index([customerVisible, status, lastSeenAt], map: "reliability_events_customer_visible_idx")
+  @@map("reliability_events")
 }
 
 /// Natalie Business Memory (Phase 1–2): unified, organization-scoped business

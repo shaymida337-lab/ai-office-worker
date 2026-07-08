@@ -2461,6 +2461,14 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
   await reapOverdueLegacyScanLogsThrottled().catch((err) =>
     console.warn(`[scan-watchdog] reap failed: ${err instanceof Error ? err.message : String(err)}`)
   );
+  // Reliability Center: persist/heal stale banner + stuck jobs safely (additive).
+  void import("../services/reliability/center/reliabilitySelfHealing.js")
+    .then(({ runReliabilitySelfHealing }) => runReliabilitySelfHealing({ organizationId }))
+    .catch((err) =>
+      console.warn(
+        `[reliability] self-healing failed: ${err instanceof Error ? err.message : String(err)}`
+      )
+    );
 
   const [scanLogs, syncLogs] = await Promise.all([
     prisma.$queryRawUnsafe<ScanStatusLog[]>(
@@ -2534,6 +2542,21 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
     .slice(0, 10);
 
   const last = logs[0] ?? null;
+  const hasActiveScan = logs.some((log) => log.status === "running" || log.status === "queued");
+  const hasStaleTerminalBanner =
+    !hasActiveScan &&
+    logs.some((log) => log.status === "stale" || log.status === "failed" || log.status === "error");
+  if (hasStaleTerminalBanner) {
+    void import("../services/reliability/center/reliabilitySelfHealing.js")
+      .then(({ noteStaleDashboardBanner }) =>
+        noteStaleDashboardBanner({
+          organizationId,
+          userId: req.auth!.userId,
+          reason: `scan-status last=${last?.status ?? "none"}`,
+        })
+      )
+      .catch(() => undefined);
+  }
   const nextDaily = new Date();
   nextDaily.setHours(3, 0, 0, 0);
   if (nextDaily <= new Date()) nextDaily.setDate(nextDaily.getDate() + 1);
@@ -6505,6 +6528,20 @@ apiRouter.get("/system/health", async (req, res) => {
   } catch (err) {
     console.error("[system/health] failed", err);
     res.status(503).json({ error: "System health check failed" });
+  }
+});
+
+apiRouter.get("/admin/reliability/health-report", requirePerm("reliability.view"), async (req, res) => {
+  try {
+    const { buildReliabilityHealthReport, runReliabilitySelfHealing } = await import(
+      "../services/reliability/center/index.js"
+    );
+    await runReliabilitySelfHealing({ organizationId: req.auth!.organizationId }).catch(() => undefined);
+    const report = await buildReliabilityHealthReport({ organizationId: req.auth!.organizationId });
+    res.json(report);
+  } catch (err) {
+    console.error("[admin/reliability/health-report] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Reliability health report failed" });
   }
 });
 

@@ -1547,6 +1547,22 @@ export async function approveFinancialDocumentReview(
       workflow: "review_approval",
     });
     emitCoreWorkflowFailure(failureTrace, "approve_review", error, { userFacing: true });
+    void import("./reliability/center/reliabilitySelfHealing.js")
+      .then(({ noteDocumentApprovalFailure }) =>
+        noteDocumentApprovalFailure({
+          organizationId,
+          userId: options?.userId ?? null,
+          reviewId,
+          correlationId: failureTrace.correlationId,
+          message: error instanceof Error ? error.message : String(error),
+        })
+      )
+      .catch((err) => {
+        console.warn(
+          "[reliability] failed to persist document approval reliability event",
+          err instanceof Error ? err.message : String(err)
+        );
+      });
     throw error;
   }
 }

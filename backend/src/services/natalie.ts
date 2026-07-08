@@ -99,6 +99,17 @@ export async function askNatalieBusinessQuestion(input: {
   const partialCalendarResponse = maybeBuildPartialCalendarClarification(input.question);
   if (partialCalendarResponse) return partialCalendarResponse;
 
+  // Deterministic Reliability Center status: "מה מצב המערכת?" summarizes
+  // persistent reliability health for owners/admins before Claude.
+  const { maybeBuildReliabilityStatusResponse } = await import(
+    "./reliability/center/reliabilityNatalieSummary.js"
+  );
+  const reliabilityStatusResponse = await maybeBuildReliabilityStatusResponse(
+    input.organizationId,
+    input.question
+  );
+  if (reliabilityStatusResponse) return reliabilityStatusResponse;
+
   // Deterministic Business Memory lookup: "תפתחי לי את החוזה של שרית" /
   // "כמה מסמכים יש לי" resolve against the unified org-isolated repository
   // and never reach Claude. One engine, shared by chat/voice/WhatsApp.
