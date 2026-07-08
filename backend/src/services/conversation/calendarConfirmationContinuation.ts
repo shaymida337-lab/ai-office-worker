@@ -35,6 +35,7 @@ import {
   isCalendarConfirmationRevisionPhrase,
   reviseCalendarPendingProposal,
 } from "./calendarConfirmationRevision.js";
+import { parseCalendarIntent } from "../calendar/calendarIntentParser.js";
 
 const PENDING_CONFIRMATION_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -45,6 +46,16 @@ type CalendarConfirmationDeps = {
   releaseConfirmationExecutionFn?: typeof releaseConfirmationExecution;
   saveSessionAfterConfirmationExecutionFn?: typeof saveSessionAfterConfirmationExecution;
 };
+
+const FRESH_CALENDAR_COMMAND_PREFIX =
+  /^(?:קבע|קבעי|תקבע|תקבעי|תזמן|תזמני)(?:\s|$)/u;
+
+function shouldBypassPendingConfirmationForFreshCalendarCommand(message: string): boolean {
+  const normalized = message.trim().replace(/\s+/g, " ");
+  if (!FRESH_CALENDAR_COMMAND_PREFIX.test(normalized)) return false;
+  const parsed = parseCalendarIntent(normalized);
+  return parsed.intent === "create_appointment";
+}
 
 function isPendingConfirmationExpired(createdAt: string, nowMs = Date.now()): boolean {
   const created = Date.parse(createdAt);
@@ -85,6 +96,7 @@ export async function tryHandleCalendarConfirmationTurn(input: {
   handled: boolean;
   result?: ProcessNatalieTurnResult;
   updatedSession?: ConversationSessionRecord;
+  resetPendingConfirmation?: boolean;
 }> {
   const pending = input.session.pendingConfirmation;
   if (!pending) return { handled: false };
@@ -158,6 +170,13 @@ export async function tryHandleCalendarConfirmationTurn(input: {
           health: "Healthy",
         },
       },
+    };
+  }
+
+  if (shouldBypassPendingConfirmationForFreshCalendarCommand(input.message)) {
+    return {
+      handled: false,
+      resetPendingConfirmation: true,
     };
   }
 
@@ -318,42 +337,7 @@ export async function tryHandleCalendarConfirmationTurn(input: {
   }
 
   if (intent !== "accept") {
-    const answer = "כדי להמשיך, אפשר לענות כן / לא, או לתקן את היום, השעה או השם.";
-    const assistantTurn = createConversationTurn({
-      role: "assistant",
-      text: answer,
-      channel: input.channel,
-      confirmationState: "pending",
-    });
-    const updatedSession = await save({
-      ...input.session,
-      currentChannel: input.channel,
-      structuredHistory: appendTurn(historyWithUser, assistantTurn),
-      lastMessageAt: new Date().toISOString(),
-    });
-    return {
-      handled: true,
-      updatedSession,
-      result: {
-        answer,
-        conversationSessionId: updatedSession.id,
-        displayResponse: answer,
-        spokenResponse: answer,
-        confirmation: evaluateConfirmationPolicy({
-          action: pending.action,
-          channel: input.channel,
-          role: input.role,
-          permissions: input.permissions,
-        }),
-        zeroWrongAction: { ready: true, violations: [] },
-        reliability: {
-          correlationId: randomUUID(),
-          sessionId: updatedSession.id,
-          turnId: randomUUID(),
-          health: "Healthy",
-        },
-      },
-    };
+    return { handled: false };
   }
 
   const readiness = evaluateVoiceExecutionReadiness({

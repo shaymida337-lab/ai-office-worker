@@ -113,6 +113,15 @@ export async function processNatalieTurn(
       role,
       permissions: input.permissions,
     });
+    const activeSession =
+      calendarConfirmation.resetPendingConfirmation === true
+        ? {
+            ...session,
+            pendingAction: null,
+            pendingConfirmation: null,
+          }
+        : session;
+
     if (calendarConfirmation.handled && calendarConfirmation.result && calendarConfirmation.updatedSession) {
       const adapter = getChannelAdapter(channel);
       const continuation = calendarConfirmation.result;
@@ -156,7 +165,7 @@ export async function processNatalieTurn(
     }
 
     const calendarIntentContinuation = await tryHandleCalendarIntentContinuation({
-      session,
+      session: activeSession,
       message: normalizedMessage,
       channel,
       organizationId: input.organizationId,
@@ -212,7 +221,7 @@ export async function processNatalieTurn(
     }
 
     const availabilityContinuation = await tryHandleAvailabilityContinuation({
-      session,
+      session: activeSession,
       message: normalizedMessage,
       channel,
       role,
@@ -269,13 +278,13 @@ export async function processNatalieTurn(
       text: normalizedMessage,
       channel,
     });
-    const historyWithUser = appendTurn(session.structuredHistory, userTurn);
+    const historyWithUser = appendTurn(activeSession.structuredHistory, userTurn);
     const brainHistory = toBrainHistory(historyWithUser);
 
     console.info("[natalie/confirmation] generic_route_entered", {
-      sessionId: session.id,
+      sessionId: activeSession.id,
       channel,
-      hasPendingConfirmation: Boolean(session.pendingConfirmation),
+      hasPendingConfirmation: Boolean(activeSession.pendingConfirmation),
     });
 
     const brainResponse = await ask({
@@ -283,7 +292,7 @@ export async function processNatalieTurn(
       question: normalizedMessage,
       history: brainHistory,
       conversationContext: {
-        pendingAction: session.pendingAction,
+        pendingAction: activeSession.pendingAction,
         structuredHistory: historyWithUser.map((turn) => ({
           role: turn.role,
           content: turn.text,
@@ -333,7 +342,7 @@ export async function processNatalieTurn(
         : null;
     if (pendingConfirmation) {
       console.info("[natalie/confirmation] pending_created", {
-        sessionId: session.id,
+        sessionId: activeSession.id,
         action: pendingConfirmation.action,
         confirmationId: pendingConfirmation.confirmationId,
       });
@@ -355,17 +364,17 @@ export async function processNatalieTurn(
     });
 
     const updatedSession = await saveSession({
-      ...session,
+      ...activeSession,
       currentChannel: channel,
       structuredHistory: appendTurn(historyWithUser, assistantTurn),
       pendingAction:
         extracted.action && extracted.proposal
           ? { action: extracted.action, proposal: extracted.proposal }
-          : session.pendingAction?.action === LAST_LISTED_APPOINTMENTS_ACTION
-            ? session.pendingAction
+          : activeSession.pendingAction?.action === LAST_LISTED_APPOINTMENTS_ACTION
+            ? activeSession.pendingAction
             : null,
       pendingConfirmation,
-      interruptionState: session.interruptionState,
+      interruptionState: activeSession.interruptionState,
       lastMessageAt: new Date().toISOString(),
     });
 

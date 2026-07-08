@@ -18,6 +18,7 @@ import {
 } from "./lastListedAppointments.js";
 import { askNatalieBusinessQuestion } from "../natalie.js";
 import { processNatalieTurn } from "./conversationRuntime.js";
+import { parseCalendarIntent } from "../calendar/calendarIntentParser.js";
 
 function sessionWithBookConfirmation(overrides?: Partial<ConversationSessionRecord>): ConversationSessionRecord {
   const now = new Date().toISOString();
@@ -166,6 +167,25 @@ test("bare לא still rejects pendingConfirmation", async () => {
   } finally {
     restore();
   }
+});
+
+test("fresh create command bypasses stale pending confirmation", async () => {
+  const parsed = parseCalendarIntent("קבעי תור לשרון יום שישי ב-15:00");
+  assert.equal(parsed.customerName, "שרון");
+  assert.equal(parsed.time, "15:00");
+  assert.deepEqual(parsed.missingFields, []);
+
+  const session = sessionWithBookConfirmation();
+  const handled = await tryHandleCalendarConfirmationTurn({
+    session,
+    message: "קבעי תור לשרון יום שישי ב-15:00",
+    channel: "web_chat",
+    organizationId: "org-1",
+    userId: "user-1",
+    role: "owner",
+  });
+  assert.equal(handled.handled, false);
+  assert.equal(handled.resetPendingConfirmation, true);
 });
 
 test("list ordinal parser resolves first/second/last commands", () => {

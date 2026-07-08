@@ -62,6 +62,7 @@ const CUSTOMER_NAME_STOPWORDS = [
   "בלילה",
   "אתמול",
   "עכשיו",
+  "קבוע",
   "יום",
   "ראשון",
   "שני",
@@ -205,6 +206,18 @@ export function extractCustomerName(text: string): string | null {
   const afterWith = normalized.match(
     /(?:^|\s)עם\s+(?!עצמי(?:\s|$))([^\s].*)$/u
   );
+  const afterFor = normalized.match(
+    /(?:^|\s)עבור\s+(?!עצמי(?:\s|$))([^\s].*)$/u
+  );
+  const afterAt = normalized.match(
+    /(?:^|\s)אצל\s+(?!עצמי(?:\s|$))([^\s].*)$/u
+  );
+  const afterClientLabel = normalized.match(
+    /(?:^|\s)ללקוח(?:ה)?\s+([^\s].*)$/u
+  );
+  const directLName = normalized.match(
+    /(?:^|\s)ל(?!י(?:\s|$)|מחר(?:\s|$)|מחרתיים(?:\s|$)|היום(?:\s|$)|יום\s|שעה(?:\s|$)|[-\s]?\d)([א-ת][א-ת'"-]{1,30})(?=\s|$)/u
+  );
   // Most specific patterns first — avoid "התור למחר" being read as a customer.
   const afterCancelMove = normalized.match(
     /(?:של)\s+ל?([^\s].*)$/u
@@ -225,6 +238,10 @@ export function extractCustomerName(text: string): string | null {
 
   const raw =
     afterWith?.[1] ??
+    afterFor?.[1] ??
+    afterAt?.[1] ??
+    afterClientLabel?.[1] ??
+    directLName?.[1] ??
     afterCancelMove?.[1] ??
     afterMoveToClient?.[1] ??
     afterPutForMe?.[1] ??

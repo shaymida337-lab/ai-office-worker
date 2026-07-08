@@ -169,6 +169,27 @@ test('customer after עם / לרונן / של — never asks for the name that i
   assert.equal(extractCustomerName("בטלי לי את התור של רונן מחר"), "רונן");
 });
 
+test("create commands extract customerName from Hebrew prepositions", () => {
+  const cases = [
+    { text: "קבעי תור לשרון יום שישי ב-15:00", customerName: "שרון", time: "15:00" },
+    { text: "תקבע פגישה לרון מחר ב-16:00", customerName: "רון", time: "16:00" },
+    { text: "קבעי פגישה עם דנה ביום חמישי ב-10", customerName: "דנה", time: "10:00" },
+    { text: "תזמני תור עבור יעל ביום ראשון בשעה 12", customerName: "יעל", time: "12:00" },
+    { text: "קבעי תור ללקוחה מיכל מחר ב-9", customerName: "מיכל", time: null },
+  ];
+  for (const sample of cases) {
+    const result = parseCalendarIntent(sample.text, OPTS);
+    assert.equal(result.intent, "create_appointment");
+    assert.equal(result.customerName, sample.customerName, sample.text);
+    if (sample.time) {
+      assert.equal(result.time, sample.time, sample.text);
+    } else {
+      assert.notEqual(result.time, null, sample.text);
+    }
+    assert.equal(result.missingFields.includes("customerName"), false, sample.text);
+  }
+});
+
 test('"לי" is never mistaken for a customer name', () => {
   const result = parseCalendarIntent("תקבעי לי פגישה ביום חמישי ב 10:00", OPTS);
   assert.equal(result.intent, "create_appointment");
