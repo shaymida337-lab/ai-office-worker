@@ -36,6 +36,22 @@ import {
   reviseCalendarPendingProposal,
 } from "./calendarConfirmationRevision.js";
 
+const PENDING_CONFIRMATION_TIMEOUT_MS = 5 * 60 * 1000;
+
+type CalendarConfirmationDeps = {
+  saveSession?: typeof saveConversationSession;
+  executePendingProposal?: typeof executeNataliePendingProposal;
+  claimConfirmationExecutionFn?: typeof claimConfirmationExecution;
+  releaseConfirmationExecutionFn?: typeof releaseConfirmationExecution;
+  saveSessionAfterConfirmationExecutionFn?: typeof saveSessionAfterConfirmationExecution;
+};
+
+function isPendingConfirmationExpired(createdAt: string, nowMs = Date.now()): boolean {
+  const created = Date.parse(createdAt);
+  if (Number.isNaN(created)) return false;
+  return nowMs - created > PENDING_CONFIRMATION_TIMEOUT_MS;
+}
+
 function buildPendingConfirmation(
   action: string,
   proposal: Record<string, unknown>,
@@ -64,6 +80,7 @@ export async function tryHandleCalendarConfirmationTurn(input: {
   userId: string;
   role?: string | null;
   permissions?: string[];
+  deps?: CalendarConfirmationDeps;
 }): Promise<{
   handled: boolean;
   result?: ProcessNatalieTurnResult;
@@ -71,6 +88,78 @@ export async function tryHandleCalendarConfirmationTurn(input: {
 }> {
   const pending = input.session.pendingConfirmation;
   if (!pending) return { handled: false };
+  console.info("[natalie/confirmation] route_entered", {
+    sessionId: input.session.id,
+    action: pending.action,
+    createdAt: pending.createdAt,
+  });
+  console.info("[natalie/confirmation] pending_loaded", {
+    sessionId: input.session.id,
+    action: pending.action,
+    confirmationId: pending.confirmationId,
+  });
+
+  const save = input.deps?.saveSession ?? saveConversationSession;
+  const executePendingProposal = input.deps?.executePendingProposal ?? executeNataliePendingProposal;
+  const claimConfirmation =
+    input.deps?.claimConfirmationExecutionFn ?? claimConfirmationExecution;
+  const releaseConfirmation =
+    input.deps?.releaseConfirmationExecutionFn ?? releaseConfirmationExecution;
+  const saveAfterConfirmation =
+    input.deps?.saveSessionAfterConfirmationExecutionFn ?? saveSessionAfterConfirmationExecution;
+
+  if (isPendingConfirmationExpired(pending.createdAt)) {
+    const answer = "פג תוקף האישור הקודם. אפשר לבקש שוב את הפעולה ואאשר מחדש.";
+    const userTurn = createConversationTurn({
+      role: "user",
+      text: input.message,
+      channel: input.channel,
+    });
+    const historyWithUser = appendTurn(input.session.structuredHistory, userTurn);
+    const assistantTurn = createConversationTurn({
+      role: "assistant",
+      text: answer,
+      channel: input.channel,
+      confirmationState: "rejected",
+    });
+    const updatedSession = await save({
+      ...input.session,
+      currentChannel: input.channel,
+      structuredHistory: appendTurn(historyWithUser, assistantTurn),
+      pendingAction: null,
+      pendingConfirmation: null,
+      interruptionState: input.session.interruptionState,
+      lastMessageAt: new Date().toISOString(),
+    });
+    console.info("[natalie/confirmation] pending_expired", {
+      sessionId: input.session.id,
+      action: pending.action,
+      confirmationId: pending.confirmationId,
+    });
+    return {
+      handled: true,
+      updatedSession,
+      result: {
+        answer,
+        conversationSessionId: updatedSession.id,
+        displayResponse: answer,
+        spokenResponse: answer,
+        confirmation: evaluateConfirmationPolicy({
+          action: null,
+          channel: input.channel,
+          role: input.role,
+          permissions: input.permissions,
+        }),
+        zeroWrongAction: { ready: true, violations: [] },
+        reliability: {
+          correlationId: randomUUID(),
+          sessionId: updatedSession.id,
+          turnId: randomUUID(),
+          health: "Healthy",
+        },
+      },
+    };
+  }
 
   const intent = parseVoiceConfirmationIntent(input.message);
   const revision =
@@ -97,7 +186,7 @@ export async function tryHandleCalendarConfirmationTurn(input: {
         channel: input.channel,
         confirmationState: "pending",
       });
-      const updatedSession = await saveConversationSession({
+      const updatedSession = await save({
         ...input.session,
         currentChannel: input.channel,
         structuredHistory: appendTurn(historyWithUser, assistantTurn),
@@ -144,7 +233,7 @@ export async function tryHandleCalendarConfirmationTurn(input: {
       proposal: revised.proposal,
       confirmationState: "pending",
     });
-    const updatedSession = await saveConversationSession({
+    const updatedSession = await save({
       ...input.session,
       currentChannel: input.channel,
       structuredHistory: appendTurn(historyWithUser, assistantTurn),
@@ -187,7 +276,7 @@ export async function tryHandleCalendarConfirmationTurn(input: {
       channel: input.channel,
       confirmationState: "rejected",
     });
-    const updatedSession = await saveConversationSession({
+    const updatedSession = await save({
       ...input.session,
       currentChannel: input.channel,
       structuredHistory: appendTurn(historyWithUser, assistantTurn),
@@ -195,6 +284,12 @@ export async function tryHandleCalendarConfirmationTurn(input: {
       pendingConfirmation: null,
       interruptionState: input.session.interruptionState,
       lastMessageAt: new Date().toISOString(),
+    });
+    console.info("[natalie/confirmation] pending_cancelled", {
+      sessionId: input.session.id,
+      action: pending.action,
+      confirmationId: pending.confirmationId,
+      reason: intent,
     });
     const confirmation = evaluateConfirmationPolicy({
       action: null,
@@ -222,7 +317,44 @@ export async function tryHandleCalendarConfirmationTurn(input: {
     };
   }
 
-  if (intent !== "accept") return { handled: false };
+  if (intent !== "accept") {
+    const answer = "כדי להמשיך, אפשר לענות כן / לא, או לתקן את היום, השעה או השם.";
+    const assistantTurn = createConversationTurn({
+      role: "assistant",
+      text: answer,
+      channel: input.channel,
+      confirmationState: "pending",
+    });
+    const updatedSession = await save({
+      ...input.session,
+      currentChannel: input.channel,
+      structuredHistory: appendTurn(historyWithUser, assistantTurn),
+      lastMessageAt: new Date().toISOString(),
+    });
+    return {
+      handled: true,
+      updatedSession,
+      result: {
+        answer,
+        conversationSessionId: updatedSession.id,
+        displayResponse: answer,
+        spokenResponse: answer,
+        confirmation: evaluateConfirmationPolicy({
+          action: pending.action,
+          channel: input.channel,
+          role: input.role,
+          permissions: input.permissions,
+        }),
+        zeroWrongAction: { ready: true, violations: [] },
+        reliability: {
+          correlationId: randomUUID(),
+          sessionId: updatedSession.id,
+          turnId: randomUUID(),
+          health: "Healthy",
+        },
+      },
+    };
+  }
 
   const readiness = evaluateVoiceExecutionReadiness({
     session: input.session,
@@ -238,7 +370,7 @@ export async function tryHandleCalendarConfirmationTurn(input: {
       channel: input.channel,
       confirmationState: "pending",
     });
-    const updatedSession = await saveConversationSession({
+    const updatedSession = await save({
       ...input.session,
       currentChannel: input.channel,
       structuredHistory: appendTurn(historyWithUser, assistantTurn),
@@ -271,7 +403,7 @@ export async function tryHandleCalendarConfirmationTurn(input: {
 
   const confirmationId =
     pending.confirmationId ?? `legacy:${input.session.id}:${pending.createdAt}`;
-  const claim = await claimConfirmationExecution({
+  const claim = await claimConfirmation({
     organizationId: input.organizationId,
     userId: input.userId,
     sessionId: input.session.id,
@@ -312,7 +444,7 @@ export async function tryHandleCalendarConfirmationTurn(input: {
   const executableProposal = withIdentityConfirmedProposal(pending.proposal);
   let execution;
   try {
-    execution = await executeNataliePendingProposal({
+    execution = await executePendingProposal({
       organizationId: input.organizationId,
       userId: input.userId,
       action: pending.action,
@@ -320,13 +452,13 @@ export async function tryHandleCalendarConfirmationTurn(input: {
     });
   } catch (error) {
     if (claim.mode === "claimed") {
-      await releaseConfirmationExecution(claim.recordId);
+      await releaseConfirmation(claim.recordId);
     }
     throw error;
   }
 
   if (!execution.ok && claim.mode === "claimed") {
-    await releaseConfirmationExecution(claim.recordId);
+    await releaseConfirmation(claim.recordId);
   }
 
   const answer = execution.message;
@@ -342,7 +474,7 @@ export async function tryHandleCalendarConfirmationTurn(input: {
 
   let updatedSession: ConversationSessionRecord;
   if (execution.ok && claim.mode === "claimed") {
-    await saveSessionAfterConfirmationExecution({
+    await saveAfterConfirmation({
       sessionId: input.session.id,
       organizationId: input.organizationId,
       userId: input.userId,
@@ -367,8 +499,14 @@ export async function tryHandleCalendarConfirmationTurn(input: {
       pendingConfirmation: null,
       lastMessageAt: new Date().toISOString(),
     };
+    console.info("[natalie/confirmation] pending_executed", {
+      sessionId: input.session.id,
+      action: pending.action,
+      confirmationId: pending.confirmationId,
+      ok: true,
+    });
   } else {
-    updatedSession = await saveConversationSession({
+    updatedSession = await save({
       ...input.session,
       currentChannel: input.channel,
       structuredHistory,
@@ -377,6 +515,14 @@ export async function tryHandleCalendarConfirmationTurn(input: {
       interruptionState: input.session.interruptionState,
       lastMessageAt: new Date().toISOString(),
     });
+    if (!execution.ok) {
+      console.info("[natalie/confirmation] pending_executed", {
+        sessionId: input.session.id,
+        action: pending.action,
+        confirmationId: pending.confirmationId,
+        ok: false,
+      });
+    }
   }
 
   const confirmation = evaluateConfirmationPolicy({

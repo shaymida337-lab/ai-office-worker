@@ -104,6 +104,12 @@ test("extractCalendarConfirmationRevision pulls day/time from correction phrases
   });
 });
 
+test("extractCalendarConfirmationRevision supports customer-name correction", () => {
+  assert.deepEqual(extractCalendarConfirmationRevision("לא רון, נועם"), {
+    customerName: "נועם",
+  });
+});
+
 test("reviseCalendarPendingProposal rebuilds book confirmation answer", () => {
   const revised = reviseCalendarPendingProposal(
     "book_appointment",

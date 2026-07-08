@@ -272,6 +272,12 @@ export async function processNatalieTurn(
     const historyWithUser = appendTurn(session.structuredHistory, userTurn);
     const brainHistory = toBrainHistory(historyWithUser);
 
+    console.info("[natalie/confirmation] generic_route_entered", {
+      sessionId: session.id,
+      channel,
+      hasPendingConfirmation: Boolean(session.pendingConfirmation),
+    });
+
     const brainResponse = await ask({
       organizationId: input.organizationId,
       question: normalizedMessage,
@@ -325,6 +331,13 @@ export async function processNatalieTurn(
             input.permissions
           )
         : null;
+    if (pendingConfirmation) {
+      console.info("[natalie/confirmation] pending_created", {
+        sessionId: session.id,
+        action: pendingConfirmation.action,
+        confirmationId: pendingConfirmation.confirmationId,
+      });
+    }
 
     const displayResponse = adapter.renderDisplay(effectiveResponse, confirmation);
     const spokenResponse =

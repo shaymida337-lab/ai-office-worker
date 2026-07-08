@@ -26,6 +26,7 @@ export function isCalendarConfirmationRevisionPhrase(message: string): boolean {
 export function extractCalendarConfirmationRevision(message: string): {
   dayReference?: string;
   time?: string;
+  customerName?: string;
 } | null {
   const normalized = normalizeRevisionMessage(message);
   if (!normalized) return null;
@@ -47,12 +48,13 @@ export function extractCalendarConfirmationRevision(message: string): {
 
   const dayReference = extractDayReference(focus) ?? undefined;
   const time = parseHebrewTime(focus) ?? undefined;
+  const customerName = extractCustomerNameRevision(focus, normalized) ?? undefined;
 
-  if (!dayReference && !time) return null;
+  if (!dayReference && !time && !customerName) return null;
 
   // Bare day/time without scaffold only counts as a correction fragment
   // ("ב-4", "מחר", "ביום חמישי") — not a full new calendar command.
-  if (!looksLikeRevisionScaffold) {
+  if (!looksLikeRevisionScaffold && !customerName) {
     const looksLikeFragment =
       /^(?:ב[-\s]?\d{1,2}(?::\d{2})?|בשעה\s+\d{1,2}|מחר|מחרתיים|היום|ב?יום\s+\S+)/u.test(
         normalized
@@ -63,6 +65,7 @@ export function extractCalendarConfirmationRevision(message: string): {
   return {
     ...(dayReference ? { dayReference } : {}),
     ...(time ? { time } : {}),
+    ...(customerName ? { customerName } : {}),
   };
 }
 
@@ -73,10 +76,10 @@ export function canReviseCalendarPendingConfirmation(action: string | null | und
 export function reviseCalendarPendingProposal(
   action: string,
   proposal: Record<string, unknown>,
-  revision: { dayReference?: string; time?: string }
+  revision: { dayReference?: string; time?: string; customerName?: string }
 ): { proposal: Record<string, unknown>; answer: string } | { clarify: string } {
-  if (!revision.dayReference && !revision.time) {
-    return { clarify: "לא הבנתי מה לשנות. אפשר לציין יום או שעה?" };
+  if (!revision.dayReference && !revision.time && !revision.customerName) {
+    return { clarify: "לא הבנתי מה לשנות. אפשר לציין שם, יום או שעה?" };
   }
 
   if (action === "cancel_appointment") {
@@ -88,7 +91,7 @@ export function reviseCalendarPendingProposal(
   }
 
   if (action === "book_appointment") {
-    const clientName = stringField(proposal.clientName);
+    const clientName = revision.customerName ?? stringField(proposal.clientName);
     if (!clientName) {
       return { clarify: "לא הצלחתי לעדכן את ההצעה. אפשר לחזור על הבקשה המלאה?" };
     }
@@ -100,6 +103,7 @@ export function reviseCalendarPendingProposal(
     }
     const next = {
       ...proposal,
+      clientName,
       dayReference,
       time,
       ...(proposal.startTime ? { startTime: undefined } : {}),
@@ -112,7 +116,7 @@ export function reviseCalendarPendingProposal(
   }
 
   if (action === "reschedule_appointment") {
-    const clientName = stringField(proposal.clientName);
+    const clientName = revision.customerName ?? stringField(proposal.clientName);
     const appointmentId = stringField(proposal.appointmentId);
     if (!clientName || !appointmentId) {
       return { clarify: "לא הצלחתי לעדכן את ההעברה. אפשר לחזור על הבקשה המלאה?" };
@@ -127,6 +131,7 @@ export function reviseCalendarPendingProposal(
     return {
       proposal: {
         ...proposal,
+        clientName,
         newDayReference,
         newTime,
         newWhen,
@@ -149,4 +154,18 @@ function stringField(value: unknown): string | null {
 function formatCreateDayLabel(dayReference: string): string {
   if (["מחר", "מחרתיים", "היום", "אתמול"].includes(dayReference)) return dayReference;
   return dayReference;
+}
+
+function extractCustomerNameRevision(focus: string, normalized: string): string | null {
+  const normalizedFocus = focus.replace(/^לא\s+/u, "").trim();
+  const commaCandidate = normalized.match(/[,،]\s*([\u0590-\u05FF][\u0590-\u05FF\s'-]{0,38})$/u)?.[1]?.trim();
+  if (commaCandidate && !extractDayReference(commaCandidate) && !parseHebrewTime(commaCandidate)) {
+    return commaCandidate;
+  }
+  const noPrefix = normalizedFocus.match(/^(?:לא\s+)?([\u0590-\u05FF][\u0590-\u05FF\s'-]{1,38})$/u)?.[1]?.trim();
+  if (!noPrefix) return null;
+  if (["כן", "לא", "בטל", "ביטול", "עזוב"].includes(noPrefix)) return null;
+  if (extractDayReference(noPrefix) || parseHebrewTime(noPrefix)) return null;
+  if (/^(?:היום|מחר|מחרתיים|יום\s+\S+)$/u.test(noPrefix)) return null;
+  return noPrefix;
 }
