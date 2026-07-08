@@ -9,6 +9,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
+import { auditSnapshot } from "../auditLog/auditSnapshots.js";
 import {
   type BusinessMemoryDocument,
   type BusinessMemorySearchFilters,
@@ -55,6 +56,15 @@ const DOCUMENT_SELECT = {
 } as const;
 
 const DEFAULT_LIMIT = 20;
+
+/** Serialize app metadata objects into Prisma-compatible JSON input. */
+function metadataToPrismaInput(
+  value: Record<string, unknown> | null | undefined
+): Prisma.InputJsonValue | undefined {
+  if (value == null) return undefined;
+  const snapshot = auditSnapshot(value);
+  return snapshot ?? undefined;
+}
 
 function toMetadata(value: Prisma.JsonValue): Record<string, unknown> | null {
   if (value === null || value === undefined) return null;
@@ -192,7 +202,7 @@ export async function upsertBusinessMemoryDocument(
     storageLocation: input.storageLocation ?? null,
     driveUrl: input.driveUrl ?? null,
     driveFileId: input.driveFileId ?? null,
-    metadata: input.metadata ?? undefined,
+    metadata: metadataToPrismaInput(input.metadata),
     createdById: input.createdById ?? null,
     createdByName: input.createdByName ?? null,
     ...(input.uploadedAt ? { uploadedAt: input.uploadedAt } : {}),

@@ -130,7 +130,10 @@ businessMemoryRouter.get(
   "/business-memory/workspace/:customerName",
   requireMemoryView,
   handleRoute(async (req, res) => {
-    const customerName = decodeURIComponent(req.params.customerName ?? "").trim();
+    const rawName = req.params.customerName;
+    const customerName = decodeURIComponent(
+      Array.isArray(rawName) ? (rawName[0] ?? "") : (rawName ?? "")
+    ).trim();
     if (!customerName) throw new Error("customerName is required");
     const workspace = await buildCustomerWorkspace({
       organizationId: req.auth!.organizationId,
