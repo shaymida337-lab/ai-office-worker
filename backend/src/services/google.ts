@@ -629,6 +629,167 @@ export async function deleteCalendarEngineGoogleEvent(
   }
 }
 
+/** Read-through Google busy / list rows — never written permanently to DB by this helper. */
+export type GoogleCalendarReadEvent = {
+  googleEventId: string;
+  summary: string;
+  start: Date;
+  end: Date;
+  status: string | null;
+};
+
+export type GoogleCalendarReadResult =
+  | { ok: true; events: GoogleCalendarReadEvent[]; calendarId: string }
+  | {
+      ok: false;
+      reason: "not_connected" | "permission_denied" | "api_error";
+      messageHe: string;
+    };
+
+const GOOGLE_CALENDAR_READ_SCOPES = [
+  "https://www.googleapis.com/auth/calendar",
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/calendar.events.readonly",
+] as const;
+
+export function hasGoogleCalendarReadScopes(scopes: readonly string[] | null | undefined): boolean {
+  const granted = new Set(scopes ?? []);
+  return GOOGLE_CALENDAR_READ_SCOPES.some((scope) => granted.has(scope));
+}
+
+function parseGoogleEventDateTime(value: { dateTime?: string | null; date?: string | null } | null | undefined): Date | null {
+  if (!value) return null;
+  if (value.dateTime) {
+    const parsed = new Date(value.dateTime);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  if (value.date) {
+    // All-day events: treat as [date 00:00, next day 00:00) UTC for busy blocking.
+    const parsed = new Date(`${value.date}T00:00:00.000Z`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
+/**
+ * Safe inbound Google Calendar read for Natalie availability / list.
+ * Does not persist events. Returns an honest Hebrew failure reason when
+ * the org is disconnected or lacks read permission — never "empty calendar".
+ */
+export async function listGoogleCalendarEventsInRange(
+  organizationId: string,
+  range: { start: Date; end: Date }
+): Promise<GoogleCalendarReadResult> {
+  try {
+    const rawIntegration = await prisma.integration.findUnique({
+      where: {
+        organizationId_provider: { organizationId, provider: "google_calendar" },
+      },
+      select: { refreshToken: true, metadata: true },
+    });
+    if (!rawIntegration?.refreshToken) {
+      return {
+        ok: false,
+        reason: "not_connected",
+        messageHe: "אין חיבור ל-Google Calendar, אז אני לא יכולה לראות אירועים שנוצרו שם ישירות.",
+      };
+    }
+
+    const scopes = googleOAuthScopesFromMetadata(rawIntegration.metadata);
+    // Older connections may omit scopes metadata while still holding calendar write tokens.
+    // Only hard-fail on explicit empty/known-missing when scopes were recorded.
+    if (scopes.length > 0 && !hasGoogleCalendarReadScopes(scopes)) {
+      return {
+        ok: false,
+        reason: "permission_denied",
+        messageHe:
+          "אין לי הרשאה לקרוא את Google Calendar. חברי מחדש את היומן בהגדרות כדי שאוכל לראות תורים שנוצרו שם.",
+      };
+    }
+
+    const calendar = await getCalendarClientForOrganization(organizationId);
+    if (!calendar) {
+      return {
+        ok: false,
+        reason: "not_connected",
+        messageHe: "אין חיבור ל-Google Calendar, אז אני לא יכולה לראות אירועים שנוצרו שם ישירות.",
+      };
+    }
+
+    const metadata = parseGoogleIntegrationMetadata(rawIntegration.metadata);
+    const calendarId =
+      typeof metadata.calendarId === "string" && metadata.calendarId.trim()
+        ? metadata.calendarId.trim()
+        : "primary";
+
+    const events: GoogleCalendarReadEvent[] = [];
+    let pageToken: string | undefined;
+    do {
+      const response = await calendar.events.list({
+        calendarId,
+        timeMin: range.start.toISOString(),
+        timeMax: range.end.toISOString(),
+        singleEvents: true,
+        orderBy: "startTime",
+        maxResults: 250,
+        pageToken,
+      });
+
+      for (const item of response.data.items ?? []) {
+        if (!item?.id) continue;
+        if (item.status === "cancelled") continue;
+        if (item.transparency === "transparent") continue;
+
+        const start = parseGoogleEventDateTime(item.start);
+        let end = parseGoogleEventDateTime(item.end);
+        if (!start) continue;
+        if (!end) {
+          // All-day with only start date: block one day.
+          end = new Date(start.getTime() + 24 * 60 * 60_000);
+        }
+        if (end.getTime() <= range.start.getTime()) continue;
+        if (start.getTime() >= range.end.getTime()) continue;
+
+        events.push({
+          googleEventId: item.id,
+          summary: (item.summary ?? "").trim() || "אירוע ב-Google Calendar",
+          start,
+          end,
+          status: item.status ?? null,
+        });
+      }
+
+      pageToken = response.data.nextPageToken ?? undefined;
+    } while (pageToken);
+
+    return { ok: true, events, calendarId };
+  } catch (err) {
+    const status = googleErrorStatus(err);
+    if (status === 401 || status === 403) {
+      console.warn(
+        `[google/calendar] read permission denied org=${organizationId} status=${status}`,
+        err instanceof Error ? err.message : err
+      );
+      return {
+        ok: false,
+        reason: "permission_denied",
+        messageHe:
+          "אין לי הרשאה לקרוא את Google Calendar. חברי מחדש את היומן בהגדרות כדי שאוכל לראות תורים שנוצרו שם.",
+      };
+    }
+    console.error(
+      `[google/calendar] Failed to list events for organization ${organizationId}`,
+      err instanceof Error ? err.message : err
+    );
+    return {
+      ok: false,
+      reason: "api_error",
+      messageHe: "לא הצלחתי לקרוא את Google Calendar כרגע, אז הרשימה עלולה להיות חלקית.",
+    };
+  }
+}
+
 export async function getGoogleClientsForClient(clientId: string) {
   const google = await loadGoogle();
   const rawClient = await prisma.client.findUnique({ where: { id: clientId } });

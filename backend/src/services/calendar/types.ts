@@ -3,7 +3,7 @@ export type TimeInterval = {
   end: Date;
 };
 
-export type BusyBlockSource = "appointment" | "calendar_event";
+export type BusyBlockSource = "appointment" | "calendar_event" | "google_calendar";
 
 export type BusyBlock = TimeInterval & {
   source: BusyBlockSource;
@@ -11,6 +11,7 @@ export type BusyBlock = TimeInterval & {
   clientName?: string;
   serviceName?: string;
   durationMinutes?: number;
+  googleEventId?: string | null;
 };
 
 export type CalendarRules = {

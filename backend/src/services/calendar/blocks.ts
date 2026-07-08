@@ -18,6 +18,7 @@ export async function loadAppointmentBusyBlocks(
       id: true,
       startTime: true,
       durationMinutes: true,
+      googleEventId: true,
       client: { select: { name: true } },
       service: { select: { name: true } },
     },
@@ -40,6 +41,7 @@ export async function loadAppointmentBusyBlocks(
       clientName: appointment.client.name,
       serviceName: appointment.service?.name ?? undefined,
       durationMinutes: appointment.durationMinutes,
+      googleEventId: appointment.googleEventId,
     });
   }
 

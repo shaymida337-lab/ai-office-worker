@@ -2,7 +2,7 @@ import { answerBusinessQuestionWithClaude, type NatalieClaudeResponse } from "./
 import { findTasksByPartialTitle } from "./tasks.js";
 import { prisma } from "../lib/prisma.js";
 import { resolveAppointmentDateTime } from "./appointmentService.js";
-import { findUpcomingSchedulingForClient, findUpcomingSchedulingForOrganization, type UpcomingSchedulingItem } from "./scheduling/schedulingFacade.js";
+import { findUpcomingSchedulingForClient, findUpcomingSchedulingForOrganization, findUpcomingSchedulingForOrganizationDetailed, type UpcomingSchedulingItem } from "./scheduling/schedulingFacade.js";
 import {
   formatAmbiguousCustomerMessage,
   searchSchedulingCustomers,
@@ -1239,7 +1239,8 @@ async function maybeBuildListAppointmentsResponse(
   const loadTimezone = deps?.loadTimezone ?? loadOrganizationTimezone;
   const timeZone = await loadTimezone(organizationId);
 
-  const items = await findUpcomingSchedulingForOrganization({ organizationId });
+  const detailed = await findUpcomingSchedulingForOrganizationDetailed({ organizationId });
+  const items = detailed.items;
   const filtered = filterAppointmentsForListRange(items, {
     rangeType: intent.rangeType,
     dayReference: intent.dayReference,
@@ -1248,11 +1249,23 @@ async function maybeBuildListAppointmentsResponse(
   });
 
   const { header, empty, includeDate } = listRangeLabel(intent.rangeType, intent.dayReference);
+  const googleWarning = detailed.googleReadWarningHe;
+
   if (filtered.length === 0) {
+    if (googleWarning) {
+      return {
+        answer: calendarMessages.listEmptyWithGoogleWarning(empty, googleWarning),
+      };
+    }
     return { answer: empty };
   }
 
   const lines = filtered.map((item) => formatListEntry(item, timeZone, includeDate));
+  if (googleWarning) {
+    return {
+      answer: calendarMessages.listWithGoogleWarning(header, lines.join("\n"), googleWarning),
+    };
+  }
   return { answer: `${header}\n${lines.join("\n")}` };
 }
 
@@ -1366,9 +1379,11 @@ async function resolveCalendarCommandCustomer(input: {
   /** When set, narrow the customer's appointments to the referenced day. */
   filterDayReference?: string | null;
 }) {
-  const upcomingAppointments = await findUpcomingSchedulingForOrganization({
-    organizationId: input.organizationId,
-  });
+  const upcomingAppointments = (
+    await findUpcomingSchedulingForOrganization({
+      organizationId: input.organizationId,
+    })
+  ).filter((item) => item.source !== "google_calendar");
   const nameResolution = await resolveAppointmentCustomerName({
     organizationId: input.organizationId,
     spokenName: input.spokenName,
@@ -1457,7 +1472,9 @@ async function buildCancelAllAppointmentsProposal(
 ): Promise<NatalieClaudeResponse> {
   const timeZone = await loadOrganizationTimezone(organizationId);
   const now = new Date();
-  const items = await findUpcomingSchedulingForOrganization({ organizationId });
+  const items = (await findUpcomingSchedulingForOrganization({ organizationId })).filter(
+    (item) => item.source !== "google_calendar"
+  );
   const filtered = filterAppointmentsForListRange(items, {
     dayReference,
     timeZone,

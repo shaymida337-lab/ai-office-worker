@@ -5,6 +5,7 @@ import { Mic, SendHorizontal, Volume2, VolumeX, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { apiFetch, API_URL, ApiError, getToken } from "@/lib/api";
 import { formatNatalieResponseOrFallback } from "@/lib/natalie/formatResponse";
+import { buildBookAppointmentActionFeedback } from "@/lib/natalieBookFeedback";
 import { normalizeAvailabilityProposal, normalizeNatalieResponse } from "@/lib/natalie/responseGuard";
 import {
   computeAnalyserRms,
@@ -1855,6 +1856,8 @@ function NatalieAssistantWidgetInner() {
         error?: string;
         code?: string;
         clients?: Array<{ id: string; name: string; whatsappNumber?: string | null }>;
+        pendingApproval?: boolean;
+        message?: string;
       };
 
       if (!response.ok) {
@@ -1885,13 +1888,21 @@ function NatalieAssistantWidgetInner() {
         return;
       }
 
+      const whenLabel = formatAppointmentWhenLabel(proposal);
+      const actionFeedback = buildBookAppointmentActionFeedback({
+        clientName: proposal.clientName,
+        whenLabel,
+        pendingApproval: payload.pendingApproval,
+        message: payload.message,
+      });
+
       setMessages((current) =>
         current.map((message) =>
           message.id === messageId
             ? {
                 ...message,
                 actionStatus: "created",
-                actionFeedback: `✓ התור נקבע ל${proposal.clientName} ב${formatAppointmentWhenLabel(proposal)}`,
+                actionFeedback,
               }
             : message
         )

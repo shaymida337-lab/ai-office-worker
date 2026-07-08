@@ -19,6 +19,7 @@ const EVENT_END = new Date("2026-08-01T07:30:00.000Z");
 function installMocks() {
   const originalAppt = prisma.appointment.findMany.bind(prisma.appointment);
   const originalEvent = prisma.calendarEvent.findMany.bind(prisma.calendarEvent);
+  const originalIntegration = prisma.integration.findUnique.bind(prisma.integration);
 
   prisma.appointment.findMany = (async (args) => {
     const where = args?.where as { organizationId?: string; clientId?: string };
@@ -30,7 +31,8 @@ function installMocks() {
         startTime: APPT_START,
         durationMinutes: 60,
         status: "confirmed",
-        client: { id: CLIENT_A, name: "שרית לוי" },
+        googleEventId: null,
+        client: { id: CLIENT_A, name: "שרית לוי", email: null, whatsappNumber: null },
         service: { name: "תספורת" },
       },
     ];
@@ -47,15 +49,20 @@ function installMocks() {
         endAt: EVENT_END,
         status: "confirmed",
         title: null,
-        client: { id: CLIENT_B, name: "דני כהן" },
+        googleEventId: null,
+        client: { id: CLIENT_B, name: "דני כהן", email: null, whatsappNumber: null },
         service: { name: "ייעוץ", durationMinutes: 30 },
       },
     ];
   }) as typeof prisma.calendarEvent.findMany;
 
+  // No Google Calendar connection for baseline isolation tests.
+  prisma.integration.findUnique = (async () => null) as typeof prisma.integration.findUnique;
+
   return () => {
     prisma.appointment.findMany = originalAppt;
     prisma.calendarEvent.findMany = originalEvent;
+    prisma.integration.findUnique = originalIntegration;
   };
 }
 
@@ -123,5 +130,85 @@ test("client read is scoped to the client across both tables", async () => {
     assert.equal(forB[0]!.source, "calendar_event");
   } finally {
     restore();
+  }
+});
+
+test("cross-table duplicate appears once preferring calendar_event", async () => {
+  const originalAppt = prisma.appointment.findMany.bind(prisma.appointment);
+  const originalEvent = prisma.calendarEvent.findMany.bind(prisma.calendarEvent);
+  const originalIntegration = prisma.integration.findUnique.bind(prisma.integration);
+
+  const start = new Date("2026-08-02T12:00:00.000Z");
+  prisma.appointment.findMany = (async () => [
+    {
+      id: "appt-dup",
+      startTime: start,
+      durationMinutes: 45,
+      status: "confirmed",
+      googleEventId: "same-g",
+      client: { id: CLIENT_A, name: "שרית לוי", email: null, whatsappNumber: "0501111111" },
+      service: { name: "תספורת" },
+    },
+  ]) as typeof prisma.appointment.findMany;
+
+  prisma.calendarEvent.findMany = (async () => [
+    {
+      id: "event-dup",
+      startAt: start,
+      endAt: new Date(start.getTime() + 45 * 60_000),
+      status: "confirmed",
+      title: null,
+      googleEventId: "same-g",
+      client: { id: CLIENT_A, name: "שרית לוי", email: null, whatsappNumber: "0501111111" },
+      service: { name: "תספורת", durationMinutes: 45 },
+    },
+  ]) as typeof prisma.calendarEvent.findMany;
+  prisma.integration.findUnique = (async () => null) as typeof prisma.integration.findUnique;
+
+  try {
+    const items = await getUpcomingSchedulingForOrganization({
+      organizationId: ORG,
+      skipGoogle: true,
+    });
+    assert.equal(items.length, 1);
+    assert.equal(items[0]!.id, "event-dup");
+    assert.equal(items[0]!.source, "calendar_event");
+  } finally {
+    prisma.appointment.findMany = originalAppt;
+    prisma.calendarEvent.findMany = originalEvent;
+    prisma.integration.findUnique = originalIntegration;
+  }
+});
+
+test("Google-only event appears in upcoming scheduling list", async () => {
+  const originalAppt = prisma.appointment.findMany.bind(prisma.appointment);
+  const originalEvent = prisma.calendarEvent.findMany.bind(prisma.calendarEvent);
+
+  prisma.appointment.findMany = (async () => []) as typeof prisma.appointment.findMany;
+  prisma.calendarEvent.findMany = (async () => []) as typeof prisma.calendarEvent.findMany;
+
+  try {
+    const items = await getUpcomingSchedulingForOrganization({
+      organizationId: ORG,
+      now: new Date("2026-08-01T00:00:00.000Z"),
+      googleItems: [
+        {
+          id: "gcal:ext-1",
+          source: "google_calendar",
+          clientId: null,
+          clientName: "פגישה חיצונית",
+          startTime: new Date("2026-08-01T16:00:00.000Z"),
+          durationMinutes: 60,
+          status: "confirmed",
+          googleEventId: "ext-1",
+        },
+      ],
+    });
+    assert.equal(items.length, 1);
+    assert.equal(items[0]!.source, "google_calendar");
+    assert.equal(items[0]!.clientName, "פגישה חיצונית");
+  } finally {
+    prisma.appointment.findMany = originalAppt;
+    prisma.calendarEvent.findMany = originalEvent;
   }
 });

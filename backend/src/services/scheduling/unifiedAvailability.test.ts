@@ -28,6 +28,7 @@ test("loadCombinedBusyBlocks merges appointment and calendar event blocks", asyn
       id: "appt-1",
       startTime: at("2026-06-20T10:00:00.000Z"),
       durationMinutes: 60,
+      googleEventId: null,
       client: { name: "Legacy Client" },
       service: null,
     },
@@ -38,16 +39,21 @@ test("loadCombinedBusyBlocks merges appointment and calendar event blocks", asyn
       id: "evt-1",
       startAt: at("2026-06-20T14:00:00.000Z"),
       endAt: at("2026-06-20T15:00:00.000Z"),
+      googleEventId: null,
       client: { name: "Engine Client" },
       service: null,
     },
   ]) as typeof prisma.calendarEvent.findMany;
 
   try {
-    const blocks = await loadCombinedBusyBlocks(ORG, {
-      start: at("2026-06-20T08:00:00.000Z"),
-      end: at("2026-06-20T18:00:00.000Z"),
-    });
+    const blocks = await loadCombinedBusyBlocks(
+      ORG,
+      {
+        start: at("2026-06-20T08:00:00.000Z"),
+        end: at("2026-06-20T18:00:00.000Z"),
+      },
+      { skipGoogle: true }
+    );
     assert.equal(blocks.length, 2);
     assert.equal(blocks[0]?.source, "appointment");
     assert.equal(blocks[1]?.source, "calendar_event");
@@ -79,6 +85,7 @@ test("unified checkSlotAvailability detects appointment conflict", async () => {
       startTime: at("2026-06-20T10:30:00.000Z"),
       durationMinutes: 60,
       now: at("2026-06-20T08:00:00.000Z"),
+      skipGoogle: true,
     });
     assert.equal(result.available, false);
     assert.equal(result.reason, "time_conflict");
@@ -102,6 +109,7 @@ test("unified checkSlotAvailability detects calendar engine conflict", async () 
       id: "evt-busy",
       startAt: at("2026-06-20T11:00:00.000Z"),
       endAt: at("2026-06-20T12:00:00.000Z"),
+      googleEventId: null,
       client: { name: "Engine" },
       service: null,
     },
@@ -113,6 +121,7 @@ test("unified checkSlotAvailability detects calendar engine conflict", async () 
       startTime: at("2026-06-20T11:30:00.000Z"),
       durationMinutes: 60,
       now: at("2026-06-20T08:00:00.000Z"),
+      skipGoogle: true,
     });
     assert.equal(result.available, false);
     assert.equal(result.reason, "time_conflict");
@@ -135,6 +144,7 @@ test("unified checkSlotAvailability detects conflict when both sources block", a
       id: "appt-1",
       startTime: at("2026-06-20T09:00:00.000Z"),
       durationMinutes: 60,
+      googleEventId: null,
       client: { name: "A" },
       service: null,
     },
@@ -144,6 +154,7 @@ test("unified checkSlotAvailability detects conflict when both sources block", a
       id: "evt-1",
       startAt: at("2026-06-20T10:00:00.000Z"),
       endAt: at("2026-06-20T11:00:00.000Z"),
+      googleEventId: null,
       client: { name: "B" },
       service: null,
     },
@@ -155,6 +166,7 @@ test("unified checkSlotAvailability detects conflict when both sources block", a
       startTime: at("2026-06-20T09:30:00.000Z"),
       durationMinutes: 60,
       now: at("2026-06-20T08:00:00.000Z"),
+      skipGoogle: true,
     });
     assert.equal(apptConflict.available, false);
 
@@ -163,6 +175,7 @@ test("unified checkSlotAvailability detects conflict when both sources block", a
       startTime: at("2026-06-20T10:30:00.000Z"),
       durationMinutes: 60,
       now: at("2026-06-20T08:00:00.000Z"),
+      skipGoogle: true,
     });
     assert.equal(engineConflict.available, false);
   } finally {
@@ -183,6 +196,7 @@ test("unified findAvailableSlotsForOrganization skips slots blocked by either so
       id: "appt-1",
       startTime: at("2026-06-20T10:00:00.000Z"),
       durationMinutes: 60,
+      googleEventId: null,
       client: { name: "A" },
       service: null,
     },
@@ -192,6 +206,7 @@ test("unified findAvailableSlotsForOrganization skips slots blocked by either so
       id: "evt-1",
       startAt: at("2026-06-20T12:00:00.000Z"),
       endAt: at("2026-06-20T13:00:00.000Z"),
+      googleEventId: null,
       client: { name: "B" },
       service: null,
     },
@@ -205,6 +220,7 @@ test("unified findAvailableSlotsForOrganization skips slots blocked by either so
       durationMinutes: 60,
       limit: 10,
       now: at("2026-06-20T07:00:00.000Z"),
+      skipGoogle: true,
     });
     assert.ok(result.slots.length > 0);
     for (const slot of result.slots) {
@@ -220,6 +236,80 @@ test("unified findAvailableSlotsForOrganization skips slots blocked by either so
     }
   } finally {
     prisma.organization.findUnique = originalOrg;
+    prisma.appointment.findMany = originalAppt;
+    prisma.calendarEvent.findMany = originalEvent;
+  }
+});
+
+test("Google-only event blocks availability", async () => {
+  const originalOrg = prisma.organization.findUnique.bind(prisma.organization);
+  const originalAppt = prisma.appointment.findMany.bind(prisma.appointment);
+  const originalEvent = prisma.calendarEvent.findMany.bind(prisma.calendarEvent);
+
+  prisma.organization.findUnique = (async () => ({ timezone: "UTC" })) as typeof prisma.organization.findUnique;
+  prisma.appointment.findMany = (async () => []) as typeof prisma.appointment.findMany;
+  prisma.calendarEvent.findMany = (async () => []) as typeof prisma.calendarEvent.findMany;
+
+  try {
+    const result = await checkSlotAvailability({
+      organizationId: ORG,
+      startTime: at("2026-06-20T13:00:00.000Z"),
+      durationMinutes: 60,
+      now: at("2026-06-20T08:00:00.000Z"),
+      googleBlocks: [
+        {
+          id: "gcal:only-1",
+          source: "google_calendar",
+          start: at("2026-06-20T13:00:00.000Z"),
+          end: at("2026-06-20T14:00:00.000Z"),
+          clientName: "Google Only Meeting",
+          googleEventId: "only-1",
+          durationMinutes: 60,
+        },
+      ],
+    });
+    assert.equal(result.available, false);
+    assert.equal(result.reason, "time_conflict");
+    assert.equal(result.conflict?.appointmentId, "gcal:only-1");
+  } finally {
+    prisma.organization.findUnique = originalOrg;
+    prisma.appointment.findMany = originalAppt;
+    prisma.calendarEvent.findMany = originalEvent;
+  }
+});
+
+test("Google-only event appears in combined busy blocks", async () => {
+  const originalAppt = prisma.appointment.findMany.bind(prisma.appointment);
+  const originalEvent = prisma.calendarEvent.findMany.bind(prisma.calendarEvent);
+
+  prisma.appointment.findMany = (async () => []) as typeof prisma.appointment.findMany;
+  prisma.calendarEvent.findMany = (async () => []) as typeof prisma.calendarEvent.findMany;
+
+  try {
+    const blocks = await loadCombinedBusyBlocks(
+      ORG,
+      {
+        start: at("2026-06-20T08:00:00.000Z"),
+        end: at("2026-06-20T18:00:00.000Z"),
+      },
+      {
+        googleBlocks: [
+          {
+            id: "gcal:only-2",
+            source: "google_calendar",
+            start: at("2026-06-20T15:00:00.000Z"),
+            end: at("2026-06-20T16:00:00.000Z"),
+            clientName: "External Block",
+            googleEventId: "only-2",
+            durationMinutes: 60,
+          },
+        ],
+      }
+    );
+    assert.equal(blocks.length, 1);
+    assert.equal(blocks[0]?.source, "google_calendar");
+    assert.equal(blocks[0]?.googleEventId, "only-2");
+  } finally {
     prisma.appointment.findMany = originalAppt;
     prisma.calendarEvent.findMany = originalEvent;
   }

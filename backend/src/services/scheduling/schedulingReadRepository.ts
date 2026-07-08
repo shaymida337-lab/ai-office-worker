@@ -1,4 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
+import { listGoogleCalendarEventsInRange } from "../google.js";
+import { dedupeSchedulingItems } from "./schedulingDedup.js";
 
 /**
  * Single source of truth for appointment READS.
@@ -6,15 +8,15 @@ import { prisma } from "../../lib/prisma.js";
  * Appointments live in two tables depending on org/engine flags:
  *  - legacy `Appointment`
  *  - `CalendarEvent` (calendar engine)
+ * plus optional Google Calendar read-through for events that exist only there.
  *
  * Natalie (list / search / cancel / move resolution) must find bookings
  * regardless of which table they are stored in, so every read here merges
- * both tables into one unified `SchedulingItem`. Merge logic mirrors
- * `briefingSchedulingReader.ts`, but returns the `Date`/`clientId` shape the
- * scheduling facade and Natalie resolver already consume.
+ * sources into one unified `SchedulingItem`. Google-only rows are tagged
+ * `google_calendar` and are display/availability only (not cancel/reschedule IDs).
  */
 
-export type SchedulingSource = "appointment" | "calendar_event";
+export type SchedulingSource = "appointment" | "calendar_event" | "google_calendar";
 
 export type SchedulingItem = {
   id: string;
@@ -25,6 +27,15 @@ export type SchedulingItem = {
   startTime: Date;
   durationMinutes: number;
   status: string;
+  googleEventId?: string | null;
+  phone?: string | null;
+  email?: string | null;
+};
+
+export type UpcomingSchedulingReadResult = {
+  items: SchedulingItem[];
+  /** Set when Google was connected but could not be fully read. */
+  googleReadWarningHe?: string;
 };
 
 /** Appointment statuses that should never surface as an upcoming booking. */
@@ -44,6 +55,12 @@ type CommonReadParams = {
   /** Only bookings at/after this instant are returned. Defaults to now. */
   now?: Date;
   limit?: number;
+  /** Upper bound for Google list window. Defaults to now + 30 days. */
+  until?: Date;
+  /** Skip Google read-through (tests). Default false. */
+  skipGoogle?: boolean;
+  /** Test-only: inject Google-only scheduling rows. */
+  googleItems?: SchedulingItem[];
 };
 
 async function readAppointments(params: {
@@ -60,7 +77,7 @@ async function readAppointments(params: {
       startTime: { gte: params.from },
     },
     include: {
-      client: { select: { id: true, name: true } },
+      client: { select: { id: true, name: true, email: true, whatsappNumber: true } },
       service: { select: { name: true } },
     },
     orderBy: { startTime: "asc" },
@@ -76,6 +93,9 @@ async function readAppointments(params: {
     startTime: appointment.startTime,
     durationMinutes: appointment.durationMinutes,
     status: appointment.status,
+    googleEventId: appointment.googleEventId,
+    phone: appointment.client?.whatsappNumber ?? null,
+    email: appointment.client?.email ?? null,
   }));
 }
 
@@ -93,7 +113,7 @@ async function readCalendarEvents(params: {
       startAt: { gte: params.from },
     },
     include: {
-      client: { select: { id: true, name: true } },
+      client: { select: { id: true, name: true, email: true, whatsappNumber: true } },
       service: { select: { name: true, durationMinutes: true } },
     },
     orderBy: { startAt: "asc" },
@@ -109,22 +129,60 @@ async function readCalendarEvents(params: {
     startTime: event.startAt,
     durationMinutes: calendarEventDuration(event.startAt, event.endAt, event.service?.durationMinutes),
     status: event.status,
+    googleEventId: event.googleEventId,
+    phone: event.client?.whatsappNumber ?? null,
+    email: event.client?.email ?? null,
   }));
 }
 
-function mergeAndCap(
+async function readGoogleOnlyEvents(params: {
+  organizationId: string;
+  from: Date;
+  until: Date;
+}): Promise<{ items: SchedulingItem[]; warningHe?: string }> {
+  const result = await listGoogleCalendarEventsInRange(params.organizationId, {
+    start: params.from,
+    end: params.until,
+  });
+  if (!result.ok) {
+    if (result.reason === "not_connected") {
+      return { items: [] };
+    }
+    return { items: [], warningHe: result.messageHe };
+  }
+
+  const items: SchedulingItem[] = result.events
+    .filter((event) => event.start.getTime() >= params.from.getTime())
+    .map((event) => ({
+      id: `gcal:${event.googleEventId}`,
+      source: "google_calendar" as const,
+      clientId: null,
+      clientName: event.summary,
+      startTime: event.start,
+      durationMinutes: Math.max(1, Math.round((event.end.getTime() - event.start.getTime()) / 60_000)),
+      status: "confirmed",
+      googleEventId: event.googleEventId,
+    }));
+
+  return { items };
+}
+
+export function mergeAndCap(
   appointments: SchedulingItem[],
   events: SchedulingItem[],
-  limit: number
+  limit: number,
+  extras: SchedulingItem[] = [],
+  organizationId?: string
 ): SchedulingItem[] {
-  // FUTURE WORK (cross-table dedup): a single booking could theoretically exist
-  // in BOTH tables (e.g. mid-migration or a double-write). We intentionally do
-  // NOT dedup here yet — dedup needs a stable cross-table identity (clientId +
-  // startTime + duration) and careful handling of near-duplicate times, which
-  // is out of scope for Calendar V1. Today the read paths simply surface both;
-  // duplicates are rare and non-destructive (reads only, writes still require
-  // confirmation). Revisit once a canonical booking key exists.
-  return [...appointments, ...events]
+  const merged = dedupeSchedulingItems(
+    [...appointments, ...events, ...extras].map((item) => ({
+      ...item,
+      organizationId,
+    })),
+    organizationId
+  );
+
+  return merged
     .sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
     .slice(0, limit);
 }
@@ -132,22 +190,42 @@ function mergeAndCap(
 /**
  * Upcoming bookings across BOTH tables for the whole organization.
  * Always reads both tables (never gated by engine flags) so nothing is missed.
+ * Optionally merges Google Calendar read-through (deduped against DB mirrors).
  */
 export async function getUpcomingSchedulingForOrganization(
   params: CommonReadParams
 ): Promise<SchedulingItem[]> {
+  const result = await getUpcomingSchedulingForOrganizationDetailed(params);
+  return result.items;
+}
+
+export async function getUpcomingSchedulingForOrganizationDetailed(
+  params: CommonReadParams
+): Promise<UpcomingSchedulingReadResult> {
   const from = params.now ?? new Date();
   const limit = params.limit ?? 50;
-  const [appointments, events] = await Promise.all([
+  const until = params.until ?? new Date(from.getTime() + 30 * 24 * 60 * 60_000);
+
+  const [appointments, events, google] = await Promise.all([
     readAppointments({ organizationId: params.organizationId, from, limit }),
     readCalendarEvents({ organizationId: params.organizationId, from, limit }),
+    params.googleItems
+      ? Promise.resolve({ items: params.googleItems, warningHe: undefined as string | undefined })
+      : params.skipGoogle
+        ? Promise.resolve({ items: [] as SchedulingItem[], warningHe: undefined as string | undefined })
+        : readGoogleOnlyEvents({ organizationId: params.organizationId, from, until }),
   ]);
-  return mergeAndCap(appointments, events, limit);
+
+  return {
+    items: mergeAndCap(appointments, events, limit, google.items, params.organizationId),
+    googleReadWarningHe: google.warningHe,
+  };
 }
 
 /**
  * Upcoming bookings across BOTH tables for a single client.
  * `clientId` is matched inside the org scope, preserving organization isolation.
+ * Google-only events are omitted here (no client linkage).
  */
 export async function getUpcomingSchedulingForClient(
   params: CommonReadParams & { clientId: string }
@@ -168,5 +246,5 @@ export async function getUpcomingSchedulingForClient(
       limit,
     }),
   ]);
-  return mergeAndCap(appointments, events, limit);
+  return mergeAndCap(appointments, events, limit, [], params.organizationId);
 }

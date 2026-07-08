@@ -94,6 +94,7 @@ test("loadAppointmentBusyBlocks includes appointments starting more than 24h bef
       startTime: at("2026-06-20T10:30:00.000Z"),
       durationMinutes: 60,
       now: at("2026-06-17T00:00:00.000Z"),
+      skipGoogle: true,
     });
     assert.equal(availability.available, false);
     assert.equal(availability.reason, "time_conflict");
@@ -151,6 +152,7 @@ test("checkSlotAvailability returns time_conflict for overlapping appointment", 
       startTime: at("2026-06-20T10:30:00.000Z"),
       durationMinutes: 60,
       now: at("2026-06-20T08:00:00.000Z"),
+      skipGoogle: true,
     });
     assert.equal(result.available, false);
     assert.equal(result.reason, "time_conflict");
@@ -174,6 +176,7 @@ test("checkSlotAvailability returns outside_working_hours", async () => {
       startTime: at("2026-06-20T06:00:00.000Z"),
       durationMinutes: 30,
       now: at("2026-06-20T00:00:00.000Z"),
+      skipGoogle: true,
     });
     assert.equal(result.available, false);
     assert.equal(result.reason, "outside_working_hours");
@@ -214,6 +217,7 @@ test("findAvailableSlotsForOrganization returns first 3 slots on a free day", as
       rangeType: "day",
       limit: 3,
       now,
+      skipGoogle: true,
     });
     assert.equal(result.slots.length, 3);
     assert.equal(result.empty, false);
@@ -257,6 +261,7 @@ test("findAvailableSlotsForOrganization returns empty for fully busy day", async
       rangeType: "day",
       limit: 3,
       now,
+      skipGoogle: true,
     });
     assert.equal(result.slots.length, 0);
     assert.equal(result.empty, true);
@@ -298,6 +303,7 @@ test("findAvailableSlotsForOrganization week search can return slots across days
       rangeType: "week",
       limit: 3,
       now,
+      skipGoogle: true,
     });
     assert.equal(result.slots.length, 3);
     assert.ok(result.slots.every((slot) => !slot.startTime.startsWith("2026-06-20")));

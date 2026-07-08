@@ -148,6 +148,16 @@ export const calendarMessages = {
   listEmptyAll(): string {
     return "אין לך תורים קרובים ביומן.";
   },
+  /** Honest empty/partial copy when Google Calendar cannot be read. */
+  listGoogleReadUnavailable(detail: string): string {
+    return detail;
+  },
+  listEmptyWithGoogleWarning(empty: string, warning: string): string {
+    return `${empty}\n\n${warning}`;
+  },
+  listWithGoogleWarning(header: string, entries: string, warning: string): string {
+    return `${header}\n${entries}\n\n${warning}`;
+  },
   listEntry(entry: CalendarListEntry): string {
     const service = entry.serviceName?.trim();
     return `• ${entry.when} — ${entry.clientName}${service ? ` (${service})` : ""}`;

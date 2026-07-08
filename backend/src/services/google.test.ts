@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { config } from "../lib/config.js";
-import { assertOutboundEmailAllowed, GMAIL_SCOPES, googleOAuthMetadata } from "./google.js";
+import {
+  assertOutboundEmailAllowed,
+  CALENDAR_SCOPES,
+  GMAIL_SCOPES,
+  googleOAuthMetadata,
+  hasGoogleCalendarReadScopes,
+} from "./google.js";
 
 test("GMAIL_SCOPES do not request Gmail send permissions", () => {
   assert.ok(GMAIL_SCOPES.includes("https://www.googleapis.com/auth/gmail.readonly"));
@@ -11,6 +17,20 @@ test("GMAIL_SCOPES do not request Gmail send permissions", () => {
   assert.equal(GMAIL_SCOPES.includes("https://www.googleapis.com/auth/gmail.send"), false);
   assert.equal(GMAIL_SCOPES.includes("https://www.googleapis.com/auth/gmail.compose"), false);
   assert.equal(GMAIL_SCOPES.includes("https://mail.google.com/"), false);
+});
+
+test("CALENDAR_SCOPES already include Google Calendar event read/write", () => {
+  assert.ok(CALENDAR_SCOPES.includes("https://www.googleapis.com/auth/calendar.events"));
+  assert.ok(CALENDAR_SCOPES.includes("https://www.googleapis.com/auth/calendar"));
+  assert.equal(hasGoogleCalendarReadScopes(CALENDAR_SCOPES), true);
+});
+
+test("hasGoogleCalendarReadScopes accepts readonly scopes", () => {
+  assert.equal(
+    hasGoogleCalendarReadScopes(["https://www.googleapis.com/auth/calendar.readonly"]),
+    true
+  );
+  assert.equal(hasGoogleCalendarReadScopes(["openid"]), false);
 });
 
 test("outbound email sends are blocked unless explicitly enabled", () => {

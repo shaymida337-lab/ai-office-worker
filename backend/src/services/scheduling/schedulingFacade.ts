@@ -35,7 +35,7 @@ import {
 } from "./schedulingCustomer.js";
 import {
   getUpcomingSchedulingForClient,
-  getUpcomingSchedulingForOrganization,
+  getUpcomingSchedulingForOrganizationDetailed,
 } from "./schedulingReadRepository.js";
 import { SchedulingFacadeError } from "./schedulingErrors.js";
 
@@ -47,6 +47,13 @@ export type UpcomingSchedulingItem = {
   durationMinutes: number;
   clientName: string;
   serviceName?: string;
+  /** Present for Google read-through rows (`gcal:…`). Cancel/reschedule must ignore these. */
+  source?: "appointment" | "calendar_event" | "google_calendar";
+};
+
+export type UpcomingSchedulingOrgResult = {
+  items: Array<UpcomingSchedulingItem & { clientId: string }>;
+  googleReadWarningHe?: string;
 };
 
 export type NatalieBookInput = {
@@ -111,20 +118,33 @@ export async function findUpcomingSchedulingForOrganization(params: {
   organizationId: string;
   limit?: number;
 }): Promise<Array<UpcomingSchedulingItem & { clientId: string }>> {
+  const result = await findUpcomingSchedulingForOrganizationDetailed(params);
+  return result.items;
+}
+
+export async function findUpcomingSchedulingForOrganizationDetailed(params: {
+  organizationId: string;
+  limit?: number;
+}): Promise<UpcomingSchedulingOrgResult> {
   // Single source of truth: always merge legacy Appointment + CalendarEvent so
   // Natalie finds bookings regardless of which table (or engine flag) stored them.
-  const items = await getUpcomingSchedulingForOrganization({
+  // Also merges Google Calendar read-through when connected (deduped).
+  const detailed = await getUpcomingSchedulingForOrganizationDetailed({
     organizationId: params.organizationId,
     limit: params.limit ?? 50,
   });
-  return items.map((item) => ({
-    id: item.id,
-    startTime: item.startTime,
-    durationMinutes: item.durationMinutes,
-    clientName: item.clientName,
-    serviceName: item.serviceName,
-    clientId: item.clientId ?? "",
-  }));
+  return {
+    items: detailed.items.map((item) => ({
+      id: item.id,
+      startTime: item.startTime,
+      durationMinutes: item.durationMinutes,
+      clientName: item.clientName,
+      serviceName: item.serviceName,
+      clientId: item.clientId ?? "",
+      source: item.source,
+    })),
+    googleReadWarningHe: detailed.googleReadWarningHe,
+  };
 }
 
 export async function findUpcomingSchedulingForClient(params: {

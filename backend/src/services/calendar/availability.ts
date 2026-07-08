@@ -70,6 +70,10 @@ export async function checkSlotAvailability(params: {
   excludeCalendarEventId?: string;
   assignedUserId?: string | null;
   now?: Date;
+  /** Test / dial-down: skip Google Calendar read-through. */
+  skipGoogle?: boolean;
+  /** Test-only: inject Google busy blocks. */
+  googleBlocks?: BusyBlock[];
 }): Promise<CheckSlotAvailabilityResult> {
   const rules = await getCalendarRulesForOrganization(params.organizationId);
   const now = params.now ?? new Date();
@@ -126,6 +130,8 @@ export async function checkSlotAvailability(params: {
     excludeAppointmentId: params.excludeAppointmentId,
     excludeCalendarEventId: params.excludeCalendarEventId,
     assignedUserId: params.assignedUserId,
+    skipGoogle: params.skipGoogle,
+    googleBlocks: params.googleBlocks,
   });
 
   const conflictResult = checkConflict(candidate, busyBlocks, {
@@ -159,6 +165,8 @@ export async function findAvailableSlotsForOrganization(params: {
   excludeCalendarEventId?: string;
   assignedUserId?: string | null;
   now?: Date;
+  skipGoogle?: boolean;
+  googleBlocks?: BusyBlock[];
 }): Promise<FindAvailableSlotsResult> {
   const rules = await getCalendarRulesForOrganization(params.organizationId);
   const now = params.now ?? new Date();
@@ -198,6 +206,8 @@ export async function findAvailableSlotsForOrganization(params: {
     excludeAppointmentId: params.excludeAppointmentId,
     excludeCalendarEventId: params.excludeCalendarEventId,
     assignedUserId: params.assignedUserId,
+    skipGoogle: params.skipGoogle,
+    googleBlocks: params.googleBlocks,
   });
 
   const slots = findAvailableSlots(range, durationMinutes, busyBlocks, rules, {
