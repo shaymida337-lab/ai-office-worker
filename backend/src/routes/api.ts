@@ -112,6 +112,7 @@ import {
   VERIFICATION_CENTER_ROUTE_PATH,
 } from "../services/verification/verificationCenter.js";
 import { calendarEngineRouter } from "./calendarEngineRoutes.js";
+import { knowledgeRouter } from "./knowledgeRoutes.js";
 import { parseWallClockAwareDateTime } from "./calendarEngineValidation.js";
 import { signLocalUploadUrlIfNeeded } from "./uploadsRoutes.js";
 import { scannerHealthRouter } from "./scannerHealthRoutes.js";
@@ -195,6 +196,7 @@ apiRouter.get("/debug/payments/open-classification-inputs", requireNonProduction
 apiRouter.use(authMiddleware);
 apiRouter.use(secureRouteGuards);
 apiRouter.use(calendarEngineRouter);
+apiRouter.use(knowledgeRouter);
 apiRouter.use(scannerHealthRouter);
 apiRouter.use(integrityWatchRouter);
 apiRouter.use(auditLogRouter);

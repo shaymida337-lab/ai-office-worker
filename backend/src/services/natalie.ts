@@ -31,6 +31,9 @@ import {
 } from "./calendar/calendarIntentParser.js";
 import { calendarMessages } from "./calendar/calendarMessages.js";
 import type { CalendarPendingIntent } from "./calendar/calendarPendingIntent.js";
+import { parseKnowledgeIntent } from "./knowledge/knowledgeIntentParser.js";
+import { runKnowledgeLookup } from "./knowledge/knowledgeSearchService.js";
+import { knowledgeMessages } from "./knowledge/knowledgeMessages.js";
 
 /** Injectable dependencies for deterministic testing of the Natalie brain. */
 export type AskNatalieDeps = {
@@ -96,6 +99,15 @@ export async function askNatalieBusinessQuestion(input: {
   const partialCalendarResponse = maybeBuildPartialCalendarClarification(input.question);
   if (partialCalendarResponse) return partialCalendarResponse;
 
+  // Deterministic Knowledge Center lookup: "תפתחי לי את החוזה של שרית" /
+  // "כמה חוזים יש לי" resolve against the org-isolated document repository and
+  // never reach Claude. One engine, shared by chat/voice/WhatsApp.
+  const knowledgeResponse = await maybeBuildKnowledgeLookupResponse(
+    input.organizationId,
+    input.question
+  );
+  if (knowledgeResponse) return knowledgeResponse;
+
   const businessFactsResponse = await maybeBuildBusinessFactsResponse(input.organizationId, input.question);
   if (businessFactsResponse) return businessFactsResponse;
 
@@ -150,6 +162,29 @@ export async function askNatalieBusinessQuestion(input: {
       richerBusinessData: richerContext,
     },
   });
+}
+
+/**
+ * Deterministic Knowledge Center handler. Returns a Natalie answer when the
+ * message is a supported document lookup, otherwise null so the dispatch chain
+ * continues. Read-only and organization-isolated.
+ */
+async function maybeBuildKnowledgeLookupResponse(
+  organizationId: string,
+  question: string
+): Promise<NatalieClaudeResponse | null> {
+  const extraction = parseKnowledgeIntent(question);
+  if (extraction.intent !== "knowledge_lookup") return null;
+  try {
+    const lookup = await runKnowledgeLookup({ organizationId, text: question, extraction });
+    return { answer: lookup.message };
+  } catch (err) {
+    console.warn(
+      "[natalie] knowledge lookup failed",
+      err instanceof Error ? err.message : String(err)
+    );
+    return { answer: knowledgeMessages.processingError() };
+  }
 }
 
 /** Hebrew day-reference → user-facing label for the confirmation template. */

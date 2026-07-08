@@ -101,6 +101,49 @@ model Organization {
   ownerDecisionQueueItems OwnerDecisionQueueItem[]
   members OrganizationMember[]
   communicationEvents CommunicationEvent[]
+  knowledgeDocuments KnowledgeDocument[]
+}
+
+/// Knowledge Center (Phase 1): unified, organization-scoped business document
+/// repository. Read-first infrastructure — future phases add OCR text,
+/// AI summaries, and semantic search on top of these same rows.
+model KnowledgeDocument {
+  id              String   @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // contract | agreement | warranty | quotation | manual | license | certificate | other
+  category        String   @default("other")
+  title           String
+  fileName        String?
+
+  // Suppliers/customers are not first-class entities in this schema, so we keep
+  // denormalized names (matching the existing supplier-as-string convention) and
+  // an optional clientId pointer for future joins.
+  clientId        String?
+  customerName    String?
+  supplierName    String?
+  supplierTaxId   String?
+
+  tags            String[] @default([])
+
+  // Storage: canonical pointer plus Google Drive fields (reusing the naming the
+  // rest of the codebase uses). Future OCR/semantic columns land on this model.
+  storageLocation String?
+  driveUrl        String?
+  driveFileId     String?
+
+  createdById     String?
+  createdByName   String?
+
+  uploadedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, category])
+  @@index([organizationId, clientId])
+  @@map("knowledge_documents")
 }
 
 /// Organization-scoped RBAC membership (Phase 2.5).
