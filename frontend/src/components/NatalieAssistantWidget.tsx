@@ -28,6 +28,11 @@ import {
 } from "@/lib/natalie/voiceRecordingVad";
 import { logVoiceDebug, shouldLogPeriodicSample } from "@/lib/natalie/voiceRecordingDebug";
 import { isUiOverlayOpen, lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
+import {
+  recoverPendingPrompt,
+  toHydratedWidgetMessages,
+  type ConversationTurnSnapshot,
+} from "@/lib/natalie/sessionHydration";
 import { VoiceDebugPanel } from "@/components/VoiceDebugPanel";
 
 type MicState = "idle" | "recording" | "transcribing";
@@ -46,6 +51,11 @@ function readConversationSessionId(): string | null {
 function persistConversationSessionId(sessionId: string) {
   if (typeof window === "undefined") return;
   sessionStorage.setItem(NATALIE_SESSION_STORAGE_KEY, sessionId);
+}
+
+function clearConversationSessionId() {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem(NATALIE_SESSION_STORAGE_KEY);
 }
 
 function NatalieIdentityAvatar({
@@ -272,6 +282,14 @@ type VoiceTranscriptionResponse = {
   clarificationRequired?: boolean;
   actionBlocked?: boolean;
 };
+
+type NatalieSessionHydrationResponse =
+  | { status: "active"; session: { id: string; structuredHistory: ConversationTurnSnapshot[]; pendingAction: { action: string; proposal: Record<string, unknown> } | null; pendingConfirmation: { confirmationId: string; action: string; proposal: Record<string, unknown>; confirmationType: "none" | "soft" | "hard"; spokenPrompt: string; uiPrompt: string; createdAt: string } | null; lastMessageAt: string } }
+  | { status: "missing"; sessionId: string }
+  | { status: "expired"; sessionId: string; lastMessageAt?: string };
+
+const SESSION_EXPIRED_MESSAGE = "השיחה הקודמת הסתיימה. נמשיך מהתחלה?";
+const SESSION_MISSING_MESSAGE = "לא הצלחתי לשחזר את השיחה הקודמת. נתחיל מהתחלה?";
 
 const initialMessages: WidgetMessage[] = [
   {
@@ -539,6 +557,7 @@ function NatalieAssistantWidgetInner() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<WidgetMessage[]>(initialMessages);
   const [sending, setSending] = useState(false);
+  const [hydratingSession, setHydratingSession] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [pendingVoiceClarificationText, setPendingVoiceClarificationText] = useState<string | null>(null);
   const [pendingAudioPlay, setPendingAudioPlay] = useState(false);
@@ -926,6 +945,11 @@ function NatalieAssistantWidgetInner() {
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    void hydrateConversationSession();
   }, [open]);
 
   useEffect(() => {
@@ -1380,9 +1404,64 @@ function NatalieAssistantWidgetInner() {
     }
   }
 
+  async function hydrateConversationSession() {
+    const sessionId = readConversationSessionId();
+    if (!sessionId) {
+      return;
+    }
+
+    setHydratingSession(true);
+    try {
+      const result = await apiFetch<NatalieSessionHydrationResponse>(
+        `/api/natalie/session?sessionId=${encodeURIComponent(sessionId)}`
+      );
+      if (!result || typeof result !== "object") {
+        setMessages(initialMessages);
+        return;
+      }
+      if (result.status !== "active") {
+        clearConversationSessionId();
+        setMessages([
+          {
+            id: `session-${result.status}-${Date.now()}`,
+            sender: "natalie",
+            text: result.status === "expired" ? SESSION_EXPIRED_MESSAGE : SESSION_MISSING_MESSAGE,
+          },
+        ]);
+        return;
+      }
+
+      persistConversationSessionId(result.session.id);
+      const hydratedMessages = toHydratedWidgetMessages(result.session.structuredHistory) as WidgetMessage[];
+      const recoveryMessages = recoverPendingPrompt(
+        hydratedMessages,
+        result.session.pendingConfirmation,
+        result.session.pendingAction
+      ) as WidgetMessage[];
+      setMessages(recoveryMessages.length > 0 ? recoveryMessages : initialMessages);
+      setPendingVoiceClarificationText(null);
+      setPendingAvailabilityBooking(null);
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 404 || err.status === 410)) {
+        clearConversationSessionId();
+        setMessages([
+          {
+            id: `session-recovery-error-${Date.now()}`,
+            sender: "natalie",
+            text: err.status === 410 ? SESSION_EXPIRED_MESSAGE : SESSION_MISSING_MESSAGE,
+          },
+        ]);
+        return;
+      }
+      console.error("[natalie] session hydration failed", err);
+    } finally {
+      setHydratingSession(false);
+    }
+  }
+
   async function sendMessage(text = input) {
     const cleanText = text.trim();
-    if (!cleanText || sending) return;
+    if (!cleanText || sending || hydratingSession) return;
 
     if (pendingVoiceClarificationText) {
       const clarificationIntent = parseVoiceClarificationIntent(cleanText);
@@ -1580,7 +1659,7 @@ function NatalieAssistantWidgetInner() {
 
   async function sendVoiceTurn(text: string, options?: { retryTurnId?: string }) {
     const cleanText = text.trim();
-    if (!cleanText || sending) return;
+    if (!cleanText || sending || hydratingSession) return;
     setPendingVoiceClarificationText(null);
 
     const turnId = options?.retryTurnId ?? createVoiceTurnId();
@@ -2271,6 +2350,9 @@ function NatalieAssistantWidgetInner() {
           </header>
 
           <div ref={messagesRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f4f6fb] px-4 py-4">
+            {hydratingSession && (
+              <div className="text-center text-xs font-bold text-[#6b7686]">משחזרת את השיחה הקודמת…</div>
+            )}
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -2596,7 +2678,7 @@ function NatalieAssistantWidgetInner() {
               <button
                 type="button"
                 onClick={handleMicClick}
-                disabled={!isMicRecordingSupported() || sending || micState === "transcribing"}
+                disabled={!isMicRecordingSupported() || sending || hydratingSession || micState === "transcribing"}
                 className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-[#d7def0] bg-white text-[#1d5bff] transition hover:border-[#1d5bff] hover:bg-[#e8eeff]"
                 aria-label={micState === "recording" ? "סיים הקלטה" : "התחל הקלטה קולית"}
               >
@@ -2606,14 +2688,14 @@ function NatalieAssistantWidgetInner() {
                 ref={inputRef}
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                disabled={sending}
+                disabled={sending || hydratingSession}
                 placeholder="כתוב הודעה לנטלי…"
                 className="min-h-[56px] flex-1 rounded-[14px] border border-[#e6eaf2] bg-[#f4f6fb] px-4 py-3.5 text-base font-medium text-[#0e1116] outline-none placeholder:text-[#6b7686] focus:border-[#1d5bff] focus:bg-white focus:shadow-[0_0_0_4px_rgba(29,91,255,0.10)]"
                 aria-label="הודעה לנטלי"
               />
               <button
                 type="submit"
-                disabled={!input.trim() || sending}
+                disabled={!input.trim() || sending || hydratingSession}
                 className="grid h-14 w-14 shrink-0 place-items-center rounded-[14px] bg-[#1d5bff] text-white shadow-[0_10px_22px_rgba(29,91,255,0.22)] transition hover:bg-[#1746c7] disabled:cursor-not-allowed disabled:bg-[#9badf7] disabled:shadow-none"
                 aria-label="שלח הודעה"
               >

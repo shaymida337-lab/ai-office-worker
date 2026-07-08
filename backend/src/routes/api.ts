@@ -53,7 +53,11 @@ import { isWithinBusinessDateWindow } from "../services/dates/businessDate.js";
 import { resolveDriveLink } from "../services/drive/driveLinkResolver.js";
 import { presentedReviewStatus, reviewCandidateStatusesForTab } from "../services/reviewStatusPolicy.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "../services/financialAmountLimits.js";
-import { processNatalieTurn } from "../services/conversation/index.js";
+import {
+  getConversationSession,
+  isConversationSessionExpired,
+  processNatalieTurn,
+} from "../services/conversation/index.js";
 import { processVoiceTurn } from "../services/conversation/voice/index.js";
 import { communicationService } from "../services/communication/communicationService.js";
 import {
@@ -2799,6 +2803,50 @@ apiRouter.post("/natalie/ask", requirePerm("chat.use"), async (req, res) => {
   } catch (err) {
     console.error("[natalie/ask] failed", errorDetails(err));
     res.status(500).json({ error: err instanceof Error ? err.message : "Natalie failed to answer" });
+  }
+});
+
+apiRouter.get("/natalie/session", requirePerm("chat.use"), async (req, res) => {
+  const sessionId = typeof req.query?.sessionId === "string" ? req.query.sessionId.trim() : "";
+  if (!sessionId) {
+    res.status(400).json({ error: "sessionId is required" });
+    return;
+  }
+
+  try {
+    const session = await getConversationSession({
+      sessionId,
+      organizationId: req.auth!.organizationId,
+      userId: req.auth!.userId,
+    });
+
+    if (!session) {
+      res.status(404).json({ status: "missing", sessionId });
+      return;
+    }
+
+    if (isConversationSessionExpired(session)) {
+      res.status(410).json({ status: "expired", sessionId, lastMessageAt: session.lastMessageAt });
+      return;
+    }
+
+    res.json({
+      status: "active",
+      session: {
+        id: session.id,
+        currentChannel: session.currentChannel,
+        structuredHistory: session.structuredHistory,
+        pendingAction: session.pendingAction,
+        pendingConfirmation: session.pendingConfirmation,
+        interruptionState: session.interruptionState,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+        lastMessageAt: session.lastMessageAt,
+      },
+    });
+  } catch (err) {
+    console.error("[natalie/session] failed", errorDetails(err));
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load Natalie session" });
   }
 });
 

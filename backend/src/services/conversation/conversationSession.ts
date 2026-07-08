@@ -17,6 +17,8 @@ type SessionJson = {
   interruptionState: ConversationInterruptionState | null;
 };
 
+export const CONVERSATION_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+
 function parseSessionRow(row: {
   id: string;
   organizationId: string;
@@ -151,4 +153,13 @@ export function sessionDurationMs(session: ConversationSessionRecord): number {
   const end = Date.parse(session.lastMessageAt);
   if (Number.isNaN(start) || Number.isNaN(end)) return 0;
   return Math.max(0, end - start);
+}
+
+export function isConversationSessionExpired(
+  session: Pick<ConversationSessionRecord, "lastMessageAt">,
+  nowMs = Date.now()
+): boolean {
+  const lastMessageAtMs = Date.parse(session.lastMessageAt);
+  if (!Number.isFinite(lastMessageAtMs)) return false;
+  return nowMs - lastMessageAtMs > CONVERSATION_SESSION_TTL_MS;
 }
