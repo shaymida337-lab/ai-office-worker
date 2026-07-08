@@ -443,3 +443,65 @@ test("no double response: incomplete create handled once by continuation without
   assert.match(turn.answer, /שם/);
   assert.equal(store.get().pendingAction?.action, "calendar_intent_continuation");
 });
+
+test("best available create via continuation returns ranked confirmation not time clarify", async () => {
+  const restore = installOrgTimezoneMock();
+  try {
+    const session = emptySession();
+    const store = inMemorySessionStore(session);
+
+    const turn = await processNatalieTurn(
+      {
+        organizationId: session.organizationId,
+        userId: session.userId,
+        channel: "web_chat",
+        modality: "text",
+        message: "תקבעי תור לרון בזמן הכי טוב מחר",
+        sessionId: session.id,
+        role: "owner",
+      },
+      {
+        resolveSession: async () => store.get(),
+        saveSession: store.save,
+        ask: async (input) =>
+          askNatalieBusinessQuestion({
+            organizationId: input.organizationId,
+            question: input.question,
+            conversationContext: input.conversationContext,
+          }),
+      }
+    );
+
+    assert.equal("action" in turn && turn.action, "book_appointment");
+    assert.equal(turn.proposal?.clientName, "רון");
+    assert.equal(turn.proposal?.time, "10:30");
+    assert.notEqual(turn.proposal?.time, "07:00");
+    assert.match(turn.answer, /10:30/);
+    assert.match(turn.answer, /לאשר/);
+    assert.doesNotMatch(turn.answer, /באיזו שעה לקבוע/);
+    assert.equal(store.get().pendingConfirmation?.action, "book_appointment");
+    assert.equal(store.get().pendingAction, null);
+  } finally {
+    restore();
+  }
+});
+
+test("create without best available still asks for missing time", async () => {
+  const session = emptySession();
+  const store = inMemorySessionStore(session);
+
+  const turn = await tryHandleCalendarIntentContinuation({
+    session: store.get(),
+    message: "תקבעי תור לרון מחר",
+    channel: "web_chat",
+    organizationId: session.organizationId,
+    userId: session.userId,
+    role: "owner",
+    saveSession: store.save,
+  });
+
+  assert.equal(turn.handled, true);
+  assert.match(turn.result?.answer ?? "", /שעה/);
+  assert.doesNotMatch(turn.result?.answer ?? "", /לאשר/);
+  assert.equal(store.get().pendingAction?.action, "calendar_intent_continuation");
+});

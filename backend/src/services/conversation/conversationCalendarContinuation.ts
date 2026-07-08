@@ -7,7 +7,7 @@ import {
   type CalendarPendingIntent,
 } from "../calendar/calendarPendingIntent.js";
 import { parseCalendarIntent } from "../calendar/calendarIntentParser.js";
-import { extractRescheduleAppointment, fulfillCalendarPendingIntent } from "../natalie.js";
+import { extractRescheduleAppointment, fulfillCalendarPendingIntent, tryBuildBestAvailableCreateAppointment } from "../natalie.js";
 import { getChannelAdapter } from "./conversationAdapters.js";
 import { evaluateConfirmationPolicy } from "./conversationConfirmationPolicy.js";
 import {
@@ -141,6 +141,65 @@ async function persistCalendarContinuationTurn(input: {
   });
 
   return { updatedSession, result };
+}
+
+async function tryHandleBestAvailableCreateTurn(input: {
+  session: ConversationSessionRecord;
+  channel: NatalieChannel;
+  message: string;
+  organizationId: string;
+  role?: string | null;
+  permissions?: string[];
+  saveSession?: typeof saveConversationSession;
+}): Promise<{
+  handled: boolean;
+  result?: ProcessNatalieTurnResult;
+  updatedSession?: ConversationSessionRecord;
+} | null> {
+  const bestAvailable = await tryBuildBestAvailableCreateAppointment(input.organizationId, input.message);
+  if (bestAvailable.kind === "not_applicable") return null;
+
+  if (bestAvailable.kind === "empty") {
+    const persisted = await persistCalendarContinuationTurn({
+      session: input.session,
+      channel: input.channel,
+      message: input.message,
+      answer: bestAvailable.answer,
+      pendingAction: null,
+      pendingConfirmation: null,
+      role: input.role,
+      permissions: input.permissions,
+      saveSession: input.saveSession,
+    });
+    return { handled: true, ...persisted };
+  }
+
+  const brainResponse = bestAvailable.response;
+  const extracted = extractCalendarBrainResponse(brainResponse as Record<string, unknown>);
+  const pendingConfirmation =
+    extracted.action && extracted.proposal
+      ? buildCalendarPendingConfirmation(
+          extracted.action,
+          extracted.proposal,
+          input.channel,
+          input.role,
+          input.permissions
+        )
+      : null;
+
+  const persisted = await persistCalendarContinuationTurn({
+    session: input.session,
+    channel: input.channel,
+    message: input.message,
+    answer: brainResponse.answer ?? "",
+    brainResponse,
+    pendingAction: null,
+    pendingConfirmation,
+    role: input.role,
+    permissions: input.permissions,
+    saveSession: input.saveSession,
+  });
+  return { handled: true, ...persisted };
 }
 
 async function resolvePendingIntentProposal(
@@ -299,6 +358,11 @@ export async function tryHandleCalendarIntentContinuation(input: {
       return { handled: false };
     }
 
+    const bestAvailableCreate = await tryHandleBestAvailableCreateTurn(input);
+    if (bestAvailableCreate) {
+      return bestAvailableCreate;
+    }
+
     const answer = clarificationForSlotFilling(initial, input.message);
     console.info("[natalie/flow] fallback", {
       requestId: input.requestId ?? null,
@@ -335,6 +399,10 @@ export async function tryHandleCalendarIntentContinuation(input: {
     }
     if (initial.intent === "move_appointment" && extractRescheduleAppointment(input.message)) {
       return { handled: false };
+    }
+    const bestAvailableCreate = await tryHandleBestAvailableCreateTurn(input);
+    if (bestAvailableCreate) {
+      return bestAvailableCreate;
     }
     const answer = clarificationForSlotFilling(initial, input.message);
     const persisted = await persistCalendarContinuationTurn({

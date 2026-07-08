@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { prisma } from "../lib/prisma.js";
 import { askNatalieBusinessQuestion } from "./natalie.js";
+import { processNatalieTurn } from "./conversation/conversationRuntime.js";
 import {
   isAppointmentWriteIntent,
   isAvailabilityQuestion,
@@ -403,14 +404,51 @@ test("PR-2: best available suggest picks ranked slot not 07:00", async () => {
 test("PR-2: create with best available picks ranked slot not 07:00", async () => {
   const restore = installAvailabilityPrismaStub();
   try {
-    const result = await askNatalieBusinessQuestion({
+    const session = {
+      id: "sess-best-create",
       organizationId: ORG,
-      question: "תקבעי לי פגישה עם רון בזמן הכי טוב מחר",
-    });
-    assert.equal("action" in result && result.action, "book_appointment");
-    if (!("action" in result) || result.action !== "book_appointment") return;
-    assert.equal(result.proposal.time, "10:30");
-    assert.notEqual(result.proposal.time, "07:00");
+      userId: "user-best",
+      currentChannel: "web_chat" as const,
+      structuredHistory: [],
+      pendingAction: null,
+      pendingConfirmation: null,
+      interruptionState: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastMessageAt: new Date().toISOString(),
+    };
+    const sessions = new Map([[session.id, session]]);
+
+    const turn = await processNatalieTurn(
+      {
+        organizationId: ORG,
+        userId: "user-best",
+        channel: "web_chat",
+        modality: "text",
+        message: "תקבעי תור לרון בזמן הכי טוב מחר",
+        sessionId: session.id,
+        role: "owner",
+      },
+      {
+        resolveSession: async () => sessions.get(session.id)!,
+        saveSession: async (next) => {
+          sessions.set(next.id, next);
+          return next;
+        },
+        ask: async (input) =>
+          askNatalieBusinessQuestion({
+            organizationId: input.organizationId,
+            question: input.question,
+            conversationContext: input.conversationContext,
+          }),
+      }
+    );
+
+    assert.equal("action" in turn && turn.action, "book_appointment");
+    if (!("action" in turn) || turn.action !== "book_appointment") return;
+    assert.equal(turn.proposal.time, "10:30");
+    assert.notEqual(turn.proposal.time, "07:00");
+    assert.doesNotMatch(turn.answer, /באיזו שעה לקבוע/);
   } finally {
     restore();
   }

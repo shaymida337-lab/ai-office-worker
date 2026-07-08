@@ -276,6 +276,63 @@ export function buildCreateAppointmentResponse(
   };
 }
 
+export type BestAvailableCreateAppointmentResult =
+  | { kind: "not_applicable" }
+  | { kind: "empty"; answer: string }
+  | { kind: "ready"; response: NatalieClaudeResponse };
+
+export async function tryBuildBestAvailableCreateAppointment(
+  organizationId: string,
+  question: string,
+  deps?: AskNatalieDeps
+): Promise<BestAvailableCreateAppointmentResult> {
+  const preview = parseCalendarIntent(question, { now: deps?.now });
+  if (preview.intent !== "create_appointment" || !isBestAvailablePhrase(question)) {
+    return { kind: "not_applicable" };
+  }
+
+  const loadTimezone = deps?.loadTimezone ?? loadOrganizationTimezone;
+  const timeZone = await loadTimezone(organizationId);
+  const extraction = parseCalendarIntent(question, { timeZone, now: deps?.now });
+
+  if (
+    !extraction.customerName ||
+    !extraction.dayReference ||
+    extraction.time ||
+    extraction.missingFields.some((field) => field !== "time")
+  ) {
+    return { kind: "not_applicable" };
+  }
+
+  const best = await findBestAvailableSlotForOrganization({
+    organizationId,
+    dayReference: extraction.dayReference,
+    timeConstraints: parseSlotTimeConstraints(question),
+    now: deps?.now,
+  });
+
+  if (!best) {
+    return {
+      kind: "empty",
+      answer: calendarMessages.availabilityEmpty(extraction.dayReference),
+    };
+  }
+
+  const complete: CalendarIntentExtraction = {
+    ...extraction,
+    time: best.time,
+    missingFields: extraction.missingFields.filter((field) => field !== "time"),
+    confidence: "high",
+  };
+
+  const response = buildCreateAppointmentResponse(complete);
+  if (!response || !("action" in response) || response.action !== "book_appointment") {
+    return { kind: "not_applicable" };
+  }
+
+  return { kind: "ready", response };
+}
+
 async function maybeBuildCreateAppointmentProposal(
   organizationId: string,
   question: string,
@@ -285,33 +342,15 @@ async function maybeBuildCreateAppointmentProposal(
   const preview = parseCalendarIntent(question, { now: deps?.now });
   if (preview.intent !== "create_appointment") return null;
 
-  const loadTimezone = deps?.loadTimezone ?? loadOrganizationTimezone;
-  const timeZone = await loadTimezone(organizationId);
-  let extraction = parseCalendarIntent(question, { timeZone, now: deps?.now });
-
-  if (
-    isBestAvailablePhrase(question) &&
-    extraction.customerName &&
-    extraction.dayReference &&
-    !extraction.time
-  ) {
-    const best = await findBestAvailableSlotForOrganization({
-      organizationId,
-      dayReference: extraction.dayReference,
-      timeConstraints: parseSlotTimeConstraints(question),
-      now: deps?.now,
-    });
-    if (best) {
-      extraction = {
-        ...extraction,
-        time: best.time,
-        missingFields: extraction.missingFields.filter((field) => field !== "time"),
-        confidence:
-          extraction.customerName && extraction.dayReference ? "high" : extraction.confidence,
-      };
-    }
+  if (isBestAvailablePhrase(question)) {
+    const bestAvailable = await tryBuildBestAvailableCreateAppointment(organizationId, question, deps);
+    if (bestAvailable.kind === "ready") return bestAvailable.response;
+    if (bestAvailable.kind === "empty") return { answer: bestAvailable.answer };
   }
 
+  const loadTimezone = deps?.loadTimezone ?? loadOrganizationTimezone;
+  const timeZone = await loadTimezone(organizationId);
+  const extraction = parseCalendarIntent(question, { timeZone, now: deps?.now });
   if (shouldDeferCalendarClarificationToSession(extraction)) return null;
   return buildCreateAppointmentResponse(extraction);
 }
