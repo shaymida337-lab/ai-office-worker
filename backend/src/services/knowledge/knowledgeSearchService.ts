@@ -1,24 +1,21 @@
 /**
- * Knowledge search service — the ONE knowledge engine.
+ * Knowledge search service — delegates to Natalie Business Memory (Phase 2).
  *
- * Chat, voice, WhatsApp, and any future channel call this exact function. It
- * parses the deterministic intent (unless one is supplied), queries the
- * organization-isolated repository, and returns both structured results and a
- * ready-to-send Hebrew message. No channel-specific document logic lives
- * anywhere else.
+ * @deprecated Prefer runBusinessMemoryLookup from businessMemorySearchService.
+ * Kept so legacy imports and /knowledge/* routes stay compatible.
  */
 
+import {
+  runBusinessMemoryLookup,
+  type BusinessMemoryLookupResult,
+} from "../businessMemory/businessMemorySearchService.js";
 import {
   parseKnowledgeIntent,
   type KnowledgeIntentExtraction,
   type KnowledgeIntentMode,
 } from "./knowledgeIntentParser.js";
-import {
-  countKnowledgeDocuments,
-  searchKnowledgeDocuments,
-} from "./knowledgeRepository.js";
-import { knowledgeMessages } from "./knowledgeMessages.js";
 import type { KnowledgeDocumentSummary } from "./knowledgeTypes.js";
+import type { BusinessMemoryDocument } from "../businessMemory/businessMemoryTypes.js";
 
 export type KnowledgeLookupResult = {
   intent: KnowledgeIntentExtraction;
@@ -28,57 +25,52 @@ export type KnowledgeLookupResult = {
   message: string;
 };
 
+function toKnowledgeSummary(doc: BusinessMemoryDocument): KnowledgeDocumentSummary {
+  return {
+    id: doc.id,
+    title: doc.title,
+    category: doc.documentType,
+    fileName: doc.fileName,
+    customerName: doc.customer,
+    supplierName: doc.supplier,
+    tags: doc.tags,
+    driveUrl: doc.driveUrl,
+    storageLocation: doc.storageLocation,
+    uploadedAt: doc.createdAt,
+  };
+}
+
+function mapResult(lookup: BusinessMemoryLookupResult): KnowledgeLookupResult {
+  const extraction = parseKnowledgeIntent(lookup.intent.rawText);
+  return {
+    intent: extraction,
+    mode: lookup.mode,
+    documents: lookup.documents.map(toKnowledgeSummary),
+    count: lookup.count,
+    message: lookup.message,
+  };
+}
+
 export async function runKnowledgeLookup(input: {
   organizationId: string;
   text: string;
   extraction?: KnowledgeIntentExtraction;
 }): Promise<KnowledgeLookupResult> {
-  const extraction = input.extraction ?? parseKnowledgeIntent(input.text);
-
-  if (extraction.mode === "count") {
-    const count = await countKnowledgeDocuments({
-      organizationId: input.organizationId,
-      category: extraction.category,
-    });
-    return {
-      intent: extraction,
-      mode: "count",
-      documents: [],
-      count,
-      message: knowledgeMessages.count(count, extraction.category ?? "other"),
-    };
-  }
-
-  const documents = await searchKnowledgeDocuments({
+  const lookup = await runBusinessMemoryLookup({
     organizationId: input.organizationId,
-    category: extraction.category,
-    subject: extraction.subject,
+    text: input.text,
+    extraction: input.extraction
+      ? {
+          intent:
+            input.extraction.intent === "knowledge_lookup"
+              ? "business_memory_lookup"
+              : "unknown",
+          mode: input.extraction.mode,
+          documentType: input.extraction.category,
+          subject: input.extraction.subject,
+          rawText: input.extraction.rawText,
+        }
+      : undefined,
   });
-
-  if (documents.length === 0) {
-    return {
-      intent: extraction,
-      mode: extraction.mode,
-      documents,
-      count: 0,
-      message: knowledgeMessages.notFound(extraction.subject),
-    };
-  }
-
-  let message: string;
-  if (extraction.mode === "list") {
-    message = knowledgeMessages.list(documents);
-  } else if (documents.length === 1) {
-    message = knowledgeMessages.foundOne(documents[0]);
-  } else {
-    message = knowledgeMessages.foundMany(documents);
-  }
-
-  return {
-    intent: extraction,
-    mode: extraction.mode,
-    documents,
-    count: documents.length,
-    message,
-  };
+  return mapResult(lookup);
 }

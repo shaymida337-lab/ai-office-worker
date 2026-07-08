@@ -170,6 +170,7 @@ export async function createKnowledgeDocument(
   const row = await prisma.knowledgeDocument.create({
     data: {
       organizationId: input.organizationId,
+      source: "manual",
       category: input.category,
       title: input.title,
       fileName: input.fileName ?? null,

@@ -113,6 +113,7 @@ import {
 } from "../services/verification/verificationCenter.js";
 import { calendarEngineRouter } from "./calendarEngineRoutes.js";
 import { knowledgeRouter } from "./knowledgeRoutes.js";
+import { businessMemoryRouter } from "./businessMemoryRoutes.js";
 import { parseWallClockAwareDateTime } from "./calendarEngineValidation.js";
 import { signLocalUploadUrlIfNeeded } from "./uploadsRoutes.js";
 import { scannerHealthRouter } from "./scannerHealthRoutes.js";
@@ -197,6 +198,7 @@ apiRouter.use(authMiddleware);
 apiRouter.use(secureRouteGuards);
 apiRouter.use(calendarEngineRouter);
 apiRouter.use(knowledgeRouter);
+apiRouter.use(businessMemoryRouter);
 apiRouter.use(scannerHealthRouter);
 apiRouter.use(integrityWatchRouter);
 apiRouter.use(auditLogRouter);

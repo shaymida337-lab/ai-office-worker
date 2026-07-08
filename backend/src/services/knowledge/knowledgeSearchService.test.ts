@@ -7,6 +7,7 @@ import { runKnowledgeLookup } from "./knowledgeSearchService.js";
 type Row = {
   id: string;
   organizationId: string;
+  source: string;
   title: string;
   category: string;
   fileName: string | null;
@@ -15,6 +16,9 @@ type Row = {
   tags: string[];
   driveUrl: string | null;
   storageLocation: string | null;
+  metadata: null;
+  createdAt: Date;
+  updatedAt: Date;
   uploadedAt: Date;
 };
 
@@ -44,9 +48,11 @@ function row(
   supplierName: string | null = null,
   tags: string[] = []
 ): Row {
+  const uploadedAt = new Date("2026-07-01T10:00:00.000Z");
   return {
     id,
     organizationId,
+    source: "manual",
     title,
     category,
     fileName,
@@ -55,7 +61,10 @@ function row(
     tags,
     driveUrl: `https://drive.example/${id}`,
     storageLocation: null,
-    uploadedAt: new Date("2026-07-01T10:00:00.000Z"),
+    metadata: null,
+    createdAt: uploadedAt,
+    updatedAt: uploadedAt,
+    uploadedAt,
   };
 }
 

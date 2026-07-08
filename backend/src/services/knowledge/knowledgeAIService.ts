@@ -1,14 +1,11 @@
 /**
- * Knowledge Center command entry point used by the HTTP route.
+ * Knowledge Center command entry point — delegates to Business Memory (Phase 2).
  *
- * Read-only: this never mutates. It delegates to the single knowledge engine
- * (runKnowledgeLookup) so the API behaves identically to the chat/voice/WhatsApp
- * paths that go through the Natalie brain.
+ * @deprecated Prefer processBusinessMemoryCommand.
  */
 
+import { processBusinessMemoryCommand } from "../businessMemory/businessMemoryAIService.js";
 import { parseKnowledgeIntent } from "./knowledgeIntentParser.js";
-import { runKnowledgeLookup } from "./knowledgeSearchService.js";
-import { knowledgeMessages } from "./knowledgeMessages.js";
 import type { KnowledgeDocumentSummary, KnowledgeCategory } from "./knowledgeTypes.js";
 
 export type ProcessKnowledgeCommandInput = {
@@ -33,43 +30,51 @@ export type KnowledgeAIResponse = {
   message: string;
 };
 
+function toKnowledgeSummary(doc: {
+  id: string;
+  title: string;
+  documentType: KnowledgeCategory;
+  fileName: string | null;
+  customer: string | null;
+  supplier: string | null;
+  tags: string[];
+  driveUrl: string | null;
+  storageLocation: string | null;
+  createdAt: string;
+}): KnowledgeDocumentSummary {
+  return {
+    id: doc.id,
+    title: doc.title,
+    category: doc.documentType,
+    fileName: doc.fileName,
+    customerName: doc.customer,
+    supplierName: doc.supplier,
+    tags: doc.tags,
+    driveUrl: doc.driveUrl,
+    storageLocation: doc.storageLocation,
+    uploadedAt: doc.createdAt,
+  };
+}
+
 export async function processKnowledgeCommand(
   input: ProcessKnowledgeCommandInput
 ): Promise<KnowledgeAIResponse> {
-  const extraction = parseKnowledgeIntent(input.text);
-
-  if (extraction.intent !== "knowledge_lookup") {
-    return {
-      intent: {
-        intent: "unknown",
-        mode: extraction.mode,
-        category: extraction.category,
-        subject: extraction.subject,
-      },
-      result: { ok: false, mode: extraction.mode, count: 0, documents: [] },
-      message: knowledgeMessages.notFound(null),
-    };
-  }
-
-  const lookup = await runKnowledgeLookup({
-    organizationId: input.organizationId,
-    text: input.text,
-    extraction,
-  });
+  const legacyIntent = parseKnowledgeIntent(input.text);
+  const response = await processBusinessMemoryCommand(input);
 
   return {
     intent: {
-      intent: extraction.intent,
-      mode: lookup.mode,
-      category: extraction.category,
-      subject: extraction.subject,
+      intent: legacyIntent.intent,
+      mode: response.intent.mode,
+      category: response.intent.documentType,
+      subject: response.intent.subject,
     },
     result: {
-      ok: true,
-      mode: lookup.mode,
-      count: lookup.count,
-      documents: lookup.documents,
+      ok: response.result.ok,
+      mode: response.result.mode,
+      count: response.result.count,
+      documents: response.result.documents.map(toKnowledgeSummary),
     },
-    message: lookup.message,
+    message: response.message,
   };
 }

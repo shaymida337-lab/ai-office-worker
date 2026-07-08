@@ -104,13 +104,17 @@ model Organization {
   knowledgeDocuments KnowledgeDocument[]
 }
 
-/// Knowledge Center (Phase 1): unified, organization-scoped business document
-/// repository. Read-first infrastructure — future phases add OCR text,
-/// AI summaries, and semantic search on top of these same rows.
+/// Natalie Business Memory (Phase 1–2): unified, organization-scoped business
+/// document store. Every source (manual upload, Google Drive, future CRM/Gmail)
+/// maps into these rows. Future phases add OCR text, AI summaries, and semantic
+/// search on top of the same table.
 model KnowledgeDocument {
   id              String   @id @default(cuid())
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // manual | google_drive | knowledge — which adapter registered this row
+  source          String   @default("manual")
 
   // contract | agreement | warranty | quotation | manual | license | certificate | other
   category        String   @default("other")
@@ -133,6 +137,9 @@ model KnowledgeDocument {
   driveUrl        String?
   driveFileId     String?
 
+  // Extensible per-source payload (Drive mimeType, folder path, sync revision…)
+  metadata        Json?
+
   createdById     String?
   createdByName   String?
 
@@ -143,6 +150,8 @@ model KnowledgeDocument {
   @@index([organizationId])
   @@index([organizationId, category])
   @@index([organizationId, clientId])
+  @@index([organizationId, source])
+  @@index([organizationId, driveFileId])
   @@map("knowledge_documents")
 }
 
