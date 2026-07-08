@@ -31,6 +31,12 @@ import {
 } from "./calendar/calendarIntentParser.js";
 import { calendarMessages } from "./calendar/calendarMessages.js";
 import type { CalendarPendingIntent } from "./calendar/calendarPendingIntent.js";
+import {
+  buildLastListedAppointmentsPendingAction,
+  parseListedAppointmentOrdinalCommand,
+  readLastListedAppointments,
+  resolveListedAppointmentByOrdinal,
+} from "./conversation/lastListedAppointments.js";
 import { parseBusinessMemoryIntent } from "./businessMemory/businessMemoryIntentParser.js";
 import { runBusinessMemoryLookup } from "./businessMemory/businessMemorySearchService.js";
 import { businessMemoryMessages } from "./businessMemory/businessMemoryMessages.js";
@@ -95,6 +101,14 @@ export async function askNatalieBusinessQuestion(input: {
     deps
   );
   if (listAppointmentsResponse) return listAppointmentsResponse;
+
+  const listedFollowUpResponse = await maybeBuildListedAppointmentFollowUp(
+    input.organizationId,
+    input.question,
+    input.conversationContext,
+    deps
+  );
+  if (listedFollowUpResponse) return listedFollowUpResponse;
 
   const partialCalendarResponse = maybeBuildPartialCalendarClarification(input.question);
   if (partialCalendarResponse) return partialCalendarResponse;
@@ -1269,12 +1283,135 @@ async function maybeBuildListAppointmentsResponse(
   }
 
   const lines = filtered.map((item) => formatListEntry(item, timeZone, includeDate));
-  if (googleWarning) {
+  const answer = googleWarning
+    ? calendarMessages.listWithGoogleWarning(header, lines.join("\n"), googleWarning)
+    : `${header}\n${lines.join("\n")}`;
+  const listedPending = buildLastListedAppointmentsPendingAction(filtered);
+  return {
+    action: "last_listed_appointments",
+    proposal: listedPending!.proposal as {
+      items: Array<{
+        appointmentId: string;
+        source: "appointment" | "calendar_event" | "google_calendar";
+        startTime: string;
+        endTime: string;
+        customerName: string;
+        serviceName?: string;
+        clientId?: string | null;
+      }>;
+      listedAt?: string;
+    },
+    answer,
+  };
+}
+
+async function maybeBuildListedAppointmentFollowUp(
+  organizationId: string,
+  question: string,
+  conversationContext:
+    | {
+        pendingAction?: { action: string; proposal: Record<string, unknown> } | null;
+        structuredHistory?: Array<{
+          role: "user" | "assistant";
+          content: string;
+          action?: string | null;
+          proposal?: Record<string, unknown> | null;
+        }>;
+      }
+    | undefined,
+  deps?: AskNatalieDeps
+): Promise<NatalieClaudeResponse | null> {
+  const command = parseListedAppointmentOrdinalCommand(question);
+  if (!command) return null;
+
+  const listed = readLastListedAppointments({
+    pendingAction: conversationContext?.pendingAction ?? null,
+    structuredHistory: (conversationContext?.structuredHistory ?? []).map((turn) => ({
+      id: "legacy",
+      role: turn.role,
+      text: turn.content,
+      action: turn.action ?? null,
+      proposal: turn.proposal ?? null,
+      channel: "web_chat" as const,
+      at: new Date().toISOString(),
+    })),
+  });
+
+  if (listed.length === 0) {
     return {
-      answer: calendarMessages.listWithGoogleWarning(header, lines.join("\n"), googleWarning),
+      answer: "אין לי רשימת תורים מהשיחה האחרונה. שאלי קודם מה יש ביומן, ואז אפשר לבחור ראשון/שני/אחרון.",
     };
   }
-  return { answer: `${header}\n${lines.join("\n")}` };
+
+  const item = resolveListedAppointmentByOrdinal(listed, command.ordinal);
+  if (!item) {
+    return {
+      answer: `יש לי רק ${listed.length} תורים ברשימה האחרונה. לאיזה מהם התכוונת?`,
+    };
+  }
+
+  const loadTimezone = deps?.loadTimezone ?? loadOrganizationTimezone;
+  const timeZone = await loadTimezone(organizationId);
+  const when = formatAppointmentWhen(new Date(item.startTime), timeZone);
+
+  if (command.intent === "inspect") {
+    const service = item.serviceName?.trim();
+    return {
+      answer: service
+        ? `האחרון ברשימה: ${item.customerName} ב${when} — ${service}.`
+        : `האחרון ברשימה: ${item.customerName} ב${when}.`,
+    };
+  }
+
+  if (item.source === "google_calendar") {
+    return {
+      answer:
+        "את האירוע הזה אני רואה ב-Google Calendar, אבל אני לא יכולה לבטל או להעביר אותו מכאן. בחרי תור שנשמר אצלי.",
+    };
+  }
+
+  if (command.intent === "cancel_appointment") {
+    return {
+      action: "cancel_appointment",
+      proposal: {
+        appointmentId: item.appointmentId,
+        clientName: item.customerName,
+        ...(item.clientId ? { clientId: item.clientId } : {}),
+        when,
+        ...(item.serviceName ? { serviceName: item.serviceName } : {}),
+      },
+      answer: calendarMessages.cancelConfirmation(item.customerName, when),
+    };
+  }
+
+  const dayReference = extractCalendarDayReference(question);
+  const time = parseHebrewTime(question);
+  if (!dayReference || !time) {
+    if (!dayReference) return { answer: calendarMessages.rescheduleMissingDate() };
+    return { answer: calendarMessages.rescheduleMissingTime() };
+  }
+
+  const resolvedStartTime = resolveAppointmentDateTime({
+    dayReference,
+    time,
+    timeZone,
+  });
+  if (!resolvedStartTime) {
+    return { answer: calendarMessages.rescheduleBadDatetime() };
+  }
+  const newWhen = formatAppointmentWhen(resolvedStartTime, timeZone);
+  return {
+    action: "reschedule_appointment",
+    proposal: {
+      appointmentId: item.appointmentId,
+      clientName: item.customerName,
+      ...(item.clientId ? { clientId: item.clientId } : {}),
+      newDayReference: dayReference,
+      newTime: time,
+      newWhen,
+    },
+    answer: calendarMessages.rescheduleConfirmation(item.customerName, newWhen),
+  };
 }
 
 /**

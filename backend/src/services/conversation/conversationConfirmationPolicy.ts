@@ -30,6 +30,7 @@ const ACTION_RISK: Record<string, ActionRisk> = {
   cancel_appointments: "destructive",
   reschedule_appointment: "destructive",
   suggest_available_times: "read_only",
+  last_listed_appointments: "read_only",
 };
 
 function confirmationTypeForRisk(risk: ActionRisk): ConfirmationType {

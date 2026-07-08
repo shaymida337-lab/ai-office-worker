@@ -153,6 +153,22 @@ export type NatalieClaudeResponse =
       answer: string;
     }
   | {
+      action: "last_listed_appointments";
+      proposal: {
+        items: Array<{
+          appointmentId: string;
+          source: "appointment" | "calendar_event" | "google_calendar";
+          startTime: string;
+          endTime: string;
+          customerName: string;
+          serviceName?: string;
+          clientId?: string | null;
+        }>;
+        listedAt?: string;
+      };
+      answer: string;
+    }
+  | {
       action: "suggest_available_times";
       proposal: {
         slots: Array<{
@@ -804,6 +820,26 @@ export function isNatalieClaudeResponse(value: unknown): value is NatalieClaudeR
         (proposal.newTime === undefined || typeof proposal.newTime === "string") &&
         (proposal.newWhen === undefined || typeof proposal.newWhen === "string")
     );
+  }
+  if (response.action === "last_listed_appointments") {
+    const proposal = response.proposal as { items?: unknown; listedAt?: unknown } | undefined;
+    if (!proposal || !Array.isArray(proposal.items)) return false;
+    if (proposal.listedAt !== undefined && typeof proposal.listedAt !== "string") return false;
+    return proposal.items.every((item) => {
+      if (!item || typeof item !== "object") return false;
+      const row = item as Record<string, unknown>;
+      return (
+        typeof row.appointmentId === "string" &&
+        row.appointmentId.trim() &&
+        typeof row.customerName === "string" &&
+        row.customerName.trim() &&
+        typeof row.startTime === "string" &&
+        typeof row.endTime === "string" &&
+        (row.source === "appointment" ||
+          row.source === "calendar_event" ||
+          row.source === "google_calendar")
+      );
+    });
   }
   if (response.action === "suggest_available_times") {
     const proposal = response.proposal as {

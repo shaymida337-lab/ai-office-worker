@@ -228,6 +228,12 @@ export async function executeNataliePendingProposal(input: {
         payload: result,
       };
     }
+    case "last_listed_appointments":
+      return {
+        ok: true,
+        action: input.action,
+        message: "זו רשימת תורים לקריאה בלבד — אין פעולה לביצוע.",
+      };
     default:
       return {
         ok: false,

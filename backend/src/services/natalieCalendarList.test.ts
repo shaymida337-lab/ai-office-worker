@@ -86,9 +86,13 @@ test('list: "מה יש לי מחר ביומן?" returns tomorrow appointments on
       { organizationId: ORG, question: "מה יש לי מחר ביומן?" },
       throwingClaude
     );
-    assert.ok(!("action" in res));
+    assert.equal("action" in res && res.action, "last_listed_appointments");
     assert.match(res.answer ?? "", /שרית/);
     assert.doesNotMatch(res.answer ?? "", /דני/);
+    if ("action" in res && res.action === "last_listed_appointments") {
+      assert.equal(res.proposal.items.length, 1);
+      assert.equal(res.proposal.items[0]?.customerName, "שרית");
+    }
   } finally {
     restore();
   }
@@ -104,9 +108,12 @@ test('list: "מה התורים שלי?" returns all upcoming appointments', asyn
       { organizationId: ORG, question: "מה התורים שלי?" },
       throwingClaude
     );
-    assert.ok(!("action" in res));
+    assert.equal("action" in res && res.action, "last_listed_appointments");
     assert.match(res.answer ?? "", /שרית/);
     assert.match(res.answer ?? "", /דני/);
+    if ("action" in res && res.action === "last_listed_appointments") {
+      assert.equal(res.proposal.items.length, 2);
+    }
   } finally {
     restore();
   }
@@ -218,8 +225,11 @@ test("CalendarEvent-stored booking is discoverable by Natalie's list", async () 
       { organizationId: ORG, question: "מה יש לי מחר ביומן?" },
       throwingClaude
     );
-    assert.ok(!("action" in res));
+    assert.equal("action" in res && res.action, "last_listed_appointments");
     assert.match(res.answer ?? "", /מירי/);
+    if ("action" in res && res.action === "last_listed_appointments") {
+      assert.equal(res.proposal.items[0]?.appointmentId, "event-1");
+    }
   } finally {
     prisma.organization.findUnique = originalOrg;
     prisma.client.findMany = originalClient;

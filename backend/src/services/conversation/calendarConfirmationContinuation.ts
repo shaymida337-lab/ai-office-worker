@@ -29,6 +29,12 @@ import {
 import { withIdentityConfirmedProposal } from "../scheduling/calendarAppointmentSafety.js";
 import { evaluateVoiceExecutionReadiness } from "./voice/voiceZeroWrongAction.js";
 import { hebrewSafetyFallback } from "./natalieSafetyEvaluation.js";
+import {
+  canReviseCalendarPendingConfirmation,
+  extractCalendarConfirmationRevision,
+  isCalendarConfirmationRevisionPhrase,
+  reviseCalendarPendingProposal,
+} from "./calendarConfirmationRevision.js";
 
 function buildPendingConfirmation(
   action: string,
@@ -67,12 +73,110 @@ export async function tryHandleCalendarConfirmationTurn(input: {
   if (!pending) return { handled: false };
 
   const intent = parseVoiceConfirmationIntent(input.message);
+  const revision =
+    intent === "none" &&
+    canReviseCalendarPendingConfirmation(pending.action) &&
+    isCalendarConfirmationRevisionPhrase(input.message)
+      ? extractCalendarConfirmationRevision(input.message)
+      : null;
+
   const userTurn = createConversationTurn({
     role: "user",
     text: input.message,
     channel: input.channel,
   });
   const historyWithUser = appendTurn(input.session.structuredHistory, userTurn);
+
+  if (revision) {
+    const revised = reviseCalendarPendingProposal(pending.action, pending.proposal, revision);
+    if ("clarify" in revised) {
+      const answer = revised.clarify;
+      const assistantTurn = createConversationTurn({
+        role: "assistant",
+        text: answer,
+        channel: input.channel,
+        confirmationState: "pending",
+      });
+      const updatedSession = await saveConversationSession({
+        ...input.session,
+        currentChannel: input.channel,
+        structuredHistory: appendTurn(historyWithUser, assistantTurn),
+        lastMessageAt: new Date().toISOString(),
+      });
+      return {
+        handled: true,
+        updatedSession,
+        result: {
+          answer,
+          conversationSessionId: updatedSession.id,
+          displayResponse: answer,
+          spokenResponse: answer,
+          confirmation: evaluateConfirmationPolicy({
+            action: pending.action,
+            channel: input.channel,
+            role: input.role,
+            permissions: input.permissions,
+          }),
+          zeroWrongAction: { ready: true, violations: [] },
+          reliability: {
+            correlationId: randomUUID(),
+            sessionId: updatedSession.id,
+            turnId: randomUUID(),
+            health: "Healthy",
+          },
+        },
+      };
+    }
+
+    const nextPending = buildCalendarPendingConfirmation(
+      pending.action,
+      revised.proposal,
+      input.channel,
+      input.role,
+      input.permissions
+    );
+    const answer = revised.answer;
+    const assistantTurn = createConversationTurn({
+      role: "assistant",
+      text: answer,
+      channel: input.channel,
+      action: pending.action,
+      proposal: revised.proposal,
+      confirmationState: "pending",
+    });
+    const updatedSession = await saveConversationSession({
+      ...input.session,
+      currentChannel: input.channel,
+      structuredHistory: appendTurn(historyWithUser, assistantTurn),
+      pendingAction: { action: pending.action, proposal: revised.proposal },
+      pendingConfirmation: nextPending,
+      interruptionState: input.session.interruptionState,
+      lastMessageAt: new Date().toISOString(),
+    });
+    return {
+      handled: true,
+      updatedSession,
+      result: {
+        answer,
+        conversationSessionId: updatedSession.id,
+        displayResponse: answer,
+        spokenResponse: answer,
+        confirmation: evaluateConfirmationPolicy({
+          action: pending.action,
+          channel: input.channel,
+          role: input.role,
+          permissions: input.permissions,
+        }),
+        zeroWrongAction: { ready: true, violations: [] },
+        reliability: {
+          correlationId: randomUUID(),
+          sessionId: updatedSession.id,
+          turnId: randomUUID(),
+          health: "Healthy",
+        },
+      },
+    };
+  }
 
   if (intent === "reject" || intent === "cancel") {
     const answer =

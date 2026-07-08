@@ -61,6 +61,8 @@ function validateProposal(action: string, proposal: Record<string, unknown>): st
         : ["appointment_id_missing"];
     case "suggest_available_times":
       return Array.isArray(proposal.slots) ? [] : ["availability_slots_missing"];
+    case "last_listed_appointments":
+      return Array.isArray(proposal.items) ? [] : ["listed_appointments_missing"];
     default:
       return [];
   }

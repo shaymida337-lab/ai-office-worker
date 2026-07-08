@@ -35,6 +35,7 @@ import {
   tryHandleCalendarConfirmationTurn,
 } from "./calendarConfirmationContinuation.js";
 import { shouldDeferCalendarActionForFuzzyGate } from "../scheduling/calendarActionProposal.js";
+import { LAST_LISTED_APPOINTMENTS_ACTION } from "./lastListedAppointments.js";
 
 export type ProcessNatalieTurnDeps = {
   ask?: typeof askNatalieBusinessQuestion;
@@ -347,7 +348,9 @@ export async function processNatalieTurn(
       pendingAction:
         extracted.action && extracted.proposal
           ? { action: extracted.action, proposal: extracted.proposal }
-          : null,
+          : session.pendingAction?.action === LAST_LISTED_APPOINTMENTS_ACTION
+            ? session.pendingAction
+            : null,
       pendingConfirmation,
       interruptionState: session.interruptionState,
       lastMessageAt: new Date().toISOString(),

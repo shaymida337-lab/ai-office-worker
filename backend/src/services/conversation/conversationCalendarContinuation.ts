@@ -35,6 +35,7 @@ import {
 import { extractActiveCalendarContext } from "../scheduling/calendarAppointmentResolver.js";
 import { parseVoiceConfirmationIntent } from "./voice/voiceConfirmation.js";
 import { calendarMessages } from "../calendar/calendarMessages.js";
+import { parseListedAppointmentOrdinalCommand } from "./lastListedAppointments.js";
 
 function buildTurnResult(params: {
   session: ConversationSessionRecord;
@@ -180,6 +181,12 @@ export async function tryHandleCalendarIntentContinuation(input: {
   updatedSession?: ConversationSessionRecord;
 }> {
   if (input.session.pendingConfirmation) {
+    return { handled: false };
+  }
+
+  // Ordinal references to the last calendar list ("תבטלי את הראשון") must
+  // reach the brain's lastListedAppointments handler — not pending-intent fill.
+  if (parseListedAppointmentOrdinalCommand(input.message)) {
     return { handled: false };
   }
 
