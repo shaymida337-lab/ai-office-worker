@@ -36,6 +36,11 @@ import {
 } from "./calendarConfirmationContinuation.js";
 import { shouldDeferCalendarActionForFuzzyGate } from "../scheduling/calendarActionProposal.js";
 import { LAST_LISTED_APPOINTMENTS_ACTION } from "./lastListedAppointments.js";
+import {
+  logPendingConfirmationEvent,
+  newPendingConfirmationId,
+  stampPendingConfirmation,
+} from "./pendingConfirmationState.js";
 
 export type ProcessNatalieTurnDeps = {
   ask?: typeof askNatalieBusinessQuestion;
@@ -54,15 +59,14 @@ function buildPendingConfirmation(
   confirmation: ReturnType<typeof evaluateConfirmationPolicy>
 ): PendingConfirmation | null {
   if (!confirmation.required) return null;
-  return {
-    confirmationId: randomUUID(),
+  return stampPendingConfirmation({
+    confirmationId: newPendingConfirmationId(),
     action,
     proposal,
     confirmationType: confirmation.confirmationType,
     spokenPrompt: confirmation.spokenPrompt,
     uiPrompt: confirmation.uiPrompt,
-    createdAt: new Date().toISOString(),
-  };
+  });
 }
 
 export async function processNatalieTurn(
@@ -128,6 +132,7 @@ export async function processNatalieTurn(
       channel,
       organizationId: input.organizationId,
       userId: input.userId,
+      requestId,
       role,
       permissions: input.permissions,
     });
@@ -364,11 +369,13 @@ export async function processNatalieTurn(
           )
         : null;
     if (pendingConfirmation) {
-      console.info("[natalie/flow] confirmation_created", {
+      logPendingConfirmationEvent("pending_created", {
         requestId,
         sessionId: activeSession.id,
-        action: pendingConfirmation.action,
         confirmationId: pendingConfirmation.confirmationId,
+        createdAt: pendingConfirmation.createdAt,
+        expiresAt: pendingConfirmation.expiresAt,
+        source: "new",
       });
     }
 
@@ -384,6 +391,7 @@ export async function processNatalieTurn(
       channel,
       action: extracted.action,
       proposal: extracted.proposal,
+      confirmationId: pendingConfirmation?.confirmationId ?? null,
       confirmationState: confirmation.required ? "pending" : "none",
     });
 

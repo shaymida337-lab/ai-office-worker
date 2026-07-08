@@ -23,6 +23,7 @@ export type ConversationTurn = {
   text: string;
   action?: string | null;
   proposal?: Record<string, unknown> | null;
+  confirmationId?: string | null;
   confirmationState?: ConfirmationState;
   channel: NatalieChannel;
   at: string;
@@ -36,6 +37,7 @@ export type PendingConfirmation = {
   spokenPrompt: string;
   uiPrompt: string;
   createdAt: string;
+  expiresAt: string;
 };
 
 export type ConversationInterruptionState = {

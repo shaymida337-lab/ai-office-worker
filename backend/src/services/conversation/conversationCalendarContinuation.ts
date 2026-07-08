@@ -116,6 +116,7 @@ async function persistCalendarContinuationTurn(input: {
     channel: input.channel,
     action: extracted.action,
     proposal: extracted.proposal,
+    confirmationId: input.pendingConfirmation?.confirmationId ?? null,
     confirmationState: input.pendingConfirmation ? "pending" : "none",
   });
   const updatedSession = await save({

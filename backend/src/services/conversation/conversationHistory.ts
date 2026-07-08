@@ -7,6 +7,7 @@ export function createConversationTurn(input: {
   channel: NatalieChannel;
   action?: string | null;
   proposal?: Record<string, unknown> | null;
+  confirmationId?: string | null;
   confirmationState?: ConversationTurn["confirmationState"];
   at?: string;
 }): ConversationTurn {
@@ -16,6 +17,7 @@ export function createConversationTurn(input: {
     text: input.text.trim(),
     action: input.action ?? null,
     proposal: input.proposal ?? null,
+    confirmationId: input.confirmationId ?? null,
     confirmationState: input.confirmationState ?? "none",
     channel: input.channel,
     at: input.at ?? new Date().toISOString(),

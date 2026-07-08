@@ -36,16 +36,12 @@ import {
   reviseCalendarPendingProposal,
 } from "./calendarConfirmationRevision.js";
 import { parseCalendarIntent } from "../calendar/calendarIntentParser.js";
-
-const PENDING_CONFIRMATION_TIMEOUT_MS = 5 * 60 * 1000;
-
-type CalendarConfirmationDeps = {
-  saveSession?: typeof saveConversationSession;
-  executePendingProposal?: typeof executeNataliePendingProposal;
-  claimConfirmationExecutionFn?: typeof claimConfirmationExecution;
-  releaseConfirmationExecutionFn?: typeof releaseConfirmationExecution;
-  saveSessionAfterConfirmationExecutionFn?: typeof saveSessionAfterConfirmationExecution;
-};
+import {
+  logPendingConfirmationEvent,
+  newPendingConfirmationId,
+  resolveActivePendingConfirmation,
+  stampPendingConfirmation,
+} from "./pendingConfirmationState.js";
 
 const FRESH_CALENDAR_COMMAND_PREFIX =
   /^(?:קבע|קבעי|תקבע|תקבעי|תזמן|תזמני)(?:\s|$)/u;
@@ -57,11 +53,13 @@ function shouldBypassPendingConfirmationForFreshCalendarCommand(message: string)
   return parsed.intent === "create_appointment";
 }
 
-function isPendingConfirmationExpired(createdAt: string, nowMs = Date.now()): boolean {
-  const created = Date.parse(createdAt);
-  if (Number.isNaN(created)) return false;
-  return nowMs - created > PENDING_CONFIRMATION_TIMEOUT_MS;
-}
+type CalendarConfirmationDeps = {
+  saveSession?: typeof saveConversationSession;
+  executePendingProposal?: typeof executeNataliePendingProposal;
+  claimConfirmationExecutionFn?: typeof claimConfirmationExecution;
+  releaseConfirmationExecutionFn?: typeof releaseConfirmationExecution;
+  saveSessionAfterConfirmationExecutionFn?: typeof saveSessionAfterConfirmationExecution;
+};
 
 function buildPendingConfirmation(
   action: string,
@@ -72,15 +70,14 @@ function buildPendingConfirmation(
   if (!confirmation.required && !spokenPromptOverride) return null;
   const spokenPrompt = spokenPromptOverride ?? confirmation.spokenPrompt;
   const uiPrompt = spokenPromptOverride ?? confirmation.uiPrompt;
-  return {
-    confirmationId: randomUUID(),
+  return stampPendingConfirmation({
+    confirmationId: newPendingConfirmationId(),
     action,
     proposal,
     confirmationType: spokenPromptOverride ? ("hard" as const) : confirmation.confirmationType,
     spokenPrompt,
     uiPrompt,
-    createdAt: new Date().toISOString(),
-  };
+  });
 }
 
 export async function tryHandleCalendarConfirmationTurn(input: {
@@ -89,6 +86,7 @@ export async function tryHandleCalendarConfirmationTurn(input: {
   channel: NatalieChannel;
   organizationId: string;
   userId: string;
+  requestId?: string | null;
   role?: string | null;
   permissions?: string[];
   deps?: CalendarConfirmationDeps;
@@ -98,18 +96,11 @@ export async function tryHandleCalendarConfirmationTurn(input: {
   updatedSession?: ConversationSessionRecord;
   resetPendingConfirmation?: boolean;
 }> {
-  const pending = input.session.pendingConfirmation;
-  if (!pending) return { handled: false };
-  console.info("[natalie/confirmation] route_entered", {
-    sessionId: input.session.id,
-    action: pending.action,
-    createdAt: pending.createdAt,
-  });
-  console.info("[natalie/confirmation] pending_loaded", {
-    sessionId: input.session.id,
-    action: pending.action,
-    confirmationId: pending.confirmationId,
-  });
+  if (!input.session.pendingConfirmation && !input.session.structuredHistory.some(
+    (turn) => turn.role === "assistant" && turn.confirmationState === "pending"
+  )) {
+    return { handled: false };
+  }
 
   const save = input.deps?.saveSession ?? saveConversationSession;
   const executePendingProposal = input.deps?.executePendingProposal ?? executeNataliePendingProposal;
@@ -120,60 +111,15 @@ export async function tryHandleCalendarConfirmationTurn(input: {
   const saveAfterConfirmation =
     input.deps?.saveSessionAfterConfirmationExecutionFn ?? saveSessionAfterConfirmationExecution;
 
-  if (isPendingConfirmationExpired(pending.createdAt)) {
-    const answer = "פג תוקף האישור הקודם. אפשר לבקש שוב את הפעולה ואאשר מחדש.";
-    const userTurn = createConversationTurn({
-      role: "user",
-      text: input.message,
-      channel: input.channel,
-    });
-    const historyWithUser = appendTurn(input.session.structuredHistory, userTurn);
-    const assistantTurn = createConversationTurn({
-      role: "assistant",
-      text: answer,
-      channel: input.channel,
-      confirmationState: "rejected",
-    });
-    const updatedSession = await save({
-      ...input.session,
-      currentChannel: input.channel,
-      structuredHistory: appendTurn(historyWithUser, assistantTurn),
-      pendingAction: null,
-      pendingConfirmation: null,
-      interruptionState: input.session.interruptionState,
-      lastMessageAt: new Date().toISOString(),
-    });
-    console.info("[natalie/confirmation] pending_expired", {
-      sessionId: input.session.id,
-      action: pending.action,
-      confirmationId: pending.confirmationId,
-    });
-    return {
-      handled: true,
-      updatedSession,
-      result: {
-        answer,
-        conversationSessionId: updatedSession.id,
-        displayResponse: answer,
-        spokenResponse: answer,
-        confirmation: evaluateConfirmationPolicy({
-          action: null,
-          channel: input.channel,
-          role: input.role,
-          permissions: input.permissions,
-        }),
-        zeroWrongAction: { ready: true, violations: [] },
-        reliability: {
-          correlationId: randomUUID(),
-          sessionId: updatedSession.id,
-          turnId: randomUUID(),
-          health: "Healthy",
-        },
-      },
-    };
-  }
-
   if (shouldBypassPendingConfirmationForFreshCalendarCommand(input.message)) {
+    logPendingConfirmationEvent("pending_replaced", {
+      requestId: input.requestId,
+      sessionId: input.session.id,
+      confirmationId: input.session.pendingConfirmation?.confirmationId ?? null,
+      createdAt: input.session.pendingConfirmation?.createdAt ?? null,
+      expiresAt: input.session.pendingConfirmation?.expiresAt ?? null,
+      reason: "fresh_calendar_command",
+    });
     return {
       handled: false,
       resetPendingConfirmation: true,
@@ -181,6 +127,103 @@ export async function tryHandleCalendarConfirmationTurn(input: {
   }
 
   const intent = parseVoiceConfirmationIntent(input.message);
+  const resolved = resolveActivePendingConfirmation({
+    session: input.session,
+    channel: input.channel,
+    role: input.role,
+    permissions: input.permissions,
+  });
+
+  if (!resolved.pending) {
+    if (resolved.hadExpiredSessionPending && (intent === "accept" || intent === "reject" || intent === "cancel")) {
+      const answer = "פג תוקף האישור הקודם. אפשר לבקש שוב את הפעולה ולאשר מחדש.";
+      const userTurn = createConversationTurn({
+        role: "user",
+        text: input.message,
+        channel: input.channel,
+      });
+      const historyWithUser = appendTurn(input.session.structuredHistory, userTurn);
+      const assistantTurn = createConversationTurn({
+        role: "assistant",
+        text: answer,
+        channel: input.channel,
+        confirmationState: "rejected",
+      });
+      const updatedSession = await save({
+        ...input.session,
+        currentChannel: input.channel,
+        structuredHistory: appendTurn(historyWithUser, assistantTurn),
+        pendingAction: null,
+        pendingConfirmation: null,
+        interruptionState: input.session.interruptionState,
+        lastMessageAt: new Date().toISOString(),
+      });
+      logPendingConfirmationEvent("pending_rejected", {
+        requestId: input.requestId,
+        sessionId: input.session.id,
+        confirmationId: input.session.pendingConfirmation?.confirmationId ?? null,
+        createdAt: input.session.pendingConfirmation?.createdAt ?? null,
+        expiresAt: input.session.pendingConfirmation?.expiresAt ?? null,
+        reason: "expired",
+      });
+      return {
+        handled: true,
+        updatedSession,
+        result: {
+          answer,
+          conversationSessionId: updatedSession.id,
+          displayResponse: answer,
+          spokenResponse: answer,
+          confirmation: evaluateConfirmationPolicy({
+            action: null,
+            channel: input.channel,
+            role: input.role,
+            permissions: input.permissions,
+          }),
+          zeroWrongAction: { ready: true, violations: [] },
+          reliability: {
+            correlationId: randomUUID(),
+            sessionId: updatedSession.id,
+            turnId: randomUUID(),
+            health: "Healthy",
+          },
+        },
+      };
+    }
+
+    if (resolved.hadExpiredSessionPending) {
+      logPendingConfirmationEvent("pending_replaced", {
+        requestId: input.requestId,
+        sessionId: input.session.id,
+        confirmationId: input.session.pendingConfirmation?.confirmationId ?? null,
+        createdAt: input.session.pendingConfirmation?.createdAt ?? null,
+        expiresAt: input.session.pendingConfirmation?.expiresAt ?? null,
+        reason: "expired_cleared_for_new_turn",
+      });
+      return { handled: false, resetPendingConfirmation: true };
+    }
+
+    return { handled: false };
+  }
+
+  let pending = resolved.pending;
+  logPendingConfirmationEvent("pending_loaded", {
+    requestId: input.requestId,
+    sessionId: input.session.id,
+    confirmationId: pending.confirmationId,
+    createdAt: pending.createdAt,
+    expiresAt: pending.expiresAt,
+    source: resolved.source,
+    reason: resolved.hadExpiredSessionPending ? "recovered_from_history" : null,
+  });
+
+  if (resolved.hadExpiredSessionPending && resolved.source === "history") {
+    await save({
+      ...input.session,
+      pendingConfirmation: pending,
+      pendingAction: { action: pending.action, proposal: pending.proposal },
+    });
+  }
   const revision =
     intent === "none" &&
     canReviseCalendarPendingConfirmation(pending.action) &&
@@ -250,6 +293,7 @@ export async function tryHandleCalendarConfirmationTurn(input: {
       channel: input.channel,
       action: pending.action,
       proposal: revised.proposal,
+      confirmationId: nextPending?.confirmationId ?? null,
       confirmationState: "pending",
     });
     const updatedSession = await save({
@@ -308,6 +352,14 @@ export async function tryHandleCalendarConfirmationTurn(input: {
       sessionId: input.session.id,
       action: pending.action,
       confirmationId: pending.confirmationId,
+      reason: intent,
+    });
+    logPendingConfirmationEvent("pending_rejected", {
+      requestId: input.requestId,
+      sessionId: input.session.id,
+      confirmationId: pending.confirmationId,
+      createdAt: pending.createdAt,
+      expiresAt: pending.expiresAt,
       reason: intent,
     });
     const confirmation = evaluateConfirmationPolicy({
@@ -488,6 +540,15 @@ export async function tryHandleCalendarConfirmationTurn(input: {
       action: pending.action,
       confirmationId: pending.confirmationId,
       ok: true,
+    });
+    logPendingConfirmationEvent("pending_consumed", {
+      requestId: input.requestId,
+      sessionId: input.session.id,
+      confirmationId: pending.confirmationId,
+      createdAt: pending.createdAt,
+      expiresAt: pending.expiresAt,
+      consumedAt: new Date().toISOString(),
+      reason: "accepted",
     });
   } else {
     updatedSession = await save({

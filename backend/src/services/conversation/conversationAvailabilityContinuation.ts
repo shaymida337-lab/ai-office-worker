@@ -12,6 +12,7 @@ import type {
 import { evaluateZeroWrongAction } from "./conversationZeroWrongAction.js";
 import { parseVoiceConfirmationIntent } from "./voice/voiceConfirmation.js";
 import { newConfirmationId } from "./voice/voiceConfirmationExecution.js";
+import { stampPendingConfirmation } from "./pendingConfirmationState.js";
 import {
   parseSlotLabelParts,
   resolveAvailabilitySlotFromUtterance,
@@ -105,15 +106,14 @@ function buildPendingConfirmation(
   proposal: BookAppointmentProposal,
   confirmation: ReturnType<typeof evaluateConfirmationPolicy>
 ): PendingConfirmation {
-  return {
+  return stampPendingConfirmation({
     confirmationId: newConfirmationId(),
     action: "book_appointment",
     proposal,
     confirmationType: confirmation.confirmationType,
     spokenPrompt: "",
     uiPrompt: confirmation.uiPrompt,
-    createdAt: new Date().toISOString(),
-  };
+  });
 }
 
 function buildTurnResult(params: {

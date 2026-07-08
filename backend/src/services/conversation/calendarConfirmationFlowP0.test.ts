@@ -4,9 +4,19 @@ import { randomUUID } from "crypto";
 
 import { tryHandleCalendarConfirmationTurn } from "./calendarConfirmationContinuation.js";
 import type { ConversationSessionRecord } from "./conversationTypes.js";
+import { stampPendingConfirmation } from "./pendingConfirmationState.js";
 
 function createPendingSession(overrides?: Partial<ConversationSessionRecord>): ConversationSessionRecord {
   const now = new Date().toISOString();
+  const pending = stampPendingConfirmation({
+    confirmationId: "conf-p0-1",
+    action: "book_appointment",
+    proposal: { clientName: "רון", dayReference: "יום חמישי", time: "16:00" },
+    confirmationType: "soft",
+    spokenPrompt: "לאשר?",
+    uiPrompt: "לאשר?",
+    createdAt: now,
+  });
   return {
     id: "sess-p0-confirm",
     organizationId: "org-1",
@@ -17,15 +27,7 @@ function createPendingSession(overrides?: Partial<ConversationSessionRecord>): C
       action: "book_appointment",
       proposal: { clientName: "רון", dayReference: "יום חמישי", time: "16:00" },
     },
-    pendingConfirmation: {
-      confirmationId: "conf-p0-1",
-      action: "book_appointment",
-      proposal: { clientName: "רון", dayReference: "יום חמישי", time: "16:00" },
-      confirmationType: "soft",
-      spokenPrompt: "לאשר?",
-      uiPrompt: "לאשר?",
-      createdAt: now,
-    },
+    pendingConfirmation: pending,
     interruptionState: null,
     createdAt: now,
     updatedAt: now,
@@ -178,15 +180,14 @@ test("multiple confirmations in same conversation remain isolated", async () => 
       action: "book_appointment",
       proposal: { clientName: "נועם", dayReference: "יום שני", time: "10:00" },
     },
-    pendingConfirmation: {
+    pendingConfirmation: stampPendingConfirmation({
       confirmationId: randomUUID(),
       action: "book_appointment",
       proposal: { clientName: "נועם", dayReference: "יום שני", time: "10:00" },
       confirmationType: "soft",
       spokenPrompt: "לאשר?",
       uiPrompt: "לאשר?",
-      createdAt: new Date().toISOString(),
-    },
+    }),
   };
   const second = await tryHandleCalendarConfirmationTurn({
     session,
@@ -206,7 +207,7 @@ test("multiple confirmations in same conversation remain isolated", async () => 
 test("pending expiration clears stale pending confirmation after timeout", async () => {
   const staleCreatedAt = new Date(Date.now() - 6 * 60 * 1000).toISOString();
   const session = createPendingSession({
-    pendingConfirmation: {
+    pendingConfirmation: stampPendingConfirmation({
       confirmationId: "conf-stale",
       action: "book_appointment",
       proposal: { clientName: "רון", dayReference: "יום חמישי", time: "16:00" },
@@ -214,7 +215,7 @@ test("pending expiration clears stale pending confirmation after timeout", async
       spokenPrompt: "לאשר?",
       uiPrompt: "לאשר?",
       createdAt: staleCreatedAt,
-    },
+    }),
   });
   let executeCalls = 0;
   const handled = await tryHandleCalendarConfirmationTurn({
