@@ -213,7 +213,7 @@ export async function tryHandleCalendarConfirmationTurn(input: {
     confirmationId: pending.confirmationId,
     createdAt: pending.createdAt,
     expiresAt: pending.expiresAt,
-    source: resolved.source,
+    source: resolved.source === "none" ? null : resolved.source,
     reason: resolved.hadExpiredSessionPending ? "recovered_from_history" : null,
   });
 
