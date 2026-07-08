@@ -14,8 +14,13 @@ export type ListedAppointmentItem = {
   clientId?: string | null;
 };
 
+export type ListableSchedulingItem = UpcomingSchedulingItem & {
+  clientId?: string | null;
+  source?: SchedulingSource;
+};
+
 export function buildLastListedAppointmentsPendingAction(
-  items: UpcomingSchedulingItem[]
+  items: ListableSchedulingItem[]
 ): ConversationSessionRecord["pendingAction"] {
   return {
     action: LAST_LISTED_APPOINTMENTS_ACTION,
@@ -103,12 +108,12 @@ export function resolveListedAppointmentByOrdinal(
   return items[ordinal.index] ?? null;
 }
 
-function toListedAppointmentItem(item: UpcomingSchedulingItem): ListedAppointmentItem {
+function toListedAppointmentItem(item: ListableSchedulingItem): ListedAppointmentItem {
   const start = item.startTime instanceof Date ? item.startTime : new Date(item.startTime);
   const end = new Date(start.getTime() + Math.max(1, item.durationMinutes) * 60_000);
   return {
     appointmentId: item.id,
-    source: item.source,
+    source: item.source ?? "appointment",
     startTime: start.toISOString(),
     endTime: end.toISOString(),
     customerName: item.clientName,
