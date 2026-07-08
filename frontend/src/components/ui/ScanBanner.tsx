@@ -9,6 +9,7 @@ const statusStyles: Record<ScanBannerStatus, { color: string; backgroundColor: s
   truncated: { color: colors.warnText, backgroundColor: colors.warnBg, borderColor: colors.warnBorder },
   paused: { color: colors.warnText, backgroundColor: colors.warnBg, borderColor: colors.warnBorder },
   stale: { color: colors.warnText, backgroundColor: colors.warnBg, borderColor: colors.warnBorder },
+  timed_out: { color: colors.warnText, backgroundColor: colors.warnBg, borderColor: colors.warnBorder },
   error: { color: colors.dangerText, backgroundColor: colors.dangerBg, borderColor: colors.dangerBorder },
 };
 
