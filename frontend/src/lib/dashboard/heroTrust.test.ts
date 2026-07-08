@@ -8,8 +8,8 @@ test("resolveHeroTrustState shows disconnected error when Gmail is not connected
     scanRunning: false,
   });
   assert.equal(state.statusTone, "danger");
-  assert.match(state.statusLabel, /Gmail לא מחובר/);
-  assert.equal(state.ctaLabel, "חבר Gmail");
+  assert.match(state.statusLabel, /הג׳ימייל לא מחובר/);
+  assert.equal(state.ctaLabel, "חבר ג׳ימייל");
   assert.equal(state.ctaAction, "connect_gmail");
 });
 
@@ -43,7 +43,7 @@ test("resolveHeroTrustState shows explicit reconnect error for ReconnectRequired
   assert.equal(state.statusTone, "danger");
   assert.equal(state.ctaAction, "retry_sync");
   assert.equal(state.ctaLabel, "נסה שוב");
-  assert.match(state.statusLabel, /OAuth|Gmail/);
+  assert.match(state.statusLabel, /ג׳ימייל|הרשאות|תוקף/);
   assert.doesNotMatch(state.statusLabel, /יש בעיית סנכרון$/);
 });
 
@@ -82,7 +82,7 @@ test("resolveHeroTrustState shows connecting sync state without connect CTA", ()
     gmailConnectionState: "Connecting",
     scanRunning: false,
   });
-  assert.match(state.statusLabel, /מחבר ל-Gmail/);
+  assert.match(state.statusLabel, /מתחברת לג׳ימייל/);
   assert.notEqual(state.ctaAction, "connect_gmail");
 });
 

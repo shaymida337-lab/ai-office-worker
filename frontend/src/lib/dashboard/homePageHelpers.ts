@@ -93,7 +93,14 @@ export function appendScanTruncationMessage(message: string, windowTruncated?: b
 }
 
 export function fallbackComponent(name: SystemComponentStatus["name"], label: string, connected: boolean): SystemComponentStatus {
-  return { name, label, connected, status: connected ? "PASS" : "FAIL", reason: null };
+  return {
+    name,
+    label,
+    connected,
+    status: connected ? "PASS" : "FAIL",
+    // Disconnected fallbacks must not look like a live health check passed.
+    reason: connected ? null : "disconnected",
+  };
 }
 
 export function systemComponentLabel(label: string) {

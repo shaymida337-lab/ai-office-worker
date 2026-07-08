@@ -26,7 +26,7 @@ function pluralize(count: number, singular: string, plural: string) {
 export function buildAlreadyWorkedSummary(input: BuildAlreadyWorkedInput): AlreadyWorkedSummary {
   const emptyMessage = input.gmailConnected
     ? "עדיין לא הספקתי הרבה היום — ברגע שיגיעו מסמכים חדשים אעדכן אותך כאן."
-    : "אני מוכנה להתחיל לעבוד ברגע שתחבר את Gmail.";
+    : "אני מוכנה להתחיל לעבוד ברגע שתחבר את הג׳ימייל.";
 
   if (input.scanRunning) {
     return {

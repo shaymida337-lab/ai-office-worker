@@ -39,3 +39,19 @@ test("dashboard page keeps command bar without duplicate suggestion chips", asyn
   assert.match(source, /suggestions=\{\[\]\}/);
   assert.match(source, /id="natalie-command"/);
 });
+
+test("dashboard MessageStack tones action failures as danger not success", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile("src/app/dashboard/page.tsx", "utf8");
+  assert.match(source, /resolveActionMessageTone\(actionMessage\)/);
+  assert.doesNotMatch(
+    source,
+    /actionMessage && <InlineMessage tone="success">\{actionMessage\}<\/InlineMessage>/
+  );
+});
+
+test("dashboard alert retry disables while syncing", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile("src/app/dashboard/page.tsx", "utf8");
+  assert.match(source, /onClick=\{\(\) => void d\.runSync\(\)\} disabled=\{d\.syncing\}/);
+});

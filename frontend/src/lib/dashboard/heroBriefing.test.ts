@@ -34,7 +34,7 @@ test("hero briefing connect Gmail path has one CTA", () => {
     pendingDecisionCount: 0,
   });
   assert.equal(briefing.ctaIntent, "connect_gmail");
-  assert.equal(briefing.ctaLabel, "חבר Gmail");
+  assert.equal(briefing.ctaLabel, "חבר ג׳ימייל");
   assert.equal(heroBriefingHasSyncDuplicate(briefing.recommendation), false);
 });
 

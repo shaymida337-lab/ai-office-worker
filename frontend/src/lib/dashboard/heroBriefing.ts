@@ -55,7 +55,7 @@ export function buildHeroBriefing(input: {
   if (!input.gmailConnected || input.recommendation.kind === "connect_gmail") {
     return {
       recommendation: "ברגע שנחבר את הג׳ימייל, אוכל להתחיל לסדר את המסמכים והתשלומים בשבילך.",
-      ctaLabel: "חבר Gmail",
+      ctaLabel: "חבר ג׳ימייל",
       ctaIntent: "connect_gmail",
     };
   }

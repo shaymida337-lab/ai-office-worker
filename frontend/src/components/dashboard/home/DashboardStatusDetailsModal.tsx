@@ -93,7 +93,7 @@ export function DashboardStatusDetailsModal({
   const recoveryAction =
     state.status === "ERROR"
       ? state.heroTrust.ctaAction === "connect_gmail"
-        ? { label: "חבר Gmail", onClick: onConnectGmail }
+        ? { label: "חבר ג׳ימייל", onClick: onConnectGmail }
         : { label: "נסה שוב", onClick: onRetrySync }
       : null;
 

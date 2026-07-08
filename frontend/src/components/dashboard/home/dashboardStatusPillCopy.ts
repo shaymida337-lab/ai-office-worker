@@ -48,9 +48,9 @@ export function dashboardStatusPillHasEnglish(text: string): boolean {
 }
 
 export const MODAL_HEALTH_LABEL: Record<string, string> = {
-  gmail: "Gmail",
+  gmail: "ג׳ימייל",
   lastScan: "סריקה אחרונה",
   documents: "מסמכים",
-  ai: "AI",
+  ai: "בינה מלאכותית",
   backend: "שרת",
 };

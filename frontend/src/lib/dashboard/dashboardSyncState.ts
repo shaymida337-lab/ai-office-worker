@@ -91,10 +91,10 @@ function isCheckingState(input: DashboardSyncStateInput): boolean {
 
 function resolveErrorReason(input: DashboardSyncStateInput): string | null {
   if (input.gmailConnectionState === "Disconnected") {
-    return "Gmail לא מחובר";
+    return "הג׳ימייל לא מחובר";
   }
   if (input.gmailConnectionState === "ReconnectRequired") {
-    return "נדרש חיבור מחדש ל-Gmail (OAuth פג תוקף או הרשאות)";
+    return "נדרש חיבור מחדש לג׳ימייל — התוקף או ההרשאות פגו";
   }
   if (input.scanBanner?.status === "error") {
     return "הסריקה האחרונה נכשלה";
@@ -123,7 +123,7 @@ function resolveWarningReason(input: DashboardSyncStateInput): string | null {
     input.gmailConnectionState === "Connected" &&
     (input.missingDriveScopes?.length ?? 0) > 0
   ) {
-    return "Gmail מחובר — חסרות הרשאות Drive לשמירת קבצים";
+    return "הג׳ימייל מחובר — חסרות הרשאות לדרייב לשמירת קבצים";
   }
   if (input.scanBacklog) {
     return "נשארו מיילים שלא נסרקו — מומלץ להריץ סריקה נוספת";
@@ -138,13 +138,13 @@ function resolveWarningReason(input: DashboardSyncStateInput): string | null {
     return "מציגים את המצב האחרון שידוע — לא הצלחנו לרענן עכשיו";
   }
   if (input.aiHealthy === false) {
-    return "שירות ה-AI איטי זמנית";
+    return "שירות הבינה המלאכותית איטי זמנית";
   }
   return null;
 }
 
 function resolveSyncingLabel(input: DashboardSyncStateInput): string {
-  if (input.gmailConnectionState === "Connecting") return "מחבר ל-Gmail...";
+  if (input.gmailConnectionState === "Connecting") return "מתחברת לג׳ימייל...";
   if (input.syncingPhase?.trim()) return input.syncingPhase.trim();
   if (input.scanBanner?.status === "running") {
     const scanned = input.scanBanner.scanned ?? 0;
@@ -172,7 +172,7 @@ function buildHeroTrust(input: {
     return {
       statusLabel: input.message,
       statusTone: "danger",
-      ctaLabel: input.gmailConnectionState === "Disconnected" ? "חבר Gmail" : "נסה שוב",
+      ctaLabel: input.gmailConnectionState === "Disconnected" ? "חבר ג׳ימייל" : "נסה שוב",
       ctaAction: input.gmailConnectionState === "Disconnected" ? "connect_gmail" : "retry_sync",
     };
   }
@@ -274,7 +274,7 @@ export function resolveDashboardSyncState(input: DashboardSyncStateInput): Dashb
   } else if (input.gmailConnectionState === "Disconnected") {
     status = "ERROR";
     reason = errorReason;
-    headline = "Gmail לא מחובר";
+    headline = "הג׳ימייל לא מחובר";
     message = reason ?? headline;
     tone = "danger";
   } else if (confirmedError || errorReason) {
@@ -310,7 +310,7 @@ export function resolveDashboardSyncState(input: DashboardSyncStateInput): Dashb
   const healthRows: DashboardHealthRow[] = [
     {
       key: "gmail",
-      label: "Gmail",
+      label: "ג׳ימייל",
       value:
         input.gmailConnectionState === "Connected"
           ? "מחובר"
@@ -337,12 +337,12 @@ export function resolveDashboardSyncState(input: DashboardSyncStateInput): Dashb
     },
     {
       key: "ai",
-      label: "AI",
+      label: "בינה מלאכותית",
       value: input.aiHealthy === false ? "איטי זמנית" : "פעיל",
     },
     {
       key: "backend",
-      label: "Backend",
+      label: "שרת",
       value: input.backendHealthy === false ? "לא זמין" : "תקין",
     },
   ];

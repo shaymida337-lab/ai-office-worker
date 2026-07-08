@@ -70,7 +70,7 @@ test("REGRESSION: screenshot scan-success + reconnect required cannot render tog
   assert.equal(state.displayToast, null);
   assert.equal(state.heroTrust.statusTone, "danger");
   assert.notEqual(state.heroTrust.statusLabel, LEGACY_SYNC_ERROR);
-  assert.match(state.heroTrust.statusLabel, /OAuth|Gmail|חיבור/);
+  assert.match(state.heroTrust.statusLabel, /ג׳ימייל|הרשאות|תוקף|חיבור/);
   assert.equal(hasDashboardSyncSurfaceConflict(surfaces), false);
 });
 

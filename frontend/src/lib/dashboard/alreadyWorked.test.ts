@@ -4,7 +4,7 @@ import { buildAlreadyWorkedSummary } from "./alreadyWorked";
 
 test("buildAlreadyWorkedSummary encourages Gmail connect when disconnected", () => {
   const summary = buildAlreadyWorkedSummary({ gmailConnected: false });
-  assert.match(summary.emptyMessage, /חבר את Gmail/);
+  assert.match(summary.emptyMessage, /תחבר את הג׳ימייל/);
   assert.equal(summary.items.length, 0);
 });
 

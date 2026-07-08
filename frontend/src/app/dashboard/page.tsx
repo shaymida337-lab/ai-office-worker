@@ -40,6 +40,7 @@ import type {
   WhatsAppAssistantStats,
   WhatsAppScanResult,
 } from "@/lib/dashboard/homePageTypes";
+import { resolveActionMessageTone } from "@/lib/dashboard/dashboardActionFeedback";
 
 export default function DashboardPage() {
   const d = useDashboardHome();
@@ -150,7 +151,7 @@ export default function DashboardPage() {
           >
             <IntegrationStatusCard
               icon="📬"
-              title="Gmail"
+              title="ג׳ימייל"
               compact
               model={d.gmailIntegrationModel}
               actions={d.gmailCardActions}
@@ -223,7 +224,7 @@ export default function DashboardPage() {
                     title={alert.title}
                     meta={alert.body ?? formatDateTime(alert.createdAt)}
                     pill={<StatusPill tone={alert.type === "error" ? "danger" : "warn"}>{alertTypeLabel(alert.type)}</StatusPill>}
-                    action={<SecondaryButton onClick={d.runSync}>נסה שוב</SecondaryButton>}
+                    action={<SecondaryButton onClick={() => void d.runSync()} disabled={d.syncing}>נסה שוב</SecondaryButton>}
                   />
                 ))}
               </ActivityCard>
@@ -351,7 +352,9 @@ function MessageStack({ error, actionMessage, toast }: { error: string; actionMe
   return (
     <div className="grid gap-3">
       {error && <InlineMessage tone="danger">{error}</InlineMessage>}
-      {actionMessage && <InlineMessage tone="success">{actionMessage}</InlineMessage>}
+      {actionMessage && (
+        <InlineMessage tone={resolveActionMessageTone(actionMessage)}>{actionMessage}</InlineMessage>
+      )}
       {toast && <InlineMessage tone={toast.type === "warning" ? "warn" : toast.type === "error" ? "danger" : toast.type}>{toast.text}</InlineMessage>}
     </div>
   );
@@ -430,7 +433,10 @@ function SystemCard({
         <DataRow
           key={component.name}
           title={systemComponentLabel(component.label)}
-          meta={systemReasonLabel(component.reason) ?? "הבדיקה החיה עברה בהצלחה"}
+          meta={
+            systemReasonLabel(component.reason) ??
+            (component.connected ? "הבדיקה החיה עברה בהצלחה" : "לא מחובר — יש לבדוק את החיבור")
+          }
           pill={<StatusPill tone={component.connected ? "success" : "danger"}>{component.connected ? "מחובר" : "לא מחובר"}</StatusPill>}
           action={!component.connected && component.name === "gmail" && gmailConnectAllowed ? <SecondaryButton onClick={onConnectGmail}>חבר</SecondaryButton> : !component.connected && component.name === "whatsapp" ? <SecondaryButton onClick={onConnectWhatsApp}>חבר</SecondaryButton> : null}
         />

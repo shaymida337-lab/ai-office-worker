@@ -72,7 +72,7 @@ test("warning state renders for missing drive scopes without reconnect", () => {
     })
   );
   assert.equal(state.status, "WARNING");
-  assert.match(state.message, /Drive/);
+  assert.match(state.message, /דרייב|הרשאות/);
   assert.equal(state.integrationHasError, false);
 });
 
@@ -84,7 +84,7 @@ test("error state renders with explicit reason for reconnect", () => {
     })
   );
   assert.equal(state.status, "ERROR");
-  assert.match(state.reason ?? "", /Gmail|OAuth|חיבור/);
+  assert.match(state.reason ?? "", /ג׳ימייל|חיבור|הרשאות|תוקף/);
   assert.doesNotMatch(state.message, /יש בעיית סנכרון$/);
 });
 

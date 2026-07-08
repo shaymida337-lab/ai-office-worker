@@ -56,6 +56,16 @@ test("missing stats returns unavailable display not fake zero", () => {
   }
 });
 
+test("stats load failure must keep null not emptyStats zeros", () => {
+  // Production path: Promise.allSettled rejection → setStats(null), never emptyStats
+  const afterFailedLoad = null;
+  const metrics = buildSnapshotMetrics({ stats: afterFailedLoad, pageLoading: false });
+  for (const metric of metrics) {
+    assert.equal(metric.value, "—");
+  }
+  assert.notEqual(afterFailedLoad, emptyStats);
+});
+
 test("loading stats returns unavailable display not fake zero", () => {
   const metrics = buildSnapshotMetrics({ stats: emptyStats, pageLoading: true });
   for (const metric of metrics) {

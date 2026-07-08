@@ -46,7 +46,11 @@ import { GMAIL_SCAN_POLL_INTERVAL_MS, MAX_GMAIL_SCAN_POLL_ATTEMPTS } from "@/lib
 import { createDashboardSyncRetryRequest } from "@/lib/dashboard/dashboardSyncRetry";
 import { resolveScanStatusFromSettled } from "@/lib/dashboard/scanStatusTruth";
 import { buildDashboardHomeViewModel } from "@/lib/dashboard/buildDashboardHomeViewModel";
-import { emptyClients, emptyScanStatus, emptyStats } from "@/lib/dashboard/homePageConstants";
+import { emptyClients, emptyScanStatus } from "@/lib/dashboard/homePageConstants";
+import {
+  conversationRequestsGmailScan,
+  conversationRequestsScanProgress,
+} from "@/lib/dashboard/dashboardActionFeedback";
 import {
   delay,
   formatPartialScanMessage,
@@ -122,6 +126,9 @@ export function useDashboardHome() {
   const [firstScanSettled, setFirstScanSettled] = useState(false);
   const [firstScanPhase, setFirstScanPhase] = useState<string | null>(null);
   const connectGmailTriggeredRef = useRef(false);
+  const syncingRef = useRef(false);
+  const paymentActionInFlightRef = useRef(false);
+  const invoiceAttachInFlightRef = useRef(false);
   const gmailOAuthReturnHandledRef = useRef(false);
   const autoFirstScanRef = useRef(false);
 
@@ -190,7 +197,7 @@ export function useDashboardHome() {
         apiFetch<AccountantSummary>("/api/accountant/summary"),
       ]);
 
-      setStats(statsResult.status === "fulfilled" ? statsResult.value : emptyStats);
+      setStats(statsResult.status === "fulfilled" ? statsResult.value : null);
       setSummary(summaryResult.status === "fulfilled" ? summaryResult.value.text : "לא ניתן לטעון סיכום כרגע.");
       const gmailResolved = resolveGmailStatusFromSettled(gmailStatus, gmailResult);
       setGmailStatus(gmailResolved.nextStatus);
@@ -212,6 +219,7 @@ export function useDashboardHome() {
           setActiveScanId(null);
           setActiveScan(null);
           setSyncing(false);
+          syncingRef.current = false;
           setFirstScanRunning(false);
           setScanProgress([]);
           window.localStorage.removeItem("activeGmailScanId");
@@ -222,6 +230,7 @@ export function useDashboardHome() {
           setActiveScanId(null);
           setActiveScan(null);
           setSyncing(false);
+          syncingRef.current = false;
           setFirstScanRunning(false);
           setScanProgress([]);
           window.localStorage.removeItem("activeGmailScanId");
@@ -290,7 +299,7 @@ export function useDashboardHome() {
         router.replace("/");
         return;
       }
-      setStats(emptyStats);
+      setStats(null);
       setClients(emptyClients);
       setScanStatus(emptyScanStatus());
       setError(err instanceof Error ? err.message : "טעינת הדשבורד נכשלה");
@@ -404,6 +413,7 @@ export function useDashboardHome() {
       setActiveScanId(null);
       setActiveScan(null);
       setSyncing(false);
+      syncingRef.current = false;
       setFirstScanRunning(false);
       setScanProgress([]);
       setFirstScanPhase(null);
@@ -414,6 +424,7 @@ export function useDashboardHome() {
     const completeActiveScan = async (progress: ScanProgressResult) => {
       setFirstScanRunning(false);
       setSyncing(false);
+      syncingRef.current = false;
       setActiveScan(null);
       setActiveScanId(null);
       setScanProgress([]);
@@ -506,6 +517,7 @@ export function useDashboardHome() {
             setActiveScanId(null);
             setActiveScan(null);
             setSyncing(false);
+            syncingRef.current = false;
             setFirstScanRunning(false);
             setScanProgress([]);
             window.localStorage.removeItem("activeGmailScanId");
@@ -617,6 +629,10 @@ export function useDashboardHome() {
   }
 
   async function runSync() {
+    if (syncingRef.current || syncing || activeScanId) {
+      scrollToScanProgress();
+      return;
+    }
     console.log("[dashboard] gmail scan clicked");
     const freshGmailStatus = gmailStatus?.connected ? gmailStatus : await refreshGmailStatus().catch(() => gmailStatus);
     if (freshGmailStatus && !freshGmailStatus.connected) {
@@ -627,6 +643,7 @@ export function useDashboardHome() {
       return;
     }
 
+    syncingRef.current = true;
     setSyncing(true);
     setError("");
     if (firstVisitMode) {
@@ -661,11 +678,14 @@ export function useDashboardHome() {
         setFirstScanSettled(true);
       }
     } finally {
+      syncingRef.current = false;
       setSyncing(false);
     }
   }
 
   async function scanAllClients() {
+    if (syncingRef.current || syncing) return;
+    syncingRef.current = true;
     setSyncing(true);
     setError("");
     try {
@@ -675,6 +695,7 @@ export function useDashboardHome() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "סריקת לקוחות נכשלה");
     } finally {
+      syncingRef.current = false;
       setSyncing(false);
     }
   }
@@ -744,6 +765,8 @@ export function useDashboardHome() {
   }
 
   async function markPaymentPaid(paymentId: string) {
+    if (paymentActionInFlightRef.current) return;
+    paymentActionInFlightRef.current = true;
     setActionMessage("");
     try {
       await apiFetch(`/api/payments/${paymentId}`, { method: "PATCH", body: JSON.stringify({ paid: true }) });
@@ -751,6 +774,8 @@ export function useDashboardHome() {
       setActionMessage("התשלום סומן כשולם");
     } catch (err) {
       setActionMessage(err instanceof Error ? err.message : "עדכון תשלום נכשל");
+    } finally {
+      paymentActionInFlightRef.current = false;
     }
   }
 
@@ -764,6 +789,8 @@ export function useDashboardHome() {
   async function submitInvoiceAttachment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!invoiceAttachPaymentId || !invoiceAttachLink.trim()) return;
+    if (invoiceAttachInFlightRef.current) return;
+    invoiceAttachInFlightRef.current = true;
     setActionMessage("");
     try {
       await apiFetch(`/api/payments/${invoiceAttachPaymentId}`, { method: "PATCH", body: JSON.stringify({ invoiceLink: invoiceAttachLink.trim() }) });
@@ -773,6 +800,8 @@ export function useDashboardHome() {
       setInvoiceAttachLink("");
     } catch (err) {
       setActionMessage(err instanceof Error ? err.message : "צירוף חשבונית נכשל");
+    } finally {
+      invoiceAttachInFlightRef.current = false;
     }
   }
 
@@ -905,14 +934,14 @@ export function useDashboardHome() {
       }
       if (gmailConnection.phase === "disconnected") {
         return [
-          { id: "connect", label: "חבר Gmail", onClick: () => void connectGmail(), disabled: connectingGmail || syncing, priority: "primary" as const },
+          { id: "connect", label: "חבר ג׳ימייל", onClick: () => void connectGmail(), disabled: connectingGmail || syncing, priority: "primary" as const },
         ];
       }
       return [
         { id: "scan", label: "סרוק עכשיו", onClick: () => void runSync(), disabled: syncing, priority: "primary" as const },
         { id: "manage", label: "נהל חיבור", onClick: () => router.push("/dashboard/settings") },
         { id: "reconnect", label: "התחבר מחדש", onClick: () => void connectGmail(), disabled: connectingGmail },
-        { id: "disconnect", label: "נתק Gmail", onClick: () => router.push("/dashboard/settings") },
+        { id: "disconnect", label: "נתק ג׳ימייל", onClick: () => router.push("/dashboard/settings") },
       ];
     },
     [gmailStatusKnown, gmailConnection.phase, connectingGmail, syncing, router]
@@ -1012,13 +1041,17 @@ export function useDashboardHome() {
         router.push("/dashboard/document-reviews");
         return;
       }
-      if (trimmed.includes("סרק")) {
-        runSync();
+      if (conversationRequestsScanProgress(trimmed)) {
+        scrollToScanProgress();
+        return;
+      }
+      if (conversationRequestsGmailScan(trimmed)) {
+        void runSync();
         return;
       }
       setActionMessage("קיבלתי. נטלי מטפלת בזה — אפשר גם לדבר איתי דרך כפתור נטלי.");
     },
-    [router, scrollToDecisions, runSync]
+    [router, scrollToDecisions, scrollToScanProgress, runSync]
   );
 
 
