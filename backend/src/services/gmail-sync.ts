@@ -111,11 +111,14 @@ import {
   ensureGmailScanTerminalized,
   finalizeGmailScanFailed,
   finalizeGmailScanPaused,
+  finalizeGmailScanTimedOut,
   finalizeGmailScanWithDeadlineGuard,
+  SCAN_STALE_TIMEOUT_REASON,
   findActiveGmailScanLog,
   handleConcurrentGmailScanExit,
   logScanLifecycle,
   promoteGmailScanToRunning,
+  touchGmailScanHeartbeat,
 } from "./gmailScanLifecycle.js";
 import {
   completeCoreWorkflowStage,
@@ -834,6 +837,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
   }
 
   await promoteGmailScanToRunning(log.id);
+  await touchGmailScanHeartbeat(log.id, "fetch_start", organizationId);
   logScanLifecycle(log.id, "fetch start");
   syncTrace = createCoreWorkflowTrace({
     subsystem: "gmail_sync",
@@ -855,13 +859,32 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     )?.startedAt ??
     new Date();
   let deadlineTruncated = false;
+  let stuckTimeoutStop = false;
   let externalTerminalStop = false;
   let plannedTotalMatched: number | undefined;
   const shouldStopScan = async () => {
     const result = await checkGmailScanShouldStop(log.id, scanStartedAt, scanMode);
+    if (result.stop && result.reason === "stuck_timeout") stuckTimeoutStop = true;
     if (result.stop && result.reason === "deadline") deadlineTruncated = true;
     if (result.stop && result.reason === "external_terminal") externalTerminalStop = true;
     return result.stop;
+  };
+  const finalizeOnStuckTimeout = async (counters: {
+    emailsProcessed: number;
+    emailsSaved: number;
+    invoicesFound: number;
+    paymentsCreated: number;
+    tasksCreated: number;
+    driveUploaded: number;
+    sheetsUpdated: number;
+    errorsCount: number;
+    totalMatched?: number | null;
+    windowTruncated?: boolean;
+  }) => {
+    await finalizeGmailScanTimedOut(log.id, SCAN_STALE_TIMEOUT_REASON, counters, {
+      phase: scanProgressPhase,
+      reason: SCAN_STALE_TIMEOUT_REASON,
+    });
   };
   const buildEarlyExitResult = () => ({
     emailsProcessed,
@@ -1148,7 +1171,6 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       let stopFetching = false;
       for (const batch of chunkArray(messagesToFetch, GMAIL_SCAN_BATCH_SIZE)) {
         if (await shouldStopScan()) {
-          deadlineTruncated = true;
           break;
         }
         fetchBatchNumber++;
@@ -1156,7 +1178,6 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       for (const msgRef of batch) {
         if (stopFetching) break;
         if (await shouldStopScan()) {
-          deadlineTruncated = true;
           stopFetching = true;
           break;
         }
@@ -1303,7 +1324,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     await fetchAndParseMessages(fastMessages, "fast");
     const fastScannedEmails = scannedEmails.splice(0, scannedEmails.length);
     logScanLifecycle(log.id, "fetch end");
+    await touchGmailScanHeartbeat(log.id, "fetch_end", organizationId);
     logScanLifecycle(log.id, "processing start");
+    await touchGmailScanHeartbeat(log.id, "processing_start", organizationId);
     await processScannedEmails(fastScannedEmails, "fast");
     logStep(`[gmail-sync] FAST_SCAN_DONE processed=${fastMessages.length}`);
 
@@ -1338,13 +1361,20 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         errorsCount,
         totalMatched: fastMessages.length,
       };
-      await finalizeGmailScanWithDeadlineGuard(
-        log.id,
-        scanStartedAt,
-        deadlineTruncated,
-        { ...fastFinalizeCounters, windowTruncated: deadlineTruncated ? true : windowTruncated },
-        { phase: scanProgressPhase }
-      );
+      if (stuckTimeoutStop) {
+        await finalizeOnStuckTimeout({
+          ...fastFinalizeCounters,
+          windowTruncated: true,
+        });
+      } else {
+        await finalizeGmailScanWithDeadlineGuard(
+          log.id,
+          scanStartedAt,
+          deadlineTruncated,
+          { ...fastFinalizeCounters, windowTruncated: deadlineTruncated ? true : windowTruncated },
+          { phase: scanProgressPhase }
+        );
+      }
 
       return {
         emailsProcessed,
@@ -1379,25 +1409,30 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       };
     }
 
-    if (deadlineTruncated) {
-      await finalizeGmailScanWithDeadlineGuard(
-        log.id,
-        scanStartedAt,
-        true,
-        {
-          emailsProcessed,
-          emailsSaved: emailsSavedToGmailScanItem,
-          invoicesFound: invoicesCreated + needsReviewCount,
-          paymentsCreated,
-          tasksCreated,
-          driveUploaded: driveUploadsSucceeded,
-          sheetsUpdated,
-          errorsCount,
-          windowTruncated: true,
-          totalMatched: fastMessages.length,
-        },
-        { phase: scanProgressPhase }
-      );
+    if (stuckTimeoutStop || deadlineTruncated) {
+      const earlyCounters = {
+        emailsProcessed,
+        emailsSaved: emailsSavedToGmailScanItem,
+        invoicesFound: invoicesCreated + needsReviewCount,
+        paymentsCreated,
+        tasksCreated,
+        driveUploaded: driveUploadsSucceeded,
+        sheetsUpdated,
+        errorsCount,
+        windowTruncated: true as const,
+        totalMatched: fastMessages.length,
+      };
+      if (stuckTimeoutStop) {
+        await finalizeOnStuckTimeout(earlyCounters);
+      } else {
+        await finalizeGmailScanWithDeadlineGuard(
+          log.id,
+          scanStartedAt,
+          true,
+          earlyCounters,
+          { phase: scanProgressPhase }
+        );
+      }
       return {
         emailsProcessed,
         totalEmailsChecked: emailsProcessed,
@@ -1595,7 +1630,6 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     let stopProcessing = false;
     for (const batch of chunkArray(emailsToProcess, GMAIL_SCAN_BATCH_SIZE)) {
       if (await shouldStopScan()) {
-        deadlineTruncated = true;
         break;
       }
       processBatchNumber++;
@@ -3394,7 +3428,6 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           emailsAnalyzedInProcessing++;
           await maybeSaveScanProgress();
           if (await shouldStopScan()) {
-            deadlineTruncated = true;
             stopProcessing = true;
             break;
           }
@@ -3432,13 +3465,20 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       errorsCount,
       totalMatched: plannedTotalMatched ?? messages.length,
     };
-    await finalizeGmailScanWithDeadlineGuard(
-      log.id,
-      scanStartedAt,
-      deadlineTruncated,
-      { ...fullFinalizeCounters, windowTruncated: deadlineTruncated ? true : windowTruncated },
-      { phase: scanProgressPhase }
-    );
+    if (stuckTimeoutStop) {
+      await finalizeOnStuckTimeout({
+        ...fullFinalizeCounters,
+        windowTruncated: true,
+      });
+    } else {
+      await finalizeGmailScanWithDeadlineGuard(
+        log.id,
+        scanStartedAt,
+        deadlineTruncated,
+        { ...fullFinalizeCounters, windowTruncated: deadlineTruncated ? true : windowTruncated },
+        { phase: scanProgressPhase }
+      );
+    }
 
     if (syncTrace) {
       completeCoreWorkflowStage(syncTrace, "sync_run", "completed", { health: "Healthy" });
@@ -5074,7 +5114,8 @@ async function saveScanProgress(logId: string, data: {
 }) {
   await prisma.syncLog.update({
     where: { id: logId },
-    data,
+    // updatedAt heartbeat (schema @updatedAt) proves the worker is still alive.
+    data: { ...data, updatedAt: new Date() },
   });
 }
 

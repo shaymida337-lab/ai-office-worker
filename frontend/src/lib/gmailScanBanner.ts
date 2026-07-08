@@ -1,11 +1,12 @@
 import {
   gmailScanStillRunning,
+  isAdoptableRunningScanLog,
   isCompletedGmailScanStatus,
   isPausedGmailScanStatus,
   isSuccessfulGmailScanProgress,
   isTerminalGmailScanProgress,
   isTerminalScanStatusLog,
-  isRunningScanStatusLog,
+  SCAN_STUCK_USER_MESSAGE_HE,
   scanDocumentsFound,
 } from "./gmailScanLifecycle";
 
@@ -19,6 +20,7 @@ export type ScanStatusLog = {
   errors: string | null;
   windowTruncated?: boolean;
   totalMatched?: number | null;
+  startedAt?: string | Date | null;
   endedAt: string | null;
 };
 
@@ -29,6 +31,10 @@ export type ScanProgressLike = {
   windowTruncated?: boolean;
   emailsFetched?: number;
   totalMatched?: number | null;
+  lastProgressAt?: string | Date | null;
+  canStartNewScan?: boolean;
+  userMessageHe?: string | null;
+  failureReason?: string | null;
   summary?: {
     windowTruncated?: boolean;
     totalMatched?: number | null;
@@ -45,7 +51,15 @@ export type ScanProgressLike = {
   supplierPaymentsFound?: number;
 };
 
-export type ScanBannerStatus = "running" | "success" | "partial" | "truncated" | "paused" | "stale" | "error";
+export type ScanBannerStatus =
+  | "running"
+  | "success"
+  | "partial"
+  | "truncated"
+  | "paused"
+  | "stale"
+  | "timed_out"
+  | "error";
 
 // באנר כשל/timeout ישן לא נשאר על המסך לנצח: אחרי שעה בלי סריקה פעילה — המערכת התאוששה
 export const SCAN_FAILURE_BANNER_TTL_MS = 60 * 60 * 1000;
@@ -88,8 +102,8 @@ export function formatScanBannerText(
   if (status === "partial") {
     return `הסריקה הסתיימה עם ${errors} בעיות שדורשות בדיקה — עברתי על ${scanned} מיילים ומצאתי ${found} מסמכים`;
   }
-  if (status === "stale") {
-    return "הסריקה הקודמת לא הסתיימה. אפשר לנסות שוב מתי שנוח לך.";
+  if (status === "stale" || status === "timed_out") {
+    return SCAN_STUCK_USER_MESSAGE_HE;
   }
   if (status === "paused") {
     return `עברתי על ${scanned} מתוך ${totalMatched ?? scanned} מיילים — נשאר עוד. אפשר להריץ סריקה נוספת כשתרצה.`;
@@ -124,8 +138,15 @@ export function resolveDashboardGmailScanRunning(input: {
     return true;
   }
 
+  // Never keep "סורקת" from localStorage/activeScanId alone without backend proof.
+  // syncing covers the optimistic POST gap; zombie ids must not force loading forever.
   if (input.activeScanId && !input.activeScan) {
-    return true;
+    if (input.scanLogs?.length) {
+      const tracked = input.scanLogs.find((log) => log.id === input.activeScanId);
+      if (!tracked || isTerminalScanStatusLog(tracked)) return false;
+      return isAdoptableRunningScanLog(tracked);
+    }
+    return false;
   }
 
   if (input.scanBanner?.status === "running") {
@@ -152,7 +173,7 @@ export function buildScanBannerState(
 
   if (!scanStatus?.last) return null;
 
-  if (isRunningScanStatusLog(scanStatus.last)) {
+  if (isAdoptableRunningScanLog(scanStatus.last, now)) {
     return {
       status: "running",
       found: (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0),
@@ -162,13 +183,31 @@ export function buildScanBannerState(
     };
   }
 
+  // Zombie queued/running past adoption age — never show infinite "סורקת".
+  if (
+    (scanStatus.last.status === "running" || scanStatus.last.status === "queued") &&
+    !scanStatus.last.endedAt
+  ) {
+    return {
+      status: "timed_out",
+      found: (scanStatus.last.invoicesFound ?? 0) + (scanStatus.last.paymentsFound ?? 0),
+      scanned: scanStatus.last.found,
+      totalMatched: scanStatus.last.totalMatched,
+      errors: 1,
+    };
+  }
+
   const lastStatus: ScanBannerStatus =
     scanStatus.last.status === "paused"
       ? "paused"
       : scanStatus.last.windowTruncated
         ? "truncated"
-        : scanStatus.last.status === "stale" || scanStatus.last.status === "cancelled"
-          ? "stale"
+        : scanStatus.last.status === "stale" ||
+            scanStatus.last.status === "timed_out" ||
+            scanStatus.last.status === "cancelled"
+          ? scanStatus.last.status === "timed_out"
+            ? "timed_out"
+            : "stale"
           : scanStatus.last.status === "success" || scanStatus.last.status === "completed"
             ? "success"
             : scanStatus.last.status === "partial"
@@ -176,7 +215,10 @@ export function buildScanBannerState(
               : "error";
 
   // סריקה שנכשלה/לא הסתיימה מזמן היא היסטוריה, לא מצב נוכחי — בלי באנר
-  if ((lastStatus === "stale" || lastStatus === "error") && !isScanFailureStillRelevant(scanStatus.last, now)) {
+  if (
+    (lastStatus === "stale" || lastStatus === "timed_out" || lastStatus === "error") &&
+    !isScanFailureStillRelevant(scanStatus.last, now)
+  ) {
     return null;
   }
 
@@ -197,6 +239,7 @@ function mapProgressToBannerStatus(
     const truncated = progress.windowTruncated ?? progress.summary?.windowTruncated ?? false;
     if (truncated) return "truncated";
     if (progress.status === "partial") return "partial";
+    if (progress.status === "timed_out") return "timed_out";
     if (progress.status === "stale" || progress.status === "cancelled") return "stale";
     if (isSuccessfulGmailScanProgress(progress) || isCompletedGmailScanStatus(progress.status ?? "")) {
       return "success";
@@ -210,6 +253,7 @@ function mapProgressToBannerStatus(
   const truncated = progress.windowTruncated ?? progress.summary?.windowTruncated ?? false;
   if (truncated) return "truncated";
   if (progress.status === "partial") return "partial";
+  if (progress.status === "timed_out") return "timed_out";
   if (progress.status === "stale" || progress.status === "cancelled") return "stale";
   if (isSuccessfulGmailScanProgress(progress)) return "success";
   return "error";

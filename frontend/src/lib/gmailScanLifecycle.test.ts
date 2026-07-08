@@ -35,14 +35,19 @@ test("frontend polling stops on completed", () => {
   );
 });
 
-test("frontend polling stops on failed cancelled stale and paused", () => {
+test("frontend polling stops on failed cancelled stale timed_out and paused", () => {
   assert.equal(isTerminalGmailScanStatus("failed"), true);
   assert.equal(isTerminalGmailScanStatus("cancelled"), true);
   assert.equal(isTerminalGmailScanStatus("stale"), true);
+  assert.equal(isTerminalGmailScanStatus("timed_out"), true);
   assert.equal(isTerminalGmailScanStatus("paused"), true);
   assert.equal(isPausedGmailScanStatus("paused"), true);
   assert.equal(
     isTerminalGmailScanProgress({ status: "stale", finishedAt: "2026-01-01T00:00:00.000Z", inProgress: false }),
+    true
+  );
+  assert.equal(
+    isTerminalGmailScanProgress({ status: "timed_out", finishedAt: "2026-01-01T00:00:00.000Z", inProgress: false }),
     true
   );
   assert.equal(
@@ -86,14 +91,14 @@ test("hasGmailScanBacklog detects paused and truncated completed scans", () => {
 
 // --- P0 watchdog: zombie scan logs must not be adopted by the UI ---
 
-test("isAdoptableRunningScanLog rejects zombie running logs older than the deadline", () => {
+test("isAdoptableRunningScanLog rejects zombie running logs older than 3 minutes", () => {
   const now = Date.parse("2026-07-08T08:00:00.000Z");
-  const fresh = { status: "running", endedAt: null, startedAt: new Date(now - 5 * 60_000).toISOString() };
+  const fresh = { status: "running", endedAt: null, startedAt: new Date(now - 2 * 60_000).toISOString() };
+  const stuck = { status: "running", endedAt: null, startedAt: new Date(now - 3 * 60_000 - 1).toISOString() };
   const zombie34h = { status: "running", endedAt: null, startedAt: new Date(now - 34 * 3600_000).toISOString() };
-  const zombie39d = { status: "running", endedAt: null, startedAt: new Date(now - 946 * 3600_000).toISOString() };
   assert.equal(isAdoptableRunningScanLog(fresh, now), true);
+  assert.equal(isAdoptableRunningScanLog(stuck, now), false);
   assert.equal(isAdoptableRunningScanLog(zombie34h, now), false);
-  assert.equal(isAdoptableRunningScanLog(zombie39d, now), false);
 });
 
 test("isAdoptableRunningScanLog ignores terminal logs regardless of age", () => {

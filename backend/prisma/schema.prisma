@@ -679,6 +679,8 @@ model SyncLog {
   nextRetryAt    DateTime?
   errorMessage   String?
   startedAt      DateTime @default(now())
+  /** Heartbeat for stuck-scan recovery — bumped by progress writes and stage touches. */
+  updatedAt      DateTime @default(now()) @updatedAt
   finishedAt     DateTime?
 
   @@index([organizationId, type, status, finishedAt])

@@ -30,6 +30,7 @@ import {
   isTerminalGmailScanProgress,
   isTerminalScanStatusLog,
   normalizeScanStatusFromLog,
+  SCAN_STUCK_USER_MESSAGE_HE,
   scanDocumentsFound,
 } from "@/lib/gmailScanLifecycle";
 import type { OrganizationSettings } from "@/lib/business-config";
@@ -457,9 +458,11 @@ export function useDashboardHome() {
         setScanToast({
           type: "error",
           text:
-            progress.status === "stale" || progress.status === "cancelled"
-              ? "הסריקה הקודמת לא הסתיימה. אפשר להריץ סריקה חדשה מתי שנוח לך."
-              : "הסריקה נכשלה. אפשר לנסות שוב בעוד רגע.",
+            progress.status === "timed_out" || progress.status === "stale"
+              ? SCAN_STUCK_USER_MESSAGE_HE
+              : progress.status === "cancelled"
+                ? "הסריקה בוטלה. אפשר להריץ סריקה חדשה מתי שנוח לך."
+                : progress.userMessageHe || "הסריקה נכשלה. אפשר לנסות שוב בעוד רגע.",
         });
       }
 
@@ -473,8 +476,8 @@ export function useDashboardHome() {
     const poll = async () => {
       pollAttempts += 1;
       if (pollAttempts > MAX_GMAIL_SCAN_POLL_ATTEMPTS) {
-        // תקרת הזמן הכוללת (דדליין הסריקה) נחצתה — לא ממשיכים לנצח
-        abandonScanTracking("הסריקה נמשכת זמן רב מהרגיל — הפסקתי את המעקב. אפשר להריץ סריקה חדשה.");
+        // Hard 3-minute client bound — never keep "סורקת" without terminal backend proof.
+        abandonScanTracking(SCAN_STUCK_USER_MESSAGE_HE);
         return;
       }
       try {

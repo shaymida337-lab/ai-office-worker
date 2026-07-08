@@ -52,7 +52,8 @@ export function isFailedGmailScanStatus(status?: string) {
     status === "error" ||
     status === "failed" ||
     status === "cancelled" ||
-    status === "stale"
+    status === "stale" ||
+    status === "timed_out"
   );
 }
 
@@ -84,10 +85,13 @@ export function isRunningScanStatusLog(log: { status: string; endedAt: string | 
 }
 
 /**
- * P0: לוג "running" עתיק הוא זומבי (תהליך שמת באמצע) — אסור לאמץ אותו כסריקה
- * פעילה ב-UI, אחרת הדשבורד מציג "סורק..." לנצח על סריקה שלא קיימת.
+ * Hard bound matching backend GMAIL_SCAN_STUCK_TIMEOUT_MS.
+ * UI must never keep showing "סורקת" past this without fresh backend proof.
  */
-export const SCAN_LOG_ADOPTION_MAX_AGE_MS = 30 * 60 * 1000;
+export const SCAN_LOG_ADOPTION_MAX_AGE_MS = 3 * 60 * 1000;
+export const SCAN_CLIENT_STUCK_TIMEOUT_MS = 3 * 60 * 1000;
+export const SCAN_STUCK_USER_MESSAGE_HE =
+  "הסריקה נתקעה ונעצרה אוטומטית. אפשר לנסות שוב.";
 
 export function isAdoptableRunningScanLog(
   log: { status: string; endedAt: string | null; startedAt?: string | Date | null },
@@ -123,11 +127,13 @@ export function normalizeScanStatusFromLog(
     | "failed"
     | "cancelled"
     | "stale"
+    | "timed_out"
     | "paused"
     | "success"
 ) {
   if (logStatus === "success" || logStatus === "completed") return "completed";
   if (logStatus === "partial") return "partial";
+  if (logStatus === "timed_out") return "timed_out";
   if (logStatus === "stale") return "stale";
   if (logStatus === "paused") return "paused";
   if (logStatus === "cancelled") return "cancelled";

@@ -321,3 +321,103 @@ test("old success/paused banners are NOT hidden by the failure TTL", () => {
   );
   assert.equal(success?.status, "success");
 });
+
+test("UI stops loading on timed_out progress", () => {
+  const progress = {
+    status: "timed_out",
+    inProgress: false,
+    finishedAt: "2026-07-08T12:00:00.000Z",
+    emailsFetched: 0,
+    documentsFound: 0,
+    canStartNewScan: true,
+  };
+  const banner = buildScanBannerState(progress, null);
+  assert.equal(banner?.status, "timed_out");
+  assert.match(formatScanBannerText("timed_out", 0, 0, null, 1), /נתקעה ונעצרה אוטומטית/);
+  assert.equal(
+    resolveDashboardGmailScanRunning({
+      syncing: false,
+      activeScanId: "scan-stuck",
+      activeScan: progress,
+      scanBanner: banner,
+    }),
+    false
+  );
+});
+
+test("zombie running last log never forces infinite scanning banner", () => {
+  const now = Date.parse("2026-07-08T12:00:00.000Z");
+  const banner = buildScanBannerState(
+    null,
+    {
+      last: {
+        id: "zombie-running",
+        status: "running",
+        found: 0,
+        saved: 0,
+        invoicesFound: 0,
+        paymentsFound: 0,
+        errors: null,
+        startedAt: new Date(now - 10 * 60_000).toISOString(),
+        endedAt: null,
+      },
+    },
+    now
+  );
+  assert.equal(banner?.status, "timed_out");
+  assert.equal(
+    resolveDashboardGmailScanRunning({
+      syncing: false,
+      activeScanId: "zombie-running",
+      activeScan: null,
+      scanBanner: banner,
+      scanLogs: [
+        {
+          id: "zombie-running",
+          status: "running",
+          found: 0,
+          saved: 0,
+          errors: null,
+          startedAt: new Date(now - 10 * 60_000).toISOString(),
+          endedAt: null,
+        },
+      ],
+    }),
+    false
+  );
+});
+
+test("localStorage activeScanId alone cannot force scanning UI without backend proof", () => {
+  assert.equal(
+    resolveDashboardGmailScanRunning({
+      syncing: false,
+      activeScanId: "ghost-from-storage",
+      activeScan: null,
+      scanBanner: null,
+      scanLogs: [],
+    }),
+    false
+  );
+});
+
+test("manual scan button stays available after timed_out banner", () => {
+  const banner = buildScanBannerState(
+    {
+      status: "timed_out",
+      inProgress: false,
+      finishedAt: "2026-07-08T12:03:00.000Z",
+      canStartNewScan: true,
+    },
+    null
+  );
+  assert.equal(banner?.status, "timed_out");
+  assert.equal(
+    resolveDashboardGmailScanRunning({
+      syncing: false,
+      activeScanId: null,
+      activeScan: null,
+      scanBanner: banner,
+    }),
+    false
+  );
+});

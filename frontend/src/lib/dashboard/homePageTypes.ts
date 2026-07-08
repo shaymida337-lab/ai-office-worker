@@ -162,10 +162,27 @@ export type GmailScanResult = {
 
 export type ScanProgressResult = {
   scanId: string;
-  status: "running" | "queued" | "completed" | "partial" | "error" | "success" | "failed" | "cancelled" | "stale" | "paused";
+  status:
+    | "running"
+    | "queued"
+    | "completed"
+    | "partial"
+    | "error"
+    | "success"
+    | "failed"
+    | "cancelled"
+    | "stale"
+    | "timed_out"
+    | "paused";
+  authoritativeStatus?: "idle" | "queued" | "running" | "completed" | "failed" | "timed_out" | "cancelled";
   inProgress: boolean;
   startedAt: string;
+  lastProgressAt?: string | null;
   finishedAt: string | null;
+  failureReason?: string | null;
+  canStartNewScan?: boolean;
+  userMessageHe?: string | null;
+  currentStage?: string | null;
   error: string | null;
   emailsFetched: number;
   emailsSaved: number;

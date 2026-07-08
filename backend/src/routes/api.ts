@@ -2497,20 +2497,22 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
         nextRetryAt: true,
         errorMessage: true,
         startedAt: true,
+        updatedAt: true,
         finishedAt: true,
       },
     }),
   ]);
 
-  const logs: ScanStatusLog[] = [
-    ...scanLogs,
-    ...syncLogs.map((log) => {
-      const apiStatus = log.finishedAt
-        ? toApiGmailScanStatus(log.status, { errorsCount: log.errorsCount, errorMessage: log.errorMessage })
-        : toApiGmailScanStatus(log.status, { errorsCount: log.errorsCount, errorMessage: log.errorMessage });
-      const mappedStatus =
-        apiStatus === "error" || apiStatus === "failed"
-          ? "failed"
+  const mapSyncLog = (log: (typeof syncLogs)[number]): ScanStatusLog => {
+    const apiStatus = toApiGmailScanStatus(log.status, {
+      errorsCount: log.errorsCount,
+      errorMessage: log.errorMessage,
+    });
+    const mappedStatus =
+      apiStatus === "error" || apiStatus === "failed"
+        ? "failed"
+        : apiStatus === "timed_out"
+          ? "timed_out"
           : apiStatus === "stale"
             ? "stale"
             : apiStatus === "paused"
@@ -2520,7 +2522,7 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
                 : apiStatus === "queued"
                   ? "queued"
                   : apiStatus;
-      return {
+    return {
       id: log.id,
       type: log.type,
       status: mappedStatus,
@@ -2536,16 +2538,23 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
       startedAt: log.startedAt,
       endedAt: log.finishedAt,
     };
-    }),
-  ]
+  };
+
+  // SyncLog is the authoritative Gmail scan source; legacy ScanLog is history-only.
+  const syncMapped = syncLogs.map(mapSyncLog);
+  const logs: ScanStatusLog[] = [...syncMapped, ...scanLogs]
     .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
     .slice(0, 10);
 
-  const last = logs[0] ?? null;
-  const hasActiveScan = logs.some((log) => log.status === "running" || log.status === "queued");
+  const last = syncMapped[0] ?? logs[0] ?? null;
+  const hasActiveScan = syncMapped.some((log) => log.status === "running" || log.status === "queued");
+  const activeOrLastSync = syncLogs[0] ?? null;
+  const progressSnapshot = activeOrLastSync
+    ? await buildGmailScanProgress(organizationId, activeOrLastSync.id)
+    : null;
   const hasStaleTerminalBanner =
     !hasActiveScan &&
-    logs.some((log) => log.status === "stale" || log.status === "failed" || log.status === "error");
+    logs.some((log) => log.status === "stale" || log.status === "timed_out" || log.status === "failed" || log.status === "error");
   if (hasStaleTerminalBanner) {
     void import("../services/reliability/center/reliabilitySelfHealing.js")
       .then(({ noteStaleDashboardBanner }) =>
@@ -2560,10 +2569,35 @@ apiRouter.get("/automation/scan-status", async (req, res) => {
   const nextDaily = new Date();
   nextDaily.setHours(3, 0, 0, 0);
   if (nextDaily <= new Date()) nextDaily.setDate(nextDaily.getDate() + 1);
-  res.json({ last, logs, nextScheduledScanAt: nextDaily.toISOString() });
+  res.json({
+    last,
+    logs,
+    nextScheduledScanAt: nextDaily.toISOString(),
+    // Authoritative dashboard contract (read recovers stale queued/running first).
+    status: progressSnapshot?.authoritativeStatus ?? (hasActiveScan ? "running" : "idle"),
+    scanId: progressSnapshot?.scanId ?? last?.id ?? null,
+    startedAt: progressSnapshot?.startedAt ?? last?.startedAt ?? null,
+    lastProgressAt: progressSnapshot?.lastProgressAt ?? null,
+    currentStage: progressSnapshot?.currentStage ?? null,
+    processedEmails: progressSnapshot?.emailsFetched ?? last?.found ?? 0,
+    savedDocuments: progressSnapshot?.documentsFound ?? last?.saved ?? 0,
+    failureReason: progressSnapshot?.failureReason ?? last?.errors ?? null,
+    canStartNewScan: progressSnapshot?.canStartNewScan ?? !hasActiveScan,
+    userMessageHe: progressSnapshot?.userMessageHe ?? null,
+    progress: progressSnapshot,
+  });
   } catch (err) {
     console.error("[automation/scan-status] failed", err);
-    res.json({ last: null, logs: [], nextScheduledScanAt: null, degraded: true });
+    res.json({
+      last: null,
+      logs: [],
+      nextScheduledScanAt: null,
+      degraded: true,
+      status: "idle",
+      scanId: null,
+      canStartNewScan: true,
+      userMessageHe: "לא הצלחתי לבדוק את מצב הסריקה. אפשר לנסות שוב.",
+    });
   }
 });
 
@@ -7187,9 +7221,22 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
     return acc;
   }, {});
 
-  const status = log.finishedAt
-    ? toApiGmailScanStatus(log.status, { errorsCount: log.errorsCount, errorMessage: log.errorMessage })
-    : toApiGmailScanStatus(log.status, { errorsCount: log.errorsCount, errorMessage: log.errorMessage });
+  const status = toApiGmailScanStatus(log.status, {
+    errorsCount: log.errorsCount,
+    errorMessage: log.errorMessage,
+  });
+  const authoritativeStatus =
+    status === "queued" || status === "running"
+      ? status
+      : status === "timed_out" || status === "stale" || status === "paused"
+        ? "timed_out"
+        : status === "cancelled"
+          ? "cancelled"
+          : status === "completed" || status === "partial"
+            ? "completed"
+            : status === "error" || status === "failed"
+              ? "failed"
+              : "idle";
   const elapsedMs = Math.max(0, end.getTime() - start.getTime());
   const emailsFetched = log.emailsProcessed;
   const emailsSaved = log.emailsSaved;
@@ -7203,6 +7250,7 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
   const uploadedToDrive = log.driveUploaded;
   const processed = emailsFetched;
   const progressNumerator = emailsSaved;
+  const lastProgressAt = (log as { updatedAt?: Date }).updatedAt ?? log.startedAt;
   const scanPhase =
     status === "running" || status === "queued"
       ? progressNumerator > 0 && progressNumerator < emailsFetched
@@ -7220,7 +7268,11 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
           : processed > 0
             ? 50
             : 0
-        : status === "error" || status === "failed" || status === "stale" || status === "cancelled"
+        : status === "error" ||
+            status === "failed" ||
+            status === "stale" ||
+            status === "timed_out" ||
+            status === "cancelled"
           ? Math.min(100, processed > 0 ? 100 : 0)
           : processed > 0
             ? progressNumerator > 0
@@ -7233,16 +7285,42 @@ async function buildGmailScanProgress(organizationId: string, scanId: string) {
       ? Math.max(0, Math.round(((100 - progressPercent) / progressPercent) * (elapsedMs / 1000)))
       : null;
 
+  const canStartNewScan = !(status === "running" || status === "queued");
+  const userMessageHe =
+    status === "running" || status === "queued"
+      ? `נטלי סורקת את המייל שלך… עברתי על ${emailsFetched} מיילים ומצאתי ${documentsFound} מסמכים`
+      : status === "timed_out" || status === "stale"
+        ? "הסריקה נתקעה ונעצרה אוטומטית. אפשר לנסות שוב."
+        : status === "paused"
+          ? "הסריקה הופסקה באמצע. אפשר להריץ סריקה נוספת מתי שנוח לך."
+          : status === "cancelled"
+            ? "הסריקה בוטלה. אפשר להריץ סריקה חדשה."
+            : status === "error" || status === "failed"
+              ? "הסריקה נכשלה. אפשר לנסות שוב בעוד רגע."
+              : status === "partial"
+                ? "הסריקה הסתיימה עם בעיות שדורשות בדיקה."
+                : "הסריקה הסתיימה והנתונים עודכנו";
+
   return {
     scanId: log.id,
     status,
+    authoritativeStatus,
     scanPhase,
+    currentStage: scanPhase,
     inProgress: !log.finishedAt && (status === "running" || status === "queued"),
     startedAt: log.startedAt,
+    lastProgressAt,
     finishedAt: log.finishedAt,
+    failureReason: log.errorMessage,
+    canStartNewScan,
+    userMessageHe,
     error:
-      status === "error" || status === "failed" || status === "stale" || status === "cancelled"
-        ? log.errorMessage
+      status === "error" ||
+      status === "failed" ||
+      status === "stale" ||
+      status === "timed_out" ||
+      status === "cancelled"
+        ? userMessageHe
         : null,
     progressPercent,
     estimatedRemainingSeconds,
