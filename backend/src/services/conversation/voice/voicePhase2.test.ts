@@ -269,4 +269,39 @@ describe("natalie voice phase 2", () => {
     assert.equal(snapshots.length, 2);
     assert.ok(snapshots[1]!.averageLatencyMs > 0);
   });
+
+  it("returns heard clarification prompt and blocks handoff on low-confidence transcript", async () => {
+    let askCalls = 0;
+    const result = await processVoiceTurn(
+      {
+        organizationId: "org-1",
+        userId: "user-1",
+        transcript: "תקבעי תור לשרית",
+        turnId: randomUUID(),
+        role: "owner",
+      },
+      {
+        processTranscriptAccuracyFn: async () => ({
+          rawTranscript: "תקבעי תור לשרית",
+          normalizedTranscript: "תקבעי תור לשרית מחר בשלוש",
+          confidence: 0.41,
+          confidenceLevel: "low",
+          corrections: [],
+          clarificationRequired: true,
+          clarificationMessage: "placeholder",
+          actionBlocked: true,
+          detectedActions: [],
+          ambiguousNameSuggestions: [],
+        }),
+        ask: async () => {
+          askCalls += 1;
+          return { answer: "should not run" };
+        },
+      }
+    );
+
+    assert.equal(askCalls, 0);
+    assert.equal(result.executed, false);
+    assert.match(result.answer ?? "", /שמעתי: "תקבעי תור לשרית מחר בשלוש" — זה נכון\?/);
+  });
 });

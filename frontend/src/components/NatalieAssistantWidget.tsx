@@ -8,6 +8,11 @@ import { formatNatalieResponseOrFallback } from "@/lib/natalie/formatResponse";
 import { buildBookAppointmentActionFeedback } from "@/lib/natalieBookFeedback";
 import { normalizeAvailabilityProposal, normalizeNatalieResponse } from "@/lib/natalie/responseGuard";
 import {
+  buildVoiceHeardClarificationPrompt,
+  parseVoiceClarificationIntent,
+  shouldGateVoiceTranscription,
+} from "@/lib/natalie/voiceConfidenceGate";
+import {
   computeAnalyserRms,
   createInitialChunkVadState,
   createInitialVadTickState,
@@ -258,6 +263,14 @@ type NatalieAskResponse =
 type NatalieHistoryMessage = {
   role: "user" | "assistant";
   content: string;
+};
+
+type VoiceTranscriptionResponse = {
+  text?: string;
+  confidence?: number;
+  confidenceLevel?: "high" | "medium" | "low";
+  clarificationRequired?: boolean;
+  actionBlocked?: boolean;
 };
 
 const initialMessages: WidgetMessage[] = [
@@ -527,6 +540,7 @@ function NatalieAssistantWidgetInner() {
   const [messages, setMessages] = useState<WidgetMessage[]>(initialMessages);
   const [sending, setSending] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [pendingVoiceClarificationText, setPendingVoiceClarificationText] = useState<string | null>(null);
   const [pendingAudioPlay, setPendingAudioPlay] = useState(false);
   const [pendingAvailabilityBooking, setPendingAvailabilityBooking] = useState<PendingAvailabilityBooking | null>(null);
   const pendingVoiceTurnRef = useRef<{ turnId: string; text: string } | null>(null);
@@ -986,14 +1000,76 @@ function NatalieAssistantWidgetInner() {
         throw new Error(payload.error || `Transcription failed: ${response.status}`);
       }
 
-      const payload = (await response.json()) as { text?: string };
+      const payload = (await response.json()) as VoiceTranscriptionResponse;
       const text = payload.text?.trim();
       if (!text) {
         throw new Error("Empty transcription");
       }
 
+      if (pendingVoiceClarificationText) {
+        const clarificationIntent = parseVoiceClarificationIntent(text);
+        if (clarificationIntent === "confirm") {
+          const confirmedText = pendingVoiceClarificationText;
+          setPendingVoiceClarificationText(null);
+          setSpeechError("");
+          setInput("");
+          if (!sending) {
+            void sendVoiceTurn(confirmedText);
+          }
+          return;
+        }
+
+        if (clarificationIntent === "reject") {
+          setPendingVoiceClarificationText(null);
+          setInput("");
+          setMessages((current) => [
+            ...current,
+            {
+              id: `natalie-clarification-cancel-${Date.now()}`,
+              sender: "natalie",
+              text: "מעולה, לא ביצעתי פעולה. אפשר לנסות שוב בקול או להקליד תיקון.",
+            },
+          ]);
+          return;
+        }
+
+        setPendingVoiceClarificationText(text);
+        setInput(text);
+        setSpeechError("");
+        setMessages((current) => [
+          ...current,
+          {
+            id: `natalie-clarification-revised-${Date.now()}`,
+            sender: "natalie",
+            text: buildVoiceHeardClarificationPrompt(text),
+          },
+        ]);
+        return;
+      }
+
+      const gateTriggered = shouldGateVoiceTranscription({
+        confidence: payload.confidence,
+        clarificationRequired: payload.clarificationRequired,
+        actionBlocked: payload.actionBlocked,
+      });
+      if (gateTriggered) {
+        setPendingVoiceClarificationText(text);
+        setInput(text);
+        setSpeechError("");
+        setMessages((current) => [
+          ...current,
+          {
+            id: `natalie-clarification-${Date.now()}`,
+            sender: "natalie",
+            text: buildVoiceHeardClarificationPrompt(text),
+          },
+        ]);
+        return;
+      }
+
       setInput(text);
       setSpeechError("");
+      setPendingVoiceClarificationText(null);
       if (!sending) {
         void sendVoiceTurn(text);
       }
@@ -1308,6 +1384,43 @@ function NatalieAssistantWidgetInner() {
     const cleanText = text.trim();
     if (!cleanText || sending) return;
 
+    if (pendingVoiceClarificationText) {
+      const clarificationIntent = parseVoiceClarificationIntent(cleanText);
+      if (clarificationIntent === "confirm") {
+        const confirmedText = pendingVoiceClarificationText;
+        setPendingVoiceClarificationText(null);
+        setInput("");
+        if (!sending) {
+          void sendVoiceTurn(confirmedText);
+        }
+        return;
+      }
+      if (clarificationIntent === "reject") {
+        setPendingVoiceClarificationText(null);
+        setInput("");
+        setMessages((current) => [
+          ...current,
+          {
+            id: `natalie-clarification-cancel-${Date.now()}`,
+            sender: "natalie",
+            text: "מעולה, לא ביצעתי פעולה. אפשר לנסות שוב בקול או להקליד תיקון.",
+          },
+        ]);
+        return;
+      }
+      setPendingVoiceClarificationText(cleanText);
+      setInput(cleanText);
+      setMessages((current) => [
+        ...current,
+        {
+          id: `natalie-clarification-revised-${Date.now()}`,
+          sender: "natalie",
+          text: buildVoiceHeardClarificationPrompt(cleanText),
+        },
+      ]);
+      return;
+    }
+
     if (pendingAvailabilityBooking) {
       const timestamp = Date.now();
       const booking = pendingAvailabilityBooking;
@@ -1468,6 +1581,7 @@ function NatalieAssistantWidgetInner() {
   async function sendVoiceTurn(text: string, options?: { retryTurnId?: string }) {
     const cleanText = text.trim();
     if (!cleanText || sending) return;
+    setPendingVoiceClarificationText(null);
 
     const turnId = options?.retryTurnId ?? createVoiceTurnId();
     pendingVoiceTurnRef.current = { turnId, text: cleanText };

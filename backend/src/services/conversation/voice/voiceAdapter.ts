@@ -110,6 +110,10 @@ function applyVoiceSpokenLayer(result: ProcessNatalieTurnResult): ProcessNatalie
   };
 }
 
+function buildVoiceHeardClarificationPrompt(text: string): string {
+  return `שמעתי: "${text}" — זה נכון?`;
+}
+
 async function handleVoiceConfirmationTurn(input: {
   organizationId: string;
   userId: string;
@@ -472,7 +476,7 @@ export async function processVoiceTurn(
     requestId: input.requestId ?? null,
   });
 
-  if (accuracy.clarificationRequired && accuracy.clarificationMessage) {
+  if (accuracy.clarificationRequired) {
     const latencyMs = Date.now() - startedAt;
     const trace = createCoreWorkflowTrace({
       subsystem: "natalie_voice",
@@ -500,7 +504,7 @@ export async function processVoiceTurn(
     });
     return buildSttClarificationVoiceResult({
       sessionId: input.sessionId,
-      message: accuracy.clarificationMessage,
+      message: buildVoiceHeardClarificationPrompt(accuracy.normalizedTranscript.trim() || transcript),
       correlationId: trace.correlationId,
       turnId,
       latencyMs,
