@@ -174,6 +174,7 @@ test("create commands extract customerName from Hebrew prepositions", () => {
     { text: "קבעי תור לשרון יום שישי ב-15:00", customerName: "שרון", time: "15:00" },
     { text: "תקבע פגישה לרון מחר ב-16:00", customerName: "רון", time: "16:00" },
     { text: "קבעי פגישה עם דנה ביום חמישי ב-10", customerName: "דנה", time: "10:00" },
+    { text: "קבעי תור עבור שרון יום שישי ב-15:00", customerName: "שרון", time: "15:00" },
     { text: "תזמני תור עבור יעל ביום ראשון בשעה 12", customerName: "יעל", time: "12:00" },
     { text: "קבעי תור ללקוחה מיכל מחר ב-9", customerName: "מיכל", time: null },
   ];

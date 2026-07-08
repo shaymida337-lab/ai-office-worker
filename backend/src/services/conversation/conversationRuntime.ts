@@ -76,6 +76,7 @@ export async function processNatalieTurn(
   const channel = input.channel ?? "web_chat";
   const modality = modalityForChannel(channel, input.modality);
   const normalizedMessage = normalizeChannelInput(channel, input.message);
+  const requestId = input.requestId ?? null;
   if (!normalizedMessage) {
     throw new Error("message is required");
   }
@@ -104,6 +105,23 @@ export async function processNatalieTurn(
   });
 
   try {
+    console.info("[natalie/flow] message_received", {
+      requestId,
+      channel,
+      modality,
+      sessionId: session.id,
+      message: normalizedMessage,
+    });
+
+    const logResponseSent = (source: string, answer: string) => {
+      console.info("[natalie/flow] response_sent", {
+        requestId,
+        sessionId: session.id,
+        source,
+        answer,
+      });
+    };
+
     const calendarConfirmation = await tryHandleCalendarConfirmationTurn({
       session,
       message: normalizedMessage,
@@ -133,6 +151,7 @@ export async function processNatalieTurn(
         adapter.renderSpoken(continuation as NatalieClaudeResponse, continuation.confirmation);
 
       const updatedSession = await saveSession(calendarConfirmation.updatedSession);
+      logResponseSent("calendar_confirmation", continuation.answer);
 
       completeCoreWorkflowStage(trace, "turn", "completed", {
         health: continuation.zeroWrongAction?.ready === false ? "Degraded" : "Healthy",
@@ -170,6 +189,7 @@ export async function processNatalieTurn(
       channel,
       organizationId: input.organizationId,
       userId: input.userId,
+      requestId,
       role,
       permissions: input.permissions,
       saveSession,
@@ -185,6 +205,7 @@ export async function processNatalieTurn(
         adapter.renderSpoken(continuation as NatalieClaudeResponse, continuation.confirmation);
 
       const updatedSession = await saveSession(calendarIntentContinuation.updatedSession);
+      logResponseSent("calendar_intent_continuation", continuation.answer);
 
       completeCoreWorkflowStage(trace, "turn", "completed", {
         health: continuation.zeroWrongAction?.ready === false ? "Degraded" : "Healthy",
@@ -238,6 +259,7 @@ export async function processNatalieTurn(
         adapter.renderSpoken(continuation as NatalieClaudeResponse, continuation.confirmation);
 
       const updatedSession = await saveSession(availabilityContinuation.updatedSession);
+      logResponseSent("availability_continuation", continuation.answer);
 
       completeCoreWorkflowStage(trace, "turn", "completed", {
         health: continuation.zeroWrongAction?.ready === false ? "Degraded" : "Healthy",
@@ -341,7 +363,8 @@ export async function processNatalieTurn(
           )
         : null;
     if (pendingConfirmation) {
-      console.info("[natalie/confirmation] pending_created", {
+      console.info("[natalie/flow] confirmation_created", {
+        requestId,
         sessionId: activeSession.id,
         action: pendingConfirmation.action,
         confirmationId: pendingConfirmation.confirmationId,
@@ -397,6 +420,7 @@ export async function processNatalieTurn(
       durationMs: sessionDurationMs(updatedSession),
       success: true,
     });
+    logResponseSent("generic_route", displayResponse);
 
     return {
       ...(effectiveResponse as NatalieClaudeResponse),

@@ -65,6 +65,7 @@ export type ProcessNatalieTurnInput = {
   channel: NatalieChannel;
   modality: NatalieModality;
   message: string;
+  requestId?: string | null;
   sessionId?: string | null;
   legacyHistory?: Array<{ role: "user" | "assistant"; content: string }>;
   role?: string | null;

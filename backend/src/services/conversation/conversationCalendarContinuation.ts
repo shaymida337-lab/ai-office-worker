@@ -172,6 +172,7 @@ export async function tryHandleCalendarIntentContinuation(input: {
   channel: NatalieChannel;
   organizationId: string;
   userId: string;
+  requestId?: string | null;
   role?: string | null;
   permissions?: string[];
   saveSession?: typeof saveConversationSession;
@@ -216,12 +217,31 @@ export async function tryHandleCalendarIntentContinuation(input: {
     pending = null;
   }
 
-  if (pending && isFreshCalendarCommand(input.message) && !isCalendarFollowUpPhrase(input.message)) {
+  const initialExtraction = parseCalendarIntent(input.message);
+  console.info("[natalie/flow] parser", {
+    requestId: input.requestId ?? null,
+    sessionId: input.session.id,
+    source: "calendar_intent_continuation",
+    intent: initialExtraction.intent,
+    customerName: initialExtraction.customerName,
+    dayReference: initialExtraction.dayReference,
+    time: initialExtraction.time,
+    missingFields: initialExtraction.missingFields,
+    hadPendingIntent: Boolean(pending),
+    followUpPhrase: isCalendarFollowUpPhrase(input.message),
+  });
+
+  if (pending && isFreshCalendarCommand(input.message)) {
+    console.info("[natalie/flow] pending_intent_bypassed", {
+      requestId: input.requestId ?? null,
+      sessionId: input.session.id,
+      reason: "fresh_calendar_command",
+    });
     pending = null;
   }
 
   if (!pending) {
-    const extraction = parseCalendarIntent(input.message);
+    const extraction = initialExtraction;
     if (
       extraction.intent === "cancel_appointment" &&
       extraction.cancelTarget === "all" &&
@@ -289,6 +309,13 @@ export async function tryHandleCalendarIntentContinuation(input: {
     }
 
     const answer = clarificationQuestionForIntent(parseCalendarIntent(input.message));
+    console.info("[natalie/flow] fallback", {
+      requestId: input.requestId ?? null,
+      sessionId: input.session.id,
+      source: "calendar_initial_clarification",
+      answer,
+      missingFields: extraction.missingFields,
+    });
     const persisted = await persistCalendarContinuationTurn({
       session: input.session,
       channel: input.channel,
@@ -320,6 +347,13 @@ export async function tryHandleCalendarIntentContinuation(input: {
       durationMinutes: null,
       serviceName: null,
       notes: null,
+    });
+    console.info("[natalie/flow] fallback", {
+      requestId: input.requestId ?? null,
+      sessionId: input.session.id,
+      source: "calendar_pending_merge_clarification",
+      answer,
+      missingFields: merged.missingFields,
     });
     merged.lastAssistantQuestion = answer;
     const persisted = await persistCalendarContinuationTurn({

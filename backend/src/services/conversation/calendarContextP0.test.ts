@@ -19,6 +19,7 @@ import {
 import { askNatalieBusinessQuestion } from "../natalie.js";
 import { processNatalieTurn } from "./conversationRuntime.js";
 import { parseCalendarIntent } from "../calendar/calendarIntentParser.js";
+import { calendarPendingAction, type CalendarPendingIntent } from "../calendar/calendarPendingIntent.js";
 
 function sessionWithBookConfirmation(overrides?: Partial<ConversationSessionRecord>): ConversationSessionRecord {
   const now = new Date().toISOString();
@@ -186,6 +187,71 @@ test("fresh create command bypasses stale pending confirmation", async () => {
   });
   assert.equal(handled.handled, false);
   assert.equal(handled.resetPendingConfirmation, true);
+});
+
+test("fresh create command bypasses stale pending intent continuation", async () => {
+  const now = new Date().toISOString();
+  const stalePending: CalendarPendingIntent = {
+    intent: "create_appointment",
+    action: "create_appointment",
+    cancelTarget: null,
+    customerName: null,
+    dayReference: "מחר",
+    date: null,
+    time: "15:00",
+    fromDayReference: null,
+    fromTime: null,
+    missingFields: ["customerName"],
+    originalUserText: "קבעי לי תור מחר ב-15:00",
+    lastAssistantQuestion: "לא הבנתי למי לקבוע את התור. מה שם הלקוח/ה?",
+    createdAt: now,
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+  };
+
+  const sessionId = "sess-stale-pending-create";
+  const session: ConversationSessionRecord = {
+    ...sessionWithBookConfirmation({
+      id: sessionId,
+      pendingConfirmation: null,
+      pendingAction: calendarPendingAction(stalePending),
+      structuredHistory: [],
+    }),
+  };
+  const sessions = new Map<string, ConversationSessionRecord>([[sessionId, session]]);
+
+  const turn = await processNatalieTurn(
+    {
+      organizationId: "org-1",
+      userId: "user-1",
+      channel: "web_chat",
+      modality: "text",
+      message: "קבעי תור עבור שרון יום שישי ב-15:00",
+      sessionId,
+      role: "owner",
+      requestId: "req-fresh-bypass",
+    },
+    {
+      resolveSession: async () => sessions.get(sessionId)!,
+      saveSession: async (next) => {
+        sessions.set(next.id, next);
+        return next;
+      },
+      ask: async (input) =>
+        askNatalieBusinessQuestion({
+          organizationId: input.organizationId,
+          question: input.question,
+          history: input.history,
+          conversationContext: input.conversationContext,
+        }),
+    }
+  );
+
+  assert.equal("action" in turn && turn.action, "book_appointment");
+  assert.match(turn.answer, /שרון/);
+  assert.doesNotMatch(turn.answer, /לא הבנתי למי לקבוע/);
+  const updated = sessions.get(sessionId)!;
+  assert.equal(updated.pendingAction?.action, "book_appointment");
+  assert.equal(updated.pendingConfirmation?.action, "book_appointment");
 });
 
 test("list ordinal parser resolves first/second/last commands", () => {

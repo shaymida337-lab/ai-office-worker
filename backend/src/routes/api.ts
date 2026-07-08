@@ -2777,6 +2777,7 @@ apiRouter.post("/natalie/ask", requirePerm("chat.use"), async (req, res) => {
   const sessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId.trim() : null;
   const channel = req.body?.channel === "web_voice" ? "web_voice" : "web_chat";
   const modality = req.body?.modality === "voice" ? "voice" : "text";
+  const requestId = readRequestId(req);
   if (!question) {
     res.status(400).json({ error: "question is required" });
     return;
@@ -2796,6 +2797,7 @@ apiRouter.post("/natalie/ask", requirePerm("chat.use"), async (req, res) => {
       channel,
       modality,
       message: question,
+      requestId,
       sessionId,
       legacyHistory: sessionId ? undefined : history,
     });
