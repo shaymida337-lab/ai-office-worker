@@ -2,7 +2,7 @@ import { answerBusinessQuestionWithClaude, type NatalieClaudeResponse } from "./
 import { findTasksByPartialTitle } from "./tasks.js";
 import { prisma } from "../lib/prisma.js";
 import { resolveAppointmentDateTime } from "./appointmentService.js";
-import { findUpcomingSchedulingForClient, findUpcomingSchedulingForOrganization, findUpcomingSchedulingForOrganizationDetailed, type UpcomingSchedulingItem } from "./scheduling/schedulingFacade.js";
+import { findUpcomingSchedulingForClient, findUpcomingSchedulingForOrganization, type UpcomingSchedulingItem } from "./scheduling/schedulingFacade.js";
 import {
   formatAmbiguousCustomerMessage,
   searchSchedulingCustomers,
@@ -27,8 +27,12 @@ import {
   validateExtraction,
   extractDayReference as extractCalendarDayReference,
   type CalendarIntentExtraction,
-  type CalendarListRange,
 } from "./calendar/calendarIntentParser.js";
+import {
+  calendarReadQueryFromIntent,
+  filterAppointmentsForReadRange,
+  runCalendarReadEngine,
+} from "./calendar/calendarReadEngine.js";
 import { calendarMessages } from "./calendar/calendarMessages.js";
 import type { CalendarPendingIntent } from "./calendar/calendarPendingIntent.js";
 import {
@@ -1207,19 +1211,6 @@ function formatAppointmentListLine(
   return `${index + 1}. ${when}${service ? ` — ${service}` : ""}`;
 }
 
-/** YYYY-MM-DD wall-clock date in the business timezone. */
-function localDateInTimeZone(date: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${get("year")}-${get("month")}-${get("day")}`;
-}
-
-/** HH:MM wall-clock time in the business timezone. */
 function formatTimeOnly(date: Date, timeZone: string): string {
   return new Intl.DateTimeFormat("he-IL", {
     timeZone,
@@ -1227,84 +1218,6 @@ function formatTimeOnly(date: Date, timeZone: string): string {
     minute: "2-digit",
     hour12: false,
   }).format(date);
-}
-
-const HEBREW_SHORT_WEEKDAY_TO_INDEX: Record<string, number> = {
-  Sun: 0,
-  Mon: 1,
-  Tue: 2,
-  Wed: 3,
-  Thu: 4,
-  Fri: 5,
-  Sat: 6,
-};
-
-/** Local date (YYYY-MM-DD) of the coming Saturday, i.e. end of the current Hebrew week. */
-function endOfCurrentWeekLocalDate(now: Date, timeZone: string): string {
-  const weekdayShort = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(now);
-  const dayOfWeek = HEBREW_SHORT_WEEKDAY_TO_INDEX[weekdayShort] ?? 0;
-  const daysUntilSaturday = 6 - dayOfWeek;
-  return localDateInTimeZone(new Date(now.getTime() + daysUntilSaturday * 86_400_000), timeZone);
-}
-
-/**
- * Filter merged upcoming items to the requested list window. Deterministic and
- * timezone-aware. Items are already upcoming (>= now) from the read repository.
- */
-function filterAppointmentsForListRange(
-  items: Array<UpcomingSchedulingItem & { clientId?: string }>,
-  params: { rangeType?: CalendarListRange; dayReference: string | null; timeZone: string; now: Date }
-): Array<UpcomingSchedulingItem & { clientId?: string }> {
-  if (params.rangeType === "week") {
-    const endLocal = endOfCurrentWeekLocalDate(params.now, params.timeZone);
-    return items.filter((item) => localDateInTimeZone(item.startTime, params.timeZone) <= endLocal);
-  }
-  if (params.dayReference) {
-    const target = resolveAppointmentDateTime({
-      dayReference: params.dayReference,
-      time: "12:00",
-      timeZone: params.timeZone,
-      now: params.now,
-    });
-    if (!target) return items;
-    const targetLocal = localDateInTimeZone(target, params.timeZone);
-    return items.filter((item) => localDateInTimeZone(item.startTime, params.timeZone) === targetLocal);
-  }
-  return items;
-}
-
-/** Hebrew label for the list header/empty message based on the requested window. */
-function listRangeLabel(rangeType: CalendarListRange | undefined, dayReference: string | null): {
-  header: string;
-  empty: string;
-  includeDate: boolean;
-} {
-  if (rangeType === "week") {
-    return { header: calendarMessages.listHeaderWeek(), empty: calendarMessages.listEmptyWeek(), includeDate: true };
-  }
-  if (dayReference) {
-    return {
-      header: calendarMessages.listHeaderDay(dayReference),
-      empty: calendarMessages.listEmptyDay(dayReference),
-      includeDate: false,
-    };
-  }
-  return { header: calendarMessages.listHeaderAll(), empty: calendarMessages.listEmptyAll(), includeDate: true };
-}
-
-function formatListEntry(
-  item: UpcomingSchedulingItem,
-  timeZone: string,
-  includeDate: boolean
-): string {
-  const when = includeDate
-    ? formatAppointmentWhen(item.startTime, timeZone)
-    : formatTimeOnly(item.startTime, timeZone);
-  return calendarMessages.listEntry({
-    when,
-    clientName: item.clientName,
-    serviceName: item.serviceName,
-  });
 }
 
 /**
@@ -1320,70 +1233,27 @@ async function maybeBuildListAppointmentsResponse(
 ): Promise<NatalieClaudeResponse | null> {
   const now = deps?.now ?? new Date();
   const intent = parseCalendarIntent(question, { now });
-  if (intent.intent !== "list_appointments") return null;
+  const query = calendarReadQueryFromIntent(intent);
+  if (!query) return null;
 
   const loadTimezone = deps?.loadTimezone ?? loadOrganizationTimezone;
   const timeZone = await loadTimezone(organizationId);
 
-  let detailed: Awaited<ReturnType<typeof findUpcomingSchedulingForOrganizationDetailed>>;
-  try {
-    detailed = await findUpcomingSchedulingForOrganizationDetailed({ organizationId });
-  } catch (err) {
-    console.error("[natalie/list-appointments] scheduling read failed", err);
-    return {
-      answer: "לא הצלחתי לקרוא את היומן כרגע. נסי שוב בעוד רגע.",
-    };
-  }
-  const items = detailed.items;
-  const filtered = filterAppointmentsForListRange(items, {
-    rangeType: intent.rangeType,
-    dayReference: intent.dayReference,
+  const result = await runCalendarReadEngine({
+    organizationId,
+    query,
     timeZone,
     now,
+    requestId,
   });
 
-  const { header, empty, includeDate } = listRangeLabel(intent.rangeType, intent.dayReference);
-  const googleWarning = detailed.googleReadWarningHe;
-  const sourceLine =
-    detailed.googleReadStatus === "full"
-      ? calendarMessages.listSourceFull()
-      : detailed.googleReadStatus === "partial"
-        ? calendarMessages.listSourcePartial(googleWarning)
-        : detailed.googleReadStatus === "local_only"
-          ? calendarMessages.listSourceLocalOnly()
-          : calendarMessages.listSourceUnavailable(googleWarning);
-
-  console.info("[natalie/google-truth] list", {
-    requestId: requestId ?? null,
-    organizationId,
-    googleStatus: detailed.googleReadStatus,
-    degraded: detailed.googleReadDegraded,
-    reason: detailed.googleReadReason ?? null,
-    statusCode: detailed.googleReadStatusCode ?? null,
-    sourceUsed: detailed.googleReadStatus === "full" ? "google+local" : "local_or_partial",
-  });
-
-  if (filtered.length === 0) {
-    if (detailed.googleReadStatus !== "full") {
-      return {
-        answer: `${calendarMessages.listCannotGuaranteeEmpty(googleWarning)}\n\n${sourceLine}`,
-      };
-    }
-    const answer = googleWarning
-      ? calendarMessages.listEmptyWithGoogleWarning(empty, googleWarning)
-      : empty;
-    return { answer: `${answer}\n\n${sourceLine}` };
+  if (!result.action) {
+    return { answer: result.answer };
   }
 
-  const lines = filtered.map((item) => formatListEntry(item, timeZone, includeDate));
-  const answer = googleWarning
-    ? calendarMessages.listWithGoogleWarning(header, lines.join("\n"), googleWarning)
-    : `${header}\n${lines.join("\n")}`;
-  const answerWithSource = `${answer}\n\n${sourceLine}`;
-  const listedPending = buildLastListedAppointmentsPendingAction(filtered);
   return {
-    action: "last_listed_appointments",
-    proposal: listedPending!.proposal as {
+    action: result.action,
+    proposal: result.proposal as {
       items: Array<{
         appointmentId: string;
         source: "appointment" | "calendar_event" | "google_calendar";
@@ -1395,7 +1265,7 @@ async function maybeBuildListAppointmentsResponse(
       }>;
       listedAt?: string;
     },
-    answer: answerWithSource,
+    answer: result.answer,
   };
 }
 
@@ -1673,7 +1543,7 @@ async function resolveCalendarCommandCustomer(input: {
   let appointments = allClientAppointments;
   if (input.filterDayReference && allClientAppointments.length > 0) {
     const timeZone = await loadOrganizationTimezone(input.organizationId);
-    const sameDay = filterAppointmentsForListRange(allClientAppointments, {
+    const sameDay = filterAppointmentsForReadRange(allClientAppointments, {
       dayReference: input.filterDayReference,
       timeZone,
       now: new Date(),
@@ -1714,7 +1584,7 @@ async function buildCancelAllAppointmentsProposal(
   const items = (await findUpcomingSchedulingForOrganization({ organizationId })).filter(
     (item) => item.source !== "google_calendar"
   );
-  const filtered = filterAppointmentsForListRange(items, {
+  const filtered = filterAppointmentsForReadRange(items, {
     dayReference,
     timeZone,
     now,

@@ -140,13 +140,55 @@ export const calendarMessages = {
     return "התורים הקרובים שלך:";
   },
   listEmptyDay(dayReference: string): string {
-    return `אין לך תורים ל${dayReference}.`;
+    return `אין לך פגישות מתוכננות ל${dayReference}.`;
   },
   listEmptyWeek(): string {
-    return "אין לך תורים השבוע.";
+    return "אין לך פגישות מתוכננות השבוע.";
   },
   listEmptyAll(): string {
-    return "אין לך תורים קרובים ביומן.";
+    return "אין לך פגישות מתוכננות ביומן.";
+  },
+  nextAppointmentEmpty(): string {
+    return "אין לך פגישות קרובות ביומן.";
+  },
+  nextAppointment(clientName: string, when: string, serviceName?: string): string {
+    const service = serviceName?.trim();
+    return service
+      ? `הפגישה הבאה שלך: ${when} עם ${clientName} — ${service}.`
+      : `הפגישה הבאה שלך: ${when} עם ${clientName}.`;
+  },
+  nextClient(clientName: string, when: string): string {
+    return `הלקוח הבא שלך הוא ${clientName}, ב-${when}.`;
+  },
+  countAppointments(
+    dayReference: string | null,
+    rangeType: "day" | "week" | "all" | undefined,
+    count: number
+  ): string {
+    if (rangeType === "week") {
+      return count === 1 ? "יש לך פגישה אחת השבוע." : `יש לך ${count} פגישות השבוע.`;
+    }
+    if (dayReference) {
+      return count === 1
+        ? `יש לך פגישה אחת ל${dayReference}.`
+        : `יש לך ${count} פגישות ל${dayReference}.`;
+    }
+    return count === 1 ? "יש לך פגישה אחת קרובה." : `יש לך ${count} פגישות קרובות.`;
+  },
+  countClients(
+    dayReference: string | null,
+    rangeType: "day" | "week" | "all" | undefined,
+    count: number
+  ): string {
+    if (dayReference) {
+      return count === 1
+        ? `יש לך לקוח אחד ל${dayReference}.`
+        : `יש לך ${count} לקוחות ל${dayReference}.`;
+    }
+    if (rangeType === "week") {
+      return count === 1 ? "יש לך לקוח אחד השבוע." : `יש לך ${count} לקוחות השבוע.`;
+    }
+    return count === 1 ? "יש לך לקוח אחד קרוב." : `יש לך ${count} לקוחות קרובים.`;
   },
   /** Honest empty/partial copy when Google Calendar cannot be read. */
   listGoogleReadUnavailable(detail: string): string {

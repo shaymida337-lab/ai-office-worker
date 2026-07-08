@@ -129,6 +129,8 @@ export async function findUpcomingSchedulingForOrganization(params: {
 export async function findUpcomingSchedulingForOrganizationDetailed(params: {
   organizationId: string;
   limit?: number;
+  /** Read window start (defaults to now). Used by calendar read engine for in-progress lookups. */
+  now?: Date;
 }): Promise<UpcomingSchedulingOrgResult> {
   // Single source of truth: always merge legacy Appointment + CalendarEvent so
   // Natalie finds bookings regardless of which table (or engine flag) stored them.
@@ -136,6 +138,7 @@ export async function findUpcomingSchedulingForOrganizationDetailed(params: {
   const detailed = await getUpcomingSchedulingForOrganizationDetailed({
     organizationId: params.organizationId,
     limit: params.limit ?? 50,
+    now: params.now,
   });
   return {
     items: detailed.items.map((item) => ({

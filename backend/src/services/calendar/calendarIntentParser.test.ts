@@ -132,10 +132,36 @@ test('list: "תראי לי את התורים של מחר" → list_appointments 
   assert.equal(result.dayReference, "מחר");
 });
 
-test('list: "כמה תורים יש לי השבוע?" → list_appointments / week', () => {
+test('list: "כמה תורים יש לי השבוע?" → list_appointments / week / count', () => {
   const result = parseCalendarIntent("כמה תורים יש לי השבוע?", OPTS);
   assert.equal(result.intent, "list_appointments");
   assert.equal(result.rangeType, "week");
+  assert.equal(result.readMode, "count");
+});
+
+test('next: "מה הפגישה הבאה שלי?" → list_appointments / next', () => {
+  const result = parseCalendarIntent("מה הפגישה הבאה שלי?", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.readMode, "next");
+  assert.equal(result.nextFocus, "appointment");
+});
+
+test('next: "מה התור הבא שלי?" → list_appointments / next', () => {
+  const result = parseCalendarIntent("מה התור הבא שלי?", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.readMode, "next");
+});
+
+test('next: "מי הלקוח הבא?" → next / client focus', () => {
+  const result = parseCalendarIntent("מי הלקוח הבא?", OPTS);
+  assert.equal(result.readMode, "next");
+  assert.equal(result.nextFocus, "client");
+});
+
+test('count: "כמה פגישות יש לי מחר?" → count / מחר', () => {
+  const result = parseCalendarIntent("כמה פגישות יש לי מחר?", OPTS);
+  assert.equal(result.readMode, "count");
+  assert.equal(result.dayReference, "מחר");
 });
 
 test("list detection never hijacks a create/cancel/move command", () => {

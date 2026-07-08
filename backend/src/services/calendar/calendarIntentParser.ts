@@ -10,6 +10,9 @@ export type CalendarIntentAction =
 /** Time window for a list/read request. */
 export type CalendarListRange = "day" | "week" | "all";
 
+/** How a list_appointments read should be answered. */
+export type CalendarReadMode = "list" | "count" | "count_clients" | "next";
+
 export type CalendarIntentConfidence = "high" | "medium" | "low";
 
 /** Deterministic structured extraction for Hebrew calendar phrases. */
@@ -25,6 +28,10 @@ export type CalendarIntentExtraction = {
   fromTime?: string | null;
   /** For list_appointments: the requested time window. */
   rangeType?: CalendarListRange;
+  /** For list_appointments: list vs count vs next appointment. */
+  readMode?: CalendarReadMode;
+  /** For readMode=next: full appointment vs client name vs in-progress. */
+  nextFocus?: "appointment" | "client" | "now";
   durationMinutes: number | null;
   serviceName: string | null;
   notes: string | null;
@@ -278,6 +285,13 @@ const CANCEL_VERBS = /(?:תבטל|תבטלי|בטל|בטלי|ביטול|לבטל
 const CREATE_VERBS = /(?:תקבעי|תקבע|קבעי|קבע|תזמני|תזמן|תרשמי|תרשום|רשמי|רשום|לקבוע|לזמן|תכניסי|תכניס|להכניס|שימי\s+לי|שים\s+לי)/u;
 
 /** Read-only "what's on my calendar" phrasings — must run before create/cancel/move. */
+const NEXT_READ_PATTERNS: RegExp[] = [
+  /(?:מה|איזה|איזו)\s+(?:ה)?(?:פגישה|תור)\s+(?:ה)?(?:בא|הבא)/u,
+  /(?:מה|איזה)\s+(?:ה)?(?:תור|פגישה)\s+(?:ה)?(?:בא|הבא)\s+שלי/u,
+  /מה\s+יש\s+לי\s+עכשיו/u,
+  /מי\s+(?:ה)?(?:לקוח|לקוחה)\s+(?:ה)?(?:בא|הבא)/u,
+];
+
 const LIST_PATTERNS: RegExp[] = [
   /מה\s+ה?(?:תורים|פגישות)/u,
   /ה?(?:תורים|פגישות)\s+של\s+(?:היום|מחר|מחרתיים|יום|השבוע)/u,
@@ -286,17 +300,47 @@ const LIST_PATTERNS: RegExp[] = [
   /מה\s+קורה\s+ביומן/u,
   /מה\s+יש\s+לי\s+[^?]*(?:ביומן|יומן|תור|פגיש|היום|מחר|מחרתיים|השבוע|ביום)/u,
   // "איזה/אילו פגישות יש לי ביום חמישי", "איזה תורים יש לי מחר"
-  /(?:איזה|אילו|כמה)\s+(?:ה)?(?:תורים|פגישות)/u,
+  /(?:איזה|אילו|כמה)\s+(?:ה)?(?:תורים|פגישות|לקוחות)/u,
   // "מי קבוע לי היום", "מי יש לי מחר"
   /מי\s+(?:קבוע|יש)\s+לי/u,
 ];
+
+function isNextReadIntent(text: string): boolean {
+  if (CREATE_VERBS.test(text) || MOVE_VERBS.test(text) || CANCEL_VERBS.test(text)) {
+    return false;
+  }
+  return NEXT_READ_PATTERNS.some((pattern) => pattern.test(text));
+}
 
 function isListIntent(text: string): boolean {
   // Never treat a scheduling/mutation command as a list request.
   if (CREATE_VERBS.test(text) || MOVE_VERBS.test(text) || CANCEL_VERBS.test(text)) {
     return false;
   }
+  if (isNextReadIntent(text)) return true;
   return LIST_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function detectListReadMode(text: string): {
+  readMode: CalendarReadMode;
+  nextFocus?: "appointment" | "client" | "now";
+} {
+  if (isNextReadIntent(text)) {
+    if (/מי\s+(?:ה)?(?:לקוח|לקוחה)\s+(?:ה)?(?:בא|הבא)/u.test(text)) {
+      return { readMode: "next", nextFocus: "client" };
+    }
+    if (/מה\s+יש\s+לי\s+עכשיו/u.test(text)) {
+      return { readMode: "next", nextFocus: "now" };
+    }
+    return { readMode: "next", nextFocus: "appointment" };
+  }
+  if (/כמה\s+לקוחות/u.test(text)) {
+    return { readMode: "count_clients" };
+  }
+  if (/כמה\s+(?:תורים|פגישות)/u.test(text)) {
+    return { readMode: "count" };
+  }
+  return { readMode: "list" };
 }
 
 const CANCEL_ALL_PATTERNS = [
@@ -491,16 +535,22 @@ export function parseCalendarIntent(
 
   if (intent === "list_appointments") {
     const dayReference = extractDayReference(text);
-    const rangeType: CalendarListRange = /השבוע|שבוע\s+הבא/u.test(text)
-      ? "week"
-      : dayReference
-        ? "day"
-        : "all";
+    const { readMode, nextFocus } = detectListReadMode(text);
+    const rangeType: CalendarListRange =
+      readMode === "next"
+        ? "all"
+        : /השבוע|שבוע\s+הבא/u.test(text)
+          ? "week"
+          : dayReference
+            ? "day"
+            : "all";
     return {
       ...base,
-      dayReference,
-      date: resolveDate(dayReference, null, timeZone, now),
+      dayReference: readMode === "next" ? null : dayReference,
+      date: readMode === "next" ? null : resolveDate(dayReference, null, timeZone, now),
       rangeType,
+      readMode,
+      nextFocus,
       confidence: "high",
       missingFields: [],
     };
