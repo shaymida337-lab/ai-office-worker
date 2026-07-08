@@ -672,99 +672,55 @@ function parseGoogleEventDateTime(value: { dateTime?: string | null; date?: stri
   return null;
 }
 
+/** Keep Natalie /ask under the frontend 15s budget — never hang on Google. */
+const GOOGLE_CALENDAR_READ_TIMEOUT_MS = 4_500;
+
+async function withGoogleCalendarReadTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error(`Google Calendar read timed out (${label})`);
+          (error as Error & { code?: string }).code = "GOOGLE_CALENDAR_READ_TIMEOUT";
+          reject(error);
+        }, GOOGLE_CALENDAR_READ_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * Safe inbound Google Calendar read for Natalie availability / list.
  * Does not persist events. Returns an honest Hebrew failure reason when
  * the org is disconnected or lacks read permission — never "empty calendar".
+ * Soft-fails on timeout so `/api/natalie/ask` never stalls past the FE budget.
  */
 export async function listGoogleCalendarEventsInRange(
   organizationId: string,
   range: { start: Date; end: Date }
 ): Promise<GoogleCalendarReadResult> {
   try {
-    const rawIntegration = await prisma.integration.findUnique({
-      where: {
-        organizationId_provider: { organizationId, provider: "google_calendar" },
-      },
-      select: { refreshToken: true, metadata: true },
-    });
-    if (!rawIntegration?.refreshToken) {
-      return {
-        ok: false,
-        reason: "not_connected",
-        messageHe: "אין חיבור ל-Google Calendar, אז אני לא יכולה לראות אירועים שנוצרו שם ישירות.",
-      };
-    }
-
-    const scopes = googleOAuthScopesFromMetadata(rawIntegration.metadata);
-    // Older connections may omit scopes metadata while still holding calendar write tokens.
-    // Only hard-fail on explicit empty/known-missing when scopes were recorded.
-    if (scopes.length > 0 && !hasGoogleCalendarReadScopes(scopes)) {
-      return {
-        ok: false,
-        reason: "permission_denied",
-        messageHe:
-          "אין לי הרשאה לקרוא את Google Calendar. חברי מחדש את היומן בהגדרות כדי שאוכל לראות תורים שנוצרו שם.",
-      };
-    }
-
-    const calendar = await getCalendarClientForOrganization(organizationId);
-    if (!calendar) {
-      return {
-        ok: false,
-        reason: "not_connected",
-        messageHe: "אין חיבור ל-Google Calendar, אז אני לא יכולה לראות אירועים שנוצרו שם ישירות.",
-      };
-    }
-
-    const metadata = parseGoogleIntegrationMetadata(rawIntegration.metadata);
-    const calendarId =
-      typeof metadata.calendarId === "string" && metadata.calendarId.trim()
-        ? metadata.calendarId.trim()
-        : "primary";
-
-    const events: GoogleCalendarReadEvent[] = [];
-    let pageToken: string | undefined;
-    do {
-      const response = await calendar.events.list({
-        calendarId,
-        timeMin: range.start.toISOString(),
-        timeMax: range.end.toISOString(),
-        singleEvents: true,
-        orderBy: "startTime",
-        maxResults: 250,
-        pageToken,
-      });
-
-      for (const item of response.data.items ?? []) {
-        if (!item?.id) continue;
-        if (item.status === "cancelled") continue;
-        if (item.transparency === "transparent") continue;
-
-        const start = parseGoogleEventDateTime(item.start);
-        let end = parseGoogleEventDateTime(item.end);
-        if (!start) continue;
-        if (!end) {
-          // All-day with only start date: block one day.
-          end = new Date(start.getTime() + 24 * 60 * 60_000);
-        }
-        if (end.getTime() <= range.start.getTime()) continue;
-        if (start.getTime() >= range.end.getTime()) continue;
-
-        events.push({
-          googleEventId: item.id,
-          summary: (item.summary ?? "").trim() || "אירוע ב-Google Calendar",
-          start,
-          end,
-          status: item.status ?? null,
-        });
-      }
-
-      pageToken = response.data.nextPageToken ?? undefined;
-    } while (pageToken);
-
-    return { ok: true, events, calendarId };
+    return await withGoogleCalendarReadTimeout(
+      listGoogleCalendarEventsInRangeUnbounded(organizationId, range),
+      `org=${organizationId}`
+    );
   } catch (err) {
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? String((err as { code?: unknown }).code ?? "")
+        : "";
+    if (code === "GOOGLE_CALENDAR_READ_TIMEOUT") {
+      console.warn(`[google/calendar] read timeout org=${organizationId}`);
+      return {
+        ok: false,
+        reason: "api_error",
+        messageHe: "לא הצלחתי לקרוא את Google Calendar כרגע, אז הרשימה עלולה להיות חלקית.",
+      };
+    }
     const status = googleErrorStatus(err);
     if (status === 401 || status === 403) {
       console.warn(
@@ -788,6 +744,96 @@ export async function listGoogleCalendarEventsInRange(
       messageHe: "לא הצלחתי לקרוא את Google Calendar כרגע, אז הרשימה עלולה להיות חלקית.",
     };
   }
+}
+
+async function listGoogleCalendarEventsInRangeUnbounded(
+  organizationId: string,
+  range: { start: Date; end: Date }
+): Promise<GoogleCalendarReadResult> {
+  const rawIntegration = await prisma.integration.findUnique({
+    where: {
+      organizationId_provider: { organizationId, provider: "google_calendar" },
+    },
+    select: { refreshToken: true, metadata: true },
+  });
+  if (!rawIntegration?.refreshToken) {
+    return {
+      ok: false,
+      reason: "not_connected",
+      messageHe: "אין חיבור ל-Google Calendar, אז אני לא יכולה לראות אירועים שנוצרו שם ישירות.",
+    };
+  }
+
+  const scopes = googleOAuthScopesFromMetadata(rawIntegration.metadata);
+  // Older connections may omit scopes metadata while still holding calendar write tokens.
+  // Only hard-fail on explicit empty/known-missing when scopes were recorded.
+  if (scopes.length > 0 && !hasGoogleCalendarReadScopes(scopes)) {
+    return {
+      ok: false,
+      reason: "permission_denied",
+      messageHe:
+        "אין לי הרשאה לקרוא את Google Calendar. חברי מחדש את היומן בהגדרות כדי שאוכל לראות תורים שנוצרו שם.",
+    };
+  }
+
+  const calendar = await getCalendarClientForOrganization(organizationId);
+  if (!calendar) {
+    return {
+      ok: false,
+      reason: "not_connected",
+      messageHe: "אין חיבור ל-Google Calendar, אז אני לא יכולה לראות אירועים שנוצרו שם ישירות.",
+    };
+  }
+
+  const metadata = parseGoogleIntegrationMetadata(rawIntegration.metadata);
+  const calendarId =
+    typeof metadata.calendarId === "string" && metadata.calendarId.trim()
+      ? metadata.calendarId.trim()
+      : "primary";
+
+  const events: GoogleCalendarReadEvent[] = [];
+  let pageToken: string | undefined;
+  // Cap pages so a huge calendar cannot burn the ask budget even before the race timeout.
+  for (let page = 0; page < 2; page += 1) {
+    const response = await calendar.events.list({
+      calendarId,
+      timeMin: range.start.toISOString(),
+      timeMax: range.end.toISOString(),
+      singleEvents: true,
+      orderBy: "startTime",
+      maxResults: 250,
+      pageToken,
+    });
+
+    for (const item of response.data.items ?? []) {
+      if (!item?.id) continue;
+      if (item.status === "cancelled") continue;
+      if (item.transparency === "transparent") continue;
+
+      const start = parseGoogleEventDateTime(item.start);
+      let end = parseGoogleEventDateTime(item.end);
+      if (!start) continue;
+      if (!end) {
+        // All-day with only start date: block one day.
+        end = new Date(start.getTime() + 24 * 60 * 60_000);
+      }
+      if (end.getTime() <= range.start.getTime()) continue;
+      if (start.getTime() >= range.end.getTime()) continue;
+
+      events.push({
+        googleEventId: item.id,
+        summary: (item.summary ?? "").trim() || "אירוע ב-Google Calendar",
+        start,
+        end,
+        status: item.status ?? null,
+      });
+    }
+
+    pageToken = response.data.nextPageToken ?? undefined;
+    if (!pageToken) break;
+  }
+
+  return { ok: true, events, calendarId };
 }
 
 export async function getGoogleClientsForClient(clientId: string) {

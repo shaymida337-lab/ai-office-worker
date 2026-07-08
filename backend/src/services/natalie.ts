@@ -1239,7 +1239,15 @@ async function maybeBuildListAppointmentsResponse(
   const loadTimezone = deps?.loadTimezone ?? loadOrganizationTimezone;
   const timeZone = await loadTimezone(organizationId);
 
-  const detailed = await findUpcomingSchedulingForOrganizationDetailed({ organizationId });
+  let detailed: Awaited<ReturnType<typeof findUpcomingSchedulingForOrganizationDetailed>>;
+  try {
+    detailed = await findUpcomingSchedulingForOrganizationDetailed({ organizationId });
+  } catch (err) {
+    console.error("[natalie/list-appointments] scheduling read failed", err);
+    return {
+      answer: "לא הצלחתי לקרוא את היומן כרגע. נסי שוב בעוד רגע.",
+    };
+  }
   const items = detailed.items;
   const filtered = filterAppointmentsForListRange(items, {
     rangeType: intent.rangeType,

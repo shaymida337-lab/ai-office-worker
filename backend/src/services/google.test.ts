@@ -33,6 +33,46 @@ test("hasGoogleCalendarReadScopes accepts readonly scopes", () => {
   assert.equal(hasGoogleCalendarReadScopes(["openid"]), false);
 });
 
+test("listGoogleCalendarEventsInRange soft-fails on hung Google client (timeout)", async () => {
+  const { listGoogleCalendarEventsInRange } = await import("./google.js");
+  const { prisma } = await import("../lib/prisma.js");
+
+  const originalFind = prisma.integration.findUnique.bind(prisma.integration);
+  prisma.integration.findUnique = (async () => ({
+    refreshToken: "rt",
+    metadata: JSON.stringify({
+      googleOAuthScopes: ["https://www.googleapis.com/auth/calendar"],
+      calendarId: "primary",
+    }),
+  })) as typeof prisma.integration.findUnique;
+
+  // Force getCalendarClientForOrganization path to hang via a never-resolving dynamic import proxy:
+  // stub by making findUnique for the full client also hang when code path hits decrypt/load.
+  // Simpler: hang at first integration lookup used by unbounded path after public API race starts.
+  // Replace with a hung get by delaying the initial findUnique beyond the race.
+  prisma.integration.findUnique = (async () =>
+    new Promise(() => {
+      /* never resolves — exercise GOOGLE_CALENDAR_READ_TIMEOUT */
+    })) as typeof prisma.integration.findUnique;
+
+  try {
+    const started = Date.now();
+    const result = await listGoogleCalendarEventsInRange("org-timeout", {
+      start: new Date("2026-07-08T00:00:00.000Z"),
+      end: new Date("2026-07-09T00:00:00.000Z"),
+    });
+    const elapsed = Date.now() - started;
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.reason, "api_error");
+      assert.match(result.messageHe, /Google Calendar/);
+    }
+    assert.ok(elapsed < 8_000, `timeout too slow: ${elapsed}ms`);
+  } finally {
+    prisma.integration.findUnique = originalFind;
+  }
+});
+
 test("outbound email sends are blocked unless explicitly enabled", () => {
   const originalAllowSend = config.outboundEmail.allowSend;
   const originalWarn = console.warn;

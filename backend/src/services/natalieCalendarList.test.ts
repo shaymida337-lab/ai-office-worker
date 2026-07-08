@@ -36,6 +36,7 @@ function installMocks(appointments: MockAppointment[]) {
   const originalClient = prisma.client.findMany.bind(prisma.client);
   const originalAppt = prisma.appointment.findMany.bind(prisma.appointment);
   const originalEvent = prisma.calendarEvent.findMany.bind(prisma.calendarEvent);
+  const originalIntegration = prisma.integration.findUnique.bind(prisma.integration);
 
   delete process.env.CALENDAR_ENGINE_V1_READ;
   delete process.env.CALENDAR_ENGINE_V1_WRITE;
@@ -56,12 +57,15 @@ function installMocks(appointments: MockAppointment[]) {
   }) as typeof prisma.appointment.findMany;
 
   prisma.calendarEvent.findMany = (async () => []) as typeof prisma.calendarEvent.findMany;
+  // No Google Calendar connection in unit tests — keep list reads offline/fast.
+  prisma.integration.findUnique = (async () => null) as typeof prisma.integration.findUnique;
 
   return () => {
     prisma.organization.findUnique = originalOrg;
     prisma.client.findMany = originalClient;
     prisma.appointment.findMany = originalAppt;
     prisma.calendarEvent.findMany = originalEvent;
+    prisma.integration.findUnique = originalIntegration;
   };
 }
 
