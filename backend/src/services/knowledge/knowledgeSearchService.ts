@@ -15,7 +15,7 @@ import {
   type KnowledgeIntentMode,
 } from "./knowledgeIntentParser.js";
 import type { KnowledgeDocumentSummary } from "./knowledgeTypes.js";
-import type { BusinessMemoryDocument } from "../businessMemory/businessMemoryTypes.js";
+import { toKnowledgeDocumentSummary } from "./knowledgeCompat.js";
 
 export type KnowledgeLookupResult = {
   intent: KnowledgeIntentExtraction;
@@ -25,27 +25,12 @@ export type KnowledgeLookupResult = {
   message: string;
 };
 
-function toKnowledgeSummary(doc: BusinessMemoryDocument): KnowledgeDocumentSummary {
-  return {
-    id: doc.id,
-    title: doc.title,
-    category: doc.documentType,
-    fileName: doc.fileName,
-    customerName: doc.customer,
-    supplierName: doc.supplier,
-    tags: doc.tags,
-    driveUrl: doc.driveUrl,
-    storageLocation: doc.storageLocation,
-    uploadedAt: doc.createdAt,
-  };
-}
-
 function mapResult(lookup: BusinessMemoryLookupResult): KnowledgeLookupResult {
   const extraction = parseKnowledgeIntent(lookup.intent.rawText);
   return {
     intent: extraction,
     mode: lookup.mode,
-    documents: lookup.documents.map(toKnowledgeSummary),
+    documents: lookup.documents.map(toKnowledgeDocumentSummary),
     count: lookup.count,
     message: lookup.message,
   };

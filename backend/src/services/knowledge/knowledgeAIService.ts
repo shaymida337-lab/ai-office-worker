@@ -7,6 +7,7 @@
 import { processBusinessMemoryCommand } from "../businessMemory/businessMemoryAIService.js";
 import { parseKnowledgeIntent } from "./knowledgeIntentParser.js";
 import type { KnowledgeDocumentSummary, KnowledgeCategory } from "./knowledgeTypes.js";
+import { toKnowledgeDocumentSummary } from "./knowledgeCompat.js";
 
 export type ProcessKnowledgeCommandInput = {
   organizationId: string;
@@ -30,32 +31,6 @@ export type KnowledgeAIResponse = {
   message: string;
 };
 
-function toKnowledgeSummary(doc: {
-  id: string;
-  title: string;
-  documentType: KnowledgeCategory;
-  fileName: string | null;
-  customer: string | null;
-  supplier: string | null;
-  tags: string[];
-  driveUrl: string | null;
-  storageLocation: string | null;
-  createdAt: string;
-}): KnowledgeDocumentSummary {
-  return {
-    id: doc.id,
-    title: doc.title,
-    category: doc.documentType,
-    fileName: doc.fileName,
-    customerName: doc.customer,
-    supplierName: doc.supplier,
-    tags: doc.tags,
-    driveUrl: doc.driveUrl,
-    storageLocation: doc.storageLocation,
-    uploadedAt: doc.createdAt,
-  };
-}
-
 export async function processKnowledgeCommand(
   input: ProcessKnowledgeCommandInput
 ): Promise<KnowledgeAIResponse> {
@@ -73,7 +48,7 @@ export async function processKnowledgeCommand(
       ok: response.result.ok,
       mode: response.result.mode,
       count: response.result.count,
-      documents: response.result.documents.map(toKnowledgeSummary),
+      documents: response.result.documents.map(toKnowledgeDocumentSummary),
     },
     message: response.message,
   };
