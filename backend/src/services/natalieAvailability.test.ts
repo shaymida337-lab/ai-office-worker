@@ -134,7 +134,7 @@ test("maybeBuildAvailabilityResponse returns suggest_available_times with engine
     assert.equal(result.proposal.slots.length, 3);
     assert.equal(result.proposal.intent, "suggest");
     assert.match(result.answer, /מצאתי 3 זמנים פנויים/);
-    assert.equal(result.proposal.slots[0]?.startTime, "2026-06-20T08:00:00.000Z");
+    assert.equal(result.proposal.slots[0]?.startTime, "2026-06-20T10:30:00.000Z");
   } finally {
     restore();
   }
@@ -342,6 +342,76 @@ test("askNatalieBusinessQuestion routes availability before reschedule handler",
     assert.equal("action" in result && result.action, "suggest_available_times");
   } finally {
     mock.timers.reset();
+    restore();
+  }
+});
+
+test("PR-2: morning availability returns only morning slots", async () => {
+  const restore = installAvailabilityPrismaStub();
+  try {
+    const result = await maybeBuildAvailabilityResponse(ORG, "יש לי שעה פנויה מחר בבוקר?", {
+      now: FIXED_NOW,
+    });
+    assert.ok(result);
+    assert.equal("action" in result && result.action, "suggest_available_times");
+    if (!("action" in result) || result.action !== "suggest_available_times") return;
+    for (const slot of result.proposal.slots) {
+      const hour = new Date(slot.startTime).getUTCHours();
+      assert.ok(hour >= 7 && hour < 12, `expected morning slot, got ${slot.startTime}`);
+    }
+  } finally {
+    restore();
+  }
+});
+
+test("PR-2: after-16 availability returns only late slots", async () => {
+  const restore = installAvailabilityPrismaStub();
+  try {
+    const result = await maybeBuildAvailabilityResponse(ORG, "יש לי שעה פנויה אחרי 16:00?", {
+      now: FIXED_NOW,
+    });
+    assert.ok(result);
+    assert.equal("action" in result && result.action, "suggest_available_times");
+    if (!("action" in result) || result.action !== "suggest_available_times") return;
+    for (const slot of result.proposal.slots) {
+      const hour = new Date(slot.startTime).getUTCHours();
+      assert.ok(hour >= 16 && hour < 21, `expected after-16 slot, got ${slot.startTime}`);
+    }
+  } finally {
+    restore();
+  }
+});
+
+test("PR-2: best available suggest picks ranked slot not 07:00", async () => {
+  const restore = installAvailabilityPrismaStub();
+  try {
+    const result = await maybeBuildAvailabilityResponse(ORG, "תמצאי לי שעה טובה מחר", {
+      now: FIXED_NOW,
+    });
+    assert.ok(result);
+    assert.equal("action" in result && result.action, "suggest_available_times");
+    if (!("action" in result) || result.action !== "suggest_available_times") return;
+    assert.equal(result.proposal.slots.length, 1);
+    const hour = new Date(result.proposal.slots[0]!.startTime).getUTCHours();
+    assert.notEqual(hour, 7);
+    assert.equal(result.proposal.slots[0]?.startTime, "2026-06-21T10:30:00.000Z");
+  } finally {
+    restore();
+  }
+});
+
+test("PR-2: create with best available picks ranked slot not 07:00", async () => {
+  const restore = installAvailabilityPrismaStub();
+  try {
+    const result = await askNatalieBusinessQuestion({
+      organizationId: ORG,
+      question: "תקבעי לי פגישה עם רון בזמן הכי טוב מחר",
+    });
+    assert.equal("action" in result && result.action, "book_appointment");
+    if (!("action" in result) || result.action !== "book_appointment") return;
+    assert.equal(result.proposal.time, "10:30");
+    assert.notEqual(result.proposal.time, "07:00");
+  } finally {
     restore();
   }
 });

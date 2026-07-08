@@ -4,6 +4,11 @@ import {
   getLocalTimeParts,
   wallClockToDate,
 } from "./datetime.js";
+import {
+  buildSlotRankingOptions,
+  rankAvailableSlots,
+  type SlotRankingOptions,
+} from "./slotRanking.js";
 import type {
   BusyBlock,
   CalendarRules,
@@ -106,7 +111,13 @@ export function findAvailableSlots(
   durationMinutes: number,
   busyBlocks: BusyBlock[],
   rules: CalendarRules,
-  options?: { limit?: number; slotStepMinutes?: number; now?: Date; excludeId?: string }
+  options?: {
+    limit?: number;
+    slotStepMinutes?: number;
+    now?: Date;
+    excludeId?: string;
+    ranking?: SlotRankingOptions;
+  }
 ): SlotCandidate[] {
   const limit = options?.limit ?? 3;
   const now = options?.now ?? new Date();
@@ -128,10 +139,15 @@ export function findAvailableSlots(
     if (!conflict.available) continue;
 
     available.push(slot);
-    if (available.length >= limit) break;
   }
 
-  return available;
+  const ranking =
+    options?.ranking ??
+    buildSlotRankingOptions(rules, {
+      mode: "default",
+    });
+
+  return rankAvailableSlots(available, ranking, limit);
 }
 
 /** Find free slots within ±nearbyHours of a requested start, sorted by proximity. */

@@ -1,13 +1,7 @@
 import { randomUUID } from "crypto";
 import type { NatalieClaudeResponse } from "../claude.js";
 import {
-  clarificationQuestionForIntent,
-  calendarPendingAction,
-  calendarPendingIntentFromExtraction,
   isCalendarFollowUpPhrase,
-  isCalendarPendingIntentExpired,
-  mergeCalendarPendingIntent,
-  parseInitialCalendarPendingIntent,
   readCalendarPendingIntent,
   recomputeMissingFields,
   type CalendarPendingIntent,
@@ -36,6 +30,14 @@ import { extractActiveCalendarContext } from "../scheduling/calendarAppointmentR
 import { parseVoiceConfirmationIntent } from "./voice/voiceConfirmation.js";
 import { calendarMessages } from "../calendar/calendarMessages.js";
 import { parseListedAppointmentOrdinalCommand } from "./lastListedAppointments.js";
+import {
+  clarificationForSlotFilling,
+  extractInitialSlotFillingIntent,
+  mergeSlotFillingTurn,
+  resolveActiveSlotFillingIntent,
+  shouldFreshCommandReplaceSlotFilling,
+  slotFillingPendingAction,
+} from "./calendarConversationState.js";
 
 function buildTurnResult(params: {
   session: ConversationSessionRecord;
@@ -141,15 +143,6 @@ async function persistCalendarContinuationTurn(input: {
   return { updatedSession, result };
 }
 
-function isFreshCalendarCommand(message: string): boolean {
-  const extraction = parseCalendarIntent(message);
-  return (
-    extraction.intent === "cancel_appointment" ||
-    extraction.intent === "move_appointment" ||
-    extraction.intent === "create_appointment"
-  );
-}
-
 async function resolvePendingIntentProposal(
   organizationId: string,
   intent: CalendarPendingIntent,
@@ -213,10 +206,7 @@ export async function tryHandleCalendarIntentContinuation(input: {
     return { handled: true, ...persisted };
   }
 
-  let pending = readCalendarPendingIntent(input.session.pendingAction);
-  if (pending && isCalendarPendingIntentExpired(pending)) {
-    pending = null;
-  }
+  let pending = resolveActiveSlotFillingIntent(input.session);
 
   const initialExtraction = parseCalendarIntent(input.message);
   console.info("[natalie/flow] parser", {
@@ -232,7 +222,7 @@ export async function tryHandleCalendarIntentContinuation(input: {
     followUpPhrase: isCalendarFollowUpPhrase(input.message),
   });
 
-  if (pending && isFreshCalendarCommand(input.message)) {
+  if (pending && shouldFreshCommandReplaceSlotFilling(input.message, pending)) {
     console.info("[natalie/flow] pending_intent_bypassed", {
       requestId: input.requestId ?? null,
       sessionId: input.session.id,
@@ -296,7 +286,7 @@ export async function tryHandleCalendarIntentContinuation(input: {
       return { handled: true, ...persisted };
     }
 
-    const initial = parseInitialCalendarPendingIntent(input.message);
+    const initial = extractInitialSlotFillingIntent(input.message);
     if (!initial) {
       return { handled: false };
     }
@@ -309,7 +299,7 @@ export async function tryHandleCalendarIntentContinuation(input: {
       return { handled: false };
     }
 
-    const answer = clarificationQuestionForIntent(parseCalendarIntent(input.message));
+    const answer = clarificationForSlotFilling(initial, input.message);
     console.info("[natalie/flow] fallback", {
       requestId: input.requestId ?? null,
       sessionId: input.session.id,
@@ -322,7 +312,7 @@ export async function tryHandleCalendarIntentContinuation(input: {
       channel: input.channel,
       message: input.message,
       answer,
-      pendingAction: calendarPendingAction(initial),
+      pendingAction: slotFillingPendingAction(initial),
       pendingConfirmation: null,
       role: input.role,
       permissions: input.permissions,
@@ -331,24 +321,41 @@ export async function tryHandleCalendarIntentContinuation(input: {
     return { handled: true, ...persisted };
   }
 
-  const merged = mergeCalendarPendingIntent(pending, input.message);
+  const mergeResult = mergeSlotFillingTurn(pending, input.message);
+  if (mergeResult.kind === "fresh_command") {
+    console.info("[natalie/flow] pending_intent_bypassed", {
+      requestId: input.requestId ?? null,
+      sessionId: input.session.id,
+      reason: "fresh_calendar_command_during_merge",
+    });
+    pending = null;
+    const initial = extractInitialSlotFillingIntent(input.message);
+    if (!initial) {
+      return { handled: false };
+    }
+    if (initial.intent === "move_appointment" && extractRescheduleAppointment(input.message)) {
+      return { handled: false };
+    }
+    const answer = clarificationForSlotFilling(initial, input.message);
+    const persisted = await persistCalendarContinuationTurn({
+      session: input.session,
+      channel: input.channel,
+      message: input.message,
+      answer,
+      pendingAction: slotFillingPendingAction(initial),
+      pendingConfirmation: null,
+      role: input.role,
+      permissions: input.permissions,
+      saveSession: input.saveSession,
+    });
+    return { handled: true, ...persisted };
+  }
+
+  const merged = mergeResult.intent;
   merged.missingFields = recomputeMissingFields(merged);
 
   if (merged.missingFields.length > 0) {
-    const answer = clarificationQuestionForIntent({
-      intent: merged.intent,
-      customerName: merged.customerName,
-      dayReference: merged.dayReference,
-      date: merged.date,
-      time: merged.time,
-      cancelTarget: merged.cancelTarget,
-      missingFields: merged.missingFields,
-      rawText: input.message,
-      confidence: "low",
-      durationMinutes: null,
-      serviceName: null,
-      notes: null,
-    });
+    const answer = clarificationForSlotFilling(merged, input.message);
     console.info("[natalie/flow] fallback", {
       requestId: input.requestId ?? null,
       sessionId: input.session.id,
@@ -362,7 +369,7 @@ export async function tryHandleCalendarIntentContinuation(input: {
       channel: input.channel,
       message: input.message,
       answer,
-      pendingAction: calendarPendingAction(merged),
+      pendingAction: slotFillingPendingAction(merged),
       pendingConfirmation: null,
       role: input.role,
       permissions: input.permissions,

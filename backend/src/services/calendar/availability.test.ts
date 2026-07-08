@@ -204,7 +204,7 @@ test("checkSlotAvailability returns past for past slots", async () => {
   }
 });
 
-test("findAvailableSlotsForOrganization returns first 3 slots on a free day", async () => {
+test("findAvailableSlotsForOrganization returns top ranked slots on a free day", async () => {
   const originalOrg = prisma.organization.findUnique.bind(prisma.organization);
   const originalAppt = prisma.appointment.findMany.bind(prisma.appointment);
   const now = at("2026-06-20T00:00:00.000Z");
@@ -222,7 +222,7 @@ test("findAvailableSlotsForOrganization returns first 3 slots on a free day", as
     assert.equal(result.slots.length, 3);
     assert.equal(result.empty, false);
     assert.equal(result.durationMinutes, 30);
-    assert.equal(result.slots[0]?.startTime, "2026-06-20T07:00:00.000Z");
+    assert.equal(result.slots[0]?.startTime, "2026-06-20T10:30:00.000Z");
   } finally {
     prisma.organization.findUnique = originalOrg;
     prisma.appointment.findMany = originalAppt;

@@ -9,6 +9,12 @@ import {
   isWithinWorkingHours,
 } from "./engine.js";
 import {
+  buildSlotRankingOptions,
+  slotLocalTimeString,
+  type SlotRankingMode,
+  type SlotTimeConstraint,
+} from "./slotRanking.js";
+import {
   addCalendarDays,
   formatSlotLabel,
   getDayBounds,
@@ -195,6 +201,8 @@ export async function findAvailableSlotsForOrganization(params: {
   now?: Date;
   skipGoogle?: boolean;
   googleBlocks?: BusyBlock[];
+  timeConstraints?: SlotTimeConstraint[];
+  rankingMode?: SlotRankingMode;
 }): Promise<FindAvailableSlotsResult> {
   const rules = await getCalendarRulesForOrganization(params.organizationId);
   const now = params.now ?? new Date();
@@ -244,6 +252,10 @@ export async function findAvailableSlotsForOrganization(params: {
     slotStepMinutes,
     now,
     excludeId: params.excludeCalendarEventId ?? params.excludeAppointmentId,
+    ranking: buildSlotRankingOptions(rules, {
+      mode: params.rankingMode ?? "default",
+      constraints: params.timeConstraints,
+    }),
   });
 
   if (busyRead.google.degraded) {
@@ -416,4 +428,39 @@ export async function findNearbyAlternativeSlots(params: {
     googleReadStatus: busyReadSameDay.google.status,
     googleReadDegraded: false,
   };
+}
+
+export async function findBestAvailableSlotForOrganization(params: {
+  organizationId: string;
+  dayReference: string;
+  durationMinutes?: number;
+  serviceId?: string | null;
+  timeConstraints?: SlotTimeConstraint[];
+  now?: Date;
+  skipGoogle?: boolean;
+}): Promise<{ time: string; slot: FindAvailableSlotsResult["slots"][number] } | null> {
+  const result = await findAvailableSlotsForOrganization({
+    organizationId: params.organizationId,
+    dayReference: params.dayReference,
+    durationMinutes: params.durationMinutes,
+    serviceId: params.serviceId,
+    limit: 1,
+    rankingMode: "best_available",
+    timeConstraints: params.timeConstraints,
+    now: params.now,
+    skipGoogle: params.skipGoogle,
+  });
+
+  if (result.empty || result.googleReadDegraded || result.slots.length === 0) {
+    return null;
+  }
+
+  const slot = result.slots[0]!;
+  const rules = await getCalendarRulesForOrganization(params.organizationId);
+  const time = slotLocalTimeString(
+    { start: new Date(slot.startTime), end: new Date(slot.endTime), durationMinutes: result.durationMinutes },
+    rules.timeZone
+  );
+
+  return { time, slot };
 }

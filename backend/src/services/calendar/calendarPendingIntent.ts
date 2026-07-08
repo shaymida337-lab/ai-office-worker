@@ -175,6 +175,18 @@ export function mergeCalendarPendingIntent(
     missingFields: [...pending.missingFields],
   };
 
+  // Intent lock: slot-filling follow-ups must stay on the original calendar intent.
+  if (merged.intent !== pending.intent) {
+    merged.intent = pending.intent;
+    if (pending.intent === "create_appointment") {
+      merged.action = "create_appointment";
+    } else if (pending.intent === "move_appointment") {
+      merged.action = "move_appointment";
+    } else if (pending.intent === "cancel_appointment") {
+      merged.action = pending.cancelTarget === "all" ? "cancel_appointments" : "cancel_appointment";
+    }
+  }
+
   merged.missingFields = recomputeMissingFields(merged);
   if (merged.cancelTarget === "all") {
     merged.action = "cancel_appointments";

@@ -40,6 +40,9 @@ import {
 import { parseBusinessMemoryIntent } from "./businessMemory/businessMemoryIntentParser.js";
 import { runBusinessMemoryLookup } from "./businessMemory/businessMemorySearchService.js";
 import { businessMemoryMessages } from "./businessMemory/businessMemoryMessages.js";
+import { shouldDeferCalendarClarificationToSession } from "./conversation/calendarConversationState.js";
+import { findBestAvailableSlotForOrganization } from "./calendar/availability.js";
+import { isBestAvailablePhrase, parseSlotTimeConstraints } from "./calendar/slotRanking.js";
 
 /** Injectable dependencies for deterministic testing of the Natalie brain. */
 export type AskNatalieDeps = {
@@ -112,8 +115,8 @@ export async function askNatalieBusinessQuestion(input: {
   );
   if (listedFollowUpResponse) return listedFollowUpResponse;
 
-  const partialCalendarResponse = maybeBuildPartialCalendarClarification(input.question);
-  if (partialCalendarResponse) return partialCalendarResponse;
+  // Calendar clarifications are persisted via calendarConversationState slot filling
+  // in conversationCalendarContinuation — never answer-only here.
 
   // Deterministic Reliability Center status: "מה מצב המערכת?" summarizes
   // persistent reliability health for owners/admins before Claude.
@@ -284,7 +287,32 @@ async function maybeBuildCreateAppointmentProposal(
 
   const loadTimezone = deps?.loadTimezone ?? loadOrganizationTimezone;
   const timeZone = await loadTimezone(organizationId);
-  const extraction = parseCalendarIntent(question, { timeZone, now: deps?.now });
+  let extraction = parseCalendarIntent(question, { timeZone, now: deps?.now });
+
+  if (
+    isBestAvailablePhrase(question) &&
+    extraction.customerName &&
+    extraction.dayReference &&
+    !extraction.time
+  ) {
+    const best = await findBestAvailableSlotForOrganization({
+      organizationId,
+      dayReference: extraction.dayReference,
+      timeConstraints: parseSlotTimeConstraints(question),
+      now: deps?.now,
+    });
+    if (best) {
+      extraction = {
+        ...extraction,
+        time: best.time,
+        missingFields: extraction.missingFields.filter((field) => field !== "time"),
+        confidence:
+          extraction.customerName && extraction.dayReference ? "high" : extraction.confidence,
+      };
+    }
+  }
+
+  if (shouldDeferCalendarClarificationToSession(extraction)) return null;
   return buildCreateAppointmentResponse(extraction);
 }
 

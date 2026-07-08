@@ -4,6 +4,7 @@ import {
   findAvailableSlotsForOrganization,
   findNearbyAlternativeSlots,
 } from "./calendar/availability.js";
+import { isBestAvailablePhrase, parseSlotTimeConstraints, type SlotTimeConstraint } from "./calendar/slotRanking.js";
 import type { CheckSlotAvailabilityResult, FindAvailableSlotsResult, SuggestedSlot } from "./calendar/types.js";
 import { calendarMessages } from "./calendar/calendarMessages.js";
 import { formatRequestedSlotLabel } from "./calendar/datetime.js";
@@ -19,6 +20,8 @@ export type AvailabilityIntent = {
   durationMinutes?: number;
   clientName?: string;
   firstOnly?: boolean;
+  timeConstraints?: SlotTimeConstraint[];
+  bestAvailable?: boolean;
 };
 
 export type SuggestAvailableTimesProposal = {
@@ -243,9 +246,12 @@ export function parseAvailabilityIntent(question: string): AvailabilityIntent {
 
   const durationMinutes = parseDurationMinutes(normalized);
   const parsedLimit = parseLimit(normalized);
+  const timeConstraints = parseSlotTimeConstraints(normalized);
+  const bestAvailable = isBestAvailablePhrase(normalized);
   const firstOnly =
+    !bestAvailable &&
     /(?:הזמן\s+הראשון\s+הפנוי|הראשון\s+הפנוי|זמן\s+הראשון\s+הפנוי)/u.test(normalized);
-  const limit = firstOnly ? 1 : parsedLimit ?? 3;
+  const limit = bestAvailable ? 1 : firstOnly ? 1 : parsedLimit ?? 3;
   const dayReference = extractDayReference(normalized);
   const rangeType = /(?:^|\s)השבוע(?:\s|$|[?.!,])/u.test(normalized) || /שעה\s+השבוע/u.test(normalized) ? "week" : "day";
 
@@ -258,6 +264,8 @@ export function parseAvailabilityIntent(question: string): AvailabilityIntent {
       rangeType: dayReference || check.dayReference ? "day" : rangeType,
       limit,
       durationMinutes,
+      timeConstraints,
+      bestAvailable,
     };
   }
 
@@ -268,6 +276,8 @@ export function parseAvailabilityIntent(question: string): AvailabilityIntent {
       limit,
       durationMinutes,
       firstOnly,
+      timeConstraints,
+      bestAvailable,
     };
   }
 
@@ -278,6 +288,8 @@ export function parseAvailabilityIntent(question: string): AvailabilityIntent {
     limit,
     durationMinutes,
     firstOnly,
+    timeConstraints,
+    bestAvailable,
   };
 }
 
@@ -361,6 +373,8 @@ async function buildSlotsResponse(
     dayReference: intent.dayReference,
     durationMinutes: intent.durationMinutes,
     limit: intent.limit,
+    timeConstraints: intent.timeConstraints,
+    rankingMode: intent.bestAvailable ? "best_available" : "default",
     now: options?.now,
   });
   console.info("[natalie/google-truth] availability_suggest", {
@@ -397,7 +411,7 @@ async function buildSlotsResponse(
     slots,
     result,
     answer,
-    intent: options?.intentTag ?? (intent.firstOnly ? "first_available" : "suggest"),
+    intent: options?.intentTag ?? (intent.bestAvailable ? "first_available" : intent.firstOnly ? "first_available" : "suggest"),
     refreshParams: buildRefreshParams(intent),
     clientName: options?.clientName,
     dayReference: intent.dayReference,

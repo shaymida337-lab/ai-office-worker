@@ -103,7 +103,7 @@ test("generateSlotGrid creates slots inside working hours", () => {
   assert.ok(slots.every((slot) => isWithinWorkingHours(slot, RULES)));
 });
 
-test("findAvailableSlots returns first available slots", () => {
+test("findAvailableSlots returns top ranked available slots", () => {
   const range = {
     start: at("2026-06-20T00:00:00.000Z"),
     end: at("2026-06-21T00:00:00.000Z"),
@@ -114,7 +114,8 @@ test("findAvailableSlots returns first available slots", () => {
     now: at("2026-06-20T00:00:00.000Z"),
   });
   assert.equal(slots.length, 3);
-  assert.equal(slots[0]?.start.toISOString(), "2026-06-20T07:30:00.000Z");
+  assert.equal(slots[0]?.start.toISOString(), "2026-06-20T10:30:00.000Z");
+  assert.notEqual(slots[0]?.start.toISOString(), "2026-06-20T07:30:00.000Z");
 });
 
 test("findAvailableSlots returns empty for fully busy day", () => {
