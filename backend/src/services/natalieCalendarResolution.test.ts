@@ -112,6 +112,30 @@ test("pronoun reschedule uses active calendar context", async () => {
   }
 });
 
+test("advance phrasing (תקדימי ... אותה) resolves via active calendar context", async () => {
+  const restore = installCalendarResolutionMocks();
+  try {
+    const result = await askNatalieBusinessQuestion({
+      organizationId: ORG,
+      question: "תקדימי לי אותה ל14:00",
+      conversationContext: {
+        pendingAction: {
+          action: "reschedule_appointment",
+          proposal: {
+            appointmentId: APPOINTMENT_ID,
+            clientId: CLIENT_ID,
+            clientName: "יוסי ביטון",
+          },
+        },
+      },
+    });
+    assert.equal("action" in result && result.action, "reschedule_appointment");
+    assert.match(result.answer ?? "", /14:00/);
+  } finally {
+    restore();
+  }
+});
+
 test("unrelated low-confidence name asks for clarification instead of wrong update", async () => {
   const restore = installCalendarResolutionMocks();
   try {

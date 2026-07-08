@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { randomUUID } from "crypto";
 import twilio, { validateRequest } from "twilio";
 import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
@@ -65,11 +66,12 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
     return;
   }
 
+  const messageSid = typeof req.body.MessageSid === "string" ? req.body.MessageSid : "unknown";
+  const correlationId = buildWhatsAppCorrelationId(messageSid);
   const body = (req.body.Body as string) ?? "";
   const from = req.body.From as string;
   const to = req.body.To as string;
   const media = parseTwilioMedia(req.body as Record<string, unknown>);
-  const messageSid = typeof req.body.MessageSid === "string" ? req.body.MessageSid : "unknown";
   const profileName = typeof req.body.ProfileName === "string" ? req.body.ProfileName : undefined;
   const normalizedFrom = normalizeWhatsAppNumber(from);
   const normalizedTo = normalizeWhatsAppNumber(to || config.twilio.whatsappFrom);
@@ -82,6 +84,7 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       mediaCount: media.length,
       body,
       extra: {
+        correlationId,
         configuredSandboxNumber: maskWhatsAppWebhookNumber(config.twilio.whatsappFrom),
         processingEnabled: config.twilio.messageProcessingEnabled,
         mediaIngestionEnabled: config.twilio.mediaIngestionEnabled,
@@ -97,27 +100,32 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
   }
 
   const twiml = new twilio.twiml.MessagingResponse();
-  const configuredSandboxNumber = normalizeWhatsAppNumber(config.twilio.whatsappFrom);
-  if (normalizedTo !== configuredSandboxNumber) {
+  const startedAt = Date.now();
+  try {
+    const configuredSandboxNumber = normalizeWhatsAppNumber(config.twilio.whatsappFrom);
+    if (normalizedTo !== configuredSandboxNumber) {
+      console.log(
+        "[webhook] WhatsApp inbound ignored because it was not sent to the configured Twilio Sandbox number",
+        buildWhatsAppWebhookLogContext({
+          sid: messageSid,
+          from: normalizedFrom,
+          to: normalizedTo,
+          mediaCount: media.length,
+          extra: {
+            correlationId,
+            configuredSandboxNumber: maskWhatsAppWebhookNumber(configuredSandboxNumber),
+          },
+        })
+      );
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
+    const assistant = await findAssistantByOwnerPhone(normalizedFrom);
     console.log(
-      "[webhook] WhatsApp inbound ignored because it was not sent to the configured Twilio Sandbox number",
-      buildWhatsAppWebhookLogContext({
-        sid: messageSid,
-        from: normalizedFrom,
-        to: normalizedTo,
-        mediaCount: media.length,
-        extra: { configuredSandboxNumber: maskWhatsAppWebhookNumber(configuredSandboxNumber) },
-      })
+      `[webhook] WhatsApp inbound accepted sid=${messageSid} correlationId=${correlationId} from=${maskWhatsAppWebhookNumber(normalizedFrom)} media=${media.length} path=${req.originalUrl}`
     );
-    res.type("text/xml").send(twiml.toString());
-    return;
-  }
-  const assistant = await findAssistantByOwnerPhone(normalizedFrom);
-  console.log(
-    `[webhook] WhatsApp inbound accepted sid=${messageSid} from=${maskWhatsAppWebhookNumber(normalizedFrom)} media=${media.length} path=${req.originalUrl}`
-  );
 
-  if (assistant) {
+    if (assistant) {
     const inboundLog = await createInboundWhatsAppLogOnce({
       organizationId: assistant.organizationId,
       body,
@@ -139,7 +147,7 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       body,
       whatsappLogId: inboundLog.id,
       media,
-      correlationId: messageSid,
+      correlationId,
     });
     // Mapped owner phones are trusted. The junk gate is for unmapped/client senders;
     // Hebrew calendar commands (e.g. "תקבעי תור…") are REAL but fail the junk filter.
@@ -158,7 +166,7 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       normalizedFrom,
       mediaReply: mediaResult.reply,
       autoReplyEnabled: config.twilio.autoReplyEnabled,
-      correlationId: messageSid,
+      correlationId,
     });
     if (reply) {
       twiml.message(reply);
@@ -174,12 +182,12 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
         },
       });
     }
-    res.type("text/xml").send(twiml.toString());
-    return;
-  }
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
 
-  const client = await findClientByWhatsAppNumber(normalizedFrom);
-  if (client) {
+    const client = await findClientByWhatsAppNumber(normalizedFrom);
+    if (client) {
     if (await hasProcessedInboundWhatsAppMessage(client.organizationId, messageSid)) {
       console.log("[webhook] WhatsApp duplicate webhook skipped", {
         organizationId: client.organizationId,
@@ -214,7 +222,7 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       body,
       whatsappLogId: inboundLog.id,
       media,
-      correlationId: messageSid,
+      correlationId,
     });
     if (!(await shouldContinueAfterWhatsAppJunkGate({
       organizationId: client.organizationId,
@@ -252,18 +260,37 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
         },
       });
     }
-    res.type("text/xml").send(twiml.toString());
-    return;
-  }
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
 
-  await handleUnmappedWhatsAppSender({
-    twiml,
-    res,
-    messageSid,
-    normalizedFrom,
-    normalizedTo,
-    profileName,
-  });
+    await handleUnmappedWhatsAppSender({
+      twiml,
+      res,
+      messageSid,
+      normalizedFrom,
+      normalizedTo,
+      profileName,
+    });
+  } catch (err) {
+    console.error("[webhook] WhatsApp processing failed", {
+      correlationId,
+      sid: messageSid,
+      durationMs: Date.now() - startedAt,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    if (!res.headersSent) {
+      twiml.message(WHATSAPP_GENERIC_ERROR_MESSAGE);
+      res.type("text/xml").send(twiml.toString());
+    }
+  } finally {
+    console.log("[webhook] WhatsApp processing completed", {
+      correlationId,
+      sid: messageSid,
+      durationMs: Date.now() - startedAt,
+      responded: res.headersSent,
+    });
+  }
 }
 
 export async function handleUnmappedWhatsAppSender(input: {
@@ -491,6 +518,13 @@ function maskWhatsAppWebhookNumber(phone: string) {
     to: phone,
     mediaCount: 0,
   }).from;
+}
+
+function buildWhatsAppCorrelationId(messageSid: string): string {
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const suffix = randomUUID().slice(0, 6).toUpperCase();
+  const sidTail = messageSid?.trim() ? messageSid.slice(-4).toUpperCase() : "NOSID";
+  return `WA-${date}-${sidTail}-${suffix}`;
 }
 
 async function safeReply(run: () => Promise<string>) {

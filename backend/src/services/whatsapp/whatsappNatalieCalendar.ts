@@ -13,7 +13,7 @@
  */
 import { randomUUID } from "crypto";
 import { prisma } from "../../lib/prisma.js";
-import { parseCalendarIntent } from "../calendar/calendarIntentParser.js";
+import { extractDayReference, parseCalendarIntent, parseHebrewTime } from "../calendar/calendarIntentParser.js";
 import { isAvailabilityQuestion } from "../natalieAvailability.js";
 import { parseVoiceConfirmationIntent } from "../conversation/voice/voiceConfirmation.js";
 import { processNatalieTurn } from "../conversation/conversationRuntime.js";
@@ -76,6 +76,24 @@ export function isWhatsAppCalendarCommand(message: string): boolean {
 
 function mentionsCalendarTopic(message: string): boolean {
   return /יומן|תורים?|תור\b|פגישה|פנוי/i.test(message.trim());
+}
+
+function isPronounCalendarFollowUp(message: string): boolean {
+  const normalized = message.trim().replace(/\s+/g, " ");
+  if (!normalized) return false;
+  const hasPronounReference = /(?:^|\s)(?:אותו|אותה|לו|לה)(?:\s|$)/u.test(normalized);
+  if (!hasPronounReference) return false;
+
+  const hasCalendarMutationVerb =
+    /(?:תעביר|תעבירי|תדחי|תדחה|תזיז|תזיזי|תשני|תשנה|שנה\s+מועד|תקדים|תקדימי|תבטל|תבטלי|תקבע|תקבעי|תקצר|תקצרי|תאריך|תאריכי)/u.test(
+      normalized
+    );
+  const hasTimeOrDate =
+    Boolean(parseHebrewTime(normalized)) ||
+    Boolean(extractDayReference(normalized)) ||
+    /חצי\s+שעה|לשעה|שעה/u.test(normalized);
+
+  return hasCalendarMutationVerb || hasTimeOrDate;
 }
 
 async function defaultLoadOwnerUserId(organizationId: string): Promise<string | null> {
@@ -153,6 +171,7 @@ export async function maybeHandleWhatsAppCalendarMessage(
     isConfirmationReply ||
     session?.hasPendingCalendarIntent ||
     isCalendarFollowUpPhrase(message) ||
+    isPronounCalendarFollowUp(message) ||
     (isCalendarTopic && !isCalendarCommand && !isConfirmationReply);
 
   log("routing decision", {
@@ -161,6 +180,7 @@ export async function maybeHandleWhatsAppCalendarMessage(
     isCalendarCommand,
     isConfirmationReply,
     hasPendingCalendarIntent: session?.hasPendingCalendarIntent ?? false,
+    isPronounCalendarFollowUp: isPronounCalendarFollowUp(message),
     isCalendarTopic,
     shouldRoute,
   });

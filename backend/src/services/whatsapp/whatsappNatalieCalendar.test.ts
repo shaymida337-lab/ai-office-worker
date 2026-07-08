@@ -93,6 +93,66 @@ test("calendar command routes through the shared Natalie brain (channel=whatsapp
   assert.match(reply ?? "", /לאשר\?/);
 });
 
+test("pronoun-based calendar follow-up routes through Natalie brain (prevents silent stop)", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const reply = await maybeHandleWhatsAppCalendarMessage(
+    { organizationId: ORG, message: "תקדימי לי אותה ל14:00", phone: "+972500000000" },
+    makeDeps({
+      loadLatestSession: async () => ({
+        id: "sess-followup",
+        hasPendingConfirmation: false,
+        hasPendingCalendarIntent: false,
+      }),
+      processTurn: (async (input: Record<string, unknown>) => {
+        calls.push(input);
+        return fakeTurnResult({
+          answer: "הקדמתי את התור לשעה 14:00.",
+          displayResponse: "הקדמתי את התור לשעה 14:00.",
+        });
+      }) as unknown as WhatsAppCalendarDeps["processTurn"],
+    })
+  );
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].sessionId, "sess-followup");
+  assert.match(reply ?? "", /14:00/);
+});
+
+test("pronoun follow-up variants are always routed (no silent WhatsApp drop)", async () => {
+  const phrases = [
+    "תקדימי אותה ל-14:00",
+    "תדחי אותה לשעה 17:00",
+    "תבטלי אותה",
+    "תעבירי אותה למחר",
+    "תקבעי אותה ליום חמישי",
+    "תקצרי אותה לחצי שעה",
+    "תאריכי אותה לשעה",
+  ];
+
+  for (const phrase of phrases) {
+    let called = false;
+    const reply = await maybeHandleWhatsAppCalendarMessage(
+      { organizationId: ORG, message: phrase },
+      makeDeps({
+        loadLatestSession: async () => ({
+          id: "sess-followup",
+          hasPendingConfirmation: false,
+          hasPendingCalendarIntent: false,
+        }),
+        processTurn: (async () => {
+          called = true;
+          return fakeTurnResult({
+            answer: `טיפלתי בבקשה: ${phrase}`,
+            displayResponse: `טיפלתי בבקשה: ${phrase}`,
+          });
+        }) as unknown as WhatsAppCalendarDeps["processTurn"],
+      })
+    );
+    assert.equal(called, true, `expected routing for phrase: ${phrase}`);
+    assert.notEqual(reply, null, `expected non-null reply for phrase: ${phrase}`);
+  }
+});
+
 test("non-calendar message with no pending confirmation → null (falls back to owner engine)", async () => {
   let called = false;
   const reply = await maybeHandleWhatsAppCalendarMessage(
