@@ -2,7 +2,10 @@ export { natalie, buttonVariants, statusBadgeStyles } from "./tokens";
 export type { ButtonVariant, StatusBadgeTone } from "./tokens";
 
 export { AppShell } from "./AppShell";
+export { GlobalHeader } from "./GlobalHeader";
+export { ThemeProvider, useTheme } from "./ThemeProvider";
 export { Header } from "./Header";
+export { PageTitle } from "./PageTitle";
 export { BottomNavigation, type BottomNavItem } from "./BottomNavigation";
 export { Card, CardHeader } from "./Card";
 export { Button } from "./Button";
@@ -20,6 +23,4 @@ export { EmptyState } from "./EmptyState";
 export { Skeleton, SkeletonText, SkeletonCard } from "./Skeleton";
 export { MessageBanner, type MessageBannerTone } from "./MessageBanner";
 export { SlidePanel } from "./SlidePanel";
-export { GlobalToolbar } from "./GlobalToolbar";
-export { PageTitle } from "./PageTitle";
 export { AppointmentCard } from "./AppointmentCard";

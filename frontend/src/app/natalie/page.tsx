@@ -14,6 +14,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import { GlobalHeader } from "@/components/natalie-ui";
 
 type ChatMessage = {
   id: string;
@@ -213,36 +214,28 @@ export default function NatalieChatPage() {
 
   return (
     <main className="natalie-chat-page fixed inset-0 z-50 h-[100dvh] overflow-hidden bg-[#f4f6fb] text-[#0f1830]" dir="rtl">
-      <section className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col px-4 py-4 sm:px-6 lg:px-8">
-        <header className="z-20 shrink-0 rounded-[22px] border border-[#e6eaf2] bg-white/90 p-4 shadow-[0_10px_34px_rgba(20,40,90,0.10)] backdrop-blur md:p-5">
+      <GlobalHeader />
+      <section className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col px-4 pb-4 pt-[calc(3.5rem+env(safe-area-inset-top,0px))] sm:px-6 lg:px-8">
+        <div className="z-20 mb-4 shrink-0 rounded-[22px] border border-[#e6eaf2] bg-white/90 p-4 shadow-[0_10px_34px_rgba(20,40,90,0.10)] backdrop-blur md:p-5">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="grid h-16 w-16 shrink-0 place-items-center rounded-[20px] bg-[#1d5bff] text-3xl font-black text-white shadow-[0_16px_34px_rgba(29,91,255,0.25)]">
-                נ
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="m-0 text-[24px] font-extrabold tracking-tight text-[#0f1830] md:text-[28px]">צ׳אט עם נטלי</h1>
+                <span className="rounded-full bg-[#eaf0ff] px-3 py-1 text-xs font-bold text-[#1d5bff]">AI Office Worker</span>
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h1 className="m-0 text-[30px] font-extrabold tracking-tight text-[#0f1830] md:text-[34px]">
-                    נטלי
-                  </h1>
-                  <span className="rounded-full bg-[#eaf0ff] px-3 py-1 text-xs font-bold text-[#1d5bff]">
-                    AI Office Worker
-                  </span>
-                </div>
-                <p className="mt-1 flex flex-wrap items-center gap-2 text-base font-semibold text-[#6b7686] md:text-[17px]">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#1faa59] shadow-[0_0_0_5px_rgba(31,170,89,0.12)]" />
-                  פעילה · מחוברת ל‑Gmail, Drive, WhatsApp
-                </p>
-              </div>
+              <p className="mt-1 flex flex-wrap items-center gap-2 text-base font-semibold text-[#6b7686] md:text-[17px]">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#1faa59] shadow-[0_0_0_5px_rgba(31,170,89,0.12)]" />
+                פעילה · מחוברת ל‑Gmail, Drive, WhatsApp
+              </p>
             </div>
             <div className="hidden items-center gap-2 rounded-full border border-[#e6eaf2] bg-[#f4f6fb] px-4 py-2 text-sm font-bold text-[#0f1830] sm:flex">
               <ShieldCheck className="h-4 w-4 text-[#1faa59]" />
               {pendingActions} פעולות ממתינות לאישור
             </div>
           </div>
-        </header>
+        </div>
 
-        <div className="mx-auto mt-4 grid min-h-0 w-full max-w-[960px] flex-1 gap-4 lg:grid-cols-[minmax(0,760px)_170px]">
+        <div className="mx-auto grid min-h-0 w-full max-w-[960px] flex-1 gap-4 lg:grid-cols-[minmax(0,760px)_170px]">
           <section className="flex min-h-0 rounded-[26px] border border-[#e6eaf2] bg-white/70 shadow-[0_18px_55px_rgba(20,40,90,0.08)]">
             <div
               ref={scrollRef}

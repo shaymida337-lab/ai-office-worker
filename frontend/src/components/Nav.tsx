@@ -1,23 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
+import { GlobalHeader } from "@/components/natalie-ui";
 import { colors, radius, type, dashboardHome } from "@/lib/design-tokens";
 import { isNavItemVisible, type NavItemId } from "@/config/navVisibility";
 import { apiFetch, clearAllAuthTokens } from "@/lib/api";
-import { formatAmount } from "@/lib/format/amount";
 import { lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
 import { normalizeEnabledModules, type BusinessModuleId, type OrganizationSettings } from "@/lib/business-config";
 import {
   BarChart3,
-  Bell,
   Calendar,
   Camera,
   CheckSquare,
   ClipboardCheck,
-  ChevronRight,
   CircleDollarSign,
   FileBarChart,
   FileCheck,
@@ -73,35 +71,12 @@ const mobileLinks: NavLink[] = [
   { id: "supplierPayments", href: "/payments", label: "ספקים", icon: WalletCards },
 ];
 
-type SearchClient = { id: string; name: string; email?: string | null };
-type SearchInvoice = {
-  id: string;
-  invoiceNumber: string | null;
-  description: string | null;
-  amount: number;
-  currency: string;
-  client?: { name: string } | null;
-};
-type SearchTask = { id: string; title: string; supplier: string | null; status: string };
-type SearchResult = { id: string; type: string; title: string; subtitle: string; href: string };
-
 export function Nav() {
   const pathname = usePathname();
   const isDashboardHome = pathname === "/dashboard";
   const router = useRouter();
   const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchLoaded, setSearchLoaded] = useState(false);
-  const [searchError, setSearchError] = useState("");
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const [searchData, setSearchData] = useState<{
-    clients: SearchClient[];
-    invoices: SearchInvoice[];
-    tasks: SearchTask[];
-  }>({ clients: [], invoices: [], tasks: [] });
 
   useEffect(() => {
     apiFetch<OrganizationSettings>("/api/organization/settings")
@@ -119,20 +94,6 @@ export function Nav() {
     lockUiOverlay();
     return () => unlockUiOverlay();
   }, [moreOpen]);
-
-  useEffect(() => {
-    function focusSearch(event: KeyboardEvent) {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setSearchOpen(true);
-        void loadSearchData();
-        searchInputRef.current?.focus();
-      }
-    }
-
-    window.addEventListener("keydown", focusSearch);
-    return () => window.removeEventListener("keydown", focusSearch);
-  }, [searchLoaded, searchLoading]);
 
   const moduleAllowed = (module?: BusinessModuleId | "admin") => {
     if (module === "admin") return process.env.NEXT_PUBLIC_SHOW_ADMIN_DEBUG === "true";
@@ -162,87 +123,8 @@ export function Nav() {
     router.push("/");
   }
 
-  function goBack() {
-    if (window.history.length > 1) {
-      router.back();
-      return;
-    }
-
-    router.push("/dashboard");
-  }
-
   function openHelp() {
     window.dispatchEvent(new Event("open-help-center"));
-  }
-
-  async function loadSearchData() {
-    if (searchLoaded || searchLoading) return;
-    setSearchLoading(true);
-    setSearchError("");
-    try {
-      const [clientsResult, invoicesResult, tasksResult] = await Promise.allSettled([
-        apiFetch<{ clients: SearchClient[] }>("/api/clients"),
-        apiFetch<{ invoices: SearchInvoice[] }>("/api/invoices"),
-        apiFetch<SearchTask[]>("/api/tasks"),
-      ]);
-
-      setSearchData({
-        clients: clientsResult.status === "fulfilled" ? clientsResult.value.clients ?? [] : [],
-        invoices: invoicesResult.status === "fulfilled" ? invoicesResult.value.invoices ?? [] : [],
-        tasks: tasksResult.status === "fulfilled" ? tasksResult.value ?? [] : [],
-      });
-      setSearchLoaded(true);
-    } catch (err) {
-      setSearchError(err instanceof Error ? err.message : "החיפוש נכשל");
-    } finally {
-      setSearchLoading(false);
-    }
-  }
-
-  const searchResults = useMemo<SearchResult[]>(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (query.length < 2) return [];
-
-    const clients = searchData.clients
-      .filter((client) => `${client.name} ${client.email ?? ""}`.toLowerCase().includes(query))
-      .slice(0, 4)
-      .map((client) => ({
-        id: `client-${client.id}`,
-        type: "לקוח",
-        title: client.name,
-        subtitle: client.email ?? "לקוח",
-        href: `/dashboard/clients/${client.id}`,
-      }));
-
-    const invoices = searchData.invoices
-      .filter((invoice) => `${invoice.invoiceNumber ?? ""} ${invoice.description ?? ""} ${invoice.client?.name ?? ""}`.toLowerCase().includes(query))
-      .slice(0, 4)
-      .map((invoice) => ({
-        id: `invoice-${invoice.id}`,
-        type: "חשבונית",
-        title: invoice.invoiceNumber || invoice.client?.name || "חשבונית",
-        subtitle: `${invoice.client?.name ?? "ללא לקוח"} · ${formatAmount(invoice.amount, invoice.currency, "סכום חסר")}`,
-        href: "/dashboard/invoices",
-      }));
-
-    const tasks = searchData.tasks
-      .filter((task) => `${task.title} ${task.supplier ?? ""} ${task.status}`.toLowerCase().includes(query))
-      .slice(0, 4)
-      .map((task) => ({
-        id: `task-${task.id}`,
-        type: "משימה",
-        title: task.title,
-        subtitle: task.supplier ?? taskStatusLabel(task.status),
-        href: "/tasks",
-      }));
-
-    return [...clients, ...invoices, ...tasks].slice(0, 10);
-  }, [searchData, searchQuery]);
-
-  function openSearchResult(href: string) {
-    setSearchOpen(false);
-    setSearchQuery("");
-    router.push(href);
   }
 
   const moreActive = mobileMoreLinks.some((item) => isActive(item.href));
@@ -352,87 +234,11 @@ export function Nav() {
         </div>
       </aside>
 
-      <header className="fixed left-0 right-0 top-0 z-40 border-b border-transparent bg-surface-primary/90 backdrop-blur-xl lg:right-60">
-        <div className="h-px bg-[linear-gradient(90deg,transparent,#6366F1,#8B5CF6,transparent)]" />
-        <div className="flex h-14 items-center gap-2 px-4 md:h-16 md:gap-3 md:px-8">
-          <button
-            type="button"
-            onClick={goBack}
-            aria-label="חזרה"
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[var(--border)] bg-surface-card text-ink-secondary hover:bg-surface-hover hover:text-ink-primary lg:hidden"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-          <div className="relative mx-auto hidden w-full max-w-xl sm:block">
-            <div className="flex h-12 items-center gap-3 rounded-2xl border border-[#e6eaf2] bg-white px-4 text-[#0e1116] shadow-[0_8px_24px_rgba(20,40,90,0.06)] transition focus-within:border-[#1d5bff] focus-within:shadow-[0_0_0_4px_rgba(29,91,255,0.10)]">
-              <Search className="h-5 w-5 shrink-0 text-[#1d5bff]" />
-              <input
-                ref={searchInputRef}
-                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[16px] font-semibold text-[#0e1116] outline-none placeholder:text-[#6b7686]"
-                placeholder="חיפוש לקוחות, חשבוניות, ספקים ומשימות"
-                value={searchQuery}
-                onChange={(event) => {
-                  setSearchQuery(event.target.value);
-                  setSearchOpen(true);
-                  void loadSearchData();
-                }}
-                onFocus={() => {
-                  setSearchOpen(true);
-                  void loadSearchData();
-                }}
-              />
-              <kbd className="rounded-md border border-[#e6eaf2] bg-[#f4f6fb] px-2 py-1 text-sm font-semibold text-[#6b7686]">Ctrl K</kbd>
-            </div>
-            {searchOpen && searchQuery.trim().length >= 2 && (
-              <div className="absolute left-0 right-0 top-12 z-[80] overflow-hidden rounded-2xl border border-[var(--border)] bg-surface-secondary shadow-card">
-                {searchLoading && <div className="p-4 text-base text-[#CBD5E1]">מחפש...</div>}
-                {!searchLoading && searchError && <div className="p-4 text-base text-red-200">{searchError}</div>}
-                {!searchLoading && !searchError && searchResults.length === 0 && (
-                  <div className="p-4 text-base text-[#CBD5E1]">לא נמצאו תוצאות.</div>
-                )}
-                {!searchLoading && !searchError && searchResults.map((result) => (
-                  <button
-                    key={result.id}
-                    type="button"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => openSearchResult(result.href)}
-                    className="flex w-full items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3 text-right last:border-b-0 hover:bg-surface-hover"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-base font-semibold text-[#F8FAFC]">{result.title}</span>
-                      <span className="mt-0.5 block truncate text-sm text-[#CBD5E1]">{result.subtitle}</span>
-                    </span>
-                    <span className="shrink-0 rounded-full bg-accent-primary/15 px-2.5 py-1 text-sm font-semibold text-[#C7D2FE]">{result.type}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="min-w-0 flex-1 text-center sm:hidden">
-            <span
-              className={`block leading-tight ${isDashboardHome ? dashboardHome.topHeaderTitle : type.cardTitle}`}
-              style={{ color: colors.accent }}
-            >
-              נטלי
-            </span>
-            <span
-              className={`block ${isDashboardHome ? dashboardHome.topHeaderSubtitle : `${type.caption} font-semibold`}`}
-              style={{ color: colors.textSecondary }}
-            >
-              עובדת המשרד שלך
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => router.push("/message-scans")}
-            aria-label="פתח התראות"
-            className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[var(--border)] bg-surface-card text-ink-secondary hover:bg-surface-hover hover:text-ink-primary"
-          >
-            <Bell className="h-4 w-4" />
-            <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-[var(--error)]" />
-          </button>
-        </div>
-      </header>
+      <GlobalHeader
+        sidebarOffset
+        notificationCount={1}
+        onNotificationsClick={() => router.push("/message-scans")}
+      />
 
       {moreOpen && (
         <div className="fixed inset-0 z-[100] bg-black/55 backdrop-blur-sm lg:hidden" onClick={() => setMoreOpen(false)}>
@@ -513,16 +319,3 @@ export function Nav() {
     </>
   );
 }
-
-function taskStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    open: "פתוח",
-    todo: "לביצוע",
-    "in-progress": "בתהליך",
-    done: "בוצע",
-    completed: "בוצע",
-  };
-  return labels[status] ?? status;
-}
-
-// formatCurrency הוחלף ב-formatAmount המשותף (lib/format/amount) — עמיד ל-null.

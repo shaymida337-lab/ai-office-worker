@@ -4,6 +4,7 @@ import { GoogleTagManagerBody, GoogleTagManagerHead, GtmPageView } from "@/compo
 import { BackendWarmup } from "@/components/BackendWarmup";
 import { HelpCenter } from "@/components/HelpCenter";
 import { NatalieAssistantWidget } from "@/components/NatalieAssistantWidget";
+import { ThemeProvider } from "@/components/natalie-ui/ThemeProvider";
 import { I18nProvider } from "@/i18n";
 import "./globals.css";
 
@@ -38,9 +39,15 @@ export default function RootLayout({
     <html lang="he" dir="rtl">
       <head>
         <GoogleTagManagerHead />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('natalie-theme');if(t==='dark')document.documentElement.classList.add('dark');var l=localStorage.getItem('natalie-language');if(l==='en'||l==='he'){document.documentElement.lang=l;document.documentElement.dir=l==='he'?'rtl':'ltr';}}catch(e){}})();`,
+          }}
+        />
       </head>
       <body className="h-auto overflow-x-hidden lg:overflow-x-clip lg:overflow-y-visible">
         <I18nProvider>
+          <ThemeProvider>
           <GoogleTagManagerBody />
           <Suspense fallback={null}>
             <GtmPageView />
@@ -49,6 +56,7 @@ export default function RootLayout({
           {children}
           <HelpCenter />
           <NatalieAssistantWidget />
+          </ThemeProvider>
         </I18nProvider>
       </body>
     </html>

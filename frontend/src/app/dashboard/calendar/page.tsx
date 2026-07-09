@@ -16,8 +16,8 @@ import {
   Card,
   CardHeader,
   FloatingActionButton,
-  Header,
   MessageBanner,
+  PageTitle,
   StatusBadge,
 } from "@/components/natalie-ui";
 import { apiFetch, ApiError, getToken } from "@/lib/api";
@@ -761,12 +761,10 @@ export default function CalendarPage() {
   return (
     <div dir={dir} data-testid="calendar-page">
       <AppShell
-        header={
-          <Header
+        pageTitle={
+          <PageTitle
             title={businessName || t("calendarDesign.title")}
             subtitle={t("calendarDesign.subtitle")}
-            onRefresh={() => window.location.reload()}
-            refreshLabel={t("calendarDesign.refresh")}
           />
         }
         bottomNavigation={<BottomNavigation items={bottomItems} />}

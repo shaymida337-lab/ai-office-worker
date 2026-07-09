@@ -135,6 +135,15 @@
     "notifications": "התראות",
     "profile": "פרופיל משתמש"
   },
+  "globalHeader": {
+    "home": "דף הבית",
+    "searchPlaceholder": "חפש לקוח, מסמך, חשבונית, משימה...",
+    "searching": "מחפש...",
+    "searchEmpty": "לא נמצאו תוצאות",
+    "notifications": "התראות",
+    "theme": "מצב כהה",
+    "language": "החלפת שפה"
+  },
   "crmDesign": {
     "title": "לקוחות",
     "subtitle": "כל הלקוחות, הלידים והמשימות במקום אחד.",

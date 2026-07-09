@@ -12,10 +12,10 @@ import {
   AppShell,
   BottomNavigation,
   FloatingActionButton,
-  Header,
   KpiCard,
   MessageBanner,
   NatalieAssistantCard,
+  PageTitle,
   Timeline,
 } from "@/components/natalie-ui";
 
@@ -47,12 +47,10 @@ export default function DashboardPage() {
   return (
     <div dir={dir}>
       <AppShell
-        header={
-          <Header
+        pageTitle={
+          <PageTitle
             title={d.businessName || t("dashboardDesign.title")}
             subtitle={t("dashboardDesign.subtitle")}
-            onRefresh={() => window.location.reload()}
-            refreshLabel={t("dashboardDesign.refresh")}
           />
         }
         bottomNavigation={<BottomNavigation items={bottomItems} />}

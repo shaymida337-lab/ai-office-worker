@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { apiFetch, getToken } from "@/lib/api";
 import en from "./en.json";
 import he from "./he.json";
@@ -8,6 +8,8 @@ import he from "./he.json";
 type AppLanguage = "he" | "en";
 type AppDirection = "rtl" | "ltr";
 type TranslationTree = Record<string, unknown>;
+
+const LANGUAGE_STORAGE_KEY = "natalie-language";
 
 type I18nContextValue = {
   language: AppLanguage;
@@ -23,6 +25,16 @@ const I18nContext = createContext<I18nContextValue>({
   setLanguage: () => undefined,
   t: (key) => key,
 });
+
+function readStoredLanguage(): AppLanguage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    return stored === "en" || stored === "he" ? stored : null;
+  } catch {
+    return null;
+  }
+}
 
 function getNestedValue(obj: TranslationTree, key: string): string | null {
   const parts = key.split(".");
@@ -49,7 +61,16 @@ function directionFor(language: AppLanguage): AppDirection {
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguage] = useState<AppLanguage>("he");
+  const [language, setLanguageState] = useState<AppLanguage>(() => readStoredLanguage() ?? "he");
+
+  const setLanguage = useCallback((next: AppLanguage) => {
+    setLanguageState(next);
+    try {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     const token = getToken();
@@ -58,8 +79,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     void apiFetch<{ language?: string; locale?: string }>("/api/organization/settings")
       .then((settings) => {
         const candidate = (settings.language ?? settings.locale ?? "he").toLowerCase();
-        const next = candidate === "en" ? "en" : "he";
-        if (mounted) setLanguage(next);
+        const fromApi = candidate === "en" ? "en" : "he";
+        const stored = readStoredLanguage();
+        const next = stored ?? fromApi;
+        if (mounted) setLanguageState(next);
       })
       .catch(() => undefined);
     return () => {
@@ -82,7 +105,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       setLanguage,
       t: (key, vars) => formatTemplate(getNestedValue(dictionary, key) ?? key, vars),
     };
-  }, [language, dir]);
+  }, [language, dir, setLanguage]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

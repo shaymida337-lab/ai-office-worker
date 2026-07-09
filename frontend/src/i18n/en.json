@@ -134,6 +134,15 @@
     "notifications": "Notifications",
     "profile": "User profile"
   },
+  "globalHeader": {
+    "home": "Home",
+    "searchPlaceholder": "Search customer, document, invoice, task...",
+    "searching": "Searching...",
+    "searchEmpty": "No results found",
+    "notifications": "Notifications",
+    "theme": "Dark mode",
+    "language": "Switch language"
+  },
   "crmDesign": {
     "title": "Customers",
     "subtitle": "All customers, leads, and tasks in one place.",

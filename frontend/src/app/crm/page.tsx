@@ -25,7 +25,6 @@ import {
   EmptyState,
   FloatingActionButton,
   FormLabel,
-  GlobalToolbar,
   Input,
   KpiCard,
   MessageBanner,
@@ -291,17 +290,7 @@ export default function CrmPage() {
   return (
     <div dir={dir}>
       <AppShell
-        headerOffset="tall"
-        header={
-          <header className="fixed inset-x-0 top-0 z-40">
-            <GlobalToolbar
-              searchValue={filters.search}
-              onSearchChange={(value) => setFilters({ ...filters, search: value })}
-              searchPlaceholder={t("globalToolbar.search")}
-            />
-            <PageTitle title={t("crmDesign.title")} subtitle={t("crmDesign.subtitle")} />
-          </header>
-        }
+        pageTitle={<PageTitle title={t("crmDesign.title")} subtitle={t("crmDesign.subtitle")} />}
         bottomNavigation={<BottomNavigation items={bottomItems} />}
         floatingButton={
           <FloatingActionButton
