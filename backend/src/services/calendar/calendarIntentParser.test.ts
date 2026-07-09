@@ -242,6 +242,13 @@ test('"לי" is never mistaken for a customer name', () => {
   assert.ok(result.missingFields.includes("customerName"));
 });
 
+test('punctuation cleanup: "קבעי, תור עבור דנה — מחר ב-11:45!" extracts clean name', () => {
+  const result = parseCalendarIntent("קבעי, תור עבור דנה — מחר ב-11:45!", OPTS);
+  assert.equal(result.intent, "create_appointment");
+  assert.equal(result.customerName, "דנה");
+  assert.equal(result.time, "11:45");
+});
+
 test('"לשלוש" is never mistaken for a customer name in move commands', () => {
   const result = parseCalendarIntent("תעבירי את התור של שרית ביום שני לשלוש", OPTS);
   assert.equal(result.intent, "move_appointment");

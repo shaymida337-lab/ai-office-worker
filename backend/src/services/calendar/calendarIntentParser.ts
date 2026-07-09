@@ -267,7 +267,7 @@ export function extractCustomerName(text: string): string | null {
     boundary = targetTimeBoundary;
   }
   let candidate = (boundary >= 0 ? raw.slice(0, boundary) : raw).trim();
-  candidate = candidate.replace(/[.?!,]+$/u, "").trim();
+  candidate = candidate.replace(/[.?!,:;\-–—]+$/u, "").trim();
 
   if (!candidate) return null;
   if (candidate.length < 2) return null;
