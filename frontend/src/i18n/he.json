@@ -95,5 +95,31 @@
     "tableReference": "מזהה הפניה",
     "tableError": "שגיאה",
     "tableUpdatedAt": "עודכן לאחרונה"
+  },
+  "dashboardDesign": {
+    "title": "לוח בקרה",
+    "subtitle": "נטלי מנהלת את היום שלך",
+    "refresh": "רענן",
+    "heroTitle": "בוקר טוב",
+    "quickActions": "פעולות מהירות",
+    "todayTimeline": "היום שלך",
+    "emptyToday": "אין כרגע פריטים דחופים",
+    "waitingForYou": "מחכה לטיפול שלך",
+    "waitingForYouSubtitle": "פריטים שממתינים להחלטה",
+    "openQueue": "פתח תור",
+    "activityFeed": "פעילות אחרונה",
+    "emptyActivity": "עדיין אין פעילות להצגה",
+    "floatingNatalie": "דברי עם נטלי",
+    "actions": {
+      "askNatalie": "שאלי את נטלי",
+      "scanGmail": "סרקי ג׳ימייל",
+      "uploadDocument": "העלי מסמך"
+    },
+    "nav": {
+      "home": "היום",
+      "invoices": "חשבוניות",
+      "payments": "תשלומים",
+      "calendar": "יומן"
+    }
   }
 }

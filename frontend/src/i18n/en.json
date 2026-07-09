@@ -94,5 +94,31 @@
     "tableReference": "Reference ID",
     "tableError": "Error",
     "tableUpdatedAt": "Last updated"
+  },
+  "dashboardDesign": {
+    "title": "Dashboard",
+    "subtitle": "Natalie runs your day",
+    "refresh": "Refresh",
+    "heroTitle": "Good morning",
+    "quickActions": "Quick actions",
+    "todayTimeline": "Your day",
+    "emptyToday": "No urgent items right now",
+    "waitingForYou": "Waiting for your review",
+    "waitingForYouSubtitle": "Items pending your decision",
+    "openQueue": "Open queue",
+    "activityFeed": "Recent activity",
+    "emptyActivity": "No activity to show yet",
+    "floatingNatalie": "Talk to Natalie",
+    "actions": {
+      "askNatalie": "Ask Natalie",
+      "scanGmail": "Scan Gmail",
+      "uploadDocument": "Upload document"
+    },
+    "nav": {
+      "home": "Today",
+      "invoices": "Invoices",
+      "payments": "Payments",
+      "calendar": "Calendar"
+    }
   }
 }
