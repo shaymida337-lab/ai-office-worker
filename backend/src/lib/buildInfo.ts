@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from "fs";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 
 type EmbeddedBuildInfo = {
   commitSha?: string | null;
@@ -33,11 +32,11 @@ export function resetBuildInfoCacheForTests(): void {
 function readEmbeddedBuildInfo(): EmbeddedBuildInfo | null {
   if (cachedEmbedded !== undefined) return cachedEmbedded;
 
-  const moduleDir = dirname(fileURLToPath(import.meta.url));
   const candidates = [
     join(process.cwd(), "dist", "build-info.json"),
-    join(moduleDir, "..", "build-info.json"),
-    join(moduleDir, "../../dist", "build-info.json"),
+    join(__dirname, "..", "build-info.json"),
+    join(__dirname, "../../dist", "build-info.json"),
+    join(process.cwd(), "backend", "dist", "build-info.json"),
     join(process.cwd(), "build-info.json"),
   ];
 
