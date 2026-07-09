@@ -4,7 +4,7 @@ import { CalendarClock, Check, Edit3, Sparkles } from "lucide-react";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { useI18n } from "@/i18n";
-import { colorWithAlpha, formatAppointmentTime, type TimelineAppointment } from "@/lib/calendarUtils";
+import { appointmentStatusBorderColor, colorWithAlpha, formatAppointmentTime, type TimelineAppointment } from "@/lib/calendarUtils";
 
 const DEFAULT_COLOR = "#3B82F6";
 
@@ -72,13 +72,16 @@ export function CalendarEventCard({
   const isNatalieCreated = appointment.source === "calendar_engine";
   const showQuickActions = variant !== "timeline" && !isCancelled;
   const isTimeline = variant === "timeline";
+  const statusAccent = appointmentStatusBorderColor(appointment.status);
+  const compactMode = variant === "compact" || variant === "timeline";
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-2xl border ${dir === "rtl" ? "text-right" : "text-left"} shadow-[0_4px_16px_rgba(15,23,42,0.06)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(15,23,42,0.10)] ${isCancelled ? "opacity-55" : ""} ${isTimeline ? "!rounded-xl !shadow-sm hover:!translate-y-0 hover:!shadow-md" : ""} ${className}`}
+      className={`group relative overflow-hidden rounded-2xl border border-s-[4px] ${dir === "rtl" ? "text-right" : "text-left"} shadow-[0_4px_14px_rgba(15,23,42,0.05)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_22px_rgba(15,23,42,0.10)] ${isCancelled ? "opacity-55" : ""} ${isTimeline ? "!rounded-xl !shadow-sm hover:!translate-y-0 hover:!shadow-md" : ""} ${className}`}
       style={{
         backgroundColor: colorWithAlpha(color, 0.12),
         borderColor: colorWithAlpha(color, 0.28),
+        borderInlineStartColor: statusAccent,
         ...style,
       }}
       data-testid="calendar-event-card"
@@ -86,41 +89,41 @@ export function CalendarEventCard({
       <button
         type="button"
         onClick={onSelect}
-        className={`block w-full ${dir === "rtl" ? "text-right" : "text-left"} ${isTimeline ? "p-1.5" : "p-3 sm:p-3.5"}`}
+        className={`block w-full ${dir === "rtl" ? "text-right" : "text-left"} ${isTimeline ? "p-1.5" : "p-2.5 sm:p-3"}`}
       >
-        <div className={`mb-2 flex items-start justify-between gap-2 ${isTimeline ? "!mb-0.5" : ""}`}>
+        <div className={`mb-1.5 flex items-start justify-between gap-2 ${isTimeline ? "!mb-1" : ""}`}>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div
+              className={`truncate font-black text-[#111827] ${compactMode ? "text-[11px] sm:text-xs" : "text-base sm:text-lg"} ${isCancelled ? "line-through" : ""}`}
+            >
+              {appointment.client.name}
+            </div>
+            {appointment.service?.name && (
+              <div className={`mt-0.5 truncate text-xs font-semibold text-[#4B5563] ${isCancelled ? "line-through" : ""}`}>
+                {appointment.service.name}
+              </div>
+            )}
+            <div className="mt-0.5 flex flex-wrap items-center gap-1">
               <span
-                className={`font-black text-[#111827] ${isTimeline ? "text-[10px] sm:text-xs" : "text-sm sm:text-base"} ${isCancelled ? "line-through" : ""}`}
-                  dir={dir === "rtl" ? "ltr" : "ltr"}
+                className={`font-bold text-[#1F2937] ${compactMode ? "text-[10px]" : "text-xs sm:text-sm"} ${isCancelled ? "line-through" : ""}`}
+                dir="ltr"
               >
                 {time}
               </span>
               {!isTimeline && (
-                <span className="text-xs font-semibold text-[#6B7280]">
+                <span className="text-[10px] font-semibold text-[#6B7280]">
                   · {appointment.durationMinutes} {t("calendar.minutesShort")}
                 </span>
               )}
             </div>
-            <div
-              className={`mt-1 truncate font-black text-[#111827] ${isTimeline ? "text-[11px] sm:text-xs" : "text-base sm:text-lg"} ${isCancelled ? "line-through" : ""}`}
-            >
-              {appointment.client.name}
-            </div>
-            {appointment.service?.name && !isTimeline && (
-              <div className={`truncate text-sm font-semibold text-[#6B7280] ${isCancelled ? "line-through" : ""}`}>
-                {appointment.service.name}
-              </div>
-            )}
           </div>
           {!isTimeline && <StatusPill tone={statusTone(appointment.status)}>{statusLabel(appointment.status)}</StatusPill>}
         </div>
 
-        {!isTimeline && (
-        <div className="flex flex-wrap items-center gap-1.5">
+        {!isTimeline && !compactMode && (
+        <div className="flex flex-wrap items-center gap-1">
           {isNatalieCreated && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[11px] font-bold text-[#4338CA]">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[10px] font-bold text-[#4338CA]">
               <Sparkles className="h-3 w-3" />
               {t("calendar.natalie")}
             </span>

@@ -1,6 +1,6 @@
 export const TIMELINE_START_HOUR = 7;
 export const TIMELINE_END_HOUR = 21;
-export const PX_PER_MINUTE = 1.25;
+export const PX_PER_MINUTE = 1;
 export const MIN_APPOINTMENT_BLOCK_PX = 28;
 
 export type DayBounds = {

@@ -48,11 +48,11 @@ export function WeekCalendarView<T extends CalendarEventCardAppointment>({
   }, [appointments, weekDays]);
 
   if (loading) {
-    return <div className="skeleton min-h-[320px] rounded-2xl sm:min-h-[420px]" />;
+    return <div className="skeleton min-h-[280px] rounded-2xl sm:min-h-[380px]" />;
   }
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-7" dir="rtl">
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-7" dir="rtl">
       {weekDays.map((day, index) => {
         const key = toDateInputValue(day);
         const dayAppts = appointmentsByDay.get(key) ?? [];
@@ -61,20 +61,20 @@ export function WeekCalendarView<T extends CalendarEventCardAppointment>({
         return (
           <div
             key={key}
-            className={`min-h-[180px] rounded-2xl border p-3 transition ${
+            className={`min-h-[150px] rounded-2xl border p-2.5 transition ${
               isToday
                 ? "border-[#1D4ED8]/35 bg-[#EFF6FF] shadow-[0_6px_20px_rgba(29,78,216,0.08)]"
                 : "border-[#E5E7EB] bg-white shadow-[0_4px_16px_rgba(15,23,42,0.04)]"
             }`}
           >
-            <div className={`mb-3 text-center ${isToday ? "text-[#1D4ED8]" : "text-[#111827]"}`}>
+            <div className={`mb-2 text-center ${isToday ? "text-[#1D4ED8]" : "text-[#111827]"}`}>
               <div className="text-sm font-black">{DAY_NAMES[index]}</div>
               <div className="text-xs font-semibold text-[#6B7280]">
                 {day.toLocaleDateString("he-IL", { day: "numeric", month: "numeric", timeZone: orgTimezone })}
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {dayAppts.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-[#E5E7EB] bg-[#F8FAFC] px-2 py-4 text-center">
                   <p className="text-xs font-bold text-[#6B7280]">אין פגישות</p>
@@ -89,7 +89,7 @@ export function WeekCalendarView<T extends CalendarEventCardAppointment>({
                     statusTone={statusTone}
                     onSelect={() => onSelectAppointment(appt)}
                     onQuickConfirm={onQuickConfirm ? () => onQuickConfirm(appt) : undefined}
-                    className="!shadow-none hover:!shadow-md"
+                    className="!shadow-none hover:!shadow-sm"
                     style={{
                       backgroundColor: colorWithAlpha(appt.service?.color || "#3B82F6", 0.1),
                     }}

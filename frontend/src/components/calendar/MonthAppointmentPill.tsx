@@ -41,11 +41,11 @@ export const MonthAppointmentPill = memo(function MonthAppointmentPill({
       }}
       title={`${time} ${appointment.clientName}`}
     >
-      <span className={`shrink-0 font-black text-[#111827] ${isCancelled ? "line-through" : ""}`} dir="ltr">
-        {time}
-      </span>
-      <span className={`min-w-0 truncate font-bold text-[#374151] ${isCancelled ? "line-through" : ""}`}>
+      <span className={`min-w-0 truncate font-black text-[#111827] ${isCancelled ? "line-through" : ""}`}>
         {appointment.clientName}
+      </span>
+      <span className={`shrink-0 text-[10px] font-bold text-[#4B5563] ${isCancelled ? "line-through" : ""}`} dir="ltr">
+        {time}
       </span>
     </button>
   );
