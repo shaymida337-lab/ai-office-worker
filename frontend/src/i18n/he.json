@@ -214,5 +214,35 @@
       "replyPlaceholder": "תוכן התשובה שהתקבלה",
       "stopSequence": "עצור רצף וסמן תשובה"
     }
+  },
+  "documentsDesign": {
+    "title": "מסמכים",
+    "subtitle": "נטלי עוברת על המסמכים שלך",
+    "loading": "רגע, אני עוברת על המסמכים...",
+    "briefIntro": "עברתי על כל המסמכים החדשים.",
+    "briefEmpty": "כרגע אין שום דבר שמחכה להחלטה שלך.",
+    "briefOne": "נשאר רק אחד שדורש את ההחלטה שלך.",
+    "briefMany": "נשארו רק {{count}} שדורשים את ההחלטה שלך.",
+    "searchPlaceholder": "לדוגמה: \"החשבונית של בזק\", \"מסמכים מעל 500 ₪\"",
+    "filterAll": "הכל",
+    "filterNeedsDecision": "דורש החלטה",
+    "filterCompleted": "הושלמו",
+    "filterBlocked": "חסומים",
+    "filterDuplicates": "כפילויות",
+    "filterThisMonth": "החודש",
+    "filterEmpty": "אין מסמכים שמתאימים לסינון הזה",
+    "emptyTitle": "עברתי על כל המסמכים",
+    "emptyHint": "כרגע אין שום דבר שמחכה להחלטה שלך.",
+    "queueTitle": "מה דורש את ההחלטה שלך",
+    "completedToday": "היום כבר סיימתי {{count}} מסמכים",
+    "completedTodayOne": "היום כבר סיימתי מסמך אחד",
+    "loadError": "טעינת מסמכים נכשלה",
+    "removeError": "הסרת המסמך נכשלה",
+    "nav": {
+      "home": "היום",
+      "invoices": "חשבוניות",
+      "payments": "תשלומים",
+      "calendar": "יומן"
+    }
   }
 }

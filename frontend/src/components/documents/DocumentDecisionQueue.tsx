@@ -1,10 +1,10 @@
 "use client";
 
-import { colors, type as typography } from "@/lib/design-tokens";
 import {
   formatReviewQueueHeadline,
   type DocumentReviewItem,
 } from "@/lib/documents/presentation";
+import { useI18n } from "@/i18n";
 import { DocumentDecisionCard } from "./DocumentDecisionCard";
 
 const MAX_VISIBLE = 5;
@@ -26,18 +26,19 @@ export function DocumentDecisionQueue({
   onOpen: (url: string) => void;
   onRemove: (id: string) => void;
 }) {
+  const { t } = useI18n();
   const visible = items.slice(0, MAX_VISIBLE);
   const hidden = Math.max(0, totalCount - visible.length);
 
   if (items.length === 0) return null;
 
   return (
-    <section className="grid gap-4" aria-label="תור החלטות">
+    <section className="grid gap-4" aria-label={t("documentsDesign.queueTitle")}>
       <div>
-        <h2 className={`${typography.sectionTitle} leading-snug`} style={{ color: colors.textPrimary }}>
-          מה דורש את ההחלטה שלך
+        <h2 className="text-xl font-black leading-snug text-[var(--natalie-text-primary,#0F172A)]">
+          {t("documentsDesign.queueTitle")}
         </h2>
-        <p className={`${typography.body} mt-1`} style={{ color: colors.textSecondary }}>
+        <p className="mt-1 text-base text-[var(--natalie-text-muted,#64748B)]">
           {formatReviewQueueHeadline(visible.length, totalCount)}
         </p>
       </div>
@@ -57,7 +58,7 @@ export function DocumentDecisionQueue({
       </div>
 
       {hidden > 0 && (
-        <p className={`${typography.body} text-center font-semibold`} style={{ color: colors.textSecondary }}>
+        <p className="text-center text-base font-semibold text-[var(--natalie-text-muted,#64748B)]">
           ועוד {hidden} {hidden === 1 ? "מסמך" : "מסמכים"} בתור
         </p>
       )}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ExternalLink, FileText, Pencil } from "lucide-react";
-import { colors, radius, button, type as typography } from "@/lib/design-tokens";
+import { Button, Card, Input, StatusBadge } from "@/components/natalie-ui";
 import {
   drivePreviewUrl,
   formatDocumentDate,
@@ -87,21 +87,14 @@ export function DocumentDecisionCard({
   }
 
   return (
-    <article
-      className={`${radius.lg} border overflow-hidden transition-all duration-300 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 ${
-        exiting ? "pointer-events-none translate-x-4 opacity-0 scale-[0.98]" : "opacity-100"
-      }`}
-      style={{
-        backgroundColor: colors.surface,
-        borderColor: view.isBlocked ? colors.warnBorder : colors.borderSubtle,
-        boxShadow: "0 10px 40px rgba(15,23,42,0.06)",
-      }}
+    <Card
+      padding="none"
+      className={`overflow-hidden transition-all duration-300 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 ${
+        exiting ? "pointer-events-none translate-x-4 scale-[0.98] opacity-0" : "opacity-100"
+      } ${view.isBlocked ? "border-[#FCD34D]" : ""}`}
     >
       <div className="grid gap-0 lg:grid-cols-2">
-        <div
-          className="relative min-h-[220px] border-b lg:min-h-[320px] lg:border-b-0 lg:border-l"
-          style={{ backgroundColor: colors.bgSoft, borderColor: colors.borderSubtle }}
-        >
+        <div className="relative min-h-[220px] border-b border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-bg-page,#F3F6FF)] lg:min-h-[320px] lg:border-b-0 lg:border-l">
           {previewUrl ? (
             <iframe
               title={`תצוגה מקדימה — ${view.supplier}`}
@@ -111,13 +104,10 @@ export function DocumentDecisionCard({
             />
           ) : (
             <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-3 p-6 text-center lg:min-h-[320px]">
-              <span
-                className="grid h-14 w-14 place-items-center rounded-2xl"
-                style={{ backgroundColor: colors.accentSoft, color: colors.accent }}
-              >
+              <span className="grid h-14 w-14 place-items-center rounded-2xl bg-[#EEF2FF] text-[#1D4ED8]">
                 <FileText className="h-7 w-7" strokeWidth={2} />
               </span>
-              <p className={`${typography.body} font-semibold`} style={{ color: colors.textSecondary }}>
+              <p className="text-base font-semibold text-[var(--natalie-text-muted,#64748B)]">
                 {item.fileName ?? "אין תצוגה מקדימה"}
               </p>
             </div>
@@ -126,16 +116,8 @@ export function DocumentDecisionCard({
 
         <div className="flex flex-col gap-4 p-5 md:p-6">
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`${radius.pill} px-2.5 py-1 text-xs font-bold`}
-              style={{
-                backgroundColor: view.canApprove ? colors.accentSoft : colors.warnBg,
-                color: view.canApprove ? colors.accent : colors.warnText,
-              }}
-            >
-              {view.typeLabel}
-            </span>
-            <span className={`${typography.caption} font-semibold`} style={{ color: colors.textMuted }}>
+            <StatusBadge tone={view.canApprove ? "info" : "warn"}>{view.typeLabel}</StatusBadge>
+            <span className="text-sm font-semibold text-[var(--natalie-text-muted,#64748B)]">
               {sourceLabel(item.source)} · {formatDocumentDate(item.createdAt)}
             </span>
           </div>
@@ -143,28 +125,22 @@ export function DocumentDecisionCard({
           <div>
             <div className="flex flex-wrap items-start gap-2">
               {editingSupplier ? (
-                <input
+                <Input
                   type="text"
                   value={supplierDraft}
                   onChange={(event) => setSupplierDraft(event.target.value)}
-                  className={`${radius.control} ${typography.cardTitle} w-full border px-3 py-2`}
-                  style={{
-                    color: colors.textPrimary,
-                    borderColor: colors.border,
-                    backgroundColor: colors.surface,
-                  }}
+                  className="text-lg font-black"
                   aria-label="שם ספק"
                 />
               ) : (
-                <h2 className={`${typography.cardTitle} break-words`} style={{ color: colors.textPrimary }}>
+                <h2 className="break-words text-lg font-black text-[var(--natalie-text-primary,#0F172A)] md:text-xl">
                   {supplierDraft || view.supplier}
                 </h2>
               )}
               {view.canEditSupplier && !editingSupplier && (
                 <button
                   type="button"
-                  className={`${radius.pill} inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold`}
-                  style={{ color: colors.accent, backgroundColor: colors.accentSoft }}
+                  className="inline-flex items-center gap-1 rounded-full bg-[#EEF2FF] px-2 py-1 text-xs font-semibold text-[#1D4ED8]"
                   onClick={() => setEditingSupplier(true)}
                 >
                   <Pencil className="h-3.5 w-3.5" />
@@ -173,20 +149,18 @@ export function DocumentDecisionCard({
               )}
             </div>
             {view.rawSupplierName && view.rawSupplierName !== (supplierDraft || view.supplier) && (
-              <p className={`${typography.caption} mt-1`} style={{ color: colors.textMuted }}>
+              <p className="mt-1 text-sm text-[var(--natalie-text-muted,#64748B)]">
                 זוהה במקור: {view.rawSupplierName}
               </p>
             )}
-            <p className={`${typography.kpiValue} mt-2 text-[28px] md:text-[32px]`} style={{ color: colors.accent }}>
-              {view.amountLabel}
-            </p>
-            <p className={`${typography.caption} mt-1 font-semibold`} style={{ color: colors.textMuted }}>
+            <p className="mt-2 text-[28px] font-black text-[#1D4ED8] md:text-[32px]">{view.amountLabel}</p>
+            <p className="mt-1 text-sm font-semibold text-[var(--natalie-text-muted,#64748B)]">
               {view.documentTypeLabel}
             </p>
           </div>
 
           {view.missingFields.length > 0 && (
-            <ul className={`${typography.body} list-disc space-y-1 pr-5 leading-7`} style={{ color: colors.dangerText }}>
+            <ul className="list-disc space-y-1 pr-5 text-base leading-7 text-[#7F1D1D]">
               {view.missingFields.map((field) => (
                 <li key={field.id}>{field.labelHebrew}</li>
               ))}
@@ -194,101 +168,74 @@ export function DocumentDecisionCard({
           )}
 
           {view.advisoryFields.length > 0 && view.missingFields.length === 0 && (
-            <ul className={`${typography.caption} list-disc space-y-1 pr-5 leading-6`} style={{ color: colors.textSecondary }}>
+            <ul className="list-disc space-y-1 pr-5 text-sm leading-6 text-[var(--natalie-text-muted,#64748B)]">
               {view.advisoryFields.map((field) => (
                 <li key={field.id}>{field.labelHebrew}</li>
               ))}
             </ul>
           )}
 
-          <p className={`${typography.body} leading-7`} style={{ color: colors.textSecondary }}>
-            {view.reason}
-          </p>
+          <p className="text-base leading-7 text-[var(--natalie-text-muted,#64748B)]">{view.reason}</p>
 
           <div className="relative z-10 mt-auto flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             {editingSupplier ? (
               <>
-                <button
-                  type="button"
+                <Button
+                  variant="primary"
                   disabled={updating || exiting || !supplierDraft.trim()}
                   onClick={confirmSupplierEdit}
-                  className={`${radius.control} ${button.primary} w-full sm:w-auto`}
-                  style={{
-                    backgroundColor: colors.accent,
-                    border: `1px solid ${colors.accent}`,
-                    color: colors.surface,
-                  }}
+                  className="w-full sm:w-auto"
                 >
                   {updating ? "מעדכן..." : "אשר ספק והעבר לחשבוניות"}
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="secondary"
                   disabled={updating || exiting}
                   onClick={() => {
                     setSupplierDraft(view.supplier);
                     setEditingSupplier(false);
                   }}
-                  className={`${radius.control} ${button.secondary} w-full sm:w-auto`}
-                  style={{
-                    backgroundColor: colors.surface,
-                    border: `1px solid ${colors.border}`,
-                    color: colors.textSecondary,
-                  }}
+                  className="w-full sm:w-auto"
                 >
                   ביטול
-                </button>
+                </Button>
               </>
             ) : (
               <>
-                <button
-                  type="button"
+                <Button
+                  variant="primary"
                   disabled={updating || exiting}
                   onClick={handlePrimary}
-                  className={`${radius.control} ${button.primary} w-full sm:w-auto`}
-                  style={{
-                    backgroundColor: colors.accent,
-                    border: `1px solid ${colors.accent}`,
-                    color: colors.surface,
-                  }}
+                  className="w-full sm:w-auto"
                 >
                   {updating ? "מעדכן..." : view.primaryLabel}
-                </button>
+                </Button>
                 {view.secondaryLabel && (previewUrl || view.secondaryLabel === "ערוך פרטים") && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
                     disabled={updating || exiting}
                     onClick={handleSecondary}
-                    className={`${radius.control} ${button.secondary} inline-flex w-full items-center justify-center gap-2 sm:w-auto`}
-                    style={{
-                      backgroundColor: colors.surface,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.textSecondary,
-                    }}
+                    className="w-full sm:w-auto"
                   >
                     {previewUrl && view.secondaryLabel !== "ערוך פרטים" ? (
                       <ExternalLink className="h-4 w-4" />
                     ) : null}
                     {view.secondaryLabel}
-                  </button>
+                  </Button>
                 )}
               </>
             )}
-            <button
-              type="button"
+            <Button
+              variant="danger"
               disabled={updating || exiting}
               onClick={() => onRemove(item.id)}
-              className={`${radius.control} ${button.secondary} w-full sm:w-auto`}
-              style={{
-                backgroundColor: colors.surface,
-                border: `1px solid ${colors.dangerBorder}`,
-                color: colors.dangerText,
-              }}
+              className="w-full sm:w-auto"
             >
               {view.rejectLabel}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
-    </article>
+    </Card>
   );
 }

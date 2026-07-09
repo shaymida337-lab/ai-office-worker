@@ -1,7 +1,8 @@
 "use client";
 
 import { Search } from "lucide-react";
-import { colors, radius, type as typography } from "@/lib/design-tokens";
+import { Input } from "@/components/natalie-ui";
+import { useI18n } from "@/i18n";
 
 export function DocumentsSearchBar({
   value,
@@ -10,29 +11,22 @@ export function DocumentsSearchBar({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const { t } = useI18n();
+
   return (
-    <section aria-label="חיפוש מסמכים">
+    <section aria-label={t("documentsDesign.searchPlaceholder")}>
       <label htmlFor="documents-search" className="sr-only">
-        חיפוש מסמכים
+        {t("documentsDesign.searchPlaceholder")}
       </label>
-      <div
-        className={`flex min-h-[56px] items-center gap-3 ${radius.lg} border px-4`}
-        style={{
-          backgroundColor: colors.surface,
-          borderColor: colors.border,
-          boxShadow: "0 6px 24px rgba(15,23,42,0.05)",
-        }}
-      >
-        <Search className="h-5 w-5 shrink-0" style={{ color: colors.accent }} strokeWidth={2.2} />
-        <input
+      <div className="flex min-h-[56px] items-center gap-3 rounded-2xl border border-[var(--natalie-card-border,#DBE5F4)] bg-[var(--natalie-card-bg,#ffffff)] px-4 shadow-sm">
+        <Search className="h-5 w-5 shrink-0 text-[#1D4ED8]" strokeWidth={2.2} />
+        <Input
           id="documents-search"
           type="search"
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          placeholder='לדוגמה: "החשבונית של בזק", "מסמכים מעל 500 ₪"'
-          dir="rtl"
-          className={`min-w-0 flex-1 border-0 bg-transparent py-3 ${typography.body} outline-none`}
-          style={{ color: colors.textPrimary }}
+          placeholder={t("documentsDesign.searchPlaceholder")}
+          className="border-0 bg-transparent px-0 py-3 shadow-none focus:ring-0"
         />
       </div>
     </section>

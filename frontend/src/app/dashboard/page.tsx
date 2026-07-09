@@ -16,6 +16,7 @@ import {
   MessageBanner,
   NatalieAssistantCard,
   PageTitle,
+  SkeletonCard,
   Timeline,
 } from "@/components/natalie-ui";
 
@@ -67,6 +68,22 @@ export default function DashboardPage() {
           </MessageBanner>
         ) : null}
 
+        {d.pageLoading ? (
+          <div className="grid gap-4" aria-busy="true">
+            <SkeletonCard />
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <SkeletonCard key={index} />
+              ))}
+            </div>
+            <SkeletonCard />
+            <div className="grid gap-4 lg:grid-cols-2">
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+            <SkeletonCard />
+          </div>
+        ) : (
         <div className="grid gap-4">
           <NatalieAssistantCard
             title={d.morningGreeting.headline || t("dashboardDesign.heroTitle")}
@@ -117,6 +134,7 @@ export default function DashboardPage() {
             }))}
           />
         </div>
+        )}
       </AppShell>
     </div>
   );

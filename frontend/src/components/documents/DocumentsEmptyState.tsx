@@ -1,14 +1,17 @@
 "use client";
 
 import { CheckCircle2 } from "lucide-react";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { EmptyState } from "@/components/natalie-ui";
+import { useI18n } from "@/i18n";
 
 export function DocumentsEmptyState() {
+  const { t } = useI18n();
+
   return (
     <EmptyState
-      icon={<CheckCircle2 className="h-8 w-8" strokeWidth={2.5} />}
-      title="עברתי על כל המסמכים"
-      hint="כרגע אין שום דבר שמחכה להחלטה שלך."
+      title={t("documentsDesign.emptyTitle")}
+      description={t("documentsDesign.emptyHint")}
+      action={<CheckCircle2 className="mx-auto h-8 w-8 text-[#065F46]" strokeWidth={2.5} />}
     />
   );
 }

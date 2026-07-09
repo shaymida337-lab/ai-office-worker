@@ -213,5 +213,35 @@
       "replyPlaceholder": "Reply content received",
       "stopSequence": "Stop sequence and mark reply"
     }
+  },
+  "documentsDesign": {
+    "title": "Documents",
+    "subtitle": "Natalie reviews your documents",
+    "loading": "One moment, reviewing documents...",
+    "briefIntro": "I reviewed all new documents.",
+    "briefEmpty": "Nothing is waiting for your decision right now.",
+    "briefOne": "Only one item still needs your decision.",
+    "briefMany": "Only {{count}} items still need your decision.",
+    "searchPlaceholder": "e.g. \"Bezeq invoice\", \"documents over ₪500\"",
+    "filterAll": "All",
+    "filterNeedsDecision": "Needs decision",
+    "filterCompleted": "Completed",
+    "filterBlocked": "Blocked",
+    "filterDuplicates": "Duplicates",
+    "filterThisMonth": "This month",
+    "filterEmpty": "No documents match this filter",
+    "emptyTitle": "All documents reviewed",
+    "emptyHint": "Nothing is waiting for your decision right now.",
+    "queueTitle": "What needs your decision",
+    "completedToday": "Completed {{count}} documents today",
+    "completedTodayOne": "Completed 1 document today",
+    "loadError": "Failed to load documents",
+    "removeError": "Failed to remove document",
+    "nav": {
+      "home": "Today",
+      "invoices": "Invoices",
+      "payments": "Payments",
+      "calendar": "Calendar"
+    }
   }
 }

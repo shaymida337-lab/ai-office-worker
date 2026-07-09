@@ -5,10 +5,10 @@ import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 import type { CalendarViewMode } from "@/lib/calendarUtils";
 
 const navBtnClass =
-  "inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#111827] transition duration-150 hover:bg-[#F3F4F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8] focus-visible:ring-offset-1";
+  "inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] text-[var(--natalie-text-primary,#0F172A)] transition duration-150 hover:bg-[var(--natalie-bg-page,#F3F6FF)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8] focus-visible:ring-offset-1";
 
 const todayBtnClass =
-  "inline-flex min-h-10 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white px-4 text-sm font-black text-[#111827] transition duration-150 hover:bg-[#F3F4F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8] focus-visible:ring-offset-1";
+  "inline-flex min-h-10 items-center justify-center rounded-xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] px-4 text-sm font-black text-[var(--natalie-text-primary,#0F172A)] transition duration-150 hover:bg-[var(--natalie-bg-page,#F3F6FF)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8] focus-visible:ring-offset-1";
 
 type CalendarToolbarProps = {
   viewMode: CalendarViewMode;
@@ -38,7 +38,7 @@ function ViewSwitcher({
 }) {
   return (
     <div
-      className={`flex rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] p-1 ${className ?? ""}`}
+      className={`flex rounded-xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-bg-page,#F3F6FF)] p-1 ${className ?? ""}`}
       data-testid="calendar-view-switcher"
     >
       {VIEW_OPTIONS.map(({ mode, label }) => (
@@ -49,7 +49,7 @@ function ViewSwitcher({
           className={`rounded-lg px-4 py-2 text-sm font-black transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8] md:py-2 ${
             viewMode === mode
               ? "bg-[#1D4ED8] text-white shadow-sm"
-              : "text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827]"
+              : "text-[var(--natalie-text-muted,#64748B)] hover:bg-[var(--natalie-card-bg,#ffffff)] hover:text-[var(--natalie-text-primary,#0F172A)]"
           }`}
           onClick={() => onViewModeChange(mode)}
         >
@@ -94,14 +94,14 @@ export function CalendarToolbar({
           {showMonthPicker && (
             <button
               type="button"
-              className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#1D4ED8] transition duration-150 hover:bg-[#EFF6FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8] focus-visible:ring-offset-1"
+              className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] text-[#1D4ED8] transition duration-150 hover:bg-[#EFF6FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8] focus-visible:ring-offset-1"
               aria-label="בחר חודש"
               onClick={() => monthInputRef.current?.showPicker?.() ?? monthInputRef.current?.click()}
             >
               <Calendar className="h-4 w-4" />
             </button>
           )}
-          <h2 className="truncate text-center text-lg font-black text-[#111827]">{title}</h2>
+          <h2 className="truncate text-center text-lg font-black text-[var(--natalie-text-primary,#0F172A)]">{title}</h2>
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
@@ -141,14 +141,14 @@ export function CalendarToolbar({
             {showMonthPicker && (
               <button
                 type="button"
-                className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#1D4ED8] transition duration-150 hover:bg-[#EFF6FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8]"
+                className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] text-[#1D4ED8] transition duration-150 hover:bg-[#EFF6FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8]"
                 aria-label="בחר חודש"
                 onClick={() => monthInputRef.current?.showPicker?.() ?? monthInputRef.current?.click()}
               >
                 <Calendar className="h-4 w-4" />
               </button>
             )}
-            <h2 className="truncate text-base font-black text-[#111827]">{title}</h2>
+            <h2 className="truncate text-base font-black text-[var(--natalie-text-primary,#0F172A)]">{title}</h2>
           </div>
         </div>
       </div>

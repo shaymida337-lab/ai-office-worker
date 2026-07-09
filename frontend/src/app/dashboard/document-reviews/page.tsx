@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Nav } from "@/components/Nav";
 import {
   DocumentDecisionQueue,
   DocumentsCompletedSection,
@@ -10,6 +9,14 @@ import {
   DocumentsMorningContext,
   DocumentsSearchBar,
 } from "@/components/documents";
+import {
+  AppShell,
+  BottomNavigation,
+  MessageBanner,
+  PageTitle,
+  SkeletonCard,
+} from "@/components/natalie-ui";
+import { useI18n } from "@/i18n";
 import { apiFetch } from "@/lib/api";
 import {
   approvalErrorHebrew,
@@ -25,11 +32,11 @@ import {
   isConfirmedApprovalResponse,
   type DocumentReviewApprovalResponse,
 } from "@/lib/documents/approvalFlow";
-import { colors, radius, type as typography } from "@/lib/design-tokens";
 
 const EXIT_ANIMATION_MS = 320;
 
 export default function DocumentReviewsPage() {
+  const { t, dir } = useI18n();
   const [pendingItems, setPendingItems] = useState<DocumentReviewItem[]>([]);
   const [completedItems, setCompletedItems] = useState<DocumentReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,6 +46,16 @@ export default function DocumentReviewsPage() {
   const [exitingIds, setExitingIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<DocumentFilter>("needs_decision");
+
+  const bottomItems = useMemo(
+    () => [
+      { id: "home", label: t("documentsDesign.nav.home"), href: "/dashboard" },
+      { id: "invoices", label: t("documentsDesign.nav.invoices"), href: "/dashboard/invoices" },
+      { id: "payments", label: t("documentsDesign.nav.payments"), href: "/payments" },
+      { id: "calendar", label: t("documentsDesign.nav.calendar"), href: "/dashboard/calendar" },
+    ],
+    [t]
+  );
 
   const loadItems = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoading(true);
@@ -51,11 +68,11 @@ export default function DocumentReviewsPage() {
       setPendingItems(pending);
       setCompletedItems(approved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "טעינת מסמכים נכשלה");
+      setError(err instanceof Error ? err.message : t("documentsDesign.loadError"));
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadItems();
@@ -136,7 +153,7 @@ export default function DocumentReviewsPage() {
         setStatusMessage(remainingDocumentsMessage(next.length));
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "הסרת המסמך נכשלה");
+      setError(err instanceof Error ? err.message : t("documentsDesign.removeError"));
     } finally {
       setUpdatingId(null);
     }
@@ -155,85 +172,68 @@ export default function DocumentReviewsPage() {
     pendingCount > 0;
 
   return (
-    <main
-      className="min-h-screen max-w-full overflow-x-clip px-4 pb-32 pt-20 md:px-8 md:pb-8 lg:mr-60"
-      style={{
-        background: `linear-gradient(180deg, ${colors.bgSoft} 0%, ${colors.bg} 28%, ${colors.bg} 100%)`,
-        color: colors.textPrimary,
-      }}
-    >
-      <Nav />
-
-      <div className="mx-auto grid min-w-0 max-w-3xl gap-6 md:gap-8">
-        <DocumentsMorningContext
-          pendingCount={pendingCount}
-          loading={loading}
-          statusMessage={statusMessage}
-        />
-
-        <DocumentsSearchBar value={search} onChange={setSearch} />
-
-        <DocumentsFilterChips active={filter} onChange={setFilter} />
-
-        {error && (
-          <div
-            className={`${radius.lg} border px-5 py-4 ${typography.body} font-semibold leading-7`}
-            style={{
-              color: colors.dangerText,
-              backgroundColor: colors.dangerBg,
-              borderColor: colors.dangerBorder,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {loading && (
-          <div className="grid gap-4">
-            {Array.from({ length: 2 }).map((_, index) => (
-              <div
-                key={index}
-                className={`${radius.lg} h-72 animate-pulse border`}
-                style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
-              />
-            ))}
-          </div>
-        )}
-
-        {!loading && !showCompletedFilter && pendingCount === 0 && filtered.queue.length === 0 && (
-          <DocumentsEmptyState />
-        )}
-
-        {!loading && showFilteredEmpty && (
-          <p className={`${typography.body} text-center font-semibold`} style={{ color: colors.textSecondary }}>
-            אין מסמכים שמתאימים לסינון הזה
-          </p>
-        )}
-
-        {!loading && filtered.showQueue && filtered.queue.length > 0 && (
-          <DocumentDecisionQueue
-            items={filtered.queue}
-            totalCount={filtered.queue.length}
-            exitingIds={exitingIds}
-            updatingId={updatingId}
-            onApprove={approve}
-            onOpen={openDocument}
-            onRemove={remove}
+    <div dir={dir}>
+      <AppShell
+        pageTitle={<PageTitle title={t("documentsDesign.title")} subtitle={t("documentsDesign.subtitle")} />}
+        bottomNavigation={<BottomNavigation items={bottomItems} />}
+      >
+        <div className="mx-auto grid min-w-0 max-w-3xl gap-6 md:gap-8">
+          <DocumentsMorningContext
+            pendingCount={pendingCount}
+            loading={loading}
+            statusMessage={statusMessage}
           />
-        )}
 
-        {!loading && showCompletedFilter && (
-          filtered.completed.length > 0 ? (
-            <DocumentsCompletedSection items={filtered.completed} defaultOpen />
-          ) : (
+          <DocumentsSearchBar value={search} onChange={setSearch} />
+
+          <DocumentsFilterChips active={filter} onChange={setFilter} />
+
+          {error ? (
+            <MessageBanner tone="error">{error}</MessageBanner>
+          ) : null}
+
+          {loading ? (
+            <div className="grid gap-4">
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          ) : null}
+
+          {!loading && !showCompletedFilter && pendingCount === 0 && filtered.queue.length === 0 && (
             <DocumentsEmptyState />
-          )
-        )}
+          )}
 
-        {!loading && !showCompletedFilter && (
-          <DocumentsCompletedSection items={completedToday} />
-        )}
-      </div>
-    </main>
+          {!loading && showFilteredEmpty && (
+            <p className="text-center text-base font-semibold text-[var(--natalie-text-muted,#64748B)]">
+              {t("documentsDesign.filterEmpty")}
+            </p>
+          )}
+
+          {!loading && filtered.showQueue && filtered.queue.length > 0 && (
+            <DocumentDecisionQueue
+              items={filtered.queue}
+              totalCount={filtered.queue.length}
+              exitingIds={exitingIds}
+              updatingId={updatingId}
+              onApprove={approve}
+              onOpen={openDocument}
+              onRemove={remove}
+            />
+          )}
+
+          {!loading && showCompletedFilter && (
+            filtered.completed.length > 0 ? (
+              <DocumentsCompletedSection items={filtered.completed} defaultOpen />
+            ) : (
+              <DocumentsEmptyState />
+            )
+          )}
+
+          {!loading && !showCompletedFilter && (
+            <DocumentsCompletedSection items={completedToday} />
+          )}
+        </div>
+      </AppShell>
+    </div>
   );
 }

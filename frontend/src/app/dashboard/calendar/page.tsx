@@ -16,9 +16,13 @@ import {
   Card,
   CardHeader,
   FloatingActionButton,
+  FormLabel,
+  Input,
   MessageBanner,
   PageTitle,
+  Select,
   StatusBadge,
+  Textarea,
 } from "@/components/natalie-ui";
 import { apiFetch, ApiError, getToken } from "@/lib/api";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
@@ -834,19 +838,19 @@ export default function CalendarPage() {
               />
 
               <CollapsePanel open={showForm}>
-                <form onSubmit={saveAppointment} className="mb-5 grid gap-3 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] p-4 md:grid-cols-2">
+                <form onSubmit={saveAppointment} className="mb-5 grid gap-3 rounded-2xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-bg-page,#F3F6FF)] p-4 md:grid-cols-2">
           <div className="flex items-center justify-between md:col-span-2">
-            <h2 className="text-lg font-black text-[#111827]">{editingId ? t("calendar.editAppointment") : t("calendar.newAppointment")}</h2>
+            <h2 className="text-lg font-black text-[var(--natalie-text-primary,#0F172A)]">{editingId ? t("calendar.editAppointment") : t("calendar.newAppointment")}</h2>
             <Button variant="secondary" size="sm" type="button" onClick={resetForm}>
               <X className="h-4 w-4" />
               {t("calendar.cancel")}
             </Button>
           </div>
-          <label className="font-semibold text-[#111827]">
+          <FormLabel>
             {t("calendar.customer")}
-            <select
+            <Select
               required
-              className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
+              className="mt-1"
               value={formClientId}
               disabled={Boolean(editingId)}
               onChange={(e) => setFormClientId(e.target.value)}
@@ -857,12 +861,12 @@ export default function CalendarPage() {
                   {c.name}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="font-semibold text-[#111827]">
+            </Select>
+          </FormLabel>
+          <FormLabel>
             {t("calendar.service")}
-            <select
-              className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
+            <Select
+              className="mt-1"
               value={formServiceId}
               onChange={(e) => setFormServiceId(e.target.value)}
             >
@@ -872,39 +876,39 @@ export default function CalendarPage() {
                   {s.name} ({s.durationMinutes} דק׳)
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </FormLabel>
           {selectedServiceDuration !== null && !editingId && (
-            <p className="flex items-center gap-2 text-sm font-semibold text-[#6B7280] md:col-span-2">
+            <p className="flex items-center gap-2 text-sm font-semibold text-[var(--natalie-text-muted,#64748B)] md:col-span-2">
               <Clock className="h-4 w-4" />
               {t("calendar.estimatedDuration", { minutes: selectedServiceDuration })}
             </p>
           )}
-          <label className="font-semibold text-[#111827]">
+          <FormLabel>
             {t("calendar.date")}
-            <input
+            <Input
               required
               type="date"
-              className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
+              className="mt-1"
               value={formDate}
               onChange={(e) => setFormDate(e.target.value)}
             />
-          </label>
-          <label className="font-semibold text-[#111827]">
+          </FormLabel>
+          <FormLabel>
             {t("calendar.time")}
-            <input
+            <Input
               required
               type="time"
-              className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
+              className="mt-1"
               value={formTime}
               onChange={(e) => setFormTime(e.target.value)}
             />
-          </label>
+          </FormLabel>
           {editingId && (
-            <label className="font-semibold text-[#111827] md:col-span-2">
+            <FormLabel className="md:col-span-2">
               {t("calendar.status")}
-              <select
-                className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
+              <Select
+                className="mt-1"
                 value={formStatus}
                 onChange={(e) => setFormStatus(e.target.value)}
               >
@@ -913,21 +917,21 @@ export default function CalendarPage() {
                     {appointmentStatusLabel(status)}
                   </option>
                 ))}
-              </select>
-            </label>
+              </Select>
+            </FormLabel>
           )}
-          <label className="font-semibold text-[#111827] md:col-span-2">
+          <FormLabel className="md:col-span-2">
             {t("calendar.notes")}
-            <textarea
+            <Textarea
               rows={2}
-              className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
+              className="mt-1"
               placeholder={t("calendar.optionalNotes")}
               value={formNotes}
               onChange={(e) => setFormNotes(e.target.value)}
             />
-          </label>
+          </FormLabel>
           {editingId && selectedReminderStatus && (
-            <div className="md:col-span-2 rounded-2xl border border-[#E5E7EB] bg-white p-3">
+            <div className="md:col-span-2 rounded-2xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] p-3">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <StatusBadge tone={reminderChipTone(selectedReminderStatus.reminderState)}>
                   {reminderChipLabel(selectedReminderStatus.reminderState)}
@@ -1049,52 +1053,52 @@ export default function CalendarPage() {
         <CollapsePanel open={showServiceForm}>
           <form
             onSubmit={createService}
-            className="mb-4 grid gap-3 rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] p-4 md:grid-cols-2"
+            className="mb-4 grid gap-3 rounded-2xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-bg-page,#F3F6FF)] p-4 md:grid-cols-2"
           >
-            <label className="font-semibold text-[#111827]">
+            <FormLabel>
               {t("calendar.serviceName")}
-              <input
+              <Input
                 required
-                className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
+                className="mt-1"
                 placeholder={t("calendar.serviceNamePlaceholder")}
                 value={serviceForm.name}
                 onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
               />
-            </label>
-            <label className="font-semibold text-[#111827]">
+            </FormLabel>
+            <FormLabel>
               {t("calendar.durationMinutes")}
-              <input
+              <Input
                 required
                 type="number"
                 min={1}
-                className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
+                className="mt-1"
                 value={serviceForm.durationMinutes}
                 onChange={(e) =>
                   setServiceForm({ ...serviceForm, durationMinutes: Number(e.target.value) || 30 })
                 }
               />
-            </label>
-            <label className="font-semibold text-[#111827]">
+            </FormLabel>
+            <FormLabel>
               {t("calendar.priceOptional")}
-              <input
+              <Input
                 type="number"
                 min={0}
                 step="0.01"
-                className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
+                className="mt-1"
                 placeholder="₪"
                 value={serviceForm.price}
                 onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value })}
               />
-            </label>
-            <label className="font-semibold text-[#111827]">
+            </FormLabel>
+            <FormLabel>
               {t("calendar.color")}
-              <input
+              <Input
                 type="color"
-                className="mt-1 h-11 w-full rounded-xl border border-[#E5E7EB] bg-white"
+                className="mt-1 h-11 w-full rounded-xl p-1"
                 value={serviceForm.color}
                 onChange={(e) => setServiceForm({ ...serviceForm, color: e.target.value })}
               />
-            </label>
+            </FormLabel>
             <Button variant="primary" className="md:col-span-2" type="submit" disabled={savingService}>
               {savingService ? t("calendar.saving") : t("calendar.saveService")}
             </Button>

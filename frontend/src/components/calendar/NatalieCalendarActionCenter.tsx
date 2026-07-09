@@ -9,7 +9,7 @@ import {
   Clock3,
   Sparkles,
 } from "lucide-react";
-import { colors, radius, shadow, type as typography } from "@/lib/design-tokens";
+import { Button, Card, SkeletonCard } from "@/components/natalie-ui";
 import {
   findSchedulingConflicts,
   formatAppointmentTime,
@@ -164,27 +164,25 @@ export function NatalieCalendarActionCenter(props: NatalieCalendarActionCenterPr
   const items = useMemo(() => buildActionItems(props), [props]);
 
   return (
-    <aside
-      className={`${radius.card} ${shadow.soft} sticky top-24 border`}
-      style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+    <Card
+      padding="none"
+      className="sticky top-24"
       data-testid="natalie-calendar-action-center"
       aria-label="מרכז פעולות נטלי"
     >
-      <div className="border-b border-[#E5E7EB] px-4 py-4 sm:px-5">
+      <div className="border-b border-[var(--natalie-border,#D9E2F2)] px-4 py-4 sm:px-5">
         <div className="flex items-center gap-2">
           <Clock3 className="h-5 w-5 text-[#1D4ED8]" />
-          <h2 className={typography.cardTitle} style={{ color: colors.textPrimary }}>
-            מרכז פעולות
-          </h2>
+          <h2 className="text-lg font-black text-[var(--natalie-text-primary,#0F172A)]">מרכז פעולות</h2>
         </div>
-        <p className="mt-1 text-sm font-semibold text-[#6B7280]">מה כדאי לעשות עכשיו</p>
+        <p className="mt-1 text-sm font-semibold text-[var(--natalie-text-muted,#64748B)]">מה כדאי לעשות עכשיו</p>
       </div>
 
       <div className="space-y-2 p-3 sm:p-4">
         {props.loading ? (
           <>
-            <div className="dashboard-shimmer h-20 rounded-xl" style={{ backgroundColor: colors.bgSoft }} />
-            <div className="dashboard-shimmer h-20 rounded-xl" style={{ backgroundColor: colors.bgSoft }} />
+            <SkeletonCard />
+            <SkeletonCard />
           </>
         ) : (
           items.map((item) => {
@@ -198,23 +196,27 @@ export function NatalieCalendarActionCenter(props: NatalieCalendarActionCenterPr
               >
                 <div className="flex items-start gap-3">
                   <div
-                    className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl"
-                    style={{ backgroundColor: colors.surface, color: tone.icon }}
+                    className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--natalie-card-bg,#ffffff)]"
+                    style={{ color: tone.icon }}
                   >
                     <Icon className="h-4 w-4" />
                   </div>
                   <div className="min-w-0 flex-1 text-right">
-                    <div className="text-sm font-black text-[#111827]">{item.title}</div>
+                    <div className="text-sm font-black text-[var(--natalie-text-primary,#0F172A)]">{item.title}</div>
                     {item.subtitle && (
-                      <div className="mt-0.5 text-xs font-semibold text-[#6B7280]">{item.subtitle}</div>
+                      <div className="mt-0.5 text-xs font-semibold text-[var(--natalie-text-muted,#64748B)]">
+                        {item.subtitle}
+                      </div>
                     )}
-                    <button
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       type="button"
-                      className="mt-2 inline-flex min-h-9 items-center justify-center rounded-lg bg-white px-3 text-xs font-black text-[#111827] shadow-sm transition hover:bg-[#F8FAFC]"
+                      className="mt-2 !min-h-9 !rounded-lg !px-3 !text-xs"
                       onClick={item.onAction}
                     >
                       {item.actionLabel}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -222,6 +224,6 @@ export function NatalieCalendarActionCenter(props: NatalieCalendarActionCenterPr
           })
         )}
       </div>
-    </aside>
+    </Card>
   );
 }
