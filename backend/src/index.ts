@@ -1,5 +1,8 @@
+import "./instrument.js";
 import express from "express";
 import cors from "cors";
+import * as Sentry from "@sentry/node";
+import { allowSentryDebugRoute } from "./lib/sentryDebug.js";
 
 type ConfigModule = typeof import("./lib/config.js");
 type PrismaModule = typeof import("./lib/prisma.js");
@@ -80,6 +83,9 @@ function createApp(configModule: ConfigModule, prismaModule: PrismaModule, build
 
   app.get("/health", healthHandler);
   app.get("/api/health", healthHandler);
+  app.get("/debug-sentry", allowSentryDebugRoute, function debugSentryHandler(_req, _res) {
+    throw new Error("My first Sentry error!");
+  });
 
   app.use((req, res, next) => {
     if (isPrismaConnected()) {
@@ -161,6 +167,9 @@ async function start() {
   try {
     await connectPrisma();
     await registerRoutes(app);
+    // Register Sentry's Express error handler after routes/controllers,
+    // before any custom error middleware.
+    Sentry.setupExpressErrorHandler(app);
 
     app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
       console.error("[express] Unhandled route error", formatStartupError(err));
