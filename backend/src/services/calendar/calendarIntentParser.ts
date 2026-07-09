@@ -277,10 +277,6 @@ export function extractCustomerName(text: string): string | null {
   if (!candidate) return null;
   if (candidate.length < 2) return null;
   if (looksLikeStopword(candidate)) return null;
-  // A customer name should be at most 3 tokens (first + last + optional).
-  if (candidate.split(/\s+/u).length > 3) {
-    candidate = candidate.split(/\s+/u).slice(0, 2).join(" ");
-  }
   return candidate;
 }
 

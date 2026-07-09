@@ -228,6 +228,15 @@ test("create command extracts full multi-word customer name before date boundary
   assert.equal(parsed.time, "15:30");
 });
 
+test("create command keeps full business/customer name tokens before time boundary", () => {
+  const text = "קבעי תור לרגרסיה לקוח חדש bd5565 מחר ב-12:15";
+  assert.equal(extractCustomerName(text), "רגרסיה לקוח חדש bd5565");
+  const parsed = parseCalendarIntent(text, OPTS);
+  assert.equal(parsed.intent, "create_appointment");
+  assert.equal(parsed.customerName, "רגרסיה לקוח חדש bd5565");
+  assert.equal(parsed.time, "12:15");
+});
+
 test("create command still extracts simple single-word customer name", () => {
   const text = "קבעי תור לדנה מחר ב-18:45";
   assert.equal(extractCustomerName(text), "דנה");
