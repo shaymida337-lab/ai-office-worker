@@ -292,6 +292,42 @@ export type BillingValueMetricResponse = {
   helper: string;
 };
 
+export type ReliabilityStatusResponse = {
+  health: {
+    status: "ok" | "error";
+    database: "connected" | "disconnected";
+    commit: string | null;
+    serverStartedAt: string;
+    instanceId: string | null;
+  };
+  jobRuns: {
+    counts: {
+      running: number;
+      completed: number;
+      failed: number;
+      timeout: number;
+    };
+    recentFailures: Array<{
+      id: string;
+      jobType: string;
+      referenceId: string | null;
+      status: "failed" | "timeout";
+      startedAt: string;
+      heartbeatAt: string;
+      timeoutAt: string;
+      completedAt: string | null;
+      errorMessage: string | null;
+      updatedAt: string;
+    }>;
+  };
+  gmailScans: {
+    running: number;
+    stuck: number;
+    stuckThresholdMs: number;
+  };
+  generatedAt: string;
+};
+
 export async function getBillingSummary() {
   return apiFetch<BillingSummaryResponse>("/api/billing/subscription-status");
 }
@@ -326,4 +362,8 @@ export async function runBillingSubscriptionAction(action: "pause" | "cancel" | 
     method: "POST",
     body: JSON.stringify({ action }),
   });
+}
+
+export async function getReliabilityStatus() {
+  return apiFetch<ReliabilityStatusResponse>("/api/admin/reliability/status");
 }
