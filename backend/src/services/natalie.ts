@@ -5,7 +5,9 @@ import { resolveAppointmentDateTime } from "./appointmentService.js";
 import { findUpcomingSchedulingForClient, findUpcomingSchedulingForOrganization, type UpcomingSchedulingItem } from "./scheduling/schedulingFacade.js";
 import {
   formatAmbiguousCustomerMessage,
+  rankSchedulingCustomerMatches,
   searchSchedulingCustomers,
+  type SchedulingCustomerCandidate,
 } from "./scheduling/schedulingCustomer.js";
 import {
   extractActiveCalendarContext,
@@ -35,6 +37,7 @@ import {
 } from "./calendar/calendarReadEngine.js";
 import { calendarMessages } from "./calendar/calendarMessages.js";
 import type { CalendarPendingIntent } from "./calendar/calendarPendingIntent.js";
+import { buildCustomerDisambiguationPending } from "./calendar/calendarPendingIntent.js";
 import {
   buildLastListedAppointmentsPendingAction,
   parseListedAppointmentOrdinalCommand,
@@ -1480,6 +1483,33 @@ function isCancelPronounCommand(question: string): boolean {
   return /(?:תבטל|תבטלי|בטל|בטלי)\s+(?:אותו|אותה|לו|לה)(?:\s*[.?!]|$)/iu.test(normalized);
 }
 
+function buildAmbiguousCustomerCalendarResponse(params: {
+  intent: CalendarPendingIntent["intent"];
+  spokenName: string;
+  clients: SchedulingCustomerCandidate[];
+  originalUserText: string;
+  dayReference?: string | null;
+  date?: string | null;
+  time?: string | null;
+  fromDayReference?: string | null;
+  fromTime?: string | null;
+}): NatalieClaudeResponse & { calendarSlotFilling: CalendarPendingIntent } {
+  const ranked = rankSchedulingCustomerMatches(params.spokenName, params.clients);
+  const answer = formatAmbiguousCustomerMessage(params.spokenName, ranked);
+  const pending = buildCustomerDisambiguationPending({
+    intent: params.intent,
+    originalUserText: params.originalUserText,
+    lastAssistantQuestion: answer,
+    candidates: ranked.map((client) => ({ id: client.id, name: client.name })),
+    dayReference: params.dayReference,
+    date: params.date,
+    time: params.time,
+    fromDayReference: params.fromDayReference,
+    fromTime: params.fromTime,
+  });
+  return { answer, calendarSlotFilling: pending };
+}
+
 async function resolveCalendarCommandCustomer(input: {
   organizationId: string;
   question: string;
@@ -1507,7 +1537,11 @@ async function resolveCalendarCommandCustomer(input: {
         query: input.spokenName,
       });
       if (ambiguousCustomers.length > 1) {
-        return { kind: "ambiguous" as const, spokenName: input.spokenName, clients: ambiguousCustomers };
+        return {
+          kind: "ambiguous" as const,
+          spokenName: input.spokenName,
+          clients: rankSchedulingCustomerMatches(input.spokenName, ambiguousCustomers),
+        };
       }
       const ambiguousAppointments = findAmbiguousAppointmentNameMatches(
         input.spokenName,
@@ -1726,7 +1760,14 @@ async function maybeBuildCancelAppointmentProposal(
   });
 
   if (resolved.kind === "ambiguous") {
-    return { answer: formatAmbiguousCustomerMessage(resolved.spokenName, resolved.clients) };
+    return buildAmbiguousCustomerCalendarResponse({
+      intent: "cancel_appointment",
+      spokenName: resolved.spokenName,
+      clients: resolved.clients,
+      originalUserText: question,
+      dayReference: cancelIntent.dayReference,
+      date: cancelIntent.date,
+    });
   }
   if (resolved.kind === "ambiguous_appointments") {
     return { answer: formatAmbiguousAppointmentMessage(resolved.spokenName, resolved.candidates) };
@@ -1866,7 +1907,14 @@ async function maybeBuildRescheduleAppointmentProposal(
   });
 
   if (resolved.kind === "ambiguous") {
-    return { answer: formatAmbiguousCustomerMessage(resolved.spokenName, resolved.clients) };
+    return buildAmbiguousCustomerCalendarResponse({
+      intent: "move_appointment",
+      spokenName: resolved.spokenName,
+      clients: resolved.clients,
+      originalUserText: question,
+      dayReference: parsed.dayReference,
+      time: parsed.time,
+    });
   }
   if (resolved.kind === "ambiguous_appointments") {
     return { answer: formatAmbiguousAppointmentMessage(resolved.spokenName, resolved.candidates) };

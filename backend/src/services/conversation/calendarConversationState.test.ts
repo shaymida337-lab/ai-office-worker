@@ -486,6 +486,36 @@ test("best available create via continuation returns ranked confirmation not tim
   }
 });
 
+test("mergeSlotFillingTurn keeps move intent for customer candidate reply", () => {
+  const pending: CalendarPendingIntent = {
+    intent: "move_appointment",
+    action: "move_appointment",
+    cancelTarget: null,
+    customerName: null,
+    dayReference: "היום",
+    date: "2026-07-09",
+    time: "17:00",
+    fromDayReference: null,
+    fromTime: null,
+    missingFields: ["customerName"],
+    originalUserText: "תעבירי את הפגישה של רון ל-17:00",
+    lastAssistantQuestion: "מצאתי כמה לקוחות...",
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    customerCandidates: [
+      { id: "c1", name: "רון לוי" },
+      { id: "c2", name: "רון כהן" },
+    ],
+  };
+  const merged = mergeSlotFillingTurn(pending, "רון לוי");
+  assert.equal(merged.kind, "slot_filling");
+  if (merged.kind === "slot_filling") {
+    assert.equal(merged.intent.intent, "move_appointment");
+    assert.equal(merged.intent.customerName, "רון לוי");
+    assert.deepEqual(merged.intent.missingFields, []);
+  }
+});
+
 test("create without best available still asks for missing time", async () => {
   const session = emptySession();
   const store = inMemorySessionStore(session);

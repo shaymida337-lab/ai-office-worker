@@ -631,3 +631,13 @@ export function extractCalendarBrainResponse(
     answer: resolveCalendarConfirmationPrompt(extracted.proposal!) ?? extracted.answer,
   };
 }
+
+export function extractCalendarSlotFilling(
+  brainResponse: Record<string, unknown>
+): import("../calendar/calendarPendingIntent.js").CalendarPendingIntent | null {
+  const raw = brainResponse.calendarSlotFilling;
+  if (!raw || typeof raw !== "object") return null;
+  const intent = raw as import("../calendar/calendarPendingIntent.js").CalendarPendingIntent;
+  if (!intent.intent || !intent.expiresAt) return null;
+  return intent;
+}

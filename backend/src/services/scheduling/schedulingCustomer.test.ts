@@ -90,6 +90,26 @@ test("formatAmbiguousCustomerMessage names duplicate customers explicitly", () =
   assert.match(message, /2\. David Cohen/);
 });
 
+test("schedulingCustomer ranked search prefers exact שרון over רון variants", async () => {
+  const original = prisma.client.findMany.bind(prisma.client);
+  prisma.client.findMany = (async () => [
+    { id: "1", name: "רון בחמישי", email: null, whatsappNumber: null, emailIsPlaceholder: false },
+    { id: "2", name: "רון לוי", email: null, whatsappNumber: null, emailIsPlaceholder: false },
+    { id: "3", name: "שרון", email: null, whatsappNumber: null, emailIsPlaceholder: false },
+  ]) as typeof prisma.client.findMany;
+
+  try {
+    const matches = await searchSchedulingCustomers({
+      organizationId: ORG,
+      query: "שרון",
+    });
+    assert.equal(matches.length, 1);
+    assert.equal(matches[0]?.name, "שרון");
+  } finally {
+    prisma.client.findMany = original;
+  }
+});
+
 test("normalizeSchedulingCustomerName collapses whitespace", () => {
   assert.equal(normalizeSchedulingCustomerName("  David   Cohen  "), "david cohen");
 });

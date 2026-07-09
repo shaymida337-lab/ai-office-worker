@@ -1,5 +1,9 @@
 import type { UpcomingSchedulingItem } from "./schedulingFacade.js";
-import { searchSchedulingCustomers } from "./schedulingCustomer.js";
+import {
+  rankSchedulingCustomerMatches,
+  searchSchedulingCustomers,
+} from "./schedulingCustomer.js";
+import { MATCH_PRIORITY } from "./customerNameRanking.js";
 
 export type AppointmentResolutionSource = "exact" | "fuzzy" | "conversation_context" | "failed";
 
@@ -327,21 +331,25 @@ export async function resolveAppointmentCustomerName(input: {
   });
   if (exactCustomers.length === 1) {
     const client = exactCustomers[0]!;
+    const ranked = rankSchedulingCustomerMatches(spokenName, [client])[0]!;
+    const isExact =
+      ranked.matchPriority === MATCH_PRIORITY.EXACT_FULL ||
+      ranked.matchPriority === MATCH_PRIORITY.EXACT_TOKEN;
     logAppointmentResolution({
       originalTranscript,
       normalizedTranscript,
       matchedAppointmentName: client.name,
-      matchScore: 1,
-      resolutionSource: "exact",
+      matchScore: ranked.matchScore,
+      resolutionSource: isExact ? "exact" : "fuzzy",
     });
     return {
       clientId: client.id,
       clientName: client.name,
       spokenName,
       matchedName: client.name,
-      matchScore: 1,
-      resolutionSource: "exact",
-      needsConfirmation: false,
+      matchScore: ranked.matchScore,
+      resolutionSource: isExact ? "exact" : "fuzzy",
+      needsConfirmation: !isExact || ranked.matchScore < AUTO_RESOLVE_THRESHOLD,
     };
   }
   if (exactCustomers.length > 1) {

@@ -363,7 +363,7 @@ export async function tryHandleCalendarIntentContinuation(input: {
       return bestAvailableCreate;
     }
 
-    const answer = clarificationForSlotFilling(initial, input.message);
+    const answer = clarificationForSlotFilling(initial);
     console.info("[natalie/flow] fallback", {
       requestId: input.requestId ?? null,
       sessionId: input.session.id,
@@ -404,7 +404,7 @@ export async function tryHandleCalendarIntentContinuation(input: {
     if (bestAvailableCreate) {
       return bestAvailableCreate;
     }
-    const answer = clarificationForSlotFilling(initial, input.message);
+    const answer = clarificationForSlotFilling(initial);
     const persisted = await persistCalendarContinuationTurn({
       session: input.session,
       channel: input.channel,
@@ -423,7 +423,7 @@ export async function tryHandleCalendarIntentContinuation(input: {
   merged.missingFields = recomputeMissingFields(merged);
 
   if (merged.missingFields.length > 0) {
-    const answer = clarificationForSlotFilling(merged, input.message);
+    const answer = clarificationForSlotFilling(merged);
     console.info("[natalie/flow] fallback", {
       requestId: input.requestId ?? null,
       sessionId: input.session.id,

@@ -169,6 +169,63 @@ test("follow-up customer for cancel keeps single target", () => {
   assert.equal(merged.cancelTarget, "single");
 });
 
+test("move follow-up bare two-word name 'רון לוי' merges", () => {
+  const pending: CalendarPendingIntent = {
+    intent: "move_appointment",
+    action: "move_appointment",
+    cancelTarget: null,
+    customerName: null,
+    dayReference: "היום",
+    date: "2026-07-09",
+    time: "17:00",
+    fromDayReference: null,
+    fromTime: null,
+    missingFields: ["customerName"],
+    originalUserText: "תעבירי את הפגישה של רון ל-17:00",
+    lastAssistantQuestion: "מצאתי כמה לקוחות...",
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    customerCandidates: [
+      { id: "c1", name: "רון לוי" },
+      { id: "c2", name: "רון כהן" },
+    ],
+  };
+  const merged = mergeCalendarPendingIntent(pending, "רון לוי");
+  assert.equal(merged.intent, "move_appointment");
+  assert.equal(merged.customerName, "רון לוי");
+  assert.equal(merged.time, "17:00");
+  assert.deepEqual(merged.missingFields, []);
+  assert.equal(merged.customerCandidates, undefined);
+});
+
+test("customer candidate disambiguation resolves exact reply", () => {
+  const pending: CalendarPendingIntent = {
+    intent: "cancel_appointment",
+    action: "cancel_appointment",
+    cancelTarget: "single",
+    customerName: null,
+    dayReference: null,
+    date: null,
+    time: null,
+    fromDayReference: null,
+    fromTime: null,
+    missingFields: ["customerName"],
+    originalUserText: "תבטלי את הפגישה של שרון",
+    lastAssistantQuestion: "למי התכוונת?",
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    customerCandidates: [
+      { id: "c1", name: "רון בחמישי" },
+      { id: "c2", name: "רון לוי" },
+      { id: "c3", name: "שרון" },
+    ],
+  };
+  const merged = mergeCalendarPendingIntent(pending, "שרון");
+  assert.equal(merged.intent, "cancel_appointment");
+  assert.equal(merged.customerName, "שרון");
+  assert.deepEqual(merged.missingFields, []);
+});
+
 test("recomputeMissingFields: cancel all requires date only", () => {
   const fields = recomputeMissingFields({
     intent: "cancel_appointment",

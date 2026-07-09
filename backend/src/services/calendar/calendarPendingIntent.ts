@@ -7,10 +7,16 @@ import {
   type CalendarIntentExtraction,
   DEFAULT_BUSINESS_TIMEZONE,
 } from "./calendarIntentParser.js";
+import { resolveSchedulingCustomerFromCandidates } from "../scheduling/schedulingCustomer.js";
 
 export const CALENDAR_PENDING_INTENT_TTL_MS = 10 * 60 * 1000;
 
 export type CalendarCancelTarget = "all" | "single";
+
+export type CalendarCustomerCandidate = {
+  id: string;
+  name: string;
+};
 
 export type CalendarPendingIntent = {
   intent: Exclude<CalendarIntentAction, "unknown" | "list_appointments">;
@@ -27,15 +33,17 @@ export type CalendarPendingIntent = {
   lastAssistantQuestion: string;
   createdAt: string;
   expiresAt: string;
+  /** When customer resolution is ambiguous, store ranked candidates for follow-up turns. */
+  customerCandidates?: CalendarCustomerCandidate[];
 };
 
 const FOLLOW_UP_CUSTOMER_PATTERNS = [
   // "עם רונן", "את רונן", "של רונן", "רק את רונן", "רק רונן"
-  /^(?:עם|את|של|רק\s+את|רק)\s+([א-ת][א-ת\s'-]{1,30})$/u,
+  /^(?:עם|את|של|רק\s+את|רק)\s+([א-ת][א-ת\s'-]{1,40})$/u,
   // "לרונן" — prefix attaches to the name with no space.
   /^ל([א-ת][א-ת'-]{1,30})$/u,
-  // Bare name: "רונן"
-  /^([א-ת][א-ת'-]{1,30})$/u,
+  // Bare name: "רונן", "רון לוי"
+  /^([א-ת][א-ת\s'-]{1,40})$/u,
 ];
 
 function normalize(text: string): string {
@@ -67,9 +75,49 @@ function extractFollowUpCustomerName(text: string): string | null {
     if (isCancelAllTarget(name) || /^(?:כולם|כל)$/u.test(name)) continue;
     if (FOLLOW_UP_NAME_STOPWORDS.test(name)) continue;
     if (extractDayReference(name)) continue;
+    if (name.split(/\s+/u).length > 3) continue;
     return name;
   }
   return null;
+}
+
+export function buildCustomerDisambiguationPending(params: {
+  intent: CalendarPendingIntent["intent"];
+  originalUserText: string;
+  lastAssistantQuestion: string;
+  candidates: CalendarCustomerCandidate[];
+  dayReference?: string | null;
+  date?: string | null;
+  time?: string | null;
+  fromDayReference?: string | null;
+  fromTime?: string | null;
+  cancelTarget?: CalendarCancelTarget | null;
+  now?: Date;
+}): CalendarPendingIntent {
+  const now = params.now ?? new Date();
+  const cancelTarget =
+    params.cancelTarget ??
+    (params.intent === "cancel_appointment" ? "single" : null);
+  return {
+    intent: params.intent,
+    action:
+      params.intent === "cancel_appointment" && cancelTarget === "all"
+        ? "cancel_appointments"
+        : params.intent,
+    cancelTarget,
+    customerName: null,
+    dayReference: params.dayReference ?? null,
+    date: params.date ?? null,
+    time: params.time ?? null,
+    fromDayReference: params.fromDayReference ?? null,
+    fromTime: params.fromTime ?? null,
+    missingFields: ["customerName"],
+    originalUserText: params.originalUserText,
+    lastAssistantQuestion: params.lastAssistantQuestion,
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + CALENDAR_PENDING_INTENT_TTL_MS).toISOString(),
+    customerCandidates: params.candidates,
+  };
 }
 
 export function isCalendarPendingIntentExpired(intent: CalendarPendingIntent, now = Date.now()): boolean {
@@ -127,6 +175,18 @@ export function mergeCalendarPendingIntent(
 ): CalendarPendingIntent {
   const normalized = normalize(message);
   const patch: Partial<CalendarPendingIntent> = {};
+
+  if (pending.customerCandidates?.length) {
+    const resolved = resolveSchedulingCustomerFromCandidates(normalized, pending.customerCandidates);
+    if (resolved.kind === "resolved") {
+      patch.customerName = resolved.match.name;
+      patch.customerCandidates = undefined;
+      if (pending.intent === "cancel_appointment") {
+        patch.cancelTarget = "single";
+        patch.action = "cancel_appointment";
+      }
+    }
+  }
 
   if (isCancelAllTarget(normalized)) {
     patch.cancelTarget = "all";

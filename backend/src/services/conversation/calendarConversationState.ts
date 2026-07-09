@@ -48,7 +48,9 @@ export function shouldFreshCommandReplaceSlotFilling(
   pending: CalendarPendingIntent | null
 ): boolean {
   if (!pending) return false;
-  return isExplicitCalendarCommand(parseCalendarIntent(message));
+  if (pending.customerCandidates?.length) return false;
+  const incoming = parseCalendarIntent(message);
+  return isExplicitCalendarCommand(incoming) && incoming.missingFields.length === 0;
 }
 
 export function shouldDeferCalendarClarificationToSession(
@@ -74,26 +76,21 @@ export function extractInitialSlotFillingIntent(
   return parseInitialCalendarPendingIntent(message, options);
 }
 
-export function clarificationForSlotFilling(
-  intent: CalendarPendingIntent,
-  message?: string
-): string {
-  const extraction = message
-    ? parseCalendarIntent(message)
-    : {
-        intent: intent.intent,
-        customerName: intent.customerName,
-        dayReference: intent.dayReference,
-        date: intent.date,
-        time: intent.time,
-        cancelTarget: intent.cancelTarget,
-        missingFields: intent.missingFields,
-        rawText: intent.originalUserText,
-        confidence: "low" as const,
-        durationMinutes: null,
-        serviceName: null,
-        notes: null,
-      };
+export function clarificationForSlotFilling(intent: CalendarPendingIntent): string {
+  const extraction: CalendarIntentExtraction = {
+    intent: intent.intent,
+    customerName: intent.customerName,
+    dayReference: intent.dayReference,
+    date: intent.date,
+    time: intent.time,
+    cancelTarget: intent.cancelTarget,
+    missingFields: intent.missingFields,
+    rawText: intent.originalUserText,
+    confidence: "low",
+    durationMinutes: null,
+    serviceName: null,
+    notes: null,
+  };
   return clarificationQuestionForIntent(extraction);
 }
 
@@ -114,7 +111,8 @@ export function mergeSlotFillingTurn(
   if (
     isExplicitCalendarCommand(incoming) &&
     incoming.intent !== pending.intent &&
-    incoming.missingFields.length === 0
+    incoming.missingFields.length === 0 &&
+    !isCalendarFollowUpPhrase(message)
   ) {
     return { kind: "fresh_command" };
   }

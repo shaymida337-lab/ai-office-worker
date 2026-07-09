@@ -9,6 +9,12 @@ import {
 import { normalizeWhatsAppNumber } from "../whatsapp.js";
 import { SchedulingFacadeError } from "./schedulingErrors.js";
 import { calendarMessages } from "../calendar/calendarMessages.js";
+import {
+  bestTierMatches,
+  normalizeCustomerNameForMatch,
+  rankCustomerMatches,
+  resolveRankedCustomerMatches,
+} from "./customerNameRanking.js";
 
 export type SchedulingCustomerCandidate = {
   id: string;
@@ -35,7 +41,7 @@ const CLIENT_SELECT = {
 } as const;
 
 export function normalizeSchedulingCustomerName(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  return normalizeCustomerNameForMatch(value);
 }
 
 export function normalizeSchedulingPhone(value: string): string {
@@ -161,16 +167,32 @@ async function findClientsByFuzzyName(
   const query = name.trim();
   if (!query) return [];
 
-  return db.client.findMany({
+  const candidates = await db.client.findMany({
     where: {
       organizationId,
       isActive: true,
       name: { contains: query, mode: "insensitive" },
     },
     select: CLIENT_SELECT,
-    take: 5,
+    take: 20,
     orderBy: { name: "asc" },
   });
+
+  return bestTierMatches(query, candidates);
+}
+
+export function rankSchedulingCustomerMatches(
+  query: string,
+  candidates: SchedulingCustomerCandidate[]
+): ReturnType<typeof rankCustomerMatches<SchedulingCustomerCandidate>> {
+  return rankCustomerMatches(query, candidates);
+}
+
+export function resolveSchedulingCustomerFromCandidates(
+  query: string,
+  candidates: Array<{ id: string; name: string }>
+): ReturnType<typeof resolveRankedCustomerMatches<{ id: string; name: string }>> {
+  return resolveRankedCustomerMatches(query, candidates);
 }
 
 export async function searchSchedulingCustomers(params: {

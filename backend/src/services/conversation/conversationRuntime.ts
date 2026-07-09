@@ -32,8 +32,10 @@ import {
   applyFuzzyCalendarClientResponse,
   buildCalendarPendingConfirmation,
   extractCalendarBrainResponse,
+  extractCalendarSlotFilling,
   tryHandleCalendarConfirmationTurn,
 } from "./calendarConfirmationContinuation.js";
+import { calendarPendingAction } from "../calendar/calendarPendingIntent.js";
 import { shouldDeferCalendarActionForFuzzyGate } from "../scheduling/calendarActionProposal.js";
 import { LAST_LISTED_APPOINTMENTS_ACTION } from "./lastListedAppointments.js";
 import {
@@ -395,6 +397,7 @@ export async function processNatalieTurn(
       confirmationState: confirmation.required ? "pending" : "none",
     });
 
+    const slotFilling = extractCalendarSlotFilling(brainResponse as Record<string, unknown>);
     const updatedSession = await saveSession({
       ...activeSession,
       currentChannel: channel,
@@ -402,9 +405,11 @@ export async function processNatalieTurn(
       pendingAction:
         extracted.action && extracted.proposal
           ? { action: extracted.action, proposal: extracted.proposal }
-          : activeSession.pendingAction?.action === LAST_LISTED_APPOINTMENTS_ACTION
-            ? activeSession.pendingAction
-            : null,
+          : slotFilling
+            ? calendarPendingAction(slotFilling)
+            : activeSession.pendingAction?.action === LAST_LISTED_APPOINTMENTS_ACTION
+              ? activeSession.pendingAction
+              : null,
       pendingConfirmation,
       interruptionState: activeSession.interruptionState,
       lastMessageAt: new Date().toISOString(),
