@@ -2,6 +2,7 @@ import {
   clarificationQuestionForIntent,
   calendarPendingAction,
   calendarPendingIntentFromExtraction,
+  isCalendarFollowUpPhrase,
   isCalendarPendingIntentExpired,
   mergeCalendarPendingIntent,
   parseInitialCalendarPendingIntent,
