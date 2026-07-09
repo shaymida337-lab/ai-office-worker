@@ -243,5 +243,31 @@
       "payments": "Payments",
       "calendar": "Calendar"
     }
+  },
+  "tasksDesign": {
+    "title": "All tasks",
+    "subtitle": "Your tasks from email, WhatsApp, Natalie, and manual entries.",
+    "searchPlaceholder": "Search tasks...",
+    "tabActive": "Active tasks ({{count}})",
+    "tabCompleted": "Completed tasks ({{count}})",
+    "complete": "Mark done",
+    "restore": "Restore",
+    "restoring": "Restoring...",
+    "markingDone": "Marked done",
+    "completedAt": "Completed",
+    "emptyActiveTitle": "No open tasks",
+    "emptyActiveHint": "When scans detect follow-up needed, tasks will appear here.",
+    "emptyCompletedTitle": "No completed tasks",
+    "emptyCompletedHint": "Tasks marked done are kept here for review.",
+    "loadError": "Failed to load tasks",
+    "updateError": "Failed to update task",
+    "restoreError": "Failed to restore task",
+    "floatingNatalie": "Talk to Natalie",
+    "nav": {
+      "home": "Today",
+      "invoices": "Invoices",
+      "payments": "Payments",
+      "calendar": "Calendar"
+    }
   }
 }

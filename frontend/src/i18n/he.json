@@ -244,5 +244,31 @@
       "payments": "תשלומים",
       "calendar": "יומן"
     }
+  },
+  "tasksDesign": {
+    "title": "כל המשימות",
+    "subtitle": "כל המשימות שלך — מהמייל, מוואטסאפ, מנטלי ושנוצרו ידנית.",
+    "searchPlaceholder": "חיפוש משימה...",
+    "tabActive": "משימות פעילות ({{count}})",
+    "tabCompleted": "משימות שבוצעו ({{count}})",
+    "complete": "סמן כבוצע",
+    "restore": "שחזר",
+    "restoring": "משחזר...",
+    "markingDone": "סומן כבוצע",
+    "completedAt": "הושלם",
+    "emptyActiveTitle": "אין משימות פתוחות",
+    "emptyActiveHint": "כשסריקות יזהו טיפול נדרש, המשימות יופיעו כאן.",
+    "emptyCompletedTitle": "אין משימות שבוצעו",
+    "emptyCompletedHint": "משימות שסומנו כבוצעו יישמרו כאן לבקרה.",
+    "loadError": "טעינת משימות נכשלה",
+    "updateError": "עדכון המשימה נכשל",
+    "restoreError": "שחזור המשימה נכשל",
+    "floatingNatalie": "דברי עם נטלי",
+    "nav": {
+      "home": "היום",
+      "invoices": "חשבוניות",
+      "payments": "תשלומים",
+      "calendar": "יומן"
+    }
   }
 }

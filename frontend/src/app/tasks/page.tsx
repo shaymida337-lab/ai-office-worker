@@ -1,14 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Nav } from "@/components/Nav";
+import { useEffect, useMemo, useState } from "react";
+import {
+  TaskListItem,
+  TasksEmptyState,
+  TasksFilterTabs,
+  TasksSearchBar,
+  type TaskTab,
+} from "@/components/tasks";
+import {
+  AppShell,
+  BottomNavigation,
+  Card,
+  FloatingActionButton,
+  MessageBanner,
+  PageTitle,
+  SkeletonCard,
+} from "@/components/natalie-ui";
+import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
+import { useI18n } from "@/i18n";
 import { apiFetch, type Task } from "@/lib/api";
-
-type TaskTab = "active" | "completed";
 
 const completedStatuses = new Set(["completed", "done"]);
 
 export default function TasksPage() {
+  const { t, dir, language } = useI18n();
+  const locale = language === "he" ? "he-IL" : "en-US";
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTab, setActiveTab] = useState<TaskTab>("active");
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
@@ -17,12 +35,22 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
 
+  const bottomItems = useMemo(
+    () => [
+      { id: "home", label: t("tasksDesign.nav.home"), href: "/dashboard" },
+      { id: "invoices", label: t("tasksDesign.nav.invoices"), href: "/dashboard/invoices" },
+      { id: "payments", label: t("tasksDesign.nav.payments"), href: "/payments" },
+      { id: "calendar", label: t("tasksDesign.nav.calendar"), href: "/dashboard/calendar" },
+    ],
+    [t]
+  );
+
   useEffect(() => {
     apiFetch<Task[]>("/api/tasks")
       .then(setTasks)
-      .catch((err) => setMessage(err instanceof Error ? err.message : "טעינת משימות נכשלה"))
+      .catch((err) => setMessage(err instanceof Error ? err.message : t("tasksDesign.loadError")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   async function complete(id: string) {
     setCompletingIds((prev) => new Set(prev).add(id));
@@ -33,7 +61,9 @@ export default function TasksPage() {
       });
       window.setTimeout(() => {
         const completedAt = new Date().toISOString();
-        setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "completed", updatedAt: completedAt } : task)));
+        setTasks((prev) =>
+          prev.map((task) => (task.id === id ? { ...task, status: "completed", updatedAt: completedAt } : task))
+        );
         setCompletingIds((prev) => {
           const next = new Set(prev);
           next.delete(id);
@@ -41,7 +71,7 @@ export default function TasksPage() {
         });
       }, 450);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "עדכון המשימה נכשל");
+      setMessage(err instanceof Error ? err.message : t("tasksDesign.updateError"));
       setCompletingIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -58,10 +88,12 @@ export default function TasksPage() {
         body: JSON.stringify({ status: "open" }),
       });
       const restoredAt = new Date().toISOString();
-      setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, status: "open", updatedAt: restoredAt } : task)));
+      setTasks((prev) =>
+        prev.map((task) => (task.id === id ? { ...task, status: "open", updatedAt: restoredAt } : task))
+      );
       setActiveTab("active");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "שחזור המשימה נכשל");
+      setMessage(err instanceof Error ? err.message : t("tasksDesign.restoreError"));
     } finally {
       setRestoringIds((prev) => {
         const next = new Set(prev);
@@ -76,14 +108,15 @@ export default function TasksPage() {
   const visibleTasks = activeTab === "active" ? activeTasks : completedTasks;
   const normalizedQuery = query.trim().toLowerCase();
   const filteredTasks = normalizedQuery
-    ? visibleTasks.filter((task) =>
-        (task.title ?? "").toLowerCase().includes(normalizedQuery) ||
-        (task.supplier ?? "").toLowerCase().includes(normalizedQuery)
+    ? visibleTasks.filter(
+        (task) =>
+          (task.title ?? "").toLowerCase().includes(normalizedQuery) ||
+          (task.supplier ?? "").toLowerCase().includes(normalizedQuery)
       )
     : visibleTasks;
 
   const formatCompletedDate = (date: string) =>
-    new Intl.DateTimeFormat("he-IL", {
+    new Intl.DateTimeFormat(locale, {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -92,91 +125,54 @@ export default function TasksPage() {
     }).format(new Date(date));
 
   return (
-    <div className="container">
-      <Nav />
-      <div className="mb-8">
-        <div className="page-kicker">תיבת משימות</div>
-        <h1>כל המשימות</h1>
-        <p>כל המשימות שלך — מהמייל, מוואטסאפ, מנטלי ושנוצרו ידנית.</p>
-      </div>
-      {message && <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-base text-red-100">{message}</div>}
-      <div className="card">
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="חיפוש משימה..."
-          className="mb-5 w-full rounded-2xl border border-[#e6eaf2] bg-white px-4 py-3 font-sans text-base text-ink-primary shadow-sm outline-none placeholder:text-[#6b7686] focus:border-accent-primary focus:ring-2 focus:ring-[rgba(29,91,255,0.12)]"
-        />
-        <div className="mb-5 flex flex-wrap gap-2 rounded-2xl border border-[var(--border)] bg-surface-hover p-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab("active")}
-            className={`rounded-xl px-4 py-2 text-[14px] font-bold transition ${
-              activeTab === "active" ? "bg-[#6366F1] text-white shadow-[0_10px_24px_rgba(99,102,241,0.28)]" : "text-[#E2E8F0] hover:bg-surface-card"
-            }`}
-          >
-            משימות פעילות ({activeTasks.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("completed")}
-            className={`rounded-xl px-4 py-2 text-[14px] font-bold transition ${
-              activeTab === "completed" ? "bg-[#6366F1] text-white shadow-[0_10px_24px_rgba(99,102,241,0.28)]" : "text-[#E2E8F0] hover:bg-surface-card"
-            }`}
-          >
-            משימות שבוצעו ({completedTasks.length})
-          </button>
-        </div>
+    <div dir={dir}>
+      <AppShell
+        pageTitle={<PageTitle title={t("tasksDesign.title")} subtitle={t("tasksDesign.subtitle")} />}
+        bottomNavigation={<BottomNavigation items={bottomItems} />}
+        floatingButton={
+          <FloatingActionButton
+            label={t("tasksDesign.floatingNatalie")}
+            onClick={() => openNatalieAssistant("עזרי לי עם המשימות שלי")}
+          />
+        }
+      >
+        {message ? <MessageBanner tone="error" className="mb-4">{message}</MessageBanner> : null}
 
-        <ul className="m-0 list-none p-0">
-          {filteredTasks.map((t) => {
-            const isCompleting = completingIds.has(t.id);
-            const isRestoring = restoringIds.has(t.id);
-            return (
-            <li
-              key={t.id}
-              className={`grid gap-3 border-b border-[var(--border)] py-4 transition-all duration-300 sm:flex sm:flex-wrap sm:items-center sm:justify-between ${
-                activeTab === "completed" ? "text-ink-muted opacity-70" : "text-[#E2E8F0]"
-              } ${isCompleting ? "scale-[0.98] rounded-xl bg-emerald-500/15 px-3 text-emerald-100 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]" : ""}`}
-            >
-              <div className="min-w-0">
-                <strong className={activeTab === "completed" ? "text-[14px] font-semibold text-ink-muted line-through" : "text-[15px] font-semibold text-white"}>
-                  {isCompleting ? "סומן כבוצע" : t.title}
-                </strong>
-                {t.supplier && <span className="text-[14px] text-ink-muted"> · {t.supplier}</span>}
-                {activeTab === "completed" && <div className="mt-1 text-[13px] text-ink-muted">הושלם: {formatCompletedDate(t.updatedAt)}</div>}
-              </div>
-              {activeTab === "active" ? (
-                <button
-                  className="btn btn-secondary"
-                  disabled={isCompleting}
-                  onClick={() => complete(t.id)}
-                >
-                  סמן כבוצע
-                </button>
+        <Card className="grid gap-5">
+          <TasksSearchBar value={query} onChange={setQuery} />
+          <TasksFilterTabs
+            value={activeTab}
+            onChange={setActiveTab}
+            activeCount={activeTasks.length}
+            completedCount={completedTasks.length}
+          />
+
+          {loading ? (
+            <SkeletonCard />
+          ) : (
+            <>
+              {filteredTasks.length > 0 ? (
+                <ul className="m-0 list-none p-0">
+                  {filteredTasks.map((task) => (
+                    <TaskListItem
+                      key={task.id}
+                      task={task}
+                      tab={activeTab}
+                      isCompleting={completingIds.has(task.id)}
+                      isRestoring={restoringIds.has(task.id)}
+                      onComplete={complete}
+                      onRestore={restore}
+                      formatCompletedDate={formatCompletedDate}
+                    />
+                  ))}
+                </ul>
               ) : (
-                <button
-                  className="btn btn-secondary"
-                  disabled={isRestoring}
-                  onClick={() => restore(t.id)}
-                >
-                  {isRestoring ? "משחזר..." : "שחזר"}
-                </button>
+                <TasksEmptyState tab={activeTab} />
               )}
-            </li>
-          );
-          })}
-        </ul>
-        {loading && <div className="skeleton h-24" aria-label="טוען משימות" />}
-        {!loading && filteredTasks.length === 0 && (
-          <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-            <h2>{activeTab === "active" ? "אין משימות פתוחות" : "אין משימות שבוצעו"}</h2>
-            <p className="mt-2 text-[14px] text-ink-muted">
-              {activeTab === "active" ? "כשסריקות יזהו טיפול נדרש, המשימות יופיעו כאן." : "משימות שסומנו כבוצעו יישמרו כאן לבקרה."}
-            </p>
-          </div>
-        )}
-      </div>
+            </>
+          )}
+        </Card>
+      </AppShell>
     </div>
   );
 }
