@@ -78,7 +78,10 @@ test("time parser: bare afternoon default and morning/evening context", () => {
   assert.equal(parseHebrewTime("בשלוש"), "15:00");
   assert.equal(parseHebrewTime("בשעה 3"), "15:00");
   assert.equal(parseHebrewTime("ב 3"), "15:00");
+  assert.equal(parseHebrewTime("מחרתיים ב-08:30"), "08:30");
+  assert.equal(parseHebrewTime("מחר ב-09:15"), "09:15");
   assert.equal(parseHebrewTime("15:00"), "15:00");
+  assert.equal(parseHebrewTime("15:30"), "15:30");
   assert.equal(parseHebrewTime("8 בערב"), "20:00");
   assert.equal(parseHebrewTime("8 בבוקר"), "08:00");
   assert.equal(parseHebrewTime("בצהריים"), "12:00");

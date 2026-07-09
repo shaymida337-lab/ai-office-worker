@@ -151,9 +151,13 @@ export function parseHebrewTime(segment: string): string | null {
   // Explicit HH:MM — respect the given hour verbatim (already 24h or morning).
   const explicit = text.match(/(?<!\d)(\d{1,2})[:.](\d{2})(?!\d)/u);
   if (explicit) {
+    const hourToken = explicit[1];
     const hour = Number(explicit[1]);
     const minute = Number(explicit[2]);
     if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+      // Preserve explicit leading-zero times as AM-style clock input.
+      // Example: 08:30 / 09:15 must never be shifted to evening heuristics.
+      if (hourToken.length === 2 && hourToken.startsWith("0")) return toTime(hour, minute);
       // For a bare "3:30" with no context and hour<12, keep as stated only if >=13;
       // otherwise apply context (evening) but default business hours keep morning-safe minute.
       if (hour >= 13) return toTime(hour, minute);
