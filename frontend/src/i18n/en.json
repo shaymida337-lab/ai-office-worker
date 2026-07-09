@@ -120,5 +120,11 @@
       "payments": "Payments",
       "calendar": "Calendar"
     }
+  },
+  "calendarDesign": {
+    "title": "Calendar",
+    "subtitle": "Natalie manages your schedule",
+    "refresh": "Refresh",
+    "floatingNatalie": "Talk to Natalie"
   }
 }

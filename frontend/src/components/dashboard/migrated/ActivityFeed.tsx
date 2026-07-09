@@ -1,5 +1,7 @@
 "use client";
 
+import { SectionCard } from "@/components/natalie-ui";
+
 type ActivityItem = {
   id: string;
   text: string;
@@ -16,12 +18,11 @@ export function ActivityFeed({
   items: ActivityItem[];
 }) {
   return (
-    <section className="rounded-2xl border border-[#DBE5F4] bg-white p-4 shadow-sm">
-      <h2 className="text-base font-black text-[#0F172A]">{title}</h2>
+    <SectionCard title={title}>
       {items.length === 0 ? (
-        <p className="mt-3 text-sm text-[#64748B]">{emptyText}</p>
+        <p className="text-sm text-[#64748B]">{emptyText}</p>
       ) : (
-        <ul className="mt-3 space-y-2">
+        <ul className="space-y-2">
           {items.map((item) => (
             <li key={item.id} className="rounded-xl border border-[#E6ECF8] bg-[#F8FAFF] px-3 py-2">
               <p className="text-sm font-medium text-[#1F2937]">{item.text}</p>
@@ -30,7 +31,7 @@ export function ActivityFeed({
           ))}
         </ul>
       )}
-    </section>
+    </SectionCard>
   );
 }
 

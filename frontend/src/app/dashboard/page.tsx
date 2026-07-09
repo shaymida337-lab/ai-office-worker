@@ -5,16 +5,19 @@ import { useI18n } from "@/i18n";
 import { useDashboardHome } from "@/hooks/useDashboardHome";
 import {
   ActivityFeed,
-  AppShell,
-  BottomNavigation,
-  DashboardKpiCard,
-  FloatingNatalieButton,
-  Header,
-  NatalieHeroCard,
   QuickActions,
-  TodayTimeline,
   WaitingForYouCard,
 } from "@/components/dashboard/migrated";
+import {
+  AppShell,
+  BottomNavigation,
+  FloatingActionButton,
+  Header,
+  KpiCard,
+  MessageBanner,
+  NatalieAssistantCard,
+  Timeline,
+} from "@/components/natalie-ui";
 
 export default function DashboardPage() {
   const d = useDashboardHome();
@@ -39,6 +42,8 @@ export default function DashboardPage() {
     [t]
   );
 
+  const bannerMessage = d.pageError || d.displayActionMessage || d.displayToast?.text;
+
   return (
     <div dir={dir}>
       <AppShell
@@ -52,20 +57,20 @@ export default function DashboardPage() {
         }
         bottomNavigation={<BottomNavigation items={bottomItems} />}
         floatingButton={
-          <FloatingNatalieButton
+          <FloatingActionButton
             label={t("dashboardDesign.floatingNatalie")}
             onClick={() => d.handleNatalieConversation("פתחי את עוזרת נטלי")}
           />
         }
       >
-        {(d.pageError || d.displayActionMessage || d.displayToast) && (
-          <section className="mb-4 rounded-2xl border border-[#FECACA] bg-[#FEF2F2] p-3 text-sm text-[#7F1D1D]">
-            {d.pageError || d.displayActionMessage || d.displayToast?.text}
-          </section>
-        )}
+        {bannerMessage ? (
+          <MessageBanner tone="error" className="mb-4">
+            {bannerMessage}
+          </MessageBanner>
+        ) : null}
 
         <div className="grid gap-4">
-          <NatalieHeroCard
+          <NatalieAssistantCard
             title={d.morningGreeting.headline || t("dashboardDesign.heroTitle")}
             recommendation={d.heroBriefing.recommendation}
             ctaLabel={d.heroBriefing.ctaLabel}
@@ -74,14 +79,14 @@ export default function DashboardPage() {
 
           <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
             {d.snapshotMetrics.slice(0, 4).map((metric) => (
-              <DashboardKpiCard key={metric.id} label={metric.label} value={metric.value} />
+              <KpiCard key={metric.id} label={metric.label} value={metric.value} />
             ))}
           </section>
 
           <QuickActions title={t("dashboardDesign.quickActions")} items={quickActions} />
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <TodayTimeline
+            <Timeline
               title={t("dashboardDesign.todayTimeline")}
               emptyText={t("dashboardDesign.emptyToday")}
               items={d.yourDayItems.map((item) => ({

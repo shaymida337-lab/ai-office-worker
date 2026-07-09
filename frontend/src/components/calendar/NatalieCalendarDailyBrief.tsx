@@ -1,7 +1,7 @@
 "use client";
 
-import { colors, radius, shadow, button, dashboardHome } from "@/lib/design-tokens";
 import { NataliePortrait } from "@/components/dashboard/NataliePortrait";
+import { Button, KpiCard, Skeleton } from "@/components/natalie-ui";
 import type { CalendarDailyBrief } from "@/lib/calendar/calendarBrief";
 
 export function NatalieCalendarDailyBrief({
@@ -15,8 +15,7 @@ export function NatalieCalendarDailyBrief({
 }) {
   return (
     <section
-      className={`dashboard-fade-in ${radius.card} ${shadow.soft} min-w-0 max-w-full overflow-hidden border`}
-      style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
+      className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[var(--natalie-card-border,#DBE5F4)] bg-[var(--natalie-card-bg,#ffffff)] shadow-sm"
       aria-label="תדרוך יומי של נטלי"
       data-testid="natalie-calendar-daily-brief"
     >
@@ -28,13 +27,13 @@ export function NatalieCalendarDailyBrief({
           <div className="min-w-0 flex-1 space-y-3 text-right">
             {loading || !brief ? (
               <>
-                <div className="dashboard-shimmer h-10 w-2/3 max-w-sm rounded-2xl" style={{ backgroundColor: colors.bgSoft }} />
-                <div className="dashboard-shimmer h-16 w-full rounded-2xl" style={{ backgroundColor: colors.bgSoft }} />
+                <Skeleton className="h-10 w-2/3 max-w-sm" />
+                <Skeleton className="h-16 w-full" />
               </>
             ) : (
               <>
                 <div>
-                  <h1 className={`${dashboardHome.heroGreeting} break-words`} style={{ color: colors.textPrimary }}>
+                  <h1 className="break-words text-2xl font-black text-[var(--natalie-text-primary,#0F172A)] md:text-3xl">
                     {brief.greeting}
                   </h1>
                   <p className="mt-1 text-base font-semibold text-[#6B7280]">{brief.dateLabel}</p>
@@ -42,26 +41,19 @@ export function NatalieCalendarDailyBrief({
 
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {brief.stats.map((stat) => (
-                    <div
-                      key={stat.id}
-                      className="rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5 text-right"
-                    >
-                      <div className="text-xs font-semibold text-[#6B7280]">{stat.label}</div>
-                      <div className="mt-0.5 text-lg font-black text-[#111827]">{stat.value}</div>
-                    </div>
+                    <KpiCard key={stat.id} label={stat.label} value={stat.value} />
                   ))}
                 </div>
 
                 <div className="space-y-2">
                   {brief.summaryLines.map((line) => (
-                    <p key={line} className={`${dashboardHome.heroBody} break-words`} style={{ color: colors.textSecondary }}>
+                    <p key={line} className="break-words text-base font-medium text-[#4B5563]">
                       {line}
                     </p>
                   ))}
                   <p
                     data-testid="calendar-brief-recommendation"
-                    className={`${dashboardHome.heroBody} break-words font-semibold`}
-                    style={{ color: colors.textPrimary }}
+                    className="break-words text-base font-semibold text-[var(--natalie-text-primary,#0F172A)]"
                   >
                     {brief.recommendation}
                   </p>
@@ -72,19 +64,9 @@ export function NatalieCalendarDailyBrief({
         </div>
 
         {!loading && (
-          <button
-            type="button"
-            onClick={onAskNatalie}
-            className={`${radius.control} ${button.primary} ${dashboardHome.heroButton} w-full min-h-[52px] transition duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 active:scale-[0.99] sm:max-w-sm`}
-            style={{
-              backgroundColor: colors.accent,
-              border: `1px solid ${colors.accent}`,
-              color: colors.surface,
-              outlineColor: colors.surface,
-            }}
-          >
-            בקש מנטלי
-          </button>
+          <Button variant="primary" onClick={onAskNatalie} className="w-full sm:max-w-sm">
+            שאלי את נטלי על היומן
+          </Button>
         )}
       </div>
     </section>

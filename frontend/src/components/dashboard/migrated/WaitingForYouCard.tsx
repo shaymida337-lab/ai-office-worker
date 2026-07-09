@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/natalie-ui";
+
 export function WaitingForYouCard({
   title,
   value,
@@ -18,13 +20,14 @@ export function WaitingForYouCard({
       <p className="text-sm font-semibold text-[#9D174D]">{title}</p>
       <p className="mt-1 text-2xl font-black text-[#831843]">{value}</p>
       <p className="mt-1 text-sm text-[#9F1239]">{subtitle}</p>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={onAction}
-        className="mt-3 rounded-xl border border-[#F9A8D4] bg-white px-4 py-2 text-sm font-bold text-[#9D174D] hover:bg-[#FFE4EF]"
+        className="mt-3 !border-[#F9A8D4] !bg-white !text-[#9D174D] hover:!bg-[#FFE4EF]"
       >
         {actionLabel}
-      </button>
+      </Button>
     </section>
   );
 }

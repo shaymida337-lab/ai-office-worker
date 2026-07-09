@@ -1,16 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Nav } from "@/components/Nav";
 import { CalendarEventDrawer } from "@/components/calendar/CalendarEventDrawer";
 import { CalendarToolbar } from "@/components/calendar/CalendarToolbar";
 import { DayTimelineView } from "@/components/calendar/DayTimelineView";
 import { MonthCalendarView } from "@/components/calendar/MonthCalendarView";
 import { NatalieCalendarActionCenter } from "@/components/calendar/NatalieCalendarActionCenter";
 import { NatalieCalendarDailyBrief } from "@/components/calendar/NatalieCalendarDailyBrief";
-import { NatalieRequestButton } from "@/components/calendar/NatalieRequestButton";
 import { OwnerDecisionQueuePanel } from "@/components/calendar/OwnerDecisionQueuePanel";
 import { WeekCalendarEmptyState, WeekCalendarView } from "@/components/calendar/WeekCalendarView";
+import {
+  AppShell,
+  BottomNavigation,
+  Button,
+  Card,
+  CardHeader,
+  FloatingActionButton,
+  Header,
+  MessageBanner,
+  StatusBadge,
+} from "@/components/natalie-ui";
 import { apiFetch, ApiError, getToken } from "@/lib/api";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { useI18n } from "@/i18n";
@@ -46,8 +55,6 @@ import { buildCalendarDailyBrief, type CalendarDailyBrief } from "@/lib/calendar
 import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
 import { fetchBriefingSchedulingSnapshot, type BriefingSchedulingSnapshot } from "@/lib/scheduling/briefing";
 import { firstNameFromLabel } from "@/lib/dashboard/homePageHelpers";
-import { colors, radius, shadow } from "@/lib/design-tokens";
-import { StatusPill } from "@/components/ui/StatusPill";
 import { Clock, Plus, Trash2, X } from "lucide-react";
 
 type Service = {
@@ -107,17 +114,6 @@ function startOfDay(date: Date): Date {
   d.setHours(0, 0, 0, 0);
   return d;
 }
-
-const btnPrimary =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] disabled:cursor-not-allowed disabled:opacity-60";
-const btnSecondary =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6] disabled:cursor-not-allowed disabled:opacity-60";
-const btnSecondarySm =
-  "inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#F3F4F6] disabled:cursor-not-allowed disabled:opacity-60";
-const btnDanger =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA] disabled:cursor-not-allowed disabled:opacity-60";
-const btnWarn =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#C2410C] bg-[#FFEDD5] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#FED7AA] disabled:cursor-not-allowed disabled:opacity-60";
 
 const emptyServiceForm = {
   name: "",
@@ -204,11 +200,8 @@ function isErrorMessage(text: string) {
   return text.includes("נכשל") || text.includes("חובה") || text.includes("יש לבחור");
 }
 
-function messageBannerClass(text: string) {
-  if (isErrorMessage(text)) {
-    return "mb-6 animate-[toastSlide_.25s_ease] rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] p-4 text-base font-semibold leading-7 text-[#7F1D1D]";
-  }
-  return "mb-6 animate-[toastSlide_.25s_ease] rounded-2xl border border-[#059669] bg-[#ECFDF5] p-4 text-base font-semibold leading-7 text-[#065F46]";
+function messageBannerTone(text: string): "error" | "success" {
+  return isErrorMessage(text) ? "error" : "success";
 }
 
 function CollapsePanel({ open, children }: { open: boolean; children: ReactNode }) {
@@ -234,6 +227,7 @@ export default function CalendarPage() {
   const [dailyBrief, setDailyBrief] = useState<CalendarDailyBrief | null>(null);
   const [openTasksCount, setOpenTasksCount] = useState(0);
   const [ownerFirstName, setOwnerFirstName] = useState<string | null>(null);
+  const [businessName, setBusinessName] = useState("");
   const [briefLoading, setBriefLoading] = useState(true);
   const [selectedEngineEventId, setSelectedEngineEventId] = useState<string | null>(null);
   const [queueRefreshKey, setQueueRefreshKey] = useState(0);
@@ -421,6 +415,7 @@ export default function CalendarPage() {
       setBriefingSnapshot(briefing);
       setOpenTasksCount(tasks.filter((task) => task.status !== "done" && task.status !== "completed").length);
       setOwnerFirstName(firstNameFromLabel(orgSettings.name));
+      setBusinessName(orgSettings.name?.trim() || "");
     } catch {
       setBriefingSnapshot(null);
     } finally {
@@ -753,31 +748,54 @@ export default function CalendarPage() {
     setViewMode("day");
   }
 
-  return (
-    <main
-      className="min-h-screen pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] pt-[3.75rem] md:pb-10 md:pt-20"
-      style={{ backgroundColor: colors.bg, color: colors.textPrimary }}
-      data-testid="calendar-page"
-    >
-      <Nav />
+  const bottomItems = useMemo(
+    () => [
+      { id: "home", label: t("dashboardDesign.nav.home"), href: "/dashboard" },
+      { id: "invoices", label: t("dashboardDesign.nav.invoices"), href: "/dashboard/invoices" },
+      { id: "payments", label: t("dashboardDesign.nav.payments"), href: "/payments" },
+      { id: "calendar", label: t("dashboardDesign.nav.calendar"), href: "/dashboard/calendar" },
+    ],
+    [t]
+  );
 
-      <div className="container mx-auto max-w-7xl space-y-5 px-3 md:px-6">
+  return (
+    <div dir={dir} data-testid="calendar-page">
+      <AppShell
+        header={
+          <Header
+            title={businessName || t("calendarDesign.title")}
+            subtitle={t("calendarDesign.subtitle")}
+            onRefresh={() => window.location.reload()}
+            refreshLabel={t("calendarDesign.refresh")}
+          />
+        }
+        bottomNavigation={<BottomNavigation items={bottomItems} />}
+        floatingButton={
+          <FloatingActionButton
+            label={t("calendarDesign.floatingNatalie")}
+            onClick={() => openNatalieAssistant()}
+            className="xl:hidden"
+          />
+        }
+      >
+        <div className="space-y-5">
         <NatalieCalendarDailyBrief
           brief={dailyBrief}
           loading={briefLoading || loading}
           onAskNatalie={() => openNatalieAssistant()}
         />
 
-        {message && <div className={messageBannerClass(message)}>{message}</div>}
+        {message ? (
+          <MessageBanner tone={messageBannerTone(message)} className="animate-[toastSlide_.25s_ease]">
+            {message}
+          </MessageBanner>
+        ) : null}
 
-        {engineDisabledBanner && (
-          <div
-            className="rounded-2xl border border-[#C2410C] bg-[#FFEDD5] p-4 text-base font-semibold leading-7 text-[#7C2D12]"
-            data-testid="engine-disabled-banner"
-          >
+        {engineDisabledBanner ? (
+          <MessageBanner tone="warn" data-testid="engine-disabled-banner">
             {engineDisabledBanner}
-          </div>
-        )}
+          </MessageBanner>
+        ) : null}
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-5">
@@ -797,39 +815,34 @@ export default function CalendarPage() {
               onMutation={handleDecisionResolved}
             />
 
-            <div className={`${radius.card} ${shadow.soft} border border-[#E5E7EB] bg-white p-4 md:p-5`}>
-              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-sm font-bold text-[#1D4ED8]">{t("calendar.businessCalendar")}</div>
-                  <h1 className="text-2xl font-black text-[#111827] md:text-3xl">{t("calendar.appointmentsCenter")}</h1>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {calendarConnected === true && <StatusPill tone="success">Google Calendar ✓</StatusPill>}
-                  {calendarConnected === false && (
-                    <button
-                      type="button"
-                      className={btnSecondary}
-                      disabled={connectingCalendar}
-                      onClick={() => connectCalendar()}
-                    >
-                      {connectingCalendar ? t("calendar.connecting") : t("calendar.connectGoogleCalendar")}
-                    </button>
-                  )}
-                  <button type="button" className={btnPrimary} onClick={openNewForm}>
-                    <Plus className="h-4 w-4" />
-                    {t("calendar.newAppointment")}
-                  </button>
-                </div>
-              </div>
+            <Card data-testid="calendar-appointments-card">
+              <CardHeader
+                subtitle={t("calendar.businessCalendar")}
+                title={t("calendar.appointmentsCenter")}
+                actions={
+                  <>
+                    {calendarConnected === true && <StatusBadge tone="success">Google Calendar ✓</StatusBadge>}
+                    {calendarConnected === false && (
+                      <Button variant="secondary" disabled={connectingCalendar} onClick={() => connectCalendar()}>
+                        {connectingCalendar ? t("calendar.connecting") : t("calendar.connectGoogleCalendar")}
+                      </Button>
+                    )}
+                    <Button variant="primary" onClick={openNewForm}>
+                      <Plus className="h-4 w-4" />
+                      {t("calendar.newAppointment")}
+                    </Button>
+                  </>
+                }
+              />
 
               <CollapsePanel open={showForm}>
                 <form onSubmit={saveAppointment} className="mb-5 grid gap-3 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] p-4 md:grid-cols-2">
           <div className="flex items-center justify-between md:col-span-2">
             <h2 className="text-lg font-black text-[#111827]">{editingId ? t("calendar.editAppointment") : t("calendar.newAppointment")}</h2>
-            <button type="button" className={btnSecondarySm} onClick={resetForm}>
+            <Button variant="secondary" size="sm" type="button" onClick={resetForm}>
               <X className="h-4 w-4" />
               {t("calendar.cancel")}
-            </button>
+            </Button>
           </div>
           <label className="font-semibold text-[#111827]">
             {t("calendar.customer")}
@@ -918,9 +931,9 @@ export default function CalendarPage() {
           {editingId && selectedReminderStatus && (
             <div className="md:col-span-2 rounded-2xl border border-[#E5E7EB] bg-white p-3">
               <div className="mb-2 flex flex-wrap items-center gap-2">
-                <StatusPill tone={reminderChipTone(selectedReminderStatus.reminderState)}>
+                <StatusBadge tone={reminderChipTone(selectedReminderStatus.reminderState)}>
                   {reminderChipLabel(selectedReminderStatus.reminderState)}
-                </StatusPill>
+                </StatusBadge>
                 {selectedReminderStatus.lastReminderSentAt && (
                   <span className="text-xs font-semibold text-[#6B7280]">
                     Last reminder: {new Date(selectedReminderStatus.lastReminderSentAt).toLocaleString()}
@@ -950,7 +963,7 @@ export default function CalendarPage() {
             </div>
           )}
           <div className="flex flex-wrap gap-2 md:col-span-2">
-            <button className={btnPrimary} type="submit" disabled={saving}>
+            <Button variant="primary" type="submit" disabled={saving}>
               {saving
                 ? t("calendar.saving")
                 : editingId
@@ -958,22 +971,17 @@ export default function CalendarPage() {
                   : engineWriteEnabled
                     ? t("calendar.sendForApproval")
                     : t("calendar.save")}
-            </button>
+            </Button>
             {editingId && formStatus !== "cancelled" && (
-              <button
-                type="button"
-                className={btnWarn}
-                disabled={saving}
-                onClick={() => cancelAppointment()}
-              >
+              <Button variant="warn" type="button" disabled={saving} onClick={() => cancelAppointment()}>
                 {t("calendar.cancelAppointment")}
-              </button>
+              </Button>
             )}
             {editingId && (
-              <button type="button" className={btnDanger} disabled={saving} onClick={() => deleteAppointment()}>
+              <Button variant="danger" type="button" disabled={saving} onClick={() => deleteAppointment()}>
                 <Trash2 className="h-4 w-4" />
                 {t("calendar.deleteAppointment")}
-              </button>
+              </Button>
             )}
           </div>
         </form>
@@ -1027,16 +1035,18 @@ export default function CalendarPage() {
                   />
                 </>
               )}
-            </div>
+            </Card>
 
-            <section className={`${radius.card} ${shadow.soft} border border-[#E5E7EB] bg-white p-4 md:p-5`}>
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-black text-[#111827]">{t("calendar.myServices")}</h2>
-          <button type="button" className={btnSecondary} onClick={() => setShowServiceForm((v) => !v)}>
-            <Plus className="h-4 w-4" />
-            {t("calendar.newService")}
-          </button>
-        </div>
+            <Card>
+        <CardHeader
+          title={t("calendar.myServices")}
+          actions={
+            <Button variant="secondary" type="button" onClick={() => setShowServiceForm((v) => !v)}>
+              <Plus className="h-4 w-4" />
+              {t("calendar.newService")}
+            </Button>
+          }
+        />
 
         <CollapsePanel open={showServiceForm}>
           <form
@@ -1087,9 +1097,9 @@ export default function CalendarPage() {
                 onChange={(e) => setServiceForm({ ...serviceForm, color: e.target.value })}
               />
             </label>
-            <button className={`${btnPrimary} md:col-span-2`} type="submit" disabled={savingService}>
+            <Button variant="primary" className="md:col-span-2" type="submit" disabled={savingService}>
               {savingService ? t("calendar.saving") : t("calendar.saveService")}
-            </button>
+            </Button>
           </form>
         </CollapsePanel>
 
@@ -1115,26 +1125,24 @@ export default function CalendarPage() {
                     </div>
                   </div>
                 </div>
-                <button
+                <Button
+                  variant="danger"
                   type="button"
-                  className={`${btnDanger} !min-h-9 !rounded-xl !px-3`}
+                  className="!min-h-9 !rounded-xl !px-3"
                   disabled={deletingServiceId === svc.id}
                   onClick={() => deleteService(svc.id)}
                   aria-label={t("calendar.serviceDeleteLabel", { name: svc.name })}
                 >
                   <Trash2 className="h-4 w-4" />
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
         )}
-            </section>
+            </Card>
           </div>
 
           <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
-            <div className="hidden xl:block">
-              <NatalieRequestButton />
-            </div>
             <NatalieCalendarActionCenter
               appointments={appointments}
               pendingDecisions={briefingSnapshot?.pendingDecisions}
@@ -1166,11 +1174,8 @@ export default function CalendarPage() {
             }}
           />
         </div>
-      </div>
-
-      <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] left-3 right-3 z-40 xl:hidden">
-        <NatalieRequestButton />
-      </div>
-    </main>
+        </div>
+      </AppShell>
+    </div>
   );
 }

@@ -121,5 +121,11 @@
       "payments": "תשלומים",
       "calendar": "יומן"
     }
+  },
+  "calendarDesign": {
+    "title": "יומן",
+    "subtitle": "נטלי מנהלת את הלו\"ז שלך",
+    "refresh": "רענן",
+    "floatingNatalie": "דברי עם נטלי"
   }
 }

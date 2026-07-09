@@ -33,6 +33,36 @@
   --warn: var(--warning);
   --danger: var(--error);
   --ok: var(--success);
+
+  /* Natalie Design System — light (approved dashboard/calendar language) */
+  --natalie-bg-page: #f3f6ff;
+  --natalie-surface: #ffffff;
+  --natalie-surface-elevated: #f8faff;
+  --natalie-text-primary: #0f172a;
+  --natalie-text-muted: #64748b;
+  --natalie-border: #d9e2f2;
+  --natalie-card-bg: #ffffff;
+  --natalie-card-border: #dbe5f4;
+}
+
+.dark {
+  --bg-primary: #0b1220;
+  --bg-secondary: #111827;
+  --bg-card: #1e293b;
+  --bg-hover: #1e3a5f;
+  --border: #334155;
+  --border-subtle: #293548;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --natalie-bg-page: #0b1220;
+  --natalie-surface: #111827;
+  --natalie-surface-elevated: #1e293b;
+  --natalie-text-primary: #f8fafc;
+  --natalie-text-muted: #94a3b8;
+  --natalie-border: #334155;
+  --natalie-card-bg: #1e293b;
+  --natalie-card-border: #334155;
 }
 
 @layer base {

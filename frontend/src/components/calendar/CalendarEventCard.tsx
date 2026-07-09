@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarClock, Check, Edit3, Sparkles } from "lucide-react";
-import { StatusPill } from "@/components/ui/StatusPill";
+import { StatusBadge } from "@/components/natalie-ui";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { useI18n } from "@/i18n";
 import { appointmentStatusBorderColor, colorWithAlpha, formatAppointmentTime, type TimelineAppointment } from "@/lib/calendarUtils";
@@ -120,7 +120,7 @@ export function CalendarEventCard({
               )}
             </div>
           </div>
-          {!isTimeline && <StatusPill tone={statusTone(appointment.status)}>{statusLabel(appointment.status)}</StatusPill>}
+          {!isTimeline && <StatusBadge tone={statusTone(appointment.status)}>{statusLabel(appointment.status)}</StatusBadge>}
         </div>
 
         {!isTimeline && !compactMode && (
@@ -132,10 +132,10 @@ export function CalendarEventCard({
             </span>
           )}
           {googleLabel && (
-            <StatusPill tone={googleSyncTone(appointment.googleSyncStatus)}>{googleLabel}</StatusPill>
+            <StatusBadge tone={googleSyncTone(appointment.googleSyncStatus)}>{googleLabel}</StatusBadge>
           )}
           {appointment.reminderStatus?.reminderState && (
-            <StatusPill tone={appointment.reminderStatus.reminderState === "confirmed" ? "success" : appointment.reminderStatus.reminderState === "declined" || appointment.reminderStatus.reminderState === "reminder_failed" ? "danger" : appointment.reminderStatus.reminderState === "reminder_sent" ? "info" : "warn"}>
+            <StatusBadge tone={appointment.reminderStatus.reminderState === "confirmed" ? "success" : appointment.reminderStatus.reminderState === "declined" || appointment.reminderStatus.reminderState === "reminder_failed" ? "danger" : appointment.reminderStatus.reminderState === "reminder_sent" ? "info" : "warn"}>
               {appointment.reminderStatus.reminderState === "reminder_pending"
                 ? "Pending"
                 : appointment.reminderStatus.reminderState === "reminder_sent"
@@ -149,7 +149,7 @@ export function CalendarEventCard({
                         : appointment.reminderStatus.reminderState === "reminder_failed"
                           ? "Reminder Failed"
                           : appointment.reminderStatus.reminderState}
-            </StatusPill>
+            </StatusBadge>
           )}
         </div>
         )}

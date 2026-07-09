@@ -1,5 +1,8 @@
 "use client";
 
+import { SectionCard } from "@/components/natalie-ui";
+import { Button } from "@/components/natalie-ui";
+
 type QuickActionItem = {
   id: string;
   label: string;
@@ -15,21 +18,21 @@ export function QuickActions({
   items: QuickActionItem[];
 }) {
   return (
-    <section className="rounded-2xl border border-[#DBE5F4] bg-white p-4 shadow-sm">
-      <h2 className="text-base font-black text-[#0F172A]">{title}</h2>
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+    <SectionCard title={title}>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {items.map((item) => (
-          <button
+          <Button
             key={item.id}
-            type="button"
+            variant="ghost"
+            size="sm"
             onClick={item.onClick}
             disabled={item.disabled}
-            className="rounded-xl border border-[#D1DCFA] bg-[#EEF2FF] px-3 py-2 text-sm font-bold text-[#1E40AF] disabled:opacity-50"
+            className="!min-h-10 w-full"
           >
             {item.label}
-          </button>
+          </Button>
         ))}
       </div>
-    </section>
+    </SectionCard>
   );
 }
