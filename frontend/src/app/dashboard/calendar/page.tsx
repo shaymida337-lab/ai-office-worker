@@ -11,7 +11,6 @@ import { OwnerDecisionQueuePanel } from "@/components/calendar/OwnerDecisionQueu
 import { WeekCalendarEmptyState, WeekCalendarView } from "@/components/calendar/WeekCalendarView";
 import {
   AppShell,
-  BottomNavigation,
   Button,
   Card,
   CardHeader,
@@ -752,16 +751,6 @@ export default function CalendarPage() {
     setViewMode("day");
   }
 
-  const bottomItems = useMemo(
-    () => [
-      { id: "home", label: t("dashboardDesign.nav.home"), href: "/dashboard" },
-      { id: "invoices", label: t("dashboardDesign.nav.invoices"), href: "/dashboard/invoices" },
-      { id: "payments", label: t("dashboardDesign.nav.payments"), href: "/payments" },
-      { id: "calendar", label: t("dashboardDesign.nav.calendar"), href: "/dashboard/calendar" },
-    ],
-    [t]
-  );
-
   return (
     <div dir={dir} data-testid="calendar-page">
       <AppShell
@@ -771,7 +760,6 @@ export default function CalendarPage() {
             subtitle={t("calendarDesign.subtitle")}
           />
         }
-        bottomNavigation={<BottomNavigation items={bottomItems} />}
         floatingButton={
           <FloatingActionButton
             label={t("calendarDesign.floatingNatalie")}

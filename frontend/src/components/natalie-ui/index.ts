@@ -7,6 +7,7 @@ export { ThemeProvider, useTheme } from "./ThemeProvider";
 export { Header } from "./Header";
 export { PageTitle } from "./PageTitle";
 export { BottomNavigation, type BottomNavItem } from "./BottomNavigation";
+export { GlobalBottomNavigation } from "./GlobalBottomNavigation";
 export { Card, CardHeader } from "./Card";
 export { Button } from "./Button";
 export { Input } from "./Input";

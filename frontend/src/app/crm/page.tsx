@@ -19,7 +19,6 @@ import {
 import { channelLabel } from "@/components/crm/crmHelpers";
 import {
   AppShell,
-  BottomNavigation,
   Button,
   Card,
   EmptyState,
@@ -179,16 +178,6 @@ export default function CrmPage() {
     [t]
   );
 
-  const bottomItems = useMemo(
-    () => [
-      { id: "home", label: t("crmDesign.nav.home"), href: "/dashboard" },
-      { id: "customers", label: t("crmDesign.nav.customers"), href: "/crm" },
-      { id: "calendar", label: t("crmDesign.nav.calendar"), href: "/dashboard/calendar" },
-      { id: "payments", label: t("crmDesign.nav.payments"), href: "/payments" },
-    ],
-    [t]
-  );
-
   async function createLead(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -291,7 +280,6 @@ export default function CrmPage() {
     <div dir={dir}>
       <AppShell
         pageTitle={<PageTitle title={t("crmDesign.title")} subtitle={t("crmDesign.subtitle")} />}
-        bottomNavigation={<BottomNavigation items={bottomItems} />}
         floatingButton={
           <FloatingActionButton
             label={t("crmDesign.floatingNatalie")}

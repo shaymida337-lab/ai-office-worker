@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   TaskListItem,
   TasksEmptyState,
@@ -10,7 +10,6 @@ import {
 } from "@/components/tasks";
 import {
   AppShell,
-  BottomNavigation,
   Card,
   FloatingActionButton,
   MessageBanner,
@@ -34,16 +33,6 @@ export default function TasksPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-
-  const bottomItems = useMemo(
-    () => [
-      { id: "home", label: t("tasksDesign.nav.home"), href: "/dashboard" },
-      { id: "invoices", label: t("tasksDesign.nav.invoices"), href: "/dashboard/invoices" },
-      { id: "payments", label: t("tasksDesign.nav.payments"), href: "/payments" },
-      { id: "calendar", label: t("tasksDesign.nav.calendar"), href: "/dashboard/calendar" },
-    ],
-    [t]
-  );
 
   useEffect(() => {
     apiFetch<Task[]>("/api/tasks")
@@ -128,7 +117,6 @@ export default function TasksPage() {
     <div dir={dir}>
       <AppShell
         pageTitle={<PageTitle title={t("tasksDesign.title")} subtitle={t("tasksDesign.subtitle")} />}
-        bottomNavigation={<BottomNavigation items={bottomItems} />}
         floatingButton={
           <FloatingActionButton
             label={t("tasksDesign.floatingNatalie")}

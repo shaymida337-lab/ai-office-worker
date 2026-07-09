@@ -142,7 +142,16 @@
     "searchEmpty": "לא נמצאו תוצאות",
     "notifications": "התראות",
     "theme": "מצב כהה",
-    "language": "החלפת שפה"
+    "language": "החלפת שפה",
+    "profile": "פרופיל משתמש"
+  },
+  "globalNav": {
+    "home": "בית",
+    "calendar": "יומן",
+    "customers": "לקוחות",
+    "documents": "מסמכים",
+    "tasks": "משימות",
+    "natalie": "נטלי"
   },
   "crmDesign": {
     "title": "לקוחות",

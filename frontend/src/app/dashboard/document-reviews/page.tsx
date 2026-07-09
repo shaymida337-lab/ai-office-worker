@@ -11,7 +11,6 @@ import {
 } from "@/components/documents";
 import {
   AppShell,
-  BottomNavigation,
   MessageBanner,
   PageTitle,
   SkeletonCard,
@@ -46,16 +45,6 @@ export default function DocumentReviewsPage() {
   const [exitingIds, setExitingIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<DocumentFilter>("needs_decision");
-
-  const bottomItems = useMemo(
-    () => [
-      { id: "home", label: t("documentsDesign.nav.home"), href: "/dashboard" },
-      { id: "invoices", label: t("documentsDesign.nav.invoices"), href: "/dashboard/invoices" },
-      { id: "payments", label: t("documentsDesign.nav.payments"), href: "/payments" },
-      { id: "calendar", label: t("documentsDesign.nav.calendar"), href: "/dashboard/calendar" },
-    ],
-    [t]
-  );
 
   const loadItems = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoading(true);
@@ -175,7 +164,6 @@ export default function DocumentReviewsPage() {
     <div dir={dir}>
       <AppShell
         pageTitle={<PageTitle title={t("documentsDesign.title")} subtitle={t("documentsDesign.subtitle")} />}
-        bottomNavigation={<BottomNavigation items={bottomItems} />}
       >
         <div className="mx-auto grid min-w-0 max-w-3xl gap-6 md:gap-8">
           <DocumentsMorningContext

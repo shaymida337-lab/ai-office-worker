@@ -141,7 +141,16 @@
     "searchEmpty": "No results found",
     "notifications": "Notifications",
     "theme": "Dark mode",
-    "language": "Switch language"
+    "language": "Switch language",
+    "profile": "User profile"
+  },
+  "globalNav": {
+    "home": "Home",
+    "calendar": "Calendar",
+    "customers": "Customers",
+    "documents": "Documents",
+    "tasks": "Tasks",
+    "natalie": "Natalie"
   },
   "crmDesign": {
     "title": "Customers",

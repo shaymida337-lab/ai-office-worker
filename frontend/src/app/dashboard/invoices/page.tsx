@@ -6,7 +6,6 @@ import { InvoicesFiltersCard, InvoicesReviewTabs } from "@/components/invoices";
 import type { ClientItem, Invoice, InvoiceReviewStatus } from "@/components/invoices";
 import {
   AppShell,
-  BottomNavigation,
   Button,
   Card,
   EmptyState,
@@ -81,16 +80,6 @@ export default function InvoicesPage() {
   const [selected, setSelected] = useState<Invoice | null>(null);
   const [removingIds, setRemovingIds] = useState<Set<string>>(() => new Set());
   const skipFilterRefresh = useRef(true);
-
-  const bottomItems = useMemo(
-    () => [
-      { id: "home", label: t("invoicesDesign.nav.home"), href: "/dashboard" },
-      { id: "invoices", label: t("invoicesDesign.nav.invoices"), href: "/dashboard/invoices" },
-      { id: "payments", label: t("invoicesDesign.nav.payments"), href: "/payments" },
-      { id: "calendar", label: t("invoicesDesign.nav.calendar"), href: "/dashboard/calendar" },
-    ],
-    [t]
-  );
 
   const reviewTabLabels = useMemo(
     () => ({
@@ -555,7 +544,6 @@ export default function InvoicesPage() {
     <div dir={dir}>
       <AppShell
         pageTitle={<PageTitle title={t("invoicesDesign.title")} subtitle={t("invoicesDesign.subtitle")} />}
-        bottomNavigation={<BottomNavigation items={bottomItems} />}
       >
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="flex flex-col gap-3 sm:flex-row md:justify-end">

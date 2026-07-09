@@ -10,7 +10,6 @@ import {
 } from "@/components/dashboard/migrated";
 import {
   AppShell,
-  BottomNavigation,
   FloatingActionButton,
   KpiCard,
   MessageBanner,
@@ -33,16 +32,6 @@ export default function DashboardPage() {
     [d, t]
   );
 
-  const bottomItems = useMemo(
-    () => [
-      { id: "home", label: t("dashboardDesign.nav.home"), href: "/dashboard" },
-      { id: "invoices", label: t("dashboardDesign.nav.invoices"), href: "/dashboard/invoices" },
-      { id: "payments", label: t("dashboardDesign.nav.payments"), href: "/payments" },
-      { id: "calendar", label: t("dashboardDesign.nav.calendar"), href: "/dashboard/calendar" },
-    ],
-    [t]
-  );
-
   const bannerMessage = d.pageError || d.displayActionMessage || d.displayToast?.text;
 
   return (
@@ -54,7 +43,6 @@ export default function DashboardPage() {
             subtitle={t("dashboardDesign.subtitle")}
           />
         }
-        bottomNavigation={<BottomNavigation items={bottomItems} />}
         floatingButton={
           <FloatingActionButton
             label={t("dashboardDesign.floatingNatalie")}
