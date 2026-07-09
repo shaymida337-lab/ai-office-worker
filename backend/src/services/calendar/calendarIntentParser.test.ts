@@ -237,6 +237,24 @@ test("create command keeps full business/customer name tokens before time bounda
   assert.equal(parsed.time, "12:15");
 });
 
+test("create command keeps mixed Hebrew/Latin digit token in customer name", () => {
+  const text = "קבעי תור לרגרסיה לקוח חדש 0b131b מחר ב-12:15";
+  assert.equal(extractCustomerName(text), "רגרסיה לקוח חדש 0b131b");
+  const parsed = parseCalendarIntent(text, OPTS);
+  assert.equal(parsed.intent, "create_appointment");
+  assert.equal(parsed.customerName, "רגרסיה לקוח חדש 0b131b");
+  assert.equal(parsed.time, "12:15");
+});
+
+test("create command keeps Hebrew + Latin token in customer name", () => {
+  const text = "קבעי תור ללקוח A123 מחר ב-12:15";
+  assert.equal(extractCustomerName(text), "לקוח A123");
+  const parsed = parseCalendarIntent(text, OPTS);
+  assert.equal(parsed.intent, "create_appointment");
+  assert.equal(parsed.customerName, "לקוח A123");
+  assert.equal(parsed.time, "12:15");
+});
+
 test("create command still extracts simple single-word customer name", () => {
   const text = "קבעי תור לדנה מחר ב-18:45";
   assert.equal(extractCustomerName(text), "דנה");

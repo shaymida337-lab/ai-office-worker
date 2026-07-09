@@ -227,6 +227,13 @@ export function extractCustomerName(text: string): string | null {
   const afterClientLabel = normalized.match(
     /(?:^|\s)ללקוח(?:ה)?\s+([^\s].*)$/u
   );
+  const afterClientLabelFirstToken = afterClientLabel?.[1]?.trim().split(/\s+/u)[0] ?? null;
+  const shouldKeepClientLabelPrefix =
+    !!afterClientLabelFirstToken &&
+    /^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(afterClientLabelFirstToken);
+  const afterClientLabelNormalized = afterClientLabel
+    ? `${shouldKeepClientLabelPrefix ? "לקוח " : ""}${afterClientLabel[1]}`
+    : null;
   const directLName = normalized.match(
     /(?:^|\s)ל(?!י(?:\s|$)|מחר(?:\s|$)|מחרתיים(?:\s|$)|היום(?:\s|$)|יום\s|שעה(?:\s|$)|(?:אחת|שתיים|שתים|שניים|שלוש|שלושה|ארבע|ארבעה|חמש|חמישה|שש|שישה|שבע|שבעה|שמונה|תשע|תשעה|עשר|עשרה)(?:\s|$)|[-\s]?\d)([א-ת][א-ת'"-]{1,30})(?=\s|$)/u
   );
@@ -252,7 +259,7 @@ export function extractCustomerName(text: string): string | null {
     afterWith?.[1] ??
     afterFor?.[1] ??
     afterAt?.[1] ??
-    afterClientLabel?.[1] ??
+    afterClientLabelNormalized ??
     afterCancelMove?.[1] ??
     afterMoveToClient?.[1] ??
     afterPutForMe?.[1] ??
@@ -426,7 +433,9 @@ export function validateExtraction(
     if (looksLikeStopword(name)) {
       issues.push("customerName_is_noise");
     }
-    if (/\d/u.test(name)) {
+    const hasDigit = /\d/u.test(name);
+    const hasLetter = /[A-Za-zא-ת]/u.test(name);
+    if (hasDigit && !hasLetter) {
       issues.push("customerName_contains_digits");
     }
     if (name.length > 40) {
