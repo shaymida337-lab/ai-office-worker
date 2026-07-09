@@ -72,6 +72,10 @@ services:
         generateValue: true
       - key: DEBUG_CLASSIFICATION_TOKEN
         sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_DEBUG_TOKEN
+        sync: false
       - key: TWILIO_ACCOUNT_SID
         sync: false
       - key: TWILIO_AUTH_TOKEN
@@ -111,3 +115,7 @@ services:
         value: production
       - key: NEXT_PUBLIC_API_URL
         value: https://ai-office-worker-backend.onrender.com
+      - key: NEXT_PUBLIC_SENTRY_DSN
+        sync: false
+      - key: NEXT_PUBLIC_SENTRY_ENV
+        value: production
