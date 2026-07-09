@@ -1,9 +1,24 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
   "exclude": [
     "src/**/*.test.ts",
     "src/**/*.spec.ts",
     "src/**/*.stress.test.ts",
-    "src/stress/**"
+    "src/**/*.smoke.test.ts",
+    "src/**/__tests__/**",
+    "src/stress/**",
+    "src/**/fixtures/**",
+    "src/**/examples/**",
+    "src/**/mocks/**",
+    "src/**/snapshots/**"
   ]
 }
