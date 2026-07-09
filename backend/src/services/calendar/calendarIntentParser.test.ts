@@ -195,6 +195,24 @@ test('customer after עם / לרונן / של — never asks for the name that i
   assert.equal(extractCustomerName("בטלי לי את התור של רונן מחר"), "רונן");
 });
 
+test("create command extracts full multi-word customer name before date boundary", () => {
+  const text = "קבעי תור לבדיקה רון כהן מחר ב-15:30";
+  assert.equal(extractCustomerName(text), "בדיקה רון כהן");
+  const parsed = parseCalendarIntent(text, OPTS);
+  assert.equal(parsed.intent, "create_appointment");
+  assert.equal(parsed.customerName, "בדיקה רון כהן");
+  assert.equal(parsed.time, "15:30");
+});
+
+test("create command still extracts simple single-word customer name", () => {
+  const text = "קבעי תור לדנה מחר ב-18:45";
+  assert.equal(extractCustomerName(text), "דנה");
+  const parsed = parseCalendarIntent(text, OPTS);
+  assert.equal(parsed.intent, "create_appointment");
+  assert.equal(parsed.customerName, "דנה");
+  assert.equal(parsed.time, "18:45");
+});
+
 test("create commands extract customerName from Hebrew prepositions", () => {
   const cases = [
     { text: "קבעי תור לשרון יום שישי ב-15:00", customerName: "שרון", time: "15:00" },

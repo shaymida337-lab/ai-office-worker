@@ -248,12 +248,12 @@ export function extractCustomerName(text: string): string | null {
     afterFor?.[1] ??
     afterAt?.[1] ??
     afterClientLabel?.[1] ??
-    directLName?.[1] ??
     afterCancelMove?.[1] ??
     afterMoveToClient?.[1] ??
     afterPutForMe?.[1] ??
     afterVerb?.[1] ??
     afterAppointmentNoun?.[1] ??
+    directLName?.[1] ??
     null;
   if (!raw) return null;
 
