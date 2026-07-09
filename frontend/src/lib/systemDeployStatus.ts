@@ -5,6 +5,13 @@ export type PublicHealthResponse = {
   version?: string;
   deployId?: string | null;
   buildTime?: string | null;
+  serverStartedAt?: string | null;
+  nodeEnv?: string | null;
+  serviceName?: string | null;
+  serviceId?: string | null;
+  instanceId?: string | null;
+  renderUrl?: string | null;
+  onRender?: boolean;
 };
 
 export type SystemDeployStatus =

@@ -27,7 +27,7 @@ services:
     plan: free
     region: oregon
     autoDeploy: true
-    buildCommand: "npm install --include=dev && npm run db:generate -w backend && npm run build -w backend"
+    buildCommand: "export BUILD_TIME=\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" && npm install --include=dev && npm run db:generate -w backend && npm run build -w backend"
     preDeployCommand: 'export DIRECT_URL="${DIRECT_URL:-${DATABASE_URL//-pooler/}}" && cd backend && DATABASE_URL="$DIRECT_URL" PRISMA_MIGRATE_ADVISORY_LOCK_TIMEOUT=60000 npx prisma migrate deploy'
     startCommand: "npm run start -w backend"
     healthCheckPath: /health
