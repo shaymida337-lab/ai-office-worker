@@ -92,6 +92,32 @@ test("confirmation -> no cancels pending action", async () => {
   assert.match(handled.result?.answer ?? "", /לא אבצע|ביטלתי/);
 });
 
+test("confirmation -> yes handles execution errors without empty response and keeps pending", async () => {
+  const session = createPendingSession();
+  const handled = await tryHandleCalendarConfirmationTurn({
+    session,
+    message: "כן",
+    channel: "web_chat",
+    organizationId: "org-1",
+    userId: "user-1",
+    role: "owner",
+    deps: {
+      saveSession: async (next) => next,
+      claimConfirmationExecutionFn: async () => ({ mode: "claimed", recordId: "record-err" }),
+      releaseConfirmationExecutionFn: async () => {},
+      saveSessionAfterConfirmationExecutionFn: async () => {},
+      executePendingProposal: async () => {
+        throw new Error("השעה הזו כבר תפוסה, אפשר לבחור זמן אחר");
+      },
+    },
+  });
+  assert.equal(handled.handled, true);
+  assert.equal(handled.updatedSession?.pendingConfirmation?.action, "book_appointment");
+  assert.equal(handled.updatedSession?.pendingAction?.action, "book_appointment");
+  assert.equal((handled.result?.answer ?? "").length > 0, true);
+  assert.match(handled.result?.answer ?? "", /השעה הזו כבר תפוסה|לא הצלחתי לבצע/);
+});
+
 test("confirmation -> correction updates pending proposal and keeps confirmation", async () => {
   const session = createPendingSession();
   const handled = await tryHandleCalendarConfirmationTurn({

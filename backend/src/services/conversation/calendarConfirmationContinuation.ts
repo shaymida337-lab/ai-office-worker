@@ -478,7 +478,9 @@ export async function tryHandleCalendarConfirmationTurn(input: {
   }
 
   const executableProposal = withIdentityConfirmedProposal(pending.proposal);
-  let execution;
+  let execution:
+    | Awaited<ReturnType<typeof executeNataliePendingProposal>>
+    | { ok: false; action: string; message: string; code?: string; payload?: Record<string, unknown> };
   try {
     execution = await executePendingProposal({
       organizationId: input.organizationId,
@@ -490,14 +492,25 @@ export async function tryHandleCalendarConfirmationTurn(input: {
     if (claim.mode === "claimed") {
       await releaseConfirmation(claim.recordId);
     }
-    throw error;
+    const fallbackError =
+      error instanceof Error && error.message.trim().length > 0
+        ? error.message.trim()
+        : "לא הצלחתי לבצע את הפעולה עכשיו. אפשר לנסות שוב בעוד רגע.";
+    execution = {
+      ok: false,
+      action: pending.action,
+      message: fallbackError,
+    };
   }
 
   if (!execution.ok && claim.mode === "claimed") {
     await releaseConfirmation(claim.recordId);
   }
 
-  const answer = execution.message;
+  const answer =
+    typeof execution.message === "string" && execution.message.trim().length > 0
+      ? execution.message
+      : "לא הצלחתי לבצע את הפעולה עכשיו. אפשר לנסות שוב בעוד רגע.";
   const assistantTurn = createConversationTurn({
     role: "assistant",
     text: answer,
