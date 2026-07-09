@@ -269,5 +269,38 @@
       "payments": "Payments",
       "calendar": "Calendar"
     }
+  },
+  "invoicesDesign": {
+    "title": "Customer invoices",
+    "subtitle": "Track, filter, and scan outgoing customer invoices.",
+    "importFile": "Import from file",
+    "scanInvoices": "Scan invoices",
+    "scanning": "Scanning...",
+    "kpiThisMonth": "Invoices this month",
+    "kpiPending": "Pending payment",
+    "kpiPaid": "Paid",
+    "kpiOverdue": "Overdue",
+    "reviewAll": "All",
+    "reviewApproved": "Approved",
+    "reviewNeedsReview": "Needs review",
+    "reviewRejected": "Rejected",
+    "quickFilterNeedsReview": "Quick filter: needs review",
+    "filtersTitle": "Filter and search",
+    "allClients": "All clients",
+    "searchPlaceholder": "Search by invoice number",
+    "fromDate": "From date",
+    "toDate": "To date",
+    "selectAll": "Select all on page",
+    "selectedCount": "{{count}} invoices selected",
+    "bulkDelete": "Delete selected",
+    "bulkDeleting": "Deleting selected...",
+    "emptyTitle": "No customer invoices to show",
+    "emptyHint": "Supplier invoices and payments appear on the supplier invoices / payments screen.",
+    "nav": {
+      "home": "Today",
+      "invoices": "Invoices",
+      "payments": "Payments",
+      "calendar": "Calendar"
+    }
   }
 }

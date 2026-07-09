@@ -270,5 +270,38 @@
       "payments": "תשלומים",
       "calendar": "יומן"
     }
+  },
+  "invoicesDesign": {
+    "title": "חשבוניות לקוחות",
+    "subtitle": "מעקב, סינון וסריקה של חשבוניות יוצאות ללקוחות.",
+    "importFile": "ייבוא מקובץ",
+    "scanInvoices": "סרוק חשבוניות",
+    "scanning": "סורק...",
+    "kpiThisMonth": "חשבוניות החודש",
+    "kpiPending": "ממתין לתשלום",
+    "kpiPaid": "שולם",
+    "kpiOverdue": "באיחור",
+    "reviewAll": "הכול",
+    "reviewApproved": "מאושר",
+    "reviewNeedsReview": "דורש בדיקה",
+    "reviewRejected": "נדחה",
+    "quickFilterNeedsReview": "סינון מהיר: דורש בדיקה",
+    "filtersTitle": "סינון וחיפוש",
+    "allClients": "כל הלקוחות",
+    "searchPlaceholder": "חיפוש לפי מספר חשבונית",
+    "fromDate": "מתאריך",
+    "toDate": "עד תאריך",
+    "selectAll": "בחר הכל בעמוד",
+    "selectedCount": "נבחרו {{count}} חשבוניות",
+    "bulkDelete": "מחק נבחרים",
+    "bulkDeleting": "מוחק נבחרים...",
+    "emptyTitle": "לא נמצאו חשבוניות לקוחות להצגה",
+    "emptyHint": "חשבוניות ספקים ותשלומים מופיעים במסך חשבוניות ספקים / תשלומים לספקים.",
+    "nav": {
+      "home": "היום",
+      "invoices": "חשבוניות",
+      "payments": "תשלומים",
+      "calendar": "יומן"
+    }
   }
 }

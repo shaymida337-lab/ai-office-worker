@@ -2,46 +2,29 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Nav } from "@/components/Nav";
+import { InvoicesFiltersCard, InvoicesReviewTabs } from "@/components/invoices";
+import type { ClientItem, Invoice, InvoiceReviewStatus } from "@/components/invoices";
+import {
+  AppShell,
+  BottomNavigation,
+  Button,
+  Card,
+  EmptyState,
+  KpiCard,
+  MessageBanner,
+  PageTitle,
+  SkeletonCard,
+  StatusBadge,
+} from "@/components/natalie-ui";
+import { useI18n } from "@/i18n";
 import { apiFetch } from "@/lib/api";
 import { approvalErrorHebrew } from "@/lib/documents/presentation";
 import { buildFallbackMonthGroups } from "@/lib/invoices/monthGrouping";
 import { removeRowAfterAction } from "@/lib/invoices/animatedRemoval";
 import { formatAmount } from "@/lib/format/amount";
 import { isLikelyJunkSupplierNameLocal } from "@/lib/junkSupplier";
-import { Check, ChevronDown, ChevronLeft, Download, FileText, Filter, Loader2, RefreshCcw, Search, UploadCloud } from "lucide-react";
-
-type ClientItem = { id: string; name: string; gmailConnected: boolean };
-type InvoicePaymentStatus = "paid" | "pending" | "overdue";
-type InvoiceReviewStatus = "approved" | "needs_review" | "rejected";
-type InvoiceStatus = InvoicePaymentStatus | "needs_review" | "rejected";
-type Invoice = {
-  id: string;
-  clientId: string;
-  invoiceNumber: string | null;
-  amount: number | null;
-  amountLabel?: string;
-  amountResolved?: boolean;
-  currency: string;
-  date: string;
-  normalizedDocumentDate?: string | null;
-  invoiceDate?: string | null;
-  documentDate?: string | null;
-  createdAt?: string | null;
-  updatedAt?: string | null;
-  dueDate: string | null;
-  status: InvoiceStatus;
-  reviewStatus?: InvoiceReviewStatus;
-  source?: "invoice" | "gmail_scan_item" | "financial_document_review";
-  reviewSourceId?: string | null;
-  description: string | null;
-  driveUrl: string | null;
-  driveFileUrl?: string | null;
-  gmailMessageLink?: string | null;
-  supplierName?: string | null;
-  decisionReason?: string | null;
-  client?: { id: string; name: string; color: string | null };
-};
+import { Check, ChevronDown, ChevronLeft, Download, FileText, Loader2, RefreshCcw, UploadCloud } from "lucide-react";
+import { buttonVariants } from "@/components/natalie-ui/tokens";
 
 type MonthSummary = {
   year: number;
@@ -72,13 +55,10 @@ function invoiceDateKey(invoice: { date?: string | null }): string {
   return typeof invoice.date === "string" ? invoice.date.slice(0, 10) : "";
 }
 const REMOVAL_ANIMATION_MS = 250;
-const reviewTabs: Array<{ value: "all" | InvoiceReviewStatus; label: string }> = [
-  { value: "all", label: "הכול" },
-  { value: "approved", label: "מאושר" },
-  { value: "needs_review", label: "דורש בדיקה" },
-  { value: "rejected", label: "נדחה" },
-];
+
 export default function InvoicesPage() {
+  const { t, dir, language } = useI18n();
+  const locale = language === "he" ? "he-IL" : "en-US";
   const [months, setMonths] = useState<MonthSummary[]>([]);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set());
   const [invoicesByMonth, setInvoicesByMonth] = useState<Record<string, Invoice[]>>({});
@@ -101,6 +81,26 @@ export default function InvoicesPage() {
   const [selected, setSelected] = useState<Invoice | null>(null);
   const [removingIds, setRemovingIds] = useState<Set<string>>(() => new Set());
   const skipFilterRefresh = useRef(true);
+
+  const bottomItems = useMemo(
+    () => [
+      { id: "home", label: t("invoicesDesign.nav.home"), href: "/dashboard" },
+      { id: "invoices", label: t("invoicesDesign.nav.invoices"), href: "/dashboard/invoices" },
+      { id: "payments", label: t("invoicesDesign.nav.payments"), href: "/payments" },
+      { id: "calendar", label: t("invoicesDesign.nav.calendar"), href: "/dashboard/calendar" },
+    ],
+    [t]
+  );
+
+  const reviewTabLabels = useMemo(
+    () => ({
+      all: t("invoicesDesign.reviewAll"),
+      approved: t("invoicesDesign.reviewApproved"),
+      needs_review: t("invoicesDesign.reviewNeedsReview"),
+      rejected: t("invoicesDesign.reviewRejected"),
+    }),
+    [t]
+  );
 
   function buildListQueryString() {
     const params = new URLSearchParams();
@@ -548,224 +548,112 @@ export default function InvoicesPage() {
     }
   }
 
-  const messageClasses = {
-    info: "border-[#1D4ED8] bg-[#EFF6FF] text-[#111827]",
-    success: "border-[#059669] bg-[#ECFDF5] text-[#111827]",
-    error: "border-[#DC2626] bg-[#FEF2F2] text-[#111827]",
-  }[messageTone];
   const visibleMessage = message.trim();
+  const messageBannerTone = messageTone === "error" ? "error" : messageTone === "success" ? "success" : "info";
 
   return (
-    <div className="container invoice-page-safe min-h-screen text-base text-[#111827]" style={{ background: "#f8fafc", color: "#111827", opacity: 1 }}>
-      <style>{`
-        .invoice-page-safe {
-          background: #f8fafc !important;
-          color: #111827 !important;
-          opacity: 1 !important;
-        }
-
-        .invoice-page-safe,
-        .invoice-page-safe :where(h1, h2, h3, h4, p, span, div, label, th, td, button, a, input, select, textarea) {
-          color: #111827 !important;
-          opacity: 1 !important;
-        }
-
-        .invoice-page-safe :where(input, select, textarea)::placeholder {
-          color: #4b5563 !important;
-          opacity: 1 !important;
-        }
-
-        .invoice-page-safe :where(input, select, textarea, button, a) {
-          text-shadow: none !important;
-        }
-
-        .invoice-page-safe :where(input, select, textarea) {
-          background: #ffffff !important;
-          border: 1px solid #e5e7eb !important;
-          color: #111827 !important;
-        }
-
-        .invoice-page-safe .invoice-panel,
-        .invoice-page-safe .invoice-mobile-row,
-        .invoice-page-safe .invoice-table-wrap,
-        .invoice-page-safe .invoice-modal,
-        .invoice-page-safe .invoice-detail-surface,
-        .invoice-page-safe .invoice-metric {
-          background: #ffffff !important;
-          border: 1px solid #e5e7eb !important;
-          color: #111827 !important;
-          opacity: 1 !important;
-        }
-
-        .invoice-page-safe table,
-        .invoice-page-safe tbody,
-        .invoice-page-safe td {
-          background: #ffffff !important;
-          color: #111827 !important;
-          opacity: 1 !important;
-        }
-
-        .invoice-page-safe thead,
-        .invoice-page-safe th {
-          background: #f3f4f6 !important;
-          color: #111827 !important;
-          opacity: 1 !important;
-        }
-
-        .invoice-page-safe tr {
-          background: #ffffff !important;
-          border-color: #e5e7eb !important;
-          opacity: 1 !important;
-        }
-
-        .invoice-page-safe tbody tr:hover,
-        .invoice-page-safe .invoice-mobile-row:hover {
-          background: #f8fafc !important;
-        }
-
-        .invoice-page-safe tbody tr:hover td {
-          background: #f8fafc !important;
-        }
-
-        .invoice-page-safe :where(th, td) {
-          border-bottom: 1px solid #e5e7eb !important;
-        }
-
-        .invoice-page-safe .invoice-muted {
-          color: #4b5563 !important;
-          opacity: 1 !important;
-        }
-
-        .invoice-page-safe .invoice-action,
-        .invoice-page-safe .invoice-status-pill {
-          color: #111827 !important;
-          opacity: 1 !important;
-          text-shadow: none !important;
-        }
-
-        .invoice-page-safe svg {
-          color: currentColor !important;
-          opacity: 1 !important;
-        }
-      `}</style>
-      <Nav />
-      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <div className="page-kicker text-[#111827]">חשבוניות לקוחות</div>
-          <h1 className="text-[#111827]">חשבוניות לקוחות</h1>
-          <p className="text-[17px] font-medium leading-8 text-[#111827]">מעקב, סינון וסריקה של חשבוניות יוצאות ללקוחות.</p>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <Link
-            href="/dashboard/invoice-import"
-            className="inline-flex min-w-40 items-center justify-center gap-2 rounded-2xl border border-[#059669] bg-[#ECFDF5] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#D1FAE5]"
-          >
-            <UploadCloud className="h-4 w-4" />
-            ייבוא מקובץ
-          </Link>
-          <button className="inline-flex min-w-40 items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] disabled:cursor-not-allowed disabled:bg-[#E5E7EB]" onClick={scanInvoices} disabled={scanning}>
-            {scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-            {scanning ? "סורק..." : "סרוק חשבוניות"}
-          </button>
-        </div>
-      </div>
-      {visibleMessage && (
-        <div className={`mb-6 animate-[toastSlide_.25s_ease] rounded-2xl border p-4 text-base font-medium leading-7 ${messageClasses}`}>
-          <div>{visibleMessage}</div>
-          {scanProgress && <div className="mt-1 flex items-center gap-2 text-base font-semibold text-[#111827]"><Loader2 className="h-4 w-4 animate-spin" />{scanProgress}</div>}
-        </div>
-      )}
-
-      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" dir="rtl">
-        <Metric label="חשבוניות החודש" value={thisMonth.length} tone="text-[#111827]" />
-        <Metric label="ממתין לתשלום" value={`₪${pending.toLocaleString("he-IL")}`} tone="text-[#111827]" />
-        <Metric label="שולם" value={`₪${paid.toLocaleString("he-IL")}`} tone="text-[#111827]" />
-        <Metric label="באיחור" value={overdue} tone="text-[#111827]" />
-      </div>
-
-      <div className="mb-5 flex flex-wrap gap-2" dir="rtl" aria-label="סינון חשבוניות לפי סטטוס בדיקה">
-        {reviewTabs.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
-              reviewStatus === tab.value
-                ? "border-[#1D4ED8] bg-[#DBEAFE] text-[#111827]"
-                : "border-[#E5E7EB] bg-white text-[#111827] hover:bg-[#F3F4F6]"
-            }`}
-            onClick={() => setReviewStatus(tab.value)}
-          >
-            {tab.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          className="rounded-full border border-[#D97706] bg-[#FEF3C7] px-4 py-2 text-sm font-black text-[#111827] transition hover:bg-[#FDE68A]"
-          onClick={() => {
-            setReviewStatus("needs_review");
-            setClientId("all");
-            setSearch("");
-            setFromDate("");
-            setToDate("");
-            setSelectedInvoiceIds(new Set());
-          }}
-        >
-          סינון מהיר: דורש בדיקה
-        </button>
-      </div>
-
-      <div className="invoice-panel mb-5 rounded-2xl border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-sm">
-        <div className="mb-4 flex items-center gap-2 text-[17px] font-black text-[#111827]"><Filter className="h-5 w-5" />סינון וחיפוש</div>
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
-          <select className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="all">כל הלקוחות</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
-          <div className="relative xl:col-span-2">
-            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4B5563]" />
-            <input className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 pr-10 font-sans text-base font-semibold text-[#111827] shadow-sm outline-none placeholder:text-[#4B5563] focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" placeholder="חיפוש לפי מספר חשבונית" value={search} onChange={(e) => setSearch(e.target.value)} />
+    <div dir={dir}>
+      <AppShell
+        pageTitle={<PageTitle title={t("invoicesDesign.title")} subtitle={t("invoicesDesign.subtitle")} />}
+        bottomNavigation={<BottomNavigation items={bottomItems} />}
+      >
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row md:justify-end">
+            <Link
+              href="/dashboard/invoice-import"
+              className={`${buttonVariants.secondary} min-w-40 inline-flex items-center justify-center gap-2`}
+            >
+              <UploadCloud className="h-4 w-4" />
+              {t("invoicesDesign.importFile")}
+            </Link>
+            <Button variant="primary" className="min-w-40" onClick={scanInvoices} disabled={scanning}>
+              {scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+              {scanning ? t("invoicesDesign.scanning") : t("invoicesDesign.scanInvoices")}
+            </Button>
           </div>
-          <input className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-          <input className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
-      </div>
 
-      <div className="invoice-panel mb-5 flex flex-col gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm sm:flex-row sm:items-center sm:justify-between" dir="rtl">
-        <label className="inline-flex items-center gap-2 text-base font-black text-[#111827]">
-          <input
-            type="checkbox"
-            checked={allVisibleSelected}
-            onChange={toggleSelectAllVisible}
-            disabled={filtered.length === 0 || bulkDeleting}
-            className="h-5 w-5 rounded border-[#9CA3AF]"
+        {visibleMessage ? (
+          <MessageBanner tone={messageBannerTone} className="mb-6">
+            <div>{visibleMessage}</div>
+            {scanProgress ? (
+              <div className="mt-1 flex items-center gap-2 text-sm font-semibold">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {scanProgress}
+              </div>
+            ) : null}
+          </MessageBanner>
+        ) : null}
+
+        <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard label={t("invoicesDesign.kpiThisMonth")} value={String(thisMonth.length)} />
+          <KpiCard label={t("invoicesDesign.kpiPending")} value={`₪${pending.toLocaleString(locale)}`} />
+          <KpiCard label={t("invoicesDesign.kpiPaid")} value={`₪${paid.toLocaleString(locale)}`} />
+          <KpiCard label={t("invoicesDesign.kpiOverdue")} value={String(overdue)} />
+        </div>
+
+        <div className="mb-5">
+          <InvoicesReviewTabs
+            value={reviewStatus}
+            onChange={setReviewStatus}
+            labels={reviewTabLabels}
+            quickFilterLabel={t("invoicesDesign.quickFilterNeedsReview")}
+            onQuickNeedsReview={() => {
+              setReviewStatus("needs_review");
+              setClientId("all");
+              setSearch("");
+              setFromDate("");
+              setToDate("");
+              setSelectedInvoiceIds(new Set());
+            }}
           />
-          בחר הכל בעמוד
-        </label>
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm font-bold text-[#111827]">נבחרו {selectedVisibleInvoices.length} חשבוניות</span>
-          <button
-            type="button"
-            className="invoice-action rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA] disabled:cursor-not-allowed disabled:bg-[#E5E7EB]"
-            onClick={deleteSelectedInvoices}
-            disabled={selectedVisibleInvoices.length === 0 || bulkDeleting}
-          >
-            {bulkDeleting ? "מוחק נבחרים..." : "מחק נבחרים"}
-          </button>
         </div>
-      </div>
 
-      {monthsLoading && (
-        <div className="invoice-panel mb-5 flex items-center justify-center gap-2 rounded-2xl border border-[#E5E7EB] bg-white p-8 text-[#111827] shadow-sm">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          <span className="text-base font-bold">טוען חודשים...</span>
+        <div className="mb-5">
+          <InvoicesFiltersCard
+            title={t("invoicesDesign.filtersTitle")}
+            clientId={clientId}
+            clients={clients}
+            allClientsLabel={t("invoicesDesign.allClients")}
+            search={search}
+            searchPlaceholder={t("invoicesDesign.searchPlaceholder")}
+            fromDate={fromDate}
+            toDate={toDate}
+            fromLabel={t("invoicesDesign.fromDate")}
+            toLabel={t("invoicesDesign.toDate")}
+            onClientChange={setClientId}
+            onSearchChange={setSearch}
+            onFromDateChange={setFromDate}
+            onToDateChange={setToDate}
+          />
         </div>
-      )}
 
-      {!monthsLoading && months.length === 0 && junkInvoices.length === 0 && (
-        <div className="invoice-panel rounded-2xl border border-[#E5E7EB] bg-white p-5 text-center text-[#111827] shadow-sm">
-          <h2 className="text-[#111827]">לא נמצאו חשבוניות לקוחות להצגה</h2>
-          <p className="invoice-muted mt-2 text-base font-bold text-[#4B5563]">
-            חשבוניות ספקים ותשלומים מופיעים במסך &quot;חשבוניות ספקים / תשלומים לספקים&quot;.
-          </p>
-        </div>
-      )}
+        <Card className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <label className="inline-flex items-center gap-2 text-base font-black text-[var(--natalie-text-primary,#0F172A)]">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleSelectAllVisible}
+              disabled={filtered.length === 0 || bulkDeleting}
+              className="h-5 w-5 rounded border-[#9CA3AF]"
+            />
+            {t("invoicesDesign.selectAll")}
+          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-bold text-[var(--natalie-text-muted,#64748B)]">
+              {t("invoicesDesign.selectedCount", { count: String(selectedVisibleInvoices.length) })}
+            </span>
+            <Button variant="danger" onClick={deleteSelectedInvoices} disabled={selectedVisibleInvoices.length === 0 || bulkDeleting}>
+              {bulkDeleting ? t("invoicesDesign.bulkDeleting") : t("invoicesDesign.bulkDelete")}
+            </Button>
+          </div>
+        </Card>
+
+        {monthsLoading ? <div className="mb-5"><SkeletonCard /></div> : null}
+
+        {!monthsLoading && months.length === 0 && junkInvoices.length === 0 ? (
+          <EmptyState title={t("invoicesDesign.emptyTitle")} description={t("invoicesDesign.emptyHint")} />
+        ) : null}
 
       <div className="space-y-4">
         {months.map((month) => {
@@ -776,7 +664,7 @@ export default function InvoicesPage() {
           const isLoading = loadingMonth.has(key);
 
           return (
-            <section key={key} className="invoice-panel rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+            <section key={key} className="rounded-2xl border border-[var(--natalie-card-border,#DBE5F4)] bg-[var(--natalie-card-bg,#ffffff)] shadow-sm">
               <button
                 type="button"
                 className="sticky top-0 z-10 flex w-full items-center justify-between gap-3 border-b border-[#E5E7EB] bg-white/85 px-4 py-4 text-right backdrop-blur-sm transition hover:bg-white/95 md:px-5"
@@ -851,7 +739,7 @@ export default function InvoicesPage() {
       </div>
 
       {junkInvoices.length > 0 && (
-        <section className="invoice-panel mt-6 rounded-2xl border border-[#D97706] bg-white shadow-sm">
+        <Card padding="none" className="mt-6 overflow-hidden border-[#FCD34D]">
           <button
             type="button"
             className="flex w-full items-center justify-between gap-3 bg-[#FEF3C7] px-4 py-4 text-right transition hover:bg-[#FDE68A] md:px-5"
@@ -894,7 +782,7 @@ export default function InvoicesPage() {
               />
             </div>
           </CollapsePanel>
-        </section>
+        </Card>
       )}
 
       {selected && (
@@ -989,6 +877,7 @@ export default function InvoicesPage() {
           </div>
         </div>
       )}
+      </AppShell>
     </div>
   );
 }
@@ -1008,15 +897,6 @@ function invoiceRemovalClass(isRemoving: boolean) {
   return isRemoving
     ? "pointer-events-none max-h-0 overflow-hidden border-transparent opacity-0 !p-0 !py-0"
     : "max-h-[800px] opacity-100";
-}
-
-function Metric({ label, value, tone }: { label: string; value: string | number; tone: string }) {
-  return (
-    <div className="invoice-metric rounded-2xl border border-[#E5E7EB] bg-white p-5 text-[#111827] shadow-sm">
-      <div className="text-sm font-black text-[#111827]">{label}</div>
-      <div className={`mt-2 text-3xl font-black ${tone}`}>{value}</div>
-    </div>
-  );
 }
 
 type InvoiceListProps = {
@@ -1365,12 +1245,9 @@ function statusBadgeDotColor(invoice: Invoice) {
 }
 
 function ReviewStatusPill({ invoice }: { invoice: Invoice }) {
-  return (
-    <span className={`invoice-status-pill inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold ${statusBadgeClass(invoice)}`}>
-      <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: statusBadgeDotColor(invoice) }} aria-hidden="true" />
-      {reviewBadgeLabel(invoice)}
-    </span>
-  );
+  const reviewStatus = invoice.reviewStatus ?? "approved";
+  const tone = reviewStatus === "needs_review" ? "warn" : reviewStatus === "rejected" ? "danger" : "success";
+  return <StatusBadge tone={tone}>{reviewBadgeLabel(invoice)}</StatusBadge>;
 }
 
 function sourceLabel(source: Invoice["source"] | undefined) {
