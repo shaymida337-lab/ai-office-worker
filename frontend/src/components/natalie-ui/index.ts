@@ -19,4 +19,7 @@ export { Timeline, TimelineMarker, TimelineRow, type TimelineEntry, type Timelin
 export { EmptyState } from "./EmptyState";
 export { Skeleton, SkeletonText, SkeletonCard } from "./Skeleton";
 export { MessageBanner, type MessageBannerTone } from "./MessageBanner";
+export { SlidePanel } from "./SlidePanel";
+export { GlobalToolbar } from "./GlobalToolbar";
+export { PageTitle } from "./PageTitle";
 export { AppointmentCard } from "./AppointmentCard";

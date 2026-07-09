@@ -12,6 +12,7 @@ type TranslationTree = Record<string, unknown>;
 type I18nContextValue = {
   language: AppLanguage;
   dir: AppDirection;
+  setLanguage: (language: AppLanguage) => void;
   t: (key: string, vars?: Record<string, string | number>) => string;
 };
 
@@ -19,6 +20,7 @@ const dictionaries: Record<AppLanguage, TranslationTree> = { he, en };
 const I18nContext = createContext<I18nContextValue>({
   language: "he",
   dir: "rtl",
+  setLanguage: () => undefined,
   t: (key) => key,
 });
 
@@ -77,6 +79,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     return {
       language,
       dir,
+      setLanguage,
       t: (key, vars) => formatTemplate(getNestedValue(dictionary, key) ?? key, vars),
     };
   }, [language, dir]);
