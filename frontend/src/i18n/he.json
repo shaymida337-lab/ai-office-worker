@@ -56,5 +56,15 @@
     "prerequisites": "דרישות מקדימות",
     "optional": "אופציונלי",
     "workCaseTimeline": "ציר זמן תיק"
+    ,
+    "quickActions": "פעולות מהירות",
+    "call": "התקשר",
+    "whatsapp": "וואטסאפ",
+    "email": "אימייל",
+    "markArrived": "סמן הגיע",
+    "sendReminder": "שלח תזכורת",
+    "arrivedPlaceholder": "סימון הגעה יתחבר בקרוב לזרימת CRM מלאה",
+    "reminderPlaceholder": "שליחת תזכורת תתחבר בשלב הבא",
+    "unknownClient": "לקוח ללא שם"
   }
 }

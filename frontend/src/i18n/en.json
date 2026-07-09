@@ -55,6 +55,15 @@
     "submitForApproval": "Submit for Approval",
     "prerequisites": "Prerequisites",
     "optional": "Optional",
-    "workCaseTimeline": "Case Timeline"
+    "workCaseTimeline": "Case Timeline",
+    "quickActions": "Quick Actions",
+    "call": "Call",
+    "whatsapp": "WhatsApp",
+    "email": "Email",
+    "markArrived": "Mark Arrived",
+    "sendReminder": "Send Reminder",
+    "arrivedPlaceholder": "Arrival marking will be connected to the full CRM flow soon",
+    "reminderPlaceholder": "Reminder sending will be connected in the next phase",
+    "unknownClient": "Unnamed Client"
   }
 }
