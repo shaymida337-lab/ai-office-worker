@@ -5,8 +5,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -17,128 +17,129 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  organization Organization?
-  helpProgress HelpProgress[]
-  assignedWorkCases WorkCase[] @relation("WorkCaseAssignedUser")
-  assignedCalendarEvents CalendarEvent[] @relation("CalendarEventAssignedUser")
-  createdCalendarEvents CalendarEvent[] @relation("CalendarEventCreatedBy")
-  organizationMemberships OrganizationMember[]
+  organization                Organization?
+  helpProgress                HelpProgress[]
+  assignedWorkCases           WorkCase[]                   @relation("WorkCaseAssignedUser")
+  assignedCalendarEvents      CalendarEvent[]              @relation("CalendarEventAssignedUser")
+  createdCalendarEvents       CalendarEvent[]              @relation("CalendarEventCreatedBy")
+  organizationMemberships     OrganizationMember[]
   natalieConversationSessions NatalieConversationSession[]
 }
 
 model Organization {
-  id        String   @id @default(cuid())
-  name      String   @default("My Business")
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  timezone  String   @default("Asia/Jerusalem")
-  currency  String   @default("ILS")
-  locale    String   @default("he")
-  language  String   @default("he")
-  country   String   @default("IL")
-  dateFormat String  @default("dd/MM/yyyy") @map("date_format")
-  timeFormat String  @default("24h") @map("time_format")
-  weekStart String   @default("sunday") @map("week_start")
-  phoneCountryCode String @default("+972") @map("phone_country_code")
-  businessType String @default("service_business") @map("business_type")
-  enabledModules Json @default("[\"crm\",\"invoices\",\"supplier_management\",\"tasks\",\"whatsapp\",\"documents\",\"collections\"]") @map("enabled_modules")
-  businessSize String? @map("business_size")
-  mainBusinessPain String? @map("main_business_pain")
-  onboardingCompleted Boolean @default(true) @map("onboarding_completed")
-  accountantEmail   String?
-  accountantName    String?
-  businessName      String?
-  businessId        String?
-  businessAddress   String?
-  greenInvoiceApiKeyId String?
-  greenInvoiceApiSecret String?
-  greenInvoiceEnv   String?   @default("sandbox")
-  greenInvoiceConnectedAt DateTime?
-  sendMonthlyReport Boolean  @default(true)
-  reportDay         Int      @default(1)
-  businessProfile   String?
-  calendarAutonomyJson Json @default("{\"calendarAutonomy\":{\"autoConfirmWhenFullyReady\":false,\"autoSendFollowUp\":false,\"autoSyncGoogleOnConfirm\":true,\"autoCreateFollowUpTask\":true}}") @map("calendar_autonomy_json")
-  confidenceThresholdsJson Json? @map("confidence_thresholds_json")
-  aiAuditorConfigJson Json? @map("ai_auditor_config_json")
-  calendarEngineReadEnabled Boolean @default(false) @map("calendar_engine_read_enabled")
-  calendarEngineWriteEnabled Boolean @default(false) @map("calendar_engine_write_enabled")
-  calendarEngineGoogleMirrorEnabled Boolean @default(false) @map("calendar_engine_google_mirror_enabled")
-  calendarEnginePilotNotes String? @map("calendar_engine_pilot_notes")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                                String    @id @default(cuid())
+  name                              String    @default("My Business")
+  userId                            String    @unique
+  user                              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  timezone                          String    @default("Asia/Jerusalem")
+  currency                          String    @default("ILS")
+  locale                            String    @default("he")
+  language                          String    @default("he")
+  country                           String    @default("IL")
+  dateFormat                        String    @default("dd/MM/yyyy") @map("date_format")
+  timeFormat                        String    @default("24h") @map("time_format")
+  weekStart                         String    @default("sunday") @map("week_start")
+  phoneCountryCode                  String    @default("+972") @map("phone_country_code")
+  businessType                      String    @default("service_business") @map("business_type")
+  enabledModules                    Json      @default("[\"crm\",\"invoices\",\"supplier_management\",\"tasks\",\"whatsapp\",\"documents\",\"collections\"]") @map("enabled_modules")
+  businessSize                      String?   @map("business_size")
+  mainBusinessPain                  String?   @map("main_business_pain")
+  onboardingCompleted               Boolean   @default(true) @map("onboarding_completed")
+  accountantEmail                   String?
+  accountantName                    String?
+  businessName                      String?
+  businessId                        String?
+  businessAddress                   String?
+  greenInvoiceApiKeyId              String?
+  greenInvoiceApiSecret             String?
+  greenInvoiceEnv                   String?   @default("sandbox")
+  greenInvoiceConnectedAt           DateTime?
+  sendMonthlyReport                 Boolean   @default(true)
+  reportDay                         Int       @default(1)
+  businessProfile                   String?
+  calendarAutonomyJson              Json      @default("{\"calendarAutonomy\":{\"autoConfirmWhenFullyReady\":false,\"autoSendFollowUp\":false,\"autoSyncGoogleOnConfirm\":true,\"autoCreateFollowUpTask\":true}}") @map("calendar_autonomy_json")
+  confidenceThresholdsJson          Json?     @map("confidence_thresholds_json")
+  aiAuditorConfigJson               Json?     @map("ai_auditor_config_json")
+  calendarEngineReadEnabled         Boolean   @default(false) @map("calendar_engine_read_enabled")
+  calendarEngineWriteEnabled        Boolean   @default(false) @map("calendar_engine_write_enabled")
+  calendarEngineGoogleMirrorEnabled Boolean   @default(false) @map("calendar_engine_google_mirror_enabled")
+  calendarEnginePilotNotes          String?   @map("calendar_engine_pilot_notes")
+  createdAt                         DateTime  @default(now())
+  updatedAt                         DateTime  @updatedAt
 
-  integrations    Integration[]
-  supplierPayments SupplierPayment[]
-  tasks           Task[]
-  emailMessages   EmailMessage[]
-  syncLogs        SyncLog[]
-  scanLogs        ScanLog[]
-  alerts          Alert[]
-  whatsappLogs    WhatsAppLog[]
-  customerInvoices CustomerInvoice[]
-  socialDrafts    SocialDraft[]
-  clients         Client[]
-  invoices        Invoice[]
-  accountantReports AccountantReport[]
-  whatsAppAssistant WhatsAppAssistant?
-  whatsAppNotifications WhatsAppNotification[]
-  whatsAppConversations WhatsAppConversation[]
+  integrations                Integration[]
+  supplierPayments            SupplierPayment[]
+  tasks                       Task[]
+  emailMessages               EmailMessage[]
+  syncLogs                    SyncLog[]
+  scanLogs                    ScanLog[]
+  alerts                      Alert[]
+  whatsappLogs                WhatsAppLog[]
+  customerInvoices            CustomerInvoice[]
+  socialDrafts                SocialDraft[]
+  clients                     Client[]
+  invoices                    Invoice[]
+  accountantReports           AccountantReport[]
+  whatsAppAssistant           WhatsAppAssistant?
+  whatsAppNotifications       WhatsAppNotification[]
+  whatsAppConversations       WhatsAppConversation[]
   natalieConversationSessions NatalieConversationSession[]
-  notificationRules NotificationRules?
-  leads           Lead[]
-  messageTemplates MessageTemplate[]
-  messageScans    MessageScan[]
-  gmailScanItems  GmailScanItem[]
-  documentReviews FinancialDocumentReview[]
-  bankStatements  BankStatement[]
-  bankTransactions BankTransaction[]
-  helpProgress    HelpProgress[]
-  outgoingInvoiceDrafts OutgoingInvoiceDraft[]
-  services        Service[]
-  appointments    Appointment[]
-  deals           Deal[]
-  workCases       WorkCase[]
-  calendarEvents  CalendarEvent[]
-  calendarEventAudits CalendarEventAudit[]
-  platformAuditLogs PlatformAuditLog[]
-  apiIdempotencyKeys ApiIdempotencyKey[]
-  releaseCertificates ReleaseCertificateRecord[]
-  workCaseTimelineEntries WorkCaseTimelineEntry[]
-  ownerDecisionQueueItems OwnerDecisionQueueItem[]
-  members OrganizationMember[]
-  communicationEvents CommunicationEvent[]
-  knowledgeDocuments KnowledgeDocument[]
-  reliabilityEvents ReliabilityEvent[]
+  notificationRules           NotificationRules?
+  leads                       Lead[]
+  messageTemplates            MessageTemplate[]
+  messageScans                MessageScan[]
+  gmailScanItems              GmailScanItem[]
+  documentReviews             FinancialDocumentReview[]
+  bankStatements              BankStatement[]
+  bankTransactions            BankTransaction[]
+  helpProgress                HelpProgress[]
+  outgoingInvoiceDrafts       OutgoingInvoiceDraft[]
+  services                    Service[]
+  appointments                Appointment[]
+  deals                       Deal[]
+  workCases                   WorkCase[]
+  calendarEvents              CalendarEvent[]
+  calendarEventAudits         CalendarEventAudit[]
+  platformAuditLogs           PlatformAuditLog[]
+  apiIdempotencyKeys          ApiIdempotencyKey[]
+  releaseCertificates         ReleaseCertificateRecord[]
+  workCaseTimelineEntries     WorkCaseTimelineEntry[]
+  ownerDecisionQueueItems     OwnerDecisionQueueItem[]
+  members                     OrganizationMember[]
+  communicationEvents         CommunicationEvent[]
+  knowledgeDocuments          KnowledgeDocument[]
+  reliabilityEvents           ReliabilityEvent[]
+  jobRuns                     JobRun[]
 }
 
 /// Natalie Reliability Center V1 — persistent, aggregated production incident store.
 /// Failures must live in DB (not console-only) so Natalie can detect, self-heal,
 /// and summarize health before customers report bugs.
 model ReliabilityEvent {
-  id                  String       @id @default(cuid())
-  organizationId      String?
-  organization        Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  userId              String?
-  module              String
-  severity            String // info | warning | error | critical
-  errorCode           String
-  userVisibleMessage  String?
-  technicalMessage    String?
-  route               String?
-  component           String?
-  job                 String?
-  correlationId       String?
-  status              String       @default("open") // open | resolved
-  fingerprint         String
-  firstSeenAt         DateTime     @default(now())
-  lastSeenAt          DateTime     @default(now())
-  resolvedAt          DateTime?
-  occurrences         Int          @default(1)
-  autoHealed          Boolean      @default(false)
-  customerVisible     Boolean      @default(false)
-  metadata            Json?
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  id                 String        @id @default(cuid())
+  organizationId     String?
+  organization       Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId             String?
+  module             String
+  severity           String // info | warning | error | critical
+  errorCode          String
+  userVisibleMessage String?
+  technicalMessage   String?
+  route              String?
+  component          String?
+  job                String?
+  correlationId      String?
+  status             String        @default("open") // open | resolved
+  fingerprint        String
+  firstSeenAt        DateTime      @default(now())
+  lastSeenAt         DateTime      @default(now())
+  resolvedAt         DateTime?
+  occurrences        Int           @default(1)
+  autoHealed         Boolean       @default(false)
+  customerVisible    Boolean       @default(false)
+  metadata           Json?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   @@index([fingerprint, status], map: "reliability_events_fingerprint_status_idx")
   @@index([organizationId, status, lastSeenAt], map: "reliability_events_org_status_lastSeen_idx")
@@ -154,27 +155,27 @@ model ReliabilityEvent {
 /// maps into these rows. Future phases add OCR text, AI summaries, and semantic
 /// search on top of the same table.
 model KnowledgeDocument {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   // manual | google_drive | knowledge — which adapter registered this row
-  source          String   @default("manual")
+  source String @default("manual")
 
   // contract | agreement | warranty | quotation | manual | license | certificate | other
-  category        String   @default("other")
-  title           String
-  fileName        String?
+  category String  @default("other")
+  title    String
+  fileName String?
 
   // Suppliers/customers are not first-class entities in this schema, so we keep
   // denormalized names (matching the existing supplier-as-string convention) and
   // an optional clientId pointer for future joins.
-  clientId        String?
-  customerName    String?
-  supplierName    String?
-  supplierTaxId   String?
+  clientId      String?
+  customerName  String?
+  supplierName  String?
+  supplierTaxId String?
 
-  tags            String[] @default([])
+  tags String[] @default([])
 
   // Storage: canonical pointer plus Google Drive fields (reusing the naming the
   // rest of the codebase uses). Future OCR/semantic columns land on this model.
@@ -183,14 +184,14 @@ model KnowledgeDocument {
   driveFileId     String?
 
   // Extensible per-source payload (Drive mimeType, folder path, sync revision…)
-  metadata        Json?
+  metadata Json?
 
-  createdById     String?
-  createdByName   String?
+  createdById   String?
+  createdByName String?
 
-  uploadedAt      DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  uploadedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([organizationId])
   @@index([organizationId, category])
@@ -238,29 +239,29 @@ model HelpProgress {
 }
 
 model Client {
-  id                 String   @id @default(cuid())
+  id                 String       @id @default(cuid())
   organizationId     String
   organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name               String
   email              String?
-  emailIsPlaceholder Boolean  @default(false)
+  emailIsPlaceholder Boolean      @default(false)
   domain             String?
   firstSeen          DateTime?
   lastSeen           DateTime?
   whatsappNumber     String?
   googleAccessToken  String?
   googleRefreshToken String?
-  gmailConnected     Boolean  @default(false)
+  gmailConnected     Boolean      @default(false)
   invoiceSheetId     String?
   invoiceSheetUrl    String?
   taskSheetId        String?
   taskSheetUrl       String?
   driveFolderId      String?
   driveFolderUrl     String?
-  color              String?  @default("#3B82F6")
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  color              String?      @default("#3B82F6")
+  isActive           Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
   supplierPayments SupplierPayment[]
   tasks            Task[]
@@ -283,7 +284,7 @@ model Client {
 }
 
 model Integration {
-  id             String    @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   provider       String // gmail | drive | sheets | twilio
@@ -291,18 +292,18 @@ model Integration {
   refreshToken   String?
   expiresAt      DateTime?
   metadata       String? // JSON: folder IDs, spreadsheet ID, Twilio number
-  connectedAt    DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  connectedAt    DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@unique([organizationId, provider])
 }
 
 model EmailMessage {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   clientId       String?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client         Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client         Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   gmailId        String
   threadId       String?
   subject        String
@@ -311,8 +312,8 @@ model EmailMessage {
   bodyText       String?
   receivedAt     DateTime
   processedAt    DateTime?
-  source         String   @default("gmail") // gmail | whatsapp_forward
-  createdAt      DateTime @default(now())
+  source         String       @default("gmail") // gmail | whatsapp_forward
+  createdAt      DateTime     @default(now())
 
   attachments EmailAttachment[]
 
@@ -322,80 +323,80 @@ model EmailMessage {
 }
 
 model EmailAttachment {
-  id             String   @id @default(cuid())
-  emailMessageId String
-  emailMessage   EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
-  filename       String
-  mimeType       String?
-  gmailAttachmentId String?
-  driveFileId    String?
-  driveLink      String?
-  driveUploadStatus String?
-  driveFolderId  String?
-  driveClientFolderId String?
+  id                    String       @id @default(cuid())
+  emailMessageId        String
+  emailMessage          EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+  filename              String
+  mimeType              String?
+  gmailAttachmentId     String?
+  driveFileId           String?
+  driveLink             String?
+  driveUploadStatus     String?
+  driveFolderId         String?
+  driveClientFolderId   String?
   driveSupplierFolderId String?
-  driveFolderPath String?
-  supplierName   String?
-  invoiceMonth   Int?
-  invoiceYear    Int?
-  createdAt      DateTime @default(now())
+  driveFolderPath       String?
+  supplierName          String?
+  invoiceMonth          Int?
+  invoiceYear           Int?
+  createdAt             DateTime     @default(now())
 
   @@index([emailMessageId, gmailAttachmentId])
 }
 
 model SupplierPayment {
-  id              String    @id @default(cuid())
-  organizationId  String
-  clientId        String?
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client          Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  supplier        String
-  amount          Float
-  currency        String    @default("ILS")
-  date            DateTime
-  dueDate         DateTime?
-  paid            Boolean   @default(false)
-  documentLink    String? // payment request / document
-  invoiceLink     String?
-  driveFileId     String?
-  driveFileUrl    String?
-  driveUploadStatus String?
-  driveFolderId   String?
-  driveClientFolderId String?
-  driveSupplierFolderId String?
-  driveFolderPath String?
-  supplierName    String?
-  invoiceMonth    Int?
-  invoiceYear     Int?
-  invoiceNumber   String?
-  documentFingerprint String?
-  sourceFingerprint   String?
-  documentTypeDetailed String?
-  supplierTaxId   String?
-  amountBeforeVat Float?
-  vatAmount       Float?
-  totalAmount     Float?
-  confidenceScore Float?
-  parsedFieldsJson Json?     @map("parsed_fields_json")
-  approvalStatus  String    @default("approved")
-  sourcesJson     Json?
-  emailSender     String?
-  paymentRequired Boolean   @default(true)
-  missingInvoice  Boolean   @default(false)
-  duplicateHash   String?
-  subject         String?
-  source          String    @default("gmail")
-  firstSource     String    @default("gmail")
-  lastSource      String    @default("gmail")
-  sourceCount     Int       @default(1)
-  duplicateDetected Boolean @default(false)
-  duplicateReason String?
-  firstSeenAt     DateTime  @default(now())
-  lastSeenAt      DateTime  @default(now())
-  emailMessageId  String?
+  id                     String       @id @default(cuid())
+  organizationId         String
+  clientId               String?
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client                 Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  supplier               String
+  amount                 Float
+  currency               String       @default("ILS")
+  date                   DateTime
+  dueDate                DateTime?
+  paid                   Boolean      @default(false)
+  documentLink           String? // payment request / document
+  invoiceLink            String?
+  driveFileId            String?
+  driveFileUrl           String?
+  driveUploadStatus      String?
+  driveFolderId          String?
+  driveClientFolderId    String?
+  driveSupplierFolderId  String?
+  driveFolderPath        String?
+  supplierName           String?
+  invoiceMonth           Int?
+  invoiceYear            Int?
+  invoiceNumber          String?
+  documentFingerprint    String?
+  sourceFingerprint      String?
+  documentTypeDetailed   String?
+  supplierTaxId          String?
+  amountBeforeVat        Float?
+  vatAmount              Float?
+  totalAmount            Float?
+  confidenceScore        Float?
+  parsedFieldsJson       Json?        @map("parsed_fields_json")
+  approvalStatus         String       @default("approved")
+  sourcesJson            Json?
+  emailSender            String?
+  paymentRequired        Boolean      @default(true)
+  missingInvoice         Boolean      @default(false)
+  duplicateHash          String?
+  subject                String?
+  source                 String       @default("gmail")
+  firstSource            String       @default("gmail")
+  lastSource             String       @default("gmail")
+  sourceCount            Int          @default(1)
+  duplicateDetected      Boolean      @default(false)
+  duplicateReason        String?
+  firstSeenAt            DateTime     @default(now())
+  lastSeenAt             DateTime     @default(now())
+  emailMessageId         String?
   normalizedDocumentDate DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
 
   @@unique([organizationId, duplicateHash])
   @@unique([organizationId, documentFingerprint])
@@ -409,40 +410,40 @@ model SupplierPayment {
 }
 
 model FinancialDocumentReview {
-  id                  String   @id @default(cuid())
-  organizationId      String
-  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  source              String
-  sender              String?
-  subject             String?
-  fileName            String?
-  fileSize            Int?
-  sourceFingerprint   String
-  documentFingerprint String
-  documentType        String
-  supplierName        String?
-  supplierTaxId       String?
-  invoiceNumber       String?
-  documentDate        DateTime?
-  dueDate             DateTime?
-  amountBeforeVat     Float?
-  vatAmount           Float?
-  totalAmount         Float?
-  currency            String   @default("ILS")
-  driveFileUrl        String?
-  driveUploadStatus   String?
-  confidenceScore     Float    @default(0)
-  reviewStatus        String   @default("needs_review")
-  uncertaintyReason   String?
-  parsedFieldsJson    Json?    @map("parsed_fields_json")
-  rawAnalysis         Json?
-  emailMessageId      String?
-  gmailMessageId      String?
-  whatsappLogId       String?
-  supplierPaymentId   String?
+  id                     String       @id @default(cuid())
+  organizationId         String
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  source                 String
+  sender                 String?
+  subject                String?
+  fileName               String?
+  fileSize               Int?
+  sourceFingerprint      String
+  documentFingerprint    String
+  documentType           String
+  supplierName           String?
+  supplierTaxId          String?
+  invoiceNumber          String?
+  documentDate           DateTime?
+  dueDate                DateTime?
+  amountBeforeVat        Float?
+  vatAmount              Float?
+  totalAmount            Float?
+  currency               String       @default("ILS")
+  driveFileUrl           String?
+  driveUploadStatus      String?
+  confidenceScore        Float        @default(0)
+  reviewStatus           String       @default("needs_review")
+  uncertaintyReason      String?
+  parsedFieldsJson       Json?        @map("parsed_fields_json")
+  rawAnalysis            Json?
+  emailMessageId         String?
+  gmailMessageId         String?
+  whatsappLogId          String?
+  supplierPaymentId      String?
   normalizedDocumentDate DateTime?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
 
   @@unique([organizationId, documentFingerprint], map: "FDR_org_documentFingerprint_key")
   @@index([organizationId, reviewStatus, createdAt], map: "FDR_org_reviewStatus_createdAt_idx")
@@ -452,19 +453,19 @@ model FinancialDocumentReview {
 }
 
 model CustomerInvoice {
-  id             String    @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer       String
   amount         Float
-  currency       String    @default("ILS")
-  issueDate      DateTime  @default(now())
+  currency       String       @default("ILS")
+  issueDate      DateTime     @default(now())
   dueDate        DateTime?
-  paid           Boolean   @default(false)
+  paid           Boolean      @default(false)
   reminderSentAt DateTime?
   notes          String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([organizationId, paid])
   @@index([organizationId, dueDate])
@@ -495,53 +496,53 @@ model OutgoingInvoiceDraft {
 }
 
 model Invoice {
-  id             String   @id @default(cuid())
-  clientId       String
-  client         Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invoiceNumber  String?
-  amount         Float
-  currency       String   @default("ILS")
-  date           DateTime
-  dueDate        DateTime?
-  status         String   @default("pending")
-  description    String?
-  driveUrl       String?
-  driveFileId    String?
-  driveFileUrl   String?
-  driveUploadStatus String?
-  driveFolderId  String?
-  driveClientFolderId String?
-  driveSupplierFolderId String?
-  driveFolderPath String?
-  supplierName   String?
-  invoiceMonth   Int?
-  invoiceYear    Int?
-  sheetsRow      Int?
-  emailId        String?
-  fromEmail      String?
-  gmailMessageId String?
+  id                     String       @id @default(cuid())
+  clientId               String
+  client                 Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  organizationId         String
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoiceNumber          String?
+  amount                 Float
+  currency               String       @default("ILS")
+  date                   DateTime
+  dueDate                DateTime?
+  status                 String       @default("pending")
+  description            String?
+  driveUrl               String?
+  driveFileId            String?
+  driveFileUrl           String?
+  driveUploadStatus      String?
+  driveFolderId          String?
+  driveClientFolderId    String?
+  driveSupplierFolderId  String?
+  driveFolderPath        String?
+  supplierName           String?
+  invoiceMonth           Int?
+  invoiceYear            Int?
+  sheetsRow              Int?
+  emailId                String?
+  fromEmail              String?
+  gmailMessageId         String?
   normalizedDocumentDate DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
 
+  @@unique([organizationId, clientId, emailId, invoiceNumber])
   @@index([organizationId, status, date])
   @@index([organizationId, createdAt])
   @@index([clientId, date])
   @@index([organizationId, gmailMessageId])
   @@index([organizationId, normalizedDocumentDate])
-  @@unique([organizationId, clientId, emailId, invoiceNumber])
 }
 
 model BankStatement {
-  id               String   @id @default(cuid())
+  id               String       @id @default(cuid())
   organizationId   String
   organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   fileName         String
-  uploadedAt       DateTime @default(now())
-  status           String   @default("processing") // "processing" | "ready" | "error"
-  transactionCount Int      @default(0)
+  uploadedAt       DateTime     @default(now())
+  status           String       @default("processing") // "processing" | "ready" | "error"
+  transactionCount Int          @default(0)
 
   transactions BankTransaction[]
 
@@ -549,17 +550,17 @@ model BankStatement {
 }
 
 model BankTransaction {
-  id                       String   @id @default(cuid())
+  id                       String        @id @default(cuid())
   bankStatementId          String
   bankStatement            BankStatement @relation(fields: [bankStatementId], references: [id], onDelete: Cascade)
   organizationId           String
-  organization             Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization             Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   date                     DateTime
   amount                   Float
   description              String?
   direction                String // "credit" | "debit"
   rawData                  String?
-  matchStatus              String   @default("unmatched") // "matched" | "suggested" | "unmatched"
+  matchStatus              String        @default("unmatched") // "matched" | "suggested" | "unmatched"
   matchedInvoiceId         String?
   matchedSupplierPaymentId String?
   matchConfidence          Float?
@@ -569,15 +570,15 @@ model BankTransaction {
 }
 
 model SocialDraft {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  platform       String   // facebook | instagram | general
+  platform       String // facebook | instagram | general
   topic          String
   content        String
-  status         String   @default("draft") // draft | approved | posted
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  status         String       @default("draft") // draft | approved | posted
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([organizationId, status])
 }
@@ -598,9 +599,9 @@ model SocialAccount {
 }
 
 model SocialPost {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   clientId      String
-  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   platform      String
   content       String
   imageUrl      String?
@@ -610,11 +611,11 @@ model SocialPost {
   approvalToken String?
   approvedAt    DateTime?
   publishedAt   DateTime?
-  errorMessage   String?
-  retryCount     Int      @default(0)
-  analytics      Json?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  errorMessage  String?
+  retryCount    Int       @default(0)
+  analytics     Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([clientId, scheduledAt])
   @@index([status, scheduledAt])
@@ -622,13 +623,13 @@ model SocialPost {
 }
 
 model SocialSettings {
-  id              String  @id @default(cuid())
-  clientId        String  @unique
-  client          Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id              String   @id @default(cuid())
+  clientId        String   @unique
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   businessType    String
   brandColors     String?
   brandVoice      String?
-  postsPerWeek    Int     @default(3)
+  postsPerWeek    Int      @default(3)
   targetAudience  String?
   canvaTemplateId String?
   createdAt       DateTime @default(now())
@@ -636,25 +637,25 @@ model SocialSettings {
 }
 
 model Task {
-  id             String   @id @default(cuid())
-  organizationId String
-  clientId       String?
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client         Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  workCaseId     String?
-  workCase       WorkCase? @relation(fields: [workCaseId], references: [id], onDelete: SetNull)
+  id              String         @id @default(cuid())
+  organizationId  String
+  clientId        String?
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client          Client?        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workCaseId      String?
+  workCase        WorkCase?      @relation(fields: [workCaseId], references: [id], onDelete: SetNull)
   calendarEventId String?
-  calendarEvent  CalendarEvent? @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
-  title          String
-  description    String?
-  supplier       String?
-  priority       String   @default("medium") // low | medium | high
-  status         String   @default("open") // open | completed
-  dueDate        DateTime?
-  source         String   @default("gmail") // gmail | post_event | manual | decision_rejected
-  emailMessageId String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  calendarEvent   CalendarEvent? @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
+  title           String
+  description     String?
+  supplier        String?
+  priority        String         @default("medium") // low | medium | high
+  status          String         @default("open") // open | completed
+  dueDate         DateTime?
+  source          String         @default("gmail") // gmail | post_event | manual | decision_rejected
+  emailMessageId  String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   @@unique([organizationId, emailMessageId])
   @@index([organizationId, status])
@@ -664,30 +665,32 @@ model Task {
 }
 
 model SyncLog {
-  id             String   @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  clientId       String?
-  type           String // gmail_scan | daily_summary | whatsapp_morning | whatsapp_evening
-  status         String // success | partial | error
-  emailsProcessed Int     @default(0)
-  emailsSaved    Int      @default(0)
-  invoicesFound  Int      @default(0)
-  paymentsCreated Int     @default(0)
-  tasksCreated   Int      @default(0)
-  driveUploaded  Int      @default(0)
-  sheetsUpdated  Int      @default(0)
-  errorsCount    Int      @default(0)
-  windowTruncated Boolean  @default(false)
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId        String?
+  type            String // gmail_scan | daily_summary | whatsapp_morning | whatsapp_evening
+  status          String // success | partial | error
+  emailsProcessed Int          @default(0)
+  emailsSaved     Int          @default(0)
+  invoicesFound   Int          @default(0)
+  paymentsCreated Int          @default(0)
+  tasksCreated    Int          @default(0)
+  driveUploaded   Int          @default(0)
+  sheetsUpdated   Int          @default(0)
+  errorsCount     Int          @default(0)
+  windowTruncated Boolean      @default(false)
   totalMatched    Int?
-  scanMode       String?
-  retryOfId      String?
-  nextRetryAt    DateTime?
-  errorMessage   String?
-  startedAt      DateTime @default(now())
-  /** Heartbeat for stuck-scan recovery — bumped by progress writes and stage touches. */
-  updatedAt      DateTime @default(now()) @updatedAt
-  finishedAt     DateTime?
+  scanMode        String?
+  retryOfId       String?
+  nextRetryAt     DateTime?
+  errorMessage    String?
+  startedAt       DateTime     @default(now())
+  /**
+   * Heartbeat for stuck-scan recovery — bumped by progress writes and stage touches.
+   */
+  updatedAt       DateTime     @default(now()) @updatedAt
+  finishedAt      DateTime?
 
   @@index([organizationId, type, status, finishedAt])
   @@index([organizationId, type, status, startedAt])
@@ -695,23 +698,47 @@ model SyncLog {
   @@index([nextRetryAt])
 }
 
+model JobRun {
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobType        String
+  referenceId    String?
+  status         String        @default("running") // running | completed | failed | timeout
+  startedAt      DateTime      @default(now())
+  heartbeatAt    DateTime      @default(now())
+  timeoutAt      DateTime
+  completedAt    DateTime?
+  errorMessage   String?
+  retryCount     Int           @default(0)
+  maxRetries     Int           @default(0)
+  payloadJson    Json?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status, timeoutAt])
+  @@index([organizationId, jobType, status])
+  @@index([jobType, startedAt])
+  @@index([jobType, referenceId, status])
+}
+
 model ScanLog {
-  id             String   @id @default(cuid())
-  orgId          String
-  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  type           String
-  status         String
-  found          Int      @default(0)
-  saved          Int      @default(0)
-  errors         String?
-  startedAt      DateTime @default(now())
-  endedAt        DateTime?
+  id           String       @id @default(cuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  type         String
+  status       String
+  found        Int          @default(0)
+  saved        Int          @default(0)
+  errors       String?
+  startedAt    DateTime     @default(now())
+  endedAt      DateTime?
 
   @@index([orgId, type, status, startedAt])
 }
 
 model AccountantReport {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   period         String
@@ -721,39 +748,39 @@ model AccountantReport {
   vatDue         Float
   driveUrl       String?
   sentAt         DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
 
   @@unique([organizationId, period])
   @@index([organizationId, createdAt])
 }
 
 model Alert {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   type           String // new_invoice | upcoming_payment | missing_invoice | duplicate
   title          String
   body           String?
-  read           Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  read           Boolean      @default(false)
+  createdAt      DateTime     @default(now())
 }
 
 model WhatsAppLog {
-  id             String   @id @default(cuid())
-  organizationId String
-  clientId       String?
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client         Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  direction      String // inbound | outbound
-  body           String
-  fromNumber     String?
-  toNumber       String?
+  id                 String       @id @default(cuid())
+  organizationId     String
+  clientId           String?
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client             Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  direction          String // inbound | outbound
+  body               String
+  fromNumber         String?
+  toNumber           String?
   providerMessageSid String?
-  mediaCount     Int      @default(0)
-  mediaJson      Json?
-  aiGenerated    Boolean  @default(false)
-  read           Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  mediaCount         Int          @default(0)
+  mediaJson          Json?
+  aiGenerated        Boolean      @default(false)
+  read               Boolean      @default(false)
+  createdAt          DateTime     @default(now())
 
   @@index([organizationId, clientId, createdAt])
   @@index([clientId, read])
@@ -762,59 +789,59 @@ model WhatsAppLog {
 }
 
 model ClientWhatsApp {
-  id              String   @id @default(cuid())
-  clientId        String   @unique
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id              String    @id @default(cuid())
+  clientId        String    @unique
+  client          Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   phoneNumber     String?
-  isConnected     Boolean  @default(false)
+  isConnected     Boolean   @default(false)
   sessionData     String?
   lastSyncAt      DateTime?
-  messagesScanned Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  messagesScanned Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
 model WhatsAppMessage {
-  id          String   @id @default(cuid())
-  clientId    String
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  from        String
-  to          String?
-  body        String
-  timestamp   DateTime
-  hasInvoice  Boolean  @default(false)
-  hasTask     Boolean  @default(false)
-  processed   Boolean  @default(false)
-  invoiceId   String?
-  taskId      String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  from       String
+  to         String?
+  body       String
+  timestamp  DateTime
+  hasInvoice Boolean  @default(false)
+  hasTask    Boolean  @default(false)
+  processed  Boolean  @default(false)
+  invoiceId  String?
+  taskId     String?
+  createdAt  DateTime @default(now())
 
   @@index([clientId, timestamp])
   @@index([clientId, processed])
 }
 
 model WhatsAppAssistant {
-  id                String   @id @default(cuid())
-  organizationId    String   @unique
+  id                String       @id @default(cuid())
+  organizationId    String       @unique
   organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   ownerPhone        String
-  isActive          Boolean  @default(true)
-  morningReportTime String   @default("07:30")
-  clientDailyTime   String   @default("08:00")
-  language          String   @default("he")
-  createdAt         DateTime @default(now())
+  isActive          Boolean      @default(true)
+  morningReportTime String       @default("07:30")
+  clientDailyTime   String       @default("08:00")
+  language          String       @default("he")
+  createdAt         DateTime     @default(now())
 }
 
 model WhatsAppNotification {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   clientId       String?
   phone          String
   type           String
   message        String
-  sentAt         DateTime @default(now())
-  isOwner        Boolean  @default(false)
+  sentAt         DateTime     @default(now())
+  isOwner        Boolean      @default(false)
 
   @@index([organizationId, sentAt])
   @@index([phone, sentAt])
@@ -822,33 +849,33 @@ model WhatsAppNotification {
 }
 
 model WhatsAppConversation {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   phone          String
   clientId       String?
   messages       Json
-  lastMessageAt  DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  lastMessageAt  DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@unique([organizationId, phone])
   @@index([organizationId, lastMessageAt])
 }
 
 model NatalieConversationSession {
-  id                  String   @id @default(cuid())
+  id                  String       @id @default(cuid())
   organizationId      String
   organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId              String
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  currentChannel      String   @default("web_chat")
-  structuredHistory   Json     @default("[]")
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentChannel      String       @default("web_chat")
+  structuredHistory   Json         @default("[]")
   pendingAction       Json?
   pendingConfirmation Json?
   interruptionState   Json?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  lastMessageAt       DateTime @default(now())
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  lastMessageAt       DateTime     @default(now())
 
   @@index([organizationId, userId, lastMessageAt])
   @@index([organizationId, lastMessageAt])
@@ -875,55 +902,55 @@ model NatalieConfirmationExecution {
 }
 
 model NotificationRules {
-  id                    String  @id @default(cuid())
-  organizationId        String  @unique
+  id                    String       @id @default(cuid())
+  organizationId        String       @unique
   organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  ownerMorningReport    Boolean @default(true)
-  ownerMorningTime      String  @default("07:30")
-  ownerCriticalAlerts   Boolean @default(true)
-  clientMorningSummary  Boolean @default(true)
-  clientMorningTime     String  @default("08:00")
-  clientPaymentReminder Boolean @default(true)
-  clientPaymentDaysWait Int     @default(7)
-  clientInvoiceFound    Boolean @default(true)
-  clientUrgentOnly      Boolean @default(true)
-  maxMessagesPerDay     Int     @default(2)
-  quietHoursStart       String  @default("21:00")
-  quietHoursEnd         String  @default("07:00")
-  noMessagesOnSaturday  Boolean @default(true)
-  noMessagesOnHolidays  Boolean @default(true)
+  ownerMorningReport    Boolean      @default(true)
+  ownerMorningTime      String       @default("07:30")
+  ownerCriticalAlerts   Boolean      @default(true)
+  clientMorningSummary  Boolean      @default(true)
+  clientMorningTime     String       @default("08:00")
+  clientPaymentReminder Boolean      @default(true)
+  clientPaymentDaysWait Int          @default(7)
+  clientInvoiceFound    Boolean      @default(true)
+  clientUrgentOnly      Boolean      @default(true)
+  maxMessagesPerDay     Int          @default(2)
+  quietHoursStart       String       @default("21:00")
+  quietHoursEnd         String       @default("07:00")
+  noMessagesOnSaturday  Boolean      @default(true)
+  noMessagesOnHolidays  Boolean      @default(true)
 }
 
 model Lead {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name            String
-  company         String?
-  phone           String?
-  email           String?
-  whatsapp        String?
-  source          String   @default("manual")
-  stage           String   @default("חדש")
-  estimatedValue  Float    @default(0)
-  assignedTo      String?
-  tags            String[] @default([])
-  notes           String?
-  score           Int      @default(0)
-  priorityStars   Int      @default(1)
-  repliedAt       DateTime?
-  lastContactAt   DateTime?
-  nextReminderAt  DateTime?
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name              String
+  company           String?
+  phone             String?
+  email             String?
+  whatsapp          String?
+  source            String       @default("manual")
+  stage             String       @default("חדש")
+  estimatedValue    Float        @default(0)
+  assignedTo        String?
+  tags              String[]     @default([])
+  notes             String?
+  score             Int          @default(0)
+  priorityStars     Int          @default(1)
+  repliedAt         DateTime?
+  lastContactAt     DateTime?
+  nextReminderAt    DateTime?
   lastMessageStatus String?
-  attachments     String[] @default([])
-  messageCount    Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  attachments       String[]     @default([])
+  messageCount      Int          @default(0)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
-  timeline  LeadTimeline[]
-  sequences LeadSequence[]
-  deal      Deal?
-  workCases WorkCase[]
+  timeline       LeadTimeline[]
+  sequences      LeadSequence[]
+  deal           Deal?
+  workCases      WorkCase[]
   calendarEvents CalendarEvent[]
 
   @@index([organizationId, stage, createdAt])
@@ -948,38 +975,38 @@ model LeadTimeline {
 }
 
 model LeadSequence {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   leadId          String
-  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lead            Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   step            Int
   channel         String
   template        String
   scheduledAt     DateTime
   sentAt          DateTime?
-  status          String   @default("pending")
+  status          String    @default("pending")
   messageTemplate String?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
 
   @@index([leadId, status])
   @@index([status, scheduledAt])
 }
 
 model MessageTemplate {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name           String
   channel        String
   content        String
-  variables      String[] @default([])
-  createdAt      DateTime @default(now())
+  variables      String[]     @default([])
+  createdAt      DateTime     @default(now())
 
   @@unique([organizationId, name, channel])
   @@index([organizationId, channel])
 }
 
 model MessageScan {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   channel        String
@@ -992,15 +1019,15 @@ model MessageScan {
   subject        String?
   bodyText       String
   occurredAt     DateTime
-  contactType    String   @default("other")
-  intent         String   @default("other")
-  sentiment      String   @default("neutral")
-  urgency        String   @default("normal")
+  contactType    String       @default("other")
+  intent         String       @default("other")
+  sentiment      String       @default("neutral")
+  urgency        String       @default("normal")
   summary        String?
-  confidence     Float    @default(0.5)
+  confidence     Float        @default(0.5)
   rawAnalysis    Json?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@unique([organizationId, channel, externalId])
   @@index([organizationId, channel, occurredAt])
@@ -1011,31 +1038,31 @@ model MessageScan {
 }
 
 model GmailScanItem {
-  id                 String   @id @default(cuid())
-  organizationId     String
-  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  emailMessageId     String?
-  gmailMessageId     String
-  gmailMessageLink   String
-  sender             String
-  senderEmail        String?
-  subject            String
-  occurredAt         DateTime
-  amount             Float?
-  supplierName       String
-  documentType       String
-  attachmentFilename String?
-  driveFileLink      String?
-  driveUploadStatus  String?
-  confidenceScore    String
-  reviewStatus       String   @default("needs_review")
-  duplicateKey       String
-  decisionReason     String
-  parsedFieldsJson   Json?    @map("parsed_fields_json")
-  rawAnalysis        Json?
+  id                     String       @id @default(cuid())
+  organizationId         String
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  emailMessageId         String?
+  gmailMessageId         String
+  gmailMessageLink       String
+  sender                 String
+  senderEmail            String?
+  subject                String
+  occurredAt             DateTime
+  amount                 Float?
+  supplierName           String
+  documentType           String
+  attachmentFilename     String?
+  driveFileLink          String?
+  driveUploadStatus      String?
+  confidenceScore        String
+  reviewStatus           String       @default("needs_review")
+  duplicateKey           String
+  decisionReason         String
+  parsedFieldsJson       Json?        @map("parsed_fields_json")
+  rawAnalysis            Json?
   normalizedDocumentDate DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
 
   @@unique([organizationId, duplicateKey])
   @@index([organizationId, reviewStatus, occurredAt])
@@ -1049,19 +1076,19 @@ model GmailScanItem {
 }
 
 model Service {
-  id              String   @id @default(cuid())
+  id              String       @id @default(cuid())
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name            String
-  durationMinutes Int      @default(30)
+  durationMinutes Int          @default(30)
   price           Float?
-  color           String?  @default("#3B82F6")
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  color           String?      @default("#3B82F6")
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
-  appointments Appointment[]
-  quoteLines   QuoteLine[]
+  appointments   Appointment[]
+  quoteLines     QuoteLine[]
   calendarEvents CalendarEvent[]
 
   @@index([organizationId, isActive])
@@ -1090,25 +1117,25 @@ model Deal {
 }
 
 model Quote {
-  id                     String       @id @default(cuid())
+  id                     String    @id @default(cuid())
   organizationId         String
   dealId                 String
-  deal                   Deal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  version                Int          @default(1)
-  status                 String       @default("draft")
+  deal                   Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  version                Int       @default(1)
+  status                 String    @default("draft")
   validUntil             DateTime?
-  subtotal               Float        @default(0)
-  total                  Float        @default(0)
-  currency               String       @default("ILS")
+  subtotal               Float     @default(0)
+  total                  Float     @default(0)
+  currency               String    @default("ILS")
   notes                  String?
-  approvalToken          String?      @unique
+  approvalToken          String?   @unique
   sentAt                 DateTime?
   viewedAt               DateTime?
   acceptedAt             DateTime?
   greenInvoiceDocumentId String?
   convertedDraftId       String?
-  createdAt              DateTime     @default(now())
-  updatedAt              DateTime     @updatedAt
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   lines  QuoteLine[]
   events QuoteEvent[]
@@ -1145,26 +1172,26 @@ model QuoteEvent {
 }
 
 model Appointment {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  clientId        String
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  serviceId       String?
-  service         Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  startTime       DateTime
-  durationMinutes Int
-  status          String   @default("pending")
-  googleEventId   String?
-  googleSyncStatus String @default("disabled")
-  lastGoogleSyncError String?
-  lastGoogleSyncAt DateTime?
-  googleSyncAttemptCount Int @default(0)
-  nextGoogleSyncRetryAt DateTime?
-  source          String?  @default("manual")
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                     String       @id @default(cuid())
+  organizationId         String
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId               String
+  client                 Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  serviceId              String?
+  service                Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  startTime              DateTime
+  durationMinutes        Int
+  status                 String       @default("pending")
+  googleEventId          String?
+  googleSyncStatus       String       @default("disabled")
+  lastGoogleSyncError    String?
+  lastGoogleSyncAt       DateTime?
+  googleSyncAttemptCount Int          @default(0)
+  nextGoogleSyncRetryAt  DateTime?
+  source                 String?      @default("manual")
+  notes                  String?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
 
   @@index([organizationId, startTime])
   @@index([organizationId, status])
@@ -1290,10 +1317,10 @@ model WorkCase {
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
-  calendarEvents        CalendarEvent[]
-  timelineEntries       WorkCaseTimelineEntry[]
-  decisionQueueItems    OwnerDecisionQueueItem[]
-  tasks                 Task[]
+  calendarEvents     CalendarEvent[]
+  timelineEntries    WorkCaseTimelineEntry[]
+  decisionQueueItems OwnerDecisionQueueItem[]
+  tasks              Task[]
 
   @@index([organizationId, status])
   @@index([clientId])
@@ -1341,10 +1368,10 @@ model CalendarEvent {
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
 
-  auditEntries        CalendarEventAudit[]
-  timelineEntries     WorkCaseTimelineEntry[]
-  decisionQueueItems  OwnerDecisionQueueItem[]
-  tasks               Task[]
+  auditEntries       CalendarEventAudit[]
+  timelineEntries    WorkCaseTimelineEntry[]
+  decisionQueueItems OwnerDecisionQueueItem[]
+  tasks              Task[]
 
   @@index([organizationId, startAt])
   @@index([organizationId, status])
@@ -1354,18 +1381,18 @@ model CalendarEvent {
 }
 
 model CalendarEventAudit {
-  id              String              @id @default(cuid())
+  id              String               @id @default(cuid())
   calendarEventId String
-  calendarEvent   CalendarEvent       @relation(fields: [calendarEventId], references: [id], onDelete: Cascade)
+  calendarEvent   CalendarEvent        @relation(fields: [calendarEventId], references: [id], onDelete: Cascade)
   organizationId  String
-  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   actorUserId     String?
   actorType       TimelineActorType
   action          String
   fromStatus      CalendarEventStatus?
   toStatus        CalendarEventStatus?
   changesJson     Json?
-  createdAt       DateTime            @default(now())
+  createdAt       DateTime             @default(now())
 
   @@index([calendarEventId, createdAt])
   @@index([organizationId, createdAt])
@@ -1443,27 +1470,27 @@ model WorkCaseTimelineEntry {
 }
 
 model OwnerDecisionQueueItem {
-  id                  String              @id @default(cuid())
-  organizationId      String
-  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workCaseId          String
-  workCase            WorkCase            @relation(fields: [workCaseId], references: [id], onDelete: Cascade)
-  calendarEventId     String?
-  calendarEvent       CalendarEvent?      @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
-  type                DecisionQueueType
-  status              DecisionQueueStatus @default(pending)
-  title               String
-  reason              String?
-  preparedPayloadJson Json?
-  source              DecisionItemSource
+  id                      String              @id @default(cuid())
+  organizationId          String
+  organization            Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workCaseId              String
+  workCase                WorkCase            @relation(fields: [workCaseId], references: [id], onDelete: Cascade)
+  calendarEventId         String?
+  calendarEvent           CalendarEvent?      @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
+  type                    DecisionQueueType
+  status                  DecisionQueueStatus @default(pending)
+  title                   String
+  reason                  String?
+  preparedPayloadJson     Json?
+  source                  DecisionItemSource
   executionIdempotencyKey String?
-  metaJson            Json?
-  expiresAt           DateTime?
-  resolvedAt          DateTime?
-  resolvedByUserId    String?
-  resolutionNote      String?
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  metaJson                Json?
+  expiresAt               DateTime?
+  resolvedAt              DateTime?
+  resolvedByUserId        String?
+  resolutionNote          String?
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
 
   @@index([organizationId, status, createdAt])
   @@index([calendarEventId, status])
@@ -1471,17 +1498,17 @@ model OwnerDecisionQueueItem {
 }
 
 model ApiIdempotencyKey {
-  id             String       @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  routeKey       String
-  idempotencyKey String
-  requestHash    String
-  statusCode     Int?
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  routeKey         String
+  idempotencyKey   String
+  requestHash      String
+  statusCode       Int?
   responseBodyJson Json?
-  completedAt    DateTime?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  completedAt      DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   @@unique([organizationId, routeKey, idempotencyKey])
   @@index([organizationId, createdAt])
@@ -1512,4 +1539,3 @@ model CommunicationEvent {
   @@index([organizationId, channel])
   @@index([externalMessageId])
 }
-

@@ -25,6 +25,7 @@ import {
   finalizeGmailScanFailed,
   findActiveGmailScanLog,
 } from "./gmailScanLifecycle.js";
+import { timeoutStaleJobRuns } from "./jobRunLifecycle.js";
 
 const TIMEZONE = "Asia/Jerusalem";
 const MAX_RETRIES = 3;
@@ -84,6 +85,7 @@ class SchedulerService {
     cron.schedule("0 10 * * 0-5", () => this.withRetry("whatsapp", () => this.sendPaymentReminders()), { timezone: TIMEZONE });
     cron.schedule("0 * * * *", () => this.withRetry("social", () => this.publishApprovedSocialPosts()), { timezone: TIMEZONE });
     cron.schedule("*/15 * * * *", () => this.withRetry("crm", () => this.processCrmSequences()), { timezone: TIMEZONE });
+    cron.schedule("* * * * *", () => void timeoutStaleJobRuns(), { timezone: TIMEZONE });
     cron.schedule("*/8 * * * *", () => this.pingKeepAlive(), { timezone: TIMEZONE });
 
     console.log("[scheduler] All scheduled jobs started");

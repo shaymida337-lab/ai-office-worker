@@ -1,5 +1,11 @@
 import { prisma } from "../lib/prisma.js";
 import { buildIncrementalGmailScanWindow } from "./scanWindow.js";
+import {
+  completeJobRun,
+  failJobRun,
+  heartbeatJobRun,
+  startJobRun,
+} from "./jobRunLifecycle.js";
 
 export const GMAIL_SCAN_STALE_MS = 30 * 60 * 1000;
 /** Manual/historical scans may list and process large mailboxes — keep a generous cooperative deadline. */
@@ -11,6 +17,7 @@ export const GMAIL_MANUAL_SCAN_DEADLINE_MS = 4 * 60 * 60 * 1000;
  */
 export const GMAIL_SCAN_STUCK_TIMEOUT_MS = 3 * 60 * 1000;
 export const SCAN_STALE_TIMEOUT_REASON = "scan_stale_timeout";
+const GMAIL_SCAN_JOB_TYPE = "gmail_scan";
 
 export const GMAIL_SCAN_ACTIVE_STATUSES = ["queued", "running"] as const;
 export const GMAIL_SCAN_TERMINAL_STATUSES = [
@@ -552,6 +559,16 @@ export async function createQueuedGmailScanLog(
     },
   });
   logScanLifecycle(scanLog.id, "created");
+  await startJobRun({
+    organizationId,
+    jobType: GMAIL_SCAN_JOB_TYPE,
+    referenceId: scanLog.id,
+    timeoutMs: gmailScanDeadlineMs(scanMode),
+    payloadJson: {
+      scanMode,
+      retryOfId: retryOfId ?? null,
+    },
+  });
   logScanLifecycle(scanLog.id, "queued");
   logGmailScanTransition({
     organizationId,
@@ -584,6 +601,11 @@ export async function promoteGmailScanToRunning(scanId: string) {
     data: { status: "running", errorMessage: null, updatedAt: new Date() },
   });
   if (updated.count > 0) {
+    await heartbeatJobRun({
+      jobType: GMAIL_SCAN_JOB_TYPE,
+      referenceId: scanId,
+      timeoutMs: gmailScanDeadlineMs(existing?.scanMode),
+    });
     logScanLifecycle(scanId, "running");
     if (existing) {
       logGmailScanTransition({
@@ -624,6 +646,10 @@ export async function touchGmailScanHeartbeat(
     data: { updatedAt: new Date() },
   });
   if (result.count > 0) {
+    await heartbeatJobRun({
+      jobType: GMAIL_SCAN_JOB_TYPE,
+      referenceId: scanId,
+    });
     logScanLifecycle(scanId, "heartbeat", `stage=${stage}`);
     if (organizationId) {
       logGmailScanTransition({
@@ -687,6 +713,21 @@ async function terminalizeGmailScan(
     },
   });
   logScanLifecycle(scanId, status, errorMessage ? `reason=${errorMessage}` : undefined);
+  if (status === "completed") {
+    await completeJobRun({ jobType: GMAIL_SCAN_JOB_TYPE, referenceId: scanId });
+  } else if (status === "failed") {
+    await failJobRun({
+      jobType: GMAIL_SCAN_JOB_TYPE,
+      referenceId: scanId,
+      errorMessage,
+    });
+  } else {
+    await failJobRun({
+      jobType: GMAIL_SCAN_JOB_TYPE,
+      referenceId: scanId,
+      errorMessage: errorMessage ?? status,
+    });
+  }
   logGmailScanTransition({
     organizationId: log.organizationId,
     scanId,
