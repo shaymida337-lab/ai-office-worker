@@ -129,10 +129,15 @@ import { membershipRouter } from "./membershipRoutes.js";
 import { confidenceRouter } from "./confidenceRoutes.js";
 import { auditorRouter } from "./auditorRoutes.js";
 import { releaseCertificateRouter } from "./releaseCertificateRoutes.js";
+import { calendarReminderRouter } from "./calendarReminderRoutes.js";
 import { requirePerm } from "../services/rbac/index.js";
 import { verifyLeadsWebhook } from "../lib/webhookAuth.js";
 import { requireNonProduction } from "../lib/productionGuard.js";
 import { secureRouteGuards } from "../middleware/secureRouteGuards.js";
+import {
+  ensureAppointmentReminderArtifacts,
+  syncAppointmentAttendanceFromStatus,
+} from "../services/reminders/reminderService.js";
 import {
   beginVoiceTurnIdempotency,
   completeVoiceTurnIdempotency,
@@ -213,6 +218,7 @@ apiRouter.use(membershipRouter);
 apiRouter.use(confidenceRouter);
 apiRouter.use(auditorRouter);
 apiRouter.use(releaseCertificateRouter);
+apiRouter.use(calendarReminderRouter);
 
 apiRouter.get("/business/templates", async (_req, res) => {
   res.json(getBusinessTemplates());
@@ -5418,7 +5424,41 @@ apiRouter.get("/appointments", requireCalendarView, async (req, res) => {
       orderBy: { startTime: "asc" },
       ...(fromParam && toParam ? {} : { take: 500 }),
     });
-    res.json(appointments);
+    const appointmentIds = appointments.map((item) => item.id);
+    const [projections, nextJobs] = await Promise.all([
+      prisma.appointmentAttendanceProjection.findMany({
+        where: { appointmentId: { in: appointmentIds } },
+      }),
+      prisma.appointmentReminderJob.findMany({
+        where: {
+          appointmentId: { in: appointmentIds },
+          status: { in: ["pending", "failed", "leased"] },
+        },
+        orderBy: { scheduledForUtc: "asc" },
+      }),
+    ]);
+    const projectionByAppointment = new Map(projections.map((item) => [item.appointmentId, item]));
+    const nextByAppointment = new Map<string, Date>();
+    for (const job of nextJobs) {
+      if (!nextByAppointment.has(job.appointmentId)) {
+        nextByAppointment.set(job.appointmentId, job.scheduledForUtc);
+      }
+    }
+    res.json(
+      appointments.map((item) => ({
+        ...item,
+        reminderStatus: projectionByAppointment.get(item.id)
+          ? {
+              attendanceState: projectionByAppointment.get(item.id)!.attendanceState,
+              reminderState: projectionByAppointment.get(item.id)!.reminderState,
+              confirmationStatus: projectionByAppointment.get(item.id)!.confirmationStatus,
+              lastReminderSentAt: projectionByAppointment.get(item.id)!.lastReminderSentAt,
+              lastResponseAt: projectionByAppointment.get(item.id)!.lastResponseAt,
+              nextReminderAt: nextByAppointment.get(item.id) ?? null,
+            }
+          : null,
+      }))
+    );
   } catch (err) {
     if (err instanceof Error && (err.message.includes("from") || err.message.includes("to"))) {
       res.status(400).json({ error: err.message });
@@ -5551,6 +5591,12 @@ apiRouter.post("/appointments", requireCalendarCreate, async (req, res) => {
             durationMinutes: appointment.durationMinutes,
             newStartTime: appointment.startTime.toISOString(),
           },
+        });
+        await ensureAppointmentReminderArtifacts(appointment.id);
+        await syncAppointmentAttendanceFromStatus({
+          organizationId,
+          appointmentId: appointment.id,
+          appointmentStatus: appointment.status,
         });
         return { statusCode: 201, body: appointment };
       },
@@ -5709,6 +5755,12 @@ apiRouter.patch("/appointments/:id", requireCalendarReschedule, async (req, res)
             durationMinutes: appointment.durationMinutes,
           },
         });
+        await ensureAppointmentReminderArtifacts(appointment.id);
+        await syncAppointmentAttendanceFromStatus({
+          organizationId,
+          appointmentId: appointment.id,
+          appointmentStatus: appointment.status,
+        });
         return { statusCode: 200, body: appointment };
       },
     });
@@ -5763,6 +5815,11 @@ apiRouter.delete("/appointments/:id", requireCalendarCancel, async (req, res) =>
       body: { appointmentId },
       execute: async () => {
         const result = await deleteAppointmentForOrganization(organizationId, appointmentId, req.auth!.userId);
+        await syncAppointmentAttendanceFromStatus({
+          organizationId,
+          appointmentId,
+          appointmentStatus: "cancelled",
+        }).catch(() => undefined);
         recordCalendarAudit({
           organizationId,
           entityType: "appointment",

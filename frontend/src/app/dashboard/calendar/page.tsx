@@ -78,6 +78,14 @@ type Appointment = {
   service?: { id: string; name: string; color?: string | null; durationMinutes: number } | null;
   googleSyncStatus?: "pending" | "synced" | "failed" | "retrying" | "disabled";
   lastGoogleSyncError?: string | null;
+  reminderStatus?: {
+    attendanceState: string;
+    reminderState: string;
+    confirmationStatus: string;
+    lastReminderSentAt: string | null;
+    lastResponseAt: string | null;
+    nextReminderAt: string | null;
+  } | null;
 };
 
 function appointmentToDisplayItem(appt: Appointment): CalendarDisplayItem {
@@ -172,6 +180,26 @@ function appointmentStatusTone(status: string): "success" | "warn" | "danger" | 
   }
 }
 
+function reminderChipLabel(state: string): string {
+  const labels: Record<string, string> = {
+    reminder_pending: "Pending",
+    reminder_sent: "Reminder Sent",
+    confirmed: "Confirmed",
+    declined: "Declined",
+    no_response: "No Response",
+    reminder_failed: "Reminder Failed",
+  };
+  return labels[state] ?? state;
+}
+
+function reminderChipTone(state: string): "success" | "warn" | "danger" | "info" | "neutral" {
+  if (state === "confirmed") return "success";
+  if (state === "declined" || state === "reminder_failed") return "danger";
+  if (state === "reminder_sent") return "info";
+  if (state === "no_response" || state === "reminder_pending") return "warn";
+  return "neutral";
+}
+
 function isErrorMessage(text: string) {
   return text.includes("נכשל") || text.includes("חובה") || text.includes("יש לבחור");
 }
@@ -233,6 +261,10 @@ export default function CalendarPage() {
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [connectingCalendar, setConnectingCalendar] = useState(false);
   const [schedulingCapabilities, setSchedulingCapabilities] = useState<SchedulingCapabilities | null>(null);
+  const [selectedReminderStatus, setSelectedReminderStatus] = useState<Appointment["reminderStatus"] | null>(null);
+  const [selectedReminderEvents, setSelectedReminderEvents] = useState<
+    Array<{ id: string; eventType: string; occurredAtUtc: string }>
+  >([]);
 
   const engineReadEnabled = effectiveCalendarEngineRead(schedulingCapabilities);
   const engineWriteEnabled = effectiveCalendarEngineWrite(schedulingCapabilities);
@@ -455,6 +487,8 @@ export default function CalendarPage() {
     setFormTime("");
     setFormNotes("");
     setFormStatus("pending");
+    setSelectedReminderStatus(null);
+    setSelectedReminderEvents([]);
   }
 
   function openNewForm() {
@@ -465,6 +499,8 @@ export default function CalendarPage() {
     setFormTime("");
     setFormNotes("");
     setFormStatus("pending");
+    setSelectedReminderStatus(null);
+    setSelectedReminderEvents([]);
     setShowForm(true);
   }
 
@@ -482,6 +518,13 @@ export default function CalendarPage() {
     setFormTime(timeInputValueInTimeZone(start, orgTimezone));
     setFormNotes(appt.notes ?? "");
     setFormStatus(appt.status);
+    const appointment = appt as Appointment;
+    setSelectedReminderStatus(appointment.reminderStatus ?? null);
+    void apiFetch<{ items: Array<{ id: string; eventType: string; occurredAtUtc: string }> }>(
+      `/api/calendar/reminders/appointments/${appt.id}/events?limit=8`
+    )
+      .then((data) => setSelectedReminderEvents(data.items))
+      .catch(() => setSelectedReminderEvents([]));
     setShowForm(true);
   }
 
@@ -872,6 +915,40 @@ export default function CalendarPage() {
               onChange={(e) => setFormNotes(e.target.value)}
             />
           </label>
+          {editingId && selectedReminderStatus && (
+            <div className="md:col-span-2 rounded-2xl border border-[#E5E7EB] bg-white p-3">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <StatusPill tone={reminderChipTone(selectedReminderStatus.reminderState)}>
+                  {reminderChipLabel(selectedReminderStatus.reminderState)}
+                </StatusPill>
+                {selectedReminderStatus.lastReminderSentAt && (
+                  <span className="text-xs font-semibold text-[#6B7280]">
+                    Last reminder: {new Date(selectedReminderStatus.lastReminderSentAt).toLocaleString()}
+                  </span>
+                )}
+                {selectedReminderStatus.nextReminderAt && (
+                  <span className="text-xs font-semibold text-[#6B7280]">
+                    Next reminder: {new Date(selectedReminderStatus.nextReminderAt).toLocaleString()}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1">
+                {selectedReminderEvents.length === 0 ? (
+                  <p className="text-xs font-semibold text-[#6B7280]">Reminder timeline is empty</p>
+                ) : (
+                  selectedReminderEvents.map((event) => (
+                    <div
+                      key={event.id}
+                      className="flex items-center justify-between rounded-lg border border-[#EEF2F7] bg-[#F8FAFC] px-2 py-1"
+                    >
+                      <span className="text-xs font-bold text-[#1F2937]">{event.eventType}</span>
+                      <span className="text-xs text-[#6B7280]">{new Date(event.occurredAtUtc).toLocaleString()}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2 md:col-span-2">
             <button className={btnPrimary} type="submit" disabled={saving}>
               {saving

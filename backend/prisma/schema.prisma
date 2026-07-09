@@ -110,6 +110,9 @@ model Organization {
   knowledgeDocuments          KnowledgeDocument[]
   reliabilityEvents           ReliabilityEvent[]
   jobRuns                     JobRun[]
+  appointmentReminderJobs     AppointmentReminderJob[]
+  appointmentReminderEvents   AppointmentReminderEvent[]
+  appointmentAttendanceStates AppointmentAttendanceProjection[]
 }
 
 /// Natalie Reliability Center V1 — persistent, aggregated production incident store.
@@ -1193,10 +1196,97 @@ model Appointment {
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
 
+  reminderJobs       AppointmentReminderJob[]
+  reminderEvents     AppointmentReminderEvent[]
+  attendanceProjection AppointmentAttendanceProjection?
+
   @@index([organizationId, startTime])
   @@index([organizationId, status])
   @@index([organizationId, googleSyncStatus, nextGoogleSyncRetryAt])
   @@index([clientId])
+}
+
+model AppointmentReminderJob {
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  appointmentId     String
+  appointment       Appointment  @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  channel           String
+  touchpoint        String
+  templateKey       String
+  templateVersion   Int          @default(1)
+  locale            String       @default("he")
+  status            String       @default("pending") // pending | leased | sent | failed | dead_letter | cancelled
+  scheduledForUtc   DateTime
+  timezone          String
+  idempotencyKey    String       @unique
+  provider          String?
+  providerMessageId String?
+  leaseOwner        String?
+  leaseExpiresAt    DateTime?
+  attemptCount      Int          @default(0)
+  maxAttempts       Int          @default(5)
+  nextAttemptAt     DateTime?
+  timeoutAt         DateTime?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  events AppointmentReminderEvent[]
+
+  @@index([status, scheduledForUtc])
+  @@index([status, nextAttemptAt])
+  @@index([leaseExpiresAt])
+  @@index([organizationId, appointmentId, createdAt])
+}
+
+model AppointmentReminderEvent {
+  id                   String                 @id @default(cuid())
+  organizationId       String
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  appointmentId        String
+  appointment          Appointment            @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  reminderJobId        String?
+  reminderJob          AppointmentReminderJob? @relation(fields: [reminderJobId], references: [id], onDelete: SetNull)
+  eventType            String
+  eventSource          String                 // system | provider_webhook | operator
+  actor                String?
+  provider             String?
+  providerMessageId    String?
+  providerEventId      String?
+  payloadJsonSanitized Json?
+  occurredAtUtc        DateTime
+  dedupeKey            String?                @unique
+  createdAt            DateTime               @default(now())
+
+  @@index([organizationId, appointmentId, occurredAtUtc])
+  @@index([reminderJobId, occurredAtUtc])
+  @@index([eventType, occurredAtUtc])
+}
+
+model AppointmentAttendanceProjection {
+  appointmentId       String       @id
+  appointment         Appointment  @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  attendanceState     String       @default("scheduled")
+  reminderState       String       @default("reminder_pending")
+  confirmationStatus  String       @default("unknown")
+  responseChannel     String?
+  responseLocale      String?
+  lastReminderSentAt  DateTime?
+  lastResponseAt      DateTime?
+  nextReminderAt      DateTime?
+  lastTransitionAt    DateTime     @default(now())
+  lastTransitionReason String?
+  version             Int          @default(1)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([organizationId, attendanceState])
+  @@index([organizationId, reminderState])
 }
 
 // --- Natalie Calendar Engine (Phase 1) — does not replace Appointment ---

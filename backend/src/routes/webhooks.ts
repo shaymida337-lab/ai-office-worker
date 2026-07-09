@@ -22,6 +22,7 @@ import { ingestWhatsAppInvoiceMedia, parseTwilioMedia } from "../services/whatsa
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "../services/classification/junkFilter.js";
 import { recordFinancialDocumentDecision } from "../services/financialDocuments.js";
 import { processStripeWebhookEvent, verifyStripeWebhookSignature } from "../services/billing.js";
+import { handleReminderInboundReply } from "../services/reminders/reminderService.js";
 
 export const webhooksRouter = Router();
 
@@ -235,6 +236,23 @@ async function handleTwilioWhatsApp(req: Request, res: Response) {
       return;
     }
     await scanWhatsAppMessage(client.organizationId, inboundLog.id, normalizedFrom, body, false);
+    const appointmentForReminder = await prisma.appointment.findFirst({
+      where: {
+        organizationId: client.organizationId,
+        clientId: client.id,
+        status: { in: ["pending", "confirmed"] },
+      },
+      orderBy: { startTime: "asc" },
+      select: { id: true },
+    });
+    if (appointmentForReminder) {
+      await handleReminderInboundReply({
+        organizationId: client.organizationId,
+        appointmentId: appointmentForReminder.id,
+        messageSid,
+        text: body,
+      }).catch(() => undefined);
+    }
     const mediaResult = config.twilio.mediaIngestionEnabled ? await safeMediaIngestion({
       organizationId: client.organizationId,
       clientId: client.id,
@@ -660,6 +678,27 @@ async function scanWhatsAppMessage(organizationId: string, logId: string, phone:
 
 webhooksRouter.post("/twilio/whatsapp", handleTwilioWhatsApp);
 webhooksRouter.post("/whatsapp", handleTwilioWhatsApp);
+webhooksRouter.post("/reminders/whatsapp", async (req, res) => {
+  const body = req.body as {
+    organizationId?: string;
+    appointmentId?: string;
+    messageSid?: string;
+    text?: string;
+    buttonPayload?: string;
+  };
+  if (!body.organizationId || !body.appointmentId || !body.messageSid) {
+    res.status(400).json({ error: "organizationId, appointmentId and messageSid are required" });
+    return;
+  }
+  const result = await handleReminderInboundReply({
+    organizationId: body.organizationId,
+    appointmentId: body.appointmentId,
+    messageSid: body.messageSid,
+    text: body.text,
+    buttonPayload: body.buttonPayload,
+  });
+  res.json({ accepted: true, ...result });
+});
 webhooksRouter.post("/stripe", handleStripeWebhook);
 webhooksRouter.get("/twilio/whatsapp", whatsappWebhookHealth);
 webhooksRouter.get("/whatsapp", whatsappWebhookHealth);

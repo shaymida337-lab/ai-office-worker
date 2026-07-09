@@ -11,6 +11,9 @@ const DEFAULT_COLOR = "#3B82F6";
 export type CalendarEventCardAppointment = TimelineAppointment & {
   source?: "appointment" | "calendar_engine";
   googleSyncStatus?: "pending" | "synced" | "failed" | "retrying" | "disabled";
+  reminderStatus?: {
+    reminderState: string;
+  } | null;
 };
 
 type CalendarEventCardProps = {
@@ -130,6 +133,23 @@ export function CalendarEventCard({
           )}
           {googleLabel && (
             <StatusPill tone={googleSyncTone(appointment.googleSyncStatus)}>{googleLabel}</StatusPill>
+          )}
+          {appointment.reminderStatus?.reminderState && (
+            <StatusPill tone={appointment.reminderStatus.reminderState === "confirmed" ? "success" : appointment.reminderStatus.reminderState === "declined" || appointment.reminderStatus.reminderState === "reminder_failed" ? "danger" : appointment.reminderStatus.reminderState === "reminder_sent" ? "info" : "warn"}>
+              {appointment.reminderStatus.reminderState === "reminder_pending"
+                ? "Pending"
+                : appointment.reminderStatus.reminderState === "reminder_sent"
+                  ? "Reminder Sent"
+                  : appointment.reminderStatus.reminderState === "confirmed"
+                    ? "Confirmed"
+                    : appointment.reminderStatus.reminderState === "declined"
+                      ? "Declined"
+                      : appointment.reminderStatus.reminderState === "no_response"
+                        ? "No Response"
+                        : appointment.reminderStatus.reminderState === "reminder_failed"
+                          ? "Reminder Failed"
+                          : appointment.reminderStatus.reminderState}
+            </StatusPill>
           )}
         </div>
         )}
