@@ -87,6 +87,27 @@ test("time parser: bare afternoon default and morning/evening context", () => {
   assert.equal(parseHebrewTime("בצהריים"), "12:00");
 });
 
+test('hebrew half-hour parses as :30 in create sentence with prefix ב', () => {
+  const result = parseCalendarIntent("קבעי תור לדנה מחר בשלוש וחצי", OPTS);
+  assert.equal(result.intent, "create_appointment");
+  assert.equal(result.customerName, "דנה");
+  assert.equal(result.time, "15:30");
+});
+
+test('hebrew half-hour parses as :30 without prefix ב', () => {
+  const result = parseCalendarIntent("קבעי תור לדנה מחר שלוש וחצי", OPTS);
+  assert.equal(result.intent, "create_appointment");
+  assert.equal(result.customerName, "דנה");
+  assert.equal(result.time, "15:30");
+});
+
+test('explicit numeric 15:30 remains unchanged', () => {
+  const result = parseCalendarIntent("קבעי תור לדנה מחר ב-15:30", OPTS);
+  assert.equal(result.intent, "create_appointment");
+  assert.equal(result.customerName, "דנה");
+  assert.equal(result.time, "15:30");
+});
+
 test("validateExtraction rejects noise customer names and unparsed times", () => {
   const noisy = parseCalendarIntent("תקבעי תור לשרית מחר ב-3", OPTS);
   const withNoise = { ...noisy, customerName: "בצורה ברורה" };

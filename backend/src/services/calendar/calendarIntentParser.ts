@@ -147,6 +147,7 @@ function toTime(hour: number, minute: number): string {
  */
 export function parseHebrewTime(segment: string): string | null {
   const text = normalize(segment);
+  const hasHalfSuffix = /(?:^|\s)ו?חצי(?:\s|$|[?.!,])/u.test(text);
 
   // Explicit HH:MM — respect the given hour verbatim (already 24h or morning).
   const explicit = text.match(/(?<!\d)(\d{1,2})[:.](\d{2})(?!\d)/u);
@@ -188,7 +189,7 @@ export function parseHebrewTime(segment: string): string | null {
     return null;
   }
   const adjusted = applyHourContext(hour, text);
-  return toTime(adjusted, 0);
+  return toTime(adjusted, hasHalfSuffix ? 30 : 0);
 }
 
 export function extractDayReference(text: string): string | null {
