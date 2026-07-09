@@ -76,11 +76,69 @@ const BUSINESS_PROFILE_COPY: Record<string, { title: string; subtitle: string }>
 
 const moduleIds = new Set(BUSINESS_MODULES.map((module) => module.id));
 const templateIds = new Set(BUSINESS_TEMPLATES.map((template) => template.id));
+const LANGUAGE_SET = new Set(["he", "en"]);
+const WEEK_START_SET = new Set(["sunday", "monday", "saturday"]);
+const TIME_FORMAT_SET = new Set(["12h", "24h"]);
 
 export type BusinessType = (typeof BUSINESS_TEMPLATES)[number]["id"];
 export type BusinessModuleId = (typeof BUSINESS_MODULES)[number]["id"];
 export type BusinessSize = (typeof BUSINESS_SIZES)[number]["id"];
 export type BusinessPain = (typeof BUSINESS_PAINS)[number]["id"];
+
+function normalizeLanguage(value: unknown): "he" | "en" | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return LANGUAGE_SET.has(normalized) ? (normalized as "he" | "en") : null;
+}
+
+function normalizeCountry(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
+}
+
+function normalizeTimezone(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: normalized });
+    return normalized;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeCurrency(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(normalized) ? normalized : null;
+}
+
+function normalizeDateFormat(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  const allowed = new Set(["dd/MM/yyyy", "MM/dd/yyyy", "yyyy-MM-dd"]);
+  return allowed.has(normalized) ? normalized : null;
+}
+
+function normalizeTimeFormat(value: unknown): "12h" | "24h" | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return TIME_FORMAT_SET.has(normalized) ? (normalized as "12h" | "24h") : null;
+}
+
+function normalizeWeekStart(value: unknown): "sunday" | "monday" | "saturday" | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return WEEK_START_SET.has(normalized) ? (normalized as "sunday" | "monday" | "saturday") : null;
+}
+
+function normalizePhoneCountryCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return /^\+[1-9]\d{0,3}$/.test(normalized) ? normalized : null;
+}
 
 export function normalizeBusinessType(value: unknown): BusinessType {
   if (value === "service_company") return "service_business";
@@ -162,8 +220,14 @@ export async function getOrganizationSettings(organizationId: string) {
       name: true,
       businessName: true,
       locale: true,
+      language: true,
+      country: true,
       currency: true,
       timezone: true,
+      dateFormat: true,
+      timeFormat: true,
+      weekStart: true,
+      phoneCountryCode: true,
     },
   });
   if (!organization) throw new Error("Organization not found");
@@ -191,15 +255,39 @@ export async function getOrganizationSettings(organizationId: string) {
 
 export async function updateOrganizationBusinessSettings(
   organizationId: string,
-  input: { businessType?: unknown; businessSize?: unknown; mainBusinessPain?: unknown; enabledModules?: unknown; businessName?: unknown; name?: unknown; onboardingCompleted?: unknown }
+  input: {
+    businessType?: unknown;
+    businessSize?: unknown;
+    mainBusinessPain?: unknown;
+    enabledModules?: unknown;
+    businessName?: unknown;
+    name?: unknown;
+    onboardingCompleted?: unknown;
+    language?: unknown;
+    country?: unknown;
+    timezone?: unknown;
+    currency?: unknown;
+    dateFormat?: unknown;
+    timeFormat?: unknown;
+    weekStart?: unknown;
+    phoneCountryCode?: unknown;
+  }
 ) {
   const businessType = normalizeBusinessType(input.businessType);
   const businessSize = normalizeBusinessSize(input.businessSize);
   const mainBusinessPain = normalizeBusinessPain(input.mainBusinessPain);
   const enabledModules = normalizeEnabledModules(input.enabledModules, businessType, businessSize, mainBusinessPain);
   const onboardingCompleted = typeof input.onboardingCompleted === "boolean" ? input.onboardingCompleted : null;
+  const language = normalizeLanguage(input.language);
+  const country = normalizeCountry(input.country);
+  const timezone = normalizeTimezone(input.timezone);
+  const currency = normalizeCurrency(input.currency);
+  const dateFormat = normalizeDateFormat(input.dateFormat);
+  const timeFormat = normalizeTimeFormat(input.timeFormat);
+  const weekStart = normalizeWeekStart(input.weekStart);
+  const phoneCountryCode = normalizePhoneCountryCode(input.phoneCountryCode);
   await prisma.$executeRawUnsafe(
-    'UPDATE "Organization" SET "business_type" = $1, "enabled_modules" = $2::jsonb, "business_size" = $3, "main_business_pain" = $4, "onboarding_completed" = COALESCE($5, "onboarding_completed"), "businessName" = COALESCE($6, "businessName"), "name" = COALESCE($7, "name"), "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $8',
+    'UPDATE "Organization" SET "business_type" = $1, "enabled_modules" = $2::jsonb, "business_size" = $3, "main_business_pain" = $4, "onboarding_completed" = COALESCE($5, "onboarding_completed"), "businessName" = COALESCE($6, "businessName"), "name" = COALESCE($7, "name"), "language" = COALESCE($8, "language"), "country" = COALESCE($9, "country"), "timezone" = COALESCE($10, "timezone"), "currency" = COALESCE($11, "currency"), "date_format" = COALESCE($12, "date_format"), "time_format" = COALESCE($13, "time_format"), "week_start" = COALESCE($14, "week_start"), "phone_country_code" = COALESCE($15, "phone_country_code"), "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $16',
     businessType,
     JSON.stringify(enabledModules),
     businessSize,
@@ -207,6 +295,14 @@ export async function updateOrganizationBusinessSettings(
     onboardingCompleted,
     typeof input.businessName === "string" ? input.businessName.trim() || null : null,
     typeof input.name === "string" && input.name.trim() ? input.name.trim() : null,
+    language,
+    country,
+    timezone,
+    currency,
+    dateFormat,
+    timeFormat,
+    weekStart,
+    phoneCountryCode,
     organizationId
   );
   return getOrganizationSettings(organizationId);

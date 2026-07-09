@@ -520,8 +520,14 @@ export type OrganizationSettings = {
   recommendedModules: BusinessModuleId[];
   businessProfile?: BusinessProfile;
   locale: string;
+  language: "he" | "en";
+  country: string;
   currency: string;
   timezone: string;
+  dateFormat: "dd/MM/yyyy" | "MM/dd/yyyy" | "yyyy-MM-dd";
+  timeFormat: "12h" | "24h";
+  weekStart: "sunday" | "monday" | "saturday";
+  phoneCountryCode: string;
 };
 
 export type BusinessTemplatesResponse = {

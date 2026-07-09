@@ -15,6 +15,7 @@ import {
 } from "@/lib/calendarEngine/api";
 import { buildEndAtIso } from "@/lib/calendarEngine/adapters";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
+import { useI18n } from "@/i18n";
 import { dateInputValueInTimeZone, timeInputValueInTimeZone } from "@/lib/orgTimezone";
 import type { CalendarEngineEvent, CalendarPrerequisite, OwnerDecisionQueueItem, WorkCaseTimelineEntry } from "@/lib/calendarEngine/types";
 import {
@@ -86,6 +87,7 @@ type CalendarEventDrawerProps = {
 };
 
 export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutation }: CalendarEventDrawerProps) {
+  const { t, dir } = useI18n();
   const [event, setEvent] = useState<CalendarEngineEvent | null>(null);
   const [timeline, setTimeline] = useState<WorkCaseTimelineEntry[]>([]);
   const [pendingDecisions, setPendingDecisions] = useState<OwnerDecisionQueueItem[]>([]);
@@ -238,25 +240,25 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="פרטי אירוע"
+      aria-label={t("calendar.eventDetails")}
       onClick={onClose}
     >
       <div
         className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-[#E5E7EB] bg-white p-4 shadow-xl sm:rounded-2xl"
-        dir="rtl"
+        dir={dir}
         data-testid="calendar-event-drawer"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-black text-[#111827]">פרטי אירוע</h2>
+            <h2 className="text-lg font-black text-[#111827]">{t("calendar.eventDetails")}</h2>
             {event && (
               <p className="mt-1 text-sm font-semibold text-[#6B7280]">
-                {event.client?.name ?? event.title ?? "אירוע יומן"}
+                {event.client?.name ?? event.title ?? t("calendar.eventDetails")}
               </p>
             )}
           </div>
-          <button type="button" className={btnSecondarySm} onClick={onClose} aria-label="סגור">
+          <button type="button" className={btnSecondarySm} onClick={onClose} aria-label={t("calendar.close")}>
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -284,7 +286,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
                 {calendarEventStatusLabel(event.status)}
               </StatusPill>
               {event.workCase?.title && (
-                <span className="text-xs font-semibold text-[#6B7280]">תיק: {event.workCase.title}</span>
+                <span className="text-xs font-semibold text-[#6B7280]">{t("calendar.workCase")}: {event.workCase.title}</span>
               )}
             </div>
 
@@ -294,7 +296,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
             </div>
 
             {event.service?.name && (
-              <p className="text-sm font-semibold text-[#374151]">שירות: {event.service.name}</p>
+              <p className="text-sm font-semibold text-[#374151]">{t("calendar.serviceLabel")}: {event.service.name}</p>
             )}
 
             {canCompleteOrNoShow && (
@@ -309,7 +311,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
                     setShowNoShowForm(false);
                   }}
                 >
-                  סמן כהושלם
+                  {t("calendar.markCompleted")}
                 </button>
                 <button
                   type="button"
@@ -321,7 +323,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
                     setShowCompleteForm(false);
                   }}
                 >
-                  הלקוח לא הגיע
+                  {t("calendar.markNoShow")}
                 </button>
               </div>
             )}
@@ -388,7 +390,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
                   data-testid="drawer-cancel-request"
                   onClick={() => handleRequestCancel()}
                 >
-                  ביטול תור
+                  {t("calendar.cancelRequest")}
                 </button>
                 <button
                   type="button"
@@ -398,17 +400,17 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
                   onClick={() => setShowRescheduleForm((v) => !v)}
                 >
                   <CalendarClock className="h-4 w-4" />
-                  דחיית תור
+                  {t("calendar.rescheduleRequest")}
                 </button>
               </div>
             )}
 
             {showRescheduleForm && canRequestCancelOrReschedule && (
               <form onSubmit={handleRequestReschedule} className="space-y-3 rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] p-3">
-                <p className="text-sm font-black text-[#111827]">זמן חדש מוצע</p>
+                <p className="text-sm font-black text-[#111827]">{t("calendar.newProposedTime")}</p>
                 <div className="grid grid-cols-2 gap-2">
                   <label className="text-sm font-semibold">
-                    תאריך
+                    {t("calendar.date")}
                     <input
                       type="date"
                       required
@@ -418,7 +420,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
                     />
                   </label>
                   <label className="text-sm font-semibold">
-                    שעה
+                    {t("calendar.time")}
                     <input
                       type="time"
                       required
@@ -434,14 +436,14 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
                   disabled={acting}
                   data-testid="drawer-reschedule-submit"
                 >
-                  שלח לאישור
+                  {t("calendar.submitForApproval")}
                 </button>
               </form>
             )}
 
             {prerequisites.length > 0 && (
               <div>
-                <h3 className="mb-2 text-sm font-black text-[#111827]">דרישות מקדימות</h3>
+                <h3 className="mb-2 text-sm font-black text-[#111827]">{t("calendar.prerequisites")}</h3>
                 <ul className="space-y-2">
                   {prerequisites.map((item) => (
                     <li
@@ -455,7 +457,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
                       )}
                       <span className={item.passed ? "text-[#065F46]" : "text-[#374151]"}>
                         {item.label}
-                        {item.required === false ? " (אופציונלי)" : ""}
+                        {item.required === false ? ` (${t("calendar.optional")})` : ""}
                       </span>
                     </li>
                   ))}
@@ -465,7 +467,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
 
             {event.status === "completed" && (
               <div className="rounded-xl border border-[#059669]/30 bg-[#ECFDF5] p-3">
-                <p className="text-sm font-black text-[#065F46]">הושלם</p>
+                <p className="text-sm font-black text-[#065F46]">{t("calendar.completed")}</p>
                 {event.completionOutcome && (
                   <p className="mt-1 text-sm font-semibold text-[#047857]">{event.completionOutcome}</p>
                 )}
@@ -477,7 +479,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
 
             {event.status === "no_show" && (
               <div className="rounded-xl border border-[#E5E7EB] bg-[#F3F4F6] p-3">
-                <p className="text-sm font-black text-[#374151]">לא הגיע</p>
+                <p className="text-sm font-black text-[#374151]">{t("calendar.noShow")}</p>
                 {event.completionNotes && (
                   <p className="mt-1 text-sm font-semibold text-[#6B7280]">{event.completionNotes}</p>
                 )}
@@ -486,7 +488,7 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
 
             {timeline.length > 0 && (
               <div>
-                <h3 className="mb-2 text-sm font-black text-[#111827]">ציר זמן תיק</h3>
+                <h3 className="mb-2 text-sm font-black text-[#111827]">{t("calendar.workCaseTimeline")}</h3>
                 <ol className="space-y-2 border-r-2 border-[#E5E7EB] pr-3">
                   {timeline.map((entry) => (
                     <li key={entry.id} className="text-sm">

@@ -13,6 +13,7 @@ import { OwnerDecisionQueuePanel } from "@/components/calendar/OwnerDecisionQueu
 import { WeekCalendarEmptyState, WeekCalendarView } from "@/components/calendar/WeekCalendarView";
 import { apiFetch, ApiError, getToken } from "@/lib/api";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
+import { useI18n } from "@/i18n";
 import { dateInputValueInTimeZone, timeInputValueInTimeZone } from "@/lib/orgTimezone";
 import {
   buildEndAtIso,
@@ -194,6 +195,7 @@ function CollapsePanel({ open, children }: { open: boolean; children: ReactNode 
 }
 
 export default function CalendarPage() {
+  const { t, dir } = useI18n();
   const [highlightDecisionId, setHighlightDecisionId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<CalendarViewMode>("week");
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
@@ -251,14 +253,16 @@ export default function CalendarPage() {
 
   const weekLabel = useMemo(() => {
     const weekEnd = addDays(weekStart, 6);
-    const from = weekStart.toLocaleDateString("he-IL", { day: "numeric", month: "short", timeZone: orgTimezone });
-    const to = weekEnd.toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "numeric", timeZone: orgTimezone });
+    const locale = dir === "rtl" ? "he-IL" : "en-US";
+    const from = weekStart.toLocaleDateString(locale, { day: "numeric", month: "short", timeZone: orgTimezone });
+    const to = weekEnd.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric", timeZone: orgTimezone });
     return `${from} – ${to}`;
   }, [weekStart, orgTimezone]);
 
   const calendarTitle = useMemo(() => {
     if (viewMode === "day") {
-      return selectedDay.toLocaleDateString("he-IL", {
+      const locale = dir === "rtl" ? "he-IL" : "en-US";
+      return selectedDay.toLocaleDateString(locale, {
         weekday: "long",
         day: "numeric",
         month: "long",
@@ -270,7 +274,7 @@ export default function CalendarPage() {
       return formatMonthTitle(monthAnchor, orgTimezone);
     }
     return weekLabel;
-  }, [viewMode, selectedDay, monthAnchor, weekLabel, orgTimezone]);
+  }, [viewMode, selectedDay, monthAnchor, weekLabel, orgTimezone, dir]);
 
   const monthPickerValue = useMemo(() => {
     const y = monthAnchor.getFullYear();
@@ -753,8 +757,8 @@ export default function CalendarPage() {
             <div className={`${radius.card} ${shadow.soft} border border-[#E5E7EB] bg-white p-4 md:p-5`}>
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <div className="text-sm font-bold text-[#1D4ED8]">יומן העסק</div>
-                  <h1 className="text-2xl font-black text-[#111827] md:text-3xl">מרכז התורים שלך</h1>
+                  <div className="text-sm font-bold text-[#1D4ED8]">{t("calendar.businessCalendar")}</div>
+                  <h1 className="text-2xl font-black text-[#111827] md:text-3xl">{t("calendar.appointmentsCenter")}</h1>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {calendarConnected === true && <StatusPill tone="success">Google Calendar ✓</StatusPill>}
@@ -765,12 +769,12 @@ export default function CalendarPage() {
                       disabled={connectingCalendar}
                       onClick={() => connectCalendar()}
                     >
-                      {connectingCalendar ? "מתחבר..." : "חבר Google Calendar"}
+                      {connectingCalendar ? t("calendar.connecting") : t("calendar.connectGoogleCalendar")}
                     </button>
                   )}
                   <button type="button" className={btnPrimary} onClick={openNewForm}>
                     <Plus className="h-4 w-4" />
-                    תור חדש
+                    {t("calendar.newAppointment")}
                   </button>
                 </div>
               </div>
@@ -778,14 +782,14 @@ export default function CalendarPage() {
               <CollapsePanel open={showForm}>
                 <form onSubmit={saveAppointment} className="mb-5 grid gap-3 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] p-4 md:grid-cols-2">
           <div className="flex items-center justify-between md:col-span-2">
-            <h2 className="text-lg font-black text-[#111827]">{editingId ? "עריכת תור" : "תור חדש"}</h2>
+            <h2 className="text-lg font-black text-[#111827]">{editingId ? t("calendar.editAppointment") : t("calendar.newAppointment")}</h2>
             <button type="button" className={btnSecondarySm} onClick={resetForm}>
               <X className="h-4 w-4" />
-              ביטול
+              {t("calendar.cancel")}
             </button>
           </div>
           <label className="font-semibold text-[#111827]">
-            לקוח
+            {t("calendar.customer")}
             <select
               required
               className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
@@ -793,7 +797,7 @@ export default function CalendarPage() {
               disabled={Boolean(editingId)}
               onChange={(e) => setFormClientId(e.target.value)}
             >
-              <option value="">בחר לקוח</option>
+              <option value="">{t("calendar.selectCustomer")}</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -802,13 +806,13 @@ export default function CalendarPage() {
             </select>
           </label>
           <label className="font-semibold text-[#111827]">
-            שירות
+            {t("calendar.service")}
             <select
               className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
               value={formServiceId}
               onChange={(e) => setFormServiceId(e.target.value)}
             >
-              <option value="">ללא שירות</option>
+              <option value="">{t("calendar.noService")}</option>
               {activeServices.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name} ({s.durationMinutes} דק׳)
@@ -819,11 +823,11 @@ export default function CalendarPage() {
           {selectedServiceDuration !== null && !editingId && (
             <p className="flex items-center gap-2 text-sm font-semibold text-[#6B7280] md:col-span-2">
               <Clock className="h-4 w-4" />
-              משך משוער: {selectedServiceDuration} דקות
+              {t("calendar.estimatedDuration", { minutes: selectedServiceDuration })}
             </p>
           )}
           <label className="font-semibold text-[#111827]">
-            תאריך
+            {t("calendar.date")}
             <input
               required
               type="date"
@@ -833,7 +837,7 @@ export default function CalendarPage() {
             />
           </label>
           <label className="font-semibold text-[#111827]">
-            שעה
+            {t("calendar.time")}
             <input
               required
               type="time"
@@ -844,7 +848,7 @@ export default function CalendarPage() {
           </label>
           {editingId && (
             <label className="font-semibold text-[#111827] md:col-span-2">
-              סטטוס
+              {t("calendar.status")}
               <select
                 className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
                 value={formStatus}
@@ -859,11 +863,11 @@ export default function CalendarPage() {
             </label>
           )}
           <label className="font-semibold text-[#111827] md:col-span-2">
-            הערות
+            {t("calendar.notes")}
             <textarea
               rows={2}
               className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
-              placeholder="הערות לתור (אופציונלי)"
+              placeholder={t("calendar.optionalNotes")}
               value={formNotes}
               onChange={(e) => setFormNotes(e.target.value)}
             />
@@ -871,12 +875,12 @@ export default function CalendarPage() {
           <div className="flex flex-wrap gap-2 md:col-span-2">
             <button className={btnPrimary} type="submit" disabled={saving}>
               {saving
-                ? "שומר..."
+                ? t("calendar.saving")
                 : editingId
-                  ? "עדכן תור"
+                  ? t("calendar.updateAppointment")
                   : engineWriteEnabled
-                    ? "שלח לאישור"
-                    : "שמור תור"}
+                    ? t("calendar.sendForApproval")
+                    : t("calendar.save")}
             </button>
             {editingId && formStatus !== "cancelled" && (
               <button
@@ -885,13 +889,13 @@ export default function CalendarPage() {
                 disabled={saving}
                 onClick={() => cancelAppointment()}
               >
-                בטל תור
+                {t("calendar.cancelAppointment")}
               </button>
             )}
             {editingId && (
               <button type="button" className={btnDanger} disabled={saving} onClick={() => deleteAppointment()}>
                 <Trash2 className="h-4 w-4" />
-                מחק תור
+                {t("calendar.deleteAppointment")}
               </button>
             )}
           </div>
@@ -950,10 +954,10 @@ export default function CalendarPage() {
 
             <section className={`${radius.card} ${shadow.soft} border border-[#E5E7EB] bg-white p-4 md:p-5`}>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-black text-[#111827]">השירותים שלי</h2>
+          <h2 className="text-lg font-black text-[#111827]">{t("calendar.myServices")}</h2>
           <button type="button" className={btnSecondary} onClick={() => setShowServiceForm((v) => !v)}>
             <Plus className="h-4 w-4" />
-            שירות חדש
+            {t("calendar.newService")}
           </button>
         </div>
 
@@ -963,17 +967,17 @@ export default function CalendarPage() {
             className="mb-4 grid gap-3 rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] p-4 md:grid-cols-2"
           >
             <label className="font-semibold text-[#111827]">
-              שם שירות
+              {t("calendar.serviceName")}
               <input
                 required
                 className="mt-1 w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE]"
-                placeholder="למשל: ייעוץ ראשוני"
+                placeholder={t("calendar.serviceNamePlaceholder")}
                 value={serviceForm.name}
                 onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
               />
             </label>
             <label className="font-semibold text-[#111827]">
-              משך (דקות)
+              {t("calendar.durationMinutes")}
               <input
                 required
                 type="number"
@@ -986,7 +990,7 @@ export default function CalendarPage() {
               />
             </label>
             <label className="font-semibold text-[#111827]">
-              מחיר (אופציונלי)
+              {t("calendar.priceOptional")}
               <input
                 type="number"
                 min={0}
@@ -998,7 +1002,7 @@ export default function CalendarPage() {
               />
             </label>
             <label className="font-semibold text-[#111827]">
-              צבע
+              {t("calendar.color")}
               <input
                 type="color"
                 className="mt-1 h-11 w-full rounded-xl border border-[#E5E7EB] bg-white"
@@ -1007,7 +1011,7 @@ export default function CalendarPage() {
               />
             </label>
             <button className={`${btnPrimary} md:col-span-2`} type="submit" disabled={savingService}>
-              {savingService ? "שומר..." : "שמור שירות"}
+              {savingService ? t("calendar.saving") : t("calendar.saveService")}
             </button>
           </form>
         </CollapsePanel>
@@ -1039,7 +1043,7 @@ export default function CalendarPage() {
                   className={`${btnDanger} !min-h-9 !rounded-xl !px-3`}
                   disabled={deletingServiceId === svc.id}
                   onClick={() => deleteService(svc.id)}
-                  aria-label={`מחק ${svc.name}`}
+                  aria-label={t("calendar.serviceDeleteLabel", { name: svc.name })}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>

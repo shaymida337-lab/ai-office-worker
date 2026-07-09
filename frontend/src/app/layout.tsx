@@ -4,6 +4,7 @@ import { GoogleTagManagerBody, GoogleTagManagerHead, GtmPageView } from "@/compo
 import { BackendWarmup } from "@/components/BackendWarmup";
 import { HelpCenter } from "@/components/HelpCenter";
 import { NatalieAssistantWidget } from "@/components/NatalieAssistantWidget";
+import { I18nProvider } from "@/i18n";
 import "./globals.css";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://ai-office-worker.com";
@@ -39,14 +40,16 @@ export default function RootLayout({
         <GoogleTagManagerHead />
       </head>
       <body className="h-auto overflow-x-hidden lg:overflow-x-clip lg:overflow-y-visible">
-        <GoogleTagManagerBody />
-        <Suspense fallback={null}>
-          <GtmPageView />
-        </Suspense>
-        <BackendWarmup />
-        {children}
-        <HelpCenter />
-        <NatalieAssistantWidget />
+        <I18nProvider>
+          <GoogleTagManagerBody />
+          <Suspense fallback={null}>
+            <GtmPageView />
+          </Suspense>
+          <BackendWarmup />
+          {children}
+          <HelpCenter />
+          <NatalieAssistantWidget />
+        </I18nProvider>
       </body>
     </html>
   );
