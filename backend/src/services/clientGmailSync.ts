@@ -77,6 +77,9 @@ export async function syncGmailForClient(clientId: string) {
   const client = await prisma.client.findUnique({ where: { id: clientId } });
   if (!client?.gmailConnected) throw new Error("Client Gmail not connected");
 
+  const { assertFinancialIngestionAllowed } = await import("./p0/financialContainment.js");
+  assertFinancialIngestionAllowed(client.organizationId);
+
   const organizationId = client.organizationId;
   let emailsProcessed = 0;
   let paymentsCreated = 0;

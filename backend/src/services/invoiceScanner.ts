@@ -33,6 +33,9 @@ export async function scanForInvoices(clientId: string, options: ScanOptions = {
   const client = await loadClientForInvoiceScan(clientId);
   if (!client?.gmailConnected || !client.googleRefreshToken) throw new Error("חבר Gmail בהגדרות");
 
+  const { assertFinancialIngestionAllowed } = await import("./p0/financialContainment.js");
+  assertFinancialIngestionAllowed(client.organizationId);
+
   const lock = await acquireClientScanLock(client.organizationId, clientId);
   if (!lock) return { found: 0, saved: 0, errors: [], inProgress: true };
 

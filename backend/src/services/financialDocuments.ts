@@ -441,6 +441,9 @@ export async function buildDuplicateGateInput(input: {
 }
 
 export async function recordFinancialDocumentDecision(input: FinancialDocumentInput) {
+  const { assertFinancialIngestionAllowed } = await import("./p0/financialContainment.js");
+  assertFinancialIngestionAllowed(input.organizationId);
+
   const workflowTrace = createCoreWorkflowTrace({
     subsystem: "review_queue",
     organizationId: input.organizationId,

@@ -247,6 +247,12 @@ class SchedulerService {
   }
 
   async runDailyScan() {
+    const { isFinancialDataContainmentActive } = await import("./p0/financialContainment.js");
+    if (isFinancialDataContainmentActive()) {
+      console.warn("[scheduler] daily scan skipped — financial ingestion containment active");
+      return;
+    }
+
     const orgs = await prisma.organization.findMany({ include: { integrations: true, clients: true } });
     for (const org of orgs) {
       const logId = await createScanLog(org.id, "daily");
@@ -271,6 +277,12 @@ class SchedulerService {
   }
 
   async runQuickScan() {
+    const { isFinancialDataContainmentActive } = await import("./p0/financialContainment.js");
+    if (isFinancialDataContainmentActive()) {
+      console.warn("[scheduler] quick scan skipped — financial ingestion containment active");
+      return;
+    }
+
     const orgs = await prisma.organization.findMany({ include: { clients: true } });
     for (const org of orgs) {
       const logId = await createScanLog(org.id, "quick");
