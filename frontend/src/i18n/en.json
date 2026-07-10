@@ -100,19 +100,59 @@
     "subtitle": "Natalie runs your day",
     "refresh": "Refresh",
     "heroTitle": "Good morning",
+    "hero": {
+      "badge": "Natalie is on it",
+      "prepared": "I prepared a short business snapshot for today.",
+      "meetings": "Meetings today: {{count}}",
+      "documents": "Pending documents: {{count}}",
+      "tasks": "Open tasks: {{count}}",
+      "talk": "Talk to Natalie",
+      "openCalendar": "Open calendar"
+    },
+    "summary": {
+      "pendingDocs": "{{count}} documents are waiting for your review.",
+      "openTasks": "{{count}} open tasks should be handled today.",
+      "meetings": "You have {{count}} meetings today.",
+      "allClear": "Everything looks under control right now."
+    },
     "quickActions": "Quick actions",
     "todayTimeline": "Your day",
     "emptyToday": "No urgent items right now",
+    "kpi": {
+      "income": "Income this month",
+      "expense": "Expenses this month",
+      "documents": "Pending documents",
+      "meetings": "Meetings today"
+    },
     "waitingForYou": "Waiting for your review",
     "waitingForYouSubtitle": "Items pending your decision",
     "openQueue": "Open queue",
     "activityFeed": "Recent activity",
     "emptyActivity": "No activity to show yet",
+    "openReports": "View reports",
+    "pending": {
+      "title": "Pending overview",
+      "tasks": "Open tasks",
+      "documents": "Documents to review",
+      "alerts": "Open alerts",
+      "openTasks": "Open tasks",
+      "openDocuments": "Review documents"
+    },
     "floatingNatalie": "Talk to Natalie",
     "actions": {
       "askNatalie": "Ask Natalie",
       "scanGmail": "Scan Gmail",
-      "uploadDocument": "Upload document"
+      "uploadDocument": "Upload document",
+      "talk": "Talk to Natalie",
+      "talkHint": "Get immediate prioritization for today",
+      "scan": "Scan email",
+      "scanHint": "Find new documents and tasks automatically",
+      "upload": "Upload document",
+      "uploadHint": "Add a document for quick processing",
+      "appointment": "Schedule appointment",
+      "appointmentHint": "Open the calendar and book a new meeting",
+      "task": "Create task",
+      "taskHint": "Go to tasks and add a new follow-up"
     },
     "nav": {
       "home": "Today",
@@ -150,7 +190,14 @@
     "customers": "Customers",
     "documents": "Documents",
     "tasks": "Tasks",
-    "natalie": "Natalie"
+    "natalie": "Natalie",
+    "more": "More",
+    "close": "Close",
+    "invoices": "Invoices",
+    "payments": "Payments",
+    "reports": "Reports",
+    "settings": "Settings",
+    "integrations": "Integrations"
   },
   "crmDesign": {
     "title": "Customers",

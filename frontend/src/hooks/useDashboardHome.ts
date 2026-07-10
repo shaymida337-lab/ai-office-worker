@@ -1069,6 +1069,8 @@ export function useDashboardHome() {
     recentInvoices,
     recentTasks,
     alerts,
+    documentReviews,
+    upcomingAppointments,
     pageLoading,
     firstScanPhase,
     invoiceAttachPaymentId,

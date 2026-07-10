@@ -101,19 +101,59 @@
     "subtitle": "נטלי מנהלת את היום שלך",
     "refresh": "רענן",
     "heroTitle": "בוקר טוב",
+    "hero": {
+      "badge": "נטלי כבר על זה",
+      "prepared": "הכנתי לך תמונת מצב קצרה של העסק להיום.",
+      "meetings": "פגישות היום: {{count}}",
+      "documents": "מסמכים ממתינים: {{count}}",
+      "tasks": "משימות פתוחות: {{count}}",
+      "talk": "דבר עם נטלי",
+      "openCalendar": "פתח יומן"
+    },
+    "summary": {
+      "pendingDocs": "יש {{count}} מסמכים שמחכים לטיפול שלך.",
+      "openTasks": "יש {{count}} משימות פתוחות שכדאי לסגור היום.",
+      "meetings": "יש {{count}} פגישות היום, מומלץ לעבור עליהן מראש.",
+      "allClear": "הכול נראה בשליטה כרגע."
+    },
     "quickActions": "פעולות מהירות",
     "todayTimeline": "היום שלך",
     "emptyToday": "אין כרגע פריטים דחופים",
+    "kpi": {
+      "income": "הכנסות החודש",
+      "expense": "הוצאות החודש",
+      "documents": "מסמכים ממתינים",
+      "meetings": "פגישות היום"
+    },
     "waitingForYou": "מחכה לטיפול שלך",
     "waitingForYouSubtitle": "פריטים שממתינים להחלטה",
     "openQueue": "פתח תור",
     "activityFeed": "פעילות אחרונה",
     "emptyActivity": "עדיין אין פעילות להצגה",
+    "openReports": "ראה דוחות",
+    "pending": {
+      "title": "סיכום ממתינים",
+      "tasks": "משימות פתוחות",
+      "documents": "מסמכים לבדיקה",
+      "alerts": "התראות פתוחות",
+      "openTasks": "פתח משימות",
+      "openDocuments": "בדקי מסמכים"
+    },
     "floatingNatalie": "דברי עם נטלי",
     "actions": {
       "askNatalie": "שאלי את נטלי",
       "scanGmail": "סרקי ג׳ימייל",
-      "uploadDocument": "העלי מסמך"
+      "uploadDocument": "העלי מסמך",
+      "talk": "דבר עם נטלי",
+      "talkHint": "קבלי תעדוף מיידי לעבודה של היום",
+      "scan": "סרקי מייל",
+      "scanHint": "גלי מסמכים ומשימות חדשות אוטומטית",
+      "upload": "העלה מסמך",
+      "uploadHint": "הוסיפי מסמך ידני לעיבוד מהיר",
+      "appointment": "קבעי תור",
+      "appointmentHint": "פתחי יומן וקבעי פגישה חדשה",
+      "task": "צור משימה",
+      "taskHint": "עברו למשימות והוסיפו טיפול חדש"
     },
     "nav": {
       "home": "היום",
@@ -151,7 +191,14 @@
     "customers": "לקוחות",
     "documents": "מסמכים",
     "tasks": "משימות",
-    "natalie": "נטלי"
+    "natalie": "נטלי",
+    "more": "עוד",
+    "close": "סגור",
+    "invoices": "חשבוניות",
+    "payments": "תשלומים",
+    "reports": "דוחות",
+    "settings": "הגדרות",
+    "integrations": "אינטגרציות"
   },
   "crmDesign": {
     "title": "לקוחות",
