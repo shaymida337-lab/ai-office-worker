@@ -55,6 +55,11 @@ const loginSchema = z.object({
 /** POST /auth/register — email + password signup */
 authRouter.post("/register", async (req, res) => {
   try {
+    if (config.security.blockNewRegistrations) {
+      res.status(503).json({ error: "Registration is temporarily disabled" });
+      return;
+    }
+
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
@@ -89,6 +94,18 @@ authRouter.post("/register", async (req, res) => {
     if (user.organization) {
       await markOrganizationNeedsOnboarding(user.organization.id);
       await ensureOwnerMembership(user.organization.id, user.id);
+    }
+
+    const organizationIntegrity = await prisma.organization.findUnique({
+      where: { id: user.organization!.id },
+      select: { id: true, userId: true },
+    });
+    if (!organizationIntegrity || organizationIntegrity.userId !== user.id) {
+      console.error(
+        `[auth/register] organization integrity failure userId=${user.id} organizationId=${user.organization?.id ?? "missing"} ownerUserId=${organizationIntegrity?.userId ?? "missing"}`,
+      );
+      res.status(500).json({ error: "Registration failed" });
+      return;
     }
 
     recordPlatformAudit({
@@ -351,12 +368,16 @@ authRouter.get("/google/callback", async (req, res) => {
         },
         include: { organization: true },
       });
-      if (user.organization) await markOrganizationNeedsOnboarding(user.organization.id);
+      if (user.organization) {
+        await markOrganizationNeedsOnboarding(user.organization.id);
+        await ensureOwnerMembership(user.organization.id, user.id);
+      }
     } else if (!user.organization) {
       const organization = await prisma.organization.create({
         data: { userId: user.id, name: me.data.name ?? "My Business" },
       });
       await markOrganizationNeedsOnboarding(organization.id);
+      await ensureOwnerMembership(organization.id, user.id);
       user = await prisma.user.findUnique({
         where: { email: normalizedEmail },
         include: { organization: true },

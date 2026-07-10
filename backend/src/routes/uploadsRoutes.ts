@@ -3,6 +3,10 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { config } from "../lib/config.js";
+import {
+  FINANCIAL_DATA_CONTAINMENT_CODE,
+  isFinancialDataContainmentActive,
+} from "../services/p0/financialContainment.js";
 
 /**
  * הגשת קבצי /uploads (תצוגות מסמכים ממצלמה/וואטסאפ/ג'ימייל) בחתימת HMAC בלבד.
@@ -61,6 +65,14 @@ function signatureMatches(expected: string, provided: string): boolean {
 export const uploadsRouter = Router();
 
 uploadsRouter.get("/:channelDir/:fileName", (req, res) => {
+  if (isFinancialDataContainmentActive()) {
+    res.status(503).json({
+      error: "Financial documents are temporarily unavailable while tenant isolation is verified.",
+      code: FINANCIAL_DATA_CONTAINMENT_CODE,
+    });
+    return;
+  }
+
   const channelDir = String(req.params.channelDir ?? "");
   const fileName = String(req.params.fileName ?? "");
 

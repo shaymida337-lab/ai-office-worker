@@ -12,6 +12,7 @@ export function saveToken(token: string): void {
   if (typeof window === "undefined") return;
   clearAllAuthTokens();
   localStorage.setItem("token", token.trim());
+  localStorage.setItem("tenantCacheEpoch", String(Date.now()));
 }
 
 export async function register(input: {

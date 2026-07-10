@@ -135,6 +135,17 @@ import { verifyLeadsWebhook } from "../lib/webhookAuth.js";
 import { requireNonProduction } from "../lib/productionGuard.js";
 import { secureRouteGuards } from "../middleware/secureRouteGuards.js";
 import {
+  financialDataContainmentMiddleware,
+  validateTenantMiddleware,
+} from "../middleware/tenantIsolation.js";
+import {
+  buildFinancialDocumentReviewReadIsolationWhere,
+  buildGmailScanItemReadIsolationWhere,
+  buildSupplierPaymentReadIsolationWhere,
+  loadCrossOrgContaminatedGmailIdsForReads,
+  mergePrismaWhere,
+} from "../services/p0/financialReadIsolation.js";
+import {
   ensureAppointmentReminderArtifacts,
   syncAppointmentAttendanceFromStatus,
 } from "../services/reminders/reminderService.js";
@@ -206,6 +217,8 @@ apiRouter.get("/debug/payments/open-classification-inputs", requireNonProduction
 });
 
 apiRouter.use(authMiddleware);
+apiRouter.use(validateTenantMiddleware);
+apiRouter.use(financialDataContainmentMiddleware);
 apiRouter.use(secureRouteGuards);
 apiRouter.use(calendarEngineRouter);
 apiRouter.use(knowledgeRouter);
@@ -4608,6 +4621,28 @@ export function mergeInvoiceListCandidates<
   ];
 }
 
+async function applyFinancialReadIsolationToInvoiceListWhere(
+  whereInput: InvoiceListWhereInput,
+  organizationId: string,
+): Promise<InvoiceListWhereInput> {
+  const contaminatedGmailIds = await loadCrossOrgContaminatedGmailIdsForReads();
+  return {
+    ...whereInput,
+    gmailScanItemWhere: mergePrismaWhere(
+      whereInput.gmailScanItemWhere,
+      buildGmailScanItemReadIsolationWhere(organizationId, contaminatedGmailIds),
+    ),
+    financialDocumentReviewWhere: mergePrismaWhere(
+      whereInput.financialDocumentReviewWhere,
+      buildFinancialDocumentReviewReadIsolationWhere(organizationId, contaminatedGmailIds),
+    ),
+    supplierPaymentWhere: mergePrismaWhere(
+      whereInput.supplierPaymentWhere,
+      buildSupplierPaymentReadIsolationWhere(organizationId, contaminatedGmailIds),
+    ),
+  };
+}
+
 async function loadOrganizationTimezone(organizationId: string) {
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -4777,7 +4812,10 @@ apiRouter.get("/invoices", async (req, res) => {
   const monthBounds = parsedMonth
     ? await resolveInvoiceMonthBounds(organizationId, parsedMonth.year, parsedMonth.month, await loadOrganizationTimezone(organizationId))
     : undefined;
-  const whereInput = buildInvoiceListWhereInput(ctx, monthBounds);
+  const whereInput = await applyFinancialReadIsolationToInvoiceListWhere(
+    buildInvoiceListWhereInput(ctx, monthBounds),
+    organizationId,
+  );
   const [invoiceRows, gmailScanItems, documentReviews, supplierPayments] = await fetchInvoiceListSourceRows(whereInput, {
     limit: monthBounds ? undefined : 100,
   });
@@ -5151,14 +5189,20 @@ apiRouter.get("/payments", async (req, res) => {
       )
     : undefined;
   const payments = await prisma.supplierPayment.findMany({
-    where: {
-      organizationId,
-      approvalStatus: "approved",
-      ...(duplicatesOnly ? { duplicateDetected: true } : {}),
-      ...(monthBounds
-        ? { normalizedDocumentDate: { gte: monthBounds.gte, lt: monthBounds.lt } }
-        : {}),
-    },
+    where: mergePrismaWhere(
+      {
+        organizationId,
+        approvalStatus: "approved",
+        ...(duplicatesOnly ? { duplicateDetected: true } : {}),
+        ...(monthBounds
+          ? { normalizedDocumentDate: { gte: monthBounds.gte, lt: monthBounds.lt } }
+          : {}),
+      },
+      buildSupplierPaymentReadIsolationWhere(
+        organizationId,
+        await loadCrossOrgContaminatedGmailIdsForReads(),
+      ),
+    ),
     orderBy: { date: "desc" },
     ...(monthBounds ? {} : { take: 100 }),
   });
@@ -6008,11 +6052,18 @@ apiRouter.post("/appointments/availability/slots", requireCalendarView, async (r
 
 apiRouter.get("/document-reviews", async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status : "needs_review";
+  const organizationId = req.auth!.organizationId;
   const items = await prisma.financialDocumentReview.findMany({
-    where: {
-      organizationId: req.auth!.organizationId,
-      ...(status === "all" ? {} : { reviewStatus: status }),
-    },
+    where: mergePrismaWhere(
+      {
+        organizationId,
+        ...(status === "all" ? {} : { reviewStatus: status }),
+      },
+      buildFinancialDocumentReviewReadIsolationWhere(
+        organizationId,
+        await loadCrossOrgContaminatedGmailIdsForReads(),
+      ),
+    ),
     orderBy: { createdAt: "desc" },
     take: 200,
   });
@@ -7772,7 +7823,7 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
     const cameraReviewId = "review" in documentDecision ? documentDecision.review?.id ?? null : null;
     if (cameraReviewId && cameraDriveUploadStatus) {
       const { attachPreviewToFinancialDocumentReview } = await import("../services/documents/documentReviewPreview.js");
-      await attachPreviewToFinancialDocumentReview(cameraReviewId, {
+      await attachPreviewToFinancialDocumentReview(cameraReviewId, req.auth!.organizationId, {
         previewUrl: cameraDriveFileUrl ?? documentLink ?? null,
         driveUploadStatus: cameraDriveUploadStatus,
       });

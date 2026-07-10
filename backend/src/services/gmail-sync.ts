@@ -710,6 +710,9 @@ type GmailSyncOptions = {
 };
 
 export async function syncGmailForOrganization(organizationId: string, options: GmailSyncOptions = {}) {
+  const { assertFinancialIngestionAllowed } = await import("./p0/financialContainment.js");
+  assertFinancialIngestionAllowed(organizationId);
+
   const scanLogId = options.scanLogId;
   const queuedRun = gmailScanQueue
     .catch(() => undefined)
@@ -2661,17 +2664,25 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           ? driveUploadFailureReason ?? "upload_missing_link"
           : null;
       if ("review" in documentDecision && documentDecision.review && primaryDriveLink) {
-        await attachPreviewToFinancialDocumentReview(documentDecision.review.id, {
+        await attachPreviewToFinancialDocumentReview(documentDecision.review.id, organizationId, {
           previewUrl: primaryDriveLink,
           driveUploadStatus: "uploaded",
         });
         logStep(`[gmail-sync] INVOICE_DRIVE_LINK_SAVED org=${organizationId} target=financialDocumentReview id=${documentDecision.review.id} message=${email.gmailId} driveUrl=${primaryDriveLink}`);
       } else if ("review" in documentDecision && documentDecision.review && documentDriveUploadStatus === "pending_retry") {
-        const review = await prisma.financialDocumentReview.update({
-          where: { id: documentDecision.review.id },
+        const review = await prisma.financialDocumentReview.updateMany({
+          where: { id: documentDecision.review.id, organizationId },
           data: { driveUploadStatus: "pending_retry" },
         });
-        console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=financialDocumentReview:${review.id} reason=${documentDriveUploadFailureReason}`);
+        if (review.count !== 1) {
+          console.warn(
+            `DRIVE UPLOAD FAILED org=${organizationId} doc=financialDocumentReview:${documentDecision.review.id} reason=review_not_found_for_org`,
+          );
+        } else {
+          console.log(
+            `DRIVE UPLOAD FAILED org=${organizationId} doc=financialDocumentReview:${documentDecision.review.id} reason=${documentDriveUploadFailureReason}`,
+          );
+        }
       }
 
       logStep(`[gmail-sync] DB GmailScanItem upsert attempt message=${email.gmailId} duplicateKey=${documentDecision.documentFingerprint} legacyKey=${duplicateKey} type=${classification.documentType}`);

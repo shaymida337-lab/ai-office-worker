@@ -156,23 +156,28 @@ export function reviewIdFromDocumentDecision(decision: DocumentDecisionWithRevie
 
 export async function attachPreviewToFinancialDocumentReview(
   reviewId: string,
+  organizationId: string,
   preview: Pick<IngestedDocumentPreviewResult, "previewUrl" | "driveUploadStatus">,
 ): Promise<void> {
   if (!preview.previewUrl) return;
-  await prisma.financialDocumentReview.update({
-    where: { id: reviewId },
+  const updated = await prisma.financialDocumentReview.updateMany({
+    where: { id: reviewId, organizationId },
     data: {
       driveFileUrl: preview.previewUrl,
       driveUploadStatus: preview.driveUploadStatus,
     },
   });
+  if (updated.count !== 1) {
+    throw new Error(`Financial document review not found for organization ${organizationId}`);
+  }
 }
 
 export async function syncFinancialDocumentReviewPreview(
+  organizationId: string,
   decision: DocumentDecisionWithReview,
   preview: IngestedDocumentPreviewResult,
 ): Promise<void> {
   const reviewId = reviewIdFromDocumentDecision(decision);
   if (!reviewId) return;
-  await attachPreviewToFinancialDocumentReview(reviewId, preview);
+  await attachPreviewToFinancialDocumentReview(reviewId, organizationId, preview);
 }

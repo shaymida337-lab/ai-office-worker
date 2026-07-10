@@ -119,6 +119,9 @@ export async function ensureWhatsAppDriveContext(
 }
 
 export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps: WhatsAppInvoiceIngestionDeps = {}) {
+  const { assertFinancialIngestionAllowed } = await import("./p0/financialContainment.js");
+  assertFinancialIngestionAllowed(input.organizationId);
+
   const getGoogleClientsIfAvailableFn = deps.getGoogleClientsIfAvailable ?? getGoogleClientsIfAvailable;
   const ensureDriveContextFn = deps.ensureWhatsAppDriveContextFn
     ?? ((organizationId, whatsappLogId) => ensureWhatsAppDriveContext(organizationId, whatsappLogId, getGoogleClientsIfAvailableFn));
@@ -245,7 +248,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
       whatsappLogId: input.whatsappLogId,
       fileSha256: fileHash,
     });
-    await syncReviewPreview(documentDecision, preview);
+    await syncReviewPreview(input.organizationId, documentDecision, preview);
     if (documentDecision.action !== "accepted") {
       processed.push({
         filename,
@@ -301,7 +304,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
         whatsappLogId: input.whatsappLogId,
         fileSha256: fileHash,
       });
-      await syncReviewPreview(reviewDecision, preview);
+      await syncReviewPreview(input.organizationId, reviewDecision, preview);
       processed.push({
         filename,
         supplier,
@@ -360,7 +363,7 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
         whatsappLogId: input.whatsappLogId,
         fileSha256: fileHash,
       });
-      await syncReviewPreview(reviewDecision, preview);
+      await syncReviewPreview(input.organizationId, reviewDecision, preview);
       processed.push({
         filename,
         supplier,

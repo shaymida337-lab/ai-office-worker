@@ -105,6 +105,9 @@ class SchedulerService {
   }
 
   async runFirstTimeScan(organizationId: string) {
+    const { assertFinancialIngestionAllowed } = await import("./p0/financialContainment.js");
+    assertFinancialIngestionAllowed(organizationId);
+
     const logId = await createScanLog(organizationId, "first_time");
     const errors: string[] = [];
     let found = 0;
@@ -129,6 +132,12 @@ class SchedulerService {
   }
 
   async runAutomaticGmailScans(mode: "auto_daily" | "auto_weekly" = "auto_daily") {
+    const { isFinancialDataContainmentActive } = await import("./p0/financialContainment.js");
+    if (isFinancialDataContainmentActive()) {
+      console.warn(`[scheduler] automatic Gmail ${mode} skipped — financial ingestion containment active`);
+      return;
+    }
+
     const orgs = await prisma.organization.findMany({
       where: { integrations: { some: { provider: "gmail", refreshToken: { not: null } } } },
       select: { id: true },
@@ -143,6 +152,12 @@ class SchedulerService {
   }
 
   async runFastGmailScans(source: "startup" | "interval" | "manual" = "manual") {
+    const { isFinancialDataContainmentActive } = await import("./p0/financialContainment.js");
+    if (isFinancialDataContainmentActive()) {
+      console.warn(`[scheduler] FAST_SCAN skipped source=${source} — financial ingestion containment active`);
+      return;
+    }
+
     if (this.fastGmailScanRunning) {
       console.log(`[scheduler] FAST_SCAN_SKIPPED source=${source} reason=already_running`);
       return;

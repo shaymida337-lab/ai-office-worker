@@ -216,6 +216,13 @@ export const config = {
     v1Read: optional("CALENDAR_ENGINE_V1_READ", "false").toLowerCase() === "true",
     v1Write: optional("CALENDAR_ENGINE_V1_WRITE", "false").toLowerCase() === "true",
   },
+
+  security: {
+    /** 1/true/on = block financial read/write routes with 503. Default: on in production. */
+    financialDataContainment: optional("FINANCIAL_DATA_CONTAINMENT", ""),
+    /** 1/true/on = reject POST /auth/register with 503 during incident response. */
+    blockNewRegistrations: optional("BLOCK_NEW_REGISTRATIONS", "false").toLowerCase() === "true",
+  },
 };
 
 export function validateStartupEnv() {
