@@ -21,11 +21,12 @@ const ThemeContext = createContext<ThemeContextValue>({
 });
 
 function readStoredTheme(): NatalieTheme {
-  if (typeof window === "undefined") return "light";
+  if (typeof window === "undefined") return "dark";
   try {
-    return localStorage.getItem(STORAGE_KEY) === "dark" ? "dark" : "light";
+    // ברירת המחדל היא Dark — רק העדפה שמורה מפורשת "light" מחזירה Light.
+    return localStorage.getItem(STORAGE_KEY) === "light" ? "light" : "dark";
   } catch {
-    return "light";
+    return "dark";
   }
 }
 
@@ -35,7 +36,7 @@ function applyTheme(theme: NatalieTheme) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<NatalieTheme>("light");
+  const [theme, setThemeState] = useState<NatalieTheme>("dark");
 
   useEffect(() => {
     const stored = readStoredTheme();

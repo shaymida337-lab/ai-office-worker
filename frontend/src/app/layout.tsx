@@ -41,7 +41,7 @@ export default function RootLayout({
         <GoogleTagManagerHead />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('natalie-theme');if(t==='dark')document.documentElement.classList.add('dark');var l=localStorage.getItem('natalie-language');if(l==='en'||l==='he'){document.documentElement.lang=l;document.documentElement.dir=l==='he'?'rtl':'ltr';}}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('natalie-theme');if(t!=='light')document.documentElement.classList.add('dark');var l=localStorage.getItem('natalie-language');if(l==='en'||l==='he'){document.documentElement.lang=l;document.documentElement.dir=l==='he'?'rtl':'ltr';}}catch(e){}})();`,
           }}
         />
       </head>
