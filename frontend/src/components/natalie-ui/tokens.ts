@@ -11,10 +11,12 @@ export const natalie = {
   accentSoft: "bg-[#EEF2FF] border-[#D1DCFA] text-[#1E40AF]",
   input:
     "w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 font-semibold text-[#111827] shadow-sm outline-none transition focus:border-[#1D4ED8] focus:ring-2 focus:ring-[#BFDBFE] dark:border-[var(--natalie-border,#334155)] dark:bg-[var(--natalie-surface-elevated,#1E293B)] dark:text-[var(--natalie-text-primary,#F8FAFC)]",
-  timelineItem: "rounded-xl border border-[#E6ECF8] bg-[#F8FAFF]",
+  timelineItem: "rounded-xl border border-[#E6ECF8] bg-[#F8FAFF] dark:border-[#1F2A44] dark:bg-[#0F172A]",
 } as const;
 
-/** Shared AppShell layout rhythm — 8px spacing system. */
+/** Shared AppShell layout rhythm — 8px spacing system.
+ * The header is two rows on mobile (controls row + full-width search = 6.75rem)
+ * and a single 4.5rem row from md up; every offset below must stay in sync. */
 export const shellLayout = {
   headerHeight: "4.5rem",
   pageTitleHeight: "4rem",
@@ -24,8 +26,9 @@ export const shellLayout = {
   sectionGap: "gap-4",
   mainPaddingBottom: "pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]",
   mainPaddingTop: "pt-4",
-  headerOffset: "pt-[calc(4.5rem+env(safe-area-inset-top,0px))]",
-  headerWithTitleOffset: "pt-[calc(8.5rem+env(safe-area-inset-top,0px))]",
+  headerOffset: "pt-[calc(6.75rem+env(safe-area-inset-top,0px))] md:pt-[calc(4.5rem+env(safe-area-inset-top,0px))]",
+  headerWithTitleOffset: "pt-[calc(10.75rem+env(safe-area-inset-top,0px))] md:pt-[calc(8.5rem+env(safe-area-inset-top,0px))]",
+  pageTitleTop: "top-[calc(6.75rem+env(safe-area-inset-top,0px))] md:top-[calc(4.5rem+env(safe-area-inset-top,0px))]",
   fabPosition:
     "fixed z-50 end-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px)+0.5rem)] md:end-6",
 } as const;
@@ -34,15 +37,15 @@ export const buttonVariants = {
   primary:
     "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60",
   secondary:
-    "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60",
+    "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#F3F4F6] dark:border-[#1F2A44] dark:bg-[#111827] dark:text-[#F1F5F9] dark:hover:bg-[#1E293B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60",
   secondarySm:
-    "inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#F3F4F6] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60",
+    "inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-black text-[#111827] transition hover:bg-[#F3F4F6] dark:border-[#1F2A44] dark:bg-[#111827] dark:text-[#F1F5F9] dark:hover:bg-[#1E293B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60",
   danger:
     "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#B91C1C] bg-[#FEE2E2] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#FECACA] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B91C1C] disabled:cursor-not-allowed disabled:opacity-60",
   warn:
     "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#C2410C] bg-[#FFEDD5] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#FED7AA] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C2410C] disabled:cursor-not-allowed disabled:opacity-60",
   ghost:
-    "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#C7D2FE] bg-[#EEF2FF] px-4 py-2 text-sm font-bold text-[#1E40AF] transition hover:bg-[#E0E7FF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8]",
+    "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#C7D2FE] bg-[#EEF2FF] px-4 py-2 text-sm font-bold text-[#1E40AF] transition hover:bg-[#E0E7FF] dark:border-[#27395F] dark:bg-[#0F1E42] dark:text-[#93C5FD] dark:hover:bg-[#16295B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8]",
 } as const;
 
 export type ButtonVariant = keyof typeof buttonVariants;

@@ -31,10 +31,12 @@ export function AppShell({
   return (
     <div className={`min-h-screen ${natalie.page}`}>
       {showGlobalHeader ? (
-        <div className="fixed inset-x-0 top-0 z-40">
+        <>
           <GlobalHeader />
-          {pageTitle}
-        </div>
+          {pageTitle ? (
+            <div className={`fixed inset-x-0 z-30 ${shellLayout.pageTitleTop}`}>{pageTitle}</div>
+          ) : null}
+        </>
       ) : null}
       <main
         className={`${shellLayout.contentMaxWidth} ${shellLayout.contentPaddingX} ${shellLayout.mainPaddingTop} ${shellLayout.mainPaddingBottom} ${mainOffset} ${mainClassName}`}

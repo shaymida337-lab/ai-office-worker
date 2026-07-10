@@ -61,9 +61,9 @@ export function GlobalHeader({
       style={{ paddingTop: "max(0px, env(safe-area-inset-top))" }}
     >
       <div
-        className={`${shellLayout.contentMaxWidth} grid h-[4.5rem] grid-cols-[minmax(0,1fr)_min(100%,28rem)_minmax(0,1fr)] items-center ${shellLayout.contentPaddingX}`}
+        className={`${shellLayout.contentMaxWidth} flex h-[6.75rem] flex-wrap content-start items-center gap-x-2 py-2 md:h-[4.5rem] md:flex-nowrap md:content-center md:gap-x-3 md:py-0 ${shellLayout.contentPaddingX}`}
       >
-        <div className="flex min-w-0 items-center gap-3 pe-1 sm:pe-0">
+        <div className="flex h-11 min-w-0 flex-1 items-center gap-3 md:h-auto md:flex-initial">
           <Link
             href="/dashboard"
             className="flex shrink-0 items-center transition-opacity duration-200 hover:opacity-90"
@@ -78,7 +78,10 @@ export function GlobalHeader({
           </div>
         </div>
 
-        <div ref={searchPanelRef} className={`relative justify-self-center ${shellLayout.searchWidth} px-2`}>
+        <div
+          ref={searchPanelRef}
+          className="relative order-3 mt-2 w-full basis-full md:order-2 md:mx-auto md:mt-0 md:w-auto md:min-w-0 md:max-w-md md:flex-1 md:basis-auto"
+        >
           <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
           <Input
             ref={searchInputRef}
@@ -128,14 +131,14 @@ export function GlobalHeader({
           ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center justify-end gap-2 ps-1 sm:ps-0">
+        <div className="order-2 flex shrink-0 items-center justify-end gap-1.5 md:order-3 md:gap-2">
           <Button
             variant="ghost"
             size="sm"
             type="button"
             onClick={() => onNotificationsClick?.()}
             aria-label={t("globalHeader.notifications")}
-            className="relative"
+            className="relative !min-h-11 !min-w-11"
           >
             <Bell className="h-4 w-4" />
             {notificationCount > 0 ? (
@@ -150,7 +153,14 @@ export function GlobalHeader({
             )}
           </Button>
 
-          <Button variant="ghost" size="sm" type="button" onClick={toggleTheme} aria-label={t("globalHeader.theme")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            onClick={toggleTheme}
+            aria-label={t("globalHeader.theme")}
+            className="!min-h-11 !min-w-11"
+          >
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
 
@@ -160,9 +170,10 @@ export function GlobalHeader({
             type="button"
             onClick={() => setLanguage(language === "he" ? "en" : "he")}
             aria-label={t("globalHeader.language")}
+            className="!min-h-11 !min-w-11"
           >
             <Globe className="h-4 w-4" />
-            <span className="hidden sm:inline">{language === "he" ? "EN" : "עב"}</span>
+            <span>{language === "he" ? "EN" : "עב"}</span>
           </Button>
         </div>
       </div>

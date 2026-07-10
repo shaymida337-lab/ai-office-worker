@@ -53,15 +53,15 @@ export function BottomNavigation({ items }: { items: BottomNavItem[] }) {
       {moreOpen ? (
         <div className="fixed inset-0 z-[60] bg-[#0f172a]/35 backdrop-blur-sm" onClick={() => setMoreOpen(false)}>
           <div
-            className={`${shellLayout.contentMaxWidth} absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px)+0.5rem)] left-2 right-2 max-h-[55vh] overflow-y-auto rounded-2xl border border-[var(--natalie-border,#D9E2F2)] bg-white p-3 shadow-[0_16px_40px_rgba(15,23,42,0.16)]`}
+            className={`${shellLayout.contentMaxWidth} absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px)+0.5rem)] left-2 right-2 max-h-[55vh] overflow-y-auto rounded-2xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface,#ffffff)] p-3 shadow-[0_16px_40px_rgba(15,23,42,0.16)]`}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-black text-[#0f172a]">{t("globalNav.more")}</p>
+              <p className="text-sm font-black text-[#0f172a] dark:text-[#F1F5F9]">{t("globalNav.more")}</p>
               <button
                 type="button"
                 onClick={() => setMoreOpen(false)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#dbe5f4] bg-white text-[#64748B]"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#dbe5f4] bg-white text-[#64748B] dark:border-[#1F2A44] dark:bg-[#111827]"
                 aria-label={t("globalNav.close")}
               >
                 <X className="h-4 w-4" />
@@ -77,7 +77,7 @@ export function BottomNavigation({ items }: { items: BottomNavItem[] }) {
                     className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
                       active
                         ? "border-[#93C5FD] bg-[#DBEAFE] text-[#1D4ED8]"
-                        : "border-[#e2e8f0] bg-[#f8fafc] text-[#334155] hover:bg-[#eef2ff]"
+                        : "border-[#e2e8f0] bg-[#f8fafc] text-[#334155] hover:bg-[#eef2ff] dark:border-[#1F2A44] dark:bg-[#0F172A] dark:text-[#CBD5E1] dark:hover:bg-[#1E293B]"
                     }`}
                     onClick={() => setMoreOpen(false)}
                   >
