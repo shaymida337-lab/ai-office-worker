@@ -31,9 +31,6 @@ export function PaymentMorningContext({
           <Sparkles className="h-5 w-5" strokeWidth={2.2} />
         </span>
         <div className="min-w-0 flex-1">
-          <h1 className={`${typography.h1} leading-tight`} style={{ color: colors.textPrimary }}>
-            תשלומים
-          </h1>
           {loading ? (
             <p className={`${typography.body} mt-3`} style={{ color: colors.textSecondary }}>
               רגע, אני מסדרת את התשלומים...

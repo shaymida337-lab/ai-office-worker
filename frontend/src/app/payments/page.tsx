@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Nav } from "@/components/Nav";
 import {
   PaymentDecisionQueue,
   PaymentMorningContext,
@@ -11,6 +10,8 @@ import {
   PaymentsCompletedSection,
   PaymentsSnapshot,
 } from "@/components/payments";
+import { AppShell, Card, MessageBanner, PageTitle, Skeleton } from "@/components/natalie-ui";
+import { useI18n } from "@/i18n";
 import { apiFetch, type Payment } from "@/lib/api";
 import { isJunkPayment } from "@/lib/junkSupplier";
 import {
@@ -31,6 +32,7 @@ const EXIT_ANIMATION_MS = 320;
 const LARGE_AMOUNT_THRESHOLD = 5000;
 
 export default function PaymentsPage() {
+  const { dir } = useI18n();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -225,15 +227,10 @@ export default function PaymentsPage() {
     !loading && commandQuery.trim() && filteredUnpaid.length === 0 && pendingCount > 0;
 
   return (
-    <main
-      className="min-h-screen max-w-full overflow-x-clip px-4 pb-32 pt-20 md:px-8 md:pb-8 lg:mr-60"
-      style={{
-        background: `linear-gradient(180deg, ${colors.bgSoft} 0%, ${colors.bg} 28%, ${colors.bg} 100%)`,
-        color: colors.textPrimary,
-      }}
-    >
-      <Nav />
-
+    <div dir={dir}>
+      <AppShell
+        pageTitle={<PageTitle title="תשלומים" subtitle="נטלי מסדרת את התשלומים שלך" />}
+      >
       <div className="mx-auto grid min-w-0 max-w-3xl gap-6 md:gap-8">
         <PaymentMorningContext
           pendingCount={pendingCount}
@@ -249,35 +246,17 @@ export default function PaymentsPage() {
         )}
 
         {!loading && (
-          <div
-            className={`${radius.lg} border px-5 py-4 ${typography.body} font-semibold leading-7`}
-            style={{ color: colors.textSecondary, backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
-          >
+          <Card className="px-5 py-4 text-sm font-semibold leading-7 text-[var(--natalie-text-muted,#64748B)]">
             חשבוניות ספקים שאושרו במסמכים לבדיקה מופיעות כאן כתשלומים לספקים.
-          </div>
+          </Card>
         )}
 
-        {error && (
-          <div
-            className={`${radius.lg} border px-5 py-4 ${typography.body} font-semibold leading-7`}
-            style={{
-              color: colors.dangerText,
-              backgroundColor: colors.dangerBg,
-              borderColor: colors.dangerBorder,
-            }}
-          >
-            {error}
-          </div>
-        )}
+        {error ? <MessageBanner tone="error">{error}</MessageBanner> : null}
 
         {loading && (
           <div className="grid gap-4">
             {Array.from({ length: 2 }).map((_, index) => (
-              <div
-                key={index}
-                className={`${radius.lg} h-72 animate-pulse border`}
-                style={{ backgroundColor: colors.surface, borderColor: colors.borderSubtle }}
-              />
+              <Skeleton key={index} className="h-72 rounded-2xl" />
             ))}
           </div>
         )}
@@ -414,6 +393,7 @@ export default function PaymentsPage() {
           </form>
         </div>
       )}
-    </main>
+      </AppShell>
+    </div>
   );
 }
