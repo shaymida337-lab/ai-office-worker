@@ -9,6 +9,7 @@ import {
   AppShell,
   Button,
   Card,
+  FloatingActionButton,
   KpiCard,
   MessageBanner,
   PageTitle,
@@ -16,6 +17,7 @@ import {
   SkeletonText,
   Timeline,
 } from "@/components/natalie-ui";
+import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
 
 export default function DashboardPage() {
   const d = useDashboardHome();
@@ -107,6 +109,12 @@ export default function DashboardPage() {
           <PageTitle
             title={d.businessName || t("dashboardDesign.title")}
             subtitle={t("dashboardDesign.subtitle")}
+          />
+        }
+        floatingButton={
+          <FloatingActionButton
+            label={t("dashboardDesign.floatingNatalie")}
+            onClick={() => openNatalieAssistant()}
           />
         }
       >
