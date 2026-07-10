@@ -2,9 +2,11 @@
 
 import { CalendarClock, Check, Edit3, Sparkles } from "lucide-react";
 import { StatusBadge } from "@/components/natalie-ui";
+import { natalie } from "@/components/natalie-ui/tokens";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { useI18n } from "@/i18n";
 import { appointmentStatusBorderColor, colorWithAlpha, formatAppointmentTime, type TimelineAppointment } from "@/lib/calendarUtils";
+import { calendarUi } from "./calendarUi";
 
 const DEFAULT_COLOR = "#3B82F6";
 
@@ -97,24 +99,24 @@ export function CalendarEventCard({
         <div className={`mb-1.5 flex items-start justify-between gap-2 ${isTimeline ? "!mb-1" : ""}`}>
           <div className="min-w-0">
             <div
-              className={`truncate font-black text-[#111827] ${compactMode ? "text-[11px] sm:text-xs" : "text-base sm:text-lg"} ${isCancelled ? "line-through" : ""}`}
+              className={`${calendarUi.clientName} ${compactMode ? "text-[11px] sm:text-xs" : "text-base sm:text-lg"} ${isCancelled ? "line-through" : ""}`}
             >
               {appointment.client.name}
             </div>
             {appointment.service?.name && (
-              <div className={`mt-0.5 truncate text-xs font-semibold text-[#4B5563] ${isCancelled ? "line-through" : ""}`}>
+              <div className={`mt-0.5 truncate ${calendarUi.clientNameMuted} ${isCancelled ? "line-through" : ""}`}>
                 {appointment.service.name}
               </div>
             )}
             <div className="mt-0.5 flex flex-wrap items-center gap-1">
               <span
-                className={`font-bold text-[#1F2937] ${compactMode ? "text-[10px]" : "text-xs sm:text-sm"} ${isCancelled ? "line-through" : ""}`}
+                className={`font-bold text-[var(--natalie-text-primary,#0F172A)] ${compactMode ? "text-[10px]" : "text-xs sm:text-sm"} ${isCancelled ? "line-through" : ""}`}
                 dir="ltr"
               >
                 {time}
               </span>
               {!isTimeline && (
-                <span className="text-[10px] font-semibold text-[#6B7280]">
+                <span className={`text-[10px] font-semibold ${natalie.subtitle}`}>
                   · {appointment.durationMinutes} {t("calendar.minutesShort")}
                 </span>
               )}
@@ -126,7 +128,7 @@ export function CalendarEventCard({
         {!isTimeline && !compactMode && (
         <div className="flex flex-wrap items-center gap-1">
           {isNatalieCreated && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[10px] font-bold text-[#4338CA]">
+            <span className={calendarUi.natalieChip}>
               <Sparkles className="h-3 w-3" />
               {t("calendar.natalie")}
             </span>
@@ -159,7 +161,7 @@ export function CalendarEventCard({
         <div className="flex items-center gap-1 border-t border-white/60 bg-white/50 px-2 py-1.5">
           <button
             type="button"
-            className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-lg px-2 text-xs font-black text-[#111827] transition hover:bg-white"
+            className={`inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-lg px-2 text-xs font-black ${natalie.title} transition hover:bg-white`}
             onClick={(event) => {
               event.stopPropagation();
               onSelect?.();
@@ -183,7 +185,7 @@ export function CalendarEventCard({
           )}
           <button
             type="button"
-            className="inline-flex min-h-8 items-center justify-center rounded-lg px-2 text-[#6B7280] transition hover:bg-white hover:text-[#111827]"
+            className="inline-flex min-h-8 items-center justify-center rounded-lg px-2 text-[var(--natalie-text-muted,#64748B)] transition hover:bg-white hover:text-[var(--natalie-text-primary,#0F172A)]"
             onClick={(event) => {
               event.stopPropagation();
               onSelect?.();

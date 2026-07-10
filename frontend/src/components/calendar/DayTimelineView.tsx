@@ -2,6 +2,8 @@
 
 import { useMemo } from "react";
 import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/natalie-ui";
+import { natalie } from "@/components/natalie-ui/tokens";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import {
   TIMELINE_END_HOUR,
@@ -15,10 +17,8 @@ import {
   type TimelineAppointment,
 } from "@/lib/calendarUtils";
 import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
+import { calendarUi } from "./calendarUi";
 import { CalendarEventCard, type CalendarEventCardAppointment } from "./CalendarEventCard";
-
-const btnSecondarySm =
-  "inline-flex min-h-8 items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-3 py-1.5 text-xs font-black text-[#111827] transition hover:bg-[#F3F4F6] disabled:cursor-not-allowed disabled:opacity-60";
 
 type DayTimelineViewProps<T extends CalendarEventCardAppointment> = {
   date: Date;
@@ -59,21 +59,21 @@ export function DayTimelineView<T extends CalendarEventCardAppointment>({
 
   return (
     <div>
-        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <Calendar className="h-5 w-5 text-[#1D4ED8]" />
-          <h2 className="text-lg font-black text-[#111827]">{formatDayLabel(date, orgTimezone)}</h2>
+          <Calendar className={`h-5 w-5 ${natalie.accent}`} />
+          <h2 className={`text-lg font-black ${natalie.title}`}>{formatDayLabel(date, orgTimezone)}</h2>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={btnSecondarySm} onClick={onPrevDay} aria-label="יום קודם">
+          <Button variant="secondary" size="sm" type="button" onClick={onPrevDay} aria-label="יום קודם">
             <ChevronRight className="h-4 w-4" />
-          </button>
-          <button type="button" className={btnSecondarySm} onClick={onToday}>
+          </Button>
+          <Button variant="secondary" size="sm" type="button" onClick={onToday}>
             היום
-          </button>
-          <button type="button" className={btnSecondarySm} onClick={onNextDay} aria-label="יום הבא">
+          </Button>
+          <Button variant="secondary" size="sm" type="button" onClick={onNextDay} aria-label="יום הבא">
             <ChevronLeft className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -82,23 +82,20 @@ export function DayTimelineView<T extends CalendarEventCardAppointment>({
       ) : (
         <div
           key={date.toISOString()}
-          className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] shadow-[0_4px_16px_rgba(15,23,42,0.06)] transition-opacity duration-200 animate-[toastSlide_.25s_ease]"
+          className={`${calendarUi.timelineShell} transition-opacity duration-200 animate-[toastSlide_.25s_ease]`}
         >
           <div className="max-h-[min(76vh,620px)] overflow-y-auto overscroll-contain">
             <div className="flex min-w-0" dir="rtl">
-              <div
-                className="relative min-w-0 flex-1 border-l border-[#E5E7EB]"
-                style={{ height: timelineHeightPx }}
-              >
+              <div className={calendarUi.timelineLane} style={{ height: timelineHeightPx }}>
                 {hours.map((hour, index) => (
                   <div
                     key={hour}
-                    className="pointer-events-none absolute inset-x-0 border-t border-[#E5E7EB]/80"
+                    className={calendarUi.timelineHour}
                     style={{ top: index * hourBlockPx }}
                   />
                 ))}
                 <div
-                  className="pointer-events-none absolute inset-x-0 border-t border-[#E5E7EB]"
+                  className="pointer-events-none absolute inset-x-0 border-t border-[var(--natalie-border,#D9E2F2)]"
                   style={{ top: timelineHeightPx }}
                 />
 
@@ -107,16 +104,16 @@ export function DayTimelineView<T extends CalendarEventCardAppointment>({
                     className="absolute inset-0 flex items-center justify-center p-6 text-center"
                     data-testid="calendar-day-empty"
                   >
-                    <div className="max-w-xs rounded-2xl border border-dashed border-[#BFDBFE] bg-[#EFF6FF] px-5 py-6">
-                      <p className="text-base font-black text-[#111827]">היום שלך פנוי 😊</p>
-                      <p className="mt-2 text-sm font-semibold text-[#6B7280]">רוצה שאעזור לך לקבוע פגישה?</p>
-                      <button
-                        type="button"
-                      className="mt-3 inline-flex min-h-9 items-center justify-center rounded-xl bg-[#1D4ED8] px-4 text-sm font-black text-white"
+                    <div className={calendarUi.emptyInner}>
+                      <p className={`text-base font-black ${natalie.title}`}>היום שלך פנוי 😊</p>
+                      <p className={`mt-2 text-sm font-semibold ${natalie.subtitle}`}>רוצה שאעזור לך לקבוע פגישה?</p>
+                      <Button
+                        size="sm"
+                        className="mt-3 !min-h-9 !rounded-xl !border-[#1D4ED8] !bg-[#1D4ED8] !px-4 !text-sm !text-white"
                         onClick={() => openNatalieAssistant("עזרי לי לקבוע פגישה חדשה")}
                       >
                         בקש מנטלי
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -147,17 +144,13 @@ export function DayTimelineView<T extends CalendarEventCardAppointment>({
                 })}
               </div>
 
-              <div className="w-12 shrink-0 bg-white sm:w-14" style={{ height: timelineHeightPx }}>
+              <div className={calendarUi.timelineRuler} style={{ height: timelineHeightPx }}>
                 {hours.map((hour) => (
-                  <div
-                    key={hour}
-                    className="relative flex items-start justify-center pt-1 text-[10px] font-bold text-[#6B7280] sm:text-xs"
-                    style={{ height: hourBlockPx }}
-                  >
+                  <div key={hour} className={calendarUi.timelineRulerLabel} style={{ height: hourBlockPx }}>
                     <span dir="ltr">{formatHourLabel(hour)}</span>
                   </div>
                 ))}
-                <div className="flex h-0 items-start justify-center pt-1 text-[10px] font-bold text-[#6B7280] sm:text-xs">
+                <div className={`flex h-0 items-start justify-center pt-1 text-[10px] font-bold ${natalie.subtitle} sm:text-xs`}>
                   <span dir="ltr">{formatHourLabel(TIMELINE_END_HOUR)}</span>
                 </div>
               </div>
@@ -166,7 +159,7 @@ export function DayTimelineView<T extends CalendarEventCardAppointment>({
         </div>
       )}
 
-      <p className="mt-2 text-xs font-semibold text-[#6B7280]">
+      <p className={calendarUi.timelineFooter}>
         שעות {formatHourLabel(TIMELINE_START_HOUR)}–{formatHourLabel(TIMELINE_END_HOUR)}
       </p>
     </div>

@@ -1,9 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
+import { Button } from "@/components/natalie-ui";
+import { natalie } from "@/components/natalie-ui/tokens";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { colorWithAlpha, isSameCalendarDay, toDateInputValue, type TimelineAppointment } from "@/lib/calendarUtils";
 import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
+import { calendarUi, weekColumnClass } from "./calendarUi";
 import { CalendarEventCard, type CalendarEventCardAppointment } from "./CalendarEventCard";
 
 const DAY_NAMES = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "ש'"];
@@ -59,25 +62,18 @@ export function WeekCalendarView<T extends CalendarEventCardAppointment>({
         const isToday = isSameCalendarDay(day, today);
 
         return (
-          <div
-            key={key}
-            className={`min-h-[150px] rounded-2xl border p-2.5 transition ${
-              isToday
-                ? "border-[#1D4ED8]/35 bg-[#EFF6FF] shadow-[0_6px_20px_rgba(29,78,216,0.08)]"
-                : "border-[#E5E7EB] bg-white shadow-[0_4px_16px_rgba(15,23,42,0.04)]"
-            }`}
-          >
-            <div className={`mb-2 text-center ${isToday ? "text-[#1D4ED8]" : "text-[#111827]"}`}>
+          <div key={key} className={weekColumnClass(isToday)}>
+            <div className={`mb-2 text-center ${isToday ? "text-[#1D4ED8]" : natalie.title}`}>
               <div className="text-sm font-black">{DAY_NAMES[index]}</div>
-              <div className="text-xs font-semibold text-[#6B7280]">
+              <div className={`text-xs font-semibold ${natalie.subtitle}`}>
                 {day.toLocaleDateString("he-IL", { day: "numeric", month: "numeric", timeZone: orgTimezone })}
               </div>
             </div>
 
             <div className="space-y-1.5">
               {dayAppts.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-[#E5E7EB] bg-[#F8FAFC] px-2 py-4 text-center">
-                  <p className="text-xs font-bold text-[#6B7280]">אין פגישות</p>
+                <div className={calendarUi.weekDayEmpty}>
+                  <p className={`text-xs font-bold ${natalie.subtitle}`}>אין פגישות</p>
                 </div>
               ) : (
                 dayAppts.map((appt) => (
@@ -106,19 +102,16 @@ export function WeekCalendarView<T extends CalendarEventCardAppointment>({
 
 export function WeekCalendarEmptyState({ onSchedule }: { onSchedule?: () => void }) {
   return (
-    <div
-      className="mb-4 rounded-2xl border border-dashed border-[#BFDBFE] bg-[#EFF6FF] px-4 py-5 text-right"
-      data-testid="calendar-week-empty"
-    >
-      <p className="text-lg font-black text-[#111827]">השבוע שלך פנוי 😊</p>
-      <p className="mt-2 text-base font-semibold text-[#6B7280]">רוצה שאעזור לך למלא את היומן?</p>
-      <button
-        type="button"
-        className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#1D4ED8] px-5 text-sm font-black text-white shadow-sm transition hover:bg-[#1E40AF]"
+    <div className={calendarUi.emptyWrap} data-testid="calendar-week-empty">
+      <p className={calendarUi.emptyTitle}>השבוע שלך פנוי 😊</p>
+      <p className={calendarUi.emptySubtitle}>רוצה שאעזור לך למלא את היומן?</p>
+      <Button
+        size="sm"
+        className="mt-4 !min-h-11 !rounded-xl !border-[#1D4ED8] !bg-[#1D4ED8] !px-5 !text-sm !text-white hover:!bg-[#1E40AF]"
         onClick={() => (onSchedule ? onSchedule() : openNatalieAssistant("עזרי לי לקבוע פגישה חדשה"))}
       >
         בקש מנטלי
-      </button>
+      </Button>
     </div>
   );
 }

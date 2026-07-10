@@ -1,7 +1,9 @@
 "use client";
 
 import { memo, useCallback } from "react";
+import { natalie } from "@/components/natalie-ui/tokens";
 import { isSameCalendarDay, isSameMonth, toDateInputValue, type MonthAppointmentSummary } from "@/lib/calendarUtils";
+import { calendarUi } from "./calendarUi";
 import { MonthAppointmentPill } from "./MonthAppointmentPill";
 
 export type MonthDayCellData = {
@@ -62,11 +64,7 @@ export const MonthDayCell = memo(function MonthDayCell({
       data-day={toDateInputValue(day)}
       className={`group relative flex min-h-[76px] cursor-pointer flex-col p-2 text-right transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1D4ED8] sm:min-h-[100px] sm:p-2.5 lg:min-h-[118px] ${
         isSelected ? "z-[1] ring-2 ring-inset ring-[#1D4ED8]" : ""
-      } ${
-        inCurrentMonth
-          ? "bg-white hover:bg-[#F8FAFC] hover:brightness-[0.99]"
-          : "bg-[#FAFAFA] hover:bg-[#F3F4F6]"
-      }`}
+      } ${inCurrentMonth ? calendarUi.dayCellInMonth : calendarUi.dayCellOutMonth}`}
     >
       <div className="mb-1 flex items-start justify-between gap-1">
         <span
@@ -74,8 +72,8 @@ export const MonthDayCell = memo(function MonthDayCell({
             isToday
               ? "bg-[#1D4ED8] text-white shadow-sm"
               : inCurrentMonth
-                ? "font-semibold text-[#111827]"
-                : "font-normal text-[#9CA3AF]"
+                ? `font-semibold ${natalie.title}`
+                : `font-normal ${natalie.subtitle}`
           }`}
         >
           {dayNumber}
@@ -103,7 +101,7 @@ export const MonthDayCell = memo(function MonthDayCell({
               event.stopPropagation();
               handleClick();
             }}
-            className="mt-auto inline-flex min-h-7 w-full items-center justify-end rounded-full bg-[#F1F5F9] px-2 py-1 text-[10px] font-extrabold text-[#475569] transition duration-150 hover:bg-[#E2E8F0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8] sm:min-h-8 sm:text-[11px]"
+            className={`mt-auto inline-flex min-h-7 w-full items-center justify-end rounded-full bg-[var(--natalie-surface-elevated,#F8FAFF)] px-2 py-1 text-[10px] font-extrabold ${natalie.subtitle} transition duration-150 hover:bg-[#E2E8F0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8] sm:min-h-8 sm:text-[11px]`}
           >
             +{overflowCount} נוספים
           </button>

@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import { natalie } from "@/components/natalie-ui/tokens";
 import {
   appointmentStatusBorderColor,
   colorWithAlpha,
@@ -8,6 +9,7 @@ import {
   type MonthAppointmentSummary,
 } from "@/lib/calendarUtils";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
+import { calendarUi } from "./calendarUi";
 
 type MonthAppointmentPillProps = {
   appointment: MonthAppointmentSummary;
@@ -41,10 +43,10 @@ export const MonthAppointmentPill = memo(function MonthAppointmentPill({
       }}
       title={`${time} ${appointment.clientName}`}
     >
-      <span className={`min-w-0 truncate font-black text-[#111827] ${isCancelled ? "line-through" : ""}`}>
+      <span className={`min-w-0 ${calendarUi.clientName} ${isCancelled ? "line-through" : ""}`}>
         {appointment.clientName}
       </span>
-      <span className={`shrink-0 text-[10px] font-bold text-[#4B5563] ${isCancelled ? "line-through" : ""}`} dir="ltr">
+      <span className={`shrink-0 text-[10px] font-bold ${natalie.subtitle} ${isCancelled ? "line-through" : ""}`} dir="ltr">
         {time}
       </span>
     </button>

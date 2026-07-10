@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
+import { Button } from "@/components/natalie-ui";
 import {
   buildMonthGrid,
   DAY_NAMES_SHORT,
@@ -10,9 +11,10 @@ import {
   toDateInputValue,
   type TimelineAppointment,
 } from "@/lib/calendarUtils";
+import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
+import { calendarUi } from "./calendarUi";
 import { MonthDayCell } from "./MonthDayCell";
 import { useMaxVisibleAppointments } from "./useMaxVisibleAppointments";
-import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
 
 type MonthCalendarViewProps<T extends TimelineAppointment> = {
   monthAnchor: Date;
@@ -77,40 +79,31 @@ export function MonthCalendarView<T extends TimelineAppointment>({
   return (
     <div>
       {!loading && !hasMonthAppointments && (
-        <div
-          className="mb-4 rounded-2xl border border-dashed border-[#BFDBFE] bg-[#EFF6FF] px-4 py-5 text-right"
-          data-testid="calendar-month-empty"
-        >
-          <p className="text-lg font-black text-[#111827]">החודש עדיין ריק ביומן 😊</p>
-          <p className="mt-2 text-base font-semibold text-[#6B7280]">רוצה שאעזור לך לקבוע את הפגישה הראשונה?</p>
-          <button
-            type="button"
-            className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#1D4ED8] px-5 text-sm font-black text-white shadow-sm transition hover:bg-[#1E40AF]"
+        <div className={calendarUi.emptyWrap} data-testid="calendar-month-empty">
+          <p className={calendarUi.emptyTitle}>החודש עדיין ריק ביומן 😊</p>
+          <p className={calendarUi.emptySubtitle}>רוצה שאעזור לך לקבוע את הפגישה הראשונה?</p>
+          <Button
+            size="sm"
+            className="mt-4 !min-h-11 !rounded-xl !border-[#1D4ED8] !bg-[#1D4ED8] !px-5 !text-sm !text-white hover:!bg-[#1E40AF]"
             onClick={() => openNatalieAssistant("עזרי לי לקבוע פגישה חדשה")}
           >
             בקש מנטלי
-          </button>
+          </Button>
         </div>
       )}
 
       {loading ? (
         <div className="skeleton min-h-[480px] rounded-2xl sm:min-h-[540px] lg:min-h-[600px]" />
       ) : (
-        <div
-          key={monthAnchor.toISOString()}
-          className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_4px_16px_rgba(15,23,42,0.06)] transition-opacity duration-200"
-        >
-          <div className="grid grid-cols-7 border-b border-[#E5E7EB] bg-[#FAFAFA]" dir="rtl">
+        <div key={monthAnchor.toISOString()} className={`${calendarUi.gridShell} transition-opacity duration-200`}>
+          <div className={calendarUi.gridHeader} dir="rtl">
             {DAY_NAMES_SHORT.map((name) => (
-              <div
-                key={name}
-                className="px-1 py-2 text-center text-[11px] font-extrabold tracking-wide text-[#6B7280]"
-              >
+              <div key={name} className={calendarUi.gridHeaderCell}>
                 {name}
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 divide-x divide-y divide-[#E5E7EB] border-t-0" dir="rtl">
+          <div className={calendarUi.gridDivide} dir="rtl">
             {gridDays.map((day) => {
               const key = toDateInputValue(day);
               const dayAppointments = appointmentsByDay.get(key) ?? [];
