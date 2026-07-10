@@ -13,6 +13,7 @@ import {
   MessageBanner,
   PageTitle,
   SkeletonCard,
+  SkeletonText,
   Timeline,
 } from "@/components/natalie-ui";
 
@@ -49,10 +50,10 @@ export default function DashboardPage() {
     () => [
       { id: "income", label: t("dashboardDesign.kpi.income"), value: d.snapshotMetrics[0]?.value ?? "—" },
       { id: "expense", label: t("dashboardDesign.kpi.expense"), value: d.snapshotMetrics[1]?.value ?? "—" },
-      { id: "docs", label: t("dashboardDesign.kpi.documents"), value: String(pendingDocs) },
-      { id: "meetings", label: t("dashboardDesign.kpi.meetings"), value: String(todayMeetings) },
+      { id: "docs", label: t("dashboardDesign.kpi.documents"), value: d.pageLoading ? "—" : String(pendingDocs) },
+      { id: "meetings", label: t("dashboardDesign.kpi.meetings"), value: d.pageLoading ? "—" : String(todayMeetings) },
     ],
-    [d.snapshotMetrics, pendingDocs, t, todayMeetings]
+    [d.snapshotMetrics, d.pageLoading, pendingDocs, t, todayMeetings]
   );
 
   const quickActions = useMemo(
@@ -115,29 +116,9 @@ export default function DashboardPage() {
           </MessageBanner>
         ) : null}
 
-        {d.pageLoading ? (
-          <div className="grid gap-4" aria-busy="true">
-            <div className="min-h-[220px]">
-              <SkeletonCard />
-            </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <SkeletonCard key={index} />
-              ))}
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <SkeletonCard key={`quick-${index}`} />
-              ))}
-            </div>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <SkeletonCard />
-              <SkeletonCard />
-            </div>
-            <SkeletonCard />
-          </div>
-        ) : (
-          <div className="grid gap-4">
+        {/* אין יותר Skeleton מלא-מסך: ה-Hero, ה-CTA וה-KPI נפתחים מיד; רק
+            אזורי הנתונים שעדיין בטעינה מציגים loading מקומי משלהם. */}
+        <div className="grid gap-4">
             <Card className="overflow-hidden border-[#d7e4ff] bg-[linear-gradient(145deg,#eef4ff_0%,#f7faff_55%,#ffffff_100%)] p-4 shadow-[0_16px_40px_rgba(29,91,255,0.11)] dark:border-[#1F2A44] dark:bg-[linear-gradient(145deg,#0F1B38_0%,#0D1730_55%,#0B1220_100%)] dark:shadow-[0_16px_40px_rgba(2,6,23,0.5)] md:p-6">
               <div className="grid items-center gap-5 lg:grid-cols-[minmax(0,1fr)_240px]">
                 <div className="order-2 grid gap-4 lg:order-1">
@@ -155,14 +136,26 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="grid gap-2 rounded-2xl border border-[#dbe6ff] bg-white/90 p-3 dark:border-[#1F2A44] dark:bg-[#0F172A]/90">
-                    <HeroLine icon={CalendarDays} text={t("dashboardDesign.hero.meetings", { count: todayMeetings })} />
-                    <HeroLine icon={FileClock} text={t("dashboardDesign.hero.documents", { count: pendingDocs })} />
-                    <HeroLine icon={ListTodo} text={t("dashboardDesign.hero.tasks", { count: openTasks })} />
+                    {d.pageLoading ? (
+                      <SkeletonText lines={3} />
+                    ) : (
+                      <>
+                        <HeroLine icon={CalendarDays} text={t("dashboardDesign.hero.meetings", { count: todayMeetings })} />
+                        <HeroLine icon={FileClock} text={t("dashboardDesign.hero.documents", { count: pendingDocs })} />
+                        <HeroLine icon={ListTodo} text={t("dashboardDesign.hero.tasks", { count: openTasks })} />
+                      </>
+                    )}
                   </div>
 
-                  <p className="rounded-xl border border-[#e5ebfb] bg-white px-3 py-2 text-sm font-semibold text-[#334155] dark:border-[#1F2A44] dark:bg-[#0F172A] dark:text-[#CBD5E1]">
-                    {heroSummary}
-                  </p>
+                  {d.pageLoading ? (
+                    <div className="rounded-xl border border-[#e5ebfb] bg-white px-3 py-2 dark:border-[#1F2A44] dark:bg-[#0F172A]">
+                      <SkeletonText lines={1} />
+                    </div>
+                  ) : (
+                    <p className="rounded-xl border border-[#e5ebfb] bg-white px-3 py-2 text-sm font-semibold text-[#334155] dark:border-[#1F2A44] dark:bg-[#0F172A] dark:text-[#CBD5E1]">
+                      {heroSummary}
+                    </p>
+                  )}
 
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Button
@@ -215,6 +208,16 @@ export default function DashboardPage() {
               ))}
             </section>
 
+            {d.pageLoading ? (
+              <div className="grid gap-4" aria-busy="true">
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <SkeletonCard />
+                  <SkeletonCard />
+                </div>
+                <SkeletonCard />
+              </div>
+            ) : (
+              <>
             <div className="grid gap-4 lg:grid-cols-2">
               <Timeline
                 title={t("dashboardDesign.todayTimeline")}
@@ -274,8 +277,9 @@ export default function DashboardPage() {
                 </ul>
               )}
             </Card>
-          </div>
-        )}
+              </>
+            )}
+        </div>
       </AppShell>
     </div>
   );

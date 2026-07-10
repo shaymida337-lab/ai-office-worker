@@ -180,30 +180,69 @@ export function useDashboardHome() {
     try {
       const appointmentFrom = new Date().toISOString();
       const appointmentTo = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-      const [statsResult, summaryResult, gmailResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, tasksResult, alertsResult, orgResult, systemResult, reviewsResult, briefingResult, accountantResult] = await Promise.allSettled([
+      // טעינה פרוגרסיבית: הבקשות הקריטיות למסך הראשון נפרדות מהשאר, כך
+      // שבקשה איטית אחת (למשל system/health עם timeout של 30ש׳, או backend
+      // בהתעוררות מ-cold start) לא משאירה את כל הדשבורד על Skeleton.
+      // כל הבקשות יוצאות במקביל; pageLoading יורד כשהקריטיות הסתיימו.
+      const criticalPromise = Promise.allSettled([
         apiFetch<DashboardStats>("/api/stats"),
-        apiFetch<{ text: string }>("/api/summary/daily"),
         apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
+        apiFetch<OrganizationSettings>("/api/organization/settings"),
+        apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review"),
+        fetchBriefingSchedulingSnapshot(appointmentFrom, appointmentTo),
+        apiFetch<Task[]>("/api/tasks"),
+      ] as const);
+      const deferredPromise = Promise.allSettled([
+        apiFetch<{ text: string }>("/api/summary/daily"),
         apiFetch<ClientsResponse>("/api/clients"),
         apiFetch<ScanStatus>("/api/automation/scan-status"),
         apiFetch<Payment[]>("/api/payments"),
         apiFetch<Payment[]>("/api/reports/missing-invoices"),
         apiFetch<{ invoices: RecentInvoice[] }>("/api/invoices"),
-        apiFetch<Task[]>("/api/tasks"),
         apiFetch<AlertItem[]>("/api/alerts"),
-        apiFetch<OrganizationSettings>("/api/organization/settings"),
         apiFetch<SystemHealth>("/api/system/health", { timeoutMs: 30000 }),
-        apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review"),
-        fetchBriefingSchedulingSnapshot(appointmentFrom, appointmentTo),
         apiFetch<AccountantSummary>("/api/accountant/summary"),
-      ]);
+      ] as const);
+
+      const [statsResult, gmailResult, orgResult, reviewsResult, briefingResult, tasksResult] = await criticalPromise;
 
       setStats(statsResult.status === "fulfilled" ? statsResult.value : null);
-      setSummary(summaryResult.status === "fulfilled" ? summaryResult.value.text : "לא ניתן לטעון סיכום כרגע.");
       const gmailResolved = resolveGmailStatusFromSettled(gmailStatus, gmailResult);
       setGmailStatus(gmailResolved.nextStatus);
       setGmailStatusKnown(gmailResolved.known);
       setGmailStatusStale(gmailResolved.stale);
+      setRecentTasks(tasksResult.status === "fulfilled" ? tasksResult.value.slice(0, 8) : []);
+      setDocumentReviews(reviewsResult.status === "fulfilled" ? reviewsResult.value.slice(0, 5) : []);
+      if (briefingResult.status === "fulfilled") {
+        setBriefingScheduling(briefingResult.value);
+        setUpcomingAppointments(
+          briefingResult.value.upcoming.map((item) => ({
+            id: item.id,
+            startTime: item.startTime,
+            status: item.status,
+            client: { name: item.clientName },
+            source: item.source,
+            statusLabel: item.statusLabel,
+            pendingOwnerApproval: item.pendingOwnerApproval,
+          }))
+        );
+      } else {
+        setBriefingScheduling(null);
+        setUpcomingAppointments([]);
+      }
+      if (orgResult.status === "fulfilled") {
+        setOrganizationSettings(orgResult.value);
+        if (orgResult.value.onboardingRequired) {
+          router.replace("/onboarding");
+          return;
+        }
+      }
+      // המסך נפתח כאן — אזורים שתלויים בבקשות הנדחות מציגים loading מקומי.
+      setPageLoading(false);
+
+      const [summaryResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, alertsResult, systemResult, accountantResult] = await deferredPromise;
+
+      setSummary(summaryResult.status === "fulfilled" ? summaryResult.value.text : "לא ניתן לטעון סיכום כרגע.");
       setClients(clientsResult.status === "fulfilled" ? clientsResult.value : emptyClients);
 
       if (scanStatusResult.status === "fulfilled") {
@@ -246,9 +285,7 @@ export function useDashboardHome() {
       setPayments(paymentsResult.status === "fulfilled" ? paymentsResult.value : []);
       setMissingInvoices(missingResult.status === "fulfilled" ? missingResult.value : []);
       setRecentInvoices(invoicesResult.status === "fulfilled" ? invoicesResult.value.invoices : []);
-      setRecentTasks(tasksResult.status === "fulfilled" ? tasksResult.value.slice(0, 8) : []);
       setAlerts(alertsResult.status === "fulfilled" ? alertsResult.value.slice(0, 8) : []);
-      setDocumentReviews(reviewsResult.status === "fulfilled" ? reviewsResult.value.slice(0, 5) : []);
       const loadTruth = resolveGmailTruthAfterLoad({
         gmailResolved,
         scanLogs:
@@ -262,31 +299,6 @@ export function useDashboardHome() {
         documentReviewCount: reviewsResult.status === "fulfilled" ? reviewsResult.value.length : 0,
       });
       setShowGmailConnect(loadTruth.showConnectCta);
-      if (briefingResult.status === "fulfilled") {
-        setBriefingScheduling(briefingResult.value);
-        setUpcomingAppointments(
-          briefingResult.value.upcoming.map((item) => ({
-            id: item.id,
-            startTime: item.startTime,
-            status: item.status,
-            client: { name: item.clientName },
-            source: item.source,
-            statusLabel: item.statusLabel,
-            pendingOwnerApproval: item.pendingOwnerApproval,
-          }))
-        );
-      } else {
-        setBriefingScheduling(null);
-        setUpcomingAppointments([]);
-      }
-
-      if (orgResult.status === "fulfilled") {
-        setOrganizationSettings(orgResult.value);
-        if (orgResult.value.onboardingRequired) {
-          router.replace("/onboarding");
-          return;
-        }
-      }
 
       setSystemHealth(systemResult.status === "fulfilled" ? systemResult.value : null);
       setSystemHealthFetchFailed(systemResult.status !== "fulfilled");
