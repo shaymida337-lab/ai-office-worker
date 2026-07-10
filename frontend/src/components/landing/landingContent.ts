@@ -11,7 +11,6 @@ export const LANDING_HERO = {
     "קוראת מיילים, סורקת חשבוניות, מנהלת משימות ומסדרת מסמכים — כדי שתוכלו להתמקד בעסק.",
   cta: "לרשימת ההמתנה",
   secondaryCta: "לראות יכולות",
-  bubble: "שלום! אני נטלי — עובדת המשרד שלך",
 } as const;
 
 export const LANDING_INTEGRATIONS = [

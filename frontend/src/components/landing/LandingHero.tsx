@@ -42,20 +42,9 @@ export function LandingHero() {
           </div>
 
           <div className="order-1 mx-auto grid w-full max-w-[320px] min-w-0 gap-4 md:order-2 md:mx-0 md:max-w-none">
-            <div className="relative mx-auto w-full max-w-[240px] md:mx-0 md:max-w-[260px]">
+            <div className="mx-auto w-full max-w-[240px] md:mx-0 md:max-w-[260px]">
               <div className="pt-2 md:pt-0">
                 <NataliePortrait size="hero" showStatusDot />
-              </div>
-              <div
-                className={`mt-3 ${radius.lg} border px-3 py-2 text-center text-xs font-semibold sm:text-sm md:absolute md:-top-1 md:mt-0 md:max-w-[12rem] md:text-right ${shadow.soft} md:-left-3 md:px-4 md:py-2.5`}
-                style={{
-                  backgroundColor: colors.surface,
-                  borderColor: colors.borderSubtle,
-                  color: colors.textPrimary,
-                }}
-                role="note"
-              >
-                {LANDING_HERO.bubble}
               </div>
             </div>
 
