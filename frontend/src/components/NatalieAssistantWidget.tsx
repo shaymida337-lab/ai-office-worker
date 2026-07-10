@@ -5,6 +5,7 @@ import { Mic, SendHorizontal, Volume2, VolumeX, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { apiFetch, API_URL, ApiError, getToken } from "@/lib/api";
 import { formatNatalieResponseOrFallback } from "@/lib/natalie/formatResponse";
+import { shellLayout } from "@/components/natalie-ui/tokens";
 import { buildBookAppointmentActionFeedback } from "@/lib/natalieBookFeedback";
 import { normalizeAvailabilityProposal, normalizeNatalieResponse } from "@/lib/natalie/responseGuard";
 import {
@@ -331,9 +332,16 @@ const hiddenPrefixes = [
   "/social/approve",
 ];
 
+const pagesWithLocalFab = new Set(["/dashboard", "/dashboard/calendar", "/crm", "/tasks"]);
+
 function shouldShowWidget(pathname: string) {
   if (pathname === "/" || pathname === "/natalie") return false;
   return !hiddenPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+function shouldShowWidgetFab(pathname: string) {
+  if (!shouldShowWidget(pathname)) return false;
+  return !pagesWithLocalFab.has(pathname);
 }
 
 function buildNatalieHistory(messages: WidgetMessage[]): NatalieHistoryMessage[] {
@@ -987,7 +995,7 @@ function NatalieAssistantWidgetInner() {
     return () => unlockUiOverlay();
   }, [micState]);
 
-  const showFloatingAvatar = !uiOverlayOpen && micState === "idle";
+  const showFloatingAvatar = shouldShowWidgetFab(pathname) && !uiOverlayOpen && micState === "idle";
 
   if (!shouldShowWidget(pathname)) return null;
 
@@ -2715,11 +2723,7 @@ function NatalieAssistantWidgetInner() {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={`group fixed z-50 grid place-items-center rounded-full transition hover:scale-[1.03] focus:outline-none focus:ring-4 lg:bottom-6 lg:right-[17rem] ${
-          pathname === "/dashboard"
-            ? "bottom-[calc(112px+env(safe-area-inset-bottom,0px))] right-3 h-[5rem] w-[5rem]"
-            : "bottom-[calc(96px+env(safe-area-inset-bottom,0px))] right-4 h-[4.25rem] w-[4.25rem]"
-        }`}
+        className={`group ${shellLayout.fabPosition} z-[60] grid h-16 w-16 place-items-center rounded-full transition hover:scale-[1.03] focus:outline-none focus:ring-4 focus:ring-[#BFDBFE]`}
         style={{
           background: "linear-gradient(135deg, #3a6cff, #1d5bff, #1746c7)",
           boxShadow: "0 18px 40px rgba(29,91,255,0.32), 0 0 0 6px rgba(29,91,255,0.08)",
@@ -2729,7 +2733,7 @@ function NatalieAssistantWidgetInner() {
       >
         <span className="absolute inset-0 rounded-full opacity-0 transition group-hover:opacity-100" style={{ boxShadow: "0 0 0 8px rgba(29,91,255,0.12)" }} />
         <span className="relative">
-          <NatalieIdentityAvatar sizeClass={pathname === "/dashboard" ? "h-[4.5rem] w-[4.5rem]" : "h-[3.85rem] w-[3.85rem]"} />
+          <NatalieIdentityAvatar sizeClass="h-[3.75rem] w-[3.75rem]" />
           <span className="absolute bottom-0 right-0 h-4 w-4 rounded-full border-2 border-white bg-[#1faa59]" />
         </span>
       </button>

@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { GlobalBottomNavigation } from "./GlobalBottomNavigation";
 import { GlobalHeader } from "./GlobalHeader";
-import { natalie } from "./tokens";
+import { natalie, shellLayout } from "./tokens";
 
 export function AppShell({
   children,
@@ -12,6 +12,7 @@ export function AppShell({
   floatingButton,
   showGlobalHeader = true,
   showBottomNavigation = true,
+  mainClassName = "",
 }: {
   children: ReactNode;
   pageTitle?: ReactNode;
@@ -20,10 +21,9 @@ export function AppShell({
   floatingButton?: ReactNode;
   showGlobalHeader?: boolean;
   showBottomNavigation?: boolean;
+  mainClassName?: string;
 }) {
-  const mainOffset = pageTitle
-    ? "pt-[calc(9.5rem+env(safe-area-inset-top,0px))] md:pt-[calc(10rem+env(safe-area-inset-top,0px))]"
-    : "pt-[calc(4.5rem+env(safe-area-inset-top,0px))]";
+  const mainOffset = pageTitle ? shellLayout.headerWithTitleOffset : shellLayout.headerOffset;
 
   const resolvedBottomNav =
     bottomNavigation === null || !showBottomNavigation ? null : bottomNavigation ?? <GlobalBottomNavigation />;
@@ -36,7 +36,11 @@ export function AppShell({
           {pageTitle}
         </div>
       ) : null}
-      <main className={`mx-auto w-full max-w-6xl px-4 pb-28 md:px-6 xl:max-w-7xl ${mainOffset}`}>{children}</main>
+      <main
+        className={`${shellLayout.contentMaxWidth} ${shellLayout.contentPaddingX} ${shellLayout.mainPaddingTop} ${shellLayout.mainPaddingBottom} ${mainOffset} ${mainClassName}`}
+      >
+        {children}
+      </main>
       {resolvedBottomNav}
       {floatingButton}
     </div>

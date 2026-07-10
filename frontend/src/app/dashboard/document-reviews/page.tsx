@@ -165,7 +165,7 @@ export default function DocumentReviewsPage() {
       <AppShell
         pageTitle={<PageTitle title={t("documentsDesign.title")} subtitle={t("documentsDesign.subtitle")} />}
       >
-        <div className="mx-auto grid min-w-0 max-w-3xl gap-6 md:gap-8">
+        <div className="mx-auto grid min-w-0 max-w-3xl gap-4">
           <DocumentsMorningContext
             pendingCount={pendingCount}
             loading={loading}

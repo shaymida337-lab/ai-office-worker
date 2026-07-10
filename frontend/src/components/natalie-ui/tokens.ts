@@ -14,6 +14,22 @@ export const natalie = {
   timelineItem: "rounded-xl border border-[#E6ECF8] bg-[#F8FAFF]",
 } as const;
 
+/** Shared AppShell layout rhythm — 8px spacing system. */
+export const shellLayout = {
+  headerHeight: "4.5rem",
+  pageTitleHeight: "4rem",
+  contentMaxWidth: "mx-auto w-full max-w-6xl xl:max-w-7xl",
+  contentPaddingX: "px-4 md:px-6",
+  searchWidth: "w-full max-w-md",
+  sectionGap: "gap-4",
+  mainPaddingBottom: "pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]",
+  mainPaddingTop: "pt-4",
+  headerOffset: "pt-[calc(4.5rem+env(safe-area-inset-top,0px))]",
+  headerWithTitleOffset: "pt-[calc(8.5rem+env(safe-area-inset-top,0px))]",
+  fabPosition:
+    "fixed z-50 end-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px)+0.5rem)] md:end-6",
+} as const;
+
 export const buttonVariants = {
   primary:
     "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-3 text-base font-black text-[#111827] transition hover:bg-[#BFDBFE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60",

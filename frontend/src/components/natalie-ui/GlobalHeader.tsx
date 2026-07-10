@@ -9,14 +9,8 @@ import { useGlobalSearch } from "@/hooks/useGlobalSearch";
 import { useI18n } from "@/i18n";
 import { Button } from "./Button";
 import { Input } from "./Input";
-import { natalie } from "./tokens";
+import { natalie, shellLayout } from "./tokens";
 import { useTheme } from "./ThemeProvider";
-
-function profileInitials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
-  return (parts[0]?.[0] ?? "נ").toUpperCase();
-}
 
 export function GlobalHeader({
   className = "",
@@ -64,22 +58,28 @@ export function GlobalHeader({
   return (
     <header
       className={`fixed inset-x-0 top-0 z-40 border-b border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface,#ffffff)]/95 backdrop-blur ${offsetClass} ${className}`}
+      style={{ paddingTop: "max(0px, env(safe-area-inset-top))" }}
     >
       <div
-        className="mx-auto flex min-h-16 max-h-[4.5rem] w-full max-w-6xl items-center gap-6 px-4 md:px-6 xl:max-w-7xl"
-        style={{ paddingTop: "max(0px, env(safe-area-inset-top))" }}
+        className={`${shellLayout.contentMaxWidth} grid h-[4.5rem] grid-cols-[minmax(0,1fr)_min(100%,28rem)_minmax(0,1fr)] items-center ${shellLayout.contentPaddingX}`}
       >
-        <Link
-          href="/dashboard"
-          className="flex shrink-0 items-center transition-opacity duration-200 hover:opacity-90"
-          aria-label={t("globalHeader.home")}
-        >
-          <Logo size="sm" iconOnly className="sm:hidden" />
-          <Logo size="sm" className="hidden sm:flex" />
-        </Link>
+        <div className="flex min-w-0 items-center gap-3 pe-1 sm:pe-0">
+          <Link
+            href="/dashboard"
+            className="flex shrink-0 items-center transition-opacity duration-200 hover:opacity-90"
+            aria-label={t("globalHeader.home")}
+          >
+            <Logo size="sm" iconOnly className="sm:hidden" />
+            <Logo size="sm" className="hidden sm:flex" />
+          </Link>
+          <div className="hidden min-w-0 sm:block" aria-label={t("globalHeader.profile")}>
+            <p className={`truncate text-sm font-black leading-tight ${natalie.title}`}>{workspaceName}</p>
+            <p className={`truncate text-xs font-semibold leading-tight ${natalie.subtitle}`}>{userName}</p>
+          </div>
+        </div>
 
-        <div ref={searchPanelRef} className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]" />
+        <div ref={searchPanelRef} className={`relative justify-self-center ${shellLayout.searchWidth} px-2`}>
+          <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
           <Input
             ref={searchInputRef}
             value={searchQuery}
@@ -97,7 +97,7 @@ export function GlobalHeader({
             aria-label={t("globalHeader.searchPlaceholder")}
           />
           {searchOpen && searchQuery.trim().length >= 2 ? (
-            <div className="absolute start-0 end-0 top-[calc(100%+0.35rem)] z-[80] overflow-hidden rounded-2xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] shadow-lg">
+            <div className="absolute start-0 end-0 top-[calc(100%+0.5rem)] z-[80] overflow-hidden rounded-2xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] shadow-lg">
               {searchLoading ? <div className="p-4 text-sm text-[var(--natalie-text-muted,#64748B)]">{t("globalHeader.searching")}</div> : null}
               {!searchLoading && searchError ? (
                 <div className="p-4 text-sm text-[#DC2626]">{searchError}</div>
@@ -128,7 +128,7 @@ export function GlobalHeader({
           ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        <div className="flex shrink-0 items-center justify-end gap-2 ps-1 sm:ps-0">
           <Button
             variant="ghost"
             size="sm"
@@ -164,19 +164,6 @@ export function GlobalHeader({
             <Globe className="h-4 w-4" />
             <span className="hidden sm:inline">{language === "he" ? "EN" : "עב"}</span>
           </Button>
-        </div>
-
-        <div className="flex min-w-0 shrink-0 items-center gap-3" aria-label={t("globalHeader.profile")}>
-          <span
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,#2563EB,#1D4ED8)] text-sm font-black text-white shadow-[0_8px_20px_rgba(37,99,235,0.28)]"
-            aria-hidden
-          >
-            {profileInitials(userName)}
-          </span>
-          <div className="hidden min-w-0 max-w-[9rem] md:block lg:max-w-[11rem]">
-            <p className={`truncate text-sm font-black leading-tight ${natalie.title}`}>{userName}</p>
-            <p className={`truncate text-xs font-semibold leading-tight ${natalie.subtitle}`}>{workspaceName}</p>
-          </div>
         </div>
       </div>
     </header>

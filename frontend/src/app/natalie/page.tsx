@@ -14,7 +14,8 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { GlobalHeader, GlobalBottomNavigation } from "@/components/natalie-ui";
+import { AppShell } from "@/components/natalie-ui";
+import { useI18n } from "@/i18n";
 
 type ChatMessage = {
   id: string;
@@ -145,6 +146,7 @@ function getMockReply(message: string) {
 }
 
 export default function NatalieChatPage() {
+  const { dir } = useI18n();
   const [messages, setMessages] = useState(seedMessages);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
@@ -213,11 +215,9 @@ export default function NatalieChatPage() {
   }
 
   return (
-    <main className="natalie-chat-page fixed inset-0 z-50 h-[100dvh] overflow-hidden bg-[#f4f6fb] text-[#0f1830]" dir="rtl">
-      <GlobalHeader />
-      <GlobalBottomNavigation />
-      <section className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] pt-[calc(4.5rem+env(safe-area-inset-top,0px))] sm:px-6 lg:px-8">
-        <div className="z-20 mb-4 shrink-0 rounded-[22px] border border-[#e6eaf2] bg-white/90 p-4 shadow-[0_10px_34px_rgba(20,40,90,0.10)] backdrop-blur md:p-5">
+    <div dir={dir}>
+      <AppShell mainClassName="flex min-h-[calc(100dvh-9rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] flex-col gap-4">
+      <div className="shrink-0 rounded-[22px] border border-[#e6eaf2] bg-white/90 p-4 shadow-[0_10px_34px_rgba(20,40,90,0.10)] backdrop-blur md:p-5">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -314,8 +314,8 @@ export default function NatalieChatPage() {
             נטלי מבקשת אישור לפני כל פעולה רגישה · אתה תמיד בשליטה
           </p>
         </footer>
-      </section>
-    </main>
+      </AppShell>
+    </div>
   );
 }
 

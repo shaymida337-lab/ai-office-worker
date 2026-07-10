@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bot, CalendarDays, FileText, Home, ListChecks, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { shellLayout } from "./tokens";
 
 export type BottomNavItem = {
   id: string;
@@ -30,10 +31,13 @@ export function BottomNavigation({ items }: { items: BottomNavItem[] }) {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface,#ffffff)]/95 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur sm:px-2"
+      className="fixed inset-x-0 bottom-0 z-40 h-[4.5rem] border-t border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface,#ffffff)]/98 px-2 pb-[max(0px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] backdrop-blur"
       aria-label="Main navigation"
     >
-      <div className="mx-auto grid w-full max-w-6xl gap-1 xl:max-w-7xl" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
+      <div
+        className={`${shellLayout.contentMaxWidth} grid h-full items-center gap-1`}
+        style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+      >
         {items.map((item) => {
           const active = isBottomNavActive(pathname, item);
           const Icon = navIcons[item.id];
@@ -41,13 +45,27 @@ export function BottomNavigation({ items }: { items: BottomNavItem[] }) {
             <Link
               key={item.id}
               href={item.href}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8] sm:px-2 ${
-                active ? "bg-[#E0E7FF] text-[#1D4ED8]" : "text-[#64748B]"
+              className={`flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8] sm:px-2 ${
+                active
+                  ? "bg-[#DBEAFE] text-[#1D4ED8] shadow-[inset_0_0_0_1px_rgba(29,78,216,0.18)]"
+                  : "text-[#94A3B8] hover:bg-[var(--natalie-surface-elevated,#F8FAFF)] hover:text-[#64748B]"
               }`}
               aria-current={active ? "page" : undefined}
             >
-              {Icon ? <Icon className="h-4 w-4 shrink-0" aria-hidden /> : null}
-              <span className="w-full truncate text-[10px] font-bold leading-tight sm:text-xs">{item.label}</span>
+              {Icon ? (
+                <Icon
+                  className={`h-5 w-5 shrink-0 transition ${active ? "scale-110 text-[#1D4ED8]" : "opacity-55"}`}
+                  aria-hidden
+                  strokeWidth={active ? 2.5 : 2}
+                />
+              ) : null}
+              <span
+                className={`w-full truncate text-[10px] leading-tight sm:text-xs ${
+                  active ? "font-extrabold text-[#1D4ED8]" : "font-semibold text-[#94A3B8]"
+                }`}
+              >
+                {item.label}
+              </span>
             </Link>
           );
         })}
