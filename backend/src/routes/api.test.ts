@@ -105,6 +105,114 @@ test("gmail scan item with null amount does not map to zero", () => {
   assert.equal(candidate.amountResolved, false);
 });
 
+test("gmail scan item uses linked FDR totalAmount when GSI amount is null", () => {
+  const now = new Date("2026-06-09T09:00:00.000Z");
+  const candidate = mapGmailScanItemToInvoiceCandidate(
+    {
+      id: "scan-fdr-fallback",
+      gmailMessageId: "gmail-fdr",
+      emailMessageId: "email-fdr",
+      gmailMessageLink: "https://mail.google.com/mail/u/0/#inbox/gmail-fdr",
+      sender: "billing@anthropic.com",
+      senderEmail: "billing@anthropic.com",
+      subject: "Invoice",
+      occurredAt: now,
+      amount: null,
+      supplierName: "Anthropic PBC",
+      attachmentFilename: "Invoice-PWMBSFD3-0005.pdf",
+      driveFileLink: null,
+      confidenceScore: "medium",
+      reviewStatus: "needs_review",
+      decisionReason: null,
+      rawAnalysis: { analysis: { currency: "ILS" } },
+      createdAt: now,
+      updatedAt: now,
+    },
+    "org-1",
+    { totalAmount: 40.05 },
+  );
+
+  assert.equal(candidate.amount, 40.05);
+  assert.equal(candidate.amountLabel, "₪40.05");
+});
+
+test("gmail scan item uses linked FDR totalAmount 354 when GSI amount is null", () => {
+  const now = new Date("2026-06-09T09:00:00.000Z");
+  const candidate = mapGmailScanItemToInvoiceCandidate(
+    {
+      id: "scan-fdr-354",
+      gmailMessageId: "gmail-354",
+      emailMessageId: null,
+      gmailMessageLink: "https://mail.google.com/mail/u/0/#inbox/gmail-354",
+      sender: "supplier@example.com",
+      senderEmail: "supplier@example.com",
+      subject: "Invoice",
+      occurredAt: now,
+      amount: null,
+      supplierName: "לא זוהה",
+      attachmentFilename: null,
+      driveFileLink: null,
+      confidenceScore: "medium",
+      reviewStatus: "needs_review",
+      decisionReason: null,
+      rawAnalysis: null,
+      createdAt: now,
+      updatedAt: now,
+    },
+    undefined,
+    { totalAmount: 354 },
+  );
+
+  assert.equal(candidate.amount, 354);
+  assert.equal(candidate.amountLabel, "₪354.00");
+});
+
+test("gmail scan item with gate review still returns amount when FDR total exists", () => {
+  const now = new Date("2026-06-09T09:00:00.000Z");
+  const candidate = mapGmailScanItemToInvoiceCandidate(
+    {
+      id: "scan-gate-review",
+      gmailMessageId: "gmail-review",
+      emailMessageId: null,
+      gmailMessageLink: "https://mail.google.com/mail/u/0/#inbox/gmail-review",
+      sender: "supplier@example.com",
+      senderEmail: "supplier@example.com",
+      subject: "Invoice",
+      occurredAt: now,
+      amount: null,
+      supplierName: "StackBlitz",
+      attachmentFilename: "invoice.pdf",
+      driveFileLink: null,
+      confidenceScore: "medium",
+      reviewStatus: "needs_review",
+      decisionReason: null,
+      rawAnalysis: null,
+      createdAt: now,
+      updatedAt: now,
+    },
+    undefined,
+    {
+      totalAmount: 25,
+      parsedFieldsJson: {
+        arc: { status: "resolved", selectedAmount: 25, reasonCode: "INVOICE_TOTAL" },
+        gates: [
+          {
+            gate: "amount",
+            verdict: "review",
+            reasonCode: "amount.vat_mismatch",
+            normalizedAmount: 25,
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(candidate.amount, 25);
+  assert.equal(candidate.amountLabel, "₪25.00");
+  assert.equal(candidate.reviewStatus, "needs_review");
+  assert.equal(candidate.amountResolved, false);
+});
+
 test("document review candidate uses canonical totalAmount display", () => {
   const now = new Date("2026-06-09T09:00:00.000Z");
   const candidate = mapDocumentReviewToInvoiceCandidate({

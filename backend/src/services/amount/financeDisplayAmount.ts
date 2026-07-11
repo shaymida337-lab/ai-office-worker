@@ -169,6 +169,64 @@ export function resolveFinanceDisplayAmount(input: FinanceDisplayAmountInput): F
   };
 }
 
+export type InvoiceListPersistedAmountSources = {
+  financialDocumentReviewTotalAmount?: number | null;
+  gmailScanItemAmount?: number | null;
+  supplierPaymentAmount?: number | null;
+  invoiceAmount?: number | null;
+};
+
+/** Invoice list persisted-column fallback order (after gate/arc signals in resolveReviewQueueDisplayAmount). */
+export function pickInvoiceListPersistedTotalAmount(
+  sources: InvoiceListPersistedAmountSources,
+): number | null {
+  for (const value of [
+    sources.financialDocumentReviewTotalAmount,
+    sources.gmailScanItemAmount,
+    sources.supplierPaymentAmount,
+    sources.invoiceAmount,
+  ]) {
+    if (isCanonicalFinanceAmountResolved(value)) return roundMoney(value);
+  }
+  return null;
+}
+
+/** Invoice list display — shows reliable fallbacks; review gate does not hide extracted amounts. */
+export function resolveInvoiceListDisplayAmount(input: FinanceDisplayAmountInput): FinanceDisplayAmount {
+  const arc = parseArcAmountSnapshot(input.parsedFieldsJson);
+  const gate = parseAmountGateFromParsedFields(input.parsedFieldsJson);
+  const currency = input.currency ?? "ILS";
+  const amount = resolveReviewQueueDisplayAmount(input);
+
+  if (amount != null) {
+    return {
+      amount,
+      amountLabel: formatResolvedCurrencyAmount(amount, currency),
+      resolved: gate?.verdict === "pass" || (!gate && amount != null),
+      arcStatus: arc?.status ?? null,
+      arcReasonCode: arc?.reasonCode ?? null,
+    };
+  }
+
+  if (gate?.verdict === "review" && !isAmountGateMissingReason(gate.reasonCode)) {
+    return {
+      amount: null,
+      amountLabel: FINANCE_AMOUNT_REVIEW_LABEL,
+      resolved: false,
+      arcStatus: arc?.status ?? null,
+      arcReasonCode: arc?.reasonCode ?? null,
+    };
+  }
+
+  return {
+    amount: null,
+    amountLabel: FINANCE_AMOUNT_MISSING_LABEL,
+    resolved: false,
+    arcStatus: arc?.status ?? null,
+    arcReasonCode: arc?.reasonCode ?? null,
+  };
+}
+
 /** Document review list/detail display — shows reliable fallbacks without changing review status. */
 export function resolveDocumentReviewDisplayAmount(input: FinanceDisplayAmountInput): FinanceDisplayAmount {
   const arc = parseArcAmountSnapshot(input.parsedFieldsJson);

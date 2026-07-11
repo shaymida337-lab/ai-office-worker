@@ -10,6 +10,7 @@ import {
   resolveCanonicalFinanceAmount,
   resolveDocumentReviewDisplayAmount,
   resolveFinanceDisplayAmount,
+  resolveInvoiceListDisplayAmount,
 } from "./financeDisplayAmount.js";
 import { evaluateAmountGate } from "./amountGate.js";
 import { supplierPaymentPersistenceDecision, buildPassingTrustGateSnapshots } from "../trust/trustGatePersistence.js";
@@ -240,6 +241,41 @@ test("resolveFinanceDisplayAmount unchanged for vat mismatch review gate", () =>
   });
   assert.equal(display.amount, null);
   assert.equal(display.amountLabel, FINANCE_AMOUNT_REVIEW_LABEL);
+});
+
+test("resolveInvoiceListDisplayAmount shows total for vat mismatch review gate", () => {
+  const display = resolveInvoiceListDisplayAmount({
+    totalAmount: 500,
+    parsedFieldsJson: {
+      arc: { status: "resolved", selectedAmount: 500, reasonCode: "INVOICE_TOTAL" },
+      gates: [
+        {
+          gate: "amount",
+          verdict: "review",
+          reasonCode: "amount.vat_mismatch",
+          normalizedAmount: 500,
+        },
+      ],
+    },
+  });
+  assert.equal(display.amount, 500);
+  assert.equal(display.amountLabel, "₪500.00");
+  assert.equal(display.resolved, false);
+});
+
+test("resolveInvoiceListDisplayAmount uses FDR total when GSI amount is null", () => {
+  const display = resolveInvoiceListDisplayAmount({
+    totalAmount: 40.05,
+    currency: "ILS",
+  });
+  assert.equal(display.amount, 40.05);
+  assert.equal(display.amountLabel, "₪40.05");
+});
+
+test("resolveInvoiceListDisplayAmount keeps סכום חסר when no sources exist", () => {
+  const display = resolveInvoiceListDisplayAmount({ totalAmount: null });
+  assert.equal(display.amount, null);
+  assert.equal(display.amountLabel, FINANCE_AMOUNT_MISSING_LABEL);
 });
 
 test("document review display shows total for vat mismatch review gate", () => {

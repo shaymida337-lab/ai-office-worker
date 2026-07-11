@@ -34,7 +34,11 @@ import {
   reviewAuditSnapshot,
   userAuditContext,
 } from "../services/auditLog/index.js";
-import { resolveFinanceDisplayAmount, resolveDocumentReviewDisplayAmount } from "../services/amount/financeDisplayAmount.js";
+import {
+  pickInvoiceListPersistedTotalAmount,
+  resolveDocumentReviewDisplayAmount,
+  resolveInvoiceListDisplayAmount,
+} from "../services/amount/financeDisplayAmount.js";
 import { initialConnectScanWindow, isHistoricalGmailScanRequest, resolveHistoricalGmailScanWindow } from "../services/scanWindow.js";
 import {
   closeStaleGmailScansForOrg,
@@ -3887,6 +3891,13 @@ export function invoiceReviewStatusFilter(status: string | undefined) {
   return status === "approved" || status === "needs_review" || status === "rejected" ? status : undefined;
 }
 
+export type LinkedFinancialDocumentReviewAmountSource = {
+  totalAmount: number | null;
+  amountBeforeVat?: number | null;
+  vatAmount?: number | null;
+  parsedFieldsJson?: unknown;
+};
+
 export function mapGmailScanItemToInvoiceCandidate(item: {
   id: string;
   gmailMessageId: string;
@@ -3906,16 +3917,22 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
   rawAnalysis: unknown;
   createdAt: Date;
   updatedAt: Date;
-}, organizationId?: string): ReviewInvoiceCandidate {
+}, organizationId?: string, linkedReview?: LinkedFinancialDocumentReviewAmountSource | null): ReviewInvoiceCandidate {
   const raw = asRecord(item.rawAnalysis);
   const analysis = asRecord(raw?.analysis);
-  const parsedFieldsJson = asRecord(raw?.parsed_fields_json) ?? asRecord(raw?.parsedFieldsJson);
+  const gsiParsedFieldsJson = asRecord(raw?.parsed_fields_json) ?? asRecord(raw?.parsedFieldsJson);
+  const parsedFieldsJson = linkedReview?.parsedFieldsJson ?? gsiParsedFieldsJson;
   const invoiceNumber = stringValue(raw?.invoiceNumber) ?? stringValue(analysis?.invoiceNumber);
   const date = dateValue(raw?.invoiceDate) ?? dateValue(analysis?.invoiceDate) ?? item.occurredAt;
   const dueDate = dateValue(raw?.dueDate) ?? dateValue(analysis?.dueDate);
   const currency = stringValue(analysis?.currency) ?? "ILS";
-  const display = resolveFinanceDisplayAmount({
-    totalAmount: item.amount,
+  const display = resolveInvoiceListDisplayAmount({
+    totalAmount: pickInvoiceListPersistedTotalAmount({
+      financialDocumentReviewTotalAmount: linkedReview?.totalAmount,
+      gmailScanItemAmount: item.amount,
+    }),
+    amountBeforeVat: linkedReview?.amountBeforeVat,
+    vatAmount: linkedReview?.vatAmount,
     parsedFieldsJson,
     currency,
   });
@@ -3960,6 +3977,8 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
   documentDate: Date | null;
   dueDate: Date | null;
   totalAmount: number | null;
+  amountBeforeVat?: number | null;
+  vatAmount?: number | null;
   currency: string;
   driveFileUrl: string | null;
   supplierName: string | null;
@@ -3976,8 +3995,12 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
   createdAt: Date;
   updatedAt: Date;
 }, organizationId?: string): ReviewInvoiceCandidate {
-  const display = resolveFinanceDisplayAmount({
-    totalAmount: item.totalAmount,
+  const display = resolveInvoiceListDisplayAmount({
+    totalAmount: pickInvoiceListPersistedTotalAmount({
+      financialDocumentReviewTotalAmount: item.totalAmount,
+    }),
+    amountBeforeVat: item.amountBeforeVat,
+    vatAmount: item.vatAmount,
     parsedFieldsJson: item.parsedFieldsJson,
     currency: item.currency,
   });
@@ -4041,8 +4064,10 @@ export function mapSupplierPaymentToInvoiceCandidate(item: {
   createdAt: Date;
   updatedAt: Date;
 }, organizationId?: string): ReviewInvoiceCandidate {
-  const display = resolveFinanceDisplayAmount({
-    totalAmount: item.totalAmount ?? item.amount,
+  const display = resolveInvoiceListDisplayAmount({
+    totalAmount: pickInvoiceListPersistedTotalAmount({
+      supplierPaymentAmount: item.totalAmount ?? item.amount,
+    }),
     parsedFieldsJson: item.parsedFieldsJson,
     currency: item.currency,
   });
@@ -4571,6 +4596,12 @@ export function mergeInvoiceListCandidates<
   const usedReviewRefs = new Set<string>();
   const usedPaymentIds = new Set<string>();
   const paymentDriveFallbackByInvoiceKey = input.paymentDriveFallbackByInvoiceKey ?? new Map();
+  const linkedReviewByGmailId = new Map<string, TDocumentReview>();
+  const linkedReviewByEmailId = new Map<string, TDocumentReview>();
+  for (const review of input.documentReviews) {
+    if (review.gmailMessageId) linkedReviewByGmailId.set(review.gmailMessageId, review);
+    if (review.emailMessageId) linkedReviewByEmailId.set(review.emailMessageId, review);
+  }
 
   const fromSupplierPayments = (input.supplierPayments ?? [])
     .filter((payment) => {
@@ -4606,7 +4637,21 @@ export function mergeInvoiceListCandidates<
       .map((item) => {
         if (item.gmailMessageId) usedReviewRefs.add(`gmail:${item.gmailMessageId}`);
         if (item.emailMessageId) usedReviewRefs.add(`email:${item.emailMessageId}`);
-        return mapGmailScanItemToInvoiceCandidate(item, input.organizationId);
+        const linkedReview =
+          (item.gmailMessageId ? linkedReviewByGmailId.get(item.gmailMessageId) : undefined) ??
+          (item.emailMessageId ? linkedReviewByEmailId.get(item.emailMessageId) : undefined);
+        return mapGmailScanItemToInvoiceCandidate(
+          item,
+          input.organizationId,
+          linkedReview
+            ? {
+                totalAmount: linkedReview.totalAmount,
+                amountBeforeVat: linkedReview.amountBeforeVat,
+                vatAmount: linkedReview.vatAmount,
+                parsedFieldsJson: linkedReview.parsedFieldsJson,
+              }
+            : null,
+        );
       }),
     ...fromSupplierPayments,
     ...input.documentReviews
