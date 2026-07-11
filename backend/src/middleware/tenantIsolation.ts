@@ -1,13 +1,20 @@
 import type { NextFunction, Request, Response } from "express";
 import { resolveVerifiedTenant } from "../services/tenant/verifiedTenant.js";
 import {
-  FINANCIAL_DATA_CONTAINMENT_CODE,
-  isFinancialDataContainmentActive,
+  FINANCIAL_INGESTION_CONTAINMENT_CODE,
+  FINANCIAL_READ_CONTAINMENT_CODE,
   isFinancialDataPath,
+  isFinancialIngestionContainmentActive,
   isFinancialIngestionPath,
+  isFinancialReadContainmentActive,
 } from "../services/p0/financialContainment.js";
 
-export { isFinancialDataContainmentActive, isFinancialDataPath } from "../services/p0/financialContainment.js";
+export {
+  isFinancialDataContainmentActive,
+  isFinancialDataPath,
+  isFinancialIngestionContainmentActive,
+  isFinancialReadContainmentActive,
+} from "../services/p0/financialContainment.js";
 
 export async function validateTenantMiddleware(
   req: Request,
@@ -42,13 +49,19 @@ export async function validateTenantMiddleware(
   next();
 }
 
-function respondContainment503(res: Response, path: string, method: string, org?: string) {
+function respondContainment503(
+  res: Response,
+  path: string,
+  method: string,
+  org: string | undefined,
+  code: string,
+) {
   console.warn(
-    `[tenant-isolation] financial containment active method=${method} path=${path} org=${org ?? "unknown"}`,
+    `[tenant-isolation] financial containment active code=${code} method=${method} path=${path} org=${org ?? "unknown"}`,
   );
   res.status(503).json({
     error: "Financial documents are temporarily unavailable while tenant isolation is verified.",
-    code: FINANCIAL_DATA_CONTAINMENT_CODE,
+    code,
   });
 }
 
@@ -57,14 +70,39 @@ export function financialDataContainmentMiddleware(
   res: Response,
   next: NextFunction,
 ): void {
-  if (!isFinancialDataContainmentActive()) {
-    next();
-    return;
-  }
-  if (!isFinancialDataPath(req.path) && !isFinancialIngestionPath(req.path)) {
+  const isIngestionPath = isFinancialIngestionPath(req.path);
+  const isReadPath = isFinancialDataPath(req.path);
+
+  if (!isIngestionPath && !isReadPath) {
     next();
     return;
   }
 
-  respondContainment503(res, req.path, req.method, req.auth?.organizationId);
+  if (isIngestionPath) {
+    if (isFinancialIngestionContainmentActive()) {
+      respondContainment503(
+        res,
+        req.path,
+        req.method,
+        req.auth?.organizationId,
+        FINANCIAL_INGESTION_CONTAINMENT_CODE,
+      );
+      return;
+    }
+    next();
+    return;
+  }
+
+  if (isFinancialReadContainmentActive()) {
+    respondContainment503(
+      res,
+      req.path,
+      req.method,
+      req.auth?.organizationId,
+      FINANCIAL_READ_CONTAINMENT_CODE,
+    );
+    return;
+  }
+
+  next();
 }

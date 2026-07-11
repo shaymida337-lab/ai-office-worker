@@ -7,11 +7,11 @@ import { fileURLToPath } from "node:url";
 const backendRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 const CONTAINMENT_GUARD_PATTERN =
-  /\b(assertFinancialIngestionAllowed\s*\(|isFinancialDataContainmentActive\s*\()/;
+  /\b(assertFinancialIngestionAllowed\s*\(|isFinancialIngestionContainmentActive\s*\()/;
 
 /**
  * Canonical financial ingestion entry points. CI fails if a new writer is added
- * without calling assertFinancialIngestionAllowed or isFinancialDataContainmentActive.
+ * without calling assertFinancialIngestionAllowed or isFinancialIngestionContainmentActive.
  */
 export const FINANCIAL_INGESTION_ENTRY_POINTS = [
   { file: "src/services/gmail-sync.ts", fn: "syncGmailForOrganization" },
@@ -83,7 +83,7 @@ test("every financial ingestion entry point enforces containment", () => {
   assert.deepEqual(
     missing,
     [],
-    `Missing assertFinancialIngestionAllowed or isFinancialDataContainmentActive in: ${missing.join(", ")}`,
+    `Missing assertFinancialIngestionAllowed or isFinancialIngestionContainmentActive in: ${missing.join(", ")}`,
   );
 });
 

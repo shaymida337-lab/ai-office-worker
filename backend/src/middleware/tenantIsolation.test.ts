@@ -11,7 +11,6 @@ import {
 import { SHARON_CONFIRMED_ALLOWLIST } from "../services/p0/sharonContaminationAllowlist.js";
 import {
   financialDataContainmentMiddleware,
-  isFinancialDataContainmentActive,
   isFinancialDataPath,
   validateTenantMiddleware,
 } from "../middleware/tenantIsolation.js";
@@ -21,6 +20,67 @@ const ORG_A = "org-a";
 const ORG_B = "org-b";
 const USER_A = "user-a";
 const USER_B = "user-b";
+
+const ENV_KEYS = [
+  "FINANCIAL_DATA_CONTAINMENT",
+  "FINANCIAL_READ_CONTAINMENT",
+  "FINANCIAL_INGESTION_CONTAINMENT",
+] as const;
+
+type EnvSnapshot = Partial<Record<(typeof ENV_KEYS)[number], string | undefined>>;
+
+function snapshotEnv(): EnvSnapshot {
+  return Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]])) as EnvSnapshot;
+}
+
+function restoreEnv(snapshot: EnvSnapshot) {
+  for (const key of ENV_KEYS) {
+    const value = snapshot[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
+
+function setEnv(master?: string, read?: string, ingestion?: string) {
+  if (master === undefined) delete process.env.FINANCIAL_DATA_CONTAINMENT;
+  else process.env.FINANCIAL_DATA_CONTAINMENT = master;
+  if (read === undefined) delete process.env.FINANCIAL_READ_CONTAINMENT;
+  else process.env.FINANCIAL_READ_CONTAINMENT = read;
+  if (ingestion === undefined) delete process.env.FINANCIAL_INGESTION_CONTAINMENT;
+  else process.env.FINANCIAL_INGESTION_CONTAINMENT = ingestion;
+}
+
+async function requestContainment(
+  path: string,
+  master?: string,
+  read?: string,
+  ingestion?: string,
+): Promise<{ status: number; body: { code?: string } }> {
+  const previous = snapshotEnv();
+  setEnv(master, read, ingestion);
+  resetCrossOrgContaminatedGmailIdsCacheForTests();
+
+  const app = express();
+  app.use((req, _res, next) => {
+    req.auth = { userId: USER_A, organizationId: ORG_A, email: "a@example.com" };
+    next();
+  });
+  app.use(financialDataContainmentMiddleware);
+  app.get(path, (_req, res) => res.json({ ok: true }));
+
+  const server = app.listen(0);
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}${path}`);
+    return { status: response.status, body: (await response.json()) as { code?: string } };
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+    restoreEnv(previous);
+  }
+}
 
 test("resolveVerifiedTenant rejects stale token org for organization owner", async () => {
   const originalUserFindUnique = prisma.user.findUnique.bind(prisma.user);
@@ -72,34 +132,59 @@ test("isFinancialDataPath covers invoice and payment read routes", () => {
   assert.equal(isFinancialDataPath("/dashboard/stats"), false);
 });
 
-test("financialDataContainmentMiddleware returns 503 for financial routes when active", async () => {
-  const previous = process.env.FINANCIAL_DATA_CONTAINMENT;
-  process.env.FINANCIAL_DATA_CONTAINMENT = "1";
+test("financial read path returns 503 when read containment active", async () => {
+  const result = await requestContainment("/invoices", "0", "1", "0");
+  assert.equal(result.status, 503);
+  assert.equal(result.body.code, "FINANCIAL_READ_CONTAINMENT");
+});
+
+test("financial read path continues when read containment inactive", async () => {
+  const result = await requestContainment("/invoices", "0", "0", "1");
+  assert.equal(result.status, 200);
+});
+
+test("ingestion path returns 503 when ingestion containment active", async () => {
+  const result = await requestContainment("/gmail/scan", "0", "0", "1");
+  assert.equal(result.status, 503);
+  assert.equal(result.body.code, "FINANCIAL_INGESTION_CONTAINMENT");
+});
+
+test("ingestion path still blocked when read inactive but ingestion active", async () => {
+  const result = await requestContainment("/sync/gmail", "0", "0", "1");
+  assert.equal(result.status, 503);
+  assert.equal(result.body.code, "FINANCIAL_INGESTION_CONTAINMENT");
+});
+
+test("ingestion path returns 503 when legacy master active", async () => {
+  const result = await requestContainment("/gmail/scan", "1", "0", "0");
+  assert.equal(result.status, 503);
+  assert.equal(result.body.code, "FINANCIAL_INGESTION_CONTAINMENT");
+});
+
+test("non-financial path is not blocked", async () => {
+  const previous = snapshotEnv();
+  setEnv("1", "1", "1");
   resetCrossOrgContaminatedGmailIdsCacheForTests();
+
+  const app = express();
+  app.use((req, _res, next) => {
+    req.auth = { userId: USER_A, organizationId: ORG_A, email: "a@example.com" };
+    next();
+  });
+  app.use(financialDataContainmentMiddleware);
+  app.get("/dashboard/stats", (_req, res) => res.json({ ok: true }));
+
+  const server = app.listen(0);
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+
   try {
-    assert.equal(isFinancialDataContainmentActive(), true);
-    const app = express();
-    app.use((req, _res, next) => {
-      req.auth = { userId: USER_A, organizationId: ORG_A, email: "a@example.com" };
-      next();
-    });
-    app.use(financialDataContainmentMiddleware);
-    app.get("/invoices", (_req, res) => res.json({ invoices: [] }));
-
-    const server = app.listen(0);
-    await new Promise<void>((resolve) => server.once("listening", resolve));
-    const address = server.address();
-    const port = typeof address === "object" && address ? address.port : 0;
-
-    const response = await fetch(`http://127.0.0.1:${port}/invoices`);
-    assert.equal(response.status, 503);
-    const body = (await response.json()) as { code?: string };
-    assert.equal(body.code, "FINANCIAL_DATA_CONTAINMENT");
-
-    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+    const response = await fetch(`http://127.0.0.1:${port}/dashboard/stats`);
+    assert.equal(response.status, 200);
   } finally {
-    if (previous === undefined) delete process.env.FINANCIAL_DATA_CONTAINMENT;
-    else process.env.FINANCIAL_DATA_CONTAINMENT = previous;
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+    restoreEnv(previous);
   }
 });
 

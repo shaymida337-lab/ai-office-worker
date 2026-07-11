@@ -40,7 +40,11 @@ function seedInvoiceStore() {
 
 async function withTenantIsolationHarness(run: (ctx: { baseUrl: string; tokenForOrgB: string }) => Promise<void>) {
   const previousContainment = process.env.FINANCIAL_DATA_CONTAINMENT;
+  const previousReadContainment = process.env.FINANCIAL_READ_CONTAINMENT;
+  const previousIngestionContainment = process.env.FINANCIAL_INGESTION_CONTAINMENT;
   process.env.FINANCIAL_DATA_CONTAINMENT = "0";
+  process.env.FINANCIAL_READ_CONTAINMENT = "0";
+  process.env.FINANCIAL_INGESTION_CONTAINMENT = "0";
 
   const invoices = seedInvoiceStore();
   const originalUserFindUnique = prisma.user.findUnique.bind(prisma.user);
@@ -140,6 +144,10 @@ async function withTenantIsolationHarness(run: (ctx: { baseUrl: string; tokenFor
     prisma.$queryRawUnsafe = originalQueryRaw;
     if (previousContainment === undefined) delete process.env.FINANCIAL_DATA_CONTAINMENT;
     else process.env.FINANCIAL_DATA_CONTAINMENT = previousContainment;
+    if (previousReadContainment === undefined) delete process.env.FINANCIAL_READ_CONTAINMENT;
+    else process.env.FINANCIAL_READ_CONTAINMENT = previousReadContainment;
+    if (previousIngestionContainment === undefined) delete process.env.FINANCIAL_INGESTION_CONTAINMENT;
+    else process.env.FINANCIAL_INGESTION_CONTAINMENT = previousIngestionContainment;
     await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   }
 }
@@ -178,6 +186,8 @@ test("tampered JWT organizationId is rejected for owner accounts", async () => {
     { expiresIn: "1h" },
   );
   const previousContainment = process.env.FINANCIAL_DATA_CONTAINMENT;
+  const previousReadContainment = process.env.FINANCIAL_READ_CONTAINMENT;
+  const previousIngestionContainment = process.env.FINANCIAL_INGESTION_CONTAINMENT;
   process.env.FINANCIAL_DATA_CONTAINMENT = "0";
 
   const originalUserFindUnique = prisma.user.findUnique.bind(prisma.user);
@@ -219,6 +229,10 @@ test("tampered JWT organizationId is rejected for owner accounts", async () => {
     prisma.organizationMember.findUnique = originalMemberFindUnique;
     if (previousContainment === undefined) delete process.env.FINANCIAL_DATA_CONTAINMENT;
     else process.env.FINANCIAL_DATA_CONTAINMENT = previousContainment;
+    if (previousReadContainment === undefined) delete process.env.FINANCIAL_READ_CONTAINMENT;
+    else process.env.FINANCIAL_READ_CONTAINMENT = previousReadContainment;
+    if (previousIngestionContainment === undefined) delete process.env.FINANCIAL_INGESTION_CONTAINMENT;
+    else process.env.FINANCIAL_INGESTION_CONTAINMENT = previousIngestionContainment;
     await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   }
 });

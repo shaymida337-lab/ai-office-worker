@@ -4,8 +4,8 @@ import { existsSync } from "node:fs";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { config } from "../lib/config.js";
 import {
-  FINANCIAL_DATA_CONTAINMENT_CODE,
-  isFinancialDataContainmentActive,
+  FINANCIAL_INGESTION_CONTAINMENT_CODE,
+  isFinancialIngestionContainmentActive,
 } from "../services/p0/financialContainment.js";
 
 /**
@@ -65,10 +65,10 @@ function signatureMatches(expected: string, provided: string): boolean {
 export const uploadsRouter = Router();
 
 uploadsRouter.get("/:channelDir/:fileName", (req, res) => {
-  if (isFinancialDataContainmentActive()) {
+  if (isFinancialIngestionContainmentActive()) {
     res.status(503).json({
       error: "Financial documents are temporarily unavailable while tenant isolation is verified.",
-      code: FINANCIAL_DATA_CONTAINMENT_CODE,
+      code: FINANCIAL_INGESTION_CONTAINMENT_CODE,
     });
     return;
   }

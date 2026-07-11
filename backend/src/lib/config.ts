@@ -218,8 +218,15 @@ export const config = {
   },
 
   security: {
-    /** 1/true/on = block financial read/write routes with 503. Default: on in production. */
+    /**
+     * FINANCIAL_DATA_CONTAINMENT is a legacy master kill switch.
+     * When active, it overrides and blocks both financial reads and ingestion.
+     */
     financialDataContainment: optional("FINANCIAL_DATA_CONTAINMENT", ""),
+    /** 1/true/yes/on = block financial read routes with 503. Default when unset: active (fail closed). */
+    financialReadContainment: optional("FINANCIAL_READ_CONTAINMENT", ""),
+    /** 1/true/yes/on = block financial ingestion and writes. Default when unset: active (fail closed). */
+    financialIngestionContainment: optional("FINANCIAL_INGESTION_CONTAINMENT", ""),
     /** 1/true/on = reject POST /auth/register with 503 during incident response. */
     blockNewRegistrations: optional("BLOCK_NEW_REGISTRATIONS", "false").toLowerCase() === "true",
   },

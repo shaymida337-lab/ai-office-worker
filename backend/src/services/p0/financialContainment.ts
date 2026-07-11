@@ -1,15 +1,60 @@
 import { config } from "../../lib/config.js";
 
+export const FINANCIAL_READ_CONTAINMENT_CODE = "FINANCIAL_READ_CONTAINMENT";
 export const FINANCIAL_INGESTION_CONTAINMENT_CODE = "FINANCIAL_INGESTION_CONTAINMENT";
+/** @deprecated Use FINANCIAL_READ_CONTAINMENT_CODE or FINANCIAL_INGESTION_CONTAINMENT_CODE */
 export const FINANCIAL_DATA_CONTAINMENT_CODE = "FINANCIAL_DATA_CONTAINMENT";
 
+const ACTIVE_FLAG_VALUES = new Set(["1", "true", "yes", "on"]);
+const INACTIVE_FLAG_VALUES = new Set(["0", "false", "no", "off"]);
+
+/**
+ * FINANCIAL_DATA_CONTAINMENT is a legacy master kill switch.
+ * When active, it overrides and blocks both financial reads and ingestion.
+ */
+function parseContainmentFlag(value: string | undefined, defaultWhenUnset: boolean): boolean {
+  if (value === undefined || value.trim() === "") return defaultWhenUnset;
+  const normalized = value.trim().toLowerCase();
+  if (ACTIVE_FLAG_VALUES.has(normalized)) return true;
+  if (INACTIVE_FLAG_VALUES.has(normalized)) return false;
+  return true;
+}
+
+function legacyMasterFlagValue(): string | undefined {
+  const raw = process.env.FINANCIAL_DATA_CONTAINMENT ?? config.security.financialDataContainment;
+  return raw.trim() === "" ? undefined : raw;
+}
+
+function readContainmentFlagValue(): string | undefined {
+  const raw = process.env.FINANCIAL_READ_CONTAINMENT ?? config.security.financialReadContainment;
+  return raw.trim() === "" ? undefined : raw;
+}
+
+function ingestionContainmentFlagValue(): string | undefined {
+  const raw = process.env.FINANCIAL_INGESTION_CONTAINMENT ?? config.security.financialIngestionContainment;
+  return raw.trim() === "" ? undefined : raw;
+}
+
+function isLegacyMasterContainmentActive(): boolean {
+  return parseContainmentFlag(legacyMasterFlagValue(), config.nodeEnv === "production");
+}
+
+/**
+ * @deprecated Legacy master kill switch only. Prefer isFinancialReadContainmentActive /
+ * isFinancialIngestionContainmentActive for split containment control.
+ */
 export function isFinancialDataContainmentActive(): boolean {
-  const flag = (process.env.FINANCIAL_DATA_CONTAINMENT ?? config.security.financialDataContainment)
-    .trim()
-    .toLowerCase();
-  if (flag === "1" || flag === "true" || flag === "on") return true;
-  if (flag === "0" || flag === "false" || flag === "off") return false;
-  return config.nodeEnv === "production";
+  return isLegacyMasterContainmentActive();
+}
+
+export function isFinancialReadContainmentActive(): boolean {
+  if (isLegacyMasterContainmentActive()) return true;
+  return parseContainmentFlag(readContainmentFlagValue(), true);
+}
+
+export function isFinancialIngestionContainmentActive(): boolean {
+  if (isLegacyMasterContainmentActive()) return true;
+  return parseContainmentFlag(ingestionContainmentFlagValue(), true);
 }
 
 export class FinancialIngestionBlockedError extends Error {
@@ -24,7 +69,7 @@ export class FinancialIngestionBlockedError extends Error {
 }
 
 export function assertFinancialIngestionAllowed(organizationId?: string): void {
-  if (isFinancialDataContainmentActive()) {
+  if (isFinancialIngestionContainmentActive()) {
     throw new FinancialIngestionBlockedError(organizationId);
   }
 }

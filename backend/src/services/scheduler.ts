@@ -132,8 +132,8 @@ class SchedulerService {
   }
 
   async runAutomaticGmailScans(mode: "auto_daily" | "auto_weekly" = "auto_daily") {
-    const { isFinancialDataContainmentActive } = await import("./p0/financialContainment.js");
-    if (isFinancialDataContainmentActive()) {
+    const { isFinancialIngestionContainmentActive } = await import("./p0/financialContainment.js");
+    if (isFinancialIngestionContainmentActive()) {
       console.warn(`[scheduler] automatic Gmail ${mode} skipped — financial ingestion containment active`);
       return;
     }
@@ -152,8 +152,8 @@ class SchedulerService {
   }
 
   async runFastGmailScans(source: "startup" | "interval" | "manual" = "manual") {
-    const { isFinancialDataContainmentActive } = await import("./p0/financialContainment.js");
-    if (isFinancialDataContainmentActive()) {
+    const { isFinancialIngestionContainmentActive } = await import("./p0/financialContainment.js");
+    if (isFinancialIngestionContainmentActive()) {
       console.warn(`[scheduler] FAST_SCAN skipped source=${source} — financial ingestion containment active`);
       return;
     }
@@ -247,8 +247,8 @@ class SchedulerService {
   }
 
   async runDailyScan() {
-    const { isFinancialDataContainmentActive } = await import("./p0/financialContainment.js");
-    if (isFinancialDataContainmentActive()) {
+    const { isFinancialIngestionContainmentActive } = await import("./p0/financialContainment.js");
+    if (isFinancialIngestionContainmentActive()) {
       console.warn("[scheduler] daily scan skipped — financial ingestion containment active");
       return;
     }
@@ -277,8 +277,8 @@ class SchedulerService {
   }
 
   async runQuickScan() {
-    const { isFinancialDataContainmentActive } = await import("./p0/financialContainment.js");
-    if (isFinancialDataContainmentActive()) {
+    const { isFinancialIngestionContainmentActive } = await import("./p0/financialContainment.js");
+    if (isFinancialIngestionContainmentActive()) {
       console.warn("[scheduler] quick scan skipped — financial ingestion containment active");
       return;
     }
