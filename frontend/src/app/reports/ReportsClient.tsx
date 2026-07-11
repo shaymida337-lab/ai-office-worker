@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Nav } from "@/components/Nav";
 import type { Invoice } from "@/components/invoices";
 import { apiFetch } from "@/lib/api";
@@ -14,6 +14,7 @@ import {
   missingFieldKeys,
   resolveInvoiceCompletionId,
   resolveInvoiceCompletionSourceType,
+  shouldOpenEditAfterCompletionError,
   type InvoiceCompletionActionKind,
   type InvoiceCompletionResponse,
 } from "@/lib/invoices/completionActions";
@@ -60,10 +61,11 @@ function buildEditDraft(invoice: Invoice): EditDraft {
   };
 }
 
-function CompletionReasons({ invoice }: { invoice: Invoice }) {
+function CompletionReasons({ invoice, rowError }: { invoice: Invoice; rowError?: string }) {
   const missing = invoice.missingDataReasons ?? [];
   const approval = invoice.approvalReasons ?? [];
-  if (missing.length === 0 && approval.length === 0) return null;
+  const action = getInvoiceCompletionAction(invoice);
+  if (missing.length === 0 && approval.length === 0 && !rowError && !action.hint) return null;
   return (
     <div className="mb-4 space-y-2 text-sm">
       {missing.length > 0 && (
@@ -80,6 +82,10 @@ function CompletionReasons({ invoice }: { invoice: Invoice }) {
           ))}
         </ul>
       )}
+      {action.hint && action.kind !== "approve_only" && (
+        <p className="text-amber-100">{action.hint}</p>
+      )}
+      {rowError && <p className="rounded-xl border border-red-400/40 bg-red-400/10 p-3 text-red-100">{rowError}</p>}
     </div>
   );
 }
@@ -201,6 +207,24 @@ export default function ReportsClient() {
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  const messageRef = useRef<HTMLDivElement | null>(null);
+
+  function showMessage(tone: "info" | "success" | "error", text: string) {
+    setMessageTone(tone);
+    setMessage(text);
+    window.requestAnimationFrame(() => messageRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+  }
+
+  function reportActionError(invoice: Invoice, err: unknown) {
+    const text = completionErrorMessage(err instanceof Error ? err.message : "האישור נכשל. נסה שוב.");
+    setRowErrors((current) => ({ ...current, [invoice.id]: text }));
+    showMessage("error", text);
+    if (shouldOpenEditAfterCompletionError(text)) {
+      setEditingInvoice(invoice);
+      setEditDraft(buildEditDraft(invoice));
+    }
+  }
 
   const loadInvoices = useCallback(async () => {
     setLoading(true);
@@ -208,8 +232,7 @@ export default function ReportsClient() {
       const data = await apiFetch<InvoicesResponse>("/api/invoices?completeness=incomplete");
       setInvoices(data.invoices);
     } catch (err) {
-      setMessageTone("error");
-      setMessage(err instanceof Error ? err.message : "טעינת השלמת חשבוניות נכשלה");
+      showMessage("error", err instanceof Error ? err.message : "טעינת השלמת חשבוניות נכשלה");
     } finally {
       setLoading(false);
     }
@@ -251,14 +274,29 @@ export default function ReportsClient() {
   }
 
   function finalizeSuccess(invoice: Invoice, actionKind: InvoiceCompletionActionKind) {
+    setRowErrors((current) => {
+      const next = { ...current };
+      delete next[invoice.id];
+      return next;
+    });
     setInvoices((current) => current.filter((item) => item.id !== invoice.id));
-    setMessageTone("success");
-    setMessage(completionSuccessMessage(actionKind));
+    showMessage("success", completionSuccessMessage(actionKind));
+  }
+
+  function openEditForm(invoice: Invoice) {
+    setEditingInvoice(invoice);
+    setEditDraft(buildEditDraft(invoice));
+    setMessage("");
+    setRowErrors((current) => {
+      const next = { ...current };
+      delete next[invoice.id];
+      return next;
+    });
   }
 
   function handlePrimaryAction(invoice: Invoice) {
     const action = getInvoiceCompletionAction(invoice);
-    if (action.kind === "none") return;
+    if (action.kind === "none" || action.kind === "blocked") return;
 
     if (action.kind === "approve_only") {
       setMessage("");
@@ -276,17 +314,12 @@ export default function ReportsClient() {
             next.delete(invoice.id);
             return next;
           }),
-        reportError: (err) => {
-          setMessageTone("error");
-          setMessage(completionErrorMessage(err instanceof Error ? err.message : "האישור נכשל. נסה שוב."));
-        },
+        reportError: (err) => reportActionError(invoice, err),
       }).finally(() => setActingId(null));
       return;
     }
 
-    setEditingInvoice(invoice);
-    setEditDraft(buildEditDraft(invoice));
-    setMessage("");
+    openEditForm(invoice);
   }
 
   async function handleEditSave(approveAfterSave: boolean) {
@@ -328,8 +361,7 @@ export default function ReportsClient() {
         setMessage("הפרטים נשמרו. נדרש אישור נוסף לפני העברה לחשבוניות.");
       }
     } catch (err) {
-      setMessageTone("error");
-      setMessage(completionErrorMessage(err instanceof Error ? err.message : "השמירה נכשלה"));
+      reportActionError(invoice, err);
     } finally {
       setSavingEdit(false);
     }
@@ -342,7 +374,7 @@ export default function ReportsClient() {
       <button
         className="btn btn-primary"
         type="button"
-        disabled={actingId === invoice.id}
+        disabled={actingId === invoice.id || action.kind === "blocked"}
         onClick={() => handlePrimaryAction(invoice)}
       >
         {actingId === invoice.id ? "מעבד..." : action.primaryLabel}
@@ -360,6 +392,7 @@ export default function ReportsClient() {
       </div>
       {message && (
         <div
+          ref={messageRef}
           className={`mb-6 rounded-2xl border p-4 text-base ${
             messageTone === "error"
               ? "border-red-400/30 bg-red-400/10 text-red-100"
@@ -392,7 +425,7 @@ export default function ReportsClient() {
                 <div className="my-4 rounded-2xl bg-surface-secondary p-3 text-left text-2xl font-bold text-ink-primary">
                   {formatInvoiceAmount(invoice)}
                 </div>
-                <CompletionReasons invoice={invoice} />
+                <CompletionReasons invoice={invoice} rowError={rowErrors[invoice.id]} />
                 <div className="flex flex-wrap gap-2">
                   {(invoice.driveFileUrl || invoice.driveUrl) && (
                     <a

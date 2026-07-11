@@ -23,7 +23,7 @@ import { parseBankStatementFile } from "../services/bank-parser.js";
 import { matchTransactions } from "../services/bank-matcher.js";
 import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } from "../services/paymentClassificationDebug.js";
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
-import { approveFinancialDocumentReview, buildReviewDecision } from "../services/financialDocuments.js";
+import { approveFinancialDocumentReview, buildReviewDecision, evaluateReviewApprovalReadiness } from "../services/financialDocuments.js";
 import { recordManualEntryFinancialDocument } from "../services/financialDocuments.js";
 import { resolveReviewSupplierContext } from "../services/reviewSupplierResolution.js";
 import {
@@ -3910,6 +3910,9 @@ type ReviewInvoiceCandidate = {
   missingDataReasons: string[];
   approvalReasons: string[];
   completionReasons: string[];
+  canApproveDirectly?: boolean;
+  supplierNeedsConfirmation?: boolean;
+  approvalBlockReason?: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -3991,6 +3994,116 @@ export function mapInvoiceCompletionContextToCandidate(
     return mapSupplierPaymentToInvoiceCandidate(ctx.payment, organizationId);
   }
   throw new Error("Invoice completion context is empty");
+}
+
+async function enrichInvoiceCandidatesWithReadiness(
+  candidates: ReviewInvoiceCandidate[],
+  organizationId: string,
+): Promise<ReviewInvoiceCandidate[]> {
+  const targets = candidates.filter((candidate) => candidate.dataComplete && candidate.approvalRequired);
+  if (targets.length === 0) return candidates;
+
+  const fdrIds = new Set<string>();
+  const gsiIds = new Set<string>();
+  const paymentIds = new Set<string>();
+
+  for (const candidate of targets) {
+    if (candidate.source === "financial_document_review" && candidate.reviewSourceId) {
+      fdrIds.add(candidate.reviewSourceId);
+    } else if (candidate.source === "gmail_scan_item" && candidate.reviewSourceId) {
+      gsiIds.add(candidate.reviewSourceId);
+    } else if (candidate.source === "supplier_payment" && candidate.reviewSourceId) {
+      if (candidate.id.startsWith("supplier-payment:")) {
+        paymentIds.add(candidate.reviewSourceId);
+      } else {
+        fdrIds.add(candidate.reviewSourceId);
+      }
+    }
+  }
+
+  const [reviews, gsiItems, paymentReviews] = await Promise.all([
+    fdrIds.size > 0
+      ? prisma.financialDocumentReview.findMany({ where: { organizationId, id: { in: [...fdrIds] } } })
+      : Promise.resolve([]),
+    gsiIds.size > 0
+      ? prisma.gmailScanItem.findMany({ where: { organizationId, id: { in: [...gsiIds] } } })
+      : Promise.resolve([]),
+    paymentIds.size > 0
+      ? prisma.financialDocumentReview.findMany({
+          where: { organizationId, supplierPaymentId: { in: [...paymentIds] } },
+          orderBy: { updatedAt: "desc" },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const readinessByFdrId = new Map<string, Awaited<ReturnType<typeof evaluateReviewApprovalReadiness>>>();
+  await Promise.all(
+    [...reviews, ...paymentReviews].map(async (review) => {
+      if (readinessByFdrId.has(review.id)) return;
+      readinessByFdrId.set(review.id, await evaluateReviewApprovalReadiness(review));
+    }),
+  );
+
+  const gsiLinkedReviewByGsiId = new Map<string, (typeof reviews)[number]>();
+  if (gsiItems.length > 0) {
+    const orClauses: Prisma.FinancialDocumentReviewWhereInput[] = [];
+    for (const gsi of gsiItems) {
+      if (gsi.gmailMessageId) orClauses.push({ gmailMessageId: gsi.gmailMessageId });
+      if (gsi.emailMessageId) orClauses.push({ emailMessageId: gsi.emailMessageId });
+      if (gsi.duplicateKey) orClauses.push({ documentFingerprint: gsi.duplicateKey });
+    }
+    const linkedReviews = orClauses.length > 0
+      ? await prisma.financialDocumentReview.findMany({
+          where: { organizationId, OR: orClauses },
+          orderBy: { updatedAt: "desc" },
+        })
+      : [];
+    for (const gsi of gsiItems) {
+      const linked = linkedReviews.find(
+        (review) =>
+          (gsi.gmailMessageId && review.gmailMessageId === gsi.gmailMessageId) ||
+          (gsi.emailMessageId && review.emailMessageId === gsi.emailMessageId) ||
+          (gsi.duplicateKey && review.documentFingerprint === gsi.duplicateKey),
+      );
+      if (linked) gsiLinkedReviewByGsiId.set(gsi.id, linked);
+    }
+    await Promise.all(
+      [...gsiLinkedReviewByGsiId.values()].map(async (review) => {
+        if (readinessByFdrId.has(review.id)) return;
+        readinessByFdrId.set(review.id, await evaluateReviewApprovalReadiness(review));
+      }),
+    );
+  }
+
+  const readinessByPaymentId = new Map<string, Awaited<ReturnType<typeof evaluateReviewApprovalReadiness>>>();
+  for (const review of paymentReviews) {
+    if (!review.supplierPaymentId || readinessByPaymentId.has(review.supplierPaymentId)) continue;
+    readinessByPaymentId.set(review.supplierPaymentId, readinessByFdrId.get(review.id)!);
+  }
+
+  return candidates.map((candidate) => {
+    if (!candidate.dataComplete || !candidate.approvalRequired) return candidate;
+
+    let readiness: Awaited<ReturnType<typeof evaluateReviewApprovalReadiness>> | undefined;
+    if (candidate.source === "financial_document_review" && candidate.reviewSourceId) {
+      readiness = readinessByFdrId.get(candidate.reviewSourceId);
+    } else if (candidate.source === "gmail_scan_item" && candidate.reviewSourceId) {
+      const linked = gsiLinkedReviewByGsiId.get(candidate.reviewSourceId);
+      readiness = linked ? readinessByFdrId.get(linked.id) : { canApprove: true, blockReason: null, supplierNeedsConfirmation: false, recommendedAction: "approve" };
+    } else if (candidate.source === "supplier_payment" && candidate.reviewSourceId) {
+      readiness = candidate.id.startsWith("supplier-payment:")
+        ? readinessByPaymentId.get(candidate.reviewSourceId)
+        : readinessByFdrId.get(candidate.reviewSourceId);
+    }
+
+    if (!readiness) return candidate;
+    return {
+      ...candidate,
+      canApproveDirectly: readiness.canApprove,
+      supplierNeedsConfirmation: readiness.supplierNeedsConfirmation,
+      approvalBlockReason: readiness.blockReason,
+    };
+  });
 }
 
 export function mapGmailScanItemToInvoiceCandidate(item: {
@@ -5060,7 +5173,10 @@ apiRouter.get("/invoices", async (req, res) => {
     limit: monthBounds ? undefined : 100,
   });
   const filtered = filterInvoicesByCompleteness(invoices, completeness);
-  const responseInvoices = monthBounds ? filtered : filtered.slice(0, 100);
+  let responseInvoices = monthBounds ? filtered : filtered.slice(0, 100);
+  if (completeness === "incomplete") {
+    responseInvoices = await enrichInvoiceCandidatesWithReadiness(responseInvoices, organizationId);
+  }
 
   const needsReviewCount = responseInvoices.filter((invoice) => invoice.reviewStatus === "needs_review").length;
   console.log(`[invoices] UI_INVOICES_API_RETURNED count=${responseInvoices.length} org=${organizationId}${monthBounds ? ` month=${monthParam}` : ""} completeness=${completeness}`);
@@ -5132,7 +5248,14 @@ apiRouter.post("/invoices/:sourceType/:id/complete", requirePerm("review.approve
     const message = err instanceof Error ? err.message : "Invoice completion failed";
     const status = mapCompletionErrorStatus(message);
     console.warn(`[invoices] complete failed org=${organizationId} source=${sourceType} id=${rawId} status=${status} error=${message}`);
-    res.status(status).json({ error: message });
+    const code = message.includes("supplier.needs_confirmation")
+      ? "supplier.needs_confirmation"
+      : message.includes("BLOCKED") || message.includes("blocked")
+        ? "blocked_outcome"
+        : message.includes("לא ניתן לאשר")
+          ? "approve_blocked"
+          : "completion_failed";
+    res.status(status).json({ error: message, code });
   }
 });
 

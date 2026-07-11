@@ -34,6 +34,9 @@ export type Invoice = {
   missingDataReasons?: string[];
   approvalReasons?: string[];
   rawReviewStatus?: string;
+  canApproveDirectly?: boolean;
+  supplierNeedsConfirmation?: boolean;
+  approvalBlockReason?: string | null;
   completionReasons?: string[];
   client?: { id: string; name: string; color: string | null };
 };

@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
   completionErrorMessage,
   getInvoiceCompletionAction,
+  inferInvoiceCompletionFlags,
   resolveInvoiceCompletionId,
   resolveInvoiceCompletionSourceType,
+  shouldOpenEditAfterCompletionError,
 } from "./completionActions";
 
 const baseInvoice = {
@@ -30,41 +32,57 @@ const baseInvoice = {
   approvalReasons: ["ממתין לאישור"],
 };
 
-test("getInvoiceCompletionAction returns approve for complete data awaiting approval", () => {
-  const action = getInvoiceCompletionAction(baseInvoice);
+test("getInvoiceCompletionAction returns approve only when backend marks canApproveDirectly", () => {
+  const action = getInvoiceCompletionAction({ ...baseInvoice, canApproveDirectly: true });
   assert.equal(action.kind, "approve_only");
   assert.equal(action.primaryLabel, "אשר");
-  assert.equal(action.canApproveWithoutEdit, true);
 });
 
-test("getInvoiceCompletionAction returns complete_details when data is missing", () => {
+test("getInvoiceCompletionAction routes supplier confirmation to edit supplier", () => {
   const action = getInvoiceCompletionAction({
     ...baseInvoice,
-    dataComplete: false,
-    approvalRequired: false,
-    missingDataReasons: ["חסר סכום", "ספק לא זוהה"],
+    supplierNeedsConfirmation: true,
+    approvalBlockReason: "supplier.needs_confirmation",
+  });
+  assert.equal(action.kind, "edit_supplier");
+  assert.equal(action.primaryLabel, "ערוך ספק");
+});
+
+test("getInvoiceCompletionAction shows complete details when approval still blocked", () => {
+  const action = getInvoiceCompletionAction({
+    ...baseInvoice,
+    canApproveDirectly: false,
+    approvalBlockReason: "amount.unresolved",
   });
   assert.equal(action.kind, "complete_details");
   assert.equal(action.primaryLabel, "השלם פרטים");
 });
 
-test("getInvoiceCompletionAction returns complete_and_approve when both gaps exist", () => {
-  const action = getInvoiceCompletionAction({
+test("inferInvoiceCompletionFlags falls back to completionReasons", () => {
+  const flags = inferInvoiceCompletionFlags({
     ...baseInvoice,
-    dataComplete: false,
-    approvalRequired: true,
-    missingDataReasons: ["חסר סכום"],
+    dataComplete: undefined,
+    approvalRequired: undefined,
+    missingDataReasons: undefined,
+    approvalReasons: undefined,
+    completionReasons: ["ממתין לאישור"],
   });
-  assert.equal(action.kind, "complete_and_approve");
-  assert.equal(action.primaryLabel, "השלם ואשר");
+  assert.equal(flags.dataComplete, true);
+  assert.equal(flags.approvalRequired, true);
+});
+
+test("shouldOpenEditAfterCompletionError detects supplier confirmation failures", () => {
+  assert.equal(
+    shouldOpenEditAfterCompletionError("לא ניתן לאשר מסמך — יש לאשר או לערוך את שם הספק לפני האישור (supplier.needs_confirmation)"),
+    true,
+  );
+});
+
+test("completionErrorMessage preserves Hebrew backend errors", () => {
+  assert.equal(completionErrorMessage("לא ניתן לאשר — חסר סכום"), "לא ניתן לאשר — חסר סכום");
 });
 
 test("resolveInvoiceCompletionSourceType and id strip prefixes", () => {
   assert.equal(resolveInvoiceCompletionSourceType({ ...baseInvoice, id: "gmail-scan:gsi-1", source: "gmail_scan_item" }), "gmail-scan-item");
   assert.equal(resolveInvoiceCompletionId({ ...baseInvoice, id: "supplier-payment:pay-1" }), "pay-1");
-});
-
-test("completionErrorMessage surfaces Hebrew backend errors", () => {
-  assert.equal(completionErrorMessage("לא ניתן לאשר — חסר סכום"), "לא ניתן לאשר — חסר סכום");
-  assert.match(completionErrorMessage("Document review item not found"), /לא נמצא/);
 });
