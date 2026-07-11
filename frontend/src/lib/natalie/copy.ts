@@ -87,7 +87,7 @@ export function nataliePaymentMessage(kind: "prepared" | "paid" | "missing_invoi
     case "paid":
       return `סימנתי את התשלום ל${supplier} כשולם.`;
     case "missing_invoice":
-      return `יש תשלום ל${supplier} בלי חשבונית. אשמח לעזרה לסגור את זה.`;
+      return `יש חשבונית של ${supplier} שדורשת השלמה. אשמח לעזרה לסגור את זה.`;
     default:
       return `הכנתי תשלום ל${supplier}.`;
   }

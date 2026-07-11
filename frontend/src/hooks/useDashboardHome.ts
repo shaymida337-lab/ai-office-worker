@@ -197,8 +197,8 @@ export function useDashboardHome() {
         apiFetch<ClientsResponse>("/api/clients"),
         apiFetch<ScanStatus>("/api/automation/scan-status"),
         apiFetch<Payment[]>("/api/payments"),
-        apiFetch<Payment[]>("/api/reports/missing-invoices"),
-        apiFetch<{ invoices: RecentInvoice[] }>("/api/invoices"),
+        apiFetch<{ invoices: RecentInvoice[] }>("/api/invoices?completeness=incomplete"),
+        apiFetch<{ invoices: RecentInvoice[] }>("/api/invoices?completeness=complete"),
         apiFetch<AlertItem[]>("/api/alerts"),
         apiFetch<SystemHealth>("/api/system/health", { timeoutMs: 30000 }),
         apiFetch<AccountantSummary>("/api/accountant/summary"),
@@ -283,7 +283,25 @@ export function useDashboardHome() {
       }
 
       setPayments(paymentsResult.status === "fulfilled" ? paymentsResult.value : []);
-      setMissingInvoices(missingResult.status === "fulfilled" ? missingResult.value : []);
+      setMissingInvoices(
+        missingResult.status === "fulfilled"
+          ? missingResult.value.invoices.map((invoice) => ({
+              id: invoice.id,
+              supplier: invoice.supplierName?.trim() || "ספק לא זוהה",
+              amount: invoice.amount ?? 0,
+              currency: invoice.currency ?? "ILS",
+              date: invoice.date,
+              dueDate: invoice.dueDate ?? null,
+              paid: false,
+              missingInvoice: true,
+              paymentRequired: false,
+              subject: invoice.description,
+              documentLink: invoice.driveFileUrl ?? invoice.driveUrl ?? null,
+              invoiceLink: invoice.driveFileUrl ?? invoice.driveUrl ?? null,
+              emailSender: null,
+            }))
+          : []
+      );
       setRecentInvoices(invoicesResult.status === "fulfilled" ? invoicesResult.value.invoices : []);
       setAlerts(alertsResult.status === "fulfilled" ? alertsResult.value.slice(0, 8) : []);
       const loadTruth = resolveGmailTruthAfterLoad({

@@ -130,7 +130,7 @@
     "openQueue": "פתח תור",
     "activityFeed": "פעילות אחרונה",
     "emptyActivity": "עדיין אין פעילות להצגה",
-    "openReports": "ראה דוחות",
+    "openReports": "השלמת חשבוניות",
     "pending": {
       "title": "סיכום ממתינים",
       "tasks": "משימות פתוחות",
@@ -196,7 +196,7 @@
     "close": "סגור",
     "invoices": "חשבוניות",
     "payments": "תשלומים",
-    "reports": "דוחות",
+    "reports": "השלמת חשבוניות",
     "settings": "הגדרות",
     "integrations": "אינטגרציות"
   },

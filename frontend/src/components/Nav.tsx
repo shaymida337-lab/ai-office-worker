@@ -55,7 +55,7 @@ const links: NavLink[] = [
   { id: "collections", href: "/collections", label: "גבייה", icon: CircleDollarSign },
   { id: "social", href: "/social", label: "סושיאל", icon: Megaphone },
   { id: "whatsapp", href: "/dashboard/whatsapp", label: "וואטסאפ", icon: MessageCircle, module: "whatsapp" },
-  { id: "reports", href: "/reports", label: "דוחות", icon: BarChart3 },
+  { id: "reports", href: "/reports", label: "השלמת חשבוניות", icon: BarChart3 },
   { id: "accountant", href: "/dashboard/accountant", label: "רואה חשבון", icon: FileBarChart },
   { id: "camera", href: "/camera", label: "צילום חשבונית", icon: Camera, module: "documents" },
   { id: "adminDebug", href: "/dashboard/admin-debug", label: "בדיקות מנהל", icon: Settings, module: "admin" },

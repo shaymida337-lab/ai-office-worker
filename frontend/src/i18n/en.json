@@ -129,7 +129,7 @@
     "openQueue": "Open queue",
     "activityFeed": "Recent activity",
     "emptyActivity": "No activity to show yet",
-    "openReports": "View reports",
+    "openReports": "Complete invoices",
     "pending": {
       "title": "Pending overview",
       "tasks": "Open tasks",
@@ -195,7 +195,7 @@
     "close": "Close",
     "invoices": "Invoices",
     "payments": "Payments",
-    "reports": "Reports",
+    "reports": "Invoice completion",
     "settings": "Settings",
     "integrations": "Integrations"
   },

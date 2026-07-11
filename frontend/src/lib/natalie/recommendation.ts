@@ -197,9 +197,10 @@ export function resolveNatalieRecommendation(input: NatalieRecommendationInput):
     const supplier = supplierLabel(item.supplier);
     return {
       kind: "missing_invoice",
-      title: `לצרף חשבונית ל${supplier}`,
-      reason: "בלי החשבונית אני לא יכולה לסגור את התשלום הזה.",
-      ctaLabel: "טפלי בזה עכשיו",
+      title: `להשלים חשבונית של ${supplier}`,
+      reason: "חסרים שדות חובה או נדרש אישור לפני שהמסמך יופיע במסך חשבוניות.",
+      ctaLabel: "השלימי עכשיו",
+      href: "/reports",
       scrollToDecisions: true,
     };
   }

@@ -53,9 +53,9 @@ export function rankPrimaryActions(input: NataliePrimaryActionInput): RankedActi
   const missing = input.missingInvoiceCount ?? 0;
   if (missing > 0) {
     actions.push({
-      label: "השלימי חשבוניות חסרות",
+      label: "השלימי חשבוניות",
       intent: "resolve_missing_invoices",
-      href: "/payments",
+      href: "/reports",
       priority: 80,
     });
   }

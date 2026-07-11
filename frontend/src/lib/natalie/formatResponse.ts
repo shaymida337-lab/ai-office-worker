@@ -9,7 +9,7 @@ const INTERNAL_STATUS_LABELS: Record<string, string> = {
   supplier_payment: "תשלום לספק",
   pending_review: "ממתין לבדיקה",
   needs_review: "דורש בדיקה",
-  missing_invoice: "חסרה חשבונית",
+  missing_invoice: "דורש השלמה",
   duplicate_detected: "כפילות",
   not_financial: "לא מסמך כספי",
   auto_saved: "נשמר אוטומטית",

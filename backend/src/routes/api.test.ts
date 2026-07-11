@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { filterInvoicesByCompleteness } from "../services/amount/invoiceCompleteness.js";
 import {
   buildInvoiceListQueryContext,
   buildInvoiceListWhereInput,
@@ -13,6 +14,7 @@ import {
   mapDocumentReviewToInvoiceCandidate,
   mapGmailScanItemToInvoiceCandidate,
   mapSupplierPaymentToInvoiceCandidate,
+  enrichReviewInvoiceCandidateWithCompleteness,
   mergeInvoiceListCandidates,
   parseInvoiceMonthParam,
   resolveNatalieVoiceSynthesizeProvider,
@@ -677,4 +679,77 @@ test("mapSupplierPaymentToInvoiceCandidate maps approved receipt to invoice row"
   assert.equal(row.id, "supplier-payment:payment-1");
   assert.equal(row.reviewStatus, "approved");
   assert.equal(row.source, "supplier_payment");
+});
+
+test("filterInvoicesByCompleteness keeps complete and incomplete lists disjoint", () => {
+  const approvedAt = new Date("2026-07-07T08:00:00.000Z");
+  const complete = enrichReviewInvoiceCandidateWithCompleteness({
+    id: "supplier-payment:payment-complete",
+    clientId: "",
+    invoiceNumber: "1",
+    amount: 100,
+    amountLabel: "₪100.00",
+    amountResolved: true,
+    currency: "ILS",
+    currencyExplicit: true,
+    date: approvedAt,
+    documentDateExplicit: true,
+    dueDate: null,
+    status: "approved",
+    reviewStatus: "approved",
+    source: "supplier_payment",
+    reviewSourceId: "payment-complete",
+    description: null,
+    driveUrl: null,
+    driveFileUrl: null,
+    client: null,
+    supplierName: "ספק תקין",
+    fromEmail: null,
+    gmailMessageId: null,
+    confidenceScore: 0.9,
+    decisionReason: null,
+    attachmentFilename: null,
+    documentType: "tax_invoice",
+    parsedFieldsJson: null,
+    createdAt: approvedAt,
+    updatedAt: approvedAt,
+  });
+  const incomplete = enrichReviewInvoiceCandidateWithCompleteness({
+    id: "gmail-scan:scan-incomplete",
+    clientId: "",
+    invoiceNumber: null,
+    amount: null,
+    amountLabel: "סכום חסר",
+    amountResolved: false,
+    currency: "ILS",
+    currencyExplicit: false,
+    date: approvedAt,
+    documentDateExplicit: false,
+    dueDate: null,
+    status: "needs_review",
+    reviewStatus: "needs_review",
+    source: "gmail_scan_item",
+    reviewSourceId: "scan-incomplete",
+    description: null,
+    driveUrl: null,
+    driveFileUrl: null,
+    client: null,
+    supplierName: "unknown",
+    fromEmail: null,
+    gmailMessageId: "gmail-1",
+    confidenceScore: "low",
+    decisionReason: "trust.amount_gate_missing",
+    attachmentFilename: null,
+    documentType: "unknown_needs_review",
+    parsedFieldsJson: null,
+    createdAt: approvedAt,
+    updatedAt: approvedAt,
+  });
+
+  const completeOnly = filterInvoicesByCompleteness([complete, incomplete], "complete");
+  const incompleteOnly = filterInvoicesByCompleteness([complete, incomplete], "incomplete");
+  assert.equal(completeOnly.length, 1);
+  assert.equal(incompleteOnly.length, 1);
+  assert.equal(completeOnly[0]?.id, complete.id);
+  assert.equal(incompleteOnly[0]?.id, incomplete.id);
 });

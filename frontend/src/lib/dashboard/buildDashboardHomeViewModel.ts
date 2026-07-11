@@ -416,7 +416,7 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
       id: invoice.id,
       date: invoice.date,
       client: invoice.client,
-      amount: invoice.amount,
+      amount: invoice.amount ?? 0,
     })),
     paidPayments: payments.map((payment) => ({
       id: payment.id,

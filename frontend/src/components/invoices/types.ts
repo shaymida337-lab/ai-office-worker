@@ -19,7 +19,7 @@ export type Invoice = {
   dueDate: string | null;
   status: InvoiceStatus;
   reviewStatus?: InvoiceReviewStatus;
-  source?: "invoice" | "gmail_scan_item" | "financial_document_review";
+  source?: "invoice" | "gmail_scan_item" | "financial_document_review" | "supplier_payment";
   reviewSourceId?: string | null;
   description: string | null;
   driveUrl: string | null;
@@ -27,6 +27,9 @@ export type Invoice = {
   gmailMessageLink?: string | null;
   supplierName?: string | null;
   decisionReason?: string | null;
+  documentType?: string | null;
+  isComplete?: boolean;
+  completionReasons?: string[];
   client?: { id: string; name: string; color: string | null };
 };
 

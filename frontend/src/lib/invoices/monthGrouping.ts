@@ -6,7 +6,7 @@ export type InvoiceMonthSummary = {
 };
 
 export type InvoiceGroupingInput = {
-  source?: "invoice" | "gmail_scan_item" | "financial_document_review";
+  source?: "invoice" | "gmail_scan_item" | "financial_document_review" | "supplier_payment";
   date: string;
   amount: number | null;
   currency: string;

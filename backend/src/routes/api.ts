@@ -39,6 +39,11 @@ import {
   resolveDocumentReviewDisplayAmount,
   resolveInvoiceListDisplayAmount,
 } from "../services/amount/financeDisplayAmount.js";
+import {
+  assessInvoiceCompleteness,
+  filterInvoicesByCompleteness,
+  parseInvoiceCompletenessParam,
+} from "../services/amount/invoiceCompleteness.js";
 import { initialConnectScanWindow, isHistoricalGmailScanRequest, resolveHistoricalGmailScanWindow } from "../services/scanWindow.js";
 import {
   closeStaleGmailScansForOrg,
@@ -3864,16 +3869,18 @@ type ReviewInvoiceCandidate = {
   amountLabel: string;
   amountResolved: boolean;
   currency: string;
+  currencyExplicit: boolean;
   date: Date;
+  documentDateExplicit: boolean;
   dueDate: Date | null;
   status: string;
   reviewStatus: string;
-  source: "gmail_scan_item" | "financial_document_review" | "supplier_payment";
-  reviewSourceId: string;
+  source: "invoice" | "gmail_scan_item" | "financial_document_review" | "supplier_payment";
+  reviewSourceId: string | null;
   description: string | null;
   driveUrl: string | null;
   driveFileUrl: string | null;
-  client: null;
+  client: { id: string; name: string; color: string | null } | null;
   supplierName: string | null;
   fromEmail: string | null;
   gmailMessageId: string | null;
@@ -3881,6 +3888,10 @@ type ReviewInvoiceCandidate = {
   confidenceScore?: string | number | null;
   decisionReason?: string | null;
   attachmentFilename?: string | null;
+  documentType: string | null;
+  parsedFieldsJson?: unknown;
+  isComplete: boolean;
+  completionReasons: string[];
   createdAt: Date;
   updatedAt: Date;
 };
@@ -3898,6 +3909,30 @@ export type LinkedFinancialDocumentReviewAmountSource = {
   parsedFieldsJson?: unknown;
 };
 
+export function enrichReviewInvoiceCandidateWithCompleteness(
+  candidate: Omit<ReviewInvoiceCandidate, "isComplete" | "completionReasons">,
+): ReviewInvoiceCandidate {
+  const assessment = assessInvoiceCompleteness({
+    supplierName: candidate.supplierName,
+    amount: candidate.amount,
+    amountResolved: candidate.amountResolved,
+    currency: candidate.currency,
+    currencyExplicit: candidate.currencyExplicit,
+    date: candidate.date,
+    documentDateExplicit: candidate.documentDateExplicit,
+    documentType: candidate.documentType,
+    reviewStatus: candidate.reviewStatus,
+    confidenceScore: candidate.confidenceScore,
+    decisionReason: candidate.decisionReason,
+    parsedFieldsJson: candidate.parsedFieldsJson,
+  });
+  return {
+    ...candidate,
+    isComplete: assessment.isComplete,
+    completionReasons: assessment.completionReasons,
+  };
+}
+
 export function mapGmailScanItemToInvoiceCandidate(item: {
   id: string;
   gmailMessageId: string;
@@ -3914,6 +3949,7 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
   confidenceScore: string;
   reviewStatus: string;
   decisionReason: string;
+  documentType: string | null;
   rawAnalysis: unknown;
   createdAt: Date;
   updatedAt: Date;
@@ -3923,9 +3959,11 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
   const gsiParsedFieldsJson = asRecord(raw?.parsed_fields_json) ?? asRecord(raw?.parsedFieldsJson);
   const parsedFieldsJson = linkedReview?.parsedFieldsJson ?? gsiParsedFieldsJson;
   const invoiceNumber = stringValue(raw?.invoiceNumber) ?? stringValue(analysis?.invoiceNumber);
-  const date = dateValue(raw?.invoiceDate) ?? dateValue(analysis?.invoiceDate) ?? item.occurredAt;
+  const explicitDate = dateValue(raw?.invoiceDate) ?? dateValue(analysis?.invoiceDate);
+  const date = explicitDate ?? item.occurredAt;
   const dueDate = dateValue(raw?.dueDate) ?? dateValue(analysis?.dueDate);
-  const currency = stringValue(analysis?.currency) ?? "ILS";
+  const explicitCurrency = stringValue(analysis?.currency);
+  const currency = explicitCurrency ?? "ILS";
   const display = resolveInvoiceListDisplayAmount({
     totalAmount: pickInvoiceListPersistedTotalAmount({
       financialDocumentReviewTotalAmount: linkedReview?.totalAmount,
@@ -3937,7 +3975,7 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
     currency,
   });
 
-  return {
+  return enrichReviewInvoiceCandidateWithCompleteness({
     id: `gmail-scan:${item.id}`,
     clientId: "",
     invoiceNumber,
@@ -3945,7 +3983,9 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
     amountLabel: display.amountLabel,
     amountResolved: display.resolved,
     currency,
+    currencyExplicit: explicitCurrency != null,
     date,
+    documentDateExplicit: explicitDate != null,
     dueDate,
     // שלב 6: auto_saved מוצג כ"מאושר" — שכבת הצגה בלבד, הערך ב-DB לא משתנה.
     status: presentedReviewStatus(item.reviewStatus),
@@ -3963,9 +4003,11 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
     confidenceScore: item.confidenceScore,
     decisionReason: item.decisionReason,
     attachmentFilename: item.attachmentFilename,
+    documentType: item.documentType,
+    parsedFieldsJson,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
-  };
+  });
 }
 
 export function mapDocumentReviewToInvoiceCandidate(item: {
@@ -3988,6 +4030,7 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
   uncertaintyReason: string | null;
   emailMessageId: string | null;
   gmailMessageId: string | null;
+  documentType: string | null;
   parsedFieldsJson?: unknown;
   rawAnalysis?: unknown;
   supplierPaymentId?: string | null;
@@ -4011,8 +4054,9 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
     parsedFieldsJson: item.parsedFieldsJson,
     rawAnalysis: item.rawAnalysis,
   });
+  const explicitDate = item.normalizedDocumentDate ?? item.documentDate;
 
-  return {
+  return enrichReviewInvoiceCandidateWithCompleteness({
     id: item.supplierPaymentId ? `supplier-payment:${item.supplierPaymentId}` : `document-review:${item.id}`,
     clientId: "",
     invoiceNumber: item.invoiceNumber,
@@ -4020,7 +4064,9 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
     amountLabel: display.amountLabel,
     amountResolved: display.resolved,
     currency: item.currency,
-    date: item.normalizedDocumentDate ?? item.documentDate ?? item.createdAt,
+    currencyExplicit: Boolean(item.currency?.trim()),
+    date: explicitDate ?? item.createdAt,
+    documentDateExplicit: explicitDate != null,
     dueDate: item.dueDate,
     status: presentedReviewStatus(item.reviewStatus),
     reviewStatus: presentedReviewStatus(item.reviewStatus),
@@ -4036,9 +4082,11 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
     confidenceScore: item.confidenceScore,
     decisionReason: item.uncertaintyReason,
     attachmentFilename: item.fileName,
+    documentType: item.documentType,
+    parsedFieldsJson: item.parsedFieldsJson,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
-  };
+  });
 }
 
 export function mapSupplierPaymentToInvoiceCandidate(item: {
@@ -4073,7 +4121,7 @@ export function mapSupplierPaymentToInvoiceCandidate(item: {
   });
   const docDate = item.normalizedDocumentDate ?? item.date ?? item.createdAt;
 
-  return {
+  return enrichReviewInvoiceCandidateWithCompleteness({
     id: `supplier-payment:${item.id}`,
     clientId: "",
     invoiceNumber: item.invoiceNumber,
@@ -4081,7 +4129,9 @@ export function mapSupplierPaymentToInvoiceCandidate(item: {
     amountLabel: display.amountLabel,
     amountResolved: display.resolved,
     currency: item.currency,
+    currencyExplicit: Boolean(item.currency?.trim()),
     date: docDate,
+    documentDateExplicit: Boolean(item.normalizedDocumentDate ?? item.date),
     dueDate: item.dueDate,
     status: "approved",
     reviewStatus: "approved",
@@ -4097,9 +4147,11 @@ export function mapSupplierPaymentToInvoiceCandidate(item: {
     confidenceScore: item.confidenceScore,
     decisionReason: null,
     attachmentFilename: null,
+    documentType: item.documentTypeDetailed,
+    parsedFieldsJson: item.parsedFieldsJson,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
-  };
+  });
 }
 
 function asRecord(value: unknown): RawRecord | null {
@@ -4565,12 +4617,25 @@ export function sumPaymentMonthCounts(months: InvoiceMonthSummary[]) {
 }
 
 type InvoiceRowForMerge = {
+  id: string;
+  clientId: string;
+  invoiceNumber: string | null;
+  amount: number;
+  currency: string;
+  date: Date;
+  normalizedDocumentDate?: Date | null;
+  dueDate: Date | null;
+  status: string;
+  description: string | null;
+  supplierName: string | null;
+  fromEmail: string | null;
   gmailMessageId: string | null;
   emailId: string | null;
   driveFileUrl?: string | null;
   driveUrl?: string | null;
-  amount: number;
-  [key: string]: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  client?: { id: string; name: string; color: string | null } | null;
 };
 
 export function mergeInvoiceListCandidates<
@@ -4623,14 +4688,42 @@ export function mergeInvoiceListCandidates<
         invoiceDriveFileUrl ?? (fallback && !fallback.ambiguous ? fallback.link : null),
         input.organizationId ?? null
       );
-      return {
-        ...invoice,
+      const display = resolveInvoiceListDisplayAmount({
+        totalAmount: pickInvoiceListPersistedTotalAmount({ invoiceAmount: invoice.amount }),
+        currency: invoice.currency,
+      });
+      const invoiceDate = invoice.normalizedDocumentDate ?? invoice.date;
+      return enrichReviewInvoiceCandidateWithCompleteness({
+        id: invoice.id,
+        clientId: invoice.clientId,
+        invoiceNumber: invoice.invoiceNumber,
+        amount: display.amount ?? invoice.amount,
+        amountLabel: display.amountLabel,
+        amountResolved: display.resolved,
+        currency: invoice.currency,
+        currencyExplicit: true,
+        date: invoiceDate,
+        documentDateExplicit: true,
+        dueDate: invoice.dueDate,
+        status: invoice.status,
+        reviewStatus: "approved",
+        source: "invoice",
+        reviewSourceId: null,
+        description: invoice.description,
         driveUrl: driveFileUrl,
         driveFileUrl,
-        source: "invoice" as const,
-        reviewStatus: "approved" as const,
-        reviewSourceId: null,
-      };
+        client: invoice.client ?? null,
+        supplierName: invoice.supplierName ?? invoice.client?.name ?? null,
+        fromEmail: invoice.fromEmail,
+        gmailMessageId: invoice.gmailMessageId,
+        confidenceScore: null,
+        decisionReason: null,
+        attachmentFilename: null,
+        documentType: "invoice",
+        parsedFieldsJson: null,
+        createdAt: invoice.createdAt,
+        updatedAt: invoice.updatedAt,
+      });
     }),
     ...input.gmailScanItems
       .filter((item) => !existingInvoiceRefs.has(item.gmailMessageId) && !existingInvoiceRefs.has(item.emailMessageId ?? ""))
@@ -4799,6 +4892,29 @@ async function buildPaymentDriveFallbackByInvoiceKey(organizationId: string, inv
   return paymentDriveFallbackByInvoiceKey;
 }
 
+async function fetchEnrichedInvoiceListCandidates(
+  organizationId: string,
+  ctx: InvoiceListQueryContext,
+  options?: { monthBounds?: InvoiceListMonthBounds; limit?: number },
+): Promise<ReviewInvoiceCandidate[]> {
+  const whereInput = await applyFinancialReadIsolationToInvoiceListWhere(
+    buildInvoiceListWhereInput(ctx, options?.monthBounds),
+    organizationId,
+  );
+  const [invoiceRows, gmailScanItems, documentReviews, supplierPayments] = await fetchInvoiceListSourceRows(whereInput, {
+    limit: options?.monthBounds ? undefined : options?.limit ?? 100,
+  });
+  const paymentDriveFallbackByInvoiceKey = await buildPaymentDriveFallbackByInvoiceKey(organizationId, invoiceRows);
+  return mergeInvoiceListCandidates({
+    invoiceRows,
+    gmailScanItems,
+    documentReviews,
+    supplierPayments,
+    paymentDriveFallbackByInvoiceKey,
+    organizationId,
+  }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
 export function summarizeCandidatesByMonth<T extends { date: Date; amount: number; currency: string }>(
   candidates: T[],
   getDate: (candidate: T) => Date,
@@ -4833,9 +4949,23 @@ apiRouter.get("/invoices/months", async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const clientId = typeof req.query.clientId === "string" ? req.query.clientId : undefined;
   const search = typeof req.query.search === "string" ? req.query.search : undefined;
+  const completeness = parseInvoiceCompletenessParam(req.query.completeness);
   const organizationId = req.auth!.organizationId;
   const ctx = buildInvoiceListQueryContext({ organizationId, status, clientId, search });
   const timezone = await loadOrganizationTimezone(organizationId);
+
+  if (completeness !== "all") {
+    const candidates = await fetchEnrichedInvoiceListCandidates(organizationId, ctx, { limit: undefined });
+    const filtered = filterInvoicesByCompleteness(candidates, completeness);
+    const months = summarizeCandidatesByMonth(
+      filtered.map((candidate) => ({ ...candidate, amount: candidate.amount ?? 0 })),
+      (candidate) => candidate.date,
+      timezone,
+    );
+    res.json({ months });
+    return;
+  }
+
   const { sql, params } = buildInvoiceMonthsAggregationSql(ctx, timezone);
   const rows = await prisma.$queryRawUnsafe<InvoiceMonthAggregationRow[]>(sql, ...params);
   const months = summarizeInvoiceMonthRows(rows);
@@ -4847,6 +4977,7 @@ apiRouter.get("/invoices", async (req, res) => {
   const clientId = typeof req.query.clientId === "string" ? req.query.clientId : undefined;
   const search = typeof req.query.search === "string" ? req.query.search : undefined;
   const monthParam = typeof req.query.month === "string" ? req.query.month : undefined;
+  const completeness = parseInvoiceCompletenessParam(req.query.completeness);
   const organizationId = req.auth!.organizationId;
   const ctx = buildInvoiceListQueryContext({ organizationId, status, clientId, search });
   const parsedMonth = monthParam ? parseInvoiceMonthParam(monthParam) : null;
@@ -4857,29 +4988,16 @@ apiRouter.get("/invoices", async (req, res) => {
   const monthBounds = parsedMonth
     ? await resolveInvoiceMonthBounds(organizationId, parsedMonth.year, parsedMonth.month, await loadOrganizationTimezone(organizationId))
     : undefined;
-  const whereInput = await applyFinancialReadIsolationToInvoiceListWhere(
-    buildInvoiceListWhereInput(ctx, monthBounds),
-    organizationId,
-  );
-  const [invoiceRows, gmailScanItems, documentReviews, supplierPayments] = await fetchInvoiceListSourceRows(whereInput, {
+
+  const invoices = await fetchEnrichedInvoiceListCandidates(organizationId, ctx, {
+    monthBounds,
     limit: monthBounds ? undefined : 100,
   });
-  const paymentDriveFallbackByInvoiceKey = await buildPaymentDriveFallbackByInvoiceKey(organizationId, invoiceRows);
-
-  const invoices = mergeInvoiceListCandidates({
-    invoiceRows,
-    gmailScanItems,
-    documentReviews,
-    supplierPayments,
-    paymentDriveFallbackByInvoiceKey,
-    organizationId,
-  })
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-  const responseInvoices = monthBounds ? invoices : invoices.slice(0, 100);
+  const filtered = filterInvoicesByCompleteness(invoices, completeness);
+  const responseInvoices = monthBounds ? filtered : filtered.slice(0, 100);
 
   const needsReviewCount = responseInvoices.filter((invoice) => invoice.reviewStatus === "needs_review").length;
-  console.log(`[invoices] UI_INVOICES_API_RETURNED count=${responseInvoices.length} org=${organizationId}${monthBounds ? ` month=${monthParam}` : ""}`);
+  console.log(`[invoices] UI_INVOICES_API_RETURNED count=${responseInvoices.length} org=${organizationId}${monthBounds ? ` month=${monthParam}` : ""} completeness=${completeness}`);
   console.log(`[invoices] NEEDS_REVIEW_INVOICES_RETURNED count=${needsReviewCount} org=${organizationId}`);
   res.json({ invoices: responseInvoices });
 });

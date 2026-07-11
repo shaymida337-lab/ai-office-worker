@@ -227,14 +227,18 @@ export type ScanProgressResult = {
 
 export type RecentInvoice = {
   id: string;
-  amount: number;
+  amount: number | null;
   currency: string;
   date: string;
+  dueDate?: string | null;
   status: string;
   reviewStatus?: string;
   source?: string;
   description: string | null;
   driveUrl: string | null;
+  driveFileUrl?: string | null;
+  supplierName?: string | null;
+  completionReasons?: string[];
   client?: { id: string; name: string; color: string | null };
 };
 

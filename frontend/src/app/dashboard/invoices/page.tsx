@@ -21,7 +21,6 @@ import { approvalErrorHebrew } from "@/lib/documents/presentation";
 import { buildFallbackMonthGroups } from "@/lib/invoices/monthGrouping";
 import { removeRowAfterAction } from "@/lib/invoices/animatedRemoval";
 import { formatAmount } from "@/lib/format/amount";
-import { isLikelyJunkSupplierNameLocal } from "@/lib/junkSupplier";
 import { Check, ChevronDown, ChevronLeft, Download, FileText, Loader2, RefreshCcw, UploadCloud } from "lucide-react";
 import { buttonVariants } from "@/components/natalie-ui/tokens";
 
@@ -63,7 +62,6 @@ export default function InvoicesPage() {
   const [invoicesByMonth, setInvoicesByMonth] = useState<Record<string, Invoice[]>>({});
   const [loadingMonth, setLoadingMonth] = useState<Set<string>>(() => new Set());
   const [monthsLoading, setMonthsLoading] = useState(true);
-  const [junkDrawerExpanded, setJunkDrawerExpanded] = useState(false);
   const [clients, setClients] = useState<ClientItem[]>([]);
   const [clientId, setClientId] = useState("all");
   const [reviewStatus, setReviewStatus] = useState<"all" | InvoiceReviewStatus>("all");
@@ -93,6 +91,7 @@ export default function InvoicesPage() {
 
   function buildListQueryString() {
     const params = new URLSearchParams();
+    params.set("completeness", "complete");
     if (clientId !== "all") params.set("clientId", clientId);
     if (search.trim()) params.set("search", search.trim());
     if (reviewStatus !== "all") params.set("status", reviewStatus);
@@ -207,10 +206,6 @@ export default function InvoicesPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selected]);
 
-  const allLoadedInvoices = useMemo(
-    () => Object.values(invoicesByMonth).flat(),
-    [invoicesByMonth]
-  );
 
   const matchesDisplayFilters = (invoice: Invoice) => {
     const date = invoiceDateKey(invoice);
@@ -220,20 +215,9 @@ export default function InvoicesPage() {
     );
   };
 
-  const junkInvoices = useMemo(() => {
-    const junk: Invoice[] = [];
-    const seen = new Set<string>();
-    for (const invoice of allLoadedInvoices) {
-      if (!isJunkInvoice(invoice) || seen.has(invoice.id)) continue;
-      seen.add(invoice.id);
-      if (matchesDisplayFilters(invoice)) junk.push(invoice);
-    }
-    return junk;
-  }, [allLoadedInvoices, fromDate, toDate]);
-
   const monthInvoicesForDisplay = (monthKeyValue: string) => {
     const invoices = invoicesByMonth[monthKeyValue] ?? [];
-    return invoices.filter((invoice) => !isJunkInvoice(invoice) && matchesDisplayFilters(invoice));
+    return invoices.filter((invoice) => matchesDisplayFilters(invoice));
   };
 
   const filtered = useMemo(() => {
@@ -247,21 +231,13 @@ export default function InvoicesPage() {
     for (const key of monthKeys) {
       if (!expandedMonths.has(key)) continue;
       for (const invoice of invoicesByMonth[key] ?? []) {
-        if (isJunkInvoice(invoice) || !matchesDateFilters(invoice) || seen.has(invoice.id)) continue;
+        if (!matchesDateFilters(invoice) || seen.has(invoice.id)) continue;
         seen.add(invoice.id);
         regular.push(invoice);
       }
     }
-    if (junkDrawerExpanded) {
-      for (const invoice of junkInvoices) {
-        if (!seen.has(invoice.id)) {
-          seen.add(invoice.id);
-          regular.push(invoice);
-        }
-      }
-    }
     return regular;
-  }, [expandedMonths, fromDate, invoicesByMonth, junkDrawerExpanded, junkInvoices, months, toDate]);
+  }, [expandedMonths, fromDate, invoicesByMonth, months, toDate]);
 
   const filteredIds = useMemo(() => filtered.map((invoice) => invoice.id), [filtered]);
   const selectedVisibleInvoices = useMemo(
@@ -639,7 +615,7 @@ export default function InvoicesPage() {
 
         {monthsLoading ? <div className="mb-5"><SkeletonCard /></div> : null}
 
-        {!monthsLoading && months.length === 0 && junkInvoices.length === 0 ? (
+        {!monthsLoading && months.length === 0 ? (
           <EmptyState title={t("invoicesDesign.emptyTitle")} description={t("invoicesDesign.emptyHint")} />
         ) : null}
 
@@ -725,53 +701,6 @@ export default function InvoicesPage() {
           );
         })}
       </div>
-
-      {junkInvoices.length > 0 && (
-        <Card padding="none" className="mt-6 overflow-hidden border-[#FCD34D]">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between gap-3 bg-[#FEF3C7] px-4 py-4 text-right transition hover:bg-[#FDE68A] md:px-5"
-            onClick={() => setJunkDrawerExpanded((current) => !current)}
-            aria-expanded={junkDrawerExpanded}
-          >
-            <div className="flex items-center gap-3">
-              {junkDrawerExpanded ? <ChevronDown className="h-5 w-5 shrink-0 transition-transform duration-300 ease-out" /> : <ChevronLeft className="h-5 w-5 shrink-0 transition-transform duration-300 ease-out" />}
-              <span className="text-lg font-black text-[#111827]">דורש בדיקה ידנית ({junkInvoices.length})</span>
-            </div>
-          </button>
-          <CollapsePanel open={junkDrawerExpanded}>
-            <div className="overflow-hidden border-t border-[#FDE68A] p-4 md:p-5">
-              <InvoiceMobileList
-                invoices={junkInvoices}
-                selectedInvoiceIds={selectedInvoiceIds}
-                bulkDeleting={bulkDeleting}
-                deletingId={deletingId}
-                removingIds={removingIds}
-                onSelect={setSelected}
-                onToggleSelection={toggleInvoiceSelection}
-                onToggleStatus={toggleStatus}
-                onApprove={handleAnimatedApprove}
-                onDelete={deleteInvoice}
-              />
-              <InvoiceDesktopList
-                invoices={junkInvoices}
-                selectedInvoiceIds={selectedInvoiceIds}
-                bulkDeleting={bulkDeleting}
-                deletingId={deletingId}
-                removingIds={removingIds}
-                allVisibleSelected={false}
-                onSelect={setSelected}
-                onToggleSelection={toggleInvoiceSelection}
-                onToggleSelectAllVisible={() => {}}
-                onToggleStatus={toggleStatus}
-                onApprove={handleAnimatedApprove}
-                onDelete={deleteInvoice}
-                showSelectAll={false}
-              />
-            </div>
-          </CollapsePanel>
-        </Card>
-      )}
 
       {selected && (
         <div className="fixed inset-0 z-[110] overflow-y-auto bg-slate-950/75 p-0 backdrop-blur-sm sm:grid sm:place-items-center sm:p-6" role="presentation" onClick={() => setSelected(null)}>
@@ -1116,15 +1045,6 @@ function formatMonthTotalsSummary(totalsByCurrency: Record<string, number>) {
       return `+ ${symbol}${amount.toLocaleString("he-IL")}`;
     });
   return { main, extra: foreignParts.join(" ") };
-}
-
-function isJunkInvoice(invoice: Invoice) {
-  const supplier = invoice.supplierName?.trim() ?? "";
-  if (supplier && isLikelyJunkSupplierNameLocal(supplier)) return true;
-  if (invoice.amount === 1_000_000) return true;
-  const parsedDate = new Date(invoice.date);
-  if (!Number.isNaN(parsedDate.getTime()) && parsedDate.getFullYear() > new Date().getFullYear() + 1) return true;
-  return false;
 }
 
 function formatInvoiceAmount(invoice: Invoice) {

@@ -113,7 +113,7 @@ function buildPendingItems(input: NatalieBriefingInput): NatalieBriefingItem[] {
   for (const missing of input.missingInvoices ?? []) {
     items.push({
       id: `missing-${missing.id}`,
-      text: `יש תשלום ל${missing.supplier?.trim() || "ספק"} בלי חשבונית.`,
+      text: `יש חשבונית של ${missing.supplier?.trim() || "ספק"} שדורשת השלמה.`,
     });
   }
 
