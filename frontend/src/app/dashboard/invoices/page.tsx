@@ -20,6 +20,14 @@ import { apiFetch } from "@/lib/api";
 import { buildFallbackMonthGroups } from "@/lib/invoices/monthGrouping";
 import { removeRowAfterAction } from "@/lib/invoices/animatedRemoval";
 import { formatAmount } from "@/lib/format/amount";
+import {
+  displayBusinessSupplier,
+  displayDocumentTypeLabel,
+  displayInvoiceAmount,
+  displayInvoiceDate,
+  displayPaymentStatus,
+  paymentStatusTone,
+} from "@/lib/invoices/invoiceDisplay";
 import { ChevronDown, ChevronLeft, Download, FileText, Loader2, RefreshCcw, UploadCloud } from "lucide-react";
 import { buttonVariants } from "@/components/natalie-ui/tokens";
 
@@ -691,7 +699,7 @@ export default function InvoicesPage() {
                 <div>
                   <p className="text-sm font-extrabold uppercase tracking-wide text-[#111827]">פרטי חשבונית</p>
                   <h2 id="invoice-details-title" className="mt-1 text-2xl font-black leading-tight text-[#111827] sm:text-3xl">
-                    {selected.supplierName || selected.client?.name || MISSING_SUPPLIER}
+                    {displayBusinessSupplier(selected)}
                   </h2>
                   <p className="mt-2 text-base font-semibold leading-7 text-[#111827]">
                     {selected.reviewStatus === "needs_review" ? "חשבונית שמורה וממתינה לאישור" : reviewStatusLabels[selected.reviewStatus ?? "approved"]}
@@ -710,12 +718,12 @@ export default function InvoicesPage() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <DetailCard label="ספק" value={selected.supplierName || MISSING_SUPPLIER} />
-              <DetailCard label="סכום" value={formatInvoiceAmount(selected)} highlight />
+              <DetailCard label="ספק" value={displayBusinessSupplier(selected)} />
+              <DetailCard label="סוג מסמך" value={displayDocumentTypeLabel(selected.documentType)} />
+              <DetailCard label="סכום" value={displayInvoiceAmount(selected)} highlight />
+              <DetailCard label="תאריך" value={displayInvoiceDate(selected.date)} />
+              <DetailCard label="סטטוס" value={displayPaymentStatus(selected)} />
               <DetailCard label="מספר חשבונית" value={selected.invoiceNumber || MISSING_NUMBER} />
-              <DetailCard label="תאריך" value={formatInvoiceDate(selected.date)} />
-              <DetailCard label="מקור" value={sourceLabel(selected.source)} />
-              <DetailCard label="סטטוס" value={reviewBadgeLabel(selected)} />
               <div className="invoice-detail-surface rounded-2xl border border-[#E5E7EB] bg-white p-4 sm:col-span-2">
                 <div className="mb-2 text-sm font-black text-[#111827]">קישור למסמך</div>
                 {documentDriveUrl(selected) ? (
@@ -726,18 +734,6 @@ export default function InvoicesPage() {
                   <div className="invoice-muted break-words text-lg font-black leading-7 text-[#4B5563]">המסמך עדיין לא נשמר בדרייב</div>
                 )}
               </div>
-            </div>
-
-            {selected.description && (
-              <div className="invoice-detail-surface mt-5 rounded-2xl border border-[#E5E7EB] bg-white p-4">
-                <div className="mb-2 text-sm font-black text-[#111827]">תיאור</div>
-                <p className="whitespace-pre-wrap break-words text-base font-semibold leading-8 text-[#111827]">{selected.description}</p>
-              </div>
-            )}
-
-            <div className="invoice-detail-surface mt-5 rounded-2xl border border-[#E5E7EB] bg-white p-4">
-              <div className="mb-2 text-sm font-black text-[#111827]">הערות מערכת</div>
-              <p className="whitespace-pre-wrap break-words text-base font-semibold leading-8 text-[#111827]">{systemNoteForInvoice(selected)}</p>
             </div>
 
             {selected.gmailMessageLink && (
@@ -816,57 +812,51 @@ function InvoiceMobileList({
   onDelete,
 }: InvoiceListProps) {
   return (
-    <div className="grid gap-4 md:hidden">
+    <div className="grid gap-5 md:hidden">
       {invoices.map((invoice) => {
         const isRemoving = removingIds.has(invoice.id);
+        const supplier = displayBusinessSupplier(invoice);
         return (
         <div
           key={invoice.id}
-          className={`invoice-mobile-row space-y-2 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white p-4 text-[#111827] shadow-sm transition-all duration-[250ms] ease-out ${invoiceRemovalClass(isRemoving)}`}
+          className={`invoice-mobile-row overflow-hidden rounded-3xl border border-[#E2E8F0] bg-white p-5 text-[#111827] shadow-sm transition-all duration-[250ms] ease-out ${invoiceRemovalClass(isRemoving)}`}
         >
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex min-w-0 flex-1 items-start gap-2">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
               <input
                 type="checkbox"
                 checked={selectedInvoiceIds.has(invoice.id)}
                 onChange={() => onToggleSelection(invoice.id)}
                 disabled={bulkDeleting}
-                className="mt-1 h-5 w-5 shrink-0 rounded border-[#9CA3AF]"
+                className="mt-1.5 h-5 w-5 shrink-0 rounded border-[#9CA3AF]"
                 aria-label="בחר חשבונית"
               />
               <button type="button" className="min-w-0 flex-1 text-right" onClick={() => onSelect(invoice)}>
-                <div className="truncate text-base font-semibold text-[#111827]" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_SUPPLIER}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_SUPPLIER}</div>
+                <div className="text-lg font-bold leading-snug text-[#0F172A]" title={supplier}>{supplier}</div>
               </button>
             </div>
-            <ReviewStatusPill invoice={invoice} />
+            <PaymentStatusPill invoice={invoice} />
           </div>
-          <button type="button" className="block w-full min-w-0 text-right" onClick={() => onSelect(invoice)}>
-            <div className="truncate text-sm font-normal text-[#6B7280]" title={`${formatInvoiceDate(invoice.date)} · ${invoiceMetaLine(invoice)}`}>{formatInvoiceDate(invoice.date)} · {invoiceMetaLine(invoice)}</div>
+          <button type="button" className="mb-4 block w-full text-right" onClick={() => onSelect(invoice)}>
+            <div className="grid grid-cols-2 gap-3 text-sm text-[#64748B]">
+              <div><span className="font-semibold text-[#94A3B8]">סוג מסמך</span><div className="mt-1 text-base font-semibold text-[#334155]">{displayDocumentTypeLabel(invoice.documentType)}</div></div>
+              <div><span className="font-semibold text-[#94A3B8]">תאריך</span><div className="mt-1 text-base font-semibold text-[#334155]">{displayInvoiceDate(invoice.date)}</div></div>
+              <div className="col-span-2"><span className="font-semibold text-[#94A3B8]">סכום</span><div className="mt-1 text-xl font-bold text-[#0F172A]">{displayInvoiceAmount(invoice)}</div></div>
+            </div>
           </button>
-          {displayInvoiceDescription(invoice) !== "—" && (
-            <button type="button" className="block w-full min-w-0 text-right" onClick={() => onSelect(invoice)}>
-              <div className="truncate text-base font-semibold text-[#111827]" title={displayInvoiceDescription(invoice)}>{displayInvoiceDescription(invoice)}</div>
-            </button>
-          )}
-          <div className="min-w-0 text-lg font-bold text-[#111827]">{formatInvoiceAmount(invoice)}</div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-wrap gap-2">
             {documentDriveUrl(invoice) && (
-              <a className="invoice-action inline-flex min-h-[44px] min-w-0 items-center justify-center gap-2 rounded-xl border border-[#1D4ED8] bg-[#DBEAFE] px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer">
-                <Download className="h-4 w-4 shrink-0" /><span className="truncate">פתח בדרייב</span>
-              </a>
-            )}
-            {invoice.gmailMessageLink && (
-              <a className="invoice-action inline-flex min-h-[44px] min-w-0 items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer">
-                <Download className="h-4 w-4 shrink-0" /><span className="truncate">פתח מייל</span>
+              <a className="invoice-action inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#1D4ED8] bg-[#DBEAFE] px-4 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer">
+                <Download className="h-4 w-4 shrink-0" /><span>מסמך</span>
               </a>
             )}
             {isPersistedInvoice(invoice) && (
-              <button className="invoice-action min-h-[44px] min-w-0 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={() => onToggleStatus(invoice)}>
-                <span className="truncate">{invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}</span>
+              <button className="invoice-action min-h-11 rounded-xl border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={() => onToggleStatus(invoice)}>
+                {invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}
               </button>
             )}
-            <button className="invoice-action min-h-[44px] min-w-0 rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#FECACA]" onClick={() => onDelete(invoice)} disabled={deletingId === invoice.id}>
-              <span className="truncate">{deletingId === invoice.id ? "מוחק..." : "מחק"}</span>
+            <button className="invoice-action min-h-11 rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-4 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#FECACA]" onClick={() => onDelete(invoice)} disabled={deletingId === invoice.id}>
+              {deletingId === invoice.id ? "מוחק..." : "מחק"}
             </button>
           </div>
         </div>
@@ -891,33 +881,34 @@ function InvoiceDesktopList({
   showSelectAll,
 }: InvoiceDesktopListProps) {
   return (
-    <div className="invoice-table-wrap hidden max-w-full overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-white pl-2 shadow-sm md:block">
-      <table className="w-full table-fixed bg-white text-[#111827]">
-        <thead className="bg-[#F3F4F6]">
-          <tr className="border-b border-[#E5E7EB]">
-            <th className="w-[4%] text-base font-bold text-[#111827]">
+    <div className="invoice-table-wrap hidden max-w-full overflow-x-auto rounded-3xl border border-[#E2E8F0] bg-white shadow-sm md:block">
+      <table className="invoices-business-table w-full table-fixed bg-white text-[#111827]">
+        <thead className="bg-[#F8FAFC]">
+          <tr className="border-b border-[#E2E8F0]">
+            <th className="w-[4%] px-3 py-5 text-sm font-bold text-[#64748B]">
               {showSelectAll ? (
                 <input type="checkbox" aria-label="בחר הכל בעמוד" checked={allVisibleSelected} onChange={onToggleSelectAllVisible} disabled={invoices.length === 0 || bulkDeleting} className="h-5 w-5 rounded border-[#9CA3AF]" />
               ) : null}
             </th>
-            <th className="w-[20%] text-base font-bold text-[#111827]">לקוח/ספק</th>
-            <th className="w-[10%] text-base font-bold text-[#111827]">תאריך</th>
-            <th className="w-[30%] text-base font-bold text-[#111827]">תיאור</th>
-            <th className="w-[10%] text-base font-bold text-[#111827]">סכום</th>
-            <th className="w-[11%] text-base font-bold text-[#111827]">סטטוס</th>
-            <th className="w-[15%] text-base font-bold text-[#111827]">פעולות</th>
+            <th className="w-[26%] px-4 py-5 text-sm font-bold text-[#64748B]">ספק</th>
+            <th className="w-[14%] px-4 py-5 text-sm font-bold text-[#64748B]">סוג מסמך</th>
+            <th className="w-[14%] px-4 py-5 text-sm font-bold text-[#64748B]">תאריך</th>
+            <th className="w-[14%] px-4 py-5 text-sm font-bold text-[#64748B]">סכום</th>
+            <th className="w-[14%] px-4 py-5 text-sm font-bold text-[#64748B]">סטטוס</th>
+            <th className="w-[14%] px-4 py-5 text-sm font-bold text-[#64748B]">פעולות</th>
           </tr>
         </thead>
         <tbody>
           {invoices.map((invoice) => {
             const isRemoving = removingIds.has(invoice.id);
+            const supplier = displayBusinessSupplier(invoice);
             return (
             <tr
               key={invoice.id}
               onClick={() => onSelect(invoice)}
-              className={`cursor-pointer border-b border-[#E5E7EB] bg-white transition-all duration-[250ms] ease-out hover:bg-[#F8FAFC] ${invoiceRemovalClass(isRemoving)}`}
+              className={`cursor-pointer border-b border-[#EEF2F7] bg-white transition-all duration-[250ms] ease-out hover:bg-[#F8FAFC] ${invoiceRemovalClass(isRemoving)}`}
             >
-              <td className="py-4">
+              <td className="px-3 py-6">
                 <input
                   type="checkbox"
                   aria-label="בחר חשבונית"
@@ -928,28 +919,18 @@ function InvoiceDesktopList({
                   className="h-5 w-5 rounded border-[#9CA3AF]"
                 />
               </td>
-              <td className="py-4">
-                <div className="flex max-w-full items-center gap-2 text-[#111827]">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#E5E7EB] bg-[#F3F4F6] text-sm font-black text-[#111827]">{(invoice.client?.name ?? invoice.supplierName ?? "בדיקה").slice(0, 2)}</span>
-                  <div className="min-w-0">
-                    <div className="truncate text-base font-semibold" title={invoice.client?.name ?? invoice.supplierName ?? MISSING_SUPPLIER}>{invoice.client?.name ?? invoice.supplierName ?? MISSING_SUPPLIER}</div>
-                    <div className="truncate text-xs font-normal text-[#9CA3AF]" title={invoiceMetaLine(invoice)}>{invoiceMetaLine(invoice)}</div>
-                  </div>
-                </div>
+              <td className="px-4 py-6">
+                <div className="truncate text-lg font-bold text-[#0F172A]" title={supplier}>{supplier}</div>
               </td>
-              <td className="whitespace-nowrap py-4 text-base font-normal text-[#6B7280]">{formatInvoiceDate(invoice.date)}</td>
-              <td className="min-w-0 py-4 text-[#111827]">
-                <div className="truncate text-base font-semibold" title={displayInvoiceDescription(invoice)}>{displayInvoiceDescription(invoice)}</div>
-                <div className="truncate text-xs font-normal text-[#9CA3AF]" title={systemNoteForInvoice(invoice)}>{systemNoteForInvoice(invoice)}</div>
-              </td>
-              <td className="whitespace-nowrap py-4 text-base font-bold text-[#111827]">{formatInvoiceAmount(invoice)}</td>
-              <td className="whitespace-nowrap py-4"><ReviewStatusPill invoice={invoice} /></td>
-              <td className="py-4">
-                <div className="flex min-w-0 flex-nowrap gap-1">
-                  {documentDriveUrl(invoice) && <a className="invoice-action inline-flex min-w-0 items-center justify-center gap-1 rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3 w-3" />דרייב</a>}
-                  {invoice.gmailMessageLink && <a className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>מייל</a>}
-                  {isPersistedInvoice(invoice) && <button className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={(e) => { e.stopPropagation(); onToggleStatus(invoice); }}>{invoice.status === "paid" ? "ממתינה" : "שולמה"}</button>}
-                  <button className="invoice-action rounded-lg border border-[#B91C1C] bg-[#FEE2E2] px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); onDelete(invoice); }} disabled={deletingId === invoice.id}>{deletingId === invoice.id ? "מוחק..." : "מחק"}</button>
+              <td className="px-4 py-6 text-base font-medium text-[#334155]">{displayDocumentTypeLabel(invoice.documentType)}</td>
+              <td className="whitespace-nowrap px-4 py-6 text-base font-medium text-[#334155]">{displayInvoiceDate(invoice.date)}</td>
+              <td className="whitespace-nowrap px-4 py-6 text-lg font-bold text-[#0F172A]">{displayInvoiceAmount(invoice)}</td>
+              <td className="whitespace-nowrap px-4 py-6"><PaymentStatusPill invoice={invoice} /></td>
+              <td className="px-4 py-6">
+                <div className="flex min-w-0 flex-wrap gap-2">
+                  {documentDriveUrl(invoice) && <a className="invoice-action inline-flex items-center justify-center gap-1 rounded-xl border border-[#1D4ED8] bg-[#DBEAFE] px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-4 w-4" />מסמך</a>}
+                  {isPersistedInvoice(invoice) && <button className="invoice-action rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={(e) => { e.stopPropagation(); onToggleStatus(invoice); }}>{invoice.status === "paid" ? "ממתינה" : "שולמה"}</button>}
+                  <button className="invoice-action rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); onDelete(invoice); }} disabled={deletingId === invoice.id}>{deletingId === invoice.id ? "מוחק..." : "מחק"}</button>
                 </div>
               </td>
             </tr>
@@ -1102,6 +1083,10 @@ function ReviewStatusPill({ invoice }: { invoice: Invoice }) {
   const reviewStatus = invoice.reviewStatus ?? "approved";
   const tone = reviewStatus === "needs_review" ? "warn" : reviewStatus === "rejected" ? "danger" : "success";
   return <StatusBadge tone={tone}>{reviewBadgeLabel(invoice)}</StatusBadge>;
+}
+
+function PaymentStatusPill({ invoice }: { invoice: Invoice }) {
+  return <StatusBadge tone={paymentStatusTone(invoice)}>{displayPaymentStatus(invoice)}</StatusBadge>;
 }
 
 function sourceLabel(source: Invoice["source"] | undefined) {

@@ -5,7 +5,12 @@ import { Nav } from "@/components/Nav";
 import type { Invoice } from "@/components/invoices";
 import { apiFetch } from "@/lib/api";
 import { removeRowAfterAction } from "@/lib/invoices/animatedRemoval";
-import { formatAmount } from "@/lib/format/amount";
+import {
+  displayBusinessSupplier,
+  displayDocumentTypeLabel,
+  displayInvoiceAmount,
+  displayInvoiceDate,
+} from "@/lib/invoices/invoiceDisplay";
 import {
   COMPLETION_DOCUMENT_TYPES,
   completionErrorMessage,
@@ -35,33 +40,15 @@ type EditDraft = {
 };
 
 function formatInvoiceAmount(invoice: Invoice) {
-  if (invoice.amountLabel) return invoice.amountLabel;
-  if (invoice.amount == null || !Number.isFinite(invoice.amount)) return "חסר";
-  return formatAmount(invoice.amount, invoice.currency, "חסר");
+  return displayInvoiceAmount(invoice);
 }
 
 function formatInvoiceDate(date: string | null | undefined) {
-  if (!date) return "חסר";
-  const parsed = new Date(date);
-  if (Number.isNaN(parsed.getTime())) return "חסר";
-  return parsed.toLocaleDateString("he-IL");
+  return displayInvoiceDate(date);
 }
 
 function formatDocumentTypeLabel(documentType: string | null | undefined) {
-  if (!documentType?.trim()) return "חסר";
-  const match = COMPLETION_DOCUMENT_TYPES.find((type) => type.value === documentType);
-  return match?.label ?? documentType;
-}
-
-function formatRowStatus(invoice: Invoice) {
-  const action = getInvoiceCompletionAction(invoice);
-  if (action.kind === "blocked") return "חסום";
-  if (action.kind === "not_invoice") return "לא חשבונית";
-  if (action.kind === "approve_only") return "מוכן לאישור";
-  if (action.kind === "edit_supplier") return "ממתין לאישור ספק";
-  if (!invoice.dataComplete) return "חסר פרטים";
-  if (invoice.approvalRequired) return "ממתין לאישור";
-  return "בהשלמה";
+  return displayDocumentTypeLabel(documentType);
 }
 
 function toDateInputValue(date: string | null | undefined): string {
@@ -85,22 +72,134 @@ function StatusChips({ invoice }: { invoice: Invoice }) {
   const chips = getInvoiceStatusChips(invoice);
   if (chips.length === 0) return null;
   return (
-    <div className="mt-2 flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2">
       {chips.map((chip) => (
         <span
           key={chip}
-          className={`rounded-full px-2.5 py-1 text-xs ${
+          className={`rounded-full px-3 py-1 text-xs font-semibold ${
             chip === "חסום"
-              ? "bg-red-400/15 text-red-100"
+              ? "bg-red-500/15 text-red-200"
               : chip === "ממתין לאישור"
-                ? "bg-sky-400/15 text-sky-100"
-                : "bg-amber-400/15 text-amber-100"
+                ? "bg-sky-500/15 text-sky-200"
+                : "bg-amber-500/15 text-amber-100"
           }`}
         >
           {chip}
         </span>
       ))}
     </div>
+  );
+}
+
+function CompletionPreview({ invoice }: { invoice: Invoice }) {
+  const previewUrl = getDocumentPreviewUrl(invoice);
+  if (!previewUrl) {
+    return (
+      <div className="flex h-36 w-full items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-sm text-ink-secondary md:h-40 md:w-44">
+        אין תצוגה
+      </div>
+    );
+  }
+  if (previewUrl.includes("drive.google.com") || previewUrl.includes("/uploads/")) {
+    return (
+      <iframe
+        title="תצוגת מסמך"
+        src={previewUrl.includes("drive.google.com") ? previewUrl.replace("/view", "/preview") : previewUrl}
+        className="h-36 w-full rounded-2xl border border-white/10 bg-white md:h-40 md:w-44"
+      />
+    );
+  }
+  return (
+    <div className="flex h-36 w-full items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-3 text-center text-sm text-ink-secondary md:h-40 md:w-44">
+      מסמך מקור
+    </div>
+  );
+}
+
+function CompletionCard({
+  invoice,
+  rowError,
+  acting,
+  onPrimary,
+  onPreview,
+  onEdit,
+  onNotInvoice,
+}: {
+  invoice: Invoice;
+  rowError?: string;
+  acting: boolean;
+  onPrimary: () => void;
+  onPreview: () => void;
+  onEdit: () => void;
+  onNotInvoice: () => void;
+}) {
+  const action = getInvoiceCompletionAction(invoice);
+  const supplier = displayBusinessSupplier(invoice);
+  const previewUrl = getDocumentPreviewUrl(invoice);
+
+  return (
+    <article
+      dir="rtl"
+      className="invoice-completion-card rounded-[28px] border border-white/12 bg-white/[0.04] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.28)] transition-opacity duration-300"
+    >
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+        <div className="shrink-0 lg:w-48">
+          <CompletionPreview invoice={invoice} />
+        </div>
+
+        <div className="min-w-0 flex-1 space-y-4">
+          <div>
+            <h3 className="text-2xl font-bold leading-tight text-white">{supplier}</h3>
+            <div className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">סוג מסמך</div>
+                <div className="mt-1 text-base font-semibold text-white">{formatDocumentTypeLabel(invoice.documentType)}</div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">תאריך</div>
+                <div className="mt-1 text-base font-semibold text-white">{formatInvoiceDate(invoice.date)}</div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">סכום</div>
+                <div className="mt-1 text-xl font-bold text-white">{formatInvoiceAmount(invoice)}</div>
+              </div>
+            </div>
+          </div>
+
+          <StatusChips invoice={invoice} />
+
+          {rowError && (
+            <p className="rounded-2xl border border-red-400/40 bg-red-400/10 p-3 text-sm text-red-100">{rowError}</p>
+          )}
+        </div>
+
+        <div className="flex shrink-0 flex-col items-stretch gap-3 lg:min-w-[220px] lg:items-end">
+          {action.kind !== "none" && (
+            <button
+              className="btn min-h-12 w-full rounded-2xl px-6 text-base font-bold lg:w-auto"
+              type="button"
+              disabled={acting}
+              onClick={onPrimary}
+            >
+              {acting ? "מעבד..." : action.primaryLabel}
+            </button>
+          )}
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            {previewUrl && (
+              <button className="invoice-completion-secondary min-h-9 rounded-xl border border-white/20 px-3 py-2 text-xs font-medium text-ink-secondary" type="button" onClick={onPreview}>
+                הצג מסמך
+              </button>
+            )}
+            <button className="invoice-completion-secondary min-h-9 rounded-xl border border-white/20 px-3 py-2 text-xs font-medium text-ink-secondary" type="button" onClick={onEdit}>
+              ערוך
+            </button>
+            <button className="invoice-completion-secondary min-h-9 rounded-xl border border-white/20 px-3 py-2 text-xs font-medium text-ink-secondary" type="button" disabled={acting} onClick={onNotInvoice}>
+              לא חשבונית
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -155,7 +254,7 @@ function CompletionEditModal({
       <div className="card max-h-[90vh] w-full max-w-lg overflow-y-auto">
         <h2 className="mb-2">השלמת פרטי חשבונית</h2>
         <p className="mb-4 text-sm text-ink-secondary">
-          {invoice.supplierName?.trim() || "ספק לא זוהה"} · {formatInvoiceAmount(invoice)}
+          {displayBusinessSupplier(invoice)} · {formatInvoiceAmount(invoice)}
         </p>
         {previewUrl && (
           <div className="mb-4 rounded-2xl border border-white/10 bg-surface-secondary p-3">
@@ -255,26 +354,6 @@ function CompletionEditModal({
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function InvoiceRowDetails({ invoice, rowError }: { invoice: Invoice; rowError?: string }) {
-  const action = getInvoiceCompletionAction(invoice);
-  return (
-    <div>
-      <div className="grid gap-2 text-sm sm:grid-cols-2">
-        <div><span className="text-ink-secondary">ספק: </span>{invoice.supplierName?.trim() || "חסר"}</div>
-        <div><span className="text-ink-secondary">סכום: </span>{formatInvoiceAmount(invoice)}</div>
-        <div><span className="text-ink-secondary">תאריך: </span>{formatInvoiceDate(invoice.date)}</div>
-        <div><span className="text-ink-secondary">סוג מסמך: </span>{formatDocumentTypeLabel(invoice.documentType)}</div>
-        <div><span className="text-ink-secondary">סטטוס: </span>{formatRowStatus(invoice)}</div>
-      </div>
-      <StatusChips invoice={invoice} />
-      {action.hint && action.kind !== "approve_only" && (
-        <p className="mt-2 text-sm text-amber-100">{action.hint}</p>
-      )}
-      {rowError && <p className="mt-2 rounded-xl border border-red-400/40 bg-red-400/10 p-3 text-sm text-red-100">{rowError}</p>}
     </div>
   );
 }
@@ -530,52 +609,20 @@ export default function ReportsClient() {
     }).finally(() => setActingId(null));
   }
 
-  function renderActionButton(invoice: Invoice) {
-    const action = getInvoiceCompletionAction(invoice);
-    if (action.kind === "none") return null;
-    return (
-      <button
-        className="btn btn-primary"
-        type="button"
-        disabled={actingId === invoice.id}
-        onClick={() => handlePrimaryAction(invoice)}
-      >
-        {actingId === invoice.id ? "מעבד..." : action.primaryLabel}
-      </button>
-    );
-  }
-
-  function renderSecondaryActions(invoice: Invoice) {
-    const previewUrl = getDocumentPreviewUrl(invoice);
-    return (
-      <>
-        {previewUrl && (
-          <button className="btn btn-secondary" type="button" onClick={() => openDocument(invoice)}>
-            הצג מסמך
-          </button>
-        )}
-        <button className="btn btn-secondary" type="button" onClick={() => openEditForm(invoice)}>
-          ערוך
-        </button>
-        <button className="btn btn-secondary" type="button" disabled={actingId === invoice.id} onClick={() => handleNotInvoice(invoice)}>
-          לא חשבונית
-        </button>
-      </>
-    );
-  }
-
   return (
-    <div className="container">
+    <div className="container" dir="rtl">
       <Nav />
-      <div className="mb-8">
+      <div className="mb-10">
         <div className="page-kicker">חשבוניות</div>
         <h1>השלמת חשבוניות</h1>
-        <p>מסמכים שחסרים בהם שדות חובה או שממתינים לאישור לפני שיופיעו במסך חשבוניות.</p>
+        <p className="mt-2 max-w-3xl text-base leading-7 text-ink-secondary">
+          השלימו מסמכים חסרים לפני שיופיעו במסך חשבוניות.
+        </p>
       </div>
       {message && (
         <div
           ref={messageRef}
-          className={`mb-6 rounded-2xl border p-4 text-base ${
+          className={`mb-8 rounded-2xl border p-4 text-base ${
             messageTone === "error"
               ? "border-red-400/30 bg-red-400/10 text-red-100"
               : messageTone === "success"
@@ -594,50 +641,24 @@ export default function ReportsClient() {
           <p className="mt-2">כל החשבוניות מלאות ומאושרות — הן מוצגות במסך חשבוניות.</p>
         </div>
       ) : (
-        <>
-          <div className="grid gap-4 md:hidden">
-            {invoices.map((invoice) => (
-              <div
-                key={invoice.id}
-                className={`card transition-opacity duration-300 ${removingIds.has(invoice.id) ? "opacity-0" : "opacity-100"}`}
-              >
-                <InvoiceRowDetails invoice={invoice} rowError={rowErrors[invoice.id]} />
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {renderSecondaryActions(invoice)}
-                  {renderActionButton(invoice)}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="table-shell hidden md:block">
-            <table>
-              <thead>
-                <tr>
-                  <th>פרטים</th>
-                  <th>פעולות</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invoices.map((invoice) => (
-                  <tr
-                    key={invoice.id}
-                    className={`align-top transition-opacity duration-300 ${removingIds.has(invoice.id) ? "opacity-0" : "opacity-100"}`}
-                  >
-                    <td>
-                      <InvoiceRowDetails invoice={invoice} rowError={rowErrors[invoice.id]} />
-                    </td>
-                    <td>
-                      <div className="flex flex-wrap gap-2">
-                        {renderSecondaryActions(invoice)}
-                        {renderActionButton(invoice)}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+        <div className="flex flex-col gap-8">
+          {invoices.map((invoice) => (
+            <div
+              key={invoice.id}
+              className={`transition-opacity duration-300 ${removingIds.has(invoice.id) ? "opacity-0" : "opacity-100"}`}
+            >
+              <CompletionCard
+                invoice={invoice}
+                rowError={rowErrors[invoice.id]}
+                acting={actingId === invoice.id}
+                onPrimary={() => handlePrimaryAction(invoice)}
+                onPreview={() => openDocument(invoice)}
+                onEdit={() => openEditForm(invoice)}
+                onNotInvoice={() => handleNotInvoice(invoice)}
+              />
+            </div>
+          ))}
+        </div>
       )}
       {editingInvoice && editDraft && (
         <CompletionEditModal
