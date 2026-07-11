@@ -74,7 +74,7 @@ export function buildSupplierPaymentReadIsolationWhere(
   const excludedGmailIds = crossOrgGmailIdsExcludedForOrganization(organizationId, contaminatedGmailIds);
   return {
     ...quarantineMarkerExclusion("duplicateReason"),
-    ...(excludedGmailIds.length > 0 ? { gmailMessageId: { notIn: excludedGmailIds } } : {}),
+    ...(excludedGmailIds.length > 0 ? { emailMessageId: { notIn: excludedGmailIds } } : {}),
   };
 }
 
