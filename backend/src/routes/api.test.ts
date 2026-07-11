@@ -15,6 +15,7 @@ import {
   mapGmailScanItemToInvoiceCandidate,
   mapSupplierPaymentToInvoiceCandidate,
   enrichReviewInvoiceCandidateWithCompleteness,
+  assessReviewInvoiceCandidate,
   mergeInvoiceListCandidates,
   parseInvoiceMonthParam,
   resolveNatalieVoiceSynthesizeProvider,
@@ -752,4 +753,47 @@ test("filterInvoicesByCompleteness keeps complete and incomplete lists disjoint"
   assert.equal(incompleteOnly.length, 1);
   assert.equal(completeOnly[0]?.id, complete.id);
   assert.equal(incompleteOnly[0]?.id, incomplete.id);
+});
+
+test("enrichReviewInvoiceCandidateWithCompleteness separates data gaps from approval", () => {
+  const approvedAt = new Date("2026-08-28T08:00:00.000Z");
+  const candidate = enrichReviewInvoiceCandidateWithCompleteness({
+    id: "document-review:rev-awaiting",
+    clientId: "",
+    invoiceNumber: "99",
+    amount: 49.74,
+    amountLabel: "₪49.74",
+    amountResolved: true,
+    currency: "ILS",
+    currencyExplicit: true,
+    date: approvedAt,
+    documentDateExplicit: true,
+    dueDate: null,
+    status: "needs_review",
+    reviewStatus: "needs_review",
+    rawReviewStatus: "needs_review",
+    source: "financial_document_review",
+    reviewSourceId: "rev-awaiting",
+    description: null,
+    driveUrl: null,
+    driveFileUrl: null,
+    client: null,
+    supplierName: "אונדו",
+    fromEmail: null,
+    gmailMessageId: null,
+    confidenceScore: 0.95,
+    decisionReason: null,
+    attachmentFilename: null,
+    documentType: "invoice",
+    parsedFieldsJson: null,
+    createdAt: approvedAt,
+    updatedAt: approvedAt,
+  });
+
+  assert.equal(candidate.dataComplete, true);
+  assert.equal(candidate.approvalRequired, true);
+  assert.equal(candidate.isComplete, false);
+  assert.deepEqual(candidate.missingDataReasons, []);
+  assert.ok(candidate.approvalReasons.includes("ממתין לאישור"));
+  assert.equal(assessReviewInvoiceCandidate(candidate).isComplete, false);
 });

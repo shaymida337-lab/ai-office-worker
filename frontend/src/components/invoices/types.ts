@@ -28,7 +28,12 @@ export type Invoice = {
   supplierName?: string | null;
   decisionReason?: string | null;
   documentType?: string | null;
+  dataComplete?: boolean;
+  approvalRequired?: boolean;
   isComplete?: boolean;
+  missingDataReasons?: string[];
+  approvalReasons?: string[];
+  rawReviewStatus?: string;
   completionReasons?: string[];
   client?: { id: string; name: string; color: string | null };
 };

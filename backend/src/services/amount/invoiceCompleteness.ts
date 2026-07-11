@@ -10,7 +10,7 @@ export const INVOICE_COMPLETION_REASON = {
   MISSING_DOCUMENT_TYPE: "סוג מסמך חסר",
   MULTIPLE_AMOUNTS: "כמה סכומים נמצאו",
   LOW_CONFIDENCE: "רמת ביטחון נמוכה",
-  USER_APPROVAL_REQUIRED: "נדרש אישור משתמש",
+  USER_APPROVAL_REQUIRED: "ממתין לאישור",
 } as const;
 
 const RECOGNIZED_DOCUMENT_TYPES = new Set([
@@ -31,13 +31,18 @@ export type InvoiceCompletenessInput = {
   documentDateExplicit: boolean;
   documentType: string | null | undefined;
   reviewStatus: string;
+  rawReviewStatus?: string | null;
   confidenceScore?: string | number | null;
   decisionReason?: string | null;
   parsedFieldsJson?: unknown;
 };
 
 export type InvoiceCompletenessAssessment = {
+  dataComplete: boolean;
+  approvalRequired: boolean;
   isComplete: boolean;
+  missingDataReasons: string[];
+  approvalReasons: string[];
   completionReasons: string[];
 };
 
@@ -100,33 +105,40 @@ function hasLowConfidence(confidenceScore: string | number | null | undefined): 
   return normalized === "low" || normalized === "medium";
 }
 
+export function isInvoiceRecordApproved(rawReviewStatus: string | null | undefined): boolean {
+  const normalized = (rawReviewStatus ?? "").trim().toLowerCase();
+  return normalized === "approved" || normalized === "auto_saved";
+}
+
 export function assessInvoiceCompleteness(input: InvoiceCompletenessInput): InvoiceCompletenessAssessment {
-  const reasons: string[] = [];
+  const missingDataReasons: string[] = [];
+  const approvalReasons: string[] = [];
 
-  if (!hasValidSupplier(input.supplierName)) reasons.push(INVOICE_COMPLETION_REASON.SUPPLIER_UNIDENTIFIED);
-  if (!hasValidAmount(input.amount, input.amountResolved)) reasons.push(INVOICE_COMPLETION_REASON.MISSING_AMOUNT);
-  if (!hasValidDocumentDate(input.date, input.documentDateExplicit)) reasons.push(INVOICE_COMPLETION_REASON.MISSING_DATE);
-  if (!hasValidCurrency(input.currency, input.currencyExplicit)) reasons.push(INVOICE_COMPLETION_REASON.MISSING_CURRENCY);
-  if (!hasRecognizedDocumentType(input.documentType)) reasons.push(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE);
+  if (!hasValidSupplier(input.supplierName)) missingDataReasons.push(INVOICE_COMPLETION_REASON.SUPPLIER_UNIDENTIFIED);
+  if (!hasValidAmount(input.amount, input.amountResolved)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_AMOUNT);
+  if (!hasValidDocumentDate(input.date, input.documentDateExplicit)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_DATE);
+  if (!hasValidCurrency(input.currency, input.currencyExplicit)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_CURRENCY);
+  if (!hasRecognizedDocumentType(input.documentType)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE);
 
-  if (input.reviewStatus === "needs_review") {
-    reasons.push(INVOICE_COMPLETION_REASON.USER_APPROVAL_REQUIRED);
-    if (hasMultipleAmountSignals(input)) reasons.push(INVOICE_COMPLETION_REASON.MULTIPLE_AMOUNTS);
-    if (hasLowConfidence(input.confidenceScore)) reasons.push(INVOICE_COMPLETION_REASON.LOW_CONFIDENCE);
+  const rawStatus = input.rawReviewStatus ?? input.reviewStatus;
+  const approvalRequired = !isInvoiceRecordApproved(rawStatus) && rawStatus !== "rejected";
+
+  if (approvalRequired) {
+    approvalReasons.push(INVOICE_COMPLETION_REASON.USER_APPROVAL_REQUIRED);
+    if (hasMultipleAmountSignals(input)) approvalReasons.push(INVOICE_COMPLETION_REASON.MULTIPLE_AMOUNTS);
+    if (hasLowConfidence(input.confidenceScore)) approvalReasons.push(INVOICE_COMPLETION_REASON.LOW_CONFIDENCE);
   }
 
-  const requiredFieldsComplete =
-    hasValidSupplier(input.supplierName) &&
-    hasValidAmount(input.amount, input.amountResolved) &&
-    hasValidDocumentDate(input.date, input.documentDateExplicit) &&
-    hasValidCurrency(input.currency, input.currencyExplicit) &&
-    hasRecognizedDocumentType(input.documentType);
-
-  const isComplete = requiredFieldsComplete && input.reviewStatus === "approved";
+  const dataComplete = missingDataReasons.length === 0;
+  const isComplete = dataComplete && !approvalRequired;
 
   return {
+    dataComplete,
+    approvalRequired,
     isComplete,
-    completionReasons: [...new Set(reasons)],
+    missingDataReasons,
+    approvalReasons,
+    completionReasons: [...new Set([...missingDataReasons, ...approvalReasons])],
   };
 }
 

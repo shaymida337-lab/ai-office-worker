@@ -42,8 +42,21 @@ import {
 import {
   assessInvoiceCompleteness,
   filterInvoicesByCompleteness,
+  isInvoiceRecordApproved,
   parseInvoiceCompletenessParam,
+  type InvoiceCompletenessAssessment,
 } from "../services/amount/invoiceCompleteness.js";
+import {
+  applyInvoiceCompletionFieldUpdates,
+  approveInvoiceCompletionContext,
+  loadInvoiceCompletionContext,
+  mapCompletionErrorStatus,
+  parseInvoiceCompletionSourceType,
+  stripInvoiceCompletionId,
+  validateApproveAllowed,
+  type InvoiceCompletionContext,
+  type InvoiceCompletionRequest,
+} from "../services/invoiceCompletionAction.js";
 import { initialConnectScanWindow, isHistoricalGmailScanRequest, resolveHistoricalGmailScanWindow } from "../services/scanWindow.js";
 import {
   closeStaleGmailScansForOrg,
@@ -3890,7 +3903,12 @@ type ReviewInvoiceCandidate = {
   attachmentFilename?: string | null;
   documentType: string | null;
   parsedFieldsJson?: unknown;
+  rawReviewStatus?: string;
+  dataComplete: boolean;
+  approvalRequired: boolean;
   isComplete: boolean;
+  missingDataReasons: string[];
+  approvalReasons: string[];
   completionReasons: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -3909,8 +3927,29 @@ export type LinkedFinancialDocumentReviewAmountSource = {
   parsedFieldsJson?: unknown;
 };
 
+export function assessReviewInvoiceCandidate(candidate: ReviewInvoiceCandidate): InvoiceCompletenessAssessment {
+  return assessInvoiceCompleteness({
+    supplierName: candidate.supplierName,
+    amount: candidate.amount,
+    amountResolved: candidate.amountResolved,
+    currency: candidate.currency,
+    currencyExplicit: candidate.currencyExplicit,
+    date: candidate.date,
+    documentDateExplicit: candidate.documentDateExplicit,
+    documentType: candidate.documentType,
+    reviewStatus: candidate.reviewStatus,
+    rawReviewStatus: candidate.rawReviewStatus ?? candidate.reviewStatus,
+    confidenceScore: candidate.confidenceScore,
+    decisionReason: candidate.decisionReason,
+    parsedFieldsJson: candidate.parsedFieldsJson,
+  });
+}
+
 export function enrichReviewInvoiceCandidateWithCompleteness(
-  candidate: Omit<ReviewInvoiceCandidate, "isComplete" | "completionReasons">,
+  candidate: Omit<
+    ReviewInvoiceCandidate,
+    "isComplete" | "completionReasons" | "dataComplete" | "approvalRequired" | "missingDataReasons" | "approvalReasons"
+  >,
 ): ReviewInvoiceCandidate {
   const assessment = assessInvoiceCompleteness({
     supplierName: candidate.supplierName,
@@ -3922,15 +3961,36 @@ export function enrichReviewInvoiceCandidateWithCompleteness(
     documentDateExplicit: candidate.documentDateExplicit,
     documentType: candidate.documentType,
     reviewStatus: candidate.reviewStatus,
+    rawReviewStatus: candidate.rawReviewStatus ?? candidate.reviewStatus,
     confidenceScore: candidate.confidenceScore,
     decisionReason: candidate.decisionReason,
     parsedFieldsJson: candidate.parsedFieldsJson,
   });
   return {
     ...candidate,
+    dataComplete: assessment.dataComplete,
+    approvalRequired: assessment.approvalRequired,
     isComplete: assessment.isComplete,
+    missingDataReasons: assessment.missingDataReasons,
+    approvalReasons: assessment.approvalReasons,
     completionReasons: assessment.completionReasons,
   };
+}
+
+export function mapInvoiceCompletionContextToCandidate(
+  ctx: InvoiceCompletionContext,
+  organizationId: string,
+): ReviewInvoiceCandidate {
+  if (ctx.review) {
+    return mapDocumentReviewToInvoiceCandidate(ctx.review, organizationId);
+  }
+  if (ctx.gsi) {
+    return mapGmailScanItemToInvoiceCandidate(ctx.gsi, organizationId, null);
+  }
+  if (ctx.payment) {
+    return mapSupplierPaymentToInvoiceCandidate(ctx.payment, organizationId);
+  }
+  throw new Error("Invoice completion context is empty");
 }
 
 export function mapGmailScanItemToInvoiceCandidate(item: {
@@ -3990,6 +4050,7 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
     // שלב 6: auto_saved מוצג כ"מאושר" — שכבת הצגה בלבד, הערך ב-DB לא משתנה.
     status: presentedReviewStatus(item.reviewStatus),
     reviewStatus: presentedReviewStatus(item.reviewStatus),
+    rawReviewStatus: item.reviewStatus,
     source: "gmail_scan_item",
     reviewSourceId: item.id,
     description: [item.subject, item.attachmentFilename].filter(Boolean).join(" · ") || null,
@@ -4070,6 +4131,7 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
     dueDate: item.dueDate,
     status: presentedReviewStatus(item.reviewStatus),
     reviewStatus: presentedReviewStatus(item.reviewStatus),
+    rawReviewStatus: item.reviewStatus,
     source: item.supplierPaymentId ? "supplier_payment" : "financial_document_review",
     reviewSourceId: item.id,
     description: [item.subject, item.fileName].filter(Boolean).join(" · ") || null,
@@ -4109,6 +4171,7 @@ export function mapSupplierPaymentToInvoiceCandidate(item: {
   subject: string | null;
   confidenceScore: number | null;
   parsedFieldsJson: unknown;
+  approvalStatus?: string;
   createdAt: Date;
   updatedAt: Date;
 }, organizationId?: string): ReviewInvoiceCandidate {
@@ -4120,6 +4183,7 @@ export function mapSupplierPaymentToInvoiceCandidate(item: {
     currency: item.currency,
   });
   const docDate = item.normalizedDocumentDate ?? item.date ?? item.createdAt;
+  const rawStatus = item.approvalStatus ?? "approved";
 
   return enrichReviewInvoiceCandidateWithCompleteness({
     id: `supplier-payment:${item.id}`,
@@ -4133,8 +4197,9 @@ export function mapSupplierPaymentToInvoiceCandidate(item: {
     date: docDate,
     documentDateExplicit: Boolean(item.normalizedDocumentDate ?? item.date),
     dueDate: item.dueDate,
-    status: "approved",
-    reviewStatus: "approved",
+    status: presentedReviewStatus(rawStatus),
+    reviewStatus: presentedReviewStatus(rawStatus),
+    rawReviewStatus: rawStatus,
     source: "supplier_payment",
     reviewSourceId: item.id,
     description: item.subject,
@@ -4707,6 +4772,7 @@ export function mergeInvoiceListCandidates<
         dueDate: invoice.dueDate,
         status: invoice.status,
         reviewStatus: "approved",
+        rawReviewStatus: "approved",
         source: "invoice",
         reviewSourceId: null,
         description: invoice.description,
@@ -5000,6 +5066,74 @@ apiRouter.get("/invoices", async (req, res) => {
   console.log(`[invoices] UI_INVOICES_API_RETURNED count=${responseInvoices.length} org=${organizationId}${monthBounds ? ` month=${monthParam}` : ""} completeness=${completeness}`);
   console.log(`[invoices] NEEDS_REVIEW_INVOICES_RETURNED count=${needsReviewCount} org=${organizationId}`);
   res.json({ invoices: responseInvoices });
+});
+
+apiRouter.post("/invoices/:sourceType/:id/complete", requirePerm("review.approve"), async (req, res) => {
+  const organizationId = req.auth!.organizationId;
+  const sourceTypeParam = Array.isArray(req.params.sourceType) ? req.params.sourceType[0] : req.params.sourceType;
+  const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const sourceType = parseInvoiceCompletionSourceType(sourceTypeParam);
+  if (!sourceType) {
+    res.status(400).json({ error: "Invalid invoice source type" });
+    return;
+  }
+
+  const body = req.body as InvoiceCompletionRequest;
+  const rawId = stripInvoiceCompletionId(idParam);
+  const input: InvoiceCompletionRequest = {
+    supplier: typeof body.supplier === "string" ? body.supplier : undefined,
+    amount: typeof body.amount === "number" && Number.isFinite(body.amount) ? body.amount : undefined,
+    date: typeof body.date === "string" ? body.date : undefined,
+    documentType: typeof body.documentType === "string" ? body.documentType : undefined,
+    currency: typeof body.currency === "string" ? body.currency : undefined,
+    approve: body.approve === true,
+  };
+
+  try {
+    let ctx = await loadInvoiceCompletionContext(organizationId, sourceType, rawId);
+    const hasFieldUpdates =
+      input.supplier !== undefined ||
+      input.amount !== undefined ||
+      input.date !== undefined ||
+      input.documentType !== undefined ||
+      input.currency !== undefined;
+
+    if (hasFieldUpdates) {
+      ctx = await applyInvoiceCompletionFieldUpdates(ctx, input);
+    }
+
+    let candidate = mapInvoiceCompletionContextToCandidate(ctx, organizationId);
+    let assessment = assessReviewInvoiceCandidate(candidate);
+
+    if (input.approve) {
+      validateApproveAllowed(assessment);
+      if (assessment.approvalRequired) {
+        ctx = await approveInvoiceCompletionContext(organizationId, ctx, {
+          userId: req.auth!.userId,
+          sourceRoute: "POST /api/invoices/:sourceType/:id/complete",
+          supplier: input.supplier,
+        });
+        ctx = await loadInvoiceCompletionContext(organizationId, sourceType, rawId);
+        candidate = mapInvoiceCompletionContextToCandidate(ctx, organizationId);
+        assessment = assessReviewInvoiceCandidate(candidate);
+      }
+    }
+
+    const approved = !assessment.approvalRequired && isInvoiceRecordApproved(candidate.rawReviewStatus ?? candidate.reviewStatus);
+    const destination = assessment.isComplete ? "invoices" : "completion";
+
+    res.json({
+      dataComplete: assessment.dataComplete,
+      approved,
+      destination,
+      invoice: candidate,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invoice completion failed";
+    const status = mapCompletionErrorStatus(message);
+    console.warn(`[invoices] complete failed org=${organizationId} source=${sourceType} id=${rawId} status=${status} error=${message}`);
+    res.status(status).json({ error: message });
+  }
 });
 
 apiRouter.put("/invoices/:id/status", requirePerm("invoice.update"), async (req, res) => {
