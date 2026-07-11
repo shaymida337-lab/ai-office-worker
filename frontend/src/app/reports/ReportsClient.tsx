@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Nav } from "@/components/Nav";
 import type { Invoice } from "@/components/invoices";
 import { apiFetch } from "@/lib/api";
@@ -10,11 +10,14 @@ import {
   COMPLETION_DOCUMENT_TYPES,
   completionErrorMessage,
   completionSuccessMessage,
+  getDocumentPreviewUrl,
   getInvoiceCompletionAction,
+  getInvoiceStatusChips,
   missingFieldKeys,
   resolveInvoiceCompletionId,
   resolveInvoiceCompletionSourceType,
   shouldOpenEditAfterCompletionError,
+  type CompletionFieldKey,
   type InvoiceCompletionActionKind,
   type InvoiceCompletionResponse,
 } from "@/lib/invoices/completionActions";
@@ -33,15 +36,32 @@ type EditDraft = {
 
 function formatInvoiceAmount(invoice: Invoice) {
   if (invoice.amountLabel) return invoice.amountLabel;
-  if (invoice.amount == null || !Number.isFinite(invoice.amount)) return "סכום חסר";
-  return formatAmount(invoice.amount, invoice.currency, "סכום חסר");
+  if (invoice.amount == null || !Number.isFinite(invoice.amount)) return "חסר";
+  return formatAmount(invoice.amount, invoice.currency, "חסר");
 }
 
 function formatInvoiceDate(date: string | null | undefined) {
-  if (!date) return "חסר תאריך";
+  if (!date) return "חסר";
   const parsed = new Date(date);
-  if (Number.isNaN(parsed.getTime())) return "חסר תאריך";
+  if (Number.isNaN(parsed.getTime())) return "חסר";
   return parsed.toLocaleDateString("he-IL");
+}
+
+function formatDocumentTypeLabel(documentType: string | null | undefined) {
+  if (!documentType?.trim()) return "חסר";
+  const match = COMPLETION_DOCUMENT_TYPES.find((type) => type.value === documentType);
+  return match?.label ?? documentType;
+}
+
+function formatRowStatus(invoice: Invoice) {
+  const action = getInvoiceCompletionAction(invoice);
+  if (action.kind === "blocked") return "חסום";
+  if (action.kind === "not_invoice") return "לא חשבונית";
+  if (action.kind === "approve_only") return "מוכן לאישור";
+  if (action.kind === "edit_supplier") return "ממתין לאישור ספק";
+  if (!invoice.dataComplete) return "חסר פרטים";
+  if (invoice.approvalRequired) return "ממתין לאישור";
+  return "בהשלמה";
 }
 
 function toDateInputValue(date: string | null | undefined): string {
@@ -61,31 +81,25 @@ function buildEditDraft(invoice: Invoice): EditDraft {
   };
 }
 
-function CompletionReasons({ invoice, rowError }: { invoice: Invoice; rowError?: string }) {
-  const missing = invoice.missingDataReasons ?? [];
-  const approval = invoice.approvalReasons ?? [];
-  const action = getInvoiceCompletionAction(invoice);
-  if (missing.length === 0 && approval.length === 0 && !rowError && !action.hint) return null;
+function StatusChips({ invoice }: { invoice: Invoice }) {
+  const chips = getInvoiceStatusChips(invoice);
+  if (chips.length === 0) return null;
   return (
-    <div className="mb-4 space-y-2 text-sm">
-      {missing.length > 0 && (
-        <ul className="list-disc space-y-1 pr-5 text-amber-200">
-          {missing.map((reason) => (
-            <li key={`missing-${reason}`}>{reason}</li>
-          ))}
-        </ul>
-      )}
-      {approval.length > 0 && (
-        <ul className="list-disc space-y-1 pr-5 text-sky-200">
-          {approval.map((reason) => (
-            <li key={`approval-${reason}`}>{reason}</li>
-          ))}
-        </ul>
-      )}
-      {action.hint && action.kind !== "approve_only" && (
-        <p className="text-amber-100">{action.hint}</p>
-      )}
-      {rowError && <p className="rounded-xl border border-red-400/40 bg-red-400/10 p-3 text-red-100">{rowError}</p>}
+    <div className="mt-2 flex flex-wrap gap-2">
+      {chips.map((chip) => (
+        <span
+          key={chip}
+          className={`rounded-full px-2.5 py-1 text-xs ${
+            chip === "חסום"
+              ? "bg-red-400/15 text-red-100"
+              : chip === "ממתין לאישור"
+                ? "bg-sky-400/15 text-sky-100"
+                : "bg-amber-400/15 text-amber-100"
+          }`}
+        >
+          {chip}
+        </span>
+      ))}
     </div>
   );
 }
@@ -94,6 +108,7 @@ function CompletionEditModal({
   invoice,
   draft,
   saving,
+  focusField,
   onChange,
   onClose,
   onSave,
@@ -101,13 +116,39 @@ function CompletionEditModal({
   invoice: Invoice;
   draft: EditDraft;
   saving: boolean;
+  focusField?: CompletionFieldKey;
   onChange: (next: EditDraft) => void;
   onClose: () => void;
-  onSave: (approveAfterSave: boolean) => void;
+  onSave: () => void;
 }) {
   const missing = missingFieldKeys(invoice);
-  const action = getInvoiceCompletionAction(invoice);
   const showAll = missing.size === 0;
+  const previewUrl = getDocumentPreviewUrl(invoice);
+  const supplierRef = useRef<HTMLInputElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const dateRef = useRef<HTMLInputElement>(null);
+  const currencyRef = useRef<HTMLInputElement>(null);
+  const documentTypeRef = useRef<HTMLSelectElement>(null);
+
+  useEffect(() => {
+    const refs: Record<CompletionFieldKey, RefObject<HTMLInputElement | HTMLSelectElement | null>> = {
+      supplier: supplierRef,
+      amount: amountRef,
+      date: dateRef,
+      currency: currencyRef,
+      documentType: documentTypeRef,
+    };
+    const target = focusField ? refs[focusField]?.current : null;
+    if (target) {
+      target.focus();
+      target.scrollIntoView({ block: "nearest" });
+    }
+  }, [focusField]);
+
+  function fieldClass(field: CompletionFieldKey) {
+    const highlighted = focusField === field || missing.has(field);
+    return `input w-full ${highlighted ? "ring-2 ring-amber-400/80" : ""}`;
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -116,12 +157,26 @@ function CompletionEditModal({
         <p className="mb-4 text-sm text-ink-secondary">
           {invoice.supplierName?.trim() || "ספק לא זוהה"} · {formatInvoiceAmount(invoice)}
         </p>
+        {previewUrl && (
+          <div className="mb-4 rounded-2xl border border-white/10 bg-surface-secondary p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-sm text-ink-secondary">תצוגת מסמך</span>
+              <a className="text-sm text-sky-300 underline" href={previewUrl} target="_blank" rel="noreferrer">
+                פתח בחלון חדש
+              </a>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-ink-secondary">
+              {invoice.description?.trim() || invoice.invoiceNumber?.trim() || "מסמך מקור"}
+            </div>
+          </div>
+        )}
         <div className="space-y-4">
           {(showAll || missing.has("supplier")) && (
             <label className="block">
               <span className="mb-1 block text-sm">ספק {missing.has("supplier") ? "*" : ""}</span>
               <input
-                className="input w-full"
+                ref={supplierRef}
+                className={fieldClass("supplier")}
                 value={draft.supplier}
                 onChange={(e) => onChange({ ...draft, supplier: e.target.value })}
               />
@@ -131,7 +186,8 @@ function CompletionEditModal({
             <label className="block">
               <span className="mb-1 block text-sm">סכום {missing.has("amount") ? "*" : ""}</span>
               <input
-                className="input w-full"
+                ref={amountRef}
+                className={fieldClass("amount")}
                 type="number"
                 min="0"
                 step="0.01"
@@ -144,7 +200,8 @@ function CompletionEditModal({
             <label className="block">
               <span className="mb-1 block text-sm">תאריך {missing.has("date") ? "*" : ""}</span>
               <input
-                className="input w-full"
+                ref={dateRef}
+                className={fieldClass("date")}
                 type="date"
                 value={draft.date}
                 onChange={(e) => onChange({ ...draft, date: e.target.value })}
@@ -155,7 +212,8 @@ function CompletionEditModal({
             <label className="block">
               <span className="mb-1 block text-sm">מטבע {missing.has("currency") ? "*" : ""}</span>
               <input
-                className="input w-full"
+                ref={currencyRef}
+                className={fieldClass("currency")}
                 value={draft.currency}
                 onChange={(e) => onChange({ ...draft, currency: e.target.value })}
               />
@@ -165,7 +223,8 @@ function CompletionEditModal({
             <label className="block">
               <span className="mb-1 block text-sm">סוג מסמך {missing.has("documentType") ? "*" : ""}</span>
               <select
-                className="input w-full"
+                ref={documentTypeRef}
+                className={fieldClass("documentType")}
                 value={draft.documentType}
                 onChange={(e) => onChange({ ...draft, documentType: e.target.value })}
               >
@@ -183,16 +242,31 @@ function CompletionEditModal({
           <button className="btn btn-secondary" type="button" disabled={saving} onClick={onClose}>
             ביטול
           </button>
-          <button
-            className="btn btn-primary"
-            type="button"
-            disabled={saving}
-            onClick={() => onSave(action.kind === "complete_and_approve")}
-          >
-            {saving ? "שומר..." : action.kind === "complete_and_approve" ? "השלם ואשר" : "שמור"}
+          <button className="btn btn-primary" type="button" disabled={saving} onClick={onSave}>
+            {saving ? "שומר..." : "שמור"}
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function InvoiceRowDetails({ invoice, rowError }: { invoice: Invoice; rowError?: string }) {
+  const action = getInvoiceCompletionAction(invoice);
+  return (
+    <div>
+      <div className="grid gap-2 text-sm sm:grid-cols-2">
+        <div><span className="text-ink-secondary">ספק: </span>{invoice.supplierName?.trim() || "חסר"}</div>
+        <div><span className="text-ink-secondary">סכום: </span>{formatInvoiceAmount(invoice)}</div>
+        <div><span className="text-ink-secondary">תאריך: </span>{formatInvoiceDate(invoice.date)}</div>
+        <div><span className="text-ink-secondary">סוג מסמך: </span>{formatDocumentTypeLabel(invoice.documentType)}</div>
+        <div><span className="text-ink-secondary">סטטוס: </span>{formatRowStatus(invoice)}</div>
+      </div>
+      <StatusChips invoice={invoice} />
+      {action.hint && action.kind !== "approve_only" && (
+        <p className="mt-2 text-sm text-amber-100">{action.hint}</p>
+      )}
+      {rowError && <p className="mt-2 rounded-xl border border-red-400/40 bg-red-400/10 p-3 text-sm text-red-100">{rowError}</p>}
     </div>
   );
 }
@@ -206,6 +280,7 @@ export default function ReportsClient() {
   const [removingIds, setRemovingIds] = useState<Set<string>>(() => new Set());
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  const [editFocusField, setEditFocusField] = useState<CompletionFieldKey | undefined>(undefined);
   const [savingEdit, setSavingEdit] = useState(false);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const messageRef = useRef<HTMLDivElement | null>(null);
@@ -221,8 +296,7 @@ export default function ReportsClient() {
     setRowErrors((current) => ({ ...current, [invoice.id]: text }));
     showMessage("error", text);
     if (shouldOpenEditAfterCompletionError(text)) {
-      setEditingInvoice(invoice);
-      setEditDraft(buildEditDraft(invoice));
+      openEditForm(invoice, "supplier");
     }
   }
 
@@ -273,6 +347,20 @@ export default function ReportsClient() {
     });
   }
 
+  async function removeInvoiceFromQueue(invoice: Invoice) {
+    const sourceType = resolveInvoiceCompletionSourceType(invoice);
+    const id = resolveInvoiceCompletionId(invoice);
+    if (sourceType === "document-review") {
+      await apiFetch(`/api/document-reviews/${id}`, { method: "DELETE" });
+      return;
+    }
+    if (sourceType === "gmail-scan-item") {
+      await apiFetch(`/api/gmail-scan-items/${id}`, { method: "DELETE" });
+      return;
+    }
+    throw new Error("לא ניתן להסיר מסמך מסוג זה מהתור");
+  }
+
   function finalizeSuccess(invoice: Invoice, actionKind: InvoiceCompletionActionKind) {
     setRowErrors((current) => {
       const next = { ...current };
@@ -283,9 +371,11 @@ export default function ReportsClient() {
     showMessage("success", completionSuccessMessage(actionKind));
   }
 
-  function openEditForm(invoice: Invoice) {
+  function openEditForm(invoice: Invoice, focusField?: CompletionFieldKey) {
+    const action = getInvoiceCompletionAction(invoice);
     setEditingInvoice(invoice);
     setEditDraft(buildEditDraft(invoice));
+    setEditFocusField(focusField ?? action.focusField);
     setMessage("");
     setRowErrors((current) => {
       const next = { ...current };
@@ -294,9 +384,43 @@ export default function ReportsClient() {
     });
   }
 
+  function openDocument(invoice: Invoice) {
+    const url = getDocumentPreviewUrl(invoice);
+    if (!url) {
+      showMessage("error", "לא נמצא קישור למסמך");
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
   function handlePrimaryAction(invoice: Invoice) {
     const action = getInvoiceCompletionAction(invoice);
-    if (action.kind === "none" || action.kind === "blocked") return;
+    if (action.kind === "none") return;
+
+    if (action.kind === "blocked") {
+      openDocument(invoice);
+      return;
+    }
+
+    if (action.kind === "not_invoice") {
+      setActingId(invoice.id);
+      void removeRowAfterAction({
+        performAction: async () => {
+          await removeInvoiceFromQueue(invoice);
+        },
+        beginExitAnimation: () => setRemovingIds((current) => new Set(current).add(invoice.id)),
+        waitForExitAnimation: () => new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS)),
+        finalize: async () => finalizeSuccess(invoice, action.kind),
+        endExitAnimation: () =>
+          setRemovingIds((current) => {
+            const next = new Set(current);
+            next.delete(invoice.id);
+            return next;
+          }),
+        reportError: (err) => reportActionError(invoice, err),
+      }).finally(() => setActingId(null));
+      return;
+    }
 
     if (action.kind === "approve_only") {
       setMessage("");
@@ -319,10 +443,10 @@ export default function ReportsClient() {
       return;
     }
 
-    openEditForm(invoice);
+    openEditForm(invoice, action.focusField);
   }
 
-  async function handleEditSave(approveAfterSave: boolean) {
+  async function handleEditSave() {
     if (!editingInvoice || !editDraft) return;
     setSavingEdit(true);
     setMessage("");
@@ -330,18 +454,18 @@ export default function ReportsClient() {
     const draft = editDraft;
     try {
       const response = await completeInvoiceRequest(invoice, {
-        approve: approveAfterSave,
+        approve: false,
         fields: draft,
       });
       if (response.destination === "invoices" || response.approved) {
         setEditingInvoice(null);
         setEditDraft(null);
+        setEditFocusField(undefined);
         await removeRowAfterAction({
           performAction: async () => {},
           beginExitAnimation: () => setRemovingIds((current) => new Set(current).add(invoice.id)),
           waitForExitAnimation: () => new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS)),
-          finalize: async () =>
-            finalizeSuccess(invoice, approveAfterSave ? "complete_and_approve" : "complete_details"),
+          finalize: async () => finalizeSuccess(invoice, "complete_details"),
           endExitAnimation: () =>
             setRemovingIds((current) => {
               const next = new Set(current);
@@ -357,14 +481,45 @@ export default function ReportsClient() {
         setInvoices((current) => current.map((item) => (item.id === invoice.id ? response.invoice : item)));
         setEditingInvoice(null);
         setEditDraft(null);
+        setEditFocusField(undefined);
+        const nextAction = getInvoiceCompletionAction(response.invoice);
         setMessageTone("success");
-        setMessage("הפרטים נשמרו. נדרש אישור נוסף לפני העברה לחשבוניות.");
+        setMessage(
+          nextAction.kind === "approve_only"
+            ? "הפרטים נשמרו. ניתן לאשר את החשבונית."
+            : "הפרטים נשמרו. עדיין חסרים פרטים נדרשים.",
+        );
       }
     } catch (err) {
       reportActionError(invoice, err);
     } finally {
       setSavingEdit(false);
     }
+  }
+
+  function handleNotInvoice(invoice: Invoice) {
+    const action = getInvoiceCompletionAction(invoice);
+    if (action.kind === "not_invoice") {
+      handlePrimaryAction(invoice);
+      return;
+    }
+    if (!window.confirm("להסיר את המסמך מתור ההשלמה?")) return;
+    setActingId(invoice.id);
+    void removeRowAfterAction({
+      performAction: async () => {
+        await removeInvoiceFromQueue(invoice);
+      },
+      beginExitAnimation: () => setRemovingIds((current) => new Set(current).add(invoice.id)),
+      waitForExitAnimation: () => new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS)),
+      finalize: async () => finalizeSuccess(invoice, "not_invoice"),
+      endExitAnimation: () =>
+        setRemovingIds((current) => {
+          const next = new Set(current);
+          next.delete(invoice.id);
+          return next;
+        }),
+      reportError: (err) => reportActionError(invoice, err),
+    }).finally(() => setActingId(null));
   }
 
   function renderActionButton(invoice: Invoice) {
@@ -374,11 +529,30 @@ export default function ReportsClient() {
       <button
         className="btn btn-primary"
         type="button"
-        disabled={actingId === invoice.id || action.kind === "blocked"}
+        disabled={actingId === invoice.id}
         onClick={() => handlePrimaryAction(invoice)}
       >
         {actingId === invoice.id ? "מעבד..." : action.primaryLabel}
       </button>
+    );
+  }
+
+  function renderSecondaryActions(invoice: Invoice) {
+    const previewUrl = getDocumentPreviewUrl(invoice);
+    return (
+      <>
+        {previewUrl && (
+          <button className="btn btn-secondary" type="button" onClick={() => openDocument(invoice)}>
+            הצג מסמך
+          </button>
+        )}
+        <button className="btn btn-secondary" type="button" onClick={() => openEditForm(invoice)}>
+          ערוך
+        </button>
+        <button className="btn btn-secondary" type="button" disabled={actingId === invoice.id} onClick={() => handleNotInvoice(invoice)}>
+          לא חשבונית
+        </button>
+      </>
     );
   }
 
@@ -419,24 +593,9 @@ export default function ReportsClient() {
                 key={invoice.id}
                 className={`card transition-opacity duration-300 ${removingIds.has(invoice.id) ? "opacity-0" : "opacity-100"}`}
               >
-                <h2 className="break-words">{invoice.supplierName?.trim() || "ספק לא זוהה"}</h2>
-                <p className="break-words">{invoice.description ?? "ללא תיאור"}</p>
-                <div className="my-3 text-sm text-ink-secondary">{formatInvoiceDate(invoice.date)}</div>
-                <div className="my-4 rounded-2xl bg-surface-secondary p-3 text-left text-2xl font-bold text-ink-primary">
-                  {formatInvoiceAmount(invoice)}
-                </div>
-                <CompletionReasons invoice={invoice} rowError={rowErrors[invoice.id]} />
-                <div className="flex flex-wrap gap-2">
-                  {(invoice.driveFileUrl || invoice.driveUrl) && (
-                    <a
-                      className="btn btn-secondary"
-                      href={invoice.driveFileUrl || invoice.driveUrl || "#"}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      פתח מסמך
-                    </a>
-                  )}
+                <InvoiceRowDetails invoice={invoice} rowError={rowErrors[invoice.id]} />
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {renderSecondaryActions(invoice)}
                   {renderActionButton(invoice)}
                 </div>
               </div>
@@ -446,10 +605,7 @@ export default function ReportsClient() {
             <table>
               <thead>
                 <tr>
-                  <th>ספק</th>
-                  <th>תאריך</th>
-                  <th>סכום</th>
-                  <th>סיבות להשלמה</th>
+                  <th>פרטים</th>
                   <th>פעולות</th>
                 </tr>
               </thead>
@@ -457,21 +613,14 @@ export default function ReportsClient() {
                 {invoices.map((invoice) => (
                   <tr
                     key={invoice.id}
-                    className={`transition-opacity duration-300 ${removingIds.has(invoice.id) ? "opacity-0" : "opacity-100"}`}
+                    className={`align-top transition-opacity duration-300 ${removingIds.has(invoice.id) ? "opacity-0" : "opacity-100"}`}
                   >
-                    <td>{invoice.supplierName?.trim() || "ספק לא זוהה"}</td>
-                    <td>{formatInvoiceDate(invoice.date)}</td>
-                    <td>{formatInvoiceAmount(invoice)}</td>
                     <td>
-                      {[...(invoice.missingDataReasons ?? []), ...(invoice.approvalReasons ?? [])].join(" · ") || "—"}
+                      <InvoiceRowDetails invoice={invoice} rowError={rowErrors[invoice.id]} />
                     </td>
                     <td>
                       <div className="flex flex-wrap gap-2">
-                        {(invoice.driveFileUrl || invoice.driveUrl) && (
-                          <a href={invoice.driveFileUrl || invoice.driveUrl || "#"} target="_blank" rel="noreferrer">
-                            פתח מסמך
-                          </a>
-                        )}
+                        {renderSecondaryActions(invoice)}
                         {renderActionButton(invoice)}
                       </div>
                     </td>
@@ -487,10 +636,12 @@ export default function ReportsClient() {
           invoice={editingInvoice}
           draft={editDraft}
           saving={savingEdit}
+          focusField={editFocusField}
           onChange={setEditDraft}
           onClose={() => {
             setEditingInvoice(null);
             setEditDraft(null);
+            setEditFocusField(undefined);
           }}
           onSave={handleEditSave}
         />
