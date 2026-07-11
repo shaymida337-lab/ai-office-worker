@@ -5168,12 +5168,20 @@ apiRouter.get("/invoices", async (req, res) => {
     ? await resolveInvoiceMonthBounds(organizationId, parsedMonth.year, parsedMonth.month, await loadOrganizationTimezone(organizationId))
     : undefined;
 
+  const parsedLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
+  const defaultListLimit = completeness === "incomplete" ? 300 : 100;
+  const listLimit = monthBounds
+    ? undefined
+    : Number.isFinite(parsedLimit) && parsedLimit > 0
+      ? Math.min(300, parsedLimit)
+      : defaultListLimit;
+
   const invoices = await fetchEnrichedInvoiceListCandidates(organizationId, ctx, {
     monthBounds,
-    limit: monthBounds ? undefined : 100,
+    limit: listLimit,
   });
   const filtered = filterInvoicesByCompleteness(invoices, completeness);
-  let responseInvoices = monthBounds ? filtered : filtered.slice(0, 100);
+  let responseInvoices = monthBounds ? filtered : filtered.slice(0, listLimit);
   if (completeness === "incomplete") {
     responseInvoices = await enrichInvoiceCandidatesWithReadiness(responseInvoices, organizationId);
   }

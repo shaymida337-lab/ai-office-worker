@@ -8,17 +8,19 @@ export function InvoicesReviewTabs({
   onQuickNeedsReview,
   labels,
   quickFilterLabel,
+  hideNeedsReview = false,
 }: {
   value: "all" | InvoiceReviewStatus;
   onChange: (value: "all" | InvoiceReviewStatus) => void;
-  onQuickNeedsReview: () => void;
+  onQuickNeedsReview?: () => void;
   labels: Record<"all" | InvoiceReviewStatus, string>;
-  quickFilterLabel: string;
+  quickFilterLabel?: string;
+  hideNeedsReview?: boolean;
 }) {
   const tabs: Array<{ value: "all" | InvoiceReviewStatus }> = [
     { value: "all" },
     { value: "approved" },
-    { value: "needs_review" },
+    ...(hideNeedsReview ? [] : [{ value: "needs_review" as const }]),
     { value: "rejected" },
   ];
 
@@ -41,13 +43,15 @@ export function InvoicesReviewTabs({
           </button>
         );
       })}
-      <button
-        type="button"
-        className="min-h-11 rounded-full border border-[#FCD34D] bg-[#FFFBEB] px-4 py-2 text-sm font-black text-[#92400E] transition hover:bg-[#FEF3C7]"
-        onClick={onQuickNeedsReview}
-      >
-        {quickFilterLabel}
-      </button>
+      {!hideNeedsReview && onQuickNeedsReview && quickFilterLabel ? (
+        <button
+          type="button"
+          className="min-h-11 rounded-full border border-[#FCD34D] bg-[#FFFBEB] px-4 py-2 text-sm font-black text-[#92400E] transition hover:bg-[#FEF3C7]"
+          onClick={onQuickNeedsReview}
+        >
+          {quickFilterLabel}
+        </button>
+      ) : null}
     </div>
   );
 }

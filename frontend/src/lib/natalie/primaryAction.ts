@@ -9,7 +9,7 @@ const SCREEN_DEFAULTS: Record<NatalieScreen, NataliePrimaryActionModel> = {
   calendar: { label: "אשר פגישה", intent: "confirm_appointment", href: "/dashboard/calendar" },
   tasks: { label: "סגור משימות", intent: "close_tasks", href: "/tasks" },
   clients: { label: "עבור ללקוחות", intent: "open_clients", href: "/dashboard/clients" },
-  invoices: { label: "אשר חשבוניות", intent: "approve_invoices", href: "/dashboard/invoices" },
+  invoices: { label: "השלימי חשבוניות", intent: "approve_invoices", href: "/reports" },
 };
 
 export function resolvePrimaryAction(input: NataliePrimaryActionInput): NataliePrimaryActionModel {

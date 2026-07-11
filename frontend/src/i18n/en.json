@@ -327,8 +327,10 @@
     }
   },
   "invoicesDesign": {
-    "title": "Customer invoices",
-    "subtitle": "Track, filter, and scan outgoing customer invoices.",
+    "title": "Invoices",
+    "subtitle": "Approved, complete invoices by client. Documents awaiting fields or approval are on invoice completion.",
+    "completionBanner": "{{count}} documents are waiting for completion or approval",
+    "completionBannerCta": "Go to invoice completion",
     "importFile": "Import from file",
     "scanInvoices": "Scan invoices",
     "scanning": "Scanning...",

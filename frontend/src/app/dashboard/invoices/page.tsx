@@ -17,11 +17,10 @@ import {
 } from "@/components/natalie-ui";
 import { useI18n } from "@/i18n";
 import { apiFetch } from "@/lib/api";
-import { approvalErrorHebrew } from "@/lib/documents/presentation";
 import { buildFallbackMonthGroups } from "@/lib/invoices/monthGrouping";
 import { removeRowAfterAction } from "@/lib/invoices/animatedRemoval";
 import { formatAmount } from "@/lib/format/amount";
-import { Check, ChevronDown, ChevronLeft, Download, FileText, Loader2, RefreshCcw, UploadCloud } from "lucide-react";
+import { ChevronDown, ChevronLeft, Download, FileText, Loader2, RefreshCcw, UploadCloud } from "lucide-react";
 import { buttonVariants } from "@/components/natalie-ui/tokens";
 
 type MonthSummary = {
@@ -77,6 +76,7 @@ export default function InvoicesPage() {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(() => new Set());
   const [selected, setSelected] = useState<Invoice | null>(null);
   const [removingIds, setRemovingIds] = useState<Set<string>>(() => new Set());
+  const [incompleteCount, setIncompleteCount] = useState(0);
   const skipFilterRefresh = useRef(true);
 
   const reviewTabLabels = useMemo(
@@ -167,10 +167,19 @@ export default function InvoicesPage() {
     await loadMonthsInvoices(keysToLoad, querySuffix);
   }
 
+  async function loadIncompleteCount() {
+    try {
+      const monthsData = await apiFetch<InvoiceMonthsResponse>("/api/invoices/months?completeness=incomplete");
+      setIncompleteCount(monthsData.months.reduce((sum, month) => sum + month.count, 0));
+    } catch {
+      setIncompleteCount(0);
+    }
+  }
+
   async function load() {
     setMonthsLoading(true);
     try {
-      await Promise.all([loadClients(), refreshMonthsAndInvoices()]);
+      await Promise.all([loadClients(), refreshMonthsAndInvoices(), loadIncompleteCount()]);
     } finally {
       setMonthsLoading(false);
     }
@@ -350,46 +359,6 @@ export default function InvoicesPage() {
     }
   }
 
-  function handleAnimatedApprove(invoice: Invoice) {
-    if (invoice.source === "invoice" || isPersistedInvoice(invoice)) return;
-    setMessage("");
-    void removeRowAfterAction({
-      performAction: () => approveInvoiceRequest(invoice),
-      beginExitAnimation: () => setRemovingIds((current) => new Set(current).add(invoice.id)),
-      waitForExitAnimation: () => new Promise((resolve) => window.setTimeout(resolve, REMOVAL_ANIMATION_MS)),
-      finalize: async () => {
-        if (selected?.id === invoice.id) setSelected(null);
-        await refreshMonthsAndInvoices(Object.keys(invoicesByMonth));
-        setMessageTone("success");
-        setMessage("החשבונית אושרה");
-      },
-      endExitAnimation: () =>
-        setRemovingIds((current) => {
-          const next = new Set(current);
-          next.delete(invoice.id);
-          return next;
-        }),
-      reportError: (err) => {
-        setMessageTone("error");
-        setMessage(err instanceof Error ? approvalErrorHebrew(err.message) : "אישור החשבונית נכשל");
-      },
-    });
-  }
-
-  async function approveInvoiceRequest(invoice: Invoice): Promise<void> {
-    if (invoice.source === "financial_document_review") {
-      const id = invoice.reviewSourceId ?? invoice.id.replace(/^document-review:/, "");
-      await apiFetch(`/api/document-reviews/${id}/approve`, { method: "POST" });
-      return;
-    }
-    if (invoice.source === "gmail_scan_item") {
-      const id = invoice.reviewSourceId ?? invoice.id.replace(/^gmail-scan:/, "");
-      await apiFetch(`/api/gmail-scan-items/${id}/approve`, { method: "POST" });
-      return;
-    }
-    throw new Error("לא ניתן לאשר חשבונית מסוג זה");
-  }
-
   async function deleteInvoice(invoice: Invoice) {
     const confirmed = window.confirm("האם למחוק את החשבונית?");
     if (!confirmed) return;
@@ -537,6 +506,17 @@ export default function InvoicesPage() {
           </div>
         </div>
 
+        {incompleteCount > 0 ? (
+          <MessageBanner tone="info" className="mb-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span>{t("invoicesDesign.completionBanner", { count: String(incompleteCount) })}</span>
+              <Link href="/reports" className={`${buttonVariants.primary} inline-flex items-center justify-center`}>
+                {t("invoicesDesign.completionBannerCta")}
+              </Link>
+            </div>
+          </MessageBanner>
+        ) : null}
+
         {visibleMessage ? (
           <MessageBanner tone={messageBannerTone} className="mb-6">
             <div>{visibleMessage}</div>
@@ -559,17 +539,9 @@ export default function InvoicesPage() {
         <div className="mb-5">
           <InvoicesReviewTabs
             value={reviewStatus}
-            onChange={setReviewStatus}
+            onChange={(next) => setReviewStatus(next === "needs_review" ? "all" : next)}
             labels={reviewTabLabels}
-            quickFilterLabel={t("invoicesDesign.quickFilterNeedsReview")}
-            onQuickNeedsReview={() => {
-              setReviewStatus("needs_review");
-              setClientId("all");
-              setSearch("");
-              setFromDate("");
-              setToDate("");
-              setSelectedInvoiceIds(new Set());
-            }}
+            hideNeedsReview
           />
         </div>
 
@@ -675,7 +647,6 @@ export default function InvoicesPage() {
                         onSelect={setSelected}
                         onToggleSelection={toggleInvoiceSelection}
                         onToggleStatus={toggleStatus}
-                        onApprove={handleAnimatedApprove}
                         onDelete={deleteInvoice}
                       />
                       <InvoiceDesktopList
@@ -689,7 +660,6 @@ export default function InvoicesPage() {
                         onToggleSelection={toggleInvoiceSelection}
                         onToggleSelectAllVisible={() => {}}
                         onToggleStatus={toggleStatus}
-                        onApprove={handleAnimatedApprove}
                         onDelete={deleteInvoice}
                         showSelectAll={false}
                       />
@@ -825,7 +795,6 @@ type InvoiceListProps = {
   onSelect: (invoice: Invoice) => void;
   onToggleSelection: (invoiceId: string) => void;
   onToggleStatus: (invoice: Invoice) => void;
-  onApprove: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
 };
 
@@ -844,7 +813,6 @@ function InvoiceMobileList({
   onSelect,
   onToggleSelection,
   onToggleStatus,
-  onApprove,
   onDelete,
 }: InvoiceListProps) {
   return (
@@ -897,17 +865,6 @@ function InvoiceMobileList({
                 <span className="truncate">{invoice.status === "paid" ? "סמן כממתינה" : "סמן כשולמה"}</span>
               </button>
             )}
-            {invoice.reviewStatus === "needs_review" && (
-              <button
-                type="button"
-                className="invoice-action inline-flex min-h-[44px] min-w-0 items-center justify-center gap-2 rounded-xl border border-[#059669] bg-[#ECFDF5] px-3 py-2 text-sm font-semibold text-[#059669] transition hover:bg-[#D1FAE5]"
-                title="אשר חשבונית"
-                onClick={() => onApprove(invoice)}
-              >
-                <Check className="h-4 w-4 shrink-0" />
-                <span className="truncate">אשר</span>
-              </button>
-            )}
             <button className="invoice-action min-h-[44px] min-w-0 rounded-xl border border-[#B91C1C] bg-[#FEE2E2] px-3 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#FECACA]" onClick={() => onDelete(invoice)} disabled={deletingId === invoice.id}>
               <span className="truncate">{deletingId === invoice.id ? "מוחק..." : "מחק"}</span>
             </button>
@@ -930,7 +887,6 @@ function InvoiceDesktopList({
   onToggleSelection,
   onToggleSelectAllVisible,
   onToggleStatus,
-  onApprove,
   onDelete,
   showSelectAll,
 }: InvoiceDesktopListProps) {
@@ -993,16 +949,6 @@ function InvoiceDesktopList({
                   {documentDriveUrl(invoice) && <a className="invoice-action inline-flex min-w-0 items-center justify-center gap-1 rounded-lg border border-[#1D4ED8] bg-[#DBEAFE] px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#BFDBFE]" href={documentDriveUrl(invoice) ?? undefined} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><Download className="h-3 w-3" />דרייב</a>}
                   {invoice.gmailMessageLink && <a className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#F3F4F6]" href={invoice.gmailMessageLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>מייל</a>}
                   {isPersistedInvoice(invoice) && <button className="invoice-action rounded-lg border border-[#E5E7EB] bg-white px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#F3F4F6]" onClick={(e) => { e.stopPropagation(); onToggleStatus(invoice); }}>{invoice.status === "paid" ? "ממתינה" : "שולמה"}</button>}
-                  {invoice.reviewStatus === "needs_review" && (
-                    <button
-                      type="button"
-                      className="invoice-action inline-flex items-center justify-center rounded-lg border border-[#059669] bg-[#ECFDF5] px-1.5 py-1 text-xs font-bold text-[#059669] transition hover:bg-[#D1FAE5]"
-                      title="אשר חשבונית"
-                      onClick={(e) => { e.stopPropagation(); onApprove(invoice); }}
-                    >
-                      <Check className="h-3 w-3" />
-                    </button>
-                  )}
                   <button className="invoice-action rounded-lg border border-[#B91C1C] bg-[#FEE2E2] px-1.5 py-1 text-xs font-bold text-[#111827] transition hover:bg-[#FECACA]" onClick={(e) => { e.stopPropagation(); onDelete(invoice); }} disabled={deletingId === invoice.id}>{deletingId === invoice.id ? "מוחק..." : "מחק"}</button>
                 </div>
               </td>

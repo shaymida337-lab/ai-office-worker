@@ -165,9 +165,17 @@ function CompletionEditModal({
                 פתח בחלון חדש
               </a>
             </div>
-            <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-ink-secondary">
-              {invoice.description?.trim() || invoice.invoiceNumber?.trim() || "מסמך מקור"}
-            </div>
+            {previewUrl.includes("drive.google.com") || previewUrl.includes("/uploads/") ? (
+              <iframe
+                title="תצוגת מסמך"
+                src={previewUrl.includes("drive.google.com") ? previewUrl.replace("/view", "/preview") : previewUrl}
+                className="h-56 w-full rounded-xl border border-white/10 bg-white"
+              />
+            ) : (
+              <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-ink-secondary">
+                {invoice.description?.trim() || invoice.invoiceNumber?.trim() || "מסמך מקור"}
+              </div>
+            )}
           </div>
         )}
         <div className="space-y-4">
@@ -303,7 +311,7 @@ export default function ReportsClient() {
   const loadInvoices = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<InvoicesResponse>("/api/invoices?completeness=incomplete");
+      const data = await apiFetch<InvoicesResponse>("/api/invoices?completeness=incomplete&limit=300");
       setInvoices(data.invoices);
     } catch (err) {
       showMessage("error", err instanceof Error ? err.message : "טעינת השלמת חשבוניות נכשלה");
