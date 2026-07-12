@@ -57,9 +57,9 @@ export function LandingHeader() {
         </nav>
 
         <div className="flex shrink-0 items-center gap-2">
-          <a href="#waitlist" className="btn hidden min-h-10 px-4 py-2 text-sm sm:inline-flex">
-            לרשימת ההמתנה
-          </a>
+          <Link href="/natalie" className="btn hidden min-h-10 px-4 py-2 text-sm sm:inline-flex">
+            לדבר עם נטלי
+          </Link>
           <button
             type="button"
             className={`${radius.control} inline-flex h-10 w-10 items-center justify-center border md:hidden`}
@@ -98,8 +98,11 @@ export function LandingHeader() {
             >
               התחברות
             </Link>
-            <a href="#waitlist" className="btn mt-2 w-full" onClick={() => setOpen(false)}>
-              לרשימת ההמתנה
+            <Link href="/natalie" className="btn mt-2 w-full" onClick={() => setOpen(false)}>
+              לדבר עם נטלי — דמו חי
+            </Link>
+            <a href="#waitlist" className="btn btn-secondary mt-1 w-full" onClick={() => setOpen(false)}>
+              הצטרפות לגישה מוקדמת
             </a>
           </nav>
         </div>

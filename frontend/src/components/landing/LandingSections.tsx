@@ -1,15 +1,15 @@
-import { LANDING_FEATURES, LANDING_FLOW_STEPS, LANDING_INTEGRATIONS } from "./landingContent";
+import { LANDING_FEATURES, LANDING_HOW_IT_WORKS, LANDING_INTEGRATIONS } from "./landingContent";
 import { colors, radius, shadow, type as typography } from "@/lib/design-tokens";
 import {
-  CheckSquare,
+  CalendarDays,
   FileText,
   Mail,
   MessageCircle,
   Sparkles,
-  WalletCards,
+  Users,
 } from "lucide-react";
 
-const FEATURE_ICONS = [Mail, FileText, CheckSquare, MessageCircle, WalletCards, Sparkles] as const;
+const FEATURE_ICONS = [Mail, FileText, MessageCircle, CalendarDays, Users, Sparkles] as const;
 
 export function LandingIntegrationsStrip() {
   return (
@@ -41,10 +41,10 @@ export function LandingFeaturesSection() {
         <div className="mb-8 text-center sm:mb-10">
           <p className="page-kicker">יכולות</p>
           <h2 className={`${typography.h2} mb-3`} style={{ color: colors.textPrimary }}>
-            כל מה שעובדת משרד צריכה לעשות
+            מה נטלי עושה בשבילכם כל יום
           </h2>
           <p className="mx-auto max-w-2xl text-base font-medium leading-7" style={{ color: colors.textSecondary }}>
-            נטלי מחברת בין מיילים, מסמכים, משימות ותשלומים — במקום אחד, בשפה שלכם.
+            מיילים, מסמכים, יומן, לקוחות ותשלומים — במקום אחד, בשפה שלכם.
           </p>
         </div>
 
@@ -89,18 +89,18 @@ export function LandingHowItWorksSection() {
           <div className="min-w-0 text-right">
             <p className="page-kicker">איך זה עובד</p>
             <h2 className={`${typography.h2} mb-3`} style={{ color: colors.textPrimary }}>
-              ממייל או וואטסאפ ועד סדר מלא
+              מתחילים לעבוד איתה בשלושה צעדים
             </h2>
             <p className="text-base font-medium leading-7" style={{ color: colors.textSecondary }}>
-              נטלי קוראת, מזהה, מסדרת ומעדכנת — ואתם מאשרים רק את מה שחשוב.
+              בלי הטמעה, בלי הדרכות ובלי ללמוד מערכת חדשה — נטלי מצטרפת לכלים שכבר יש לכם.
             </p>
           </div>
 
           <ol className="grid min-w-0 gap-3">
-            {LANDING_FLOW_STEPS.map((step, index) => (
+            {LANDING_HOW_IT_WORKS.map((step, index) => (
               <li
-                key={step}
-                className={`flex items-start gap-3 ${radius.control} border px-4 py-3`}
+                key={step.title}
+                className={`flex items-start gap-3 ${radius.control} border px-4 py-3.5`}
                 style={{ borderColor: colors.borderSubtle, backgroundColor: colors.accentMuted }}
               >
                 <span
@@ -110,8 +110,13 @@ export function LandingHowItWorksSection() {
                 >
                   {index + 1}
                 </span>
-                <span className="min-w-0 text-sm font-semibold leading-6" style={{ color: colors.textPrimary }}>
-                  {step}
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold leading-6" style={{ color: colors.textPrimary }}>
+                    {step.title}
+                  </span>
+                  <span className="block text-sm font-medium leading-6" style={{ color: colors.textSecondary }}>
+                    {step.description}
+                  </span>
                 </span>
               </li>
             ))}
