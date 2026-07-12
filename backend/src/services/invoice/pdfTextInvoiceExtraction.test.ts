@@ -5,6 +5,8 @@ import { test } from "node:test";
 import {
   extractDeterministicInvoiceFieldsFromPdfText,
   mergePdfTextDeterministicFields,
+  mergePdfTextDeterministicIntoEmailAnalysis,
+  type PdfTextEmailAnalysisMergeTarget,
 } from "./pdfTextInvoiceExtraction.js";
 
 const GREEN_INVOICE_PDF_TEXT = `הופק ב 20/06/2026 00:25 | חשבונית מס / קבלה 84878611 | עמוד 1 מתוך 1
@@ -104,6 +106,38 @@ test("84878611.pdf live PDF text extraction matches expected fields", async () =
   } finally {
     await parser.destroy().catch(() => undefined);
   }
+});
+
+test("merge into EmailAnalysis shape returns supplier amount date documentType currency", () => {
+  const deterministic = extractDeterministicInvoiceFieldsFromPdfText(GREEN_INVOICE_PDF_TEXT);
+  const emailAnalysis: PdfTextEmailAnalysisMergeTarget = {
+    supplier: "לא ידוע",
+    supplierTaxId: null,
+    amount: 540,
+    amountBeforeVat: 540,
+    vatAmount: 97.2,
+    totalAmount: 540,
+    currency: "ILS",
+    documentType: "receipt",
+    paymentRequired: true,
+    dueDate: null,
+    invoiceDate: null,
+    invoiceNumber: null,
+    tasks: [],
+    confidence: 0.5,
+  };
+
+  const merged = mergePdfTextDeterministicIntoEmailAnalysis(emailAnalysis, deterministic);
+
+  assert.equal(merged.supplier, EXPECTED_GREEN.supplier);
+  assert.equal(merged.amount, EXPECTED_GREEN.totalAmount);
+  assert.equal(merged.totalAmount, EXPECTED_GREEN.totalAmount);
+  assert.equal(merged.invoiceDate, EXPECTED_GREEN.documentDate);
+  assert.equal(merged.documentType, EXPECTED_GREEN.documentType);
+  assert.equal(merged.currency, EXPECTED_GREEN.currency);
+  assert.deepEqual(merged.tasks, []);
+  assert.equal(merged.paymentRequired, true);
+  assert.equal(merged.confidence, 0.5);
 });
 
 test("non-PDF email body is not affected by deterministic merge", () => {

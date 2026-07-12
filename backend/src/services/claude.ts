@@ -11,7 +11,7 @@ import {
 import { resolveSupplierWithMekorLabel } from "./supplier/supplierMekorLabel.js";
 import {
   extractDeterministicInvoiceFieldsFromEmailBody,
-  mergePdfTextDeterministicFields,
+  mergePdfTextDeterministicIntoEmailAnalysis,
 } from "./invoice/pdfTextInvoiceExtraction.js";
 
 export type EmailAnalysis = {
@@ -284,7 +284,7 @@ export async function analyzeEmailContent(input: {
   const pdfDeterministic = extractDeterministicInvoiceFieldsFromEmailBody(input.body);
 
   if (!anthropic) {
-    return mergePdfTextDeterministicFields(fallbackAnalysis(input), pdfDeterministic);
+    return mergePdfTextDeterministicIntoEmailAnalysis(fallbackAnalysis(input), pdfDeterministic);
   }
 
   const userContent = `שולח: ${input.sender ?? "לא ידוע"}
@@ -303,9 +303,9 @@ export async function analyzeEmailContent(input: {
     message.content[0].type === "text" ? message.content[0].text : "{}";
   const parsed = parseJsonObject<EmailAnalysis>(text, "email analysis");
   if (!parsed) {
-    return mergePdfTextDeterministicFields(fallbackAnalysis(input), pdfDeterministic);
+    return mergePdfTextDeterministicIntoEmailAnalysis(fallbackAnalysis(input), pdfDeterministic);
   }
-  return mergePdfTextDeterministicFields(
+  return mergePdfTextDeterministicIntoEmailAnalysis(
     {
       supplier: parsed.supplier || "לא ידוע",
       supplierTaxId: typeof (parsed as { supplierTaxId?: unknown }).supplierTaxId === "string" ? (parsed as { supplierTaxId: string }).supplierTaxId : null,

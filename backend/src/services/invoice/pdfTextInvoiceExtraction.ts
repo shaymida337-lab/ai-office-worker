@@ -260,10 +260,27 @@ export function extractDeterministicInvoiceFieldsFromEmailBody(
 type MergeableEmailAnalysis = {
   supplier: string;
   amount: number | null;
-  totalAmount: number | null;
+  totalAmount?: number | null;
   currency: string;
   documentType: "invoice" | "tax_invoice_receipt" | "receipt" | "payment_request" | "quote" | "other";
   invoiceDate: string | null;
+};
+
+export type PdfTextEmailAnalysisMergeTarget = {
+  supplier: string;
+  supplierTaxId?: string | null;
+  amount: number | null;
+  amountBeforeVat?: number | null;
+  vatAmount?: number | null;
+  totalAmount?: number | null;
+  currency: string;
+  documentType: "invoice" | "tax_invoice_receipt" | "receipt" | "payment_request" | "quote" | "other";
+  paymentRequired: boolean;
+  dueDate: string | null;
+  invoiceDate: string | null;
+  invoiceNumber: string | null;
+  tasks: string[];
+  confidence: number;
 };
 
 export function mergePdfTextDeterministicFields<T extends MergeableEmailAnalysis>(
@@ -282,4 +299,33 @@ export function mergePdfTextDeterministicFields<T extends MergeableEmailAnalysis
   if (deterministic.documentType) merged.documentType = deterministic.documentType;
   if (deterministic.currency) merged.currency = deterministic.currency;
   return merged;
+}
+
+export function mergePdfTextDeterministicIntoEmailAnalysis(
+  analysis: PdfTextEmailAnalysisMergeTarget,
+  deterministic: PdfTextDeterministicInvoiceFields | null
+): PdfTextEmailAnalysisMergeTarget {
+  if (!deterministic) return analysis;
+
+  const mergedCore = mergePdfTextDeterministicFields(
+    {
+      supplier: analysis.supplier,
+      amount: analysis.amount,
+      totalAmount: analysis.totalAmount ?? null,
+      currency: analysis.currency,
+      documentType: analysis.documentType,
+      invoiceDate: analysis.invoiceDate,
+    },
+    deterministic
+  );
+
+  return {
+    ...analysis,
+    supplier: mergedCore.supplier,
+    amount: mergedCore.amount,
+    totalAmount: mergedCore.totalAmount,
+    currency: mergedCore.currency,
+    documentType: mergedCore.documentType,
+    invoiceDate: mergedCore.invoiceDate,
+  };
 }
