@@ -8,31 +8,48 @@ import { useEffect, useState } from "react";
  * position:fixed כדי לא לייצר CLS; מוסתר לגמרי מ-md ומעלה.
  */
 export function StickyMobileCta() {
-  const [visible, setVisible] = useState(false);
+  // ה-CTA הצף מוסתר כל עוד ה-hero על המסך, ומופיע רק אחרי שה-hero יצא מה-viewport.
+  const [heroInView, setHeroInView] = useState(true);
   const [formInView, setFormInView] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setVisible(window.scrollY > 560);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
+    const supportsIO = typeof IntersectionObserver !== "undefined";
+
+    // מקור האמת: ה-hero. כל עוד חלק ממנו נראה — ה-CTA מוסתר.
+    const hero = document.getElementById("hero");
+    let heroObserver: IntersectionObserver | null = null;
+    let onScroll: (() => void) | null = null;
+    if (hero && supportsIO) {
+      heroObserver = new IntersectionObserver(
+        (entries) => setHeroInView(entries.some((entry) => entry.isIntersecting)),
+        { threshold: 0 }
+      );
+      heroObserver.observe(hero);
+    } else {
+      // גיבוי אם אין hero/IO: הופעה אחרי גלילה מעבר לגובה מסך אחד.
+      onScroll = () => setHeroInView(window.scrollY < window.innerHeight);
+      onScroll();
+      window.addEventListener("scroll", onScroll, { passive: true });
+    }
 
     // לא מכסים את טופס הלידים — ה-CTA נעלם כשהטופס על המסך
     const form = document.getElementById("trial");
-    let observer: IntersectionObserver | null = null;
-    if (form && typeof IntersectionObserver !== "undefined") {
-      observer = new IntersectionObserver(
+    let formObserver: IntersectionObserver | null = null;
+    if (form && supportsIO) {
+      formObserver = new IntersectionObserver(
         (entries) => setFormInView(entries.some((entry) => entry.isIntersecting)),
         { threshold: 0.1 }
       );
-      observer.observe(form);
+      formObserver.observe(form);
     }
     return () => {
-      window.removeEventListener("scroll", onScroll);
-      observer?.disconnect();
+      if (onScroll) window.removeEventListener("scroll", onScroll);
+      heroObserver?.disconnect();
+      formObserver?.disconnect();
     };
   }, []);
 
-  const shown = visible && !formInView;
+  const shown = !heroInView && !formInView;
 
   return (
     <div
