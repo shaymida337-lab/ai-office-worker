@@ -8,6 +8,7 @@ import {
   emitCoreWorkflowFailure,
   reportCoreWorkflowHealth,
 } from "./reliability/core/index.js";
+import { resolveSupplierWithMekorLabel } from "./supplier/supplierMekorLabel.js";
 
 export type EmailAnalysis = {
   supplier: string;
@@ -517,7 +518,8 @@ ${prepared.ocrText ? `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמ
       return retryText;
     },
   });
-  const supplier = firstString(parsed, ["supplier", "שם ספק", "ספק"]);
+  const supplierFromModel = firstString(parsed, ["supplier", "שם ספק", "ספק"]);
+  const supplier = resolveSupplierWithMekorLabel(supplierFromModel, prepared.ocrText);
   const supplierTaxId = firstString(parsed, ["supplierTaxId", "taxId", "vatNumber", "ח.פ", "עוסק מורשה", "מספר עוסק"]);
   const amount = firstNumber(parsed, ["amount", "total", "totalDue", "grandTotal", "balanceDue", "סכום", "סהכ", "סה\"כ", "סך הכל", "לתשלום"]);
   const amountBeforeVat = firstNumber(parsed, ["amountBeforeVat", "subtotal", "beforeVat", "netAmount", "סכום לפני מעמ", "סהכ לפני מעמ", "לפני מע\"מ"]);
