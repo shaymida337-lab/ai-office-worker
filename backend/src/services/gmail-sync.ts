@@ -20,6 +20,7 @@ import { normalizeBusinessDate } from "./dates/businessDate.js";
 import { notifyNewInvoice } from "./whatsapp.js";
 import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from "./financialDocuments.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
+import { isInvoiceCandidate } from "./classification/invoiceCandidateGate.js";
 import {
   evaluateGmailDriveLinkInvoiceEvidence,
   primaryStrictDriveLinkUrl,
@@ -1771,6 +1772,25 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       });
       if (junkDecision.bucket === "CERTAIN_JUNK") {
         logStep(`[gmail-sync] junk dropped message=${email.gmailId} reason="${junkDecision.reason}"`);
+        await prisma.emailMessage.update({
+          where: { id: email.emailRecordId },
+          data: { processedAt: new Date() },
+        });
+        continue;
+      }
+      // שער חשבונית לפני קריאת המודל: מייל בלי שום אות פיננסי לא נקלט
+      // בכלל — לא נשלח ל-Claude ולא נרשם כ-needs_review (אחרת מסך ההשלמה
+      // מתמלא זבל). כל חסימה מתועדת בלוג לזיהוי false negatives.
+      const invoiceGate = isInvoiceCandidate({
+        sender: email.senderEmail || email.from,
+        subject: email.subject,
+        body: bodyForAnalysis,
+        attachmentFilenames: attachmentFilenamesForClassification,
+      });
+      if (!invoiceGate.isInvoice) {
+        logStep(
+          `[gmail-sync] INVOICE_GATE_BLOCKED message=${email.gmailId} confidence=${invoiceGate.confidence} reasons="${invoiceGate.reasons.join(",")}" sender="${truncateForLog(email.senderEmail || email.from || "", 80)}" subject="${truncateForLog(email.subject, 120)}"`
+        );
         await prisma.emailMessage.update({
           where: { id: email.emailRecordId },
           data: { processedAt: new Date() },

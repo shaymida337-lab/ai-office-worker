@@ -40,15 +40,25 @@ const SYSTEM_ALERT_TERMS = [
 ];
 
 const MARKETING_TERMS = [
-  /unsubscribe|newsletter|marketing|promotion|sale|discount|מבצע|ניוזלטר|הסר\s+מרשימת\s+התפוצה/i,
+  // \b על sale — אחרת "wholesale"/"sales invoice" נתפסים כשיווק
+  /unsubscribe|newsletter|marketing|promotion|\bsale\b|discount|מבצע|ניוזלטר|הסר\s+מרשימת\s+התפוצה/i,
 ];
 
+// התאמה על מילים שלמות בלבד. \b של JS הוא ASCII-בלבד ולא עובד לעברית,
+// לכן למונחים בעבריים משתמשים ב-lookaround על טווח אותיות עברי — זה גם
+// מתקן התאמות-יתר כמו "קבלה" בתוך "התקבלה" ו-"הזמנה" בתוך "ההזמנות שלך".
 const BUSINESS_DOCUMENT_TERMS = [
-  /invoice|receipt|quote|payment\s+request|חשבונית|קבלה|הצעת\s+מחיר|דרישת\s+תשלום/i,
+  /\binvoices?\b|\breceipts?\b|\bquotes?\b|\bpayment\s+requests?\b/i,
+  /(?<![֐-׿])(?:חשבוניות|חשבונית|קבלות|קבלה|הצעות\s+מחיר|הצעת\s+מחיר|דרישות\s+תשלום|דרישת\s+תשלום)(?![֐-׿])/,
 ];
 
+// "request" הותאם בעבר כתת-מחרוזת ולכן "Pull Request" סווג כ-REAL; גם
+// כמילה שלמה "request" עדיין מופיע ב-"Pull Request" — לכן ההגנה האמיתית על
+// מיילים של כלי פיתוח היא ה-blocklist של שולחים ב-invoiceCandidateGate,
+// והמונחים כאן מוגבלים למילים שלמות כדי לא לתפוס reorder/border/helpful/quoted.
 const CUSTOMER_ACTION_TERMS = [
-  /please|can you|quote|proposal|meeting|order|help|request|צריך|אפשר|הצעת\s+מחיר|פגישה|הזמנה/i,
+  /\bplease\b|\bcan you\b|\bquotes?\b|\bproposals?\b|\bmeetings?\b|\borders?\b|\bhelp\b|\brequests?\b/i,
+  /(?<![֐-׿])(?:צריך|אפשר|הצעת\s+מחיר|פגישה|הזמנה)(?![֐-׿])/,
 ];
 
 export function classifyJunk(input: JunkFilterInput): JunkFilterResult {
