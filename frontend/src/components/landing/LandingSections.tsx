@@ -54,7 +54,7 @@ export function LandingFeaturesSection() {
             return (
               <article
                 key={feature.title}
-                className={`card mb-0 min-w-0 ${shadow.soft}`}
+                className={`card landing-lift mb-0 min-w-0 ${shadow.soft}`}
                 style={{ borderColor: colors.borderSubtle }}
               >
                 <div

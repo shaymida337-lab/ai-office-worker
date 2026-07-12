@@ -1171,3 +1171,25 @@ mark {
   }
 
 }
+
+/* ── Landing micro-animations (Sprint 2) — עדינות בלבד, opacity/transform ── */
+.landing-stagger > li {
+  opacity: 0;
+  animation: natalieMessageIn 0.45s ease forwards;
+}
+.landing-stagger > li:nth-child(1) { animation-delay: 0.25s; }
+.landing-stagger > li:nth-child(2) { animation-delay: 1.05s; }
+.landing-stagger > li:nth-child(3) { animation-delay: 1.85s; }
+
+.landing-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.landing-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-stagger > li { animation: none; opacity: 1; }
+  .landing-lift, .landing-lift:hover { transition: none; transform: none; box-shadow: none; }
+}

@@ -30,9 +30,24 @@ export function LandingHero() {
       >
         <div className="grid gap-8 p-5 sm:p-7 md:grid-cols-2 md:items-center md:gap-10 lg:p-8">
           <div className="min-w-0 text-right">
+            <p
+              className={`${radius.pill} mb-3 inline-flex items-center gap-2 border px-3 py-1.5 text-xs font-bold`}
+              style={{ borderColor: colors.successBorder, backgroundColor: colors.successBg, color: colors.successText }}
+            >
+              <span className="relative flex h-2 w-2" aria-hidden>
+                <span
+                  className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60"
+                  style={{ backgroundColor: colors.successText }}
+                />
+                <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: colors.successText }} />
+              </span>
+              {LANDING_HERO.statusBadge}
+            </p>
             <p className="page-kicker">{LANDING_HERO.kicker}</p>
             <h1 className={`${typography.h1} mb-0`} style={{ color: colors.textPrimary }}>
-              {LANDING_HERO.headline}
+              {LANDING_HERO.headlineParts.pre}
+              <span style={{ color: colors.accent }}>{LANDING_HERO.headlineParts.highlight}</span>
+              {LANDING_HERO.headlineParts.post}
             </h1>
             <p className={`mt-4 max-w-xl ${typography.subtitle}`} style={{ color: colors.textSecondary }}>
               {LANDING_HERO.subtitle}
@@ -72,7 +87,7 @@ export function LandingHero() {
               <p className="mb-3 text-xs font-bold uppercase tracking-wide" style={{ color: colors.accent }}>
                 {LANDING_CHAT_PREVIEW.label}
               </p>
-              <ul className="grid gap-2">
+              <ul className="landing-stagger grid gap-2">
                 {LANDING_CHAT_PREVIEW.messages.slice(0, 3).map((message) => (
                   <ChatBubble key={message.text} from={message.from} text={message.text} />
                 ))}

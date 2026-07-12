@@ -16,13 +16,13 @@ export function LandingTrustSection() {
           </h2>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {LANDING_TRUST.cards.map((card, index) => {
-            const Icon = TRUST_ICONS[index] ?? ShieldCheck;
+            const Icon = TRUST_ICONS[index % TRUST_ICONS.length] ?? ShieldCheck;
             return (
               <article
                 key={card.title}
-                className={`card mb-0 min-w-0 ${shadow.soft}`}
+                className={`card landing-lift mb-0 min-w-0 ${shadow.soft}`}
                 style={{ borderColor: colors.borderSubtle }}
               >
                 <div

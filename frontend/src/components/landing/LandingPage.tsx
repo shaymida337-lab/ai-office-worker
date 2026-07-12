@@ -1,7 +1,9 @@
 import { PublicSiteFooter } from "@/components/trust";
 import { colors } from "@/lib/design-tokens";
+import { LandingComparisonSection } from "./LandingComparison";
 import { LandingDemoSection } from "./LandingDemo";
 import { LandingFaqSection } from "./LandingFaq";
+import { LandingFounderStorySection } from "./LandingFounderStory";
 import { LandingHeader } from "./LandingHeader";
 import { LandingHero } from "./LandingHero";
 import { LandingPricingPreviewSection } from "./LandingPricingPreview";
@@ -10,8 +12,10 @@ import {
   LandingHowItWorksSection,
   LandingIntegrationsStrip,
 } from "./LandingSections";
+import { LandingSocialProofSection } from "./LandingSocialProof";
 import { LandingTrustSection } from "./LandingTrust";
 import { LandingWaitlistSection } from "./LandingWaitlist";
+import { StickyMobileCta } from "./StickyMobileCta";
 
 export function LandingPage() {
   return (
@@ -27,12 +31,16 @@ export function LandingPage() {
         <LandingDemoSection />
         <LandingHowItWorksSection />
         <LandingFeaturesSection />
+        <LandingComparisonSection />
         <LandingIntegrationsStrip />
         <LandingTrustSection />
+        <LandingFounderStorySection />
+        <LandingSocialProofSection />
         <LandingPricingPreviewSection />
         <LandingFaqSection />
         <LandingWaitlistSection />
       </main>
+      <StickyMobileCta />
       <PublicSiteFooter variant="light" />
     </div>
   );
