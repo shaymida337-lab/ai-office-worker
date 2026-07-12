@@ -22,9 +22,11 @@ import { AppShell } from "@/components/natalie-ui";
 import { useI18n } from "@/i18n";
 import { pushToDataLayer } from "@/lib/analytics/data-layer";
 import { appendTranscript, SPEECH_ERROR_MESSAGES } from "@/lib/speech/speechSupport";
-import { SYNTHESIS_FALLBACK_NOTICE, SYNTHESIS_FEMALE_FALLBACK_NOTICE } from "@/lib/speech/speechSynthesisSupport";
-import { useSpeechSynthesis } from "@/lib/speech/useSpeechSynthesis";
+import { useDemoVoiceAudio } from "@/lib/speech/useDemoVoiceAudio";
 import { useSpeechToText } from "@/lib/speech/useSpeechToText";
+import { getDemoVoiceId } from "./demoVoiceIds";
+
+const VOICE_UNAVAILABLE_NOTICE = "ההקראה הקולית לא זמינה כרגע — התשובות מוצגות כרגיל בטקסט.";
 
 type ChatMessage = {
   id: string;
@@ -166,7 +168,8 @@ export default function NatalieChatPage() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const synthesis = useSpeechSynthesis();
+  // הקול הנשי של נטלי מהשרת (אותו ספק/voice של האפליקציה) — לא קול דפדפן.
+  const demoVoice = useDemoVoiceAudio();
   const [voiceMode, setVoiceMode] = useState(false);
   const voiceModeRef = useRef(voiceMode);
   voiceModeRef.current = voiceMode;
@@ -241,7 +244,8 @@ export default function NatalieChatPage() {
       inputRef.current?.focus();
       // מצב קולי: הקראה אוטומטית של תשובות חדשות — רק אם המשתמש הפעיל.
       if (voiceModeRef.current) {
-        synthesis.speak(natalieMessage.id, natalieMessage.text);
+        const voiceId = getDemoVoiceId(natalieMessage.text);
+        if (voiceId) void demoVoice.play(voiceId);
       }
     }, 900);
   }
@@ -288,17 +292,20 @@ export default function NatalieChatPage() {
               aria-live="polite"
             >
               <div className="space-y-5">
-                {messages.map((message) => (
-                  <MessageBubble
-                    key={message.id}
-                    message={message}
-                    actionStatus={actionStatus}
-                    onResolveAction={resolveAction}
-                    speakSupported={synthesis.supported}
-                    speaking={synthesis.speakingId === message.id}
-                    onToggleSpeak={() => synthesis.toggle(message.id, message.text)}
-                  />
-                ))}
+                {messages.map((message) => {
+                  const voiceId = message.sender === "natalie" ? getDemoVoiceId(message.text) : null;
+                  return (
+                    <MessageBubble
+                      key={message.id}
+                      message={message}
+                      actionStatus={actionStatus}
+                      onResolveAction={resolveAction}
+                      speakSupported={voiceId !== null && !demoVoice.unavailable}
+                      speaking={voiceId !== null && demoVoice.playingId === voiceId}
+                      onToggleSpeak={voiceId ? () => demoVoice.toggle(voiceId) : undefined}
+                    />
+                  );
+                })}
                 {typing && <TypingIndicator />}
               </div>
             </div>
@@ -337,13 +344,13 @@ export default function NatalieChatPage() {
             <p className="text-center text-sm font-bold text-[#6b7686]" id="composer-hint">
               אפשר להקליד או לדבר עם נטלי
             </p>
-            {synthesis.supported ? (
+            {!demoVoice.unavailable ? (
               <button
                 type="button"
                 onClick={() => {
                   const next = !voiceMode;
                   setVoiceMode(next);
-                  if (!next) synthesis.stop();
+                  if (!next) demoVoice.stop();
                 }}
                 aria-pressed={voiceMode}
                 className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition focus:outline-none focus:ring-4 focus:ring-[#1d5bff]/15 ${
@@ -357,11 +364,8 @@ export default function NatalieChatPage() {
               </button>
             ) : null}
           </div>
-          {synthesis.supported && voiceMode && synthesis.hebrewVoiceMissing ? (
-            <p className="mb-2 text-center text-xs font-semibold text-[#8a94a6]">{SYNTHESIS_FALLBACK_NOTICE}</p>
-          ) : null}
-          {synthesis.supported && voiceMode && !synthesis.hebrewVoiceMissing && synthesis.femaleVoiceMissing ? (
-            <p className="mb-2 text-center text-xs font-semibold text-[#8a94a6]">{SYNTHESIS_FEMALE_FALLBACK_NOTICE}</p>
+          {demoVoice.unavailable ? (
+            <p className="mb-2 text-center text-xs font-semibold text-[#8a94a6]">{VOICE_UNAVAILABLE_NOTICE}</p>
           ) : null}
           <form
             onSubmit={onSubmit}

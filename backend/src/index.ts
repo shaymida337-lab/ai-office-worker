@@ -113,6 +113,7 @@ async function registerRoutes(app: express.Express) {
       { clientWhatsappRouter },
       { socialRouter },
       { uploadsRouter },
+      { demoVoiceRouter },
     ] = await Promise.all([
       import("./routes/auth.js"),
       import("./routes/api.js"),
@@ -124,6 +125,7 @@ async function registerRoutes(app: express.Express) {
       import("./routes/clientWhatsapp.js"),
       import("./routes/social.js"),
       import("./routes/uploadsRoutes.js"),
+      import("./routes/demoVoice.js"),
     ]);
 
     app.use("/auth", authRouter);
@@ -135,6 +137,8 @@ async function registerRoutes(app: express.Express) {
     app.use("/api/social", socialRouter);
     app.use("/api/webhook", webhooksRouter);
     app.use("/api/webhooks", webhooksRouter);
+    // ציבורי לדמו השיווקי בלבד — לפני ה-apiRouter המאומת
+    app.use("/api/public", demoVoiceRouter);
     app.use("/api", apiRouter);
     app.use("/uploads", uploadsRouter);
     app.use("/cron", cronRouter);
