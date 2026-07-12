@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { config } from "../lib/config.js";
+import { prisma } from "../lib/prisma.js";
 import { synthesizeSpeech } from "../services/natalieTts.js";
 import {
   createAudioCache,
@@ -7,6 +8,7 @@ import {
   DEMO_VOICE_TIMEOUT_MS,
   handleDemoVoiceRequest,
 } from "../services/demoVoice/demoVoiceService.js";
+import { handleMarketingLead } from "../services/marketingLeads/marketingLeadService.js";
 import {
   buildNatalieVoiceCredentials,
   resolveNatalieVoiceSynthesizeProvider,
@@ -21,8 +23,32 @@ import {
 
 const cache = createAudioCache();
 const limiter = createRateLimiter();
+// לידים: מגבלה הדוקה יותר — 5 שליחות לדקה לכל IP
+const leadLimiter = createRateLimiter(5, 60_000);
 
 export const demoVoiceRouter = Router();
+
+demoVoiceRouter.post("/marketing-lead", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const ip =
+      (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ||
+      req.socket.remoteAddress ||
+      "unknown";
+
+    const result = await handleMarketingLead(
+      { ...body, ip },
+      {
+        limiter: leadLimiter,
+        createLead: (lead) => prisma.marketingLead.create({ data: lead, select: { id: true } }),
+      }
+    );
+    res.status(result.status).json(result.body);
+  } catch (err) {
+    console.error("[marketing-lead] unexpected", err instanceof Error ? err.message : err);
+    res.status(500).json({ ok: false, error: "משהו השתבש — נסו שוב" });
+  }
+});
 
 demoVoiceRouter.post("/demo-voice", async (req, res) => {
   const provider = resolveNatalieVoiceSynthesizeProvider(config.aiVoice.provider);

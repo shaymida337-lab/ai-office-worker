@@ -1629,3 +1629,25 @@ model CommunicationEvent {
   @@index([organizationId, channel])
   @@index([externalMessageId])
 }
+
+// לידים שיווקיים של נטלי עצמה (מהאתר הציבורי) — נפרד בכוונה מ-Lead,
+// שהוא CRM פר-ארגון של לקוחות. אין organizationId ואין קשר ל-tenant.
+model MarketingLead {
+  id           String   @id @default(cuid())
+  name         String
+  email        String
+  phone        String
+  businessType String
+  note         String?
+  planInterest String?
+  source       String?
+  medium       String?
+  campaign     String?
+  landingPath  String?
+  consent      Boolean  @default(false)
+  status       String   @default("new")
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([email])
+}
