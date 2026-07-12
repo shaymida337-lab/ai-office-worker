@@ -34,25 +34,29 @@ function createApp(configModule: ConfigModule, prismaModule: PrismaModule, build
   const { getHealthPayload } = buildInfoModule;
   const app = express();
 
-  app.use(
-    cors({
-      origin(origin, callback) {
-        const allowedOrigins = new Set([
-          config.frontendUrl,
-          "http://localhost:3000",
-          "http://127.0.0.1:3000",
-          ...config.corsOrigins,
-        ]);
+  // נתיבי /api/public/* (דמו שיווקי: אודיו קבוע, ללא credentials וללא נתוני
+  // משתמש) פתוחים לכל origin — שאר ה-API נשאר עם ה-allowlist הקיים כרגיל.
+  const publicDemoCors = cors({ origin: true });
+  const appCors = cors({
+    origin(origin, callback) {
+      const allowedOrigins = new Set([
+        config.frontendUrl,
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        ...config.corsOrigins,
+      ]);
 
-        if (!origin || allowedOrigins.has(origin)) {
-          callback(null, true);
-          return;
-        }
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
 
-        callback(new Error(`CORS blocked origin: ${origin}`));
-      },
-      credentials: true,
-    })
+      callback(new Error(`CORS blocked origin: ${origin}`));
+    },
+    credentials: true,
+  });
+  app.use((req, res, next) =>
+    req.path.startsWith("/api/public/") ? publicDemoCors(req, res, next) : appCors(req, res, next)
   );
   app.use(
     express.json({
