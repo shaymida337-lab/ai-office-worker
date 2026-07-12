@@ -35,9 +35,9 @@ export function PlanCard({
     >
       {isRecommended && (
         <span
-          className={`absolute right-5 top-0 -translate-y-1/2 rounded-full bg-gradient-to-l from-blue-600 to-indigo-600 px-4 py-1.5 font-extrabold text-white shadow-md ${compact ? "text-xs sm:text-sm" : "text-xs sm:text-sm"}`}
+          className="absolute right-5 top-0 -translate-y-1/2 rounded-full bg-gradient-to-l from-blue-600 to-indigo-600 px-4 py-1.5 text-xs font-extrabold text-white shadow-md sm:text-sm"
         >
-          מומלץ
+          ⭐ הפופולרית ביותר
         </span>
       )}
 
@@ -54,8 +54,8 @@ export function PlanCard({
         <p
           className={
             compact
-              ? "text-[1.75rem] font-black tracking-tight text-slate-900 sm:text-4xl"
-              : "text-3xl font-black tracking-tight text-slate-900 sm:text-4xl"
+              ? `font-black tracking-tight text-slate-900 ${isRecommended ? "text-[2rem] sm:text-[2.75rem]" : "text-[1.75rem] sm:text-4xl"}`
+              : `font-black tracking-tight text-slate-900 ${isRecommended ? "text-4xl sm:text-5xl" : "text-3xl sm:text-4xl"}`
           }
         >
           {formatPlanPrice(plan.priceMonthly)}
@@ -67,7 +67,7 @@ export function PlanCard({
 
       <div
         className={`flex flex-1 flex-col border-t border-slate-100 ${
-          compact ? "mt-2.5 gap-1.5 pt-2.5" : "mt-6 gap-4 pt-6"
+          compact ? "mt-2 gap-1 pt-2" : "mt-6 gap-4 pt-6"
         }`}
       >
         {copy.featureGroups.map((group) => (
