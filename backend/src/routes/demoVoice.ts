@@ -9,6 +9,8 @@ import {
   handleDemoVoiceRequest,
 } from "../services/demoVoice/demoVoiceService.js";
 import { handleMarketingLead } from "../services/marketingLeads/marketingLeadService.js";
+import { buildLeadAlertMessage } from "../services/marketingLeads/leadAdminService.js";
+import { sendPlatformAlert } from "../services/whatsapp.js";
 import {
   buildNatalieVoiceCredentials,
   resolveNatalieVoiceSynthesizeProvider,
@@ -36,14 +38,32 @@ demoVoiceRouter.post("/marketing-lead", async (req, res) => {
       req.socket.remoteAddress ||
       "unknown";
 
+    let alertPayload: { id: string; name: string; phone: string; businessType: string; planInterest: string | null } | null = null;
     const result = await handleMarketingLead(
       { ...body, ip },
       {
         limiter: leadLimiter,
-        createLead: (lead) => prisma.marketingLead.create({ data: lead, select: { id: true } }),
+        createLead: async (lead) => {
+          const created = await prisma.marketingLead.create({ data: lead, select: { id: true } });
+          alertPayload = { id: created.id, name: lead.name, phone: lead.phone, businessType: lead.businessType, planInterest: lead.planInterest };
+          return created;
+        },
       }
     );
     res.status(result.status).json(result.body);
+
+    // התראה בזמן אמת לבעלים — fire-and-forget, לא חוסמת את תשובת הליד.
+    const payloadForAlert = alertPayload as { id: string; name: string; phone: string; businessType: string; planInterest: string | null } | null;
+    if (payloadForAlert) {
+      const { id, ...lead } = payloadForAlert;
+      const adminUrl = `${config.frontendUrl}/admin/leads?lead=${id}`;
+      sendPlatformAlert(buildLeadAlertMessage(lead, adminUrl)).then((outcome) => {
+        if (!outcome.sent) {
+          // אין תשתית אימייל תפעולית ב-repo — ההתראה בתוך המערכת (badge) נשארת הרשת האחרונה.
+          console.error("[leadAlert] whatsapp alert failed:", outcome.reason);
+        }
+      });
+    }
   } catch (err) {
     console.error("[marketing-lead] unexpected", err instanceof Error ? err.message : err);
     res.status(500).json({ ok: false, error: "משהו השתבש — נסו שוב" });

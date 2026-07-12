@@ -18,6 +18,7 @@ const PRIVATE_APP_PREFIXES = [
   "/camera",
   "/message-scans",
   "/auth",
+  "/admin",
   "/api",
 ];
 

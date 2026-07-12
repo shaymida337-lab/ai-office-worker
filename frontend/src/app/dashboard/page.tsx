@@ -2,6 +2,7 @@
 
 import { CalendarDays, FileClock, FileText, ListTodo, MailSearch, MessageCircle, PlusCircle, Sparkles } from "lucide-react";
 import { useMemo } from "react";
+import { AdminLeadsCard } from "@/components/admin/AdminLeadsCard";
 import { NataliePortrait } from "@/components/dashboard/NataliePortrait";
 import { useI18n } from "@/i18n";
 import { useDashboardHome } from "@/hooks/useDashboardHome";
@@ -123,6 +124,11 @@ export default function DashboardPage() {
             {bannerMessage}
           </MessageBanner>
         ) : null}
+
+        {/* לידים שיווקיים — נראה רק לאדמין הפלטפורמה (self-hiding) */}
+        <div className="mb-4">
+          <AdminLeadsCard />
+        </div>
 
         {/* אין יותר Skeleton מלא-מסך: ה-Hero, ה-CTA וה-KPI נפתחים מיד; רק
             אזורי הנתונים שעדיין בטעינה מציגים loading מקומי משלהם. */}

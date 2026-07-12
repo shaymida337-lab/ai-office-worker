@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Bell, Globe, Moon, Search, Sun } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { AdminLeadsBell } from "@/components/admin/AdminLeadsBell";
 import { Logo } from "@/components/Logo";
 import { useGlobalHeaderProfile } from "@/hooks/useGlobalHeaderProfile";
 import { useGlobalSearch } from "@/hooks/useGlobalSearch";
@@ -17,12 +18,15 @@ export function GlobalHeader({
   sidebarOffset = false,
   notificationCount = 0,
   onNotificationsClick,
+  extraAction,
 }: {
   className?: string;
   /** When true, offset header on desktop to align with Nav sidebar (`lg:right-60`). */
   sidebarOffset?: boolean;
   notificationCount?: number;
   onNotificationsClick?: () => void;
+  /** Slot נוסף בכותרת (למשל פעמון לידים לאדמין) — אופציונלי. */
+  extraAction?: React.ReactNode;
 }) {
   const { t, language, setLanguage } = useI18n();
   const { isDark, toggleTheme } = useTheme();
@@ -72,6 +76,9 @@ export function GlobalHeader({
             <Logo size="sm" iconOnly className="sm:hidden" />
             <Logo size="sm" className="hidden sm:flex" />
           </Link>
+          {extraAction}
+          {/* פעמון לידים לאדמין הפלטפורמה — self-hiding לכל משתמש אחר */}
+          <AdminLeadsBell compact />
           <div className="hidden min-w-0 sm:block" aria-label={t("globalHeader.profile")}>
             <p className={`truncate text-sm font-black leading-tight ${natalie.title}`}>{workspaceName}</p>
             <p className={`truncate text-xs font-semibold leading-tight ${natalie.subtitle}`}>{userName}</p>

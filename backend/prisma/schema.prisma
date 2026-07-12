@@ -1648,6 +1648,22 @@ model MarketingLead {
   status       String   @default("new")
   createdAt    DateTime @default(now())
 
+  events MarketingLeadEvent[]
+
   @@index([createdAt])
+  @@index([status, createdAt])
   @@index([email])
+}
+
+// אירועי ליד שיווקי — היסטוריית סטטוסים והערות תפעוליות (אדמין פלטפורמה בלבד)
+model MarketingLeadEvent {
+  id        String        @id @default(cuid())
+  leadId    String
+  lead      MarketingLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type      String
+  detail    String?
+  createdBy String?
+  createdAt DateTime      @default(now())
+
+  @@index([leadId, createdAt])
 }

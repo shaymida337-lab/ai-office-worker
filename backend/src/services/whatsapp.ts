@@ -643,3 +643,24 @@ export async function handleWhatsAppCommand(
       return buildNatalieUnknownCommand();
   }
 }
+
+/**
+ * התראת פלטפורמה לבעלים של נטלי (לא הודעת tenant): נשלחת למספר
+ * OWNER_WHATSAPP הגלובלי, בלי רישום ב-whatsAppLog של ארגון.
+ */
+export async function sendPlatformAlert(body: string): Promise<{ sent: boolean; reason?: string }> {
+  const to = normalizeWhatsAppNumber(config.twilio.ownerWhatsApp || "");
+  if (!to) return { sent: false, reason: "OWNER_WHATSAPP is not configured" };
+  const twilioClient = await getTwilioClient();
+  if (!twilioClient) return { sent: false, reason: "Twilio is not configured" };
+  try {
+    await (twilioClient as unknown as TwilioMessageClient).messages.create({
+      from: config.twilio.whatsappFrom,
+      to,
+      body: sanitizeWhatsAppText(body),
+    });
+    return { sent: true };
+  } catch (err) {
+    return { sent: false, reason: err instanceof Error ? err.message : "send failed" };
+  }
+}

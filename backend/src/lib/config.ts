@@ -104,6 +104,11 @@ export const config = {
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
+  // אדמין פלטפורמה (לידים שיווקיים וכו') — allowlist אימיילים; ריק = אף אחד.
+  platformAdminEmails: optional("PLATFORM_ADMIN_EMAILS")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean),
   cronSecret: optional("CRON_SECRET", process.env.NODE_ENV === "production" ? "" : "dev-cron-secret"),
   secrets: {
     encryptionKey: optional("SECRETS_ENCRYPTION_KEY"),

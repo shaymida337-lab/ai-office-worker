@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { AdminLeadsBell } from "@/components/admin/AdminLeadsBell";
 import { Logo } from "@/components/Logo";
 import { GlobalHeader } from "@/components/natalie-ui";
 import { colors, radius, type, dashboardHome } from "@/lib/design-tokens";
