@@ -14,6 +14,9 @@ export function isTechnicalText(value: string | null | undefined): boolean {
   if (!trimmed || trimmed === "-" || trimmed === "—") return true;
   if (trimmed.startsWith("/") || /^https?:\/\//i.test(trimmed) || trimmed.includes("#inbox")) return true;
   if (trimmed.includes("gmail-scan:") || trimmed.includes("document-review:")) return true;
+  if (/paymentSupplier|extractDec|supplierName|needs_review|gmail-scan/i.test(trimmed)) return true;
+  if (/[a-z][A-Z]/.test(trimmed)) return true;
+  if (/^[a-z0-9._-]+$/i.test(trimmed) && /\d/.test(trimmed) && !/[\u0590-\u05FF]/.test(trimmed)) return true;
   return false;
 }
 

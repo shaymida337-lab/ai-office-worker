@@ -38,7 +38,10 @@ test("displayBusinessSupplier hides technical descriptions", () => {
   assert.equal(displayBusinessSupplier(invoice), "ספק לא זוהה");
 });
 
-test("isTechnicalText treats dash placeholders as empty", () => {
-  assert.equal(isTechnicalText("-"), true);
-  assert.equal(isTechnicalText("—"), true);
+test("displayBusinessSupplier hides camelCase technical supplier keys", () => {
+  const invoice: Invoice = {
+    ...base,
+    supplierName: "paymentSupplierName",
+  };
+  assert.equal(displayBusinessSupplier(invoice), "ספק לא זוהה");
 });
