@@ -3,26 +3,16 @@
 import { FormEvent, useState } from "react";
 import { LANDING_WAITLIST } from "./landingContent";
 import { colors, radius, shadow } from "@/lib/design-tokens";
+import { isWaitlistEmail, submitWaitlist } from "./waitlistSubmit";
 
+// מוגדר ב-build time (NEXT_PUBLIC_*). אם חסר — הטופס מציג שגיאה תפעולית ולא הצלחה מדומה.
 const FORMSPREE_WAITLIST_ID = process.env.NEXT_PUBLIC_FORMSPREE_WAITLIST_ID ?? "";
-const FS_BASE = "https://formspree.io/f/";
 
-function isEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-async function submitToFormspree(formId: string, data: FormData) {
-  if (!formId) {
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    return;
-  }
-  const response = await fetch(`${FS_BASE}${formId}`, {
-    method: "POST",
-    body: data,
-    headers: { Accept: "application/json" },
-  });
-  if (!response.ok) throw new Error("submit_failed");
-}
+const ERROR_MESSAGES = {
+  not_configured:
+    "ההרשמה לרשימת ההמתנה אינה זמינה כרגע. אפשר לפנות אלינו דרך עמוד יצירת הקשר ונחזור אליכם.",
+  submit_failed: "משהו השתבש בשליחה. נסו שוב בעוד רגע.",
+} as const;
 
 export function LandingWaitlistSection() {
   const [email, setEmail] = useState("");
@@ -32,9 +22,10 @@ export function LandingWaitlistSection() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting) return;
     setError("");
     const trimmed = email.trim();
-    if (!isEmail(trimmed)) {
+    if (!isWaitlistEmail(trimmed)) {
       setError("נא להזין כתובת אימייל תקינה.");
       return;
     }
@@ -47,10 +38,12 @@ export function LandingWaitlistSection() {
       data.append("source", "waitlist-he");
       data.append("locale", "he");
       data.append("page", typeof window !== "undefined" ? window.location.href : "/");
-      await submitToFormspree(FORMSPREE_WAITLIST_ID, data);
-      setSuccessEmail(trimmed);
-    } catch {
-      setError("משהו השתבש. נסו שוב.");
+      const result = await submitWaitlist(FORMSPREE_WAITLIST_ID, data);
+      if (result.ok) {
+        setSuccessEmail(trimmed);
+      } else {
+        setError(ERROR_MESSAGES[result.reason]);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -110,7 +103,7 @@ export function LandingWaitlistSection() {
                     required
                     className="min-h-12 border-white/20 bg-white text-ink-primary placeholder:text-ink-muted focus:border-white/40 focus:shadow-[0_0_0_4px_rgba(255,255,255,0.12)]"
                   />
-                  <button type="submit" className="btn min-h-12 whitespace-nowrap" disabled={submitting}>
+                  <button type="submit" className="btn min-h-12 whitespace-nowrap" disabled={submitting} aria-busy={submitting}>
                     {submitting ? "מצטרפים…" : LANDING_WAITLIST.submit}
                   </button>
                 </form>

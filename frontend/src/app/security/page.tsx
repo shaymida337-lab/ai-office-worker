@@ -4,8 +4,9 @@ import { PublicTrustLayout, TrustList, TrustSection } from "@/components/trust";
 import { TRUST_LAST_UPDATED } from "@/lib/trust/constants";
 
 export const metadata: Metadata = {
-  title: "אבטחת מידע | נטלי",
+  title: "אבטחת מידע",
   description: "כיצד נטלי מגינה על המידע שלך — עקרונות אבטחה בסיסיים",
+  alternates: { canonical: "/security" },
 };
 
 export default function SecurityPage() {

@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { TRUST_OPERATOR_NAME, TRUST_SUPPORT_EMAIL } from "@/lib/trust/constants";
 
 export const metadata: Metadata = {
-  title: "פרטי חברה | עובד משרד חכם",
-  description: "פרטי החברה ויצירת קשר עבור עובד משרד חכם",
+  title: "פרטי חברה",
+  description: "פרטי החברה ויצירת קשר עבור נטלי — עובדת המשרד הדיגיטלית לעסקים קטנים",
+  alternates: { canonical: "/company" },
 };
 
 export default function CompanyPage() {
@@ -11,16 +13,19 @@ export default function CompanyPage() {
     <main className="container">
       <article className="card mx-auto max-w-4xl">
         <div className="page-kicker">פרטי חברה</div>
-        <h1>עובד משרד חכם</h1>
+        <h1>נטלי</h1>
         <p className="mt-3 text-ink-secondary">
-          עובד משרד חכם הוא שירות אוטומציה עסקית לעסקים בישראל. השירות עוזר לבעלי עסקים לנהל מיילים עסקיים,
-          חשבוניות, ספקים, לקוחות, משימות, מסמכים ודוחות במקום אחד.
+          נטלי (Natalie) היא עובדת משרד דיגיטלית מבוססת AI לעסקים קטנים ובינוניים בישראל. השירות עוזר לבעלי
+          עסקים לנהל מיילים עסקיים, חשבוניות, ספקים, לקוחות, משימות, מסמכים ודוחות במקום אחד.
         </p>
 
         <section className="mt-8 grid gap-4 text-ink-secondary">
-          <InfoRow label="שם האפליקציה" value="עובד משרד חכם" />
-          <InfoRow label="מפעיל השירות" value="Shay Mida" />
-          <InfoRow label="אימייל תמיכה" value={<a href="mailto:shaymida337@gmail.com">shaymida337@gmail.com</a>} />
+          <InfoRow label="שם האפליקציה" value="נטלי (Natalie)" />
+          <InfoRow label="מפעיל השירות" value={TRUST_OPERATOR_NAME} />
+          <InfoRow
+            label="אימייל תמיכה"
+            value={<a href={`mailto:${TRUST_SUPPORT_EMAIL}`}>{TRUST_SUPPORT_EMAIL}</a>}
+          />
           <InfoRow label="קהל יעד" value="עסקים קטנים ובינוניים בישראל" />
           <InfoRow label="מטרת השירות" value="אוטומציה לניהול משרד, מסמכים, מיילים, תשלומים, לקוחות ומשימות." />
         </section>

@@ -3,8 +3,9 @@ import Link from "next/link";
 import { PublicTrustLayout, TrustList, TrustSection } from "@/components/trust";
 
 export const metadata: Metadata = {
-  title: "אודות נטלי | נטלי",
+  title: "אודות נטלי",
   description: "הסיפור של נטלי — עובדת המשרד הדיגיטלית שעוזרת לבעלי עסקים קטנים בישראל",
+  alternates: { canonical: "/about" },
 };
 
 export default function AboutPage() {

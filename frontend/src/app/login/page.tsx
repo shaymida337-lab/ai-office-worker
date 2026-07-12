@@ -4,8 +4,9 @@ import { AuthForm } from "@/components/AuthForm";
 import { PublicPageShell } from "@/components/trust";
 
 export const metadata: Metadata = {
-  title: "התחברות | נטלי",
+  title: "התחברות",
   description: "התחברות לחשבון נטלי — עובדת המשרד הדיגיטלית שלך",
+  robots: { index: false, follow: false },
 };
 
 export default function LoginPage() {

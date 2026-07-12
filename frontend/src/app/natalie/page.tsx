@@ -222,7 +222,7 @@ export default function NatalieChatPage() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="m-0 text-[24px] font-extrabold tracking-tight text-[#0f1830] md:text-[28px]">צ׳אט עם נטלי</h1>
-                <span className="rounded-full bg-[#eaf0ff] px-3 py-1 text-xs font-bold text-[#1d5bff]">AI Office Worker</span>
+                <span className="rounded-full bg-[#eaf0ff] px-3 py-1 text-xs font-bold text-[#1d5bff]">Natalie</span>
               </div>
               <p className="mt-1 flex flex-wrap items-center gap-2 text-base font-semibold text-[#6b7686] md:text-[17px]">
                 <span className="h-2.5 w-2.5 rounded-full bg-[#1faa59] shadow-[0_0_0_5px_rgba(31,170,89,0.12)]" />

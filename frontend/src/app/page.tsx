@@ -4,9 +4,10 @@ import { LandingPage } from "@/components/landing";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://ai-office-worker.com";
 
 export const metadata: Metadata = {
-  title: "נטלי — עובדת המשרד הדיגיטלית שלך",
+  title: { absolute: "נטלי — עובדת המשרד הדיגיטלית שלך" },
   description:
     "נטלי עוזרת לעסקים בישראל בניהול מיילים, חשבוניות, מסמכים, תשלומים וסדר משרדי — 24/7.",
+  alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     locale: "he_IL",
@@ -17,9 +18,9 @@ export const metadata: Metadata = {
     url: SITE_URL,
     images: [
       {
-        url: "/natalie-portrait.png",
+        url: "/og-image.png",
         width: 1200,
-        height: 1200,
+        height: 630,
         alt: "נטלי — עובדת המשרד הדיגיטלית",
       },
     ],
@@ -29,7 +30,7 @@ export const metadata: Metadata = {
     title: "נטלי — עובדת המשרד הדיגיטלית שלך",
     description:
       "נטלי עוזרת לעסקים בישראל בניהול מיילים, חשבוניות, מסמכים, תשלומים וסדר משרדי — 24/7.",
-    images: ["/natalie-portrait.png"],
+    images: ["/og-image.png"],
   },
 };
 

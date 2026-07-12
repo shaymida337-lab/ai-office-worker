@@ -4,8 +4,9 @@ import { PublicTrustLayout, TrustList, TrustSection } from "@/components/trust";
 import { TRUST_LAST_UPDATED, TRUST_SUPPORT_EMAIL } from "@/lib/trust/constants";
 
 export const metadata: Metadata = {
-  title: "מדיניות פרטיות | נטלי",
+  title: "מדיניות פרטיות",
   description: "מדיניות הפרטיות של נטלי — עובדת המשרד הדיגיטלית לעסקים בישראל",
+  alternates: { canonical: "/privacy" },
 };
 
 export default function PrivacyPage() {

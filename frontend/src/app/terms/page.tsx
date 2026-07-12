@@ -4,8 +4,9 @@ import { PublicTrustLayout, TrustList, TrustSection } from "@/components/trust";
 import { TRUST_LAST_UPDATED, TRUST_SUPPORT_EMAIL } from "@/lib/trust/constants";
 
 export const metadata: Metadata = {
-  title: "תנאי שימוש | נטלי",
+  title: "תנאי שימוש",
   description: "תנאי השימוש של נטלי — עובדת המשרד הדיגיטלית לעסקים בישראל",
+  alternates: { canonical: "/terms" },
 };
 
 export default function TermsPage() {

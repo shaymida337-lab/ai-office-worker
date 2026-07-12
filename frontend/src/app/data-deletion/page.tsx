@@ -4,8 +4,9 @@ import { PublicTrustLayout, TrustList, TrustSection } from "@/components/trust";
 import { TRUST_LAST_UPDATED, TRUST_SUPPORT_EMAIL } from "@/lib/trust/constants";
 
 export const metadata: Metadata = {
-  title: "מחיקת נתונים | נטלי",
+  title: "מחיקת נתונים",
   description: "הוראות למחיקת נתונים וניתוק הרשאות Google בנטלי",
+  alternates: { canonical: "/data-deletion" },
 };
 
 export default function DataDeletionPage() {

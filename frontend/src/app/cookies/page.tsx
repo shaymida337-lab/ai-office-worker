@@ -4,8 +4,9 @@ import { PublicTrustLayout, TrustList, TrustSection } from "@/components/trust";
 import { TRUST_LAST_UPDATED } from "@/lib/trust/constants";
 
 export const metadata: Metadata = {
-  title: "מדיניות עוגיות | נטלי",
+  title: "מדיניות עוגיות",
   description: "מדיניות העוגיות של נטלי — אילו עוגיות בשימוש וכיצד לנהל העדפות",
+  alternates: { canonical: "/cookies" },
 };
 
 export default function CookiesPage() {

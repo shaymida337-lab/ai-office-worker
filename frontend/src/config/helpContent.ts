@@ -291,7 +291,7 @@ export const fallbackHelpContent: PageHelpContent = {
   commonMistakes: ["ללחוץ על פעולה לפני חיבור השירותים.", "לא לקרוא הודעת שגיאה.", "לסגור דף בזמן פעולה ארוכה."],
   troubleshooting: ["רענן את הדף ונסה שוב.", "בדוק שהתחברת למערכת.", "אם יש חיבור חסר, חזור להגדרות."],
   videoUrl: null,
-  voiceText: "זהו מסך במערכת עובד משרד חכם. קרא את ההסבר, בדוק מה צריך לעשות קודם, ואם משהו נכשל פתח את העזרה.",
+  voiceText: "זהו מסך במערכת נטלי. קרא את ההסבר, בדוק מה צריך לעשות קודם, ואם משהו נכשל פתח את העזרה.",
   walkthroughSteps: [{ title: "הדף הנוכחי", text: "כאן נמצא התוכן המרכזי של הדף.", selector: "main, .container, body" }],
   supportNote: defaultSupportNote,
 };

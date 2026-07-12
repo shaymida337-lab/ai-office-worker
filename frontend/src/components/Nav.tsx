@@ -208,7 +208,7 @@ export function Nav() {
                 נטלי
               </span>
               <span className="mt-0.5 block text-[12px] font-semibold" style={{ color: colors.textSecondary }}>
-                AI Office Worker
+                Natalie
               </span>
             </span>
           </div>

@@ -12,8 +12,21 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://ai-office-worker.c
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "נטלי",
-  description: "נטלי — עובדת המשרד שלך. עוזרת AI לעסקים בישראל",
+  title: {
+    default: "נטלי — עובדת המשרד הדיגיטלית שלך",
+    template: "%s | נטלי",
+  },
+  description:
+    "נטלי — עובדת משרד דיגיטלית מבוססת AI לעסקים קטנים: מיילים, חשבוניות, יומן, משימות ומסמכים במקום אחד.",
+  applicationName: "נטלי",
+  openGraph: {
+    type: "website",
+    siteName: "נטלי",
+    locale: "he_IL",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
   manifest: "/site.webmanifest",
   icons: {
     icon: [

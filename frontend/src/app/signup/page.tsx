@@ -4,8 +4,9 @@ import { AuthForm } from "@/components/AuthForm";
 import { PublicPageShell } from "@/components/trust";
 
 export const metadata: Metadata = {
-  title: "הרשמה | נטלי",
+  title: "הרשמה",
   description: "פתיחת חשבון נטלי — התחילו לנהל את המשרד הדיגיטלי שלכם",
+  robots: { index: false, follow: false },
 };
 
 export default function SignupPage() {

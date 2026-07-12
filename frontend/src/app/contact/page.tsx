@@ -4,8 +4,9 @@ import { PublicTrustLayout, TrustSection } from "@/components/trust";
 import { TRUST_COMPANY_NAME, TRUST_SUPPORT_EMAIL } from "@/lib/trust/constants";
 
 export const metadata: Metadata = {
-  title: "יצירת קשר | נטלי",
+  title: "יצירת קשר",
   description: "צרו קשר עם צוות נטלי — תמיכה, פניות עסקיות ושאלות פרטיות ואבטחה",
+  alternates: { canonical: "/contact" },
 };
 
 export default function ContactPage() {

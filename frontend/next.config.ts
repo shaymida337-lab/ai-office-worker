@@ -15,6 +15,14 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      // קבצי HTML משפטיים ישנים שהוסרו מ-public/ — ייתכן שקישורים חיצוניים
+      // (למשל Google OAuth Console) עדיין מפנים אליהם.
+      { source: "/privacy-policy.html", destination: "/privacy", permanent: true },
+      { source: "/terms.html", destination: "/terms", permanent: true },
+    ];
+  },
 };
 
 export default withSentryConfig(nextConfig, {
