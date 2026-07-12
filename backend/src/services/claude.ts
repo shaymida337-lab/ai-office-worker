@@ -43,6 +43,33 @@ export type InvoiceScanResult = {
   ocrConfidence?: number | null;
 };
 
+export const INVOICE_JSON_PARSE_FAILED_CODE = "INVOICE_JSON_PARSE_FAILED" as const;
+export const INVOICE_JSON_PARSE_RETRY_PROMPT =
+  "Return the same result as strict valid JSON only. Escape all quotation marks inside string values. No markdown.";
+
+export class InvoiceJsonParseFailedError extends Error {
+  readonly code = INVOICE_JSON_PARSE_FAILED_CODE;
+
+  constructor(message = "Claude did not return valid JSON for invoice scan after retry") {
+    super(message);
+    this.name = "InvoiceJsonParseFailedError";
+  }
+}
+
+export async function resolveInvoiceScanJson(input: {
+  primaryText: string;
+  requestRetry: () => Promise<string>;
+}): Promise<Record<string, unknown>> {
+  const parsed = parseJsonObject<Record<string, unknown>>(input.primaryText, "invoice scan");
+  if (parsed) return parsed;
+
+  const retryText = await input.requestRetry();
+  const retried = parseJsonObject<Record<string, unknown>>(retryText, "invoice scan retry");
+  if (retried) return retried;
+
+  throw new InvoiceJsonParseFailedError();
+}
+
 const anthropic = hasClaude() ? new Anthropic({ apiKey: config.anthropic.apiKey }) : null;
 const MAX_REASONABLE_AMOUNT = MAX_REASONABLE_FINANCIAL_AMOUNT;
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/pjpeg", "image/png", "image/heic", "image/heif"]);
@@ -455,10 +482,41 @@ ${prepared.ocrText ? `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמ
   const text =
     message.content[0]?.type === "text" ? message.content[0].text : "{}";
   console.log(`[claude] RAW invoice OCR response: ${text.slice(0, 1500)}`);
-  const parsed = parseJsonObject<Record<string, unknown>>(text, "invoice scan");
-  if (!parsed) {
-    throw new Error("Claude did not return valid JSON for invoice scan");
-  }
+  const parsed = await resolveInvoiceScanJson({
+    primaryText: text,
+    requestRetry: async () => {
+      emitCoreWorkflowAudit(trace, "started", "claude_json_retry");
+      const retryMessage = await anthropic!.messages.create(
+        {
+          model: config.anthropic.model,
+          max_tokens: 700,
+          messages: [
+            {
+              role: "user",
+              content: [
+                fileBlock,
+                {
+                  type: "text",
+                  text: `${prompt}\nשם קובץ: ${input.filename ?? "לא ידוע"}\npreprocessing=${prepared.preprocessingNotes}`,
+                },
+              ] as any,
+            },
+            { role: "assistant", content: text },
+            { role: "user", content: INVOICE_JSON_PARSE_RETRY_PROMPT },
+          ],
+        },
+        {
+          maxRetries: 2,
+          timeout: 45000,
+        }
+      );
+      emitCoreWorkflowAudit(trace, "completed", "claude_json_retry");
+      const retryText =
+        retryMessage.content[0]?.type === "text" ? retryMessage.content[0].text : "{}";
+      console.log(`[claude] RAW invoice OCR retry response: ${retryText.slice(0, 1500)}`);
+      return retryText;
+    },
+  });
   const supplier = firstString(parsed, ["supplier", "שם ספק", "ספק"]);
   const supplierTaxId = firstString(parsed, ["supplierTaxId", "taxId", "vatNumber", "ח.פ", "עוסק מורשה", "מספר עוסק"]);
   const amount = firstNumber(parsed, ["amount", "total", "totalDue", "grandTotal", "balanceDue", "סכום", "סהכ", "סה\"כ", "סך הכל", "לתשלום"]);
