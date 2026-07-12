@@ -1,3 +1,5 @@
+import { hebrewKeywordPattern } from "./hebrewMatch.js";
+
 export type JunkFilterBucket = "CERTAIN_JUNK" | "UNSURE" | "REAL";
 
 export type JunkFilterInput = {
@@ -45,11 +47,20 @@ const MARKETING_TERMS = [
 ];
 
 // התאמה על מילים שלמות בלבד. \b של JS הוא ASCII-בלבד ולא עובד לעברית,
-// לכן למונחים בעבריים משתמשים ב-lookaround על טווח אותיות עברי — זה גם
-// מתקן התאמות-יתר כמו "קבלה" בתוך "התקבלה" ו-"הזמנה" בתוך "ההזמנות שלך".
+// לכן המונחים העבריים עוברים דרך hebrewKeywordPattern: תחיליות (ה/ו/ב/ל/מ/ש/כ)
+// מותרות — "הקבלה"/"מהחשבונית" נתפסים — אבל לא באמצע מילה ("התקבלה" לא).
 const BUSINESS_DOCUMENT_TERMS = [
   /\binvoices?\b|\breceipts?\b|\bquotes?\b|\bpayment\s+requests?\b/i,
-  /(?<![֐-׿])(?:חשבוניות|חשבונית|קבלות|קבלה|הצעות\s+מחיר|הצעת\s+מחיר|דרישות\s+תשלום|דרישת\s+תשלום)(?![֐-׿])/,
+  hebrewKeywordPattern([
+    "חשבוניות",
+    "חשבונית",
+    "קבלות",
+    "קבלה",
+    "הצעות\\s+מחיר",
+    "הצעת\\s+מחיר",
+    "דרישות\\s+תשלום",
+    "דרישת\\s+תשלום",
+  ]),
 ];
 
 // "request" הותאם בעבר כתת-מחרוזת ולכן "Pull Request" סווג כ-REAL; גם
@@ -58,7 +69,7 @@ const BUSINESS_DOCUMENT_TERMS = [
 // והמונחים כאן מוגבלים למילים שלמות כדי לא לתפוס reorder/border/helpful/quoted.
 const CUSTOMER_ACTION_TERMS = [
   /\bplease\b|\bcan you\b|\bquotes?\b|\bproposals?\b|\bmeetings?\b|\borders?\b|\bhelp\b|\brequests?\b/i,
-  /(?<![֐-׿])(?:צריך|אפשר|הצעת\s+מחיר|פגישה|הזמנה)(?![֐-׿])/,
+  hebrewKeywordPattern(["צריך", "אפשר", "הצעת\\s+מחיר", "פגישה", "הזמנה"]),
 ];
 
 export function classifyJunk(input: JunkFilterInput): JunkFilterResult {

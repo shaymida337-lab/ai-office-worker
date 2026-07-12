@@ -84,6 +84,38 @@ test(`invoice gate passes all ${INVOICE_SAMPLES.length} real invoice samples (cr
   }
 });
 
+// ============ רגרסיה: תחיליות עבריות (ה/ו/ב/ל/מ/ש/כ) ============
+
+test("Hebrew prefixed financial keywords pass the gate (regression: הקבלה was blocked)", () => {
+  const prefixed: Array<[string, string]> = [
+    ["הקבלה שלך על הזמנה ב-Google Play", "googleplay-noreply@google.com"],
+    ["החשבונית החודשית שלך", "billing@partner.co.il"],
+    ["מצורף מידע מהחשבונית", "x@y.co.il"],
+    ["ולקבלה המצורפת", "x@y.co.il"],
+    ["בחשבונית האחרונה נפלה טעות", "x@y.co.il"],
+    ["שאלה לגבי הקבלות מהחודש שעבר", "x@y.co.il"],
+    ["בעיה בחיוב כרטיס האשראי", "pay@ksp.co.il"],
+    ["דיווח שכר לחודש יוני", "no-reply@clarity.co.il"],
+    ["המשכורת של יוני", "payroll@office.example"],
+    ["התלוש שלך מוכן", "payroll@office.example"],
+  ];
+  for (const [subject, sender] of prefixed) {
+    const verdict = isInvoiceCandidate({ sender, subject, body: "" });
+    assert.equal(verdict.isInvoice, true, `expected PASS: "${subject}" — got ${verdict.reasons.join(",")}`);
+  }
+});
+
+test("Hebrew keyword inside another word still does not match (התקבלה is not קבלה)", () => {
+  const midWord: Array<[string, string]> = [
+    ["התקבלה פנייתך למוקד", "support@x.co.il"],
+    ["הפנייה שלך התקבלה ותטופל בקרוב", "support@x.co.il"],
+  ];
+  for (const [subject, sender] of midWord) {
+    const verdict = isInvoiceCandidate({ sender, subject, body: "" });
+    assert.equal(verdict.isInvoice, false, `expected BLOCK: "${subject}" — got ${verdict.reasons.join(",")}`);
+  }
+});
+
 // ============ מבנה התוצאה ============
 
 test("gate result carries confidence and reasons for logging", () => {

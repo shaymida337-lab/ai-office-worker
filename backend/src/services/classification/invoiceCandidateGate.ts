@@ -14,6 +14,8 @@
  * מסמך (PDF/תמונה/Office) תמיד מכניס — חשבוניות רבות מגיעות עם גוף ריק.
  */
 
+import { hebrewKeywordPattern } from "./hebrewMatch.js";
+
 export type InvoiceCandidateResult = {
   isInvoice: boolean;
   confidence: number;
@@ -69,10 +71,26 @@ const NON_INVOICE_NOTIFICATION_PATTERNS: Array<{ label: string; pattern: RegExp 
 ];
 
 // מילות מפתח פיננסיות חזקות — נוכחות בנושא/שם קובץ/גוף גוברת על כל חסימה.
-// עברית עם lookaround (\b של JS לא עובד לעברית): "קבלה" לא תתפוס "התקבלה".
+// עברית דרך hebrewKeywordPattern: תומך בתחיליות ("הקבלה", "מהחשבונית",
+// "בחיוב") אבל לא באמצע מילה ("התקבלה" לא נתפס כ"קבלה").
 const STRONG_FINANCIAL_KEYWORDS = [
-  /\binvoices?\b|\breceipts?\b|\btax\s+invoice\b|\bpayment\s+receipt\b|\bbilling\b|\bstatement\s+of\s+account\b|\bpayment\s+requests?\b|\bquotes?\b|\bpro\s*forma\b/i,
-  /(?<![֐-׿])(?:חשבוניות|חשבונית|קבלות|קבלה|חשבון\s+עסקה|דרישת\s+תשלום|דרישות\s+תשלום|אישור\s+תשלום|הצעת\s+מחיר|הצעות\s+מחיר|חיוב\s+חודשי|תלוש)(?![֐-׿])/,
+  /\binvoices?\b|\breceipts?\b|\btax\s+invoice\b|\bpayment\s+receipt\b|\bbilling\b|\bstatement\s+of\s+account\b|\bpayment\s+requests?\b|\bquotes?\b|\bpro\s*forma\b|\bpayslip\b|\bpayroll\b/i,
+  hebrewKeywordPattern([
+    "חשבוניות",
+    "חשבונית",
+    "קבלות",
+    "קבלה",
+    "חשבון\\s+עסקה",
+    "דרישת\\s+תשלום",
+    "דרישות\\s+תשלום",
+    "אישור\\s+תשלום",
+    "הצעת\\s+מחיר",
+    "הצעות\\s+מחיר",
+    "חיוב",
+    "תלוש",
+    "דיווח\\s+שכר",
+    "משכורת",
+  ]),
 ];
 
 // אות של כסף: מטבע + ספרות, או ניסוח תשלום מפורש.
@@ -81,7 +99,7 @@ const MONEY_SIGNAL_PATTERNS = [
   // בלי \b אחרי עברית — \b של JS הוא ASCII-בלבד ונכשל אחרי אות עברית
   /\d[\d,.]*\s*(?:₪|ש["״']?ח|שקלים)/,
   /\d[\d,.]*\s*(?:ils|nis|usd|eur)\b/i,
-  /(?<![֐-׿])(?:לתשלום|שולם|יתרה\s+לתשלום|סכום\s+לתשלום)(?![֐-׿])/,
+  hebrewKeywordPattern(["לתשלום", "שולם", "יתרה\\s+לתשלום", "סכום\\s+לתשלום"]),
   /\bamount\s+due\b|\bbalance\s+due\b|\btotal\s+due\b|\bpayment\s+of\b/i,
 ];
 

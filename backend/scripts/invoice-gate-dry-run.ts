@@ -96,10 +96,14 @@ async function main() {
     console.log(`  [${b.reasons.join(",")}] from="${b.sender.slice(0, 60)}" subject="${b.subject.slice(0, 90)}"`);
   }
 
-  // --- 3. false negatives: נחסם אבל בפועל הפך לרשומה פיננסית שמורה ---
+  // --- 3. false negatives: נחסם אבל בפועל הפך לרשומה פיננסית אמיתית ---
+  // המדד רחב בכוונה: לא רק auto_saved/approved אוטומטיים, אלא גם רשומות
+  // needs_review שהמשתמש אישר ידנית (reviewStatus="approved" בתור ההשלמה) —
+  // גם אלה חשבוניות אמיתיות שהשער היה מפספס.
   console.log("\n=== 3. בדיקת false negatives ===");
   const blockedGmailIds = blocked.map((b) => b.gmailId);
   const emailIdByGmailId = new Map(emails.map((e) => [e.gmailId, e.id]));
+  const blockedEmailIds = blockedGmailIds.map((g) => emailIdByGmailId.get(g)).filter(Boolean) as string[];
 
   const scanHits = blockedGmailIds.length
     ? await prisma.gmailScanItem.findMany({
@@ -107,18 +111,45 @@ async function main() {
         select: { gmailMessageId: true, reviewStatus: true, supplierName: true, amount: true, subject: true },
       })
     : [];
-  const paymentHits = blockedGmailIds.length
+  const paymentHits = blockedEmailIds.length
     ? await prisma.supplierPayment.findMany({
-        where: { emailMessageId: { in: blockedGmailIds.map((g) => emailIdByGmailId.get(g)).filter(Boolean) as string[] } },
+        where: { emailMessageId: { in: blockedEmailIds } },
         select: { emailMessageId: true, approvalStatus: true, supplier: true, amount: true, subject: true },
       })
     : [];
+  const reviewHits = blockedGmailIds.length
+    ? await prisma.financialDocumentReview.findMany({
+        where: {
+          OR: [
+            { gmailMessageId: { in: blockedGmailIds } },
+            ...(blockedEmailIds.length ? [{ emailMessageId: { in: blockedEmailIds } }] : []),
+          ],
+        },
+        select: { gmailMessageId: true, reviewStatus: true, supplierName: true, totalAmount: true, subject: true },
+      })
+    : [];
 
-  const realScan = scanHits.filter((s) => s.reviewStatus === "auto_saved");
+  // פירוט מלא לפי טבלה+סטטוס — כדי לראות את כל התמונה, לא רק את החיתוך הצר
+  const statusBreakdown = new Map<string, number>();
+  for (const s of scanHits) statusBreakdown.set(`GmailScanItem/${s.reviewStatus}`, (statusBreakdown.get(`GmailScanItem/${s.reviewStatus}`) ?? 0) + 1);
+  for (const p of paymentHits) statusBreakdown.set(`SupplierPayment/${p.approvalStatus}`, (statusBreakdown.get(`SupplierPayment/${p.approvalStatus}`) ?? 0) + 1);
+  for (const r of reviewHits) statusBreakdown.set(`FinancialDocumentReview/${r.reviewStatus}`, (statusBreakdown.get(`FinancialDocumentReview/${r.reviewStatus}`) ?? 0) + 1);
+  console.log("פירוט רשומות קיימות על מיילים שהשער חוסם (טבלה/סטטוס):");
+  if (statusBreakdown.size === 0) console.log("  (אין רשומות בכלל)");
+  for (const [key, count] of [...statusBreakdown.entries()].sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${key}: ${count}`);
+  }
+
+  // false negative = כל רשומה שאושרה (אוטומטית או ידנית)
+  const realScan = scanHits.filter((s) => s.reviewStatus === "auto_saved" || s.reviewStatus === "approved");
   const realPayments = paymentHits.filter((p) => p.approvalStatus === "approved");
-  console.log(`מתוך ${blocked.length} חסומים: GmailScanItem auto_saved=${realScan.length}, SupplierPayment approved=${realPayments.length}`);
-  console.log(`(רשומות needs_review על מיילים חסומים הן בדיוק הזבל שהשער נועד למנוע: ${scanHits.length - realScan.length})`);
-  if (realScan.length || realPayments.length) {
+  const realReviews = reviewHits.filter((r) => r.reviewStatus === "approved");
+  const falseNegatives = realScan.length + realPayments.length + realReviews.length;
+  console.log(
+    `\nמתוך ${blocked.length} חסומים: GmailScanItem auto_saved/approved=${realScan.length}, SupplierPayment approved=${realPayments.length}, FinancialDocumentReview approved (אישור ידני!)=${realReviews.length}`
+  );
+  console.log(`(רשומות needs_review/rejected/duplicate על מיילים חסומים הן הזבל שהשער נועד למנוע)`);
+  if (falseNegatives > 0) {
     console.log("\n*** אזהרה: אלה כנראה חשבוניות אמיתיות שהשער היה חוסם — לבדוק לפני deploy: ***");
     for (const s of realScan.slice(0, 20)) {
       console.log(`  scan: supplier="${s.supplierName}" amount=${s.amount} subject="${s.subject?.slice(0, 80)}"`);
@@ -126,8 +157,11 @@ async function main() {
     for (const p of realPayments.slice(0, 20)) {
       console.log(`  payment: supplier="${p.supplier}" amount=${p.amount} subject="${p.subject?.slice(0, 80)}"`);
     }
+    for (const r of realReviews.slice(0, 20)) {
+      console.log(`  review(approved): supplier="${r.supplierName}" amount=${r.totalAmount} subject="${r.subject?.slice(0, 80)}"`);
+    }
   } else {
-    console.log("לא נמצאה אף רשומה פיננסית שמורה/מאושרת שמקורה במייל שהשער חוסם. ✅");
+    console.log("לא נמצאה אף רשומה מאושרת (אוטומטית או ידנית) שמקורה במייל שהשער חוסם. ✅");
   }
 }
 
