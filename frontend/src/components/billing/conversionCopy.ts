@@ -1,15 +1,17 @@
 import type { BillingPlan } from "@/lib/billing/model";
 
-export type PlanIncludeItem = {
-  text: string;
-  emphasis?: boolean;
+export type PlanFeatureGroup = {
+  icon: string;
+  title: string;
+  items: string[];
 };
 
 export type PlanConversionCopy = {
   name: string;
   positioning: string;
-  includes: PlanIncludeItem[];
+  featureGroups: PlanFeatureGroup[];
   finalLine: string;
+  finalLineIcon?: string;
   selectLabel: string;
   selectedLabel: string;
 };
@@ -17,16 +19,34 @@ export type PlanConversionCopy = {
 export const PLAN_CONVERSION_COPY: Record<BillingPlan["id"], PlanConversionCopy> = {
   starter: {
     name: "נטלי לעסק",
-    positioning: "לעסק שרוצה להפסיק לרדוף אחרי חשבוניות, קבלות ומסמכים.",
-    includes: [
-      { text: "נטלי קוראת חשבוניות וקבלות מהמייל" },
-      { text: "כל מסמך נשמר ומסודר ב-Google Drive" },
-      { text: "Google Sheets מתעדכן עם ההוצאות והתשלומים" },
-      { text: "זיהוי ספקים, סכומים ותאריכים" },
-      { text: "מעקב אחרי תשלומים שדורשים טיפול" },
-      { text: "אפשר פשוט לשאול את נטלי על העסק" },
-      { text: "עד 1,000 מסמכים בחודש" },
-      { text: "תמיכה בעברית" },
+    positioning: "עוזרת המשרד הדיגיטלית לעסק קטן.",
+    featureGroups: [
+      {
+        icon: "🤖",
+        title: "עוזרת משרד",
+        items: [
+          "שיחה עם נטלי בקול ובצ׳אט",
+          "קביעת, שינוי וביטול פגישות",
+          "תזכורות אוטומטיות ללקוחות",
+        ],
+      },
+      {
+        icon: "📄",
+        title: "מסמכים",
+        items: [
+          "קריאת חשבוניות וקבלות",
+          "זיהוי ספקים וסכומים",
+          "תיוק אוטומטי ב-Google Drive",
+          "עדכון Google Sheets",
+          "מעקב אחרי תשלומים",
+          "עד 1,000 מסמכים בחודש",
+        ],
+      },
+      {
+        icon: "📊",
+        title: "הנהלת חשבונות",
+        items: ["הכנת כל החומר לרואה החשבון בלחיצת כפתור"],
+      },
     ],
     finalLine: "המסלול שמוריד ממך את כאב הראש של הניירת.",
     selectLabel: "אני רוצה את נטלי בעסק",
@@ -34,16 +54,56 @@ export const PLAN_CONVERSION_COPY: Record<BillingPlan["id"], PlanConversionCopy>
   },
   growth: {
     name: "נטלי מנהלת את המשרד",
-    positioning: "לעסק שרוצה שנטלי תהיה עובדת המשרד הדיגיטלית שלו.",
-    includes: [
-      { text: "כל מה שבמסלול נטלי לעסק" },
-      { text: "מסמכים ללא הגבלה", emphasis: true },
-      { text: "יותר מקום לעבודה חודשית שוטפת" },
-      { text: "יותר אוטומציות ככל שהן משתחררות" },
-      { text: "עדיפות בפיצ׳רים חדשים" },
-      { text: "מתאים לעסק שרוצה להוריד כמה שיותר עבודה משרדית" },
+    positioning: "הבחירה של רוב בעלי העסקים.",
+    featureGroups: [
+      {
+        icon: "🤖",
+        title: "עוזרת משרד",
+        items: [
+          "שיחה עם נטלי בקול ובצ׳אט",
+          "קביעת, שינוי וביטול פגישות",
+          "תזכורות אוטומטיות ללקוחות",
+        ],
+      },
+      {
+        icon: "📄",
+        title: "מסמכים",
+        items: [
+          "קריאת חשבוניות וקבלות",
+          "זיהוי ספקים וסכומים",
+          "תיוק אוטומטי ב-Google Drive",
+          "עדכון Google Sheets",
+          "מעקב אחרי תשלומים",
+          "מסמכים ללא הגבלה",
+        ],
+      },
+      {
+        icon: "📊",
+        title: "הנהלת חשבונות",
+        items: ["הכנת כל החומר לרואה החשבון בלחיצת כפתור"],
+      },
+      {
+        icon: "👥",
+        title: "ניהול העסק",
+        items: [
+          "CRM מלא לניהול לקוחות",
+          "ניהול לידים מתקדם",
+          "מעקב אחר כל שלב במשפך המכירות",
+        ],
+      },
+      {
+        icon: "📈",
+        title: "בקרה וצמיחה",
+        items: [
+          "סיכום יומי חכם של העסק",
+          "דוחות עסקיים ותובנות",
+          "עדיפות בפיצ׳רים חדשים",
+          "עדיפות בתמיכה",
+        ],
+      },
     ],
-    finalLine: "המסלול למי שרוצה להוריד כמה שיותר עבודה משרדית מהראש.",
+    finalLine: "כל מה שצריך כדי לנהל את העסק במקום אחד.",
+    finalLineIcon: "💡",
     selectLabel: "אני רוצה שנטלי תנהל לי את המשרד",
     selectedLabel: "בחרתם",
   },

@@ -23,8 +23,8 @@ export function PlanCard({
 
   const shell = compact
     ? isRecommended
-      ? "border-blue-400 bg-gradient-to-b from-blue-50 via-white to-white p-5 shadow-[0_20px_48px_-24px_rgba(29,91,255,0.4)] ring-1 ring-blue-300/60 sm:p-6 lg:p-7"
-      : "border-slate-200/90 bg-white p-5 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.18)] sm:p-6"
+      ? "border-blue-400 bg-gradient-to-b from-blue-50 via-white to-white p-4 shadow-[0_20px_48px_-24px_rgba(29,91,255,0.4)] ring-1 ring-blue-300/60 lg:p-5"
+      : "border-slate-200/90 bg-white p-4 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.18)] lg:p-5"
     : isRecommended
       ? "border-blue-400 bg-gradient-to-b from-blue-50 via-white to-white p-6 shadow-[0_28px_60px_-24px_rgba(29,91,255,0.45)] ring-1 ring-blue-300/60 sm:p-7 md:p-8"
       : "border-slate-200/90 bg-white p-6 shadow-[0_16px_44px_-30px_rgba(15,23,42,0.18)] sm:p-7 md:p-8";
@@ -41,11 +41,11 @@ export function PlanCard({
         </span>
       )}
 
-      <div className={`grid gap-2 ${isRecommended ? "pt-2" : ""} ${compact ? "sm:gap-2.5" : "gap-3"}`}>
+      <div className={`grid ${isRecommended ? "pt-1" : ""} ${compact ? "gap-1" : "gap-1.5"}`}>
         <h3
           className={
             compact
-              ? `font-extrabold text-slate-900 ${isRecommended ? "text-xl sm:text-2xl lg:text-[1.65rem]" : "text-lg sm:text-xl lg:text-2xl"}`
+              ? `font-extrabold text-slate-900 ${isRecommended ? "text-lg sm:text-xl lg:text-[1.4rem]" : "text-base sm:text-lg lg:text-xl"}`
               : "text-xl font-extrabold text-slate-900 sm:text-2xl lg:text-3xl"
           }
         >
@@ -54,41 +54,51 @@ export function PlanCard({
         <p
           className={
             compact
-              ? "text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl"
-              : "text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl md:text-4xl"
+              ? "text-[1.75rem] font-black tracking-tight text-slate-900 sm:text-4xl"
+              : "text-3xl font-black tracking-tight text-slate-900 sm:text-4xl"
           }
         >
           {formatPlanPrice(plan.priceMonthly)}
         </p>
-        <p className={compact ? "text-sm leading-7 text-slate-600 sm:text-base sm:leading-8" : "text-base leading-8 text-slate-600"}>
+        <p className={compact ? "text-xs leading-5 text-slate-600 sm:text-sm" : "text-base leading-8 text-slate-600"}>
           {copy.positioning}
         </p>
       </div>
 
-      <ul
+      <div
         className={`flex flex-1 flex-col border-t border-slate-100 ${
-          compact ? "mt-4 gap-2 pt-4 sm:mt-5 sm:pt-5" : "mt-6 gap-3 pt-6 sm:mt-8 sm:gap-3.5 sm:pt-8"
+          compact ? "mt-2.5 gap-1.5 pt-2.5" : "mt-6 gap-4 pt-6"
         }`}
       >
-        {copy.includes.map((item) => (
-          <li
-            key={item.text}
-            className={`flex items-start gap-2.5 text-slate-700 ${compact ? "text-sm leading-6" : "gap-3 text-sm leading-7 sm:text-base"}`}
-          >
-            <CheckIcon className={`mt-0.5 shrink-0 ${isRecommended ? "text-blue-600" : "text-slate-500"}`} compact={compact} />
-            <span className={`min-w-0 break-words ${item.emphasis ? "font-extrabold text-slate-900" : ""}`}>{item.text}</span>
-          </li>
+        {copy.featureGroups.map((group) => (
+          <div key={group.title} className="grid gap-0.5">
+            <p className={`flex items-center gap-1.5 font-extrabold text-slate-900 ${compact ? "text-[0.8rem]" : "text-sm"}`}>
+              <span aria-hidden>{group.icon}</span>
+              <span>{group.title}</span>
+            </p>
+            <ul className="grid gap-x-3 gap-y-0.5 sm:grid-cols-2">
+              {group.items.map((item) => (
+                <li
+                  key={item}
+                  className={`flex items-start gap-1.5 text-slate-700 ${compact ? "text-[0.78rem] leading-[1.05rem]" : "text-sm leading-6"}`}
+                >
+                  <CheckIcon className={`mt-0.5 shrink-0 ${isRecommended ? "text-blue-600" : "text-slate-500"}`} compact />
+                  <span className="min-w-0 break-words">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         ))}
-      </ul>
+      </div>
 
       <p
         className={
           compact
-            ? "mt-4 rounded-xl bg-slate-50 px-3 py-2.5 text-center text-xs font-bold leading-6 text-slate-700 sm:mt-5 sm:text-sm sm:leading-7"
+            ? "mt-2.5 rounded-xl bg-slate-50 px-3 py-1.5 text-center text-xs font-bold leading-4 text-slate-700 sm:text-[0.8rem]"
             : "mt-6 rounded-2xl bg-slate-50 px-4 py-3 text-center text-sm font-bold leading-7 text-slate-700 sm:mt-8 sm:text-base"
         }
       >
-        {copy.finalLine}
+        {copy.finalLineIcon ? `${copy.finalLineIcon} ` : ""}{copy.finalLine}
       </p>
 
       {onSelect && (
@@ -96,7 +106,7 @@ export function PlanCard({
           type="button"
           onClick={handleClick}
           className={`mt-auto w-full rounded-2xl px-5 font-bold transition ${
-            compact ? "mt-4 py-3 text-sm sm:mt-5 sm:py-3.5 sm:text-base" : "mt-5 py-3.5 text-base sm:mt-6 sm:py-4"
+            compact ? "mt-2.5 py-2 text-sm sm:py-2.5 sm:text-base" : "mt-5 py-3.5 text-base sm:mt-6 sm:py-4"
           } ${
             selected || isRecommended
               ? "bg-gradient-to-l from-blue-600 to-blue-700 text-white shadow-[0_14px_32px_-14px_rgba(29,91,255,0.55)] hover:from-blue-700 hover:to-blue-800"

@@ -48,12 +48,12 @@ export default function BillingPlansPage() {
           <BillingPlansWorkdaySection />
 
           <LandingReveal>
-            <section id="pricing" className="scroll-mt-28 grid gap-5 overflow-visible md:gap-6 lg:gap-7">
-              <div className="grid gap-2 text-right lg:gap-3">
-                <h2 className="text-2xl font-extrabold text-slate-900 md:text-3xl lg:text-4xl">
+            <section id="pricing" className="scroll-mt-28 grid gap-2.5 overflow-visible md:gap-3">
+              <div className="grid gap-0.5 text-right">
+                <h2 className="text-lg font-extrabold text-slate-900 md:text-xl lg:text-2xl">
                   כמה עבודה אתה רוצה שנטלי תיקח ממך?
                 </h2>
-                <p className="max-w-2xl text-base leading-8 text-slate-600 md:text-lg">
+                <p className="max-w-2xl text-xs leading-5 text-slate-600 md:text-sm">
                   אפשר להתחיל מסודר — או לתת לנטלי לקחת יותר אחריות על העבודה המשרדית.
                 </p>
               </div>
@@ -64,7 +64,7 @@ export default function BillingPlansPage() {
                 </div>
               ) : (
                 <>
-                  <div className="grid min-w-0 items-stretch gap-6 overflow-visible pt-1 lg:grid-cols-2 lg:gap-8 lg:pt-2">
+                  <div className="grid min-w-0 items-stretch gap-4 overflow-visible pt-1 lg:grid-cols-2 lg:gap-6">
                     {sortedPlans.map((plan) => (
                       <PlanCard
                         key={plan.id}
