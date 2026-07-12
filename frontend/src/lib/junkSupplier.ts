@@ -27,6 +27,28 @@ const JUNK_SINGLE_WORD_TECHNICAL = new Set([
   "ocr",
   "ai",
   "input",
+  // מילים גנריות שדלפו כ"ספק" (מסונכרן עם GENERIC_STANDALONE_NAMES בבקאנד)
+  "invoice",
+  "invoices",
+  "receipt",
+  "receipts",
+  "document",
+  "documents",
+  "payment",
+  "file",
+  "files",
+  "scan",
+  "scans",
+  "image",
+  "images",
+  "attachment",
+  "attachments",
+  "temp",
+  "test",
+  "data",
+  "folder",
+  "upload",
+  "uploads",
 ]);
 
 const JUNK_CONTAINS_PHRASES = [

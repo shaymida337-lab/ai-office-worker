@@ -1,4 +1,7 @@
-import { isLikelyJunkSupplierName } from "../supplierNameValidation.js";
+import {
+  isGenericSingleEnglishWordName,
+  isLikelyJunkSupplierName,
+} from "../supplierNameValidation.js";
 import {
   parseFinanceGateSnapshot,
   upsertFinanceGateSnapshot,
@@ -35,6 +38,7 @@ export type SupplierGateReasonCode =
   | "supplier.sir_ambiguous"
   | "supplier.sir_rejected"
   | "supplier.sir_weak_evidence"
+  | "supplier.generic_single_word"
   | "supplier.not_supplier"
   | "supplier.resolved";
 
@@ -150,6 +154,14 @@ export function evaluateSupplierGate(input: SupplierGateInput): SupplierGateSnap
 
   if (sir.winnerKind && isWeakEvidenceKind(sir.winnerKind)) {
     return buildSnapshot("review", "supplier.sir_weak_evidence", displayName);
+  }
+
+  // כלל חיובי: מילה אנגלית בודדת גנרית שמקורה בחילוץ AI בלבד — ללא עוגן
+  // עסקי (ח.פ / תיוג במסמך / היסטוריית הארגון / תיקון משתמש) — חשודה
+  // כברירת מחדל → NEEDS_REVIEW, לא VALIDATED. blocklist לבדו תמיד יפספס
+  // את המילה הגנרית הבאה שלא חשבנו עליה.
+  if (sir.winnerKind === "ai_extracted" && isGenericSingleEnglishWordName(displayName)) {
+    return buildSnapshot("review", "supplier.generic_single_word", displayName);
   }
 
   if (!sir.isStrongEnoughForAutoSave) {

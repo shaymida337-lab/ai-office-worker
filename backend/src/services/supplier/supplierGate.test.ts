@@ -283,3 +283,88 @@ test("supplier gate snapshot is stored alongside amount gate", () => {
   assert.equal(gates.length, 1);
   assert.equal(gates[0]?.gate, "supplier");
 });
+
+test("generic single English word from AI-only evidence is REVIEW, not pass", () => {
+  const gate = evaluateSupplierGate({
+    supplierDecision: baseSupplierDecision({
+      supplierName: "Misc",
+      canonicalSupplier: "Misc",
+      normalizedName: "misc",
+      reasonCode: "AI_EXTRACTED",
+      candidates: [
+        {
+          name: "Misc",
+          kind: "ai_extracted",
+          source: "claude_file",
+          tier: 60,
+          score: 600,
+          normalizedName: "misc",
+        },
+      ],
+    }),
+    supplierName: "Misc",
+  });
+  assert.equal(gate.verdict, "review");
+  assert.equal(gate.reasonCode, "supplier.generic_single_word");
+});
+
+test("blocked generic word 'files' never passes the gate, even with document-labeled evidence", () => {
+  const gate = evaluateSupplierGate({
+    supplierDecision: baseSupplierDecision({
+      supplierName: "files",
+      canonicalSupplier: "files",
+      normalizedName: "files",
+    }),
+    supplierName: "files",
+  });
+  assert.equal(gate.verdict, "review");
+  assert.equal(gate.reasonCode, "supplier.ocr_artifact");
+});
+
+test("Hebrew supplier from AI evidence still passes the gate (בזק)", () => {
+  const gate = evaluateSupplierGate({
+    supplierDecision: baseSupplierDecision({
+      supplierName: "בזק",
+      canonicalSupplier: "בזק",
+      normalizedName: "בזק",
+      reasonCode: "AI_EXTRACTED",
+      candidates: [
+        {
+          name: "בזק",
+          kind: "ai_extracted",
+          source: "claude_file",
+          tier: 60,
+          score: 600,
+          normalizedName: "בזק",
+        },
+      ],
+    }),
+    supplierName: "בזק",
+  });
+  assert.equal(gate.verdict, "pass");
+  assert.equal(gate.canonicalSupplierName, "בזק");
+});
+
+test("multi-word Hebrew supplier passes the gate (חברת החשמל)", () => {
+  const gate = evaluateSupplierGate({
+    supplierDecision: baseSupplierDecision({
+      supplierName: "חברת החשמל",
+      canonicalSupplier: "חברת החשמל",
+      normalizedName: "חברת החשמל",
+    }),
+    supplierName: "חברת החשמל",
+  });
+  assert.equal(gate.verdict, "pass");
+});
+
+test("generic single English word with document-labeled evidence still passes (rule is AI-only)", () => {
+  const gate = evaluateSupplierGate({
+    supplierDecision: baseSupplierDecision({
+      supplierName: "Wolt",
+      canonicalSupplier: "Wolt",
+      normalizedName: "wolt",
+    }),
+    supplierName: "Wolt",
+  });
+  assert.equal(gate.verdict, "pass");
+});

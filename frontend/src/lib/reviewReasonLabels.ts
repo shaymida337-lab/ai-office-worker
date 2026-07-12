@@ -20,6 +20,7 @@ const exactReasonLabels: Record<string, string> = {
   "supplier.sir_ambiguous": "זיהוי הספק לא ודאי",
   "supplier.sir_rejected": "המערכת זיהתה שזה לא ספק",
   "supplier.sir_weak_evidence": "זיהוי הספק חלש",
+  "supplier.generic_single_word": "שם הספק כללי מדי — דרוש אישור",
   "supplier.not_supplier": "זה לא נראה כמו ספק",
   "supplier.placeholder_hebrew": "ספק לא מזוהה",
   "supplier.placeholder_en": "ספק לא מזוהה",

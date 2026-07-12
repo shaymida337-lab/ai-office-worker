@@ -1,7 +1,67 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isLikelyJunkSupplierName, looksLikeSentenceFragmentName } from "./supplierNameValidation.js";
+import {
+  isGenericSingleEnglishWordName,
+  isLikelyJunkSupplierName,
+  looksLikeSentenceFragmentName,
+} from "./supplierNameValidation.js";
 import { GENERIC_SENDER_TOKENS, isUsableSupplierNameShared, isValidSupplierNameShared } from "./supplier/supplierValidation.js";
+
+test("isLikelyJunkSupplierName blocks generic standalone English words that leaked as suppliers", () => {
+  const junk = [
+    "files",
+    "Files",
+    "FILES",
+    "file",
+    "documents",
+    "scans",
+    "scan",
+    "invoices",
+    "receipts",
+    "image",
+    "images",
+    "attachment",
+    "attachments",
+    "temp",
+    "test",
+    "data",
+    "folder",
+    "upload",
+    "uploads",
+  ] as const;
+
+  for (const name of junk) {
+    assert.equal(isLikelyJunkSupplierName(name), true, `expected junk: ${name}`);
+  }
+
+  // ספקים אמיתיים חייבים לעבור — כולל עברית ושמות שמכילים מילה גנרית כחלק משם
+  const valid = ["בזק", "חברת החשמל", "Data Supplier Ltd", "Test Kitchen בע\"מ"] as const;
+  for (const name of valid) {
+    assert.equal(isLikelyJunkSupplierName(name), false, `expected valid: ${name}`);
+  }
+});
+
+test("isGenericSingleEnglishWordName: positive rule — single generic English word is suspect by default", () => {
+  // מילים בודדות באנגלית בלי הקשר עסקי — חשודות (גם כאלה שאינן ב-blocklist)
+  for (const name of ["misc", "stuff", "office", "cloud", "Services"]) {
+    assert.equal(isGenericSingleEnglishWordName(name), true, `expected generic: ${name}`);
+  }
+  // לא חשודות: עברית, ריבוי מילים, מותגי camelCase, ספרות
+  const notGeneric = [
+    "בזק",
+    "חברת החשמל",
+    "Super Pharm",
+    "PayPal",
+    "iCount",
+    "GoDaddy",
+    "3M",
+    "פיצה 2000",
+    "Data Supplier Ltd",
+  ] as const;
+  for (const name of notGeneric) {
+    assert.equal(isGenericSingleEnglishWordName(name), false, `expected not generic: ${name}`);
+  }
+});
 
 test("isLikelyJunkSupplierName flags real-world garbage supplier values", () => {
   const junk = [

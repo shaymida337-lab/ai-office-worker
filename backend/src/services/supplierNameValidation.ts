@@ -69,9 +69,26 @@ const GENERIC_STANDALONE_NAMES = new Set(
     "business name",
     "company name",
     "invoice",
+    "invoices",
     "receipt",
+    "receipts",
     "document",
+    "documents",
     "payment",
+    "file",
+    "files",
+    "scan",
+    "scans",
+    "image",
+    "images",
+    "attachment",
+    "attachments",
+    "temp",
+    "test",
+    "data",
+    "folder",
+    "upload",
+    "uploads",
   ].map((name) => name.toLowerCase())
 );
 
@@ -134,6 +151,28 @@ export function looksLikeSentenceFragmentName(name: string): boolean {
   if (words.length > MAX_SUPPLIER_NAME_WORDS) return true;
   const stopwordHits = words.filter((w) => SENTENCE_STOPWORDS.has(w)).length;
   return stopwordHits >= 2;
+}
+
+/**
+ * כלל חיובי (allowlist-like): מילה אנגלית בודדת בלי שום הקשר עסקי —
+ * בלי Ltd/Inc/בע"מ, בלי ח.פ, בלי דומיין, בלי ספרות, בלי עברית —
+ * היא חשודה כברירת מחדל. blocklist תמיד יפספס את המילה הבאה ("files",
+ * "misc", "stuff"); הכלל הזה הופך את ברירת המחדל לחשד במקום אישור.
+ * (מילה בודדת מטבעה לא יכולה לשאת הקשר עסקי כמו Ltd או ח.פ — לכן די
+ * בבדיקת הצורה: טוקן אחד, אותיות אנגליות בלבד.)
+ *
+ * חריג: אותיות-פנימיות-גדולות בסגנון מותג ("PayPal", "iCount", "GoDaddy")
+ * נחשבות הקשר עסקי — אלה שמות מסחריים, לא מילים גנריות.
+ *
+ * הצרכן (supplierGate) מחיל את הכלל רק כשהראיה היחידה היא חילוץ AI —
+ * ספק שמוכר מהיסטוריית הארגון / רשום עם ח.פ / מתויג במסמך עובר כרגיל.
+ */
+export function isGenericSingleEnglishWordName(name: string): boolean {
+  const cleaned = name.trim();
+  if (!cleaned || /\s/.test(cleaned)) return false;
+  if (!/^[A-Za-z]+$/.test(cleaned)) return false;
+  if (/[a-z][A-Z]/.test(cleaned)) return false;
+  return true;
 }
 
 export function isLikelyJunkSupplierName(name: string): boolean {
