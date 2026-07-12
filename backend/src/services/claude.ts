@@ -9,6 +9,10 @@ import {
   reportCoreWorkflowHealth,
 } from "./reliability/core/index.js";
 import { resolveSupplierWithMekorLabel } from "./supplier/supplierMekorLabel.js";
+import {
+  extractDeterministicInvoiceFieldsFromEmailBody,
+  mergePdfTextDeterministicFields,
+} from "./invoice/pdfTextInvoiceExtraction.js";
 
 export type EmailAnalysis = {
   supplier: string;
@@ -277,8 +281,10 @@ export async function analyzeEmailContent(input: {
   filenames: string[];
   sender?: string;
 }): Promise<EmailAnalysis> {
+  const pdfDeterministic = extractDeterministicInvoiceFieldsFromEmailBody(input.body);
+
   if (!anthropic) {
-    return fallbackAnalysis(input);
+    return mergePdfTextDeterministicFields(fallbackAnalysis(input), pdfDeterministic);
   }
 
   const userContent = `שולח: ${input.sender ?? "לא ידוע"}
@@ -296,23 +302,28 @@ export async function analyzeEmailContent(input: {
   const text =
     message.content[0].type === "text" ? message.content[0].text : "{}";
   const parsed = parseJsonObject<EmailAnalysis>(text, "email analysis");
-  if (!parsed) return fallbackAnalysis(input);
-  return {
-    supplier: parsed.supplier || "לא ידוע",
-    supplierTaxId: typeof (parsed as { supplierTaxId?: unknown }).supplierTaxId === "string" ? (parsed as { supplierTaxId: string }).supplierTaxId : null,
-    amount: normalizeAmountValue(parsed.amount),
-    amountBeforeVat: normalizeAmountValue(parsed.amountBeforeVat),
-    vatAmount: normalizeAmountValue(parsed.vatAmount),
-    totalAmount: normalizeAmountValue(parsed.totalAmount) ?? normalizeAmountValue(parsed.amount),
-    currency: parsed.currency || "ILS",
-    documentType: normalizeEmailDocumentType(parsed.documentType),
-    paymentRequired: Boolean(parsed.paymentRequired),
-    dueDate: parsed.dueDate ?? null,
-    invoiceDate: parsed.invoiceDate ?? null,
-    invoiceNumber: normalizeInvoiceNumberValue(parsed.invoiceNumber),
-    tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
-    confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
-  };
+  if (!parsed) {
+    return mergePdfTextDeterministicFields(fallbackAnalysis(input), pdfDeterministic);
+  }
+  return mergePdfTextDeterministicFields(
+    {
+      supplier: parsed.supplier || "לא ידוע",
+      supplierTaxId: typeof (parsed as { supplierTaxId?: unknown }).supplierTaxId === "string" ? (parsed as { supplierTaxId: string }).supplierTaxId : null,
+      amount: normalizeAmountValue(parsed.amount),
+      amountBeforeVat: normalizeAmountValue(parsed.amountBeforeVat),
+      vatAmount: normalizeAmountValue(parsed.vatAmount),
+      totalAmount: normalizeAmountValue(parsed.totalAmount) ?? normalizeAmountValue(parsed.amount),
+      currency: parsed.currency || "ILS",
+      documentType: normalizeEmailDocumentType(parsed.documentType),
+      paymentRequired: Boolean(parsed.paymentRequired),
+      dueDate: parsed.dueDate ?? null,
+      invoiceDate: parsed.invoiceDate ?? null,
+      invoiceNumber: normalizeInvoiceNumberValue(parsed.invoiceNumber),
+      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
+      confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
+    },
+    pdfDeterministic
+  );
 }
 
 export async function answerBusinessQuestionWithClaude(input: {
