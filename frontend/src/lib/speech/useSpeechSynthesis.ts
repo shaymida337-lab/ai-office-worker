@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { pickHebrewVoice } from "./speechSynthesisSupport";
+import { hasHebrewFemaleVoice, pickHebrewVoice } from "./speechSynthesisSupport";
 
 /**
  * הקראת טקסט בדפדפן (Web Speech Synthesis) לדמו הציבורי.
@@ -12,6 +12,7 @@ import { pickHebrewVoice } from "./speechSynthesisSupport";
 export function useSpeechSynthesis() {
   const [supported, setSupported] = useState(true);
   const [hebrewVoiceMissing, setHebrewVoiceMissing] = useState(false);
+  const [femaleVoiceMissing, setFemaleVoiceMissing] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
 
@@ -27,6 +28,7 @@ export function useSpeechSynthesis() {
       const hebrew = pickHebrewVoice(voices);
       voiceRef.current = hebrew;
       setHebrewVoiceMissing(hebrew === null);
+      setFemaleVoiceMissing(hebrew !== null && !hasHebrewFemaleVoice(voices));
     };
     loadVoices();
     synth.addEventListener?.("voiceschanged", loadVoices);
@@ -70,5 +72,5 @@ export function useSpeechSynthesis() {
     [speakingId, speak, stop]
   );
 
-  return { supported, hebrewVoiceMissing, speakingId, speak, stop, toggle };
+  return { supported, hebrewVoiceMissing, femaleVoiceMissing, speakingId, speak, stop, toggle };
 }

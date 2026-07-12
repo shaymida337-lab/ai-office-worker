@@ -22,7 +22,7 @@ import { AppShell } from "@/components/natalie-ui";
 import { useI18n } from "@/i18n";
 import { pushToDataLayer } from "@/lib/analytics/data-layer";
 import { appendTranscript, SPEECH_ERROR_MESSAGES } from "@/lib/speech/speechSupport";
-import { SYNTHESIS_FALLBACK_NOTICE } from "@/lib/speech/speechSynthesisSupport";
+import { SYNTHESIS_FALLBACK_NOTICE, SYNTHESIS_FEMALE_FALLBACK_NOTICE } from "@/lib/speech/speechSynthesisSupport";
 import { useSpeechSynthesis } from "@/lib/speech/useSpeechSynthesis";
 import { useSpeechToText } from "@/lib/speech/useSpeechToText";
 
@@ -173,9 +173,15 @@ export default function NatalieChatPage() {
 
   const voice = useSpeechToText({
     onFinalTranscript: (text) => {
-      // התמלול נכנס לשדה — המשתמש עורך ושולח בעצמו. אין שליחה אוטומטית.
-      setInput((current) => appendTranscript(current, text));
-      inputRef.current?.focus();
+      // תמלול סופי נשלח אוטומטית (Sprint 3.3) — התשובה מופיעה מיד,
+      // ואם מצב קולי פעיל היא גם תוקרא. אם נטלי באמצע תשובה — הטקסט
+      // ממתין בשדה במקום ללכת לאיבוד.
+      const combined = appendTranscript(input, text);
+      if (typing) {
+        setInput(combined);
+        return;
+      }
+      sendMessage(combined);
     },
     onEvent: (event) => {
       const gtmEvent =
@@ -354,21 +360,15 @@ export default function NatalieChatPage() {
           {synthesis.supported && voiceMode && synthesis.hebrewVoiceMissing ? (
             <p className="mb-2 text-center text-xs font-semibold text-[#8a94a6]">{SYNTHESIS_FALLBACK_NOTICE}</p>
           ) : null}
+          {synthesis.supported && voiceMode && !synthesis.hebrewVoiceMissing && synthesis.femaleVoiceMissing ? (
+            <p className="mb-2 text-center text-xs font-semibold text-[#8a94a6]">{SYNTHESIS_FEMALE_FALLBACK_NOTICE}</p>
+          ) : null}
           <form
             onSubmit={onSubmit}
             className="rounded-[24px] border border-[#e6eaf2] bg-white p-2 shadow-[0_18px_50px_rgba(20,40,90,0.11)]"
           >
             <div className="flex items-center gap-2">
-              <input
-                ref={inputRef}
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={onComposerKeyDown}
-                placeholder="כתבו לנטלי מה לבדוק או להכין..."
-                aria-label="הודעה לנטלי"
-                aria-describedby="composer-hint"
-                className="min-h-14 flex-1 rounded-[18px] border-0 bg-[#f4f6fb] px-4 py-3 text-[17px] font-medium text-[#0f1830] outline-none ring-1 ring-transparent placeholder:text-[#6b7686] focus:bg-white focus:ring-[#1d5bff]/30"
-              />
+              {/* ב-RTL הילד הראשון בשורה הוא הימני — המיקרופון בצד ימין של ה-composer */}
               <button
                 type="button"
                 onClick={() => {
@@ -388,6 +388,16 @@ export default function NatalieChatPage() {
               >
                 {voice.listening ? <Square className="h-5 w-5" aria-hidden /> : <Mic className="h-5 w-5" aria-hidden />}
               </button>
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={onComposerKeyDown}
+                placeholder="כתבו לנטלי מה לבדוק או להכין..."
+                aria-label="הודעה לנטלי"
+                aria-describedby="composer-hint"
+                className="min-h-14 flex-1 rounded-[18px] border-0 bg-[#f4f6fb] px-4 py-3 text-[17px] font-medium text-[#0f1830] outline-none ring-1 ring-transparent placeholder:text-[#6b7686] focus:bg-white focus:ring-[#1d5bff]/30"
+              />
               <button
                 type="submit"
                 disabled={!input.trim() || typing}
