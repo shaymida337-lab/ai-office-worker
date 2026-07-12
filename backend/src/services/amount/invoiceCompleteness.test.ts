@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assessInvoiceCompleteness,
+  filterInvoiceCompletionQueueCandidates,
   filterInvoicesByCompleteness,
   INVOICE_COMPLETION_REASON,
   isInvoiceRecordApproved,
   parseInvoiceCompletenessParam,
+  shouldExcludeFromInvoiceCompletionQueue,
 } from "./invoiceCompleteness.js";
 
 const completeBase = {
@@ -88,4 +90,103 @@ test("filterInvoicesByCompleteness splits lists without overlap", () => {
 
 test("parseInvoiceCompletenessParam defaults to complete", () => {
   assert.equal(parseInvoiceCompletenessParam(undefined), "complete");
+});
+
+test("filterInvoiceCompletionQueueCandidates removes confidently not financial only", () => {
+  const candidates = [
+    {
+      id: "keep-unknown",
+      isComplete: false,
+      supplierName: "דייטבוק",
+      amount: null,
+      documentType: "unknown_needs_review",
+      decisionReason: "needs_review",
+      confidenceScore: "low",
+    },
+    {
+      id: "keep-receipt",
+      isComplete: false,
+      supplierName: "Unknown supplier",
+      amount: 498.9,
+      documentType: "receipt",
+      decisionReason: "needs_review",
+      confidenceScore: "low",
+      attachmentFilename: "receipt.jpg",
+    },
+    {
+      id: "drop-logo",
+      isComplete: false,
+      supplierName: "MAX",
+      amount: 43.6,
+      documentType: "receipt",
+      decisionReason: "needs_review",
+      confidenceScore: "low",
+      attachmentFilename: "image0.jpeg",
+      parsedFieldsJson: {
+        ocrText:
+          "| מק הלכי ae Se TR = es =n Seems Te = = נאן קונים גביף ee Ter phe 1227777 MAX מס/קבלה 79653",
+      },
+    },
+    {
+      id: "drop-blocked",
+      isComplete: false,
+      supplierName: "Unknown supplier",
+      amount: 4,
+      documentType: "other",
+      decisionReason:
+        "Held for review: blocked non-invoice message: Render notification / documentType is unknown_needs_review",
+      attachmentFilename: "email-only",
+    },
+  ];
+
+  const filtered = filterInvoiceCompletionQueueCandidates(candidates);
+  assert.deepEqual(
+    filtered.map((item) => item.id),
+    ["keep-unknown", "keep-receipt"]
+  );
+  assert.equal(shouldExcludeFromInvoiceCompletionQueue(candidates[0]), false);
+  assert.equal(shouldExcludeFromInvoiceCompletionQueue(candidates[3]), true);
+});
+
+test("completion queue filter keeps complete/incomplete lists disjoint", () => {
+  const invoices = [
+    {
+      id: "complete",
+      isComplete: true,
+      supplierName: "אונדו",
+      amount: 120,
+      documentType: "invoice",
+    },
+    {
+      id: "incomplete-financial",
+      isComplete: false,
+      supplierName: "בזק",
+      amount: null,
+      documentType: "invoice",
+      decisionReason: "needs_review",
+    },
+    {
+      id: "incomplete-logo",
+      isComplete: false,
+      supplierName: "MAX",
+      amount: 43.6,
+      documentType: "receipt",
+      attachmentFilename: "image0.jpeg",
+      parsedFieldsJson: {
+        ocrText: "MAX logo only weak ocr without invoice anchors",
+      },
+      confidenceScore: 0.45,
+    },
+  ];
+
+  const completeOnly = filterInvoicesByCompleteness(invoices, "complete");
+  const incompleteOnly = filterInvoiceCompletionQueueCandidates(
+    filterInvoicesByCompleteness(invoices, "incomplete")
+  );
+  assert.deepEqual(completeOnly.map((item) => item.id), ["complete"]);
+  assert.deepEqual(incompleteOnly.map((item) => item.id), ["incomplete-financial"]);
+  assert.equal(
+    completeOnly.some((item) => incompleteOnly.some((other) => other.id === item.id)),
+    false
+  );
 });

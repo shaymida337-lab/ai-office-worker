@@ -183,6 +183,79 @@ function hasServiceBillFinancialStructure(input: ExtractedDocumentFinancialInput
   return countServiceBillSignalTypes(input) >= 2;
 }
 
+function isJunkTechnicalSupplierName(supplier: string): boolean {
+  if (/(?:\/api\/|gmail\s*sync|commit\s+[a-f0-9]{6,}|\.test\.ts|show\s+me\s+O)/i.test(supplier)) return true;
+  if (supplier.length > 50 && /(?:staged|results|rejectedDetected|uncommitted\s+change)/i.test(supplier)) {
+    return true;
+  }
+  return false;
+}
+
+function isBlockedNonInvoiceDecision(input: ExtractedDocumentFinancialInput): boolean {
+  const reason = combinedText(input).toLowerCase();
+  if (!reason.includes("blocked non-invoice message")) return false;
+
+  const rawType = (input.documentType ?? "").trim().toLowerCase();
+  const emailOnly = (input.filename ?? "").trim().toLowerCase() === "email-only";
+  const amount = normalizedAmount(input);
+
+  if (
+    /newsletter|marketing|render\s+notification|github\s+notification|security\s+alert|system\s+notification/.test(
+      reason
+    )
+  ) {
+    return true;
+  }
+
+  if (/support\/test\s+email|personal\s+email\s+without\s+invoice/.test(reason)) {
+    return rawType === "unknown_needs_review" || emailOnly || normalizeFinancialDocumentType(input.documentType) === "irrelevant";
+  }
+
+  if (emailOnly || normalizeFinancialDocumentType(input.documentType) === "irrelevant") {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * High-confidence not-financial classification for the invoice completion queue only.
+ * Uncertain documents (e.g. unknown_needs_review) stay in queue for manual review.
+ */
+export function isConfidentlyNotFinancialDocument(input: ExtractedDocumentFinancialInput): boolean {
+  const rawType = (input.documentType ?? "").trim().toLowerCase();
+  if (rawType === "unknown_needs_review") {
+    return isBlockedNonInvoiceDecision(input);
+  }
+
+  if (isLogoOrBrandOnlyAttachment(input)) return true;
+
+  const normalizedType = normalizeFinancialDocumentType(input.documentType);
+  if (normalizedType === "irrelevant" || rawType === "supplier_message" || rawType === "logo_image") {
+    return true;
+  }
+
+  if (isBlockedNonInvoiceDecision(input)) return true;
+
+  const supplier = (input.supplierName ?? "").trim();
+  if (supplier && isJunkTechnicalSupplierName(supplier)) return true;
+
+  if (!resolveExtractedDocumentFinancial(input)) {
+    if (
+      rawType === "invoice" ||
+      rawType === "receipt" ||
+      rawType === "tax_invoice" ||
+      rawType === "tax_invoice_receipt" ||
+      rawType === "payment_request"
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
 /**
  * Maps extracted document fields to financial / not-financial.
  * Imperfect documentType or missing optional fields must not reject a real invoice.

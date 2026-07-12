@@ -1,6 +1,11 @@
 import { parseAmountGateFromParsedFields } from "./amountGate.js";
 import { parseArcAmountSnapshot } from "./financeDisplayAmount.js";
 import { isLikelyJunkSupplierName } from "../supplierNameValidation.js";
+import {
+  isConfidentlyNotFinancialDocument,
+  textFromParsedFieldsJson,
+  type ExtractedDocumentFinancialInput,
+} from "../classification/financialDocumentClassification.js";
 
 export const INVOICE_COMPLETION_REASON = {
   MISSING_AMOUNT: "חסר סכום",
@@ -158,4 +163,65 @@ export function filterInvoicesByCompleteness<T extends { isComplete: boolean }>(
   return invoices.filter((invoice) =>
     completeness === "complete" ? invoice.isComplete : !invoice.isComplete,
   );
+}
+
+export type InvoiceCompletionQueueCandidate = {
+  supplierName: string | null;
+  amount: number | null;
+  documentType: string | null;
+  decisionReason?: string | null;
+  description?: string | null;
+  attachmentFilename?: string | null;
+  parsedFieldsJson?: unknown;
+  confidenceScore?: string | number | null;
+};
+
+function guessMimeFromFilename(filename: string | null | undefined): string | undefined {
+  if (!filename) return undefined;
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (/\.(jpe?g)$/.test(lower)) return "image/jpeg";
+  if (lower.endsWith(".png")) return "image/png";
+  return undefined;
+}
+
+function toOcrConfidence(score: string | number | null | undefined): number | null {
+  if (typeof score === "number") return score;
+  if (!score) return null;
+  const normalized = score.trim().toLowerCase();
+  if (normalized === "low") return 0.4;
+  if (normalized === "medium") return 0.7;
+  if (normalized === "high") return 0.9;
+  const parsed = Number(score);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function invoiceCandidateToFinancialInput(
+  candidate: InvoiceCompletionQueueCandidate
+): ExtractedDocumentFinancialInput {
+  const extractedText = textFromParsedFieldsJson(candidate.parsedFieldsJson);
+  return {
+    documentType: candidate.documentType,
+    supplierName: candidate.supplierName,
+    totalAmount: candidate.amount,
+    amount: candidate.amount,
+    bodyText: [candidate.decisionReason, candidate.description].filter(Boolean).join("\n") || undefined,
+    ocrText: extractedText ?? undefined,
+    pdfText: extractedText ?? undefined,
+    attachmentText: extractedText ?? undefined,
+    filename: candidate.attachmentFilename ?? undefined,
+    mimeType: guessMimeFromFilename(candidate.attachmentFilename),
+    ocrConfidence: toOcrConfidence(candidate.confidenceScore),
+    subject: candidate.description ?? undefined,
+  };
+}
+
+export function shouldExcludeFromInvoiceCompletionQueue(candidate: InvoiceCompletionQueueCandidate): boolean {
+  return isConfidentlyNotFinancialDocument(invoiceCandidateToFinancialInput(candidate));
+}
+
+export function filterInvoiceCompletionQueueCandidates<T extends InvoiceCompletionQueueCandidate>(
+  candidates: T[]
+): T[] {
+  return candidates.filter((candidate) => !shouldExcludeFromInvoiceCompletionQueue(candidate));
 }

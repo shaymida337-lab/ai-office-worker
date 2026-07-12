@@ -42,6 +42,7 @@ import {
 import {
   assessInvoiceCompleteness,
   filterInvoicesByCompleteness,
+  filterInvoiceCompletionQueueCandidates,
   isInvoiceRecordApproved,
   parseInvoiceCompletenessParam,
   type InvoiceCompletenessAssessment,
@@ -5138,8 +5139,10 @@ apiRouter.get("/invoices/months", async (req, res) => {
   if (completeness !== "all") {
     const candidates = await fetchEnrichedInvoiceListCandidates(organizationId, ctx, { limit: undefined });
     const filtered = filterInvoicesByCompleteness(candidates, completeness);
+    const visible =
+      completeness === "incomplete" ? filterInvoiceCompletionQueueCandidates(filtered) : filtered;
     const months = summarizeCandidatesByMonth(
-      filtered.map((candidate) => ({ ...candidate, amount: candidate.amount ?? 0 })),
+      visible.map((candidate) => ({ ...candidate, amount: candidate.amount ?? 0 })),
       (candidate) => candidate.date,
       timezone,
     );
@@ -5183,7 +5186,9 @@ apiRouter.get("/invoices", async (req, res) => {
     limit: listLimit,
   });
   const filtered = filterInvoicesByCompleteness(invoices, completeness);
-  let responseInvoices = monthBounds ? filtered : filtered.slice(0, listLimit);
+  const visible =
+    completeness === "incomplete" ? filterInvoiceCompletionQueueCandidates(filtered) : filtered;
+  let responseInvoices = monthBounds ? visible : visible.slice(0, listLimit);
   if (completeness === "incomplete") {
     responseInvoices = await enrichInvoiceCandidatesWithReadiness(responseInvoices, organizationId);
   }

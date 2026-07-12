@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveExtractedDocumentFinancial } from "./financialDocumentClassification.js";
+import {
+  isConfidentlyNotFinancialDocument,
+  resolveExtractedDocumentFinancial,
+} from "./financialDocumentClassification.js";
 
 const WOLT_PDF_SNIPPET = `1 / 2
 266275049 מספר (מקור) חשבונית מס / קבלה
@@ -109,6 +112,120 @@ test("logo only → false", () => {
       ocrConfidence: 0.45,
     }),
     false
+  );
+});
+
+test("logo only is confidently not financial for completion queue", () => {
+  assert.equal(
+    isConfidentlyNotFinancialDocument({
+      documentType: "receipt",
+      supplierName: "MAX",
+      totalAmount: 43.6,
+      ocrText: MAX_LOGO_OCR,
+      filename: "image0.jpeg",
+      mimeType: "image/jpeg",
+      ocrConfidence: 0.45,
+    }),
+    true
+  );
+});
+
+test("Render notification is confidently not financial for completion queue", () => {
+  assert.equal(
+    isConfidentlyNotFinancialDocument({
+      documentType: "other",
+      supplierName: "Unknown supplier",
+      totalAmount: 4,
+      bodyText:
+        "Held for review: blocked non-invoice message: Render notification / documentType is unknown_needs_review / confidence below 80% (0%); Quarantined: cross-org gmail ingestion",
+      filename: "email-only",
+    }),
+    true
+  );
+});
+
+test("invoice with blocked text in decisionReason stays in completion queue", () => {
+  assert.equal(
+    isConfidentlyNotFinancialDocument({
+      documentType: "invoice",
+      supplierName: "בזק",
+      totalAmount: null,
+      bodyText:
+        "Held for review: blocked non-invoice message: support/test email / documentType is unknown_needs_review / confidence below 80% (0%)",
+      filename: "bill.pdf",
+      mimeType: "application/pdf",
+    }),
+    false
+  );
+});
+
+test("unknown_needs_review with newsletter stays out of completion queue", () => {
+  assert.equal(
+    isConfidentlyNotFinancialDocument({
+      documentType: "unknown_needs_review",
+      supplierName: "דייטבוק",
+      totalAmount: null,
+      bodyText:
+        "Held for review: confidence is low; blocked non-invoice message: newsletter/marketing / documentType is unknown_needs_review",
+      filename: "email-only",
+    }),
+    true
+  );
+});
+
+test("unknown_needs_review without blocked non-invoice stays in completion queue", () => {
+  assert.equal(
+    isConfidentlyNotFinancialDocument({
+      documentType: "unknown_needs_review",
+      supplierName: "דייטבוק",
+      totalAmount: null,
+      bodyText: "Held for review: confidence is low; no strict invoice/payment evidence",
+      filename: "scan.pdf",
+      mimeType: "application/pdf",
+    }),
+    false
+  );
+});
+
+test("Wolt receipt stays in completion queue despite blocked text in decisionReason", () => {
+  assert.equal(
+    isConfidentlyNotFinancialDocument({
+      documentType: "receipt",
+      supplierName: "Wolt",
+      totalAmount: 146.9,
+      bodyText:
+        "Held for review: blocked non-invoice message: support/test email / documentType is unknown_needs_review",
+      filename: "wolt.pdf",
+      mimeType: "application/pdf",
+      pdfText: WOLT_PDF_SNIPPET,
+    }),
+    false
+  );
+});
+
+test("receipt with unknown supplier stays in completion queue", () => {
+  assert.equal(
+    isConfidentlyNotFinancialDocument({
+      documentType: "receipt",
+      supplierName: "Unknown supplier",
+      totalAmount: 498.9,
+      filename: "receipt.jpg",
+      mimeType: "image/jpeg",
+      confidenceScore: "low",
+    }),
+    false
+  );
+});
+
+test("junk technical supplier is confidently not financial for completion queue", () => {
+  assert.equal(
+    isConfidentlyNotFinancialDocument({
+      documentType: "invoice",
+      supplierName: "multi number OCR text. Two red tests in gmail sync.test.ts now fail",
+      totalAmount: 616,
+      filename: "email-only",
+    }),
+    true
   );
 });
 
