@@ -83,6 +83,10 @@ import {
   emitCoreWorkflowAudit,
   emitCoreWorkflowFailure,
 } from "./reliability/core/index.js";
+import {
+  resolveExtractedDocumentFinancial,
+  textFromParsedFieldsJson,
+} from "./classification/financialDocumentClassification.js";
 
 export type FinancialDocumentSource = "gmail" | "whatsapp" | "camera";
 
@@ -525,7 +529,18 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
         null,
     });
 
-  if (!isPaymentDocumentType(documentType)) {
+  if (
+    !resolveExtractedDocumentFinancial({
+      documentType: input.documentType,
+      supplierName: input.supplierName,
+      totalAmount,
+      amount: totalAmount,
+      invoiceNumber: input.invoiceNumber,
+      filename: input.fileName,
+      subject: input.subject,
+      attachmentText: textFromParsedFieldsJson(input.parsedFieldsJson),
+    })
+  ) {
     const review = await upsertReview({ ...input, documentType, documentDate, dueDate, confidenceScore, sourceFingerprint, documentFingerprint, reviewStatus: "rejected", uncertaintyReason: input.uncertaintyReason ?? "מסמך לא רלוונטי" });
     recordPlatformAudit({
       ...aiAuditContext("financialDocuments", resolveWorkflowCorrelationId({ gmailMessageId: input.gmailMessageId, emailMessageId: input.emailMessageId })),
