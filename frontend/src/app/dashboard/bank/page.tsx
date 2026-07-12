@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, UploadCloud, XCircle } from "lucide-react";
 import { Nav } from "@/components/Nav";
+import { formatAmountValue } from "@/lib/format/amount";
 import { apiFetch } from "@/lib/api";
 
 type UploadSummary = {
@@ -323,7 +324,7 @@ export default function BankReconciliationPage() {
                     {detail.transactions.map((transaction) => (
                       <tr key={transaction.id}>
                         <td className="whitespace-nowrap text-base text-[#F1F5F9]">{new Date(transaction.date).toLocaleDateString("he-IL")}</td>
-                        <td className="whitespace-nowrap text-base font-bold text-[#F8FAFC]">₪{transaction.amount.toLocaleString("he-IL")}</td>
+                        <td className="whitespace-nowrap text-base font-bold text-[#F8FAFC]">₪{formatAmountValue(transaction.amount)}</td>
                         <td><DirectionBadge direction={transaction.direction} /></td>
                         <td className="max-w-0 truncate text-base text-[#E2E8F0]">{transaction.description ?? "—"}</td>
                         <td><MatchSummary transaction={transaction} /></td>
@@ -355,7 +356,7 @@ function TransactionCard({ transaction, acting, onConfirm, onReject }: { transac
     <div className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <strong className="text-lg text-[#F8FAFC]">₪{transaction.amount.toLocaleString("he-IL")}</strong>
+          <strong className="text-lg text-[#F8FAFC]">₪{formatAmountValue(transaction.amount)}</strong>
           <p className="text-base text-[#CBD5E1]">{new Date(transaction.date).toLocaleDateString("he-IL")}</p>
         </div>
         <DirectionBadge direction={transaction.direction} />
@@ -427,10 +428,10 @@ function matchedRecordLabel(transaction: BankTransaction) {
   if (!transaction.matchedRecord?.record) return "הרשומה המוצעת לא נמצאה";
   if (transaction.matchedRecord.type === "invoice") {
     const invoice = transaction.matchedRecord.record;
-    return `חשבונית ${invoice.invoiceNumber ? `#${invoice.invoiceNumber}` : invoice.client?.name ?? invoice.id} · ₪${invoice.amount.toLocaleString("he-IL")}`;
+    return `חשבונית ${invoice.invoiceNumber ? `#${invoice.invoiceNumber}` : invoice.client?.name ?? invoice.id} · ₪${formatAmountValue(invoice.amount)}`;
   }
   const payment = transaction.matchedRecord.record;
-  return `${payment.supplier} · ₪${payment.amount.toLocaleString("he-IL")}`;
+  return `${payment.supplier} · ₪${formatAmountValue(payment.amount)}`;
 }
 
 function suggestionReason(transaction: BankTransaction) {

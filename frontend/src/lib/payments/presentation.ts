@@ -1,4 +1,5 @@
 import type { Payment } from "@/lib/api";
+import { formatAmountValue } from "@/lib/format/amount";
 import type { PaymentPresentation } from "./types";
 
 function startOfDay(date: Date) {
@@ -9,7 +10,7 @@ function startOfDay(date: Date) {
 
 export function formatPaymentAmount(payment: Payment) {
   const symbol = payment.currency === "ILS" || !payment.currency ? "₪" : payment.currency;
-  return `${symbol}${payment.amount.toLocaleString("he-IL")}`;
+  return `${symbol}${formatAmountValue(payment.amount)}`;
 }
 
 export function formatPaymentDate(value: string | null | undefined) {
@@ -152,7 +153,7 @@ export function buildSnapshotMetrics(payments: Payment[]): {
   const ilsTotal = regular.reduce((sum, p) => sum + (p.currency === "ILS" || !p.currency ? p.amount : 0), 0);
   return {
     totalCount: regular.length,
-    totalAmountLabel: `₪${Math.round(ilsTotal).toLocaleString("he-IL")}`,
+    totalAmountLabel: `₪${formatAmountValue(Math.round(ilsTotal))}`,
     pendingCount: pending.length,
   };
 }

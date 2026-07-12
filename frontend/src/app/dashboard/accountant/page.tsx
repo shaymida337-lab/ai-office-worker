@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Nav } from "@/components/Nav";
+import { formatAmountValue } from "@/lib/format/amount";
 import { apiFetch, getToken } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -78,16 +79,16 @@ export default function AccountantPage() {
       <div className="mb-8"><div className="page-kicker">דוחות לרואה חשבון</div><h1>רואה חשבון</h1></div>
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-base text-ink-primary">{message}</div>}
       <div className="grid">
-        <div className="card"><div className="stat-label">הכנסות החודש</div><div className="stat-value">₪{summary.totalIncome.toLocaleString("he-IL")}</div></div>
-        <div className="card"><div className="stat-label">הוצאות החודש</div><div className="stat-value">₪{summary.totalExpenses.toLocaleString("he-IL")}</div></div>
-        <div className="card"><div className="stat-label">רווח</div><div className="stat-value">₪{summary.profit.toLocaleString("he-IL")}</div></div>
-        <div className="card"><div className="stat-label">מע"מ לתשלום</div><div className="stat-value">₪{summary.vatDue.toLocaleString("he-IL")}</div></div>
+        <div className="card"><div className="stat-label">הכנסות החודש</div><div className="stat-value">₪{formatAmountValue(summary.totalIncome)}</div></div>
+        <div className="card"><div className="stat-label">הוצאות החודש</div><div className="stat-value">₪{formatAmountValue(summary.totalExpenses)}</div></div>
+        <div className="card"><div className="stat-label">רווח</div><div className="stat-value">₪{formatAmountValue(summary.profit)}</div></div>
+        <div className="card"><div className="stat-label">מע"מ לתשלום</div><div className="stat-value">₪{formatAmountValue(summary.vatDue)}</div></div>
       </div>
       <div className="card">
         <h2>תזכורת מע"מ</h2>
         <p>תאריך הגשה הבא: {new Date(summary.vat.dueDate).toLocaleDateString("he-IL")}</p>
         <p>ימים שנותרו: {daysToVat}</p>
-        <p>סכום משוער: ₪{summary.vat.netVAT.toLocaleString("he-IL")}</p>
+        <p>סכום משוער: ₪{formatAmountValue(summary.vat.netVAT)}</p>
       </div>
       <div className="card">
         <h2>מסמכים מוכנים</h2>
@@ -109,8 +110,8 @@ export default function AccountantPage() {
           <div key={row.period} className="card">
             <h3 className="text-lg font-semibold text-ink-primary">{row.period}</h3>
             <div className="mt-3 grid gap-2 rounded-2xl bg-surface-secondary p-3">
-              <div className="flex justify-between gap-3"><span className="text-ink-secondary">הכנסות</span><strong>₪{row.income.toLocaleString("he-IL")}</strong></div>
-              <div className="flex justify-between gap-3"><span className="text-ink-secondary">הוצאות</span><strong>₪{row.expenses.toLocaleString("he-IL")}</strong></div>
+              <div className="flex justify-between gap-3"><span className="text-ink-secondary">הכנסות</span><strong>₪{formatAmountValue(row.income)}</strong></div>
+              <div className="flex justify-between gap-3"><span className="text-ink-secondary">הוצאות</span><strong>₪{formatAmountValue(row.expenses)}</strong></div>
             </div>
           </div>
         ))}
@@ -118,7 +119,7 @@ export default function AccountantPage() {
       <div className="table-shell hidden md:block">
         <h2>סיכום שנתי</h2>
         <table><thead><tr><th>חודש</th><th>הכנסות</th><th>הוצאות</th></tr></thead><tbody>
-          {summary.annual.map((row) => <tr key={row.period}><td>{row.period}</td><td>₪{row.income.toLocaleString("he-IL")}</td><td>₪{row.expenses.toLocaleString("he-IL")}</td></tr>)}
+          {summary.annual.map((row) => <tr key={row.period}><td>{row.period}</td><td>₪{formatAmountValue(row.income)}</td><td>₪{formatAmountValue(row.expenses)}</td></tr>)}
         </tbody></table>
       </div>
     </div>

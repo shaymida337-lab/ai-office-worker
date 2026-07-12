@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
+import { formatAmountValue } from "@/lib/format/amount";
 import { apiFetch, isAuthError } from "@/lib/api";
 
 type DebugInvoiceRow = {
@@ -461,7 +462,7 @@ export default function AdminDebugPage() {
             <Metric label="פריטי סריקת חשבוניות" value={data.invoiceScanItemCount ?? 0} />
             <Metric label="רשומות עם סכום חריג מעל 10 מיליון" value={data.badAmountCount ?? badAmounts?.badInvoiceCount ?? 0} />
             <Metric label="שורות שנכללו בכסף לשלם" value={topPayments?.countedRows ?? "לחץ לבדיקה"} />
-            <Metric label="סה״כ כסף לשלם" value={topPayments ? `₪${topPayments.moneyToPay.toLocaleString("he-IL")}` : "לחץ לבדיקה"} />
+            <Metric label="סה״כ כסף לשלם" value={topPayments ? `₪${formatAmountValue(topPayments.moneyToPay)}` : "לחץ לבדיקה"} />
           </section>
 
           <section className="mb-6 grid gap-4">
@@ -509,7 +510,7 @@ function TopPaymentsTable({ data, loading }: { data: TopPaymentAmountsResponse |
         </div>
         {data && (
           <span className="rounded-2xl border border-amber-300/40 bg-amber-400/15 px-4 py-3 text-lg font-black text-amber-100">
-            סה"כ מחושב: ₪{data.moneyToPay.toLocaleString("he-IL")}
+            סה"כ מחושב: ₪{formatAmountValue(data.moneyToPay)}
           </span>
         )}
       </div>
@@ -536,7 +537,7 @@ function TopPaymentsTable({ data, loading }: { data: TopPaymentAmountsResponse |
                 <tr key={row.id} className="border-b border-[var(--border)] last:border-0">
                   <td className="whitespace-nowrap px-4 py-5">
                     <div className="text-3xl font-black tracking-tight text-amber-200">
-                      ₪{row.amount.toLocaleString("he-IL")}
+                      ₪{formatAmountValue(row.amount)}
                     </div>
                     <div className="mt-1 text-sm font-semibold text-[#CBD5E1]">{row.currency}</div>
                   </td>
@@ -586,7 +587,7 @@ function PaymentClassificationInvestigation({ data, loading }: { data: PaymentCl
               <div>
                 <h3 className="text-xl font-black text-[#F8FAFC]">סיכום לפי דומיין שולח</h3>
                 <p className="text-base text-[#CBD5E1]">
-                  {data?.countedRows ?? 0} שורות · סה"כ ₪{(data?.moneyToPay ?? 0).toLocaleString("he-IL")}
+                  {data?.countedRows ?? 0} שורות · סה"כ ₪{formatAmountValue(data?.moneyToPay ?? 0)}
                 </p>
               </div>
             </div>
@@ -604,7 +605,7 @@ function PaymentClassificationInvestigation({ data, loading }: { data: PaymentCl
                     <tr key={domain.domain} className="border-b border-[var(--border)] last:border-0">
                       <td className="break-all px-4 py-3 text-left text-base font-semibold text-[#F8FAFC]" dir="ltr">{domain.domain}</td>
                       <td className="px-4 py-3 text-base text-[#E2E8F0]">{domain.count}</td>
-                      <td className="px-4 py-3 text-lg font-black text-red-100">₪{domain.totalAmount.toLocaleString("he-IL")}</td>
+                      <td className="px-4 py-3 text-lg font-black text-red-100">₪{formatAmountValue(domain.totalAmount)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -619,9 +620,9 @@ function PaymentClassificationInvestigation({ data, loading }: { data: PaymentCl
                 {data.cleanupPreviewSummary.wouldMoveOutCount} מתוך {data.cleanupPreviewSummary.totalRows} שורות היו יוצאות מ-"כסף לשלם".
               </p>
               <div className="mt-3 grid gap-3 md:grid-cols-3">
-                <Metric label="כסף לשלם נוכחי" value={`₪${data.cleanupPreviewSummary.currentMoneyToPay.toLocaleString("he-IL")}`} />
-                <Metric label="סכום שיוסר" value={`₪${data.cleanupPreviewSummary.amountMovedOut.toLocaleString("he-IL")}`} />
-                <Metric label="כסף לשלם חדש" value={`₪${data.cleanupPreviewSummary.newMoneyToPay.toLocaleString("he-IL")}`} />
+                <Metric label="כסף לשלם נוכחי" value={`₪${formatAmountValue(data.cleanupPreviewSummary.currentMoneyToPay)}`} />
+                <Metric label="סכום שיוסר" value={`₪${formatAmountValue(data.cleanupPreviewSummary.amountMovedOut)}`} />
+                <Metric label="כסף לשלם חדש" value={`₪${formatAmountValue(data.cleanupPreviewSummary.newMoneyToPay)}`} />
               </div>
             </div>
           )}
@@ -632,7 +633,7 @@ function PaymentClassificationInvestigation({ data, loading }: { data: PaymentCl
               <article key={row.payment.id} className="rounded-2xl border border-red-300/20 bg-surface-secondary/95 p-4">
                 <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
-                    <div className="text-3xl font-black text-red-200">₪{row.payment.amount.toLocaleString("he-IL")} {row.payment.currency}</div>
+                    <div className="text-3xl font-black text-red-200">₪{formatAmountValue(row.payment.amount)} {row.payment.currency}</div>
                     <div className="mt-1 text-lg font-bold text-[#F8FAFC]">{row.payment.supplier}</div>
                     <div className="text-base text-[#CBD5E1]">{row.payment.emailSender ?? row.email?.fromAddress ?? "שולח לא ידוע"}</div>
                     <div className="mt-1 break-all text-sm font-semibold text-red-100" dir="ltr">{row.senderDomain}</div>
@@ -662,8 +663,8 @@ function PaymentClassificationInvestigation({ data, loading }: { data: PaymentCl
                     {row.cleanupPreview && (
                       <div className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-sm text-[#D1FAE5]">
                         <div className="font-bold text-[#F8FAFC]">החלטת ניקוי צפויה</div>
-                        <p>סכום חדש שזוהה: {row.cleanupPreview.newlyParsedAmount === null ? "אין" : `₪${row.cleanupPreview.newlyParsedAmount.toLocaleString("he-IL")}`}</p>
-                        <p>סכום לאחר ניקוי: {row.cleanupPreview.wouldBeAmount === null ? "אין" : `₪${row.cleanupPreview.wouldBeAmount.toLocaleString("he-IL")}`}</p>
+                        <p>סכום חדש שזוהה: {row.cleanupPreview.newlyParsedAmount === null ? "אין" : `₪${formatAmountValue(row.cleanupPreview.newlyParsedAmount)}`}</p>
+                        <p>סכום לאחר ניקוי: {row.cleanupPreview.wouldBeAmount === null ? "אין" : `₪${formatAmountValue(row.cleanupPreview.wouldBeAmount)}`}</p>
                         <p>כלל 1 - השהיית בנק: {row.cleanupPreview.rule1FinancialSenderHold ? "כן" : "לא"}</p>
                         <p>כלל 2 - השהיית שמירה אוטומטית: {row.cleanupPreview.rule2AutoSaveGateHold ? "כן" : "לא"}</p>
                         <p>כלל 3 - בדיקת סבירות סכום: {row.cleanupPreview.rule3AmountSanityFlag ? "כן" : "לא"}</p>

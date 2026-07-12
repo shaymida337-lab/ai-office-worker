@@ -9,6 +9,16 @@ const CURRENCY_SYMBOLS: Record<string, string> = { ILS: "₪", USD: "$", EUR: "�
 
 export const MISSING_AMOUNT_LABEL = "—";
 
+/**
+ * המספר בלבד, בלי סמל — לעולם לא יותר מ-2 ספרות עשרוניות.
+ * בלי maximumFractionDigits, toLocaleString ברירת המחדל היא 3 ספרות —
+ * כך "920219.813" שנשמר גולמי הוצג כ-"920,219.813 ₪". כל אתר שמעצב
+ * סכום כסף חייב לעבור דרך הפונקציה הזו (או formatAmount).
+ */
+export function formatAmountValue(amount: number): string {
+  return amount.toLocaleString("he-IL", { maximumFractionDigits: 2 });
+}
+
 export function formatAmount(
   amount: number | null | undefined,
   currency: string = "ILS",
@@ -16,5 +26,5 @@ export function formatAmount(
 ): string {
   if (typeof amount !== "number" || !Number.isFinite(amount)) return missingLabel;
   const symbol = CURRENCY_SYMBOLS[currency] ?? currency;
-  return `${symbol} ${amount.toLocaleString("he-IL")}`;
+  return `${symbol} ${formatAmountValue(amount)}`;
 }
