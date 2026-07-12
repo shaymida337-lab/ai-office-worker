@@ -2,14 +2,12 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
-import { CheckCircle2, MessageCircle, Share2 } from "lucide-react";
+import { CheckCircle2, MessageCircle } from "lucide-react";
+import { ShareBar } from "@/components/ShareBar";
 import { pushToDataLayer } from "@/lib/analytics/data-layer";
+import { getReferral } from "@/lib/analytics/referral";
 import { utmEventParams } from "@/lib/analytics/utm";
 import { colors, radius, shadow } from "@/lib/design-tokens";
-
-const SHARE_TEXT = encodeURIComponent(
-  "תכירו את נטלי — עובדת משרד דיגיטלית לעסקים קטנים. שווה להציץ: https://ai-office-worker.com"
-);
 
 const NEXT_STEPS = [
   "נחזור אליכם תוך יום עסקים בטלפון או בוואטסאפ.",
@@ -20,6 +18,15 @@ const NEXT_STEPS = [
 export function ThankYouContent() {
   useEffect(() => {
     pushToDataLayer({ event: "thank_you_view", ...utmEventParams() });
+    // ליד שהגיע מהפניה — אירוע המרה לייחוס "חבר מביא חבר" עתידי (ללא PII)
+    const referral = getReferral();
+    if (referral.referralSource || referral.referralId) {
+      pushToDataLayer({
+        event: "referral_conversion",
+        referral_source: referral.referralSource ?? undefined,
+        referral_id: referral.referralId ?? undefined,
+      });
+    }
   }, []);
 
   return (
@@ -55,21 +62,21 @@ export function ThankYouContent() {
           ))}
         </ol>
 
-        <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <div className="mt-7 flex flex-col items-center justify-center gap-3">
           <Link href="/natalie" className="btn w-full sm:w-auto">
             <MessageCircle className="ml-2 h-4 w-4" aria-hidden />
             בינתיים — דברו עם נטלי בדמו
           </Link>
-          <a
-            href={`https://wa.me/?text=${SHARE_TEXT}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => pushToDataLayer({ event: "referral_share", channel: "whatsapp" })}
-            className="btn btn-secondary w-full sm:w-auto"
-          >
-            <Share2 className="ml-2 h-4 w-4" aria-hidden />
-            לשתף את נטלי בוואטסאפ
-          </a>
+        </div>
+
+        <div className="mt-7 border-t pt-6" style={{ borderColor: colors.borderSubtle }}>
+          <p className="text-base font-bold" style={{ color: colors.textPrimary }}>
+            שיתוף קטן שלך יכול לעזור לעוד בעל עסק 🙌
+          </p>
+          <p className="mb-4 mt-1 text-sm font-medium" style={{ color: colors.textSecondary }}>
+            שתפו עכשיו:
+          </p>
+          <ShareBar variant="light" />
         </div>
 
         <p className="mt-6 text-sm font-medium" style={{ color: colors.textMuted }}>

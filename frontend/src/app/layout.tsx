@@ -23,6 +23,8 @@ export const metadata: Metadata = {
     type: "website",
     siteName: "נטלי",
     locale: "he_IL",
+    // תמונת שיתוף כברירת מחדל לכל עמוד — כרטיס שיתוף מעוצב גם מחוץ לדף הבית
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "נטלי — עובדת המשרד הדיגיטלית" }],
   },
   twitter: {
     card: "summary_large_image",

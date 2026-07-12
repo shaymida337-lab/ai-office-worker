@@ -15,7 +15,10 @@
 | `lead_form_error` | כשל שליחה | `reason` (status/network), utm |
 | `thank_you_view` | טעינת דף התודה | utm |
 | `demo_to_lead_click` | קליק "ניסיון 14 יום" מעמוד הדמו | — |
-| `referral_share` | קליק שיתוף בוואטסאפ בדף התודה | `channel` |
+| `share_click` | קליק על כפתור שיתוף (ShareBar) | `platform` (whatsapp/facebook/linkedin/x/email/copy) |
+| `copy_link` | העתקת קישור השיתוף | — |
+| `referral_visit` | ביקור עם `?ref=`/`?ref_id=` (נגיעה ראשונה בסשן) | `referral_source`, `referral_id` |
+| `referral_conversion` | דף תודה נטען לסשן שהגיע מהפניה | `referral_source`, `referral_id` |
 | `demo_voice_start/success/error/denied` | מיקרופון בדמו (Sprint 3.1) | — |
 
 הערה: הגדרת ה-tags/GA4 בתוך קונטיינר ה-GTM עצמו מנוהלת בממשק GTM (לא בקוד).

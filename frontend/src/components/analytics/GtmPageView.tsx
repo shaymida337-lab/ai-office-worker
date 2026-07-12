@@ -4,11 +4,17 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { isGoogleTagManagerEnabled } from "@/lib/analytics/constants";
 import { trackGtmPageView } from "@/lib/analytics/data-layer";
+import { captureReferralOnce } from "@/lib/analytics/referral";
 
 export function GtmPageView() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const isFirstPageView = useRef(true);
+
+  useEffect(() => {
+    // לכידת ?ref= בנגיעה ראשונה — תשתית referral (חד-פעמי לסשן)
+    captureReferralOnce();
+  }, []);
 
   useEffect(() => {
     if (!isGoogleTagManagerEnabled || !pathname) return;

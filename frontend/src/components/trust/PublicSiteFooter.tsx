@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { ShareBar } from "@/components/ShareBar";
 import { LEGAL_NAV_LINKS } from "@/lib/trust/links";
 import {
   TRUST_COMPANY_NAME,
@@ -56,6 +57,13 @@ export function PublicSiteFooter({ variant = "light", className = "" }: PublicSi
             מחיקת נתונים
           </Link>
         </nav>
+
+        <div className="grid gap-2">
+          <p className={`text-sm font-bold ${isLight ? "text-slate-600" : "text-ink-secondary"}`}>
+            מכירים בעל עסק שטובע בניירת? שתפו את נטלי
+          </p>
+          <ShareBar variant={variant} />
+        </div>
 
         <div className={`grid gap-1 text-sm ${isLight ? "text-slate-500" : "text-ink-muted"}`}>
           <p>
