@@ -14,12 +14,16 @@ import {
   ShieldCheck,
   Sparkles,
   Square,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
 import { AppShell } from "@/components/natalie-ui";
 import { useI18n } from "@/i18n";
 import { pushToDataLayer } from "@/lib/analytics/data-layer";
 import { appendTranscript, SPEECH_ERROR_MESSAGES } from "@/lib/speech/speechSupport";
+import { SYNTHESIS_FALLBACK_NOTICE } from "@/lib/speech/speechSynthesisSupport";
+import { useSpeechSynthesis } from "@/lib/speech/useSpeechSynthesis";
 import { useSpeechToText } from "@/lib/speech/useSpeechToText";
 
 type ChatMessage = {
@@ -162,6 +166,11 @@ export default function NatalieChatPage() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  const synthesis = useSpeechSynthesis();
+  const [voiceMode, setVoiceMode] = useState(false);
+  const voiceModeRef = useRef(voiceMode);
+  voiceModeRef.current = voiceMode;
+
   const voice = useSpeechToText({
     onFinalTranscript: (text) => {
       // התמלול נכנס לשדה — המשתמש עורך ושולח בעצמו. אין שליחה אוטומטית.
@@ -224,6 +233,10 @@ export default function NatalieChatPage() {
       setMessages((current) => [...current, natalieMessage]);
       setTyping(false);
       inputRef.current?.focus();
+      // מצב קולי: הקראה אוטומטית של תשובות חדשות — רק אם המשתמש הפעיל.
+      if (voiceModeRef.current) {
+        synthesis.speak(natalieMessage.id, natalieMessage.text);
+      }
     }, 900);
   }
 
@@ -275,6 +288,9 @@ export default function NatalieChatPage() {
                     message={message}
                     actionStatus={actionStatus}
                     onResolveAction={resolveAction}
+                    speakSupported={synthesis.supported}
+                    speaking={synthesis.speakingId === message.id}
+                    onToggleSpeak={() => synthesis.toggle(message.id, message.text)}
                   />
                 ))}
                 {typing && <TypingIndicator />}
@@ -311,9 +327,33 @@ export default function NatalieChatPage() {
             ))}
           </div>
 
-          <p className="mb-2 text-center text-sm font-bold text-[#6b7686]" id="composer-hint">
-            אפשר להקליד או לדבר עם נטלי
-          </p>
+          <div className="mb-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+            <p className="text-center text-sm font-bold text-[#6b7686]" id="composer-hint">
+              אפשר להקליד או לדבר עם נטלי
+            </p>
+            {synthesis.supported ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !voiceMode;
+                  setVoiceMode(next);
+                  if (!next) synthesis.stop();
+                }}
+                aria-pressed={voiceMode}
+                className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition focus:outline-none focus:ring-4 focus:ring-[#1d5bff]/15 ${
+                  voiceMode
+                    ? "border-[#1d5bff] bg-[#eaf0ff] text-[#1d5bff]"
+                    : "border-[#d7def0] bg-white text-[#6b7686] hover:bg-[#f4f6fb]"
+                }`}
+              >
+                {voiceMode ? <Volume2 className="h-4 w-4" aria-hidden /> : <VolumeX className="h-4 w-4" aria-hidden />}
+                מצב קולי {voiceMode ? "פועל" : "כבוי"}
+              </button>
+            ) : null}
+          </div>
+          {synthesis.supported && voiceMode && synthesis.hebrewVoiceMissing ? (
+            <p className="mb-2 text-center text-xs font-semibold text-[#8a94a6]">{SYNTHESIS_FALLBACK_NOTICE}</p>
+          ) : null}
           <form
             onSubmit={onSubmit}
             className="rounded-[24px] border border-[#e6eaf2] bg-white p-2 shadow-[0_18px_50px_rgba(20,40,90,0.11)]"
@@ -394,12 +434,19 @@ function MessageBubble({
   message,
   actionStatus,
   onResolveAction,
+  speakSupported = false,
+  speaking = false,
+  onToggleSpeak,
 }: {
   message: ChatMessage;
   actionStatus: Record<string, ActionStatus>;
   onResolveAction: (actionId: string, status: Exclude<ActionStatus, "pending">) => void;
+  speakSupported?: boolean;
+  speaking?: boolean;
+  onToggleSpeak?: () => void;
 }) {
   const isUser = message.sender === "user";
+  const showSpeaker = !isUser && speakSupported && onToggleSpeak;
 
   return (
     <article
@@ -423,9 +470,25 @@ function MessageBubble({
             >
               {message.text}
             </div>
-            <time className={`mt-1 block text-xs font-semibold text-[#8a94a6] ${isUser ? "text-left" : "text-right"}`}>
-              {message.time}
-            </time>
+            <div className={`mt-1 flex items-center gap-2 ${isUser ? "justify-start flex-row-reverse" : "justify-start"}`}>
+              <time className="block text-xs font-semibold text-[#8a94a6]">{message.time}</time>
+              {showSpeaker ? (
+                <button
+                  type="button"
+                  onClick={onToggleSpeak}
+                  aria-label={speaking ? "עצירת הקראה" : "הקראת התשובה בקול"}
+                  title={speaking ? "עצירת הקראה" : "הקראת התשובה בקול"}
+                  aria-pressed={speaking}
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition focus:outline-none focus:ring-4 focus:ring-[#1d5bff]/15 ${
+                    speaking
+                      ? "border-[#1d5bff] bg-[#eaf0ff] text-[#1d5bff]"
+                      : "border-[#e6eaf2] bg-white text-[#8a94a6] hover:border-[#1d5bff] hover:text-[#1d5bff]"
+                  }`}
+                >
+                  {speaking ? <VolumeX className="h-4 w-4" aria-hidden /> : <Volume2 className="h-4 w-4" aria-hidden />}
+                </button>
+              ) : null}
+            </div>
             {message.actionIds?.map((actionId) => (
               <ActionCard
                 key={actionId}
