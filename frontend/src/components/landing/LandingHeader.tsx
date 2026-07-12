@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
+import { captureUtmOnce } from "@/lib/analytics/utm";
 import { LANDING_NAV } from "./landingContent";
 import { colors, radius } from "@/lib/design-tokens";
 import { Menu, X } from "lucide-react";
@@ -12,6 +13,7 @@ export function LandingHeader() {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
+    captureUtmOnce(); // לכידת UTM בנגיעה ראשונה — לפני כל אינטראקציה
     const onScroll = () => setScrolled(window.scrollY > 8);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -101,8 +103,8 @@ export function LandingHeader() {
             <Link href="/natalie" className="btn mt-2 w-full" onClick={() => setOpen(false)}>
               לדבר עם נטלי — דמו חי
             </Link>
-            <a href="#waitlist" className="btn btn-secondary mt-1 w-full" onClick={() => setOpen(false)}>
-              הצטרפות לגישה מוקדמת
+            <a href="#pricing" className="btn btn-secondary mt-1 w-full" onClick={() => setOpen(false)}>
+              ניסיון 14 יום — בלי כרטיס אשראי
             </a>
           </nav>
         </div>

@@ -6,7 +6,8 @@ import { LandingFaqSection } from "./LandingFaq";
 import { LandingFounderStorySection } from "./LandingFounderStory";
 import { LandingHeader } from "./LandingHeader";
 import { LandingHero } from "./LandingHero";
-import { LandingPricingPreviewSection } from "./LandingPricingPreview";
+import { LandingLeadFormSection } from "./LandingLeadForm";
+import { LandingPricingSection } from "./LandingPricing";
 import {
   LandingFeaturesSection,
   LandingHowItWorksSection,
@@ -14,7 +15,6 @@ import {
 } from "./LandingSections";
 import { LandingSocialProofSection } from "./LandingSocialProof";
 import { LandingTrustSection } from "./LandingTrust";
-import { LandingWaitlistSection } from "./LandingWaitlist";
 import { StickyMobileCta } from "./StickyMobileCta";
 
 export function LandingPage() {
@@ -36,9 +36,9 @@ export function LandingPage() {
         <LandingTrustSection />
         <LandingFounderStorySection />
         <LandingSocialProofSection />
-        <LandingPricingPreviewSection />
+        <LandingPricingSection />
         <LandingFaqSection />
-        <LandingWaitlistSection />
+        <LandingLeadFormSection />
       </main>
       <StickyMobileCta />
       <PublicSiteFooter variant="light" />

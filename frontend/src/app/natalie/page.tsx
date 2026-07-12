@@ -277,9 +277,18 @@ export default function NatalieChatPage() {
                 פעילה · מחוברת ל‑Gmail, Drive, WhatsApp
               </p>
             </div>
-            <div className="hidden items-center gap-2 rounded-full border border-[#e6eaf2] bg-[#f4f6fb] px-4 py-2 text-sm font-bold text-[#0f1830] sm:flex">
-              <ShieldCheck className="h-4 w-4 text-[#1faa59]" />
-              {pendingActions} פעולות ממתינות לאישור
+            <div className="flex items-center gap-2">
+              <div className="hidden items-center gap-2 rounded-full border border-[#e6eaf2] bg-[#f4f6fb] px-4 py-2 text-sm font-bold text-[#0f1830] lg:flex">
+                <ShieldCheck className="h-4 w-4 text-[#1faa59]" />
+                {pendingActions} פעולות ממתינות לאישור
+              </div>
+              <a
+                href="/#pricing"
+                onClick={() => pushToDataLayer({ event: "demo_to_lead_click" })}
+                className="inline-flex items-center rounded-full bg-[#1d5bff] px-4 py-2 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(29,91,255,0.25)] transition hover:bg-[#1648cc]"
+              >
+                ניסיון 14 יום ←
+              </a>
             </div>
           </div>
         </div>
