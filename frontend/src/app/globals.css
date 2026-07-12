@@ -1193,3 +1193,18 @@ mark {
   .landing-stagger > li { animation: none; opacity: 1; }
   .landing-lift, .landing-lift:hover { transition: none; transform: none; box-shadow: none; }
 }
+
+/* ── Demo voice button (Sprint 3.1) — פעימה עדינה בזמן האזנה ── */
+.demo-voice-live {
+  animation: demoVoicePulse 1.6s ease-in-out infinite;
+}
+@keyframes demoVoicePulse {
+  0%, 100% { box-shadow: 0 12px 26px rgba(224, 47, 68, 0.3), 0 0 0 0 rgba(224, 47, 68, 0.35); }
+  50% { box-shadow: 0 12px 26px rgba(224, 47, 68, 0.3), 0 0 0 10px rgba(224, 47, 68, 0); }
+}
+.demo-voice-dots span {
+  background: #e02f44;
+}
+@media (prefers-reduced-motion: reduce) {
+  .demo-voice-live { animation: none; }
+}

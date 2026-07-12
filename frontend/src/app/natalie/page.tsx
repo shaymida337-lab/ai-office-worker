@@ -9,13 +9,18 @@ import {
   FolderOpen,
   ListChecks,
   MailCheck,
+  Mic,
   SendHorizontal,
   ShieldCheck,
   Sparkles,
+  Square,
   X,
 } from "lucide-react";
 import { AppShell } from "@/components/natalie-ui";
 import { useI18n } from "@/i18n";
+import { pushToDataLayer } from "@/lib/analytics/data-layer";
+import { appendTranscript, SPEECH_ERROR_MESSAGES } from "@/lib/speech/speechSupport";
+import { useSpeechToText } from "@/lib/speech/useSpeechToText";
 
 type ChatMessage = {
   id: string;
@@ -157,6 +162,26 @@ export default function NatalieChatPage() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  const voice = useSpeechToText({
+    onFinalTranscript: (text) => {
+      // התמלול נכנס לשדה — המשתמש עורך ושולח בעצמו. אין שליחה אוטומטית.
+      setInput((current) => appendTranscript(current, text));
+      inputRef.current?.focus();
+    },
+    onEvent: (event) => {
+      const gtmEvent =
+        event === "start"
+          ? "demo_voice_start"
+          : event === "success"
+            ? "demo_voice_success"
+            : event === "denied"
+              ? "demo_voice_denied"
+              : "demo_voice_error";
+      // ללא תוכן התמלול וללא מידע אישי — שם אירוע בלבד.
+      pushToDataLayer({ event: gtmEvent });
+    },
+  });
+
   useEffect(() => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
@@ -286,6 +311,9 @@ export default function NatalieChatPage() {
             ))}
           </div>
 
+          <p className="mb-2 text-center text-sm font-bold text-[#6b7686]" id="composer-hint">
+            אפשר להקליד או לדבר עם נטלי
+          </p>
           <form
             onSubmit={onSubmit}
             className="rounded-[24px] border border-[#e6eaf2] bg-white p-2 shadow-[0_18px_50px_rgba(20,40,90,0.11)]"
@@ -298,8 +326,28 @@ export default function NatalieChatPage() {
                 onKeyDown={onComposerKeyDown}
                 placeholder="כתבו לנטלי מה לבדוק או להכין..."
                 aria-label="הודעה לנטלי"
+                aria-describedby="composer-hint"
                 className="min-h-14 flex-1 rounded-[18px] border-0 bg-[#f4f6fb] px-4 py-3 text-[17px] font-medium text-[#0f1830] outline-none ring-1 ring-transparent placeholder:text-[#6b7686] focus:bg-white focus:ring-[#1d5bff]/30"
               />
+              <button
+                type="button"
+                onClick={() => {
+                  if (voice.listening) voice.stop();
+                  else voice.start();
+                }}
+                aria-label={voice.listening ? "עצירת הקלטה" : "דברו עם נטלי"}
+                title={voice.listening ? "עצירת הקלטה" : "דברו עם נטלי"}
+                aria-pressed={voice.listening}
+                className={`demo-voice-button grid h-14 w-14 shrink-0 place-items-center rounded-[18px] transition focus:outline-none focus:ring-4 focus:ring-[#1d5bff]/20 ${
+                  voice.listening
+                    ? "demo-voice-live bg-[#e02f44] text-white shadow-[0_12px_26px_rgba(224,47,68,0.3)] hover:bg-[#c22439]"
+                    : voice.supported
+                      ? "border border-[#d7def0] bg-white text-[#1d5bff] hover:bg-[#eaf0ff]"
+                      : "border border-[#e6eaf2] bg-[#f4f6fb] text-[#8a94a6]"
+                }`}
+              >
+                {voice.listening ? <Square className="h-5 w-5" aria-hidden /> : <Mic className="h-5 w-5" aria-hidden />}
+              </button>
               <button
                 type="submit"
                 disabled={!input.trim() || typing}
@@ -310,8 +358,31 @@ export default function NatalieChatPage() {
               </button>
             </div>
           </form>
+          <div aria-live="polite">
+            {voice.listening ? (
+              <p className="mt-2 flex items-center justify-center gap-2 text-center text-sm font-bold text-[#e02f44]">
+                <span className="natalie-typing-dots demo-voice-dots" aria-hidden>
+                  <span />
+                  <span />
+                  <span />
+                </span>
+                נטלי מקשיבה...
+                {voice.interim ? <span className="font-medium text-[#6b7686]">"{voice.interim}"</span> : null}
+              </p>
+            ) : null}
+            {voice.error ? (
+              <p className="mt-2 text-center text-sm font-bold text-[#b3552b]" role="alert">
+                {SPEECH_ERROR_MESSAGES[voice.error]}
+              </p>
+            ) : null}
+          </div>
           <p className="mt-2 text-center text-sm font-semibold text-[#6b7686]">
             נטלי מבקשת אישור לפני כל פעולה רגישה · אתה תמיד בשליטה
+            {voice.supported ? (
+              <span className="block text-xs font-medium text-[#8a94a6]">
+                התמלול מתבצע על ידי הדפדפן שלכם — נטלי לא מקבלת ולא שומרת את ההקלטה.
+              </span>
+            ) : null}
           </p>
         </footer>
       </AppShell>
