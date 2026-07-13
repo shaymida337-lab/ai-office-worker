@@ -78,6 +78,7 @@ model Organization {
   customerInvoices            CustomerInvoice[]
   socialDrafts                SocialDraft[]
   clients                     Client[]
+  clientNotes                 ClientNote[]
   invoices                    Invoice[]
   accountantReports           AccountantReport[]
   whatsAppAssistant           WhatsAppAssistant?
@@ -282,10 +283,24 @@ model Client {
   deals            Deal[]
   workCases        WorkCase[]
   calendarEvents   CalendarEvent[]
+  clientNotes      ClientNote[]
 
   @@index([organizationId, isActive])
   @@index([organizationId, whatsappNumber])
   @@index([organizationId, domain])
+}
+
+/// כרטיס לקוח — הערות חופשיות ללקוח (בסיס; לא Timeline מלא).
+model ClientNote {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String
+  client         Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  body           String
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, clientId, createdAt])
 }
 
 model Integration {

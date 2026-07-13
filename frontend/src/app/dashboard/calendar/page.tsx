@@ -518,6 +518,25 @@ export default function CalendarPage() {
     setHighlightDecisionId(params.get("decisionId"));
   }, []);
 
+  // "קבע תור" מכרטיס הלקוח: ?client=<id> פותח את טופס התור הקיים עם
+  // הלקוח כבר נבחר. לא נוגע בלוגיקת היומן — רק prefill של הטופס.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const clientParam = params.get("client");
+    if (!clientParam) return;
+    setEditingId(null);
+    setFormClientId(clientParam);
+    setFormServiceId("");
+    setFormEmployeeId("");
+    setFormDate(dateInputValueInTimeZone(new Date(), orgTimezone));
+    setFormTime("");
+    setFormNotes("");
+    setFormStatus("pending");
+    setShowForm(true);
+    window.history.replaceState({}, "", window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgTimezone]);
+
   function resetForm() {
     setShowForm(false);
     setEditingId(null);

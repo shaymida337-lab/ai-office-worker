@@ -574,6 +574,52 @@ clientsRouter.get("/:clientId/invoices", authMiddleware, checkClientOwnership, a
   res.json({ invoices });
 });
 
+// ===== כרטיס לקוח — בסיס: תור הבא והערות (clientId + organizationId תמיד) =====
+
+clientsRouter.get("/:clientId/next-appointment", authMiddleware, checkClientOwnership, async (req, res) => {
+  try {
+    const { findNextAppointmentForClient } = await import("../services/clients/clientCard.js");
+    const appointment = await findNextAppointmentForClient({
+      organizationId: req.auth!.organizationId,
+      clientId: res.locals.client.id,
+    });
+    res.json({ appointment });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load next appointment" });
+  }
+});
+
+clientsRouter.get("/:clientId/notes", authMiddleware, checkClientOwnership, async (req, res) => {
+  try {
+    const { listClientNotes } = await import("../services/clients/clientCard.js");
+    const notes = await listClientNotes({
+      organizationId: req.auth!.organizationId,
+      clientId: res.locals.client.id,
+    });
+    res.json({ notes });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load notes" });
+  }
+});
+
+clientsRouter.post("/:clientId/notes", authMiddleware, checkClientOwnership, async (req, res) => {
+  try {
+    const { addClientNote } = await import("../services/clients/clientCard.js");
+    const result = await addClientNote({
+      organizationId: req.auth!.organizationId,
+      clientId: res.locals.client.id,
+      body: (req.body as { body?: unknown })?.body,
+    });
+    if (!result.ok) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+    res.status(201).json({ note: result.note });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to add note" });
+  }
+});
+
 clientsRouter.get("/:clientId", authMiddleware, checkClientOwnership, async (req, res) => {
   const organizationId = req.auth!.organizationId;
   const client = res.locals.client;

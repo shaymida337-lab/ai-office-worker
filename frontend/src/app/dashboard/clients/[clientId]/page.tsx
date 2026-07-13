@@ -1,9 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
+import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
+import {
+  clientInitials,
+  displayPhone,
+  formatNextAppointment,
+  telHref,
+  whatsappHref,
+} from "@/lib/clients/clientCard";
 import {
   buildClientUpdatePayload,
   clientToFormValues,
@@ -62,6 +70,21 @@ type InvoiceItem = {
   driveUrl: string | null;
 };
 
+type NextAppointmentDto = {
+  id: string;
+  startTime: string;
+  durationMinutes: number;
+  status: string;
+  serviceName: string | null;
+  employeeName: string | null;
+};
+
+type ClientNoteDto = {
+  id: string;
+  body: string;
+  createdAt: string;
+};
+
 type ClientDetail = {
   client: {
     id: string;
@@ -69,6 +92,7 @@ type ClientDetail = {
     email: string | null;
     whatsappNumber: string | null;
     color: string | null;
+    isActive?: boolean;
     gmailConnected: boolean;
     invoiceSheetUrl: string | null;
     taskSheetUrl: string | null;
@@ -115,8 +139,17 @@ const invoiceStatusLabels: Record<InvoiceItem["status"], string> = {
 
 export default function ClientDetailPage() {
   const params = useParams<{ clientId: string }>();
+  const router = useRouter();
+  const orgTimezone = useOrganizationTimezone();
   const clientId = params.clientId;
   const [data, setData] = useState<ClientDetail | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [nextAppointment, setNextAppointment] = useState<NextAppointmentDto | null>(null);
+  const [nextAppointmentLoaded, setNextAppointmentLoaded] = useState(false);
+  const [notes, setNotes] = useState<ClientNoteDto[]>([]);
+  const [showNoteForm, setShowNoteForm] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [health, setHealth] = useState<HealthScore | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -140,6 +173,17 @@ export default function ClientDetailPage() {
     const taskResult = await apiFetch<{ tasks: TaskItem[] }>(`/api/clients/${clientId}/tasks`);
     const whatsappResult = await apiFetch<{ messages: WhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp`);
     const invoiceResult = await apiFetch<{ invoices: InvoiceItem[] }>(`/api/clients/${clientId}/invoices`);
+    // בסיס כרטיס הלקוח: התור הבא (מהיומן האמיתי) והערות — כשל בהם לא מפיל את העמוד
+    const [nextAppt, noteResult] = await Promise.all([
+      apiFetch<{ appointment: NextAppointmentDto | null }>(`/api/clients/${clientId}/next-appointment`).catch(
+        () => ({ appointment: null })
+      ),
+      apiFetch<{ notes: ClientNoteDto[] }>(`/api/clients/${clientId}/notes`).catch(() => ({ notes: [] })),
+    ]);
+    setNextAppointment(nextAppt.appointment);
+    setNextAppointmentLoaded(true);
+    setNotes(noteResult.notes);
+    setLoadError("");
     setData(next);
     setTasks(taskResult.tasks);
     setWhatsappMessages(whatsappResult.messages);
@@ -149,7 +193,7 @@ export default function ClientDetailPage() {
   }
 
   useEffect(() => {
-    load().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת לקוח נכשלה"));
+    load().catch((err) => setLoadError(err instanceof Error ? err.message : "טעינת הלקוח נכשלה — נסה לרענן"));
     const cached = suggestionCache.get(clientId);
     if (cached) setSuggestions(cached);
     const interval = window.setInterval(() => {
@@ -303,6 +347,31 @@ export default function ClientDetailPage() {
     setHealth(next);
   }
 
+  async function saveNote(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!noteText.trim()) {
+      setMessage("הערה ריקה — יש לכתוב תוכן");
+      return;
+    }
+    setSavingNote(true);
+    setMessage("");
+    try {
+      await apiFetch(`/api/clients/${clientId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ body: noteText.trim() }),
+      });
+      setNoteText("");
+      setShowNoteForm(false);
+      const noteResult = await apiFetch<{ notes: ClientNoteDto[] }>(`/api/clients/${clientId}/notes`);
+      setNotes(noteResult.notes);
+      setMessage("ההערה נשמרה");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "שמירת ההערה נכשלה");
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
   async function saveClientProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!clientForm) return;
@@ -354,27 +423,136 @@ export default function ClientDetailPage() {
 
   if (!data) {
     return (
-      <div className="container">
+      <div className="container" dir="rtl">
         <Nav />
-        <p>{message || "טוען לקוח..."}</p>
+        {loadError ? (
+          <div className="rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-red-200" data-testid="client-card-error">
+            {loadError}
+          </div>
+        ) : (
+          <p data-testid="client-card-loading">טוען את כרטיס הלקוח...</p>
+        )}
       </div>
     );
   }
 
+  const phoneLink = telHref(data.client.whatsappNumber);
+  const waLink = whatsappHref(data.client.whatsappNumber);
+  const nextView = nextAppointment ? formatNextAppointment(nextAppointment, orgTimezone) : null;
+
   return (
-    <div className="container">
+    <div className="container" dir="rtl">
       <Nav />
-      <div className="mb-8 flex items-start gap-4">
-        <span className="grid h-16 w-16 place-items-center rounded-2xl bg-[linear-gradient(135deg,#6366F1,#8B5CF6)] text-lg font-bold text-white">{data.client.name.slice(0, 2)}</span>
-        <div className="min-w-0">
-          <div className="page-kicker">מרכז לקוח</div>
-          <h1 className="break-words">{data.client.name}</h1>
-          <p><strong className="text-emerald-300">● פעיל</strong> · עודכן לאחרונה: {lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}</p>
-          <p className="break-words">ג׳ימייל: {formatClientEmailDisplay(data.client.email)} · וואטסאפ: {data.client.whatsappNumber || "לא מוגדר"}</p>
-          <button className="btn btn-secondary mt-3" type="button" onClick={startClientEdit}>
-            ערוך פרטי לקוח
+      <div className="card mb-6" data-testid="client-card-header">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          <span
+            className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl text-lg font-bold text-white"
+            style={{ backgroundColor: data.client.color || "#6366F1" }}
+            data-testid="client-initials"
+          >
+            {clientInitials(data.client.name)}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="page-kicker">כרטיס לקוח</div>
+            <h1 className="break-words" data-testid="client-name">{data.client.name}</h1>
+            <p>
+              <strong className={data.client.isActive === false ? "text-red-300" : "text-emerald-300"}>
+                ● {data.client.isActive === false ? "לא פעיל" : "פעיל"}
+              </strong>
+              {" · עודכן: "}
+              {lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}
+            </p>
+            <p className="break-words" data-testid="client-contact">
+              טלפון:{" "}
+              {phoneLink ? (
+                <a href={phoneLink} dir="ltr" className="font-bold underline">
+                  {displayPhone(data.client.whatsappNumber)}
+                </a>
+              ) : (
+                "לא הוזן"
+              )}
+              {" · אימייל: "}
+              {formatClientEmailDisplay(data.client.email) === "לא מוגדר" ? "לא הוזן" : formatClientEmailDisplay(data.client.email)}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap" data-testid="client-actions">
+          {phoneLink ? (
+            <a className="btn" href={phoneLink} data-testid="action-call">📞 חיוג</a>
+          ) : (
+            <button className="btn" type="button" disabled title="אין מספר טלפון">📞 חיוג</button>
+          )}
+          {waLink ? (
+            <a className="btn" href={waLink} target="_blank" rel="noreferrer" data-testid="action-whatsapp">
+              💬 WhatsApp
+            </a>
+          ) : (
+            <button className="btn" type="button" disabled title="אין מספר טלפון">💬 WhatsApp</button>
+          )}
+          <button
+            className="btn"
+            type="button"
+            data-testid="action-book"
+            onClick={() => router.push(`/dashboard/calendar?client=${encodeURIComponent(data.client.id)}`)}
+          >
+            📅 קבע תור
+          </button>
+          <button className="btn btn-secondary" type="button" data-testid="action-edit" onClick={startClientEdit}>
+            ✏️ ערוך לקוח
+          </button>
+          <button
+            className="btn btn-secondary"
+            type="button"
+            data-testid="action-add-note"
+            onClick={() => setShowNoteForm((value) => !value)}
+          >
+            📝 הוסף הערה
           </button>
         </div>
+
+        {showNoteForm && (
+          <form onSubmit={saveNote} className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]" data-testid="note-form">
+            <input
+              placeholder="למשל: מעדיפה תורים בבוקר"
+              value={noteText}
+              onChange={(event) => setNoteText(event.target.value)}
+              maxLength={2000}
+            />
+            <button className="btn" type="submit" disabled={savingNote}>
+              {savingNote ? "שומר..." : "שמור הערה"}
+            </button>
+          </form>
+        )}
+
+        <div className="mt-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4" data-testid="next-appointment">
+          <h2 className="text-base">התור הבא</h2>
+          {!nextAppointmentLoaded ? (
+            <p>טוען את התור הבא...</p>
+          ) : nextView ? (
+            <p data-testid="next-appointment-details">
+              <strong>{nextView.dateLabel}</strong> בשעה <strong dir="ltr">{nextView.timeLabel}</strong>
+              {" · שירות: "}
+              {nextView.serviceLabel}
+              {" · אצל: "}
+              {nextView.employeeLabel}
+            </p>
+          ) : (
+            <p data-testid="next-appointment-empty">אין תור עתידי. אפשר לקבוע תור חדש בלחיצה על "קבע תור".</p>
+          )}
+        </div>
+
+        {notes.length > 0 && (
+          <div className="mt-4" data-testid="client-notes">
+            <h2 className="text-base">הערות אחרונות</h2>
+            {notes.slice(0, 5).map((note) => (
+              <p key={note.id} className="border-t border-[var(--border-subtle)] py-2">
+                {note.body}
+                <small className="block text-ink-muted">{new Date(note.createdAt).toLocaleDateString("he-IL")}</small>
+              </p>
+            ))}
+          </div>
+        )}
       </div>
       {message && <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200">{message}</div>}
 

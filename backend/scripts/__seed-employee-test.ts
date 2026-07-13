@@ -5,9 +5,9 @@ import { signToken } from "../src/lib/auth.js";
 async function main() {
   const prisma = new PrismaClient();
   const user = await prisma.user.upsert({
-    where: { email: "owner@test.local" },
+    where: { email: process.env.SEED_EMAIL ?? "owner@test.local" },
     update: {},
-    create: { email: "owner@test.local", name: "Owner" },
+    create: { email: process.env.SEED_EMAIL ?? "owner@test.local", name: "Owner" },
   });
   const org = await prisma.organization.upsert({
     where: { userId: user.id },
