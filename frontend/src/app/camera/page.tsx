@@ -39,14 +39,14 @@ export default function CameraPage() {
     setMessage("");
     setError("");
     if (!nextFile) return;
-    setFileBase64(await toBase64(nextFile));
+    const base64 = await toBase64(nextFile);
+    setFileBase64(base64);
+    // העלאה מיידית: הקובץ נשלח לשרת ונשמר כ-draft ברגע הבחירה —
+    // לא מחכים ללחיצה, כדי שהמסמך לעולם לא יישאר רק בזיכרון הדפדפן.
+    await uploadAndPreview(nextFile, base64);
   }
 
-  async function buildPreview() {
-    if (!file || !fileBase64) {
-      setError("בחר קובץ חשבונית לפני הסריקה.");
-      return;
-    }
+  async function uploadAndPreview(nextFile: File, base64: string) {
     setPreviewing(true);
     setError("");
     setMessage("");
@@ -54,17 +54,25 @@ export default function CameraPage() {
       const result = await apiFetch<InvoicePreview>("/api/camera/invoices/preview", {
         method: "POST",
         body: JSON.stringify({
-          filename: file.name,
-          mimeType: file.type,
-          fileBase64,
+          filename: nextFile.name,
+          mimeType: nextFile.type,
+          fileBase64: base64,
         }),
       });
       setPreview(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "סריקת החשבונית נכשלה");
+      setError(e instanceof Error ? e.message : "העלאת החשבונית נכשלה — נסה שוב");
     } finally {
       setPreviewing(false);
     }
+  }
+
+  async function buildPreview() {
+    if (!file || !fileBase64) {
+      setError("בחר קובץ חשבונית לפני הסריקה.");
+      return;
+    }
+    await uploadAndPreview(file, fileBase64);
   }
 
   async function saveInvoice() {

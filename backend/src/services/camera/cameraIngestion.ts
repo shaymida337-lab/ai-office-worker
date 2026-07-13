@@ -77,7 +77,7 @@ export function cameraDraftFingerprints(organizationId: string, fileSha256: stri
 
 function draftUncertaintyReason(preview: CameraExtractionPreview | null, extractionError: string | null): string {
   if (extractionError) {
-    return `סריקת המסמך נכשלה — השלם את הפרטים ידנית (${extractionError.slice(0, 120)})`;
+    return "לא ניתן היה לזהות את כל הפרטים — יש להשלים ידנית";
   }
   if (!preview) return "בעיבוד — סריקת המסמך החלה";
   const missing: string[] = [];

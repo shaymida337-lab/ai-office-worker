@@ -84,9 +84,38 @@ test("OCR/extraction error still leaves a persisted record with a clear reason",
   assert.ok(calls.some((c) => c.op === "upsert"), "draft exists even when OCR throws");
   assert.equal(result.reviewId, "draft-1");
   assert.equal(result.extractionError, "model timeout");
-  assert.match(result.uncertaintyReason, /נכשלה/);
+  assert.equal(result.uncertaintyReason, "לא ניתן היה לזהות את כל הפרטים — יש להשלים ידנית");
   const update = calls.find((c) => c.op === "update");
-  assert.match(update!.args.data.uncertaintyReason, /נכשלה/);
+  assert.equal(update!.args.data.uncertaintyReason, "לא ניתן היה לזהות את כל הפרטים — יש להשלים ידנית");
+});
+
+test("end-to-end shape: upload with amount=null returns success payload with reviewId and a persisted needs_review record", async () => {
+  // מדמה את מסלול ה-endpoint המלא: קלט ה-upload כפי שמגיע מהדפדפן,
+  // והפלט כפי שה-route מחזיר ללקוח (reviewId = הוכחת persist).
+  const calls: MockCall[] = [];
+  const result = await ingestCameraDocument(
+    { organizationId: "org-e2e", filename: "מסמך-בלי-סכום.pdf", mimeType: "application/pdf", fileBase64: FILE_BASE64 },
+    {
+      prismaClient: buildMockDb(calls),
+      saveLocalFile: noopSaveLocal,
+      analyzeFile: async () => ({ supplier: "ספק כלשהו", amount: null, date: null, invoiceNumber: null, currency: "ILS" }),
+    }
+  );
+
+  // success + reviewId — מה שה-route מחזיר כ-200
+  assert.ok(result.reviewId, "response must include reviewId");
+  assert.equal(result.extractionError, null);
+
+  // הרשומה שנוצרה: needs_review, source=camera, עם הקובץ וה-MIME
+  const upsert = calls.find((c) => c.op === "upsert")!;
+  assert.equal(upsert.args.create.reviewStatus, "needs_review");
+  assert.equal(upsert.args.create.source, "camera");
+  assert.equal(upsert.args.create.fileName, "מסמך-בלי-סכום.pdf");
+  assert.equal(upsert.args.create.parsedFieldsJson.camera.mimeType, "application/pdf");
+  assert.equal(upsert.args.create.parsedFieldsJson.camera.processingStatus, "processing");
+
+  // עומדת בקריטריוני מסך "השלמת חשבוניות" (documentType נתמך + needs_review)
+  assert.equal(upsert.args.create.documentType, "tax_invoice");
 });
 
 test("success updates the SAME record — same fingerprint on every ingest of the same file", async () => {
