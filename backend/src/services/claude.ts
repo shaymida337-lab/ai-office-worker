@@ -158,6 +158,9 @@ export type NatalieClaudeResponse =
         durationMinutes?: number;
         serviceName?: string;
         notes?: string;
+        /** Calendar Phase 1: תור לעובד ספציפי (מ"אצל X"/"עם X") */
+        employeeId?: string;
+        employeeName?: string;
       };
       answer: string;
     }

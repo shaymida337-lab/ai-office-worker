@@ -2525,6 +2525,11 @@ function NatalieAssistantWidgetInner() {
                         <div className="text-xs font-bold text-[#6b7686]">
                           מתי: {formatAppointmentWhenLabel(message.proposal)}
                         </div>
+                        {message.proposal.employeeName?.trim() && (
+                          <div className="text-xs font-bold text-[#6b7686]" data-testid="confirm-employee-name">
+                            עובד: {formatIssueInvoiceText(message.proposal.employeeName)}
+                          </div>
+                        )}
                         {message.proposal.serviceName?.trim() && (
                           <div className="text-xs font-bold text-[#6b7686]">
                             שירות: {formatIssueInvoiceText(message.proposal.serviceName)}

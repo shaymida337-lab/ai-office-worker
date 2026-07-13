@@ -212,6 +212,66 @@ function looksLikeStopword(name: string): boolean {
 }
 
 /** Extract a customer name after עם / ל / של, cutting at date/time markers. */
+/**
+ * Calendar Phase 1 — אזכור עובד בבקשת קביעת תור: "אצל יוסי", "עם דנה".
+ * טהור (בלי DB): מחזיר את שם המועמד, את סוג הסמן ואת הטקסט בלי האזכור,
+ * כדי ששם הלקוח ייחלץ נקי ("תקבעי לרות אצל יוסי..." → לקוח: רות).
+ * ההכרעה אם השם הוא באמת עובד פעיל נעשית בשכבת נטלי מול ה-DB —
+ * "עם רונן" נשאר לקוח רגיל כשאין עובד פעיל בשם הזה.
+ */
+export type EmployeeMention = {
+  name: string;
+  marker: "etzel" | "im";
+  textWithoutMention: string;
+};
+
+function cleanEmployeeNameCandidate(raw: string): string | null {
+  let boundary = raw.search(DATE_TIME_BOUNDARY);
+  const targetTimeBoundary = raw.search(
+    /\s+ל(?=שלוש|שלושה|ארבע|ארבעה|חמש|חמישה|שש|שישה|שבע|שבעה|שמונה|תשע|תשעה|עשר|עשרה|אחת|שתיים|שתים|שניים|-?\s?\d|שעה)/u
+  );
+  if (targetTimeBoundary >= 0 && (boundary < 0 || targetTimeBoundary < boundary)) {
+    boundary = targetTimeBoundary;
+  }
+  let candidate = (boundary >= 0 ? raw.slice(0, boundary) : raw).trim();
+  candidate = candidate.replace(/[.?!,:;\-–—]+$/u, "").trim();
+  if (!candidate || candidate.length < 2) return null;
+  if (looksLikeStopword(candidate)) return null;
+  return candidate;
+}
+
+export function extractEmployeeMention(text: string): EmployeeMention | null {
+  const normalized = normalize(text);
+
+  const atMatch = normalized.match(/(?:^|\s)(אצל\s+(?!עצמי(?:\s|$))([^\s].*))$/u);
+  if (atMatch) {
+    const candidate = cleanEmployeeNameCandidate(atMatch[2]!);
+    if (candidate) {
+      const clause = `אצל ${candidate}`;
+      return {
+        name: candidate,
+        marker: "etzel",
+        textWithoutMention: normalize(normalized.replace(clause, " ")),
+      };
+    }
+  }
+
+  const withMatch = normalized.match(/(?:^|\s)(עם\s+(?!עצמי(?:\s|$))([^\s].*))$/u);
+  if (withMatch) {
+    const candidate = cleanEmployeeNameCandidate(withMatch[2]!);
+    if (candidate) {
+      const clause = `עם ${candidate}`;
+      return {
+        name: candidate,
+        marker: "im",
+        textWithoutMention: normalize(normalized.replace(clause, " ")),
+      };
+    }
+  }
+
+  return null;
+}
+
 export function extractCustomerName(text: string): string | null {
   const normalized = normalize(text);
   // "פגישה עם רונן", "תור עם רונן", "עם רונן" — highest priority, most natural.

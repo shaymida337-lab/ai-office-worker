@@ -28,8 +28,10 @@ import {
   parseHebrewTime,
   validateExtraction,
   extractDayReference as extractCalendarDayReference,
+  extractEmployeeMention,
   type CalendarIntentExtraction,
 } from "./calendar/calendarIntentParser.js";
+import { matchEmployeesByName, type NamedEmployee } from "./employees/employeeNameMatch.js";
 import {
   calendarReadQueryFromIntent,
   filterAppointmentsForReadRange,
@@ -55,6 +57,8 @@ import { isBestAvailablePhrase, parseSlotTimeConstraints } from "./calendar/slot
 export type AskNatalieDeps = {
   askClaude?: typeof answerBusinessQuestionWithClaude;
   loadTimezone?: (organizationId: string) => Promise<string>;
+  /** Calendar Phase 1: העובדים הפעילים של הארגון לצורך "אצל X"/"עם X". */
+  loadActiveEmployees?: (organizationId: string) => Promise<NamedEmployee[]>;
   now?: Date;
 };
 
@@ -340,6 +344,69 @@ export async function tryBuildBestAvailableCreateAppointment(
   return { kind: "ready", response };
 }
 
+/**
+ * Calendar Phase 1 — הכרעת אזכור עובד בבקשת קביעה. טהור (רשימת עובדים בקלט):
+ * - "אצל X": חייב להתאים לעובד פעיל — התאמה אחת מצמידה employeeId; אפס
+ *   מתאימים → שואלים אצל איזה עובד; כמה → מבקשים הבהרה. ארגון בלי עובדים
+ *   פעילים שומר על ההתנהגות הישנה ("אצל" כלקוח).
+ * - "עם X": עובד רק אם X הוא עובד פעיל; אחרת נשאר לקוח ("פגישה עם רונן").
+ */
+export type EmployeeMentionResolution =
+  | { kind: "none" }
+  | { kind: "matched"; employee: NamedEmployee; effectiveQuestion: string }
+  | { kind: "clarify"; answer: string };
+
+export function resolveEmployeeMentionForBooking(params: {
+  question: string;
+  activeEmployees: NamedEmployee[];
+}): EmployeeMentionResolution {
+  const mention = extractEmployeeMention(params.question);
+  if (!mention) return { kind: "none" };
+  if (params.activeEmployees.length === 0) return { kind: "none" };
+
+  const matches = matchEmployeesByName(params.activeEmployees, mention.name);
+  if (matches.length === 1) {
+    return { kind: "matched", employee: matches[0]!, effectiveQuestion: mention.textWithoutMention };
+  }
+  if (matches.length > 1) {
+    return {
+      kind: "clarify",
+      answer: `יש כמה עובדים שמתאימים ל"${mention.name}": ${matches
+        .map((employee) => employee.name)
+        .join(", ")}. אצל איזה עובד לקבוע את התור?`,
+    };
+  }
+  if (mention.marker === "etzel") {
+    return {
+      kind: "clarify",
+      answer: `לא מצאתי עובד פעיל בשם "${mention.name}". אצל איזה עובד לקבוע? העובדים הפעילים: ${params.activeEmployees
+        .map((employee) => employee.name)
+        .join(", ")}.`,
+    };
+  }
+  // "עם X" בלי עובד תואם — X הוא לקוח, כמו תמיד
+  return { kind: "none" };
+}
+
+async function loadActiveEmployeesForOrganization(organizationId: string): Promise<NamedEmployee[]> {
+  return prisma.employee.findMany({
+    where: { organizationId, isActive: true },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+function attachEmployeeToBookingResponse(
+  response: NatalieClaudeResponse | null,
+  employee: NamedEmployee
+): NatalieClaudeResponse | null {
+  if (!response || !("action" in response) || response.action !== "book_appointment") return response;
+  response.proposal.employeeId = employee.id;
+  response.proposal.employeeName = employee.name;
+  response.answer = response.answer.replace(".\nלאשר?", ` אצל ${employee.name}.\nלאשר?`);
+  return response;
+}
+
 async function maybeBuildCreateAppointmentProposal(
   organizationId: string,
   question: string,
@@ -349,17 +416,36 @@ async function maybeBuildCreateAppointmentProposal(
   const preview = parseCalendarIntent(question, { now: deps?.now });
   if (preview.intent !== "create_appointment") return null;
 
-  if (isBestAvailablePhrase(question)) {
-    const bestAvailable = await tryBuildBestAvailableCreateAppointment(organizationId, question, deps);
-    if (bestAvailable.kind === "ready") return bestAvailable.response;
+  // Calendar Phase 1: "אצל יוסי" / "עם דנה" — הכרעת עובד לפני חילוץ הלקוח,
+  // כך ש"תקבעי לרות אצל יוסי" מזהה את רות כלקוחה ואת יוסי כעובד.
+  // ה-DB נטען רק כשיש אזכור בטקסט — בקשות בלי עובד לא נוגעות בו בכלל.
+  const hasEmployeeMention = extractEmployeeMention(question) !== null;
+  const loadActiveEmployees = deps?.loadActiveEmployees ?? loadActiveEmployeesForOrganization;
+  const activeEmployees = hasEmployeeMention ? await loadActiveEmployees(organizationId) : [];
+  const employeeResolution = resolveEmployeeMentionForBooking({ question, activeEmployees });
+  if (employeeResolution.kind === "clarify") {
+    return { answer: employeeResolution.answer };
+  }
+  const matchedEmployee = employeeResolution.kind === "matched" ? employeeResolution.employee : null;
+  const effectiveQuestion =
+    employeeResolution.kind === "matched" ? employeeResolution.effectiveQuestion : question;
+
+  if (isBestAvailablePhrase(effectiveQuestion)) {
+    const bestAvailable = await tryBuildBestAvailableCreateAppointment(organizationId, effectiveQuestion, deps);
+    if (bestAvailable.kind === "ready") {
+      return matchedEmployee
+        ? attachEmployeeToBookingResponse(bestAvailable.response, matchedEmployee)
+        : bestAvailable.response;
+    }
     if (bestAvailable.kind === "empty") return { answer: bestAvailable.answer };
   }
 
   const loadTimezone = deps?.loadTimezone ?? loadOrganizationTimezone;
   const timeZone = await loadTimezone(organizationId);
-  const extraction = parseCalendarIntent(question, { timeZone, now: deps?.now });
+  const extraction = parseCalendarIntent(effectiveQuestion, { timeZone, now: deps?.now });
   if (shouldDeferCalendarClarificationToSession(extraction)) return null;
-  return buildCreateAppointmentResponse(extraction);
+  const response = buildCreateAppointmentResponse(extraction);
+  return matchedEmployee ? attachEmployeeToBookingResponse(response, matchedEmployee) : response;
 }
 
 async function maybeBuildShowInvoiceResponse(organizationId: string, question: string): Promise<NatalieClaudeResponse | null> {
