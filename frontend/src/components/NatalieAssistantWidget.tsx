@@ -184,6 +184,9 @@ type BookAppointmentProposal = {
   durationMinutes?: number;
   serviceName?: string;
   notes?: string;
+  /** Calendar Phase 1: תור לעובד ספציפי — נשלח כמו-שהוא ל-create-appointment */
+  employeeId?: string;
+  employeeName?: string;
 };
 
 type AvailabilitySlot = {
@@ -2109,6 +2112,12 @@ function NatalieAssistantWidgetInner() {
         )
       );
       window.dispatchEvent(new Event("appointments-changed"));
+      if (!payload.pendingApproval) {
+        // הצלחה מיידית: סוגרים את חלון נטלי כדי שהיומן (שכבר התרענן
+        // מהאירוע) ייראה מיד עם התור החדש. באישור-בהמתנה החלון נשאר
+        // פתוח כי המשוב שם הוא חלק מהזרימה.
+        window.setTimeout(() => setOpen(false), 600);
+      }
     } catch (err) {
       console.error("[natalie] book_appointment failed", err);
       setMessages((current) =>

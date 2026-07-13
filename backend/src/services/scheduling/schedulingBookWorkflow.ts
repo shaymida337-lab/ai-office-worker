@@ -4,6 +4,7 @@ import {
   APPOINTMENT_INCLUDE,
   AppointmentConflictError,
   checkAppointmentConflict,
+  checkEmployeeAppointmentOverlap,
   type AppointmentWithRelations,
 } from "../appointmentService.js";
 import { appointmentEnd } from "../calendar/engine.js";
@@ -64,19 +65,34 @@ export async function createLegacyAppointmentInTransaction(
     organizationId: string;
     clientId: string;
     serviceId?: string | null;
+    /** Calendar Phase 1: תור לעובד; null/חסר = היומן של בעל העסק */
+    employeeId?: string | null;
     startTime: Date;
     durationMinutes: number;
     notes?: string | null;
     source?: string;
   }
 ): Promise<AppointmentWithRelations> {
-  const conflict = await checkAppointmentConflict({
-    organizationId: params.organizationId,
-    startTime: params.startTime,
-    durationMinutes: params.durationMinutes,
-  });
-  if (conflict.hasConflict) {
-    throw new AppointmentConflictError();
+  if (params.employeeId) {
+    // כפילות נבדקת מול היומן של אותו עובד בלבד — בתוך נעילת התזמון
+    const hasOverlap = await checkEmployeeAppointmentOverlap(tx, {
+      organizationId: params.organizationId,
+      employeeId: params.employeeId,
+      startTime: params.startTime,
+      durationMinutes: params.durationMinutes,
+    });
+    if (hasOverlap) {
+      throw new AppointmentConflictError("לעובד כבר יש תור בשעה הזו");
+    }
+  } else {
+    const conflict = await checkAppointmentConflict({
+      organizationId: params.organizationId,
+      startTime: params.startTime,
+      durationMinutes: params.durationMinutes,
+    });
+    if (conflict.hasConflict) {
+      throw new AppointmentConflictError();
+    }
   }
 
   return tx.appointment.create({
@@ -84,6 +100,7 @@ export async function createLegacyAppointmentInTransaction(
       organizationId: params.organizationId,
       clientId: params.clientId,
       serviceId: params.serviceId ?? null,
+      employeeId: params.employeeId ?? null,
       startTime: params.startTime,
       durationMinutes: params.durationMinutes,
       status: "pending",
@@ -99,6 +116,8 @@ export async function scheduleNatalieAppointmentAtomic(params: {
   userId: string;
   slot: NatalieScheduleSlot;
   customer: NatalieScheduleCustomer;
+  /** Calendar Phase 1: תור לעובד; null/חסר = היומן של בעל העסק */
+  employeeId?: string | null;
   engineEnabled: boolean;
 }): Promise<
   | { engine: false; appointment: AppointmentWithRelations; clientCreated: boolean }
@@ -132,6 +151,7 @@ export async function scheduleNatalieAppointmentAtomic(params: {
         organizationId: params.organizationId,
         clientId: client.id,
         serviceId: params.slot.serviceId,
+        employeeId: params.employeeId ?? null,
         startTime: params.slot.startTime,
         durationMinutes: params.slot.durationMinutes,
         notes: appointmentNotes,

@@ -119,7 +119,7 @@ export async function findUpcomingAppointmentsForClient(params: {
  * Calendar Phase 1: תור עם employeeId נבדק ונשמר מול היומן של אותו עובד
  * בלבד; תור בלי עובד (בעל העסק) ממשיך במסלול הקיים ללא שינוי.
  */
-async function checkEmployeeAppointmentOverlap(
+export async function checkEmployeeAppointmentOverlap(
   tx: Pick<typeof prisma, "appointment">,
   params: {
     organizationId: string;

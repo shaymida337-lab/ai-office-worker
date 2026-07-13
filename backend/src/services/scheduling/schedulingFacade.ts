@@ -26,7 +26,7 @@ import {
 } from "../calendar/calendarEngineRouting.js";
 import type { SubmitConfirmationResult } from "../calendar/calendarEventService.js";
 import { getCalendarRulesForOrganization } from "../calendar/rules.js";
-import { appointmentEnd } from "../calendar/engine.js";
+import { appointmentEnd, isInPast } from "../calendar/engine.js";
 import { recordCalendarAudit } from "../calendar/calendarAudit.js";
 import { scheduleNatalieAppointmentAtomic } from "./schedulingBookWorkflow.js";
 import {
@@ -74,6 +74,8 @@ export type NatalieBookInput = {
   durationMinutes?: number;
   serviceName?: string;
   notes?: string;
+  /** Calendar Phase 1: תור לעובד ספציפי; חסר = היומן של בעל העסק */
+  employeeId?: string;
 };
 
 export type NatalieBookResult =
@@ -292,35 +294,67 @@ export async function bookAppointmentViaNatalie(input: NatalieBookInput): Promis
   }
 
   const engineEnabled = await usesCalendarEngineScheduling(input.organizationId);
-  let availability;
-  if (engineEnabled) {
-    availability = await checkSlotViaCalendarEngine(natalieEngineContext(input.organizationId, input.userId), {
-      organizationId: slot.organizationId,
-      startTime: slot.startTime,
-      durationMinutes: slot.durationMinutes,
-      serviceId: slot.serviceId,
-    });
-  } else {
-    availability = await checkSlotAvailability({
-      organizationId: slot.organizationId,
-      startTime: slot.startTime,
-      durationMinutes: slot.durationMinutes,
-      serviceId: slot.serviceId,
-    });
+  const employeeId = input.employeeId?.trim() || null;
+  if (employeeId && engineEnabled) {
+    // Phase 1: מנוע היומן החדש עדיין לא מכיר עובדים — כמו במסלול ה-API הישיר
+    throw new SchedulingFacadeError("VALIDATION_FAILED", "שיוך עובד לתור עדיין לא נתמך ביומן החדש");
   }
 
-  if (!availability.available) {
-    if (availability.reason === "time_conflict") {
-      throw new AppointmentConflictError();
+  if (employeeId) {
+    // תור לעובד: הבדיקות הן מול היומן של העובד (שעות עבודה, חופשות,
+    // כפילות מול תורים של אותו עובד בלבד) — לא מול יומן בעל העסק.
+    const { validateEmployeeBooking } = await import("../employees/employeeService.js");
+    const employeeCheck = await validateEmployeeBooking({
+      organizationId: input.organizationId,
+      employeeId,
+      serviceId: slot.serviceId,
+      startTime: slot.startTime,
+      durationMinutes: slot.durationMinutes,
+      timeZone: slot.timeZone,
+    });
+    if (!employeeCheck.ok) {
+      if (employeeCheck.code === "time_conflict") {
+        throw new AppointmentConflictError(employeeCheck.message);
+      }
+      throw new SchedulingFacadeError(
+        employeeCheck.code === "outside_working_hours" ? "outside_working_hours" : "VALIDATION_FAILED",
+        employeeCheck.message
+      );
     }
-    throw new SchedulingFacadeError(
-      availability.reason ?? "VALIDATION_FAILED",
-      availability.reason === "past"
-        ? "זמן התור חייב להיות בהווה או בעתיד"
-        : availability.reason === "outside_working_hours"
-          ? "השעה מחוץ לשעות הפעילות"
-          : "לא ניתן לקבוע תור בזמן הזה"
-    );
+    if (isInPast(slot.startTime, new Date())) {
+      throw new SchedulingFacadeError("past", "זמן התור חייב להיות בהווה או בעתיד");
+    }
+  } else {
+    let availability;
+    if (engineEnabled) {
+      availability = await checkSlotViaCalendarEngine(natalieEngineContext(input.organizationId, input.userId), {
+        organizationId: slot.organizationId,
+        startTime: slot.startTime,
+        durationMinutes: slot.durationMinutes,
+        serviceId: slot.serviceId,
+      });
+    } else {
+      availability = await checkSlotAvailability({
+        organizationId: slot.organizationId,
+        startTime: slot.startTime,
+        durationMinutes: slot.durationMinutes,
+        serviceId: slot.serviceId,
+      });
+    }
+
+    if (!availability.available) {
+      if (availability.reason === "time_conflict") {
+        throw new AppointmentConflictError();
+      }
+      throw new SchedulingFacadeError(
+        availability.reason ?? "VALIDATION_FAILED",
+        availability.reason === "past"
+          ? "זמן התור חייב להיות בהווה או בעתיד"
+          : availability.reason === "outside_working_hours"
+            ? "השעה מחוץ לשעות הפעילות"
+            : "לא ניתן לקבוע תור בזמן הזה"
+      );
+    }
   }
 
   let booked;
@@ -343,6 +377,7 @@ export async function bookAppointmentViaNatalie(input: NatalieBookInput): Promis
         notes: slot.notes,
         address: input.address,
       },
+      employeeId,
       engineEnabled,
     });
   } catch (err) {

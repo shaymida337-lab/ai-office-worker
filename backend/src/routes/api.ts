@@ -3020,6 +3020,7 @@ apiRouter.post("/natalie/create-appointment", requireCalendarCreate, async (req,
     durationMinutes?: unknown;
     serviceName?: unknown;
     notes?: unknown;
+    employeeId?: unknown;
   };
   const organizationId = req.auth!.organizationId;
   const userId = req.auth!.userId;
@@ -3062,6 +3063,7 @@ apiRouter.post("/natalie/create-appointment", requireCalendarCreate, async (req,
               : undefined,
           serviceName: typeof body.serviceName === "string" ? body.serviceName : undefined,
           notes: typeof body.notes === "string" ? body.notes : undefined,
+          employeeId: typeof body.employeeId === "string" ? body.employeeId : undefined,
         });
 
         if (!result.engine) {
