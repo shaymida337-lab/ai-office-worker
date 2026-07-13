@@ -101,6 +101,8 @@ export type NormalizedFinancialDocumentType =
 export type FinancialDocumentInput = {
   organizationId: string;
   source: FinancialDocumentSource;
+  /** בעלות שאומתה בשאילתת id+organizationId — מתיר אישור camera תחת containment */
+  verifiedTenantScope?: import("./p0/financialContainment.js").VerifiedTenantScope;
   sender?: string | null;
   subject?: string | null;
   fileName?: string | null;
@@ -446,7 +448,7 @@ export async function buildDuplicateGateInput(input: {
 
 export async function recordFinancialDocumentDecision(input: FinancialDocumentInput) {
   const { assertFinancialIngestionAllowed } = await import("./p0/financialContainment.js");
-  assertFinancialIngestionAllowed(input.organizationId);
+  assertFinancialIngestionAllowed(input.organizationId, input.verifiedTenantScope);
 
   const workflowTrace = createCoreWorkflowTrace({
     subsystem: "review_queue",
@@ -756,6 +758,8 @@ export function buildManualEntrySirSummary(supplierName: string): SirSummaryForS
 export type ManualEntryFinancialDocumentInput = {
   organizationId: string;
   source: FinancialDocumentSource;
+  /** בעלות שאומתה בשאילתת id+organizationId — מתיר אישור camera תחת containment */
+  verifiedTenantScope?: import("./p0/financialContainment.js").VerifiedTenantScope;
   subject?: string | null;
   fileName?: string | null;
   fileSize?: number | null;
@@ -874,6 +878,7 @@ export async function recordManualEntryFinancialDocument(input: ManualEntryFinan
   const baseDecisionInput: FinancialDocumentInput = {
     organizationId: input.organizationId,
     source: input.source,
+    verifiedTenantScope: input.verifiedTenantScope,
     sender: null,
     subject: input.subject,
     fileName: input.fileName,

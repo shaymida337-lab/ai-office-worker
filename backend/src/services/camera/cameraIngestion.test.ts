@@ -246,3 +246,130 @@ test("date gate: 2024-06-16 on 2026-07-13 does not reject — requires explicit 
   const future = resolveCameraDateGate({ invoiceDate: new Date("2029-01-01"), nowMs: now });
   assert.equal(future.action, "confirm_required");
 });
+
+test("tenant-safe confirm: full path under ACTIVE ingestion containment (org A ok, org B 403, guard stays up)", async () => {
+  const prevFlag = process.env.FINANCIAL_INGESTION_CONTAINMENT;
+  process.env.FINANCIAL_INGESTION_CONTAINMENT = "on";
+  try {
+    const { confirmCameraDocument } = await import("./cameraIngestion.js");
+    const { assertFinancialIngestionAllowed } = await import("../p0/financialContainment.js");
+
+    // הוכחה שה-guard פעיל גלובלית: קריאה רגילה (בלי scope מאומת) נחסמת
+    assert.throws(
+      () => assertFinancialIngestionAllowed("org-a"),
+      /temporarily blocked/,
+      "global ingestion guard must stay active"
+    );
+    // scope מזויף עם ארגון לא תואם — עדיין נחסם (אין bypass כללי)
+    assert.throws(() =>
+      assertFinancialIngestionAllowed("org-b", {
+        tenantScopeVerified: true,
+        organizationId: "org-a",
+        source: "camera",
+        reviewId: "r1",
+      })
+    );
+
+    // (א) preview יוצר draft בארגון A — כתיבת draft ישירה, לא דרך שרשרת ה-ingestion
+    const ingestCalls: MockCall[] = [];
+    const ingest = await ingestCameraDocument(
+      { ...baseInput, organizationId: "org-a" },
+      {
+        prismaClient: buildMockDb(ingestCalls),
+        saveLocalFile: noopSaveLocal,
+        analyzeFile: async () => ({ supplier: "בזק", amount: 250, date: "2026-07-01", invoiceNumber: "77", currency: "ILS" }),
+      }
+    );
+    assert.ok(ingest.reviewId);
+
+    // DB מדומה עם מצב אמיתי של הרשומה
+    const payments: string[] = [];
+    const draftRow: Record<string, unknown> = {
+      id: "draft-1",
+      organizationId: "org-a",
+      source: "camera",
+      subject: "העלאה ישירה",
+      fileName: "invoice-photo.jpg",
+      fileSize: 25,
+      reviewStatus: "needs_review",
+      supplierPaymentId: null,
+      invoiceNumber: "77",
+      documentDate: null,
+      currency: "ILS",
+      driveFileUrl: "/uploads/camera-invoices/test.jpg",
+      driveUploadStatus: null,
+      parsedFieldsJson: { camera: { fileSha256: ingest.fileSha256 } },
+    };
+    const confirmOps: string[] = [];
+    const confirmDb = {
+      financialDocumentReview: {
+        findFirst: async (args: any) => {
+          confirmOps.push("findFirst");
+          return args.where.id === "draft-1" ? { ...draftRow } : null;
+        },
+        update: async (args: any) => {
+          confirmOps.push("update");
+          Object.assign(draftRow, args.data);
+          return { id: "draft-1" };
+        },
+        upsert: async () => {
+          confirmOps.push("upsert");
+          throw new Error("confirm must never create another review");
+        },
+      },
+    } as any;
+    // ה-mock מפעיל את ה-guard האמיתי עם ה-scope שהועבר בשרשרת — בדיוק כמו
+    // recordFinancialDocumentDecision בפרודקשן. אם ההקשר אובד בדרך — הטסט נופל.
+    const recordManualEntry = async (input: Record<string, unknown>) => {
+      assertFinancialIngestionAllowed(
+        input.organizationId as string,
+        input.verifiedTenantScope as Parameters<typeof assertFinancialIngestionAllowed>[1]
+      );
+      payments.push(input.organizationId as string);
+      return { action: "accepted", payment: { id: "pay-1" } };
+    };
+
+    // (ב+ג+ד) confirm כארגון A — עובר את ה-containment, מאשר את אותה רשומה
+    const first = await confirmCameraDocument(
+      { organizationId: "org-a", reviewId: "draft-1", supplier: "בזק", amount: 250, currency: "ILS" },
+      { prismaClient: confirmDb, recordManualEntry }
+    );
+    assert.equal(first.status, "approved");
+    assert.equal((first as any).supplierPaymentId, "pay-1");
+    assert.equal(payments.length, 1, "exactly one SupplierPayment created");
+    assert.equal(payments[0], "org-a");
+    assert.equal(draftRow.reviewStatus, "approved");
+    assert.equal(draftRow.supplierPaymentId, "pay-1");
+
+    // (ה) confirm חוזר — 200 בלי כפילות
+    const again = await confirmCameraDocument(
+      { organizationId: "org-a", reviewId: "draft-1", supplier: "בזק", amount: 250, currency: "ILS" },
+      { prismaClient: confirmDb, recordManualEntry }
+    );
+    assert.equal(again.status, "approved");
+    assert.equal((again as any).alreadyApproved, true);
+    assert.equal((again as any).supplierPaymentId, "pay-1");
+    assert.equal(payments.length, 1, "retry must not create a second payment");
+
+    // (ו) confirm של אותה רשומה כארגון B — forbidden (403), בלי לגעת ברשומה
+    const asOrgB = await confirmCameraDocument(
+      { organizationId: "org-b", reviewId: "draft-1", supplier: "בזק", amount: 250, currency: "ILS" },
+      { prismaClient: confirmDb, recordManualEntry }
+    );
+    assert.equal(asOrgB.status, "forbidden");
+    assert.equal(payments.length, 1);
+
+    // (ז) review לא קיים — not_found (404)
+    const missing = await confirmCameraDocument(
+      { organizationId: "org-a", reviewId: "no-such-id", supplier: "בזק", amount: 250, currency: "ILS" },
+      { prismaClient: confirmDb, recordManualEntry }
+    );
+    assert.equal(missing.status, "not_found");
+
+    // (ח) אין OCR, אין שמירת קובץ, אין draft נוסף במהלך ה-confirm
+    assert.ok(!confirmOps.includes("upsert"), "no new review during confirm");
+  } finally {
+    if (prevFlag === undefined) delete process.env.FINANCIAL_INGESTION_CONTAINMENT;
+    else process.env.FINANCIAL_INGESTION_CONTAINMENT = prevFlag;
+  }
+});

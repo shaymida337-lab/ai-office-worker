@@ -68,10 +68,36 @@ export class FinancialIngestionBlockedError extends Error {
   }
 }
 
-export function assertFinancialIngestionAllowed(organizationId?: string): void {
-  if (isFinancialIngestionContainmentActive()) {
-    throw new FinancialIngestionBlockedError(organizationId);
+/**
+ * הקשר בעלות מאומת לפעולה בודדת: נוצר אך ורק אחרי ששורת ה-draft נטענה
+ * בשאילתה של id + organizationId (מה-auth context, לא מה-body) + source.
+ * זו אינה החלשה של ה-containment הכללי — רק פעולה שכולה תחומה לארגון
+ * המחובר ולרשומה ספציפית שהבעלות עליה הוכחה מותרת לעבור.
+ */
+export type VerifiedTenantScope = {
+  tenantScopeVerified: true;
+  organizationId: string;
+  source: "camera";
+  reviewId: string;
+};
+
+export function assertFinancialIngestionAllowed(
+  organizationId?: string,
+  verifiedScope?: VerifiedTenantScope
+): void {
+  if (!isFinancialIngestionContainmentActive()) return;
+  if (
+    verifiedScope?.tenantScopeVerified === true &&
+    verifiedScope.source === "camera" &&
+    typeof verifiedScope.reviewId === "string" &&
+    verifiedScope.reviewId.length > 0 &&
+    typeof verifiedScope.organizationId === "string" &&
+    verifiedScope.organizationId.length > 0 &&
+    organizationId === verifiedScope.organizationId
+  ) {
+    return;
   }
+  throw new FinancialIngestionBlockedError(organizationId);
 }
 
 export const FINANCIAL_DATA_PATH_PATTERNS: RegExp[] = [

@@ -93,6 +93,7 @@ export type CameraConfirmInput = {
 
 export type CameraConfirmResult =
   | { status: "not_found" }
+  | { status: "forbidden" }
   | { status: "approved"; reviewId: string; supplierPaymentId: string; alreadyApproved: boolean }
   | { status: "needs_review"; reviewId: string; reason: string | null };
 
@@ -114,10 +115,25 @@ export async function confirmCameraDocument(
   deps: CameraConfirmDeps = {}
 ): Promise<CameraConfirmResult> {
   const db = (deps.prismaClient ?? prisma) as typeof prisma;
-  const draft = await db.financialDocumentReview.findFirst({
-    where: { id: input.reviewId, organizationId: input.organizationId, source: "camera" },
+  // אימות בעלות דו-שלבי: organizationId מגיע אך ורק מה-auth context של הבקשה.
+  // רשומה קיימת ששייכת לארגון אחר ⇒ forbidden (403 בלי לחשוף פרטים);
+  // רשומה שאינה קיימת (או שאינה camera) ⇒ not_found (404).
+  const row = await db.financialDocumentReview.findFirst({
+    where: { id: input.reviewId, source: "camera" },
   });
-  if (!draft) return { status: "not_found" };
+  if (!row) return { status: "not_found" };
+  if (row.organizationId !== input.organizationId) return { status: "forbidden" };
+  const draft = row;
+
+  // הבעלות אומתה בשאילתת id+organizationId — ההקשר המוקלד הזה הוא מה שמתיר
+  // לפעולה הספציפית הזו לעבור את financial-ingestion containment, בלי
+  // להחליש את ה-guard לשום מסלול אחר.
+  const verifiedTenantScope = {
+    tenantScopeVerified: true as const,
+    organizationId: input.organizationId,
+    source: "camera" as const,
+    reviewId: draft.id,
+  };
 
   // לחיצה כפולה: הרשומה כבר אושרה — מחזירים את אותה תשובה בלי לעבד שוב
   if (draft.reviewStatus === "approved" && draft.supplierPaymentId) {
@@ -142,6 +158,7 @@ export async function confirmCameraDocument(
 
   const decision = await recordManualEntry({
     organizationId: input.organizationId,
+    verifiedTenantScope,
     source: "camera",
     subject: draft.subject ?? (input.invoiceNumber ? `Camera invoice scan #${input.invoiceNumber}` : "Camera invoice scan"),
     fileName: draft.fileName,

@@ -8287,6 +8287,11 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
         });
         return;
       }
+      if (confirm.status === "forbidden") {
+        // הרשומה שייכת לארגון אחר — בלי לחשוף פרטים
+        res.status(403).json({ error: "אין לך הרשאה לאשר את המסמך הזה" });
+        return;
+      }
       // not_found: הרשומה לא קיימת (draft ישן?) — ממשיכים למסלול המלא הישן
     }
 
@@ -8402,6 +8407,11 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
           : "המסמך נשמר לבדיקה — דורש בדיקה לפני יצירת תשלום",
     });
   } catch (err) {
+    // הודעת ה-containment הטכנית באנגלית לעולם לא מוצגת למשתמש
+    if (err && typeof err === "object" && (err as { code?: string }).code === "FINANCIAL_INGESTION_CONTAINMENT") {
+      res.status(503).json({ error: "קליטת מסמכים חסומה זמנית במערכת — נסה שוב בעוד מספר דקות" });
+      return;
+    }
     const message = err instanceof Error ? err.message : "Camera scan failed";
     res.status(500).json({ error: message });
   }
