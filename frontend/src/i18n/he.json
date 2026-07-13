@@ -214,6 +214,7 @@
     "filterCustomers": "לקוחות",
     "filterPending": "ממתינים",
     "filterFollowup": "דורש מעקב",
+    "searchPlaceholder": "חפש לפי שם, טלפון או אימייל",
     "lastInteraction": "אינטראקציה אחרונה",
     "nextTask": "משימה הבאה",
     "source": "מקור",

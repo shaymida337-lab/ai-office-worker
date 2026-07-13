@@ -214,6 +214,7 @@
     "filterCustomers": "Customers",
     "filterPending": "Pending",
     "filterFollowup": "Needs follow-up",
+    "searchPlaceholder": "Search by name, phone or email",
     "lastInteraction": "Last interaction",
     "nextTask": "Next task",
     "source": "Source",

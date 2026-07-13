@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import {
   applyQuickFilter,
   computeCrmKpis,
@@ -22,7 +22,6 @@ import {
   Button,
   Card,
   EmptyState,
-  FloatingActionButton,
   FormLabel,
   Input,
   KpiCard,
@@ -283,12 +282,6 @@ export default function CrmPage() {
     <div dir={dir}>
       <AppShell
         pageTitle={<PageTitle title={t("crmDesign.title")} subtitle={t("crmDesign.subtitle")} />}
-        floatingButton={
-          <FloatingActionButton
-            label={t("crmDesign.floatingNatalie")}
-            onClick={() => openNatalieAssistant(t("crmDesign.floatingNatalie"))}
-          />
-        }
       >
         {message ? (
           <MessageBanner tone="info" className="mb-4">
@@ -325,6 +318,28 @@ export default function CrmPage() {
             <Button variant="secondary" type="button" onClick={scanGmailLeads} disabled={saving}>
               {t("crmDesign.scanGmail")}
             </Button>
+            {/* „דברי עם נטלי": כפתור מוטמע בשורת הפעולות במקום כפתור צף,
+                כדי שלא יסתיר את „הוסף" או כל פעולה אחרת במובייל ובמחשב. */}
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => openNatalieAssistant(t("crmDesign.floatingNatalie"))}
+            >
+              {t("crmDesign.floatingNatalie")}
+            </Button>
+          </div>
+
+          {/* חיפוש לידים לפי שם, טלפון או אימייל — מסנן את הרשימה בפועל. */}
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--natalie-text-muted,#64748B)] end-3" />
+            <Input
+              value={filters.search}
+              onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+              placeholder={t("crmDesign.searchPlaceholder")}
+              aria-label={t("crmDesign.searchPlaceholder")}
+              className="pe-9"
+              data-testid="crm-search-input"
+            />
           </div>
 
           <CrmFilterChips value={quickFilter} onChange={setQuickFilter} labels={filterLabels} />
