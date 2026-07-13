@@ -5993,7 +5993,16 @@ export function extractInvoiceAmount(text: string): { amount: number | null; rej
       for (const match of normalized.matchAll(pattern)) {
         const matchIndex = match.index ?? 0;
         const rawAmount = match[1];
-        if (options.requireReferenceCheck && hasReferenceNumberContext(normalized, matchIndex, match[0].length)) {
+        // פסילת קרבה ל-reference לא חלה על סכום כספי מפורש (שתי ספרות
+        // עשרוניות + מטבע צמוד): במיילי חיוב של Microsoft הסכום ($114.00)
+        // יושב צמוד למזהה החשבונית (# G169777544) וכל המועמדים נפסלו.
+        // מזהים (G169777544, INV12345678) לעולם לא עומדים בתנאי הפטור —
+        // אין להם נקודה עשרונית — ולכן עדיין נפסלים כרגיל.
+        if (
+          options.requireReferenceCheck &&
+          hasReferenceNumberContext(normalized, matchIndex, match[0].length) &&
+          !isExplicitCurrencyAmount(normalized, matchIndex, match[0].length, rawAmount)
+        ) {
           rejectedReason = "parsed amount rejected: nearby reference/document number context";
           continue;
         }
@@ -6062,6 +6071,29 @@ function selectExtractedInvoiceAmount(
     pickConsensus(keywordAmounts) ??
     pickConsensus(fallbackAmounts)
   );
+}
+
+/**
+ * סכום כספי מפורש: מסתיים בשתי ספרות עשרוניות וסימן/קוד מטבע צמוד אליו
+ * ($114.00 / USD 114.00 / 114.00 USD). משמש כפטור צר מפסילת קרבה ל-reference —
+ * מספר חשבונית/הזמנה לא יעמוד בזה לעולם (אין ספרות עשרוניות), וסכום עירום
+ * בלי מטבע ליד reference ממשיך להיפסל.
+ */
+function isExplicitCurrencyAmount(
+  text: string,
+  matchIndex: number,
+  matchFullLength: number,
+  rawAmount: string
+): boolean {
+  const trimmed = rawAmount.trim();
+  if (!/[.,]\d{2}$/.test(trimmed)) return false;
+  const fullMatch = text.slice(matchIndex, matchIndex + matchFullLength);
+  const offsetInMatch = fullMatch.lastIndexOf(trimmed);
+  const amountStart = matchIndex + (offsetInMatch >= 0 ? offsetInMatch : 0);
+  const before = text.slice(Math.max(0, amountStart - 6), amountStart);
+  const after = text.slice(amountStart + trimmed.length, amountStart + trimmed.length + 6);
+  const currencyMarker = /[₪$€]|\b(?:usd|eur|ils|nis)\b|ש["״']?ח/i;
+  return currencyMarker.test(before) || currencyMarker.test(after);
 }
 
 function hasReferenceNumberContext(text: string, matchIndex: number, rawLength: number) {
