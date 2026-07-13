@@ -475,13 +475,17 @@ export default function CalendarEmployeesPage() {
                   return (
                     <div key={dayName} className="rounded-xl border border-[#E5E7EB] bg-white p-3">
                       <div className="flex flex-wrap items-center gap-3">
-                        <label className="flex w-24 items-center gap-2 font-bold text-[#111827]">
+                        {/* ה-CSS הגלובלי נותן לכל input רוחב מלא וגובה 44px —
+                            checkbox חשוף מתנפח ונערם על שם היום. מקבעים גודל
+                            checkbox אמיתי ושורה אופקית מיושרת (RTL נשמר מה-dir). */}
+                        <label className="flex w-24 shrink-0 cursor-pointer flex-row items-center gap-2 font-bold text-[#111827]">
                           <input
                             type="checkbox"
+                            className="h-5 w-5 min-h-0 shrink-0 cursor-pointer p-0 accent-[#1D4ED8]"
                             checked={day.enabled}
                             onChange={(e) => updateDay(dayIndex, { enabled: e.target.checked })}
                           />
-                          {dayName}
+                          <span className="whitespace-nowrap">{dayName}</span>
                         </label>
                         {day.enabled ? (
                           <>
