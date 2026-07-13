@@ -5964,6 +5964,12 @@ export function extractInvoiceAmount(text: string): { amount: number | null; rej
     .replace(/[״]/g, "\"");
   const prioritizedPatterns = [
     /(?:סה["']?כ\s+לתשלום|סהכ\s+לתשלום|(?:ה)?סכום\s+לתשלום|יתרה\s+לתשלום)[^\d₪$€]{0,80}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
+    // שכבת תעדוף באנגלית: בלעדיה, טבלת Billing Summary אנגלית
+    // (Subtotal + Tax + Total Amount) מפילה את קונצנזוס שכבת ה-keywords
+    // ומחזירה null. \b מונע מ-"Subtotal" להיתפס דרך "total".
+    // סכום ליד תווית total גובר על Subtotal/Tax/VAT/Discount/Shipping
+    // מעצם קדימות השכבה (prioritized נבחר לפני keywordAmounts).
+    /\b(?:total\s+amount|grand\s+total|amount\s+due|total\s+due|balance\s+due)[^\d₪$€]{0,80}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
   ];
   const keywordPatterns = [
     /(?:סה["']?כ\s*(?:לתשלום)?|סך\s*הכל\s*(?:לתשלום)?|(?:ה)?סכום\s*לתשלום|יתרה\s*לתשלום|לתשלום|כולל\s*מע["']?מ|total\s*(?:due|amount|inc(?:luding)?\s*vat)?|grand\s*total|amount\s*(?:due|paid)?|balance\s*due|subtotal)[^\d₪$€]{0,60}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
