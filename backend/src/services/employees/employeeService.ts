@@ -218,6 +218,10 @@ export async function setEmployeeWorkingHours(
         ]
       : []),
   ]);
+  // שורת אבחון בלוג השרת: מוכיחה שה-PUT הגיע לגרסה הנוכחית ושהכתיבה בוצעה
+  console.log(
+    `[employees] working-hours saved org=${organizationId} employee=${employeeId} days=${validated.entries.length}`
+  );
   return { ok: true as const, entries: validated.entries };
 }
 
