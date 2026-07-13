@@ -172,6 +172,7 @@ export default function CrmPage() {
       scheduleAppointment: t("crmDesign.profile.scheduleAppointment"),
       source: t("crmDesign.source"),
       whatsapp: t("crmDesign.whatsapp"),
+      call: t("crmDesign.call"),
       assignedTo: t("crmDesign.profile.assignedTo"),
       nextReminder: t("crmDesign.profile.nextReminder"),
       attachments: t("crmDesign.profile.attachments"),

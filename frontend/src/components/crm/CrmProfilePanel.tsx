@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Mail, MessageCircle, Phone } from "lucide-react";
 import {
   Button,
+  buttonVariants,
   EmptyState,
   FormLabel,
   Input,
@@ -13,6 +15,7 @@ import {
 } from "@/components/natalie-ui";
 import type { BusinessCrmField } from "@/lib/business-config";
 import {
+  callHref,
   channelLabel,
   crmSources,
   crmStages,
@@ -153,6 +156,7 @@ export function CrmProfilePanel({
   }
 
   const wa = whatsappHref(currentLead);
+  const tel = callHref(currentLead);
   const mailto = emailHref(currentLead);
   const emailAddress = currentLead.email?.trim() ?? "";
 
@@ -170,24 +174,6 @@ export function CrmProfilePanel({
           <Button variant="secondary" type="button" onClick={() => setTab("tasks")}>
             {labels.addTask}
           </Button>
-          {wa ? (
-            <Button variant="secondary" type="button" onClick={() => window.open(wa, "_blank")}>
-              {labels.sendWhatsapp}
-            </Button>
-          ) : (
-            <Button variant="secondary" type="button" disabled>
-              {labels.sendWhatsapp}
-            </Button>
-          )}
-          {mailto ? (
-            <Button variant="secondary" type="button" onClick={() => { window.location.href = mailto; }}>
-              {labels.sendEmail}
-            </Button>
-          ) : (
-            <Button variant="secondary" type="button" disabled>
-              {labels.sendEmail}
-            </Button>
-          )}
           <Button variant="ghost" type="button" onClick={onScheduleAppointment}>
             {labels.scheduleAppointment}
           </Button>
@@ -213,6 +199,47 @@ export function CrmProfilePanel({
             ) : (
               <p className="mt-1 text-sm font-semibold text-[var(--natalie-text-muted,#64748B)]">{labels.notProvided}</p>
             )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {tel ? (
+                <a href={tel} aria-label={labels.call} className={buttonVariants.secondarySm}>
+                  <Phone className="h-4 w-4" />
+                  {labels.call}
+                </a>
+              ) : (
+                <Button variant="secondary" size="sm" type="button" disabled>
+                  <Phone className="h-4 w-4" />
+                  {labels.call}
+                </Button>
+              )}
+              {wa ? (
+                <a
+                  href={wa}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={labels.whatsapp}
+                  className={buttonVariants.secondarySm}
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  {labels.whatsapp}
+                </a>
+              ) : (
+                <Button variant="secondary" size="sm" type="button" disabled>
+                  <MessageCircle className="h-4 w-4" />
+                  {labels.whatsapp}
+                </Button>
+              )}
+              {mailto ? (
+                <a href={mailto} aria-label={labels.sendEmail} className={buttonVariants.secondarySm}>
+                  <Mail className="h-4 w-4" />
+                  {labels.sendEmail}
+                </a>
+              ) : (
+                <Button variant="secondary" size="sm" type="button" disabled>
+                  <Mail className="h-4 w-4" />
+                  {labels.sendEmail}
+                </Button>
+              )}
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             {crmStages.map((stage) => (
