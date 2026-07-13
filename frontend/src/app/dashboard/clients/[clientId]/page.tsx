@@ -450,7 +450,11 @@ export default function ClientDetailPage() {
 
   const phoneLink = telHref(data.client.whatsappNumber);
   const waLink = whatsappHref(data.client.whatsappNumber);
-  const emailLink = mailtoHref(data.client.email);
+  // אימייל אמיתי בלבד: אימייל placeholder (שנוצר אוטומטית) נחשב כ"לא הוזן"
+  // כדי שהתצוגה, הקישור וכפתור "שלח מייל" יהיו עקביים.
+  const emailDisplay = formatClientEmailDisplay(data.client.email);
+  const hasRealEmail = emailDisplay !== "לא מוגדר";
+  const emailLink = hasRealEmail ? mailtoHref(data.client.email) : null;
   // אין שדה כתובת במודל הלקוח כרגע; הפעולה נדלקת אוטומטית אם כתובת קיימת.
   const clientAddress = (data.client as { address?: string | null }).address ?? null;
   const mapLink = mapsHref(clientAddress);
@@ -490,7 +494,7 @@ export default function ClientDetailPage() {
               {" · אימייל: "}
               {emailLink ? (
                 <a href={emailLink} dir="ltr" className="font-bold underline" data-testid="contact-email">
-                  {formatClientEmailDisplay(data.client.email)}
+                  {emailDisplay}
                 </a>
               ) : (
                 <span data-testid="contact-email-empty">לא הוזן</span>
@@ -527,9 +531,9 @@ export default function ClientDetailPage() {
             <button className="btn" type="button" disabled title="אין מספר טלפון">💬 WhatsApp</button>
           )}
           {emailLink ? (
-            <a className="btn" href={emailLink} data-testid="action-email">✉️ אימייל</a>
+            <a className="btn" href={emailLink} data-testid="action-email">✉️ שלח מייל</a>
           ) : (
-            <button className="btn" type="button" disabled title="אין כתובת אימייל">✉️ אימייל</button>
+            <button className="btn" type="button" disabled title="אין כתובת אימייל">✉️ שלח מייל</button>
           )}
           {mapLink ? (
             <a className="btn" href={mapLink} target="_blank" rel="noreferrer" data-testid="action-navigate">🗺️ ניווט</a>
