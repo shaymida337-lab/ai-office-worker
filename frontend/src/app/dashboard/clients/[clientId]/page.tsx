@@ -173,27 +173,28 @@ export default function ClientDetailPage() {
   const [message, setMessage] = useState("");
 
   async function load() {
+    // נתוני הלקוח הם מקור האמת של הכרטיס — מחילים אותם מיד עם קבלתם.
+    // כשל של קריאה משנית (משימות/וואטסאפ/חשבוניות/תור/הערות) לא יחסום
+    // את רענון הכרטיס, ולא ימחק את המידע המשני הקיים (נשמר על catch->null).
     const next = await apiFetch<ClientDetail>(`/api/clients/${clientId}`);
-    const taskResult = await apiFetch<{ tasks: TaskItem[] }>(`/api/clients/${clientId}/tasks`);
-    const whatsappResult = await apiFetch<{ messages: WhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp`);
-    const invoiceResult = await apiFetch<{ invoices: InvoiceItem[] }>(`/api/clients/${clientId}/invoices`);
-    // בסיס כרטיס הלקוח: התור הבא (מהיומן האמיתי) והערות — כשל בהם לא מפיל את העמוד
-    const [nextAppt, noteResult] = await Promise.all([
-      apiFetch<{ appointment: NextAppointmentDto | null }>(`/api/clients/${clientId}/next-appointment`).catch(
-        () => ({ appointment: null })
-      ),
-      apiFetch<{ notes: ClientNoteDto[] }>(`/api/clients/${clientId}/notes`).catch(() => ({ notes: [] })),
-    ]);
-    setNextAppointment(nextAppt.appointment);
-    setNextAppointmentLoaded(true);
-    setNotes(noteResult.notes);
-    setLoadError("");
     setData(next);
-    setTasks(taskResult.tasks);
-    setWhatsappMessages(whatsappResult.messages);
-    setInvoices(invoiceResult.invoices);
     setHealth(next.client.health ?? null);
+    setLoadError("");
     setLastUpdatedAt(new Date());
+
+    const [taskResult, whatsappResult, invoiceResult, nextAppt, noteResult] = await Promise.all([
+      apiFetch<{ tasks: TaskItem[] }>(`/api/clients/${clientId}/tasks`).catch(() => null),
+      apiFetch<{ messages: WhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp`).catch(() => null),
+      apiFetch<{ invoices: InvoiceItem[] }>(`/api/clients/${clientId}/invoices`).catch(() => null),
+      apiFetch<{ appointment: NextAppointmentDto | null }>(`/api/clients/${clientId}/next-appointment`).catch(() => null),
+      apiFetch<{ notes: ClientNoteDto[] }>(`/api/clients/${clientId}/notes`).catch(() => null),
+    ]);
+    if (taskResult) setTasks(taskResult.tasks);
+    if (whatsappResult) setWhatsappMessages(whatsappResult.messages);
+    if (invoiceResult) setInvoices(invoiceResult.invoices);
+    if (nextAppt) setNextAppointment(nextAppt.appointment);
+    setNextAppointmentLoaded(true);
+    if (noteResult) setNotes(noteResult.notes);
   }
 
   useEffect(() => {
@@ -387,14 +388,20 @@ export default function ClientDetailPage() {
     setSavingClient(true);
     setMessage("");
     try {
-      await apiFetch(`/api/clients/${clientId}`, {
+      // עדכון אופטימי מיידי מתגובת השרת — מקור האמת של הכרטיס מתעדכן מיד,
+      // ללא תלות ברענון המשני שאחריו (שעלול להיכשל על endpoint משני).
+      const saved = await apiFetch<{ client: Partial<ClientDetail["client"]> }>(`/api/clients/${clientId}`, {
         method: "PUT",
         body: JSON.stringify(buildClientUpdatePayload(clientForm)),
       });
+      if (saved?.client) {
+        setData((prev) => (prev ? { ...prev, client: { ...prev.client, ...saved.client } } : prev));
+      }
       // הכרטיס נשאר פתוח אחרי שמירה — נסגר רק בלחיצה על ✕
       setSaveNotice("הפרטים נשמרו בהצלחה");
       window.setTimeout(() => setSaveNotice(""), 2500);
-      await load();
+      // רענון מלא לסנכרון שאר החלקים; כשל שלו לא מבטל את העדכון האופטימי
+      await load().catch(() => undefined);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "שמירת פרטי הלקוח נכשלה — נסה שוב");
     } finally {
