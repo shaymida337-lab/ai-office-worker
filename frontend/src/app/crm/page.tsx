@@ -212,7 +212,7 @@ export default function CrmPage() {
         }),
       });
       // הכרטיס נשאר פתוח והנתונים נשמרים בטופס; רק X סוגר. באנר ירוק ל-3ש'.
-      setSaveNotice("הליד נשמר בהצלחה");
+      setSaveNotice("הלקוח נשמר בהצלחה");
       window.setTimeout(() => setSaveNotice(""), 3000);
       await load();
     } catch (err) {
