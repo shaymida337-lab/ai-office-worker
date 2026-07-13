@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { formatAmount } from "@/lib/format/amount";
 
-type SearchClient = { id: string; name: string; email?: string | null };
+type SearchClient = { id: string; name: string; email?: string | null; whatsappNumber?: string | null };
+type SearchLead = {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+};
 type SearchInvoice = {
   id: string;
   invoiceNumber: string | null;
@@ -34,23 +41,28 @@ export function useGlobalSearch() {
   const [searchError, setSearchError] = useState("");
   const [searchData, setSearchData] = useState<{
     clients: SearchClient[];
+    leads: SearchLead[];
     invoices: SearchInvoice[];
     tasks: SearchTask[];
-  }>({ clients: [], invoices: [], tasks: [] });
+  }>({ clients: [], leads: [], invoices: [], tasks: [] });
 
   const loadSearchData = useCallback(async () => {
     if (searchLoaded || searchLoading) return;
     setSearchLoading(true);
     setSearchError("");
     try {
-      const [clientsResult, invoicesResult, tasksResult] = await Promise.allSettled([
+      const [clientsResult, leadsResult, invoicesResult, tasksResult] = await Promise.allSettled([
         apiFetch<{ clients: SearchClient[] }>("/api/clients"),
+        // לידים של ה-CRM חיים במודל Lead (לא Client) — בלי זה חיפוש עליון
+        // של "אלכס" (ליד) לא מחזיר כלום למרות שהוא קיים ברשימת ה-CRM.
+        apiFetch<{ leads: SearchLead[] }>("/api/leads"),
         apiFetch<{ invoices: SearchInvoice[] }>("/api/invoices"),
         apiFetch<SearchTask[]>("/api/tasks"),
       ]);
 
       setSearchData({
         clients: clientsResult.status === "fulfilled" ? clientsResult.value.clients ?? [] : [],
+        leads: leadsResult.status === "fulfilled" ? leadsResult.value.leads ?? [] : [],
         invoices: invoicesResult.status === "fulfilled" ? invoicesResult.value.invoices ?? [] : [],
         tasks: tasksResult.status === "fulfilled" ? tasksResult.value ?? [] : [],
       });
@@ -81,7 +93,9 @@ export function useGlobalSearch() {
     if (query.length < 2) return [];
 
     const clients = searchData.clients
-      .filter((client) => `${client.name} ${client.email ?? ""}`.toLowerCase().includes(query))
+      .filter((client) =>
+        `${client.name} ${client.email ?? ""} ${client.whatsappNumber ?? ""}`.toLowerCase().includes(query)
+      )
       .slice(0, 4)
       .map((client) => ({
         id: `client-${client.id}`,
@@ -89,6 +103,20 @@ export function useGlobalSearch() {
         title: client.name,
         subtitle: client.email ?? "לקוח",
         href: `/dashboard/clients/${client.id}`,
+      }));
+
+    // חיפוש לידים לפי שם, טלפון ואימייל; פתיחת הכרטיס דרך /crm?lead=<id>
+    const leads = searchData.leads
+      .filter((lead) =>
+        `${lead.name} ${lead.email ?? ""} ${lead.phone ?? ""} ${lead.whatsapp ?? ""}`.toLowerCase().includes(query)
+      )
+      .slice(0, 4)
+      .map((lead) => ({
+        id: `lead-${lead.id}`,
+        type: "ליד",
+        title: lead.name,
+        subtitle: lead.phone ?? lead.email ?? "ליד",
+        href: `/crm?lead=${encodeURIComponent(lead.id)}`,
       }));
 
     const invoices = searchData.invoices
@@ -115,7 +143,7 @@ export function useGlobalSearch() {
         href: "/tasks",
       }));
 
-    return [...clients, ...invoices, ...tasks];
+    return [...clients, ...leads, ...invoices, ...tasks];
   }, [searchData, searchQuery]);
 
   function openSearchResult(href: string) {

@@ -215,6 +215,7 @@
     "filterPending": "Pending",
     "filterFollowup": "Needs follow-up",
     "searchPlaceholder": "Search by name, phone or email",
+    "close": "Close",
     "lastInteraction": "Last interaction",
     "nextTask": "Next task",
     "source": "Source",

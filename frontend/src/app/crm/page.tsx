@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Plus, Search } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Plus, Search, X } from "lucide-react";
 import {
   applyQuickFilter,
   computeCrmKpis,
@@ -57,6 +57,7 @@ const emptyForm = {
 
 export default function CrmPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { t, dir, language } = useI18n();
   const locale = language === "he" ? "he-IL" : "en-US";
 
@@ -64,6 +65,9 @@ export default function CrmPage() {
   const [quickFilter, setQuickFilter] = useState<CrmQuickFilter>("all");
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
+  // "שמור ליד": באנר הצלחה ירוק (נעלם אחרי 2.5ש') ושגיאה אדומה — הכרטיס נשאר פתוח
+  const [saveNotice, setSaveNotice] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [selected, setSelected] = useState<Lead | null>(null);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -109,6 +113,17 @@ export default function CrmPage() {
       .then(setOrganizationSettings)
       .catch(() => undefined);
   }, []);
+
+  // פתיחת כרטיס ליד מהחיפוש העליון: /crm?lead=<id> בוחר את הליד ופותח אותו.
+  useEffect(() => {
+    const leadId = searchParams.get("lead");
+    if (!leadId || !data?.leads?.length) return;
+    const match = data.leads.find((lead) => lead.id === leadId);
+    if (match) setSelected(match);
+    // מנקים את הפרמטר כדי שלא ייפתח שוב בכל רינדור
+    router.replace("/crm");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, data?.leads]);
 
   const filteredLeads = useMemo(() => {
     const query = filters.search.trim().toLowerCase();
@@ -179,8 +194,10 @@ export default function CrmPage() {
 
   async function createLead(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return; // מניעת שליחה כפולה — גם מהכפתור וגם מ-Enter
     setSaving(true);
-    setMessage("");
+    setSaveError("");
+    setSaveNotice("");
     try {
       await apiFetch("/api/leads", {
         method: "POST",
@@ -194,12 +211,12 @@ export default function CrmPage() {
           startSequence: false,
         }),
       });
-      setForm(emptyForm);
-      setShowForm(false);
-      setMessage("הליד נוסף בהצלחה");
+      // הכרטיס נשאר פתוח והנתונים נשמרים בטופס; רק X סוגר. באנר ירוק ל-2.5ש'.
+      setSaveNotice("הליד נשמר בהצלחה");
+      window.setTimeout(() => setSaveNotice(""), 2500);
       await load();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "שמירת ליד נכשלה");
+      setSaveError(err instanceof Error ? err.message : "שמירת הליד נכשלה — נסה שוב");
     } finally {
       setSaving(false);
     }
@@ -346,6 +363,35 @@ export default function CrmPage() {
 
           {showForm ? (
             <Card>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-lg font-black text-[var(--natalie-text-primary,#0F172A)]">
+                  {t("crmDesign.addCustomer")}
+                </h2>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  aria-label={t("crmDesign.close")}
+                  data-testid="lead-form-close"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              {saveNotice ? (
+                <div data-testid="lead-save-notice">
+                  <MessageBanner tone="success" className="mb-3">
+                    {saveNotice}
+                  </MessageBanner>
+                </div>
+              ) : null}
+              {saveError ? (
+                <div data-testid="lead-save-error">
+                  <MessageBanner tone="error" className="mb-3">
+                    {saveError}
+                  </MessageBanner>
+                </div>
+              ) : null}
               <form onSubmit={createLead} className="grid gap-3 md:grid-cols-2">
                 <FormLabel>
                   {crmLabels.name.label}
@@ -419,7 +465,7 @@ export default function CrmPage() {
                     placeholder={crmLabels.notes.placeholder}
                   />
                 </FormLabel>
-                <Button type="submit" disabled={saving} className="md:col-span-2">
+                <Button type="submit" disabled={saving} className="md:col-span-2" data-testid="save-lead-button">
                   {saving ? t("crmDesign.saving") : t("crmDesign.saveAndSequence")}
                 </Button>
               </form>
