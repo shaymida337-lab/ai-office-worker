@@ -5,7 +5,10 @@ services:
     plan: starter
     region: oregon
     schedule: "0 3 * * *"
-    buildCommand: "npm install"
+    # prisma generate מפורש: זו המכונה היחידה עם Shell, וסקריפטי האבחון
+    # (tsx על המקור) דורשים Prisma Client מיוצר — npm install לבדו לא מייצר
+    # אותו כי הסכמה יושבת ב-backend/prisma ולא בנתיב ברירת המחדל.
+    buildCommand: "npm install && npm run db:generate -w backend"
     startCommand: "npm exec -w backend -- tsx scripts/backup-to-r2.ts"
     envVars:
       - key: NODE_VERSION
