@@ -15,6 +15,8 @@ export type TimelineAppointment = {
   status: string;
   client: { name: string };
   service?: { name: string; color?: string | null } | null;
+  /** Calendar Phase 1: תור של עובד — צבע העובד גובר על צבע השירות בתצוגה */
+  employee?: { id?: string; name: string; color?: string | null } | null;
 };
 
 export type PositionedTimelineAppointment<T extends TimelineAppointment = TimelineAppointment> = {
@@ -276,7 +278,7 @@ export function toAppointmentMonthSummary(appointment: TimelineAppointment): Mon
     startTime: appointment.startTime,
     clientName: appointment.client.name,
     status: appointment.status,
-    serviceColor: appointment.service?.color || "#3B82F6",
+    serviceColor: appointment.employee?.color || appointment.service?.color || "#3B82F6",
   };
 }
 

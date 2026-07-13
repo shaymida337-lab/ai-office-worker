@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { CalendarEventDrawer } from "@/components/calendar/CalendarEventDrawer";
 import { CalendarToolbar } from "@/components/calendar/CalendarToolbar";
 import { DayTimelineView } from "@/components/calendar/DayTimelineView";
@@ -67,6 +68,17 @@ type Service = {
   price?: number | null;
   color?: string | null;
   isActive: boolean;
+  /** אילו עובדים מבצעים את השירות; ריק = כולם */
+  employeeIds?: string[];
+};
+
+type CalendarEmployee = {
+  id: string;
+  name: string;
+  phone?: string | null;
+  color: string;
+  photoUrl?: string | null;
+  isActive: boolean;
 };
 
 type ApptClient = {
@@ -80,12 +92,14 @@ type Appointment = {
   id: string;
   clientId: string;
   serviceId?: string | null;
+  employeeId?: string | null;
   startTime: string;
   durationMinutes: number;
   status: string;
   notes?: string | null;
   client: ApptClient;
   service?: { id: string; name: string; color?: string | null; durationMinutes: number } | null;
+  employee?: { id: string; name: string; color?: string | null; isActive?: boolean } | null;
   googleSyncStatus?: "pending" | "synced" | "failed" | "retrying" | "disabled";
   lastGoogleSyncError?: string | null;
   reminderStatus?: {
@@ -123,6 +137,8 @@ const emptyServiceForm = {
   durationMinutes: 30,
   price: "",
   color: DEFAULT_COLOR,
+  /** אילו עובדים מבצעים את השירות; ריק = כל העובדים */
+  employeeIds: [] as string[],
 };
 
 function getWeekStart(date: Date): Date {
@@ -220,6 +236,7 @@ function CollapsePanel({ open, children }: { open: boolean; children: ReactNode 
 
 export default function CalendarPage() {
   const { t, dir } = useI18n();
+  const router = useRouter();
   const [highlightDecisionId, setHighlightDecisionId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<CalendarViewMode>("week");
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
@@ -238,12 +255,17 @@ export default function CalendarPage() {
   const [engineDisabledBanner, setEngineDisabledBanner] = useState<string | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [clients, setClients] = useState<ApptClient[]>([]);
+  // Calendar Phase 1 — עובדים: רשימה, סינון תצוגה ושיוך תור לעובד.
+  // בלי עובדים מוגדרים — שום דבר במסך לא משתנה.
+  const [employees, setEmployees] = useState<CalendarEmployee[]>([]);
+  const [employeeFilter, setEmployeeFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
   const [showForm, setShowForm] = useState(false);
   const [formClientId, setFormClientId] = useState("");
   const [formServiceId, setFormServiceId] = useState("");
+  const [formEmployeeId, setFormEmployeeId] = useState("");
   const [formDate, setFormDate] = useState("");
   const [formTime, setFormTime] = useState("");
   const [formNotes, setFormNotes] = useState("");
@@ -268,6 +290,17 @@ export default function CalendarPage() {
   const orgTimezone = useOrganizationTimezone();
 
   const activeServices = useMemo(() => services.filter((s) => s.isActive), [services]);
+
+  const activeEmployees = useMemo(() => employees.filter((employee) => employee.isActive), [employees]);
+
+  // עובדים שמותר לבחור לתור: אם לשירות הנבחר מוגדרים עובדים — רק הם;
+  // שירות בלי הגדרה פתוח לכל העובדים. בעל העסק תמיד זמין.
+  const employeesForSelectedService = useMemo(() => {
+    if (!formServiceId) return activeEmployees;
+    const service = services.find((s) => s.id === formServiceId);
+    if (!service?.employeeIds?.length) return activeEmployees;
+    return activeEmployees.filter((employee) => service.employeeIds!.includes(employee.id));
+  }, [formServiceId, services, activeEmployees]);
 
   const selectedServiceDuration = useMemo(() => {
     if (!formServiceId) return null;
@@ -369,22 +402,31 @@ export default function CalendarPage() {
       const to = range.to.toISOString();
       const loadStrategy = resolveCalendarLoadStrategy(engineReadEnabled);
 
-      const [svcData, clientData] = await Promise.all([
+      const [svcData, clientData, employeeData] = await Promise.all([
         apiFetch<Service[]>("/api/services"),
         apiFetch<ClientsResponse>("/api/clients"),
+        // כשל בטעינת עובדים לא מפיל את היומן — פשוט אין סינון עובדים
+        apiFetch<CalendarEmployee[]>("/api/employees").catch(() => [] as CalendarEmployee[]),
       ]);
       setServices(svcData);
       setClients(clientData.clients);
+      setEmployees(employeeData);
+
+      const employeeQuery = employeeFilter !== "all" ? `&employeeId=${encodeURIComponent(employeeFilter)}` : "";
 
       if (loadStrategy === "calendar_engine") {
         try {
           const events = await fetchCalendarEvents(from, to);
-          setAppointments(calendarEventsToDisplayItems(events));
+          // אירועי מנוע היומן שייכים לבעל העסק — מוסתרים בסינון עובד ספציפי
+          const engineItems = calendarEventsToDisplayItems(events);
+          setAppointments(
+            employeeFilter === "all" || employeeFilter === "owner" ? engineItems : []
+          );
         } catch (err) {
           if (err instanceof CalendarEngineUnavailableError) {
             setEngineDisabledBanner(CALENDAR_ENGINE_DISABLED_MESSAGE);
             const apptData = await apiFetch<Appointment[]>(
-              `/api/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+              `/api/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${employeeQuery}`
             );
             setAppointments(apptData.map(appointmentToDisplayItem));
             return;
@@ -393,7 +435,7 @@ export default function CalendarPage() {
         }
       } else {
         const apptData = await apiFetch<Appointment[]>(
-          `/api/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+          `/api/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${employeeQuery}`
         );
         setAppointments(apptData.map(appointmentToDisplayItem));
       }
@@ -402,7 +444,7 @@ export default function CalendarPage() {
     } finally {
       setLoading(false);
     }
-  }, [viewMode, selectedDay, weekStart, monthAnchor, engineReadEnabled]);
+  }, [viewMode, selectedDay, weekStart, monthAnchor, engineReadEnabled, employeeFilter]);
 
   const loadBriefData = useCallback(async () => {
     setBriefLoading(true);
@@ -481,6 +523,7 @@ export default function CalendarPage() {
     setEditingId(null);
     setFormClientId("");
     setFormServiceId("");
+    setFormEmployeeId("");
     setFormDate("");
     setFormTime("");
     setFormNotes("");
@@ -493,6 +536,8 @@ export default function CalendarPage() {
     setEditingId(null);
     setFormClientId("");
     setFormServiceId("");
+    // תור חדש נפתח על העובד המסונן כרגע (אם נבחר עובד ספציפי)
+    setFormEmployeeId(employeeFilter !== "all" && employeeFilter !== "owner" ? employeeFilter : "");
     setFormDate(dateInputValueInTimeZone(new Date(), orgTimezone));
     setFormTime("");
     setFormNotes("");
@@ -511,6 +556,7 @@ export default function CalendarPage() {
     setEditingId(appt.id);
     setFormClientId(appt.clientId);
     setFormServiceId(appt.serviceId ?? "");
+    setFormEmployeeId((appt as Appointment).employeeId ?? "");
     // prefill ב-timezone הארגון — כמו שהשמירה כותבת (round-trip שלם)
     setFormDate(dateInputValueInTimeZone(start, orgTimezone));
     setFormTime(timeInputValueInTimeZone(start, orgTimezone));
@@ -558,12 +604,15 @@ export default function CalendarPage() {
           body: JSON.stringify({
             startTime,
             serviceId: formServiceId || null,
+            employeeId: formEmployeeId || null,
             notes: formNotes.trim() || null,
             status: formStatus,
           }),
         });
         setMessage("התור עודכן בהצלחה");
-      } else if (resolveCalendarCreateStrategy(engineWriteEnabled) === "calendar_engine_draft") {
+      } else if (!formEmployeeId && resolveCalendarCreateStrategy(engineWriteEnabled) === "calendar_engine_draft") {
+        // תור לעובד תמיד נשמר במסלול הישיר — מנוע היומן (טיוטות) מכיר רק
+        // את היומן של בעל העסק בשלב הזה.
         const duration = selectedServiceDuration ?? 30;
         const endAt = buildEndAtIso(startTime, duration);
         const client = clients.find((c) => c.id === formClientId);
@@ -583,6 +632,7 @@ export default function CalendarPage() {
           body: JSON.stringify({
             clientId: formClientId,
             serviceId: formServiceId || null,
+            employeeId: formEmployeeId || null,
             startTime,
             notes: formNotes.trim() || null,
           }),
@@ -651,13 +701,16 @@ export default function CalendarPage() {
     }
     setSavingService(true);
     try {
-      const body: { name: string; durationMinutes: number; color: string; price?: number } = {
+      const body: { name: string; durationMinutes: number; color: string; price?: number; employeeIds?: string[] } = {
         name: serviceForm.name.trim(),
         durationMinutes: serviceForm.durationMinutes,
         color: serviceForm.color,
       };
       if (serviceForm.price.trim()) {
         body.price = Number(serviceForm.price);
+      }
+      if (employees.length > 0) {
+        body.employeeIds = serviceForm.employeeIds;
       }
       await apiFetch("/api/services", {
         method: "POST",
@@ -817,6 +870,9 @@ export default function CalendarPage() {
                         {connectingCalendar ? t("calendar.connecting") : t("calendar.connectGoogleCalendar")}
                       </Button>
                     )}
+                    <Button variant="secondary" onClick={() => router.push("/dashboard/calendar/employees")} data-testid="manage-employees-button">
+                      עובדים
+                    </Button>
                     <Button variant="primary" onClick={openNewForm}>
                       <Plus className="h-4 w-4" />
                       {t("calendar.newAppointment")}
@@ -824,6 +880,27 @@ export default function CalendarPage() {
                   </>
                 }
               />
+
+              {employees.length > 0 && (
+                <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="employee-filter">
+                  <span className="text-sm font-bold text-[var(--natalie-text-muted,#64748B)]">הצג יומן:</span>
+                  <Select
+                    className="!min-h-9 max-w-56"
+                    value={employeeFilter}
+                    onChange={(e) => setEmployeeFilter(e.target.value)}
+                    aria-label="סינון לפי עובד"
+                  >
+                    <option value="all">כל העובדים</option>
+                    <option value="owner">בעל העסק</option>
+                    {employees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.name}
+                        {employee.isActive ? "" : " (מושבת)"}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
 
               <CollapsePanel open={showForm}>
                 <form onSubmit={saveAppointment} className="mb-5 grid gap-3 rounded-2xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-bg-page,#F3F6FF)] p-4 md:grid-cols-2">
@@ -856,7 +933,18 @@ export default function CalendarPage() {
             <Select
               className="mt-1"
               value={formServiceId}
-              onChange={(e) => setFormServiceId(e.target.value)}
+              onChange={(e) => {
+                setFormServiceId(e.target.value);
+                // אם העובד הנבחר לא מבצע את השירות החדש — מאפסים לבעל העסק
+                const nextService = services.find((s) => s.id === e.target.value);
+                if (
+                  formEmployeeId &&
+                  nextService?.employeeIds?.length &&
+                  !nextService.employeeIds.includes(formEmployeeId)
+                ) {
+                  setFormEmployeeId("");
+                }
+              }}
             >
               <option value="">{t("calendar.noService")}</option>
               {activeServices.map((s) => (
@@ -866,6 +954,24 @@ export default function CalendarPage() {
               ))}
             </Select>
           </FormLabel>
+          {employees.length > 0 && (
+            <FormLabel>
+              עובד
+              <Select
+                className="mt-1"
+                value={formEmployeeId}
+                onChange={(e) => setFormEmployeeId(e.target.value)}
+                data-testid="appointment-employee-select"
+              >
+                <option value="">בעל העסק</option>
+                {employeesForSelectedService.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.name}
+                  </option>
+                ))}
+              </Select>
+            </FormLabel>
+          )}
           {selectedServiceDuration !== null && !editingId && (
             <p className="flex items-center gap-2 text-sm font-semibold text-[var(--natalie-text-muted,#64748B)] md:col-span-2">
               <Clock className="h-4 w-4" />
@@ -1087,6 +1193,32 @@ export default function CalendarPage() {
                 onChange={(e) => setServiceForm({ ...serviceForm, color: e.target.value })}
               />
             </FormLabel>
+            {activeEmployees.length > 0 && (
+              <div className="md:col-span-2">
+                <span className="text-sm font-bold text-[var(--natalie-text-muted,#64748B)]">
+                  אילו עובדים מבצעים את השירות? (ללא בחירה — כולם)
+                </span>
+                <div className="mt-1 flex flex-wrap gap-3">
+                  {activeEmployees.map((employee) => (
+                    <label key={employee.id} className="flex items-center gap-2 text-sm font-semibold text-[#111827]">
+                      <input
+                        type="checkbox"
+                        checked={serviceForm.employeeIds.includes(employee.id)}
+                        onChange={(e) =>
+                          setServiceForm({
+                            ...serviceForm,
+                            employeeIds: e.target.checked
+                              ? [...serviceForm.employeeIds, employee.id]
+                              : serviceForm.employeeIds.filter((id) => id !== employee.id),
+                          })
+                        }
+                      />
+                      {employee.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             <Button variant="primary" className="md:col-span-2" type="submit" disabled={savingService}>
               {savingService ? t("calendar.saving") : t("calendar.saveService")}
             </Button>

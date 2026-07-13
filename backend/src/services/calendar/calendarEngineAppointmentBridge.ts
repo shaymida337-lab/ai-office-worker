@@ -28,6 +28,9 @@ function mapCalendarEventToAppointment(
     durationMinutes,
     status: event.status === "cancelled" ? "cancelled" : event.status === "confirmed" ? "confirmed" : "pending",
     source: event.source,
+    // מנוע היומן עדיין לא מכיר עובדים (Calendar Phase 1) — תמיד בעל העסק
+    employeeId: null,
+    employee: null,
     notes: params.notes?.trim() || null,
     googleEventId: null,
     googleSyncStatus: "disabled",

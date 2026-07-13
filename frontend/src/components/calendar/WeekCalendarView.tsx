@@ -87,7 +87,7 @@ export function WeekCalendarView<T extends CalendarEventCardAppointment>({
                     onQuickConfirm={onQuickConfirm ? () => onQuickConfirm(appt) : undefined}
                     className="!shadow-none hover:!shadow-sm"
                     style={{
-                      backgroundColor: colorWithAlpha(appt.service?.color || "#3B82F6", 0.1),
+                      backgroundColor: colorWithAlpha(appt.employee?.color || appt.service?.color || "#3B82F6", 0.1),
                     }}
                   />
                 ))

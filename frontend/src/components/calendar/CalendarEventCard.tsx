@@ -70,7 +70,7 @@ export function CalendarEventCard({
 }: CalendarEventCardProps) {
   const { t, dir } = useI18n();
   const orgTimezone = useOrganizationTimezone();
-  const color = appointment.service?.color || DEFAULT_COLOR;
+  const color = appointment.employee?.color || appointment.service?.color || DEFAULT_COLOR;
   const isCancelled = appointment.status === "cancelled";
   const time = formatAppointmentTime(appointment.startTime, orgTimezone);
   const googleLabel = googleSyncLabel(appointment.googleSyncStatus, t);
@@ -106,6 +106,11 @@ export function CalendarEventCard({
             {appointment.service?.name && (
               <div className={`mt-0.5 truncate ${calendarUi.clientNameMuted} ${isCancelled ? "line-through" : ""}`}>
                 {appointment.service.name}
+              </div>
+            )}
+            {appointment.employee?.name && (
+              <div className={`mt-0.5 truncate  `}>
+                👤 {appointment.employee.name}
               </div>
             )}
             <div className="mt-0.5 flex flex-wrap items-center gap-1">

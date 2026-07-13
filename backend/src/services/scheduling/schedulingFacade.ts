@@ -437,6 +437,7 @@ async function requireSchedulingItem(
     include: {
       client: { select: { id: true, name: true, whatsappNumber: true, color: true } },
       service: { select: { id: true, name: true, color: true, durationMinutes: true } },
+      employee: { select: { id: true, name: true, color: true, isActive: true } },
     },
   });
   if (appointment) {

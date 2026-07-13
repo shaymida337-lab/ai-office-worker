@@ -5738,8 +5738,16 @@ apiRouter.get("/services", requireCalendarView, async (req, res) => {
     const services = await prisma.service.findMany({
       where: { organizationId: req.auth!.organizationId },
       orderBy: { name: "asc" },
+      include: { employeeLinks: { select: { employeeId: true } } },
     });
-    res.json(services);
+    res.json(
+      services.map((service) => ({
+        ...service,
+        // אילו עובדים מבצעים את השירות; ריק = כולם
+        employeeIds: service.employeeLinks.map((link) => link.employeeId),
+        employeeLinks: undefined,
+      }))
+    );
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load services" });
   }
@@ -5747,7 +5755,13 @@ apiRouter.get("/services", requireCalendarView, async (req, res) => {
 
 apiRouter.post("/services", requireCalendarCreate, async (req, res) => {
   try {
-    const body = req.body as { name?: string; durationMinutes?: number; price?: number; color?: string };
+    const body = req.body as {
+      name?: string;
+      durationMinutes?: number;
+      price?: number;
+      color?: string;
+      employeeIds?: string[];
+    };
     const name = body.name?.trim();
     if (!name) {
       res.status(400).json({ error: "Service name is required" });
@@ -5767,7 +5781,17 @@ apiRouter.post("/services", requireCalendarCreate, async (req, res) => {
         ...(body.color?.trim() ? { color: body.color.trim() } : {}),
       },
     });
-    res.status(201).json(service);
+    let employeeIds: string[] = [];
+    if (body.employeeIds !== undefined) {
+      const { setServiceEmployees } = await import("../services/employees/employeeService.js");
+      const linkResult = await setServiceEmployees(req.auth!.organizationId, service.id, body.employeeIds);
+      if (!linkResult.ok) {
+        res.status(400).json({ error: linkResult.error });
+        return;
+      }
+      employeeIds = linkResult.employeeIds;
+    }
+    res.status(201).json({ ...service, employeeIds });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create service" });
   }
@@ -5789,6 +5813,7 @@ apiRouter.patch("/services/:id", requireCalendarUpdate, async (req, res) => {
       price?: number | null;
       color?: string | null;
       isActive?: boolean;
+      employeeIds?: string[];
     };
     const data: Prisma.ServiceUpdateInput = {};
     if (body.name !== undefined) {
@@ -5819,7 +5844,21 @@ apiRouter.patch("/services/:id", requireCalendarUpdate, async (req, res) => {
       where: { id: existing.id },
       data,
     });
-    res.json(service);
+    if (body.employeeIds !== undefined) {
+      const { setServiceEmployees } = await import("../services/employees/employeeService.js");
+      const linkResult = await setServiceEmployees(req.auth!.organizationId, service.id, body.employeeIds);
+      if (!linkResult.ok) {
+        res.status(400).json({ error: linkResult.error });
+        return;
+      }
+      res.json({ ...service, employeeIds: linkResult.employeeIds });
+      return;
+    }
+    const links = await prisma.serviceEmployee.findMany({
+      where: { serviceId: service.id },
+      select: { employeeId: true },
+    });
+    res.json({ ...service, employeeIds: links.map((link) => link.employeeId) });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update service" });
   }
@@ -5838,6 +5877,114 @@ apiRouter.delete("/services/:id", requireCalendarCancel, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to deactivate service" });
+  }
+});
+
+// ===== Calendar Phase 1 — עובדים ביומן =====
+
+apiRouter.get("/employees", requireCalendarView, async (req, res) => {
+  try {
+    const { listEmployees } = await import("../services/employees/employeeService.js");
+    const employees = await listEmployees(req.auth!.organizationId);
+    res.json(
+      employees.map((employee) => ({
+        ...employee,
+        serviceIds: employee.serviceLinks.map((link) => link.serviceId),
+        serviceLinks: undefined,
+      }))
+    );
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load employees" });
+  }
+});
+
+apiRouter.post("/employees", requireCalendarCreate, async (req, res) => {
+  try {
+    const { createEmployee } = await import("../services/employees/employeeService.js");
+    const result = await createEmployee(req.auth!.organizationId, req.body ?? {});
+    if (!result.ok) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+    res.status(201).json(result.employee);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create employee" });
+  }
+});
+
+apiRouter.patch("/employees/:id", requireCalendarUpdate, async (req, res) => {
+  try {
+    const { updateEmployee } = await import("../services/employees/employeeService.js");
+    const result = await updateEmployee(req.auth!.organizationId, routeId(req), req.body ?? {});
+    if (!result.ok) {
+      res.status("notFound" in result && result.notFound ? 404 : 400).json({ error: result.error });
+      return;
+    }
+    res.json(result.employee);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update employee" });
+  }
+});
+
+apiRouter.delete("/employees/:id", requireCalendarCancel, async (req, res) => {
+  try {
+    const { deleteEmployee } = await import("../services/employees/employeeService.js");
+    const result = await deleteEmployee(req.auth!.organizationId, routeId(req));
+    if (!result.ok) {
+      const status = "notFound" in result && result.notFound ? 404 : "conflict" in result && result.conflict ? 409 : 400;
+      res.status(status).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to delete employee" });
+  }
+});
+
+apiRouter.put("/employees/:id/working-hours", requireCalendarUpdate, async (req, res) => {
+  try {
+    const { setEmployeeWorkingHours } = await import("../services/employees/employeeService.js");
+    const body = req.body as { workingHours?: unknown };
+    const result = await setEmployeeWorkingHours(
+      req.auth!.organizationId,
+      routeId(req),
+      body?.workingHours ?? []
+    );
+    if (!result.ok) {
+      res.status("notFound" in result && result.notFound ? 404 : 400).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true, workingHours: result.entries });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update working hours" });
+  }
+});
+
+apiRouter.post("/employees/:id/vacations", requireCalendarUpdate, async (req, res) => {
+  try {
+    const { addEmployeeVacation } = await import("../services/employees/employeeService.js");
+    const result = await addEmployeeVacation(req.auth!.organizationId, routeId(req), req.body ?? {});
+    if (!result.ok) {
+      res.status("notFound" in result && result.notFound ? 404 : 400).json({ error: result.error });
+      return;
+    }
+    res.status(201).json(result.vacation);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to add vacation" });
+  }
+});
+
+apiRouter.delete("/employees/vacations/:id", requireCalendarUpdate, async (req, res) => {
+  try {
+    const { removeEmployeeVacation } = await import("../services/employees/employeeService.js");
+    const result = await removeEmployeeVacation(req.auth!.organizationId, routeId(req));
+    if (!result.ok) {
+      res.status(404).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to remove vacation" });
   }
 });
 
@@ -5897,8 +6044,18 @@ apiRouter.get("/appointments", requireCalendarView, async (req, res) => {
       startTimeFilter = { gte: new Date() };
     }
 
+    // סינון לפי עובד: absent/"all" = הכול, "owner" = היומן של בעל העסק
+    // (תורים בלי עובד — כל התורים ההיסטוריים), אחרת מזהה עובד ספציפי.
+    const employeeParam = typeof req.query.employeeId === "string" ? req.query.employeeId.trim() : "";
+    const employeeFilter: Prisma.AppointmentWhereInput =
+      !employeeParam || employeeParam === "all"
+        ? {}
+        : employeeParam === "owner"
+          ? { employeeId: null }
+          : { employeeId: employeeParam };
+
     const appointments = await prisma.appointment.findMany({
-      where: { organizationId, startTime: startTimeFilter },
+      where: { organizationId, startTime: startTimeFilter, ...employeeFilter },
       include: APPOINTMENT_INCLUDE,
       orderBy: { startTime: "asc" },
       ...(fromParam && toParam ? {} : { take: 500 }),
@@ -5953,6 +6110,7 @@ apiRouter.post("/appointments", requireCalendarCreate, async (req, res) => {
     const body = req.body as {
       clientId?: string;
       serviceId?: string | null;
+      employeeId?: string | null;
       startTime?: string;
       durationMinutes?: number;
       notes?: string | null;
@@ -6011,7 +6169,31 @@ apiRouter.post("/appointments", requireCalendarCreate, async (req, res) => {
       return;
     }
 
-    if (status !== "cancelled") {
+    // Calendar Phase 1: תור עם עובד נבדק מול היומן של אותו עובד בלבד
+    // (שעות עבודה, חופשות, כפילות). תור בלי עובד = מסלול בעל העסק הקיים.
+    const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() || null : null;
+
+    if (employeeId) {
+      const { validateEmployeeBooking } = await import("../services/employees/employeeService.js");
+      const employeeCheck = await validateEmployeeBooking({
+        organizationId,
+        employeeId,
+        serviceId,
+        startTime,
+        durationMinutes,
+        timeZone: await loadOrganizationTimezone(organizationId),
+      });
+      if (!employeeCheck.ok) {
+        if (employeeCheck.code === "employee_not_found") {
+          res.status(404).json({ error: employeeCheck.message, code: employeeCheck.code });
+          return;
+        }
+        res
+          .status(employeeCheck.code === "time_conflict" ? 409 : 400)
+          .json({ error: employeeCheck.message, code: employeeCheck.code });
+        return;
+      }
+    } else if (status !== "cancelled") {
       const availability = await checkUnifiedSlotAvailability({
         organizationId,
         userId: req.auth!.userId,
@@ -6042,6 +6224,7 @@ apiRouter.post("/appointments", requireCalendarCreate, async (req, res) => {
           userId: req.auth!.userId,
           clientId,
           serviceId,
+          employeeId,
           startTime,
           durationMinutes,
           status,
@@ -6110,6 +6293,7 @@ apiRouter.patch("/appointments/:id", requireCalendarReschedule, async (req, res)
       status?: string;
       notes?: string | null;
       serviceId?: string | null;
+      employeeId?: string | null;
     };
 
     let startTime: Date | undefined;
@@ -6161,7 +6345,53 @@ apiRouter.patch("/appointments/:id", requireCalendarReschedule, async (req, res)
       }
     }
 
-    const shouldCheckAvailability = status !== "cancelled" && (startTime !== undefined || durationMinutes !== undefined);
+    // Calendar Phase 1: שינוי עובד/זמן על תור של עובד נבדק מול היומן של
+    // העובד היעד; תורים בלי עובד ממשיכים במסלול הקיים ללא שינוי.
+    let employeeId: string | null | undefined;
+    if (body.employeeId !== undefined) {
+      employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() || null : null;
+    }
+
+    const existingForEmployeeCheck = await prisma.appointment.findFirst({
+      where: { id: routeId(req), organizationId },
+      select: { id: true, employeeId: true, startTime: true, durationMinutes: true, serviceId: true, status: true },
+    });
+    if (!existingForEmployeeCheck) {
+      res.status(404).json({ error: "Appointment not found" });
+      return;
+    }
+    const targetEmployeeId = employeeId !== undefined ? employeeId : existingForEmployeeCheck.employeeId;
+    const effectiveStatusForCheck = status ?? existingForEmployeeCheck.status;
+    const timeOrEmployeeChanged =
+      startTime !== undefined || durationMinutes !== undefined || employeeId !== undefined;
+
+    if (targetEmployeeId && effectiveStatusForCheck !== "cancelled" && timeOrEmployeeChanged) {
+      const { validateEmployeeBooking } = await import("../services/employees/employeeService.js");
+      const employeeCheck = await validateEmployeeBooking({
+        organizationId,
+        employeeId: targetEmployeeId,
+        serviceId: serviceId !== undefined ? serviceId : existingForEmployeeCheck.serviceId,
+        startTime: startTime ?? existingForEmployeeCheck.startTime,
+        durationMinutes: durationMinutes ?? existingForEmployeeCheck.durationMinutes,
+        timeZone: await loadOrganizationTimezone(organizationId),
+        excludeAppointmentId: routeId(req),
+      });
+      if (!employeeCheck.ok) {
+        if (employeeCheck.code === "employee_not_found") {
+          res.status(404).json({ error: employeeCheck.message, code: employeeCheck.code });
+          return;
+        }
+        res
+          .status(employeeCheck.code === "time_conflict" ? 409 : 400)
+          .json({ error: employeeCheck.message, code: employeeCheck.code });
+        return;
+      }
+    }
+
+    const shouldCheckAvailability =
+      !targetEmployeeId &&
+      status !== "cancelled" &&
+      (startTime !== undefined || durationMinutes !== undefined);
     if (shouldCheckAvailability) {
       const availability = await checkUnifiedSlotAvailability({
         organizationId,
@@ -6187,7 +6417,7 @@ apiRouter.patch("/appointments/:id", requireCalendarReschedule, async (req, res)
       req,
       routeKey: "PATCH:/appointments/:id",
       organizationId,
-      body: { appointmentId: routeId(req), startTime: body.startTime, durationMinutes, status, notes, serviceId },
+      body: { appointmentId: routeId(req), startTime: body.startTime, durationMinutes, status, notes, serviceId, employeeId },
       execute: async () => {
         const before = await prisma.appointment.findFirst({
           where: { id: routeId(req), organizationId },
@@ -6202,6 +6432,7 @@ apiRouter.patch("/appointments/:id", requireCalendarReschedule, async (req, res)
           status,
           notes,
           serviceId,
+          employeeId,
         });
         const becameCancelled = before?.status !== "cancelled" && appointment.status === "cancelled";
         const rescheduled = before && before.startTime.getTime() !== appointment.startTime.getTime();

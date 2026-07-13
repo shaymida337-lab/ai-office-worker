@@ -96,6 +96,8 @@ model Organization {
   outgoingInvoiceDrafts       OutgoingInvoiceDraft[]
   services                    Service[]
   appointments                Appointment[]
+  employees                   Employee[]
+  employeeVacations           EmployeeVacation[]
   deals                       Deal[]
   workCases                   WorkCase[]
   calendarEvents              CalendarEvent[]
@@ -1093,8 +1095,72 @@ model Service {
   appointments   Appointment[]
   quoteLines     QuoteLine[]
   calendarEvents CalendarEvent[]
+  employeeLinks  ServiceEmployee[]
 
   @@index([organizationId, isActive])
+}
+
+/// Calendar Phase 1 — עובדים ביומן. תור בלי employeeId = היומן של בעל העסק
+/// (כל התורים הקיימים), כך שההתנהגות הנוכחית נשמרת אחד-לאחד.
+model Employee {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  phone          String?
+  color          String       @default("#3B82F6")
+  photoUrl       String?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  workingHours EmployeeWorkingHours[]
+  vacations    EmployeeVacation[]
+  serviceLinks ServiceEmployee[]
+  appointments Appointment[]
+
+  @@index([organizationId, isActive])
+}
+
+/// שעות עבודה שבועיות לעובד: יום בשבוע (0=ראשון..6=שבת), שעות "HH:MM"
+/// בשעון הארגון, והפסקות כמערך JSON [{ start: "HH:MM", end: "HH:MM" }].
+model EmployeeWorkingHours {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int
+  startTime  String
+  endTime    String
+  breaksJson Json     @default("[]")
+
+  @@unique([employeeId, dayOfWeek])
+}
+
+/// ימי חופשה לעובד — טווח תאריכים מקומיים "YYYY-MM-DD" (כולל שני הקצוות).
+model EmployeeVacation {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employeeId     String
+  employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  startDate      String
+  endDate        String
+  note           String?
+  createdAt      DateTime     @default(now())
+
+  @@index([employeeId, startDate])
+  @@index([organizationId])
+}
+
+/// אילו עובדים מבצעים כל שירות. שירות בלי שורות = כל העובדים יכולים לבצע.
+model ServiceEmployee {
+  serviceId  String
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@id([serviceId, employeeId])
+  @@index([employeeId])
 }
 
 model Deal {
@@ -1182,6 +1248,8 @@ model Appointment {
   client                 Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   serviceId              String?
   service                Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  employeeId             String?
+  employee               Employee?    @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   startTime              DateTime
   durationMinutes        Int
   status                 String       @default("pending")
@@ -1204,6 +1272,7 @@ model Appointment {
   @@index([organizationId, status])
   @@index([organizationId, googleSyncStatus, nextGoogleSyncRetryAt])
   @@index([clientId])
+  @@index([employeeId, startTime])
 }
 
 model AppointmentReminderJob {

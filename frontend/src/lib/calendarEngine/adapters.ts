@@ -11,6 +11,9 @@ export type CalendarDisplayItem = {
   notes?: string | null;
   client: { id: string; name: string; whatsappNumber?: string | null; color?: string | null };
   service?: { id: string; name: string; color?: string | null; durationMinutes: number } | null;
+  /** Calendar Phase 1: תור של עובד; חסר/null = היומן של בעל העסק */
+  employeeId?: string | null;
+  employee?: { id: string; name: string; color?: string | null; isActive?: boolean } | null;
   source: "appointment" | "calendar_engine";
   engineEventId?: string;
   workCaseId?: string;

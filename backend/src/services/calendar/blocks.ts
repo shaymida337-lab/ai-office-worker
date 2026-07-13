@@ -10,6 +10,10 @@ export async function loadAppointmentBusyBlocks(
   const appointments = await prisma.appointment.findMany({
     where: {
       organizationId,
+      // Calendar Phase 1: היומן הזה הוא של בעל העסק — תורים של עובדים
+      // (employeeId מוגדר) חיים ביומן נפרד ולא חוסמים אותו. כל התורים
+      // הקיימים הם ללא עובד, ולכן אין שינוי התנהגות עבור נתונים קיימים.
+      employeeId: null,
       status: { not: "cancelled" },
       startTime: { lt: range.end },
       ...(options?.excludeAppointmentId ? { id: { not: options.excludeAppointmentId } } : {}),

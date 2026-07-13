@@ -19,6 +19,7 @@ export { resolveAppointmentDateTime } from "./calendar/datetime.js";
 export const APPOINTMENT_INCLUDE = {
   client: { select: { id: true, name: true, whatsappNumber: true, color: true } },
   service: { select: { id: true, name: true, color: true, durationMinutes: true } },
+  employee: { select: { id: true, name: true, color: true, isActive: true } },
 } as const;
 
 export type AppointmentWithRelations = Prisma.AppointmentGetPayload<{
@@ -114,11 +115,43 @@ export async function findUpcomingAppointmentsForClient(params: {
   });
 }
 
+/**
+ * Calendar Phase 1: תור עם employeeId נבדק ונשמר מול היומן של אותו עובד
+ * בלבד; תור בלי עובד (בעל העסק) ממשיך במסלול הקיים ללא שינוי.
+ */
+async function checkEmployeeAppointmentOverlap(
+  tx: Pick<typeof prisma, "appointment">,
+  params: {
+    organizationId: string;
+    employeeId: string;
+    startTime: Date;
+    durationMinutes: number;
+    excludeAppointmentId?: string;
+  }
+): Promise<boolean> {
+  const end = new Date(params.startTime.getTime() + params.durationMinutes * 60_000);
+  const existing = await tx.appointment.findMany({
+    where: {
+      organizationId: params.organizationId,
+      employeeId: params.employeeId,
+      status: { not: "cancelled" },
+      startTime: { lt: end },
+      ...(params.excludeAppointmentId ? { id: { not: params.excludeAppointmentId } } : {}),
+    },
+    select: { startTime: true, durationMinutes: true },
+  });
+  return existing.some((appointment) => {
+    const existingEnd = appointment.startTime.getTime() + appointment.durationMinutes * 60_000;
+    return params.startTime.getTime() < existingEnd && end.getTime() > appointment.startTime.getTime();
+  });
+}
+
 export async function createAppointmentForOrganization(params: {
   organizationId: string;
   userId?: string;
   clientId: string;
   serviceId?: string | null;
+  employeeId?: string | null;
   startTime: Date;
   durationMinutes: number;
   status?: string;
@@ -131,6 +164,10 @@ export async function createAppointmentForOrganization(params: {
 
   const flags = await resolveCalendarEngineFlags(params.organizationId);
   if (flags.writeEnabled) {
+    if (params.employeeId) {
+      // Phase 1 מכוון ליומן הקיים; היומן החדש (מנוע) עדיין לא מכיר עובדים.
+      throw new Error("שיוך עובד לתור עדיין לא נתמך ביומן החדש");
+    }
     if (!params.userId) {
       throw new Error("userId is required when calendar engine write is enabled");
     }
@@ -161,13 +198,26 @@ export async function createAppointmentForOrganization(params: {
 
     const effectiveStatus = params.status ?? "pending";
     if (effectiveStatus !== "cancelled") {
-      const conflict = await checkAppointmentConflict({
-        organizationId: params.organizationId,
-        startTime: params.startTime,
-        durationMinutes: params.durationMinutes,
-      });
-      if (conflict.hasConflict) {
-        throw new AppointmentConflictError();
+      if (params.employeeId) {
+        // כפילות נבדקת מול תורים של אותו עובד בלבד — בתוך הנעילה (race-safe)
+        const hasOverlap = await checkEmployeeAppointmentOverlap(tx, {
+          organizationId: params.organizationId,
+          employeeId: params.employeeId,
+          startTime: params.startTime,
+          durationMinutes: params.durationMinutes,
+        });
+        if (hasOverlap) {
+          throw new AppointmentConflictError("לעובד כבר יש תור בשעה הזו");
+        }
+      } else {
+        const conflict = await checkAppointmentConflict({
+          organizationId: params.organizationId,
+          startTime: params.startTime,
+          durationMinutes: params.durationMinutes,
+        });
+        if (conflict.hasConflict) {
+          throw new AppointmentConflictError();
+        }
       }
     }
 
@@ -176,6 +226,7 @@ export async function createAppointmentForOrganization(params: {
         organizationId: params.organizationId,
         clientId: params.clientId,
         serviceId: params.serviceId ?? null,
+        employeeId: params.employeeId ?? null,
         startTime: params.startTime,
         durationMinutes: params.durationMinutes,
         status: params.status ?? "pending",
@@ -201,9 +252,14 @@ export async function updateAppointmentForOrganization(params: {
   status?: string;
   notes?: string | null;
   serviceId?: string | null;
+  /** undefined = ללא שינוי; null = החזרה ליומן בעל העסק */
+  employeeId?: string | null;
 }): Promise<AppointmentWithRelations> {
   const flags = await resolveCalendarEngineFlags(params.organizationId);
   if (flags.writeEnabled) {
+    if (params.employeeId) {
+      throw new Error("שיוך עובד לתור עדיין לא נתמך ביומן החדש");
+    }
     if (!params.userId) {
       throw new Error("userId is required when calendar engine write is enabled");
     }
@@ -230,18 +286,35 @@ export async function updateAppointmentForOrganization(params: {
     const effectiveStartTime = params.startTime ?? existing.startTime;
     const effectiveDuration = params.durationMinutes ?? existing.durationMinutes;
     const effectiveStatus = params.status ?? existing.status;
+    const effectiveEmployeeId =
+      params.employeeId !== undefined ? params.employeeId : existing.employeeId;
     const timeChanged =
-      params.startTime !== undefined || params.durationMinutes !== undefined;
+      params.startTime !== undefined ||
+      params.durationMinutes !== undefined ||
+      params.employeeId !== undefined;
 
     if (effectiveStatus !== "cancelled" && timeChanged) {
-      const conflict = await checkAppointmentConflict({
-        organizationId: params.organizationId,
-        startTime: effectiveStartTime,
-        durationMinutes: effectiveDuration,
-        excludeAppointmentId: params.appointmentId,
-      });
-      if (conflict.hasConflict) {
-        throw new AppointmentConflictError();
+      if (effectiveEmployeeId) {
+        const hasOverlap = await checkEmployeeAppointmentOverlap(tx, {
+          organizationId: params.organizationId,
+          employeeId: effectiveEmployeeId,
+          startTime: effectiveStartTime,
+          durationMinutes: effectiveDuration,
+          excludeAppointmentId: params.appointmentId,
+        });
+        if (hasOverlap) {
+          throw new AppointmentConflictError("לעובד כבר יש תור בשעה הזו");
+        }
+      } else {
+        const conflict = await checkAppointmentConflict({
+          organizationId: params.organizationId,
+          startTime: effectiveStartTime,
+          durationMinutes: effectiveDuration,
+          excludeAppointmentId: params.appointmentId,
+        });
+        if (conflict.hasConflict) {
+          throw new AppointmentConflictError();
+        }
       }
     }
 
@@ -255,6 +328,13 @@ export async function updateAppointmentForOrganization(params: {
         data.service = { connect: { id: params.serviceId } };
       } else {
         data.service = { disconnect: true };
+      }
+    }
+    if (params.employeeId !== undefined) {
+      if (params.employeeId) {
+        data.employee = { connect: { id: params.employeeId } };
+      } else {
+        data.employee = { disconnect: true };
       }
     }
 
