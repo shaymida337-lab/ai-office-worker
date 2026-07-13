@@ -160,6 +160,8 @@ export default function ClientDetailPage() {
   const [editingClient, setEditingClient] = useState(false);
   const [clientForm, setClientForm] = useState<ClientFormValues | null>(null);
   const [savingClient, setSavingClient] = useState(false);
+  // "שמור פרטים": הודעת הצלחה ירוקה שנעלמת לבד אחרי ~2.5 שניות
+  const [saveNotice, setSaveNotice] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -374,7 +376,7 @@ export default function ClientDetailPage() {
 
   async function saveClientProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!clientForm) return;
+    if (!clientForm || savingClient) return; // מניעת שליחה כפולה גם מ-Enter
     const validation = validateClientForm(clientForm);
     if (!validation.ok) {
       setMessage(validation.error);
@@ -388,10 +390,11 @@ export default function ClientDetailPage() {
         body: JSON.stringify(buildClientUpdatePayload(clientForm)),
       });
       setEditingClient(false);
-      setMessage("פרטי הלקוח עודכנו");
+      setSaveNotice("הפרטים נשמרו בהצלחה");
+      window.setTimeout(() => setSaveNotice(""), 2500);
       await load();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "עדכון הלקוח נכשל");
+      setMessage(err instanceof Error ? err.message : "שמירת פרטי הלקוח נכשלה — נסה שוב");
     } finally {
       setSavingClient(false);
     }
@@ -554,6 +557,11 @@ export default function ClientDetailPage() {
           </div>
         )}
       </div>
+      {saveNotice && (
+        <div className="mb-6 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm text-emerald-200" data-testid="save-success-notice">
+          {saveNotice}
+        </div>
+      )}
       {message && <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200">{message}</div>}
 
       {editingClient && clientForm && (
