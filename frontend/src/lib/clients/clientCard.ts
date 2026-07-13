@@ -48,6 +48,23 @@ export function whatsappHref(phone: string | null | undefined): string | null {
   return `https://wa.me/${international}`;
 }
 
+/** קישור mailto: לפתיחת תוכנת המייל; null אם אין אימייל. */
+export function mailtoHref(email: string | null | undefined): string | null {
+  const cleaned = email?.trim();
+  if (!cleaned || !cleaned.includes("@")) return null;
+  return `mailto:${cleaned}`;
+}
+
+/**
+ * קישור ניווט ל-Google Maps (universal URL): במובייל נפתחת אפליקציית
+ * המפות/וייז ובדסקטופ אתר המפות. null אם אין כתובת.
+ */
+export function mapsHref(address: string | null | undefined): string | null {
+  const cleaned = address?.trim();
+  if (!cleaned) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cleaned)}`;
+}
+
 export type NextAppointmentView = {
   dateLabel: string;
   timeLabel: string;

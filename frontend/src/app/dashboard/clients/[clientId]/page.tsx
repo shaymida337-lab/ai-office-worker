@@ -9,6 +9,8 @@ import {
   clientInitials,
   displayPhone,
   formatNextAppointment,
+  mailtoHref,
+  mapsHref,
   telHref,
   whatsappHref,
 } from "@/lib/clients/clientCard";
@@ -441,6 +443,10 @@ export default function ClientDetailPage() {
 
   const phoneLink = telHref(data.client.whatsappNumber);
   const waLink = whatsappHref(data.client.whatsappNumber);
+  const emailLink = mailtoHref(data.client.email);
+  // אין שדה כתובת במודל הלקוח כרגע; הפעולה נדלקת אוטומטית אם כתובת קיימת.
+  const clientAddress = (data.client as { address?: string | null }).address ?? null;
+  const mapLink = mapsHref(clientAddress);
   const nextView = nextAppointment ? formatNextAppointment(nextAppointment, orgTimezone) : null;
 
   return (
@@ -475,7 +481,27 @@ export default function ClientDetailPage() {
                 "לא הוזן"
               )}
               {" · אימייל: "}
-              {formatClientEmailDisplay(data.client.email) === "לא מוגדר" ? "לא הוזן" : formatClientEmailDisplay(data.client.email)}
+              {emailLink ? (
+                <a href={emailLink} dir="ltr" className="font-bold underline" data-testid="contact-email">
+                  {formatClientEmailDisplay(data.client.email)}
+                </a>
+              ) : (
+                <span data-testid="contact-email-empty">לא הוזן</span>
+              )}
+              {clientAddress ? (
+                <>
+                  {" · כתובת: "}
+                  <a
+                    href={mapLink ?? "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-bold underline"
+                    data-testid="contact-address"
+                  >
+                    {clientAddress}
+                  </a>
+                </>
+              ) : null}
             </p>
           </div>
         </div>
@@ -492,6 +518,16 @@ export default function ClientDetailPage() {
             </a>
           ) : (
             <button className="btn" type="button" disabled title="אין מספר טלפון">💬 WhatsApp</button>
+          )}
+          {emailLink ? (
+            <a className="btn" href={emailLink} data-testid="action-email">✉️ אימייל</a>
+          ) : (
+            <button className="btn" type="button" disabled title="אין כתובת אימייל">✉️ אימייל</button>
+          )}
+          {mapLink ? (
+            <a className="btn" href={mapLink} target="_blank" rel="noreferrer" data-testid="action-navigate">🗺️ ניווט</a>
+          ) : (
+            <button className="btn" type="button" disabled title="אין כתובת">🗺️ ניווט</button>
           )}
           <button
             className="btn"

@@ -5,6 +5,8 @@ import {
   displayOrFallback,
   displayPhone,
   formatNextAppointment,
+  mailtoHref,
+  mapsHref,
   telHref,
   whatsappHref,
   NOT_PROVIDED,
@@ -59,4 +61,21 @@ test("תצוגת התור הבא: תאריך ושעה בשעון הארגון, �
   );
   assert.equal(withAll.serviceLabel, "תספורת");
   assert.equal(withAll.employeeLabel, "יוסי");
+});
+
+test("mailto: קישור לאימייל תקין, ריק/לא-תקין -> null", () => {
+  assert.equal(mailtoHref("dana@test.com"), "mailto:dana@test.com");
+  assert.equal(mailtoHref(" dana@test.com "), "mailto:dana@test.com");
+  assert.equal(mailtoHref("לא-מייל"), null);
+  assert.equal(mailtoHref(null), null);
+  assert.equal(mailtoHref(""), null);
+});
+
+test("maps: קישור ניווט מקודד, ריק -> null", () => {
+  assert.equal(
+    mapsHref("רחוב הרצל 1, תל אביב"),
+    "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent("רחוב הרצל 1, תל אביב")
+  );
+  assert.equal(mapsHref("  "), null);
+  assert.equal(mapsHref(null), null);
 });
