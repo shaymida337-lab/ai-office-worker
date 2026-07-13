@@ -5908,6 +5908,17 @@ apiRouter.post("/employees", requireCalendarCreate, async (req, res) => {
     }
     res.status(201).json(result.employee);
   } catch (err) {
+    // P2021 = הטבלה לא קיימת ב-DB (מיגרציה שלא רצה) — שגיאה ברורה במקום
+    // דמפ Prisma גולמי; הסיבה המלאה נשמרת בלוג השרת.
+    const prismaCode = (err as { code?: string })?.code;
+    console.error(`[employees] create failed org=${req.auth!.organizationId}`, err);
+    if (prismaCode === "P2021" || prismaCode === "P2022") {
+      res.status(500).json({
+        error: "בסיס הנתונים עדיין לא עודכן לגרסה עם ניהול עובדים — הפריסה הבאה תעדכן אותו אוטומטית. נסה שוב בעוד כמה דקות.",
+        code: "db_schema_out_of_date",
+      });
+      return;
+    }
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create employee" });
   }
 });
