@@ -55,8 +55,7 @@
     "submitForApproval": "שלח לאישור",
     "prerequisites": "דרישות מקדימות",
     "optional": "אופציונלי",
-    "workCaseTimeline": "ציר זמן תיק"
-    ,
+    "workCaseTimeline": "ציר זמן תיק",
     "quickActions": "פעולות מהירות",
     "call": "התקשר",
     "whatsapp": "וואטסאפ",
@@ -229,7 +228,7 @@
     "scanGmail": "סרוק לידים מג׳ימייל",
     "templates": "תבניות הודעות",
     "loading": "טוען לקוחות...",
-    "saveAndSequence": "שמור והפעל רצף הודעות",
+    "saveAndSequence": "שמור ליד",
     "saving": "שומר...",
     "floatingNatalie": "דברי עם נטלי",
     "nav": {

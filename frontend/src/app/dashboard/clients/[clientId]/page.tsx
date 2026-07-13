@@ -389,7 +389,7 @@ export default function ClientDetailPage() {
         method: "PUT",
         body: JSON.stringify(buildClientUpdatePayload(clientForm)),
       });
-      setEditingClient(false);
+      // הכרטיס נשאר פתוח אחרי שמירה — נסגר רק בלחיצה על ✕
       setSaveNotice("הפרטים נשמרו בהצלחה");
       window.setTimeout(() => setSaveNotice(""), 2500);
       await load();
@@ -595,8 +595,14 @@ export default function ClientDetailPage() {
             <button className="btn" type="submit" disabled={savingClient}>
               {savingClient ? "שומר..." : "שמור פרטים"}
             </button>
-            <button className="btn btn-secondary" type="button" onClick={() => setEditingClient(false)}>
-              ביטול
+            <button
+              className="btn btn-secondary"
+              type="button"
+              aria-label="סגור את כרטיס העריכה"
+              data-testid="close-edit-card"
+              onClick={() => setEditingClient(false)}
+            >
+              ✕ סגור
             </button>
           </div>
         </form>

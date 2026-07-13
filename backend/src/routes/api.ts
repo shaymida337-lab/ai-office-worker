@@ -3672,7 +3672,10 @@ apiRouter.get("/leads/:id", async (req, res) => {
 apiRouter.post("/leads", async (req, res) => {
   try {
     const { createCrmLead } = await import("../services/crm.js");
-    res.json(await createCrmLead(req.auth!.organizationId, req.body as Record<string, unknown>, req.auth!.userId));
+    // רצף הודעות אוטומטי מופעל כברירת מחדל; ה-UI יכול לבקש במפורש לא
+    // להפעיל (הפיצ'ר מוסתר מהמסך כרגע). ה-backend של הרצפים לא נמחק.
+    const startSequence = (req.body as { startSequence?: unknown })?.startSequence !== false;
+    res.json(await createCrmLead(req.auth!.organizationId, req.body as Record<string, unknown>, req.auth!.userId, startSequence));
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "Create lead failed" });
   }

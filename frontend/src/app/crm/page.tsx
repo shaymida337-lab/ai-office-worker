@@ -190,11 +190,14 @@ export default function CrmPage() {
           estimatedValue: Number(form.estimatedValue || 0),
           tags: form.tags,
           whatsapp: form.phone,
+          // רצף ההודעות מוסתר מהמסך כרגע (הפיצ'ר לא מוכן) — לא מפעילים אוטומטית.
+          // ה-backend של הרצפים נשאר קיים; לידים מערוצים אחרים לא מושפעים.
+          startSequence: false,
         }),
       });
       setForm(emptyForm);
       setShowForm(false);
-      setMessage("הליד נוסף ורצף ההודעות הופעל אוטומטית");
+      setMessage("הליד נוסף בהצלחה");
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "שמירת ליד נכשלה");
