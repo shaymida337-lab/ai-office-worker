@@ -24,6 +24,8 @@ export default function CameraPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  // תאריך חריג (מעל שנתיים): אחרי אזהרה ראשונה, לחיצה נוספת = אישור מפורש
+  const [dateConfirmed, setDateConfirmed] = useState(false);
 
   // שלושה input-ים נפרדים וקבועים — לא משנים capture דינמית על input אחד,
   // כי iOS Safari מתנהג בצורה לא עקבית כשמשנים את התכונה אחרי הרנדר.
@@ -38,6 +40,7 @@ export default function CameraPage() {
     setPreview(null);
     setMessage("");
     setError("");
+    setDateConfirmed(false);
     if (!nextFile) return;
     const base64 = await toBase64(nextFile);
     setFileBase64(base64);
@@ -93,6 +96,7 @@ export default function CameraPage() {
             currency: preview.currency,
             invoiceDate: preview.date,
             invoiceNumber: preview.invoiceNumber,
+            dateConfirmed,
           }
         : {
             supplier: preview.supplier,
@@ -104,10 +108,17 @@ export default function CameraPage() {
             mimeType: file.type,
             fileBase64,
           };
-      const result = await apiFetch<{ status?: string; message?: string }>("/api/camera/invoices", {
+      const result = await apiFetch<{ status?: string; message?: string; reason?: string }>("/api/camera/invoices", {
         method: "POST",
         body: JSON.stringify(confirmBody),
       });
+      if (result?.reason === "date_out_of_range") {
+        // המסמך שמור; משאירים את התצוגה כדי שהמשתמש יתקן את התאריך
+        // או ילחץ שוב לאישור מפורש של התאריך החריג.
+        setDateConfirmed(true);
+        setError(result.message ?? "תאריך החשבונית חריג — תקן אותו או לחץ שוב לאישור.");
+        return;
+      }
       setMessage(
         result?.status === "needs_review"
           ? result.message ?? "המסמך נשמר ויופיע במסך השלמת חשבוניות להשלמת הפרטים."
@@ -116,6 +127,7 @@ export default function CameraPage() {
       setFile(null);
       setFileBase64("");
       setPreview(null);
+      setDateConfirmed(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "שמירת החשבונית נכשלה");
     } finally {
@@ -222,10 +234,28 @@ export default function CameraPage() {
             <p><strong>ספק:</strong> {preview.supplier ?? "לא זוהה"}</p>
             <p><strong>סכום:</strong> {preview.amount ?? "לא זוהה"}</p>
             <p><strong>מטבע:</strong> {preview.currency}</p>
-            <p><strong>תאריך:</strong> {preview.date ?? "לא זוהה"}</p>
+            <p className="flex items-center gap-2">
+              <strong>תאריך:</strong>
+              <input
+                type="date"
+                className="input !min-h-9 max-w-[12rem]"
+                value={preview.date ?? ""}
+                onChange={(e) => {
+                  setPreview({ ...preview, date: e.target.value || null });
+                  setDateConfirmed(false);
+                }}
+                aria-label="תאריך החשבונית"
+              />
+            </p>
             <p><strong>מספר חשבונית:</strong> {preview.invoiceNumber ?? "לא זוהה"}</p>
             <button className="btn" onClick={saveInvoice} disabled={saving}>
-              {saving ? "שומר..." : preview.supplier && preview.amount != null ? "אשר ושמור כתשלום ספק" : "שמור להשלמה במסך השלמת חשבוניות"}
+              {saving
+                ? "שומר..."
+                : dateConfirmed
+                  ? "אשר את התאריך ושמור"
+                  : preview.supplier && preview.amount != null
+                    ? "אשר ושמור כתשלום ספק"
+                    : "שמור להשלמה במסך השלמת חשבוניות"}
             </button>
           </div>
         )}

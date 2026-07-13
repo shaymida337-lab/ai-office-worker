@@ -20,6 +20,33 @@ import { prisma } from "../../lib/prisma.js";
 import { computeCanonicalFingerprint } from "../dedup/sharedMatcher.js";
 import { saveLocalIngestedDocument } from "../documents/documentReviewPreview.js";
 import { roundMoneyOrNull } from "../amount/parseAmountHelpers.js";
+import { isWithinBusinessDateWindow } from "../dates/businessDate.js";
+
+export type CameraDateGate =
+  | { action: "proceed" }
+  | { action: "confirm_required"; warning: string };
+
+/**
+ * שער תאריך רך: תאריך מחוץ ל-±2 שנים כבר לא מחזיר 400 שמעלים את המסמך —
+ * הוא דורש אישור מפורש מהמשתמש (dateConfirmed) או תיקון, ועד אז המסמך
+ * נשאר שמור ב-needs_review עם אזהרה ברורה.
+ */
+export function resolveCameraDateGate(input: {
+  invoiceDate: Date;
+  dueDate?: Date | null;
+  dateConfirmed?: boolean;
+  nowMs?: number;
+}): CameraDateGate {
+  const nowMs = input.nowMs ?? Date.now();
+  const outOfWindow =
+    !isWithinBusinessDateWindow(input.invoiceDate, nowMs) ||
+    (input.dueDate ? !isWithinBusinessDateWindow(input.dueDate, nowMs) : false);
+  if (!outOfWindow || input.dateConfirmed === true) return { action: "proceed" };
+  return {
+    action: "confirm_required",
+    warning: `תאריך החשבונית (${input.invoiceDate.toISOString().slice(0, 10)}) חורג מהטווח הרגיל (עד שנתיים אחורה או קדימה) — תקן את התאריך או אשר אותו במפורש`,
+  };
+}
 
 export type CameraExtractionPreview = {
   supplier: string | null;

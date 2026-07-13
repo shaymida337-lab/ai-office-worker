@@ -223,3 +223,26 @@ test("confirm flow: preview creates reviewId → confirm approves the SAME recor
   assert.equal(manualEntryCalls, 1, "double click must not re-run the manual-entry pipeline");
   assert.equal(updates.length, 1, "double click must not update the record again");
 });
+
+test("date gate: 2024-06-16 on 2026-07-13 does not reject — requires explicit confirmation, document stays saved", async () => {
+  const { resolveCameraDateGate } = await import("./cameraIngestion.js");
+  const now = new Date("2026-07-13T10:00:00Z").getTime();
+
+  // תאריך ישן מ-שנתיים: לא 400 — דרישת אישור עם אזהרה מפורשת
+  const gate = resolveCameraDateGate({ invoiceDate: new Date("2024-06-16"), nowMs: now });
+  assert.equal(gate.action, "confirm_required");
+  assert.match((gate as any).warning, /2024-06-16/);
+  assert.match((gate as any).warning, /תקן את התאריך או אשר/);
+
+  // אישור מפורש של המשתמש ⇒ ממשיכים לשמירה
+  const confirmed = resolveCameraDateGate({ invoiceDate: new Date("2024-06-16"), dateConfirmed: true, nowMs: now });
+  assert.equal(confirmed.action, "proceed");
+
+  // תאריך בטווח ⇒ ממשיכים כרגיל
+  const recent = resolveCameraDateGate({ invoiceDate: new Date("2026-07-01"), nowMs: now });
+  assert.equal(recent.action, "proceed");
+
+  // תאריך עתידי חריג ⇒ גם הוא דורש אישור, לא נדחה
+  const future = resolveCameraDateGate({ invoiceDate: new Date("2029-01-01"), nowMs: now });
+  assert.equal(future.action, "confirm_required");
+});

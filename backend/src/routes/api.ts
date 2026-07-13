@@ -8215,9 +8215,41 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
       res.status(400).json({ error: "Invalid invoice date" });
       return;
     }
-    // F4: אותו גבול ±2 שנים כמו ב-Gmail/WhatsApp. בקלט ידני — שגיאה מפורשת למשתמש,
-    // לא החלפה שקטה של התאריך שהוקלד.
-    if (!isWithinBusinessDateWindow(invoiceDate) || (dueDate && !isWithinBusinessDateWindow(dueDate))) {
+    // F4 רך: תאריך מחוץ ל-±2 שנים כבר לא מחזיר 400 שמעלים את המסמך.
+    // עם reviewId — המסמך נשאר שמור ב-needs_review עם אזהרה, והמשתמש יכול
+    // לתקן את התאריך או לאשר אותו במפורש (dateConfirmed).
+    const { resolveCameraDateGate } = await import("../services/camera/cameraIngestion.js");
+    const dateGate = resolveCameraDateGate({
+      invoiceDate,
+      dueDate,
+      dateConfirmed: (body as { dateConfirmed?: boolean }).dateConfirmed === true,
+    });
+    if (dateGate.action === "confirm_required") {
+      if (body.reviewId) {
+        const draft = await prisma.financialDocumentReview.findFirst({
+          where: { id: body.reviewId, organizationId: req.auth!.organizationId, source: "camera" },
+        });
+        if (draft) {
+          await prisma.financialDocumentReview.update({
+            where: { id: draft.id },
+            data: {
+              documentDate: invoiceDate,
+              ...(body.supplier?.trim() ? { supplierName: body.supplier.trim() } : {}),
+              ...(Number.isFinite(body.amount) && (body.amount as number) > 0 ? { totalAmount: body.amount } : {}),
+              ...(body.invoiceNumber ? { invoiceNumber: body.invoiceNumber } : {}),
+              uncertaintyReason: dateGate.warning,
+            },
+          });
+          res.json({
+            status: "needs_review",
+            reason: "date_out_of_range",
+            reviewId: draft.id,
+            message: dateGate.warning,
+          });
+          return;
+        }
+      }
+      // מסלול ישן ללא draft — נשמרת ההתנהגות הקודמת
       res.status(400).json({ error: "תאריך החשבונית מחוץ לטווח סביר (עד שנתיים אחורה או קדימה)" });
       return;
     }
