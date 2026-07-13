@@ -211,9 +211,9 @@ export default function CrmPage() {
           startSequence: false,
         }),
       });
-      // הכרטיס נשאר פתוח והנתונים נשמרים בטופס; רק X סוגר. באנר ירוק ל-2.5ש'.
+      // הכרטיס נשאר פתוח והנתונים נשמרים בטופס; רק X סוגר. באנר ירוק ל-3ש'.
       setSaveNotice("הליד נשמר בהצלחה");
-      window.setTimeout(() => setSaveNotice(""), 2500);
+      window.setTimeout(() => setSaveNotice(""), 3000);
       await load();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "שמירת הליד נכשלה — נסה שוב");
@@ -335,12 +335,14 @@ export default function CrmPage() {
             <Button variant="secondary" type="button" onClick={scanGmailLeads} disabled={saving}>
               {t("crmDesign.scanGmail")}
             </Button>
-            {/* „דברי עם נטלי": כפתור מוטמע בשורת הפעולות במקום כפתור צף,
-                כדי שלא יסתיר את „הוסף" או כל פעולה אחרת במובייל ובמחשב. */}
+            {/* „דברי עם נטלי": כפתור מוטמע בשורת הפעולות (לא צף) — בולט יותר:
+                רקע כחול, טקסט לבן, גבול וצל עדין. נשאר בזרימת הפריסה, בלי חפיפה. */}
             <Button
-              variant="secondary"
+              variant="primary"
               type="button"
               onClick={() => openNatalieAssistant(t("crmDesign.floatingNatalie"))}
+              className="!border-[#1D4ED8] !bg-[#1D4ED8] !text-white shadow-[0_4px_14px_rgba(29,91,255,0.35)] hover:!bg-[#1746C7]"
+              data-testid="crm-natalie-button"
             >
               {t("crmDesign.floatingNatalie")}
             </Button>
