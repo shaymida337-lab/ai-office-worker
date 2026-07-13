@@ -106,6 +106,42 @@ export function emailHref(lead: Lead) {
   return email ? `mailto:${email}` : undefined;
 }
 
+export function appointmentStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending: "ממתין",
+    confirmed: "מאושר",
+    completed: "הושלם",
+    cancelled: "בוטל",
+    no_show: "לא הגיע",
+  };
+  return labels[status] ?? status;
+}
+
+export function appointmentStatusTone(status: string): "info" | "warn" | "success" | "danger" | "neutral" {
+  switch (status) {
+    case "completed":
+      return "success";
+    case "confirmed":
+      return "info";
+    case "pending":
+      return "warn";
+    case "cancelled":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
+export function formatAppointmentDateTime(value: string, locale: string) {
+  return new Date(value).toLocaleString(locale, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function toDateTimeLocal(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";

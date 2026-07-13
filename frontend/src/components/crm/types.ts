@@ -25,6 +25,17 @@ export type Lead = {
   sequences: Array<{ id: string; step: number; channel: string; template: string; scheduledAt: string; sentAt: string | null; status: string }>;
 };
 
+export type CrmAppointment = {
+  id: string;
+  startTime: string;
+  durationMinutes: number;
+  status: string;
+  notes: string | null;
+  service: { id: string; name: string } | null;
+  employee: { id: string; name: string } | null;
+  client: { id: string; name: string } | null;
+};
+
 export type CrmQuickFilter = "all" | "leads" | "customers" | "pending" | "followup";
 
 export type CrmProfileTab =

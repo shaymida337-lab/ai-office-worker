@@ -109,6 +109,7 @@ import {
   AppointmentConflictError,
   createAppointmentForOrganization,
   deleteAppointmentForOrganization,
+  findAppointmentsForLead,
   findClientByNameOrPhone,
   resolveAppointmentDateTime,
   updateAppointmentForOrganization,
@@ -3687,6 +3688,30 @@ apiRouter.put("/leads/:id", async (req, res) => {
     res.json(await updateCrmLead(req.auth!.organizationId, req.params.id, req.body as Record<string, unknown>, req.auth!.userId));
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "Update lead failed" });
+  }
+});
+
+apiRouter.get("/leads/:id/appointments", requireCalendarView, async (req, res) => {
+  try {
+    const appointments = await findAppointmentsForLead({
+      organizationId: req.auth!.organizationId,
+      leadId: routeId(req),
+    });
+    res.json({
+      appointments: appointments.map((appointment) => ({
+        id: appointment.id,
+        startTime: appointment.startTime.toISOString(),
+        durationMinutes: appointment.durationMinutes,
+        status: appointment.status,
+        notes: appointment.notes ?? null,
+        service: appointment.service ? { id: appointment.service.id, name: appointment.service.name } : null,
+        employee: appointment.employee ? { id: appointment.employee.id, name: appointment.employee.name } : null,
+        client: appointment.client ? { id: appointment.client.id, name: appointment.client.name } : null,
+      })),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to load lead appointments";
+    res.status(message === "Lead not found" ? 404 : 500).json({ error: message });
   }
 });
 

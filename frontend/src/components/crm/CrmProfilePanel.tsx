@@ -10,23 +10,28 @@ import {
   Input,
   Select,
   SlidePanel,
+  StatusBadge,
   Tabs,
   Textarea,
 } from "@/components/natalie-ui";
+import { apiFetch } from "@/lib/api";
 import type { BusinessCrmField } from "@/lib/business-config";
 import {
+  appointmentStatusLabel,
+  appointmentStatusTone,
   callHref,
   channelLabel,
   crmSources,
   crmStages,
   emailHref,
+  formatAppointmentDateTime,
   sourceLabel,
   statusLabel,
   timelineTypeLabel,
   toDateTimeLocal,
   whatsappHref,
 } from "./crmHelpers";
-import type { CrmProfileTab, Lead } from "./types";
+import type { CrmAppointment, CrmProfileTab, Lead } from "./types";
 
 function crmFieldMap(fields: BusinessCrmField[]) {
   const fallback: Record<BusinessCrmField["key"], BusinessCrmField> = {
@@ -71,7 +76,51 @@ export function CrmProfilePanel({
   const [tab, setTab] = useState<CrmProfileTab>("details");
   const [saving, setSaving] = useState(false);
   const [replyText, setReplyText] = useState("");
+  const [appointments, setAppointments] = useState<CrmAppointment[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
+  const [expandedAppointmentId, setExpandedAppointmentId] = useState<string | null>(null);
   const crmLabels = useMemo(() => crmFieldMap(crmFields), [crmFields]);
+
+  const leadId = lead?.id;
+  useEffect(() => {
+    if (!leadId) {
+      setAppointments([]);
+      return;
+    }
+    let active = true;
+    setAppointmentsLoading(true);
+    setExpandedAppointmentId(null);
+    apiFetch<{ appointments: CrmAppointment[] }>(`/api/leads/${leadId}/appointments`)
+      .then((result) => {
+        if (active) setAppointments(result.appointments);
+      })
+      .catch(() => {
+        if (active) setAppointments([]);
+      })
+      .finally(() => {
+        if (active) setAppointmentsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [leadId]);
+
+  const { nextAppointment, upcomingAppointments, pastAppointments } = useMemo(() => {
+    const now = Date.now();
+    const parsed = appointments.map((item) => ({ item, ts: new Date(item.startTime).getTime() }));
+    const upcoming = parsed
+      .filter((entry) => entry.item.status !== "cancelled" && entry.ts >= now)
+      .sort((a, b) => a.ts - b.ts);
+    const upcomingIds = new Set(upcoming.map((entry) => entry.item.id));
+    const past = parsed
+      .filter((entry) => !upcomingIds.has(entry.item.id))
+      .sort((a, b) => b.ts - a.ts);
+    return {
+      nextAppointment: upcoming[0]?.item ?? null,
+      upcomingAppointments: upcoming.slice(1).map((entry) => entry.item),
+      pastAppointments: past.map((entry) => entry.item),
+    };
+  }, [appointments]);
 
   const [draft, setDraft] = useState({
     name: "",
@@ -186,6 +235,29 @@ export function CrmProfilePanel({
 
       {tab === "details" ? (
         <div className="grid gap-4">
+          {nextAppointment ? (
+            <button
+              type="button"
+              onClick={() => setTab("appointments")}
+              className="w-full rounded-2xl border border-[#2563EB] bg-[#EFF6FF] p-4 text-start dark:bg-[#0F1E42]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-[#1D4ED8] dark:text-[#93C5FD]">{labels.nextAppointment}</p>
+                  <p className="mt-1 text-sm font-black text-[var(--natalie-text-primary,#0F172A)]">
+                    {formatAppointmentDateTime(nextAppointment.startTime, locale)}
+                  </p>
+                  <p className="mt-0.5 truncate text-sm text-[var(--natalie-text-muted,#64748B)]">
+                    {nextAppointment.service?.name || labels.noService}
+                    {nextAppointment.employee?.name ? ` · ${nextAppointment.employee.name}` : ""}
+                  </p>
+                </div>
+                <StatusBadge tone={appointmentStatusTone(nextAppointment.status)}>
+                  {appointmentStatusLabel(nextAppointment.status)}
+                </StatusBadge>
+              </div>
+            </button>
+          ) : null}
           <div className="rounded-2xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface-elevated,#F8FAFF)] p-4">
             <p className="text-xs font-bold text-[var(--natalie-text-muted,#64748B)]">{labels.email}</p>
             {mailto ? (
@@ -384,7 +456,65 @@ export function CrmProfilePanel({
         </div>
       ) : null}
 
-      {tab === "appointments" ? <EmptyState title={labels.emptyAppointments} description={labels.comingSoon} /> : null}
+      {tab === "appointments" ? (
+        appointmentsLoading ? (
+          <p className="text-sm text-[var(--natalie-text-muted,#64748B)]">{labels.appointmentsLoading}</p>
+        ) : appointments.length === 0 ? (
+          <EmptyState title={labels.emptyAppointments} />
+        ) : (
+          <div className="grid gap-4">
+            {nextAppointment ? (
+              <section className="grid gap-2">
+                <h3 className="text-sm font-black text-[var(--natalie-text-primary,#0F172A)]">{labels.nextAppointment}</h3>
+                <AppointmentRow
+                  appointment={nextAppointment}
+                  locale={locale}
+                  labels={labels}
+                  highlighted
+                  expanded={expandedAppointmentId === nextAppointment.id}
+                  onToggle={() =>
+                    setExpandedAppointmentId((current) => (current === nextAppointment.id ? null : nextAppointment.id))
+                  }
+                />
+              </section>
+            ) : null}
+            {upcomingAppointments.length > 0 ? (
+              <section className="grid gap-2">
+                <h3 className="text-sm font-black text-[var(--natalie-text-primary,#0F172A)]">{labels.upcomingAppointments}</h3>
+                {upcomingAppointments.map((appointment) => (
+                  <AppointmentRow
+                    key={appointment.id}
+                    appointment={appointment}
+                    locale={locale}
+                    labels={labels}
+                    expanded={expandedAppointmentId === appointment.id}
+                    onToggle={() =>
+                      setExpandedAppointmentId((current) => (current === appointment.id ? null : appointment.id))
+                    }
+                  />
+                ))}
+              </section>
+            ) : null}
+            {pastAppointments.length > 0 ? (
+              <section className="grid gap-2">
+                <h3 className="text-sm font-black text-[var(--natalie-text-primary,#0F172A)]">{labels.pastAppointments}</h3>
+                {pastAppointments.map((appointment) => (
+                  <AppointmentRow
+                    key={appointment.id}
+                    appointment={appointment}
+                    locale={locale}
+                    labels={labels}
+                    expanded={expandedAppointmentId === appointment.id}
+                    onToggle={() =>
+                      setExpandedAppointmentId((current) => (current === appointment.id ? null : appointment.id))
+                    }
+                  />
+                ))}
+              </section>
+            ) : null}
+          </div>
+        )
+      ) : null}
       {tab === "documents" ? <EmptyState title={labels.emptyDocuments} description={labels.comingSoon} /> : null}
       {tab === "payments" ? <EmptyState title={labels.emptyPayments} description={labels.comingSoon} /> : null}
 
@@ -454,5 +584,77 @@ export function CrmProfilePanel({
         </div>
       ) : null}
     </SlidePanel>
+  );
+}
+
+function AppointmentRow({
+  appointment,
+  locale,
+  labels,
+  expanded,
+  onToggle,
+  highlighted = false,
+}: {
+  appointment: CrmAppointment;
+  locale: string;
+  labels: Record<string, string>;
+  expanded: boolean;
+  onToggle: () => void;
+  highlighted?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      className={`w-full rounded-2xl border p-3 text-start transition ${
+        highlighted
+          ? "border-[#2563EB] bg-[#EFF6FF] dark:bg-[#0F1E42]"
+          : "border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface-elevated,#F8FAFF)] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B]"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-black text-[var(--natalie-text-primary,#0F172A)]">
+            {formatAppointmentDateTime(appointment.startTime, locale)}
+          </p>
+          <p className="mt-0.5 truncate text-sm text-[var(--natalie-text-muted,#64748B)]">
+            {appointment.service?.name || labels.noService}
+            {appointment.employee?.name ? ` · ${appointment.employee.name}` : ""}
+          </p>
+        </div>
+        <StatusBadge tone={appointmentStatusTone(appointment.status)}>
+          {appointmentStatusLabel(appointment.status)}
+        </StatusBadge>
+      </div>
+      {expanded ? (
+        <dl className="mt-3 grid gap-1 border-t border-[var(--natalie-border,#D9E2F2)] pt-3 text-sm">
+          <div className="flex justify-between gap-3">
+            <dt className="text-[var(--natalie-text-muted,#64748B)]">{labels.service}</dt>
+            <dd className="font-semibold text-[var(--natalie-text-primary,#0F172A)]">
+              {appointment.service?.name || labels.noService}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-[var(--natalie-text-muted,#64748B)]">{labels.employee}</dt>
+            <dd className="font-semibold text-[var(--natalie-text-primary,#0F172A)]">
+              {appointment.employee?.name || labels.owner}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-[var(--natalie-text-muted,#64748B)]">{labels.duration}</dt>
+            <dd className="font-semibold text-[var(--natalie-text-primary,#0F172A)]">
+              {appointment.durationMinutes} {labels.minutes}
+            </dd>
+          </div>
+          {appointment.notes ? (
+            <div className="flex justify-between gap-3">
+              <dt className="text-[var(--natalie-text-muted,#64748B)]">{labels.tabNotes}</dt>
+              <dd className="font-semibold text-[var(--natalie-text-primary,#0F172A)]">{appointment.notes}</dd>
+            </div>
+          ) : null}
+        </dl>
+      ) : null}
+    </button>
   );
 }

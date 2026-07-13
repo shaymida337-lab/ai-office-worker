@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
-import { searchSchedulingCustomers } from "./scheduling/schedulingCustomer.js";
+import { searchSchedulingCustomers, searchSchedulingCustomersByContact } from "./scheduling/schedulingCustomer.js";
 import { runAppointmentGoogleSync } from "./appointmentGoogleSync.js";
 import { resolveCalendarEngineFlags } from "./calendar/calendarEngineFlags.js";
 import {
@@ -95,6 +95,42 @@ export async function findClientByNameOrPhone(params: {
     name: match.name,
     whatsappNumber: match.whatsappNumber,
   }));
+}
+
+/**
+ * היסטוריית התורים של ליד מ-CRM: הליד (טבלת Lead) נגזר לכרטיסי הלקוח
+ * (טבלת Client) לפי טלפון/אימייל בלבד — התאמה שמרנית שמונעת שיוך שגוי של
+ * תורים ללקוח לא נכון. מוחזרים כל התורים (כולל עבר ומבוטלים) לפי הארגון.
+ */
+export async function findAppointmentsForLead(params: {
+  organizationId: string;
+  leadId: string;
+}): Promise<AppointmentWithRelations[]> {
+  const lead = await prisma.lead.findFirst({
+    where: { id: params.leadId, organizationId: params.organizationId },
+    select: { id: true, phone: true, whatsapp: true, email: true },
+  });
+  if (!lead) throw new Error("Lead not found");
+
+  const phone = lead.phone ?? lead.whatsapp ?? null;
+  const [byPhone, byEmail] = await Promise.all([
+    phone
+      ? searchSchedulingCustomersByContact({ organizationId: params.organizationId, phone })
+      : Promise.resolve([]),
+    lead.email
+      ? searchSchedulingCustomersByContact({ organizationId: params.organizationId, email: lead.email })
+      : Promise.resolve([]),
+  ]);
+
+  const clientIds = Array.from(new Set([...byPhone, ...byEmail].map((client) => client.id)));
+  if (clientIds.length === 0) return [];
+
+  return prisma.appointment.findMany({
+    where: { organizationId: params.organizationId, clientId: { in: clientIds } },
+    include: APPOINTMENT_INCLUDE,
+    orderBy: { startTime: "asc" },
+    take: 200,
+  });
 }
 
 export async function findUpcomingAppointmentsForClient(params: {
