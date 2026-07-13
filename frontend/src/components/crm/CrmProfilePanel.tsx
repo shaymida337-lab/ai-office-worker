@@ -16,6 +16,7 @@ import {
   channelLabel,
   crmSources,
   crmStages,
+  emailHref,
   sourceLabel,
   statusLabel,
   timelineTypeLabel,
@@ -152,6 +153,8 @@ export function CrmProfilePanel({
   }
 
   const wa = whatsappHref(currentLead);
+  const mailto = emailHref(currentLead);
+  const emailAddress = currentLead.email?.trim() ?? "";
 
   return (
     <SlidePanel
@@ -176,6 +179,15 @@ export function CrmProfilePanel({
               {labels.sendWhatsapp}
             </Button>
           )}
+          {mailto ? (
+            <Button variant="secondary" type="button" onClick={() => { window.location.href = mailto; }}>
+              {labels.sendEmail}
+            </Button>
+          ) : (
+            <Button variant="secondary" type="button" disabled>
+              {labels.sendEmail}
+            </Button>
+          )}
           <Button variant="ghost" type="button" onClick={onScheduleAppointment}>
             {labels.scheduleAppointment}
           </Button>
@@ -188,6 +200,20 @@ export function CrmProfilePanel({
 
       {tab === "details" ? (
         <div className="grid gap-4">
+          <div className="rounded-2xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface-elevated,#F8FAFF)] p-4">
+            <p className="text-xs font-bold text-[var(--natalie-text-muted,#64748B)]">{labels.email}</p>
+            {mailto ? (
+              <a
+                href={mailto}
+                dir="ltr"
+                className="mt-1 block truncate text-sm font-semibold text-[#2563EB] underline"
+              >
+                {emailAddress}
+              </a>
+            ) : (
+              <p className="mt-1 text-sm font-semibold text-[var(--natalie-text-muted,#64748B)]">{labels.notProvided}</p>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
             {crmStages.map((stage) => (
               <Button

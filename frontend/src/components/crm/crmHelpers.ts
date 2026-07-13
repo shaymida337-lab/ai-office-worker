@@ -101,6 +101,11 @@ export function callHref(lead: Lead) {
   return phone ? `tel:${phone}` : undefined;
 }
 
+export function emailHref(lead: Lead) {
+  const email = lead.email?.trim();
+  return email ? `mailto:${email}` : undefined;
+}
+
 export function toDateTimeLocal(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
