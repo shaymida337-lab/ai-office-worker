@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
 
@@ -17,6 +18,7 @@ type InvoicePreview = {
 };
 
 export default function CameraPage() {
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [fileBase64, setFileBase64] = useState("");
   const [preview, setPreview] = useState<InvoicePreview | null>(null);
@@ -108,10 +110,13 @@ export default function CameraPage() {
             mimeType: file.type,
             fileBase64,
           };
-      const result = await apiFetch<{ status?: string; message?: string; reason?: string }>("/api/camera/invoices", {
-        method: "POST",
-        body: JSON.stringify(confirmBody),
-      });
+      const result = await apiFetch<{ status?: string; message?: string; reason?: string; redirectTo?: string }>(
+        "/api/camera/invoices",
+        {
+          method: "POST",
+          body: JSON.stringify(confirmBody),
+        }
+      );
       if (result?.reason === "date_out_of_range") {
         // המסמך שמור; משאירים את התצוגה כדי שהמשתמש יתקן את התאריך
         // או ילחץ שוב לאישור מפורש של התאריך החריג.
@@ -119,11 +124,14 @@ export default function CameraPage() {
         setError(result.message ?? "תאריך החשבונית חריג — תקן אותו או לחץ שוב לאישור.");
         return;
       }
-      setMessage(
-        result?.status === "needs_review"
-          ? result.message ?? "המסמך נשמר ויופיע במסך השלמת חשבוניות להשלמת הפרטים."
-          : result?.message ?? "החשבונית נשמרה ונוספה לתשלומי ספקים."
-      );
+      if (result?.status === "approved") {
+        // לא מאפסים את המסך לפני הניווט — עוברים ישר למסך חשבוניות,
+        // שטוען את הרשימה מחדש ב-mount ולכן החשבונית החדשה מופיעה מיד.
+        setMessage(result.message ?? "החשבונית אושרה ונוספה למסך החשבוניות");
+        router.push(result.redirectTo ?? "/dashboard/invoices");
+        return;
+      }
+      setMessage(result?.message ?? "המסמך נשמר ויופיע במסך השלמת חשבוניות להשלמת הפרטים.");
       setFile(null);
       setFileBase64("");
       setPreview(null);
