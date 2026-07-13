@@ -78,10 +78,10 @@ function StatusChips({ invoice }: { invoice: Invoice }) {
           key={chip}
           className={`rounded-full px-3 py-1 text-xs font-semibold ${
             chip === "חסום"
-              ? "bg-red-500/15 text-red-200"
+              ? "bg-red-100 text-red-700"
               : chip === "ממתין לאישור"
-                ? "bg-sky-500/15 text-sky-200"
-                : "bg-amber-500/15 text-amber-100"
+                ? "bg-sky-100 text-sky-700"
+                : "bg-amber-100 text-amber-800"
           }`}
         >
           {chip}
@@ -95,7 +95,7 @@ function CompletionPreview({ invoice }: { invoice: Invoice }) {
   const previewUrl = getDocumentPreviewUrl(invoice);
   if (!previewUrl) {
     return (
-      <div className="flex h-36 w-full items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-sm text-ink-secondary md:h-40 md:w-44">
+      <div className="flex h-36 w-full items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 text-sm text-slate-600 md:h-40 md:w-44">
         אין תצוגה
       </div>
     );
@@ -105,12 +105,12 @@ function CompletionPreview({ invoice }: { invoice: Invoice }) {
       <iframe
         title="תצוגת מסמך"
         src={previewUrl.includes("drive.google.com") ? previewUrl.replace("/view", "/preview") : previewUrl}
-        className="h-36 w-full rounded-2xl border border-white/10 bg-white md:h-40 md:w-44"
+        className="h-36 w-full rounded-2xl border border-slate-200 bg-white md:h-40 md:w-44"
       />
     );
   }
   return (
-    <div className="flex h-36 w-full items-center justify-center rounded-2xl border border-white/10 bg-black/20 px-3 text-center text-sm text-ink-secondary md:h-40 md:w-44">
+    <div className="flex h-36 w-full items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 px-3 text-center text-sm text-slate-600 md:h-40 md:w-44">
       מסמך מקור
     </div>
   );
@@ -140,7 +140,7 @@ function CompletionCard({
   return (
     <article
       dir="rtl"
-      className="invoice-completion-card rounded-[28px] border border-white/12 bg-white/[0.04] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.28)] transition-opacity duration-300"
+      className="invoice-completion-card rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.12)] transition-opacity duration-300"
     >
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         <div className="shrink-0 lg:w-48">
@@ -149,19 +149,19 @@ function CompletionCard({
 
         <div className="min-w-0 flex-1 space-y-4">
           <div>
-            <h3 className="text-2xl font-bold leading-tight text-white">{supplier}</h3>
+            <h3 className="text-2xl font-bold leading-tight text-[#111]">{supplier}</h3>
             <div className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">סוג מסמך</div>
-                <div className="mt-1 text-base font-semibold text-white">{formatDocumentTypeLabel(invoice.documentType)}</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">סוג מסמך</div>
+                <div className="mt-1 text-base font-semibold text-slate-700">{formatDocumentTypeLabel(invoice.documentType)}</div>
               </div>
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">תאריך</div>
-                <div className="mt-1 text-base font-semibold text-white">{formatInvoiceDate(invoice.date)}</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">תאריך</div>
+                <div className="mt-1 text-base font-semibold text-slate-700">{formatInvoiceDate(invoice.date)}</div>
               </div>
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">סכום</div>
-                <div className="mt-1 text-xl font-bold text-white">{formatInvoiceAmount(invoice)}</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">סכום</div>
+                <div className="mt-1 text-xl font-bold text-slate-900">{formatInvoiceAmount(invoice)}</div>
               </div>
             </div>
           </div>
@@ -169,7 +169,7 @@ function CompletionCard({
           <StatusChips invoice={invoice} />
 
           {rowError && (
-            <p className="rounded-2xl border border-red-400/40 bg-red-400/10 p-3 text-sm text-red-100">{rowError}</p>
+            <p className="rounded-2xl border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-700">{rowError}</p>
           )}
         </div>
 
@@ -186,14 +186,14 @@ function CompletionCard({
           )}
           <div className="flex flex-wrap gap-2 lg:justify-end">
             {previewUrl && (
-              <button className="invoice-completion-secondary min-h-9 rounded-xl border border-white/20 px-3 py-2 text-xs font-medium text-ink-secondary" type="button" onClick={onPreview}>
+              <button className="invoice-completion-secondary min-h-9 rounded-xl border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-800" type="button" onClick={onPreview}>
                 הצג מסמך
               </button>
             )}
-            <button className="invoice-completion-secondary min-h-9 rounded-xl border border-white/20 px-3 py-2 text-xs font-medium text-ink-secondary" type="button" onClick={onEdit}>
+            <button className="invoice-completion-secondary min-h-9 rounded-xl border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-800" type="button" onClick={onEdit}>
               ערוך
             </button>
-            <button className="invoice-completion-secondary min-h-9 rounded-xl border border-white/20 px-3 py-2 text-xs font-medium text-ink-secondary" type="button" disabled={acting} onClick={onNotInvoice}>
+            <button className="invoice-completion-secondary min-h-9 rounded-xl border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-800" type="button" disabled={acting} onClick={onNotInvoice}>
               לא חשבונית
             </button>
           </div>
@@ -622,12 +622,12 @@ export default function ReportsClient() {
       {message && (
         <div
           ref={messageRef}
-          className={`mb-8 rounded-2xl border p-4 text-base ${
+          className={`mb-8 rounded-2xl border p-4 text-base font-medium ${
             messageTone === "error"
-              ? "border-red-400/30 bg-red-400/10 text-red-100"
+              ? "border-red-300 bg-red-50 text-red-700"
               : messageTone === "success"
-                ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-100"
-                : "border-sky-400/30 bg-sky-400/10 text-sky-100"
+                ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                : "border-sky-300 bg-sky-50 text-sky-700"
           }`}
         >
           {message}
@@ -637,7 +637,7 @@ export default function ReportsClient() {
         <div className="card"><p>טוען השלמת חשבוניות...</p></div>
       ) : invoices.length === 0 ? (
         <div className="card">
-          <h2 className="text-emerald-300">אין מסמכים להשלמה כרגע</h2>
+          <h2 className="text-emerald-700">אין מסמכים להשלמה כרגע</h2>
           <p className="mt-2">כל החשבוניות מלאות ומאושרות — הן מוצגות במסך חשבוניות.</p>
         </div>
       ) : (
