@@ -5,11 +5,15 @@ import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
 
 type InvoicePreview = {
-  supplier: string;
+  supplier: string | null;
   amount: number | null;
   date: string | null;
   invoiceNumber: string | null;
   currency: string;
+  /** persist-first: המסמך כבר שמור ב-DB תחת המזהה הזה מרגע ה-preview */
+  reviewId?: string;
+  extractionError?: string | null;
+  uncertaintyReason?: string;
 };
 
 export default function CameraPage() {
@@ -65,15 +69,13 @@ export default function CameraPage() {
 
   async function saveInvoice() {
     if (!file || !fileBase64 || !preview) return;
-    if (!preview.supplier || preview.amount == null) {
-      setError("חסר שם ספק או סכום. אי אפשר לשמור את החשבונית.");
-      return;
-    }
+    // persist-first: אין יותר חסימה על ספק/סכום חסרים — המסמך כבר שמור
+    // כ-draft מרגע ה-preview, והשמירה רק קובעת לאן הוא ממשיך.
 
     setSaving(true);
     setError("");
     try {
-      await apiFetch("/api/camera/invoices", {
+      const result = await apiFetch<{ status?: string; message?: string }>("/api/camera/invoices", {
         method: "POST",
         body: JSON.stringify({
           supplier: preview.supplier,
@@ -84,9 +86,14 @@ export default function CameraPage() {
           filename: file.name,
           mimeType: file.type,
           fileBase64,
+          reviewId: preview.reviewId,
         }),
       });
-      setMessage("החשבונית נשמרה ונוספה לתשלומי ספקים.");
+      setMessage(
+        result?.status === "needs_review"
+          ? result.message ?? "המסמך נשמר ויופיע במסך השלמת חשבוניות להשלמת הפרטים."
+          : "החשבונית נשמרה ונוספה לתשלומי ספקים."
+      );
       setFile(null);
       setFileBase64("");
       setPreview(null);
@@ -183,13 +190,23 @@ export default function CameraPage() {
         {preview && (
           <div className="card mt-4">
             <h2>תצוגה מקדימה</h2>
-            <p><strong>ספק:</strong> {preview.supplier}</p>
+            {preview.reviewId && (
+              <p className="rounded-2xl border border-emerald-400/40 bg-emerald-400/10 p-3 text-sm">
+                ✓ המסמך נשמר במערכת — גם אם חסרים פרטים הוא לא יאבד.
+              </p>
+            )}
+            {preview.extractionError && (
+              <p className="rounded-2xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm">
+                הסריקה האוטומטית נכשלה — המסמך ממתין במסך השלמת חשבוניות להשלמה ידנית.
+              </p>
+            )}
+            <p><strong>ספק:</strong> {preview.supplier ?? "לא זוהה"}</p>
             <p><strong>סכום:</strong> {preview.amount ?? "לא זוהה"}</p>
             <p><strong>מטבע:</strong> {preview.currency}</p>
             <p><strong>תאריך:</strong> {preview.date ?? "לא זוהה"}</p>
             <p><strong>מספר חשבונית:</strong> {preview.invoiceNumber ?? "לא זוהה"}</p>
             <button className="btn" onClick={saveInvoice} disabled={saving}>
-              {saving ? "שומר..." : "אשר ושמור כתשלום ספק"}
+              {saving ? "שומר..." : preview.supplier && preview.amount != null ? "אשר ושמור כתשלום ספק" : "שמור להשלמה במסך השלמת חשבוניות"}
             </button>
           </div>
         )}

@@ -8105,7 +8105,9 @@ async function latestScannedEmails(organizationId: string) {
   }));
 }
 
-apiRouter.post("/camera/invoices/preview", async (req, res) => {
+// requirePerm: ה-preview כבר לא stateless — הוא יוצר רשומת draft, ולכן דורש
+// את אותה הרשאה כמו השמירה עצמה.
+apiRouter.post("/camera/invoices/preview", requirePerm("document.upload"), async (req, res) => {
   try {
     const body = req.body as {
       filename?: string;
@@ -8123,14 +8125,27 @@ apiRouter.post("/camera/invoices/preview", async (req, res) => {
       return;
     }
 
-    const { analyzeInvoiceFile } = await import("../services/claude.js");
-    const preview = await analyzeInvoiceFile({
-      fileBase64: body.fileBase64,
+    // Persist-first: רשומת draft נוצרת לפני ה-OCR, כך שכשל חילוץ (או נטישת
+    // המסך אחרי ה-preview) לעולם לא מעלים את המסמך — הוא נשאר בהשלמת
+    // חשבוניות עם סיבה ברורה.
+    const { ingestCameraDocument } = await import("../services/camera/cameraIngestion.js");
+    const result = await ingestCameraDocument({
+      organizationId: req.auth!.organizationId,
+      filename: body.filename ?? `camera-invoice-${Date.now()}.jpg`,
       mimeType: body.mimeType,
-      filename: body.filename,
+      fileBase64: body.fileBase64,
     });
 
-    res.json(preview);
+    res.json({
+      reviewId: result.reviewId,
+      supplier: result.preview?.supplier ?? null,
+      amount: result.preview?.amount ?? null,
+      date: result.preview?.date ?? null,
+      invoiceNumber: result.preview?.invoiceNumber ?? null,
+      currency: result.preview?.currency ?? "ILS",
+      extractionError: result.extractionError,
+      uncertaintyReason: result.uncertaintyReason,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Invoice preview failed";
     res.status(500).json({ error: message });
@@ -8149,9 +8164,43 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
       filename?: string;
       mimeType?: string;
       fileBase64?: string;
+      reviewId?: string;
     };
 
+    // Persist-first: ספק/סכום חסרים כבר לא מעלימים את המסמך. רשומת ה-draft
+    // (שנוצרה ב-preview) מתעדכנת במה שיש ונשארת בהשלמת חשבוניות עם סיבה.
     if (!body.supplier || typeof body.amount !== "number") {
+      if (body.reviewId) {
+        const draft = await prisma.financialDocumentReview.findFirst({
+          where: { id: body.reviewId, organizationId: req.auth!.organizationId, source: "camera" },
+        });
+        if (draft) {
+          const missing = [
+            !body.supplier && !draft.supplierName ? "ספק" : null,
+            typeof body.amount !== "number" && draft.totalAmount == null ? "סכום" : null,
+          ].filter(Boolean);
+          await prisma.financialDocumentReview.update({
+            where: { id: draft.id },
+            data: {
+              ...(body.supplier?.trim() ? { supplierName: body.supplier.trim() } : {}),
+              ...(typeof body.amount === "number" && Number.isFinite(body.amount) && body.amount > 0
+                ? { totalAmount: body.amount }
+                : {}),
+              ...(body.invoiceNumber ? { invoiceNumber: body.invoiceNumber } : {}),
+              ...(body.currency ? { currency: body.currency } : {}),
+              uncertaintyReason: missing.length
+                ? `לא זוהה ${missing.join(" ו")} — השלם במסך השלמת חשבוניות`
+                : "ממתין לאישור במסך השלמת חשבוניות",
+            },
+          });
+          res.json({
+            status: "needs_review",
+            reviewId: draft.id,
+            message: "המסמך נשמר ויופיע במסך השלמת חשבוניות להשלמת הפרטים",
+          });
+          return;
+        }
+      }
       res.status(400).json({ error: "Supplier and amount are required" });
       return;
     }
