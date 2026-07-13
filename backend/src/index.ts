@@ -60,6 +60,11 @@ function createApp(configModule: ConfigModule, prismaModule: PrismaModule, build
   );
   app.use(
     express.json({
+      // בלי limit מפורש ברירת המחדל היא 100KB — כל העלאת תמונה/PDF ב-base64
+      // ממסך /camera נפלה ב-body-parser עם PayloadTooLargeError עוד לפני
+      // ה-handler, וה-error middleware המיר אותה ל-500 "Internal server error".
+      // 25MB מכסה צילום סמארטפון מלא אחרי ניפוח base64 (~33%).
+      limit: "25mb",
       verify: (req, _res, buf) => {
         const url = (req as { originalUrl?: string; url?: string }).originalUrl ?? req.url ?? "";
         if (url.includes("/webhook/stripe") || url.includes("/webhooks/stripe")) {
