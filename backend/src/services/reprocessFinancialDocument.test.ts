@@ -402,3 +402,65 @@ test("reprocessFinancialDocumentBySource dryRun=false skips untrustworthy parse 
   assert.equal(result.updated, false);
   assert.equal(updates.length, 0);
 });
+
+test("apply on review row refreshes the stale amount-gate snapshot (Microsoft 'סכום חסר' regression)", async () => {
+  // רשומה עם amount.arc_missing ישן: בלי רענון ה-gate, ה-UI ממשיך להציג
+  // "סכום חסר" גם אחרי ש-totalAmount עודכן ל-114.
+  let updateData: Record<string, unknown> | null = null;
+  const staleParsedFields = {
+    gates: [
+      { gate: "amount", verdict: "review", reasonCode: "amount.arc_missing", engineVersion: "amount-gate-v1", normalizedAmount: null },
+    ],
+  };
+  const mockPrisma = {
+    gmailScanItem: { update: async () => {} },
+    invoice: { update: async () => {} },
+    financialDocumentReview: {
+      findFirst: async () => ({
+        id: "review_msft_g169777544",
+        gmailMessageId: "19f4d6bf760c7f29",
+        emailMessageId: "em-msft",
+        supplierName: "Microsoft",
+        totalAmount: null,
+        documentDate: new Date("2026-07-10T00:00:00.000Z"),
+      }),
+      findUnique: async () => ({ parsedFieldsJson: staleParsedFields }),
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        updateData = data;
+      },
+    },
+  };
+
+  const result = await reprocessFinancialDocumentBySource(
+    {
+      organizationId: "org-1",
+      financialDocumentReviewId: "review_msft_g169777544",
+      dryRun: false,
+    },
+    {
+      prismaClient: mockPrisma as unknown as ReprocessFinancialDocumentDeps["prismaClient"],
+      getGoogleClientsFn: (async () => ({ gmail: {} as never, drive: {} as never, sheets: {} as never, oauth2: {} as never })) as ReprocessFinancialDocumentDeps["getGoogleClientsFn"],
+      parseGmailMessage: async () => ({
+        supplierName: "Microsoft",
+        amount: 114,
+        finalTotalAmount: 114,
+        documentDate: new Date("2026-07-10T00:00:00.000Z"),
+        invoiceNumber: "G169777544",
+      }),
+    }
+  );
+
+  assert.equal(result.updated, true);
+  assert.ok(updateData, "expected an update write");
+  assert.equal((updateData as any).totalAmount, 114);
+
+  // ה-gate המרוענן: pass/amount.resolved עם 114 — לא נשאר amount.arc_missing
+  const gates = ((updateData as any).parsedFieldsJson as { gates: Array<Record<string, unknown>> }).gates;
+  const amountGate = gates.find((g) => g.gate === "amount");
+  assert.ok(amountGate, "amount gate snapshot must exist after apply");
+  assert.equal(amountGate!.verdict, "pass");
+  assert.equal(amountGate!.reasonCode, "amount.resolved");
+  assert.equal(amountGate!.normalizedAmount, 114);
+  // המזהה לא נבחר כסכום
+  assert.notEqual((updateData as any).totalAmount, 169777544);
+});

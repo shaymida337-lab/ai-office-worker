@@ -5,6 +5,8 @@ import {
   type ParsedGmailFinancialFields,
 } from "./gmail-sync.js";
 import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
+import { evaluateFreshAmountGateForManualApproval } from "./trust/financeTrustPersistence.js";
+import { upsertFinanceGateSnapshot } from "./trust/financeGateSnapshots.js";
 
 const MIN_TRUST_DOCUMENT_YEAR = 2020;
 const LOW_OCR_CONFIDENCE_THRESHOLD = 0.5;
@@ -396,16 +398,44 @@ async function applyInPlaceUpdate(
         },
       });
       return;
-    case "FinancialDocumentReview":
+    case "FinancialDocumentReview": {
+      // רענון snapshot של שער הסכום: בלעדיו, ה-UI ממשיך להציג "סכום חסר"
+      // גם אחרי ש-totalAmount עודכן — כי תווית השער (amount.arc_missing
+      // הישן ב-parsedFieldsJson) גוברת על הערך בתצוגה
+      // (frontend presentation.formatDocumentAmount).
+      let parsedFieldsUpdate: Record<string, unknown> | undefined;
+      if (amount !== undefined) {
+        const findUnique = (db.financialDocumentReview as { findUnique?: Function }).findUnique;
+        const row = findUnique
+          ? await findUnique.call(db.financialDocumentReview, {
+              where: { id: source.sourceId },
+              select: { parsedFieldsJson: true },
+            })
+          : null;
+        const parsedFields =
+          row?.parsedFieldsJson && typeof row.parsedFieldsJson === "object"
+            ? (row.parsedFieldsJson as Record<string, unknown>)
+            : {};
+        const freshAmountGate = evaluateFreshAmountGateForManualApproval({
+          parsedFieldsJson: parsedFields,
+          totalAmount: amount,
+        });
+        upsertFinanceGateSnapshot(parsedFields, freshAmountGate);
+        parsedFieldsUpdate = parsedFields;
+      }
       await db.financialDocumentReview.update({
         where: { id: source.sourceId },
         data: {
           ...(supplier !== undefined ? { supplierName: supplier } : {}),
           ...(amount !== undefined ? { totalAmount: amount } : {}),
           ...(date ? { documentDate: date } : {}),
+          ...(parsedFieldsUpdate !== undefined
+            ? { parsedFieldsJson: parsedFieldsUpdate as never }
+            : {}),
         },
       });
       return;
+    }
   }
 }
 
