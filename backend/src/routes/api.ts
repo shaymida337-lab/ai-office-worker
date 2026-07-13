@@ -8222,6 +8222,42 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
       return;
     }
 
+    // נתיב מהיר: אישור draft קיים — בלי base64, בלי OCR מחדש, בלי העלאה
+    // חוזרת. האישור הישן שלח שוב את הקובץ המלא והעלה ל-Drive סינכרונית,
+    // מה שגרם ל-timeout בלחיצת "אשר ושמור".
+    if (body.reviewId) {
+      const { confirmCameraDocument } = await import("../services/camera/cameraIngestion.js");
+      const confirm = await confirmCameraDocument({
+        organizationId: req.auth!.organizationId,
+        reviewId: body.reviewId,
+        supplier: body.supplier,
+        amount: body.amount,
+        currency: body.currency ?? null,
+        invoiceNumber: body.invoiceNumber ?? null,
+        documentDate: invoiceDate,
+        dueDate,
+        userId: req.auth!.userId,
+      });
+      if (confirm.status === "approved") {
+        res.json({
+          status: "approved",
+          reviewId: confirm.reviewId,
+          supplierPaymentId: confirm.supplierPaymentId,
+          message: "החשבונית אושרה ונוספה לתשלומי ספקים",
+        });
+        return;
+      }
+      if (confirm.status === "needs_review") {
+        res.json({
+          status: "needs_review",
+          reviewId: confirm.reviewId,
+          message: "המסמך נשמר וממתין במסך השלמת חשבוניות",
+        });
+        return;
+      }
+      // not_found: הרשומה לא קיימת (draft ישן?) — ממשיכים למסלול המלא הישן
+    }
+
     // F5: חישוב SHA256 לקובץ המצלמה — אותה טביעת אצבע קובץ כמו Gmail/WhatsApp,
     // כך שאותו מסמך שמגיע גם במייל/וואטסאפ ייתפס ככפילות בין-מסלולית (טיר file).
     const cameraFileBuffer = body.fileBase64 ? Buffer.from(body.fileBase64, "base64") : null;

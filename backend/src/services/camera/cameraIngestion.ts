@@ -52,6 +52,118 @@ export type CameraIngestionDeps = {
   saveLocalFile?: (input: { channel: "camera"; filename: string; buffer: Buffer }) => Promise<string>;
 };
 
+export type CameraConfirmInput = {
+  organizationId: string;
+  reviewId: string;
+  supplier: string;
+  amount: number;
+  currency?: string | null;
+  invoiceNumber?: string | null;
+  documentDate?: Date | null;
+  dueDate?: Date | null;
+  userId?: string | null;
+};
+
+export type CameraConfirmResult =
+  | { status: "not_found" }
+  | { status: "approved"; reviewId: string; supplierPaymentId: string; alreadyApproved: boolean }
+  | { status: "needs_review"; reviewId: string; reason: string | null };
+
+export type CameraConfirmDeps = {
+  prismaClient?: Pick<typeof prisma, "financialDocumentReview">;
+  recordManualEntry?: (input: Record<string, unknown>) => Promise<{
+    action: string;
+    payment?: { id: string } | null;
+  }>;
+};
+
+/**
+ * אישור מהיר של draft קיים: בלי base64, בלי OCR מחדש, בלי העלאה חוזרת.
+ * ממיר את אותה רשומה לתשלום ספק מאושר דרך שרשרת האמון הקיימת (אותה טביעת
+ * אצבע file-tier ⇒ אפס רשומות כפולות), ואידמפוטנטי ללחיצה כפולה.
+ */
+export async function confirmCameraDocument(
+  input: CameraConfirmInput,
+  deps: CameraConfirmDeps = {}
+): Promise<CameraConfirmResult> {
+  const db = (deps.prismaClient ?? prisma) as typeof prisma;
+  const draft = await db.financialDocumentReview.findFirst({
+    where: { id: input.reviewId, organizationId: input.organizationId, source: "camera" },
+  });
+  if (!draft) return { status: "not_found" };
+
+  // לחיצה כפולה: הרשומה כבר אושרה — מחזירים את אותה תשובה בלי לעבד שוב
+  if (draft.reviewStatus === "approved" && draft.supplierPaymentId) {
+    return {
+      status: "approved",
+      reviewId: draft.id,
+      supplierPaymentId: draft.supplierPaymentId,
+      alreadyApproved: true,
+    };
+  }
+
+  const cameraMeta =
+    draft.parsedFieldsJson && typeof draft.parsedFieldsJson === "object"
+      ? ((draft.parsedFieldsJson as Record<string, unknown>).camera as Record<string, unknown> | undefined)
+      : undefined;
+
+  const recordManualEntry =
+    deps.recordManualEntry ??
+    ((await import("../financialDocuments.js")).recordManualEntryFinancialDocument as unknown as NonNullable<
+      CameraConfirmDeps["recordManualEntry"]
+    >);
+
+  const decision = await recordManualEntry({
+    organizationId: input.organizationId,
+    source: "camera",
+    subject: draft.subject ?? (input.invoiceNumber ? `Camera invoice scan #${input.invoiceNumber}` : "Camera invoice scan"),
+    fileName: draft.fileName,
+    fileSize: draft.fileSize,
+    // אותו fileSha256 מה-ingest ⇒ אותה טביעת אצבע קנונית ⇒ אותה רשומה
+    fileSha256: (cameraMeta?.fileSha256 as string | undefined) ?? null,
+    supplierName: input.supplier,
+    supplierTaxId: null,
+    invoiceNumber: input.invoiceNumber ?? draft.invoiceNumber,
+    documentDate: input.documentDate ?? draft.documentDate ?? new Date(),
+    dueDate: input.dueDate ?? null,
+    totalAmount: input.amount,
+    currency: input.currency ?? draft.currency ?? "ILS",
+    documentType: "tax_invoice",
+    // הקובץ כבר נשמר ב-preview — אין העלאה חוזרת; Drive יושלם ברקע (pending_retry)
+    driveFileUrl: draft.driveFileUrl,
+    driveUploadStatus: draft.driveUploadStatus ?? "pending_retry",
+    userId: input.userId ?? undefined,
+    sourceRoute: "POST /camera/invoices (confirm)",
+  });
+
+  const paymentId =
+    (decision.action === "accepted" || decision.action === "duplicate") && decision.payment?.id
+      ? decision.payment.id
+      : null;
+
+  if (paymentId) {
+    await db.financialDocumentReview
+      .update({
+        where: { id: draft.id },
+        data: {
+          reviewStatus: "approved",
+          supplierPaymentId: paymentId,
+          supplierName: input.supplier,
+          totalAmount: input.amount,
+          ...(input.invoiceNumber ? { invoiceNumber: input.invoiceNumber } : {}),
+          uncertaintyReason: null,
+        },
+      })
+      .catch(() => {
+        // האישור עצמו הצליח; כשל סימון הרשומה לא מפיל את התשובה
+      });
+    return { status: "approved", reviewId: draft.id, supplierPaymentId: paymentId, alreadyApproved: false };
+  }
+
+  // שערי אמון חסמו — הרשומה נשארת בהשלמת חשבוניות עם הסיבה שנכתבה עליה
+  return { status: "needs_review", reviewId: draft.id, reason: null };
+}
+
 export function cameraDraftFingerprints(organizationId: string, fileSha256: string) {
   // אותו חישוב קנוני כמו recordFinancialDocumentDecision: עם fileSha256 הטיר
   // הוא "file" ואינו תלוי בספק/סכום/תאריך — ולכן יציב בין draft לאישור.

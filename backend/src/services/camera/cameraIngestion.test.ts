@@ -150,3 +150,76 @@ test("draft fingerprint equals the canonical file-tier fingerprint used by the c
   assert.equal(a.documentFingerprint, b.documentFingerprint);
   assert.notEqual(cameraDraftFingerprints("org-2", sha).documentFingerprint, a.documentFingerprint);
 });
+
+test("confirm flow: preview creates reviewId → confirm approves the SAME record exactly once (double-click safe)", async () => {
+  const { confirmCameraDocument } = await import("./cameraIngestion.js");
+
+  // --- שלב 1: preview יוצר draft עם fileSha256 ---
+  const ingestCalls: MockCall[] = [];
+  const ingest = await ingestCameraDocument(baseInput, {
+    prismaClient: buildMockDb(ingestCalls),
+    saveLocalFile: noopSaveLocal,
+    analyzeFile: async () => ({ supplier: "Microsoft", amount: 114, date: "2026-07-10", invoiceNumber: "G169777544", currency: "USD" }),
+  });
+  assert.equal(ingest.reviewId, "draft-1");
+
+  // --- שלב 2: confirm עם אותו reviewId ---
+  let manualEntryCalls = 0;
+  const updates: any[] = [];
+  const draftRow: Record<string, unknown> = {
+    id: "draft-1",
+    organizationId: "org-1",
+    source: "camera",
+    subject: "העלאה ישירה — invoice-photo.jpg",
+    fileName: "invoice-photo.jpg",
+    fileSize: 25,
+    reviewStatus: "needs_review",
+    supplierPaymentId: null,
+    invoiceNumber: "G169777544",
+    documentDate: null,
+    currency: "USD",
+    driveFileUrl: "/uploads/camera-invoices/test.jpg",
+    driveUploadStatus: null,
+    parsedFieldsJson: { camera: { fileSha256: ingest.fileSha256 } },
+  };
+  const confirmDb = {
+    financialDocumentReview: {
+      findFirst: async () => ({ ...draftRow }),
+      update: async (args: any) => {
+        updates.push(args);
+        Object.assign(draftRow, args.data);
+        return { id: "draft-1" };
+      },
+    },
+  } as any;
+  const recordManualEntry = async (input: Record<string, unknown>) => {
+    manualEntryCalls++;
+    // האישור חייב להשתמש באותו fileSha256 מה-draft — אותה טביעת אצבע, אותה רשומה
+    assert.equal(input.fileSha256, ingest.fileSha256);
+    assert.equal(input.driveFileUrl, "/uploads/camera-invoices/test.jpg");
+    return { action: "accepted", payment: { id: "payment-77" } };
+  };
+
+  const first = await confirmCameraDocument(
+    { organizationId: "org-1", reviewId: "draft-1", supplier: "Microsoft", amount: 114, currency: "USD" },
+    { prismaClient: confirmDb, recordManualEntry }
+  );
+  assert.equal(first.status, "approved");
+  assert.equal((first as any).supplierPaymentId, "payment-77");
+  assert.equal(manualEntryCalls, 1);
+  // אותה רשומה עודכנה — לא נוצרה חדשה
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].where.id, "draft-1");
+  assert.equal(updates[0].data.reviewStatus, "approved");
+  assert.equal(updates[0].data.supplierPaymentId, "payment-77");
+
+  // --- שלב 3: לחיצה כפולה — אידמפוטנטי, בלי עיבוד נוסף ---
+  const second = await confirmCameraDocument(
+    { organizationId: "org-1", reviewId: "draft-1", supplier: "Microsoft", amount: 114, currency: "USD" },
+    { prismaClient: confirmDb, recordManualEntry }
+  );
+  assert.equal(second.status, "approved");
+  assert.equal((second as any).alreadyApproved, true);
+  assert.equal(manualEntryCalls, 1, "double click must not re-run the manual-entry pipeline");
+  assert.equal(updates.length, 1, "double click must not update the record again");
+});

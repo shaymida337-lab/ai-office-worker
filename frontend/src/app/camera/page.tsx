@@ -83,24 +83,35 @@ export default function CameraPage() {
     setSaving(true);
     setError("");
     try {
+      // כשיש reviewId — הקובץ כבר בשרת מרגע הבחירה: האישור שולח רק את
+      // המזהה והפרטים המאושרים, בלי base64 (זה מה שגרם ל-timeout).
+      const confirmBody = preview.reviewId
+        ? {
+            reviewId: preview.reviewId,
+            supplier: preview.supplier,
+            amount: preview.amount,
+            currency: preview.currency,
+            invoiceDate: preview.date,
+            invoiceNumber: preview.invoiceNumber,
+          }
+        : {
+            supplier: preview.supplier,
+            amount: preview.amount,
+            currency: preview.currency,
+            invoiceDate: preview.date,
+            invoiceNumber: preview.invoiceNumber,
+            filename: file.name,
+            mimeType: file.type,
+            fileBase64,
+          };
       const result = await apiFetch<{ status?: string; message?: string }>("/api/camera/invoices", {
         method: "POST",
-        body: JSON.stringify({
-          supplier: preview.supplier,
-          amount: preview.amount,
-          currency: preview.currency,
-          invoiceDate: preview.date,
-          invoiceNumber: preview.invoiceNumber,
-          filename: file.name,
-          mimeType: file.type,
-          fileBase64,
-          reviewId: preview.reviewId,
-        }),
+        body: JSON.stringify(confirmBody),
       });
       setMessage(
         result?.status === "needs_review"
           ? result.message ?? "המסמך נשמר ויופיע במסך השלמת חשבוניות להשלמת הפרטים."
-          : "החשבונית נשמרה ונוספה לתשלומי ספקים."
+          : result?.message ?? "החשבונית נשמרה ונוספה לתשלומי ספקים."
       );
       setFile(null);
       setFileBase64("");
