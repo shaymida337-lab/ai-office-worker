@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { apiFetch } from "@/lib/api";
 
@@ -20,6 +20,13 @@ export default function CameraPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  // שלושה input-ים נפרדים וקבועים — לא משנים capture דינמית על input אחד,
+  // כי iOS Safari מתנהג בצורה לא עקבית כשמשנים את התכונה אחרי הרנדר.
+  // capture קיים רק על input המצלמה; בלעדיו הגלריה/בורר הקבצים נפתחים כרגיל.
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const pdfInputRef = useRef<HTMLInputElement | null>(null);
 
   async function handleFile(nextFile: File | null) {
     setFile(nextFile);
@@ -98,15 +105,74 @@ export default function CameraPage() {
         <p>
           העלה תמונה או קובץ חשבונית. המערכת תחלץ את פרטי החשבונית ותאפשר לך לאשר לפני שמירה.
         </p>
-        <label className="mt-4">
-          בחר או צלם חשבונית
-          <input
-            type="file"
-            accept="image/jpeg,image/png,.jpg,.jpeg,.png,.pdf,application/pdf"
-            capture="environment"
-            onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
-          />
-        </label>
+
+        {/* מצלמה בלבד: capture="environment" פותח את המצלמה האחורית */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          aria-hidden
+          data-testid="camera-input"
+          onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+        />
+        {/* גלריה בלבד: תמונות בלי capture — נפתחת ספריית התמונות.
+            בכוונה רק jpeg/png (מה שהשרת מקבל): כש-HEIC לא ברשימה,
+            iOS ממיר אוטומטית תמונות HEIC מהגלריה ל-JPEG בעת הבחירה. */}
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+          className="hidden"
+          aria-hidden
+          data-testid="gallery-input"
+          onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+        />
+        {/* PDF בלבד: בורר הקבצים של המכשיר, מסונן ל-PDF */}
+        <input
+          ref={pdfInputRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          aria-hidden
+          data-testid="pdf-input"
+          onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+        />
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              // איפוס לפני פתיחה — בחירה חוזרת של אותו קובץ תפעיל onChange
+              if (cameraInputRef.current) cameraInputRef.current.value = "";
+              cameraInputRef.current?.click();
+            }}
+          >
+            📷 צלם תמונה
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              if (galleryInputRef.current) galleryInputRef.current.value = "";
+              galleryInputRef.current?.click();
+            }}
+          >
+            🖼 בחר מהגלריה
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              if (pdfInputRef.current) pdfInputRef.current.value = "";
+              pdfInputRef.current?.click();
+            }}
+          >
+            📄 בחר קובץ PDF
+          </button>
+        </div>
         {file && <p className="mt-3 rounded-2xl bg-surface-secondary p-3 text-ink-primary">נבחר קובץ: {file.name}</p>}
         <div className="mt-4">
           <button className="btn" onClick={buildPreview} disabled={!file || previewing}>
