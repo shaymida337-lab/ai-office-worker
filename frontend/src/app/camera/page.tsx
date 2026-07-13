@@ -110,13 +110,10 @@ export default function CameraPage() {
             mimeType: file.type,
             fileBase64,
           };
-      const result = await apiFetch<{ status?: string; message?: string; reason?: string; redirectTo?: string }>(
-        "/api/camera/invoices",
-        {
-          method: "POST",
-          body: JSON.stringify(confirmBody),
-        }
-      );
+      const result = await apiFetch<{ status?: string; message?: string; reason?: string }>("/api/camera/invoices", {
+        method: "POST",
+        body: JSON.stringify(confirmBody),
+      });
       if (result?.reason === "date_out_of_range") {
         // המסמך שמור; משאירים את התצוגה כדי שהמשתמש יתקן את התאריך
         // או ילחץ שוב לאישור מפורש של התאריך החריג.
@@ -125,13 +122,17 @@ export default function CameraPage() {
         return;
       }
       if (result?.status === "approved") {
-        // לא מאפסים את המסך לפני הניווט — עוברים ישר למסך חשבוניות,
-        // שטוען את הרשימה מחדש ב-mount ולכן החשבונית החדשה מופיעה מיד.
+        // השינוי היחיד מעל המצב העובד: אחרי אישור עוברים למסך "חשבוניות".
+        // לא מאפסים את המסך לפני הניווט; מסך חשבוניות טוען מחדש ב-mount.
         setMessage(result.message ?? "החשבונית אושרה ונוספה למסך החשבוניות");
-        router.push(result.redirectTo ?? "/dashboard/invoices");
+        router.push("/dashboard/invoices");
         return;
       }
-      setMessage(result?.message ?? "המסמך נשמר ויופיע במסך השלמת חשבוניות להשלמת הפרטים.");
+      setMessage(
+        result?.status === "needs_review"
+          ? result.message ?? "המסמך נשמר ויופיע במסך השלמת חשבוניות להשלמת הפרטים."
+          : result?.message ?? "החשבונית נשמרה ונוספה לתשלומי ספקים."
+      );
       setFile(null);
       setFileBase64("");
       setPreview(null);

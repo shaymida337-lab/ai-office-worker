@@ -194,10 +194,6 @@ export async function confirmCameraDocument(
           supplierPaymentId: paymentId,
           supplierName: input.supplier,
           totalAmount: input.amount,
-          // תאריך ומטבע חייבים להיכתב — בלעדיהם הרשומה אינה "complete"
-          // ולא תופיע במסך חשבוניות (assessInvoiceCompleteness דורש אותם)
-          documentDate: input.documentDate ?? draft.documentDate ?? new Date(),
-          currency: input.currency ?? draft.currency ?? "ILS",
           ...(input.invoiceNumber ? { invoiceNumber: input.invoiceNumber } : {}),
           uncertaintyReason: null,
         },

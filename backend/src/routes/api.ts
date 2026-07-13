@@ -8275,11 +8275,7 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
           status: "approved",
           reviewId: confirm.reviewId,
           supplierPaymentId: confirm.supplierPaymentId,
-          // מזהה השורה כפי שמסך "חשבוניות" מרנדר אותה (התשלום המאושר הוא
-          // הישות שהרשימה הממוזגת קוראת; ה-review המקושר מסונן מהרשימה)
-          invoiceId: `supplier-payment:${confirm.supplierPaymentId}`,
-          redirectTo: "/dashboard/invoices",
-          message: "החשבונית אושרה ונוספה למסך החשבוניות",
+          message: "החשבונית אושרה ונוספה לתשלומי ספקים",
         });
         return;
       }
