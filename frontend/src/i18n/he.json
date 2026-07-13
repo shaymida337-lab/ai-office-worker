@@ -64,7 +64,8 @@
     "sendReminder": "שלח תזכורת",
     "arrivedPlaceholder": "סימון הגעה יתחבר בקרוב לזרימת CRM מלאה",
     "reminderPlaceholder": "שליחת תזכורת תתחבר בשלב הבא",
-    "unknownClient": "לקוח ללא שם"
+    "unknownClient": "לקוח ללא שם",
+    "unidentifiedClient": "לקוח לא מזוהה"
   },
   "reliability": {
     "title": "מרכז יציבות",

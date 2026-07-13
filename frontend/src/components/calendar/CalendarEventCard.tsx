@@ -79,6 +79,9 @@ export function CalendarEventCard({
   const isTimeline = variant === "timeline";
   const statusAccent = appointmentStatusBorderColor(appointment.status);
   const compactMode = variant === "compact" || variant === "timeline";
+  // שם הלקוח הוא האלמנט הראשי: שם ריק או אות בודדת אינם שם תקין -> "לקוח לא מזוהה".
+  const rawClientName = appointment.client?.name?.trim() ?? "";
+  const clientName = rawClientName.length >= 2 ? rawClientName : t("calendar.unidentifiedClient");
 
   return (
     <div
@@ -99,9 +102,10 @@ export function CalendarEventCard({
         <div className={`mb-1.5 flex items-start justify-between gap-2 ${isTimeline ? "!mb-1" : ""}`}>
           <div className="min-w-0">
             <div
-              className={`${calendarUi.clientName} ${compactMode ? "text-[11px] sm:text-xs" : "text-base sm:text-lg"} ${isCancelled ? "line-through" : ""}`}
+              className={`${calendarUi.clientName} ${compactMode ? "text-[11px] sm:text-xs" : "text-base font-black sm:text-lg"} ${isCancelled ? "line-through" : ""}`}
+              title={clientName}
             >
-              {appointment.client.name}
+              {clientName}
             </div>
             {appointment.service?.name && (
               <div className={`mt-0.5 truncate ${calendarUi.clientNameMuted} ${isCancelled ? "line-through" : ""}`}>
@@ -127,11 +131,15 @@ export function CalendarEventCard({
               )}
             </div>
           </div>
-          {!isTimeline && <StatusBadge tone={statusTone(appointment.status)}>{statusLabel(appointment.status)}</StatusBadge>}
+          {/* בתצוגה קומפקטית הסטטוס נשאר בפינה; בשבוע הוא יורד מתחת לשם כדי לא להסתירו */}
+          {compactMode && !isTimeline && (
+            <StatusBadge tone={statusTone(appointment.status)}>{statusLabel(appointment.status)}</StatusBadge>
+          )}
         </div>
 
         {!isTimeline && !compactMode && (
         <div className="flex flex-wrap items-center gap-1">
+          <StatusBadge tone={statusTone(appointment.status)}>{statusLabel(appointment.status)}</StatusBadge>
           {isNatalieCreated && (
             <span className={calendarUi.natalieChip}>
               <Sparkles className="h-3 w-3" />

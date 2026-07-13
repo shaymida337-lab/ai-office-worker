@@ -64,7 +64,8 @@
     "sendReminder": "Send Reminder",
     "arrivedPlaceholder": "Arrival marking will be connected to the full CRM flow soon",
     "reminderPlaceholder": "Reminder sending will be connected in the next phase",
-    "unknownClient": "Unnamed Client"
+    "unknownClient": "Unnamed Client",
+    "unidentifiedClient": "Unidentified client"
   },
   "reliability": {
     "title": "Reliability Center",
