@@ -589,6 +589,19 @@ clientsRouter.get("/:clientId/next-appointment", authMiddleware, checkClientOwne
   }
 });
 
+clientsRouter.get("/:clientId/appointments", authMiddleware, checkClientOwnership, async (req, res) => {
+  try {
+    const { listClientAppointments } = await import("../services/clients/clientCard.js");
+    const appointments = await listClientAppointments({
+      organizationId: req.auth!.organizationId,
+      clientId: res.locals.client.id,
+    });
+    res.json({ appointments });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load appointments" });
+  }
+});
+
 clientsRouter.get("/:clientId/notes", authMiddleware, checkClientOwnership, async (req, res) => {
   try {
     const { listClientNotes } = await import("../services/clients/clientCard.js");

@@ -56,6 +56,53 @@ export async function findNextAppointmentForClient(
   };
 }
 
+export type ClientAppointmentListItem = {
+  id: string;
+  clientId: string;
+  startTime: Date;
+  durationMinutes: number;
+  status: string;
+  notes: string | null;
+  serviceName: string | null;
+  employeeName: string | null;
+};
+
+/**
+ * כל התורים של הלקוח (עתידיים, קודמים ומבוטלים) מהיומן האמיתי — ממוינים
+ * מהחדש לישן, כך שתורים עתידיים מופיעים ראשונים באופן טבעי.
+ */
+export async function listClientAppointments(
+  params: { organizationId: string; clientId: string; limit?: number },
+  deps: ClientCardDeps = {}
+): Promise<ClientAppointmentListItem[]> {
+  const db = deps.db ?? prisma;
+  const appointments = await db.appointment.findMany({
+    where: { organizationId: params.organizationId, clientId: params.clientId },
+    orderBy: { startTime: "desc" },
+    take: params.limit ?? 200,
+    select: {
+      id: true,
+      clientId: true,
+      startTime: true,
+      durationMinutes: true,
+      status: true,
+      notes: true,
+      service: { select: { name: true } },
+      employee: { select: { name: true } },
+    },
+  });
+  return appointments.map((appointment) => ({
+    id: appointment.id,
+    clientId: appointment.clientId,
+    startTime: appointment.startTime,
+    durationMinutes: appointment.durationMinutes,
+    status: appointment.status,
+    notes: appointment.notes ?? null,
+    serviceName: appointment.service?.name ?? null,
+    employeeName: appointment.employee?.name ?? null,
+  }));
+}
+
 const MAX_NOTE_LENGTH = 2000;
 
 export async function addClientNote(

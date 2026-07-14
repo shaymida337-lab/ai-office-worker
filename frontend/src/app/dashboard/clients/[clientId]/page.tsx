@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
+import { AppointmentDetailsDrawer } from "@/components/calendar/AppointmentDetailsDrawer";
+import { appointmentStatusLabel, appointmentStatusTone } from "@/components/crm/crmHelpers";
 import { apiFetch } from "@/lib/api";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import {
@@ -81,6 +83,17 @@ type NextAppointmentDto = {
   employeeName: string | null;
 };
 
+type ClientAppointmentDto = {
+  id: string;
+  clientId: string;
+  startTime: string;
+  durationMinutes: number;
+  status: string;
+  notes: string | null;
+  serviceName: string | null;
+  employeeName: string | null;
+};
+
 type ClientNoteDto = {
   id: string;
   body: string;
@@ -148,6 +161,9 @@ export default function ClientDetailPage() {
   const [loadError, setLoadError] = useState("");
   const [nextAppointment, setNextAppointment] = useState<NextAppointmentDto | null>(null);
   const [nextAppointmentLoaded, setNextAppointmentLoaded] = useState(false);
+  const [appointments, setAppointments] = useState<ClientAppointmentDto[]>([]);
+  const [appointmentsLoaded, setAppointmentsLoaded] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<ClientAppointmentDto | null>(null);
   const [notes, setNotes] = useState<ClientNoteDto[]>([]);
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [noteText, setNoteText] = useState("");
@@ -182,12 +198,13 @@ export default function ClientDetailPage() {
     setLoadError("");
     setLastUpdatedAt(new Date());
 
-    const [taskResult, whatsappResult, invoiceResult, nextAppt, noteResult] = await Promise.all([
+    const [taskResult, whatsappResult, invoiceResult, nextAppt, noteResult, appointmentsResult] = await Promise.all([
       apiFetch<{ tasks: TaskItem[] }>(`/api/clients/${clientId}/tasks`).catch(() => null),
       apiFetch<{ messages: WhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp`).catch(() => null),
       apiFetch<{ invoices: InvoiceItem[] }>(`/api/clients/${clientId}/invoices`).catch(() => null),
       apiFetch<{ appointment: NextAppointmentDto | null }>(`/api/clients/${clientId}/next-appointment`).catch(() => null),
       apiFetch<{ notes: ClientNoteDto[] }>(`/api/clients/${clientId}/notes`).catch(() => null),
+      apiFetch<{ appointments: ClientAppointmentDto[] }>(`/api/clients/${clientId}/appointments`).catch(() => null),
     ]);
     if (taskResult) setTasks(taskResult.tasks);
     if (whatsappResult) setWhatsappMessages(whatsappResult.messages);
@@ -195,6 +212,8 @@ export default function ClientDetailPage() {
     if (nextAppt) setNextAppointment(nextAppt.appointment);
     setNextAppointmentLoaded(true);
     if (noteResult) setNotes(noteResult.notes);
+    if (appointmentsResult) setAppointments(appointmentsResult.appointments);
+    setAppointmentsLoaded(true);
   }
 
   useEffect(() => {
@@ -595,6 +614,69 @@ export default function ClientDetailPage() {
           )}
         </div>
 
+        <div className="mt-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4" data-testid="client-appointments">
+          <h2 className="text-base">פגישות</h2>
+          {!appointmentsLoaded ? (
+            <p>טוען פגישות...</p>
+          ) : appointments.length === 0 ? (
+            <p data-testid="client-appointments-empty">אין פגישות ללקוח הזה עדיין.</p>
+          ) : (
+            <div>
+              {appointments.map((appointment) => {
+                const start = new Date(appointment.startTime);
+                const isFuture = start.getTime() >= Date.now() && appointment.status !== "cancelled";
+                const tone = appointmentStatusTone(appointment.status);
+                const statusClass =
+                  tone === "success"
+                    ? "text-emerald-300"
+                    : tone === "danger"
+                      ? "text-red-300"
+                      : tone === "warn"
+                        ? "text-amber-300"
+                        : "text-sky-300";
+                return (
+                  <button
+                    key={appointment.id}
+                    type="button"
+                    onClick={() => setSelectedAppointment(appointment)}
+                    className="block w-full border-t border-[var(--border-subtle)] py-2 text-start transition hover:bg-white/5"
+                    data-testid="client-appointment-row"
+                  >
+                    <span className={appointment.status === "cancelled" ? "line-through opacity-70" : ""}>
+                      <strong>
+                        {start.toLocaleDateString("he-IL", {
+                          weekday: "short",
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                          timeZone: orgTimezone,
+                        })}
+                      </strong>{" "}
+                      בשעה{" "}
+                      <strong dir="ltr">
+                        {start.toLocaleTimeString("he-IL", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: false,
+                          timeZone: orgTimezone,
+                        })}
+                      </strong>
+                      {" · "}
+                      {appointment.serviceName || "ללא שירות"}
+                      {" · אצל "}
+                      {appointment.employeeName || "בעל העסק"}
+                    </span>
+                    <span className={`mr-2 text-sm font-bold ${statusClass}`}>
+                      {appointmentStatusLabel(appointment.status)}
+                      {isFuture ? " · עתידי" : ""}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {notes.length > 0 && (
           <div className="mt-4" data-testid="client-notes">
             <h2 className="text-base">הערות אחרונות</h2>
@@ -853,6 +935,33 @@ export default function ClientDetailPage() {
           ))
         )}
       </div>
+
+      {/* לחיצה על פגישה פותחת את חלון פרטי התור הקיים (אותו רכיב כמו ביומן) */}
+      <AppointmentDetailsDrawer
+        appointment={
+          selectedAppointment
+            ? {
+                id: selectedAppointment.id,
+                clientId: selectedAppointment.clientId,
+                startTime: selectedAppointment.startTime,
+                durationMinutes: selectedAppointment.durationMinutes,
+                status: selectedAppointment.status,
+                notes: selectedAppointment.notes,
+                client: {
+                  id: data.client.id,
+                  name: data.client.name,
+                  whatsappNumber: data.client.whatsappNumber,
+                },
+                service: selectedAppointment.serviceName ? { name: selectedAppointment.serviceName } : null,
+                employee: selectedAppointment.employeeName ? { name: selectedAppointment.employeeName } : null,
+              }
+            : null
+        }
+        statusLabel={appointmentStatusLabel}
+        statusTone={appointmentStatusTone}
+        onClose={() => setSelectedAppointment(null)}
+        onEdit={() => router.push("/dashboard/calendar")}
+      />
     </div>
   );
 }
