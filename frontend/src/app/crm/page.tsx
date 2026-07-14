@@ -42,7 +42,49 @@ type CrmResponse = {
   pipeline: Array<{ stage: string; count: number; value: number; conversionFromPrevious: number }>;
 };
 
+type CrmClient = {
+  id: string;
+  name: string;
+  email?: string | null;
+  whatsappNumber?: string | null;
+};
+
 type MessageTemplate = { id: string; name: string; channel: string; content: string; variables: string[] };
+
+const CLIENT_ROW_PREFIX = "client:";
+
+/** Map a Client into a Lead-shaped row so CRM search can show the same
+ * customers the top global search finds (/api/clients). Opening navigates
+ * to the client card — these rows are not editable Lead records. */
+function clientToCrmRow(client: CrmClient): Lead {
+  const now = new Date().toISOString();
+  return {
+    id: `${CLIENT_ROW_PREFIX}${client.id}`,
+    name: client.name,
+    company: null,
+    phone: null,
+    email: client.email ?? null,
+    whatsapp: client.whatsappNumber ?? null,
+    source: "manual",
+    stage: "סגור",
+    estimatedValue: 0,
+    assignedTo: null,
+    tags: [],
+    notes: null,
+    attachments: [],
+    score: 0,
+    priorityStars: 1,
+    repliedAt: null,
+    lastContactAt: null,
+    nextReminderAt: null,
+    lastMessageStatus: null,
+    messageCount: 0,
+    createdAt: now,
+    updatedAt: now,
+    timeline: [],
+    sequences: [],
+  };
+}
 
 const emptyForm = {
   name: "",
@@ -62,6 +104,9 @@ export default function CrmPage() {
   const locale = language === "he" ? "he-IL" : "en-US";
 
   const [data, setData] = useState<CrmResponse | null>(null);
+  // Clients from /api/clients — same source the top global search uses for "לקוח".
+  // Needed because CRM otherwise only searched Lead rows and missed customers like "שרית".
+  const [clients, setClients] = useState<CrmClient[]>([]);
   const [quickFilter, setQuickFilter] = useState<CrmQuickFilter>("all");
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
@@ -93,8 +138,12 @@ export default function CrmPage() {
     for (const [key, value] of Object.entries(filters)) {
       if (value && value !== "all") params.set(key, value);
     }
-    const result = await apiFetch<CrmResponse>(`/api/leads${params.toString() ? `?${params.toString()}` : ""}`);
+    const [result, clientsResult] = await Promise.all([
+      apiFetch<CrmResponse>(`/api/leads${params.toString() ? `?${params.toString()}` : ""}`),
+      apiFetch<{ clients: CrmClient[] }>("/api/clients"),
+    ]);
     setData(result);
+    setClients(clientsResult.clients ?? []);
   }
 
   async function loadTemplates() {
@@ -131,10 +180,26 @@ export default function CrmPage() {
     const searched = !query
       ? leads
       : leads.filter((lead) =>
-          `${lead.name} ${lead.company ?? ""} ${lead.phone ?? ""} ${lead.email ?? ""}`.toLowerCase().includes(query)
+          `${lead.name} ${lead.company ?? ""} ${lead.phone ?? ""} ${lead.email ?? ""} ${lead.whatsapp ?? ""}`
+            .toLowerCase()
+            .includes(query)
         );
+
+    // When searching: also include Client rows the top search would find, if no Lead
+    // already covers the same name (avoids duplicates for people who exist in both models).
+    if (query) {
+      const leadNames = new Set(leads.map((lead) => lead.name.trim().toLowerCase()).filter(Boolean));
+      const clientRows = clients
+        .filter((client) =>
+          `${client.name} ${client.email ?? ""} ${client.whatsappNumber ?? ""}`.toLowerCase().includes(query)
+        )
+        .filter((client) => !leadNames.has(client.name.trim().toLowerCase()))
+        .map(clientToCrmRow);
+      return applyQuickFilter([...searched, ...clientRows], quickFilter);
+    }
+
     return applyQuickFilter(searched, quickFilter);
-  }, [data?.leads, filters.search, quickFilter]);
+  }, [clients, data?.leads, filters.search, quickFilter]);
 
   const untreatedCount = useMemo(() => countUntreatedThisWeek(data?.leads ?? []), [data?.leads]);
   const kpiValues = useMemo(() => computeCrmKpis(data?.leads ?? []), [data?.leads]);
@@ -178,6 +243,8 @@ export default function CrmPage() {
       upcomingAppointments: t("crmDesign.profile.upcomingAppointments"),
       pastAppointments: t("crmDesign.profile.pastAppointments"),
       appointmentsLoading: t("crmDesign.profile.appointmentsLoading"),
+      appointmentsError: t("crmDesign.profile.appointmentsError"),
+      noLinkedClient: t("crmDesign.profile.noLinkedClient"),
       service: t("crmDesign.profile.service"),
       employee: t("crmDesign.profile.employee"),
       owner: t("crmDesign.profile.owner"),
@@ -523,7 +590,15 @@ export default function CrmPage() {
                     call: t("crmDesign.call"),
                     openProfile: t("crmDesign.openProfile"),
                   }}
-                  onOpen={() => setSelected(lead)}
+                  onOpen={() => {
+                    // Client-backed rows come from /api/clients (same as top search) —
+                    // open the client card, not the Lead profile panel.
+                    if (lead.id.startsWith(CLIENT_ROW_PREFIX)) {
+                      router.push(`/dashboard/clients/${lead.id.slice(CLIENT_ROW_PREFIX.length)}`);
+                      return;
+                    }
+                    setSelected(lead);
+                  }}
                 />
               ))}
             </section>
