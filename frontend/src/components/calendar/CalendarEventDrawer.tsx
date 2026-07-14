@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { BellRing, CalendarClock, CheckCircle2, Clock, Mail, MessageCircle, Phone, UserCircle2, X } from "lucide-react";
 import {
   Button,
@@ -116,6 +117,7 @@ function quickActionClass(enabled: boolean) {
 
 export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutation }: CalendarEventDrawerProps) {
   const { t, dir } = useI18n();
+  const router = useRouter();
   const [event, setEvent] = useState<CalendarEngineEvent | null>(null);
   const [clientDetails, setClientDetails] = useState<DrawerClientDetails | null>(null);
   const [timeline, setTimeline] = useState<WorkCaseTimelineEntry[]>([]);
@@ -410,6 +412,16 @@ export function CalendarEventDrawer({ eventId, refreshKey = 0, onClose, onMutati
                   <Mail className="h-4 w-4" />
                   {t("calendar.email")}
                 </a>
+                {(clientDetails?.id || event?.clientId) && (
+                  <button
+                    type="button"
+                    className={quickActionClass(true)}
+                    onClick={() => router.push(`/dashboard/clients/${clientDetails?.id ?? event?.clientId}`)}
+                  >
+                    <UserCircle2 className="h-4 w-4" />
+                    פתח כרטיס לקוח
+                  </button>
+                )}
                 <Button variant="secondary" size="sm" type="button" className="!min-h-11 w-full" onClick={() => setShowRescheduleForm((v) => !v)}>
                   <CalendarClock className="h-4 w-4" />
                   {t("calendar.rescheduleRequest")}

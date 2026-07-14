@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { AppointmentDetailsDrawer } from "@/components/calendar/AppointmentDetailsDrawer";
 import { CalendarEventDrawer } from "@/components/calendar/CalendarEventDrawer";
 import { CalendarToolbar } from "@/components/calendar/CalendarToolbar";
 import { DayTimelineView } from "@/components/calendar/DayTimelineView";
@@ -250,6 +251,7 @@ export default function CalendarPage() {
   const [businessName, setBusinessName] = useState("");
   const [briefLoading, setBriefLoading] = useState(true);
   const [selectedEngineEventId, setSelectedEngineEventId] = useState<string | null>(null);
+  const [detailsAppointment, setDetailsAppointment] = useState<Appointment | null>(null);
   const [queueRefreshKey, setQueueRefreshKey] = useState(0);
   const [drawerRefreshKey, setDrawerRefreshKey] = useState(0);
   const [engineDisabledBanner, setEngineDisabledBanner] = useState<string | null>(null);
@@ -566,6 +568,19 @@ export default function CalendarPage() {
     setShowForm(true);
   }
 
+  /**
+   * לחיצה על תור בתצוגת השבוע: תור-מנוע נפתח ב-CalendarEventDrawer הקיים;
+   * תור מהיומן הקיים נפתח בחלון פרטי התור (לא בטופס העריכה שבראש הדף,
+   * שנמצא מחוץ למסך כשגוללים בגריד).
+   */
+  function openAppointmentDetails(appt: CalendarDisplayItem) {
+    if (isEngineDisplayItem(appt)) {
+      setSelectedEngineEventId(appt.engineEventId ?? appt.id);
+      return;
+    }
+    setDetailsAppointment(appt as Appointment);
+  }
+
   function openEditForm(appt: CalendarDisplayItem) {
     if (isEngineDisplayItem(appt)) {
       setSelectedEngineEventId(appt.engineEventId ?? appt.id);
@@ -877,6 +892,22 @@ export default function CalendarPage() {
               onMutation={handleDecisionResolved}
             />
 
+            <AppointmentDetailsDrawer
+              appointment={detailsAppointment}
+              statusLabel={statusLabelFn}
+              statusTone={statusToneFn}
+              onClose={() => setDetailsAppointment(null)}
+              onEdit={() => {
+                const appt = detailsAppointment;
+                setDetailsAppointment(null);
+                if (appt) {
+                  openEditForm(appointmentToDisplayItem(appt));
+                  // טופס העריכה יושב בראש הדף — בלי גלילה הוא נשאר מחוץ למסך
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }
+              }}
+            />
+
             <Card data-testid="calendar-appointments-card">
               <CardHeader
                 subtitle={t("calendar.businessCalendar")}
@@ -1145,7 +1176,7 @@ export default function CalendarPage() {
                     loading={loading}
                     statusLabel={statusLabelFn}
                     statusTone={statusToneFn}
-                    onSelectAppointment={openEditForm}
+                    onSelectAppointment={openAppointmentDetails}
                     onQuickConfirm={quickConfirmAppointment}
                   />
                 </>
