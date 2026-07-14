@@ -43,6 +43,9 @@ function createApp(configModule: ConfigModule, prismaModule: PrismaModule, build
         config.frontendUrl,
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        // Production web app is also served from Netlify; Render frontend remains allowed via FRONTEND_URL.
+        "https://ai-office-worker-website.netlify.app",
+        "https://ai-office-worker-frontend.onrender.com",
         ...config.corsOrigins,
       ]);
 
@@ -51,7 +54,10 @@ function createApp(configModule: ConfigModule, prismaModule: PrismaModule, build
         return;
       }
 
-      callback(new Error(`CORS blocked origin: ${origin}`));
+      // Never throw here: cors package turns thrown Errors into Express 500
+      // "Internal server error" (seen on /api/invoices from disallowed origins).
+      console.warn(`[cors] blocked origin=${origin}`);
+      callback(null, false);
     },
     credentials: true,
   });
