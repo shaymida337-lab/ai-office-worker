@@ -255,6 +255,8 @@ model Client {
   firstSeen          DateTime?
   lastSeen           DateTime?
   whatsappNumber     String?
+  phone              String?
+  address            String?
   googleAccessToken  String?
   googleRefreshToken String?
   gmailConnected     Boolean      @default(false)

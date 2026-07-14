@@ -252,6 +252,12 @@ export default function CalendarPage() {
   const [briefLoading, setBriefLoading] = useState(true);
   const [selectedEngineEventId, setSelectedEngineEventId] = useState<string | null>(null);
   const [detailsAppointment, setDetailsAppointment] = useState<Appointment | null>(null);
+  const [detailsRefreshKey, setDetailsRefreshKey] = useState(0);
+  // פרטי קשר של הלקוח בטופס עריכת תור — נשמרים על ה-Client, לא על התור.
+  const emptyContact = { phone: "", whatsapp: "", email: "", address: "" };
+  const [formContact, setFormContact] = useState(emptyContact);
+  const [contactLoaded, setContactLoaded] = useState(false);
+  const [contactSnapshot, setContactSnapshot] = useState("");
   const [queueRefreshKey, setQueueRefreshKey] = useState(0);
   const [drawerRefreshKey, setDrawerRefreshKey] = useState(0);
   const [engineDisabledBanner, setEngineDisabledBanner] = useState<string | null>(null);
@@ -551,6 +557,9 @@ export default function CalendarPage() {
     setFormStatus("pending");
     setSelectedReminderStatus(null);
     setSelectedReminderEvents([]);
+    setFormContact(emptyContact);
+    setContactLoaded(false);
+    setContactSnapshot("");
   }
 
   function openNewForm() {
@@ -603,6 +612,32 @@ export default function CalendarPage() {
     )
       .then((data) => setSelectedReminderEvents(data.items))
       .catch(() => setSelectedReminderEvents([]));
+    // פרטי קשר של הלקוח — נטענים מה-Client עצמו; נשמרים רק אם הטעינה הצליחה
+    // (contactLoaded) כדי לא לדרוס נתונים קיימים בשמירה עיוורת.
+    setFormContact(emptyContact);
+    setContactLoaded(false);
+    setContactSnapshot("");
+    void apiFetch<{
+      client?: {
+        phone?: string | null;
+        whatsappNumber?: string | null;
+        email?: string | null;
+        emailIsPlaceholder?: boolean;
+        address?: string | null;
+      };
+    }>(`/api/clients/${appt.clientId}`)
+      .then((result) => {
+        const contact = {
+          phone: result.client?.phone ?? "",
+          whatsapp: result.client?.whatsappNumber ?? "",
+          email: result.client?.emailIsPlaceholder ? "" : (result.client?.email ?? ""),
+          address: result.client?.address ?? "",
+        };
+        setFormContact(contact);
+        setContactSnapshot(JSON.stringify(contact));
+        setContactLoaded(true);
+      })
+      .catch(() => setContactLoaded(false));
     setShowForm(true);
   }
 
@@ -624,6 +659,7 @@ export default function CalendarPage() {
 
   async function saveAppointment(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return; // מניעת שליחה כפולה — גם מהכפתור וגם מ-Enter
     setMessage("");
     if (!formClientId || !formDate || !formTime) {
       setMessage("יש לבחור לקוח, תאריך ושעה");
@@ -643,7 +679,24 @@ export default function CalendarPage() {
             status: formStatus,
           }),
         });
-        setMessage("התור עודכן בהצלחה");
+        // פרטי הקשר נשמרים על ה-Client עצמו (לא על התור), רק אם נטענו
+        // בהצלחה ורק כשבאמת השתנו.
+        const contactChanged = contactLoaded && JSON.stringify(formContact) !== contactSnapshot;
+        if (contactChanged) {
+          await apiFetch(`/api/clients/${formClientId}`, {
+            method: "PUT",
+            body: JSON.stringify({
+              phone: formContact.phone,
+              whatsappNumber: formContact.whatsapp,
+              email: formContact.email,
+              address: formContact.address,
+            }),
+          });
+          setDetailsRefreshKey((k) => k + 1);
+          setMessage("פרטי התור והלקוח נשמרו בהצלחה");
+        } else {
+          setMessage("התור עודכן בהצלחה");
+        }
       } else if (!formEmployeeId && resolveCalendarCreateStrategy(engineWriteEnabled) === "calendar_engine_draft") {
         // תור לעובד תמיד נשמר במסלול הישיר — מנוע היומן (טיוטות) מכיר רק
         // את היומן של בעל העסק בשלב הזה.
@@ -894,6 +947,7 @@ export default function CalendarPage() {
 
             <AppointmentDetailsDrawer
               appointment={detailsAppointment}
+              refreshKey={detailsRefreshKey}
               statusLabel={statusLabelFn}
               statusTone={statusToneFn}
               onClose={() => setDetailsAppointment(null)}
@@ -1074,6 +1128,59 @@ export default function CalendarPage() {
               onChange={(e) => setFormNotes(e.target.value)}
             />
           </FormLabel>
+          {editingId && (
+            <div className="md:col-span-2 rounded-2xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] p-3">
+              <h3 className="mb-2 text-sm font-black text-[var(--natalie-text-primary,#0F172A)]">
+                פרטי קשר של הלקוח
+              </h3>
+              {!contactLoaded ? (
+                <p className="text-xs font-semibold text-[var(--natalie-text-muted,#64748B)]">
+                  טוען פרטי קשר...
+                </p>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <FormLabel>
+                    טלפון
+                    <Input
+                      dir="ltr"
+                      type="tel"
+                      value={formContact.phone}
+                      onChange={(e) => setFormContact((c) => ({ ...c, phone: e.target.value }))}
+                      placeholder="050-1234567 או +972..."
+                    />
+                  </FormLabel>
+                  <FormLabel>
+                    WhatsApp
+                    <Input
+                      dir="ltr"
+                      type="tel"
+                      value={formContact.whatsapp}
+                      onChange={(e) => setFormContact((c) => ({ ...c, whatsapp: e.target.value }))}
+                      placeholder="050-1234567 או +972..."
+                    />
+                  </FormLabel>
+                  <FormLabel>
+                    אימייל
+                    <Input
+                      dir="ltr"
+                      type="email"
+                      value={formContact.email}
+                      onChange={(e) => setFormContact((c) => ({ ...c, email: e.target.value }))}
+                      placeholder="client@example.com"
+                    />
+                  </FormLabel>
+                  <FormLabel>
+                    כתובת
+                    <Input
+                      value={formContact.address}
+                      onChange={(e) => setFormContact((c) => ({ ...c, address: e.target.value }))}
+                      placeholder="רחוב, מספר, עיר"
+                    />
+                  </FormLabel>
+                </div>
+              )}
+            </div>
+          )}
           {editingId && selectedReminderStatus && (
             <div className="md:col-span-2 rounded-2xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] p-3">
               <div className="mb-2 flex flex-wrap items-center gap-2">

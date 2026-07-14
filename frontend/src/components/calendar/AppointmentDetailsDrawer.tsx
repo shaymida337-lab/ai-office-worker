@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Edit3, Mail, MessageCircle, Phone, UserRound } from "lucide-react";
+import { Edit3, Mail, MessageCircle, Navigation, Phone, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { SlidePanel, StatusBadge } from "@/components/natalie-ui";
 import { natalie } from "@/components/natalie-ui/tokens";
@@ -49,37 +49,55 @@ function actionClass(enabled: boolean) {
     : `inline-flex min-h-11 cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface-elevated,#F8FAFF)] px-3 text-sm font-black ${natalie.subtitle} opacity-60`;
 }
 
+type FetchedContact = {
+  phone: string | null;
+  whatsappNumber: string | null;
+  email: string | null;
+  address: string | null;
+};
+
 export function AppointmentDetailsDrawer({
   appointment,
   statusLabel,
   statusTone,
   onClose,
   onEdit,
+  refreshKey = 0,
 }: {
   appointment: AppointmentDetailsData | null;
   statusLabel: (status: string) => string;
   statusTone: (status: string) => "success" | "warn" | "danger" | "info" | "neutral";
   onClose: () => void;
   onEdit: () => void;
+  refreshKey?: number;
 }) {
   const { t } = useI18n();
   const router = useRouter();
   const orgTimezone = useOrganizationTimezone();
-  const [fetchedContact, setFetchedContact] = useState<{ email: string | null; whatsappNumber: string | null } | null>(
-    null
-  );
+  const [fetchedContact, setFetchedContact] = useState<FetchedContact | null>(null);
 
   const clientId = appointment?.clientId;
   useEffect(() => {
     setFetchedContact(null);
     if (!clientId) return;
     let active = true;
-    apiFetch<{ client?: { email?: string | null; whatsappNumber?: string | null } }>(`/api/clients/${clientId}`)
+    apiFetch<{
+      client?: {
+        phone?: string | null;
+        whatsappNumber?: string | null;
+        email?: string | null;
+        emailIsPlaceholder?: boolean;
+        address?: string | null;
+      };
+    }>(`/api/clients/${clientId}`)
       .then((result) => {
         if (!active) return;
         setFetchedContact({
-          email: result.client?.email?.trim() || null,
+          phone: result.client?.phone?.trim() || null,
           whatsappNumber: result.client?.whatsappNumber?.trim() || null,
+          // אימייל placeholder אינו כתובת אמיתית — לא מציגים ולא שולחים אליו
+          email: result.client?.emailIsPlaceholder ? null : result.client?.email?.trim() || null,
+          address: result.client?.address?.trim() || null,
         });
       })
       .catch(() => {
@@ -88,7 +106,7 @@ export function AppointmentDetailsDrawer({
     return () => {
       active = false;
     };
-  }, [clientId]);
+  }, [clientId, refreshKey]);
 
   if (!appointment) return null;
 
@@ -105,20 +123,26 @@ export function AppointmentDetailsDrawer({
   });
   const timeRange = `${start.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: orgTimezone })}–${end.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: orgTimezone })}`;
 
-  const rawPhone = fetchedContact?.whatsappNumber || appointment.client?.whatsappNumber || null;
+  const rawWhatsapp = fetchedContact?.whatsappNumber || appointment.client?.whatsappNumber || null;
+  const rawPhone = fetchedContact?.phone || rawWhatsapp;
   const phoneE164 = normalizePhoneForLinks(rawPhone);
+  const whatsappE164 = normalizePhoneForLinks(rawWhatsapp || rawPhone);
   const email = fetchedContact?.email ?? null;
+  const address = fetchedContact?.address ?? null;
   const telHref = phoneE164 ? `tel:${phoneE164}` : null;
-  const waHref = phoneE164 ? `https://wa.me/${phoneE164.replace("+", "")}` : null;
+  const waHref = whatsappE164 ? `https://wa.me/${whatsappE164.replace("+", "")}` : null;
   const mailHref = email ? `mailto:${email}` : null;
+  const wazeHref = address ? `https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes` : null;
 
   const rows: Array<{ label: string; value: string; ltr?: boolean }> = [
     { label: "תאריך", value: dateLabel },
     { label: "שעה", value: `${timeRange} · ${appointment.durationMinutes} ${t("calendar.minutesShort")}`, ltr: true },
     { label: t("calendar.serviceLabel"), value: appointment.service?.name || t("calendar.noService") },
     { label: "עובד", value: appointment.employee?.name || "בעל העסק" },
-    { label: "טלפון", value: rawPhone || NOT_PROVIDED, ltr: Boolean(rawPhone) },
+    { label: "טלפון", value: fetchedContact?.phone || rawWhatsapp || NOT_PROVIDED, ltr: Boolean(rawPhone) },
+    { label: t("calendar.whatsapp"), value: rawWhatsapp || NOT_PROVIDED, ltr: Boolean(rawWhatsapp) },
     { label: t("calendar.email"), value: email || NOT_PROVIDED, ltr: Boolean(email) },
+    { label: "כתובת", value: address || NOT_PROVIDED },
   ];
 
   return (
@@ -190,6 +214,12 @@ export function AppointmentDetailsDrawer({
               <Mail className="h-4 w-4" />
               שלח מייל
             </a>
+            {wazeHref ? (
+              <a href={wazeHref} target="_blank" rel="noreferrer" className={actionClass(true)}>
+                <Navigation className="h-4 w-4" />
+                Waze
+              </a>
+            ) : null}
             <button
               type="button"
               className={actionClass(true)}

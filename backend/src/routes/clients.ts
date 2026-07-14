@@ -681,6 +681,8 @@ clientsRouter.put("/:clientId", authMiddleware, checkClientOwnership, async (req
     ...(body.whatsappNumber !== undefined && {
       whatsappNumber: body.whatsappNumber?.trim() ? normalizeWhatsAppNumber(body.whatsappNumber) : null,
     }),
+    ...(body.phone !== undefined && { phone: body.phone?.trim() || null }),
+    ...(body.address !== undefined && { address: body.address?.trim() || null }),
     ...(body.color && { color: body.color }),
     ...(body.invoiceSheetUrl !== undefined && {
       invoiceSheetUrl: body.invoiceSheetUrl?.trim() || null,
