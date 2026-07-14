@@ -27,20 +27,24 @@ export function clientInitials(name: string | null | undefined): string {
   return `${words[0]![0]}${words[1]![0]}`;
 }
 
-/** המספר נשמר לעיתים כ-"whatsapp:+972..." — בתצוגה מציגים מספר נקי. */
-export function displayPhone(phone: string | null | undefined): string {
+/** המספר נשמר לעיתים כ-"whatsapp:+972..." — בתצוגה ובקישורים מנקים את הקידומת. */
+function cleanPhoneRaw(phone: string | null | undefined): string | null {
   const cleaned = (phone ?? "").replace(/^whatsapp:/i, "").trim();
-  return cleaned || NOT_PROVIDED;
+  return cleaned || null;
+}
+
+export function displayPhone(phone: string | null | undefined): string {
+  return cleanPhoneRaw(phone) || NOT_PROVIDED;
 }
 
 /** קישור חיוג — tel: (נרמול משותף: 05.../+972.../בינלאומי/00). */
 export function telHref(phone: string | null | undefined): string | null {
-  return buildTelUrl(phone);
+  return buildTelUrl(cleanPhoneRaw(phone));
 }
 
-/** קישור וואטסאפ — wa.me עם ספרות בלבד בפורמט בינלאומי (נרמול משותף). */
+/** קישור וואטסאפ — wa.me עם ספרות בלבד בפורמט בינלאומי (נרמול משותף לישראל). */
 export function whatsappHref(phone: string | null | undefined): string | null {
-  return buildWhatsAppUrl(phone);
+  return buildWhatsAppUrl(cleanPhoneRaw(phone));
 }
 
 /** קישור mailto: לפתיחת תוכנת המייל; null אם אין אימייל תקין. */

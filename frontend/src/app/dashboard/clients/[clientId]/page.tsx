@@ -26,6 +26,7 @@ import {
 } from "@/lib/clients/clientForm";
 import { formatAmount } from "@/lib/format/amount";
 import { QUOTE_STATUS_LABELS, type SalesDeal, formatIls } from "@/lib/salesUtils";
+import { shellLayout } from "@/components/natalie-ui/tokens";
 
 type TaskStatus = "todo" | "in-progress" | "done" | "open";
 type TaskPriority = "low" | "medium" | "high";
@@ -107,7 +108,9 @@ type ClientDetail = {
     id: string;
     name: string;
     email: string | null;
+    phone?: string | null;
     whatsappNumber: string | null;
+    address?: string | null;
     color: string | null;
     isActive?: boolean;
     gmailConnected: boolean;
@@ -480,7 +483,7 @@ export default function ClientDetailPage() {
         <Nav />
         <Link
           href="/dashboard/clients"
-          className="mb-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-bold text-accent-primary transition hover:text-accent-secondary hover:underline"
+          className="relative z-10 mb-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-bold text-accent-primary transition hover:text-accent-secondary hover:underline"
           data-testid="back-to-clients"
         >
           <span aria-hidden>→</span> חזרה ללקוחות
@@ -497,8 +500,8 @@ export default function ClientDetailPage() {
   }
 
   // טלפון: מעדיפים את שדה phone הייעודי, ונופלים ל-whatsappNumber. WhatsApp:
-  // מעדיפים whatsappNumber, ונופלים ל-phone.
-  const clientPhone = (data.client as { phone?: string | null }).phone ?? null;
+  // מעדיפים whatsappNumber, ונופלים ל-phone. קידומת whatsapp: מנוקה ב-helpers.
+  const clientPhone = data.client.phone ?? null;
   const phoneLink = telHref(clientPhone || data.client.whatsappNumber);
   const waLink = whatsappHref(data.client.whatsappNumber || clientPhone);
   // אימייל אמיתי בלבד: אימייל placeholder (שנוצר אוטומטית) נחשב כ"לא הוזן"
@@ -507,7 +510,7 @@ export default function ClientDetailPage() {
   const hasRealEmail = emailDisplay !== "לא מוגדר";
   const emailLink = hasRealEmail ? mailtoHref(data.client.email) : null;
   // אין שדה כתובת במודל הלקוח כרגע; הפעולה נדלקת אוטומטית אם כתובת קיימת.
-  const clientAddress = (data.client as { address?: string | null }).address ?? null;
+  const clientAddress = data.client.address ?? null;
   const mapLink = mapsHref(clientAddress);
   // מקצוע: מוצג רק אם ה-API מחזיר אותו (אין עדיין שדה במודל).
   const clientProfession = (data.client as { profession?: string | null }).profession ?? null;
@@ -546,19 +549,20 @@ export default function ClientDetailPage() {
     <div className="container overflow-x-clip" dir="rtl">
       <Nav />
 
-      {/* Header קבוע: זהות הלקוח + פעולות מהירות, נשאר צמוד למעלה בזמן גלילה */}
+      {/* Header: זהות + פעולות. sticky מתחת ל-GlobalHeader הקבוע (לא top-0)
+          כדי שכפתורי חזרה/קשר לא ייחסמו ע"י ה-header העליון. */}
       <header
-        className="sticky top-0 z-30 mb-4 rounded-2xl border border-[var(--border)] bg-white/95 p-4 shadow-card backdrop-blur md:p-5"
+        className={`sticky ${shellLayout.pageTitleTop} z-30 mb-4 rounded-2xl border border-[var(--border)] bg-white/95 p-4 shadow-card backdrop-blur md:p-5`}
         data-testid="client-card-header"
       >
         <Link
           href="/dashboard/clients"
-          className="mb-2 inline-flex min-h-11 items-center gap-1.5 text-sm font-bold text-accent-primary transition hover:text-accent-secondary hover:underline md:min-h-0"
+          className="relative z-10 mb-2 inline-flex min-h-11 items-center gap-1.5 text-sm font-bold text-accent-primary transition hover:text-accent-secondary hover:underline md:min-h-0"
           data-testid="back-to-clients"
         >
           <span aria-hidden>→</span> חזרה ללקוחות
         </Link>
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+        <div className="relative z-10 flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
           <div className="flex min-w-0 flex-1 items-center gap-3 md:gap-4">
             <span
               className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-lg font-bold text-white md:h-14 md:w-14"
@@ -624,23 +628,33 @@ export default function ClientDetailPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap md:shrink-0" data-testid="client-actions">
+          <div className="relative z-10 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap md:shrink-0" data-testid="client-actions">
             {phoneLink ? (
-              <a className="btn" href={phoneLink} data-testid="action-call">📞 התקשר</a>
+              <a className="btn" href={phoneLink} data-testid="action-call">
+                📞 התקשר
+              </a>
             ) : (
-              <button className="btn" type="button" disabled title="אין מספר טלפון">📞 התקשר</button>
+              <button className="btn" type="button" disabled aria-disabled="true" title="אין מספר טלפון" data-testid="action-call">
+                📞 התקשר
+              </button>
             )}
             {waLink ? (
               <a className="btn" href={waLink} target="_blank" rel="noreferrer" data-testid="action-whatsapp">
                 💬 WhatsApp
               </a>
             ) : (
-              <button className="btn" type="button" disabled title="אין מספר טלפון">💬 WhatsApp</button>
+              <button className="btn" type="button" disabled aria-disabled="true" title="אין מספר טלפון" data-testid="action-whatsapp">
+                💬 WhatsApp
+              </button>
             )}
             {emailLink ? (
-              <a className="btn" href={emailLink} data-testid="action-email">✉️ מייל</a>
+              <a className="btn" href={emailLink} data-testid="action-email">
+                ✉️ מייל
+              </a>
             ) : (
-              <button className="btn" type="button" disabled title="אין כתובת אימייל">✉️ מייל</button>
+              <button className="btn" type="button" disabled aria-disabled="true" title="אין כתובת אימייל" data-testid="action-email">
+                ✉️ מייל
+              </button>
             )}
             <button
               className="btn btn-secondary"
