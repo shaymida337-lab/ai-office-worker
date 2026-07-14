@@ -60,7 +60,7 @@ import { buildCalendarDailyBrief, type CalendarDailyBrief } from "@/lib/calendar
 import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
 import { fetchBriefingSchedulingSnapshot, type BriefingSchedulingSnapshot } from "@/lib/scheduling/briefing";
 import { firstNameFromLabel } from "@/lib/dashboard/homePageHelpers";
-import { Clock, Plus, Trash2, X } from "lucide-react";
+import { CheckCircle2, Clock, Plus, Trash2, X } from "lucide-react";
 
 type Service = {
   id: string;
@@ -253,6 +253,8 @@ export default function CalendarPage() {
   const [selectedEngineEventId, setSelectedEngineEventId] = useState<string | null>(null);
   const [detailsAppointment, setDetailsAppointment] = useState<Appointment | null>(null);
   const [detailsRefreshKey, setDetailsRefreshKey] = useState(0);
+  // Toast הצלחה קבוע (fixed) — נראה מעל ה-Drawer וסרגל הניווט, נעלם אוטומטית.
+  const [saveToast, setSaveToast] = useState<string | null>(null);
   // פרטי קשר של הלקוח בטופס עריכת תור — נשמרים על ה-Client, לא על התור.
   const emptyContact = { phone: "", whatsapp: "", email: "", address: "" };
   const [formContact, setFormContact] = useState(emptyContact);
@@ -483,6 +485,12 @@ export default function CalendarPage() {
   }, []);
 
   useEffect(() => {
+    if (!saveToast) return;
+    const timer = window.setTimeout(() => setSaveToast(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [saveToast]);
+
+  useEffect(() => {
     loadAppointments().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה"));
   }, [loadAppointments]);
 
@@ -694,8 +702,11 @@ export default function CalendarPage() {
           });
           setDetailsRefreshKey((k) => k + 1);
           setMessage("פרטי התור והלקוח נשמרו בהצלחה");
+          setSaveToast("פרטי התור והלקוח נשמרו בהצלחה");
         } else {
+          setDetailsRefreshKey((k) => k + 1);
           setMessage("התור עודכן בהצלחה");
+          setSaveToast("התור עודכן בהצלחה");
         }
       } else if (!formEmployeeId && resolveCalendarCreateStrategy(engineWriteEnabled) === "calendar_engine_draft") {
         // תור לעובד תמיד נשמר במסלול הישיר — מנוע היומן (טיוטות) מכיר רק
@@ -893,6 +904,19 @@ export default function CalendarPage() {
 
   return (
     <div dir={dir} data-testid="calendar-page">
+      {saveToast ? (
+        <div
+          className="fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-[130] flex justify-center px-4"
+          role="status"
+          aria-live="polite"
+          data-testid="calendar-save-toast"
+        >
+          <div className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-[#34D399] bg-[#ECFDF5] px-4 py-3 text-sm font-black text-[#065F46] shadow-[0_10px_30px_rgba(6,95,70,0.25)] dark:border-[#065F46] dark:bg-[#052E24] dark:text-[#6EE7B7]">
+            <CheckCircle2 className="h-5 w-5 shrink-0" />
+            <span>{saveToast}</span>
+          </div>
+        </div>
+      ) : null}
       <AppShell
         pageTitle={
           <PageTitle

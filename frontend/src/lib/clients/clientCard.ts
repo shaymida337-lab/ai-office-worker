@@ -1,7 +1,16 @@
 /**
  * כרטיס לקוח — helpers טהורים: ראשי תיבות, קישורי חיוג/וואטסאפ,
- * ותצוגת "לא הוזן" במקום null/undefined.
+ * ותצוגת "לא הוזן" במקום null/undefined. קישורי הפעולה מנותבים לשכבת
+ * ה-utility המשותפת (contactActions) כדי שההתנהגות תהיה זהה גם בחלון התור.
  */
+
+import {
+  buildGoogleMapsUrl,
+  buildMailtoUrl,
+  buildTelUrl,
+  buildWazeUrl,
+  buildWhatsAppUrl,
+} from "../contactActions";
 
 export const NOT_PROVIDED = "לא הוזן";
 
@@ -24,45 +33,27 @@ export function displayPhone(phone: string | null | undefined): string {
   return cleaned || NOT_PROVIDED;
 }
 
-function digitsOnly(value: string): string {
-  return value.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
-}
-
-/** קישור חיוג — tel: עם המספר כפי שהוא (בניקוי תווים). */
+/** קישור חיוג — tel: (נרמול משותף: 05.../+972.../בינלאומי/00). */
 export function telHref(phone: string | null | undefined): string | null {
-  const cleaned = phone ? digitsOnly(phone.trim()) : "";
-  return cleaned.length >= 7 ? `tel:${cleaned}` : null;
+  return buildTelUrl(phone);
 }
 
-/**
- * קישור וואטסאפ — wa.me דורש פורמט בינלאומי בלי + ובלי אפס מוביל:
- * "050-1234567" → 972501234567; "+972501234567" → 972501234567.
- */
+/** קישור וואטסאפ — wa.me עם ספרות בלבד בפורמט בינלאומי (נרמול משותף). */
 export function whatsappHref(phone: string | null | undefined): string | null {
-  const cleaned = phone ? digitsOnly(phone.trim()) : "";
-  if (!cleaned || cleaned.replace(/\D/g, "").length < 7) return null;
-  let international = cleaned.startsWith("+") ? cleaned.slice(1) : cleaned;
-  if (international.startsWith("0")) {
-    international = `972${international.slice(1)}`;
-  }
-  return `https://wa.me/${international}`;
+  return buildWhatsAppUrl(phone);
 }
 
-/** קישור mailto: לפתיחת תוכנת המייל; null אם אין אימייל. */
+/** קישור mailto: לפתיחת תוכנת המייל; null אם אין אימייל תקין. */
 export function mailtoHref(email: string | null | undefined): string | null {
-  const cleaned = email?.trim();
-  if (!cleaned || !cleaned.includes("@")) return null;
-  return `mailto:${cleaned}`;
+  return buildMailtoUrl(email);
 }
 
 /**
- * קישור ניווט ל-Google Maps (universal URL): במובייל נפתחת אפליקציית
- * המפות/וייז ובדסקטופ אתר המפות. null אם אין כתובת.
+ * קישור ניווט: Waze קודם (universal URL), ואם אין כתובת — null. Google Maps
+ * זמין כ-fallback דרך {@link buildGoogleMapsUrl}.
  */
 export function mapsHref(address: string | null | undefined): string | null {
-  const cleaned = address?.trim();
-  if (!cleaned) return null;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cleaned)}`;
+  return buildWazeUrl(address) ?? buildGoogleMapsUrl(address);
 }
 
 export type NextAppointmentView = {

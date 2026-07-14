@@ -6,6 +6,12 @@ import { useRouter } from "next/navigation";
 import { SlidePanel, StatusBadge } from "@/components/natalie-ui";
 import { natalie } from "@/components/natalie-ui/tokens";
 import { apiFetch } from "@/lib/api";
+import {
+  buildMailtoUrl,
+  buildTelUrl,
+  buildWazeUrl,
+  buildWhatsAppUrl,
+} from "@/lib/contactActions";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { useI18n } from "@/i18n";
 import { calendarUi } from "./calendarUi";
@@ -27,21 +33,6 @@ export type AppointmentDetailsData = {
 };
 
 const NOT_PROVIDED = "לא הוזן";
-
-function normalizePhoneForLinks(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith("+")) {
-    const normalized = `+${trimmed.slice(1).replace(/[^\d]/g, "")}`;
-    return normalized.length > 1 ? normalized : null;
-  }
-  const digits = trimmed.replace(/[^\d]/g, "");
-  if (!digits) return null;
-  if (digits.startsWith("00")) return `+${digits.slice(2)}`;
-  if (digits.startsWith("0")) return `+972${digits.slice(1)}`;
-  return `+${digits}`;
-}
 
 function actionClass(enabled: boolean) {
   return enabled
@@ -125,14 +116,13 @@ export function AppointmentDetailsDrawer({
 
   const rawWhatsapp = fetchedContact?.whatsappNumber || appointment.client?.whatsappNumber || null;
   const rawPhone = fetchedContact?.phone || rawWhatsapp;
-  const phoneE164 = normalizePhoneForLinks(rawPhone);
-  const whatsappE164 = normalizePhoneForLinks(rawWhatsapp || rawPhone);
   const email = fetchedContact?.email ?? null;
   const address = fetchedContact?.address ?? null;
-  const telHref = phoneE164 ? `tel:${phoneE164}` : null;
-  const waHref = whatsappE164 ? `https://wa.me/${whatsappE164.replace("+", "")}` : null;
-  const mailHref = email ? `mailto:${email}` : null;
-  const wazeHref = address ? `https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes` : null;
+  // קישורים דרך שכבת ה-utility המשותפת — טלפון מעדיף phone, WhatsApp מעדיף whatsappNumber.
+  const telHref = buildTelUrl(rawPhone);
+  const waHref = buildWhatsAppUrl(rawWhatsapp || rawPhone);
+  const mailHref = buildMailtoUrl(email);
+  const wazeHref = buildWazeUrl(address);
 
   const rows: Array<{ label: string; value: string; ltr?: boolean }> = [
     { label: "תאריך", value: dateLabel },

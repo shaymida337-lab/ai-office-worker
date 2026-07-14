@@ -448,8 +448,11 @@ export default function ClientDetailPage() {
     );
   }
 
-  const phoneLink = telHref(data.client.whatsappNumber);
-  const waLink = whatsappHref(data.client.whatsappNumber);
+  // טלפון: מעדיפים את שדה phone הייעודי, ונופלים ל-whatsappNumber. WhatsApp:
+  // מעדיפים whatsappNumber, ונופלים ל-phone.
+  const clientPhone = (data.client as { phone?: string | null }).phone ?? null;
+  const phoneLink = telHref(clientPhone || data.client.whatsappNumber);
+  const waLink = whatsappHref(data.client.whatsappNumber || clientPhone);
   // אימייל אמיתי בלבד: אימייל placeholder (שנוצר אוטומטית) נחשב כ"לא הוזן"
   // כדי שהתצוגה, הקישור וכפתור "שלח מייל" יהיו עקביים.
   const emailDisplay = formatClientEmailDisplay(data.client.email);
@@ -486,7 +489,7 @@ export default function ClientDetailPage() {
               טלפון:{" "}
               {phoneLink ? (
                 <a href={phoneLink} dir="ltr" className="font-bold underline">
-                  {displayPhone(data.client.whatsappNumber)}
+                  {displayPhone(clientPhone || data.client.whatsappNumber)}
                 </a>
               ) : (
                 "לא הוזן"

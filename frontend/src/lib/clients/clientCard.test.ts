@@ -31,8 +31,9 @@ test("תצוגת טלפון: קידומת whatsapp: מוסרת, ריק = 'לא �
   assert.equal(displayPhone(null), NOT_PROVIDED);
 });
 
-test("חיוג: מספר ישראלי מקומי נשאר, קצר מדי נפסל", () => {
-  assert.equal(telHref("050-123-4567"), "tel:0501234567");
+test("חיוג: מספר ישראלי מנורמל ל-E.164, קצר מדי נפסל", () => {
+  assert.equal(telHref("050-123-4567"), "tel:+972501234567");
+  assert.equal(telHref("+1 (415) 523-8886"), "tel:+14155238886");
   assert.equal(telHref("123"), null);
   assert.equal(telHref(null), null);
 });
@@ -71,10 +72,10 @@ test("mailto: קישור לאימייל תקין, ריק/לא-תקין -> null",
   assert.equal(mailtoHref(""), null);
 });
 
-test("maps: קישור ניווט מקודד, ריק -> null", () => {
+test("maps: ניווט מעדיף Waze עם כתובת מקודדת, ריק -> null", () => {
   assert.equal(
     mapsHref("רחוב הרצל 1, תל אביב"),
-    "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent("רחוב הרצל 1, תל אביב")
+    "https://www.waze.com/ul?q=" + encodeURIComponent("רחוב הרצל 1, תל אביב") + "&navigate=yes"
   );
   assert.equal(mapsHref("  "), null);
   assert.equal(mapsHref(null), null);
