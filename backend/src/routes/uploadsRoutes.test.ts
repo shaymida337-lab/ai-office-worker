@@ -17,10 +17,20 @@ const TEST_FILE = `test-${process.pid}-signed-upload.txt`;
 const TEST_PATH = `/uploads/camera-invoices/${TEST_FILE}`;
 const TEST_CONTENT = "signed upload contents";
 
-async function withServer<T>(fn: (baseUrl: string) => Promise<T>): Promise<T> {
+async function withServer<T>(
+  fn: (baseUrl: string) => Promise<T>,
+  options?: { containment?: "on" | "off" },
+): Promise<T> {
   const uploadDir = path.join(process.cwd(), "uploads", "camera-invoices");
   await mkdir(uploadDir, { recursive: true });
   await writeFile(path.join(uploadDir, TEST_FILE), TEST_CONTENT);
+
+  const previous = {
+    ingestion: process.env.FINANCIAL_INGESTION_CONTAINMENT,
+    data: process.env.FINANCIAL_DATA_CONTAINMENT,
+  };
+  process.env.FINANCIAL_INGESTION_CONTAINMENT = options?.containment ?? "off";
+  process.env.FINANCIAL_DATA_CONTAINMENT = "off";
 
   const app = express();
   app.use("/uploads", uploadsRouter);
@@ -33,6 +43,10 @@ async function withServer<T>(fn: (baseUrl: string) => Promise<T>): Promise<T> {
   } finally {
     await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     await rm(path.join(uploadDir, TEST_FILE), { force: true });
+    if (previous.ingestion === undefined) delete process.env.FINANCIAL_INGESTION_CONTAINMENT;
+    else process.env.FINANCIAL_INGESTION_CONTAINMENT = previous.ingestion;
+    if (previous.data === undefined) delete process.env.FINANCIAL_DATA_CONTAINMENT;
+    else process.env.FINANCIAL_DATA_CONTAINMENT = previous.data;
   }
 }
 
@@ -117,4 +131,28 @@ test("existing document preview flow keeps working: stored path -> signed url ->
     assert.equal(res.status, 200);
     assert.equal(await res.text(), TEST_CONTENT);
   });
+});
+
+test("containment preview returns Hebrew HTML to browsers, not English JSON payload", async () => {
+  await withServer(async (baseUrl) => {
+    const signed = signLocalUploadUrl(TEST_PATH, ORG_A);
+    const browserRes = await fetch(`${baseUrl}${signed}`, {
+      headers: { Accept: "text/html,application/xhtml+xml,*/*" },
+    });
+    assert.equal(browserRes.status, 503);
+    assert.match(browserRes.headers.get("content-type") ?? "", /text\/html/i);
+    const html = await browserRes.text();
+    assert.match(html, /התצוגה המקדימה אינה זמינה/);
+    assert.doesNotMatch(html, /FINANCIAL_INGESTION_CONTAINMENT/);
+    assert.doesNotMatch(html, /tenant isolation/);
+
+    const apiRes = await fetch(`${baseUrl}${signed}`, {
+      headers: { Accept: "application/json" },
+    });
+    assert.equal(apiRes.status, 503);
+    const body = (await apiRes.json()) as { error?: string; code?: string };
+    assert.equal(body.code, "FINANCIAL_INGESTION_CONTAINMENT");
+    assert.match(body.error ?? "", /התצוגה המקדימה אינה זמינה/);
+    assert.doesNotMatch(body.error ?? "", /tenant isolation/i);
+  }, { containment: "on" });
 });

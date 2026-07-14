@@ -16,7 +16,7 @@ import {
   StatusBadge,
 } from "@/components/natalie-ui";
 import { useI18n } from "@/i18n";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, API_URL } from "@/lib/api";
 import { buildFallbackMonthGroups } from "@/lib/invoices/monthGrouping";
 import { removeRowAfterAction } from "@/lib/invoices/animatedRemoval";
 import { formatAmount } from "@/lib/format/amount";
@@ -28,6 +28,7 @@ import {
   displayPaymentStatus,
   paymentStatusTone,
 } from "@/lib/invoices/invoiceDisplay";
+import { drivePreviewUrl } from "@/lib/documents/presentation";
 import { ChevronDown, ChevronLeft, Download, FileText, Loader2, RefreshCcw, UploadCloud } from "lucide-react";
 import { buttonVariants } from "@/components/natalie-ui/tokens";
 
@@ -747,7 +748,7 @@ export default function InvoicesPage() {
             {documentDriveUrl(selected) && (
               <div className="mt-6">
                 <div className="mb-2 text-sm font-black text-[#111827]">תצוגה מקדימה</div>
-                <iframe className="h-[50vh] w-full rounded-2xl border border-[#E5E7EB] bg-white shadow-inner sm:h-[55vh] sm:min-h-80" src={toDrivePreviewUrl(documentDriveUrl(selected)!)} title="תצוגה מקדימה של חשבונית" />
+                <InvoiceDocumentPreview url={documentDriveUrl(selected)!} />
               </div>
             )}
 
@@ -1055,6 +1056,67 @@ function systemNoteForInvoice(invoice: Invoice) {
   }
 
   return "זוהתה חשבונית בביטחון גבוה";
+}
+
+/** תצוגה מקדימה: אם הקובץ לא זמין (למשל containment) — הודעה בעברית במקום JSON ב-iframe. */
+function InvoiceDocumentPreview({ url }: { url: string }) {
+  const previewUrl = drivePreviewUrl(url, API_URL) ?? toDrivePreviewUrl(url);
+  const isLocalUpload = url.includes("/uploads/");
+  const [mode, setMode] = useState<"ready" | "unavailable" | "checking">(
+    isLocalUpload ? "checking" : "ready",
+  );
+
+  useEffect(() => {
+    if (!isLocalUpload) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(previewUrl, {
+          method: "HEAD",
+          headers: { Accept: "*/*" },
+          credentials: "include",
+        });
+        const contentType = res.headers.get("content-type") ?? "";
+        if (!res.ok || contentType.includes("application/json")) {
+          console.warn("[invoices] document preview unavailable", res.status);
+          if (!cancelled) setMode("unavailable");
+          return;
+        }
+        if (!cancelled) setMode("ready");
+      } catch (err) {
+        // CORS/HEAD unsupported: keep iframe; /uploads returns Hebrew HTML under containment.
+        console.warn("[invoices] document preview probe failed; using iframe", err);
+        if (!cancelled) setMode("ready");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLocalUpload, previewUrl]);
+
+  if (mode === "checking") {
+    return (
+      <div className="flex h-[50vh] w-full items-center justify-center rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] text-sm font-semibold text-[#4B5563] sm:h-[55vh] sm:min-h-80">
+        טוען תצוגה מקדימה...
+      </div>
+    );
+  }
+
+  if (mode === "unavailable") {
+    return (
+      <div className="flex h-[50vh] w-full items-center justify-center rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-6 text-center text-base font-bold leading-7 text-[#111827] sm:h-[55vh] sm:min-h-80">
+        המסמך נשמר בהצלחה, אך התצוגה המקדימה אינה זמינה כרגע.
+      </div>
+    );
+  }
+
+  return (
+    <iframe
+      className="h-[50vh] w-full rounded-2xl border border-[#E5E7EB] bg-white shadow-inner sm:h-[55vh] sm:min-h-80"
+      src={previewUrl}
+      title="תצוגה מקדימה של חשבונית"
+    />
+  );
 }
 
 function normalizeInternalReason(reason: string | null | undefined) {

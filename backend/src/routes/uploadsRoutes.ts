@@ -66,10 +66,24 @@ export const uploadsRouter = Router();
 
 uploadsRouter.get("/:channelDir/:fileName", (req, res) => {
   if (isFinancialIngestionContainmentActive()) {
-    res.status(503).json({
-      error: "Financial documents are temporarily unavailable while tenant isolation is verified.",
-      code: FINANCIAL_INGESTION_CONTAINMENT_CODE,
-    });
+    // Containment logic unchanged (still 503 / blocked). Presentation only:
+    // browsers/iframes must not render raw JSON error payloads.
+    const accept = String(req.headers.accept ?? "");
+    const wantsJson = accept.includes("application/json") && !accept.includes("text/html");
+    const friendly =
+      "המסמך נשמר בהצלחה, אך התצוגה המקדימה אינה זמינה כרגע.";
+    if (wantsJson) {
+      res.status(503).json({
+        error: friendly,
+        code: FINANCIAL_INGESTION_CONTAINMENT_CODE,
+      });
+      return;
+    }
+    res.status(503).type("html").send(`<!DOCTYPE html>
+<html lang="he" dir="rtl"><head><meta charset="utf-8"/><title>תצוגה לא זמינה</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:Arial,Helvetica,sans-serif;background:#F8FAFC;color:#111827;padding:24px;text-align:center}
+p{max-width:28rem;line-height:1.6;font-size:1.05rem;font-weight:600}</style></head>
+<body><p>${friendly}</p></body></html>`);
     return;
   }
 
