@@ -11,7 +11,12 @@ export type CalendarIntentAction =
 export type CalendarListRange = "day" | "week" | "all";
 
 /** How a list_appointments read should be answered. */
-export type CalendarReadMode = "list" | "count" | "count_clients" | "next";
+export type CalendarReadMode =
+  | "list"
+  | "count"
+  | "count_clients"
+  | "next"
+  | "unconfirmed_arrival";
 
 export type CalendarIntentConfidence = "high" | "medium" | "low";
 
@@ -79,6 +84,7 @@ const CUSTOMER_NAME_STOPWORDS = [
   "שישי",
   "שבת",
   "השבוע",
+  "לקוחות",
 ];
 
 const TIME_CONTEXT = {
@@ -360,6 +366,14 @@ const NEXT_READ_PATTERNS: RegExp[] = [
   /מי\s+(?:ה)?(?:לקוח|לקוחה)\s+(?:ה)?(?:בא|הבא)/u,
 ];
 
+/** Who hasn't confirmed arrival (reminder sent, no confirmation). */
+const UNCONFIRMED_ARRIVAL_PATTERNS: RegExp[] = [
+  /מי\s+לא\s+אישר(?:ו)?(?:\s+הגעה)?/u,
+  /לא\s+אישרו\s+הגעה/u,
+  /(?:תורים?|פגישות?)\s+(?:ש)?לא\s+אושרו(?:\s+הגעה)?/u,
+  /מי\s+עדיין\s+לא\s+אישר/u,
+];
+
 const LIST_PATTERNS: RegExp[] = [
   /מה\s+ה?(?:תורים|פגישות)/u,
   /ה?(?:תורים|פגישות)\s+של\s+(?:היום|מחר|מחרתיים|יום|השבוע)/u,
@@ -371,6 +385,7 @@ const LIST_PATTERNS: RegExp[] = [
   /(?:איזה|אילו|כמה)\s+(?:ה)?(?:תורים|פגישות|לקוחות)/u,
   // "מי קבוע לי היום", "מי יש לי מחר"
   /מי\s+(?:קבוע|יש)\s+לי/u,
+  ...UNCONFIRMED_ARRIVAL_PATTERNS,
 ];
 
 function isNextReadIntent(text: string): boolean {
@@ -380,12 +395,20 @@ function isNextReadIntent(text: string): boolean {
   return NEXT_READ_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+function isUnconfirmedArrivalIntent(text: string): boolean {
+  if (CREATE_VERBS.test(text) || MOVE_VERBS.test(text) || CANCEL_VERBS.test(text)) {
+    return false;
+  }
+  return UNCONFIRMED_ARRIVAL_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 function isListIntent(text: string): boolean {
   // Never treat a scheduling/mutation command as a list request.
   if (CREATE_VERBS.test(text) || MOVE_VERBS.test(text) || CANCEL_VERBS.test(text)) {
     return false;
   }
   if (isNextReadIntent(text)) return true;
+  if (isUnconfirmedArrivalIntent(text)) return true;
   return LIST_PATTERNS.some((pattern) => pattern.test(text));
 }
 
@@ -393,6 +416,9 @@ function detectListReadMode(text: string): {
   readMode: CalendarReadMode;
   nextFocus?: "appointment" | "client" | "now";
 } {
+  if (isUnconfirmedArrivalIntent(text)) {
+    return { readMode: "unconfirmed_arrival" };
+  }
   if (isNextReadIntent(text)) {
     if (/מי\s+(?:ה)?(?:לקוח|לקוחה)\s+(?:ה)?(?:בא|הבא)/u.test(text)) {
       return { readMode: "next", nextFocus: "client" };
@@ -606,8 +632,16 @@ export function parseCalendarIntent(
   if (intent === "list_appointments") {
     const dayReference = extractDayReference(text);
     const { readMode, nextFocus } = detectListReadMode(text);
+    // "מה התורים של דנה?" — keep the name; day tokens ("של היום") stay null via stopwords.
+    const listCustomerName =
+      readMode === "next" ||
+      readMode === "unconfirmed_arrival" ||
+      readMode === "count" ||
+      readMode === "count_clients"
+        ? null
+        : customerName;
     const rangeType: CalendarListRange =
-      readMode === "next"
+      readMode === "next" || readMode === "unconfirmed_arrival"
         ? "all"
         : /השבוע|שבוע\s+הבא/u.test(text)
           ? "week"
@@ -616,8 +650,13 @@ export function parseCalendarIntent(
             : "all";
     return {
       ...base,
-      dayReference: readMode === "next" ? null : dayReference,
-      date: readMode === "next" ? null : resolveDate(dayReference, null, timeZone, now),
+      customerName: listCustomerName,
+      dayReference:
+        readMode === "next" || readMode === "unconfirmed_arrival" ? null : dayReference,
+      date:
+        readMode === "next" || readMode === "unconfirmed_arrival"
+          ? null
+          : resolveDate(dayReference, null, timeZone, now),
       rangeType,
       readMode,
       nextFocus,

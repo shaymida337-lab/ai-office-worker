@@ -35,7 +35,7 @@ test("isBestAvailablePhrase detects ranked booking phrases", () => {
   assert.equal(isBestAvailablePhrase("תמצאי לי שעה טובה מחר"), true);
 });
 
-test("rankAvailableSlots prefers 10:30 over 07:00 on a free day", () => {
+test("rankAvailableSlots default mode returns chronological order", () => {
   const candidates = [
     slot("2026-06-20T07:00:00.000Z"),
     slot("2026-06-20T07:30:00.000Z"),
@@ -44,6 +44,29 @@ test("rankAvailableSlots prefers 10:30 over 07:00 on a free day", () => {
     slot("2026-06-20T11:00:00.000Z"),
   ];
   const ranked = rankAvailableSlots(candidates, buildSlotRankingOptions(RULES), 3);
+  assert.deepEqual(
+    ranked.map((item) => item.start.toISOString()),
+    [
+      "2026-06-20T07:00:00.000Z",
+      "2026-06-20T07:30:00.000Z",
+      "2026-06-20T09:00:00.000Z",
+    ]
+  );
+});
+
+test("rankAvailableSlots best_available prefers 10:30 over 07:00 on a free day", () => {
+  const candidates = [
+    slot("2026-06-20T07:00:00.000Z"),
+    slot("2026-06-20T07:30:00.000Z"),
+    slot("2026-06-20T09:00:00.000Z"),
+    slot("2026-06-20T10:30:00.000Z"),
+    slot("2026-06-20T11:00:00.000Z"),
+  ];
+  const ranked = rankAvailableSlots(
+    candidates,
+    buildSlotRankingOptions(RULES, { mode: "best_available" }),
+    3
+  );
   assert.deepEqual(
     ranked.map((item) => item.start.toISOString()),
     [

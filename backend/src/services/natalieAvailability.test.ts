@@ -32,18 +32,27 @@ function installAvailabilityPrismaStub(options?: {
     appointmentFindMany: prisma.appointment.findMany.bind(prisma.appointment),
     calendarEventFindMany: prisma.calendarEvent.findMany.bind(prisma.calendarEvent),
     serviceFindFirst: prisma.service.findFirst.bind(prisma.service),
+    integrationFindUnique: prisma.integration.findUnique.bind(prisma.integration),
   };
 
   prisma.organization.findUnique = (async () => ({ timezone: "UTC" })) as unknown as typeof prisma.organization.findUnique;
-  prisma.appointment.findMany = (async () => options?.appointments ?? []) as unknown as typeof prisma.appointment.findMany;
+  prisma.appointment.findMany = (async () =>
+    (options?.appointments ?? []).map((row) => ({
+      ...row,
+      employeeId: null,
+      googleEventId: null,
+      status: "confirmed",
+    }))) as unknown as typeof prisma.appointment.findMany;
   prisma.calendarEvent.findMany = (async () => []) as unknown as typeof prisma.calendarEvent.findMany;
   prisma.service.findFirst = (async () => null) as unknown as typeof prisma.service.findFirst;
+  prisma.integration.findUnique = (async () => null) as unknown as typeof prisma.integration.findUnique;
 
   return () => {
     prisma.organization.findUnique = originals.organizationFindUnique;
     prisma.appointment.findMany = originals.appointmentFindMany;
     prisma.calendarEvent.findMany = originals.calendarEventFindMany;
     prisma.service.findFirst = originals.serviceFindFirst;
+    prisma.integration.findUnique = originals.integrationFindUnique;
   };
 }
 
@@ -135,7 +144,12 @@ test("maybeBuildAvailabilityResponse returns suggest_available_times with engine
     assert.equal(result.proposal.slots.length, 3);
     assert.equal(result.proposal.intent, "suggest");
     assert.match(result.answer, /מצאתי 3 זמנים פנויים/);
-    assert.equal(result.proposal.slots[0]?.startTime, "2026-06-20T10:30:00.000Z");
+    // Default suggest is chronological from the Availability Engine grid.
+    assert.equal(result.proposal.slots[0]?.startTime, "2026-06-20T08:00:00.000Z");
+    assert.equal(result.proposal.slots[1]?.startTime, "2026-06-20T08:30:00.000Z");
+    assert.equal(result.proposal.slots[2]?.startTime, "2026-06-20T09:00:00.000Z");
+    const starts = result.proposal.slots.map((slot) => Date.parse(slot.startTime));
+    assert.deepEqual(starts, [...starts].sort((a, b) => a - b));
   } finally {
     restore();
   }
@@ -184,6 +198,58 @@ test("maybeBuildAvailabilityResponse returns nearby alternatives when check find
       "2026-06-21T10:30:00.000Z",
       "2026-06-21T11:00:00.000Z",
     ]);
+  } finally {
+    restore();
+  }
+});
+
+test('מתי אני פנוי מחר: chronological engine slots and 11:00 appointment blocks 11:00', async () => {
+  const restore = installAvailabilityPrismaStub({
+    appointments: [
+      {
+        id: "busy-11",
+        startTime: at("2026-06-21T11:00:00.000Z"),
+        durationMinutes: 30,
+        client: { name: "דנה" },
+        service: { name: "תספורת" },
+      },
+      {
+        id: "busy-14",
+        startTime: at("2026-06-21T14:00:00.000Z"),
+        durationMinutes: 30,
+        client: { name: "דני" },
+        service: null,
+      },
+    ],
+  });
+  try {
+    const result = await maybeBuildAvailabilityResponse(ORG, "מתי אני פנוי מחר?", {
+      now: FIXED_NOW,
+    });
+    assert.ok(result);
+    assert.equal("action" in result && result.action, "suggest_available_times");
+    if (!("action" in result) || result.action !== "suggest_available_times") return;
+
+    const starts = result.proposal.slots.map((slot) => Date.parse(slot.startTime));
+    assert.deepEqual(starts, [...starts].sort((a, b) => a - b), "slots must be chronological");
+    assert.ok(
+      result.proposal.slots.every((slot) => !slot.startTime.includes("T11:00:00")),
+      `11:00 must be blocked; answer=${result.answer}`
+    );
+    assert.doesNotMatch(result.answer, /11:00/);
+    assert.match(result.answer, /מצאתי \d+ זמנים פנויים/);
+    // Earliest free tomorrow after engine conflict filter (default duration 30).
+    assert.equal(result.proposal.slots[0]?.startTime, "2026-06-21T07:00:00.000Z");
+    assert.equal(result.proposal.slots[1]?.startTime, "2026-06-21T07:30:00.000Z");
+    assert.equal(result.proposal.slots[2]?.startTime, "2026-06-21T08:00:00.000Z");
+    console.log("\n=== FREE-TIME AFTER FIX ===");
+    console.log("Q: מתי אני פנוי מחר?");
+    console.log("A:", result.answer);
+    console.log(
+      "slots:",
+      result.proposal.slots.map((s) => s.label).join(" | ")
+    );
+    console.log("=== END ===\n");
   } finally {
     restore();
   }

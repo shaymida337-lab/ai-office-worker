@@ -204,7 +204,7 @@ test("checkSlotAvailability returns past for past slots", async () => {
   }
 });
 
-test("findAvailableSlotsForOrganization returns top ranked slots on a free day", async () => {
+test("findAvailableSlotsForOrganization returns earliest free slots chronologically", async () => {
   const originalOrg = prisma.organization.findUnique.bind(prisma.organization);
   const originalAppt = prisma.appointment.findMany.bind(prisma.appointment);
   const now = at("2026-06-20T00:00:00.000Z");
@@ -222,10 +222,55 @@ test("findAvailableSlotsForOrganization returns top ranked slots on a free day",
     assert.equal(result.slots.length, 3);
     assert.equal(result.empty, false);
     assert.equal(result.durationMinutes, 30);
-    assert.equal(result.slots[0]?.startTime, "2026-06-20T10:30:00.000Z");
+    assert.equal(result.slots[0]?.startTime, "2026-06-20T07:00:00.000Z");
+    assert.equal(result.slots[1]?.startTime, "2026-06-20T07:30:00.000Z");
+    assert.equal(result.slots[2]?.startTime, "2026-06-20T08:00:00.000Z");
   } finally {
     prisma.organization.findUnique = originalOrg;
     prisma.appointment.findMany = originalAppt;
+  }
+});
+
+test("findAvailableSlotsForOrganization: appointment at 11:00 excludes 11:00 from free slots", async () => {
+  const originalOrg = prisma.organization.findUnique.bind(prisma.organization);
+  const originalAppt = prisma.appointment.findMany.bind(prisma.appointment);
+  const originalEvent = prisma.calendarEvent.findMany.bind(prisma.calendarEvent);
+  const now = at("2026-06-20T00:00:00.000Z");
+  prisma.organization.findUnique = (async () => ({ timezone: "UTC" })) as unknown as typeof prisma.organization.findUnique;
+  prisma.calendarEvent.findMany = (async () => []) as unknown as typeof prisma.calendarEvent.findMany;
+  prisma.appointment.findMany = (async () => [
+    {
+      id: "busy-11",
+      startTime: at("2026-06-20T11:00:00.000Z"),
+      durationMinutes: 30,
+      employeeId: null,
+      googleEventId: null,
+      status: "confirmed",
+      client: { name: "דנה" },
+      service: { name: "תספורת" },
+    },
+  ]) as unknown as typeof prisma.appointment.findMany;
+
+  try {
+    const result = await findAvailableSlotsForOrganization({
+      organizationId: ORG,
+      rangeType: "day",
+      limit: 20,
+      now,
+      skipGoogle: true,
+    });
+    assert.ok(result.slots.length > 0);
+    assert.ok(
+      result.slots.every((slot) => slot.startTime !== "2026-06-20T11:00:00.000Z"),
+      `11:00 must not be free; got ${result.slots.map((s) => s.label).join(", ")}`
+    );
+    // Still chronological from Availability Engine
+    const starts = result.slots.map((slot) => Date.parse(slot.startTime));
+    assert.deepEqual(starts, [...starts].sort((a, b) => a - b));
+  } finally {
+    prisma.organization.findUnique = originalOrg;
+    prisma.appointment.findMany = originalAppt;
+    prisma.calendarEvent.findMany = originalEvent;
   }
 });
 

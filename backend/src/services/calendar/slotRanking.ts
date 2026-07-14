@@ -143,8 +143,12 @@ export function rankAvailableSlots(
     );
     if (dayCompare !== 0) return dayCompare;
 
-    const scoreDiff = scoreSlotForRanking(b, options) - scoreSlotForRanking(a, options);
-    if (scoreDiff !== 0) return scoreDiff;
+    // Default free-time answers are chronological. Score ranking is only for
+    // explicit "best available" / "שעה טובה" intents.
+    if (options.mode === "best_available") {
+      const scoreDiff = scoreSlotForRanking(b, options) - scoreSlotForRanking(a, options);
+      if (scoreDiff !== 0) return scoreDiff;
+    }
 
     return a.start.getTime() - b.start.getTime();
   });

@@ -5,6 +5,7 @@ import { parseCalendarIntent } from "./calendarIntentParser.js";
 import {
   filterAppointmentsForReadRange,
   runCalendarReadEngine,
+  type CalendarReadEngineDeps,
   type CalendarReadQuery,
 } from "./calendarReadEngine.js";
 import type { UpcomingSchedulingOrgResult } from "../scheduling/schedulingFacade.js";
@@ -45,7 +46,8 @@ function mockDetailed(
 async function runQuery(
   question: string,
   items: ReturnType<typeof item>[],
-  overrides?: Partial<CalendarReadQuery>
+  overrides?: Partial<CalendarReadQuery>,
+  deps?: Pick<CalendarReadEngineDeps, "searchCustomers" | "loadUnconfirmedAppointmentIds">
 ) {
   const intent = parseCalendarIntent(question, { now: NOW, timeZone: TZ });
   assert.equal(intent.intent, "list_appointments");
@@ -56,12 +58,15 @@ async function runQuery(
       dayReference: intent.dayReference,
       readMode: intent.readMode ?? "list",
       nextFocus: intent.nextFocus,
+      customerName: intent.customerName,
       ...overrides,
     },
     timeZone: TZ,
     now: NOW,
     deps: {
       loadDetailed: async () => mockDetailed(items),
+      searchCustomers: deps?.searchCustomers ?? (async () => []),
+      loadUnconfirmedAppointmentIds: deps?.loadUnconfirmedAppointmentIds,
     },
   });
 }
@@ -170,9 +175,95 @@ test("read engine: Google + local merge path uses detailed loader unchanged", as
         assert.ok(params.now);
         return mockDetailed([googleItem], "full");
       },
+      searchCustomers: async () => [],
     },
   });
   assert.equal(loaderCalls, 1);
   assert.match(result.answer, /Google Client/);
   assert.match(result.answer, /Google Calendar אומת/);
+});
+
+test('parser: "מה התורים של דנה?" keeps customer name', () => {
+  const result = parseCalendarIntent("מה התורים של דנה?", { now: NOW, timeZone: TZ });
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.customerName, "דנה");
+  assert.equal(result.readMode, "list");
+});
+
+test('parser: "מי לא אישר הגעה?" → unconfirmed_arrival', () => {
+  const result = parseCalendarIntent("מי לא אישר הגעה?", { now: NOW, timeZone: TZ });
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.readMode, "unconfirmed_arrival");
+});
+
+test("read engine: list by unique customer name", async () => {
+  const items = [
+    item("a1", "2026-07-08T07:00:00.000Z", "דנה יהודה שלם", "c-dana"),
+    item("a2", "2026-07-08T12:00:00.000Z", "דני כהן", "c-dani"),
+  ];
+  const result = await runQuery("מה התורים של דנה יהודה שלם?", items, undefined, {
+    searchCustomers: async () => [
+      {
+        id: "c-dana",
+        name: "דנה יהודה שלם",
+        email: null,
+        whatsappNumber: null,
+        emailIsPlaceholder: true,
+      },
+    ],
+  });
+  assert.match(result.answer, /דנה יהודה שלם/);
+  assert.doesNotMatch(result.answer, /דני כהן/);
+});
+
+test("read engine: duplicate name asks which client", async () => {
+  const items = [
+    item("a1", "2026-07-08T07:00:00.000Z", "דני כהן", "c-dani1"),
+    item("a2", "2026-07-09T07:00:00.000Z", "דני לוי", "c-dani2"),
+  ];
+  const result = await runQuery("מה התורים של דני?", items, undefined, {
+    searchCustomers: async () => [
+      {
+        id: "c-dani1",
+        name: "דני כהן",
+        email: null,
+        whatsappNumber: null,
+        emailIsPlaceholder: true,
+      },
+      {
+        id: "c-dani2",
+        name: "דני לוי",
+        email: null,
+        whatsappNumber: null,
+        emailIsPlaceholder: true,
+      },
+    ],
+  });
+  assert.match(result.answer, /למי התכוונת/);
+  assert.match(result.answer, /דני כהן/);
+  assert.match(result.answer, /דני לוי/);
+  assert.equal(result.action, undefined);
+});
+
+test("read engine: unconfirmed arrival lists only pending confirmations", async () => {
+  const items = [
+    item("a-unconfirmed", "2026-07-08T07:00:00.000Z", "שרית", "c1"),
+    item("a-ok", "2026-07-08T12:00:00.000Z", "דני", "c2"),
+  ];
+  const result = await runQuery("מי לא אישר הגעה?", items, undefined, {
+    loadUnconfirmedAppointmentIds: async () => ["a-unconfirmed"],
+  });
+  assert.match(result.answer, /שרית/);
+  assert.doesNotMatch(result.answer, /דני/);
+  assert.match(result.answer, /לא אישרו הגעה|עדיין לא אישרו/);
+});
+
+test("read engine: unconfirmed arrival empty is friendly", async () => {
+  const result = await runQuery(
+    "מי לא אישר הגעה?",
+    [item("a1", "2026-07-08T07:00:00.000Z", "שרית", "c1")],
+    undefined,
+    { loadUnconfirmedAppointmentIds: async () => [] }
+  );
+  assert.match(result.answer, /אין תורים ממתינים לאישור הגעה/);
 });

@@ -1,13 +1,30 @@
+import { prisma } from "../../lib/prisma.js";
 import { resolveAppointmentDateTime } from "../appointmentService.js";
 import {
   findUpcomingSchedulingForOrganizationDetailed,
   type UpcomingSchedulingItem,
 } from "../scheduling/schedulingFacade.js";
+import {
+  findAmbiguousAppointmentNameMatches,
+  normalizeHebrewAppointmentText,
+  type UpcomingSchedulingItemWithClient,
+} from "../scheduling/calendarAppointmentResolver.js";
+import {
+  formatAmbiguousCustomerMessage,
+  rankSchedulingCustomerMatches,
+  searchSchedulingCustomers,
+  type SchedulingCustomerCandidate,
+} from "../scheduling/schedulingCustomer.js";
 import { buildLastListedAppointmentsPendingAction } from "../conversation/lastListedAppointments.js";
 import type { CalendarIntentExtraction, CalendarListRange } from "./calendarIntentParser.js";
 import { calendarMessages } from "./calendarMessages.js";
 
-export type CalendarReadMode = "list" | "count" | "count_clients" | "next";
+export type CalendarReadMode =
+  | "list"
+  | "count"
+  | "count_clients"
+  | "next"
+  | "unconfirmed_arrival";
 
 export type CalendarReadQuery = {
   rangeType?: CalendarListRange;
@@ -15,11 +32,15 @@ export type CalendarReadQuery = {
   readMode: CalendarReadMode;
   /** For next-mode: emphasize client name vs full appointment details. */
   nextFocus?: "appointment" | "client" | "now";
+  /** Optional client filter for "מה התורים של דנה?". */
+  customerName?: string | null;
 };
 
 export type CalendarReadEngineDeps = {
   now?: Date;
   loadDetailed?: typeof findUpcomingSchedulingForOrganizationDetailed;
+  searchCustomers?: typeof searchSchedulingCustomers;
+  loadUnconfirmedAppointmentIds?: (organizationId: string) => Promise<string[]>;
 };
 
 export type CalendarReadEngineResult = {
@@ -27,6 +48,8 @@ export type CalendarReadEngineResult = {
   action?: "last_listed_appointments";
   proposal?: Record<string, unknown>;
 };
+
+type SchedulingItem = UpcomingSchedulingItem & { clientId?: string };
 
 /** YYYY-MM-DD wall-clock date in the business timezone. */
 export function localDateInTimeZone(date: Date, timeZone: string): string {
@@ -197,6 +220,99 @@ function buildEmptyAnswer(
   return `${answer}\n\n${sourceLine}`;
 }
 
+function uniqueClientsFromAppointments(
+  candidates: Array<{ appointment: SchedulingItem }>
+): SchedulingCustomerCandidate[] {
+  const byId = new Map<string, SchedulingCustomerCandidate>();
+  for (const { appointment } of candidates) {
+    const id = appointment.clientId?.trim() || `name:${normalizeHebrewAppointmentText(appointment.clientName)}`;
+    if (byId.has(id)) continue;
+    byId.set(id, {
+      id: appointment.clientId?.trim() || id,
+      name: appointment.clientName,
+      email: null,
+      whatsappNumber: null,
+      emailIsPlaceholder: true,
+    });
+  }
+  return [...byId.values()];
+}
+
+export async function loadUnconfirmedArrivalAppointmentIds(organizationId: string): Promise<string[]> {
+  const projections = await prisma.appointmentAttendanceProjection.findMany({
+    where: {
+      organizationId,
+      OR: [
+        { confirmationStatus: "no_response" },
+        {
+          attendanceState: { in: ["reminder_sent", "no_response"] },
+          confirmationStatus: { notIn: ["confirmed", "declined", "arrived", "cancelled"] },
+        },
+      ],
+    },
+    select: { appointmentId: true },
+  });
+  return projections.map((row) => row.appointmentId);
+}
+
+async function resolveCustomerFilter(params: {
+  organizationId: string;
+  spokenName: string;
+  items: SchedulingItem[];
+  searchCustomers: typeof searchSchedulingCustomers;
+}): Promise<
+  | { kind: "resolved"; clientId: string | null; clientName: string }
+  | { kind: "ambiguous"; answer: string }
+  | { kind: "none" }
+> {
+  const spokenName = params.spokenName.trim();
+  const customers = await params.searchCustomers({
+    organizationId: params.organizationId,
+    query: spokenName,
+  });
+  if (customers.length > 1) {
+    const ranked = rankSchedulingCustomerMatches(spokenName, customers);
+    return { kind: "ambiguous", answer: formatAmbiguousCustomerMessage(spokenName, ranked) };
+  }
+  if (customers.length === 1) {
+    const client = customers[0]!;
+    return { kind: "resolved", clientId: client.id, clientName: client.name };
+  }
+
+  const withClientIds: UpcomingSchedulingItemWithClient[] = params.items.map((item) => ({
+    ...item,
+    clientId: item.clientId?.trim() || `name:${normalizeHebrewAppointmentText(item.clientName)}`,
+  }));
+  const fuzzy = findAmbiguousAppointmentNameMatches(spokenName, withClientIds);
+  if (fuzzy.kind === "ambiguous") {
+    const clients = uniqueClientsFromAppointments(fuzzy.candidates);
+    return {
+      kind: "ambiguous",
+      answer: formatAmbiguousCustomerMessage(spokenName, rankSchedulingCustomerMatches(spokenName, clients)),
+    };
+  }
+  if (fuzzy.kind === "resolved") {
+    return {
+      kind: "resolved",
+      clientId: fuzzy.match.appointment.clientId ?? null,
+      clientName: fuzzy.match.appointment.clientName,
+    };
+  }
+  return { kind: "none" };
+}
+
+function filterItemsForCustomer(
+  items: SchedulingItem[],
+  resolved: { clientId: string | null; clientName: string }
+): SchedulingItem[] {
+  if (resolved.clientId) {
+    const byId = items.filter((item) => item.clientId === resolved.clientId);
+    if (byId.length > 0) return byId;
+  }
+  const target = normalizeHebrewAppointmentText(resolved.clientName);
+  return items.filter((item) => normalizeHebrewAppointmentText(item.clientName) === target);
+}
+
 export function calendarReadQueryFromIntent(intent: CalendarIntentExtraction): CalendarReadQuery | null {
   if (intent.intent !== "list_appointments") return null;
   return {
@@ -204,6 +320,7 @@ export function calendarReadQueryFromIntent(intent: CalendarIntentExtraction): C
     dayReference: intent.dayReference,
     readMode: intent.readMode ?? "list",
     nextFocus: intent.nextFocus,
+    customerName: intent.customerName,
   };
 }
 
@@ -217,6 +334,9 @@ export async function runCalendarReadEngine(params: {
 }): Promise<CalendarReadEngineResult> {
   const now = params.now ?? params.deps?.now ?? new Date();
   const loadDetailed = params.deps?.loadDetailed ?? findUpcomingSchedulingForOrganizationDetailed;
+  const searchCustomers = params.deps?.searchCustomers ?? searchSchedulingCustomers;
+  const loadUnconfirmedIds =
+    params.deps?.loadUnconfirmedAppointmentIds ?? loadUnconfirmedArrivalAppointmentIds;
 
   const lookbackMs =
     params.query.readMode === "next" && params.query.nextFocus === "now" ? 4 * 60 * 60_000 : 0;
@@ -233,10 +353,16 @@ export async function runCalendarReadEngine(params: {
     return { answer: "לא הצלחתי לקרוא את היומן כרגע. נסי שוב בעוד רגע." };
   }
 
-  const filtered = sortAppointmentsChronologically(
+  let filtered = sortAppointmentsChronologically(
     filterAppointmentsForReadRange(detailed.items, {
-      rangeType: params.query.readMode === "next" ? "all" : params.query.rangeType,
-      dayReference: params.query.readMode === "next" ? null : params.query.dayReference,
+      rangeType:
+        params.query.readMode === "next" || params.query.readMode === "unconfirmed_arrival"
+          ? "all"
+          : params.query.rangeType,
+      dayReference:
+        params.query.readMode === "next" || params.query.readMode === "unconfirmed_arrival"
+          ? null
+          : params.query.dayReference,
       timeZone: params.timeZone,
       now,
     })
@@ -246,6 +372,7 @@ export async function runCalendarReadEngine(params: {
     requestId: params.requestId ?? null,
     organizationId: params.organizationId,
     readMode: params.query.readMode,
+    customerName: params.query.customerName ?? null,
     googleStatus: detailed.googleReadStatus,
     degraded: detailed.googleReadDegraded,
     reason: detailed.googleReadReason ?? null,
@@ -255,6 +382,56 @@ export async function runCalendarReadEngine(params: {
 
   const sourceLine = buildSourceLine(detailed);
   const googleWarning = detailed.googleReadWarningHe;
+
+  if (params.query.readMode === "unconfirmed_arrival") {
+    let unconfirmedIds: string[];
+    try {
+      unconfirmedIds = await loadUnconfirmedIds(params.organizationId);
+    } catch (err) {
+      console.error("[calendarReadEngine] unconfirmed read failed", err);
+      return { answer: "לא הצלחתי לבדוק אישורי הגעה כרגע. נסי שוב בעוד רגע." };
+    }
+    const idSet = new Set(unconfirmedIds);
+    filtered = filtered.filter((item) => item.source === "appointment" && idSet.has(item.id));
+    if (filtered.length === 0) {
+      return { answer: buildEmptyAnswer(calendarMessages.unconfirmedArrivalEmpty(), detailed) };
+    }
+    const lines = filtered.map((item) => formatListEntry(item, params.timeZone, true));
+    const answer = `${calendarMessages.unconfirmedArrivalHeader()}\n${lines.join("\n")}`;
+    const answerWithSource = `${answer}\n\n${sourceLine}`;
+    const listedPending = buildLastListedAppointmentsPendingAction(filtered);
+    return {
+      action: "last_listed_appointments",
+      proposal: listedPending!.proposal as Record<string, unknown>,
+      answer: answerWithSource,
+    };
+  }
+
+  let resolvedClientName: string | null = null;
+  const spokenName = params.query.customerName?.trim() || "";
+  if (spokenName) {
+    const resolution = await resolveCustomerFilter({
+      organizationId: params.organizationId,
+      spokenName,
+      items: detailed.items,
+      searchCustomers,
+    });
+    if (resolution.kind === "ambiguous") {
+      return { answer: resolution.answer };
+    }
+    if (resolution.kind === "none") {
+      return {
+        answer: buildEmptyAnswer(calendarMessages.listEmptyForClient(spokenName), detailed),
+      };
+    }
+    filtered = filterItemsForCustomer(filtered, resolution);
+    resolvedClientName = resolution.clientName;
+    if (filtered.length === 0) {
+      return {
+        answer: buildEmptyAnswer(calendarMessages.listEmptyForClient(resolution.clientName), detailed),
+      };
+    }
+  }
 
   if (params.query.readMode === "next") {
     const next = findCurrentOrNextAppointment(filtered, now);
@@ -289,7 +466,14 @@ export async function runCalendarReadEngine(params: {
     return { answer: `${countLine}\n\n${sourceLine}` };
   }
 
-  const { header, empty, includeDate } = listRangeLabel(params.query.rangeType, params.query.dayReference);
+  const rangeLabel = listRangeLabel(params.query.rangeType, params.query.dayReference);
+  const header = resolvedClientName
+    ? calendarMessages.listHeaderForClient(resolvedClientName)
+    : rangeLabel.header;
+  const empty = resolvedClientName
+    ? calendarMessages.listEmptyForClient(resolvedClientName)
+    : rangeLabel.empty;
+  const includeDate = resolvedClientName ? true : rangeLabel.includeDate;
 
   if (filtered.length === 0) {
     return { answer: buildEmptyAnswer(empty, detailed) };

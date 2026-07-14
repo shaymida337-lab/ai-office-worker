@@ -103,7 +103,7 @@ test("generateSlotGrid creates slots inside working hours", () => {
   assert.ok(slots.every((slot) => isWithinWorkingHours(slot, RULES)));
 });
 
-test("findAvailableSlots returns top ranked available slots", () => {
+test("findAvailableSlots returns earliest free slots chronologically by default", () => {
   const range = {
     start: at("2026-06-20T00:00:00.000Z"),
     end: at("2026-06-21T00:00:00.000Z"),
@@ -114,8 +114,28 @@ test("findAvailableSlots returns top ranked available slots", () => {
     now: at("2026-06-20T00:00:00.000Z"),
   });
   assert.equal(slots.length, 3);
-  assert.equal(slots[0]?.start.toISOString(), "2026-06-20T10:30:00.000Z");
-  assert.notEqual(slots[0]?.start.toISOString(), "2026-06-20T07:30:00.000Z");
+  assert.equal(slots[0]?.start.toISOString(), "2026-06-20T07:30:00.000Z");
+  assert.equal(slots[1]?.start.toISOString(), "2026-06-20T08:00:00.000Z");
+  assert.equal(slots[2]?.start.toISOString(), "2026-06-20T08:30:00.000Z");
+});
+
+test("findAvailableSlots: appointment at 11:00 blocks returning 11:00 as free", () => {
+  const range = {
+    start: at("2026-06-20T00:00:00.000Z"),
+    end: at("2026-06-21T00:00:00.000Z"),
+  };
+  const busy = [block("busy-11", "2026-06-20T11:00:00.000Z", 30)];
+  const slots = findAvailableSlots(range, 30, busy, RULES, {
+    limit: 20,
+    now: at("2026-06-20T00:00:00.000Z"),
+  });
+  assert.ok(slots.length > 0);
+  assert.ok(
+    slots.every((slot) => slot.start.toISOString() !== "2026-06-20T11:00:00.000Z"),
+    "11:00 must not appear as a free slot when busy"
+  );
+  // Duration also blocks overlapping starts that collide into the busy window.
+  assert.ok(slots.every((slot) => slot.end.getTime() <= busy[0]!.start.getTime() || slot.start.getTime() >= busy[0]!.end.getTime()));
 });
 
 test("findAvailableSlots returns empty for fully busy day", () => {

@@ -139,8 +139,20 @@ export const calendarMessages = {
   listHeaderAll(): string {
     return "התורים הקרובים שלך:";
   },
+  listHeaderForClient(clientName: string): string {
+    return `התורים הקרובים של ${clientName}:`;
+  },
+  listEmptyForClient(clientName: string): string {
+    return `אין לך פגישות מתוכננות ל${clientName}.`;
+  },
   listEmptyDay(dayReference: string): string {
     return `אין לך פגישות מתוכננות ל${dayReference}.`;
+  },
+  unconfirmedArrivalHeader(): string {
+    return "אלה שעדיין לא אישרו הגעה:";
+  },
+  unconfirmedArrivalEmpty(): string {
+    return "כרגע אין תורים ממתינים לאישור הגעה.";
   },
   listEmptyWeek(): string {
     return "אין לך פגישות מתוכננות השבוע.";
