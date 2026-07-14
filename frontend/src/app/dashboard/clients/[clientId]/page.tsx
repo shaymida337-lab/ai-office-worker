@@ -24,6 +24,7 @@ import {
   validateClientForm,
 } from "@/lib/clients/clientForm";
 import { formatAmount } from "@/lib/format/amount";
+import { QUOTE_STATUS_LABELS, type SalesDeal, formatIls } from "@/lib/salesUtils";
 
 type TaskStatus = "todo" | "in-progress" | "done" | "open";
 type TaskPriority = "low" | "medium" | "high";
@@ -152,6 +153,19 @@ const invoiceStatusLabels: Record<InvoiceItem["status"], string> = {
   overdue: "באיחור",
 };
 
+// לשוניות הכרטיס — כל התוכן שהיה בגלילה אחת ארוכה מחולק ללשוניות.
+type TabId = "details" | "appointments" | "documents" | "quotes" | "tasks" | "notes" | "whatsapp";
+
+const TABS: Array<{ id: TabId; label: string }> = [
+  { id: "details", label: "פרטים" },
+  { id: "appointments", label: "פגישות" },
+  { id: "documents", label: "מסמכים" },
+  { id: "quotes", label: "הצעות מחיר" },
+  { id: "tasks", label: "משימות" },
+  { id: "notes", label: "הערות" },
+  { id: "whatsapp", label: "וואטסאפ" },
+];
+
 export default function ClientDetailPage() {
   const params = useParams<{ clientId: string }>();
   const router = useRouter();
@@ -173,6 +187,7 @@ export default function ClientDetailPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [whatsappMessages, setWhatsappMessages] = useState<WhatsAppMessage[]>([]);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [clientDeals, setClientDeals] = useState<SalesDeal[]>([]);
   const [whatsappText, setWhatsappText] = useState("");
   const [form, setForm] = useState(emptyTask);
   const [editingClient, setEditingClient] = useState(false);
@@ -187,10 +202,11 @@ export default function ClientDetailPage() {
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [message, setMessage] = useState("");
+  const [activeTab, setActiveTab] = useState<TabId>("details");
 
   async function load() {
     // נתוני הלקוח הם מקור האמת של הכרטיס — מחילים אותם מיד עם קבלתם.
-    // כשל של קריאה משנית (משימות/וואטסאפ/חשבוניות/תור/הערות) לא יחסום
+    // כשל של קריאה משנית (משימות/וואטסאפ/חשבוניות/תור/הערות/עסקאות) לא יחסום
     // את רענון הכרטיס, ולא ימחק את המידע המשני הקיים (נשמר על catch->null).
     const next = await apiFetch<ClientDetail>(`/api/clients/${clientId}`);
     setData(next);
@@ -198,13 +214,14 @@ export default function ClientDetailPage() {
     setLoadError("");
     setLastUpdatedAt(new Date());
 
-    const [taskResult, whatsappResult, invoiceResult, nextAppt, noteResult, appointmentsResult] = await Promise.all([
+    const [taskResult, whatsappResult, invoiceResult, nextAppt, noteResult, appointmentsResult, dealsResult] = await Promise.all([
       apiFetch<{ tasks: TaskItem[] }>(`/api/clients/${clientId}/tasks`).catch(() => null),
       apiFetch<{ messages: WhatsAppMessage[] }>(`/api/clients/${clientId}/whatsapp`).catch(() => null),
       apiFetch<{ invoices: InvoiceItem[] }>(`/api/clients/${clientId}/invoices`).catch(() => null),
       apiFetch<{ appointment: NextAppointmentDto | null }>(`/api/clients/${clientId}/next-appointment`).catch(() => null),
       apiFetch<{ notes: ClientNoteDto[] }>(`/api/clients/${clientId}/notes`).catch(() => null),
       apiFetch<{ appointments: ClientAppointmentDto[] }>(`/api/clients/${clientId}/appointments`).catch(() => null),
+      apiFetch<{ deals: SalesDeal[] }>(`/api/deals`).catch(() => null),
     ]);
     if (taskResult) setTasks(taskResult.tasks);
     if (whatsappResult) setWhatsappMessages(whatsappResult.messages);
@@ -214,6 +231,8 @@ export default function ClientDetailPage() {
     if (noteResult) setNotes(noteResult.notes);
     if (appointmentsResult) setAppointments(appointmentsResult.appointments);
     setAppointmentsLoaded(true);
+    // הצעות מחיר של הלקוח: endpoint קיים של עסקאות, מסונן בצד הלקוח בלבד.
+    if (dealsResult) setClientDeals(dealsResult.deals.filter((deal) => deal.clientId === clientId));
   }
 
   useEffect(() => {
@@ -229,9 +248,9 @@ export default function ClientDetailPage() {
 
   const healthTone = useMemo(() => {
     const score = health?.score ?? 0;
-    if (score <= 40) return { label: "אדום", className: "text-red-300" };
-    if (score <= 70) return { label: "צהוב", className: "text-amber-300" };
-    return { label: "ירוק", className: "text-emerald-300" };
+    if (score <= 40) return { label: "אדום", className: "text-red-500" };
+    if (score <= 70) return { label: "צהוב", className: "text-amber-500" };
+    return { label: "ירוק", className: "text-emerald-600" };
   }, [health?.score]);
 
   async function scanInvoices() {
@@ -432,6 +451,8 @@ export default function ClientDetailPage() {
     if (!data) return;
     setClientForm(clientToFormValues(data.client));
     setEditingClient(true);
+    // שדות העריכה חיים בלשונית "פרטים" בלבד — קופצים אליה מכל לשונית.
+    setActiveTab("details");
   }
 
   async function sendWhatsAppMessage(event: React.FormEvent<HTMLFormElement>) {
@@ -480,461 +501,737 @@ export default function ClientDetailPage() {
   // אין שדה כתובת במודל הלקוח כרגע; הפעולה נדלקת אוטומטית אם כתובת קיימת.
   const clientAddress = (data.client as { address?: string | null }).address ?? null;
   const mapLink = mapsHref(clientAddress);
+  // מקצוע: מוצג רק אם ה-API מחזיר אותו (אין עדיין שדה במודל).
+  const clientProfession = (data.client as { profession?: string | null }).profession ?? null;
   const nextView = nextAppointment ? formatNextAppointment(nextAppointment, orgTimezone) : null;
 
+  const clientQuotes = clientDeals.flatMap((deal) =>
+    deal.quotes.map((quote) => ({ ...quote, dealTitle: deal.title, dealId: deal.id }))
+  );
+  const openQuotesValue = clientQuotes
+    .filter((quote) => ["draft", "sent", "viewed"].includes(quote.status))
+    .reduce((sum, quote) => sum + quote.total, 0);
+  const openBalance = invoices
+    .filter((invoice) => invoice.status !== "paid")
+    .reduce((sum, invoice) => sum + invoice.amount, 0);
+  const paidTotal = invoices
+    .filter((invoice) => invoice.status === "paid")
+    .reduce((sum, invoice) => sum + invoice.amount, 0);
+  const futureAppointmentsCount = appointments.filter(
+    (appointment) => new Date(appointment.startTime).getTime() >= Date.now() && appointment.status !== "cancelled"
+  ).length;
+  const openTasksCount = tasks.filter((task) => task.status !== "done").length;
+
+  const tabCounts: Partial<Record<TabId, number>> = {
+    appointments: appointments.length,
+    documents: invoices.length + data.payments.length,
+    quotes: clientQuotes.length,
+    tasks: openTasksCount,
+    notes: notes.length,
+    whatsapp: whatsappMessages.length,
+  };
+
+  const summaryCardClass =
+    "min-w-0 rounded-2xl border border-[var(--border)] bg-white p-3 text-start shadow-card transition hover:border-accent-primary/50 hover:shadow-glow md:p-4";
+
   return (
-    <div className="container" dir="rtl">
+    <div className="container overflow-x-clip" dir="rtl">
       <Nav />
-      <div className="card mb-6" data-testid="client-card-header">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-          <span
-            className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl text-lg font-bold text-white"
-            style={{ backgroundColor: data.client.color || "#6366F1" }}
-            data-testid="client-initials"
-          >
-            {clientInitials(data.client.name)}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="page-kicker">כרטיס לקוח</div>
-            <h1 className="break-words" data-testid="client-name">{data.client.name}</h1>
-            <p>
-              <strong className={data.client.isActive === false ? "text-red-300" : "text-emerald-300"}>
-                ● {data.client.isActive === false ? "לא פעיל" : "פעיל"}
-              </strong>
-              {" · עודכן: "}
-              {lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}
-            </p>
-            <p className="break-words" data-testid="client-contact">
-              טלפון:{" "}
-              {phoneLink ? (
-                <a href={phoneLink} dir="ltr" className="font-bold underline">
-                  {displayPhone(clientPhone || data.client.whatsappNumber)}
-                </a>
-              ) : (
-                "לא הוזן"
-              )}
-              {" · אימייל: "}
-              {emailLink ? (
-                <a href={emailLink} dir="ltr" className="font-bold underline" data-testid="contact-email">
-                  {emailDisplay}
-                </a>
-              ) : (
-                <span data-testid="contact-email-empty">לא הוזן</span>
-              )}
-              {clientAddress ? (
-                <>
-                  {" · כתובת: "}
-                  <a
-                    href={mapLink ?? "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-bold underline"
-                    data-testid="contact-address"
-                  >
-                    {clientAddress}
-                  </a>
-                </>
-              ) : null}
-            </p>
-          </div>
-        </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap" data-testid="client-actions">
-          {phoneLink ? (
-            <a className="btn" href={phoneLink} data-testid="action-call">📞 חיוג</a>
-          ) : (
-            <button className="btn" type="button" disabled title="אין מספר טלפון">📞 חיוג</button>
-          )}
-          {waLink ? (
-            <a className="btn" href={waLink} target="_blank" rel="noreferrer" data-testid="action-whatsapp">
-              💬 WhatsApp
-            </a>
-          ) : (
-            <button className="btn" type="button" disabled title="אין מספר טלפון">💬 WhatsApp</button>
-          )}
-          {emailLink ? (
-            <a className="btn" href={emailLink} data-testid="action-email">✉️ שלח מייל</a>
-          ) : (
-            <button className="btn" type="button" disabled title="אין כתובת אימייל">✉️ שלח מייל</button>
-          )}
-          {mapLink ? (
-            <a className="btn" href={mapLink} target="_blank" rel="noreferrer" data-testid="action-navigate">🗺️ ניווט</a>
-          ) : (
-            <button className="btn" type="button" disabled title="אין כתובת">🗺️ ניווט</button>
-          )}
-          <button
-            className="btn"
-            type="button"
-            data-testid="action-book"
-            onClick={() => router.push(`/dashboard/calendar?client=${encodeURIComponent(data.client.id)}`)}
-          >
-            📅 קבע תור
-          </button>
-          <button className="btn btn-secondary" type="button" data-testid="action-edit" onClick={startClientEdit}>
-            ✏️ ערוך לקוח
-          </button>
-          <button
-            className="btn btn-secondary"
-            type="button"
-            data-testid="action-add-note"
-            onClick={() => setShowNoteForm((value) => !value)}
-          >
-            📝 הוסף הערה
-          </button>
-        </div>
-
-        {showNoteForm && (
-          <form onSubmit={saveNote} className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]" data-testid="note-form">
-            <input
-              placeholder="למשל: מעדיפה תורים בבוקר"
-              value={noteText}
-              onChange={(event) => setNoteText(event.target.value)}
-              maxLength={2000}
-            />
-            <button className="btn" type="submit" disabled={savingNote}>
-              {savingNote ? "שומר..." : "שמור הערה"}
-            </button>
-          </form>
-        )}
-
-        <div className="mt-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4" data-testid="next-appointment">
-          <h2 className="text-base">התור הבא</h2>
-          {!nextAppointmentLoaded ? (
-            <p>טוען את התור הבא...</p>
-          ) : nextView ? (
-            <p data-testid="next-appointment-details">
-              <strong>{nextView.dateLabel}</strong> בשעה <strong dir="ltr">{nextView.timeLabel}</strong>
-              {" · שירות: "}
-              {nextView.serviceLabel}
-              {" · אצל: "}
-              {nextView.employeeLabel}
-            </p>
-          ) : (
-            <p data-testid="next-appointment-empty">אין תור עתידי. אפשר לקבוע תור חדש בלחיצה על "קבע תור".</p>
-          )}
-        </div>
-
-        <div className="mt-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4" data-testid="client-appointments">
-          <h2 className="text-base">פגישות</h2>
-          {!appointmentsLoaded ? (
-            <p>טוען פגישות...</p>
-          ) : appointments.length === 0 ? (
-            <p data-testid="client-appointments-empty">אין פגישות ללקוח הזה עדיין.</p>
-          ) : (
-            <div>
-              {appointments.map((appointment) => {
-                const start = new Date(appointment.startTime);
-                const isFuture = start.getTime() >= Date.now() && appointment.status !== "cancelled";
-                const tone = appointmentStatusTone(appointment.status);
-                const statusClass =
-                  tone === "success"
-                    ? "text-emerald-300"
-                    : tone === "danger"
-                      ? "text-red-300"
-                      : tone === "warn"
-                        ? "text-amber-300"
-                        : "text-sky-300";
-                return (
-                  <button
-                    key={appointment.id}
-                    type="button"
-                    onClick={() => setSelectedAppointment(appointment)}
-                    className="block w-full border-t border-[var(--border-subtle)] py-2 text-start transition hover:bg-white/5"
-                    data-testid="client-appointment-row"
-                  >
-                    <span className={appointment.status === "cancelled" ? "line-through opacity-70" : ""}>
-                      <strong>
-                        {start.toLocaleDateString("he-IL", {
-                          weekday: "short",
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                          timeZone: orgTimezone,
-                        })}
-                      </strong>{" "}
-                      בשעה{" "}
-                      <strong dir="ltr">
-                        {start.toLocaleTimeString("he-IL", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: false,
-                          timeZone: orgTimezone,
-                        })}
-                      </strong>
-                      {" · "}
-                      {appointment.serviceName || "ללא שירות"}
-                      {" · אצל "}
-                      {appointment.employeeName || "בעל העסק"}
-                    </span>
-                    <span className={`mr-2 text-sm font-bold ${statusClass}`}>
-                      {appointmentStatusLabel(appointment.status)}
-                      {isFuture ? " · עתידי" : ""}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {notes.length > 0 && (
-          <div className="mt-4" data-testid="client-notes">
-            <h2 className="text-base">הערות אחרונות</h2>
-            {notes.slice(0, 5).map((note) => (
-              <p key={note.id} className="border-t border-[var(--border-subtle)] py-2">
-                {note.body}
-                <small className="block text-ink-muted">{new Date(note.createdAt).toLocaleDateString("he-IL")}</small>
+      {/* Header קבוע: זהות הלקוח + פעולות מהירות, נשאר צמוד למעלה בזמן גלילה */}
+      <header
+        className="sticky top-0 z-30 mb-4 rounded-2xl border border-[var(--border)] bg-white/95 p-4 shadow-card backdrop-blur md:p-5"
+        data-testid="client-card-header"
+      >
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+          <div className="flex min-w-0 flex-1 items-center gap-3 md:gap-4">
+            <span
+              className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-lg font-bold text-white md:h-14 md:w-14"
+              style={{ backgroundColor: data.client.color || "#6366F1" }}
+              data-testid="client-initials"
+            >
+              {clientInitials(data.client.name)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h1 className="!mb-0 break-words text-xl font-bold md:text-2xl" data-testid="client-name">
+                  {data.client.name}
+                </h1>
+                <span
+                  className={`badge ${data.client.isActive === false ? "badge-error" : "badge-ok"}`}
+                  data-testid="client-status"
+                >
+                  {data.client.isActive === false ? "לא פעיל" : "פעיל"}
+                </span>
+                {clientProfession && (
+                  <span className="text-sm font-medium text-ink-secondary" data-testid="client-profession">
+                    {clientProfession}
+                  </span>
+                )}
+              </div>
+              <p className="!mb-0 mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-ink-secondary" data-testid="client-contact">
+                <span>
+                  📞{" "}
+                  {phoneLink ? (
+                    <a href={phoneLink} dir="ltr" className="font-semibold text-ink-primary underline">
+                      {displayPhone(clientPhone || data.client.whatsappNumber)}
+                    </a>
+                  ) : (
+                    "לא הוזן"
+                  )}
+                </span>
+                <span>
+                  ✉️{" "}
+                  {emailLink ? (
+                    <a href={emailLink} dir="ltr" className="font-semibold text-ink-primary underline" data-testid="contact-email">
+                      {emailDisplay}
+                    </a>
+                  ) : (
+                    <span data-testid="contact-email-empty">לא הוזן</span>
+                  )}
+                </span>
+                {clientAddress && (
+                  <span>
+                    🗺️{" "}
+                    <a
+                      href={mapLink ?? "#"}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-ink-primary underline"
+                      data-testid="contact-address"
+                    >
+                      {clientAddress}
+                    </a>
+                  </span>
+                )}
+                <span className="text-ink-muted">עודכן: {lastUpdatedAt ? relativeTime(lastUpdatedAt) : "טוען..."}</span>
               </p>
-            ))}
+            </div>
           </div>
-        )}
-      </div>
-      {saveNotice && (
-        <div className="mb-6 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm text-emerald-200" data-testid="save-success-notice">
-          {saveNotice}
-        </div>
-      )}
-      {message && <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200">{message}</div>}
 
-      {editingClient && clientForm && (
-        <form onSubmit={saveClientProfile} className="card mb-6 grid gap-3 md:grid-cols-2">
-          <label>
-            שם לקוח
-            <input
-              required
-              value={clientForm.name}
-              onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })}
-            />
-          </label>
-          <label>
-            אימייל (אופציונלי)
-            <input
-              dir="ltr"
-              type="email"
-              value={clientForm.email}
-              onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
-            />
-          </label>
-          <label>
-            וואטסאפ
-            <input
-              dir="ltr"
-              value={clientForm.whatsappNumber}
-              onChange={(e) => setClientForm({ ...clientForm, whatsappNumber: e.target.value })}
-            />
-          </label>
-          <div className="flex gap-2 md:col-span-2">
-            <button className="btn" type="submit" disabled={savingClient}>
-              {savingClient ? "שומר..." : "שמור פרטים"}
-            </button>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap md:shrink-0" data-testid="client-actions">
+            {phoneLink ? (
+              <a className="btn" href={phoneLink} data-testid="action-call">📞 התקשר</a>
+            ) : (
+              <button className="btn" type="button" disabled title="אין מספר טלפון">📞 התקשר</button>
+            )}
+            {waLink ? (
+              <a className="btn" href={waLink} target="_blank" rel="noreferrer" data-testid="action-whatsapp">
+                💬 WhatsApp
+              </a>
+            ) : (
+              <button className="btn" type="button" disabled title="אין מספר טלפון">💬 WhatsApp</button>
+            )}
+            {emailLink ? (
+              <a className="btn" href={emailLink} data-testid="action-email">✉️ מייל</a>
+            ) : (
+              <button className="btn" type="button" disabled title="אין כתובת אימייל">✉️ מייל</button>
+            )}
             <button
               className="btn btn-secondary"
               type="button"
-              aria-label="סגור את כרטיס העריכה"
-              data-testid="close-edit-card"
-              onClick={() => setEditingClient(false)}
+              data-testid="action-book"
+              onClick={() => router.push(`/dashboard/calendar?client=${encodeURIComponent(data.client.id)}`)}
             >
-              ✕ סגור
+              📅 קבע תור
+            </button>
+            <button className="btn btn-secondary" type="button" data-testid="action-edit" onClick={startClientEdit}>
+              ✏️ עריכה
             </button>
           </div>
-        </form>
-      )}
+        </div>
+      </header>
 
-      <div className="card">
-        <h2>ציון בריאות לקוח</h2>
-        <strong className={`stat-value block ${healthTone.className}`}>{health?.score ?? 0}/100</strong>
-        <p>{healthTone.label}</p>
-        <button className="btn btn-secondary" onClick={() => setShowBreakdown((v) => !v)}>
-          פירוט
-        </button>
-        <button className="btn btn-secondary" onClick={recalculateHealth}>
-          חשב מחדש
-        </button>
-        {showBreakdown && health && (
-          <ul>
-            <li>פעילות ג׳ימייל: {health.breakdown.gmailActivity}</li>
-            <li>שימוש בדרייב: {health.breakdown.driveUsage}</li>
-            <li>נתוני שיטס: {health.breakdown.sheetsData}</li>
-            <li>שיעור השלמת משימות: {health.breakdown.taskCompletionRate}</li>
-          </ul>
-        )}
-      </div>
-
-      <div className="mb-6 flex flex-wrap gap-3">
-        <button className="btn" onClick={scanClient} disabled={loading}>
-          {loading ? "טוען..." : "סרוק נתוני לקוח"}
-        </button>
-        {data.client.invoiceSheetUrl && (
-          <a className="btn btn-secondary" href={data.client.invoiceSheetUrl} target="_blank" rel="noreferrer">
-            פתח שיטס חשבוניות
-          </a>
-        )}
-        {data.client.taskSheetUrl && (
-          <a className="btn btn-secondary" href={data.client.taskSheetUrl} target="_blank" rel="noreferrer">
-            פתח שיטס משימות
-          </a>
-        )}
-        {data.client.driveFolderUrl && (
-          <a className="btn btn-secondary" href={data.client.driveFolderUrl} target="_blank" rel="noreferrer">
-            פתח דרייב
-          </a>
-        )}
-      </div>
-
-      <div className="card">
-        <h2>וואטסאפ</h2>
-        <p className="mt-2 text-sm text-ink-secondary">
-          השיחה מוצגת מתוך WhatsApp Business. הודעות נכנסות נשמרות אוטומטית, משויכות ללקוח לפי מספר הטלפון, ומופיעות כאן לאחר שהלקוח שולח הודעה.
-        </p>
-        <div className="mt-4 grid gap-2">
-          {whatsappMessages.map((item) => (
-            <div
-              key={item.id}
-              className={`w-fit max-w-full rounded-2xl px-4 py-3 text-sm sm:max-w-[75%] ${item.direction === "inbound" ? "justify-self-start rounded-tr-md bg-emerald-400/15 text-emerald-100" : "justify-self-end rounded-tl-md bg-accent-primary/20 text-ink-primary"}`}
-            >
-              <div>{item.body}</div>
-              <small className="mt-1 block text-ink-muted">
-                {item.direction === "inbound" ? "התקבל מהלקוח" : item.aiGenerated ? "מענה חכם" : "נשלח מהמערכת"} · {new Date(item.createdAt).toLocaleString("he-IL")}
+      {/* שורת סיכום: תמונת מצב של הלקוח במבט אחד; לחיצה קופצת ללשונית הרלוונטית */}
+      <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4" data-testid="client-summary">
+        <button type="button" className={summaryCardClass} onClick={() => setActiveTab("appointments")} data-testid="summary-next-appointment">
+          <span className="stat-label">הפגישה הבאה</span>
+          {!nextAppointmentLoaded ? (
+            <strong className="mt-1 block text-lg font-bold text-ink-muted">טוען...</strong>
+          ) : nextView ? (
+            <>
+              <strong className="mt-1 block truncate text-lg font-bold text-ink-primary">{nextView.dateLabel}</strong>
+              <small className="text-ink-secondary">
+                בשעה <span dir="ltr">{nextView.timeLabel}</span> · {nextView.serviceLabel}
               </small>
-            </div>
-          ))}
-          {whatsappMessages.length === 0 && (
-            <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-              <p>עדיין אין הודעות וואטסאפ ללקוח הזה. ודא שמספר הוואטסאפ שמור בכרטיס הלקוח, ואז שלח הודעת בדיקה או בקש מהלקוח לשלוח הודעה.</p>
+            </>
+          ) : (
+            <strong className="mt-1 block text-lg font-bold text-ink-muted">אין תור עתידי</strong>
+          )}
+        </button>
+        <button type="button" className={summaryCardClass} onClick={() => setActiveTab("appointments")} data-testid="summary-appointments">
+          <span className="stat-label">פגישות</span>
+          <strong className="mt-1 block text-lg font-bold text-ink-primary">{appointments.length}</strong>
+          <small className="text-ink-secondary">{futureAppointmentsCount} עתידיות</small>
+        </button>
+        <button type="button" className={summaryCardClass} onClick={() => setActiveTab("quotes")} data-testid="summary-quotes">
+          <span className="stat-label">הצעות מחיר</span>
+          <strong className="mt-1 block text-lg font-bold text-ink-primary">{clientQuotes.length}</strong>
+          {openQuotesValue > 0 && <small className="text-ink-secondary">{formatIls(openQuotesValue)} ממתין לאישור</small>}
+        </button>
+        {openBalance > 0 && (
+          <button type="button" className={summaryCardClass} onClick={() => setActiveTab("documents")} data-testid="summary-open-balance">
+            <span className="stat-label">יתרה פתוחה</span>
+            <strong className="mt-1 block text-lg font-bold text-amber-600">₪{openBalance.toLocaleString("he-IL")}</strong>
+            <small className="text-ink-secondary">חשבוניות ממתינות / באיחור</small>
+          </button>
+        )}
+      </div>
+
+      {saveNotice && (
+        <div className="mb-4 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm text-emerald-700" data-testid="save-success-notice">
+          {saveNotice}
+        </div>
+      )}
+      {message && <div className="mb-4 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-600">{message}</div>}
+
+      {/* לשוניות במקום גלילה ארוכה */}
+      <div
+        role="tablist"
+        aria-label="מידע על הלקוח"
+        className="mb-4 flex gap-1 overflow-x-auto rounded-2xl border border-[var(--border)] bg-white p-1 shadow-card"
+        data-testid="client-tabs"
+      >
+        {TABS.map((tab) => {
+          const active = tab.id === activeTab;
+          const count = tabCounts[tab.id];
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-testid={`client-tab-${tab.id}`}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                active ? "bg-accent-primary text-white shadow-sm" : "text-ink-secondary hover:bg-surface-hover hover:text-ink-primary"
+              }`}
+            >
+              {tab.label}
+              {typeof count === "number" && count > 0 && (
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold leading-none ${
+                    active ? "bg-white/25 text-white" : "bg-surface-hover text-ink-secondary"
+                  }`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ===== לשונית פרטים: תצוגת קריאה בלבד; שדות עריכה רק אחרי "עריכה" ===== */}
+      {activeTab === "details" && (
+        <div role="tabpanel" data-testid="tab-panel-details">
+          {editingClient && clientForm ? (
+            <form onSubmit={saveClientProfile} className="card grid gap-3 md:grid-cols-2">
+              <h2 className="md:col-span-2">עריכת פרטי לקוח</h2>
+              <label>
+                שם לקוח
+                <input
+                  required
+                  value={clientForm.name}
+                  onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })}
+                />
+              </label>
+              <label>
+                אימייל (אופציונלי)
+                <input
+                  dir="ltr"
+                  type="email"
+                  value={clientForm.email}
+                  onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
+                />
+              </label>
+              <label>
+                וואטסאפ
+                <input
+                  dir="ltr"
+                  value={clientForm.whatsappNumber}
+                  onChange={(e) => setClientForm({ ...clientForm, whatsappNumber: e.target.value })}
+                />
+              </label>
+              <div className="flex gap-2 md:col-span-2">
+                <button className="btn" type="submit" disabled={savingClient}>
+                  {savingClient ? "שומר..." : "שמור פרטים"}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  aria-label="סגור את כרטיס העריכה"
+                  data-testid="close-edit-card"
+                  onClick={() => setEditingClient(false)}
+                >
+                  ✕ סגור
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="card" data-testid="client-details-view">
+              <h2>פרטי הלקוח</h2>
+              <dl className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                <div>
+                  <dt className="stat-label">טלפון</dt>
+                  <dd className="font-semibold text-ink-primary">
+                    {phoneLink ? (
+                      <a href={phoneLink} dir="ltr" className="underline">
+                        {displayPhone(clientPhone || data.client.whatsappNumber)}
+                      </a>
+                    ) : (
+                      "לא הוזן"
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="stat-label">אימייל</dt>
+                  <dd className="break-words font-semibold text-ink-primary">
+                    {emailLink ? (
+                      <a href={emailLink} dir="ltr" className="underline">
+                        {emailDisplay}
+                      </a>
+                    ) : (
+                      "לא הוזן"
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="stat-label">וואטסאפ</dt>
+                  <dd className="font-semibold text-ink-primary" dir="ltr">
+                    {displayPhone(data.client.whatsappNumber)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="stat-label">כתובת</dt>
+                  <dd className="font-semibold text-ink-primary">
+                    {clientAddress ? (
+                      <a href={mapLink ?? "#"} target="_blank" rel="noreferrer" className="underline">
+                        {clientAddress} 🗺️
+                      </a>
+                    ) : (
+                      "לא הוזנה"
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="stat-label">סטטוס</dt>
+                  <dd>
+                    <span className={`badge ${data.client.isActive === false ? "badge-error" : "badge-ok"}`}>
+                      {data.client.isActive === false ? "לא פעיל" : "פעיל"}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="stat-label">חיבור Gmail</dt>
+                  <dd>
+                    <span className={`badge ${data.client.gmailConnected ? "badge-ok" : "badge-warn"}`}>
+                      {data.client.gmailConnected ? "מחובר" : "לא מחובר"}
+                    </span>
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--border-subtle)] pt-4">
+                <button className="btn" onClick={scanClient} disabled={loading}>
+                  {loading ? "טוען..." : "סרוק נתוני לקוח"}
+                </button>
+                {data.client.invoiceSheetUrl && (
+                  <a className="btn btn-secondary" href={data.client.invoiceSheetUrl} target="_blank" rel="noreferrer">
+                    פתח שיטס חשבוניות
+                  </a>
+                )}
+                {data.client.taskSheetUrl && (
+                  <a className="btn btn-secondary" href={data.client.taskSheetUrl} target="_blank" rel="noreferrer">
+                    פתח שיטס משימות
+                  </a>
+                )}
+                {data.client.driveFolderUrl && (
+                  <a className="btn btn-secondary" href={data.client.driveFolderUrl} target="_blank" rel="noreferrer">
+                    פתח דרייב
+                  </a>
+                )}
+              </div>
             </div>
           )}
+
+          <div className="card">
+            <h2>ציון בריאות לקוח</h2>
+            <strong className={`stat-value block ${healthTone.className}`}>{health?.score ?? 0}/100</strong>
+            <p>{healthTone.label}</p>
+            <button className="btn btn-secondary" onClick={() => setShowBreakdown((v) => !v)}>
+              פירוט
+            </button>
+            <button className="btn btn-secondary" onClick={recalculateHealth}>
+              חשב מחדש
+            </button>
+            {showBreakdown && health && (
+              <ul>
+                <li>פעילות ג׳ימייל: {health.breakdown.gmailActivity}</li>
+                <li>שימוש בדרייב: {health.breakdown.driveUsage}</li>
+                <li>נתוני שיטס: {health.breakdown.sheetsData}</li>
+                <li>שיעור השלמת משימות: {health.breakdown.taskCompletionRate}</li>
+              </ul>
+            )}
+          </div>
         </div>
-        <form onSubmit={sendWhatsAppMessage} className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
-          <input
-            value={whatsappText}
-            onChange={(event) => setWhatsappText(event.target.value)}
-            placeholder="כתוב הודעת וואטסאפ"
-          />
-          <button className="btn" type="submit">
-            שלח
-          </button>
-        </form>
-      </div>
+      )}
 
-      <div className="card">
-        <h2>משימות</h2>
-        <button className="btn" onClick={() => setShowForm((v) => !v)}>
-          הוסף משימה
-        </button>
-        {showForm && (
-          <form onSubmit={saveTask} className="mt-4 grid gap-3">
-            <input
-              placeholder="כותרת"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-            />
-            <textarea
-              placeholder="תיאור"
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-            />
-            <input
-              type="date"
-              value={form.dueDate}
-              onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-            />
-            <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value as TaskPriority })}>
-              <option value="low">נמוכה</option>
-              <option value="medium">בינונית</option>
-              <option value="high">גבוהה</option>
-            </select>
-            <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as TaskStatus })}>
-              <option value="todo">לביצוע</option>
-              <option value="in-progress">בתהליך</option>
-              <option value="done">בוצע</option>
-            </select>
-            <button className="btn" type="submit" disabled={loading}>
-              {editingId ? "שמור שינויים" : "צור משימה"}
-            </button>
-          </form>
-        )}
-        {tasks.length === 0 ? (
-          <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-            <p>אין משימות ללקוח הזה. אפשר להוסיף משימה ידנית או ליצור הצעות חכמות.</p>
-          </div>
-        ) : (
-          tasks.map((task) => (
-            <div key={task.id} className="border-t border-[var(--border)] py-3">
-              <strong>{task.title}</strong>
-              <p>{task.description}</p>
-              <button className="btn btn-secondary" onClick={() => toggleStatus(task)}>
-                {nextTaskStatusAction(task.status)}
-              </button>
-              <span> {taskPriorityLabels[task.priority]}</span>
-              {task.dueDate && <span> · {new Date(task.dueDate).toLocaleDateString("he-IL")}</span>}
-              <button className="btn btn-secondary" onClick={() => editTask(task)}>
-                ערוך
-              </button>
-              <button className="btn btn-secondary" onClick={() => deleteTask(task.id)}>
-                מחק משימה
+      {/* ===== לשונית פגישות ===== */}
+      {activeTab === "appointments" && (
+        <div role="tabpanel" data-testid="tab-panel-appointments">
+          <div className="card" data-testid="next-appointment">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="!mb-0 text-base">התור הבא</h2>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => router.push(`/dashboard/calendar?client=${encodeURIComponent(data.client.id)}`)}
+              >
+                📅 קבע תור
               </button>
             </div>
-          ))
-        )}
-      </div>
-
-      <div className="card">
-        <h2>הצעות חכמות</h2>
-        <button className="btn" onClick={generateSuggestions} disabled={suggestionsLoading}>
-          {suggestionsLoading ? "מייצר..." : "צור הצעות חכמות"}
-        </button>
-        {suggestions.map((suggestion) => (
-          <div key={`${suggestion.title}-${suggestion.priority}`} className="border-t border-[var(--border)] py-3">
-            <strong>{suggestion.title}</strong>
-            <p>{suggestion.description}</p>
-            <span>{taskPriorityLabels[suggestion.priority]}</span>
-            <button className="btn btn-secondary" onClick={() => addSuggestion(suggestion)}>
-              הוסף כמשימה
-            </button>
+            {!nextAppointmentLoaded ? (
+              <p>טוען את התור הבא...</p>
+            ) : nextView ? (
+              <p data-testid="next-appointment-details">
+                <strong>{nextView.dateLabel}</strong> בשעה <strong dir="ltr">{nextView.timeLabel}</strong>
+                {" · שירות: "}
+                {nextView.serviceLabel}
+                {" · אצל: "}
+                {nextView.employeeLabel}
+              </p>
+            ) : (
+              <p data-testid="next-appointment-empty">אין תור עתידי. אפשר לקבוע תור חדש בלחיצה על "קבע תור".</p>
+            )}
           </div>
-        ))}
-      </div>
 
-      <div className="card">
-        <h2>חשבוניות</h2>
-        <button className="btn" onClick={scanInvoices} disabled={loading}>
-          {loading ? "סורק..." : "סרוק חשבוניות"}
-        </button>
-        <p>
-          שולם: ₪{invoices.filter((invoice) => invoice.status === "paid").reduce((sum, invoice) => sum + invoice.amount, 0).toLocaleString("he-IL")} · ממתין: ₪{invoices.filter((invoice) => invoice.status !== "paid").reduce((sum, invoice) => sum + invoice.amount, 0).toLocaleString("he-IL")}
-        </p>
-        {data.client.driveFolderUrl && <a className="btn btn-secondary" href={data.client.driveFolderUrl} target="_blank" rel="noreferrer">פתח דרייב</a>}
-        {data.client.invoiceSheetUrl && <a className="btn btn-secondary" href={data.client.invoiceSheetUrl} target="_blank" rel="noreferrer">פתח שיטס</a>}
-        {invoices.length === 0 ? (
-          <p>לא נמצאו חשבוניות ללקוח. אפשר לסרוק חשבוניות או לפתוח את תיקיית הדרייב אם היא מחוברת.</p>
-        ) : (
-          invoices.map((invoice) => (
-            <div key={invoice.id} className="border-t border-[var(--border)] py-3">
-              <strong>{invoice.invoiceNumber ?? "ללא מספר"}</strong>
-              <p>{new Date(invoice.date).toLocaleDateString("he-IL")} · {formatCurrency(invoice.amount, invoice.currency)} · {invoiceStatusLabels[invoice.status]}</p>
-              {invoice.description && <p>{invoice.description}</p>}
-              {invoice.driveUrl && <a href={invoice.driveUrl} target="_blank" rel="noreferrer">פתח קובץ בדרייב</a>}
+          <div className="card" data-testid="client-appointments">
+            <h2 className="text-base">כל הפגישות</h2>
+            {!appointmentsLoaded ? (
+              <p>טוען פגישות...</p>
+            ) : appointments.length === 0 ? (
+              <p data-testid="client-appointments-empty">אין פגישות ללקוח הזה עדיין.</p>
+            ) : (
+              <div>
+                {appointments.map((appointment) => {
+                  const start = new Date(appointment.startTime);
+                  const isFuture = start.getTime() >= Date.now() && appointment.status !== "cancelled";
+                  const tone = appointmentStatusTone(appointment.status);
+                  const statusClass =
+                    tone === "success"
+                      ? "text-emerald-600"
+                      : tone === "danger"
+                        ? "text-red-500"
+                        : tone === "warn"
+                          ? "text-amber-600"
+                          : "text-sky-600";
+                  return (
+                    <button
+                      key={appointment.id}
+                      type="button"
+                      onClick={() => setSelectedAppointment(appointment)}
+                      className="block w-full border-t border-[var(--border-subtle)] py-2 text-start transition hover:bg-surface-hover"
+                      data-testid="client-appointment-row"
+                    >
+                      <span className={appointment.status === "cancelled" ? "line-through opacity-70" : ""}>
+                        <strong>
+                          {start.toLocaleDateString("he-IL", {
+                            weekday: "short",
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                            timeZone: orgTimezone,
+                          })}
+                        </strong>{" "}
+                        בשעה{" "}
+                        <strong dir="ltr">
+                          {start.toLocaleTimeString("he-IL", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                            timeZone: orgTimezone,
+                          })}
+                        </strong>
+                        {" · "}
+                        {appointment.serviceName || "ללא שירות"}
+                        {" · אצל "}
+                        {appointment.employeeName || "בעל העסק"}
+                      </span>
+                      <span className={`mr-2 text-sm font-bold ${statusClass}`}>
+                        {appointmentStatusLabel(appointment.status)}
+                        {isFuture ? " · עתידי" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== לשונית מסמכים: חשבוניות + תשלומים ומסמכים קודמים ===== */}
+      {activeTab === "documents" && (
+        <div role="tabpanel" data-testid="tab-panel-documents">
+          <div className="card">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="!mb-0">חשבוניות</h2>
+              <div className="flex flex-wrap gap-2">
+                <button className="btn" onClick={scanInvoices} disabled={loading}>
+                  {loading ? "סורק..." : "סרוק חשבוניות"}
+                </button>
+                {data.client.driveFolderUrl && (
+                  <a className="btn btn-secondary" href={data.client.driveFolderUrl} target="_blank" rel="noreferrer">
+                    פתח דרייב
+                  </a>
+                )}
+                {data.client.invoiceSheetUrl && (
+                  <a className="btn btn-secondary" href={data.client.invoiceSheetUrl} target="_blank" rel="noreferrer">
+                    פתח שיטס
+                  </a>
+                )}
+              </div>
             </div>
-          ))
-        )}
-      </div>
-      <div className="card">
-        <h2>תשלומים ומסמכים קודמים</h2>
-        {data.payments.length === 0 ? (
-          <p>אין תשלומים או מסמכים קודמים להצגה.</p>
-        ) : (
-          data.payments.map((payment) => (
-            <p key={payment.id}>
-              {payment.supplier} · ₪{payment.amount} · {new Date(payment.date).toLocaleDateString("he-IL")}{" "}
-              {(payment.invoiceLink || payment.documentLink) && (
-                <a href={payment.invoiceLink ?? payment.documentLink ?? ""} target="_blank" rel="noreferrer">
-                  פתח בדרייב
-                </a>
-              )}
+            <p className="mt-3">
+              שולם: ₪{paidTotal.toLocaleString("he-IL")} · ממתין: ₪{openBalance.toLocaleString("he-IL")}
             </p>
-          ))
-        )}
-      </div>
+            {invoices.length === 0 ? (
+              <p>לא נמצאו חשבוניות ללקוח. אפשר לסרוק חשבוניות או לפתוח את תיקיית הדרייב אם היא מחוברת.</p>
+            ) : (
+              invoices.map((invoice) => (
+                <div key={invoice.id} className="border-t border-[var(--border)] py-3">
+                  <strong>{invoice.invoiceNumber ?? "ללא מספר"}</strong>
+                  <p>{new Date(invoice.date).toLocaleDateString("he-IL")} · {formatCurrency(invoice.amount, invoice.currency)} · {invoiceStatusLabels[invoice.status]}</p>
+                  {invoice.description && <p>{invoice.description}</p>}
+                  {invoice.driveUrl && <a href={invoice.driveUrl} target="_blank" rel="noreferrer">פתח קובץ בדרייב</a>}
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="card">
+            <h2>תשלומים ומסמכים קודמים</h2>
+            {data.payments.length === 0 ? (
+              <p>אין תשלומים או מסמכים קודמים להצגה.</p>
+            ) : (
+              data.payments.map((payment) => (
+                <p key={payment.id}>
+                  {payment.supplier} · ₪{payment.amount} · {new Date(payment.date).toLocaleDateString("he-IL")}{" "}
+                  {(payment.invoiceLink || payment.documentLink) && (
+                    <a href={payment.invoiceLink ?? payment.documentLink ?? ""} target="_blank" rel="noreferrer">
+                      פתח בדרייב
+                    </a>
+                  )}
+                </p>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== לשונית הצעות מחיר ===== */}
+      {activeTab === "quotes" && (
+        <div role="tabpanel" data-testid="tab-panel-quotes">
+          <div className="card">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="!mb-0">הצעות מחיר</h2>
+              <button className="btn btn-secondary" type="button" onClick={() => router.push("/dashboard/sales")}>
+                מעבר למכירות
+              </button>
+            </div>
+            {clientQuotes.length === 0 ? (
+              <p className="mt-3" data-testid="client-quotes-empty">
+                אין הצעות מחיר ללקוח הזה. אפשר ליצור עסקה והצעת מחיר במסך המכירות.
+              </p>
+            ) : (
+              clientQuotes.map((quote) => (
+                <div key={quote.id} className="border-t border-[var(--border)] py-3" data-testid="client-quote-row">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <strong>{quote.dealTitle}</strong>
+                    <span className="badge badge-ok">{QUOTE_STATUS_LABELS[quote.status] ?? quote.status}</span>
+                  </div>
+                  <p>
+                    גרסה v{quote.version} · {formatCurrency(quote.total, quote.currency)}
+                    {" · נוצרה: "}
+                    {new Date(quote.createdAt).toLocaleDateString("he-IL")}
+                    {quote.validUntil && ` · בתוקף עד: ${new Date(quote.validUntil).toLocaleDateString("he-IL")}`}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== לשונית משימות + הצעות חכמות ===== */}
+      {activeTab === "tasks" && (
+        <div role="tabpanel" data-testid="tab-panel-tasks">
+          <div className="card">
+            <h2>משימות</h2>
+            <button className="btn" onClick={() => setShowForm((v) => !v)}>
+              הוסף משימה
+            </button>
+            {showForm && (
+              <form onSubmit={saveTask} className="mt-4 grid gap-3">
+                <input
+                  placeholder="כותרת"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                />
+                <textarea
+                  placeholder="תיאור"
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                />
+                <input
+                  type="date"
+                  value={form.dueDate}
+                  onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+                />
+                <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value as TaskPriority })}>
+                  <option value="low">נמוכה</option>
+                  <option value="medium">בינונית</option>
+                  <option value="high">גבוהה</option>
+                </select>
+                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as TaskStatus })}>
+                  <option value="todo">לביצוע</option>
+                  <option value="in-progress">בתהליך</option>
+                  <option value="done">בוצע</option>
+                </select>
+                <button className="btn" type="submit" disabled={loading}>
+                  {editingId ? "שמור שינויים" : "צור משימה"}
+                </button>
+              </form>
+            )}
+            {tasks.length === 0 ? (
+              <div className="mt-4 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+                <p>אין משימות ללקוח הזה. אפשר להוסיף משימה ידנית או ליצור הצעות חכמות.</p>
+              </div>
+            ) : (
+              tasks.map((task) => (
+                <div key={task.id} className="border-t border-[var(--border)] py-3">
+                  <strong>{task.title}</strong>
+                  <p>{task.description}</p>
+                  <button className="btn btn-secondary" onClick={() => toggleStatus(task)}>
+                    {nextTaskStatusAction(task.status)}
+                  </button>
+                  <span> {taskPriorityLabels[task.priority]}</span>
+                  <span> · {taskStatusLabels[task.status]}</span>
+                  {task.dueDate && <span> · {new Date(task.dueDate).toLocaleDateString("he-IL")}</span>}
+                  <button className="btn btn-secondary" onClick={() => editTask(task)}>
+                    ערוך
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => deleteTask(task.id)}>
+                    מחק משימה
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="card">
+            <h2>הצעות חכמות</h2>
+            <button className="btn" onClick={generateSuggestions} disabled={suggestionsLoading}>
+              {suggestionsLoading ? "מייצר..." : "צור הצעות חכמות"}
+            </button>
+            {suggestions.map((suggestion) => (
+              <div key={`${suggestion.title}-${suggestion.priority}`} className="border-t border-[var(--border)] py-3">
+                <strong>{suggestion.title}</strong>
+                <p>{suggestion.description}</p>
+                <span>{taskPriorityLabels[suggestion.priority]}</span>
+                <button className="btn btn-secondary" onClick={() => addSuggestion(suggestion)}>
+                  הוסף כמשימה
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ===== לשונית הערות ===== */}
+      {activeTab === "notes" && (
+        <div role="tabpanel" data-testid="tab-panel-notes">
+          <div className="card" data-testid="client-notes">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="!mb-0">הערות</h2>
+              <button
+                className="btn"
+                type="button"
+                data-testid="action-add-note"
+                onClick={() => setShowNoteForm((value) => !value)}
+              >
+                📝 הוסף הערה
+              </button>
+            </div>
+            {showNoteForm && (
+              <form onSubmit={saveNote} className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]" data-testid="note-form">
+                <input
+                  placeholder="למשל: מעדיפה תורים בבוקר"
+                  value={noteText}
+                  onChange={(event) => setNoteText(event.target.value)}
+                  maxLength={2000}
+                />
+                <button className="btn" type="submit" disabled={savingNote}>
+                  {savingNote ? "שומר..." : "שמור הערה"}
+                </button>
+              </form>
+            )}
+            {notes.length === 0 ? (
+              <p className="mt-3">אין הערות ללקוח הזה עדיין.</p>
+            ) : (
+              <div className="mt-3">
+                {notes.map((note) => (
+                  <p key={note.id} className="border-t border-[var(--border-subtle)] py-2">
+                    {note.body}
+                    <small className="block text-ink-muted">{new Date(note.createdAt).toLocaleDateString("he-IL")}</small>
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== לשונית וואטסאפ ===== */}
+      {activeTab === "whatsapp" && (
+        <div role="tabpanel" data-testid="tab-panel-whatsapp">
+          <div className="card">
+            <h2>וואטסאפ</h2>
+            <p className="mt-2 text-sm text-ink-secondary">
+              השיחה מוצגת מתוך WhatsApp Business. הודעות נכנסות נשמרות אוטומטית, משויכות ללקוח לפי מספר הטלפון, ומופיעות כאן לאחר שהלקוח שולח הודעה.
+            </p>
+            <div className="mt-4 grid gap-2">
+              {whatsappMessages.map((item) => (
+                <div
+                  key={item.id}
+                  className={`w-fit max-w-full rounded-2xl px-4 py-3 text-sm sm:max-w-[75%] ${item.direction === "inbound" ? "justify-self-start rounded-tr-md bg-emerald-400/15 text-emerald-900" : "justify-self-end rounded-tl-md bg-accent-primary/20 text-ink-primary"}`}
+                >
+                  <div>{item.body}</div>
+                  <small className="mt-1 block text-ink-muted">
+                    {item.direction === "inbound" ? "התקבל מהלקוח" : item.aiGenerated ? "מענה חכם" : "נשלח מהמערכת"} · {new Date(item.createdAt).toLocaleString("he-IL")}
+                  </small>
+                </div>
+              ))}
+              {whatsappMessages.length === 0 && (
+                <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
+                  <p>עדיין אין הודעות וואטסאפ ללקוח הזה. ודא שמספר הוואטסאפ שמור בכרטיס הלקוח, ואז שלח הודעת בדיקה או בקש מהלקוח לשלוח הודעה.</p>
+                </div>
+              )}
+            </div>
+            <form onSubmit={sendWhatsAppMessage} className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
+              <input
+                value={whatsappText}
+                onChange={(event) => setWhatsappText(event.target.value)}
+                placeholder="כתוב הודעת וואטסאפ"
+              />
+              <button className="btn" type="submit">
+                שלח
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* לחיצה על פגישה פותחת את חלון פרטי התור הקיים (אותו רכיב כמו ביומן) */}
       <AppointmentDetailsDrawer
