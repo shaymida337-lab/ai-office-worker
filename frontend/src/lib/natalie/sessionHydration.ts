@@ -6,7 +6,9 @@ export type WidgetActionName =
   | "book_appointment"
   | "cancel_appointment"
   | "reschedule_appointment"
-  | "suggest_available_times";
+  | "suggest_available_times"
+  | "open_client"
+  | "update_client";
 
 export type WidgetHydrationMessage = {
   id: string;
@@ -47,7 +49,9 @@ export function isWidgetActionName(value: unknown): value is WidgetActionName {
     value === "book_appointment" ||
     value === "cancel_appointment" ||
     value === "reschedule_appointment" ||
-    value === "suggest_available_times"
+    value === "suggest_available_times" ||
+    value === "open_client" ||
+    value === "update_client"
   );
 }
 
