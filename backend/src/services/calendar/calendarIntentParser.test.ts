@@ -182,6 +182,46 @@ test('next: "מי הלקוח הבא?" → next / client focus', () => {
   assert.equal(result.nextFocus, "client");
 });
 
+test('next: "מה הלקוח הבא שלי?" → next / client focus', () => {
+  const result = parseCalendarIntent("מה הלקוח הבא שלי?", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.readMode, "next");
+  assert.equal(result.nextFocus, "client");
+});
+
+test('next: "מי הלקוח הבא שלי?" → next / client focus', () => {
+  const result = parseCalendarIntent("מי הלקוח הבא שלי?", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.readMode, "next");
+  assert.equal(result.nextFocus, "client");
+});
+
+test('next: "מה הלקוח הבא?" → next / client focus', () => {
+  const result = parseCalendarIntent("מה הלקוח הבא?", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.readMode, "next");
+  assert.equal(result.nextFocus, "client");
+});
+
+test('list-by-client: "מתי התור של שרית?" → list + customerName', () => {
+  const result = parseCalendarIntent("מתי התור של שרית?", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.readMode, "list");
+  assert.equal(result.customerName, "שרית");
+});
+
+test('list-by-client: "מתי הפגישה של שרית?" → list + customerName', () => {
+  const result = parseCalendarIntent("מתי הפגישה של שרית?", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.customerName, "שרית");
+});
+
+test('list-by-client: "מתי יש לי תור עם שרית?" → list + customerName', () => {
+  const result = parseCalendarIntent("מתי יש לי תור עם שרית?", OPTS);
+  assert.equal(result.intent, "list_appointments");
+  assert.equal(result.customerName, "שרית");
+});
+
 test('count: "כמה פגישות יש לי מחר?" → count / מחר', () => {
   const result = parseCalendarIntent("כמה פגישות יש לי מחר?", OPTS);
   assert.equal(result.readMode, "count");

@@ -2,12 +2,17 @@
 
 import { Component, FormEvent, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Mic, SendHorizontal, Volume2, VolumeX, X } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { apiFetch, API_URL, ApiError, getToken } from "@/lib/api";
 import { formatNatalieResponseOrFallback } from "@/lib/natalie/formatResponse";
 import { shellLayout } from "@/components/natalie-ui/tokens";
 import { buildBookAppointmentActionFeedback } from "@/lib/natalieBookFeedback";
 import { normalizeAvailabilityProposal, normalizeNatalieResponse } from "@/lib/natalie/responseGuard";
+import {
+  OPEN_CLIENT_PATH_ERROR,
+  formatOpenClientChatAnswer,
+  isValidNatalieOpenClientPath,
+} from "@/lib/natalie/openClientNavigation";
 import {
   buildVoiceHeardClarificationPrompt,
   parseVoiceClarificationIntent,
@@ -143,8 +148,26 @@ type WidgetMessage = {
   id: string;
   sender: "natalie" | "user";
   text: string;
-  action?: "create_task" | "complete_task" | "show_invoice" | "issue_invoice" | "book_appointment" | "cancel_appointment" | "reschedule_appointment" | "suggest_available_times";
-  proposal?: TaskActionProposal | IssueInvoiceProposal | BookAppointmentProposal | CancelAppointmentProposal | RescheduleAppointmentProposal | SuggestAvailableTimesProposal;
+  action?:
+    | "create_task"
+    | "complete_task"
+    | "show_invoice"
+    | "issue_invoice"
+    | "book_appointment"
+    | "cancel_appointment"
+    | "reschedule_appointment"
+    | "suggest_available_times"
+    | "open_client"
+    | "update_client";
+  proposal?:
+    | TaskActionProposal
+    | IssueInvoiceProposal
+    | BookAppointmentProposal
+    | CancelAppointmentProposal
+    | RescheduleAppointmentProposal
+    | SuggestAvailableTimesProposal
+    | OpenClientProposal
+    | UpdateClientProposal;
   invoices?: NatalieInvoiceSummary[];
   actionStatus?: "pending" | "creating" | "created" | "cancelled" | "error";
   actionFeedback?: string;
@@ -231,6 +254,20 @@ type RescheduleAppointmentProposal = {
   newWhen?: string;
 };
 
+type OpenClientProposal = {
+  clientId: string;
+  clientName: string;
+  path: string;
+};
+
+type UpdateClientProposal = {
+  clientId: string;
+  clientName: string;
+  field: "phone" | "email" | "address";
+  value: string;
+  path?: string;
+};
+
 type NatalieAskResponse =
   | { answer: string }
   | {
@@ -271,6 +308,16 @@ type NatalieAskResponse =
   | {
       action: "suggest_available_times";
       proposal: SuggestAvailableTimesProposal;
+      answer: string;
+    }
+  | {
+      action: "open_client";
+      proposal: OpenClientProposal;
+      answer: string;
+    }
+  | {
+      action: "update_client";
+      proposal: UpdateClientProposal;
       answer: string;
     };
 
@@ -396,6 +443,32 @@ function isSuggestAvailableTimesResponse(
   response: NatalieAskResponse
 ): response is Extract<NatalieAskResponse, { action: "suggest_available_times" }> {
   return "action" in response && response.action === "suggest_available_times";
+}
+
+function isOpenClientResponse(
+  response: NatalieAskResponse
+): response is Extract<NatalieAskResponse, { action: "open_client" }> {
+  return "action" in response && response.action === "open_client";
+}
+
+function isUpdateClientResponse(
+  response: NatalieAskResponse
+): response is Extract<NatalieAskResponse, { action: "update_client" }> {
+  return "action" in response && response.action === "update_client";
+}
+
+function resolveOpenClientChatDisplay(response: Extract<NatalieAskResponse, { action: "open_client" }>): {
+  text: string;
+  navigateTo: string | null;
+} {
+  const path = response.proposal?.path;
+  if (!isValidNatalieOpenClientPath(path)) {
+    return { text: OPEN_CLIENT_PATH_ERROR, navigateTo: null };
+  }
+  return {
+    text: formatOpenClientChatAnswer(response.answer, path),
+    navigateTo: path.trim(),
+  };
 }
 
 function isActionableMessage(
@@ -562,6 +635,7 @@ function createVoiceTurnId(): string {
 
 function NatalieAssistantWidgetInner() {
   const pathname = usePathname();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [micState, setMicState] = useState<MicState>("idle");
   const [speechError, setSpeechError] = useState("");
@@ -1595,8 +1669,16 @@ function NatalieAssistantWidgetInner() {
       ) {
         persistConversationSessionId((result as { conversationSessionId: string }).conversationSessionId);
       }
-      const answer = formatNatalieResponseOrFallback(normalized.answer);
+      const openClientDisplay = isOpenClientResponse(normalized)
+        ? resolveOpenClientChatDisplay(normalized)
+        : null;
+      const answer = openClientDisplay
+        ? openClientDisplay.text
+        : formatNatalieResponseOrFallback(normalized.answer);
       void speakNatalieReply(answer);
+      if (openClientDisplay?.navigateTo) {
+        router.push(openClientDisplay.navigateTo);
+      }
       setMessages((current) =>
         current.map((message) =>
           message.id === loadingMessage.id
@@ -1642,6 +1724,19 @@ function NatalieAssistantWidgetInner() {
                   ? {
                       action: normalized.action,
                       proposal: normalizeAvailabilityProposal(normalized.proposal) as SuggestAvailableTimesProposal,
+                      actionStatus: "pending" as const,
+                    }
+                  : {}),
+                ...(isOpenClientResponse(normalized) && openClientDisplay?.navigateTo
+                  ? {
+                      action: normalized.action,
+                      proposal: normalized.proposal,
+                    }
+                  : {}),
+                ...(isUpdateClientResponse(normalized)
+                  ? {
+                      action: normalized.action,
+                      proposal: normalized.proposal,
                       actionStatus: "pending" as const,
                     }
                   : {}),
@@ -1746,19 +1841,29 @@ function NatalieAssistantWidgetInner() {
       ) {
         persistConversationSessionId((result as { conversationSessionId: string }).conversationSessionId);
       }
-      const answer = formatNatalieResponseOrFallback(normalized.answer);
+      const openClientDisplay = isOpenClientResponse(normalized)
+        ? resolveOpenClientChatDisplay(normalized)
+        : null;
+      const answer = openClientDisplay
+        ? openClientDisplay.text
+        : formatNatalieResponseOrFallback(normalized.answer);
       const spoken =
-        result &&
-        typeof result === "object" &&
-        typeof (result as { spokenResponse?: unknown }).spokenResponse === "string" &&
-        (result as { spokenResponse: string }).spokenResponse.trim()
-          ? (result as { spokenResponse: string }).spokenResponse
-          : answer;
+        openClientDisplay
+          ? openClientDisplay.text
+          : result &&
+              typeof result === "object" &&
+              typeof (result as { spokenResponse?: unknown }).spokenResponse === "string" &&
+              (result as { spokenResponse: string }).spokenResponse.trim()
+            ? (result as { spokenResponse: string }).spokenResponse
+            : answer;
       const executed =
         result &&
         typeof result === "object" &&
         (result as { executed?: unknown }).executed === true;
       void speakNatalieReply(spoken);
+      if (openClientDisplay?.navigateTo) {
+        router.push(openClientDisplay.navigateTo);
+      }
       setMessages((current) =>
         current.map((message) =>
           message.id === loadingMessage.id
@@ -1774,6 +1879,19 @@ function NatalieAssistantWidgetInner() {
                     }
                   : {}),
                 ...(!executed && isIssueInvoiceResponse(normalized)
+                  ? {
+                      action: normalized.action,
+                      proposal: normalized.proposal,
+                      actionStatus: "pending" as const,
+                    }
+                  : {}),
+                ...(!executed && isOpenClientResponse(normalized) && openClientDisplay?.navigateTo
+                  ? {
+                      action: normalized.action,
+                      proposal: normalized.proposal,
+                    }
+                  : {}),
+                ...(!executed && isUpdateClientResponse(normalized)
                   ? {
                       action: normalized.action,
                       proposal: normalized.proposal,
