@@ -17,7 +17,19 @@ import { withOrganizationSchedulingLock } from "./calendar/schedulingLock.js";
 export { resolveAppointmentDateTime } from "./calendar/datetime.js";
 
 export const APPOINTMENT_INCLUDE = {
-  client: { select: { id: true, name: true, whatsappNumber: true, color: true } },
+  // phone/email/address נדרשים לחלון פרטי תור — בלי fetch נוסף שעלול להיכשל/לאחר
+  client: {
+    select: {
+      id: true,
+      name: true,
+      whatsappNumber: true,
+      phone: true,
+      email: true,
+      emailIsPlaceholder: true,
+      address: true,
+      color: true,
+    },
+  },
   service: { select: { id: true, name: true, color: true, durationMinutes: true } },
   employee: { select: { id: true, name: true, color: true, isActive: true } },
 } as const;

@@ -86,6 +86,10 @@ type ApptClient = {
   id: string;
   name: string;
   whatsappNumber?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  emailIsPlaceholder?: boolean | null;
+  address?: string | null;
   color?: string | null;
 };
 

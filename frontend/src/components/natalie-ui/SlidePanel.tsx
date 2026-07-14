@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { Button } from "./Button";
 
@@ -20,12 +21,15 @@ export function SlidePanel({
   footer?: ReactNode;
 }) {
   if (!open) return null;
+  if (typeof document === "undefined") return null;
 
-  // z-[70]: מעל bottom-nav (z-50) ו-FAB של נטלי (z-60) כדי שלחיצות בתוך החלון לא ייחסמו.
-  return (
+  // Portal ל-body: כדי ש-z-index יתחרה ב-FAB (z-60) בלי stacking-context של main/AppShell.
+  // z-[70] מעל bottom-nav (z-50) ו-FAB — לחיצות בתחתית החלון לא ייחסמו.
+  return createPortal(
     <div
       className="fixed inset-0 z-[70] flex justify-end bg-black/40 backdrop-blur-sm transition-opacity duration-300"
       onClick={onClose}
+      data-testid="slide-panel-root"
     >
       <aside
         className="relative z-[71] flex h-full w-full max-w-lg flex-col border-s border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] shadow-2xl transition-transform duration-300 ease-out"
@@ -46,6 +50,7 @@ export function SlidePanel({
         <div className="relative z-[71] flex-1 overflow-y-auto p-4">{children}</div>
         {footer ? <div className="relative z-[71] border-t border-[var(--natalie-border,#D9E2F2)] p-4">{footer}</div> : null}
       </aside>
-    </div>
+    </div>,
+    document.body
   );
 }

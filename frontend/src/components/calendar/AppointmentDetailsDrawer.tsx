@@ -6,12 +6,8 @@ import { useRouter } from "next/navigation";
 import { SlidePanel, StatusBadge } from "@/components/natalie-ui";
 import { natalie } from "@/components/natalie-ui/tokens";
 import { apiFetch } from "@/lib/api";
-import {
-  buildMailtoUrl,
-  buildTelUrl,
-  buildWazeUrl,
-  buildWhatsAppUrl,
-} from "@/lib/contactActions";
+import { buildWazeUrl } from "@/lib/contactActions";
+import { resolveAppointmentDrawerContactActions } from "@/lib/calendar/appointmentDrawerContacts";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { useI18n } from "@/i18n";
 import { calendarUi } from "./calendarUi";
@@ -27,17 +23,20 @@ export type AppointmentDetailsData = {
   durationMinutes: number;
   status: string;
   notes?: string | null;
-  client: { id: string; name: string; whatsappNumber?: string | null };
+  client: {
+    id: string;
+    name: string;
+    whatsappNumber?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    emailIsPlaceholder?: boolean | null;
+    address?: string | null;
+  };
   service?: { name: string } | null;
   employee?: { name: string } | null;
 };
 
 const NOT_PROVIDED = "לא הוזן";
-
-function cleanPhoneRaw(phone: string | null | undefined): string | null {
-  const cleaned = (phone ?? "").replace(/^whatsapp:/i, "").trim();
-  return cleaned || null;
-}
 
 function actionClass(enabled: boolean) {
   return enabled
@@ -72,10 +71,10 @@ export function AppointmentDetailsDrawer({
   const orgTimezone = useOrganizationTimezone();
   const [fetchedContact, setFetchedContact] = useState<FetchedContact | null>(null);
 
-  const clientId = appointment?.clientId?.trim() || "";
+  const provisionalClientId = appointment?.clientId?.trim() || appointment?.client?.id?.trim() || "";
   useEffect(() => {
     setFetchedContact(null);
-    if (!clientId) return;
+    if (!provisionalClientId) return;
     let active = true;
     apiFetch<{
       client?: {
@@ -85,13 +84,12 @@ export function AppointmentDetailsDrawer({
         emailIsPlaceholder?: boolean;
         address?: string | null;
       };
-    }>(`/api/clients/${clientId}`)
+    }>(`/api/clients/${provisionalClientId}`)
       .then((result) => {
         if (!active) return;
         setFetchedContact({
           phone: result.client?.phone?.trim() || null,
           whatsappNumber: result.client?.whatsappNumber?.trim() || null,
-          // אימייל placeholder אינו כתובת אמיתית — לא מציגים ולא שולחים אליו
           email: result.client?.emailIsPlaceholder ? null : result.client?.email?.trim() || null,
           address: result.client?.address?.trim() || null,
         });
@@ -102,7 +100,7 @@ export function AppointmentDetailsDrawer({
     return () => {
       active = false;
     };
-  }, [clientId, refreshKey]);
+  }, [provisionalClientId, refreshKey]);
 
   if (!appointment) return null;
 
@@ -119,16 +117,14 @@ export function AppointmentDetailsDrawer({
   });
   const timeRange = `${start.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: orgTimezone })}–${end.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: orgTimezone })}`;
 
-  const rawWhatsapp = cleanPhoneRaw(fetchedContact?.whatsappNumber || appointment.client?.whatsappNumber || null);
-  const rawPhone = cleanPhoneRaw(fetchedContact?.phone) || rawWhatsapp;
-  const email = fetchedContact?.email ?? null;
-  const address = fetchedContact?.address ?? null;
-  // קישורים דרך שכבת ה-utility המשותפת — טלפון מעדיף phone, WhatsApp מעדיף whatsappNumber.
-  const telHref = buildTelUrl(rawPhone);
-  const waHref = buildWhatsAppUrl(rawWhatsapp || rawPhone);
-  const mailHref = buildMailtoUrl(email);
+  const actions = resolveAppointmentDrawerContactActions({
+    clientId: appointment.clientId,
+    client: appointment.client,
+    fetched: fetchedContact,
+  });
+  const { phoneDisplay, whatsappDisplay, emailDisplay, telHref, waHref, mailHref, openClientPath } = actions;
+  const address = fetchedContact?.address ?? appointment.client?.address?.trim() ?? null;
   const wazeHref = buildWazeUrl(address);
-  const canOpenClientCard = Boolean(clientId);
 
   function goBackToCalendar() {
     onClose();
@@ -140,9 +136,9 @@ export function AppointmentDetailsDrawer({
     { label: "שעה", value: `${timeRange} · ${appointment.durationMinutes} ${t("calendar.minutesShort")}`, ltr: true },
     { label: t("calendar.serviceLabel"), value: appointment.service?.name || t("calendar.noService") },
     { label: "עובד", value: appointment.employee?.name || "בעל העסק" },
-    { label: "טלפון", value: fetchedContact?.phone || rawWhatsapp || NOT_PROVIDED, ltr: Boolean(rawPhone) },
-    { label: t("calendar.whatsapp"), value: rawWhatsapp || NOT_PROVIDED, ltr: Boolean(rawWhatsapp) },
-    { label: t("calendar.email"), value: email || NOT_PROVIDED, ltr: Boolean(email) },
+    { label: "טלפון", value: phoneDisplay || NOT_PROVIDED, ltr: Boolean(phoneDisplay) },
+    { label: t("calendar.whatsapp"), value: whatsappDisplay || NOT_PROVIDED, ltr: Boolean(whatsappDisplay) },
+    { label: t("calendar.email"), value: emailDisplay || NOT_PROVIDED, ltr: Boolean(emailDisplay) },
     { label: "כתובת", value: address || NOT_PROVIDED },
   ];
 
@@ -229,12 +225,12 @@ export function AppointmentDetailsDrawer({
                 Waze
               </a>
             ) : null}
-            {canOpenClientCard ? (
+            {openClientPath ? (
               <button
                 type="button"
                 className={actionClass(true)}
                 data-testid="appt-action-open-client"
-                onClick={() => router.push(`/dashboard/clients/${clientId}`)}
+                onClick={() => router.push(openClientPath)}
               >
                 <UserRound className="h-4 w-4" />
                 פתח כרטיס לקוח

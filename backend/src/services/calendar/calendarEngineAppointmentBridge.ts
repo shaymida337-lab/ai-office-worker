@@ -45,9 +45,22 @@ function mapCalendarEventToAppointment(
           id: event.client.id,
           name: event.client.name,
           whatsappNumber: null,
+          phone: null,
+          email: null,
+          emailIsPlaceholder: false,
+          address: null,
           color: null,
         }
-      : { id: "", name: "לקוח", whatsappNumber: null, color: null },
+      : {
+          id: "",
+          name: "לקוח",
+          whatsappNumber: null,
+          phone: null,
+          email: null,
+          emailIsPlaceholder: false,
+          address: null,
+          color: null,
+        },
     service: event.service
       ? {
           id: event.service.id,

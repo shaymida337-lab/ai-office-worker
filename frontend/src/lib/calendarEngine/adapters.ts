@@ -9,7 +9,16 @@ export type CalendarDisplayItem = {
   durationMinutes: number;
   status: string;
   notes?: string | null;
-  client: { id: string; name: string; whatsappNumber?: string | null; color?: string | null };
+  client: {
+    id: string;
+    name: string;
+    whatsappNumber?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    emailIsPlaceholder?: boolean | null;
+    address?: string | null;
+    color?: string | null;
+  };
   service?: { id: string; name: string; color?: string | null; durationMinutes: number } | null;
   /** Calendar Phase 1: תור של עובד; חסר/null = היומן של בעל העסק */
   employeeId?: string | null;
