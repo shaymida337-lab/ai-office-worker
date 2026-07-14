@@ -259,7 +259,6 @@ export default function CalendarPage() {
   const emptyContact = { phone: "", whatsapp: "", email: "", address: "" };
   const [formContact, setFormContact] = useState(emptyContact);
   const [contactLoaded, setContactLoaded] = useState(false);
-  const [contactSnapshot, setContactSnapshot] = useState("");
   const [queueRefreshKey, setQueueRefreshKey] = useState(0);
   const [drawerRefreshKey, setDrawerRefreshKey] = useState(0);
   const [engineDisabledBanner, setEngineDisabledBanner] = useState<string | null>(null);
@@ -567,7 +566,6 @@ export default function CalendarPage() {
     setSelectedReminderEvents([]);
     setFormContact(emptyContact);
     setContactLoaded(false);
-    setContactSnapshot("");
   }
 
   function openNewForm() {
@@ -624,7 +622,6 @@ export default function CalendarPage() {
     // (contactLoaded) כדי לא לדרוס נתונים קיימים בשמירה עיוורת.
     setFormContact(emptyContact);
     setContactLoaded(false);
-    setContactSnapshot("");
     void apiFetch<{
       client?: {
         phone?: string | null;
@@ -642,7 +639,6 @@ export default function CalendarPage() {
           address: result.client?.address ?? "",
         };
         setFormContact(contact);
-        setContactSnapshot(JSON.stringify(contact));
         setContactLoaded(true);
       })
       .catch(() => setContactLoaded(false));
@@ -677,6 +673,9 @@ export default function CalendarPage() {
     try {
       const startTime = buildStartTimeIso(formDate, formTime);
       if (editingId) {
+        // שומרים הפניה לתור הנערך *לפני* ה-reset, כדי לפתוח מחדש את חלון
+        // הפרטים עם GET טרי אחרי השמירה.
+        const editedAppt = appointments.find((item) => item.id === editingId);
         await apiFetch(`/api/appointments/${editingId}`, {
           method: "PATCH",
           body: JSON.stringify({
@@ -687,10 +686,11 @@ export default function CalendarPage() {
             status: formStatus,
           }),
         });
-        // פרטי הקשר נשמרים על ה-Client עצמו (לא על התור), רק אם נטענו
-        // בהצלחה ורק כשבאמת השתנו.
-        const contactChanged = contactLoaded && JSON.stringify(formContact) !== contactSnapshot;
-        if (contactChanged) {
+        // פרטי הקשר נשמרים על ה-Client עצמו (לא על התור). שומרים תמיד כשהטופס
+        // נטען (contactLoaded) — כך השמירה לעולם לא "נבלעת" בגלל השוואת snapshot,
+        // ובלי טעינה לא דורסים נתונים קיימים בערכים ריקים. חייב לחכות לסיום ה-PUT.
+        let contactSaved = false;
+        if (formClientId && contactLoaded) {
           await apiFetch(`/api/clients/${formClientId}`, {
             method: "PUT",
             body: JSON.stringify({
@@ -700,14 +700,18 @@ export default function CalendarPage() {
               address: formContact.address,
             }),
           });
-          setDetailsRefreshKey((k) => k + 1);
-          setMessage("פרטי התור והלקוח נשמרו בהצלחה");
-          setSaveToast("פרטי התור והלקוח נשמרו בהצלחה");
-        } else {
-          setDetailsRefreshKey((k) => k + 1);
-          setMessage("התור עודכן בהצלחה");
-          setSaveToast("התור עודכן בהצלחה");
+          contactSaved = true;
         }
+        resetForm();
+        await loadAppointments();
+        // פותחים מחדש את חלון פרטי התור עם נתונים טריים: ה-Drawer מבצע GET חדש
+        // ל-Client (refreshKey) ולכן מציג את פרטי הקשר המעודכנים, לא cache ישן.
+        if (editedAppt && !isEngineDisplayItem(editedAppt)) {
+          setDetailsAppointment(editedAppt as Appointment);
+          setDetailsRefreshKey((k) => k + 1);
+        }
+        setSaveToast(contactSaved ? "פרטי התור והלקוח נשמרו בהצלחה" : "התור עודכן בהצלחה");
+        return;
       } else if (!formEmployeeId && resolveCalendarCreateStrategy(engineWriteEnabled) === "calendar_engine_draft") {
         // תור לעובד תמיד נשמר במסלול הישיר — מנוע היומן (טיוטות) מכיר רק
         // את היומן של בעל העסק בשלב הזה.
