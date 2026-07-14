@@ -45,6 +45,16 @@ function quarantineMarkerExclusion(field: "decisionReason" | "uncertaintyReason"
   } satisfies Prisma.GmailScanItemWhereInput | Prisma.FinancialDocumentReviewWhereInput | Prisma.SupplierPaymentWhereInput;
 }
 
+/**
+ * SQL/Prisma `field NOT IN (...)` excludes NULL rows. Camera/manual documents
+ * often have null gmail/email ids — they must stay visible on invoice screens.
+ */
+function notInOrNull(field: "gmailMessageId" | "emailMessageId", excludedIds: string[]) {
+  return {
+    OR: [{ [field]: null }, { [field]: { notIn: excludedIds } }],
+  };
+}
+
 export function buildGmailScanItemReadIsolationWhere(
   organizationId: string,
   contaminatedGmailIds: string[],
@@ -52,7 +62,7 @@ export function buildGmailScanItemReadIsolationWhere(
   const excludedGmailIds = crossOrgGmailIdsExcludedForOrganization(organizationId, contaminatedGmailIds);
   return {
     ...quarantineMarkerExclusion("decisionReason"),
-    ...(excludedGmailIds.length > 0 ? { gmailMessageId: { notIn: excludedGmailIds } } : {}),
+    ...(excludedGmailIds.length > 0 ? notInOrNull("gmailMessageId", excludedGmailIds) : {}),
   };
 }
 
@@ -63,7 +73,7 @@ export function buildFinancialDocumentReviewReadIsolationWhere(
   const excludedGmailIds = crossOrgGmailIdsExcludedForOrganization(organizationId, contaminatedGmailIds);
   return {
     ...quarantineMarkerExclusion("uncertaintyReason"),
-    ...(excludedGmailIds.length > 0 ? { gmailMessageId: { notIn: excludedGmailIds } } : {}),
+    ...(excludedGmailIds.length > 0 ? notInOrNull("gmailMessageId", excludedGmailIds) : {}),
   };
 }
 
@@ -74,7 +84,7 @@ export function buildSupplierPaymentReadIsolationWhere(
   const excludedGmailIds = crossOrgGmailIdsExcludedForOrganization(organizationId, contaminatedGmailIds);
   return {
     ...quarantineMarkerExclusion("duplicateReason"),
-    ...(excludedGmailIds.length > 0 ? { emailMessageId: { notIn: excludedGmailIds } } : {}),
+    ...(excludedGmailIds.length > 0 ? notInOrNull("emailMessageId", excludedGmailIds) : {}),
   };
 }
 

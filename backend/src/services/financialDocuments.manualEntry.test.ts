@@ -16,6 +16,13 @@ const ORG = "org-manual-entry";
 const completeInvoice = {
   organizationId: ORG,
   source: "camera" as const,
+  // Required while FINANCIAL_INGESTION_CONTAINMENT is active — same scope confirmCameraDocument builds.
+  verifiedTenantScope: {
+    tenantScopeVerified: true as const,
+    organizationId: ORG,
+    source: "camera" as const,
+    reviewId: "review-manual-1",
+  },
   supplierName: "אלקטרה מיזוג אוויר בע\"מ",
   supplierTaxId: null,
   invoiceNumber: "INV-2026-042",
@@ -116,12 +123,12 @@ test("complete camera invoice is accepted and creates an approved payment (not f
   );
 });
 
-test("camera invoice missing invoice number goes to review with the specific reason (not 0.7 hardcoded)", async () => {
-  let reviewCreate: Record<string, unknown> | null = null;
+test("camera confirm without invoice number still creates approved payment (OCR often misses #)", async () => {
+  let paymentCreate: Record<string, unknown> | null = null;
   await withPrismaMocks(
     {
-      onReviewUpsert: (args) => {
-        reviewCreate = args.create;
+      onPaymentUpsert: (args) => {
+        paymentCreate = args.create;
       },
     },
     async () => {
@@ -130,15 +137,28 @@ test("camera invoice missing invoice number goes to review with the specific rea
         invoiceNumber: null,
         fileName: "invoice.jpg",
         fileSize: 2048,
+        userId: "user-1",
+        sourceRoute: "POST /camera/invoices (confirm)",
       });
-      assert.equal(decision.action, "needs_review");
-      assert.ok(reviewCreate, "expected review record");
-      const created = reviewCreate as Record<string, unknown>;
-      assert.equal(created.uncertaintyReason, "invoice number missing");
-      assert.notEqual(created.uncertaintyReason, "trust.gates_missing");
-      assert.equal(created.confidenceScore, MANUAL_ENTRY_CONFIDENCE);
+      assert.equal(decision.action, "accepted");
+      assert.ok("payment" in decision && decision.payment, "expected payment to be created");
+      assert.ok(paymentCreate, "expected supplierPayment.upsert");
+      assert.equal((paymentCreate as Record<string, unknown>).approvalStatus, "approved");
     }
   );
+});
+
+test("gmail path still blocks when invoice number is missing", async () => {
+  const reason = (
+    await import("./financialDocuments.js")
+  ).financialDocumentBlockingReason({
+    supplierName: completeInvoice.supplierName,
+    invoiceNumber: null,
+    totalAmount: completeInvoice.totalAmount,
+    documentDate: completeInvoice.documentDate,
+    requireInvoiceNumber: true,
+  });
+  assert.equal(reason, "invoice number missing");
 });
 
 test("duplicate-risk camera invoice still goes to review with a duplicate reason", async () => {

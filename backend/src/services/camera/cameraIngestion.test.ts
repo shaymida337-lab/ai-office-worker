@@ -429,6 +429,115 @@ test("invoices-screen membership: approved camera invoice enters the main list a
   assert.equal(filterInvoicesByCompleteness([withoutDate], "complete").length, 0, "missing date/currency keeps it off the invoices screen — hence confirm must write them");
 });
 
+test("confirm approves reviewId even when draft source is whatsapp (same file-tier upsert)", async () => {
+  const { confirmCameraDocument } = await import("./cameraIngestion.js");
+  const updates: any[] = [];
+  const confirmDb = {
+    financialDocumentReview: {
+      findFirst: async (args: any) => {
+        // Must look up by id only — not source=camera — or cross-channel drafts break
+        assert.equal(args.where.id, "draft-wa");
+        assert.equal(args.where.source, undefined);
+        return {
+          id: "draft-wa",
+          organizationId: "org-1",
+          source: "whatsapp",
+          subject: "wa",
+          fileName: "photo.jpg",
+          fileSize: 10,
+          reviewStatus: "needs_review",
+          supplierPaymentId: null,
+          invoiceNumber: null,
+          documentDate: new Date("2026-07-01"),
+          currency: "ILS",
+          driveFileUrl: "/uploads/x.jpg",
+          driveUploadStatus: null,
+          parsedFieldsJson: { camera: { fileSha256: "b".repeat(64) } },
+        };
+      },
+      update: async (args: any) => {
+        updates.push(args);
+        return { id: "draft-wa" };
+      },
+    },
+  } as any;
+
+  const result = await confirmCameraDocument(
+    {
+      organizationId: "org-1",
+      reviewId: "draft-wa",
+      supplier: "בזק",
+      amount: 163.28,
+      currency: "ILS",
+      invoiceNumber: null,
+      documentDate: new Date("2026-07-01"),
+    },
+    {
+      prismaClient: confirmDb,
+      recordManualEntry: async (input) => {
+        assert.ok(input.verifiedTenantScope);
+        return { action: "accepted", payment: { id: "pay-wa" } };
+      },
+    }
+  );
+  assert.equal(result.status, "approved");
+  assert.equal((result as any).supplierPaymentId, "pay-wa");
+  assert.equal(updates[0].data.reviewStatus, "approved");
+});
+
+test("confirm without invoiceNumber still approves when supplier/amount/date are present", async () => {
+  const { confirmCameraDocument } = await import("./cameraIngestion.js");
+  const updates: any[] = [];
+  const confirmDb = {
+    financialDocumentReview: {
+      findFirst: async () => ({
+        id: "draft-no-inv",
+        organizationId: "org-1",
+        source: "camera",
+        subject: "x",
+        fileName: "photo.jpg",
+        fileSize: 10,
+        reviewStatus: "needs_review",
+        supplierPaymentId: null,
+        invoiceNumber: null,
+        documentDate: new Date("2026-07-01"),
+        currency: "ILS",
+        driveFileUrl: "/uploads/camera-invoices/photo.jpg",
+        driveUploadStatus: null,
+        parsedFieldsJson: { camera: { fileSha256: "a".repeat(64) } },
+      }),
+      update: async (args: any) => {
+        updates.push(args);
+        return { id: "draft-no-inv" };
+      },
+    },
+  } as any;
+
+  const result = await confirmCameraDocument(
+    {
+      organizationId: "org-1",
+      reviewId: "draft-no-inv",
+      supplier: "וולט",
+      amount: 89.9,
+      currency: "ILS",
+      invoiceNumber: null,
+      documentDate: new Date("2026-07-01"),
+    },
+    {
+      prismaClient: confirmDb,
+      // Simulates post-fix recordManualEntry (no longer blocked on missing invoice #)
+      recordManualEntry: async (input) => {
+        assert.equal(input.invoiceNumber, null);
+        return { action: "accepted", payment: { id: "pay-no-inv" } };
+      },
+    }
+  );
+
+  assert.equal(result.status, "approved");
+  assert.equal((result as any).supplierPaymentId, "pay-no-inv");
+  assert.equal(updates[0].data.reviewStatus, "approved");
+});
+
 test("confirm writes documentDate and currency so the approved row is invoices-screen complete", async () => {
   const { confirmCameraDocument } = await import("./cameraIngestion.js");
   const updates: any[] = [];

@@ -237,6 +237,12 @@ export function financialDocumentTrustGatesBlockingReason(parsedFieldsJson: unkn
 export function financialDocumentBlockingReason(input: {
   supplierName?: string | null;
   invoiceNumber?: string | null;
+  /**
+   * Camera/manual confirm: the user already reviewed supplier/amount/date.
+   * OCR often misses invoice number on photos — do not block payment persist.
+   * Gmail/WhatsApp auto-ingest keeps the hard requirement (default true).
+   */
+  requireInvoiceNumber?: boolean;
   totalAmount?: number | null;
   documentDate?: Date | string | null;
   moneyDecision?: MoneyDecision | null;
@@ -283,7 +289,10 @@ export function financialDocumentBlockingReason(input: {
   if (duplicateReason) return duplicateReason;
 
   if (!isValidSupplierName(input.supplierName)) return "supplier.sir_missing";
-  if (!input.invoiceNumber?.trim()) return "invoice number missing";
+  // Camera confirm: user already verified fields; invoice # is optional when OCR misses it.
+  if (input.requireInvoiceNumber !== false && !input.invoiceNumber?.trim()) {
+    return "invoice number missing";
+  }
   if (input.totalAmount == null || !Number.isFinite(input.totalAmount) || input.totalAmount <= 0) {
     return FINANCE_AMOUNT_UNRESOLVED_REASON;
   }
@@ -473,6 +482,9 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
     financialDocumentBlockingReason({
       supplierName: input.supplierName,
       invoiceNumber: input.invoiceNumber,
+      // Natalie/camera: user already confirmed extraction — don't block persist when
+      // invoice number is missing (common on photo OCR). Auto channels keep the gate.
+      requireInvoiceNumber: input.source !== "camera",
       totalAmount,
       documentDate,
       parsedFieldsJson: input.parsedFieldsJson,
@@ -922,9 +934,12 @@ export async function recordManualEntryFinancialDocument(input: ManualEntryFinan
     data: {
       organizationId: input.organizationId,
       supplier: input.supplierName,
+      supplierName: input.supplierName,
       amount: input.totalAmount,
       currency: input.currency ?? "ILS",
       date: input.documentDate ?? new Date(),
+      // Month tabs filter on normalizedDocumentDate — camera must write it.
+      normalizedDocumentDate: input.documentDate ?? new Date(),
       dueDate: input.dueDate ?? null,
       paid: normalizedType === "receipt" || normalizedType === "tax_invoice_receipt",
       documentLink: input.driveFileUrl ?? null,
@@ -943,6 +958,7 @@ export async function recordManualEntryFinancialDocument(input: ManualEntryFinan
       sourceFingerprint: decision.sourceFingerprint,
       documentTypeDetailed: input.documentType,
       supplierTaxId: input.supplierTaxId ?? null,
+      invoiceNumber: input.invoiceNumber ?? null,
       totalAmount: input.totalAmount,
       confidenceScore: MANUAL_ENTRY_CONFIDENCE,
       parsedFieldsJson: parsedFieldsJson as never,
@@ -961,6 +977,9 @@ export async function recordManualEntryFinancialDocument(input: ManualEntryFinan
         confidenceScore: MANUAL_ENTRY_CONFIDENCE,
         parsedFieldsJson: parsedFieldsJson as never,
         lastSeenAt: new Date(),
+        supplierName: input.supplierName,
+        invoiceNumber: input.invoiceNumber ?? null,
+        normalizedDocumentDate: input.documentDate ?? new Date(),
       },
     },
   });

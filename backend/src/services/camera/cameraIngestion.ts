@@ -102,6 +102,7 @@ export type CameraConfirmDeps = {
   recordManualEntry?: (input: Record<string, unknown>) => Promise<{
     action: string;
     payment?: { id: string } | null;
+    review?: { uncertaintyReason?: string | null } | null;
   }>;
 };
 
@@ -117,9 +118,13 @@ export async function confirmCameraDocument(
   const db = (deps.prismaClient ?? prisma) as typeof prisma;
   // אימות בעלות דו-שלבי: organizationId מגיע אך ורק מה-auth context של הבקשה.
   // רשומה קיימת ששייכת לארגון אחר ⇒ forbidden (403 בלי לחשוף פרטים);
-  // רשומה שאינה קיימת (או שאינה camera) ⇒ not_found (404).
+  // רשומה שאינה קיימת ⇒ not_found (404).
+  // לא מסננים לפי source===camera: preview עלול לעשות upsert על אותה
+  // טביעת-קובץ שכבר נקלטה מ-whatsapp/gmail (file-tier), ואז reviewId מצביע
+  // על הרשומה הקיימת — סינון לפי source שובר את האישור ומפיל ל-legacy בלי
+  // verifiedTenantScope (503 תחת containment) למרות שזיהוי הצליח.
   const row = await db.financialDocumentReview.findFirst({
-    where: { id: input.reviewId, source: "camera" },
+    where: { id: input.reviewId },
   });
   if (!row) return { status: "not_found" };
   if (row.organizationId !== input.organizationId) return { status: "forbidden" };
@@ -195,8 +200,10 @@ export async function confirmCameraDocument(
           supplierName: input.supplier,
           totalAmount: input.amount,
           // תאריך ומטבע חייבים להיכתב — בלעדיהם הרשומה אינה "complete"
-          // ולא תופיע במסך חשבוניות (assessInvoiceCompleteness דורש אותם)
+          // ולא תופיע במסך חשבוניות (assessInvoiceCompleteness דורש אותם).
+          // normalizedDocumentDate נדרש לסינון לפי חודש במסך החשבוניות.
           documentDate: input.documentDate ?? draft.documentDate ?? new Date(),
+          normalizedDocumentDate: input.documentDate ?? draft.documentDate ?? new Date(),
           currency: input.currency ?? draft.currency ?? "ILS",
           ...(input.invoiceNumber ? { invoiceNumber: input.invoiceNumber } : {}),
           uncertaintyReason: null,
@@ -209,7 +216,11 @@ export async function confirmCameraDocument(
   }
 
   // שערי אמון חסמו — הרשומה נשארת בהשלמת חשבוניות עם הסיבה שנכתבה עליה
-  return { status: "needs_review", reviewId: draft.id, reason: null };
+  return {
+    status: "needs_review",
+    reviewId: draft.id,
+    reason: decision.review?.uncertaintyReason ?? null,
+  };
 }
 
 export function cameraDraftFingerprints(organizationId: string, fileSha256: string) {

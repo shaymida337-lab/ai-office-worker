@@ -8564,7 +8564,10 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
         res.status(403).json({ error: "אין לך הרשאה לאשר את המסמך הזה" });
         return;
       }
-      // not_found: הרשומה לא קיימת (draft ישן?) — ממשיכים למסלול המלא הישן
+      // reviewId סופק במפורש אבל הרשומה לא נמצאה — לא נופלים למסלול הישן
+      // בלי base64 (שגורם ל-503 שקט תחת containment). מחזירים 404 ברור.
+      res.status(404).json({ error: "רשומת הטיוטה לא נמצאה — העלה מחדש את המסמך" });
+      return;
     }
 
     // F5: חישוב SHA256 לקובץ המצלמה — אותה טביעת אצבע קובץ כמו Gmail/WhatsApp,
