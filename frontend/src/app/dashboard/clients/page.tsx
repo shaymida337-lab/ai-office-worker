@@ -9,7 +9,7 @@ import {
   type ClientRecord,
   validateClientForm,
 } from "@/lib/clients/clientForm";
-import { filterClientsByQuery } from "@/lib/clients/clientSearch";
+import { buildClientsListSearch, type SearchableLead } from "@/lib/clients/clientsListSearch";
 import { Mail, Plus, RefreshCcw, Search, ShieldCheck, Users } from "lucide-react";
 
 type ClientItem = ClientRecord & {
@@ -45,6 +45,8 @@ const emptyForm = {
 
 export default function ClientsPage() {
   const [data, setData] = useState<ClientsResponse | null>(null);
+  // לידים נטענים לחיפוש בלבד (מוצגים רק כשיש שאילתה) — אותו מקור כמו החיפוש העליון
+  const [leads, setLeads] = useState<SearchableLead[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState("");
@@ -56,6 +58,10 @@ export default function ClientsPage() {
   async function load() {
     const next = await apiFetch<ClientsResponse>("/api/clients");
     setData(next);
+    // "שרית" שקיימת רק כליד נמצאת בחיפוש העליון אך לא הייתה ברשימה —
+    // לכן החיפוש כאן סורק גם לידים. כשל בטעינת הלידים לא מפיל את המסך.
+    const leadsResult = await apiFetch<{ leads: SearchableLead[] }>("/api/leads").catch(() => null);
+    if (leadsResult) setLeads(leadsResult.leads ?? []);
   }
 
   useEffect(() => {
@@ -113,8 +119,10 @@ export default function ClientsPage() {
     }
   }
 
-  // אותה לוגיקת סינון כמו בחיפוש העליון (useGlobalSearch) — מקור אחד: clientSearch.
-  const filteredClients = filterClientsByQuery(data?.clients ?? [], query);
+  // אותה לוגיקת סינון ואותם מקורות כמו בחיפוש העליון: לקוחות + לידים.
+  // בלי שאילתה — לקוחות בלבד (searchResults.leads ריק), כמו תמיד.
+  const searchResults = buildClientsListSearch({ clients: data?.clients ?? [], leads, query });
+  const filteredClients = searchResults.clients;
 
   return (
     <div className="container">
@@ -217,7 +225,7 @@ export default function ClientsPage() {
       <section className={view === "grid" ? "grid gap-6 md:grid-cols-2 xl:grid-cols-3" : "space-y-4"}>
         {!data ? (
           <div className="skeleton h-32" />
-        ) : filteredClients.length === 0 ? (
+        ) : filteredClients.length === 0 && searchResults.leads.length === 0 ? (
           <div className="card text-center">
             <Users className="mx-auto mb-3 h-8 w-8 text-ink-muted" />
             <h2>{query ? "לא נמצאו לקוחות תואמים" : "עדיין אין לקוחות במערכת"}</h2>
@@ -225,7 +233,8 @@ export default function ClientsPage() {
             {!query && <button className="btn mx-auto mt-4" onClick={() => setShowForm(true)}>הוסף לקוח ראשון</button>}
           </div>
         ) : (
-          filteredClients.map((client) => (
+          <>
+          {filteredClients.map((client) => (
             <div key={client.id} className="card group">
               <div className="mb-4 grid gap-3 sm:flex sm:items-start sm:justify-between">
                 <div className="flex min-w-0 items-center gap-3">
@@ -249,7 +258,26 @@ export default function ClientsPage() {
                 <a className="btn" href={`/dashboard/clients/${client.id}`}>פתח כרטיס לקוח</a>
               </div>
             </div>
-          ))
+          ))}
+          {/* לידים שתואמים לחיפוש — עם תגית "ליד"; נפתחים במסלול הליד הקיים */}
+          {searchResults.leads.map((lead) => (
+            <div key={`lead-${lead.id}`} className="card group" data-testid="client-list-lead-result">
+              <div className="mb-4 grid gap-3 sm:flex sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[linear-gradient(135deg,#F59E0B,#F97316)] text-sm font-bold text-white">{lead.name.slice(0, 2)}</span>
+                  <div className="min-w-0">
+                    <strong className="block truncate text-lg text-ink-primary">{lead.name}</strong>
+                    <p className="truncate text-sm" dir="ltr">{lead.phone || lead.whatsapp || lead.email || "—"}</p>
+                  </div>
+                </div>
+                <span className="badge badge-warn w-fit" data-testid="lead-result-badge">ליד</span>
+              </div>
+              <div className="grid gap-2 sm:flex sm:flex-wrap">
+                <a className="btn" href={`/crm?lead=${encodeURIComponent(lead.id)}`} data-testid="open-lead-link">פתח ליד</a>
+              </div>
+            </div>
+          ))}
+          </>
         )}
       </section>
     </div>
