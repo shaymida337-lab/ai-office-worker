@@ -21,10 +21,14 @@ export function SlidePanel({
 }) {
   if (!open) return null;
 
+  // z-[70]: מעל bottom-nav (z-50) ו-FAB של נטלי (z-60) כדי שלחיצות בתוך החלון לא ייחסמו.
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm transition-opacity duration-300" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[70] flex justify-end bg-black/40 backdrop-blur-sm transition-opacity duration-300"
+      onClick={onClose}
+    >
       <aside
-        className="flex h-full w-full max-w-lg flex-col border-s border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] shadow-2xl transition-transform duration-300 ease-out"
+        className="relative z-[71] flex h-full w-full max-w-lg flex-col border-s border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] shadow-2xl transition-transform duration-300 ease-out"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -39,8 +43,8 @@ export function SlidePanel({
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">{children}</div>
-        {footer ? <div className="border-t border-[var(--natalie-border,#D9E2F2)] p-4">{footer}</div> : null}
+        <div className="relative z-[71] flex-1 overflow-y-auto p-4">{children}</div>
+        {footer ? <div className="relative z-[71] border-t border-[var(--natalie-border,#D9E2F2)] p-4">{footer}</div> : null}
       </aside>
     </div>
   );

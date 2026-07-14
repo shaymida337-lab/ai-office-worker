@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Edit3, Mail, MessageCircle, Navigation, Phone, UserRound } from "lucide-react";
+import { ArrowRight, Edit3, Mail, MessageCircle, Navigation, Phone, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { SlidePanel, StatusBadge } from "@/components/natalie-ui";
 import { natalie } from "@/components/natalie-ui/tokens";
@@ -33,6 +33,11 @@ export type AppointmentDetailsData = {
 };
 
 const NOT_PROVIDED = "לא הוזן";
+
+function cleanPhoneRaw(phone: string | null | undefined): string | null {
+  const cleaned = (phone ?? "").replace(/^whatsapp:/i, "").trim();
+  return cleaned || null;
+}
 
 function actionClass(enabled: boolean) {
   return enabled
@@ -67,7 +72,7 @@ export function AppointmentDetailsDrawer({
   const orgTimezone = useOrganizationTimezone();
   const [fetchedContact, setFetchedContact] = useState<FetchedContact | null>(null);
 
-  const clientId = appointment?.clientId;
+  const clientId = appointment?.clientId?.trim() || "";
   useEffect(() => {
     setFetchedContact(null);
     if (!clientId) return;
@@ -114,8 +119,8 @@ export function AppointmentDetailsDrawer({
   });
   const timeRange = `${start.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: orgTimezone })}–${end.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: orgTimezone })}`;
 
-  const rawWhatsapp = fetchedContact?.whatsappNumber || appointment.client?.whatsappNumber || null;
-  const rawPhone = fetchedContact?.phone || rawWhatsapp;
+  const rawWhatsapp = cleanPhoneRaw(fetchedContact?.whatsappNumber || appointment.client?.whatsappNumber || null);
+  const rawPhone = cleanPhoneRaw(fetchedContact?.phone) || rawWhatsapp;
   const email = fetchedContact?.email ?? null;
   const address = fetchedContact?.address ?? null;
   // קישורים דרך שכבת ה-utility המשותפת — טלפון מעדיף phone, WhatsApp מעדיף whatsappNumber.
@@ -123,6 +128,12 @@ export function AppointmentDetailsDrawer({
   const waHref = buildWhatsAppUrl(rawWhatsapp || rawPhone);
   const mailHref = buildMailtoUrl(email);
   const wazeHref = buildWazeUrl(address);
+  const canOpenClientCard = Boolean(clientId);
+
+  function goBackToCalendar() {
+    onClose();
+    router.push("/dashboard/calendar");
+  }
 
   const rows: Array<{ label: string; value: string; ltr?: boolean }> = [
     { label: "תאריך", value: dateLabel },
@@ -137,7 +148,17 @@ export function AppointmentDetailsDrawer({
 
   return (
     <SlidePanel open title={clientName} subtitle={`${dateLabel} · ${timeRange}`} onClose={onClose}>
-      <div className="grid gap-4" data-testid="appointment-details-drawer">
+      <div className="relative z-10 grid gap-4" data-testid="appointment-details-drawer">
+        <button
+          type="button"
+          className={`relative z-10 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-accent-primary bg-white px-3 text-sm font-black text-accent-primary transition hover:bg-[var(--natalie-surface-elevated,#F8FAFF)]`}
+          onClick={goBackToCalendar}
+          data-testid="back-to-calendar"
+        >
+          <ArrowRight className="h-4 w-4" aria-hidden />
+          חזרה ליומן
+        </button>
+
         <div className="flex items-center gap-2">
           <StatusBadge tone={statusTone(appointment.status)}>{statusLabel(appointment.status)}</StatusBadge>
         </div>
@@ -168,57 +189,63 @@ export function AppointmentDetailsDrawer({
 
         <section className={calendarUi.drawerSection}>
           <h3 className={`mb-2 text-sm font-black ${natalie.title}`}>{t("calendar.quickActions")}</h3>
-          <div className="grid grid-cols-2 gap-2">
-            <a
-              href={telHref ?? "#"}
-              aria-disabled={!telHref}
-              className={actionClass(Boolean(telHref))}
-              onClick={(e) => {
-                if (!telHref) e.preventDefault();
-              }}
-            >
-              <Phone className="h-4 w-4" />
-              {t("calendar.call")}
-            </a>
-            <a
-              href={waHref ?? "#"}
-              target="_blank"
-              rel="noreferrer"
-              aria-disabled={!waHref}
-              className={actionClass(Boolean(waHref))}
-              onClick={(e) => {
-                if (!waHref) e.preventDefault();
-              }}
-            >
-              <MessageCircle className="h-4 w-4" />
-              {t("calendar.whatsapp")}
-            </a>
-            <a
-              href={mailHref ?? "#"}
-              aria-disabled={!mailHref}
-              className={actionClass(Boolean(mailHref))}
-              onClick={(e) => {
-                if (!mailHref) e.preventDefault();
-              }}
-            >
-              <Mail className="h-4 w-4" />
-              שלח מייל
-            </a>
+          <div className="relative z-10 grid grid-cols-2 gap-2">
+            {telHref ? (
+              <a href={telHref} className={actionClass(true)} data-testid="appt-action-call">
+                <Phone className="h-4 w-4" />
+                {t("calendar.call")}
+              </a>
+            ) : (
+              <button type="button" disabled aria-disabled="true" className={actionClass(false)} data-testid="appt-action-call">
+                <Phone className="h-4 w-4" />
+                {t("calendar.call")}
+              </button>
+            )}
+            {waHref ? (
+              <a href={waHref} target="_blank" rel="noreferrer" className={actionClass(true)} data-testid="appt-action-whatsapp">
+                <MessageCircle className="h-4 w-4" />
+                {t("calendar.whatsapp")}
+              </a>
+            ) : (
+              <button type="button" disabled aria-disabled="true" className={actionClass(false)} data-testid="appt-action-whatsapp">
+                <MessageCircle className="h-4 w-4" />
+                {t("calendar.whatsapp")}
+              </button>
+            )}
+            {mailHref ? (
+              <a href={mailHref} className={actionClass(true)} data-testid="appt-action-email">
+                <Mail className="h-4 w-4" />
+                שלח מייל
+              </a>
+            ) : (
+              <button type="button" disabled aria-disabled="true" className={actionClass(false)} data-testid="appt-action-email">
+                <Mail className="h-4 w-4" />
+                שלח מייל
+              </button>
+            )}
             {wazeHref ? (
-              <a href={wazeHref} target="_blank" rel="noreferrer" className={actionClass(true)}>
+              <a href={wazeHref} target="_blank" rel="noreferrer" className={actionClass(true)} data-testid="appt-action-waze">
                 <Navigation className="h-4 w-4" />
                 Waze
               </a>
             ) : null}
-            <button
-              type="button"
-              className={actionClass(true)}
-              onClick={() => router.push(`/dashboard/clients/${appointment.clientId}`)}
-            >
-              <UserRound className="h-4 w-4" />
-              פתח כרטיס לקוח
-            </button>
-            <button type="button" className={`${actionClass(true)} col-span-2`} onClick={onEdit}>
+            {canOpenClientCard ? (
+              <button
+                type="button"
+                className={actionClass(true)}
+                data-testid="appt-action-open-client"
+                onClick={() => router.push(`/dashboard/clients/${clientId}`)}
+              >
+                <UserRound className="h-4 w-4" />
+                פתח כרטיס לקוח
+              </button>
+            ) : (
+              <button type="button" disabled aria-disabled="true" className={actionClass(false)} data-testid="appt-action-open-client">
+                <UserRound className="h-4 w-4" />
+                פתח כרטיס לקוח
+              </button>
+            )}
+            <button type="button" className={`${actionClass(true)} col-span-2`} onClick={onEdit} data-testid="appt-action-edit">
               <Edit3 className="h-4 w-4" />
               {t("calendar.edit")}
             </button>
