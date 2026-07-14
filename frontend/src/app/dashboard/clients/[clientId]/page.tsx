@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import { AppointmentDetailsDrawer } from "@/components/calendar/AppointmentDetailsDrawer";
 import { appointmentStatusLabel, appointmentStatusTone } from "@/components/crm/crmHelpers";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import {
   clientInitials,
@@ -244,7 +244,14 @@ export default function ClientDetailPage() {
   }
 
   useEffect(() => {
-    load().catch((err) => setLoadError(err instanceof Error ? err.message : "טעינת הלקוח נכשלה — נסה לרענן"));
+    load().catch((err) => {
+      // לקוח חסר / לא בארגון — מסך ידידותי, בלי להפיל את העמוד.
+      if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
+        setLoadError("הלקוח לא נמצא");
+        return;
+      }
+      setLoadError(err instanceof Error ? err.message : "טעינת הלקוח נכשלה — נסה לרענן");
+    });
     const cached = suggestionCache.get(clientId);
     if (cached) setSuggestions(cached);
     const interval = window.setInterval(() => {
@@ -260,6 +267,12 @@ export default function ClientDetailPage() {
     if (score <= 70) return { label: "צהוב", className: "text-amber-500" };
     return { label: "ירוק", className: "text-emerald-600" };
   }, [health?.score]);
+
+  // חייב לפני כל early-return — אחרת אחרי טעינת data מתווסף hook ומפיל את העמוד.
+  const { rows: orderedAppointments, nextAppointmentId } = useMemo(
+    () => orderClientAppointmentsForTab(appointments),
+    [appointments]
+  );
 
   async function scanInvoices() {
     setMessage("");
@@ -535,10 +548,6 @@ export default function ClientDetailPage() {
   const futureAppointmentsCount = appointments.filter(
     (appointment) => new Date(appointment.startTime).getTime() >= Date.now() && appointment.status !== "cancelled"
   ).length;
-  const { rows: orderedAppointments, nextAppointmentId } = useMemo(
-    () => orderClientAppointmentsForTab(appointments),
-    [appointments]
-  );
   const openTasksCount = tasks.filter((task) => task.status !== "done").length;
 
   const tabCounts: Partial<Record<TabId, number>> = {
