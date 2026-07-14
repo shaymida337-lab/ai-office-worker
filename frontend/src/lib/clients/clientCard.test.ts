@@ -4,9 +4,11 @@ import {
   clientInitials,
   displayOrFallback,
   displayPhone,
+  formatAppointmentPrice,
   formatNextAppointment,
   mailtoHref,
   mapsHref,
+  orderClientAppointmentsForTab,
   telHref,
   whatsappHref,
   NOT_PROVIDED,
@@ -79,4 +81,28 @@ test("maps: ניווט מעדיף Waze עם כתובת מקודדת, ריק -> n
   );
   assert.equal(mapsHref("  "), null);
   assert.equal(mapsHref(null), null);
+});
+
+test("לשונית פגישות: הפגישה הבאה ראשונה, השאר מהחדש לישן", () => {
+  const now = new Date("2026-07-14T12:00:00.000Z").getTime();
+  const { rows, nextAppointmentId } = orderClientAppointmentsForTab(
+    [
+      { id: "past", startTime: "2026-07-10T10:00:00.000Z", status: "completed", serviceName: null, employeeName: null },
+      { id: "later", startTime: "2026-07-25T10:00:00.000Z", status: "confirmed", serviceName: null, employeeName: null },
+      { id: "soon", startTime: "2026-07-16T10:00:00.000Z", status: "pending", serviceName: null, employeeName: null },
+      { id: "cancelled-soon", startTime: "2026-07-15T10:00:00.000Z", status: "cancelled", serviceName: null, employeeName: null },
+    ],
+    now
+  );
+  assert.equal(nextAppointmentId, "soon");
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ["soon", "later", "cancelled-soon", "past"]
+  );
+});
+
+test("מחיר פגישה: מספר → ₪, חוסר → לא הוזן", () => {
+  assert.equal(formatAppointmentPrice(120), "₪120");
+  assert.equal(formatAppointmentPrice(null), NOT_PROVIDED);
+  assert.equal(formatAppointmentPrice(undefined), NOT_PROVIDED);
 });

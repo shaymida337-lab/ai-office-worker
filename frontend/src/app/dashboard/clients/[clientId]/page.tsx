@@ -10,10 +10,13 @@ import { apiFetch } from "@/lib/api";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import {
   clientInitials,
+  displayOrFallback,
   displayPhone,
+  formatAppointmentPrice,
   formatNextAppointment,
   mailtoHref,
   mapsHref,
+  orderClientAppointmentsForTab,
   telHref,
   whatsappHref,
 } from "@/lib/clients/clientCard";
@@ -95,6 +98,7 @@ type ClientAppointmentDto = {
   notes: string | null;
   serviceName: string | null;
   employeeName: string | null;
+  price?: number | null;
 };
 
 type ClientNoteDto = {
@@ -531,6 +535,10 @@ export default function ClientDetailPage() {
   const futureAppointmentsCount = appointments.filter(
     (appointment) => new Date(appointment.startTime).getTime() >= Date.now() && appointment.status !== "cancelled"
   ).length;
+  const { rows: orderedAppointments, nextAppointmentId } = useMemo(
+    () => orderClientAppointmentsForTab(appointments),
+    [appointments]
+  );
   const openTasksCount = tasks.filter((task) => task.status !== "done").length;
 
   const tabCounts: Partial<Record<TabId, number>> = {
@@ -909,9 +917,9 @@ export default function ClientDetailPage() {
       {/* ===== לשונית פגישות ===== */}
       {activeTab === "appointments" && (
         <div role="tabpanel" data-testid="tab-panel-appointments">
-          <div className="card" data-testid="next-appointment">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="!mb-0 text-base">התור הבא</h2>
+          <div className="card" data-testid="client-appointments">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="!mb-0 text-base">פגישות</h2>
               <button
                 className="btn"
                 type="button"
@@ -920,32 +928,15 @@ export default function ClientDetailPage() {
                 📅 קבע תור
               </button>
             </div>
-            {!nextAppointmentLoaded ? (
-              <p>טוען את התור הבא...</p>
-            ) : nextView ? (
-              <p data-testid="next-appointment-details">
-                <strong>{nextView.dateLabel}</strong> בשעה <strong dir="ltr">{nextView.timeLabel}</strong>
-                {" · שירות: "}
-                {nextView.serviceLabel}
-                {" · אצל: "}
-                {nextView.employeeLabel}
-              </p>
-            ) : (
-              <p data-testid="next-appointment-empty">אין תור עתידי. אפשר לקבוע תור חדש בלחיצה על "קבע תור".</p>
-            )}
-          </div>
-
-          <div className="card" data-testid="client-appointments">
-            <h2 className="text-base">כל הפגישות</h2>
             {!appointmentsLoaded ? (
               <p>טוען פגישות...</p>
-            ) : appointments.length === 0 ? (
-              <p data-testid="client-appointments-empty">אין פגישות ללקוח הזה עדיין.</p>
+            ) : orderedAppointments.length === 0 ? (
+              <p data-testid="client-appointments-empty">עדיין אין פגישות ללקוח זה</p>
             ) : (
-              <div>
-                {appointments.map((appointment) => {
+              <ul className="divide-y divide-[var(--border-subtle)]" data-testid="client-appointments-list">
+                {orderedAppointments.map((appointment) => {
                   const start = new Date(appointment.startTime);
-                  const isFuture = start.getTime() >= Date.now() && appointment.status !== "cancelled";
+                  const isNext = appointment.id === nextAppointmentId;
                   const tone = appointmentStatusTone(appointment.status);
                   const statusClass =
                     tone === "success"
@@ -955,46 +946,66 @@ export default function ClientDetailPage() {
                         : tone === "warn"
                           ? "text-amber-600"
                           : "text-sky-600";
+                  const dateLabel = start.toLocaleDateString("he-IL", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                    timeZone: orgTimezone,
+                  });
+                  const timeLabel = start.toLocaleTimeString("he-IL", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                    timeZone: orgTimezone,
+                  });
                   return (
-                    <button
-                      key={appointment.id}
-                      type="button"
-                      onClick={() => setSelectedAppointment(appointment)}
-                      className="block w-full border-t border-[var(--border-subtle)] py-2 text-start transition hover:bg-surface-hover"
-                      data-testid="client-appointment-row"
-                    >
-                      <span className={appointment.status === "cancelled" ? "line-through opacity-70" : ""}>
-                        <strong>
-                          {start.toLocaleDateString("he-IL", {
-                            weekday: "short",
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                            timeZone: orgTimezone,
-                          })}
-                        </strong>{" "}
-                        בשעה{" "}
-                        <strong dir="ltr">
-                          {start.toLocaleTimeString("he-IL", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: false,
-                            timeZone: orgTimezone,
-                          })}
-                        </strong>
-                        {" · "}
-                        {appointment.serviceName || "ללא שירות"}
-                        {" · אצל "}
-                        {appointment.employeeName || "בעל העסק"}
-                      </span>
-                      <span className={`mr-2 text-sm font-bold ${statusClass}`}>
-                        {appointmentStatusLabel(appointment.status)}
-                        {isFuture ? " · עתידי" : ""}
-                      </span>
-                    </button>
+                    <li key={appointment.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAppointment(appointment)}
+                        className={`block w-full py-3 text-start transition hover:bg-surface-hover ${
+                          appointment.status === "cancelled" ? "opacity-70" : ""
+                        }`}
+                        data-testid="client-appointment-row"
+                        data-next={isNext ? "true" : "false"}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          {isNext ? (
+                            <span
+                              className="rounded-full bg-[#EEF2FF] px-2 py-0.5 text-xs font-black text-[#1E40AF]"
+                              data-testid="next-appointment-badge"
+                            >
+                              הפגישה הבאה
+                            </span>
+                          ) : null}
+                          <span className={`text-sm font-bold ${statusClass}`}>
+                            {appointmentStatusLabel(appointment.status)}
+                          </span>
+                        </div>
+                        <div className={`mt-1 grid gap-1 text-sm ${appointment.status === "cancelled" ? "line-through" : ""}`}>
+                          <div>
+                            <span className="text-ink-secondary">תאריך: </span>
+                            <strong>{dateLabel}</strong>
+                            <span className="text-ink-secondary"> · שעה: </span>
+                            <strong dir="ltr">{timeLabel}</strong>
+                          </div>
+                          <div>
+                            <span className="text-ink-secondary">שירות: </span>
+                            <strong>{displayOrFallback(appointment.serviceName)}</strong>
+                            <span className="text-ink-secondary"> · עובד: </span>
+                            <strong>{appointment.employeeName?.trim() || "בעל העסק"}</strong>
+                          </div>
+                          <div>
+                            <span className="text-ink-secondary">מחיר: </span>
+                            <strong>{formatAppointmentPrice(appointment.price)}</strong>
+                          </div>
+                        </div>
+                      </button>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             )}
           </div>
         </div>

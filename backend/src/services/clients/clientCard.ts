@@ -65,6 +65,8 @@ export type ClientAppointmentListItem = {
   notes: string | null;
   serviceName: string | null;
   employeeName: string | null;
+  /** מחיר השירות מכרטיס השירות; null אם אין שירות או אין מחיר */
+  price: number | null;
 };
 
 /**
@@ -87,7 +89,7 @@ export async function listClientAppointments(
       durationMinutes: true,
       status: true,
       notes: true,
-      service: { select: { name: true } },
+      service: { select: { name: true, price: true } },
       employee: { select: { name: true } },
     },
   });
@@ -100,6 +102,7 @@ export async function listClientAppointments(
     notes: appointment.notes ?? null,
     serviceName: appointment.service?.name ?? null,
     employeeName: appointment.employee?.name ?? null,
+    price: appointment.service?.price ?? null,
   }));
 }
 
