@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AppointmentDetailsDrawer } from "@/components/calendar/AppointmentDetailsDrawer";
 import { CalendarEventDrawer } from "@/components/calendar/CalendarEventDrawer";
@@ -253,12 +253,17 @@ export default function CalendarPage() {
   const [selectedEngineEventId, setSelectedEngineEventId] = useState<string | null>(null);
   const [detailsAppointment, setDetailsAppointment] = useState<Appointment | null>(null);
   const [detailsRefreshKey, setDetailsRefreshKey] = useState(0);
-  // Toast הצלחה קבוע (fixed) — נראה מעל ה-Drawer וסרגל הניווט, נעלם אוטומטית.
+  // Toast קבוע (fixed) — נראה מעל ה-Drawer וסרגל הניווט, נעלם אוטומטית.
+  // גם שגיאות שמירה מוצגות בו, כדי שכשל לא ייבלע בבאנר שמחוץ למסך.
   const [saveToast, setSaveToast] = useState<string | null>(null);
+  const [saveToastTone, setSaveToastTone] = useState<"success" | "error">("success");
   // פרטי קשר של הלקוח בטופס עריכת תור — נשמרים על ה-Client, לא על התור.
   const emptyContact = { phone: "", whatsapp: "", email: "", address: "" };
   const [formContact, setFormContact] = useState(emptyContact);
   const [contactLoaded, setContactLoaded] = useState(false);
+  // הערכים כפי שנטענו מה-Client — בסיס להשוואה per-field בשמירה: שולחים רק
+  // שדות שבאמת השתנו (אימייל שלא נגעו בו לא יפיל את השמירה על 409 כפילות).
+  const loadedContactRef = useRef<typeof emptyContact | null>(null);
   const [queueRefreshKey, setQueueRefreshKey] = useState(0);
   const [drawerRefreshKey, setDrawerRefreshKey] = useState(0);
   const [engineDisabledBanner, setEngineDisabledBanner] = useState<string | null>(null);
@@ -566,6 +571,7 @@ export default function CalendarPage() {
     setSelectedReminderEvents([]);
     setFormContact(emptyContact);
     setContactLoaded(false);
+    loadedContactRef.current = null;
   }
 
   function openNewForm() {
@@ -622,6 +628,7 @@ export default function CalendarPage() {
     // (contactLoaded) כדי לא לדרוס נתונים קיימים בשמירה עיוורת.
     setFormContact(emptyContact);
     setContactLoaded(false);
+    loadedContactRef.current = null;
     void apiFetch<{
       client?: {
         phone?: string | null;
@@ -639,9 +646,15 @@ export default function CalendarPage() {
           address: result.client?.address ?? "",
         };
         setFormContact(contact);
+        loadedContactRef.current = contact;
         setContactLoaded(true);
       })
-      .catch(() => setContactLoaded(false));
+      .catch(() => {
+        // גם אם טעינת פרטי הקשר נכשלה — הטופס נשאר שמיש: baseline ריק, ורק
+        // שדות שהמשתמש הקליד יישלחו (per-field), כך ששום נתון קיים לא נדרס.
+        loadedContactRef.current = { ...emptyContact };
+        setContactLoaded(true);
+      });
     setShowForm(true);
   }
 
@@ -686,21 +699,35 @@ export default function CalendarPage() {
             status: formStatus,
           }),
         });
-        // פרטי הקשר נשמרים על ה-Client עצמו (לא על התור). שומרים תמיד כשהטופס
-        // נטען (contactLoaded) — כך השמירה לעולם לא "נבלעת" בגלל השוואת snapshot,
-        // ובלי טעינה לא דורסים נתונים קיימים בערכים ריקים. חייב לחכות לסיום ה-PUT.
+        // פרטי הקשר נשמרים על ה-Client עצמו (לא על התור), ורק השדות שבאמת
+        // השתנו לעומת מה שנטען: אימייל שלא נגעו בו לא נשלח בכלל, ולכן בדיקת
+        // הכפילות בשרת (409) לא יכולה להפיל שמירה של טלפון/כתובת.
         let contactSaved = false;
-        if (formClientId && contactLoaded) {
-          await apiFetch(`/api/clients/${formClientId}`, {
-            method: "PUT",
-            body: JSON.stringify({
-              phone: formContact.phone,
-              whatsappNumber: formContact.whatsapp,
-              email: formContact.email,
-              address: formContact.address,
-            }),
-          });
-          contactSaved = true;
+        const loadedContact = loadedContactRef.current;
+        if (formClientId && contactLoaded && loadedContact) {
+          const changed: Record<string, string> = {};
+          if (formContact.phone !== loadedContact.phone) changed.phone = formContact.phone;
+          if (formContact.whatsapp !== loadedContact.whatsapp) changed.whatsappNumber = formContact.whatsapp;
+          if (formContact.email !== loadedContact.email) changed.email = formContact.email;
+          if (formContact.address !== loadedContact.address) changed.address = formContact.address;
+          if (Object.keys(changed).length > 0) {
+            try {
+              await apiFetch(`/api/clients/${formClientId}`, {
+                method: "PUT",
+                body: JSON.stringify(changed),
+              });
+              contactSaved = true;
+            } catch (err) {
+              // התור כבר עודכן, אבל פרטי הלקוח לא נשמרו (למשל 409 — האימייל
+              // שייך ללקוח אחר). הטופס נשאר פתוח עם הערכים, והשגיאה מוצגת
+              // בטוסט הקבוע — לא בבאנר שמחוץ למסך.
+              setSaveToastTone("error");
+              setSaveToast(
+                err instanceof Error ? `שמירת פרטי הלקוח נכשלה: ${err.message}` : "שמירת פרטי הלקוח נכשלה"
+              );
+              return;
+            }
+          }
         }
         resetForm();
         await loadAppointments();
@@ -710,6 +737,7 @@ export default function CalendarPage() {
           setDetailsAppointment(editedAppt as Appointment);
           setDetailsRefreshKey((k) => k + 1);
         }
+        setSaveToastTone("success");
         setSaveToast(contactSaved ? "פרטי התור והלקוח נשמרו בהצלחה" : "התור עודכן בהצלחה");
         return;
       } else if (!formEmployeeId && resolveCalendarCreateStrategy(engineWriteEnabled) === "calendar_engine_draft") {
@@ -744,15 +772,18 @@ export default function CalendarPage() {
       resetForm();
       await loadAppointments();
     } catch (err) {
-      if (isTimeConflictError(err)) {
-        setMessage("קיים תור אחר בזמן הזה");
-        return;
-      }
-      if (err instanceof CalendarEngineUnavailableError) {
-        setMessage(CALENDAR_ENGINE_DISABLED_MESSAGE);
-        return;
-      }
-      setMessage(err instanceof Error ? err.message : "שמירת התור נכשלה");
+      // כשל שמירה חייב להיראות מול העיניים — הבאנר הרגיל יושב בראש הדף
+      // ועלול להיות מחוץ למסך; הטוסט הקבוע תמיד נראה.
+      const failureText = isTimeConflictError(err)
+        ? "קיים תור אחר בזמן הזה"
+        : err instanceof CalendarEngineUnavailableError
+          ? CALENDAR_ENGINE_DISABLED_MESSAGE
+          : err instanceof Error
+            ? err.message
+            : "שמירת התור נכשלה";
+      setMessage(failureText);
+      setSaveToastTone("error");
+      setSaveToast(failureText);
     } finally {
       setSaving(false);
     }
@@ -915,8 +946,14 @@ export default function CalendarPage() {
           aria-live="polite"
           data-testid="calendar-save-toast"
         >
-          <div className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-[#34D399] bg-[#ECFDF5] px-4 py-3 text-sm font-black text-[#065F46] shadow-[0_10px_30px_rgba(6,95,70,0.25)] dark:border-[#065F46] dark:bg-[#052E24] dark:text-[#6EE7B7]">
-            <CheckCircle2 className="h-5 w-5 shrink-0" />
+          <div
+            className={`pointer-events-auto flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black ${
+              saveToastTone === "error"
+                ? "border-[#F87171] bg-[#FEF2F2] text-[#991B1B] shadow-[0_10px_30px_rgba(153,27,27,0.25)] dark:border-[#991B1B] dark:bg-[#3F0D0D] dark:text-[#FCA5A5]"
+                : "border-[#34D399] bg-[#ECFDF5] text-[#065F46] shadow-[0_10px_30px_rgba(6,95,70,0.25)] dark:border-[#065F46] dark:bg-[#052E24] dark:text-[#6EE7B7]"
+            }`}
+          >
+            {saveToastTone === "error" ? <X className="h-5 w-5 shrink-0" /> : <CheckCircle2 className="h-5 w-5 shrink-0" />}
             <span>{saveToast}</span>
           </div>
         </div>
