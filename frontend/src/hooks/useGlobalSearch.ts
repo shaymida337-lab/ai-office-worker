@@ -3,9 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { filterClientsByQuery } from "@/lib/clients/clientSearch";
 import { formatAmount } from "@/lib/format/amount";
 
-type SearchClient = { id: string; name: string; email?: string | null; whatsappNumber?: string | null };
+type SearchClient = {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  whatsappNumber?: string | null;
+};
 type SearchLead = {
   id: string;
   name: string;
@@ -92,10 +99,9 @@ export function useGlobalSearch() {
     const query = searchQuery.trim().toLowerCase();
     if (query.length < 2) return [];
 
-    const clients = searchData.clients
-      .filter((client) =>
-        `${client.name} ${client.email ?? ""} ${client.whatsappNumber ?? ""}`.toLowerCase().includes(query)
-      )
+    // אותה לוגיקת סינון כמו במסך הלקוחות — מקור אחד: clientSearch. חיפוש
+    // "שרית" (או טלפון/אימייל שלה) מחזיר את אותה לקוחה בשני המקומות.
+    const clients = filterClientsByQuery(searchData.clients, query)
       .slice(0, 4)
       .map((client) => ({
         id: `client-${client.id}`,

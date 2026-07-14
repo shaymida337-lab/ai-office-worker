@@ -9,9 +9,11 @@ import {
   type ClientRecord,
   validateClientForm,
 } from "@/lib/clients/clientForm";
+import { filterClientsByQuery } from "@/lib/clients/clientSearch";
 import { Mail, Plus, RefreshCcw, Search, ShieldCheck, Users } from "lucide-react";
 
 type ClientItem = ClientRecord & {
+  phone?: string | null;
   gmailConnected: boolean;
   stats?: {
     toPay: number;
@@ -111,9 +113,8 @@ export default function ClientsPage() {
     }
   }
 
-  const filteredClients = (data?.clients ?? []).filter((client) =>
-    `${client.name} ${client.email ?? ""} ${client.whatsappNumber ?? ""}`.toLowerCase().includes(query.toLowerCase())
-  );
+  // אותה לוגיקת סינון כמו בחיפוש העליון (useGlobalSearch) — מקור אחד: clientSearch.
+  const filteredClients = filterClientsByQuery(data?.clients ?? [], query);
 
   return (
     <div className="container">
@@ -133,7 +134,7 @@ export default function ClientsPage() {
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-ink-muted" />
-            <input className="pr-10" placeholder="חפש לקוח, מייל או וואטסאפ" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <input className="pr-10" placeholder="חפש לפי שם, טלפון או מייל" value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
           <div className="flex gap-2">
             <button className={view === "grid" ? "btn" : "btn btn-toggle-inactive"} onClick={() => setView("grid")}>רשת</button>

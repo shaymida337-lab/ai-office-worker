@@ -181,6 +181,7 @@ clientsRouter.get("/", authMiddleware, async (req, res) => {
         firstSeen: true,
         lastSeen: true,
         whatsappNumber: true,
+        phone: true,
         gmailConnected: true,
         invoiceSheetId: true,
         invoiceSheetUrl: true,

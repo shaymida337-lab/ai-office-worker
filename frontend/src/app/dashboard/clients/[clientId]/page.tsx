@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Nav } from "@/components/Nav";
 import { AppointmentDetailsDrawer } from "@/components/calendar/AppointmentDetailsDrawer";
@@ -477,6 +478,13 @@ export default function ClientDetailPage() {
     return (
       <div className="container" dir="rtl">
         <Nav />
+        <Link
+          href="/dashboard/clients"
+          className="mb-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-bold text-accent-primary transition hover:text-accent-secondary hover:underline"
+          data-testid="back-to-clients"
+        >
+          <span aria-hidden>→</span> חזרה ללקוחות
+        </Link>
         {loadError ? (
           <div className="rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-red-200" data-testid="client-card-error">
             {loadError}
@@ -543,6 +551,13 @@ export default function ClientDetailPage() {
         className="sticky top-0 z-30 mb-4 rounded-2xl border border-[var(--border)] bg-white/95 p-4 shadow-card backdrop-blur md:p-5"
         data-testid="client-card-header"
       >
+        <Link
+          href="/dashboard/clients"
+          className="mb-2 inline-flex min-h-11 items-center gap-1.5 text-sm font-bold text-accent-primary transition hover:text-accent-secondary hover:underline md:min-h-0"
+          data-testid="back-to-clients"
+        >
+          <span aria-hidden>→</span> חזרה ללקוחות
+        </Link>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
           <div className="flex min-w-0 flex-1 items-center gap-3 md:gap-4">
             <span
