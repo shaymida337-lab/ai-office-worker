@@ -225,6 +225,26 @@ export type NatalieClaudeResponse =
         };
       };
       answer: string;
+    }
+  | {
+      action: "open_client";
+      proposal: {
+        clientId: string;
+        clientName: string;
+        path: string;
+      };
+      answer: string;
+    }
+  | {
+      action: "update_client";
+      proposal: {
+        clientId: string;
+        clientName: string;
+        field: "phone" | "email" | "address";
+        value: string;
+        path?: string;
+      };
+      answer: string;
     };
 
 const NATALIE_BUSINESS_SYSTEM_PROMPT = `את נטלי, עוזרת משרדית חכמה לעסק ישראלי קטן.
@@ -947,6 +967,40 @@ export function isNatalieClaudeResponse(value: unknown): value is NatalieClaudeR
         Number.isFinite(item.durationMinutes)
       );
     });
+  }
+  if (response.action === "open_client") {
+    const proposal = response.proposal as {
+      clientId?: unknown;
+      clientName?: unknown;
+      path?: unknown;
+    } | undefined;
+    return Boolean(
+      proposal &&
+        typeof proposal.clientId === "string" &&
+        proposal.clientId.trim() &&
+        typeof proposal.clientName === "string" &&
+        proposal.clientName.trim() &&
+        typeof proposal.path === "string" &&
+        proposal.path.trim()
+    );
+  }
+  if (response.action === "update_client") {
+    const proposal = response.proposal as {
+      clientId?: unknown;
+      clientName?: unknown;
+      field?: unknown;
+      value?: unknown;
+    } | undefined;
+    return Boolean(
+      proposal &&
+        typeof proposal.clientId === "string" &&
+        proposal.clientId.trim() &&
+        typeof proposal.clientName === "string" &&
+        proposal.clientName.trim() &&
+        (proposal.field === "phone" || proposal.field === "email" || proposal.field === "address") &&
+        typeof proposal.value === "string" &&
+        proposal.value.trim()
+    );
   }
   return false;
 }

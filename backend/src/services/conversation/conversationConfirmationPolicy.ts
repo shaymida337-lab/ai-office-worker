@@ -18,6 +18,8 @@ const ACTION_PERMISSION: Record<string, PlatformPermission> = {
   reschedule_appointment: "calendar.reschedule",
   create_task: "chat.use",
   complete_task: "chat.use",
+  open_client: "chat.use",
+  update_client: "chat.use",
 };
 
 const ACTION_RISK: Record<string, ActionRisk> = {
@@ -31,6 +33,8 @@ const ACTION_RISK: Record<string, ActionRisk> = {
   reschedule_appointment: "destructive",
   suggest_available_times: "read_only",
   last_listed_appointments: "read_only",
+  open_client: "read_only",
+  update_client: "reversible",
 };
 
 function confirmationTypeForRisk(risk: ActionRisk): ConfirmationType {

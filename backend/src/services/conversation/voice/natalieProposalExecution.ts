@@ -234,6 +234,27 @@ export async function executeNataliePendingProposal(input: {
         action: input.action,
         message: "זו רשימת תורים לקריאה בלבד — אין פעולה לביצוע.",
       };
+    case "open_client":
+      return {
+        ok: true,
+        action: input.action,
+        message:
+          typeof input.proposal.path === "string"
+            ? `הכרטיס מוכן: ${input.proposal.path}`
+            : "הכרטיס מוכן.",
+      };
+    case "update_client": {
+      const { executeNatalieUpdateClient } = await import("../../clients/natalieCrm.js");
+      const result = await executeNatalieUpdateClient({
+        organizationId: input.organizationId,
+        proposal: input.proposal,
+      });
+      return {
+        ok: result.ok,
+        action: input.action,
+        message: result.message,
+      };
+    }
     default:
       return {
         ok: false,

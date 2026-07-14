@@ -661,69 +661,37 @@ clientsRouter.get("/:clientId", authMiddleware, checkClientOwnership, async (req
 });
 
 clientsRouter.put("/:clientId", authMiddleware, checkClientOwnership, async (req, res) => {
-  const client = res.locals.client;
-  const body = req.body as Record<string, string | undefined>;
-  if (body.email !== undefined) {
-    const normalized = body.email.trim() ? normalizeClientEmailInput(body.email) : null;
-    if (body.email.trim() && !normalized) {
-      res.status(400).json({ error: "Invalid email" });
+  try {
+    const { updateClientProfile } = await import("../services/clients/clientCard.js");
+    const body = req.body as Record<string, string | undefined>;
+    const result = await updateClientProfile({
+      organizationId: req.auth!.organizationId,
+      clientId: res.locals.client.id,
+      patch: {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.email !== undefined ? { email: body.email } : {}),
+        ...(body.phone !== undefined ? { phone: body.phone } : {}),
+        ...(body.whatsappNumber !== undefined ? { whatsappNumber: body.whatsappNumber } : {}),
+        ...(body.address !== undefined ? { address: body.address } : {}),
+        ...(body.color !== undefined ? { color: body.color } : {}),
+        ...(body.invoiceSheetUrl !== undefined ? { invoiceSheetUrl: body.invoiceSheetUrl } : {}),
+        ...(body.taskSheetUrl !== undefined ? { taskSheetUrl: body.taskSheetUrl } : {}),
+        ...(body.driveFolderUrl !== undefined ? { driveFolderUrl: body.driveFolderUrl } : {}),
+      },
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
       return;
     }
-    if (normalized && !isValidEmail(normalized)) {
-      res.status(400).json({ error: "Invalid email" });
-      return;
-    }
+    res.json({
+      client: {
+        ...stripClientGoogleTokens(result.client),
+        stats: await clientStats(req.auth!.organizationId, result.client.id),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update client" });
   }
-
-  if (body.email !== undefined) {
-    const normalized = body.email.trim() ? normalizeClientEmailInput(body.email) : null;
-    if (normalized) {
-      const duplicate = await findClientByRealEmail(prisma, {
-        organizationId: req.auth!.organizationId,
-        email: normalized,
-        excludeClientId: client.id,
-      });
-      if (duplicate) {
-        res.status(409).json({ error: "Another customer already uses this email" });
-        return;
-      }
-    }
-  }
-
-  const updateData: Record<string, unknown> = {
-    ...(body.name && { name: body.name.trim() }),
-    ...(body.whatsappNumber !== undefined && {
-      whatsappNumber: body.whatsappNumber?.trim() ? normalizeWhatsAppNumber(body.whatsappNumber) : null,
-    }),
-    ...(body.phone !== undefined && { phone: body.phone?.trim() || null }),
-    ...(body.address !== undefined && { address: body.address?.trim() || null }),
-    ...(body.color && { color: body.color }),
-    ...(body.invoiceSheetUrl !== undefined && {
-      invoiceSheetUrl: body.invoiceSheetUrl?.trim() || null,
-      invoiceSheetId: parseSheetId(body.invoiceSheetUrl),
-    }),
-    ...(body.taskSheetUrl !== undefined && {
-      taskSheetUrl: body.taskSheetUrl?.trim() || null,
-      taskSheetId: parseSheetId(body.taskSheetUrl),
-    }),
-    ...(body.driveFolderUrl !== undefined && {
-      driveFolderUrl: body.driveFolderUrl?.trim() || null,
-      driveFolderId: parseFolderId(body.driveFolderUrl),
-    }),
-  };
-
-  if (body.email !== undefined) {
-    const normalized = body.email.trim() ? normalizeClientEmailInput(body.email) : null;
-    updateData.email = normalized;
-    updateData.emailIsPlaceholder = false;
-  }
-
-  const updated = await prisma.client.update({
-    where: { id: client.id },
-    data: updateData,
-  });
-
-  res.json({ client: { ...stripClientGoogleTokens(updated), stats: await clientStats(req.auth!.organizationId, updated.id) } });
 });
 
 clientsRouter.post("/:clientId/scan", authMiddleware, checkClientOwnership, async (_req, res) => {

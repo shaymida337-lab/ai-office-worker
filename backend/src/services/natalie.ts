@@ -108,6 +108,11 @@ export async function askNatalieBusinessQuestion(input: {
   );
   if (createAppointmentResponse) return createAppointmentResponse;
 
+  // Deterministic CRM: open card / update phone|email|address / full appointment history.
+  const { maybeBuildNatalieCrmResponse } = await import("./clients/natalieCrm.js");
+  const crmResponse = await maybeBuildNatalieCrmResponse(input.organizationId, input.question);
+  if (crmResponse) return crmResponse;
+
   // Deterministic read handler: "מה יש לי מחר ביומן?" / "מה התורים שלי?" never
   // reaches Claude and always reads the unified appointment source of truth.
   const listAppointmentsResponse = await maybeBuildListAppointmentsResponse(
