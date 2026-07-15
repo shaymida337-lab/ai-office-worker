@@ -1,16 +1,12 @@
-import type { DashboardStats } from "@/lib/api";
+import type { DashboardHomeMetricSnapshot } from "./homeMetrics";
 import type {
   BusinessModuleConfig,
   HomeCardConfig,
   HomeMetricId,
 } from "@/lib/business-module";
-import { isThisMonth, isTodayValue } from "@/lib/dashboard/homePageHelpers";
-import type { ClientsResponse, UpcomingAppointment } from "@/lib/dashboard/homePageTypes";
+import { DASHBOARD_NO_DATA_LABEL, formatDashboardMetricValue } from "./homeMetrics";
 
-export type InsuranceHomeMetricValues = Record<
-  Exclude<HomeMetricId, "renewals_placeholder">,
-  number
->;
+export type InsuranceHomeMetricValues = DashboardHomeMetricSnapshot;
 
 export type InsuranceHomeResolvedCard = HomeCardConfig & {
   displayValue: string;
@@ -25,37 +21,27 @@ export type InsuranceHomeOverlayView = {
 };
 
 export function resolveInsuranceHomeMetrics(input: {
-  stats: DashboardStats | null;
-  /** Full pending document-reviews count from existing GET (before any UI slice). */
-  pendingDocsCount: number;
-  upcomingAppointments: UpcomingAppointment[];
-  clients: ClientsResponse | null;
-}): InsuranceHomeMetricValues {
-  const activeClients =
-    typeof (input.stats as DashboardStats & { totalClients?: number } | null)?.totalClients ===
-    "number"
-      ? (input.stats as DashboardStats & { totalClients: number }).totalClients
-      : (input.stats?.clients ?? input.clients?.clients.length ?? 0);
-
-  const meetingsToday = input.upcomingAppointments.filter((appointment) =>
-    isTodayValue(appointment.startTime)
-  ).length;
-
-  const newClientsMonth = (input.clients?.clients ?? []).filter((client) => {
-    const createdAt = (client as { createdAt?: string }).createdAt;
-    return typeof createdAt === "string" && isThisMonth(createdAt);
-  }).length;
-
-  return {
-    active_clients: activeClients,
-    open_tasks: input.stats?.openTasks ?? 0,
-    meetings_today: meetingsToday,
-    pending_docs: input.pendingDocsCount,
-    new_clients_month: newClientsMonth,
-  };
+  homeMetrics: DashboardHomeMetricSnapshot | null;
+  metricsLoaded: boolean;
+}): DashboardHomeMetricSnapshot {
+  if (!input.metricsLoaded || !input.homeMetrics) {
+    return {
+      active_clients: null,
+      open_tasks: null,
+      meetings_today: null,
+      pending_docs: null,
+      new_clients_month: null,
+    };
+  }
+  return input.homeMetrics;
 }
 
-function metricLabelLine(id: HomeMetricId, value: number, entityPlural: string): string | null {
+function metricLabelLine(
+  id: HomeMetricId,
+  value: number | null,
+  entityPlural: string
+): string | null {
+  if (value == null) return null;
   switch (id) {
     case "meetings_today":
       return value === 0 ? "אין פגישות היום" : `יש ${value} פגישות היום`;
@@ -66,9 +52,7 @@ function metricLabelLine(id: HomeMetricId, value: number, entityPlural: string):
         ? "אין מסמכים שממתינים לטיפול"
         : `יש ${value} מסמכים שממתינים לטיפול`;
     case "new_clients_month":
-      return value === 0
-        ? `לא נוספו ${entityPlural} חדשים החודש`
-        : `נוספו ${value} ${entityPlural} חדשים החודש`;
+      return value === 0 ? "אין לידים חדשים" : `יש ${value} לידים חדשים`;
     default:
       return null;
   }
@@ -76,8 +60,8 @@ function metricLabelLine(id: HomeMetricId, value: number, entityPlural: string):
 
 export function buildInsuranceHomeOverlay(input: {
   module: BusinessModuleConfig;
-  metrics: InsuranceHomeMetricValues;
-  loading: boolean;
+  metrics: DashboardHomeMetricSnapshot;
+  metricsLoaded: boolean;
   partOfDayGreeting: string;
 }): InsuranceHomeOverlayView {
   const home = input.module.dashboard.home;
@@ -85,14 +69,14 @@ export function buildInsuranceHomeOverlay(input: {
     if (card.valueKind === "placeholder") {
       return {
         ...card,
-        displayValue: card.placeholderText ?? "—",
+        displayValue: card.placeholderText ?? DASHBOARD_NO_DATA_LABEL,
         clickable: false,
       };
     }
-    const value = input.metrics[card.id as keyof InsuranceHomeMetricValues];
+    const value = input.metrics[card.id as keyof DashboardHomeMetricSnapshot] ?? null;
     return {
       ...card,
-      displayValue: input.loading ? "—" : String(value ?? 0),
+      displayValue: formatDashboardMetricValue(value, !input.metricsLoaded),
       clickable: Boolean(card.href),
     };
   });
@@ -100,7 +84,7 @@ export function buildInsuranceHomeOverlay(input: {
   const summaryLines = home.summaryMetricIds
     .map((id) => {
       if (id === "renewals_placeholder") return null;
-      const value = input.metrics[id as keyof InsuranceHomeMetricValues] ?? 0;
+      const value = input.metrics[id as keyof DashboardHomeMetricSnapshot] ?? null;
       return metricLabelLine(id, value, input.module.crm.entityPlural);
     })
     .filter((line): line is string => Boolean(line));
@@ -109,25 +93,28 @@ export function buildInsuranceHomeOverlay(input: {
     ? `${input.partOfDayGreeting}. ${home.greetingLine}`.trim()
     : home.greetingLine;
 
+  const pending = input.metrics.pending_docs;
+  const tasks = input.metrics.open_tasks;
+  const meetings = input.metrics.meetings_today;
+  const newClients = input.metrics.new_clients_month;
+
   const priority =
-    input.metrics.pending_docs > 0
-      ? metricLabelLine("pending_docs", input.metrics.pending_docs, input.module.crm.entityPlural)
-      : input.metrics.open_tasks > 0
-        ? metricLabelLine("open_tasks", input.metrics.open_tasks, input.module.crm.entityPlural)
-        : input.metrics.meetings_today > 0
-          ? metricLabelLine("meetings_today", input.metrics.meetings_today, input.module.crm.entityPlural)
-          : input.metrics.new_clients_month > 0
-            ? metricLabelLine(
-                "new_clients_month",
-                input.metrics.new_clients_month,
-                input.module.crm.entityPlural
-              )
-            : "סוכנות הביטוח שלך מסודרת להיום.";
+    pending != null && pending > 0
+      ? metricLabelLine("pending_docs", pending, input.module.crm.entityPlural)
+      : tasks != null && tasks > 0
+        ? metricLabelLine("open_tasks", tasks, input.module.crm.entityPlural)
+        : meetings != null && meetings > 0
+          ? metricLabelLine("meetings_today", meetings, input.module.crm.entityPlural)
+          : newClients != null && newClients > 0
+            ? metricLabelLine("new_clients_month", newClients, input.module.crm.entityPlural)
+            : input.metricsLoaded
+              ? "סוכנות הביטוח שלך מסודרת להיום."
+              : DASHBOARD_NO_DATA_LABEL;
 
   return {
     greetingLine,
     summaryLines,
-    summaryParagraph: priority ?? "סוכנות הביטוח שלך מסודרת להיום.",
+    summaryParagraph: priority ?? DASHBOARD_NO_DATA_LABEL,
     cards,
   };
 }

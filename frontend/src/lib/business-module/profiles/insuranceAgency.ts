@@ -36,7 +36,7 @@ export const insuranceAgencyModule: BusinessModuleOverlay = {
           {
             id: "active_clients",
             label: "מבוטחים פעילים",
-            href: "/dashboard/clients",
+            href: "/crm",
             valueKind: "metric",
           },
           {
@@ -59,8 +59,8 @@ export const insuranceAgencyModule: BusinessModuleOverlay = {
           },
           {
             id: "new_clients_month",
-            label: "לקוחות חדשים החודש",
-            href: "/dashboard/clients",
+            label: "לידים חדשים",
+            href: "/crm",
             valueKind: "metric",
           },
           {

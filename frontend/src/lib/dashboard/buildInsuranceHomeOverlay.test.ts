@@ -5,6 +5,15 @@ import {
   buildInsuranceHomeOverlay,
   resolveInsuranceHomeMetrics,
 } from "./buildInsuranceHomeOverlay.ts";
+import { DASHBOARD_NO_DATA_LABEL } from "./homeMetrics.ts";
+
+const loadedMetrics = {
+  active_clients: 10,
+  open_tasks: 4,
+  meetings_today: 2,
+  pending_docs: 3,
+  new_clients_month: 1,
+};
 
 describe("insurance home overlay", () => {
   it("resolves insurance_agency module with insurance home layout and cards", () => {
@@ -22,60 +31,18 @@ describe("insurance home overlay", () => {
     assert.equal(module.dashboard.home.cards.length, 0);
   });
 
-  it("builds overlay from existing metrics only", () => {
+  it("uses authoritative home metrics without client list fallbacks", () => {
     const module = getBusinessModule("insurance_agency");
     const metrics = resolveInsuranceHomeMetrics({
-      stats: {
-        moneyToPay: 0,
-        moneyToReceive: 0,
-        pendingInvoices: 99,
-        missingInvoicesCount: 0,
-        upcomingPaymentsCount: 0,
-        openTasks: 4,
-        unreadAlerts: 0,
-        businessHealthScore: 80,
-        overdueCustomerInvoices: 0,
-        overdueSupplierPayments: 0,
-        hoursSavedThisWeek: 0,
-        supplierPaymentsCount: 0,
-        totalInvoices: 0,
-        unpaidPayments: 0,
-        paidPayments: 0,
-        scansCompleted: 0,
-        driveUploads: 0,
-        clients: 12,
-        totalClients: 10,
-        suspiciousPaymentsCount: 0,
-        currency: "ILS",
-      },
-      pendingDocsCount: 3,
-      upcomingAppointments: [
-        { id: "1", startTime: new Date().toISOString(), status: "scheduled", client: { name: "א" } },
-      ],
-      clients: {
-        clients: [
-          { id: "a", name: "חדש", color: null, createdAt: new Date().toISOString() },
-          {
-            id: "b",
-            name: "ישן",
-            color: null,
-            createdAt: new Date(2020, 0, 1).toISOString(),
-          },
-        ],
-        totals: { toPay: 0, openTasks: 0, invoices: 0, missingInvoices: 0 },
-      },
+      homeMetrics: loadedMetrics,
+      metricsLoaded: true,
     });
-
-    assert.equal(metrics.active_clients, 10);
-    assert.equal(metrics.open_tasks, 4);
-    assert.equal(metrics.pending_docs, 3);
-    assert.equal(metrics.new_clients_month, 1);
-    assert.ok(metrics.meetings_today >= 1);
+    assert.deepEqual(metrics, loadedMetrics);
 
     const overlay = buildInsuranceHomeOverlay({
       module,
       metrics,
-      loading: false,
+      metricsLoaded: true,
       partOfDayGreeting: "בוקר טוב",
     });
     assert.match(overlay.greetingLine, /בוקר טוב\.\s*הנה מצב סוכנות הביטוח/);
@@ -86,5 +53,38 @@ describe("insurance home overlay", () => {
     const renewals = overlay.cards.find((card) => card.id === "renewals_placeholder");
     assert.equal(renewals?.clickable, false);
     assert.match(renewals?.displayValue ?? "", /חידושים יופיעו/);
+  });
+
+  it("shows no-data label when metrics failed to load", () => {
+    const module = getBusinessModule("insurance_agency");
+    const metrics = resolveInsuranceHomeMetrics({
+      homeMetrics: null,
+      metricsLoaded: false,
+    });
+    assert.equal(metrics.active_clients, null);
+    const overlay = buildInsuranceHomeOverlay({
+      module,
+      metrics,
+      metricsLoaded: false,
+      partOfDayGreeting: "בוקר טוב",
+    });
+    const active = overlay.cards.find((card) => card.id === "active_clients");
+    assert.equal(active?.displayValue, "—");
+  });
+
+  it("shows no-data when loaded but payload missing", () => {
+    const module = getBusinessModule("insurance_agency");
+    const metrics = resolveInsuranceHomeMetrics({
+      homeMetrics: null,
+      metricsLoaded: true,
+    });
+    const overlay = buildInsuranceHomeOverlay({
+      module,
+      metrics,
+      metricsLoaded: true,
+      partOfDayGreeting: "בוקר טוב",
+    });
+    const active = overlay.cards.find((card) => card.id === "active_clients");
+    assert.equal(active?.displayValue, DASHBOARD_NO_DATA_LABEL);
   });
 });

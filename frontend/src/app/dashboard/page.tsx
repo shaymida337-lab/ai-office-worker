@@ -24,6 +24,17 @@ import {
   buildInsuranceHomeOverlay,
   resolveInsuranceHomeMetrics,
 } from "@/lib/dashboard/buildInsuranceHomeOverlay";
+import { DASHBOARD_NO_DATA_LABEL, formatDashboardMetricValue, metricCount } from "@/lib/dashboard/homeMetrics";
+
+function heroMetricLine(
+  count: number | null,
+  loaded: boolean,
+  template: (count: number) => string
+): string {
+  if (!loaded) return "—";
+  if (count == null) return DASHBOARD_NO_DATA_LABEL;
+  return template(count);
+}
 
 function greetingPrefixFromHeadline(headline: string): string {
   const match = headline.match(/^(בוקר טוב|צהריים טובים|ערב טוב|שלום|ברוך הבא חזרה)/);
@@ -35,33 +46,18 @@ export default function DashboardPage() {
   const { t, dir } = useI18n();
   const isInsuranceHome = d.businessModule.dashboard.home.layout === "insurance_agency";
 
-  const todayMeetings = useMemo(() => {
-    const now = new Date();
-    return d.upcomingAppointments.filter((appointment) => {
-      const date = new Date(appointment.startTime);
-      return (
-        date.getFullYear() === now.getFullYear()
-        && date.getMonth() === now.getMonth()
-        && date.getDate() === now.getDate()
-      );
-    }).length;
-  }, [d.upcomingAppointments]);
-
-  const openTasks = useMemo(
-    () => d.recentTasks.filter((task) => task.status !== "completed" && task.status !== "done").length,
-    [d.recentTasks]
-  );
-  const pendingDocs = isInsuranceHome ? d.pendingDocumentReviewsCount : d.documentReviews.length;
+  const openTasksCount = metricCount(d.homeMetricsSnapshot, "open_tasks");
+  const pendingDocsCount = metricCount(d.homeMetricsSnapshot, "pending_docs");
+  const todayMeetingsCount = metricCount(d.homeMetricsSnapshot, "meetings_today");
+  const unreadAlertsCount = d.unreadAlertsCount;
 
   const insuranceMetrics = useMemo(
     () =>
       resolveInsuranceHomeMetrics({
-        stats: d.stats,
-        pendingDocsCount: d.pendingDocumentReviewsCount,
-        upcomingAppointments: d.upcomingAppointments,
-        clients: d.clients,
+        homeMetrics: d.homeMetricsSnapshot,
+        metricsLoaded: d.homeMetricsLoaded,
       }),
-    [d.stats, d.pendingDocumentReviewsCount, d.upcomingAppointments, d.clients]
+    [d.homeMetricsSnapshot, d.homeMetricsLoaded]
   );
 
   const insuranceOverlay = useMemo(() => {
@@ -69,27 +65,42 @@ export default function DashboardPage() {
     return buildInsuranceHomeOverlay({
       module: d.businessModule,
       metrics: insuranceMetrics,
-      loading: d.pageLoading,
+      metricsLoaded: d.homeMetricsLoaded,
       partOfDayGreeting: greetingPrefixFromHeadline(d.morningGreeting.headline),
     });
-  }, [isInsuranceHome, d.businessModule, insuranceMetrics, d.pageLoading, d.morningGreeting.headline]);
+  }, [isInsuranceHome, d.businessModule, insuranceMetrics, d.homeMetricsLoaded, d.morningGreeting.headline]);
 
   const heroSummary = useMemo(() => {
     if (insuranceOverlay) return insuranceOverlay.summaryParagraph;
-    if (pendingDocs > 0) return t("dashboardDesign.summary.pendingDocs", { count: pendingDocs });
-    if (openTasks > 0) return t("dashboardDesign.summary.openTasks", { count: openTasks });
-    if (todayMeetings > 0) return t("dashboardDesign.summary.meetings", { count: todayMeetings });
+    if (pendingDocsCount != null && pendingDocsCount > 0) {
+      return t("dashboardDesign.summary.pendingDocs", { count: pendingDocsCount });
+    }
+    if (openTasksCount != null && openTasksCount > 0) {
+      return t("dashboardDesign.summary.openTasks", { count: openTasksCount });
+    }
+    if (todayMeetingsCount != null && todayMeetingsCount > 0) {
+      return t("dashboardDesign.summary.meetings", { count: todayMeetingsCount });
+    }
+    if (!d.homeMetricsLoaded) return t("dashboardDesign.summary.allClear");
     return t("dashboardDesign.summary.allClear");
-  }, [insuranceOverlay, openTasks, pendingDocs, t, todayMeetings]);
+  }, [insuranceOverlay, openTasksCount, pendingDocsCount, t, todayMeetingsCount, d.homeMetricsLoaded]);
 
   const kpis = useMemo(
     () => [
       { id: "income", label: t("dashboardDesign.kpi.income"), value: d.snapshotMetrics[0]?.value ?? "—" },
       { id: "expense", label: t("dashboardDesign.kpi.expense"), value: d.snapshotMetrics[1]?.value ?? "—" },
-      { id: "docs", label: t("dashboardDesign.kpi.documents"), value: d.pageLoading ? "—" : String(pendingDocs) },
-      { id: "meetings", label: t("dashboardDesign.kpi.meetings"), value: d.pageLoading ? "—" : String(todayMeetings) },
+      {
+        id: "docs",
+        label: t("dashboardDesign.kpi.documents"),
+        value: formatDashboardMetricValue(pendingDocsCount, !d.homeMetricsLoaded),
+      },
+      {
+        id: "meetings",
+        label: t("dashboardDesign.kpi.meetings"),
+        value: formatDashboardMetricValue(todayMeetingsCount, !d.homeMetricsLoaded),
+      },
     ],
-    [d.snapshotMetrics, d.pageLoading, pendingDocs, t, todayMeetings]
+    [d.snapshotMetrics, d.homeMetricsLoaded, pendingDocsCount, t, todayMeetingsCount]
   );
 
   const quickActions = useMemo(
@@ -207,9 +218,24 @@ export default function DashboardPage() {
                       ))
                     ) : (
                       <>
-                        <HeroLine icon={CalendarDays} text={t("dashboardDesign.hero.meetings", { count: todayMeetings })} />
-                        <HeroLine icon={FileClock} text={t("dashboardDesign.hero.documents", { count: pendingDocs })} />
-                        <HeroLine icon={ListTodo} text={t("dashboardDesign.hero.tasks", { count: openTasks })} />
+                        <HeroLine
+                          icon={CalendarDays}
+                          text={heroMetricLine(todayMeetingsCount, d.homeMetricsLoaded, (count) =>
+                            t("dashboardDesign.hero.meetings", { count })
+                          )}
+                        />
+                        <HeroLine
+                          icon={FileClock}
+                          text={heroMetricLine(pendingDocsCount, d.homeMetricsLoaded, (count) =>
+                            t("dashboardDesign.hero.documents", { count })
+                          )}
+                        />
+                        <HeroLine
+                          icon={ListTodo}
+                          text={heroMetricLine(openTasksCount, d.homeMetricsLoaded, (count) =>
+                            t("dashboardDesign.hero.tasks", { count })
+                          )}
+                        />
                       </>
                     )}
                   </div>
@@ -314,9 +340,21 @@ export default function DashboardPage() {
               <Card className="p-4">
                 <h2 className="text-base font-black text-[#0f172a] dark:text-[#F1F5F9]">{t("dashboardDesign.pending.title")}</h2>
                 <div className="mt-3 grid gap-2">
-                  <OverviewRow label={t("dashboardDesign.pending.tasks")} value={isInsuranceHome ? insuranceMetrics.open_tasks : openTasks} />
-                  <OverviewRow label={t("dashboardDesign.pending.documents")} value={pendingDocs} />
-                  <OverviewRow label={t("dashboardDesign.pending.alerts")} value={d.alerts.length} />
+                  <OverviewRow
+                    label={t("dashboardDesign.pending.tasks")}
+                    value={openTasksCount}
+                    loaded={d.homeMetricsLoaded}
+                  />
+                  <OverviewRow
+                    label={t("dashboardDesign.pending.documents")}
+                    value={pendingDocsCount}
+                    loaded={d.homeMetricsLoaded}
+                  />
+                  <OverviewRow
+                    label={t("dashboardDesign.pending.alerts")}
+                    value={unreadAlertsCount}
+                    loaded={d.homeMetricsLoaded}
+                  />
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <Button variant="secondary" size="sm" onClick={() => d.router.push("/tasks")}>
@@ -380,11 +418,21 @@ function HeroLine({
   );
 }
 
-function OverviewRow({ label, value }: { label: string; value: number }) {
+function OverviewRow({
+  label,
+  value,
+  loaded,
+}: {
+  label: string;
+  value: number | null;
+  loaded: boolean;
+}) {
   return (
     <div className="flex items-center justify-between rounded-xl border border-[#e2e8f0] bg-[#f8fafc] px-3 py-2 dark:border-[#1F2A44] dark:bg-[#0F172A]">
       <span className="text-sm font-semibold text-[#334155] dark:text-[#CBD5E1]">{label}</span>
-      <span className="text-base font-black text-[#0f172a] dark:text-[#F1F5F9]">{value}</span>
+      <span className="text-base font-black text-[#0f172a] dark:text-[#F1F5F9]">
+        {formatDashboardMetricValue(value, !loaded)}
+      </span>
     </div>
   );
 }

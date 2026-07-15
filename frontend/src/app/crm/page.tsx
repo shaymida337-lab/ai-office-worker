@@ -39,7 +39,16 @@ import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
 
 type CrmResponse = {
   leads: Lead[];
-  kpis: { newToday: number; responseRate: number; avgCloseDays: number; pipelineValue: number };
+  kpis: {
+    newToday: number;
+    responseRate: number;
+    avgCloseDays: number;
+    pipelineValue: number;
+    activeCustomers?: number;
+    newLeads?: number;
+    openTasks?: number;
+    unattended?: number;
+  };
   pipeline: Array<{ stage: string; count: number; value: number; conversionFromPrevious: number }>;
 };
 
@@ -203,7 +212,26 @@ export default function CrmPage() {
   }, [clients, data?.leads, filters.search, quickFilter]);
 
   const untreatedCount = useMemo(() => countUntreatedThisWeek(data?.leads ?? []), [data?.leads]);
-  const kpiValues = useMemo(() => computeCrmKpis(data?.leads ?? []), [data?.leads]);
+  // Prefer authoritative DB KPI counts from /api/leads (same source as dashboard home-metrics).
+  // Fall back to list-slice compute only if an older API omits the fields.
+  const kpiValues = useMemo(() => {
+    const fromApi = data?.kpis;
+    if (
+      fromApi &&
+      typeof fromApi.activeCustomers === "number" &&
+      typeof fromApi.newLeads === "number" &&
+      typeof fromApi.openTasks === "number" &&
+      typeof fromApi.unattended === "number"
+    ) {
+      return {
+        activeCustomers: fromApi.activeCustomers,
+        newLeads: fromApi.newLeads,
+        openTasks: fromApi.openTasks,
+        unattended: fromApi.unattended,
+      };
+    }
+    return computeCrmKpis(data?.leads ?? []);
+  }, [data?.kpis, data?.leads]);
 
   const businessModule = useMemo<BusinessModuleConfig>(
     () => getBusinessModule(organizationSettings?.businessType),

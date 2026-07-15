@@ -10,6 +10,7 @@ import { errorDetails } from "../lib/errors.js";
 import { readRequestId } from "../lib/requestId.js";
 import { databaseHost, prisma } from "../lib/prisma.js";
 import { getDashboardStats, getMissingInvoicesReport } from "../services/dashboard.js";
+import { getDashboardHomeMetrics } from "../services/dashboardHomeMetrics.js";
 import { buildDailySummary } from "../services/summary.js";
 import {
   getWhatsAppSettings,
@@ -2761,6 +2762,16 @@ apiRouter.get("/stats", async (req, res) => {
       currency: stats.currency,
     },
   });
+});
+
+apiRouter.get("/dashboard/home-metrics", async (req, res) => {
+  try {
+    const payload = await getDashboardHomeMetrics(req.auth!.organizationId);
+    res.json(payload);
+  } catch (err) {
+    console.error("[dashboard/home-metrics] failed", err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: "Failed to load dashboard home metrics" });
+  }
 });
 
 apiRouter.get("/communications", requirePerm("chat.use"), async (req, res) => {

@@ -1,8 +1,17 @@
 import { prisma } from "../lib/prisma.js";
+import { getCrmListKpis } from "./crm/crmCounts.js";
 import { buildRealStaleLeadWhere } from "./crm/leadQuality.js";
 import { assertOutboundEmailAllowed } from "./google.js";
 import { buildNatalieLeadReminder, buildNatalieStaleLeadsBatch, NATALIE_BRAND } from "./whatsapp/natalieWhatsAppUx.js";
 import { sendWhatsAppMessage, sendWhatsAppToPhone } from "./whatsapp.js";
+
+export {
+  countCrmActiveCustomers,
+  countCrmNewLeads,
+  countCrmOpenReminders,
+  countCrmUnattended,
+  getCrmListKpis,
+} from "./crm/crmCounts.js";
 
 export const LEAD_STAGES = ["חדש", "יצירת קשר", "בטיפול", "הצעת מחיר", "סגור", "הפסד"] as const;
 export const LEAD_SOURCES = ["whatsapp", "email", "website", "referral", "manual", "facebook"] as const;
@@ -455,12 +464,13 @@ export async function createLeadFromUnknownWhatsApp(organizationId: string, phon
 export async function getCrmKpis(organizationId: string) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const [newToday, all, replied, pipeline, closed] = await Promise.all([
+  const [newToday, all, replied, pipeline, closed, listKpis] = await Promise.all([
     prisma.lead.count({ where: { organizationId, createdAt: { gte: today } } }),
     prisma.lead.count({ where: { organizationId } }),
     prisma.lead.count({ where: { organizationId, repliedAt: { not: null } } }),
     prisma.lead.aggregate({ where: { organizationId, stage: { notIn: ["הפסד"] } }, _sum: { estimatedValue: true } }),
     prisma.lead.findMany({ where: { organizationId, stage: "סגור" }, select: { createdAt: true, updatedAt: true } }),
+    getCrmListKpis(organizationId),
   ]);
   const avgCloseDays = closed.length
     ? Math.round(closed.reduce((sum, lead) => sum + Math.max(0, lead.updatedAt.getTime() - lead.createdAt.getTime()) / 86_400_000, 0) / closed.length)
@@ -470,6 +480,11 @@ export async function getCrmKpis(organizationId: string) {
     responseRate: all ? Math.round((replied / all) * 100) : 0,
     avgCloseDays,
     pipelineValue: pipeline._sum.estimatedValue ?? 0,
+    /** Same DB counts CRM KPI cards + dashboard home must use (not list slice). */
+    activeCustomers: listKpis.activeCustomers,
+    newLeads: listKpis.newLeads,
+    openTasks: listKpis.openTasks,
+    unattended: listKpis.unattended,
   };
 }
 

@@ -50,6 +50,10 @@ import { resolveScanStatusFromSettled } from "@/lib/dashboard/scanStatusTruth";
 import { buildDashboardHomeViewModel } from "@/lib/dashboard/buildDashboardHomeViewModel";
 import { emptyClients, emptyScanStatus } from "@/lib/dashboard/homePageConstants";
 import {
+  type DashboardHomeMetricsResponse,
+  snapshotFromHomeMetrics,
+} from "@/lib/dashboard/homeMetrics";
+import {
   conversationRequestsGmailScan,
   conversationRequestsScanProgress,
 } from "@/lib/dashboard/dashboardActionFeedback";
@@ -114,8 +118,10 @@ export function useDashboardHome() {
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [documentReviews, setDocumentReviews] = useState<DocumentReview[]>([]);
-  /** Full count from GET /api/document-reviews?status=needs_review (UI list remains sliced). */
+  /** Full count from GET /api/document-reviews?status=needs_review (UI list only; metrics use /dashboard/home-metrics). */
   const [pendingDocumentReviewsCount, setPendingDocumentReviewsCount] = useState(0);
+  const [homeMetrics, setHomeMetrics] = useState<DashboardHomeMetricsResponse | null>(null);
+  const [homeMetricsLoaded, setHomeMetricsLoaded] = useState(false);
   const [upcomingAppointments, setUpcomingAppointments] = useState<UpcomingAppointment[]>([]);
   const [briefingScheduling, setBriefingScheduling] = useState<BriefingSchedulingSnapshot | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
@@ -194,6 +200,7 @@ export function useDashboardHome() {
         apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review"),
         fetchBriefingSchedulingSnapshot(appointmentFrom, appointmentTo),
         apiFetch<Task[]>("/api/tasks"),
+        apiFetch<DashboardHomeMetricsResponse>("/api/dashboard/home-metrics"),
       ] as const);
       const deferredPromise = Promise.allSettled([
         apiFetch<{ text: string }>("/api/summary/daily"),
@@ -207,9 +214,16 @@ export function useDashboardHome() {
         apiFetch<AccountantSummary>("/api/accountant/summary"),
       ] as const);
 
-      const [statsResult, gmailResult, orgResult, reviewsResult, briefingResult, tasksResult] = await criticalPromise;
+      const [statsResult, gmailResult, orgResult, reviewsResult, briefingResult, tasksResult, homeMetricsResult] =
+        await criticalPromise;
 
       setStats(statsResult.status === "fulfilled" ? statsResult.value : null);
+      if (homeMetricsResult.status === "fulfilled") {
+        setHomeMetrics(homeMetricsResult.value);
+      } else {
+        setHomeMetrics(null);
+      }
+      setHomeMetricsLoaded(true);
       const gmailResolved = resolveGmailStatusFromSettled(gmailStatus, gmailResult);
       setGmailStatus(gmailResolved.nextStatus);
       setGmailStatusKnown(gmailResolved.known);
@@ -1102,6 +1116,17 @@ export function useDashboardHome() {
     [organizationSettings?.businessType]
   );
 
+  const homeMetricsSnapshot = useMemo(
+    () => snapshotFromHomeMetrics(homeMetrics),
+    [homeMetrics]
+  );
+
+  const unreadAlertsCount = useMemo(() => {
+    if (!homeMetricsLoaded) return null;
+    const value = homeMetrics?.metrics.unread_alerts;
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }, [homeMetricsLoaded, homeMetrics]);
+
   return {
     router,
     stats,
@@ -1139,6 +1164,9 @@ export function useDashboardHome() {
     displayToast,
     businessName,
     businessModule,
+    homeMetricsSnapshot,
+    homeMetricsLoaded,
+    unreadAlertsCount,
     heroTrust,
     heroBriefing,
     dashboardSyncState,
