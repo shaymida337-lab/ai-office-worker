@@ -47,6 +47,13 @@ describe("insurance home overlay", () => {
     });
     assert.match(overlay.greetingLine, /בוקר טוב\.\s*הנה מצב סוכנות הביטוח/);
     assert.equal(overlay.cards.length, 6);
+    assert.deepEqual(overlay.summaryLines, [
+      "יש 10 מבוטחים פעילים",
+      "יש 1 לידים חדשים",
+      "יש 2 פגישות היום",
+      "יש 4 משימות פתוחות",
+    ]);
+    assert.equal(overlay.summaryParagraph, "יש 3 מסמכים שממתינים לטיפול");
     const pending = overlay.cards.find((card) => card.id === "pending_docs");
     assert.equal(pending?.displayValue, "3");
     assert.equal(pending?.href, "/dashboard/document-reviews");
@@ -70,6 +77,8 @@ describe("insurance home overlay", () => {
     });
     const active = overlay.cards.find((card) => card.id === "active_clients");
     assert.equal(active?.displayValue, "—");
+    assert.ok(overlay.summaryLines.every((line) => line === "—"));
+    assert.equal(overlay.summaryParagraph, "—");
   });
 
   it("shows no-data when loaded but payload missing", () => {
@@ -86,5 +95,32 @@ describe("insurance home overlay", () => {
     });
     const active = overlay.cards.find((card) => card.id === "active_clients");
     assert.equal(active?.displayValue, DASHBOARD_NO_DATA_LABEL);
+    assert.ok(overlay.summaryLines.every((line) => line === DASHBOARD_NO_DATA_LABEL));
+    assert.equal(overlay.summaryParagraph, DASHBOARD_NO_DATA_LABEL);
+  });
+
+  it("hero summary lines match CRM home-metrics active and new leads", () => {
+    const module = getBusinessModule("insurance_agency");
+    assert.deepEqual(module.dashboard.home.summaryMetricIds, [
+      "active_clients",
+      "new_clients_month",
+      "meetings_today",
+      "open_tasks",
+    ]);
+    const overlay = buildInsuranceHomeOverlay({
+      module,
+      metrics: {
+        active_clients: 41,
+        open_tasks: 0,
+        meetings_today: 0,
+        pending_docs: 0,
+        new_clients_month: 38,
+      },
+      metricsLoaded: true,
+      partOfDayGreeting: "ערב טוב",
+    });
+    assert.equal(overlay.summaryLines[0], "יש 41 מבוטחים פעילים");
+    assert.equal(overlay.summaryLines[1], "יש 38 לידים חדשים");
+    assert.equal(overlay.summaryParagraph, "יש 38 לידים חדשים");
   });
 });

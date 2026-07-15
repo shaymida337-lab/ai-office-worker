@@ -71,7 +71,7 @@ export const insuranceAgencyModule: BusinessModuleOverlay = {
             placeholderText: "חידושים יופיעו לאחר הוספת פוליסות",
           },
         ],
-        summaryMetricIds: ["meetings_today", "open_tasks", "pending_docs", "new_clients_month"],
+        summaryMetricIds: ["active_clients", "new_clients_month", "meetings_today", "open_tasks"],
       },
     },
     navigation: {

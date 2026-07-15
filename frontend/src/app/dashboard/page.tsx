@@ -198,20 +198,22 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="grid gap-2 rounded-2xl border border-[#dbe6ff] bg-white/90 p-3 dark:border-[#1F2A44] dark:bg-[#0F172A]/90">
-                    {d.pageLoading ? (
+                    {d.pageLoading || !d.homeMetricsLoaded ? (
                       <SkeletonText lines={3} />
                     ) : insuranceOverlay ? (
-                      insuranceOverlay.summaryLines.map((line) => (
+                      insuranceOverlay.summaryLines.map((line, index) => (
                         <HeroLine
-                          key={line}
+                          key={`hero-metric-${index}`}
                           icon={
-                            line.includes("פגיש")
-                              ? CalendarDays
-                              : line.includes("משימ")
-                                ? ListTodo
-                                : line.includes("מסמכ")
-                                  ? FileClock
-                                  : Sparkles
+                            line.includes("מבוטח") || line.includes("ליד")
+                              ? Sparkles
+                              : line.includes("פגיש")
+                                ? CalendarDays
+                                : line.includes("משימ")
+                                  ? ListTodo
+                                  : line.includes("מסמכ")
+                                    ? FileClock
+                                    : Sparkles
                           }
                           text={line}
                         />
@@ -240,7 +242,7 @@ export default function DashboardPage() {
                     )}
                   </div>
 
-                  {d.pageLoading ? (
+                  {d.pageLoading || !d.homeMetricsLoaded ? (
                     <div className="rounded-xl border border-[#e5ebfb] bg-white px-3 py-2 dark:border-[#1F2A44] dark:bg-[#0F172A]">
                       <SkeletonText lines={1} />
                     </div>

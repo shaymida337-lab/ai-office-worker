@@ -36,13 +36,17 @@ export function resolveInsuranceHomeMetrics(input: {
   return input.homeMetrics;
 }
 
+/** Hero / summary copy from home-metrics only — no alternate counts. */
 function metricLabelLine(
   id: HomeMetricId,
   value: number | null,
-  entityPlural: string
-): string | null {
-  if (value == null) return null;
+  metricsLoaded: boolean
+): string {
+  if (!metricsLoaded) return "—";
+  if (value == null || !Number.isFinite(value)) return DASHBOARD_NO_DATA_LABEL;
   switch (id) {
+    case "active_clients":
+      return value === 0 ? "אין מבוטחים פעילים" : `יש ${value} מבוטחים פעילים`;
     case "meetings_today":
       return value === 0 ? "אין פגישות היום" : `יש ${value} פגישות היום`;
     case "open_tasks":
@@ -53,9 +57,43 @@ function metricLabelLine(
         : `יש ${value} מסמכים שממתינים לטיפול`;
     case "new_clients_month":
       return value === 0 ? "אין לידים חדשים" : `יש ${value} לידים חדשים`;
+    case "renewals_placeholder":
+      return DASHBOARD_NO_DATA_LABEL;
     default:
-      return null;
+      return DASHBOARD_NO_DATA_LABEL;
   }
+}
+
+function summaryParagraphFromHomeMetrics(
+  metrics: DashboardHomeMetricSnapshot,
+  metricsLoaded: boolean
+): string {
+  if (!metricsLoaded) return "—";
+  const pending = metrics.pending_docs;
+  const tasks = metrics.open_tasks;
+  const meetings = metrics.meetings_today;
+  const newClients = metrics.new_clients_month;
+  const active = metrics.active_clients;
+
+  // Payload missing / unreliable → never invent a calm status line.
+  if (
+    pending == null &&
+    tasks == null &&
+    meetings == null &&
+    newClients == null &&
+    active == null
+  ) {
+    return DASHBOARD_NO_DATA_LABEL;
+  }
+
+  if (pending != null && pending > 0) return metricLabelLine("pending_docs", pending, true);
+  if (tasks != null && tasks > 0) return metricLabelLine("open_tasks", tasks, true);
+  if (meetings != null && meetings > 0) return metricLabelLine("meetings_today", meetings, true);
+  if (newClients != null && newClients > 0) {
+    return metricLabelLine("new_clients_month", newClients, true);
+  }
+  if (active != null && active > 0) return metricLabelLine("active_clients", active, true);
+  return "סוכנות הביטוח שלך מסודרת להיום.";
 }
 
 export function buildInsuranceHomeOverlay(input: {
@@ -81,40 +119,22 @@ export function buildInsuranceHomeOverlay(input: {
     };
   });
 
+  // Hero lines: always one line per configured metric id, only from home-metrics.
   const summaryLines = home.summaryMetricIds
+    .filter((id) => id !== "renewals_placeholder")
     .map((id) => {
-      if (id === "renewals_placeholder") return null;
       const value = input.metrics[id as keyof DashboardHomeMetricSnapshot] ?? null;
-      return metricLabelLine(id, value, input.module.crm.entityPlural);
-    })
-    .filter((line): line is string => Boolean(line));
+      return metricLabelLine(id, value, input.metricsLoaded);
+    });
 
   const greetingLine = input.partOfDayGreeting
     ? `${input.partOfDayGreeting}. ${home.greetingLine}`.trim()
     : home.greetingLine;
 
-  const pending = input.metrics.pending_docs;
-  const tasks = input.metrics.open_tasks;
-  const meetings = input.metrics.meetings_today;
-  const newClients = input.metrics.new_clients_month;
-
-  const priority =
-    pending != null && pending > 0
-      ? metricLabelLine("pending_docs", pending, input.module.crm.entityPlural)
-      : tasks != null && tasks > 0
-        ? metricLabelLine("open_tasks", tasks, input.module.crm.entityPlural)
-        : meetings != null && meetings > 0
-          ? metricLabelLine("meetings_today", meetings, input.module.crm.entityPlural)
-          : newClients != null && newClients > 0
-            ? metricLabelLine("new_clients_month", newClients, input.module.crm.entityPlural)
-            : input.metricsLoaded
-              ? "סוכנות הביטוח שלך מסודרת להיום."
-              : DASHBOARD_NO_DATA_LABEL;
-
   return {
     greetingLine,
     summaryLines,
-    summaryParagraph: priority ?? DASHBOARD_NO_DATA_LABEL,
+    summaryParagraph: summaryParagraphFromHomeMetrics(input.metrics, input.metricsLoaded),
     cards,
   };
 }
