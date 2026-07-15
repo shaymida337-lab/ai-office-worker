@@ -133,26 +133,22 @@ test("existing document preview flow keeps working: stored path -> signed url ->
   });
 });
 
-test("containment preview returns Hebrew HTML to browsers, not English JSON payload", async () => {
+test("containment on: signed GET still serves saved upload files (read path)", async () => {
   await withServer(async (baseUrl) => {
     const signed = signLocalUploadUrl(TEST_PATH, ORG_A);
-    const browserRes = await fetch(`${baseUrl}${signed}`, {
+    const res = await fetch(`${baseUrl}${signed}`, {
       headers: { Accept: "text/html,application/xhtml+xml,*/*" },
     });
-    assert.equal(browserRes.status, 503);
-    assert.match(browserRes.headers.get("content-type") ?? "", /text\/html/i);
-    const html = await browserRes.text();
-    assert.match(html, /התצוגה המקדימה אינה זמינה/);
-    assert.doesNotMatch(html, /FINANCIAL_INGESTION_CONTAINMENT/);
-    assert.doesNotMatch(html, /tenant isolation/);
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), TEST_CONTENT);
 
-    const apiRes = await fetch(`${baseUrl}${signed}`, {
-      headers: { Accept: "application/json" },
-    });
-    assert.equal(apiRes.status, 503);
-    const body = (await apiRes.json()) as { error?: string; code?: string };
-    assert.equal(body.code, "FINANCIAL_INGESTION_CONTAINMENT");
-    assert.match(body.error ?? "", /התצוגה המקדימה אינה זמינה/);
-    assert.doesNotMatch(body.error ?? "", /tenant isolation/i);
+    const missingSigned = signLocalUploadUrl(
+      `/uploads/camera-invoices/missing-${process.pid}-does-not-exist.pdf`,
+      ORG_A,
+    );
+    const missing = await fetch(`${baseUrl}${missingSigned}`);
+    assert.equal(missing.status, 404);
+    const body = (await missing.json()) as { error?: string };
+    assert.equal(body.error, "File not found");
   }, { containment: "on" });
 });
