@@ -58,9 +58,29 @@ export function LandingHeader() {
           </Link>
         </nav>
 
-        <div className="flex shrink-0 items-center gap-2">
-          <Link href="/natalie" className="btn hidden min-h-10 px-4 py-2 text-sm sm:inline-flex">
+        <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
+          {/* Mobile-first: auth actions always visible — no need to open the menu */}
+          <Link
+            href="/login"
+            className={`${radius.control} inline-flex min-h-10 items-center justify-center border px-2.5 text-xs font-bold sm:px-3 sm:text-sm md:hidden`}
+            style={{ borderColor: colors.border, backgroundColor: colors.surface, color: colors.textPrimary }}
+            data-testid="header-login"
+          >
+            התחברות
+          </Link>
+          <Link
+            href="/signup"
+            className="btn inline-flex min-h-10 px-2.5 py-2 text-xs sm:px-3 sm:text-sm md:hidden"
+            data-testid="header-signup"
+          >
+            התחלת ניסיון חינם
+          </Link>
+
+          <Link href="/natalie" className="btn hidden min-h-10 px-4 py-2 text-sm md:inline-flex">
             לדבר עם נטלי
+          </Link>
+          <Link href="/signup" className="btn hidden min-h-10 px-4 py-2 text-sm md:inline-flex">
+            התחלת ניסיון חינם
           </Link>
           <button
             type="button"
@@ -92,20 +112,9 @@ export function LandingHeader() {
                 {item.label}
               </a>
             ))}
-            <Link
-              href="/login"
-              className={`${radius.control} px-3 py-3 text-sm font-semibold`}
-              style={{ color: colors.textPrimary }}
-              onClick={() => setOpen(false)}
-            >
-              התחברות
-            </Link>
             <Link href="/natalie" className="btn mt-2 w-full" onClick={() => setOpen(false)}>
               לדבר עם נטלי — דמו חי
             </Link>
-            <a href="#pricing" className="btn btn-secondary mt-1 w-full" onClick={() => setOpen(false)}>
-              ניסיון 14 יום — בלי כרטיס אשראי
-            </a>
           </nav>
         </div>
       ) : null}
