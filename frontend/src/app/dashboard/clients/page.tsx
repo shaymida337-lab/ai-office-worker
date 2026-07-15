@@ -11,7 +11,8 @@ import {
 } from "@/lib/clients/clientForm";
 import { buildClientsListSearch, type SearchableLead } from "@/lib/clients/clientsListSearch";
 import { useBusinessModule } from "@/lib/business-module";
-import { Mail, Plus, RefreshCcw, Search, ShieldCheck, Users } from "lucide-react";
+import { Mail, Plus, RefreshCcw, Search, ShieldCheck, Upload, Users } from "lucide-react";
+import { ImportClientsDialog } from "@/components/clients/ImportClientsDialog";
 
 type ClientItem = ClientRecord & {
   phone?: string | null;
@@ -51,6 +52,7 @@ export default function ClientsPage() {
   const [leads, setLeads] = useState<SearchableLead[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -139,11 +141,36 @@ export default function ClientsPage() {
               : "כל לקוח, האינטגרציות שלו והמדדים העסקיים במקום אחד."}
           </p>
         </div>
-        <button className="btn" onClick={() => setShowForm((v) => !v)}>
-          <Plus className="h-4 w-4" />
-          {`הוסף ${businessModule.crm.entitySingular} חדש`}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            className="btn"
+            type="button"
+            onClick={() => setShowForm((v) => !v)}
+            data-testid="clients-add-button"
+          >
+            <Plus className="h-4 w-4" />
+            {`הוסף ${businessModule.crm.entitySingular} חדש`}
+          </button>
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={() => setShowImport(true)}
+            data-testid="clients-import-button"
+          >
+            <Upload className="h-4 w-4" />
+            ייבוא לקוחות
+          </button>
+        </div>
       </div>
+
+      <ImportClientsDialog
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={async () => {
+          setMessage("ייבוא הלקוחות הושלם");
+          await load();
+        }}
+      />
 
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
 

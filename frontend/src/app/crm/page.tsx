@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, Search, X } from "lucide-react";
+import { Plus, Search, Upload, X } from "lucide-react";
 import {
   applyQuickFilter,
   computeCrmKpis,
@@ -17,6 +17,7 @@ import {
   type Lead,
 } from "@/components/crm";
 import { channelLabel } from "@/components/crm/crmHelpers";
+import { ImportClientsDialog } from "@/components/clients/ImportClientsDialog";
 import {
   AppShell,
   Button,
@@ -120,6 +121,7 @@ export default function CrmPage() {
   const [quickFilter, setQuickFilter] = useState<CrmQuickFilter>("all");
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   // "שמור ליד": באנר הצלחה ירוק (נעלם אחרי 2.5ש') ושגיאה אדומה — הכרטיס נשאר פתוח
   const [saveNotice, setSaveNotice] = useState("");
   const [saveError, setSaveError] = useState("");
@@ -442,6 +444,15 @@ export default function CrmPage() {
               <Plus className="h-4 w-4" />
               {t("crmDesign.addCustomer")}
             </Button>
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => setShowImport(true)}
+              data-testid="crm-import-clients"
+            >
+              <Upload className="h-4 w-4" />
+              ייבוא לקוחות
+            </Button>
             <Button variant="secondary" type="button" onClick={() => setTemplatesOpen((open) => !open)}>
               {t("crmDesign.templates")}
             </Button>
@@ -460,6 +471,15 @@ export default function CrmPage() {
               {t("crmDesign.floatingNatalie")}
             </Button>
           </div>
+
+          <ImportClientsDialog
+            open={showImport}
+            onClose={() => setShowImport(false)}
+            onImported={async () => {
+              setMessage("ייבוא הלקוחות הושלם");
+              await load();
+            }}
+          />
 
           {/* חיפוש לידים לפי שם, טלפון או אימייל — מסנן את הרשימה בפועל. */}
           <div className="relative">

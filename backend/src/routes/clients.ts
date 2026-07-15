@@ -1,6 +1,7 @@
 import { Router, type RequestHandler } from "express";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
+import multer from "multer";
 import { authMiddleware, verifyToken, type JwtPayload } from "../lib/auth.js";
 import { config, hasGoogleOAuth } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
@@ -14,12 +15,17 @@ import {
   getClientDeliverableEmail,
   normalizeClientEmailInput,
 } from "../services/clientContact.js";
+import { executeClientImport, previewClientImport } from "../services/clients/clientImport.js";
 
 export const clientsRouter = Router();
 
 const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"];
 const VALID_PRIORITIES = new Set(["low", "medium", "high"]);
 const VALID_STATUSES = new Set(["todo", "in-progress", "done", "open"]);
+const clientImportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
 
 function parseSheetId(url?: string): string | null {
   return url?.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)?.[1] ?? null;
@@ -291,6 +297,65 @@ clientsRouter.post("/", authMiddleware, async (req, res) => {
   });
 
   res.status(201).json({ client: { ...client, stats: await clientStats(organizationId, client.id) } });
+});
+
+clientsRouter.post(
+  "/import/preview",
+  authMiddleware,
+  clientImportUpload.single("file"),
+  async (req, res) => {
+    try {
+      const file = req.file;
+      if (!file?.buffer?.length) {
+        res.status(400).json({ error: "יש להעלות קובץ Excel או CSV" });
+        return;
+      }
+      const lower = (file.originalname || "").toLowerCase();
+      if (!/\.(xlsx|xls|csv)$/.test(lower)) {
+        res.status(400).json({ error: "נתמכים רק קבצי Excel או CSV" });
+        return;
+      }
+      const preview = await previewClientImport({
+        organizationId: req.auth!.organizationId,
+        buffer: file.buffer,
+        fileName: file.originalname || "clients.xlsx",
+      });
+      res.json(preview);
+    } catch (err) {
+      console.error("[clients/import/preview] failed", err);
+      res.status(500).json({ error: err instanceof Error ? err.message : "תצוגה מקדימה לייבוא נכשלה" });
+    }
+  }
+);
+
+clientsRouter.post("/import", authMiddleware, async (req, res) => {
+  try {
+    const body = req.body as { rows?: Array<{
+      name?: string;
+      phone?: string | null;
+      email?: string | null;
+      address?: string | null;
+      notes?: string | null;
+    }> };
+    if (!Array.isArray(body.rows) || body.rows.length === 0) {
+      res.status(400).json({ error: "אין שורות לייבוא" });
+      return;
+    }
+    const result = await executeClientImport({
+      organizationId: req.auth!.organizationId,
+      rows: body.rows.map((row) => ({
+        name: String(row.name ?? ""),
+        phone: row.phone ?? null,
+        email: row.email ?? null,
+        address: row.address ?? null,
+        notes: row.notes ?? null,
+      })),
+    });
+    res.json(result);
+  } catch (err) {
+    console.error("[clients/import] failed", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "ייבוא לקוחות נכשל" });
+  }
 });
 
 clientsRouter.get("/connect-gmail/:clientId", redirectToClientGmailOAuth);
