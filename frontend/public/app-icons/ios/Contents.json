@@ -1,0 +1,74 @@
+{
+  "images": [
+    {
+      "idiom": "iphone",
+      "scale": "2x",
+      "size": "20x20",
+      "filename": "fiona.g@example.net"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "3x",
+      "size": "20x20",
+      "filename": "beth.t@example.com"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "2x",
+      "size": "29x29",
+      "filename": "grace.l@example.com"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "3x",
+      "size": "29x29",
+      "filename": "aaron.s@example.org"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "2x",
+      "size": "40x40",
+      "filename": "xavier.y@example.org"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "3x",
+      "size": "40x40",
+      "filename": "nina.v@example.com"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "2x",
+      "size": "60x60",
+      "filename": "paula.r@example.org"
+    },
+    {
+      "idiom": "iphone",
+      "scale": "3x",
+      "size": "60x60",
+      "filename": "laura.c@example.net"
+    },
+    {
+      "idiom": "ipad",
+      "scale": "2x",
+      "size": "76x76",
+      "filename": "AppIcon-ipad-76@2x.png"
+    },
+    {
+      "idiom": "ipad",
+      "scale": "2x",
+      "size": "83.5x83.5",
+      "filename": "AppIcon-ipad-835@2x.png"
+    },
+    {
+      "idiom": "ios-marketing",
+      "scale": "1x",
+      "size": "1024x1024",
+      "filename": "AppIcon-1024.png"
+    }
+  ],
+  "info": {
+    "author": "natalie-ai",
+    "version": 1
+  }
+}
