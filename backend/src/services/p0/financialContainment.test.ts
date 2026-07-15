@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   assertFinancialIngestionAllowed,
   FinancialIngestionBlockedError,
+  isAllowedInvoiceListRead,
   isFinancialDataContainmentActive,
   isFinancialDataPath,
   isFinancialIngestionContainmentActive,
@@ -46,6 +47,15 @@ test("isFinancialDataPath covers financial reads and ingestion routes", () => {
   assert.equal(isFinancialDataPath("/gmail/scan/abc123"), true);
   assert.equal(isFinancialDataPath("/verification"), true);
   assert.equal(isFinancialDataPath("/dashboard/stats"), false);
+});
+
+test("isAllowedInvoiceListRead allows only GET invoices list and months", () => {
+  assert.equal(isAllowedInvoiceListRead("GET", "/invoices"), true);
+  assert.equal(isAllowedInvoiceListRead("get", "/invoices/months"), true);
+  assert.equal(isAllowedInvoiceListRead("GET", "/invoices/abc"), false);
+  assert.equal(isAllowedInvoiceListRead("GET", "/payments"), false);
+  assert.equal(isAllowedInvoiceListRead("POST", "/invoices"), false);
+  assert.equal(isAllowedInvoiceListRead("PUT", "/invoices/months"), false);
 });
 
 const TRUTH_TABLE: Array<{

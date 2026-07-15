@@ -132,14 +132,28 @@ test("isFinancialDataPath covers invoice and payment read routes", () => {
   assert.equal(isFinancialDataPath("/dashboard/stats"), false);
 });
 
-test("financial read path returns 503 when read containment active", async () => {
-  const result = await requestContainment("/invoices", "0", "1", "0");
+test("invoice list GET is allowed under active read containment", async () => {
+  const list = await requestContainment("/invoices", "0", "1", "1");
+  assert.equal(list.status, 200);
+  const months = await requestContainment("/invoices/months", "0", "1", "1");
+  assert.equal(months.status, 200);
+});
+
+test("invoice list GET is allowed even when legacy master read gate is on", async () => {
+  const list = await requestContainment("/invoices", "1", "1", "1");
+  assert.equal(list.status, 200);
+  const months = await requestContainment("/invoices/months", "1", "1", "1");
+  assert.equal(months.status, 200);
+});
+
+test("other financial read path returns 503 when read containment active", async () => {
+  const result = await requestContainment("/payments", "0", "1", "0");
   assert.equal(result.status, 503);
   assert.equal(result.body.code, "FINANCIAL_READ_CONTAINMENT");
 });
 
 test("financial read path continues when read containment inactive", async () => {
-  const result = await requestContainment("/invoices", "0", "0", "1");
+  const result = await requestContainment("/payments", "0", "0", "1");
   assert.equal(result.status, 200);
 });
 

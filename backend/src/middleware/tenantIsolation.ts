@@ -3,6 +3,7 @@ import { resolveVerifiedTenant } from "../services/tenant/verifiedTenant.js";
 import {
   FINANCIAL_INGESTION_CONTAINMENT_CODE,
   FINANCIAL_READ_CONTAINMENT_CODE,
+  isAllowedInvoiceListRead,
   isFinancialDataPath,
   isFinancialIngestionContainmentActive,
   isFinancialIngestionPath,
@@ -10,6 +11,7 @@ import {
 } from "../services/p0/financialContainment.js";
 
 export {
+  isAllowedInvoiceListRead,
   isFinancialDataContainmentActive,
   isFinancialDataPath,
   isFinancialIngestionContainmentActive,
@@ -89,6 +91,12 @@ export function financialDataContainmentMiddleware(
       );
       return;
     }
+    next();
+    return;
+  }
+
+  // Controlled reopen: invoice list + month tabs only (GET). All other financial reads stay gated.
+  if (isAllowedInvoiceListRead(req.method, req.path)) {
     next();
     return;
   }

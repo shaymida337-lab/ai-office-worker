@@ -127,6 +127,16 @@ export function isFinancialDataPath(path: string): boolean {
   return FINANCIAL_DATA_PATH_PATTERNS.some((pattern) => pattern.test(path));
 }
 
+/**
+ * Invoice list UI needs GET /invoices and GET /invoices/months while read
+ * containment remains on for other financial surfaces. Auth + org isolation
+ * still run on the route handlers. Does not reopen ingestion or writes.
+ */
+export function isAllowedInvoiceListRead(method: string, path: string): boolean {
+  if (method.toUpperCase() !== "GET") return false;
+  return path === "/invoices" || path === "/invoices/months";
+}
+
 export function isFinancialIngestionPath(path: string): boolean {
   return (
     /^\/gmail\/scan(?:\/|$)/.test(path) ||
