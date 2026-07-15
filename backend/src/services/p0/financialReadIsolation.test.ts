@@ -40,10 +40,33 @@ test("buildFinancialDocumentReviewReadIsolationWhere keeps gmailMessageId null-s
   assert.ok(_typecheck);
 });
 
-test("buildGmailScanItemReadIsolationWhere keeps gmailMessageId null-safe", () => {
+test("buildGmailScanItemReadIsolationWhere uses notIn only (gmailMessageId is required)", () => {
   const where = buildGmailScanItemReadIsolationWhere(ORG_A, CONTAMINATED);
-  assert.ok("OR" in where);
+  // Gmail scan rows always have a gmailMessageId — never use `{ gmailMessageId: null }`.
+  assert.equal("OR" in where, false);
   assert.equal("emailMessageId" in where, false);
+  assert.deepEqual(where.gmailMessageId, { notIn: CONTAMINATED });
+  const _typecheck: Prisma.GmailScanItemWhereInput = where;
+  assert.ok(_typecheck);
+});
+
+test("buildGmailScanItemReadIsolationWhere is accepted by Prisma (null branch must never appear)", async () => {
+  const { PrismaClient } = await import("@prisma/client");
+  const prisma = new PrismaClient();
+  const where = buildGmailScanItemReadIsolationWhere(ORG_A, CONTAMINATED);
+  try {
+    await prisma.gmailScanItem.findMany({ where, take: 1 });
+  } finally {
+    await prisma.$disconnect();
+  }
+});
+
+test("camera FDR null gmailMessageId and Gmail FDR id both stay eligible under isolation", () => {
+  const where = buildFinancialDocumentReviewReadIsolationWhere(ORG_A, ["gmail-cross-1"]);
+  // null gmailMessageId (camera/manual) matches first OR branch
+  assert.deepEqual(where.OR?.[0], { gmailMessageId: null });
+  // regular Gmail gmailMessageId matches notIn second branch
+  assert.deepEqual(where.OR?.[1], { gmailMessageId: { notIn: ["gmail-cross-1"] } });
 });
 
 test("supplier payment isolation excludes cross-org contaminated ids for other orgs", () => {

@@ -62,7 +62,10 @@ test("supplier payment findMany query uses emailMessageId with 118 cross-org exc
     await prisma.supplierPayment.findMany({ where, orderBy: { date: "desc" }, take: 100 });
     assert.equal(captured.length, 1);
     assert.equal("gmailMessageId" in captured[0]!, false);
-    assert.deepEqual(captured[0]!.emailMessageId, { notIn: CONTAMINATED });
+    assert.deepEqual(captured[0]!.OR, [
+      { emailMessageId: null },
+      { emailMessageId: { notIn: CONTAMINATED } },
+    ]);
   } finally {
     prisma.supplierPayment.findMany = original;
   }
@@ -76,7 +79,10 @@ test("invoice list supplier payment where uses emailMessageId isolation", () => 
     buildSupplierPaymentReadIsolationWhere(ORG_A, CONTAMINATED),
   );
   assert.equal("gmailMessageId" in where, false);
-  assert.deepEqual(where.emailMessageId, { notIn: CONTAMINATED });
+  assert.deepEqual(where.OR, [
+    { emailMessageId: null },
+    { emailMessageId: { notIn: CONTAMINATED } },
+  ]);
 });
 
 test("GET /api/payments returns 200 when cross-org contaminated ids are present", async () => {
@@ -184,7 +190,23 @@ test("GET /api/invoices returns 200 when supplier payment isolation uses emailMe
   prisma.$queryRawUnsafe = (async () =>
     CONTAMINATED.map((gmail_id) => ({ gmail_id }))) as typeof prisma.$queryRawUnsafe;
   prisma.invoice.findMany = (async () => []) as typeof prisma.invoice.findMany;
-  prisma.gmailScanItem.findMany = (async () => []) as typeof prisma.gmailScanItem.findMany;
+  prisma.gmailScanItem.findMany = (async (args) => {
+    const where = (args?.where ?? {}) as Record<string, unknown>;
+    // Regression: `{ gmailMessageId: null }` on required GSI field → Prisma 500
+    if (Array.isArray(where.OR)) {
+      for (const clause of where.OR) {
+        if (
+          clause &&
+          typeof clause === "object" &&
+          "gmailMessageId" in clause &&
+          (clause as { gmailMessageId: unknown }).gmailMessageId === null
+        ) {
+          throw new Error("Argument `gmailMessageId` is missing.");
+        }
+      }
+    }
+    return [] as Awaited<ReturnType<typeof prisma.gmailScanItem.findMany>>;
+  }) as typeof prisma.gmailScanItem.findMany;
   prisma.financialDocumentReview.findMany = (async () => []) as typeof prisma.financialDocumentReview.findMany;
   prisma.emailMessage.findMany = (async () => []) as typeof prisma.emailMessage.findMany;
   prisma.supplierPayment.findMany = (async (args) => {
@@ -244,7 +266,16 @@ test("sharon supplier payment isolation does not include shay-only contaminated 
     { organizationId: ORG_B, approvalStatus: "approved" },
     buildSupplierPaymentReadIsolationWhere(ORG_B, [shayOnly]),
   );
-  assert.deepEqual(where.emailMessageId, { notIn: [shayOnly] });
+  assert.deepEqual(where.OR, [
+    { emailMessageId: null },
+    { emailMessageId: { notIn: [shayOnly] } },
+  ]);
   const fdrWhere = buildFinancialDocumentReviewReadIsolationWhere(ORG_B, [shayOnly]);
-  assert.deepEqual(fdrWhere.gmailMessageId, { notIn: [shayOnly] });
+  assert.deepEqual(fdrWhere.OR, [
+    { gmailMessageId: null },
+    { gmailMessageId: { notIn: [shayOnly] } },
+  ]);
+  const gsiWhere = buildGmailScanItemReadIsolationWhere(ORG_B, [shayOnly]);
+  assert.deepEqual(gsiWhere.gmailMessageId, { notIn: [shayOnly] });
+  assert.equal("OR" in gsiWhere, false);
 });

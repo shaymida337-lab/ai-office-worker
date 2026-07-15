@@ -60,9 +60,12 @@ export function buildGmailScanItemReadIsolationWhere(
   contaminatedGmailIds: string[],
 ): Prisma.GmailScanItemWhereInput {
   const excludedGmailIds = crossOrgGmailIdsExcludedForOrganization(organizationId, contaminatedGmailIds);
+  // GmailScanItem.gmailMessageId is required (non-null). Prisma rejects
+  // `{ gmailMessageId: null }` with "Argument gmailMessageId is missing",
+  // which 500'd GET /api/invoices via fetchEnrichedInvoiceListCandidates.
   return {
     ...quarantineMarkerExclusion("decisionReason"),
-    ...(excludedGmailIds.length > 0 ? notInOrNull("gmailMessageId", excludedGmailIds) : {}),
+    ...(excludedGmailIds.length > 0 ? { gmailMessageId: { notIn: excludedGmailIds } } : {}),
   };
 }
 
