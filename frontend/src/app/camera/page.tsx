@@ -121,22 +121,20 @@ export default function CameraPage() {
         setError(result.message ?? "תאריך החשבונית חריג — תקן אותו או לחץ שוב לאישור.");
         return;
       }
-      if (result?.status === "approved") {
-        // השינוי היחיד מעל המצב העובד: אחרי אישור עוברים למסך "חשבוניות".
-        // לא מאפסים את המסך לפני הניווט; מסך חשבוניות טוען מחדש ב-mount.
-        setMessage(result.message ?? "החשבונית אושרה ונוספה למסך החשבוניות");
+      // כל שמירה מוצלחת חייבת לעזוב את מסך הצילום. בעבר רק approved ניווט;
+      // needs_review הציג הצלחה ואז איפס file/preview — המשתמש נשאר תקוע על
+      // "צילום חשבונית" בלי תצוגה מקדימה ובלי מעבר למסך הבא.
+      if (result?.status === "approved" || result?.status === "needs_review") {
+        setMessage(
+          result.status === "approved"
+            ? result.message ?? "החשבונית אושרה ונוספה למסך החשבוניות"
+            : result.message ?? "המסמך נשמר ויופיע במסך השלמת חשבוניות להשלמת הפרטים."
+        );
         router.push("/dashboard/invoices");
         return;
       }
-      setMessage(
-        result?.status === "needs_review"
-          ? result.message ?? "המסמך נשמר ויופיע במסך השלמת חשבוניות להשלמת הפרטים."
-          : result?.message ?? "החשבונית נשמרה ונוספה לתשלומי ספקים."
-      );
-      setFile(null);
-      setFileBase64("");
-      setPreview(null);
-      setDateConfirmed(false);
+      setMessage(result?.message ?? "החשבונית נשמרה ונוספה לתשלומי ספקים.");
+      router.push("/dashboard/invoices");
     } catch (e) {
       setError(e instanceof Error ? e.message : "שמירת החשבונית נכשלה");
     } finally {
