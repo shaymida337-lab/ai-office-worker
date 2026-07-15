@@ -25,7 +25,7 @@ export function LandingHero() {
   return (
     <section
       id="hero"
-      className="overflow-x-hidden px-4 pb-10 pt-8 max-[480px]:pb-6 max-[480px]:pt-4 sm:px-6 sm:pb-14 sm:pt-10"
+      className="overflow-x-hidden px-4 pb-10 pt-8 max-[480px]:pb-6 max-[480px]:pt-1.5 sm:px-6 sm:pb-14 sm:pt-10"
       aria-label="נטלי — עובדת המשרד שלך"
     >
       <div

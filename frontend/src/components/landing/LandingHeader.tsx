@@ -38,7 +38,7 @@ export function LandingHeader() {
         backdropFilter: "blur(12px)",
       }}
     >
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6 md:py-3.5">
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6 md:py-3.5">
         <Link href="/" className="min-w-0 shrink-0" aria-label="נטלי — דף הבית">
           <Logo size="sm" showSubtitle className="max-w-[min(100%,14rem)]" />
         </Link>
@@ -58,24 +58,7 @@ export function LandingHeader() {
           </Link>
         </nav>
 
-        <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
-          {/* Mobile-first: auth actions always visible — no need to open the menu */}
-          <Link
-            href="/login"
-            className={`${radius.control} inline-flex min-h-10 items-center justify-center border px-2.5 text-xs font-bold sm:px-3 sm:text-sm md:hidden`}
-            style={{ borderColor: colors.border, backgroundColor: colors.surface, color: colors.textPrimary }}
-            data-testid="header-login"
-          >
-            התחברות
-          </Link>
-          <Link
-            href="/signup"
-            className="btn inline-flex min-h-10 px-2.5 py-2 text-xs sm:px-3 sm:text-sm md:hidden"
-            data-testid="header-signup"
-          >
-            התחלת ניסיון חינם
-          </Link>
-
+        <div className="flex shrink-0 items-center gap-2">
           <Link href="/natalie" className="btn hidden min-h-10 px-4 py-2 text-sm md:inline-flex">
             לדבר עם נטלי
           </Link>
@@ -93,6 +76,26 @@ export function LandingHeader() {
             {open ? <X className="h-5 w-5" aria-hidden /> : <Menu className="h-5 w-5" aria-hidden />}
           </button>
         </div>
+      </div>
+
+      {/* Mobile: separate action row — equal-width auth CTAs */}
+      <div className="mx-auto flex w-full max-w-6xl gap-2.5 px-4 pb-2 sm:gap-3 sm:px-6 md:hidden">
+        <Link
+          href="/login"
+          className={`${radius.control} inline-flex h-11 min-h-11 min-w-0 flex-1 items-center justify-center border px-2 text-center text-sm font-bold leading-tight no-underline`}
+          style={{ borderColor: colors.border, backgroundColor: colors.surface, color: colors.textPrimary }}
+          data-testid="header-login"
+        >
+          התחברות
+        </Link>
+        <Link
+          href="/signup"
+          className={`${radius.control} inline-flex h-11 min-h-11 min-w-0 flex-1 items-center justify-center border px-2 text-center text-sm font-bold leading-tight no-underline`}
+          style={{ borderColor: colors.accent, backgroundColor: colors.accent, color: "#ffffff" }}
+          data-testid="header-signup"
+        >
+          התחלת ניסיון חינם
+        </Link>
       </div>
 
       {open ? (
