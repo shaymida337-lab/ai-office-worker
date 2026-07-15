@@ -17,6 +17,9 @@ type InvoicePreview = {
   uncertaintyReason?: string;
 };
 
+// persist-first preview runs OCR synchronously (Claude budget ~45s); default apiFetch 15s aborts first.
+const CAMERA_PREVIEW_TIMEOUT_MS = 60_000;
+
 export default function CameraPage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -58,6 +61,7 @@ export default function CameraPage() {
     try {
       const result = await apiFetch<InvoicePreview>("/api/camera/invoices/preview", {
         method: "POST",
+        timeoutMs: CAMERA_PREVIEW_TIMEOUT_MS,
         body: JSON.stringify({
           filename: nextFile.name,
           mimeType: nextFile.type,
