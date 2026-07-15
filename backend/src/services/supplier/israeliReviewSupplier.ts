@@ -74,8 +74,19 @@ export function matchIsraeliSupplierFromOcrText(text: string): string | null {
   return null;
 }
 
+/** Same strip as reviewSupplierResolution — registry keys like known:סופרפארם are not display names. */
+const INTERNAL_SUPPLIER_KEY_REGEX = /^(?:known|canonical):\s*/i;
+
+function stripInternalSupplierKey(name: string): string {
+  let cleaned = name.trim();
+  while (INTERNAL_SUPPLIER_KEY_REGEX.test(cleaned)) {
+    cleaned = cleaned.replace(INTERNAL_SUPPLIER_KEY_REGEX, "").trim();
+  }
+  return cleaned;
+}
+
 export function suppliersEquivalentForReview(a: string, b: string): boolean {
-  const left = normalizeSupplierName(normalizeIsraeliReviewSupplierAlias(a));
-  const right = normalizeSupplierName(normalizeIsraeliReviewSupplierAlias(b));
+  const left = normalizeSupplierName(normalizeIsraeliReviewSupplierAlias(stripInternalSupplierKey(a)));
+  const right = normalizeSupplierName(normalizeIsraeliReviewSupplierAlias(stripInternalSupplierKey(b)));
   return Boolean(left && right && left === right);
 }

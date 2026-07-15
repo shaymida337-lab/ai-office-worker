@@ -159,3 +159,94 @@ test("normalizeSupplierPaymentKey maps yellow to פז", () => {
   assert.equal(normalizeSupplierPaymentKey("yellow"), "פז");
   assert.equal(normalizeSupplierPaymentKey("known:פז"), "פז");
 });
+
+test("known:סופרפארם vs סופר פארם does not require supplier confirmation", () => {
+  const result = resolveReviewSupplierContext({
+    supplierName: "סופר פארם",
+    parsedFieldsJson: {
+      gates: [
+        {
+          gate: "supplier",
+          verdict: "pass",
+          reasonCode: "supplier.resolved",
+          canonicalSupplierName: "known:סופרפארם",
+        },
+      ],
+      sir: {
+        supplierName: "סופר פארם",
+        canonicalSupplier: "known:סופרפארם",
+        status: "resolved",
+        isStrongEnoughForAutoSave: true,
+        reasonCode: "OCR_KEYWORD",
+      },
+    },
+  });
+
+  assert.equal(result.displaySupplierName, "סופר פארם");
+  assert.equal(result.normalizationApplied, false);
+  assert.equal(result.supplierNeedsConfirmation, false);
+  assert.equal(result.supplierConfidence, "high");
+  const approved = resolveSupplierNameForApproval({
+    supplierName: "סופר פארם",
+    parsedFieldsJson: {
+      gates: [
+        {
+          gate: "supplier",
+          verdict: "pass",
+          reasonCode: "supplier.resolved",
+          canonicalSupplierName: "known:סופרפארם",
+        },
+      ],
+      sir: {
+        supplierName: "סופר פארם",
+        canonicalSupplier: "known:סופרפארם",
+        status: "resolved",
+        isStrongEnoughForAutoSave: true,
+      },
+    },
+  });
+  // Payment key may be compact (סופרפארם); must still approve without confirmation.
+  assert.ok(approved === "סופר פארם" || approved === "סופרפארם");
+});
+
+test("truly different supplier still requires confirmation", () => {
+  // Avoid registry aliases (e.g. וולט→Wolt) that would short-circuit before gate/SIR compare.
+  const result = resolveReviewSupplierContext({
+    supplierName: "פרייזון",
+    parsedFieldsJson: {
+      gates: [
+        {
+          gate: "supplier",
+          verdict: "pass",
+          reasonCode: "supplier.resolved",
+          canonicalSupplierName: "known:סופרפארם",
+        },
+      ],
+      sir: {
+        supplierName: "פרייזון",
+        canonicalSupplier: "known:סופרפארם",
+        status: "resolved",
+        isStrongEnoughForAutoSave: true,
+      },
+    },
+  });
+
+  assert.equal(result.supplierNeedsConfirmation, true);
+  assert.throws(
+    () =>
+      resolveSupplierNameForApproval({
+        supplierName: "פרייזון",
+        parsedFieldsJson: {
+          gates: [
+            {
+              gate: "supplier",
+              verdict: "pass",
+              reasonCode: "supplier.resolved",
+              canonicalSupplierName: "known:סופרפארם",
+            },
+          ],
+        },
+      }),
+    /supplier\.needs_confirmation/
+  );
+});

@@ -251,10 +251,14 @@ function resolveNormalizedDisplayName(raw: string | null, input: ReviewSupplierI
   const supplierGate = parseSupplierGateFromParsedFields(input.parsedFieldsJson);
   const gateCanonical = supplierGate?.canonicalSupplierName?.trim();
   if (gateCanonical && supplierGate?.verdict === "pass") {
-    const display = toDisplaySupplierName(gateCanonical);
+    const equivalent = suppliersEquivalentForReview(gateCanonical, raw);
+    // When known:/canonical: is only an internal key for the same supplier, keep the
+    // extracted display name and do not treat it as a normalization that needs confirmation.
     return {
-      display,
-      normalizationApplied: !suppliersEquivalentForReview(gateCanonical, raw),
+      display: equivalent
+        ? toDisplaySupplierName(raw)
+        : toDisplaySupplierName(gateCanonical, sir?.supplierName),
+      normalizationApplied: !equivalent,
       registryNormalized: false,
       ocrHintSupplier: null,
     };

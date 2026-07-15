@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   matchIsraeliSupplierFromOcrText,
   normalizeIsraeliReviewSupplierAlias,
+  suppliersEquivalentForReview,
 } from "./israeliReviewSupplier.js";
 
 test("normalizeIsraeliReviewSupplierAlias maps common OCR misreads", () => {
@@ -31,4 +32,10 @@ test("matchIsraeliSupplierFromOcrText ignores incidental IEC mentions without bi
     null
   );
   assert.equal(matchIsraeliSupplierFromOcrText("random iec noise in footer"), null);
+});
+
+test("suppliersEquivalentForReview strips known: before comparing", () => {
+  assert.equal(suppliersEquivalentForReview("known:סופרפארם", "סופר פארם"), true);
+  assert.equal(suppliersEquivalentForReview("known:פז", "פז"), true);
+  assert.equal(suppliersEquivalentForReview("known:סופרפארם", "וולט"), false);
 });

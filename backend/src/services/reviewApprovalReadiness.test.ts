@@ -149,6 +149,35 @@ test("parity: supplier needing confirmation blocks readiness AND approval, revie
   });
 });
 
+test("parity: known:סופרפארם vs סופר פארם is ready to approve (no supplier.needs_confirmation)", async () => {
+  const snaps = buildPassingTrustGateSnapshots({
+    amountGate: { normalizedAmount: 17 },
+    supplierGate: { canonicalSupplierName: "known:סופרפארם" },
+  });
+  const review = buildReadyReview({
+    supplierName: "סופר פארם",
+    totalAmount: 17,
+    documentType: "receipt",
+    parsedFieldsJson: {
+      gates: [snaps.amountGate, snaps.supplierGate, snaps.fingerprintGate, snaps.duplicateGate],
+      sir: {
+        status: "resolved",
+        canonicalSupplier: "known:סופרפארם",
+        supplierName: "סופר פארם",
+        isStrongEnoughForAutoSave: true,
+        reasonCode: "OCR_KEYWORD",
+      },
+    },
+  });
+  await withPrismaMocks(review, async () => {
+    const readiness = await evaluateReviewApprovalReadiness(review as never);
+    assert.equal(readiness.supplierNeedsConfirmation, false);
+    assert.equal(readiness.canApprove, true, `expected ready, got block: ${readiness.blockReason}`);
+    assert.equal(readiness.blockReason, null);
+    assert.equal(readiness.recommendedAction, "approve");
+  });
+});
+
 test("parity: unresolved amount blocks readiness AND approval with the same reason", async () => {
   const review = buildReadyReview({
     totalAmount: null,
