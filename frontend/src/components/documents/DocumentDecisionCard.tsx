@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, FileText, Pencil } from "lucide-react";
 import { Button, Card, Input, StatusBadge } from "@/components/natalie-ui";
+import { API_URL } from "@/lib/api";
 import {
   drivePreviewUrl,
   formatDocumentDate,
@@ -28,7 +29,7 @@ export function DocumentDecisionCard({
   onRemove: (id: string) => void;
 }) {
   const view = presentDocument(item);
-  const previewUrl = drivePreviewUrl(item.driveFileUrl);
+  const previewUrl = drivePreviewUrl(item.driveFileUrl, API_URL);
   const [editingSupplier, setEditingSupplier] = useState(false);
   const [supplierDraft, setSupplierDraft] = useState(view.supplier);
 

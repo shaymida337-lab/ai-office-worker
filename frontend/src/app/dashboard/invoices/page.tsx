@@ -1158,7 +1158,9 @@ function sourceLabel(source: Invoice["source"] | undefined) {
 }
 
 function documentDriveUrl(invoice: Invoice) {
-  return invoice.driveFileUrl || invoice.driveUrl || null;
+  // Relative /uploads/... must resolve against the backend API host — otherwise
+  // target=_blank opens ai-office-worker-website.netlify.app/uploads/... (404).
+  return drivePreviewUrl(invoice.driveFileUrl || invoice.driveUrl || null, API_URL);
 }
 
 function toDrivePreviewUrl(url: string) {

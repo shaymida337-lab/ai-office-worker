@@ -1,5 +1,6 @@
 import type { Invoice } from "@/components/invoices";
-import { approvalErrorHebrew, readinessBlockReasonHebrew } from "@/lib/documents/presentation";
+import { API_URL } from "@/lib/api";
+import { approvalErrorHebrew, drivePreviewUrl, readinessBlockReasonHebrew } from "@/lib/documents/presentation";
 
 export type CompletionFieldKey = "supplier" | "amount" | "date" | "currency" | "documentType";
 
@@ -60,7 +61,10 @@ export function resolveInvoiceCompletionId(invoice: Invoice): string {
 }
 
 export function getDocumentPreviewUrl(invoice: Invoice): string | null {
-  return invoice.driveFileUrl ?? invoice.driveUrl ?? invoice.gmailMessageLink ?? null;
+  return drivePreviewUrl(
+    invoice.driveFileUrl ?? invoice.driveUrl ?? invoice.gmailMessageLink ?? null,
+    API_URL,
+  );
 }
 
 export function isNonFinancialCompletionItem(invoice: Invoice): boolean {
