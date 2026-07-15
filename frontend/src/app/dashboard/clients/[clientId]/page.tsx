@@ -27,6 +27,13 @@ import {
   type ClientFormValues,
   validateClientForm,
 } from "@/lib/clients/clientForm";
+import {
+  buildInsuranceUpdatePayload,
+  displayInsuranceValue,
+  parseClientInsurance,
+  type ClientInsuranceProfile,
+} from "@/lib/clients/clientInsurance";
+import { useBusinessModule, type ClientCardTabId } from "@/lib/business-module";
 import { formatAmount } from "@/lib/format/amount";
 import { QUOTE_STATUS_LABELS, type SalesDeal, formatIls } from "@/lib/salesUtils";
 import { shellLayout } from "@/components/natalie-ui/tokens";
@@ -115,6 +122,7 @@ type ClientDetail = {
     phone?: string | null;
     whatsappNumber: string | null;
     address?: string | null;
+    insuranceJson?: ClientInsuranceProfile | null;
     color: string | null;
     isActive?: boolean;
     gmailConnected: boolean;
@@ -161,23 +169,15 @@ const invoiceStatusLabels: Record<InvoiceItem["status"], string> = {
   overdue: "באיחור",
 };
 
-// לשוניות הכרטיס — כל התוכן שהיה בגלילה אחת ארוכה מחולק ללשוניות.
-type TabId = "details" | "appointments" | "documents" | "quotes" | "tasks" | "notes" | "whatsapp";
-
-const TABS: Array<{ id: TabId; label: string }> = [
-  { id: "details", label: "פרטים" },
-  { id: "appointments", label: "פגישות" },
-  { id: "documents", label: "מסמכים" },
-  { id: "quotes", label: "הצעות מחיר" },
-  { id: "tasks", label: "משימות" },
-  { id: "notes", label: "הערות" },
-  { id: "whatsapp", label: "וואטסאפ" },
-];
+// לשוניות הכרטיס מגיעות מ־getBusinessModule (לא hardcode לפי סוג עסק במסך).
 
 export default function ClientDetailPage() {
   const params = useParams<{ clientId: string }>();
   const router = useRouter();
   const orgTimezone = useOrganizationTimezone();
+  const { module: businessModule, loading: moduleLoading } = useBusinessModule();
+  const clientTabs = businessModule.clientCard.tabs;
+  const insuranceFields = businessModule.clientCard.insuranceFields;
   const clientId = params.clientId;
   const [data, setData] = useState<ClientDetail | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -201,6 +201,9 @@ export default function ClientDetailPage() {
   const [editingClient, setEditingClient] = useState(false);
   const [clientForm, setClientForm] = useState<ClientFormValues | null>(null);
   const [savingClient, setSavingClient] = useState(false);
+  const [editingInsurance, setEditingInsurance] = useState(false);
+  const [insuranceForm, setInsuranceForm] = useState<ClientInsuranceProfile | null>(null);
+  const [savingInsurance, setSavingInsurance] = useState(false);
   // "שמור פרטים": הודעת הצלחה ירוקה שנעלמת לבד אחרי ~2.5 שניות
   const [saveNotice, setSaveNotice] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -210,7 +213,22 @@ export default function ClientDetailPage() {
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [message, setMessage] = useState("");
-  const [activeTab, setActiveTab] = useState<TabId>("details");
+  const [activeTab, setActiveTab] = useState<ClientCardTabId>("details");
+  const [defaultTabApplied, setDefaultTabApplied] = useState(false);
+
+  useEffect(() => {
+    if (moduleLoading || defaultTabApplied) return;
+    setActiveTab(businessModule.clientCard.defaultTab);
+    setDefaultTabApplied(true);
+  }, [moduleLoading, defaultTabApplied, businessModule.clientCard.defaultTab]);
+
+  useEffect(() => {
+    if (moduleLoading) return;
+    const allowed = new Set(businessModule.clientCard.tabs.map((tab) => tab.id));
+    if (!allowed.has(activeTab)) {
+      setActiveTab(businessModule.clientCard.defaultTab);
+    }
+  }, [moduleLoading, businessModule.clientCard.tabs, businessModule.clientCard.defaultTab, activeTab]);
 
   async function load() {
     // נתוני הלקוח הם מקור האמת של הכרטיס — מחילים אותם מיד עם קבלתם.
@@ -476,6 +494,38 @@ export default function ClientDetailPage() {
     setActiveTab("details");
   }
 
+  function startInsuranceEdit() {
+    if (!data) return;
+    setInsuranceForm(parseClientInsurance(data.client.insuranceJson));
+    setEditingInsurance(true);
+    setActiveTab("insurance");
+  }
+
+  async function saveInsuranceProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!insuranceForm || savingInsurance) return;
+    setSavingInsurance(true);
+    setMessage("");
+    try {
+      const saved = await apiFetch<{ client: Partial<ClientDetail["client"]> }>(`/api/clients/${clientId}`, {
+        method: "PUT",
+        body: JSON.stringify(buildInsuranceUpdatePayload(insuranceForm)),
+      });
+      if (saved?.client) {
+        setData((prev) => (prev ? { ...prev, client: { ...prev.client, ...saved.client } } : prev));
+      }
+      setEditingInsurance(false);
+      setInsuranceForm(null);
+      setSaveNotice("פרטי הביטוח נשמרו בהצלחה");
+      window.setTimeout(() => setSaveNotice(""), 2500);
+      await load().catch(() => undefined);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "שמירת פרטי הביטוח נכשלה — נסה שוב");
+    } finally {
+      setSavingInsurance(false);
+    }
+  }
+
   async function sendWhatsAppMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const body = whatsappText.trim();
@@ -550,7 +600,7 @@ export default function ClientDetailPage() {
   ).length;
   const openTasksCount = tasks.filter((task) => task.status !== "done").length;
 
-  const tabCounts: Partial<Record<TabId, number>> = {
+  const tabCounts: Partial<Record<ClientCardTabId, number>> = {
     appointments: appointments.length,
     documents: invoices.length + data.payments.length,
     quotes: clientQuotes.length,
@@ -738,7 +788,7 @@ export default function ClientDetailPage() {
         className="mb-4 flex gap-1 overflow-x-auto rounded-2xl border border-[var(--border)] bg-white p-1 shadow-card"
         data-testid="client-tabs"
       >
-        {TABS.map((tab) => {
+        {clientTabs.map((tab) => {
           const active = tab.id === activeTab;
           const count = tabCounts[tab.id];
           return (
@@ -920,6 +970,87 @@ export default function ClientDetailPage() {
               </ul>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ===== לשונית ביטוח — מוצגת רק כשהמודול מאפשר ===== */}
+      {activeTab === "insurance" && businessModule.features.insuranceProfile && (
+        <div role="tabpanel" data-testid="tab-panel-insurance" className="grid gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="!mb-0 text-base font-bold text-ink-primary">ביטוח</h2>
+            {!editingInsurance ? (
+              <button className="btn btn-secondary" type="button" data-testid="insurance-edit" onClick={startInsuranceEdit}>
+                עריכה
+              </button>
+            ) : (
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => {
+                  setEditingInsurance(false);
+                  setInsuranceForm(null);
+                }}
+              >
+                ביטול
+              </button>
+            )}
+          </div>
+
+          {editingInsurance && insuranceForm ? (
+            <form onSubmit={saveInsuranceProfile} className="grid gap-4" data-testid="insurance-edit-form">
+              <section className="card grid gap-3 md:grid-cols-2">
+                <h3 className="md:col-span-2 text-sm font-bold text-ink-primary">פרטים אישיים</h3>
+                {insuranceFields.map((field) => (
+                  <label key={field.key} className={field.multiline ? "md:col-span-2" : undefined}>
+                    {field.label}
+                    {field.multiline ? (
+                      <textarea
+                        rows={3}
+                        value={insuranceForm[field.key] ?? ""}
+                        onChange={(e) => setInsuranceForm({ ...insuranceForm, [field.key]: e.target.value })}
+                      />
+                    ) : (
+                      <input
+                        value={insuranceForm[field.key] ?? ""}
+                        onChange={(e) => setInsuranceForm({ ...insuranceForm, [field.key]: e.target.value })}
+                      />
+                    )}
+                  </label>
+                ))}
+              </section>
+
+              <div className="flex flex-wrap gap-2">
+                <button className="btn" type="submit" disabled={savingInsurance} data-testid="insurance-save">
+                  {savingInsurance ? "שומר..." : "שמור"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            (() => {
+              const profile = parseClientInsurance(data.client.insuranceJson);
+              return (
+                <>
+                  <section className="card grid gap-3 md:grid-cols-2" data-testid="insurance-personal-section">
+                    <h3 className="md:col-span-2 text-sm font-bold text-ink-primary">פרטים אישיים</h3>
+                    {insuranceFields.map((field) => (
+                      <div key={field.key} className={field.multiline ? "md:col-span-2" : undefined}>
+                        <div className="text-xs font-semibold text-ink-secondary">{field.label}</div>
+                        <div className="mt-1 whitespace-pre-wrap text-sm text-ink-primary">
+                          {displayInsuranceValue(profile[field.key])}
+                        </div>
+                      </div>
+                    ))}
+                  </section>
+
+                  {/* Placeholder for phase-2 policy list — no Client.insuranceJson policy fields. */}
+                  <section className="card" data-testid="insurance-policies-placeholder">
+                    <h3 className="text-sm font-bold text-ink-primary">פוליסות</h3>
+                    <p className="mt-2 text-sm text-ink-secondary">רשימת הפוליסות תתווסף בשלב הבא.</p>
+                  </section>
+                </>
+              );
+            })()
+          )}
         </div>
       )}
 

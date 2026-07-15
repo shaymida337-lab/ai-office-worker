@@ -10,6 +10,7 @@ import {
   validateClientForm,
 } from "@/lib/clients/clientForm";
 import { buildClientsListSearch, type SearchableLead } from "@/lib/clients/clientsListSearch";
+import { useBusinessModule } from "@/lib/business-module";
 import { Mail, Plus, RefreshCcw, Search, ShieldCheck, Users } from "lucide-react";
 
 type ClientItem = ClientRecord & {
@@ -44,6 +45,7 @@ const emptyForm = {
 };
 
 export default function ClientsPage() {
+  const { module: businessModule } = useBusinessModule();
   const [data, setData] = useState<ClientsResponse | null>(null);
   // לידים נטענים לחיפוש בלבד (מוצגים רק כשיש שאילתה) — אותו מקור כמו החיפוש העליון
   const [leads, setLeads] = useState<SearchableLead[]>([]);
@@ -129,11 +131,18 @@ export default function ClientsPage() {
       <Nav />
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="page-kicker">סביבת לקוחות</div>
-          <h1>לקוחות</h1>
-          <p>כל לקוח, האינטגרציות שלו והמדדים העסקיים במקום אחד.</p>
+          <div className="page-kicker">{businessModule.crm.pageKicker}</div>
+          <h1>{businessModule.crm.entityPlural}</h1>
+          <p>
+            {businessModule.crm.layout === "clients_first"
+              ? `כרטיס ${businessModule.crm.entitySingular} עם פרופיל, פגישות ומסמכים במקום אחד.`
+              : "כל לקוח, האינטגרציות שלו והמדדים העסקיים במקום אחד."}
+          </p>
         </div>
-        <button className="btn" onClick={() => setShowForm((v) => !v)}><Plus className="h-4 w-4" />הוסף לקוח חדש</button>
+        <button className="btn" onClick={() => setShowForm((v) => !v)}>
+          <Plus className="h-4 w-4" />
+          {`הוסף ${businessModule.crm.entitySingular} חדש`}
+        </button>
       </div>
 
       {message && <div className="mb-6 rounded-2xl border border-accent-primary/30 bg-accent-primary/10 p-4 text-sm text-ink-primary">{message}</div>}
@@ -255,7 +264,9 @@ export default function ClientsPage() {
               <div className="grid gap-2 sm:flex sm:flex-wrap">
                 <button className="btn btn-secondary" onClick={() => connectGmail(client.id)}>חבר ג׳ימייל ללקוח</button>
                 <button className="btn btn-secondary" onClick={() => scanClient(client.id)} disabled={scanningId === client.id}><RefreshCcw className={["h-4 w-4", scanningId === client.id ? "animate-spin" : ""].join(" ")} />{scanningId === client.id ? "סורק..." : "סרוק ג׳ימייל"}</button>
-                <a className="btn" href={`/dashboard/clients/${client.id}`}>פתח כרטיס לקוח</a>
+                <a className="btn" href={`/dashboard/clients/${client.id}`}>
+                  {`פתח כרטיס ${businessModule.crm.entitySingular}`}
+                </a>
               </div>
             </div>
           ))}

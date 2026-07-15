@@ -8,6 +8,7 @@ import { Logo } from "@/components/Logo";
 import { GlobalHeader } from "@/components/natalie-ui";
 import { colors, radius, type, dashboardHome } from "@/lib/design-tokens";
 import { isNavItemVisible, type NavItemId } from "@/config/navVisibility";
+import { getBusinessModule, isModuleNavItemVisible } from "@/lib/business-module";
 import { apiFetch, clearAllAuthTokens } from "@/lib/api";
 import { lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
 import { normalizeEnabledModules, type BusinessModuleId, type OrganizationSettings } from "@/lib/business-config";
@@ -96,19 +97,28 @@ export function Nav() {
     return () => unlockUiOverlay();
   }, [moreOpen]);
 
+  const businessModule = useMemo(
+    () => getBusinessModule(organizationSettings?.businessType),
+    [organizationSettings?.businessType]
+  );
+
   const moduleAllowed = (module?: BusinessModuleId | "admin") => {
     if (module === "admin") return process.env.NEXT_PUBLIC_SHOW_ADMIN_DEBUG === "true";
     if (!module) return true;
     const enabledModules = organizationSettings
       ? normalizeEnabledModules(organizationSettings.enabledModules, organizationSettings.businessType)
       : null;
-    return !enabledModules || enabledModules.includes(module);
+    // Prefer the resolved business-module enabledModules when settings exist.
+    const fromModule = organizationSettings ? businessModule.enabledModules : null;
+    const allowed = fromModule ?? enabledModules;
+    return !allowed || allowed.includes(module);
   };
   const navVisible = (item: NavLink) => {
     if (item.id === "sales") {
       return moduleAllowed("sales") || moduleAllowed("crm");
     }
-    if (!isNavItemVisible(item.id, organizationSettings?.businessType)) return false;
+    const globalVisible = isNavItemVisible(item.id, organizationSettings?.businessType);
+    if (!isModuleNavItemVisible(businessModule, item.id as NavItemId, globalVisible)) return false;
     return moduleAllowed(item.module);
   };
   const visibleLinks = links.filter(navVisible);

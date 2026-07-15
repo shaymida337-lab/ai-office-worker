@@ -33,7 +33,8 @@ import {
 } from "@/components/natalie-ui";
 import { useI18n } from "@/i18n";
 import { apiFetch } from "@/lib/api";
-import { getBusinessProfile, type BusinessCrmField, type OrganizationSettings } from "@/lib/business-config";
+import { getBusinessModule, type BusinessModuleConfig } from "@/lib/business-module";
+import type { BusinessCrmField, OrganizationSettings } from "@/lib/business-config";
 import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
 
 type CrmResponse = {
@@ -204,8 +205,11 @@ export default function CrmPage() {
   const untreatedCount = useMemo(() => countUntreatedThisWeek(data?.leads ?? []), [data?.leads]);
   const kpiValues = useMemo(() => computeCrmKpis(data?.leads ?? []), [data?.leads]);
 
-  const businessProfile = useMemo(() => getBusinessProfile(organizationSettings?.businessType), [organizationSettings]);
-  const crmLabels = useMemo(() => crmFieldMap(businessProfile.crmFields), [businessProfile.crmFields]);
+  const businessModule = useMemo<BusinessModuleConfig>(
+    () => getBusinessModule(organizationSettings?.businessType),
+    [organizationSettings]
+  );
+  const crmLabels = useMemo(() => crmFieldMap(businessModule.crm.fields), [businessModule.crm.fields]);
 
   const filterLabels = useMemo(
     () => ({
@@ -379,7 +383,7 @@ export default function CrmPage() {
   return (
     <div dir={dir}>
       <AppShell
-        pageTitle={<PageTitle title={t("crmDesign.title")} subtitle={t("crmDesign.subtitle")} />}
+        pageTitle={<PageTitle title={businessModule.crm.pageTitle} subtitle={businessModule.crm.pageKicker} />}
       >
         {message ? (
           <MessageBanner tone="info" className="mb-4">
@@ -609,7 +613,7 @@ export default function CrmPage() {
           lead={selected}
           open={Boolean(selected)}
           onClose={() => setSelected(null)}
-          crmFields={businessProfile.crmFields}
+          crmFields={businessModule.crm.fields}
           timelineText={timelineText}
           setTimelineText={setTimelineText}
           onUpdate={updateLead}

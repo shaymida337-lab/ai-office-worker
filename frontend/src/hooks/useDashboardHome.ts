@@ -34,6 +34,7 @@ import {
   scanDocumentsFound,
 } from "@/lib/gmailScanLifecycle";
 import type { OrganizationSettings } from "@/lib/business-config";
+import { getBusinessModule } from "@/lib/business-module";
 import { resolveGmailStatusFromSettled, resolveGmailTruthAfterLoad, shouldAutoTriggerGmailConnect } from "@/lib/integrations/gmailConnectionTruth";
 import {
   buildOptimisticGmailConnectedStatus,
@@ -1088,6 +1089,11 @@ export function useDashboardHome() {
   );
 
 
+  const businessModule = useMemo(
+    () => getBusinessModule(organizationSettings?.businessType),
+    [organizationSettings?.businessType]
+  );
+
   return {
     router,
     stats,
@@ -1123,6 +1129,7 @@ export function useDashboardHome() {
     displayActionMessage,
     displayToast,
     businessName,
+    businessModule,
     heroTrust,
     heroBriefing,
     dashboardSyncState,

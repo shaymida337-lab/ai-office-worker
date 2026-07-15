@@ -109,7 +109,7 @@ export default function DashboardPage() {
         pageTitle={
           <PageTitle
             title={d.businessName || t("dashboardDesign.title")}
-            subtitle={t("dashboardDesign.subtitle")}
+            subtitle={d.businessModule.dashboard.subtitle || t("dashboardDesign.subtitle")}
           />
         }
         floatingButton={
