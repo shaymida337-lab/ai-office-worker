@@ -16,9 +16,19 @@ import {
   StatusBadge,
 } from "@/components/natalie-ui";
 import { useI18n } from "@/i18n";
-import { apiFetch, API_URL } from "@/lib/api";
+import { apiFetch, API_URL, getToken, type GmailStatus } from "@/lib/api";
 import { buildFallbackMonthGroups } from "@/lib/invoices/monthGrouping";
 import { removeRowAfterAction } from "@/lib/invoices/animatedRemoval";
+import {
+  formatInvoicesGmailScanDoneMessage,
+  INVOICES_GMAIL_SCANNING_MESSAGE,
+  isGmailNotConnectedError,
+  summarizeOrgGmailScanProgress,
+  summarizeOrgGmailScanResult,
+  waitForOrgGmailScanProgress,
+} from "@/lib/invoices/gmailOrgScan";
+import { GMAIL_SCAN_POLL_INTERVAL_MS, MAX_GMAIL_SCAN_POLL_ATTEMPTS } from "@/lib/dashboard/scanPollLimits";
+import type { GmailScanResult, ScanProgressResult } from "@/lib/dashboard/homePageTypes";
 import { formatAmount } from "@/lib/format/amount";
 import {
   displayBusinessSupplier,
@@ -29,7 +39,7 @@ import {
   paymentStatusTone,
 } from "@/lib/invoices/invoiceDisplay";
 import { drivePreviewUrl } from "@/lib/documents/presentation";
-import { ChevronDown, ChevronLeft, Download, FileText, Loader2, RefreshCcw, UploadCloud } from "lucide-react";
+import { ChevronDown, ChevronLeft, Download, FileText, Loader2, Mail, RefreshCcw, UploadCloud } from "lucide-react";
 import { buttonVariants } from "@/components/natalie-ui/tokens";
 
 type MonthSummary = {
@@ -79,7 +89,10 @@ export default function InvoicesPage() {
   const [message, setMessage] = useState("");
   const [messageTone, setMessageTone] = useState<"info" | "success" | "error">("info");
   const [scanning, setScanning] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [scanProgress, setScanProgress] = useState("");
+  const [showGmailConnect, setShowGmailConnect] = useState(false);
+  const [connectingGmail, setConnectingGmail] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(() => new Set());
@@ -315,38 +328,111 @@ export default function InvoicesPage() {
     });
   }
 
-  async function scanInvoices() {
-    setScanning(true);
+  async function refreshListOnly() {
+    if (scanning || refreshing) return;
+    setRefreshing(true);
+    setShowGmailConnect(false);
     setMessageTone("info");
-    setMessage("מתחיל סריקת חשבוניות...");
+    setMessage(t("invoicesDesign.refreshing"));
     setScanProgress("");
     try {
-      const targets = clients.filter((client) => (clientId === "all" || client.id === clientId) && client.gmailConnected);
-      if (targets.length === 0) {
+      await Promise.all([refreshMonthsAndInvoices(Object.keys(invoicesByMonth)), loadIncompleteCount()]);
+      setMessageTone("success");
+      setMessage(t("invoicesDesign.refreshDone"));
+    } catch (err) {
+      setMessageTone("error");
+      setMessage(err instanceof Error ? err.message : t("invoicesDesign.refreshFailed"));
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function connectGmailFromInvoices() {
+    if (connectingGmail) return;
+    const token = getToken();
+    if (!token) {
+      window.location.href = `/login?next=${encodeURIComponent("/dashboard/invoices")}`;
+      return;
+    }
+    try {
+      setConnectingGmail(true);
+      const returnTo = encodeURIComponent("/dashboard/invoices");
+      const res = await fetch(`${API_URL}/api/integrations/gmail/connect-url?returnTo=${returnTo}`, {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error((errorData as { error?: string }).error ?? "חיבור Gmail נכשל");
+      }
+      const data = (await res.json()) as { url?: string };
+      if (!data.url) throw new Error("שרת לא החזיר כתובת חיבור לגוגל");
+      window.location.href = data.url;
+    } catch (err) {
+      setMessageTone("error");
+      setMessage(err instanceof Error ? err.message : "חיבור Gmail נכשל");
+      setShowGmailConnect(true);
+    } finally {
+      setConnectingGmail(false);
+    }
+  }
+
+  async function scanOrgGmail() {
+    if (scanning || refreshing) return;
+    setScanning(true);
+    setShowGmailConnect(false);
+    setMessageTone("info");
+    setMessage(INVOICES_GMAIL_SCANNING_MESSAGE);
+    setScanProgress(INVOICES_GMAIL_SCANNING_MESSAGE);
+    try {
+      const status = await apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`);
+      if (!status.connected) {
+        setShowGmailConnect(true);
         setMessageTone("error");
-        setMessage("לא נמצאו לקוחות עם ג׳ימייל מחובר לסריקה. חבר ג׳ימייל ללקוח ואז נסה שוב.");
+        setMessage(t("invoicesDesign.gmailNotConnected"));
+        setScanProgress("");
         return;
       }
 
-      let saved = 0;
-      let found = 0;
-      const errors: string[] = [];
-      for (let index = 0; index < targets.length; index += 1) {
-        const current = targets[index];
-        setScanProgress(`סורק ${current.name} (${index + 1}/${targets.length})`);
-        setMessage(`סורק מיילים ומחפש חשבוניות... (${index + 1}/${targets.length})`);
-        try {
-          const result = await apiFetch<{ found: number; saved: number; errors?: Array<{ error: string }> }>(`/api/clients/${current.id}/scan/invoices`, { method: "POST" });
-          found += result.found ?? 0;
-          saved += result.saved ?? 0;
-          errors.push(...(result.errors ?? []).map((item) => item.error));
-        } catch (err) {
-          errors.push(`${current.name}: ${err instanceof Error ? err.message : "סריקה נכשלה"}`);
-        }
+      const result = await apiFetch<GmailScanResult>("/api/gmail/scan", { method: "POST" });
+      let counts = summarizeOrgGmailScanResult(result, 0);
+
+      if (result.scanId) {
+        const progress = await waitForOrgGmailScanProgress({
+          scanId: result.scanId,
+          intervalMs: GMAIL_SCAN_POLL_INTERVAL_MS,
+          maxAttempts: MAX_GMAIL_SCAN_POLL_ATTEMPTS,
+          poll: (scanId) => apiFetch<ScanProgressResult>(`/api/gmail/scan/${scanId}`),
+        });
+        counts = summarizeOrgGmailScanProgress(progress, 0);
       }
-      await load();
-      setMessageTone(errors.length ? "error" : "success");
-      setMessage(errors.length ? `הסריקה הסתיימה עם שגיאות. נמצאו ${found}, נשמרו ${saved}. שגיאות: ${errors.join("; ")}` : `הסריקה הסתיימה בהצלחה. נמצאו ${found}, נשמרו ${saved} חשבוניות.`);
+
+      await refreshMonthsAndInvoices();
+      const incompleteAfter = await apiFetch<InvoiceMonthsResponse>("/api/invoices/months?completeness=incomplete")
+        .then((data) => data.months.reduce((sum, month) => sum + month.count, 0))
+        .catch(() => counts.needsCompletion);
+      setIncompleteCount(incompleteAfter);
+      setMessageTone("success");
+      setMessage(
+        formatInvoicesGmailScanDoneMessage({
+          documentsFound: counts.documentsFound,
+          saved: counts.saved,
+          needsCompletion: incompleteAfter,
+        })
+      );
+    } catch (err) {
+      if (isGmailNotConnectedError(err)) {
+        setShowGmailConnect(true);
+        setMessageTone("error");
+        setMessage(t("invoicesDesign.gmailNotConnected"));
+      } else {
+        setMessageTone("error");
+        setMessage(err instanceof Error ? err.message : "סריקת Gmail נכשלה");
+      }
     } finally {
       setScanProgress("");
       setScanning(false);
@@ -508,9 +594,23 @@ export default function InvoicesPage() {
               <UploadCloud className="h-4 w-4" />
               {t("invoicesDesign.importFile")}
             </Link>
-            <Button variant="primary" className="min-w-40" onClick={scanInvoices} disabled={scanning}>
-              {scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-              {scanning ? t("invoicesDesign.scanning") : t("invoicesDesign.scanInvoices")}
+            <Button
+              variant="secondary"
+              className="min-w-40"
+              onClick={scanOrgGmail}
+              disabled={scanning || refreshing}
+            >
+              {scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+              {scanning ? INVOICES_GMAIL_SCANNING_MESSAGE : t("invoicesDesign.scanGmail")}
+            </Button>
+            <Button
+              variant="secondary"
+              className="min-w-40"
+              onClick={refreshListOnly}
+              disabled={scanning || refreshing}
+            >
+              {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+              {refreshing ? t("invoicesDesign.refreshing") : t("invoicesDesign.refreshList")}
             </Button>
           </div>
         </div>
@@ -533,6 +633,14 @@ export default function InvoicesPage() {
               <div className="mt-1 flex items-center gap-2 text-sm font-semibold">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 {scanProgress}
+              </div>
+            ) : null}
+            {showGmailConnect ? (
+              <div className="mt-3">
+                <Button variant="primary" onClick={connectGmailFromInvoices} disabled={connectingGmail}>
+                  {connectingGmail ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {t("invoicesDesign.connectGmail")}
+                </Button>
               </div>
             ) : null}
           </MessageBanner>
