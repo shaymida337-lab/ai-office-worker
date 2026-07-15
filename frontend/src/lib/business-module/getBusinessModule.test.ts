@@ -7,19 +7,6 @@ import {
 } from "./index";
 
 describe("getBusinessModule", () => {
-  it("returns base module without insurance tab for service_business", () => {
-    const module = getBusinessModule("service_business");
-    assert.equal(module.businessType, "service_business");
-    assert.equal(module.features.insuranceProfile, false);
-    assert.equal(module.clientCard.defaultTab, "details");
-    assert.equal(
-      module.clientCard.tabs.some((tab) => tab.id === "insurance"),
-      false
-    );
-    assert.equal(module.natalie.clientContext, "generic");
-    assert.equal(moduleHasNatalieCapability(module, "read_insurance_profile"), false);
-  });
-
   it("resolves insurance_agency with insurance tab, fields, nav, and Natalie caps", () => {
     const module = getBusinessModule("insurance_agency");
     assert.equal(module.businessType, "insurance_agency");
@@ -30,9 +17,25 @@ describe("getBusinessModule", () => {
     assert.equal(module.navigation.itemOverrides.clients, true);
     assert.equal(module.navigation.itemOverrides.crm, true);
     assert.equal(module.crm.layout, "clients_first");
+    assert.equal(module.dashboard.home.layout, "insurance_agency");
     assert.equal(module.natalie.clientContext, "insured_person");
     assert.ok(moduleHasNatalieCapability(module, "read_insurance_profile"));
     assert.ok(moduleHasNatalieCapability(module, "update_insurance_profile"));
+  });
+
+  it("returns base module without insurance tab for service_business", () => {
+    const module = getBusinessModule("service_business");
+    assert.equal(module.businessType, "service_business");
+    assert.equal(module.features.insuranceProfile, false);
+    assert.equal(module.clientCard.defaultTab, "details");
+    assert.equal(
+      module.clientCard.tabs.some((tab) => tab.id === "insurance"),
+      false
+    );
+    assert.equal(module.dashboard.home.layout, "default");
+    assert.equal(module.natalie.clientContext, "generic");
+    assert.equal(module.dashboard.home.layout, "default");
+    assert.equal(moduleHasNatalieCapability(module, "read_insurance_profile"), false);
   });
 
   it("normalizes legacy insurance_agent alias without screen-level branching", () => {

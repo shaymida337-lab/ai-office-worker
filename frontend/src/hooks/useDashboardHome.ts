@@ -114,6 +114,8 @@ export function useDashboardHome() {
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [documentReviews, setDocumentReviews] = useState<DocumentReview[]>([]);
+  /** Full count from GET /api/document-reviews?status=needs_review (UI list remains sliced). */
+  const [pendingDocumentReviewsCount, setPendingDocumentReviewsCount] = useState(0);
   const [upcomingAppointments, setUpcomingAppointments] = useState<UpcomingAppointment[]>([]);
   const [briefingScheduling, setBriefingScheduling] = useState<BriefingSchedulingSnapshot | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
@@ -213,7 +215,13 @@ export function useDashboardHome() {
       setGmailStatusKnown(gmailResolved.known);
       setGmailStatusStale(gmailResolved.stale);
       setRecentTasks(tasksResult.status === "fulfilled" ? tasksResult.value.slice(0, 8) : []);
-      setDocumentReviews(reviewsResult.status === "fulfilled" ? reviewsResult.value.slice(0, 5) : []);
+      if (reviewsResult.status === "fulfilled") {
+        setPendingDocumentReviewsCount(reviewsResult.value.length);
+        setDocumentReviews(reviewsResult.value.slice(0, 5));
+      } else {
+        setPendingDocumentReviewsCount(0);
+        setDocumentReviews([]);
+      }
       if (briefingResult.status === "fulfilled") {
         setBriefingScheduling(briefingResult.value);
         setUpcomingAppointments(
@@ -1106,6 +1114,7 @@ export function useDashboardHome() {
     recentTasks,
     alerts,
     documentReviews,
+    pendingDocumentReviewsCount,
     upcomingAppointments,
     pageLoading,
     firstScanPhase,

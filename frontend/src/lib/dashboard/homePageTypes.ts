@@ -2,6 +2,9 @@ export type ClientSummary = {
   id: string;
   name: string;
   color: string | null;
+  /** Present on GET /api/clients — used only for home “new this month” counts. */
+  createdAt?: string;
+  isActive?: boolean;
   stats?: {
     toPay: number;
     openTasks: number;

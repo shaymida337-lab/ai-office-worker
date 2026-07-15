@@ -41,6 +41,35 @@ export type NatalieCapabilityId =
 
 export type CrmLayoutId = "leads_pipeline" | "clients_first";
 
+/** Home dashboard card metrics resolved from existing org data (no policies model). */
+export type HomeMetricId =
+  | "active_clients"
+  | "open_tasks"
+  | "meetings_today"
+  | "pending_docs"
+  | "new_clients_month"
+  | "renewals_placeholder";
+
+export type HomeLayoutId = "default" | "insurance_agency";
+
+export type HomeCardConfig = {
+  id: HomeMetricId;
+  label: string;
+  /** Existing app route; null for non-clickable placeholders. */
+  href: string | null;
+  valueKind: "metric" | "placeholder";
+  placeholderText?: string;
+};
+
+export type DashboardHomeConfig = {
+  layout: HomeLayoutId;
+  /** Hero line under the greeting (insurance vertical copy). Empty = keep default hero. */
+  greetingLine: string;
+  cards: HomeCardConfig[];
+  /** Which existing metrics appear in the Natalie-style summary paragraph. */
+  summaryMetricIds: HomeMetricId[];
+};
+
 /**
  * Single source of truth for UI / Natalie adaptation by organization business type.
  * Screens must read this object — never branch on raw businessType strings.
@@ -73,6 +102,7 @@ export type BusinessModuleConfig = {
     subtitle: string;
     widgets: BusinessDashboardWidget[];
     kpis: BusinessKpiConfig[];
+    home: DashboardHomeConfig;
   };
   natalie: {
     capabilities: NatalieCapabilityId[];
@@ -95,7 +125,9 @@ type DeepPartialBusinessModule = {
   navigation?: {
     itemOverrides?: Partial<Record<NavItemId, boolean>>;
   };
-  dashboard?: Partial<BusinessModuleConfig["dashboard"]>;
+  dashboard?: Partial<Omit<BusinessModuleConfig["dashboard"], "home">> & {
+    home?: Partial<DashboardHomeConfig>;
+  };
   natalie?: Partial<BusinessModuleConfig["natalie"]>;
   features?: Partial<BusinessModuleConfig["features"]>;
 };

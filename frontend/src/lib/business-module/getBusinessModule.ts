@@ -28,6 +28,13 @@ function mergeModule(
     dashboard: {
       ...base.dashboard,
       ...patch.dashboard,
+      home: {
+        ...base.dashboard.home,
+        ...patch.dashboard?.home,
+        cards: patch.dashboard?.home?.cards ?? base.dashboard.home.cards,
+        summaryMetricIds:
+          patch.dashboard?.home?.summaryMetricIds ?? base.dashboard.home.summaryMetricIds,
+      },
     },
     natalie: {
       ...base.natalie,

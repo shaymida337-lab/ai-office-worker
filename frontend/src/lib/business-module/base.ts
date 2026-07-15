@@ -43,6 +43,12 @@ export function buildBaseBusinessModule(businessType: BusinessTypeId): BusinessM
       subtitle: profile.subtitle,
       widgets: profile.dashboardWidgets,
       kpis: profile.dashboardKpis,
+      home: {
+        layout: "default",
+        greetingLine: "",
+        cards: [],
+        summaryMetricIds: [],
+      },
     },
     natalie: {
       capabilities: [

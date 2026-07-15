@@ -170,6 +170,8 @@ export type DashboardStats = {
   invoicesFromGmail?: number;
   invoicesFromWhatsApp?: number;
   clients: number;
+  /** Active clients when provided by /api/stats (alongside `clients`). */
+  totalClients?: number;
   suspiciousPaymentsCount: number;
   sheetsReconciliation?: {
     dbCount: number;

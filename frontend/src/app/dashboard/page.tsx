@@ -3,6 +3,7 @@
 import { CalendarDays, FileClock, FileText, ListTodo, MailSearch, MessageCircle, PlusCircle, Sparkles } from "lucide-react";
 import { useMemo } from "react";
 import { AdminLeadsCard } from "@/components/admin/AdminLeadsCard";
+import { InsuranceAgencyHomeCards } from "@/components/dashboard/InsuranceAgencyHomeCards";
 import { NataliePortrait } from "@/components/dashboard/NataliePortrait";
 import { useI18n } from "@/i18n";
 import { useDashboardHome } from "@/hooks/useDashboardHome";
@@ -19,10 +20,20 @@ import {
   Timeline,
 } from "@/components/natalie-ui";
 import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
+import {
+  buildInsuranceHomeOverlay,
+  resolveInsuranceHomeMetrics,
+} from "@/lib/dashboard/buildInsuranceHomeOverlay";
+
+function greetingPrefixFromHeadline(headline: string): string {
+  const match = headline.match(/^(בוקר טוב|צהריים טובים|ערב טוב|שלום|ברוך הבא חזרה)/);
+  return match?.[1] ?? "שלום";
+}
 
 export default function DashboardPage() {
   const d = useDashboardHome();
   const { t, dir } = useI18n();
+  const isInsuranceHome = d.businessModule.dashboard.home.layout === "insurance_agency";
 
   const todayMeetings = useMemo(() => {
     const now = new Date();
@@ -40,14 +51,36 @@ export default function DashboardPage() {
     () => d.recentTasks.filter((task) => task.status !== "completed" && task.status !== "done").length,
     [d.recentTasks]
   );
-  const pendingDocs = d.documentReviews.length;
+  const pendingDocs = isInsuranceHome ? d.pendingDocumentReviewsCount : d.documentReviews.length;
+
+  const insuranceMetrics = useMemo(
+    () =>
+      resolveInsuranceHomeMetrics({
+        stats: d.stats,
+        pendingDocsCount: d.pendingDocumentReviewsCount,
+        upcomingAppointments: d.upcomingAppointments,
+        clients: d.clients,
+      }),
+    [d.stats, d.pendingDocumentReviewsCount, d.upcomingAppointments, d.clients]
+  );
+
+  const insuranceOverlay = useMemo(() => {
+    if (!isInsuranceHome) return null;
+    return buildInsuranceHomeOverlay({
+      module: d.businessModule,
+      metrics: insuranceMetrics,
+      loading: d.pageLoading,
+      partOfDayGreeting: greetingPrefixFromHeadline(d.morningGreeting.headline),
+    });
+  }, [isInsuranceHome, d.businessModule, insuranceMetrics, d.pageLoading, d.morningGreeting.headline]);
 
   const heroSummary = useMemo(() => {
+    if (insuranceOverlay) return insuranceOverlay.summaryParagraph;
     if (pendingDocs > 0) return t("dashboardDesign.summary.pendingDocs", { count: pendingDocs });
     if (openTasks > 0) return t("dashboardDesign.summary.openTasks", { count: openTasks });
     if (todayMeetings > 0) return t("dashboardDesign.summary.meetings", { count: todayMeetings });
     return t("dashboardDesign.summary.allClear");
-  }, [openTasks, pendingDocs, t, todayMeetings]);
+  }, [insuranceOverlay, openTasks, pendingDocs, t, todayMeetings]);
 
   const kpis = useMemo(
     () => [
@@ -142,16 +175,36 @@ export default function DashboardPage() {
                       {t("dashboardDesign.hero.badge")}
                     </p>
                     <h2 className="text-2xl font-black tracking-tight text-[#0f172a] dark:text-[#F1F5F9] md:text-3xl">
-                      {d.morningGreeting.headline || t("dashboardDesign.heroTitle")}
+                      {insuranceOverlay
+                        ? insuranceOverlay.greetingLine
+                        : d.morningGreeting.headline || t("dashboardDesign.heroTitle")}
                     </h2>
                     <p className="text-sm font-semibold text-[#475569] dark:text-[#94A3B8] md:text-base">
-                      {t("dashboardDesign.hero.prepared")}
+                      {insuranceOverlay
+                        ? "סיכום נטלי לפי הנתונים הקיימים בסוכנות."
+                        : t("dashboardDesign.hero.prepared")}
                     </p>
                   </div>
 
                   <div className="grid gap-2 rounded-2xl border border-[#dbe6ff] bg-white/90 p-3 dark:border-[#1F2A44] dark:bg-[#0F172A]/90">
                     {d.pageLoading ? (
                       <SkeletonText lines={3} />
+                    ) : insuranceOverlay ? (
+                      insuranceOverlay.summaryLines.map((line) => (
+                        <HeroLine
+                          key={line}
+                          icon={
+                            line.includes("פגיש")
+                              ? CalendarDays
+                              : line.includes("משימ")
+                                ? ListTodo
+                                : line.includes("מסמכ")
+                                  ? FileClock
+                                  : Sparkles
+                          }
+                          text={line}
+                        />
+                      ))
                     ) : (
                       <>
                         <HeroLine icon={CalendarDays} text={t("dashboardDesign.hero.meetings", { count: todayMeetings })} />
@@ -174,7 +227,11 @@ export default function DashboardPage() {
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Button
                       variant="primary"
-                      onClick={() => d.handleNatalieConversation("מה חשוב לי היום?")}
+                      onClick={() =>
+                        d.handleNatalieConversation(
+                          isInsuranceHome ? "מה מצב סוכנות הביטוח שלי היום?" : "מה חשוב לי היום?"
+                        )
+                      }
                       className="!min-h-12 text-base"
                     >
                       <MessageCircle className="h-4 w-4" />
@@ -197,11 +254,18 @@ export default function DashboardPage() {
               </div>
             </Card>
 
-            <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {kpis.map((metric) => (
-                <KpiCard key={metric.id} label={metric.label} value={metric.value} />
-              ))}
-            </section>
+            {isInsuranceHome && insuranceOverlay ? (
+              <InsuranceAgencyHomeCards
+                cards={insuranceOverlay.cards}
+                onNavigate={(href) => d.router.push(href)}
+              />
+            ) : (
+              <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {kpis.map((metric) => (
+                  <KpiCard key={metric.id} label={metric.label} value={metric.value} />
+                ))}
+              </section>
+            )}
 
             <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               {quickActions.map((action) => (
@@ -250,7 +314,7 @@ export default function DashboardPage() {
               <Card className="p-4">
                 <h2 className="text-base font-black text-[#0f172a] dark:text-[#F1F5F9]">{t("dashboardDesign.pending.title")}</h2>
                 <div className="mt-3 grid gap-2">
-                  <OverviewRow label={t("dashboardDesign.pending.tasks")} value={openTasks} />
+                  <OverviewRow label={t("dashboardDesign.pending.tasks")} value={isInsuranceHome ? insuranceMetrics.open_tasks : openTasks} />
                   <OverviewRow label={t("dashboardDesign.pending.documents")} value={pendingDocs} />
                   <OverviewRow label={t("dashboardDesign.pending.alerts")} value={d.alerts.length} />
                 </div>

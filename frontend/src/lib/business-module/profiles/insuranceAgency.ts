@@ -27,6 +27,53 @@ export const insuranceAgencyModule: BusinessModuleOverlay = {
       entitySingular: "מבוטח",
       entityPlural: "מבוטחים",
     },
+    dashboard: {
+      subtitle: "סוכנות ביטוח — מבוטחים, פגישות ומסמכים לטיפול.",
+      home: {
+        layout: "insurance_agency",
+        greetingLine: "הנה מצב סוכנות הביטוח שלך להיום.",
+        cards: [
+          {
+            id: "active_clients",
+            label: "מבוטחים פעילים",
+            href: "/dashboard/clients",
+            valueKind: "metric",
+          },
+          {
+            id: "open_tasks",
+            label: "משימות פתוחות",
+            href: "/tasks",
+            valueKind: "metric",
+          },
+          {
+            id: "meetings_today",
+            label: "פגישות היום",
+            href: "/dashboard/calendar",
+            valueKind: "metric",
+          },
+          {
+            id: "pending_docs",
+            label: "מסמכים שממתינים לטיפול",
+            href: "/dashboard/document-reviews",
+            valueKind: "metric",
+          },
+          {
+            id: "new_clients_month",
+            label: "לקוחות חדשים החודש",
+            href: "/dashboard/clients",
+            valueKind: "metric",
+          },
+          {
+            id: "renewals_placeholder",
+            label: "חידושים קרובים",
+            href: null,
+            valueKind: "placeholder",
+            placeholderText: "חידושים יופיעו לאחר הוספת פוליסות",
+          },
+        ],
+        summaryMetricIds: ["meetings_today", "open_tasks", "pending_docs", "new_clients_month"],
+      },
+    },
     navigation: {
       itemOverrides: {
         clients: true,

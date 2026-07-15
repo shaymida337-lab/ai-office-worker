@@ -5,6 +5,10 @@ export type {
   ClientCardTabId,
   ClientCardFieldDef,
   CrmLayoutId,
+  DashboardHomeConfig,
+  HomeCardConfig,
+  HomeLayoutId,
+  HomeMetricId,
   NatalieCapabilityId,
 } from "./types";
 
