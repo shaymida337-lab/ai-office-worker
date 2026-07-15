@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import type { OrganizationSettings } from "@/lib/business-config";
-import { getBusinessModule, type BusinessModuleConfig } from "@/lib/business-module";
+import { getBusinessModule } from "./getBusinessModule";
+import type { BusinessModuleConfig } from "./types";
 
 type UseBusinessModuleResult = {
   module: BusinessModuleConfig;
