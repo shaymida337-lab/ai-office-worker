@@ -462,13 +462,16 @@ export async function analyzeInvoiceFile(input: {
 }
 כללים חשובים:
 - supplier הוא שם העסק/מנפיק החשבונית שמופיע בראש המסמך או ליד פרטי עוסק/ח.פ, לא שם הלקוח ולא "Unknown".
-- אם OCR בעברית/אנגלית מזהה ספק ברור, החזר אותו כפי שמופיע ברשימה: "חברת החשמל" עבור "חברת החשמל"/"חברת החשמל לישראל"/Israel Electric; "מי רמת גן" עבור "מי רמת גן"/"מי-רמת-גן"/"תאגיד מי רמת גן"; "הולילנד" עבור "הולילנד"/Holyland; "סופר פארם" עבור "סופר פארם"/"סופר-פארם"/Super-Pharm; "וולט" עבור "וולט"/Wolt.
+- על חשבונית מס / קבלה / חשבונית מס קבלה: שם הספק הוא רק מנפיק המסמך בראש הקבלה ליד עוסק/ח.פ. אל תחזיר שם מלקוח/מקבל משורות "לכבוד"/"מקבל"/"לקוח".
+- החזר את שם הספק כפי שהוא מודפס על המסמך. אל תמציא מותג, רשת או אפליקציית משלוחים שלא מופיעים במפורש על המסמך.
+- אסור להחליף עסק מודפס בשם מותג מוכר. אם מופיע "מה יוסי פיצוחי" — החזר בדיוק "מה יוסי פיצוחי". אל תחזיר "וולט", "וולט הדר", או כל צירוף "וולט + שם".
+- אם OCR מזהה כינוי מוכר שמופיע במסמך עצמו, אפשר לנרמל רק כך: "חברת החשמל"; "מי רמת גן"; "הולילנד"; "סופר פארם". אין לנרמל ל"וולט" אלא אם המילה "וולט" או "Wolt" מודפסת במסמך.
 - amount הוא סה"כ לתשלום / סה"כ כולל מע"מ / Total Due / סכום לתשלום. totalAmount זהה לסה"כ כולל מע"מ. amountBeforeVat הוא סכום לפני מע"מ. vatAmount הוא מע"מ. אל תחזיר סכום ביניים, מע"מ בלבד, מספר חשבון או מספר אסמכתא בשדה amount. אם אין סכום ברור החזר null ולא 0.
 - invoiceNumber הוא מספר חשבונית/קבלה/מסמך בלבד; אם אין מספר חשבונית, מספר חשבון מותר כשזה המזהה היחיד של חשבון תקופתי. לא ח.פ/עוסק ולא מספר טלפון. לעולם אל תחזיר "Number" או "Invoice".
 - אל תמציא ערכים. אם זה צילום של חשבונית/קבלה, בצע OCR מתוך התמונה.
 - התמונה, אם קיימת, עברה הכנה ל-OCR: auto-rotate לפי metadata, auto-crop לשוליים בהירים, normalize/contrast, shadow reduction ושיפור חדות.
 - תמוך בעברית משולבת במספרים, כולל סכום, מספר חשבון, מספר חשבונית ותאריך יעד.
-${prepared.ocrText ? `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמש בו רק אם הוא מתאים למסמך:\n${prepared.ocrText.slice(0, 5000)}` : ""}`;
+${ocrHintForPrompt(prepared.ocrText, prepared.ocrConfidence)}`;
   const fileBlock =
     prepared.mimeType === "application/pdf"
       ? {
@@ -553,7 +556,13 @@ ${prepared.ocrText ? `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמ
     },
   });
   const supplierFromModel = firstString(parsed, ["supplier", "שם ספק", "ספק"]);
-  const supplier = resolveSupplierWithMekorLabel(supplierFromModel, prepared.ocrText);
+  const rawDocumentTypeEarly = firstString(parsed, ["documentType", "document_type", "סוג מסמך"]);
+  const supplier = resolveTaxReceiptSupplier({
+    extractedSupplier: resolveSupplierWithMekorLabel(supplierFromModel, prepared.ocrText),
+    ocrText: prepared.ocrText,
+    ocrConfidence: prepared.ocrConfidence,
+    documentType: normalizeDocumentType(rawDocumentTypeEarly),
+  });
   const supplierTaxId = firstString(parsed, ["supplierTaxId", "taxId", "vatNumber", "ח.פ", "עוסק מורשה", "מספר עוסק"]);
   const amount = firstNumber(parsed, ["amount", "total", "totalDue", "grandTotal", "balanceDue", "סכום", "סהכ", "סה\"כ", "סך הכל", "לתשלום"]);
   const amountBeforeVat = firstNumber(parsed, ["amountBeforeVat", "subtotal", "beforeVat", "netAmount", "סכום לפני מעמ", "סהכ לפני מעמ", "לפני מע\"מ"]);
@@ -568,7 +577,7 @@ ${prepared.ocrText ? `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמ
     "מספר",
   ]));
   const currency = firstString(parsed, ["currency", "מטבע"]);
-  const rawDocumentType = firstString(parsed, ["documentType", "document_type", "סוג מסמך"]);
+  const rawDocumentType = rawDocumentTypeEarly;
   const documentType = normalizeDocumentType(rawDocumentType);
 
   const result = {
@@ -663,6 +672,81 @@ function normalizeImageMimeType(mimeType: string) {
 
 function truncateForLog(text: string, limit = 900) {
   return text.replace(/\s+/g, " ").slice(0, limit).replace(/"/g, "'");
+}
+
+/** Low-confidence Tesseract often invents Latin junk (e.g. WLBT→וולט). Do not feed it to Claude. */
+const MIN_OCR_HINT_CONFIDENCE = 0.55;
+
+export function ocrHintForPrompt(ocrText: string | null | undefined, ocrConfidence: number | null | undefined): string {
+  const text = ocrText?.trim();
+  if (!text) return "";
+  if (typeof ocrConfidence === "number" && ocrConfidence < MIN_OCR_HINT_CONFIDENCE) {
+    return "";
+  }
+  return `\nטקסט OCR מקדים מ-Tesseract (heb+eng), השתמש בו רק אם הוא מתאים למסמך — אל תמציא מותג שלא מופיע בתמונה:\n${text.slice(0, 5000)}`;
+}
+
+function looksLikeDeliveryBrandSupplier(supplier: string): boolean {
+  return /(?:^|[\s"'])וולט|^(?:wolt)\b/i.test(supplier);
+}
+
+/** "וולט הדר" / "וולט דני" — brand + short personal name, not real Wolt legal entity. */
+function looksLikeHallucinatedWoltCompound(supplier: string): boolean {
+  const trimmed = supplier.trim();
+  if (/וולט\s*אנטרפריזס|wolt\s*enterprises/i.test(trimmed)) return false;
+  if (/^וולט$/u.test(trimmed) || /^wolt$/i.test(trimmed)) return false;
+  return /^וולט\s+\S{1,20}$/u.test(trimmed) || /^wolt\s+\S{1,20}$/i.test(trimmed);
+}
+
+function ocrMentionsDeliveryBrand(ocrText: string | null | undefined): boolean {
+  return /וולט|wolt/i.test(ocrText ?? "");
+}
+
+/**
+ * Supplier guard for invoice/receipt scans: drop invented delivery brands when
+ * OCR does not support them (common when Tesseract junk like WLBT primes Claude).
+ */
+export function resolveTaxReceiptSupplier(input: {
+  extractedSupplier: string | null | undefined;
+  ocrText: string | null | undefined;
+  ocrConfidence?: number | null;
+  documentType?: InvoiceScanResult["documentType"] | null;
+}): string | null {
+  const trimmed = input.extractedSupplier?.trim() || null;
+  if (!trimmed) return null;
+
+  const isTaxLike =
+    !input.documentType ||
+    input.documentType === "invoice" ||
+    input.documentType === "tax_invoice_receipt" ||
+    input.documentType === "receipt";
+  if (!isTaxLike) return trimmed;
+
+  if (!looksLikeDeliveryBrandSupplier(trimmed)) return trimmed;
+
+  // Compound like "וולט הדר" is almost never the printed issuer on a local shop receipt.
+  if (looksLikeHallucinatedWoltCompound(trimmed) && !ocrMentionsDeliveryBrand(input.ocrText)) {
+    return null;
+  }
+
+  const ocr = input.ocrText?.trim() ?? "";
+  if (!ocr) return trimmed;
+  if (ocrMentionsDeliveryBrand(ocr)) return trimmed;
+
+  // OCR present but no Wolt tokens → model invented the brand (often after low-conf junk).
+  return null;
+}
+
+/** @deprecated Prefer resolveTaxReceiptSupplier */
+export function rejectHallucinatedDeliveryBrandSupplier(
+  supplier: string | null | undefined,
+  ocrTextUsedInPrompt: string | null | undefined,
+): string | null {
+  return resolveTaxReceiptSupplier({
+    extractedSupplier: supplier,
+    ocrText: ocrTextUsedInPrompt,
+    documentType: "tax_invoice_receipt",
+  });
 }
 
 function parseJsonObject<T>(text: string, context: string): T | null {
