@@ -46,6 +46,11 @@ function createApp(configModule: ConfigModule, prismaModule: PrismaModule, build
         // Production web app is also served from Netlify; Render frontend remains allowed via FRONTEND_URL.
         "https://ai-office-worker-website.netlify.app",
         "https://ai-office-worker-frontend.onrender.com",
+        // Custom domain (mobile + desktop). Without this, browser calls from
+        // https://ai-office-worker.com fail CORS preflight → dashboard home-metrics
+        // never loads and KPI cards show "אין נתונים" despite CRM having real data.
+        "https://ai-office-worker.com",
+        "https://www.ai-office-worker.com",
         ...config.corsOrigins,
       ]);
 
