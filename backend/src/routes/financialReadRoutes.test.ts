@@ -4,6 +4,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
 import { config } from "../lib/config.js";
+import { CROSS_ORG_QUARANTINE_MARKER } from "../services/p0/crossOrgGmailQuarantine.js";
 import {
   buildFinancialDocumentReviewReadIsolationWhere,
   buildGmailScanItemReadIsolationWhere,
@@ -16,6 +17,11 @@ const ORG_A = "org-a";
 const ORG_B = "org-b";
 const USER_A = "user-a";
 const CONTAMINATED = Array.from({ length: 118 }, (_, index) => `gmail-cross-${index}`);
+
+function isolationParts(where: Record<string, unknown>): Record<string, unknown>[] {
+  if (Array.isArray(where.AND)) return where.AND as Record<string, unknown>[];
+  return [where];
+}
 
 function paymentRow(id: string, organizationId: string, emailMessageId: string | null) {
   return {
@@ -62,7 +68,8 @@ test("supplier payment findMany query uses emailMessageId with 118 cross-org exc
     await prisma.supplierPayment.findMany({ where, orderBy: { date: "desc" }, take: 100 });
     assert.equal(captured.length, 1);
     assert.equal("gmailMessageId" in captured[0]!, false);
-    assert.deepEqual(captured[0]!.OR, [
+    const parts = isolationParts(captured[0]!);
+    assert.deepEqual(parts[1]?.OR, [
       { emailMessageId: null },
       { emailMessageId: { notIn: CONTAMINATED } },
     ]);
@@ -79,11 +86,13 @@ test("invoice list supplier payment where uses emailMessageId isolation", () => 
     buildSupplierPaymentReadIsolationWhere(ORG_A, CONTAMINATED),
   );
   assert.equal("gmailMessageId" in where, false);
-  assert.deepEqual(where.OR, [
+  const parts = isolationParts(where as Record<string, unknown>);
+  assert.deepEqual(parts[1]?.OR, [
     { emailMessageId: null },
     { emailMessageId: { notIn: CONTAMINATED } },
   ]);
 });
+
 
 test("GET /api/payments returns 200 when cross-org contaminated ids are present", async () => {
   const previous = {
@@ -266,12 +275,18 @@ test("sharon supplier payment isolation does not include shay-only contaminated 
     { organizationId: ORG_B, approvalStatus: "approved" },
     buildSupplierPaymentReadIsolationWhere(ORG_B, [shayOnly]),
   );
-  assert.deepEqual(where.OR, [
+  const paymentParts = isolationParts(where as Record<string, unknown>);
+  assert.deepEqual(paymentParts[0]?.OR, [
+    { duplicateReason: null },
+    { NOT: { duplicateReason: { contains: CROSS_ORG_QUARANTINE_MARKER } } },
+  ]);
+  assert.deepEqual(paymentParts[1]?.OR, [
     { emailMessageId: null },
     { emailMessageId: { notIn: [shayOnly] } },
   ]);
   const fdrWhere = buildFinancialDocumentReviewReadIsolationWhere(ORG_B, [shayOnly]);
-  assert.deepEqual(fdrWhere.OR, [
+  const fdrParts = isolationParts(fdrWhere as Record<string, unknown>);
+  assert.deepEqual(fdrParts[1]?.OR, [
     { gmailMessageId: null },
     { gmailMessageId: { notIn: [shayOnly] } },
   ]);

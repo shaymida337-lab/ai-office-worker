@@ -37,12 +37,30 @@ export function crossOrgGmailIdsExcludedForOrganization(
   });
 }
 
-function quarantineMarkerExclusion(field: "decisionReason" | "uncertaintyReason" | "duplicateReason") {
+function quarantineMarkerExclusion(field: "decisionReason") {
+  // decisionReason is required on GmailScanItem — plain NOT contains is safe.
   return {
     NOT: {
       [field]: { contains: CROSS_ORG_QUARANTINE_MARKER },
     },
-  } satisfies Prisma.GmailScanItemWhereInput | Prisma.FinancialDocumentReviewWhereInput | Prisma.SupplierPaymentWhereInput;
+  } satisfies Prisma.GmailScanItemWhereInput;
+}
+
+/**
+ * SQL/Prisma `NOT (field CONTAINS …)` drops NULL rows. Camera/manual payments and
+ * reviews often have null uncertainty/duplicate reasons — they must stay visible.
+ */
+function nullableQuarantineMarkerExclusion(field: "uncertaintyReason" | "duplicateReason") {
+  return {
+    OR: [{ [field]: null }, { NOT: { [field]: { contains: CROSS_ORG_QUARANTINE_MARKER } } }],
+  };
+}
+
+function andIsolationClauses(...parts: Array<Record<string, unknown>>) {
+  const present = parts.filter((part) => Object.keys(part).length > 0);
+  if (present.length === 0) return {};
+  if (present.length === 1) return present[0]!;
+  return { AND: present };
 }
 
 /**
@@ -74,10 +92,10 @@ export function buildFinancialDocumentReviewReadIsolationWhere(
   contaminatedGmailIds: string[],
 ): Prisma.FinancialDocumentReviewWhereInput {
   const excludedGmailIds = crossOrgGmailIdsExcludedForOrganization(organizationId, contaminatedGmailIds);
-  return {
-    ...quarantineMarkerExclusion("uncertaintyReason"),
-    ...(excludedGmailIds.length > 0 ? notInOrNull("gmailMessageId", excludedGmailIds) : {}),
-  };
+  return andIsolationClauses(
+    nullableQuarantineMarkerExclusion("uncertaintyReason"),
+    excludedGmailIds.length > 0 ? notInOrNull("gmailMessageId", excludedGmailIds) : {},
+  ) as Prisma.FinancialDocumentReviewWhereInput;
 }
 
 export function buildSupplierPaymentReadIsolationWhere(
@@ -85,10 +103,10 @@ export function buildSupplierPaymentReadIsolationWhere(
   contaminatedGmailIds: string[],
 ): Prisma.SupplierPaymentWhereInput {
   const excludedGmailIds = crossOrgGmailIdsExcludedForOrganization(organizationId, contaminatedGmailIds);
-  return {
-    ...quarantineMarkerExclusion("duplicateReason"),
-    ...(excludedGmailIds.length > 0 ? notInOrNull("emailMessageId", excludedGmailIds) : {}),
-  };
+  return andIsolationClauses(
+    nullableQuarantineMarkerExclusion("duplicateReason"),
+    excludedGmailIds.length > 0 ? notInOrNull("emailMessageId", excludedGmailIds) : {},
+  ) as Prisma.SupplierPaymentWhereInput;
 }
 
 export function mergePrismaWhere<T extends Record<string, unknown>>(base: T, extra: Record<string, unknown>): T {
