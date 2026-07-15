@@ -185,29 +185,111 @@ export async function listCrmLeads(organizationId: string, query: Record<string,
     ...(maxValue !== null && { lte: maxValue }),
   };
 
-  const leads = await prisma.lead.findMany({
-    where: {
-      organizationId,
-      ...(source && source !== "all" && { source }),
-      ...(stage && stage !== "all" && { stage }),
-      ...(assignedTo && { assignedTo }),
-      ...(Object.keys(estimatedValueFilter).length && { estimatedValue: estimatedValueFilter }),
-      ...((from || to) && { createdAt: { ...(from && { gte: from }), ...(to && { lte: to }) } }),
-      ...(search && {
-        OR: [
-          { name: { contains: search, mode: "insensitive" } },
-          { company: { contains: search, mode: "insensitive" } },
-          { phone: { contains: search, mode: "insensitive" } },
-          { email: { contains: search, mode: "insensitive" } },
-        ],
-      }),
-    },
-    include: { timeline: { orderBy: { createdAt: "desc" }, take: 5 }, sequences: { orderBy: { scheduledAt: "asc" } } },
-    orderBy: [{ [sortBy]: sortDir }, { updatedAt: "desc" }],
-    take: 300,
-  });
+  // List payload for /crm cards + filters + search only.
+  // Do NOT include timeline/sequences here — those are loaded per lead via GET /leads/:id
+  // when the profile panel opens (avoids N*relations bloat on every list fetch).
+  const where = {
+    organizationId,
+    ...(source && source !== "all" && { source }),
+    ...(stage && stage !== "all" && { stage }),
+    ...(assignedTo && { assignedTo }),
+    ...(Object.keys(estimatedValueFilter).length && { estimatedValue: estimatedValueFilter }),
+    ...((from || to) && { createdAt: { ...(from && { gte: from }), ...(to && { lte: to }) } }),
+    ...(search && {
+      OR: [
+        { name: { contains: search, mode: "insensitive" as const } },
+        { company: { contains: search, mode: "insensitive" as const } },
+        { phone: { contains: search, mode: "insensitive" as const } },
+        { email: { contains: search, mode: "insensitive" as const } },
+      ],
+    }),
+  };
 
-  return { leads, kpis: await getCrmKpis(organizationId), pipeline: buildPipeline(leads) };
+  const [leadRows, listKpis] = await Promise.all([
+    prisma.lead.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        company: true,
+        phone: true,
+        email: true,
+        whatsapp: true,
+        source: true,
+        stage: true,
+        estimatedValue: true,
+        assignedTo: true,
+        tags: true,
+        notes: true,
+        score: true,
+        priorityStars: true,
+        repliedAt: true,
+        lastContactAt: true,
+        nextReminderAt: true,
+        lastMessageStatus: true,
+        attachments: true,
+        messageCount: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: [{ [sortBy]: sortDir }, { updatedAt: "desc" }],
+      take: 300,
+    }),
+    // CRM KPI cards need full-org counts (not the take:300 slice).
+    getCrmListKpis(organizationId),
+  ]);
+
+  const leads = leadRows.map((lead) => ({
+    ...lead,
+    timeline: [] as Array<{
+      id: string;
+      type: string;
+      content: string;
+      channel: string | null;
+      createdAt: Date;
+    }>,
+    sequences: [] as Array<{
+      id: string;
+      step: number;
+      channel: string;
+      template: string;
+      scheduledAt: Date;
+      sentAt: Date | null;
+      status: string;
+    }>,
+  }));
+
+  // Legacy KPI fields (unused by /crm cards) derived from the returned list —
+  // avoids a second round of heavy org-wide aggregates on every list load.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const replied = leadRows.filter((lead) => lead.repliedAt != null).length;
+  const closed = leadRows.filter((lead) => lead.stage === "סגור");
+  const avgCloseDays = closed.length
+    ? Math.round(
+        closed.reduce(
+          (sum, lead) => sum + Math.max(0, lead.updatedAt.getTime() - lead.createdAt.getTime()) / 86_400_000,
+          0
+        ) / closed.length
+      )
+    : 0;
+
+  return {
+    leads,
+    kpis: {
+      newToday: leadRows.filter((lead) => lead.createdAt >= today).length,
+      responseRate: leadRows.length ? Math.round((replied / leadRows.length) * 100) : 0,
+      avgCloseDays,
+      pipelineValue: leadRows
+        .filter((lead) => lead.stage !== "הפסד")
+        .reduce((sum, lead) => sum + (lead.estimatedValue ?? 0), 0),
+      activeCustomers: listKpis.activeCustomers,
+      newLeads: listKpis.newLeads,
+      openTasks: listKpis.openTasks,
+      unattended: listKpis.unattended,
+    },
+    pipeline: buildPipeline(leads),
+  };
 }
 
 export async function getCrmLead(organizationId: string, leadId: string) {

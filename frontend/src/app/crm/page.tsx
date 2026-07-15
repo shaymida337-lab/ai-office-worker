@@ -649,7 +649,14 @@ export default function CrmPage() {
                       router.push(`/dashboard/clients/${lead.id.slice(CLIENT_ROW_PREFIX.length)}`);
                       return;
                     }
+                    // List payload omits timeline/sequences for speed; open immediately
+                    // then hydrate full lead so profile tabs keep the same data.
                     setSelected(lead);
+                    void apiFetch<Lead>(`/api/leads/${lead.id}`)
+                      .then((full) => {
+                        setSelected((current) => (current?.id === full.id ? full : current));
+                      })
+                      .catch(() => undefined);
                   }}
                 />
               ))}
