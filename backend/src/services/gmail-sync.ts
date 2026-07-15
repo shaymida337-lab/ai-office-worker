@@ -145,6 +145,17 @@ export function gmailFseSupplierCacheKey(organizationId: string, supplierName: s
   return `${organizationId}|${normalizeSupplierName(supplierName).toLowerCase()}`;
 }
 
+/**
+ * Same list-visibility date fields camera confirm writes on SupplierPayment.
+ * Invoice/month SQL requires normalizedDocumentDate IS NOT NULL.
+ */
+export function gmailSupplierPaymentListVisibilityDates(documentDate: Date): {
+  date: Date;
+  normalizedDocumentDate: Date;
+} {
+  return { date: documentDate, normalizedDocumentDate: documentDate };
+}
+
 export class GmailFinancialSanityContextSessionCache {
   private supplierHistoryByKey = new Map<string, FinancialSanityContext["supplierHistory"]>();
 
@@ -3133,6 +3144,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               invoiceMonth: driveLinks[0]?.invoiceMonth ?? existingPayment.invoiceMonth,
               invoiceYear: driveLinks[0]?.invoiceYear ?? existingPayment.invoiceYear,
               invoiceNumber: invoiceNumberForDecision ?? existingPayment.invoiceNumber,
+              // Same invoice-list field camera stamps on confirm (month tabs require it).
+              normalizedDocumentDate:
+                documentDateForDecision ?? existingPayment.normalizedDocumentDate ?? existingPayment.date,
               documentFingerprint: documentDecision.documentFingerprint,
               sourceFingerprint: documentDecision.sourceFingerprint,
               documentTypeDetailed: documentDecision.documentType,
@@ -3224,7 +3238,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               supplier: paymentSupplierName,
               amount: resolvedPaymentAmount,
               currency: analysis.currency,
-              date: email.receivedAt,
+              ...gmailSupplierPaymentListVisibilityDates(documentDateForDecision),
               dueDate,
               paid: false,
               documentLink,
@@ -3237,8 +3251,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               driveSupplierFolderId: driveLinks[0]?.supplierFolderId ?? null,
               driveFolderPath: driveLinks[0]?.folderPath ?? null,
               supplierName: driveLinks[0]?.supplierName ?? paymentSupplierName,
-              invoiceMonth: driveLinks[0]?.invoiceMonth ?? email.receivedAt.getMonth() + 1,
-              invoiceYear: driveLinks[0]?.invoiceYear ?? email.receivedAt.getFullYear(),
+              invoiceMonth: driveLinks[0]?.invoiceMonth ?? documentDateForDecision.getMonth() + 1,
+              invoiceYear: driveLinks[0]?.invoiceYear ?? documentDateForDecision.getFullYear(),
               invoiceNumber: invoiceNumberForDecision,
               documentFingerprint: documentDecision.documentFingerprint,
               sourceFingerprint: documentDecision.sourceFingerprint,
@@ -6502,7 +6516,7 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
           supplier: paymentSupplierName,
           amount: paymentAmount,
           currency: input.analysis.currency,
-          date: input.email.receivedAt,
+          ...gmailSupplierPaymentListVisibilityDates(input.documentDate),
           dueDate,
           paid: false,
           documentLink,
