@@ -8,7 +8,9 @@ test("resolveHeroTrustState shows disconnected error when Gmail is not connected
     scanRunning: false,
   });
   assert.equal(state.statusTone, "danger");
-  assert.match(state.statusLabel, /הג׳ימייל לא מחובר/);
+  // ההודעה מבהירה שהחשבון מחובר ורק Gmail עוד לא חובר — לא "אני לא מחוברת".
+  assert.match(state.statusLabel, /החשבון שלך מחובר/);
+  assert.match(state.statusLabel, /לחבר את Gmail/);
   assert.equal(state.ctaLabel, "חבר ג׳ימייל");
   assert.equal(state.ctaAction, "connect_gmail");
 });

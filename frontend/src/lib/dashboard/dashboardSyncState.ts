@@ -274,8 +274,10 @@ export function resolveDashboardSyncState(input: DashboardSyncStateInput): Dashb
   } else if (input.gmailConnectionState === "Disconnected") {
     status = "ERROR";
     reason = errorReason;
-    headline = "הג׳ימייל לא מחובר";
-    message = reason ?? headline;
+    // החשבון/ההתחברות תקינים — רק אינטגרציית ה-Gmail עוד לא חוברה.
+    // מנסחים כך שלא ייקרא כאילו נטלי/המשתמשת אינם מחוברים למערכת.
+    headline = "החשבון מחובר — נשאר לחבר את Gmail";
+    message = "החשבון שלך מחובר בהצלחה. נשאר רק לחבר את Gmail כדי שאוכל לסרוק עבורך מיילים.";
     tone = "danger";
   } else if (confirmedError || errorReason) {
     status = "ERROR";
