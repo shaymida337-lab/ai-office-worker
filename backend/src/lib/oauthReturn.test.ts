@@ -28,9 +28,15 @@ test("oauthIntegrationRedirect uses returnTo when valid", () => {
 });
 
 test("oauthIntegrationRedirect falls back to provider default", () => {
+  // ברירת המחדל של Gmail היא מסך הבית — משתמש לא נזרק להגדרות בלי שביקש.
   const gmailUrl = oauthIntegrationRedirect("gmail", "connected", "/evil");
-  assert.match(gmailUrl, /\/dashboard\/settings\?gmail=connected$/);
+  assert.match(gmailUrl, /\/dashboard\?gmail=connected$/);
 
   const calendarUrl = oauthIntegrationRedirect("calendar", "connected", null);
   assert.match(calendarUrl, /\/dashboard\/calendar\?calendar=connected$/);
+});
+
+test("returning from Gmail connect started on invoices stays on invoices", () => {
+  const url = oauthIntegrationRedirect("gmail", "connected", "/dashboard/invoices");
+  assert.match(url, /\/dashboard\/invoices\?gmail=connected$/);
 });

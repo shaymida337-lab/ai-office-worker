@@ -6,6 +6,7 @@ export const OAUTH_RETURN_ALLOWLIST = [
   "/dashboard",
   "/dashboard/settings",
   "/dashboard/calendar",
+  "/dashboard/invoices",
 ] as const;
 
 export type OAuthReturnTarget = (typeof OAUTH_RETURN_ALLOWLIST)[number];
@@ -21,7 +22,9 @@ export function normalizeOAuthReturnTo(value: unknown): OAuthReturnTarget | null
 }
 
 export function defaultOAuthReturnTarget(provider: "gmail" | "calendar"): OAuthReturnTarget {
-  return provider === "gmail" ? "/dashboard/settings" : "/dashboard/calendar";
+  // ברירת המחדל אחרי חזרה מ-OAuth היא מסך הבית — לא הגדרות. מסך ספציפי
+  // (הגדרות/יומן/חשבוניות) מגיע רק דרך returnTo מפורש מהמסך שממנו התחילו.
+  return provider === "gmail" ? "/dashboard" : "/dashboard/calendar";
 }
 
 export function oauthIntegrationRedirect(
