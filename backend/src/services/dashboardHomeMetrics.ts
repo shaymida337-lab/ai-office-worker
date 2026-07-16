@@ -80,15 +80,17 @@ export async function countMeetingsToday(
   timeZone: string
 ): Promise<number> {
   const { start, end } = getDayBounds(now, timeZone);
-  const flags = await resolveCalendarEngineFlags(organizationId);
-
-  const appointmentCount = await prisma.appointment.count({
+  const appointmentCountPromise = prisma.appointment.count({
     where: {
       organizationId,
       startTime: { gte: start, lt: end },
       status: { not: "cancelled" },
     },
   });
+  const [flags, appointmentCount] = await Promise.all([
+    resolveCalendarEngineFlags(organizationId),
+    appointmentCountPromise,
+  ]);
 
   if (!flags.readEnabled) {
     return appointmentCount;
@@ -108,10 +110,10 @@ export async function countMeetingsToday(
 /** Direct prisma counts — used by tests to verify API payload matches DB truth. */
 export async function countDashboardHomeMetricsDirect(
   organizationId: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  timeZone?: string
 ): Promise<Record<DashboardHomeMetricId, number>> {
-  const rules = await getCalendarRulesForOrganization(organizationId);
-  const timeZone = rules.timeZone;
+  const resolvedTimeZone = timeZone ?? (await getCalendarRulesForOrganization(organizationId)).timeZone;
   const [
     active_clients,
     open_tasks,
@@ -122,7 +124,7 @@ export async function countDashboardHomeMetricsDirect(
   ] = await Promise.all([
     countActiveClients(organizationId),
     countOpenTasks(organizationId),
-    countMeetingsToday(organizationId, now, timeZone),
+    countMeetingsToday(organizationId, now, resolvedTimeZone),
     countPendingDocumentReviews(organizationId),
     countNewClientsThisMonth(organizationId),
     countUnreadAlerts(organizationId),
@@ -142,7 +144,7 @@ export async function getDashboardHomeMetrics(
   now: Date = new Date()
 ): Promise<DashboardHomeMetricsPayload> {
   const rules = await getCalendarRulesForOrganization(organizationId);
-  const metrics = await countDashboardHomeMetricsDirect(organizationId, now);
+  const metrics = await countDashboardHomeMetricsDirect(organizationId, now, rules.timeZone);
   return {
     organizationId,
     computedAt: now.toISOString(),

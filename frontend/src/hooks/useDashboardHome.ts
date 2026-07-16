@@ -141,6 +141,8 @@ export function useDashboardHome() {
   const invoiceAttachInFlightRef = useRef(false);
   const gmailOAuthReturnHandledRef = useRef(false);
   const autoFirstScanRef = useRef(false);
+  /** Aborts /api/stats + /api/document-reviews when leaving /dashboard (not Gmail scan / critical home). */
+  const homeHeavyFetchAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setClientMounted(true);
@@ -186,23 +188,61 @@ export function useDashboardHome() {
   }, [gmailStatus]);
 
   const load = useCallback(async () => {
+    // Cancel prior stats/document-reviews so leaving /dashboard frees contention for CRM.
+    homeHeavyFetchAbortRef.current?.abort();
+    const heavyAbort = new AbortController();
+    homeHeavyFetchAbortRef.current = heavyAbort;
+    const heavySignal = heavyAbort.signal;
+
     try {
       const appointmentFrom = new Date().toISOString();
       const appointmentTo = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-      // טעינה פרוגרסיבית: הבקשות הקריטיות למסך הראשון נפרדות מהשאר, כך
-      // שבקשה איטית אחת (למשל system/health עם timeout של 30ש׳, או backend
-      // בהתעוררות מ-cold start) לא משאירה את כל הדשבורד על Skeleton.
-      // כל הבקשות יוצאות במקביל; pageLoading יורד כשהקריטיות הסתיימו.
-      const criticalPromise = Promise.allSettled([
-        apiFetch<DashboardStats>("/api/stats"),
+
+      // Phase 1 — unblock KPIs: only home-metrics (+ settings in parallel for onboarding).
+      // Do NOT await gmail/briefing/stats/document-reviews/tasks here.
+      const settingsPromise = apiFetch<OrganizationSettings>("/api/organization/settings");
+      const homeMetricsPromise = apiFetch<DashboardHomeMetricsResponse>("/api/dashboard/home-metrics");
+
+      const homeMetricsResult = await Promise.allSettled([homeMetricsPromise]).then(([result]) => result);
+      if (homeMetricsResult.status === "fulfilled") {
+        setHomeMetrics(homeMetricsResult.value);
+      } else {
+        setHomeMetrics(null);
+      }
+      setHomeMetricsLoaded(true);
+      setPageLoading(false);
+
+      const orgResult = await Promise.allSettled([settingsPromise]).then(([result]) => result);
+      if (orgResult.status === "fulfilled") {
+        setOrganizationSettings(orgResult.value);
+        if (orgResult.value.onboardingRequired) {
+          router.replace("/onboarding");
+          return;
+        }
+      }
+
+      // Phase 2 — everything else after KPI unlock (incl. gmail status + briefing; no scan/OCR changes).
+      const [
+        gmailResult,
+        briefingResult,
+        statsResult,
+        reviewsResult,
+        tasksResult,
+        summaryResult,
+        clientsResult,
+        scanStatusResult,
+        paymentsResult,
+        missingResult,
+        invoicesResult,
+        alertsResult,
+        systemResult,
+        accountantResult,
+      ] = await Promise.allSettled([
         apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
-        apiFetch<OrganizationSettings>("/api/organization/settings"),
-        apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review"),
         fetchBriefingSchedulingSnapshot(appointmentFrom, appointmentTo),
+        apiFetch<DashboardStats>("/api/stats", { signal: heavySignal }),
+        apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review", { signal: heavySignal }),
         apiFetch<Task[]>("/api/tasks"),
-        apiFetch<DashboardHomeMetricsResponse>("/api/dashboard/home-metrics"),
-      ] as const);
-      const deferredPromise = Promise.allSettled([
         apiFetch<{ text: string }>("/api/summary/daily"),
         apiFetch<ClientsResponse>("/api/clients"),
         apiFetch<ScanStatus>("/api/automation/scan-status"),
@@ -214,28 +254,10 @@ export function useDashboardHome() {
         apiFetch<AccountantSummary>("/api/accountant/summary"),
       ] as const);
 
-      const [statsResult, gmailResult, orgResult, reviewsResult, briefingResult, tasksResult, homeMetricsResult] =
-        await criticalPromise;
-
-      setStats(statsResult.status === "fulfilled" ? statsResult.value : null);
-      if (homeMetricsResult.status === "fulfilled") {
-        setHomeMetrics(homeMetricsResult.value);
-      } else {
-        setHomeMetrics(null);
-      }
-      setHomeMetricsLoaded(true);
       const gmailResolved = resolveGmailStatusFromSettled(gmailStatus, gmailResult);
       setGmailStatus(gmailResolved.nextStatus);
       setGmailStatusKnown(gmailResolved.known);
       setGmailStatusStale(gmailResolved.stale);
-      setRecentTasks(tasksResult.status === "fulfilled" ? tasksResult.value.slice(0, 8) : []);
-      if (reviewsResult.status === "fulfilled") {
-        setPendingDocumentReviewsCount(reviewsResult.value.length);
-        setDocumentReviews(reviewsResult.value.slice(0, 5));
-      } else {
-        setPendingDocumentReviewsCount(0);
-        setDocumentReviews([]);
-      }
       if (briefingResult.status === "fulfilled") {
         setBriefingScheduling(briefingResult.value);
         setUpcomingAppointments(
@@ -253,17 +275,16 @@ export function useDashboardHome() {
         setBriefingScheduling(null);
         setUpcomingAppointments([]);
       }
-      if (orgResult.status === "fulfilled") {
-        setOrganizationSettings(orgResult.value);
-        if (orgResult.value.onboardingRequired) {
-          router.replace("/onboarding");
-          return;
-        }
-      }
-      // המסך נפתח כאן — אזורים שתלויים בבקשות הנדחות מציגים loading מקומי.
-      setPageLoading(false);
 
-      const [summaryResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, alertsResult, systemResult, accountantResult] = await deferredPromise;
+      setStats(statsResult.status === "fulfilled" ? statsResult.value : null);
+      setRecentTasks(tasksResult.status === "fulfilled" ? tasksResult.value.slice(0, 8) : []);
+      if (reviewsResult.status === "fulfilled") {
+        setPendingDocumentReviewsCount(reviewsResult.value.length);
+        setDocumentReviews(reviewsResult.value.slice(0, 5));
+      } else if (!heavySignal.aborted) {
+        setPendingDocumentReviewsCount(0);
+        setDocumentReviews([]);
+      }
 
       setSummary(summaryResult.status === "fulfilled" ? summaryResult.value.text : "לא ניתן לטעון סיכום כרגע.");
       setClients(clientsResult.status === "fulfilled" ? clientsResult.value : emptyClients);
@@ -367,6 +388,13 @@ export function useDashboardHome() {
   const refreshGmailStatusRef = useRef(refreshGmailStatus);
   loadRef.current = load;
   refreshGmailStatusRef.current = refreshGmailStatus;
+
+  useEffect(() => {
+    return () => {
+      homeHeavyFetchAbortRef.current?.abort();
+      homeHeavyFetchAbortRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const search = window.location.search;
