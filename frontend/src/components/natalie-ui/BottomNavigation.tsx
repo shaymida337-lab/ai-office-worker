@@ -127,7 +127,7 @@ export function BottomNavigation({ items }: { items: BottomNavItem[] }) {
       ) : null}
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 h-[4.5rem] border-t border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface,#ffffff)]/98 px-2 pb-[max(0px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] backdrop-blur"
+        className="fixed inset-x-0 bottom-0 z-40 h-[4.5rem] border-t border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface,#ffffff)] px-2 pb-[max(0px,env(safe-area-inset-bottom))] pt-2"
         aria-label="Main navigation"
       >
         <div
