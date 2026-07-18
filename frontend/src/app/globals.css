@@ -94,10 +94,7 @@
     width: 100%;
     overflow-x: hidden;
     font-family: var(--font-heebo), system-ui, sans-serif;
-    background:
-      radial-gradient(circle at top right, rgba(29, 91, 255, 0.11), transparent 30rem),
-      radial-gradient(circle at 20% 15%, rgba(31, 170, 89, 0.08), transparent 24rem),
-      var(--bg-primary);
+    background: var(--bg-primary);
     color: var(--text-primary);
   }
 
