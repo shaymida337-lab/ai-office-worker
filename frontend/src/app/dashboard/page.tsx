@@ -110,7 +110,7 @@ export default function DashboardPage() {
         label: t("dashboardDesign.actions.talk"),
         hint: t("dashboardDesign.actions.talkHint"),
         icon: MessageCircle,
-        onClick: () => d.handleNatalieConversation("מה חשוב לי היום?"),
+        onClick: () => openNatalieAssistant(),
       },
       {
         id: "scan",
@@ -256,8 +256,8 @@ export default function DashboardPage() {
                     <Button
                       variant="primary"
                       onClick={() =>
-                        d.handleNatalieConversation(
-                          isInsuranceHome ? "מה מצב סוכנות הביטוח שלי היום?" : "מה חשוב לי היום?"
+                        openNatalieAssistant(
+                          isInsuranceHome ? "מה מצב סוכנות הביטוח שלי היום?" : undefined
                         )
                       }
                       className="!min-h-12 text-base"
