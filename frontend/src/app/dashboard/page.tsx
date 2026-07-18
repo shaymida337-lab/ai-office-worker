@@ -160,6 +160,7 @@ export default function DashboardPage() {
           <FloatingActionButton
             label={t("dashboardDesign.floatingNatalie")}
             onClick={() => openNatalieAssistant()}
+            className={isInsuranceHome ? undefined : "max-lg:!hidden"}
           />
         }
       >
@@ -179,80 +180,82 @@ export default function DashboardPage() {
         <div className="grid gap-4">
             <Card className="overflow-hidden border-[#d7e4ff] bg-[linear-gradient(145deg,#eef4ff_0%,#f7faff_55%,#ffffff_100%)] p-4 shadow-[0_16px_40px_rgba(29,91,255,0.11)] dark:border-[#1F2A44] dark:bg-[linear-gradient(145deg,#0F1B38_0%,#0D1730_55%,#0B1220_100%)] dark:shadow-[0_16px_40px_rgba(2,6,23,0.5)] md:p-6">
               <div className="grid items-center gap-5 lg:grid-cols-[minmax(0,1fr)_240px]">
-                <div className="order-2 grid gap-4 lg:order-1">
-                  <div className="grid gap-2">
-                    <p className="inline-flex w-fit items-center gap-2 rounded-full border border-[#cbdcff] bg-white px-3 py-1 text-xs font-bold text-[#1d4ed8] dark:border-[#27395F] dark:bg-[#0F1E42] dark:text-[#93C5FD]">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      {t("dashboardDesign.hero.badge")}
-                    </p>
-                    <h2 className="text-2xl font-black tracking-tight text-[#0f172a] dark:text-[#F1F5F9] md:text-3xl">
-                      {insuranceOverlay
-                        ? insuranceOverlay.greetingLine
-                        : d.morningGreeting.headline || t("dashboardDesign.heroTitle")}
-                    </h2>
-                    <p className="text-sm font-semibold text-[#475569] dark:text-[#94A3B8] md:text-base">
-                      {insuranceOverlay
-                        ? "סיכום נטלי לפי הנתונים הקיימים בסוכנות."
-                        : t("dashboardDesign.hero.prepared")}
-                    </p>
-                  </div>
+                <div className="order-2 flex flex-col lg:order-1">
+                  <div className="grid gap-4">
+                    <div className="grid gap-3 text-start">
+                      <p className="inline-flex w-fit items-center gap-2 self-start rounded-full border border-[#cbdcff] bg-white px-3 py-1 text-xs font-bold text-[#1d4ed8] dark:border-[#27395F] dark:bg-[#0F1E42] dark:text-[#93C5FD]">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        {t("dashboardDesign.hero.badge")}
+                      </p>
+                      <h2 className="text-2xl font-black tracking-tight text-[#0f172a] dark:text-[#F1F5F9] md:text-3xl">
+                        {insuranceOverlay
+                          ? insuranceOverlay.greetingLine
+                          : d.morningGreeting.headline || t("dashboardDesign.heroTitle")}
+                      </h2>
+                      <p className="text-sm font-semibold text-[#475569] dark:text-[#94A3B8] md:text-base">
+                        {insuranceOverlay
+                          ? "סיכום נטלי לפי הנתונים הקיימים בסוכנות."
+                          : t("dashboardDesign.hero.prepared")}
+                      </p>
+                    </div>
 
-                  <div className="grid gap-2 rounded-2xl border border-[#dbe6ff] bg-white/90 p-3 dark:border-[#1F2A44] dark:bg-[#0F172A]/90">
+                    <div className="grid gap-2 rounded-2xl border border-[#dbe6ff] bg-white/90 p-3 dark:border-[#1F2A44] dark:bg-[#0F172A]/90">
+                      {d.pageLoading || !d.homeMetricsLoaded ? (
+                        <SkeletonText lines={3} />
+                      ) : insuranceOverlay ? (
+                        insuranceOverlay.summaryLines.map((line, index) => (
+                          <HeroLine
+                            key={`hero-metric-${index}`}
+                            icon={
+                              line.includes("מבוטח") || line.includes("ליד")
+                                ? Sparkles
+                                : line.includes("פגיש")
+                                  ? CalendarDays
+                                  : line.includes("משימ")
+                                    ? ListTodo
+                                    : line.includes("מסמכ")
+                                      ? FileClock
+                                      : Sparkles
+                            }
+                            text={line}
+                          />
+                        ))
+                      ) : (
+                        <>
+                          <HeroLine
+                            icon={CalendarDays}
+                            text={heroMetricLine(todayMeetingsCount, d.homeMetricsLoaded, (count) =>
+                              t("dashboardDesign.hero.meetings", { count })
+                            )}
+                          />
+                          <HeroLine
+                            icon={FileClock}
+                            text={heroMetricLine(pendingDocsCount, d.homeMetricsLoaded, (count) =>
+                              t("dashboardDesign.hero.documents", { count })
+                            )}
+                          />
+                          <HeroLine
+                            icon={ListTodo}
+                            text={heroMetricLine(openTasksCount, d.homeMetricsLoaded, (count) =>
+                              t("dashboardDesign.hero.tasks", { count })
+                            )}
+                          />
+                        </>
+                      )}
+                    </div>
+
                     {d.pageLoading || !d.homeMetricsLoaded ? (
-                      <SkeletonText lines={3} />
-                    ) : insuranceOverlay ? (
-                      insuranceOverlay.summaryLines.map((line, index) => (
-                        <HeroLine
-                          key={`hero-metric-${index}`}
-                          icon={
-                            line.includes("מבוטח") || line.includes("ליד")
-                              ? Sparkles
-                              : line.includes("פגיש")
-                                ? CalendarDays
-                                : line.includes("משימ")
-                                  ? ListTodo
-                                  : line.includes("מסמכ")
-                                    ? FileClock
-                                    : Sparkles
-                          }
-                          text={line}
-                        />
-                      ))
+                      <div className="rounded-xl border border-[#e5ebfb] bg-white px-3 py-2 dark:border-[#1F2A44] dark:bg-[#0F172A]">
+                        <SkeletonText lines={1} />
+                      </div>
                     ) : (
-                      <>
-                        <HeroLine
-                          icon={CalendarDays}
-                          text={heroMetricLine(todayMeetingsCount, d.homeMetricsLoaded, (count) =>
-                            t("dashboardDesign.hero.meetings", { count })
-                          )}
-                        />
-                        <HeroLine
-                          icon={FileClock}
-                          text={heroMetricLine(pendingDocsCount, d.homeMetricsLoaded, (count) =>
-                            t("dashboardDesign.hero.documents", { count })
-                          )}
-                        />
-                        <HeroLine
-                          icon={ListTodo}
-                          text={heroMetricLine(openTasksCount, d.homeMetricsLoaded, (count) =>
-                            t("dashboardDesign.hero.tasks", { count })
-                          )}
-                        />
-                      </>
+                      <p className="rounded-xl border border-[#e5ebfb] bg-white px-3 py-2 text-sm font-semibold text-[#334155] dark:border-[#1F2A44] dark:bg-[#0F172A] dark:text-[#CBD5E1]">
+                        {heroSummary}
+                      </p>
                     )}
                   </div>
 
-                  {d.pageLoading || !d.homeMetricsLoaded ? (
-                    <div className="rounded-xl border border-[#e5ebfb] bg-white px-3 py-2 dark:border-[#1F2A44] dark:bg-[#0F172A]">
-                      <SkeletonText lines={1} />
-                    </div>
-                  ) : (
-                    <p className="rounded-xl border border-[#e5ebfb] bg-white px-3 py-2 text-sm font-semibold text-[#334155] dark:border-[#1F2A44] dark:bg-[#0F172A] dark:text-[#CBD5E1]">
-                      {heroSummary}
-                    </p>
-                  )}
-
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="mt-5 grid gap-2 sm:grid-cols-2">
                     <Button
                       variant="primary"
                       onClick={() =>
@@ -288,10 +291,17 @@ export default function DashboardPage() {
                 onNavigate={(href) => d.router.push(href)}
               />
             ) : (
-              <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                {kpis.map((metric) => (
-                  <KpiCard key={metric.id} label={metric.label} value={metric.value} />
-                ))}
+              <section className="flex items-start gap-5 lg:block">
+                <FloatingActionButton
+                  label={t("dashboardDesign.floatingNatalie")}
+                  onClick={() => openNatalieAssistant()}
+                  className="!static !relative !bottom-auto !end-auto shrink-0 lg:!hidden"
+                />
+                <div className="min-w-0 flex-1 grid grid-cols-2 gap-3 md:grid-cols-4">
+                  {kpis.map((metric) => (
+                    <KpiCard key={metric.id} label={metric.label} value={metric.value} />
+                  ))}
+                </div>
               </section>
             )}
 
