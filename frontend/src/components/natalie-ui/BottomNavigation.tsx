@@ -41,7 +41,6 @@ export function BottomNavigation({ items }: { items: BottomNavItem[] }) {
       { id: "payments", label: t("globalNav.payments"), href: "/payments" },
       { id: "reports", label: t("globalNav.reports"), href: "/reports" },
       { id: "settings", label: t("globalNav.settings"), href: "/dashboard/settings" },
-      { id: "integrations", label: t("globalNav.integrations"), href: "/dashboard/settings?tab=integrations" },
     ],
     [t]
   );
