@@ -60,7 +60,7 @@ export function GlobalHeader({
 
   return (
     <header
-      className={`fixed inset-x-0 top-0 z-40 border-b border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface,#ffffff)]/95 backdrop-blur ${className}`}
+      className={`fixed inset-x-0 top-0 z-40 border-b border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface,#ffffff)] ${className}`}
       style={{ paddingTop: "max(0px, env(safe-area-inset-top))" }}
     >
       <div

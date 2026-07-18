@@ -2,7 +2,7 @@
 export const natalie = {
   page: "min-h-screen bg-[var(--natalie-bg-page,#F3F6FF)] text-[var(--natalie-text-primary,#0F172A)]",
   header:
-    "fixed inset-x-0 top-0 z-40 border-b border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface,#ffffff)]/95 backdrop-blur",
+    "fixed inset-x-0 top-0 z-40 border-b border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface,#ffffff)]",
   card: "rounded-2xl border border-[var(--natalie-card-border,#DBE5F4)] bg-[var(--natalie-card-bg,#ffffff)] shadow-sm",
   cardLg: "rounded-3xl border border-[var(--natalie-card-border,#DBE5F4)] bg-[var(--natalie-card-bg,#ffffff)] shadow-sm",
   title: "text-[var(--natalie-text-primary,#0F172A)]",
