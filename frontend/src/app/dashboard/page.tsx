@@ -160,7 +160,6 @@ export default function DashboardPage() {
           <FloatingActionButton
             label={t("dashboardDesign.floatingNatalie")}
             onClick={() => openNatalieAssistant()}
-            className={isInsuranceHome ? undefined : "max-lg:!hidden"}
           />
         }
       >
@@ -291,17 +290,10 @@ export default function DashboardPage() {
                 onNavigate={(href) => d.router.push(href)}
               />
             ) : (
-              <section className="flex items-start gap-5 lg:block">
-                <FloatingActionButton
-                  label={t("dashboardDesign.floatingNatalie")}
-                  onClick={() => openNatalieAssistant()}
-                  className="!static !relative !bottom-auto !end-auto shrink-0 lg:!hidden"
-                />
-                <div className="min-w-0 flex-1 grid grid-cols-2 gap-3 md:grid-cols-4">
-                  {kpis.map((metric) => (
-                    <KpiCard key={metric.id} label={metric.label} value={metric.value} />
-                  ))}
-                </div>
+              <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {kpis.map((metric) => (
+                  <KpiCard key={metric.id} label={metric.label} value={metric.value} />
+                ))}
               </section>
             )}
 
