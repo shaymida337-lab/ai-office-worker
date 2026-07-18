@@ -298,14 +298,7 @@
   }
 }
 
-@media (min-width: 1024px) {
-  .container {
-    width: calc(100% - 15rem);
-    max-width: min(1400px, calc(100% - 15rem));
-    margin-right: 15rem;
-    margin-left: 0;
-  }
-}
+/* Full-width content — bottom navigation is the only primary nav (no desktop sidebar). */
 
 @media (max-width: 640px) {
   body {

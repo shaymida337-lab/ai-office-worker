@@ -2,7 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Nav } from "@/components/Nav";
+import {
+  AppShell,
+  Button,
+  Card,
+  FormLabel,
+  Input,
+  MessageBanner,
+  PageTitle,
+  Select,
+  StatusBadge,
+  Textarea,
+} from "@/components/natalie-ui";
 import { API_URL, apiFetch, getToken, type GmailStatus } from "@/lib/api";
 import {
   buildGmailConnectionFromStatus,
@@ -76,6 +87,18 @@ type GreenInvoiceConnectResponse = {
 };
 
 type SettingsTab = "business" | "general" | "integrations" | "greenInvoice" | "accountant" | "whatsapp" | "notifications";
+
+const checkboxRowClass =
+  "flex flex-row items-center justify-start gap-3 rounded-2xl border border-[#DBE5F4] bg-[#F8FAFF] px-4 py-3.5 font-semibold text-[#111827] dark:border-[#1F2A44] dark:bg-[#0F172A] dark:text-[#F8FAFC]";
+
+const sectionTitleClass =
+  "text-xl font-black text-[var(--natalie-text-primary,#0F172A)] md:text-2xl";
+
+const sectionHintClass =
+  "mt-1 text-sm font-semibold leading-6 text-[var(--natalie-text-muted,#64748B)] md:text-base";
+
+const blockTitleClass =
+  "text-base font-black text-[var(--natalie-text-primary,#0F172A)]";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -324,99 +347,180 @@ export default function SettingsPage() {
     { id: "notifications", label: "התראות" },
   ];
 
+  const socialConnected = socialStatus.some((item) => item.connected);
+  const connectionStatusItems = [
+    {
+      id: "gmail",
+      label: "Gmail",
+      connected: Boolean(gmailConnection.treatAsConnectedForUi),
+      statusLabel: gmailConnectionBadgeLabel(gmailConnection, { googleConfigured: gmailStatus?.googleConfigured }),
+    },
+    {
+      id: "whatsapp",
+      label: "WhatsApp",
+      connected: Boolean(whatsappStatus?.connected),
+      statusLabel: whatsappStatus?.connected ? "מחובר" : whatsappStatus?.configured ? "מוגדר" : "לא מחובר",
+    },
+    {
+      id: "social",
+      label: "Social",
+      connected: socialConnected,
+      statusLabel: socialConnected ? "מחובר" : "לא מחובר",
+    },
+    {
+      id: "greenInvoice",
+      label: "חשבונית ירוקה",
+      connected: Boolean(greenInvoiceStatus?.connected),
+      statusLabel: greenInvoiceStatus?.connected ? "מחובר" : "לא מחובר",
+    },
+  ];
+
   return (
-    <div className="container">
-      <Nav />
-      <div className="mb-8"><div className="page-kicker">בקרת סביבת עבודה</div><h1>הגדרות</h1></div>
-      {message && (
+    <AppShell pageTitle={<PageTitle title="הגדרות" subtitle="בקרת סביבת עבודה" />}>
+      <div className="grid gap-4">
+        {message ? (
+          <MessageBanner tone={message.tone}>{message.text}</MessageBanner>
+        ) : null}
+
         <div
-          role={message.tone === "error" ? "alert" : "status"}
-          className={`mb-6 rounded-2xl border p-4 text-sm font-medium ${
-            message.tone === "error"
-              ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#991B1B]"
-              : "border-[#6EE7B7] bg-[#ECFDF5] text-[#065F46]"
-          }`}
+          className="flex flex-wrap gap-2.5 sm:gap-3"
+          role="list"
+          aria-label="סטטוס חיבורים"
         >
-          {message.text}
-        </div>
-      )}
-
-      <div className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border border-[var(--border)] bg-surface-card p-2 shadow-card md:flex-wrap">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={[
-              "shrink-0 rounded-xl px-4 py-3 text-[15px] font-semibold transition",
-              activeTab === tab.id
-                ? "bg-[#E8EEFF] font-bold text-accent-primary shadow-[inset_0_-3px_0_var(--accent-primary)]"
-                : "text-ink-secondary hover:text-ink-primary",
-            ].join(" ")}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === "business" && (
-        <div className="card grid gap-5">
-          <div>
-            <div className="page-kicker">הגדרות מערכת</div>
-            <h2>סוג עסק ומודולים פעילים</h2>
-            <p>הבחירה כאן קובעת אילו אזורים יוצגו בדשבורד ובניווט. ההגדרות המלאות זמינות בעמוד ייעודי.</p>
-          </div>
-          <div className="rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4 text-sm text-ink-secondary">
-            הגדרה נוכחית: {businessTypeLabel(organizationSettings?.businessType)} · {organizationSettings?.enabledModules.length ?? 7} מודולים פעילים
-          </div>
-          <button className="btn" type="button" onClick={() => router.push("/dashboard/business-settings")}>פתח הגדרות עסק</button>
-        </div>
-      )}
-
-      {activeTab === "general" && (
-        <form className="card grid gap-3" onSubmit={save}>
-          <h2>הגדרות כלליות</h2>
-          <label>
-            שם העסק הרשמי
-            <input placeholder="שם העסק הרשמי" value={form.businessName ?? ""} onChange={(e) => setForm({ ...form, businessName: e.target.value })} />
-          </label>
-          <label>
-            ח.פ / עוסק מורשה
-            <input placeholder="ח.פ / עוסק מורשה" value={form.businessId ?? ""} onChange={(e) => setForm({ ...form, businessId: e.target.value })} />
-          </label>
-          <label>
-            כתובת העסק
-            <input placeholder="כתובת העסק" value={form.businessAddress ?? ""} onChange={(e) => setForm({ ...form, businessAddress: e.target.value })} />
-          </label>
-          <section className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-            <h3 className="mb-2 text-xl font-extrabold text-ink-primary">הזיכרון של נטלי</h3>
-            <p className="mb-3 text-sm leading-6 text-ink-secondary">
-              כתבי כאן מידע קבוע על העסק שנטלי תזכור בכל שיחה (למשל: שמות ספקים, כינויים, נהלים).
-            </p>
-            <textarea
-              value={businessProfile}
-              onChange={(event) => setBusinessProfile(event.target.value)}
-              rows={6}
-              className="w-full rounded-2xl border border-[var(--border)] bg-white px-4 py-3 font-sans text-base text-ink-primary shadow-sm outline-none placeholder:text-ink-muted focus:border-accent-primary focus:ring-2 focus:ring-[rgba(29,91,255,0.12)]"
-              placeholder="לדוגמה: הספק 'יוסי' הוא יוסי כהן מהדפוס; לקוחות VIP מקבלים מענה באותו יום..."
-            />
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <button className="btn" type="button" onClick={saveBusinessProfile}>שמור</button>
-              {businessProfileMessage && <span className="text-sm font-semibold text-ink-secondary">{businessProfileMessage}</span>}
+          {connectionStatusItems.map((item) => (
+            <div
+              key={item.id}
+              role="listitem"
+              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] px-3.5 py-1.5 shadow-sm"
+            >
+              <span className="text-sm font-bold text-[var(--natalie-text-primary,#0F172A)]">{item.label}</span>
+              <StatusBadge tone={item.connected ? "success" : "warn"}>{item.statusLabel}</StatusBadge>
             </div>
-          </section>
-          <button className="btn" type="submit">שמור הגדרות כלליות</button>
-        </form>
-      )}
+          ))}
+        </div>
 
-      {activeTab === "integrations" && (
-        <section className="grid gap-5">
-          <div className="card">
-            <div className="mb-5">
-              <h2>חיבורים</h2>
-              <p>כאן מחברים את ג׳ימייל, וואטסאפ וחשבונות הסושיאל. בלי ג׳ימייל מחובר סריקת המיילים לא תעבוד.</p>
+        <div
+          role="tablist"
+          aria-label="קטגוריות הגדרות"
+          className="flex flex-wrap gap-2.5 sm:gap-3"
+        >
+          {tabs.map((tab) => {
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveTab(tab.id)}
+                className={`min-h-11 rounded-full border px-4 py-2 text-sm font-bold transition duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8] ${
+                  active
+                    ? "border-[#1D4ED8] bg-[#1D4ED8] text-white shadow-sm"
+                    : "border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-card-bg,#ffffff)] text-[var(--natalie-text-muted,#64748B)] hover:border-[#93C5FD] hover:text-[#1D4ED8]"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {activeTab === "business" ? (
+          <Card className="grid gap-5 md:p-6">
+            <header>
+              <h2 className={sectionTitleClass}>סוג עסק ומודולים פעילים</h2>
+              <p className={sectionHintClass}>
+                הבחירה כאן קובעת אילו אזורים יוצגו בדשבורד ובניווט. ההגדרות המלאות זמינות בעמוד ייעודי.
+              </p>
+            </header>
+            <div className="rounded-2xl border border-[#DBE5F4] bg-[#F8FAFF] px-4 py-3 text-sm font-semibold text-[var(--natalie-text-muted,#64748B)] dark:border-[#1F2A44] dark:bg-[#0F172A]">
+              הגדרה נוכחית: {businessTypeLabel(organizationSettings?.businessType)} · {organizationSettings?.enabledModules.length ?? 7} מודולים פעילים
             </div>
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="flex flex-wrap gap-3 border-t border-[var(--natalie-border,#D9E2F2)] pt-4">
+              <Button type="button" onClick={() => router.push("/dashboard/business-settings")}>
+                פתח הגדרות עסק
+              </Button>
+            </div>
+          </Card>
+        ) : null}
+
+        {activeTab === "general" ? (
+          <Card className="md:p-6">
+            <form className="grid gap-5" onSubmit={save}>
+              <header>
+                <h2 className={sectionTitleClass}>הגדרות כלליות</h2>
+                <p className={sectionHintClass}>פרטי העסק הבסיסיים והזיכרון הקבוע של נטלי.</p>
+              </header>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormLabel className="grid gap-2">
+                  שם העסק הרשמי
+                  <Input
+                    placeholder="שם העסק הרשמי"
+                    value={form.businessName ?? ""}
+                    onChange={(e) => setForm({ ...form, businessName: e.target.value })}
+                  />
+                </FormLabel>
+                <FormLabel className="grid gap-2">
+                  ח.פ / עוסק מורשה
+                  <Input
+                    placeholder="ח.פ / עוסק מורשה"
+                    value={form.businessId ?? ""}
+                    onChange={(e) => setForm({ ...form, businessId: e.target.value })}
+                  />
+                </FormLabel>
+                <FormLabel className="grid gap-2 md:col-span-2">
+                  כתובת העסק
+                  <Input
+                    placeholder="כתובת העסק"
+                    value={form.businessAddress ?? ""}
+                    onChange={(e) => setForm({ ...form, businessAddress: e.target.value })}
+                  />
+                </FormLabel>
+              </div>
+              <section className="grid gap-3 rounded-2xl border border-[#DBE5F4] bg-[#F8FAFF] p-4 dark:border-[#1F2A44] dark:bg-[#0F172A] md:p-5">
+                <h3 className={blockTitleClass}>הזיכרון של נטלי</h3>
+                <p className="text-sm font-semibold leading-6 text-[var(--natalie-text-muted,#64748B)]">
+                  כתבי כאן מידע קבוע על העסק שנטלי תזכור בכל שיחה (למשל: שמות ספקים, כינויים, נהלים).
+                </p>
+                <Textarea
+                  value={businessProfile}
+                  onChange={(event) => setBusinessProfile(event.target.value)}
+                  rows={6}
+                  placeholder="לדוגמה: הספק 'יוסי' הוא יוסי כהן מהדפוס; לקוחות VIP מקבלים מענה באותו יום..."
+                />
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button type="button" variant="secondary" onClick={saveBusinessProfile}>
+                    שמור
+                  </Button>
+                  {businessProfileMessage ? (
+                    <span className="text-sm font-semibold text-[var(--natalie-text-muted,#64748B)]">
+                      {businessProfileMessage}
+                    </span>
+                  ) : null}
+                </div>
+              </section>
+              <div className="flex flex-wrap gap-3 border-t border-[var(--natalie-border,#D9E2F2)] pt-4">
+                <Button type="submit">שמור הגדרות כלליות</Button>
+              </div>
+            </form>
+          </Card>
+        ) : null}
+
+        {activeTab === "integrations" ? (
+          <Card className="grid gap-6 md:p-6">
+            <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className={sectionTitleClass}>חיבורים</h2>
+                <p className={sectionHintClass}>
+                  כאן מחברים את ג׳ימייל, וואטסאפ וחשבונות הסושיאל. בלי ג׳ימייל מחובר סריקת המיילים לא תעבוד.
+                </p>
+              </div>
+              <Button type="button" variant="secondary" onClick={() => router.push("/social")}>
+                פתח מודול סושיאל
+              </Button>
+            </header>
+
+            <div className="grid gap-4 lg:grid-cols-2">
               <GmailIntegrationCard
                 connection={gmailConnection}
                 status={gmailStatus}
@@ -436,247 +540,368 @@ export default function SettingsPage() {
                 onAction={() => setActiveTab("whatsapp")}
               />
             </div>
-          </div>
 
-          <div className="card">
-            <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2>חיבורי סושיאל</h2>
-                <p>חשבונות סושיאל מחוברים דרך לקוחות במודול הסושיאל.</p>
+            <div className="grid gap-3">
+              <h3 className={blockTitleClass}>חיבורי סושיאל</h3>
+              <p className="text-sm font-semibold leading-6 text-[var(--natalie-text-muted,#64748B)]">
+                חשבונות סושיאל מחוברים דרך לקוחות במודול הסושיאל.
+              </p>
+              <div className="grid gap-4 md:grid-cols-3">
+                {["instagram", "facebook", "linkedin"].map((platform) => {
+                  const status = socialStatus.find((item) => item.platform === platform);
+                  return (
+                    <IntegrationCard
+                      key={platform}
+                      title={platformLabel(platform)}
+                      status={status?.connected ? "מחובר" : "לא מחובר"}
+                      connected={Boolean(status?.connected)}
+                      description="חיבור לפרסום תוכן, תכנון פוסטים ואוטומציות סושיאל."
+                      meta={status?.connected ? `${status.activeAccounts} חשבונות פעילים${status.clients.length ? ` · ${status.clients.join(", ")}` : ""}` : "חבר דרך מודול סושיאל לפי לקוח."}
+                      actionLabel={status?.connected ? "נהל חיבור" : "חבר חשבון"}
+                      onAction={() => router.push("/social")}
+                    />
+                  );
+                })}
               </div>
-              <button type="button" className="btn sm:!w-auto" onClick={() => router.push("/social")}>פתח מודול סושיאל</button>
             </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              {["instagram", "facebook", "linkedin"].map((platform) => {
-                const status = socialStatus.find((item) => item.platform === platform);
-                return (
-                  <IntegrationCard
-                    key={platform}
-                    title={platformLabel(platform)}
-                    status={status?.connected ? "מחובר" : "לא מחובר"}
-                    connected={Boolean(status?.connected)}
-                    description="חיבור לפרסום תוכן, תכנון פוסטים ואוטומציות סושיאל."
-                    meta={status?.connected ? `${status.activeAccounts} חשבונות פעילים${status.clients.length ? ` · ${status.clients.join(", ")}` : ""}` : "חבר דרך מודול סושיאל לפי לקוח."}
-                    actionLabel={status?.connected ? "נהל חיבור" : "חבר חשבון"}
-                    onAction={() => router.push("/social")}
+          </Card>
+        ) : null}
+
+        {activeTab === "greenInvoice" ? (
+          <Card className="md:p-6">
+            <form className="grid gap-5" onSubmit={connectGreenInvoice}>
+              <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-[#1D4ED8]">חשבונית ירוקה / מורנינג</p>
+                  <h2 className={sectionTitleClass}>חיבור חשבונית ירוקה</h2>
+                  <p className={sectionHintClass}>
+                    חבר את חשבון חשבונית ירוקה כדי לאפשר בהמשך הפקת חשבוניות מתוך המערכת.
+                  </p>
+                </div>
+                <StatusBadge tone={greenInvoiceStatus?.connected ? "success" : "warn"}>
+                  {greenInvoiceStatus?.connected ? "מחובר" : "לא מחובר"}
+                </StatusBadge>
+              </header>
+
+              {greenInvoiceStatus?.connected ? (
+                <MessageBanner tone="success">
+                  מחובר · סביבה: {greenInvoiceStatus.env === "production" ? "אמיתי" : "בדיקות"}
+                  {greenInvoiceStatus.connectedAt ? ` · חובר בתאריך ${new Date(greenInvoiceStatus.connectedAt).toLocaleString("he-IL")}` : ""}
+                </MessageBanner>
+              ) : null}
+
+              {greenInvoiceMessage ? <MessageBanner tone="success">{greenInvoiceMessage}</MessageBanner> : null}
+              {greenInvoiceError ? <MessageBanner tone="error">{greenInvoiceError}</MessageBanner> : null}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormLabel className="grid gap-2">
+                  מזהה מפתח גישה
+                  <Input
+                    dir="ltr"
+                    placeholder="מזהה מפתח"
+                    value={greenInvoiceForm.apiKeyId}
+                    onChange={(event) => setGreenInvoiceForm({ ...greenInvoiceForm, apiKeyId: event.target.value })}
+                    autoComplete="off"
                   />
-                );
-              })}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {activeTab === "greenInvoice" && (
-        <section className="grid gap-5">
-          <form className="card grid gap-5" onSubmit={connectGreenInvoice}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="page-kicker">חשבונית ירוקה / מורנינג</div>
-                <h2>חיבור חשבונית ירוקה</h2>
-                <p>חבר את חשבון חשבונית ירוקה כדי לאפשר בהמשך הפקת חשבוניות מתוך המערכת.</p>
+                </FormLabel>
+                <FormLabel className="grid gap-2">
+                  סוד מפתח גישה
+                  <Input
+                    dir="ltr"
+                    type="password"
+                    placeholder="סוד מפתח"
+                    value={greenInvoiceForm.apiSecret}
+                    onChange={(event) => setGreenInvoiceForm({ ...greenInvoiceForm, apiSecret: event.target.value })}
+                    autoComplete="new-password"
+                  />
+                </FormLabel>
+                <FormLabel className="grid gap-2">
+                  סביבת עבודה
+                  <Select
+                    value={greenInvoiceForm.env}
+                    onChange={(event) => setGreenInvoiceForm({ ...greenInvoiceForm, env: event.target.value as GreenInvoiceEnv })}
+                  >
+                    <option value="sandbox">בדיקות</option>
+                    <option value="production">אמיתי</option>
+                  </Select>
+                </FormLabel>
               </div>
-              <span className={`badge w-fit ${greenInvoiceStatus?.connected ? "badge-ok" : "badge-warn"}`}>
-                {greenInvoiceStatus?.connected ? "מחובר" : "לא מחובר"}
-              </span>
-            </div>
 
-            {greenInvoiceStatus?.connected && (
-              <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm font-semibold text-emerald-100">
-                מחובר · סביבה: {greenInvoiceStatus.env === "production" ? "אמיתי" : "בדיקות"}
-                {greenInvoiceStatus.connectedAt ? ` · חובר בתאריך ${new Date(greenInvoiceStatus.connectedAt).toLocaleString("he-IL")}` : ""}
-              </div>
-            )}
-
-            {greenInvoiceMessage && (
-              <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm text-emerald-100">
-                {greenInvoiceMessage}
-              </div>
-            )}
-            {greenInvoiceError && (
-              <div className="rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-100">
-                {greenInvoiceError}
-              </div>
-            )}
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <label>
-                מזהה מפתח גישה
-                <input
-                  dir="ltr"
-                  placeholder="מזהה מפתח"
-                  value={greenInvoiceForm.apiKeyId}
-                  onChange={(event) => setGreenInvoiceForm({ ...greenInvoiceForm, apiKeyId: event.target.value })}
-                  autoComplete="off"
-                />
-              </label>
-              <label>
-                סוד מפתח גישה
-                <input
-                  dir="ltr"
-                  type="password"
-                  placeholder="סוד מפתח"
-                  value={greenInvoiceForm.apiSecret}
-                  onChange={(event) => setGreenInvoiceForm({ ...greenInvoiceForm, apiSecret: event.target.value })}
-                  autoComplete="new-password"
-                />
-              </label>
-              <label>
-                סביבת עבודה
-                <select
-                  value={greenInvoiceForm.env}
-                  onChange={(event) => setGreenInvoiceForm({ ...greenInvoiceForm, env: event.target.value as GreenInvoiceEnv })}
+              <div className="flex flex-wrap gap-3 border-t border-[var(--natalie-border,#D9E2F2)] pt-4">
+                <Button type="submit" disabled={greenInvoiceLoading}>
+                  {greenInvoiceLoading ? "מחבר..." : "חבר"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={testGreenInvoice}
+                  disabled={greenInvoiceLoading || !greenInvoiceStatus?.connected}
                 >
-                  <option value="sandbox">בדיקות</option>
-                  <option value="production">אמיתי</option>
-                </select>
+                  {greenInvoiceLoading ? "בודק..." : "בדוק חיבור"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        ) : null}
+
+        {activeTab === "accountant" ? (
+          <Card className="md:p-6">
+            <form className="grid gap-5" onSubmit={save}>
+              <header>
+                <h2 className={sectionTitleClass}>רואה חשבון</h2>
+                <p className={sectionHintClass}>פרטי רואה החשבון והגדרות הדיווח החודשי.</p>
+              </header>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormLabel className="grid gap-2">
+                  שם רואה החשבון
+                  <Input
+                    placeholder="שם רואה החשבון"
+                    value={form.accountantName ?? ""}
+                    onChange={(e) => setForm({ ...form, accountantName: e.target.value })}
+                  />
+                </FormLabel>
+                <FormLabel className="grid gap-2">
+                  אימייל רואה החשבון
+                  <Input
+                    type="email"
+                    placeholder="אימייל רואה החשבון"
+                    value={form.accountantEmail ?? ""}
+                    onChange={(e) => setForm({ ...form, accountantEmail: e.target.value })}
+                  />
+                </FormLabel>
+                <FormLabel className="grid gap-2">
+                  תאריך שליחה
+                  <Input
+                    type="number"
+                    min={1}
+                    max={28}
+                    value={form.reportDay ?? 1}
+                    onChange={(e) => setForm({ ...form, reportDay: Number(e.target.value) })}
+                  />
+                </FormLabel>
+              </div>
+              <label className={checkboxRowClass}>
+                <input
+                  className="h-5 w-5 shrink-0 accent-[#1D4ED8]"
+                  type="checkbox"
+                  checked={form.sendMonthlyReport ?? true}
+                  onChange={(e) => setForm({ ...form, sendMonthlyReport: e.target.checked })}
+                />
+                שלח דוח חודשי
               </label>
-            </div>
+              <div className="flex flex-wrap gap-3 border-t border-[var(--natalie-border,#D9E2F2)] pt-4">
+                <Button type="submit" disabled={savingAccountant}>
+                  {savingAccountant ? "שומר..." : "שמור הגדרות רואה חשבון"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        ) : null}
 
-            <div className="grid gap-3 sm:flex sm:flex-wrap">
-              <button className="btn" type="submit" disabled={greenInvoiceLoading}>
-                {greenInvoiceLoading ? "מחבר..." : "חבר"}
-              </button>
-              <button
-                className="btn btn-secondary"
-                type="button"
-                onClick={testGreenInvoice}
-                disabled={greenInvoiceLoading || !greenInvoiceStatus?.connected}
-              >
-                {greenInvoiceLoading ? "בודק..." : "בדוק חיבור"}
-              </button>
-            </div>
-          </form>
-        </section>
-      )}
+        {activeTab === "whatsapp" ? (
+          <Card className="md:p-6">
+            <form className="grid gap-6" onSubmit={saveWhatsapp}>
+              <header>
+                <h2 className={sectionTitleClass}>עוזר וואטסאפ</h2>
+                <p className={sectionHintClass}>מספר, שעות שליחה והעדפות הודעות לבעלים וללקוחות.</p>
+              </header>
 
-      {activeTab === "accountant" && (
-        <form className="card grid gap-3" onSubmit={save}>
-          <h2>רואה חשבון</h2>
-          <label>
-            שם רואה החשבון
-            <input placeholder="שם רואה החשבון" value={form.accountantName ?? ""} onChange={(e) => setForm({ ...form, accountantName: e.target.value })} />
-          </label>
-          <label>
-            אימייל רואה החשבון
-            <input type="email" placeholder="אימייל רואה החשבון" value={form.accountantEmail ?? ""} onChange={(e) => setForm({ ...form, accountantEmail: e.target.value })} />
-          </label>
-          <label>
-            תאריך שליחה
-            <input type="number" min={1} max={28} value={form.reportDay ?? 1} onChange={(e) => setForm({ ...form, reportDay: Number(e.target.value) })} />
-          </label>
-          <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-            <input className="w-auto" type="checkbox" checked={form.sendMonthlyReport ?? true} onChange={(e) => setForm({ ...form, sendMonthlyReport: e.target.checked })} />
-            שלח דוח חודשי
-          </label>
-          <button className="btn" type="submit" disabled={savingAccountant}>{savingAccountant ? "שומר..." : "שמור הגדרות רואה חשבון"}</button>
-        </form>
-      )}
+              <section className="grid gap-3">
+                <h3 className={blockTitleClass}>מספר הוואטסאפ שלי</h3>
+                <FormLabel className="grid gap-2 md:max-w-md">
+                  מספר הוואטסאפ שלי
+                  <Input
+                    dir="ltr"
+                    placeholder="+972..."
+                    value={whatsapp.ownerPhone}
+                    onChange={(e) => setWhatsapp({ ...whatsapp, ownerPhone: e.target.value })}
+                  />
+                </FormLabel>
+              </section>
 
-      {activeTab === "whatsapp" && (
-        <form className="card grid gap-5" onSubmit={saveWhatsapp}>
-          <h2>עוזר וואטסאפ</h2>
-          <section className="grid gap-3">
-            <h3 className="text-lg font-semibold text-ink-primary">מספר הוואטסאפ שלי</h3>
-            <label>
-              מספר הוואטסאפ שלי
-              <input dir="ltr" placeholder="+972..." value={whatsapp.ownerPhone} onChange={(e) => setWhatsapp({ ...whatsapp, ownerPhone: e.target.value })} />
-            </label>
-          </section>
+              <section className="grid gap-4">
+                <h3 className={blockTitleClass}>שעת בוקר / שעת שליחה / שעות שקטות</h3>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <FormLabel className="grid gap-2">
+                    שעת בוקר
+                    <Input
+                      type="time"
+                      value={whatsapp.ownerMorningTime}
+                      onChange={(e) => setWhatsapp({ ...whatsapp, ownerMorningTime: e.target.value })}
+                    />
+                  </FormLabel>
+                  <FormLabel className="grid gap-2">
+                    שעת שליחה
+                    <Input
+                      type="time"
+                      value={whatsapp.clientMorningTime}
+                      onChange={(e) => setWhatsapp({ ...whatsapp, clientMorningTime: e.target.value })}
+                    />
+                  </FormLabel>
+                  <FormLabel className="grid gap-2">
+                    שעות שקטות - אל תשלח אחרי
+                    <Input
+                      type="time"
+                      value={whatsapp.quietHoursStart}
+                      onChange={(e) => setWhatsapp({ ...whatsapp, quietHoursStart: e.target.value })}
+                    />
+                  </FormLabel>
+                  <FormLabel className="grid gap-2">
+                    שעות שקטות - אל תשלח לפני
+                    <Input
+                      type="time"
+                      value={whatsapp.quietHoursEnd}
+                      onChange={(e) => setWhatsapp({ ...whatsapp, quietHoursEnd: e.target.value })}
+                    />
+                  </FormLabel>
+                </div>
+              </section>
 
-          <section className="grid gap-3">
-            <h3 className="text-lg font-semibold text-ink-primary">שעת בוקר / שעת שליחה / שעות שקטות</h3>
-            <label>
-              שעת בוקר
-              <input type="time" value={whatsapp.ownerMorningTime} onChange={(e) => setWhatsapp({ ...whatsapp, ownerMorningTime: e.target.value })} />
-            </label>
-            <label>
-              שעת שליחה
-              <input type="time" value={whatsapp.clientMorningTime} onChange={(e) => setWhatsapp({ ...whatsapp, clientMorningTime: e.target.value })} />
-            </label>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label>
-                שעות שקטות - אל תשלח אחרי
-                <input type="time" value={whatsapp.quietHoursStart} onChange={(e) => setWhatsapp({ ...whatsapp, quietHoursStart: e.target.value })} />
-              </label>
-              <label>
-                שעות שקטות - אל תשלח לפני
-                <input type="time" value={whatsapp.quietHoursEnd} onChange={(e) => setWhatsapp({ ...whatsapp, quietHoursEnd: e.target.value })} />
-              </label>
-            </div>
-          </section>
+              <section className="grid gap-3">
+                <h3 className={blockTitleClass}>הגדרות בעלים</h3>
+                <div className="grid gap-3">
+                  <label className={checkboxRowClass}>
+                    <input
+                      className="h-5 w-5 shrink-0 accent-[#1D4ED8]"
+                      type="checkbox"
+                      checked={whatsapp.isActive}
+                      onChange={(e) => setWhatsapp({ ...whatsapp, isActive: e.target.checked })}
+                    />
+                    עוזר וואטסאפ פעיל
+                  </label>
+                  <label className={checkboxRowClass}>
+                    <input
+                      className="h-5 w-5 shrink-0 accent-[#1D4ED8]"
+                      type="checkbox"
+                      checked={whatsapp.ownerMorningReport}
+                      onChange={(e) => setWhatsapp({ ...whatsapp, ownerMorningReport: e.target.checked })}
+                    />
+                    שלח לי דוח בוקר יומי
+                  </label>
+                  <label className={checkboxRowClass}>
+                    <input
+                      className="h-5 w-5 shrink-0 accent-[#1D4ED8]"
+                      type="checkbox"
+                      checked={whatsapp.ownerCriticalAlerts}
+                      onChange={(e) => setWhatsapp({ ...whatsapp, ownerCriticalAlerts: e.target.checked })}
+                    />
+                    קבל התראות דחופות
+                  </label>
+                </div>
+              </section>
 
-          <section className="grid gap-3">
-            <h3 className="text-lg font-semibold text-ink-primary">הגדרות בעלים</h3>
-            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-              <input className="w-auto" type="checkbox" checked={whatsapp.isActive} onChange={(e) => setWhatsapp({ ...whatsapp, isActive: e.target.checked })} />
-              עוזר וואטסאפ פעיל
-            </label>
-            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-              <input className="w-auto" type="checkbox" checked={whatsapp.ownerMorningReport} onChange={(e) => setWhatsapp({ ...whatsapp, ownerMorningReport: e.target.checked })} />
-              שלח לי דוח בוקר יומי
-            </label>
-            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-              <input className="w-auto" type="checkbox" checked={whatsapp.ownerCriticalAlerts} onChange={(e) => setWhatsapp({ ...whatsapp, ownerCriticalAlerts: e.target.checked })} />
-              קבל התראות דחופות
-            </label>
-          </section>
+              <section className="grid gap-4">
+                <h3 className={blockTitleClass}>הגדרות ללקוחות</h3>
+                <label className={checkboxRowClass}>
+                  <input
+                    className="h-5 w-5 shrink-0 accent-[#1D4ED8]"
+                    type="checkbox"
+                    checked={whatsapp.clientMorningSummary}
+                    onChange={(e) => setWhatsapp({ ...whatsapp, clientMorningSummary: e.target.checked })}
+                  />
+                  שלח ללקוחות סיכום בוקר
+                </label>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <FormLabel className="grid gap-2">
+                    שליחת תזכורת תשלום אחרי מספר ימים
+                    <Input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={whatsapp.clientPaymentDaysWait}
+                      onChange={(e) => setWhatsapp({ ...whatsapp, clientPaymentDaysWait: Number(e.target.value) })}
+                    />
+                  </FormLabel>
+                  <FormLabel className="grid gap-2">
+                    מקסימום הודעות ביום ללקוח
+                    <Input
+                      type="number"
+                      min={1}
+                      max={3}
+                      value={whatsapp.maxMessagesPerDay}
+                      onChange={(e) => setWhatsapp({ ...whatsapp, maxMessagesPerDay: Number(e.target.value) })}
+                    />
+                  </FormLabel>
+                </div>
+                <label className={checkboxRowClass}>
+                  <input
+                    className="h-5 w-5 shrink-0 accent-[#1D4ED8]"
+                    type="checkbox"
+                    checked={whatsapp.clientPaymentReminder}
+                    onChange={(e) => setWhatsapp({ ...whatsapp, clientPaymentReminder: e.target.checked })}
+                  />
+                  שלח תזכורות תשלום
+                </label>
+                <label className={checkboxRowClass}>
+                  <input
+                    className="h-5 w-5 shrink-0 accent-[#1D4ED8]"
+                    type="checkbox"
+                    checked={whatsapp.clientInvoiceFound}
+                    onChange={(e) => setWhatsapp({ ...whatsapp, clientInvoiceFound: e.target.checked })}
+                  />
+                  עדכן לקוח כשנמצאה חשבונית
+                </label>
+                <label className={checkboxRowClass}>
+                  <input
+                    className="h-5 w-5 shrink-0 accent-[#1D4ED8]"
+                    type="checkbox"
+                    checked={whatsapp.clientUrgentOnly}
+                    onChange={(e) => setWhatsapp({ ...whatsapp, clientUrgentOnly: e.target.checked })}
+                  />
+                  לשלוח רק הודעות דחופות
+                </label>
+              </section>
 
-          <section className="grid gap-3">
-            <h3 className="text-lg font-semibold text-ink-primary">הגדרות ללקוחות</h3>
-            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-              <input className="w-auto" type="checkbox" checked={whatsapp.clientMorningSummary} onChange={(e) => setWhatsapp({ ...whatsapp, clientMorningSummary: e.target.checked })} />
-              שלח ללקוחות סיכום בוקר
-            </label>
-            <label>
-              שליחת תזכורת תשלום אחרי מספר ימים
-              <input type="number" min={1} max={60} value={whatsapp.clientPaymentDaysWait} onChange={(e) => setWhatsapp({ ...whatsapp, clientPaymentDaysWait: Number(e.target.value) })} />
-            </label>
-            <label>
-              מקסימום הודעות ביום ללקוח
-              <input type="number" min={1} max={3} value={whatsapp.maxMessagesPerDay} onChange={(e) => setWhatsapp({ ...whatsapp, maxMessagesPerDay: Number(e.target.value) })} />
-            </label>
-            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-              <input className="w-auto" type="checkbox" checked={whatsapp.clientPaymentReminder} onChange={(e) => setWhatsapp({ ...whatsapp, clientPaymentReminder: e.target.checked })} />
-              שלח תזכורות תשלום
-            </label>
-            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-              <input className="w-auto" type="checkbox" checked={whatsapp.clientInvoiceFound} onChange={(e) => setWhatsapp({ ...whatsapp, clientInvoiceFound: e.target.checked })} />
-              עדכן לקוח כשנמצאה חשבונית
-            </label>
-            <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-              <input className="w-auto" type="checkbox" checked={whatsapp.clientUrgentOnly} onChange={(e) => setWhatsapp({ ...whatsapp, clientUrgentOnly: e.target.checked })} />
-              לשלוח רק הודעות דחופות
-            </label>
-          </section>
+              <div className="flex flex-wrap gap-3 border-t border-[var(--natalie-border,#D9E2F2)] pt-4">
+                <Button type="submit" disabled={savingWhatsapp}>
+                  {savingWhatsapp ? "שומר..." : "שמור הגדרות וואטסאפ"}
+                </Button>
+                <Button variant="secondary" type="button" onClick={() => testWhatsapp("morning")}>
+                  שלח דוח בוקר לעצמי עכשיו
+                </Button>
+                <Button variant="secondary" type="button" onClick={() => testWhatsapp("number")}>
+                  בדוק שהמספר עובד
+                </Button>
+              </div>
+            </form>
+          </Card>
+        ) : null}
 
-          <div className="grid gap-3 sm:flex sm:flex-wrap">
-            <button className="btn" type="submit" disabled={savingWhatsapp}>{savingWhatsapp ? "שומר..." : "שמור הגדרות וואטסאפ"}</button>
-            <button className="btn btn-secondary" type="button" onClick={() => testWhatsapp("morning")}>
-              שלח דוח בוקר לעצמי עכשיו
-            </button>
-            <button className="btn btn-secondary" type="button" onClick={() => testWhatsapp("number")}>
-              בדוק שהמספר עובד
-            </button>
-          </div>
-        </form>
-      )}
-
-      {activeTab === "notifications" && (
-        <form className="card grid gap-3" onSubmit={saveWhatsapp}>
-          <h2>התראות</h2>
-          <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-            <input className="w-auto" type="checkbox" checked={whatsapp.noMessagesOnSaturday} onChange={(e) => setWhatsapp({ ...whatsapp, noMessagesOnSaturday: e.target.checked })} />
-            לא לשלוח התראות בשבת
-          </label>
-          <label className="flex flex-row items-center justify-start gap-3 rounded-2xl border border-[var(--border-subtle)] bg-surface-secondary p-4">
-            <input className="w-auto" type="checkbox" checked={whatsapp.noMessagesOnHolidays} onChange={(e) => setWhatsapp({ ...whatsapp, noMessagesOnHolidays: e.target.checked })} />
-            לא לשלוח התראות בחגים
-          </label>
-          <button className="btn" type="submit">שמור הגדרות התראות</button>
-        </form>
-      )}
-    </div>
+        {activeTab === "notifications" ? (
+          <Card className="md:p-6">
+            <form className="grid gap-5" onSubmit={saveWhatsapp}>
+              <header>
+                <h2 className={sectionTitleClass}>התראות</h2>
+                <p className={sectionHintClass}>מתי לא לשלוח התראות אוטומטיות.</p>
+              </header>
+              <div className="grid gap-3">
+                <label className={checkboxRowClass}>
+                  <input
+                    className="h-5 w-5 shrink-0 accent-[#1D4ED8]"
+                    type="checkbox"
+                    checked={whatsapp.noMessagesOnSaturday}
+                    onChange={(e) => setWhatsapp({ ...whatsapp, noMessagesOnSaturday: e.target.checked })}
+                  />
+                  לא לשלוח התראות בשבת
+                </label>
+                <label className={checkboxRowClass}>
+                  <input
+                    className="h-5 w-5 shrink-0 accent-[#1D4ED8]"
+                    type="checkbox"
+                    checked={whatsapp.noMessagesOnHolidays}
+                    onChange={(e) => setWhatsapp({ ...whatsapp, noMessagesOnHolidays: e.target.checked })}
+                  />
+                  לא לשלוח התראות בחגים
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-3 border-t border-[var(--natalie-border,#D9E2F2)] pt-4">
+                <Button type="submit">שמור הגדרות התראות</Button>
+              </div>
+            </form>
+          </Card>
+        ) : null}
+      </div>
+    </AppShell>
   );
 }
 
@@ -698,19 +923,23 @@ function IntegrationCard({
   onAction: () => void;
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-4">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-semibold text-ink-primary">{title}</h3>
-          <p className="mt-1 text-sm">{description}</p>
+    <article className="flex h-full flex-col gap-4 rounded-2xl border border-[#DBE5F4] bg-[#F8FAFF] p-4 dark:border-[#1F2A44] dark:bg-[#0F172A] md:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-lg font-black text-[var(--natalie-text-primary,#0F172A)]">{title}</h3>
+          <p className="mt-1 text-sm font-semibold leading-6 text-[var(--natalie-text-muted,#64748B)]">{description}</p>
         </div>
-        <span className={`badge ${connected ? "badge-ok" : "badge-warn"}`}>{status}</span>
+        <StatusBadge tone={connected ? "success" : "warn"}>{status}</StatusBadge>
       </div>
-      {meta && <p className="mb-4 break-words text-sm text-ink-muted">{meta}</p>}
-      <button type="button" className="btn btn-secondary" onClick={onAction}>
-        {actionLabel}
-      </button>
-    </div>
+      {meta ? (
+        <p className="break-words text-sm font-semibold text-[var(--natalie-text-muted,#64748B)]">{meta}</p>
+      ) : null}
+      <div className="mt-auto pt-1">
+        <Button type="button" variant="secondary" onClick={onAction}>
+          {actionLabel}
+        </Button>
+      </div>
+    </article>
   );
 }
 
@@ -728,46 +957,50 @@ function GmailIntegrationCard({
   const connected = connection.treatAsConnectedForUi;
   const badgeTone =
     connection.state === "ReconnectRequired"
-      ? "badge-warn"
+      ? "warn"
       : connected
-        ? "badge-ok"
-        : "badge-warn";
+        ? "success"
+        : "warn";
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-surface-secondary p-4">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-semibold text-ink-primary">ג׳ימייל</h3>
-          <p className="mt-1 text-sm">חובה לסריקת מיילים, יצירת לידים, זיהוי ספקים וחשבוניות.</p>
+    <article className="flex h-full flex-col gap-4 rounded-2xl border border-[#DBE5F4] bg-[#F8FAFF] p-4 dark:border-[#1F2A44] dark:bg-[#0F172A] md:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-lg font-black text-[var(--natalie-text-primary,#0F172A)]">ג׳ימייל</h3>
+          <p className="mt-1 text-sm font-semibold leading-6 text-[var(--natalie-text-muted,#64748B)]">
+            חובה לסריקת מיילים, יצירת לידים, זיהוי ספקים וחשבוניות.
+          </p>
         </div>
-        <span className={`badge ${badgeTone}`}>
+        <StatusBadge tone={badgeTone}>
           {gmailConnectionBadgeLabel(connection, { googleConfigured: status?.googleConfigured })}
-        </span>
+        </StatusBadge>
       </div>
-      {connection.state === "ReconnectRequired" && (
-        <p className="mb-4 text-sm font-semibold text-amber-700">
+      {connection.state === "ReconnectRequired" ? (
+        <p className="text-sm font-semibold text-[#92400E] dark:text-[#FCD34D]">
           נדרש חיבור מחדש ל-Gmail כדי לשמור על סנכרון אמין.
         </p>
-      )}
-      <p className="mb-4 break-words text-sm text-ink-muted">
+      ) : null}
+      <p className="break-words text-sm font-semibold text-[var(--natalie-text-muted,#64748B)]">
         {connected && status?.connectedAt
           ? `חובר בתאריך ${new Date(status.connectedAt).toLocaleString("he-IL")}`
           : "כפתור החיבור מעביר אותך לאישור גוגל כדי לאפשר סריקת מיילים."}
       </p>
-      {connected ? (
-        <div className="grid gap-2 sm:flex sm:flex-wrap">
-          <button type="button" className="btn btn-secondary" onClick={onConnect}>
-            {gmailReconnectActionLabel(connection)}
-          </button>
-          <button type="button" className="btn btn-danger" onClick={onDisconnect}>
-            נתק ג׳ימייל
-          </button>
-        </div>
-      ) : connection.state === "Disconnected" ? (
-        <button type="button" className="btn min-h-[56px] w-full text-base" onClick={onConnect}>
-          חבר ג׳ימייל
-        </button>
-      ) : null}
-    </div>
+      <div className="mt-auto flex flex-wrap gap-2 pt-1">
+        {connected ? (
+          <>
+            <Button type="button" variant="secondary" onClick={onConnect}>
+              {gmailReconnectActionLabel(connection)}
+            </Button>
+            <Button type="button" variant="danger" onClick={onDisconnect}>
+              נתק ג׳ימייל
+            </Button>
+          </>
+        ) : connection.state === "Disconnected" ? (
+          <Button type="button" className="min-h-[56px] w-full" onClick={onConnect}>
+            חבר ג׳ימייל
+          </Button>
+        ) : null}
+      </div>
+    </article>
   );
 }
 

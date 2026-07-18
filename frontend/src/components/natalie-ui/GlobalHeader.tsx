@@ -15,19 +15,20 @@ import { useTheme } from "./ThemeProvider";
 
 export function GlobalHeader({
   className = "",
-  sidebarOffset = false,
+  sidebarOffset: _sidebarOffset = false,
   notificationCount = 0,
   onNotificationsClick,
   extraAction,
 }: {
   className?: string;
-  /** When true, offset header on desktop to align with Nav sidebar (`lg:right-60`). */
+  /** @deprecated Sidebar removed — bottom navigation is the only primary nav. Kept for call-site compat. */
   sidebarOffset?: boolean;
   notificationCount?: number;
   onNotificationsClick?: () => void;
   /** Slot נוסף בכותרת (למשל פעמון לידים לאדמין) — אופציונלי. */
   extraAction?: React.ReactNode;
 }) {
+  void _sidebarOffset;
   const { t, language, setLanguage } = useI18n();
   const { isDark, toggleTheme } = useTheme();
   const { userName, workspaceName } = useGlobalHeaderProfile();
@@ -57,11 +58,9 @@ export function GlobalHeader({
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, [searchOpen, setSearchOpen]);
 
-  const offsetClass = sidebarOffset ? "lg:right-60" : "";
-
   return (
     <header
-      className={`fixed inset-x-0 top-0 z-40 border-b border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface,#ffffff)]/95 backdrop-blur ${offsetClass} ${className}`}
+      className={`fixed inset-x-0 top-0 z-40 border-b border-[var(--natalie-border,#D9E2F2)] bg-[var(--natalie-surface,#ffffff)]/95 backdrop-blur ${className}`}
       style={{ paddingTop: "max(0px, env(safe-area-inset-top))" }}
     >
       <div

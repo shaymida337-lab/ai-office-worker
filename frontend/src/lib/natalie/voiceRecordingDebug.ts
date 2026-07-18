@@ -76,8 +76,8 @@ function normalizeVoiceDebugEntry(
   };
 }
 
+/** Explicit opt-in only (`?voiceDebug=1`). Never auto-show in normal UI. */
 export function isVoiceDebugPanelEnabled(): boolean {
-  if (process.env.NODE_ENV === "development") return true;
   if (typeof window === "undefined") return false;
   return new URLSearchParams(window.location.search).get("voiceDebug") === "1";
 }

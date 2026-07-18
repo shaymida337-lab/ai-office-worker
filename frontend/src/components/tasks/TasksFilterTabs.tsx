@@ -23,7 +23,7 @@ export function TasksFilterTabs({
   ];
 
   return (
-    <div className="flex flex-wrap gap-2" role="tablist" aria-label={t("tasksDesign.title")}>
+    <div className="flex flex-wrap gap-2.5 sm:gap-3" role="tablist" aria-label={t("tasksDesign.title")}>
       {items.map((item) => {
         const selected = value === item.id;
         return (

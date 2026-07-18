@@ -24,7 +24,7 @@ export function DocumentsFilterChips({
   };
 
   return (
-    <div className="flex flex-wrap gap-2" role="tablist" aria-label={labels.all}>
+    <div className="flex flex-wrap gap-2.5 sm:gap-3" role="tablist" aria-label={labels.all}>
       {filters.map((filter) => {
         const selected = active === filter;
         return (

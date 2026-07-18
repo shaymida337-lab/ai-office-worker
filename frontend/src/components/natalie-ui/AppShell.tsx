@@ -28,6 +28,7 @@ export function AppShell({
   const resolvedBottomNav =
     bottomNavigation === null || !showBottomNavigation ? null : bottomNavigation ?? <GlobalBottomNavigation />;
 
+  // Unified product layout: Header → Page Content → Bottom Navigation (no sidebar).
   return (
     <div className={`min-h-screen ${natalie.page}`}>
       {showGlobalHeader ? (
