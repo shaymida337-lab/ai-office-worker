@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Menu, X, Bot, CalendarDays, FileText, Home, ListChecks, Users } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Menu, X, Bot, CalendarDays, FileText, Home, ListChecks, LogOut, LifeBuoy, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/i18n";
+import { clearAllAuthTokens } from "@/lib/api";
+import { prefetchCrm } from "@/lib/crm/prefetchCrm";
 import { shellLayout } from "./tokens";
 
 export type BottomNavItem = {
@@ -30,6 +32,7 @@ function isBottomNavActive(pathname: string, item: BottomNavItem) {
 
 export function BottomNavigation({ items }: { items: BottomNavItem[] }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { t } = useI18n();
   const [moreOpen, setMoreOpen] = useState(false);
   const moreItems = useMemo(
@@ -47,6 +50,13 @@ export function BottomNavigation({ items }: { items: BottomNavItem[] }) {
   useEffect(() => {
     setMoreOpen(false);
   }, [pathname]);
+
+  // Warm /crm + /api/leads while the user is on home/other screens (CRM-only).
+  useEffect(() => {
+    if (pathname === "/crm") return;
+    const timer = window.setTimeout(() => prefetchCrm(router), 400);
+    return () => window.clearTimeout(timer);
+  }, [pathname, router]);
 
   return (
     <>
@@ -85,6 +95,33 @@ export function BottomNavigation({ items }: { items: BottomNavItem[] }) {
                   </Link>
                 );
               })}
+              <button
+                type="button"
+                className="rounded-xl border border-[#e2e8f0] bg-[#f8fafc] px-3 py-2 text-start text-sm font-semibold text-[#334155] transition hover:bg-[#eef2ff] dark:border-[#1F2A44] dark:bg-[#0F172A] dark:text-[#CBD5E1] dark:hover:bg-[#1E293B]"
+                onClick={() => {
+                  setMoreOpen(false);
+                  window.dispatchEvent(new Event("open-help-center"));
+                }}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <LifeBuoy className="h-4 w-4 shrink-0" aria-hidden />
+                  עזרה
+                </span>
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-[rgba(185,28,28,0.35)] bg-[#FEF2F2] px-3 py-2 text-start text-sm font-semibold text-[#7F1D1D] transition hover:bg-[#FEE2E2]"
+                onClick={() => {
+                  setMoreOpen(false);
+                  clearAllAuthTokens();
+                  router.push("/");
+                }}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <LogOut className="h-4 w-4 shrink-0" aria-hidden />
+                  התנתק
+                </span>
+              </button>
             </div>
           </div>
         </div>
@@ -105,6 +142,12 @@ export function BottomNavigation({ items }: { items: BottomNavItem[] }) {
               <Link
                 key={item.id}
                 href={item.href}
+                onPointerEnter={() => {
+                  if (item.href === "/crm") prefetchCrm(router);
+                }}
+                onFocus={() => {
+                  if (item.href === "/crm") prefetchCrm(router);
+                }}
                 className={`flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8] sm:px-2 ${
                   active
                     ? "bg-[#DBEAFE] text-[#1D4ED8] shadow-[inset_0_0_0_1px_rgba(29,78,216,0.18)]"

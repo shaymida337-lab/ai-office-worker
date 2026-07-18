@@ -18,8 +18,8 @@ export const responsiveRules = {
   contentWide: "mx-auto max-w-7xl",
   /** KPI / metric grids */
   kpiGrid: "grid grid-cols-2 gap-3 md:grid-cols-4",
-  /** Sidebar offset on desktop (RTL) */
-  sidebarOffset: "lg:mr-60",
+  /** @deprecated Sidebar removed — bottom navigation is the only primary nav. */
+  sidebarOffset: "",
   /** Bottom nav safe area */
   mobileBottomSafe: "pb-24 md:pb-8",
   /** Touch-friendly full-width CTAs on mobile */

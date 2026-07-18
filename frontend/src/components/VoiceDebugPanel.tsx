@@ -34,7 +34,8 @@ function VoiceDebugRow({ entry }: { entry: VoiceDebugLogEntry }) {
 
 export function VoiceDebugPanel() {
   const [enabled, setEnabled] = useState(false);
-  const [open, setOpen] = useState(true);
+  /** Collapsed by default so even with ?voiceDebug=1 it does not cover bottom nav/CTAs. */
+  const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<VoiceDebugLogEntry[]>([]);
   const [copyStatus, setCopyStatus] = useState<string>("");
 

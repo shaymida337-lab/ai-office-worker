@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Search, Upload, X } from "lucide-react";
 import {
@@ -10,14 +11,12 @@ import {
   CrmCustomerCard,
   CrmFilterChips,
   CrmNatalieInsightCard,
-  CrmProfilePanel,
   crmSources,
   sourceLabel,
   type CrmQuickFilter,
   type Lead,
 } from "@/components/crm";
 import { channelLabel } from "@/components/crm/crmHelpers";
-import { ImportClientsDialog } from "@/components/clients/ImportClientsDialog";
 import {
   AppShell,
   Button,
@@ -33,10 +32,20 @@ import {
   Textarea,
 } from "@/components/natalie-ui";
 import { useI18n } from "@/i18n";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
+import { crmListCacheKey, getCrmListCache, getCrmListCacheAge, setCrmListCache } from "@/lib/crm/crmListCache";
 import { getBusinessModule, type BusinessModuleConfig } from "@/lib/business-module";
 import type { BusinessCrmField, OrganizationSettings } from "@/lib/business-config";
 import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
+
+const CrmProfilePanel = dynamic(
+  () => import("@/components/crm/CrmProfilePanel").then((mod) => mod.CrmProfilePanel),
+  { ssr: false }
+);
+const ImportClientsDialog = dynamic(
+  () => import("@/components/clients/ImportClientsDialog").then((mod) => mod.ImportClientsDialog),
+  { ssr: false }
+);
 
 type CrmResponse = {
   leads: Lead[];
@@ -114,7 +123,11 @@ export default function CrmPage() {
   const { t, dir, language } = useI18n();
   const locale = language === "he" ? "he-IL" : "en-US";
 
-  const [data, setData] = useState<CrmResponse | null>(null);
+  const [data, setData] = useState<CrmResponse | null>(() => {
+    // Instant shell: paint last CRM list on first render (prefetch / prior visit).
+    const cached = getCrmListCache(crmListCacheKey());
+    return (cached as CrmResponse | null) ?? null;
+  });
   // Clients from /api/clients — same source the top global search uses for "לקוח".
   // Needed because CRM otherwise only searched Lead rows and missed customers like "שרית".
   const [clients, setClients] = useState<CrmClient[]>([]);
@@ -145,17 +158,59 @@ export default function CrmPage() {
     sortDir: "desc",
   });
 
-  async function load() {
+  /** Cancels prior CRM list fetch (Strict Mode remount / filter change) so /api/leads is not doubled. */
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const clientsLoadedRef = useRef(false);
+
+  function listQueryKey() {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(filters)) {
       if (value && value !== "all") params.set(key, value);
     }
-    const [result, clientsResult] = await Promise.all([
-      apiFetch<CrmResponse>(`/api/leads${params.toString() ? `?${params.toString()}` : ""}`),
-      apiFetch<{ clients: CrmClient[] }>("/api/clients"),
-    ]);
-    setData(result);
-    setClients(clientsResult.clients ?? []);
+    return params.toString();
+  }
+
+  async function loadClients(signal?: AbortSignal) {
+    if (clientsLoadedRef.current) return;
+    try {
+      const clientsResult = await apiFetch<{ clients: CrmClient[] }>("/api/clients", { signal });
+      if (signal?.aborted) return;
+      clientsLoadedRef.current = true;
+      setClients(clientsResult.clients ?? []);
+    } catch (err) {
+      if (signal?.aborted || (err instanceof ApiError && err.message === "הבקשה בוטלה")) return;
+    }
+  }
+
+  async function load() {
+    loadAbortRef.current?.abort();
+    const abort = new AbortController();
+    loadAbortRef.current = abort;
+    const signal = abort.signal;
+    const queryKey = listQueryKey();
+    const cacheKey = crmListCacheKey(queryKey);
+
+    // Paint from cache immediately (prefetch / prior visit) — revalidate in background.
+    const cached = getCrmListCache(cacheKey);
+    if (cached) {
+      setData(cached as CrmResponse);
+      // Fresh prefetch: skip duplicate /api/leads during Strict Mode remount / soft nav.
+      const age = getCrmListCacheAge(cacheKey);
+      if (age != null && age < 8_000) return;
+    }
+
+    try {
+      const result = await apiFetch<CrmResponse>(
+        `/api/leads${queryKey ? `?${queryKey}` : ""}`,
+        { signal }
+      );
+      if (signal.aborted) return;
+      setData(result);
+      setCrmListCache(cacheKey, result);
+    } catch (err) {
+      if (signal.aborted || (err instanceof ApiError && err.message === "הבקשה בוטלה")) return;
+      throw err;
+    }
   }
 
   async function loadTemplates() {
@@ -165,8 +220,27 @@ export default function CrmPage() {
 
   useEffect(() => {
     load().catch((err) => setMessage(err instanceof Error ? err.message : t("crmDesign.loading")));
+    return () => {
+      loadAbortRef.current?.abort();
+      loadAbortRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.search, filters.source, filters.stage, filters.minValue, filters.maxValue, filters.assignedTo, filters.from, filters.to, filters.sortBy, filters.sortDir]);
+
+  // /api/clients is only needed to merge Client rows into CRM search — defer off the critical path.
+  useEffect(() => {
+    if (!filters.search.trim()) return;
+    void loadClients();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.search]);
+
+  useEffect(() => {
+    const idle = window.setTimeout(() => {
+      void loadClients();
+    }, 2500);
+    return () => window.clearTimeout(idle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     loadTemplates().catch(() => undefined);
@@ -411,7 +485,7 @@ export default function CrmPage() {
   const hasActiveFilters = quickFilter !== "all" || Boolean(filters.search) || filters.source !== "all" || filters.stage !== "all";
 
   return (
-    <div dir={dir}>
+    <div dir={dir} data-testid="crm-shell" data-crm-has-data={data ? "true" : "false"}>
       <AppShell
         pageTitle={<PageTitle title={businessModule.crm.pageTitle} subtitle={businessModule.crm.pageKicker} />}
       >
@@ -472,14 +546,16 @@ export default function CrmPage() {
             </Button>
           </div>
 
-          <ImportClientsDialog
-            open={showImport}
-            onClose={() => setShowImport(false)}
-            onImported={async () => {
-              setMessage("ייבוא הלקוחות הושלם");
-              await load();
-            }}
-          />
+          {showImport ? (
+            <ImportClientsDialog
+              open={showImport}
+              onClose={() => setShowImport(false)}
+              onImported={async () => {
+                setMessage("ייבוא הלקוחות הושלם");
+                await load();
+              }}
+            />
+          ) : null}
 
           {/* חיפוש לידים לפי שם, טלפון או אימייל — מסנן את הרשימה בפועל. */}
           <div className="relative">
@@ -487,6 +563,9 @@ export default function CrmPage() {
             <Input
               value={filters.search}
               onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+              onFocus={() => {
+                void loadClients();
+              }}
               placeholder={t("crmDesign.searchPlaceholder")}
               aria-label={t("crmDesign.searchPlaceholder")}
               className="pe-9"
@@ -664,20 +743,22 @@ export default function CrmPage() {
           )}
         </div>
 
-        <CrmProfilePanel
-          lead={selected}
-          open={Boolean(selected)}
-          onClose={() => setSelected(null)}
-          crmFields={businessModule.crm.fields}
-          timelineText={timelineText}
-          setTimelineText={setTimelineText}
-          onUpdate={updateLead}
-          onMarkReply={markLeadReply}
-          onAddTimeline={addTimeline}
-          labels={profileLabels}
-          locale={locale}
-          onScheduleAppointment={() => router.push("/dashboard/calendar")}
-        />
+        {selected ? (
+          <CrmProfilePanel
+            lead={selected}
+            open={Boolean(selected)}
+            onClose={() => setSelected(null)}
+            crmFields={businessModule.crm.fields}
+            timelineText={timelineText}
+            setTimelineText={setTimelineText}
+            onUpdate={updateLead}
+            onMarkReply={markLeadReply}
+            onAddTimeline={addTimeline}
+            labels={profileLabels}
+            locale={locale}
+            onScheduleAppointment={() => router.push("/dashboard/calendar")}
+          />
+        ) : null}
       </AppShell>
     </div>
   );

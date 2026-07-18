@@ -17,7 +17,7 @@ export function CrmFilterChips({
     <div
       role="tablist"
       aria-label={labels.all}
-      className="flex flex-wrap gap-2"
+      className="flex flex-wrap gap-2.5 sm:gap-3"
     >
       {items.map((id) => {
         const active = value === id;

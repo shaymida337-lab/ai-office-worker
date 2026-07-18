@@ -25,7 +25,7 @@ export function InvoicesReviewTabs({
   ];
 
   return (
-    <div className="flex flex-wrap gap-2" dir="rtl" aria-label={labels.all}>
+    <div className="flex flex-wrap gap-2.5 sm:gap-3" dir="rtl" aria-label={labels.all}>
       {tabs.map((tab) => {
         const selected = value === tab.value;
         return (
