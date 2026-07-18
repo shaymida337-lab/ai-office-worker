@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LandingPage } from "@/components/landing";
+import { HomeAuthRedirect } from "@/components/landing/HomeAuthRedirect";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://ai-office-worker.com";
 
@@ -35,5 +36,9 @@ export const metadata: Metadata = {
 };
 
 export default function HomePage() {
-  return <LandingPage />;
+  return (
+    <HomeAuthRedirect>
+      <LandingPage />
+    </HomeAuthRedirect>
+  );
 }
