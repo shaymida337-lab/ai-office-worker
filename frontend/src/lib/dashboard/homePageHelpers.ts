@@ -26,6 +26,17 @@ export function firstNameFromLabel(value: string | null | undefined) {
   return trimmed.split(/\s+/)[0] ?? null;
 }
 
+/** Same workspace label as GlobalHeader: businessName, else organization name. */
+export function resolveWorkspaceDisplayName(
+  settings: { businessName?: string | null; name?: string | null } | null | undefined
+): string {
+  const business = settings?.businessName?.trim();
+  if (business) return business;
+  const name = settings?.name?.trim();
+  if (name) return name;
+  return "העסק שלי";
+}
+
 export function scanProgressMessages(progress: ScanProgressResult) {
   const statusMessage = gmailScanStillRunning(progress)
     ? "סורק ומעבד מיילים..."

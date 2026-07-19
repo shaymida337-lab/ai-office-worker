@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch, getToken } from "@/lib/api";
 import type { OrganizationSettings } from "@/lib/business-config";
-import { firstNameFromLabel } from "@/lib/dashboard/homePageHelpers";
+import { resolveWorkspaceDisplayName } from "@/lib/dashboard/homePageHelpers";
 import { readFirstDayData, readOnboardingProgress } from "@/lib/natalie/firstDay";
 
 export type GlobalHeaderProfile = {
@@ -26,6 +26,8 @@ export function useGlobalHeaderProfile(): GlobalHeaderProfile {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // localStorage is only a temporary hint until /api/organization/settings returns.
+    // Stale first-day / onboarding names must not override the server profile.
     const localName = readLocalUserName();
     if (localName) setUserName(localName);
 
@@ -39,11 +41,10 @@ export function useGlobalHeaderProfile(): GlobalHeaderProfile {
     void apiFetch<OrganizationSettings>("/api/organization/settings")
       .then((settings) => {
         if (!mounted) return;
-        const workspace = settings.businessName?.trim() || settings.name?.trim() || "העסק שלי";
+        const workspace = resolveWorkspaceDisplayName(settings);
         setWorkspaceName(workspace);
-        if (!localName) {
-          setUserName(firstNameFromLabel(settings.name) || "שלום");
-        }
+        // Single source of truth with the home greeting / page title: workspace display name.
+        setUserName(workspace);
       })
       .catch(() => undefined)
       .finally(() => {

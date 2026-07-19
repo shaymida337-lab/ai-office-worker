@@ -229,6 +229,23 @@ test("view model keeps greeting stable before client mount", () => {
   assert.equal(vm.morningGreeting.headline, "שלום, שי");
 });
 
+test("view model prefers businessName over settings.name for home title and greeting", () => {
+  const vm = buildDashboardHomeViewModel(
+    minimalInput({
+      clientMounted: true,
+      firstVisitMode: false,
+      organizationSettings: {
+        name: "שי",
+        businessName: "קדמה שרון",
+      } as BuildDashboardHomeViewModelInput["organizationSettings"],
+    })
+  );
+
+  assert.equal(vm.businessName, "קדמה שרון");
+  assert.match(vm.morningGreeting.headline, /קדמה שרון/);
+  assert.doesNotMatch(vm.morningGreeting.headline, /שי/);
+});
+
 test("old timeout (stale) last scan does not put the dashboard in ERROR after recovery", () => {
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
   const vm = buildDashboardHomeViewModel(

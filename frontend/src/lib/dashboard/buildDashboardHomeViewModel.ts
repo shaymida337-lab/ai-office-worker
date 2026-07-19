@@ -1,4 +1,3 @@
-import { getFirstNameForGreeting } from "@/lib/natalie/firstDay";
 import { resolveNatalieRecommendation } from "@/lib/natalie/recommendation";
 import { buildDecisionItems } from "@/lib/dashboard/decisions";
 import { buildRecentActivityTimeline } from "@/lib/dashboard/home";
@@ -47,11 +46,11 @@ import type {
   WhatsAppAssistantStats,
 } from "./homePageTypes";
 import {
-  firstNameFromLabel,
   formatDurationFromRange,
   formatShekel,
   isThisMonth,
   isTodayValue,
+  resolveWorkspaceDisplayName,
 } from "./homePageHelpers";
 
 export type BuildDashboardHomeViewModelInput = {
@@ -181,9 +180,9 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     hasGmailActivityEvidence: gmailActivityEvidence,
   });
 
-  const ownerFirstName = clockReady
-    ? getFirstNameForGreeting(organizationSettings?.name) ?? firstNameFromLabel(organizationSettings?.name)
-    : firstNameFromLabel(organizationSettings?.name);
+  // Same source as GlobalHeader workspace/user label — never prefer a separate settings.name nickname.
+  const workspaceDisplayName = resolveWorkspaceDisplayName(organizationSettings);
+  const ownerFirstName = workspaceDisplayName === "העסק שלי" ? null : workspaceDisplayName;
   const scanBanner = buildScanBannerState(activeScan, scanStatus);
   const scanStale = scanBanner?.status === "stale";
   const monthPayments = payments.filter((payment) => isThisMonth(payment.date));
@@ -252,7 +251,7 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     : scanStatus?.last
       ? labelFor("scanStatus", scanStatus.last.status)
       : "לא התחיל";
-  const businessName = organizationSettings?.name?.trim() || "העסק שלי";
+  const businessName = workspaceDisplayName;
   const gmailIntegrationModel = buildGmailIntegrationStatus({
     statusKnown: gmailStatusKnown,
     statusStale: gmailStatusStale,
