@@ -229,7 +229,7 @@ test("view model keeps greeting stable before client mount", () => {
   assert.equal(vm.morningGreeting.headline, "שלום, שי");
 });
 
-test("view model prefers businessName over settings.name for home title and greeting", () => {
+test("view model uses businessName for title and personal name for greeting", () => {
   const vm = buildDashboardHomeViewModel(
     minimalInput({
       clientMounted: true,
@@ -242,8 +242,26 @@ test("view model prefers businessName over settings.name for home title and gree
   );
 
   assert.equal(vm.businessName, "קדמה שרון");
-  assert.match(vm.morningGreeting.headline, /קדמה שרון/);
-  assert.doesNotMatch(vm.morningGreeting.headline, /שי/);
+  assert.match(vm.morningGreeting.headline, /ברוך הבא חזרה, שי/);
+  assert.doesNotMatch(vm.morningGreeting.headline, /קדמה/);
+});
+
+test("view model omits personal name from greeting when settings.name is missing", () => {
+  const vm = buildDashboardHomeViewModel(
+    minimalInput({
+      clientMounted: true,
+      firstVisitMode: false,
+      organizationSettings: {
+        name: "",
+        businessName: "קדמה",
+      } as BuildDashboardHomeViewModelInput["organizationSettings"],
+    })
+  );
+
+  assert.equal(vm.businessName, "קדמה");
+  assert.match(vm.morningGreeting.headline, /ברוך הבא חזרה/);
+  assert.doesNotMatch(vm.morningGreeting.headline, /קדמה/);
+  assert.doesNotMatch(vm.morningGreeting.headline, /,/);
 });
 
 test("old timeout (stale) last scan does not put the dashboard in ERROR after recovery", () => {

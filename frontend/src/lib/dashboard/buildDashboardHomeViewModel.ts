@@ -50,6 +50,7 @@ import {
   formatShekel,
   isThisMonth,
   isTodayValue,
+  resolvePersonalDisplayName,
   resolveWorkspaceDisplayName,
 } from "./homePageHelpers";
 
@@ -180,9 +181,9 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     hasGmailActivityEvidence: gmailActivityEvidence,
   });
 
-  // Same source as GlobalHeader workspace/user label — never prefer a separate settings.name nickname.
+  // Page/Header business title vs personal greeting — keep them independent.
   const workspaceDisplayName = resolveWorkspaceDisplayName(organizationSettings);
-  const ownerFirstName = workspaceDisplayName === "העסק שלי" ? null : workspaceDisplayName;
+  const ownerFirstName = resolvePersonalDisplayName(organizationSettings);
   const scanBanner = buildScanBannerState(activeScan, scanStatus);
   const scanStale = scanBanner?.status === "stale";
   const monthPayments = payments.filter((payment) => isThisMonth(payment.date));

@@ -37,6 +37,13 @@ export function resolveWorkspaceDisplayName(
   return "העסק שלי";
 }
 
+/** Personal greeting / Header subtitle — from settings.name only, never businessName. */
+export function resolvePersonalDisplayName(
+  settings: { name?: string | null } | null | undefined
+): string | null {
+  return firstNameFromLabel(settings?.name);
+}
+
 export function scanProgressMessages(progress: ScanProgressResult) {
   const statusMessage = gmailScanStillRunning(progress)
     ? "סורק ומעבד מיילים..."
