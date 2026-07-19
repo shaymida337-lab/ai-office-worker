@@ -236,12 +236,12 @@ test("view model uses businessName for title and personal name for greeting", ()
       firstVisitMode: false,
       organizationSettings: {
         name: "שי",
-        businessName: "קדמה שרון",
+        businessName: "קדמה",
       } as BuildDashboardHomeViewModelInput["organizationSettings"],
     })
   );
 
-  assert.equal(vm.businessName, "קדמה שרון");
+  assert.equal(vm.businessName, "קדמה");
   assert.match(vm.morningGreeting.headline, /ברוך הבא חזרה, שי/);
   assert.doesNotMatch(vm.morningGreeting.headline, /קדמה/);
 });

@@ -99,6 +99,30 @@ describe("insurance home overlay", () => {
     assert.equal(overlay.summaryParagraph, DASHBOARD_NO_DATA_LABEL);
   });
 
+  it("keeps personal name in insurance greeting lead", () => {
+    const module = getBusinessModule("insurance_agency");
+    const overlay = buildInsuranceHomeOverlay({
+      module,
+      metrics: loadedMetrics,
+      metricsLoaded: true,
+      partOfDayGreeting: "ברוך הבא חזרה, שי",
+    });
+    assert.match(overlay.greetingLine, /^ברוך הבא חזרה, שי\.\s*הנה מצב סוכנות הביטוח/);
+    assert.doesNotMatch(overlay.greetingLine, /קדמה/);
+  });
+
+  it("keeps generic returning greeting without inventing a name", () => {
+    const module = getBusinessModule("insurance_agency");
+    const overlay = buildInsuranceHomeOverlay({
+      module,
+      metrics: loadedMetrics,
+      metricsLoaded: true,
+      partOfDayGreeting: "ברוך הבא חזרה",
+    });
+    assert.match(overlay.greetingLine, /^ברוך הבא חזרה\.\s*הנה מצב סוכנות הביטוח/);
+    assert.doesNotMatch(overlay.greetingLine, /ברוך הבא חזרה,/);
+  });
+
   it("hero summary lines match CRM home-metrics active and new leads", () => {
     const module = getBusinessModule("insurance_agency");
     assert.deepEqual(module.dashboard.home.summaryMetricIds, [

@@ -36,9 +36,9 @@ function heroMetricLine(
   return template(count);
 }
 
-function greetingPrefixFromHeadline(headline: string): string {
-  const match = headline.match(/^(בוקר טוב|צהריים טובים|ערב טוב|שלום|ברוך הבא חזרה)/);
-  return match?.[1] ?? "שלום";
+function greetingLeadFromHeadline(headline: string): string {
+  // Keep personal name from morningGreeting ("ברוך הבא חזרה, שי"); only strip emoji.
+  return headline.replace(/\s*👋\s*$/u, "").trim() || "שלום";
 }
 
 export default function DashboardPage() {
@@ -66,7 +66,7 @@ export default function DashboardPage() {
       module: d.businessModule,
       metrics: insuranceMetrics,
       metricsLoaded: d.homeMetricsLoaded,
-      partOfDayGreeting: greetingPrefixFromHeadline(d.morningGreeting.headline),
+      partOfDayGreeting: greetingLeadFromHeadline(d.morningGreeting.headline),
     });
   }, [isInsuranceHome, d.businessModule, insuranceMetrics, d.homeMetricsLoaded, d.morningGreeting.headline]);
 
