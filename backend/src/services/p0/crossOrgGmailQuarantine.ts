@@ -57,6 +57,34 @@ export async function listCrossOrgContaminatedGmailMessageIds(
   return rows.map((row) => row.gmail_id).filter(Boolean);
 }
 
+/**
+ * Same contamination predicate as {@link listCrossOrgContaminatedGmailMessageIds}
+ * (GROUP BY gmailMessageId HAVING COUNT(DISTINCT organizationId) > 1), but only for
+ * the candidate IDs that can affect a scoped read (e.g. pending FDR for one org).
+ * Uses existing @@index([gmailMessageId]) via WHERE … = ANY(...).
+ */
+export async function listCrossOrgContaminatedGmailMessageIdsAmong(
+  gmailMessageIds: string[],
+  db: Pick<PrismaClient, "$queryRawUnsafe"> = defaultPrisma,
+): Promise<string[]> {
+  const unique = [
+    ...new Set(gmailMessageIds.map((id) => id.trim()).filter((id) => id.length > 0)),
+  ];
+  if (unique.length === 0) return [];
+
+  const rows = (await db.$queryRawUnsafe(
+    `
+    SELECT "gmailMessageId" AS gmail_id
+    FROM "GmailScanItem"
+    WHERE "gmailMessageId" = ANY($1::text[])
+    GROUP BY "gmailMessageId"
+    HAVING COUNT(DISTINCT "organizationId") > 1
+    `,
+    unique,
+  )) as Array<{ gmail_id: string }>;
+  return rows.map((row) => row.gmail_id).filter(Boolean);
+}
+
 export async function isCrossOrgContaminatedGmailMessageId(
   gmailMessageId: string | null | undefined,
   organizationId?: string | null,

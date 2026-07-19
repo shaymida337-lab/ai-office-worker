@@ -3,9 +3,9 @@ import { getDayBounds } from "./calendar/datetime.js";
 import { getCalendarRulesForOrganization } from "./calendar/rules.js";
 import { resolveCalendarEngineFlags } from "./calendar/calendarEngineFlags.js";
 import { countCrmActiveCustomers, countCrmNewLeads } from "./crm/crmCounts.js";
+import { listCrossOrgContaminatedGmailMessageIdsAmong } from "./p0/crossOrgGmailQuarantine.js";
 import {
   buildFinancialDocumentReviewReadIsolationWhere,
-  loadCrossOrgContaminatedGmailIdsForReads,
   mergePrismaWhere,
 } from "./p0/financialReadIsolation.js";
 
@@ -50,8 +50,35 @@ export async function countOpenTasks(organizationId: string): Promise<number> {
   });
 }
 
+async function listPendingReviewGmailMessageIds(organizationId: string): Promise<string[]> {
+  const rows = await prisma.financialDocumentReview.findMany({
+    where: {
+      organizationId,
+      reviewStatus: "needs_review",
+      gmailMessageId: { not: null },
+    },
+    select: { gmailMessageId: true },
+    distinct: ["gmailMessageId"],
+  });
+  return [
+    ...new Set(
+      rows
+        .map((row) => row.gmailMessageId?.trim() ?? "")
+        .filter((id) => id.length > 0),
+    ),
+  ];
+}
+
+/**
+ * pending_docs with the same isolation semantics as document-reviews reads:
+ * exclude cross-org contaminated gmailMessageIds (+ quarantine marker / allowlist).
+ * Contamination is evaluated only among this org's pending-review gmail IDs
+ * (same HAVING predicate as the global scan, scoped via WHERE = ANY).
+ */
 export async function countPendingDocumentReviews(organizationId: string): Promise<number> {
-  const contaminatedGmailIds = await loadCrossOrgContaminatedGmailIdsForReads();
+  const candidateGmailIds = await listPendingReviewGmailMessageIds(organizationId);
+  const contaminatedGmailIds =
+    await listCrossOrgContaminatedGmailMessageIdsAmong(candidateGmailIds);
   return prisma.financialDocumentReview.count({
     where: mergePrismaWhere(
       {
