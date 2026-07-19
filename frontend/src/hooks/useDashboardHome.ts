@@ -193,6 +193,18 @@ export function useDashboardHome() {
       // שבקשה איטית אחת (למשל system/health עם timeout של 30ש׳, או backend
       // בהתעוררות מ-cold start) לא משאירה את כל הדשבורד על Skeleton.
       // כל הבקשות יוצאות במקביל; pageLoading יורד כשהקריטיות הסתיימו.
+      // KPI: home-metrics מיושם מיד כשה-promise שלו מסתיים — לא מחכים לשאר critical.
+      const homeMetricsPromise = apiFetch<DashboardHomeMetricsResponse>("/api/dashboard/home-metrics");
+      void homeMetricsPromise.then(
+        (value) => {
+          setHomeMetrics(value);
+          setHomeMetricsLoaded(true);
+        },
+        () => {
+          setHomeMetrics(null);
+          setHomeMetricsLoaded(true);
+        }
+      );
       const criticalPromise = Promise.allSettled([
         apiFetch<DashboardStats>("/api/stats"),
         apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
@@ -200,7 +212,7 @@ export function useDashboardHome() {
         apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review"),
         fetchBriefingSchedulingSnapshot(appointmentFrom, appointmentTo),
         apiFetch<Task[]>("/api/tasks"),
-        apiFetch<DashboardHomeMetricsResponse>("/api/dashboard/home-metrics"),
+        homeMetricsPromise,
       ] as const);
       const deferredPromise = Promise.allSettled([
         apiFetch<{ text: string }>("/api/summary/daily"),
@@ -214,16 +226,11 @@ export function useDashboardHome() {
         apiFetch<AccountantSummary>("/api/accountant/summary"),
       ] as const);
 
-      const [statsResult, gmailResult, orgResult, reviewsResult, briefingResult, tasksResult, homeMetricsResult] =
+      const [statsResult, gmailResult, orgResult, reviewsResult, briefingResult, tasksResult] =
         await criticalPromise;
 
       setStats(statsResult.status === "fulfilled" ? statsResult.value : null);
-      if (homeMetricsResult.status === "fulfilled") {
-        setHomeMetrics(homeMetricsResult.value);
-      } else {
-        setHomeMetrics(null);
-      }
-      setHomeMetricsLoaded(true);
+      // home-metrics כבר הוחל ב-then למעלה — לא להחיל שוב אחרי await criticalPromise.
       const gmailResolved = resolveGmailStatusFromSettled(gmailStatus, gmailResult);
       setGmailStatus(gmailResolved.nextStatus);
       setGmailStatusKnown(gmailResolved.known);
@@ -369,6 +376,11 @@ export function useDashboardHome() {
   refreshGmailStatusRef.current = refreshGmailStatus;
 
   useEffect(() => {
+    if (!getToken()) {
+      router.replace("/");
+      return;
+    }
+
     const search = window.location.search;
 
     if (shouldHandleGmailOAuthErrorReturn({ search, alreadyHandled: gmailOAuthReturnHandledRef.current })) {
