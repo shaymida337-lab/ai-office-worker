@@ -1,4 +1,5 @@
 import { isUnknownPlaceholder } from "../supplier/supplierValidation.js";
+import { sanitizeNatalieCustomerResponse } from "../conversation/natalieCustomerResponse.js";
 
 export const NATALIE_BRAND = "נטלי";
 
@@ -68,7 +69,7 @@ export function formatSupplierDisplayName(
 }
 
 export function sanitizeWhatsAppText(text: string): string {
-  let result = text;
+  let result = sanitizeNatalieCustomerResponse(text);
   for (const phrase of FORBIDDEN_PHRASES) {
     result = result.replaceAll(phrase, NATALIE_BRAND);
   }

@@ -1,6 +1,26 @@
 /** Customer-facing fallback when an AI answer is empty after cleanup. */
 export const NATALIE_EMPTY_ANSWER = "לא מצאתי את זה אצלי כרגע.";
 
+/** Must never appear in user-visible Natalie output. */
+export const FORBIDDEN_CUSTOMER_OUTPUT_STRINGS = [
+  "Google Calendar",
+  "Gmail",
+  "CRM",
+  "Source",
+  "מקור נתונים",
+  "API",
+  "Database",
+  "Cache",
+  "Tool",
+  "Provider",
+  "Model",
+  "JSON",
+  "Prompt",
+] as const;
+
+const NATURAL_ACTION_LEAD =
+  /^(בדקתי|מצאתי|עדכנתי|שלחתי|קבעתי|ביטלתי|העברתי|הוספתי|הכנתי|סיימתי|לא הצלחתי|הבנתי|שלום|בוקר|ערב|לילה|צהריים|כן[,\s]|לא[,\s])/u;
+
 const LITERAL_PLACEHOLDER = "\uE000";
 const LITERAL_SUFFIX = "\uE001";
 
@@ -52,6 +72,46 @@ const TECHNICAL_PHRASE_REPLACEMENTS: Array<[RegExp, string]> = [
   [/Invalid token/gi, "פג תוקף ההתחברות"],
 ];
 
+const CUSTOMER_FACING_TERM_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/Google Calendar timeout/gi, "לא הצלחתי לבדוק את היומן כרגע"],
+  [/Google Calendar synchronized successfully/gi, ""],
+  [/Request completed/gi, ""],
+  [/synchronized successfully/gi, ""],
+  [/Google Calendar/gi, "היומן"],
+  [/ב-Google\b/gi, ""],
+  [/מ[-־]?Gmail\b/gi, ""],
+  [/ב[-־]?Gmail\b/gi, ""],
+  [/\s*מהמייל\./gi, "."],
+  [/\s*מהמייל/gi, ""],
+  [/\s*במייל\./gi, "."],
+  [/\s*במייל/gi, ""],
+  [/\s*מהמיילים\./gi, "."],
+  [/\s*מהמיילים/gi, ""],
+  [/\s*במיילים\./gi, "."],
+  [/\s*במיילים/gi, ""],
+  [/\bGmail\b/gi, ""],
+  [/\bCRM\b/gi, ""],
+  [/\bDatabase\b/gi, ""],
+  [/\bAPI\b/gi, ""],
+  [/\bJSON\b/gi, ""],
+  [/\bPrompt\b/gi, ""],
+  [/\bProvider\b/gi, ""],
+  [/\bModel\b/gi, ""],
+  [/\bTool\b/gi, ""],
+  [/\bCache\b/gi, ""],
+  [/\bSync\b/gi, ""],
+  [/^source\s*:\s*[^\n—-]+[—-]\s*/gim, ""],
+  [/מקור נתונים\s*:\s*[^.\n]+(?:\([^)]*\))?(?:\.\s*|$)/gi, ""],
+  [/תמונה מלאה/gi, ""],
+  [/תמונה אינה מלאה/gi, ""],
+  [/התמונה אינה מלאה/gi, ""],
+  [/אומת בהצלחה/gi, ""],
+  [/לא הצלחתי לאמת כרגע את היומן/gi, "לא הצלחתי לבדוק את היומן כרגע"],
+  [/התחברתי ל/gi, "בדקתי את "],
+  [/ניגשתי ל/gi, "בדקתי את "],
+  [/השתמשתי ב/gi, "בדקתי את "],
+];
+
 const NATURAL_ANSWER_MAX_CHARS = 280;
 const NATURAL_ANSWER_MAX_LINES = 5;
 
@@ -69,7 +129,7 @@ export function formatNatalieResponse(raw: string | null | undefined): string {
   }
 
   if (isNaturalHebrewAnswer(text)) {
-    return collapseWhitespace(replaceTechnicalPhrasing(text));
+    return polishCustomerFacingText(collapseWhitespace(replaceTechnicalPhrasing(text)));
   }
 
   const protectedLiterals = protectLiterals(text);
@@ -82,12 +142,74 @@ export function formatNatalieResponse(raw: string | null | undefined): string {
   text = removeTechnicalWords(text);
   text = normalizeListSyntax(text);
   text = replaceTechnicalPhrasing(text);
+  text = sanitizeCustomerFacingTerms(text);
   text = humanizeRemainingSnakeCase(text);
   text = restoreLiterals(text, protectedLiterals.slots);
   text = collapseWhitespace(text);
   text = limitResponseLines(text);
 
-  return text.trim();
+  return polishCustomerFacingText(text.trim());
+}
+
+export function findForbiddenCustomerOutput(text: string): string | null {
+  for (const forbidden of FORBIDDEN_CUSTOMER_OUTPUT_STRINGS) {
+    if (forbidden === "Source") {
+      if (/\bsource\b/i.test(text)) return forbidden;
+      continue;
+    }
+    if (text.includes(forbidden)) return forbidden;
+  }
+  return null;
+}
+
+function cleanupDanglingSourceFragments(text: string): string {
+  return text
+    .replace(/\s+מ-\.\s*/g, " ")
+    .replace(/\s+מ-\s*/g, " ")
+    .replace(/^\.\s+/g, "")
+    .replace(/\s+\.(?=\s|$)/g, ".")
+    .replace(/\.{2,}/g, ".")
+    .trim();
+}
+
+function applyActionFraming(text: string): string {
+  const trimmed = cleanupDanglingSourceFragments(text.trim());
+  if (!trimmed || /[?؟]$/.test(trimmed)) return trimmed;
+
+  const firstLine = trimmed.split("\n")[0]?.trim() ?? trimmed;
+  if (NATURAL_ACTION_LEAD.test(firstLine)) return trimmed;
+
+  if (/^אין(?: לך)? פגישות\.?$/u.test(trimmed)) {
+    return "בדקתי את היומן שלך. אין לך פגישות מתוכננות כרגע.";
+  }
+
+  if (/^אין לך פגישות קרובות ביומן\.?$/u.test(trimmed)) {
+    return "בדקתי את היומן שלך. אין לך פגישות מתוכננות כרגע.";
+  }
+
+  if (/^אין לך פגישות/u.test(trimmed)) {
+    const body = trimmed.endsWith(".") ? trimmed : `${trimmed}.`;
+    return `בדקתי את היומן שלך. ${body}`;
+  }
+
+  if (
+    /^(?:התורים|הפגישה|יש לך|כרגע אין|אלה שעדיין)/u.test(firstLine) ||
+    /^יש לך (?:פגישה|לקוח)/u.test(firstLine)
+  ) {
+    return `בדקתי את היומן שלך. ${trimmed}`;
+  }
+
+  if (/^מצאתי /u.test(trimmed)) return trimmed;
+
+  if (/^(?:יש|אין) /u.test(firstLine) && /פגיש|תור|לקוח/u.test(trimmed)) {
+    return `בדקתי את היומן שלך. ${trimmed}`;
+  }
+
+  return trimmed;
+}
+
+function polishCustomerFacingText(text: string): string {
+  return applyActionFraming(cleanupDanglingSourceFragments(sanitizeCustomerFacingTerms(text)));
 }
 
 export function formatNatalieResponseOrFallback(raw: string | null | undefined): string {
@@ -278,6 +400,24 @@ function replaceTechnicalPhrasing(text: string): string {
     out = out.replace(pattern, replacement);
   }
   return out;
+}
+
+function sanitizeCustomerFacingTerms(text: string): string {
+  let out = text;
+  for (const [pattern, replacement] of CUSTOMER_FACING_TERM_REPLACEMENTS) {
+    out = out.replace(pattern, replacement);
+  }
+  return out
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      return (
+        !/^מקור נתונים\s*:[^.]*\.\s*$/i.test(trimmed) &&
+        !/^source\s*:[^.]*\.\s*$/i.test(trimmed)
+      );
+    })
+    .join("\n");
 }
 
 function humanizeRemainingSnakeCase(text: string): string {

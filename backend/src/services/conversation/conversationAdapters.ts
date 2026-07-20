@@ -1,4 +1,5 @@
 import type { NatalieClaudeResponse } from "../claude.js";
+import { sanitizeNatalieCustomerResponse } from "./natalieCustomerResponse.js";
 import type { ConfirmationPolicyResult, NatalieChannel } from "./conversationTypes.js";
 
 export type ChannelAdapter = {
@@ -27,6 +28,10 @@ function withConfirmationSuffix(answer: string, confirmation: ConfirmationPolicy
   return `${answer.trim()} ${confirmation.uiPrompt}`.trim();
 }
 
+function renderCustomerFacingText(answer: string, confirmation: ConfirmationPolicyResult): string {
+  return sanitizeNatalieCustomerResponse(withConfirmationSuffix(answer, confirmation));
+}
+
 function createAdapter(channel: NatalieChannel): ChannelAdapter {
   return {
     channel,
@@ -34,13 +39,17 @@ function createAdapter(channel: NatalieChannel): ChannelAdapter {
       return raw.replace(/\s+/g, " ").trim();
     },
     renderDisplay(response, confirmation) {
-      return withConfirmationSuffix(responseAnswer(response), confirmation);
+      return renderCustomerFacingText(responseAnswer(response), confirmation);
     },
     renderSpoken(response, confirmation) {
       const spoken = responseAnswer(response);
-      if (!confirmation.required || !confirmation.spokenPrompt) return spoken;
-      if (alreadyAsksConfirmation(spoken)) return spoken;
-      return `${spoken.trim()} ${confirmation.spokenPrompt}`.trim();
+      if (!confirmation.required || !confirmation.spokenPrompt) {
+        return sanitizeNatalieCustomerResponse(spoken);
+      }
+      if (alreadyAsksConfirmation(spoken)) {
+        return sanitizeNatalieCustomerResponse(spoken);
+      }
+      return sanitizeNatalieCustomerResponse(`${spoken.trim()} ${confirmation.spokenPrompt}`.trim());
     },
   };
 }

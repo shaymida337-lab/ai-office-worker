@@ -180,7 +180,7 @@ test("read engine: Google + local merge path uses detailed loader unchanged", as
   });
   assert.equal(loaderCalls, 1);
   assert.match(result.answer, /Google Client/);
-  assert.match(result.answer, /Google Calendar אומת/);
+  assert.doesNotMatch(result.answer, /מקור נתונים|Google Calendar|תמונה מלאה/i);
 });
 
 test('parser: "מה התורים של דנה?" keeps customer name', () => {

@@ -10,6 +10,7 @@ import {
   reportCoreWorkflowHealth,
 } from "../reliability/core/index.js";
 import { getChannelAdapter, normalizeChannelInput } from "./conversationAdapters.js";
+import { finalizeCustomerFacingResponses } from "./natalieCustomerResponse.js";
 import { evaluateConfirmationPolicy } from "./conversationConfirmationPolicy.js";
 import {
   appendTurn,
@@ -150,12 +151,14 @@ export async function processNatalieTurn(
     if (calendarConfirmation.handled && calendarConfirmation.result && calendarConfirmation.updatedSession) {
       const adapter = getChannelAdapter(channel);
       const continuation = calendarConfirmation.result;
-      const displayResponse =
-        continuation.displayResponse ??
-        adapter.renderDisplay(continuation as NatalieClaudeResponse, continuation.confirmation);
-      const spokenResponse =
-        continuation.spokenResponse ??
-        adapter.renderSpoken(continuation as NatalieClaudeResponse, continuation.confirmation);
+      const { displayResponse, spokenResponse } = finalizeCustomerFacingResponses({
+        displayResponse:
+          continuation.displayResponse ??
+          adapter.renderDisplay(continuation as NatalieClaudeResponse, continuation.confirmation),
+        spokenResponse:
+          continuation.spokenResponse ??
+          adapter.renderSpoken(continuation as NatalieClaudeResponse, continuation.confirmation),
+      });
 
       const updatedSession = await saveSession(calendarConfirmation.updatedSession);
       logResponseSent("calendar_confirmation", continuation.answer);
@@ -178,6 +181,7 @@ export async function processNatalieTurn(
 
       return {
         ...continuation,
+        answer: displayResponse,
         conversationSessionId: updatedSession.id,
         displayResponse,
         spokenResponse,
@@ -204,12 +208,14 @@ export async function processNatalieTurn(
     if (calendarIntentContinuation.handled && calendarIntentContinuation.result && calendarIntentContinuation.updatedSession) {
       const adapter = getChannelAdapter(channel);
       const continuation = calendarIntentContinuation.result;
-      const displayResponse =
-        continuation.displayResponse ??
-        adapter.renderDisplay(continuation as NatalieClaudeResponse, continuation.confirmation);
-      const spokenResponse =
-        continuation.spokenResponse ??
-        adapter.renderSpoken(continuation as NatalieClaudeResponse, continuation.confirmation);
+      const { displayResponse, spokenResponse } = finalizeCustomerFacingResponses({
+        displayResponse:
+          continuation.displayResponse ??
+          adapter.renderDisplay(continuation as NatalieClaudeResponse, continuation.confirmation),
+        spokenResponse:
+          continuation.spokenResponse ??
+          adapter.renderSpoken(continuation as NatalieClaudeResponse, continuation.confirmation),
+      });
 
       const updatedSession = await saveSession(calendarIntentContinuation.updatedSession);
       logResponseSent("calendar_intent_continuation", continuation.answer);
@@ -236,6 +242,7 @@ export async function processNatalieTurn(
 
       return {
         ...continuation,
+        answer: displayResponse,
         conversationSessionId: updatedSession.id,
         displayResponse,
         spokenResponse,
@@ -258,12 +265,14 @@ export async function processNatalieTurn(
     if (availabilityContinuation.handled && availabilityContinuation.result && availabilityContinuation.updatedSession) {
       const adapter = getChannelAdapter(channel);
       const continuation = availabilityContinuation.result;
-      const displayResponse =
-        continuation.displayResponse ??
-        adapter.renderDisplay(continuation as NatalieClaudeResponse, continuation.confirmation);
-      const spokenResponse =
-        continuation.spokenResponse ??
-        adapter.renderSpoken(continuation as NatalieClaudeResponse, continuation.confirmation);
+      const { displayResponse, spokenResponse } = finalizeCustomerFacingResponses({
+        displayResponse:
+          continuation.displayResponse ??
+          adapter.renderDisplay(continuation as NatalieClaudeResponse, continuation.confirmation),
+        spokenResponse:
+          continuation.spokenResponse ??
+          adapter.renderSpoken(continuation as NatalieClaudeResponse, continuation.confirmation),
+      });
 
       const updatedSession = await saveSession(availabilityContinuation.updatedSession);
       logResponseSent("availability_continuation", continuation.answer);
@@ -290,6 +299,7 @@ export async function processNatalieTurn(
 
       return {
         ...continuation,
+        answer: displayResponse,
         conversationSessionId: updatedSession.id,
         displayResponse,
         spokenResponse,
@@ -381,11 +391,13 @@ export async function processNatalieTurn(
       });
     }
 
-    const displayResponse = adapter.renderDisplay(effectiveResponse, confirmation);
-    const spokenResponse =
-      pendingConfirmation?.spokenPrompt && shouldDeferCalendarActionForFuzzyGate(extracted.proposal)
-        ? pendingConfirmation.spokenPrompt
-        : adapter.renderSpoken(effectiveResponse, confirmation);
+    const { displayResponse, spokenResponse } = finalizeCustomerFacingResponses({
+      displayResponse: adapter.renderDisplay(effectiveResponse, confirmation),
+      spokenResponse:
+        pendingConfirmation?.spokenPrompt && shouldDeferCalendarActionForFuzzyGate(extracted.proposal)
+          ? pendingConfirmation.spokenPrompt
+          : adapter.renderSpoken(effectiveResponse, confirmation),
+    });
 
     const assistantTurn = createConversationTurn({
       role: "assistant",
@@ -438,6 +450,7 @@ export async function processNatalieTurn(
 
     return {
       ...(effectiveResponse as NatalieClaudeResponse),
+      answer: displayResponse,
       conversationSessionId: updatedSession.id,
       displayResponse,
       spokenResponse,

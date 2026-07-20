@@ -3,8 +3,19 @@ import assert from "node:assert/strict";
 import {
   formatNatalieResponse,
   formatNatalieResponseOrFallback,
+  FORBIDDEN_CUSTOMER_OUTPUT_STRINGS,
+  findForbiddenCustomerOutput,
   NATALIE_EMPTY_ANSWER,
 } from "./formatResponse.js";
+
+const ACTION_LEAD = /^(בדקתי|מצאתי|עדכנתי|שלחתי|קבעתי|ביטלתי|העברתי|הוספתי|הכנתי|סיימתי|לא הצלחתי|הבנתי)/u;
+
+const SANITIZER_FIXTURES = [
+  "מקור נתונים: Google Calendar אומת בהצלחה (תמונה מלאה). אין פגישות.",
+  "Source: CRM — מצאתי 5 לקוחות חדשים מ-Gmail.",
+  "מצאתי 5 לקוחות חדשים מהמייל.",
+  'API error {"JSON":"Prompt"} Database Cache Tool Provider Model',
+];
 
 test("formatNatalieResponse: strips bold and underline markdown", () => {
   assert.equal(formatNatalieResponse("יש **חשבונית** אחת ו__עוד__ משימה"), "יש חשבונית אחת ועוד משימה");
@@ -129,4 +140,35 @@ test("formatNatalieResponse: replaces technical phrasing", () => {
 test("formatNatalieResponseOrFallback: uses friendly empty answer", () => {
   assert.equal(formatNatalieResponseOrFallback(""), NATALIE_EMPTY_ANSWER);
   assert.equal(formatNatalieResponseOrFallback('{"status":"approved"}'), NATALIE_EMPTY_ANSWER);
+});
+
+test("formatNatalieResponse: hides calendar provenance and frames empty calendar", () => {
+  const out = formatNatalieResponse(
+    "מקור נתונים: Google Calendar אומת בהצלחה (תמונה מלאה). אין פגישות.",
+  );
+  assert.equal(out, "בדקתי את היומן שלך. אין לך פגישות מתוכננות כרגע.");
+  assert.doesNotMatch(out, /Google Calendar|מקור נתונים|תמונה מלאה/i);
+  assert.match(out, ACTION_LEAD);
+});
+
+test("formatNatalieResponse: strips CRM/Gmail/mail without exposing מייל", () => {
+  const out = formatNatalieResponse("Source: CRM — מצאתי 5 לקוחות חדשים מ-Gmail.");
+  assert.equal(out, "מצאתי 5 לקוחות חדשים.");
+  assert.doesNotMatch(out, /CRM|Gmail|Source|מייל/i);
+  assert.match(out, ACTION_LEAD);
+});
+
+test("formatNatalieResponse: forbidden customer strings never leak", () => {
+  for (const input of SANITIZER_FIXTURES) {
+    const out = formatNatalieResponse(input);
+    const hit = findForbiddenCustomerOutput(out);
+    assert.equal(hit, null, `forbidden "${hit}" in "${out}" from "${input}"`);
+    for (const forbidden of FORBIDDEN_CUSTOMER_OUTPUT_STRINGS) {
+      if (forbidden === "Source") {
+        assert.doesNotMatch(out, /\bsource\b/i);
+      } else {
+        assert.ok(!out.includes(forbidden), `${forbidden} leaked in "${out}"`);
+      }
+    }
+  }
 });

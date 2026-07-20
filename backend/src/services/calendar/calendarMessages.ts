@@ -202,9 +202,9 @@ export const calendarMessages = {
     }
     return count === 1 ? "יש לך לקוח אחד קרוב." : `יש לך ${count} לקוחות קרובים.`;
   },
-  /** Honest empty/partial copy when Google Calendar cannot be read. */
+  /** Honest empty/partial copy when external calendar cannot be read. */
   listGoogleReadUnavailable(detail: string): string {
-    return detail;
+    return detail.trim();
   },
   listEmptyWithGoogleWarning(empty: string, warning: string): string {
     return `${empty}\n\n${warning}`;
@@ -213,25 +213,28 @@ export const calendarMessages = {
     return `${header}\n${entries}\n\n${warning}`;
   },
   listSourceFull(): string {
-    return "מקור נתונים: Google Calendar אומת בהצלחה (תמונה מלאה).";
+    return "";
   },
   listSourcePartial(detail?: string): string {
-    return detail
-      ? `מקור נתונים: Google Calendar חלקי. ${detail}`
-      : "מקור נתונים: Google Calendar חלקי, ולכן התמונה אינה מלאה.";
+    const extra = detail?.trim();
+    return extra
+      ? `ייתכן שחסרות כמה פגישות מהיומן. ${extra}`
+      : "ייתכן שחסרות כמה פגישות מהיומן.";
   },
   listSourceLocalOnly(): string {
-    return "מקור נתונים: נתונים מקומיים בלבד (Google Calendar לא אומת בהצלחה).";
+    return "מציגה לפי מה ששמור אצלי — לא הצלחתי לאמת את היומן המקוון כרגע.";
   },
   listSourceUnavailable(detail?: string): string {
-    return detail
-      ? `מקור נתונים: Google Calendar לא זמין כרגע. ${detail}`
-      : "מקור נתונים: Google Calendar לא זמין כרגע ולכן התמונה אינה מלאה.";
+    const extra = detail?.trim();
+    return extra
+      ? `לא הצלחתי לבדוק את היומן כרגע. ${extra}`
+      : "לא הצלחתי לבדוק את היומן כרגע.";
   },
   listCannotGuaranteeEmpty(detail?: string): string {
-    return detail
-      ? `לא הצלחתי לאמת כרגע את היומן ב-Google, לכן איני יכולה להתחייב שאין פגישות. ${detail}`
-      : "לא הצלחתי לאמת כרגע את היומן ב-Google, לכן איני יכולה להתחייב שאין פגישות.";
+    const extra = detail?.trim();
+    return extra
+      ? `לא הצלחתי לבדוק את היומן כרגע, אז ייתכן שיש פגישות שלא מופיעות כאן. ${extra}`
+      : "לא הצלחתי לבדוק את היומן כרגע, אז ייתכן שיש פגישות שלא מופיעות כאן.";
   },
   listEntry(entry: CalendarListEntry): string {
     const service = entry.serviceName?.trim();
@@ -286,9 +289,22 @@ export const calendarMessages = {
     return `מצאתי ${count} זמנים פנויים: ${labels}.`;
   },
   availabilityUnknownGoogle(detail?: string): string {
-    return detail
-      ? `לא הצלחתי לאמת כרגע את היומן ב-Google, לכן איני יכולה להתחייב שהתמונה מלאה. ${detail}`
-      : "לא הצלחתי לאמת כרגע את היומן ב-Google, לכן איני יכולה להתחייב שהתמונה מלאה.";
+    const extra = detail?.trim();
+    return extra
+      ? `לא הצלחתי לבדוק את היומן כרגע. אפשר לנסות שוב בעוד רגע. ${extra}`
+      : "לא הצלחתי לבדוק את היומן כרגע. אפשר לנסות שוב בעוד רגע.";
+  },
+  availabilityFreeWindows(params: {
+    dayLabel: string;
+    windows: Array<{ startLabel: string; endLabel: string }>;
+    meetings: Array<{ whenLabel: string; clientName: string }>;
+  }): string {
+    const windowsText = params.windows.map((w) => `${w.startLabel}–${w.endLabel}`).join(", ");
+    const meetingLead =
+      params.meetings.length === 1
+        ? `יש לך פגישה אחת בלבד ב${params.dayLabel}.`
+        : `יש לך ${params.meetings.length} פגישות ב${params.dayLabel}.`;
+    return `${meetingLead} חלונות פנויים: ${windowsText}.`;
   },
 
   // ---- Ambiguous customer / appointment ----

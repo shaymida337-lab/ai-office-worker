@@ -166,6 +166,59 @@ describe("natalie conversation platform phase 1", () => {
     assert.equal(getConversationMetrics().length, 2);
   });
 
+  it("sanitizes final api answer for מי הלקוח הבא שלי when calendar is empty", async () => {
+    const sessions = new Map<string, ConversationSessionRecord>();
+    const resolveSession = async (input: {
+      sessionId?: string | null;
+      organizationId: string;
+      userId: string;
+      channel: "web_chat";
+    }) => {
+      if (input.sessionId && sessions.has(input.sessionId)) return sessions.get(input.sessionId)!;
+      const session: ConversationSessionRecord = {
+        id: randomUUID(),
+        organizationId: input.organizationId,
+        userId: input.userId,
+        currentChannel: input.channel,
+        structuredHistory: [],
+        pendingAction: null,
+        pendingConfirmation: null,
+        interruptionState: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastMessageAt: new Date().toISOString(),
+      };
+      sessions.set(session.id, session);
+      return session;
+    };
+    const saveSession = async (session: ConversationSessionRecord) => {
+      sessions.set(session.id, session);
+      return session;
+    };
+
+    const result = await processNatalieTurn(
+      {
+        organizationId: "org-1",
+        userId: "user-1",
+        channel: "web_chat",
+        modality: "text",
+        message: "מי הלקוח הבא שלי?",
+        role: "owner",
+      },
+      {
+        ask: async () => ({
+          answer: "אין לך פגישות קרובות ביומן.\n\nמקור נתונים: Google Calendar אומת בהצלחה (תמונה מלאה).",
+        }),
+        resolveSession,
+        saveSession,
+      }
+    );
+
+    assert.equal(result.answer, "בדקתי את היומן שלך. אין לך פגישות מתוכננות כרגע.");
+    assert.equal(result.displayResponse, result.answer);
+    assert.doesNotMatch(result.answer, /Google Calendar|מקור נתונים|תמונה מלאה|אומת בהצלחה/i);
+  });
+
   it("preserves session across turns via session id", async () => {
     const sessions = new Map<string, ConversationSessionRecord>();
     const resolveSession = async (input: {
