@@ -11,9 +11,9 @@ import {
 
 test("GMAIL_SCOPES do not request Gmail send permissions", () => {
   assert.ok(GMAIL_SCOPES.includes("https://www.googleapis.com/auth/gmail.readonly"));
-  assert.ok(GMAIL_SCOPES.includes("https://www.googleapis.com/auth/gmail.labels"));
   assert.ok(GMAIL_SCOPES.includes("https://www.googleapis.com/auth/drive.file"));
-  assert.ok(GMAIL_SCOPES.includes("https://www.googleapis.com/auth/spreadsheets"));
+  assert.equal(GMAIL_SCOPES.includes("https://www.googleapis.com/auth/gmail.labels"), false);
+  assert.equal(GMAIL_SCOPES.includes("https://www.googleapis.com/auth/spreadsheets"), false);
   assert.equal(GMAIL_SCOPES.includes("https://www.googleapis.com/auth/gmail.send"), false);
   assert.equal(GMAIL_SCOPES.includes("https://www.googleapis.com/auth/gmail.compose"), false);
   assert.equal(GMAIL_SCOPES.includes("https://mail.google.com/"), false);

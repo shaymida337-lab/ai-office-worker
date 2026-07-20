@@ -134,9 +134,7 @@ export const REQUIRED_GOOGLE_DRIVE_SCOPES = [
 
 export const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.labels",
   ...REQUIRED_GOOGLE_DRIVE_SCOPES,
-  "https://www.googleapis.com/auth/spreadsheets",
   "openid",
   "email",
   "profile",
