@@ -24,7 +24,13 @@ import {
   buildInsuranceHomeOverlay,
   resolveInsuranceHomeMetrics,
 } from "@/lib/dashboard/buildInsuranceHomeOverlay";
-import { DASHBOARD_NO_DATA_LABEL, formatDashboardMetricValue, metricCount } from "@/lib/dashboard/homeMetrics";
+import {
+  DASHBOARD_METRICS_ERROR_LABEL,
+  DASHBOARD_METRICS_RETRY_LABEL,
+  DASHBOARD_NO_DATA_LABEL,
+  formatDashboardMetricValue,
+  metricCount,
+} from "@/lib/dashboard/homeMetrics";
 
 function heroMetricLine(
   count: number | null,
@@ -199,8 +205,17 @@ export default function DashboardPage() {
                     </div>
 
                     <div className="grid gap-2 rounded-2xl border border-[#dbe6ff] bg-white/90 p-3 dark:border-[#1F2A44] dark:bg-[#0F172A]/90">
-                      {d.pageLoading || !d.homeMetricsLoaded ? (
+                      {d.pageLoading || (!d.homeMetricsLoaded && !d.homeMetricsError) ? (
                         <SkeletonText lines={3} />
+                      ) : !d.homeMetricsLoaded && d.homeMetricsError ? (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-[#334155] dark:text-[#CBD5E1]">
+                            {DASHBOARD_METRICS_ERROR_LABEL}
+                          </p>
+                          <Button variant="secondary" size="sm" onClick={d.retryHomeMetrics}>
+                            {DASHBOARD_METRICS_RETRY_LABEL}
+                          </Button>
+                        </div>
                       ) : insuranceOverlay ? (
                         insuranceOverlay.summaryLines.map((line, index) => (
                           <HeroLine
@@ -243,11 +258,11 @@ export default function DashboardPage() {
                       )}
                     </div>
 
-                    {d.pageLoading || !d.homeMetricsLoaded ? (
+                    {d.pageLoading || (!d.homeMetricsLoaded && !d.homeMetricsError) ? (
                       <div className="rounded-xl border border-[#e5ebfb] bg-white px-3 py-2 dark:border-[#1F2A44] dark:bg-[#0F172A]">
                         <SkeletonText lines={1} />
                       </div>
-                    ) : (
+                    ) : !d.homeMetricsLoaded && d.homeMetricsError ? null : (
                       <p className="rounded-xl border border-[#e5ebfb] bg-white px-3 py-2 text-sm font-semibold text-[#334155] dark:border-[#1F2A44] dark:bg-[#0F172A] dark:text-[#CBD5E1]">
                         {heroSummary}
                       </p>

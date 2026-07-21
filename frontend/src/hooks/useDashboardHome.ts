@@ -51,6 +51,8 @@ import { buildDashboardHomeViewModel } from "@/lib/dashboard/buildDashboardHomeV
 import { emptyClients, emptyScanStatus } from "@/lib/dashboard/homePageConstants";
 import {
   type DashboardHomeMetricsResponse,
+  HOME_METRICS_TIMEOUT_MS,
+  requestHomeMetricsWithRetry,
   snapshotFromHomeMetrics,
 } from "@/lib/dashboard/homeMetrics";
 import {
@@ -122,6 +124,7 @@ export function useDashboardHome() {
   const [pendingDocumentReviewsCount, setPendingDocumentReviewsCount] = useState(0);
   const [homeMetrics, setHomeMetrics] = useState<DashboardHomeMetricsResponse | null>(null);
   const [homeMetricsLoaded, setHomeMetricsLoaded] = useState(false);
+  const [homeMetricsError, setHomeMetricsError] = useState(false);
   const [upcomingAppointments, setUpcomingAppointments] = useState<UpcomingAppointment[]>([]);
   const [briefingScheduling, setBriefingScheduling] = useState<BriefingSchedulingSnapshot | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
@@ -185,6 +188,29 @@ export function useDashboardHome() {
     }
   }, [gmailStatus]);
 
+  const requestHomeMetrics = useCallback(async (autoRetry: boolean) => {
+    setHomeMetricsError(false);
+    const outcome = await requestHomeMetricsWithRetry(
+      () =>
+        apiFetch<DashboardHomeMetricsResponse>("/api/dashboard/home-metrics", {
+          timeoutMs: HOME_METRICS_TIMEOUT_MS,
+        }),
+      { autoRetry }
+    );
+    if (outcome.state === "success") {
+      setHomeMetrics(outcome.payload);
+      setHomeMetricsLoaded(true);
+      return;
+    }
+    // כשל/timeout: לא מסמנים loaded ולא מאפסים נתונים קיימים — כך שגיאה
+    // לעולם לא מוצגת כ"אין נתונים"; ה-UI מציג "לא הצלחנו לטעון" + נסה שוב.
+    setHomeMetricsError(true);
+  }, []);
+
+  const retryHomeMetrics = useCallback(() => {
+    void requestHomeMetrics(false);
+  }, [requestHomeMetrics]);
+
   const load = useCallback(async () => {
     try {
       const appointmentFrom = new Date().toISOString();
@@ -193,18 +219,9 @@ export function useDashboardHome() {
       // שבקשה איטית אחת (למשל system/health עם timeout של 30ש׳, או backend
       // בהתעוררות מ-cold start) לא משאירה את כל הדשבורד על Skeleton.
       // כל הבקשות יוצאות במקביל; pageLoading יורד כשהקריטיות הסתיימו.
-      // KPI: home-metrics מיושם מיד כשה-promise שלו מסתיים — לא מחכים לשאר critical.
-      const homeMetricsPromise = apiFetch<DashboardHomeMetricsResponse>("/api/dashboard/home-metrics");
-      void homeMetricsPromise.then(
-        (value) => {
-          setHomeMetrics(value);
-          setHomeMetricsLoaded(true);
-        },
-        () => {
-          setHomeMetrics(null);
-          setHomeMetricsLoaded(true);
-        }
-      );
+      // KPI: home-metrics נטען עצמאית (timeout 30ש׳ + retry אחד) ולא חוסם את
+      // pageLoading — מיושם ברגע שהבקשה שלו מסתיימת.
+      void requestHomeMetrics(true);
       const criticalPromise = Promise.allSettled([
         apiFetch<DashboardStats>("/api/stats"),
         apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
@@ -212,7 +229,6 @@ export function useDashboardHome() {
         apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review"),
         fetchBriefingSchedulingSnapshot(appointmentFrom, appointmentTo),
         apiFetch<Task[]>("/api/tasks"),
-        homeMetricsPromise,
       ] as const);
       const deferredPromise = Promise.allSettled([
         apiFetch<{ text: string }>("/api/summary/daily"),
@@ -230,7 +246,7 @@ export function useDashboardHome() {
         await criticalPromise;
 
       setStats(statsResult.status === "fulfilled" ? statsResult.value : null);
-      // home-metrics כבר הוחל ב-then למעלה — לא להחיל שוב אחרי await criticalPromise.
+      // home-metrics מנוהל ב-requestHomeMetrics — לא להחיל שוב אחרי await criticalPromise.
       const gmailResolved = resolveGmailStatusFromSettled(gmailStatus, gmailResult);
       setGmailStatus(gmailResolved.nextStatus);
       setGmailStatusKnown(gmailResolved.known);
@@ -367,7 +383,7 @@ export function useDashboardHome() {
     } finally {
       setPageLoading(false);
     }
-  }, [activeScanId, router, gmailStatus]);
+  }, [activeScanId, router, gmailStatus, requestHomeMetrics]);
 
 
   const loadRef = useRef(load);
@@ -1178,6 +1194,8 @@ export function useDashboardHome() {
     businessModule,
     homeMetricsSnapshot,
     homeMetricsLoaded,
+    homeMetricsError,
+    retryHomeMetrics,
     unreadAlertsCount,
     heroTrust,
     heroBriefing,
