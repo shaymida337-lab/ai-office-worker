@@ -44,13 +44,13 @@ export function LandingPricingSection() {
     <section
       id="pricing"
       ref={sectionRef}
-      className="overflow-x-hidden px-4 py-12 sm:px-6 sm:py-16"
+      className="overflow-x-hidden px-4 py-12 sm:px-6 sm:py-10"
       aria-label="מחירים"
     >
       <div className="mx-auto max-w-5xl">
-        <div className="mb-6 text-center sm:mb-8">
+        <div className="mb-6 text-center sm:mb-5">
           <p className="page-kicker">{LANDING_PRICING.kicker}</p>
-          <h2 className={`${typography.h2} mb-4`} style={{ color: colors.textPrimary }}>
+          <h2 className={`${typography.h2} mb-3`} style={{ color: colors.textPrimary }}>
             {LANDING_PRICING.title}
           </h2>
           <ul
@@ -70,7 +70,7 @@ export function LandingPricingSection() {
           {LANDING_PRICING.plans.map((plan) => (
             <article
               key={plan.id}
-              className={`${radius.card} landing-lift relative flex min-w-0 flex-col border p-6 sm:p-7 ${
+              className={`${radius.card} landing-lift relative flex min-w-0 flex-col border p-6 ${
                 plan.popular ? shadow.raised : shadow.soft
               }`}
               style={{
@@ -96,7 +96,7 @@ export function LandingPricingSection() {
                 {plan.positioning}
               </p>
 
-              <p className="mt-4 flex items-baseline gap-1.5">
+              <p className="mt-3 flex items-baseline gap-1.5">
                 <span className="text-4xl font-extrabold tabular-nums" style={{ color: colors.textPrimary }}>
                   {plan.price} ₪
                 </span>
@@ -105,7 +105,7 @@ export function LandingPricingSection() {
                 </span>
               </p>
 
-              <ul className="mt-5 grid flex-1 gap-2.5">
+              <ul className="mt-4 grid flex-1 content-start gap-2">
                 {plan.includes.map((item) => (
                   <li key={item} className="flex items-start gap-2 text-sm font-medium leading-6" style={{ color: colors.textSecondary }}>
                     <Check className="mt-1 h-4 w-4 shrink-0" style={{ color: colors.successText }} aria-hidden />
@@ -117,7 +117,7 @@ export function LandingPricingSection() {
               <a
                 href={LANDING_PRICING.ctaHref}
                 onClick={() => onPlanCta(plan.id)}
-                className={`mt-6 w-full text-center ${plan.popular ? "btn" : "btn btn-secondary"}`}
+                className={`mt-5 w-full text-center ${plan.popular ? "btn" : "btn btn-secondary"}`}
               >
                 {LANDING_PRICING.cta}
               </a>
@@ -125,7 +125,7 @@ export function LandingPricingSection() {
           ))}
         </div>
 
-        <p className="mt-6 text-center text-sm font-semibold" style={{ color: colors.textSecondary }}>
+        <p className="mt-4 text-center text-sm font-semibold" style={{ color: colors.textSecondary }}>
           {LANDING_PRICING.comparisonNote}
         </p>
       </div>
