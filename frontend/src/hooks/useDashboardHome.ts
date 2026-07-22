@@ -48,13 +48,13 @@ import { GMAIL_SCAN_POLL_INTERVAL_MS, MAX_GMAIL_SCAN_POLL_ATTEMPTS } from "@/lib
 import { createDashboardSyncRetryRequest } from "@/lib/dashboard/dashboardSyncRetry";
 import { resolveScanStatusFromSettled } from "@/lib/dashboard/scanStatusTruth";
 import { buildDashboardHomeViewModel } from "@/lib/dashboard/buildDashboardHomeViewModel";
-import { emptyClients, emptyScanStatus } from "@/lib/dashboard/homePageConstants";
 import {
   type DashboardHomeMetricsResponse,
   HOME_METRICS_TIMEOUT_MS,
   requestHomeMetricsWithRetry,
   snapshotFromHomeMetrics,
 } from "@/lib/dashboard/homeMetrics";
+import { runDashboardHomeLoadPhases } from "@/lib/dashboard/dashboardHomeLoadPlan";
 import {
   conversationRequestsGmailScan,
   conversationRequestsScanProgress,
@@ -144,6 +144,8 @@ export function useDashboardHome() {
   const invoiceAttachInFlightRef = useRef(false);
   const gmailOAuthReturnHandledRef = useRef(false);
   const autoFirstScanRef = useRef(false);
+  /** Bumps on every load() so stale Background results cannot overwrite newer state. */
+  const loadGenerationRef = useRef(0);
 
   useEffect(() => {
     setClientMounted(true);
@@ -212,178 +214,235 @@ export function useDashboardHome() {
   }, [requestHomeMetrics]);
 
   const load = useCallback(async () => {
+    const generation = ++loadGenerationRef.current;
+    const isCurrent = () => loadGenerationRef.current === generation;
+    let skipBackground = false;
+    let firstPaintGmail = resolveGmailStatusFromSettled(gmailStatus, {
+      status: "rejected",
+      reason: "pending",
+    });
+
     try {
       const appointmentFrom = new Date().toISOString();
       const appointmentTo = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-      // טעינה פרוגרסיבית: הבקשות הקריטיות למסך הראשון נפרדות מהשאר, כך
-      // שבקשה איטית אחת (למשל system/health עם timeout של 30ש׳, או backend
-      // בהתעוררות מ-cold start) לא משאירה את כל הדשבורד על Skeleton.
-      // כל הבקשות יוצאות במקביל; pageLoading יורד כשהקריטיות הסתיימו.
-      // KPI: home-metrics נטען עצמאית (timeout 30ש׳ + retry אחד) ולא חוסם את
-      // pageLoading — מיושם ברגע שהבקשה שלו מסתיימת.
-      void requestHomeMetrics(true);
-      const criticalPromise = Promise.allSettled([
-        apiFetch<DashboardStats>("/api/stats"),
-        apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
-        apiFetch<OrganizationSettings>("/api/organization/settings"),
-        apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review"),
-        fetchBriefingSchedulingSnapshot(appointmentFrom, appointmentTo),
-        apiFetch<Task[]>("/api/tasks"),
-      ] as const);
-      const deferredPromise = Promise.allSettled([
-        apiFetch<{ text: string }>("/api/summary/daily"),
-        apiFetch<ClientsResponse>("/api/clients"),
-        apiFetch<ScanStatus>("/api/automation/scan-status"),
-        apiFetch<Payment[]>("/api/payments"),
-        apiFetch<{ invoices: RecentInvoice[] }>("/api/invoices?completeness=incomplete"),
-        apiFetch<{ invoices: RecentInvoice[] }>("/api/invoices?completeness=complete"),
-        apiFetch<AlertItem[]>("/api/alerts"),
-        apiFetch<SystemHealth>("/api/system/health", { timeoutMs: 30000 }),
-        apiFetch<AccountantSummary>("/api/accountant/summary"),
-      ] as const);
 
-      const [statsResult, gmailResult, orgResult, reviewsResult, briefingResult, tasksResult] =
-        await criticalPromise;
+      // M1: First Paint ≤4 light requests. Heavy lists/stats start only AFTER pageLoading=false.
+      await runDashboardHomeLoadPhases({
+        isCurrent,
+        onFirstPaintReady: () => {
+          if (isCurrent()) setPageLoading(false);
+        },
+        onBackgroundError: () => {
+          // Background failures stay local — never flip pageLoading or wipe First Paint data.
+        },
+        loadFirstPaint: async () => {
+          const [, gmailResult, orgResult, tasksResult] = await Promise.allSettled([
+            requestHomeMetrics(true),
+            apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
+            apiFetch<OrganizationSettings>("/api/organization/settings"),
+            apiFetch<Task[]>("/api/tasks"),
+          ] as const);
 
-      setStats(statsResult.status === "fulfilled" ? statsResult.value : null);
-      // home-metrics מנוהל ב-requestHomeMetrics — לא להחיל שוב אחרי await criticalPromise.
-      const gmailResolved = resolveGmailStatusFromSettled(gmailStatus, gmailResult);
-      setGmailStatus(gmailResolved.nextStatus);
-      setGmailStatusKnown(gmailResolved.known);
-      setGmailStatusStale(gmailResolved.stale);
-      setRecentTasks(tasksResult.status === "fulfilled" ? tasksResult.value.slice(0, 8) : []);
-      if (reviewsResult.status === "fulfilled") {
-        setPendingDocumentReviewsCount(reviewsResult.value.length);
-        setDocumentReviews(reviewsResult.value.slice(0, 5));
-      } else {
-        setPendingDocumentReviewsCount(0);
-        setDocumentReviews([]);
-      }
-      if (briefingResult.status === "fulfilled") {
-        setBriefingScheduling(briefingResult.value);
-        setUpcomingAppointments(
-          briefingResult.value.upcoming.map((item) => ({
-            id: item.id,
-            startTime: item.startTime,
-            status: item.status,
-            client: { name: item.clientName },
-            source: item.source,
-            statusLabel: item.statusLabel,
-            pendingOwnerApproval: item.pendingOwnerApproval,
-          }))
-        );
-      } else {
-        setBriefingScheduling(null);
-        setUpcomingAppointments([]);
-      }
-      if (orgResult.status === "fulfilled") {
-        setOrganizationSettings(orgResult.value);
-        if (orgResult.value.onboardingRequired) {
-          router.replace("/onboarding");
-          return;
-        }
-      }
-      // המסך נפתח כאן — אזורים שתלויים בבקשות הנדחות מציגים loading מקומי.
-      setPageLoading(false);
+          if (!isCurrent()) return;
 
-      const [summaryResult, clientsResult, scanStatusResult, paymentsResult, missingResult, invoicesResult, alertsResult, systemResult, accountantResult] = await deferredPromise;
+          firstPaintGmail = resolveGmailStatusFromSettled(gmailStatus, gmailResult);
+          setGmailStatus(firstPaintGmail.nextStatus);
+          setGmailStatusKnown(firstPaintGmail.known);
+          setGmailStatusStale(firstPaintGmail.stale);
+          if (tasksResult.status === "fulfilled") {
+            setRecentTasks(tasksResult.value.slice(0, 8));
+          }
+          if (orgResult.status === "fulfilled") {
+            setOrganizationSettings(orgResult.value);
+            if (orgResult.value.onboardingRequired) {
+              skipBackground = true;
+              router.replace("/onboarding");
+              return;
+            }
+          }
 
-      setSummary(summaryResult.status === "fulfilled" ? summaryResult.value.text : "לא ניתן לטעון סיכום כרגע.");
-      setClients(clientsResult.status === "fulfilled" ? clientsResult.value : emptyClients);
+          // Partial Gmail CTA until Background has review count; refine after reviews load.
+          const loadTruth = resolveGmailTruthAfterLoad({
+            gmailResolved: firstPaintGmail,
+            scanLogs: scanStatus?.logs,
+            scanLast: scanStatus?.last ?? null,
+            documentReviewCount: pendingDocumentReviewsCount,
+          });
+          setShowGmailConnect(loadTruth.showConnectCta);
+          setError("");
+        },
+        loadBackground: async () => {
+          if (!isCurrent() || skipBackground) return;
 
-      if (scanStatusResult.status === "fulfilled") {
-        setScanStatus(scanStatusResult.value);
-        setScanStatusKnown(true);
-        setScanStatusStale(false);
-        // P0: אימוץ רק של סריקות רצות טריות — לוג "running" עתיק הוא זומבי של תהליך שמת
-        const running = scanStatusResult.value.logs.find((log) => isAdoptableRunningScanLog(log));
-        const trackedLog = activeScanId
-          ? scanStatusResult.value.logs.find((log) => log.id === activeScanId)
-          : null;
+          const [
+            statsResult,
+            reviewsResult,
+            briefingResult,
+            summaryResult,
+            clientsResult,
+            scanStatusResult,
+            paymentsResult,
+            missingResult,
+            invoicesResult,
+            alertsResult,
+            systemResult,
+            accountantResult,
+          ] = await Promise.allSettled([
+            apiFetch<DashboardStats>("/api/stats"),
+            apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review"),
+            fetchBriefingSchedulingSnapshot(appointmentFrom, appointmentTo),
+            apiFetch<{ text: string }>("/api/summary/daily"),
+            apiFetch<ClientsResponse>("/api/clients"),
+            apiFetch<ScanStatus>("/api/automation/scan-status"),
+            apiFetch<Payment[]>("/api/payments"),
+            apiFetch<{ invoices: RecentInvoice[] }>("/api/invoices?completeness=incomplete"),
+            apiFetch<{ invoices: RecentInvoice[] }>("/api/invoices?completeness=complete"),
+            apiFetch<AlertItem[]>("/api/alerts"),
+            apiFetch<SystemHealth>("/api/system/health", { timeoutMs: 30000 }),
+            apiFetch<AccountantSummary>("/api/accountant/summary"),
+          ] as const);
 
-        if (trackedLog && isTerminalScanStatusLog(trackedLog)) {
-          setActiveScanId(null);
-          setActiveScan(null);
-          setSyncing(false);
-          syncingRef.current = false;
-          setFirstScanRunning(false);
-          setScanProgress([]);
-          window.localStorage.removeItem("activeGmailScanId");
-        } else if (running && !activeScanId) {
-          setActiveScanId(running.id);
-          window.localStorage.setItem("activeGmailScanId", running.id);
-        } else if (!running) {
-          setActiveScanId(null);
-          setActiveScan(null);
-          setSyncing(false);
-          syncingRef.current = false;
-          setFirstScanRunning(false);
-          setScanProgress([]);
-          window.localStorage.removeItem("activeGmailScanId");
-        }
-      } else {
-        const scanResolved = resolveScanStatusFromSettled(scanStatus, scanStatusResult);
-        setScanStatus(scanResolved.nextStatus ?? emptyScanStatus());
-        setScanStatusKnown(scanResolved.known);
-        setScanStatusStale(scanResolved.stale);
-      }
+          if (!isCurrent()) return;
 
-      setPayments(paymentsResult.status === "fulfilled" ? paymentsResult.value : []);
-      setMissingInvoices(
-        missingResult.status === "fulfilled"
-          ? missingResult.value.invoices.map((invoice) => ({
-              id: invoice.id,
-              supplier: invoice.supplierName?.trim() || "ספק לא זוהה",
-              amount: invoice.amount ?? 0,
-              currency: invoice.currency ?? "ILS",
-              date: invoice.date,
-              dueDate: invoice.dueDate ?? null,
-              paid: false,
-              missingInvoice: true,
-              paymentRequired: false,
-              subject: invoice.description,
-              documentLink: invoice.driveFileUrl ?? invoice.driveUrl ?? null,
-              invoiceLink: invoice.driveFileUrl ?? invoice.driveUrl ?? null,
-              emailSender: null,
-            }))
-          : []
-      );
-      setRecentInvoices(invoicesResult.status === "fulfilled" ? invoicesResult.value.invoices : []);
-      setAlerts(alertsResult.status === "fulfilled" ? alertsResult.value.slice(0, 8) : []);
-      const loadTruth = resolveGmailTruthAfterLoad({
-        gmailResolved,
-        scanLogs:
-          scanStatusResult.status === "fulfilled"
-            ? scanStatusResult.value.logs
-            : resolveScanStatusFromSettled(scanStatus, scanStatusResult).nextStatus?.logs,
-        scanLast:
-          scanStatusResult.status === "fulfilled"
-            ? scanStatusResult.value.last
-            : resolveScanStatusFromSettled(scanStatus, scanStatusResult).nextStatus?.last ?? null,
-        documentReviewCount: reviewsResult.status === "fulfilled" ? reviewsResult.value.length : 0,
+          // Only apply fulfilled Background results — never clear First Paint / prior data on reject.
+          if (statsResult.status === "fulfilled") setStats(statsResult.value);
+
+          if (reviewsResult.status === "fulfilled") {
+            setPendingDocumentReviewsCount(reviewsResult.value.length);
+            setDocumentReviews(reviewsResult.value.slice(0, 5));
+          }
+
+          if (briefingResult.status === "fulfilled") {
+            setBriefingScheduling(briefingResult.value);
+            setUpcomingAppointments(
+              briefingResult.value.upcoming.map((item) => ({
+                id: item.id,
+                startTime: item.startTime,
+                status: item.status,
+                client: { name: item.clientName },
+                source: item.source,
+                statusLabel: item.statusLabel,
+                pendingOwnerApproval: item.pendingOwnerApproval,
+              }))
+            );
+          }
+
+          if (summaryResult.status === "fulfilled") setSummary(summaryResult.value.text);
+          if (clientsResult.status === "fulfilled") setClients(clientsResult.value);
+
+          if (scanStatusResult.status === "fulfilled") {
+            setScanStatus(scanStatusResult.value);
+            setScanStatusKnown(true);
+            setScanStatusStale(false);
+            const running = scanStatusResult.value.logs.find((log) => isAdoptableRunningScanLog(log));
+            const trackedLog = activeScanId
+              ? scanStatusResult.value.logs.find((log) => log.id === activeScanId)
+              : null;
+
+            if (trackedLog && isTerminalScanStatusLog(trackedLog)) {
+              setActiveScanId(null);
+              setActiveScan(null);
+              setSyncing(false);
+              syncingRef.current = false;
+              setFirstScanRunning(false);
+              setScanProgress([]);
+              window.localStorage.removeItem("activeGmailScanId");
+            } else if (running && !activeScanId) {
+              setActiveScanId(running.id);
+              window.localStorage.setItem("activeGmailScanId", running.id);
+            } else if (!running) {
+              setActiveScanId(null);
+              setActiveScan(null);
+              setSyncing(false);
+              syncingRef.current = false;
+              setFirstScanRunning(false);
+              setScanProgress([]);
+              window.localStorage.removeItem("activeGmailScanId");
+            }
+          } else {
+            const scanResolved = resolveScanStatusFromSettled(scanStatus, scanStatusResult);
+            if (scanResolved.nextStatus) {
+              setScanStatus(scanResolved.nextStatus);
+            }
+            setScanStatusKnown(scanResolved.known);
+            setScanStatusStale(scanResolved.stale);
+          }
+
+          if (paymentsResult.status === "fulfilled") setPayments(paymentsResult.value);
+          if (missingResult.status === "fulfilled") {
+            setMissingInvoices(
+              missingResult.value.invoices.map((invoice) => ({
+                id: invoice.id,
+                supplier: invoice.supplierName?.trim() || "ספק לא זוהה",
+                amount: invoice.amount ?? 0,
+                currency: invoice.currency ?? "ILS",
+                date: invoice.date,
+                dueDate: invoice.dueDate ?? null,
+                paid: false,
+                missingInvoice: true,
+                paymentRequired: false,
+                subject: invoice.description,
+                documentLink: invoice.driveFileUrl ?? invoice.driveUrl ?? null,
+                invoiceLink: invoice.driveFileUrl ?? invoice.driveUrl ?? null,
+                emailSender: null,
+              }))
+            );
+          }
+          if (invoicesResult.status === "fulfilled") setRecentInvoices(invoicesResult.value.invoices);
+          if (alertsResult.status === "fulfilled") setAlerts(alertsResult.value.slice(0, 8));
+
+          const loadTruth = resolveGmailTruthAfterLoad({
+            gmailResolved: firstPaintGmail,
+            scanLogs:
+              scanStatusResult.status === "fulfilled"
+                ? scanStatusResult.value.logs
+                : scanStatus?.logs,
+            scanLast:
+              scanStatusResult.status === "fulfilled"
+                ? scanStatusResult.value.last
+                : scanStatus?.last ?? null,
+            documentReviewCount:
+              reviewsResult.status === "fulfilled" ? reviewsResult.value.length : pendingDocumentReviewsCount,
+          });
+          setShowGmailConnect(loadTruth.showConnectCta);
+
+          if (systemResult.status === "fulfilled") {
+            setSystemHealth(systemResult.value);
+            setSystemHealthFetchFailed(false);
+          } else {
+            setSystemHealthFetchFailed(true);
+          }
+          if (accountantResult.status === "fulfilled") setAccountantSummary(accountantResult.value);
+
+          if (!isCurrent()) return;
+          apiFetch<WhatsAppAssistantStats>("/api/whatsapp-assistant/stats")
+            .then((statsValue) => {
+              if (isCurrent()) setWhatsAppStats(statsValue);
+            })
+            .catch(() => undefined);
+          setLastUpdatedAt(new Date());
+        },
       });
-      setShowGmailConnect(loadTruth.showConnectCta);
-
-      setSystemHealth(systemResult.status === "fulfilled" ? systemResult.value : null);
-      setSystemHealthFetchFailed(systemResult.status !== "fulfilled");
-      setAccountantSummary(accountantResult.status === "fulfilled" ? accountantResult.value : null);
-      apiFetch<WhatsAppAssistantStats>("/api/whatsapp-assistant/stats").then(setWhatsAppStats).catch(() => undefined);
-      setLastUpdatedAt(new Date());
-      setError("");
     } catch (err) {
+      if (!isCurrent()) return;
       if (isAuthError(err)) {
         clearToken();
         router.replace("/");
         return;
       }
-      setStats(null);
-      setClients(emptyClients);
-      setScanStatus(emptyScanStatus());
+      // First Paint catastrophic only — do not blank Background fields that may already be shown.
       setError(err instanceof Error ? err.message : "טעינת הדשבורד נכשלה");
     } finally {
-      setPageLoading(false);
+      if (isCurrent()) setPageLoading(false);
     }
-  }, [activeScanId, router, gmailStatus, requestHomeMetrics]);
+  }, [
+    activeScanId,
+    gmailStatus,
+    pendingDocumentReviewsCount,
+    requestHomeMetrics,
+    router,
+    scanStatus,
+  ]);
 
 
   const loadRef = useRef(load);
