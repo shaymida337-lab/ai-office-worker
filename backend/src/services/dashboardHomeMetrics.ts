@@ -1,13 +1,17 @@
 import { prisma } from "../lib/prisma.js";
 import { getDayBounds } from "./calendar/datetime.js";
-import { getCalendarRulesForOrganization } from "./calendar/rules.js";
-import { resolveCalendarEngineFlags } from "./calendar/calendarEngineFlags.js";
-import { countCrmActiveCustomers, countCrmNewLeads } from "./crm/crmCounts.js";
-import { listCrossOrgContaminatedGmailMessageIdsAmong } from "./p0/crossOrgGmailQuarantine.js";
+import { DEFAULT_TIMEZONE } from "./calendar/rules.js";
 import {
-  buildFinancialDocumentReviewReadIsolationWhere,
-  mergePrismaWhere,
-} from "./p0/financialReadIsolation.js";
+  resolveCalendarEngineFlags,
+  resolveCalendarEngineFlagsFromOrg,
+  type ResolvedCalendarEngineFlags,
+} from "./calendar/calendarEngineFlags.js";
+import { countCrmActiveAndNewLeads, countCrmActiveCustomers, countCrmNewLeads } from "./crm/crmCounts.js";
+import {
+  buildDocumentReviewsListWhere,
+  countDocumentReviewsForStatus,
+} from "./documentReviewsHomeSummary.js";
+import { loadCrossOrgContaminatedGmailIdsForReads } from "./p0/financialReadIsolation.js";
 
 /** Metric keys returned to the dashboard home (insurance overlay + default KPIs). */
 export type DashboardHomeMetricId =
@@ -39,6 +43,39 @@ export type DashboardHomeMetricsPayload = {
   definitions: Record<DashboardHomeMetricId, string>;
 };
 
+/** Dev/test-only stage timings (ms). Enabled via options.collectTiming or env. */
+export type DashboardHomeMetricsTiming = {
+  organizationResolvedMs: number;
+  contaminatedResolvedMs: number;
+  active_clientsMs: number;
+  open_tasksMs: number;
+  meetings_todayMs: number;
+  pending_docsMs: number;
+  new_clients_this_monthMs: number;
+  unread_alertsMs: number;
+  countersWaveMs: number;
+  totalMs: number;
+  queryCountEstimate: number;
+};
+
+export type GetDashboardHomeMetricsOptions = {
+  /** When true (or DASHBOARD_HOME_METRICS_TIMING=1), attach timings for diagnostics. */
+  collectTiming?: boolean;
+  onTiming?: (timing: DashboardHomeMetricsTiming) => void;
+};
+
+function timingEnabled(options?: GetDashboardHomeMetricsOptions): boolean {
+  if (options?.collectTiming) return true;
+  if (options?.onTiming) return true;
+  return process.env.DASHBOARD_HOME_METRICS_TIMING === "1";
+}
+
+async function timedMs<T>(fn: () => Promise<T>): Promise<{ value: T; ms: number }> {
+  const t0 = performance.now();
+  const value = await fn();
+  return { value, ms: Math.round(performance.now() - t0) };
+}
+
 export async function countActiveClients(organizationId: string): Promise<number> {
   // Dashboard “מבוטחים/לקוחות פעילים” must match CRM KPI — Lead open pipeline.
   return countCrmActiveCustomers(organizationId);
@@ -50,43 +87,18 @@ export async function countOpenTasks(organizationId: string): Promise<number> {
   });
 }
 
-async function listPendingReviewGmailMessageIds(organizationId: string): Promise<string[]> {
-  const rows = await prisma.financialDocumentReview.findMany({
-    where: {
-      organizationId,
-      reviewStatus: "needs_review",
-      gmailMessageId: { not: null },
-    },
-    select: { gmailMessageId: true },
-    distinct: ["gmailMessageId"],
-  });
-  return [
-    ...new Set(
-      rows
-        .map((row) => row.gmailMessageId?.trim() ?? "")
-        .filter((id) => id.length > 0),
-    ),
-  ];
-}
-
 /**
- * pending_docs with the same isolation semantics as document-reviews reads:
- * exclude cross-org contaminated gmailMessageIds (+ quarantine marker / allowlist).
- * Contamination is evaluated only among this org's pending-review gmail IDs
- * (same HAVING predicate as the global scan, scoped via WHERE = ANY).
+ * pending_docs with the same isolation semantics as document-reviews reads
+ * (loadCrossOrgContaminatedGmailIdsForReads + org-scoped count — no findMany list).
  */
-export async function countPendingDocumentReviews(organizationId: string): Promise<number> {
-  const candidateGmailIds = await listPendingReviewGmailMessageIds(organizationId);
-  const contaminatedGmailIds =
-    await listCrossOrgContaminatedGmailMessageIdsAmong(candidateGmailIds);
-  return prisma.financialDocumentReview.count({
-    where: mergePrismaWhere(
-      {
-        organizationId,
-        reviewStatus: "needs_review",
-      },
-      buildFinancialDocumentReviewReadIsolationWhere(organizationId, contaminatedGmailIds),
-    ),
+export async function countPendingDocumentReviews(
+  organizationId: string,
+  contaminatedGmailIds?: string[],
+): Promise<number> {
+  return countDocumentReviewsForStatus({
+    organizationId,
+    status: "needs_review",
+    contaminatedGmailIds,
   });
 }
 
@@ -104,12 +116,13 @@ export async function countNewClientsThisMonth(organizationId: string): Promise<
 export async function countMeetingsToday(
   organizationId: string,
   now: Date,
-  timeZone: string
+  timeZone: string,
+  flags?: ResolvedCalendarEngineFlags,
 ): Promise<number> {
   const { start, end } = getDayBounds(now, timeZone);
-  const flags = await resolveCalendarEngineFlags(organizationId);
+  const resolved = flags ?? (await resolveCalendarEngineFlags(organizationId));
 
-  const appointmentCount = await prisma.appointment.count({
+  const appointmentCountPromise = prisma.appointment.count({
     where: {
       organizationId,
       startTime: { gte: start, lt: end },
@@ -117,64 +130,138 @@ export async function countMeetingsToday(
     },
   });
 
-  if (!flags.readEnabled) {
-    return appointmentCount;
+  if (!resolved.readEnabled) {
+    return appointmentCountPromise;
   }
 
-  const calendarEventCount = await prisma.calendarEvent.count({
-    where: {
-      organizationId,
-      startAt: { gte: start, lt: end },
-      status: { not: "cancelled" },
-    },
-  });
+  const [appointmentCount, calendarEventCount] = await Promise.all([
+    appointmentCountPromise,
+    prisma.calendarEvent.count({
+      where: {
+        organizationId,
+        startAt: { gte: start, lt: end },
+        status: { not: "cancelled" },
+      },
+    }),
+  ]);
 
   return appointmentCount + calendarEventCount;
+}
+
+async function loadHomeMetricsOrganization(organizationId: string) {
+  return prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: {
+      timezone: true,
+      calendarEngineReadEnabled: true,
+      calendarEngineWriteEnabled: true,
+      calendarEngineGoogleMirrorEnabled: true,
+    },
+  });
 }
 
 /** Direct prisma counts — used by tests to verify API payload matches DB truth. */
 export async function countDashboardHomeMetricsDirect(
   organizationId: string,
-  now: Date = new Date()
+  now: Date = new Date(),
 ): Promise<Record<DashboardHomeMetricId, number>> {
-  const rules = await getCalendarRulesForOrganization(organizationId);
-  const timeZone = rules.timeZone;
-  const [
-    active_clients,
-    open_tasks,
-    meetings_today,
-    pending_docs,
-    new_clients_this_month,
-    unread_alerts,
-  ] = await Promise.all([
-    countActiveClients(organizationId),
-    countOpenTasks(organizationId),
-    countMeetingsToday(organizationId, now, timeZone),
-    countPendingDocumentReviews(organizationId),
-    countNewClientsThisMonth(organizationId),
-    countUnreadAlerts(organizationId),
-  ]);
-  return {
-    active_clients,
-    open_tasks,
-    meetings_today,
-    pending_docs,
-    new_clients_this_month,
-    unread_alerts,
-  };
+  const payload = await getDashboardHomeMetrics(organizationId, now);
+  return payload.metrics;
 }
 
 export async function getDashboardHomeMetrics(
   organizationId: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  options?: GetDashboardHomeMetricsOptions,
 ): Promise<DashboardHomeMetricsPayload> {
-  const rules = await getCalendarRulesForOrganization(organizationId);
-  const metrics = await countDashboardHomeMetricsDirect(organizationId, now);
+  const collect = timingEnabled(options);
+  const totalT0 = performance.now();
+
+  // Wave 1: one org round-trip + contaminated IDs (cached 30s) in parallel.
+  const orgTimed = collect
+    ? timedMs(() => loadHomeMetricsOrganization(organizationId))
+    : loadHomeMetricsOrganization(organizationId).then((value) => ({ value, ms: 0 }));
+  const contaminatedTimed = collect
+    ? timedMs(() => loadCrossOrgContaminatedGmailIdsForReads())
+    : loadCrossOrgContaminatedGmailIdsForReads().then((value) => ({ value, ms: 0 }));
+
+  const [orgResult, contaminatedResult] = await Promise.all([orgTimed, contaminatedTimed]);
+  const org = orgResult.value;
+  const contaminatedGmailIds = contaminatedResult.value;
+  const timeZone = org?.timezone?.trim() || DEFAULT_TIMEZONE;
+  const flags = resolveCalendarEngineFlagsFromOrg(org);
+
+  const countersT0 = performance.now();
+
+  // Wave 2: ≤5 concurrent counts so we fit typical Prisma connection_limit=5.
+  // Lead active+new share one SQL; meetings is 1 query when calendar read is off.
+  const runCounter = async <T>(fn: () => Promise<T>): Promise<{ value: T; ms: number }> => {
+    if (!collect) {
+      return { value: await fn(), ms: 0 };
+    }
+    return timedMs(fn);
+  };
+
+  const [
+    leadPairResult,
+    openTasksResult,
+    meetingsResult,
+    pendingDocsResult,
+    unreadAlertsResult,
+  ] = await Promise.all([
+    runCounter(() => countCrmActiveAndNewLeads(organizationId)),
+    runCounter(() => countOpenTasks(organizationId)),
+    runCounter(() => countMeetingsToday(organizationId, now, timeZone, flags)),
+    runCounter(() => countPendingDocumentReviews(organizationId, contaminatedGmailIds)),
+    runCounter(() => countUnreadAlerts(organizationId)),
+  ]);
+
+  const metrics: Record<DashboardHomeMetricId, number> = {
+    active_clients: leadPairResult.value.activeCustomers,
+    open_tasks: openTasksResult.value,
+    meetings_today: meetingsResult.value,
+    pending_docs: pendingDocsResult.value,
+    new_clients_this_month: leadPairResult.value.newLeads,
+    unread_alerts: unreadAlertsResult.value,
+  };
+
+  // Estimate: org + contaminated + lead-pair + task + meetings(+maybe event) + pending + alerts.
+  const meetingsExtra = flags.readEnabled ? 1 : 0;
+  const queryCountEstimate = 2 + 5 + meetingsExtra;
+
+  if (collect) {
+    const timing: DashboardHomeMetricsTiming = {
+      organizationResolvedMs: orgResult.ms,
+      contaminatedResolvedMs: contaminatedResult.ms,
+      active_clientsMs: leadPairResult.ms,
+      open_tasksMs: openTasksResult.ms,
+      meetings_todayMs: meetingsResult.ms,
+      pending_docsMs: pendingDocsResult.ms,
+      new_clients_this_monthMs: leadPairResult.ms,
+      unread_alertsMs: unreadAlertsResult.ms,
+      countersWaveMs: Math.round(performance.now() - countersT0),
+      totalMs: Math.round(performance.now() - totalT0),
+      queryCountEstimate,
+    };
+    options?.onTiming?.(timing);
+    if (process.env.DASHBOARD_HOME_METRICS_TIMING === "1") {
+      console.info("[dashboard/home-metrics timing]", JSON.stringify(timing));
+    }
+  }
+
   return {
     organizationId,
     computedAt: now.toISOString(),
-    timeZone: rules.timeZone,
+    timeZone,
     metrics,
     definitions: { ...DASHBOARD_HOME_METRIC_DEFINITIONS },
   };
+}
+
+/** Test helper: assert pending_docs where matches document-reviews list policy. */
+export function buildPendingDocsWhereForTests(
+  organizationId: string,
+  contaminatedGmailIds: string[],
+) {
+  return buildDocumentReviewsListWhere(organizationId, "needs_review", contaminatedGmailIds);
 }

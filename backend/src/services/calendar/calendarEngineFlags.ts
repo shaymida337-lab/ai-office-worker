@@ -49,9 +49,16 @@ export function isCalendarEngineWriteEnabled(): boolean {
   return isGlobalCalendarEngineWriteEnabled();
 }
 
-export async function resolveCalendarEngineFlags(
-  organizationId: string
-): Promise<ResolvedCalendarEngineFlags> {
+export type CalendarEngineOrgFlagsRow = {
+  calendarEngineReadEnabled: boolean | null;
+  calendarEngineWriteEnabled: boolean | null;
+  calendarEngineGoogleMirrorEnabled: boolean | null;
+};
+
+/** Resolve flags from an already-loaded org row (avoids a second Organization round-trip). */
+export function resolveCalendarEngineFlagsFromOrg(
+  org: CalendarEngineOrgFlagsRow | null | undefined
+): ResolvedCalendarEngineFlags {
   const globalRead = isGlobalCalendarEngineReadEnabled();
   const globalWrite = isGlobalCalendarEngineWriteEnabled();
 
@@ -63,15 +70,6 @@ export async function resolveCalendarEngineFlags(
       source: "global_disabled",
     };
   }
-
-  const org = await prisma.organization.findUnique({
-    where: { id: organizationId },
-    select: {
-      calendarEngineReadEnabled: true,
-      calendarEngineWriteEnabled: true,
-      calendarEngineGoogleMirrorEnabled: true,
-    },
-  });
 
   const orgRead = org?.calendarEngineReadEnabled ?? false;
   const orgWrite = org?.calendarEngineWriteEnabled ?? false;
@@ -96,6 +94,33 @@ export async function resolveCalendarEngineFlags(
     googleMirrorEnabled,
     source: "enabled",
   };
+}
+
+export async function resolveCalendarEngineFlags(
+  organizationId: string
+): Promise<ResolvedCalendarEngineFlags> {
+  const globalRead = isGlobalCalendarEngineReadEnabled();
+  const globalWrite = isGlobalCalendarEngineWriteEnabled();
+
+  if (!globalRead && !globalWrite) {
+    return {
+      readEnabled: false,
+      writeEnabled: false,
+      googleMirrorEnabled: false,
+      source: "global_disabled",
+    };
+  }
+
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: {
+      calendarEngineReadEnabled: true,
+      calendarEngineWriteEnabled: true,
+      calendarEngineGoogleMirrorEnabled: true,
+    },
+  });
+
+  return resolveCalendarEngineFlagsFromOrg(org);
 }
 
 export async function assertCalendarEngineRead(organizationId: string): Promise<void> {

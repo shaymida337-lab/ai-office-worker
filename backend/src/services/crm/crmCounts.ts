@@ -25,6 +25,29 @@ export async function countCrmNewLeads(organizationId: string): Promise<number> 
   });
 }
 
+/** Single Lead scan for both home-metrics KPIs (avoids 2 pool slots). */
+export async function countCrmActiveAndNewLeads(
+  organizationId: string,
+): Promise<{ activeCustomers: number; newLeads: number }> {
+  const rows = await prisma.$queryRawUnsafe<Array<{ active: bigint | number; neu: bigint | number }>>(
+    `
+    SELECT
+      COUNT(*) FILTER (WHERE "stage" <> ALL($2::text[]))::int AS active,
+      COUNT(*) FILTER (WHERE "stage" = $3)::int AS neu
+    FROM "Lead"
+    WHERE "organizationId" = $1
+    `,
+    organizationId,
+    [...CRM_INACTIVE_STAGES],
+    "חדש",
+  );
+  const row = rows[0];
+  return {
+    activeCustomers: Number(row?.active ?? 0),
+    newLeads: Number(row?.neu ?? 0),
+  };
+}
+
 /** Leads with a nextReminderAt set — CRM “משימות פתוחות” KPI (not Task table). */
 export async function countCrmOpenReminders(organizationId: string): Promise<number> {
   return prisma.lead.count({

@@ -103,6 +103,23 @@ export function assertDocumentReviewHomeSummaryShape(payload: DocumentReviewsHom
 }
 
 /**
+ * Same isolation/status policy as GET /document-reviews list (and home-metrics pending_docs).
+ * Optional preloaded contaminated IDs avoid a second quarantine round-trip.
+ */
+export async function countDocumentReviewsForStatus(params: {
+  organizationId: string;
+  status?: string;
+  contaminatedGmailIds?: string[];
+}): Promise<number> {
+  const status = params.status && params.status.length > 0 ? params.status : "needs_review";
+  const contaminatedGmailIds =
+    params.contaminatedGmailIds ?? (await loadCrossOrgContaminatedGmailIdsForReads());
+  return prisma.financialDocumentReview.count({
+    where: buildDocumentReviewsListWhere(params.organizationId, status, contaminatedGmailIds),
+  });
+}
+
+/**
  * Same status/isolation/order as GET /document-reviews full list,
  * but count + take 5 slim rows and no buildReviewDecision.
  */
