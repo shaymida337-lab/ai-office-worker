@@ -264,6 +264,25 @@ export type UpcomingAppointment = {
   pendingOwnerApproval?: boolean;
 };
 
+/** Slim fields from GET /api/document-reviews?view=summary (dashboard home only). */
+export type DocumentReviewHomeItem = {
+  id: string;
+  supplierName: string | null;
+  sender: string | null;
+  totalAmount: number | null;
+  currency: string | null;
+  documentDate: string | null;
+  createdAt: string;
+  reviewStatus: string;
+  uncertaintyReason: string | null;
+  documentType: string;
+};
+
+export type DocumentReviewsHomeSummaryResponse = {
+  count: number;
+  items: DocumentReviewHomeItem[];
+};
+
 export type DocumentReview = {
   id: string;
   source: string;

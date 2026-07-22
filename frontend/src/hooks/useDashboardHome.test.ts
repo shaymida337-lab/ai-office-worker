@@ -16,6 +16,7 @@ function hookShapedInput(overrides: Partial<BuildDashboardHomeViewModelInput> = 
     scanStatusKnown: false,
     scanStatusStale: false,
     documentReviews: [],
+    pendingDocumentReviewsCount: 0,
     activeScan: null,
     activeScanId: null,
     error: "",

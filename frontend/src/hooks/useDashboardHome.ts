@@ -72,7 +72,8 @@ import type {
   AccountantSummary,
   AlertItem,
   ClientsResponse,
-  DocumentReview,
+  DocumentReviewHomeItem,
+  DocumentReviewsHomeSummaryResponse,
   GmailScanResult,
   RecentInvoice,
   ScanProgressResult,
@@ -119,8 +120,8 @@ export function useDashboardHome() {
   const [recentInvoices, setRecentInvoices] = useState<RecentInvoice[]>([]);
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
-  const [documentReviews, setDocumentReviews] = useState<DocumentReview[]>([]);
-  /** Full count from GET /api/document-reviews?status=needs_review (UI list only; metrics use /dashboard/home-metrics). */
+  const [documentReviews, setDocumentReviews] = useState<DocumentReviewHomeItem[]>([]);
+  /** Full needs_review count from GET /api/document-reviews?view=summary (UI list; metrics use /dashboard/home-metrics). */
   const [pendingDocumentReviewsCount, setPendingDocumentReviewsCount] = useState(0);
   const [homeMetrics, setHomeMetrics] = useState<DashboardHomeMetricsResponse | null>(null);
   const [homeMetricsLoaded, setHomeMetricsLoaded] = useState(false);
@@ -289,7 +290,9 @@ export function useDashboardHome() {
             accountantResult,
           ] = await Promise.allSettled([
             apiFetch<DashboardStats>("/api/stats"),
-            apiFetch<DocumentReview[]>("/api/document-reviews?status=needs_review"),
+            apiFetch<DocumentReviewsHomeSummaryResponse>(
+              "/api/document-reviews?status=needs_review&view=summary"
+            ),
             fetchBriefingSchedulingSnapshot(appointmentFrom, appointmentTo),
             apiFetch<{ text: string }>("/api/summary/daily"),
             apiFetch<ClientsResponse>("/api/clients"),
@@ -308,8 +311,8 @@ export function useDashboardHome() {
           if (statsResult.status === "fulfilled") setStats(statsResult.value);
 
           if (reviewsResult.status === "fulfilled") {
-            setPendingDocumentReviewsCount(reviewsResult.value.length);
-            setDocumentReviews(reviewsResult.value.slice(0, 5));
+            setPendingDocumentReviewsCount(reviewsResult.value.count);
+            setDocumentReviews(reviewsResult.value.items.slice(0, 5));
           }
 
           if (briefingResult.status === "fulfilled") {
@@ -402,7 +405,9 @@ export function useDashboardHome() {
                 ? scanStatusResult.value.last
                 : scanStatus?.last ?? null,
             documentReviewCount:
-              reviewsResult.status === "fulfilled" ? reviewsResult.value.length : pendingDocumentReviewsCount,
+              reviewsResult.status === "fulfilled"
+                ? reviewsResult.value.count
+                : pendingDocumentReviewsCount,
           });
           setShowGmailConnect(loadTruth.showConnectCta);
 
@@ -960,6 +965,7 @@ export function useDashboardHome() {
         scanStatusKnown,
         scanStatusStale,
         documentReviews,
+        pendingDocumentReviewsCount,
         activeScan,
         activeScanId,
         error,
@@ -994,6 +1000,7 @@ export function useDashboardHome() {
       scanStatusKnown,
       scanStatusStale,
       documentReviews,
+      pendingDocumentReviewsCount,
       activeScan,
       activeScanId,
       error,

@@ -15,7 +15,7 @@ export type DashboardHomeFirstPaintKey = (typeof DASHBOARD_HOME_FIRST_PAINT_KEYS
 
 export const DASHBOARD_HOME_BACKGROUND_KEYS = [
   "stats",
-  "document-reviews-needs-review",
+  "document-reviews-summary",
   "briefing",
   "summary-daily",
   "clients",
@@ -34,7 +34,7 @@ export type DashboardHomeBackgroundKey = (typeof DASHBOARD_HOME_BACKGROUND_KEYS)
 /** Endpoints that must never gate First Paint (heavy / full lists). */
 export const DASHBOARD_HOME_FIRST_PAINT_FORBIDDEN_KEYS = [
   "stats",
-  "document-reviews-needs-review",
+  "document-reviews-summary",
   "briefing",
   "summary-daily",
   "clients",

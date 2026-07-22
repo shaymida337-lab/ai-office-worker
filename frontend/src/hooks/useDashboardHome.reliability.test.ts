@@ -21,10 +21,10 @@ test("useDashboardHome M1: First Paint does not await Background heavies", async
   assert.match(source, /loadFirstPaint:/);
   assert.match(source, /loadBackground:/);
   assert.match(source, /onFirstPaintReady:/);
-  // stats + full document-reviews belong in Background only
+  // stats + document-reviews summary belong in Background only
   const fpBlock = source.slice(source.indexOf("loadFirstPaint:"), source.indexOf("loadBackground:"));
   assert.doesNotMatch(fpBlock, /\/api\/stats/);
-  assert.doesNotMatch(fpBlock, /document-reviews\?status=needs_review/);
+  assert.doesNotMatch(fpBlock, /document-reviews\?/);
   assert.doesNotMatch(fpBlock, /accountant\/summary/);
   assert.doesNotMatch(fpBlock, /system\/health/);
   assert.match(fpBlock, /\/api\/integrations\/gmail\/status/);
@@ -33,7 +33,8 @@ test("useDashboardHome M1: First Paint does not await Background heavies", async
   assert.match(fpBlock, /requestHomeMetrics\(true\)/);
   const bgBlock = source.slice(source.indexOf("loadBackground:"), source.indexOf("onBackgroundError:") > 0 ? source.length : source.length);
   assert.match(source, /apiFetch<DashboardStats>\("\/api\/stats"\)/);
-  assert.match(source, /document-reviews\?status=needs_review/);
+  assert.match(source, /document-reviews\?status=needs_review&view=summary/);
+  assert.doesNotMatch(bgBlock, /apiFetch<DocumentReview\[\]>\("\/api\/document-reviews\?status=needs_review"\)/);
   // Background reject must not clear prior data via unconditional setStats\(null\)
   assert.doesNotMatch(source, /setStats\(null\);\s*setClients\(emptyClients\)/);
 });

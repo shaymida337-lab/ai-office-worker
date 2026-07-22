@@ -26,6 +26,7 @@ import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } fr
 import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
 import { approveFinancialDocumentReview, buildReviewDecision, evaluateReviewApprovalReadiness } from "../services/financialDocuments.js";
 import { recordManualEntryFinancialDocument } from "../services/financialDocuments.js";
+import { getDocumentReviewsHomeSummary } from "../services/documentReviewsHomeSummary.js";
 import { resolveReviewSupplierContext } from "../services/reviewSupplierResolution.js";
 import {
   invoiceAuditSnapshot,
@@ -6770,7 +6771,20 @@ apiRouter.post("/appointments/availability/slots", requireCalendarView, async (r
 
 apiRouter.get("/document-reviews", async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status : "needs_review";
+  const view = typeof req.query.view === "string" ? req.query.view : "full";
   const organizationId = req.auth!.organizationId;
+
+  // Home Background only: count + top 5 slim rows. Full list path below is unchanged.
+  if (view === "summary") {
+    try {
+      const payload = await getDocumentReviewsHomeSummary({ organizationId, status });
+      res.json(payload);
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "document-reviews summary failed" });
+    }
+    return;
+  }
+
   const items = await prisma.financialDocumentReview.findMany({
     where: mergePrismaWhere(
       {

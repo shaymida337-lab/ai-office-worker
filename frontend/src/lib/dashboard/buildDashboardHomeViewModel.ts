@@ -36,7 +36,7 @@ import { buildHeroBriefing, type HeroBriefing } from "./heroBriefing";
 import type { HeroTrustState } from "./heroTrust";
 import type {
   AlertItem,
-  DocumentReview,
+  DocumentReviewHomeItem,
   RecentInvoice,
   ScanProgressResult,
   ScanStatus,
@@ -62,7 +62,10 @@ export type BuildDashboardHomeViewModelInput = {
   scanStatus: ScanStatus | null;
   scanStatusKnown: boolean;
   scanStatusStale: boolean;
-  documentReviews: DocumentReview[];
+  /** Top preview rows from document-reviews summary (≤5). */
+  documentReviews: DocumentReviewHomeItem[];
+  /** Full needs_review count from summary (not preview length). */
+  pendingDocumentReviewsCount: number;
   activeScan: ScanProgressResult | null;
   activeScanId: string | null;
   error: string;
@@ -136,6 +139,7 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     scanStatusKnown,
     scanStatusStale,
     documentReviews,
+    pendingDocumentReviewsCount,
     activeScan,
     activeScanId,
     error,
@@ -164,12 +168,13 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
 
   const clockReady = clientMounted && !pageLoading;
   const isToday = (value: string) => clockReady && isTodayValue(value);
+  const pendingDocsCount = Math.max(0, pendingDocumentReviewsCount);
 
   const gmailApiConnected = Boolean(gmailStatus?.connected);
   const gmailActivityEvidence = hasGmailActivityEvidence({
     scanLogs: scanStatus?.logs,
     scanLast: scanStatus?.last,
-    documentReviewCount: documentReviews.length,
+    documentReviewCount: pendingDocsCount,
     extractedDocuments: activeScan?.documentsFound ?? scanStatus?.last?.saved ?? null,
   });
   const gmailConnection = resolveGmailConnectionTruth({
@@ -367,7 +372,7 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     paymentsUpdated: clockReady ? payments.filter((payment) => payment.paid && isTodayValue(payment.date)).length : 0,
     appointmentsSet: clockReady ? upcomingAppointments.filter((appt) => isTodayValue(appt.startTime)).length : 0,
     tasksCreated: clockReady ? recentTasks.filter((task) => isTodayValue(task.updatedAt)).length : 0,
-    newDocuments: documentReviews.length,
+    newDocuments: pendingDocsCount,
   });
 
   const yourDayItems = buildYourDayItems({
@@ -376,7 +381,7 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
       startTime: appt.startTime,
       clientName: appt.client.name,
     })),
-    pendingDocuments: documentReviews.length > 0 ? documentReviews.length : 0,
+    pendingDocuments: pendingDocsCount,
     pendingPayments: stats?.upcomingPaymentsCount ?? 0,
     overduePayments: stats?.overdueSupplierPayments ?? 0,
     openTasks: openTasksCount,
@@ -404,7 +409,7 @@ export function buildDashboardHomeViewModel(input: BuildDashboardHomeViewModelIn
     scanRunning,
     hasAppointmentsToday: clockReady && upcomingAppointments.some((appt) => isTodayValue(appt.startTime)),
     pendingPayments: unpaidPayments.length,
-    pendingDocuments: documentReviews.length,
+    pendingDocuments: pendingDocsCount,
     monthEndApproaching: clockReady ? isMonthEndApproaching() : false,
   });
 

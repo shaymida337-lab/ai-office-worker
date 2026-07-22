@@ -35,6 +35,7 @@ function minimalInput(overrides: Partial<BuildDashboardHomeViewModelInput> = {})
     scanStatusKnown: true,
     scanStatusStale: false,
     documentReviews: [],
+    pendingDocumentReviewsCount: 0,
     activeScan: null,
     activeScanId: null,
     error: "",
@@ -84,19 +85,17 @@ test("snapshotMetrics uses stats only when documentReviews list differs", () => 
   const vm = buildDashboardHomeViewModel(
     minimalInput({
       stats: { ...emptyStats, pendingInvoices: 9, openTasks: 1 },
+      pendingDocumentReviewsCount: 1,
       documentReviews: [
         {
           id: "dr-1",
-          source: "gmail",
           sender: null,
-          subject: null,
-          fileName: null,
           documentType: "invoice",
           supplierName: "ספק",
           totalAmount: 100,
-          confidenceScore: 0.9,
+          currency: "ILS",
+          documentDate: null,
           uncertaintyReason: null,
-          driveFileUrl: null,
           reviewStatus: "needs_review",
           createdAt: new Date().toISOString(),
         },
@@ -110,19 +109,17 @@ test("yourDayItems include href for actionable rows", () => {
   const vm = buildDashboardHomeViewModel(
     minimalInput({
       stats: { ...emptyStats, upcomingPaymentsCount: 5, overdueSupplierPayments: 1, openTasks: 4 },
+      pendingDocumentReviewsCount: 12,
       documentReviews: [
         {
           id: "dr-1",
-          source: "gmail",
           sender: null,
-          subject: null,
-          fileName: null,
           documentType: "invoice",
           supplierName: "ספק",
           totalAmount: 100,
-          confidenceScore: 0.9,
+          currency: "ILS",
+          documentDate: null,
           uncertaintyReason: null,
-          driveFileUrl: null,
           reviewStatus: "needs_review",
           createdAt: new Date().toISOString(),
         },
@@ -142,25 +139,24 @@ test("yourDayItems include href for actionable rows", () => {
   const actionable = vm.yourDayItems.filter((item) => item.href);
   assert.ok(actionable.length > 0);
   assert.ok(actionable.every((item) => typeof item.href === "string" && item.href.startsWith("/")));
+  assert.ok(vm.yourDayItems.some((item) => /12|מסמך/.test(item.text)));
 });
 
 test("yourDayItems passthrough reflects pending counts from input", () => {
   const vm = buildDashboardHomeViewModel(
     minimalInput({
       stats: { ...emptyStats, upcomingPaymentsCount: 5, overdueSupplierPayments: 1, openTasks: 4 },
+      pendingDocumentReviewsCount: 1,
       documentReviews: [
         {
           id: "dr-1",
-          source: "gmail",
           sender: null,
-          subject: null,
-          fileName: null,
           documentType: "invoice",
           supplierName: "ספק",
           totalAmount: 100,
-          confidenceScore: 0.9,
+          currency: "ILS",
+          documentDate: null,
           uncertaintyReason: null,
-          driveFileUrl: null,
           reviewStatus: "needs_review",
           createdAt: new Date().toISOString(),
         },

@@ -23,7 +23,7 @@ test("dashboard First Paint is at most 4 light keys", () => {
 test("dashboard Background keeps heavy endpoints out of First Paint", () => {
   for (const heavy of [
     "stats",
-    "document-reviews-needs-review",
+    "document-reviews-summary",
     "summary-daily",
     "system-health",
     "accountant-summary",
