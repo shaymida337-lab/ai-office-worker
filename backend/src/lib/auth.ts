@@ -22,6 +22,8 @@ export function authMiddleware(
   res: Response,
   next: NextFunction
 ): void {
+  const timingAppointments = req.path === "/appointments" || req.path.endsWith("/appointments");
+  const authT0 = timingAppointments ? performance.now() : 0;
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) {
@@ -30,6 +32,11 @@ export function authMiddleware(
   }
   try {
     req.auth = verifyToken(token);
+    if (timingAppointments) {
+      res.locals.appointmentsAuthMs = Math.round(performance.now() - authT0);
+      res.locals.appointmentsRequestReceivedAt =
+        res.locals.appointmentsRequestReceivedAt ?? authT0;
+    }
     next();
   } catch {
     res.status(401).json({ error: "Invalid token" });
@@ -81,6 +88,11 @@ declare global {
   namespace Express {
     interface Request {
       auth?: JwtPayload;
+    }
+    interface Locals {
+      appointmentsAuthMs?: number;
+      appointmentsRequestReceivedAt?: number;
+      appointmentsOrgMs?: number;
     }
   }
 }

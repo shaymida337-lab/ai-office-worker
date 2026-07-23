@@ -19,6 +19,14 @@ import {
   assertCalendarBootstrapPayloadBounds,
   getCalendarBootstrap,
 } from "../services/calendarBootstrap.js";
+import { listCalendarAppointmentsRange } from "../services/calendarAppointmentsList.js";
+import {
+  buildAppointmentsServerTiming,
+  logAppointmentsEndpointTimingSafe,
+  prismaSingletonActive,
+  safeDatabaseTopology,
+  type AppointmentsEndpointTiming,
+} from "../lib/appointmentsEndpointTiming.js";
 import { buildDailySummary } from "../services/summary.js";
 import {
   getWhatsAppSettings,
@@ -165,7 +173,7 @@ import { confidenceRouter } from "./confidenceRoutes.js";
 import { auditorRouter } from "./auditorRoutes.js";
 import { releaseCertificateRouter } from "./releaseCertificateRoutes.js";
 import { calendarReminderRouter } from "./calendarReminderRoutes.js";
-import { requirePerm } from "../services/rbac/index.js";
+import { checkPermission, forbiddenResponseBody, requirePerm } from "../services/rbac/index.js";
 import { verifyLeadsWebhook } from "../lib/webhookAuth.js";
 import { requireNonProduction } from "../lib/productionGuard.js";
 import { secureRouteGuards } from "../middleware/secureRouteGuards.js";
@@ -6130,13 +6138,66 @@ apiRouter.get("/scheduling/briefing", requireCalendarView, async (req, res) => {
   }
 });
 
-apiRouter.get("/appointments", requireCalendarView, async (req, res) => {
+/** Timed calendar.view guard — same ACL as requireCalendarView; measures org/membership DB only. */
+async function requireCalendarViewWithTiming(req: Request, res: Response, next: () => void) {
+  if (!req.auth) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  res.locals.appointmentsRequestReceivedAt =
+    res.locals.appointmentsRequestReceivedAt ?? performance.now();
+  const orgT0 = performance.now();
+  const sourceRoute = `${req.method} ${req.baseUrl}${req.route?.path ?? req.path}`;
+  const result = await checkPermission({
+    userId: req.auth.userId,
+    organizationId: req.auth.organizationId,
+    permission: "calendar.view",
+    sourceModule: "rbac",
+    sourceRoute,
+  });
+  res.locals.appointmentsOrgMs = Math.round(performance.now() - orgT0);
+  if (!result.allowed) {
+    res.status(403).json(forbiddenResponseBody(result));
+    return;
+  }
+  next();
+}
+
+apiRouter.get("/appointments", requireCalendarViewWithTiming, async (req, res) => {
+  const requestReceivedAt = res.locals.appointmentsRequestReceivedAt ?? performance.now();
+  const authMs = res.locals.appointmentsAuthMs ?? 0;
+  const orgMs = res.locals.appointmentsOrgMs ?? 0;
   try {
     const organizationId = req.auth!.organizationId;
     const fromParam = typeof req.query.from === "string" ? req.query.from : undefined;
     const toParam = typeof req.query.to === "string" ? req.query.to : undefined;
-    let startTimeFilter: Prisma.DateTimeFilter;
+    const employeeParam = typeof req.query.employeeId === "string" ? req.query.employeeId.trim() : "";
 
+    const applyTimingHeader = (partial: Omit<AppointmentsEndpointTiming, "requestReceivedAt" | "authMs" | "orgMs" | "totalMs">) => {
+      const timing: AppointmentsEndpointTiming = {
+        requestReceivedAt,
+        authMs,
+        orgMs,
+        totalMs: Math.round(performance.now() - requestReceivedAt),
+        ...partial,
+      };
+      res.setHeader("Server-Timing", buildAppointmentsServerTiming(timing));
+      const topo = safeDatabaseTopology();
+      const globalPrisma = (globalThis as { prisma?: unknown }).prisma;
+      logAppointmentsEndpointTimingSafe(timing, {
+        renderRegionConfigured: "oregon",
+        renderRegionEnv: topo.renderRegionEnv,
+        neonRegion: topo.neonRegion,
+        pooledHost: topo.pooledHost,
+        hostSuffix: topo.hostSuffix,
+        prismaSingleton: prismaSingletonActive(prisma, globalPrisma),
+        prismaConnectionLimit: topo.prismaConnectionLimit,
+        prismaPoolTimeout: topo.prismaPoolTimeout,
+        poolWaitSeparatelyMeasurable: false,
+      });
+    };
+
+    // Calendar First Paint path: bounded range + single Prisma round-trip (no N+1 enrichment wave).
     if (fromParam || toParam) {
       if (!fromParam || !toParam) {
         res.status(400).json({ error: "Both from and to query parameters are required" });
@@ -6148,14 +6209,37 @@ apiRouter.get("/appointments", requireCalendarView, async (req, res) => {
         res.status(400).json({ error: "from must be before to" });
         return;
       }
-      startTimeFilter = { gte: from, lt: to };
-    } else {
-      startTimeFilter = { gte: new Date() };
+      let dbMs = 0;
+      let mapMs = 0;
+      let serializeMs = 0;
+      let rowCount = 0;
+      const items = await listCalendarAppointmentsRange(organizationId, from, to, {
+        employeeId: employeeParam,
+        collectTiming: true,
+        onTiming: (t) => {
+          dbMs = t.dbQueryMs;
+          mapMs = t.mapMs;
+          serializeMs = t.serializeMs;
+          rowCount = t.rowCount;
+        },
+      });
+      applyTimingHeader({
+        dbMs,
+        mapMs,
+        serializeMs,
+        poolWaitMs: null,
+        rowCount,
+        prismaCallCount: 1,
+        authDbRoundTrips: 0,
+        orgDbRoundTrips: 2,
+        eventsDbRoundTrips: 1,
+      });
+      res.json(items);
+      return;
     }
 
-    // סינון לפי עובד: absent/"all" = הכול, "owner" = היומן של בעל העסק
-    // (תורים בלי עובד — כל התורים ההיסטוריים), אחרת מזהה עובד ספציפי.
-    const employeeParam = typeof req.query.employeeId === "string" ? req.query.employeeId.trim() : "";
+    // Legacy unbounded-future list (non-calendar callers): keep previous behavior.
+    const startTimeFilter: Prisma.DateTimeFilter = { gte: new Date() };
     const employeeFilter: Prisma.AppointmentWhereInput =
       !employeeParam || employeeParam === "all"
         ? {}
@@ -6163,11 +6247,12 @@ apiRouter.get("/appointments", requireCalendarView, async (req, res) => {
           ? { employeeId: null }
           : { employeeId: employeeParam };
 
+    const dbT0 = performance.now();
     const appointments = await prisma.appointment.findMany({
       where: { organizationId, startTime: startTimeFilter, ...employeeFilter },
       include: APPOINTMENT_INCLUDE,
       orderBy: { startTime: "asc" },
-      ...(fromParam && toParam ? {} : { take: 500 }),
+      take: 500,
     });
     const appointmentIds = appointments.map((item) => item.id);
     const [projections, nextJobs] = await Promise.all([
@@ -6182,6 +6267,8 @@ apiRouter.get("/appointments", requireCalendarView, async (req, res) => {
         orderBy: { scheduledForUtc: "asc" },
       }),
     ]);
+    const dbMs = Math.round(performance.now() - dbT0);
+    const mapT0 = performance.now();
     const projectionByAppointment = new Map(projections.map((item) => [item.appointmentId, item]));
     const nextByAppointment = new Map<string, Date>();
     for (const job of nextJobs) {
@@ -6189,21 +6276,35 @@ apiRouter.get("/appointments", requireCalendarView, async (req, res) => {
         nextByAppointment.set(job.appointmentId, job.scheduledForUtc);
       }
     }
-    res.json(
-      appointments.map((item) => ({
-        ...item,
-        reminderStatus: projectionByAppointment.get(item.id)
-          ? {
-              attendanceState: projectionByAppointment.get(item.id)!.attendanceState,
-              reminderState: projectionByAppointment.get(item.id)!.reminderState,
-              confirmationStatus: projectionByAppointment.get(item.id)!.confirmationStatus,
-              lastReminderSentAt: projectionByAppointment.get(item.id)!.lastReminderSentAt,
-              lastResponseAt: projectionByAppointment.get(item.id)!.lastResponseAt,
-              nextReminderAt: nextByAppointment.get(item.id) ?? null,
-            }
-          : null,
-      }))
-    );
+    const payload = appointments.map((item) => ({
+      ...item,
+      reminderStatus: projectionByAppointment.get(item.id)
+        ? {
+            attendanceState: projectionByAppointment.get(item.id)!.attendanceState,
+            reminderState: projectionByAppointment.get(item.id)!.reminderState,
+            confirmationStatus: projectionByAppointment.get(item.id)!.confirmationStatus,
+            lastReminderSentAt: projectionByAppointment.get(item.id)!.lastReminderSentAt,
+            lastResponseAt: projectionByAppointment.get(item.id)!.lastResponseAt,
+            nextReminderAt: nextByAppointment.get(item.id) ?? null,
+          }
+        : null,
+    }));
+    const mapMs = Math.round(performance.now() - mapT0);
+    const serT0 = performance.now();
+    JSON.stringify(payload);
+    const serializeMs = Math.round(performance.now() - serT0);
+    applyTimingHeader({
+      dbMs,
+      mapMs,
+      serializeMs,
+      poolWaitMs: null,
+      rowCount: payload.length,
+      prismaCallCount: 3,
+      authDbRoundTrips: 0,
+      orgDbRoundTrips: 2,
+      eventsDbRoundTrips: 3,
+    });
+    res.json(payload);
   } catch (err) {
     if (err instanceof Error && (err.message.includes("from") || err.message.includes("to"))) {
       res.status(400).json({ error: err.message });
