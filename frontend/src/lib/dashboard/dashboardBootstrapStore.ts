@@ -186,13 +186,22 @@ async function runFetch(identityKey: string): Promise<DashboardBootstrapPayload>
   return value;
 }
 
-function startInFlight(identityKey: string): Promise<DashboardBootstrapPayload> {
-  if (inFlight && inFlight.identityKey === identityKey) {
+function startInFlight(
+  identityKey: string,
+  options?: { forceFresh?: boolean }
+): Promise<DashboardBootstrapPayload> {
+  if (!options?.forceFresh && inFlight && inFlight.identityKey === identityKey) {
     return inFlight.promise;
+  }
+  // forceFresh / new identity: drop any prior in-flight (including rejected) so retry is clean.
+  if (options?.forceFresh) {
+    inFlight = null;
   }
   const promise = runFetch(identityKey).finally(() => {
     if (inFlight?.promise === promise) inFlight = null;
   });
+  // Attach a no-op catch so a rejected in-flight is not an unhandled rejection while cleared.
+  void promise.catch(() => undefined);
   inFlight = { identityKey, promise };
   return promise;
 }
@@ -224,7 +233,7 @@ export async function loadDashboardBootstrap(
 
   if (options.force) {
     try {
-      const payload = await startInFlight(identityKey);
+      const payload = await startInFlight(identityKey, { forceFresh: true });
       return { payload, cacheSource: "network" };
     } catch (err) {
       if (cacheMatches(identityKey) && cache) {

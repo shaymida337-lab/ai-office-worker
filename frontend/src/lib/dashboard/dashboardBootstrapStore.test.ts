@@ -228,6 +228,22 @@ test("invalidate clears memory cache", async () => {
   assert.equal(getCachedDashboardBootstrap(), null);
 });
 
+test("retry after miss failure uses forceFresh network (no rejected in-flight reuse)", async () => {
+  let calls = 0;
+  __setDashboardBootstrapFetchForTests(async () => {
+    calls += 1;
+    if (calls === 1) throw new Error("bootstrap boom");
+    return payload({ homeMetrics: { metrics: { active_clients: 7 } } as never });
+  });
+  await assert.rejects(() => loadDashboardBootstrap({ force: true }), /bootstrap boom/);
+  // Simulate "נסה שוב": invalidate then force reload.
+  invalidateDashboardBootstrap();
+  const ok = await loadDashboardBootstrap({ force: true });
+  assert.equal(ok.cacheSource, "network");
+  assert.equal(calls, 2);
+  assert.equal(ok.payload.homeMetrics.metrics.active_clients, 7);
+});
+
 test("TTL constants match contract", () => {
   assert.equal(DASHBOARD_BOOTSTRAP_FRESH_MS, 30_000);
   assert.equal(DASHBOARD_BOOTSTRAP_TTL_MS, 5 * 60_000);

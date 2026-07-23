@@ -14,11 +14,13 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000
 
 export class ApiError extends Error {
   status: number;
+  code?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    if (code) this.code = code;
   }
 }
 
@@ -116,13 +118,15 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     const serverMessage = (err as { error?: string }).error ?? `הבקשה נכשלה עם קוד ${res.status}`;
+    const serverCode =
+      typeof (err as { code?: unknown }).code === "string" ? (err as { code: string }).code : undefined;
     if (res.status === 401) {
       clearAllAuthTokens();
       window.location.href = "/login?reason=session_expired";
-      throw new ApiError("פג תוקף ההתחברות. יש להתחבר מחדש.", 401);
+      throw new ApiError("פג תוקף ההתחברות. יש להתחבר מחדש.", 401, serverCode ?? "UNAUTHORIZED");
     }
     console.error("[apiFetch]", serverMessage);
-    throw new ApiError(serverMessage, res.status);
+    throw new ApiError(serverMessage, res.status, serverCode);
   }
 
   try {

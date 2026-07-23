@@ -52,7 +52,7 @@ import {
   type DashboardHomeMetricsResponse,
   snapshotFromHomeMetrics,
 } from "@/lib/dashboard/homeMetrics";
-import { runDashboardHomeLoadPhases } from "@/lib/dashboard/dashboardHomeLoadPlan";
+import { dashboardBootstrapUserFacingError, runDashboardHomeLoadPhases } from "@/lib/dashboard/dashboardHomeLoadPlan";
 import {
   getDashboardBootstrapDebugCounters,
   invalidateDashboardBootstrap,
@@ -509,7 +509,7 @@ export function useDashboardHome() {
             setHomeMetricsError(true);
             setGmailStatusKnown(false);
             setGmailStatusStale(true);
-            setError(err instanceof Error ? err.message : "Failed to load dashboard");
+            setError(dashboardBootstrapUserFacingError(err));
             if (isAuthError(err)) {
               clearToken();
               router.replace("/login");

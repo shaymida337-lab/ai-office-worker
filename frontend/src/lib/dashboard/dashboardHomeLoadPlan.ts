@@ -80,3 +80,37 @@ export async function runDashboardHomeLoadPhases(options: {
     options.onBackgroundError?.(error);
   }
 }
+
+/** Friendly Hebrew copy for bootstrap miss failures (after backend returns a real error). */
+export function dashboardBootstrapUserFacingError(err: unknown): string {
+  const message =
+    err instanceof Error
+      ? err.message
+      : err && typeof err === "object" && "message" in err && typeof (err as { message?: unknown }).message === "string"
+        ? (err as { message: string }).message
+        : String(err ?? "");
+  const code =
+    err && typeof err === "object" && "code" in err && typeof (err as { code?: unknown }).code === "string"
+      ? (err as { code: string }).code
+      : "";
+  if (code === "ORG_NOT_FOUND" || /Organization not found/i.test(message)) {
+    return "לא מצאנו את הארגון של החשבון. נסו להתחבר מחדש.";
+  }
+  if (code === "BOOTSTRAP_PAYLOAD_TOO_LARGE" || /payload too large/i.test(message)) {
+    return "טעינת מסך הבית נכשלה בגלל נתונים גדולים מדי. נסו שוב בעוד רגע.";
+  }
+  if (/Unauthorized|Invalid token|401/i.test(message) || code === "UNAUTHORIZED") {
+    return "פג תוקף ההתחברות. יש להתחבר מחדש.";
+  }
+  if (/Forbidden|403/i.test(message) || code === "FORBIDDEN") {
+    return "אין הרשאה לטעון את מסך הבית.";
+  }
+  if (
+    /Failed to load dashboard bootstrap|BOOTSTRAP_BUILD_FAILED/i.test(message) ||
+    code === "BOOTSTRAP_BUILD_FAILED"
+  ) {
+    return "לא הצלחנו לטעון את מסך הבית. נסו לרענן בעוד רגע.";
+  }
+  if (message.trim()) return message;
+  return "לא הצלחנו לטעון את מסך הבית. נסו לרענן בעוד רגע.";
+}

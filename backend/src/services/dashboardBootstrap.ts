@@ -364,7 +364,14 @@ export async function getDashboardBootstrap(
 /**
  * Process-local fresh/stale/inflight cache over getDashboardBootstrap.
  * Key: userId + organizationId only.
+ *
+ * Refresh uses a separate inflight key so a failing background refresh can never
+ * poison concurrent miss rebuilds (mobile often overlaps stale+miss).
  */
+function dashboardBootstrapRefreshInflightKey(cacheKey: string): string {
+  return `refresh\u0000${cacheKey}`;
+}
+
 export async function getDashboardBootstrapCached(input: {
   userId: string;
   organizationId: string;
@@ -418,11 +425,15 @@ export async function getDashboardBootstrapCached(input: {
 
   const existing = getDashboardBootstrapInflight<DashboardBootstrapCachedResult>(key);
   if (existing) {
-    const shared = await existing;
-    return {
-      ...shared,
-      cacheSource: shared.cacheSource === "miss" ? "inflight" : shared.cacheSource,
-    };
+    try {
+      const shared = await existing;
+      return {
+        ...shared,
+        cacheSource: shared.cacheSource === "miss" ? "inflight" : shared.cacheSource,
+      };
+    } catch {
+      // Rejected miss must not permanently poison the key — fall through to rebuild.
+    }
   }
 
   const buildPromise = setDashboardBootstrapInflight(
@@ -460,11 +471,13 @@ function scheduleDashboardBootstrapRefresh(input: {
   now?: Date;
 }): void {
   const key = dashboardBootstrapCacheKey(input.userId, input.organizationId);
-  if (getDashboardBootstrapInflight(key)) return;
+  const refreshKey = dashboardBootstrapRefreshInflightKey(key);
+  // Do not share the miss inflight key — refresh failures must stay isolated.
+  if (getDashboardBootstrapInflight(refreshKey)) return;
 
   const generationAtStart = getDashboardBootstrapCacheGeneration(input.userId, input.organizationId);
   void setDashboardBootstrapInflight(
-    key,
+    refreshKey,
     (async () => {
       try {
         const payload = await getDashboardBootstrap(input.organizationId, { now: input.now });
@@ -475,23 +488,10 @@ function scheduleDashboardBootstrapRefresh(input: {
           payload,
           generationAtStart,
         });
-        return {
-          payload,
-          cacheSource: "miss" as const,
-          cacheAgeMs: null,
-          buildMs: 0,
-          timing: null,
-        };
+        return true;
       } catch {
-        // Keep stale on refresh failure.
-        const stale = peekDashboardBootstrapCache(input.userId, input.organizationId);
-        return {
-          payload: stale!.entry.payload,
-          cacheSource: "stale" as const,
-          cacheAgeMs: null,
-          buildMs: 0,
-          timing: null,
-        };
+        // Keep whatever stale entry remains. Never throw — refresh is best-effort.
+        return false;
       }
     })()
   );
@@ -507,6 +507,35 @@ export function assertDashboardBootstrapPayloadBounds(payload: DashboardBootstra
   if (bytes > DASHBOARD_BOOTSTRAP_MAX_PAYLOAD_BYTES) {
     throw new Error(`bootstrap payload ${bytes} bytes exceeds ${DASHBOARD_BOOTSTRAP_MAX_PAYLOAD_BYTES}`);
   }
+}
+
+/** Map internal build/cache failures to safe client-facing status + code (no PII). */
+export function classifyDashboardBootstrapFailure(raw: string): {
+  status: number;
+  error: string;
+  code: string;
+} {
+  if (/Organization not found/i.test(raw)) {
+    return { status: 404, error: "Organization not found", code: "ORG_NOT_FOUND" };
+  }
+  if (/payload .* exceeds/i.test(raw) || /tasksPreview length/i.test(raw)) {
+    return {
+      status: 500,
+      error: "Dashboard bootstrap payload too large",
+      code: "BOOTSTRAP_PAYLOAD_TOO_LARGE",
+    };
+  }
+  if (/Unauthorized/i.test(raw)) {
+    return { status: 401, error: "Unauthorized", code: "UNAUTHORIZED" };
+  }
+  if (/Forbidden/i.test(raw)) {
+    return { status: 403, error: "Forbidden", code: "FORBIDDEN" };
+  }
+  return {
+    status: 500,
+    error: "Failed to load dashboard bootstrap",
+    code: "BOOTSTRAP_BUILD_FAILED",
+  };
 }
 
 /** Test helper: list of source strings that must not appear in this module's Google-free path. */

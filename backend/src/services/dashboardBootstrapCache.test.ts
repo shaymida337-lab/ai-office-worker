@@ -271,6 +271,73 @@ test("miss failure returns real error (no fake zeros)", async () => {
   }
 });
 
+test("rejected miss does not poison inflight; retry succeeds", async () => {
+  resetDashboardBootstrapCacheForTests();
+  const failing = installMocks({ failAlerts: true });
+  try {
+    await assert.rejects(
+      () => getDashboardBootstrapCached({ userId: USER, organizationId: ORG, now: NOW }),
+      /alerts boom/
+    );
+  } finally {
+    failing.restore();
+  }
+  const healthy = installMocks({ alerts: 7 });
+  try {
+    const again = await getDashboardBootstrapCached({ userId: USER, organizationId: ORG, now: NOW });
+    assert.equal(again.cacheSource, "miss");
+    assert.equal(again.payload.homeMetrics.metrics.unread_alerts, 7);
+    const hit = await getDashboardBootstrapCached({ userId: USER, organizationId: ORG, now: NOW });
+    assert.equal(hit.cacheSource, "hit");
+  } finally {
+    healthy.restore();
+  }
+});
+
+test("stale refresh failure with expired entry does not reject concurrent miss rebuild", async () => {
+  const mocks = installMocks();
+  try {
+    await getDashboardBootstrapCached({ userId: USER, organizationId: ORG, now: NOW });
+    ageDashboardBootstrapCacheForTests(USER, ORG, DASHBOARD_BOOTSTRAP_SERVER_FRESH_TTL_MS + 1);
+    prisma.alert.count = (async () => {
+      throw new Error("refresh boom");
+    }) as typeof prisma.alert.count;
+    const stale = await getDashboardBootstrapCached({ userId: USER, organizationId: ORG, now: NOW });
+    assert.equal(stale.cacheSource, "stale");
+    // Expire past stale TTL while refresh is in-flight.
+    ageDashboardBootstrapCacheForTests(USER, ORG, 10 * 60_000);
+    // Concurrent miss must rebuild (or keep serving) without throwing from refresh stale!.
+    prisma.alert.count = (async () => 9) as typeof prisma.alert.count;
+    await new Promise((r) => setTimeout(r, 40));
+    const rebuilt = await getDashboardBootstrapCached({ userId: USER, organizationId: ORG, now: NOW });
+    assert.ok(["miss", "hit", "inflight", "stale"].includes(rebuilt.cacheSource));
+    assert.ok(rebuilt.payload.homeMetrics.metrics.unread_alerts === 9 || rebuilt.payload.homeMetrics.metrics.unread_alerts === 4);
+  } finally {
+    mocks.restore();
+  }
+});
+
+test("classifyDashboardBootstrapFailure maps clear codes", async () => {
+  const { classifyDashboardBootstrapFailure } = await import("./dashboardBootstrap.js");
+  assert.equal(classifyDashboardBootstrapFailure("Organization not found").code, "ORG_NOT_FOUND");
+  assert.equal(classifyDashboardBootstrapFailure("bootstrap payload 99999 bytes exceeds 51200").code, "BOOTSTRAP_PAYLOAD_TOO_LARGE");
+  assert.equal(classifyDashboardBootstrapFailure("alerts boom").code, "BOOTSTRAP_BUILD_FAILED");
+  assert.equal(classifyDashboardBootstrapFailure("Unauthorized").status, 401);
+  assert.equal(classifyDashboardBootstrapFailure("Forbidden").status, 403);
+});
+
+test("api.ts still imports dashboard bootstrap helpers (regression guard)", () => {
+  const src = fs.readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "../routes/api.ts"),
+    "utf8"
+  );
+  assert.match(src, /getDashboardBootstrapCached/);
+  assert.match(src, /assertDashboardBootstrapPayloadBounds/);
+  assert.match(src, /classifyDashboardBootstrapFailure/);
+  assert.match(src, /from \"\.\.\/services\/dashboardBootstrap\.js\"/);
+  assert.match(src, /from \"\.\.\/lib\/dashboardBootstrapServerTiming\.js\"/);
+});
+
 test("user isolation and organization isolation", async () => {
   resetDashboardBootstrapCacheForTests();
   const payloadA = basePayload({ orgId: ORG, alerts: 10 });

@@ -12,6 +12,17 @@ import { databaseHost, prisma } from "../lib/prisma.js";
 import { getDashboardStats, getMissingInvoicesReport } from "../services/dashboard.js";
 import { getDashboardHomeMetrics } from "../services/dashboardHomeMetrics.js";
 import {
+  assertDashboardBootstrapPayloadBounds,
+  classifyDashboardBootstrapFailure,
+  getDashboardBootstrapCached,
+} from "../services/dashboardBootstrap.js";
+import {
+  buildDashboardBootstrapServerTiming,
+  computeUnaccountedMs as computeDashboardBootstrapUnaccountedMs,
+  logDashboardBootstrapTimingSafe,
+  type DashboardBootstrapEndpointTiming,
+} from "../lib/dashboardBootstrapServerTiming.js";
+import {
   assertInvoicesBootstrapPayloadBounds,
   getInvoicesBootstrap,
 } from "../services/invoices/invoiceBootstrap.js";
@@ -2897,8 +2908,13 @@ apiRouter.get("/dashboard/bootstrap", async (req, res) => {
       tenantCacheAgeMs: res.locals.dashboardBootstrapTenantCacheAgeMs ?? null,
     });
   } catch (err) {
-    console.error("[dashboard/bootstrap] failed", err instanceof Error ? err.message : String(err));
-    res.status(500).json({ error: "Failed to load dashboard bootstrap" });
+    const raw = err instanceof Error ? err.message : String(err);
+    console.error("[dashboard/bootstrap] failed", raw);
+    const classified = classifyDashboardBootstrapFailure(raw);
+    res.status(classified.status).json({
+      error: classified.error,
+      code: classified.code,
+    });
   }
 });
 

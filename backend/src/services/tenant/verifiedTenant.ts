@@ -120,8 +120,9 @@ export async function resolveVerifiedTenant(
           userId: cached.userId,
           organizationId: cached.organizationId,
           role: cached.role,
-          // Email comes from verified JWT for this request — not stored in cache.
-          email: auth.email,
+          // Prefer JWT email; fall back to empty string for mobile/session tokens
+          // that omit optional email claims (never invent a fake address).
+          email: typeof auth.email === "string" ? auth.email : "",
         },
         cacheSource: "hit",
         cacheAgeMs: ageMs,
@@ -211,7 +212,7 @@ export async function resolveVerifiedTenant(
               userId: fallback.userId,
               organizationId: fallback.organizationId,
               role: fallback.role,
-              email: auth.email,
+              email: typeof auth.email === "string" ? auth.email : "",
             },
             cacheSource: "hit",
             cacheAgeMs: Math.max(0, Date.now() - fallback.loadedAt),

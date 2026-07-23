@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertDashboardHomeFirstPaintBudget,
+  dashboardBootstrapUserFacingError,
   DASHBOARD_HOME_BACKGROUND_KEYS,
   DASHBOARD_HOME_FIRST_PAINT_FORBIDDEN_KEYS,
   DASHBOARD_HOME_FIRST_PAINT_KEYS,
@@ -18,6 +19,16 @@ test("dashboard First Paint is a single bootstrap key", () => {
       `First Paint must not include ${key}`
     );
   }
+});
+
+test("bootstrap user-facing errors are Hebrew and do not hide failure", () => {
+  const msg = dashboardBootstrapUserFacingError(new Error("Failed to load dashboard bootstrap"));
+  assert.match(msg, /מסך הבית/);
+  assert.notEqual(msg, "");
+  assert.match(
+    dashboardBootstrapUserFacingError({ message: "x", code: "BOOTSTRAP_PAYLOAD_TOO_LARGE" }),
+    /גדולים/
+  );
 });
 
 test("dashboard Background keeps heavy endpoints out of First Paint", () => {

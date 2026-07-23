@@ -59,6 +59,26 @@ test("fresh hit → 0 DB", async () => {
   assert.equal(dbCalls, 1);
 });
 
+test("mobile-like JWT without email still resolves on verified-tenant cache hit", async () => {
+  await resolveVerifiedTenant(auth({ email: "u@example.com" }), {
+    loadFromDb: async () => ({
+      tenant: { userId: USER, organizationId: ORG, email: "u@example.com", role: "owner" },
+    }),
+  });
+  const hit = await resolveVerifiedTenant(
+    { userId: USER, organizationId: ORG, email: undefined as unknown as string },
+    {
+      loadFromDb: async () => {
+        throw new Error("DB should not run on hit");
+      },
+    }
+  );
+  assert.equal(hit.cacheSource, "hit");
+  assert.equal(hit.tenant?.role, "owner");
+  assert.equal(hit.tenant?.email, "");
+  assert.equal(hit.tenant?.organizationId, ORG);
+});
+
 test("miss → DB once", async () => {
   let dbCalls = 0;
   await resolveVerifiedTenant(auth(), {
