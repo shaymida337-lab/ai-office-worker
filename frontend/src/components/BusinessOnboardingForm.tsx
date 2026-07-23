@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { setOrganizationSettingsCache } from "@/lib/organization/organizationSettingsStore";
+import { invalidateDashboardBootstrap } from "@/lib/dashboard/dashboardBootstrapStore";
 import {
   businessModules,
   businessPains,
@@ -97,6 +98,7 @@ export function BusinessOnboardingForm({ initialSettings, mode, onSaved }: Props
         }),
       });
       setOrganizationSettingsCache(next);
+      invalidateDashboardBootstrap();
       setMessage(mode === "onboarding" ? "ההגדרות נשמרו. הדשבורד מוכן." : "הגדרות העסק נשמרו.");
       onSaved(next);
     } catch (err) {

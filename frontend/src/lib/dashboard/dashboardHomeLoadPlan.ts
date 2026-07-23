@@ -1,15 +1,11 @@
 /**
- * M1 load plan for /dashboard only.
- * First Paint gates pageLoading; Background must not block it.
+ * M1/M-bootstrap load plan for /dashboard only.
+ * First Paint gates pageLoading via a single /api/dashboard/bootstrap request.
+ * Background must not block it.
  * Keep in sync with useDashboardHome.load().
  */
 
-export const DASHBOARD_HOME_FIRST_PAINT_KEYS = [
-  "home-metrics",
-  "gmail-status",
-  "organization-settings",
-  "tasks",
-] as const;
+export const DASHBOARD_HOME_FIRST_PAINT_KEYS = ["bootstrap"] as const;
 
 export type DashboardHomeFirstPaintKey = (typeof DASHBOARD_HOME_FIRST_PAINT_KEYS)[number];
 
@@ -31,7 +27,7 @@ export const DASHBOARD_HOME_BACKGROUND_KEYS = [
 
 export type DashboardHomeBackgroundKey = (typeof DASHBOARD_HOME_BACKGROUND_KEYS)[number];
 
-/** Endpoints that must never gate First Paint (heavy / full lists). */
+/** Endpoints that must never gate First Paint (heavy / full lists / legacy FP splits). */
 export const DASHBOARD_HOME_FIRST_PAINT_FORBIDDEN_KEYS = [
   "stats",
   "document-reviews-summary",
@@ -45,15 +41,19 @@ export const DASHBOARD_HOME_FIRST_PAINT_FORBIDDEN_KEYS = [
   "alerts",
   "system-health",
   "accountant-summary",
+  "home-metrics",
+  "gmail-status",
+  "organization-settings",
+  "tasks",
 ] as const;
 
 export function assertDashboardHomeFirstPaintBudget(keys: readonly string[] = DASHBOARD_HOME_FIRST_PAINT_KEYS) {
-  if (keys.length > 4) {
-    throw new Error(`Dashboard First Paint allows at most 4 requests, got ${keys.length}`);
+  if (keys.length > 1) {
+    throw new Error(`Dashboard First Paint allows at most 1 request (bootstrap), got ${keys.length}`);
   }
   for (const key of keys) {
     if ((DASHBOARD_HOME_FIRST_PAINT_FORBIDDEN_KEYS as readonly string[]).includes(key)) {
-      throw new Error(`Dashboard First Paint must not include heavy key: ${key}`);
+      throw new Error(`Dashboard First Paint must not include heavy/legacy key: ${key}`);
     }
   }
 }

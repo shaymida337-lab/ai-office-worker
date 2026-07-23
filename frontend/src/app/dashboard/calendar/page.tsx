@@ -26,6 +26,7 @@ import {
   Textarea,
 } from "@/components/natalie-ui";
 import { apiFetch, ApiError, getToken } from "@/lib/api";
+import { invalidateDashboardBootstrap } from "@/lib/dashboard/dashboardBootstrapStore";
 import { loadOrganizationSettings } from "@/lib/organization/organizationSettingsStore";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { useI18n } from "@/i18n";
@@ -771,6 +772,7 @@ export default function CalendarPage() {
             notes: formNotes.trim() || null,
           }),
         });
+        invalidateDashboardBootstrap();
         setMessage("התור נוסף בהצלחה");
       }
       resetForm();
@@ -819,6 +821,7 @@ export default function CalendarPage() {
     setSaving(true);
     try {
       await apiFetch(`/api/appointments/${editingId}`, { method: "DELETE" });
+      invalidateDashboardBootstrap();
       setMessage("התור נמחק");
       resetForm();
       await loadAppointments();

@@ -17,6 +17,7 @@ import {
 } from "@/components/natalie-ui";
 import { useI18n } from "@/i18n";
 import { apiFetch } from "@/lib/api";
+import { invalidateDashboardBootstrap } from "@/lib/dashboard/dashboardBootstrapStore";
 import {
   approvalErrorHebrew,
   filterDocuments,
@@ -110,6 +111,7 @@ export default function DocumentReviewsPage() {
       if (!isConfirmedApprovalResponse(result)) {
         throw new Error(APPROVAL_FAILURE_MESSAGE);
       }
+      invalidateDashboardBootstrap();
       const approvedItem = pendingItems.find((item) => item.id === id);
       animateRemove(id, (next) => {
         setStatusMessage(APPROVAL_SUCCESS_MESSAGE);

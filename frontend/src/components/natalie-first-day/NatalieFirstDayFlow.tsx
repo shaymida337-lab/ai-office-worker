@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { API_URL, apiFetch, getToken, type GmailStatus } from "@/lib/api";
 import { setOrganizationSettingsCache } from "@/lib/organization/organizationSettingsStore";
+import { invalidateDashboardBootstrap } from "@/lib/dashboard/dashboardBootstrapStore";
 import { buildGmailConnectionFromStatus, isGmailContentOperational } from "@/lib/integrations/gmailConnection";
 import {
   businessTypes,
@@ -290,6 +291,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
         }),
       });
       setOrganizationSettingsCache(next);
+      invalidateDashboardBootstrap();
 
       writeFirstDayData({
         firstName,

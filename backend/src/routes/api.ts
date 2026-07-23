@@ -11,6 +11,10 @@ import { readRequestId } from "../lib/requestId.js";
 import { databaseHost, prisma } from "../lib/prisma.js";
 import { getDashboardStats, getMissingInvoicesReport } from "../services/dashboard.js";
 import { getDashboardHomeMetrics } from "../services/dashboardHomeMetrics.js";
+import {
+  assertDashboardBootstrapPayloadBounds,
+  getDashboardBootstrap,
+} from "../services/dashboardBootstrap.js";
 import { buildDailySummary } from "../services/summary.js";
 import {
   getWhatsAppSettings,
@@ -2767,11 +2771,24 @@ apiRouter.get("/stats", async (req, res) => {
 
 apiRouter.get("/dashboard/home-metrics", async (req, res) => {
   try {
-    const payload = await getDashboardHomeMetrics(req.auth!.organizationId);
+  const payload = await getDashboardHomeMetrics(req.auth!.organizationId);
     res.json(payload);
   } catch (err) {
     console.error("[dashboard/home-metrics] failed", err instanceof Error ? err.message : String(err));
     res.status(500).json({ error: "Failed to load dashboard home metrics" });
+  }
+});
+
+apiRouter.get("/dashboard/bootstrap", async (req, res) => {
+  try {
+    const payload = await getDashboardBootstrap(req.auth!.organizationId, {
+      collectTiming: process.env.DASHBOARD_BOOTSTRAP_TIMING === "1",
+    });
+    assertDashboardBootstrapPayloadBounds(payload);
+    res.json(payload);
+  } catch (err) {
+    console.error("[dashboard/bootstrap] failed", err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: "Failed to load dashboard bootstrap" });
   }
 });
 

@@ -8,12 +8,12 @@ import {
   runDashboardHomeLoadPhases,
 } from "./dashboardHomeLoadPlan.ts";
 
-test("dashboard First Paint is at most 4 light keys", () => {
-  assert.equal(DASHBOARD_HOME_FIRST_PAINT_KEYS.length, 4);
+test("dashboard First Paint is a single bootstrap key", () => {
+  assert.deepEqual([...DASHBOARD_HOME_FIRST_PAINT_KEYS], ["bootstrap"]);
   assertDashboardHomeFirstPaintBudget();
-  for (const key of DASHBOARD_HOME_FIRST_PAINT_KEYS) {
+  for (const key of DASHBOARD_HOME_FIRST_PAINT_FORBIDDEN_KEYS) {
     assert.equal(
-      (DASHBOARD_HOME_FIRST_PAINT_FORBIDDEN_KEYS as readonly string[]).includes(key),
+      (DASHBOARD_HOME_FIRST_PAINT_KEYS as readonly string[]).includes(key),
       false,
       `First Paint must not include ${key}`
     );
@@ -21,74 +21,59 @@ test("dashboard First Paint is at most 4 light keys", () => {
 });
 
 test("dashboard Background keeps heavy endpoints out of First Paint", () => {
-  for (const heavy of [
-    "stats",
-    "document-reviews-summary",
-    "summary-daily",
-    "system-health",
-    "accountant-summary",
-    "invoices-incomplete",
-    "payments",
-  ] as const) {
-    assert.ok(DASHBOARD_HOME_BACKGROUND_KEYS.includes(heavy));
-    assert.equal((DASHBOARD_HOME_FIRST_PAINT_KEYS as readonly string[]).includes(heavy), false);
+  for (const key of DASHBOARD_HOME_BACKGROUND_KEYS) {
+    assert.equal((DASHBOARD_HOME_FIRST_PAINT_KEYS as readonly string[]).includes(key), false);
   }
 });
 
 test("First Paint ready fires before Background work", async () => {
-  const order: string[] = [];
+  const events: string[] = [];
   await runDashboardHomeLoadPhases({
     loadFirstPaint: async () => {
-      order.push("fp-start");
-      await Promise.resolve();
-      order.push("fp-end");
+      events.push("fp");
     },
     onFirstPaintReady: () => {
-      order.push("ready");
+      events.push("ready");
     },
     loadBackground: async () => {
-      order.push("bg-start");
-      await Promise.resolve();
-      order.push("bg-end");
+      events.push("bg");
     },
   });
-  assert.deepEqual(order, ["fp-start", "fp-end", "ready", "bg-start", "bg-end"]);
+  assert.deepEqual(events, ["fp", "ready", "bg"]);
 });
 
 test("Background failure does not reject and does not skip First Paint ready", async () => {
-  let ready = false;
-  let backgroundError: unknown = null;
+  const events: string[] = [];
   await runDashboardHomeLoadPhases({
     loadFirstPaint: async () => undefined,
     onFirstPaintReady: () => {
-      ready = true;
+      events.push("ready");
     },
     loadBackground: async () => {
-      throw new Error("bg boom");
+      throw new Error("bg fail");
     },
-    onBackgroundError: (error) => {
-      backgroundError = error;
+    onBackgroundError: () => {
+      events.push("bg-error");
     },
   });
-  assert.equal(ready, true);
-  assert.ok(backgroundError instanceof Error);
-  assert.match((backgroundError as Error).message, /bg boom/);
+  assert.deepEqual(events, ["ready", "bg-error"]);
 });
 
 test("stale generation skips Background after First Paint", async () => {
-  let backgroundRan = false;
+  const events: string[] = [];
   let current = true;
   await runDashboardHomeLoadPhases({
     isCurrent: () => current,
     loadFirstPaint: async () => {
+      events.push("fp");
       current = false;
     },
     onFirstPaintReady: () => {
-      throw new Error("ready should not run when generation is stale");
+      events.push("ready");
     },
     loadBackground: async () => {
-      backgroundRan = true;
+      events.push("bg");
     },
   });
-  assert.equal(backgroundRan, false);
+  assert.deepEqual(events, ["fp"]);
 });

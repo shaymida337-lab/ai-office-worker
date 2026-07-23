@@ -35,7 +35,7 @@ import {
 } from "@/lib/gmailScanLifecycle";
 import type { OrganizationSettings } from "@/lib/business-config";
 import { getBusinessModule } from "@/lib/business-module";
-import { resolveGmailStatusFromSettled, resolveGmailTruthAfterLoad, shouldAutoTriggerGmailConnect } from "@/lib/integrations/gmailConnectionTruth";
+import { resolveGmailTruthAfterLoad, shouldAutoTriggerGmailConnect } from "@/lib/integrations/gmailConnectionTruth";
 import {
   buildOptimisticGmailConnectedStatus,
   cleanGmailOAuthReturnUrl,
@@ -50,12 +50,15 @@ import { resolveScanStatusFromSettled } from "@/lib/dashboard/scanStatusTruth";
 import { buildDashboardHomeViewModel } from "@/lib/dashboard/buildDashboardHomeViewModel";
 import {
   type DashboardHomeMetricsResponse,
-  HOME_METRICS_TIMEOUT_MS,
-  requestHomeMetricsWithRetry,
   snapshotFromHomeMetrics,
 } from "@/lib/dashboard/homeMetrics";
 import { runDashboardHomeLoadPhases } from "@/lib/dashboard/dashboardHomeLoadPlan";
-import { loadOrganizationSettings } from "@/lib/organization/organizationSettingsStore";
+import {
+  getDashboardBootstrapDebugCounters,
+  invalidateDashboardBootstrap,
+  loadDashboardBootstrap,
+} from "@/lib/dashboard/dashboardBootstrapStore";
+import { setOrganizationSettingsCache } from "@/lib/organization/organizationSettingsStore";
 import {
   conversationRequestsGmailScan,
   conversationRequestsScanProgress,
@@ -330,64 +333,67 @@ export function useDashboardHome() {
   const requestHomeMetrics = useCallback(async (autoRetry: boolean) => {
     setHomeMetricsError(false);
     let attempts = 0;
-    const outcome = await timedFpRequest(
-      "home_metrics",
-      pageLoadingFalseAtRef.current,
-      fpDebugOriginRef.current || performance.now(),
-      () =>
-        requestHomeMetricsWithRetry(
-          async () => {
-            attempts += 1;
-            fpDebugLog("home_metrics_attempt", {
-              attempt: attempts,
-              autoRetry,
-              beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
-            });
-            try {
-              return await apiFetch<DashboardHomeMetricsResponse>("/api/dashboard/home-metrics", {
-                timeoutMs: HOME_METRICS_TIMEOUT_MS,
-              });
-            } catch (err) {
-              const errorName = err instanceof Error ? err.name : "error";
-              const message = err instanceof Error ? err.message : "";
-              fpDebugLog("home_metrics_attempt_failed", {
-                attempt: attempts,
-                errorName,
-                timeout: errorName === "AbortError" || /timeout/i.test(message),
-                beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
-              });
-              throw err;
-            }
-          },
-          {
-            autoRetry,
-            wait: async (ms) => {
-              fpDebugLog("home_metrics_retry_wait", {
-                delayMs: ms,
-                afterAttempt: attempts,
-              });
-              await delay(ms);
-            },
-          }
-        )
-    );
-    if (outcome.state === "success") {
-      setHomeMetrics(outcome.payload);
-      setHomeMetricsLoaded(true);
-      fpDebugLog("home_metrics_outcome_success", {
+    const origin = fpDebugOriginRef.current || performance.now();
+    try {
+      const runOnce = async () => {
+        attempts += 1;
+        fpDebugLog("bootstrap_metrics_attempt", {
+          attempt: attempts,
+          autoRetry,
+          beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
+        });
+        invalidateDashboardBootstrap();
+        const { payload, cacheSource } = await loadDashboardBootstrap({ force: true });
+        setHomeMetrics(payload.homeMetrics);
+        setHomeMetricsLoaded(true);
+        setRecentTasks(payload.tasksPreview.slice(0, 8));
+        setOrganizationSettings(payload.organizationSettings);
+        setOrganizationSettingsCache(payload.organizationSettings);
+        setGmailStatus({
+          googleConfigured: payload.gmailStatus.googleConfigured,
+          connected: payload.gmailStatus.connected,
+          connectedAt: payload.gmailStatus.connectedAt,
+        });
+        setGmailStatusKnown(true);
+        setGmailStatusStale(false);
+        fpDebugLog("bootstrap_end", {
+          cacheSource,
+          success: true,
+          attempts,
+          sinceMountMs: Math.round(performance.now() - origin),
+          bootstrapNetworkCount: getDashboardBootstrapDebugCounters().networkCount,
+        });
+      };
+      await timedFpRequest("bootstrap", pageLoadingFalseAtRef.current, origin, runOnce);
+    } catch {
+      if (autoRetry) {
+        try {
+          await new Promise((r) => setTimeout(r, 2500));
+          invalidateDashboardBootstrap();
+          const { payload, cacheSource } = await loadDashboardBootstrap({ force: true });
+          setHomeMetrics(payload.homeMetrics);
+          setHomeMetricsLoaded(true);
+          setRecentTasks(payload.tasksPreview.slice(0, 8));
+          setOrganizationSettings(payload.organizationSettings);
+          setOrganizationSettingsCache(payload.organizationSettings);
+          fpDebugLog("bootstrap_end", {
+            cacheSource,
+            success: true,
+            attempts: attempts + 1,
+            retry: true,
+          });
+          return;
+        } catch {
+          /* fall through */
+        }
+      }
+      setHomeMetricsError(true);
+      fpDebugLog("bootstrap_end", {
+        success: false,
         attempts,
         beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
       });
-      return;
     }
-    // כשל/timeout: לא מסמנים loaded ולא מאפסים נתונים קיימים — כך שגיאה
-    // לעולם לא מוצגת כ"אין נתונים"; ה-UI מציג "לא הצלחנו לטעון" + נסה שוב.
-    setHomeMetricsError(true);
-    fpDebugLog("home_metrics_outcome_error", {
-      autoRetry,
-      attempts,
-      beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
-    });
   }, []);
 
   const retryHomeMetrics = useCallback(() => {
@@ -398,10 +404,11 @@ export function useDashboardHome() {
     const generation = ++loadGenerationRef.current;
     const isCurrent = () => loadGenerationRef.current === generation;
     let skipBackground = false;
-    let firstPaintGmail = resolveGmailStatusFromSettled(gmailStatus, {
-      status: "rejected",
-      reason: "pending",
-    });
+    let firstPaintGmail = {
+      nextStatus: gmailStatus,
+      known: gmailStatusKnown,
+      stale: gmailStatusStale,
+    };
 
     try {
       const appointmentFrom = new Date().toISOString();
@@ -421,67 +428,93 @@ export function useDashboardHome() {
             fpDebugOriginRef.current = performance.now();
           }
           const origin = fpDebugOriginRef.current || performance.now();
-          const [, gmailResult, orgResult, tasksResult] = await Promise.allSettled([
-            requestHomeMetrics(true),
-            timedFpRequest("gmail_status", pageLoadingFalseAtRef.current, origin, () =>
-              apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`)
-            ),
-            timedFpRequest("organization_settings", pageLoadingFalseAtRef.current, origin, () =>
-              loadOrganizationSettings()
-            ),
-            timedFpRequest("tasks", pageLoadingFalseAtRef.current, origin, () =>
-              apiFetch<Task[]>("/api/tasks")
-            ),
-          ] as const);
-
-          if (!isCurrent()) return;
-
-          fpDebugLog("first_paint_settled", {
-            sinceMountMs: Math.round(performance.now() - origin),
-            gmail: gmailResult.status,
-            organization_settings: orgResult.status,
-            tasks: tasksResult.status,
+          fpDebugLog("bootstrap_start", {
+            sinceMountMs: 0,
             beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
-            organizationSettingsNetworkCount: (() => {
+          });
+
+          try {
+            const { payload, cacheSource } = await timedFpRequest(
+              "bootstrap",
+              pageLoadingFalseAtRef.current,
+              origin,
+              () => loadDashboardBootstrap()
+            );
+
+            if (!isCurrent()) return;
+
+            const payloadBytes = (() => {
               try {
-                return performance
-                  .getEntriesByType("resource")
-                  .filter((entry) =>
-                    String((entry as PerformanceResourceTiming).name ?? "").includes(
-                      "/api/organization/settings"
-                    )
-                  ).length;
+                return new TextEncoder().encode(JSON.stringify(payload)).length;
               } catch {
                 return null;
               }
-            })(),
-          });
+            })();
 
-          firstPaintGmail = resolveGmailStatusFromSettled(gmailStatus, gmailResult);
-          setGmailStatus(firstPaintGmail.nextStatus);
-          setGmailStatusKnown(firstPaintGmail.known);
-          setGmailStatusStale(firstPaintGmail.stale);
-          if (tasksResult.status === "fulfilled") {
-            setRecentTasks(tasksResult.value.slice(0, 8));
-          }
-          if (orgResult.status === "fulfilled") {
-            setOrganizationSettings(orgResult.value);
-            if (orgResult.value.onboardingRequired) {
+            fpDebugLog("bootstrap_end", {
+              sinceMountMs: Math.round(performance.now() - origin),
+              bootstrap_success: true,
+              bootstrap_cache_source: cacheSource,
+              bootstrapNetworkCount: getDashboardBootstrapDebugCounters().networkCount,
+              payloadBytes,
+              retryCount: getDashboardBootstrapDebugCounters().retryCount,
+              beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
+            });
+
+            setHomeMetrics(payload.homeMetrics);
+            setHomeMetricsLoaded(true);
+            setHomeMetricsError(false);
+            setRecentTasks(payload.tasksPreview.slice(0, 8));
+            setOrganizationSettings(payload.organizationSettings);
+            setOrganizationSettingsCache(payload.organizationSettings);
+
+            const nextGmail: GmailStatus = {
+              googleConfigured: payload.gmailStatus.googleConfigured,
+              connected: payload.gmailStatus.connected,
+              connectedAt: payload.gmailStatus.connectedAt,
+            };
+            firstPaintGmail = {
+              nextStatus: nextGmail,
+              known: true,
+              stale: false,
+            };
+            setGmailStatus(nextGmail);
+            setGmailStatusKnown(true);
+            setGmailStatusStale(false);
+
+            if (payload.organizationSettings.onboardingRequired) {
               skipBackground = true;
               router.replace("/onboarding");
               return;
             }
-          }
 
-          // Partial Gmail CTA until Background has review count; refine after reviews load.
-          const loadTruth = resolveGmailTruthAfterLoad({
-            gmailResolved: firstPaintGmail,
-            scanLogs: scanStatus?.logs,
-            scanLast: scanStatus?.last ?? null,
-            documentReviewCount: pendingDocumentReviewsCount,
-          });
-          setShowGmailConnect(loadTruth.showConnectCta);
-          setError("");
+            const loadTruth = resolveGmailTruthAfterLoad({
+              gmailResolved: firstPaintGmail,
+              scanLogs: scanStatus?.logs,
+              scanLast: scanStatus?.last ?? null,
+              documentReviewCount: pendingDocumentReviewsCount,
+            });
+            setShowGmailConnect(loadTruth.showConnectCta);
+            setError("");
+          } catch (err) {
+            if (!isCurrent()) return;
+            fpDebugLog("bootstrap_end", {
+              sinceMountMs: Math.round(performance.now() - origin),
+              bootstrap_success: false,
+              bootstrapNetworkCount: getDashboardBootstrapDebugCounters().networkCount,
+              errorName: err instanceof Error ? err.name : "error",
+              beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
+            });
+            // Miss failure: real error, never fake zero KPIs.
+            setHomeMetricsError(true);
+            setGmailStatusKnown(false);
+            setGmailStatusStale(true);
+            setError(err instanceof Error ? err.message : "Failed to load dashboard");
+            if (isAuthError(err)) {
+              clearToken();
+              router.replace("/login");
+            }
+          }
         },
         loadBackground: async () => {
           if (!isCurrent() || skipBackground) return;
@@ -846,6 +879,7 @@ export function useDashboardHome() {
         setFirstScanSettled(true);
       }
 
+      invalidateDashboardBootstrap();
       await load();
     };
 
@@ -900,7 +934,8 @@ export function useDashboardHome() {
             setFirstScanRunning(false);
             setScanProgress([]);
             window.localStorage.removeItem("activeGmailScanId");
-            await load();
+            invalidateDashboardBootstrap();
+      await load();
             return;
           }
           // P0: שגיאות רצופות (5xx/רשת) לא ירדפו לנצח — אחרי 6 עוצרים את המעקב
@@ -1041,6 +1076,7 @@ export function useDashboardHome() {
         setScanToast({ type: "info", text: message });
         return;
       }
+      invalidateDashboardBootstrap();
       await load();
       const summary = scanSummaryFromResult(result);
       const message = result.message ?? (result.backgroundProcessing ? `נמצאו ${summary.emailsScanned} מיילים בג׳ימייל. העיבוד המלא ממשיך ברקע ויעדכן חשבוניות/תשלומים.` : formatScanSuccess(summary));
@@ -1069,6 +1105,7 @@ export function useDashboardHome() {
     setError("");
     try {
       const result = await apiFetch<{ success: boolean; results?: Array<{ message?: string }> }>("/api/clients/scan-all", { method: "POST" });
+      invalidateDashboardBootstrap();
       await load();
       setActionMessage(result.results?.find((item) => item.message)?.message ?? "סריקת כל הלקוחות הסתיימה");
     } catch (e) {
@@ -1115,13 +1152,15 @@ export function useDashboardHome() {
             ? `סריקת וואטסאפ הסתיימה: ${completed.messagesScanned} הודעות · ${completed.supplierPaymentsFound} תשלומי ספקים`
             : `סריקת וואטסאפ נכשלה: ${completed.error ?? completed.errors?.[0] ?? "שגיאה לא ידועה"}`,
         });
-        await load();
+        invalidateDashboardBootstrap();
+      await load();
         return;
       }
       setScanToast({
         type: result.status === "completed" ? "success" : "error",
         text: result.status === "completed" ? `סריקת וואטסאפ הסתיימה: ${result.messagesScanned} הודעות נסרקו` : `סריקת וואטסאפ הסתיימה עם ${result.errorsCount} שגיאות`,
       });
+      invalidateDashboardBootstrap();
       await load();
     } catch (err) {
       const message = err instanceof Error ? err.message : "סריקת וואטסאפ נכשלה";
@@ -1149,6 +1188,7 @@ export function useDashboardHome() {
     setActionMessage("");
     try {
       await apiFetch(`/api/payments/${paymentId}`, { method: "PATCH", body: JSON.stringify({ paid: true }) });
+      invalidateDashboardBootstrap();
       await load();
       setActionMessage("התשלום סומן כשולם");
     } catch (err) {
@@ -1173,6 +1213,7 @@ export function useDashboardHome() {
     setActionMessage("");
     try {
       await apiFetch(`/api/payments/${invoiceAttachPaymentId}`, { method: "PATCH", body: JSON.stringify({ invoiceLink: invoiceAttachLink.trim() }) });
+      invalidateDashboardBootstrap();
       await load();
       setActionMessage("החשבונית צורפה לתשלום");
       setInvoiceAttachPaymentId(null);

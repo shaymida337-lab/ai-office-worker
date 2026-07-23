@@ -33,6 +33,7 @@ import {
 } from "@/components/natalie-ui";
 import { useI18n } from "@/i18n";
 import { ApiError, apiFetch } from "@/lib/api";
+import { invalidateDashboardBootstrap } from "@/lib/dashboard/dashboardBootstrapStore";
 import { loadOrganizationSettings } from "@/lib/organization/organizationSettingsStore";
 import { crmListCacheKey, getCrmListCache, getCrmListCacheAge, setCrmListCache } from "@/lib/crm/crmListCache";
 import { getBusinessModule, type BusinessModuleConfig } from "@/lib/business-module";
@@ -404,6 +405,7 @@ export default function CrmPage() {
       // הכרטיס נשאר פתוח והנתונים נשמרים בטופס; רק X סוגר. באנר ירוק ל-3ש'.
       setSaveNotice("הלקוח נשמר בהצלחה");
       window.setTimeout(() => setSaveNotice(""), 3000);
+      invalidateDashboardBootstrap();
       await load();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "שמירת הליד נכשלה — נסה שוב");
@@ -415,6 +417,7 @@ export default function CrmPage() {
   async function updateLead(id: string, body: Record<string, unknown>) {
     const updated = await apiFetch<Lead>(`/api/leads/${id}`, { method: "PUT", body: JSON.stringify(body) });
     setSelected((current) => (current?.id === id ? updated : current));
+    invalidateDashboardBootstrap();
     await load();
   }
 

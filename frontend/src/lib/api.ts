@@ -4,6 +4,7 @@ import {
   systemDeployBannerMessage,
   type PublicHealthResponse,
 } from "./systemDeployStatus";
+import { clearDashboardBootstrapCacheNow } from "@/lib/dashboard/dashboardBootstrapCacheClear";
 import { clearLeadAdminSummaryCacheNow } from "@/lib/admin/leadAdminSummaryCacheClear";
 import { clearOrganizationSettingsCacheNow } from "@/lib/organization/organizationSettingsCacheClear";
 
@@ -36,6 +37,7 @@ export function clearAllAuthTokens(): void {
   // Sync clear — must run before saveToken() sets the next session token.
   clearOrganizationSettingsCacheNow();
   clearLeadAdminSummaryCacheNow();
+  clearDashboardBootstrapCacheNow();
 }
 
 export function clearToken(): void {

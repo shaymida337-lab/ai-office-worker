@@ -19,6 +19,7 @@ import {
 import { openNatalieAssistant } from "@/lib/calendar/openNatalieAssistant";
 import { useI18n } from "@/i18n";
 import { apiFetch, type Task } from "@/lib/api";
+import { invalidateDashboardBootstrap } from "@/lib/dashboard/dashboardBootstrapStore";
 
 const completedStatuses = new Set(["completed", "done"]);
 
@@ -48,6 +49,7 @@ export default function TasksPage() {
         method: "PATCH",
         body: JSON.stringify({ status: "completed" }),
       });
+      invalidateDashboardBootstrap();
       window.setTimeout(() => {
         const completedAt = new Date().toISOString();
         setTasks((prev) =>
@@ -76,6 +78,7 @@ export default function TasksPage() {
         method: "PATCH",
         body: JSON.stringify({ status: "open" }),
       });
+      invalidateDashboardBootstrap();
       const restoredAt = new Date().toISOString();
       setTasks((prev) =>
         prev.map((task) => (task.id === id ? { ...task, status: "open", updatedAt: restoredAt } : task))

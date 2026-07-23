@@ -188,7 +188,7 @@ export function getBusinessTemplates() {
   };
 }
 
-function buildBusinessProfile(businessType: BusinessType) {
+export function buildBusinessProfile(businessType: BusinessType) {
   const template = BUSINESS_TEMPLATES.find((item) => item.id === businessType) ?? BUSINESS_TEMPLATES[7];
   const copy = BUSINESS_PROFILE_COPY[businessType] ?? BUSINESS_PROFILE_COPY.service_business;
   return {
