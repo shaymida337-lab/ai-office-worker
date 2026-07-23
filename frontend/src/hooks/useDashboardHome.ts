@@ -85,6 +85,74 @@ import type {
   WhatsAppScanResult,
 } from "@/lib/dashboard/homePageTypes";
 
+/** Temporary FP diagnostics — enable with localStorage.DASHBOARD_FP_DEBUG=1 (no secrets logged). */
+function isDashboardFpDebugEnabled(): boolean {
+  try {
+    return typeof window !== "undefined" && window.localStorage?.getItem("DASHBOARD_FP_DEBUG") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function fpDebugLog(event: string, data: Record<string, string | number | boolean | null | undefined>) {
+  if (!isDashboardFpDebugEnabled()) return;
+  console.info(`[dashboard-fp] ${event}`, data);
+}
+
+async function timedFpRequest<T>(
+  name: string,
+  pageLoadingFalseAt: number | null,
+  originMs: number,
+  run: () => Promise<T>
+): Promise<T> {
+  if (!isDashboardFpDebugEnabled()) return run();
+  const markStart = `${name}_start`;
+  const markEnd = `${name}_end`;
+  const t0 = performance.now();
+  try {
+    performance.mark(markStart);
+  } catch {
+    /* ignore */
+  }
+  fpDebugLog(markStart, {
+    sinceMountMs: Math.round(t0 - originMs),
+    beforePageLoadingFalse: pageLoadingFalseAt == null,
+  });
+  try {
+    const value = await run();
+    const durationMs = Math.round(performance.now() - t0);
+    try {
+      performance.mark(markEnd);
+      performance.measure(name, markStart, markEnd);
+    } catch {
+      /* ignore */
+    }
+    fpDebugLog(markEnd, {
+      durationMs,
+      success: true,
+      beforePageLoadingFalse: pageLoadingFalseAt == null,
+      sinceMountMs: Math.round(performance.now() - originMs),
+    });
+    return value;
+  } catch (err) {
+    const durationMs = Math.round(performance.now() - t0);
+    try {
+      performance.mark(markEnd);
+      performance.measure(name, markStart, markEnd);
+    } catch {
+      /* ignore */
+    }
+    fpDebugLog(markEnd, {
+      durationMs,
+      success: false,
+      beforePageLoadingFalse: pageLoadingFalseAt == null,
+      sinceMountMs: Math.round(performance.now() - originMs),
+      errorName: err instanceof Error ? err.name : "error",
+    });
+    throw err;
+  }
+}
+
 export function useDashboardHome() {
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -147,6 +215,10 @@ export function useDashboardHome() {
   const autoFirstScanRef = useRef(false);
   /** Bumps on every load() so stale Background results cannot overwrite newer state. */
   const loadGenerationRef = useRef(0);
+  /** First Paint wall-clock origin for relative "before/after pageLoading=false" logs. */
+  const fpDebugOriginRef = useRef(0);
+  const pageLoadingFalseAtRef = useRef<number | null>(null);
+  const heroRenderedLoggedRef = useRef(false);
 
   useEffect(() => {
     setClientMounted(true);
@@ -157,7 +229,70 @@ export function useDashboardHome() {
       setFirstVisitMode(true);
       if (fromUrl) router.replace("/dashboard");
     }
+    if (isDashboardFpDebugEnabled()) {
+      fpDebugOriginRef.current = performance.now();
+      pageLoadingFalseAtRef.current = null;
+      heroRenderedLoggedRef.current = false;
+      performance.mark("dashboard_mount");
+      fpDebugLog("dashboard_mount", { t: 0 });
+    }
   }, [router]);
+
+  useEffect(() => {
+    if (!isDashboardFpDebugEnabled()) return;
+    if (pageLoading) return;
+    if (pageLoadingFalseAtRef.current == null) {
+      pageLoadingFalseAtRef.current = performance.now();
+      try {
+        performance.mark("pageLoading_false");
+        if (fpDebugOriginRef.current > 0) {
+          performance.measure("dashboard_to_pageLoading_false", "dashboard_mount", "pageLoading_false");
+        }
+      } catch {
+        /* ignore */
+      }
+      let organizationSettingsNetworkCount: number | null = null;
+      try {
+        organizationSettingsNetworkCount = performance
+          .getEntriesByType("resource")
+          .filter((entry) => String((entry as PerformanceResourceTiming).name ?? "").includes("/api/organization/settings"))
+          .length;
+      } catch {
+        organizationSettingsNetworkCount = null;
+      }
+      fpDebugLog("pageLoading_false", {
+        sinceMountMs: Math.round(pageLoadingFalseAtRef.current - fpDebugOriginRef.current),
+        organizationSettingsNetworkCount,
+      });
+    }
+    if (!heroRenderedLoggedRef.current && (homeMetricsLoaded || homeMetricsError)) {
+      heroRenderedLoggedRef.current = true;
+      try {
+        performance.mark("hero_ready");
+        if (fpDebugOriginRef.current > 0) {
+          performance.measure("dashboard_to_hero_ready", "dashboard_mount", "hero_ready");
+        }
+      } catch {
+        /* ignore */
+      }
+      fpDebugLog("hero_ready", {
+        sinceMountMs: Math.round(performance.now() - fpDebugOriginRef.current),
+        afterPageLoadingFalse: true,
+        homeMetricsLoaded,
+        homeMetricsError,
+      });
+    }
+  }, [pageLoading, homeMetricsLoaded, homeMetricsError]);
+
+  useEffect(() => {
+    if (!isDashboardFpDebugEnabled()) return;
+    if (!homeMetricsLoaded) return;
+    fpDebugLog("homeMetricsLoaded", {
+      sinceMountMs: Math.round(performance.now() - (fpDebugOriginRef.current || performance.now())),
+      beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
+    });
+  }, [homeMetricsLoaded]);
+
 
   useEffect(() => {
     if (!invoiceAttachPaymentId) return;
@@ -193,21 +328,65 @@ export function useDashboardHome() {
 
   const requestHomeMetrics = useCallback(async (autoRetry: boolean) => {
     setHomeMetricsError(false);
-    const outcome = await requestHomeMetricsWithRetry(
+    let attempts = 0;
+    const outcome = await timedFpRequest(
+      "home_metrics",
+      pageLoadingFalseAtRef.current,
+      fpDebugOriginRef.current || performance.now(),
       () =>
-        apiFetch<DashboardHomeMetricsResponse>("/api/dashboard/home-metrics", {
-          timeoutMs: HOME_METRICS_TIMEOUT_MS,
-        }),
-      { autoRetry }
+        requestHomeMetricsWithRetry(
+          async () => {
+            attempts += 1;
+            fpDebugLog("home_metrics_attempt", {
+              attempt: attempts,
+              autoRetry,
+              beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
+            });
+            try {
+              return await apiFetch<DashboardHomeMetricsResponse>("/api/dashboard/home-metrics", {
+                timeoutMs: HOME_METRICS_TIMEOUT_MS,
+              });
+            } catch (err) {
+              const errorName = err instanceof Error ? err.name : "error";
+              const message = err instanceof Error ? err.message : "";
+              fpDebugLog("home_metrics_attempt_failed", {
+                attempt: attempts,
+                errorName,
+                timeout: errorName === "AbortError" || /timeout/i.test(message),
+                beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
+              });
+              throw err;
+            }
+          },
+          {
+            autoRetry,
+            wait: async (ms) => {
+              fpDebugLog("home_metrics_retry_wait", {
+                delayMs: ms,
+                afterAttempt: attempts,
+              });
+              await delay(ms);
+            },
+          }
+        )
     );
     if (outcome.state === "success") {
       setHomeMetrics(outcome.payload);
       setHomeMetricsLoaded(true);
+      fpDebugLog("home_metrics_outcome_success", {
+        attempts,
+        beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
+      });
       return;
     }
     // כשל/timeout: לא מסמנים loaded ולא מאפסים נתונים קיימים — כך שגיאה
     // לעולם לא מוצגת כ"אין נתונים"; ה-UI מציג "לא הצלחנו לטעון" + נסה שוב.
     setHomeMetricsError(true);
+    fpDebugLog("home_metrics_outcome_error", {
+      autoRetry,
+      attempts,
+      beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
+    });
   }, []);
 
   const retryHomeMetrics = useCallback(() => {
@@ -237,14 +416,45 @@ export function useDashboardHome() {
           // Background failures stay local — never flip pageLoading or wipe First Paint data.
         },
         loadFirstPaint: async () => {
+          if (isDashboardFpDebugEnabled() && fpDebugOriginRef.current === 0) {
+            fpDebugOriginRef.current = performance.now();
+          }
+          const origin = fpDebugOriginRef.current || performance.now();
           const [, gmailResult, orgResult, tasksResult] = await Promise.allSettled([
             requestHomeMetrics(true),
-            apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`),
-            apiFetch<OrganizationSettings>("/api/organization/settings"),
-            apiFetch<Task[]>("/api/tasks"),
+            timedFpRequest("gmail_status", pageLoadingFalseAtRef.current, origin, () =>
+              apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`)
+            ),
+            timedFpRequest("organization_settings", pageLoadingFalseAtRef.current, origin, () =>
+              apiFetch<OrganizationSettings>("/api/organization/settings")
+            ),
+            timedFpRequest("tasks", pageLoadingFalseAtRef.current, origin, () =>
+              apiFetch<Task[]>("/api/tasks")
+            ),
           ] as const);
 
           if (!isCurrent()) return;
+
+          fpDebugLog("first_paint_settled", {
+            sinceMountMs: Math.round(performance.now() - origin),
+            gmail: gmailResult.status,
+            organization_settings: orgResult.status,
+            tasks: tasksResult.status,
+            beforePageLoadingFalse: pageLoadingFalseAtRef.current == null,
+            organizationSettingsNetworkCount: (() => {
+              try {
+                return performance
+                  .getEntriesByType("resource")
+                  .filter((entry) =>
+                    String((entry as PerformanceResourceTiming).name ?? "").includes(
+                      "/api/organization/settings"
+                    )
+                  ).length;
+              } catch {
+                return null;
+              }
+            })(),
+          });
 
           firstPaintGmail = resolveGmailStatusFromSettled(gmailStatus, gmailResult);
           setGmailStatus(firstPaintGmail.nextStatus);
@@ -274,6 +484,19 @@ export function useDashboardHome() {
         },
         loadBackground: async () => {
           if (!isCurrent() || skipBackground) return;
+          if (isDashboardFpDebugEnabled()) {
+            try {
+              performance.mark("background_start");
+            } catch {
+              /* ignore */
+            }
+            fpDebugLog("background_start", {
+              sinceMountMs: Math.round(
+                performance.now() - (fpDebugOriginRef.current || performance.now())
+              ),
+              afterPageLoadingFalse: pageLoadingFalseAtRef.current != null,
+            });
+          }
 
           const [
             statsResult,
@@ -306,6 +529,13 @@ export function useDashboardHome() {
           ] as const);
 
           if (!isCurrent()) return;
+
+          if (isDashboardFpDebugEnabled()) {
+            fpDebugLog("background_stats_settled", {
+              stats: statsResult.status,
+              afterPageLoadingFalse: true,
+            });
+          }
 
           // Only apply fulfilled Background results — never clear First Paint / prior data on reject.
           if (statsResult.status === "fulfilled") setStats(statsResult.value);
