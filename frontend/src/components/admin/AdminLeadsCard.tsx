@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { UserPlus } from "lucide-react";
+import { useIsPlatformAdmin } from "@/hooks/useIsPlatformAdmin";
 import { useLeadAdminSummary } from "@/hooks/useLeadAdminSummary";
 
-/** כרטיס לידים במסך הבית — נראה רק לאדמין הפלטפורמה; לכל השאר לא מרונדר. */
-export function AdminLeadsCard() {
-  const { summary, isAdmin } = useLeadAdminSummary();
-  if (!isAdmin || !summary) return null;
+function AdminLeadsCardActive() {
+  const { summary } = useLeadAdminSummary(true);
+  if (!summary) return null;
 
   const stats = [
     { label: "חדשים", value: summary.newCount, highlight: summary.newCount > 0 },
@@ -45,4 +45,11 @@ export function AdminLeadsCard() {
       </dl>
     </Link>
   );
+}
+
+/** כרטיס לידים במסך הבית — נטען רק לאדמין הפלטפורמה; לכל השאר לא מרונדר ובלי hook סיכום. */
+export function AdminLeadsCard() {
+  const isAdmin = useIsPlatformAdmin();
+  if (isAdmin !== true) return null;
+  return <AdminLeadsCardActive />;
 }

@@ -175,7 +175,7 @@ export default function DashboardPage() {
           </MessageBanner>
         ) : null}
 
-        {/* לידים שיווקיים — נראה רק לאדמין הפלטפורמה (self-hiding) */}
+        {/* לידים שיווקיים — נטען רק אחרי שער platform-admin */}
         <div className="mb-4">
           <AdminLeadsCard />
         </div>

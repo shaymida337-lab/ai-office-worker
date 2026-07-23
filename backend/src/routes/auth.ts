@@ -6,6 +6,7 @@ import { authMiddleware } from "../lib/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { signToken } from "../lib/auth.js";
 import { config, hasGoogleOAuth } from "../lib/config.js";
+import { isPlatformAdmin } from "../services/marketingLeads/leadAdminService.js";
 import { ensureGmailAccessToken, getOAuth2Client, GMAIL_SCOPES, googleOAuthMetadata } from "../services/google.js";
 import { hashPassword, verifyPassword } from "../lib/password.js";
 import { sendAuthSuccess } from "../lib/auth-response.js";
@@ -470,4 +471,10 @@ authRouter.get("/me", async (req, res) => {
   } catch {
     res.status(401).json({ error: "Invalid token" });
   }
+});
+
+/** Soft flag for UI gating — always 200 for authenticated users; does not change marketing-leads ACLs. */
+authRouter.get("/platform-admin", authMiddleware, (req, res) => {
+  const email = req.auth?.email;
+  res.json({ isPlatformAdmin: isPlatformAdmin(email, config.platformAdminEmails) });
 });

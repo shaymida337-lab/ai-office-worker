@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { Bell } from "lucide-react";
+import { useIsPlatformAdmin } from "@/hooks/useIsPlatformAdmin";
 import { useLeadAdminSummary } from "@/hooks/useLeadAdminSummary";
 
 /** צליל עדין (WebAudio) — בלי קובץ, בלי תלות. נכשל בשקט אם הדפדפן חוסם. */
@@ -30,13 +31,8 @@ function playGentleChime() {
   }
 }
 
-/**
- * פעמון לידים — מוצג רק לאדמין פלטפורמה (כל השאר מקבלים null בשקט).
- * מונה אדום של לידים בסטטוס new + צליל עדין כשנכנס ליד חדש.
- * compact — גרסת כותרת עליונה (אייקון+מונה); ברירת מחדל — כפתור מלא לתפריט.
- */
-export function AdminLeadsBell({ compact = false }: { compact?: boolean }) {
-  const { summary, isAdmin, hasNewSince, ackNewSince } = useLeadAdminSummary();
+function AdminLeadsBellActive({ compact }: { compact: boolean }) {
+  const { summary, hasNewSince, ackNewSince } = useLeadAdminSummary(true);
 
   useEffect(() => {
     if (hasNewSince) {
@@ -45,7 +41,7 @@ export function AdminLeadsBell({ compact = false }: { compact?: boolean }) {
     }
   }, [hasNewSince, ackNewSince]);
 
-  if (!isAdmin || !summary) return null;
+  if (!summary) return null;
 
   if (compact) {
     return (
@@ -87,4 +83,14 @@ export function AdminLeadsBell({ compact = false }: { compact?: boolean }) {
       ) : null}
     </Link>
   );
+}
+
+/**
+ * פעמון לידים — נטען רק אחרי אישור platform-admin (שער לפני mount של hook הסיכום).
+ * משתמש רגיל: null, בלי בקשת marketing-leads.
+ */
+export function AdminLeadsBell({ compact = false }: { compact?: boolean }) {
+  const isAdmin = useIsPlatformAdmin();
+  if (isAdmin !== true) return null;
+  return <AdminLeadsBellActive compact={compact} />;
 }

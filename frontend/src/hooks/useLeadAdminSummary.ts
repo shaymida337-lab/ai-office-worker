@@ -1,66 +1,77 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { apiFetch, ApiError } from "@/lib/api";
+import {
+  getCachedLeadAdminSummary,
+  loadLeadAdminSummary,
+  refreshLeadAdminSummary,
+  subscribeLeadAdminSummary,
+  type LeadAdminSummary,
+} from "@/lib/admin/leadAdminSummaryStore";
 
-export type LeadAdminSummary = {
-  newCount: number;
-  today: number;
-  week: number;
-  month: number;
-  qualified: number;
-  converted: number;
-  latestCreatedAt: string | null;
-};
+export type { LeadAdminSummary };
 
 const POLL_MS = 8_000; // "אני יודע על ליד תוך פחות מ-10 שניות"
 
 /**
  * סיכום לידים לאדמין פלטפורמה, עם polling.
- * מי שאינו אדמין מקבל 403 בבדיקת הפתיחה — ה-hook נעצר ולא ממשיך לשאול.
+ * מופעל רק כש-enabled=true (אחרי שער platform-admin) — לא שולח marketing-leads למשתמש רגיל.
+ * כמה צרכנים חולקים cache + in-flight אחד דרך leadAdminSummaryStore.
  */
 export function useLeadAdminSummary(enabled = true) {
-  const [summary, setSummary] = useState<LeadAdminSummary | null>(null);
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [summary, setSummary] = useState<LeadAdminSummary | null>(() =>
+    enabled ? getCachedLeadAdminSummary() : null
+  );
   const [hasNewSince, setHasNewSince] = useState(false);
   const lastSeenLatestRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      setSummary(null);
+      return;
+    }
     let cancelled = false;
     let timer: number | null = null;
 
-    async function poll() {
+    const apply = (data: LeadAdminSummary | null) => {
+      if (cancelled || !data) return;
+      setSummary(data);
+      if (
+        lastSeenLatestRef.current !== null &&
+        data.latestCreatedAt !== null &&
+        data.latestCreatedAt !== lastSeenLatestRef.current
+      ) {
+        setHasNewSince(true);
+      }
+      lastSeenLatestRef.current = data.latestCreatedAt;
+    };
+
+    const unsubscribe = subscribeLeadAdminSummary(() => {
+      apply(getCachedLeadAdminSummary());
+    });
+
+    async function poll(initial: boolean) {
       try {
-        const data = await apiFetch<LeadAdminSummary>("/api/admin/marketing-leads/summary");
-        if (cancelled) return;
-        setIsAdmin(true);
-        setSummary(data);
-        if (
-          lastSeenLatestRef.current !== null &&
-          data.latestCreatedAt !== null &&
-          data.latestCreatedAt !== lastSeenLatestRef.current
-        ) {
-          setHasNewSince(true); // ליד חדש נכנס מאז הטעינה — טריגר לצליל
-        }
-        lastSeenLatestRef.current = data.latestCreatedAt;
-        timer = window.setTimeout(poll, POLL_MS);
-      } catch (err) {
-        if (cancelled) return;
-        if (err instanceof ApiError && (err.status === 403 || err.status === 401)) {
-          setIsAdmin(false); // לא אדמין — מפסיקים לשאול לצמיתות
-          return;
-        }
-        timer = window.setTimeout(poll, POLL_MS * 3); // שגיאת רשת — ננסה שוב לאט
+        const data = initial ? await loadLeadAdminSummary() : await refreshLeadAdminSummary();
+        apply(data);
+        if (!cancelled) timer = window.setTimeout(() => void poll(false), POLL_MS);
+      } catch {
+        if (!cancelled) timer = window.setTimeout(() => void poll(false), POLL_MS * 3);
       }
     }
 
-    poll();
+    void poll(true);
     return () => {
       cancelled = true;
+      unsubscribe();
       if (timer !== null) window.clearTimeout(timer);
     };
   }, [enabled]);
 
-  return { summary, isAdmin, hasNewSince, ackNewSince: () => setHasNewSince(false) };
+  return {
+    summary,
+    isAdmin: enabled,
+    hasNewSince,
+    ackNewSince: () => setHasNewSince(false),
+  };
 }

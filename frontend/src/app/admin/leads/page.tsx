@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/natalie-ui";
 import { apiFetch, ApiError } from "@/lib/api";
+import { useIsPlatformAdmin } from "@/hooks/useIsPlatformAdmin";
 import { useLeadAdminSummary } from "@/hooks/useLeadAdminSummary";
 
 type MarketingLead = {
@@ -68,7 +69,8 @@ function LeadsPageInner() {
   const [events, setEvents] = useState<Record<string, LeadEvent[]>>({});
   const [forbidden, setForbidden] = useState(false);
   const [loading, setLoading] = useState(true);
-  const { summary } = useLeadAdminSummary();
+  const isPlatformAdmin = useIsPlatformAdmin();
+  const { summary } = useLeadAdminSummary(isPlatformAdmin === true);
 
   const load = useCallback(async (status: string) => {
     setLoading(true);

@@ -62,7 +62,8 @@ function directionFor(language: AppLanguage): AppDirection {
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<AppLanguage>(() => readStoredLanguage() ?? "he");
+  // Always start with a stable SSR/client default to avoid React #418 (localStorage must not run during hydrate).
+  const [language, setLanguageState] = useState<AppLanguage>("he");
 
   const setLanguage = useCallback((next: AppLanguage) => {
     setLanguageState(next);
@@ -74,6 +75,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const stored = readStoredLanguage();
+    if (stored) setLanguageState(stored);
+
     const token = getToken();
     if (!token) return;
     let mounted = true;
@@ -81,9 +85,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       .then((settings) => {
         const candidate = (settings.language ?? settings.locale ?? "he").toLowerCase();
         const fromApi = candidate === "en" ? "en" : "he";
-        const stored = readStoredLanguage();
-        const next = stored ?? fromApi;
-        if (mounted) setLanguageState(next);
+        const preferred = readStoredLanguage() ?? fromApi;
+        if (mounted) setLanguageState(preferred);
       })
       .catch(() => undefined);
     return () => {

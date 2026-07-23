@@ -18,15 +18,12 @@ export function GlobalHeader({
   sidebarOffset: _sidebarOffset = false,
   notificationCount = 0,
   onNotificationsClick,
-  extraAction,
 }: {
   className?: string;
   /** @deprecated Sidebar removed — bottom navigation is the only primary nav. Kept for call-site compat. */
   sidebarOffset?: boolean;
   notificationCount?: number;
   onNotificationsClick?: () => void;
-  /** Slot נוסף בכותרת (למשל פעמון לידים לאדמין) — אופציונלי. */
-  extraAction?: React.ReactNode;
 }) {
   void _sidebarOffset;
   const { t, language, setLanguage } = useI18n();
@@ -75,8 +72,7 @@ export function GlobalHeader({
             <Logo size="sm" iconOnly className="sm:hidden" />
             <Logo size="sm" className="hidden sm:flex" />
           </Link>
-          {extraAction}
-          {/* פעמון לידים לאדמין הפלטפורמה — self-hiding לכל משתמש אחר */}
+          {/* פעמון לידים — נטען רק אחרי שער platform-admin */}
           <AdminLeadsBell compact />
           <div className="hidden min-w-0 sm:block" aria-label={t("globalHeader.profile")}>
             <p className={`truncate text-sm font-black leading-tight ${natalie.title}`}>{workspaceName}</p>
