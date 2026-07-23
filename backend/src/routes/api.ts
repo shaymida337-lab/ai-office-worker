@@ -22,6 +22,8 @@ import {
 import { listCalendarAppointmentsRange } from "../services/calendarAppointmentsList.js";
 import {
   buildAppointmentsServerTiming,
+  computeUnaccountedMs,
+  isAppointmentsTimingPath,
   logAppointmentsEndpointTimingSafe,
   prismaSingletonActive,
   safeDatabaseTopology,
@@ -259,6 +261,12 @@ apiRouter.get("/debug/payments/open-classification-inputs", requireNonProduction
   }
 });
 
+apiRouter.use((req, res, next) => {
+  if (isAppointmentsTimingPath(req.path)) {
+    res.locals.appointmentsWallStart = performance.now();
+  }
+  next();
+});
 apiRouter.use(authMiddleware);
 apiRouter.use(validateTenantMiddleware);
 apiRouter.use(financialDataContainmentMiddleware);
@@ -6144,9 +6152,8 @@ async function requireCalendarViewWithTiming(req: Request, res: Response, next: 
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  res.locals.appointmentsRequestReceivedAt =
-    res.locals.appointmentsRequestReceivedAt ?? performance.now();
   const orgT0 = performance.now();
+  res.locals.appointmentsOrgStart = orgT0;
   const sourceRoute = `${req.method} ${req.baseUrl}${req.route?.path ?? req.path}`;
   const result = await checkPermission({
     userId: req.auth.userId,
@@ -6154,8 +6161,12 @@ async function requireCalendarViewWithTiming(req: Request, res: Response, next: 
     permission: "calendar.view",
     sourceModule: "rbac",
     sourceRoute,
+    verifiedTenant: req.verifiedTenant ?? null,
   });
-  res.locals.appointmentsOrgMs = Math.round(performance.now() - orgT0);
+  const orgEnd = performance.now();
+  res.locals.appointmentsOrgEnd = orgEnd;
+  res.locals.appointmentsOrgMs = Math.round(orgEnd - orgT0);
+  res.locals.appointmentsOrgRoleSource = result.roleSource ?? "none";
   if (!result.allowed) {
     res.status(403).json(forbiddenResponseBody(result));
     return;
@@ -6163,37 +6174,102 @@ async function requireCalendarViewWithTiming(req: Request, res: Response, next: 
   next();
 }
 
+function roundMs(start: number, end: number): number {
+  return Math.max(0, Math.round(end - start));
+}
+
 apiRouter.get("/appointments", requireCalendarViewWithTiming, async (req, res) => {
-  const requestReceivedAt = res.locals.appointmentsRequestReceivedAt ?? performance.now();
-  const authMs = res.locals.appointmentsAuthMs ?? 0;
-  const orgMs = res.locals.appointmentsOrgMs ?? 0;
+  const wallStart = res.locals.appointmentsWallStart ?? performance.now();
+  const authStart = res.locals.appointmentsAuthStart ?? wallStart;
+  const authEnd = res.locals.appointmentsAuthEnd ?? authStart;
+  const tenantStart = res.locals.appointmentsTenantStart ?? authEnd;
+  const tenantEnd = res.locals.appointmentsTenantEnd ?? tenantStart;
+  const orgStart = res.locals.appointmentsOrgStart ?? tenantEnd;
+  const orgEnd = res.locals.appointmentsOrgEnd ?? orgStart;
+  const authMs = res.locals.appointmentsAuthMs ?? roundMs(authStart, authEnd);
+  const tenantMs = res.locals.appointmentsTenantMs ?? roundMs(tenantStart, tenantEnd);
+  const orgMs = res.locals.appointmentsOrgMs ?? roundMs(orgStart, orgEnd);
+  const handlerEnter = performance.now();
+
+  // Non-blocking event-loop probe (does not await / does not inflate request).
+  let eventLoopMs: number | null = null;
+  {
+    const t0 = performance.now();
+    setImmediate(() => {
+      eventLoopMs = Math.round(performance.now() - t0);
+    });
+  }
+
   try {
     const organizationId = req.auth!.organizationId;
     const fromParam = typeof req.query.from === "string" ? req.query.from : undefined;
     const toParam = typeof req.query.to === "string" ? req.query.to : undefined;
     const employeeParam = typeof req.query.employeeId === "string" ? req.query.employeeId.trim() : "";
 
-    const applyTimingHeader = (partial: Omit<AppointmentsEndpointTiming, "requestReceivedAt" | "authMs" | "orgMs" | "totalMs">) => {
-      const timing: AppointmentsEndpointTiming = {
-        requestReceivedAt,
+    const finish = (args: {
+      payload: unknown;
+      dbMs: number;
+      dbToMapMs: number;
+      mapMs: number;
+      orgToDbMs: number;
+      prismaCallCount: number;
+      eventsDbRoundTrips: number;
+      rowCount: number;
+    }) => {
+      const jsonT0 = performance.now();
+      const body = JSON.stringify(args.payload);
+      const jsonMs = Math.round(performance.now() - jsonT0);
+
+      const timingBase: Omit<AppointmentsEndpointTiming, "unaccountedMs" | "responseMs" | "totalMs" | "jsonMs"> = {
+        preRouteMs: roundMs(wallStart, authStart),
         authMs,
+        authToOrgMs: roundMs(authEnd, orgStart),
+        tenantMs,
         orgMs,
-        totalMs: Math.round(performance.now() - requestReceivedAt),
-        ...partial,
+        orgToDbMs: args.orgToDbMs,
+        dbMs: args.dbMs,
+        dbToMapMs: args.dbToMapMs,
+        mapMs: args.mapMs,
+        middlewareMs: roundMs(authEnd, orgStart),
+        eventLoopMs,
+        rowCount: args.rowCount,
+        prismaCallCount: args.prismaCallCount,
+        authDbRoundTrips: 0,
+        tenantDbRoundTrips: 3,
+        orgDbRoundTrips: res.locals.appointmentsOrgRoleSource === "verified_tenant" ? 0 : 2,
+        eventsDbRoundTrips: args.eventsDbRoundTrips,
       };
+
+      const responseT0 = performance.now();
+      // Measure send synchronously up to write; Network/CDN after this is outside Server-Timing.
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      const responseMs = Math.round(performance.now() - responseT0);
+      const totalMs = Math.round(performance.now() - wallStart);
+      const timing: AppointmentsEndpointTiming = {
+        ...timingBase,
+        jsonMs,
+        responseMs,
+        totalMs,
+        unaccountedMs: 0,
+      };
+      timing.unaccountedMs = computeUnaccountedMs(timing);
       res.setHeader("Server-Timing", buildAppointmentsServerTiming(timing));
-      const topo = safeDatabaseTopology();
-      const globalPrisma = (globalThis as { prisma?: unknown }).prisma;
+      res.send(body);
+
       logAppointmentsEndpointTimingSafe(timing, {
         renderRegionConfigured: "oregon",
-        renderRegionEnv: topo.renderRegionEnv,
-        neonRegion: topo.neonRegion,
-        pooledHost: topo.pooledHost,
-        hostSuffix: topo.hostSuffix,
-        prismaSingleton: prismaSingletonActive(prisma, globalPrisma),
-        prismaConnectionLimit: topo.prismaConnectionLimit,
-        prismaPoolTimeout: topo.prismaPoolTimeout,
-        poolWaitSeparatelyMeasurable: false,
+        neonRegion: safeDatabaseTopology().neonRegion,
+        pooledHost: safeDatabaseTopology().pooledHost,
+        hostSuffix: safeDatabaseTopology().hostSuffix,
+        prismaSingleton: prismaSingletonActive(prisma, (globalThis as { prisma?: unknown }).prisma),
+        pathIsRangedNewEndpoint: Boolean(fromParam && toParam),
+        handlerEnterSkewMs: roundMs(orgEnd, handlerEnter),
+        endpointPath: "GET /api/appointments",
+        orgRoleSource: res.locals.appointmentsOrgRoleSource ?? "none",
+        dbWaves:
+          2 /* tenant user + membership */ +
+          (res.locals.appointmentsOrgRoleSource === "verified_tenant" ? 0 : 1) +
+          args.eventsDbRoundTrips,
       });
     };
 
@@ -6209,9 +6285,12 @@ apiRouter.get("/appointments", requireCalendarViewWithTiming, async (req, res) =
         res.status(400).json({ error: "from must be before to" });
         return;
       }
+
+      const beforeDb = performance.now();
+      const orgToDbMs = roundMs(orgEnd, beforeDb);
       let dbMs = 0;
       let mapMs = 0;
-      let serializeMs = 0;
+      let dbToMapMs = 0;
       let rowCount = 0;
       const items = await listCalendarAppointmentsRange(organizationId, from, to, {
         employeeId: employeeParam,
@@ -6219,22 +6298,21 @@ apiRouter.get("/appointments", requireCalendarViewWithTiming, async (req, res) =
         onTiming: (t) => {
           dbMs = t.dbQueryMs;
           mapMs = t.mapMs;
-          serializeMs = t.serializeMs;
+          // service serialize is diagnostic only; handler jsonMs is the real response JSON.
           rowCount = t.rowCount;
+          dbToMapMs = 0;
         },
       });
-      applyTimingHeader({
+      finish({
+        payload: items,
         dbMs,
+        dbToMapMs,
         mapMs,
-        serializeMs,
-        poolWaitMs: null,
-        rowCount,
+        orgToDbMs,
         prismaCallCount: 1,
-        authDbRoundTrips: 0,
-        orgDbRoundTrips: 2,
         eventsDbRoundTrips: 1,
+        rowCount,
       });
-      res.json(items);
       return;
     }
 
@@ -6247,6 +6325,8 @@ apiRouter.get("/appointments", requireCalendarViewWithTiming, async (req, res) =
           ? { employeeId: null }
           : { employeeId: employeeParam };
 
+    const beforeDb = performance.now();
+    const orgToDbMs = roundMs(orgEnd, beforeDb);
     const dbT0 = performance.now();
     const appointments = await prisma.appointment.findMany({
       where: { organizationId, startTime: startTimeFilter, ...employeeFilter },
@@ -6269,6 +6349,7 @@ apiRouter.get("/appointments", requireCalendarViewWithTiming, async (req, res) =
     ]);
     const dbMs = Math.round(performance.now() - dbT0);
     const mapT0 = performance.now();
+    const dbToMapMs = 0;
     const projectionByAppointment = new Map(projections.map((item) => [item.appointmentId, item]));
     const nextByAppointment = new Map<string, Date>();
     for (const job of nextJobs) {
@@ -6290,21 +6371,16 @@ apiRouter.get("/appointments", requireCalendarViewWithTiming, async (req, res) =
         : null,
     }));
     const mapMs = Math.round(performance.now() - mapT0);
-    const serT0 = performance.now();
-    JSON.stringify(payload);
-    const serializeMs = Math.round(performance.now() - serT0);
-    applyTimingHeader({
+    finish({
+      payload,
       dbMs,
+      dbToMapMs,
       mapMs,
-      serializeMs,
-      poolWaitMs: null,
-      rowCount: payload.length,
+      orgToDbMs,
       prismaCallCount: 3,
-      authDbRoundTrips: 0,
-      orgDbRoundTrips: 2,
       eventsDbRoundTrips: 3,
+      rowCount: payload.length,
     });
-    res.json(payload);
   } catch (err) {
     if (err instanceof Error && (err.message.includes("from") || err.message.includes("to"))) {
       res.status(400).json({ error: err.message });

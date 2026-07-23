@@ -10,10 +10,31 @@ export type VerifiedTenant = {
   role: PlatformRole;
 };
 
+/**
+ * Request-scoped only (set by validateTenantMiddleware after DB verification).
+ * Never populate from client headers/query/body.
+ */
+export type RequestVerifiedTenant = {
+  userId: string;
+  organizationId: string;
+  role: PlatformRole;
+  /** Marker: tenant was verified server-side for this request. */
+  verified: true;
+};
+
 export type VerifiedTenantFailureReason =
   | "user_not_found"
   | "membership_denied"
   | "stale_organization_token";
+
+export function toRequestVerifiedTenant(tenant: VerifiedTenant): RequestVerifiedTenant {
+  return {
+    userId: tenant.userId,
+    organizationId: tenant.organizationId,
+    role: tenant.role,
+    verified: true,
+  };
+}
 
 /**
  * Resolve tenant exclusively from authenticated user + DB membership.

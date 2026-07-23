@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
-import { resolveVerifiedTenant } from "../services/tenant/verifiedTenant.js";
+import { resolveVerifiedTenant, toRequestVerifiedTenant } from "../services/tenant/verifiedTenant.js";
+import { isAppointmentsTimingPath } from "../lib/appointmentsEndpointTiming.js";
 import {
   FINANCIAL_INGESTION_CONTAINMENT_CODE,
   FINANCIAL_READ_CONTAINMENT_CODE,
@@ -28,7 +29,20 @@ export async function validateTenantMiddleware(
     return;
   }
 
+  const timingAppointments = isAppointmentsTimingPath(req.path);
+  const tenantT0 = timingAppointments ? performance.now() : 0;
+  if (timingAppointments) {
+    res.locals.appointmentsTenantStart = tenantT0;
+  }
+
   const { tenant, reason } = await resolveVerifiedTenant(req.auth);
+
+  if (timingAppointments) {
+    const tenantEnd = performance.now();
+    res.locals.appointmentsTenantEnd = tenantEnd;
+    res.locals.appointmentsTenantMs = Math.round(tenantEnd - tenantT0);
+  }
+
   if (!tenant) {
     console.warn(
       `[tenant-isolation] denied userId=${req.auth.userId} tokenOrg=${req.auth.organizationId} reason=${reason ?? "unknown"} path=${req.path}`,
@@ -48,6 +62,7 @@ export async function validateTenantMiddleware(
     organizationId: tenant.organizationId,
     email: tenant.email,
   };
+  req.verifiedTenant = toRequestVerifiedTenant(tenant);
   next();
 }
 

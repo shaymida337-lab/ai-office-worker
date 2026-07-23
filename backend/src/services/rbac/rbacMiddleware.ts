@@ -32,6 +32,7 @@ export function requirePermissionMiddleware(
       permission,
       sourceModule: "rbac",
       sourceRoute,
+      verifiedTenant: req.verifiedTenant ?? null,
     });
 
     if (!result.allowed) {

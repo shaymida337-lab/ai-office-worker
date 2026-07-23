@@ -25,8 +25,9 @@ export {
   getEffectivePermissions,
   forbiddenResponseBody,
   PermissionDeniedError,
+  tryReuseVerifiedTenantRole,
 } from "./authorization.js";
-export type { PermissionCheckInput, PermissionCheckResult } from "./authorization.js";
+export type { PermissionCheckInput, PermissionCheckResult, CheckPermissionDeps } from "./authorization.js";
 export { requirePermissionMiddleware, requirePerm } from "./rbacMiddleware.js";
 export {
   recordPermissionDeniedAudit,

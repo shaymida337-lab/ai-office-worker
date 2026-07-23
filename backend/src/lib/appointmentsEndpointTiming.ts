@@ -1,39 +1,79 @@
 /**
- * Safe timing helpers for GET /api/appointments Server-Timing.
+ * Safe timing helpers for GET /api/appointments Server-Timing (gap RCA).
  * Never logs tokens, org ids, appointment ids, PII, query strings, or DATABASE_URL.
  */
 import { createHash } from "crypto";
 
 export type AppointmentsEndpointTiming = {
-  requestReceivedAt: number;
+  preRouteMs: number;
   authMs: number;
+  /** auth_end → org_start (includes tenant + sync guards). */
+  authToOrgMs: number;
+  /** validateTenantMiddleware / resolveVerifiedTenant only. */
+  tenantMs: number;
   orgMs: number;
+  orgToDbMs: number;
   dbMs: number;
+  dbToMapMs: number;
   mapMs: number;
-  serializeMs: number;
+  jsonMs: number;
+  responseMs: number;
+  /** tenant + other post-auth sync middleware before RBAC. */
+  middlewareMs: number;
+  eventLoopMs: number | null;
+  unaccountedMs: number;
   totalMs: number;
-  /** Included in dbMs when not separately measurable via Prisma. */
-  poolWaitMs: number | null;
   rowCount: number;
   prismaCallCount: number;
   authDbRoundTrips: number;
+  /** resolveVerifiedTenant: user lookup + membership (sequential waves). */
+  tenantDbRoundTrips: number;
   orgDbRoundTrips: number;
   eventsDbRoundTrips: number;
 };
 
+/** Mutually exclusive phases that should sum ≈ total (authToOrg/middleware are aliases, not added twice). */
+export function accountedExclusiveMs(t: AppointmentsEndpointTiming): number {
+  return (
+    t.preRouteMs +
+    t.authMs +
+    t.tenantMs +
+    Math.max(0, t.middlewareMs - t.tenantMs) +
+    t.orgMs +
+    t.orgToDbMs +
+    t.dbMs +
+    t.dbToMapMs +
+    t.mapMs +
+    t.jsonMs +
+    t.responseMs
+  );
+}
+
+export function computeUnaccountedMs(t: Omit<AppointmentsEndpointTiming, "unaccountedMs">): number {
+  return Math.max(0, Math.round(t.totalMs - accountedExclusiveMs({ ...t, unaccountedMs: 0 })));
+}
+
 export function buildAppointmentsServerTiming(t: AppointmentsEndpointTiming): string {
-  const parts = [
+  return [
+    `pre_route;dur=${t.preRouteMs}`,
     `auth;dur=${t.authMs}`,
+    `auth_to_org;dur=${t.authToOrgMs}`,
+    `tenant;dur=${t.tenantMs}`,
     `org;dur=${t.orgMs}`,
+    `org_to_db;dur=${t.orgToDbMs}`,
     `db;dur=${t.dbMs}`,
+    `db_to_map;dur=${t.dbToMapMs}`,
     `map;dur=${t.mapMs}`,
-    `serialize;dur=${t.serializeMs}`,
+    `json;dur=${t.jsonMs}`,
+    `response;dur=${t.responseMs}`,
+    `middleware;dur=${t.middlewareMs}`,
+    `unaccounted;dur=${t.unaccountedMs}`,
     `total;dur=${t.totalMs}`,
-  ];
-  if (t.poolWaitMs != null) {
-    parts.splice(3, 0, `pool;dur=${t.poolWaitMs}`);
-  }
-  return parts.join(", ");
+  ].join(", ");
+}
+
+export function isAppointmentsTimingPath(path: string): boolean {
+  return path === "/appointments" || path.endsWith("/appointments");
 }
 
 /** Hostname topology only — never returns userinfo, path secrets, or full URL. */
@@ -81,7 +121,6 @@ export function prismaSingletonActive(prismaExport: unknown, globalPrisma: unkno
   return prismaExport != null && prismaExport === globalPrisma;
 }
 
-/** Fingerprint for correlating logs without leaking ids (optional). */
 export function timingRequestFingerprint(seed: string): string {
   return createHash("sha256").update(seed).digest("hex").slice(0, 10);
 }
@@ -94,16 +133,25 @@ export function logAppointmentsEndpointTimingSafe(
   console.info(
     "[calendar/appointments-endpoint timing]",
     JSON.stringify({
+      preRouteMs: t.preRouteMs,
       authMs: t.authMs,
+      authToOrgMs: t.authToOrgMs,
+      tenantMs: t.tenantMs,
       orgMs: t.orgMs,
+      orgToDbMs: t.orgToDbMs,
       dbMs: t.dbMs,
+      dbToMapMs: t.dbToMapMs,
       mapMs: t.mapMs,
-      serializeMs: t.serializeMs,
+      jsonMs: t.jsonMs,
+      responseMs: t.responseMs,
+      middlewareMs: t.middlewareMs,
+      eventLoopMs: t.eventLoopMs,
+      unaccountedMs: t.unaccountedMs,
       totalMs: t.totalMs,
-      poolWaitMs: t.poolWaitMs,
       rowCount: t.rowCount,
       prismaCallCount: t.prismaCallCount,
       authDbRoundTrips: t.authDbRoundTrips,
+      tenantDbRoundTrips: t.tenantDbRoundTrips,
       orgDbRoundTrips: t.orgDbRoundTrips,
       eventsDbRoundTrips: t.eventsDbRoundTrips,
       ...extra,

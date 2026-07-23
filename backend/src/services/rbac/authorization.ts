@@ -1,7 +1,8 @@
 import type { PlatformPermission, PlatformRole } from "./permissions.js";
-import { isPlatformPermission } from "./permissions.js";
+import { isPlatformPermission, isPlatformRole } from "./permissions.js";
 import { permissionsForRole, roleGrantsPermission } from "./roleMatrix.js";
 import { resolveMembershipRole } from "./membership.js";
+import type { RequestVerifiedTenant } from "../tenant/verifiedTenant.js";
 import { recordPermissionDeniedAudit } from "./rbacAudit.js";
 import { emitPermissionDeniedReliability } from "./rbacReliability.js";
 
@@ -11,6 +12,11 @@ export type PermissionCheckInput = {
   permission: PlatformPermission | string;
   sourceModule?: string;
   sourceRoute?: string | null;
+  /**
+   * Request-scoped tenant verified by validateTenantMiddleware (DB).
+   * Never accept values from client headers/query/body.
+   */
+  verifiedTenant?: RequestVerifiedTenant | null;
 };
 
 export type PermissionCheckResult = {
@@ -19,6 +25,12 @@ export type PermissionCheckResult = {
   role: PlatformRole | null;
   organizationId: string;
   reason: string;
+  /** How the role was obtained — for tests / Server-Timing. */
+  roleSource?: "verified_tenant" | "membership" | "none";
+};
+
+export type CheckPermissionDeps = {
+  resolveMembershipRole?: typeof resolveMembershipRole;
 };
 
 export class PermissionDeniedError extends Error {
@@ -36,7 +48,23 @@ export function getEffectivePermissions(role: PlatformRole): PlatformPermission[
   return [...permissionsForRole(role)];
 }
 
-export async function checkPermission(input: PermissionCheckInput): Promise<PermissionCheckResult> {
+/**
+ * Reuse request-scoped verified role only when userId + organizationId match exactly.
+ * Mismatch / missing marker → null (caller must fall back to membership).
+ */
+export function tryReuseVerifiedTenantRole(input: PermissionCheckInput): PlatformRole | null {
+  const vt = input.verifiedTenant;
+  if (!vt || vt.verified !== true) return null;
+  if (vt.userId !== input.userId) return null;
+  if (vt.organizationId !== input.organizationId) return null;
+  if (!isPlatformRole(vt.role)) return null;
+  return vt.role;
+}
+
+export async function checkPermission(
+  input: PermissionCheckInput,
+  deps: CheckPermissionDeps = {}
+): Promise<PermissionCheckResult> {
   const permission = input.permission;
   if (!isPlatformPermission(permission)) {
     return {
@@ -45,10 +73,27 @@ export async function checkPermission(input: PermissionCheckInput): Promise<Perm
       role: null,
       organizationId: input.organizationId,
       reason: `Unknown permission: ${permission}`,
+      roleSource: "none",
     };
   }
 
-  const membership = await resolveMembershipRole(input.userId, input.organizationId);
+  const reusedRole = tryReuseVerifiedTenantRole(input);
+  if (reusedRole) {
+    const allowed = roleGrantsPermission(reusedRole, permission);
+    return {
+      allowed,
+      permission,
+      role: reusedRole,
+      organizationId: input.organizationId,
+      reason: allowed
+        ? `${reusedRole} is allowed ${permission}`
+        : `Role ${reusedRole} does not have permission ${permission}`,
+      roleSource: "verified_tenant",
+    };
+  }
+
+  const resolveMembership = deps.resolveMembershipRole ?? resolveMembershipRole;
+  const membership = await resolveMembership(input.userId, input.organizationId);
   if (!membership) {
     return {
       allowed: false,
@@ -56,6 +101,7 @@ export async function checkPermission(input: PermissionCheckInput): Promise<Perm
       role: null,
       organizationId: input.organizationId,
       reason: "User is not a member of this organization",
+      roleSource: "membership",
     };
   }
 
@@ -68,6 +114,7 @@ export async function checkPermission(input: PermissionCheckInput): Promise<Perm
     reason: allowed
       ? `${membership.role} is allowed ${permission}`
       : `Role ${membership.role} does not have permission ${permission}`,
+    roleSource: "membership",
   };
 }
 

@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "crypto";
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 import { config } from "./config.js";
+import { isAppointmentsTimingPath } from "./appointmentsEndpointTiming.js";
 
 export type JwtPayload = {
   userId: string;
@@ -22,8 +23,12 @@ export function authMiddleware(
   res: Response,
   next: NextFunction
 ): void {
-  const timingAppointments = req.path === "/appointments" || req.path.endsWith("/appointments");
+  const timingAppointments = isAppointmentsTimingPath(req.path);
   const authT0 = timingAppointments ? performance.now() : 0;
+  if (timingAppointments) {
+    res.locals.appointmentsWallStart = res.locals.appointmentsWallStart ?? authT0;
+    res.locals.appointmentsAuthStart = authT0;
+  }
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) {
@@ -33,9 +38,10 @@ export function authMiddleware(
   try {
     req.auth = verifyToken(token);
     if (timingAppointments) {
-      res.locals.appointmentsAuthMs = Math.round(performance.now() - authT0);
-      res.locals.appointmentsRequestReceivedAt =
-        res.locals.appointmentsRequestReceivedAt ?? authT0;
+      const authEnd = performance.now();
+      res.locals.appointmentsAuthEnd = authEnd;
+      res.locals.appointmentsAuthMs = Math.round(authEnd - authT0);
+      res.locals.appointmentsRequestReceivedAt = res.locals.appointmentsWallStart ?? authT0;
     }
     next();
   } catch {
@@ -88,11 +94,22 @@ declare global {
   namespace Express {
     interface Request {
       auth?: JwtPayload;
+      /** Set only by validateTenantMiddleware after DB verification. Request-scoped. */
+      verifiedTenant?: import("../services/tenant/verifiedTenant.js").RequestVerifiedTenant;
     }
     interface Locals {
-      appointmentsAuthMs?: number;
+      appointmentsWallStart?: number;
       appointmentsRequestReceivedAt?: number;
+      appointmentsAuthStart?: number;
+      appointmentsAuthEnd?: number;
+      appointmentsAuthMs?: number;
+      appointmentsTenantStart?: number;
+      appointmentsTenantEnd?: number;
+      appointmentsTenantMs?: number;
+      appointmentsOrgStart?: number;
+      appointmentsOrgEnd?: number;
       appointmentsOrgMs?: number;
+      appointmentsOrgRoleSource?: string;
     }
   }
 }
