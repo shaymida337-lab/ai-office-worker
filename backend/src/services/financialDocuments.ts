@@ -1576,6 +1576,8 @@ export async function approveFinancialDocumentReview(
     health: "Healthy",
     metadata: { reviewId: approved.id, paymentId: payment.id },
   });
+  const { safeInvalidateDashboardBootstrap } = await import("./dashboardBootstrapCache.js");
+  safeInvalidateDashboardBootstrap(options?.userId, organizationId);
   return {
     review: approved,
     paymentId: payment.id,

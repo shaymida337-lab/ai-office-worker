@@ -13,6 +13,7 @@ import {
   checkUnifiedSchedulingConflictByDuration,
 } from "./calendar/schedulingConflict.js";
 import { withOrganizationSchedulingLock } from "./calendar/schedulingLock.js";
+import { safeInvalidateDashboardBootstrap } from "./dashboardBootstrapCache.js";
 
 export { resolveAppointmentDateTime } from "./calendar/datetime.js";
 
@@ -219,7 +220,7 @@ export async function createAppointmentForOrganization(params: {
     if (!params.userId) {
       throw new Error("userId is required when calendar engine write is enabled");
     }
-    return createAppointmentViaCalendarEngine({
+    const created = await createAppointmentViaCalendarEngine({
       organizationId: params.organizationId,
       userId: params.userId,
       clientId: params.clientId,
@@ -230,6 +231,8 @@ export async function createAppointmentForOrganization(params: {
       notes: params.notes,
       source: params.source,
     });
+    safeInvalidateDashboardBootstrap(params.userId, params.organizationId);
+    return created;
   }
 
   const appointment = await withOrganizationSchedulingLock(params.organizationId, async (tx) => {
@@ -288,6 +291,7 @@ export async function createAppointmentForOrganization(params: {
   void runAppointmentGoogleSync(appointment.id, { reason: "create" }).catch((syncErr) => {
     console.error("Failed to sync appointment to Google Calendar:", syncErr);
   });
+  safeInvalidateDashboardBootstrap(params.userId, params.organizationId);
   return appointment;
 }
 
@@ -320,6 +324,9 @@ export async function updateAppointmentForOrganization(params: {
       status: params.status,
       notes: params.notes,
       serviceId: params.serviceId,
+    }).then((appointment) => {
+      safeInvalidateDashboardBootstrap(params.userId, params.organizationId);
+      return appointment;
     });
   }
 
@@ -398,6 +405,7 @@ export async function updateAppointmentForOrganization(params: {
   }).catch((syncErr) => {
     console.error("Failed to sync appointment update to Google Calendar:", syncErr);
   });
+  safeInvalidateDashboardBootstrap(params.userId, params.organizationId);
   return appointment;
 }
 
@@ -411,14 +419,16 @@ export async function deleteAppointmentForOrganization(
     if (!userId) {
       throw new Error("userId is required when calendar engine write is enabled");
     }
-    return deleteAppointmentViaCalendarEngine({
+    const deleted = await deleteAppointmentViaCalendarEngine({
       organizationId,
       userId,
       appointmentId,
     });
+    safeInvalidateDashboardBootstrap(userId, organizationId);
+    return deleted;
   }
 
-  const existing = await withOrganizationSchedulingLock(organizationId, async (tx) => {
+  await withOrganizationSchedulingLock(organizationId, async (tx) => {
     const row = await tx.appointment.findFirst({
       where: { id: appointmentId, organizationId },
     });
@@ -429,5 +439,6 @@ export async function deleteAppointmentForOrganization(
     return row;
   });
 
+  safeInvalidateDashboardBootstrap(userId, organizationId);
   return { ok: true };
 }

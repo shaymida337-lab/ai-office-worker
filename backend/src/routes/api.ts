@@ -13,8 +13,14 @@ import { getDashboardStats, getMissingInvoicesReport } from "../services/dashboa
 import { getDashboardHomeMetrics } from "../services/dashboardHomeMetrics.js";
 import {
   assertDashboardBootstrapPayloadBounds,
-  getDashboardBootstrap,
+  getDashboardBootstrapCached,
 } from "../services/dashboardBootstrap.js";
+import {
+  buildDashboardBootstrapServerTiming,
+  computeUnaccountedMs as computeDashboardBootstrapUnaccountedMs,
+  logDashboardBootstrapTimingSafe,
+  type DashboardBootstrapEndpointTiming,
+} from "../lib/dashboardBootstrapServerTiming.js";
 import {
   assertCalendarBootstrapPayloadBounds,
   getCalendarBootstrap,
@@ -2800,12 +2806,77 @@ apiRouter.get("/dashboard/home-metrics", async (req, res) => {
 });
 
 apiRouter.get("/dashboard/bootstrap", async (req, res) => {
+  const wallStart = res.locals.dashboardBootstrapWallStart ?? performance.now();
+  const authStart = res.locals.dashboardBootstrapAuthStart ?? wallStart;
+  const authEnd = res.locals.dashboardBootstrapAuthEnd ?? authStart;
+  const tenantStart = res.locals.dashboardBootstrapTenantStart ?? authEnd;
+  const tenantEnd = res.locals.dashboardBootstrapTenantEnd ?? tenantStart;
+  const authMs = res.locals.dashboardBootstrapAuthMs ?? Math.max(0, Math.round(authEnd - authStart));
+  const tenantMs = res.locals.dashboardBootstrapTenantMs ?? Math.max(0, Math.round(tenantEnd - tenantStart));
+  const tenantCacheSource = res.locals.dashboardBootstrapTenantCacheSource ?? "unknown";
+  const tenantDbMs =
+    res.locals.dashboardBootstrapTenantDbMs ?? (tenantCacheSource === "hit" ? 0 : tenantMs);
+  const collectTiming = process.env.DASHBOARD_BOOTSTRAP_TIMING === "1";
+
   try {
-    const payload = await getDashboardBootstrap(req.auth!.organizationId, {
-      collectTiming: process.env.DASHBOARD_BOOTSTRAP_TIMING === "1",
+    const cached = await getDashboardBootstrapCached({
+      userId: req.auth!.userId,
+      organizationId: req.auth!.organizationId,
+      collectTiming,
     });
-    assertDashboardBootstrapPayloadBounds(payload);
-    res.json(payload);
+    assertDashboardBootstrapPayloadBounds(cached.payload);
+
+    const buildTiming = cached.timing;
+    const fromCache = cached.cacheSource === "hit" || cached.cacheSource === "stale";
+    const settingsMs = fromCache ? 0 : (buildTiming?.settingsWallMs ?? buildTiming?.organizationSettingsMs ?? 0);
+    const homeMetricsMs = fromCache ? 0 : (buildTiming?.homeMetricsWallMs ?? buildTiming?.metricsWaveMs ?? 0);
+    const gmailStatusMs = fromCache ? 0 : (buildTiming?.gmailStatusMs ?? 0);
+    const tasksMs = fromCache ? 0 : (buildTiming?.tasksPreviewMs ?? 0);
+    const queryWaitMs = fromCache ? 0 : (buildTiming?.queryWaitMs ?? 0);
+    const mapMs = fromCache ? 0 : (buildTiming?.mapMs ?? 0);
+
+    const serializeT0 = performance.now();
+    const body = JSON.stringify(cached.payload);
+    const serializeMs = Math.round(performance.now() - serializeT0);
+
+    const responseT0 = performance.now();
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    const responseMs = Math.round(performance.now() - responseT0);
+    const totalMs = Math.round(performance.now() - wallStart);
+
+    const timingBase: Omit<DashboardBootstrapEndpointTiming, "unaccountedMs"> = {
+      preRouteMs: Math.max(0, Math.round(authStart - wallStart)),
+      authMs,
+      tenantMs,
+      tenantDbMs,
+      organizationResolutionMs: 0,
+      settingsMs,
+      homeMetricsMs,
+      gmailStatusMs,
+      tasksMs,
+      queryWaitMs,
+      mapMs,
+      serializeMs,
+      responseMs,
+      middlewareMs: Math.max(0, Math.round(tenantEnd - authEnd)),
+      totalMs,
+      tenantDbRoundTrips: tenantCacheSource === "hit" ? 0 : 2,
+      orgLookupCount: cached.cacheSource === "hit" || cached.cacheSource === "stale" ? 0 : 1,
+      bootstrapCacheSource: cached.cacheSource,
+      bootstrapCacheAgeMs: cached.cacheAgeMs,
+      bootstrapBuildMs: cached.buildMs,
+    };
+    const timing: DashboardBootstrapEndpointTiming = {
+      ...timingBase,
+      unaccountedMs: computeDashboardBootstrapUnaccountedMs(timingBase),
+    };
+    res.setHeader("Server-Timing", buildDashboardBootstrapServerTiming(timing));
+    res.setHeader("X-Dashboard-Bootstrap-Cache", cached.cacheSource);
+    res.send(body);
+    logDashboardBootstrapTimingSafe(timing, {
+      tenantCacheSource,
+      tenantCacheAgeMs: res.locals.dashboardBootstrapTenantCacheAgeMs ?? null,
+    });
   } catch (err) {
     console.error("[dashboard/bootstrap] failed", err instanceof Error ? err.message : String(err));
     res.status(500).json({ error: "Failed to load dashboard bootstrap" });
@@ -5536,6 +5607,9 @@ async function deleteInvoiceArtifacts(organizationId: string, seed: InvoiceArtif
     `[invoice-delete] org=${organizationId} seed=${JSON.stringify(seed)} before=${JSON.stringify(before)} deleted=${JSON.stringify({ invoices: invoices.count, gmailScanItems: gmailScanItems.count, documentReviews: documentReviews.count })} after=${JSON.stringify(after)} unlinked=${JSON.stringify({ bankTransactions: bankMatches.count, whatsappMessages: whatsappMessages.count, tasks: tasks.count })}`
   );
 
+  const { safeInvalidateDashboardBootstrap } = await import("../services/dashboardBootstrapCache.js");
+  safeInvalidateDashboardBootstrap(undefined, organizationId);
+
   return {
     found: true as const,
     deleted: {
@@ -7433,6 +7507,8 @@ apiRouter.patch("/tasks/:id", async (req, res) => {
     res.status(404).json({ error: "Task not found" });
     return;
   }
+  const { safeInvalidateDashboardBootstrap } = await import("../services/dashboardBootstrapCache.js");
+  safeInvalidateDashboardBootstrap(req.auth!.userId, req.auth!.organizationId);
   res.json({ ok: true });
   } catch (err) {
     console.error("[tasks] patch failed", err);
@@ -7473,6 +7549,8 @@ apiRouter.put("/tasks/:id", async (req, res) => {
     res.status(404).json({ error: "Task not found" });
     return;
   }
+  const { safeInvalidateDashboardBootstrap } = await import("../services/dashboardBootstrapCache.js");
+  safeInvalidateDashboardBootstrap(req.auth!.userId, req.auth!.organizationId);
   res.json({ ok: true });
   } catch (err) {
     console.error("[tasks] put failed", err);
@@ -7489,6 +7567,8 @@ apiRouter.delete("/tasks/:id", async (req, res) => {
     res.status(404).json({ error: "Task not found" });
     return;
   }
+  const { safeInvalidateDashboardBootstrap } = await import("../services/dashboardBootstrapCache.js");
+  safeInvalidateDashboardBootstrap(req.auth!.userId, req.auth!.organizationId);
   res.json({ ok: true });
   } catch (err) {
     console.error("[tasks] delete failed", err);

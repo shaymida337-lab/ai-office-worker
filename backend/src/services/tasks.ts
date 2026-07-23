@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { safeInvalidateDashboardBootstrap } from "./dashboardBootstrapCache.js";
 
 const taskResponseSelect = {
   id: true,
@@ -16,7 +17,7 @@ export async function createTask(input: {
   status?: string;
   source?: string;
 }) {
-  return prisma.task.create({
+  const task = await prisma.task.create({
     data: {
       organizationId: input.organizationId,
       title: input.title,
@@ -28,13 +29,15 @@ export async function createTask(input: {
     },
     select: taskResponseSelect,
   });
+  safeInvalidateDashboardBootstrap(undefined, input.organizationId);
+  return task;
 }
 
 export async function completeTask(input: {
   organizationId: string;
   taskId: string;
 }) {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const updated = await tx.task.updateMany({
       where: {
         id: input.taskId,
@@ -59,6 +62,8 @@ export async function completeTask(input: {
       select: taskResponseSelect,
     });
   });
+  if (result) safeInvalidateDashboardBootstrap(undefined, input.organizationId);
+  return result;
 }
 
 export async function findTasksByPartialTitle(input: {

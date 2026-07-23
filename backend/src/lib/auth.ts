@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 import { config } from "./config.js";
 import { isAppointmentsTimingPath } from "./appointmentsEndpointTiming.js";
+import { isDashboardBootstrapTimingPath } from "./dashboardBootstrapServerTiming.js";
 
 export type JwtPayload = {
   userId: string;
@@ -24,10 +25,16 @@ export function authMiddleware(
   next: NextFunction
 ): void {
   const timingAppointments = isAppointmentsTimingPath(req.path);
-  const authT0 = timingAppointments ? performance.now() : 0;
+  const timingBootstrap = isDashboardBootstrapTimingPath(req.path);
+  const timing = timingAppointments || timingBootstrap;
+  const authT0 = timing ? performance.now() : 0;
   if (timingAppointments) {
     res.locals.appointmentsWallStart = res.locals.appointmentsWallStart ?? authT0;
     res.locals.appointmentsAuthStart = authT0;
+  }
+  if (timingBootstrap) {
+    res.locals.dashboardBootstrapWallStart = res.locals.dashboardBootstrapWallStart ?? authT0;
+    res.locals.dashboardBootstrapAuthStart = authT0;
   }
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
@@ -42,6 +49,11 @@ export function authMiddleware(
       res.locals.appointmentsAuthEnd = authEnd;
       res.locals.appointmentsAuthMs = Math.round(authEnd - authT0);
       res.locals.appointmentsRequestReceivedAt = res.locals.appointmentsWallStart ?? authT0;
+    }
+    if (timingBootstrap) {
+      const authEnd = performance.now();
+      res.locals.dashboardBootstrapAuthEnd = authEnd;
+      res.locals.dashboardBootstrapAuthMs = Math.round(authEnd - authT0);
     }
     next();
   } catch {
@@ -113,6 +125,16 @@ declare global {
       appointmentsOrgEnd?: number;
       appointmentsOrgMs?: number;
       appointmentsOrgRoleSource?: string;
+      dashboardBootstrapWallStart?: number;
+      dashboardBootstrapAuthStart?: number;
+      dashboardBootstrapAuthEnd?: number;
+      dashboardBootstrapAuthMs?: number;
+      dashboardBootstrapTenantStart?: number;
+      dashboardBootstrapTenantEnd?: number;
+      dashboardBootstrapTenantMs?: number;
+      dashboardBootstrapTenantCacheSource?: string;
+      dashboardBootstrapTenantCacheAgeMs?: number | null;
+      dashboardBootstrapTenantDbMs?: number;
     }
   }
 }

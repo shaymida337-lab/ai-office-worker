@@ -31,6 +31,15 @@ import {
 } from "./dashboardHomeMetrics.js";
 import { findActiveGmailScanLog } from "./gmailScanLifecycle.js";
 import { loadCrossOrgContaminatedGmailIdsForReads } from "./p0/financialReadIsolation.js";
+import {
+  dashboardBootstrapCacheKey,
+  getDashboardBootstrapCacheGeneration,
+  getDashboardBootstrapInflight,
+  peekDashboardBootstrapCache,
+  setDashboardBootstrapCache,
+  setDashboardBootstrapInflight,
+  type DashboardBootstrapCacheSource,
+} from "./dashboardBootstrapCache.js";
 
 export const DASHBOARD_BOOTSTRAP_TASKS_PREVIEW_LIMIT = 8;
 export const DASHBOARD_BOOTSTRAP_MAX_PAYLOAD_BYTES = 50 * 1024;
@@ -69,16 +78,30 @@ export type DashboardBootstrapTiming = {
   metricsWaveMs: number;
   gmailStatusMs: number;
   tasksPreviewMs: number;
+  settingsWallMs: number;
+  homeMetricsWallMs: number;
+  gmailTasksWallMs: number;
+  queryWaitMs: number;
+  mapMs: number;
   serializeMs: number;
   totalMs: number;
   queryGroupCount: number;
   organizationLookupCount: number;
+  dbRoundTripsEstimate: number;
 };
 
 export type GetDashboardBootstrapOptions = {
   collectTiming?: boolean;
   onTiming?: (timing: DashboardBootstrapTiming) => void;
   now?: Date;
+};
+
+export type DashboardBootstrapCachedResult = {
+  payload: DashboardBootstrapPayload;
+  cacheSource: DashboardBootstrapCacheSource;
+  cacheAgeMs: number | null;
+  buildMs: number;
+  timing: DashboardBootstrapTiming | null;
 };
 
 async function timedMs<T>(fn: () => Promise<T>): Promise<{ value: T; ms: number }> {
@@ -89,7 +112,7 @@ async function timedMs<T>(fn: () => Promise<T>): Promise<{ value: T; ms: number 
 
 /**
  * Single Organization identity load for bootstrap: settings fields + calendar flags.
- * Mirrors getOrganizationSettings assembly so UI contract stays identical.
+ * One Prisma findUnique (no second raw SQL round-trip).
  */
 async function loadBootstrapOrganization(organizationId: string): Promise<{
   settings: OrganizationSettings;
@@ -110,6 +133,11 @@ async function loadBootstrapOrganization(organizationId: string): Promise<{
       timeFormat: true,
       weekStart: true,
       phoneCountryCode: true,
+      businessType: true,
+      enabledModules: true,
+      businessSize: true,
+      mainBusinessPain: true,
+      onboardingCompleted: true,
       calendarEngineReadEnabled: true,
       calendarEngineWriteEnabled: true,
       calendarEngineGoogleMirrorEnabled: true,
@@ -117,26 +145,11 @@ async function loadBootstrapOrganization(organizationId: string): Promise<{
   });
   if (!organization) throw new Error("Organization not found");
 
-  const configRows = await prisma
-    .$queryRawUnsafe<
-      Array<{
-        business_type: string | null;
-        enabled_modules: unknown;
-        business_size: string | null;
-        main_business_pain: string | null;
-        onboarding_completed: boolean | null;
-      }>
-    >(
-      'SELECT "business_type", "enabled_modules", "business_size", "main_business_pain", "onboarding_completed" FROM "Organization" WHERE "id" = $1 LIMIT 1',
-      organizationId
-    )
-    .catch(() => []);
-
-  const businessType = normalizeBusinessType(configRows[0]?.business_type);
-  const businessSize = normalizeBusinessSize(configRows[0]?.business_size);
-  const mainBusinessPain = normalizeBusinessPain(configRows[0]?.main_business_pain);
+  const businessType = normalizeBusinessType(organization.businessType);
+  const businessSize = normalizeBusinessSize(organization.businessSize);
+  const mainBusinessPain = normalizeBusinessPain(organization.mainBusinessPain);
   const enabledModules = normalizeEnabledModules(
-    configRows[0]?.enabled_modules,
+    organization.enabledModules,
     businessType,
     businessSize,
     mainBusinessPain
@@ -146,6 +159,11 @@ async function loadBootstrapOrganization(organizationId: string): Promise<{
     calendarEngineReadEnabled,
     calendarEngineWriteEnabled,
     calendarEngineGoogleMirrorEnabled,
+    businessType: _bt,
+    enabledModules: _em,
+    businessSize: _bs,
+    mainBusinessPain: _mp,
+    onboardingCompleted,
     ...settingsBase
   } = organization;
 
@@ -155,8 +173,8 @@ async function loadBootstrapOrganization(organizationId: string): Promise<{
     businessSize,
     mainBusinessPain,
     enabledModules,
-    onboardingCompleted: configRows[0]?.onboarding_completed ?? true,
-    onboardingRequired: !(configRows[0]?.onboarding_completed ?? true),
+    onboardingCompleted: onboardingCompleted ?? true,
+    onboardingRequired: !(onboardingCompleted ?? true),
     recommendedModules: recommendedModulesFor(businessType, businessSize, mainBusinessPain),
     businessProfile: buildBusinessProfile(businessType),
     template: BUSINESS_TEMPLATES.find((template) => template.id === businessType) ?? BUSINESS_TEMPLATES[7],
@@ -242,6 +260,7 @@ export async function getDashboardBootstrap(
   const totalT0 = performance.now();
 
   // Wave A — org once ∥ contaminated (≤2 significant groups, pool-safe)
+  const waveA0 = performance.now();
   const orgTimedP = collect
     ? timedMs(() => loadBootstrapOrganization(organizationId))
     : loadBootstrapOrganization(organizationId).then((value) => ({ value, ms: 0 }));
@@ -249,6 +268,7 @@ export async function getDashboardBootstrap(
     ? timedMs(() => loadCrossOrgContaminatedGmailIdsForReads())
     : loadCrossOrgContaminatedGmailIdsForReads().then((value) => ({ value, ms: 0 }));
   const [orgTimed, contaminatedTimed] = await Promise.all([orgTimedP, contaminatedTimedP]);
+  const settingsWallMs = Math.round(performance.now() - waveA0);
   const { settings, calendarFlags } = orgTimed.value;
   const contaminatedGmailIds = contaminatedTimed.value;
   const timeZone = settings.timezone?.trim() || DEFAULT_TIMEZONE;
@@ -275,6 +295,7 @@ export async function getDashboardBootstrap(
   };
 
   // Wave C — gmail ∥ tasks after counters release pool slots (gmail uses ≤3 internal queries)
+  const waveC0 = performance.now();
   const gmailTimedP = collect
     ? timedMs(() => resolveGmailBootstrapStatusFromDb(organizationId))
     : resolveGmailBootstrapStatusFromDb(organizationId).then((value) => ({ value, ms: 0 }));
@@ -282,12 +303,16 @@ export async function getDashboardBootstrap(
     ? timedMs(() => loadDashboardTasksPreview(organizationId))
     : loadDashboardTasksPreview(organizationId).then((value) => ({ value, ms: 0 }));
   const [gmailTimed, tasksTimed] = await Promise.all([gmailTimedP, tasksTimedP]);
-  const serializeT0 = performance.now();
+  const gmailTasksWallMs = Math.round(performance.now() - waveC0);
+
+  const mapT0 = performance.now();
   const displayName =
     (typeof settings.businessName === "string" && settings.businessName.trim()) ||
     (typeof settings.name === "string" && settings.name.trim()) ||
     "העסק שלי";
+  const mapMs = Math.round(performance.now() - mapT0);
 
+  const serializeT0 = performance.now();
   const payload: DashboardBootstrapPayload = {
     organizationSettings: {
       ...settings,
@@ -305,6 +330,11 @@ export async function getDashboardBootstrap(
     generatedAt: now.toISOString(),
   };
   const serializeMs = Math.round(performance.now() - serializeT0);
+  const totalMs = Math.round(performance.now() - totalT0);
+  const queryWaitMs = Math.max(
+    0,
+    totalMs - settingsWallMs - metricsWaveMs - gmailTasksWallMs - mapMs - serializeMs
+  );
 
   if (collect) {
     const timing: DashboardBootstrapTiming = {
@@ -313,18 +343,158 @@ export async function getDashboardBootstrap(
       metricsWaveMs,
       gmailStatusMs: gmailTimed.ms,
       tasksPreviewMs: tasksTimed.ms,
+      settingsWallMs,
+      homeMetricsWallMs: metricsWaveMs,
+      gmailTasksWallMs,
+      queryWaitMs,
+      mapMs,
       serializeMs,
-      totalMs: Math.round(performance.now() - totalT0),
+      totalMs,
       queryGroupCount: 5,
       organizationLookupCount: 1,
+      // Wave A: 1 org + contaminated; Wave B: ≤5 counts; Wave C: ≤3 gmail + 1 tasks
+      dbRoundTripsEstimate: 1 + 1 + 5 + 3 + 1,
     };
     options?.onTiming?.(timing);
-    if (process.env.DASHBOARD_BOOTSTRAP_TIMING === "1") {
-      console.info("[dashboard/bootstrap timing]", JSON.stringify(timing));
-    }
   }
 
   return payload;
+}
+
+/**
+ * Process-local fresh/stale/inflight cache over getDashboardBootstrap.
+ * Key: userId + organizationId only.
+ */
+export async function getDashboardBootstrapCached(input: {
+  userId: string;
+  organizationId: string;
+  collectTiming?: boolean;
+  now?: Date;
+  /** When true, skip cache (tests). */
+  bypassCache?: boolean;
+}): Promise<DashboardBootstrapCachedResult> {
+  const { userId, organizationId } = input;
+  if (input.bypassCache) {
+    let timing: DashboardBootstrapTiming | null = null;
+    const buildT0 = performance.now();
+    const payload = await getDashboardBootstrap(organizationId, {
+      collectTiming: input.collectTiming,
+      now: input.now,
+      onTiming: (t) => {
+        timing = t;
+      },
+    });
+    return {
+      payload,
+      cacheSource: "bypass",
+      cacheAgeMs: null,
+      buildMs: Math.round(performance.now() - buildT0),
+      timing,
+    };
+  }
+
+  const key = dashboardBootstrapCacheKey(userId, organizationId);
+  const peeked = peekDashboardBootstrapCache(userId, organizationId);
+  if (peeked?.freshness === "fresh") {
+    return {
+      payload: peeked.entry.payload,
+      cacheSource: "hit",
+      cacheAgeMs: Math.max(0, Date.now() - peeked.entry.loadedAt),
+      buildMs: 0,
+      timing: null,
+    };
+  }
+
+  if (peeked?.freshness === "stale") {
+    scheduleDashboardBootstrapRefresh({ userId, organizationId, now: input.now });
+    return {
+      payload: peeked.entry.payload,
+      cacheSource: "stale",
+      cacheAgeMs: Math.max(0, Date.now() - peeked.entry.loadedAt),
+      buildMs: 0,
+      timing: null,
+    };
+  }
+
+  const existing = getDashboardBootstrapInflight<DashboardBootstrapCachedResult>(key);
+  if (existing) {
+    const shared = await existing;
+    return {
+      ...shared,
+      cacheSource: shared.cacheSource === "miss" ? "inflight" : shared.cacheSource,
+    };
+  }
+
+  const buildPromise = setDashboardBootstrapInflight(
+    key,
+    (async (): Promise<DashboardBootstrapCachedResult> => {
+      const generationAtStart = getDashboardBootstrapCacheGeneration(userId, organizationId);
+      let timing: DashboardBootstrapTiming | null = null;
+      const buildT0 = performance.now();
+      const payload = await getDashboardBootstrap(organizationId, {
+        collectTiming: input.collectTiming,
+        now: input.now,
+        onTiming: (t) => {
+          timing = t;
+        },
+      });
+      const buildMs = Math.round(performance.now() - buildT0);
+      assertDashboardBootstrapPayloadBounds(payload);
+      setDashboardBootstrapCache({ userId, organizationId, payload, generationAtStart });
+      return {
+        payload,
+        cacheSource: "miss",
+        cacheAgeMs: null,
+        buildMs,
+        timing,
+      };
+    })()
+  );
+
+  return buildPromise;
+}
+
+function scheduleDashboardBootstrapRefresh(input: {
+  userId: string;
+  organizationId: string;
+  now?: Date;
+}): void {
+  const key = dashboardBootstrapCacheKey(input.userId, input.organizationId);
+  if (getDashboardBootstrapInflight(key)) return;
+
+  const generationAtStart = getDashboardBootstrapCacheGeneration(input.userId, input.organizationId);
+  void setDashboardBootstrapInflight(
+    key,
+    (async () => {
+      try {
+        const payload = await getDashboardBootstrap(input.organizationId, { now: input.now });
+        assertDashboardBootstrapPayloadBounds(payload);
+        setDashboardBootstrapCache({
+          userId: input.userId,
+          organizationId: input.organizationId,
+          payload,
+          generationAtStart,
+        });
+        return {
+          payload,
+          cacheSource: "miss" as const,
+          cacheAgeMs: null,
+          buildMs: 0,
+          timing: null,
+        };
+      } catch {
+        // Keep stale on refresh failure.
+        const stale = peekDashboardBootstrapCache(input.userId, input.organizationId);
+        return {
+          payload: stale!.entry.payload,
+          cacheSource: "stale" as const,
+          cacheAgeMs: null,
+          buildMs: 0,
+          timing: null,
+        };
+      }
+    })()
+  );
 }
 
 export function assertDashboardBootstrapPayloadBounds(payload: DashboardBootstrapPayload): void {
@@ -345,3 +515,8 @@ export const DASHBOARD_BOOTSTRAP_FORBIDDEN_IMPORT_MARKERS = [
   "googleapis",
   "resolveGmailConnectionStatus",
 ] as const;
+
+export {
+  invalidateDashboardBootstrap,
+  safeInvalidateDashboardBootstrap,
+} from "./dashboardBootstrapCache.js";

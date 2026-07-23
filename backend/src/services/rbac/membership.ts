@@ -2,6 +2,7 @@ import { prisma } from "../../lib/prisma.js";
 import type { PlatformRole } from "./permissions.js";
 import { isPlatformRole } from "./permissions.js";
 import { invalidateVerifiedTenant } from "../tenant/verifiedTenantCache.js";
+import { safeInvalidateDashboardBootstrap } from "../dashboardBootstrapCache.js";
 
 export type ResolvedMembership = {
   userId: string;
@@ -71,6 +72,7 @@ export async function ensureOwnerMembership(
     update: { role: "owner" },
   });
   invalidateVerifiedTenant(userId, organizationId);
+  safeInvalidateDashboardBootstrap(userId, organizationId);
 }
 
 export async function listOrganizationMembers(organizationId: string, db: MembershipDb = prisma) {

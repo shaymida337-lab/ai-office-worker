@@ -305,6 +305,8 @@ export async function updateOrganizationBusinessSettings(
     phoneCountryCode,
     organizationId
   );
+  const { safeInvalidateDashboardBootstrap } = await import("./dashboardBootstrapCache.js");
+  safeInvalidateDashboardBootstrap(undefined, organizationId);
   return getOrganizationSettings(organizationId);
 }
 

@@ -308,6 +308,8 @@ integrationsRouter.delete("/gmail", authMiddleware, requirePerm("integrations.gm
       metadata: { gmail: true, drive: true },
     });
   }
+  const { safeInvalidateDashboardBootstrap } = await import("../services/dashboardBootstrapCache.js");
+  safeInvalidateDashboardBootstrap(req.auth!.userId, req.auth!.organizationId);
   res.json({ ok: true });
 });
 
@@ -555,6 +557,9 @@ integrationsRouter.get("/gmail/callback", async (req, res) => {
       });
     }
     runPostConnectionGmailScan(organizationId);
+
+    const { safeInvalidateDashboardBootstrap } = await import("../services/dashboardBootstrapCache.js");
+    safeInvalidateDashboardBootstrap(decodedState?.userId, organizationId);
 
     clearGmailStateCookie(res);
     console.log(

@@ -4,6 +4,7 @@ import { buildRealStaleLeadWhere } from "./crm/leadQuality.js";
 import { assertOutboundEmailAllowed } from "./google.js";
 import { buildNatalieLeadReminder, buildNatalieStaleLeadsBatch, NATALIE_BRAND } from "./whatsapp/natalieWhatsAppUx.js";
 import { sendWhatsAppMessage, sendWhatsAppToPhone } from "./whatsapp.js";
+import { safeInvalidateDashboardBootstrap } from "./dashboardBootstrapCache.js";
 
 export {
   countCrmActiveCustomers,
@@ -327,6 +328,7 @@ export async function createCrmLead(organizationId: string, input: LeadInput, cr
   await seedDefaultTemplates(organizationId);
   if (startSequence) await createLeadSequence(lead.id);
   await notifyAgent(organizationId, `ליד חדש הגיע: ${lead.name}${lead.phone ? ` (${lead.phone})` : ""}`);
+  safeInvalidateDashboardBootstrap(undefined, organizationId);
   return getCrmLead(organizationId, lead.id);
 }
 
@@ -360,6 +362,7 @@ export async function updateCrmLead(organizationId: string, leadId: string, inpu
     await notifyAgent(organizationId, `הליד ${lead.name} עבר לסגור - ניצחון`);
   }
 
+  safeInvalidateDashboardBootstrap(undefined, organizationId);
   return getCrmLead(organizationId, lead.id);
 }
 

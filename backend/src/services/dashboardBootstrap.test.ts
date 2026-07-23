@@ -75,6 +75,11 @@ function installBootstrapMocks(options?: {
       timeFormat: "24h",
       weekStart: "sunday",
       phoneCountryCode: "IL",
+      businessType: "insurance_agency",
+      enabledModules: ["crm", "tasks"],
+      businessSize: "solo",
+      mainBusinessPain: "leads",
+      onboardingCompleted: true,
       calendarEngineReadEnabled: false,
       calendarEngineWriteEnabled: false,
       calendarEngineGoogleMirrorEnabled: false,
@@ -85,17 +90,6 @@ function installBootstrapMocks(options?: {
     if (typeof sql === "string" && sql.includes('FROM "Lead"') && sql.includes("FILTER")) {
       assert.equal(params[0], ORG);
       return [{ active: options?.leadActive ?? 41, neu: options?.leadNew ?? 38 }];
-    }
-    if (typeof sql === "string" && sql.includes("business_type")) {
-      return [
-        {
-          business_type: "insurance_agency",
-          enabled_modules: ["crm", "tasks"],
-          business_size: "solo",
-          main_business_pain: "leads",
-          onboarding_completed: true,
-        },
-      ];
     }
     return [];
   }) as typeof prisma.$queryRawUnsafe;

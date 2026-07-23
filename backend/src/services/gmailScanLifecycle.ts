@@ -713,6 +713,10 @@ async function terminalizeGmailScan(
     },
   });
   logScanLifecycle(scanId, status, errorMessage ? `reason=${errorMessage}` : undefined);
+  if (log.organizationId) {
+    const { safeInvalidateDashboardBootstrap } = await import("./dashboardBootstrapCache.js");
+    safeInvalidateDashboardBootstrap(undefined, log.organizationId);
+  }
   if (status === "completed") {
     await completeJobRun({ jobType: GMAIL_SCAN_JOB_TYPE, referenceId: scanId });
   } else if (status === "failed") {
