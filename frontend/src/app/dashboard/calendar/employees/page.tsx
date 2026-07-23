@@ -14,6 +14,7 @@ import {
   StatusBadge,
 } from "@/components/natalie-ui";
 import { apiFetch } from "@/lib/api";
+import { invalidateCalendarBootstrap } from "@/lib/calendar/calendarBootstrapStore";
 import { ArrowRight, Pencil, Plus, Trash2, X } from "lucide-react";
 
 /**
@@ -170,6 +171,7 @@ export default function CalendarEmployeesPage() {
         await apiFetch("/api/employees", { method: "POST", body: JSON.stringify(body) });
         setMessage("העובד נוסף בהצלחה");
       }
+      invalidateCalendarBootstrap();
       setShowForm(false);
       setEditingId(null);
       setForm(emptyForm);
@@ -188,6 +190,7 @@ export default function CalendarEmployeesPage() {
         method: "PATCH",
         body: JSON.stringify({ isActive: !employee.isActive }),
       });
+      invalidateCalendarBootstrap();
       setMessage(employee.isActive ? "העובד הושבת — לא ניתן לקבוע לו תורים חדשים" : "העובד הופעל מחדש");
       await loadEmployees();
     } catch (err) {
@@ -200,6 +203,7 @@ export default function CalendarEmployeesPage() {
     setMessage("");
     try {
       await apiFetch(`/api/employees/${employee.id}`, { method: "DELETE" });
+      invalidateCalendarBootstrap();
       setMessage("העובד נמחק");
       if (scheduleEmployeeId === employee.id) setScheduleEmployeeId(null);
       await loadEmployees();

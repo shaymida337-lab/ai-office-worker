@@ -5,6 +5,7 @@ import {
   type PublicHealthResponse,
 } from "./systemDeployStatus";
 import { clearDashboardBootstrapCacheNow } from "@/lib/dashboard/dashboardBootstrapCacheClear";
+import { clearAllCalendarCachesNow } from "@/lib/calendar/calendarBootstrapCacheClear";
 import { clearLeadAdminSummaryCacheNow } from "@/lib/admin/leadAdminSummaryCacheClear";
 import { clearOrganizationSettingsCacheNow } from "@/lib/organization/organizationSettingsCacheClear";
 
@@ -38,6 +39,7 @@ export function clearAllAuthTokens(): void {
   clearOrganizationSettingsCacheNow();
   clearLeadAdminSummaryCacheNow();
   clearDashboardBootstrapCacheNow();
+  clearAllCalendarCachesNow();
 }
 
 export function clearToken(): void {

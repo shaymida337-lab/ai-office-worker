@@ -15,6 +15,10 @@ import {
   assertDashboardBootstrapPayloadBounds,
   getDashboardBootstrap,
 } from "../services/dashboardBootstrap.js";
+import {
+  assertCalendarBootstrapPayloadBounds,
+  getCalendarBootstrap,
+} from "../services/calendarBootstrap.js";
 import { buildDailySummary } from "../services/summary.js";
 import {
   getWhatsAppSettings,
@@ -6065,6 +6069,41 @@ apiRouter.get("/scheduling/capabilities", requireCalendarView, async (req, res) 
   } catch (err) {
     res.status(500).json({
       error: err instanceof Error ? err.message : "Failed to load scheduling capabilities",
+    });
+  }
+});
+
+apiRouter.get("/calendar/bootstrap", requireCalendarView, async (req, res) => {
+  try {
+    const payload = await getCalendarBootstrap(req.auth!.organizationId, {
+      collectTiming: process.env.CALENDAR_BOOTSTRAP_TIMING === "1",
+    });
+    assertCalendarBootstrapPayloadBounds(payload);
+    res.json(payload);
+  } catch (err) {
+    console.error("[calendar/bootstrap] failed", err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: "Failed to load calendar bootstrap" });
+  }
+});
+
+apiRouter.get("/calendar/clients/search", requireCalendarView, async (req, res) => {
+  try {
+    const { searchCalendarClients } = await import("../services/calendarClientSearch.js");
+    const q = typeof req.query.q === "string" ? req.query.q : undefined;
+    const id = typeof req.query.id === "string" ? req.query.id : undefined;
+    if (!q?.trim() && !id?.trim()) {
+      res.status(400).json({ error: "q or id is required" });
+      return;
+    }
+    const clients = await searchCalendarClients({
+      organizationId: req.auth!.organizationId,
+      query: q,
+      clientId: id,
+    });
+    res.json({ clients });
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Failed to search calendar clients",
     });
   }
 });

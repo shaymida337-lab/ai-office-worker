@@ -27,22 +27,40 @@ import {
 } from "@/components/natalie-ui";
 import { apiFetch, ApiError, getToken } from "@/lib/api";
 import { invalidateDashboardBootstrap } from "@/lib/dashboard/dashboardBootstrapStore";
+import {
+  getCachedCalendarBootstrap,
+  invalidateCalendarBootstrap,
+  loadCalendarBootstrap,
+  getCalendarBootstrapDebugCounters,
+  type CalendarBootstrapPayload,
+} from "@/lib/calendar/calendarBootstrapStore";
+import {
+  buildCalendarEventsRangeKey,
+  getCachedCalendarEvents,
+  getCalendarEventsDebugCounters,
+  invalidateAllCalendarEvents,
+  loadCalendarEvents,
+} from "@/lib/calendar/calendarEventsStore";
+import { calendarFpDebugLog, isCalendarFpDebugEnabled } from "@/lib/calendar/calendarFpDebug";
+import { runCalendarFirstPaintPhases } from "@/lib/calendar/calendarLoadPlan";
+import { resolveCalendarEventsStrategy } from "@/lib/calendar/calendarEventsStrategy";
+import {
+  mergeCalendarClientOptions,
+  searchCalendarClientsOnDemand,
+} from "@/lib/calendar/calendarClientSearch";
 import { loadOrganizationSettings } from "@/lib/organization/organizationSettingsStore";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { useI18n } from "@/i18n";
 import { dateInputValueInTimeZone, timeInputValueInTimeZone } from "@/lib/orgTimezone";
 import {
   buildEndAtIso,
-  calendarEventsToDisplayItems,
   type CalendarDisplayItem,
   isEngineDisplayItem,
 } from "@/lib/calendarEngine/adapters";
 import {
   CalendarEngineUnavailableError,
   createCalendarEventDraft,
-  fetchCalendarEvents,
   resolveCalendarCreateStrategy,
-  resolveCalendarLoadStrategy,
   submitCalendarEventForConfirmation,
   submitConfirmationUserMessage,
 } from "@/lib/calendarEngine/api";
@@ -54,7 +72,6 @@ import {
 import {
   effectiveCalendarEngineRead,
   effectiveCalendarEngineWrite,
-  fetchSchedulingCapabilities,
   type SchedulingCapabilities,
 } from "@/lib/scheduling/capabilities";
 import { getDayBounds, getMonthBounds, startOfMonth, addMonths, formatMonthTitle, type CalendarViewMode } from "@/lib/calendarUtils";
@@ -122,10 +139,6 @@ type Appointment = {
 function appointmentToDisplayItem(appt: Appointment): CalendarDisplayItem {
   return { ...appt, source: "appointment" };
 }
-
-type ClientsResponse = {
-  clients: ApptClient[];
-};
 
 const APPOINTMENT_STATUS_OPTIONS = ["pending", "confirmed", "completed", "cancelled", "no_show"] as const;
 const DEFAULT_COLOR = "#3B82F6";
@@ -283,6 +296,8 @@ export default function CalendarPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [formClientId, setFormClientId] = useState("");
+  const [clientSearchQuery, setClientSearchQuery] = useState("");
+  const [clientSearchBusy, setClientSearchBusy] = useState(false);
   const [formServiceId, setFormServiceId] = useState("");
   const [formEmployeeId, setFormEmployeeId] = useState("");
   const [formDate, setFormDate] = useState("");
@@ -407,63 +422,166 @@ export default function CalendarPage() {
     }
   }
 
+  const applyBootstrapPayload = useCallback((payload: CalendarBootstrapPayload) => {
+    setSchedulingCapabilities(payload.capabilities);
+    setCalendarConnected(payload.connectionStatus.connected);
+    setServices(
+      payload.services.map((service) => ({
+        id: service.id,
+        name: service.name,
+        durationMinutes: service.durationMinutes,
+        price: service.price,
+        color: service.color,
+        isActive: service.isActive,
+        employeeIds: service.employeeIds,
+      }))
+    );
+    setEmployees(
+      payload.employees.map((employee) => ({
+        id: employee.id,
+        name: employee.name,
+        color: employee.color,
+        isActive: employee.isActive,
+      }))
+    );
+    setClients(
+      payload.clientsSummary.map((client) => ({
+        id: client.id,
+        name: client.name,
+        phone: client.phone,
+      }))
+    );
+  }, []);
+
+  const resolveVisibleRange = useCallback(() => {
+    return viewMode === "day"
+      ? getDayBounds(selectedDay)
+      : viewMode === "month"
+        ? getMonthBounds(monthAnchor)
+        : { from: weekStart, to: addDays(weekStart, 7) };
+  }, [viewMode, selectedDay, monthAnchor, weekStart]);
+
   const loadAppointments = useCallback(async () => {
-    setLoading(true);
+    const origin = performance.now();
+    if (isCalendarFpDebugEnabled()) {
+      calendarFpDebugLog("calendar_mount", { sinceMountMs: 0 });
+    }
     setEngineDisabledBanner(null);
-    try {
-      const range =
-        viewMode === "day"
-          ? getDayBounds(selectedDay)
-          : viewMode === "month"
-            ? getMonthBounds(monthAnchor)
-            : { from: weekStart, to: addDays(weekStart, 7) };
-      const from = range.from.toISOString();
-      const to = range.to.toISOString();
-      const loadStrategy = resolveCalendarLoadStrategy(engineReadEnabled);
 
-      const [svcData, clientData, employeeData] = await Promise.all([
-        apiFetch<Service[]>("/api/services"),
-        apiFetch<ClientsResponse>("/api/clients"),
-        // כשל בטעינת עובדים לא מפיל את היומן — פשוט אין סינון עובדים
-        apiFetch<CalendarEmployee[]>("/api/employees").catch(() => [] as CalendarEmployee[]),
-      ]);
-      setServices(svcData);
-      setClients(clientData.clients);
-      setEmployees(employeeData);
+    const range = resolveVisibleRange();
+    const from = range.from.toISOString();
+    const to = range.to.toISOString();
+    const cachedBootstrap = getCachedCalendarBootstrap();
 
-      const employeeQuery = employeeFilter !== "all" ? `&employeeId=${encodeURIComponent(employeeFilter)}` : "";
+    if (cachedBootstrap) {
+      applyBootstrapPayload(cachedBootstrap);
+      calendarFpDebugLog("cache_source", {
+        kind: "bootstrap",
+        source: "memory",
+        sinceMountMs: Math.round(performance.now() - origin),
+      });
+    }
 
-      if (loadStrategy === "calendar_engine") {
+    const strategyPreview = resolveCalendarEventsStrategy({
+      cachedCapabilities: cachedBootstrap?.capabilities,
+      liveCapabilities: schedulingCapabilities,
+    });
+    const previewRangeKey = buildCalendarEventsRangeKey({
+      fromIso: from,
+      toIso: to,
+      employeeFilter,
+      engineRead: strategyPreview.engineRead,
+    });
+    const cachedEvents = strategyPreview.known ? getCachedCalendarEvents(previewRangeKey) : null;
+    if (cachedEvents) {
+      setAppointments(cachedEvents);
+      calendarFpDebugLog("first_events_render", {
+        sinceMountMs: Math.round(performance.now() - origin),
+        cache_source: "memory",
+        count: cachedEvents.length,
+      });
+    }
+    setLoading(false);
+    calendarFpDebugLog("first_grid_render", {
+      sinceMountMs: Math.round(performance.now() - origin),
+      cache_source: cachedEvents ? "memory" : "shell",
+    });
+
+    await runCalendarFirstPaintPhases({
+      cachedCapabilities: cachedBootstrap?.capabilities,
+      liveCapabilities: schedulingCapabilities,
+      onFirstGridReady: () => {
+        calendarFpDebugLog("first_grid_render", {
+          sinceMountMs: Math.round(performance.now() - origin),
+          cache_source: cachedEvents ? "memory" : "pending",
+        });
+      },
+      onError: (err) => {
+        setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה");
+      },
+      loadBootstrap: async () => {
+        calendarFpDebugLog("calendar_bootstrap_start", {
+          sinceMountMs: Math.round(performance.now() - origin),
+        });
+        const { payload, cacheSource } = await loadCalendarBootstrap();
+        applyBootstrapPayload(payload);
+        calendarFpDebugLog("calendar_bootstrap_end", {
+          sinceMountMs: Math.round(performance.now() - origin),
+          cache_source: cacheSource,
+          network_count: getCalendarBootstrapDebugCounters().networkCount,
+        });
+        return payload.capabilities;
+      },
+      onBootstrapApplied: () => {
+        /* meta already applied inside loadBootstrap */
+      },
+      loadEvents: async (engineRead) => {
+        calendarFpDebugLog("events_start", {
+          sinceMountMs: Math.round(performance.now() - origin),
+          engineRead,
+          from,
+          to,
+        });
         try {
-          const events = await fetchCalendarEvents(from, to);
-          // אירועי מנוע היומן שייכים לבעל העסק — מוסתרים בסינון עובד ספציפי
-          const engineItems = calendarEventsToDisplayItems(events);
-          setAppointments(
-            employeeFilter === "all" || employeeFilter === "owner" ? engineItems : []
-          );
+          const result = await loadCalendarEvents({
+            fromIso: from,
+            toIso: to,
+            employeeFilter,
+            engineRead,
+          });
+          setAppointments(result.items);
+          setLoading(false);
+          calendarFpDebugLog("events_end", {
+            sinceMountMs: Math.round(performance.now() - origin),
+            cache_source: result.cacheSource,
+            network_count: getCalendarEventsDebugCounters().networkCount,
+            count: result.items.length,
+          });
+          calendarFpDebugLog("first_events_render", {
+            sinceMountMs: Math.round(performance.now() - origin),
+            cache_source: result.cacheSource,
+            count: result.items.length,
+          });
         } catch (err) {
           if (err instanceof CalendarEngineUnavailableError) {
             setEngineDisabledBanner(CALENDAR_ENGINE_DISABLED_MESSAGE);
-            const apptData = await apiFetch<Appointment[]>(
-              `/api/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${employeeQuery}`
-            );
-            setAppointments(apptData.map(appointmentToDisplayItem));
-            return;
           }
-          throw err;
+          calendarFpDebugLog("events_end", {
+            sinceMountMs: Math.round(performance.now() - origin),
+            success: false,
+            errorName: err instanceof Error ? err.name : "error",
+          });
+          setLoading(false);
+          if (!cachedEvents) throw err;
         }
-      } else {
-        const apptData = await apiFetch<Appointment[]>(
-          `/api/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${employeeQuery}`
-        );
-        setAppointments(apptData.map(appointmentToDisplayItem));
-      }
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה");
-    } finally {
-      setLoading(false);
-    }
-  }, [viewMode, selectedDay, weekStart, monthAnchor, engineReadEnabled, employeeFilter]);
+      },
+    });
+  }, [
+    applyBootstrapPayload,
+    employeeFilter,
+    resolveVisibleRange,
+    schedulingCapabilities,
+  ]);
 
   const loadBriefData = useCallback(async () => {
     setBriefLoading(true);
@@ -488,12 +606,6 @@ export default function CalendarPage() {
   }, []);
 
   useEffect(() => {
-    fetchSchedulingCapabilities()
-      .then(setSchedulingCapabilities)
-      .catch(() => setSchedulingCapabilities(null));
-  }, []);
-
-  useEffect(() => {
     if (!saveToast) return;
     const timer = window.setTimeout(() => setSaveToast(null), 5000);
     return () => window.clearTimeout(timer);
@@ -506,6 +618,31 @@ export default function CalendarPage() {
   useEffect(() => {
     loadBriefData().catch(() => undefined);
   }, [loadBriefData]);
+
+  useEffect(() => {
+    if (editingId) return;
+    const q = clientSearchQuery.trim();
+    if (q.length < 2) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setClientSearchBusy(true);
+      searchCalendarClientsOnDemand({ query: q, signal: controller.signal })
+        .then((hits) => {
+          setClients((prev) =>
+            mergeCalendarClientOptions(
+              prev,
+              hits.map((hit) => ({ id: hit.id, name: hit.name, phone: hit.phone ?? null }))
+            )
+          );
+        })
+        .catch(() => undefined)
+        .finally(() => setClientSearchBusy(false));
+    }, 250);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [clientSearchQuery, editingId]);
 
   useEffect(() => {
     setDailyBrief(
@@ -521,6 +658,7 @@ export default function CalendarPage() {
 
   useEffect(() => {
     const onAppointmentsChanged = () => {
+      invalidateAllCalendarEvents();
       loadAppointments().catch((err) => setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה"));
     };
     window.addEventListener("appointments-changed", onAppointmentsChanged);
@@ -528,12 +666,9 @@ export default function CalendarPage() {
   }, [loadAppointments]);
 
   useEffect(() => {
-    loadCalendarStatus();
-  }, []);
-
-  useEffect(() => {
     if (!window.location.search.includes("calendar=connected")) return;
     setMessage("היומן חובר בהצלחה ל-Google Calendar");
+    invalidateCalendarBootstrap();
     loadCalendarStatus();
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
@@ -582,6 +717,7 @@ export default function CalendarPage() {
   function openNewForm() {
     setEditingId(null);
     setFormClientId("");
+    setClientSearchQuery("");
     setFormServiceId("");
     // תור חדש נפתח על העובד המסונן כרגע (אם נבחר עובד ספציפי)
     setFormEmployeeId(employeeFilter !== "all" && employeeFilter !== "owner" ? employeeFilter : "");
@@ -615,6 +751,17 @@ export default function CalendarPage() {
     const start = new Date(appt.startTime);
     setEditingId(appt.id);
     setFormClientId(appt.clientId);
+    setClientSearchQuery("");
+    // Ensure client beyond bootstrap summary still appears in the select.
+    setClients((prev) =>
+      mergeCalendarClientOptions(prev, [
+        {
+          id: appt.clientId,
+          name: appt.client?.name ?? appt.clientId,
+          phone: appt.client?.phone ?? null,
+        },
+      ])
+    );
     setFormServiceId(appt.serviceId ?? "");
     setFormEmployeeId((appt as Appointment).employeeId ?? "");
     // prefill ב-timezone הארגון — כמו שהשמירה כותבת (round-trip שלם)
@@ -670,6 +817,7 @@ export default function CalendarPage() {
 
   function handleDecisionResolved() {
     refreshEngineSurfaces();
+    invalidateAllCalendarEvents();
     loadAppointments().catch((err) =>
       setMessage(err instanceof Error ? err.message : "טעינת היומן נכשלה")
     );
@@ -735,6 +883,7 @@ export default function CalendarPage() {
           }
         }
         resetForm();
+        invalidateAllCalendarEvents();
         await loadAppointments();
         // פותחים מחדש את חלון פרטי התור עם נתונים טריים: ה-Drawer מבצע GET חדש
         // ל-Client (refreshKey) ולכן מציג את פרטי הקשר המעודכנים, לא cache ישן.
@@ -776,6 +925,7 @@ export default function CalendarPage() {
         setMessage("התור נוסף בהצלחה");
       }
       resetForm();
+      invalidateAllCalendarEvents();
       await loadAppointments();
     } catch (err) {
       // כשל שמירה חייב להיראות מול העיניים — הבאנר הרגיל יושב בראש הדף
@@ -806,6 +956,7 @@ export default function CalendarPage() {
       });
       setMessage("התור בוטל");
       resetForm();
+      invalidateAllCalendarEvents();
       await loadAppointments();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "ביטול התור נכשל");
@@ -824,6 +975,7 @@ export default function CalendarPage() {
       invalidateDashboardBootstrap();
       setMessage("התור נמחק");
       resetForm();
+      invalidateAllCalendarEvents();
       await loadAppointments();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "מחיקת התור נכשלה");
@@ -859,8 +1011,9 @@ export default function CalendarPage() {
       setServiceForm(emptyServiceForm);
       setShowServiceForm(false);
       setMessage("השירות נוסף בהצלחה");
-      const svcData = await apiFetch<Service[]>("/api/services");
-      setServices(svcData);
+      invalidateCalendarBootstrap();
+      const { payload } = await loadCalendarBootstrap({ force: true });
+      applyBootstrapPayload(payload);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "שמירת השירות נכשלה");
     } finally {
@@ -874,8 +1027,9 @@ export default function CalendarPage() {
     try {
       await apiFetch(`/api/services/${id}`, { method: "DELETE" });
       setMessage("השירות הוסר");
-      const svcData = await apiFetch<Service[]>("/api/services");
-      setServices(svcData);
+      invalidateCalendarBootstrap();
+      const { payload } = await loadCalendarBootstrap({ force: true });
+      applyBootstrapPayload(payload);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "מחיקת השירות נכשלה");
     } finally {
@@ -895,6 +1049,7 @@ export default function CalendarPage() {
         body: JSON.stringify({ status: "confirmed" }),
       });
       setMessage("התור אושר");
+      invalidateAllCalendarEvents();
       await loadAppointments();
       await loadBriefData();
     } catch (err) {
@@ -1089,12 +1244,23 @@ export default function CalendarPage() {
           </div>
           <FormLabel>
             {t("calendar.customer")}
+            {!editingId && (
+              <Input
+                className="mt-1"
+                value={clientSearchQuery}
+                onChange={(e) => setClientSearchQuery(e.target.value)}
+                placeholder="חיפוש לקוח לפי שם או טלפון"
+                autoComplete="off"
+                data-testid="calendar-client-search"
+              />
+            )}
             <Select
               required
               className="mt-1"
               value={formClientId}
               disabled={Boolean(editingId)}
               onChange={(e) => setFormClientId(e.target.value)}
+              data-testid="calendar-client-select"
             >
               <option value="">{t("calendar.selectCustomer")}</option>
               {clients.map((c) => (
@@ -1103,6 +1269,9 @@ export default function CalendarPage() {
                 </option>
               ))}
             </Select>
+            {!editingId && clientSearchBusy && (
+              <span className="mt-1 block text-xs text-[var(--natalie-text-muted,#64748B)]">מחפש לקוחות…</span>
+            )}
           </FormLabel>
           <FormLabel>
             {t("calendar.service")}
