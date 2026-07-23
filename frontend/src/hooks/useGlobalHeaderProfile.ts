@@ -36,7 +36,9 @@ export function useGlobalHeaderProfile(): GlobalHeaderProfile {
   const cached = getCachedOrganizationSettings();
   const initial = cached ? namesFromSettings(cached) : null;
   const [workspaceName, setWorkspaceName] = useState(initial?.workspaceName ?? "העסק שלי");
-  const [userName, setUserName] = useState(() => initial?.userName || readLocalUserName() || "שלום");
+  // Deterministic first paint (SSR + client): never read localStorage during useState/hydrate.
+  // local firstName is applied only after mount — otherwise React #418 (e.g. "שלום" vs "שי").
+  const [userName, setUserName] = useState(initial?.userName ?? "שלום");
   const [loading, setLoading] = useState(() => !cached);
 
   useEffect(() => {

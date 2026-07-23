@@ -51,14 +51,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="he" dir="rtl">
+    // className="dark" matches ThemeProvider's deterministic first paint ("dark").
+    // Do NOT mutate lang/dir/class from localStorage before hydrate — that caused React #418
+    // (SSR html attrs ≠ DOM after the old blocking script). Theme/language apply in useEffect.
+    <html lang="he" dir="rtl" className="dark">
       <head>
         <GoogleTagManagerHead />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('natalie-theme');if(t!=='light')document.documentElement.classList.add('dark');var l=localStorage.getItem('natalie-language');if(l==='en'||l==='he'){document.documentElement.lang=l;document.documentElement.dir=l==='he'?'rtl':'ltr';}}catch(e){}})();`,
-          }}
-        />
       </head>
       <body className="h-auto overflow-x-hidden lg:overflow-x-clip lg:overflow-y-visible">
         <I18nProvider>
