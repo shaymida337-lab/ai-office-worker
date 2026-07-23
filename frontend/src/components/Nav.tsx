@@ -3,8 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { GlobalBottomNavigation, GlobalHeader } from "@/components/natalie-ui";
-import { apiFetch } from "@/lib/api";
-import type { OrganizationSettings } from "@/lib/business-config";
+import { loadOrganizationSettings } from "@/lib/organization/organizationSettingsStore";
 
 /**
  * Product chrome for screens that still mount `<Nav />`.
@@ -16,7 +15,7 @@ export function Nav() {
   const router = useRouter();
 
   useEffect(() => {
-    apiFetch<OrganizationSettings>("/api/organization/settings")
+    void loadOrganizationSettings()
       .then((settings) => {
         if (settings.onboardingRequired && pathname !== "/onboarding") {
           router.replace("/onboarding");

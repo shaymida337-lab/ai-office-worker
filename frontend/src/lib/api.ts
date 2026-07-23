@@ -4,6 +4,7 @@ import {
   systemDeployBannerMessage,
   type PublicHealthResponse,
 } from "./systemDeployStatus";
+import { clearOrganizationSettingsCacheNow } from "@/lib/organization/organizationSettingsCacheClear";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -31,6 +32,8 @@ export function clearAllAuthTokens(): void {
     localStorage.removeItem(key);
     sessionStorage.removeItem(key);
   }
+  // Sync clear — must run before saveToken() sets the next session token.
+  clearOrganizationSettingsCacheNow();
 }
 
 export function clearToken(): void {

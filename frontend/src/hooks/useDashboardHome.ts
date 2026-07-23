@@ -55,6 +55,7 @@ import {
   snapshotFromHomeMetrics,
 } from "@/lib/dashboard/homeMetrics";
 import { runDashboardHomeLoadPhases } from "@/lib/dashboard/dashboardHomeLoadPlan";
+import { loadOrganizationSettings } from "@/lib/organization/organizationSettingsStore";
 import {
   conversationRequestsGmailScan,
   conversationRequestsScanProgress,
@@ -426,7 +427,7 @@ export function useDashboardHome() {
               apiFetch<GmailStatus>(`/api/integrations/gmail/status?t=${Date.now()}`)
             ),
             timedFpRequest("organization_settings", pageLoadingFalseAtRef.current, origin, () =>
-              apiFetch<OrganizationSettings>("/api/organization/settings")
+              loadOrganizationSettings()
             ),
             timedFpRequest("tasks", pageLoadingFalseAtRef.current, origin, () =>
               apiFetch<Task[]>("/api/tasks")

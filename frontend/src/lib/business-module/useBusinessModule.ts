@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiFetch } from "@/lib/api";
 import type { OrganizationSettings } from "@/lib/business-config";
+import {
+  getCachedOrganizationSettings,
+  loadOrganizationSettings,
+  subscribeOrganizationSettings,
+} from "@/lib/organization/organizationSettingsStore";
 import { getBusinessModule } from "./getBusinessModule";
 import type { BusinessModuleConfig } from "./types";
 
@@ -18,30 +22,45 @@ type UseBusinessModuleResult = {
  * Screens should consume `module` — not raw businessType conditionals.
  */
 export function useBusinessModule(): UseBusinessModuleResult {
-  const [module, setModule] = useState<BusinessModuleConfig>(() => getBusinessModule("service_business"));
-  const [settings, setSettings] = useState<OrganizationSettings | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cached = getCachedOrganizationSettings();
+  const [module, setModule] = useState<BusinessModuleConfig>(() =>
+    getBusinessModule(cached?.businessType ?? "service_business")
+  );
+  const [settings, setSettings] = useState<OrganizationSettings | null>(cached);
+  const [loading, setLoading] = useState(() => !cached);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<OrganizationSettings>("/api/organization/settings")
-      .then((next) => {
-        if (cancelled) return;
-        setSettings(next);
-        setModule(getBusinessModule(next.businessType));
-        setError("");
-      })
+    const apply = (next: OrganizationSettings) => {
+      if (cancelled) return;
+      setSettings(next);
+      setModule(getBusinessModule(next.businessType));
+      setError("");
+      setLoading(false);
+    };
+
+    const unsub = subscribeOrganizationSettings(() => {
+      const next = getCachedOrganizationSettings();
+      if (next) apply(next);
+    });
+
+    if (cached) apply(cached);
+
+    void loadOrganizationSettings()
+      .then(apply)
       .catch((err) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "טעינת הגדרות העסק נכשלה");
-        setModule(getBusinessModule("service_business"));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        // Keep prior settings/module on refresh failure.
+        if (!getCachedOrganizationSettings()) {
+          setError(err instanceof Error ? err.message : "טעינת הגדרות העסק נכשלה");
+          setModule(getBusinessModule("service_business"));
+        }
+        setLoading(false);
       });
     return () => {
       cancelled = true;
+      unsub();
     };
   }, []);
 

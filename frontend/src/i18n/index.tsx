@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { apiFetch, getToken } from "@/lib/api";
+import { getToken } from "@/lib/api";
+import { loadOrganizationSettings } from "@/lib/organization/organizationSettingsStore";
 import en from "./en.json";
 import he from "./he.json";
 
@@ -76,7 +77,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     const token = getToken();
     if (!token) return;
     let mounted = true;
-    void apiFetch<{ language?: string; locale?: string }>("/api/organization/settings")
+    void loadOrganizationSettings()
       .then((settings) => {
         const candidate = (settings.language ?? settings.locale ?? "he").toLowerCase();
         const fromApi = candidate === "en" ? "en" : "he";

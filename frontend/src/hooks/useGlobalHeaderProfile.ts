@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiFetch, getToken } from "@/lib/api";
+import { getToken } from "@/lib/api";
 import type { OrganizationSettings } from "@/lib/business-config";
 import { resolvePersonalDisplayName, resolveWorkspaceDisplayName } from "@/lib/dashboard/homePageHelpers";
+import {
+  getCachedOrganizationSettings,
+  loadOrganizationSettings,
+  subscribeOrganizationSettings,
+} from "@/lib/organization/organizationSettingsStore";
 import { readFirstDayData, readOnboardingProgress } from "@/lib/natalie/firstDay";
 
 export type GlobalHeaderProfile = {
@@ -20,37 +25,57 @@ function readLocalUserName() {
   return "";
 }
 
+function namesFromSettings(settings: OrganizationSettings) {
+  return {
+    workspaceName: resolveWorkspaceDisplayName(settings),
+    userName: resolvePersonalDisplayName(settings) || "שלום",
+  };
+}
+
 export function useGlobalHeaderProfile(): GlobalHeaderProfile {
-  const [workspaceName, setWorkspaceName] = useState("העסק שלי");
-  const [userName, setUserName] = useState(() => readLocalUserName() || "שלום");
-  const [loading, setLoading] = useState(true);
+  const cached = getCachedOrganizationSettings();
+  const initial = cached ? namesFromSettings(cached) : null;
+  const [workspaceName, setWorkspaceName] = useState(initial?.workspaceName ?? "העסק שלי");
+  const [userName, setUserName] = useState(() => initial?.userName || readLocalUserName() || "שלום");
+  const [loading, setLoading] = useState(() => !cached);
 
   useEffect(() => {
-    // Temporary hint only until /api/organization/settings returns.
+    // Temporary hint only until settings resolve — never wipe a known name on refresh.
     const localName = readLocalUserName();
-    if (localName) setUserName(localName);
+    if (localName && !getCachedOrganizationSettings()) setUserName(localName);
+
+    const apply = (settings: OrganizationSettings) => {
+      const next = namesFromSettings(settings);
+      setWorkspaceName(next.workspaceName);
+      setUserName(next.userName);
+      setLoading(false);
+    };
+
+    const unsub = subscribeOrganizationSettings(() => {
+      const next = getCachedOrganizationSettings();
+      if (next) apply(next);
+    });
 
     const token = getToken();
     if (!token) {
       setLoading(false);
-      return;
+      return () => {
+        unsub();
+      };
     }
 
-    let mounted = true;
-    void apiFetch<OrganizationSettings>("/api/organization/settings")
-      .then((settings) => {
-        if (!mounted) return;
-        setWorkspaceName(resolveWorkspaceDisplayName(settings));
-        // Personal subtitle from settings.name — never businessName; localStorage must not win.
-        setUserName(resolvePersonalDisplayName(settings) || "שלום");
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (mounted) setLoading(false);
+    const existing = getCachedOrganizationSettings();
+    if (existing) apply(existing);
+
+    void loadOrganizationSettings()
+      .then(apply)
+      .catch(() => {
+        // Keep prior workspace/user names; no global loading wipe.
+        setLoading(false);
       });
 
     return () => {
-      mounted = false;
+      unsub();
     };
   }, []);
 

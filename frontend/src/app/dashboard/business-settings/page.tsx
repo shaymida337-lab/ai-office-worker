@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusinessOnboardingForm } from "@/components/BusinessOnboardingForm";
 import { Nav } from "@/components/Nav";
-import { apiFetch } from "@/lib/api";
+import { loadOrganizationSettings } from "@/lib/organization/organizationSettingsStore";
 import { businessTypeLabel, normalizeEnabledModules, type OrganizationSettings } from "@/lib/business-config";
 
 export default function BusinessSettingsPage() {
@@ -13,7 +13,7 @@ export default function BusinessSettingsPage() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    apiFetch<OrganizationSettings>("/api/organization/settings")
+    void loadOrganizationSettings()
       .then(setSettings)
       .catch((err) => setMessage(err instanceof Error ? err.message : "טעינת הגדרות העסק נכשלה"));
   }, []);

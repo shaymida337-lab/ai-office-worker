@@ -28,9 +28,10 @@ test("useDashboardHome M1: First Paint does not await Background heavies", async
   assert.doesNotMatch(fpBlock, /accountant\/summary/);
   assert.doesNotMatch(fpBlock, /system\/health/);
   assert.match(fpBlock, /\/api\/integrations\/gmail\/status/);
-  assert.match(fpBlock, /\/api\/organization\/settings/);
+  assert.match(fpBlock, /loadOrganizationSettings/);
   assert.match(fpBlock, /\/api\/tasks/);
   assert.match(fpBlock, /requestHomeMetrics\(true\)/);
+  assert.doesNotMatch(fpBlock, /apiFetch<OrganizationSettings>\("\/api\/organization\/settings"\)/);
   const bgBlock = source.slice(source.indexOf("loadBackground:"), source.indexOf("onBackgroundError:") > 0 ? source.length : source.length);
   assert.match(source, /apiFetch<DashboardStats>\("\/api\/stats"\)/);
   assert.match(source, /document-reviews\?status=needs_review&view=summary/);

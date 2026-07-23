@@ -26,6 +26,7 @@ import {
   Textarea,
 } from "@/components/natalie-ui";
 import { apiFetch, ApiError, getToken } from "@/lib/api";
+import { loadOrganizationSettings } from "@/lib/organization/organizationSettingsStore";
 import { useOrganizationTimezone } from "@/hooks/useOrganizationTimezone";
 import { useI18n } from "@/i18n";
 import { dateInputValueInTimeZone, timeInputValueInTimeZone } from "@/lib/orgTimezone";
@@ -129,7 +130,6 @@ const APPOINTMENT_STATUS_OPTIONS = ["pending", "confirmed", "completed", "cancel
 const DEFAULT_COLOR = "#3B82F6";
 
 type Task = { id: string; status: string };
-type OrganizationSettings = { name?: string | null };
 
 function startOfDay(date: Date): Date {
   const d = new Date(date);
@@ -473,12 +473,12 @@ export default function CalendarPage() {
       const [briefing, tasks, orgSettings] = await Promise.all([
         fetchBriefingSchedulingSnapshot(from, to).catch(() => null),
         apiFetch<Task[]>("/api/tasks").catch(() => [] as Task[]),
-        apiFetch<OrganizationSettings>("/api/organization/settings").catch(() => ({ name: null })),
+        loadOrganizationSettings().catch(() => null),
       ]);
       setBriefingSnapshot(briefing);
       setOpenTasksCount(tasks.filter((task) => task.status !== "done" && task.status !== "completed").length);
-      setOwnerFirstName(firstNameFromLabel(orgSettings.name));
-      setBusinessName(orgSettings.name?.trim() || "");
+      setOwnerFirstName(firstNameFromLabel(orgSettings?.name));
+      setBusinessName(orgSettings?.name?.trim() || "");
     } catch {
       setBriefingSnapshot(null);
     } finally {

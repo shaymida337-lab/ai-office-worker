@@ -14,6 +14,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { API_URL, apiFetch, getToken, type GmailStatus } from "@/lib/api";
+import { setOrganizationSettingsCache } from "@/lib/organization/organizationSettingsStore";
 import { buildGmailConnectionFromStatus, isGmailContentOperational } from "@/lib/integrations/gmailConnection";
 import {
   businessTypes,
@@ -276,7 +277,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
         businessType
       );
 
-      await apiFetch<OrganizationSettings>("/api/organization/settings", {
+      const next = await apiFetch<OrganizationSettings>("/api/organization/settings", {
         method: "PUT",
         body: JSON.stringify({
           name: firstName,
@@ -288,6 +289,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
           onboardingCompleted: true,
         }),
       });
+      setOrganizationSettingsCache(next);
 
       writeFirstDayData({
         firstName,

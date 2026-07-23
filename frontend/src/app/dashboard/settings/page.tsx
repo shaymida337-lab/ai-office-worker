@@ -15,6 +15,7 @@ import {
   Textarea,
 } from "@/components/natalie-ui";
 import { API_URL, apiFetch, getToken, type GmailStatus } from "@/lib/api";
+import { loadOrganizationSettings } from "@/lib/organization/organizationSettingsStore";
 import {
   buildGmailConnectionFromStatus,
   gmailConnectionBadgeLabel,
@@ -175,7 +176,7 @@ export default function SettingsPage() {
     apiFetch<AccountantSettings>("/api/accountant/settings")
       .then(setForm)
       .catch((err) => setMessage({ text: err instanceof Error ? err.message : "טעינת הגדרות נכשלה", tone: "error" }));
-    apiFetch<OrganizationSettings>("/api/organization/settings")
+    void loadOrganizationSettings()
       .then(setOrganizationSettings)
       .catch(() => undefined);
     apiFetch<{ businessProfile: string }>("/api/settings/business-profile")

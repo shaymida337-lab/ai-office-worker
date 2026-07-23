@@ -33,6 +33,7 @@ import {
 } from "@/components/natalie-ui";
 import { useI18n } from "@/i18n";
 import { ApiError, apiFetch } from "@/lib/api";
+import { loadOrganizationSettings } from "@/lib/organization/organizationSettingsStore";
 import { crmListCacheKey, getCrmListCache, getCrmListCacheAge, setCrmListCache } from "@/lib/crm/crmListCache";
 import { getBusinessModule, type BusinessModuleConfig } from "@/lib/business-module";
 import type { BusinessCrmField, OrganizationSettings } from "@/lib/business-config";
@@ -244,7 +245,7 @@ export default function CrmPage() {
 
   useEffect(() => {
     loadTemplates().catch(() => undefined);
-    apiFetch<OrganizationSettings>("/api/organization/settings")
+    void loadOrganizationSettings()
       .then(setOrganizationSettings)
       .catch(() => undefined);
   }, []);
