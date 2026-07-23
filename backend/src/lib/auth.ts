@@ -4,6 +4,7 @@ import type { Request, Response, NextFunction } from "express";
 import { config } from "./config.js";
 import { isAppointmentsTimingPath } from "./appointmentsEndpointTiming.js";
 import { isDashboardBootstrapTimingPath } from "./dashboardBootstrapServerTiming.js";
+import { isInvoicesFpTimingPath } from "./invoicesEndpointTiming.js";
 
 export type JwtPayload = {
   userId: string;
@@ -26,7 +27,8 @@ export function authMiddleware(
 ): void {
   const timingAppointments = isAppointmentsTimingPath(req.path);
   const timingBootstrap = isDashboardBootstrapTimingPath(req.path);
-  const timing = timingAppointments || timingBootstrap;
+  const timingInvoices = isInvoicesFpTimingPath(req.path);
+  const timing = timingAppointments || timingBootstrap || timingInvoices;
   const authT0 = timing ? performance.now() : 0;
   if (timingAppointments) {
     res.locals.appointmentsWallStart = res.locals.appointmentsWallStart ?? authT0;
@@ -35,6 +37,10 @@ export function authMiddleware(
   if (timingBootstrap) {
     res.locals.dashboardBootstrapWallStart = res.locals.dashboardBootstrapWallStart ?? authT0;
     res.locals.dashboardBootstrapAuthStart = authT0;
+  }
+  if (timingInvoices) {
+    res.locals.invoicesFpWallStart = res.locals.invoicesFpWallStart ?? authT0;
+    res.locals.invoicesFpAuthStart = authT0;
   }
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
@@ -54,6 +60,11 @@ export function authMiddleware(
       const authEnd = performance.now();
       res.locals.dashboardBootstrapAuthEnd = authEnd;
       res.locals.dashboardBootstrapAuthMs = Math.round(authEnd - authT0);
+    }
+    if (timingInvoices) {
+      const authEnd = performance.now();
+      res.locals.invoicesFpAuthEnd = authEnd;
+      res.locals.invoicesFpAuthMs = Math.round(authEnd - authT0);
     }
     next();
   } catch {
@@ -135,6 +146,16 @@ declare global {
       dashboardBootstrapTenantCacheSource?: string;
       dashboardBootstrapTenantCacheAgeMs?: number | null;
       dashboardBootstrapTenantDbMs?: number;
+      invoicesFpWallStart?: number;
+      invoicesFpAuthStart?: number;
+      invoicesFpAuthEnd?: number;
+      invoicesFpAuthMs?: number;
+      invoicesFpTenantStart?: number;
+      invoicesFpTenantEnd?: number;
+      invoicesFpTenantMs?: number;
+      invoicesFpTenantCacheSource?: string;
+      invoicesFpTenantCacheAgeMs?: number | null;
+      invoicesFpTenantDbMs?: number;
     }
   }
 }

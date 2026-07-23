@@ -716,6 +716,8 @@ async function terminalizeGmailScan(
   if (log.organizationId) {
     const { safeInvalidateDashboardBootstrap } = await import("./dashboardBootstrapCache.js");
     safeInvalidateDashboardBootstrap(undefined, log.organizationId);
+    const { safeInvalidateInvoicesBootstrap } = await import("./invoices/invoiceBootstrapCache.js");
+    safeInvalidateInvoicesBootstrap(undefined, log.organizationId);
   }
   if (status === "completed") {
     await completeJobRun({ jobType: GMAIL_SCAN_JOB_TYPE, referenceId: scanId });

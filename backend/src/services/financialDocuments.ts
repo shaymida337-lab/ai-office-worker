@@ -1578,6 +1578,8 @@ export async function approveFinancialDocumentReview(
   });
   const { safeInvalidateDashboardBootstrap } = await import("./dashboardBootstrapCache.js");
   safeInvalidateDashboardBootstrap(options?.userId, organizationId);
+  const { safeInvalidateInvoicesBootstrap } = await import("./invoices/invoiceBootstrapCache.js");
+  safeInvalidateInvoicesBootstrap(options?.userId, organizationId);
   return {
     review: approved,
     paymentId: payment.id,

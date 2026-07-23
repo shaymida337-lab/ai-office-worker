@@ -12,15 +12,34 @@ import { databaseHost, prisma } from "../lib/prisma.js";
 import { getDashboardStats, getMissingInvoicesReport } from "../services/dashboard.js";
 import { getDashboardHomeMetrics } from "../services/dashboardHomeMetrics.js";
 import {
-  assertDashboardBootstrapPayloadBounds,
-  getDashboardBootstrapCached,
-} from "../services/dashboardBootstrap.js";
+  assertInvoicesBootstrapPayloadBounds,
+  getInvoicesBootstrap,
+} from "../services/invoices/invoiceBootstrap.js";
 import {
-  buildDashboardBootstrapServerTiming,
-  computeUnaccountedMs as computeDashboardBootstrapUnaccountedMs,
-  logDashboardBootstrapTimingSafe,
-  type DashboardBootstrapEndpointTiming,
-} from "../lib/dashboardBootstrapServerTiming.js";
+  getInvoicesBootstrapCacheGeneration,
+  getInvoicesBootstrapInflight,
+  invoicesBootstrapCacheKey,
+  peekInvoicesBootstrapCache,
+  setInvoicesBootstrapCache,
+  setInvoicesBootstrapInflight,
+  safeInvalidateInvoicesBootstrap,
+} from "../services/invoices/invoiceBootstrapCache.js";
+import {
+  assertInvoicesListPayloadBounds,
+  buildInvoicesListPayload,
+  clampInvoiceListPage,
+  clampInvoiceListPageSize,
+  type InvoicesListSort,
+} from "../services/invoices/invoiceList.js";
+import {
+  buildInvoicesServerTiming,
+  computeInvoicesUnaccountedMs,
+  isInvoicesBootstrapTimingPath,
+  isInvoicesListTimingPath,
+  logInvoicesTimingSafe,
+  type InvoicesEndpointTiming,
+} from "../lib/invoicesEndpointTiming.js";
+import { safeInvalidateDashboardBootstrap } from "../services/dashboardBootstrapCache.js";
 import {
   assertCalendarBootstrapPayloadBounds,
   getCalendarBootstrap,
@@ -5277,6 +5296,241 @@ export function summarizeCandidatesByMonth<T extends { date: Date; amount: numbe
   return [...byMonth.values()].sort((a, b) => b.year - a.year || b.month - a.month);
 }
 
+async function getInvoicesBootstrapCachedForRequest(input: {
+  userId: string;
+  organizationId: string;
+  collectTiming?: boolean;
+}) {
+  const key = invoicesBootstrapCacheKey(input.userId, input.organizationId);
+  const peeked = peekInvoicesBootstrapCache(input.userId, input.organizationId);
+  if (peeked?.freshness === "fresh") {
+    return {
+      payload: peeked.entry.payload,
+      cacheSource: "hit" as const,
+      cacheAgeMs: Math.max(0, Date.now() - peeked.entry.loadedAt),
+      buildMs: 0,
+    };
+  }
+  if (peeked?.freshness === "stale") {
+    const generationAtStart = getInvoicesBootstrapCacheGeneration(input.userId, input.organizationId);
+    if (!getInvoicesBootstrapInflight(key)) {
+      void setInvoicesBootstrapInflight(
+        key,
+        (async () => {
+          try {
+            const payload = await getInvoicesBootstrap(input.organizationId);
+            assertInvoicesBootstrapPayloadBounds(payload);
+            setInvoicesBootstrapCache({
+              userId: input.userId,
+              organizationId: input.organizationId,
+              payload,
+              generationAtStart,
+            });
+          } catch {
+            /* keep stale */
+          }
+          return null;
+        })()
+      );
+    }
+    return {
+      payload: peeked.entry.payload,
+      cacheSource: "stale" as const,
+      cacheAgeMs: Math.max(0, Date.now() - peeked.entry.loadedAt),
+      buildMs: 0,
+    };
+  }
+
+  const existing = getInvoicesBootstrapInflight<{
+    payload: Awaited<ReturnType<typeof getInvoicesBootstrap>>;
+    cacheSource: "miss" | "inflight";
+    cacheAgeMs: null;
+    buildMs: number;
+  }>(key);
+  if (existing) {
+    const shared = await existing;
+    return { ...shared, cacheSource: "inflight" as const };
+  }
+
+  return setInvoicesBootstrapInflight(key, (async () => {
+    const generationAtStart = getInvoicesBootstrapCacheGeneration(input.userId, input.organizationId);
+    const buildT0 = performance.now();
+    const payload = await getInvoicesBootstrap(input.organizationId, {
+      collectTiming: input.collectTiming,
+    });
+    const buildMs = Math.round(performance.now() - buildT0);
+    assertInvoicesBootstrapPayloadBounds(payload);
+    setInvoicesBootstrapCache({
+      userId: input.userId,
+      organizationId: input.organizationId,
+      payload,
+      generationAtStart,
+    });
+    return { payload, cacheSource: "miss" as const, cacheAgeMs: null, buildMs };
+  })());
+}
+
+apiRouter.get("/invoices/bootstrap", async (req, res) => {
+  const wallStart = res.locals.invoicesFpWallStart ?? performance.now();
+  const authStart = res.locals.invoicesFpAuthStart ?? wallStart;
+  const authEnd = res.locals.invoicesFpAuthEnd ?? authStart;
+  const tenantStart = res.locals.invoicesFpTenantStart ?? authEnd;
+  const tenantEnd = res.locals.invoicesFpTenantEnd ?? tenantStart;
+  const authMs = res.locals.invoicesFpAuthMs ?? Math.max(0, Math.round(authEnd - authStart));
+  const tenantMs = res.locals.invoicesFpTenantMs ?? Math.max(0, Math.round(tenantEnd - tenantStart));
+  const tenantCacheSource = res.locals.invoicesFpTenantCacheSource ?? "unknown";
+  const tenantDbMs = res.locals.invoicesFpTenantDbMs ?? (tenantCacheSource === "hit" ? 0 : tenantMs);
+
+  try {
+    const cached = await getInvoicesBootstrapCachedForRequest({
+      userId: req.auth!.userId,
+      organizationId: req.auth!.organizationId,
+      collectTiming: process.env.INVOICES_FP_DEBUG === "1" || process.env.INVOICES_TIMING === "1",
+    });
+
+    const serializeT0 = performance.now();
+    const body = JSON.stringify(cached.payload);
+    const serializeMs = Math.round(performance.now() - serializeT0);
+    const responseT0 = performance.now();
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    const responseMs = Math.round(performance.now() - responseT0);
+    const totalMs = Math.round(performance.now() - wallStart);
+    const timingBase: Omit<InvoicesEndpointTiming, "unaccountedMs"> = {
+      preRouteMs: Math.max(0, Math.round(authStart - wallStart)),
+      authMs,
+      tenantMs,
+      tenantDbMs,
+      orgMs: 0,
+      queryMs: cached.cacheSource === "hit" || cached.cacheSource === "stale" ? 0 : cached.buildMs,
+      countMs: 0,
+      relationsMs: 0,
+      mapMs: 0,
+      serializeMs,
+      responseMs,
+      totalMs,
+      tenantDbRoundTrips: tenantCacheSource === "hit" ? 0 : 2,
+    };
+    const timing: InvoicesEndpointTiming = {
+      ...timingBase,
+      unaccountedMs: computeInvoicesUnaccountedMs(timingBase),
+    };
+    res.setHeader("Server-Timing", buildInvoicesServerTiming(timing));
+    res.setHeader("X-Invoices-Bootstrap-Cache", cached.cacheSource);
+    res.send(body);
+    logInvoicesTimingSafe("invoices/bootstrap", timing, {
+      cacheSource: cached.cacheSource,
+      payloadBytes: Buffer.byteLength(body, "utf8"),
+    });
+  } catch (err) {
+    console.error("[invoices/bootstrap] failed", err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: "Failed to load invoices bootstrap" });
+  }
+});
+
+apiRouter.get("/invoices/list", async (req, res) => {
+  const wallStart = res.locals.invoicesFpWallStart ?? performance.now();
+  const authStart = res.locals.invoicesFpAuthStart ?? wallStart;
+  const authEnd = res.locals.invoicesFpAuthEnd ?? authStart;
+  const tenantStart = res.locals.invoicesFpTenantStart ?? authEnd;
+  const tenantEnd = res.locals.invoicesFpTenantEnd ?? tenantStart;
+  const authMs = res.locals.invoicesFpAuthMs ?? Math.max(0, Math.round(authEnd - authStart));
+  const tenantMs = res.locals.invoicesFpTenantMs ?? Math.max(0, Math.round(tenantEnd - tenantStart));
+  const tenantCacheSource = res.locals.invoicesFpTenantCacheSource ?? "unknown";
+  const tenantDbMs = res.locals.invoicesFpTenantDbMs ?? (tenantCacheSource === "hit" ? 0 : tenantMs);
+
+  try {
+    const status = typeof req.query.status === "string" ? req.query.status : undefined;
+    const clientId = typeof req.query.clientId === "string" ? req.query.clientId : undefined;
+    const search = typeof req.query.search === "string" ? req.query.search : undefined;
+    const monthParam = typeof req.query.month === "string" ? req.query.month : undefined;
+    const completeness = parseInvoiceCompletenessParam(req.query.completeness ?? "complete");
+    const page = clampInvoiceListPage(Number.parseInt(String(req.query.page ?? "1"), 10));
+    const pageSize = clampInvoiceListPageSize(Number.parseInt(String(req.query.pageSize ?? "25"), 10));
+    const sortRaw = typeof req.query.sort === "string" ? req.query.sort : "date_desc";
+    const sort = (
+      ["date_desc", "date_asc", "amount_desc", "amount_asc"].includes(sortRaw) ? sortRaw : "date_desc"
+    ) as InvoicesListSort;
+
+    const organizationId = req.auth!.organizationId;
+    const ctx = buildInvoiceListQueryContext({ organizationId, status, clientId, search });
+    const parsedMonth = monthParam ? parseInvoiceMonthParam(monthParam) : null;
+    if (monthParam && !parsedMonth) {
+      res.status(400).json({ error: "Invalid month parameter. Expected YYYY-MM." });
+      return;
+    }
+    const monthBounds = parsedMonth
+      ? await resolveInvoiceMonthBounds(
+          organizationId,
+          parsedMonth.year,
+          parsedMonth.month,
+          await loadOrganizationTimezone(organizationId)
+        )
+      : undefined;
+
+    const fetchLimit = monthBounds ? undefined : Math.min(page * pageSize + pageSize, 300);
+    const queryT0 = performance.now();
+    const invoices = await fetchEnrichedInvoiceListCandidates(organizationId, ctx, {
+      monthBounds,
+      limit: fetchLimit,
+    });
+    const queryMs = Math.round(performance.now() - queryT0);
+
+    const filterT0 = performance.now();
+    const filtered = filterInvoicesByCompleteness(invoices, completeness);
+    let visible =
+      completeness === "incomplete" ? filterInvoiceCompletionQueueCandidates(filtered) : filtered;
+    if (completeness === "incomplete") {
+      visible = await enrichInvoiceCandidatesWithReadiness(visible, organizationId);
+    }
+    const filterMs = Math.round(performance.now() - filterT0);
+
+    const mapT0 = performance.now();
+    const payload = buildInvoicesListPayload(visible, { page, pageSize, sort });
+    assertInvoicesListPayloadBounds(payload);
+    const mapMs = Math.round(performance.now() - mapT0);
+
+    const serializeT0 = performance.now();
+    const body = JSON.stringify(payload);
+    const serializeMs = Math.round(performance.now() - serializeT0);
+    const responseT0 = performance.now();
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    const responseMs = Math.round(performance.now() - responseT0);
+    const totalMs = Math.round(performance.now() - wallStart);
+
+    const timingBase: Omit<InvoicesEndpointTiming, "unaccountedMs"> = {
+      preRouteMs: Math.max(0, Math.round(authStart - wallStart)),
+      authMs,
+      tenantMs,
+      tenantDbMs,
+      orgMs: 0,
+      queryMs,
+      countMs: filterMs,
+      relationsMs: 0,
+      mapMs,
+      serializeMs,
+      responseMs,
+      totalMs,
+      tenantDbRoundTrips: tenantCacheSource === "hit" ? 0 : 2,
+    };
+    const timing: InvoicesEndpointTiming = {
+      ...timingBase,
+      unaccountedMs: computeInvoicesUnaccountedMs(timingBase),
+    };
+    res.setHeader("Server-Timing", buildInvoicesServerTiming(timing));
+    res.send(body);
+    logInvoicesTimingSafe("invoices/list", timing, {
+      rowCount: payload.invoices.length,
+      total: payload.total,
+      payloadBytes: Buffer.byteLength(body, "utf8"),
+      page: payload.page,
+      pageSize: payload.pageSize,
+    });
+  } catch (err) {
+    console.error("[invoices/list] failed", err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: "Failed to load invoices list" });
+  }
+});
+
 apiRouter.get("/invoices/months", async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const clientId = typeof req.query.clientId === "string" ? req.query.clientId : undefined;
@@ -5609,6 +5863,8 @@ async function deleteInvoiceArtifacts(organizationId: string, seed: InvoiceArtif
 
   const { safeInvalidateDashboardBootstrap } = await import("../services/dashboardBootstrapCache.js");
   safeInvalidateDashboardBootstrap(undefined, organizationId);
+  const { safeInvalidateInvoicesBootstrap } = await import("../services/invoices/invoiceBootstrapCache.js");
+  safeInvalidateInvoicesBootstrap(undefined, organizationId);
 
   return {
     found: true as const,

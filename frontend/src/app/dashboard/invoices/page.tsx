@@ -27,6 +27,23 @@ import {
   summarizeOrgGmailScanResult,
   waitForOrgGmailScanProgress,
 } from "@/lib/invoices/gmailOrgScan";
+import { invoicesFpDebug } from "@/lib/invoices/invoicesFpDebug";
+import {
+  getInvoicesBootstrapCacheSource,
+  getInvoicesBootstrapNetworkCount,
+  invalidateInvoicesBootstrap,
+  loadInvoicesBootstrap,
+} from "@/lib/invoices/invoicesBootstrapStore";
+import {
+  getInvoicesListCacheSource,
+  getInvoicesListNetworkCount,
+  invalidateInvoicesList,
+  loadInvoicesList,
+  removeInvoicesListRow,
+  type InvoicesListQuery,
+} from "@/lib/invoices/invoicesListStore";
+import { mapInvoiceListRowToInvoice } from "@/lib/invoices/mapInvoiceListRow";
+import { runInvoicesLoadPhases } from "@/lib/invoices/invoicesLoadPlan";
 import { GMAIL_SCAN_POLL_INTERVAL_MS, MAX_GMAIL_SCAN_POLL_ATTEMPTS } from "@/lib/dashboard/scanPollLimits";
 import type { GmailScanResult, ScanProgressResult } from "@/lib/dashboard/homePageTypes";
 import { formatAmount } from "@/lib/format/amount";
@@ -50,8 +67,6 @@ type MonthSummary = {
 };
 
 type ClientsResponse = { clients: ClientItem[] };
-type InvoicesResponse = { invoices: Invoice[] };
-type InvoiceMonthsResponse = { months: MonthSummary[] };
 type InvoiceDeleteResponse = {
   deleted?: { invoices?: number; gmailScanItems?: number; documentReviews?: number };
   verification?: { after?: { invoices?: number; gmailScanItems?: number; documentReviews?: number }; afterCount?: number };
@@ -100,6 +115,10 @@ export default function InvoicesPage() {
   const [removingIds, setRemovingIds] = useState<Set<string>>(() => new Set());
   const [incompleteCount, setIncompleteCount] = useState(0);
   const skipFilterRefresh = useRef(true);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const fpOriginRef = useRef<number | null>(null);
+  const loadGenerationRef = useRef(0);
 
   const reviewTabLabels = useMemo(
     () => ({
@@ -111,104 +130,149 @@ export default function InvoicesPage() {
     [t]
   );
 
-  function buildListQueryString() {
-    const params = new URLSearchParams();
-    params.set("completeness", "complete");
-    if (clientId !== "all") params.set("clientId", clientId);
-    if (search.trim()) params.set("search", search.trim());
-    if (reviewStatus !== "all") params.set("status", reviewStatus);
-    const query = params.toString();
-    return query ? `?${query}` : "";
+  function buildListQuery(overrides?: Partial<InvoicesListQuery>): InvoicesListQuery {
+    return {
+      completeness: "complete",
+      page: 1,
+      pageSize: 25,
+      sort: "date_desc",
+      clientId: clientId !== "all" ? clientId : undefined,
+      search: search.trim() || undefined,
+      status: reviewStatus !== "all" ? reviewStatus : undefined,
+      ...overrides,
+    };
   }
 
-  async function loadClients() {
-    const clientData = await apiFetch<ClientsResponse>("/api/clients");
-    setClients(clientData.clients);
+  function applyListRowsToMonthState(invoices: Invoice[]) {
+    const grouped = buildFallbackMonthGroups(invoices);
+    setMonths(grouped.months);
+    setInvoicesByMonth(grouped.invoicesByMonth);
+    setExpandedMonths(new Set(grouped.months.map((month) => monthKey(month.year, month.month))));
   }
 
-  async function loadMonthInvoices(monthKey: string, querySuffix = buildListQueryString()) {
-    setLoadingMonth((current) => new Set(current).add(monthKey));
+  async function loadMonthInvoices(monthKeyValue: string) {
+    setLoadingMonth((current) => new Set(current).add(monthKeyValue));
     try {
-      const connector = querySuffix ? "&" : "?";
-      const queryBody = querySuffix.replace(/^\?/, "");
-      const invoiceData = await apiFetch<InvoicesResponse>(
-        `/api/invoices?month=${monthKey}${queryBody ? `${connector}${queryBody}` : ""}`
+      const list = await loadInvoicesList(
+        buildListQuery({ month: monthKeyValue, page: 1, pageSize: 100 }),
+        { forceNetwork: false }
       );
-      setInvoicesByMonth((current) => ({ ...current, [monthKey]: invoiceData.invoices }));
+      setInvoicesByMonth((current) => ({
+        ...current,
+        [monthKeyValue]: list.invoices.map(mapInvoiceListRowToInvoice),
+      }));
     } finally {
       setLoadingMonth((current) => {
         const next = new Set(current);
-        next.delete(monthKey);
+        next.delete(monthKeyValue);
         return next;
       });
     }
   }
 
-  async function loadMonthsInvoices(monthKeys: string[], querySuffix = buildListQueryString()) {
-    if (monthKeys.length === 0) {
-      setInvoicesByMonth({});
-      return;
-    }
-    setLoadingMonth(new Set(monthKeys));
-    try {
-      const connector = querySuffix ? "&" : "?";
-      const queryBody = querySuffix.replace(/^\?/, "");
-      const results = await Promise.all(
-        monthKeys.map(async (monthKey) => {
-          const invoiceData = await apiFetch<InvoicesResponse>(
-            `/api/invoices?month=${monthKey}${queryBody ? `${connector}${queryBody}` : ""}`
-          );
-          return [monthKey, invoiceData.invoices] as const;
-        })
-      );
-      setInvoicesByMonth(Object.fromEntries(results));
-    } finally {
-      setLoadingMonth(new Set());
-    }
+  async function refreshListOnly(options?: { forceNetwork?: boolean }) {
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+    const list = await loadInvoicesList(buildListQuery(), {
+      forceNetwork: options?.forceNetwork,
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted) return;
+    applyListRowsToMonthState(list.invoices.map(mapInvoiceListRowToInvoice));
   }
 
-  async function refreshMonthsAndInvoices(monthKeysToLoad?: string[]) {
-    const querySuffix = buildListQueryString();
-    const monthsData = await apiFetch<InvoiceMonthsResponse>(`/api/invoices/months${querySuffix}`);
-    setMonths(monthsData.months);
-    const allKeys = monthsData.months.map((month) => monthKey(month.year, month.month));
-    if (allKeys.length === 0) {
-      const fallback = await apiFetch<InvoicesResponse>(`/api/invoices${querySuffix}`);
-      const grouped = buildFallbackMonthGroups(fallback.invoices);
-      setMonths(grouped.months);
-      setInvoicesByMonth(grouped.invoicesByMonth);
-      setExpandedMonths(new Set(grouped.months.map((month) => monthKey(month.year, month.month))));
-      return;
-    }
-    const keysToLoad = monthKeysToLoad ?? allKeys;
-    setExpandedMonths((current) => {
-      const next = new Set(current);
-      for (const key of allKeys) next.add(key);
-      return next;
-    });
-    await loadMonthsInvoices(keysToLoad, querySuffix);
+  async function refreshMonthsAndInvoices(_monthKeysToLoad?: string[]) {
+    invalidateAfterMutation();
+    await refreshListOnly({ forceNetwork: true });
   }
 
   async function loadIncompleteCount() {
     try {
-      const monthsData = await apiFetch<InvoiceMonthsResponse>("/api/invoices/months?completeness=incomplete");
-      setIncompleteCount(monthsData.months.reduce((sum, month) => sum + month.count, 0));
+      const bootstrap = await loadInvoicesBootstrap({ forceNetwork: true });
+      setIncompleteCount(bootstrap.summary.incompleteCount);
     } catch {
-      setIncompleteCount(0);
+      /* keep previous */
     }
   }
 
   async function load() {
+    const generation = ++loadGenerationRef.current;
+    fpOriginRef.current = performance.now();
+    invoicesFpDebug("invoices_mount", { sinceMountMs: 0 });
     setMonthsLoading(true);
-    try {
-      await Promise.all([loadClients(), refreshMonthsAndInvoices(), loadIncompleteCount()]);
-    } finally {
-      setMonthsLoading(false);
-    }
+
+    await runInvoicesLoadPhases({
+      isCurrent: () => loadGenerationRef.current === generation,
+      loadFirstPaint: async () => {
+        invoicesFpDebug("invoices_bootstrap_start", {
+          sinceMountMs: Math.round(performance.now() - (fpOriginRef.current ?? 0)),
+        });
+        invoicesFpDebug("invoices_list_start", {
+          sinceMountMs: Math.round(performance.now() - (fpOriginRef.current ?? 0)),
+        });
+        const bootstrapStart = performance.now();
+        const listStart = performance.now();
+        const [bootstrap, list] = await Promise.all([
+          loadInvoicesBootstrap(),
+          loadInvoicesList(buildListQuery()),
+        ]);
+        invoicesFpDebug("invoices_bootstrap_end", {
+          sinceMountMs: Math.round(performance.now() - (fpOriginRef.current ?? 0)),
+          durationMs: Math.round(performance.now() - bootstrapStart),
+          cache_source: getInvoicesBootstrapCacheSource(),
+          network_count: getInvoicesBootstrapNetworkCount(),
+        });
+        invoicesFpDebug("invoices_list_end", {
+          sinceMountMs: Math.round(performance.now() - (fpOriginRef.current ?? 0)),
+          durationMs: Math.round(performance.now() - listStart),
+          cache_source: getInvoicesListCacheSource(),
+          network_count: getInvoicesListNetworkCount(),
+          row_count: list.invoices.length,
+        });
+
+        setClients(
+          bootstrap.suppliersPreview.map((s) => ({
+            id: s.id,
+            name: s.displayName,
+            gmailConnected: false,
+          }))
+        );
+        setIncompleteCount(bootstrap.summary.incompleteCount);
+        applyListRowsToMonthState(list.invoices.map(mapInvoiceListRowToInvoice));
+        invoicesFpDebug("first_rows_render", {
+          sinceMountMs: Math.round(performance.now() - (fpOriginRef.current ?? 0)),
+          row_count: list.invoices.length,
+        });
+      },
+      onFirstPaintReady: () => {
+        setMonthsLoading(false);
+        invoicesFpDebug("first_shell_render", {
+          sinceMountMs: Math.round(performance.now() - (fpOriginRef.current ?? 0)),
+        });
+        invoicesFpDebug("fully_usable", {
+          sinceMountMs: Math.round(performance.now() - (fpOriginRef.current ?? 0)),
+          network_count: getInvoicesBootstrapNetworkCount() + getInvoicesListNetworkCount(),
+        });
+      },
+      loadBackground: async () => {
+        try {
+          const clientData = await apiFetch<ClientsResponse>("/api/clients");
+          if (loadGenerationRef.current !== generation) return;
+          setClients(clientData.clients);
+        } catch {
+          /* keep bootstrap preview */
+        }
+      },
+      onBackgroundError: () => {
+        /* First Paint data stays */
+      },
+    });
   }
 
   useEffect(() => {
     load().catch((err) => {
+      setMonthsLoading(false);
       setMessageTone("error");
       setMessage(err instanceof Error ? err.message : "טעינת חשבוניות נכשלה");
     });
@@ -220,11 +284,22 @@ export default function InvoicesPage() {
       skipFilterRefresh.current = false;
       return;
     }
-    refreshMonthsAndInvoices().catch((err) => {
-      setMessageTone("error");
-      setMessage(err instanceof Error ? err.message : "רענון חשבוניות נכשל");
-    });
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      refreshListOnly().catch((err) => {
+        setMessageTone("error");
+        setMessage(err instanceof Error ? err.message : "רענון חשבוניות נכשל");
+      });
+    }, 300);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
   }, [clientId, reviewStatus, search, monthsLoading]);
+
+  function invalidateAfterMutation() {
+    invalidateInvoicesBootstrap();
+    invalidateInvoicesList();
+  }
 
   useEffect(() => {
     if (!selected) return;
@@ -328,7 +403,7 @@ export default function InvoicesPage() {
     });
   }
 
-  async function refreshListOnly() {
+  async function manualRefresh() {
     if (scanning || refreshing) return;
     setRefreshing(true);
     setShowGmailConnect(false);
@@ -412,10 +487,14 @@ export default function InvoicesPage() {
       }
 
       await refreshMonthsAndInvoices();
-      const incompleteAfter = await apiFetch<InvoiceMonthsResponse>("/api/invoices/months?completeness=incomplete")
-        .then((data) => data.months.reduce((sum, month) => sum + month.count, 0))
-        .catch(() => counts.needsCompletion);
-      setIncompleteCount(incompleteAfter);
+      let incompleteAfter = counts.needsCompletion;
+      try {
+        const bootstrap = await loadInvoicesBootstrap({ forceNetwork: true });
+        incompleteAfter = bootstrap.summary.incompleteCount;
+        setIncompleteCount(incompleteAfter);
+      } catch {
+        setIncompleteCount(incompleteAfter);
+      }
       setMessageTone("success");
       setMessage(
         formatInvoicesGmailScanDoneMessage({
@@ -442,13 +521,28 @@ export default function InvoicesPage() {
   async function toggleStatus(invoice: Invoice) {
     if (!isPersistedInvoice(invoice)) return;
     const next = invoice.status === "paid" ? "pending" : "paid";
+    const previous = invoice.status;
     setMessage("");
+    setInvoicesByMonth((current) => {
+      const nextMap: Record<string, Invoice[]> = {};
+      for (const [key, rows] of Object.entries(current)) {
+        nextMap[key] = rows.map((row) => (row.id === invoice.id ? { ...row, status: next } : row));
+      }
+      return nextMap;
+    });
     try {
       await apiFetch(`/api/invoices/${invoice.id}/status`, { method: "PUT", body: JSON.stringify({ status: next }) });
-      await refreshMonthsAndInvoices(Object.keys(invoicesByMonth));
+      invalidateAfterMutation();
       setMessageTone("success");
       setMessage(next === "paid" ? "החשבונית סומנה כשולמה" : "החשבונית סומנה כממתינה");
     } catch (err) {
+      setInvoicesByMonth((current) => {
+        const nextMap: Record<string, Invoice[]> = {};
+        for (const [key, rows] of Object.entries(current)) {
+          nextMap[key] = rows.map((row) => (row.id === invoice.id ? { ...row, status: previous } : row));
+        }
+        return nextMap;
+      });
       setMessageTone("error");
       setMessage(err instanceof Error ? err.message : "עדכון סטטוס חשבונית נכשל");
     }
@@ -476,6 +570,8 @@ export default function InvoicesPage() {
             return next;
           });
           removeInvoiceFromLocalState(invoice.id);
+          removeInvoicesListRow(buildListQuery(), invoice.id);
+          invalidateAfterMutation();
           await refreshMonthsAndInvoices(Object.keys(invoicesByMonth));
           setMessageTone("success");
           setMessage(`החשבונית נמחקה. נותקו ${result?.unlinked?.bankTransactions ?? 0} התאמות בנק.`);
@@ -606,7 +702,7 @@ export default function InvoicesPage() {
             <Button
               variant="secondary"
               className="min-w-40"
-              onClick={refreshListOnly}
+              onClick={manualRefresh}
               disabled={scanning || refreshing}
             >
               {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}

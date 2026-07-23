@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { resolveVerifiedTenant, toRequestVerifiedTenant } from "../services/tenant/verifiedTenant.js";
 import { isAppointmentsTimingPath } from "../lib/appointmentsEndpointTiming.js";
 import { isDashboardBootstrapTimingPath } from "../lib/dashboardBootstrapServerTiming.js";
+import { isInvoicesFpTimingPath } from "../lib/invoicesEndpointTiming.js";
 import {
   FINANCIAL_INGESTION_CONTAINMENT_CODE,
   FINANCIAL_READ_CONTAINMENT_CODE,
@@ -32,13 +33,17 @@ export async function validateTenantMiddleware(
 
   const timingAppointments = isAppointmentsTimingPath(req.path);
   const timingBootstrap = isDashboardBootstrapTimingPath(req.path);
-  const timing = timingAppointments || timingBootstrap;
+  const timingInvoices = isInvoicesFpTimingPath(req.path);
+  const timing = timingAppointments || timingBootstrap || timingInvoices;
   const tenantT0 = timing ? performance.now() : 0;
   if (timingAppointments) {
     res.locals.appointmentsTenantStart = tenantT0;
   }
   if (timingBootstrap) {
     res.locals.dashboardBootstrapTenantStart = tenantT0;
+  }
+  if (timingInvoices) {
+    res.locals.invoicesFpTenantStart = tenantT0;
   }
 
   const { tenant, reason, cacheSource, cacheAgeMs, dbMs } = await resolveVerifiedTenant(req.auth);
@@ -58,6 +63,14 @@ export async function validateTenantMiddleware(
     res.locals.dashboardBootstrapTenantCacheSource = cacheSource;
     res.locals.dashboardBootstrapTenantCacheAgeMs = cacheAgeMs;
     res.locals.dashboardBootstrapTenantDbMs = dbMs;
+  }
+  if (timingInvoices) {
+    const tenantEnd = performance.now();
+    res.locals.invoicesFpTenantEnd = tenantEnd;
+    res.locals.invoicesFpTenantMs = Math.round(tenantEnd - tenantT0);
+    res.locals.invoicesFpTenantCacheSource = cacheSource;
+    res.locals.invoicesFpTenantCacheAgeMs = cacheAgeMs;
+    res.locals.invoicesFpTenantDbMs = dbMs;
   }
 
   if (!tenant) {

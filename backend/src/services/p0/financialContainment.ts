@@ -134,7 +134,12 @@ export function isFinancialDataPath(path: string): boolean {
  */
 export function isAllowedInvoiceListRead(method: string, path: string): boolean {
   if (method.toUpperCase() !== "GET") return false;
-  return path === "/invoices" || path === "/invoices/months";
+  return (
+    path === "/invoices" ||
+    path === "/invoices/months" ||
+    path === "/invoices/bootstrap" ||
+    path === "/invoices/list"
+  );
 }
 
 export function isFinancialIngestionPath(path: string): boolean {
