@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import type { JwtPayload } from "../lib/auth.js";
 import { prisma } from "../lib/prisma.js";
-import { resolveVerifiedTenant } from "../services/tenant/verifiedTenant.js";
+import { resolveVerifiedTenant, resetVerifiedTenantCacheForTests } from "../services/tenant/verifiedTenant.js";
 import {
   crossOrgGmailIdsExcludedForOrganization,
   resetCrossOrgContaminatedGmailIdsCacheForTests,
@@ -83,6 +83,7 @@ async function requestContainment(
 }
 
 test("resolveVerifiedTenant rejects stale token org for organization owner", async () => {
+  resetVerifiedTenantCacheForTests();
   const originalUserFindUnique = prisma.user.findUnique.bind(prisma.user);
   const originalOrgFindUnique = prisma.organization.findUnique.bind(prisma.organization);
   const originalMemberFindUnique = prisma.organizationMember.findUnique.bind(prisma.organizationMember);

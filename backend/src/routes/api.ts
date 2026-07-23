@@ -6235,7 +6235,8 @@ apiRouter.get("/appointments", requireCalendarViewWithTiming, async (req, res) =
         rowCount: args.rowCount,
         prismaCallCount: args.prismaCallCount,
         authDbRoundTrips: 0,
-        tenantDbRoundTrips: 3,
+        tenantDbRoundTrips: res.locals.appointmentsTenantCacheSource === "hit" ? 0 : 2,
+        tenantDbMs: res.locals.appointmentsTenantDbMs ?? (res.locals.appointmentsTenantCacheSource === "hit" ? 0 : tenantMs),
         orgDbRoundTrips: res.locals.appointmentsOrgRoleSource === "verified_tenant" ? 0 : 2,
         eventsDbRoundTrips: args.eventsDbRoundTrips,
       };
@@ -6266,8 +6267,10 @@ apiRouter.get("/appointments", requireCalendarViewWithTiming, async (req, res) =
         handlerEnterSkewMs: roundMs(orgEnd, handlerEnter),
         endpointPath: "GET /api/appointments",
         orgRoleSource: res.locals.appointmentsOrgRoleSource ?? "none",
+        tenantCacheSource: res.locals.appointmentsTenantCacheSource ?? "unknown",
+        tenantCacheAgeMs: res.locals.appointmentsTenantCacheAgeMs ?? null,
         dbWaves:
-          2 /* tenant user + membership */ +
+          (res.locals.appointmentsTenantCacheSource === "hit" ? 0 : 2) +
           (res.locals.appointmentsOrgRoleSource === "verified_tenant" ? 0 : 1) +
           args.eventsDbRoundTrips,
       });

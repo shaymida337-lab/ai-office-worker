@@ -106,6 +106,9 @@ declare global {
       appointmentsTenantStart?: number;
       appointmentsTenantEnd?: number;
       appointmentsTenantMs?: number;
+      appointmentsTenantCacheSource?: string;
+      appointmentsTenantCacheAgeMs?: number | null;
+      appointmentsTenantDbMs?: number;
       appointmentsOrgStart?: number;
       appointmentsOrgEnd?: number;
       appointmentsOrgMs?: number;

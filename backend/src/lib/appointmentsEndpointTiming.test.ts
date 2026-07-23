@@ -41,6 +41,7 @@ test("Server-Timing includes gap RCA phases without PII", () => {
   assert.match(header, /pre_route;dur=/);
   assert.match(header, /auth_to_org;dur=/);
   assert.match(header, /tenant;dur=/);
+  assert.match(header, /tenant_db;dur=/);
   assert.match(header, /org_to_db;dur=/);
   assert.match(header, /unaccounted;dur=/);
   assert.match(header, /total;dur=/);

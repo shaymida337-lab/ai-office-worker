@@ -11,6 +11,8 @@ export type AppointmentsEndpointTiming = {
   authToOrgMs: number;
   /** validateTenantMiddleware / resolveVerifiedTenant only. */
   tenantMs: number;
+  /** DB portion of tenant resolve (0 on cache hit). */
+  tenantDbMs?: number;
   orgMs: number;
   orgToDbMs: number;
   dbMs: number;
@@ -59,6 +61,7 @@ export function buildAppointmentsServerTiming(t: AppointmentsEndpointTiming): st
     `auth;dur=${t.authMs}`,
     `auth_to_org;dur=${t.authToOrgMs}`,
     `tenant;dur=${t.tenantMs}`,
+    `tenant_db;dur=${t.tenantDbMs ?? (t.tenantDbRoundTrips > 0 ? t.tenantMs : 0)}`,
     `org;dur=${t.orgMs}`,
     `org_to_db;dur=${t.orgToDbMs}`,
     `db;dur=${t.dbMs}`,
@@ -154,6 +157,7 @@ export function logAppointmentsEndpointTimingSafe(
       tenantDbRoundTrips: t.tenantDbRoundTrips,
       orgDbRoundTrips: t.orgDbRoundTrips,
       eventsDbRoundTrips: t.eventsDbRoundTrips,
+      tenantDbMs: t.tenantDbMs ?? null,
       ...extra,
     })
   );

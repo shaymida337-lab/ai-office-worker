@@ -35,12 +35,15 @@ export async function validateTenantMiddleware(
     res.locals.appointmentsTenantStart = tenantT0;
   }
 
-  const { tenant, reason } = await resolveVerifiedTenant(req.auth);
+  const { tenant, reason, cacheSource, cacheAgeMs, dbMs } = await resolveVerifiedTenant(req.auth);
 
   if (timingAppointments) {
     const tenantEnd = performance.now();
     res.locals.appointmentsTenantEnd = tenantEnd;
     res.locals.appointmentsTenantMs = Math.round(tenantEnd - tenantT0);
+    res.locals.appointmentsTenantCacheSource = cacheSource;
+    res.locals.appointmentsTenantCacheAgeMs = cacheAgeMs;
+    res.locals.appointmentsTenantDbMs = dbMs;
   }
 
   if (!tenant) {

@@ -14,6 +14,7 @@ import {
   requirePerm,
   resolveMembershipRole,
 } from "../services/rbac/index.js";
+import { invalidateVerifiedTenant } from "../services/tenant/verifiedTenantCache.js";
 
 export const membershipRouter = Router();
 
@@ -92,6 +93,7 @@ membershipRouter.post("/members/invite", requirePerm("users.invite"), async (req
       },
       update: { role },
     });
+    invalidateVerifiedTenant(user.id, req.auth!.organizationId);
 
     recordUserInvitedAudit({
       actorUserId: req.auth!.userId,
@@ -173,6 +175,7 @@ membershipRouter.patch("/members/:userId/role", requirePerm("users.permissions")
       },
       update: { role: nextRole },
     });
+    invalidateVerifiedTenant(targetUserId, req.auth!.organizationId);
 
     recordRoleAssignmentAudit({
       actorUserId: req.auth!.userId,
