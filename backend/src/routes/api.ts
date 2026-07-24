@@ -50,6 +50,37 @@ import {
   logInvoicesTimingSafe,
   type InvoicesEndpointTiming,
 } from "../lib/invoicesEndpointTiming.js";
+import {
+  assertCompletionBootstrapPayloadBounds,
+  buildCompletionBootstrapPayload,
+} from "../services/invoiceCompletion/completionBootstrap.js";
+import {
+  completionBootstrapCacheKey,
+  getCompletionBootstrapCacheGeneration,
+  getCompletionBootstrapInflight,
+  peekCompletionBootstrapCache,
+  setCompletionBootstrapCache,
+  setCompletionBootstrapInflight,
+  safeInvalidateCompletionBootstrap,
+} from "../services/invoiceCompletion/completionBootstrapCache.js";
+import {
+  assertCompletionListPayloadBounds,
+  buildCompletionListPayload,
+  clampCompletionListPage,
+  clampCompletionListPageSize,
+  type CompletionListSort,
+} from "../services/invoiceCompletion/completionList.js";
+import {
+  COMPLETION_SCAN_CHUNK,
+  COMPLETION_SCAN_MAX_SOURCE_ROWS,
+  scanCompletionQueueFromSources,
+} from "../services/invoiceCompletion/completionQueueQuery.js";
+import {
+  buildCompletionServerTiming,
+  computeCompletionUnaccountedMs,
+  logCompletionTimingSafe,
+  type InvoiceCompletionEndpointTiming,
+} from "../lib/invoiceCompletionEndpointTiming.js";
 import { safeInvalidateDashboardBootstrap } from "../services/dashboardBootstrapCache.js";
 import {
   assertCalendarBootstrapPayloadBounds,
@@ -5386,6 +5417,338 @@ async function getInvoicesBootstrapCachedForRequest(input: {
   })());
 }
 
+async function loadCompletionQueuePage(input: {
+  organizationId: string;
+  status?: string;
+  clientId?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+  sort?: CompletionListSort;
+}) {
+  const ctx = buildInvoiceListQueryContext({
+    organizationId: input.organizationId,
+    status: input.status,
+    clientId: input.clientId,
+    search: input.search,
+  });
+  // Completion queue is review candidates; approved Invoice rows are complete and filtered out.
+  const whereInput = await applyFinancialReadIsolationToInvoiceListWhere(
+    {
+      ...buildInvoiceListWhereInput(ctx),
+      includeApprovedInvoices: false,
+      includeApprovedSupplierPayments: false,
+      includeReviewCandidates: true,
+    },
+    input.organizationId,
+  );
+
+  const gsiOrderBy = [
+    { occurredAt: "desc" as const },
+    { id: "desc" as const },
+  ];
+  const fdrOrderBy = [
+    { documentDate: "desc" as const },
+    { createdAt: "desc" as const },
+    { id: "desc" as const },
+  ];
+
+  const pageResult = await scanCompletionQueueFromSources(
+    [
+      {
+        name: "gmail_scan_item",
+        load: ({ skip, take }) =>
+          whereInput.includeReviewCandidates
+            ? prisma.gmailScanItem.findMany({
+                where: whereInput.gmailScanItemWhere,
+                orderBy: gsiOrderBy,
+                skip,
+                take,
+              })
+            : Promise.resolve([]),
+        map: (row) => mapGmailScanItemToInvoiceCandidate(row),
+      },
+      {
+        name: "financial_document_review",
+        load: ({ skip, take }) =>
+          whereInput.includeReviewCandidates
+            ? prisma.financialDocumentReview.findMany({
+                where: whereInput.financialDocumentReviewWhere,
+                orderBy: fdrOrderBy,
+                skip,
+                take,
+              })
+            : Promise.resolve([]),
+        map: (row) => mapDocumentReviewToInvoiceCandidate(row, input.organizationId),
+      },
+    ],
+    {
+      page: input.page,
+      pageSize: input.pageSize,
+      sort: input.sort,
+      status: input.status,
+      search: input.search,
+      chunk: COMPLETION_SCAN_CHUNK,
+      maxSourceRows: COMPLETION_SCAN_MAX_SOURCE_ROWS,
+    },
+  );
+
+  return pageResult;
+}
+
+async function loadCompletionQueueMatchedForBootstrap(input: {
+  organizationId: string;
+}) {
+  return loadCompletionQueuePage({
+    organizationId: input.organizationId,
+    page: 1,
+    pageSize: COMPLETION_SCAN_MAX_SOURCE_ROWS,
+    sort: "date_desc",
+  });
+}
+
+async function getCompletionBootstrapCachedForRequest(input: {
+  userId: string;
+  organizationId: string;
+}) {
+  const key = completionBootstrapCacheKey(input.userId, input.organizationId);
+  const peeked = peekCompletionBootstrapCache(input.userId, input.organizationId);
+  if (peeked?.freshness === "fresh") {
+    return {
+      payload: peeked.entry.payload,
+      cacheSource: "hit" as const,
+      cacheAgeMs: Math.max(0, Date.now() - peeked.entry.loadedAt),
+      buildMs: 0,
+    };
+  }
+  if (peeked?.freshness === "stale") {
+    const generationAtStart = getCompletionBootstrapCacheGeneration(input.userId, input.organizationId);
+    if (!getCompletionBootstrapInflight(key)) {
+      void setCompletionBootstrapInflight(
+        key,
+        (async () => {
+          try {
+            const scanned = await loadCompletionQueueMatchedForBootstrap({
+              organizationId: input.organizationId,
+            });
+            const payload = buildCompletionBootstrapPayload(scanned.matched, {
+              truncated: scanned.truncated,
+            });
+            assertCompletionBootstrapPayloadBounds(payload);
+            setCompletionBootstrapCache({
+              userId: input.userId,
+              organizationId: input.organizationId,
+              payload,
+              generationAtStart,
+            });
+          } catch {
+            /* keep stale */
+          }
+          return null;
+        })()
+      );
+    }
+    return {
+      payload: peeked.entry.payload,
+      cacheSource: "stale" as const,
+      cacheAgeMs: Math.max(0, Date.now() - peeked.entry.loadedAt),
+      buildMs: 0,
+    };
+  }
+
+  const existing = getCompletionBootstrapInflight<{
+    payload: ReturnType<typeof buildCompletionBootstrapPayload>;
+    cacheSource: "miss" | "inflight";
+    cacheAgeMs: null;
+    buildMs: number;
+  }>(key);
+  if (existing) {
+    const shared = await existing;
+    return { ...shared, cacheSource: "inflight" as const };
+  }
+
+  const generationAtStart = getCompletionBootstrapCacheGeneration(input.userId, input.organizationId);
+  return setCompletionBootstrapInflight(key, (async () => {
+    const buildT0 = performance.now();
+    const scanned = await loadCompletionQueueMatchedForBootstrap({
+      organizationId: input.organizationId,
+    });
+    const payload = buildCompletionBootstrapPayload(scanned.matched, {
+      truncated: scanned.truncated,
+    });
+    assertCompletionBootstrapPayloadBounds(payload);
+    const buildMs = Math.round(performance.now() - buildT0);
+    setCompletionBootstrapCache({
+      userId: input.userId,
+      organizationId: input.organizationId,
+      payload,
+      generationAtStart,
+    });
+    return { payload, cacheSource: "miss" as const, cacheAgeMs: null, buildMs };
+  })());
+}
+
+apiRouter.get("/invoice-completion/bootstrap", async (req, res) => {
+  const wallStart = res.locals.invoicesFpWallStart ?? performance.now();
+  const authStart = res.locals.invoicesFpAuthStart ?? wallStart;
+  const authEnd = res.locals.invoicesFpAuthEnd ?? authStart;
+  const tenantStart = res.locals.invoicesFpTenantStart ?? authEnd;
+  const tenantEnd = res.locals.invoicesFpTenantEnd ?? tenantStart;
+  const authMs = res.locals.invoicesFpAuthMs ?? Math.max(0, Math.round(authEnd - authStart));
+  const tenantMs = res.locals.invoicesFpTenantMs ?? Math.max(0, Math.round(tenantEnd - tenantStart));
+  const tenantCacheSource = res.locals.invoicesFpTenantCacheSource ?? "unknown";
+  const tenantDbMs = res.locals.invoicesFpTenantDbMs ?? (tenantCacheSource === "hit" ? 0 : tenantMs);
+
+  try {
+    const cached = await getCompletionBootstrapCachedForRequest({
+      userId: req.auth!.userId,
+      organizationId: req.auth!.organizationId,
+    });
+
+    const serializeT0 = performance.now();
+    const body = JSON.stringify(cached.payload);
+    const serializeMs = Math.round(performance.now() - serializeT0);
+    const responseT0 = performance.now();
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    const responseMs = Math.round(performance.now() - responseT0);
+    const totalMs = Math.round(performance.now() - wallStart);
+    const timingBase: Omit<InvoiceCompletionEndpointTiming, "unaccountedMs"> = {
+      preRouteMs: Math.max(0, Math.round(authStart - wallStart)),
+      authMs,
+      tenantMs,
+      tenantDbMs,
+      orgMs: 0,
+      queryMs: cached.cacheSource === "hit" || cached.cacheSource === "stale" ? 0 : cached.buildMs,
+      countMs: 0,
+      relationsMs: 0,
+      mapMs: 0,
+      serializeMs,
+      responseMs,
+      totalMs,
+      tenantDbRoundTrips: tenantCacheSource === "hit" ? 0 : 2,
+    };
+    const timing: InvoiceCompletionEndpointTiming = {
+      ...timingBase,
+      unaccountedMs: computeCompletionUnaccountedMs(timingBase),
+    };
+    res.setHeader("Server-Timing", buildCompletionServerTiming(timing));
+    res.setHeader("X-Invoice-Completion-Bootstrap-Cache", cached.cacheSource);
+    res.send(body);
+    logCompletionTimingSafe("invoice-completion/bootstrap", timing, {
+      cacheSource: cached.cacheSource,
+      payloadBytes: Buffer.byteLength(body, "utf8"),
+    });
+  } catch (err) {
+    console.error(
+      "[invoice-completion/bootstrap] failed",
+      err instanceof Error ? err.message : String(err)
+    );
+    res.status(500).json({ error: "Failed to load invoice completion bootstrap" });
+  }
+});
+
+apiRouter.get("/invoice-completion/list", async (req, res) => {
+  const wallStart = res.locals.invoicesFpWallStart ?? performance.now();
+  const authStart = res.locals.invoicesFpAuthStart ?? wallStart;
+  const authEnd = res.locals.invoicesFpAuthEnd ?? authStart;
+  const tenantStart = res.locals.invoicesFpTenantStart ?? authEnd;
+  const tenantEnd = res.locals.invoicesFpTenantEnd ?? tenantStart;
+  const authMs = res.locals.invoicesFpAuthMs ?? Math.max(0, Math.round(authEnd - authStart));
+  const tenantMs = res.locals.invoicesFpTenantMs ?? Math.max(0, Math.round(tenantEnd - tenantStart));
+  const tenantCacheSource = res.locals.invoicesFpTenantCacheSource ?? "unknown";
+  const tenantDbMs = res.locals.invoicesFpTenantDbMs ?? (tenantCacheSource === "hit" ? 0 : tenantMs);
+
+  try {
+    const status = typeof req.query.status === "string" ? req.query.status : undefined;
+    const clientId = typeof req.query.clientId === "string" ? req.query.clientId : undefined;
+    const search = typeof req.query.search === "string" ? req.query.search : undefined;
+    const page = clampCompletionListPage(Number.parseInt(String(req.query.page ?? "1"), 10));
+    const pageSize = clampCompletionListPageSize(
+      Number.parseInt(String(req.query.pageSize ?? "25"), 10)
+    );
+    const sortRaw = typeof req.query.sort === "string" ? req.query.sort : "date_desc";
+    const sort = (
+      ["date_desc", "date_asc", "amount_desc", "amount_asc"].includes(sortRaw) ? sortRaw : "date_desc"
+    ) as CompletionListSort;
+
+    const organizationId = req.auth!.organizationId;
+
+    const queryT0 = performance.now();
+    const scanned = await loadCompletionQueuePage({
+      organizationId,
+      status,
+      clientId,
+      search,
+      page,
+      pageSize,
+      sort,
+    });
+    const queryMs = Math.round(performance.now() - queryT0);
+
+    const relationsT0 = performance.now();
+    // Readiness only for the current page — never block first rows on full-queue enrichment.
+    const pageEnriched = await enrichInvoiceCandidatesWithReadiness(
+      scanned.pageRows,
+      organizationId
+    );
+    const relationsMs = Math.round(performance.now() - relationsT0);
+
+    const mapT0 = performance.now();
+    const payload = buildCompletionListPayload(pageEnriched, {
+      page: scanned.page,
+      pageSize: scanned.pageSize,
+      total: scanned.total,
+      hasMore: scanned.hasMore,
+      truncated: scanned.truncated,
+    });
+    assertCompletionListPayloadBounds(payload);
+    const mapMs = Math.round(performance.now() - mapT0);
+
+    const serializeT0 = performance.now();
+    const body = JSON.stringify(payload);
+    const serializeMs = Math.round(performance.now() - serializeT0);
+    const responseT0 = performance.now();
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    const responseMs = Math.round(performance.now() - responseT0);
+    const totalMs = Math.round(performance.now() - wallStart);
+
+    const timingBase: Omit<InvoiceCompletionEndpointTiming, "unaccountedMs"> = {
+      preRouteMs: Math.max(0, Math.round(authStart - wallStart)),
+      authMs,
+      tenantMs,
+      tenantDbMs,
+      orgMs: 0,
+      queryMs,
+      countMs: 0,
+      relationsMs,
+      mapMs,
+      serializeMs,
+      responseMs,
+      totalMs,
+      tenantDbRoundTrips: tenantCacheSource === "hit" ? 0 : 2,
+    };
+    const timing: InvoiceCompletionEndpointTiming = {
+      ...timingBase,
+      unaccountedMs: computeCompletionUnaccountedMs(timingBase),
+    };
+    res.setHeader("Server-Timing", buildCompletionServerTiming(timing));
+    res.send(body);
+    logCompletionTimingSafe("invoice-completion/list", timing, {
+      rowCount: payload.rows.length,
+      total: payload.total,
+      payloadBytes: Buffer.byteLength(body, "utf8"),
+      page: payload.page,
+      pageSize: payload.pageSize,
+      sourceRowsScanned: scanned.sourceRowsScanned,
+      waves: scanned.waves,
+      truncated: scanned.truncated,
+    });
+  } catch (err) {
+    console.error("[invoice-completion/list] failed", err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: "Failed to load invoice completion list" });
+  }
+});
+
 apiRouter.get("/invoices/bootstrap", async (req, res) => {
   const wallStart = res.locals.invoicesFpWallStart ?? performance.now();
   const authStart = res.locals.invoicesFpAuthStart ?? wallStart;
@@ -5673,6 +6036,9 @@ apiRouter.post("/invoices/:sourceType/:id/complete", requirePerm("review.approve
     const approved = !assessment.approvalRequired && isInvoiceRecordApproved(candidate.rawReviewStatus ?? candidate.reviewStatus);
     const destination = assessment.isComplete ? "invoices" : "completion";
 
+    safeInvalidateCompletionBootstrap(undefined, organizationId);
+    safeInvalidateInvoicesBootstrap(undefined, organizationId);
+
     res.json({
       dataComplete: assessment.dataComplete,
       approved,
@@ -5881,6 +6247,10 @@ async function deleteInvoiceArtifacts(organizationId: string, seed: InvoiceArtif
   safeInvalidateDashboardBootstrap(undefined, organizationId);
   const { safeInvalidateInvoicesBootstrap } = await import("../services/invoices/invoiceBootstrapCache.js");
   safeInvalidateInvoicesBootstrap(undefined, organizationId);
+  const { safeInvalidateCompletionBootstrap } = await import(
+    "../services/invoiceCompletion/completionBootstrapCache.js"
+  );
+  safeInvalidateCompletionBootstrap(undefined, organizationId);
 
   return {
     found: true as const,

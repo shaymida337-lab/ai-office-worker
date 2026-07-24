@@ -26,10 +26,34 @@ import {
   type InvoiceCompletionActionKind,
   type InvoiceCompletionResponse,
 } from "@/lib/invoices/completionActions";
-
-type InvoicesResponse = { invoices: Invoice[] };
+import {
+  getCompletionBootstrapCacheSource,
+  getCompletionBootstrapNetworkCount,
+  loadCompletionBootstrap,
+} from "@/lib/invoiceCompletion/completionBootstrapStore";
+import {
+  getCompletionListCacheSource,
+  getCompletionListNetworkCount,
+  loadCompletionList,
+  patchCompletionListRow,
+  removeCompletionListRow,
+  restoreCompletionListRow,
+  type CompletionListQuery,
+} from "@/lib/invoiceCompletion/completionListStore";
+import { completionFpDebug } from "@/lib/invoiceCompletion/completionFpDebug";
+import { runCompletionLoadPhases } from "@/lib/invoiceCompletion/completionLoadPlan";
+import {
+  completionRowToInvoice,
+  invoiceToCompletionRow,
+} from "@/lib/invoiceCompletion/mapCompletionRow";
+import {
+  COMPLETION_TRUNCATED_MESSAGE,
+  isCompletionTruncated,
+  shouldFetchCompletionPage,
+} from "@/lib/invoiceCompletion/completionLoadPlan";
 
 const REMOVAL_ANIMATION_MS = 250;
+const DEFAULT_LIST_QUERY: CompletionListQuery = { page: 1, pageSize: 25, sort: "date_desc" };
 
 type EditDraft = {
   supplier: string;
@@ -372,6 +396,11 @@ export default function ReportsClient() {
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const messageRef = useRef<HTMLDivElement | null>(null);
 
+  const [listQuery] = useState<CompletionListQuery>(DEFAULT_LIST_QUERY);
+  const cancelledRef = useRef(false);
+  const truncatedRef = useRef(false);
+  const [resultsTruncated, setResultsTruncated] = useState(false);
+
   function showMessage(tone: "info" | "success" | "error", text: string) {
     setMessageTone(tone);
     setMessage(text);
@@ -388,19 +417,123 @@ export default function ReportsClient() {
   }
 
   const loadInvoices = useCallback(async () => {
+    const mountT0 = performance.now();
+    completionFpDebug("completion_mount", { t: Math.round(mountT0) });
     setLoading(true);
+
     try {
-      const data = await apiFetch<InvoicesResponse>("/api/invoices?completeness=incomplete&limit=300");
-      setInvoices(data.invoices);
+      await runCompletionLoadPhases({
+        isCurrent: () => !cancelledRef.current,
+        loadFirstPaint: async () => {
+          completionFpDebug("completion_list_start");
+          completionFpDebug("completion_summary_start");
+          const listStart = performance.now();
+          const bootStart = performance.now();
+          const [listResult, bootResult] = await Promise.allSettled([
+            loadCompletionList(listQuery),
+            loadCompletionBootstrap(),
+          ]);
+          completionFpDebug("completion_list_end", {
+            ms: Math.round(performance.now() - listStart),
+            cache_source: getCompletionListCacheSource(),
+            network_count: getCompletionListNetworkCount(),
+          });
+          completionFpDebug("completion_summary_end", {
+            ms: Math.round(performance.now() - bootStart),
+            cache_source: getCompletionBootstrapCacheSource(),
+            network_count: getCompletionBootstrapNetworkCount(),
+          });
+
+          if (listResult.status === "rejected") throw listResult.reason;
+          const list = listResult.value;
+          const rows = list.rows.map(completionRowToInvoice);
+          if (cancelledRef.current) return;
+          const bootTruncated =
+            bootResult.status === "fulfilled" && bootResult.value.truncated === true;
+          const truncated = isCompletionTruncated({
+            listTruncated: list.truncated === true,
+            bootstrapTruncated: bootTruncated,
+          });
+          truncatedRef.current = truncated;
+          setResultsTruncated(truncated);
+          setInvoices(rows);
+          completionFpDebug("first_shell_render", {
+            row_count: rows.length,
+            network_count: getCompletionListNetworkCount() + getCompletionBootstrapNetworkCount(),
+            truncated,
+          });
+          completionFpDebug("first_rows_render", {
+            row_count: rows.length,
+            ms: Math.round(performance.now() - mountT0),
+            cache_source: getCompletionListCacheSource(),
+            truncated,
+          });
+          if (bootResult.status === "rejected") {
+            completionFpDebug("completion_summary_error", { ok: false });
+          }
+        },
+        onFirstPaintReady: () => {
+          if (cancelledRef.current) return;
+          setLoading(false);
+          completionFpDebug("fully_usable", {
+            ms: Math.round(performance.now() - mountT0),
+            network_count: getCompletionListNetworkCount() + getCompletionBootstrapNetworkCount(),
+          });
+        },
+        loadBackground: async () => {
+          // Append pages only within the supported match set. When truncated,
+          // never invent pages beyond server hasMore / scanned total.
+          let page = 2;
+          let hasMore = true;
+          while (hasMore && !cancelledRef.current) {
+            const next = await loadCompletionList({ ...listQuery, page });
+            if (cancelledRef.current) return;
+            if (next.truncated) {
+              truncatedRef.current = true;
+              setResultsTruncated(true);
+            }
+            if (
+              !shouldFetchCompletionPage({
+                truncated: truncatedRef.current || next.truncated === true,
+                page,
+                total: next.total,
+                pageSize: next.pageSize,
+                hasMore: next.hasMore,
+              })
+            ) {
+              break;
+            }
+            if (next.rows.length === 0) break;
+            setInvoices((current) => {
+              const seen = new Set(current.map((row) => row.id));
+              const appended = next.rows
+                .map(completionRowToInvoice)
+                .filter((row) => !seen.has(row.id));
+              return appended.length ? [...current, ...appended] : current;
+            });
+            hasMore = next.hasMore;
+            page += 1;
+            if (page > 20) break;
+          }
+        },
+        onBackgroundError: () => {
+          /* first page already shown */
+        },
+      });
     } catch (err) {
-      showMessage("error", err instanceof Error ? err.message : "טעינת השלמת חשבוניות נכשלה");
-    } finally {
-      setLoading(false);
+      if (!cancelledRef.current) {
+        showMessage("error", err instanceof Error ? err.message : "טעינת השלמת חשבוניות נכשלה");
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [listQuery]);
 
   useEffect(() => {
+    cancelledRef.current = false;
     void loadInvoices();
+    return () => {
+      cancelledRef.current = true;
+    };
   }, [loadInvoices]);
 
   async function completeInvoiceRequest(
@@ -454,8 +587,17 @@ export default function ReportsClient() {
       delete next[invoice.id];
       return next;
     });
+    removeCompletionListRow(listQuery, invoice.id);
     setInvoices((current) => current.filter((item) => item.id !== invoice.id));
     showMessage("success", completionSuccessMessage(actionKind));
+  }
+
+  function rollbackRow(invoice: Invoice) {
+    restoreCompletionListRow(listQuery, invoiceToCompletionRow(invoice));
+    setInvoices((current) => {
+      if (current.some((item) => item.id === invoice.id)) return current;
+      return [invoice, ...current];
+    });
   }
 
   function openEditForm(invoice: Invoice, focusField?: CompletionFieldKey) {
@@ -565,6 +707,7 @@ export default function ReportsClient() {
           },
         });
       } else {
+        patchCompletionListRow(listQuery, invoice.id, invoiceToCompletionRow(response.invoice));
         setInvoices((current) => current.map((item) => (item.id === invoice.id ? response.invoice : item)));
         setEditingInvoice(null);
         setEditDraft(null);
@@ -578,6 +721,7 @@ export default function ReportsClient() {
         );
       }
     } catch (err) {
+      rollbackRow(invoice);
       reportActionError(invoice, err);
     } finally {
       setSavingEdit(false);
@@ -633,6 +777,11 @@ export default function ReportsClient() {
           {message}
         </div>
       )}
+      {resultsTruncated ? (
+        <p className="mb-6 text-sm leading-6 text-ink-secondary" data-testid="completion-truncated-banner">
+          {COMPLETION_TRUNCATED_MESSAGE}
+        </p>
+      ) : null}
       {loading ? (
         <div className="card"><p>טוען השלמת חשבוניות...</p></div>
       ) : invoices.length === 0 ? (

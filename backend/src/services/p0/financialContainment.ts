@@ -102,6 +102,7 @@ export function assertFinancialIngestionAllowed(
 
 export const FINANCIAL_DATA_PATH_PATTERNS: RegExp[] = [
   /^\/invoices(?:\/|$)/,
+  /^\/invoice-completion(?:\/|$)/,
   /^\/payments(?:\/|$)/,
   /^\/document-reviews(?:\/|$)/,
   /^\/gmail-scan-items(?:\/|$)/,
@@ -140,6 +141,12 @@ export function isAllowedInvoiceListRead(method: string, path: string): boolean 
     path === "/invoices/bootstrap" ||
     path === "/invoices/list"
   );
+}
+
+/** Controlled reopen: invoice-completion First Paint (bootstrap + slim list). */
+export function isAllowedInvoiceCompletionRead(method: string, path: string): boolean {
+  if (method.toUpperCase() !== "GET") return false;
+  return path === "/invoice-completion/bootstrap" || path === "/invoice-completion/list";
 }
 
 export function isFinancialIngestionPath(path: string): boolean {

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   assertFinancialIngestionAllowed,
   FinancialIngestionBlockedError,
+  isAllowedInvoiceCompletionRead,
   isAllowedInvoiceListRead,
   isFinancialDataContainmentActive,
   isFinancialDataPath,
@@ -41,6 +42,7 @@ function setEnv(master?: string, read?: string, ingestion?: string) {
 
 test("isFinancialDataPath covers financial reads and ingestion routes", () => {
   assert.equal(isFinancialDataPath("/invoices"), true);
+  assert.equal(isFinancialDataPath("/invoice-completion/list"), true);
   assert.equal(isFinancialDataPath("/payments"), true);
   assert.equal(isFinancialDataPath("/document-reviews"), true);
   assert.equal(isFinancialDataPath("/gmail/scan"), true);
@@ -56,6 +58,13 @@ test("isAllowedInvoiceListRead allows only GET invoices list and months", () => 
   assert.equal(isAllowedInvoiceListRead("GET", "/payments"), false);
   assert.equal(isAllowedInvoiceListRead("POST", "/invoices"), false);
   assert.equal(isAllowedInvoiceListRead("PUT", "/invoices/months"), false);
+});
+
+test("isAllowedInvoiceCompletionRead allows only GET completion bootstrap/list", () => {
+  assert.equal(isAllowedInvoiceCompletionRead("GET", "/invoice-completion/bootstrap"), true);
+  assert.equal(isAllowedInvoiceCompletionRead("GET", "/invoice-completion/list"), true);
+  assert.equal(isAllowedInvoiceCompletionRead("POST", "/invoice-completion/list"), false);
+  assert.equal(isAllowedInvoiceCompletionRead("GET", "/invoice-completion/other"), false);
 });
 
 const TRUTH_TABLE: Array<{

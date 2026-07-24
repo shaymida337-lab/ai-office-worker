@@ -9,6 +9,7 @@ import { clearAllCalendarCachesNow } from "@/lib/calendar/calendarBootstrapCache
 import { clearLeadAdminSummaryCacheNow } from "@/lib/admin/leadAdminSummaryCacheClear";
 import { clearOrganizationSettingsCacheNow } from "@/lib/organization/organizationSettingsCacheClear";
 import { clearInvoicesCachesNow } from "@/lib/invoices/invoicesCacheClear";
+import { clearCompletionCachesNow } from "@/lib/invoiceCompletion/completionCacheClear";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -44,6 +45,7 @@ export function clearAllAuthTokens(): void {
   clearDashboardBootstrapCacheNow();
   clearAllCalendarCachesNow();
   clearInvoicesCachesNow();
+  clearCompletionCachesNow();
 }
 
 export function clearToken(): void {

@@ -5,6 +5,7 @@ import { config } from "./config.js";
 import { isAppointmentsTimingPath } from "./appointmentsEndpointTiming.js";
 import { isDashboardBootstrapTimingPath } from "./dashboardBootstrapServerTiming.js";
 import { isInvoicesFpTimingPath } from "./invoicesEndpointTiming.js";
+import { isInvoiceCompletionFpTimingPath } from "./invoiceCompletionEndpointTiming.js";
 
 export type JwtPayload = {
   userId: string;
@@ -27,7 +28,8 @@ export function authMiddleware(
 ): void {
   const timingAppointments = isAppointmentsTimingPath(req.path);
   const timingBootstrap = isDashboardBootstrapTimingPath(req.path);
-  const timingInvoices = isInvoicesFpTimingPath(req.path);
+  const timingInvoices =
+    isInvoicesFpTimingPath(req.path) || isInvoiceCompletionFpTimingPath(req.path);
   const timing = timingAppointments || timingBootstrap || timingInvoices;
   const authT0 = timing ? performance.now() : 0;
   if (timingAppointments) {

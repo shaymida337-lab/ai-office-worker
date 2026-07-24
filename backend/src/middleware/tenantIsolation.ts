@@ -3,9 +3,11 @@ import { resolveVerifiedTenant, toRequestVerifiedTenant } from "../services/tena
 import { isAppointmentsTimingPath } from "../lib/appointmentsEndpointTiming.js";
 import { isDashboardBootstrapTimingPath } from "../lib/dashboardBootstrapServerTiming.js";
 import { isInvoicesFpTimingPath } from "../lib/invoicesEndpointTiming.js";
+import { isInvoiceCompletionFpTimingPath } from "../lib/invoiceCompletionEndpointTiming.js";
 import {
   FINANCIAL_INGESTION_CONTAINMENT_CODE,
   FINANCIAL_READ_CONTAINMENT_CODE,
+  isAllowedInvoiceCompletionRead,
   isAllowedInvoiceListRead,
   isFinancialDataPath,
   isFinancialIngestionContainmentActive,
@@ -14,6 +16,7 @@ import {
 } from "../services/p0/financialContainment.js";
 
 export {
+  isAllowedInvoiceCompletionRead,
   isAllowedInvoiceListRead,
   isFinancialDataContainmentActive,
   isFinancialDataPath,
@@ -33,7 +36,8 @@ export async function validateTenantMiddleware(
 
   const timingAppointments = isAppointmentsTimingPath(req.path);
   const timingBootstrap = isDashboardBootstrapTimingPath(req.path);
-  const timingInvoices = isInvoicesFpTimingPath(req.path);
+  const timingInvoices =
+    isInvoicesFpTimingPath(req.path) || isInvoiceCompletionFpTimingPath(req.path);
   const timing = timingAppointments || timingBootstrap || timingInvoices;
   const tenantT0 = timing ? performance.now() : 0;
   if (timingAppointments) {
@@ -142,6 +146,12 @@ export function financialDataContainmentMiddleware(
 
   // Controlled reopen: invoice list + month tabs only (GET). All other financial reads stay gated.
   if (isAllowedInvoiceListRead(req.method, req.path)) {
+    next();
+    return;
+  }
+
+  // Controlled reopen: invoice-completion First Paint (bootstrap + slim list).
+  if (isAllowedInvoiceCompletionRead(req.method, req.path)) {
     next();
     return;
   }
