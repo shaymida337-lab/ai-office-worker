@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { login, register, saveToken } from "@/lib/auth";
+import { resolveLoginSuccessPath } from "@/lib/navigation/appLaunchHome";
 import { Logo } from "@/components/Logo";
 
 type Mode = "login" | "signup";
@@ -32,11 +33,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
       saveToken(result.token);
       const searchParams = new URLSearchParams(window.location.search);
       const next = searchParams.get("next");
-      if (mode === "signup") {
-        router.push("/onboarding");
-        return;
-      }
-      router.push(next?.startsWith("/") ? next : "/dashboard");
+      router.push(resolveLoginSuccessPath({ mode, next }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
     } finally {

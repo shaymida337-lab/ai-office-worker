@@ -5,7 +5,7 @@
   "lang": "he",
   "dir": "rtl",
   "id": "/",
-  "start_url": "/dashboard",
+  "start_url": "/dashboard?source=pwa",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f4f6fb",

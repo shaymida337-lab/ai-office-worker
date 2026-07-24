@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { GoogleTagManagerBody, GoogleTagManagerHead, GtmPageView } from "@/components/analytics";
+import { AppLaunchHomeRedirect } from "@/components/AppLaunchHomeRedirect";
 import { BackendWarmup } from "@/components/BackendWarmup";
 import { HelpCenter } from "@/components/HelpCenter";
 import { NatalieAssistantWidget } from "@/components/NatalieAssistantWidget";
@@ -66,6 +67,7 @@ export default function RootLayout({
             <GtmPageView />
           </Suspense>
           <BackendWarmup />
+          <AppLaunchHomeRedirect />
           {children}
           <HelpCenter />
           <NatalieAssistantWidget />
