@@ -842,6 +842,18 @@ test("rnet completion trace: match + slim only target ids; logging does not chan
   assert.match(logs[0]!, /rnet_completion_trace/);
   assert.match(logs[0]!, /"stage":"inSource"/);
 
+  logs.length = 0;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  try {
+    logRnetCompletionTraceStage("afterIncomplete", [other], { force: true });
+  } finally {
+    console.log = originalLog;
+  }
+  assert.equal(logs.length, 1);
+  assert.match(logs[0]!, /"count":0/);
+
   const page = paginateFilteredCompletionCandidates(
     [
       incompleteCandidate({

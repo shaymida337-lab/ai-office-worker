@@ -5503,6 +5503,8 @@ async function loadCompletionQueuePage(input: {
       maxSourceRows: COMPLETION_SCAN_MAX_SOURCE_ROWS,
       // Same Gmail doc is dual-written as GSI+FDR; collapse before filter/pagination.
       dedupeCandidates: dedupeCompletionCandidatesPreferGsi,
+      // Temporary Rnet diagnosis — force empty-stage logs for kedma org only.
+      forceRnetTrace: input.organizationId === "cmqw27e43002bm92bmf9mjy1n",
     },
   );
 

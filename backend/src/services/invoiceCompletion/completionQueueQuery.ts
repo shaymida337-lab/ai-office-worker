@@ -101,9 +101,10 @@ export function slimRnetCompletionTraceRow(candidate: CompletionTraceCandidateFi
 export function logRnetCompletionTraceStage(
   stage: CompletionTraceStage,
   candidates: readonly CompletionTraceCandidateFields[],
+  options?: { force?: boolean },
 ): void {
   const rows = candidates.filter(matchesRnetCompletionTraceTarget).map(slimRnetCompletionTraceRow);
-  if (rows.length === 0) return;
+  if (rows.length === 0 && !options?.force) return;
   console.log(
     JSON.stringify({
       tag: "rnet_completion_trace",
@@ -334,21 +335,24 @@ export function paginateFilteredCompletionCandidates<T extends CompletionListCan
     truncated?: boolean;
     sourceRowsScanned?: number;
     waves?: number;
+    /** Temporary: emit Rnet stage logs even when count=0 (kedma diagnosis). */
+    forceRnetTrace?: boolean;
   }
 ): CompletionQueuePageResult<T> {
   const page = clampCompletionListPage(input.page);
   const pageSize = clampCompletionListPageSize(input.pageSize);
   const sort = input.sort ?? "date_desc";
+  const force = Boolean(input.forceRnetTrace);
   const matched = applyCompletionQueueFilters(candidates, {
     status: input.status,
     search: input.search,
   });
-  logRnetCompletionTraceStage("afterIncomplete", matched as CompletionTraceCandidateFields[]);
+  logRnetCompletionTraceStage("afterIncomplete", matched as CompletionTraceCandidateFields[], { force });
   const sorted = sortCompletionCandidatesStable(matched, sort);
   const total = sorted.length;
   const start = (page - 1) * pageSize;
   const pageRows = sorted.slice(start, start + pageSize);
-  logRnetCompletionTraceStage("finalPageRows", pageRows as CompletionTraceCandidateFields[]);
+  logRnetCompletionTraceStage("finalPageRows", pageRows as CompletionTraceCandidateFields[], { force });
   return {
     pageRows,
     matched: sorted,
@@ -442,10 +446,13 @@ export async function scanCompletionQueueFromSources<TRow, T extends CompletionL
     maxSourceRows?: number;
     /** Applied after source concat, before completeness filter + pagination. */
     dedupeCandidates?: (candidates: T[]) => T[];
+    /** Temporary: emit Rnet stage logs even when count=0 (kedma diagnosis). */
+    forceRnetTrace?: boolean;
   }
 ): Promise<CompletionQueuePageResult<T>> {
   const chunk = input.chunk ?? COMPLETION_SCAN_CHUNK;
   const maxRows = input.maxSourceRows ?? COMPLETION_SCAN_MAX_SOURCE_ROWS;
+  const force = Boolean(input.forceRnetTrace);
   const collected: T[] = [];
   let waves = 0;
   let truncated = false;
@@ -471,9 +478,9 @@ export async function scanCompletionQueueFromSources<TRow, T extends CompletionL
   }
 
   const sourceRowsScanned = collected.length;
-  logRnetCompletionTraceStage("inSource", collected as CompletionTraceCandidateFields[]);
+  logRnetCompletionTraceStage("inSource", collected as CompletionTraceCandidateFields[], { force });
   const deduped = input.dedupeCandidates ? input.dedupeCandidates(collected) : collected;
-  logRnetCompletionTraceStage("afterDedupe", deduped as CompletionTraceCandidateFields[]);
+  logRnetCompletionTraceStage("afterDedupe", deduped as CompletionTraceCandidateFields[], { force });
 
   return paginateFilteredCompletionCandidates(deduped, {
     page: input.page,
@@ -484,6 +491,7 @@ export async function scanCompletionQueueFromSources<TRow, T extends CompletionL
     truncated,
     sourceRowsScanned,
     waves,
+    forceRnetTrace: force,
   });
 }
 
