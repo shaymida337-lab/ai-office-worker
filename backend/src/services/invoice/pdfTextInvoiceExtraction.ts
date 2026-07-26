@@ -237,6 +237,32 @@ function cleanSupplierCandidate(value: string): string | null {
   return cleaned;
 }
 
+/** Negated mentions must never anchor supplier extraction ("No invoice", etc.). */
+function isNegatedFinancialMentionLine(line: string): boolean {
+  return /\b(?:no|not\s+an?)\s+(?:payment|invoice|receipt)\b/i.test(line);
+}
+
+/**
+ * Real document-title anchors only.
+ * Hebrew headers may embed the title mid-line (pipe-separated PDF headers).
+ * English must be a leading title token — never a mid-sentence "invoice" substring.
+ */
+function isSupplierExtractionTitleAnchor(line: string): boolean {
+  const cleaned = normalizeWhitespace(line);
+  if (!cleaned || isNegatedFinancialMentionLine(cleaned)) return false;
+
+  // Existing Hebrew / page markers (substring OK — common in PDF header rows).
+  if (/חשבונית\s*מס(?:\s*\/\s*קבלה)?/i.test(cleaned)) return true;
+  if (/עמוד\s*1(?:\s|$|מ)/i.test(cleaned)) return true;
+
+  // English titles: whole line or leading title tokens only.
+  if (/^invoice$/i.test(cleaned)) return true;
+  if (/^tax\s+invoice(?:\s|$)/i.test(cleaned)) return true;
+  if (/^invoice\s+(?:number|no\.?#?)(?:\s|$|:)/i.test(cleaned)) return true;
+
+  return false;
+}
+
 function extractSupplierNameFromPdfText(text: string): string | null {
   const labeled = text.match(
     /(?:שם\s*(?:ה)?(?:ספק|עסק|מנפיק)|supplier(?:\s*name)?|issued\s+by|from)[:\s-]+([^\n|]{2,80})/i
@@ -250,7 +276,7 @@ function extractSupplierNameFromPdfText(text: string): string | null {
   const hasHebrew = /[\u0590-\u05FF]/.test(text);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (!hasHebrew || !/חשבונית\s*מס|tax\s+invoice|^invoice$/i.test(line)) continue;
+    if (!hasHebrew || !isSupplierExtractionTitleAnchor(line)) continue;
     for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
       const candidate = cleanSupplierCandidate(lines[j]);
       if (candidate) return candidate;
@@ -258,7 +284,7 @@ function extractSupplierNameFromPdfText(text: string): string | null {
   }
 
   for (let i = 0; i < Math.min(lines.length, 8); i++) {
-    if (!/חשבונית\s*מס|עמוד\s*1|invoice/i.test(lines[i])) continue;
+    if (!isSupplierExtractionTitleAnchor(lines[i])) continue;
     for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
       const candidate = cleanSupplierCandidate(lines[j]);
       if (candidate) return candidate;

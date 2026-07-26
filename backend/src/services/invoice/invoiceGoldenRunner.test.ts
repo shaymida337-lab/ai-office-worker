@@ -31,9 +31,9 @@ test("invoice golden runner produces a full baseline report without throwing", (
   assert.equal(report.totals.passed + report.totals.failed, 20);
 
   // Explicit baseline lock — do not "green" failures by weakening expected.
-  // Unknown-doctype financial keep raised 18/20 → 19/20.
-  assert.equal(report.totals.passed, 19, "golden baseline passed count drifted");
-  assert.equal(report.totals.failed, 1, "golden baseline failed count drifted");
+  // Non-financial negation fix raised 19/20 → 20/20.
+  assert.equal(report.totals.passed, 20, "golden baseline passed count drifted");
+  assert.equal(report.totals.failed, 0, "golden baseline failed count drifted");
 
   const missingSupplier = report.results.find((r) => r.fixtureId === "he_missing_supplier_001");
   assert.ok(missingSupplier);
@@ -49,11 +49,11 @@ test("invoice golden runner produces a full baseline report without throwing", (
   assert.equal(unknownType!.actual.destination, "completion");
   assert.ok(unknownType!.actual.missingDataReasons.includes("סוג מסמך חסר"));
 
-  // Remaining intentional fail for this phase.
-  const nonFinFail = report.results.find((r) => r.fixtureId === "en_non_financial_001");
-  assert.ok(nonFinFail);
-  assert.equal(nonFinFail!.passed, false);
-  assert.equal(nonFinFail!.actual.destination, "excluded");
+  const nonFin = report.results.find((r) => r.fixtureId === "en_non_financial_001");
+  assert.ok(nonFin);
+  assert.equal(nonFin!.passed, true);
+  assert.equal(nonFin!.actual.supplierName, null);
+  assert.equal(nonFin!.actual.destination, "excluded");
 
   // Every fixture file referenced by the manifest must exist and run.
   for (const result of report.results) {
@@ -71,11 +71,6 @@ test("invoice golden runner produces a full baseline report without throwing", (
   const dup = report.results.find((r) => r.fixtureId === "he_duplicate_unsure_001");
   assert.ok(dup);
   assert.equal(dup!.actual.destination, "completion");
-
-  // Non-financial must not land on invoices.
-  const nonFin = report.results.find((r) => r.fixtureId === "en_non_financial_001");
-  assert.ok(nonFin);
-  assert.notEqual(nonFin!.actual.destination, "invoices");
 
   console.log("\n" + formatInvoiceGoldenTable(report.results));
   console.log(

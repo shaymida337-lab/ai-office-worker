@@ -227,6 +227,47 @@ test("metadata labels are not suppliers; real names with שירותים still ex
   assert.equal(withServices.supplierName, "אלפא שירותים בע״מ");
 });
 
+test("negative invoice mentions do not invent a supplier (en_non_financial)", () => {
+  const fields = extractDeterministicInvoiceFieldsFromPdfText(`Team weekly sync agenda
+Hello everyone,
+Please join the Friday planning call.
+No payment, no invoice, no receipt.
+Topics: roadmap, hiring, snacks.`);
+  assert.equal(fields.supplierName, null);
+  assert.equal(fields.totalAmount, null);
+  assert.equal(fields.documentType, null);
+});
+
+test("real Invoice / Tax Invoice / Invoice No. titles still extract following supplier", () => {
+  assert.equal(
+    extractDeterministicInvoiceFieldsFromPdfText(`Invoice
+Beta Office Supplies Ltd
+Invoice date: 2026-06-15
+Total amount due $118.00 USD`).supplierName,
+    "Beta Office Supplies Ltd"
+  );
+  assert.equal(
+    extractDeterministicInvoiceFieldsFromPdfText(`Tax Invoice
+Acme Services Ltd
+Total amount due $50.00 USD`).supplierName,
+    "Acme Services Ltd"
+  );
+  assert.equal(
+    extractDeterministicInvoiceFieldsFromPdfText(`Invoice No. 1042
+Zeta Media Group
+Total amount due $20.00 USD`).supplierName,
+    "Zeta Media Group"
+  );
+});
+
+test("mid-sentence invoice word is not a supplier title anchor", () => {
+  assert.equal(
+    extractDeterministicInvoiceFieldsFromPdfText(`Please review the invoice attached below.
+Topics: roadmap, hiring, snacks.`).supplierName,
+    null
+  );
+});
+
 test("חשבונית זיכוי / הודעת זיכוי beat generic invoice detection", () => {
   const creditInvoice = extractDeterministicInvoiceFieldsFromPdfText(`חשבונית זיכוי
 שם ספק: אפסילון לוגיסטיקה בע״מ
