@@ -29,295 +29,6 @@ export const COMPLETION_SCAN_CHUNK = 100;
  */
 export const COMPLETION_SCAN_MAX_SOURCE_ROWS = 10_000;
 
-/**
- * Temporary Rnet prod diagnosis — remove after root cause is confirmed.
- * Matches only the known kedma Rnet ids / fingerprint / invoice number.
- */
-export const RNET_COMPLETION_TRACE_FINGERPRINT_PREFIX = "87d30575";
-export const RNET_COMPLETION_TRACE_FDR_ID = "cmqw3n5hx020dm92bp1joi8wu";
-export const RNET_COMPLETION_TRACE_GSI_ID = "cmqw3n5ug020fm92b5smx5bx1";
-export const RNET_COMPLETION_TRACE_INVOICE_NUMBER = "OV255006399";
-
-export type CompletionTraceCandidateFields = {
-  id?: string | null;
-  source?: string | null;
-  reviewStatus?: string | null;
-  status?: string | null;
-  decisionReason?: string | null;
-  dataComplete?: boolean;
-  approvalRequired?: boolean;
-  isComplete?: boolean;
-  documentFingerprint?: string | null;
-  duplicateKey?: string | null;
-  invoiceNumber?: string | null;
-};
-
-export type CompletionTraceStage =
-  | "inSource"
-  | "afterDedupe"
-  | "afterIncomplete"
-  | "finalPageRows"
-  | "rawFdrFindMany"
-  | "rawGsiFindMany"
-  | "beforeCollected"
-  | "afterCollected"
-  | "requestContext";
-
-export type CompletionTraceRow = {
-  id: string;
-  source: string | null;
-  reviewStatus: string | null;
-  status: string | null;
-  decisionReason: string | null;
-  dataComplete: boolean | null;
-  approvalRequired: boolean | null;
-  isComplete: boolean | null;
-  fingerprintPrefix: string | null;
-};
-
-/** Raw Prisma FDR row fields used only for temporary Rnet diagnosis. */
-export type RnetRawFdrTraceFields = {
-  id?: string | null;
-  organizationId?: string | null;
-  reviewStatus?: string | null;
-  documentType?: string | null;
-  documentFingerprint?: string | null;
-  invoiceNumber?: string | null;
-  gmailMessageId?: string | null;
-};
-
-/** Raw Prisma GSI row fields used only for temporary Rnet diagnosis. */
-export type RnetRawGsiTraceFields = {
-  id?: string | null;
-  organizationId?: string | null;
-  reviewStatus?: string | null;
-  status?: string | null;
-  decisionReason?: string | null;
-  duplicateKey?: string | null;
-  documentFingerprint?: string | null;
-};
-
-function fingerprintOf(candidate: CompletionTraceCandidateFields): string {
-  return String(candidate.documentFingerprint ?? candidate.duplicateKey ?? "").trim();
-}
-
-function fingerprintPrefixOf(value: unknown): string | null {
-  const fp = String(value ?? "").trim();
-  return fp ? fp.slice(0, 8) : null;
-}
-
-export function matchesRnetCompletionTraceTarget(candidate: CompletionTraceCandidateFields): boolean {
-  const id = String(candidate.id ?? "");
-  if (id.includes(RNET_COMPLETION_TRACE_FDR_ID) || id.includes(RNET_COMPLETION_TRACE_GSI_ID)) {
-    return true;
-  }
-  const fp = fingerprintOf(candidate);
-  if (fp.startsWith(RNET_COMPLETION_TRACE_FINGERPRINT_PREFIX)) return true;
-  const invoice = String(candidate.invoiceNumber ?? "").trim().toUpperCase();
-  return invoice === RNET_COMPLETION_TRACE_INVOICE_NUMBER;
-}
-
-/** Match raw FDR without relying on fingerprint alone (select may omit it). */
-export function matchesRnetRawFdrTraceTarget(row: RnetRawFdrTraceFields): boolean {
-  if (String(row.id ?? "") === RNET_COMPLETION_TRACE_FDR_ID) return true;
-  const invoice = String(row.invoiceNumber ?? "").trim().toUpperCase();
-  if (invoice === RNET_COMPLETION_TRACE_INVOICE_NUMBER) return true;
-  const fp = String(row.documentFingerprint ?? "").trim();
-  return fp.startsWith(RNET_COMPLETION_TRACE_FINGERPRINT_PREFIX);
-}
-
-/** Match raw GSI by id / fingerprint; invoice number is not a GSI scalar. */
-export function matchesRnetRawGsiTraceTarget(row: RnetRawGsiTraceFields): boolean {
-  if (String(row.id ?? "") === RNET_COMPLETION_TRACE_GSI_ID) return true;
-  const fp = String(row.documentFingerprint ?? row.duplicateKey ?? "").trim();
-  return fp.startsWith(RNET_COMPLETION_TRACE_FINGERPRINT_PREFIX);
-}
-
-export function slimRnetCompletionTraceRow(candidate: CompletionTraceCandidateFields): CompletionTraceRow {
-  const fp = fingerprintOf(candidate);
-  const reason = candidate.decisionReason == null ? null : String(candidate.decisionReason).slice(0, 160);
-  return {
-    id: String(candidate.id ?? ""),
-    source: candidate.source == null ? null : String(candidate.source),
-    reviewStatus: candidate.reviewStatus == null ? null : String(candidate.reviewStatus),
-    status: candidate.status == null ? null : String(candidate.status),
-    decisionReason: reason,
-    dataComplete: typeof candidate.dataComplete === "boolean" ? candidate.dataComplete : null,
-    approvalRequired: typeof candidate.approvalRequired === "boolean" ? candidate.approvalRequired : null,
-    isComplete: typeof candidate.isComplete === "boolean" ? candidate.isComplete : null,
-    fingerprintPrefix: fp ? fp.slice(0, 8) : null,
-  };
-}
-
-function slimRnetRawFdrTraceRow(row: RnetRawFdrTraceFields) {
-  return {
-    id: String(row.id ?? ""),
-    reviewStatus: row.reviewStatus == null ? null : String(row.reviewStatus),
-    documentType: row.documentType == null ? null : String(row.documentType),
-    orgId: row.organizationId == null ? null : String(row.organizationId),
-    fingerprintPrefix: fingerprintPrefixOf(row.documentFingerprint),
-    hasGmailMessageId: Boolean(String(row.gmailMessageId ?? "").trim()),
-  };
-}
-
-function slimRnetRawGsiTraceRow(row: RnetRawGsiTraceFields) {
-  const status = row.status ?? row.reviewStatus;
-  const reason = row.decisionReason == null ? null : String(row.decisionReason).slice(0, 160);
-  return {
-    id: String(row.id ?? ""),
-    status: status == null ? null : String(status),
-    decisionReason: reason,
-    orgId: row.organizationId == null ? null : String(row.organizationId),
-    fingerprintPrefix: fingerprintPrefixOf(row.documentFingerprint ?? row.duplicateKey),
-  };
-}
-
-/** Side-effect only — never mutates candidates or return values. */
-export function logRnetCompletionTraceStage(
-  stage: CompletionTraceStage,
-  candidates: readonly CompletionTraceCandidateFields[],
-  options?: { force?: boolean },
-): void {
-  const rows = candidates.filter(matchesRnetCompletionTraceTarget).map(slimRnetCompletionTraceRow);
-  if (rows.length === 0 && !options?.force) return;
-  console.log(
-    JSON.stringify({
-      tag: "rnet_completion_trace",
-      stage,
-      count: rows.length,
-      rows,
-    }),
-  );
-}
-
-/** One-shot request context for kedma Rnet diagnosis — no secrets / bodies. */
-export function logRnetCompletionRequestContext(input: {
-  requestOrgId: string;
-  expectedOrgId: string;
-  includeReviewCandidates: boolean;
-  whereSummary: Record<string, unknown>;
-  database: Record<string, unknown>;
-}): void {
-  console.log(
-    JSON.stringify({
-      tag: "rnet_completion_trace",
-      stage: "requestContext",
-      requestOrgId: input.requestOrgId,
-      expectedOrgId: input.expectedOrgId,
-      orgIdMatchesExpected: input.requestOrgId === input.expectedOrgId,
-      includeReviewCandidates: input.includeReviewCandidates,
-      whereSummary: input.whereSummary,
-      database: input.database,
-    }),
-  );
-}
-
-/** Safe where shape for diagnosis — keys / enums / counts only. */
-export function summarizeCompletionSourceWhereSafe(where: Record<string, unknown> | null | undefined): {
-  topKeys: string[];
-  organizationId: string | null;
-  documentTypeIn: string[] | null;
-  reviewStatusIn: string[] | null;
-  hasAnd: boolean;
-  hasOr: boolean;
-  hasNot: boolean;
-  hasSearchOr: boolean;
-} {
-  const topKeys = where ? Object.keys(where).sort() : [];
-  const organizationId =
-    where && typeof where.organizationId === "string" ? where.organizationId : null;
-  const documentType = where?.documentType as { in?: unknown } | undefined;
-  const reviewStatus = where?.reviewStatus as { in?: unknown } | undefined;
-  const documentTypeIn = Array.isArray(documentType?.in)
-    ? documentType.in.map((v) => String(v))
-    : null;
-  const reviewStatusIn = Array.isArray(reviewStatus?.in)
-    ? reviewStatus.in.map((v) => String(v))
-    : null;
-  return {
-    topKeys,
-    organizationId,
-    documentTypeIn,
-    reviewStatusIn,
-    hasAnd: Boolean(where && "AND" in where),
-    hasOr: Boolean(where && "OR" in where),
-    hasNot: Boolean(where && "NOT" in where),
-    hasSearchOr: Boolean(where && "OR" in where && !reviewStatusIn),
-  };
-}
-
-export function logRnetRawFdrFindManyTrace(input: {
-  queryExecuted: boolean;
-  totalRawFdr: number;
-  matchedTargetCount: number;
-  targets: readonly RnetRawFdrTraceFields[];
-  skip?: number;
-  take?: number;
-  batchRawCount?: number;
-}): void {
-  console.log(
-    JSON.stringify({
-      tag: "rnet_completion_trace",
-      stage: "rawFdrFindMany",
-      queryExecuted: input.queryExecuted,
-      totalRawFdr: input.totalRawFdr,
-      matchedTargetCount: input.matchedTargetCount,
-      skip: input.skip ?? null,
-      take: input.take ?? null,
-      batchRawCount: input.batchRawCount ?? null,
-      targets: input.targets.map(slimRnetRawFdrTraceRow),
-    }),
-  );
-}
-
-export function logRnetRawGsiFindManyTrace(input: {
-  queryExecuted: boolean;
-  totalRawGsi: number;
-  matchedTargetCount: number;
-  targets: readonly RnetRawGsiTraceFields[];
-  skip?: number;
-  take?: number;
-  batchRawCount?: number;
-}): void {
-  console.log(
-    JSON.stringify({
-      tag: "rnet_completion_trace",
-      stage: "rawGsiFindMany",
-      queryExecuted: input.queryExecuted,
-      totalRawGsi: input.totalRawGsi,
-      matchedTargetCount: input.matchedTargetCount,
-      skip: input.skip ?? null,
-      take: input.take ?? null,
-      batchRawCount: input.batchRawCount ?? null,
-      targets: input.targets.map(slimRnetRawGsiTraceRow),
-    }),
-  );
-}
-
-export function logRnetBeforeCollectedTrace(input: {
-  fdrMappedTargetCount: number;
-  gsiMappedTargetCount: number;
-}): void {
-  console.log(
-    JSON.stringify({
-      tag: "rnet_completion_trace",
-      stage: "beforeCollected",
-      fdrMappedTargetCount: input.fdrMappedTargetCount,
-      gsiMappedTargetCount: input.gsiMappedTargetCount,
-    }),
-  );
-}
-
-export function logRnetAfterCollectedTrace(input: { targetCount: number }): void {
-  console.log(
-    JSON.stringify({
-      tag: "rnet_completion_trace",
-      stage: "afterCollected",
-      targetCount: input.targetCount,
-    }),
-  );
-}
-
 export type CompletionQueueScanStats = {
   sourceRowsScanned: number;
   waves: number;
@@ -538,24 +249,19 @@ export function paginateFilteredCompletionCandidates<T extends CompletionListCan
     truncated?: boolean;
     sourceRowsScanned?: number;
     waves?: number;
-    /** Temporary: emit Rnet stage logs even when count=0 (kedma diagnosis). */
-    forceRnetTrace?: boolean;
   }
 ): CompletionQueuePageResult<T> {
   const page = clampCompletionListPage(input.page);
   const pageSize = clampCompletionListPageSize(input.pageSize);
   const sort = input.sort ?? "date_desc";
-  const force = Boolean(input.forceRnetTrace);
   const matched = applyCompletionQueueFilters(candidates, {
     status: input.status,
     search: input.search,
   });
-  logRnetCompletionTraceStage("afterIncomplete", matched as CompletionTraceCandidateFields[], { force });
   const sorted = sortCompletionCandidatesStable(matched, sort);
   const total = sorted.length;
   const start = (page - 1) * pageSize;
   const pageRows = sorted.slice(start, start + pageSize);
-  logRnetCompletionTraceStage("finalPageRows", pageRows as CompletionTraceCandidateFields[], { force });
   return {
     pageRows,
     matched: sorted,
@@ -649,18 +355,13 @@ export async function scanCompletionQueueFromSources<TRow, T extends CompletionL
     maxSourceRows?: number;
     /** Applied after source concat, before completeness filter + pagination. */
     dedupeCandidates?: (candidates: T[]) => T[];
-    /** Temporary: emit Rnet stage logs even when count=0 (kedma diagnosis). */
-    forceRnetTrace?: boolean;
   }
 ): Promise<CompletionQueuePageResult<T>> {
   const chunk = input.chunk ?? COMPLETION_SCAN_CHUNK;
   const maxRows = input.maxSourceRows ?? COMPLETION_SCAN_MAX_SOURCE_ROWS;
-  const force = Boolean(input.forceRnetTrace);
   const collected: T[] = [];
   let waves = 0;
   let truncated = false;
-  let fdrMappedTargetCount = 0;
-  let gsiMappedTargetCount = 0;
 
   for (const source of sources) {
     let skip = 0;
@@ -674,12 +375,7 @@ export async function scanCompletionQueueFromSources<TRow, T extends CompletionL
       const rows = await source.load({ skip, take });
       if (rows.length === 0) break;
       for (const row of rows) {
-        const mapped = source.map(row);
-        if (force && matchesRnetCompletionTraceTarget(mapped as CompletionTraceCandidateFields)) {
-          if (source.name === "financial_document_review") fdrMappedTargetCount += 1;
-          if (source.name === "gmail_scan_item") gsiMappedTargetCount += 1;
-        }
-        collected.push(mapped);
+        collected.push(source.map(row));
       }
       skip += rows.length;
       if (rows.length < take) break;
@@ -687,19 +383,8 @@ export async function scanCompletionQueueFromSources<TRow, T extends CompletionL
     if (truncated) break;
   }
 
-  if (force) {
-    logRnetBeforeCollectedTrace({ fdrMappedTargetCount, gsiMappedTargetCount });
-    logRnetAfterCollectedTrace({
-      targetCount: collected.filter((row) =>
-        matchesRnetCompletionTraceTarget(row as CompletionTraceCandidateFields),
-      ).length,
-    });
-  }
-
   const sourceRowsScanned = collected.length;
-  logRnetCompletionTraceStage("inSource", collected as CompletionTraceCandidateFields[], { force });
   const deduped = input.dedupeCandidates ? input.dedupeCandidates(collected) : collected;
-  logRnetCompletionTraceStage("afterDedupe", deduped as CompletionTraceCandidateFields[], { force });
 
   return paginateFilteredCompletionCandidates(deduped, {
     page: input.page,
@@ -710,7 +395,6 @@ export async function scanCompletionQueueFromSources<TRow, T extends CompletionL
     truncated,
     sourceRowsScanned,
     waves,
-    forceRnetTrace: force,
   });
 }
 
