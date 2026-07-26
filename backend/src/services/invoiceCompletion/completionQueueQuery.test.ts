@@ -789,6 +789,72 @@ test("scanCompletionQueueFromSources: rejected GSI does not hide needs_review FD
   );
 });
 
+test("rnet raw source matchers: id / invoice / fingerprint; no fingerprint-only dependency", async () => {
+  const {
+    matchesRnetRawFdrTraceTarget,
+    matchesRnetRawGsiTraceTarget,
+    RNET_COMPLETION_TRACE_FDR_ID,
+    RNET_COMPLETION_TRACE_GSI_ID,
+    summarizeCompletionSourceWhereSafe,
+    logRnetRawFdrFindManyTrace,
+    logRnetBeforeCollectedTrace,
+    logRnetAfterCollectedTrace,
+  } = await import("./completionQueueQuery.js");
+
+  assert.equal(matchesRnetRawFdrTraceTarget({ id: RNET_COMPLETION_TRACE_FDR_ID }), true);
+  assert.equal(matchesRnetRawFdrTraceTarget({ invoiceNumber: "OV255006399" }), true);
+  assert.equal(matchesRnetRawFdrTraceTarget({ documentFingerprint: "87d30575abc" }), true);
+  assert.equal(matchesRnetRawFdrTraceTarget({ id: "other", invoiceNumber: "X" }), false);
+
+  assert.equal(matchesRnetRawGsiTraceTarget({ id: RNET_COMPLETION_TRACE_GSI_ID }), true);
+  assert.equal(matchesRnetRawGsiTraceTarget({ duplicateKey: "87d30575abc" }), true);
+  assert.equal(matchesRnetRawGsiTraceTarget({ id: "other", duplicateKey: "zzzz" }), false);
+
+  const summary = summarizeCompletionSourceWhereSafe({
+    organizationId: "cmqw27e43002bm92bmf9mjy1n",
+    documentType: { in: ["tax_invoice_receipt"] },
+    reviewStatus: { in: ["needs_review", "rejected"] },
+    AND: [{ NOT: { gmailMessageId: { in: ["x"] } } }],
+  });
+  assert.equal(summary.organizationId, "cmqw27e43002bm92bmf9mjy1n");
+  assert.deepEqual(summary.documentTypeIn, ["tax_invoice_receipt"]);
+  assert.equal(summary.hasAnd, true);
+  assert.equal(JSON.stringify(summary).includes("gmailMessageId"), false);
+
+  const logs: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  try {
+    logRnetRawFdrFindManyTrace({
+      queryExecuted: true,
+      totalRawFdr: 33,
+      matchedTargetCount: 1,
+      targets: [
+        {
+          id: RNET_COMPLETION_TRACE_FDR_ID,
+          organizationId: "cmqw27e43002bm92bmf9mjy1n",
+          reviewStatus: "needs_review",
+          documentType: "tax_invoice_receipt",
+          documentFingerprint: "87d30575d372c795",
+          gmailMessageId: "present-but-not-logged-value",
+        },
+      ],
+    });
+    logRnetBeforeCollectedTrace({ fdrMappedTargetCount: 1, gsiMappedTargetCount: 0 });
+    logRnetAfterCollectedTrace({ targetCount: 1 });
+  } finally {
+    console.log = originalLog;
+  }
+  assert.equal(logs.length, 3);
+  assert.match(logs[0]!, /"stage":"rawFdrFindMany"/);
+  assert.match(logs[0]!, /"hasGmailMessageId":true/);
+  assert.equal(logs[0]!.includes("present-but-not-logged-value"), false);
+  assert.match(logs[1]!, /"stage":"beforeCollected"/);
+  assert.match(logs[2]!, /"stage":"afterCollected"/);
+});
+
 test("rnet completion trace: match + slim only target ids; logging does not change pagination", async () => {
   const {
     matchesRnetCompletionTraceTarget,

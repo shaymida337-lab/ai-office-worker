@@ -74,7 +74,13 @@ import {
   COMPLETION_SCAN_CHUNK,
   COMPLETION_SCAN_MAX_SOURCE_ROWS,
   dedupeCompletionCandidatesPreferGsi,
+  logRnetCompletionRequestContext,
+  logRnetRawFdrFindManyTrace,
+  logRnetRawGsiFindManyTrace,
+  matchesRnetRawFdrTraceTarget,
+  matchesRnetRawGsiTraceTarget,
   scanCompletionQueueFromSources,
+  summarizeCompletionSourceWhereSafe,
 } from "../services/invoiceCompletion/completionQueueQuery.js";
 import {
   buildCompletionServerTiming,
@@ -5427,6 +5433,8 @@ async function loadCompletionQueuePage(input: {
   pageSize?: number;
   sort?: CompletionListSort;
 }) {
+  const KEDMA_RNET_TRACE_ORG_ID = "cmqw27e43002bm92bmf9mjy1n";
+  const forceRnetTrace = input.organizationId === KEDMA_RNET_TRACE_ORG_ID;
   const ctx = buildInvoiceListQueryContext({
     organizationId: input.organizationId,
     status: input.status,
@@ -5444,6 +5452,26 @@ async function loadCompletionQueuePage(input: {
     input.organizationId,
   );
 
+  if (forceRnetTrace) {
+    logRnetCompletionRequestContext({
+      requestOrgId: input.organizationId,
+      expectedOrgId: KEDMA_RNET_TRACE_ORG_ID,
+      includeReviewCandidates: whereInput.includeReviewCandidates,
+      whereSummary: {
+        fdr: summarizeCompletionSourceWhereSafe(
+          whereInput.financialDocumentReviewWhere as Record<string, unknown>,
+        ),
+        gsi: summarizeCompletionSourceWhereSafe(
+          whereInput.gmailScanItemWhere as Record<string, unknown>,
+        ),
+      },
+      database: {
+        hostPath: databaseHost(),
+        topology: safeDatabaseTopology(),
+      },
+    });
+  }
+
   const gsiOrderBy = [
     { occurredAt: "desc" as const },
     { id: "desc" as const },
@@ -5454,19 +5482,69 @@ async function loadCompletionQueuePage(input: {
     { id: "desc" as const },
   ];
 
+  let totalRawGsi = 0;
+  let totalRawFdr = 0;
+  const matchedGsiTargets: Array<{
+    id?: string | null;
+    organizationId?: string | null;
+    reviewStatus?: string | null;
+    decisionReason?: string | null;
+    duplicateKey?: string | null;
+  }> = [];
+  const matchedFdrTargets: Array<{
+    id?: string | null;
+    organizationId?: string | null;
+    reviewStatus?: string | null;
+    documentType?: string | null;
+    documentFingerprint?: string | null;
+    invoiceNumber?: string | null;
+    gmailMessageId?: string | null;
+  }> = [];
+
   const pageResult = await scanCompletionQueueFromSources(
     [
       {
         name: "gmail_scan_item",
-        load: ({ skip, take }) =>
-          whereInput.includeReviewCandidates
-            ? prisma.gmailScanItem.findMany({
-                where: whereInput.gmailScanItemWhere,
-                orderBy: gsiOrderBy,
+        load: async ({ skip, take }) => {
+          if (!whereInput.includeReviewCandidates) {
+            if (forceRnetTrace) {
+              logRnetRawGsiFindManyTrace({
+                queryExecuted: false,
+                totalRawGsi,
+                matchedTargetCount: matchedGsiTargets.length,
+                targets: matchedGsiTargets,
                 skip,
                 take,
-              })
-            : Promise.resolve([]),
+                batchRawCount: 0,
+              });
+            }
+            return [];
+          }
+          const rows = await prisma.gmailScanItem.findMany({
+            where: whereInput.gmailScanItemWhere,
+            orderBy: gsiOrderBy,
+            skip,
+            take,
+          });
+          totalRawGsi += rows.length;
+          if (forceRnetTrace) {
+            for (const row of rows) {
+              if (matchesRnetRawGsiTraceTarget(row) && !matchedGsiTargets.some((t) => t.id === row.id)) {
+                matchedGsiTargets.push(row);
+              }
+            }
+            logRnetRawGsiFindManyTrace({
+              queryExecuted: true,
+              totalRawGsi,
+              matchedTargetCount: matchedGsiTargets.length,
+              targets: matchedGsiTargets,
+              skip,
+              take,
+              batchRawCount: rows.length,
+            });
+          }
+          return rows;
+        },
         map: (row) => ({
           ...mapGmailScanItemToInvoiceCandidate(row),
           emailMessageId: row.emailMessageId,
@@ -5476,15 +5554,46 @@ async function loadCompletionQueuePage(input: {
       },
       {
         name: "financial_document_review",
-        load: ({ skip, take }) =>
-          whereInput.includeReviewCandidates
-            ? prisma.financialDocumentReview.findMany({
-                where: whereInput.financialDocumentReviewWhere,
-                orderBy: fdrOrderBy,
+        load: async ({ skip, take }) => {
+          if (!whereInput.includeReviewCandidates) {
+            if (forceRnetTrace) {
+              logRnetRawFdrFindManyTrace({
+                queryExecuted: false,
+                totalRawFdr,
+                matchedTargetCount: matchedFdrTargets.length,
+                targets: matchedFdrTargets,
                 skip,
                 take,
-              })
-            : Promise.resolve([]),
+                batchRawCount: 0,
+              });
+            }
+            return [];
+          }
+          const rows = await prisma.financialDocumentReview.findMany({
+            where: whereInput.financialDocumentReviewWhere,
+            orderBy: fdrOrderBy,
+            skip,
+            take,
+          });
+          totalRawFdr += rows.length;
+          if (forceRnetTrace) {
+            for (const row of rows) {
+              if (matchesRnetRawFdrTraceTarget(row) && !matchedFdrTargets.some((t) => t.id === row.id)) {
+                matchedFdrTargets.push(row);
+              }
+            }
+            logRnetRawFdrFindManyTrace({
+              queryExecuted: true,
+              totalRawFdr,
+              matchedTargetCount: matchedFdrTargets.length,
+              targets: matchedFdrTargets,
+              skip,
+              take,
+              batchRawCount: rows.length,
+            });
+          }
+          return rows;
+        },
         map: (row) => ({
           ...mapDocumentReviewToInvoiceCandidate(row, input.organizationId),
           emailMessageId: row.emailMessageId,
@@ -5504,7 +5613,7 @@ async function loadCompletionQueuePage(input: {
       // Same Gmail doc is dual-written as GSI+FDR; collapse before filter/pagination.
       dedupeCandidates: dedupeCompletionCandidatesPreferGsi,
       // Temporary Rnet diagnosis — force empty-stage logs for kedma org only.
-      forceRnetTrace: input.organizationId === "cmqw27e43002bm92bmf9mjy1n",
+      forceRnetTrace,
     },
   );
 
