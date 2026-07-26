@@ -259,6 +259,7 @@ import {
   validateTenantMiddleware,
 } from "../middleware/tenantIsolation.js";
 import {
+  buildFinancialDocumentReviewCompletionReadIsolationWhere,
   buildFinancialDocumentReviewReadIsolationWhere,
   buildGmailScanItemReadIsolationWhere,
   buildSupplierPaymentReadIsolationWhere,
@@ -5187,6 +5188,29 @@ async function applyFinancialReadIsolationToInvoiceListWhere(
   };
 }
 
+/**
+ * Completion queue isolation: GSI keeps full contaminated-gmail + quarantine gates;
+ * FDR keeps quarantine/cross-org marker exclusion only (contaminated gmailMessageId
+ * alone must not hide an org-owned actionable FDR).
+ */
+async function applyFinancialReadIsolationToCompletionQueueWhere(
+  whereInput: InvoiceListWhereInput,
+  organizationId: string,
+): Promise<InvoiceListWhereInput> {
+  const contaminatedGmailIds = await loadCrossOrgContaminatedGmailIdsForReads();
+  return {
+    ...whereInput,
+    gmailScanItemWhere: mergePrismaWhere(
+      whereInput.gmailScanItemWhere,
+      buildGmailScanItemReadIsolationWhere(organizationId, contaminatedGmailIds),
+    ),
+    financialDocumentReviewWhere: mergePrismaWhere(
+      whereInput.financialDocumentReviewWhere,
+      buildFinancialDocumentReviewCompletionReadIsolationWhere(),
+    ),
+  };
+}
+
 async function loadOrganizationTimezone(organizationId: string) {
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -5449,7 +5473,7 @@ async function loadCompletionQueuePage(input: {
     includeApprovedSupplierPayments: false,
     includeReviewCandidates: true,
   };
-  const whereInput = await applyFinancialReadIsolationToInvoiceListWhere(
+  const whereInput = await applyFinancialReadIsolationToCompletionQueueWhere(
     baseWhereInput,
     input.organizationId,
   );

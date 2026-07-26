@@ -39,7 +39,7 @@ test("slimRnetFdrSafeFields never includes gmail id / uncertainty text / supplie
   assert.equal(json.includes("supplier"), false);
 });
 
-test("evaluateFirstFailingRnetFdrPredicate: contaminated gmail fails isolation OR", () => {
+test("evaluateFirstFailingRnetFdrPredicate: contaminated gmail alone does not fail completion FDR", () => {
   const failing = evaluateFirstFailingRnetFdrPredicate({
     row: row(),
     organizationId: ORG,
@@ -47,7 +47,7 @@ test("evaluateFirstFailingRnetFdrPredicate: contaminated gmail fails isolation O
     documentTypeIn: ["tax_invoice", "receipt", "tax_invoice_receipt"],
     excludedGmailIds: ["gmail-1"],
   });
-  assert.equal(failing, "isolation.gmailMessageId_contaminated_or");
+  assert.equal(failing, null);
 });
 
 test("evaluateFirstFailingRnetFdrPredicate: quarantine uncertainty fails before gmail", () => {

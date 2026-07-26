@@ -5,7 +5,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { CROSS_ORG_QUARANTINE_MARKER } from "../p0/crossOrgGmailQuarantine.js";
 import {
-  buildFinancialDocumentReviewReadIsolationWhere,
+  buildFinancialDocumentReviewCompletionReadIsolationWhere,
   crossOrgGmailIdsExcludedForOrganization,
   loadCrossOrgContaminatedGmailIdsForReads,
 } from "../p0/financialReadIsolation.js";
@@ -90,7 +90,7 @@ export function slimRnetFdrSafeFields(
 
 /**
  * In-memory first failing predicate vs completion FDR where shape.
- * Order mirrors cumulative probes A→isolation→full.
+ * Contaminated gmailMessageId alone is NOT a failing completion predicate.
  */
 export function evaluateFirstFailingRnetFdrPredicate(input: {
   row: RnetFdrSafeRow;
@@ -99,7 +99,7 @@ export function evaluateFirstFailingRnetFdrPredicate(input: {
   documentTypeIn: string[] | null;
   excludedGmailIds: string[];
 }): string | null {
-  const { row, organizationId, reviewStatusIn, documentTypeIn, excludedGmailIds } = input;
+  const { row, organizationId, reviewStatusIn, documentTypeIn } = input;
   if (row.organizationId !== organizationId) return "organizationId";
   if (reviewStatusIn && !reviewStatusIn.includes(row.reviewStatus)) return "reviewStatus.in";
   if (documentTypeIn && !documentTypeIn.includes(row.documentType)) return "documentType.in";
@@ -109,11 +109,6 @@ export function evaluateFirstFailingRnetFdrPredicate(input: {
     !String(row.uncertaintyReason).includes(CROSS_ORG_QUARANTINE_MARKER);
   if (!uncertaintyOk) return "isolation.uncertaintyReason_quarantine_or";
 
-  if (excludedGmailIds.length > 0) {
-    const gmailOk =
-      row.gmailMessageId == null || !excludedGmailIds.includes(row.gmailMessageId);
-    if (!gmailOk) return "isolation.gmailMessageId_contaminated_or";
-  }
   return null;
 }
 
@@ -265,7 +260,7 @@ export async function runRnetFdrPredicateDiagnostics(input: {
   probes.push(
     await probeMatched(prisma, "D.id+orgId+isolation", {
       ...orgWhere,
-      ...buildFinancialDocumentReviewReadIsolationWhere(organizationId, contaminatedGmailIds),
+      ...buildFinancialDocumentReviewCompletionReadIsolationWhere(),
     }),
   );
 

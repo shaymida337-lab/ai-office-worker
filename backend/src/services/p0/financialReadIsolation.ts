@@ -98,6 +98,19 @@ export function buildFinancialDocumentReviewReadIsolationWhere(
   ) as Prisma.FinancialDocumentReviewWhereInput;
 }
 
+/**
+ * Completion-queue FDR isolation only.
+ *
+ * Keeps quarantine/cross-org marker exclusion on uncertaintyReason, but does NOT
+ * drop an org-owned FDR solely because its gmailMessageId is on the contaminated
+ * list. GSI isolation still excludes contaminated gmail ids / quarantined GSIs.
+ */
+export function buildFinancialDocumentReviewCompletionReadIsolationWhere(): Prisma.FinancialDocumentReviewWhereInput {
+  return nullableQuarantineMarkerExclusion(
+    "uncertaintyReason",
+  ) as Prisma.FinancialDocumentReviewWhereInput;
+}
+
 export function buildSupplierPaymentReadIsolationWhere(
   organizationId: string,
   contaminatedGmailIds: string[],

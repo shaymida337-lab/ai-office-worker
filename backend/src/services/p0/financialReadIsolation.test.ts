@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { CROSS_ORG_QUARANTINE_MARKER } from "./crossOrgGmailQuarantine.js";
 import { SHARON_CONFIRMED_ALLOWLIST } from "./sharonContaminationAllowlist.js";
 import {
+  buildFinancialDocumentReviewCompletionReadIsolationWhere,
   buildFinancialDocumentReviewReadIsolationWhere,
   buildGmailScanItemReadIsolationWhere,
   buildSupplierPaymentReadIsolationWhere,
@@ -135,6 +136,37 @@ test("financial document review isolation still filters gmailMessageId null-safe
     { gmailMessageId: null },
     { gmailMessageId: { notIn: ["foreign-gmail"] } },
   ]);
+});
+
+test("completion FDR isolation keeps quarantine gate and drops contaminated-gmail predicate", () => {
+  const completion = buildFinancialDocumentReviewCompletionReadIsolationWhere();
+  const general = buildFinancialDocumentReviewReadIsolationWhere(ORG_A, CONTAMINATED);
+  assert.deepEqual(completion.OR, NULL_SAFE_UNCERTAINTY_REASON);
+  assert.equal("gmailMessageId" in completion, false);
+  assert.equal(completion.AND, undefined);
+  // General invoice-list FDR isolation still excludes contaminated gmail ids.
+  const generalParts = isolationParts(general as Record<string, unknown>);
+  assert.deepEqual(generalParts[1]?.OR, [
+    { gmailMessageId: null },
+    { gmailMessageId: { notIn: CONTAMINATED } },
+  ]);
+  // GSI isolation unchanged — still excludes contaminated ids.
+  const gsi = buildGmailScanItemReadIsolationWhere(ORG_A, CONTAMINATED);
+  assert.deepEqual(gsi.gmailMessageId, { notIn: CONTAMINATED });
+});
+
+test("completion FDR isolation merged with org still rejects other-org rows via organizationId", () => {
+  const where = mergePrismaWhere(
+    {
+      organizationId: ORG_A,
+      documentType: { in: ["tax_invoice_receipt"] },
+      reviewStatus: { in: ["needs_review"] },
+    },
+    buildFinancialDocumentReviewCompletionReadIsolationWhere(),
+  );
+  assert.equal(where.organizationId, ORG_A);
+  assert.deepEqual(where.OR, NULL_SAFE_UNCERTAINTY_REASON);
+  assert.equal("gmailMessageId" in where, false);
 });
 
 test("nullable quarantine exclusion keeps duplicateReason null eligible in where shape", () => {

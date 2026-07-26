@@ -688,6 +688,143 @@ test("scanCompletionQueueFromSources dedupes before pagination so total/count ar
   assert.ok(result.pageRows.some((row) => row.id === "document-review:fdr-camera"));
 });
 
+test("Rnet isolation regression A-E: contaminated actionable FDR in; quarantine/foreign/GSI out; FDR wins", async () => {
+  const { CROSS_ORG_QUARANTINE_MARKER } = await import("../p0/crossOrgGmailQuarantine.js");
+  const {
+    buildFinancialDocumentReviewCompletionReadIsolationWhere,
+    buildFinancialDocumentReviewReadIsolationWhere,
+    buildGmailScanItemReadIsolationWhere,
+    mergePrismaWhere,
+  } = await import("../p0/financialReadIsolation.js");
+
+  const ORG = "cmqw27e43002bm92bmf9mjy1n";
+  const OTHER_ORG = "org-other";
+  const CONTAMINATED = ["g-rnet-contaminated"];
+
+  // A: completion FDR isolation must NOT exclude contaminated gmail alone
+  const completionFdrWhere = mergePrismaWhere(
+    {
+      organizationId: ORG,
+      reviewStatus: { in: ["needs_review", "rejected"] },
+      documentType: { in: ["tax_invoice_receipt"] },
+    },
+    buildFinancialDocumentReviewCompletionReadIsolationWhere(),
+  );
+  assert.equal("gmailMessageId" in completionFdrWhere, false);
+  assert.ok(completionFdrWhere.OR);
+
+  // General (non-completion) FDR isolation still excludes contaminated gmail
+  const generalFdr = buildFinancialDocumentReviewReadIsolationWhere(ORG, CONTAMINATED);
+  const generalJson = JSON.stringify(generalFdr);
+  assert.ok(generalJson.includes("notIn"));
+
+  // B: quarantine uncertainty still present in completion FDR isolation
+  assert.deepEqual(completionFdrWhere.OR?.[1], {
+    NOT: { uncertaintyReason: { contains: CROSS_ORG_QUARANTINE_MARKER } },
+  });
+
+  // C: orgId remains on where (other-org rows cannot match)
+  assert.equal(completionFdrWhere.organizationId, ORG);
+  assert.notEqual(completionFdrWhere.organizationId, OTHER_ORG);
+
+  // D: GSI isolation still excludes contaminated + quarantine marker
+  const gsiIsolation = buildGmailScanItemReadIsolationWhere(ORG, CONTAMINATED);
+  assert.deepEqual(gsiIsolation.gmailMessageId, { notIn: CONTAMINATED });
+  assert.deepEqual(gsiIsolation.NOT, {
+    decisionReason: { contains: CROSS_ORG_QUARANTINE_MARKER },
+  });
+
+  // E: rejected quarantined GSI + actionable FDR → FDR wins dedupe / incomplete queue
+  const result = await scanCompletionQueueFromSources(
+    [
+      {
+        name: "gmail_scan_item",
+        load: async () => [
+          {
+            id: "gsi-rnet-rej",
+            gmailMessageId: "g-rnet-contaminated",
+            duplicateKey: "87d30575rnet",
+            reviewStatus: "rejected",
+            decisionReason: CROSS_ORG_QUARANTINE_MARKER,
+          },
+        ],
+        map: (row) =>
+          ({
+            ...incompleteCandidate({
+              id: `gmail-scan:${row.id}`,
+              source: "gmail_scan_item",
+              amount: 354,
+              invoiceNumber: "OV255006399",
+              reviewStatus: "rejected",
+              status: "rejected",
+              isComplete: true,
+              dataComplete: true,
+              approvalRequired: false,
+              missingDataReasons: [],
+            }),
+            gmailMessageId: row.gmailMessageId,
+            duplicateKey: row.duplicateKey,
+            documentFingerprint: row.duplicateKey,
+            decisionReason: row.decisionReason,
+          }) as CompletionListCandidateLike & {
+            gmailMessageId: string;
+            duplicateKey: string;
+            documentFingerprint: string;
+            decisionReason: string;
+          },
+      },
+      {
+        name: "financial_document_review",
+        load: async () => [
+          {
+            id: "fdr-rnet-nr",
+            gmailMessageId: "g-rnet-contaminated",
+            documentFingerprint: "87d30575rnet",
+            reviewStatus: "needs_review",
+            decisionReason: "outcome_BLOCKED:OE_TRUST_BLOCKED",
+          },
+        ],
+        map: (row) =>
+          ({
+            ...incompleteCandidate({
+              id: `document-review:${row.id}`,
+              source: "financial_document_review",
+              amount: 354,
+              invoiceNumber: "OV255006399",
+              reviewStatus: "needs_review",
+              status: "needs_review",
+              isComplete: false,
+              dataComplete: true,
+              approvalRequired: true,
+              missingDataReasons: [],
+            }),
+            gmailMessageId: row.gmailMessageId,
+            documentFingerprint: row.documentFingerprint,
+            duplicateKey: row.documentFingerprint,
+            decisionReason: row.decisionReason,
+          }) as CompletionListCandidateLike & {
+            gmailMessageId: string;
+            documentFingerprint: string;
+            duplicateKey: string;
+            decisionReason: string;
+          },
+      },
+    ],
+    {
+      page: 1,
+      pageSize: 25,
+      dedupeCandidates: dedupeCompletionCandidatesPreferGsi,
+    },
+  );
+
+  assert.equal(result.total, 1);
+  assert.equal(result.pageRows[0]?.id, "document-review:fdr-rnet-nr");
+  assert.equal(
+    result.pageRows.some((r) => r.id === "gmail-scan:gsi-rnet-rej"),
+    false,
+  );
+});
+
 test("scanCompletionQueueFromSources: rejected GSI does not hide needs_review FDR; total after dedupe", async () => {
   const gsiRows = [
     {
