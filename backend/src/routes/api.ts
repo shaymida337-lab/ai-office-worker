@@ -82,6 +82,7 @@ import {
   scanCompletionQueueFromSources,
   summarizeCompletionSourceWhereSafe,
 } from "../services/invoiceCompletion/completionQueueQuery.js";
+import { runRnetFdrPredicateDiagnostics } from "../services/invoiceCompletion/rnetFdrPredicateTrace.js";
 import {
   buildCompletionServerTiming,
   computeCompletionUnaccountedMs,
@@ -5442,13 +5443,14 @@ async function loadCompletionQueuePage(input: {
     search: input.search,
   });
   // Completion queue is review candidates; approved Invoice rows are complete and filtered out.
+  const baseWhereInput = {
+    ...buildInvoiceListWhereInput(ctx),
+    includeApprovedInvoices: false,
+    includeApprovedSupplierPayments: false,
+    includeReviewCandidates: true,
+  };
   const whereInput = await applyFinancialReadIsolationToInvoiceListWhere(
-    {
-      ...buildInvoiceListWhereInput(ctx),
-      includeApprovedInvoices: false,
-      includeApprovedSupplierPayments: false,
-      includeReviewCandidates: true,
-    },
+    baseWhereInput,
     input.organizationId,
   );
 
@@ -5469,6 +5471,13 @@ async function loadCompletionQueuePage(input: {
         hostPath: databaseHost(),
         topology: safeDatabaseTopology(),
       },
+    });
+    // Temporary: id-scoped predicate probes (same Prisma client / request).
+    await runRnetFdrPredicateDiagnostics({
+      prisma,
+      organizationId: input.organizationId,
+      baseFdrWhere: baseWhereInput.financialDocumentReviewWhere,
+      fullFdrWhere: whereInput.financialDocumentReviewWhere,
     });
   }
 
