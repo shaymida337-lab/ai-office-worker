@@ -274,6 +274,43 @@ test("detects requested Hebrew suppliers from OCR keywords", () => {
   }
 });
 
+test("prefers fuel merchant over card brand used as payment method", () => {
+  const text = [
+    "אגורות 10-ו yellow בחנויות 10% צוברים מועדון חברי",
+    ".לארנק ₪ 5.57 לצבור יכולת זו בקניה !בפז בתדלוק",
+    "שלך החשבון סיכום",
+    "₪ 418.39",
+    "95 בנע",
+    'הנחה לפני כ"סה ₪ 418.39',
+    "ישראכרט - ויזה",
+    "05361***********",
+    "₪ 418.39",
+    "חשבונית מספר 026309901407453",
+  ].join("\n");
+
+  const result = classifyOcrSupplierText(text);
+  assert.equal(result?.supplierName, "פז");
+  assert.equal(result?.keyword, "yellow");
+});
+
+test("keeps ישראכרט for real card issuer statement without another merchant", () => {
+  const result = classifyOcrSupplierText("ישרא כרט פירוט עסקאות לחודש מרץ");
+  assert.equal(result?.supplierName, "ישראכרט");
+});
+
+test("prefers retail merchant over card brand on payment line", () => {
+  const text = [
+    "סופר פארם",
+    "קבלה",
+    "סה״כ לתשלום 45.00",
+    "ישראכרט - ויזה",
+    "4580************",
+  ].join("\n");
+
+  const result = classifyOcrSupplierText(text);
+  assert.equal(result?.supplierName, "סופר פארם");
+});
+
 test("detects Ramat Gan municipal fine documents from OCR", () => {
   const text = `
     עיריית רמת גן

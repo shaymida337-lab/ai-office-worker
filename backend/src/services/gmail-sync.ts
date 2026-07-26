@@ -396,7 +396,26 @@ type OcrSupplierKeywordRule = {
   confidence: number;
   patterns: RegExp[];
   contextPatterns?: RegExp[];
+  /** Card network / issuer brand; may be payment method rather than merchant. */
+  isCardIssuer?: boolean;
 };
+
+/** Real card-issuer statements (keep brand as supplier). */
+const CARD_ISSUER_STATEMENT_CUES =
+  /פירוט\s*עסקאות|פירוט\s*חיובי|דף\s*חשבון|סיכום\s*עסקאות|transaction\s*details?|account\s*statement|card\s*statement|חברת\s+ישראכרט|isracard\s+(?:ltd|limited|company)/iu;
+
+/** Payment-method cues near card brands (Visa line, masked PAN, etc.). */
+const CARD_PAYMENT_METHOD_CUES_NORMALIZED =
+  /ויזה|visa|מאסטר(?:\s*)קארד|mastercard|אמקס|amex|(?:^|\s)כרטיס(?:\s|$)|(?:^|\s)card(?:\s|$)/iu;
+
+const CARD_PAYMENT_METHOD_CUES_RAW =
+  /\*{3,}|•{3,}|\d{2,}[*xX•·.]{3,}|\d{4,}\s*\*+/u;
+
+function looksLikeCardBrandAsPaymentMethod(rawText: string, normalizedText: string): boolean {
+  if (CARD_ISSUER_STATEMENT_CUES.test(normalizedText)) return false;
+  if (CARD_PAYMENT_METHOD_CUES_NORMALIZED.test(normalizedText)) return true;
+  return CARD_PAYMENT_METHOD_CUES_RAW.test(rawText);
+}
 
 const OCR_SUPPLIER_KEYWORD_RULES: OcrSupplierKeywordRule[] = [
   {
@@ -524,6 +543,7 @@ const OCR_SUPPLIER_KEYWORD_RULES: OcrSupplierKeywordRule[] = [
   {
     supplierName: "max",
     confidence: 0.98,
+    isCardIssuer: true,
     patterns: [
       /(?:^|\s)max(?:\s|$)/u,
       /(?:^|\s)מקס(?:\s|$)/u,
@@ -537,6 +557,7 @@ const OCR_SUPPLIER_KEYWORD_RULES: OcrSupplierKeywordRule[] = [
   {
     supplierName: "ישראכרט",
     confidence: 0.99,
+    isCardIssuer: true,
     patterns: [
       /ישראכרט/u,
       /ישרא\s+כרט/u,
@@ -635,6 +656,7 @@ const OCR_SUPPLIER_KEYWORD_RULES: OcrSupplierKeywordRule[] = [
   {
     supplierName: "כאל",
     confidence: 0.97,
+    isCardIssuer: true,
     patterns: [
       /כ\.א\.ל/u,
       /ויזה\s*כאל/u,
@@ -5802,6 +5824,15 @@ function buildKnownSupplierRegistryEntries(knownSupplierNames: Map<string, strin
 export function classifyOcrSupplierText(text: string) {
   const normalizedText = normalizeOcrSupplierText(text);
   const compactText = normalizedText.replace(/\s+/g, "");
+  const demoteCardIssuerAsPaymentMethod = looksLikeCardBrandAsPaymentMethod(text, normalizedText);
+
+  let firstCardIssuerMatch: {
+    supplierName: string;
+    confidence: number;
+    keyword: string;
+    normalizedText: string;
+  } | null = null;
+
   for (const rule of OCR_SUPPLIER_KEYWORD_RULES) {
     const contextMatched = !rule.contextPatterns?.length || rule.contextPatterns.some((pattern) => {
       pattern.lastIndex = 0;
@@ -5819,16 +5850,26 @@ export function classifyOcrSupplierText(text: string) {
         return normalizedMatch ?? compactText.match(pattern)?.[0];
       })
       .find((value): value is string => Boolean(value));
-    if (match) {
-      return {
-        supplierName: rule.supplierName,
-        confidence: rule.confidence,
-        keyword: match,
-        normalizedText,
-      };
+    if (!match) continue;
+
+    const hit = {
+      supplierName: rule.supplierName,
+      confidence: rule.confidence,
+      keyword: match,
+      normalizedText,
+    };
+
+    // Card brand next to Visa/masked PAN is usually payment method — prefer a real merchant.
+    if (rule.isCardIssuer && demoteCardIssuerAsPaymentMethod) {
+      firstCardIssuerMatch ??= hit;
+      continue;
     }
+
+    return hit;
   }
-  return null;
+
+  // No merchant matched; keep card issuer (e.g. payment line only, or demotion edge case).
+  return firstCardIssuerMatch;
 }
 
 export function detectMunicipalCollectionDocument(text: string): {
