@@ -29,6 +29,91 @@ export const COMPLETION_SCAN_CHUNK = 100;
  */
 export const COMPLETION_SCAN_MAX_SOURCE_ROWS = 10_000;
 
+/**
+ * Temporary Rnet prod diagnosis — remove after root cause is confirmed.
+ * Matches only the known kedma Rnet ids / fingerprint / invoice number.
+ */
+export const RNET_COMPLETION_TRACE_FINGERPRINT_PREFIX = "87d30575";
+export const RNET_COMPLETION_TRACE_FDR_ID = "cmqw3n5hx020dm92bp1joi8wu";
+export const RNET_COMPLETION_TRACE_GSI_ID = "cmqw3n5ug020fm92b5smx5bx1";
+export const RNET_COMPLETION_TRACE_INVOICE_NUMBER = "OV255006399";
+
+export type CompletionTraceCandidateFields = {
+  id?: string | null;
+  source?: string | null;
+  reviewStatus?: string | null;
+  status?: string | null;
+  decisionReason?: string | null;
+  dataComplete?: boolean;
+  approvalRequired?: boolean;
+  isComplete?: boolean;
+  documentFingerprint?: string | null;
+  duplicateKey?: string | null;
+  invoiceNumber?: string | null;
+};
+
+export type CompletionTraceStage = "inSource" | "afterDedupe" | "afterIncomplete" | "finalPageRows";
+
+export type CompletionTraceRow = {
+  id: string;
+  source: string | null;
+  reviewStatus: string | null;
+  status: string | null;
+  decisionReason: string | null;
+  dataComplete: boolean | null;
+  approvalRequired: boolean | null;
+  isComplete: boolean | null;
+  fingerprintPrefix: string | null;
+};
+
+function fingerprintOf(candidate: CompletionTraceCandidateFields): string {
+  return String(candidate.documentFingerprint ?? candidate.duplicateKey ?? "").trim();
+}
+
+export function matchesRnetCompletionTraceTarget(candidate: CompletionTraceCandidateFields): boolean {
+  const id = String(candidate.id ?? "");
+  if (id.includes(RNET_COMPLETION_TRACE_FDR_ID) || id.includes(RNET_COMPLETION_TRACE_GSI_ID)) {
+    return true;
+  }
+  const fp = fingerprintOf(candidate);
+  if (fp.startsWith(RNET_COMPLETION_TRACE_FINGERPRINT_PREFIX)) return true;
+  const invoice = String(candidate.invoiceNumber ?? "").trim().toUpperCase();
+  return invoice === RNET_COMPLETION_TRACE_INVOICE_NUMBER;
+}
+
+export function slimRnetCompletionTraceRow(candidate: CompletionTraceCandidateFields): CompletionTraceRow {
+  const fp = fingerprintOf(candidate);
+  const reason = candidate.decisionReason == null ? null : String(candidate.decisionReason).slice(0, 160);
+  return {
+    id: String(candidate.id ?? ""),
+    source: candidate.source == null ? null : String(candidate.source),
+    reviewStatus: candidate.reviewStatus == null ? null : String(candidate.reviewStatus),
+    status: candidate.status == null ? null : String(candidate.status),
+    decisionReason: reason,
+    dataComplete: typeof candidate.dataComplete === "boolean" ? candidate.dataComplete : null,
+    approvalRequired: typeof candidate.approvalRequired === "boolean" ? candidate.approvalRequired : null,
+    isComplete: typeof candidate.isComplete === "boolean" ? candidate.isComplete : null,
+    fingerprintPrefix: fp ? fp.slice(0, 8) : null,
+  };
+}
+
+/** Side-effect only — never mutates candidates or return values. */
+export function logRnetCompletionTraceStage(
+  stage: CompletionTraceStage,
+  candidates: readonly CompletionTraceCandidateFields[],
+): void {
+  const rows = candidates.filter(matchesRnetCompletionTraceTarget).map(slimRnetCompletionTraceRow);
+  if (rows.length === 0) return;
+  console.log(
+    JSON.stringify({
+      tag: "rnet_completion_trace",
+      stage,
+      count: rows.length,
+      rows,
+    }),
+  );
+}
+
 export type CompletionQueueScanStats = {
   sourceRowsScanned: number;
   waves: number;
@@ -258,10 +343,12 @@ export function paginateFilteredCompletionCandidates<T extends CompletionListCan
     status: input.status,
     search: input.search,
   });
+  logRnetCompletionTraceStage("afterIncomplete", matched as CompletionTraceCandidateFields[]);
   const sorted = sortCompletionCandidatesStable(matched, sort);
   const total = sorted.length;
   const start = (page - 1) * pageSize;
   const pageRows = sorted.slice(start, start + pageSize);
+  logRnetCompletionTraceStage("finalPageRows", pageRows as CompletionTraceCandidateFields[]);
   return {
     pageRows,
     matched: sorted,
@@ -384,7 +471,9 @@ export async function scanCompletionQueueFromSources<TRow, T extends CompletionL
   }
 
   const sourceRowsScanned = collected.length;
+  logRnetCompletionTraceStage("inSource", collected as CompletionTraceCandidateFields[]);
   const deduped = input.dedupeCandidates ? input.dedupeCandidates(collected) : collected;
+  logRnetCompletionTraceStage("afterDedupe", deduped as CompletionTraceCandidateFields[]);
 
   return paginateFilteredCompletionCandidates(deduped, {
     page: input.page,

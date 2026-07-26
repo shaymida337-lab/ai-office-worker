@@ -788,3 +788,74 @@ test("scanCompletionQueueFromSources: rejected GSI does not hide needs_review FD
     false,
   );
 });
+
+test("rnet completion trace: match + slim only target ids; logging does not change pagination", async () => {
+  const {
+    matchesRnetCompletionTraceTarget,
+    slimRnetCompletionTraceRow,
+    logRnetCompletionTraceStage,
+    RNET_COMPLETION_TRACE_FDR_ID,
+    RNET_COMPLETION_TRACE_FINGERPRINT_PREFIX,
+  } = await import("./completionQueueQuery.js");
+
+  const target = {
+    id: `document-review:${RNET_COMPLETION_TRACE_FDR_ID}`,
+    source: "financial_document_review",
+    reviewStatus: "needs_review",
+    status: "needs_review",
+    decisionReason: "outcome_BLOCKED:OE_TRUST_BLOCKED",
+    dataComplete: true,
+    approvalRequired: true,
+    isComplete: false,
+    documentFingerprint: `${RNET_COMPLETION_TRACE_FINGERPRINT_PREFIX}d372c795`,
+    invoiceNumber: "OV255006399",
+  };
+  const other = incompleteCandidate({
+    id: "document-review:other",
+    amount: 10,
+    isComplete: false,
+    dataComplete: false,
+    approvalRequired: true,
+  });
+
+  assert.equal(matchesRnetCompletionTraceTarget(target), true);
+  assert.equal(matchesRnetCompletionTraceTarget(other), false);
+
+  const slim = slimRnetCompletionTraceRow(target);
+  assert.equal(slim.id, target.id);
+  assert.equal(slim.fingerprintPrefix, RNET_COMPLETION_TRACE_FINGERPRINT_PREFIX);
+  assert.equal(Object.prototype.hasOwnProperty.call(slim, "supplierName"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(slim, "parsedFieldsJson"), false);
+
+  const logs: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  try {
+    logRnetCompletionTraceStage("inSource", [target, other]);
+    logRnetCompletionTraceStage("afterIncomplete", [other]);
+  } finally {
+    console.log = originalLog;
+  }
+  assert.equal(logs.length, 1);
+  assert.match(logs[0]!, /rnet_completion_trace/);
+  assert.match(logs[0]!, /"stage":"inSource"/);
+
+  const page = paginateFilteredCompletionCandidates(
+    [
+      incompleteCandidate({
+        id: target.id,
+        amount: 354,
+        isComplete: false,
+        dataComplete: true,
+        approvalRequired: true,
+        invoiceNumber: "OV255006399",
+      }),
+      other,
+    ],
+    { page: 1, pageSize: 25 },
+  );
+  assert.equal(page.total, 2);
+  assert.equal(page.pageRows.length, 2);
+});
