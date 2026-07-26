@@ -175,6 +175,22 @@ export function isGenericSingleEnglishWordName(name: string): boolean {
   return true;
 }
 
+/** Field labels / invoice metadata that sometimes leak into supplierName. */
+function looksLikeInvoiceMetadataLabel(name: string): boolean {
+  // Avoid JS `\b` with Hebrew — Hebrew letters are not word chars.
+  if (/^תאריך(?:\s|:|$)/i.test(name)) return true;
+  if (/^מספר\s*(?:מסמך|חשבונית|חש['׳]?|קבלה)(?:\s|:|$)/i.test(name)) return true;
+  if (/^אסמכתא(?:\s|:|$)/i.test(name)) return true;
+  if (/^(?:invoice|document|receipt)\s*(?:date|number|no\.?|#|ref(?:erence)?)\b/i.test(name)) return true;
+  if (/^date\s*(?:of\s+(?:issue|invoice)|due)?\s*:/i.test(name)) return true;
+  if (/^(?:reference|ref\.?)\s*(?:no\.?|number|#)?\s*:/i.test(name)) return true;
+  // Exact generic description only — names containing "שירותים" stay valid.
+  if (/^שירות\s+כללי$/i.test(name)) return true;
+  // Date-bearing label lines ("תאריך חשבונית: 14/06/2026").
+  if (/\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/.test(name) && /תאריך|date/i.test(name)) return true;
+  return false;
+}
+
 export function isLikelyJunkSupplierName(name: string): boolean {
   const cleaned = name.trim();
   if (!cleaned) return false;
@@ -194,6 +210,8 @@ export function isLikelyJunkSupplierName(name: string): boolean {
   if (JUNK_JSON_FRAGMENT.test(cleaned)) return true;
 
   if (JUNK_ALWAYS_PATTERNS.test(lower)) return true;
+
+  if (looksLikeInvoiceMetadataLabel(cleaned)) return true;
 
   if (looksLikeSentenceFragmentName(cleaned)) return true;
 

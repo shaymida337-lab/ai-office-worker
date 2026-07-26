@@ -31,9 +31,16 @@ test("invoice golden runner produces a full baseline report without throwing", (
   assert.equal(report.totals.passed + report.totals.failed, 20);
 
   // Explicit baseline lock — do not "green" failures by weakening expected.
-  // Document-type fix raised 15/20 → 17/20 (receipt + credit_note).
-  assert.equal(report.totals.passed, 17, "golden baseline passed count drifted");
-  assert.equal(report.totals.failed, 3, "golden baseline failed count drifted");
+  // Missing-supplier metadata filter raised 17/20 → 18/20.
+  assert.equal(report.totals.passed, 18, "golden baseline passed count drifted");
+  assert.equal(report.totals.failed, 2, "golden baseline failed count drifted");
+
+  const missingSupplier = report.results.find((r) => r.fixtureId === "he_missing_supplier_001");
+  assert.ok(missingSupplier);
+  assert.equal(missingSupplier!.passed, true);
+  assert.equal(missingSupplier!.actual.supplierName, null);
+  assert.equal(missingSupplier!.actual.destination, "completion");
+  assert.ok(missingSupplier!.actual.missingDataReasons.includes("ספק לא זוהה"));
 
   // Every fixture file referenced by the manifest must exist and run.
   for (const result of report.results) {

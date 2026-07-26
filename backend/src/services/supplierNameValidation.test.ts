@@ -7,6 +7,27 @@ import {
 } from "./supplierNameValidation.js";
 import { GENERIC_SENDER_TOKENS, isUsableSupplierNameShared, isValidSupplierNameShared } from "./supplier/supplierValidation.js";
 
+test("isLikelyJunkSupplierName flags invoice metadata labels that leaked as suppliers", () => {
+  const junk = [
+    "תאריך חשבונית: 14/06/2026",
+    "מספר מסמך: SYN-NOSUP-001",
+    "מספר חשבונית: 1001",
+    "מספר קבלה: R-9",
+    "אסמכתא: REF-1",
+    "שירות כללי",
+    "Invoice date: 2026-06-14",
+    "Document number: INV-1",
+  ] as const;
+  for (const name of junk) {
+    assert.equal(isLikelyJunkSupplierName(name), true, `expected junk: ${name}`);
+  }
+
+  // Must not reject real suppliers merely because the name contains "שירותים".
+  for (const name of ['אלפא שירותים בע״מ', 'א.א. שירותי ניקיון בע"מ', "קסי שירותי ענן בע״מ"] as const) {
+    assert.equal(isLikelyJunkSupplierName(name), false, `expected valid: ${name}`);
+  }
+});
+
 test("isLikelyJunkSupplierName blocks generic standalone English words that leaked as suppliers", () => {
   const junk = [
     "files",

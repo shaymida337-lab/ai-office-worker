@@ -209,6 +209,17 @@ function isHighConfidenceSupplierLine(line: string): boolean {
   if (/^(לכבוד|bill\s+to|עוסק|ח\.?פ|ת\.?ז|ai-|support@|page\s+\d|invoice\s+number|date\s+of)/i.test(cleaned)) {
     return false;
   }
+  // Invoice metadata / field labels must never become the supplier name.
+  // Avoid JS `\b` with Hebrew — Hebrew letters are not word chars.
+  if (/^תאריך(?:\s|:|$)/i.test(cleaned)) return false;
+  if (/^מספר\s*(?:מסמך|חשבונית|חש['׳]?|קבלה)(?:\s|:|$)/i.test(cleaned)) return false;
+  if (/^אסמכתא(?:\s|:|$)/i.test(cleaned)) return false;
+  if (/^(?:invoice|document|receipt)\s*(?:date|number|no\.?|#|ref(?:erence)?)\b/i.test(cleaned)) return false;
+  if (/^date\s*(?:of\s+(?:issue|invoice)|due)?\s*:/i.test(cleaned)) return false;
+  if (/^(?:reference|ref\.?)\s*(?:no\.?|number|#)?\s*:/i.test(cleaned)) return false;
+  // Exact generic description line only — do NOT reject real names containing "שירותים".
+  if (/^שירות\s+כללי$/i.test(cleaned)) return false;
+  if (/סה[״"']?\s*כ|לתשלום|grand\s*total|amount\s*due|total\s*amount/i.test(cleaned)) return false;
   if (/^date\s+(due|of\s+issue)\b/i.test(cleaned)) return false;
   if (/^(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(cleaned)) {
     return false;

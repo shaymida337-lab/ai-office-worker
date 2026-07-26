@@ -198,6 +198,35 @@ test("Hebrew קבלה standalone line is receipt (no JS \\\\b dependency)", () =
   assert.equal(fields.documentType, "receipt");
 });
 
+test("financial invoice without supplier keeps supplierName null (metadata lines skipped)", () => {
+  const fields = extractDeterministicInvoiceFieldsFromPdfText(`חשבונית מס
+תאריך חשבונית: 14/06/2026
+מספר מסמך: SYN-NOSUP-001
+שירות כללי
+₪150.00 סה״כ לתשלום`);
+  assert.equal(fields.supplierName, null);
+  assert.equal(fields.totalAmount, 150);
+  assert.equal(fields.documentDate, "2026-06-14");
+  assert.equal(fields.documentType, "invoice");
+  assert.equal(fields.currency, "ILS");
+});
+
+test("metadata labels are not suppliers; real names with שירותים still extract", () => {
+  assert.equal(
+    extractDeterministicInvoiceFieldsFromPdfText(`חשבונית מס
+מספר קבלה: R-9
+אסמכתא: REF-1
+₪10.00 סה״כ לתשלום`).supplierName,
+    null
+  );
+
+  const withServices = extractDeterministicInvoiceFieldsFromPdfText(`חשבונית מס
+שם ספק: אלפא שירותים בע״מ
+תאריך חשבונית: 15/06/2026
+₪100.00 סה״כ לתשלום`);
+  assert.equal(withServices.supplierName, "אלפא שירותים בע״מ");
+});
+
 test("חשבונית זיכוי / הודעת זיכוי beat generic invoice detection", () => {
   const creditInvoice = extractDeterministicInvoiceFieldsFromPdfText(`חשבונית זיכוי
 שם ספק: אפסילון לוגיסטיקה בע״מ
