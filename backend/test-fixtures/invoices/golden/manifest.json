@@ -1,0 +1,372 @@
+{
+  "version": "invoice-golden-v1",
+  "description": "Phase-1 offline golden dataset: 20 synthetic fixtures for extraction + completeness routing baseline",
+  "fixtures": [
+    {
+      "id": "he_invoice_clear_001",
+      "file": "files/he_invoice_clear_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "אלפא שירותים בע״מ",
+        "amount": 1234.56,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-15",
+        "documentType": "invoice",
+        "destination": "invoices",
+        "reason": "all_required_fields_present"
+      },
+      "acceptedSupplierAliases": ["אלפא שירותים בע\"מ", "אלפא שירותים בעמ"],
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "en_invoice_clear_001",
+      "file": "files/en_invoice_clear_001.txt",
+      "language": "en",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "Beta Office Supplies Ltd",
+        "amount": 118,
+        "currency": "USD",
+        "invoiceDate": "2026-06-15",
+        "documentType": "invoice",
+        "destination": "invoices",
+        "reason": "all_required_fields_present"
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_receipt_001",
+      "file": "files/he_receipt_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "גמא קפה בע״מ",
+        "amount": 45.9,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-10",
+        "documentType": "receipt",
+        "destination": "invoices",
+        "reason": "all_required_fields_present"
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_tax_invoice_receipt_001",
+      "file": "files/he_tax_invoice_receipt_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "דלתא טכנולוגיות בע״מ",
+        "amount": 590,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-12",
+        "documentType": "tax_invoice_receipt",
+        "destination": "invoices",
+        "reason": "all_required_fields_present"
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_credit_note_001",
+      "file": "files/he_credit_note_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "אפסילון לוגיסטיקה בע״מ",
+        "amount": 120,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-08",
+        "documentType": "credit_note",
+        "destination": "completion",
+        "reason": "unrecognized_document_type",
+        "expectedMissingFields": ["MISSING_DOCUMENT_TYPE"]
+      },
+      "amountTolerance": 0.01,
+      "notes": "Credit notes are not in completeness RECOGNIZED_DOCUMENT_TYPES yet — baseline should route to completion."
+    },
+    {
+      "id": "en_total_vs_subtotal_001",
+      "file": "files/en_total_vs_subtotal_001.txt",
+      "language": "en",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "Zeta Media Group",
+        "amount": 114,
+        "currency": "USD",
+        "invoiceDate": "2026-06-01",
+        "documentType": "invoice",
+        "destination": "invoices",
+        "reason": "prefer_total_over_subtotal"
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_total_vs_vat_001",
+      "file": "files/he_total_vs_vat_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "אטא שירותי ניקיון בע״מ",
+        "amount": 236,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-05",
+        "documentType": "invoice",
+        "destination": "invoices",
+        "reason": "prefer_total_over_vat"
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_amount_us_format_001",
+      "file": "files/he_amount_us_format_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "תטא ציוד משרדי בע״מ",
+        "amount": 1234.56,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-18",
+        "documentType": "invoice",
+        "destination": "invoices",
+        "reason": "parse_us_thousands_format"
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_amount_eu_format_001",
+      "file": "files/he_amount_eu_format_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "יודא ייבוא בע״מ",
+        "amount": 1234.56,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-18",
+        "documentType": "invoice",
+        "destination": "invoices",
+        "reason": "parse_eu_decimal_format"
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_no_invoice_number_001",
+      "file": "files/he_no_invoice_number_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "קפא הובלות בע״מ",
+        "amount": 780,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-22",
+        "documentType": "invoice",
+        "destination": "invoices",
+        "reason": "invoice_number_optional"
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_supplier_name_only_001",
+      "file": "files/he_supplier_name_only_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "למדא עיצוב בע״מ",
+        "amount": 320,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-11",
+        "documentType": "invoice",
+        "destination": "invoices",
+        "reason": "supplier_name_without_tax_id"
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_issue_vs_due_date_001",
+      "file": "files/he_issue_vs_due_date_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "מו סטודיו בע״מ",
+        "amount": 900,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-03",
+        "documentType": "invoice",
+        "destination": "invoices",
+        "reason": "prefer_issue_date_over_due_date"
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_multi_amount_grand_total_001",
+      "file": "files/he_multi_amount_grand_total_001.txt",
+      "language": "en",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "Nu Analytics Ltd",
+        "amount": 94.4,
+        "currency": "USD",
+        "invoiceDate": "2026-06-09",
+        "documentType": "invoice",
+        "destination": "invoices",
+        "reason": "prefer_grand_total"
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_missing_supplier_001",
+      "file": "files/he_missing_supplier_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": null,
+        "amount": 150,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-14",
+        "documentType": "invoice",
+        "destination": "completion",
+        "reason": "missing_supplier",
+        "expectedMissingFields": ["SUPPLIER_UNIDENTIFIED"]
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_missing_amount_001",
+      "file": "files/he_missing_amount_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "קסי שירותי ענן בע״מ",
+        "amount": null,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-14",
+        "documentType": "invoice",
+        "destination": "completion",
+        "reason": "missing_amount",
+        "expectedMissingFields": ["MISSING_AMOUNT"]
+      }
+    },
+    {
+      "id": "he_missing_date_001",
+      "file": "files/he_missing_date_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "אומיקרון הדפסות בע״מ",
+        "amount": 210,
+        "currency": "ILS",
+        "invoiceDate": null,
+        "documentType": "invoice",
+        "destination": "completion",
+        "reason": "missing_date",
+        "expectedMissingFields": ["MISSING_DATE"]
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_unknown_doctype_001",
+      "file": "files/he_unknown_doctype_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": "פי שירותים בע״מ",
+        "amount": 400,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-16",
+        "documentType": null,
+        "destination": "completion",
+        "reason": "unrecognized_document_type",
+        "expectedMissingFields": ["MISSING_DOCUMENT_TYPE"]
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "en_non_financial_001",
+      "file": "files/en_non_financial_001.txt",
+      "language": "en",
+      "sourceType": "email_body",
+      "origin": "synthetic",
+      "expected": {
+        "supplierName": null,
+        "amount": null,
+        "currency": null,
+        "invoiceDate": null,
+        "documentType": null,
+        "destination": "excluded",
+        "reason": "not_financial_document"
+      }
+    },
+    {
+      "id": "he_duplicate_unsure_001",
+      "file": "files/he_duplicate_unsure_001.txt",
+      "language": "he",
+      "sourceType": "pdf_text",
+      "origin": "synthetic",
+      "routingHints": {
+        "reviewStatus": "needs_review",
+        "parsedFieldsJson": {
+          "gates": [
+            {
+              "gate": "duplicate",
+              "verdict": "review",
+              "reasonCode": "duplicate.semantic_unsure",
+              "engineVersion": "duplicate-gate-v1",
+              "matchedPaymentId": "syn-match-001",
+              "matchedReviewId": null,
+              "matchStrength": "unsure"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "supplierName": "רו שילוח בע״מ",
+        "amount": 1050,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-19",
+        "documentType": "invoice",
+        "destination": "completion",
+        "reason": "duplicate_unsure",
+        "expectedDuplicateState": "unsure"
+      },
+      "amountTolerance": 0.01
+    },
+    {
+      "id": "he_camera_draft_complete_001",
+      "file": "files/he_camera_draft_complete_001.txt",
+      "language": "he",
+      "sourceType": "image",
+      "origin": "synthetic",
+      "routingHints": {
+        "ingestSource": "camera",
+        "reviewStatus": "needs_review"
+      },
+      "expected": {
+        "supplierName": "סיגמא צילום בע״מ",
+        "amount": 640,
+        "currency": "ILS",
+        "invoiceDate": "2026-06-21",
+        "documentType": "invoice",
+        "destination": "completion",
+        "reason": "camera_draft_unconfirmed"
+      },
+      "amountTolerance": 0.01
+    }
+  ]
+}

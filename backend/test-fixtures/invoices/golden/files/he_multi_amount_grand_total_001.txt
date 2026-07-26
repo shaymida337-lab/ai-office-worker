@@ -1,0 +1,8 @@
+Invoice
+Supplier name: Nu Analytics Ltd
+Invoice date: 2026-06-09
+Document number: SYN-GT-001
+Subtotal 80.00
+VAT 14.40
+Grand total 94.40 USD
+Amount due 94.40

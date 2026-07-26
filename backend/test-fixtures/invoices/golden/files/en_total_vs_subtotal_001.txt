@@ -1,0 +1,8 @@
+Invoice
+Supplier name: Zeta Media Group
+Invoice date: 2026-06-01
+Document number: SYN-SUB-001
+Line items
+Subtotal 95.00
+Tax 19.00
+Total amount 114.00 USD
