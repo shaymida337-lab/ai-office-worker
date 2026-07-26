@@ -155,3 +155,37 @@ test("non-PDF email body is not affected by deterministic merge", () => {
   assert.equal(merged.supplier, "בזק");
   assert.equal(merged.totalAmount, 100);
 });
+
+test("final total wins over adjacent pre-VAT / subtotal lines (he + en)", () => {
+  const heClear = extractDeterministicInvoiceFieldsFromPdfText(`חשבונית מס
+שם ספק: אלפא שירותים בע״מ
+תאריך חשבונית: 15/06/2026
+סה״כ לפני מע״מ ₪1,047.93
+מע״מ 18% ₪186.63
+₪1,234.56 סה״כ לתשלום`);
+  assert.equal(heClear.totalAmount, 1234.56);
+
+  const heTir = extractDeterministicInvoiceFieldsFromPdfText(`חשבונית מס / קבלה
+שם ספק: דלתא טכנולוגיות בע״מ
+תאריך חשבונית: 12/06/2026
+לפני מע״מ ₪500.00
+מע״מ ₪90.00
+₪590.00 סה״כ לתשלום`);
+  assert.equal(heTir.totalAmount, 590);
+
+  const enDue = extractDeterministicInvoiceFieldsFromPdfText(`Invoice
+Supplier name: Beta Office Supplies Ltd
+Invoice date: 2026-06-15
+Subtotal 100.00
+VAT 18.00
+Total amount due $118.00 USD`);
+  assert.equal(enDue.totalAmount, 118);
+
+  const enTotal = extractDeterministicInvoiceFieldsFromPdfText(`Invoice
+Supplier name: Zeta Media Group
+Invoice date: 2026-06-01
+Subtotal 95.00
+Tax 19.00
+Total amount 114.00 USD`);
+  assert.equal(enTotal.totalAmount, 114);
+});

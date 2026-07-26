@@ -14,6 +14,13 @@ const PDF_ATTACHMENT_MARKERS = ["--- PDF ATTACHMENT TEXT ---", "--- WHATSAPP PDF
 const PRE_VAT_AMOUNT_CONTEXT =
   /(?:לפני\s*מע["״']?\s*מ|לפני\s*מע"מ|before\s*vat|subtotal|net\s*amount|excl(?:uding)?\s*vat)/i;
 
+/** Labels that mean payable grand total — must beat nearby subtotal/pre-VAT lines. */
+const FINAL_TOTAL_LABEL =
+  /(?:סה["״']?\s*כ\s*לתשלום|סהכ\s*לתשלום|סה["״']?\s*כ\s*כולל\s*מע|grand\s*total|\btotal\s*(?:amount\s*)?due\b|\bamount\s*due\b|\bbalance\s*due\b|\btotal\s*amount\b)/i;
+
+/** Score threshold for patterns that already encode a final-total label. */
+const FINAL_TOTAL_SCORE = 100;
+
 const TOTAL_AMOUNT_PATTERNS: Array<{ pattern: RegExp; score: number }> = [
   {
     pattern:
@@ -32,7 +39,7 @@ const TOTAL_AMOUNT_PATTERNS: Array<{ pattern: RegExp; score: number }> = [
   },
   {
     pattern:
-      /(?:total\s*(?:due|amount)|amount\s*due|balance\s*due)[^\d$€]{0,30}\$?\s*([0-9][0-9.,\s]*)/gi,
+      /\b(?:grand\s*total|total\s*amount\s*due|amount\s*due|balance\s*due|total\s*due|total\s*amount)\b[^\d$€]{0,30}(?:\$|usd|eur|€)?\s*([0-9][0-9.,\s]*)/gi,
     score: 100,
   },
   {
@@ -96,11 +103,22 @@ export function extractPdfAttachmentText(body: string): string | null {
   return null;
 }
 
-function parseAmountCandidate(raw: string, score: number, text: string, matchIndex: number) {
+function parseAmountCandidate(
+  raw: string,
+  score: number,
+  text: string,
+  matchIndex: number,
+  matchText: string
+) {
   const contextStart = Math.max(0, matchIndex - 40);
-  const contextEnd = Math.min(text.length, matchIndex + raw.length + 40);
+  const contextEnd = Math.min(text.length, matchIndex + Math.max(matchText.length, raw.length) + 40);
   const context = text.slice(contextStart, contextEnd);
-  if (PRE_VAT_AMOUNT_CONTEXT.test(context)) return null;
+
+  // Final payable totals must win over adjacent Subtotal / לפני מע״מ lines.
+  // Only the matched span / pattern score count — not a wide context window
+  // (that window previously false-rejected totals when pre-VAT sat on the line above).
+  const isFinalTotal = score >= FINAL_TOTAL_SCORE || FINAL_TOTAL_LABEL.test(matchText);
+  if (!isFinalTotal && PRE_VAT_AMOUNT_CONTEXT.test(context)) return null;
 
   const parsed = parseLabeledAmount(raw);
   if (parsed.ambiguous || parsed.parsedAmount === null) return null;
@@ -115,7 +133,7 @@ function extractTotalAmountFromPdfText(text: string): number | null {
     for (const match of text.matchAll(pattern)) {
       const raw = match.slice(1).find((group) => group && /\d/.test(group));
       if (!raw) continue;
-      const parsed = parseAmountCandidate(raw, score, text, match.index ?? 0);
+      const parsed = parseAmountCandidate(raw, score, text, match.index ?? 0, match[0] ?? raw);
       if (parsed) candidates.push(parsed);
     }
   }
