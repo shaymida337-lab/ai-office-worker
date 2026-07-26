@@ -108,6 +108,57 @@ export function applyCompletionQueueFilters<T extends CompletionListCandidateLik
 }
 
 /**
+ * Dedupe GSI + FDR mirrors for the same Gmail document (completion queue only).
+ * Mirrors mergeInvoiceListCandidates message-ref suppression, plus fingerprint/duplicateKey.
+ * Prefers gmail_scan_item when both sides share a ref; keeps distinct documents.
+ */
+export type CompletionDedupeCandidateFields = {
+  id: string;
+  source: string;
+  gmailMessageId?: string | null;
+  emailMessageId?: string | null;
+  documentFingerprint?: string | null;
+  duplicateKey?: string | null;
+};
+
+function completionDedupeRefs(candidate: CompletionDedupeCandidateFields): string[] {
+  const refs: string[] = [];
+  if (candidate.gmailMessageId) refs.push(`gmail:${candidate.gmailMessageId}`);
+  if (candidate.emailMessageId) refs.push(`email:${candidate.emailMessageId}`);
+  const fingerprint = candidate.documentFingerprint ?? candidate.duplicateKey;
+  if (fingerprint) refs.push(`fp:${fingerprint}`);
+  return refs;
+}
+
+export function dedupeCompletionCandidatesPreferGsi<T extends CompletionDedupeCandidateFields>(
+  candidates: T[]
+): T[] {
+  const gsi: T[] = [];
+  const rest: T[] = [];
+  for (const candidate of candidates) {
+    if (candidate.source === "gmail_scan_item") gsi.push(candidate);
+    else rest.push(candidate);
+  }
+
+  const usedRefs = new Set<string>();
+  const out: T[] = [];
+
+  for (const candidate of gsi) {
+    out.push(candidate);
+    for (const ref of completionDedupeRefs(candidate)) usedRefs.add(ref);
+  }
+
+  for (const candidate of rest) {
+    const refs = completionDedupeRefs(candidate);
+    if (refs.some((ref) => usedRefs.has(ref))) continue;
+    out.push(candidate);
+    for (const ref of refs) usedRefs.add(ref);
+  }
+
+  return out;
+}
+
+/**
  * Merge batches from multiple sources already loaded, filter, sort, paginate.
  * Pure — used by route + unit tests (301+ fixtures without DB).
  */
@@ -226,6 +277,8 @@ export async function scanCompletionQueueFromSources<TRow, T extends CompletionL
     search?: string;
     chunk?: number;
     maxSourceRows?: number;
+    /** Applied after source concat, before completeness filter + pagination. */
+    dedupeCandidates?: (candidates: T[]) => T[];
   }
 ): Promise<CompletionQueuePageResult<T>> {
   const chunk = input.chunk ?? COMPLETION_SCAN_CHUNK;
@@ -254,14 +307,17 @@ export async function scanCompletionQueueFromSources<TRow, T extends CompletionL
     if (truncated) break;
   }
 
-  return paginateFilteredCompletionCandidates(collected, {
+  const sourceRowsScanned = collected.length;
+  const deduped = input.dedupeCandidates ? input.dedupeCandidates(collected) : collected;
+
+  return paginateFilteredCompletionCandidates(deduped, {
     page: input.page,
     pageSize: input.pageSize,
     sort: input.sort,
     status: input.status,
     search: input.search,
     truncated,
-    sourceRowsScanned: collected.length,
+    sourceRowsScanned,
     waves,
   });
 }

@@ -4,6 +4,7 @@ import {
   COMPLETION_SCAN_CHUNK,
   COMPLETION_SCAN_MAX_SOURCE_ROWS,
   compareCompletionCandidates,
+  dedupeCompletionCandidatesPreferGsi,
   paginateFilteredCompletionCandidates,
   scanCompletionQueueFromSources,
   scanCompletionQueueWithBatchLoader,
@@ -356,4 +357,146 @@ test("scan perf: 25 / 301 / 2000 / 10k ceiling — batch findMany, readiness onc
   assert.equal(mCap.total, COMPLETION_SCAN_MAX_SOURCE_ROWS);
   assert.equal(mCap.readinessCalls, 1);
   console.info("[completion-scan-perf] 10000-ceiling", JSON.stringify(mCap));
+});
+
+test("dedupeCompletionCandidatesPreferGsi: GSI+FDR same gmail/fingerprint → one GSI row", () => {
+  const gsi = incompleteCandidate({
+    id: "gmail-scan:gsi-1",
+    source: "gmail_scan_item",
+    amount: 450,
+    supplierName: "GENERAL TIRE",
+  });
+  const fdr = incompleteCandidate({
+    id: "document-review:fdr-1",
+    source: "financial_document_review",
+    amount: 450,
+    supplierName: "GENERAL TIRE",
+  });
+  const deduped = dedupeCompletionCandidatesPreferGsi([
+    { ...gsi, gmailMessageId: "msg-1", emailMessageId: "email-1", duplicateKey: "fp-1", documentFingerprint: "fp-1" },
+    { ...fdr, gmailMessageId: "msg-1", emailMessageId: "email-1", duplicateKey: "fp-1", documentFingerprint: "fp-1" },
+  ]);
+  assert.equal(deduped.length, 1);
+  assert.equal(deduped[0]?.id, "gmail-scan:gsi-1");
+  assert.equal(deduped[0]?.source, "gmail_scan_item");
+});
+
+test("dedupeCompletionCandidatesPreferGsi: different gmailMessageIds → two rows", () => {
+  const a = incompleteCandidate({ id: "gmail-scan:a", source: "gmail_scan_item", amount: 450 });
+  const b = incompleteCandidate({ id: "gmail-scan:b", source: "gmail_scan_item", amount: 450 });
+  const deduped = dedupeCompletionCandidatesPreferGsi([
+    { ...a, gmailMessageId: "msg-a", documentFingerprint: "fp-a" },
+    { ...b, gmailMessageId: "msg-b", documentFingerprint: "fp-b" },
+  ]);
+  assert.equal(deduped.length, 2);
+});
+
+test("dedupeCompletionCandidatesPreferGsi: same amount/supplier, different fingerprint → two rows", () => {
+  const gsi = incompleteCandidate({
+    id: "gmail-scan:gsi",
+    source: "gmail_scan_item",
+    amount: 918,
+    supplierName: "סופר פארם",
+  });
+  const fdr = incompleteCandidate({
+    id: "document-review:fdr",
+    source: "financial_document_review",
+    amount: 918,
+    supplierName: "סופר פארם",
+  });
+  const deduped = dedupeCompletionCandidatesPreferGsi([
+    { ...gsi, gmailMessageId: "msg-1", documentFingerprint: "fp-1", duplicateKey: "fp-1" },
+    { ...fdr, gmailMessageId: "msg-2", documentFingerprint: "fp-2", duplicateKey: "fp-2" },
+  ]);
+  assert.equal(deduped.length, 2);
+});
+
+test("dedupeCompletionCandidatesPreferGsi: camera FDR without gmail refs stays", () => {
+  const camera = incompleteCandidate({
+    id: "document-review:cam-1",
+    source: "financial_document_review",
+    amount: 12,
+    supplierName: "Camera Shop",
+  });
+  const gsi = incompleteCandidate({
+    id: "gmail-scan:gsi-1",
+    source: "gmail_scan_item",
+    amount: 450,
+  });
+  const deduped = dedupeCompletionCandidatesPreferGsi([
+    { ...gsi, gmailMessageId: "msg-1", duplicateKey: "fp-gmail" },
+    { ...camera, gmailMessageId: null, emailMessageId: null, documentFingerprint: "fp-camera" },
+  ]);
+  assert.equal(deduped.length, 2);
+  assert.ok(deduped.some((row) => row.id === "document-review:cam-1"));
+});
+
+test("scanCompletionQueueFromSources dedupes before pagination so total/count are correct", async () => {
+  const gsiRows = [
+    { id: "gsi-tire", gmailMessageId: "g-tire", duplicateKey: "fp-tire" },
+    { id: "gsi-pharm", gmailMessageId: "g-pharm", duplicateKey: "fp-pharm" },
+  ];
+  const fdrRows = [
+    { id: "fdr-tire", gmailMessageId: "g-tire", documentFingerprint: "fp-tire" },
+    { id: "fdr-pharm", gmailMessageId: "g-pharm", documentFingerprint: "fp-pharm" },
+    { id: "fdr-camera", gmailMessageId: null as string | null, documentFingerprint: "fp-cam" },
+  ];
+
+  const result = await scanCompletionQueueFromSources(
+    [
+      {
+        name: "gmail_scan_item",
+        load: async ({ skip, take }) => gsiRows.slice(skip, skip + take),
+        map: (row) =>
+          ({
+            ...incompleteCandidate({
+              id: `gmail-scan:${row.id}`,
+              source: "gmail_scan_item",
+              amount: 100,
+            }),
+            gmailMessageId: row.gmailMessageId,
+            duplicateKey: row.duplicateKey,
+            documentFingerprint: row.duplicateKey,
+          }) as CompletionListCandidateLike & {
+            gmailMessageId: string;
+            duplicateKey: string;
+            documentFingerprint: string;
+          },
+      },
+      {
+        name: "financial_document_review",
+        load: async ({ skip, take }) => fdrRows.slice(skip, skip + take),
+        map: (row) =>
+          ({
+            ...incompleteCandidate({
+              id: `document-review:${row.id}`,
+              source: "financial_document_review",
+              amount: 100,
+            }),
+            gmailMessageId: row.gmailMessageId,
+            documentFingerprint: row.documentFingerprint,
+            duplicateKey: row.documentFingerprint,
+          }) as CompletionListCandidateLike & {
+            gmailMessageId: string | null;
+            documentFingerprint: string;
+            duplicateKey: string;
+          },
+      },
+    ],
+    {
+      page: 1,
+      pageSize: 25,
+      dedupeCandidates: dedupeCompletionCandidatesPreferGsi,
+    }
+  );
+
+  // 2 GSI + 1 camera FDR (2 FDR mirrors dropped) = 3
+  assert.equal(result.sourceRowsScanned, 5);
+  assert.equal(result.total, 3);
+  assert.equal(result.pageRows.length, 3);
+  assert.equal(result.hasMore, false);
+  assert.ok(result.pageRows.every((row) => !row.id.includes("fdr-tire") && !row.id.includes("fdr-pharm")));
+  assert.ok(result.pageRows.some((row) => row.id === "gmail-scan:gsi-tire"));
+  assert.ok(result.pageRows.some((row) => row.id === "gmail-scan:gsi-pharm"));
+  assert.ok(result.pageRows.some((row) => row.id === "document-review:fdr-camera"));
 });
