@@ -30,10 +30,10 @@ test("invoice golden runner produces a full baseline report without throwing", (
   assert.ok(report.tableMarkdown.includes("| fixture |"));
   assert.equal(report.totals.passed + report.totals.failed, 20);
 
-  // Explicit phase-1 baseline lock — do not "green" failures by weakening expected.
-  // Amount-extraction fix raised 11/20 → 15/20 (4 amount fixtures).
-  assert.equal(report.totals.passed, 15, "golden baseline passed count drifted");
-  assert.equal(report.totals.failed, 5, "golden baseline failed count drifted");
+  // Explicit baseline lock — do not "green" failures by weakening expected.
+  // Document-type fix raised 15/20 → 17/20 (receipt + credit_note).
+  assert.equal(report.totals.passed, 17, "golden baseline passed count drifted");
+  assert.equal(report.totals.failed, 3, "golden baseline failed count drifted");
 
   // Every fixture file referenced by the manifest must exist and run.
   for (const result of report.results) {

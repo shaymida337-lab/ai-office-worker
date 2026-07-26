@@ -96,7 +96,10 @@ export type NormalizedFinancialDocumentType =
   | "tax_invoice_receipt"
   | "payment_request"
   | "quote"
+  | "credit_note"
   | "irrelevant";
+
+export type FinancialDocumentApprovalTarget = "invoices" | "payments";
 
 export type FinancialDocumentInput = {
   organizationId: string;
@@ -133,13 +136,38 @@ export function normalizeFinancialDocumentType(value: string | null | undefined)
   if (/tax_invoice_receipt|invoice_receipt|חשבונית\s*מס\s*קבלה/.test(normalized)) return "tax_invoice_receipt";
   if (/quote|proposal|estimate|הצעת\s*מחיר/.test(normalized)) return "quote";
   if (/payment_request|payment request|דרישת|בקשת/.test(normalized)) return "payment_request";
+  // Keep credit notes distinct — never collapse into tax_invoice.
+  if (/credit[_ -]?note|credit\s*memo|חשבונית\s*זיכוי|הודעת\s*זיכוי/.test(normalized)) return "credit_note";
   if (/receipt|קבלה/.test(normalized)) return "receipt";
   if (/invoice|tax_invoice|חשבונית/.test(normalized)) return "tax_invoice";
   return "irrelevant";
 }
 
+/** Financial payment-like docs (includes credit notes). Not the same as invoice-list membership. */
 export function isPaymentDocumentType(type: NormalizedFinancialDocumentType) {
-  return type === "tax_invoice" || type === "receipt" || type === "tax_invoice_receipt" || type === "payment_request";
+  return (
+    type === "tax_invoice" ||
+    type === "receipt" ||
+    type === "tax_invoice_receipt" ||
+    type === "payment_request" ||
+    type === "credit_note"
+  );
+}
+
+/** Types that belong on the regular invoices expense list / invoiceLink. Credit notes excluded. */
+export function isInvoiceLikeDocumentType(type: NormalizedFinancialDocumentType) {
+  return type === "tax_invoice" || type === "receipt" || type === "tax_invoice_receipt";
+}
+
+export function resolveFinancialDocumentApprovalTargetScreen(
+  documentType: string
+): FinancialDocumentApprovalTarget {
+  const normalized = normalizeFinancialDocumentType(documentType);
+  // Credit notes stay off the regular invoices screen until a dedicated policy exists.
+  if (normalized === "receipt" || normalized === "tax_invoice" || normalized === "tax_invoice_receipt") {
+    return "invoices";
+  }
+  return "payments";
 }
 
 export function buildFinancialDocumentFingerprint(input: {
@@ -688,7 +716,7 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
             ? "needs_review"
             : existingPayment.approvalStatus ?? "needs_review",
         driveFileUrl: input.driveFileUrl ?? existingPayment.driveFileUrl,
-        invoiceLink: isInvoiceLike(documentType) ? input.driveFileUrl ?? existingPayment.invoiceLink : existingPayment.invoiceLink,
+        invoiceLink: isInvoiceLikeDocumentType(documentType) ? input.driveFileUrl ?? existingPayment.invoiceLink : existingPayment.invoiceLink,
         documentLink: input.driveFileUrl ?? existingPayment.documentLink,
         lastSeenAt: new Date(),
       },
@@ -943,7 +971,7 @@ export async function recordManualEntryFinancialDocument(input: ManualEntryFinan
       dueDate: input.dueDate ?? null,
       paid: normalizedType === "receipt" || normalizedType === "tax_invoice_receipt",
       documentLink: input.driveFileUrl ?? null,
-      invoiceLink: isInvoiceLike(normalizedType) ? input.driveFileUrl ?? null : null,
+      invoiceLink: isInvoiceLikeDocumentType(normalizedType) ? input.driveFileUrl ?? null : null,
       driveUploadStatus: input.driveUploadStatus ?? null,
       emailSender: null,
       paymentRequired: normalizedType !== "receipt",
@@ -1008,21 +1036,11 @@ export async function recordManualEntryFinancialDocument(input: ManualEntryFinan
   };
 }
 
-export type FinancialDocumentApprovalTarget = "invoices" | "payments";
-
 export type ApproveFinancialDocumentReviewResult = {
   review: NonNullable<Awaited<ReturnType<typeof prisma.financialDocumentReview.findFirst>>>;
   paymentId: string;
   targetScreen: FinancialDocumentApprovalTarget;
 };
-
-function resolveApprovalTargetScreen(documentType: string): FinancialDocumentApprovalTarget {
-  const normalized = normalizeFinancialDocumentType(documentType);
-  if (normalized === "receipt" || normalized === "tax_invoice" || normalized === "tax_invoice_receipt") {
-    return "invoices";
-  }
-  return "payments";
-}
 
 function resolveReviewNormalizedDocumentDate(review: { documentDate: Date | null; createdAt: Date }): Date {
   const date = review.documentDate ?? review.createdAt;
@@ -1079,6 +1097,16 @@ export async function evaluateReviewApprovalReadiness(
   // מראה לענף ה-rejected של האישור (מסמך לא רלוונטי) — שם זה מבוצע עם side effect
   if (!isPaymentDocumentType(normalizeFinancialDocumentType(review.documentType))) {
     return { canApprove: false, blockReason: "מסמך לא רלוונטי", supplierNeedsConfirmation: false, recommendedAction: "reject" };
+  }
+
+  // Credit notes are financial but not yet approved as regular tax invoices.
+  if (normalizeFinancialDocumentType(review.documentType) === "credit_note") {
+    return {
+      canApprove: false,
+      blockReason: "חשבונית זיכוי ממתינה למדיניות השלמה",
+      supplierNeedsConfirmation: false,
+      recommendedAction: "complete_details",
+    };
   }
 
   // מראה לבדיקת הסכום של האישור
@@ -1314,7 +1342,7 @@ export async function approveFinancialDocumentReview(
     return {
       review,
       paymentId: review.supplierPaymentId,
-      targetScreen: resolveApprovalTargetScreen(review.documentType),
+      targetScreen: resolveFinancialDocumentApprovalTargetScreen(review.documentType),
     };
   }
   const workflowTrace = createCoreWorkflowTrace({
@@ -1353,6 +1381,9 @@ export async function approveFinancialDocumentReview(
       reason: "מסמך לא רלוונטי",
     });
     throw new Error("מסמך לא רלוונטי");
+  }
+  if (normalizeFinancialDocumentType(review.documentType) === "credit_note") {
+    throw new Error("חשבונית זיכוי ממתינה למדיניות השלמה — לא ניתן לאשר כחשבונית רגילה");
   }
   const supplierReviewInput = {
     supplierName: review.supplierName,
@@ -1479,7 +1510,7 @@ export async function approveFinancialDocumentReview(
         dueDate: review.dueDate,
         paid: review.documentType === "receipt" || review.documentType === "tax_invoice_receipt",
         documentLink: review.driveFileUrl,
-        invoiceLink: isInvoiceLike(normalizeFinancialDocumentType(review.documentType)) ? review.driveFileUrl : null,
+        invoiceLink: isInvoiceLikeDocumentType(normalizeFinancialDocumentType(review.documentType)) ? review.driveFileUrl : null,
         driveUploadStatus: review.driveUploadStatus,
         emailSender: review.sender,
         paymentRequired: review.documentType !== "receipt",
@@ -1583,7 +1614,7 @@ export async function approveFinancialDocumentReview(
   return {
     review: approved,
     paymentId: payment.id,
-    targetScreen: resolveApprovalTargetScreen(approved.documentType),
+    targetScreen: resolveFinancialDocumentApprovalTargetScreen(approved.documentType),
   };
   } catch (error) {
     const failureTrace = createCoreWorkflowTrace({
@@ -1713,10 +1744,6 @@ function clampConfidence(value: number | null | undefined) {
 function mergeSources(existing: unknown, source: string) {
   const values = Array.isArray(existing) ? existing.filter((item): item is string => typeof item === "string") : [];
   return Array.from(new Set([...values, source]));
-}
-
-function isInvoiceLike(type: NormalizedFinancialDocumentType) {
-  return type === "tax_invoice" || type === "receipt" || type === "tax_invoice_receipt";
 }
 
 function isValidSupplierName(value?: string | null) {

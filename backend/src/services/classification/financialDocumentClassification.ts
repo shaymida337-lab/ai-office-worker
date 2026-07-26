@@ -246,7 +246,8 @@ export function isConfidentlyNotFinancialDocument(input: ExtractedDocumentFinanc
       rawType === "receipt" ||
       rawType === "tax_invoice" ||
       rawType === "tax_invoice_receipt" ||
-      rawType === "payment_request"
+      rawType === "payment_request" ||
+      rawType === "credit_note"
     ) {
       return false;
     }

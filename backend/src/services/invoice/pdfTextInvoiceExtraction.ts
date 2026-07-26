@@ -5,7 +5,15 @@ export type PdfTextDeterministicInvoiceFields = {
   supplierName: string | null;
   totalAmount: number | null;
   documentDate: string | null;
-  documentType: "invoice" | "tax_invoice_receipt" | "receipt" | "payment_request" | "quote" | "other" | null;
+  documentType:
+    | "invoice"
+    | "tax_invoice_receipt"
+    | "receipt"
+    | "payment_request"
+    | "quote"
+    | "credit_note"
+    | "other"
+    | null;
   currency: string | null;
 };
 
@@ -166,6 +174,14 @@ function extractDocumentDateFromPdfText(text: string): string | null {
 
 function extractDocumentTypeFromPdfText(text: string): PdfTextDeterministicInvoiceFields["documentType"] {
   const normalized = text.replace(/\s+/g, " ");
+
+  // Credit notes must beat generic "חשבונית" / invoice detection.
+  if (
+    /חשבונית\s*זיכוי|הודעת\s*זיכוי|credit\s*note|credit\s*memo/i.test(normalized)
+  ) {
+    return "credit_note";
+  }
+
   if (/חשבונית\s*מס\s*\/\s*קבלה|חשבונית\s*מס\s*קבלה|tax\s+invoice\s*\/\s*receipt/i.test(normalized)) {
     return "tax_invoice_receipt";
   }
@@ -175,7 +191,15 @@ function extractDocumentTypeFromPdfText(text: string): PdfTextDeterministicInvoi
   if (/(?:^|\n)\s*invoice(?:\s+number|\s*$)/im.test(text) || /חשבונית\s*מס(?!.*קבלה)/i.test(normalized)) {
     return "invoice";
   }
-  if (/(?:^|\n)\s*receipt\b/im.test(text) || /(?:^|\n)\s*קבלה\b/im.test(text)) return "receipt";
+  // Avoid JS `\b` with Hebrew — it does not treat Hebrew letters as word chars,
+  // so a standalone first-line "קבלה" never matched.
+  if (
+    /(?:^|\n)\s*receipt(?:\s|$)/im.test(text) ||
+    /(?:^|\n)\s*קבלה(?:\s|$)/im.test(text) ||
+    /(?:^|\n)\s*קבלה\s*:/im.test(text)
+  ) {
+    return "receipt";
+  }
   return null;
 }
 
@@ -280,7 +304,7 @@ type MergeableEmailAnalysis = {
   amount: number | null;
   totalAmount?: number | null;
   currency: string;
-  documentType: "invoice" | "tax_invoice_receipt" | "receipt" | "payment_request" | "quote" | "other";
+  documentType: "invoice" | "tax_invoice_receipt" | "receipt" | "payment_request" | "quote" | "credit_note" | "other";
   invoiceDate: string | null;
 };
 
@@ -292,7 +316,7 @@ export type PdfTextEmailAnalysisMergeTarget = {
   vatAmount?: number | null;
   totalAmount?: number | null;
   currency: string;
-  documentType: "invoice" | "tax_invoice_receipt" | "receipt" | "payment_request" | "quote" | "other";
+  documentType: "invoice" | "tax_invoice_receipt" | "receipt" | "payment_request" | "quote" | "credit_note" | "other";
   paymentRequired: boolean;
   dueDate: string | null;
   invoiceDate: string | null;

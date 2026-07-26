@@ -189,3 +189,31 @@ Tax 19.00
 Total amount 114.00 USD`);
   assert.equal(enTotal.totalAmount, 114);
 });
+
+test("Hebrew קבלה standalone line is receipt (no JS \\\\b dependency)", () => {
+  const fields = extractDeterministicInvoiceFieldsFromPdfText(`קבלה
+שם ספק: גמא קפה בע״מ
+תאריך חשבונית: 10/06/2026
+₪45.90 סה״כ לתשלום`);
+  assert.equal(fields.documentType, "receipt");
+});
+
+test("חשבונית זיכוי / הודעת זיכוי beat generic invoice detection", () => {
+  const creditInvoice = extractDeterministicInvoiceFieldsFromPdfText(`חשבונית זיכוי
+שם ספק: אפסילון לוגיסטיקה בע״מ
+תאריך חשבונית: 08/06/2026
+₪120.00 סה״כ לתשלום`);
+  assert.equal(creditInvoice.documentType, "credit_note");
+
+  const creditNotice = extractDeterministicInvoiceFieldsFromPdfText(`הודעת זיכוי
+שם ספק: אפסילון לוגיסטיקה בע״מ
+תאריך חשבונית: 08/06/2026
+₪120.00 סה״כ לתשלום`);
+  assert.equal(creditNotice.documentType, "credit_note");
+
+  const taxInvoice = extractDeterministicInvoiceFieldsFromPdfText(`חשבונית מס
+שם ספק: אלפא שירותים בע״מ
+תאריך חשבונית: 15/06/2026
+₪100.00 סה״כ לתשלום`);
+  assert.equal(taxInvoice.documentType, "invoice");
+});
