@@ -230,9 +230,21 @@ export function isConfidentlyNotFinancialDocument(input: ExtractedDocumentFinanc
 
   if (isLogoOrBrandOnlyAttachment(input)) return true;
 
-  const normalizedType = normalizeFinancialDocumentType(input.documentType);
-  if (normalizedType === "irrelevant" || rawType === "supplier_message" || rawType === "logo_image") {
+  // Explicit non-invoice channels stay excluded.
+  if (rawType === "supplier_message" || rawType === "logo_image") {
     return true;
+  }
+
+  const normalizedType = normalizeFinancialDocumentType(input.documentType);
+  if (normalizedType === "irrelevant") {
+    // null/empty type alone is not enough to exclude when strong financial signals exist.
+    // Keep unrecognized non-empty type strings excluded (same as before).
+    if (rawType) {
+      return true;
+    }
+    if (!resolveExtractedDocumentFinancial(input)) {
+      return true;
+    }
   }
 
   if (isBlockedNonInvoiceDecision(input)) return true;

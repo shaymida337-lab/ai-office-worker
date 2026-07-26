@@ -243,3 +243,55 @@ test("logo subject hint blocks financial even with receipt-like OCR", () => {
     false
   );
 });
+
+test("null documentType with strong financial signals is not confidently non-financial", () => {
+  const input = {
+    documentType: null as string | null,
+    supplierName: "פי שירותים בע״מ",
+    totalAmount: 400,
+    pdfText: `מסמך כללי
+שם ספק: פי שירותים בע״מ
+תאריך חשבונית: 16/06/2026
+₪400.00 סה״כ לתשלום`,
+  };
+  assert.equal(resolveExtractedDocumentFinancial(input), true);
+  assert.equal(isConfidentlyNotFinancialDocument(input), false);
+});
+
+test("null documentType without financial signals stays excluded", () => {
+  assert.equal(
+    isConfidentlyNotFinancialDocument({
+      documentType: null,
+      supplierName: null,
+      totalAmount: null,
+      pdfText: "מסמך כללי בלי סכום",
+    }),
+    true
+  );
+});
+
+test("explicit supplier_message stays confidently non-financial", () => {
+  assert.equal(
+    isConfidentlyNotFinancialDocument({
+      documentType: "supplier_message",
+      supplierName: "פי שירותים בע״מ",
+      totalAmount: 400,
+      pdfText: "₪400.00 סה״כ לתשלום",
+    }),
+    true
+  );
+});
+
+test("explicit logo_image stays confidently non-financial", () => {
+  assert.equal(
+    isConfidentlyNotFinancialDocument({
+      documentType: "logo_image",
+      supplierName: "Brand",
+      totalAmount: 10,
+      pdfText: "logo",
+      filename: "logo.png",
+      mimeType: "image/png",
+    }),
+    true
+  );
+});
