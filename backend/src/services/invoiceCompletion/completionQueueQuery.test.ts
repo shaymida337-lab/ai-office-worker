@@ -381,6 +381,108 @@ test("dedupeCompletionCandidatesPreferGsi: GSI+FDR same gmail/fingerprint → on
   assert.equal(deduped[0]?.source, "gmail_scan_item");
 });
 
+test("dedupeCompletionCandidatesPreferGsi: GSI rejected + FDR needs_review same fingerprint → FDR", () => {
+  const gsi = incompleteCandidate({
+    id: "gmail-scan:gsi-rejected",
+    source: "gmail_scan_item",
+    amount: 354,
+    supplierName: "ערנט אי.קום",
+    reviewStatus: "rejected",
+    status: "rejected",
+    approvalRequired: false,
+    isComplete: true,
+    dataComplete: true,
+    missingDataReasons: [],
+  });
+  const fdr = incompleteCandidate({
+    id: "document-review:fdr-needs-review",
+    source: "financial_document_review",
+    amount: 354,
+    supplierName: 'נ.ערנט איי.קום בע"מ',
+    reviewStatus: "needs_review",
+    status: "needs_review",
+    approvalRequired: true,
+    isComplete: false,
+    dataComplete: true,
+    missingDataReasons: [],
+  });
+  const deduped = dedupeCompletionCandidatesPreferGsi([
+    {
+      ...gsi,
+      gmailMessageId: "19ee12f8ab9f4579",
+      duplicateKey: "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      documentFingerprint: "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      decisionReason: "Quarantined: cross-org gmail ingestion",
+    },
+    {
+      ...fdr,
+      gmailMessageId: "19ee12f8ab9f4579",
+      duplicateKey: "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      documentFingerprint: "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      decisionReason: "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+    },
+  ]);
+  assert.equal(deduped.length, 1);
+  assert.equal(deduped[0]?.id, "document-review:fdr-needs-review");
+  assert.equal(deduped[0]?.source, "financial_document_review");
+  assert.equal(deduped[0]?.reviewStatus, "needs_review");
+});
+
+test("dedupeCompletionCandidatesPreferGsi: both needs_review → prefer GSI", () => {
+  const gsi = incompleteCandidate({
+    id: "gmail-scan:gsi-nr",
+    source: "gmail_scan_item",
+    amount: 100,
+    reviewStatus: "needs_review",
+  });
+  const fdr = incompleteCandidate({
+    id: "document-review:fdr-nr",
+    source: "financial_document_review",
+    amount: 100,
+    reviewStatus: "needs_review",
+  });
+  const deduped = dedupeCompletionCandidatesPreferGsi([
+    { ...gsi, gmailMessageId: "msg-x", documentFingerprint: "fp-x", duplicateKey: "fp-x" },
+    { ...fdr, gmailMessageId: "msg-x", documentFingerprint: "fp-x", duplicateKey: "fp-x" },
+  ]);
+  assert.equal(deduped.length, 1);
+  assert.equal(deduped[0]?.id, "gmail-scan:gsi-nr");
+});
+
+test("dedupeCompletionCandidatesPreferGsi: both rejected → keep GSI (non-actionable pair)", () => {
+  const gsi = incompleteCandidate({
+    id: "gmail-scan:gsi-rej",
+    source: "gmail_scan_item",
+    reviewStatus: "rejected",
+    status: "rejected",
+  });
+  const fdr = incompleteCandidate({
+    id: "document-review:fdr-rej",
+    source: "financial_document_review",
+    reviewStatus: "rejected",
+    status: "rejected",
+  });
+  const deduped = dedupeCompletionCandidatesPreferGsi([
+    {
+      ...gsi,
+      gmailMessageId: "msg-r",
+      documentFingerprint: "fp-r",
+      duplicateKey: "fp-r",
+      decisionReason: "Quarantined: cross-org gmail ingestion",
+    },
+    {
+      ...fdr,
+      gmailMessageId: "msg-r",
+      documentFingerprint: "fp-r",
+      duplicateKey: "fp-r",
+      decisionReason: "Quarantined: cross-org gmail ingestion",
+    },
+  ]);
+  assert.equal(deduped.length, 1);
+  assert.equal(deduped[0]?.id, "gmail-scan:gsi-rej");
+  assert.equal(deduped[0]?.reviewStatus, "rejected");
+});
+
 test("dedupeCompletionCandidatesPreferGsi: different gmailMessageIds → two rows", () => {
   const a = incompleteCandidate({ id: "gmail-scan:a", source: "gmail_scan_item", amount: 450 });
   const b = incompleteCandidate({ id: "gmail-scan:b", source: "gmail_scan_item", amount: 450 });
@@ -429,6 +531,91 @@ test("dedupeCompletionCandidatesPreferGsi: camera FDR without gmail refs stays",
   ]);
   assert.equal(deduped.length, 2);
   assert.ok(deduped.some((row) => row.id === "document-review:cam-1"));
+});
+
+test("Rnet-shaped: rejected quarantined GSI + needs_review FDR → completion shows FDR once", () => {
+  const rnetFp = "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf";
+  const gsi = incompleteCandidate({
+    id: "gmail-scan:cmqw3n5ug020fm92b5smx5bx1",
+    source: "gmail_scan_item",
+    amount: 354,
+    supplierName: "ערנט אי.קום",
+    invoiceNumber: "OV255006399",
+    reviewStatus: "rejected",
+    status: "rejected",
+    isComplete: true,
+    dataComplete: true,
+    approvalRequired: false,
+    missingDataReasons: [],
+  });
+  const fdr = incompleteCandidate({
+    id: "document-review:cmqw3n5hx020dm92bp1joi8wu",
+    source: "financial_document_review",
+    amount: 354,
+    supplierName: 'נ.ערנט איי.קום בע"מ',
+    invoiceNumber: "OV255006399",
+    reviewStatus: "needs_review",
+    status: "needs_review",
+    // Prod routing: needs_review + dataComplete ⇒ incomplete queue (approval still required).
+    isComplete: false,
+    dataComplete: true,
+    approvalRequired: true,
+    missingDataReasons: [],
+  });
+  const other = incompleteCandidate({
+    id: "gmail-scan:other",
+    source: "gmail_scan_item",
+    amount: 450,
+    supplierName: "GENERAL TIRE",
+  });
+
+  const candidates = [
+    {
+      ...gsi,
+      gmailMessageId: "19ee12f8ab9f4579",
+      duplicateKey: rnetFp,
+      documentFingerprint: rnetFp,
+      decisionReason: "Quarantined: cross-org gmail ingestion",
+    },
+    {
+      ...fdr,
+      gmailMessageId: "19ee12f8ab9f4579",
+      duplicateKey: rnetFp,
+      documentFingerprint: rnetFp,
+      decisionReason: "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+    },
+    {
+      ...other,
+      gmailMessageId: "msg-other",
+      duplicateKey: "fp-other",
+      documentFingerprint: "fp-other",
+    },
+  ];
+
+  const deduped = dedupeCompletionCandidatesPreferGsi(candidates);
+  const after = paginateFilteredCompletionCandidates(deduped, {
+    page: 1,
+    pageSize: 25,
+    sort: "date_desc",
+  });
+
+  assert.equal(deduped.length, 2);
+  assert.equal(deduped.filter((r) => String(r.invoiceNumber) === "OV255006399").length, 1);
+  assert.equal(
+    deduped.find((r) => r.invoiceNumber === "OV255006399")?.id,
+    "document-review:cmqw3n5hx020dm92bp1joi8wu",
+  );
+  assert.equal(after.total, 2);
+  assert.ok(after.pageRows.some((r) => r.id === "document-review:cmqw3n5hx020dm92bp1joi8wu"));
+  assert.equal(
+    after.pageRows.some((r) => r.id === "gmail-scan:cmqw3n5ug020fm92b5smx5bx1"),
+    false,
+  );
+  // rejected twin must not reappear as an actionable completion row
+  assert.equal(
+    after.matched.some((r) => r.reviewStatus === "rejected" && r.invoiceNumber === "OV255006399"),
+    false,
+  );
 });
 
 test("scanCompletionQueueFromSources dedupes before pagination so total/count are correct", async () => {
@@ -499,4 +686,105 @@ test("scanCompletionQueueFromSources dedupes before pagination so total/count ar
   assert.ok(result.pageRows.some((row) => row.id === "gmail-scan:gsi-tire"));
   assert.ok(result.pageRows.some((row) => row.id === "gmail-scan:gsi-pharm"));
   assert.ok(result.pageRows.some((row) => row.id === "document-review:fdr-camera"));
+});
+
+test("scanCompletionQueueFromSources: rejected GSI does not hide needs_review FDR; total after dedupe", async () => {
+  const gsiRows = [
+    {
+      id: "gsi-rnet-rej",
+      gmailMessageId: "g-rnet",
+      duplicateKey: "fp-rnet",
+      reviewStatus: "rejected",
+      decisionReason: "Quarantined: cross-org gmail ingestion",
+    },
+    {
+      id: "gsi-ok",
+      gmailMessageId: "g-ok",
+      duplicateKey: "fp-ok",
+      reviewStatus: "needs_review",
+      decisionReason: null as string | null,
+    },
+  ];
+  const fdrRows = [
+    {
+      id: "fdr-rnet-nr",
+      gmailMessageId: "g-rnet",
+      documentFingerprint: "fp-rnet",
+      reviewStatus: "needs_review",
+      decisionReason: "outcome_BLOCKED:OE_TRUST_BLOCKED",
+    },
+  ];
+
+  const result = await scanCompletionQueueFromSources(
+    [
+      {
+        name: "gmail_scan_item",
+        load: async ({ skip, take }) => gsiRows.slice(skip, skip + take),
+        map: (row) =>
+          ({
+            ...incompleteCandidate({
+              id: `gmail-scan:${row.id}`,
+              source: "gmail_scan_item",
+              amount: row.id.includes("rnet") ? 354 : 50,
+              reviewStatus: row.reviewStatus,
+              status: row.reviewStatus,
+              isComplete: row.reviewStatus === "rejected",
+              dataComplete: row.reviewStatus === "rejected",
+              approvalRequired: row.reviewStatus !== "rejected",
+              missingDataReasons: row.reviewStatus === "rejected" ? [] : ["חסר סכום"],
+            }),
+            gmailMessageId: row.gmailMessageId,
+            duplicateKey: row.duplicateKey,
+            documentFingerprint: row.duplicateKey,
+            decisionReason: row.decisionReason,
+          }) as CompletionListCandidateLike & {
+            gmailMessageId: string;
+            duplicateKey: string;
+            documentFingerprint: string;
+            decisionReason: string | null;
+          },
+      },
+      {
+        name: "financial_document_review",
+        load: async ({ skip, take }) => fdrRows.slice(skip, skip + take),
+        map: (row) =>
+          ({
+            ...incompleteCandidate({
+              id: `document-review:${row.id}`,
+              source: "financial_document_review",
+              amount: 354,
+              reviewStatus: row.reviewStatus,
+              status: row.reviewStatus,
+              isComplete: false,
+              dataComplete: true,
+              approvalRequired: true,
+              missingDataReasons: [],
+            }),
+            gmailMessageId: row.gmailMessageId,
+            documentFingerprint: row.documentFingerprint,
+            duplicateKey: row.documentFingerprint,
+            decisionReason: row.decisionReason,
+          }) as CompletionListCandidateLike & {
+            gmailMessageId: string;
+            documentFingerprint: string;
+            duplicateKey: string;
+            decisionReason: string;
+          },
+      },
+    ],
+    {
+      page: 1,
+      pageSize: 25,
+      dedupeCandidates: dedupeCompletionCandidatesPreferGsi,
+    }
+  );
+
+  assert.equal(result.sourceRowsScanned, 3);
+  assert.equal(result.total, 2);
+  assert.ok(result.pageRows.some((row) => row.id === "document-review:fdr-rnet-nr"));
+  assert.ok(result.pageRows.some((row) => row.id === "gmail-scan:gsi-ok"));
+  assert.equal(
+    result.pageRows.some((row) => row.id === "gmail-scan:gsi-rnet-rej"),
+    false,
+  );
 });

@@ -110,7 +110,11 @@ export function applyCompletionQueueFilters<T extends CompletionListCandidateLik
 /**
  * Dedupe GSI + FDR mirrors for the same Gmail document (completion queue only).
  * Mirrors mergeInvoiceListCandidates message-ref suppression, plus fingerprint/duplicateKey.
- * Prefers gmail_scan_item when both sides share a ref; keeps distinct documents.
+ *
+ * Preference (same gmail/email/fingerprint cluster):
+ * 1. Actionable (needs_review / visible) beats rejected / quarantined / blocked / hidden.
+ * 2. When both are actionable (or both non-actionable): prefer gmail_scan_item over FDR.
+ * Distinct documents (no shared refs) stay separate.
  */
 export type CompletionDedupeCandidateFields = {
   id: string;
@@ -119,7 +123,18 @@ export type CompletionDedupeCandidateFields = {
   emailMessageId?: string | null;
   documentFingerprint?: string | null;
   duplicateKey?: string | null;
+  reviewStatus?: string | null;
+  status?: string | null;
+  decisionReason?: string | null;
+  uncertaintyReason?: string | null;
 };
+
+const NON_ACTIONABLE_REVIEW_STATUSES = new Set([
+  "rejected",
+  "duplicate",
+  "blocked",
+  "hidden",
+]);
 
 function completionDedupeRefs(candidate: CompletionDedupeCandidateFields): string[] {
   const refs: string[] = [];
@@ -130,31 +145,92 @@ function completionDedupeRefs(candidate: CompletionDedupeCandidateFields): strin
   return refs;
 }
 
+/** Visible/actionable for queue dedupe — not rejected/quarantine mirrors that hide a live FDR. */
+export function isCompletionDedupeActionable(candidate: CompletionDedupeCandidateFields): boolean {
+  const status = String(candidate.reviewStatus || candidate.status || "")
+    .trim()
+    .toLowerCase();
+  if (NON_ACTIONABLE_REVIEW_STATUSES.has(status)) return false;
+  const reason = `${candidate.decisionReason ?? ""} ${candidate.uncertaintyReason ?? ""}`;
+  // Cross-org quarantine (and similar) — typically paired with rejected; never prefer over needs_review.
+  if (/quarantin/i.test(reason)) return false;
+  return true;
+}
+
+function isGmailScanItemSource(candidate: CompletionDedupeCandidateFields): boolean {
+  return candidate.source === "gmail_scan_item";
+}
+
+/**
+ * Pick the better of two candidates that share a dedupe ref.
+ * Actionable wins; ties break toward GSI (legacy preference).
+ */
+export function preferCompletionDedupeCandidate<T extends CompletionDedupeCandidateFields>(
+  a: T,
+  b: T
+): T {
+  const aActionable = isCompletionDedupeActionable(a);
+  const bActionable = isCompletionDedupeActionable(b);
+  if (aActionable !== bActionable) return aActionable ? a : b;
+  const aGsi = isGmailScanItemSource(a);
+  const bGsi = isGmailScanItemSource(b);
+  if (aGsi !== bGsi) return aGsi ? a : b;
+  return a;
+}
+
 export function dedupeCompletionCandidatesPreferGsi<T extends CompletionDedupeCandidateFields>(
   candidates: T[]
 ): T[] {
-  const gsi: T[] = [];
-  const rest: T[] = [];
-  for (const candidate of candidates) {
-    if (candidate.source === "gmail_scan_item") gsi.push(candidate);
-    else rest.push(candidate);
+  if (candidates.length <= 1) return candidates;
+
+  const parent = candidates.map((_, index) => index);
+  const find = (index: number): number => {
+    let root = index;
+    while (parent[root] !== root) root = parent[root]!;
+    let cursor = index;
+    while (cursor !== root) {
+      const next = parent[cursor]!;
+      parent[cursor] = root;
+      cursor = next;
+    }
+    return root;
+  };
+  const union = (a: number, b: number) => {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA !== rootB) parent[rootB] = rootA;
+  };
+
+  const refToIndex = new Map<string, number>();
+  for (let i = 0; i < candidates.length; i++) {
+    for (const ref of completionDedupeRefs(candidates[i]!)) {
+      const prev = refToIndex.get(ref);
+      if (prev !== undefined) union(i, prev);
+      else refToIndex.set(ref, i);
+    }
   }
 
-  const usedRefs = new Set<string>();
+  const clusters = new Map<number, number[]>();
+  for (let i = 0; i < candidates.length; i++) {
+    const root = find(i);
+    const members = clusters.get(root);
+    if (members) members.push(i);
+    else clusters.set(root, [i]);
+  }
+
   const out: T[] = [];
-
-  for (const candidate of gsi) {
-    out.push(candidate);
-    for (const ref of completionDedupeRefs(candidate)) usedRefs.add(ref);
+  const emitted = new Set<number>();
+  for (let i = 0; i < candidates.length; i++) {
+    const root = find(i);
+    if (emitted.has(root)) continue;
+    emitted.add(root);
+    const members = clusters.get(root) ?? [i];
+    let winner = candidates[members[0]!]!;
+    for (let m = 1; m < members.length; m++) {
+      winner = preferCompletionDedupeCandidate(winner, candidates[members[m]!]!);
+    }
+    out.push(winner);
   }
-
-  for (const candidate of rest) {
-    const refs = completionDedupeRefs(candidate);
-    if (refs.some((ref) => usedRefs.has(ref))) continue;
-    out.push(candidate);
-    for (const ref of refs) usedRefs.add(ref);
-  }
-
   return out;
 }
 
