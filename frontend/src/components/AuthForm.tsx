@@ -44,7 +44,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const isSignup = mode === "signup";
 
   return (
-    <div className="card mx-auto max-w-md">
+    <div className="card auth-form mx-auto max-w-md">
       <div className="mb-6 flex justify-center">
         <Logo size="lg" showSubtitle />
       </div>
@@ -80,7 +80,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         </div>
         <div>
           <label htmlFor="password">
-            סיסמה {isSignup && <span className="text-ink-muted">(מינימום 8 תווים)</span>}
+            סיסמה {isSignup && <span className="auth-form-hint">(מינימום 8 תווים)</span>}
           </label>
           <input
             id="password"
@@ -100,7 +100,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
           {loading ? "טוען..." : isSignup ? "צור חשבון" : "התחבר"}
         </button>
       </form>
-      <p className="mt-6 text-sm text-ink-muted">
+      <p className="auth-form-footer mt-6 text-sm">
         {isSignup ? (
           <>
             כבר יש חשבון? <Link href="/login">התחבר</Link>

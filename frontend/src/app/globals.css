@@ -195,6 +195,82 @@
     @apply relative mb-5 min-w-0 rounded-2xl border border-[var(--border)] bg-white p-4 shadow-card transition-colors duration-300 md:mb-6 md:p-6;
   }
 
+  /*
+   * Auth login/signup: html defaults to .dark (ThemeProvider), so ink tokens become
+   * near-white. Force readable light-surface colors on the public auth form only.
+   * Do not put opacity on .auth-screen / .auth-form parents.
+   */
+  .auth-screen {
+    opacity: 1;
+    color: #111827;
+  }
+
+  .auth-screen h1 {
+    color: #111827;
+  }
+
+  .auth-screen-nav,
+  .auth-screen-nav a {
+    color: #1d5bff;
+    opacity: 1;
+  }
+
+  .auth-form {
+    opacity: 1;
+    color: #111827;
+    background-color: #ffffff;
+  }
+
+  .auth-form h2,
+  .auth-form label,
+  .auth-form-hint,
+  .auth-form-footer,
+  .auth-form-footer a {
+    color: #111827;
+    opacity: 1;
+  }
+
+  .auth-form-footer a,
+  .auth-screen-nav a {
+    color: #1d5bff;
+  }
+
+  .auth-form input[type="email"],
+  .auth-form input[type="password"],
+  .auth-form input[type="text"] {
+    color: #111827 !important;
+    caret-color: #111827 !important;
+    background-color: #ffffff !important;
+    -webkit-text-fill-color: #111827 !important;
+    opacity: 1;
+  }
+
+  .auth-form input[type="email"]::placeholder,
+  .auth-form input[type="password"]::placeholder,
+  .auth-form input[type="text"]::placeholder {
+    color: #6b7280 !important;
+    opacity: 1 !important;
+    -webkit-text-fill-color: #6b7280 !important;
+  }
+
+  .auth-form input[type="email"]:-webkit-autofill,
+  .auth-form input[type="email"]:-webkit-autofill:hover,
+  .auth-form input[type="email"]:-webkit-autofill:focus,
+  .auth-form input[type="email"]:-webkit-autofill:active,
+  .auth-form input[type="password"]:-webkit-autofill,
+  .auth-form input[type="password"]:-webkit-autofill:hover,
+  .auth-form input[type="password"]:-webkit-autofill:focus,
+  .auth-form input[type="password"]:-webkit-autofill:active,
+  .auth-form input[type="text"]:-webkit-autofill,
+  .auth-form input[type="text"]:-webkit-autofill:hover,
+  .auth-form input[type="text"]:-webkit-autofill:focus,
+  .auth-form input[type="text"]:-webkit-autofill:active {
+    -webkit-text-fill-color: #111827 !important;
+    caret-color: #111827 !important;
+    box-shadow: 0 0 0 1000px #ffffff inset !important;
+    transition: background-color 99999s ease-out;
+  }
+
   .auto-grid {
     display: grid;
     gap: 1rem;

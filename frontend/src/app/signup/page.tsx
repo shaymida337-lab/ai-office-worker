@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function SignupPage() {
   return (
     <PublicPageShell>
-      <div className="mx-auto max-w-3xl flex-1 px-6 py-16">
+      <div className="auth-screen mx-auto max-w-3xl flex-1 px-6 py-16">
         <h1 className="text-center">נטלי — הרשמה</h1>
         <AuthForm mode="signup" />
         <p className="mt-8 text-center text-sm text-slate-600">
@@ -26,7 +26,7 @@ export default function SignupPage() {
           </Link>
           .
         </p>
-        <p className="mt-4 text-center">
+        <p className="auth-screen-nav mt-4 text-center">
           <Link href="/">חזרה לדף הבית</Link>
         </p>
       </div>

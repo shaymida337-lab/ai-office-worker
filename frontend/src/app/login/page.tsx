@@ -12,10 +12,10 @@ export const metadata: Metadata = {
 export default function LoginPage() {
   return (
     <PublicPageShell>
-      <div className="mx-auto max-w-3xl flex-1 px-6 py-16">
+      <div className="auth-screen mx-auto max-w-3xl flex-1 px-6 py-16">
         <h1 className="text-center">נטלי — התחברות</h1>
         <AuthForm mode="login" />
-        <p className="mt-8 text-center">
+        <p className="auth-screen-nav mt-8 text-center">
           <Link href="/">חזרה לדף הבית</Link>
         </p>
       </div>
