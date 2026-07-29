@@ -1549,7 +1549,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         supplierName: string;
         supplierTaxId: string | null;
         invoiceNumber: string | null;
-        documentDate: Date;
+        documentDate: Date | null;
         dueDate: Date | null;
         amountBeforeVat: number | null;
         vatAmount: number | null;
@@ -1810,7 +1810,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           supplierName: email.senderName || email.domain || null,
           supplierTaxId: null,
           invoiceNumber: null,
-          documentDate: email.receivedAt,
+          // F5: מסלול junk→needs_review — אין תאריך מסמך, לא ממציאים receivedAt.
+          documentDate: null,
           dueDate: null,
           amountBeforeVat: null,
           vatAmount: null,
@@ -2002,7 +2003,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         needsReviewCount++;
         logStep(`[gmail-sync] classifier needs_review message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
         const earlyInvoiceNumber = normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, primaryAttachmentFilename(email.parts) ?? ""].join("\n"));
-        const earlyDocumentDate = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, email.receivedAt) ?? email.receivedAt;
+        // F5 (stage 1): תאריך שלא חולץ נשאר null ברשומת הביקורת (לא ממציאים receivedAt).
+        // earlyDocumentDate נשאר תאריך ייחוס תפעולי (receivedAt) לעזרי הזהות/FSE/trust/outcome.
+        const earlyExtractedDocumentDate = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, null);
+        const earlyDocumentDate = email.receivedAt;
         const earlyFseDecision = await runGmailOrgFinancialSanity({
           organizationId,
           supplierDecision: supplierMetadata.decision,
@@ -2076,7 +2080,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             supplierName,
             supplierTaxId: supplierMetadata.taxId,
             invoiceNumber: earlyInvoiceNumber,
-            documentDate: earlyDocumentDate,
+            documentDate: earlyExtractedDocumentDate,
             dueDate: normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null),
             amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
             vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
@@ -2106,7 +2110,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           supplierName,
           supplierTaxId: supplierMetadata.taxId,
           invoiceNumber: earlyInvoiceNumber,
-          documentDate: earlyDocumentDate,
+          documentDate: earlyExtractedDocumentDate,
           dueDate: normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null),
           amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
           vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
@@ -2185,7 +2189,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       if (classification.documentType === "supplier_message") supplierMessagesFound++;
       if (invoiceMatch.amount !== null) invoiceAmountsExtracted++;
       const invoiceNumberForDecision = normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
-      const documentDateForDecision = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, email.receivedAt) ?? email.receivedAt;
+      // F5 (stage 1 — Gmail review path): תאריך שלא חולץ נשאר null ולא מומצא ל-receivedAt.
+      // extractedDocumentDate (nullable) נשמר ברשומות הביקורת (record/review/GmailScanItem)
+      // כדי ש"חסר תאריך" ידלק ותופיע השלמה ידנית. documentDateForDecision שומר על fallback
+      // ל-receivedAt ומשמש לעזרי זהות/טביעת-אצבע/FSE/trust ולמסלול התשלום — התנהגות קיימת (שלב 2).
+      const extractedDocumentDate = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, null);
+      const documentDateForDecision = extractedDocumentDate ?? email.receivedAt;
       const dueDateForDecision = normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null);
       const fseDecision = await runGmailOrgFinancialSanity({
         organizationId,
@@ -2268,7 +2277,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           supplierName,
           supplierTaxId: supplierMetadata.taxId,
           invoiceNumber: invoiceNumberForDecision,
-          documentDate: documentDateForDecision,
+          documentDate: extractedDocumentDate,
           dueDate: dueDateForDecision,
           amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
           vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
@@ -2360,7 +2369,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         supplierName,
         invoiceNumber: invoiceNumberForDecision,
         totalAmount: finalTotalAmount,
-        documentDate: documentDateForDecision,
+        // F5: תאריך חסר (null) → "invoice date missing or invalid" → ניתוב ל-needs_review.
+        documentDate: extractedDocumentDate,
         moneyDecision,
         fseSummary: parsedFieldsJson.fse,
         amountGate,
@@ -2380,7 +2390,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         supplierName,
         supplierTaxId: supplierMetadata.taxId,
         invoiceNumber: invoiceNumberForDecision,
-        documentDate: documentDateForDecision,
+        documentDate: extractedDocumentDate,
         dueDate: dueDateForDecision,
         amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
         vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
@@ -2740,7 +2750,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             supplierTaxId: supplierMetadata.taxId,
             supplierBranchName,
             invoiceNumber: invoiceNumberForDecision,
-            invoiceDate: documentDateForDecision.toISOString(),
+            invoiceDate: extractedDocumentDate?.toISOString() ?? null,
             dueDate: dueDateForDecision?.toISOString() ?? null,
             parsed_fields_json: parsedFieldsJson,
             relevant: classification.isRelevant,
@@ -2779,7 +2789,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             supplierTaxId: supplierMetadata.taxId,
             supplierBranchName,
             invoiceNumber: invoiceNumberForDecision,
-            invoiceDate: documentDateForDecision.toISOString(),
+            invoiceDate: extractedDocumentDate?.toISOString() ?? null,
             dueDate: dueDateForDecision?.toISOString() ?? null,
             parsed_fields_json: parsedFieldsJson,
             relevant: classification.isRelevant,
@@ -3385,7 +3395,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           supplierName,
           supplierTaxId: supplierMetadata.taxId,
           invoiceNumber: invoiceNumberForDecision,
-          documentDate: documentDateForDecision,
+          documentDate: extractedDocumentDate,
           dueDate: dueDateForDecision,
           amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
           vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
@@ -6881,7 +6891,8 @@ export type ParsedGmailFinancialFields = {
   supplierName: string;
   amount: number | null;
   finalTotalAmount: number | null;
-  documentDate: Date;
+  // F5: null כשלא חולץ תאריך מהמסמך — reprocess לא ידרוס תאריך קיים בערך מומצא.
+  documentDate: Date | null;
   invoiceNumber: string | null;
 };
 
@@ -6968,7 +6979,8 @@ export async function fetchAndParseGmailMessageFinancialFields(input: {
     normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ??
     extractedFields.invoiceNumber ??
     extractInvoiceNumber([subject, bodyForAnalysis, primaryAttachmentFilename(attachmentParts) ?? ""].join("\n"));
-  const documentDateForDecision = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, receivedAt) ?? receivedAt;
+  // F5: תאריך שלא חולץ נשאר null (לא מומצא ל-receivedAt) — reprocess מדלג על עדכון תאריך.
+  const documentDateForDecision = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, null);
 
   return {
     supplierName: supplierMetadata.name,
