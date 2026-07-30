@@ -2961,7 +2961,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             ? UNKNOWN_SUPPLIER_FALLBACK
             : targetSupplierName;
           const invoiceNumber = targetAnalysis.analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, targetBodyForDetection, targetFilename ?? ""].join("\n"));
-          const invoiceDate = normalizeBusinessDate(targetAnalysis.analysis.invoiceDate, email.receivedAt) ?? email.receivedAt;
+          // F5 (stage 2): אין תאריך אמיתי → מדלגים על יצירת ה-Invoice (כמו הדילוג על amount==null).
+          // המסמך כבר needs_review (שלב 1) ויופיע בהשלמת חשבוניות למילוי תאריך.
+          const invoiceDate = normalizeBusinessDate(targetAnalysis.analysis.invoiceDate, null);
+          if (invoiceDate == null) {
+            logStep(`[gmail-sync] invoice date missing message=${email.gmailId} file="${targetFilename ?? "body"}"; skipping customer invoice create — held for review`);
+            continue;
+          }
           const attachmentInvoiceDedupeKey = invoicePart
             ? buildInvoiceAttachmentDedupeKey({
                 emailMessageId: email.emailRecordId,
@@ -3223,6 +3229,11 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           if (supplierPaymentNeedsReview) {
             logStep(`[gmail-sync] SUPPLIER_PAYMENT_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${existingPayment.id} reason="${classification.decisionReason}"`);
           }
+        } else if (extractedDocumentDate == null) {
+          // F5 (stage 2): אין תאריך מסמך אמיתי → לא יוצרים SupplierPayment אוטומטי חדש.
+          // המסמך כבר needs_review (שלב 1) ויופיע בהשלמת חשבוניות למילוי תאריך (fail-closed).
+          // עדכון תשלום קיים מותר (הענף למעלה) — לרשומה הקיימת כבר יש תאריך.
+          logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=document_date_missing_held_for_review`);
         } else {
           const dueDate = dueDateForDecision;
           logStep(`[gmail-sync] DB SupplierPayment insert attempt message=${email.gmailId} amount=${paymentAmount} supplier="${paymentSupplierName}"`);
@@ -3366,6 +3377,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           supplierMetadata,
           invoiceNumber: invoiceNumberForDecision,
           documentDate: documentDateForDecision,
+          extractedDocumentDate,
           dueDate: dueDateForDecision,
           parsedFieldsJson,
           documentDecision,
@@ -6416,7 +6428,10 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
   supplierName: string;
   supplierMetadata: SupplierMetadata;
   invoiceNumber: string | null;
+  // documentDate = תאריך ייחוס תפעולי (fallback ל-receivedAt) ל-invoiceMonth/Year.
+  // extractedDocumentDate = התאריך שחולץ בפועל (null אם אין) — שער ליצירת תשלום (F5 שלב 2).
   documentDate: Date;
+  extractedDocumentDate: Date | null;
   dueDate: Date | null;
   parsedFieldsJson: unknown;
   documentDecision: {
@@ -6498,6 +6513,14 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
     if (existingByFingerprintOrHash) {
       await updateSupplierPaymentMissingDriveFields(existingByFingerprintOrHash.id, driveLink, documentLink, invoiceLink);
       input.logStep(`ENSURE-PAYMENTS DEDUP HIT org=${input.organizationId} fingerprint=${shortFingerprint(documentFingerprint)}`);
+      continue;
+    }
+
+    // F5 (stage 2): אין תאריך מסמך אמיתי → לא יוצרים SupplierPayment אוטומטי חדש מ-Drive-link.
+    // עקבי עם 4 האתרים האחרים (fail-closed). המסמך כבר needs_review (שלב 1); עדכון תשלום
+    // קיים מותר (הענף למעלה). invoiceMonth/Year נשארים על התאריך התפעולי — לא מגיעים לכאן עם null.
+    if (input.extractedDocumentDate == null) {
+      input.logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${input.email.gmailId} file="${driveLink.filename ?? "unnamed"}" reason=document_date_missing_held_for_review`);
       continue;
     }
 
