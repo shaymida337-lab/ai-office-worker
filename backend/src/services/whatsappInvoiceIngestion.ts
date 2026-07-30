@@ -766,7 +766,13 @@ async function upsertWhatsAppInvoiceRecord(input: {
   filename: string;
 }) {
   if (!input.clientId) return null;
-  const date = normalizeDate(input.invoiceDate) ?? new Date();
+  // F5 (stage 2): אין תאריך אמיתי → לא יוצרים חשבונית אוטומטית; המסמך נשאר ב-review
+  // (persistIngestedDocumentPreview כבר שמר רשומת ביקורת עם התאריך המנוקה).
+  const date = normalizeDate(input.invoiceDate);
+  if (!date) {
+    console.warn(`[whatsapp-invoice] invoice date missing — skipping invoice create, held for review logId=${input.whatsappLogId} filename="${input.filename}"`);
+    return null;
+  }
   const emailId = `whatsapp:${input.whatsappLogId}:${input.invoiceNumber ?? input.filename}`;
   const existing = await prisma.invoice.findFirst({
     where: {
@@ -889,7 +895,8 @@ async function upsertWhatsAppSupplierPayment(input: {
     return { id: null, created: false };
   }
 
-  const date = normalizeDate(input.invoiceDate) ?? new Date();
+  // F5 (stage 2): nullable — אם אין תאריך אמיתי לא ניצור תשלום חדש (החסימה למטה, לפני היצירה).
+  const date = normalizeDate(input.invoiceDate);
   const paymentIdentity = buildPaymentLookupsFromCanonical({
     organizationId: input.organizationId,
     canonicalFingerprint: input.documentFingerprint,
@@ -957,6 +964,13 @@ async function upsertWhatsAppSupplierPayment(input: {
       },
     });
     return { id: updated.id, created: false };
+  }
+
+  // F5 (stage 2): אין תאריך אמיתי → לא יוצרים SupplierPayment חדש; נשאר ב-review (fail-closed).
+  // (עדכון תשלום קיים מותר למעלה — לרשומה הקיימת כבר יש תאריך.)
+  if (!date) {
+    console.warn(`[whatsapp-invoice] payment date missing — skipping payment create, held for review logId=${input.whatsappLogId}`);
+    return { id: null, created: false };
   }
 
   const createResult = await createSupplierPaymentIfTrusted({
