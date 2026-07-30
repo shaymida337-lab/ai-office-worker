@@ -3182,9 +3182,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
               invoiceMonth: driveLinks[0]?.invoiceMonth ?? existingPayment.invoiceMonth,
               invoiceYear: driveLinks[0]?.invoiceYear ?? existingPayment.invoiceYear,
               invoiceNumber: invoiceNumberForDecision ?? existingPayment.invoiceNumber,
-              // Same invoice-list field camera stamps on confirm (month tabs require it).
-              normalizedDocumentDate:
-                documentDateForDecision ?? existingPayment.normalizedDocumentDate ?? existingPayment.date,
+              // תאריך לטאבים החודשיים נחתם רק כשחולץ תאריך אמיתי מהמסמך; בלי תאריך —
+              // משמיטים את השדה כדי לא לדרוס ערך קיים בתאריך קבלת המייל.
+              ...(extractedDocumentDate ? { normalizedDocumentDate: extractedDocumentDate } : {}),
               documentFingerprint: documentDecision.documentFingerprint,
               sourceFingerprint: documentDecision.sourceFingerprint,
               documentTypeDetailed: documentDecision.documentType,
