@@ -1127,6 +1127,18 @@ export async function evaluateReviewApprovalReadiness(
     };
   }
 
+  // F5 (stage 2): אין תאריך מסמך → לא ניתן לאשר. חוסמים במקום לחתום new Date().
+  // המשתמש ישלים את התאריך במסך ההשלמה ("חסר תאריך") ואז יאשר. חייב להישאר
+  // עקבי עם approveFinancialDocumentReview (טסט ה-parity).
+  if (!review.documentDate) {
+    return {
+      canApprove: false,
+      blockReason: "חסר תאריך",
+      supplierNeedsConfirmation: false,
+      recommendedAction: "complete_details",
+    };
+  }
+
   // מראה ל-resolveSupplierNameForApproval — אותה פונקציה בדיוק, נתפסת במקום לזרוק
   const supplierReviewInput = {
     supplierName: review.supplierName,
@@ -1364,6 +1376,11 @@ export async function approveFinancialDocumentReview(
   const approvedAmount = review.totalAmount ?? displayAmount.amount;
   if (!isCanonicalFinanceAmountResolved(approvedAmount)) {
     throw new Error("Cannot approve document without a verified total amount");
+  }
+  // F5 (stage 2): חוסם אישור בלי תאריך מסמך במקום לחתום new Date() ב-resolveReviewNormalizedDocumentDate.
+  // עקבי עם evaluateReviewApprovalReadiness (parity): שם canApprove=false עם "חסר תאריך".
+  if (!review.documentDate) {
+    throw new Error("Cannot approve document without a document date");
   }
   if (!isPaymentDocumentType(normalizeFinancialDocumentType(review.documentType))) {
     const rejected = await prisma.financialDocumentReview.update({ where: { id: review.id }, data: { reviewStatus: "rejected", uncertaintyReason: "מסמך לא רלוונטי" } });
