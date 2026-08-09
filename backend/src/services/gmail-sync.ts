@@ -141,6 +141,8 @@ const MAX_MESSAGES_PER_FAST_SCAN = 20;
 export const GMAIL_SCAN_BATCH_SIZE = 50;
 /** Brief pause between batches to keep the event loop healthy under Render limits. */
 export const GMAIL_SCAN_BATCH_PAUSE_MS = 50;
+/** Hard cap per email (download+OCR+save). Timeout skips that email and continues the scan. */
+export const GMAIL_PER_EMAIL_PROCESS_TIMEOUT_MS = 30_000;
 const GMAIL_PROGRESS_FETCH_EMAIL_INTERVAL = 25;
 const GMAIL_PROGRESS_PROCESSING_EMAIL_INTERVAL = 2;
 const GMAIL_PROGRESS_FETCH_MIN_INTERVAL_MS = 30_000;
@@ -1035,8 +1037,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     const progressEmailsSaved = isProcessingPhase
       ? Math.max(emailsSavedToGmailScanItem, emailsAnalyzedInProcessing)
       : emailsSavedToGmailScanItem;
+    // During process phase, also advance emailsProcessed with analyzed count so
+    // GET /api/gmail/scan/status cannot appear frozen while OCR of one email hangs.
+    const progressEmailsProcessed = isProcessingPhase
+      ? Math.max(emailsProcessed, emailsAnalyzedInProcessing)
+      : emailsProcessed;
     await saveScanProgress(log.id, {
-      emailsProcessed,
+      emailsProcessed: progressEmailsProcessed,
       emailsSaved: progressEmailsSaved,
       invoicesFound: invoicesCreated + needsReviewCount,
       paymentsCreated,
@@ -1761,1873 +1768,1915 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       logStep(`[gmail-sync] process ${label} batch ${processBatchNumber}/${Math.ceil(emailsToProcess.length / GMAIL_SCAN_BATCH_SIZE)} size=${batch.length}`);
       for (const email of batch) {
         if (stopProcessing) break;
-        try {
-        const messageTrace = createCoreWorkflowTrace({
-          subsystem: "scanner_pipeline",
-          organizationId,
-          gmailMessageId: email.gmailId,
-          emailMessageId: email.emailRecordId,
-          workflow: "scanner_pipeline",
-        });
-        const messageCorrelationId = messageTrace.correlationId;
-        emitCoreWorkflowAudit(messageTrace, "started", "message_process");
-        let scanItemPersisted = false;
-        let currentDuplicateKey: string | null = null;
-        let savedScanItemId: string | null = null;
-        let driveSavedForPilot = false;
-        let sheetsUpdatedForPilot = false;
-        let invoicePersistedForPilot = false;
-        let paymentPersistedForPilot = false;
-        try {
-      if (
-        await isCrossOrgContaminatedGmailMessageId(email.gmailId, organizationId, crossOrgContaminatedGmailIds)
-      ) {
-        logStep(`[gmail-sync] cross-org contaminated gmailMessageId=${email.gmailId} skipped payment/scan persistence`);
-        await prisma.emailMessage.update({
-          where: { id: email.emailRecordId },
-          data: { processedAt: new Date() },
-        });
-        completeCoreWorkflowStage(messageTrace, "message_process", "skipped", {
-          health: "Degraded",
-          metadata: { reason: CROSS_ORG_QUARANTINE_MARKER, gmailMessageId: email.gmailId },
-        });
-        continue;
-      }
-
-      let clientId = clientIdByDomain.get(email.domain);
-      if (clientId) {
-        await prisma.emailMessage.update({
-          where: { id: email.emailRecordId },
-          data: { clientId },
-        });
-      }
-
-      if (email.alreadyProcessed && !options.forceReprocess) {
-        if (scanMode === "fast_recurring") {
-          const pendingDriveStatuses = ["pending_retry", "failed"];
-          const pendingRepairCounts = await Promise.all([
-            prisma.emailAttachment.count({
-              where: {
-                emailMessageId: email.emailRecordId,
-                driveUploadStatus: { in: pendingDriveStatuses },
-              },
-            }),
-            prisma.gmailScanItem.count({
-              where: {
-                organizationId,
-                OR: [{ emailMessageId: email.emailRecordId }, { gmailMessageId: email.gmailId }],
-                driveUploadStatus: { in: pendingDriveStatuses },
-              },
-            }),
-            prisma.financialDocumentReview.count({
-              where: {
-                organizationId,
-                OR: [{ emailMessageId: email.emailRecordId }, { gmailMessageId: email.gmailId }],
-                driveUploadStatus: { in: pendingDriveStatuses },
-              },
-            }),
-            prisma.supplierPayment.count({
-              where: {
-                organizationId,
-                emailMessageId: email.emailRecordId,
-                driveUploadStatus: { in: pendingDriveStatuses },
-              },
-            }),
-            prisma.invoice.count({
-              where: {
-                organizationId,
-                gmailMessageId: email.gmailId,
-                driveUploadStatus: { in: pendingDriveStatuses },
-              },
-            }),
-          ]);
-          if (!pendingRepairCounts.some((count) => count > 0)) {
-            logStep(`[gmail-sync] fast scan skip already-processed message=${email.gmailId} reason=no_pending_repair`);
-            completeCoreWorkflowStage(messageTrace, "message_process", "skipped", {
-              message: "already_processed",
-              health: "Healthy",
-            });
-            continue;
-          }
-          logStep(`[gmail-sync] fast scan reprocess already-processed message=${email.gmailId} reason=pending_repair`);
-        } else {
-          logStep(`[gmail-sync] message=${email.gmailId} already processed; still tracing parser/persistence before duplicate handling`);
-        }
-      }
-
-      const pdfText = await extractPdfTextFromParts(gmail, email.gmailId, email.parts);
-      const visualAttachmentHints = await extractVisualAttachmentHints(
-        gmail,
-        email.gmailId,
-        email.parts,
-        email.from,
-        logStep,
-        ownerEmails,
-        messageCorrelationId,
-        organizationId,
-      );
-      const visualAttachmentText = visualAttachmentHints.text;
-      const bodyForAnalysis = [email.bodyText, pdfText && `--- PDF ATTACHMENT TEXT ---\n${pdfText}`, visualAttachmentText && `--- VISUAL ATTACHMENT ANALYSIS ---\n${visualAttachmentText}`].filter(Boolean).join("\n\n");
-      const driveLinkEvidence = evaluateGmailDriveLinkInvoiceEvidence({
-        subject: email.subject,
-        bodyText: email.bodyText,
-      });
-      const gmailAttachmentFilenames = email.parts.map((part) => part.filename).filter(Boolean) as string[];
-      const attachmentFilenamesForClassification = [
-        ...gmailAttachmentFilenames,
-        ...driveLinkEvidence.virtualAttachmentFilenames,
-      ];
-      const supplierEvidenceText = [email.subject, bodyForAnalysis].filter(Boolean).join("\n\n");
-      logStep(`[gmail-sync] parsed message=${email.gmailId} bodyLength=${email.bodyText.length} pdfTextLength=${pdfText.length} visualTextLength=${visualAttachmentText.length}`);
-      if (driveLinkEvidence.links.length > 0) {
+        const emailOrdinal = emailsAnalyzedInProcessing + 1;
+        console.log(
+          `[Gmail Sync] Processing email ${emailOrdinal}/${emailsToProcess.length} message=${email.gmailId} subject="${(email.subject || "").slice(0, 120)}"...`
+        );
         logStep(
-          `[gmail-sync] drive link scan message=${email.gmailId} links=${driveLinkEvidence.links.length} documentLinks=${driveLinkEvidence.virtualAttachmentFilenames.length} strictInvoiceEvidence=${driveLinkEvidence.hasStrictDriveInvoiceEvidence}`
+          `[gmail-sync] Processing email ${emailOrdinal}/${emailsToProcess.length} message=${email.gmailId}`
         );
-      }
-      const junkDecision = classifyJunk({
-        sender: email.senderEmail || email.from,
-        subject: email.subject,
-        body: bodyForAnalysis,
-        channel: "gmail",
-        attachmentFilenames: email.parts.map((part) => part.filename).filter(Boolean) as string[],
-        metadata: { gmailMessageId: email.gmailId, domain: email.domain },
-      });
-      if (junkDecision.bucket === "CERTAIN_JUNK") {
-        logStep(`[gmail-sync] junk dropped message=${email.gmailId} reason="${junkDecision.reason}"`);
-        await prisma.emailMessage.update({
-          where: { id: email.emailRecordId },
-          data: { processedAt: new Date() },
-        });
-        continue;
-      }
-      // שער חשבונית לפני קריאת המודל: מייל בלי שום אות פיננסי לא נקלט
-      // בכלל — לא נשלח ל-Claude ולא נרשם כ-needs_review (אחרת מסך ההשלמה
-      // מתמלא זבל). כל חסימה מתועדת בלוג לזיהוי false negatives.
-      const invoiceGate = isInvoiceCandidate({
-        sender: email.senderEmail || email.from,
-        subject: email.subject,
-        body: bodyForAnalysis,
-        attachmentFilenames: attachmentFilenamesForClassification,
-      });
-      if (!invoiceGate.isInvoice) {
-        logStep(
-          `[gmail-sync] INVOICE_GATE_BLOCKED message=${email.gmailId} confidence=${invoiceGate.confidence} reasons="${invoiceGate.reasons.join(",")}" sender="${truncateForLog(email.senderEmail || email.from || "", 80)}" subject="${truncateForLog(email.subject, 120)}"`
-        );
-        await prisma.emailMessage.update({
-          where: { id: email.emailRecordId },
-          data: { processedAt: new Date() },
-        });
-        continue;
-      }
-      if (!shouldAutoClassifyAfterJunkFilter(junkDecision)) {
-        needsReviewCount++;
-        logStep(`[gmail-sync] junk needs_review message=${email.gmailId} reason="${junkDecision.reason}" blocklisted=${junkDecision.blocklisted}`);
-        await recordFinancialDocumentDecision({
-          organizationId,
-          source: "gmail",
-          sender: email.senderEmail || email.from || null,
-          subject: email.subject,
-          fileName: primaryAttachmentFilename(email.parts),
-          fileSize: null,
-          supplierName: email.senderName || email.domain || null,
-          supplierTaxId: null,
-          invoiceNumber: null,
-          // F5: מסלול junk→needs_review — אין תאריך מסמך, לא ממציאים receivedAt.
-          documentDate: null,
-          dueDate: null,
-          amountBeforeVat: null,
-          vatAmount: null,
-          totalAmount: null,
-          documentType: "payment_request",
-          driveFileUrl: null,
-          confidenceScore: 0,
-          uncertaintyReason: `junk_filter:${junkDecision.reason}`,
-          rawAnalysis: { junkDecision, gmailMessageId: email.gmailId },
-          emailMessageId: email.emailRecordId,
-          gmailMessageId: email.gmailId,
-        });
-        await prisma.emailMessage.update({
-          where: { id: email.emailRecordId },
-          data: { processedAt: new Date() },
-        });
-        continue;
-      }
-      const analysis = await analyzeEmailContent({
-        subject: email.subject,
-        body: bodyForAnalysis,
-        filenames: attachmentFilenamesForClassification,
-        sender: email.from,
-        organizationId,
-      });
-      logStep(`[gmail-sync] ai message=${email.gmailId} supplier="${analysis.supplier}" amount=${analysis.amount ?? "unknown"} documentType=${analysis.documentType} paymentRequired=${analysis.paymentRequired} confidence=${analysis.confidence}`);
-      const ocrClassifierText = `${supplierEvidenceText}\n${analysis.supplier ?? ""}`;
-      const ocrSupplierClassifier = classifyOcrSupplierText(ocrClassifierText);
-      const cityDocument = detectMunicipalCollectionDocument(ocrClassifierText);
-      if (cityDocument.detected) {
-        logStep(`[gmail-sync] CITY_DOCUMENT_DETECTED message=${email.gmailId} supplier="${cityDocument.supplierName ?? "none"}" reason="${cityDocument.reason}"`);
-      }
-      logStep(`[gmail-sync] OCR_CLASSIFIER_INPUT message=${email.gmailId} chars=${ocrClassifierText.length} normalizedPreview="${truncateForLog(normalizeOcrSupplierText(ocrClassifierText), 500)}"`);
-      logStep(`[gmail-sync] OCR_CLASSIFIER_RESULT message=${email.gmailId} supplier="${ocrSupplierClassifier?.supplierName ?? "none"}" confidence=${ocrSupplierClassifier?.confidence ?? 0} keyword="${ocrSupplierClassifier?.keyword ?? "none"}"`);
-      const extractedFields = extractHebrewInvoiceFieldsFromText(`${supplierEvidenceText}\n${analysis.supplier ?? ""}`);
-      const parsedFieldsJson: {
-        amount: number | null;
-        invoiceNumber: string | null;
-        invoiceDate: string | null;
-        dueDate: string | null;
-        confidence: number;
-        reasons: string[];
-        arc: ReturnType<typeof summarizeMoneyDecision> | null;
-        sir: ReturnType<typeof summarizeSupplierDecision> | null;
-        fse: ReturnType<typeof summarizeFinancialSanityDecision> | null;
-        trust: ReturnType<typeof summarizeTrustDecision> | null;
-        outcome: ReturnType<typeof summarizeDocumentOutcome> | null;
-        gates?: Array<AmountGateSnapshot | SupplierGateSnapshot | FingerprintGateSnapshot>;
-        scfc?: ReturnType<typeof summarizeScfcResult>;
-      } = {
-        amount: extractedFields.amount,
-        invoiceNumber: extractedFields.invoiceNumber,
-        invoiceDate: extractedFields.invoiceDate,
-        dueDate: extractedFields.dueDate,
-        confidence: extractedFields.confidence,
-        reasons: extractedFields.reasons,
-        arc: null,
-        sir: null,
-        fse: null,
-        trust: null,
-        outcome: null,
-      };
-      if (extractedFields.amount !== null) {
-        logStep(`[gmail-sync] AMOUNT_EXTRACTED message=${email.gmailId} amount=${extractedFields.amount} confidence=${extractedFields.confidence}`);
-      }
-      logStep(`[gmail-sync] AMOUNT_EXTRACTION_RESULT message=${email.gmailId} amount=${extractedFields.amount ?? "none"} status=${extractedFields.amount === null ? "failed" : "found"} reason="${extractedFields.reasons.find((reason) => reason.startsWith("amount_") || reason.includes("amount")) ?? "none"}"`);
-      if (extractedFields.invoiceDate || extractedFields.dueDate) {
-        logStep(`[gmail-sync] DATE_EXTRACTED message=${email.gmailId} invoiceDate=${extractedFields.invoiceDate ?? "none"} dueDate=${extractedFields.dueDate ?? "none"} confidence=${extractedFields.confidence}`);
-      }
-      if (extractedFields.invoiceNumber) {
-        logStep(`[gmail-sync] INVOICE_NUMBER_EXTRACTED message=${email.gmailId} invoiceNumber="${extractedFields.invoiceNumber}" confidence=${extractedFields.confidence}`);
-      }
-      if (extractedFields.amount === null && !extractedFields.invoiceDate && !extractedFields.dueDate && !extractedFields.invoiceNumber) {
-        logStep(`[gmail-sync] EXTRACTION_FAILED message=${email.gmailId} reason="${extractedFields.reasons.join(",")}"`);
-      }
-      const invoiceMatch = detectInvoice(email.subject, bodyForAnalysis, email.parts);
-      if (invoiceMatch.isInvoice) invoiceDetectionPositive++;
-      else invoiceDetectionNegative++;
-      const moneyDecision = resolveGmailOrgMoneyDecision({
-        organizationId,
-        documentType: analysis.documentType,
-        analysis,
-        extractedFieldsAmount: extractedFields.amount,
-        regexDetectedAmount: invoiceMatch.amount,
-        attachmentAnalysis: visualAttachmentHints.attachmentAnalysis,
-      });
-      parsedFieldsJson.arc = summarizeMoneyDecision(moneyDecision);
-      const finalTotalAmount = resolvePersistedTotalAmount(moneyDecision);
-      const amount = finalTotalAmount;
-      const amountRejectedReason =
-        moneyDecision.status !== "resolved"
-          ? moneyDecision.reason
-          : invoiceMatch.amountRejectedReason ?? rejectedDetectedAmountReason(extractedFields.amount ?? analysis.totalAmount ?? analysis.amount);
-      logStep(`[gmail-sync] invoice detection message=${email.gmailId} isInvoice=${invoiceMatch.isInvoice} detectedAmount=${invoiceMatch.amount ?? "none"} aiAmount=${analysis.amount ?? "none"} finalAmount=${amount ?? "none"} amountRejectedReason=${amountRejectedReason ?? "none"}`);
-      const attachmentFilename =
-        primaryAttachmentFilename(email.parts) ?? driveLinkEvidence.virtualAttachmentFilenames[0] ?? null;
-      const supplierMetadata = resolveSupplierMetadata({
-        analysisSupplier: analysis.supplier,
-        analysisSupplierTaxId: analysis.supplierTaxId,
-        bodyText: supplierEvidenceText,
-        senderName: email.senderName,
-        senderEmail: email.senderEmail,
-        senderDomain: email.domain,
-        ownerEmails,
-        knownSupplierNames,
-        ocrKeywordMatch: ocrSupplierClassifier,
-        logStep,
-      });
-      parsedFieldsJson.sir = summarizeSupplierDecision(supplierMetadata.decision);
-      const supplierName = supplierMetadata.name;
-      const supplierBranchName = supplierBranchNameFromFolderName(supplierName);
-      if (supplierMetadata.source === "unknown") {
-        logStep(`[gmail-sync] SUPPLIER_NOT_FOUND message=${email.gmailId} reason="no OCR/document/AI/sender/domain supplier matched" analysisSupplier="${analysis.supplier}" ocrPreview="${truncateForLog(visualAttachmentText || pdfText || email.bodyText, 400)}"`);
-      } else {
-        logStep(`[gmail-sync] SUPPLIER_DETECTED message=${email.gmailId} supplier="${supplierName}" confidence=${supplierMetadata.confidence} source=${supplierMetadata.source}${supplierMetadata.keyword ? ` keyword="${supplierMetadata.keyword}"` : ""}`);
-      }
-      let classification = classifyGmailScanCandidate({
-        subject: email.subject,
-        bodyText: bodyForAnalysis,
-        attachmentFilenames: attachmentFilenamesForClassification,
-        analysis,
-        amount,
-        supplierName,
-        senderName: email.senderName,
-        senderEmail: email.senderEmail,
-        senderDomain: email.domain,
-        amountRejectedReason,
-      });
-      if (
-        visualAttachmentHints.invoiceCandidateFound &&
-        (visualAttachmentHints.needsReview || !isInvoiceRecordDocument(classification.documentType))
-      ) {
-        classification = promoteImageInvoiceCandidateForReview(classification, visualAttachmentHints.reviewReason);
-      }
-      classification = applySupplierDecisionReviewGate({
-        classification,
-        supplierDecision: supplierMetadata.decision,
-      });
-      const legacySupplierExpenseSignal = isIncomingSupplierExpenseCandidate({
-        source: email.source,
-        senderEmail: email.senderEmail,
-        senderDomain: email.domain,
-        supplierName,
-        documentType: classification.documentType,
-        paymentRequired: analysis.paymentRequired,
-        ownerEmails,
-      });
-      const businessClassification = classifyBusinessDocument({
-        sender: email.senderEmail || email.from,
-        subject: email.subject,
-        body: bodyForAnalysis,
-        documentType: classification.documentType,
-        supplierName,
-        businessName: organization?.businessName ?? undefined,
-        issuedBy: legacySupplierExpenseSignal ? supplierName : undefined,
-        issuedTo: legacySupplierExpenseSignal ? organization?.businessName ?? undefined : undefined,
-        paymentRequired: analysis.paymentRequired,
-        channel: "gmail",
-        metadata: { gmailMessageId: email.gmailId },
-      });
-      const pipelineAction = pipelineActionForClassification(businessClassification);
-      const invoiceNeedsBusinessReview = pipelineAction === "NEEDS_REVIEW" && invoiceMatch.isInvoice;
-      classification = applyBusinessReviewToInvoiceCandidate({
-        classification,
-        invoiceDetected: invoiceMatch.isInvoice,
-        analysisDocumentType: analysis.documentType,
-        businessClassification,
-        pipelineAction,
-      });
-      const hasPdfOrImageAttachment = email.parts.some((part) => isPdfAttachmentPart(part) || isInvoiceImageAttachmentPart(part));
-      const hasPdfOrImageDocumentEvidence =
-        hasPdfOrImageAttachment || driveLinkEvidence.virtualAttachmentFilenames.length > 0;
-      const hasStrictPaymentEvidence = Boolean(classification.audit.strictPaymentEvidence);
-      if (
-        shouldRejectPersonalEmailWithoutDocumentEvidence({
-          isPersonalSender: isPersonalEmailSender(email.senderEmail, email.domain),
-          hasPdfOrImageAttachment,
-          strictPaymentEvidence: hasStrictPaymentEvidence,
-          driveEvidence: driveLinkEvidence,
-        })
-      ) {
-        logStep(`[gmail-sync] REJECTED no-attachment personal email without strict evidence message=${email.gmailId}`);
-        await prisma.emailMessage.update({
-          where: { id: email.emailRecordId },
-          data: { processedAt: new Date() },
-        });
-        continue;
-      }
-      if (pipelineAction === "NEEDS_REVIEW" && !invoiceMatch.isInvoice) {
-        needsReviewCount++;
-        logStep(`[gmail-sync] classifier needs_review message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
-        const earlyInvoiceNumber = normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, primaryAttachmentFilename(email.parts) ?? ""].join("\n"));
-        // F5 (stage 1): תאריך שלא חולץ נשאר null ברשומת הביקורת (לא ממציאים receivedAt).
-        // earlyDocumentDate נשאר תאריך ייחוס תפעולי (receivedAt) לעזרי הזהות/FSE/trust/outcome.
-        const earlyExtractedDocumentDate = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, null);
-        const earlyDocumentDate = email.receivedAt;
-        const earlyFseDecision = await runGmailOrgFinancialSanity({
-          organizationId,
-          supplierDecision: supplierMetadata.decision,
-          moneyDecision,
-          supplierName,
-          supplierTaxId: supplierMetadata.taxId,
-          invoiceNumber: earlyInvoiceNumber,
-          documentDate: earlyDocumentDate,
-          dueDate: normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null),
-          documentType: classification.documentType,
-          rawOcrText: [supplierEvidenceText, visualAttachmentText, pdfText].filter(Boolean).join("\n"),
-          gmailMessageId: email.gmailId,
-          logStep,
-          contextCache: fseContextCache,
-        });
-        parsedFieldsJson.fse = summarizeFinancialSanityDecision(earlyFseDecision);
-        attachAmountGateToParsedFields(parsedFieldsJson, {
-          moneyDecision,
-          fseSummary: parsedFieldsJson.fse,
-        });
-        attachSupplierGateToParsedFields(parsedFieldsJson, {
-          supplierDecision: supplierMetadata.decision,
-          supplierName,
-          ownerEmails,
-        });
-        const earlyTrustDecision = runGmailOrgTrustDecision({
-          organizationId,
-          supplierDecision: supplierMetadata.decision,
-          moneyDecision,
-          fseDecision: earlyFseDecision,
-          supplierName,
-          supplierTaxId: supplierMetadata.taxId,
-          invoiceNumber: earlyInvoiceNumber,
-          documentDate: earlyDocumentDate,
-          documentType: classification.documentType,
-          classification,
-          extractedFieldsConfidence: extractedFields.confidence,
-          hasPdfOrImageAttachment: hasPdfOrImageDocumentEvidence,
-          visualNeedsReview: visualAttachmentHints.needsReview,
-          contextCache: fseContextCache,
-          gmailMessageId: email.gmailId,
-          logStep,
-        });
-        parsedFieldsJson.trust = summarizeTrustDecision(earlyTrustDecision);
-        classification = applyTrustReviewGate({ classification, trustDecision: earlyTrustDecision });
-        const earlyDocumentOutcome = runGmailOrgOutcomeDecision({
-          organizationId,
-          trustDecision: earlyTrustDecision,
-          fseDecision: earlyFseDecision,
-          supplierDecision: supplierMetadata.decision,
-          moneyDecision,
-          supplierName,
-          supplierTaxId: supplierMetadata.taxId,
-          invoiceNumber: earlyInvoiceNumber,
-          documentDate: earlyDocumentDate,
-          documentType: classification.documentType,
-          classification,
-          businessClassificationReason: businessClassification.reason,
-          visualReviewReason: visualAttachmentHints.reviewReason,
-          gmailMessageId: email.gmailId,
-          logStep,
-        });
-        parsedFieldsJson.outcome = summarizeDocumentOutcome(earlyDocumentOutcome);
-        classification = applyOutcomeReviewGate({ classification, documentOutcome: earlyDocumentOutcome });
-        if (gmailOutcomeStopsPersistence(earlyDocumentOutcome.status)) {
-          await finalizeDriveLinkTerminalOutcome(email, driveLinkEvidence, {
-            uncertaintyReason: gmailOutcomeUncertaintyReason(earlyDocumentOutcome),
-            documentType: "payment_request",
-            attachmentFilenameForRecord:
-              primaryAttachmentFilename(email.parts) ?? driveLinkEvidence.virtualAttachmentFilenames[0] ?? null,
-            supplierName,
-            supplierTaxId: supplierMetadata.taxId,
-            invoiceNumber: earlyInvoiceNumber,
-            documentDate: earlyExtractedDocumentDate,
-            dueDate: normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null),
-            amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
-            vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
-            totalAmount: finalTotalAmount,
-            confidenceScore: Math.min(classification.confidence, 0.79),
-            parsedFieldsJson,
-            rawAnalysis: {
-              analysis,
-              classification,
-              businessClassification,
-              parsed_fields_json: parsedFieldsJson,
-              gmailMessageId: email.gmailId,
-            },
-            classificationDecisionReason: classification.decisionReason,
-            confidenceScoreBucket: classification.confidenceScore,
-          });
-          logStep(`[outcome] terminal path message=${email.gmailId} status=${earlyDocumentOutcome.status} reasonCode=${earlyDocumentOutcome.reasonCode}`);
-          continue;
-        }
-        await recordFinancialDocumentDecision({
-          organizationId,
-          source: "gmail",
-          sender: email.senderEmail || email.from || null,
-          subject: email.subject,
-          fileName: primaryAttachmentFilename(email.parts),
-          fileSize: null,
-          supplierName,
-          supplierTaxId: supplierMetadata.taxId,
-          invoiceNumber: earlyInvoiceNumber,
-          documentDate: earlyExtractedDocumentDate,
-          dueDate: normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null),
-          amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
-          vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
-          totalAmount: finalTotalAmount,
-          documentType: "payment_request",
-          driveFileUrl: null,
-          confidenceScore: Math.min(classification.confidence, 0.79),
-          uncertaintyReason: `classifier:${businessClassification.reason}`,
-          parsedFieldsJson,
-          rawAnalysis: {
-            analysis,
-            classification,
-            businessClassification,
-            parsed_fields_json: parsedFieldsJson,
-            gmailMessageId: email.gmailId,
-          },
-          emailMessageId: email.emailRecordId,
-          gmailMessageId: email.gmailId,
-        });
-        await prisma.emailMessage.update({
-          where: { id: email.emailRecordId },
-          data: { processedAt: new Date() },
-        });
-        continue;
-      } else if (pipelineAction === "NEEDS_REVIEW") {
-        logStep(`[gmail-sync] classifier needs_review invoice pass-through message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
-      }
-      const isIncomingSupplierExpense = pipelineAction === "SUPPLIER_EXPENSE";
-      const isCustomerInvoice = pipelineAction === "CUSTOMER_INVOICE";
-      if (isIncomingSupplierExpense && clientId) {
-        logStep(`[gmail-sync] supplier expense message=${email.gmailId}; ignoring clientId=${clientId} to avoid supplier-as-client placeholder`);
-        clientId = undefined;
-      }
-      const duplicateKey = buildGmailScanDuplicateKey({
-        gmailMessageId: email.gmailId,
-        attachmentFilename,
-        supplierName,
-        amount,
-        subject: email.subject,
-        occurredAt: email.receivedAt,
-      });
-      currentDuplicateKey = duplicateKey;
-      // F6: הרשומות נשמרות עם duplicateKey = טביעת אצבע קנונית (SCFC), אבל
-      // הבדיקה המוקדמת חישבה מפתח legacy — כך שהחיפוש כמעט תמיד החטיא, ואם
-      // הזהות נסחפה בין סריקות (סכום שהתאושש, ספק שתוקן) נוצרה שורה שנייה
-      // לאותה הודעה. גשר: אם המפתח ה-legacy לא נמצא, מאתרים את הרשומה הקיימת
-      // לפי מזהה ההודעה + שם הקובץ — וה-upsert ממשיך להשתמש במפתח שלה.
-      const existingScanItem =
-        (await prisma.gmailScanItem.findUnique({
-          where: { organizationId_duplicateKey: { organizationId, duplicateKey } },
-        })) ??
-        (await prisma.gmailScanItem.findFirst({
-          where: {
-            organizationId,
-            gmailMessageId: email.gmailId,
-            attachmentFilename: attachmentFilename ?? null,
-          },
-          orderBy: { createdAt: "asc" },
-        }));
-      if (existingScanItem) {
-        logStep(`[gmail-sync] decision duplicate message=${email.gmailId} type=${existingScanItem.documentType} supplier="${existingScanItem.supplierName}" amount=${existingScanItem.amount ?? "unknown"}`);
-        const existingScanItemAmount = Number(existingScanItem.amount);
-        if (Number.isFinite(existingScanItemAmount) && existingScanItemAmount > 0) {
-          duplicatesSkipped++;
-          logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=gmail_scan_item_exists key=${duplicateKey} message=${email.gmailId}`);
-        } else {
-          logStep(`[gmail-sync] REPROCESSING_EMPTY_DUPLICATE org=${organizationId} reason=gmail_scan_item_exists key=${duplicateKey} message=${email.gmailId}`);
-        }
-      }
-      logStep(`[gmail-sync] decision message=${email.gmailId} type=${classification.documentType} confidence=${classification.confidenceScore} review=${classification.reviewStatus} reason="${classification.decisionReason}"`);
-
-      if (classification.isRelevant) relevantEmailsFound++;
-      if (classification.documentType === "invoice") invoiceEmails++;
-      if (classification.documentType === "receipt") receiptsFound++;
-      if (classification.documentType === "payment_request") paymentRequestsFound++;
-      if (classification.documentType === "supplier_message") supplierMessagesFound++;
-      if (invoiceMatch.amount !== null) invoiceAmountsExtracted++;
-      const invoiceNumberForDecision = normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
-      // F5 (stage 1 — Gmail review path): תאריך שלא חולץ נשאר null ולא מומצא ל-receivedAt.
-      // extractedDocumentDate (nullable) נשמר ברשומות הביקורת (record/review/GmailScanItem)
-      // כדי ש"חסר תאריך" ידלק ותופיע השלמה ידנית. documentDateForDecision שומר על fallback
-      // ל-receivedAt ומשמש לעזרי זהות/טביעת-אצבע/FSE/trust ולמסלול התשלום — התנהגות קיימת (שלב 2).
-      const extractedDocumentDate = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, null);
-      const documentDateForDecision = extractedDocumentDate ?? email.receivedAt;
-      const dueDateForDecision = normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null);
-      const fseDecision = await runGmailOrgFinancialSanity({
-        organizationId,
-        supplierDecision: supplierMetadata.decision,
-        moneyDecision,
-        supplierName,
-        supplierTaxId: supplierMetadata.taxId,
-        invoiceNumber: invoiceNumberForDecision,
-        documentDate: documentDateForDecision,
-        dueDate: dueDateForDecision,
-        documentType: classification.documentType,
-        rawOcrText: [supplierEvidenceText, visualAttachmentText, pdfText].filter(Boolean).join("\n"),
-        gmailMessageId: email.gmailId,
-        logStep,
-        contextCache: fseContextCache,
-      });
-      parsedFieldsJson.fse = summarizeFinancialSanityDecision(fseDecision);
-      const amountGate = attachAmountGateToParsedFields(parsedFieldsJson, {
-        moneyDecision,
-        fseSummary: parsedFieldsJson.fse,
-      });
-      const supplierGate = attachSupplierGateToParsedFields(parsedFieldsJson, {
-        supplierDecision: supplierMetadata.decision,
-        supplierName,
-        ownerEmails,
-      });
-      classification = applyFinancialSanityReviewGate({
-        classification,
-        fseDecision,
-        amount: finalTotalAmount,
-        rawOcrText: [supplierEvidenceText, visualAttachmentText, pdfText].filter(Boolean).join("\n"),
-      });
-      logStep(`[gmail-sync] FSE message=${email.gmailId} status=${fseDecision.overallStatus} trust=${fseDecision.trustScore} failed=${fseDecision.failedRules.join(",") || "none"}`);
-      const trustDecision = runGmailOrgTrustDecision({
-        organizationId,
-        supplierDecision: supplierMetadata.decision,
-        moneyDecision,
-        fseDecision,
-        supplierName,
-        supplierTaxId: supplierMetadata.taxId,
-        invoiceNumber: invoiceNumberForDecision,
-        documentDate: documentDateForDecision,
-        documentType: classification.documentType,
-        classification,
-        extractedFieldsConfidence: extractedFields.confidence,
-        hasPdfOrImageAttachment: hasPdfOrImageDocumentEvidence,
-        visualNeedsReview: visualAttachmentHints.needsReview,
-        contextCache: fseContextCache,
-        gmailMessageId: email.gmailId,
-        logStep,
-      });
-      parsedFieldsJson.trust = summarizeTrustDecision(trustDecision);
-      classification = applyTrustReviewGate({ classification, trustDecision });
-      const documentOutcome = runGmailOrgOutcomeDecision({
-        organizationId,
-        trustDecision,
-        fseDecision,
-        supplierDecision: supplierMetadata.decision,
-        moneyDecision,
-        supplierName,
-        supplierTaxId: supplierMetadata.taxId,
-        invoiceNumber: invoiceNumberForDecision,
-        documentDate: documentDateForDecision,
-        documentType: classification.documentType,
-        classification,
-        existingScanItem,
-        duplicateKey,
-        businessClassificationReason: businessClassification.reason,
-        visualReviewReason: visualAttachmentHints.reviewReason,
-        gmailMessageId: email.gmailId,
-        logStep,
-      });
-      parsedFieldsJson.outcome = summarizeDocumentOutcome(documentOutcome);
-      classification = applyOutcomeReviewGate({ classification, documentOutcome });
-      if (gmailOutcomeStopsPersistence(documentOutcome.status)) {
-        await finalizeDriveLinkTerminalOutcome(email, driveLinkEvidence, {
-          uncertaintyReason: gmailOutcomeUncertaintyReason(documentOutcome),
-          documentType: classification.documentType,
-          attachmentFilenameForRecord: attachmentFilename,
-          supplierName,
-          supplierTaxId: supplierMetadata.taxId,
-          invoiceNumber: invoiceNumberForDecision,
-          documentDate: extractedDocumentDate,
-          dueDate: dueDateForDecision,
-          amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
-          vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
-          totalAmount: finalTotalAmount,
-          confidenceScore: classification.confidence,
-          parsedFieldsJson,
-          rawAnalysis: {
-            analysis,
-            classification,
-            businessClassification,
-            parsed_fields_json: parsedFieldsJson,
-            gmailMessageId: email.gmailId,
-          },
-          classificationDecisionReason: classification.decisionReason,
-          confidenceScoreBucket: classification.confidenceScore,
-        });
-        logStep(`[outcome] terminal path message=${email.gmailId} status=${documentOutcome.status} reasonCode=${documentOutcome.reasonCode}`);
-        continue;
-      }
-      if (classification.reviewStatus === "needs_review") needsReviewCount++;
-      logStep(`[gmail-sync] CLASSIFICATION_RESULT message=${email.gmailId} documentType=${classification.documentType} review=${classification.reviewStatus} confidence=${classification.confidence} supplier="${supplierName}" amount=${amount ?? "none"} reason="${classification.decisionReason}"`);
-      logStep(`[gmail-sync] PARSED_FIELDS_EXTRACTED message=${email.gmailId} supplier="${supplierName}" amount=${finalTotalAmount ?? "unknown"} invoiceNumber=${invoiceNumberForDecision ?? "unknown"} dueDate=${dueDateForDecision?.toISOString() ?? "unknown"} documentDate=${documentDateForDecision.toISOString()} documentType=${classification.documentType} review=${classification.reviewStatus}`);
-      const scfcResult = computeCanonicalFingerprint({
-        organizationId,
-        supplierName,
-        supplierTaxId: supplierMetadata.taxId,
-        invoiceNumber: invoiceNumberForDecision,
-        totalAmount: finalTotalAmount,
-        documentDate: documentDateForDecision,
-        documentType: classification.documentType,
-      });
-      parsedFieldsJson.scfc = summarizeScfcResult(scfcResult);
-      const identityStability = detectScanIdentityInstability({
-        existingScanItem,
-        current: {
-          amount: finalTotalAmount,
-          supplierName,
-          documentDate: documentDateForDecision,
-        },
-      });
-      let fingerprintGate = attachFingerprintGateToParsedFields(parsedFieldsJson, {
-        scfc: scfcResult,
-        documentFingerprint: scfcResult.fingerprint ?? scfcResult.legacyFingerprint,
-        forceReprocess: options.forceReprocess,
-        identityStability,
-        hasAttachment: hasPdfOrImageDocumentEvidence,
-      });
-      const legacyDuplicateHash = buildLegacyDuplicateHashForGmailLookup({
-        organizationId,
-        supplier: supplierName ?? "unknown",
-        totalAmount: finalTotalAmount,
-        dateIso: documentDateForDecision?.toISOString() ?? email.receivedAt.toISOString(),
-        subject: email.subject,
-        gmailMessageId: email.gmailId,
-      });
-      const sameEmailPayment = email.emailRecordId
-        ? await prisma.supplierPayment.findFirst({
-            where: { organizationId, emailMessageId: email.emailRecordId },
-            select: { id: true },
-          })
-        : null;
-      const duplicateGateInput = await buildDuplicateGateInput({
-        organizationId,
-        source: "gmail",
-        sender: email.senderEmail || email.from || null,
-        supplierName,
-        supplierTaxId: supplierMetadata.taxId,
-        invoiceNumber: invoiceNumberForDecision,
-        totalAmount: finalTotalAmount,
-        documentDate: documentDateForDecision,
-        documentType: classification.documentType,
-        fileSha256: null,
-        documentFingerprint: scfcResult.fingerprint ?? scfcResult.legacyFingerprint,
-        legacyDuplicateHash,
-        legacyDuplicateKey: duplicateKey,
-        scfcFingerprint: scfcResult.fingerprint,
-        emailMessageId: email.emailRecordId,
-        forceReprocess: options.forceReprocess,
-        identityStability,
-        amountRecoveredOnRescan: detectAmountRecoveredOnRescan({
-          existingScanItem,
-          currentAmount: finalTotalAmount,
-        }),
-        parsedFieldsJson,
-        sameEmailAttachmentMatch: Boolean(sameEmailPayment),
-      });
-      let duplicateGate = attachDuplicateGateToParsedFields(parsedFieldsJson, duplicateGateInput);
-      const documentValidationReason = financialDocumentBlockingReason({
-        supplierName,
-        invoiceNumber: invoiceNumberForDecision,
-        totalAmount: finalTotalAmount,
-        // F5: תאריך חסר (null) → "invoice date missing or invalid" → ניתוב ל-needs_review.
-        documentDate: extractedDocumentDate,
-        moneyDecision,
-        fseSummary: parsedFieldsJson.fse,
-        amountGate,
-        supplierDecision: supplierMetadata.decision,
-        supplierGate,
-        fingerprintGate,
-        duplicateGate,
-        ownerEmails,
-      });
-      const documentDecision = await recordFinancialDocumentDecision({
-        organizationId,
-        source: "gmail",
-        sender: email.senderEmail || email.from || null,
-        subject: email.subject,
-        fileName: attachmentFilename,
-        fileSize: null,
-        supplierName,
-        supplierTaxId: supplierMetadata.taxId,
-        invoiceNumber: invoiceNumberForDecision,
-        documentDate: extractedDocumentDate,
-        dueDate: dueDateForDecision,
-        amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
-        vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
-        totalAmount: finalTotalAmount,
-        documentType: classification.documentType,
-        driveFileUrl: null,
-        confidenceScore: classification.confidence,
-        uncertaintyReason:
-          documentValidationReason ??
-          moneyDecisionUncertaintySuffix(moneyDecision) ??
-          (classification.reviewStatus === "needs_review" ? classification.decisionReason : null),
-        forceNeedsReview: invoiceNeedsBusinessReview,
-        parsedFieldsJson,
-        rawAnalysis: {
-          analysis,
-          classification,
-          businessClassification,
-          parsed_fields_json: parsedFieldsJson,
-          gmailMessageId: email.gmailId,
-        },
-        emailMessageId: email.emailRecordId,
-        gmailMessageId: email.gmailId,
-      });
-      if (documentDecision.action === "duplicate") {
-        fingerprintGate = attachFingerprintGateToParsedFields(parsedFieldsJson, {
-          scfc: scfcResult,
-          documentFingerprint: documentDecision.documentFingerprint,
-          forceReprocess: options.forceReprocess,
-          identityStability,
-          confirmedDuplicate: true,
-          hasAttachment: hasPdfOrImageDocumentEvidence,
-        });
-        duplicateGate = attachDuplicateGateToParsedFields(parsedFieldsJson, {
-          ...duplicateGateInput,
-          matchResult: "MATCH",
-          matchReasons: ["fingerprint_match"],
-          matchedCandidate: {
-            id:
-              ("payment" in documentDecision && documentDecision.payment?.id) ||
-              duplicateGate.matchedPaymentId ||
-              "confirmed-duplicate",
-          },
-        });
-      }
-      const canPersistFinancialRecord = documentDecision.action === "accepted";
-      const outcomeAllowsAutoSavePersistence = documentOutcome.status === "SAVED";
-      if (canPersistFinancialRecord && outcomeAllowsAutoSavePersistence && classification.reviewStatus === "auto_saved" && !clientId && !isIncomingSupplierExpense && classification.isRelevant && email.domain) {
-        const saved = await upsertPotentialClient({
-          organizationId,
-          name: normalizeSupplierName(email.senderName || email.domain),
-          email: email.senderEmail,
-          domain: email.domain,
-          firstSeen: email.receivedAt,
-          lastSeen: email.receivedAt,
-        });
-        clientId = saved.id;
-        clientIdByDomain.set(email.domain, saved.id);
-        if (saved.created) clientsCreated++;
-        await prisma.emailMessage.update({
-          where: { id: email.emailRecordId },
-          data: { clientId },
-        });
-        logStep(`[gmail-sync] client/lead message=${email.gmailId} clientId=${clientId} clientCreated=${saved.created}`);
-      }
-      const driveLinks: GmailDriveLink[] = [];
-      let driveUploadFailureReason: string | null = null;
-
-      const shouldUploadAttachments =
-        classification.isRelevant &&
-        (
-          (classification.reviewStatus === "auto_saved" && canPersistFinancialRecord && outcomeAllowsAutoSavePersistence) ||
-          (documentOutcome.status === "NEEDS_REVIEW" && classification.reviewStatus === "needs_review" && isInvoiceRecordDocument(classification.documentType) && documentDecision.action !== "filtered")
-        );
-      for (const part of email.parts) {
-        if (!shouldUploadAttachments) {
-          driveUploadsSkipped++;
-          logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${part.filename || "unnamed"}" reason="${documentValidationReason ?? documentDecision.action ?? "not_auto_saved_invoice_or_payment"}"`);
-          continue;
-        }
-        const attachmentId = part.body?.attachmentId;
-        const filename = part.filename?.trim() || attachmentFilenameFromPart(part);
-        if (!filename || !part.body) {
-          driveUploadsSkipped++;
-          driveUploadFailureReason = "missing_filename_or_body";
-          logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${filename || "unnamed"}" reason="missing_filename_or_body"`);
-          if (shouldUploadAttachments && filename) {
-            const failedAttachment = await markEmailAttachmentDriveStatus({
-              emailMessageId: email.emailRecordId,
-              filename,
-              mimeType: part.mimeType,
-              gmailAttachmentId: attachmentId ?? null,
-              driveUploadStatus: "pending_retry",
-            });
-            console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${failedAttachment.id} reason=missing_filename_or_body`);
-          }
-          continue;
-        }
-
-        const existingAttachment = attachmentId
-          ? await prisma.emailAttachment.findFirst({
-              where: {
-                emailMessageId: email.emailRecordId,
-                gmailAttachmentId: attachmentId,
-              },
-            })
-          : await prisma.emailAttachment.findFirst({
-              where: {
-                emailMessageId: email.emailRecordId,
-                filename,
-              },
-            });
-        if (existingAttachment?.driveLink) {
-          await prisma.emailAttachment.update({
-            where: { id: existingAttachment.id },
-            data: { driveUploadStatus: "uploaded" },
-          });
-          driveLinks.push({
-            type: folderForDocumentType(classification.documentType),
-            link: existingAttachment.driveLink,
-            filename,
-            gmailAttachmentId: attachmentId ?? null,
-            mimeType: part.mimeType ?? null,
-            fileId: existingAttachment.driveFileId,
-            folderId: existingAttachment.driveFolderId,
-            clientFolderId: existingAttachment.driveClientFolderId,
-            supplierFolderId: existingAttachment.driveSupplierFolderId,
-            folderPath: existingAttachment.driveFolderPath,
-            supplierName: existingAttachment.supplierName,
-            invoiceMonth: existingAttachment.invoiceMonth,
-            invoiceYear: existingAttachment.invoiceYear,
-            fileSize: null,
-          });
-          driveUploadsSkipped++;
-          driveSavedForPilot = true;
-          logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${filename}" reason="existing_drive_link" link=${existingAttachment.driveLink}`);
-          logStep(`[gmail-sync] DRIVE_DUPLICATE_SKIPPED org=${organizationId} reason=existing_drive_link key=${attachmentId ?? filename} message=${email.gmailId} file="${filename}"`);
-          continue;
-        }
-
-        const folderType = folderForDocumentType(classification.documentType);
         try {
-          driveUploadsAttempted++;
-          logStep(`[gmail-sync] Drive upload attempt message=${email.gmailId} file="${filename}" folder=${folderType}`);
-          if (!rootId) {
-            throw new Error("Drive root unavailable");
-          }
+          await withTimeout(
+            (async () => {
+                  const messageTrace = createCoreWorkflowTrace({
+                    subsystem: "scanner_pipeline",
+                    organizationId,
+                    gmailMessageId: email.gmailId,
+                    emailMessageId: email.emailRecordId,
+                    workflow: "scanner_pipeline",
+                  });
+                  const messageCorrelationId = messageTrace.correlationId;
+                  emitCoreWorkflowAudit(messageTrace, "started", "message_process");
+                  let scanItemPersisted = false;
+                  let currentDuplicateKey: string | null = null;
+                  let savedScanItemId: string | null = null;
+                  let driveSavedForPilot = false;
+                  let sheetsUpdatedForPilot = false;
+                  let invoicePersistedForPilot = false;
+                  let paymentPersistedForPilot = false;
+                  try {
+                if (
+                  await isCrossOrgContaminatedGmailMessageId(email.gmailId, organizationId, crossOrgContaminatedGmailIds)
+                ) {
+                  logStep(`[gmail-sync] cross-org contaminated gmailMessageId=${email.gmailId} skipped payment/scan persistence`);
+                  await prisma.emailMessage.update({
+                    where: { id: email.emailRecordId },
+                    data: { processedAt: new Date() },
+                  });
+                  completeCoreWorkflowStage(messageTrace, "message_process", "skipped", {
+                    health: "Degraded",
+                    metadata: { reason: CROSS_ORG_QUARANTINE_MARKER, gmailMessageId: email.gmailId },
+                  });
+                  return;
+                }
 
-          const data = await withRetry(
-            () => attachmentData(gmail, email.gmailId, part),
-            `[gmail-sync] Gmail attachment fetch retry message=${email.gmailId} file="${filename}"`
+                let clientId = clientIdByDomain.get(email.domain);
+                if (clientId) {
+                  await prisma.emailMessage.update({
+                    where: { id: email.emailRecordId },
+                    data: { clientId },
+                  });
+                }
+
+                if (email.alreadyProcessed && !options.forceReprocess) {
+                  if (scanMode === "fast_recurring") {
+                    const pendingDriveStatuses = ["pending_retry", "failed"];
+                    const pendingRepairCounts = await Promise.all([
+                      prisma.emailAttachment.count({
+                        where: {
+                          emailMessageId: email.emailRecordId,
+                          driveUploadStatus: { in: pendingDriveStatuses },
+                        },
+                      }),
+                      prisma.gmailScanItem.count({
+                        where: {
+                          organizationId,
+                          OR: [{ emailMessageId: email.emailRecordId }, { gmailMessageId: email.gmailId }],
+                          driveUploadStatus: { in: pendingDriveStatuses },
+                        },
+                      }),
+                      prisma.financialDocumentReview.count({
+                        where: {
+                          organizationId,
+                          OR: [{ emailMessageId: email.emailRecordId }, { gmailMessageId: email.gmailId }],
+                          driveUploadStatus: { in: pendingDriveStatuses },
+                        },
+                      }),
+                      prisma.supplierPayment.count({
+                        where: {
+                          organizationId,
+                          emailMessageId: email.emailRecordId,
+                          driveUploadStatus: { in: pendingDriveStatuses },
+                        },
+                      }),
+                      prisma.invoice.count({
+                        where: {
+                          organizationId,
+                          gmailMessageId: email.gmailId,
+                          driveUploadStatus: { in: pendingDriveStatuses },
+                        },
+                      }),
+                    ]);
+                    if (!pendingRepairCounts.some((count) => count > 0)) {
+                      logStep(`[gmail-sync] fast scan skip already-processed message=${email.gmailId} reason=no_pending_repair`);
+                      completeCoreWorkflowStage(messageTrace, "message_process", "skipped", {
+                        message: "already_processed",
+                        health: "Healthy",
+                      });
+                      return;
+                    }
+                    logStep(`[gmail-sync] fast scan reprocess already-processed message=${email.gmailId} reason=pending_repair`);
+                  } else {
+                    logStep(`[gmail-sync] message=${email.gmailId} already processed; still tracing parser/persistence before duplicate handling`);
+                  }
+                }
+
+                const pdfText = await extractPdfTextFromParts(gmail, email.gmailId, email.parts);
+                const visualAttachmentHints = await extractVisualAttachmentHints(
+                  gmail,
+                  email.gmailId,
+                  email.parts,
+                  email.from,
+                  logStep,
+                  ownerEmails,
+                  messageCorrelationId,
+                  organizationId,
+                );
+                const visualAttachmentText = visualAttachmentHints.text;
+                const bodyForAnalysis = [email.bodyText, pdfText && `--- PDF ATTACHMENT TEXT ---\n${pdfText}`, visualAttachmentText && `--- VISUAL ATTACHMENT ANALYSIS ---\n${visualAttachmentText}`].filter(Boolean).join("\n\n");
+                const driveLinkEvidence = evaluateGmailDriveLinkInvoiceEvidence({
+                  subject: email.subject,
+                  bodyText: email.bodyText,
+                });
+                const gmailAttachmentFilenames = email.parts.map((part) => part.filename).filter(Boolean) as string[];
+                const attachmentFilenamesForClassification = [
+                  ...gmailAttachmentFilenames,
+                  ...driveLinkEvidence.virtualAttachmentFilenames,
+                ];
+                const supplierEvidenceText = [email.subject, bodyForAnalysis].filter(Boolean).join("\n\n");
+                logStep(`[gmail-sync] parsed message=${email.gmailId} bodyLength=${email.bodyText.length} pdfTextLength=${pdfText.length} visualTextLength=${visualAttachmentText.length}`);
+                if (driveLinkEvidence.links.length > 0) {
+                  logStep(
+                    `[gmail-sync] drive link scan message=${email.gmailId} links=${driveLinkEvidence.links.length} documentLinks=${driveLinkEvidence.virtualAttachmentFilenames.length} strictInvoiceEvidence=${driveLinkEvidence.hasStrictDriveInvoiceEvidence}`
+                  );
+                }
+                const junkDecision = classifyJunk({
+                  sender: email.senderEmail || email.from,
+                  subject: email.subject,
+                  body: bodyForAnalysis,
+                  channel: "gmail",
+                  attachmentFilenames: email.parts.map((part) => part.filename).filter(Boolean) as string[],
+                  metadata: { gmailMessageId: email.gmailId, domain: email.domain },
+                });
+                if (junkDecision.bucket === "CERTAIN_JUNK") {
+                  logStep(`[gmail-sync] junk dropped message=${email.gmailId} reason="${junkDecision.reason}"`);
+                  await prisma.emailMessage.update({
+                    where: { id: email.emailRecordId },
+                    data: { processedAt: new Date() },
+                  });
+                  return;
+                }
+                // שער חשבונית לפני קריאת המודל: מייל בלי שום אות פיננסי לא נקלט
+                // בכלל — לא נשלח ל-Claude ולא נרשם כ-needs_review (אחרת מסך ההשלמה
+                // מתמלא זבל). כל חסימה מתועדת בלוג לזיהוי false negatives.
+                const invoiceGate = isInvoiceCandidate({
+                  sender: email.senderEmail || email.from,
+                  subject: email.subject,
+                  body: bodyForAnalysis,
+                  attachmentFilenames: attachmentFilenamesForClassification,
+                });
+                if (!invoiceGate.isInvoice) {
+                  logStep(
+                    `[gmail-sync] INVOICE_GATE_BLOCKED message=${email.gmailId} confidence=${invoiceGate.confidence} reasons="${invoiceGate.reasons.join(",")}" sender="${truncateForLog(email.senderEmail || email.from || "", 80)}" subject="${truncateForLog(email.subject, 120)}"`
+                  );
+                  await prisma.emailMessage.update({
+                    where: { id: email.emailRecordId },
+                    data: { processedAt: new Date() },
+                  });
+                  return;
+                }
+                if (!shouldAutoClassifyAfterJunkFilter(junkDecision)) {
+                  needsReviewCount++;
+                  logStep(`[gmail-sync] junk needs_review message=${email.gmailId} reason="${junkDecision.reason}" blocklisted=${junkDecision.blocklisted}`);
+                  await recordFinancialDocumentDecision({
+                    organizationId,
+                    source: "gmail",
+                    sender: email.senderEmail || email.from || null,
+                    subject: email.subject,
+                    fileName: primaryAttachmentFilename(email.parts),
+                    fileSize: null,
+                    supplierName: email.senderName || email.domain || null,
+                    supplierTaxId: null,
+                    invoiceNumber: null,
+                    // F5: מסלול junk→needs_review — אין תאריך מסמך, לא ממציאים receivedAt.
+                    documentDate: null,
+                    dueDate: null,
+                    amountBeforeVat: null,
+                    vatAmount: null,
+                    totalAmount: null,
+                    documentType: "payment_request",
+                    driveFileUrl: null,
+                    confidenceScore: 0,
+                    uncertaintyReason: `junk_filter:${junkDecision.reason}`,
+                    rawAnalysis: { junkDecision, gmailMessageId: email.gmailId },
+                    emailMessageId: email.emailRecordId,
+                    gmailMessageId: email.gmailId,
+                  });
+                  await prisma.emailMessage.update({
+                    where: { id: email.emailRecordId },
+                    data: { processedAt: new Date() },
+                  });
+                  return;
+                }
+                const analysis = await analyzeEmailContent({
+                  subject: email.subject,
+                  body: bodyForAnalysis,
+                  filenames: attachmentFilenamesForClassification,
+                  sender: email.from,
+                  organizationId,
+                });
+                logStep(`[gmail-sync] ai message=${email.gmailId} supplier="${analysis.supplier}" amount=${analysis.amount ?? "unknown"} documentType=${analysis.documentType} paymentRequired=${analysis.paymentRequired} confidence=${analysis.confidence}`);
+                const ocrClassifierText = `${supplierEvidenceText}\n${analysis.supplier ?? ""}`;
+                const ocrSupplierClassifier = classifyOcrSupplierText(ocrClassifierText);
+                const cityDocument = detectMunicipalCollectionDocument(ocrClassifierText);
+                if (cityDocument.detected) {
+                  logStep(`[gmail-sync] CITY_DOCUMENT_DETECTED message=${email.gmailId} supplier="${cityDocument.supplierName ?? "none"}" reason="${cityDocument.reason}"`);
+                }
+                logStep(`[gmail-sync] OCR_CLASSIFIER_INPUT message=${email.gmailId} chars=${ocrClassifierText.length} normalizedPreview="${truncateForLog(normalizeOcrSupplierText(ocrClassifierText), 500)}"`);
+                logStep(`[gmail-sync] OCR_CLASSIFIER_RESULT message=${email.gmailId} supplier="${ocrSupplierClassifier?.supplierName ?? "none"}" confidence=${ocrSupplierClassifier?.confidence ?? 0} keyword="${ocrSupplierClassifier?.keyword ?? "none"}"`);
+                const extractedFields = extractHebrewInvoiceFieldsFromText(`${supplierEvidenceText}\n${analysis.supplier ?? ""}`);
+                const parsedFieldsJson: {
+                  amount: number | null;
+                  invoiceNumber: string | null;
+                  invoiceDate: string | null;
+                  dueDate: string | null;
+                  confidence: number;
+                  reasons: string[];
+                  arc: ReturnType<typeof summarizeMoneyDecision> | null;
+                  sir: ReturnType<typeof summarizeSupplierDecision> | null;
+                  fse: ReturnType<typeof summarizeFinancialSanityDecision> | null;
+                  trust: ReturnType<typeof summarizeTrustDecision> | null;
+                  outcome: ReturnType<typeof summarizeDocumentOutcome> | null;
+                  gates?: Array<AmountGateSnapshot | SupplierGateSnapshot | FingerprintGateSnapshot>;
+                  scfc?: ReturnType<typeof summarizeScfcResult>;
+                } = {
+                  amount: extractedFields.amount,
+                  invoiceNumber: extractedFields.invoiceNumber,
+                  invoiceDate: extractedFields.invoiceDate,
+                  dueDate: extractedFields.dueDate,
+                  confidence: extractedFields.confidence,
+                  reasons: extractedFields.reasons,
+                  arc: null,
+                  sir: null,
+                  fse: null,
+                  trust: null,
+                  outcome: null,
+                };
+                if (extractedFields.amount !== null) {
+                  logStep(`[gmail-sync] AMOUNT_EXTRACTED message=${email.gmailId} amount=${extractedFields.amount} confidence=${extractedFields.confidence}`);
+                }
+                logStep(`[gmail-sync] AMOUNT_EXTRACTION_RESULT message=${email.gmailId} amount=${extractedFields.amount ?? "none"} status=${extractedFields.amount === null ? "failed" : "found"} reason="${extractedFields.reasons.find((reason) => reason.startsWith("amount_") || reason.includes("amount")) ?? "none"}"`);
+                if (extractedFields.invoiceDate || extractedFields.dueDate) {
+                  logStep(`[gmail-sync] DATE_EXTRACTED message=${email.gmailId} invoiceDate=${extractedFields.invoiceDate ?? "none"} dueDate=${extractedFields.dueDate ?? "none"} confidence=${extractedFields.confidence}`);
+                }
+                if (extractedFields.invoiceNumber) {
+                  logStep(`[gmail-sync] INVOICE_NUMBER_EXTRACTED message=${email.gmailId} invoiceNumber="${extractedFields.invoiceNumber}" confidence=${extractedFields.confidence}`);
+                }
+                if (extractedFields.amount === null && !extractedFields.invoiceDate && !extractedFields.dueDate && !extractedFields.invoiceNumber) {
+                  logStep(`[gmail-sync] EXTRACTION_FAILED message=${email.gmailId} reason="${extractedFields.reasons.join(",")}"`);
+                }
+                const invoiceMatch = detectInvoice(email.subject, bodyForAnalysis, email.parts);
+                if (invoiceMatch.isInvoice) invoiceDetectionPositive++;
+                else invoiceDetectionNegative++;
+                const moneyDecision = resolveGmailOrgMoneyDecision({
+                  organizationId,
+                  documentType: analysis.documentType,
+                  analysis,
+                  extractedFieldsAmount: extractedFields.amount,
+                  regexDetectedAmount: invoiceMatch.amount,
+                  attachmentAnalysis: visualAttachmentHints.attachmentAnalysis,
+                });
+                parsedFieldsJson.arc = summarizeMoneyDecision(moneyDecision);
+                const finalTotalAmount = resolvePersistedTotalAmount(moneyDecision);
+                const amount = finalTotalAmount;
+                const amountRejectedReason =
+                  moneyDecision.status !== "resolved"
+                    ? moneyDecision.reason
+                    : invoiceMatch.amountRejectedReason ?? rejectedDetectedAmountReason(extractedFields.amount ?? analysis.totalAmount ?? analysis.amount);
+                logStep(`[gmail-sync] invoice detection message=${email.gmailId} isInvoice=${invoiceMatch.isInvoice} detectedAmount=${invoiceMatch.amount ?? "none"} aiAmount=${analysis.amount ?? "none"} finalAmount=${amount ?? "none"} amountRejectedReason=${amountRejectedReason ?? "none"}`);
+                const attachmentFilename =
+                  primaryAttachmentFilename(email.parts) ?? driveLinkEvidence.virtualAttachmentFilenames[0] ?? null;
+                const supplierMetadata = resolveSupplierMetadata({
+                  analysisSupplier: analysis.supplier,
+                  analysisSupplierTaxId: analysis.supplierTaxId,
+                  bodyText: supplierEvidenceText,
+                  senderName: email.senderName,
+                  senderEmail: email.senderEmail,
+                  senderDomain: email.domain,
+                  ownerEmails,
+                  knownSupplierNames,
+                  ocrKeywordMatch: ocrSupplierClassifier,
+                  logStep,
+                });
+                parsedFieldsJson.sir = summarizeSupplierDecision(supplierMetadata.decision);
+                const supplierName = supplierMetadata.name;
+                const supplierBranchName = supplierBranchNameFromFolderName(supplierName);
+                if (supplierMetadata.source === "unknown") {
+                  logStep(`[gmail-sync] SUPPLIER_NOT_FOUND message=${email.gmailId} reason="no OCR/document/AI/sender/domain supplier matched" analysisSupplier="${analysis.supplier}" ocrPreview="${truncateForLog(visualAttachmentText || pdfText || email.bodyText, 400)}"`);
+                } else {
+                  logStep(`[gmail-sync] SUPPLIER_DETECTED message=${email.gmailId} supplier="${supplierName}" confidence=${supplierMetadata.confidence} source=${supplierMetadata.source}${supplierMetadata.keyword ? ` keyword="${supplierMetadata.keyword}"` : ""}`);
+                }
+                let classification = classifyGmailScanCandidate({
+                  subject: email.subject,
+                  bodyText: bodyForAnalysis,
+                  attachmentFilenames: attachmentFilenamesForClassification,
+                  analysis,
+                  amount,
+                  supplierName,
+                  senderName: email.senderName,
+                  senderEmail: email.senderEmail,
+                  senderDomain: email.domain,
+                  amountRejectedReason,
+                });
+                if (
+                  visualAttachmentHints.invoiceCandidateFound &&
+                  (visualAttachmentHints.needsReview || !isInvoiceRecordDocument(classification.documentType))
+                ) {
+                  classification = promoteImageInvoiceCandidateForReview(classification, visualAttachmentHints.reviewReason);
+                }
+                classification = applySupplierDecisionReviewGate({
+                  classification,
+                  supplierDecision: supplierMetadata.decision,
+                });
+                const legacySupplierExpenseSignal = isIncomingSupplierExpenseCandidate({
+                  source: email.source,
+                  senderEmail: email.senderEmail,
+                  senderDomain: email.domain,
+                  supplierName,
+                  documentType: classification.documentType,
+                  paymentRequired: analysis.paymentRequired,
+                  ownerEmails,
+                });
+                const businessClassification = classifyBusinessDocument({
+                  sender: email.senderEmail || email.from,
+                  subject: email.subject,
+                  body: bodyForAnalysis,
+                  documentType: classification.documentType,
+                  supplierName,
+                  businessName: organization?.businessName ?? undefined,
+                  issuedBy: legacySupplierExpenseSignal ? supplierName : undefined,
+                  issuedTo: legacySupplierExpenseSignal ? organization?.businessName ?? undefined : undefined,
+                  paymentRequired: analysis.paymentRequired,
+                  channel: "gmail",
+                  metadata: { gmailMessageId: email.gmailId },
+                });
+                const pipelineAction = pipelineActionForClassification(businessClassification);
+                const invoiceNeedsBusinessReview = pipelineAction === "NEEDS_REVIEW" && invoiceMatch.isInvoice;
+                classification = applyBusinessReviewToInvoiceCandidate({
+                  classification,
+                  invoiceDetected: invoiceMatch.isInvoice,
+                  analysisDocumentType: analysis.documentType,
+                  businessClassification,
+                  pipelineAction,
+                });
+                const hasPdfOrImageAttachment = email.parts.some((part) => isPdfAttachmentPart(part) || isInvoiceImageAttachmentPart(part));
+                const hasPdfOrImageDocumentEvidence =
+                  hasPdfOrImageAttachment || driveLinkEvidence.virtualAttachmentFilenames.length > 0;
+                const hasStrictPaymentEvidence = Boolean(classification.audit.strictPaymentEvidence);
+                if (
+                  shouldRejectPersonalEmailWithoutDocumentEvidence({
+                    isPersonalSender: isPersonalEmailSender(email.senderEmail, email.domain),
+                    hasPdfOrImageAttachment,
+                    strictPaymentEvidence: hasStrictPaymentEvidence,
+                    driveEvidence: driveLinkEvidence,
+                  })
+                ) {
+                  logStep(`[gmail-sync] REJECTED no-attachment personal email without strict evidence message=${email.gmailId}`);
+                  await prisma.emailMessage.update({
+                    where: { id: email.emailRecordId },
+                    data: { processedAt: new Date() },
+                  });
+                  return;
+                }
+                if (pipelineAction === "NEEDS_REVIEW" && !invoiceMatch.isInvoice) {
+                  needsReviewCount++;
+                  logStep(`[gmail-sync] classifier needs_review message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
+                  const earlyInvoiceNumber = normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, primaryAttachmentFilename(email.parts) ?? ""].join("\n"));
+                  // F5 (stage 1): תאריך שלא חולץ נשאר null ברשומת הביקורת (לא ממציאים receivedAt).
+                  // earlyDocumentDate נשאר תאריך ייחוס תפעולי (receivedAt) לעזרי הזהות/FSE/trust/outcome.
+                  const earlyExtractedDocumentDate = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, null);
+                  const earlyDocumentDate = email.receivedAt;
+                  const earlyFseDecision = await runGmailOrgFinancialSanity({
+                    organizationId,
+                    supplierDecision: supplierMetadata.decision,
+                    moneyDecision,
+                    supplierName,
+                    supplierTaxId: supplierMetadata.taxId,
+                    invoiceNumber: earlyInvoiceNumber,
+                    documentDate: earlyDocumentDate,
+                    dueDate: normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null),
+                    documentType: classification.documentType,
+                    rawOcrText: [supplierEvidenceText, visualAttachmentText, pdfText].filter(Boolean).join("\n"),
+                    gmailMessageId: email.gmailId,
+                    logStep,
+                    contextCache: fseContextCache,
+                  });
+                  parsedFieldsJson.fse = summarizeFinancialSanityDecision(earlyFseDecision);
+                  attachAmountGateToParsedFields(parsedFieldsJson, {
+                    moneyDecision,
+                    fseSummary: parsedFieldsJson.fse,
+                  });
+                  attachSupplierGateToParsedFields(parsedFieldsJson, {
+                    supplierDecision: supplierMetadata.decision,
+                    supplierName,
+                    ownerEmails,
+                  });
+                  const earlyTrustDecision = runGmailOrgTrustDecision({
+                    organizationId,
+                    supplierDecision: supplierMetadata.decision,
+                    moneyDecision,
+                    fseDecision: earlyFseDecision,
+                    supplierName,
+                    supplierTaxId: supplierMetadata.taxId,
+                    invoiceNumber: earlyInvoiceNumber,
+                    documentDate: earlyDocumentDate,
+                    documentType: classification.documentType,
+                    classification,
+                    extractedFieldsConfidence: extractedFields.confidence,
+                    hasPdfOrImageAttachment: hasPdfOrImageDocumentEvidence,
+                    visualNeedsReview: visualAttachmentHints.needsReview,
+                    contextCache: fseContextCache,
+                    gmailMessageId: email.gmailId,
+                    logStep,
+                  });
+                  parsedFieldsJson.trust = summarizeTrustDecision(earlyTrustDecision);
+                  classification = applyTrustReviewGate({ classification, trustDecision: earlyTrustDecision });
+                  const earlyDocumentOutcome = runGmailOrgOutcomeDecision({
+                    organizationId,
+                    trustDecision: earlyTrustDecision,
+                    fseDecision: earlyFseDecision,
+                    supplierDecision: supplierMetadata.decision,
+                    moneyDecision,
+                    supplierName,
+                    supplierTaxId: supplierMetadata.taxId,
+                    invoiceNumber: earlyInvoiceNumber,
+                    documentDate: earlyDocumentDate,
+                    documentType: classification.documentType,
+                    classification,
+                    businessClassificationReason: businessClassification.reason,
+                    visualReviewReason: visualAttachmentHints.reviewReason,
+                    gmailMessageId: email.gmailId,
+                    logStep,
+                  });
+                  parsedFieldsJson.outcome = summarizeDocumentOutcome(earlyDocumentOutcome);
+                  classification = applyOutcomeReviewGate({ classification, documentOutcome: earlyDocumentOutcome });
+                  if (gmailOutcomeStopsPersistence(earlyDocumentOutcome.status)) {
+                    await finalizeDriveLinkTerminalOutcome(email, driveLinkEvidence, {
+                      uncertaintyReason: gmailOutcomeUncertaintyReason(earlyDocumentOutcome),
+                      documentType: "payment_request",
+                      attachmentFilenameForRecord:
+                        primaryAttachmentFilename(email.parts) ?? driveLinkEvidence.virtualAttachmentFilenames[0] ?? null,
+                      supplierName,
+                      supplierTaxId: supplierMetadata.taxId,
+                      invoiceNumber: earlyInvoiceNumber,
+                      documentDate: earlyExtractedDocumentDate,
+                      dueDate: normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null),
+                      amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
+                      vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
+                      totalAmount: finalTotalAmount,
+                      confidenceScore: Math.min(classification.confidence, 0.79),
+                      parsedFieldsJson,
+                      rawAnalysis: {
+                        analysis,
+                        classification,
+                        businessClassification,
+                        parsed_fields_json: parsedFieldsJson,
+                        gmailMessageId: email.gmailId,
+                      },
+                      classificationDecisionReason: classification.decisionReason,
+                      confidenceScoreBucket: classification.confidenceScore,
+                    });
+                    logStep(`[outcome] terminal path message=${email.gmailId} status=${earlyDocumentOutcome.status} reasonCode=${earlyDocumentOutcome.reasonCode}`);
+                    return;
+                  }
+                  await recordFinancialDocumentDecision({
+                    organizationId,
+                    source: "gmail",
+                    sender: email.senderEmail || email.from || null,
+                    subject: email.subject,
+                    fileName: primaryAttachmentFilename(email.parts),
+                    fileSize: null,
+                    supplierName,
+                    supplierTaxId: supplierMetadata.taxId,
+                    invoiceNumber: earlyInvoiceNumber,
+                    documentDate: earlyExtractedDocumentDate,
+                    dueDate: normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null),
+                    amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
+                    vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
+                    totalAmount: finalTotalAmount,
+                    documentType: "payment_request",
+                    driveFileUrl: null,
+                    confidenceScore: Math.min(classification.confidence, 0.79),
+                    uncertaintyReason: `classifier:${businessClassification.reason}`,
+                    parsedFieldsJson,
+                    rawAnalysis: {
+                      analysis,
+                      classification,
+                      businessClassification,
+                      parsed_fields_json: parsedFieldsJson,
+                      gmailMessageId: email.gmailId,
+                    },
+                    emailMessageId: email.emailRecordId,
+                    gmailMessageId: email.gmailId,
+                  });
+                  await prisma.emailMessage.update({
+                    where: { id: email.emailRecordId },
+                    data: { processedAt: new Date() },
+                  });
+                  return;
+                } else if (pipelineAction === "NEEDS_REVIEW") {
+                  logStep(`[gmail-sync] classifier needs_review invoice pass-through message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
+                }
+                const isIncomingSupplierExpense = pipelineAction === "SUPPLIER_EXPENSE";
+                const isCustomerInvoice = pipelineAction === "CUSTOMER_INVOICE";
+                if (isIncomingSupplierExpense && clientId) {
+                  logStep(`[gmail-sync] supplier expense message=${email.gmailId}; ignoring clientId=${clientId} to avoid supplier-as-client placeholder`);
+                  clientId = undefined;
+                }
+                const duplicateKey = buildGmailScanDuplicateKey({
+                  gmailMessageId: email.gmailId,
+                  attachmentFilename,
+                  supplierName,
+                  amount,
+                  subject: email.subject,
+                  occurredAt: email.receivedAt,
+                });
+                currentDuplicateKey = duplicateKey;
+                // F6: הרשומות נשמרות עם duplicateKey = טביעת אצבע קנונית (SCFC), אבל
+                // הבדיקה המוקדמת חישבה מפתח legacy — כך שהחיפוש כמעט תמיד החטיא, ואם
+                // הזהות נסחפה בין סריקות (סכום שהתאושש, ספק שתוקן) נוצרה שורה שנייה
+                // לאותה הודעה. גשר: אם המפתח ה-legacy לא נמצא, מאתרים את הרשומה הקיימת
+                // לפי מזהה ההודעה + שם הקובץ — וה-upsert ממשיך להשתמש במפתח שלה.
+                const existingScanItem =
+                  (await prisma.gmailScanItem.findUnique({
+                    where: { organizationId_duplicateKey: { organizationId, duplicateKey } },
+                  })) ??
+                  (await prisma.gmailScanItem.findFirst({
+                    where: {
+                      organizationId,
+                      gmailMessageId: email.gmailId,
+                      attachmentFilename: attachmentFilename ?? null,
+                    },
+                    orderBy: { createdAt: "asc" },
+                  }));
+                if (existingScanItem) {
+                  logStep(`[gmail-sync] decision duplicate message=${email.gmailId} type=${existingScanItem.documentType} supplier="${existingScanItem.supplierName}" amount=${existingScanItem.amount ?? "unknown"}`);
+                  const existingScanItemAmount = Number(existingScanItem.amount);
+                  if (Number.isFinite(existingScanItemAmount) && existingScanItemAmount > 0) {
+                    duplicatesSkipped++;
+                    logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=gmail_scan_item_exists key=${duplicateKey} message=${email.gmailId}`);
+                  } else {
+                    logStep(`[gmail-sync] REPROCESSING_EMPTY_DUPLICATE org=${organizationId} reason=gmail_scan_item_exists key=${duplicateKey} message=${email.gmailId}`);
+                  }
+                }
+                logStep(`[gmail-sync] decision message=${email.gmailId} type=${classification.documentType} confidence=${classification.confidenceScore} review=${classification.reviewStatus} reason="${classification.decisionReason}"`);
+
+                if (classification.isRelevant) relevantEmailsFound++;
+                if (classification.documentType === "invoice") invoiceEmails++;
+                if (classification.documentType === "receipt") receiptsFound++;
+                if (classification.documentType === "payment_request") paymentRequestsFound++;
+                if (classification.documentType === "supplier_message") supplierMessagesFound++;
+                if (invoiceMatch.amount !== null) invoiceAmountsExtracted++;
+                const invoiceNumberForDecision = normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
+                // F5 (stage 1 — Gmail review path): תאריך שלא חולץ נשאר null ולא מומצא ל-receivedAt.
+                // extractedDocumentDate (nullable) נשמר ברשומות הביקורת (record/review/GmailScanItem)
+                // כדי ש"חסר תאריך" ידלק ותופיע השלמה ידנית. documentDateForDecision שומר על fallback
+                // ל-receivedAt ומשמש לעזרי זהות/טביעת-אצבע/FSE/trust ולמסלול התשלום — התנהגות קיימת (שלב 2).
+                const extractedDocumentDate = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, null);
+                const documentDateForDecision = extractedDocumentDate ?? email.receivedAt;
+                const dueDateForDecision = normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null);
+                const fseDecision = await runGmailOrgFinancialSanity({
+                  organizationId,
+                  supplierDecision: supplierMetadata.decision,
+                  moneyDecision,
+                  supplierName,
+                  supplierTaxId: supplierMetadata.taxId,
+                  invoiceNumber: invoiceNumberForDecision,
+                  documentDate: documentDateForDecision,
+                  dueDate: dueDateForDecision,
+                  documentType: classification.documentType,
+                  rawOcrText: [supplierEvidenceText, visualAttachmentText, pdfText].filter(Boolean).join("\n"),
+                  gmailMessageId: email.gmailId,
+                  logStep,
+                  contextCache: fseContextCache,
+                });
+                parsedFieldsJson.fse = summarizeFinancialSanityDecision(fseDecision);
+                const amountGate = attachAmountGateToParsedFields(parsedFieldsJson, {
+                  moneyDecision,
+                  fseSummary: parsedFieldsJson.fse,
+                });
+                const supplierGate = attachSupplierGateToParsedFields(parsedFieldsJson, {
+                  supplierDecision: supplierMetadata.decision,
+                  supplierName,
+                  ownerEmails,
+                });
+                classification = applyFinancialSanityReviewGate({
+                  classification,
+                  fseDecision,
+                  amount: finalTotalAmount,
+                  rawOcrText: [supplierEvidenceText, visualAttachmentText, pdfText].filter(Boolean).join("\n"),
+                });
+                logStep(`[gmail-sync] FSE message=${email.gmailId} status=${fseDecision.overallStatus} trust=${fseDecision.trustScore} failed=${fseDecision.failedRules.join(",") || "none"}`);
+                const trustDecision = runGmailOrgTrustDecision({
+                  organizationId,
+                  supplierDecision: supplierMetadata.decision,
+                  moneyDecision,
+                  fseDecision,
+                  supplierName,
+                  supplierTaxId: supplierMetadata.taxId,
+                  invoiceNumber: invoiceNumberForDecision,
+                  documentDate: documentDateForDecision,
+                  documentType: classification.documentType,
+                  classification,
+                  extractedFieldsConfidence: extractedFields.confidence,
+                  hasPdfOrImageAttachment: hasPdfOrImageDocumentEvidence,
+                  visualNeedsReview: visualAttachmentHints.needsReview,
+                  contextCache: fseContextCache,
+                  gmailMessageId: email.gmailId,
+                  logStep,
+                });
+                parsedFieldsJson.trust = summarizeTrustDecision(trustDecision);
+                classification = applyTrustReviewGate({ classification, trustDecision });
+                const documentOutcome = runGmailOrgOutcomeDecision({
+                  organizationId,
+                  trustDecision,
+                  fseDecision,
+                  supplierDecision: supplierMetadata.decision,
+                  moneyDecision,
+                  supplierName,
+                  supplierTaxId: supplierMetadata.taxId,
+                  invoiceNumber: invoiceNumberForDecision,
+                  documentDate: documentDateForDecision,
+                  documentType: classification.documentType,
+                  classification,
+                  existingScanItem,
+                  duplicateKey,
+                  businessClassificationReason: businessClassification.reason,
+                  visualReviewReason: visualAttachmentHints.reviewReason,
+                  gmailMessageId: email.gmailId,
+                  logStep,
+                });
+                parsedFieldsJson.outcome = summarizeDocumentOutcome(documentOutcome);
+                classification = applyOutcomeReviewGate({ classification, documentOutcome });
+                if (gmailOutcomeStopsPersistence(documentOutcome.status)) {
+                  await finalizeDriveLinkTerminalOutcome(email, driveLinkEvidence, {
+                    uncertaintyReason: gmailOutcomeUncertaintyReason(documentOutcome),
+                    documentType: classification.documentType,
+                    attachmentFilenameForRecord: attachmentFilename,
+                    supplierName,
+                    supplierTaxId: supplierMetadata.taxId,
+                    invoiceNumber: invoiceNumberForDecision,
+                    documentDate: extractedDocumentDate,
+                    dueDate: dueDateForDecision,
+                    amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
+                    vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
+                    totalAmount: finalTotalAmount,
+                    confidenceScore: classification.confidence,
+                    parsedFieldsJson,
+                    rawAnalysis: {
+                      analysis,
+                      classification,
+                      businessClassification,
+                      parsed_fields_json: parsedFieldsJson,
+                      gmailMessageId: email.gmailId,
+                    },
+                    classificationDecisionReason: classification.decisionReason,
+                    confidenceScoreBucket: classification.confidenceScore,
+                  });
+                  logStep(`[outcome] terminal path message=${email.gmailId} status=${documentOutcome.status} reasonCode=${documentOutcome.reasonCode}`);
+                  return;
+                }
+                if (classification.reviewStatus === "needs_review") needsReviewCount++;
+                logStep(`[gmail-sync] CLASSIFICATION_RESULT message=${email.gmailId} documentType=${classification.documentType} review=${classification.reviewStatus} confidence=${classification.confidence} supplier="${supplierName}" amount=${amount ?? "none"} reason="${classification.decisionReason}"`);
+                logStep(`[gmail-sync] PARSED_FIELDS_EXTRACTED message=${email.gmailId} supplier="${supplierName}" amount=${finalTotalAmount ?? "unknown"} invoiceNumber=${invoiceNumberForDecision ?? "unknown"} dueDate=${dueDateForDecision?.toISOString() ?? "unknown"} documentDate=${documentDateForDecision.toISOString()} documentType=${classification.documentType} review=${classification.reviewStatus}`);
+                const scfcResult = computeCanonicalFingerprint({
+                  organizationId,
+                  supplierName,
+                  supplierTaxId: supplierMetadata.taxId,
+                  invoiceNumber: invoiceNumberForDecision,
+                  totalAmount: finalTotalAmount,
+                  documentDate: documentDateForDecision,
+                  documentType: classification.documentType,
+                });
+                parsedFieldsJson.scfc = summarizeScfcResult(scfcResult);
+                const identityStability = detectScanIdentityInstability({
+                  existingScanItem,
+                  current: {
+                    amount: finalTotalAmount,
+                    supplierName,
+                    documentDate: documentDateForDecision,
+                  },
+                });
+                let fingerprintGate = attachFingerprintGateToParsedFields(parsedFieldsJson, {
+                  scfc: scfcResult,
+                  documentFingerprint: scfcResult.fingerprint ?? scfcResult.legacyFingerprint,
+                  forceReprocess: options.forceReprocess,
+                  identityStability,
+                  hasAttachment: hasPdfOrImageDocumentEvidence,
+                });
+                const legacyDuplicateHash = buildLegacyDuplicateHashForGmailLookup({
+                  organizationId,
+                  supplier: supplierName ?? "unknown",
+                  totalAmount: finalTotalAmount,
+                  dateIso: documentDateForDecision?.toISOString() ?? email.receivedAt.toISOString(),
+                  subject: email.subject,
+                  gmailMessageId: email.gmailId,
+                });
+                const sameEmailPayment = email.emailRecordId
+                  ? await prisma.supplierPayment.findFirst({
+                      where: { organizationId, emailMessageId: email.emailRecordId },
+                      select: { id: true },
+                    })
+                  : null;
+                const duplicateGateInput = await buildDuplicateGateInput({
+                  organizationId,
+                  source: "gmail",
+                  sender: email.senderEmail || email.from || null,
+                  supplierName,
+                  supplierTaxId: supplierMetadata.taxId,
+                  invoiceNumber: invoiceNumberForDecision,
+                  totalAmount: finalTotalAmount,
+                  documentDate: documentDateForDecision,
+                  documentType: classification.documentType,
+                  fileSha256: null,
+                  documentFingerprint: scfcResult.fingerprint ?? scfcResult.legacyFingerprint,
+                  legacyDuplicateHash,
+                  legacyDuplicateKey: duplicateKey,
+                  scfcFingerprint: scfcResult.fingerprint,
+                  emailMessageId: email.emailRecordId,
+                  forceReprocess: options.forceReprocess,
+                  identityStability,
+                  amountRecoveredOnRescan: detectAmountRecoveredOnRescan({
+                    existingScanItem,
+                    currentAmount: finalTotalAmount,
+                  }),
+                  parsedFieldsJson,
+                  sameEmailAttachmentMatch: Boolean(sameEmailPayment),
+                });
+                let duplicateGate = attachDuplicateGateToParsedFields(parsedFieldsJson, duplicateGateInput);
+                const documentValidationReason = financialDocumentBlockingReason({
+                  supplierName,
+                  invoiceNumber: invoiceNumberForDecision,
+                  totalAmount: finalTotalAmount,
+                  // F5: תאריך חסר (null) → "invoice date missing or invalid" → ניתוב ל-needs_review.
+                  documentDate: extractedDocumentDate,
+                  moneyDecision,
+                  fseSummary: parsedFieldsJson.fse,
+                  amountGate,
+                  supplierDecision: supplierMetadata.decision,
+                  supplierGate,
+                  fingerprintGate,
+                  duplicateGate,
+                  ownerEmails,
+                });
+                const documentDecision = await recordFinancialDocumentDecision({
+                  organizationId,
+                  source: "gmail",
+                  sender: email.senderEmail || email.from || null,
+                  subject: email.subject,
+                  fileName: attachmentFilename,
+                  fileSize: null,
+                  supplierName,
+                  supplierTaxId: supplierMetadata.taxId,
+                  invoiceNumber: invoiceNumberForDecision,
+                  documentDate: extractedDocumentDate,
+                  dueDate: dueDateForDecision,
+                  amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
+                  vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
+                  totalAmount: finalTotalAmount,
+                  documentType: classification.documentType,
+                  driveFileUrl: null,
+                  confidenceScore: classification.confidence,
+                  uncertaintyReason:
+                    documentValidationReason ??
+                    moneyDecisionUncertaintySuffix(moneyDecision) ??
+                    (classification.reviewStatus === "needs_review" ? classification.decisionReason : null),
+                  forceNeedsReview: invoiceNeedsBusinessReview,
+                  parsedFieldsJson,
+                  rawAnalysis: {
+                    analysis,
+                    classification,
+                    businessClassification,
+                    parsed_fields_json: parsedFieldsJson,
+                    gmailMessageId: email.gmailId,
+                  },
+                  emailMessageId: email.emailRecordId,
+                  gmailMessageId: email.gmailId,
+                });
+                if (documentDecision.action === "duplicate") {
+                  fingerprintGate = attachFingerprintGateToParsedFields(parsedFieldsJson, {
+                    scfc: scfcResult,
+                    documentFingerprint: documentDecision.documentFingerprint,
+                    forceReprocess: options.forceReprocess,
+                    identityStability,
+                    confirmedDuplicate: true,
+                    hasAttachment: hasPdfOrImageDocumentEvidence,
+                  });
+                  duplicateGate = attachDuplicateGateToParsedFields(parsedFieldsJson, {
+                    ...duplicateGateInput,
+                    matchResult: "MATCH",
+                    matchReasons: ["fingerprint_match"],
+                    matchedCandidate: {
+                      id:
+                        ("payment" in documentDecision && documentDecision.payment?.id) ||
+                        duplicateGate.matchedPaymentId ||
+                        "confirmed-duplicate",
+                    },
+                  });
+                }
+                const canPersistFinancialRecord = documentDecision.action === "accepted";
+                const outcomeAllowsAutoSavePersistence = documentOutcome.status === "SAVED";
+                if (canPersistFinancialRecord && outcomeAllowsAutoSavePersistence && classification.reviewStatus === "auto_saved" && !clientId && !isIncomingSupplierExpense && classification.isRelevant && email.domain) {
+                  const saved = await upsertPotentialClient({
+                    organizationId,
+                    name: normalizeSupplierName(email.senderName || email.domain),
+                    email: email.senderEmail,
+                    domain: email.domain,
+                    firstSeen: email.receivedAt,
+                    lastSeen: email.receivedAt,
+                  });
+                  clientId = saved.id;
+                  clientIdByDomain.set(email.domain, saved.id);
+                  if (saved.created) clientsCreated++;
+                  await prisma.emailMessage.update({
+                    where: { id: email.emailRecordId },
+                    data: { clientId },
+                  });
+                  logStep(`[gmail-sync] client/lead message=${email.gmailId} clientId=${clientId} clientCreated=${saved.created}`);
+                }
+                const driveLinks: GmailDriveLink[] = [];
+                let driveUploadFailureReason: string | null = null;
+
+                const shouldUploadAttachments =
+                  classification.isRelevant &&
+                  (
+                    (classification.reviewStatus === "auto_saved" && canPersistFinancialRecord && outcomeAllowsAutoSavePersistence) ||
+                    (documentOutcome.status === "NEEDS_REVIEW" && classification.reviewStatus === "needs_review" && isInvoiceRecordDocument(classification.documentType) && documentDecision.action !== "filtered")
+                  );
+                for (const part of email.parts) {
+                  if (!shouldUploadAttachments) {
+                    driveUploadsSkipped++;
+                    logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${part.filename || "unnamed"}" reason="${documentValidationReason ?? documentDecision.action ?? "not_auto_saved_invoice_or_payment"}"`);
+                    continue;
+                  }
+                  const attachmentId = part.body?.attachmentId;
+                  const filename = part.filename?.trim() || attachmentFilenameFromPart(part);
+                  if (!filename || !part.body) {
+                    driveUploadsSkipped++;
+                    driveUploadFailureReason = "missing_filename_or_body";
+                    logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${filename || "unnamed"}" reason="missing_filename_or_body"`);
+                    if (shouldUploadAttachments && filename) {
+                      const failedAttachment = await markEmailAttachmentDriveStatus({
+                        emailMessageId: email.emailRecordId,
+                        filename,
+                        mimeType: part.mimeType,
+                        gmailAttachmentId: attachmentId ?? null,
+                        driveUploadStatus: "pending_retry",
+                      });
+                      console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${failedAttachment.id} reason=missing_filename_or_body`);
+                    }
+                    continue;
+                  }
+
+                  const existingAttachment = attachmentId
+                    ? await prisma.emailAttachment.findFirst({
+                        where: {
+                          emailMessageId: email.emailRecordId,
+                          gmailAttachmentId: attachmentId,
+                        },
+                      })
+                    : await prisma.emailAttachment.findFirst({
+                        where: {
+                          emailMessageId: email.emailRecordId,
+                          filename,
+                        },
+                      });
+                  if (existingAttachment?.driveLink) {
+                    await prisma.emailAttachment.update({
+                      where: { id: existingAttachment.id },
+                      data: { driveUploadStatus: "uploaded" },
+                    });
+                    driveLinks.push({
+                      type: folderForDocumentType(classification.documentType),
+                      link: existingAttachment.driveLink,
+                      filename,
+                      gmailAttachmentId: attachmentId ?? null,
+                      mimeType: part.mimeType ?? null,
+                      fileId: existingAttachment.driveFileId,
+                      folderId: existingAttachment.driveFolderId,
+                      clientFolderId: existingAttachment.driveClientFolderId,
+                      supplierFolderId: existingAttachment.driveSupplierFolderId,
+                      folderPath: existingAttachment.driveFolderPath,
+                      supplierName: existingAttachment.supplierName,
+                      invoiceMonth: existingAttachment.invoiceMonth,
+                      invoiceYear: existingAttachment.invoiceYear,
+                      fileSize: null,
+                    });
+                    driveUploadsSkipped++;
+                    driveSavedForPilot = true;
+                    logStep(`[gmail-sync] Drive upload skipped message=${email.gmailId} file="${filename}" reason="existing_drive_link" link=${existingAttachment.driveLink}`);
+                    logStep(`[gmail-sync] DRIVE_DUPLICATE_SKIPPED org=${organizationId} reason=existing_drive_link key=${attachmentId ?? filename} message=${email.gmailId} file="${filename}"`);
+                    continue;
+                  }
+
+                  const folderType = folderForDocumentType(classification.documentType);
+                  try {
+                    driveUploadsAttempted++;
+                    logStep(`[gmail-sync] Drive upload attempt message=${email.gmailId} file="${filename}" folder=${folderType}`);
+                    if (!rootId) {
+                      throw new Error("Drive root unavailable");
+                    }
+
+                    const data = await withRetry(
+                      () => attachmentData(gmail, email.gmailId, part),
+                      `[gmail-sync] Gmail attachment fetch retry message=${email.gmailId} file="${filename}"`
+                    );
+                    const buffer = decodeGmailAttachment(data);
+                    const fileSize = buffer.length;
+                    const fileSha256 = createHash("sha256").update(buffer).digest("hex");
+                    const fileMd5 = createHash("md5").update(buffer).digest("hex");
+                    const upload = await withRetry(
+                      () => uploadInvoiceAttachmentToDrive({
+                        organizationId,
+                        drive,
+                        rootFolderId: rootId,
+                        clientId: isIncomingSupplierExpense ? null : clientId,
+                        clientName: null,
+                        supplier: supplierName,
+                        supplierTaxId: supplierMetadata.taxId,
+                        documentType: classification.documentType,
+                        reviewStatus: classification.reviewStatus,
+                        filename,
+                        mimeType: part.mimeType,
+                        receivedAt: email.receivedAt,
+                        documentDate: documentDateForDecision,
+                        invoiceNumber: invoiceNumberForDecision,
+                        amount,
+                        totalAmount: finalTotalAmount,
+                        buffer,
+                        fileSha256,
+                        fileMd5,
+                      }),
+                      `[gmail-sync] Drive upload retry message=${email.gmailId} file="${filename}"`
+                    );
+                    const link = upload.webViewLink;
+                    driveLinks.push({
+                      type: folderType,
+                      link,
+                      filename,
+                      gmailAttachmentId: attachmentId ?? null,
+                      mimeType: part.mimeType ?? null,
+                      fileId: upload.fileId,
+                      folderId: upload.folderId,
+                      clientFolderId: upload.clientFolderId,
+                      supplierFolderId: upload.supplierFolderId,
+                      folderPath: upload.folderPath,
+                      supplierName: upload.supplierName,
+                      invoiceMonth: upload.invoiceMonth,
+                      invoiceYear: upload.invoiceYear,
+                      fileSize,
+                    });
+                    driveUploadsSucceeded++;
+                    logStep(`[gmail-sync] Drive upload success message=${email.gmailId} file="${filename}" link=${link ?? "none"}`);
+                    logStep(`[gmail-sync] DRIVE_FILE_SAVED org=${organizationId} message=${email.gmailId} file="${filename}" driveFileId=${upload.fileId ?? "none"} link=${link || "none"} folderId=${upload.folderId ?? "none"} folderPath="${upload.folderPath}"`);
+                    logStep(`[gmail-sync] DRIVE_UPLOAD_SUCCESS org=${organizationId} message=${email.gmailId} file="${filename}" driveFileId=${upload.fileId ?? "none"} link=${link || "none"} folderId=${upload.folderId ?? "none"} folderPath="${upload.folderPath}"`);
+                    driveSavedForPilot = true;
+                    if (existingAttachment) {
+                      await prisma.emailAttachment.update({
+                        where: { id: existingAttachment.id },
+                        data: {
+                          driveFileId: upload.fileId ?? undefined,
+                          driveLink: link,
+                          driveUploadStatus: "uploaded",
+                          driveFolderId: upload.folderId,
+                          driveClientFolderId: upload.clientFolderId,
+                          driveSupplierFolderId: upload.supplierFolderId,
+                          driveFolderPath: upload.folderPath,
+                          supplierName: upload.supplierName,
+                          invoiceMonth: upload.invoiceMonth,
+                          invoiceYear: upload.invoiceYear,
+                        },
+                      });
+                    } else {
+                      await prisma.emailAttachment.create({
+                        data: {
+                          emailMessageId: email.emailRecordId,
+                          filename,
+                          mimeType: part.mimeType ?? undefined,
+                          gmailAttachmentId: attachmentId ?? undefined,
+                          driveFileId: upload.fileId ?? undefined,
+                          driveLink: link,
+                          driveUploadStatus: "uploaded",
+                          driveFolderId: upload.folderId,
+                          driveClientFolderId: upload.clientFolderId,
+                          driveSupplierFolderId: upload.supplierFolderId,
+                          driveFolderPath: upload.folderPath,
+                          supplierName: upload.supplierName,
+                          invoiceMonth: upload.invoiceMonth,
+                          invoiceYear: upload.invoiceYear,
+                        },
+                      });
+                    }
+                  } catch (err) {
+                    driveUploadFailed = true;
+                    driveUploadsFailed++;
+                    errorsCount++;
+                    driveUploadFailureReason = shortDriveFailureReason(err);
+                    console.error("Drive upload failed; continuing Gmail sync without attachment upload", err);
+                    if (isGoogleReconnectRequiredError(err) || isInsufficientScopeError(err)) {
+                      logStep(`[gmail-sync] Google Drive reconnect required org=${organizationId} message=${email.gmailId} file="${filename}" reason="${err instanceof Error ? err.message : String(err)}"`);
+                    }
+                    logStep(`[gmail-sync] Drive upload failed message=${email.gmailId} file="${filename}" reason="${err instanceof Error ? err.message : String(err)}"`);
+                    if (existingAttachment) {
+                      await prisma.emailAttachment.update({
+                        where: { id: existingAttachment.id },
+                        data: { driveUploadStatus: "pending_retry" },
+                      });
+                      console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${existingAttachment.id} reason=${driveUploadFailureReason}`);
+                    } else {
+                      const failedAttachment = await prisma.emailAttachment.create({
+                        data: {
+                          emailMessageId: email.emailRecordId,
+                          filename,
+                          mimeType: part.mimeType ?? undefined,
+                          gmailAttachmentId: attachmentId ?? undefined,
+                          driveUploadStatus: "pending_retry",
+                        },
+                      });
+                      console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${failedAttachment.id} reason=${driveUploadFailureReason}`);
+                    }
+                  }
+                }
+
+                if (driveLinks.length === 0 && driveLinkEvidence.hasStrictDriveInvoiceEvidence) {
+                  for (const link of driveLinkEvidence.links) {
+                    if (link.documentKind === "unknown") continue;
+                    driveLinks.push({
+                      type: folderForDocumentType(classification.documentType),
+                      link: link.url,
+                      filename: link.inferredFilename,
+                      gmailAttachmentId: null,
+                      mimeType: link.documentKind === "pdf" ? "application/pdf" : "image/jpeg",
+                      fileId: link.fileId,
+                      fileSize: null,
+                    });
+                  }
+                  if (driveLinks.length > 0) {
+                    logStep(
+                      `[gmail-sync] DRIVE_LINK_BODY_REFERENCE message=${email.gmailId} link=${driveLinks[0]?.link ?? "none"} file="${driveLinks[0]?.filename ?? "unknown"}"`
+                    );
+                  }
+                }
+
+                const primaryDriveLink = driveLinks[0]?.link ?? null;
+                const documentDriveUploadStatus =
+                  shouldUploadAttachments
+                    ? primaryDriveLink
+                      ? driveLinkEvidence.hasStrictDriveInvoiceEvidence && email.parts.length === 0
+                        ? "not_required"
+                        : "uploaded"
+                      : email.parts.length > 0
+                        ? "pending_retry"
+                        : "not_required"
+                    : "not_required";
+                const documentDriveUploadFailureReason =
+                  documentDriveUploadStatus === "pending_retry"
+                    ? driveUploadFailureReason ?? "upload_missing_link"
+                    : null;
+                if ("review" in documentDecision && documentDecision.review && primaryDriveLink) {
+                  await attachPreviewToFinancialDocumentReview(documentDecision.review.id, organizationId, {
+                    previewUrl: primaryDriveLink,
+                    driveUploadStatus: "uploaded",
+                  });
+                  logStep(`[gmail-sync] INVOICE_DRIVE_LINK_SAVED org=${organizationId} target=financialDocumentReview id=${documentDecision.review.id} message=${email.gmailId} driveUrl=${primaryDriveLink}`);
+                } else if ("review" in documentDecision && documentDecision.review && documentDriveUploadStatus === "pending_retry") {
+                  const review = await prisma.financialDocumentReview.updateMany({
+                    where: { id: documentDecision.review.id, organizationId },
+                    data: { driveUploadStatus: "pending_retry" },
+                  });
+                  if (review.count !== 1) {
+                    console.warn(
+                      `DRIVE UPLOAD FAILED org=${organizationId} doc=financialDocumentReview:${documentDecision.review.id} reason=review_not_found_for_org`,
+                    );
+                  } else {
+                    console.log(
+                      `DRIVE UPLOAD FAILED org=${organizationId} doc=financialDocumentReview:${documentDecision.review.id} reason=${documentDriveUploadFailureReason}`,
+                    );
+                  }
+                }
+
+                logStep(`[gmail-sync] DB GmailScanItem upsert attempt message=${email.gmailId} duplicateKey=${documentDecision.documentFingerprint} legacyKey=${duplicateKey} type=${classification.documentType}`);
+                const scanItemDuplicateKey = documentDecision.documentFingerprint;
+                const upsertDuplicateKey = existingScanItem?.duplicateKey ?? scanItemDuplicateKey;
+                const savedScanItem = await prisma.gmailScanItem.upsert({
+                  where: { organizationId_duplicateKey: { organizationId, duplicateKey: upsertDuplicateKey } },
+                  create: {
+                    organizationId,
+                    emailMessageId: email.emailRecordId,
+                    gmailMessageId: email.gmailId,
+                    gmailMessageLink: gmailMessageLink(email.gmailId),
+                    sender: email.from || "unknown",
+                    senderEmail: email.senderEmail || null,
+                    subject: email.subject,
+                    occurredAt: email.receivedAt,
+                    amount,
+                    supplierName,
+                    documentType: classification.documentType,
+                    attachmentFilename,
+                    driveFileLink: driveLinks[0]?.link ?? null,
+                    driveUploadStatus: documentDriveUploadStatus,
+                    confidenceScore: classification.confidenceScore,
+                    reviewStatus: classification.reviewStatus,
+                    duplicateKey: scanItemDuplicateKey,
+                    decisionReason: classification.decisionReason,
+                    parsedFieldsJson,
+                    rawAnalysis: {
+                      analysis,
+                      audit: classification.audit,
+                      evidence: classification.evidence,
+                      confidence: classification.confidence,
+                      supplier: supplierMetadata,
+                      supplierTaxId: supplierMetadata.taxId,
+                      supplierBranchName,
+                      invoiceNumber: invoiceNumberForDecision,
+                      invoiceDate: extractedDocumentDate?.toISOString() ?? null,
+                      dueDate: dueDateForDecision?.toISOString() ?? null,
+                      parsed_fields_json: parsedFieldsJson,
+                      relevant: classification.isRelevant,
+                      ocrText: {
+                        pdfText,
+                        visualAttachmentText,
+                      },
+                      hasAttachment: email.parts.length > 0,
+                      filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
+                    },
+                  },
+                  update: {
+                    emailMessageId: email.emailRecordId,
+                    gmailMessageLink: gmailMessageLink(email.gmailId),
+                    sender: email.from || "unknown",
+                    senderEmail: email.senderEmail || null,
+                    subject: email.subject,
+                    occurredAt: email.receivedAt,
+                    amount,
+                    supplierName,
+                    documentType: classification.documentType,
+                    attachmentFilename,
+                    driveFileLink: driveLinks[0]?.link ?? existingScanItem?.driveFileLink ?? null,
+                    driveUploadStatus: driveLinks[0]?.link ? "uploaded" : documentDriveUploadStatus,
+                    confidenceScore: classification.confidenceScore,
+                    reviewStatus: classification.reviewStatus,
+                    duplicateKey: scanItemDuplicateKey,
+                    decisionReason: classification.decisionReason,
+                    parsedFieldsJson,
+                    rawAnalysis: {
+                      analysis,
+                      audit: classification.audit,
+                      evidence: classification.evidence,
+                      confidence: classification.confidence,
+                      supplier: supplierMetadata,
+                      supplierTaxId: supplierMetadata.taxId,
+                      supplierBranchName,
+                      invoiceNumber: invoiceNumberForDecision,
+                      invoiceDate: extractedDocumentDate?.toISOString() ?? null,
+                      dueDate: dueDateForDecision?.toISOString() ?? null,
+                      parsed_fields_json: parsedFieldsJson,
+                      relevant: classification.isRelevant,
+                      ocrText: {
+                        pdfText,
+                        visualAttachmentText,
+                      },
+                      hasAttachment: email.parts.length > 0,
+                      filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
+                    },
+                  },
+                });
+                scanItemPersisted = true;
+                savedScanItemId = savedScanItem.id;
+                emailsSavedToGmailScanItem++;
+                dbGmailScanItemUpserts++;
+                logStep(`[gmail-sync] saved GmailScanItem message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} review=${savedScanItem.reviewStatus} relevant=${classification.isRelevant}`);
+                if (documentDriveUploadStatus === "pending_retry") {
+                  console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=gmailScanItem:${savedScanItem.id} reason=${documentDriveUploadFailureReason}`);
+                }
+                if (savedScanItem.driveFileLink) {
+                  logStep(`[gmail-sync] DRIVE_URL_SAVED org=${organizationId} target=gmailScanItem id=${savedScanItem.id} message=${email.gmailId} driveUrl=${savedScanItem.driveFileLink}`);
+                  logStep(`[gmail-sync] INVOICE_DRIVE_LINK_SAVED org=${organizationId} target=gmailScanItem id=${savedScanItem.id} message=${email.gmailId} driveUrl=${savedScanItem.driveFileLink}`);
+                }
+                if (invoiceNeedsBusinessReview) {
+                  logStep(`[gmail-sync] INVOICE_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} reason="${businessClassification.reason}"`);
+                }
+                if (visualAttachmentHints.invoiceCandidateFound && savedScanItem.reviewStatus === "needs_review") {
+                  logStep(`[gmail-sync] IMAGE_INVOICE_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} reason="${classification.decisionReason}"`);
+                }
+
+                if (existingScanItem && !options.forceReprocess) {
+                  logStep(`[gmail-sync] duplicate GmailScanItem message=${email.gmailId}; continuing idempotent invoice/payment persistence`);
+                }
+
+                if (canPersistFinancialRecord && outcomeAllowsAutoSavePersistence && classification.reviewStatus === "auto_saved") {
+                  for (const taskTitle of analysis.tasks) {
+                    const existingTask = await prisma.task.findUnique({
+                      where: {
+                        organizationId_emailMessageId: {
+                          organizationId,
+                          emailMessageId: email.emailRecordId,
+                        },
+                      },
+                    });
+                    if (existingTask) continue;
+
+                    await prisma.task.upsert({
+                      where: {
+                        organizationId_emailMessageId: {
+                          organizationId,
+                          emailMessageId: email.emailRecordId,
+                        },
+                      },
+                      update: {},
+                      create: {
+                        organizationId,
+                        title: taskTitle,
+                        supplier: supplierName,
+                        priority: analysis.confidence < 0.7 ? "high" : "medium",
+                        source: email.source,
+                        emailMessageId: email.emailRecordId,
+                      },
+                    });
+                    tasksCreated++;
+                  }
+                }
+
+                if (isInvoiceRecordDocument(classification.documentType)) {
+                  if (!clientId) {
+                    if (isIncomingSupplierExpense) {
+                      logStep(`[gmail-sync] supplier expense invoice message=${email.gmailId}; skipping Client placeholder creation supplier="${supplierName}"`);
+                    } else if (canPersistFinancialRecord && outcomeAllowsAutoSavePersistence && classification.reviewStatus === "auto_saved") {
+                      const saved = await ensureInvoiceClient({
+                        organizationId,
+                        supplierName,
+                        senderEmail: email.senderEmail,
+                        domain: email.domain,
+                        receivedAt: email.receivedAt,
+                      });
+                      clientId = saved.id;
+                      if (email.domain) clientIdByDomain.set(email.domain, saved.id);
+                      if (saved.created) clientsCreated++;
+                      await prisma.emailMessage.update({
+                        where: { id: email.emailRecordId },
+                        data: { clientId },
+                      });
+                      logStep(`[gmail-sync] invoice client created message=${email.gmailId} clientId=${clientId} supplier="${supplierName}"`);
+                    }
+                  }
+                  logStep(`[gmail-sync] invoice detected message=${email.gmailId} type=${classification.documentType} clientId=${clientId ?? "none"} amount=${amount ?? "missing"} drive=${driveLinks[0]?.link ? "yes" : "no"}`);
+                }
+
+                if (isCustomerInvoice && documentDecision.action !== "filtered" && clientId && isInvoiceRecordDocument(classification.documentType)) {
+                  const invoiceParts = email.parts.filter((part) => isPdfAttachmentPart(part) || isInvoiceImageAttachmentPart(part));
+                  const shouldUseAttachmentInvoices = invoiceParts.length > 1 || invoiceParts.some(isInvoiceImageAttachmentPart);
+                  const createTargets = shouldUseAttachmentInvoices ? invoiceParts : [null];
+                  for (const invoicePart of createTargets) {
+                    try {
+                    const targetFilename = invoicePart ? attachmentFilenameForPart(invoicePart) : attachmentFilename;
+                    const targetAttachmentId = invoicePart?.body?.attachmentId ?? null;
+                    const targetDriveLink = invoicePart ? findDriveLinkForAttachment(driveLinks, invoicePart) : driveLinks[0];
+                    const targetAnalysis = invoicePart
+                      ? await analyzeInvoiceAttachmentForEmail({
+                          gmail,
+                          gmailMessageId: email.gmailId,
+                          part: invoicePart,
+                          subject: email.subject,
+                          bodyText: email.bodyText,
+                          sender: email.from,
+                          organizationId,
+                        })
+                      : { skipped: false as const, analysis, attachmentText: "" };
+                    if (targetAnalysis.skipped) {
+                      logStep(`[gmail-sync] invoice attachment skipped message=${email.gmailId} file="${targetFilename ?? "unnamed"}" reason="${targetAnalysis.reason}"`);
+                      continue;
+                    }
+                    const targetBodyForDetection = invoicePart
+                      ? [email.bodyText, targetAnalysis.attachmentText && `--- ATTACHMENT OCR TEXT ---\n${targetAnalysis.attachmentText}`].filter(Boolean).join("\n\n")
+                      : bodyForAnalysis;
+                    const targetSupplierEvidenceText = [email.subject, targetBodyForDetection].filter(Boolean).join("\n\n");
+                    const targetInvoiceMatch = invoicePart
+                      ? detectInvoice(email.subject, targetBodyForDetection, [invoicePart])
+                      : invoiceMatch;
+                    if (invoicePart && !targetInvoiceMatch.isInvoice && !isInvoiceRecordDocument(normalizeInvoiceDocumentType(targetAnalysis.analysis.documentType, classification.documentType))) {
+                      logStep(`[gmail-sync] invoice PDF skipped message=${email.gmailId} file="${targetFilename ?? "unnamed"}" reason="per_pdf_not_invoice"`);
+                      continue;
+                    }
+
+                    const attachmentMoneyDecision = resolveGmailOrgMoneyDecision({
+                      organizationId,
+                      documentType: targetAnalysis.analysis.documentType,
+                      analysis: targetAnalysis.analysis,
+                      regexDetectedAmount: targetInvoiceMatch.amount,
+                      attachmentAnalysis: targetAnalysis.analysis,
+                    });
+                    const targetAmount = attachmentMoneyDecision.selectedAmount;
+                    const targetSupplierMetadata = invoicePart
+                      ? resolveSupplierMetadata({
+                          analysisSupplier: targetAnalysis.analysis.supplier,
+                          analysisSupplierTaxId: targetAnalysis.analysis.supplierTaxId,
+                          bodyText: targetSupplierEvidenceText,
+                          senderName: email.senderName,
+                          senderEmail: email.senderEmail,
+                          senderDomain: email.domain,
+                          ownerEmails,
+                          knownSupplierNames,
+                          logStep,
+                        })
+                      : supplierMetadata;
+                    const targetSupplierName = targetSupplierMetadata.name;
+                    if (invoicePart) {
+                      const targetOcrClassifierText = `${targetSupplierEvidenceText}\n${targetAnalysis.analysis.supplier ?? ""}`;
+                      const targetOcrSupplierClassifier = classifyOcrSupplierText(targetOcrClassifierText);
+                      logStep(`[gmail-sync] OCR_CLASSIFIER_INPUT message=${email.gmailId} file="${targetFilename ?? "unnamed"}" chars=${targetOcrClassifierText.length} normalizedPreview="${truncateForLog(normalizeOcrSupplierText(targetOcrClassifierText), 500)}"`);
+                      logStep(`[gmail-sync] OCR_CLASSIFIER_RESULT message=${email.gmailId} file="${targetFilename ?? "unnamed"}" supplier="${targetOcrSupplierClassifier?.supplierName ?? "none"}" confidence=${targetOcrSupplierClassifier?.confidence ?? 0} keyword="${targetOcrSupplierClassifier?.keyword ?? "none"}"`);
+                      if (targetSupplierMetadata.source === "unknown") {
+                        logStep(`[gmail-sync] SUPPLIER_NOT_FOUND message=${email.gmailId} file="${targetFilename ?? "unnamed"}" reason="no OCR/document/AI/sender/domain supplier matched" analysisSupplier="${targetAnalysis.analysis.supplier}" ocrPreview="${truncateForLog(targetAnalysis.attachmentText || targetBodyForDetection, 400)}"`);
+                      } else {
+                        logStep(`[gmail-sync] SUPPLIER_DETECTED message=${email.gmailId} file="${targetFilename ?? "unnamed"}" supplier="${targetSupplierName}" confidence=${targetSupplierMetadata.confidence} source=${targetSupplierMetadata.source}${targetSupplierMetadata.keyword ? ` keyword="${targetSupplierMetadata.keyword}"` : ""}`);
+                      }
+                    }
+                    const targetDocumentType = normalizeInvoiceDocumentType(targetAnalysis.analysis.documentType, classification.documentType);
+                    if (targetAmount == null) {
+                      logStep(`[gmail-sync] invoice amount missing message=${email.gmailId} file="${targetFilename ?? "body"}"; skipping customer invoice create`);
+                      continue;
+                    }
+                    const invoiceAmount = targetAmount;
+                    const invoiceNeedsReviewSave = classification.reviewStatus === "needs_review" || !isUsableSupplierName(targetSupplierName);
+                    const invoiceSupplierName = invoiceNeedsReviewSave && !isUsableSupplierName(targetSupplierName)
+                      ? UNKNOWN_SUPPLIER_FALLBACK
+                      : targetSupplierName;
+                    const invoiceNumber = targetAnalysis.analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, targetBodyForDetection, targetFilename ?? ""].join("\n"));
+                    // F5 (stage 2): אין תאריך אמיתי → מדלגים על יצירת ה-Invoice (כמו הדילוג על amount==null).
+                    // המסמך כבר needs_review (שלב 1) ויופיע בהשלמת חשבוניות למילוי תאריך.
+                    const invoiceDate = normalizeBusinessDate(targetAnalysis.analysis.invoiceDate, null);
+                    if (invoiceDate == null) {
+                      logStep(`[gmail-sync] invoice date missing message=${email.gmailId} file="${targetFilename ?? "body"}"; skipping customer invoice create — held for review`);
+                      continue;
+                    }
+                    const attachmentInvoiceDedupeKey = invoicePart
+                      ? buildInvoiceAttachmentDedupeKey({
+                          emailMessageId: email.emailRecordId,
+                          gmailMessageId: email.gmailId,
+                          attachmentFilename: targetFilename,
+                          gmailAttachmentId: targetAttachmentId,
+                        })
+                      : null;
+                    logStep(`[gmail-sync] DB Invoice insert attempt message=${email.gmailId} file="${targetFilename ?? "body"}" clientId=${clientId} supplier="${invoiceSupplierName}" amount=${invoiceAmount} invoiceNumber=${invoiceNumber ?? "none"} date=${invoiceDate.toISOString()} type=${targetDocumentType}`);
+                    try {
+                      const createdInvoice = await saveDetectedInvoice({
+                        organizationId,
+                        clientId,
+                        amount: invoiceAmount,
+                        currency: targetAnalysis.analysis.currency,
+                        date: invoiceDate,
+                        dueDate: normalizeBusinessDate(targetAnalysis.analysis.dueDate, null),
+                        invoiceNumber,
+                        supplierName: invoiceSupplierName,
+                        documentType: targetDocumentType,
+                        status: invoiceNeedsReviewSave ? "needs_review" : undefined,
+                        fromEmail: email.senderEmail,
+                        subject: email.subject,
+                        emailMessageId: email.emailRecordId,
+                        gmailMessageId: email.gmailId,
+                        invoiceDedupeKey: shouldUseAttachmentInvoices ? attachmentInvoiceDedupeKey : null,
+                        attachmentFilename: shouldUseAttachmentInvoices ? targetFilename : null,
+                        gmailAttachmentId: shouldUseAttachmentInvoices ? targetAttachmentId : null,
+                        allowMultipleInvoicesForMessage: shouldUseAttachmentInvoices,
+                        driveUrl: targetDriveLink?.link ?? null,
+                        driveFileId: targetDriveLink?.fileId ?? null,
+                        driveFileUrl: targetDriveLink?.link ?? null,
+                        driveUploadStatus: targetDriveLink?.link
+                          ? "uploaded"
+                          : shouldUploadAttachments && email.parts.length > 0
+                            ? "pending_retry"
+                            : "not_required",
+                        driveFolderId: targetDriveLink?.folderId ?? null,
+                        driveClientFolderId: targetDriveLink?.clientFolderId ?? null,
+                        driveSupplierFolderId: targetDriveLink?.supplierFolderId ?? null,
+                        driveFolderPath: targetDriveLink?.folderPath ?? null,
+                        invoiceMonth: targetDriveLink?.invoiceMonth ?? invoiceDate.getMonth() + 1,
+                        invoiceYear: targetDriveLink?.invoiceYear ?? invoiceDate.getFullYear(),
+                      });
+                      if (createdInvoice) {
+                        invoicesCreated++;
+                        invoicePersistedForPilot = true;
+                        if (createdInvoice.driveUploadStatus === "pending_retry") {
+                          console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=invoice:${createdInvoice.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
+                        }
+                        logStep(`[gmail-sync] invoice save success message=${email.gmailId} file="${targetFilename ?? "body"}" invoiceId=${createdInvoice.id} amount=${invoiceAmount} supplier="${invoiceSupplierName}" drive=${targetDriveLink?.link ?? "none"}`);
+                      } else {
+                        duplicatesSkipped++;
+                        logStep(`[gmail-sync] duplicate invoice ignored message=${email.gmailId} file="${targetFilename ?? "body"}" supplier="${invoiceSupplierName}" invoiceNumber=${invoiceNumber ?? "none"} amount=${invoiceAmount} date=${invoiceDate.toISOString()}`);
+                        logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=invoice_exists key=${invoiceNumber ?? targetFilename ?? email.gmailId} message=${email.gmailId}`);
+                      }
+                    } catch (err) {
+                      errorsCount++;
+                      logStep(`[gmail-sync] invoice save failed message=${email.gmailId} file="${targetFilename ?? "body"}" supplier="${invoiceSupplierName}" reason="${err instanceof Error ? err.message : String(err)}"`);
+                      // Per-attachment isolation: skip this attachment and continue the scan.
+                      continue;
+                    }
+                    } catch (attachmentErr) {
+                      errorsCount++;
+                      console.error(
+                        `[gmail-sync] invoice attachment processing failed message=${email.gmailId} file="${invoicePart ? attachmentFilenameForPart(invoicePart) : "body"}"`,
+                        attachmentErr
+                      );
+                      logStep(
+                        `[gmail-sync] error message=${email.gmailId} stage=invoice_attachment reason="${attachmentErr instanceof Error ? attachmentErr.message : String(attachmentErr)}"`
+                      );
+                    }
+                  }
+                } else {
+                  if (isInvoiceRecordDocument(classification.documentType) && classification.reviewStatus === "needs_review") {
+                    logStep(`[gmail-sync] invoice held for review message=${email.gmailId} reason="${classification.decisionReason}"`);
+                  } else {
+                    const reasons = [
+                      isIncomingSupplierExpense && "incoming_supplier_expense_saved_as_supplier_payment",
+                      isInvoiceRecordDocument(classification.documentType) && !clientId && "no_client_id",
+                      !isInvoiceRecordDocument(classification.documentType) && `document_type_${classification.documentType}`,
+                    ].filter(Boolean);
+                    logStep(`[gmail-sync] invoice rejected message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
+                  }
+                }
+
+                const senderEmailLower = (email.senderEmail ?? "").trim().toLowerCase();
+                const senderIsOwner = !!senderEmailLower && ownerEmails.has(senderEmailLower);
+                const paymentEligibility = supplierPaymentCreationEligibility({
+                  classification,
+                  amount,
+                  supplierName,
+                  senderIsOwner,
+                  supplierGate,
+                  fingerprintGate,
+                  duplicateGate,
+                });
+                const canPersistSupplierPayment = documentDecision.action !== "filtered" && !isCustomerInvoice && paymentEligibility.allowed;
+                if (canPersistSupplierPayment) {
+                  const supplierPaymentNeedsReview = paymentEligibility.persistAsNeedsReview;
+                  const paymentSupplierName = supplierGate.canonicalSupplierName ?? supplierName;
+                  const paymentEvaluation = evaluateFinanceTrustGates({
+                    selectedAmount: finalTotalAmount,
+                    needsReview: supplierPaymentNeedsReview,
+                    amountGate,
+                    supplierGate,
+                    fingerprintGate,
+                    duplicateGate,
+                    documentType: documentDecision.documentType,
+                    confidenceScore: classification.confidence,
+                  });
+                  const paymentAmount = paymentEvaluation.paymentAmount;
+                  const paymentApprovalStatus = paymentEvaluation.approvalStatus;
+                  if (!paymentEvaluation.shouldCreatePayment) {
+                    logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=${paymentEvaluation.blockReason ?? FINANCE_AMOUNT_UNRESOLVED_REASON} status=${moneyDecision.status}`);
+                  } else {
+                  if (paymentAmount == null) {
+                    logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=unexpected_null_amount`);
+                  } else {
+                  const resolvedPaymentAmount = paymentAmount;
+                  const paymentIdentity = buildPaymentLookupsFromCanonical({
+                    organizationId,
+                    canonicalFingerprint: documentDecision.documentFingerprint,
+                    supplierName: paymentSupplierName,
+                    supplierTaxId: supplierMetadata.taxId,
+                    invoiceNumber: invoiceNumberForDecision,
+                    totalAmount: resolvedPaymentAmount,
+                    documentDate: email.receivedAt,
+                    documentType: documentDecision.documentType,
+                    subject: email.subject,
+                    legacyGmailScanDuplicateKey: duplicateKey,
+                    sourceFingerprint: documentDecision.sourceFingerprint,
+                  });
+                  const duplicateHash = paymentIdentity.duplicateHash;
+
+                  const existingPayment = await findExistingSupplierPayment({
+                    organizationId,
+                    duplicateHash,
+                    lookupClauses: paymentIdentity.lookupClauses,
+                    emailMessageId: email.emailRecordId,
+                    gmailMessageId: email.gmailId,
+                    supplier: paymentSupplierName,
+                    amount: paymentAmount,
+                    date: email.receivedAt,
+                  });
+
+                  const documentLink =
+                    classification.documentType === "payment_request"
+                      ? driveLinks[0]?.link
+                      : existingPayment?.documentLink;
+                  const invoiceLink =
+                    classification.documentType === "invoice" || classification.documentType === "receipt" || classification.documentType === "tax_invoice_receipt"
+                      ? driveLinks[0]?.link
+                      : existingPayment?.invoiceLink;
+
+                  const missingInvoice =
+                    Boolean(analysis.paymentRequired || classification.documentType === "payment_request") &&
+                    !invoiceLink &&
+                    Boolean(documentLink || analysis.paymentRequired);
+
+                  if (existingPayment) {
+                    const existingPaymentAmount = Number(existingPayment.amount);
+                    const existingPaymentTotalAmount = Number(existingPayment.totalAmount);
+                    const existingPaymentHasValidAmount =
+                      (Number.isFinite(existingPaymentAmount) && existingPaymentAmount > 0) ||
+                      (Number.isFinite(existingPaymentTotalAmount) && existingPaymentTotalAmount > 0);
+                    if (existingPaymentHasValidAmount) {
+                      duplicatesSkipped++;
+                    }
+                    paymentPersistedForPilot = true;
+                    logStep(`[gmail-sync] DB SupplierPayment update attempt message=${email.gmailId} id=${existingPayment.id}`);
+                    if (existingPaymentHasValidAmount) {
+                      logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=supplier_payment_exists key=${duplicateHash} message=${email.gmailId} paymentId=${existingPayment.id}`);
+                    } else {
+                      logStep(`[gmail-sync] REPROCESSING_EMPTY_DUPLICATE org=${organizationId} reason=supplier_payment_exists key=${duplicateHash} message=${email.gmailId} paymentId=${existingPayment.id}`);
+                    }
+                    const updatedPayment = await prisma.supplierPayment.update({
+                      where: { id: existingPayment.id },
+                      data: {
+                        documentLink: documentLink ?? existingPayment.documentLink,
+                        invoiceLink: invoiceLink ?? existingPayment.invoiceLink,
+                        driveFileId: driveLinks[0]?.fileId ?? existingPayment.driveFileId,
+                        driveFileUrl: driveLinks[0]?.link ?? existingPayment.driveFileUrl,
+                        driveUploadStatus: driveLinks[0]?.link ? "uploaded" : existingPayment.driveUploadStatus ?? documentDriveUploadStatus,
+                        driveFolderId: driveLinks[0]?.folderId ?? existingPayment.driveFolderId,
+                        driveClientFolderId: driveLinks[0]?.clientFolderId ?? existingPayment.driveClientFolderId,
+                        driveSupplierFolderId: driveLinks[0]?.supplierFolderId ?? existingPayment.driveSupplierFolderId,
+                        driveFolderPath: driveLinks[0]?.folderPath ?? existingPayment.driveFolderPath,
+                        supplierName: driveLinks[0]?.supplierName ?? paymentSupplierName,
+                        invoiceMonth: driveLinks[0]?.invoiceMonth ?? existingPayment.invoiceMonth,
+                        invoiceYear: driveLinks[0]?.invoiceYear ?? existingPayment.invoiceYear,
+                        invoiceNumber: invoiceNumberForDecision ?? existingPayment.invoiceNumber,
+                        // תאריך לטאבים החודשיים נחתם רק כשחולץ תאריך אמיתי מהמסמך; בלי תאריך —
+                        // משמיטים את השדה כדי לא לדרוס ערך קיים בתאריך קבלת המייל.
+                        ...(extractedDocumentDate ? { normalizedDocumentDate: extractedDocumentDate } : {}),
+                        documentFingerprint: documentDecision.documentFingerprint,
+                        sourceFingerprint: documentDecision.sourceFingerprint,
+                        documentTypeDetailed: documentDecision.documentType,
+                        supplierTaxId: supplierMetadata.taxId ?? existingPayment.supplierTaxId,
+                        amountBeforeVat: roundMoneyOrNull(
+                          moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? existingPayment.amountBeforeVat
+                        ),
+                        vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount ?? existingPayment.vatAmount),
+                        totalAmount: finalTotalAmount ?? paymentAmount ?? existingPayment.totalAmount,
+                        confidenceScore: classification.confidence,
+                        parsedFieldsJson,
+                        approvalStatus: paymentApprovalStatus,
+                        sourcesJson: existingPayment.source === "whatsapp" || existingPayment.source === "both" ? ["gmail", "whatsapp"] : ["gmail"],
+                        missingInvoice,
+                        amount: paymentAmount ?? existingPayment.amount,
+                        dueDate: dueDateForDecision ?? existingPayment.dueDate,
+                        emailSender: email.from,
+                        lastSource: "gmail",
+                        source: existingPayment.source === "whatsapp" || existingPayment.source === "both" ? "both" : existingPayment.source,
+                        sourceCount: Math.max(existingPayment.sourceCount ?? 1, 1) + (existingPayment.source === "whatsapp" ? 1 : 0),
+                        duplicateDetected: existingPayment.source === "whatsapp" || existingPayment.duplicateDetected,
+                        duplicateReason: existingPayment.source === "whatsapp" ? "supplier_amount_invoice_date" : existingPayment.duplicateReason,
+                        firstSeenAt: existingPayment.firstSeenAt ?? existingPayment.createdAt,
+                        lastSeenAt: new Date(),
+                      },
+                    });
+                    if (updatedPayment.driveUploadStatus === "pending_retry") {
+                      console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=supplierPayment:${updatedPayment.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
+                    }
+                    if (paymentEvaluation.shouldAppendToSheet) {
+                      await appendSupplierPaymentToSheet({
+                        organizationId,
+                        paymentId: existingPayment.id,
+                        supplier: paymentSupplierName,
+                        amount: paymentAmount ?? existingPayment.amount,
+                        date: email.receivedAt,
+                        dueDate: dueDateForDecision ?? existingPayment.dueDate,
+                        paid: existingPayment.paid,
+                        missingInvoice,
+                        documentLink,
+                        invoiceLink,
+                        gmailLink: gmailMessageLink(email.gmailId),
+                        supplierTaxId: supplierMetadata.taxId,
+                        invoiceNumber: invoiceNumberForDecision,
+                        invoiceDate: documentDateForDecision,
+                        source: existingPayment.source === "whatsapp" || existingPayment.source === "both" ? "both" : "gmail",
+                        duplicateDetected: existingPayment.source === "whatsapp" || existingPayment.duplicateDetected,
+                        duplicateReason: existingPayment.source === "whatsapp" ? "supplier_amount_invoice_date" : existingPayment.duplicateReason,
+                        driveFolderLink: driveLinks[0]?.folderId ? `https://drive.google.com/drive/folders/${driveLinks[0].folderId}` : null,
+                        paidDate: existingPayment.paid ? existingPayment.updatedAt : null,
+                        receiptLink: existingPayment.paid ? existingPayment.documentLink ?? existingPayment.invoiceLink : null,
+                        createdAt: existingPayment.createdAt,
+                        updatedAt: new Date(),
+                      }).then((sheet) => {
+                        sheetsUpdated++;
+                        sheetsUpdatedForPilot = true;
+                        logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${existingPayment.id} spreadsheet=${sheet.spreadsheetId}`);
+                      }).catch((err) => {
+                        console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${existingPayment.id}`, err);
+                        logStep(`[gmail-sync] Sheets append failed message=${email.gmailId} reason="${err instanceof Error ? err.message : String(err)}"`);
+                      });
+                    } else {
+                      logStep(`[gmail-sync] Sheets append skipped message=${email.gmailId} paymentId=${existingPayment.id} reason="missing_amount_needs_review"`);
+                    }
+                    if (missingInvoice) {
+                      await createMissingInvoiceTaskOnce({
+                        organizationId,
+                        supplierName: paymentSupplierName,
+                        subject: email.subject,
+                        amount: resolvedPaymentAmount,
+                        emailMessageId: email.emailRecordId,
+                        gmailMessageId: email.gmailId,
+                      });
+                    } else if (invoiceLink) {
+                      await closeMissingInvoiceTask(organizationId, email.emailRecordId);
+                    }
+                    logStep(`[gmail-sync] updated SupplierPayment message=${email.gmailId} id=${existingPayment.id}`);
+                    if (supplierPaymentNeedsReview) {
+                      logStep(`[gmail-sync] SUPPLIER_PAYMENT_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${existingPayment.id} reason="${classification.decisionReason}"`);
+                    }
+                  } else if (extractedDocumentDate == null) {
+                    // F5 (stage 2): אין תאריך מסמך אמיתי → לא יוצרים SupplierPayment אוטומטי חדש.
+                    // המסמך כבר needs_review (שלב 1) ויופיע בהשלמת חשבוניות למילוי תאריך (fail-closed).
+                    // עדכון תשלום קיים מותר (הענף למעלה) — לרשומה הקיימת כבר יש תאריך.
+                    logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=document_date_missing_held_for_review`);
+                  } else {
+                    const dueDate = dueDateForDecision;
+                    logStep(`[gmail-sync] DB SupplierPayment insert attempt message=${email.gmailId} amount=${paymentAmount} supplier="${paymentSupplierName}"`);
+                    const createResult = await createSupplierPaymentIfTrusted({
+                      evaluation: paymentEvaluation,
+                      sourceLookup: { gmailMessageId: email.gmailId },
+                      data: {
+                        organizationId,
+                        supplier: paymentSupplierName,
+                        amount: resolvedPaymentAmount,
+                        currency: analysis.currency,
+                        ...gmailSupplierPaymentListVisibilityDates(documentDateForDecision),
+                        dueDate,
+                        paid: false,
+                        documentLink,
+                        invoiceLink,
+                        driveFileId: driveLinks[0]?.fileId ?? null,
+                        driveFileUrl: driveLinks[0]?.link ?? null,
+                        driveUploadStatus: documentDriveUploadStatus,
+                        driveFolderId: driveLinks[0]?.folderId ?? null,
+                        driveClientFolderId: driveLinks[0]?.clientFolderId ?? null,
+                        driveSupplierFolderId: driveLinks[0]?.supplierFolderId ?? null,
+                        driveFolderPath: driveLinks[0]?.folderPath ?? null,
+                        supplierName: driveLinks[0]?.supplierName ?? paymentSupplierName,
+                        invoiceMonth: driveLinks[0]?.invoiceMonth ?? documentDateForDecision.getMonth() + 1,
+                        invoiceYear: driveLinks[0]?.invoiceYear ?? documentDateForDecision.getFullYear(),
+                        invoiceNumber: invoiceNumberForDecision,
+                        documentFingerprint: documentDecision.documentFingerprint,
+                        sourceFingerprint: documentDecision.sourceFingerprint,
+                        documentTypeDetailed: documentDecision.documentType,
+                        supplierTaxId: supplierMetadata.taxId,
+                        amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
+                        vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
+                        totalAmount: finalTotalAmount ?? paymentAmount ?? null,
+                        confidenceScore: classification.confidence,
+                        parsedFieldsJson,
+                        approvalStatus: paymentApprovalStatus,
+                        sourcesJson: ["gmail"],
+                        emailSender: email.from,
+                        paymentRequired: analysis.paymentRequired,
+                        missingInvoice,
+                        duplicateHash,
+                        subject: email.subject,
+                        source: email.source,
+                        emailMessageId: email.emailRecordId,
+                      },
+                    });
+                    if (createResult.skipped || !createResult.payment) {
+                      logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=${createResult.reason ?? "trust_gate_blocked"}`);
+                    } else {
+                    const payment = createResult.payment;
+                    paymentsCreated++;
+                    paymentPersistedForPilot = true;
+                    if (payment.driveUploadStatus === "pending_retry") {
+                      console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=supplierPayment:${payment.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
+                    }
+                    if (paymentEvaluation.shouldAppendToSheet) {
+                      await appendSupplierPaymentToSheet({
+                        organizationId,
+                        paymentId: payment.id,
+                        supplier: paymentSupplierName,
+                        amount: resolvedPaymentAmount,
+                        date: email.receivedAt,
+                        dueDate,
+                        paid: false,
+                        missingInvoice,
+                        documentLink,
+                        invoiceLink,
+                        gmailLink: gmailMessageLink(email.gmailId),
+                        supplierTaxId: supplierMetadata.taxId,
+                        invoiceNumber: invoiceNumberForDecision,
+                        invoiceDate: documentDateForDecision,
+                        source: "gmail",
+                        duplicateDetected: false,
+                        duplicateReason: null,
+                        driveFolderLink: driveLinks[0]?.folderId ? `https://drive.google.com/drive/folders/${driveLinks[0].folderId}` : null,
+                        paidDate: payment.paid ? payment.updatedAt : null,
+                        receiptLink: payment.paid ? payment.documentLink ?? payment.invoiceLink : null,
+                        createdAt: payment.createdAt,
+                        updatedAt: payment.updatedAt,
+                      }).then((sheet) => {
+                        sheetsUpdated++;
+                        sheetsUpdatedForPilot = true;
+                        logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${payment.id} spreadsheet=${sheet.spreadsheetId}`);
+                      }).catch((err) => {
+                        console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${payment.id}`, err);
+                        logStep(`[gmail-sync] Sheets append failed message=${email.gmailId} reason="${err instanceof Error ? err.message : String(err)}"`);
+                      });
+                    } else {
+                      logStep(`[gmail-sync] Sheets append skipped message=${email.gmailId} paymentId=${payment.id} reason="missing_amount_needs_review"`);
+                    }
+                    logStep(`[gmail-sync] saved SupplierPayment message=${email.gmailId} id=${payment.id} amount=${paymentAmount} supplier="${paymentSupplierName}"`);
+                    if (supplierPaymentNeedsReview) {
+                      logStep(`[gmail-sync] SUPPLIER_PAYMENT_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${payment.id} reason="${classification.decisionReason}"`);
+                    }
+
+                    if (classification.documentType === "invoice" || classification.documentType === "tax_invoice_receipt" || missingInvoice) {
+                      await createPaymentAlertOnce({
+                        organizationId,
+                        type: missingInvoice ? "missing_invoice" : "new_invoice",
+                        supplierName: paymentSupplierName,
+                        subject: email.subject,
+                        amount: resolvedPaymentAmount,
+                        gmailMessageId: email.gmailId,
+                      });
+                      if (missingInvoice) {
+                        await createMissingInvoiceTaskOnce({
+                          organizationId,
+                          supplierName: paymentSupplierName,
+                          subject: email.subject,
+                          amount: resolvedPaymentAmount,
+                          emailMessageId: email.emailRecordId,
+                          gmailMessageId: email.gmailId,
+                        });
+                      }
+                      if (!missingInvoice) {
+                        await notifyNewInvoice(organizationId, paymentSupplierName, paymentAmount);
+                      }
+                    }
+                    }
+                  }
+                  }
+                  }
+                } else {
+                  const reasons = [
+                    documentDecision.action === "filtered" && "financial_document_filtered",
+                    ...paymentEligibility.reasons,
+                  ].filter(Boolean);
+                  logStep(`[gmail-sync] SupplierPayment save skipped message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
+                }
+
+                if (documentDecision.action !== "filtered" && classification.isRelevant && driveLinks.length > 0) {
+                  const driveSync = await ensureSupplierPaymentsForDriveLinks({
+                    organizationId,
+                    email,
+                    driveLinks,
+                    classification,
+                    analysis,
+                    amount,
+                    supplierName,
+                    supplierMetadata,
+                    invoiceNumber: invoiceNumberForDecision,
+                    documentDate: documentDateForDecision,
+                    extractedDocumentDate,
+                    dueDate: dueDateForDecision,
+                    parsedFieldsJson,
+                    documentDecision,
+                    duplicateKey,
+                    logStep,
+                  });
+                  paymentsCreated += driveSync.created;
+                  sheetsUpdated += driveSync.sheetsUpdated;
+                  if (driveSync.created > 0) paymentPersistedForPilot = true;
+                  if (driveSync.sheetsUpdated > 0) sheetsUpdatedForPilot = true;
+                }
+
+                if (
+                  documentDecision.action === "accepted" &&
+                  classification.isRelevant &&
+                  !invoicePersistedForPilot &&
+                  !paymentPersistedForPilot
+                ) {
+                  logStep(`[gmail-sync] persistence fallback needs_review message=${email.gmailId} reason="no_invoice_or_supplier_payment_created"`);
+                  await recordFinancialDocumentDecision({
+                    organizationId,
+                    source: "gmail",
+                    sender: email.senderEmail || email.from || null,
+                    subject: email.subject,
+                    fileName: attachmentFilename,
+                    fileSize: null,
+                    supplierName,
+                    supplierTaxId: supplierMetadata.taxId,
+                    invoiceNumber: invoiceNumberForDecision,
+                    documentDate: extractedDocumentDate,
+                    dueDate: dueDateForDecision,
+                    amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
+                    vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
+                    totalAmount: finalTotalAmount,
+                    documentType: classification.documentType,
+                    driveFileUrl: driveLinks[0]?.link ?? null,
+                    confidenceScore: Math.min(classification.confidence, 0.79),
+                    uncertaintyReason: "no invoice or supplier payment was created",
+                    forceNeedsReview: true,
+                    parsedFieldsJson,
+                    rawAnalysis: {
+                      analysis,
+                      classification,
+                      businessClassification,
+                      parsed_fields_json: parsedFieldsJson,
+                      gmailMessageId: email.gmailId,
+                    },
+                    emailMessageId: email.emailRecordId,
+                    gmailMessageId: email.gmailId,
+                  });
+                }
+
+                await prisma.emailMessage.update({
+                  where: { id: email.emailRecordId },
+                  data: { processedAt: new Date() },
+                });
+                logStep(`[gmail-sync] DB mark processed success message=${email.gmailId}`);
+                completeCoreWorkflowStage(messageTrace, "message_process", "completed", { health: "Healthy" });
+                if (classification.isRelevant && (savedScanItemId || invoicePersistedForPilot || paymentPersistedForPilot)) {
+                  logStep(
+                    `[gmail-sync] PILOT_FLOW_SUCCESS org=${organizationId} message=${email.gmailId} scanItem=${savedScanItemId ?? "none"} invoice=${invoicePersistedForPilot} payment=${paymentPersistedForPilot} drive=${driveSavedForPilot || Boolean(driveLinks[0]?.link)} sheets=${sheetsUpdatedForPilot} type=${classification.documentType} review=${classification.reviewStatus}`
+                  );
+                }
+                  } catch (err) {
+                    errorsCount++;
+                    emitCoreWorkflowFailure(messageTrace, "message_process", err);
+                    console.error(`[gmail-sync] processing failed message=${email.gmailId}`, err);
+                    logStep(`[gmail-sync] error message=${email.gmailId} stage=process_save reason="${err instanceof Error ? err.message : String(err)}"`);
+                    if (!scanItemPersisted) {
+                      try {
+                        await saveRejectedScanItem(email, `process_save_failed: ${err instanceof Error ? err.message : String(err)}`);
+                        await prisma.emailMessage.update({
+                          where: { id: email.emailRecordId },
+                          data: { processedAt: new Date() },
+                        });
+                      } catch (fallbackErr) {
+                        console.error(`[gmail-sync] fallback GmailScanItem save failed message=${email.gmailId}`, fallbackErr);
+                        logStep(`[gmail-sync] error message=${email.gmailId} stage=fallback_scan_item_save reason="${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}"`);
+                      }
+                    } else if (invoicePersistedForPilot || paymentPersistedForPilot) {
+                      // F14: הרשומה הפיננסית כבר נשמרה בהצלחה — הכשל היה בצעד צדדי מאוחר
+                      // (Sheets/משימות/התראות). דריסת auto_saved ל-needs_review כאן הייתה
+                      // מעלימה את החשבונית מטאב "מאושר" למרות שנקלטה תקין.
+                      logStep(`[gmail-sync] late-step failure after financial record persisted message=${email.gmailId} — keeping reviewStatus unchanged`);
+                    } else if (savedScanItemId || currentDuplicateKey) {
+                      try {
+                        // עדכון לפי id כשידוע — currentDuplicateKey הוא המפתח ה-legacy
+                        // בעוד שהרשומה נשמרת עם מפתח SCFC, כך שעדכון לפי המפתח החטיא.
+                        await prisma.gmailScanItem.update({
+                          where: savedScanItemId
+                            ? { id: savedScanItemId }
+                            : { organizationId_duplicateKey: { organizationId, duplicateKey: currentDuplicateKey! } },
+                          data: {
+                            reviewStatus: "needs_review",
+                            decisionReason: `process_save_failed: ${err instanceof Error ? err.message : String(err)}`,
+                          },
+                        });
+                      } catch (markErr) {
+                        console.error(`[gmail-sync] failed marking GmailScanItem error message=${email.gmailId}`, markErr);
+                        logStep(`[gmail-sync] error message=${email.gmailId} stage=mark_scan_item_error reason="${markErr instanceof Error ? markErr.message : String(markErr)}"`);
+                      }
+                    }
+                  }
+            })(),
+            GMAIL_PER_EMAIL_PROCESS_TIMEOUT_MS,
+            `[Gmail Sync] Email processing timed out after 30s message=${email.gmailId}`
           );
-          const buffer = decodeGmailAttachment(data);
-          const fileSize = buffer.length;
-          const fileSha256 = createHash("sha256").update(buffer).digest("hex");
-          const fileMd5 = createHash("md5").update(buffer).digest("hex");
-          const upload = await withRetry(
-            () => uploadInvoiceAttachmentToDrive({
-              organizationId,
-              drive,
-              rootFolderId: rootId,
-              clientId: isIncomingSupplierExpense ? null : clientId,
-              clientName: null,
-              supplier: supplierName,
-              supplierTaxId: supplierMetadata.taxId,
-              documentType: classification.documentType,
-              reviewStatus: classification.reviewStatus,
-              filename,
-              mimeType: part.mimeType,
-              receivedAt: email.receivedAt,
-              documentDate: documentDateForDecision,
-              invoiceNumber: invoiceNumberForDecision,
-              amount,
-              totalAmount: finalTotalAmount,
-              buffer,
-              fileSha256,
-              fileMd5,
-            }),
-            `[gmail-sync] Drive upload retry message=${email.gmailId} file="${filename}"`
-          );
-          const link = upload.webViewLink;
-          driveLinks.push({
-            type: folderType,
-            link,
-            filename,
-            gmailAttachmentId: attachmentId ?? null,
-            mimeType: part.mimeType ?? null,
-            fileId: upload.fileId,
-            folderId: upload.folderId,
-            clientFolderId: upload.clientFolderId,
-            supplierFolderId: upload.supplierFolderId,
-            folderPath: upload.folderPath,
-            supplierName: upload.supplierName,
-            invoiceMonth: upload.invoiceMonth,
-            invoiceYear: upload.invoiceYear,
-            fileSize,
-          });
-          driveUploadsSucceeded++;
-          logStep(`[gmail-sync] Drive upload success message=${email.gmailId} file="${filename}" link=${link ?? "none"}`);
-          logStep(`[gmail-sync] DRIVE_FILE_SAVED org=${organizationId} message=${email.gmailId} file="${filename}" driveFileId=${upload.fileId ?? "none"} link=${link || "none"} folderId=${upload.folderId ?? "none"} folderPath="${upload.folderPath}"`);
-          logStep(`[gmail-sync] DRIVE_UPLOAD_SUCCESS org=${organizationId} message=${email.gmailId} file="${filename}" driveFileId=${upload.fileId ?? "none"} link=${link || "none"} folderId=${upload.folderId ?? "none"} folderPath="${upload.folderPath}"`);
-          driveSavedForPilot = true;
-          if (existingAttachment) {
-            await prisma.emailAttachment.update({
-              where: { id: existingAttachment.id },
-              data: {
-                driveFileId: upload.fileId ?? undefined,
-                driveLink: link,
-                driveUploadStatus: "uploaded",
-                driveFolderId: upload.folderId,
-                driveClientFolderId: upload.clientFolderId,
-                driveSupplierFolderId: upload.supplierFolderId,
-                driveFolderPath: upload.folderPath,
-                supplierName: upload.supplierName,
-                invoiceMonth: upload.invoiceMonth,
-                invoiceYear: upload.invoiceYear,
-              },
-            });
-          } else {
-            await prisma.emailAttachment.create({
-              data: {
-                emailMessageId: email.emailRecordId,
-                filename,
-                mimeType: part.mimeType ?? undefined,
-                gmailAttachmentId: attachmentId ?? undefined,
-                driveFileId: upload.fileId ?? undefined,
-                driveLink: link,
-                driveUploadStatus: "uploaded",
-                driveFolderId: upload.folderId,
-                driveClientFolderId: upload.clientFolderId,
-                driveSupplierFolderId: upload.supplierFolderId,
-                driveFolderPath: upload.folderPath,
-                supplierName: upload.supplierName,
-                invoiceMonth: upload.invoiceMonth,
-                invoiceYear: upload.invoiceYear,
-              },
-            });
-          }
-        } catch (err) {
-          driveUploadFailed = true;
-          driveUploadsFailed++;
+        } catch (isolationErr) {
           errorsCount++;
-          driveUploadFailureReason = shortDriveFailureReason(err);
-          console.error("Drive upload failed; continuing Gmail sync without attachment upload", err);
-          if (isGoogleReconnectRequiredError(err) || isInsufficientScopeError(err)) {
-            logStep(`[gmail-sync] Google Drive reconnect required org=${organizationId} message=${email.gmailId} file="${filename}" reason="${err instanceof Error ? err.message : String(err)}"`);
-          }
-          logStep(`[gmail-sync] Drive upload failed message=${email.gmailId} file="${filename}" reason="${err instanceof Error ? err.message : String(err)}"`);
-          if (existingAttachment) {
-            await prisma.emailAttachment.update({
-              where: { id: existingAttachment.id },
-              data: { driveUploadStatus: "pending_retry" },
-            });
-            console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${existingAttachment.id} reason=${driveUploadFailureReason}`);
-          } else {
-            const failedAttachment = await prisma.emailAttachment.create({
-              data: {
-                emailMessageId: email.emailRecordId,
-                filename,
-                mimeType: part.mimeType ?? undefined,
-                gmailAttachmentId: attachmentId ?? undefined,
-                driveUploadStatus: "pending_retry",
-              },
-            });
-            console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${failedAttachment.id} reason=${driveUploadFailureReason}`);
-          }
-        }
-      }
-
-      if (driveLinks.length === 0 && driveLinkEvidence.hasStrictDriveInvoiceEvidence) {
-        for (const link of driveLinkEvidence.links) {
-          if (link.documentKind === "unknown") continue;
-          driveLinks.push({
-            type: folderForDocumentType(classification.documentType),
-            link: link.url,
-            filename: link.inferredFilename,
-            gmailAttachmentId: null,
-            mimeType: link.documentKind === "pdf" ? "application/pdf" : "image/jpeg",
-            fileId: link.fileId,
-            fileSize: null,
-          });
-        }
-        if (driveLinks.length > 0) {
+          const timedOut =
+            isolationErr instanceof Error &&
+            isolationErr.message.includes("timed out after 30s");
+          console.error(
+            `[Gmail Sync] ${timedOut ? "Timeout" : "Error"} — skipping email ${emailOrdinal}/${emailsToProcess.length} message=${email.gmailId}; continuing scan`,
+            isolationErr
+          );
           logStep(
-            `[gmail-sync] DRIVE_LINK_BODY_REFERENCE message=${email.gmailId} link=${driveLinks[0]?.link ?? "none"} file="${driveLinks[0]?.filename ?? "unknown"}"`
+            `[gmail-sync] error message=${email.gmailId} stage=${timedOut ? "process_timeout" : "process_isolation"} reason="${isolationErr instanceof Error ? isolationErr.message : String(isolationErr)}"`
           );
-        }
-      }
-
-      const primaryDriveLink = driveLinks[0]?.link ?? null;
-      const documentDriveUploadStatus =
-        shouldUploadAttachments
-          ? primaryDriveLink
-            ? driveLinkEvidence.hasStrictDriveInvoiceEvidence && email.parts.length === 0
-              ? "not_required"
-              : "uploaded"
-            : email.parts.length > 0
-              ? "pending_retry"
-              : "not_required"
-          : "not_required";
-      const documentDriveUploadFailureReason =
-        documentDriveUploadStatus === "pending_retry"
-          ? driveUploadFailureReason ?? "upload_missing_link"
-          : null;
-      if ("review" in documentDecision && documentDecision.review && primaryDriveLink) {
-        await attachPreviewToFinancialDocumentReview(documentDecision.review.id, organizationId, {
-          previewUrl: primaryDriveLink,
-          driveUploadStatus: "uploaded",
-        });
-        logStep(`[gmail-sync] INVOICE_DRIVE_LINK_SAVED org=${organizationId} target=financialDocumentReview id=${documentDecision.review.id} message=${email.gmailId} driveUrl=${primaryDriveLink}`);
-      } else if ("review" in documentDecision && documentDecision.review && documentDriveUploadStatus === "pending_retry") {
-        const review = await prisma.financialDocumentReview.updateMany({
-          where: { id: documentDecision.review.id, organizationId },
-          data: { driveUploadStatus: "pending_retry" },
-        });
-        if (review.count !== 1) {
-          console.warn(
-            `DRIVE UPLOAD FAILED org=${organizationId} doc=financialDocumentReview:${documentDecision.review.id} reason=review_not_found_for_org`,
-          );
-        } else {
-          console.log(
-            `DRIVE UPLOAD FAILED org=${organizationId} doc=financialDocumentReview:${documentDecision.review.id} reason=${documentDriveUploadFailureReason}`,
-          );
-        }
-      }
-
-      logStep(`[gmail-sync] DB GmailScanItem upsert attempt message=${email.gmailId} duplicateKey=${documentDecision.documentFingerprint} legacyKey=${duplicateKey} type=${classification.documentType}`);
-      const scanItemDuplicateKey = documentDecision.documentFingerprint;
-      const upsertDuplicateKey = existingScanItem?.duplicateKey ?? scanItemDuplicateKey;
-      const savedScanItem = await prisma.gmailScanItem.upsert({
-        where: { organizationId_duplicateKey: { organizationId, duplicateKey: upsertDuplicateKey } },
-        create: {
-          organizationId,
-          emailMessageId: email.emailRecordId,
-          gmailMessageId: email.gmailId,
-          gmailMessageLink: gmailMessageLink(email.gmailId),
-          sender: email.from || "unknown",
-          senderEmail: email.senderEmail || null,
-          subject: email.subject,
-          occurredAt: email.receivedAt,
-          amount,
-          supplierName,
-          documentType: classification.documentType,
-          attachmentFilename,
-          driveFileLink: driveLinks[0]?.link ?? null,
-          driveUploadStatus: documentDriveUploadStatus,
-          confidenceScore: classification.confidenceScore,
-          reviewStatus: classification.reviewStatus,
-          duplicateKey: scanItemDuplicateKey,
-          decisionReason: classification.decisionReason,
-          parsedFieldsJson,
-          rawAnalysis: {
-            analysis,
-            audit: classification.audit,
-            evidence: classification.evidence,
-            confidence: classification.confidence,
-            supplier: supplierMetadata,
-            supplierTaxId: supplierMetadata.taxId,
-            supplierBranchName,
-            invoiceNumber: invoiceNumberForDecision,
-            invoiceDate: extractedDocumentDate?.toISOString() ?? null,
-            dueDate: dueDateForDecision?.toISOString() ?? null,
-            parsed_fields_json: parsedFieldsJson,
-            relevant: classification.isRelevant,
-            ocrText: {
-              pdfText,
-              visualAttachmentText,
-            },
-            hasAttachment: email.parts.length > 0,
-            filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
-          },
-        },
-        update: {
-          emailMessageId: email.emailRecordId,
-          gmailMessageLink: gmailMessageLink(email.gmailId),
-          sender: email.from || "unknown",
-          senderEmail: email.senderEmail || null,
-          subject: email.subject,
-          occurredAt: email.receivedAt,
-          amount,
-          supplierName,
-          documentType: classification.documentType,
-          attachmentFilename,
-          driveFileLink: driveLinks[0]?.link ?? existingScanItem?.driveFileLink ?? null,
-          driveUploadStatus: driveLinks[0]?.link ? "uploaded" : documentDriveUploadStatus,
-          confidenceScore: classification.confidenceScore,
-          reviewStatus: classification.reviewStatus,
-          duplicateKey: scanItemDuplicateKey,
-          decisionReason: classification.decisionReason,
-          parsedFieldsJson,
-          rawAnalysis: {
-            analysis,
-            audit: classification.audit,
-            evidence: classification.evidence,
-            confidence: classification.confidence,
-            supplier: supplierMetadata,
-            supplierTaxId: supplierMetadata.taxId,
-            supplierBranchName,
-            invoiceNumber: invoiceNumberForDecision,
-            invoiceDate: extractedDocumentDate?.toISOString() ?? null,
-            dueDate: dueDateForDecision?.toISOString() ?? null,
-            parsed_fields_json: parsedFieldsJson,
-            relevant: classification.isRelevant,
-            ocrText: {
-              pdfText,
-              visualAttachmentText,
-            },
-            hasAttachment: email.parts.length > 0,
-            filenames: email.parts.flatMap((part) => part.filename ? [part.filename] : []),
-          },
-        },
-      });
-      scanItemPersisted = true;
-      savedScanItemId = savedScanItem.id;
-      emailsSavedToGmailScanItem++;
-      dbGmailScanItemUpserts++;
-      logStep(`[gmail-sync] saved GmailScanItem message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} review=${savedScanItem.reviewStatus} relevant=${classification.isRelevant}`);
-      if (documentDriveUploadStatus === "pending_retry") {
-        console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=gmailScanItem:${savedScanItem.id} reason=${documentDriveUploadFailureReason}`);
-      }
-      if (savedScanItem.driveFileLink) {
-        logStep(`[gmail-sync] DRIVE_URL_SAVED org=${organizationId} target=gmailScanItem id=${savedScanItem.id} message=${email.gmailId} driveUrl=${savedScanItem.driveFileLink}`);
-        logStep(`[gmail-sync] INVOICE_DRIVE_LINK_SAVED org=${organizationId} target=gmailScanItem id=${savedScanItem.id} message=${email.gmailId} driveUrl=${savedScanItem.driveFileLink}`);
-      }
-      if (invoiceNeedsBusinessReview) {
-        logStep(`[gmail-sync] INVOICE_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} reason="${businessClassification.reason}"`);
-      }
-      if (visualAttachmentHints.invoiceCandidateFound && savedScanItem.reviewStatus === "needs_review") {
-        logStep(`[gmail-sync] IMAGE_INVOICE_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${savedScanItem.id} type=${savedScanItem.documentType} reason="${classification.decisionReason}"`);
-      }
-
-      if (existingScanItem && !options.forceReprocess) {
-        logStep(`[gmail-sync] duplicate GmailScanItem message=${email.gmailId}; continuing idempotent invoice/payment persistence`);
-      }
-
-      if (canPersistFinancialRecord && outcomeAllowsAutoSavePersistence && classification.reviewStatus === "auto_saved") {
-        for (const taskTitle of analysis.tasks) {
-          const existingTask = await prisma.task.findUnique({
-            where: {
-              organizationId_emailMessageId: {
-                organizationId,
-                emailMessageId: email.emailRecordId,
-              },
-            },
-          });
-          if (existingTask) continue;
-
-          await prisma.task.upsert({
-            where: {
-              organizationId_emailMessageId: {
-                organizationId,
-                emailMessageId: email.emailRecordId,
-              },
-            },
-            update: {},
-            create: {
-              organizationId,
-              title: taskTitle,
-              supplier: supplierName,
-              priority: analysis.confidence < 0.7 ? "high" : "medium",
-              source: email.source,
-              emailMessageId: email.emailRecordId,
-            },
-          });
-          tasksCreated++;
-        }
-      }
-
-      if (isInvoiceRecordDocument(classification.documentType)) {
-        if (!clientId) {
-          if (isIncomingSupplierExpense) {
-            logStep(`[gmail-sync] supplier expense invoice message=${email.gmailId}; skipping Client placeholder creation supplier="${supplierName}"`);
-          } else if (canPersistFinancialRecord && outcomeAllowsAutoSavePersistence && classification.reviewStatus === "auto_saved") {
-            const saved = await ensureInvoiceClient({
-              organizationId,
-              supplierName,
-              senderEmail: email.senderEmail,
-              domain: email.domain,
-              receivedAt: email.receivedAt,
-            });
-            clientId = saved.id;
-            if (email.domain) clientIdByDomain.set(email.domain, saved.id);
-            if (saved.created) clientsCreated++;
+          try {
             await prisma.emailMessage.update({
               where: { id: email.emailRecordId },
-              data: { clientId },
+              data: { processedAt: new Date() },
             });
-            logStep(`[gmail-sync] invoice client created message=${email.gmailId} clientId=${clientId} supplier="${supplierName}"`);
+          } catch {
+            /* ignore mark-processed failure after timeout/skip */
           }
-        }
-        logStep(`[gmail-sync] invoice detected message=${email.gmailId} type=${classification.documentType} clientId=${clientId ?? "none"} amount=${amount ?? "missing"} drive=${driveLinks[0]?.link ? "yes" : "no"}`);
-      }
-
-      if (isCustomerInvoice && documentDecision.action !== "filtered" && clientId && isInvoiceRecordDocument(classification.documentType)) {
-        const invoiceParts = email.parts.filter((part) => isPdfAttachmentPart(part) || isInvoiceImageAttachmentPart(part));
-        const shouldUseAttachmentInvoices = invoiceParts.length > 1 || invoiceParts.some(isInvoiceImageAttachmentPart);
-        const createTargets = shouldUseAttachmentInvoices ? invoiceParts : [null];
-        for (const invoicePart of createTargets) {
           try {
-          const targetFilename = invoicePart ? attachmentFilenameForPart(invoicePart) : attachmentFilename;
-          const targetAttachmentId = invoicePart?.body?.attachmentId ?? null;
-          const targetDriveLink = invoicePart ? findDriveLinkForAttachment(driveLinks, invoicePart) : driveLinks[0];
-          const targetAnalysis = invoicePart
-            ? await analyzeInvoiceAttachmentForEmail({
-                gmail,
-                gmailMessageId: email.gmailId,
-                part: invoicePart,
-                subject: email.subject,
-                bodyText: email.bodyText,
-                sender: email.from,
-                organizationId,
-              })
-            : { skipped: false as const, analysis, attachmentText: "" };
-          if (targetAnalysis.skipped) {
-            logStep(`[gmail-sync] invoice attachment skipped message=${email.gmailId} file="${targetFilename ?? "unnamed"}" reason="${targetAnalysis.reason}"`);
-            continue;
-          }
-          const targetBodyForDetection = invoicePart
-            ? [email.bodyText, targetAnalysis.attachmentText && `--- ATTACHMENT OCR TEXT ---\n${targetAnalysis.attachmentText}`].filter(Boolean).join("\n\n")
-            : bodyForAnalysis;
-          const targetSupplierEvidenceText = [email.subject, targetBodyForDetection].filter(Boolean).join("\n\n");
-          const targetInvoiceMatch = invoicePart
-            ? detectInvoice(email.subject, targetBodyForDetection, [invoicePart])
-            : invoiceMatch;
-          if (invoicePart && !targetInvoiceMatch.isInvoice && !isInvoiceRecordDocument(normalizeInvoiceDocumentType(targetAnalysis.analysis.documentType, classification.documentType))) {
-            logStep(`[gmail-sync] invoice PDF skipped message=${email.gmailId} file="${targetFilename ?? "unnamed"}" reason="per_pdf_not_invoice"`);
-            continue;
-          }
-
-          const attachmentMoneyDecision = resolveGmailOrgMoneyDecision({
-            organizationId,
-            documentType: targetAnalysis.analysis.documentType,
-            analysis: targetAnalysis.analysis,
-            regexDetectedAmount: targetInvoiceMatch.amount,
-            attachmentAnalysis: targetAnalysis.analysis,
-          });
-          const targetAmount = attachmentMoneyDecision.selectedAmount;
-          const targetSupplierMetadata = invoicePart
-            ? resolveSupplierMetadata({
-                analysisSupplier: targetAnalysis.analysis.supplier,
-                analysisSupplierTaxId: targetAnalysis.analysis.supplierTaxId,
-                bodyText: targetSupplierEvidenceText,
-                senderName: email.senderName,
-                senderEmail: email.senderEmail,
-                senderDomain: email.domain,
-                ownerEmails,
-                knownSupplierNames,
-                logStep,
-              })
-            : supplierMetadata;
-          const targetSupplierName = targetSupplierMetadata.name;
-          if (invoicePart) {
-            const targetOcrClassifierText = `${targetSupplierEvidenceText}\n${targetAnalysis.analysis.supplier ?? ""}`;
-            const targetOcrSupplierClassifier = classifyOcrSupplierText(targetOcrClassifierText);
-            logStep(`[gmail-sync] OCR_CLASSIFIER_INPUT message=${email.gmailId} file="${targetFilename ?? "unnamed"}" chars=${targetOcrClassifierText.length} normalizedPreview="${truncateForLog(normalizeOcrSupplierText(targetOcrClassifierText), 500)}"`);
-            logStep(`[gmail-sync] OCR_CLASSIFIER_RESULT message=${email.gmailId} file="${targetFilename ?? "unnamed"}" supplier="${targetOcrSupplierClassifier?.supplierName ?? "none"}" confidence=${targetOcrSupplierClassifier?.confidence ?? 0} keyword="${targetOcrSupplierClassifier?.keyword ?? "none"}"`);
-            if (targetSupplierMetadata.source === "unknown") {
-              logStep(`[gmail-sync] SUPPLIER_NOT_FOUND message=${email.gmailId} file="${targetFilename ?? "unnamed"}" reason="no OCR/document/AI/sender/domain supplier matched" analysisSupplier="${targetAnalysis.analysis.supplier}" ocrPreview="${truncateForLog(targetAnalysis.attachmentText || targetBodyForDetection, 400)}"`);
-            } else {
-              logStep(`[gmail-sync] SUPPLIER_DETECTED message=${email.gmailId} file="${targetFilename ?? "unnamed"}" supplier="${targetSupplierName}" confidence=${targetSupplierMetadata.confidence} source=${targetSupplierMetadata.source}${targetSupplierMetadata.keyword ? ` keyword="${targetSupplierMetadata.keyword}"` : ""}`);
-            }
-          }
-          const targetDocumentType = normalizeInvoiceDocumentType(targetAnalysis.analysis.documentType, classification.documentType);
-          if (targetAmount == null) {
-            logStep(`[gmail-sync] invoice amount missing message=${email.gmailId} file="${targetFilename ?? "body"}"; skipping customer invoice create`);
-            continue;
-          }
-          const invoiceAmount = targetAmount;
-          const invoiceNeedsReviewSave = classification.reviewStatus === "needs_review" || !isUsableSupplierName(targetSupplierName);
-          const invoiceSupplierName = invoiceNeedsReviewSave && !isUsableSupplierName(targetSupplierName)
-            ? UNKNOWN_SUPPLIER_FALLBACK
-            : targetSupplierName;
-          const invoiceNumber = targetAnalysis.analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, targetBodyForDetection, targetFilename ?? ""].join("\n"));
-          // F5 (stage 2): אין תאריך אמיתי → מדלגים על יצירת ה-Invoice (כמו הדילוג על amount==null).
-          // המסמך כבר needs_review (שלב 1) ויופיע בהשלמת חשבוניות למילוי תאריך.
-          const invoiceDate = normalizeBusinessDate(targetAnalysis.analysis.invoiceDate, null);
-          if (invoiceDate == null) {
-            logStep(`[gmail-sync] invoice date missing message=${email.gmailId} file="${targetFilename ?? "body"}"; skipping customer invoice create — held for review`);
-            continue;
-          }
-          const attachmentInvoiceDedupeKey = invoicePart
-            ? buildInvoiceAttachmentDedupeKey({
-                emailMessageId: email.emailRecordId,
-                gmailMessageId: email.gmailId,
-                attachmentFilename: targetFilename,
-                gmailAttachmentId: targetAttachmentId,
-              })
-            : null;
-          logStep(`[gmail-sync] DB Invoice insert attempt message=${email.gmailId} file="${targetFilename ?? "body"}" clientId=${clientId} supplier="${invoiceSupplierName}" amount=${invoiceAmount} invoiceNumber=${invoiceNumber ?? "none"} date=${invoiceDate.toISOString()} type=${targetDocumentType}`);
-          try {
-            const createdInvoice = await saveDetectedInvoice({
-              organizationId,
-              clientId,
-              amount: invoiceAmount,
-              currency: targetAnalysis.analysis.currency,
-              date: invoiceDate,
-              dueDate: normalizeBusinessDate(targetAnalysis.analysis.dueDate, null),
-              invoiceNumber,
-              supplierName: invoiceSupplierName,
-              documentType: targetDocumentType,
-              status: invoiceNeedsReviewSave ? "needs_review" : undefined,
-              fromEmail: email.senderEmail,
-              subject: email.subject,
-              emailMessageId: email.emailRecordId,
-              gmailMessageId: email.gmailId,
-              invoiceDedupeKey: shouldUseAttachmentInvoices ? attachmentInvoiceDedupeKey : null,
-              attachmentFilename: shouldUseAttachmentInvoices ? targetFilename : null,
-              gmailAttachmentId: shouldUseAttachmentInvoices ? targetAttachmentId : null,
-              allowMultipleInvoicesForMessage: shouldUseAttachmentInvoices,
-              driveUrl: targetDriveLink?.link ?? null,
-              driveFileId: targetDriveLink?.fileId ?? null,
-              driveFileUrl: targetDriveLink?.link ?? null,
-              driveUploadStatus: targetDriveLink?.link
-                ? "uploaded"
-                : shouldUploadAttachments && email.parts.length > 0
-                  ? "pending_retry"
-                  : "not_required",
-              driveFolderId: targetDriveLink?.folderId ?? null,
-              driveClientFolderId: targetDriveLink?.clientFolderId ?? null,
-              driveSupplierFolderId: targetDriveLink?.supplierFolderId ?? null,
-              driveFolderPath: targetDriveLink?.folderPath ?? null,
-              invoiceMonth: targetDriveLink?.invoiceMonth ?? invoiceDate.getMonth() + 1,
-              invoiceYear: targetDriveLink?.invoiceYear ?? invoiceDate.getFullYear(),
-            });
-            if (createdInvoice) {
-              invoicesCreated++;
-              invoicePersistedForPilot = true;
-              if (createdInvoice.driveUploadStatus === "pending_retry") {
-                console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=invoice:${createdInvoice.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
-              }
-              logStep(`[gmail-sync] invoice save success message=${email.gmailId} file="${targetFilename ?? "body"}" invoiceId=${createdInvoice.id} amount=${invoiceAmount} supplier="${invoiceSupplierName}" drive=${targetDriveLink?.link ?? "none"}`);
-            } else {
-              duplicatesSkipped++;
-              logStep(`[gmail-sync] duplicate invoice ignored message=${email.gmailId} file="${targetFilename ?? "body"}" supplier="${invoiceSupplierName}" invoiceNumber=${invoiceNumber ?? "none"} amount=${invoiceAmount} date=${invoiceDate.toISOString()}`);
-              logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=invoice_exists key=${invoiceNumber ?? targetFilename ?? email.gmailId} message=${email.gmailId}`);
-            }
-          } catch (err) {
-            errorsCount++;
-            logStep(`[gmail-sync] invoice save failed message=${email.gmailId} file="${targetFilename ?? "body"}" supplier="${invoiceSupplierName}" reason="${err instanceof Error ? err.message : String(err)}"`);
-            // Per-attachment isolation: skip this attachment and continue the scan.
-            continue;
-          }
-          } catch (attachmentErr) {
-            errorsCount++;
-            console.error(
-              `[gmail-sync] invoice attachment processing failed message=${email.gmailId} file="${invoicePart ? attachmentFilenameForPart(invoicePart) : "body"}"`,
-              attachmentErr
+            await touchGmailScanHeartbeat(
+              log.id,
+              `process_${label}_email_${email.gmailId}_isolated`,
+              organizationId
             );
-            logStep(
-              `[gmail-sync] error message=${email.gmailId} stage=invoice_attachment reason="${attachmentErr instanceof Error ? attachmentErr.message : String(attachmentErr)}"`
-            );
-          }
-        }
-      } else {
-        if (isInvoiceRecordDocument(classification.documentType) && classification.reviewStatus === "needs_review") {
-          logStep(`[gmail-sync] invoice held for review message=${email.gmailId} reason="${classification.decisionReason}"`);
-        } else {
-          const reasons = [
-            isIncomingSupplierExpense && "incoming_supplier_expense_saved_as_supplier_payment",
-            isInvoiceRecordDocument(classification.documentType) && !clientId && "no_client_id",
-            !isInvoiceRecordDocument(classification.documentType) && `document_type_${classification.documentType}`,
-          ].filter(Boolean);
-          logStep(`[gmail-sync] invoice rejected message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
-        }
-      }
-
-      const senderEmailLower = (email.senderEmail ?? "").trim().toLowerCase();
-      const senderIsOwner = !!senderEmailLower && ownerEmails.has(senderEmailLower);
-      const paymentEligibility = supplierPaymentCreationEligibility({
-        classification,
-        amount,
-        supplierName,
-        senderIsOwner,
-        supplierGate,
-        fingerprintGate,
-        duplicateGate,
-      });
-      const canPersistSupplierPayment = documentDecision.action !== "filtered" && !isCustomerInvoice && paymentEligibility.allowed;
-      if (canPersistSupplierPayment) {
-        const supplierPaymentNeedsReview = paymentEligibility.persistAsNeedsReview;
-        const paymentSupplierName = supplierGate.canonicalSupplierName ?? supplierName;
-        const paymentEvaluation = evaluateFinanceTrustGates({
-          selectedAmount: finalTotalAmount,
-          needsReview: supplierPaymentNeedsReview,
-          amountGate,
-          supplierGate,
-          fingerprintGate,
-          duplicateGate,
-          documentType: documentDecision.documentType,
-          confidenceScore: classification.confidence,
-        });
-        const paymentAmount = paymentEvaluation.paymentAmount;
-        const paymentApprovalStatus = paymentEvaluation.approvalStatus;
-        if (!paymentEvaluation.shouldCreatePayment) {
-          logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=${paymentEvaluation.blockReason ?? FINANCE_AMOUNT_UNRESOLVED_REASON} status=${moneyDecision.status}`);
-        } else {
-        if (paymentAmount == null) {
-          logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=unexpected_null_amount`);
-        } else {
-        const resolvedPaymentAmount = paymentAmount;
-        const paymentIdentity = buildPaymentLookupsFromCanonical({
-          organizationId,
-          canonicalFingerprint: documentDecision.documentFingerprint,
-          supplierName: paymentSupplierName,
-          supplierTaxId: supplierMetadata.taxId,
-          invoiceNumber: invoiceNumberForDecision,
-          totalAmount: resolvedPaymentAmount,
-          documentDate: email.receivedAt,
-          documentType: documentDecision.documentType,
-          subject: email.subject,
-          legacyGmailScanDuplicateKey: duplicateKey,
-          sourceFingerprint: documentDecision.sourceFingerprint,
-        });
-        const duplicateHash = paymentIdentity.duplicateHash;
-
-        const existingPayment = await findExistingSupplierPayment({
-          organizationId,
-          duplicateHash,
-          lookupClauses: paymentIdentity.lookupClauses,
-          emailMessageId: email.emailRecordId,
-          gmailMessageId: email.gmailId,
-          supplier: paymentSupplierName,
-          amount: paymentAmount,
-          date: email.receivedAt,
-        });
-
-        const documentLink =
-          classification.documentType === "payment_request"
-            ? driveLinks[0]?.link
-            : existingPayment?.documentLink;
-        const invoiceLink =
-          classification.documentType === "invoice" || classification.documentType === "receipt" || classification.documentType === "tax_invoice_receipt"
-            ? driveLinks[0]?.link
-            : existingPayment?.invoiceLink;
-
-        const missingInvoice =
-          Boolean(analysis.paymentRequired || classification.documentType === "payment_request") &&
-          !invoiceLink &&
-          Boolean(documentLink || analysis.paymentRequired);
-
-        if (existingPayment) {
-          const existingPaymentAmount = Number(existingPayment.amount);
-          const existingPaymentTotalAmount = Number(existingPayment.totalAmount);
-          const existingPaymentHasValidAmount =
-            (Number.isFinite(existingPaymentAmount) && existingPaymentAmount > 0) ||
-            (Number.isFinite(existingPaymentTotalAmount) && existingPaymentTotalAmount > 0);
-          if (existingPaymentHasValidAmount) {
-            duplicatesSkipped++;
-          }
-          paymentPersistedForPilot = true;
-          logStep(`[gmail-sync] DB SupplierPayment update attempt message=${email.gmailId} id=${existingPayment.id}`);
-          if (existingPaymentHasValidAmount) {
-            logStep(`[gmail-sync] DUPLICATE_SKIPPED org=${organizationId} reason=supplier_payment_exists key=${duplicateHash} message=${email.gmailId} paymentId=${existingPayment.id}`);
-          } else {
-            logStep(`[gmail-sync] REPROCESSING_EMPTY_DUPLICATE org=${organizationId} reason=supplier_payment_exists key=${duplicateHash} message=${email.gmailId} paymentId=${existingPayment.id}`);
-          }
-          const updatedPayment = await prisma.supplierPayment.update({
-            where: { id: existingPayment.id },
-            data: {
-              documentLink: documentLink ?? existingPayment.documentLink,
-              invoiceLink: invoiceLink ?? existingPayment.invoiceLink,
-              driveFileId: driveLinks[0]?.fileId ?? existingPayment.driveFileId,
-              driveFileUrl: driveLinks[0]?.link ?? existingPayment.driveFileUrl,
-              driveUploadStatus: driveLinks[0]?.link ? "uploaded" : existingPayment.driveUploadStatus ?? documentDriveUploadStatus,
-              driveFolderId: driveLinks[0]?.folderId ?? existingPayment.driveFolderId,
-              driveClientFolderId: driveLinks[0]?.clientFolderId ?? existingPayment.driveClientFolderId,
-              driveSupplierFolderId: driveLinks[0]?.supplierFolderId ?? existingPayment.driveSupplierFolderId,
-              driveFolderPath: driveLinks[0]?.folderPath ?? existingPayment.driveFolderPath,
-              supplierName: driveLinks[0]?.supplierName ?? paymentSupplierName,
-              invoiceMonth: driveLinks[0]?.invoiceMonth ?? existingPayment.invoiceMonth,
-              invoiceYear: driveLinks[0]?.invoiceYear ?? existingPayment.invoiceYear,
-              invoiceNumber: invoiceNumberForDecision ?? existingPayment.invoiceNumber,
-              // תאריך לטאבים החודשיים נחתם רק כשחולץ תאריך אמיתי מהמסמך; בלי תאריך —
-              // משמיטים את השדה כדי לא לדרוס ערך קיים בתאריך קבלת המייל.
-              ...(extractedDocumentDate ? { normalizedDocumentDate: extractedDocumentDate } : {}),
-              documentFingerprint: documentDecision.documentFingerprint,
-              sourceFingerprint: documentDecision.sourceFingerprint,
-              documentTypeDetailed: documentDecision.documentType,
-              supplierTaxId: supplierMetadata.taxId ?? existingPayment.supplierTaxId,
-              amountBeforeVat: roundMoneyOrNull(
-                moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? existingPayment.amountBeforeVat
-              ),
-              vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount ?? existingPayment.vatAmount),
-              totalAmount: finalTotalAmount ?? paymentAmount ?? existingPayment.totalAmount,
-              confidenceScore: classification.confidence,
-              parsedFieldsJson,
-              approvalStatus: paymentApprovalStatus,
-              sourcesJson: existingPayment.source === "whatsapp" || existingPayment.source === "both" ? ["gmail", "whatsapp"] : ["gmail"],
-              missingInvoice,
-              amount: paymentAmount ?? existingPayment.amount,
-              dueDate: dueDateForDecision ?? existingPayment.dueDate,
-              emailSender: email.from,
-              lastSource: "gmail",
-              source: existingPayment.source === "whatsapp" || existingPayment.source === "both" ? "both" : existingPayment.source,
-              sourceCount: Math.max(existingPayment.sourceCount ?? 1, 1) + (existingPayment.source === "whatsapp" ? 1 : 0),
-              duplicateDetected: existingPayment.source === "whatsapp" || existingPayment.duplicateDetected,
-              duplicateReason: existingPayment.source === "whatsapp" ? "supplier_amount_invoice_date" : existingPayment.duplicateReason,
-              firstSeenAt: existingPayment.firstSeenAt ?? existingPayment.createdAt,
-              lastSeenAt: new Date(),
-            },
-          });
-          if (updatedPayment.driveUploadStatus === "pending_retry") {
-            console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=supplierPayment:${updatedPayment.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
-          }
-          if (paymentEvaluation.shouldAppendToSheet) {
-            await appendSupplierPaymentToSheet({
-              organizationId,
-              paymentId: existingPayment.id,
-              supplier: paymentSupplierName,
-              amount: paymentAmount ?? existingPayment.amount,
-              date: email.receivedAt,
-              dueDate: dueDateForDecision ?? existingPayment.dueDate,
-              paid: existingPayment.paid,
-              missingInvoice,
-              documentLink,
-              invoiceLink,
-              gmailLink: gmailMessageLink(email.gmailId),
-              supplierTaxId: supplierMetadata.taxId,
-              invoiceNumber: invoiceNumberForDecision,
-              invoiceDate: documentDateForDecision,
-              source: existingPayment.source === "whatsapp" || existingPayment.source === "both" ? "both" : "gmail",
-              duplicateDetected: existingPayment.source === "whatsapp" || existingPayment.duplicateDetected,
-              duplicateReason: existingPayment.source === "whatsapp" ? "supplier_amount_invoice_date" : existingPayment.duplicateReason,
-              driveFolderLink: driveLinks[0]?.folderId ? `https://drive.google.com/drive/folders/${driveLinks[0].folderId}` : null,
-              paidDate: existingPayment.paid ? existingPayment.updatedAt : null,
-              receiptLink: existingPayment.paid ? existingPayment.documentLink ?? existingPayment.invoiceLink : null,
-              createdAt: existingPayment.createdAt,
-              updatedAt: new Date(),
-            }).then((sheet) => {
-              sheetsUpdated++;
-              sheetsUpdatedForPilot = true;
-              logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${existingPayment.id} spreadsheet=${sheet.spreadsheetId}`);
-            }).catch((err) => {
-              console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${existingPayment.id}`, err);
-              logStep(`[gmail-sync] Sheets append failed message=${email.gmailId} reason="${err instanceof Error ? err.message : String(err)}"`);
-            });
-          } else {
-            logStep(`[gmail-sync] Sheets append skipped message=${email.gmailId} paymentId=${existingPayment.id} reason="missing_amount_needs_review"`);
-          }
-          if (missingInvoice) {
-            await createMissingInvoiceTaskOnce({
-              organizationId,
-              supplierName: paymentSupplierName,
-              subject: email.subject,
-              amount: resolvedPaymentAmount,
-              emailMessageId: email.emailRecordId,
-              gmailMessageId: email.gmailId,
-            });
-          } else if (invoiceLink) {
-            await closeMissingInvoiceTask(organizationId, email.emailRecordId);
-          }
-          logStep(`[gmail-sync] updated SupplierPayment message=${email.gmailId} id=${existingPayment.id}`);
-          if (supplierPaymentNeedsReview) {
-            logStep(`[gmail-sync] SUPPLIER_PAYMENT_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${existingPayment.id} reason="${classification.decisionReason}"`);
-          }
-        } else if (extractedDocumentDate == null) {
-          // F5 (stage 2): אין תאריך מסמך אמיתי → לא יוצרים SupplierPayment אוטומטי חדש.
-          // המסמך כבר needs_review (שלב 1) ויופיע בהשלמת חשבוניות למילוי תאריך (fail-closed).
-          // עדכון תשלום קיים מותר (הענף למעלה) — לרשומה הקיימת כבר יש תאריך.
-          logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=document_date_missing_held_for_review`);
-        } else {
-          const dueDate = dueDateForDecision;
-          logStep(`[gmail-sync] DB SupplierPayment insert attempt message=${email.gmailId} amount=${paymentAmount} supplier="${paymentSupplierName}"`);
-          const createResult = await createSupplierPaymentIfTrusted({
-            evaluation: paymentEvaluation,
-            sourceLookup: { gmailMessageId: email.gmailId },
-            data: {
-              organizationId,
-              supplier: paymentSupplierName,
-              amount: resolvedPaymentAmount,
-              currency: analysis.currency,
-              ...gmailSupplierPaymentListVisibilityDates(documentDateForDecision),
-              dueDate,
-              paid: false,
-              documentLink,
-              invoiceLink,
-              driveFileId: driveLinks[0]?.fileId ?? null,
-              driveFileUrl: driveLinks[0]?.link ?? null,
-              driveUploadStatus: documentDriveUploadStatus,
-              driveFolderId: driveLinks[0]?.folderId ?? null,
-              driveClientFolderId: driveLinks[0]?.clientFolderId ?? null,
-              driveSupplierFolderId: driveLinks[0]?.supplierFolderId ?? null,
-              driveFolderPath: driveLinks[0]?.folderPath ?? null,
-              supplierName: driveLinks[0]?.supplierName ?? paymentSupplierName,
-              invoiceMonth: driveLinks[0]?.invoiceMonth ?? documentDateForDecision.getMonth() + 1,
-              invoiceYear: driveLinks[0]?.invoiceYear ?? documentDateForDecision.getFullYear(),
-              invoiceNumber: invoiceNumberForDecision,
-              documentFingerprint: documentDecision.documentFingerprint,
-              sourceFingerprint: documentDecision.sourceFingerprint,
-              documentTypeDetailed: documentDecision.documentType,
-              supplierTaxId: supplierMetadata.taxId,
-              amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
-              vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
-              totalAmount: finalTotalAmount ?? paymentAmount ?? null,
-              confidenceScore: classification.confidence,
-              parsedFieldsJson,
-              approvalStatus: paymentApprovalStatus,
-              sourcesJson: ["gmail"],
-              emailSender: email.from,
-              paymentRequired: analysis.paymentRequired,
-              missingInvoice,
-              duplicateHash,
-              subject: email.subject,
-              source: email.source,
-              emailMessageId: email.emailRecordId,
-            },
-          });
-          if (createResult.skipped || !createResult.payment) {
-            logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=${createResult.reason ?? "trust_gate_blocked"}`);
-          } else {
-          const payment = createResult.payment;
-          paymentsCreated++;
-          paymentPersistedForPilot = true;
-          if (payment.driveUploadStatus === "pending_retry") {
-            console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=supplierPayment:${payment.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
-          }
-          if (paymentEvaluation.shouldAppendToSheet) {
-            await appendSupplierPaymentToSheet({
-              organizationId,
-              paymentId: payment.id,
-              supplier: paymentSupplierName,
-              amount: resolvedPaymentAmount,
-              date: email.receivedAt,
-              dueDate,
-              paid: false,
-              missingInvoice,
-              documentLink,
-              invoiceLink,
-              gmailLink: gmailMessageLink(email.gmailId),
-              supplierTaxId: supplierMetadata.taxId,
-              invoiceNumber: invoiceNumberForDecision,
-              invoiceDate: documentDateForDecision,
-              source: "gmail",
-              duplicateDetected: false,
-              duplicateReason: null,
-              driveFolderLink: driveLinks[0]?.folderId ? `https://drive.google.com/drive/folders/${driveLinks[0].folderId}` : null,
-              paidDate: payment.paid ? payment.updatedAt : null,
-              receiptLink: payment.paid ? payment.documentLink ?? payment.invoiceLink : null,
-              createdAt: payment.createdAt,
-              updatedAt: payment.updatedAt,
-            }).then((sheet) => {
-              sheetsUpdated++;
-              sheetsUpdatedForPilot = true;
-              logStep(`[gmail-sync] Sheets append success message=${email.gmailId} paymentId=${payment.id} spreadsheet=${sheet.spreadsheetId}`);
-            }).catch((err) => {
-              console.error(`[gmail-sync] Sheets append failed message=${email.gmailId} paymentId=${payment.id}`, err);
-              logStep(`[gmail-sync] Sheets append failed message=${email.gmailId} reason="${err instanceof Error ? err.message : String(err)}"`);
-            });
-          } else {
-            logStep(`[gmail-sync] Sheets append skipped message=${email.gmailId} paymentId=${payment.id} reason="missing_amount_needs_review"`);
-          }
-          logStep(`[gmail-sync] saved SupplierPayment message=${email.gmailId} id=${payment.id} amount=${paymentAmount} supplier="${paymentSupplierName}"`);
-          if (supplierPaymentNeedsReview) {
-            logStep(`[gmail-sync] SUPPLIER_PAYMENT_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${payment.id} reason="${classification.decisionReason}"`);
-          }
-
-          if (classification.documentType === "invoice" || classification.documentType === "tax_invoice_receipt" || missingInvoice) {
-            await createPaymentAlertOnce({
-              organizationId,
-              type: missingInvoice ? "missing_invoice" : "new_invoice",
-              supplierName: paymentSupplierName,
-              subject: email.subject,
-              amount: resolvedPaymentAmount,
-              gmailMessageId: email.gmailId,
-            });
-            if (missingInvoice) {
-              await createMissingInvoiceTaskOnce({
-                organizationId,
-                supplierName: paymentSupplierName,
-                subject: email.subject,
-                amount: resolvedPaymentAmount,
-                emailMessageId: email.emailRecordId,
-                gmailMessageId: email.gmailId,
-              });
-            }
-            if (!missingInvoice) {
-              await notifyNewInvoice(organizationId, paymentSupplierName, paymentAmount);
-            }
-          }
-          }
-        }
-        }
-        }
-      } else {
-        const reasons = [
-          documentDecision.action === "filtered" && "financial_document_filtered",
-          ...paymentEligibility.reasons,
-        ].filter(Boolean);
-        logStep(`[gmail-sync] SupplierPayment save skipped message=${email.gmailId} reason="${reasons.join(",") || "unknown"}"`);
-      }
-
-      if (documentDecision.action !== "filtered" && classification.isRelevant && driveLinks.length > 0) {
-        const driveSync = await ensureSupplierPaymentsForDriveLinks({
-          organizationId,
-          email,
-          driveLinks,
-          classification,
-          analysis,
-          amount,
-          supplierName,
-          supplierMetadata,
-          invoiceNumber: invoiceNumberForDecision,
-          documentDate: documentDateForDecision,
-          extractedDocumentDate,
-          dueDate: dueDateForDecision,
-          parsedFieldsJson,
-          documentDecision,
-          duplicateKey,
-          logStep,
-        });
-        paymentsCreated += driveSync.created;
-        sheetsUpdated += driveSync.sheetsUpdated;
-        if (driveSync.created > 0) paymentPersistedForPilot = true;
-        if (driveSync.sheetsUpdated > 0) sheetsUpdatedForPilot = true;
-      }
-
-      if (
-        documentDecision.action === "accepted" &&
-        classification.isRelevant &&
-        !invoicePersistedForPilot &&
-        !paymentPersistedForPilot
-      ) {
-        logStep(`[gmail-sync] persistence fallback needs_review message=${email.gmailId} reason="no_invoice_or_supplier_payment_created"`);
-        await recordFinancialDocumentDecision({
-          organizationId,
-          source: "gmail",
-          sender: email.senderEmail || email.from || null,
-          subject: email.subject,
-          fileName: attachmentFilename,
-          fileSize: null,
-          supplierName,
-          supplierTaxId: supplierMetadata.taxId,
-          invoiceNumber: invoiceNumberForDecision,
-          documentDate: extractedDocumentDate,
-          dueDate: dueDateForDecision,
-          amountBeforeVat: roundMoneyOrNull(moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat),
-          vatAmount: roundMoneyOrNull(moneyDecision.vatAmount ?? analysis.vatAmount),
-          totalAmount: finalTotalAmount,
-          documentType: classification.documentType,
-          driveFileUrl: driveLinks[0]?.link ?? null,
-          confidenceScore: Math.min(classification.confidence, 0.79),
-          uncertaintyReason: "no invoice or supplier payment was created",
-          forceNeedsReview: true,
-          parsedFieldsJson,
-          rawAnalysis: {
-            analysis,
-            classification,
-            businessClassification,
-            parsed_fields_json: parsedFieldsJson,
-            gmailMessageId: email.gmailId,
-          },
-          emailMessageId: email.emailRecordId,
-          gmailMessageId: email.gmailId,
-        });
-      }
-
-      await prisma.emailMessage.update({
-        where: { id: email.emailRecordId },
-        data: { processedAt: new Date() },
-      });
-      logStep(`[gmail-sync] DB mark processed success message=${email.gmailId}`);
-      completeCoreWorkflowStage(messageTrace, "message_process", "completed", { health: "Healthy" });
-      if (classification.isRelevant && (savedScanItemId || invoicePersistedForPilot || paymentPersistedForPilot)) {
-        logStep(
-          `[gmail-sync] PILOT_FLOW_SUCCESS org=${organizationId} message=${email.gmailId} scanItem=${savedScanItemId ?? "none"} invoice=${invoicePersistedForPilot} payment=${paymentPersistedForPilot} drive=${driveSavedForPilot || Boolean(driveLinks[0]?.link)} sheets=${sheetsUpdatedForPilot} type=${classification.documentType} review=${classification.reviewStatus}`
-        );
-      }
-        } catch (err) {
-          errorsCount++;
-          emitCoreWorkflowFailure(messageTrace, "message_process", err);
-          console.error(`[gmail-sync] processing failed message=${email.gmailId}`, err);
-          logStep(`[gmail-sync] error message=${email.gmailId} stage=process_save reason="${err instanceof Error ? err.message : String(err)}"`);
-          if (!scanItemPersisted) {
-            try {
-              await saveRejectedScanItem(email, `process_save_failed: ${err instanceof Error ? err.message : String(err)}`);
-              await prisma.emailMessage.update({
-                where: { id: email.emailRecordId },
-                data: { processedAt: new Date() },
-              });
-            } catch (fallbackErr) {
-              console.error(`[gmail-sync] fallback GmailScanItem save failed message=${email.gmailId}`, fallbackErr);
-              logStep(`[gmail-sync] error message=${email.gmailId} stage=fallback_scan_item_save reason="${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}"`);
-            }
-          } else if (invoicePersistedForPilot || paymentPersistedForPilot) {
-            // F14: הרשומה הפיננסית כבר נשמרה בהצלחה — הכשל היה בצעד צדדי מאוחר
-            // (Sheets/משימות/התראות). דריסת auto_saved ל-needs_review כאן הייתה
-            // מעלימה את החשבונית מטאב "מאושר" למרות שנקלטה תקין.
-            logStep(`[gmail-sync] late-step failure after financial record persisted message=${email.gmailId} — keeping reviewStatus unchanged`);
-          } else if (savedScanItemId || currentDuplicateKey) {
-            try {
-              // עדכון לפי id כשידוע — currentDuplicateKey הוא המפתח ה-legacy
-              // בעוד שהרשומה נשמרת עם מפתח SCFC, כך שעדכון לפי המפתח החטיא.
-              await prisma.gmailScanItem.update({
-                where: savedScanItemId
-                  ? { id: savedScanItemId }
-                  : { organizationId_duplicateKey: { organizationId, duplicateKey: currentDuplicateKey! } },
-                data: {
-                  reviewStatus: "needs_review",
-                  decisionReason: `process_save_failed: ${err instanceof Error ? err.message : String(err)}`,
-                },
-              });
-            } catch (markErr) {
-              console.error(`[gmail-sync] failed marking GmailScanItem error message=${email.gmailId}`, markErr);
-              logStep(`[gmail-sync] error message=${email.gmailId} stage=mark_scan_item_error reason="${markErr instanceof Error ? markErr.message : String(markErr)}"`);
-            }
+          } catch {
+            /* ignore heartbeat failure during isolation recovery */
           }
         } finally {
-          // Always advance progress even when this email failed — never abort the whole scan.
+          // Always advance progress even on timeout/skip so status polling is not frozen.
           emailsAnalyzedInProcessing++;
           try {
-            await maybeSaveScanProgress();
+            await maybeSaveScanProgress(true);
           } catch (progressErr) {
             console.error(`[gmail-sync] progress save failed after message=${email.gmailId}`, progressErr);
           }
-          // Heartbeat after EVERY email so OCR-heavy attachments cannot trip heartbeat_stale.
           try {
             await touchGmailScanHeartbeat(
               log.id,
@@ -3640,30 +3689,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           try {
             if (await shouldStopScan()) {
               stopProcessing = true;
-              break;
             }
           } catch (stopErr) {
             console.error(`[gmail-sync] shouldStopScan failed after message=${email.gmailId}`, stopErr);
-          }
-        }
-        } catch (isolationErr) {
-          errorsCount++;
-          emailsAnalyzedInProcessing++;
-          console.error(
-            `[gmail-sync] per-email isolation catch message=${email.gmailId}; continuing scan`,
-            isolationErr
-          );
-          logStep(
-            `[gmail-sync] error message=${email.gmailId} stage=process_isolation reason="${isolationErr instanceof Error ? isolationErr.message : String(isolationErr)}"`
-          );
-          try {
-            await touchGmailScanHeartbeat(
-              log.id,
-              `process_${label}_email_${email.gmailId}_isolated`,
-              organizationId
-            );
-          } catch {
-            /* ignore heartbeat failure during isolation recovery */
           }
         }
       }
@@ -5928,8 +5956,8 @@ async function attachmentData(gmail: GmailClient, messageId: string, part: Paylo
       messageId,
       id: part.body.attachmentId,
     }),
-    120_000,
-    "Gmail attachments.get timed out after 120s"
+    GMAIL_PER_EMAIL_PROCESS_TIMEOUT_MS,
+    "Gmail attachments.get timed out after 30s"
   );
   return attachment.data.data ?? "";
 }

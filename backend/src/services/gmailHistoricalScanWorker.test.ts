@@ -43,9 +43,18 @@ test("zombie heartbeat-stale jobs are marked FAILED with restart timeout message
   assert.match(lifecycleSource, /skipping heartbeat_stale fail for active scan/);
 });
 
+test("each email is processed under a strict 30s timeout with visible progress logs", () => {
+  assert.match(syncSource, /export const GMAIL_PER_EMAIL_PROCESS_TIMEOUT_MS = 30_000/);
+  assert.match(syncSource, /\[Gmail Sync\] Processing email/);
+  assert.match(syncSource, /Email processing timed out after 30s/);
+  assert.match(syncSource, /await withTimeout\(/);
+  assert.match(syncSource, /stage=\$\{timedOut \? "process_timeout" : "process_isolation"\}/);
+  assert.match(syncSource, /Gmail attachments\.get timed out after 30s/);
+});
+
 test("historical scan isolates per-email and per-attachment failures without failing the job", () => {
-  assert.match(syncSource, /per-email isolation catch/);
-  assert.match(syncSource, /stage=process_isolation/);
+  assert.match(syncSource, /skipping email/);
+  assert.match(syncSource, /stage=\$\{timedOut \? "process_timeout" : "process_isolation"\}/);
   assert.match(syncSource, /stage=invoice_attachment/);
   assert.match(syncSource, /Per-attachment isolation/);
   assert.match(syncSource, /non-fatal mid-scan error after progress/);
