@@ -1,7 +1,9 @@
 ﻿import Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod";
 import { config, hasClaude } from "../lib/config.js";
 import { parseLabeledAmount } from "./amount/parseAmount.js";
 import { clampBusinessDateString } from "./dates/businessDate.js";
+import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 
 export type InvoiceStatus = "paid" | "pending" | "overdue" | "needs_review";
 
@@ -23,6 +25,39 @@ export interface InvoiceData {
 type AttachmentSummary = { filename?: string | null; mimeType?: string | null };
 
 const anthropic = hasClaude() ? new Anthropic({ apiKey: config.anthropic.apiKey }) : null;
+
+/**
+ * תיקון #2 — סכמת ולידציה קשיחה לפלט של Claude (מדיניות "אפס ניחוש").
+ *
+ * פלט המודל חייב להיות אובייקט JSON תקין עם השדות המוכרים בטיפוסים הצפויים.
+ * .passthrough() מאפשר שדות נוספים בלי להיכשל, אבל טיפוס לא תקין (למשל amount
+ * כאובייקט) פוסל את הפלט כולו — ואז נופלים ל-fallback הדטרמיניסטי במקום
+ * "לנחש" מתוך מבנה פגום.
+ */
+const ClaudeInvoiceOutputSchema = z
+  .object({
+    clientName: z.string().nullish(),
+    clientEmail: z.string().nullish(),
+    supplierName: z.string().nullish(),
+    invoiceNumber: z.union([z.string(), z.number()]).nullish(),
+    amount: z.union([z.number(), z.string()]).nullish(),
+    total: z.union([z.number(), z.string()]).nullish(),
+    currency: z.string().nullish(),
+    date: z.string().nullish(),
+    invoiceDate: z.string().nullish(),
+    dueDate: z.string().nullish(),
+    status: z.string().nullish(),
+    description: z.string().nullish(),
+  })
+  .passthrough();
+
+/** ספק תקף = קיים, לא placeholder ולא זבל טכני (מדיניות אפס ניחוש). */
+function hasValidExtractedSupplier(supplierName: string | null): boolean {
+  const cleaned = supplierName?.trim() ?? "";
+  if (!cleaned) return false;
+  if (/^(unknown|unknown supplier|לא ידוע|לא מזוהה|n\/a|null|undefined)$/i.test(cleaned)) return false;
+  return !isLikelyJunkSupplierName(cleaned);
+}
 
 export async function extractInvoiceData(
   emailBody: string,
@@ -49,7 +84,17 @@ supplierName is the supplier/vendor/issuer business that issued the invoice, NOT
       messages: [{ role: "user", content: prompt }],
     });
     const text = message.content[0]?.type === "text" ? message.content[0].text : "{}";
-    return normalizeInvoiceData(parseJsonObject(text) ?? {}, fallback, clientFallback);
+    const parsedRaw = parseJsonObject(text);
+    // תיקון #2: ולידציית סכמה קשיחה על פלט המודל לפני שנוגעים בו.
+    const validated = parsedRaw ? ClaudeInvoiceOutputSchema.safeParse(parsedRaw) : null;
+    if (!validated?.success) {
+      console.error(
+        "[invoiceExtractor] Claude output failed schema validation, using deterministic fallback",
+        validated?.error?.issues ?? "no JSON object parsed"
+      );
+      return fallback;
+    }
+    return normalizeInvoiceData(validated.data as Record<string, unknown>, fallback, clientFallback);
   } catch (err) {
     console.error("[invoiceExtractor] AI extraction failed, using fallback", err);
     return fallback;
@@ -67,17 +112,32 @@ function normalizeInvoiceData(
   const parsedAmount = firstNumber(parsed, ["amount", "total", "sum", "totalAmount", "amountDue", "balanceDue"]);
   const hasParsedPositiveAmount = parsedAmount !== null && parsedAmount > 0;
   const amountMissing = hasParsedPositiveAmount ? false : fallback.amountMissing;
+  const amount = hasParsedPositiveAmount ? parsedAmount : fallback.amount;
+  const supplierName =
+    firstString(parsed, ["supplierName", "supplier", "vendor", "vendorName", "issuer", "issuerName"]) ?? fallback.supplierName;
+
+  // תיקון #2 — אכיפת "אפס ניחוש" על שלושת שדות הליבה:
+  //   • סכום כולל חיובי (amountMissing=false ו-amount>0),
+  //   • תאריך מסמך תקין בטווח ±2 שנים (clampBusinessDateString מחזיר null אחרת),
+  //   • שם ספק קיים ותקף (לא placeholder/זבל).
+  // אם אחד מהם חסר/לא תקין — הרשומה מנותבת ל-needs_review במקום להישמר בשקט.
+  const amountValid = !amountMissing && typeof amount === "number" && amount > 0;
+  const documentDateValid = clampBusinessDateString(date) !== null;
+  const supplierValid = hasValidExtractedSupplier(supplierName);
+  const coreFieldsValid = amountValid && documentDateValid && supplierValid;
+
   return {
     clientName: firstString(parsed, ["clientName", "customer", "customerName"]) ?? clientFallback?.name ?? fallback.clientName,
     clientEmail: firstString(parsed, ["clientEmail", "email"]) ?? clientFallback?.email ?? fallback.clientEmail,
-    supplierName: firstString(parsed, ["supplierName", "supplier", "vendor", "vendorName", "issuer", "issuerName"]) ?? fallback.supplierName,
+    supplierName,
     invoiceNumber: firstString(parsed, ["invoiceNumber", "invoice_number", "number"]) ?? fallback.invoiceNumber,
-    amount: hasParsedPositiveAmount ? parsedAmount : fallback.amount,
+    amount,
+    // amountMissing נשאר אות מדויק על הסכום עצמו; ניתוב לביקורת נעשה דרך status.
     amountMissing,
     currency: normalizeCurrency(firstString(parsed, ["currency"]) ?? fallback.currency),
     date,
     dueDate,
-    status: amountMissing ? "needs_review" : normalizeStatus(firstString(parsed, ["status"]) ?? fallback.status),
+    status: coreFieldsValid ? normalizeStatus(firstString(parsed, ["status"]) ?? fallback.status) : "needs_review",
     description: firstString(parsed, ["description", "notes"]) ?? fallback.description,
   };
 }
@@ -92,10 +152,20 @@ function fallbackInvoiceData(
   const amount = extractAmount(text);
   const hasExplicitZeroAmount = hasExplicitZeroInvoiceTotal(text);
   const amountMissing = amount === null && !hasExplicitZeroAmount;
+  const supplierName = null;
+  const documentDate = clampBusinessDateString(extractDate(text)) ?? new Date().toISOString().slice(0, 10);
+  // תיקון #2 — אותה אכיפת ליבה גם במסלול ה-fallback הדטרמיניסטי: אין דרך
+  // לאמת ספק מתוך regex בלבד (supplierName תמיד null), לכן חילוץ fallback
+  // מנותב תמיד ל-needs_review ולא נשמר בשקט כ-paid/pending.
+  const coreFieldsValid =
+    !amountMissing &&
+    (amount ?? 0) > 0 &&
+    clampBusinessDateString(documentDate) !== null &&
+    hasValidExtractedSupplier(supplierName);
   return {
     clientName: clientFallback?.name ?? null,
     clientEmail: clientFallback?.email ?? null,
-    supplierName: null,
+    supplierName,
     invoiceNumber:
       text.match(/(?:invoice|receipt|חשבונית|קבלה)[^\dA-Z]{0,12}([A-Z0-9-]{3,})/i)?.[1] ??
       attachments.find((item) => item.filename)?.filename?.replace(/\.[^.]+$/, "") ??
@@ -107,9 +177,9 @@ function fallbackInvoiceData(
     amountMissing,
     currency: /usd|\$/i.test(text) ? "USD" : /eur|€/i.test(text) ? "EUR" : "ILS",
     // F4: תאריך שחולץ מהטקסט חייב לעמוד בגבול ±2 שנים; אחרת נופלים להיום.
-    date: clampBusinessDateString(extractDate(text)) ?? new Date().toISOString().slice(0, 10),
+    date: documentDate,
     dueDate: extractDueDate(text),
-    status: amountMissing ? "needs_review" : /paid|שולם|קבלה/i.test(text) ? "paid" : "pending",
+    status: coreFieldsValid ? (/paid|שולם|קבלה/i.test(text) ? "paid" : "pending") : "needs_review",
     description: subject || null,
   };
 }

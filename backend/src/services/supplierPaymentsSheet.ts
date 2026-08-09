@@ -132,6 +132,47 @@ export async function appendSupplierPaymentToSheet(input: {
   return { ...spreadsheet, row: rowNumber, updated: false };
 }
 
+/**
+ * תיקון #4 — סנכרון שורת תשלום ל-Google Sheets לפי מזהה, לשימוש בזרימת האישור
+ * הידני (invoiceCompletionAction / מסלולי ה-approve). עד עכשיו אישור אנושי יצר
+ * SupplierPayment ב-DB אך *לא* כתב שורה בגיליון — הפער נסגר כאן. קובץ ה-Drive
+ * כבר הועלה בשלב הקליטה (review.driveFileUrl), כך שכאן משלימים רק את ה-Sheets.
+ * עטוף try/catch אצל הקורא — כשל בגיליון לא אמור להפיל את האישור עצמו.
+ */
+export async function syncApprovedSupplierPaymentToSheet(organizationId: string, paymentId: string) {
+  const payment = await prisma.supplierPayment.findFirst({ where: { id: paymentId, organizationId } });
+  if (!payment) {
+    console.warn(`[sheets] approval sync skipped: payment not found org=${organizationId} paymentId=${paymentId}`);
+    return { skipped: true as const };
+  }
+  const driveFolderLink = payment.driveFolderId
+    ? `https://drive.google.com/drive/folders/${payment.driveFolderId}`
+    : null;
+  return appendSupplierPaymentToSheet({
+    organizationId,
+    paymentId: payment.id,
+    supplier: payment.supplier,
+    amount: payment.amount,
+    date: payment.date,
+    dueDate: payment.dueDate,
+    paid: payment.paid,
+    missingInvoice: payment.missingInvoice,
+    documentLink: payment.documentLink,
+    invoiceLink: payment.invoiceLink,
+    supplierTaxId: payment.supplierTaxId,
+    invoiceNumber: payment.invoiceNumber,
+    invoiceDate: payment.normalizedDocumentDate ?? payment.date,
+    source: payment.source,
+    duplicateDetected: payment.duplicateDetected,
+    duplicateReason: payment.duplicateReason,
+    driveFolderLink,
+    paidDate: payment.paid ? payment.updatedAt : null,
+    receiptLink: payment.paid ? payment.documentLink ?? payment.invoiceLink : null,
+    createdAt: payment.createdAt,
+    updatedAt: payment.updatedAt,
+  });
+}
+
 export function hasSupplierPaymentSheetRowData(input: {
   paymentId?: string | null;
   supplier?: string | null;

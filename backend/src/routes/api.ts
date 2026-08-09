@@ -6885,6 +6885,20 @@ function mapDocumentReviewForApi<
   };
 }
 
+// תיקון #4 — סנכרון גיליון בטוח לאחר אישור ידני (no-op ללא paymentId, ולעולם
+// לא מפיל את בקשת האישור). הקובץ עצמו כבר הועלה ל-Drive בשלב הקליטה.
+async function syncApprovedPaymentToSheetSafely(organizationId: string, paymentId: string | null | undefined) {
+  if (!paymentId) return;
+  try {
+    const { syncApprovedSupplierPaymentToSheet } = await import("../services/supplierPaymentsSheet.js");
+    await syncApprovedSupplierPaymentToSheet(organizationId, paymentId);
+  } catch (err) {
+    console.warn(
+      `[api] approval sheet sync skipped org=${organizationId} paymentId=${paymentId} reason="${err instanceof Error ? err.message : String(err)}"`,
+    );
+  }
+}
+
 apiRouter.post("/document-reviews/:id/approve", requirePerm("review.approve"), async (req, res) => {
   try {
     const confirmedSupplierName =
@@ -6894,6 +6908,8 @@ apiRouter.post("/document-reviews/:id/approve", requirePerm("review.approve"), a
       sourceRoute: "POST /document-reviews/:id/approve",
       confirmedSupplierName,
     });
+    // תיקון #4 — אישור ידני מסנכרן את השורה ל-Google Sheets (הקובץ כבר ב-Drive).
+    await syncApprovedPaymentToSheetSafely(req.auth!.organizationId, result.paymentId);
     res.json({
       success: true,
       reviewId: result.review.id,
@@ -6967,6 +6983,8 @@ apiRouter.post("/gmail-scan-items/:id/approve", requirePerm("review.approve"), a
       userId: req.auth!.userId,
       sourceRoute: "POST /api/gmail-scan-items/:id/approve",
     });
+    // תיקון #4 — אישור ידני מסנכרן את השורה ל-Google Sheets (הקובץ כבר ב-Drive).
+    await syncApprovedPaymentToSheetSafely(organizationId, result.paymentId);
     const updated = await prisma.gmailScanItem.update({
       where: { id: item.id },
       data: { reviewStatus: result.review.reviewStatus === "approved" ? "approved" : item.reviewStatus },

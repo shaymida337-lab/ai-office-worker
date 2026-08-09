@@ -1,6 +1,7 @@
 import type { FinancialDocumentReview, GmailScanItem, Prisma, SupplierPayment } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { approveFinancialDocumentReview } from "./financialDocuments.js";
+import { syncApprovedSupplierPaymentToSheet } from "./supplierPaymentsSheet.js";
 import {
   assessInvoiceCompleteness,
   type InvoiceCompletenessAssessment,
@@ -205,6 +206,18 @@ export function validateApproveAllowed(assessment: InvoiceCompletenessAssessment
   }
 }
 
+/** תיקון #4 — סנכרון גיליון בטוח: no-op ללא paymentId, ולעולם לא מפיל את האישור. */
+async function syncApprovedPaymentToSheetSafely(organizationId: string, paymentId: string | null | undefined) {
+  if (!paymentId) return;
+  try {
+    await syncApprovedSupplierPaymentToSheet(organizationId, paymentId);
+  } catch (err) {
+    console.warn(
+      `[invoice-completion] approval sheet sync skipped org=${organizationId} paymentId=${paymentId} reason="${err instanceof Error ? err.message : String(err)}"`,
+    );
+  }
+}
+
 export async function approveInvoiceCompletionContext(
   organizationId: string,
   ctx: InvoiceCompletionContext,
@@ -225,6 +238,9 @@ export async function approveInvoiceCompletionContext(
         data: { reviewStatus: "approved" },
       });
     }
+    // תיקון #4 — אישור אנושי מסנכרן כעת את השורה ל-Google Sheets (הקובץ כבר
+    // ב-Drive משלב הקליטה). כשל בגיליון לא מפיל את האישור.
+    await syncApprovedPaymentToSheetSafely(organizationId, result.paymentId);
     return { ...ctx, gsi, review, payment };
   }
 
@@ -241,6 +257,8 @@ export async function approveInvoiceCompletionContext(
       where: { id: payment.id },
       data: { approvalStatus: "approved" },
     });
+    // תיקון #4 — סנכרון גיליון גם באישור תשלום ישיר.
+    await syncApprovedPaymentToSheetSafely(organizationId, payment.id);
     return { ...ctx, gsi, review, payment };
   }
 

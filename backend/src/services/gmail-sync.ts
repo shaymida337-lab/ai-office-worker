@@ -64,6 +64,7 @@ import {
 import type { MoneyDecision } from "./amount/canonicalAmount.js";
 import { parseAmountOrNull, parseLabeledAmount, parseAmount } from "./amount/parseAmount.js";
 import { roundMoneyOrNull } from "./amount/parseAmountHelpers.js";
+import { evaluateFinancialSideEffectGate } from "./amount/invoiceCompleteness.js";
 import {
   buildPaymentLookupsFromCanonical,
   buildLegacyDuplicateHashForLookup,
@@ -3054,6 +3055,31 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         });
         const paymentAmount = paymentEvaluation.paymentAmount;
         const paymentApprovalStatus = paymentEvaluation.approvalStatus;
+        // תיקון #3 — שער תופעות-לוואי משותף (מקור אמת יחיד, זהה ל-WhatsApp/ידני):
+        // לא כותבים ל-Google Sheets אלא אם dataComplete + auto_saved/approved +
+        // confidence>=0.8. שכבת הגנה שנייה מעל שערי ה-trust הקיימים של Gmail.
+        const gmailSideEffectGate = evaluateFinancialSideEffectGate({
+          supplierName: paymentSupplierName,
+          amount: finalTotalAmount ?? paymentAmount,
+          amountResolved:
+            typeof (finalTotalAmount ?? paymentAmount) === "number" &&
+            Number.isFinite(finalTotalAmount ?? paymentAmount) &&
+            (finalTotalAmount ?? paymentAmount ?? 0) > 0,
+          currency: analysis.currency ?? "ILS",
+          currencyExplicit: Boolean(analysis.currency),
+          // documentDateForDecision תמיד תאריך עסקי תקין (נופל ל-receivedAt).
+          date: documentDateForDecision,
+          documentDateExplicit: true,
+          documentType: documentDecision.documentType,
+          reviewStatus: classification.reviewStatus,
+          rawReviewStatus: classification.reviewStatus,
+          confidenceScore: classification.confidence,
+          numericConfidence: classification.confidence,
+        });
+        const sideEffectGateAllowsSheet = gmailSideEffectGate.allowed;
+        if (!sideEffectGateAllowsSheet) {
+          logStep(`[gmail-sync] SIDE_EFFECT_GATE_BLOCKED_SHEET message=${email.gmailId} reason="${gmailSideEffectGate.reason}"`);
+        }
         if (!paymentEvaluation.shouldCreatePayment) {
           logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=${paymentEvaluation.blockReason ?? FINANCE_AMOUNT_UNRESOLVED_REASON} status=${moneyDecision.status}`);
         } else {
@@ -3162,7 +3188,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           if (updatedPayment.driveUploadStatus === "pending_retry") {
             console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=supplierPayment:${updatedPayment.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
           }
-          if (paymentEvaluation.shouldAppendToSheet) {
+          if (paymentEvaluation.shouldAppendToSheet && sideEffectGateAllowsSheet) {
             await appendSupplierPaymentToSheet({
               organizationId,
               paymentId: existingPayment.id,
@@ -3269,7 +3295,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           if (payment.driveUploadStatus === "pending_retry") {
             console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=supplierPayment:${payment.id} reason=${documentDriveUploadFailureReason ?? "upload_missing_link"}`);
           }
-          if (paymentEvaluation.shouldAppendToSheet) {
+          if (paymentEvaluation.shouldAppendToSheet && sideEffectGateAllowsSheet) {
             await appendSupplierPaymentToSheet({
               organizationId,
               paymentId: payment.id,

@@ -13,6 +13,7 @@ import {
   logFingerprintShadowMode,
 } from "./dedup/fingerprintMigration.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
+import { evaluateFinancialSideEffectGate } from "./amount/invoiceCompleteness.js";
 import {
   amountGatePasses,
   evaluateAmountGate,
@@ -900,6 +901,34 @@ export async function recordManualEntryFinancialDocument(input: ManualEntryFinan
 
   if (decision.action !== "accepted") {
     return { ...decision, parsedFieldsJson };
+  }
+
+  // תיקון #3 — שער תופעות-לוואי משותף (מקור אמת יחיד, זהה ל-Gmail/WhatsApp):
+  // לא יוצרים SupplierPayment אלא אם dataComplete. הזנה ידנית היא אישור אנושי
+  // מפורש (rawReviewStatus="approved") ולכן סף הביטחון מוותר — אך שדות החובה
+  // חייבים להיות שלמים. כשל ⇒ ניתוב ל-needs_review עם הסיבה.
+  const manualSideEffectGate = evaluateFinancialSideEffectGate({
+    supplierName: input.supplierName,
+    amount: input.totalAmount,
+    amountResolved: typeof input.totalAmount === "number" && Number.isFinite(input.totalAmount) && input.totalAmount > 0,
+    // הזנה ידנית תמיד עם מטבע אפקטיבי (ברירת מחדל ILS) — נחשב מפורש.
+    currency: input.currency ?? "ILS",
+    currencyExplicit: true,
+    date: input.documentDate ?? null,
+    documentDateExplicit: input.documentDate != null,
+    documentType: input.documentType,
+    reviewStatus: "approved",
+    rawReviewStatus: "approved",
+    confidenceScore: MANUAL_ENTRY_CONFIDENCE,
+    numericConfidence: MANUAL_ENTRY_CONFIDENCE,
+  });
+  if (!manualSideEffectGate.allowed) {
+    const fallback = await recordFinancialDocumentDecision({
+      ...baseDecisionInput,
+      forceNeedsReview: true,
+      uncertaintyReason: `side_effect_gate:${manualSideEffectGate.reason ?? "blocked"}`,
+    });
+    return { ...fallback, parsedFieldsJson };
   }
 
   // accepted לא שומר כלום בתוך recordFinancialDocumentDecision — הקורא יוצר את

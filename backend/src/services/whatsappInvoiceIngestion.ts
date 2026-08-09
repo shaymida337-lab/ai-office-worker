@@ -17,6 +17,7 @@ import { parseTrustGatesFromParsedFields, trustGatesFailClosedReason } from "./t
 import { computeCanonicalFingerprint, matchFinancialDocuments, type DedupMatchResult, type FinancialDocumentFingerprintInput } from "./dedup/sharedMatcher.js";
 import { buildLegacyFileDuplicateHashForLookup, buildPaymentLookupsFromCanonical } from "./dedup/fingerprintMigration.js";
 import { resolveWhatsAppMoneyDecision, summarizeMoneyDecision } from "./amount/amountCandidates.js";
+import { evaluateFinancialSideEffectGate } from "./amount/invoiceCompleteness.js";
 import { classifyBusinessDocument, pipelineActionForClassification } from "./classification/classifier.js";
 import { maskSupplierForLog } from "./whatsappSafety.js";
 import {
@@ -322,6 +323,72 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
       continue;
     }
     const isSupplierExpense = pipelineAction === "SUPPLIER_EXPENSE";
+
+    // תיקון #3 — שער תופעות-לוואי משותף (מקור אמת יחיד, זהה ל-Gmail/ידני):
+    // לא יוצרים SupplierPayment ולא כותבים ל-Sheets אלא אם dataComplete + מסלול
+    // auto_saved + confidence>=0.8. גם כש-recordFinancialDocumentDecision החזיר
+    // "accepted" — זו שכבת הגנה שנייה. כשל ⇒ ניתוב מפורש ל-needs_review.
+    if (isSupplierExpense) {
+      const sideEffectGate = evaluateFinancialSideEffectGate({
+        supplierName: supplier,
+        amount,
+        amountResolved: typeof amount === "number" && Number.isFinite(amount) && amount > 0,
+        currency: analysis.currency ?? "ILS",
+        currencyExplicit: Boolean(analysis.currency),
+        // analysis.invoiceDate כבר עבר clamp לחלון ±2 שנים למעלה (null אם מחוץ לטווח).
+        date: analysis.invoiceDate,
+        documentDateExplicit: Boolean(analysis.invoiceDate && String(analysis.invoiceDate).trim()),
+        documentType: analysis.documentType,
+        reviewStatus: "auto_saved",
+        rawReviewStatus: "auto_saved",
+        confidenceScore: analysis.confidence,
+        numericConfidence: analysis.confidence,
+      });
+      if (!sideEffectGate.allowed) {
+        const gatedReview = await recordDocumentDecision({
+          organizationId: input.organizationId,
+          source: "whatsapp",
+          sender: input.fromNumber,
+          subject: input.body,
+          fileName: filename,
+          fileSize: buffer.length,
+          supplierName: supplier,
+          supplierTaxId: analysis.supplierTaxId ?? null,
+          invoiceNumber: analysis.invoiceNumber,
+          documentDate: analysis.invoiceDate,
+          dueDate: analysis.dueDate,
+          amountBeforeVat: moneyDecision.amountBeforeVat ?? analysis.amountBeforeVat ?? null,
+          vatAmount: moneyDecision.vatAmount ?? analysis.vatAmount ?? null,
+          totalAmount: amount,
+          documentType: analysis.documentType,
+          driveFileUrl: preview.previewUrl,
+          confidenceScore: Math.min(analysis.confidence, 0.79),
+          uncertaintyReason: `side_effect_gate:${sideEffectGate.reason ?? "blocked"}`,
+          forceNeedsReview: true,
+          rawAnalysis: { analysis, sideEffectGateReason: sideEffectGate.reason, whatsappLogId: input.whatsappLogId },
+          whatsappLogId: input.whatsappLogId,
+          fileSha256: fileHash,
+        });
+        await syncReviewPreview(input.organizationId, gatedReview, preview);
+        console.log(`[whatsapp-invoice] side_effect_gate_blocked logId=${input.whatsappLogId} reason="${sideEffectGate.reason}"`);
+        processed.push({
+          filename,
+          supplier,
+          amount,
+          invoiceNumber: analysis.invoiceNumber,
+          documentType: analysis.documentType,
+          documentDate: analysis.invoiceDate,
+          driveLink: preview.previewUrl,
+          paymentId: null,
+          invoiceId: null,
+          created: false,
+          duplicateDetected: false,
+          duplicateReason: "needs_review",
+        });
+        continue;
+      }
+    }
+
     const invoiceClientId = pipelineAction === "CUSTOMER_INVOICE"
       ? await findSupplierClientForWhatsAppDocument({
           organizationId: input.organizationId,
@@ -662,8 +729,81 @@ async function analyzeWhatsAppDocument(input: {
     invoiceDate: imageScan.date,
     invoiceNumber: imageScan.invoiceNumber,
     tasks: [],
-    confidence: 0.85,
+    // תיקון #1 — עוקף-הביטחון של וואטסאפ: לא עוד 0.85 קשיח. הביטחון נגזר
+    // כעת מאותות המודל (OCR + ניתוח טקסט) ומאיכות השדות שחולצו, בדיוק כמו
+    // בצינור הג'ימייל. שער קשיח: ספק/סכום/תאריך לא ודאיים ⇒ ביטחון < 0.8,
+    // כך שהמסמך מנותב אוטומטית ל-reviewStatus "needs_review".
+    confidence: computeWhatsAppDocumentConfidence({
+      supplier: imageScan.supplier,
+      amount: imageScan.totalAmount ?? imageScan.amount,
+      date: imageScan.date,
+      invoiceNumber: imageScan.invoiceNumber,
+      documentType: imageScan.documentType ?? "other",
+      modelConfidence: typeof textAnalysis?.confidence === "number" ? textAnalysis.confidence : null,
+      ocrConfidence: typeof fileScan?.ocrConfidence === "number" ? fileScan.ocrConfidence : null,
+    }),
   };
+}
+
+/**
+ * ניקוד ביטחון מבוסס-מודל למסמכי וואטסאפ (תיקון #1). מחליף את הקבוע 0.85.
+ *
+ * העיקרון (זהה בפילוסופיה ל-computeInvoiceConfidence של gmail-sync): צוברים
+ * ניקוד מראיות השדות שחולצו, משלבים עם אותות הביטחון של המודל (ניתוח טקסט של
+ * Claude ואיכות ה-OCR) כשהם זמינים, ואוכפים שער קשיח.
+ *
+ * שער קשיח: כשספק / סכום / תאריך אינם ודאיים, הביטחון נחתך אל מתחת ל-0.8 —
+ * כך recordFinancialDocumentDecision מנתב את המסמך אוטומטית ל-needs_review
+ * במקום לשמור אותו בשקט.
+ */
+const WHATSAPP_RECOGNIZED_DOCUMENT_TYPES = new Set([
+  "invoice",
+  "receipt",
+  "tax_invoice",
+  "tax_invoice_receipt",
+  "payment_request",
+]);
+
+export function computeWhatsAppDocumentConfidence(input: {
+  supplier: string | null | undefined;
+  amount: number | null | undefined;
+  date: string | null | undefined;
+  invoiceNumber: string | null | undefined;
+  documentType: string | null | undefined;
+  modelConfidence: number | null;
+  ocrConfidence: number | null;
+}): number {
+  const hasSupplier = usableSupplierName(input.supplier);
+  const hasAmount = normalizeAmount(input.amount) !== null;
+  // תאריך "ודאי" = תאריך תקין בטווח ±2 שנים (אותו גבול שפיות של הצינור).
+  const hasValidDate = clampBusinessDateString(input.date ?? null) !== null;
+  const hasInvoiceNumber = Boolean(input.invoiceNumber && String(input.invoiceNumber).trim());
+  const recognizedType = WHATSAPP_RECOGNIZED_DOCUMENT_TYPES.has((input.documentType ?? "").trim().toLowerCase());
+
+  // ניקוד ראיות אדיטיבי — שלושת שדות הליבה לבדם מגיעים ל-0.86 (≥ 0.8).
+  let score = 0;
+  if (hasAmount) score += 0.34;
+  if (hasSupplier) score += 0.28;
+  if (hasValidDate) score += 0.24;
+  if (hasInvoiceNumber) score += 0.08;
+  if (recognizedType) score += 0.06;
+
+  // שילוב אותות המודל (ניתוח טקסט + איכות OCR) כשקיימים — מסמך עם שדות מלאים
+  // אך ביטחון-מודל נמוך יירד גם הוא אל מתחת לסף.
+  const modelSignals = [input.modelConfidence, input.ocrConfidence].filter(
+    (value): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0,
+  );
+  if (modelSignals.length) {
+    const modelAvg = modelSignals.reduce((sum, value) => sum + value, 0) / modelSignals.length;
+    score = score * 0.6 + modelAvg * 0.4;
+  }
+
+  const rounded = Math.round(Math.max(0, score) * 100) / 100;
+  // שער קשיח: ליבה חסרה ⇒ תמיד < 0.8.
+  if (!hasSupplier || !hasAmount || !hasValidDate) {
+    return Math.min(rounded, 0.6);
+  }
+  return Math.min(rounded, 0.99);
 }
 
 async function analyzeWhatsAppDocumentTextFallback(input: {

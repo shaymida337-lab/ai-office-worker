@@ -147,6 +147,65 @@ export function assessInvoiceCompleteness(input: InvoiceCompletenessInput): Invo
   };
 }
 
+/**
+ * תיקון #3 — שער תופעות-לוואי פיננסיות: מקור אמת יחיד לכלל שחל על *כל*
+ * הערוצים (Gmail / WhatsApp / ידני). לעולם לא יוצרים SupplierPayment סופי
+ * ולא כותבים ל-Google Sheets אלא אם:
+ *
+ *   1. assessInvoiceCompleteness(record).dataComplete === true  (כל שדות החובה), וגם
+ *   2. reviewStatus הוא "approved" או "auto_saved", וגם
+ *   3. במסלול האוטומטי ("auto_saved") — confidenceScore >= 0.8.
+ *
+ * הבחנה קריטית בין אוטומטי לאישור אנושי: "approved" הוא אישור אנושי מפורש
+ * שגובר על סף הביטחון — האדם *הוא* הביטחון, וממילא validateApproveAllowed כבר
+ * חסם אישור כשהנתונים לא שלמים. סף ה-0.8 חל רק על שמירה אוטומטית (auto_saved),
+ * שם אין אדם בלולאה. כך תיקון #3 (סף אוטומטי) ותיקון #4 (סנכרון באישור ידני)
+ * חיים יחד בלי לחסום אישורים לגיטימיים של מסמכים שהיו needs_review.
+ */
+export const FINANCIAL_SIDE_EFFECT_MIN_CONFIDENCE = 0.8;
+
+export type FinancialSideEffectGateInput = InvoiceCompletenessInput & {
+  /** ביטחון מספרי [0,1] — נדרש לסף האוטומטי. */
+  numericConfidence: number;
+};
+
+export type FinancialSideEffectDecision = {
+  allowed: boolean;
+  reason: string | null;
+  assessment: InvoiceCompletenessAssessment;
+};
+
+export function evaluateFinancialSideEffectGate(
+  input: FinancialSideEffectGateInput,
+): FinancialSideEffectDecision {
+  const assessment = assessInvoiceCompleteness(input);
+  const rawStatus = (input.rawReviewStatus ?? input.reviewStatus ?? "").trim().toLowerCase();
+
+  if (!assessment.dataComplete) {
+    return {
+      allowed: false,
+      reason: `data_incomplete:${assessment.missingDataReasons.join("|") || "unknown"}`,
+      assessment,
+    };
+  }
+  // אישור אנושי מפורש — גובר על סף הביטחון (הנתונים כבר אומתו בעת האישור).
+  if (rawStatus === "approved") {
+    return { allowed: true, reason: null, assessment };
+  }
+  // מסלול אוטומטי — חייב לעבור את סף ה-0.8.
+  if (rawStatus === "auto_saved") {
+    if (Number.isFinite(input.numericConfidence) && input.numericConfidence >= FINANCIAL_SIDE_EFFECT_MIN_CONFIDENCE) {
+      return { allowed: true, reason: null, assessment };
+    }
+    return {
+      allowed: false,
+      reason: `confidence_below_threshold:${Number.isFinite(input.numericConfidence) ? input.numericConfidence.toFixed(2) : "nan"}`,
+      assessment,
+    };
+  }
+  return { allowed: false, reason: `status_not_approved:${rawStatus || "unknown"}`, assessment };
+}
+
 export type InvoiceCompletenessFilter = "complete" | "incomplete" | "all";
 
 export function parseInvoiceCompletenessParam(value: unknown): InvoiceCompletenessFilter {
