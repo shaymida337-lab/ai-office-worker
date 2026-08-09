@@ -4,6 +4,7 @@ import { getGoogleClientsForClient } from "./google.js";
 import { extractInvoiceData } from "./invoiceExtractor.js";
 import { saveInvoiceToDrive } from "./driveOrganizer.js";
 import { logInvoiceToSheets } from "./clientSheetsService.js";
+import { evaluateFinancialSideEffectGate } from "./amount/invoiceCompleteness.js";
 
 const INVOICE_KEYWORDS = [
   "חשבונית", "invoice", "receipt", "קבלה", "תשלום", "payment", "חשבון", "billing", "הצעת מחיר", "quote", "הזמנה", "order",
@@ -78,6 +79,7 @@ async function runInvoiceScanForClient(clientId: string, client: ClientForInvoic
       const full = await gmail.users.messages.get({ userId: "me", id: ref.id, format: "full" });
       const headers = full.data.payload?.headers ?? [];
       const subject = headers.find((h) => h.name === "Subject")?.value ?? "(ללא נושא)";
+      const fromHeader = headers.find((h) => h.name === "From")?.value ?? null;
       const dateHeader = headers.find((h) => h.name === "Date")?.value ?? "";
       const receivedAt = dateHeader ? new Date(dateHeader) : new Date();
       const bodyText = extractBody(full.data.payload as PayloadPart | undefined);
@@ -108,6 +110,60 @@ async function runInvoiceScanForClient(clientId: string, client: ClientForInvoic
         where: { organizationId, clientId, emailId: ref.id, ...(invoice.invoiceNumber ? { invoiceNumber: invoice.invoiceNumber } : {}) },
       });
       if (existing) continue;
+
+      // כלל תופעות-הלוואי הפיננסי המאוחד (זהה ל-Gmail/WhatsApp/ידני): לא מעלים
+      // ל-Drive, לא כותבים ל-Sheets ולא יוצרים רשומת Invoice אוטומטית אלא אם
+      // הרשומה עוברת את השער המשותף. מסלול הסורק אוטומטי (auto_saved); ה-extractor
+      // כבר מסמן status="needs_review" כשחסר שדה ליבה (fix #2), ואין אות ביטחון
+      // מספרי בנתיב זה — לכן חילוץ שעבר את ולידציית הליבה נחשב auto_saved בביטחון
+      // גבוה, וחילוץ לא-שלם מנותב אוטומטית ל-needs_review.
+      const coreExtractionConfident = invoice.status !== "needs_review";
+      const gateReviewStatus = coreExtractionConfident ? "auto_saved" : "needs_review";
+      const gateConfidence = coreExtractionConfident ? 0.9 : 0;
+      const sideEffectGate = evaluateFinancialSideEffectGate({
+        supplierName: invoice.supplierName,
+        amount: invoice.amount,
+        amountResolved: !invoice.amountMissing && typeof invoice.amount === "number" && invoice.amount > 0,
+        currency: invoice.currency,
+        currencyExplicit: Boolean(invoice.currency),
+        date: invoice.date,
+        documentDateExplicit: Boolean(invoice.date),
+        // הסורק הזה מטפל אך ורק במסמכי חשבונית (סינון מילות מפתח / PDF).
+        documentType: "invoice",
+        reviewStatus: gateReviewStatus,
+        rawReviewStatus: gateReviewStatus,
+        confidenceScore: gateConfidence,
+        numericConfidence: gateConfidence,
+      });
+
+      if (!sideEffectGate.allowed) {
+        // חסום: אין Drive, אין Sheets, אין Invoice אוטומטי — מנתבים אך ורק
+        // ל-FinancialDocumentReview עם reviewStatus=needs_review והסיבה המפורשת.
+        invoice.status = "needs_review";
+        try {
+          const { recordFinancialDocumentDecision } = await import("./financialDocuments.js");
+          await recordFinancialDocumentDecision({
+            organizationId,
+            source: "gmail",
+            sender: fromHeader,
+            subject,
+            supplierName: invoice.supplierName,
+            invoiceNumber: invoice.invoiceNumber,
+            documentDate: parseDate(invoice.date, receivedAt),
+            dueDate: invoice.dueDate ? parseDate(invoice.dueDate, null) : null,
+            totalAmount: invoice.amountMissing ? null : invoice.amount,
+            documentType: "invoice",
+            confidenceScore: gateConfidence,
+            uncertaintyReason: `side_effect_gate:${sideEffectGate.reason ?? "blocked"}`,
+            forceNeedsReview: true,
+            gmailMessageId: ref.id,
+          });
+        } catch (err) {
+          errors.push({ emailId: ref.id, error: `Review routing failed: ${errorMessage(err)}` });
+        }
+        console.log(`[invoiceScanner] SIDE_EFFECT_GATE_BLOCKED clientId=${clientId} emailId=${ref.id} reason="${sideEffectGate.reason}"`);
+        continue;
+      }
 
       let driveUrl: string | null = null;
       if (attachments[0]) {
