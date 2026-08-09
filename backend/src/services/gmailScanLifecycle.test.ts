@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   GMAIL_MANUAL_SCAN_DEADLINE_MS,
+  GMAIL_MANUAL_SCAN_STUCK_TIMEOUT_MS,
   GMAIL_SCAN_STALE_MS,
   GMAIL_SCAN_STUCK_TIMEOUT_MS,
   SCAN_STALE_TIMEOUT_REASON,
   classifyOverdueGmailScanClose,
   gmailScanDeadlineMs,
+  gmailScanStuckTimeoutMs,
   isActiveGmailScanStatus,
   isGmailScanLogStale,
   isGmailScanStuckWithoutProgress,
@@ -66,6 +68,9 @@ test("isGmailScanLogStale uses mode-aware thresholds", () => {
   );
   assert.equal(gmailScanDeadlineMs("manual"), GMAIL_MANUAL_SCAN_DEADLINE_MS);
   assert.equal(gmailScanDeadlineMs("fast_recurring"), GMAIL_SCAN_STALE_MS);
+  assert.equal(gmailScanStuckTimeoutMs("manual"), GMAIL_MANUAL_SCAN_STUCK_TIMEOUT_MS);
+  assert.equal(gmailScanStuckTimeoutMs("historical"), GMAIL_MANUAL_SCAN_STUCK_TIMEOUT_MS);
+  assert.equal(gmailScanStuckTimeoutMs("fast_recurring"), GMAIL_SCAN_STUCK_TIMEOUT_MS);
 });
 
 test("active and terminal status helpers include timed_out", () => {
@@ -97,7 +102,7 @@ test("mergeGmailScanWindowTruncated combines listing and deadline flags", () => 
 
 test("stale heartbeat on manual scan becomes timed_out", () => {
   const now = Date.parse("2026-07-08T12:00:00.000Z");
-  const startedAt = new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1);
+  const startedAt = new Date(now - GMAIL_MANUAL_SCAN_STUCK_TIMEOUT_MS - 1);
   assert.equal(
     isGmailScanStuckWithoutProgress(
       { startedAt, updatedAt: startedAt, emailsProcessed: 0, scanMode: "manual" },
@@ -116,7 +121,7 @@ test("stale heartbeat on manual scan becomes timed_out", () => {
 
 test("stale queued scan becomes timed_out", () => {
   const now = Date.parse("2026-07-08T12:00:00.000Z");
-  const startedAt = new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 5_000);
+  const startedAt = new Date(now - GMAIL_MANUAL_SCAN_STUCK_TIMEOUT_MS - 5_000);
   assert.equal(
     classifyOverdueGmailScanClose(
       { scanMode: "manual", emailsProcessed: 0, startedAt, updatedAt: startedAt },
@@ -145,8 +150,8 @@ test("fresh running scan is not stuck and does not classify as timed_out by hear
 
 test("stale heartbeat while total runtime still under cooperative deadline is timed_out", () => {
   const now = Date.parse("2026-07-08T12:00:00.000Z");
-  const startedAt = new Date(now - 2 * 60_000);
-  const updatedAt = new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1);
+  const startedAt = new Date(now - 30 * 60_000);
+  const updatedAt = new Date(now - GMAIL_MANUAL_SCAN_STUCK_TIMEOUT_MS - 1);
   assert.equal(
     isGmailScanStuckWithoutProgress({ startedAt, updatedAt, emailsProcessed: 5, scanMode: "manual" }, now),
     true
@@ -180,9 +185,22 @@ test("manual historical scan with fresh heartbeat stays alive past 3 minutes", (
   );
 });
 
-test("missing heartbeat falls back to startedAt and is stuck after 3 minutes", () => {
+test("manual scan is not stuck after 3 minutes without heartbeat (15m grace)", () => {
   const now = Date.parse("2026-07-08T12:00:00.000Z");
-  const startedAt = new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1);
+  const startedAt = new Date(now - 20 * 60_000);
+  const updatedAt = new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1);
+  assert.equal(
+    isGmailScanStuckWithoutProgress(
+      { startedAt, updatedAt, emailsProcessed: 122, scanMode: "manual" },
+      now
+    ),
+    false
+  );
+});
+
+test("missing heartbeat falls back to startedAt and is stuck after 15 minutes for manual", () => {
+  const now = Date.parse("2026-07-08T12:00:00.000Z");
+  const startedAt = new Date(now - GMAIL_MANUAL_SCAN_STUCK_TIMEOUT_MS - 1);
   // updatedAt missing → lastProgressAt falls back to startedAt → still stuck
   assert.equal(
     isGmailScanStuckWithoutProgress({ startedAt, emailsProcessed: 100, scanMode: "manual" }, now),

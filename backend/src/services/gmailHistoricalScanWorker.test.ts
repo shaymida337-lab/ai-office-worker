@@ -14,7 +14,8 @@ test("gmail sync processes messages in batches of 50 with event-loop pause", () 
   assert.match(syncSource, /export const GMAIL_SCAN_BATCH_PAUSE_MS = 50/);
   assert.match(syncSource, /HISTORICAL_CHUNK_START/);
   assert.match(syncSource, /await sleep\(GMAIL_SCAN_BATCH_PAUSE_MS\)/);
-  assert.match(syncSource, /touchGmailScanHeartbeat\(log\.id, `process_\$\{label\}_batch_\$\{processBatchNumber\}`/);
+  assert.match(syncSource, /process_\$\{label\}_email_\$\{email\.gmailId\}/);
+  assert.match(syncSource, /process_\$\{label\}_batch_\$\{processBatchNumber\}/);
 });
 
 test("POST /api/gmail/scan returns 202 with jobId and wraps worker in try/catch/finally", () => {
@@ -29,4 +30,6 @@ test("POST /api/gmail/scan returns 202 with jobId and wraps worker in try/catch/
 test("zombie heartbeat-stale jobs are marked FAILED with restart timeout message", () => {
   assert.match(lifecycleSource, /Job timed out \/ server restarted/);
   assert.match(lifecycleSource, /nextStatus:\s*"failed"/);
+  assert.match(lifecycleSource, /GMAIL_MANUAL_SCAN_STUCK_TIMEOUT_MS = 15 \* 60 \* 1000/);
+  assert.match(lifecycleSource, /skipping heartbeat_stale fail for active scan/);
 });

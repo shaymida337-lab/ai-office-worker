@@ -17,8 +17,12 @@ export const GMAIL_MANUAL_SCAN_DEADLINE_MS = 4 * 60 * 60 * 1000;
  *
  * Manual/historical scans may run for hours; for those modes stuckness is heartbeat-only
  * (see isGmailScanStuckWithoutProgress) and total runtime uses GMAIL_MANUAL_SCAN_DEADLINE_MS.
+ * Invoice attachment OCR can take several minutes per message — use a longer heartbeat
+ * grace window so productive historical/manual jobs are not false-failed.
  */
 export const GMAIL_SCAN_STUCK_TIMEOUT_MS = 3 * 60 * 1000;
+/** Heartbeat grace for manual / historical / other long scans (attachment OCR). */
+export const GMAIL_MANUAL_SCAN_STUCK_TIMEOUT_MS = 15 * 60 * 1000;
 export const SCAN_STALE_TIMEOUT_REASON = "scan_stale_timeout";
 const GMAIL_SCAN_JOB_TYPE = "gmail_scan";
 
@@ -160,6 +164,11 @@ export function isNormalLongGmailScanMode(scanMode?: string | null) {
   return scanMode !== "fast_recurring";
 }
 
+/** Manual / historical scans (API historical uses scanMode "manual"). */
+export function isManualOrHistoricalGmailScanMode(scanMode?: string | null) {
+  return scanMode === "manual" || scanMode === "historical" || scanMode === "manual_incremental";
+}
+
 export function gmailScanDeadlineMs(scanMode?: string | null) {
   if (scanMode === "fast_recurring") {
     return GMAIL_SCAN_STALE_MS;
@@ -168,6 +177,17 @@ export function gmailScanDeadlineMs(scanMode?: string | null) {
     return GMAIL_MANUAL_SCAN_DEADLINE_MS;
   }
   return GMAIL_SCAN_STALE_MS;
+}
+
+/** Heartbeat-stale window: 15m for manual/historical, 3m for fast_recurring. */
+export function gmailScanStuckTimeoutMs(scanMode?: string | null): number {
+  if (scanMode === "fast_recurring") {
+    return GMAIL_SCAN_STUCK_TIMEOUT_MS;
+  }
+  if (isManualOrHistoricalGmailScanMode(scanMode) || isNormalLongGmailScanMode(scanMode)) {
+    return GMAIL_MANUAL_SCAN_STUCK_TIMEOUT_MS;
+  }
+  return GMAIL_SCAN_STUCK_TIMEOUT_MS;
 }
 
 export function isGmailScanLogStale(startedAt: Date, now = Date.now(), scanMode?: string | null) {
@@ -185,10 +205,11 @@ export function gmailScanLastProgressAt(log: {
 /**
  * Hard invariant: queued/running cannot remain open forever without progress.
  *
- * - All modes: heartbeat (updatedAt) older than stuckMs → stuck.
+ * - All modes: heartbeat (updatedAt) older than mode-aware stuckMs → stuck.
  * - fast_recurring only: also hard-cap total runtime at stuckMs (dashboard safety).
  * - manual/historical: heartbeats may keep a scan alive until the cooperative deadline
- *   (GMAIL_MANUAL_SCAN_DEADLINE_MS); do NOT kill honest long scans at 3 minutes.
+ *   (GMAIL_MANUAL_SCAN_DEADLINE_MS); use 15m heartbeat grace (not 3m) so OCR-heavy
+ *   attachment processing does not false-fail productive jobs.
  */
 export function isGmailScanStuckWithoutProgress(
   log: {
@@ -198,17 +219,18 @@ export function isGmailScanStuckWithoutProgress(
     scanMode?: string | null;
   },
   now = Date.now(),
-  stuckMs = GMAIL_SCAN_STUCK_TIMEOUT_MS
+  stuckMs?: number
 ): boolean {
+  const effectiveStuckMs = stuckMs ?? gmailScanStuckTimeoutMs(log.scanMode);
   const lastProgressMs = gmailScanLastProgressAt(log).getTime();
   if (!Number.isFinite(lastProgressMs)) return true;
-  if (now - lastProgressMs >= stuckMs) {
+  if (now - lastProgressMs >= effectiveStuckMs) {
     return true;
   }
 
   if (log.scanMode === "fast_recurring") {
     const startedMs = log.startedAt.getTime();
-    if (!Number.isFinite(startedMs) || now - startedMs >= stuckMs) {
+    if (!Number.isFinite(startedMs) || now - startedMs >= effectiveStuckMs) {
       return true;
     }
   }
@@ -464,7 +486,20 @@ export async function closeOverdueActiveGmailScan(
   const previousStatus = "running";
 
   // Heartbeat-stale / crashed worker → FAILED so the UI never polls forever.
+  // Exception: productive manual/historical jobs (emailsProcessed > 0) must not be
+  // abruptly overridden by stale cleanup while still under the cooperative deadline —
+  // attachment OCR can outlive a single heartbeat window during deploys/slow batches.
   if (stuck) {
+    const activelyProcessing =
+      (log.emailsProcessed ?? 0) > 0 &&
+      isNormalLongGmailScanMode(log.scanMode) &&
+      !overdue;
+    if (activelyProcessing) {
+      console.warn(
+        `[gmail-scan] skipping heartbeat_stale fail for active scan id=${log.id} emailsProcessed=${log.emailsProcessed} emailsSaved=${log.emailsSaved} — under cooperative deadline`
+      );
+      return null;
+    }
     const zombieMessage = "Job timed out / server restarted";
     await finalizeGmailScanFailed(log.id, zombieMessage, counters, {
       reason: zombieMessage,

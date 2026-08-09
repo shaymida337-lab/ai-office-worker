@@ -3575,6 +3575,12 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         } finally {
           emailsAnalyzedInProcessing++;
           await maybeSaveScanProgress();
+          // Heartbeat after EVERY email so OCR-heavy attachments cannot trip heartbeat_stale.
+          await touchGmailScanHeartbeat(
+            log.id,
+            `process_${label}_email_${email.gmailId}`,
+            organizationId
+          );
           if (await shouldStopScan()) {
             stopProcessing = true;
             break;

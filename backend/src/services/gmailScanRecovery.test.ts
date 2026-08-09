@@ -2,14 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../lib/prisma.js";
 import {
-  GMAIL_SCAN_STUCK_TIMEOUT_MS,
-  SCAN_STALE_TIMEOUT_REASON,
+  GMAIL_MANUAL_SCAN_STUCK_TIMEOUT_MS,
   closeOverdueActiveGmailScan,
   closeStaleGmailScansForOrg,
   createQueuedGmailScanLog,
   isGmailScanStuckWithoutProgress,
   refreshGmailScanProgressOnRead,
 } from "./gmailScanLifecycle.js";
+
+const ZOMBIE_TIMEOUT_MESSAGE = "Job timed out / server restarted";
 
 function baseActiveLog(overrides: Partial<{
   id: string;
@@ -30,7 +31,7 @@ function baseActiveLog(overrides: Partial<{
   finishedAt: Date | null;
 }> = {}) {
   const now = Date.now();
-  const startedAt = new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 5_000);
+  const startedAt = new Date(now - GMAIL_MANUAL_SCAN_STUCK_TIMEOUT_MS - 5_000);
   return {
     id: "scan-active",
     organizationId: "org-1",
@@ -55,7 +56,7 @@ function baseActiveLog(overrides: Partial<{
   };
 }
 
-test("closeOverdueActiveGmailScan marks stale running as timed_out and releases lock", async () => {
+test("closeOverdueActiveGmailScan marks stale running as failed and releases lock", async () => {
   const originalFind = prisma.syncLog.findFirst;
   const originalUpdate = prisma.syncLog.update;
   let terminalStatus: string | null = null;
@@ -80,8 +81,8 @@ test("closeOverdueActiveGmailScan marks stale running as timed_out and releases 
   try {
     const closeAs = await closeOverdueActiveGmailScan(log, Date.now());
     assert.equal(closeAs, "timed_out");
-    assert.equal(terminalStatus, "timed_out");
-    assert.equal(errorMessage, SCAN_STALE_TIMEOUT_REASON);
+    assert.equal(terminalStatus, "failed");
+    assert.equal(errorMessage, ZOMBIE_TIMEOUT_MESSAGE);
     assert.ok(finishedAt instanceof Date);
   } finally {
     (prisma.syncLog.findFirst as unknown) = originalFind;
@@ -89,7 +90,7 @@ test("closeOverdueActiveGmailScan marks stale running as timed_out and releases 
   }
 });
 
-test("closeOverdueActiveGmailScan marks stale queued as timed_out", async () => {
+test("closeOverdueActiveGmailScan marks stale queued as failed", async () => {
   const originalFind = prisma.syncLog.findFirst;
   const originalUpdate = prisma.syncLog.update;
   let terminalStatus: string | null = null;
@@ -109,9 +110,28 @@ test("closeOverdueActiveGmailScan marks stale queued as timed_out", async () => 
 
   try {
     assert.equal(await closeOverdueActiveGmailScan(log, Date.now()), "timed_out");
-    assert.equal(terminalStatus, "timed_out");
+    assert.equal(terminalStatus, "failed");
   } finally {
     (prisma.syncLog.findFirst as unknown) = originalFind;
+    (prisma.syncLog.update as unknown) = originalUpdate;
+  }
+});
+
+test("closeOverdueActiveGmailScan skips false-fail when emailsProcessed > 0 under deadline", async () => {
+  const originalUpdate = prisma.syncLog.update;
+  let updateCalled = false;
+  const log = baseActiveLog({ emailsProcessed: 122, emailsSaved: 122 });
+
+  (prisma.syncLog.update as unknown) = async () => {
+    updateCalled = true;
+    throw new Error("must not terminalize productive historical scan");
+  };
+
+  try {
+    assert.equal(isGmailScanStuckWithoutProgress(log), true);
+    assert.equal(await closeOverdueActiveGmailScan(log, Date.now()), null);
+    assert.equal(updateCalled, false);
+  } finally {
     (prisma.syncLog.update as unknown) = originalUpdate;
   }
 });
@@ -159,11 +179,10 @@ test("stale running scan is closed then new manual scan can start", async () => 
   (prisma.syncLog.findFirst as unknown) = async (args: {
     where?: { id?: string; status?: { in?: string[] }; finishedAt?: unknown };
   }) => {
-    // terminalizeGmailScan looks up by id
     if (args?.where?.id === "stale-running") {
       return closed
         ? {
-            status: "timed_out",
+            status: "failed",
             finishedAt: new Date(),
             startedAt: stale.startedAt,
             organizationId: "org-1",
@@ -177,14 +196,13 @@ test("stale running scan is closed then new manual scan can start", async () => 
             scanMode: "manual",
           };
     }
-    // findActiveGmailScanLog
     activeLookupCount += 1;
     if (closed) return null;
     return stale;
   };
   (prisma.syncLog.update as unknown) = async (args: { data: Record<string, unknown> }) => {
     closed = true;
-    assert.equal(args.data.status, "timed_out");
+    assert.equal(args.data.status, "failed");
     return { id: stale.id, ...args.data };
   };
   (prisma.syncLog.create as unknown) = async (args: { data: Record<string, unknown> }) => {
@@ -230,22 +248,22 @@ test("scan status / progress read auto-recovers stale scan", async () => {
     if (!closed) return stale;
     return {
       ...stale,
-      status: "timed_out",
+      status: "failed",
       finishedAt: new Date(),
-      errorMessage: SCAN_STALE_TIMEOUT_REASON,
+      errorMessage: ZOMBIE_TIMEOUT_MESSAGE,
     };
   };
   (prisma.syncLog.update as unknown) = async (args: { data: Record<string, unknown> }) => {
     closed = true;
-    assert.equal(args.data.status, "timed_out");
+    assert.equal(args.data.status, "failed");
     return { id: stale.id, ...args.data };
   };
 
   try {
     const recovered = await refreshGmailScanProgressOnRead("org-1", "read-stale");
     assert.equal(closed, true);
-    assert.equal(recovered?.status, "timed_out");
-    assert.equal(recovered?.errorMessage, SCAN_STALE_TIMEOUT_REASON);
+    assert.equal(recovered?.status, "failed");
+    assert.equal(recovered?.errorMessage, ZOMBIE_TIMEOUT_MESSAGE);
     assert.ok(reads >= 2);
   } finally {
     (prisma.syncLog.findFirst as unknown) = originalFindFirst;
@@ -270,7 +288,7 @@ test("closeStaleGmailScansForOrg releases stale lock before new work", async () 
   });
   (prisma.syncLog.update as unknown) = async (args: { where: { id: string }; data: Record<string, unknown> }) => {
     closedIds.push(args.where.id);
-    assert.equal(args.data.status, "timed_out");
+    assert.equal(args.data.status, "failed");
     return { id: args.where.id, ...args.data };
   };
 
