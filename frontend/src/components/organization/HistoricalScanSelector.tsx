@@ -28,18 +28,16 @@ export function historicalScanDepthToast(years: number): string {
 
 type HistoricalScanSelectorProps = {
   value?: number | null;
-  disabled?: boolean;
   onSaved?: (settings: OrganizationSettings) => void;
   onToast?: (toast: SettingsToast) => void;
 };
 
 /**
  * Historical Gmail scan depth (1–5 years).
- * Persists via PATCH /api/organization/settings, then starts POST /api/gmail/scan.
+ * Always renders. Persists via PATCH, then starts POST /api/gmail/scan.
  */
 export function HistoricalScanSelector({
   value,
-  disabled = false,
   onSaved,
   onToast,
 }: HistoricalScanSelectorProps) {
@@ -53,8 +51,7 @@ export function HistoricalScanSelector({
   }, [value, saving]);
 
   async function saveYears(years: HistoricalScanYears) {
-    if (disabled || saving) return;
-    if (years === selected) return;
+    if (saving) return;
 
     const previous = selected;
     setSelected(years);
@@ -70,8 +67,6 @@ export function HistoricalScanSelector({
       onSaved?.(next);
       onToast?.({ text: historicalScanDepthToast(savedYears), tone: "success" });
 
-      // After a successful depth save, kick off a full historical Gmail scan
-      // for the selected window. Uses existing POST /api/gmail/scan (not /api/scan/start).
       try {
         await apiFetch("/api/gmail/scan", {
           method: "POST",
@@ -98,15 +93,19 @@ export function HistoricalScanSelector({
 
   return (
     <section
-      className="grid gap-3 rounded-2xl border border-[#DBE5F4] bg-[#F8FAFF] p-4 dark:border-[#1F2A44] dark:bg-[#0F172A] md:p-5"
+      data-testid="historical-scan-selector"
+      className="grid gap-3 rounded-2xl border-2 border-[#93C5FD] bg-[#EFF6FF] p-4 shadow-sm dark:border-[#1D4ED8] dark:bg-[#0F172A] md:p-5"
       aria-labelledby="historical-scan-selector-title"
     >
       <div>
-        <h3 id="historical-scan-selector-title" className="text-base font-black text-[var(--natalie-text-primary,#0F172A)]">
+        <h3
+          id="historical-scan-selector-title"
+          className="text-base font-black text-[var(--natalie-text-primary,#0F172A)] dark:text-white"
+        >
           עומק סריקה היסטורית
         </h3>
-        <p className="mt-1 text-sm font-semibold leading-6 text-[var(--natalie-text-muted,#64748B)]">
-          כמה שנים אחורה לחפש מסמכים וחשבוניות בסריקה היסטורית של המייל. אפשר לשנות בכל רגע.
+        <p className="mt-1 text-sm font-semibold leading-6 text-[var(--natalie-text-muted,#64748B)] dark:text-slate-300">
+          כמה שנים אחורה לחפש מסמכים וחשבוניות בסריקה היסטורית של המייל. בחירה מפעילה סריקה מלאה מיד.
         </p>
       </div>
 
@@ -120,7 +119,7 @@ export function HistoricalScanSelector({
               role="radio"
               aria-checked={active}
               variant={active ? "primary" : "secondary"}
-              disabled={disabled || saving}
+              disabled={saving}
               onClick={() => void saveYears(years)}
               className="min-w-[3.25rem]"
             >
@@ -130,7 +129,10 @@ export function HistoricalScanSelector({
         })}
       </div>
 
-      <p className="text-sm font-semibold text-[var(--natalie-text-muted,#64748B)]" aria-live="polite">
+      <p
+        className="text-sm font-semibold text-[var(--natalie-text-muted,#64748B)] dark:text-slate-300"
+        aria-live="polite"
+      >
         נבחר: {yearLabel(selected)}
         {saving ? " · שומר…" : ""}
       </p>

@@ -692,6 +692,17 @@ export default function InvoicesPage() {
       <AppShell
         pageTitle={<PageTitle title={t("invoicesDesign.title")} subtitle={t("invoicesDesign.subtitle")} />}
       >
+        <div className="mb-5" data-testid="historical-scan-selector-slot">
+          <HistoricalScanSelector
+            value={historicalScanYears}
+            onSaved={(settings) => setHistoricalScanYears(settings.historicalScanYears ?? 1)}
+            onToast={(toast) => {
+              setMessageTone(toast.tone);
+              setMessage(toast.text);
+            }}
+          />
+        </div>
+
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="flex flex-col gap-3 sm:flex-row md:justify-end">
             <Link
@@ -766,17 +777,6 @@ export default function InvoicesPage() {
             onChange={(next) => setReviewStatus(next === "needs_review" ? "all" : next)}
             labels={reviewTabLabels}
             hideNeedsReview
-          />
-        </div>
-
-        <div className="mb-5">
-          <HistoricalScanSelector
-            value={historicalScanYears}
-            onSaved={(settings) => setHistoricalScanYears(settings.historicalScanYears ?? 1)}
-            onToast={(toast) => {
-              setMessageTone(toast.tone);
-              setMessage(toast.text);
-            }}
           />
         </div>
 

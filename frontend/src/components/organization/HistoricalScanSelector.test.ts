@@ -37,11 +37,13 @@ test("HistoricalScanSelector starts a full historical Gmail scan after successfu
   assert.match(source, /daysBack:\s*savedYears\s*\*\s*365/);
 });
 
-test("HistoricalScanSelector is mounted on invoices page above filters", () => {
+test("HistoricalScanSelector is mounted on invoices page above Gmail action buttons", () => {
   assert.match(invoicesPage, /HistoricalScanSelector/);
+  assert.match(invoicesPage, /data-testid="historical-scan-selector-slot"/);
   const selectorIdx = invoicesPage.indexOf("<HistoricalScanSelector");
-  const filtersIdx = invoicesPage.indexOf("<InvoicesFiltersCard");
-  assert.ok(selectorIdx >= 0 && filtersIdx > selectorIdx);
+  const importIdx = invoicesPage.indexOf("invoicesDesign.importFile");
+  const scanIdx = invoicesPage.indexOf("invoicesDesign.scanGmail");
+  assert.ok(selectorIdx >= 0 && importIdx > selectorIdx && scanIdx > selectorIdx);
 });
 
 test("HistoricalScanSelector is removed from settings pages", () => {
