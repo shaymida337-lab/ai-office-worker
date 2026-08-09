@@ -1,0 +1,11 @@
+{
+  "commit": "00bb2a9dc091aa4e7f2a205c7af57544123d9235",
+  "list": {
+    "status": 200,
+    "total": 22,
+    "hasRnet": false
+  },
+  "stagesPresent": [],
+  "byStage": {},
+  "disappearsAt": "before_or_at_inSource (not in source rows)"
+}

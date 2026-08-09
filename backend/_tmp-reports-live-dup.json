@@ -1,0 +1,223 @@
+{
+  "checkedAt": "2026-07-26T11:40:38.544Z",
+  "screen": "/reports (ReportsClient = השלמת חשבוניות)",
+  "endpoints": {
+    "list": "GET /api/invoice-completion/list",
+    "bootstrap": "GET /api/invoice-completion/bootstrap (summary only; rows come from list)",
+    "invoicesCompare": "GET /api/invoices/list?completeness=complete"
+  },
+  "frontendBehavior": {
+    "firstPaint": "setInvoices(list.rows) from completion list page 1",
+    "background": "append pages with dedupe by row.id only (not by gmailMessageId)",
+    "bootstrapContributesCards": false
+  },
+  "completionList": {
+    "firstPayloadMeta": {
+      "status": 200,
+      "keys": [
+        "rows",
+        "page",
+        "pageSize",
+        "total",
+        "hasMore",
+        "generatedAt"
+      ]
+    },
+    "pagesFetched": 1,
+    "pageSnapshots": [
+      {
+        "page": 1,
+        "rowCount": 22,
+        "total": 22,
+        "hasMore": false,
+        "targetHits": {
+          "tire": [
+            {
+              "id": "gmail-scan:cms1p5nwl008xj81s2yeavjyx",
+              "source": "gmail_scan_item",
+              "reviewStatus": "needs_review",
+              "supplierName": null,
+              "amount": 450,
+              "gmailMessageId": null,
+              "attachmentFilename": null,
+              "documentType": "receipt",
+              "documentFingerprint": null,
+              "duplicateKey": null,
+              "reviewSourceId": "cms1p5nwl008xj81s2yeavjyx",
+              "decisionReason": null,
+              "uncertaintyReason": null,
+              "createdAt": "2026-07-26T11:10:36.358Z"
+            }
+          ],
+          "pharm": [
+            {
+              "id": "gmail-scan:cms1p5x0k0091j81sy1y0xkcr",
+              "source": "gmail_scan_item",
+              "reviewStatus": "needs_review",
+              "supplierName": null,
+              "amount": 918,
+              "gmailMessageId": null,
+              "attachmentFilename": null,
+              "documentType": "receipt",
+              "documentFingerprint": null,
+              "duplicateKey": null,
+              "reviewSourceId": "cms1p5x0k0091j81sy1y0xkcr",
+              "decisionReason": null,
+              "uncertaintyReason": null,
+              "createdAt": "2026-07-26T11:10:48.164Z"
+            }
+          ]
+        }
+      }
+    ],
+    "totalRowsAcrossPages": 22,
+    "uniqueIds": 22,
+    "targetsRaw": {
+      "tire": [
+        {
+          "id": "gmail-scan:cms1p5nwl008xj81s2yeavjyx",
+          "source": "gmail_scan_item",
+          "reviewStatus": "needs_review",
+          "supplierName": null,
+          "amount": 450,
+          "gmailMessageId": null,
+          "attachmentFilename": null,
+          "documentType": "receipt",
+          "documentFingerprint": null,
+          "duplicateKey": null,
+          "reviewSourceId": "cms1p5nwl008xj81s2yeavjyx",
+          "decisionReason": null,
+          "uncertaintyReason": null,
+          "createdAt": "2026-07-26T11:10:36.358Z"
+        }
+      ],
+      "pharm": [
+        {
+          "id": "gmail-scan:cms1p5x0k0091j81sy1y0xkcr",
+          "source": "gmail_scan_item",
+          "reviewStatus": "needs_review",
+          "supplierName": null,
+          "amount": 918,
+          "gmailMessageId": null,
+          "attachmentFilename": null,
+          "documentType": "receipt",
+          "documentFingerprint": null,
+          "duplicateKey": null,
+          "reviewSourceId": "cms1p5x0k0091j81sy1y0xkcr",
+          "decisionReason": null,
+          "uncertaintyReason": null,
+          "createdAt": "2026-07-26T11:10:48.164Z"
+        }
+      ]
+    },
+    "targetsAfterFrontendIdDedupe": {
+      "tire": [
+        {
+          "id": "gmail-scan:cms1p5nwl008xj81s2yeavjyx",
+          "source": "gmail_scan_item",
+          "reviewStatus": "needs_review",
+          "supplierName": null,
+          "amount": 450,
+          "gmailMessageId": null,
+          "attachmentFilename": null,
+          "documentType": "receipt",
+          "documentFingerprint": null,
+          "duplicateKey": null,
+          "reviewSourceId": "cms1p5nwl008xj81s2yeavjyx",
+          "decisionReason": null,
+          "uncertaintyReason": null,
+          "createdAt": "2026-07-26T11:10:36.358Z"
+        }
+      ],
+      "pharm": [
+        {
+          "id": "gmail-scan:cms1p5x0k0091j81sy1y0xkcr",
+          "source": "gmail_scan_item",
+          "reviewStatus": "needs_review",
+          "supplierName": null,
+          "amount": 918,
+          "gmailMessageId": null,
+          "attachmentFilename": null,
+          "documentType": "receipt",
+          "documentFingerprint": null,
+          "duplicateKey": null,
+          "reviewSourceId": "cms1p5x0k0091j81sy1y0xkcr",
+          "decisionReason": null,
+          "uncertaintyReason": null,
+          "createdAt": "2026-07-26T11:10:48.164Z"
+        }
+      ]
+    }
+  },
+  "invoicesListComplete": {
+    "status": 200,
+    "total": 3,
+    "targets": {
+      "tire": [],
+      "pharm": []
+    }
+  },
+  "bootstrap": {
+    "status": 200,
+    "keys": [
+      "counts",
+      "availableFilters",
+      "missingFieldCategories",
+      "generatedAt"
+    ],
+    "incompleteCount": null,
+    "hasRowsArray": false
+  },
+  "dbCross": {
+    "tireFdr": {
+      "id": "cms1p5fn1008rj81sxvqogrc8",
+      "documentFingerprint": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+      "gmailMessageId": "19f9e1a31eb03f30",
+      "totalAmount": 450,
+      "supplierName": "GENERAL TIRE"
+    },
+    "tireGsi": {
+      "id": "cms1p5nwl008xj81s2yeavjyx",
+      "duplicateKey": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+      "gmailMessageId": "19f9e1a31eb03f30",
+      "amount": 450,
+      "supplierName": "GENERAL TIRE"
+    },
+    "pharmFdr": {
+      "id": "cms1p5woj008zj81s99yq2wfp",
+      "documentFingerprint": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+      "gmailMessageId": "19f9e19c826d7978",
+      "totalAmount": 918,
+      "supplierName": "סופר פארם"
+    },
+    "pharmGsi": {
+      "id": "cms1p5x0k0091j81sy1y0xkcr",
+      "duplicateKey": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+      "gmailMessageId": "19f9e19c826d7978",
+      "amount": 918,
+      "supplierName": "סופר פארם"
+    }
+  },
+  "verdict": {
+    "completionApiReturnsTwoPerDoc": false,
+    "tireCount": 1,
+    "pharmCount": 1,
+    "tireSources": [
+      {
+        "id": "gmail-scan:cms1p5nwl008xj81s2yeavjyx",
+        "source": "gmail_scan_item"
+      }
+    ],
+    "pharmSources": [
+      {
+        "id": "gmail-scan:cms1p5x0k0091j81sy1y0xkcr",
+        "source": "gmail_scan_item"
+      }
+    ],
+    "invoicesListShowsOneOrZero": {
+      "tire": 0,
+      "pharm": 0
+    },
+    "rootCause": "invoice-completion/list concatenates GSI+FDR via scanCompletionQueueFromSources without mergeInvoiceListCandidates dedupe"
+  }
+}

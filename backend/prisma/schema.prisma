@@ -64,6 +64,8 @@ model Organization {
   calendarEngineWriteEnabled        Boolean   @default(false) @map("calendar_engine_write_enabled")
   calendarEngineGoogleMirrorEnabled Boolean   @default(false) @map("calendar_engine_google_mirror_enabled")
   calendarEnginePilotNotes          String?   @map("calendar_engine_pilot_notes")
+  /// How far back historical Gmail deep-scans look (1–5 years). Settings UI only; scan callers may read this later.
+  historicalScanYears               Int       @default(1) @map("historical_scan_years")
   createdAt                         DateTime  @default(now())
   updatedAt                         DateTime  @updatedAt
 

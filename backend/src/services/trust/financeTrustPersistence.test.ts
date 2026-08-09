@@ -190,6 +190,19 @@ test("Camera-style low confidence remains review-only", () => {
   assert.match(evaluation.reasonCode ?? "", /confidence below 80%/);
 });
 
+test("confidence boundary 0.79 with all gates passing → review, no payment", () => {
+  const evaluation = evaluateFinanceTrustGates({
+    ...buildPassingTrustGateSnapshots(),
+    selectedAmount: 150,
+    needsReview: false,
+    documentType: "tax_invoice",
+    confidenceScore: 0.79,
+  });
+  assert.equal(evaluation.outcome, "review");
+  assert.equal(evaluation.shouldCreatePayment, false);
+  assert.match(evaluation.reasonCode ?? "", /confidence below 80%/);
+});
+
 test("Manual approve uses unified fresh gate evaluation", () => {
   const snapshots = buildPassingTrustGateSnapshots();
   const evaluation = evaluateFreshTrustGatesForManualApproval({
@@ -272,7 +285,8 @@ test("parsedFieldsJson gates includes all four gate snapshots", () => {
 });
 
 test("static guard catches direct supplierPayment.create outside unified module", () => {
-  const forbiddenPattern = /\bprisma\.supplierPayment\.create\s*\(/;
+  // Unified path may bind Prisma as `prisma` or `db` (transaction client).
+  const forbiddenPattern = /\b(?:prisma|db)\.supplierPayment\.create\s*\(/;
   const allowedRelativePaths = new Set([
     FINANCE_TRUST_PERSISTENCE_MODULE,
   ]);
@@ -290,15 +304,15 @@ test("static guard catches direct supplierPayment.create outside unified module"
   assert.deepEqual(
     violations,
     [],
-    `Direct prisma.supplierPayment.create found outside unified module: ${violations.join(", ")}`
+    `Direct prisma/db.supplierPayment.create found outside unified module: ${violations.join(", ")}`
   );
 });
 
 test("static guard allows unified module to own supplierPayment.create", () => {
   const modulePath = join(backendRoot, FINANCE_TRUST_PERSISTENCE_MODULE);
   const source = readFileSync(modulePath, "utf8");
-  assert.match(source, /\bprisma\.supplierPayment\.create\s*\(/);
-  assert.match(source, /\bprisma\.supplierPayment\.upsert\s*\(/);
+  assert.match(source, /\b(?:prisma|db)\.supplierPayment\.create\s*\(/);
+  assert.match(source, /\b(?:prisma|db)\.supplierPayment\.upsert\s*\(/);
 });
 
 test("evaluateFinanceTrustGates reports first failing gate in order", () => {

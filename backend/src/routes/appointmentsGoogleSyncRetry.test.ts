@@ -6,10 +6,12 @@ import { AddressInfo } from "node:net";
 import { apiRouter } from "./api.js";
 import { prisma } from "../lib/prisma.js";
 import { signToken, type JwtPayload } from "../lib/auth.js";
+import { resetVerifiedTenantCacheForTests } from "../services/tenant/verifiedTenantCache.js";
 
 const ORG_A = "org-a";
 const ORG_B = "org-b";
 const OWNER_A: JwtPayload = { organizationId: ORG_A, userId: "owner-a", email: "owner-a@example.com" };
+const OWNER_B: JwtPayload = { organizationId: ORG_B, userId: "owner-b", email: "owner-b@example.com" };
 const READ_ONLY_A: JwtPayload = { organizationId: ORG_A, userId: "read-a", email: "read-a@example.com" };
 
 type AppointmentRow = {
@@ -64,7 +66,10 @@ function createAppWithMocks() {
     service: null,
   });
 
+  resetVerifiedTenantCacheForTests();
+
   const originals = {
+    userFindUnique: prisma.user.findUnique.bind(prisma.user),
     member: prisma.organizationMember.findUnique.bind(prisma.organizationMember),
     orgFindUnique: prisma.organization.findUnique.bind(prisma.organization),
     apptFindFirst: prisma.appointment.findFirst.bind(prisma.appointment),
@@ -74,19 +79,34 @@ function createAppWithMocks() {
     auditCreate: prisma.platformAuditLog.create.bind(prisma.platformAuditLog),
   };
 
+  // validateTenantMiddleware resolves tenant via user.findUnique + membership.
+  prisma.user.findUnique = (async (args) => {
+    const id = args?.where?.id as string | undefined;
+    if (id === OWNER_A.userId) {
+      return { id: OWNER_A.userId, email: OWNER_A.email, organization: { id: ORG_A } };
+    }
+    if (id === OWNER_B.userId) {
+      return { id: OWNER_B.userId, email: OWNER_B.email, organization: { id: ORG_B } };
+    }
+    if (id === READ_ONLY_A.userId) {
+      return { id: READ_ONLY_A.userId, email: READ_ONLY_A.email, organization: null };
+    }
+    return null;
+  }) as typeof prisma.user.findUnique;
+
   prisma.organizationMember.findUnique = (async (args) => {
     const orgId = args?.where?.organizationId_userId?.organizationId;
     const userId = args?.where?.organizationId_userId?.userId;
     if (orgId === ORG_A && userId === OWNER_A.userId) return { id: "m1", role: "owner" };
     if (orgId === ORG_A && userId === READ_ONLY_A.userId) return { id: "m2", role: "read_only" };
-    if (orgId === ORG_B && userId === "owner-b") return { id: "m3", role: "owner" };
+    if (orgId === ORG_B && userId === OWNER_B.userId) return { id: "m3", role: "owner" };
     return null;
   }) as typeof prisma.organizationMember.findUnique;
 
   prisma.organization.findUnique = (async (args) => {
     const orgId = args?.where?.id as string | undefined;
     if (!orgId) return null;
-    return { id: orgId, userId: orgId === ORG_A ? OWNER_A.userId : "owner-b" };
+    return { id: orgId, userId: orgId === ORG_A ? OWNER_A.userId : OWNER_B.userId };
   }) as typeof prisma.organization.findUnique;
 
   prisma.appointment.findFirst = (async (args) => {
@@ -141,6 +161,7 @@ function createAppWithMocks() {
     app,
     rows,
     restore: () => {
+      prisma.user.findUnique = originals.userFindUnique;
       prisma.organizationMember.findUnique = originals.member;
       prisma.organization.findUnique = originals.orgFindUnique;
       prisma.appointment.findFirst = originals.apptFindFirst;
@@ -148,6 +169,7 @@ function createAppWithMocks() {
       prisma.appointment.update = originals.apptUpdate;
       prisma.integration.findUnique = originals.integrationFindUnique;
       prisma.platformAuditLog.create = originals.auditCreate;
+      resetVerifiedTenantCacheForTests();
     },
   };
 }
@@ -182,7 +204,7 @@ test("manual retry endpoint requires calendar permission", async () => {
 });
 
 test("manual retry endpoint is organization scoped", async () => {
-  const token = signToken({ organizationId: ORG_B, userId: "owner-b", email: "owner-b@example.com" });
+  const token = signToken(OWNER_B);
   const res = await call("/api/appointments/appt-success/google-sync/retry", token);
   assert.equal(res.status, 404);
 });

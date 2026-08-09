@@ -1,0 +1,49 @@
+diff --git a/backend/_tmp-api.ts.head b/backend/_tmp-api.ts.dedupe-only
+index 9e754fc..0c53a30 100644
+--- a/backend/_tmp-api.ts.head
++++ b/backend/_tmp-api.ts.dedupe-only
+@@ -73,6 +73,7 @@ import {
+ import {
+   COMPLETION_SCAN_CHUNK,
+   COMPLETION_SCAN_MAX_SOURCE_ROWS,
++  dedupeCompletionCandidatesPreferGsi,
+   scanCompletionQueueFromSources,
+ } from "../services/invoiceCompletion/completionQueueQuery.js";
+ import {
+@@ -5466,7 +5467,12 @@ async function loadCompletionQueuePage(input: {
+                 take,
+               })
+             : Promise.resolve([]),
+-        map: (row) => mapGmailScanItemToInvoiceCandidate(row),
++        map: (row) => ({
++          ...mapGmailScanItemToInvoiceCandidate(row),
++          emailMessageId: row.emailMessageId,
++          duplicateKey: row.duplicateKey,
++          documentFingerprint: row.duplicateKey,
++        }),
+       },
+       {
+         name: "financial_document_review",
+@@ -5479,7 +5485,12 @@ async function loadCompletionQueuePage(input: {
+                 take,
+               })
+             : Promise.resolve([]),
+-        map: (row) => mapDocumentReviewToInvoiceCandidate(row, input.organizationId),
++        map: (row) => ({
++          ...mapDocumentReviewToInvoiceCandidate(row, input.organizationId),
++          emailMessageId: row.emailMessageId,
++          documentFingerprint: row.documentFingerprint,
++          duplicateKey: row.documentFingerprint,
++        }),
+       },
+     ],
+     {
+@@ -5490,6 +5501,8 @@ async function loadCompletionQueuePage(input: {
+       search: input.search,
+       chunk: COMPLETION_SCAN_CHUNK,
+       maxSourceRows: COMPLETION_SCAN_MAX_SOURCE_ROWS,
++      // Same Gmail doc is dual-written as GSI+FDR; collapse before filter/pagination.
++      dedupeCandidates: dedupeCompletionCandidatesPreferGsi,
+     },
+   );
+ 

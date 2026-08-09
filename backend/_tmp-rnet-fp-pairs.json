@@ -1,0 +1,50 @@
+{
+  "rnet": {
+    "gsi": [
+      {
+        "id": "cmqw3n5ug020fm92b5smx5bx1",
+        "gmailMessageId": "19ee12f8ab9f4579",
+        "reviewStatus": "rejected",
+        "decisionReason": "Quarantined: cross-org gmail ingestion",
+        "supplierName": "ערנט אי.קום",
+        "amount": 354,
+        "documentType": "receipt"
+      }
+    ],
+    "fdr": [
+      {
+        "id": "cmqw3n5hx020dm92bp1joi8wu",
+        "gmailMessageId": "19ee12f8ab9f4579",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+        "supplierName": "נ.ערנט איי.קום בע\"מ",
+        "totalAmount": 354,
+        "documentType": "tax_invoice_receipt"
+      }
+    ]
+  },
+  "bezeq": {
+    "gsi": [
+      {
+        "id": "cmqw3onza0229m92blwh0o3cs",
+        "gmailMessageId": "19ed663d168fc8dc",
+        "reviewStatus": "rejected",
+        "decisionReason": "Quarantined: cross-org gmail ingestion",
+        "supplierName": "בזק - החברה הישראלית לתקשורת בע״מ",
+        "amount": 163.28,
+        "documentType": "tax_invoice_receipt"
+      }
+    ],
+    "fdr": [
+      {
+        "id": "cmqw3onmp0227m92bemcb1bkm",
+        "gmailMessageId": "19ed663d168fc8dc",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+        "supplierName": "בזק - החברה הישראלית לתקשורת בע״מ",
+        "totalAmount": 163.28,
+        "documentType": "tax_invoice_receipt"
+      }
+    ]
+  }
+}

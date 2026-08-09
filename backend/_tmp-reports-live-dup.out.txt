@@ -1,0 +1,345 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+{
+  "checkedAt": "2026-07-26T11:24:48.145Z",
+  "screen": "/reports (ReportsClient = ╫פ╫⌐╫£╫₧╫¬ ╫ק╫⌐╫ס╫ץ╫á╫ש╫ץ╫¬)",
+  "endpoints": {
+    "list": "GET /api/invoice-completion/list",
+    "bootstrap": "GET /api/invoice-completion/bootstrap (summary only; rows come from list)",
+    "invoicesCompare": "GET /api/invoices/list?completeness=complete"
+  },
+  "frontendBehavior": {
+    "firstPaint": "setInvoices(list.rows) from completion list page 1",
+    "background": "append pages with dedupe by row.id only (not by gmailMessageId)",
+    "bootstrapContributesCards": false
+  },
+  "completionList": {
+    "firstPayloadMeta": {
+      "status": 200,
+      "keys": [
+        "rows",
+        "page",
+        "pageSize",
+        "total",
+        "hasMore",
+        "generatedAt"
+      ]
+    },
+    "pagesFetched": 2,
+    "pageSnapshots": [
+      {
+        "page": 1,
+        "rowCount": 25,
+        "total": 26,
+        "hasMore": true,
+        "targetHits": {
+          "tire": [
+            {
+              "id": "gmail-scan:cms1p5nwl008xj81s2yeavjyx",
+              "source": "gmail_scan_item",
+              "reviewStatus": "needs_review",
+              "supplierName": null,
+              "amount": 450,
+              "gmailMessageId": null,
+              "attachmentFilename": null,
+              "documentType": "receipt",
+              "documentFingerprint": null,
+              "duplicateKey": null,
+              "reviewSourceId": "cms1p5nwl008xj81s2yeavjyx",
+              "decisionReason": null,
+              "uncertaintyReason": null,
+              "createdAt": "2026-07-26T11:10:36.358Z"
+            },
+            {
+              "id": "document-review:cms1p5fn1008rj81sxvqogrc8",
+              "source": "financial_document_review",
+              "reviewStatus": "needs_review",
+              "supplierName": null,
+              "amount": 450,
+              "gmailMessageId": null,
+              "attachmentFilename": null,
+              "documentType": "receipt",
+              "documentFingerprint": null,
+              "duplicateKey": null,
+              "reviewSourceId": "cms1p5fn1008rj81sxvqogrc8",
+              "decisionReason": null,
+              "uncertaintyReason": null,
+              "createdAt": "2026-07-26T11:10:25.645Z"
+            }
+          ],
+          "pharm": [
+            {
+              "id": "gmail-scan:cms1p5x0k0091j81sy1y0xkcr",
+              "source": "gmail_scan_item",
+              "reviewStatus": "needs_review",
+              "supplierName": null,
+              "amount": 918,
+              "gmailMessageId": null,
+              "attachmentFilename": null,
+              "documentType": "receipt",
+              "documentFingerprint": null,
+              "duplicateKey": null,
+              "reviewSourceId": "cms1p5x0k0091j81sy1y0xkcr",
+              "decisionReason": null,
+              "uncertaintyReason": null,
+              "createdAt": "2026-07-26T11:10:48.164Z"
+            },
+            {
+              "id": "document-review:cms1p5woj008zj81s99yq2wfp",
+              "source": "financial_document_review",
+              "reviewStatus": "needs_review",
+              "supplierName": null,
+              "amount": 918,
+              "gmailMessageId": null,
+              "attachmentFilename": null,
+              "documentType": "receipt",
+              "documentFingerprint": null,
+              "duplicateKey": null,
+              "reviewSourceId": "cms1p5woj008zj81s99yq2wfp",
+              "decisionReason": null,
+              "uncertaintyReason": null,
+              "createdAt": "2026-07-26T11:10:47.731Z"
+            }
+          ]
+        }
+      },
+      {
+        "page": 2,
+        "rowCount": 1,
+        "total": 26,
+        "hasMore": false,
+        "targetHits": {
+          "tire": [],
+          "pharm": []
+        }
+      }
+    ],
+    "totalRowsAcrossPages": 26,
+    "uniqueIds": 26,
+    "targetsRaw": {
+      "tire": [
+        {
+          "id": "gmail-scan:cms1p5nwl008xj81s2yeavjyx",
+          "source": "gmail_scan_item",
+          "reviewStatus": "needs_review",
+          "supplierName": null,
+          "amount": 450,
+          "gmailMessageId": null,
+          "attachmentFilename": null,
+          "documentType": "receipt",
+          "documentFingerprint": null,
+          "duplicateKey": null,
+          "reviewSourceId": "cms1p5nwl008xj81s2yeavjyx",
+          "decisionReason": null,
+          "uncertaintyReason": null,
+          "createdAt": "2026-07-26T11:10:36.358Z"
+        },
+        {
+          "id": "document-review:cms1p5fn1008rj81sxvqogrc8",
+          "source": "financial_document_review",
+          "reviewStatus": "needs_review",
+          "supplierName": null,
+          "amount": 450,
+          "gmailMessageId": null,
+          "attachmentFilename": null,
+          "documentType": "receipt",
+          "documentFingerprint": null,
+          "duplicateKey": null,
+          "reviewSourceId": "cms1p5fn1008rj81sxvqogrc8",
+          "decisionReason": null,
+          "uncertaintyReason": null,
+          "createdAt": "2026-07-26T11:10:25.645Z"
+        }
+      ],
+      "pharm": [
+        {
+          "id": "gmail-scan:cms1p5x0k0091j81sy1y0xkcr",
+          "source": "gmail_scan_item",
+          "reviewStatus": "needs_review",
+          "supplierName": null,
+          "amount": 918,
+          "gmailMessageId": null,
+          "attachmentFilename": null,
+          "documentType": "receipt",
+          "documentFingerprint": null,
+          "duplicateKey": null,
+          "reviewSourceId": "cms1p5x0k0091j81sy1y0xkcr",
+          "decisionReason": null,
+          "uncertaintyReason": null,
+          "createdAt": "2026-07-26T11:10:48.164Z"
+        },
+        {
+          "id": "document-review:cms1p5woj008zj81s99yq2wfp",
+          "source": "financial_document_review",
+          "reviewStatus": "needs_review",
+          "supplierName": null,
+          "amount": 918,
+          "gmailMessageId": null,
+          "attachmentFilename": null,
+          "documentType": "receipt",
+          "documentFingerprint": null,
+          "duplicateKey": null,
+          "reviewSourceId": "cms1p5woj008zj81s99yq2wfp",
+          "decisionReason": null,
+          "uncertaintyReason": null,
+          "createdAt": "2026-07-26T11:10:47.731Z"
+        }
+      ]
+    },
+    "targetsAfterFrontendIdDedupe": {
+      "tire": [
+        {
+          "id": "gmail-scan:cms1p5nwl008xj81s2yeavjyx",
+          "source": "gmail_scan_item",
+          "reviewStatus": "needs_review",
+          "supplierName": null,
+          "amount": 450,
+          "gmailMessageId": null,
+          "attachmentFilename": null,
+          "documentType": "receipt",
+          "documentFingerprint": null,
+          "duplicateKey": null,
+          "reviewSourceId": "cms1p5nwl008xj81s2yeavjyx",
+          "decisionReason": null,
+          "uncertaintyReason": null,
+          "createdAt": "2026-07-26T11:10:36.358Z"
+        },
+        {
+          "id": "document-review:cms1p5fn1008rj81sxvqogrc8",
+          "source": "financial_document_review",
+          "reviewStatus": "needs_review",
+          "supplierName": null,
+          "amount": 450,
+          "gmailMessageId": null,
+          "attachmentFilename": null,
+          "documentType": "receipt",
+          "documentFingerprint": null,
+          "duplicateKey": null,
+          "reviewSourceId": "cms1p5fn1008rj81sxvqogrc8",
+          "decisionReason": null,
+          "uncertaintyReason": null,
+          "createdAt": "2026-07-26T11:10:25.645Z"
+        }
+      ],
+      "pharm": [
+        {
+          "id": "gmail-scan:cms1p5x0k0091j81sy1y0xkcr",
+          "source": "gmail_scan_item",
+          "reviewStatus": "needs_review",
+          "supplierName": null,
+          "amount": 918,
+          "gmailMessageId": null,
+          "attachmentFilename": null,
+          "documentType": "receipt",
+          "documentFingerprint": null,
+          "duplicateKey": null,
+          "reviewSourceId": "cms1p5x0k0091j81sy1y0xkcr",
+          "decisionReason": null,
+          "uncertaintyReason": null,
+          "createdAt": "2026-07-26T11:10:48.164Z"
+        },
+        {
+          "id": "document-review:cms1p5woj008zj81s99yq2wfp",
+          "source": "financial_document_review",
+          "reviewStatus": "needs_review",
+          "supplierName": null,
+          "amount": 918,
+          "gmailMessageId": null,
+          "attachmentFilename": null,
+          "documentType": "receipt",
+          "documentFingerprint": null,
+          "duplicateKey": null,
+          "reviewSourceId": "cms1p5woj008zj81s99yq2wfp",
+          "decisionReason": null,
+          "uncertaintyReason": null,
+          "createdAt": "2026-07-26T11:10:47.731Z"
+        }
+      ]
+    }
+  },
+  "invoicesListComplete": {
+    "status": 200,
+    "total": 3,
+    "targets": {
+      "tire": [],
+      "pharm": []
+    }
+  },
+  "bootstrap": {
+    "status": 200,
+    "keys": [
+      "counts",
+      "availableFilters",
+      "missingFieldCategories",
+      "generatedAt"
+    ],
+    "incompleteCount": null,
+    "hasRowsArray": false
+  },
+  "dbCross": {
+    "tireFdr": {
+      "id": "cms1p5fn1008rj81sxvqogrc8",
+      "documentFingerprint": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+      "gmailMessageId": "19f9e1a31eb03f30",
+      "totalAmount": 450,
+      "supplierName": "GENERAL TIRE"
+    },
+    "tireGsi": {
+      "id": "cms1p5nwl008xj81s2yeavjyx",
+      "duplicateKey": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+      "gmailMessageId": "19f9e1a31eb03f30",
+      "amount": 450,
+      "supplierName": "GENERAL TIRE"
+    },
+    "pharmFdr": {
+      "id": "cms1p5woj008zj81s99yq2wfp",
+      "documentFingerprint": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+      "gmailMessageId": "19f9e19c826d7978",
+      "totalAmount": 918,
+      "supplierName": "╫í╫ץ╫ñ╫¿ ╫ñ╫נ╫¿╫¥"
+    },
+    "pharmGsi": {
+      "id": "cms1p5x0k0091j81sy1y0xkcr",
+      "duplicateKey": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+      "gmailMessageId": "19f9e19c826d7978",
+      "amount": 918,
+      "supplierName": "╫í╫ץ╫ñ╫¿ ╫ñ╫נ╫¿╫¥"
+    }
+  },
+  "verdict": {
+    "completionApiReturnsTwoPerDoc": true,
+    "tireCount": 2,
+    "pharmCount": 2,
+    "tireSources": [
+      {
+        "id": "gmail-scan:cms1p5nwl008xj81s2yeavjyx",
+        "source": "gmail_scan_item"
+      },
+      {
+        "id": "document-review:cms1p5fn1008rj81sxvqogrc8",
+        "source": "financial_document_review"
+      }
+    ],
+    "pharmSources": [
+      {
+        "id": "gmail-scan:cms1p5x0k0091j81sy1y0xkcr",
+        "source": "gmail_scan_item"
+      },
+      {
+        "id": "document-review:cms1p5woj008zj81s99yq2wfp",
+        "source": "financial_document_review"
+      }
+    ],
+    "invoicesListShowsOneOrZero": {
+      "tire": 0,
+      "pharm": 0
+    },
+    "rootCause": "invoice-completion/list concatenates GSI+FDR via scanCompletionQueueFromSources without mergeInvoiceListCandidates dedupe"
+  }
+}

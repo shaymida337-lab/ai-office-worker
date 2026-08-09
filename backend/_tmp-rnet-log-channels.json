@@ -1,0 +1,26 @@
+{
+  "since": "2026-07-26T13:25:55.082Z",
+  "rnetCount": 4,
+  "timingCount": 0,
+  "listPathCount": 0,
+  "rnet": [
+    {
+      "ts": "2026-07-26T13:26:07.821744683Z",
+      "msg": "{\"tag\":\"rnet_completion_trace\",\"stage\":\"inSource\",\"count\":0,\"rows\":[]}"
+    },
+    {
+      "ts": "2026-07-26T13:26:07.8227599Z",
+      "msg": "{\"tag\":\"rnet_completion_trace\",\"stage\":\"afterDedupe\",\"count\":0,\"rows\":[]}"
+    },
+    {
+      "ts": "2026-07-26T13:26:07.827634717Z",
+      "msg": "{\"tag\":\"rnet_completion_trace\",\"stage\":\"afterIncomplete\",\"count\":0,\"rows\":[]}"
+    },
+    {
+      "ts": "2026-07-26T13:26:07.827856502Z",
+      "msg": "{\"tag\":\"rnet_completion_trace\",\"stage\":\"finalPageRows\",\"count\":0,\"rows\":[]}"
+    }
+  ],
+  "timing": [],
+  "listPath": []
+}

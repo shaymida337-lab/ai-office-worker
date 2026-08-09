@@ -1,0 +1,159 @@
+{
+  "checkedAt": "2026-07-26T12:48:39.953Z",
+  "deploy": {
+    "healthCommit": "b46450eaf4c1ab90d3a49638029d2e8d392c7c21",
+    "want": "b46450eaf4c1ab90d3a49638029d2e8d392c7c21",
+    "liveOnTarget": true
+  },
+  "db": {
+    "fdr": {
+      "id": "cmqw3n5hx020dm92bp1joi8wu",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "documentType": "tax_invoice_receipt",
+      "documentFingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      "gmailMessageId": "19ee12f8ab9f4579",
+      "totalAmount": 354,
+      "invoiceNumber": "OV255006399",
+      "supplierName": "נ.ערנט איי.קום בע\"מ",
+      "updatedAt": "2026-07-26T11:48:12.017Z"
+    },
+    "gsi": {
+      "id": "cmqw3n5ug020fm92b5smx5bx1",
+      "reviewStatus": "rejected",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "documentType": "receipt",
+      "duplicateKey": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      "gmailMessageId": "19ee12f8ab9f4579",
+      "amount": 354,
+      "updatedAt": "2026-07-11T15:59:07.508Z"
+    },
+    "fdrInSourceWhereCount": 1,
+    "gsiInSourceWhereCount": 1
+  },
+  "mappedTrace": {
+    "beforeDedupe": [
+      {
+        "id": "gmail-scan:cmqw3n5ug020fm92b5smx5bx1",
+        "source": "gmail_scan_item",
+        "reviewStatus": "rejected",
+        "status": "rejected",
+        "rawReviewStatus": "rejected",
+        "decisionReason": "Quarantined: cross-org gmail ingestion",
+        "uncertaintyReason": null,
+        "gmailMessageId": "19ee12f8ab9f4579",
+        "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+        "documentFingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "duplicateKey": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "amount": 354,
+        "supplierName": "ערנט אי.קום",
+        "invoiceNumber": "OV255006399",
+        "documentType": "receipt",
+        "isComplete": true,
+        "dataComplete": true,
+        "approvalRequired": false,
+        "missingDataReasons": [],
+        "actionable": false
+      },
+      {
+        "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+        "source": "financial_document_review",
+        "reviewStatus": "needs_review",
+        "status": "needs_review",
+        "rawReviewStatus": "needs_review",
+        "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+        "uncertaintyReason": null,
+        "gmailMessageId": "19ee12f8ab9f4579",
+        "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+        "documentFingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "duplicateKey": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "amount": 354,
+        "supplierName": "נ.ערנט איי.קום בע\"מ",
+        "invoiceNumber": "OV255006399",
+        "documentType": "tax_invoice_receipt",
+        "isComplete": true,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "missingDataReasons": [],
+        "actionable": true
+      }
+    ],
+    "preferWinner": {
+      "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+      "source": "financial_document_review",
+      "reviewStatus": "needs_review",
+      "status": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "uncertaintyReason": null,
+      "gmailMessageId": "19ee12f8ab9f4579",
+      "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+      "documentFingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      "duplicateKey": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      "amount": 354,
+      "supplierName": "נ.ערנט איי.קום בע\"מ",
+      "invoiceNumber": "OV255006399",
+      "documentType": "tax_invoice_receipt",
+      "isComplete": true,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "missingDataReasons": [],
+      "actionable": true
+    },
+    "afterDedupe": [
+      {
+        "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+        "source": "financial_document_review",
+        "reviewStatus": "needs_review",
+        "status": "needs_review",
+        "rawReviewStatus": "needs_review",
+        "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+        "uncertaintyReason": null,
+        "gmailMessageId": "19ee12f8ab9f4579",
+        "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+        "documentFingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "duplicateKey": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "amount": 354,
+        "supplierName": "נ.ערנט איי.קום בע\"מ",
+        "invoiceNumber": "OV255006399",
+        "documentType": "tax_invoice_receipt",
+        "isComplete": true,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "missingDataReasons": [],
+        "actionable": true
+      }
+    ],
+    "afterIncompleteFilter": [],
+    "paginatedTotal": 0,
+    "paginatedIds": []
+  },
+  "completeness": {
+    "localWorkingTree": {
+      "dataComplete": true,
+      "approvalRequired": true,
+      "isComplete": true,
+      "missingDataReasons": [],
+      "note": "uses currently loaded invoiceCompleteness.ts (may be dirty WIP)"
+    },
+    "prodCommittedFormula": {
+      "dataComplete": true,
+      "approvalRequired": true,
+      "isComplete": false,
+      "wouldPassIncompleteFilter": true,
+      "note": "isComplete = dataComplete && !approvalRequired (b46450e)"
+    }
+  },
+  "liveApi": {
+    "completion": {
+      "status": 200,
+      "total": 22,
+      "pagesFetched": 1,
+      "allRowCount": 22,
+      "hitsPage1": [],
+      "hitsAllPages": []
+    },
+    "invoicesIncompleteHits": [],
+    "invoicesCompleteHits": []
+  }
+}

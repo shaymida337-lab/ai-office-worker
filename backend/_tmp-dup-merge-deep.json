@@ -1,0 +1,258 @@
+{
+  "checkedAt": "2026-07-26T11:18:31.699Z",
+  "results": [
+    {
+      "label": "GENERAL_TIRE_450",
+      "fdr": {
+        "id": "cms1p5fn1008rj81sxvqogrc8",
+        "supplierName": "GENERAL TIRE",
+        "totalAmount": 450,
+        "gmailMessageId": "19f9e1a31eb03f30",
+        "emailMessageId": "cms1p4jvj007nj81sgqbllbuo",
+        "fileName": "image1.jpeg",
+        "documentFingerprint": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+        "sourceFingerprint": "adeb0daadcae90ffbfc29aa0aeef736db43ac2db9a14036d",
+        "source": "gmail",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "duplicate.key_mismatch",
+        "createdAt": "2026-07-26T11:10:25.645Z",
+        "supplierPaymentId": null
+      },
+      "fdrsSameGmail": [
+        {
+          "id": "cms1p5fn1008rj81sxvqogrc8",
+          "amount": 450,
+          "supplier": "GENERAL TIRE",
+          "fp": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+          "createdAt": "2026-07-26T11:10:25.645Z",
+          "status": "needs_review"
+        }
+      ],
+      "fdrsSameAmount": [
+        {
+          "id": "cms1p5fn1008rj81sxvqogrc8",
+          "amount": 450,
+          "supplier": "GENERAL TIRE",
+          "gmail": "19f9e1a31eb03f30",
+          "fp": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+          "createdAt": "2026-07-26T11:10:25.645Z",
+          "status": "needs_review",
+          "reason": "duplicate.key_mismatch"
+        }
+      ],
+      "gsi": [
+        {
+          "id": "cms1p5nwl008xj81s2yeavjyx",
+          "gmailMessageId": "19f9e1a31eb03f30",
+          "emailMessageId": "cms1p4jvj007nj81sgqbllbuo",
+          "attachmentFilename": "image1.jpeg",
+          "supplierName": "GENERAL TIRE",
+          "amount": 450,
+          "duplicateKey": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+          "reviewStatus": "needs_review",
+          "createdAt": "2026-07-26T11:10:36.358Z",
+          "decisionReason": "Held for review: classifier money_direction_unsure; Auto-saved: receipt confidence=81%; attachment found: image; attachment found; image invoice detected; amount found; keyword mat"
+        }
+      ],
+      "invoices": [],
+      "payments": [],
+      "simulatedMergeAll": [
+        {
+          "kind": "gmail_scan_item",
+          "id": "cms1p5nwl008xj81s2yeavjyx",
+          "supplier": "GENERAL TIRE",
+          "amount": 450,
+          "gmail": "19f9e1a31eb03f30",
+          "file": "image1.jpeg"
+        }
+      ],
+      "simulatedMergeAmountOnly": [
+        {
+          "kind": "gmail_scan_item",
+          "id": "cms1p5nwl008xj81s2yeavjyx",
+          "supplier": "GENERAL TIRE",
+          "amount": 450,
+          "gmail": "19f9e1a31eb03f30",
+          "file": "image1.jpeg"
+        }
+      ],
+      "duplicateDiagnosis": {
+        "fdrCountSameAmount": 1,
+        "gsiCountRelevant": 1,
+        "invoiceCount": 0,
+        "paymentCount": 0,
+        "mergeCardCountForAmount": 1,
+        "mergeKinds": [
+          "gmail_scan_item"
+        ],
+        "sameGmailBetweenGsiAndFdr": true,
+        "gsiGmailIds": [
+          "19f9e1a31eb03f30"
+        ],
+        "fdrGmailIds": [
+          "19f9e1a31eb03f30"
+        ]
+      },
+      "scanLogsAroundCreate": [
+        {
+          "id": "scan_1785063637824_tdw7bgo7br",
+          "type": "quick",
+          "status": "success",
+          "found": 0,
+          "saved": 0,
+          "startedAt": "2026-07-26T11:00:37.857Z",
+          "endedAt": "2026-07-26T11:00:38.497Z",
+          "errors": null
+        }
+      ]
+    },
+    {
+      "label": "SUPERPHARM_918",
+      "fdr": {
+        "id": "cms1p5woj008zj81s99yq2wfp",
+        "supplierName": "סופר פארם",
+        "totalAmount": 918,
+        "gmailMessageId": "19f9e19c826d7978",
+        "emailMessageId": "cms1p4r7z007vj81sml5dnnzf",
+        "fileName": "image0.jpeg",
+        "documentFingerprint": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+        "sourceFingerprint": "b25808517ae1a758e0f19feb50120111c6e263bdc966c20a",
+        "source": "gmail",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "duplicate.key_mismatch",
+        "createdAt": "2026-07-26T11:10:47.731Z",
+        "supplierPaymentId": null
+      },
+      "fdrsSameGmail": [
+        {
+          "id": "cms1p5woj008zj81s99yq2wfp",
+          "amount": 918,
+          "supplier": "סופר פארם",
+          "fp": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+          "createdAt": "2026-07-26T11:10:47.731Z",
+          "status": "needs_review"
+        }
+      ],
+      "fdrsSameAmount": [
+        {
+          "id": "cms1p5woj008zj81s99yq2wfp",
+          "amount": 918,
+          "supplier": "סופר פארם",
+          "gmail": "19f9e19c826d7978",
+          "fp": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+          "createdAt": "2026-07-26T11:10:47.731Z",
+          "status": "needs_review",
+          "reason": "duplicate.key_mismatch"
+        }
+      ],
+      "gsi": [
+        {
+          "id": "cms1p5x0k0091j81sy1y0xkcr",
+          "gmailMessageId": "19f9e19c826d7978",
+          "emailMessageId": "cms1p4r7z007vj81sml5dnnzf",
+          "attachmentFilename": "image0.jpeg",
+          "supplierName": "סופר פארם",
+          "amount": 918,
+          "duplicateKey": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+          "reviewStatus": "needs_review",
+          "createdAt": "2026-07-26T11:10:48.164Z",
+          "decisionReason": "Held for review: classifier money_direction_unsure; Held for review: confidence is high; confidence below 80% (79%)"
+        }
+      ],
+      "invoices": [],
+      "payments": [],
+      "simulatedMergeAll": [
+        {
+          "kind": "gmail_scan_item",
+          "id": "cms1p5x0k0091j81sy1y0xkcr",
+          "supplier": "סופר פארם",
+          "amount": 918,
+          "gmail": "19f9e19c826d7978",
+          "file": "image0.jpeg"
+        }
+      ],
+      "simulatedMergeAmountOnly": [
+        {
+          "kind": "gmail_scan_item",
+          "id": "cms1p5x0k0091j81sy1y0xkcr",
+          "supplier": "סופר פארם",
+          "amount": 918,
+          "gmail": "19f9e19c826d7978",
+          "file": "image0.jpeg"
+        }
+      ],
+      "duplicateDiagnosis": {
+        "fdrCountSameAmount": 1,
+        "gsiCountRelevant": 1,
+        "invoiceCount": 0,
+        "paymentCount": 0,
+        "mergeCardCountForAmount": 1,
+        "mergeKinds": [
+          "gmail_scan_item"
+        ],
+        "sameGmailBetweenGsiAndFdr": true,
+        "gsiGmailIds": [
+          "19f9e19c826d7978"
+        ],
+        "fdrGmailIds": [
+          "19f9e19c826d7978"
+        ]
+      },
+      "scanLogsAroundCreate": []
+    }
+  ],
+  "recentPattern": [
+    {
+      "fdrId": "cms1p5woj008zj81s99yq2wfp",
+      "supplier": "סופר פארם",
+      "amount": 918,
+      "gmail": "19f9e19c826d7978",
+      "fdrStatus": "needs_review",
+      "reason": "duplicate.key_mismatch",
+      "gsiCount": 1,
+      "gsiIds": [
+        "cms1p5x0k0091j81sy1y0xkcr"
+      ],
+      "wouldMergeDuplicate": "GSI present — FDR should be suppressed IF same gmail ref used"
+    },
+    {
+      "fdrId": "cms1p5fn1008rj81sxvqogrc8",
+      "supplier": "GENERAL TIRE",
+      "amount": 450,
+      "gmail": "19f9e1a31eb03f30",
+      "fdrStatus": "needs_review",
+      "reason": "duplicate.key_mismatch",
+      "gsiCount": 1,
+      "gsiIds": [
+        "cms1p5nwl008xj81s2yeavjyx"
+      ],
+      "wouldMergeDuplicate": "GSI present — FDR should be suppressed IF same gmail ref used"
+    },
+    {
+      "fdrId": "cms1nwg2m00ptjn2cowt2nd49",
+      "supplier": "סופרפארם",
+      "amount": 45,
+      "gmail": "19f9d7eb3bad3371",
+      "fdrStatus": "approved",
+      "reason": "duplicate.key_mismatch",
+      "gsiCount": 1,
+      "gsiIds": [
+        "cms1nwgem00pvjn2cqaiit428"
+      ],
+      "wouldMergeDuplicate": "GSI present — FDR should be suppressed IF same gmail ref used"
+    },
+    {
+      "fdrId": "cms1nvpvp00pbjn2cwks9a78b",
+      "supplier": "ישראכרט",
+      "amount": 418.39,
+      "gmail": "19f9d94a517d5d86",
+      "fdrStatus": "needs_review",
+      "reason": "supplier.sir_weak_evidence",
+      "gsiCount": 1,
+      "gsiIds": [
+        "cms1nw7uy00prjn2c1xbbn86r"
+      ],
+      "wouldMergeDuplicate": "GSI present — FDR should be suppressed IF same gmail ref used"
+    }
+  ]
+}

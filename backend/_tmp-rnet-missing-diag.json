@@ -1,0 +1,1519 @@
+{
+  "checkedAt": "2026-07-26T12:19:52.461Z",
+  "org": "cmqw27e43002bm92bmf9mjy1n",
+  "mailbox": "kedmashopd1@gmail.com",
+  "gmailMessagePool": 9,
+  "queryHits": [
+    {
+      "query": "newer_than:1d rnet",
+      "count": 1,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d9101ed94d"
+      ]
+    },
+    {
+      "query": "newer_than:1d Rnet",
+      "count": 1,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d9101ed94d"
+      ]
+    },
+    {
+      "query": "newer_than:1d OV255006399",
+      "count": 1,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d9101ed94d"
+      ]
+    },
+    {
+      "query": "newer_than:1d subject:rnet",
+      "count": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d \"Rnet technologies\"",
+      "count": 1,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d9101ed94d"
+      ]
+    },
+    {
+      "query": "newer_than:1d בזק",
+      "count": 1,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d4a3621e8d"
+      ]
+    },
+    {
+      "query": "newer_than:1d \"ניהול חשבון\"",
+      "count": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d \"אינו מהווה חשבונית\"",
+      "count": 1,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d4a3621e8d"
+      ]
+    },
+    {
+      "query": "newer_than:1d has:attachment -in:spam -in:trash",
+      "count": 7,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d9101ed94d",
+        "19f9e3d4a3621e8d",
+        "19f9e1a31eb03f30",
+        "19f9e19c826d7978",
+        "19f9d94e7020adb7"
+      ]
+    },
+    {
+      "query": "newer_than:6h",
+      "count": 9,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d9101ed94d",
+        "19f9e3d4a3621e8d",
+        "19f9e1a31eb03f30",
+        "19f9e19c826d7978",
+        "19f9dfd417507db6"
+      ]
+    },
+    {
+      "query": "newer_than:6h has:attachment",
+      "count": 7,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d9101ed94d",
+        "19f9e3d4a3621e8d",
+        "19f9e1a31eb03f30",
+        "19f9e19c826d7978",
+        "19f9d94e7020adb7"
+      ]
+    },
+    {
+      "query": "after:2026/07/26",
+      "count": 9,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d9101ed94d",
+        "19f9e3d4a3621e8d",
+        "19f9e1a31eb03f30",
+        "19f9e19c826d7978",
+        "19f9dfd417507db6"
+      ]
+    },
+    {
+      "query": "after:2026/07/26 has:attachment",
+      "count": 7,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d9101ed94d",
+        "19f9e3d4a3621e8d",
+        "19f9e1a31eb03f30",
+        "19f9e19c826d7978",
+        "19f9d94e7020adb7"
+      ]
+    },
+    {
+      "query": "newer_than:1d has:attachment -in:spam -in:trash",
+      "count": 7,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d9101ed94d",
+        "19f9e3d4a3621e8d",
+        "19f9e1a31eb03f30",
+        "19f9e19c826d7978",
+        "19f9d94e7020adb7"
+      ]
+    },
+    {
+      "query": "newer_than:1d has:attachment {invoice receipt payment \"payment request\" חשבונית קבלה תשלום \"דרישת תשלום\"} -in:spam -in:trash",
+      "count": 7,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d9101ed94d",
+        "19f9e3d4a3621e8d",
+        "19f9e1a31eb03f30",
+        "19f9e19c826d7978",
+        "19f9d94e7020adb7"
+      ]
+    },
+    {
+      "query": "newer_than:1d in:sent has:attachment -in:spam -in:trash",
+      "count": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d has:attachment {filename:jpg filename:jpeg filename:png filename:webp filename:heic filename:pdf} -in:spam -in:trash",
+      "count": 7,
+      "error": null,
+      "sampleIds": [
+        "19f9e3d9101ed94d",
+        "19f9e3d4a3621e8d",
+        "19f9e1a31eb03f30",
+        "19f9e19c826d7978",
+        "19f9d94e7020adb7"
+      ]
+    },
+    {
+      "query": "newer_than:1d subject:חשבונית has:attachment -in:spam -in:trash",
+      "count": 1,
+      "error": null,
+      "sampleIds": [
+        "19f9d7eb3bad3371"
+      ]
+    },
+    {
+      "query": "newer_than:1d subject:חשבונית -in:spam -in:trash",
+      "count": 1,
+      "error": null,
+      "sampleIds": [
+        "19f9d7eb3bad3371"
+      ]
+    },
+    {
+      "query": "newer_than:1d subject:invoice has:attachment -in:spam -in:trash",
+      "count": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:invoice -in:spam -in:trash",
+      "count": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:receipt has:attachment -in:spam -in:trash",
+      "count": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:receipt -in:spam -in:trash",
+      "count": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:קבלה has:attachment -in:spam -in:trash",
+      "count": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:קבלה -in:spam -in:trash",
+      "count": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:\"דרישת תשלום\" has:attachment -in:spam -in:trash",
+      "count": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:\"דרישת תשלום\" -in:spam -in:trash",
+      "count": 0,
+      "error": null,
+      "sampleIds": []
+    }
+  ],
+  "rnetMessages": [],
+  "bezeqMessages": [],
+  "afternoonRecent": [
+    {
+      "id": "19f9e3d9101ed94d",
+      "receivedAtIL": "26/07/2026, 14:44:10",
+      "sender": "shaymida337@gmail.com",
+      "subject": "",
+      "attCount": 1,
+      "matchRnet": false,
+      "matchBezeq": false,
+      "hasGsi": false,
+      "hasFdr": false
+    },
+    {
+      "id": "19f9e3d4a3621e8d",
+      "receivedAtIL": "26/07/2026, 14:43:52",
+      "sender": "shaymida337@gmail.com",
+      "subject": "",
+      "attCount": 1,
+      "matchRnet": false,
+      "matchBezeq": false,
+      "hasGsi": false,
+      "hasFdr": false
+    },
+    {
+      "id": "19f9e1a31eb03f30",
+      "receivedAtIL": "26/07/2026, 14:05:31",
+      "sender": "shaymida337@gmail.com",
+      "subject": "",
+      "attCount": 1,
+      "matchRnet": false,
+      "matchBezeq": false,
+      "hasGsi": true,
+      "hasFdr": true
+    },
+    {
+      "id": "19f9e19c826d7978",
+      "receivedAtIL": "26/07/2026, 14:05:05",
+      "sender": "shaymida337@gmail.com",
+      "subject": "",
+      "attCount": 1,
+      "matchRnet": false,
+      "matchBezeq": false,
+      "hasGsi": true,
+      "hasFdr": true
+    },
+    {
+      "id": "19f9dfd417507db6",
+      "receivedAtIL": "26/07/2026, 13:34:06",
+      "sender": "Google <no-reply@accounts.google.com>",
+      "subject": "התראת אבטחה",
+      "attCount": 0,
+      "matchRnet": false,
+      "matchBezeq": false,
+      "hasGsi": false,
+      "hasFdr": false
+    },
+    {
+      "id": "19f9d94e7020adb7",
+      "receivedAtIL": "26/07/2026, 11:39:56",
+      "sender": "shaykedma@gmail.com",
+      "subject": "",
+      "attCount": 1,
+      "matchRnet": false,
+      "matchBezeq": false,
+      "hasGsi": false,
+      "hasFdr": false
+    },
+    {
+      "id": "19f9d94a517d5d86",
+      "receivedAtIL": "26/07/2026, 11:39:38",
+      "sender": "shaykedma@gmail.com",
+      "subject": "",
+      "attCount": 1,
+      "matchRnet": false,
+      "matchBezeq": false,
+      "hasGsi": true,
+      "hasFdr": true
+    },
+    {
+      "id": "19f9d9418aea4909",
+      "receivedAtIL": "26/07/2026, 11:39:14",
+      "sender": "Temu <temu@commerce.temuemail.com>",
+      "subject": "(פרסומת)‏Shay Mid..., מזל שנתקלת בזה🍀",
+      "attCount": 0,
+      "matchRnet": false,
+      "matchBezeq": false,
+      "hasGsi": false,
+      "hasFdr": false
+    },
+    {
+      "id": "19f9d7eb3bad3371",
+      "receivedAtIL": "26/07/2026, 11:15:39",
+      "sender": "shaykedma@gmail.com",
+      "subject": "חשבונית ",
+      "attCount": 1,
+      "matchRnet": false,
+      "matchBezeq": false,
+      "hasGsi": true,
+      "hasFdr": true
+    }
+  ],
+  "afternoonMissingFromDb": [
+    {
+      "id": "19f9e3d9101ed94d",
+      "receivedAtIL": "26/07/2026, 14:44:10",
+      "sender": "shaymida337@gmail.com",
+      "subject": "",
+      "snippet": "נשלח מה-iPhone שלי",
+      "attachments": [
+        {
+          "mimeType": "image/jpeg",
+          "filename": "PHOTO-2025-09-15-14-29-36.jpg",
+          "size": 97753,
+          "attachmentId": "present",
+          "partId": "1.1"
+        }
+      ],
+      "matchRnet": false,
+      "matchBezeq": false
+    },
+    {
+      "id": "19f9e3d4a3621e8d",
+      "receivedAtIL": "26/07/2026, 14:43:52",
+      "sender": "shaymida337@gmail.com",
+      "subject": "",
+      "snippet": "נשלח מה-iPhone שלי",
+      "attachments": [
+        {
+          "mimeType": "image/jpeg",
+          "filename": "PHOTO-2025-12-10-13-10-10.jpg",
+          "size": 136099,
+          "attachmentId": "present",
+          "partId": "1.1"
+        }
+      ],
+      "matchRnet": false,
+      "matchBezeq": false
+    },
+    {
+      "id": "19f9dfd417507db6",
+      "receivedAtIL": "26/07/2026, 13:34:06",
+      "sender": "Google <no-reply@accounts.google.com>",
+      "subject": "התראת אבטחה",
+      "snippet": "נתת לאפליקציה ‪ai office worker‬‏ גישה לחלק מהנתונים בחשבון שלך ב-Google kedmashopd1@gmail.com‏ אם לא נתת לאפליקציה ‪ai office worker‬‏ גישה לחלק מהנתונים בחשבון שלך ב-Google, יכול להיות שמישהו אחר",
+      "attachments": [],
+      "matchRnet": false,
+      "matchBezeq": false
+    },
+    {
+      "id": "19f9d94e7020adb7",
+      "receivedAtIL": "26/07/2026, 11:39:56",
+      "sender": "shaykedma@gmail.com",
+      "subject": "",
+      "snippet": "נשלח מה-iPhone שלי",
+      "attachments": [
+        {
+          "mimeType": "application/pdf",
+          "filename": " חשבונית מס מרכזת SI256000091 - מקור.1 .pdf",
+          "size": 132527,
+          "attachmentId": "present",
+          "partId": "1.1"
+        }
+      ],
+      "matchRnet": false,
+      "matchBezeq": false
+    },
+    {
+      "id": "19f9d9418aea4909",
+      "receivedAtIL": "26/07/2026, 11:39:14",
+      "sender": "Temu <temu@commerce.temuemail.com>",
+      "subject": "(פרסומת)‏Shay Mid..., מזל שנתקלת בזה🍀",
+      "snippet": "בחרנו משהו מיוחד בשבילך. ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌",
+      "attachments": [],
+      "matchRnet": false,
+      "matchBezeq": false
+    }
+  ],
+  "rnetPipeline": [
+    {
+      "gmail": {
+        "id": "19f9e3d9101ed94d",
+        "receivedAt": "2026-07-26T11:44:10.000Z",
+        "receivedAtIL": "26/07/2026, 14:44:10",
+        "sender": "shaymida337@gmail.com",
+        "subject": "",
+        "snippet": "נשלח מה-iPhone שלי",
+        "labels": [
+          "IMPORTANT",
+          "CATEGORY_PERSONAL",
+          "INBOX"
+        ],
+        "attachments": [
+          {
+            "mimeType": "image/jpeg",
+            "filename": "PHOTO-2025-09-15-14-29-36.jpg",
+            "size": 97753,
+            "attachmentId": "present",
+            "partId": "1.1"
+          }
+        ],
+        "matchRnet": false,
+        "matchDocNo": false,
+        "matchBezeq": false
+      },
+      "gsiCount": 0,
+      "fdrCount": 0,
+      "gsi": [],
+      "fdr": []
+    },
+    {
+      "gmail": {
+        "id": "19f9e3d4a3621e8d",
+        "receivedAt": "2026-07-26T11:43:52.000Z",
+        "receivedAtIL": "26/07/2026, 14:43:52",
+        "sender": "shaymida337@gmail.com",
+        "subject": "",
+        "snippet": "נשלח מה-iPhone שלי",
+        "labels": [
+          "IMPORTANT",
+          "CATEGORY_PERSONAL",
+          "INBOX"
+        ],
+        "attachments": [
+          {
+            "mimeType": "image/jpeg",
+            "filename": "PHOTO-2025-12-10-13-10-10.jpg",
+            "size": 136099,
+            "attachmentId": "present",
+            "partId": "1.1"
+          }
+        ],
+        "matchRnet": false,
+        "matchDocNo": false,
+        "matchBezeq": false
+      },
+      "gsiCount": 0,
+      "fdrCount": 0,
+      "gsi": [],
+      "fdr": []
+    },
+    {
+      "gmail": {
+        "id": "19f9e1a31eb03f30",
+        "receivedAt": "2026-07-26T11:05:31.000Z",
+        "receivedAtIL": "26/07/2026, 14:05:31",
+        "sender": "shaymida337@gmail.com",
+        "subject": "",
+        "snippet": "נשלח מה-iPhone שלי",
+        "labels": [
+          "IMPORTANT",
+          "CATEGORY_PERSONAL",
+          "INBOX"
+        ],
+        "attachments": [
+          {
+            "mimeType": "image/jpeg",
+            "filename": "image1.jpeg",
+            "size": 298425,
+            "attachmentId": "present",
+            "partId": "1.1"
+          }
+        ],
+        "matchRnet": false,
+        "matchDocNo": false,
+        "matchBezeq": false
+      },
+      "gsiCount": 1,
+      "fdrCount": 1,
+      "gsi": [
+        {
+          "id": "cms1p5nwl008xj81s2yeavjyx",
+          "supplierName": "GENERAL TIRE",
+          "amount": 450,
+          "documentType": "receipt",
+          "reviewStatus": "needs_review",
+          "decisionReason": "Held for review: classifier money_direction_unsure; Auto-saved: receipt confidence=81%; attachment found: image; attachment found; image invoice detected; amount found; keyword matched: קבלה; keyword matched: invoice; keyword matched: receipt; keyword matched: receipt; supplier detected; ai:receipt:…",
+          "attachmentFilename": "image1.jpeg",
+          "duplicateKey": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+          "confidenceScore": "high",
+          "normalizedDocumentDate": null,
+          "occurredAt": "2026-07-26T11:05:31.000Z",
+          "createdAt": "2026-07-26T11:10:36.358Z",
+          "ocr": {
+            "kind": "object",
+            "keys": [
+              "pdfText",
+              "visualAttachmentText"
+            ],
+            "pdfLen": 0,
+            "visionLen": 0,
+            "preview": "{\"pdfText\":\"\",\"visualAttachmentText\":\"filename=image1.jpeg documentType=receipt supplier=GENERAL TIRE supplierTaxId=7068163 amount=450 date=2022-12-13 dueDate=unknown invoiceNumber=07001002 currency=ILS paymentRequired=false rawOcrText=/ ה וו ו ‎GENERAL TIRE SS‏ —-— 0 רשת צמיגי ג'נרל סי ח 2 חצב ‎I i im‏ שבוני מתחם 0 תימס קבלה ‎on‏ האלו כ לחת וו א --עותק ללקות-- שם הלקו 1 ) יל ‎Qf‏ שם מסוף 190 סתר 1593 : ה ‎on 0 NAN‏ מספר מסוף 1816055 5 רשוי ]56 גרס תוכנה 000210 ות מספר עסק 7068163 גודל מספר שובר",
+            "hasBezeqNegation": false,
+            "hasRnet": false,
+            "hasDocNo": false
+          },
+          "parsedPreview": "{\"arc\":{\"reason\":\"AI Total Amount\",\"status\":\"resolved\",\"version\":\"arc-v2\",\"currency\":\"ILS\",\"rejected\":[],\"vatAmount\":null,\"candidates\":[{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":450,\"source\":\"claude_file\",\"confidence\":0.61},{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":450,\"source\":\"claude_email\",\"confidence\":0.95},{\"kind\":\"ai_inferred\",\"label\":\"amount\",\"value\":450,\"source\":\"claude_file\"…"
+        }
+      ],
+      "fdr": [
+        {
+          "id": "cms1p5fn1008rj81sxvqogrc8",
+          "supplierName": "GENERAL TIRE",
+          "invoiceNumber": "07001002",
+          "totalAmount": 450,
+          "documentType": "receipt",
+          "documentDate": "2026-07-26T11:05:31.000Z",
+          "reviewStatus": "needs_review",
+          "uncertaintyReason": "duplicate.key_mismatch",
+          "fileName": "image1.jpeg",
+          "fileSize": null,
+          "confidenceScore": 0.81,
+          "createdAt": "2026-07-26T11:10:25.645Z",
+          "ocr": {
+            "kind": "raw_json",
+            "len": 8021,
+            "preview": "{\"analysis\":{\"tasks\":[],\"amount\":450,\"dueDate\":null,\"currency\":\"ILS\",\"supplier\":\"GENERAL TIRE\",\"vatAmount\":null,\"confidence\":0.95,\"invoiceDate\":\"2022-12-13\",\"totalAmount\":450,\"documentType\":\"receipt\",\"invoiceNumber\":\"07001002\",\"supplierTaxId\":\"7068163\",\"amountBeforeVat\":null,\"paymentRequired\":false},\"classification\":{\"audit\":{\"amountFound\":true,\"blockedReason\":null,\"keywordMatched\":[\"קבלה\",\"invoic…",
+            "hasBezeqNegation": false,
+            "hasRnet": false,
+            "hasDocNo": false
+          },
+          "parsedPreview": "{\"arc\":{\"reason\":\"AI Total Amount\",\"status\":\"resolved\",\"version\":\"arc-v2\",\"currency\":\"ILS\",\"rejected\":[],\"vatAmount\":null,\"candidates\":[{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":450,\"source\":\"claude_file\",\"confidence\":0.61},{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":450,\"source\":\"claude_email\",\"confidence\":0.95},{\"kind\":\"ai_inferred\",\"label\":\"amount\",\"value\":450,\"source\":\"claude_file\"…"
+        }
+      ]
+    },
+    {
+      "gmail": {
+        "id": "19f9e19c826d7978",
+        "receivedAt": "2026-07-26T11:05:05.000Z",
+        "receivedAtIL": "26/07/2026, 14:05:05",
+        "sender": "shaymida337@gmail.com",
+        "subject": "",
+        "snippet": "נשלח מה-iPhone שלי",
+        "labels": [
+          "IMPORTANT",
+          "CATEGORY_PERSONAL",
+          "INBOX"
+        ],
+        "attachments": [
+          {
+            "mimeType": "image/jpeg",
+            "filename": "image0.jpeg",
+            "size": 301398,
+            "attachmentId": "present",
+            "partId": "1.1"
+          }
+        ],
+        "matchRnet": false,
+        "matchDocNo": false,
+        "matchBezeq": false
+      },
+      "gsiCount": 1,
+      "fdrCount": 1,
+      "gsi": [
+        {
+          "id": "cms1p5x0k0091j81sy1y0xkcr",
+          "supplierName": "סופר פארם",
+          "amount": 918,
+          "documentType": "receipt",
+          "reviewStatus": "needs_review",
+          "decisionReason": "Held for review: classifier money_direction_unsure; Held for review: confidence is high; confidence below 80% (79%)",
+          "attachmentFilename": "image0.jpeg",
+          "duplicateKey": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+          "confidenceScore": "high",
+          "normalizedDocumentDate": null,
+          "occurredAt": "2026-07-26T11:05:05.000Z",
+          "createdAt": "2026-07-26T11:10:48.164Z",
+          "ocr": {
+            "kind": "object",
+            "keys": [
+              "pdfText",
+              "visualAttachmentText"
+            ],
+            "pdfLen": 0,
+            "visionLen": 0,
+            "preview": "{\"pdfText\":\"\",\"visualAttachmentText\":\"filename=image0.jpeg documentType=receipt supplier=סופר פארם supplierTaxId=513110148 amount=918 date=2022-11-14 dueDate=unknown invoiceNumber=20765 currency=ILS paymentRequired=true rawOcrText=ם > קמה ‎Coa‏ ; ‎deg an or 0‏ 1004938 ‎EER 4773604932 | 0 0‏ | ל ל ו ל ארמני קור לה פרפיו458.00 .7 | 91600[ ‎ih 6 3614213672085 ee‏ ‎ESRD) =‏ אין ‎PRO‏ 0,00שגל ‎mm :‏ 1008.00 | ה\\\"כ ערף יג 8 ‎THI‏ 5 0200 : - חייבים במע\\\"מ 784.62 ‎DEVE :‏ )1 ראי ‎se aD MEET‏ 2 : סניף; 6",
+            "hasBezeqNegation": false,
+            "hasRnet": false,
+            "hasDocNo": false
+          },
+          "parsedPreview": "{\"arc\":{\"reason\":\"AI Total Amount\",\"status\":\"resolved\",\"version\":\"arc-v2\",\"currency\":\"ILS\",\"rejected\":[],\"vatAmount\":133.38,\"candidates\":[{\"kind\":\"computed\",\"label\":\"subtotal + vat\",\"value\":918,\"source\":\"claude_file\",\"confidence\":0.45},{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":918,\"source\":\"claude_file\",\"confidence\":0.45},{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":918,\"source\":\"claude…"
+        }
+      ],
+      "fdr": [
+        {
+          "id": "cms1p5woj008zj81s99yq2wfp",
+          "supplierName": "סופר פארם",
+          "invoiceNumber": "20785",
+          "totalAmount": 918,
+          "documentType": "receipt",
+          "documentDate": "2026-07-26T11:05:05.000Z",
+          "reviewStatus": "needs_review",
+          "uncertaintyReason": "duplicate.key_mismatch",
+          "fileName": "image0.jpeg",
+          "fileSize": null,
+          "confidenceScore": 0.7899999999999999,
+          "createdAt": "2026-07-26T11:10:47.731Z",
+          "ocr": {
+            "kind": "raw_json",
+            "len": 7909,
+            "preview": "{\"analysis\":{\"tasks\":[],\"amount\":918,\"dueDate\":null,\"currency\":\"ILS\",\"supplier\":\"סופר פארם\",\"vatAmount\":784.62,\"confidence\":0.75,\"invoiceDate\":\"2022-11-14\",\"totalAmount\":918,\"documentType\":\"receipt\",\"invoiceNumber\":\"20785\",\"supplierTaxId\":\"513110148\",\"amountBeforeVat\":null,\"paymentRequired\":true},\"classification\":{\"audit\":{\"amountFound\":true,\"blockedReason\":null,\"keywordMatched\":[\"invoice\",\"receip…",
+            "hasBezeqNegation": false,
+            "hasRnet": false,
+            "hasDocNo": false
+          },
+          "parsedPreview": "{\"arc\":{\"reason\":\"AI Total Amount\",\"status\":\"resolved\",\"version\":\"arc-v2\",\"currency\":\"ILS\",\"rejected\":[],\"vatAmount\":133.38,\"candidates\":[{\"kind\":\"computed\",\"label\":\"subtotal + vat\",\"value\":918,\"source\":\"claude_file\",\"confidence\":0.45},{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":918,\"source\":\"claude_file\",\"confidence\":0.45},{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":918,\"source\":\"claude…"
+        }
+      ]
+    },
+    {
+      "gmail": {
+        "id": "19f9dfd417507db6",
+        "receivedAt": "2026-07-26T10:34:06.000Z",
+        "receivedAtIL": "26/07/2026, 13:34:06",
+        "sender": "Google <no-reply@accounts.google.com>",
+        "subject": "התראת אבטחה",
+        "snippet": "נתת לאפליקציה ‪ai office worker‬‏ גישה לחלק מהנתונים בחשבון שלך ב-Google kedmashopd1@gmail.com‏ אם לא נתת לאפליקציה ‪ai office worker‬‏ גישה לחלק מהנתונים בחשבון שלך ב-Google, יכול להיות שמישהו אחר",
+        "labels": [
+          "UNREAD",
+          "CATEGORY_UPDATES",
+          "INBOX"
+        ],
+        "attachments": [],
+        "matchRnet": false,
+        "matchDocNo": false,
+        "matchBezeq": false
+      },
+      "gsiCount": 0,
+      "fdrCount": 0,
+      "gsi": [],
+      "fdr": []
+    },
+    {
+      "gmail": {
+        "id": "19f9d94e7020adb7",
+        "receivedAt": "2026-07-26T08:39:56.000Z",
+        "receivedAtIL": "26/07/2026, 11:39:56",
+        "sender": "shaykedma@gmail.com",
+        "subject": "",
+        "snippet": "נשלח מה-iPhone שלי",
+        "labels": [
+          "IMPORTANT",
+          "CATEGORY_PERSONAL",
+          "INBOX"
+        ],
+        "attachments": [
+          {
+            "mimeType": "application/pdf",
+            "filename": " חשבונית מס מרכזת SI256000091 - מקור.1 .pdf",
+            "size": 132527,
+            "attachmentId": "present",
+            "partId": "1.1"
+          }
+        ],
+        "matchRnet": false,
+        "matchDocNo": false,
+        "matchBezeq": false
+      },
+      "gsiCount": 0,
+      "fdrCount": 0,
+      "gsi": [],
+      "fdr": []
+    },
+    {
+      "gmail": {
+        "id": "19f9d94a517d5d86",
+        "receivedAt": "2026-07-26T08:39:38.000Z",
+        "receivedAtIL": "26/07/2026, 11:39:38",
+        "sender": "shaykedma@gmail.com",
+        "subject": "",
+        "snippet": "נשלח מה-iPhone שלי",
+        "labels": [
+          "IMPORTANT",
+          "CATEGORY_PERSONAL",
+          "INBOX"
+        ],
+        "attachments": [
+          {
+            "mimeType": "application/pdf",
+            "filename": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+            "size": 732452,
+            "attachmentId": "present",
+            "partId": "1.1"
+          }
+        ],
+        "matchRnet": false,
+        "matchDocNo": false,
+        "matchBezeq": false
+      },
+      "gsiCount": 1,
+      "fdrCount": 1,
+      "gsi": [
+        {
+          "id": "cms1nw7uy00prjn2c1xbbn86r",
+          "supplierName": "ישראכרט",
+          "amount": 418.39,
+          "documentType": "invoice",
+          "reviewStatus": "needs_review",
+          "decisionReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: חשבונית מס; keyword matched: חשבונית; keyword matched: pa…",
+          "attachmentFilename": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+          "duplicateKey": "049deebaec949684f7608442ad8b59bd5ad79d011b3d14a0",
+          "confidenceScore": "high",
+          "normalizedDocumentDate": null,
+          "occurredAt": "2026-07-26T08:39:38.000Z",
+          "createdAt": "2026-07-26T10:35:16.042Z",
+          "ocr": {
+            "kind": "object",
+            "keys": [
+              "pdfText",
+              "visualAttachmentText"
+            ],
+            "pdfLen": 646,
+            "visionLen": 0,
+            "preview": "אגורות 10-ו yellow בחנויות 10% צוברים מועדון חברי\n.לארנק ₪ 5.57 לצבור יכולת זו בקניה !בפז בתדלוק\nאחרינו לעקוב בואו\n \t \t\nתחנה איתור \tהחזרה מדיניות\nהחשבונית להורדת\n1310\nהחדשה מודיעין\nשלך החשבון סיכום\n₪ \t418.39\nפריט שם\tכמות\tהנחות לאחר לתשלום סכום\n95 בנע\n3951\n0\t₪ 418.39\nהנחה לפני כ\"סה\t₪ 418.39\nישראכרט - ויזה\n05361***********\n₪ 418.39\nרכב מספר\t1408871\nמ\"מע ללא סכום\t₪ 357.60\nמ\"מע\t₪ 60.79\nהנחות לאחר לתשלום סכום\t₪ 418.39\nחשבונית מספר\t026309901407453\nתאריך\t20:50 2024-03-05\nלמימוש בחנות הקוד בהצגת ב פט…",
+            "hasBezeqNegation": false,
+            "hasRnet": false,
+            "hasDocNo": false
+          },
+          "parsedPreview": "{\"arc\":{\"reason\":\"Computed Subtotal + VAT\",\"status\":\"resolved\",\"version\":\"arc-v2\",\"currency\":\"ILS\",\"rejected\":[],\"vatAmount\":60.79,\"candidates\":[{\"kind\":\"computed\",\"label\":\"subtotal + vat\",\"value\":418.39,\"source\":\"claude_email\",\"confidence\":0.85},{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":418.39,\"source\":\"claude_email\",\"confidence\":0.85},{\"kind\":\"ai_inferred\",\"label\":\"amount\",\"value\":418.39,…"
+        }
+      ],
+      "fdr": [
+        {
+          "id": "cms1nvpvp00pbjn2cwks9a78b",
+          "supplierName": "ישראכרט",
+          "invoiceNumber": "026309901407453",
+          "totalAmount": 418.39,
+          "documentType": "tax_invoice",
+          "documentDate": "2026-07-26T08:39:38.000Z",
+          "reviewStatus": "needs_review",
+          "uncertaintyReason": "supplier.sir_weak_evidence",
+          "fileName": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+          "fileSize": null,
+          "confidenceScore": 0.68,
+          "createdAt": "2026-07-26T10:34:52.741Z",
+          "ocr": {
+            "kind": "raw_json",
+            "len": 8004,
+            "preview": "{\"analysis\":{\"tasks\":[],\"amount\":418.39,\"dueDate\":null,\"currency\":\"ILS\",\"supplier\":\"*המלאי גמר עד שעות 24תוך\",\"vatAmount\":60.79,\"confidence\":0.85,\"invoiceDate\":\"2024-03-05\",\"totalAmount\":418.39,\"documentType\":\"invoice\",\"invoiceNumber\":\"026309901407453\",\"supplierTaxId\":null,\"amountBeforeVat\":357.6,\"paymentRequired\":false},\"classification\":{\"audit\":{\"amountFound\":true,\"blockedReason\":null,\"keywordMa…",
+            "hasBezeqNegation": false,
+            "hasRnet": false,
+            "hasDocNo": false
+          },
+          "parsedPreview": "{\"arc\":{\"reason\":\"Computed Subtotal + VAT\",\"status\":\"resolved\",\"version\":\"arc-v2\",\"currency\":\"ILS\",\"rejected\":[],\"vatAmount\":60.79,\"candidates\":[{\"kind\":\"computed\",\"label\":\"subtotal + vat\",\"value\":418.39,\"source\":\"claude_email\",\"confidence\":0.85},{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":418.39,\"source\":\"claude_email\",\"confidence\":0.85},{\"kind\":\"ai_inferred\",\"label\":\"amount\",\"value\":418.39,…"
+        }
+      ]
+    },
+    {
+      "gmail": {
+        "id": "19f9d9418aea4909",
+        "receivedAt": "2026-07-26T08:39:14.000Z",
+        "receivedAtIL": "26/07/2026, 11:39:14",
+        "sender": "Temu <temu@commerce.temuemail.com>",
+        "subject": "(פרסומת)‏Shay Mid..., מזל שנתקלת בזה🍀",
+        "snippet": "בחרנו משהו מיוחד בשבילך. ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌ ͏ ‌",
+        "labels": [
+          "UNREAD",
+          "CATEGORY_UPDATES",
+          "INBOX"
+        ],
+        "attachments": [],
+        "matchRnet": false,
+        "matchDocNo": false,
+        "matchBezeq": false
+      },
+      "gsiCount": 0,
+      "fdrCount": 0,
+      "gsi": [],
+      "fdr": []
+    },
+    {
+      "gmail": {
+        "id": "19f9d7eb3bad3371",
+        "receivedAt": "2026-07-26T08:15:39.000Z",
+        "receivedAtIL": "26/07/2026, 11:15:39",
+        "sender": "shaykedma@gmail.com",
+        "subject": "חשבונית ",
+        "snippet": "נשלח מה-iPhone שלי",
+        "labels": [
+          "IMPORTANT",
+          "CATEGORY_PERSONAL",
+          "INBOX"
+        ],
+        "attachments": [
+          {
+            "mimeType": "image/jpeg",
+            "filename": "image0.jpeg",
+            "size": 126967,
+            "attachmentId": "present",
+            "partId": "1.1"
+          }
+        ],
+        "matchRnet": false,
+        "matchDocNo": false,
+        "matchBezeq": false
+      },
+      "gsiCount": 1,
+      "fdrCount": 1,
+      "gsi": [
+        {
+          "id": "cms1nwgem00pvjn2cqaiit428",
+          "supplierName": "סופר פארם",
+          "amount": 45,
+          "documentType": "tax_invoice_receipt",
+          "reviewStatus": "approved",
+          "decisionReason": "Held for review: classifier money_direction_unsure; Auto-saved: tax_invoice_receipt confidence=81%; attachment found: image; attachment found; image invoice detected; amount found; keyword matched: חשבונית; keyword matched: קבלה; keyword matched: invoice; keyword matched: receipt; keyword matched: r…",
+          "attachmentFilename": "image0.jpeg",
+          "duplicateKey": "f33489a83fc2c192be6a74f714ac0509651cc26bbc3da907",
+          "confidenceScore": "high",
+          "normalizedDocumentDate": null,
+          "occurredAt": "2026-07-26T08:15:39.000Z",
+          "createdAt": "2026-07-26T10:35:27.118Z",
+          "ocr": {
+            "kind": "object",
+            "keys": [
+              "pdfText",
+              "visualAttachmentText"
+            ],
+            "pdfLen": 0,
+            "visionLen": 0,
+            "preview": "{\"pdfText\":\"\",\"visualAttachmentText\":\"filename=image0.jpeg documentType=tax_invoice_receipt supplier=סופר פארם supplierTaxId=514680503 amount=45 date=2022-10-19 dueDate=unknown invoiceNumber=6814708 currency=ILS paymentRequired=false rawOcrText=‎De Col +78, 2 ..‏ . % / - 2 סוָליר-פארבו 3 =( דיזנגרף ,129 חל-אביב ‎Sle‏ ‎hee 0778880730 :11920‏ ח.3: 514680503 , עוסק מע\\\"מ מס 557-206695 מקרר חשב' מס קבלה 6814708 2 2 ‎om. Ww‏ כמות ‎mame‏ ‎aT 7290111599842‏ סאנדיי 10 מטליות 9.900 .1 9.90 א סאנדיי מטליו",
+            "hasBezeqNegation": false,
+            "hasRnet": false,
+            "hasDocNo": false
+          },
+          "parsedPreview": "{\"arc\":{\"reason\":\"AI Total Amount\",\"status\":\"resolved\",\"version\":\"arc-v2\",\"currency\":\"ILS\",\"rejected\":[],\"vatAmount\":6.49,\"candidates\":[{\"kind\":\"computed\",\"label\":\"subtotal + vat\",\"value\":44.7,\"source\":\"claude_file\",\"confidence\":0.67},{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":45,\"source\":\"claude_file\",\"confidence\":0.67},{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":45,\"source\":\"claude_em…"
+        }
+      ],
+      "fdr": [
+        {
+          "id": "cms1nwg2m00ptjn2cowt2nd49",
+          "supplierName": "סופרפארם",
+          "invoiceNumber": "6814708",
+          "totalAmount": 45,
+          "documentType": "tax_invoice_receipt",
+          "documentDate": "2026-07-26T08:15:39.000Z",
+          "reviewStatus": "approved",
+          "uncertaintyReason": "duplicate.key_mismatch",
+          "fileName": "image0.jpeg",
+          "fileSize": null,
+          "confidenceScore": 0.814,
+          "createdAt": "2026-07-26T10:35:26.686Z",
+          "ocr": {
+            "kind": "raw_json",
+            "len": 8130,
+            "preview": "{\"analysis\":{\"tasks\":[],\"amount\":45,\"dueDate\":null,\"currency\":\"ILS\",\"supplier\":\"סופר פארם\",\"vatAmount\":6.79,\"confidence\":0.95,\"invoiceDate\":\"2022-10-19\",\"totalAmount\":45,\"documentType\":\"tax_invoice_receipt\",\"invoiceNumber\":\"6814708\",\"supplierTaxId\":\"514680503\",\"amountBeforeVat\":38.21,\"paymentRequired\":false},\"classification\":{\"audit\":{\"amountFound\":true,\"blockedReason\":null,\"keywordMatched\":[\"חשבו…",
+            "hasBezeqNegation": false,
+            "hasRnet": false,
+            "hasDocNo": false
+          },
+          "parsedPreview": "{\"arc\":{\"reason\":\"AI Total Amount\",\"status\":\"resolved\",\"version\":\"arc-v2\",\"currency\":\"ILS\",\"rejected\":[],\"vatAmount\":6.49,\"candidates\":[{\"kind\":\"computed\",\"label\":\"subtotal + vat\",\"value\":44.7,\"source\":\"claude_file\",\"confidence\":0.67},{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":45,\"source\":\"claude_file\",\"confidence\":0.67},{\"kind\":\"ai_total\",\"label\":\"totalAmount\",\"value\":45,\"source\":\"claude_em…"
+        }
+      ]
+    }
+  ],
+  "gsiHitsSlim": [
+    {
+      "id": "cms1p5x0k0091j81sy1y0xkcr",
+      "gmailMessageId": "19f9e19c826d7978",
+      "supplierName": "סופר פארם",
+      "subject": "(ללא נושא)",
+      "amount": 918,
+      "documentType": "receipt",
+      "reviewStatus": "needs_review",
+      "decisionReason": "Held for review: classifier money_direction_unsure; Held for review: confidence is high; confidence below 80% (79%)",
+      "attachmentFilename": "image0.jpeg",
+      "createdAt": "2026-07-26T11:10:48.164Z",
+      "ocr": {
+        "kind": "object",
+        "keys": [
+          "pdfText",
+          "visualAttachmentText"
+        ],
+        "pdfLen": 0,
+        "visionLen": 0,
+        "preview": "{\"pdfText\":\"\",\"visualAttachmentText\":\"filename=image0.jpeg documentType=receipt supplier=סופר פארם supplierTaxId=513110148 amount=918 date=2022-11-14 dueDate=unknown invoiceNumber=20765 currency=ILS paymentRequired=true rawOcrText=ם > קמה ‎Coa‏ ; ‎deg an or 0‏ 1004938 ‎EER 4773604932 | 0 0‏ | ל ל ו ל ארמני קור לה פרפיו458.00 .7 | 91600[ ‎ih 6 3614213672085 ee‏ ‎ESRD) =‏ אין ‎PRO‏ 0,00שגל ‎mm :‏ 1008.00 | ה\\\"כ ערף יג 8 ‎THI‏ 5 0200 : - חייבים במע\\\"מ 784.62 ‎DEVE :‏ )1 ראי ‎se aD MEET‏ 2 : סניף; 6",
+        "hasBezeqNegation": false,
+        "hasRnet": false,
+        "hasDocNo": false
+      }
+    },
+    {
+      "id": "cms1p5nwl008xj81s2yeavjyx",
+      "gmailMessageId": "19f9e1a31eb03f30",
+      "supplierName": "GENERAL TIRE",
+      "subject": "(ללא נושא)",
+      "amount": 450,
+      "documentType": "receipt",
+      "reviewStatus": "needs_review",
+      "decisionReason": "Held for review: classifier money_direction_unsure; Auto-saved: receipt confidence=81%; attachment found: image; attachment found; image invoice detected; amount found; keyword matched: קבלה; keyword …",
+      "attachmentFilename": "image1.jpeg",
+      "createdAt": "2026-07-26T11:10:36.358Z",
+      "ocr": {
+        "kind": "object",
+        "keys": [
+          "pdfText",
+          "visualAttachmentText"
+        ],
+        "pdfLen": 0,
+        "visionLen": 0,
+        "preview": "{\"pdfText\":\"\",\"visualAttachmentText\":\"filename=image1.jpeg documentType=receipt supplier=GENERAL TIRE supplierTaxId=7068163 amount=450 date=2022-12-13 dueDate=unknown invoiceNumber=07001002 currency=ILS paymentRequired=false rawOcrText=/ ה וו ו ‎GENERAL TIRE SS‏ —-— 0 רשת צמיגי ג'נרל סי ח 2 חצב ‎I i im‏ שבוני מתחם 0 תימס קבלה ‎on‏ האלו כ לחת וו א --עותק ללקות-- שם הלקו 1 ) יל ‎Qf‏ שם מסוף 190 סתר 1593 : ה ‎on 0 NAN‏ מספר מסוף 1816055 5 רשוי ]56 גרס תוכנה 000210 ות מספר עסק 7068163 גודל מספר שובר",
+        "hasBezeqNegation": false,
+        "hasRnet": false,
+        "hasDocNo": false
+      }
+    },
+    {
+      "id": "cms1nwgem00pvjn2cqaiit428",
+      "gmailMessageId": "19f9d7eb3bad3371",
+      "supplierName": "סופר פארם",
+      "subject": "חשבונית ",
+      "amount": 45,
+      "documentType": "tax_invoice_receipt",
+      "reviewStatus": "approved",
+      "decisionReason": "Held for review: classifier money_direction_unsure; Auto-saved: tax_invoice_receipt confidence=81%; attachment found: image; attachment found; image invoice detected; amount found; keyword matched: חש…",
+      "attachmentFilename": "image0.jpeg",
+      "createdAt": "2026-07-26T10:35:27.118Z",
+      "ocr": {
+        "kind": "object",
+        "keys": [
+          "pdfText",
+          "visualAttachmentText"
+        ],
+        "pdfLen": 0,
+        "visionLen": 0,
+        "preview": "{\"pdfText\":\"\",\"visualAttachmentText\":\"filename=image0.jpeg documentType=tax_invoice_receipt supplier=סופר פארם supplierTaxId=514680503 amount=45 date=2022-10-19 dueDate=unknown invoiceNumber=6814708 currency=ILS paymentRequired=false rawOcrText=‎De Col +78, 2 ..‏ . % / - 2 סוָליר-פארבו 3 =( דיזנגרף ,129 חל-אביב ‎Sle‏ ‎hee 0778880730 :11920‏ ח.3: 514680503 , עוסק מע\\\"מ מס 557-206695 מקרר חשב' מס קבלה 6814708 2 2 ‎om. Ww‏ כמות ‎mame‏ ‎aT 7290111599842‏ סאנדיי 10 מטליות 9.900 .1 9.90 א סאנדיי מטליו",
+        "hasBezeqNegation": false,
+        "hasRnet": false,
+        "hasDocNo": false
+      }
+    },
+    {
+      "id": "cms1nw7uy00prjn2c1xbbn86r",
+      "gmailMessageId": "19f9d94a517d5d86",
+      "supplierName": "ישראכרט",
+      "subject": "(ללא נושא)",
+      "amount": 418.39,
+      "documentType": "invoice",
+      "reviewStatus": "needs_review",
+      "decisionReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoic…",
+      "attachmentFilename": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+      "createdAt": "2026-07-26T10:35:16.042Z",
+      "ocr": {
+        "kind": "object",
+        "keys": [
+          "pdfText",
+          "visualAttachmentText"
+        ],
+        "pdfLen": 646,
+        "visionLen": 0,
+        "preview": "אגורות 10-ו yellow בחנויות 10% צוברים מועדון חברי\n.לארנק ₪ 5.57 לצבור יכולת זו בקניה !בפז בתדלוק\nאחרינו לעקוב בואו\n \t \t\nתחנה איתור \tהחזרה מדיניות\nהחשבונית להורדת\n1310\nהחדשה מודיעין\nשלך החשבון סיכום\n₪ \t418.39\nפריט שם\tכמות\tהנחות לאחר לתשלום סכום\n95 בנע\n3951\n0\t₪ 418.39\nהנחה לפני כ\"סה\t₪ 418.39\nישראכרט - ויזה\n05361***********\n₪ 418.39\nרכב מספר\t1408871\nמ\"מע ללא סכום\t₪ 357.60\nמ\"מע\t₪ 60.79\nהנחות לאחר לתשלום סכום\t₪ 418.39\nחשבונית מספר\t026309901407453\nתאריך\t20:50 2024-03-05\nלמימוש בחנות הקוד בהצגת ב פט…",
+        "hasBezeqNegation": false,
+        "hasRnet": false,
+        "hasDocNo": false
+      }
+    }
+  ],
+  "fdrHitsSlim": [
+    {
+      "id": "cms1p5woj008zj81s99yq2wfp",
+      "gmailMessageId": "19f9e19c826d7978",
+      "supplierName": "סופר פארם",
+      "invoiceNumber": "20785",
+      "documentType": "receipt",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "duplicate.key_mismatch",
+      "totalAmount": 918,
+      "documentDate": "2026-07-26T11:05:05.000Z",
+      "fileName": "image0.jpeg",
+      "createdAt": "2026-07-26T11:10:47.731Z",
+      "ocr": {
+        "kind": "raw_json",
+        "len": 7909,
+        "preview": "{\"analysis\":{\"tasks\":[],\"amount\":918,\"dueDate\":null,\"currency\":\"ILS\",\"supplier\":\"סופר פארם\",\"vatAmount\":784.62,\"confidence\":0.75,\"invoiceDate\":\"2022-11-14\",\"totalAmount\":918,\"documentType\":\"receipt\",\"invoiceNumber\":\"20785\",\"supplierTaxId\":\"513110148\",\"amountBeforeVat\":null,\"paymentRequired\":true},\"classification\":{\"audit\":{\"amountFound\":true,\"blockedReason\":null,\"keywordMatched\":[\"invoice\",\"receip…",
+        "hasBezeqNegation": false,
+        "hasRnet": false,
+        "hasDocNo": false
+      }
+    },
+    {
+      "id": "cms1p5fn1008rj81sxvqogrc8",
+      "gmailMessageId": "19f9e1a31eb03f30",
+      "supplierName": "GENERAL TIRE",
+      "invoiceNumber": "07001002",
+      "documentType": "receipt",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "duplicate.key_mismatch",
+      "totalAmount": 450,
+      "documentDate": "2026-07-26T11:05:31.000Z",
+      "fileName": "image1.jpeg",
+      "createdAt": "2026-07-26T11:10:25.645Z",
+      "ocr": {
+        "kind": "raw_json",
+        "len": 8021,
+        "preview": "{\"analysis\":{\"tasks\":[],\"amount\":450,\"dueDate\":null,\"currency\":\"ILS\",\"supplier\":\"GENERAL TIRE\",\"vatAmount\":null,\"confidence\":0.95,\"invoiceDate\":\"2022-12-13\",\"totalAmount\":450,\"documentType\":\"receipt\",\"invoiceNumber\":\"07001002\",\"supplierTaxId\":\"7068163\",\"amountBeforeVat\":null,\"paymentRequired\":false},\"classification\":{\"audit\":{\"amountFound\":true,\"blockedReason\":null,\"keywordMatched\":[\"קבלה\",\"invoic…",
+        "hasBezeqNegation": false,
+        "hasRnet": false,
+        "hasDocNo": false
+      }
+    },
+    {
+      "id": "cms1nwg2m00ptjn2cowt2nd49",
+      "gmailMessageId": "19f9d7eb3bad3371",
+      "supplierName": "סופרפארם",
+      "invoiceNumber": "6814708",
+      "documentType": "tax_invoice_receipt",
+      "reviewStatus": "approved",
+      "uncertaintyReason": "duplicate.key_mismatch",
+      "totalAmount": 45,
+      "documentDate": "2026-07-26T08:15:39.000Z",
+      "fileName": "image0.jpeg",
+      "createdAt": "2026-07-26T10:35:26.686Z",
+      "ocr": {
+        "kind": "raw_json",
+        "len": 8130,
+        "preview": "{\"analysis\":{\"tasks\":[],\"amount\":45,\"dueDate\":null,\"currency\":\"ILS\",\"supplier\":\"סופר פארם\",\"vatAmount\":6.79,\"confidence\":0.95,\"invoiceDate\":\"2022-10-19\",\"totalAmount\":45,\"documentType\":\"tax_invoice_receipt\",\"invoiceNumber\":\"6814708\",\"supplierTaxId\":\"514680503\",\"amountBeforeVat\":38.21,\"paymentRequired\":false},\"classification\":{\"audit\":{\"amountFound\":true,\"blockedReason\":null,\"keywordMatched\":[\"חשבו…",
+        "hasBezeqNegation": false,
+        "hasRnet": false,
+        "hasDocNo": false
+      }
+    },
+    {
+      "id": "cms1nvpvp00pbjn2cwks9a78b",
+      "gmailMessageId": "19f9d94a517d5d86",
+      "supplierName": "ישראכרט",
+      "invoiceNumber": "026309901407453",
+      "documentType": "tax_invoice",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "supplier.sir_weak_evidence",
+      "totalAmount": 418.39,
+      "documentDate": "2026-07-26T08:39:38.000Z",
+      "fileName": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+      "createdAt": "2026-07-26T10:34:52.741Z",
+      "ocr": {
+        "kind": "raw_json",
+        "len": 8004,
+        "preview": "{\"analysis\":{\"tasks\":[],\"amount\":418.39,\"dueDate\":null,\"currency\":\"ILS\",\"supplier\":\"*המלאי גמר עד שעות 24תוך\",\"vatAmount\":60.79,\"confidence\":0.85,\"invoiceDate\":\"2024-03-05\",\"totalAmount\":418.39,\"documentType\":\"invoice\",\"invoiceNumber\":\"026309901407453\",\"supplierTaxId\":null,\"amountBeforeVat\":357.6,\"paymentRequired\":false},\"classification\":{\"audit\":{\"amountFound\":true,\"blockedReason\":null,\"keywordMa…",
+        "hasBezeqNegation": false,
+        "hasRnet": false,
+        "hasDocNo": false
+      }
+    }
+  ],
+  "gsiByDoc": [
+    {
+      "id": "cmqw3p1fa022tm92b21pb1jk2",
+      "gmailMessageId": "19ed663858554d33",
+      "supplierName": "Rnet",
+      "subject": "חשבונית rent ",
+      "amount": null,
+      "documentType": "invoice",
+      "reviewStatus": "rejected",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:31:15.574Z",
+      "attachmentFilename": "image0.png"
+    }
+  ],
+  "fdrByDoc": [
+    {
+      "id": "cmqw3n5hx020dm92bp1joi8wu",
+      "gmailMessageId": "19ee12f8ab9f4579",
+      "supplierName": "נ.ערנט איי.קום בע\"מ",
+      "invoiceNumber": "OV255006399",
+      "subject": "(ללא נושא)",
+      "documentType": "tax_invoice_receipt",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "totalAmount": 354,
+      "documentDate": "2025-09-10T00:00:00.000Z",
+      "createdAt": "2026-06-27T08:29:47.541Z",
+      "fileName": "PHOTO-2025-09-15-14-29-36.jpg"
+    },
+    {
+      "id": "cmqw3ouri022hm92bqrwfxguj",
+      "gmailMessageId": "19ed663858554d33",
+      "supplierName": "Rnet",
+      "invoiceNumber": "rent",
+      "subject": "חשבונית rent ",
+      "documentType": "tax_invoice",
+      "reviewStatus": "rejected",
+      "uncertaintyReason": "Quarantined: cross-org gmail ingestion",
+      "totalAmount": null,
+      "documentDate": "2025-04-03T00:00:00.000Z",
+      "createdAt": "2026-06-27T08:31:06.942Z",
+      "fileName": "image0.png"
+    }
+  ],
+  "bezeqGsi": [],
+  "bezeqFdr": [],
+  "scanLogs": [
+    {
+      "id": "scan_1785067239634_1t1vf8yyl8",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T12:00:39.664Z",
+      "endedAt": "2026-07-26T12:00:40.269Z"
+    },
+    {
+      "id": "scan_1785065434809_f40hfq7t9o",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T11:30:34.838Z",
+      "endedAt": "2026-07-26T11:30:35.441Z"
+    },
+    {
+      "id": "scan_1785063637824_tdw7bgo7br",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T11:00:37.857Z",
+      "endedAt": "2026-07-26T11:00:38.497Z"
+    },
+    {
+      "id": "scan_1785061839185_z2b8h4cqty",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T10:30:39.214Z",
+      "endedAt": "2026-07-26T10:30:39.858Z"
+    },
+    {
+      "id": "scan_1785060037433_s53v82noh8",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T10:00:37.462Z",
+      "endedAt": "2026-07-26T10:00:38.069Z"
+    },
+    {
+      "id": "scan_1785058235186_y9j87ti7mg",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T09:30:35.218Z",
+      "endedAt": "2026-07-26T09:30:35.837Z"
+    },
+    {
+      "id": "scan_1785056436686_p4pn9tgbzwn",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T09:00:36.715Z",
+      "endedAt": "2026-07-26T09:00:37.318Z"
+    },
+    {
+      "id": "scan_1785054633957_vza21r1rmzd",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T08:30:33.987Z",
+      "endedAt": "2026-07-26T08:30:34.595Z"
+    },
+    {
+      "id": "scan_1785052835482_vkenpx73n5",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T08:00:35.511Z",
+      "endedAt": "2026-07-26T08:00:36.120Z"
+    },
+    {
+      "id": "scan_1785051036578_s2brop2jvii",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T07:30:36.606Z",
+      "endedAt": "2026-07-26T07:30:37.209Z"
+    },
+    {
+      "id": "scan_1785049238655_ne5ddpkj50a",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T07:00:38.684Z",
+      "endedAt": "2026-07-26T07:00:39.332Z"
+    },
+    {
+      "id": "scan_1785047439543_rg3gi1kxxq",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T06:30:39.573Z",
+      "endedAt": "2026-07-26T06:30:40.298Z"
+    },
+    {
+      "id": "scan_1785045634375_3w7jva7feqh",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T06:00:34.404Z",
+      "endedAt": "2026-07-26T06:00:35.019Z"
+    },
+    {
+      "id": "scan_1785043839511_qlw07m10wo8",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T05:30:39.540Z",
+      "endedAt": "2026-07-26T05:30:40.190Z"
+    },
+    {
+      "id": "scan_1785042036934_5rwo08fokbx",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T05:00:36.963Z",
+      "endedAt": "2026-07-26T05:00:37.565Z"
+    },
+    {
+      "id": "scan_1785040237794_ka3dsqei16",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T04:30:37.825Z",
+      "endedAt": "2026-07-26T04:30:38.502Z"
+    },
+    {
+      "id": "scan_1785038434986_q8jrbmomg8c",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T04:00:35.016Z",
+      "endedAt": "2026-07-26T04:00:35.620Z"
+    },
+    {
+      "id": "scan_1785036637736_bo2d0ockufv",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T03:30:37.766Z",
+      "endedAt": "2026-07-26T03:30:38.430Z"
+    },
+    {
+      "id": "scan_1785034839118_agx5n1yy89m",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T03:00:39.149Z",
+      "endedAt": "2026-07-26T03:00:39.813Z"
+    },
+    {
+      "id": "scan_1785033038512_n695pwzptra",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T02:30:38.548Z",
+      "endedAt": "2026-07-26T02:30:39.210Z"
+    },
+    {
+      "id": "scan_1785031234416_yijig6a1yys",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T02:00:34.447Z",
+      "endedAt": "2026-07-26T02:00:35.057Z"
+    },
+    {
+      "id": "scan_1785029444599_w5kihcz0fih",
+      "type": "health",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T01:30:44.634Z",
+      "endedAt": "2026-07-26T01:30:45.353Z"
+    },
+    {
+      "id": "scan_1785029443020_6xxp1vjn88s",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T01:30:43.051Z",
+      "endedAt": "2026-07-26T01:30:43.695Z"
+    },
+    {
+      "id": "scan_1785027636344_zeg09bhvloi",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T01:00:36.380Z",
+      "endedAt": "2026-07-26T01:00:37.034Z"
+    },
+    {
+      "id": "scan_1785025837461_f5lkokc4wp",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T00:30:37.492Z",
+      "endedAt": "2026-07-26T00:30:38.103Z"
+    },
+    {
+      "id": "scan_1785024038770_pjtla2rm879",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T00:00:38.805Z",
+      "endedAt": "2026-07-26T00:00:39.464Z"
+    },
+    {
+      "id": "scan_1785022235497_56lqjtczehf",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-25T23:30:35.589Z",
+      "endedAt": "2026-07-25T23:30:36.196Z"
+    },
+    {
+      "id": "scan_1785020440461_aecypzppjvt",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-25T23:00:40.491Z",
+      "endedAt": "2026-07-25T23:00:41.101Z"
+    },
+    {
+      "id": "scan_1785020429517_ernvy1pvt44",
+      "type": "daily",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-25T23:00:29.547Z",
+      "endedAt": "2026-07-25T23:00:29.853Z"
+    },
+    {
+      "id": "scan_1785018634758_bvvyrmorarw",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-25T22:30:34.789Z",
+      "endedAt": "2026-07-25T22:30:35.395Z"
+    }
+  ],
+  "fastCoverage": [
+    {
+      "query": "newer_than:1d has:attachment -in:spam -in:trash",
+      "hitCount": 7,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:6h has:attachment",
+      "hitCount": 7,
+      "hitsRnet": []
+    },
+    {
+      "query": "after:2026/07/26 has:attachment",
+      "hitCount": 7,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d has:attachment -in:spam -in:trash",
+      "hitCount": 7,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d has:attachment {invoice receipt payment \"payment request\" חשבונית קבלה תשלום \"דרישת תשלום\"} -in:spam -in:trash",
+      "hitCount": 7,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d in:sent has:attachment -in:spam -in:trash",
+      "hitCount": 0,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d has:attachment {filename:jpg filename:jpeg filename:png filename:webp filename:heic filename:pdf} -in:spam -in:trash",
+      "hitCount": 7,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d subject:חשבונית has:attachment -in:spam -in:trash",
+      "hitCount": 1,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d subject:חשבונית -in:spam -in:trash",
+      "hitCount": 1,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d subject:invoice has:attachment -in:spam -in:trash",
+      "hitCount": 0,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d subject:invoice -in:spam -in:trash",
+      "hitCount": 0,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d subject:receipt has:attachment -in:spam -in:trash",
+      "hitCount": 0,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d subject:receipt -in:spam -in:trash",
+      "hitCount": 0,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d subject:קבלה has:attachment -in:spam -in:trash",
+      "hitCount": 0,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d subject:קבלה -in:spam -in:trash",
+      "hitCount": 0,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d subject:\"דרישת תשלום\" has:attachment -in:spam -in:trash",
+      "hitCount": 0,
+      "hitsRnet": []
+    },
+    {
+      "query": "newer_than:1d subject:\"דרישת תשלום\" -in:spam -in:trash",
+      "hitCount": 0,
+      "hitsRnet": []
+    }
+  ],
+  "counts": {
+    "gsiRecent": 4,
+    "fdrRecent": 6,
+    "rnetMsg": 0,
+    "bezeqMsg": 0
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "taxInvoiceReceipt": {
+    "inIsolatedSource": 5,
+    "incompleteLocal": 4,
+    "incompleteIds": [
+      "document-review:cmqxegtlv0au7jx2d306fm5f6",
+      "document-review:cmqxeh4bh0audjx2d6ncvt92u",
+      "document-review:cmqw3onmp0227m92bemcb1bkm",
+      "document-review:cmqw3n5hx020dm92bp1joi8wu"
+    ],
+    "liveTaxInvoiceReceiptRows": []
+  },
+  "simulateNoIsolation": {
+    "sourceCount": 231,
+    "oldDedupeIncompleteTotal": 83,
+    "oldHasRnet": false,
+    "oldHasBezeq": true,
+    "newDedupeIncompleteTotal": 84,
+    "newHasRnet": true,
+    "liveTotal": 22,
+    "oldIdsMatchLiveCount": false,
+    "oldOnly": [
+      "gmail-scan:cmqxehrj40av1jx2dzx1zmh1m",
+      "gmail-scan:cmqxe9hk00aqbjx2dfkcrz1xq",
+      "gmail-scan:cmqxf5pta0b2vjx2d54j2rsyy",
+      "gmail-scan:cmqxf3b6l0b2jjx2d06s3pf1k",
+      "gmail-scan:cmqxf33ys0b2fjx2d8stocj6x",
+      "gmail-scan:cmqxf314c0b2bjx2dg3vhorkr",
+      "gmail-scan:cmqxf23ri0b21jx2dqvddtyw5",
+      "gmail-scan:cmqxf1y7o0b1xjx2dvliszz6e",
+      "gmail-scan:cmqxe76p60ap5jx2df626gusp",
+      "gmail-scan:cmqxewl1p0b0jjx2d2l1ifcmb",
+      "gmail-scan:cmqxev8lt0azjjx2d2v0scjlz",
+      "gmail-scan:cmqxev5y60azfjx2dh7n3ljy1",
+      "gmail-scan:cmqxeuyr60azbjx2dn3dfhrmh",
+      "gmail-scan:cmqxeursx0az7jx2d7dn1hj63",
+      "gmail-scan:cmqxeulh10az1jx2de32ftt4z",
+      "gmail-scan:cmqxeqie30axpjx2djz6vkllz",
+      "gmail-scan:cmqw3mt2o0201m92bywliiake",
+      "gmail-scan:cmr0a2ieg0tvxme2dygtmcaah",
+      "gmail-scan:cmqxeifa40avrjx2db06o8e9t",
+      "gmail-scan:cmqw3ngay020rm92bu32og3aa"
+    ],
+    "liveOnly": []
+  }
+}

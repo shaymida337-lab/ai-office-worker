@@ -1,0 +1,90 @@
+{
+  "isolation": {
+    "contaminatedCount": 0,
+    "fdrVisibleAfterIsolation": true,
+    "gsiVisibleAfterIsolation": false,
+    "note": "GSI excluded by quarantine read isolation"
+  },
+  "prodPipeline": {
+    "before": [
+      {
+        "id": "gmail-scan:cmqw3n5ug020fm92b5smx5bx1",
+        "source": "gmail_scan_item",
+        "reviewStatus": "rejected",
+        "rawReviewStatus": "rejected",
+        "decisionReason": "Quarantined: cross-org gmail ingestion",
+        "actionable": false,
+        "isComplete": true,
+        "dataComplete": true,
+        "approvalRequired": false,
+        "missingDataReasons": []
+      },
+      {
+        "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+        "source": "financial_document_review",
+        "reviewStatus": "needs_review",
+        "rawReviewStatus": "needs_review",
+        "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+        "actionable": true,
+        "isComplete": false,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "missingDataReasons": []
+      }
+    ],
+    "afterDedupe": [
+      {
+        "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+        "source": "financial_document_review",
+        "reviewStatus": "needs_review",
+        "rawReviewStatus": "needs_review",
+        "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+        "actionable": true,
+        "isComplete": false,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "missingDataReasons": []
+      }
+    ],
+    "afterIncompleteIds": [
+      "document-review:cmqw3n5hx020dm92bp1joi8wu"
+    ],
+    "pageTotal": 1,
+    "nonFinancial": [
+      {
+        "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+        "excluded": false
+      }
+    ],
+    "rnetSurvivesProdIncompleteFilter": true
+  },
+  "fdrPool": {
+    "needsReviewCount": 32,
+    "wouldKeepAsIncompleteUnderProdFormula": 32,
+    "rnetWouldKeep": true
+  },
+  "liveApi": {
+    "total": 22,
+    "hitPlain": [],
+    "searchOv": {
+      "total": 0,
+      "rows": []
+    },
+    "searchErnt": {
+      "total": 0,
+      "rows": []
+    },
+    "sampleIds": [
+      "gmail-scan:cms1p5nwl008xj81s2yeavjyx",
+      "gmail-scan:cms1p5x0k0091j81sy1y0xkcr",
+      "gmail-scan:cms1nw7uy00prjn2c1xbbn86r",
+      "gmail-scan:cmr1vlh4m00rjj42c0eps0k9l",
+      "document-review:cmqygx5bn08ztme2d6uhv1w5b",
+      "document-review:cmqxejucz0awhjx2d6v3motc5",
+      "document-review:cmqxetyxa0aytjx2dgiaib10u",
+      "document-review:cmqw3rtbx024hm92b5bd1j49r",
+      "document-review:cmqxeunvl0az3jx2d1kfkwt73",
+      "document-review:cmqxevlvs0azvjx2dcqselxwc"
+    ]
+  }
+}

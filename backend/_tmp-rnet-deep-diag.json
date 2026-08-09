@@ -1,0 +1,388 @@
+{
+  "checkedAt": "2026-07-26T12:21:25.732Z",
+  "messages": [
+    {
+      "id": "19f9e3d9101ed94d",
+      "receivedAt": "2026-07-26T11:44:10.000Z",
+      "receivedAtIL": "26/07/2026, 14:44:10",
+      "sender": "shaymida337@gmail.com",
+      "subject": null,
+      "messageIdHeader": "<410F3874-515E-4414-BE8C-B0FF9069736C@gmail.com>",
+      "labelIds": [
+        "IMPORTANT",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "snippet": "נשלח מה-iPhone שלי",
+      "attachmentsMeta": [
+        {
+          "filename": "PHOTO-2025-09-15-14-29-36.jpg",
+          "mimeType": "image/jpeg",
+          "size": 97753
+        }
+      ],
+      "downloaded": [
+        {
+          "filename": "PHOTO-2025-09-15-14-29-36.jpg",
+          "mimeType": "image/jpeg",
+          "declaredSize": 97753,
+          "bytes": 97753,
+          "sha256": "13d646c0a4784ee6f7a95f22473bba3b1703134bce408dca1754f0dba82e48ed",
+          "sha1": "7561d72f6d87d3df16359cb998789e1ff5bc6a3a"
+        }
+      ]
+    },
+    {
+      "id": "19f9e3d4a3621e8d",
+      "receivedAt": "2026-07-26T11:43:52.000Z",
+      "receivedAtIL": "26/07/2026, 14:43:52",
+      "sender": "shaymida337@gmail.com",
+      "subject": null,
+      "messageIdHeader": "<DC373C26-FB34-4896-BB65-4911C9F5ED47@gmail.com>",
+      "labelIds": [
+        "IMPORTANT",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "snippet": "נשלח מה-iPhone שלי",
+      "attachmentsMeta": [
+        {
+          "filename": "PHOTO-2025-12-10-13-10-10.jpg",
+          "mimeType": "image/jpeg",
+          "size": 136099
+        }
+      ],
+      "downloaded": [
+        {
+          "filename": "PHOTO-2025-12-10-13-10-10.jpg",
+          "mimeType": "image/jpeg",
+          "declaredSize": 136099,
+          "bytes": 136099,
+          "sha256": "8025ec9ac4cf72257f5a8c0eb3e59120cf84941f83118c58b6bb58fbc165ef00",
+          "sha1": "ea05fe5f1f693100cc3e0ef121813fa007215257"
+        }
+      ]
+    }
+  ],
+  "byMsg": {
+    "gsi": [],
+    "fdr": []
+  },
+  "byFile": {
+    "gsi": [
+      {
+        "id": "cmqw3m2da01zbm92bncaji21w",
+        "gmailMessageId": "19ef381181d5369a",
+        "attachmentFilename": "PHOTO-2025-12-10-13-10-10.jpg",
+        "duplicateKey": "beff2ddb6436d84266dfd2151ee26a5e1f83d485f144323c",
+        "supplierName": "shaymida337",
+        "reviewStatus": "rejected",
+        "decisionReason": "Quarantined: cross-org gmail ingestion",
+        "documentType": "receipt",
+        "amount": 197,
+        "createdAt": "2026-06-27T08:28:56.830Z"
+      },
+      {
+        "id": "cmqw3n5ug020fm92b5smx5bx1",
+        "gmailMessageId": "19ee12f8ab9f4579",
+        "attachmentFilename": "PHOTO-2025-09-15-14-29-36.jpg",
+        "duplicateKey": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "supplierName": "ערנט אי.קום",
+        "reviewStatus": "rejected",
+        "decisionReason": "Quarantined: cross-org gmail ingestion",
+        "documentType": "receipt",
+        "amount": 354,
+        "createdAt": "2026-06-27T08:29:47.992Z"
+      },
+      {
+        "id": "cmqw3onza0229m92blwh0o3cs",
+        "gmailMessageId": "19ed663d168fc8dc",
+        "attachmentFilename": "PHOTO-2025-12-10-13-10-10.jpg",
+        "duplicateKey": "327f78265d110edc5b3b6f37c4bfb903393eff044c295250",
+        "supplierName": "בזק - החברה הישראלית לתקשורת בע״מ",
+        "reviewStatus": "rejected",
+        "decisionReason": "Quarantined: cross-org gmail ingestion",
+        "documentType": "tax_invoice_receipt",
+        "amount": 163.28,
+        "createdAt": "2026-06-27T08:30:58.150Z"
+      },
+      {
+        "id": "cmqxdpeqq0ah9jx2dv15ruwzw",
+        "gmailMessageId": "19ef381181d5369a",
+        "attachmentFilename": "PHOTO-2025-12-10-13-10-10.jpg",
+        "duplicateKey": "649b77a92a9d5f3efe629118d602fc58887d244938563619",
+        "supplierName": "shaymida337",
+        "reviewStatus": "rejected",
+        "decisionReason": "Quarantined: cross-org gmail ingestion",
+        "documentType": "receipt",
+        "amount": 163.28,
+        "createdAt": "2026-06-28T05:59:15.170Z"
+      },
+      {
+        "id": "cmqxdrz9t0aitjx2dmnyd5vyx",
+        "gmailMessageId": "19ed663d168fc8dc",
+        "attachmentFilename": "PHOTO-2025-12-10-13-10-10.jpg",
+        "duplicateKey": "aca84a62e1ad5047a2d1adab261db40834aaf68d3f3b3f5b",
+        "supplierName": "בזק - החברה הישראלית לתקשורת בע״מ",
+        "reviewStatus": "rejected",
+        "decisionReason": "Quarantined: cross-org gmail ingestion",
+        "documentType": "tax_invoice_receipt",
+        "amount": null,
+        "createdAt": "2026-06-28T06:01:15.089Z"
+      },
+      {
+        "id": "cmqygwygl08zrme2d5ril8mnw",
+        "gmailMessageId": "19f0e22237eb2bb9",
+        "attachmentFilename": "PHOTO-2025-09-15-14-29-36.jpg",
+        "duplicateKey": "a33879a868698a09f51f33fc4ce6ebf49a5b6be087257584",
+        "supplierName": "shaymida337",
+        "reviewStatus": "rejected",
+        "decisionReason": "Quarantined: cross-org gmail ingestion",
+        "documentType": "receipt",
+        "amount": 354,
+        "createdAt": "2026-06-29T00:16:52.341Z"
+      }
+    ],
+    "fdr": [
+      {
+        "id": "cmqw3m22i01z9m92b2qcdiww4",
+        "gmailMessageId": "19ef381181d5369a",
+        "fileName": "PHOTO-2025-12-10-13-10-10.jpg",
+        "fileSize": null,
+        "documentFingerprint": "beff2ddb6436d84266dfd2151ee26a5e1f83d485f144323c",
+        "sourceFingerprint": "7687c1bccf7c572aa55d49d8f94049304bea9d4030f6729b",
+        "supplierName": "shaymida337",
+        "invoiceNumber": "supplier",
+        "documentType": "receipt",
+        "documentDate": "2025-12-07T00:00:00.000Z",
+        "totalAmount": 197,
+        "reviewStatus": "rejected",
+        "uncertaintyReason": "Quarantined: cross-org gmail ingestion",
+        "createdAt": "2026-06-27T08:28:56.442Z"
+      },
+      {
+        "id": "cmqw3n5hx020dm92bp1joi8wu",
+        "gmailMessageId": "19ee12f8ab9f4579",
+        "fileName": "PHOTO-2025-09-15-14-29-36.jpg",
+        "fileSize": null,
+        "documentFingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "sourceFingerprint": "9a706f3ba25361260a3fffe0dd33a625ba09d7c9e77e5390",
+        "supplierName": "נ.ערנט איי.קום בע\"מ",
+        "invoiceNumber": "OV255006399",
+        "documentType": "tax_invoice_receipt",
+        "documentDate": "2025-09-10T00:00:00.000Z",
+        "totalAmount": 354,
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+        "createdAt": "2026-06-27T08:29:47.541Z"
+      },
+      {
+        "id": "cmqw3onmp0227m92bemcb1bkm",
+        "gmailMessageId": "19ed663d168fc8dc",
+        "fileName": "PHOTO-2025-12-10-13-10-10.jpg",
+        "fileSize": null,
+        "documentFingerprint": "327f78265d110edc5b3b6f37c4bfb903393eff044c295250",
+        "sourceFingerprint": "7d2c2c589abb97bb1880ac8dbdce502ba72c35c9ee6b5553",
+        "supplierName": "בזק - החברה הישראלית לתקשורת בע״מ",
+        "invoiceNumber": "238419712",
+        "documentType": "tax_invoice_receipt",
+        "documentDate": "2025-12-07T00:00:00.000Z",
+        "totalAmount": 163.28,
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+        "createdAt": "2026-06-27T08:30:57.697Z"
+      },
+      {
+        "id": "cmqw3rtbx024hm92b5bd1j49r",
+        "gmailMessageId": "19ed3e25b2a0023b",
+        "fileName": "PHOTO-2025-12-10-13-10-10.jpg",
+        "fileSize": null,
+        "documentFingerprint": "2ca2f87164aa2986bd455fb68e5322911e6d9d2bb8cfb714",
+        "sourceFingerprint": "71048d9b8e1c432623ab34f3726078e9e973e1f70af3af92",
+        "supplierName": "בזק",
+        "invoiceNumber": null,
+        "documentType": "tax_invoice",
+        "documentDate": "2026-06-17T04:41:16.000Z",
+        "totalAmount": null,
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+        "createdAt": "2026-06-27T08:33:25.053Z"
+      },
+      {
+        "id": "cmqw3z6ax028fm92botia05ye",
+        "gmailMessageId": "19ecaa8e4082b596",
+        "fileName": "PHOTO-2025-12-10-13-10-10.jpg",
+        "fileSize": null,
+        "documentFingerprint": "0cfac00542fd739703c05e3f01392b32a08a42e66c146895",
+        "sourceFingerprint": "0165ab7d3f5735089985201293c3b99bed7a9d50bfd7d301",
+        "supplierName": "בזק",
+        "invoiceNumber": null,
+        "documentType": "tax_invoice",
+        "documentDate": "2026-06-15T09:41:54.000Z",
+        "totalAmount": null,
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+        "createdAt": "2026-06-27T08:39:08.457Z"
+      },
+      {
+        "id": "cmqxdrs8l0aijjx2dy1t4p8er",
+        "gmailMessageId": "19ed663d168fc8dc",
+        "fileName": "PHOTO-2025-12-10-13-10-10.jpg",
+        "fileSize": null,
+        "documentFingerprint": "aca84a62e1ad5047a2d1adab261db40834aaf68d3f3b3f5b",
+        "sourceFingerprint": "85b76495c3786b7e8102ddfffcbf4b11301084bd9771c4df",
+        "supplierName": "בזק - החברה הישראלית לתקשורת בע״מ",
+        "invoiceNumber": "238419712",
+        "documentType": "tax_invoice_receipt",
+        "documentDate": "2025-12-07T00:00:00.000Z",
+        "totalAmount": null,
+        "reviewStatus": "rejected",
+        "uncertaintyReason": "Quarantined: cross-org gmail ingestion",
+        "createdAt": "2026-06-28T06:01:05.973Z"
+      },
+      {
+        "id": "cmqygwy4m08zpme2d0tjj3hwo",
+        "gmailMessageId": "19f0e22237eb2bb9",
+        "fileName": "PHOTO-2025-09-15-14-29-36.jpg",
+        "fileSize": null,
+        "documentFingerprint": "a33879a868698a09f51f33fc4ce6ebf49a5b6be087257584",
+        "sourceFingerprint": "5e63a72eb2cf852cd215e3a45d49342de315c8ee9d26b67d",
+        "supplierName": "shaymida337",
+        "invoiceNumber": "supplier",
+        "documentType": "receipt",
+        "documentDate": "2025-09-10T00:00:00.000Z",
+        "totalAmount": 354,
+        "reviewStatus": "rejected",
+        "uncertaintyReason": "Quarantined: cross-org gmail ingestion",
+        "createdAt": "2026-06-29T00:16:51.910Z"
+      },
+      {
+        "id": "cmqygx5bn08ztme2d6uhv1w5b",
+        "gmailMessageId": "19f0e21bc4653501",
+        "fileName": "PHOTO-2025-12-10-13-10-10.jpg",
+        "fileSize": null,
+        "documentFingerprint": "6bf20e756b8f62c0e9b027540d1499e688cd804177725781",
+        "sourceFingerprint": "4849b6e43ac3fa74f510e8fea172d7a62a6ad12cce50e98c",
+        "supplierName": "בזק",
+        "invoiceNumber": null,
+        "documentType": "tax_invoice",
+        "documentDate": "2026-06-28T12:08:28.000Z",
+        "totalAmount": null,
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+        "createdAt": "2026-06-29T00:17:01.236Z"
+      }
+    ]
+  },
+  "fpMatches": [
+    {
+      "messageId": "19f9e3d9101ed94d",
+      "filename": "PHOTO-2025-09-15-14-29-36.jpg",
+      "bytes": 97753,
+      "sha256": "13d646c0a4784ee6f7a95f22473bba3b1703134bce408dca1754f0dba82e48ed",
+      "sha1": "7561d72f6d87d3df16359cb998789e1ff5bc6a3a",
+      "fdrFp": [],
+      "gsiFp": [],
+      "exactOldFdrDocFp": false,
+      "oldFdrFingerprints": {
+        "documentFingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "sourceFingerprint": "9a706f3ba25361260a3fffe0dd33a625ba09d7c9e77e5390",
+        "fileSize": null
+      }
+    },
+    {
+      "messageId": "19f9e3d4a3621e8d",
+      "filename": "PHOTO-2025-12-10-13-10-10.jpg",
+      "bytes": 136099,
+      "sha256": "8025ec9ac4cf72257f5a8c0eb3e59120cf84941f83118c58b6bb58fbc165ef00",
+      "sha1": "ea05fe5f1f693100cc3e0ef121813fa007215257",
+      "fdrFp": [],
+      "gsiFp": [],
+      "exactOldFdrDocFp": false,
+      "oldFdrFingerprints": {
+        "documentFingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "sourceFingerprint": "9a706f3ba25361260a3fffe0dd33a625ba09d7c9e77e5390",
+        "fileSize": null
+      }
+    }
+  ],
+  "oldRnetFdr": {
+    "id": "cmqw3n5hx020dm92bp1joi8wu",
+    "reviewStatus": "needs_review",
+    "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+    "documentDate": "2025-09-10T00:00:00.000Z",
+    "totalAmount": 354,
+    "supplierName": "נ.ערנט איי.קום בע\"מ",
+    "invoiceNumber": "OV255006399"
+  },
+  "oldOcrPreview": {
+    "len": 7652,
+    "hasOV": true,
+    "hasRnet": false,
+    "preview": "{\"analysis\":{\"tasks\":[],\"amount\":354,\"dueDate\":null,\"currency\":\"ILS\",\"supplier\":\"נ.ערנט איי.קום בע\\\"מ\",\"vatAmount\":null,\"confidence\":0.95,\"invoiceDate\":\"2025-09-10\",\"totalAmount\":354,\"documentType\":\"tax_invoice_receipt\",\"invoiceNumber\":\"OV255006399\",\"supplierTaxId\":\"514812502\",\"amountBeforeVat\":null,\"paymentRequired\":false},\"classification\":{\"audit\":{\"amountFound\":true,\"blockedReason\":null,\"keywordMatched\":[\"חשבונית\",\"invoice\",\"receipt\"],\"attachmentFound\":true,\"invoiceAttached\":false,\"receiptAttached\":false,\"supplierDetected\":true,\"pdfInvoiceDetected\":false,\"taxInvoiceDetected\":false,\"imageInv"
+  },
+  "processedAny": 0,
+  "scanAround": [
+    {
+      "id": "scan_1785063637824_tdw7bgo7br",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T11:00:37.857Z",
+      "endedAt": "2026-07-26T11:00:38.497Z"
+    },
+    {
+      "id": "scan_1785065434809_f40hfq7t9o",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T11:30:34.838Z",
+      "endedAt": "2026-07-26T11:30:35.441Z"
+    },
+    {
+      "id": "scan_1785067239634_1t1vf8yyl8",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T12:00:39.664Z",
+      "endedAt": "2026-07-26T12:00:40.269Z"
+    }
+  ],
+  "allScanTypesToday": [
+    {
+      "_count": 1,
+      "_sum": {
+        "found": 0,
+        "saved": 0
+      },
+      "type": "health",
+      "status": "success"
+    },
+    {
+      "_count": 25,
+      "_sum": {
+        "found": 0,
+        "saved": 0
+      },
+      "type": "quick",
+      "status": "success"
+    }
+  ],
+  "manualScans": [
+    {
+      "id": "scan_1785029444599_w5kihcz0fih",
+      "type": "health",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T01:30:44.634Z"
+    }
+  ]
+}

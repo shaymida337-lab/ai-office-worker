@@ -1,0 +1,724 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(node:52584) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative 
+instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+{
+  "now": "2026-07-26T10:32:03.339Z",
+  "loginEmailQueried": "kedmashopd1@gmail.com",
+  "whyPreviousOrgWasChecked": "Default VERIFY_ORG_ID / scripts historically used cmpjd7j7e0001bl5tzv049rxb (╫⌐╫ש / shaymida337) as the primary prod org for Shay Γאפ not derived from kedmashopd1 login.",
+  "usersMatchingLogin": [
+    {
+      "id": "cmqw27e43002am92bl8e6c9a9",
+      "email": "kedmashopd1@gmail.com",
+      "name": "╫⌐╫ץ╫ƒ",
+      "ownedOrganizationId": "cmqw27e43002bm92bmf9mjy1n",
+      "ownedOrganizationName": "╫⌐╫ש",
+      "ownedBusinessName": "╫º╫ף╫₧╫פ",
+      "memberships": [
+        {
+          "organizationId": "cmqw27e43002bm92bmf9mjy1n",
+          "role": "owner",
+          "organizationName": "╫⌐╫ש",
+          "businessName": "╫º╫ף╫₧╫פ"
+        }
+      ],
+      "createdAt": "2026-06-27T07:49:32.596Z",
+      "updatedAt": "2026-06-27T07:49:32.596Z"
+    }
+  ],
+  "orgsByNameSearch": [
+    {
+      "id": "cmpjd7j7e0001bl5tzv049rxb",
+      "name": "╫⌐╫ש",
+      "businessName": "╫º╫ף╫₧╫פ",
+      "createdAt": "2026-05-24T05:56:52.346Z"
+    },
+    {
+      "id": "cmqve9z5j05r1kr29ivi3dyuj",
+      "name": "╫⌐╫ש",
+      "businessName": "╫º╫ף╫₧╫פ",
+      "createdAt": "2026-06-26T20:39:42.391Z"
+    },
+    {
+      "id": "cmqw27e43002bm92bmf9mjy1n",
+      "name": "╫⌐╫ש",
+      "businessName": "╫º╫ף╫₧╫פ",
+      "createdAt": "2026-06-27T07:49:32.596Z"
+    }
+  ],
+  "previousOrgUsedInPriorDiagnosis": {
+    "id": "cmpjd7j7e0001bl5tzv049rxb",
+    "name": "╫⌐╫ש",
+    "businessName": "╫º╫ף╫₧╫פ",
+    "user": {
+      "id": "cmpjd7j7e0000bl5tu149spmk",
+      "email": "shaymida337@gmail.com",
+      "name": "Shay Mida"
+    }
+  },
+  "orgSummaries": [
+    {
+      "organizationId": "cmqw27e43002bm92bmf9mjy1n",
+      "organizationName": "╫⌐╫ש",
+      "businessName": "╫º╫ף╫₧╫פ",
+      "ownerUser": {
+        "id": "cmqw27e43002am92bl8e6c9a9",
+        "email": "kedmashopd1@gmail.com",
+        "name": "╫⌐╫ץ╫ƒ"
+      },
+      "gmailIntegration": {
+        "id": "cmqw2988q002xm92bolhk4hbm",
+        "connectedAt": "2026-06-27T07:50:58.297Z",
+        "updatedAt": "2026-07-26T10:30:12.301Z",
+        "expiresAt": "2026-07-26T10:33:10.571Z",
+        "hasRefreshToken": true,
+        "metadataGoogleAccountEmail": null
+      },
+      "liveMailbox": {
+        "ok": true,
+        "emailAddress": "shaymida337@gmail.com",
+        "messagesTotal": 41803
+      },
+      "recentScanActivity6h": {
+        "syncLogs": [
+          {
+            "id": "cms1npmdf00l3jn2cxqchkc26",
+            "status": "failed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": null,
+            "invoicesFound": 0,
+            "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+            "startedAt": "2026-07-26T10:30:08.117Z",
+            "finishedAt": "2026-07-26T10:30:13.149Z"
+          },
+          {
+            "id": "cms1nkdna00i1jn2c8e2l9awn",
+            "status": "failed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": null,
+            "invoicesFound": 0,
+            "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+            "startedAt": "2026-07-26T10:26:03.670Z",
+            "finishedAt": "2026-07-26T10:26:07.963Z"
+          },
+          {
+            "id": "cms1nf8hh00ezjn2cnstn22i2",
+            "status": "failed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": null,
+            "invoicesFound": 0,
+            "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+            "startedAt": "2026-07-26T10:22:03.701Z",
+            "finishedAt": "2026-07-26T10:22:08.019Z"
+          },
+          {
+            "id": "cms1na2ge00bxjn2cijwg303l",
+            "status": "failed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": null,
+            "invoicesFound": 0,
+            "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+            "startedAt": "2026-07-26T10:18:02.606Z",
+            "finishedAt": "2026-07-26T10:18:06.939Z"
+          },
+          {
+            "id": "cms1n4uke008vjn2cvhtr1uhq",
+            "status": "failed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": null,
+            "invoicesFound": 0,
+            "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+            "startedAt": "2026-07-26T10:13:59.102Z",
+            "finishedAt": "2026-07-26T10:14:03.436Z"
+          },
+          {
+            "id": "cms1mzrgt005tjn2cmu8hu0qj",
+            "status": "failed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": null,
+            "invoicesFound": 0,
+            "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+            "startedAt": "2026-07-26T10:10:01.805Z",
+            "finishedAt": "2026-07-26T10:10:05.528Z"
+          },
+          {
+            "id": "cms1murep002rjn2cxrl02l68",
+            "status": "failed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": null,
+            "invoicesFound": 0,
+            "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+            "startedAt": "2026-07-26T10:06:08.449Z",
+            "finishedAt": "2026-07-26T10:06:12.680Z"
+          },
+          {
+            "id": "cms1mre2500axml2cxfntgifv",
+            "status": "failed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": null,
+            "invoicesFound": 0,
+            "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+            "startedAt": "2026-07-26T10:03:31.182Z",
+            "finishedAt": "2026-07-26T10:03:34.996Z"
+          }
+        ],
+        "fdrCreated": 0,
+        "gsiCreated": 0
+      },
+      "mailboxProbe": {
+        "ok": true,
+        "error": null,
+        "queryResults": [
+          {
+            "query": "newer_than:1d has:attachment",
+            "count": 0,
+            "sampleIds": []
+          },
+          {
+            "query": "newer_than:1d has:attachment -in:spam -in:trash",
+            "count": 0,
+            "sampleIds": []
+          },
+          {
+            "query": "newer_than:1d",
+            "count": 15,
+            "sampleIds": [
+              "19f9de4e177b6ec3",
+              "19f9dd794abb052a",
+              "19f9dcf766f02984",
+              "19f9dc3aae021191",
+              "19f9da9bfd1e7fdf"
+            ]
+          },
+          {
+            "query": "newer_than:1d in:sent has:attachment",
+            "count": 0,
+            "sampleIds": []
+          },
+          {
+            "query": "newer_than:1d filename:pdf OR filename:jpg OR filename:jpeg OR filename:png",
+            "count": 0,
+            "sampleIds": []
+          },
+          {
+            "query": "after:2026/07/25 has:attachment",
+            "count": 0,
+            "sampleIds": []
+          }
+        ],
+        "recentMessages": [
+          {
+            "id": "19f9de4e177b6ec3",
+            "receivedAt": "2026-07-26T10:07:29.000Z",
+            "sender": "Vercel <notifications@vercel.com>",
+            "to": "shaymida337@gmail.com",
+            "subject": "Failed production deployments on team 'shay mida's projects'",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_PERSONAL",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9dd794abb052a",
+            "receivedAt": "2026-07-26T09:52:58.000Z",
+            "sender": "Vercel <notifications@vercel.com>",
+            "to": "shaymida337@gmail.com",
+            "subject": "Failed production deployments on team 'shay mida's projects'",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_PERSONAL",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9dcf766f02984",
+            "receivedAt": "2026-07-26T09:44:06.000Z",
+            "sender": "Vercel <notifications@vercel.com>",
+            "to": "shaymida337@gmail.com",
+            "subject": "Failed production deployments on team 'shay mida's projects'",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_PERSONAL",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9dc3aae021191",
+            "receivedAt": "2026-07-26T09:31:11.000Z",
+            "sender": "\"╫נ╫ש╫ª╫ש╫º ╫נ╫¿╫צ, ╫¿╫ס ╫₧╫í╫¿\" <itzik@responder.co.il>",
+            "to": "\"╫⌐╫ש ╫₧╫ש╫ף╫פ\" <Shaymida337@gmail.com>",
+            "subject": "╫á╫ñ╫ע╫⌐╫ש╫¥ ╫ס╫¿╫ס╫ש╫ó╫ש ╫פ╫º╫¿╫ץ╫ס! ╫ץ╫ץ╫ס╫ש╫á╫¿ ╫נ╫ש╫₧╫ץ╫¬ ╫ף╫ץ╫₧╫ש╫ש╫ƒ ╫ס╫¿╫ס ╫₧╫í╫¿",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_UPDATES",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9da9bfd1e7fdf",
+            "receivedAt": "2026-07-26T09:02:54.000Z",
+            "sender": "Vercel <notifications@vercel.com>",
+            "to": "shaymida337@gmail.com",
+            "subject": "Failed production deployments on team 'shay mida's projects'",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_PERSONAL",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9d83855633a5a",
+            "receivedAt": "2026-07-26T08:21:09.000Z",
+            "sender": "LinkedIn <notifications-noreply@linkedin.com>",
+            "to": "shay mida <shaymida337@gmail.com>",
+            "subject": "You appeared in recent searches",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_SOCIAL",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9d7fab5f79a23",
+            "receivedAt": "2026-07-26T08:16:56.000Z",
+            "sender": "Vercel <notifications@vercel.com>",
+            "to": "shaymida337@gmail.com",
+            "subject": "Failed production deployments on team 'shay mida's projects'",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_PERSONAL",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9d39e15b3d268",
+            "receivedAt": "2026-07-26T07:00:43.000Z",
+            "sender": "yad2 <no-reply@info.yad2.co.il>",
+            "to": "shaymida337@gmail.com",
+            "subject": "╫¢╫ץ╫£╫¥ ╫ó╫ץ╫ס╫¿╫ש╫¥ ╫ף╫ש╫¿╫פ. ╫₧╫פ ╫ש╫ץ╫ª╫נ ╫£╫¢╫¥ ╫₧╫צ╫פ? (╫ñ╫¿╫í╫ץ╫₧╫¬)",
+            "attachments": [],
+            "labelIds": [
+              "CATEGORY_PROMOTIONS",
+              "UNREAD",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9d2fdffa923ef",
+            "receivedAt": "2026-07-26T06:49:47.000Z",
+            "sender": "Vercel <notifications@vercel.com>",
+            "to": "shaymida337@gmail.com",
+            "subject": "Failed production deployments on team 'shay mida's projects'",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_UPDATES",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9d0991200c698",
+            "receivedAt": "2026-07-26T06:07:52.000Z",
+            "sender": "\"~ ╫ó╫¿╫ƒ ╫⌐╫ר╫¿╫ƒ ~\" <info@eranstern.co.il>",
+            "to": "\"╫⌐╫ש ╫₧╫ש╫ף╫פ\" <shaymida337@gmail.com>",
+            "subject": "╫נ╫á╫ש ╫ó╫ץ╫⌐╫פ ╫⌐╫ש╫á╫ץ╫ש ╫ס\"╫ó╫ץ╫⌐╫ש╫¥ ╫⌐╫ש╫á╫ץ╫ש\"",
+            "attachments": [],
+            "labelIds": [
+              "CATEGORY_PROMOTIONS",
+              "UNREAD",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9d044d4d2e814",
+            "receivedAt": "2026-07-26T06:02:10.000Z",
+            "sender": "WellyBox <info@wellybox.com>",
+            "to": "shay mida <shaymida337@gmail.com>",
+            "subject": "╫ש╫ª╫ש╫¿╫¬ ╫ó╫í╫º╫ש╫¥, ╫º╫ר╫ע╫ץ╫¿╫ש╫ץ╫¬ ╫ץ╫ñ╫¿╫ץ╫ש╫ש╫º╫ר╫ש╫¥",
+            "attachments": [],
+            "labelIds": [
+              "CATEGORY_PROMOTIONS",
+              "UNREAD",
+              "INBOX"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "organizationId": "cmpjd7j7e0001bl5tzv049rxb",
+      "organizationName": "╫⌐╫ש",
+      "businessName": "╫º╫ף╫₧╫פ",
+      "ownerUser": {
+        "id": "cmpjd7j7e0000bl5tu149spmk",
+        "email": "shaymida337@gmail.com",
+        "name": "Shay Mida"
+      },
+      "gmailIntegration": {
+        "id": "cmqveem7q05s3kr29sg4fvax5",
+        "connectedAt": "2026-06-26T20:43:18.902Z",
+        "updatedAt": "2026-07-26T10:30:24.437Z",
+        "expiresAt": "2026-07-26T10:59:55.450Z",
+        "hasRefreshToken": true,
+        "metadataGoogleAccountEmail": "shaymida337@gmail.com"
+      },
+      "liveMailbox": {
+        "ok": true,
+        "emailAddress": "shaymida337@gmail.com",
+        "messagesTotal": 41803
+      },
+      "recentScanActivity6h": {
+        "syncLogs": [
+          {
+            "id": "cms1npvp400l7jn2cgz57csgl",
+            "status": "completed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": 0,
+            "invoicesFound": 0,
+            "errorMessage": null,
+            "startedAt": "2026-07-26T10:30:20.345Z",
+            "finishedAt": "2026-07-26T10:30:31.126Z"
+          },
+          {
+            "id": "cms1nkmg600i5jn2c63fb3szy",
+            "status": "completed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": 0,
+            "invoicesFound": 0,
+            "errorMessage": null,
+            "startedAt": "2026-07-26T10:26:15.078Z",
+            "finishedAt": "2026-07-26T10:26:26.554Z"
+          },
+          {
+            "id": "cms1nfh1000f3jn2cbueqv4x2",
+            "status": "completed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": 0,
+            "invoicesFound": 0,
+            "errorMessage": null,
+            "startedAt": "2026-07-26T10:22:14.772Z",
+            "finishedAt": "2026-07-26T10:22:26.061Z"
+          },
+          {
+            "id": "cms1nab2i00c1jn2crzrngi18",
+            "status": "completed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": 0,
+            "invoicesFound": 0,
+            "errorMessage": null,
+            "startedAt": "2026-07-26T10:18:13.770Z",
+            "finishedAt": "2026-07-26T10:18:24.871Z"
+          },
+          {
+            "id": "cms1n53lw008zjn2caudffgaz",
+            "status": "completed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": 0,
+            "invoicesFound": 0,
+            "errorMessage": null,
+            "startedAt": "2026-07-26T10:14:10.821Z",
+            "finishedAt": "2026-07-26T10:14:22.224Z"
+          },
+          {
+            "id": "cms1mzz5u005xjn2cl2rqxmvk",
+            "status": "completed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": 0,
+            "invoicesFound": 0,
+            "errorMessage": null,
+            "startedAt": "2026-07-26T10:10:11.779Z",
+            "finishedAt": "2026-07-26T10:10:22.497Z"
+          },
+          {
+            "id": "cms1muzzw002vjn2cn1s4wx19",
+            "status": "completed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": 0,
+            "invoicesFound": 0,
+            "errorMessage": null,
+            "startedAt": "2026-07-26T10:06:19.580Z",
+            "finishedAt": "2026-07-26T10:06:30.961Z"
+          },
+          {
+            "id": "cms1mrlwg00b1ml2cbcc045yu",
+            "status": "completed",
+            "scanMode": "fast_recurring",
+            "emailsProcessed": 0,
+            "emailsSaved": 0,
+            "totalMatched": 0,
+            "invoicesFound": 0,
+            "errorMessage": null,
+            "startedAt": "2026-07-26T10:03:41.344Z",
+            "finishedAt": "2026-07-26T10:03:52.206Z"
+          }
+        ],
+        "fdrCreated": 0,
+        "gsiCreated": 0
+      },
+      "mailboxProbe": {
+        "ok": true,
+        "error": null,
+        "queryResults": [
+          {
+            "query": "newer_than:1d has:attachment",
+            "count": 0,
+            "sampleIds": []
+          },
+          {
+            "query": "newer_than:1d has:attachment -in:spam -in:trash",
+            "count": 0,
+            "sampleIds": []
+          },
+          {
+            "query": "newer_than:1d",
+            "count": 15,
+            "sampleIds": [
+              "19f9de4e177b6ec3",
+              "19f9dd794abb052a",
+              "19f9dcf766f02984",
+              "19f9dc3aae021191",
+              "19f9da9bfd1e7fdf"
+            ]
+          },
+          {
+            "query": "newer_than:1d in:sent has:attachment",
+            "count": 0,
+            "sampleIds": []
+          },
+          {
+            "query": "newer_than:1d filename:pdf OR filename:jpg OR filename:jpeg OR filename:png",
+            "count": 0,
+            "sampleIds": []
+          },
+          {
+            "query": "after:2026/07/25 has:attachment",
+            "count": 0,
+            "sampleIds": []
+          }
+        ],
+        "recentMessages": [
+          {
+            "id": "19f9de4e177b6ec3",
+            "receivedAt": "2026-07-26T10:07:29.000Z",
+            "sender": "Vercel <notifications@vercel.com>",
+            "to": "shaymida337@gmail.com",
+            "subject": "Failed production deployments on team 'shay mida's projects'",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_PERSONAL",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9dd794abb052a",
+            "receivedAt": "2026-07-26T09:52:58.000Z",
+            "sender": "Vercel <notifications@vercel.com>",
+            "to": "shaymida337@gmail.com",
+            "subject": "Failed production deployments on team 'shay mida's projects'",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_PERSONAL",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9dcf766f02984",
+            "receivedAt": "2026-07-26T09:44:06.000Z",
+            "sender": "Vercel <notifications@vercel.com>",
+            "to": "shaymida337@gmail.com",
+            "subject": "Failed production deployments on team 'shay mida's projects'",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_PERSONAL",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9dc3aae021191",
+            "receivedAt": "2026-07-26T09:31:11.000Z",
+            "sender": "\"╫נ╫ש╫ª╫ש╫º ╫נ╫¿╫צ, ╫¿╫ס ╫₧╫í╫¿\" <itzik@responder.co.il>",
+            "to": "\"╫⌐╫ש ╫₧╫ש╫ף╫פ\" <Shaymida337@gmail.com>",
+            "subject": "╫á╫ñ╫ע╫⌐╫ש╫¥ ╫ס╫¿╫ס╫ש╫ó╫ש ╫פ╫º╫¿╫ץ╫ס! ╫ץ╫ץ╫ס╫ש╫á╫¿ ╫נ╫ש╫₧╫ץ╫¬ ╫ף╫ץ╫₧╫ש╫ש╫ƒ ╫ס╫¿╫ס ╫₧╫í╫¿",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_UPDATES",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9da9bfd1e7fdf",
+            "receivedAt": "2026-07-26T09:02:54.000Z",
+            "sender": "Vercel <notifications@vercel.com>",
+            "to": "shaymida337@gmail.com",
+            "subject": "Failed production deployments on team 'shay mida's projects'",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_PERSONAL",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9d83855633a5a",
+            "receivedAt": "2026-07-26T08:21:09.000Z",
+            "sender": "LinkedIn <notifications-noreply@linkedin.com>",
+            "to": "shay mida <shaymida337@gmail.com>",
+            "subject": "You appeared in recent searches",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_SOCIAL",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9d7fab5f79a23",
+            "receivedAt": "2026-07-26T08:16:56.000Z",
+            "sender": "Vercel <notifications@vercel.com>",
+            "to": "shaymida337@gmail.com",
+            "subject": "Failed production deployments on team 'shay mida's projects'",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_PERSONAL",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9d39e15b3d268",
+            "receivedAt": "2026-07-26T07:00:43.000Z",
+            "sender": "yad2 <no-reply@info.yad2.co.il>",
+            "to": "shaymida337@gmail.com",
+            "subject": "╫¢╫ץ╫£╫¥ ╫ó╫ץ╫ס╫¿╫ש╫¥ ╫ף╫ש╫¿╫פ. ╫₧╫פ ╫ש╫ץ╫ª╫נ ╫£╫¢╫¥ ╫₧╫צ╫פ? (╫ñ╫¿╫í╫ץ╫₧╫¬)",
+            "attachments": [],
+            "labelIds": [
+              "CATEGORY_PROMOTIONS",
+              "UNREAD",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9d2fdffa923ef",
+            "receivedAt": "2026-07-26T06:49:47.000Z",
+            "sender": "Vercel <notifications@vercel.com>",
+            "to": "shaymida337@gmail.com",
+            "subject": "Failed production deployments on team 'shay mida's projects'",
+            "attachments": [],
+            "labelIds": [
+              "UNREAD",
+              "CATEGORY_UPDATES",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9d0991200c698",
+            "receivedAt": "2026-07-26T06:07:52.000Z",
+            "sender": "\"~ ╫ó╫¿╫ƒ ╫⌐╫ר╫¿╫ƒ ~\" <info@eranstern.co.il>",
+            "to": "\"╫⌐╫ש ╫₧╫ש╫ף╫פ\" <shaymida337@gmail.com>",
+            "subject": "╫נ╫á╫ש ╫ó╫ץ╫⌐╫פ ╫⌐╫ש╫á╫ץ╫ש ╫ס\"╫ó╫ץ╫⌐╫ש╫¥ ╫⌐╫ש╫á╫ץ╫ש\"",
+            "attachments": [],
+            "labelIds": [
+              "CATEGORY_PROMOTIONS",
+              "UNREAD",
+              "INBOX"
+            ]
+          },
+          {
+            "id": "19f9d044d4d2e814",
+            "receivedAt": "2026-07-26T06:02:10.000Z",
+            "sender": "WellyBox <info@wellybox.com>",
+            "to": "shay mida <shaymida337@gmail.com>",
+            "subject": "╫ש╫ª╫ש╫¿╫¬ ╫ó╫í╫º╫ש╫¥, ╫º╫ר╫ע╫ץ╫¿╫ש╫ץ╫¬ ╫ץ╫ñ╫¿╫ץ╫ש╫ש╫º╫ר╫ש╫¥",
+            "attachments": [],
+            "labelIds": [
+              "CATEGORY_PROMOTIONS",
+              "UNREAD",
+              "INBOX"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "organizationId": "cmqve9z5j05r1kr29ivi3dyuj",
+      "organizationName": "╫⌐╫ש",
+      "businessName": "╫º╫ף╫₧╫פ",
+      "ownerUser": {
+        "id": "cmqve9z5j05r0kr29y9sbg25n",
+        "email": "laperlaclinic@gmail.com",
+        "name": "╫⌐╫ץ╫ƒ"
+      },
+      "gmailIntegration": null,
+      "liveMailbox": {
+        "ok": false,
+        "error": "no gmail integration"
+      },
+      "recentScanActivity6h": {
+        "syncLogs": [],
+        "fdrCreated": 0,
+        "gsiCreated": 0
+      },
+      "mailboxProbe": null
+    }
+  ],
+  "gmailMetadataHitsForKedma": [
+    {
+      "organizationId": "cmqw27e43002bm92bmf9mjy1n",
+      "organizationName": "╫⌐╫ש",
+      "businessName": "╫º╫ף╫₧╫פ",
+      "ownerEmail": "kedmashopd1@gmail.com",
+      "metadataGoogleAccountEmail": null,
+      "connectedAt": "2026-06-27T07:50:58.297Z",
+      "updatedAt": "2026-07-26T10:30:12.301Z"
+    }
+  ]
+}

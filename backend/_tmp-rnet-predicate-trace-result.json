@@ -1,0 +1,1400 @@
+{
+  "commit": "dbd498da3a807f43fa43d9cdf664099417c36c7b",
+  "hitAt": "2026-07-26T13:52:00.445Z",
+  "listTotal": 22,
+  "allStages": [
+    "afterDedupe",
+    "afterIncomplete",
+    "finalPageRows",
+    "afterCollected",
+    "inSource",
+    "beforeCollected",
+    "rawFdrFindMany",
+    "rawGsiFindMany",
+    "E.isolation_gmail_or",
+    "F.id+fullCompletionWhere",
+    "firstFailingPredicate",
+    "E.isolation_gmail_notIn_contaminated",
+    "E.isolation_gmail_null",
+    "E.isolation_uncertainty_or",
+    "E.isolation_uncertainty_not_contains_marker",
+    "D.id+orgId+isolation",
+    "E.isolation_uncertainty_null",
+    "C.id+orgId+documentType",
+    "requestContext",
+    "id-only",
+    "A.id+orgId",
+    "B.id+orgId+reviewStatus"
+  ],
+  "predicateCount": 163,
+  "predicates": [
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:04.62556546Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_not_contains_marker",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:04.62556546Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_not_contains_marker",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:04.62556546Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_not_contains_marker",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:03.922585335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "D.id+orgId+isolation",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.274232997Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.62556546Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_not_contains_marker",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:03.922585335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "D.id+orgId+isolation",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.274232997Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.62556546Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_not_contains_marker",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:03.569195909Z",
+      "tag": "rnet_completion_trace",
+      "stage": "C.id+orgId+documentType",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.922585335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "D.id+orgId+isolation",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.274232997Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.62556546Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_not_contains_marker",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:03.569195909Z",
+      "tag": "rnet_completion_trace",
+      "stage": "C.id+orgId+documentType",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.922585335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "D.id+orgId+isolation",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.274232997Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.62556546Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_not_contains_marker",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:02.512006406Z",
+      "tag": "rnet_completion_trace",
+      "stage": "id-only",
+      "matched": true,
+      "found": true,
+      "orgIdMatches": true,
+      "organizationIdEqualsExpected": true,
+      "reviewStatus": "needs_review",
+      "documentType": "tax_invoice_receipt",
+      "source": "gmail",
+      "hasGmailMessageId": true,
+      "gmailMessageIdIsNull": false,
+      "gmailMessageIdInContaminatedList": true,
+      "hasFingerprint": true,
+      "uncertaintyReasonIsNull": false,
+      "uncertaintyReasonHasQuarantineMarker": false,
+      "uncertaintyReasonKind": "string",
+      "contaminatedExcludedCount": 118
+    },
+    {
+      "ts": "2026-07-26T13:52:02.862883727Z",
+      "tag": "rnet_completion_trace",
+      "stage": "A.id+orgId",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.219006335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "B.id+orgId+reviewStatus",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.569195909Z",
+      "tag": "rnet_completion_trace",
+      "stage": "C.id+orgId+documentType",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.922585335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "D.id+orgId+isolation",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.274232997Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.62556546Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_not_contains_marker",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:02.512006406Z",
+      "tag": "rnet_completion_trace",
+      "stage": "id-only",
+      "matched": true,
+      "found": true,
+      "orgIdMatches": true,
+      "organizationIdEqualsExpected": true,
+      "reviewStatus": "needs_review",
+      "documentType": "tax_invoice_receipt",
+      "source": "gmail",
+      "hasGmailMessageId": true,
+      "gmailMessageIdIsNull": false,
+      "gmailMessageIdInContaminatedList": true,
+      "hasFingerprint": true,
+      "uncertaintyReasonIsNull": false,
+      "uncertaintyReasonHasQuarantineMarker": false,
+      "uncertaintyReasonKind": "string",
+      "contaminatedExcludedCount": 118
+    },
+    {
+      "ts": "2026-07-26T13:52:02.862883727Z",
+      "tag": "rnet_completion_trace",
+      "stage": "A.id+orgId",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.219006335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "B.id+orgId+reviewStatus",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.569195909Z",
+      "tag": "rnet_completion_trace",
+      "stage": "C.id+orgId+documentType",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.922585335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "D.id+orgId+isolation",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.274232997Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.62556546Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_not_contains_marker",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:02.512006406Z",
+      "tag": "rnet_completion_trace",
+      "stage": "id-only",
+      "matched": true,
+      "found": true,
+      "orgIdMatches": true,
+      "organizationIdEqualsExpected": true,
+      "reviewStatus": "needs_review",
+      "documentType": "tax_invoice_receipt",
+      "source": "gmail",
+      "hasGmailMessageId": true,
+      "gmailMessageIdIsNull": false,
+      "gmailMessageIdInContaminatedList": true,
+      "hasFingerprint": true,
+      "uncertaintyReasonIsNull": false,
+      "uncertaintyReasonHasQuarantineMarker": false,
+      "uncertaintyReasonKind": "string",
+      "contaminatedExcludedCount": 118
+    },
+    {
+      "ts": "2026-07-26T13:52:02.862883727Z",
+      "tag": "rnet_completion_trace",
+      "stage": "A.id+orgId",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.219006335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "B.id+orgId+reviewStatus",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.569195909Z",
+      "tag": "rnet_completion_trace",
+      "stage": "C.id+orgId+documentType",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.922585335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "D.id+orgId+isolation",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.274232997Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.62556546Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_not_contains_marker",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:02.512006406Z",
+      "tag": "rnet_completion_trace",
+      "stage": "id-only",
+      "matched": true,
+      "found": true,
+      "orgIdMatches": true,
+      "organizationIdEqualsExpected": true,
+      "reviewStatus": "needs_review",
+      "documentType": "tax_invoice_receipt",
+      "source": "gmail",
+      "hasGmailMessageId": true,
+      "gmailMessageIdIsNull": false,
+      "gmailMessageIdInContaminatedList": true,
+      "hasFingerprint": true,
+      "uncertaintyReasonIsNull": false,
+      "uncertaintyReasonHasQuarantineMarker": false,
+      "uncertaintyReasonKind": "string",
+      "contaminatedExcludedCount": 118
+    },
+    {
+      "ts": "2026-07-26T13:52:02.862883727Z",
+      "tag": "rnet_completion_trace",
+      "stage": "A.id+orgId",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.219006335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "B.id+orgId+reviewStatus",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.569195909Z",
+      "tag": "rnet_completion_trace",
+      "stage": "C.id+orgId+documentType",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.922585335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "D.id+orgId+isolation",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.274232997Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.62556546Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_not_contains_marker",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    },
+    {
+      "ts": "2026-07-26T13:52:02.512006406Z",
+      "tag": "rnet_completion_trace",
+      "stage": "id-only",
+      "matched": true,
+      "found": true,
+      "orgIdMatches": true,
+      "organizationIdEqualsExpected": true,
+      "reviewStatus": "needs_review",
+      "documentType": "tax_invoice_receipt",
+      "source": "gmail",
+      "hasGmailMessageId": true,
+      "gmailMessageIdIsNull": false,
+      "gmailMessageIdInContaminatedList": true,
+      "hasFingerprint": true,
+      "uncertaintyReasonIsNull": false,
+      "uncertaintyReasonHasQuarantineMarker": false,
+      "uncertaintyReasonKind": "string",
+      "contaminatedExcludedCount": 118
+    },
+    {
+      "ts": "2026-07-26T13:52:02.862883727Z",
+      "tag": "rnet_completion_trace",
+      "stage": "A.id+orgId",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.219006335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "B.id+orgId+reviewStatus",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.569195909Z",
+      "tag": "rnet_completion_trace",
+      "stage": "C.id+orgId+documentType",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:03.922585335Z",
+      "tag": "rnet_completion_trace",
+      "stage": "D.id+orgId+isolation",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.274232997Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:04.62556546Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_not_contains_marker",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:04.977859898Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_uncertainty_or",
+      "matched": true
+    },
+    {
+      "ts": "2026-07-26T13:52:05.329644733Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_null",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:05.681793488Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_notIn_contaminated",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.034014454Z",
+      "tag": "rnet_completion_trace",
+      "stage": "E.isolation_gmail_or",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389121016Z",
+      "tag": "rnet_completion_trace",
+      "stage": "F.id+fullCompletionWhere",
+      "matched": false
+    },
+    {
+      "ts": "2026-07-26T13:52:06.389897306Z",
+      "tag": "rnet_completion_trace",
+      "stage": "firstFailingPredicate",
+      "firstFailingPredicate": "isolation.gmailMessageId_contaminated_or",
+      "inMemoryFirstFailing": "isolation.gmailMessageId_contaminated_or",
+      "safeFields": {
+        "found": true,
+        "orgIdMatches": true,
+        "organizationIdEqualsExpected": true,
+        "reviewStatus": "needs_review",
+        "documentType": "tax_invoice_receipt",
+        "source": "gmail",
+        "hasGmailMessageId": true,
+        "gmailMessageIdIsNull": false,
+        "gmailMessageIdInContaminatedList": true,
+        "hasFingerprint": true,
+        "uncertaintyReasonIsNull": false,
+        "uncertaintyReasonHasQuarantineMarker": false,
+        "uncertaintyReasonKind": "string"
+      }
+    }
+  ]
+}

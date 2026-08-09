@@ -1,0 +1,100 @@
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d in:sent has:attachment -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d has:attachment {filename:jpg filename:jpeg filename:png filename:webp filename:heic filename:pdf} -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_SKIPPED_DUPLICATE message=19f9d2a7c7ccc0c4 reason=fast_query_duplicate
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:חשבונית has:attachment -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:חשבונית -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:invoice has:attachment -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:invoice -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:receipt has:attachment -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:receipt -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:קבלה has:attachment -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:קבלה -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:"דרישת תשלום" has:attachment -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:"דרישת תשלום" -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_FOUND_MESSAGES count=1 diagnostics={"requestedDaysBack":0,"dateFilter":"newer_than:1d","maxMessages":20,"scanAllMail":false,"totalGmailMessagesFound":1,"pagesProcessed":14,"messagesProcessed":1,"nextPageTokenUses":0,"queries":[{"query":"newer_than:1d has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":1,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d has:attachment {invoice receipt payment \"payment request\" חשבונית קבלה תשלום \"דרישת תשלום\"} -in:spam -in:trash","pagesProcessed":1,"messagesSeen":1,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d in:sent has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d has:attachment {filename:jpg filename:jpeg filename:png filename:webp filename:heic filename:pdf} -in:spam -in:trash","pagesProcessed":1,"messagesSeen":1,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:חשבונית has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:חשבונית -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:invoice has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:invoice -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:receipt has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:receipt -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:קבלה has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:קבלה -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:\"דרישת תשלום\" has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:\"דרישת תשלום\" -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":1,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false}]}
+[gmail-sync] fetch fast batch 1/1 size=1
+[gmail-sync] FAST_SCAN_PROCESSING_MESSAGE message=19f9d2a7c7ccc0c4
+[gmail-sync] fetched message=19f9d2a7c7ccc0c4 sender="Rav-Pass by HopOn <support@ravpass.co.il>" subject="הודעת חיוב מאפליקציית רב-פס" date="2026-07-26T06:43:54.000Z" attachments=6a64704270f336.17012232.pdf:application/pdf bodyLength=543
+[gmail-sync] parser decision message=19f9d2a7c7ccc0c4 rejected=false reason="body_or_attachment_present"
+[gmail-sync] DB upsert EmailMessage success message=19f9d2a7c7ccc0c4 id=cms1foxyi0vvzk72aa04qkulp
+[communication] {
+  correlationId: '19f9d2a7c7ccc0c4',
+  organizationId: 'cmpk1rpiv000r9y32z908919o',
+  channel: 'gmail',
+  externalMessageId: '19f9d2a7c7ccc0c4',
+  stage: 'gmail_scanned',
+  eventId: 'cms1foyzb0vw3k72acg263k3d'
+}
+[scan] fetch end scanId=cms1nh9h400fjjn2cdkdkl4xp
+[scan] heartbeat scanId=cms1nh9h400fjjn2cdkdkl4xp stage=fetch_end
+[gmail-scan-transition] {"organizationId":"cmpk1rpiv000r9y32z908919o","scanId":"cms1nh9h400fjjn2cdkdkl4xp","previousStatus":"running","nextStatus":"running","reason":"heartbeat:fetch_end","startedAt":null,"lastProgressAt":"2026-07-26T10:23:52.240Z","currentStage":"fetch_end","processedEmails":null,"savedDocuments":null,"durationMs":null,"error":null}
+[scan] processing start scanId=cms1nh9h400fjjn2cdkdkl4xp
+[scan] heartbeat scanId=cms1nh9h400fjjn2cdkdkl4xp stage=processing_start
+[gmail-scan-transition] {"organizationId":"cmpk1rpiv000r9y32z908919o","scanId":"cms1nh9h400fjjn2cdkdkl4xp","previousStatus":"running","nextStatus":"running","reason":"heartbeat:processing_start","startedAt":null,"lastProgressAt":"2026-07-26T10:23:52.847Z","currentStage":"processing_start","processedEmails":null,"savedDocuments":null,"durationMs":null,"error":null}
+[gmail-sync] fast scan found 1 unique senders
+[gmail-sync] client candidate skipped domain="ravpass.co.il" email="support@ravpass.co.il" reason="single_message_sender" count=1
+Found 0 potential clients
+[gmail-sync] process fast batch 1/1 size=1
+[gmail-sync] fast scan skip already-processed message=19f9d2a7c7ccc0c4 reason=no_pending_repair
+[gmail-sync] FAST_SCAN_DONE processed=1
+[scan] processing end scanId=cms1nh9h400fjjn2cdkdkl4xp
+Found 0 relevant emails (0 invoices, 0 receipts, 0 payment requests, 0 supplier messages)
+[gmail-sync] parser totals scanned=1 parsed=1 rejected=0 rejectedReasons={}
+[gmail-sync] invoice detection totals positive=0 negative=0 invoicesCreated=0
+[gmail-sync] DB totals emailMessageUpserts=1 gmailScanItemUpserts=0 clientsCreated=0 potentialClients=0 paymentsCreated=0 invoicesCreated=0
+[gmail-sync] Drive totals attempted=0 succeeded=0 skipped=0 failed=0
+Marked 0 emails as Needs Review, extracted 0 amounts
+Saved 0 records (0 clients, 0 invoices, 0 payments, 0 tasks)
+Skipped 0 duplicates or already processed emails
+[scan] completed scanId=cms1nh9h400fjjn2cdkdkl4xp
+[gmail-scan-transition] {"organizationId":"cmpk1rpiv000r9y32z908919o","scanId":"cms1nh9h400fjjn2cdkdkl4xp","previousStatus":"running","nextStatus":"completed","reason":"completed","startedAt":"2026-07-26T10:23:38.296Z","lastProgressAt":"2026-07-26T10:23:56.429Z","currentStage":"process","processedEmails":1,"savedDocuments":0,"durationMs":18133,"error":null}
+[gmail-scan-lifecycle] scan_completed {"scanId":"cms1nh9h400fjjn2cdkdkl4xp","organizationId":"cmpk1rpiv000r9y32z908919o","scanMode":"fast_recurring","phase":"process","emailsProcessed":1,"emailsSaved":0,"totalMatched":1,"elapsedMs":18133,"reason":null}
+[scan] created scanId=cms1nhqc900fvjn2cwikkpgl9
+[scan] queued scanId=cms1nhqc900fvjn2cwikkpgl9
+[gmail-scan-transition] {"organizationId":"cmpk2fzd8001b9y32zbeo6k47","scanId":"cms1nhqc900fvjn2cwikkpgl9","previousStatus":"idle","nextStatus":"queued","reason":"manual_or_scheduled_start","startedAt":"2026-07-26T10:24:00.153Z","lastProgressAt":"2026-07-26T10:24:00.153Z","currentStage":"queued","processedEmails":0,"savedDocuments":0,"durationMs":0,"error":null}
+[scan] running scanId=cms1nhqc900fvjn2cwikkpgl9
+[gmail-scan-transition] {"organizationId":"cmpk2fzd8001b9y32zbeo6k47","scanId":"cms1nhqc900fvjn2cwikkpgl9","previousStatus":"queued","nextStatus":"running","reason":"promote_to_running","startedAt":"2026-07-26T10:24:00.153Z","lastProgressAt":"2026-07-26T10:24:02.272Z","currentStage":"running","processedEmails":null,"savedDocuments":null,"durationMs":2119,"error":null}
+[gmail-scan-lifecycle] scan_started {"scanId":"cms1nhqc900fvjn2cwikkpgl9","organizationId":"cmpk2fzd8001b9y32zbeo6k47","scanMode":"fast_recurring","elapsedMs":0}
+[scan] heartbeat scanId=cms1nhqc900fvjn2cwikkpgl9 stage=fetch_start
+[gmail-scan-transition] {"organizationId":"cmpk2fzd8001b9y32zbeo6k47","scanId":"cms1nhqc900fvjn2cwikkpgl9","previousStatus":"running","nextStatus":"running","reason":"heartbeat:fetch_start","startedAt":null,"lastProgressAt":"2026-07-26T10:24:02.980Z","currentStage":"fetch_start","processedEmails":null,"savedDocuments":null,"durationMs":null,"error":null}
+[scan] fetch start scanId=cms1nhqc900fvjn2cwikkpgl9
+[gmail-sync] Checking Gmail token and creating Google clients
+[gmail-sync] Gmail mailbox isolation verified mailbox=nirmida31@gmail.com
+[gmail-sync] Checking Drive invoice folder
+[gmail-sync] FAST_SCAN_STARTED query=newer_than:1d maxResults=20 mode=fast_recurring
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d has:attachment -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d has:attachment {invoice receipt payment "payment request" חשבונית קבלה תשלום "דרישת תשלום"} -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d in:sent has:attachment -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d has:attachment {filename:jpg filename:jpeg filename:png filename:webp filename:heic filename:pdf} -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:חשבונית has:attachment -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:חשבונית -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:invoice has:attachment -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:invoice -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:receipt has:attachment -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:receipt -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:קבלה has:attachment -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:קבלה -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:"דרישת תשלום" has:attachment -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_STARTED query="newer_than:1d subject:"דרישת תשלום" -in:spam -in:trash" maxMessages=20
+[gmail-sync] FAST_SCAN_FOUND_MESSAGES count=0 diagnostics={"requestedDaysBack":0,"dateFilter":"newer_than:1d","maxMessages":20,"scanAllMail":false,"totalGmailMessagesFound":0,"pagesProcessed":14,"messagesProcessed":0,"nextPageTokenUses":0,"queries":[{"query":"newer_than:1d has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d has:attachment {invoice receipt payment \"payment request\" חשבונית קבלה תשלום \"דרישת תשלום\"} -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d in:sent has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d has:attachment {filename:jpg filename:jpeg filename:png filename:webp filename:heic filename:pdf} -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:חשבונית has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:חשבונית -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:invoice has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:invoice -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:receipt has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:receipt -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:קבלה has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:קבלה -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:\"דרישת תשלום\" has:attachment -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false},{"query":"newer_than:1d subject:\"דרישת תשלום\" -in:spam -in:trash","pagesProcessed":1,"messagesSeen":0,"uniqueMessagesAfterQuery":0,"nextPageTokensSeen":0,"stoppedBecauseMaxReached":false}]}
+[scan] fetch end scanId=cms1nhqc900fvjn2cwikkpgl9
+[scan] heartbeat scanId=cms1nhqc900fvjn2cwikkpgl9 stage=fetch_end
+[gmail-scan-transition] {"organizationId":"cmpk2fzd8001b9y32zbeo6k47","scanId":"cms1nhqc900fvjn2cwikkpgl9","previousStatus":"running","nextStatus":"running","reason":"heartbeat:fetch_end","startedAt":null,"lastProgressAt":"2026-07-26T10:24:10.012Z","currentStage":"fetch_end","processedEmails":null,"savedDocuments":null,"durationMs":null,"error":null}
+[scan] processing start scanId=cms1nhqc900fvjn2cwikkpgl9
+[scan] heartbeat scanId=cms1nhqc900fvjn2cwikkpgl9 stage=processing_start
+[gmail-scan-transition] {"organizationId":"cmpk2fzd8001b9y32zbeo6k47","scanId":"cms1nhqc900fvjn2cwikkpgl9","previousStatus":"running","nextStatus":"running","reason":"heartbeat:processing_start","startedAt":null,"lastProgressAt":"2026-07-26T10:24:10.721Z","currentStage":"processing_start","processedEmails":null,"savedDocuments":null,"durationMs":null,"error":null}
+[gmail-sync] fast scan found 0 unique senders
+Found 0 potential clients
+[gmail-sync] FAST_SCAN_DONE processed=0
+[scan] processing end scanId=cms1nhqc900fvjn2cwikkpgl9
+Found 0 relevant emails (0 invoices, 0 receipts, 0 payment requests, 0 supplier messages)
+[gmail-sync] parser totals scanned=0 parsed=0 rejected=0 rejectedReasons={}
+[gmail-sync] invoice detection totals positive=0 negative=0 invoicesCreated=0
+[gmail-sync] DB totals emailMessageUpserts=0 gmailScanItemUpserts=0 clientsCreated=0 potentialClients=0 paymentsCreated=0 invoicesCreated=0
+[gmail-sync] Drive totals attempted=0 succeeded=0 skipped=0 failed=0
+Marked 0 emails as Needs Review, extracted 0 amounts
+Saved 0 records (0 clients, 0 invoices, 0 payments, 0 tasks)
+Skipped 0 duplicates or already processed emails
+[scan] completed scanId=cms1nhqc900fvjn2cwikkpgl9
+[gmail-scan-transition] {"organizationId":"cmpk2fzd8001b9y32zbeo6k47","scanId":"cms1nhqc900fvjn2cwikkpgl9","previousStatus":"running","nextStatus":"completed","reason":"completed","startedAt":"2026-07-26T10:24:00.153Z","lastProgressAt":"2026-07-26T10:24:12.857Z","currentStage":"process","processedEmails":0,"savedDocuments":0,"durationMs":12704,"error":null}
+[gmail-scan-lifecycle] scan_completed {"scanId":"cms1nhqc900fvjn2cwikkpgl9","organizationId":"cmpk2fzd8001b9y32zbeo6k47","scanMode":"fast_recurring","phase":"process","emailsProcessed":0,"emailsSaved":0,"totalMatched":0,"elapsedMs":12705,"reason":null}

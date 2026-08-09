@@ -1,0 +1,19 @@
+{
+  "commit": "1529f19ec0e7cc680b532e93fb191f6759aada4f",
+  "healthOk": true,
+  "listStatus": 200,
+  "total": 30,
+  "rnetCount": 1,
+  "rnetRows": [
+    {
+      "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+      "source": "financial_document_review",
+      "status": "needs_review",
+      "invoiceNumber": "OV255006399"
+    }
+  ],
+  "gsiQuarantinedAbsent": true,
+  "quarantinedCount": 0,
+  "tracesAfterHit": 0,
+  "tracesSample": []
+}

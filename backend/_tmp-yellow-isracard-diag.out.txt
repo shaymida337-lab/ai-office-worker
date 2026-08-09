@@ -1,0 +1,334 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+{
+  "now": "2026-07-26T10:42:23.697Z",
+  "orgId": "cmqw27e43002bm92bmf9mjy1n",
+  "focusCount": 3,
+  "detailed": [
+    {
+      "id": "cms1nxg0i00rhjn2cc4z4g170",
+      "source": "gmail",
+      "gmailMessageId": "19f23fd5e58a0267",
+      "fileName": null,
+      "subject": "Your Ride Receipt",
+      "sender": "noreply@bird.co",
+      "supplierName": "Bird Rides",
+      "totalAmount": null,
+      "documentType": "payment_request",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "junk_filter:automated_sender_without_business_document",
+      "confidenceScore": 0,
+      "documentFingerprint": "a2f6f00d16ae169a641ef7b3af8064372c8e51856f55d16b",
+      "sourceFingerprint": "d9206670ed992e9e209f74935afe4488d7494c9f9db1cd04",
+      "createdAt": "2026-07-26T10:36:13.267Z",
+      "updatedAt": "2026-07-26T10:36:13.267Z",
+      "supplierBits": {
+        "supplierName": "Bird Rides",
+        "parsedSupplierName": null,
+        "supplierCandidates": null,
+        "supplierMethod": null,
+        "supplierResolved": null,
+        "sir": null
+      },
+      "parsedTopLevelKeys": [],
+      "rawAnalysisTopLevelKeys": [
+        "junkDecision",
+        "gmailMessageId"
+      ],
+      "textLength": 0,
+      "textPreview": "",
+      "textHasYellow": false,
+      "textHasIsracard": false,
+      "isracardLineHits": [],
+      "yellowLineHits": [],
+      "amount418Contexts": [],
+      "parsedFieldsJsonRelevant": null,
+      "rawAnalysisSlim": {
+        "keys": [
+          "junkDecision",
+          "gmailMessageId"
+        ],
+        "supplierName": null,
+        "amount": null,
+        "method": null,
+        "textLen": 0
+      },
+      "parsedFieldsJsonSize": 0
+    },
+    {
+      "id": "cms1nxf0m00rfjn2ctkcllgz1",
+      "source": "gmail",
+      "gmailMessageId": "19f3e0923ff13c70",
+      "fileName": null,
+      "subject": "╫פ╫₧╫ץ╫ף╫ó╫פ ╫⌐╫£╫ת ╫נ╫ץ╫⌐╫¿╫פ",
+      "sender": "noreply@business-updates.facebook.com",
+      "supplierName": "Meta for Business",
+      "totalAmount": null,
+      "documentType": "payment_request",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "junk_filter:automated_sender_without_business_document",
+      "confidenceScore": 0,
+      "documentFingerprint": "86c3ff061c08380214838ee4a236ddc7623492baa27b639f",
+      "sourceFingerprint": "51ecb5c33407aa43931cd4f527d32b9c577291586882da19",
+      "createdAt": "2026-07-26T10:36:11.974Z",
+      "updatedAt": "2026-07-26T10:36:11.974Z",
+      "supplierBits": {
+        "supplierName": "Meta for Business",
+        "parsedSupplierName": null,
+        "supplierCandidates": null,
+        "supplierMethod": null,
+        "supplierResolved": null,
+        "sir": null
+      },
+      "parsedTopLevelKeys": [],
+      "rawAnalysisTopLevelKeys": [
+        "junkDecision",
+        "gmailMessageId"
+      ],
+      "textLength": 0,
+      "textPreview": "",
+      "textHasYellow": false,
+      "textHasIsracard": false,
+      "isracardLineHits": [],
+      "yellowLineHits": [],
+      "amount418Contexts": [],
+      "parsedFieldsJsonRelevant": null,
+      "rawAnalysisSlim": {
+        "keys": [
+          "junkDecision",
+          "gmailMessageId"
+        ],
+        "supplierName": null,
+        "amount": null,
+        "method": null,
+        "textLen": 0
+      },
+      "parsedFieldsJsonSize": 0
+    },
+    {
+      "id": "cms1nvpvp00pbjn2cwks9a78b",
+      "source": "gmail",
+      "gmailMessageId": "19f9d94a517d5d86",
+      "fileName": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+      "subject": "(╫£╫£╫נ ╫á╫ץ╫⌐╫נ)",
+      "sender": "shaykedma@gmail.com",
+      "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+      "totalAmount": 418.39,
+      "documentType": "tax_invoice",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "supplier.sir_weak_evidence",
+      "confidenceScore": 0.68,
+      "documentFingerprint": "049deebaec949684f7608442ad8b59bd5ad79d011b3d14a0",
+      "sourceFingerprint": "d3134c7b1efd63536e06d4d82d087ae16afa372f509829b0",
+      "createdAt": "2026-07-26T10:34:52.741Z",
+      "updatedAt": "2026-07-26T10:35:15.710Z",
+      "supplierBits": {
+        "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+        "parsedSupplierName": null,
+        "supplierCandidates": null,
+        "supplierMethod": null,
+        "supplierResolved": null,
+        "sir": {
+          "reason": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+          "status": "resolved",
+          "aliases": [],
+          "version": "sir-v1",
+          "evidence": [
+            {
+              "type": "ocr",
+              "label": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+              "value": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+              "source": "ocr_keyword",
+              "weight": 0.85,
+              "matched": true
+            }
+          ],
+          "vatNumber": null,
+          "confidence": 0.98,
+          "reasonCode": "OCR_KEYWORD",
+          "winnerKind": "ocr_keyword",
+          "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+          "evidenceScore": 0.85,
+          "normalizedName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+          "canonicalSupplier": null,
+          "isStrongEnoughForAutoSave": false
+        }
+      },
+      "parsedTopLevelKeys": [
+        "arc",
+        "fse",
+        "sir",
+        "scfc",
+        "gates",
+        "trust",
+        "amount",
+        "dueDate",
+        "outcome",
+        "reasons",
+        "confidence",
+        "invoiceDate",
+        "invoiceNumber"
+      ],
+      "rawAnalysisTopLevelKeys": [
+        "analysis",
+        "classification",
+        "gmailMessageId",
+        "parsed_fields_json",
+        "businessClassification"
+      ],
+      "textLength": 0,
+      "textPreview": "",
+      "textHasYellow": false,
+      "textHasIsracard": false,
+      "isracardLineHits": [],
+      "yellowLineHits": [],
+      "amount418Contexts": [],
+      "parsedFieldsJsonRelevant": {
+        "supplierName": null,
+        "amount": null,
+        "documentType": null,
+        "supplier": null,
+        "extraction": null,
+        "ocr": null,
+        "pdf": null,
+        "supplier_resolved": null,
+        "decisionReason": null,
+        "gates": [
+          {
+            "gate": "amount",
+            "verdict": "pass",
+            "reasonCode": "amount.resolved",
+            "engineVersion": "amount-gate-v1",
+            "normalizedAmount": 418.39
+          },
+          {
+            "gate": "supplier",
+            "verdict": "review",
+            "reasonCode": "supplier.sir_weak_evidence",
+            "engineVersion": "supplier-gate-v1",
+            "canonicalSupplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר"
+          },
+          {
+            "gate": "fingerprint",
+            "tier": "invoice-amount",
+            "verdict": "pass",
+            "reasonCode": "fingerprint.resolved",
+            "engineVersion": "fingerprint-gate-v1",
+            "documentFingerprint": "049deebaec949684f7608442ad8b59bd5ad79d011b3d14a0"
+          },
+          {
+            "gate": "duplicate",
+            "verdict": "review",
+            "reasonCode": "duplicate.key_mismatch",
+            "engineVersion": "duplicate-gate-v1",
+            "matchStrength": "none",
+            "matchedReviewId": null,
+            "matchedPaymentId": null
+          }
+        ]
+      },
+      "rawAnalysisSlim": {
+        "keys": [
+          "analysis",
+          "classification",
+          "gmailMessageId",
+          "parsed_fields_json",
+          "businessClassification"
+        ],
+        "supplierName": null,
+        "amount": null,
+        "method": null,
+        "textLen": 0
+      },
+      "parsedFieldsJsonSize": 6089
+    }
+  ],
+  "recentInvoiceLikeCards": [
+    {
+      "id": "cms1nwg2m00ptjn2cowt2nd49",
+      "fileName": "image0.jpeg",
+      "subject": "╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ",
+      "supplierName": "╫í╫ץ╫ñ╫¿ ╫ñ╫נ╫¿╫¥",
+      "totalAmount": 45,
+      "documentType": "tax_invoice_receipt",
+      "uncertaintyReason": "duplicate.key_mismatch",
+      "gmailMessageId": "19f9d7eb3bad3371",
+      "documentFingerprint": "f33489a83fc2c192be6a74f714ac0509651cc26bbc3da907",
+      "sourceFingerprint": "629cebfafbee3bf5e9961e0cb2beafdd0250c9baf2dbadbc",
+      "createdAt": "2026-07-26T10:35:26.686Z"
+    },
+    {
+      "id": "cms1nvpvp00pbjn2cwks9a78b",
+      "fileName": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+      "subject": "(╫£╫£╫נ ╫á╫ץ╫⌐╫נ)",
+      "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+      "totalAmount": 418.39,
+      "documentType": "tax_invoice",
+      "uncertaintyReason": "supplier.sir_weak_evidence",
+      "gmailMessageId": "19f9d94a517d5d86",
+      "documentFingerprint": "049deebaec949684f7608442ad8b59bd5ad79d011b3d14a0",
+      "sourceFingerprint": "d3134c7b1efd63536e06d4d82d087ae16afa372f509829b0",
+      "createdAt": "2026-07-26T10:34:52.741Z"
+    }
+  ],
+  "duplicateComparison": [
+    {
+      "a": {
+        "id": "cms1nwg2m00ptjn2cowt2nd49",
+        "file": "image0.jpeg",
+        "supplier": "╫í╫ץ╫ñ╫¿ ╫ñ╫נ╫¿╫¥",
+        "amount": 45,
+        "fp": "f33489a83fc2c192be6a74f714ac0509651cc26bbc3da907",
+        "sfp": "629cebfafbee3bf5e9961e0cb2beafdd0250c9baf2dbadbc",
+        "gmail": "19f9d7eb3bad3371"
+      },
+      "b": {
+        "id": "cms1nvpvp00pbjn2cwks9a78b",
+        "file": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+        "supplier": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+        "amount": 418.39,
+        "fp": "049deebaec949684f7608442ad8b59bd5ad79d011b3d14a0",
+        "sfp": "d3134c7b1efd63536e06d4d82d087ae16afa372f509829b0",
+        "gmail": "19f9d94a517d5d86"
+      },
+      "sameDocumentFingerprint": false,
+      "sameSourceFingerprint": false,
+      "sameGmailMessageId": false,
+      "sameAmount": false,
+      "sameSupplier": false
+    }
+  ],
+  "relatedGsi": [
+    {
+      "id": "cms1nwgem00pvjn2cqaiit428",
+      "gmailMessageId": "19f9d7eb3bad3371",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "╫í╫ץ╫ñ╫¿ ╫ñ╫נ╫¿╫¥",
+      "amount": 45,
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Held for review: classifier money_direction_unsure; Auto-saved: tax_invoice_receipt confidence=81%; attachment found: image; attachment found; image invoice detected; amount found; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬; keyword matched: ╫º╫ס╫£╫פ; keyword matched: invoice; keyword matched: receipt; keyword matched: receipt; supplier detected; ai:tax_invoice_receipt:95%",
+      "createdAt": "2026-07-26T10:35:27.118Z"
+    },
+    {
+      "id": "cms1nw7uy00prjn2c1xbbn86r",
+      "gmailMessageId": "19f9d94a517d5d86",
+      "attachmentFilename": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+      "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+      "amount": 418.39,
+      "documentType": "invoice",
+      "decisionReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; outcome_review:OE_NEEDS_REVIEW",
+      "createdAt": "2026-07-26T10:35:16.042Z"
+    }
+  ]
+}
+npm notice
+npm notice New major version of npm available! 11.13.0 -> 12.0.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.1
+npm notice To update run: npm install -g npm@12.0.1
+npm notice

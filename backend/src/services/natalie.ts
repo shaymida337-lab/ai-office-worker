@@ -1,7 +1,13 @@
 import { answerBusinessQuestionWithClaude, type NatalieClaudeResponse } from "./claude.js";
+import {
+  buildNatalieAskRoutingMeta,
+  type NatalieAskRoutingMeta,
+  type NatalieAskSelectedHandler,
+} from "./conversation/natalieAskRouting.js";
 import { findTasksByPartialTitle } from "./tasks.js";
 import { prisma } from "../lib/prisma.js";
 import { resolveAppointmentDateTime } from "./appointmentService.js";
+import { getLocalDateParts } from "./calendar/datetime.js";
 import { findUpcomingSchedulingForClient, findUpcomingSchedulingForOrganization, type UpcomingSchedulingItem } from "./scheduling/schedulingFacade.js";
 import {
   formatAmbiguousCustomerMessage,
@@ -84,6 +90,25 @@ type ShowInvoiceItem = {
   pendingReview?: boolean;
 };
 
+export type AskNatalieBusinessResult = NatalieClaudeResponse & {
+  routing: NatalieAskRoutingMeta;
+};
+
+function withNatalieAskRouting(
+  response: NatalieClaudeResponse,
+  message: string,
+  selectedHandler: NatalieAskSelectedHandler
+): AskNatalieBusinessResult {
+  return {
+    ...response,
+    routing: buildNatalieAskRoutingMeta({
+      message,
+      selectedHandler,
+      fallbackUsed: selectedHandler === "claude_fallback",
+    }),
+  };
+}
+
 export async function askNatalieBusinessQuestion(input: {
   organizationId: string;
   question: string;
@@ -98,7 +123,7 @@ export async function askNatalieBusinessQuestion(input: {
       proposal?: Record<string, unknown> | null;
     }>;
   };
-}, deps?: AskNatalieDeps): Promise<NatalieClaudeResponse> {
+}, deps?: AskNatalieDeps): Promise<AskNatalieBusinessResult> {
   // Deterministic Hebrew create handler runs FIRST so booking commands never
   // reach Claude (no invented names, no defaulted times, no context bleed).
   const createAppointmentResponse = await maybeBuildCreateAppointmentProposal(
@@ -106,12 +131,16 @@ export async function askNatalieBusinessQuestion(input: {
     input.question,
     deps
   );
-  if (createAppointmentResponse) return createAppointmentResponse;
+  if (createAppointmentResponse) {
+    return withNatalieAskRouting(createAppointmentResponse, input.question, "calendar_write");
+  }
 
   // Deterministic CRM: open card / update phone|email|address / full appointment history.
   const { maybeBuildNatalieCrmResponse } = await import("./clients/natalieCrm.js");
   const crmResponse = await maybeBuildNatalieCrmResponse(input.organizationId, input.question);
-  if (crmResponse) return crmResponse;
+  if (crmResponse) {
+    return withNatalieAskRouting(crmResponse, input.question, "crm");
+  }
 
   // Deterministic read handler: "מה יש לי מחר ביומן?" / "מה התורים שלי?" never
   // reaches Claude and always reads the unified appointment source of truth.
@@ -121,7 +150,9 @@ export async function askNatalieBusinessQuestion(input: {
     deps,
     input.requestId ?? null
   );
-  if (listAppointmentsResponse) return listAppointmentsResponse;
+  if (listAppointmentsResponse) {
+    return withNatalieAskRouting(listAppointmentsResponse, input.question, "calendar_read");
+  }
 
   const listedFollowUpResponse = await maybeBuildListedAppointmentFollowUp(
     input.organizationId,
@@ -129,7 +160,9 @@ export async function askNatalieBusinessQuestion(input: {
     input.conversationContext,
     deps
   );
-  if (listedFollowUpResponse) return listedFollowUpResponse;
+  if (listedFollowUpResponse) {
+    return withNatalieAskRouting(listedFollowUpResponse, input.question, "calendar_read");
+  }
 
   // Calendar clarifications are persisted via calendarConversationState slot filling
   // in conversationCalendarContinuation — never answer-only here.
@@ -143,7 +176,9 @@ export async function askNatalieBusinessQuestion(input: {
     input.organizationId,
     input.question
   );
-  if (reliabilityStatusResponse) return reliabilityStatusResponse;
+  if (reliabilityStatusResponse) {
+    return withNatalieAskRouting(reliabilityStatusResponse, input.question, "business_memory");
+  }
 
   // Deterministic Business Memory lookup: "תפתחי לי את החוזה של שרית" /
   // "כמה מסמכים יש לי" resolve against the unified org-isolated repository
@@ -152,21 +187,31 @@ export async function askNatalieBusinessQuestion(input: {
     input.organizationId,
     input.question
   );
-  if (businessMemoryResponse) return businessMemoryResponse;
+  if (businessMemoryResponse) {
+    return withNatalieAskRouting(businessMemoryResponse, input.question, "business_memory");
+  }
 
   const businessFactsResponse = await maybeBuildBusinessFactsResponse(input.organizationId, input.question);
-  if (businessFactsResponse) return businessFactsResponse;
+  if (businessFactsResponse) {
+    return withNatalieAskRouting(businessFactsResponse, input.question, "business_memory");
+  }
 
   const showInvoiceResponse = await maybeBuildShowInvoiceResponse(input.organizationId, input.question);
-  if (showInvoiceResponse) return showInvoiceResponse;
+  if (showInvoiceResponse) {
+    return withNatalieAskRouting(showInvoiceResponse, input.question, "business_memory");
+  }
 
   const completeTaskResponse = await maybeBuildCompleteTaskProposal(input.organizationId, input.question);
-  if (completeTaskResponse) return completeTaskResponse;
+  if (completeTaskResponse) {
+    return withNatalieAskRouting(completeTaskResponse, input.question, "business_memory");
+  }
 
   const availabilityResponse = await maybeBuildAvailabilityResponse(input.organizationId, input.question, {
     requestId: input.requestId ?? null,
   });
-  if (availabilityResponse) return availabilityResponse;
+  if (availabilityResponse) {
+    return withNatalieAskRouting(availabilityResponse, input.question, "calendar_read");
+  }
 
   const calendarContext = extractActiveCalendarContext({
     history: input.conversationContext?.structuredHistory ?? input.history?.map((turn) => ({
@@ -176,22 +221,34 @@ export async function askNatalieBusinessQuestion(input: {
     pendingAction: input.conversationContext?.pendingAction ?? null,
   });
 
+  // Incomplete move/cancel (e.g. time without day) — ask a clean clarification, never invent.
+  const partialCalendarClarification = maybeBuildPartialCalendarClarification(input.question);
+  if (partialCalendarClarification) {
+    return withNatalieAskRouting(partialCalendarClarification, input.question, "calendar_write");
+  }
+
   const rescheduleAppointmentResponse = await maybeBuildRescheduleAppointmentProposal(
     input.organizationId,
     input.question,
     calendarContext
   );
-  if (rescheduleAppointmentResponse) return rescheduleAppointmentResponse;
+  if (rescheduleAppointmentResponse) {
+    return withNatalieAskRouting(rescheduleAppointmentResponse, input.question, "calendar_write");
+  }
 
   const cancelAppointmentResponse = await maybeBuildCancelAppointmentProposal(
     input.organizationId,
     input.question,
     calendarContext
   );
-  if (cancelAppointmentResponse) return cancelAppointmentResponse;
+  if (cancelAppointmentResponse) {
+    return withNatalieAskRouting(cancelAppointmentResponse, input.question, "calendar_write");
+  }
 
   const conversationalResponse = maybeBuildConversationalResponse(input.question);
-  if (conversationalResponse) return conversationalResponse;
+  if (conversationalResponse) {
+    return withNatalieAskRouting(conversationalResponse, input.question, "business_memory");
+  }
 
   const [stats, richerContext] = await Promise.all([
     getNatalieAskDashboardSnapshot(input.organizationId),
@@ -202,7 +259,7 @@ export async function askNatalieBusinessQuestion(input: {
   ]);
 
   const askClaude = deps?.askClaude ?? answerBusinessQuestionWithClaude;
-  return askClaude({
+  const claudeResponse = await askClaude({
     question: input.question,
     history: input.history,
     businessContext: {
@@ -210,6 +267,7 @@ export async function askNatalieBusinessQuestion(input: {
       richerBusinessData: richerContext,
     },
   });
+  return withNatalieAskRouting(claudeResponse, input.question, "claude_fallback");
 }
 
 /**
@@ -1396,6 +1454,10 @@ async function maybeBuildListedAppointmentFollowUp(
   });
 
   if (listed.length === 0) {
+    // Bare "כן"/"בטח" without a prior chooser list is not a list follow-up.
+    if (command.intent === "apply_preferred" && !command.ordinal && !command.filter) {
+      return { answer: calendarMessages.bareYesWithoutPending() };
+    }
     return {
       answer: "אין לי רשימת תורים מהשיחה האחרונה. שאלי קודם מה יש ביומן, ואז אפשר לבחור ראשון/שני/אחרון.",
     };
@@ -1521,6 +1583,8 @@ const TRAILING_TIME_PHRASE_PATTERNS = [
   /\s+(?:ו)?מחר\s*$/iu,
   /\s+(?:ו)?היום\s*$/iu,
   /\s+(?:ו)?השבוע\s*$/iu,
+  /\s+(?:ו)?בזמן\s+הכי\s+טוב\s*$/iu,
+  /\s+(?:ו)?הכי\s+(?:טוב|כדאי)\s*$/iu,
 ] as const;
 
 function stripTrailingTimePhrase(name: string): string {
@@ -1902,7 +1966,8 @@ export function parseRescheduleDayAndTime(target: string): { dayReference: strin
   const time = parseHebrewTime(normalized);
   if (!time) return null;
 
-  const dayReference = extractCalendarDayReference(normalized) ?? "היום";
+  const dayReference = extractCalendarDayReference(normalized);
+  if (!dayReference) return null;
   return { dayReference, time };
 }
 
@@ -1921,9 +1986,12 @@ export function extractRescheduleAppointment(
     intent.customerName &&
     intent.time
   ) {
+    const dayReference = intent.dayReference ?? extractCalendarDayReference(question);
+    // Do not invent "היום" when the user only gave a time — clarification asks for the day.
+    if (!dayReference) return null;
     return {
       clientName: intent.customerName,
-      dayReference: intent.dayReference ?? extractCalendarDayReference(question) ?? "היום",
+      dayReference,
       time: intent.time,
     };
   }
@@ -1935,9 +2003,16 @@ export function extractRescheduleAppointment(
   ];
   for (const pattern of pronounPatterns) {
     const match = normalized.match(pattern);
-    const parsedTarget = match?.[1] ? parseRescheduleDayAndTime(match[1]) : null;
-    if (parsedTarget) {
-      return { clientName: null, dayReference: parsedTarget.dayReference, time: parsedTarget.time };
+    if (!match?.[1]) continue;
+    // Pronoun + time only (e.g. "תקדימי לי אותה ל14:00") keeps the same day as
+    // the active appointment — do not invent "היום", and do not require a day word.
+    const timeOnly = parseHebrewTime(match[1].trim());
+    const dayReference = extractCalendarDayReference(match[1]);
+    if (timeOnly && dayReference) {
+      return { clientName: null, dayReference, time: timeOnly };
+    }
+    if (timeOnly) {
+      return { clientName: null, dayReference: "", time: timeOnly };
     }
   }
 
@@ -2031,8 +2106,16 @@ async function maybeBuildRescheduleAppointmentProposal(
   }
 
   const appointment = appointments[0]!;
+  // Empty dayReference = pronoun/time-only advance ("תקדימי אותה ל14:00") — keep the
+  // existing appointment's calendar day in the org timezone (DD.MM.YYYY is accepted by
+  // resolveDayReference; ISO YYYY-MM-DD is not).
+  let dayReference = parsed.dayReference.trim();
+  if (!dayReference) {
+    const parts = getLocalDateParts(appointment.startTime, timeZone);
+    dayReference = `${parts.day}.${parts.month}.${parts.year}`;
+  }
   const resolvedStartTime = resolveAppointmentDateTime({
-    dayReference: parsed.dayReference,
+    dayReference,
     time: parsed.time,
     timeZone,
   });
@@ -2048,7 +2131,7 @@ async function maybeBuildRescheduleAppointmentProposal(
     timeZone,
     when: formatAppointmentWhen(appointment.startTime, timeZone),
     reschedule: {
-      newDayReference: parsed.dayReference,
+      newDayReference: dayReference,
       newTime: parsed.time,
       newWhen,
     },

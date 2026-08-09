@@ -1,0 +1,628 @@
+{
+  "now": "2026-07-26T10:26:52.669Z",
+  "mailboxEmail": "shaymida337@gmail.com",
+  "messagesTotal": 41803,
+  "fastScanDateFilter": "newer_than:1d",
+  "fastQueries": [
+    "newer_than:1d has:attachment -in:spam -in:trash",
+    "newer_than:1d has:attachment {invoice receipt payment \"payment request\" חשבונית קבלה תשלום \"דרישת תשלום\"} -in:spam -in:trash",
+    "newer_than:1d in:sent has:attachment -in:spam -in:trash",
+    "newer_than:1d has:attachment {filename:jpg filename:jpeg filename:png filename:webp filename:heic filename:pdf} -in:spam -in:trash",
+    "newer_than:1d subject:חשבונית has:attachment -in:spam -in:trash",
+    "newer_than:1d subject:חשבונית -in:spam -in:trash",
+    "newer_than:1d subject:invoice has:attachment -in:spam -in:trash",
+    "newer_than:1d subject:invoice -in:spam -in:trash",
+    "newer_than:1d subject:receipt has:attachment -in:spam -in:trash",
+    "newer_than:1d subject:receipt -in:spam -in:trash",
+    "newer_than:1d subject:קבלה has:attachment -in:spam -in:trash",
+    "newer_than:1d subject:קבלה -in:spam -in:trash",
+    "newer_than:1d subject:\"דרישת תשלום\" has:attachment -in:spam -in:trash",
+    "newer_than:1d subject:\"דרישת תשלום\" -in:spam -in:trash"
+  ],
+  "queryResults": [
+    {
+      "query": "newer_than:1d has:attachment -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d has:attachment {invoice receipt payment \"payment request\" חשבונית קבלה תשלום \"דרישת תשלום\"} -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d in:sent has:attachment -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d has:attachment {filename:jpg filename:jpeg filename:png filename:webp filename:heic filename:pdf} -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:חשבונית has:attachment -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:חשבונית -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:invoice has:attachment -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:invoice -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:receipt has:attachment -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:receipt -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:קבלה has:attachment -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:קבלה -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:\"דרישת תשלום\" has:attachment -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:\"דרישת תשלום\" -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d has:attachment",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d has:attachment -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d",
+      "count": 15,
+      "estimate": 15,
+      "error": null,
+      "sampleIds": [
+        "19f9de4e177b6ec3",
+        "19f9dd794abb052a",
+        "19f9dcf766f02984",
+        "19f9dc3aae021191",
+        "19f9da9bfd1e7fdf",
+        "19f9d83855633a5a",
+        "19f9d7fab5f79a23",
+        "19f9d39e15b3d268"
+      ]
+    },
+    {
+      "query": "newer_than:1d in:inbox",
+      "count": 15,
+      "estimate": 15,
+      "error": null,
+      "sampleIds": [
+        "19f9de4e177b6ec3",
+        "19f9dd794abb052a",
+        "19f9dcf766f02984",
+        "19f9dc3aae021191",
+        "19f9da9bfd1e7fdf",
+        "19f9d83855633a5a",
+        "19f9d7fab5f79a23",
+        "19f9d39e15b3d268"
+      ]
+    },
+    {
+      "query": "newer_than:1d in:sent has:attachment",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d filename:pdf",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d (filename:pdf OR filename:jpg OR filename:jpeg OR filename:png)",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:invoice",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d subject:receipt",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:2d has:attachment -in:spam -in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "after:2026/07/25 has:attachment",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "after:2026/07/25",
+      "count": 17,
+      "estimate": 17,
+      "error": null,
+      "sampleIds": [
+        "19f9de4e177b6ec3",
+        "19f9dd794abb052a",
+        "19f9dcf766f02984",
+        "19f9dc3aae021191",
+        "19f9da9bfd1e7fdf",
+        "19f9d83855633a5a",
+        "19f9d7fab5f79a23",
+        "19f9d39e15b3d268"
+      ]
+    },
+    {
+      "query": "is:unread newer_than:1d",
+      "count": 15,
+      "estimate": 15,
+      "error": null,
+      "sampleIds": [
+        "19f9de4e177b6ec3",
+        "19f9dd794abb052a",
+        "19f9dcf766f02984",
+        "19f9dc3aae021191",
+        "19f9da9bfd1e7fdf",
+        "19f9d83855633a5a",
+        "19f9d7fab5f79a23",
+        "19f9d39e15b3d268"
+      ]
+    },
+    {
+      "query": "newer_than:1d -in:spam -in:trash",
+      "count": 15,
+      "estimate": 15,
+      "error": null,
+      "sampleIds": [
+        "19f9de4e177b6ec3",
+        "19f9dd794abb052a",
+        "19f9dcf766f02984",
+        "19f9dc3aae021191",
+        "19f9da9bfd1e7fdf",
+        "19f9d83855633a5a",
+        "19f9d7fab5f79a23",
+        "19f9d39e15b3d268"
+      ]
+    }
+  ],
+  "compare": {
+    "fastPrimaryCount": 0,
+    "broadHasAttachmentCount": 0,
+    "anyNewerThan1dCount": 15,
+    "onlyInBroadNotFast": []
+  },
+  "recentWithAttachmentsLast3h": [],
+  "recentWithAttachmentsLast6h": [],
+  "newest20": [
+    {
+      "id": "19f9de4e177b6ec3",
+      "receivedAt": "2026-07-26T10:07:29.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": false,
+      "categorySocial": false,
+      "attachments": []
+    },
+    {
+      "id": "19f9dd794abb052a",
+      "receivedAt": "2026-07-26T09:52:58.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": false,
+      "categorySocial": false,
+      "attachments": []
+    },
+    {
+      "id": "19f9dcf766f02984",
+      "receivedAt": "2026-07-26T09:44:06.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": false,
+      "categorySocial": false,
+      "attachments": []
+    },
+    {
+      "id": "19f9dc3aae021191",
+      "receivedAt": "2026-07-26T09:31:11.000Z",
+      "sender": "\"איציק ארז, רב מסר\" <itzik@responder.co.il>",
+      "to": "\"שי מידה\" <Shaymida337@gmail.com>",
+      "subject": "נפגשים ברביעי הקרוב! וובינר אימות דומיין ברב מסר",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_UPDATES",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": true,
+      "categorySocial": false,
+      "attachments": []
+    },
+    {
+      "id": "19f9da9bfd1e7fdf",
+      "receivedAt": "2026-07-26T09:02:54.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": false,
+      "categorySocial": false,
+      "attachments": []
+    },
+    {
+      "id": "19f9d83855633a5a",
+      "receivedAt": "2026-07-26T08:21:09.000Z",
+      "sender": "LinkedIn <notifications-noreply@linkedin.com>",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": "You appeared in recent searches",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_SOCIAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": false,
+      "categorySocial": true,
+      "attachments": []
+    },
+    {
+      "id": "19f9d7fab5f79a23",
+      "receivedAt": "2026-07-26T08:16:56.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": false,
+      "categorySocial": false,
+      "attachments": []
+    },
+    {
+      "id": "19f9d39e15b3d268",
+      "receivedAt": "2026-07-26T07:00:43.000Z",
+      "sender": "yad2 <no-reply@info.yad2.co.il>",
+      "to": "shaymida337@gmail.com",
+      "subject": "כולם עוברים דירה. מה יוצא לכם מזה? (פרסומת)",
+      "labelIds": [
+        "CATEGORY_PROMOTIONS",
+        "UNREAD",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": true,
+      "categoryUpdates": false,
+      "categorySocial": false,
+      "attachments": []
+    },
+    {
+      "id": "19f9d2fdffa923ef",
+      "receivedAt": "2026-07-26T06:49:47.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_UPDATES",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": true,
+      "categorySocial": false,
+      "attachments": []
+    },
+    {
+      "id": "19f9d0991200c698",
+      "receivedAt": "2026-07-26T06:07:52.000Z",
+      "sender": "\"~ ערן שטרן ~\" <info@eranstern.co.il>",
+      "to": "\"שי מידה\" <shaymida337@gmail.com>",
+      "subject": "אני עושה שינוי ב\"עושים שינוי\"",
+      "labelIds": [
+        "CATEGORY_PROMOTIONS",
+        "UNREAD",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": true,
+      "categoryUpdates": false,
+      "categorySocial": false,
+      "attachments": []
+    },
+    {
+      "id": "19f9d044d4d2e814",
+      "receivedAt": "2026-07-26T06:02:10.000Z",
+      "sender": "WellyBox <info@wellybox.com>",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": "יצירת עסקים, קטגוריות ופרוייקטים",
+      "labelIds": [
+        "CATEGORY_PROMOTIONS",
+        "UNREAD",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": true,
+      "categoryUpdates": false,
+      "categorySocial": false,
+      "attachments": []
+    },
+    {
+      "id": "19f9af056c43bfd4",
+      "receivedAt": "2026-07-25T20:21:08.000Z",
+      "sender": "LinkedIn <messages-noreply@linkedin.com>",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": "👤 shay, add Michalia Koukouve",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_SOCIAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": false,
+      "categorySocial": true,
+      "attachments": []
+    },
+    {
+      "id": "19f9a95f9fa938cd",
+      "receivedAt": "2026-07-25T18:42:25.000Z",
+      "sender": "AliExpress <aeug-member-benefits14@deals.aliexpress.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "פרסומת | הדילים המובילים",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": false,
+      "categorySocial": false,
+      "attachments": []
+    },
+    {
+      "id": "19f9a82777a5befb",
+      "receivedAt": "2026-07-25T18:21:08.000Z",
+      "sender": "LinkedIn <notifications-noreply@linkedin.com>",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": "You appeared in recent searches",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_SOCIAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": false,
+      "categorySocial": true,
+      "attachments": []
+    },
+    {
+      "id": "19f99a7bf3da6be1",
+      "receivedAt": "2026-07-25T14:22:15.000Z",
+      "sender": "Sentry <noreply@md.getsentry.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Weekly Report for natalie: July 18th, 2026 - July 25th, 2026",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_UPDATES",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": true,
+      "categorySocial": false,
+      "attachments": []
+    },
+    {
+      "id": "19f98be086d22716",
+      "receivedAt": "2026-07-25T10:06:56.000Z",
+      "sender": "AliExpress <aeug-best-care-market15@deals.aliexpress.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "כדי לצרף למה שרכשתם",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": false,
+      "categorySocial": false,
+      "attachments": []
+    },
+    {
+      "id": "19f984319f32c4f5",
+      "receivedAt": "2026-07-25T07:52:33.000Z",
+      "sender": "\"לוטו שלי\" <service@lottosheli.co.il>",
+      "to": "\"shaymida337@gmail.com\" <shaymida337@gmail.com>",
+      "subject": "הערב עד 60,000,000 ש\"ח בלוטו! שלחו טופס בלי לצאת מהבית - פרסומת",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_UPDATES",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "categoryPromotions": false,
+      "categoryUpdates": true,
+      "categorySocial": false,
+      "attachments": []
+    }
+  ],
+  "alreadyInDb": {
+    "gsi": [],
+    "fdr": [
+      {
+        "id": "cms11f6zq0rk5k72aq6a3x6h4",
+        "gmailMessageId": "19f984319f32c4f5",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "junk_filter:insufficient_signal",
+        "fileName": null,
+        "createdAt": "2026-07-26T00:06:10.214Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,151 @@
+{
+  "commit": "bcdf6a61b83f046e95b828365c9c48565556b784",
+  "hitAt": "2026-07-26T13:38:37.835Z",
+  "list": {
+    "status": 200,
+    "total": 22,
+    "hasRnet": false
+  },
+  "tracesFound": 156,
+  "byStage": {
+    "finalPageRows": {
+      "ts": "2026-07-26T13:38:40.554750113Z",
+      "tag": "rnet_completion_trace",
+      "stage": "finalPageRows",
+      "count": 0,
+      "rows": []
+    },
+    "afterIncomplete": {
+      "ts": "2026-07-26T13:38:40.554689902Z",
+      "tag": "rnet_completion_trace",
+      "stage": "afterIncomplete",
+      "count": 0,
+      "rows": []
+    },
+    "inSource": {
+      "ts": "2026-07-26T13:38:40.553967103Z",
+      "tag": "rnet_completion_trace",
+      "stage": "inSource",
+      "count": 0,
+      "rows": []
+    },
+    "afterDedupe": {
+      "ts": "2026-07-26T13:38:40.554106617Z",
+      "tag": "rnet_completion_trace",
+      "stage": "afterDedupe",
+      "count": 0,
+      "rows": []
+    },
+    "afterCollected": {
+      "ts": "2026-07-26T13:38:40.553902071Z",
+      "tag": "rnet_completion_trace",
+      "stage": "afterCollected",
+      "targetCount": 0
+    },
+    "requestContext": {
+      "ts": "2026-07-26T13:38:39.533507107Z",
+      "tag": "rnet_completion_trace",
+      "stage": "requestContext",
+      "requestOrgId": "cmqw27e43002bm92bmf9mjy1n",
+      "expectedOrgId": "cmqw27e43002bm92bmf9mjy1n",
+      "orgIdMatchesExpected": true,
+      "includeReviewCandidates": true,
+      "whereSummary": {
+        "fdr": {
+          "topKeys": [
+            "AND",
+            "documentType",
+            "organizationId",
+            "reviewStatus"
+          ],
+          "organizationId": "cmqw27e43002bm92bmf9mjy1n",
+          "documentTypeIn": [
+            "tax_invoice",
+            "receipt",
+            "tax_invoice_receipt"
+          ],
+          "reviewStatusIn": [
+            "needs_review",
+            "rejected",
+            "approved",
+            "auto_saved"
+          ],
+          "hasAnd": true,
+          "hasOr": false,
+          "hasNot": false,
+          "hasSearchOr": false
+        },
+        "gsi": {
+          "topKeys": [
+            "NOT",
+            "documentType",
+            "gmailMessageId",
+            "organizationId",
+            "reviewStatus"
+          ],
+          "organizationId": "cmqw27e43002bm92bmf9mjy1n",
+          "documentTypeIn": [
+            "invoice",
+            "receipt",
+            "unknown_needs_review"
+          ],
+          "reviewStatusIn": [
+            "needs_review",
+            "rejected",
+            "approved",
+            "auto_saved"
+          ],
+          "hasAnd": false,
+          "hasOr": false,
+          "hasNot": true,
+          "hasSearchOr": false
+        }
+      },
+      "database": {
+        "hostPath": "postgresql://ep-long-cell-aql8cfi6-pooler.c-8.us-east-1.aws.neon.tech/neondb",
+        "topology": {
+          "neon": true,
+          "pooledHost": true,
+          "neonRegion": "us-east-1",
+          "hostSuffix": "aws.neon.tech",
+          "prismaConnectionLimit": "5",
+          "prismaPoolTimeout": "20",
+          "renderRegionEnv": null,
+          "renderServiceHint": "render"
+        }
+      }
+    },
+    "rawGsiFindMany": {
+      "ts": "2026-07-26T13:38:39.965860297Z",
+      "tag": "rnet_completion_trace",
+      "stage": "rawGsiFindMany",
+      "queryExecuted": true,
+      "totalRawGsi": 4,
+      "matchedTargetCount": 0,
+      "skip": 0,
+      "take": 100,
+      "batchRawCount": 4,
+      "targets": []
+    },
+    "rawFdrFindMany": {
+      "ts": "2026-07-26T13:38:40.487517176Z",
+      "tag": "rnet_completion_trace",
+      "stage": "rawFdrFindMany",
+      "queryExecuted": true,
+      "totalRawFdr": 24,
+      "matchedTargetCount": 0,
+      "skip": 0,
+      "take": 100,
+      "batchRawCount": 24,
+      "targets": []
+    },
+    "beforeCollected": {
+      "ts": "2026-07-26T13:38:40.553881281Z",
+      "tag": "rnet_completion_trace",
+      "stage": "beforeCollected",
+      "fdrMappedTargetCount": 0,
+      "gsiMappedTargetCount": 0
+    }
+  },
+  "verdict": "A"
+}

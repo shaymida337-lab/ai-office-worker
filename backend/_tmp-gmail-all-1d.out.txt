@@ -1,0 +1,1831 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(node:53568) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative 
+instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+{
+  "now": "2026-07-26T10:27:41.584Z",
+  "queryResults": [
+    {
+      "query": "newer_than:1d",
+      "count": 15,
+      "estimate": 15,
+      "error": null,
+      "sampleIds": [
+        "19f9de4e177b6ec3",
+        "19f9dd794abb052a",
+        "19f9dcf766f02984",
+        "19f9dc3aae021191",
+        "19f9da9bfd1e7fdf",
+        "19f9d83855633a5a",
+        "19f9d7fab5f79a23",
+        "19f9d39e15b3d268",
+        "19f9d2fdffa923ef",
+        "19f9d0991200c698"
+      ]
+    },
+    {
+      "query": "newer_than:1d in:sent",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d in:spam",
+      "count": 10,
+      "estimate": 10,
+      "error": null,
+      "sampleIds": [
+        "19f9d3d61ea6a395",
+        "19f9d2c05a806d83",
+        "19f9ccffd9965c8a",
+        "19f9bb8c8c2c3fd6",
+        "19f9b4af13a7f62d",
+        "19f9b4457f77bfc2",
+        "19f9b13f973e3c96",
+        "19f9ab77fc1f6a34",
+        "19f9aa5791ca2dc3",
+        "19f98eeab1156096"
+      ]
+    },
+    {
+      "query": "newer_than:1d in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d has:attachment in:spam",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d has:attachment in:trash",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "newer_than:1d larger:50k",
+      "count": 4,
+      "estimate": 4,
+      "error": null,
+      "sampleIds": [
+        "19f9d0991200c698",
+        "19f9d044d4d2e814",
+        "19f9af056c43bfd4",
+        "19f9a95f9fa938cd"
+      ]
+    },
+    {
+      "query": "newer_than:1d larger:100k",
+      "count": 2,
+      "estimate": 2,
+      "error": null,
+      "sampleIds": [
+        "19f9af056c43bfd4",
+        "19f9a95f9fa938cd"
+      ]
+    },
+    {
+      "query": "newer_than:3d has:attachment",
+      "count": 11,
+      "estimate": 11,
+      "error": null,
+      "sampleIds": [
+        "19f9354ff3d5c804",
+        "19f8f6b269a678fc",
+        "19f8f6955a798f7a",
+        "19f8f5e30dab8d0d",
+        "19f8f5d9b8accef0",
+        "19f8f5d5d3f68c9e",
+        "19f8f5cee17d16ee",
+        "19f8f5bb92fea168",
+        "19f8f3d8a5d0f155",
+        "19f8f3caa76be508"
+      ]
+    },
+    {
+      "query": "newer_than:7d has:attachment -in:spam -in:trash",
+      "count": 16,
+      "estimate": 16,
+      "error": null,
+      "sampleIds": [
+        "19f9354ff3d5c804",
+        "19f8f6b269a678fc",
+        "19f8f6955a798f7a",
+        "19f8f5e30dab8d0d",
+        "19f8f5d9b8accef0",
+        "19f8f5d5d3f68c9e",
+        "19f8f5cee17d16ee",
+        "19f8f5bb92fea168",
+        "19f8f3d8a5d0f155",
+        "19f8f3caa76be508"
+      ]
+    },
+    {
+      "query": "has:attachment after:2026/07/26",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "filename:pdf after:2026/07/25",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    },
+    {
+      "query": "filename:jpg after:2026/07/25 OR filename:jpeg after:2026/07/25 OR filename:png after:2026/07/25",
+      "count": 0,
+      "estimate": 0,
+      "error": null,
+      "sampleIds": []
+    }
+  ],
+  "totalUniqueMessagesDescribed": 41,
+  "messagesWithFilenames": [
+    {
+      "id": "19f9354ff3d5c804",
+      "receivedAt": "2026-07-24T08:54:08.000Z",
+      "sender": "\"Anthropic, PBC\" <invoice+statements@mail.anthropic.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Your receipt from Anthropic, PBC #2217-0193-6169",
+      "snippet": "Your receipt from Anthropic, PBC #2217-0193-6169 ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_UPDATES",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 147466,
+      "attachments": [
+        {
+          "filename": "Invoice-PWMBSFD3-0009.pdf",
+          "mimeType": "application/pdf",
+          "size": 32111
+        },
+        {
+          "filename": "Receipt-2217-0193-6169.pdf",
+          "mimeType": "application/pdf",
+          "size": 33517
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "Invoice-PWMBSFD3-0009.pdf",
+          "mimeType": "application/pdf",
+          "size": 32111
+        },
+        {
+          "filename": "Receipt-2217-0193-6169.pdf",
+          "mimeType": "application/pdf",
+          "size": 33517
+        }
+      ]
+    },
+    {
+      "id": "19f8f6b269a678fc",
+      "receivedAt": "2026-07-23T14:39:36.000Z",
+      "sender": "shaymida337@gmail.com",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": null,
+      "snippet": "╫á╫⌐╫£╫ק ╫₧╫פ-iPhone ╫⌐╫£╫ש",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": true,
+      "sizeEstimate": 9968227,
+      "attachments": [
+        {
+          "filename": "image0.png",
+          "mimeType": "image/png",
+          "size": 7282903
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "image0.png",
+          "mimeType": "image/png",
+          "size": 7282903
+        }
+      ]
+    },
+    {
+      "id": "19f8f6955a798f7a",
+      "receivedAt": "2026-07-23T14:37:50.000Z",
+      "sender": "shaykedma@gmail.com",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": null,
+      "snippet": "╫á╫⌐╫£╫ק ╫₧╫פ-iPhone ╫⌐╫£╫ש",
+      "labelIds": [
+        "IMPORTANT",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 369153,
+      "attachments": [
+        {
+          "filename": "inv2 photo.png",
+          "mimeType": "image/png",
+          "size": 264351
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "inv2 photo.png",
+          "mimeType": "image/png",
+          "size": 264351
+        }
+      ]
+    },
+    {
+      "id": "19f8f5e30dab8d0d",
+      "receivedAt": "2026-07-23T14:25:30.000Z",
+      "sender": "shaymida337@gmail.com",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": null,
+      "snippet": "╫á╫⌐╫£╫ק ╫₧╫פ-iPhone ╫⌐╫£╫ש",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": true,
+      "sizeEstimate": 1209985,
+      "attachments": [
+        {
+          "filename": "image0.png",
+          "mimeType": "image/png",
+          "size": 882650
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "image0.png",
+          "mimeType": "image/png",
+          "size": 882650
+        }
+      ]
+    },
+    {
+      "id": "19f8f5d9b8accef0",
+      "receivedAt": "2026-07-23T14:25:01.000Z",
+      "sender": "shaykedma@gmail.com",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": null,
+      "snippet": "╫á╫⌐╫£╫ק ╫₧╫פ-iPhone ╫⌐╫£╫ש",
+      "labelIds": [
+        "UNREAD",
+        "IMPORTANT",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 123886,
+      "attachments": [
+        {
+          "filename": "inv4 many lines.png",
+          "mimeType": "image/png",
+          "size": 85093
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "inv4 many lines.png",
+          "mimeType": "image/png",
+          "size": 85093
+        }
+      ]
+    },
+    {
+      "id": "19f8f5d5d3f68c9e",
+      "receivedAt": "2026-07-23T14:24:41.000Z",
+      "sender": "shaykedma@gmail.com",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": null,
+      "snippet": "╫á╫⌐╫£╫ק ╫₧╫פ-iPhone ╫⌐╫£╫ש",
+      "labelIds": [
+        "UNREAD",
+        "IMPORTANT",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 2775374,
+      "attachments": [
+        {
+          "filename": "inv3 scan.png",
+          "mimeType": "image/png",
+          "size": 2022746
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "inv3 scan.png",
+          "mimeType": "image/png",
+          "size": 2022746
+        }
+      ]
+    },
+    {
+      "id": "19f8f5cee17d16ee",
+      "receivedAt": "2026-07-23T14:24:09.000Z",
+      "sender": "shaymida337@gmail.com",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": null,
+      "snippet": "╫á╫⌐╫£╫ק ╫₧╫פ-iPhone ╫⌐╫£╫ש",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": true,
+      "sizeEstimate": 423812,
+      "attachments": [
+        {
+          "filename": "image0.png",
+          "mimeType": "image/png",
+          "size": 308140
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "image0.png",
+          "mimeType": "image/png",
+          "size": 308140
+        }
+      ]
+    },
+    {
+      "id": "19f8f5bb92fea168",
+      "receivedAt": "2026-07-23T14:22:49.000Z",
+      "sender": "shaymida337@gmail.com",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": null,
+      "snippet": "╫á╫⌐╫£╫ק ╫₧╫פ-iPhone ╫⌐╫£╫ש",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": true,
+      "sizeEstimate": 191779,
+      "attachments": [
+        {
+          "filename": "image0.png",
+          "mimeType": "image/png",
+          "size": 138579
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "image0.png",
+          "mimeType": "image/png",
+          "size": 138579
+        }
+      ]
+    },
+    {
+      "id": "19f8f3d8a5d0f155",
+      "receivedAt": "2026-07-23T13:49:48.000Z",
+      "sender": "shaymida337@gmail.com",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": null,
+      "snippet": "╫á╫⌐╫£╫ק ╫₧╫פ-iPhone ╫⌐╫£╫ש",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": true,
+      "sizeEstimate": 9572147,
+      "attachments": [
+        {
+          "filename": "image0.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 239581
+        },
+        {
+          "filename": "image1.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 258979
+        },
+        {
+          "filename": "image2.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 228151
+        },
+        {
+          "filename": "image3.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 253106
+        },
+        {
+          "filename": "image4.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 345566
+        },
+        {
+          "filename": "image5.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 301398
+        },
+        {
+          "filename": "image6.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 237407
+        },
+        {
+          "filename": "image7.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 221232
+        },
+        {
+          "filename": "image8.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 289274
+        },
+        {
+          "filename": "image9.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 214802
+        },
+        {
+          "filename": "image10.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 238723
+        },
+        {
+          "filename": "image11.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 197212
+        },
+        {
+          "filename": "image12.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 245784
+        },
+        {
+          "filename": "image13.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 197881
+        },
+        {
+          "filename": "image14.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 247651
+        },
+        {
+          "filename": "image15.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 168023
+        },
+        {
+          "filename": "image16.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 225946
+        },
+        {
+          "filename": "image17.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 163670
+        },
+        {
+          "filename": "image18.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 157798
+        },
+        {
+          "filename": "image19.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 162808
+        },
+        {
+          "filename": "image20.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 177332
+        },
+        {
+          "filename": "image21.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 150879
+        },
+        {
+          "filename": "image22.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 234659
+        },
+        {
+          "filename": "image23.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 196489
+        },
+        {
+          "filename": "image24.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 236337
+        },
+        {
+          "filename": "image25.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 177843
+        },
+        {
+          "filename": "image26.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 197041
+        },
+        {
+          "filename": "image27.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 204499
+        },
+        {
+          "filename": "image28.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 181363
+        },
+        {
+          "filename": "image29.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 177809
+        },
+        {
+          "filename": "image30.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 150579
+        },
+        {
+          "filename": "image31.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 126967
+        },
+        {
+          "filename": "image32.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 177042
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "image0.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 239581
+        },
+        {
+          "filename": "image1.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 258979
+        },
+        {
+          "filename": "image2.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 228151
+        },
+        {
+          "filename": "image3.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 253106
+        },
+        {
+          "filename": "image4.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 345566
+        },
+        {
+          "filename": "image5.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 301398
+        },
+        {
+          "filename": "image6.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 237407
+        },
+        {
+          "filename": "image7.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 221232
+        }
+      ]
+    },
+    {
+      "id": "19f8f3caa76be508",
+      "receivedAt": "2026-07-23T13:49:05.000Z",
+      "sender": "shaymida337@gmail.com",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": null,
+      "snippet": "╫á╫⌐╫£╫ק ╫₧╫פ-iPhone ╫⌐╫£╫ש",
+      "labelIds": [
+        "DRAFT"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": false,
+      "inSent": false,
+      "sizeEstimate": 7810270,
+      "attachments": [
+        {
+          "filename": "image0.png",
+          "mimeType": "image/png",
+          "size": 5706085
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "image0.png",
+          "mimeType": "image/png",
+          "size": 5706085
+        }
+      ]
+    },
+    {
+      "id": "19f8f2b9c08f5106",
+      "receivedAt": "2026-07-23T13:30:15.000Z",
+      "sender": "shaymida337@gmail.com",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": null,
+      "snippet": "apple-touch-icon.png Invoice Extraction Demo gemina.co ╫á╫⌐╫£╫ק ╫₧╫פ-iPhone ╫⌐╫£╫ש",
+      "labelIds": [
+        "SENT",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": true,
+      "sizeEstimate": 48700,
+      "attachments": [
+        {
+          "filename": "apple-touch-icon.png",
+          "mimeType": "image/png",
+          "size": 32121
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "apple-touch-icon.png",
+          "mimeType": "image/png",
+          "size": 32121
+        }
+      ]
+    },
+    {
+      "id": "19f89ea2ac6921fc",
+      "receivedAt": "2026-07-22T13:00:41.000Z",
+      "sender": "shaymida337@gmail.com",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": null,
+      "snippet": "╫á╫⌐╫£╫ק ╫₧╫פ-iPhone ╫⌐╫£╫ש",
+      "labelIds": [
+        "SENT",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": true,
+      "sizeEstimate": 414638,
+      "attachments": [
+        {
+          "filename": "image0.png",
+          "mimeType": "image/png",
+          "size": 301436
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "image0.png",
+          "mimeType": "image/png",
+          "size": 301436
+        }
+      ]
+    },
+    {
+      "id": "19f849ed075acfc1",
+      "receivedAt": "2026-07-21T12:20:16.000Z",
+      "sender": "shaymida337@gmail.com",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": null,
+      "snippet": "╫á╫⌐╫£╫ק ╫₧╫פ-iPhone ╫⌐╫£╫ש",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": true,
+      "sizeEstimate": 865732,
+      "attachments": [
+        {
+          "filename": "image0.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 168023
+        },
+        {
+          "filename": "image1.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 247651
+        },
+        {
+          "filename": "image2.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 214802
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "image0.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 168023
+        },
+        {
+          "filename": "image1.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 247651
+        },
+        {
+          "filename": "image2.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 214802
+        }
+      ]
+    },
+    {
+      "id": "19f83dc7e6477223",
+      "receivedAt": "2026-07-21T08:48:09.000Z",
+      "sender": "duke.projects.online@gmail.com",
+      "to": "\"╫⌐╫ש\" <shaymida337@gmail.com>",
+      "subject": "Γן│ ╫₧╫פ ╫נ╫ש╫¬╫ת ╫ס╫í╫ץ╫ú?",
+      "snippet": "╫פ╫ש╫ש, ╫פ╫ש╫ש╫á╫ץ ╫ס╫º╫⌐╫¿ ╫£╫ע╫ס╫ש ╫º╫ץ╫¿╫í ╫פ╫⌐╫ש╫ץ╫ץ╫º ╫פ╫ף╫ש╫ע╫ש╫ר╫£╫ש ╫פ╫₧╫ó╫ץ╫£╫פ ╫⌐╫£ DUKE MARKETING ≡ƒןז ╫ס╫ץ╫ף╫º╫ש╫¥ ╫נ╫¥ ╫צ╫פ ╫ó╫ף╫ש╫ש╫ƒ ╫¿╫£╫ץ╫ץ╫á╫ר╫ש - ╫פ╫פ╫¿╫⌐╫₧╫פ ╫ס╫ó╫ש╫ª╫ץ╫₧╫פ ╫£╫₧╫ק╫צ╫ץ╫¿",
+      "labelIds": [
+        "UNREAD",
+        "IMPORTANT",
+        "CATEGORY_UPDATES",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 7620872,
+      "attachments": [
+        {
+          "filename": "image.png",
+          "mimeType": "image/png",
+          "size": 995983
+        },
+        {
+          "filename": "DUKE MARKETING SYLLABUS.pdf",
+          "mimeType": "application/octet-stream",
+          "size": 4547842
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "image.png",
+          "mimeType": "image/png",
+          "size": 995983
+        },
+        {
+          "filename": "DUKE MARKETING SYLLABUS.pdf",
+          "mimeType": "application/octet-stream",
+          "size": 4547842
+        }
+      ]
+    },
+    {
+      "id": "19f7eb0825d00b0f",
+      "receivedAt": "2026-07-20T08:41:53.000Z",
+      "sender": "shaymida337@gmail.com",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": null,
+      "snippet": "╫á╫⌐╫£╫ק ╫₧╫פ-iPhone ╫⌐╫£╫ש",
+      "labelIds": [
+        "UNREAD",
+        "SENT",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": true,
+      "sizeEstimate": 301245,
+      "attachments": [
+        {
+          "filename": "image0.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 218567
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "image0.jpeg",
+          "mimeType": "image/jpeg",
+          "size": 218567
+        }
+      ]
+    },
+    {
+      "id": "19f7e997e6c47de4",
+      "receivedAt": "2026-07-20T08:16:55.000Z",
+      "sender": "\"Eleven Labs Inc.\" <invoice+statements+acct_1M07hSLmdOdiMXBs@stripe.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Your receipt from Eleven Labs Inc. #2869-0470-3525",
+      "snippet": "Your receipt from Eleven Labs Inc. #2869-0470-3525 ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן",
+      "labelIds": [
+        "CATEGORY_UPDATES",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 163250,
+      "attachments": [
+        {
+          "filename": "Invoice-E5GRDWPL-0002.pdf",
+          "mimeType": "application/pdf",
+          "size": 29939
+        },
+        {
+          "filename": "Receipt-2869-0470-3525.pdf",
+          "mimeType": "application/pdf",
+          "size": 32058
+        }
+      ],
+      "rawAttachmentParts": [
+        {
+          "filename": "Invoice-E5GRDWPL-0002.pdf",
+          "mimeType": "application/pdf",
+          "size": 29939
+        },
+        {
+          "filename": "Receipt-2869-0470-3525.pdf",
+          "mimeType": "application/pdf",
+          "size": 32058
+        }
+      ]
+    }
+  ],
+  "recentLast6hAll": [
+    {
+      "id": "19f9de4e177b6ec3",
+      "receivedAt": "2026-07-26T10:07:29.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "snippet": "Hello, shay. There was an error deploying ai-office-worker-backend-534r to the production environment. See deployment de",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 17802,
+      "attachments": [],
+      "rawAttachmentParts": []
+    },
+    {
+      "id": "19f9dd794abb052a",
+      "receivedAt": "2026-07-26T09:52:58.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "snippet": "Hello, shay. There was an error deploying ai-office-worker-backend-534r to the production environment. See deployment de",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 17801,
+      "attachments": [],
+      "rawAttachmentParts": []
+    },
+    {
+      "id": "19f9dcf766f02984",
+      "receivedAt": "2026-07-26T09:44:06.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "snippet": "Hello, shay. There was an error deploying ai-office-worker-backend to the production environment. See deployment details",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 17788,
+      "attachments": [],
+      "rawAttachmentParts": []
+    },
+    {
+      "id": "19f9dc3aae021191",
+      "receivedAt": "2026-07-26T09:31:11.000Z",
+      "sender": "\"╫נ╫ש╫ª╫ש╫º ╫נ╫¿╫צ, ╫¿╫ס ╫₧╫í╫¿\" <itzik@responder.co.il>",
+      "to": "\"╫⌐╫ש ╫₧╫ש╫ף╫פ\" <Shaymida337@gmail.com>",
+      "subject": "╫á╫ñ╫ע╫⌐╫ש╫¥ ╫ס╫¿╫ס╫ש╫ó╫ש ╫פ╫º╫¿╫ץ╫ס! ╫ץ╫ץ╫ס╫ש╫á╫¿ ╫נ╫ש╫₧╫ץ╫¬ ╫ף╫ץ╫₧╫ש╫ש╫ƒ ╫ס╫¿╫ס ╫₧╫í╫¿",
+      "snippet": "╫ס╫ץ╫נ╫ץ ╫£╫£╫₧╫ץ╫ף ╫¢╫£ ╫₧╫פ ╫⌐╫ª╫¿╫ש╫ת ╫ó╫£ ╫ó╫ס╫ש╫¿╫ץ╫¬ ╫₧╫ש╫ש╫£╫ש╫¥ ╫ץ╫נ╫ש╫₧╫ץ╫¬ ╫פ╫ף╫ץ╫₧╫ש╫ש╫ƒ ╫⌐╫£╫¢╫¥ ╫£╫⌐╫ש╫ñ╫ץ╫¿ ╫נ╫ק╫ץ╫צ╫ש ╫ñ╫¬╫ש╫ק╫¬ ╫פ╫ף╫ש╫ץ╫ץ╫¿╫ש╫¥ ╫ó╫ס╫ש╫¿╫ץ╫¬ ╫₧╫ש╫ש╫£╫ש╫¥ ╫ץ╫נ╫ש╫₧╫ץ╫¬ ╫ף╫ץ╫₧╫ש╫ש╫ƒ ╫¢╫£ ╫₧",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_UPDATES",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 34750,
+      "attachments": [],
+      "rawAttachmentParts": []
+    },
+    {
+      "id": "19f9da9bfd1e7fdf",
+      "receivedAt": "2026-07-26T09:02:54.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "snippet": "Hello, shay. There was an error deploying ai-office-worker-backend-534r to the production environment. See deployment de",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 17789,
+      "attachments": [],
+      "rawAttachmentParts": []
+    },
+    {
+      "id": "19f9d83855633a5a",
+      "receivedAt": "2026-07-26T08:21:09.000Z",
+      "sender": "LinkedIn <notifications-noreply@linkedin.com>",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": "You appeared in recent searches",
+      "snippet": "You appeared in recent searches ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_SOCIAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 36987,
+      "attachments": [],
+      "rawAttachmentParts": []
+    },
+    {
+      "id": "19f9d7fab5f79a23",
+      "receivedAt": "2026-07-26T08:16:56.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "snippet": "Hello, shay. There was an error deploying ai-office-worker-backend to the production environment. See deployment details",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 17778,
+      "attachments": [],
+      "rawAttachmentParts": []
+    },
+    {
+      "id": "19f9d3d61ea6a395",
+      "receivedAt": "2026-07-26T07:04:33.000Z",
+      "sender": "\"Live Stage | Les Spectacles Francophones en Israel\" <noreply@livestagemkt.com>",
+      "to": "<shaymida337@gmail.com>",
+      "subject": "≡ƒת¿\n\n\n69 Γג¬ de r├⌐duction  - Promo Flash Tu Beav \n\n≡ƒת¿",
+      "snippet": "Tel Aviv du Rire : R├⌐duction valable jusqu&#39;au 30 Juillet (pour l&#39;achat de deux places Carr├⌐ Or et Categorie 1)Γאל ",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_UPDATES",
+        "SPAM"
+      ],
+      "inSpam": true,
+      "inTrash": false,
+      "inInbox": false,
+      "inSent": false,
+      "sizeEstimate": 73352,
+      "attachments": [],
+      "rawAttachmentParts": []
+    },
+    {
+      "id": "19f9d39e15b3d268",
+      "receivedAt": "2026-07-26T07:00:43.000Z",
+      "sender": "yad2 <no-reply@info.yad2.co.il>",
+      "to": "shaymida337@gmail.com",
+      "subject": "╫¢╫ץ╫£╫¥ ╫ó╫ץ╫ס╫¿╫ש╫¥ ╫ף╫ש╫¿╫פ. ╫₧╫פ ╫ש╫ץ╫ª╫נ ╫£╫¢╫¥ ╫₧╫צ╫פ? (╫ñ╫¿╫í╫ץ╫₧╫¬)",
+      "snippet": "╫פ╫⌐╫ש╫ר╫ץ╫¬ ╫£╫ª╫ש╫ף ╫₧╫ª╫ש╫נ╫ץ╫¬ ╫ס╫º╫ש╫Ñ, ╫פ╫ר╫ש╫ñ╫ש╫¥ ╫£╫º╫á╫ש╫ש╫פ ╫ס╫ר╫ץ╫ק╫פ ╫ץ╫פ╫ר╫¿╫ש╫º ╫⌐╫ש╫₧╫₧╫ƒ ╫£╫¢╫¥ ╫נ╫¬ ╫פ╫פ╫ץ╫ס╫£╫פ yad2 ╫£╫¢╫£ ╫פ╫ó╫ª╫ץ╫¬ ╫£╫¢╫£ ╫פ╫á╫¢╫í╫ש╫¥ ╫£╫¢╫£ ╫פ╫á╫¬╫ץ╫á╫ש╫¥ app store ",
+      "labelIds": [
+        "CATEGORY_PROMOTIONS",
+        "UNREAD",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 31863,
+      "attachments": [],
+      "rawAttachmentParts": []
+    },
+    {
+      "id": "19f9d2fdffa923ef",
+      "receivedAt": "2026-07-26T06:49:47.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "to": "shaymida337@gmail.com",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "snippet": "Hello, shay. There was an error deploying ai-office-worker-backend-534r to the production environment. See deployment de",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_UPDATES",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 17792,
+      "attachments": [],
+      "rawAttachmentParts": []
+    },
+    {
+      "id": "19f9d2c05a806d83",
+      "receivedAt": "2026-07-26T06:45:35.000Z",
+      "sender": "\"╫₧╫ץ╫צ╫פ\" <info@bizclub.co.il>",
+      "to": "\"╫⌐╫ש ╫₧╫ש╫ף╫פ\" <shaymida337@gmail.com>",
+      "subject": "╫נ╫á╫ש ╫ש╫ץ╫ף╫ó╫¬ ╫⌐╫ש╫⌐ ╫£╫¢╫¥ ╫¢╫ץ╫ץ╫á╫פ ╫£╫⌐╫ץ╫ץ╫º ╫ש╫ץ╫¬╫¿, ╫נ╫ס╫£ ╫צ╫פ ╫£╫נ ╫¬╫₧╫ש╫ף ╫₧╫í╫ñ╫ש╫º",
+      "snippet": "╫ס╫ץ╫º╫¿ ╫ר╫ץ╫ס, ╫ש╫⌐ ╫₧╫⌐╫פ╫ץ ╫₧╫ó╫á╫ש╫ש╫ƒ ╫⌐╫º╫ץ╫¿╫פ ╫£╫פ╫¿╫ס╫פ ╫ס╫ó╫£╫ש ╫ó╫í╫º╫ש╫¥: ╫פ╫¥ ╫ש╫ץ╫ף╫ó╫ש╫¥ ╫⌐╫פ╫¥ ╫ª╫¿╫ש╫¢╫ש╫¥ ╫£╫⌐╫ץ╫ץ╫º ╫ש╫ץ╫¬╫¿. ╫פ╫¥ ╫ש╫ץ╫ף╫ó╫ש╫¥ ╫⌐╫ª╫¿╫ש╫ת ╫£╫פ╫ó╫£╫ץ╫¬ ╫¬╫ץ╫¢╫ƒ. ╫פ╫¥ ╫ש╫ץ╫ף╫ó╫ש╫¥",
+      "labelIds": [
+        "UNREAD",
+        "CATEGORY_PERSONAL",
+        "SPAM"
+      ],
+      "inSpam": true,
+      "inTrash": false,
+      "inInbox": false,
+      "inSent": false,
+      "sizeEstimate": 17559,
+      "attachments": [],
+      "rawAttachmentParts": []
+    },
+    {
+      "id": "19f9d0991200c698",
+      "receivedAt": "2026-07-26T06:07:52.000Z",
+      "sender": "\"~ ╫ó╫¿╫ƒ ╫⌐╫ר╫¿╫ƒ ~\" <info@eranstern.co.il>",
+      "to": "\"╫⌐╫ש ╫₧╫ש╫ף╫פ\" <shaymida337@gmail.com>",
+      "subject": "╫נ╫á╫ש ╫ó╫ץ╫⌐╫פ ╫⌐╫ש╫á╫ץ╫ש ╫ס\"╫ó╫ץ╫⌐╫ש╫¥ ╫⌐╫ש╫á╫ץ╫ש\"",
+      "snippet": "╫נ╫¥ ╫נ╫ש╫á╫¢╫¥ ╫₧╫ª╫£╫ש╫ק╫ש╫¥ ╫£╫ª╫ñ╫ץ╫¬ ╫ס╫₧╫í╫¿ ╫£╫ק╫ª╫ץ ╫¢╫נ╫ƒ ╫נ╫á╫ש ╫ó╫ץ╫⌐╫פ ╫⌐╫ש╫á╫ץ╫ש ╫ס&quot;╫ó╫ץ╫⌐╫ש╫¥ ╫⌐╫ש╫á╫ץ╫ש&quot; ╫פ╫ש! ╫¢╫ñ╫ש ╫⌐╫ó╫ף╫¢╫á╫¬╫ש, ╫פ╫ק╫£╫ר╫¬╫ש ╫£╫í╫ש╫ש╫¥ ╫ó╫¥ ╫פ╫ñ╫ץ╫ף╫º╫נ╫í╫ר &",
+      "labelIds": [
+        "CATEGORY_PROMOTIONS",
+        "UNREAD",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 58039,
+      "attachments": [],
+      "rawAttachmentParts": []
+    },
+    {
+      "id": "19f9d044d4d2e814",
+      "receivedAt": "2026-07-26T06:02:10.000Z",
+      "sender": "WellyBox <info@wellybox.com>",
+      "to": "shay mida <shaymida337@gmail.com>",
+      "subject": "╫ש╫ª╫ש╫¿╫¬ ╫ó╫í╫º╫ש╫¥, ╫º╫ר╫ע╫ץ╫¿╫ש╫ץ╫¬ ╫ץ╫ñ╫¿╫ץ╫ש╫ש╫º╫ר╫ש╫¥",
+      "snippet": "╫⌐╫ש╫ש╫¢╫ץ ╫¢╫£ ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫£╫₧╫º╫ץ╫₧╫פ ╫פ╫ר╫ס╫ó╫ש ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ",
+      "labelIds": [
+        "CATEGORY_PROMOTIONS",
+        "UNREAD",
+        "INBOX"
+      ],
+      "inSpam": false,
+      "inTrash": false,
+      "inInbox": true,
+      "inSent": false,
+      "sizeEstimate": 59282,
+      "attachments": [],
+      "rawAttachmentParts": []
+    },
+    {
+      "id": "19f9ccffd9965c8a",
+      "receivedAt": "2026-07-26T05:05:03.000Z",
+      "sender": "\"╫ר╫ס╫ó ╫צ╫ץ╫£ ╫ק╫á╫ץ╫¬ ╫פ╫ר╫ס╫ó ╫⌐╫£╫ת\" <info@tevazol.co.il>",
+      "to": "Shay mida <shaymida337@gmail.com>",
+      "subject": "╫º╫ץ╫ñ╫ץ╫ƒ 8% ╫פ╫á╫ק╫פ ╫£╫£╫º╫ץ╫ק╫ץ╫¬ ╫פ╫¿╫⌐╫ץ╫₧╫ש╫¥ ╫⌐╫£╫á╫ץ",
+      "snippet": "╫º╫ץ╫ף ╫º╫ץ╫ñ╫ץ╫ƒ ╫£╫צ╫₧╫ƒ ╫₧╫ץ╫ע╫ס╫£!!! ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ═ן ",
+      "labelIds": [
+        "CATEGORY_PROMOTIONS",
+        "UNREAD",
+        "SPAM"
+      ],
+      "inSpam": true,
+      "inTrash": false,
+      "inInbox": false,
+      "inSent": false,
+      "sizeEstimate": 101238,
+      "attachments": [],
+      "rawAttachmentParts": []
+    }
+  ],
+  "allMessagesCompact": [
+    {
+      "id": "19f9de4e177b6ec3",
+      "receivedAt": "2026-07-26T10:07:29.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 17802,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9dd794abb052a",
+      "receivedAt": "2026-07-26T09:52:58.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 17801,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9dcf766f02984",
+      "receivedAt": "2026-07-26T09:44:06.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 17788,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9dc3aae021191",
+      "receivedAt": "2026-07-26T09:31:11.000Z",
+      "sender": "\"╫נ╫ש╫ª╫ש╫º ╫נ╫¿╫צ, ╫¿╫ס ╫₧╫í╫¿\" <itzik@responder.co.il>",
+      "subject": "╫á╫ñ╫ע╫⌐╫ש╫¥ ╫ס╫¿╫ס╫ש╫ó╫ש ╫פ╫º╫¿╫ץ╫ס! ╫ץ╫ץ╫ס╫ש╫á╫¿ ╫נ╫ש╫₧╫ץ╫¬ ╫ף╫ץ╫₧╫ש╫ש╫ƒ ╫ס╫¿╫ס ╫₧╫í╫¿",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 34750,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9da9bfd1e7fdf",
+      "receivedAt": "2026-07-26T09:02:54.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 17789,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9d83855633a5a",
+      "receivedAt": "2026-07-26T08:21:09.000Z",
+      "sender": "LinkedIn <notifications-noreply@linkedin.com>",
+      "subject": "You appeared in recent searches",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 36987,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9d7fab5f79a23",
+      "receivedAt": "2026-07-26T08:16:56.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 17778,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9d3d61ea6a395",
+      "receivedAt": "2026-07-26T07:04:33.000Z",
+      "sender": "\"Live Stage | Les Spectacles Francophones en Israel\" <noreply@livestagemkt.com>",
+      "subject": "≡ƒת¿\n\n\n69 Γג¬ de r├⌐duction  - Promo Flash Tu Beav \n\n≡ƒת¿",
+      "inInbox": false,
+      "inSent": false,
+      "inSpam": true,
+      "sizeEstimate": 73352,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9d39e15b3d268",
+      "receivedAt": "2026-07-26T07:00:43.000Z",
+      "sender": "yad2 <no-reply@info.yad2.co.il>",
+      "subject": "╫¢╫ץ╫£╫¥ ╫ó╫ץ╫ס╫¿╫ש╫¥ ╫ף╫ש╫¿╫פ. ╫₧╫פ ╫ש╫ץ╫ª╫נ ╫£╫¢╫¥ ╫₧╫צ╫פ? (╫ñ╫¿╫í╫ץ╫₧╫¬)",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 31863,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9d2fdffa923ef",
+      "receivedAt": "2026-07-26T06:49:47.000Z",
+      "sender": "Vercel <notifications@vercel.com>",
+      "subject": "Failed production deployments on team 'shay mida's projects'",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 17792,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9d2c05a806d83",
+      "receivedAt": "2026-07-26T06:45:35.000Z",
+      "sender": "\"╫₧╫ץ╫צ╫פ\" <info@bizclub.co.il>",
+      "subject": "╫נ╫á╫ש ╫ש╫ץ╫ף╫ó╫¬ ╫⌐╫ש╫⌐ ╫£╫¢╫¥ ╫¢╫ץ╫ץ╫á╫פ ╫£╫⌐╫ץ╫ץ╫º ╫ש╫ץ╫¬╫¿, ╫נ╫ס╫£ ╫צ╫פ ╫£╫נ ╫¬╫₧╫ש╫ף ╫₧╫í╫ñ╫ש╫º",
+      "inInbox": false,
+      "inSent": false,
+      "inSpam": true,
+      "sizeEstimate": 17559,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9d0991200c698",
+      "receivedAt": "2026-07-26T06:07:52.000Z",
+      "sender": "\"~ ╫ó╫¿╫ƒ ╫⌐╫ר╫¿╫ƒ ~\" <info@eranstern.co.il>",
+      "subject": "╫נ╫á╫ש ╫ó╫ץ╫⌐╫פ ╫⌐╫ש╫á╫ץ╫ש ╫ס\"╫ó╫ץ╫⌐╫ש╫¥ ╫⌐╫ש╫á╫ץ╫ש\"",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 58039,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9d044d4d2e814",
+      "receivedAt": "2026-07-26T06:02:10.000Z",
+      "sender": "WellyBox <info@wellybox.com>",
+      "subject": "╫ש╫ª╫ש╫¿╫¬ ╫ó╫í╫º╫ש╫¥, ╫º╫ר╫ע╫ץ╫¿╫ש╫ץ╫¬ ╫ץ╫ñ╫¿╫ץ╫ש╫ש╫º╫ר╫ש╫¥",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 59282,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9ccffd9965c8a",
+      "receivedAt": "2026-07-26T05:05:03.000Z",
+      "sender": "\"╫ר╫ס╫ó ╫צ╫ץ╫£ ╫ק╫á╫ץ╫¬ ╫פ╫ר╫ס╫ó ╫⌐╫£╫ת\" <info@tevazol.co.il>",
+      "subject": "╫º╫ץ╫ñ╫ץ╫ƒ 8% ╫פ╫á╫ק╫פ ╫£╫£╫º╫ץ╫ק╫ץ╫¬ ╫פ╫¿╫⌐╫ץ╫₧╫ש╫¥ ╫⌐╫£╫á╫ץ",
+      "inInbox": false,
+      "inSent": false,
+      "inSpam": true,
+      "sizeEstimate": 101238,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9bb8c8c2c3fd6",
+      "receivedAt": "2026-07-26T00:00:04.000Z",
+      "sender": "Date4Sex <NoReply@date4sex.co.il>",
+      "subject": "╫á╫ר╫⌐╫פ  ╫⌐╫£╫ק╫פ ╫£╫ת ╫פ╫ץ╫ף╫ó╫פ",
+      "inInbox": false,
+      "inSent": false,
+      "inSpam": true,
+      "sizeEstimate": 11437,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9b4af13a7f62d",
+      "receivedAt": "2026-07-25T22:00:05.000Z",
+      "sender": "Date4Sex <NoReply@date4sex.co.il>",
+      "subject": "╫₧╫¿╫ש╫פ ╫⌐╫£╫ק╫פ ╫£╫ת ╫פ╫ץ╫ף╫ó╫פ",
+      "inInbox": false,
+      "inSent": false,
+      "inSpam": true,
+      "sizeEstimate": 11431,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9b4457f77bfc2",
+      "receivedAt": "2026-07-25T21:51:47.000Z",
+      "sender": "\"madisonwanjth@hotmail.com\" <madisonwanjth@hotmail.com>",
+      "subject": "WhoΓאשs on the other side?",
+      "inInbox": false,
+      "inSent": false,
+      "inSpam": true,
+      "sizeEstimate": 14468,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9b13f973e3c96",
+      "receivedAt": "2026-07-25T21:00:04.000Z",
+      "sender": "Date4Sex <NoReply@date4sex.co.il>",
+      "subject": "╫¿╫ץ╫á╫ש╫¬ ╫פ╫ק╫ץ╫⌐╫á╫ש╫¬ ╫⌐╫£╫ק╫פ ╫£╫ת ╫פ╫ץ╫ף╫ó╫פ",
+      "inInbox": false,
+      "inSent": false,
+      "inSpam": true,
+      "sizeEstimate": 11759,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9af056c43bfd4",
+      "receivedAt": "2026-07-25T20:21:08.000Z",
+      "sender": "LinkedIn <messages-noreply@linkedin.com>",
+      "subject": "≡ƒסñ shay, add Michalia Koukouve",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 112110,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9ab77fc1f6a34",
+      "receivedAt": "2026-07-25T19:19:03.000Z",
+      "sender": "Chatlon <ticket@chatlon.com>",
+      "subject": "╫נ╫ש╫ת ╫נ╫¬╫פ ╫ס╫₧╫ª╫ס╫ש ╫£╫ק╫Ñ? ╫¢╫ש ╫נ╫á╫ש ╫£╫ע╫₧╫¿╫ש ╫פ╫ץ╫£╫¢╫¬ ╫£╫פ╫₧╫¥ ╫נ╫ץ╫¬╫ת ╫ó╫¢╫⌐╫ש╫ץ",
+      "inInbox": false,
+      "inSent": false,
+      "inSpam": true,
+      "sizeEstimate": 19202,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9aa5791ca2dc3",
+      "receivedAt": "2026-07-25T18:59:04.000Z",
+      "sender": "<syoji@opengroove.com>",
+      "subject": "Sie haben eine Spende",
+      "inInbox": false,
+      "inSent": false,
+      "inSpam": true,
+      "sizeEstimate": 4224,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9a95f9fa938cd",
+      "receivedAt": "2026-07-25T18:42:25.000Z",
+      "sender": "AliExpress <aeug-member-benefits14@deals.aliexpress.com>",
+      "subject": "╫ñ╫¿╫í╫ץ╫₧╫¬ | ╫פ╫ף╫ש╫£╫ש╫¥ ╫פ╫₧╫ץ╫ס╫ש╫£╫ש╫¥",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 132832,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9a82777a5befb",
+      "receivedAt": "2026-07-25T18:21:08.000Z",
+      "sender": "LinkedIn <notifications-noreply@linkedin.com>",
+      "subject": "You appeared in recent searches",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 45921,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f99a7bf3da6be1",
+      "receivedAt": "2026-07-25T14:22:15.000Z",
+      "sender": "Sentry <noreply@md.getsentry.com>",
+      "subject": "Weekly Report for natalie: July 18th, 2026 - July 25th, 2026",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 32182,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f98eeab1156096",
+      "receivedAt": "2026-07-25T11:00:04.000Z",
+      "sender": "Date4Sex <NoReply@date4sex.co.il>",
+      "subject": "kiki ╫⌐╫£╫ק╫פ ╫£╫ת ╫פ╫ץ╫ף╫ó╫פ",
+      "inInbox": false,
+      "inSent": false,
+      "inSpam": true,
+      "sizeEstimate": 11339,
+      "attachmentFilenames": [],
+      "attachmentMimes": []
+    },
+    {
+      "id": "19f9354ff3d5c804",
+      "receivedAt": "2026-07-24T08:54:08.000Z",
+      "sender": "\"Anthropic, PBC\" <invoice+statements@mail.anthropic.com>",
+      "subject": "Your receipt from Anthropic, PBC #2217-0193-6169",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 147466,
+      "attachmentFilenames": [
+        "Invoice-PWMBSFD3-0009.pdf",
+        "Receipt-2217-0193-6169.pdf"
+      ],
+      "attachmentMimes": [
+        "application/pdf",
+        "application/pdf"
+      ]
+    },
+    {
+      "id": "19f8f6b269a678fc",
+      "receivedAt": "2026-07-23T14:39:36.000Z",
+      "sender": "shaymida337@gmail.com",
+      "subject": null,
+      "inInbox": true,
+      "inSent": true,
+      "inSpam": false,
+      "sizeEstimate": 9968227,
+      "attachmentFilenames": [
+        "image0.png"
+      ],
+      "attachmentMimes": [
+        "image/png"
+      ]
+    },
+    {
+      "id": "19f8f6955a798f7a",
+      "receivedAt": "2026-07-23T14:37:50.000Z",
+      "sender": "shaykedma@gmail.com",
+      "subject": null,
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 369153,
+      "attachmentFilenames": [
+        "inv2 photo.png"
+      ],
+      "attachmentMimes": [
+        "image/png"
+      ]
+    },
+    {
+      "id": "19f8f5e30dab8d0d",
+      "receivedAt": "2026-07-23T14:25:30.000Z",
+      "sender": "shaymida337@gmail.com",
+      "subject": null,
+      "inInbox": true,
+      "inSent": true,
+      "inSpam": false,
+      "sizeEstimate": 1209985,
+      "attachmentFilenames": [
+        "image0.png"
+      ],
+      "attachmentMimes": [
+        "image/png"
+      ]
+    },
+    {
+      "id": "19f8f5d9b8accef0",
+      "receivedAt": "2026-07-23T14:25:01.000Z",
+      "sender": "shaykedma@gmail.com",
+      "subject": null,
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 123886,
+      "attachmentFilenames": [
+        "inv4 many lines.png"
+      ],
+      "attachmentMimes": [
+        "image/png"
+      ]
+    },
+    {
+      "id": "19f8f5d5d3f68c9e",
+      "receivedAt": "2026-07-23T14:24:41.000Z",
+      "sender": "shaykedma@gmail.com",
+      "subject": null,
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 2775374,
+      "attachmentFilenames": [
+        "inv3 scan.png"
+      ],
+      "attachmentMimes": [
+        "image/png"
+      ]
+    },
+    {
+      "id": "19f8f5cee17d16ee",
+      "receivedAt": "2026-07-23T14:24:09.000Z",
+      "sender": "shaymida337@gmail.com",
+      "subject": null,
+      "inInbox": true,
+      "inSent": true,
+      "inSpam": false,
+      "sizeEstimate": 423812,
+      "attachmentFilenames": [
+        "image0.png"
+      ],
+      "attachmentMimes": [
+        "image/png"
+      ]
+    },
+    {
+      "id": "19f8f5bb92fea168",
+      "receivedAt": "2026-07-23T14:22:49.000Z",
+      "sender": "shaymida337@gmail.com",
+      "subject": null,
+      "inInbox": true,
+      "inSent": true,
+      "inSpam": false,
+      "sizeEstimate": 191779,
+      "attachmentFilenames": [
+        "image0.png"
+      ],
+      "attachmentMimes": [
+        "image/png"
+      ]
+    },
+    {
+      "id": "19f8f3d8a5d0f155",
+      "receivedAt": "2026-07-23T13:49:48.000Z",
+      "sender": "shaymida337@gmail.com",
+      "subject": null,
+      "inInbox": true,
+      "inSent": true,
+      "inSpam": false,
+      "sizeEstimate": 9572147,
+      "attachmentFilenames": [
+        "image0.jpeg",
+        "image1.jpeg",
+        "image2.jpeg",
+        "image3.jpeg",
+        "image4.jpeg",
+        "image5.jpeg",
+        "image6.jpeg",
+        "image7.jpeg",
+        "image8.jpeg",
+        "image9.jpeg",
+        "image10.jpeg",
+        "image11.jpeg",
+        "image12.jpeg",
+        "image13.jpeg",
+        "image14.jpeg",
+        "image15.jpeg",
+        "image16.jpeg",
+        "image17.jpeg",
+        "image18.jpeg",
+        "image19.jpeg",
+        "image20.jpeg",
+        "image21.jpeg",
+        "image22.jpeg",
+        "image23.jpeg",
+        "image24.jpeg",
+        "image25.jpeg",
+        "image26.jpeg",
+        "image27.jpeg",
+        "image28.jpeg",
+        "image29.jpeg",
+        "image30.jpeg",
+        "image31.jpeg",
+        "image32.jpeg"
+      ],
+      "attachmentMimes": [
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg"
+      ]
+    },
+    {
+      "id": "19f8f3caa76be508",
+      "receivedAt": "2026-07-23T13:49:05.000Z",
+      "sender": "shaymida337@gmail.com",
+      "subject": null,
+      "inInbox": false,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 7810270,
+      "attachmentFilenames": [
+        "image0.png"
+      ],
+      "attachmentMimes": [
+        "image/png"
+      ]
+    },
+    {
+      "id": "19f8f2b9c08f5106",
+      "receivedAt": "2026-07-23T13:30:15.000Z",
+      "sender": "shaymida337@gmail.com",
+      "subject": null,
+      "inInbox": true,
+      "inSent": true,
+      "inSpam": false,
+      "sizeEstimate": 48700,
+      "attachmentFilenames": [
+        "apple-touch-icon.png"
+      ],
+      "attachmentMimes": [
+        "image/png"
+      ]
+    },
+    {
+      "id": "19f89ea2ac6921fc",
+      "receivedAt": "2026-07-22T13:00:41.000Z",
+      "sender": "shaymida337@gmail.com",
+      "subject": null,
+      "inInbox": true,
+      "inSent": true,
+      "inSpam": false,
+      "sizeEstimate": 414638,
+      "attachmentFilenames": [
+        "image0.png"
+      ],
+      "attachmentMimes": [
+        "image/png"
+      ]
+    },
+    {
+      "id": "19f849ed075acfc1",
+      "receivedAt": "2026-07-21T12:20:16.000Z",
+      "sender": "shaymida337@gmail.com",
+      "subject": null,
+      "inInbox": true,
+      "inSent": true,
+      "inSpam": false,
+      "sizeEstimate": 865732,
+      "attachmentFilenames": [
+        "image0.jpeg",
+        "image1.jpeg",
+        "image2.jpeg"
+      ],
+      "attachmentMimes": [
+        "image/jpeg",
+        "image/jpeg",
+        "image/jpeg"
+      ]
+    },
+    {
+      "id": "19f83dc7e6477223",
+      "receivedAt": "2026-07-21T08:48:09.000Z",
+      "sender": "duke.projects.online@gmail.com",
+      "subject": "Γן│ ╫₧╫פ ╫נ╫ש╫¬╫ת ╫ס╫í╫ץ╫ú?",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 7620872,
+      "attachmentFilenames": [
+        "image.png",
+        "DUKE MARKETING SYLLABUS.pdf"
+      ],
+      "attachmentMimes": [
+        "image/png",
+        "application/octet-stream"
+      ]
+    },
+    {
+      "id": "19f7eb0825d00b0f",
+      "receivedAt": "2026-07-20T08:41:53.000Z",
+      "sender": "shaymida337@gmail.com",
+      "subject": null,
+      "inInbox": true,
+      "inSent": true,
+      "inSpam": false,
+      "sizeEstimate": 301245,
+      "attachmentFilenames": [
+        "image0.jpeg"
+      ],
+      "attachmentMimes": [
+        "image/jpeg"
+      ]
+    },
+    {
+      "id": "19f7e997e6c47de4",
+      "receivedAt": "2026-07-20T08:16:55.000Z",
+      "sender": "\"Eleven Labs Inc.\" <invoice+statements+acct_1M07hSLmdOdiMXBs@stripe.com>",
+      "subject": "Your receipt from Eleven Labs Inc. #2869-0470-3525",
+      "inInbox": true,
+      "inSent": false,
+      "inSpam": false,
+      "sizeEstimate": 163250,
+      "attachmentFilenames": [
+        "Invoice-E5GRDWPL-0002.pdf",
+        "Receipt-2869-0470-3525.pdf"
+      ],
+      "attachmentMimes": [
+        "application/pdf",
+        "application/pdf"
+      ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getBuildInfo, getHealthPayload, resetBuildInfoCacheForTests } from "./buildInfo.js";
 
@@ -32,11 +32,21 @@ test("getHealthPayload prefers runtime RENDER_GIT_COMMIT over embedded build inf
 });
 
 test("getBuildInfo falls back to embedded build-info.json when runtime commit unset", () => {
-  const distDir = join(process.cwd(), "backend", "dist");
+  // Prefer the first lookup candidate (cwd/dist) so an existing null commitSha file
+  // cannot shadow the fixture when tests run with cwd=backend.
+  const distDir = join(process.cwd(), "dist");
   const buildInfoPath = join(distDir, "build-info.json");
   const previousCommit = process.env.RENDER_GIT_COMMIT;
+  const previousGitCommit = process.env.GIT_COMMIT;
   const previousBuildTime = process.env.BUILD_TIME;
+  let previousEmbedded: string | null = null;
+  try {
+    previousEmbedded = readFileSync(buildInfoPath, "utf8");
+  } catch {
+    previousEmbedded = null;
+  }
   delete process.env.RENDER_GIT_COMMIT;
+  delete process.env.GIT_COMMIT;
   delete process.env.BUILD_TIME;
   resetBuildInfoCacheForTests();
   mkdirSync(distDir, { recursive: true });
@@ -51,23 +61,43 @@ test("getBuildInfo falls back to embedded build-info.json when runtime commit un
     assert.equal(info.commitSha, "embeddedcommit456");
     assert.equal(info.buildTime, "2026-07-09T00:00:00.000Z");
   } finally {
-    rmSync(buildInfoPath, { force: true });
+    if (previousEmbedded === null) rmSync(buildInfoPath, { force: true });
+    else writeFileSync(buildInfoPath, previousEmbedded, "utf8");
     resetBuildInfoCacheForTests();
     if (previousCommit === undefined) delete process.env.RENDER_GIT_COMMIT;
     else process.env.RENDER_GIT_COMMIT = previousCommit;
+    if (previousGitCommit === undefined) delete process.env.GIT_COMMIT;
+    else process.env.GIT_COMMIT = previousGitCommit;
     if (previousBuildTime === undefined) delete process.env.BUILD_TIME;
     else process.env.BUILD_TIME = previousBuildTime;
   }
 });
 
 test("getBuildInfo returns null commit when runtime and embedded info are absent", () => {
+  const distDir = join(process.cwd(), "dist");
+  const buildInfoPath = join(distDir, "build-info.json");
   const previousCommit = process.env.RENDER_GIT_COMMIT;
+  const previousGitCommit = process.env.GIT_COMMIT;
+  let previousEmbedded: string | null = null;
+  try {
+    previousEmbedded = readFileSync(buildInfoPath, "utf8");
+  } catch {
+    previousEmbedded = null;
+  }
   delete process.env.RENDER_GIT_COMMIT;
+  delete process.env.GIT_COMMIT;
   resetBuildInfoCacheForTests();
+  mkdirSync(distDir, { recursive: true });
+  // Ensure no usable embedded commit shadows the "absent" contract for this test.
+  writeFileSync(buildInfoPath, JSON.stringify({ commitSha: null, buildTime: null }), "utf8");
   try {
     const info = getBuildInfo();
     assert.equal(info.commitSha, null);
   } finally {
+    if (previousEmbedded === null) rmSync(buildInfoPath, { force: true });
+    else writeFileSync(buildInfoPath, previousEmbedded, "utf8");
+    resetBuildInfoCacheForTests();
     if (previousCommit !== undefined) process.env.RENDER_GIT_COMMIT = previousCommit;
+    if (previousGitCommit !== undefined) process.env.GIT_COMMIT = previousGitCommit;
   }
 });

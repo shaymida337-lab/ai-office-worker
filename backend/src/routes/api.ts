@@ -109,7 +109,7 @@ import type { IssueDraftInput } from "../services/greenInvoiceIssuer.js";
 import { parseBankStatementFile } from "../services/bank-parser.js";
 import { matchTransactions } from "../services/bank-matcher.js";
 import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } from "../services/paymentClassificationDebug.js";
-import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
+import { getBusinessTemplates, getOrganizationSettings, patchOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
 import { approveFinancialDocumentReview, buildReviewDecision, evaluateReviewApprovalReadiness } from "../services/financialDocuments.js";
 import { recordManualEntryFinancialDocument } from "../services/financialDocuments.js";
 import { getDocumentReviewsHomeSummary } from "../services/documentReviewsHomeSummary.js";
@@ -363,7 +363,29 @@ apiRouter.get("/organization/settings", async (req, res) => {
 });
 
 apiRouter.put("/organization/settings", requirePerm("organization.settings"), async (req, res) => {
-  res.json(await updateOrganizationBusinessSettings(req.auth!.organizationId, req.body as Record<string, unknown>));
+  try {
+    res.json(await updateOrganizationBusinessSettings(req.auth!.organizationId, req.body as Record<string, unknown>));
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status === 400) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Invalid settings" });
+      return;
+    }
+    throw err;
+  }
+});
+
+apiRouter.patch("/organization/settings", requirePerm("organization.settings"), async (req, res) => {
+  try {
+    res.json(await patchOrganizationSettings(req.auth!.organizationId, (req.body ?? {}) as Record<string, unknown>));
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status === 400) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Invalid settings" });
+      return;
+    }
+    throw err;
+  }
 });
 
 apiRouter.get("/settings/business-profile", async (req, res) => {

@@ -19,14 +19,32 @@ export type ListableSchedulingItem = UpcomingSchedulingItem & {
   source?: SchedulingSource;
 };
 
+export type ListedPreferredAction = "cancel_appointment" | "reschedule_appointment";
+
+export type ListedAppointmentFilter = {
+  dayReference?: string;
+  time?: string;
+};
+
 export function buildLastListedAppointmentsPendingAction(
-  items: ListableSchedulingItem[]
+  items: ListableSchedulingItem[],
+  options?: {
+    preferredAction?: ListedPreferredAction;
+    clientId?: string | null;
+    clientName?: string | null;
+    ttlMs?: number;
+  }
 ): ConversationSessionRecord["pendingAction"] {
+  const ttlMs = options?.ttlMs ?? 10 * 60 * 1000;
   return {
     action: LAST_LISTED_APPOINTMENTS_ACTION,
     proposal: {
       items: items.map(toListedAppointmentItem),
       listedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + ttlMs).toISOString(),
+      ...(options?.preferredAction ? { preferredAction: options.preferredAction } : {}),
+      ...(options?.clientId ? { clientId: options.clientId } : {}),
+      ...(options?.clientName ? { clientName: options.clientName } : {}),
     },
   };
 }
@@ -46,6 +64,20 @@ export function readLastListedAppointments(
   return [];
 }
 
+export function readListedPreferredAction(
+  session: Pick<ConversationSessionRecord, "pendingAction" | "structuredHistory">
+): ListedPreferredAction | null {
+  const fromPending = preferredActionFromProposal(session.pendingAction?.proposal);
+  if (fromPending) return fromPending;
+  for (let i = session.structuredHistory.length - 1; i >= 0; i -= 1) {
+    const turn = session.structuredHistory[i]!;
+    if (turn.action !== LAST_LISTED_APPOINTMENTS_ACTION || !turn.proposal) continue;
+    const preferred = preferredActionFromProposal(turn.proposal);
+    if (preferred) return preferred;
+  }
+  return null;
+}
+
 export type ListedAppointmentOrdinal =
   | { kind: "index"; index: number }
   | { kind: "first" }
@@ -57,18 +89,21 @@ export type ListedAppointmentOrdinal =
  * - תבטלי את הראשון
  * - תעבירי את השני
  * - מה האחרון?
+ * - תבטלי את התור של יום ראשון
+ * - הראשון (apply preferred action)
  */
 export function parseListedAppointmentOrdinalCommand(message: string): {
-  intent: "cancel_appointment" | "reschedule_appointment" | "inspect";
-  ordinal: ListedAppointmentOrdinal;
+  intent: "cancel_appointment" | "reschedule_appointment" | "inspect" | "apply_preferred";
+  ordinal: ListedAppointmentOrdinal | null;
+  filter?: ListedAppointmentFilter;
   dayReference?: string;
   time?: string;
 } | null {
   const normalized = message.trim().replace(/\s+/g, " ");
   if (!normalized) return null;
 
+  const filter = parseListedAppointmentFilter(normalized);
   const ordinal = parseOrdinalToken(normalized);
-  if (!ordinal) return null;
 
   if (
     /(?:תבטל|תבטלי|בטל|בטלי)\s+(?:את\s+)?(?:ה)?(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שביעי|שמיני|תשיעי|עשירי|אחרון|\d+)/u.test(
@@ -76,7 +111,8 @@ export function parseListedAppointmentOrdinalCommand(message: string): {
     ) ||
     /(?:תבטל|תבטלי|בטל|בטלי)\s+את\s+(?:ה)?(?:ראשון|שני|אחרון)/u.test(normalized)
   ) {
-    return { intent: "cancel_appointment", ordinal };
+    if (!ordinal) return null;
+    return { intent: "cancel_appointment", ordinal, ...(filter ? { filter } : {}) };
   }
 
   if (
@@ -84,14 +120,45 @@ export function parseListedAppointmentOrdinalCommand(message: string): {
       normalized
     )
   ) {
-    return { intent: "reschedule_appointment", ordinal };
+    if (!ordinal) return null;
+    return { intent: "reschedule_appointment", ordinal, ...(filter ? { filter } : {}) };
   }
 
   if (
-    ordinal.kind === "query_last" ||
+    ordinal?.kind === "query_last" ||
     /(?:מה|איזה|מי)\s+(?:ה)?(?:ראשון|שני|אחרון)/u.test(normalized)
   ) {
-    return { intent: "inspect", ordinal: ordinal.kind === "query_last" ? { kind: "last" } : ordinal };
+    return {
+      intent: "inspect",
+      ordinal: ordinal?.kind === "query_last" || !ordinal ? { kind: "last" } : ordinal,
+    };
+  }
+
+  // Filter cancel/reschedule without ordinal: "תבטלי את התור של יום ראשון" / "של 10:00"
+  if (filter && isFilterOnlyCancelOrMove(normalized, "cancel")) {
+    return { intent: "cancel_appointment", ordinal: null, filter };
+  }
+  if (filter && isFilterOnlyCancelOrMove(normalized, "reschedule")) {
+    return { intent: "reschedule_appointment", ordinal: null, filter };
+  }
+
+  // Confirmation / pronoun cancel against the chooser list.
+  if (
+    /^(?:כן|כן\.|בטח|סבבה|תבטל(?:י)?\s+אות(?:ו|ה)|בטל(?:י)?\s+אות(?:ו|ה)|אותו\s+אחד|אותה\s+אחת)$/u.test(
+      normalized
+    )
+  ) {
+    return { intent: "apply_preferred", ordinal: null, ...(filter ? { filter } : {}) };
+  }
+
+  // Bare ordinal: "הראשון" / "השני" / "2"
+  if (ordinal && isBareOrdinalPhrase(normalized)) {
+    return { intent: "apply_preferred", ordinal, ...(filter ? { filter } : {}) };
+  }
+
+  // Filter-only selection: "של יום ראשון" / "של 10:00" / "התור של 19 ביולי"
+  if (filter && isSelectionShapedPhrase(normalized) && !hasConflictingNonSelectionContent(normalized)) {
+    return { intent: "apply_preferred", ordinal: null, filter };
   }
 
   return null;
@@ -106,6 +173,50 @@ export function resolveListedAppointmentByOrdinal(
   if (ordinal.kind === "last" || ordinal.kind === "query_last") return items[items.length - 1] ?? null;
   if (ordinal.index < 0 || ordinal.index >= items.length) return null;
   return items[ordinal.index] ?? null;
+}
+
+/**
+ * Filter previously listed appointments by day/time cues from a chooser follow-up.
+ * Weekday references match by local weekday of each listed item (not "next" weekday from now).
+ */
+export function filterListedAppointments(
+  items: ListedAppointmentItem[],
+  filter: ListedAppointmentFilter | undefined,
+  timeZone: string,
+  _now: Date = new Date()
+): ListedAppointmentItem[] {
+  if (!filter) return items;
+  let result = items;
+
+  if (filter.dayReference) {
+    const weekday = weekdayFromDayReference(filter.dayReference);
+    if (weekday !== null) {
+      result = result.filter((item) => localWeekday(new Date(item.startTime), timeZone) === weekday);
+    } else {
+      const relative = relativeDayOffset(filter.dayReference);
+      if (relative !== null) {
+        const targetLocal = localDateKey(addLocalDays(_now, relative, timeZone), timeZone);
+        result = result.filter((item) => localDateKey(new Date(item.startTime), timeZone) === targetLocal);
+      }
+    }
+  }
+
+  if (filter.time) {
+    const want = normalizeTimeLabel(filter.time);
+    if (want) {
+      result = result.filter((item) => {
+        const label = new Intl.DateTimeFormat("en-GB", {
+          timeZone,
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }).format(new Date(item.startTime));
+        return normalizeTimeLabel(label) === want;
+      });
+    }
+  }
+
+  return result;
 }
 
 function toListedAppointmentItem(item: ListableSchedulingItem): ListedAppointmentItem {
@@ -163,6 +274,15 @@ function listedItemsFromProposal(proposal: Record<string, unknown>): ListedAppoi
   return items;
 }
 
+function preferredActionFromProposal(
+  proposal: Record<string, unknown> | null | undefined
+): ListedPreferredAction | null {
+  if (!proposal) return null;
+  const value = proposal.preferredAction;
+  if (value === "cancel_appointment" || value === "reschedule_appointment") return value;
+  return null;
+}
+
 function parseOrdinalToken(text: string): ListedAppointmentOrdinal | null {
   if (/(?:מה|איזה)\s+(?:ה)?אחרון/u.test(text)) return { kind: "query_last" };
   if (/(?:^|[\s])(?:ה)?ראשון(?:\s|$|[?.!])/u.test(text)) return { kind: "first" };
@@ -192,4 +312,138 @@ function parseOrdinalToken(text: string): ListedAppointmentOrdinal | null {
   }
 
   return null;
+}
+
+function parseListedAppointmentFilter(text: string): ListedAppointmentFilter | null {
+  const filter: ListedAppointmentFilter = {};
+
+  // Require "יום X" so list ordinals like "הראשון"/"השני" are not treated as weekdays.
+  const weekday = text.match(/יום\s+(ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)/u);
+  if (weekday?.[1]) {
+    filter.dayReference = `יום ${weekday[1]}`;
+  } else if (/(?:^|\s)מחרתיים(?:\s|$|[?.!])/u.test(text)) {
+    filter.dayReference = "מחרתיים";
+  } else if (/(?:^|\s)מחר(?:\s|$|[?.!])/u.test(text)) {
+    filter.dayReference = "מחר";
+  } else if (/(?:^|\s)היום(?:\s|$|[?.!])/u.test(text)) {
+    filter.dayReference = "היום";
+  }
+
+  const clock = text.match(/(?:^|\s)(\d{1,2}(?::\d{2})?)(?:\s|$|[?.!])/u);
+  if (clock?.[1]) {
+    const token = clock[1];
+    if (/:\d{2}/.test(token) || /(?:ב|בשעה|של)\s+\d{1,2}(?:\s|$|[?.!])/u.test(text)) {
+      filter.time = token;
+    }
+  }
+
+  if (!filter.dayReference && !filter.time) return null;
+  return filter;
+}
+
+function isBareOrdinalPhrase(text: string): boolean {
+  return /^(?:ה)?(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שביעי|שמיני|תשיעי|עשירי|אחרון|\d{1,2})[.?!]?$/u.test(
+    text
+  );
+}
+
+function isSelectionShapedPhrase(text: string): boolean {
+  return (
+    /^(?:את\s+)?(?:ה)?תור\s+של\b/u.test(text) ||
+    /^(?:של\s+)/u.test(text) ||
+    /^(?:התור\s+של\s+)/u.test(text) ||
+    /^(?:היום|מחר|מחרתיים|הבוקר|הצהרים|הערב)[.?!]?$/u.test(text) ||
+    /^(?:יום\s+)?(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)[.?!]?$/u.test(text) ||
+    /^(?:\d{1,2}(?::\d{2})?)[.?!]?$/u.test(text) ||
+    /^(?:\d{1,2}\s*(?:ב)?(?:יולי|אוגוסט|ספטמבר|אוקטובר|נובמבר|דצמבר|ינואר|פברואר|מרץ|אפריל|מאי|יוני))[.?!]?$/u.test(
+      text
+    )
+  );
+}
+
+function hasConflictingNonSelectionContent(text: string): boolean {
+  return /(?:תבטל|תבטלי|בטל|בטלי|תעביר|תעבירי|תזיז|תזיזי|תשנה|תשני|מה|איזה|מי)\b/u.test(text);
+}
+
+/** Cancel/move phrases that select from a prior list by day/time — no customer name. */
+function isFilterOnlyCancelOrMove(text: string, kind: "cancel" | "reschedule"): boolean {
+  const verb =
+    kind === "cancel"
+      ? /(?:תבטל|תבטלי|בטל|בטלי)/u
+      : /(?:תעביר|תעבירי|תזיז|תזיזי|תשנה|תשני)/u;
+  if (!verb.test(text)) return false;
+  if (
+    /(?:תור|פגישה)?\s*של\s+(?:יום\s+)?(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)(?:\s|$|[?.!])/u.test(
+      text
+    )
+  ) {
+    return true;
+  }
+  if (/(?:תור|פגישה)?\s*של\s+(?:הבוקר|הצהרים|הערב|היום|מחר|מחרתיים)(?:\s|$|[?.!])/u.test(text)) {
+    return true;
+  }
+  if (/(?:תור|פגישה)?\s*של\s+\d{1,2}(?::\d{2})?(?:\s|$|[?.!])/u.test(text)) {
+    return true;
+  }
+  if (
+    /(?:תור|פגישה)?\s*של\s+\d{1,2}\s*(?:ב)?(?:יולי|אוגוסט|ספטמבר|אוקטובר|נובמבר|דצמבר|ינואר|פברואר|מרץ|אפריל|מאי|יוני)/u.test(
+      text
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function weekdayFromDayReference(dayReference: string): number | null {
+  const map: Record<string, number> = {
+    ראשון: 0,
+    שני: 1,
+    שלישי: 2,
+    רביעי: 3,
+    חמישי: 4,
+    שישי: 5,
+    שבת: 6,
+  };
+  for (const [name, day] of Object.entries(map)) {
+    if (dayReference.includes(name)) return day;
+  }
+  return null;
+}
+
+function relativeDayOffset(dayReference: string): number | null {
+  if (dayReference === "היום") return 0;
+  if (dayReference === "מחר") return 1;
+  if (dayReference === "מחרתיים") return 2;
+  return null;
+}
+
+function localWeekday(date: Date, timeZone: string): number {
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(date);
+  const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return map[weekday] ?? 0;
+}
+
+function localDateKey(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function addLocalDays(date: Date, days: number, _timeZone: string): Date {
+  // Approximate: shift by UTC days — sufficient for היום/מחר filters on listed items.
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function normalizeTimeLabel(value: string): string | null {
+  const match = value.trim().match(/^(\d{1,2})(?::(\d{2}))?$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = match[2] !== undefined ? Number(match[2]) : 0;
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59) return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }

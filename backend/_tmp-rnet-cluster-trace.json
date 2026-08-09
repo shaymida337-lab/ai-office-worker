@@ -1,0 +1,231 @@
+{
+  "rnet": {
+    "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+    "source": "financial_document_review",
+    "reviewStatus": "needs_review",
+    "rawReviewStatus": "needs_review",
+    "actionable": true,
+    "isComplete": false,
+    "dataComplete": true,
+    "approvalRequired": true,
+    "amount": 354,
+    "supplierName": "נ.ערנט איי.קום בע\"מ",
+    "invoiceNumber": "OV255006399",
+    "gmailMessageId": "19ee12f8ab9f4579",
+    "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+    "fingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+    "refs": [
+      "gmail:19ee12f8ab9f4579",
+      "email:cmqw2a292004jm92b1eld7mkk",
+      "fp:87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf"
+    ],
+    "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+  },
+  "rnetRefs": [
+    "gmail:19ee12f8ab9f4579",
+    "email:cmqw2a292004jm92b1eld7mkk",
+    "fp:87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf"
+  ],
+  "clusterSize": 1,
+  "clusterBeforeDedupe": [
+    {
+      "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+      "source": "financial_document_review",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "amount": 354,
+      "supplierName": "נ.ערנט איי.קום בע\"מ",
+      "invoiceNumber": "OV255006399",
+      "gmailMessageId": "19ee12f8ab9f4579",
+      "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+      "fingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      "refs": [
+        "gmail:19ee12f8ab9f4579",
+        "email:cmqw2a292004jm92b1eld7mkk",
+        "fp:87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf"
+      ],
+      "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+    }
+  ],
+  "clusterWinnerAfterDedupe": [
+    {
+      "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+      "source": "financial_document_review",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "amount": 354,
+      "supplierName": "נ.ערנט איי.קום בע\"מ",
+      "invoiceNumber": "OV255006399",
+      "gmailMessageId": "19ee12f8ab9f4579",
+      "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+      "fingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      "refs": [
+        "gmail:19ee12f8ab9f4579",
+        "email:cmqw2a292004jm92b1eld7mkk",
+        "fp:87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf"
+      ],
+      "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+    }
+  ],
+  "clusterAfterIncomplete": [
+    {
+      "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+      "source": "financial_document_review",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "amount": 354,
+      "supplierName": "נ.ערנט איי.קום בע\"מ",
+      "invoiceNumber": "OV255006399",
+      "gmailMessageId": "19ee12f8ab9f4579",
+      "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+      "fingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      "refs": [
+        "gmail:19ee12f8ab9f4579",
+        "email:cmqw2a292004jm92b1eld7mkk",
+        "fp:87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf"
+      ],
+      "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+    }
+  ],
+  "refOwners": {
+    "gmail:19ee12f8ab9f4579": [
+      {
+        "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+        "source": "financial_document_review",
+        "reviewStatus": "needs_review",
+        "rawReviewStatus": "needs_review",
+        "actionable": true,
+        "isComplete": false,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "amount": 354,
+        "supplierName": "נ.ערנט איי.קום בע\"מ",
+        "invoiceNumber": "OV255006399",
+        "gmailMessageId": "19ee12f8ab9f4579",
+        "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+        "fingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "refs": [
+          "gmail:19ee12f8ab9f4579",
+          "email:cmqw2a292004jm92b1eld7mkk",
+          "fp:87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf"
+        ],
+        "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+      }
+    ],
+    "email:cmqw2a292004jm92b1eld7mkk": [
+      {
+        "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+        "source": "financial_document_review",
+        "reviewStatus": "needs_review",
+        "rawReviewStatus": "needs_review",
+        "actionable": true,
+        "isComplete": false,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "amount": 354,
+        "supplierName": "נ.ערנט איי.קום בע\"מ",
+        "invoiceNumber": "OV255006399",
+        "gmailMessageId": "19ee12f8ab9f4579",
+        "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+        "fingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "refs": [
+          "gmail:19ee12f8ab9f4579",
+          "email:cmqw2a292004jm92b1eld7mkk",
+          "fp:87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf"
+        ],
+        "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+      }
+    ],
+    "fp:87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf": [
+      {
+        "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+        "source": "financial_document_review",
+        "reviewStatus": "needs_review",
+        "rawReviewStatus": "needs_review",
+        "actionable": true,
+        "isComplete": false,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "amount": 354,
+        "supplierName": "נ.ערנט איי.קום בע\"מ",
+        "invoiceNumber": "OV255006399",
+        "gmailMessageId": "19ee12f8ab9f4579",
+        "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+        "fingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "refs": [
+          "gmail:19ee12f8ab9f4579",
+          "email:cmqw2a292004jm92b1eld7mkk",
+          "fp:87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf"
+        ],
+        "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+      }
+    ]
+  },
+  "allCandidates": {
+    "before": 44,
+    "afterDedupe": 34,
+    "afterIncomplete": 32,
+    "rnetStillInDeduped": true,
+    "rnetAfterAllDedupe": [
+      {
+        "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+        "source": "financial_document_review",
+        "reviewStatus": "needs_review",
+        "rawReviewStatus": "needs_review",
+        "actionable": true,
+        "isComplete": false,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "amount": 354,
+        "supplierName": "נ.ערנט איי.קום בע\"מ",
+        "invoiceNumber": "OV255006399",
+        "gmailMessageId": "19ee12f8ab9f4579",
+        "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+        "fingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "refs": [
+          "gmail:19ee12f8ab9f4579",
+          "email:cmqw2a292004jm92b1eld7mkk",
+          "fp:87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf"
+        ],
+        "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+      }
+    ],
+    "rnetAfterIncomplete": [
+      {
+        "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+        "source": "financial_document_review",
+        "reviewStatus": "needs_review",
+        "rawReviewStatus": "needs_review",
+        "actionable": true,
+        "isComplete": false,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "amount": 354,
+        "supplierName": "נ.ערנט איי.קום בע\"מ",
+        "invoiceNumber": "OV255006399",
+        "gmailMessageId": "19ee12f8ab9f4579",
+        "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+        "fingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+        "refs": [
+          "gmail:19ee12f8ab9f4579",
+          "email:cmqw2a292004jm92b1eld7mkk",
+          "fp:87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf"
+        ],
+        "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+      }
+    ]
+  },
+  "stage": "SURVIVES_LOCAL_FULL_SCAN"
+}

@@ -1,0 +1,84 @@
+{
+  "out": [
+    {
+      "label": "TIRE_450",
+      "fdr": {
+        "id": "cms1p5fn1008rj81sxvqogrc8",
+        "documentType": "receipt",
+        "reviewStatus": "needs_review",
+        "gmailMessageId": "19f9e1a31eb03f30",
+        "emailMessageId": "cms1p4jvj007nj81sgqbllbuo",
+        "supplierName": "GENERAL TIRE",
+        "totalAmount": 450,
+        "fileName": "image1.jpeg",
+        "documentFingerprint": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+        "source": "gmail",
+        "createdAt": "2026-07-26T11:10:25.645Z",
+        "inListFilter": true
+      },
+      "gsi": {
+        "id": "cms1p5nwl008xj81s2yeavjyx",
+        "documentType": "receipt",
+        "reviewStatus": "needs_review",
+        "gmailMessageId": "19f9e1a31eb03f30",
+        "emailMessageId": "cms1p4jvj007nj81sgqbllbuo",
+        "supplierName": "GENERAL TIRE",
+        "amount": 450,
+        "attachmentFilename": "image1.jpeg",
+        "duplicateKey": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+        "createdAt": "2026-07-26T11:10:36.358Z",
+        "inListFilter": true
+      },
+      "merge": {
+        "count": 1,
+        "ids": [
+          "gmail-scan:cms1p5nwl008xj81s2yeavjyx"
+        ],
+        "sources": [
+          "gmail_scan_item"
+        ]
+      },
+      "rootCauseHint": "DB has FDR+GSI pair; merge correctly returns 1 — if UI shows 2, frontend/double-fetch"
+    },
+    {
+      "label": "PHARM_918",
+      "fdr": {
+        "id": "cms1p5woj008zj81s99yq2wfp",
+        "documentType": "receipt",
+        "reviewStatus": "needs_review",
+        "gmailMessageId": "19f9e19c826d7978",
+        "emailMessageId": "cms1p4r7z007vj81sml5dnnzf",
+        "supplierName": "סופר פארם",
+        "totalAmount": 918,
+        "fileName": "image0.jpeg",
+        "documentFingerprint": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+        "source": "gmail",
+        "createdAt": "2026-07-26T11:10:47.731Z",
+        "inListFilter": true
+      },
+      "gsi": {
+        "id": "cms1p5x0k0091j81sy1y0xkcr",
+        "documentType": "receipt",
+        "reviewStatus": "needs_review",
+        "gmailMessageId": "19f9e19c826d7978",
+        "emailMessageId": "cms1p4r7z007vj81sml5dnnzf",
+        "supplierName": "סופר פארם",
+        "amount": 918,
+        "attachmentFilename": "image0.jpeg",
+        "duplicateKey": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+        "createdAt": "2026-07-26T11:10:48.164Z",
+        "inListFilter": true
+      },
+      "merge": {
+        "count": 1,
+        "ids": [
+          "gmail-scan:cms1p5x0k0091j81sy1y0xkcr"
+        ],
+        "sources": [
+          "gmail_scan_item"
+        ]
+      },
+      "rootCauseHint": "DB has FDR+GSI pair; merge correctly returns 1 — if UI shows 2, frontend/double-fetch"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "logStatus": 200,
+  "entries": 100,
+  "tracesFound": 0,
+  "byStage": {},
+  "related": [],
+  "sampleMsgs": [
+    "  externalMessageId: '19f9d318e3c18245',",
+    "  stage: 'gmail_scanned',",
+    "  eventId: 'cms1g0jep003vm12arm1jf4oc'",
+    "}",
+    "[scan] fetch end scanId=cms1tslcb000pit2acxnqyc5q",
+    "[scan] heartbeat scanId=cms1tslcb000pit2acxnqyc5q stage=fetch_end",
+    "[gmail-scan-transition] {\"organizationId\":\"cmpl4q1jp0001pr3oc1qofvyg\",\"scanId\":\"cms1tslcb000pit2acxnqyc5q\",\"previousStatus\":\"running\",\"nextStatus\":\"running\",\"reason\":\"heartbeat:fet",
+    "[scan] processing start scanId=cms1tslcb000pit2acxnqyc5q",
+    "[scan] heartbeat scanId=cms1tslcb000pit2acxnqyc5q stage=processing_start",
+    "[gmail-scan-transition] {\"organizationId\":\"cmpl4q1jp0001pr3oc1qofvyg\",\"scanId\":\"cms1tslcb000pit2acxnqyc5q\",\"previousStatus\":\"running\",\"nextStatus\":\"running\",\"reason\":\"heartbeat:pro"
+  ]
+}

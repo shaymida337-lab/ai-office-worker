@@ -40,6 +40,11 @@ import { calendarPendingAction } from "../calendar/calendarPendingIntent.js";
 import { shouldDeferCalendarActionForFuzzyGate } from "../scheduling/calendarActionProposal.js";
 import { LAST_LISTED_APPOINTMENTS_ACTION } from "./lastListedAppointments.js";
 import {
+  buildNatalieAskRoutingMeta,
+  logNatalieAskRouting,
+  type NatalieAskRoutingMeta,
+} from "./natalieAskRouting.js";
+import {
   logPendingConfirmationEvent,
   newPendingConfirmationId,
   stampPendingConfirmation,
@@ -69,6 +74,33 @@ function buildPendingConfirmation(
     confirmationType: confirmation.confirmationType,
     spokenPrompt: confirmation.spokenPrompt,
     uiPrompt: confirmation.uiPrompt,
+  });
+}
+
+function readBrainRouting(
+  brainResponse: Record<string, unknown>,
+  message: string
+): NatalieAskRoutingMeta {
+  const raw = brainResponse.routing;
+  if (
+    raw &&
+    typeof raw === "object" &&
+    typeof (raw as { selectedHandler?: unknown }).selectedHandler === "string" &&
+    typeof (raw as { endpoint?: unknown }).endpoint === "string" &&
+    typeof (raw as { fallbackUsed?: unknown }).fallbackUsed === "boolean"
+  ) {
+    const meta = raw as NatalieAskRoutingMeta;
+    return {
+      message: typeof meta.message === "string" ? meta.message : message,
+      endpoint: "/api/natalie/ask",
+      selectedHandler: meta.selectedHandler,
+      fallbackUsed: meta.fallbackUsed,
+    };
+  }
+  return buildNatalieAskRoutingMeta({
+    message,
+    selectedHandler: "claude_fallback",
+    fallbackUsed: true,
   });
 }
 
@@ -448,6 +480,9 @@ export async function processNatalieTurn(
     });
     logResponseSent("generic_route", displayResponse);
 
+    const routing = readBrainRouting(brainResponse as Record<string, unknown>, normalizedMessage);
+    logNatalieAskRouting(routing);
+
     return {
       ...(effectiveResponse as NatalieClaudeResponse),
       answer: displayResponse,
@@ -462,6 +497,7 @@ export async function processNatalieTurn(
         turnId,
         health: zeroWrongAction.ready ? "Healthy" : "Degraded",
       },
+      routing,
     };
   } catch (error) {
     emitCoreWorkflowFailure(trace, "turn", error);

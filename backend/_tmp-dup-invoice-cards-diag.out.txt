@@ -1,0 +1,133 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+{
+  "tireCount": 1,
+  "pharmCount": 2,
+  "gsiCount": 29,
+  "invoiceCount": 1,
+  "scanLogs": 12,
+  "tirePair": {
+    "label": "GENERAL_TIRE_450",
+    "count": 1,
+    "ids": [
+      "cms1p5fn1008rj81sxvqogrc8"
+    ],
+    "uniqueGmailMessageIds": [
+      "19f9e1a31eb03f30"
+    ],
+    "uniqueDocumentFingerprints": [
+      "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf"
+    ],
+    "uniqueSourceFingerprints": [
+      "adeb0daadcae90ffbfc29aa0aeef736db43ac2db9a14036d"
+    ],
+    "uniqueSources": [
+      "gmail"
+    ],
+    "uniqueFileNames": [
+      "image1.jpeg"
+    ],
+    "createdAtDeltaMs": [],
+    "sameGmail": true,
+    "sameFingerprint": true,
+    "sameSourceFp": true,
+    "sameFile": true,
+    "rows": [
+      {
+        "id": "cms1p5fn1008rj81sxvqogrc8",
+        "supplierName": "GENERAL TIRE",
+        "totalAmount": 450,
+        "gmailMessageId": "19f9e1a31eb03f30",
+        "emailMessageId": "cms1p4jvj007nj81sgqbllbuo",
+        "fileName": "image1.jpeg",
+        "documentFingerprint": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+        "sourceFingerprint": "adeb0daadcae90ffbfc29aa0aeef736db43ac2db9a14036d",
+        "source": "gmail",
+        "documentType": "receipt",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "duplicate.key_mismatch",
+        "createdAt": "2026-07-26T11:10:25.645Z",
+        "updatedAt": "2026-07-26T11:10:36.044Z",
+        "subject": "(╫£╫£╫נ ╫á╫ץ╫⌐╫נ)",
+        "sender": "shaymida337@gmail.com"
+      }
+    ]
+  },
+  "pharmPair": {
+    "label": "SUPERPHARM_918",
+    "count": 2,
+    "ids": [
+      "cms1nwg2m00ptjn2cowt2nd49",
+      "cms1p5woj008zj81s99yq2wfp"
+    ],
+    "uniqueGmailMessageIds": [
+      "19f9d7eb3bad3371",
+      "19f9e19c826d7978"
+    ],
+    "uniqueDocumentFingerprints": [
+      "f33489a83fc2c192be6a74f714ac0509651cc26bbc3da907",
+      "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e"
+    ],
+    "uniqueSourceFingerprints": [
+      "629cebfafbee3bf5e9961e0cb2beafdd0250c9baf2dbadbc",
+      "b25808517ae1a758e0f19feb50120111c6e263bdc966c20a"
+    ],
+    "uniqueSources": [
+      "gmail"
+    ],
+    "uniqueFileNames": [
+      "image0.jpeg"
+    ],
+    "createdAtDeltaMs": [
+      2121045
+    ],
+    "sameGmail": false,
+    "sameFingerprint": false,
+    "sameSourceFp": false,
+    "sameFile": true,
+    "rows": [
+      {
+        "id": "cms1nwg2m00ptjn2cowt2nd49",
+        "supplierName": "╫í╫ץ╫ñ╫¿╫ñ╫נ╫¿╫¥",
+        "totalAmount": 45,
+        "gmailMessageId": "19f9d7eb3bad3371",
+        "emailMessageId": "cms1nvcdh00ozjn2c3uny3j8r",
+        "fileName": "image0.jpeg",
+        "documentFingerprint": "f33489a83fc2c192be6a74f714ac0509651cc26bbc3da907",
+        "sourceFingerprint": "629cebfafbee3bf5e9961e0cb2beafdd0250c9baf2dbadbc",
+        "source": "gmail",
+        "documentType": "tax_invoice_receipt",
+        "reviewStatus": "approved",
+        "uncertaintyReason": "duplicate.key_mismatch",
+        "createdAt": "2026-07-26T10:35:26.686Z",
+        "updatedAt": "2026-07-26T11:01:11.677Z",
+        "subject": "╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ",
+        "sender": "shaykedma@gmail.com"
+      },
+      {
+        "id": "cms1p5woj008zj81s99yq2wfp",
+        "supplierName": "╫í╫ץ╫ñ╫¿ ╫ñ╫נ╫¿╫¥",
+        "totalAmount": 918,
+        "gmailMessageId": "19f9e19c826d7978",
+        "emailMessageId": "cms1p4r7z007vj81sml5dnnzf",
+        "fileName": "image0.jpeg",
+        "documentFingerprint": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+        "sourceFingerprint": "b25808517ae1a758e0f19feb50120111c6e263bdc966c20a",
+        "source": "gmail",
+        "documentType": "receipt",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "duplicate.key_mismatch",
+        "createdAt": "2026-07-26T11:10:47.731Z",
+        "updatedAt": "2026-07-26T11:10:47.731Z",
+        "subject": "(╫£╫£╫נ ╫á╫ץ╫⌐╫נ)",
+        "sender": "shaymida337@gmail.com"
+      }
+    ]
+  }
+}

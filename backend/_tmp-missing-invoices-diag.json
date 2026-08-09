@@ -1,0 +1,137 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+{
+  "since": "2026-07-26T08:13:09.066Z",
+  "hours": 2,
+  "now": "2026-07-26T10:13:16.262Z",
+  "org": {
+    "id": "cmpjd7j7e0001bl5tzv049rxb",
+    "name": "╫⌐╫ש"
+  },
+  "orgCounts": {
+    "fdrCreated": 0,
+    "gsiCreated": 0,
+    "invoiceCreated": 0,
+    "supplierPaymentCreated": 0,
+    "fdrUpdatedOnly": 0
+  },
+  "fdrOrg": [],
+  "fdrUpdatedOnly": [],
+  "gsiOrg": [],
+  "invoicesOrg": [],
+  "paymentsOrg": [],
+  "crossTenantRecent": {
+    "fdrOtherOrgsCount": 4,
+    "gsiOtherOrgsCount": 3,
+    "fdrOtherOrgsSample": [
+      {
+        "id": "cms1mpws3009vml2citsul5eu",
+        "organizationId": "cmpl4q1jp0001pr3oc1qofvyg",
+        "source": "gmail",
+        "fileName": "23_07_2026.xlsx",
+        "subject": "╫⌐╫ó╫ץ╫¬ 23/07/2026",
+        "supplierName": "einav mazkirabc",
+        "totalAmount": null,
+        "documentType": "payment_request",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "junk_filter:unknown_sender_with_attachment",
+        "driveUploadStatus": null,
+        "gmailMessageId": "19f9dded92dde56e",
+        "createdAt": "2026-07-26T10:02:22.131Z",
+        "updatedAt": "2026-07-26T10:02:22.131Z"
+      },
+      {
+        "id": "cms1mg1kq003rml2c08ffwccx",
+        "organizationId": "cmpl4q1jp0001pr3oc1qofvyg",
+        "source": "gmail",
+        "fileName": "image001.png",
+        "subject": "RE: ╫נ╫ץ╫¿╫ש╫נ╫£ ╫ª╫¿╫ץ╫ש╫פ- ╫ק╫ס╫¿ ╫ק╫ף╫⌐",
+        "supplierName": "Dina Redlich BNI",
+        "totalAmount": null,
+        "documentType": "payment_request",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "junk_filter:unknown_sender_with_attachment",
+        "driveUploadStatus": null,
+        "gmailMessageId": "19f9dd63d99eda0c",
+        "createdAt": "2026-07-26T09:54:41.786Z",
+        "updatedAt": "2026-07-26T09:54:41.786Z"
+      },
+      {
+        "id": "cms1js9aw00d1hu2ccagry3mr",
+        "organizationId": "cmq9fxylf0061jm2cj6immb62",
+        "source": "gmail",
+        "fileName": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+        "subject": "(╫£╫£╫נ ╫á╫ץ╫⌐╫נ)",
+        "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+        "totalAmount": 418.39,
+        "documentType": "tax_invoice",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "supplier.sir_weak_evidence",
+        "driveUploadStatus": "uploaded",
+        "gmailMessageId": "19f9d949edf55d89",
+        "createdAt": "2026-07-26T08:40:12.824Z",
+        "updatedAt": "2026-07-26T08:40:24.026Z"
+      },
+      {
+        "id": "cms1ixdkz001dhu2cq6ge2r9n",
+        "organizationId": "cmq9fxylf0061jm2cj6immb62",
+        "source": "gmail",
+        "fileName": "image0.jpeg",
+        "subject": "╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ",
+        "supplierName": "╫í╫ץ╫ñ╫¿ ╫ñ╫נ╫¿╫¥",
+        "totalAmount": 45,
+        "documentType": "tax_invoice_receipt",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "duplicate.key_mismatch",
+        "driveUploadStatus": null,
+        "gmailMessageId": "19f9d7eab5bc7590",
+        "createdAt": "2026-07-26T08:16:12.035Z",
+        "updatedAt": "2026-07-26T08:16:12.035Z"
+      }
+    ],
+    "gsiOtherOrgsSample": [
+      {
+        "id": "cms1jxi3900fnhu2cosmpsxbh",
+        "organizationId": "cmq9fxylf0061jm2cj6immb62",
+        "subject": "(╫£╫£╫נ ╫á╫ץ╫⌐╫נ)",
+        "attachmentFilename": " ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í ╫₧╫¿╫¢╫צ╫¬ SI256000091 - ╫₧╫º╫ץ╫¿.1 .pdf",
+        "supplierName": "╫í╫פ\"╫¢ ╫₧╫ק╫ש╫¿ ╫₧╫ק╫ש╫¿",
+        "amount": 3484.96,
+        "documentType": "invoice",
+        "reviewStatus": "needs_review",
+        "decisionReason": "Held for review: confidence is high; parsed amount rejected: looks like identifier not amount; fse_valid:none",
+        "createdAt": "2026-07-26T08:44:17.493Z"
+      },
+      {
+        "id": "cms1jsi7300d7hu2coy47sax8",
+        "organizationId": "cmq9fxylf0061jm2cj6immb62",
+        "subject": "(╫£╫£╫נ ╫á╫ץ╫⌐╫נ)",
+        "attachmentFilename": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+        "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+        "amount": 418.39,
+        "documentType": "invoice",
+        "reviewStatus": "needs_review",
+        "decisionReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; outcome_review:OE_NEEDS_REVIEW",
+        "createdAt": "2026-07-26T08:40:24.351Z"
+      },
+      {
+        "id": "cms1ixdxp001fhu2cavzy3doo",
+        "organizationId": "cmq9fxylf0061jm2cj6immb62",
+        "subject": "╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ",
+        "attachmentFilename": "image0.jpeg",
+        "supplierName": "╫í╫ץ╫ñ╫¿ ╫ñ╫נ╫¿╫¥",
+        "amount": 45,
+        "documentType": "tax_invoice_receipt",
+        "reviewStatus": "needs_review",
+        "decisionReason": "Held for review: classifier money_direction_unsure; Auto-saved: tax_invoice_receipt confidence=81%; attachment found: image; attachment found; image invoice detected; amount found; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬; keyword matched: ╫º╫ס╫£╫פ; keyword matched: invoice; keyword matched: receipt; keyword matched: receipt; supplier detected; ai:tax_invoice_receipt:95%",
+        "createdAt": "2026-07-26T08:16:12.493Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,474 @@
+{
+  "pattern": {
+    "allApprovalRequired": true,
+    "allDataComplete": false,
+    "allIsCompleteFalse": true,
+    "anyNonFinancial": [],
+    "anyNotInWhere": [],
+    "decisionReasonTokens": [
+      {
+        "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+        "hasBlocked": true,
+        "hasQuarantine": false,
+        "hasDup": false
+      },
+      {
+        "id": "document-review:cmqw3onmp0227m92bemcb1bkm",
+        "hasBlocked": true,
+        "hasQuarantine": false,
+        "hasDup": false
+      },
+      {
+        "id": "document-review:cmqxeh4bh0audjx2d6ncvt92u",
+        "hasBlocked": false,
+        "hasQuarantine": false,
+        "hasDup": false
+      },
+      {
+        "id": "gmail-scan:cmqw3ngay020rm92bu32og3aa",
+        "hasBlocked": false,
+        "hasQuarantine": false,
+        "hasDup": false
+      },
+      {
+        "id": "gmail-scan:cmqxe7pxm0apdjx2dzymfyan8",
+        "hasBlocked": false,
+        "hasQuarantine": false,
+        "hasDup": false
+      },
+      {
+        "id": "gmail-scan:cmqxeb3hb0ar5jx2dd6mikakb",
+        "hasBlocked": false,
+        "hasQuarantine": false,
+        "hasDup": false
+      },
+      {
+        "id": "gmail-scan:cmqxegqwh0au5jx2dkcm0td92",
+        "hasBlocked": false,
+        "hasQuarantine": false,
+        "hasDup": false
+      },
+      {
+        "id": "gmail-scan:cmqxeh20k0aubjx2dii9h917x",
+        "hasBlocked": false,
+        "hasQuarantine": false,
+        "hasDup": false
+      },
+      {
+        "id": "gmail-scan:cmqxf1a1d0b1njx2dnhziydij",
+        "hasBlocked": false,
+        "hasQuarantine": false,
+        "hasDup": true
+      },
+      {
+        "id": "gmail-scan:cmqxf7tfq0b3hjx2ds3ah1ase",
+        "hasBlocked": false,
+        "hasQuarantine": false,
+        "hasDup": false
+      }
+    ]
+  },
+  "missing": [
+    {
+      "listId": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+      "inWhere": true,
+      "source": "financial_document_review",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "amount": 354,
+      "supplierName": "נ.ערנט איי.קום בע\"מ",
+      "invoiceNumber": "OV255006399",
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "missingDataReasons": [],
+      "approvalReasons": [
+        "ממתין לאישור",
+        "רמת ביטחון נמוכה"
+      ],
+      "nonFinancialExcluded": false,
+      "gmailMessageId": "19ee12f8ab9f4579",
+      "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+      "fingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      "dbReviewStatus": "needs_review",
+      "dbDecisionOrUncertainty": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+    },
+    {
+      "listId": "document-review:cmqw3onmp0227m92bemcb1bkm",
+      "inWhere": true,
+      "source": "financial_document_review",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "amount": 163.28,
+      "supplierName": "בזק - החברה הישראלית לתקשורת בע״מ",
+      "invoiceNumber": "238419712",
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "missingDataReasons": [],
+      "approvalReasons": [
+        "ממתין לאישור",
+        "רמת ביטחון נמוכה"
+      ],
+      "nonFinancialExcluded": false,
+      "gmailMessageId": "19ed663d168fc8dc",
+      "emailMessageId": "cmqw2b45m0067m92bvf4csrfw",
+      "fingerprint": "327f78265d110edc5b3b6f37c4bfb903393eff044c295250",
+      "dbReviewStatus": "needs_review",
+      "dbDecisionOrUncertainty": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+    },
+    {
+      "listId": "document-review:cmqxeh4bh0audjx2d6ncvt92u",
+      "inWhere": true,
+      "source": "financial_document_review",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "amount": 1,
+      "supplierName": "shaykedma",
+      "invoiceNumber": "1693",
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: tax_invoice_receipt confidence=99%; attachment found: PDF; invoice attachment dete",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "missingDataReasons": [],
+      "approvalReasons": [
+        "ממתין לאישור",
+        "רמת ביטחון נמוכה"
+      ],
+      "nonFinancialExcluded": false,
+      "gmailMessageId": "19e7f5ecf1e29d03",
+      "emailMessageId": "cmqw2l23k00qpm92bahrv8v3u",
+      "fingerprint": "edb6c45bc9b36591af3a488f72f20d900770fc3aac5b6bd6",
+      "dbReviewStatus": "needs_review",
+      "dbDecisionOrUncertainty": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: tax_invoice_receipt confidence=99%; attachment found: PDF; invoice attachment dete"
+    },
+    {
+      "listId": "gmail-scan:cmqw3ngay020rm92bu32og3aa",
+      "inWhere": true,
+      "source": "gmail_scan_item",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "amount": 3484.96,
+      "supplierName": "ליחידה כמות תאור מוצר מק\"ט",
+      "invoiceNumber": "SI256000091",
+      "documentType": "invoice",
+      "decisionReason": "Held for review: confidence is high; parsed amount rejected: looks like identifier not amount; fse_valid:none",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "missingDataReasons": [],
+      "approvalReasons": [
+        "ממתין לאישור"
+      ],
+      "nonFinancialExcluded": false,
+      "gmailMessageId": "19ed99f5c789649b",
+      "emailMessageId": "cms1nv5ab00ojjn2cr3cx0opb",
+      "fingerprint": "fe440ad28c1a51b89ca579e019778f5b458a43a45bc6b54b",
+      "dbReviewStatus": "needs_review",
+      "dbDecisionOrUncertainty": "Held for review: confidence is high; parsed amount rejected: looks like identifier not amount; fse_valid:none"
+    },
+    {
+      "listId": "gmail-scan:cmqxe7pxm0apdjx2dzymfyan8",
+      "inWhere": true,
+      "source": "gmail_scan_item",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "amount": 98,
+      "supplierName": "פארק ארץ הצבי",
+      "invoiceNumber": "30H0-ZNCG-ZQC",
+      "documentType": "receipt",
+      "decisionReason": "Auto-saved: receipt confidence=99%; attachment found: PDF; PDF invoice detected; amount found; keyword matched: receipt; supplier detected; ai:receipt:95%; supp",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "missingDataReasons": [],
+      "approvalReasons": [
+        "ממתין לאישור"
+      ],
+      "nonFinancialExcluded": false,
+      "gmailMessageId": "19ebfbbfb5c8e626",
+      "emailMessageId": "cmqw2gw0300hvm92byig4j9w8",
+      "fingerprint": "bd803be203d54e62a8c75cb89f21df045cd85e2a8ba8b6e6",
+      "dbReviewStatus": "needs_review",
+      "dbDecisionOrUncertainty": "Auto-saved: receipt confidence=99%; attachment found: PDF; PDF invoice detected; amount found; keyword matched: receipt; supplier detected; ai:receipt:95%; supp"
+    },
+    {
+      "listId": "gmail-scan:cmqxeb3hb0ar5jx2dd6mikakb",
+      "inWhere": true,
+      "source": "gmail_scan_item",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "amount": 144,
+      "supplierName": "סופר פארם",
+      "invoiceNumber": "10006959",
+      "documentType": "receipt",
+      "decisionReason": "Held for review: classifier money_direction_unsure; Auto-saved: receipt confidence=80%; attachment found: image; attachment found; image invoice detected; amoun",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "missingDataReasons": [],
+      "approvalReasons": [
+        "ממתין לאישור"
+      ],
+      "nonFinancialExcluded": false,
+      "gmailMessageId": "19eac6db0ca1987b",
+      "emailMessageId": "cmqw2ifit00lfm92b6o52sim7",
+      "fingerprint": "fd91c390eb4c5ee17b0558aa8cf44585c469a52e05be02d5",
+      "dbReviewStatus": "needs_review",
+      "dbDecisionOrUncertainty": "Held for review: classifier money_direction_unsure; Auto-saved: receipt confidence=80%; attachment found: image; attachment found; image invoice detected; amoun"
+    },
+    {
+      "listId": "gmail-scan:cmqxegqwh0au5jx2dkcm0td92",
+      "inWhere": true,
+      "source": "gmail_scan_item",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "amount": null,
+      "supplierName": "Render Services dba Render",
+      "invoiceNumber": null,
+      "documentType": "unknown_needs_review",
+      "decisionReason": "process_save_failed: \nInvalid `prisma.gmailScanItem.upsert()` invocation:\n\n\nError occurred during query execution:\nConnectorError(ConnectorError { user_facing_e",
+      "isComplete": false,
+      "dataComplete": false,
+      "approvalRequired": true,
+      "missingDataReasons": [
+        "חסר סכום",
+        "חסר תאריך",
+        "מטבע חסר",
+        "סוג מסמך חסר"
+      ],
+      "approvalReasons": [
+        "ממתין לאישור",
+        "רמת ביטחון נמוכה"
+      ],
+      "nonFinancialExcluded": false,
+      "gmailMessageId": "19e98565fdba1c19",
+      "emailMessageId": "cmqw2kuea00ppm92bvku80hy6",
+      "fingerprint": "1eae225cc83c503097ae0fb338a2072710f88f79",
+      "dbReviewStatus": "needs_review",
+      "dbDecisionOrUncertainty": "process_save_failed: \nInvalid `prisma.gmailScanItem.upsert()` invocation:\n\n\nError occurred during query execution:\nConnectorError(ConnectorError { user_facing_e"
+    },
+    {
+      "listId": "gmail-scan:cmqxeh20k0aubjx2dii9h917x",
+      "inWhere": true,
+      "source": "gmail_scan_item",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "amount": null,
+      "supplierName": "Anthropic PBC",
+      "invoiceNumber": null,
+      "documentType": "unknown_needs_review",
+      "decisionReason": "process_save_failed: \nInvalid `prisma.gmailScanItem.upsert()` invocation:\n\n\nError occurred during query execution:\nConnectorError(ConnectorError { user_facing_e",
+      "isComplete": false,
+      "dataComplete": false,
+      "approvalRequired": true,
+      "missingDataReasons": [
+        "חסר סכום",
+        "חסר תאריך",
+        "מטבע חסר",
+        "סוג מסמך חסר"
+      ],
+      "approvalReasons": [
+        "ממתין לאישור",
+        "רמת ביטחון נמוכה"
+      ],
+      "nonFinancialExcluded": false,
+      "gmailMessageId": "19e880e857ff8f05",
+      "emailMessageId": "cmqw2kyjl00qhm92bfr8pnuer",
+      "fingerprint": "b002d6ceecc4233002c1f90be03dff8bc2126746",
+      "dbReviewStatus": "needs_review",
+      "dbDecisionOrUncertainty": "process_save_failed: \nInvalid `prisma.gmailScanItem.upsert()` invocation:\n\n\nError occurred during query execution:\nConnectorError(ConnectorError { user_facing_e"
+    },
+    {
+      "listId": "gmail-scan:cmqxf1a1d0b1njx2dnhziydij",
+      "inWhere": true,
+      "source": "gmail_scan_item",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "amount": null,
+      "supplierName": "לא זוהה",
+      "invoiceNumber": "backfill",
+      "documentType": "receipt",
+      "decisionReason": "Held for review: confidence is medium; confidence below 80% (54%); supplier_ambiguous:AMBIGUOUS; fse_review:duplicate_suspicion; trust_review:TE_UPSTREAM_REVIEW",
+      "isComplete": false,
+      "dataComplete": false,
+      "approvalRequired": true,
+      "missingDataReasons": [
+        "ספק לא זוהה",
+        "חסר סכום"
+      ],
+      "approvalReasons": [
+        "ממתין לאישור",
+        "רמת ביטחון נמוכה"
+      ],
+      "nonFinancialExcluded": false,
+      "gmailMessageId": "19ec5579a6abae67",
+      "emailMessageId": "cmqw36kzn01f7m92bkbtacvu4",
+      "fingerprint": "777bcf99cd66d30c7ab2158d66f32d352052942097b57dd9",
+      "dbReviewStatus": "needs_review",
+      "dbDecisionOrUncertainty": "Held for review: confidence is medium; confidence below 80% (54%); supplier_ambiguous:AMBIGUOUS; fse_review:duplicate_suspicion; trust_review:TE_UPSTREAM_REVIEW"
+    },
+    {
+      "listId": "gmail-scan:cmqxf7tfq0b3hjx2ds3ah1ase",
+      "inWhere": true,
+      "source": "gmail_scan_item",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "amount": null,
+      "supplierName": "לא זוהה",
+      "invoiceNumber": null,
+      "documentType": "receipt",
+      "decisionReason": "Held for review: classifier outgoing_supplier_reality_unsure; Held for review: confidence is medium; confidence below 80% (54%); supplier_missing:MISSING; fse_r",
+      "isComplete": false,
+      "dataComplete": false,
+      "approvalRequired": true,
+      "missingDataReasons": [
+        "ספק לא זוהה",
+        "חסר סכום"
+      ],
+      "approvalReasons": [
+        "ממתין לאישור",
+        "רמת ביטחון נמוכה"
+      ],
+      "nonFinancialExcluded": false,
+      "gmailMessageId": "19eab772218ec100",
+      "emailMessageId": "cmqw3fox701rxm92bedmlk2h1",
+      "fingerprint": "aa342e28f17cc1ec889cf8fd6579b960ea218c06014cc890",
+      "dbReviewStatus": "needs_review",
+      "dbDecisionOrUncertainty": "Held for review: classifier outgoing_supplier_reality_unsure; Held for review: confidence is medium; confidence below 80% (54%); supplier_missing:MISSING; fse_r"
+    }
+  ],
+  "presentPeers": [
+    {
+      "listId": "document-review:cmqxf61ak0b2zjx2dna3832rx",
+      "inWhere": true,
+      "source": "financial_document_review",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "amount": 5,
+      "supplierName": "עיריית רמת גן",
+      "invoiceNumber": null,
+      "documentType": "tax_invoice",
+      "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "missingDataReasons": [],
+      "approvalReasons": [
+        "ממתין לאישור",
+        "רמת ביטחון נמוכה"
+      ],
+      "nonFinancialExcluded": false,
+      "gmailMessageId": "19ead40f739158bc",
+      "emailMessageId": "cmqw3d44o01odm92b1e49vqyr",
+      "fingerprint": "960021ce1d1a5b33468a1b82c036bc1b66636f7932cab815",
+      "dbReviewStatus": "needs_review",
+      "dbDecisionOrUncertainty": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "onLive": true,
+      "liveRow": {
+        "id": "document-review:cmqxf61ak0b2zjx2dna3832rx",
+        "amount": 5,
+        "status": "needs_review",
+        "approvalRequired": true,
+        "dataComplete": true
+      }
+    },
+    {
+      "listId": "document-review:cmqxf65y40b31jx2d0snodln4",
+      "inWhere": true,
+      "source": "financial_document_review",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "amount": 3,
+      "supplierName": "detected",
+      "invoiceNumber": null,
+      "documentType": "tax_invoice",
+      "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "missingDataReasons": [],
+      "approvalReasons": [
+        "ממתין לאישור",
+        "רמת ביטחון נמוכה"
+      ],
+      "nonFinancialExcluded": false,
+      "gmailMessageId": "19ead1870c4b2e39",
+      "emailMessageId": "cmqw3d8qy01ohm92b8bi8fdtz",
+      "fingerprint": "b6a1c2652af6b240280db141e24686ec115e3f200e6d0e63",
+      "dbReviewStatus": "needs_review",
+      "dbDecisionOrUncertainty": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "onLive": true,
+      "liveRow": {
+        "id": "document-review:cmqxf65y40b31jx2d0snodln4",
+        "amount": 3,
+        "status": "needs_review",
+        "approvalRequired": true,
+        "dataComplete": true
+      }
+    },
+    {
+      "listId": "gmail-scan:cmr1vlh4m00rjj42c0eps0k9l",
+      "inWhere": true,
+      "source": "gmail_scan_item",
+      "reviewStatus": "needs_review",
+      "rawReviewStatus": "needs_review",
+      "actionable": true,
+      "amount": 35.56,
+      "supplierName": "מירושלים",
+      "invoiceNumber": "supplier",
+      "documentType": "receipt",
+      "decisionReason": "Held for review: classifier money_direction_unsure; Held for review: confidence is high; confidence below 80% (78%); fse_valid:none",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "missingDataReasons": [],
+      "approvalReasons": [
+        "ממתין לאישור"
+      ],
+      "nonFinancialExcluded": false,
+      "gmailMessageId": "19f1d03e560f92cb",
+      "emailMessageId": "cmr1vy6fh012bj42cxcr8tymc",
+      "fingerprint": "a18943fd3fce2c91d8b817f09c6b8cf0bd603349e772a7e6",
+      "dbReviewStatus": "needs_review",
+      "dbDecisionOrUncertainty": "Held for review: classifier money_direction_unsure; Held for review: confidence is high; confidence below 80% (78%); fse_valid:none",
+      "onLive": true,
+      "liveRow": {
+        "id": "gmail-scan:cmr1vlh4m00rjj42c0eps0k9l",
+        "amount": 35.56,
+        "status": "needs_review",
+        "approvalRequired": true,
+        "dataComplete": true
+      }
+    }
+  ],
+  "liveRoutingSearchOv": {
+    "complete": {
+      "invoices": []
+    },
+    "incomplete": {
+      "invoices": []
+    },
+    "all": {
+      "invoices": []
+    }
+  },
+  "liveTotal": 22
+}
