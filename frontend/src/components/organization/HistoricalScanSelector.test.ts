@@ -23,7 +23,6 @@ test("HistoricalScanSelector PATCHes organization settings with historicalScanYe
   assert.match(source, /method:\s*"PATCH"/);
   assert.match(source, /\/api\/organization\/settings/);
   assert.match(source, /historicalScanYears/);
-  assert.match(source, /עומק הסריקה עודכן/);
 });
 
 test("HistoricalScanSelector exposes years 1 through 5", () => {
@@ -37,9 +36,19 @@ test("HistoricalScanSelector starts a full historical Gmail scan after successfu
   assert.match(source, /daysBack:\s*savedYears\s*\*\s*365/);
 });
 
+test("HistoricalScanSelector shows active scanning state and success copy", () => {
+  assert.match(source, /isScanning/);
+  assert.match(source, /סורק את Gmail כעת/);
+  assert.match(source, /הסריקה הושלמה! נמצאו/);
+  assert.match(source, /waitForOrgGmailScanProgress/);
+  assert.match(source, /onScanComplete/);
+});
+
 test("HistoricalScanSelector is mounted on invoices page above Gmail action buttons", () => {
   assert.match(invoicesPage, /HistoricalScanSelector/);
   assert.match(invoicesPage, /data-testid="historical-scan-selector-slot"/);
+  assert.match(invoicesPage, /onScanComplete/);
+  assert.match(invoicesPage, /refreshMonthsAndInvoices/);
   const selectorIdx = invoicesPage.indexOf("<HistoricalScanSelector");
   const importIdx = invoicesPage.indexOf("invoicesDesign.importFile");
   const scanIdx = invoicesPage.indexOf("invoicesDesign.scanGmail");

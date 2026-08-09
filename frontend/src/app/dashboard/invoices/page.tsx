@@ -696,8 +696,18 @@ export default function InvoicesPage() {
           <HistoricalScanSelector
             value={historicalScanYears}
             onSaved={(settings) => setHistoricalScanYears(settings.historicalScanYears ?? 1)}
+            onScanningChange={setScanning}
+            onScanComplete={async () => {
+              await refreshMonthsAndInvoices();
+              try {
+                const bootstrap = await loadInvoicesBootstrap({ forceNetwork: true });
+                setIncompleteCount(bootstrap.summary.incompleteCount);
+              } catch {
+                /* list refresh already attempted */
+              }
+            }}
             onToast={(toast) => {
-              setMessageTone(toast.tone);
+              setMessageTone(toast.tone === "info" ? "info" : toast.tone);
               setMessage(toast.text);
             }}
           />
