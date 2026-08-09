@@ -944,6 +944,35 @@ export async function preemptPreemptibleGmailScansForOrg(
   return { preempted: true, scanId: active.id, scanMode: active.scanMode };
 }
 
+/**
+ * Force-cancel every queued/running Gmail scan for an org so a new POST can
+ * always spawn a fresh worker (stuck jobs must never be reused).
+ */
+export async function cancelActiveGmailScansForOrg(
+  organizationId: string,
+  reason = "Cancelled — superseded by new Gmail scan"
+): Promise<{ cancelledIds: string[] }> {
+  const activeLogs = await prisma.syncLog.findMany({
+    where: {
+      organizationId,
+      type: "gmail_scan",
+      status: { in: [...GMAIL_SCAN_ACTIVE_STATUSES] },
+      finishedAt: null,
+    },
+    select: { id: true, scanMode: true, status: true },
+    orderBy: { startedAt: "desc" },
+  });
+  const cancelledIds: string[] = [];
+  for (const log of activeLogs) {
+    await finalizeGmailScanCancelled(log.id, reason);
+    cancelledIds.push(log.id);
+    console.warn(
+      `[gmail-scan] cancelled active scanId=${log.id} status=${log.status} mode=${log.scanMode ?? "unknown"} org=${organizationId} reason=${reason}`
+    );
+  }
+  return { cancelledIds };
+}
+
 export async function ensureGmailScanTerminalized(scanId: string, fallbackMessage?: string) {
   const log = await prisma.syncLog.findFirst({
     where: { id: scanId, type: "gmail_scan" },

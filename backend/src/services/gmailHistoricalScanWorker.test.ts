@@ -18,7 +18,9 @@ test("gmail sync processes messages in batches of 50 with event-loop pause", () 
   assert.match(syncSource, /process_\$\{label\}_batch_\$\{processBatchNumber\}/);
 });
 
-test("POST /api/gmail/scan returns 202 with jobId and wraps worker in try/catch/finally", () => {
+test("POST /api/gmail/scan force-cancels active jobs and always creates a fresh scanId", () => {
+  assert.match(apiSource, /cancelActiveGmailScansForOrg/);
+  assert.match(apiSource, /force-cancelled prior active scans/);
   assert.match(apiSource, /res\.status\(202\)\.json\(\{/);
   assert.match(apiSource, /jobId:\s*scanLog\.id/);
   assert.match(apiSource, /status:\s*"started"/);
@@ -27,6 +29,9 @@ test("POST /api/gmail/scan returns 202 with jobId and wraps worker in try/catch/
   assert.match(apiSource, /ensureGmailScanTerminalized/);
   assert.match(apiSource, /leaveRunningForConcurrent/);
   assert.match(apiSource, /\/gmail\/scan\/status/);
+  assert.match(apiSource, /\/gmail\/scan\/cancel/);
+  assert.match(apiSource, /Cancelled by user/);
+  assert.doesNotMatch(apiSource, /Gmail scan already in progress/);
   // Heavy sync must not be awaited before the HTTP 202 response.
   const acceptIdx = apiSource.indexOf("Accepted fire-and-forget");
   const syncImportIdx = apiSource.indexOf(
@@ -34,6 +39,11 @@ test("POST /api/gmail/scan returns 202 with jobId and wraps worker in try/catch/
     acceptIdx
   );
   assert.ok(acceptIdx > 0 && syncImportIdx > acceptIdx);
+});
+
+test("cancelActiveGmailScansForOrg is exported for force-reset of stuck jobs", () => {
+  assert.match(lifecycleSource, /export async function cancelActiveGmailScansForOrg/);
+  assert.match(lifecycleSource, /finalizeGmailScanCancelled/);
 });
 
 test("zombie heartbeat-stale jobs are marked FAILED with restart timeout message", () => {

@@ -52,6 +52,13 @@ test("HistoricalScanSelector shows live polling progress without client timeout 
   assert.match(source, /historical-scan-selector-reset/);
 });
 
+test("HistoricalScanSelector cancel button posts to /api/gmail/scan/cancel", () => {
+  assert.match(source, /\/api\/gmail\/scan\/cancel/);
+  assert.match(source, /cancelActiveHistoricalScan/);
+  assert.match(source, /איפוס \/ ביטול/);
+  assert.match(source, /historical-scan-selector-reset/);
+});
+
 test("historical scan UI polls every 3s without a hard client timeout alert", () => {
   const limits = readFileSync(join(here, "../../lib/dashboard/scanPollLimits.ts"), "utf8");
   assert.match(limits, /HISTORICAL_SCAN_UI_POLL_INTERVAL_MS = 3_000/);

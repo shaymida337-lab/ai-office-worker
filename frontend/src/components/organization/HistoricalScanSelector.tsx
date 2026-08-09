@@ -71,6 +71,7 @@ export function HistoricalScanSelector({
   const [statusText, setStatusText] = useState<string | null>(null);
   const [statusTone, setStatusTone] = useState<"info" | "success" | "error">("info");
   const pollAbortRef = useRef<AbortController | null>(null);
+  const activeScanIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (saving || isScanning) return;
@@ -102,6 +103,7 @@ export function HistoricalScanSelector({
   function resetScanUi(options?: { keepErrorText?: string }) {
     pollAbortRef.current?.abort();
     pollAbortRef.current = null;
+    activeScanIdRef.current = null;
     setSaving(false);
     setScanning(false);
     if (options?.keepErrorText) {
@@ -111,6 +113,24 @@ export function HistoricalScanSelector({
       setStatusTone("info");
       setStatusText(null);
     }
+  }
+
+  async function cancelActiveHistoricalScan() {
+    const scanId = activeScanIdRef.current;
+    pollAbortRef.current?.abort();
+    pollAbortRef.current = null;
+    try {
+      await apiFetch("/api/gmail/scan/cancel", {
+        method: "POST",
+        timeoutMs: 12_000,
+        body: JSON.stringify(scanId ? { scanId } : {}),
+      });
+    } catch {
+      /* UI reset still proceeds even if cancel API fails */
+    }
+    resetScanUi({
+      keepErrorText: "הסריקה בוטלה. אפשר לבחור שוב או לרענן את הרשימה.",
+    });
   }
 
   async function saveYears(years: HistoricalScanYears) {
@@ -165,6 +185,7 @@ export function HistoricalScanSelector({
       if (!jobId) {
         throw new Error("הסריקה התחילה אך לא התקבל מזהה סריקה — רענן את הרשימה בעוד כמה דקות");
       }
+      activeScanIdRef.current = jobId;
 
       setStatusText(historicalScanLiveProgressMessage(0, 0));
 
@@ -283,11 +304,7 @@ export function HistoricalScanSelector({
             variant="secondary"
             className="min-h-8 px-3 text-xs"
             data-testid="historical-scan-selector-reset"
-            onClick={() =>
-              resetScanUi({
-                keepErrorText: "הסריקה בוטלה. אפשר לבחור שוב או לרענן את הרשימה.",
-              })
-            }
+            onClick={() => void cancelActiveHistoricalScan()}
           >
             איפוס / ביטול
           </Button>

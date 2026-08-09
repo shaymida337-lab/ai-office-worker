@@ -157,12 +157,12 @@ import {
   reapOverdueLegacyScanLogsThrottled,
   createQueuedGmailScanLog,
   ensureGmailScanTerminalized,
+  finalizeGmailScanCancelled,
   finalizeGmailScanFailed,
-  findActiveGmailScanLog,
   findLastGmailScanSuccessCursor,
   isTerminalGmailScanDbStatus,
   logScanLifecycle,
-  preemptPreemptibleGmailScansForOrg,
+  cancelActiveGmailScansForOrg,
   promoteGmailScanToRunning,
   refreshGmailScanProgressOnRead,
   resolveIncrementalGmailScanWindow,
@@ -8916,41 +8916,35 @@ async function scanGmail(req: Request, res: Response) {
       `[gmail-scan] POST /api/gmail/scan org=${organizationId} scanMode=${scanMode} historical=${useHistoricalScan} fullScan=${fullScan} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack} since=${since?.toISOString() ?? "none"} maxMessages=${maxMessages ?? "default"} cursorSource=${incrementalCursorSource ?? "n/a"}`
     );
 
-    // Historical/full must not attach to an in-flight fast_recurring job — preempt before create.
-    // Keep this on the accept path (usually ms); heavy sync stays in the background worker.
-    if (useHistoricalScan || fullScan || rescanInvoices) {
-      await preemptPreemptibleGmailScansForOrg(organizationId);
-    }
-
-    const activeLog = await findActiveGmailScanLog(organizationId);
-    if (activeLog) {
+    // Never reuse a stuck/running SyncLog — cancel every active job, then spawn a fresh worker.
+    const cancelled = await cancelActiveGmailScansForOrg(
+      organizationId,
+      useHistoricalScan || fullScan || rescanInvoices
+        ? "Cancelled — superseded by new historical/full Gmail scan"
+        : "Cancelled — superseded by new Gmail scan"
+    );
+    if (cancelled.cancelledIds.length) {
       console.log(
-        `[gmail-scan] Existing scan in progress org=${organizationId} scanId=${activeLog.id} mode=${activeLog.scanMode ?? "unknown"}`
+        `[gmail-scan] force-cancelled prior active scans org=${organizationId} ids=${cancelled.cancelledIds.join(",")}`
       );
-      res.status(202).json({
-        success: true,
-        jobId: activeLog.id,
-        scanId: activeLog.id,
-        status: "started",
-        inProgress: true,
-        daysBack,
-        progressUrl: `/api/gmail/scan/status?scanId=${encodeURIComponent(activeLog.id)}`,
-        message: "Gmail scan already in progress",
-      });
-      return;
     }
 
-    const { scanLog, created } = await createQueuedGmailScanLog(organizationId, scanMode);
+    let { scanLog, created } = await createQueuedGmailScanLog(organizationId, scanMode);
     if (!created) {
-      res.status(202).json({
-        success: true,
-        jobId: scanLog.id,
+      // Race with another starter — cancel again and create once more.
+      await cancelActiveGmailScansForOrg(organizationId, "Cancelled — race on scan start, forcing fresh job");
+      const retry = await createQueuedGmailScanLog(organizationId, scanMode);
+      scanLog = retry.scanLog;
+      created = retry.created;
+    }
+    if (!created) {
+      console.error(
+        `[gmail-scan] failed to create fresh scan log after cancel org=${organizationId} reused=${scanLog.id}`
+      );
+      res.status(409).json({
+        error: "לא ניתן להתחיל סריקה חדשה — נסה שוב בעוד רגע",
+        code: "GMAIL_SCAN_CREATE_FAILED",
         scanId: scanLog.id,
-        status: "started",
-        inProgress: true,
-        daysBack,
-        progressUrl: `/api/gmail/scan/status?scanId=${encodeURIComponent(scanLog.id)}`,
-        message: "Gmail scan already in progress",
       });
       return;
     }
@@ -9140,6 +9134,49 @@ apiRouter.get("/gmail/scan/status", async (req, res) => {
   } catch (err) {
     console.error("[gmail-scan] status failed", err);
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load scan status" });
+  }
+});
+
+apiRouter.post("/gmail/scan/cancel", async (req, res) => {
+  try {
+    const organizationId = req.auth!.organizationId;
+    const bodyScanId =
+      typeof req.body?.scanId === "string"
+        ? req.body.scanId.trim()
+        : typeof req.body?.jobId === "string"
+          ? req.body.jobId.trim()
+          : "";
+    if (bodyScanId) {
+      const log = await prisma.syncLog.findFirst({
+        where: { id: bodyScanId, organizationId, type: "gmail_scan" },
+        select: { id: true, status: true, finishedAt: true },
+      });
+      if (!log) {
+        res.status(404).json({ error: "Scan not found", scanId: bodyScanId });
+        return;
+      }
+      if (!log.finishedAt && !isTerminalGmailScanDbStatus(log.status)) {
+        await finalizeGmailScanCancelled(log.id, "Cancelled by user");
+        logScanLifecycle(log.id, "cancelled", "reason=user_cancel");
+      }
+      const leftover = await cancelActiveGmailScansForOrg(organizationId, "Cancelled by user");
+      res.json({
+        success: true,
+        status: "cancelled",
+        scanId: bodyScanId,
+        cancelledIds: Array.from(new Set([bodyScanId, ...leftover.cancelledIds])),
+      });
+      return;
+    }
+    const { cancelledIds } = await cancelActiveGmailScansForOrg(organizationId, "Cancelled by user");
+    res.json({
+      success: true,
+      status: "cancelled",
+      cancelledIds,
+    });
+  } catch (err) {
+    console.error("[gmail-scan] cancel failed", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to cancel scan" });
   }
 });
 
