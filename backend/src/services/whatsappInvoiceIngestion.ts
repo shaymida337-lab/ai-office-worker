@@ -77,6 +77,7 @@ export type WhatsAppInvoiceIngestionDeps = {
     mimeType: string;
     buffer: Buffer;
     fromNumber: string;
+    organizationId?: string;
   }) => Promise<EmailAnalysis>;
   recordFinancialDocumentDecisionFn?: typeof recordFinancialDocumentDecision;
   findExistingCrossSourceDuplicateFn?: typeof findExistingCrossSourceDuplicate;
@@ -164,7 +165,14 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
     const fileHash = sha256(buffer);
     const fileMd5 = md5(buffer);
     console.log(`[whatsapp-invoice] extraction start logId=${input.whatsappLogId} index=${index} filename="${filename}" mime=${mimeType} bytes=${buffer.length}`);
-    const analysis = await analyzeDocument({ body: input.body, filename, mimeType, buffer, fromNumber: input.fromNumber });
+    const analysis = await analyzeDocument({
+      body: input.body,
+      filename,
+      mimeType,
+      buffer,
+      fromNumber: input.fromNumber,
+      organizationId: input.organizationId,
+    });
     console.log(`[whatsapp-invoice] extraction done logId=${input.whatsappLogId} supplier="${maskSupplierForLog(analysis.supplier)}" amount=${analysis.amount ?? "null"} invoiceNumber=${analysis.invoiceNumber ? "present" : "null"} documentType=${analysis.documentType} confidence=${analysis.confidence}`);
 
     // F4: גבול שפיות ±2 שנים על תאריכים — זהה למסלול Gmail, דרך המודול המשותף.
@@ -620,6 +628,7 @@ async function analyzeWhatsAppDocument(input: {
   mimeType: string;
   buffer: Buffer;
   fromNumber: string;
+  organizationId?: string;
 }): Promise<EmailAnalysis> {
   let fileScan: InvoiceScanResult | null = null;
   try {
@@ -627,6 +636,7 @@ async function analyzeWhatsAppDocument(input: {
       fileBase64: input.buffer.toString("base64"),
       mimeType: input.mimeType,
       filename: input.filename,
+      organizationId: input.organizationId,
     });
   } catch (err) {
     console.error("[whatsapp-invoice] file OCR extraction failed", {
@@ -672,6 +682,7 @@ async function analyzeWhatsAppDocumentTextFallback(input: {
   mimeType: string;
   buffer: Buffer;
   fromNumber: string;
+  organizationId?: string;
 }) {
   const pdfText = input.mimeType === PDF_MIME ? await extractPdfText(input.buffer) : "";
   return analyzeEmailContent({
@@ -683,6 +694,7 @@ async function analyzeWhatsAppDocumentTextFallback(input: {
     ].filter(Boolean).join("\n\n"),
     filenames: [input.filename],
     sender: input.fromNumber,
+    organizationId: input.organizationId,
   });
 }
 

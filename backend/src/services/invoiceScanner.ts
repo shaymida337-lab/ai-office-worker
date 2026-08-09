@@ -100,7 +100,8 @@ async function runInvoiceScanForClient(clientId: string, client: ClientForInvoic
         bodyForExtraction,
         subject,
         parts.map((part) => ({ filename: part.filename, mimeType: part.mimeType })),
-        { name: client.name, email: getClientDeliverableEmail(client) ?? undefined }
+        { name: client.name, email: getClientDeliverableEmail(client) ?? undefined },
+        organizationId
       );
       invoice.pdfAttachment = attachments[0]?.buffer;
 

@@ -118,6 +118,33 @@ model Organization {
   appointmentReminderJobs     AppointmentReminderJob[]
   appointmentReminderEvents   AppointmentReminderEvent[]
   appointmentAttendanceStates AppointmentAttendanceProjection[]
+  orgUsageEvents              OrgUsageEvent[]
+}
+
+/// Passive/passive COGS metering — usage events per organization (never blocks requests).
+enum OrgUsageProvider {
+  ANTHROPIC
+  OPENAI_WHISPER
+  OPENAI_TTS
+  ELEVENLABS
+  TWILIO
+  GOOGLE
+}
+
+model OrgUsageEvent {
+  id               String          @id @default(uuid())
+  orgId            String          @map("org_id")
+  organization     Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  provider         OrgUsageProvider
+  feature          String
+  units            Float
+  estimatedCostUsd Decimal         @map("estimated_cost_usd") @db.Decimal(10, 6)
+  metadata         Json?
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  @@index([orgId, createdAt])
+  @@index([createdAt])
+  @@map("org_usage_events")
 }
 
 /// Natalie Reliability Center V1 — persistent, aggregated production incident store.

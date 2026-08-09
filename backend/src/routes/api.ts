@@ -3747,7 +3747,7 @@ apiRouter.post("/natalie/voice", requirePerm("chat.use"), async (req, res) => {
   }
 
   const result = await synthesizeSpeech(
-    { text, provider: synthesizeProvider },
+    { text, provider: synthesizeProvider, organizationId: req.auth!.organizationId },
     buildNatalieVoiceCredentials(config.aiVoice),
     { fetchFn: fetch }
   );
@@ -3788,7 +3788,8 @@ apiRouter.post("/natalie/transcribe", requirePerm("chat.use"), natalieAudioUploa
     file.mimetype || "application/octet-stream",
     { openAiApiKey: config.aiVoice.openAiApiKey },
     { fetchFn: fetch },
-    promptHint
+    promptHint,
+    organizationId
   );
 
   if (!result.ok) {
@@ -4085,7 +4086,7 @@ apiRouter.post("/leads/scan-gmail", async (req, res) => {
 apiRouter.post("/help/ask", async (req, res) => {
   const question = typeof req.body?.question === "string" ? req.body.question : "";
   const { answerHelpQuestion } = await import("../services/helpAI.js");
-  res.json({ answer: await answerHelpQuestion(question) });
+  res.json({ answer: await answerHelpQuestion(question, req.auth?.organizationId) });
 });
 
 apiRouter.get("/accountant/settings", async (req, res) => {

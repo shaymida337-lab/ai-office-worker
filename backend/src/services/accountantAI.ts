@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
+import { meterAnthropicResponse } from "../lib/anthropicMetering.js";
 import { prisma } from "../lib/prisma.js";
 
 export type ExpenseCategory = {
@@ -11,7 +12,12 @@ export type ExpenseCategory = {
 
 const anthropic = hasClaude() ? new Anthropic({ apiKey: config.anthropic.apiKey }) : null;
 
-export async function categorizeExpense(description: string, vendor: string, amount: number): Promise<ExpenseCategory> {
+export async function categorizeExpense(
+  description: string,
+  vendor: string,
+  amount: number,
+  organizationId?: string | null
+): Promise<ExpenseCategory> {
   const fallback = fallbackCategory(description, vendor);
   if (!anthropic) return fallback;
   const prompt = `Categorize this business expense for Israeli accounting. Return JSON only.
@@ -26,6 +32,7 @@ Return: {"category":"","isDeductible":true,"vatEligible":true,"confidence":0}`;
       max_tokens: 400,
       messages: [{ role: "user", content: prompt }],
     });
+    meterAnthropicResponse(organizationId, "accountant_categorize", message);
     const text = message.content[0]?.type === "text" ? message.content[0].text : "{}";
     return normalizeCategory(JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? text), fallback);
   } catch (err) {
@@ -39,7 +46,7 @@ export async function categorizeAll(organizationId: string, period: string) {
   const expenses = await prisma.supplierPayment.findMany({ where: { organizationId, date: { gte: start, lte: end } } });
   return Promise.all(expenses.map(async (expense) => ({
     expenseId: expense.id,
-    ...(await categorizeExpense(expense.subject ?? "", expense.supplier, expense.amount)),
+    ...(await categorizeExpense(expense.subject ?? "", expense.supplier, expense.amount, organizationId)),
   })));
 }
 

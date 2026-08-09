@@ -22,7 +22,7 @@ export async function buildAccountantSummary(organizationId: string, period = cu
   ]);
   const categorizedExpenses = await Promise.all(expenses.map(async (expense) => ({
     ...expense,
-    accounting: await categorizeExpense(expense.subject ?? "", expense.supplier, expense.amount),
+    accounting: await categorizeExpense(expense.subject ?? "", expense.supplier, expense.amount, organizationId),
   })));
   const totalIncome = incomeInvoices.reduce((sum, invoice) => sum + invoice.amount, 0);
   const totalExpenses = sumApprovedSupplierExpenses(expenses);

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
+import { meterAnthropicResponse } from "../lib/anthropicMetering.js";
 
 const anthropic = hasClaude() ? new Anthropic({ apiKey: config.anthropic.apiKey }) : null;
 
@@ -9,7 +10,7 @@ const HELP_SYSTEM_PROMPT = `אתה עוזר תמיכה של AI Office Worker.
 תמיד ענה בצורה מועילה ומעשית.
 אם לא יודע → "לא מצאתי תשובה, שלח לנו WhatsApp"`;
 
-export async function answerHelpQuestion(question: string) {
+export async function answerHelpQuestion(question: string, organizationId?: string | null) {
   const cleanQuestion = question.trim().slice(0, 1000);
   if (!cleanQuestion) return "כתוב בקצרה מה לא עובד, ואנסה לעזור צעד אחר צעד.";
 
@@ -22,6 +23,7 @@ export async function answerHelpQuestion(question: string) {
       system: HELP_SYSTEM_PROMPT,
       messages: [{ role: "user", content: cleanQuestion }],
     });
+    meterAnthropicResponse(organizationId, "help_ai", response);
     const text = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
     return text || fallbackHelpAnswer(cleanQuestion);
   } catch (err) {

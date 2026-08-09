@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
 import twilio, { validateRequest } from "twilio";
 import { config } from "../lib/config.js";
+import { logUsageEvent } from "../lib/metering.js";
 import { prisma } from "../lib/prisma.js";
 import {
   findClientByWhatsAppNumber,
@@ -412,6 +413,13 @@ export async function createInboundWhatsAppLogOnce(input: InboundWhatsAppLogInpu
         mediaJson: input.mediaJson,
       },
       select: { id: true },
+    });
+    void logUsageEvent({
+      orgId: input.organizationId,
+      provider: "TWILIO",
+      feature: "whatsapp_chat",
+      usageDetails: { kind: "twilio", messageCount: 1 },
+      metadata: { direction: "inbound" },
     });
     return { id: created.id, duplicate: false, created: true };
   } catch (error) {

@@ -75,7 +75,12 @@ export type CameraIngestionResult = {
 
 export type CameraIngestionDeps = {
   prismaClient?: Pick<typeof prisma, "financialDocumentReview">;
-  analyzeFile?: (input: { fileBase64: string; mimeType: string; filename?: string }) => Promise<CameraExtractionPreview>;
+  analyzeFile?: (input: {
+    fileBase64: string;
+    mimeType: string;
+    filename?: string;
+    organizationId?: string | null;
+  }) => Promise<CameraExtractionPreview>;
   saveLocalFile?: (input: { channel: "camera"; filename: string; buffer: Buffer }) => Promise<string>;
 };
 
@@ -322,7 +327,12 @@ export async function ingestCameraDocument(
     const analyze =
       deps.analyzeFile ??
       ((await import("../claude.js")).analyzeInvoiceFile as NonNullable<CameraIngestionDeps["analyzeFile"]>);
-    preview = await analyze({ fileBase64: input.fileBase64, mimeType: input.mimeType, filename: input.filename });
+    preview = await analyze({
+      fileBase64: input.fileBase64,
+      mimeType: input.mimeType,
+      filename: input.filename,
+      organizationId: input.organizationId,
+    });
   } catch (err) {
     extractionError = err instanceof Error ? err.message : String(err);
   }

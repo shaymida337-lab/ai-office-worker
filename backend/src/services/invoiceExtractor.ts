@@ -1,5 +1,6 @@
 ﻿import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
+import { meterAnthropicResponse } from "../lib/anthropicMetering.js";
 import { parseLabeledAmount } from "./amount/parseAmount.js";
 import { clampBusinessDateString } from "./dates/businessDate.js";
 
@@ -28,7 +29,8 @@ export async function extractInvoiceData(
   emailBody: string,
   subject: string,
   attachments: AttachmentSummary[],
-  clientFallback?: { name?: string | null; email?: string | null }
+  clientFallback?: { name?: string | null; email?: string | null },
+  organizationId?: string | null
 ): Promise<InvoiceData> {
   const fallback = fallbackInvoiceData(emailBody, subject, attachments, clientFallback);
   if (!anthropic) return fallback;
@@ -48,6 +50,7 @@ supplierName is the supplier/vendor/issuer business that issued the invoice, NOT
       max_tokens: 900,
       messages: [{ role: "user", content: prompt }],
     });
+    meterAnthropicResponse(organizationId, "invoice_extraction", message);
     const text = message.content[0]?.type === "text" ? message.content[0].text : "{}";
     return normalizeInvoiceData(parseJsonObject(text) ?? {}, fallback, clientFallback);
   } catch (err) {

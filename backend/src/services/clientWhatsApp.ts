@@ -56,7 +56,7 @@ class ClientWhatsAppService {
     let taskId: string | null = null;
 
     if (analysis.hasInvoice) {
-      const invoice = await extractInvoiceData(body, "WhatsApp", [], { name: clientRecord.name, email: clientRecord.email });
+      const invoice = await extractInvoiceData(body, "WhatsApp", [], { name: clientRecord.name, email: clientRecord.email }, clientRecord.organizationId);
       const created = await prisma.invoice.create({
         data: {
           organizationId: clientRecord.organizationId,

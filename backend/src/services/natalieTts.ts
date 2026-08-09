@@ -1,3 +1,6 @@
+import { estimateMp3DurationSeconds } from "../lib/cost-calculator.js";
+import { logUsageEvent } from "../lib/metering.js";
+
 export const DEFAULT_TTS_PROVIDER = "azure";
 export const DEFAULT_ELEVENLABS_MODEL = "eleven_multilingual_v2";
 export const ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1/text-to-speech";
@@ -16,6 +19,7 @@ export type TtsProvider = "azure" | "elevenlabs" | "openai";
 export type SynthesizeSpeechParams = {
   text: string;
   provider?: TtsProvider;
+  organizationId?: string | null;
 };
 
 export type SynthesizeSpeechCredentials = {
@@ -66,10 +70,10 @@ export async function synthesizeSpeech(
   }
 
   if (provider === "elevenlabs") {
-    return synthesizeWithElevenLabs(input, credentials, deps.fetchFn);
+    return synthesizeWithElevenLabs(input, credentials, deps.fetchFn, params.organizationId);
   }
 
-  return synthesizeWithOpenAi(input, credentials, deps.fetchFn);
+  return synthesizeWithOpenAi(input, credentials, deps.fetchFn, params.organizationId);
 }
 
 function buildAzureSpeechUrl(region: string): string {
@@ -123,7 +127,8 @@ async function synthesizeWithAzure(
 async function synthesizeWithElevenLabs(
   text: string,
   credentials: SynthesizeSpeechCredentials,
-  fetchFn: typeof fetch
+  fetchFn: typeof fetch,
+  organizationId?: string | null
 ): Promise<SynthesizeResult> {
   const elevenLabsApiKey = credentials.elevenLabsApiKey?.trim();
   if (!elevenLabsApiKey) {
@@ -151,13 +156,18 @@ async function synthesizeWithElevenLabs(
     }),
   });
 
-  return toSynthesizeResult(response, "elevenlabs");
+  const result = await toSynthesizeResult(response, "elevenlabs");
+  if (result.ok) {
+    meterTtsUsage(organizationId, "elevenlabs", text.length, result.audio.length);
+  }
+  return result;
 }
 
 async function synthesizeWithOpenAi(
   text: string,
   credentials: SynthesizeSpeechCredentials,
-  fetchFn: typeof fetch
+  fetchFn: typeof fetch,
+  organizationId?: string | null
 ): Promise<SynthesizeResult> {
   const openAiApiKey = credentials.openAiApiKey?.trim();
   if (!openAiApiKey) {
@@ -185,7 +195,40 @@ async function synthesizeWithOpenAi(
     }),
   });
 
-  return toSynthesizeResult(response, "openai");
+  const result = await toSynthesizeResult(response, "openai");
+  if (result.ok) {
+    meterTtsUsage(organizationId, "openai", text.length, result.audio.length);
+  }
+  return result;
+}
+
+function meterTtsUsage(
+  organizationId: string | null | undefined,
+  provider: "elevenlabs" | "openai",
+  textChars: number,
+  audioByteLength: number
+): void {
+  const orgId = organizationId?.trim();
+  if (!orgId) return;
+  if (provider === "elevenlabs") {
+    void logUsageEvent({
+      orgId,
+      provider: "ELEVENLABS",
+      feature: "voice_tts",
+      usageDetails: { kind: "elevenlabs", characters: textChars },
+    });
+    return;
+  }
+  void logUsageEvent({
+    orgId,
+    provider: "OPENAI_TTS",
+    feature: "voice_tts",
+    usageDetails: {
+      kind: "openai_tts",
+      textChars,
+      audioDurationSeconds: estimateMp3DurationSeconds(audioByteLength),
+    },
+  });
 }
 
 async function toSynthesizeResult(

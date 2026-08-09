@@ -266,6 +266,7 @@ export async function askNatalieBusinessQuestion(input: {
       dashboardStats: stats,
       richerBusinessData: richerContext,
     },
+    organizationId: input.organizationId,
   });
   return withNatalieAskRouting(claudeResponse, input.question, "claude_fallback");
 }

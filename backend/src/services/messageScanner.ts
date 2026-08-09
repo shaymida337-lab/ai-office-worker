@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
+import { meterAnthropicResponse } from "../lib/anthropicMetering.js";
 import { prisma } from "../lib/prisma.js";
 import { QUALIFIED_LEAD_TAG, shouldCreateLeadFromMessageScan } from "./crm/leadQuality.js";
 import { createCrmLead, handleLeadReply } from "./crm.js";
@@ -192,6 +193,11 @@ async function analyzeMessage(input: MessageScanInput & { existingClient: boolea
         },
       ],
     });
+    meterAnthropicResponse(
+      input.organizationId,
+      input.channel === "gmail" ? "gmail_scan" : "whatsapp_chat",
+      message
+    );
     const text = message.content[0]?.type === "text" ? message.content[0].text : "{}";
     return normalizeAnalysis(parseJson(text), fallback);
   } catch (err) {

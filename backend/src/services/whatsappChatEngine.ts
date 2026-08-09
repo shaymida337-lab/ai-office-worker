@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
+import { meterAnthropicResponse } from "../lib/anthropicMetering.js";
 import { prisma } from "../lib/prisma.js";
 import { getDashboardStats } from "./dashboard.js";
 import { buildNatalieDailySummaryMessage } from "./whatsapp/natalieWhatsAppData.js";
@@ -37,7 +38,8 @@ export async function handleOwnerMessage(message: string, organizationId: string
       `מידע על העסק: ${JSON.stringify(context)}`,
       `שאלת הבעלים: ${message}`,
     ].join("\n"),
-    "אפשר לשאול אותי על דוח, לקוחות, משימות, התראות או הכנסות."
+    "אפשר לשאול אותי על דוח, לקוחות, משימות, התראות או הכנסות.",
+    organizationId
   );
   return saveAndReturn(organizationId, phone, undefined, message, response);
 }
@@ -69,7 +71,8 @@ export async function handleClientMessage(message: string, clientId: string, org
         `מידע על הלקוח: ${JSON.stringify(context)}`,
         `שאלת הלקוח: ${message}`,
       ].join("\n"),
-      "אפשר לשאול אותי על חשבוניות, תשלומים, משימות או סטטוס."
+      "אפשר לשאול אותי על חשבוניות, תשלומים, משימות או סטטוס.",
+      organizationId
     );
   }
 
@@ -158,7 +161,7 @@ async function buildClientContext(clientId: string, organizationId: string) {
   return { client, openTasks, openInvoices: openInvoices._count, openAmount: openInvoices._sum.amount ?? 0 };
 }
 
-async function callClaude(prompt: string, fallback: string) {
+async function callClaude(prompt: string, fallback: string, organizationId?: string) {
   if (!anthropic) return fallback;
   try {
     const response = await anthropic.messages.create({
@@ -166,6 +169,7 @@ async function callClaude(prompt: string, fallback: string) {
       max_tokens: 350,
       messages: [{ role: "user", content: prompt }],
     });
+    meterAnthropicResponse(organizationId, "whatsapp_chat", response);
     return response.content[0]?.type === "text" ? response.content[0].text.trim() : fallback;
   } catch (err) {
     console.error("[whatsapp-chat] Claude failed", err);

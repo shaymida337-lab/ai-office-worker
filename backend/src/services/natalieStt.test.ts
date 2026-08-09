@@ -87,7 +87,7 @@ test("transcribeAudio calls OpenAI Whisper with correct URL, model, and language
   assert.ok(body instanceof FormData);
   assert.equal(formDataField(body, "model"), "whisper-1");
   assert.equal(formDataField(body, "language"), "he");
-  assert.equal(formDataField(body, "response_format"), "json");
+  assert.equal(formDataField(body, "response_format"), "verbose_json");
 
   const file = body.get("file");
   assert.ok(file instanceof Blob);

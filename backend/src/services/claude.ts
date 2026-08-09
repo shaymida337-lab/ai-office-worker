@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
+import { meterAnthropicResponse } from "../lib/anthropicMetering.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "./financialAmountLimits.js";
 import { parseAmountOrNull, parseLabeledAmount } from "./amount/parseAmount.js";
 import {
@@ -303,6 +304,7 @@ export async function analyzeEmailContent(input: {
   body: string;
   filenames: string[];
   sender?: string;
+  organizationId?: string | null;
 }): Promise<EmailAnalysis> {
   const pdfDeterministic = extractDeterministicInvoiceFieldsFromEmailBody(input.body);
 
@@ -321,6 +323,7 @@ export async function analyzeEmailContent(input: {
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userContent }],
   });
+  meterAnthropicResponse(input.organizationId, "invoice_extraction", message);
 
   const text =
     message.content[0].type === "text" ? message.content[0].text : "{}";
@@ -353,6 +356,7 @@ export async function answerBusinessQuestionWithClaude(input: {
   question: string;
   businessContext: unknown;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
+  organizationId?: string | null;
 }): Promise<NatalieClaudeResponse> {
   if (!anthropic) {
     throw new Error("ANTHROPIC_API_KEY is not configured");
@@ -385,6 +389,7 @@ export async function answerBusinessQuestionWithClaude(input: {
           timeout: 45000,
         }
       );
+      meterAnthropicResponse(input.organizationId, "natalie_chat", finalMessage);
       const firstBlock = finalMessage.content[0];
       const text = firstBlock?.type === "text" ? firstBlock.text.trim() : "{}";
       const parsed = parseJsonObject<NatalieClaudeResponse>(text, "Natalie business answer");
@@ -409,6 +414,7 @@ export async function analyzeInvoiceFile(input: {
   mimeType: string;
   filename?: string;
   correlationId?: string | null;
+  organizationId?: string | null;
 }): Promise<InvoiceScanResult> {
   const trace = createCoreWorkflowTrace({
     subsystem: "claude_extraction",
@@ -514,6 +520,7 @@ ${ocrHintForPrompt(prepared.ocrText, prepared.ocrConfidence)}`;
       timeout: 45000,
     }
   );
+  meterAnthropicResponse(input.organizationId, "invoice_extraction", message);
 
   emitCoreWorkflowAudit(trace, "completed", "claude_request");
 
@@ -548,6 +555,7 @@ ${ocrHintForPrompt(prepared.ocrText, prepared.ocrConfidence)}`;
           timeout: 45000,
         }
       );
+      meterAnthropicResponse(input.organizationId, "invoice_extraction", retryMessage, { retry: true });
       emitCoreWorkflowAudit(trace, "completed", "claude_json_retry");
       const retryText =
         retryMessage.content[0]?.type === "text" ? retryMessage.content[0].text : "{}";

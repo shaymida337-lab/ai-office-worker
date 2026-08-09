@@ -2,6 +2,7 @@ import crypto from "crypto";
 import axios from "axios";
 import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
+import { meterAnthropicResponse } from "../lib/anthropicMetering.js";
 import { prisma } from "../lib/prisma.js";
 import { getClientDeliverableEmail } from "./clientContact.js";
 
@@ -82,7 +83,13 @@ export async function generateSocialPosts(clientId: string, organizationId: stri
       generated.push({
         platform,
         scheduledAt,
-        content: await generatePostContent({ businessName: client.name, platform, settings, previousPosts: previousPosts.map((post) => post.content) }),
+        content: await generatePostContent({
+          businessName: client.name,
+          platform,
+          settings,
+          previousPosts: previousPosts.map((post) => post.content),
+          organizationId,
+        }),
       });
     }
   }
@@ -125,14 +132,20 @@ export async function approvePost(postId: string) {
 }
 
 export async function rejectPost(postId: string) {
-  const rows = await prisma.$queryRawUnsafe<Array<SocialPostRow & { clientName: string }>>(
-    `SELECT p.*, c."name" as "clientName" FROM "SocialPost" p JOIN "Client" c ON c."id" = p."clientId" WHERE p."id" = $1 LIMIT 1`,
+  const rows = await prisma.$queryRawUnsafe<Array<SocialPostRow & { clientName: string; organizationId: string }>>(
+    `SELECT p.*, c."name" as "clientName", c."organizationId" as "organizationId" FROM "SocialPost" p JOIN "Client" c ON c."id" = p."clientId" WHERE p."id" = $1 LIMIT 1`,
     postId
   );
   const post = rows[0];
   if (!post) throw new Error("Post not found");
   const settings = await getOrCreateSettings(post.clientId);
-  const content = await generatePostContent({ businessName: post.clientName, platform: post.platform, settings, previousPosts: [post.content] });
+  const content = await generatePostContent({
+    businessName: post.clientName,
+    platform: post.platform,
+    settings,
+    previousPosts: [post.content],
+    organizationId: post.organizationId,
+  });
   await prisma.$executeRawUnsafe(
     'UPDATE "SocialPost" SET "status" = $1, "content" = $2, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $3',
     "pending_approval",
@@ -209,7 +222,13 @@ async function getOrCreateSettings(clientId: string): Promise<SocialSettingsRow>
   return { businessType: "עסק מקומי", brandColors: null, brandVoice: "professional", postsPerWeek: 3, targetAudience: null, canvaTemplateId: null };
 }
 
-async function generatePostContent(input: { businessName: string; platform: Platform; settings: SocialSettingsRow; previousPosts: string[] }) {
+async function generatePostContent(input: {
+  businessName: string;
+  platform: Platform;
+  settings: SocialSettingsRow;
+  previousPosts: string[];
+  organizationId?: string | null;
+}) {
   const prompt = `Generate one ${input.platform} post in Hebrew for:
 Business: ${input.businessName}
 Business type: ${input.settings.businessType}
@@ -225,6 +244,7 @@ Return caption + hashtags + call to action. Keep it professional and platform-sp
       max_tokens: 500,
       messages: [{ role: "user", content: prompt }],
     });
+    meterAnthropicResponse(input.organizationId, "social_media", message);
     return message.content[0]?.type === "text" ? message.content[0].text.trim() : fallbackContent(input.platform, input.businessName, input.settings.businessType);
   } catch {
     return fallbackContent(input.platform, input.businessName, input.settings.businessType);

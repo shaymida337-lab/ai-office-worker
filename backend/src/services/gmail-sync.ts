@@ -1829,6 +1829,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         logStep,
         ownerEmails,
         messageCorrelationId,
+        organizationId,
       );
       const visualAttachmentText = visualAttachmentHints.text;
       const bodyForAnalysis = [email.bodyText, pdfText && `--- PDF ATTACHMENT TEXT ---\n${pdfText}`, visualAttachmentText && `--- VISUAL ATTACHMENT ANALYSIS ---\n${visualAttachmentText}`].filter(Boolean).join("\n\n");
@@ -1921,6 +1922,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         body: bodyForAnalysis,
         filenames: attachmentFilenamesForClassification,
         sender: email.from,
+        organizationId,
       });
       logStep(`[gmail-sync] ai message=${email.gmailId} supplier="${analysis.supplier}" amount=${analysis.amount ?? "unknown"} documentType=${analysis.documentType} paymentRequired=${analysis.paymentRequired} confidence=${analysis.confidence}`);
       const ocrClassifierText = `${supplierEvidenceText}\n${analysis.supplier ?? ""}`;
@@ -2985,6 +2987,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                 subject: email.subject,
                 bodyText: email.bodyText,
                 sender: email.from,
+                organizationId,
               })
             : { skipped: false as const, analysis, attachmentText: "" };
           if (targetAnalysis.skipped) {
@@ -5574,6 +5577,7 @@ async function analyzeInvoiceAttachmentForEmail(input: {
   bodyText: string;
   sender: string;
   correlationId?: string | null;
+  organizationId?: string | null;
 }): Promise<AttachmentInvoiceAnalysisResult> {
   const imageMimeType = imageMimeTypeForPart(input.part);
   if (imageMimeType) {
@@ -5588,6 +5592,7 @@ async function analyzeInvoiceAttachmentForEmail(input: {
         correlationId:
           input.correlationId ??
           resolveCoreWorkflowCorrelationId({ gmailMessageId: input.gmailMessageId }),
+        organizationId: input.organizationId,
       });
     } catch (err) {
       if (!isClaudeVisionSupportedImageMime(imageMimeType)) {
@@ -5638,6 +5643,7 @@ async function analyzeInvoiceAttachmentForEmail(input: {
     body,
     filenames: [input.part.filename].filter(Boolean) as string[],
     sender: input.sender,
+    organizationId: input.organizationId,
   });
   return { skipped: false as const, analysis, attachmentText };
 }
@@ -5666,6 +5672,7 @@ async function extractVisualAttachmentHints(
   logStep: (message: string) => void,
   ownerEmails: Set<string>,
   correlationId?: string | null,
+  organizationId?: string | null,
 ): Promise<{
   text: string;
   invoiceCandidateFound: boolean;
@@ -5692,6 +5699,7 @@ async function extractVisualAttachmentHints(
         mimeType: imageMimeType ?? "image/jpeg",
         filename: part.filename ?? undefined,
         correlationId: correlationId ?? resolveCoreWorkflowCorrelationId({ gmailMessageId: messageId }),
+        organizationId,
       });
       if (result.ocrText) {
         logStep(`[gmail-sync] OCR_TEXT_EXTRACTED message=${messageId} file="${filename}" source=tesseract_heb_eng confidence=${result.ocrConfidence ?? "unknown"} text="${truncateForLog(result.ocrText)}"`);
@@ -7125,7 +7133,9 @@ export async function fetchAndParseGmailMessageFinancialFields(input: {
     attachmentParts,
     from,
     logStep,
-    ownerEmails
+    ownerEmails,
+    undefined,
+    input.organizationId
   );
   const visualAttachmentText = visualAttachmentHints.text;
   const bodyForAnalysis = [bodyText, pdfText && `--- PDF ATTACHMENT TEXT ---\n${pdfText}`, visualAttachmentText && `--- VISUAL ATTACHMENT ANALYSIS ---\n${visualAttachmentText}`].filter(Boolean).join("\n\n");
@@ -7136,6 +7146,7 @@ export async function fetchAndParseGmailMessageFinancialFields(input: {
     body: bodyForAnalysis,
     filenames: attachmentParts.map((part) => part.filename).filter(Boolean) as string[],
     sender: from,
+    organizationId: input.organizationId,
   });
   const extractedFields = extractHebrewInvoiceFieldsFromText(`${supplierEvidenceText}\n${analysis.supplier ?? ""}`);
   const invoiceMatch = detectInvoice(subject, bodyForAnalysis, attachmentParts);

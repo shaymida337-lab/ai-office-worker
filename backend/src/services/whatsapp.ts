@@ -1,5 +1,6 @@
 import { config, hasTwilio, missingTwilioEnvVars, twilioEnvDiagnostics } from "../lib/config.js";
 import { isProduction } from "../lib/productionGuard.js";
+import { logUsageEvent } from "../lib/metering.js";
 import { prisma } from "../lib/prisma.js";
 import { getDashboardStats } from "./dashboard.js";
 import {
@@ -27,6 +28,17 @@ type TwilioMessageClient = {
 };
 
 const TWILIO_SEND_RETRIES = 2;
+
+function meterTwilioWhatsAppMessage(organizationId: string | null | undefined, feature = "whatsapp_chat"): void {
+  const orgId = organizationId?.trim();
+  if (!orgId) return;
+  void logUsageEvent({
+    orgId,
+    provider: "TWILIO",
+    feature,
+    usageDetails: { kind: "twilio", messageCount: 1 },
+  });
+}
 
 function errorMessage(err: unknown) {
   return err instanceof Error ? err.message : String(err);
@@ -363,6 +375,7 @@ export async function sendWhatsAppMessage(organizationId: string, body: string) 
     },
   });
 
+  meterTwilioWhatsAppMessage(organizationId);
   return { sent: true, sid: message.sid };
 }
 
@@ -481,6 +494,7 @@ export async function sendWhatsAppToPhone(organizationId: string, phone: string,
     },
   });
 
+  meterTwilioWhatsAppMessage(organizationId);
   return { sent: true, sid: message.sid };
 }
 
@@ -527,6 +541,7 @@ export async function sendClientWhatsAppMessage(
         read: true,
       },
     });
+    meterTwilioWhatsAppMessage(clientRecord.organizationId);
     return { sent: true, sid: message.sid };
   } catch (err) {
     console.error("[twilio] send failed", {

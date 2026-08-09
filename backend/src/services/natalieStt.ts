@@ -1,3 +1,6 @@
+import { estimateMp3DurationSeconds } from "../lib/cost-calculator.js";
+import { logUsageEvent } from "../lib/metering.js";
+
 export const OPENAI_TRANSCRIPTION_URL = "https://api.openai.com/v1/audio/transcriptions";
 export const WHISPER_MODEL = "whisper-1";
 export const WHISPER_LANGUAGE = "he";
@@ -14,6 +17,7 @@ export type TranscribeAudioDeps = {
 export type TranscribeResultSuccess = {
   ok: true;
   text: string;
+  durationSeconds?: number;
 };
 
 export type TranscribeResultFailure = {
@@ -43,7 +47,8 @@ export async function transcribeAudio(
   mimeType: string,
   credentials: TranscribeAudioCredentials,
   deps: TranscribeAudioDeps,
-  promptHint?: string
+  promptHint?: string,
+  organizationId?: string | null
 ): Promise<TranscribeResult> {
   if (!audioBuffer.length) {
     return { ok: false, status: 400, error: "Audio file is required" };
@@ -64,7 +69,7 @@ export async function transcribeAudio(
   form.append("file", blob, `recording.${extensionForMimeType(normalizedMimeType)}`);
   form.append("model", WHISPER_MODEL);
   form.append("language", WHISPER_LANGUAGE);
-  form.append("response_format", "json");
+  form.append("response_format", "verbose_json");
   const trimmedPromptHint = promptHint?.trim();
   if (trimmedPromptHint) {
     form.append("prompt", trimmedPromptHint);
@@ -115,9 +120,9 @@ export async function transcribeAudio(
     };
   }
 
-  let payload: { text?: string };
+  let payload: { text?: string; duration?: number };
   try {
-    payload = (await response.json()) as { text?: string };
+    payload = (await response.json()) as { text?: string; duration?: number };
   } catch {
     return { ok: false, status: 502, error: "Transcription failed: invalid JSON response" };
   }
@@ -127,5 +132,20 @@ export async function transcribeAudio(
     return { ok: false, status: 502, error: "Transcription failed: empty text response" };
   }
 
-  return { ok: true, text };
+  const durationSeconds =
+    typeof payload.duration === "number" && Number.isFinite(payload.duration) && payload.duration > 0
+      ? payload.duration
+      : estimateMp3DurationSeconds(audioBuffer.length);
+
+  const orgId = organizationId?.trim();
+  if (orgId) {
+    void logUsageEvent({
+      orgId,
+      provider: "OPENAI_WHISPER",
+      feature: "voice_stt",
+      usageDetails: { kind: "whisper", durationSeconds },
+    });
+  }
+
+  return { ok: true, text, durationSeconds };
 }
