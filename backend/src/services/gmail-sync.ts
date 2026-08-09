@@ -137,15 +137,19 @@ const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
 const MAX_MESSAGES_PER_QUICK_SCAN = 25;
 const MAX_MESSAGES_PER_FAST_SCAN = 20;
-/** Process/fetch chunk size — keep memory bounded and heartbeat frequently. */
-export const GMAIL_SCAN_BATCH_SIZE = 50;
-/** Brief pause between batches to keep the event loop healthy under Render limits. */
-export const GMAIL_SCAN_BATCH_PAUSE_MS = 50;
+/** Process/fetch chunk size — small batches so progress hits DB immediately. */
+export const GMAIL_SCAN_BATCH_SIZE = 15;
+/** Brief pause between batches to keep the event loop healthy and ease Gmail quota. */
+export const GMAIL_SCAN_BATCH_PAUSE_MS = 150;
 /** Hard cap per email (download+OCR+save). Timeout skips that email and continues the scan. */
 export const GMAIL_PER_EMAIL_PROCESS_TIMEOUT_MS = 30_000;
-const GMAIL_PROGRESS_FETCH_EMAIL_INTERVAL = 25;
+/** Gmail users.messages.list must not hang the historical worker. */
+export const GMAIL_MESSAGES_LIST_TIMEOUT_MS = 15_000;
+/** Page size for Gmail list/search so listing stays chunked with fetch/process. */
+export const GMAIL_MESSAGES_LIST_PAGE_SIZE = 20;
+const GMAIL_PROGRESS_FETCH_EMAIL_INTERVAL = 10;
 const GMAIL_PROGRESS_PROCESSING_EMAIL_INTERVAL = 2;
-const GMAIL_PROGRESS_FETCH_MIN_INTERVAL_MS = 30_000;
+const GMAIL_PROGRESS_FETCH_MIN_INTERVAL_MS = 15_000;
 const GMAIL_PROGRESS_PROCESSING_MIN_INTERVAL_MS = 2_000;
 
 export function gmailFseSupplierCacheKey(organizationId: string, supplierName: string): string {
@@ -1272,11 +1276,16 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           },
         });
         const full = await withRetry(
-          () => gmail.users.messages.get({
-            userId: "me",
-            id: msgRef.id!,
-            format: "full",
-          }),
+          () =>
+            withTimeout(
+              gmail.users.messages.get({
+                userId: "me",
+                id: msgRef.id!,
+                format: "full",
+              }),
+              GMAIL_MESSAGES_LIST_TIMEOUT_MS,
+              `Gmail messages.get timed out after ${GMAIL_MESSAGES_LIST_TIMEOUT_MS / 1000}s message=${msgRef.id}`
+            ),
           `[gmail-sync] Gmail message fetch retry message=${msgRef.id}`
         );
 
@@ -1370,12 +1379,23 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         emailsProcessed++;
         } catch (err) {
           errorsCount++;
+          const details = describeGmailApiError(err);
+          if (details.isQuotaOrRateLimit || details.isTimeout) {
+            console.error(
+              `[Gmail API] Message fetch failed/timed out message=${msgRef.id} status=${details.status || "n/a"} reason="${details.message}"`
+            );
+            ignoredReasons.gmail_fetch_quota_or_timeout =
+              (ignoredReasons.gmail_fetch_quota_or_timeout ?? 0) + 1;
+            if (details.isQuotaOrRateLimit) {
+              await sleep(2_000);
+            }
+          }
+          console.error(`[gmail-sync] fetch/parse/save failed message=${msgRef.id}`, err);
+          logStep(`[gmail-sync] error message=${msgRef.id} stage=fetch_parse_save reason="${details.message}"`);
           // Count skipped/failed fetches so progress advances and the job is not treated as stuck.
           emailsProcessed++;
-          console.error(`[gmail-sync] fetch/parse/save failed message=${msgRef.id}`, err);
-          logStep(`[gmail-sync] error message=${msgRef.id} stage=fetch_parse_save reason="${err instanceof Error ? err.message : String(err)}"`);
           try {
-            await saveFetchErrorScanItem(organizationId, msgRef.id, `fetch_parse_save_failed: ${err instanceof Error ? err.message : String(err)}`);
+            await saveFetchErrorScanItem(organizationId, msgRef.id, `fetch_parse_save_failed: ${details.message}`);
           } catch (fallbackErr) {
             console.error(`[gmail-sync] fetch-error GmailScanItem save failed message=${msgRef.id}`, fallbackErr);
             logStep(`[gmail-sync] error message=${msgRef.id} stage=fetch_error_scan_item_save reason="${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}"`);
@@ -1383,7 +1403,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         }
       }
         try {
-          await maybeSaveScanProgress();
+          await maybeSaveScanProgress(true);
         } catch (progressErr) {
           console.error(`[gmail-sync] fetch batch progress save failed batch=${fetchBatchNumber}`, progressErr);
         }
@@ -1392,6 +1412,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         } catch (hbErr) {
           console.error(`[gmail-sync] fetch batch heartbeat failed batch=${fetchBatchNumber}`, hbErr);
         }
+        console.log(
+          `[Gmail Sync] Fetch batch saved label=${label} batch=${fetchBatchNumber}/${totalBatches} emailsProcessed=${emailsProcessed} errors=${errorsCount}`
+        );
         await sleep(GMAIL_SCAN_BATCH_PAUSE_MS);
         if (stopFetching) break;
       }
@@ -1402,7 +1425,23 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     await maybeSaveScanProgress(true);
     const fastListing = await listFastCandidateMessages(gmail, fastScanMaxMessages, {
       scanAllMail: options.scanAllMail,
+      onPage: async () => {
+        await touchGmailScanHeartbeat(log.id, "fast_listing_page", organizationId);
+      },
+      onListingError: async ({ query, page, error }) => {
+        errorsCount++;
+        ignoredReasons.gmail_list_failed = (ignoredReasons.gmail_list_failed ?? 0) + 1;
+        logStep(
+          `[Gmail API] Listing messages failed/timed out during fast scan q="${query}" page=${page} reason="${error}"`
+        );
+        await maybeSaveScanProgress(true);
+      },
     });
+    if (fastListing.diagnostics.listingErrors?.length) {
+      logStep(
+        `[gmail-sync] FAST_SCAN_LISTING_PARTIAL errors=${fastListing.diagnostics.listingErrors.length} candidates=${fastListing.messages.length}`
+      );
+    }
     const fastMessages = fastListing.messages;
     const fastMessageIds = new Set(fastMessages.flatMap((message) => message.id ? [message.id] : []));
     logStep(`[gmail-sync] FAST_SCAN_FOUND_MESSAGES count=${fastMessages.length} diagnostics=${JSON.stringify(fastListing.diagnostics)}`);
@@ -1566,8 +1605,22 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       scanAllMail: options.scanAllMail,
       onPage: async () => {
         await touchGmailScanHeartbeat(log.id, "listing_page", organizationId);
+        await maybeSaveScanProgress(true);
+      },
+      onListingError: async ({ query, page, error }) => {
+        errorsCount++;
+        ignoredReasons.gmail_list_failed = (ignoredReasons.gmail_list_failed ?? 0) + 1;
+        logStep(
+          `[Gmail API] Listing messages failed/timed out during historical scan q="${query}" page=${page} reason="${error}" emailsProcessed=${emailsProcessed}`
+        );
+        await maybeSaveScanProgress(true);
       },
     });
+    if (listing.diagnostics.listingErrors?.length) {
+      logStep(
+        `[gmail-sync] HISTORICAL_LISTING_PARTIAL errors=${listing.diagnostics.listingErrors.length} candidates=${listing.messages.length}`
+      );
+    }
     console.log(
       `Gmail API returned ${listing.messages.length} total messages for query (unique=${listing.diagnostics.totalGmailMessagesFound} daysBack=${daysBack})`
     );
@@ -3925,6 +3978,7 @@ export type GmailListingDiagnostics = {
   pagesProcessed: number;
   messagesProcessed: number;
   nextPageTokenUses: number;
+  listingErrors?: string[];
   queries: Array<{
     query: string;
     pagesProcessed: number;
@@ -3932,6 +3986,7 @@ export type GmailListingDiagnostics = {
     uniqueMessagesAfterQuery: number;
     nextPageTokensSeen: number;
     stoppedBecauseMaxReached: boolean;
+    stoppedBecauseError?: string | null;
   }>;
 };
 type GmailDocumentType = "invoice" | "receipt" | "tax_invoice_receipt" | "payment_request" | "quote" | "supplier_message" | "unknown_needs_review";
@@ -5221,10 +5276,94 @@ export async function diagnoseGmailListingForOrganization(
   return listing.diagnostics;
 }
 
+export function describeGmailApiError(err: unknown): {
+  message: string;
+  status: number;
+  isQuotaOrRateLimit: boolean;
+  isTimeout: boolean;
+} {
+  const message = err instanceof Error ? err.message : String(err);
+  const errObj = err as {
+    code?: unknown;
+    status?: unknown;
+    response?: { status?: unknown };
+  } | null;
+  const status = Number(errObj?.code ?? errObj?.status ?? errObj?.response?.status ?? 0) || 0;
+  const isQuotaOrRateLimit =
+    status === 429 ||
+    /quota|rate[_ -]?limit|userRateLimitExceeded|rateLimitExceeded|Backend Error/i.test(message);
+  const isTimeout = /timed?\s*out|timeout|ETIMEDOUT|ESOCKETTIMEDOUT|deadline/i.test(message);
+  return { message, status, isQuotaOrRateLimit, isTimeout };
+}
+
+async function listGmailMessagesPage(
+  gmail: GmailClient,
+  input: { q: string; maxResults: number; pageToken?: string; page?: number }
+): Promise<
+  | { ok: true; result: Awaited<ReturnType<GmailClient["users"]["messages"]["list"]>> }
+  | { ok: false; error: string; isQuotaOrRateLimit: boolean; isTimeout: boolean; status: number }
+> {
+  const attemptList = () =>
+    withTimeout(
+      gmail.users.messages.list({
+        userId: "me",
+        q: input.q,
+        maxResults: input.maxResults,
+        pageToken: input.pageToken,
+      }),
+      GMAIL_MESSAGES_LIST_TIMEOUT_MS,
+      `Gmail messages.list timed out after ${GMAIL_MESSAGES_LIST_TIMEOUT_MS / 1000}s`
+    );
+
+  try {
+    const result = await attemptList();
+    return { ok: true, result };
+  } catch (err) {
+    const details = describeGmailApiError(err);
+    console.error(
+      `[Gmail API] Listing messages failed/timed out q="${input.q}" page=${input.page ?? "?"} status=${details.status || "n/a"} reason="${details.message}"`
+    );
+    // One retry after short backoff for transient 429 / timeout.
+    if (details.isQuotaOrRateLimit || details.isTimeout) {
+      await sleep(details.isQuotaOrRateLimit ? 2_000 : 500);
+      try {
+        const result = await attemptList();
+        console.log(
+          `[Gmail API] Listing messages recovered after retry q="${input.q}" page=${input.page ?? "?"}`
+        );
+        return { ok: true, result };
+      } catch (retryErr) {
+        const retryDetails = describeGmailApiError(retryErr);
+        console.error(
+          `[Gmail API] Listing messages failed/timed out q="${input.q}" page=${input.page ?? "?"} status=${retryDetails.status || "n/a"} reason="${retryDetails.message}" (after retry)`
+        );
+        return {
+          ok: false,
+          error: retryDetails.message,
+          isQuotaOrRateLimit: retryDetails.isQuotaOrRateLimit,
+          isTimeout: retryDetails.isTimeout,
+          status: retryDetails.status,
+        };
+      }
+    }
+    return {
+      ok: false,
+      error: details.message,
+      isQuotaOrRateLimit: details.isQuotaOrRateLimit,
+      isTimeout: details.isTimeout,
+      status: details.status,
+    };
+  }
+}
+
 async function listFastCandidateMessages(
   gmail: GmailClient,
   maxMessages = MAX_MESSAGES_PER_FAST_SCAN,
-  options: { scanAllMail?: boolean } = {}
+  options: {
+    scanAllMail?: boolean;
+    onPage?: () => Promise<void>;
+    onListingError?: (info: { query: string; page: number; error: string }) => Promise<void> | void;
+  } = {}
 ): Promise<{ messages: GmailMessageRef[]; diagnostics: GmailListingDiagnostics }> {
   const byId = new Map<string, GmailMessageRef>();
   const dateFilter = FAST_SCAN_DATE_FILTER;
@@ -5232,6 +5371,7 @@ async function listFastCandidateMessages(
   let totalPagesScanned = 0;
   let totalMessagesSeen = 0;
   let totalNextPageTokenUses = 0;
+  const listingErrors: string[] = [];
   const queryDiagnostics: GmailListingDiagnostics["queries"] = [];
 
   for (const q of queries) {
@@ -5240,24 +5380,34 @@ async function listFastCandidateMessages(
     let queryPages = 0;
     let queryMessagesSeen = 0;
     let queryNextPageTokensSeen = 0;
+    let stoppedBecauseError: string | null = null;
     do {
       const remaining = maxMessages - byId.size;
       if (remaining <= 0) break;
       queryPages++;
       totalPagesScanned++;
-      // P0 watchdog: קריאת Gmail בלי timeout יכולה להיתקע לנצח ולתקוע את תור הסריקות
-      const result = await withTimeout(
-        gmail.users.messages.list({
-          userId: "me",
-          q,
-          maxResults: Math.min(MAX_MESSAGES_PER_FAST_SCAN, remaining),
-          pageToken,
-        }),
-        60_000,
-        "Gmail messages.list timed out after 60s"
-      );
+      const listed = await listGmailMessagesPage(gmail, {
+        q,
+        maxResults: Math.min(GMAIL_MESSAGES_LIST_PAGE_SIZE, MAX_MESSAGES_PER_FAST_SCAN, remaining),
+        pageToken,
+        page: queryPages,
+      });
+        if (!listed.ok) {
+        stoppedBecauseError = listed.error;
+        listingErrors.push(listed.error);
+        if (listed.isQuotaOrRateLimit) {
+          console.warn(`[Gmail API] Quota/rate limit during fast list — backing off 2s then continuing with partial results`);
+          await sleep(2_000);
+        }
+        try {
+          await options.onListingError?.({ query: q, page: queryPages, error: listed.error });
+        } catch {
+          /* ignore progress callback failures */
+        }
+        break;
+      }
 
-      const pageMessages = result.data.messages ?? [];
+      const pageMessages = listed.result.data.messages ?? [];
       queryMessagesSeen += pageMessages.length;
       totalMessagesSeen += pageMessages.length;
       for (const message of pageMessages) {
@@ -5268,11 +5418,16 @@ async function listFastCandidateMessages(
         }
         byId.set(message.id, message);
       }
-      if (result.data.nextPageToken) {
+      if (listed.result.data.nextPageToken) {
         queryNextPageTokensSeen++;
         totalNextPageTokenUses++;
       }
-      pageToken = result.data.nextPageToken ?? undefined;
+      pageToken = listed.result.data.nextPageToken ?? undefined;
+      try {
+        await options.onPage?.();
+      } catch (err) {
+        console.warn(`[gmail-sync] fast listing heartbeat failed page=${queryPages}`, err instanceof Error ? err.message : String(err));
+      }
     } while (pageToken && byId.size < maxMessages);
     queryDiagnostics.push({
       query: q,
@@ -5281,6 +5436,7 @@ async function listFastCandidateMessages(
       uniqueMessagesAfterQuery: byId.size,
       nextPageTokensSeen: queryNextPageTokensSeen,
       stoppedBecauseMaxReached: byId.size >= maxMessages,
+      stoppedBecauseError,
     });
   }
 
@@ -5296,6 +5452,7 @@ async function listFastCandidateMessages(
       pagesProcessed: totalPagesScanned,
       messagesProcessed: messages.length,
       nextPageTokenUses: totalNextPageTokenUses,
+      listingErrors: listingErrors.length ? listingErrors : undefined,
       queries: queryDiagnostics,
     },
   };
@@ -5329,7 +5486,11 @@ async function listCandidateMessages(
   daysBack: number,
   maxMessages = MAX_MESSAGES_PER_SYNC,
   since?: Date,
-  options: { scanAllMail?: boolean; onPage?: () => Promise<void> } = {}
+  options: {
+    scanAllMail?: boolean;
+    onPage?: () => Promise<void>;
+    onListingError?: (info: { query: string; page: number; error: string }) => Promise<void> | void;
+  } = {}
 ): Promise<{ messages: GmailMessageRef[]; diagnostics: GmailListingDiagnostics }> {
   const byId = new Map<string, GmailMessageRef>();
   const safeDaysBack = Math.max(1, Math.ceil(daysBack));
@@ -5340,6 +5501,7 @@ async function listCandidateMessages(
   let totalPagesScanned = 0;
   let totalMessagesSeen = 0;
   let totalNextPageTokenUses = 0;
+  const listingErrors: string[] = [];
   const queryDiagnostics: GmailListingDiagnostics["queries"] = [];
   const queries = buildGmailCandidateSearchQueries({
     dateFilter,
@@ -5353,46 +5515,50 @@ async function listCandidateMessages(
     let queryPages = 0;
     let queryMessagesSeen = 0;
     let queryNextPageTokensSeen = 0;
+    let stoppedBecauseError: string | null = null;
     do {
       const remaining = maxMessages - byId.size;
       if (remaining <= 0) break;
       queryPages++;
       totalPagesScanned++;
-      // P0 watchdog: קריאת Gmail בלי timeout יכולה להיתקע לנצח ולתקוע את תור הסריקות
-      let result: Awaited<ReturnType<GmailClient["users"]["messages"]["list"]>>;
-      try {
-        result = await withTimeout(
-          gmail.users.messages.list({
-            userId: "me",
-            q,
-            maxResults: Math.min(100, remaining),
-            pageToken,
-          }),
-          60_000,
-          "Gmail messages.list timed out after 60s"
-        );
-      } catch (err) {
-        console.error(
-          `[gmail-sync] Gmail messages.list FAILED q="${q}" page=${queryPages} org fetch error:`,
-          err instanceof Error ? err.stack ?? err.message : err
-        );
-        throw err;
+      const listed = await listGmailMessagesPage(gmail, {
+        q,
+        maxResults: Math.min(GMAIL_MESSAGES_LIST_PAGE_SIZE, remaining),
+        pageToken,
+        page: queryPages,
+      });
+      if (!listed.ok) {
+        stoppedBecauseError = listed.error;
+        listingErrors.push(listed.error);
+        if (listed.isQuotaOrRateLimit) {
+          console.warn(
+            `[Gmail API] Quota/rate limit during historical list q="${q}" page=${queryPages} — backing off 2s, keeping ${byId.size} candidates`
+          );
+          await sleep(2_000);
+        }
+        try {
+          await options.onListingError?.({ query: q, page: queryPages, error: listed.error });
+        } catch {
+          /* ignore progress callback failures */
+        }
+        // Do not fail the whole scan — continue with candidates collected so far / next query.
+        break;
       }
 
-      const pageMessages = result.data.messages ?? [];
+      const pageMessages = listed.result.data.messages ?? [];
       queryMessagesSeen += pageMessages.length;
       totalMessagesSeen += pageMessages.length;
-      console.log(`[gmail-sync] Gmail page q="${q}" page=${queryPages} messages=${pageMessages.length} uniqueSoFar=${byId.size} nextPage=${Boolean(result.data.nextPageToken)}`);
+      console.log(`[gmail-sync] Gmail page q="${q}" page=${queryPages} messages=${pageMessages.length} uniqueSoFar=${byId.size} nextPage=${Boolean(listed.result.data.nextPageToken)}`);
       for (const message of pageMessages) {
         if (message.id && !byId.has(message.id)) {
           byId.set(message.id, message);
         }
       }
-      if (result.data.nextPageToken) {
+      if (listed.result.data.nextPageToken) {
         queryNextPageTokensSeen++;
         totalNextPageTokenUses++;
       }
-      pageToken = result.data.nextPageToken ?? undefined;
+      pageToken = listed.result.data.nextPageToken ?? undefined;
       // Keep SyncLog heartbeat fresh during long historical listings so manual
       // scans are not false-positive "stuck" after 3 minutes of honest work.
       try {
@@ -5411,6 +5577,7 @@ async function listCandidateMessages(
       uniqueMessagesAfterQuery: byId.size,
       nextPageTokensSeen: queryNextPageTokensSeen,
       stoppedBecauseMaxReached: byId.size >= maxMessages,
+      stoppedBecauseError,
     });
     console.log(
       `Gmail API returned ${queryMessagesSeen} total messages for query q="${q}" (uniqueTotal=${byId.size})`
@@ -5423,6 +5590,11 @@ async function listCandidateMessages(
   if (truncated) {
     console.log(
       `[gmail-sync] SCAN_WINDOW_TRUNCATED listed=${byId.size} maxMessages=${maxMessages} daysBack=${safeDaysBack} dateFilter="${dateFilter}" pagesScanned=${totalPagesScanned} — raise maxMessages to cover the full lookback`
+    );
+  }
+  if (listingErrors.length) {
+    console.warn(
+      `[Gmail API] Listing completed with ${listingErrors.length} page error(s); continuing with ${byId.size} candidates`
     );
   }
   console.log(
@@ -5440,6 +5612,7 @@ async function listCandidateMessages(
       pagesProcessed: totalPagesScanned,
       messagesProcessed: messages.length,
       nextPageTokenUses: totalNextPageTokenUses,
+      listingErrors: listingErrors.length ? listingErrors : undefined,
       queries: queryDiagnostics,
     },
   };
@@ -5482,9 +5655,13 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, attempts = 3): 
 }
 
 function isRetryableError(err: unknown) {
-  const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
-  const status = typeof err === "object" && err !== null && "code" in err ? Number((err as { code?: unknown }).code) : 0;
-  return status === 429 || status >= 500 || message.includes("timeout") || message.includes("rate") || message.includes("temporarily") || message.includes("socket");
+  const details = describeGmailApiError(err);
+  return (
+    details.isQuotaOrRateLimit ||
+    details.isTimeout ||
+    details.status >= 500 ||
+    /temporarily|socket|ECONNRESET|EAI_AGAIN/i.test(details.message)
+  );
 }
 
 function isInsufficientScopeError(err: unknown) {

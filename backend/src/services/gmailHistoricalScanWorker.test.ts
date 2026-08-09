@@ -9,13 +9,23 @@ const syncSource = readFileSync(join(here, "gmail-sync.ts"), "utf8");
 const apiSource = readFileSync(join(here, "../routes/api.ts"), "utf8");
 const lifecycleSource = readFileSync(join(here, "gmailScanLifecycle.ts"), "utf8");
 
-test("gmail sync processes messages in batches of 50 with event-loop pause", () => {
-  assert.match(syncSource, /export const GMAIL_SCAN_BATCH_SIZE = 50/);
-  assert.match(syncSource, /export const GMAIL_SCAN_BATCH_PAUSE_MS = 50/);
+test("gmail sync processes messages in small batches with event-loop pause", () => {
+  assert.match(syncSource, /export const GMAIL_SCAN_BATCH_SIZE = 15/);
+  assert.match(syncSource, /export const GMAIL_SCAN_BATCH_PAUSE_MS = 150/);
+  assert.match(syncSource, /export const GMAIL_MESSAGES_LIST_TIMEOUT_MS = 15_000/);
+  assert.match(syncSource, /export const GMAIL_MESSAGES_LIST_PAGE_SIZE = 20/);
   assert.match(syncSource, /HISTORICAL_CHUNK_START/);
   assert.match(syncSource, /await sleep\(GMAIL_SCAN_BATCH_PAUSE_MS\)/);
   assert.match(syncSource, /process_\$\{label\}_email_\$\{email\.gmailId\}/);
   assert.match(syncSource, /process_\$\{label\}_batch_\$\{processBatchNumber\}/);
+});
+
+test("Gmail messages.list uses 15s timeout and soft-fails quota/timeouts", () => {
+  assert.match(syncSource, /\[Gmail API\] Listing messages failed\/timed out/);
+  assert.match(syncSource, /listGmailMessagesPage/);
+  assert.match(syncSource, /onListingError/);
+  assert.match(syncSource, /gmail_list_failed/);
+  assert.match(syncSource, /Fetch batch saved/);
 });
 
 test("POST /api/gmail/scan force-cancels active jobs and always creates a fresh scanId", () => {
