@@ -61,18 +61,47 @@ export function buildIncrementalGmailScanWindow(input: {
   };
 }
 
+/** Floor for deep historical listings — above the incremental 500-message sync cap. */
+export const HISTORICAL_SCAN_MAX_MESSAGES_FLOOR = 1_000;
+/** Hard cap so a 5y fullScan cannot unbounded-list the entire mailbox in one run. */
+export const HISTORICAL_SCAN_MAX_MESSAGES_CAP = 10_000;
+/** Candidate budget per day for historical listing (Gmail returns newest-first). */
+export const HISTORICAL_SCAN_MESSAGES_PER_DAY = 15;
+
+/**
+ * Scale listing budget with lookback. Without this, MAX_MESSAGES_PER_SYNC (500)
+ * truncates busy inboxes to ~1 month even when daysBack is 365+.
+ */
+export function resolveHistoricalGmailMaxMessages(daysBack: number): number {
+  const days = Math.max(1, Math.ceil(Number(daysBack) || 1));
+  const scaled = Math.ceil(days * HISTORICAL_SCAN_MESSAGES_PER_DAY);
+  return Math.min(
+    HISTORICAL_SCAN_MAX_MESSAGES_CAP,
+    Math.max(HISTORICAL_SCAN_MAX_MESSAGES_FLOOR, scaled)
+  );
+}
+
+export function sinceDateFromDaysBack(daysBack: number, now = new Date()): Date {
+  const days = Math.max(1, Math.ceil(Number(daysBack) || 1));
+  return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+}
+
 export function resolveHistoricalGmailScanWindow(input: {
   hasExplicitDaysBack: boolean;
   rawDaysBack: number;
   rescanInvoices: boolean;
   now?: Date;
 }): { since: Date | undefined; daysBack: number } {
+  const now = input.now ?? new Date();
   if (input.rescanInvoices) {
-    return { since: undefined, daysBack: 90 };
+    const daysBack = 90;
+    return { since: sinceDateFromDaysBack(daysBack, now), daysBack };
   }
   if (input.hasExplicitDaysBack) {
-    return { since: undefined, daysBack: Math.ceil(input.rawDaysBack) };
+    const daysBack = Math.ceil(input.rawDaysBack);
+    // Prefer after:YYYY/MM/DD over newer_than:Nd for long windows (exact day boundary).
+    return { since: sinceDateFromDaysBack(daysBack, now), daysBack };
   }
-  const initialWindow = initialConnectScanWindow(input.now);
+  const initialWindow = initialConnectScanWindow(now);
   return { since: initialWindow.since, daysBack: initialWindow.daysBack };
 }

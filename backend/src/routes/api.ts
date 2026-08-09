@@ -146,7 +146,12 @@ import {
   type InvoiceCompletionContext,
   type InvoiceCompletionRequest,
 } from "../services/invoiceCompletionAction.js";
-import { initialConnectScanWindow, isHistoricalGmailScanRequest, resolveHistoricalGmailScanWindow } from "../services/scanWindow.js";
+import {
+  initialConnectScanWindow,
+  isHistoricalGmailScanRequest,
+  resolveHistoricalGmailMaxMessages,
+  resolveHistoricalGmailScanWindow,
+} from "../services/scanWindow.js";
 import {
   closeStaleGmailScansForOrg,
   reapOverdueLegacyScanLogsThrottled,
@@ -8858,6 +8863,11 @@ async function scanGmail(req: Request, res: Response) {
       req.query.historical === "true" ||
       req.body?.historical === "1" ||
       req.query.historical === "1";
+    const fullScan =
+      req.body?.fullScan === true ||
+      req.query.fullScan === "true" ||
+      req.body?.fullScan === "1" ||
+      req.query.fullScan === "1";
     const rawDaysBackValue = req.body?.daysBack ?? req.query.daysBack;
     const rawDaysBack = Number(rawDaysBackValue);
     const hasExplicitDaysBack = Number.isFinite(rawDaysBack) && rawDaysBack > 0;
@@ -8890,9 +8900,15 @@ async function scanGmail(req: Request, res: Response) {
       incrementalCursorSource = incrementalWindow.cursorSource;
     }
 
-    const maxMessages = rescanInvoices ? 1000 : undefined;
+    // Historical/full scans must not inherit the incremental 500-message sync cap —
+    // Gmail lists newest-first, so a low cap truncates the window to recent weeks/months.
+    const maxMessages = rescanInvoices
+      ? 1000
+      : useHistoricalScan
+        ? resolveHistoricalGmailMaxMessages(daysBack)
+        : undefined;
     console.log(
-      `[gmail-scan] POST /api/gmail/scan org=${organizationId} scanMode=${scanMode} historical=${useHistoricalScan} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack} since=${since?.toISOString() ?? "none"} cursorSource=${incrementalCursorSource ?? "n/a"}`
+      `[gmail-scan] POST /api/gmail/scan org=${organizationId} scanMode=${scanMode} historical=${useHistoricalScan} fullScan=${fullScan} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack} since=${since?.toISOString() ?? "none"} maxMessages=${maxMessages ?? "default"} cursorSource=${incrementalCursorSource ?? "n/a"}`
     );
     console.log("[gmail-scan] Step 1: checking Gmail authentication");
 
@@ -8909,7 +8925,7 @@ async function scanGmail(req: Request, res: Response) {
       res.json({
         success: true,
         scanId: activeLog.id,
-        status: "running",
+        status: "IN_PROGRESS",
         inProgress: true,
         daysBack,
         progressUrl: `/api/gmail/scan/${activeLog.id}`,
@@ -8924,7 +8940,7 @@ async function scanGmail(req: Request, res: Response) {
       res.json({
         success: true,
         scanId: scanLog.id,
-        status: "running",
+        status: "IN_PROGRESS",
         inProgress: true,
         daysBack,
         progressUrl: `/api/gmail/scan/${scanLog.id}`,
@@ -8937,8 +8953,8 @@ async function scanGmail(req: Request, res: Response) {
     void syncGmailForOrganization(organizationId, {
       daysBack,
       since,
-      forceReprocess: daysBack >= 90 || rescanInvoices,
-      scanAllMail: rescanInvoices,
+      forceReprocess: daysBack >= 90 || rescanInvoices || fullScan,
+      scanAllMail: rescanInvoices || fullScan,
       maxMessages,
       scanLogId: scanLog.id,
       scanMode,
@@ -8956,20 +8972,30 @@ async function scanGmail(req: Request, res: Response) {
           driveUploadsSucceeded?: number;
           parserRejectedCount?: number;
           ignoredCount?: number;
+          windowTruncated?: boolean;
         };
-        console.log(`[gmail-scan] Background processing finished org=${organizationId} scanId=${scanLog.id} emails=${result.emailsProcessed ?? 0} saved=${result.emailsSavedToGmailScanItem ?? 0} payments=${result.paymentsCreated ?? 0} invoices=${result.invoicesCreated ?? 0} driveUploaded=${result.driveUploadsSucceeded ?? 0} rejected=${result.parserRejectedCount ?? result.ignoredCount ?? 0}`);
+        const totalProcessed = result.emailsProcessed ?? 0;
+        console.log(
+          `[gmail-scan] TOTAL_PROCESSED_EMAILS count=${totalProcessed} org=${organizationId} scanId=${scanLog.id} daysBack=${daysBack} maxMessages=${maxMessages ?? "default"} truncated=${Boolean(result.windowTruncated)}`
+        );
+        console.log(`[gmail-scan] Background processing finished org=${organizationId} scanId=${scanLog.id} emails=${totalProcessed} saved=${result.emailsSavedToGmailScanItem ?? 0} payments=${result.paymentsCreated ?? 0} invoices=${result.invoicesCreated ?? 0} driveUploaded=${result.driveUploadsSucceeded ?? 0} rejected=${result.parserRejectedCount ?? result.ignoredCount ?? 0}`);
       })
       .catch(async (backgroundError) => {
         const message = backgroundError instanceof Error ? backgroundError.message : String(backgroundError);
         console.error(`[gmail-scan] Background processing failed org=${organizationId} scanId=${scanLog.id}`, backgroundError);
-        await finalizeGmailScanFailed(scanLog.id, message);
+        try {
+          await finalizeGmailScanFailed(scanLog.id, message);
+        } catch (finalizeErr) {
+          console.error(`[gmail-scan] FAILED status update also failed scanId=${scanLog.id}`, finalizeErr);
+        }
         logScanLifecycle(scanLog.id, "failed", `reason=${message}`);
       });
 
-    res.json({
+    // Return immediately — never await the heavy sync on the HTTP path (Render gateway timeouts).
+    res.status(202).json({
       success: true,
       scanId: scanLog.id,
-      status: "started",
+      status: "IN_PROGRESS",
       inProgress: true,
       daysBack,
       progressUrl: `/api/gmail/scan/${scanLog.id}`,

@@ -6,7 +6,10 @@ import { Button, StatusBadge } from "@/components/natalie-ui";
 import { apiFetch } from "@/lib/api";
 import type { OrganizationSettings } from "@/lib/business-config";
 import type { GmailScanResult, ScanProgressResult } from "@/lib/dashboard/homePageTypes";
-import { GMAIL_SCAN_POLL_INTERVAL_MS, MAX_GMAIL_SCAN_POLL_ATTEMPTS } from "@/lib/dashboard/scanPollLimits";
+import {
+  GMAIL_SCAN_POLL_INTERVAL_MS,
+  HISTORICAL_GMAIL_SCAN_POLL_MAX_ATTEMPTS,
+} from "@/lib/dashboard/scanPollLimits";
 import {
   summarizeOrgGmailScanProgress,
   summarizeOrgGmailScanResult,
@@ -52,7 +55,7 @@ type HistoricalScanSelectorProps = {
 
 /**
  * Historical Gmail scan depth (1–5 years).
- * Always renders. Persists via PATCH, then starts + polls POST /api/gmail/scan.
+ * Always renders (including after errors). Persists via PATCH, then starts + polls POST /api/gmail/scan.
  */
 export function HistoricalScanSelector({
   value,
@@ -81,19 +84,28 @@ export function HistoricalScanSelector({
 
   function setScanning(next: boolean) {
     setIsScanning(next);
-    onScanningChange?.(next);
+    try {
+      onScanningChange?.(next);
+    } catch {
+      /* parent callback must never unmount this selector */
+    }
   }
 
   async function saveYears(years: HistoricalScanYears) {
     if (saving || isScanning) return;
 
     const previous = selected;
+    let settingsSaved = false;
     setSelected(years);
     setSaving(true);
     setScanning(true);
     setStatusTone("info");
     setStatusText(HISTORICAL_SCAN_IN_PROGRESS_MESSAGE);
-    onToast?.({ text: HISTORICAL_SCAN_IN_PROGRESS_MESSAGE, tone: "info" });
+    try {
+      onToast?.({ text: HISTORICAL_SCAN_IN_PROGRESS_MESSAGE, tone: "info" });
+    } catch {
+      /* ignore toast errors */
+    }
 
     try {
       const next = await apiFetch<OrganizationSettings>("/api/organization/settings", {
@@ -103,7 +115,12 @@ export function HistoricalScanSelector({
       const savedYears = clampHistoricalScanYears(next.historicalScanYears);
       setSelected(savedYears);
       setOrganizationSettingsCache(next);
-      onSaved?.(next);
+      settingsSaved = true;
+      try {
+        onSaved?.(next);
+      } catch {
+        /* ignore */
+      }
 
       const scanResult = await apiFetch<GmailScanResult>("/api/gmail/scan", {
         method: "POST",
@@ -115,29 +132,48 @@ export function HistoricalScanSelector({
         }),
       });
 
+      // POST is fire-and-forget (202 / IN_PROGRESS). Poll status until terminal.
       let documentsFound = summarizeOrgGmailScanResult(scanResult, 0).documentsFound;
       if (scanResult.scanId) {
         const progress = await waitForOrgGmailScanProgress({
           scanId: scanResult.scanId,
           intervalMs: GMAIL_SCAN_POLL_INTERVAL_MS,
-          maxAttempts: MAX_GMAIL_SCAN_POLL_ATTEMPTS,
+          maxAttempts: HISTORICAL_GMAIL_SCAN_POLL_MAX_ATTEMPTS,
           poll: (scanId) => apiFetch<ScanProgressResult>(`/api/gmail/scan/${scanId}`),
         });
         documentsFound = summarizeOrgGmailScanProgress(progress, 0).documentsFound;
       }
 
-      await onScanComplete?.({ documentsFound });
+      try {
+        await onScanComplete?.({ documentsFound });
+      } catch {
+        /* refresh failure should not hide the selector */
+      }
 
       const doneText = historicalScanCompletedMessage(documentsFound);
       setStatusTone("success");
       setStatusText(doneText);
-      onToast?.({ text: doneText, tone: "success" });
+      try {
+        onToast?.({ text: doneText, tone: "success" });
+      } catch {
+        /* ignore */
+      }
     } catch (err) {
-      setSelected(previous);
-      const errorText = err instanceof Error ? err.message : "עדכון עומק הסריקה נכשל";
+      // Keep saved year selection — only revert if PATCH itself failed.
+      if (!settingsSaved) {
+        setSelected(previous);
+      }
+      const errorText =
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : "הסריקה נכשלה. אפשר לנסות שוב או לבחור טווח אחר.";
       setStatusTone("error");
       setStatusText(errorText);
-      onToast?.({ text: errorText, tone: "error" });
+      try {
+        onToast?.({ text: errorText, tone: "error" });
+      } catch {
+        /* ignore */
+      }
     } finally {
       setSaving(false);
       setScanning(false);
@@ -161,10 +197,11 @@ export function HistoricalScanSelector({
           עומק סריקה היסטורית
         </h3>
         <p className="mt-1 text-sm font-semibold leading-6 text-[var(--natalie-text-muted,#64748B)] dark:text-slate-300">
-          כמה שנים אחורה לחפש מסמכים וחשבוניות בסריקה היסטורית של המייל. בחירה מפעילה סריקה מלאה מיד.
+          כמה שנים אחורה לחפש מסמכים וחשבוניות בסריקה היסטורית של המייל. בחירה מפעילה סריקה מלאה ברקע.
         </p>
       </div>
 
+      {/* Year buttons always stay mounted — never hide on error. */}
       <div role="radiogroup" aria-label="עומק סריקה היסטורית בשנים" className="flex flex-wrap gap-2">
         {HISTORICAL_SCAN_YEAR_OPTIONS.map((years) => {
           const active = selected === years;
@@ -198,20 +235,23 @@ export function HistoricalScanSelector({
         </div>
       ) : null}
 
-      {statusText && !isScanning ? (
-        <p
-          className={`text-sm font-semibold ${
-            statusTone === "error"
-              ? "text-red-600 dark:text-red-300"
-              : statusTone === "success"
-                ? "text-emerald-700 dark:text-emerald-300"
-                : "text-[var(--natalie-text-muted,#64748B)] dark:text-slate-300"
-          }`}
-          aria-live="polite"
+      {statusText && statusTone === "error" ? (
+        <div
+          role="alert"
+          data-testid="historical-scan-selector-error"
+          className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
         >
           {statusText}
+        </div>
+      ) : null}
+
+      {statusText && statusTone === "success" && !isScanning ? (
+        <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300" aria-live="polite">
+          {statusText}
         </p>
-      ) : (
+      ) : null}
+
+      {!isScanning && statusTone !== "error" && statusTone !== "success" ? (
         <p
           className="text-sm font-semibold text-[var(--natalie-text-muted,#64748B)] dark:text-slate-300"
           aria-live="polite"
@@ -219,7 +259,13 @@ export function HistoricalScanSelector({
           נבחר: {yearLabel(selected)}
           {saving ? " · שומר…" : ""}
         </p>
-      )}
+      ) : null}
+
+      {!isScanning && statusTone === "error" ? (
+        <p className="text-sm font-semibold text-[var(--natalie-text-muted,#64748B)] dark:text-slate-300">
+          נבחר: {yearLabel(selected)} · אפשר לנסות שוב
+        </p>
+      ) : null}
     </section>
   );
 }

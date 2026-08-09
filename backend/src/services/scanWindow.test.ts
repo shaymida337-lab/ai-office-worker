@@ -6,7 +6,9 @@ import {
   initialConnectScanWindow,
   INCREMENTAL_SCAN_FALLBACK_DAYS,
   isHistoricalGmailScanRequest,
+  resolveHistoricalGmailMaxMessages,
   resolveHistoricalGmailScanWindow,
+  sinceDateFromDaysBack,
   startOfCurrentMonth,
 } from "./scanWindow.js";
 
@@ -89,14 +91,24 @@ test("incrementalFallbackWindow uses seven day floor when Gmail is not connected
 test("resolveHistoricalGmailScanWindow keeps explicit deep scan semantics", () => {
   const now = new Date(2026, 5, 15, 14, 30, 0, 0);
 
-  assert.deepEqual(resolveHistoricalGmailScanWindow({ hasExplicitDaysBack: false, rawDaysBack: 0, rescanInvoices: true }), {
-    since: undefined,
-    daysBack: 90,
+  const rescan = resolveHistoricalGmailScanWindow({
+    hasExplicitDaysBack: false,
+    rawDaysBack: 0,
+    rescanInvoices: true,
+    now,
   });
-  assert.deepEqual(
-    resolveHistoricalGmailScanWindow({ hasExplicitDaysBack: true, rawDaysBack: 90, rescanInvoices: false }),
-    { since: undefined, daysBack: 90 }
-  );
+  assert.equal(rescan.daysBack, 90);
+  assert.equal(rescan.since?.toISOString(), sinceDateFromDaysBack(90, now).toISOString());
+
+  const explicit = resolveHistoricalGmailScanWindow({
+    hasExplicitDaysBack: true,
+    rawDaysBack: 90,
+    rescanInvoices: false,
+    now,
+  });
+  assert.equal(explicit.daysBack, 90);
+  assert.equal(explicit.since?.toISOString(), sinceDateFromDaysBack(90, now).toISOString());
+
   const monthWindow = resolveHistoricalGmailScanWindow({
     hasExplicitDaysBack: false,
     rawDaysBack: 0,
@@ -105,4 +117,12 @@ test("resolveHistoricalGmailScanWindow keeps explicit deep scan semantics", () =
   });
   assert.deepEqual(monthWindow.since, new Date(2026, 5, 1, 0, 0, 0, 0));
   assert.equal(monthWindow.daysBack, 15);
+});
+
+test("resolveHistoricalGmailMaxMessages scales past the 500 incremental cap for 365d", () => {
+  assert.equal(resolveHistoricalGmailMaxMessages(30), 1000);
+  assert.equal(resolveHistoricalGmailMaxMessages(90), 1350);
+  assert.equal(resolveHistoricalGmailMaxMessages(365), 5475);
+  assert.equal(resolveHistoricalGmailMaxMessages(365 * 5), 10_000);
+  assert.ok(resolveHistoricalGmailMaxMessages(365) > 500);
 });

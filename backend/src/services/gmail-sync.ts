@@ -27,7 +27,7 @@ import {
   shouldRejectPersonalEmailWithoutDocumentEvidence,
 } from "./gmailDriveLinkEvidence.js";
 import { upsertDriveLinkBlockedScanItemMirror } from "./gmailDriveLinkReviewMirror.js";
-import { initialConnectScanWindow } from "./scanWindow.js";
+import { initialConnectScanWindow, resolveHistoricalGmailMaxMessages } from "./scanWindow.js";
 import {
   isCrossOrgContaminatedGmailMessageId,
   listCrossOrgContaminatedGmailMessageIds,
@@ -846,7 +846,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     logStep(`[gmail-sync] Force reprocess enabled for ${daysBack} day scan`);
   }
   if (since) {
-    logStep(`[gmail-sync] Incremental scan since ${since.toISOString()}`);
+    logStep(`[gmail-sync] Scan window since ${since.toISOString()} daysBack=${daysBack}`);
   }
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -1506,8 +1506,19 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
 
     logStep(`[gmail-sync] Searching Gmail from last ${daysBack} days`);
     await maybeSaveScanProgress(true);
-    const listing = await listCandidateMessages(gmail, daysBack, options.maxMessages ?? MAX_MESSAGES_PER_SYNC, since, {
+    // Deep lookbacks must not inherit the incremental 500-message default — Gmail
+    // returns newest-first, so a low cap truncates the window (e.g. only back to July).
+    const historicalListMaxMessages =
+      options.maxMessages ??
+      (daysBack >= 30 ? resolveHistoricalGmailMaxMessages(daysBack) : MAX_MESSAGES_PER_SYNC);
+    logStep(
+      `[gmail-sync] HISTORICAL_LISTING_START daysBack=${daysBack} since=${since?.toISOString() ?? "none"} maxMessages=${historicalListMaxMessages}`
+    );
+    const listing = await listCandidateMessages(gmail, daysBack, historicalListMaxMessages, since, {
       scanAllMail: options.scanAllMail,
+      onPage: async () => {
+        await touchGmailScanHeartbeat(log.id, "listing_page", organizationId);
+      },
     });
     const historicalMessages = listing.messages.filter((message) => {
       if (message.id && fastMessageIds.has(message.id)) {
@@ -1521,12 +1532,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     plannedTotalMatched = messages.length;
     logStep(`[gmail-sync] Gmail listing diagnostics ${JSON.stringify(listing.diagnostics)}`);
     logStep(`[gmail-sync] total emails fetched from Gmail=${messages.length} fast=${fastMessages.length} historical=${historicalMessages.length}`);
+    logStep(
+      `[gmail-sync] TOTAL_LISTED_EMAILS count=${messages.length} fast=${fastMessages.length} historical=${historicalMessages.length} daysBack=${daysBack} maxMessages=${historicalListMaxMessages} pages=${listing.diagnostics.pagesProcessed} nextPageTokenUses=${listing.diagnostics.nextPageTokenUses}`
+    );
     const listingTruncated =
       listingDiagnosticsWindowTruncated(fastListing.diagnostics) ||
       listingDiagnosticsWindowTruncated(listing.diagnostics);
     const windowTruncated = listingTruncated;
     if (windowTruncated) {
-      logStep(`[gmail-sync] SCAN_WINDOW_TRUNCATED scanned=${messages.length} maxMessages=${Math.max(fastListing.diagnostics.maxMessages, listing.diagnostics.maxMessages)}`);
+      logStep(`[gmail-sync] SCAN_WINDOW_TRUNCATED scanned=${messages.length} maxMessages=${Math.max(fastListing.diagnostics.maxMessages, listing.diagnostics.maxMessages)} daysBack=${daysBack}`);
     }
     await fetchAndParseMessages(historicalMessages, "historical");
     const historicalScannedEmails = scannedEmails.splice(0, scannedEmails.length);
@@ -3540,6 +3554,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     logStep(`Marked ${needsReviewCount} emails as Needs Review, extracted ${invoiceAmountsExtracted} amounts`);
     logStep(`Saved ${recordsSaved} records (${clientsCreated} clients, ${invoicesCreated} invoices, ${paymentsCreated} payments, ${tasksCreated} tasks)`);
     logStep(`Skipped ${duplicatesSkipped} duplicates or already processed emails`);
+    logStep(
+      `[gmail-sync] TOTAL_PROCESSED_EMAILS count=${emailsProcessed} listed=${messages.length} daysBack=${daysBack} maxMessages=${historicalListMaxMessages} truncated=${windowTruncated}`
+    );
     const { backfillInvoicesFromGmailScanItems } = await import("./invoiceBackfill.js");
     const invoiceBackfill = await backfillInvoicesFromGmailScanItems(organizationId, 200);
     if (invoiceBackfill.created || invoiceBackfill.errors.length) {
@@ -5035,7 +5052,7 @@ async function listCandidateMessages(
   daysBack: number,
   maxMessages = MAX_MESSAGES_PER_SYNC,
   since?: Date,
-  options: { scanAllMail?: boolean } = {}
+  options: { scanAllMail?: boolean; onPage?: () => Promise<void> } = {}
 ): Promise<{ messages: GmailMessageRef[]; diagnostics: GmailListingDiagnostics }> {
   const byId = new Map<string, GmailMessageRef>();
   const safeDaysBack = Math.max(1, Math.ceil(daysBack));
@@ -5093,6 +5110,16 @@ async function listCandidateMessages(
         totalNextPageTokenUses++;
       }
       pageToken = result.data.nextPageToken ?? undefined;
+      // Keep SyncLog heartbeat fresh during long historical listings so manual
+      // scans are not false-positive "stuck" after 3 minutes of honest work.
+      try {
+        await options.onPage?.();
+      } catch (err) {
+        console.warn(
+          `[gmail-sync] listing heartbeat failed page=${queryPages}`,
+          err instanceof Error ? err.message : String(err)
+        );
+      }
     } while (pageToken && byId.size < maxMessages);
     queryDiagnostics.push({
       query: q,
@@ -5106,6 +5133,15 @@ async function listCandidateMessages(
   }
 
   console.log(`[gmail-sync] Gmail list returned ${byId.size} candidate messages pagesScanned=${totalPagesScanned} messagesSeen=${totalMessagesSeen} maxMessages=${maxMessages}`);
+  const truncated = queryDiagnostics.some((query) => query.stoppedBecauseMaxReached);
+  if (truncated) {
+    console.log(
+      `[gmail-sync] SCAN_WINDOW_TRUNCATED listed=${byId.size} maxMessages=${maxMessages} daysBack=${safeDaysBack} dateFilter="${dateFilter}" pagesScanned=${totalPagesScanned} — raise maxMessages to cover the full lookback`
+    );
+  }
+  console.log(
+    `[gmail-sync] TOTAL_LISTED_CANDIDATES count=${Math.min(byId.size, maxMessages)} unique=${byId.size} daysBack=${safeDaysBack} dateFilter="${dateFilter}" truncated=${truncated}`
+  );
   const messages = [...byId.values()].slice(0, maxMessages);
   return {
     messages,

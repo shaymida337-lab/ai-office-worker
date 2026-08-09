@@ -58,7 +58,12 @@ export function isFailedGmailScanStatus(status?: string) {
 }
 
 export function isRunningGmailScanStatus(status?: string) {
-  return status === "running" || status === "queued";
+  return (
+    status === "running" ||
+    status === "queued" ||
+    status === "started" ||
+    status === "IN_PROGRESS"
+  );
 }
 
 export function isTerminalGmailScanStatus(status?: string) {

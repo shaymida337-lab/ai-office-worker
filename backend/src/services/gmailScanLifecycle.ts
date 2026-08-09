@@ -11,9 +11,12 @@ export const GMAIL_SCAN_STALE_MS = 30 * 60 * 1000;
 /** Manual/historical scans may list and process large mailboxes — keep a generous cooperative deadline. */
 export const GMAIL_MANUAL_SCAN_DEADLINE_MS = 4 * 60 * 60 * 1000;
 /**
- * Hard recovery bound for dashboard/API safety:
- * a queued/running scan with no completion and no fresh heartbeat cannot remain open forever.
+ * Hard recovery bound for dashboard/API safety on short/fast scans:
+ * a queued/running scan with no fresh heartbeat cannot remain open forever.
  * Prisma SyncLog.updatedAt is the heartbeat (touched by progress writes + explicit touches).
+ *
+ * Manual/historical scans may run for hours; for those modes stuckness is heartbeat-only
+ * (see isGmailScanStuckWithoutProgress) and total runtime uses GMAIL_MANUAL_SCAN_DEADLINE_MS.
  */
 export const GMAIL_SCAN_STUCK_TIMEOUT_MS = 3 * 60 * 1000;
 export const SCAN_STALE_TIMEOUT_REASON = "scan_stale_timeout";
@@ -180,26 +183,36 @@ export function gmailScanLastProgressAt(log: {
 }
 
 /**
- * Hard invariant: queued/running cannot remain open forever.
- * Close when startedAt is older than stuckMs OR lastProgressAt is older than stuckMs.
- * Fresh heartbeats do not extend past the hard total-runtime bound.
+ * Hard invariant: queued/running cannot remain open forever without progress.
+ *
+ * - All modes: heartbeat (updatedAt) older than stuckMs → stuck.
+ * - fast_recurring only: also hard-cap total runtime at stuckMs (dashboard safety).
+ * - manual/historical: heartbeats may keep a scan alive until the cooperative deadline
+ *   (GMAIL_MANUAL_SCAN_DEADLINE_MS); do NOT kill honest long scans at 3 minutes.
  */
 export function isGmailScanStuckWithoutProgress(
   log: {
     startedAt: Date;
     updatedAt?: Date | null;
     emailsProcessed?: number;
+    scanMode?: string | null;
   },
   now = Date.now(),
   stuckMs = GMAIL_SCAN_STUCK_TIMEOUT_MS
 ): boolean {
-  const startedMs = log.startedAt.getTime();
-  if (!Number.isFinite(startedMs) || now - startedMs >= stuckMs) {
-    return true;
-  }
   const lastProgressMs = gmailScanLastProgressAt(log).getTime();
   if (!Number.isFinite(lastProgressMs)) return true;
-  return now - lastProgressMs >= stuckMs;
+  if (now - lastProgressMs >= stuckMs) {
+    return true;
+  }
+
+  if (log.scanMode === "fast_recurring") {
+    const startedMs = log.startedAt.getTime();
+    if (!Number.isFinite(startedMs) || now - startedMs >= stuckMs) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -221,6 +234,7 @@ export function classifyOverdueGmailScanClose(log: {
         startedAt: log.startedAt,
         updatedAt: log.updatedAt,
         emailsProcessed: log.emailsProcessed,
+        scanMode: log.scanMode,
       },
       now
     )
@@ -331,6 +345,7 @@ export async function checkGmailScanShouldStop(
       {
         startedAt,
         updatedAt: (log as { updatedAt?: Date | null }).updatedAt,
+        scanMode: mode,
       },
       now
     )

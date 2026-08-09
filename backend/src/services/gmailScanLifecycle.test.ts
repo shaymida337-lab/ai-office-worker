@@ -95,11 +95,14 @@ test("mergeGmailScanWindowTruncated combines listing and deadline flags", () => 
   assert.equal(mergeGmailScanWindowTruncated(true, true), true);
 });
 
-test("stale running scan older than 3 minutes becomes timed_out", () => {
+test("stale heartbeat on manual scan becomes timed_out", () => {
   const now = Date.parse("2026-07-08T12:00:00.000Z");
   const startedAt = new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1);
   assert.equal(
-    isGmailScanStuckWithoutProgress({ startedAt, updatedAt: startedAt, emailsProcessed: 0 }, now),
+    isGmailScanStuckWithoutProgress(
+      { startedAt, updatedAt: startedAt, emailsProcessed: 0, scanMode: "manual" },
+      now
+    ),
     true
   );
   assert.equal(
@@ -128,7 +131,7 @@ test("fresh running scan is not stuck and does not classify as timed_out by hear
   const startedAt = new Date(now - 60_000);
   const updatedAt = new Date(now - 10_000);
   assert.equal(
-    isGmailScanStuckWithoutProgress({ startedAt, updatedAt, emailsProcessed: 12 }, now),
+    isGmailScanStuckWithoutProgress({ startedAt, updatedAt, emailsProcessed: 12, scanMode: "manual" }, now),
     false
   );
   assert.equal(
@@ -145,7 +148,7 @@ test("stale heartbeat while total runtime still under cooperative deadline is ti
   const startedAt = new Date(now - 2 * 60_000);
   const updatedAt = new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1);
   assert.equal(
-    isGmailScanStuckWithoutProgress({ startedAt, updatedAt, emailsProcessed: 5 }, now),
+    isGmailScanStuckWithoutProgress({ startedAt, updatedAt, emailsProcessed: 5, scanMode: "manual" }, now),
     true
   );
   assert.equal(
@@ -157,43 +160,74 @@ test("stale heartbeat while total runtime still under cooperative deadline is ti
   );
 });
 
-test("hard total runtime exceeds 3 minutes even with fresh-looking counters", () => {
+test("manual historical scan with fresh heartbeat stays alive past 3 minutes", () => {
+  const now = Date.parse("2026-07-08T12:00:00.000Z");
+  const startedAt = new Date(now - 20 * 60_000);
+  const updatedAt = new Date(now - 15_000);
+  assert.equal(
+    isGmailScanStuckWithoutProgress(
+      { startedAt, updatedAt, emailsProcessed: 100, scanMode: "manual" },
+      now
+    ),
+    false
+  );
+  assert.equal(
+    classifyOverdueGmailScanClose(
+      { scanMode: "manual", emailsProcessed: 100, startedAt, updatedAt },
+      now
+    ),
+    "paused"
+  );
+});
+
+test("missing heartbeat falls back to startedAt and is stuck after 3 minutes", () => {
   const now = Date.parse("2026-07-08T12:00:00.000Z");
   const startedAt = new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1);
   // updatedAt missing → lastProgressAt falls back to startedAt → still stuck
   assert.equal(
-    isGmailScanStuckWithoutProgress({ startedAt, emailsProcessed: 100 }, now),
+    isGmailScanStuckWithoutProgress({ startedAt, emailsProcessed: 100, scanMode: "manual" }, now),
     true
   );
   assert.equal(SCAN_STALE_TIMEOUT_REASON, "scan_stale_timeout");
 });
 
-test("classifyOverdueGmailScanClose pauses honest long scans only when not heartbeat-stuck", () => {
+test("fast_recurring hard-caps total runtime at 3 minutes even with fresh heartbeat", () => {
   const now = Date.parse("2026-07-08T12:00:00.000Z");
-  // Past cooperative deadline (4h) but classify uses stuck first; construct under stuck
-  // by making startedAt only slightly past stuck when stuck check uses same clock —
-  // for cooperative-overdue path we need startedAt old AND updatedAt fresh enough that
-  // stuck check fails — but stuck also checks startedAt age. So cooperative paused path
-  // is only reachable when startedAt is past mode deadline BUT under 3m stuck? Impossible
-  // for manual 4h. For fast_recurring past 30m with fresh heartbeat under 3m from started?
-  // Actually startedAt past 30m also means past 3m stuck. Stuck always wins first.
-  // Document invariant: any active scan older than 3m is timed_out.
+  const startedAt = new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1);
+  const updatedAt = new Date(now - 5_000);
   assert.equal(
-    classifyOverdueGmailScanClose({
-      scanMode: "manual",
-      emailsProcessed: 342,
-      startedAt: new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1),
-      updatedAt: new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1),
-    }, now),
-    "timed_out"
+    isGmailScanStuckWithoutProgress(
+      { startedAt, updatedAt, emailsProcessed: 2, scanMode: "fast_recurring" },
+      now
+    ),
+    true
+  );
+});
+
+test("classifyOverdueGmailScanClose pauses honest long manual scans past cooperative deadline", () => {
+  const now = Date.parse("2026-07-08T12:00:00.000Z");
+  assert.equal(
+    classifyOverdueGmailScanClose(
+      {
+        scanMode: "manual",
+        emailsProcessed: 342,
+        startedAt: new Date(now - GMAIL_MANUAL_SCAN_DEADLINE_MS - 1),
+        updatedAt: new Date(now - 10_000),
+      },
+      now
+    ),
+    "paused"
   );
   assert.equal(
-    classifyOverdueGmailScanClose({
-      scanMode: "fast_recurring",
-      emailsProcessed: 2,
-      startedAt: new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1),
-      updatedAt: new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1),
-    }, now),
+    classifyOverdueGmailScanClose(
+      {
+        scanMode: "fast_recurring",
+        emailsProcessed: 2,
+        startedAt: new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1),
+        updatedAt: new Date(now - GMAIL_SCAN_STUCK_TIMEOUT_MS - 1),
+      },
+      now
+    ),
     "timed_out"
   );
 });

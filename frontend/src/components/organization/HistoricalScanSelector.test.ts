@@ -42,6 +42,8 @@ test("HistoricalScanSelector shows active scanning state and success copy", () =
   assert.match(source, /הסריקה הושלמה! נמצאו/);
   assert.match(source, /waitForOrgGmailScanProgress/);
   assert.match(source, /onScanComplete/);
+  assert.match(source, /HISTORICAL_GMAIL_SCAN_POLL_MAX_ATTEMPTS/);
+  assert.match(source, /historical-scan-selector-error/);
 });
 
 test("HistoricalScanSelector is mounted on invoices page above Gmail action buttons", () => {
