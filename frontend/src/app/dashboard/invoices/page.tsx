@@ -15,8 +15,10 @@ import {
   SkeletonCard,
   StatusBadge,
 } from "@/components/natalie-ui";
+import { HistoricalScanSelector } from "@/components/organization/HistoricalScanSelector";
 import { useI18n } from "@/i18n";
 import { apiFetch, API_URL, getToken, type GmailStatus } from "@/lib/api";
+import { loadOrganizationSettings } from "@/lib/organization/organizationSettingsStore";
 import { buildFallbackMonthGroups } from "@/lib/invoices/monthGrouping";
 import { removeRowAfterAction } from "@/lib/invoices/animatedRemoval";
 import {
@@ -114,6 +116,7 @@ export default function InvoicesPage() {
   const [selected, setSelected] = useState<Invoice | null>(null);
   const [removingIds, setRemovingIds] = useState<Set<string>>(() => new Set());
   const [incompleteCount, setIncompleteCount] = useState(0);
+  const [historicalScanYears, setHistoricalScanYears] = useState<number | null>(null);
   const skipFilterRefresh = useRef(true);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -276,6 +279,14 @@ export default function InvoicesPage() {
       setMessageTone("error");
       setMessage(err instanceof Error ? err.message : "טעינת חשבוניות נכשלה");
     });
+  }, []);
+
+  useEffect(() => {
+    void loadOrganizationSettings()
+      .then((settings) => setHistoricalScanYears(settings.historicalScanYears ?? 1))
+      .catch(() => {
+        /* selector falls back to default year */
+      });
   }, []);
 
   useEffect(() => {
@@ -755,6 +766,17 @@ export default function InvoicesPage() {
             onChange={(next) => setReviewStatus(next === "needs_review" ? "all" : next)}
             labels={reviewTabLabels}
             hideNeedsReview
+          />
+        </div>
+
+        <div className="mb-5">
+          <HistoricalScanSelector
+            value={historicalScanYears}
+            onSaved={(settings) => setHistoricalScanYears(settings.historicalScanYears ?? 1)}
+            onToast={(toast) => {
+              setMessageTone(toast.tone);
+              setMessage(toast.text);
+            }}
           />
         </div>
 

@@ -24,7 +24,6 @@ import {
 } from "@/lib/integrations/gmailConnection";
 import { businessTypeLabel, type OrganizationSettings } from "@/lib/business-config";
 import { oauthReturnMessage } from "@/lib/integrations/oauthReturnMessages";
-import { HistoricalScanSelector } from "@/components/organization/HistoricalScanSelector";
 
 type SettingsMessage = { text: string; tone: "success" | "error" };
 
@@ -505,11 +504,6 @@ export default function SettingsPage() {
                 <Button type="submit">שמור הגדרות כלליות</Button>
               </div>
             </form>
-            <HistoricalScanSelector
-              value={organizationSettings?.historicalScanYears}
-              onSaved={setOrganizationSettings}
-              onToast={setMessage}
-            />
           </Card>
         ) : null}
 

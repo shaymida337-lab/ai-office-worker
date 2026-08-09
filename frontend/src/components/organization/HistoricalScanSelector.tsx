@@ -34,8 +34,8 @@ type HistoricalScanSelectorProps = {
 };
 
 /**
- * Organization setting: how far back historical Gmail scans look (1–5 years).
- * Persists immediately via PATCH /api/organization/settings.
+ * Historical Gmail scan depth (1–5 years).
+ * Persists via PATCH /api/organization/settings, then starts POST /api/gmail/scan.
  */
 export function HistoricalScanSelector({
   value,
@@ -69,6 +69,22 @@ export function HistoricalScanSelector({
       setOrganizationSettingsCache(next);
       onSaved?.(next);
       onToast?.({ text: historicalScanDepthToast(savedYears), tone: "success" });
+
+      // After a successful depth save, kick off a full historical Gmail scan
+      // for the selected window. Uses existing POST /api/gmail/scan (not /api/scan/start).
+      try {
+        await apiFetch("/api/gmail/scan", {
+          method: "POST",
+          body: JSON.stringify({
+            historical: true,
+            daysBack: savedYears * 365,
+            years: savedYears,
+            fullScan: true,
+          }),
+        });
+      } catch {
+        // Setting already saved; Gmail may be disconnected or a scan may already be running.
+      }
     } catch (err) {
       setSelected(previous);
       onToast?.({
