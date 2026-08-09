@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusinessOnboardingForm } from "@/components/BusinessOnboardingForm";
+import { HistoricalScanSelector } from "@/components/organization/HistoricalScanSelector";
+import { MessageBanner } from "@/components/natalie-ui";
 import { Nav } from "@/components/Nav";
 import { loadOrganizationSettings } from "@/lib/organization/organizationSettingsStore";
 import { businessTypeLabel, normalizeEnabledModules, type OrganizationSettings } from "@/lib/business-config";
@@ -11,6 +13,7 @@ export default function BusinessSettingsPage() {
   const router = useRouter();
   const [settings, setSettings] = useState<OrganizationSettings | null>(null);
   const [message, setMessage] = useState("");
+  const [toast, setToast] = useState<{ text: string; tone: "success" | "error" } | null>(null);
 
   useEffect(() => {
     void loadOrganizationSettings()
@@ -30,7 +33,8 @@ export default function BusinessSettingsPage() {
           </p>
           {settings && (
             <p className="mt-2 text-sm text-ink-secondary">
-              סוג נוכחי: {businessTypeLabel(settings.businessType)} · מודולים פעילים: {normalizeEnabledModules(settings.enabledModules, settings.businessType).length}
+              סוג נוכחי: {businessTypeLabel(settings.businessType)} · מודולים פעילים:{" "}
+              {normalizeEnabledModules(settings.enabledModules, settings.businessType).length}
             </p>
           )}
         </div>
@@ -40,6 +44,18 @@ export default function BusinessSettingsPage() {
       </div>
 
       {message && <div className="mb-6 rounded-2xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100">{message}</div>}
+      {toast ? (
+        <div className="mb-6">
+          <MessageBanner tone={toast.tone}>{toast.text}</MessageBanner>
+        </div>
+      ) : null}
+      <div className="mb-6">
+        <HistoricalScanSelector
+          value={settings?.historicalScanYears}
+          onSaved={setSettings}
+          onToast={setToast}
+        />
+      </div>
       <BusinessOnboardingForm initialSettings={settings} mode="settings" onSaved={setSettings} />
     </div>
   );

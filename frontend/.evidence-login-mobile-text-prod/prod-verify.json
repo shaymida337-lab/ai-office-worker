@@ -1,0 +1,120 @@
+{
+  "want": "a708a268aeeebc0989993c7d4fc2de1c999b24ef",
+  "deploy": {
+    "status": "live",
+    "commit": "a708a268aeeebc0989993c7d4fc2de1c999b24ef"
+  },
+  "login": {
+    "path": "/login",
+    "hasAuthForm": 1,
+    "empty": {
+      "color": "rgb(17, 24, 39)",
+      "caretColor": "rgb(17, 24, 39)",
+      "fill": "rgb(17, 24, 39)",
+      "bg": "rgb(255, 255, 255)",
+      "placeholderColor": "rgb(107, 114, 128)",
+      "placeholderOpacity": "1",
+      "htmlClass": "dark",
+      "hasAuthForm": true,
+      "hasAuthScreen": true
+    },
+    "typed": {
+      "email": {
+        "color": "rgb(17, 24, 39)",
+        "caretColor": "rgba(0, 0, 0, 0)",
+        "backgroundColor": "rgb(255, 255, 255)",
+        "opacity": "1",
+        "webkitTextFillColor": "rgb(17, 24, 39)"
+      },
+      "password": {
+        "color": "rgb(17, 24, 39)",
+        "caretColor": "rgba(0, 0, 0, 0)",
+        "backgroundColor": "rgb(255, 255, 255)",
+        "opacity": "1",
+        "webkitTextFillColor": "rgb(17, 24, 39)"
+      },
+      "label": {
+        "color": "rgb(17, 24, 39)",
+        "caretColor": "rgb(17, 24, 39)",
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "opacity": "1",
+        "webkitTextFillColor": "rgb(17, 24, 39)"
+      },
+      "footer": {
+        "color": "rgb(17, 24, 39)",
+        "caretColor": "rgb(17, 24, 39)",
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "opacity": "1",
+        "webkitTextFillColor": "rgb(17, 24, 39)"
+      },
+      "nav": {
+        "color": "rgb(29, 91, 255)",
+        "caretColor": "rgb(29, 91, 255)",
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "opacity": "1",
+        "webkitTextFillColor": "rgb(29, 91, 255)"
+      },
+      "parentOpacity": "1"
+    },
+    "ok": true
+  },
+  "signup": {
+    "path": "/signup",
+    "hasAuthForm": 1,
+    "empty": {
+      "color": "rgb(17, 24, 39)",
+      "caretColor": "rgb(17, 24, 39)",
+      "fill": "rgb(17, 24, 39)",
+      "bg": "rgb(255, 255, 255)",
+      "placeholderColor": "rgb(107, 114, 128)",
+      "placeholderOpacity": "1",
+      "htmlClass": "dark",
+      "hasAuthForm": true,
+      "hasAuthScreen": true
+    },
+    "typed": {
+      "email": {
+        "color": "rgb(17, 24, 39)",
+        "caretColor": "rgba(0, 0, 0, 0)",
+        "backgroundColor": "rgb(255, 255, 255)",
+        "opacity": "1",
+        "webkitTextFillColor": "rgb(17, 24, 39)"
+      },
+      "password": {
+        "color": "rgb(17, 24, 39)",
+        "caretColor": "rgba(0, 0, 0, 0)",
+        "backgroundColor": "rgb(255, 255, 255)",
+        "opacity": "1",
+        "webkitTextFillColor": "rgb(17, 24, 39)"
+      },
+      "label": {
+        "color": "rgb(17, 24, 39)",
+        "caretColor": "rgb(17, 24, 39)",
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "opacity": "1",
+        "webkitTextFillColor": "rgb(17, 24, 39)"
+      },
+      "footer": {
+        "color": "rgb(17, 24, 39)",
+        "caretColor": "rgb(17, 24, 39)",
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "opacity": "1",
+        "webkitTextFillColor": "rgb(17, 24, 39)"
+      },
+      "nav": {
+        "color": "rgb(29, 91, 255)",
+        "caretColor": "rgb(29, 91, 255)",
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "opacity": "1",
+        "webkitTextFillColor": "rgb(29, 91, 255)"
+      },
+      "parentOpacity": "1"
+    },
+    "ok": true
+  },
+  "unrelatedAuthLeak": {
+    "authFormCount": 0,
+    "authScreenCount": 0
+  },
+  "allOk": true
+}

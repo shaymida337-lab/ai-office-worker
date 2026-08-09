@@ -33,6 +33,7 @@ import {
   type VadTickState,
 } from "@/lib/natalie/voiceRecordingVad";
 import { logVoiceDebug, shouldLogPeriodicSample } from "@/lib/natalie/voiceRecordingDebug";
+import { getNatalieVoiceSpeaker } from "@/lib/speech/natalieVoice";
 import { isUiOverlayOpen, lockUiOverlay, unlockUiOverlay } from "@/lib/ui-overlay";
 import {
   recoverPendingPrompt,
@@ -646,6 +647,7 @@ function NatalieAssistantWidgetInner() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [pendingVoiceClarificationText, setPendingVoiceClarificationText] = useState<string | null>(null);
   const [pendingAudioPlay, setPendingAudioPlay] = useState(false);
+  const [pendingSpeechText, setPendingSpeechText] = useState<string | null>(null);
   const [pendingAvailabilityBooking, setPendingAvailabilityBooking] = useState<PendingAvailabilityBooking | null>(null);
   const pendingVoiceTurnRef = useRef<{ turnId: string; text: string } | null>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
@@ -1056,6 +1058,22 @@ function NatalieAssistantWidgetInner() {
     };
   }, []);
 
+  // סגירת הצ׳אט או הסרת הרכיב עוצרות כל הקראה פעילה (שרת או דפדפן).
+  useEffect(() => {
+    if (open) return;
+    const audio = ttsAudioRef.current;
+    if (audio) audio.pause();
+    getNatalieVoiceSpeaker().stop();
+    setPendingSpeechText(null);
+  }, [open]);
+
+  useEffect(() => {
+    return () => {
+      ttsAudioRef.current?.pause();
+      getNatalieVoiceSpeaker().stop();
+    };
+  }, []);
+
   const [uiOverlayOpen, setUiOverlayOpen] = useState(false);
 
   useEffect(() => {
@@ -1396,14 +1414,15 @@ function NatalieAssistantWidgetInner() {
     void startAudioRecording();
   }
 
-  function speakWithBrowser(cleanText: string) {
+  async function speakWithBrowser(cleanText: string) {
     try {
-      if (typeof window === "undefined" || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return;
-
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(cleanText);
-      u.lang = "he-IL";
-      window.speechSynthesis.speak(u);
+      const speaker = getNatalieVoiceSpeaker();
+      const result = await speaker.speak(cleanText);
+      if (!result.ok && result.reason !== "canceled" && result.reason !== "empty-text") {
+        // הדפדפן חסם השמעה ללא מחוות משתמש (נפוץ במובייל) —
+        // מציעים כפתור "הקש כדי לשמוע" במקום להיכשל בשקט.
+        setPendingSpeechText(cleanText);
+      }
     } catch (err) {
       console.error("[natalie] speech synthesis failed", err);
     }
@@ -1422,6 +1441,14 @@ function NatalieAssistantWidgetInner() {
   }
 
   async function playPendingAudio() {
+    // הקראת דפדפן שנחסמה — עכשיו יש מחוות משתמש, מנסים שוב.
+    if (pendingSpeechText) {
+      const textToSpeak = pendingSpeechText;
+      setPendingSpeechText(null);
+      void getNatalieVoiceSpeaker().speak(textToSpeak);
+      return;
+    }
+
     const audio = ttsAudioRef.current;
     if (!audio?.src) {
       setPendingAudioPlay(false);
@@ -1440,6 +1467,7 @@ function NatalieAssistantWidgetInner() {
     const cleanText = text.trim();
     if (!voiceEnabled || !cleanText || cleanText === "נטלי בודקת עבורך...") return;
 
+    setPendingSpeechText(null);
     releaseCurrentAudio();
 
     try {
@@ -1478,15 +1506,14 @@ function NatalieAssistantWidgetInner() {
     } catch (err) {
       console.error("[natalie] server voice failed, falling back to browser", err);
       releaseCurrentAudio();
-      speakWithBrowser(cleanText);
+      void speakWithBrowser(cleanText);
     }
   }
 
   function stopCurrentSpeech() {
     releaseCurrentAudio();
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-    }
+    setPendingSpeechText(null);
+    getNatalieVoiceSpeaker().stop();
   }
 
   async function hydrateConversationSession() {
@@ -1630,11 +1657,8 @@ function NatalieAssistantWidgetInner() {
     setInput("");
     setSending(true);
 
-    if (voiceEnabled && typeof window !== "undefined" && "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined") {
-      const unlock = new SpeechSynthesisUtterance(" ");
-      unlock.volume = 0;
-      unlock.lang = "he-IL";
-      window.speechSynthesis.speak(unlock);
+    if (voiceEnabled) {
+      getNatalieVoiceSpeaker().primeInUserGesture();
     }
 
     let result: unknown;
@@ -1788,11 +1812,8 @@ function NatalieAssistantWidgetInner() {
     setInput("");
     setSending(true);
 
-    if (voiceEnabled && typeof window !== "undefined" && "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined") {
-      const unlock = new SpeechSynthesisUtterance(" ");
-      unlock.volume = 0;
-      unlock.lang = "he-IL";
-      window.speechSynthesis.speak(unlock);
+    if (voiceEnabled) {
+      getNatalieVoiceSpeaker().primeInUserGesture();
     }
 
     let result: unknown;
@@ -2799,7 +2820,7 @@ function NatalieAssistantWidgetInner() {
             ))}
           </div>
 
-          {pendingAudioPlay && voiceEnabled && (
+          {(pendingAudioPlay || pendingSpeechText !== null) && voiceEnabled && (
             <div className="shrink-0 border-t border-[#e6eaf2] bg-[#f8faff] px-3 py-2">
               <button
                 type="button"

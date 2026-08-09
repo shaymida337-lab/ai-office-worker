@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Headphones, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { API_URL, getToken } from "@/lib/api";
+import { getNatalieVoiceSpeaker } from "@/lib/speech/natalieVoice";
 
 export function VoiceGuideButton({ text }: { text: string }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -17,7 +18,7 @@ export function VoiceGuideButton({ text }: { text: string }) {
   useEffect(() => {
     setBrowserSupported(typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window);
     return () => {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+      if (typeof window !== "undefined" && "speechSynthesis" in window) getNatalieVoiceSpeaker().stop();
       if (audioRef.current) {
         audioRef.current.pause();
         URL.revokeObjectURL(audioRef.current.src);
@@ -62,35 +63,35 @@ export function VoiceGuideButton({ text }: { text: string }) {
       setSpeaking(true);
       setPaused(false);
     } catch {
-      playBrowserFallback();
+      void playBrowserFallback();
     } finally {
       setLoading(false);
     }
   }
 
-  function playBrowserFallback() {
+  async function playBrowserFallback() {
     if (!browserSupported) {
       setMessage("השמעה קולית אינה נתמכת בדפדפן הזה");
       return;
     }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "he-IL";
-    utterance.rate = speed === "slow" ? 0.78 : speed === "fast" ? 1.12 : 0.92;
-    utterance.onend = () => {
-      setSpeaking(false);
-      setPaused(false);
-    };
-    utterance.onerror = () => {
-      setSpeaking(false);
-      setPaused(false);
-      setMessage("השמעה קולית אינה זמינה כרגע");
-    };
-    window.speechSynthesis.speak(utterance);
+    // בחירת הקול (עברי נשי אם קיים) מתבצעת בשירות הקול המרכזי של נטלי.
+    const rate = speed === "slow" ? 0.78 : speed === "fast" ? 1.12 : 0.92;
     setEngine("browser");
     setSpeaking(true);
     setPaused(false);
     setMessage("AI voice לא מוגדר כרגע, מופעל קול דפדפן כגיבוי.");
+    const result = await getNatalieVoiceSpeaker().speak(text, {
+      rate,
+      onEnd: () => {
+        setSpeaking(false);
+        setPaused(false);
+      },
+    });
+    if (!result.ok && result.reason !== "canceled") {
+      setSpeaking(false);
+      setPaused(false);
+      setMessage("השמעה קולית אינה זמינה כרגע");
+    }
   }
 
   function pause() {
@@ -113,7 +114,7 @@ export function VoiceGuideButton({ text }: { text: string }) {
       URL.revokeObjectURL(audioRef.current.src);
       audioRef.current = null;
     }
-    if (browserSupported) window.speechSynthesis.cancel();
+    if (browserSupported) getNatalieVoiceSpeaker().stop();
     setSpeaking(false);
     setPaused(false);
   }

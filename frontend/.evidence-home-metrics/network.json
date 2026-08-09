@@ -1,0 +1,140 @@
+{
+  "site": "https://ai-office-worker.com",
+  "api": "https://ai-office-worker-backend.onrender.com",
+  "hasNoDataCount": 8,
+  "snippet": "EN\n\nלקוחות, חשבוניות, ספקים, משימות וגבייה.\n\nהעסק שלי\n\nנטלי כבר על זה\n\nברוך הבא חזרה\n\nהכנתי לך תמונת מצב קצרה של העסק להיום.\n\nאין נתונים\n\nאין נתונים\n\nאין נתונים\n\nהכול נראה בשליטה כרגע.\n\nדבר עם נטלי\nפתח יומן\n\nהכנסות החודש\n\n—\n\nהוצאות החודש\n\n—\n\nמסמכים ממתינים\n\nאין נתונים\n\nפגישות היום\n\nאין נתונים\n\nדבר עם נטלי\n\nקבלי תעדוף מיידי לעבודה של היום\n\nסרקי מייל\n\nגלי מסמכים ומשימות חדשות אוטומטית\n\nהעלה מסמך\n\nהוסיפי מסמך ידני לעיבוד מהיר\n\nקבעי תור\n\nפתחי יומן וקבעי פגישה חדשה\n\nצור משימה\n\nעברו למשימות והוסיפו טיפול חדש\n\nהיום שלך\nאין משימות דחופות — היום פנוי כרגע\nסיכום ממתינים\nמשימות פתוחות\nאין נתונים\nמסמכים לבדיקה\nאין נתונים\nהתראות פתוחות\nאין נתונים\nפתח משימות\nבדקי מסמכים\nפעילות אחרונה\nהשלמת חשבוניות\n\nעדיין אין פעילות להצגה\n\nבית\nיומן\nלקוחות\nמסמכים\nמשימות\nנטלי\nעוד\nדברי עם נטלי",
+  "network": [
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/document-reviews?status=needs_review",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/payments",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/organization/settings",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/organization/settings",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/accountant/summary",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/system/health",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/integrations/gmail/status?t=1784152317967",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/automation/scan-status",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/clients",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/summary/daily",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/organization/settings",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/admin/marketing-leads/summary",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/admin/marketing-leads/summary",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/invoices?completeness=incomplete",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/stats",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/scheduling/briefing?from=2026-07-15T21%3A51%3A57.965Z&to=2026-07-29T21%3A51%3A57.966Z",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/alerts",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/tasks",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/dashboard/home-metrics",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/invoices?completeness=complete",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/integrations/gmail/status?t=1784152318193",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    },
+    {
+      "type": "failed",
+      "url": "https://ai-office-worker-backend.onrender.com/api/whatsapp-assistant/stats",
+      "error": "net::ERR_FAILED",
+      "method": "GET"
+    }
+  ]
+}

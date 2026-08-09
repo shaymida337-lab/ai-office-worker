@@ -528,6 +528,8 @@ export type OrganizationSettings = {
   timeFormat: "12h" | "24h";
   weekStart: "sunday" | "monday" | "saturday";
   phoneCountryCode: string;
+  /** Historical Gmail scan depth in years (1–5). */
+  historicalScanYears?: number;
 };
 
 export type BusinessTemplatesResponse = {
