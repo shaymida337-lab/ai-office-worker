@@ -1,0 +1,626 @@
+{
+  "syncLogs": [
+    {
+      "id": "cms1os4ah01czjn2cvhi619vc",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 3,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 3,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T11:00:04.368Z",
+      "finishedAt": "2026-07-26T11:00:32.836Z",
+      "updatedAt": "2026-07-26T11:00:32.837Z"
+    },
+    {
+      "id": "cms1oww1o0037j81s6ma2o4x1",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 3,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 3,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T11:03:47.005Z",
+      "finishedAt": "2026-07-26T11:04:14.711Z",
+      "updatedAt": "2026-07-26T11:04:14.711Z"
+    },
+    {
+      "id": "cms1p4dbq007hj81sc133a1tw",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 5,
+      "emailsSaved": 2,
+      "invoicesFound": 2,
+      "totalMatched": 5,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T11:09:35.990Z",
+      "finishedAt": "2026-07-26T11:10:52.541Z",
+      "updatedAt": "2026-07-26T11:10:52.542Z"
+    },
+    {
+      "id": "cms1pc49000dbj81szc6w92gx",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 5,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 5,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T11:15:37.476Z",
+      "finishedAt": "2026-07-26T11:16:14.839Z",
+      "updatedAt": "2026-07-26T11:16:14.840Z"
+    },
+    {
+      "id": "cms1pjvc900idj81saj09n3jk",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 5,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 5,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T11:21:39.178Z",
+      "finishedAt": "2026-07-26T11:22:17.270Z",
+      "updatedAt": "2026-07-26T11:22:17.272Z"
+    },
+    {
+      "id": "cms1prlvd00nfj81satn9qf3c",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 5,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 5,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T11:27:40.153Z",
+      "finishedAt": "2026-07-26T11:28:17.086Z",
+      "updatedAt": "2026-07-26T11:28:17.087Z"
+    },
+    {
+      "id": "cms1pz88f00shj81s73b4nst5",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 5,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 5,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T11:33:35.728Z",
+      "finishedAt": "2026-07-26T11:34:15.840Z",
+      "updatedAt": "2026-07-26T11:34:15.841Z"
+    },
+    {
+      "id": "cms1q9g6j002zje2ek6fh6kft",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 5,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 5,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T11:41:32.587Z",
+      "finishedAt": "2026-07-26T11:42:12.947Z",
+      "updatedAt": "2026-07-26T11:42:12.948Z"
+    },
+    {
+      "id": "cms1qgwj30081je2eect7vx74",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 7,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 7,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T11:47:20.367Z",
+      "finishedAt": "2026-07-26T11:48:31.293Z",
+      "updatedAt": "2026-07-26T11:48:31.294Z"
+    },
+    {
+      "id": "cms1qokyx00e7je2evhfo6dqv",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 7,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 7,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T11:53:18.633Z",
+      "finishedAt": "2026-07-26T11:54:06.261Z",
+      "updatedAt": "2026-07-26T11:54:06.262Z"
+    },
+    {
+      "id": "cms1qwgwu00k5je2e20uw0tyt",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 7,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 7,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T11:59:26.622Z",
+      "finishedAt": "2026-07-26T12:00:19.888Z",
+      "updatedAt": "2026-07-26T12:00:19.889Z"
+    },
+    {
+      "id": "cms1r46tb00q5je2edgad6ear",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 7,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 7,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T12:05:26.784Z",
+      "finishedAt": "2026-07-26T12:06:18.632Z",
+      "updatedAt": "2026-07-26T12:06:18.632Z"
+    },
+    {
+      "id": "cms1rbp2l00w3je2epkc3qwl0",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 7,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 7,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T12:11:17.038Z",
+      "finishedAt": "2026-07-26T12:12:06.017Z",
+      "updatedAt": "2026-07-26T12:12:06.018Z"
+    },
+    {
+      "id": "cms1rjpne0123je2ew11av1f3",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 7,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 7,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T12:17:31.034Z",
+      "finishedAt": "2026-07-26T12:18:22.391Z",
+      "updatedAt": "2026-07-26T12:18:22.392Z"
+    },
+    {
+      "id": "cms1rr8lu0181je2e7owznt58",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 7,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 7,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T12:23:22.195Z",
+      "finishedAt": "2026-07-26T12:24:11.736Z",
+      "updatedAt": "2026-07-26T12:24:11.736Z"
+    }
+  ],
+  "fdrTouched": [
+    {
+      "id": "cmqw3n5hx020dm92bp1joi8wu",
+      "gmailMessageId": "19ee12f8ab9f4579",
+      "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+      "supplierName": "נ.ערנט איי.קום בע\"מ",
+      "invoiceNumber": "OV255006399",
+      "fileName": "PHOTO-2025-09-15-14-29-36.jpg",
+      "documentFingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "documentType": "tax_invoice_receipt",
+      "totalAmount": 354,
+      "documentDate": "2025-09-10T00:00:00.000Z",
+      "createdAt": "2026-06-27T08:29:47.541Z",
+      "updatedAt": "2026-07-26T11:48:12.017Z"
+    },
+    {
+      "id": "cmqw3onmp0227m92bemcb1bkm",
+      "gmailMessageId": "19ed663d168fc8dc",
+      "emailMessageId": "cmqw2b45m0067m92bvf4csrfw",
+      "supplierName": "בזק - החברה הישראלית לתקשורת בע״מ",
+      "invoiceNumber": "238419712",
+      "fileName": "PHOTO-2025-12-10-13-10-10.jpg",
+      "documentFingerprint": "327f78265d110edc5b3b6f37c4bfb903393eff044c295250",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "documentType": "tax_invoice_receipt",
+      "totalAmount": 163.28,
+      "documentDate": "2025-12-07T00:00:00.000Z",
+      "createdAt": "2026-06-27T08:30:57.697Z",
+      "updatedAt": "2026-07-26T11:48:24.803Z"
+    }
+  ],
+  "gsiTouched": [],
+  "oldRnet": {
+    "id": "cmqw3n5hx020dm92bp1joi8wu",
+    "gmailMessageId": "19ee12f8ab9f4579",
+    "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+    "supplierName": "נ.ערנט איי.קום בע\"מ",
+    "invoiceNumber": "OV255006399",
+    "fileName": "PHOTO-2025-09-15-14-29-36.jpg",
+    "documentFingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+    "reviewStatus": "needs_review",
+    "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+    "totalAmount": 354,
+    "documentDate": "2025-09-10T00:00:00.000Z",
+    "createdAt": "2026-06-27T08:29:47.541Z",
+    "updatedAt": "2026-07-26T11:48:12.017Z",
+    "parsedFieldsJson": {
+      "arc": {
+        "reason": "AI Total Amount",
+        "status": "resolved",
+        "version": "arc-v2",
+        "currency": "ILS",
+        "rejected": [],
+        "vatAmount": 54,
+        "candidates": [
+          {
+            "kind": "computed",
+            "label": "subtotal + vat",
+            "value": 354,
+            "source": "claude_file",
+            "confidence": 0.78
+          },
+          {
+            "kind": "ai_total",
+            "label": "totalAmount",
+            "value": 354,
+            "source": "claude_file",
+            "confidence": 0.78
+          },
+          {
+            "kind": "ai_total",
+            "label": "totalAmount",
+            "value": 354,
+            "source": "claude_email",
+            "confidence": 0.95
+          },
+          {
+            "kind": "ai_inferred",
+            "label": "amount",
+            "value": 354,
+            "source": "claude_file",
+            "confidence": 0.73
+          },
+          {
+            "kind": "ai_inferred",
+            "label": "amount",
+            "value": 354,
+            "source": "claude_email",
+            "confidence": 0.8999999999999999
+          },
+          {
+            "kind": "regex_labeled",
+            "label": "parsed_fields_json.amount",
+            "value": 354,
+            "source": "regex_gmail",
+            "confidence": 0.72
+          },
+          {
+            "kind": "regex_labeled",
+            "label": "detect_invoice.amount",
+            "value": 354,
+            "source": "regex_gmail",
+            "confidence": 0.68
+          },
+          {
+            "kind": "subtotal_before_vat",
+            "label": "amountBeforeVat",
+            "value": 300,
+            "source": "claude_file",
+            "confidence": 0.78
+          },
+          {
+            "kind": "vat_only",
+            "label": "vatAmount",
+            "value": 54,
+            "source": "claude_file",
+            "confidence": 0.78
+          }
+        ],
+        "confidence": 0.999,
+        "reasonCode": "AI_TOTAL",
+        "evidenceScore": 9,
+        "ambiguityFlags": [],
+        "selectedAmount": 354,
+        "amountBeforeVat": 300
+      },
+      "fse": {
+        "errors": [
+          {
+            "ruleId": "duplicate_suspicion",
+            "message": "Document fingerprint 87d30575d372c795d0c93e55… matches an existing invoice in this organization, so this is likely a duplicate submission."
+          }
+        ],
+        "version": "fse-v1",
+        "warnings": [],
+        "confidence": 0.97,
+        "trustScore": 82,
+        "explanation": "1 blocking issue: Document fingerprint 87d30575d372c795d0c93e55… matches an existing invoice in this organization, so this is likely a duplicate submission.",
+        "failedRules": [
+          "duplicate_suspicion"
+        ],
+        "passedRules": [
+          "vat_arithmetic",
+          "impossible_amount",
+          "document_type_ceiling",
+          "supplier_historical_range",
+          "future_invoice_date",
+          "missing_invoice_number",
+          "currency_mismatch",
+          "negative_invoice_validation",
+          "credit_note_validation",
+          "invoice_sequence_anomaly",
+          "ocr_suspicious_patterns"
+        ],
+        "overallStatus": "error",
+        "recommendation": "Compare this document with the suspected duplicate before saving. Blocking rule: duplicate suspicion."
+      },
+      "sir": {
+        "reason": "vat_registry selected נ.ערנט איי.קום בע\"מ with 1 corroborating evidence source(s)",
+        "status": "resolved",
+        "aliases": [],
+        "version": "sir-v1",
+        "evidence": [
+          {
+            "type": "vat",
+            "label": "analysis.supplierTaxId",
+            "value": "נ.ערנט איי.קום בע\"מ",
+            "source": "registry",
+            "weight": 0.95,
+            "matched": true
+          },
+          {
+            "type": "claude",
+            "label": "analysis.supplier",
+            "value": "נ.ערנט איי.קום בע\"מ",
+            "source": "claude_email",
+            "weight": 0.7,
+            "matched": true
+          }
+        ],
+        "vatNumber": "514812502",
+        "confidence": 0.98,
+        "reasonCode": "VAT_REGISTRY",
+        "winnerKind": "vat_registry",
+        "supplierName": "נ.ערנט איי.קום בע\"מ",
+        "evidenceScore": 1.65,
+        "normalizedName": "נערנטאייקוםבעמ",
+        "canonicalSupplier": null,
+        "isStrongEnoughForAutoSave": true
+      },
+      "gates": [
+        {
+          "gate": "amount",
+          "verdict": "pass",
+          "reasonCode": "amount.resolved",
+          "engineVersion": "amount-gate-v1",
+          "normalizedAmount": 354
+        },
+        {
+          "gate": "supplier",
+          "verdict": "pass",
+          "reasonCode": "supplier.resolved",
+          "engineVersion": "supplier-gate-v1",
+          "canonicalSupplierName": "נ.ערנט איי.קום בע\"מ"
+        }
+      ],
+      "trust": {
+        "version": "te-v1",
+        "decision": "BLOCK",
+        "confidence": 38,
+        "reasonCode": "TE_FSE_CRITICAL_ERROR",
+        "contributors": [
+          {
+            "score": 92,
+            "engine": "scfc",
+            "impact": -10,
+            "weight": 0.15,
+            "explanation": "Canonical fingerprint tier=invoice-amount strongEnough=true"
+          },
+          {
+            "score": 100,
+            "engine": "arc",
+            "impact": 0,
+            "weight": 0.25,
+            "explanation": "ARC status=resolved reasonCode=AI_TOTAL confidence=100%"
+          },
+          {
+            "score": 98,
+            "engine": "sir",
+            "impact": 0,
+            "weight": 0.25,
+            "explanation": "SIR status=resolved reasonCode=VAT_REGISTRY confidence=98%"
+          },
+          {
+            "score": 82,
+            "engine": "fse",
+            "impact": -35,
+            "weight": 0.3,
+            "explanation": "FSE status=error trustScore=82 failed=duplicate_suspicion"
+          },
+          {
+            "score": 86,
+            "engine": "context",
+            "impact": 0,
+            "weight": 0.05,
+            "explanation": "Optional learning and extraction-quality context"
+          },
+          {
+            "score": 91,
+            "engine": "context",
+            "impact": -9,
+            "weight": 0,
+            "explanation": "Never Guess rule applied for 3 uncertainty signal(s)"
+          }
+        ]
+      },
+      "amount": 354,
+      "dueDate": null,
+      "outcome": {
+        "reason": "Blocked by FSE critical failure",
+        "status": "BLOCKED",
+        "version": "oe-v1",
+        "headline": "Document blocked from automatic save",
+        "timeline": [
+          {
+            "name": "Received",
+            "engine": "received",
+            "status": "completed",
+            "timestamp": null,
+            "explanation": "Document entered Natalie processing pipeline."
+          },
+          {
+            "name": "AI Analysis",
+            "engine": "ai",
+            "status": "completed",
+            "timestamp": null,
+            "explanation": "AI extracted supplier, amount, and document fields from the message."
+          },
+          {
+            "name": "SCFC",
+            "engine": "scfc",
+            "status": "completed",
+            "timestamp": null,
+            "explanation": "Canonical fingerprint tier=invoice-amount fingerprint=87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf"
+          },
+          {
+            "name": "ARC",
+            "engine": "arc",
+            "status": "completed",
+            "timestamp": null,
+            "explanation": "ARC resolved (AI_TOTAL) amount=354"
+          },
+          {
+            "name": "SIR",
+            "engine": "sir",
+            "status": "completed",
+            "timestamp": null,
+            "explanation": "SIR resolved (VAT_REGISTRY) supplier=\"נ.ערנט איי.קום בע\"מ\""
+          },
+          {
+            "name": "FSE",
+            "engine": "fse",
+            "status": "failed",
+            "timestamp": null,
+            "explanation": "FSE error trustScore=82 failed=duplicate_suspicion"
+          },
+          {
+            "name": "Trust Engine",
+            "engine": "trust",
+            "status": "failed",
+            "timestamp": null,
+            "explanation": "Trust BLOCK confidence=38% (TE_FSE_CRITICAL_ERROR)"
+          },
+          {
+            "name": "Final Decision",
+            "engine": "outcome",
+            "status": "completed",
+            "timestamp": null,
+            "explanation": "Final outcome=BLOCKED"
+          }
+        ],
+        "reasonCode": "OE_TRUST_BLOCKED",
+        "description": "Trust Engine blocked this document because FSE reported a critical issue (TE_FSE_CRITICAL_ERROR). 1 blocking issue: Document fingerprint 87d30575d372c795d0c93e55… matches an existing invoice in this organization, so this is likely a duplicate submission.",
+        "recommendedAction": "Review the financial sanity errors before approving or editing the document."
+      },
+      "reasons": [
+        "amount_found",
+        "invoice_number_not_found",
+        "invoice_date_found",
+        "due_date_not_found"
+      ],
+      "confidence": 0.62,
+      "invoiceDate": "2025-09-10",
+      "invoiceNumber": null
+    }
+  },
+  "gateSims": [
+    {
+      "gmailId": "19f9e3d4a3621e8d",
+      "gate": {
+        "isInvoice": true,
+        "confidence": 0.55,
+        "reasons": [
+          "document_attachment_only"
+        ]
+      },
+      "personalReject": false,
+      "processedAt": "2026-07-26T11:48:25.260Z",
+      "createdAt": "2026-07-26T11:47:32.739Z"
+    },
+    {
+      "gmailId": "19f9e3d9101ed94d",
+      "gate": {
+        "isInvoice": true,
+        "confidence": 0.55,
+        "reasons": [
+          "document_attachment_only"
+        ]
+      },
+      "personalReject": false,
+      "processedAt": "2026-07-26T11:48:12.474Z",
+      "createdAt": "2026-07-26T11:47:28.279Z"
+    }
+  ],
+  "fpSearch": [
+    {
+      "hash": {
+        "filename": "PHOTO-2025-09-15-14-29-36.jpg",
+        "bytes": 97753,
+        "sha256": "13d646c0a4784ee6f7a95f22473bba3b1703134bce408dca1754f0dba82e48ed",
+        "sha256_48": "13d646c0a4784ee6f7a95f22473bba3b1703134bce408dca",
+        "sha1_48": "7561d72f6d87d3df16359cb998789e1ff5bc6a3a"
+      },
+      "hits": []
+    },
+    {
+      "hash": {
+        "filename": "PHOTO-2025-12-10-13-10-10.jpg",
+        "bytes": 136099,
+        "sha256": "8025ec9ac4cf72257f5a8c0eb3e59120cf84941f83118c58b6bb58fbc165ef00",
+        "sha256_48": "8025ec9ac4cf72257f5a8c0eb3e59120cf84941f83118c58",
+        "sha1_48": "ea05fe5f1f693100cc3e0ef121813fa007215257"
+      },
+      "hits": []
+    }
+  ],
+  "completionCandidates": [
+    {
+      "id": "cmqw3n5hx020dm92bp1joi8wu",
+      "gmailMessageId": "19ee12f8ab9f4579",
+      "supplierName": "נ.ערנט איי.קום בע\"מ",
+      "invoiceNumber": "OV255006399",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "totalAmount": 354,
+      "documentDate": "2025-09-10T00:00:00.000Z",
+      "createdAt": "2026-06-27T08:29:47.541Z",
+      "updatedAt": "2026-07-26T11:48:12.017Z"
+    },
+    {
+      "id": "cmqw3ouri022hm92bqrwfxguj",
+      "gmailMessageId": "19ed663858554d33",
+      "supplierName": "Rnet",
+      "invoiceNumber": "rent",
+      "reviewStatus": "rejected",
+      "uncertaintyReason": "Quarantined: cross-org gmail ingestion",
+      "totalAmount": null,
+      "documentDate": "2025-04-03T00:00:00.000Z",
+      "createdAt": "2026-06-27T08:31:06.942Z",
+      "updatedAt": "2026-07-11T15:58:11.542Z"
+    },
+    {
+      "id": "cmqygwy4m08zpme2d0tjj3hwo",
+      "gmailMessageId": "19f0e22237eb2bb9",
+      "supplierName": "shaymida337",
+      "invoiceNumber": "supplier",
+      "reviewStatus": "rejected",
+      "uncertaintyReason": "Quarantined: cross-org gmail ingestion",
+      "totalAmount": 354,
+      "documentDate": "2025-09-10T00:00:00.000Z",
+      "createdAt": "2026-06-29T00:16:51.910Z",
+      "updatedAt": "2026-07-11T15:59:00.743Z"
+    }
+  ]
+}

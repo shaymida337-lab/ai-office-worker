@@ -1,0 +1,277 @@
+﻿{
+  "status": 200,
+  "start": "2026-07-26T08:14:30.660Z",
+  "end": "2026-07-26T10:14:30.660Z",
+  "totalEntries": 100,
+  "filteredCount": 93,
+  "priorityCount": 26,
+  "priority": [
+    {
+      "ts": "2026-07-26T10:13:54.160322216Z",
+      "msg": "[gmail-sync] Drive totals attempted=0 succeeded=0 skipped=0 failed=0"
+    },
+    {
+      "ts": "2026-07-26T10:13:55.373755368Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmqxujfuj034ndy2czu9tjoko\",\"scanId\":\"cms1n4ieq008rjn2cloe12v58\",\"previousStatus\":\"running\",\"nextStatus\":\"completed\",\"reason\":\"completed\",\"startedAt\":\"2026-07-26T10:13:43.346Z\",\"lastProgressAt\":\"2026-07-26T10:13:55.373Z\",\"currentStage\":\"process\",\"processedEmails\":0,\"savedDocuments\":0,\"durationMs\":12027,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:13:59.804736022Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmqw27e43002bm92bmf9mjy1n\",\"scanId\":\"cms1n4uke008vjn2cvhtr1uhq\",\"previousStatus\":\"idle\",\"nextStatus\":\"queued\",\"reason\":\"manual_or_scheduled_start\",\"startedAt\":\"2026-07-26T10:13:59.102Z\",\"lastProgressAt\":\"2026-07-26T10:13:59.102Z\",\"currentStage\":\"queued\",\"processedEmails\":0,\"savedDocuments\":0,\"durationMs\":0,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:00.858043572Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmqw27e43002bm92bmf9mjy1n\",\"scanId\":\"cms1n4uke008vjn2cvhtr1uhq\",\"previousStatus\":\"queued\",\"nextStatus\":\"running\",\"reason\":\"promote_to_running\",\"startedAt\":\"2026-07-26T10:13:59.102Z\",\"lastProgressAt\":\"2026-07-26T10:14:00.857Z\",\"currentStage\":\"running\",\"processedEmails\":null,\"savedDocuments\":null,\"durationMs\":1755,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:01.558981099Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmqw27e43002bm92bmf9mjy1n\",\"scanId\":\"cms1n4uke008vjn2cvhtr1uhq\",\"previousStatus\":\"running\",\"nextStatus\":\"running\",\"reason\":\"heartbeat:fetch_start\",\"startedAt\":null,\"lastProgressAt\":\"2026-07-26T10:14:01.558Z\",\"currentStage\":\"fetch_start\",\"processedEmails\":null,\"savedDocuments\":null,\"durationMs\":null,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:03.086373247Z",
+      "msg": "[gmail-isolation] shared Gmail mailbox detected org=cmqw27e43002bm92bmf9mjy1n mailbox=shaymida337@gmail.com otherOrgs=cmpjd7j7e0001bl5tzv049rxb"
+    },
+    {
+      "ts": "2026-07-26T10:14:03.788604791Z",
+      "msg": "[scan] failed scanId=cms1n4uke008vjn2cvhtr1uhq reason=Gmail mailbox shaymida337@gmail.com is already connected to another organization"
+    },
+    {
+      "ts": "2026-07-26T10:14:04.140234608Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmqw27e43002bm92bmf9mjy1n\",\"scanId\":\"cms1n4uke008vjn2cvhtr1uhq\",\"previousStatus\":\"running\",\"nextStatus\":\"failed\",\"reason\":\"Gmail mailbox shaymida337@gmail.com is already connected to another organization\",\"startedAt\":\"2026-07-26T10:13:59.102Z\",\"lastProgressAt\":\"2026-07-26T10:14:04.139Z\",\"currentStage\":\"fetch\",\"processedEmails\":0,\"savedDocuments\":0,\"durationMs\":5037,\"error\":\"Gmail mailbox shaymida337@gmail.com is already connected to another organization\"}"
+    },
+    {
+      "ts": "2026-07-26T10:14:04.140258609Z",
+      "msg": "[gmail-scan-lifecycle] scan_failed {\"scanId\":\"cms1n4uke008vjn2cvhtr1uhq\",\"organizationId\":\"cmqw27e43002bm92bmf9mjy1n\",\"scanMode\":\"fast_recurring\",\"phase\":\"fetch\",\"emailsProcessed\":0,\"emailsSaved\":0,\"elapsedMs\":5038,\"reason\":\"Gmail mailbox shaymida337@gmail.com is already connected to another organization\"}"
+    },
+    {
+      "ts": "2026-07-26T10:14:04.490919717Z",
+      "msg": "[scheduler] FAST_SCAN_TRIGGERED failed org=cmqw27e43002bm92bmf9mjy1n GmailIntegrationIsolationError: Gmail mailbox shaymida337@gmail.com is already connected to another organization"
+    },
+    {
+      "ts": "2026-07-26T10:14:04.490983248Z",
+      "msg": "    otherOrganizationIds: [ 'cmpjd7j7e0001bl5tzv049rxb' ]"
+    },
+    {
+      "ts": "2026-07-26T10:14:08.548558975Z",
+      "msg": "DRIVE UPLOAD FAILED org=cmpjd7j7e0001bl5tzv049rxb doc=emailAttachment:cmqhqr2pm000zn02cnzbi7cke reason=missing_document_metadata"
+    },
+    {
+      "ts": "2026-07-26T10:14:08.918658926Z",
+      "msg": "DRIVE_RETRY_BACKLOG org=cmpjd7j7e0001bl5tzv049rxb remaining=1 (run find-pending-drive.ts for details)"
+    },
+    {
+      "ts": "2026-07-26T10:14:08.918684116Z",
+      "msg": "[gmail-sync] Drive pending retry attempted=1 uploaded=0 failed=1"
+    },
+    {
+      "ts": "2026-07-26T10:14:11.523330028Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmpjd7j7e0001bl5tzv049rxb\",\"scanId\":\"cms1n53lw008zjn2caudffgaz\",\"previousStatus\":\"idle\",\"nextStatus\":\"queued\",\"reason\":\"manual_or_scheduled_start\",\"startedAt\":\"2026-07-26T10:14:10.821Z\",\"lastProgressAt\":\"2026-07-26T10:14:10.821Z\",\"currentStage\":\"queued\",\"processedEmails\":0,\"savedDocuments\":0,\"durationMs\":0,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:12.66049679Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmpjd7j7e0001bl5tzv049rxb\",\"scanId\":\"cms1n53lw008zjn2caudffgaz\",\"previousStatus\":\"queued\",\"nextStatus\":\"running\",\"reason\":\"promote_to_running\",\"startedAt\":\"2026-07-26T10:14:10.821Z\",\"lastProgressAt\":\"2026-07-26T10:14:12.660Z\",\"currentStage\":\"running\",\"processedEmails\":null,\"savedDocuments\":null,\"durationMs\":1839,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:12.660509Z",
+      "msg": "[gmail-scan-lifecycle] scan_started {\"scanId\":\"cms1n53lw008zjn2caudffgaz\",\"organizationId\":\"cmpjd7j7e0001bl5tzv049rxb\",\"scanMode\":\"fast_recurring\",\"elapsedMs\":0}"
+    },
+    {
+      "ts": "2026-07-26T10:14:13.362446788Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmpjd7j7e0001bl5tzv049rxb\",\"scanId\":\"cms1n53lw008zjn2caudffgaz\",\"previousStatus\":\"running\",\"nextStatus\":\"running\",\"reason\":\"heartbeat:fetch_start\",\"startedAt\":null,\"lastProgressAt\":\"2026-07-26T10:14:13.362Z\",\"currentStage\":\"fetch_start\",\"processedEmails\":null,\"savedDocuments\":null,\"durationMs\":null,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:20.222205075Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmpjd7j7e0001bl5tzv049rxb\",\"scanId\":\"cms1n53lw008zjn2caudffgaz\",\"previousStatus\":\"running\",\"nextStatus\":\"running\",\"reason\":\"heartbeat:fetch_end\",\"startedAt\":null,\"lastProgressAt\":\"2026-07-26T10:14:20.222Z\",\"currentStage\":\"fetch_end\",\"processedEmails\":null,\"savedDocuments\":null,\"durationMs\":null,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:20.868872857Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmpjd7j7e0001bl5tzv049rxb\",\"scanId\":\"cms1n53lw008zjn2caudffgaz\",\"previousStatus\":\"running\",\"nextStatus\":\"running\",\"reason\":\"heartbeat:processing_start\",\"startedAt\":null,\"lastProgressAt\":\"2026-07-26T10:14:20.868Z\",\"currentStage\":\"processing_start\",\"processedEmails\":null,\"savedDocuments\":null,\"durationMs\":null,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:21.580184314Z",
+      "msg": "[gmail-sync] Drive totals attempted=0 succeeded=0 skipped=0 failed=0"
+    },
+    {
+      "ts": "2026-07-26T10:14:22.873519659Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmpjd7j7e0001bl5tzv049rxb\",\"scanId\":\"cms1n53lw008zjn2caudffgaz\",\"previousStatus\":\"running\",\"nextStatus\":\"completed\",\"reason\":\"completed\",\"startedAt\":\"2026-07-26T10:14:10.821Z\",\"lastProgressAt\":\"2026-07-26T10:14:22.873Z\",\"currentStage\":\"process\",\"processedEmails\":0,\"savedDocuments\":0,\"durationMs\":12052,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:22.873550669Z",
+      "msg": "[gmail-scan-lifecycle] scan_completed {\"scanId\":\"cms1n53lw008zjn2caudffgaz\",\"organizationId\":\"cmpjd7j7e0001bl5tzv049rxb\",\"scanMode\":\"fast_recurring\",\"phase\":\"process\",\"emailsProcessed\":0,\"emailsSaved\":0,\"totalMatched\":0,\"elapsedMs\":12052,\"reason\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:27.889063352Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmpo1ky3d000fii2p5x3kiv4k\",\"scanId\":\"cms1n5g8n0093jn2cx7kfqubd\",\"previousStatus\":\"idle\",\"nextStatus\":\"queued\",\"reason\":\"manual_or_scheduled_start\",\"startedAt\":\"2026-07-26T10:14:27.191Z\",\"lastProgressAt\":\"2026-07-26T10:14:27.191Z\",\"currentStage\":\"queued\",\"processedEmails\":0,\"savedDocuments\":0,\"durationMs\":0,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:28.931808089Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmpo1ky3d000fii2p5x3kiv4k\",\"scanId\":\"cms1n5g8n0093jn2cx7kfqubd\",\"previousStatus\":\"queued\",\"nextStatus\":\"running\",\"reason\":\"promote_to_running\",\"startedAt\":\"2026-07-26T10:14:27.191Z\",\"lastProgressAt\":\"2026-07-26T10:14:28.931Z\",\"currentStage\":\"running\",\"processedEmails\":null,\"savedDocuments\":null,\"durationMs\":1740,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:29.62946281Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmpo1ky3d000fii2p5x3kiv4k\",\"scanId\":\"cms1n5g8n0093jn2cx7kfqubd\",\"previousStatus\":\"running\",\"nextStatus\":\"running\",\"reason\":\"heartbeat:fetch_start\",\"startedAt\":null,\"lastProgressAt\":\"2026-07-26T10:14:29.629Z\",\"currentStage\":\"fetch_start\",\"processedEmails\":null,\"savedDocuments\":null,\"durationMs\":null,\"error\":null}"
+    }
+  ],
+  "filteredSample": [
+    {
+      "ts": "2026-07-26T10:13:53.856599876Z",
+      "msg": "[gmail-sync] FAST_SCAN_DONE processed=0"
+    },
+    {
+      "ts": "2026-07-26T10:13:53.856627507Z",
+      "msg": "[scan] processing end scanId=cms1n4ieq008rjn2cloe12v58"
+    },
+    {
+      "ts": "2026-07-26T10:13:54.160275095Z",
+      "msg": "Found 0 relevant emails (0 invoices, 0 receipts, 0 payment requests, 0 supplier messages)"
+    },
+    {
+      "ts": "2026-07-26T10:13:54.160302026Z",
+      "msg": "[gmail-sync] parser totals scanned=0 parsed=0 rejected=0 rejectedReasons={}"
+    },
+    {
+      "ts": "2026-07-26T10:13:54.160313376Z",
+      "msg": "[gmail-sync] invoice detection totals positive=0 negative=0 invoicesCreated=0"
+    },
+    {
+      "ts": "2026-07-26T10:13:54.160318246Z",
+      "msg": "[gmail-sync] DB totals emailMessageUpserts=0 gmailScanItemUpserts=0 clientsCreated=0 potentialClients=0 paymentsCreated=0 invoicesCreated=0"
+    },
+    {
+      "ts": "2026-07-26T10:13:54.160322216Z",
+      "msg": "[gmail-sync] Drive totals attempted=0 succeeded=0 skipped=0 failed=0"
+    },
+    {
+      "ts": "2026-07-26T10:13:54.160387218Z",
+      "msg": "Marked 0 emails as Needs Review, extracted 0 amounts"
+    },
+    {
+      "ts": "2026-07-26T10:13:54.160396688Z",
+      "msg": "Saved 0 records (0 clients, 0 invoices, 0 payments, 0 tasks)"
+    },
+    {
+      "ts": "2026-07-26T10:13:55.067216991Z",
+      "msg": "[scan] completed scanId=cms1n4ieq008rjn2cloe12v58"
+    },
+    {
+      "ts": "2026-07-26T10:13:55.373755368Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmqxujfuj034ndy2czu9tjoko\",\"scanId\":\"cms1n4ieq008rjn2cloe12v58\",\"previousStatus\":\"running\",\"nextStatus\":\"completed\",\"reason\":\"completed\",\"startedAt\":\"2026-07-26T10:13:43.346Z\",\"lastProgressAt\":\"2026-07-26T10:13:55.373Z\",\"currentStage\":\"process\",\"processedEmails\":0,\"savedDocuments\":0,\"durationMs\":12027,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:13:55.374028534Z",
+      "msg": "[gmail-scan-lifecycle] scan_completed {\"scanId\":\"cms1n4ieq008rjn2cloe12v58\",\"organizationId\":\"cmqxujfuj034ndy2czu9tjoko\",\"scanMode\":\"fast_recurring\",\"phase\":\"process\",\"emailsProcessed\":0,\"emailsSaved\":0,\"totalMatched\":0,\"elapsedMs\":12027,\"reason\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:13:59.453734508Z",
+      "msg": "[scan] created scanId=cms1n4uke008vjn2cvhtr1uhq"
+    },
+    {
+      "ts": "2026-07-26T10:13:59.804712492Z",
+      "msg": "[scan] queued scanId=cms1n4uke008vjn2cvhtr1uhq"
+    },
+    {
+      "ts": "2026-07-26T10:13:59.804736022Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmqw27e43002bm92bmf9mjy1n\",\"scanId\":\"cms1n4uke008vjn2cvhtr1uhq\",\"previousStatus\":\"idle\",\"nextStatus\":\"queued\",\"reason\":\"manual_or_scheduled_start\",\"startedAt\":\"2026-07-26T10:13:59.102Z\",\"lastProgressAt\":\"2026-07-26T10:13:59.102Z\",\"currentStage\":\"queued\",\"processedEmails\":0,\"savedDocuments\":0,\"durationMs\":0,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:00.858011981Z",
+      "msg": "[scan] running scanId=cms1n4uke008vjn2cvhtr1uhq"
+    },
+    {
+      "ts": "2026-07-26T10:14:00.858043572Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmqw27e43002bm92bmf9mjy1n\",\"scanId\":\"cms1n4uke008vjn2cvhtr1uhq\",\"previousStatus\":\"queued\",\"nextStatus\":\"running\",\"reason\":\"promote_to_running\",\"startedAt\":\"2026-07-26T10:13:59.102Z\",\"lastProgressAt\":\"2026-07-26T10:14:00.857Z\",\"currentStage\":\"running\",\"processedEmails\":null,\"savedDocuments\":null,\"durationMs\":1755,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:00.858048162Z",
+      "msg": "[gmail-scan-lifecycle] scan_started {\"scanId\":\"cms1n4uke008vjn2cvhtr1uhq\",\"organizationId\":\"cmqw27e43002bm92bmf9mjy1n\",\"scanMode\":\"fast_recurring\",\"elapsedMs\":0}"
+    },
+    {
+      "ts": "2026-07-26T10:14:01.558949679Z",
+      "msg": "[scan] heartbeat scanId=cms1n4uke008vjn2cvhtr1uhq stage=fetch_start"
+    },
+    {
+      "ts": "2026-07-26T10:14:01.558981099Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmqw27e43002bm92bmf9mjy1n\",\"scanId\":\"cms1n4uke008vjn2cvhtr1uhq\",\"previousStatus\":\"running\",\"nextStatus\":\"running\",\"reason\":\"heartbeat:fetch_start\",\"startedAt\":null,\"lastProgressAt\":\"2026-07-26T10:14:01.558Z\",\"currentStage\":\"fetch_start\",\"processedEmails\":null,\"savedDocuments\":null,\"durationMs\":null,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:01.55902705Z",
+      "msg": "[scan] fetch start scanId=cms1n4uke008vjn2cvhtr1uhq"
+    },
+    {
+      "ts": "2026-07-26T10:14:01.911085096Z",
+      "msg": "[gmail-sync] Checking Gmail token and creating Google clients"
+    },
+    {
+      "ts": "2026-07-26T10:14:03.086373247Z",
+      "msg": "[gmail-isolation] shared Gmail mailbox detected org=cmqw27e43002bm92bmf9mjy1n mailbox=shaymida337@gmail.com otherOrgs=cmpjd7j7e0001bl5tzv049rxb"
+    },
+    {
+      "ts": "2026-07-26T10:14:03.788604791Z",
+      "msg": "[scan] failed scanId=cms1n4uke008vjn2cvhtr1uhq reason=Gmail mailbox shaymida337@gmail.com is already connected to another organization"
+    },
+    {
+      "ts": "2026-07-26T10:14:04.140234608Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmqw27e43002bm92bmf9mjy1n\",\"scanId\":\"cms1n4uke008vjn2cvhtr1uhq\",\"previousStatus\":\"running\",\"nextStatus\":\"failed\",\"reason\":\"Gmail mailbox shaymida337@gmail.com is already connected to another organization\",\"startedAt\":\"2026-07-26T10:13:59.102Z\",\"lastProgressAt\":\"2026-07-26T10:14:04.139Z\",\"currentStage\":\"fetch\",\"processedEmails\":0,\"savedDocuments\":0,\"durationMs\":5037,\"error\":\"Gmail mailbox shaymida337@gmail.com is already connected to another organization\"}"
+    },
+    {
+      "ts": "2026-07-26T10:14:04.140258609Z",
+      "msg": "[gmail-scan-lifecycle] scan_failed {\"scanId\":\"cms1n4uke008vjn2cvhtr1uhq\",\"organizationId\":\"cmqw27e43002bm92bmf9mjy1n\",\"scanMode\":\"fast_recurring\",\"phase\":\"fetch\",\"emailsProcessed\":0,\"emailsSaved\":0,\"elapsedMs\":5038,\"reason\":\"Gmail mailbox shaymida337@gmail.com is already connected to another organization\"}"
+    },
+    {
+      "ts": "2026-07-26T10:14:04.490919717Z",
+      "msg": "[scheduler] FAST_SCAN_TRIGGERED failed org=cmqw27e43002bm92bmf9mjy1n GmailIntegrationIsolationError: Gmail mailbox shaymida337@gmail.com is already connected to another organization"
+    },
+    {
+      "ts": "2026-07-26T10:14:04.490945077Z",
+      "msg": "    at assertGmailConnectedAccountNotShared (/opt/render/project/src/backend/dist/services/gmailIntegrationIsolation.js:158:9)"
+    },
+    {
+      "ts": "2026-07-26T10:14:04.490949427Z",
+      "msg": "    at async runGmailSyncForOrganization (/opt/render/project/src/backend/dist/services/gmail-sync.js:1020:9)"
+    },
+    {
+      "ts": "2026-07-26T10:14:04.490953337Z",
+      "msg": "    at async /opt/render/project/src/backend/dist/services/gmail-sync.js:659:14 {"
+    },
+    {
+      "ts": "2026-07-26T10:14:04.490957177Z",
+      "msg": "  code: 'GMAIL_INTEGRATION_ISOLATION_VIOLATION',"
+    },
+    {
+      "ts": "2026-07-26T10:14:04.490966707Z",
+      "msg": "    googleAccountEmail: 'shaymida337@gmail.com',"
+    },
+    {
+      "ts": "2026-07-26T10:14:04.490983248Z",
+      "msg": "    otherOrganizationIds: [ 'cmpjd7j7e0001bl5tzv049rxb' ]"
+    },
+    {
+      "ts": "2026-07-26T10:14:08.548558975Z",
+      "msg": "DRIVE UPLOAD FAILED org=cmpjd7j7e0001bl5tzv049rxb doc=emailAttachment:cmqhqr2pm000zn02cnzbi7cke reason=missing_document_metadata"
+    },
+    {
+      "ts": "2026-07-26T10:14:08.918658926Z",
+      "msg": "DRIVE_RETRY_BACKLOG org=cmpjd7j7e0001bl5tzv049rxb remaining=1 (run find-pending-drive.ts for details)"
+    },
+    {
+      "ts": "2026-07-26T10:14:08.918684116Z",
+      "msg": "[gmail-sync] Drive pending retry attempted=1 uploaded=0 failed=1"
+    },
+    {
+      "ts": "2026-07-26T10:14:11.171561208Z",
+      "msg": "[scan] created scanId=cms1n53lw008zjn2caudffgaz"
+    },
+    {
+      "ts": "2026-07-26T10:14:11.523297737Z",
+      "msg": "[scan] queued scanId=cms1n53lw008zjn2caudffgaz"
+    },
+    {
+      "ts": "2026-07-26T10:14:11.523330028Z",
+      "msg": "[gmail-scan-transition] {\"organizationId\":\"cmpjd7j7e0001bl5tzv049rxb\",\"scanId\":\"cms1n53lw008zjn2caudffgaz\",\"previousStatus\":\"idle\",\"nextStatus\":\"queued\",\"reason\":\"manual_or_scheduled_start\",\"startedAt\":\"2026-07-26T10:14:10.821Z\",\"lastProgressAt\":\"2026-07-26T10:14:10.821Z\",\"currentStage\":\"queued\",\"processedEmails\":0,\"savedDocuments\":0,\"durationMs\":0,\"error\":null}"
+    },
+    {
+      "ts": "2026-07-26T10:14:12.660438469Z",
+      "msg": "[scan] running scanId=cms1n53lw008zjn2caudffgaz"
+    }
+  ],
+  "hasMore": true
+}

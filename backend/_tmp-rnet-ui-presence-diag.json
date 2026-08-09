@@ -1,0 +1,402 @@
+{
+  "fdrs": [
+    {
+      "id": "cmqw3onmp0227m92bemcb1bkm",
+      "gmailMessageId": "19ed663d168fc8dc",
+      "emailMessageId": "cmqw2b45m0067m92bvf4csrfw",
+      "supplierName": "בזק - החברה הישראלית לתקשורת בע״מ",
+      "invoiceNumber": "238419712",
+      "fileName": "PHOTO-2025-12-10-13-10-10.jpg",
+      "documentType": "tax_invoice_receipt",
+      "documentDate": "2025-12-07T00:00:00.000Z",
+      "totalAmount": 163.28,
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "documentFingerprint": "327f78265d110edc5b3b6f37c4bfb903393eff044c295250",
+      "createdAt": "2026-06-27T08:30:57.697Z",
+      "updatedAt": "2026-07-26T11:48:24.803Z",
+      "parsed": {
+        "outcome": {
+          "reason": "Blocked by FSE critical failure",
+          "status": "BLOCKED",
+          "version": "oe-v1",
+          "headline": "Document blocked from automatic save",
+          "timeline": [
+            {
+              "name": "Received",
+              "engine": "received",
+              "status": "completed",
+              "timestamp": null,
+              "explanation": "Document entered Natalie processing pipeline."
+            },
+            {
+              "name": "AI Analysis",
+              "engine": "ai",
+              "status": "completed",
+              "timestamp": null,
+              "explanation": "AI extracted supplier, amount, and document fields from the message."
+            },
+            {
+              "name": "SCFC",
+              "engine": "scfc",
+              "status": "completed",
+              "timestamp": null,
+              "explanation": "Canonical fingerprint tier=invoice-amount fingerprint=327f78265d110edc5b3b6f37c4bfb903393eff044c295250"
+            },
+            {
+              "name": "ARC",
+              "engine": "arc",
+              "status": "completed",
+              "timestamp": null,
+              "explanation": "ARC resolved (AI_TOTAL) amount=163.28"
+            },
+            {
+              "name": "SIR",
+              "engine": "sir",
+              "status": "completed",
+              "timestamp": null,
+              "explanation": "SIR resolved (VAT_REGISTRY) supplier=\"בזק - החברה הישראלית לתקשורת בע״מ\""
+            },
+            {
+              "name": "FSE",
+              "engine": "fse",
+              "status": "failed",
+              "timestamp": null,
+              "explanation": "FSE error trustScore=82 failed=duplicate_suspicion"
+            },
+            {
+              "name": "Trust Engine",
+              "engine": "trust",
+              "status": "failed",
+              "timestamp": null,
+              "explanation": "Trust BLOCK confidence=39% (TE_FSE_CRITICAL_ERROR)"
+            },
+            {
+              "name": "Final Decision",
+              "engine": "outcome",
+              "status": "completed",
+              "timestamp": null,
+              "explanation": "Final outcome=BLOCKED"
+            }
+          ],
+          "reasonCode": "OE_TRUST_BLOCKED",
+          "description": "Trust Engine blocked this document because FSE reported a critical issue (TE_FSE_CRITICAL_ERROR). 1 blocking issue: Document fingerprint 327f78265d110edc5b3b6f37… matches an existing invoice in this organization, so this is likely a duplicate submission.",
+          "recommendedAction": "Review the financial sanity errors before approving or editing the document."
+        },
+        "trust": {
+          "version": "te-v1",
+          "decision": "BLOCK",
+          "confidence": 39,
+          "reasonCode": "TE_FSE_CRITICAL_ERROR",
+          "contributors": [
+            {
+              "score": 92,
+              "engine": "scfc",
+              "impact": -10,
+              "weight": 0.15,
+              "explanation": "Canonical fingerprint tier=invoice-amount strongEnough=true"
+            },
+            {
+              "score": 100,
+              "engine": "arc",
+              "impact": 0,
+              "weight": 0.25,
+              "explanation": "ARC status=resolved reasonCode=AI_TOTAL confidence=100%"
+            },
+            {
+              "score": 100,
+              "engine": "sir",
+              "impact": 0,
+              "weight": 0.25,
+              "explanation": "SIR status=resolved reasonCode=VAT_REGISTRY confidence=100%"
+            },
+            {
+              "score": 82,
+              "engine": "fse",
+              "impact": -35,
+              "weight": 0.3,
+              "explanation": "FSE status=error trustScore=82 failed=duplicate_suspicion"
+            },
+            {
+              "score": 89,
+              "engine": "context",
+              "impact": 0,
+              "weight": 0.05,
+              "explanation": "Optional learning and extraction-quality context"
+            },
+            {
+              "score": 91,
+              "engine": "context",
+              "impact": -9,
+              "weight": 0,
+              "explanation": "Never Guess rule applied for 3 uncertainty signal(s)"
+            }
+          ]
+        },
+        "fse": {
+          "errors": [
+            {
+              "ruleId": "duplicate_suspicion",
+              "message": "Document fingerprint 327f78265d110edc5b3b6f37… matches an existing invoice in this organization, so this is likely a duplicate submission."
+            }
+          ],
+          "version": "fse-v1",
+          "warnings": [],
+          "confidence": 0.98,
+          "trustScore": 82,
+          "explanation": "1 blocking issue: Document fingerprint 327f78265d110edc5b3b6f37… matches an existing invoice in this organization, so this is likely a duplicate submission.",
+          "failedRules": [
+            "duplicate_suspicion"
+          ],
+          "passedRules": [
+            "vat_arithmetic",
+            "impossible_amount",
+            "document_type_ceiling",
+            "supplier_historical_range",
+            "future_invoice_date",
+            "missing_invoice_number",
+            "currency_mismatch",
+            "negative_invoice_validation",
+            "credit_note_validation",
+            "invoice_sequence_anomaly",
+            "ocr_suspicious_patterns"
+          ],
+          "overallStatus": "error",
+          "recommendation": "Compare this document with the suspected duplicate before saving. Blocking rule: duplicate suspicion."
+        },
+        "amountGate": null,
+        "supplierGate": null
+      },
+      "ocrEvidence": {
+        "len": 8612,
+        "hasNegation": false,
+        "hasRnet": false,
+        "hasBezeq": true,
+        "hasAccountMgmt": false,
+        "preview": "{\"analysis\":{\"tasks\":[\"בדיקת ניכוי מס התשומות לפני שליחת הוד הוצאה חשבונאי\",\"רישום חשבונית מס/קבלה במערכת החשבונות\"],\"amount\":null,\"dueDate\":\"2025-12-23\",\"currency\":\"ILS\",\"supplier\":\"בזק החברה הישראלית לתקשורת בע״מ\",\"vatAmount\":24.91,\"confidence\":0.95,\"invoiceDate\":\"2025-12-07\",\"totalAmount\":163.28,\"documentType\":\"tax_invoice_receipt\",\"invoiceNumber\":\"238419712\",\"supplierTaxId\":\"35807064\",\"amountBeforeVat\":138.37,\"paymentRequired\":true},\"classification\":{\"audit\":{\"amountFound\":true,\"blockedReason\":null,\"keywordMatched\":[\"חשבונית מס\",\"חשבונית\",\"קבלה\",\"invoice\",\"receipt\"],\"attachmentFound\":true,\"invoiceAttached\":false,\"receiptAttached\":false,\"supplierDetected\":true,\"pdfInvoiceDetected\":false,\"taxInvoiceDetected\":true,\"imageInvoiceDetected\":true,\"strictPaymentEvidence\":true,\"supplierPaymentRe"
+      }
+    },
+    {
+      "id": "cmqw3n5hx020dm92bp1joi8wu",
+      "gmailMessageId": "19ee12f8ab9f4579",
+      "emailMessageId": "cmqw2a292004jm92b1eld7mkk",
+      "supplierName": "נ.ערנט איי.קום בע\"מ",
+      "invoiceNumber": "OV255006399",
+      "fileName": "PHOTO-2025-09-15-14-29-36.jpg",
+      "documentType": "tax_invoice_receipt",
+      "documentDate": "2025-09-10T00:00:00.000Z",
+      "totalAmount": 354,
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "documentFingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      "createdAt": "2026-06-27T08:29:47.541Z",
+      "updatedAt": "2026-07-26T11:48:12.017Z",
+      "parsed": {
+        "outcome": {
+          "reason": "Blocked by FSE critical failure",
+          "status": "BLOCKED",
+          "version": "oe-v1",
+          "headline": "Document blocked from automatic save",
+          "timeline": [
+            {
+              "name": "Received",
+              "engine": "received",
+              "status": "completed",
+              "timestamp": null,
+              "explanation": "Document entered Natalie processing pipeline."
+            },
+            {
+              "name": "AI Analysis",
+              "engine": "ai",
+              "status": "completed",
+              "timestamp": null,
+              "explanation": "AI extracted supplier, amount, and document fields from the message."
+            },
+            {
+              "name": "SCFC",
+              "engine": "scfc",
+              "status": "completed",
+              "timestamp": null,
+              "explanation": "Canonical fingerprint tier=invoice-amount fingerprint=87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf"
+            },
+            {
+              "name": "ARC",
+              "engine": "arc",
+              "status": "completed",
+              "timestamp": null,
+              "explanation": "ARC resolved (AI_TOTAL) amount=354"
+            },
+            {
+              "name": "SIR",
+              "engine": "sir",
+              "status": "completed",
+              "timestamp": null,
+              "explanation": "SIR resolved (VAT_REGISTRY) supplier=\"נ.ערנט איי.קום בע\"מ\""
+            },
+            {
+              "name": "FSE",
+              "engine": "fse",
+              "status": "failed",
+              "timestamp": null,
+              "explanation": "FSE error trustScore=82 failed=duplicate_suspicion"
+            },
+            {
+              "name": "Trust Engine",
+              "engine": "trust",
+              "status": "failed",
+              "timestamp": null,
+              "explanation": "Trust BLOCK confidence=38% (TE_FSE_CRITICAL_ERROR)"
+            },
+            {
+              "name": "Final Decision",
+              "engine": "outcome",
+              "status": "completed",
+              "timestamp": null,
+              "explanation": "Final outcome=BLOCKED"
+            }
+          ],
+          "reasonCode": "OE_TRUST_BLOCKED",
+          "description": "Trust Engine blocked this document because FSE reported a critical issue (TE_FSE_CRITICAL_ERROR). 1 blocking issue: Document fingerprint 87d30575d372c795d0c93e55… matches an existing invoice in this organization, so this is likely a duplicate submission.",
+          "recommendedAction": "Review the financial sanity errors before approving or editing the document."
+        },
+        "trust": {
+          "version": "te-v1",
+          "decision": "BLOCK",
+          "confidence": 38,
+          "reasonCode": "TE_FSE_CRITICAL_ERROR",
+          "contributors": [
+            {
+              "score": 92,
+              "engine": "scfc",
+              "impact": -10,
+              "weight": 0.15,
+              "explanation": "Canonical fingerprint tier=invoice-amount strongEnough=true"
+            },
+            {
+              "score": 100,
+              "engine": "arc",
+              "impact": 0,
+              "weight": 0.25,
+              "explanation": "ARC status=resolved reasonCode=AI_TOTAL confidence=100%"
+            },
+            {
+              "score": 98,
+              "engine": "sir",
+              "impact": 0,
+              "weight": 0.25,
+              "explanation": "SIR status=resolved reasonCode=VAT_REGISTRY confidence=98%"
+            },
+            {
+              "score": 82,
+              "engine": "fse",
+              "impact": -35,
+              "weight": 0.3,
+              "explanation": "FSE status=error trustScore=82 failed=duplicate_suspicion"
+            },
+            {
+              "score": 86,
+              "engine": "context",
+              "impact": 0,
+              "weight": 0.05,
+              "explanation": "Optional learning and extraction-quality context"
+            },
+            {
+              "score": 91,
+              "engine": "context",
+              "impact": -9,
+              "weight": 0,
+              "explanation": "Never Guess rule applied for 3 uncertainty signal(s)"
+            }
+          ]
+        },
+        "fse": {
+          "errors": [
+            {
+              "ruleId": "duplicate_suspicion",
+              "message": "Document fingerprint 87d30575d372c795d0c93e55… matches an existing invoice in this organization, so this is likely a duplicate submission."
+            }
+          ],
+          "version": "fse-v1",
+          "warnings": [],
+          "confidence": 0.97,
+          "trustScore": 82,
+          "explanation": "1 blocking issue: Document fingerprint 87d30575d372c795d0c93e55… matches an existing invoice in this organization, so this is likely a duplicate submission.",
+          "failedRules": [
+            "duplicate_suspicion"
+          ],
+          "passedRules": [
+            "vat_arithmetic",
+            "impossible_amount",
+            "document_type_ceiling",
+            "supplier_historical_range",
+            "future_invoice_date",
+            "missing_invoice_number",
+            "currency_mismatch",
+            "negative_invoice_validation",
+            "credit_note_validation",
+            "invoice_sequence_anomaly",
+            "ocr_suspicious_patterns"
+          ],
+          "overallStatus": "error",
+          "recommendation": "Compare this document with the suspected duplicate before saving. Blocking rule: duplicate suspicion."
+        },
+        "amountGate": null,
+        "supplierGate": null
+      },
+      "ocrEvidence": {
+        "len": 7652,
+        "hasNegation": false,
+        "hasRnet": true,
+        "hasBezeq": false,
+        "hasAccountMgmt": false,
+        "preview": "{\"analysis\":{\"tasks\":[],\"amount\":354,\"dueDate\":null,\"currency\":\"ILS\",\"supplier\":\"נ.ערנט איי.קום בע\\\"מ\",\"vatAmount\":null,\"confidence\":0.95,\"invoiceDate\":\"2025-09-10\",\"totalAmount\":354,\"documentType\":\"tax_invoice_receipt\",\"invoiceNumber\":\"OV255006399\",\"supplierTaxId\":\"514812502\",\"amountBeforeVat\":null,\"paymentRequired\":false},\"classification\":{\"audit\":{\"amountFound\":true,\"blockedReason\":null,\"keywordMatched\":[\"חשבונית\",\"invoice\",\"receipt\"],\"attachmentFound\":true,\"invoiceAttached\":false,\"receiptAttached\":false,\"supplierDetected\":true,\"pdfInvoiceDetected\":false,\"taxInvoiceDetected\":false,\"imageInvoiceDetected\":true,\"strictPaymentEvidence\":true,\"supplierPaymentRequestDetected\":false},\"evidence\":[\"attachment found: image\",\"attachment found\",\"image invoice detected\",\"amount found\",\"keyword matche"
+      }
+    }
+  ],
+  "completionList": {
+    "status": 200,
+    "total": 22,
+    "rowCount": 22,
+    "hitRnet": [],
+    "hitBezeq": []
+  },
+  "invoicesListRnet": [],
+  "syncAround": [
+    {
+      "id": "cms1q9g6j002zje2ek6fh6kft",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 5,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 5,
+      "startedAt": "2026-07-26T11:41:32.587Z",
+      "finishedAt": "2026-07-26T11:42:12.947Z",
+      "errorMessage": null
+    },
+    {
+      "id": "cms1qgwj30081je2eect7vx74",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 7,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 7,
+      "startedAt": "2026-07-26T11:47:20.367Z",
+      "finishedAt": "2026-07-26T11:48:31.293Z",
+      "errorMessage": null
+    },
+    {
+      "id": "cms1qokyx00e7je2evhfo6dqv",
+      "status": "completed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 7,
+      "emailsSaved": 0,
+      "invoicesFound": 0,
+      "totalMatched": 7,
+      "startedAt": "2026-07-26T11:53:18.633Z",
+      "finishedAt": "2026-07-26T11:54:06.261Z",
+      "errorMessage": null
+    }
+  ]
+}

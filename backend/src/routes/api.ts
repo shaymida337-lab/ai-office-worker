@@ -109,7 +109,7 @@ import type { IssueDraftInput } from "../services/greenInvoiceIssuer.js";
 import { parseBankStatementFile } from "../services/bank-parser.js";
 import { matchTransactions } from "../services/bank-matcher.js";
 import { applyPaymentClassificationCleanup, buildPaymentClassificationDebug } from "../services/paymentClassificationDebug.js";
-import { getBusinessTemplates, getOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
+import { getBusinessTemplates, getOrganizationSettings, patchOrganizationSettings, updateOrganizationBusinessSettings } from "../services/businessTemplates.js";
 import { approveFinancialDocumentReview, buildReviewDecision, evaluateReviewApprovalReadiness } from "../services/financialDocuments.js";
 import { recordManualEntryFinancialDocument } from "../services/financialDocuments.js";
 import { getDocumentReviewsHomeSummary } from "../services/documentReviewsHomeSummary.js";
@@ -363,7 +363,29 @@ apiRouter.get("/organization/settings", async (req, res) => {
 });
 
 apiRouter.put("/organization/settings", requirePerm("organization.settings"), async (req, res) => {
-  res.json(await updateOrganizationBusinessSettings(req.auth!.organizationId, req.body as Record<string, unknown>));
+  try {
+    res.json(await updateOrganizationBusinessSettings(req.auth!.organizationId, req.body as Record<string, unknown>));
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status === 400) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Invalid settings" });
+      return;
+    }
+    throw err;
+  }
+});
+
+apiRouter.patch("/organization/settings", requirePerm("organization.settings"), async (req, res) => {
+  try {
+    res.json(await patchOrganizationSettings(req.auth!.organizationId, (req.body ?? {}) as Record<string, unknown>));
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status === 400) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Invalid settings" });
+      return;
+    }
+    throw err;
+  }
 });
 
 apiRouter.get("/settings/business-profile", async (req, res) => {
@@ -4124,6 +4146,8 @@ type ReviewInvoiceCandidate = {
   attachmentFilename?: string | null;
   documentType: string | null;
   parsedFieldsJson?: unknown;
+  /** FDR ingest channel (`camera` | `gmail` | …) — distinct from list `source`. */
+  ingestSource?: string | null;
   rawReviewStatus?: string;
   dataComplete: boolean;
   approvalRequired: boolean;
@@ -4166,6 +4190,7 @@ export function assessReviewInvoiceCandidate(candidate: ReviewInvoiceCandidate):
     confidenceScore: candidate.confidenceScore,
     decisionReason: candidate.decisionReason,
     parsedFieldsJson: candidate.parsedFieldsJson,
+    ingestSource: candidate.ingestSource,
   });
 }
 
@@ -4189,6 +4214,7 @@ export function enrichReviewInvoiceCandidateWithCompleteness(
     confidenceScore: candidate.confidenceScore,
     decisionReason: candidate.decisionReason,
     parsedFieldsJson: candidate.parsedFieldsJson,
+    ingestSource: candidate.ingestSource,
   });
   return {
     ...candidate,
@@ -4426,6 +4452,8 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
   emailMessageId: string | null;
   gmailMessageId: string | null;
   documentType: string | null;
+  /** FDR ingest channel: camera | gmail | whatsapp | … */
+  source?: string | null;
   parsedFieldsJson?: unknown;
   rawAnalysis?: unknown;
   supplierPaymentId?: string | null;
@@ -4467,6 +4495,7 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
     reviewStatus: presentedReviewStatus(item.reviewStatus),
     rawReviewStatus: item.reviewStatus,
     source: item.supplierPaymentId ? "supplier_payment" : "financial_document_review",
+    ingestSource: item.source ?? null,
     reviewSourceId: item.id,
     description: [item.subject, item.fileName].filter(Boolean).join(" · ") || null,
     driveUrl: signLocalUploadUrlIfNeeded(resolveDriveLink(item), organizationId ?? null),

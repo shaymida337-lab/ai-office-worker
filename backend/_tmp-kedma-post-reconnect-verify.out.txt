@@ -1,0 +1,476 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(node:20744) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative 
+instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+{
+  "now": "2026-07-26T10:36:47.830Z",
+  "org": {
+    "id": "cmqw27e43002bm92bmf9mjy1n",
+    "name": "╫⌐╫ש",
+    "businessName": "╫º╫ף╫₧╫פ",
+    "user": {
+      "id": "cmqw27e43002am92bl8e6c9a9",
+      "email": "kedmashopd1@gmail.com",
+      "name": "╫⌐╫ץ╫ƒ"
+    }
+  },
+  "gmailIntegration": {
+    "id": "cms1nurdo00objn2cgvxffsdu",
+    "connectedAt": "2026-07-26T10:34:08.027Z",
+    "updatedAt": "2026-07-26T10:34:20.498Z",
+    "expiresAt": "2026-07-26T11:34:06.120Z",
+    "metadataGoogleAccountEmail": "kedmashopd1@gmail.com",
+    "liveMailbox": "kedmashopd1@gmail.com",
+    "matchesExpected": true,
+    "expected": "kedmashopd1@gmail.com"
+  },
+  "isolationErrorStillPresent": true,
+  "isolationErrorCount2h": 14,
+  "recentSyncLogs": [
+    {
+      "id": "cms1nuxv400ofjn2cdueasjfd",
+      "type": "gmail_scan",
+      "status": "completed",
+      "scanMode": "first_time",
+      "emailsProcessed": 12,
+      "emailsSaved": 3,
+      "totalMatched": 12,
+      "invoicesFound": 5,
+      "errorsCount": 0,
+      "errorMessage": null,
+      "startedAt": "2026-07-26T10:34:16.432Z",
+      "finishedAt": "2026-07-26T10:36:29.138Z"
+    },
+    {
+      "id": "cms1npmdf00l3jn2cxqchkc26",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T10:30:08.117Z",
+      "finishedAt": "2026-07-26T10:30:13.149Z"
+    },
+    {
+      "id": "cms1nkdna00i1jn2c8e2l9awn",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T10:26:03.670Z",
+      "finishedAt": "2026-07-26T10:26:07.963Z"
+    },
+    {
+      "id": "cms1nf8hh00ezjn2cnstn22i2",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T10:22:03.701Z",
+      "finishedAt": "2026-07-26T10:22:08.019Z"
+    },
+    {
+      "id": "cms1na2ge00bxjn2cijwg303l",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T10:18:02.606Z",
+      "finishedAt": "2026-07-26T10:18:06.939Z"
+    },
+    {
+      "id": "cms1n4uke008vjn2cvhtr1uhq",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T10:13:59.102Z",
+      "finishedAt": "2026-07-26T10:14:03.436Z"
+    },
+    {
+      "id": "cms1mzrgt005tjn2cmu8hu0qj",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T10:10:01.805Z",
+      "finishedAt": "2026-07-26T10:10:05.528Z"
+    },
+    {
+      "id": "cms1murep002rjn2cxrl02l68",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T10:06:08.449Z",
+      "finishedAt": "2026-07-26T10:06:12.680Z"
+    },
+    {
+      "id": "cms1mre2500axml2cxfntgifv",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T10:03:31.182Z",
+      "finishedAt": "2026-07-26T10:03:34.996Z"
+    },
+    {
+      "id": "cms1mmdii007tml2crdymykjk",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T09:59:37.195Z",
+      "finishedAt": "2026-07-26T09:59:41.012Z"
+    },
+    {
+      "id": "cms1mhigo004tml2can57lq1f",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T09:55:50.328Z",
+      "finishedAt": "2026-07-26T09:55:54.377Z"
+    },
+    {
+      "id": "cms1mbhei001xml2c0ofufz11",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T09:51:09.018Z",
+      "finishedAt": "2026-07-26T09:51:12.775Z"
+    },
+    {
+      "id": "cms1m5d27004dks29xvnc7og2",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T09:46:23.455Z",
+      "finishedAt": "2026-07-26T09:46:27.493Z"
+    },
+    {
+      "id": "cms1m0dfw0021ks299mhsinno",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T09:42:30.669Z",
+      "finishedAt": "2026-07-26T09:42:34.971Z"
+    },
+    {
+      "id": "cms1ltgvn00mpkk2e5jfv79zf",
+      "type": "gmail_scan",
+      "status": "failed",
+      "scanMode": "fast_recurring",
+      "emailsProcessed": 0,
+      "emailsSaved": 0,
+      "totalMatched": null,
+      "invoicesFound": 0,
+      "errorsCount": 1,
+      "errorMessage": "Gmail mailbox shaymida337@gmail.com is already connected to another organization",
+      "startedAt": "2026-07-26T09:37:08.531Z",
+      "finishedAt": "2026-07-26T09:37:12.573Z"
+    }
+  ],
+  "mailboxHasAttachmentLast1d": {
+    "count": 3,
+    "messages": [
+      {
+        "id": "19f9d94e7020adb7",
+        "receivedAt": "2026-07-26T08:39:56.000Z",
+        "sender": "shaykedma@gmail.com",
+        "to": "kedmashopd1@gmail.com",
+        "subject": null,
+        "attachments": [
+          " ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í ╫₧╫¿╫¢╫צ╫¬ SI256000091 - ╫₧╫º╫ץ╫¿.1 .pdf"
+        ]
+      },
+      {
+        "id": "19f9d94a517d5d86",
+        "receivedAt": "2026-07-26T08:39:38.000Z",
+        "sender": "shaykedma@gmail.com",
+        "to": "kedmashopd1@gmail.com",
+        "subject": null,
+        "attachments": [
+          "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf"
+        ]
+      },
+      {
+        "id": "19f9d7eb3bad3371",
+        "receivedAt": "2026-07-26T08:15:39.000Z",
+        "sender": "shaykedma@gmail.com",
+        "to": "kedmashopd1@gmail.com",
+        "subject": "╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ",
+        "attachments": [
+          "image0.jpeg"
+        ]
+      }
+    ]
+  },
+  "gmailScanItemsCreated2h": [
+    {
+      "id": "cms1nwgem00pvjn2cqaiit428",
+      "gmailMessageId": "19f9d7eb3bad3371",
+      "subject": "╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ",
+      "sender": "shaykedma@gmail.com",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "╫í╫ץ╫ñ╫¿ ╫ñ╫נ╫¿╫¥",
+      "amount": 45,
+      "documentType": "tax_invoice_receipt",
+      "reviewStatus": "needs_review",
+      "decisionReason": "Held for review: classifier money_direction_unsure; Auto-saved: tax_invoice_receipt confidence=81%; attachment found: image; attachment found; image invoice detected; amount found; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬; keyword matched: ╫º╫ס╫£╫פ; keyword matched: invoice; keyword matched: receipt; keyword matched: receipt; supplier detected; ai:tax_invoice_receipt:95%",
+      "confidenceScore": "high",
+      "occurredAt": "2026-07-26T08:15:39.000Z",
+      "createdAt": "2026-07-26T10:35:27.118Z"
+    },
+    {
+      "id": "cms1nw7uy00prjn2c1xbbn86r",
+      "gmailMessageId": "19f9d94a517d5d86",
+      "subject": "(╫£╫£╫נ ╫á╫ץ╫⌐╫נ)",
+      "sender": "shaykedma@gmail.com",
+      "attachmentFilename": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+      "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+      "amount": 418.39,
+      "documentType": "invoice",
+      "reviewStatus": "needs_review",
+      "decisionReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; outcome_review:OE_NEEDS_REVIEW",
+      "confidenceScore": "high",
+      "occurredAt": "2026-07-26T08:39:38.000Z",
+      "createdAt": "2026-07-26T10:35:16.042Z"
+    }
+  ],
+  "financialDocumentReviewsCreated2h": [
+    {
+      "id": "cms1nxg0i00rhjn2cc4z4g170",
+      "source": "gmail",
+      "gmailMessageId": "19f23fd5e58a0267",
+      "fileName": null,
+      "subject": "Your Ride Receipt",
+      "sender": "noreply@bird.co",
+      "supplierName": "Bird Rides",
+      "totalAmount": null,
+      "documentType": "payment_request",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "junk_filter:automated_sender_without_business_document",
+      "createdAt": "2026-07-26T10:36:13.267Z"
+    },
+    {
+      "id": "cms1nxf0m00rfjn2ctkcllgz1",
+      "source": "gmail",
+      "gmailMessageId": "19f3e0923ff13c70",
+      "fileName": null,
+      "subject": "╫פ╫₧╫ץ╫ף╫ó╫פ ╫⌐╫£╫ת ╫נ╫ץ╫⌐╫¿╫פ",
+      "sender": "noreply@business-updates.facebook.com",
+      "supplierName": "Meta for Business",
+      "totalAmount": null,
+      "documentType": "payment_request",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "junk_filter:automated_sender_without_business_document",
+      "createdAt": "2026-07-26T10:36:11.974Z"
+    },
+    {
+      "id": "cms1nwg2m00ptjn2cowt2nd49",
+      "source": "gmail",
+      "gmailMessageId": "19f9d7eb3bad3371",
+      "fileName": "image0.jpeg",
+      "subject": "╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ",
+      "sender": "shaykedma@gmail.com",
+      "supplierName": "╫í╫ץ╫ñ╫¿ ╫ñ╫נ╫¿╫¥",
+      "totalAmount": 45,
+      "documentType": "tax_invoice_receipt",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "duplicate.key_mismatch",
+      "createdAt": "2026-07-26T10:35:26.686Z"
+    },
+    {
+      "id": "cms1nvpvp00pbjn2cwks9a78b",
+      "source": "gmail",
+      "gmailMessageId": "19f9d94a517d5d86",
+      "fileName": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+      "subject": "(╫£╫£╫נ ╫á╫ץ╫⌐╫נ)",
+      "sender": "shaykedma@gmail.com",
+      "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+      "totalAmount": 418.39,
+      "documentType": "tax_invoice",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "supplier.sir_weak_evidence",
+      "createdAt": "2026-07-26T10:34:52.741Z"
+    }
+  ],
+  "routingPerDocument": [
+    {
+      "fdrId": "cms1nxg0i00rhjn2cc4z4g170",
+      "gmailMessageId": "19f23fd5e58a0267",
+      "fileName": null,
+      "subject": "Your Ride Receipt",
+      "sender": "noreply@bird.co",
+      "supplierName": "Bird Rides",
+      "totalAmount": null,
+      "documentType": "payment_request",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "junk_filter:automated_sender_without_business_document",
+      "source": "gmail",
+      "createdAt": "2026-07-26T10:36:13.267Z",
+      "isComplete": false,
+      "dataComplete": false,
+      "approvalRequired": true,
+      "missingDataReasons": [
+        "╫ק╫í╫¿ ╫í╫¢╫ץ╫¥"
+      ],
+      "approvalReasons": [
+        "╫₧╫₧╫¬╫ש╫ƒ ╫£╫נ╫ש╫⌐╫ץ╫¿",
+        "╫¿╫₧╫¬ ╫ס╫ש╫ר╫ק╫ץ╫ƒ ╫á╫₧╫ץ╫¢╫פ"
+      ],
+      "screen": "completion (╫פ╫⌐╫£╫₧╫¬ ╫ק╫⌐╫ס╫ץ╫á╫ש╫ץ╫¬)"
+    },
+    {
+      "fdrId": "cms1nxf0m00rfjn2ctkcllgz1",
+      "gmailMessageId": "19f3e0923ff13c70",
+      "fileName": null,
+      "subject": "╫פ╫₧╫ץ╫ף╫ó╫פ ╫⌐╫£╫ת ╫נ╫ץ╫⌐╫¿╫פ",
+      "sender": "noreply@business-updates.facebook.com",
+      "supplierName": "Meta for Business",
+      "totalAmount": null,
+      "documentType": "payment_request",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "junk_filter:automated_sender_without_business_document",
+      "source": "gmail",
+      "createdAt": "2026-07-26T10:36:11.974Z",
+      "isComplete": false,
+      "dataComplete": false,
+      "approvalRequired": true,
+      "missingDataReasons": [
+        "╫ק╫í╫¿ ╫í╫¢╫ץ╫¥"
+      ],
+      "approvalReasons": [
+        "╫₧╫₧╫¬╫ש╫ƒ ╫£╫נ╫ש╫⌐╫ץ╫¿",
+        "╫¿╫₧╫¬ ╫ס╫ש╫ר╫ק╫ץ╫ƒ ╫á╫₧╫ץ╫¢╫פ"
+      ],
+      "screen": "completion (╫פ╫⌐╫£╫₧╫¬ ╫ק╫⌐╫ס╫ץ╫á╫ש╫ץ╫¬)"
+    },
+    {
+      "fdrId": "cms1nwg2m00ptjn2cowt2nd49",
+      "gmailMessageId": "19f9d7eb3bad3371",
+      "fileName": "image0.jpeg",
+      "subject": "╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ",
+      "sender": "shaykedma@gmail.com",
+      "supplierName": "╫í╫ץ╫ñ╫¿ ╫ñ╫נ╫¿╫¥",
+      "totalAmount": 45,
+      "documentType": "tax_invoice_receipt",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "duplicate.key_mismatch",
+      "source": "gmail",
+      "createdAt": "2026-07-26T10:35:26.686Z",
+      "isComplete": true,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "missingDataReasons": [],
+      "approvalReasons": [
+        "╫₧╫₧╫¬╫ש╫ƒ ╫£╫נ╫ש╫⌐╫ץ╫¿"
+      ],
+      "screen": "invoices (╫ק╫⌐╫ס╫ץ╫á╫ש╫ץ╫¬)"
+    },
+    {
+      "fdrId": "cms1nvpvp00pbjn2cwks9a78b",
+      "gmailMessageId": "19f9d94a517d5d86",
+      "fileName": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+      "subject": "(╫£╫£╫נ ╫á╫ץ╫⌐╫נ)",
+      "sender": "shaykedma@gmail.com",
+      "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+      "totalAmount": 418.39,
+      "documentType": "tax_invoice",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "supplier.sir_weak_evidence",
+      "source": "gmail",
+      "createdAt": "2026-07-26T10:34:52.741Z",
+      "isComplete": true,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "missingDataReasons": [],
+      "approvalReasons": [
+        "╫₧╫₧╫¬╫ש╫ƒ ╫£╫נ╫ש╫⌐╫ץ╫¿",
+        "╫¿╫₧╫¬ ╫ס╫ש╫ר╫ק╫ץ╫ƒ ╫á╫₧╫ץ╫¢╫פ"
+      ],
+      "screen": "invoices (╫ק╫⌐╫ס╫ץ╫á╫ש╫ץ╫¬)"
+    }
+  ],
+  "counts": {
+    "gsi": 2,
+    "fdr": 4,
+    "mailboxAttachments1d": 3,
+    "syncLogs2h": 15
+  }
+}

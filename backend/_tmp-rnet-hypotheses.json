@@ -1,0 +1,77 @@
+{
+  "liveHttp": {
+    "status": 200,
+    "serverTiming": "pre_route;dur=0, auth;dur=1, tenant;dur=854, tenant_db;dur=854, org;dur=0, query;dur=1279, count;dur=0, relations;dur=1132, map;dur=0, serialize;dur=0, response;dur=0, unaccounted;dur=0, total;dur=3266",
+    "xPoweredBy": "Express",
+    "contentLength": "1740",
+    "total": 22,
+    "rowCount": 22,
+    "sampleRowKeys": [
+      "id",
+      "supplierDisplayName",
+      "invoiceNumber",
+      "issueDate",
+      "amount",
+      "currency",
+      "reviewStatus",
+      "missingFields",
+      "source",
+      "hasAttachment",
+      "createdAt",
+      "clientId",
+      "documentType",
+      "driveUrl",
+      "dataComplete",
+      "approvalRequired",
+      "canApproveDirectly",
+      "supplierNeedsConfirmation",
+      "approvalBlockReason",
+      "reviewSourceId",
+      "status"
+    ]
+  },
+  "hypotheses": {
+    "localFull": {
+      "total": 32,
+      "missingFromLive": 10,
+      "liveMissingFromSet": 0,
+      "exact": false
+    },
+    "dropTaxInvoiceReceipt": {
+      "total": 29,
+      "missingFromLive": 7,
+      "liveMissingFromSet": 0,
+      "exact": false
+    },
+    "onlyDataIncomplete": {
+      "total": 20,
+      "missingFromLive": 4,
+      "liveMissingFromSet": 6,
+      "exact": false
+    },
+    "dropDataCompleteApprovalRequired": {
+      "total": 20,
+      "missingFromLive": 4,
+      "liveMissingFromSet": 6,
+      "exact": false
+    },
+    "dropTirAndApprovalComplete": {
+      "total": 20,
+      "missingFromLive": 4,
+      "liveMissingFromSet": 6,
+      "exact": false
+    },
+    "dropTirFdrOnly": {
+      "total": 29,
+      "missingFromLive": 7,
+      "liveMissingFromSet": 0,
+      "exact": false
+    }
+  },
+  "localTotal": 32,
+  "scannedMeta": {
+    "sourceRowsScanned": 44,
+    "waves": 2,
+    "truncated": false
+  }
+}

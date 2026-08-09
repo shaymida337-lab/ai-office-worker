@@ -1,0 +1,409 @@
+{
+  "fdrId": "cms1nvpvp00pbjn2cwks9a78b",
+  "supplierName": "ישראכרט",
+  "amount": 418.39,
+  "fileName": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+  "uncertaintyReason": "supplier.sir_weak_evidence",
+  "analysisKeys": [
+    "tasks",
+    "amount",
+    "dueDate",
+    "currency",
+    "supplier",
+    "vatAmount",
+    "confidence",
+    "invoiceDate",
+    "totalAmount",
+    "documentType",
+    "invoiceNumber",
+    "supplierTaxId",
+    "amountBeforeVat",
+    "paymentRequired"
+  ],
+  "analysisSupplier": "*המלאי גמר עד שעות 24תוך",
+  "analysisAmount": 418.39,
+  "analysisDocumentType": "invoice",
+  "classification": {
+    "audit": {
+      "amountFound": true,
+      "blockedReason": null,
+      "keywordMatched": [
+        "חשבונית מס",
+        "חשבונית"
+      ],
+      "attachmentFound": true,
+      "invoiceAttached": false,
+      "receiptAttached": false,
+      "supplierDetected": true,
+      "pdfInvoiceDetected": true,
+      "taxInvoiceDetected": true,
+      "imageInvoiceDetected": false,
+      "strictPaymentEvidence": true,
+      "supplierPaymentRequestDetected": true
+    },
+    "evidence": [
+      "attachment found: PDF",
+      "tax invoice detected",
+      "supplier payment request detected",
+      "PDF invoice detected",
+      "amount found",
+      "keyword matched: חשבונית מס",
+      "keyword matched: חשבונית",
+      "keyword matched: payment request",
+      "supplier detected",
+      "ai:invoice:85%",
+      "classifier needs review: blocklisted_not_supplier_or_customer"
+    ],
+    "confidence": 0.68,
+    "isRelevant": true,
+    "documentType": "invoice",
+    "reviewStatus": "needs_review",
+    "decisionReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: חשבונית מס; keyword matched: חשבונית; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; outcome_review:OE_NEEDS_REVIEW",
+    "confidenceScore": "high",
+    "financialSenderReason": null,
+    "heldForFinancialSender": false
+  },
+  "stringHitSummary": [
+    {
+      "path": "gsi.rawAnalysis.ocrText.pdfText",
+      "length": 646,
+      "hasYellow": true,
+      "hasIsracard": true,
+      "has418": true
+    },
+    {
+      "path": "parsedFieldsJson.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "gsi.parsedFieldsJson.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "gsi.rawAnalysis.parsed_fields_json.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "parsedFieldsJson.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "gsi.parsedFieldsJson.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "gsi.rawAnalysis.supplier.decision.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "gsi.rawAnalysis.parsed_fields_json.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "parsedFieldsJson.outcome.description",
+      "length": 524,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.outcome.description",
+      "length": 524,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "gsi.parsedFieldsJson.outcome.description",
+      "length": 524,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "gsi.rawAnalysis.parsed_fields_json.outcome.description",
+      "length": 524,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "rawAnalysis.classification.decisionReason",
+      "length": 489,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "parsedFieldsJson.fse.recommendation",
+      "length": 118,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.fse.recommendation",
+      "length": 118,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "gsi.parsedFieldsJson.fse.recommendation",
+      "length": 118,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "gsi.rawAnalysis.parsed_fields_json.fse.recommendation",
+      "length": 118,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "gsi.rawAnalysis.filenames[0]",
+      "length": 111,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    }
+  ],
+  "detailedTexts": [
+    {
+      "path": "gsi.rawAnalysis.ocrText.pdfText",
+      "length": 646,
+      "hasYellow": true,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 15,
+          "prev": "הנחה לפני כ\"סה\t₪ 418.39",
+          "line": "ישראכרט - ויזה",
+          "next": "05361***********"
+        }
+      ],
+      "yellowLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "אגורות 10-ו yellow בחנויות 10% צוברים מועדון חברי",
+          "next": ".לארנק ₪ 5.57 לצבור יכולת זו בקניה !בפז בתדלוק"
+        }
+      ],
+      "head": "אגורות 10-ו yellow בחנויות 10% צוברים מועדון חברי\n.לארנק ₪ 5.57 לצבור יכולת זו בקניה !בפז בתדלוק\nאחרינו לעקוב בואו\n \t \t\nתחנה איתור \tהחזרה מדיניות\nהחשבונית להורדת\n1310\nהחדשה מודיעין\nשלך החשבון סיכום\n₪ \t418.39\nפריט שם\tכמות\tהנחות לאחר לתשלום סכום\n95 בנע\n3951\n0\t₪ 418.39\nהנחה לפני כ\"סה\t₪ 418.39\nישראכרט - ויזה\n05361***********\n₪ 418.39\nרכב מספר\t1408871\nמ\"מע ללא סכום\t₪ 357.60\nמ\"מע\t₪ 60.79\nהנחות לאחר לתשלום סכום\t₪ 418.39\nחשבונית מספר\t026309901407453\nתאריך\t20:50 2024-03-05\nלמימוש בחנות הקוד בהצגת ב פטיסרי.ג או-9 ב מנטוס.מ-5\n*המלאי גמר עד שעות 24תוך\nקופון קוד\n9263991563348\n026309901407453\nופרטיות שימוש תנאי\n© Powered By Pairzon AI™\n\n-- 1 of 1 --",
+      "mid": "אגורות 10-ו yellow בחנויות 10% צוברים מועדון חברי\n.לארנק ₪ 5.57 לצבור יכולת זו בקניה !בפז בתדלוק\nאחרינו לעקוב בואו\n \t \t\nתחנה איתור \tהחזרה מדיניות\nהחשבונית להורדת\n1310\nהחדשה מודיעין\nשלך החשבון סיכום\n₪ \t418.39\nפריט שם\tכמות\tהנחות לאחר לתשלום סכום\n95 בנע\n3951\n0\t₪ 418.39\nהנחה לפני כ\"סה\t₪ 418.39\nישראכרט - ויזה\n05361***********\n₪ 418.39\nרכב מספר\t1408871\nמ\"מע ללא סכום\t₪ 357.60\nמ\"מע\t₪ 60.79\nהנחות לאחר לתשלום סכום\t₪ 418.39\nחשבונית מספר\t026309901407453\nתאריך\t20:50 2024-03-05\nלמימוש בחנות הקוד בהצגת ב פטיסרי.ג או-9 ב מנטוס.מ-5\n*המלאי גמר עד שעות 24תוך\nקופון קוד\n9263991563348\n026309901407453\nופרטיות שימוש תנאי\n© Powered By Pairzon AI™\n\n-- 1 of 1 --"
+    },
+    {
+      "path": "parsedFieldsJson.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "SIR resolved (OCR_KEYWORD) supplier=\"ישראכרט\"",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "SIR resolved (OCR_KEYWORD) supplier=\"ישראכרט\"",
+      "mid": "SIR resolved (OCR_KEYWORD) supplier=\"ישראכרט\""
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "SIR resolved (OCR_KEYWORD) supplier=\"ישראכרט\"",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "SIR resolved (OCR_KEYWORD) supplier=\"ישראכרט\"",
+      "mid": "SIR resolved (OCR_KEYWORD) supplier=\"ישראכרט\""
+    },
+    {
+      "path": "gsi.parsedFieldsJson.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "SIR resolved (OCR_KEYWORD) supplier=\"ישראכרט\"",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "SIR resolved (OCR_KEYWORD) supplier=\"ישראכרט\"",
+      "mid": "SIR resolved (OCR_KEYWORD) supplier=\"ישראכרט\""
+    },
+    {
+      "path": "gsi.rawAnalysis.parsed_fields_json.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "SIR resolved (OCR_KEYWORD) supplier=\"ישראכרט\"",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "SIR resolved (OCR_KEYWORD) supplier=\"ישראכרט\"",
+      "mid": "SIR resolved (OCR_KEYWORD) supplier=\"ישראכרט\""
+    },
+    {
+      "path": "parsedFieldsJson.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "ocr_keyword selected ישראכרט",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "ocr_keyword selected ישראכרט",
+      "mid": "ocr_keyword selected ישראכרט"
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "ocr_keyword selected ישראכרט",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "ocr_keyword selected ישראכרט",
+      "mid": "ocr_keyword selected ישראכרט"
+    },
+    {
+      "path": "gsi.parsedFieldsJson.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "ocr_keyword selected ישראכרט",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "ocr_keyword selected ישראכרט",
+      "mid": "ocr_keyword selected ישראכרט"
+    },
+    {
+      "path": "gsi.rawAnalysis.supplier.decision.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "ocr_keyword selected ישראכרט",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "ocr_keyword selected ישראכרט",
+      "mid": "ocr_keyword selected ישראכרט"
+    },
+    {
+      "path": "gsi.rawAnalysis.parsed_fields_json.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "ocr_keyword selected ישראכרט",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "ocr_keyword selected ישראכרט",
+      "mid": "ocr_keyword selected ישראכרט"
+    },
+    {
+      "path": "parsedFieldsJson.outcome.description",
+      "length": 524,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "isracardLines": [],
+      "yellowLines": [],
+      "head": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: חשבונית מס; keyword matched: חשבונית; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; image invoice OCR candidate; blocklisted_not_supplier_or_customer",
+      "mid": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: חשבונית מס; keyword matched: חשבונית; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; image invoice OCR candidate; blocklisted_not_supplier_or_customer"
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.outcome.description",
+      "length": 524,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "isracardLines": [],
+      "yellowLines": [],
+      "head": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: חשבונית מס; keyword matched: חשבונית; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; image invoice OCR candidate; blocklisted_not_supplier_or_customer",
+      "mid": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: חשבונית מס; keyword matched: חשבונית; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; image invoice OCR candidate; blocklisted_not_supplier_or_customer"
+    }
+  ],
+  "gsiDecisionReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: חשבונית מס; keyword matched: חשבונית; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; outcome_review:OE_NEEDS_REVIEW",
+  "gsiSupplier": "ישראכרט"
+}

@@ -1,0 +1,126 @@
+{
+  "countNeeds": 52,
+  "rnetInNeeds": {
+    "id": "cmqw3n5hx020dm92bp1joi8wu",
+    "reviewStatus": "needs_review",
+    "documentDate": "2025-09-10T00:00:00.000Z",
+    "createdAt": "2026-06-27T08:29:47.541Z",
+    "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+  },
+  "bezeqInNeeds": {
+    "id": "cmqw3onmp0227m92bemcb1bkm",
+    "reviewStatus": "needs_review",
+    "documentDate": "2025-12-07T00:00:00.000Z",
+    "createdAt": "2026-06-27T08:30:57.697Z",
+    "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+  },
+  "rnetRankAmongTop40": -1,
+  "bezeqRankAmongTop40": -1,
+  "top10": [
+    {
+      "id": "cms1p5fn1008rj81sxvqogrc8",
+      "supplierName": "GENERAL TIRE",
+      "documentDate": "2026-07-26T11:05:31.000Z",
+      "totalAmount": 450,
+      "createdAt": "2026-07-26T11:10:25.645Z",
+      "fileName": "image1.jpeg"
+    },
+    {
+      "id": "cms1p5woj008zj81s99yq2wfp",
+      "supplierName": "סופר פארם",
+      "documentDate": "2026-07-26T11:05:05.000Z",
+      "totalAmount": 918,
+      "createdAt": "2026-07-26T11:10:47.731Z",
+      "fileName": "image0.jpeg"
+    },
+    {
+      "id": "cms1nvpvp00pbjn2cwks9a78b",
+      "supplierName": "ישראכרט",
+      "documentDate": "2026-07-26T08:39:38.000Z",
+      "totalAmount": 418.39,
+      "createdAt": "2026-07-26T10:34:52.741Z",
+      "fileName": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf"
+    },
+    {
+      "id": "cms1nxf0m00rfjn2ctkcllgz1",
+      "supplierName": "Meta for Business",
+      "documentDate": "2026-07-07T19:23:33.000Z",
+      "totalAmount": null,
+      "createdAt": "2026-07-26T10:36:11.974Z",
+      "fileName": null
+    },
+    {
+      "id": "cms1nxg0i00rhjn2cc4z4g170",
+      "supplierName": "Bird Rides",
+      "documentDate": "2026-07-02T18:00:35.000Z",
+      "totalAmount": null,
+      "createdAt": "2026-07-26T10:36:13.267Z",
+      "fileName": null
+    },
+    {
+      "id": "cmr1vlgtm00rhj42cmc2p6iqo",
+      "supplierName": "מירושלים",
+      "documentDate": "2026-07-01T00:00:00.000Z",
+      "totalAmount": 35.56,
+      "createdAt": "2026-07-01T09:31:09.034Z",
+      "fileName": "20260701_122818.jpg"
+    },
+    {
+      "id": "cmr1boq3y0a71jy1s7p2nkzp3",
+      "supplierName": "לוטו שלי",
+      "documentDate": "2026-06-30T10:44:48.000Z",
+      "totalAmount": null,
+      "createdAt": "2026-07-01T00:13:48.718Z",
+      "fileName": null
+    },
+    {
+      "id": "cmr09jbm50tjhme2deh5v504a",
+      "supplierName": "עיריית תל אביב יפו",
+      "documentDate": "2026-06-30T06:24:22.000Z",
+      "totalAmount": null,
+      "createdAt": "2026-06-30T06:25:51.245Z",
+      "fileName": "15900189_20260624_090154.PDF"
+    },
+    {
+      "id": "cmqygx5bn08ztme2d6uhv1w5b",
+      "supplierName": "בזק",
+      "documentDate": "2026-06-28T12:08:28.000Z",
+      "totalAmount": null,
+      "createdAt": "2026-06-29T00:17:01.236Z",
+      "fileName": "PHOTO-2025-12-10-13-10-10.jpg"
+    },
+    {
+      "id": "cmqxq6ain0fe3jx2d5xwjt90h",
+      "supplierName": "לא זוהה",
+      "documentDate": "2026-06-28T11:46:08.000Z",
+      "totalAmount": null,
+      "createdAt": "2026-06-28T11:48:18.239Z",
+      "fileName": "logo-180x180.png"
+    }
+  ],
+  "includesRnetInTop40": false,
+  "includesBezeqInTop40": false,
+  "payments": [
+    {
+      "id": "cmqw3n72w020hm92bouojp6wk",
+      "supplier": "ערנט אי.קום",
+      "amount": 354,
+      "date": "2026-06-19T18:40:38.000Z",
+      "invoiceNumber": "OV255006399",
+      "documentFingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      "createdAt": "2026-06-27T08:29:49.592Z",
+      "paid": false
+    }
+  ],
+  "bezeqLive": {
+    "messageId": "19f9e3d4a3621e8d",
+    "filename": "PHOTO-2025-12-10-13-10-10.jpg",
+    "mimeType": "image/jpeg",
+    "declaredSize": 136099,
+    "bytes": 136099,
+    "gmailNegationSearchIds": [
+      "19f9e3d4a3621e8d"
+    ],
+    "gmailNegationIncludesBezeqMsg": true
+  }
+}

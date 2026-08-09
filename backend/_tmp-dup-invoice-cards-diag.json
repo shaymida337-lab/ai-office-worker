@@ -1,0 +1,1305 @@
+{
+  "orgId": "cmqw27e43002bm92bmf9mjy1n",
+  "since": "2026-07-26T05:17:17.063Z",
+  "recentInvoiceLikeCount": 4,
+  "recentAll": [
+    {
+      "id": "cms1p5woj008zj81s99yq2wfp",
+      "supplierName": "סופר פארם",
+      "totalAmount": 918,
+      "gmailMessageId": "19f9e19c826d7978",
+      "documentFingerprint": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+      "sourceFingerprint": "b25808517ae1a758e0f19feb50120111c6e263bdc966c20a",
+      "source": "gmail",
+      "reviewStatus": "needs_review",
+      "createdAt": "2026-07-26T11:10:47.731Z",
+      "fileName": "image0.jpeg"
+    },
+    {
+      "id": "cms1p5fn1008rj81sxvqogrc8",
+      "supplierName": "GENERAL TIRE",
+      "totalAmount": 450,
+      "gmailMessageId": "19f9e1a31eb03f30",
+      "documentFingerprint": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+      "sourceFingerprint": "adeb0daadcae90ffbfc29aa0aeef736db43ac2db9a14036d",
+      "source": "gmail",
+      "reviewStatus": "needs_review",
+      "createdAt": "2026-07-26T11:10:25.645Z",
+      "fileName": "image1.jpeg"
+    },
+    {
+      "id": "cms1nwg2m00ptjn2cowt2nd49",
+      "supplierName": "סופרפארם",
+      "totalAmount": 45,
+      "gmailMessageId": "19f9d7eb3bad3371",
+      "documentFingerprint": "f33489a83fc2c192be6a74f714ac0509651cc26bbc3da907",
+      "sourceFingerprint": "629cebfafbee3bf5e9961e0cb2beafdd0250c9baf2dbadbc",
+      "source": "gmail",
+      "reviewStatus": "approved",
+      "createdAt": "2026-07-26T10:35:26.686Z",
+      "fileName": "image0.jpeg"
+    },
+    {
+      "id": "cms1nvpvp00pbjn2cwks9a78b",
+      "supplierName": "ישראכרט",
+      "totalAmount": 418.39,
+      "gmailMessageId": "19f9d94a517d5d86",
+      "documentFingerprint": "049deebaec949684f7608442ad8b59bd5ad79d011b3d14a0",
+      "sourceFingerprint": "d3134c7b1efd63536e06d4d82d087ae16afa372f509829b0",
+      "source": "gmail",
+      "reviewStatus": "needs_review",
+      "createdAt": "2026-07-26T10:34:52.741Z",
+      "fileName": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf"
+    }
+  ],
+  "tirePair": {
+    "label": "GENERAL_TIRE_450",
+    "count": 1,
+    "ids": [
+      "cms1p5fn1008rj81sxvqogrc8"
+    ],
+    "uniqueGmailMessageIds": [
+      "19f9e1a31eb03f30"
+    ],
+    "uniqueDocumentFingerprints": [
+      "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf"
+    ],
+    "uniqueSourceFingerprints": [
+      "adeb0daadcae90ffbfc29aa0aeef736db43ac2db9a14036d"
+    ],
+    "uniqueSources": [
+      "gmail"
+    ],
+    "uniqueFileNames": [
+      "image1.jpeg"
+    ],
+    "createdAtDeltaMs": [],
+    "sameGmail": true,
+    "sameFingerprint": true,
+    "sameSourceFp": true,
+    "sameFile": true,
+    "rows": [
+      {
+        "id": "cms1p5fn1008rj81sxvqogrc8",
+        "supplierName": "GENERAL TIRE",
+        "totalAmount": 450,
+        "gmailMessageId": "19f9e1a31eb03f30",
+        "emailMessageId": "cms1p4jvj007nj81sgqbllbuo",
+        "fileName": "image1.jpeg",
+        "documentFingerprint": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+        "sourceFingerprint": "adeb0daadcae90ffbfc29aa0aeef736db43ac2db9a14036d",
+        "source": "gmail",
+        "documentType": "receipt",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "duplicate.key_mismatch",
+        "createdAt": "2026-07-26T11:10:25.645Z",
+        "updatedAt": "2026-07-26T11:10:36.044Z",
+        "subject": "(ללא נושא)",
+        "sender": "shaymida337@gmail.com"
+      }
+    ]
+  },
+  "pharmPair": {
+    "label": "SUPERPHARM_918",
+    "count": 2,
+    "ids": [
+      "cms1nwg2m00ptjn2cowt2nd49",
+      "cms1p5woj008zj81s99yq2wfp"
+    ],
+    "uniqueGmailMessageIds": [
+      "19f9d7eb3bad3371",
+      "19f9e19c826d7978"
+    ],
+    "uniqueDocumentFingerprints": [
+      "f33489a83fc2c192be6a74f714ac0509651cc26bbc3da907",
+      "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e"
+    ],
+    "uniqueSourceFingerprints": [
+      "629cebfafbee3bf5e9961e0cb2beafdd0250c9baf2dbadbc",
+      "b25808517ae1a758e0f19feb50120111c6e263bdc966c20a"
+    ],
+    "uniqueSources": [
+      "gmail"
+    ],
+    "uniqueFileNames": [
+      "image0.jpeg"
+    ],
+    "createdAtDeltaMs": [
+      2121045
+    ],
+    "sameGmail": false,
+    "sameFingerprint": false,
+    "sameSourceFp": false,
+    "sameFile": true,
+    "rows": [
+      {
+        "id": "cms1nwg2m00ptjn2cowt2nd49",
+        "supplierName": "סופרפארם",
+        "totalAmount": 45,
+        "gmailMessageId": "19f9d7eb3bad3371",
+        "emailMessageId": "cms1nvcdh00ozjn2c3uny3j8r",
+        "fileName": "image0.jpeg",
+        "documentFingerprint": "f33489a83fc2c192be6a74f714ac0509651cc26bbc3da907",
+        "sourceFingerprint": "629cebfafbee3bf5e9961e0cb2beafdd0250c9baf2dbadbc",
+        "source": "gmail",
+        "documentType": "tax_invoice_receipt",
+        "reviewStatus": "approved",
+        "uncertaintyReason": "duplicate.key_mismatch",
+        "createdAt": "2026-07-26T10:35:26.686Z",
+        "updatedAt": "2026-07-26T11:01:11.677Z",
+        "subject": "חשבונית ",
+        "sender": "shaykedma@gmail.com"
+      },
+      {
+        "id": "cms1p5woj008zj81s99yq2wfp",
+        "supplierName": "סופר פארם",
+        "totalAmount": 918,
+        "gmailMessageId": "19f9e19c826d7978",
+        "emailMessageId": "cms1p4r7z007vj81sml5dnnzf",
+        "fileName": "image0.jpeg",
+        "documentFingerprint": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+        "sourceFingerprint": "b25808517ae1a758e0f19feb50120111c6e263bdc966c20a",
+        "source": "gmail",
+        "documentType": "receipt",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "duplicate.key_mismatch",
+        "createdAt": "2026-07-26T11:10:47.731Z",
+        "updatedAt": "2026-07-26T11:10:47.731Z",
+        "subject": "(ללא נושא)",
+        "sender": "shaymida337@gmail.com"
+      }
+    ]
+  },
+  "relatedByGmail": [
+    {
+      "id": "cms1nwg2m00ptjn2cowt2nd49",
+      "supplierName": "סופרפארם",
+      "totalAmount": 45,
+      "gmailMessageId": "19f9d7eb3bad3371",
+      "emailMessageId": "cms1nvcdh00ozjn2c3uny3j8r",
+      "fileName": "image0.jpeg",
+      "documentFingerprint": "f33489a83fc2c192be6a74f714ac0509651cc26bbc3da907",
+      "sourceFingerprint": "629cebfafbee3bf5e9961e0cb2beafdd0250c9baf2dbadbc",
+      "source": "gmail",
+      "documentType": "tax_invoice_receipt",
+      "reviewStatus": "approved",
+      "uncertaintyReason": "duplicate.key_mismatch",
+      "createdAt": "2026-07-26T10:35:26.686Z",
+      "updatedAt": "2026-07-26T11:01:11.677Z",
+      "subject": "חשבונית ",
+      "sender": "shaykedma@gmail.com"
+    },
+    {
+      "id": "cms1p5fn1008rj81sxvqogrc8",
+      "supplierName": "GENERAL TIRE",
+      "totalAmount": 450,
+      "gmailMessageId": "19f9e1a31eb03f30",
+      "emailMessageId": "cms1p4jvj007nj81sgqbllbuo",
+      "fileName": "image1.jpeg",
+      "documentFingerprint": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+      "sourceFingerprint": "adeb0daadcae90ffbfc29aa0aeef736db43ac2db9a14036d",
+      "source": "gmail",
+      "documentType": "receipt",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "duplicate.key_mismatch",
+      "createdAt": "2026-07-26T11:10:25.645Z",
+      "updatedAt": "2026-07-26T11:10:36.044Z",
+      "subject": "(ללא נושא)",
+      "sender": "shaymida337@gmail.com"
+    },
+    {
+      "id": "cms1p5woj008zj81s99yq2wfp",
+      "supplierName": "סופר פארם",
+      "totalAmount": 918,
+      "gmailMessageId": "19f9e19c826d7978",
+      "emailMessageId": "cms1p4r7z007vj81sml5dnnzf",
+      "fileName": "image0.jpeg",
+      "documentFingerprint": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+      "sourceFingerprint": "b25808517ae1a758e0f19feb50120111c6e263bdc966c20a",
+      "source": "gmail",
+      "documentType": "receipt",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "duplicate.key_mismatch",
+      "createdAt": "2026-07-26T11:10:47.731Z",
+      "updatedAt": "2026-07-26T11:10:47.731Z",
+      "subject": "(ללא נושא)",
+      "sender": "shaymida337@gmail.com"
+    }
+  ],
+  "relatedByFp": [
+    {
+      "id": "cms1nwg2m00ptjn2cowt2nd49",
+      "supplierName": "סופרפארם",
+      "totalAmount": 45,
+      "gmailMessageId": "19f9d7eb3bad3371",
+      "emailMessageId": "cms1nvcdh00ozjn2c3uny3j8r",
+      "fileName": "image0.jpeg",
+      "documentFingerprint": "f33489a83fc2c192be6a74f714ac0509651cc26bbc3da907",
+      "sourceFingerprint": "629cebfafbee3bf5e9961e0cb2beafdd0250c9baf2dbadbc",
+      "source": "gmail",
+      "documentType": "tax_invoice_receipt",
+      "reviewStatus": "approved",
+      "uncertaintyReason": "duplicate.key_mismatch",
+      "createdAt": "2026-07-26T10:35:26.686Z",
+      "updatedAt": "2026-07-26T11:01:11.677Z",
+      "subject": "חשבונית ",
+      "sender": "shaykedma@gmail.com"
+    },
+    {
+      "id": "cms1p5fn1008rj81sxvqogrc8",
+      "supplierName": "GENERAL TIRE",
+      "totalAmount": 450,
+      "gmailMessageId": "19f9e1a31eb03f30",
+      "emailMessageId": "cms1p4jvj007nj81sgqbllbuo",
+      "fileName": "image1.jpeg",
+      "documentFingerprint": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+      "sourceFingerprint": "adeb0daadcae90ffbfc29aa0aeef736db43ac2db9a14036d",
+      "source": "gmail",
+      "documentType": "receipt",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "duplicate.key_mismatch",
+      "createdAt": "2026-07-26T11:10:25.645Z",
+      "updatedAt": "2026-07-26T11:10:36.044Z",
+      "subject": "(ללא נושא)",
+      "sender": "shaymida337@gmail.com"
+    },
+    {
+      "id": "cms1p5woj008zj81s99yq2wfp",
+      "supplierName": "סופר פארם",
+      "totalAmount": 918,
+      "gmailMessageId": "19f9e19c826d7978",
+      "emailMessageId": "cms1p4r7z007vj81sml5dnnzf",
+      "fileName": "image0.jpeg",
+      "documentFingerprint": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+      "sourceFingerprint": "b25808517ae1a758e0f19feb50120111c6e263bdc966c20a",
+      "source": "gmail",
+      "documentType": "receipt",
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "duplicate.key_mismatch",
+      "createdAt": "2026-07-26T11:10:47.731Z",
+      "updatedAt": "2026-07-26T11:10:47.731Z",
+      "subject": "(ללא נושא)",
+      "sender": "shaymida337@gmail.com"
+    }
+  ],
+  "gsi": [
+    {
+      "id": "cms1p5x0k0091j81sy1y0xkcr",
+      "gmailMessageId": "19f9e19c826d7978",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "סופר פארם",
+      "amount": 918,
+      "documentType": "receipt",
+      "decisionReason": "Held for review: classifier money_direction_unsure; Held for review: confidence is high; confidence below 80% (79%)",
+      "createdAt": "2026-07-26T11:10:48.164Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cms1p5nwl008xj81s2yeavjyx",
+      "gmailMessageId": "19f9e1a31eb03f30",
+      "attachmentFilename": "image1.jpeg",
+      "supplierName": "GENERAL TIRE",
+      "amount": 450,
+      "documentType": "receipt",
+      "decisionReason": "Held for review: classifier money_direction_unsure; Auto-saved: receipt confidence=81%; attachment found: image; attachment found; image invoice detected; amount found; keyword matched: קבלה; keyword ",
+      "createdAt": "2026-07-26T11:10:36.358Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cms1nwgem00pvjn2cqaiit428",
+      "gmailMessageId": "19f9d7eb3bad3371",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "סופר פארם",
+      "amount": 45,
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Held for review: classifier money_direction_unsure; Auto-saved: tax_invoice_receipt confidence=81%; attachment found: image; attachment found; image invoice detected; amount found; keyword matched: חש",
+      "createdAt": "2026-07-26T10:35:27.118Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqxr0qj9005xdy2cho16s4cw",
+      "gmailMessageId": "19f0e234647b623b",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "מינימרקט גנים",
+      "amount": 49.74,
+      "documentType": "receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-28T12:11:58.677Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqxe9uic0aqljx2duow7i5mf",
+      "gmailMessageId": "19ead3c9d570c0dd",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "חברת החשמל",
+      "amount": null,
+      "documentType": "invoice",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-28T06:15:08.724Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqxe6rej0aorjx2dh6o95n5p",
+      "gmailMessageId": "19ec6457854e8f40",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "פורטבוי - נוסבאום",
+      "amount": 12390,
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-28T06:12:44.731Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqxe5aqi0anvjx2d0olcxiad",
+      "gmailMessageId": "19ec741ed81e0db7",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "סופר פארם",
+      "amount": 249,
+      "documentType": "receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-28T06:11:36.474Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqxe4yrl0anljx2d74z8s3xj",
+      "gmailMessageId": "19ec7de4e473a8c1",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "פורטמן - נוסבאום",
+      "amount": 11.8,
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-28T06:11:20.961Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqxe4nyp0anfjx2dzwldffua",
+      "gmailMessageId": "19ec7e0148c6342d",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "חברת החשמל",
+      "amount": 532.84,
+      "documentType": "invoice",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-28T06:11:06.961Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqxe3uvn0an5jx2dtito47kf",
+      "gmailMessageId": "19ec9a7ebb5f3bc2",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "max",
+      "amount": null,
+      "documentType": "receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-28T06:10:29.267Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqxe0jkh0amhjx2d3qg3strq",
+      "gmailMessageId": "19ecad0956346cc6",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "shaymida337",
+      "amount": 4787.01,
+      "documentType": "receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-28T06:07:54.641Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqxdoyfd0ah3jx2dy1nsylz3",
+      "gmailMessageId": "19ef3bfb94f085b7",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "המקור",
+      "amount": null,
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-28T05:58:54.025Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw42lz002a1m92baz5ok0ya",
+      "gmailMessageId": "19ec7e0148c6342d",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "חברת החשמל",
+      "amount": 624.89,
+      "documentType": "invoice",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:41:48.732Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw42cu7029rm92bvta29iwx",
+      "gmailMessageId": "19ec7e8bc1eb559c",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "חברת החשמל",
+      "amount": 200,
+      "documentType": "receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:41:36.895Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw424yk029hm92bwl4ysq52",
+      "gmailMessageId": "19ec7ec4c5b883aa",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "max",
+      "amount": 1200,
+      "documentType": "receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:41:26.684Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw41to10295m92b7iifqzyj",
+      "gmailMessageId": "19ec9a3605b64aa5",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "מקור מידה קוסמטיקס",
+      "amount": 9,
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:41:12.049Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw3zmnv028lm92bnrnoqjsd",
+      "gmailMessageId": "19ec9ab50dbafdaf",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "פורטקוי - בוסטבאום",
+      "amount": 11800,
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:39:29.659Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw3yhrm0287m92boha4qp8f",
+      "gmailMessageId": "19ecacfd13dbcd27",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "חברת החשמל",
+      "amount": 11800,
+      "documentType": "receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:38:36.658Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw3y6no027zm92bsgj11k5z",
+      "gmailMessageId": "19ecad0956346cc6",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "STATE OF ISRAEL",
+      "amount": 9,
+      "documentType": "invoice",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:38:22.260Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw3x25j0279m92buxdt86lm",
+      "gmailMessageId": "19ecb5d7a596fee3",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "סופר פארם",
+      "amount": 43.9,
+      "documentType": "receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:37:29.767Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw3tlwb025tm92bhhuw95tu",
+      "gmailMessageId": "19ed1de9fbddff75",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "Pango",
+      "amount": 45.8,
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:34:48.731Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw3tcpc025lm92b2jr7ohgn",
+      "gmailMessageId": "19ed3a3935cb5efa",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "מקור",
+      "amount": 80,
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:34:36.816Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw3sr6u0259m92bg9976rza",
+      "gmailMessageId": "19ed3a3ec2bcca4e",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "סופר אבי בע״מ",
+      "amount": 1300.2,
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:34:08.934Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw3s82l024vm92bav0fmrkc",
+      "gmailMessageId": "19ed3a45ad6c0c41",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "הפדרציה הישראלית לתקליטים וקלטות",
+      "amount": 2816,
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:33:44.157Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw3raxs0249m92bqm19x3pn",
+      "gmailMessageId": "19ed4213bdd6e726",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "shaymida337",
+      "amount": 1300,
+      "documentType": "receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:33:01.216Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw3qrnb023vm92bwwea7uk3",
+      "gmailMessageId": "19ed53c7d483a52d",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "מינימרקט גנים",
+      "amount": 66.4,
+      "documentType": "receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:32:36.215Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw3pn7f0237m92b4lf5leq6",
+      "gmailMessageId": "19ed626619f65f0f",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "מינימרקט גנים",
+      "amount": 159.8,
+      "documentType": "receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:31:43.803Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw3lgpq01ytm92bvtup34ae",
+      "gmailMessageId": "19ef3bfb94f085b7",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "המקור",
+      "amount": 66,
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:28:28.766Z",
+      "scanLogId": null,
+      "status": null
+    },
+    {
+      "id": "cmqw3l0nc01yjm92bppmzs5o5",
+      "gmailMessageId": "19ef41b78b865bfc",
+      "attachmentFilename": "image0.jpeg",
+      "supplierName": "מוסך נחלת יצחק",
+      "amount": 2065,
+      "documentType": "tax_invoice_receipt",
+      "decisionReason": "Quarantined: cross-org gmail ingestion",
+      "createdAt": "2026-06-27T08:28:07.944Z",
+      "scanLogId": null,
+      "status": null
+    }
+  ],
+  "invoices": [
+    {
+      "id": "cmqw3svsx025bm92bb53etfnb",
+      "supplierName": "סופר אבי",
+      "amount": 1300.2,
+      "gmailMessageId": "19ed3a3ec2bcca4e",
+      "createdAt": "2026-06-27T08:34:14.914Z",
+      "emailId": "cmqw2d0an0099m92buqrdq18n:8fe29130f511c59585d3c18a",
+      "status": "pending",
+      "description": "סופר אבי · חשבונית אבי סופר\nGmail: https://mail.google.com/mail/u/0/#inbox/19ed3a3ec2bcca4e\nAttachment: image0.jpeg (ANGjdJ8kXXHGf24d52oglSmeIZU9nvAeQRjyFhwGwcIb3OMjvfg1kxLPKriXINMzaSgQgnmpO8dHyakYylKd2svCiSoTJZwQxZ4erJUYqDP7rRJKFtA-Ww8NmOOmn_BelOxDQo5nZFktfoZaBV8vsQ9Wi5AkIG53kZph7hiCj3EITe4pt_tHxYrANqEzWMf2BVpNtgkLsV3btBTx0zhFd6et66aGLmBDT-lCSAiho08ANQZsCUcdquIzZg_C4DszLxxajIhINDlJvfgNHbVHnPa4pu1ldty9S_ZjvG01tQcixFPzLrW5uX0_F_na98dzH5V0UU5LhUrdd5hde2bvNqycrXBRLEF-anNab2ey6RDbT3p7t21U9lPd_q0XC200Dwwshl4FclJX_MgZod6R)"
+    }
+  ],
+  "scanLogs": [
+    {
+      "id": "scan_1785063637824_tdw7bgo7br",
+      "orgId": "cmqw27e43002bm92bmf9mjy1n",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T11:00:37.857Z",
+      "endedAt": "2026-07-26T11:00:38.497Z"
+    },
+    {
+      "id": "scan_1785061839185_z2b8h4cqty",
+      "orgId": "cmqw27e43002bm92bmf9mjy1n",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T10:30:39.214Z",
+      "endedAt": "2026-07-26T10:30:39.858Z"
+    },
+    {
+      "id": "scan_1785060037433_s53v82noh8",
+      "orgId": "cmqw27e43002bm92bmf9mjy1n",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T10:00:37.462Z",
+      "endedAt": "2026-07-26T10:00:38.069Z"
+    },
+    {
+      "id": "scan_1785058235186_y9j87ti7mg",
+      "orgId": "cmqw27e43002bm92bmf9mjy1n",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T09:30:35.218Z",
+      "endedAt": "2026-07-26T09:30:35.837Z"
+    },
+    {
+      "id": "scan_1785056436686_p4pn9tgbzwn",
+      "orgId": "cmqw27e43002bm92bmf9mjy1n",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T09:00:36.715Z",
+      "endedAt": "2026-07-26T09:00:37.318Z"
+    },
+    {
+      "id": "scan_1785054633957_vza21r1rmzd",
+      "orgId": "cmqw27e43002bm92bmf9mjy1n",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T08:30:33.987Z",
+      "endedAt": "2026-07-26T08:30:34.595Z"
+    },
+    {
+      "id": "scan_1785052835482_vkenpx73n5",
+      "orgId": "cmqw27e43002bm92bmf9mjy1n",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T08:00:35.511Z",
+      "endedAt": "2026-07-26T08:00:36.120Z"
+    },
+    {
+      "id": "scan_1785051036578_s2brop2jvii",
+      "orgId": "cmqw27e43002bm92bmf9mjy1n",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T07:30:36.606Z",
+      "endedAt": "2026-07-26T07:30:37.209Z"
+    },
+    {
+      "id": "scan_1785049238655_ne5ddpkj50a",
+      "orgId": "cmqw27e43002bm92bmf9mjy1n",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T07:00:38.684Z",
+      "endedAt": "2026-07-26T07:00:39.332Z"
+    },
+    {
+      "id": "scan_1785047439543_rg3gi1kxxq",
+      "orgId": "cmqw27e43002bm92bmf9mjy1n",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T06:30:39.573Z",
+      "endedAt": "2026-07-26T06:30:40.298Z"
+    },
+    {
+      "id": "scan_1785045634375_3w7jva7feqh",
+      "orgId": "cmqw27e43002bm92bmf9mjy1n",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T06:00:34.404Z",
+      "endedAt": "2026-07-26T06:00:35.019Z"
+    },
+    {
+      "id": "scan_1785043839511_qlw07m10wo8",
+      "orgId": "cmqw27e43002bm92bmf9mjy1n",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "errors": null,
+      "startedAt": "2026-07-26T05:30:39.540Z",
+      "endedAt": "2026-07-26T05:30:40.190Z"
+    }
+  ],
+  "pairsDetailed": [
+    {
+      "fdr": {
+        "id": "cms1p5fn1008rj81sxvqogrc8",
+        "supplierName": "GENERAL TIRE",
+        "totalAmount": 450,
+        "gmailMessageId": "19f9e1a31eb03f30",
+        "emailMessageId": "cms1p4jvj007nj81sgqbllbuo",
+        "fileName": "image1.jpeg",
+        "documentFingerprint": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+        "sourceFingerprint": "adeb0daadcae90ffbfc29aa0aeef736db43ac2db9a14036d",
+        "source": "gmail",
+        "documentType": "receipt",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "duplicate.key_mismatch",
+        "createdAt": "2026-07-26T11:10:25.645Z",
+        "updatedAt": "2026-07-26T11:10:36.044Z",
+        "subject": "(ללא נושא)",
+        "sender": "shaymida337@gmail.com"
+      },
+      "matchedGsi": [
+        {
+          "id": "cms1p5nwl008xj81s2yeavjyx",
+          "gmailMessageId": "19f9e1a31eb03f30",
+          "attachmentFilename": "image1.jpeg",
+          "amount": 450,
+          "supplierName": "GENERAL TIRE",
+          "createdAt": "2026-07-26T11:10:36.358Z"
+        }
+      ]
+    },
+    {
+      "fdr": {
+        "id": "cms1p5woj008zj81s99yq2wfp",
+        "supplierName": "סופר פארם",
+        "totalAmount": 918,
+        "gmailMessageId": "19f9e19c826d7978",
+        "emailMessageId": "cms1p4r7z007vj81sml5dnnzf",
+        "fileName": "image0.jpeg",
+        "documentFingerprint": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+        "sourceFingerprint": "b25808517ae1a758e0f19feb50120111c6e263bdc966c20a",
+        "source": "gmail",
+        "documentType": "receipt",
+        "reviewStatus": "needs_review",
+        "uncertaintyReason": "duplicate.key_mismatch",
+        "createdAt": "2026-07-26T11:10:47.731Z",
+        "updatedAt": "2026-07-26T11:10:47.731Z",
+        "subject": "(ללא נושא)",
+        "sender": "shaymida337@gmail.com"
+      },
+      "matchedGsi": [
+        {
+          "id": "cms1p5x0k0091j81sy1y0xkcr",
+          "gmailMessageId": "19f9e19c826d7978",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 918,
+          "supplierName": "סופר פארם",
+          "createdAt": "2026-07-26T11:10:48.164Z"
+        },
+        {
+          "id": "cms1nwgem00pvjn2cqaiit428",
+          "gmailMessageId": "19f9d7eb3bad3371",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 45,
+          "supplierName": "סופר פארם",
+          "createdAt": "2026-07-26T10:35:27.118Z"
+        },
+        {
+          "id": "cmqxr0qj9005xdy2cho16s4cw",
+          "gmailMessageId": "19f0e234647b623b",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 49.74,
+          "supplierName": "מינימרקט גנים",
+          "createdAt": "2026-06-28T12:11:58.677Z"
+        },
+        {
+          "id": "cmqxe9uic0aqljx2duow7i5mf",
+          "gmailMessageId": "19ead3c9d570c0dd",
+          "attachmentFilename": "image0.jpeg",
+          "amount": null,
+          "supplierName": "חברת החשמל",
+          "createdAt": "2026-06-28T06:15:08.724Z"
+        },
+        {
+          "id": "cmqxe6rej0aorjx2dh6o95n5p",
+          "gmailMessageId": "19ec6457854e8f40",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 12390,
+          "supplierName": "פורטבוי - נוסבאום",
+          "createdAt": "2026-06-28T06:12:44.731Z"
+        },
+        {
+          "id": "cmqxe5aqi0anvjx2d0olcxiad",
+          "gmailMessageId": "19ec741ed81e0db7",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 249,
+          "supplierName": "סופר פארם",
+          "createdAt": "2026-06-28T06:11:36.474Z"
+        },
+        {
+          "id": "cmqxe4yrl0anljx2d74z8s3xj",
+          "gmailMessageId": "19ec7de4e473a8c1",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 11.8,
+          "supplierName": "פורטמן - נוסבאום",
+          "createdAt": "2026-06-28T06:11:20.961Z"
+        },
+        {
+          "id": "cmqxe4nyp0anfjx2dzwldffua",
+          "gmailMessageId": "19ec7e0148c6342d",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 532.84,
+          "supplierName": "חברת החשמל",
+          "createdAt": "2026-06-28T06:11:06.961Z"
+        },
+        {
+          "id": "cmqxe3uvn0an5jx2dtito47kf",
+          "gmailMessageId": "19ec9a7ebb5f3bc2",
+          "attachmentFilename": "image0.jpeg",
+          "amount": null,
+          "supplierName": "max",
+          "createdAt": "2026-06-28T06:10:29.267Z"
+        },
+        {
+          "id": "cmqxe0jkh0amhjx2d3qg3strq",
+          "gmailMessageId": "19ecad0956346cc6",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 4787.01,
+          "supplierName": "shaymida337",
+          "createdAt": "2026-06-28T06:07:54.641Z"
+        },
+        {
+          "id": "cmqxdoyfd0ah3jx2dy1nsylz3",
+          "gmailMessageId": "19ef3bfb94f085b7",
+          "attachmentFilename": "image0.jpeg",
+          "amount": null,
+          "supplierName": "המקור",
+          "createdAt": "2026-06-28T05:58:54.025Z"
+        },
+        {
+          "id": "cmqw42lz002a1m92baz5ok0ya",
+          "gmailMessageId": "19ec7e0148c6342d",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 624.89,
+          "supplierName": "חברת החשמל",
+          "createdAt": "2026-06-27T08:41:48.732Z"
+        },
+        {
+          "id": "cmqw42cu7029rm92bvta29iwx",
+          "gmailMessageId": "19ec7e8bc1eb559c",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 200,
+          "supplierName": "חברת החשמל",
+          "createdAt": "2026-06-27T08:41:36.895Z"
+        },
+        {
+          "id": "cmqw424yk029hm92bwl4ysq52",
+          "gmailMessageId": "19ec7ec4c5b883aa",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 1200,
+          "supplierName": "max",
+          "createdAt": "2026-06-27T08:41:26.684Z"
+        },
+        {
+          "id": "cmqw41to10295m92b7iifqzyj",
+          "gmailMessageId": "19ec9a3605b64aa5",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 9,
+          "supplierName": "מקור מידה קוסמטיקס",
+          "createdAt": "2026-06-27T08:41:12.049Z"
+        },
+        {
+          "id": "cmqw3zmnv028lm92bnrnoqjsd",
+          "gmailMessageId": "19ec9ab50dbafdaf",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 11800,
+          "supplierName": "פורטקוי - בוסטבאום",
+          "createdAt": "2026-06-27T08:39:29.659Z"
+        },
+        {
+          "id": "cmqw3yhrm0287m92boha4qp8f",
+          "gmailMessageId": "19ecacfd13dbcd27",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 11800,
+          "supplierName": "חברת החשמל",
+          "createdAt": "2026-06-27T08:38:36.658Z"
+        },
+        {
+          "id": "cmqw3y6no027zm92bsgj11k5z",
+          "gmailMessageId": "19ecad0956346cc6",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 9,
+          "supplierName": "STATE OF ISRAEL",
+          "createdAt": "2026-06-27T08:38:22.260Z"
+        },
+        {
+          "id": "cmqw3x25j0279m92buxdt86lm",
+          "gmailMessageId": "19ecb5d7a596fee3",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 43.9,
+          "supplierName": "סופר פארם",
+          "createdAt": "2026-06-27T08:37:29.767Z"
+        },
+        {
+          "id": "cmqw3tlwb025tm92bhhuw95tu",
+          "gmailMessageId": "19ed1de9fbddff75",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 45.8,
+          "supplierName": "Pango",
+          "createdAt": "2026-06-27T08:34:48.731Z"
+        },
+        {
+          "id": "cmqw3tcpc025lm92b2jr7ohgn",
+          "gmailMessageId": "19ed3a3935cb5efa",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 80,
+          "supplierName": "מקור",
+          "createdAt": "2026-06-27T08:34:36.816Z"
+        },
+        {
+          "id": "cmqw3sr6u0259m92bg9976rza",
+          "gmailMessageId": "19ed3a3ec2bcca4e",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 1300.2,
+          "supplierName": "סופר אבי בע״מ",
+          "createdAt": "2026-06-27T08:34:08.934Z"
+        },
+        {
+          "id": "cmqw3s82l024vm92bav0fmrkc",
+          "gmailMessageId": "19ed3a45ad6c0c41",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 2816,
+          "supplierName": "הפדרציה הישראלית לתקליטים וקלטות",
+          "createdAt": "2026-06-27T08:33:44.157Z"
+        },
+        {
+          "id": "cmqw3raxs0249m92bqm19x3pn",
+          "gmailMessageId": "19ed4213bdd6e726",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 1300,
+          "supplierName": "shaymida337",
+          "createdAt": "2026-06-27T08:33:01.216Z"
+        },
+        {
+          "id": "cmqw3qrnb023vm92bwwea7uk3",
+          "gmailMessageId": "19ed53c7d483a52d",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 66.4,
+          "supplierName": "מינימרקט גנים",
+          "createdAt": "2026-06-27T08:32:36.215Z"
+        },
+        {
+          "id": "cmqw3pn7f0237m92b4lf5leq6",
+          "gmailMessageId": "19ed626619f65f0f",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 159.8,
+          "supplierName": "מינימרקט גנים",
+          "createdAt": "2026-06-27T08:31:43.803Z"
+        },
+        {
+          "id": "cmqw3lgpq01ytm92bvtup34ae",
+          "gmailMessageId": "19ef3bfb94f085b7",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 66,
+          "supplierName": "המקור",
+          "createdAt": "2026-06-27T08:28:28.766Z"
+        },
+        {
+          "id": "cmqw3l0nc01yjm92bppmzs5o5",
+          "gmailMessageId": "19ef41b78b865bfc",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 2065,
+          "supplierName": "מוסך נחלת יצחק",
+          "createdAt": "2026-06-27T08:28:07.944Z"
+        }
+      ]
+    },
+    {
+      "fdr": {
+        "id": "cms1nwg2m00ptjn2cowt2nd49",
+        "supplierName": "סופרפארם",
+        "totalAmount": 45,
+        "gmailMessageId": "19f9d7eb3bad3371",
+        "emailMessageId": "cms1nvcdh00ozjn2c3uny3j8r",
+        "fileName": "image0.jpeg",
+        "documentFingerprint": "f33489a83fc2c192be6a74f714ac0509651cc26bbc3da907",
+        "sourceFingerprint": "629cebfafbee3bf5e9961e0cb2beafdd0250c9baf2dbadbc",
+        "source": "gmail",
+        "documentType": "tax_invoice_receipt",
+        "reviewStatus": "approved",
+        "uncertaintyReason": "duplicate.key_mismatch",
+        "createdAt": "2026-07-26T10:35:26.686Z",
+        "updatedAt": "2026-07-26T11:01:11.677Z",
+        "subject": "חשבונית ",
+        "sender": "shaykedma@gmail.com"
+      },
+      "matchedGsi": [
+        {
+          "id": "cms1p5x0k0091j81sy1y0xkcr",
+          "gmailMessageId": "19f9e19c826d7978",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 918,
+          "supplierName": "סופר פארם",
+          "createdAt": "2026-07-26T11:10:48.164Z"
+        },
+        {
+          "id": "cms1nwgem00pvjn2cqaiit428",
+          "gmailMessageId": "19f9d7eb3bad3371",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 45,
+          "supplierName": "סופר פארם",
+          "createdAt": "2026-07-26T10:35:27.118Z"
+        },
+        {
+          "id": "cmqxr0qj9005xdy2cho16s4cw",
+          "gmailMessageId": "19f0e234647b623b",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 49.74,
+          "supplierName": "מינימרקט גנים",
+          "createdAt": "2026-06-28T12:11:58.677Z"
+        },
+        {
+          "id": "cmqxe9uic0aqljx2duow7i5mf",
+          "gmailMessageId": "19ead3c9d570c0dd",
+          "attachmentFilename": "image0.jpeg",
+          "amount": null,
+          "supplierName": "חברת החשמל",
+          "createdAt": "2026-06-28T06:15:08.724Z"
+        },
+        {
+          "id": "cmqxe6rej0aorjx2dh6o95n5p",
+          "gmailMessageId": "19ec6457854e8f40",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 12390,
+          "supplierName": "פורטבוי - נוסבאום",
+          "createdAt": "2026-06-28T06:12:44.731Z"
+        },
+        {
+          "id": "cmqxe5aqi0anvjx2d0olcxiad",
+          "gmailMessageId": "19ec741ed81e0db7",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 249,
+          "supplierName": "סופר פארם",
+          "createdAt": "2026-06-28T06:11:36.474Z"
+        },
+        {
+          "id": "cmqxe4yrl0anljx2d74z8s3xj",
+          "gmailMessageId": "19ec7de4e473a8c1",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 11.8,
+          "supplierName": "פורטמן - נוסבאום",
+          "createdAt": "2026-06-28T06:11:20.961Z"
+        },
+        {
+          "id": "cmqxe4nyp0anfjx2dzwldffua",
+          "gmailMessageId": "19ec7e0148c6342d",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 532.84,
+          "supplierName": "חברת החשמל",
+          "createdAt": "2026-06-28T06:11:06.961Z"
+        },
+        {
+          "id": "cmqxe3uvn0an5jx2dtito47kf",
+          "gmailMessageId": "19ec9a7ebb5f3bc2",
+          "attachmentFilename": "image0.jpeg",
+          "amount": null,
+          "supplierName": "max",
+          "createdAt": "2026-06-28T06:10:29.267Z"
+        },
+        {
+          "id": "cmqxe0jkh0amhjx2d3qg3strq",
+          "gmailMessageId": "19ecad0956346cc6",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 4787.01,
+          "supplierName": "shaymida337",
+          "createdAt": "2026-06-28T06:07:54.641Z"
+        },
+        {
+          "id": "cmqxdoyfd0ah3jx2dy1nsylz3",
+          "gmailMessageId": "19ef3bfb94f085b7",
+          "attachmentFilename": "image0.jpeg",
+          "amount": null,
+          "supplierName": "המקור",
+          "createdAt": "2026-06-28T05:58:54.025Z"
+        },
+        {
+          "id": "cmqw42lz002a1m92baz5ok0ya",
+          "gmailMessageId": "19ec7e0148c6342d",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 624.89,
+          "supplierName": "חברת החשמל",
+          "createdAt": "2026-06-27T08:41:48.732Z"
+        },
+        {
+          "id": "cmqw42cu7029rm92bvta29iwx",
+          "gmailMessageId": "19ec7e8bc1eb559c",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 200,
+          "supplierName": "חברת החשמל",
+          "createdAt": "2026-06-27T08:41:36.895Z"
+        },
+        {
+          "id": "cmqw424yk029hm92bwl4ysq52",
+          "gmailMessageId": "19ec7ec4c5b883aa",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 1200,
+          "supplierName": "max",
+          "createdAt": "2026-06-27T08:41:26.684Z"
+        },
+        {
+          "id": "cmqw41to10295m92b7iifqzyj",
+          "gmailMessageId": "19ec9a3605b64aa5",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 9,
+          "supplierName": "מקור מידה קוסמטיקס",
+          "createdAt": "2026-06-27T08:41:12.049Z"
+        },
+        {
+          "id": "cmqw3zmnv028lm92bnrnoqjsd",
+          "gmailMessageId": "19ec9ab50dbafdaf",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 11800,
+          "supplierName": "פורטקוי - בוסטבאום",
+          "createdAt": "2026-06-27T08:39:29.659Z"
+        },
+        {
+          "id": "cmqw3yhrm0287m92boha4qp8f",
+          "gmailMessageId": "19ecacfd13dbcd27",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 11800,
+          "supplierName": "חברת החשמל",
+          "createdAt": "2026-06-27T08:38:36.658Z"
+        },
+        {
+          "id": "cmqw3y6no027zm92bsgj11k5z",
+          "gmailMessageId": "19ecad0956346cc6",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 9,
+          "supplierName": "STATE OF ISRAEL",
+          "createdAt": "2026-06-27T08:38:22.260Z"
+        },
+        {
+          "id": "cmqw3x25j0279m92buxdt86lm",
+          "gmailMessageId": "19ecb5d7a596fee3",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 43.9,
+          "supplierName": "סופר פארם",
+          "createdAt": "2026-06-27T08:37:29.767Z"
+        },
+        {
+          "id": "cmqw3tlwb025tm92bhhuw95tu",
+          "gmailMessageId": "19ed1de9fbddff75",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 45.8,
+          "supplierName": "Pango",
+          "createdAt": "2026-06-27T08:34:48.731Z"
+        },
+        {
+          "id": "cmqw3tcpc025lm92b2jr7ohgn",
+          "gmailMessageId": "19ed3a3935cb5efa",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 80,
+          "supplierName": "מקור",
+          "createdAt": "2026-06-27T08:34:36.816Z"
+        },
+        {
+          "id": "cmqw3sr6u0259m92bg9976rza",
+          "gmailMessageId": "19ed3a3ec2bcca4e",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 1300.2,
+          "supplierName": "סופר אבי בע״מ",
+          "createdAt": "2026-06-27T08:34:08.934Z"
+        },
+        {
+          "id": "cmqw3s82l024vm92bav0fmrkc",
+          "gmailMessageId": "19ed3a45ad6c0c41",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 2816,
+          "supplierName": "הפדרציה הישראלית לתקליטים וקלטות",
+          "createdAt": "2026-06-27T08:33:44.157Z"
+        },
+        {
+          "id": "cmqw3raxs0249m92bqm19x3pn",
+          "gmailMessageId": "19ed4213bdd6e726",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 1300,
+          "supplierName": "shaymida337",
+          "createdAt": "2026-06-27T08:33:01.216Z"
+        },
+        {
+          "id": "cmqw3qrnb023vm92bwwea7uk3",
+          "gmailMessageId": "19ed53c7d483a52d",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 66.4,
+          "supplierName": "מינימרקט גנים",
+          "createdAt": "2026-06-27T08:32:36.215Z"
+        },
+        {
+          "id": "cmqw3pn7f0237m92b4lf5leq6",
+          "gmailMessageId": "19ed626619f65f0f",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 159.8,
+          "supplierName": "מינימרקט גנים",
+          "createdAt": "2026-06-27T08:31:43.803Z"
+        },
+        {
+          "id": "cmqw3lgpq01ytm92bvtup34ae",
+          "gmailMessageId": "19ef3bfb94f085b7",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 66,
+          "supplierName": "המקור",
+          "createdAt": "2026-06-27T08:28:28.766Z"
+        },
+        {
+          "id": "cmqw3l0nc01yjm92bppmzs5o5",
+          "gmailMessageId": "19ef41b78b865bfc",
+          "attachmentFilename": "image0.jpeg",
+          "amount": 2065,
+          "supplierName": "מוסך נחלת יצחק",
+          "createdAt": "2026-06-27T08:28:07.944Z"
+        }
+      ]
+    }
+  ]
+}

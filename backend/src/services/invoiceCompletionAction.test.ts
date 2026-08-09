@@ -68,7 +68,7 @@ test("mapCompletionErrorStatus maps domain errors to HTTP statuses", () => {
   assert.equal(mapCompletionErrorStatus("לא ניתן לאשר — חסר סכום"), 422);
 });
 
-test("complete data + needs_review maps to approve button scenario", () => {
+test("complete data + needs_review maps to invoices screen + approval glance", () => {
   const assessment = assessInvoiceCompleteness({
     supplierName: "אונדו",
     amount: 49.74,
@@ -82,7 +82,9 @@ test("complete data + needs_review maps to approve button scenario", () => {
     rawReviewStatus: "needs_review",
   });
 
-  assert.equal(assessment.isComplete, false);
+  // Data-complete → חשבוניות; approvalRequired remains for glance/approve UX.
+  assert.equal(assessment.isComplete, true);
+  assert.equal(assessment.dataComplete, true);
   assert.ok(assessment.approvalReasons.includes(INVOICE_COMPLETION_REASON.USER_APPROVAL_REQUIRED));
   assert.deepEqual(assessment.missingDataReasons, []);
 });

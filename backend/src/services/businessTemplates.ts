@@ -231,16 +231,23 @@ export async function getOrganizationSettings(organizationId: string) {
     },
   });
   if (!organization) throw new Error("Organization not found");
-  const configRows = await prisma.$queryRawUnsafe<Array<{ business_type: string | null; enabled_modules: unknown; business_size: string | null; main_business_pain: string | null; onboarding_completed: boolean | null }>>(
-    'SELECT "business_type", "enabled_modules", "business_size", "main_business_pain", "onboarding_completed" FROM "Organization" WHERE "id" = $1 LIMIT 1',
+  const configRows = await prisma.$queryRawUnsafe<Array<{ business_type: string | null; enabled_modules: unknown; business_size: string | null; main_business_pain: string | null; onboarding_completed: boolean | null; historical_scan_years: number | null }>>(
+    'SELECT "business_type", "enabled_modules", "business_size", "main_business_pain", "onboarding_completed", "historical_scan_years" FROM "Organization" WHERE "id" = $1 LIMIT 1',
     organizationId
-  ).catch(() => []);
+  ).catch(async () => {
+    // Column may not exist until migration runs — fall back without historical_scan_years.
+    return prisma.$queryRawUnsafe<Array<{ business_type: string | null; enabled_modules: unknown; business_size: string | null; main_business_pain: string | null; onboarding_completed: boolean | null; historical_scan_years?: number | null }>>(
+      'SELECT "business_type", "enabled_modules", "business_size", "main_business_pain", "onboarding_completed" FROM "Organization" WHERE "id" = $1 LIMIT 1',
+      organizationId
+    ).catch(() => []);
+  });
   const businessType = normalizeBusinessType(configRows[0]?.business_type);
   const businessSize = normalizeBusinessSize(configRows[0]?.business_size);
   const mainBusinessPain = normalizeBusinessPain(configRows[0]?.main_business_pain);
   const enabledModules = normalizeEnabledModules(configRows[0]?.enabled_modules, businessType, businessSize, mainBusinessPain);
   return {
     ...organization,
+    historicalScanYears: normalizeHistoricalScanYears(configRows[0]?.historical_scan_years) ?? 1,
     businessType,
     businessSize,
     mainBusinessPain,
@@ -251,6 +258,44 @@ export async function getOrganizationSettings(organizationId: string) {
     businessProfile: buildBusinessProfile(businessType),
     template: BUSINESS_TEMPLATES.find((template) => template.id === businessType) ?? BUSINESS_TEMPLATES[7],
   };
+}
+
+/** Returns 1–5, or null when the value is missing/invalid (caller decides default). */
+export function normalizeHistoricalScanYears(value: unknown): number | null {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(n)) return null;
+  const years = Math.trunc(n);
+  if (years < 1 || years > 5) return null;
+  return years;
+}
+
+export async function patchOrganizationSettings(
+  organizationId: string,
+  input: Record<string, unknown>
+) {
+  const data: { historicalScanYears?: number } = {};
+
+  if (Object.prototype.hasOwnProperty.call(input, "historicalScanYears")) {
+    const years = normalizeHistoricalScanYears(input.historicalScanYears);
+    if (years == null) {
+      const err = new Error("historicalScanYears must be an integer between 1 and 5");
+      (err as Error & { status?: number }).status = 400;
+      throw err;
+    }
+    data.historicalScanYears = years;
+  }
+
+  if (Object.keys(data).length > 0) {
+    await prisma.$executeRawUnsafe(
+      'UPDATE "Organization" SET "historical_scan_years" = $1, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $2',
+      data.historicalScanYears,
+      organizationId
+    );
+    const { safeInvalidateDashboardBootstrap } = await import("./dashboardBootstrapCache.js");
+    safeInvalidateDashboardBootstrap(undefined, organizationId);
+  }
+
+  return getOrganizationSettings(organizationId);
 }
 
 export async function updateOrganizationBusinessSettings(
@@ -271,6 +316,7 @@ export async function updateOrganizationBusinessSettings(
     timeFormat?: unknown;
     weekStart?: unknown;
     phoneCountryCode?: unknown;
+    historicalScanYears?: unknown;
   }
 ) {
   const businessType = normalizeBusinessType(input.businessType);
@@ -286,8 +332,17 @@ export async function updateOrganizationBusinessSettings(
   const timeFormat = normalizeTimeFormat(input.timeFormat);
   const weekStart = normalizeWeekStart(input.weekStart);
   const phoneCountryCode = normalizePhoneCountryCode(input.phoneCountryCode);
+  const historicalScanYears =
+    input.historicalScanYears === undefined
+      ? null
+      : normalizeHistoricalScanYears(input.historicalScanYears);
+  if (input.historicalScanYears !== undefined && historicalScanYears == null) {
+    const err = new Error("historicalScanYears must be an integer between 1 and 5");
+    (err as Error & { status?: number }).status = 400;
+    throw err;
+  }
   await prisma.$executeRawUnsafe(
-    'UPDATE "Organization" SET "business_type" = $1, "enabled_modules" = $2::jsonb, "business_size" = $3, "main_business_pain" = $4, "onboarding_completed" = COALESCE($5, "onboarding_completed"), "businessName" = COALESCE($6, "businessName"), "name" = COALESCE($7, "name"), "language" = COALESCE($8, "language"), "country" = COALESCE($9, "country"), "timezone" = COALESCE($10, "timezone"), "currency" = COALESCE($11, "currency"), "date_format" = COALESCE($12, "date_format"), "time_format" = COALESCE($13, "time_format"), "week_start" = COALESCE($14, "week_start"), "phone_country_code" = COALESCE($15, "phone_country_code"), "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $16',
+    'UPDATE "Organization" SET "business_type" = $1, "enabled_modules" = $2::jsonb, "business_size" = $3, "main_business_pain" = $4, "onboarding_completed" = COALESCE($5, "onboarding_completed"), "businessName" = COALESCE($6, "businessName"), "name" = COALESCE($7, "name"), "language" = COALESCE($8, "language"), "country" = COALESCE($9, "country"), "timezone" = COALESCE($10, "timezone"), "currency" = COALESCE($11, "currency"), "date_format" = COALESCE($12, "date_format"), "time_format" = COALESCE($13, "time_format"), "week_start" = COALESCE($14, "week_start"), "phone_country_code" = COALESCE($15, "phone_country_code"), "historical_scan_years" = COALESCE($16, "historical_scan_years"), "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $17',
     businessType,
     JSON.stringify(enabledModules),
     businessSize,
@@ -303,6 +358,7 @@ export async function updateOrganizationBusinessSettings(
     timeFormat,
     weekStart,
     phoneCountryCode,
+    historicalScanYears,
     organizationId
   );
   const { safeInvalidateDashboardBootstrap } = await import("./dashboardBootstrapCache.js");

@@ -1,0 +1,141 @@
+﻿diff --git a/backend/src/routes/api.ts b/backend/src/routes/api.ts
+index 39243e4..71c6ad9 100644
+--- a/backend/src/routes/api.ts
++++ b/backend/src/routes/api.ts
+@@ -70,12 +70,13 @@ import {
+   clampCompletionListPageSize,
+   type CompletionListSort,
+ } from "../services/invoiceCompletion/completionList.js";
+ import {
+   COMPLETION_SCAN_CHUNK,
+   COMPLETION_SCAN_MAX_SOURCE_ROWS,
++  dedupeCompletionCandidatesPreferGsi,
+   scanCompletionQueueFromSources,
+ } from "../services/invoiceCompletion/completionQueueQuery.js";
+ import {
+   buildCompletionServerTiming,
+   computeCompletionUnaccountedMs,
+   logCompletionTimingSafe,
+@@ -4119,12 +4120,14 @@ type ReviewInvoiceCandidate = {
+   gmailMessageLink?: string | null;
+   confidenceScore?: string | number | null;
+   decisionReason?: string | null;
+   attachmentFilename?: string | null;
+   documentType: string | null;
+   parsedFieldsJson?: unknown;
++  /** FDR ingest channel (`camera` | `gmail` | Γאª) Γאפ distinct from list `source`. */
++  ingestSource?: string | null;
+   rawReviewStatus?: string;
+   dataComplete: boolean;
+   approvalRequired: boolean;
+   isComplete: boolean;
+   missingDataReasons: string[];
+   approvalReasons: string[];
+@@ -4161,12 +4164,13 @@ export function assessReviewInvoiceCandidate(candidate: ReviewInvoiceCandidate):
+     documentType: candidate.documentType,
+     reviewStatus: candidate.reviewStatus,
+     rawReviewStatus: candidate.rawReviewStatus ?? candidate.reviewStatus,
+     confidenceScore: candidate.confidenceScore,
+     decisionReason: candidate.decisionReason,
+     parsedFieldsJson: candidate.parsedFieldsJson,
++    ingestSource: candidate.ingestSource,
+   });
+ }
+ 
+ export function enrichReviewInvoiceCandidateWithCompleteness(
+   candidate: Omit<
+     ReviewInvoiceCandidate,
+@@ -4184,12 +4188,13 @@ export function enrichReviewInvoiceCandidateWithCompleteness(
+     documentType: candidate.documentType,
+     reviewStatus: candidate.reviewStatus,
+     rawReviewStatus: candidate.rawReviewStatus ?? candidate.reviewStatus,
+     confidenceScore: candidate.confidenceScore,
+     decisionReason: candidate.decisionReason,
+     parsedFieldsJson: candidate.parsedFieldsJson,
++    ingestSource: candidate.ingestSource,
+   });
+   return {
+     ...candidate,
+     dataComplete: assessment.dataComplete,
+     approvalRequired: assessment.approvalRequired,
+     isComplete: assessment.isComplete,
+@@ -4421,12 +4426,14 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
+   confidenceScore: number;
+   reviewStatus: string;
+   uncertaintyReason: string | null;
+   emailMessageId: string | null;
+   gmailMessageId: string | null;
+   documentType: string | null;
++  /** FDR ingest channel: camera | gmail | whatsapp | Γאª */
++  source?: string | null;
+   parsedFieldsJson?: unknown;
+   rawAnalysis?: unknown;
+   supplierPaymentId?: string | null;
+   normalizedDocumentDate?: Date | null;
+   createdAt: Date;
+   updatedAt: Date;
+@@ -4462,12 +4469,13 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
+     documentDateExplicit: explicitDate != null,
+     dueDate: item.dueDate,
+     status: presentedReviewStatus(item.reviewStatus),
+     reviewStatus: presentedReviewStatus(item.reviewStatus),
+     rawReviewStatus: item.reviewStatus,
+     source: item.supplierPaymentId ? "supplier_payment" : "financial_document_review",
++    ingestSource: item.source ?? null,
+     reviewSourceId: item.id,
+     description: [item.subject, item.fileName].filter(Boolean).join(" ┬╖ ") || null,
+     driveUrl: signLocalUploadUrlIfNeeded(resolveDriveLink(item), organizationId ?? null),
+     driveFileUrl: signLocalUploadUrlIfNeeded(resolveDriveLink(item), organizationId ?? null),
+     client: null,
+     supplierName: supplier.displaySupplierName ?? item.supplierName,
+@@ -5463,36 +5471,48 @@ async function loadCompletionQueuePage(input: {
+                 where: whereInput.gmailScanItemWhere,
+                 orderBy: gsiOrderBy,
+                 skip,
+                 take,
+               })
+             : Promise.resolve([]),
+-        map: (row) => mapGmailScanItemToInvoiceCandidate(row),
++        map: (row) => ({
++          ...mapGmailScanItemToInvoiceCandidate(row),
++          emailMessageId: row.emailMessageId,
++          duplicateKey: row.duplicateKey,
++          documentFingerprint: row.duplicateKey,
++        }),
+       },
+       {
+         name: "financial_document_review",
+         load: ({ skip, take }) =>
+           whereInput.includeReviewCandidates
+             ? prisma.financialDocumentReview.findMany({
+                 where: whereInput.financialDocumentReviewWhere,
+                 orderBy: fdrOrderBy,
+                 skip,
+                 take,
+               })
+             : Promise.resolve([]),
+-        map: (row) => mapDocumentReviewToInvoiceCandidate(row, input.organizationId),
++        map: (row) => ({
++          ...mapDocumentReviewToInvoiceCandidate(row, input.organizationId),
++          emailMessageId: row.emailMessageId,
++          documentFingerprint: row.documentFingerprint,
++          duplicateKey: row.documentFingerprint,
++        }),
+       },
+     ],
+     {
+       page: input.page,
+       pageSize: input.pageSize,
+       sort: input.sort,
+       status: input.status,
+       search: input.search,
+       chunk: COMPLETION_SCAN_CHUNK,
+       maxSourceRows: COMPLETION_SCAN_MAX_SOURCE_ROWS,
++      // Same Gmail doc is dual-written as GSI+FDR; collapse before filter/pagination.
++      dedupeCandidates: dedupeCompletionCandidatesPreferGsi,
+     },
+   );
+ 
+   return pageResult;
+ }
+ 

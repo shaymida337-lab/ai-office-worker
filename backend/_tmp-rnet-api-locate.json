@@ -1,0 +1,72 @@
+{
+  "fdr": {
+    "id": "cmqw3n5hx020dm92bp1joi8wu",
+    "supplierPaymentId": null,
+    "supplierName": "נ.ערנט איי.קום בע\"מ",
+    "totalAmount": 354,
+    "reviewStatus": "needs_review",
+    "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+    "gmailMessageId": "19ee12f8ab9f4579",
+    "documentDate": "2025-09-10T00:00:00.000Z",
+    "currency": "ILS",
+    "documentType": "tax_invoice_receipt"
+  },
+  "completion": {
+    "total": 22,
+    "hits": []
+  },
+  "invoicesAll": {
+    "total": 3,
+    "hits": []
+  },
+  "invoicesComplete": {
+    "total": 3,
+    "hits": []
+  },
+  "invoicesIncomplete": {
+    "total": 22,
+    "hits": []
+  },
+  "completionAmounts": [
+    {
+      "id": "gmail-scan:cms1p5nwl008xj81s2yeavjyx",
+      "amount": 450,
+      "source": "gmail_scan_item"
+    },
+    {
+      "id": "gmail-scan:cms1p5x0k0091j81sy1y0xkcr",
+      "amount": 918,
+      "source": "gmail_scan_item"
+    },
+    {
+      "id": "gmail-scan:cms1nw7uy00prjn2c1xbbn86r",
+      "amount": 418.39,
+      "source": "gmail_scan_item"
+    },
+    {
+      "id": "gmail-scan:cmr1vlh4m00rjj42c0eps0k9l",
+      "amount": 35.56,
+      "source": "gmail_scan_item"
+    },
+    {
+      "id": "document-review:cmqxejucz0awhjx2d6v3motc5",
+      "amount": 850,
+      "source": "financial_document_review"
+    },
+    {
+      "id": "document-review:cmqxez71k0b1bjx2da19kmqsc",
+      "amount": 1,
+      "source": "financial_document_review"
+    },
+    {
+      "id": "document-review:cmqxf61ak0b2zjx2dna3832rx",
+      "amount": 5,
+      "source": "financial_document_review"
+    },
+    {
+      "id": "document-review:cmqxf65y40b31jx2d0snodln4",
+      "amount": 3,
+      "source": "financial_document_review"
+    }
+  ]
+}

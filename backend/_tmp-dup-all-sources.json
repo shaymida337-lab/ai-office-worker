@@ -1,0 +1,132 @@
+{
+  "byAmount": {
+    "450": {
+      "fdr": [
+        {
+          "table": "FDR",
+          "id": "cms1p5fn1008rj81sxvqogrc8",
+          "supplier": "GENERAL TIRE",
+          "amount": 450,
+          "gmail": "19f9e1a31eb03f30",
+          "email": "cms1p4jvj007nj81sgqbllbuo",
+          "file": "image1.jpeg",
+          "fp": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+          "sfp": "adeb0daadcae90ffbfc29aa0aeef736db43ac2db9a14036d",
+          "source": "gmail",
+          "status": "needs_review",
+          "reason": "duplicate.key_mismatch",
+          "createdAt": "2026-07-26T11:10:25.645Z"
+        }
+      ],
+      "gsi": [
+        {
+          "table": "GSI",
+          "id": "cms1p5nwl008xj81s2yeavjyx",
+          "supplier": "GENERAL TIRE",
+          "amount": 450,
+          "gmail": "19f9e1a31eb03f30",
+          "email": "cms1p4jvj007nj81sgqbllbuo",
+          "file": "image1.jpeg",
+          "duplicateKey": "31bb488407fe3ab3cc106a07b7b8628d54ed206f357078cf",
+          "status": "needs_review",
+          "createdAt": "2026-07-26T11:10:36.358Z"
+        }
+      ],
+      "invoice": [],
+      "payment": []
+    },
+    "918": {
+      "fdr": [
+        {
+          "table": "FDR",
+          "id": "cms1p5woj008zj81s99yq2wfp",
+          "supplier": "סופר פארם",
+          "amount": 918,
+          "gmail": "19f9e19c826d7978",
+          "email": "cms1p4r7z007vj81sml5dnnzf",
+          "file": "image0.jpeg",
+          "fp": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+          "sfp": "b25808517ae1a758e0f19feb50120111c6e263bdc966c20a",
+          "source": "gmail",
+          "status": "needs_review",
+          "reason": "duplicate.key_mismatch",
+          "createdAt": "2026-07-26T11:10:47.731Z"
+        }
+      ],
+      "gsi": [
+        {
+          "table": "GSI",
+          "id": "cms1p5x0k0091j81sy1y0xkcr",
+          "supplier": "סופר פארם",
+          "amount": 918,
+          "gmail": "19f9e19c826d7978",
+          "email": "cms1p4r7z007vj81sml5dnnzf",
+          "file": "image0.jpeg",
+          "duplicateKey": "8e905c21930e9bd91a198412c3b59efdc2b5199b512f180e",
+          "status": "needs_review",
+          "createdAt": "2026-07-26T11:10:48.164Z"
+        }
+      ],
+      "invoice": [],
+      "payment": []
+    }
+  },
+  "cross": [
+    {
+      "amount": 450,
+      "fdrId": "cms1p5fn1008rj81sxvqogrc8",
+      "gsiMatches": [
+        "cms1p5nwl008xj81s2yeavjyx"
+      ],
+      "sameFpAsDupKey": true,
+      "fdrBeforeGsiMs": 10713
+    },
+    {
+      "amount": 918,
+      "fdrId": "cms1p5woj008zj81s99yq2wfp",
+      "gsiMatches": [
+        "cms1p5x0k0091j81sy1y0xkcr"
+      ],
+      "sameFpAsDupKey": true,
+      "fdrBeforeGsiMs": 433
+    }
+  ],
+  "emailMsgs": [
+    {
+      "id": "cms1p4r7z007vj81sml5dnnzf",
+      "gmailId": "19f9e19c826d7978",
+      "subject": "(ללא נושא)",
+      "from": "shaymida337@gmail.com",
+      "processedAt": "2026-07-26T11:10:48.474Z",
+      "receivedAt": "2026-07-26T11:05:05.000Z",
+      "createdAt": "2026-07-26T11:09:53.999Z"
+    },
+    {
+      "id": "cms1p4jvj007nj81sgqbllbuo",
+      "gmailId": "19f9e1a31eb03f30",
+      "subject": "(ללא נושא)",
+      "from": "shaymida337@gmail.com",
+      "processedAt": "2026-07-26T11:10:37.104Z",
+      "receivedAt": "2026-07-26T11:05:31.000Z",
+      "createdAt": "2026-07-26T11:09:44.480Z"
+    }
+  ],
+  "scans": [
+    {
+      "id": "scan_1785063637824_tdw7bgo7br",
+      "type": "quick",
+      "status": "success",
+      "found": 0,
+      "saved": 0,
+      "startedAt": "2026-07-26T11:00:37.857Z",
+      "endedAt": "2026-07-26T11:00:38.497Z",
+      "errors": null
+    }
+  ],
+  "hypothesis": {
+    "dbTrueDuplicatesSameTable": true,
+    "pairedFdrAndGsiPerDoc": true,
+    "mergeShouldShowOne": true,
+    "ifUserSeesTwo": "Likely API/UI merge regression OR second source not in these tables OR frontend double-render from two endpoints"
+  }
+}

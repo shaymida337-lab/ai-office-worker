@@ -1,0 +1,74 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+{
+  "now": "2026-07-26T10:14:03.698Z",
+  "orgId": "cmpjd7j7e0001bl5tzv049rxb",
+  "counts6h": {
+    "fdr": 0,
+    "gsi": 0
+  },
+  "lastFdr": {
+    "id": "cms11f6zq0rk5k72aq6a3x6h4",
+    "source": "gmail",
+    "fileName": null,
+    "supplierName": "╫£╫ץ╫ר╫ץ ╫⌐╫£╫ש",
+    "totalAmount": null,
+    "reviewStatus": "needs_review",
+    "uncertaintyReason": "junk_filter:insufficient_signal",
+    "createdAt": "2026-07-26T00:06:10.214Z"
+  },
+  "lastCamera": {
+    "id": "cmrn3fudv0bgdiq2emn17cich",
+    "fileName": "IMG_4859.png",
+    "supplierName": "GENERALTIRE",
+    "totalAmount": 450,
+    "reviewStatus": "approved",
+    "uncertaintyReason": null,
+    "createdAt": "2026-07-16T05:53:53.299Z"
+  },
+  "lastGsi": {
+    "id": "cmryu2m4j029nk72au1354j98",
+    "subject": "(fetch failed)",
+    "attachmentFilename": null,
+    "supplierName": "Unknown supplier",
+    "amount": null,
+    "reviewStatus": "needs_review",
+    "decisionReason": "fetch_parse_save_failed: request to https://gmail.googleapis.com/gmail/v1/users/me/messages/19f8f3d8a5d0f155?format=full failed, reason: ",
+    "createdAt": "2026-07-24T11:04:53.570Z"
+  },
+  "lastInvoice": {
+    "id": "cmqhtqcrb006blw2dmaf98sq0",
+    "supplierName": "511314288 ╫¬╫נ╫¿╫ש╫ת ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ 07-05-25 Γאן╫í╫á╫ש╫ú ╫נ╫ש╫ש╫£╫ץ╫ƒ Γאמ10 Γאן ╫⌐╫⌐╫¬ ╫פ╫ש╫₧╫ש╫¥Γאמ Nand Γאן╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í",
+    "amount": 1300,
+    "status": "pending",
+    "createdAt": "2026-06-17T08:43:34.295Z"
+  },
+  "cameraUploadsAllOrgs6h": [],
+  "fdrLast24h": [
+    {
+      "id": "cms11f6zq0rk5k72aq6a3x6h4",
+      "source": "gmail",
+      "fileName": null,
+      "supplierName": "╫£╫ץ╫ר╫ץ ╫⌐╫£╫ש",
+      "totalAmount": null,
+      "reviewStatus": "needs_review",
+      "uncertaintyReason": "junk_filter:insufficient_signal",
+      "createdAt": "2026-07-26T00:06:10.214Z"
+    }
+  ],
+  "gmailConn": {
+    "error": "Cannot read properties of undefined (reading 'findFirst')",
+    "error2": "Cannot read properties of undefined (reading 'findFirst')"
+  },
+  "audits": [
+    {
+      "error": "Cannot read properties of undefined (reading 'findMany')"
+    }
+  ]
+}

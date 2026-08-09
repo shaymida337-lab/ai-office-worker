@@ -54,145 +54,176 @@ const mockDriveUpload = async () => ({
   invoiceYear: 2026,
 });
 
+/**
+ * Unit tests exercise WhatsApp ingestion with mocks; production still calls
+ * assertFinancialIngestionAllowed. Temporarily disable the env kill-switch
+ * (same pattern as uploadsRoutes.test.ts) so the guard does not block fixtures.
+ * Does not weaken production containment for real orgs.
+ */
+async function withIngestionContainmentDisabled<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = {
+    ingestion: process.env.FINANCIAL_INGESTION_CONTAINMENT,
+    data: process.env.FINANCIAL_DATA_CONTAINMENT,
+  };
+  process.env.FINANCIAL_INGESTION_CONTAINMENT = "off";
+  process.env.FINANCIAL_DATA_CONTAINMENT = "off";
+  try {
+    return await fn();
+  } finally {
+    if (previous.ingestion === undefined) delete process.env.FINANCIAL_INGESTION_CONTAINMENT;
+    else process.env.FINANCIAL_INGESTION_CONTAINMENT = previous.ingestion;
+    if (previous.data === undefined) delete process.env.FINANCIAL_DATA_CONTAINMENT;
+    else process.env.FINANCIAL_DATA_CONTAINMENT = previous.data;
+  }
+}
+
 test("WhatsApp image with no Gmail connection creates a FinancialDocumentReview with analysis", async () => {
-  const recordedReviews: Array<Record<string, unknown>> = [];
-  const result = await ingestWhatsAppInvoiceMedia(createWhatsAppMediaInput(), {
-    organizationLookup: async () => ({ businessName: "Test Business" }),
-    downloadTwilioMediaFn: async () => Buffer.from("fake-jpeg-bytes"),
-    analyzeWhatsAppDocumentFn: async () => acceptedInvoiceAnalysis(),
-    getGoogleClientsIfAvailable: async () => null,
-    syncFinancialDocumentReviewPreviewFn: async () => {},
-    recordFinancialDocumentDecisionFn: async (input) => {
-      recordedReviews.push({
-        source: input.source,
-        fileName: input.fileName,
-        supplierName: input.supplierName,
-        driveFileUrl: input.driveFileUrl,
-        rawAnalysis: input.rawAnalysis,
-      });
-      return {
+  await withIngestionContainmentDisabled(async () => {
+    const recordedReviews: Array<Record<string, unknown>> = [];
+    const result = await ingestWhatsAppInvoiceMedia(createWhatsAppMediaInput(), {
+      organizationLookup: async () => ({ businessName: "Test Business" }),
+      downloadTwilioMediaFn: async () => Buffer.from("fake-jpeg-bytes"),
+      analyzeWhatsAppDocumentFn: async () => acceptedInvoiceAnalysis(),
+      getGoogleClientsIfAvailable: async () => null,
+      syncFinancialDocumentReviewPreviewFn: async () => {},
+      recordFinancialDocumentDecisionFn: async (input) => {
+        recordedReviews.push({
+          source: input.source,
+          fileName: input.fileName,
+          supplierName: input.supplierName,
+          driveFileUrl: input.driveFileUrl,
+          rawAnalysis: input.rawAnalysis,
+        });
+        return {
+          action: "accepted" as const,
+          documentFingerprint: "fp-1",
+          sourceFingerprint: "sfp-1",
+          documentType: "invoice",
+        };
+      },
+      findExistingCrossSourceDuplicateFn: async () => null,
+      uploadInvoiceAttachmentToDriveFn: async () => {
+        throw new Error("Drive upload should not run without Google");
+      },
+    });
+
+    assert.equal(recordedReviews.length, 1);
+    assert.equal(recordedReviews[0]?.source, "whatsapp");
+    assert.equal(recordedReviews[0]?.fileName, "whatsapp_atsapp-1_1.jpg");
+    assert.equal(recordedReviews[0]?.supplierName, "OpenAI LLC");
+    assert.ok(recordedReviews[0]?.rawAnalysis);
+    assert.match(String(recordedReviews[0]?.driveFileUrl), /^\/uploads\/whatsapp-invoices\//);
+    assert.equal(result.processed.length, 1);
+    assert.match(result.processed[0]?.driveLink ?? "", /^\/uploads\/whatsapp-invoices\//);
+    assert.equal(result.processed[0]?.duplicateReason, "drive_pending_retry");
+  });
+});
+
+test("WhatsApp ingestion skips Drive upload gracefully when Google is unavailable", async () => {
+  await withIngestionContainmentDisabled(async () => {
+    let driveLookupCalled = false;
+    let driveUploadCalled = false;
+
+    const result = await ingestWhatsAppInvoiceMedia(createWhatsAppMediaInput(), {
+      organizationLookup: async () => ({ businessName: "Test Business" }),
+      downloadTwilioMediaFn: async () => Buffer.from("fake-jpeg-bytes"),
+      analyzeWhatsAppDocumentFn: async () => acceptedInvoiceAnalysis(),
+      getGoogleClientsIfAvailable: async () => null,
+      syncFinancialDocumentReviewPreviewFn: async () => {},
+      recordFinancialDocumentDecisionFn: async () => ({
         action: "accepted" as const,
         documentFingerprint: "fp-1",
         sourceFingerprint: "sfp-1",
         documentType: "invoice",
-      };
-    },
-    findExistingCrossSourceDuplicateFn: async () => null,
-    uploadInvoiceAttachmentToDriveFn: async () => {
-      throw new Error("Drive upload should not run without Google");
-    },
+      }),
+      findExistingCrossSourceDuplicateFn: async () => null,
+      findExistingSupplierDriveDocumentFn: async () => {
+        driveLookupCalled = true;
+        return null;
+      },
+      uploadInvoiceAttachmentToDriveFn: async () => {
+        driveUploadCalled = true;
+        return await mockDriveUpload();
+      },
+    });
+
+    assert.equal(driveLookupCalled, false);
+    assert.equal(driveUploadCalled, false);
+    assert.equal(result.processed[0]?.created, false);
+    assert.match(result.processed[0]?.driveLink ?? "", /^\/uploads\/whatsapp-invoices\//);
   });
-
-  assert.equal(recordedReviews.length, 1);
-  assert.equal(recordedReviews[0]?.source, "whatsapp");
-  assert.equal(recordedReviews[0]?.fileName, "whatsapp_atsapp-1_1.jpg");
-  assert.equal(recordedReviews[0]?.supplierName, "OpenAI LLC");
-  assert.ok(recordedReviews[0]?.rawAnalysis);
-  assert.match(String(recordedReviews[0]?.driveFileUrl), /^\/uploads\/whatsapp-invoices\//);
-  assert.equal(result.processed.length, 1);
-  assert.match(result.processed[0]?.driveLink ?? "", /^\/uploads\/whatsapp-invoices\//);
-  assert.equal(result.processed[0]?.duplicateReason, "drive_pending_retry");
-});
-
-test("WhatsApp ingestion skips Drive upload gracefully when Google is unavailable", async () => {
-  let driveLookupCalled = false;
-  let driveUploadCalled = false;
-
-  const result = await ingestWhatsAppInvoiceMedia(createWhatsAppMediaInput(), {
-    organizationLookup: async () => ({ businessName: "Test Business" }),
-    downloadTwilioMediaFn: async () => Buffer.from("fake-jpeg-bytes"),
-    analyzeWhatsAppDocumentFn: async () => acceptedInvoiceAnalysis(),
-    getGoogleClientsIfAvailable: async () => null,
-    syncFinancialDocumentReviewPreviewFn: async () => {},
-    recordFinancialDocumentDecisionFn: async () => ({
-      action: "accepted" as const,
-      documentFingerprint: "fp-1",
-      sourceFingerprint: "sfp-1",
-      documentType: "invoice",
-    }),
-    findExistingCrossSourceDuplicateFn: async () => null,
-    findExistingSupplierDriveDocumentFn: async () => {
-      driveLookupCalled = true;
-      return null;
-    },
-    uploadInvoiceAttachmentToDriveFn: async () => {
-      driveUploadCalled = true;
-      return await mockDriveUpload();
-    },
-  });
-
-  assert.equal(driveLookupCalled, false);
-  assert.equal(driveUploadCalled, false);
-  assert.equal(result.processed[0]?.created, false);
-  assert.match(result.processed[0]?.driveLink ?? "", /^\/uploads\/whatsapp-invoices\//);
 });
 
 test("Gmail-connected organizations continue to upload to Drive", async () => {
-  let driveUploadCalled = false;
-  const mockDrive = {} as never;
+  await withIngestionContainmentDisabled(async () => {
+    let driveUploadCalled = false;
+    const mockDrive = {} as never;
 
-  const result = await ingestWhatsAppInvoiceMedia(createWhatsAppMediaInput(), {
-    organizationLookup: async () => ({ businessName: "Test Business" }),
-    downloadTwilioMediaFn: async () => Buffer.from("fake-jpeg-bytes"),
-    analyzeWhatsAppDocumentFn: async () => acceptedInvoiceAnalysis(),
-    ensureWhatsAppDriveContextFn: async () => ({
-      drive: mockDrive,
-      rootFolderId: "root-folder-1",
-    }),
-    syncFinancialDocumentReviewPreviewFn: async () => {},
-    recordFinancialDocumentDecisionFn: async () => ({
-      action: "accepted" as const,
-      documentFingerprint: "fp-1",
-      sourceFingerprint: "sfp-1",
-      documentType: "invoice",
-    }),
-    findExistingCrossSourceDuplicateFn: async () => null,
-    findExistingSupplierDriveDocumentFn: async () => null,
-    uploadInvoiceAttachmentToDriveFn: async () => {
-      driveUploadCalled = true;
-      return await mockDriveUpload();
-    },
-    upsertWhatsAppSupplierPaymentFn: async () => ({ id: null, created: false }),
-  });
-
-  assert.equal(driveUploadCalled, true);
-  assert.equal(result.processed[0]?.driveLink, "https://drive.google.com/file/d/drive-file-1/view");
-  assert.equal(result.processed[0]?.created, false);
-});
-
-test("WhatsApp needs_review persists preview URL for review queue", async () => {
-  let capturedDriveFileUrl: string | null | undefined;
-  const syncedReviews: string[] = [];
-
-  const result = await ingestWhatsAppInvoiceMedia(createWhatsAppMediaInput(), {
-    organizationLookup: async () => ({ businessName: "Test Business" }),
-    downloadTwilioMediaFn: async () => Buffer.from("fake-jpeg-bytes"),
-    analyzeWhatsAppDocumentFn: async () => acceptedInvoiceAnalysis(),
-    ensureWhatsAppDriveContextFn: async () => ({
-      drive: {} as never,
-      rootFolderId: "root-folder-1",
-    }),
-    findExistingCrossSourceDuplicateFn: async () => null,
-    findExistingSupplierDriveDocumentFn: async () => null,
-    uploadInvoiceAttachmentToDriveFn: mockDriveUpload,
-    syncFinancialDocumentReviewPreviewFn: async (decision) => {
-      if ("review" in decision && decision.review?.id) syncedReviews.push(decision.review.id);
-    },
-    recordFinancialDocumentDecisionFn: async (input) => {
-      capturedDriveFileUrl = input.driveFileUrl;
-      return {
-        action: "needs_review" as const,
+    const result = await ingestWhatsAppInvoiceMedia(createWhatsAppMediaInput(), {
+      organizationLookup: async () => ({ businessName: "Test Business" }),
+      downloadTwilioMediaFn: async () => Buffer.from("fake-jpeg-bytes"),
+      analyzeWhatsAppDocumentFn: async () => acceptedInvoiceAnalysis(),
+      ensureWhatsAppDriveContextFn: async () => ({
+        drive: mockDrive,
+        rootFolderId: "root-folder-1",
+      }),
+      syncFinancialDocumentReviewPreviewFn: async () => {},
+      recordFinancialDocumentDecisionFn: async () => ({
+        action: "accepted" as const,
         documentFingerprint: "fp-1",
         sourceFingerprint: "sfp-1",
         documentType: "invoice",
-        review: { id: "review-wa-1" },
-      };
-    },
-  });
+      }),
+      findExistingCrossSourceDuplicateFn: async () => null,
+      findExistingSupplierDriveDocumentFn: async () => null,
+      uploadInvoiceAttachmentToDriveFn: async () => {
+        driveUploadCalled = true;
+        return await mockDriveUpload();
+      },
+      upsertWhatsAppSupplierPaymentFn: async () => ({ id: null, created: false }),
+    });
 
-  assert.equal(capturedDriveFileUrl, "https://drive.google.com/file/d/drive-file-1/view");
-  assert.deepEqual(syncedReviews, ["review-wa-1"]);
-  assert.equal(result.processed[0]?.driveLink, "https://drive.google.com/file/d/drive-file-1/view");
+    assert.equal(driveUploadCalled, true);
+    assert.equal(result.processed[0]?.driveLink, "https://drive.google.com/file/d/drive-file-1/view");
+    assert.equal(result.processed[0]?.created, false);
+  });
+});
+
+test("WhatsApp needs_review persists preview URL for review queue", async () => {
+  await withIngestionContainmentDisabled(async () => {
+    let capturedDriveFileUrl: string | null | undefined;
+    const syncedReviews: string[] = [];
+
+    const result = await ingestWhatsAppInvoiceMedia(createWhatsAppMediaInput(), {
+      organizationLookup: async () => ({ businessName: "Test Business" }),
+      downloadTwilioMediaFn: async () => Buffer.from("fake-jpeg-bytes"),
+      analyzeWhatsAppDocumentFn: async () => acceptedInvoiceAnalysis(),
+      ensureWhatsAppDriveContextFn: async () => ({
+        drive: {} as never,
+        rootFolderId: "root-folder-1",
+      }),
+      findExistingCrossSourceDuplicateFn: async () => null,
+      findExistingSupplierDriveDocumentFn: async () => null,
+      uploadInvoiceAttachmentToDriveFn: mockDriveUpload,
+      syncFinancialDocumentReviewPreviewFn: async (_organizationId, decision) => {
+        if ("review" in decision && decision.review?.id) syncedReviews.push(decision.review.id);
+      },
+      recordFinancialDocumentDecisionFn: async (input) => {
+        capturedDriveFileUrl = input.driveFileUrl;
+        return {
+          action: "needs_review" as const,
+          documentFingerprint: "fp-1",
+          sourceFingerprint: "sfp-1",
+          documentType: "invoice",
+          review: { id: "review-wa-1" },
+        };
+      },
+    });
+
+    assert.equal(capturedDriveFileUrl, "https://drive.google.com/file/d/drive-file-1/view");
+    assert.deepEqual(syncedReviews, ["review-wa-1"]);
+    assert.equal(result.processed[0]?.driveLink, "https://drive.google.com/file/d/drive-file-1/view");
+  });
 });
 
 test("selectWhatsAppInvoiceAmount falls back to total amount only when amount is missing", () => {

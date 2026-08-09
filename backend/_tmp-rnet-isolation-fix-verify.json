@@ -1,0 +1,52 @@
+{
+  "commit": "64e0e7fa44a187126cd9d2ef7c25c25fc67f285e",
+  "deployOk": true,
+  "beforeTotal": 22,
+  "afterTotal": 30,
+  "listStatus": 200,
+  "rnetAppeared": true,
+  "selectedRnet": {
+    "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+    "source": "financial_document_review",
+    "reviewStatus": "needs_review",
+    "status": "needs_review",
+    "invoiceNumber": "OV255006399",
+    "supplierName": null,
+    "decisionReason": null
+  },
+  "rnetRows": [
+    {
+      "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+      "source": "financial_document_review",
+      "reviewStatus": "needs_review",
+      "status": "needs_review",
+      "invoiceNumber": "OV255006399",
+      "supplierName": null,
+      "decisionReason": null
+    }
+  ],
+  "searchOv255": {
+    "total": 1,
+    "rows": [
+      {
+        "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+        "source": "financial_document_review",
+        "reviewStatus": "needs_review",
+        "status": "needs_review",
+        "invoiceNumber": "OV255006399",
+        "supplierName": null,
+        "decisionReason": null
+      }
+    ]
+  },
+  "gsiQuarantinedAbsent": true,
+  "quarantinedInList": [],
+  "otherOrgLeakCount": 0,
+  "bezeq": [],
+  "shaykedma": [],
+  "invoicesList": {
+    "status": 200,
+    "total": null,
+    "sampleCount": 0
+  }
+}

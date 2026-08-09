@@ -374,12 +374,19 @@ test("tenant-safe confirm: full path under ACTIVE ingestion containment (org A o
   }
 });
 
-test("invoices-screen membership: approved camera invoice enters the main list and leaves the completion queue", async () => {
+test("invoices-screen membership: camera draft stays in completion until confirm", async () => {
   // משתמש בפונקציות הסינון האמיתיות של GET /api/invoices:
   // המסך הראשי = completeness "complete"; השלמת חשבוניות = "incomplete".
   const { assessInvoiceCompleteness, filterInvoicesByCompleteness } = await import("../amount/invoiceCompleteness.js");
 
-  const toCandidate = (row: { supplierName: string | null; totalAmount: number | null; documentDate: Date | null; currency: string | null; reviewStatus: string }) => {
+  const toCandidate = (row: {
+    supplierName: string | null;
+    totalAmount: number | null;
+    documentDate: Date | null;
+    currency: string | null;
+    reviewStatus: string;
+    ingestSource?: string;
+  }) => {
     const assessment = assessInvoiceCompleteness({
       supplierName: row.supplierName,
       amount: row.totalAmount,
@@ -391,29 +398,31 @@ test("invoices-screen membership: approved camera invoice enters the main list a
       documentType: "tax_invoice",
       reviewStatus: row.reviewStatus,
       rawReviewStatus: row.reviewStatus,
+      ingestSource: row.ingestSource,
     });
     return { isComplete: assessment.isComplete };
   };
 
-  // לפני אישור: draft מלא-נתונים אבל needs_review — במסך ההשלמה, לא במסך חשבוניות
+  // לפני אישור: camera draft מלא-נתונים + needs_review — נשאר בהשלמה
   const beforeConfirm = toCandidate({
     supplierName: "בזק",
     totalAmount: 250,
     documentDate: new Date("2026-07-01"),
     currency: "ILS",
     reviewStatus: "needs_review",
+    ingestSource: "camera",
   });
-  assert.equal(filterInvoicesByCompleteness([beforeConfirm], "complete").length, 0, "before confirm: not on invoices screen");
-  assert.equal(filterInvoicesByCompleteness([beforeConfirm], "incomplete").length, 1, "before confirm: in completion queue");
+  assert.equal(filterInvoicesByCompleteness([beforeConfirm], "complete").length, 0, "before confirm: camera draft stays off invoices");
+  assert.equal(filterInvoicesByCompleteness([beforeConfirm], "incomplete").length, 1, "before confirm: camera draft in completion queue");
 
-  // אחרי אישור: reviewStatus=approved + תאריך+מטבע שנכתבים ב-confirm —
-  // בדיוק השדות ש-confirmCameraDocument מעדכן על אותה רשומה
+  // אחרי אישור: עובר למסך חשבוניות
   const afterConfirm = toCandidate({
     supplierName: "בזק",
     totalAmount: 250,
     documentDate: new Date("2026-07-01"),
     currency: "ILS",
     reviewStatus: "approved",
+    ingestSource: "camera",
   });
   assert.equal(filterInvoicesByCompleteness([afterConfirm], "complete").length, 1, "after confirm: appears on invoices screen");
   assert.equal(filterInvoicesByCompleteness([afterConfirm], "incomplete").length, 0, "after confirm: gone from completion queue");
@@ -425,6 +434,7 @@ test("invoices-screen membership: approved camera invoice enters the main list a
     documentDate: null,
     currency: null,
     reviewStatus: "approved",
+    ingestSource: "camera",
   });
   assert.equal(filterInvoicesByCompleteness([withoutDate], "complete").length, 0, "missing date/currency keeps it off the invoices screen — hence confirm must write them");
 });

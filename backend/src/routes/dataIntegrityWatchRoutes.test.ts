@@ -91,7 +91,7 @@ test("GET /integrity/watch returns expected response shape", async () => {
     const res = await api(baseUrl, "/integrity/watch");
     assert.equal(res.status, 200);
     assert.equal(res.body.report.schemaVersion, INTEGRITY_WATCH_VERSION);
-    assert.equal(res.body.report.checksImplemented, 8);
+    assert.equal(res.body.report.checksImplemented, 11);
     assert.ok(res.body.health);
     assert.equal(typeof res.body.health.integrityScore, "number");
     assert.equal(typeof res.body.health.criticalFindings, "number");

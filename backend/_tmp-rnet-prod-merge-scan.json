@@ -1,0 +1,35 @@
+{
+  "mergeStyle": "production_shallow_spread",
+  "isolation": {
+    "contaminatedCount": 0,
+    "gsiIsolation": {
+      "NOT": {
+        "decisionReason": {
+          "contains": "Quarantined: cross-org gmail ingestion"
+        }
+      }
+    },
+    "fdrIsolation": {
+      "OR": [
+        {
+          "uncertaintyReason": null
+        },
+        {
+          "NOT": {
+            "uncertaintyReason": {
+              "contains": "Quarantined: cross-org gmail ingestion"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "membership": {
+    "fdrIn": true,
+    "gsiIn": false
+  },
+  "page": {
+    "total": 32,
+    "hit": []
+  }
+}

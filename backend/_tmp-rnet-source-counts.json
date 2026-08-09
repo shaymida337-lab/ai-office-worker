@@ -1,0 +1,221 @@
+{
+  "counts": {
+    "gsiRaw": 125,
+    "gsiBaseWhere": 101,
+    "gsiIsolated": 11,
+    "fdrRaw": 168,
+    "fdrBaseWhere": 130,
+    "fdrIsolated": 33,
+    "fdrTaxInvoiceReceipt": 26,
+    "fdrTaxInvoice": 63
+  },
+  "liveDocTypes": {
+    "receipt": 3,
+    "invoice": 1,
+    "tax_invoice": 18
+  },
+  "liveTotal": 22,
+  "gsiAnalyses": [
+    {
+      "gsiId": "cmqxf1a1d0b1njx2dnhziydij",
+      "gsiStatus": "needs_review",
+      "gsiType": "receipt",
+      "gsiAmount": null,
+      "gsiSupplier": "לא זוהה",
+      "twins": [
+        {
+          "id": "cmqxf19pv0b1ljx2dccz8dncs",
+          "reviewStatus": "needs_review",
+          "documentType": "receipt",
+          "totalAmount": null,
+          "supplierName": "לא זוהה",
+          "uncertaintyReason": "amount missing or invalid"
+        }
+      ],
+      "winnerIds": [
+        "gmail-scan:cmqxf1a1d0b1njx2dnhziydij"
+      ],
+      "afterIncompleteIds": [
+        "gmail-scan:cmqxf1a1d0b1njx2dnhziydij"
+      ],
+      "winnerIsComplete": [
+        {
+          "id": "gmail-scan:cmqxf1a1d0b1njx2dnhziydij",
+          "isComplete": false,
+          "dataComplete": false
+        }
+      ]
+    },
+    {
+      "gsiId": "cmqxe7pxm0apdjx2dzymfyan8",
+      "gsiStatus": "needs_review",
+      "gsiType": "receipt",
+      "gsiAmount": 98,
+      "gsiSupplier": "פארק ארץ הצבי",
+      "twins": [],
+      "winnerIds": [
+        "gmail-scan:cmqxe7pxm0apdjx2dzymfyan8"
+      ],
+      "afterIncompleteIds": [
+        "gmail-scan:cmqxe7pxm0apdjx2dzymfyan8"
+      ],
+      "winnerIsComplete": [
+        {
+          "id": "gmail-scan:cmqxe7pxm0apdjx2dzymfyan8",
+          "isComplete": false,
+          "dataComplete": true
+        }
+      ]
+    },
+    {
+      "gsiId": "cmqxeb3hb0ar5jx2dd6mikakb",
+      "gsiStatus": "needs_review",
+      "gsiType": "receipt",
+      "gsiAmount": 144,
+      "gsiSupplier": "סופר פארם",
+      "twins": [
+        {
+          "id": "cmqxeb3550ar3jx2dy30uht6x",
+          "reviewStatus": "needs_review",
+          "documentType": "receipt",
+          "totalAmount": 144,
+          "supplierName": "סופר פארם",
+          "uncertaintyReason": "Held for review: classifier money_direction_unsure; Auto-saved: receipt confidence=80%; attachment found: image; attachment found; image invoice detected; amount found; keyword matched: חשבונית; keyword matched: invoice; keyword matched: receipt; keyword matched: receipt; supplier detected; ai:receipt:85%"
+        }
+      ],
+      "winnerIds": [
+        "gmail-scan:cmqxeb3hb0ar5jx2dd6mikakb"
+      ],
+      "afterIncompleteIds": [
+        "gmail-scan:cmqxeb3hb0ar5jx2dd6mikakb"
+      ],
+      "winnerIsComplete": [
+        {
+          "id": "gmail-scan:cmqxeb3hb0ar5jx2dd6mikakb",
+          "isComplete": false,
+          "dataComplete": true
+        }
+      ]
+    },
+    {
+      "gsiId": "cmqxf7tfq0b3hjx2ds3ah1ase",
+      "gsiStatus": "needs_review",
+      "gsiType": "receipt",
+      "gsiAmount": null,
+      "gsiSupplier": "לא זוהה",
+      "twins": [
+        {
+          "id": "cmqxf7t1v0b3fjx2d7rm86t2q",
+          "reviewStatus": "needs_review",
+          "documentType": "receipt",
+          "totalAmount": null,
+          "supplierName": "לא זוהה",
+          "uncertaintyReason": "invoice number missing"
+        }
+      ],
+      "winnerIds": [
+        "gmail-scan:cmqxf7tfq0b3hjx2ds3ah1ase"
+      ],
+      "afterIncompleteIds": [
+        "gmail-scan:cmqxf7tfq0b3hjx2ds3ah1ase"
+      ],
+      "winnerIsComplete": [
+        {
+          "id": "gmail-scan:cmqxf7tfq0b3hjx2ds3ah1ase",
+          "isComplete": false,
+          "dataComplete": false
+        }
+      ]
+    },
+    {
+      "gsiId": "cmqxegqwh0au5jx2dkcm0td92",
+      "gsiStatus": "needs_review",
+      "gsiType": "unknown_needs_review",
+      "gsiAmount": null,
+      "gsiSupplier": "Render Services dba Render",
+      "twins": [
+        {
+          "id": "cmqxegilg0au1jx2d24gq5egq",
+          "reviewStatus": "needs_review",
+          "documentType": "receipt",
+          "totalAmount": 4.38,
+          "supplierName": "לא זוהה",
+          "uncertaintyReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Held for review: confidence is low; blocked non-invoice message: Render notification / documentType is unknown_needs_review / confidence below 80% (0%); supplier_ambiguous:AMBIGUOUS; fse_review:none; trust_review:TE_UPSTREAM_REVIEW; outcome_review:OE_NEEDS_REVIEW"
+        }
+      ],
+      "winnerIds": [
+        "gmail-scan:cmqxegqwh0au5jx2dkcm0td92"
+      ],
+      "afterIncompleteIds": [
+        "gmail-scan:cmqxegqwh0au5jx2dkcm0td92"
+      ],
+      "winnerIsComplete": [
+        {
+          "id": "gmail-scan:cmqxegqwh0au5jx2dkcm0td92",
+          "isComplete": false,
+          "dataComplete": false
+        }
+      ]
+    },
+    {
+      "gsiId": "cmqxeh20k0aubjx2dii9h917x",
+      "gsiStatus": "needs_review",
+      "gsiType": "unknown_needs_review",
+      "gsiAmount": null,
+      "gsiSupplier": "Anthropic PBC",
+      "twins": [
+        {
+          "id": "cmqxegtlv0au7jx2d306fm5f6",
+          "reviewStatus": "needs_review",
+          "documentType": "tax_invoice_receipt",
+          "totalAmount": 89.39,
+          "supplierName": "לא זוהה",
+          "uncertaintyReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: tax_invoice_receipt confidence=99%; attachment found: PDF; invoice attachment detected; receipt attachment detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: invoice; keyword matched: receipt; keyword matched: receipt; keyword matched: payment request; supplier detected; ai:tax_invoice_receipt:95%; supplier_ambiguous:AMBIGUOUS; fse_review:vat_arithmetic,ocr_suspicious_patt"
+        }
+      ],
+      "winnerIds": [
+        "gmail-scan:cmqxeh20k0aubjx2dii9h917x"
+      ],
+      "afterIncompleteIds": [
+        "gmail-scan:cmqxeh20k0aubjx2dii9h917x"
+      ],
+      "winnerIsComplete": [
+        {
+          "id": "gmail-scan:cmqxeh20k0aubjx2dii9h917x",
+          "isComplete": false,
+          "dataComplete": false
+        }
+      ]
+    },
+    {
+      "gsiId": "cmqw3ngay020rm92bu32og3aa",
+      "gsiStatus": "needs_review",
+      "gsiType": "invoice",
+      "gsiAmount": 3484.96,
+      "gsiSupplier": "ליחידה כמות תאור מוצר מק\"ט",
+      "twins": [
+        {
+          "id": "cmqw3ngni020tm92b7m3jb9oc",
+          "reviewStatus": "needs_review",
+          "documentType": "tax_invoice",
+          "totalAmount": 3484.96,
+          "supplierName": "ליחידה כמות תאור מוצר מק\"ט",
+          "uncertaintyReason": "duplicate.key_mismatch"
+        }
+      ],
+      "winnerIds": [
+        "gmail-scan:cmqw3ngay020rm92bu32og3aa"
+      ],
+      "afterIncompleteIds": [
+        "gmail-scan:cmqw3ngay020rm92bu32og3aa"
+      ],
+      "winnerIsComplete": [
+        {
+          "id": "gmail-scan:cmqw3ngay020rm92bu32og3aa",
+          "isComplete": false,
+          "dataComplete": true
+        }
+      ]
+    }
+  ]
+}

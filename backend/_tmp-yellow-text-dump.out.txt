@@ -1,0 +1,417 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+{
+  "fdrId": "cms1nvpvp00pbjn2cwks9a78b",
+  "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+  "amount": 418.39,
+  "fileName": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf",
+  "uncertaintyReason": "supplier.sir_weak_evidence",
+  "analysisKeys": [
+    "tasks",
+    "amount",
+    "dueDate",
+    "currency",
+    "supplier",
+    "vatAmount",
+    "confidence",
+    "invoiceDate",
+    "totalAmount",
+    "documentType",
+    "invoiceNumber",
+    "supplierTaxId",
+    "amountBeforeVat",
+    "paymentRequired"
+  ],
+  "analysisSupplier": "*╫פ╫₧╫£╫נ╫ש ╫ע╫₧╫¿ ╫ó╫ף ╫⌐╫ó╫ץ╫¬ 24╫¬╫ץ╫ת",
+  "analysisAmount": 418.39,
+  "analysisDocumentType": "invoice",
+  "classification": {
+    "audit": {
+      "amountFound": true,
+      "blockedReason": null,
+      "keywordMatched": [
+        "╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í",
+        "╫ק╫⌐╫ס╫ץ╫á╫ש╫¬"
+      ],
+      "attachmentFound": true,
+      "invoiceAttached": false,
+      "receiptAttached": false,
+      "supplierDetected": true,
+      "pdfInvoiceDetected": true,
+      "taxInvoiceDetected": true,
+      "imageInvoiceDetected": false,
+      "strictPaymentEvidence": true,
+      "supplierPaymentRequestDetected": true
+    },
+    "evidence": [
+      "attachment found: PDF",
+      "tax invoice detected",
+      "supplier payment request detected",
+      "PDF invoice detected",
+      "amount found",
+      "keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í",
+      "keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬",
+      "keyword matched: payment request",
+      "supplier detected",
+      "ai:invoice:85%",
+      "classifier needs review: blocklisted_not_supplier_or_customer"
+    ],
+    "confidence": 0.68,
+    "isRelevant": true,
+    "documentType": "invoice",
+    "reviewStatus": "needs_review",
+    "decisionReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; outcome_review:OE_NEEDS_REVIEW",
+    "confidenceScore": "high",
+    "financialSenderReason": null,
+    "heldForFinancialSender": false
+  },
+  "stringHitSummary": [
+    {
+      "path": "gsi.rawAnalysis.ocrText.pdfText",
+      "length": 646,
+      "hasYellow": true,
+      "hasIsracard": true,
+      "has418": true
+    },
+    {
+      "path": "parsedFieldsJson.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "gsi.parsedFieldsJson.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "gsi.rawAnalysis.parsed_fields_json.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "parsedFieldsJson.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "gsi.parsedFieldsJson.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "gsi.rawAnalysis.supplier.decision.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "gsi.rawAnalysis.parsed_fields_json.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "has418": false
+    },
+    {
+      "path": "parsedFieldsJson.outcome.description",
+      "length": 524,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.outcome.description",
+      "length": 524,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "gsi.parsedFieldsJson.outcome.description",
+      "length": 524,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "gsi.rawAnalysis.parsed_fields_json.outcome.description",
+      "length": 524,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "rawAnalysis.classification.decisionReason",
+      "length": 489,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "parsedFieldsJson.fse.recommendation",
+      "length": 118,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.fse.recommendation",
+      "length": 118,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "gsi.parsedFieldsJson.fse.recommendation",
+      "length": 118,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "gsi.rawAnalysis.parsed_fields_json.fse.recommendation",
+      "length": 118,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    },
+    {
+      "path": "gsi.rawAnalysis.filenames[0]",
+      "length": 111,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "has418": false
+    }
+  ],
+  "detailedTexts": [
+    {
+      "path": "gsi.rawAnalysis.ocrText.pdfText",
+      "length": 646,
+      "hasYellow": true,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 15,
+          "prev": "╫פ╫á╫ק╫פ ╫£╫ñ╫á╫ש ╫¢\"╫í╫פ\tΓג¬ 418.39",
+          "line": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר - ╫ץ╫ש╫צ╫פ",
+          "next": "05361***********"
+        }
+      ],
+      "yellowLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "╫נ╫ע╫ץ╫¿╫ץ╫¬ 10-╫ץ yellow ╫ס╫ק╫á╫ץ╫ש╫ץ╫¬ 10% ╫ª╫ץ╫ס╫¿╫ש╫¥ ╫₧╫ץ╫ó╫ף╫ץ╫ƒ ╫ק╫ס╫¿╫ש",
+          "next": ".╫£╫נ╫¿╫á╫º Γג¬ 5.57 ╫£╫ª╫ס╫ץ╫¿ ╫ש╫¢╫ץ╫£╫¬ ╫צ╫ץ ╫ס╫º╫á╫ש╫פ !╫ס╫ñ╫צ ╫ס╫¬╫ף╫£╫ץ╫º"
+        }
+      ],
+      "head": "╫נ╫ע╫ץ╫¿╫ץ╫¬ 10-╫ץ yellow ╫ס╫ק╫á╫ץ╫ש╫ץ╫¬ 10% ╫ª╫ץ╫ס╫¿╫ש╫¥ ╫₧╫ץ╫ó╫ף╫ץ╫ƒ ╫ק╫ס╫¿╫ש\n.╫£╫נ╫¿╫á╫º Γג¬ 5.57 ╫£╫ª╫ס╫ץ╫¿ ╫ש╫¢╫ץ╫£╫¬ ╫צ╫ץ ╫ס╫º╫á╫ש╫פ !╫ס╫ñ╫צ ╫ס╫¬╫ף╫£╫ץ╫º\n╫נ╫ק╫¿╫ש╫á╫ץ ╫£╫ó╫º╫ץ╫ס ╫ס╫ץ╫נ╫ץ\n∩ג¼ \t∩ו¡ \t∩מ₧\n╫¬╫ק╫á╫פ ╫נ╫ש╫¬╫ץ╫¿ \t╫פ╫ק╫צ╫¿╫פ ╫₧╫ף╫ש╫á╫ש╫ץ╫¬\n╫פ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫£╫פ╫ץ╫¿╫ף╫¬\n1310\n╫פ╫ק╫ף╫⌐╫פ ╫₧╫ץ╫ף╫ש╫ó╫ש╫ƒ\n╫⌐╫£╫ת ╫פ╫ק╫⌐╫ס╫ץ╫ƒ ╫í╫ש╫¢╫ץ╫¥\nΓג¬ \t418.39\n╫ñ╫¿╫ש╫ר ╫⌐╫¥\t╫¢╫₧╫ץ╫¬\t╫פ╫á╫ק╫ץ╫¬ ╫£╫נ╫ק╫¿ ╫£╫¬╫⌐╫£╫ץ╫¥ ╫í╫¢╫ץ╫¥\n95 ╫ס╫á╫ó\n3951\n0\tΓג¬ 418.39\n╫פ╫á╫ק╫פ ╫£╫ñ╫á╫ש ╫¢\"╫í╫פ\tΓג¬ 418.39\n╫ש╫⌐╫¿╫נ╫¢╫¿╫ר - ╫ץ╫ש╫צ╫פ\n05361***********\nΓג¬ 418.39\n╫¿╫¢╫ס ╫₧╫í╫ñ╫¿\t1408871\n╫₧\"╫₧╫ó ╫£╫£╫נ ╫í╫¢╫ץ╫¥\tΓג¬ 357.60\n╫₧\"╫₧╫ó\tΓג¬ 60.79\n╫פ╫á╫ק╫ץ╫¬ ╫£╫נ╫ק╫¿ ╫£╫¬╫⌐╫£╫ץ╫¥ ╫í╫¢╫ץ╫¥\tΓג¬ 418.39\n╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í╫ñ╫¿\t026309901407453\n╫¬╫נ╫¿╫ש╫ת\t20:50 2024-03-05\n╫£╫₧╫ש╫₧╫ץ╫⌐ ╫ס╫ק╫á╫ץ╫¬ ╫פ╫º╫ץ╫ף ╫ס╫פ╫ª╫ע╫¬ ╫ס ╫ñ╫ר╫ש╫í╫¿╫ש.╫ע ╫נ╫ץ-9 ╫ס ╫₧╫á╫ר╫ץ╫í.╫₧-5\n*╫פ╫₧╫£╫נ╫ש ╫ע╫₧╫¿ ╫ó╫ף ╫⌐╫ó╫ץ╫¬ 24╫¬╫ץ╫ת\n╫º╫ץ╫ñ╫ץ╫ƒ ╫º╫ץ╫ף\n9263991563348\n026309901407453\n╫ץ╫ñ╫¿╫ר╫ש╫ץ╫¬ ╫⌐╫ש╫₧╫ץ╫⌐ ╫¬╫á╫נ╫ש\n┬⌐ Powered By Pairzon AIΓהó\n\n-- 1 of 1 --",
+      "mid": "╫נ╫ע╫ץ╫¿╫ץ╫¬ 10-╫ץ yellow ╫ס╫ק╫á╫ץ╫ש╫ץ╫¬ 10% ╫ª╫ץ╫ס╫¿╫ש╫¥ ╫₧╫ץ╫ó╫ף╫ץ╫ƒ ╫ק╫ס╫¿╫ש\n.╫£╫נ╫¿╫á╫º Γג¬ 5.57 ╫£╫ª╫ס╫ץ╫¿ ╫ש╫¢╫ץ╫£╫¬ ╫צ╫ץ ╫ס╫º╫á╫ש╫פ !╫ס╫ñ╫צ ╫ס╫¬╫ף╫£╫ץ╫º\n╫נ╫ק╫¿╫ש╫á╫ץ ╫£╫ó╫º╫ץ╫ס ╫ס╫ץ╫נ╫ץ\n∩ג¼ \t∩ו¡ \t∩מ₧\n╫¬╫ק╫á╫פ ╫נ╫ש╫¬╫ץ╫¿ \t╫פ╫ק╫צ╫¿╫פ ╫₧╫ף╫ש╫á╫ש╫ץ╫¬\n╫פ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫£╫פ╫ץ╫¿╫ף╫¬\n1310\n╫פ╫ק╫ף╫⌐╫פ ╫₧╫ץ╫ף╫ש╫ó╫ש╫ƒ\n╫⌐╫£╫ת ╫פ╫ק╫⌐╫ס╫ץ╫ƒ ╫í╫ש╫¢╫ץ╫¥\nΓג¬ \t418.39\n╫ñ╫¿╫ש╫ר ╫⌐╫¥\t╫¢╫₧╫ץ╫¬\t╫פ╫á╫ק╫ץ╫¬ ╫£╫נ╫ק╫¿ ╫£╫¬╫⌐╫£╫ץ╫¥ ╫í╫¢╫ץ╫¥\n95 ╫ס╫á╫ó\n3951\n0\tΓג¬ 418.39\n╫פ╫á╫ק╫פ ╫£╫ñ╫á╫ש ╫¢\"╫í╫פ\tΓג¬ 418.39\n╫ש╫⌐╫¿╫נ╫¢╫¿╫ר - ╫ץ╫ש╫צ╫פ\n05361***********\nΓג¬ 418.39\n╫¿╫¢╫ס ╫₧╫í╫ñ╫¿\t1408871\n╫₧\"╫₧╫ó ╫£╫£╫נ ╫í╫¢╫ץ╫¥\tΓג¬ 357.60\n╫₧\"╫₧╫ó\tΓג¬ 60.79\n╫פ╫á╫ק╫ץ╫¬ ╫£╫נ╫ק╫¿ ╫£╫¬╫⌐╫£╫ץ╫¥ ╫í╫¢╫ץ╫¥\tΓג¬ 418.39\n╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í╫ñ╫¿\t026309901407453\n╫¬╫נ╫¿╫ש╫ת\t20:50 2024-03-05\n╫£╫₧╫ש╫₧╫ץ╫⌐ ╫ס╫ק╫á╫ץ╫¬ ╫פ╫º╫ץ╫ף ╫ס╫פ╫ª╫ע╫¬ ╫ס ╫ñ╫ר╫ש╫í╫¿╫ש.╫ע ╫נ╫ץ-9 ╫ס ╫₧╫á╫ר╫ץ╫í.╫₧-5\n*╫פ╫₧╫£╫נ╫ש ╫ע╫₧╫¿ ╫ó╫ף ╫⌐╫ó╫ץ╫¬ 24╫¬╫ץ╫ת\n╫º╫ץ╫ñ╫ץ╫ƒ ╫º╫ץ╫ף\n9263991563348\n026309901407453\n╫ץ╫ñ╫¿╫ר╫ש╫ץ╫¬ ╫⌐╫ש╫₧╫ץ╫⌐ ╫¬╫á╫נ╫ש\n┬⌐ Powered By Pairzon AIΓהó\n\n-- 1 of 1 --"
+    },
+    {
+      "path": "parsedFieldsJson.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "SIR resolved (OCR_KEYWORD) supplier=\"╫ש╫⌐╫¿╫נ╫¢╫¿╫ר\"",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "SIR resolved (OCR_KEYWORD) supplier=\"╫ש╫⌐╫¿╫נ╫¢╫¿╫ר\"",
+      "mid": "SIR resolved (OCR_KEYWORD) supplier=\"╫ש╫⌐╫¿╫נ╫¢╫¿╫ר\""
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "SIR resolved (OCR_KEYWORD) supplier=\"╫ש╫⌐╫¿╫נ╫¢╫¿╫ר\"",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "SIR resolved (OCR_KEYWORD) supplier=\"╫ש╫⌐╫¿╫נ╫¢╫¿╫ר\"",
+      "mid": "SIR resolved (OCR_KEYWORD) supplier=\"╫ש╫⌐╫¿╫נ╫¢╫¿╫ר\""
+    },
+    {
+      "path": "gsi.parsedFieldsJson.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "SIR resolved (OCR_KEYWORD) supplier=\"╫ש╫⌐╫¿╫נ╫¢╫¿╫ר\"",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "SIR resolved (OCR_KEYWORD) supplier=\"╫ש╫⌐╫¿╫נ╫¢╫¿╫ר\"",
+      "mid": "SIR resolved (OCR_KEYWORD) supplier=\"╫ש╫⌐╫¿╫נ╫¢╫¿╫ר\""
+    },
+    {
+      "path": "gsi.rawAnalysis.parsed_fields_json.outcome.timeline[4].explanation",
+      "length": 45,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "SIR resolved (OCR_KEYWORD) supplier=\"╫ש╫⌐╫¿╫נ╫¢╫¿╫ר\"",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "SIR resolved (OCR_KEYWORD) supplier=\"╫ש╫⌐╫¿╫נ╫¢╫¿╫ר\"",
+      "mid": "SIR resolved (OCR_KEYWORD) supplier=\"╫ש╫⌐╫¿╫נ╫¢╫¿╫ר\""
+    },
+    {
+      "path": "parsedFieldsJson.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+      "mid": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר"
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+      "mid": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר"
+    },
+    {
+      "path": "gsi.parsedFieldsJson.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+      "mid": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר"
+    },
+    {
+      "path": "gsi.rawAnalysis.supplier.decision.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+      "mid": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר"
+    },
+    {
+      "path": "gsi.rawAnalysis.parsed_fields_json.sir.reason",
+      "length": 28,
+      "hasYellow": false,
+      "hasIsracard": true,
+      "isracardLines": [
+        {
+          "i": 0,
+          "prev": null,
+          "line": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+          "next": null
+        }
+      ],
+      "yellowLines": [],
+      "head": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+      "mid": "ocr_keyword selected ╫ש╫⌐╫¿╫נ╫¢╫¿╫ר"
+    },
+    {
+      "path": "parsedFieldsJson.outcome.description",
+      "length": 524,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "isracardLines": [],
+      "yellowLines": [],
+      "head": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; image invoice OCR candidate; blocklisted_not_supplier_or_customer",
+      "mid": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; image invoice OCR candidate; blocklisted_not_supplier_or_customer"
+    },
+    {
+      "path": "rawAnalysis.parsed_fields_json.outcome.description",
+      "length": 524,
+      "hasYellow": false,
+      "hasIsracard": false,
+      "isracardLines": [],
+      "yellowLines": [],
+      "head": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; image invoice OCR candidate; blocklisted_not_supplier_or_customer",
+      "mid": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; image invoice OCR candidate; blocklisted_not_supplier_or_customer"
+    }
+  ],
+  "gsiDecisionReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: payment_request confidence=99%; attachment found: PDF; tax invoice detected; supplier payment request detected; PDF invoice detected; amount found; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬ ╫₧╫í; keyword matched: ╫ק╫⌐╫ס╫ץ╫á╫ש╫¬; keyword matched: payment request; supplier detected; ai:invoice:85%; supplier_resolved:OCR_KEYWORD; fse_warning:ocr_suspicious_patterns; trust_review:TE_NEVER_GUESS_UNCERTAINTY; outcome_review:OE_NEEDS_REVIEW",
+  "gsiSupplier": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר"
+}

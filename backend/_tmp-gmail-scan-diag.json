@@ -1,0 +1,19 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+{"error":"\nInvalid `prisma.emailMessage.findMany()` invocation 
+in\nC:\\Users\\shaym\\ai-office-worker\\backend\\_tmp-diagnose-gmail-scan-readonly.ts:85:44\n\n  82 }\n  83 \n  84 // 
+EmailMessage recent\nΓזע 85 const emails = await prisma.emailMessage.findMany({\n       where: {\n         
+organizationId: \"cmpjd7j7e0001bl5tzv049rxb\",\n         createdAt: {\n           gte: new 
+Date(\"2026-07-26T04:14:49.899Z\")\n         }\n       },\n       orderBy: {\n         createdAt: \"desc\"\n       
+},\n       take: 20,\n       select: {\n         id: true,\n         gmailId: true,\n         subject: true,\n         
+fromEmail: true,\n         ~~~~~~~~~\n         createdAt: true,\n     ?   organizationId?: true,\n     ?   clientId?: 
+true,\n     ?   threadId?: true,\n     ?   fromAddress?: true,\n     ?   snippet?: true,\n     ?   bodyText?: true,\n  
+   ?   receivedAt?: true,\n     ?   processedAt?: true,\n     ?   source?: true,\n     ?   organization?: true,\n     
+?   client?: true,\n     ?   attachments?: true,\n     ?   _count?: true\n       }\n     })\n\nUnknown field 
+`fromEmail` for select statement on model `EmailMessage`. Available options are marked with ?."}

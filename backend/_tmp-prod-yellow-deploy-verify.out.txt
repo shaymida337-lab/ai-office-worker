@@ -1,0 +1,128 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+{
+  "checkedAt": "2026-07-26T11:03:00.304Z",
+  "targetCommit": "1233079ec34683d4571d6a41133360ee292a85eb",
+  "health": {
+    "status": 200,
+    "commit": "1233079ec34683d4571d6a41133360ee292a85eb",
+    "version": "0.1.0",
+    "buildTime": "2026-07-26T10:59:17.177Z",
+    "serverStartedAt": "2026-07-26T11:00:43.430Z",
+    "deployId": null,
+    "onTargetCommit": true
+  },
+  "renderDeploys": [
+    {
+      "id": "dep-d9iugqgk1i2s73bdu520",
+      "status": "live",
+      "createdAt": "2026-07-26T10:58:50.496209Z",
+      "finishedAt": "2026-07-26T11:00:50.304549Z",
+      "commit": "1233079ec34683d4571d6a41133360ee292a85eb",
+      "commitShort": "1233079",
+      "message": "fix(invoices): prefer merchants over card issuers in payment lines\n\nCo-authored-by: Cursor <cursorag",
+      "matchesTarget": true
+    },
+    {
+      "id": "dep-d9itlr0k1i2s73bddro0",
+      "status": "deactivated",
+      "createdAt": "2026-07-26T10:01:16.644547Z",
+      "finishedAt": "2026-07-26T10:03:17.39582Z",
+      "commit": "17a5720813943d4be835cbc120905d248b6890f0",
+      "commitShort": "17a5720",
+      "message": "fix(invoices): ignore negated invoice mentions in supplier fallback\n\nCo-authored-by: Cursor <cursora",
+      "matchesTarget": false
+    },
+    {
+      "id": "dep-d9itf3ok1i2s73bd8qqg",
+      "status": "deactivated",
+      "createdAt": "2026-07-26T09:46:55.229647Z",
+      "finishedAt": "2026-07-26T09:48:52.932101Z",
+      "commit": "1049610ff5622e720f06957bb7df94841af41952",
+      "commitShort": "1049610",
+      "message": "fix(invoices): route financially likely unknown documents to completion\n\nCo-authored-by: Cursor <cur",
+      "matchesTarget": false
+    },
+    {
+      "id": "dep-d9itat1oagis738d332g",
+      "status": "deactivated",
+      "createdAt": "2026-07-26T09:37:56.463224Z",
+      "finishedAt": "2026-07-26T09:39:55.135261Z",
+      "commit": "dc1680f23997e4c35f256f761f3943c0b4b6755f",
+      "commitShort": "dc1680f",
+      "message": "fix(invoices): reject metadata lines as supplier names\n\nCo-authored-by: Cursor <cursoragent@cursor.c",
+      "matchesTarget": false
+    },
+    {
+      "id": "dep-d9isni1oagis738cnjp0",
+      "status": "deactivated",
+      "createdAt": "2026-07-26T08:56:40.798978Z",
+      "finishedAt": "2026-07-26T08:58:40.496Z",
+      "commit": "ade05d69bea40a0155da52ffc41445034b0f9164",
+      "commitShort": "ade05d6",
+      "message": "fix(invoices): preserve credit notes as financial documents\n\nCo-authored-by: Cursor <cursoragent@cur",
+      "matchesTarget": false
+    }
+  ],
+  "reprocessPaths": {
+    "singleDocumentOfficial": false,
+    "unsafeOrgWideRescanInvoices": {
+      "path": "POST /api/gmail/rescan-invoices",
+      "whyUnsafe": "Deletes org Gmail invoices, supplierPayments, gmailScanItems and resets emails"
+    },
+    "forceReprocess90d": {
+      "paths": [
+        "POST /api/debug/gmail/scan-90",
+        "POST /api/help/auto-fix/invoices",
+        "POST /api/gmail/scan with daysBack>=90"
+      ],
+      "whyNotPreferred": "Org-wide force reprocess; not document-scoped; risk of noise/duplicates"
+    },
+    "recommendation": "No safe official single-document reprocess. User should resend email."
+  },
+  "yellowFdr": {
+    "id": "cms1nvpvp00pbjn2cwks9a78b",
+    "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+    "totalAmount": 418.39,
+    "gmailMessageId": "19f9d94a517d5d86",
+    "documentFingerprint": "049deebaec949684f7608442ad8b59bd5ad79d011b3d14a0",
+    "sourceFingerprint": "d3134c7b1efd63536e06d4d82d087ae16afa372f509829b0",
+    "reviewStatus": "needs_review",
+    "uncertaintyReason": "supplier.sir_weak_evidence",
+    "updatedAt": "2026-07-26T10:35:15.710Z",
+    "createdAt": "2026-07-26T10:34:52.741Z",
+    "fileName": "httpsaws.pairzon.com75360246-18a3-42b8-a647-fbd581e0ba6b.htmlid=1fb754db-f75c-0e56-4c37-df27593ee1ab&p=1250.pdf"
+  },
+  "sameGmailMessageFdrs": [
+    {
+      "id": "cms1nvpvp00pbjn2cwks9a78b",
+      "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+      "totalAmount": 418.39,
+      "documentFingerprint": "049deebaec949684f7608442ad8b59bd5ad79d011b3d14a0",
+      "createdAt": "2026-07-26T10:34:52.741Z",
+      "reviewStatus": "needs_review"
+    }
+  ],
+  "amount418Recent": [
+    {
+      "id": "cms1nvpvp00pbjn2cwks9a78b",
+      "supplierName": "╫ש╫⌐╫¿╫נ╫¢╫¿╫ר",
+      "totalAmount": 418.39,
+      "gmailMessageId": "19f9d94a517d5d86",
+      "documentFingerprint": "049deebaec949684f7608442ad8b59bd5ad79d011b3d14a0",
+      "createdAt": "2026-07-26T10:34:52.741Z"
+    }
+  ],
+  "pazOrYellowRecent": [],
+  "verification": {
+    "supplierIsPaz": false,
+    "amountOk": true,
+    "duplicateSameMessageCount": 1
+  }
+}

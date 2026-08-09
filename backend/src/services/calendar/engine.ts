@@ -150,6 +150,54 @@ export function findAvailableSlots(
   return rankAvailableSlots(available, ranking, limit);
 }
 
+/**
+ * Continuous free windows within a work-day interval (not discrete bookable slots).
+ * Busy blocks are clipped/merged; gaps become windows starting from max(workStart, now).
+ */
+export function computeFreeWindows(
+  workDay: TimeInterval,
+  busyBlocks: BusyBlock[],
+  options?: { now?: Date; excludeId?: string; minMinutes?: number }
+): TimeInterval[] {
+  const now = options?.now ?? new Date();
+  const minMinutes = options?.minMinutes ?? 15;
+  let cursorMs = Math.max(workDay.start.getTime(), now.getTime());
+  const endMs = workDay.end.getTime();
+  if (cursorMs >= endMs) return [];
+
+  const merged = busyBlocks
+    .filter((block) => !options?.excludeId || block.id !== options.excludeId)
+    .map((block) => ({
+      startMs: Math.max(block.start.getTime(), workDay.start.getTime()),
+      endMs: Math.min(block.end.getTime(), endMs),
+    }))
+    .filter((block) => block.endMs > block.startMs)
+    .sort((a, b) => a.startMs - b.startMs);
+
+  const compacted: Array<{ startMs: number; endMs: number }> = [];
+  for (const block of merged) {
+    const last = compacted[compacted.length - 1];
+    if (!last || block.startMs > last.endMs) {
+      compacted.push({ ...block });
+    } else {
+      last.endMs = Math.max(last.endMs, block.endMs);
+    }
+  }
+
+  const windows: TimeInterval[] = [];
+  for (const block of compacted) {
+    if (block.startMs > cursorMs) {
+      windows.push({ start: new Date(cursorMs), end: new Date(block.startMs) });
+    }
+    cursorMs = Math.max(cursorMs, block.endMs);
+  }
+  if (cursorMs < endMs) {
+    windows.push({ start: new Date(cursorMs), end: new Date(endMs) });
+  }
+
+  return windows.filter((window) => window.end.getTime() - window.start.getTime() >= minMinutes * 60_000);
+}
+
 /** Find free slots within ±nearbyHours of a requested start, sorted by proximity. */
 export function findAvailableSlotsNearTime(
   requestedStart: Date,

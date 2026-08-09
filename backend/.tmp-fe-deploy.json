@@ -1,0 +1,125 @@
+﻿{
+  "deploysUrl": "https://api.render.com/v1/services/srv-d898po77f7vs73bu01v0/deploys?limit=8",
+  "status": 200,
+  "preview": [
+    {
+      "deploy": {
+        "id": "dep-d9bu0sl7vvec738h9b20",
+        "commit": {
+          "id": "87c39783f3a262f2e347f33a72b49af82244744d",
+          "message": "feat(business-module): centralize vertical UX by businessType\n\nAdd getBusinessModule layer and wire Nav, client card, CRM, and dashboard to it so insurance vs service behavior is config-driven without scattered screen checks.\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+          "createdAt": "2026-07-15T19:18:18Z"
+        },
+        "status": "live",
+        "trigger": "new_commit",
+        "createdAt": "2026-07-15T19:33:06.668083Z",
+        "updatedAt": "2026-07-15T19:36:02.740922Z",
+        "startedAt": "2026-07-15T19:33:06.621312Z",
+        "finishedAt": "2026-07-15T19:35:34.34358Z"
+      },
+      "cursor": "Nr_zrNJxJ20wc2w3dnZlYzczOGg5YjIw"
+    },
+    {
+      "deploy": {
+        "id": "dep-d9btesi8qa3s73b6abgg",
+        "commit": {
+          "id": "96d389502779d5b47716662127aff0ef18b243e4",
+          "message": "fix(landing): stack mobile header auth CTAs under logo row\n\nKeep logo and hamburger on the top row; put equal-width login/signup actions on a clean second row and tighten space above the hero.\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+          "createdAt": "2026-07-15T18:54:36Z"
+        },
+        "status": "deactivated",
+        "trigger": "new_commit",
+        "createdAt": "2026-07-15T18:54:42.200989Z",
+        "updatedAt": "2026-07-15T19:35:34.342543Z",
+        "startedAt": "2026-07-15T18:54:42.163809Z",
+        "finishedAt": "2026-07-15T18:57:22.549788Z"
+      },
+      "cursor": "rqi0nLGjTUFlc2k4cWEzczczYjZhYmdn"
+    }
+  ]
+}
+{
+  "serviceId": "srv-d898po77f7vs73bu01v0",
+  "summary": [
+    {
+      "id": "dep-d9bu0sl7vvec738h9b20",
+      "status": "live",
+      "createdAt": "2026-07-15T19:33:06.668083Z",
+      "finishedAt": "2026-07-15T19:35:34.34358Z",
+      "commit": "87c39783",
+      "commitMessage": "feat(business-module): centralize vertical UX by businessType\n\nAdd getBusinessModule layer and wire Nav, client card, CR",
+      "failureTexts": [],
+      "lastEvents": []
+    },
+    {
+      "id": "dep-d9btesi8qa3s73b6abgg",
+      "status": "deactivated",
+      "createdAt": "2026-07-15T18:54:42.200989Z",
+      "finishedAt": "2026-07-15T18:57:22.549788Z",
+      "commit": "96d38950",
+      "commitMessage": "fix(landing): stack mobile header auth CTAs under logo row\n\nKeep logo and hamburger on the top row; put equal-width logi",
+      "failureTexts": [],
+      "lastEvents": []
+    },
+    {
+      "id": "dep-d9bt5a4vikkc73br0vlg",
+      "status": "deactivated",
+      "createdAt": "2026-07-15T18:34:16.678928Z",
+      "finishedAt": "2026-07-15T18:36:49.15655Z",
+      "commit": "aad149a7",
+      "commitMessage": "fix(landing): show login and signup in mobile header\n\nNew visitors can reach /login and /signup immediately without open",
+      "failureTexts": [],
+      "lastEvents": []
+    },
+    {
+      "id": "dep-d9bsp30qmsqc7385l39g",
+      "status": "deactivated",
+      "createdAt": "2026-07-15T18:08:12.465753Z",
+      "finishedAt": "2026-07-15T18:10:43.581557Z",
+      "commit": "5240a496",
+      "commitMessage": "chore(branding): replace app icon with official Natalie AI icon\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+      "failureTexts": [],
+      "lastEvents": []
+    },
+    {
+      "id": "dep-d9bruai8qa3s73akv5q0",
+      "status": "deactivated",
+      "createdAt": "2026-07-15T17:11:06.337893Z",
+      "finishedAt": "2026-07-15T17:13:45.921913Z",
+      "commit": "5240a496",
+      "commitMessage": "chore(branding): replace app icon with official Natalie AI icon\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+      "failureTexts": [],
+      "lastEvents": []
+    },
+    {
+      "id": "dep-d9br1qjeo5us73eudvn0",
+      "status": "deactivated",
+      "createdAt": "2026-07-15T16:10:18.487173Z",
+      "finishedAt": "2026-07-15T16:12:55.809517Z",
+      "commit": "5b89c38a",
+      "commitMessage": "fix(supplier): ignore known: prefix in supplier equivalence\n\nPrevents false supplier.needs_confirmation when registry ke",
+      "failureTexts": [],
+      "lastEvents": []
+    },
+    {
+      "id": "dep-d9bqgi0qmsqc73dins80",
+      "status": "deactivated",
+      "createdAt": "2026-07-15T15:33:28.948154Z",
+      "finishedAt": "2026-07-15T15:36:02.610395Z",
+      "commit": "5a0c6bb6",
+      "commitMessage": "fix(security): allow GET invoices list under read containment\n\nReopens only GET /invoices and GET /invoices/months for t",
+      "failureTexts": [],
+      "lastEvents": []
+    },
+    {
+      "id": "dep-d9bq8fdckfvc739a4jcg",
+      "status": "deactivated",
+      "createdAt": "2026-07-15T15:16:13.825514Z",
+      "finishedAt": "2026-07-15T15:18:52.584439Z",
+      "commit": "5a0c6bb6",
+      "commitMessage": "fix(security): allow GET invoices list under read containment\n\nReopens only GET /invoices and GET /invoices/months for t",
+      "failureTexts": [],
+      "lastEvents": []
+    }
+  ]
+}

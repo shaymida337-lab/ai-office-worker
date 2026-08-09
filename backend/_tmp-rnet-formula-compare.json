@@ -1,0 +1,85 @@
+{
+  "totals": {
+    "prodFormulaIncomplete": 32,
+    "wipFormulaIncomplete": 20,
+    "liveApiTotal": 22,
+    "liveIdsCollected": 22
+  },
+  "rnet": {
+    "underProd": {
+      "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "keptInIncomplete": true
+    },
+    "underWip": {
+      "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+      "isComplete": true,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "keptInIncomplete": false
+    }
+  },
+  "onlyInProdNotWip": [
+    "document-review:cmqw3n5hx020dm92bp1joi8wu",
+    "document-review:cmqw3onmp0227m92bemcb1bkm",
+    "document-review:cmqxeh4bh0audjx2d6ncvt92u",
+    "document-review:cmqxf61ak0b2zjx2dna3832rx",
+    "document-review:cmqxf65y40b31jx2d0snodln4",
+    "gmail-scan:cmqw3ngay020rm92bu32og3aa",
+    "gmail-scan:cmqxe7pxm0apdjx2dzymfyan8",
+    "gmail-scan:cmqxeb3hb0ar5jx2dd6mikakb",
+    "gmail-scan:cmr1vlh4m00rjj42c0eps0k9l",
+    "gmail-scan:cms1nw7uy00prjn2c1xbbn86r",
+    "gmail-scan:cms1p5nwl008xj81s2yeavjyx",
+    "gmail-scan:cms1p5x0k0091j81sy1y0xkcr"
+  ],
+  "onlyInWipNotProd": [],
+  "liveVsProdMissing": [
+    "document-review:cmqw3n5hx020dm92bp1joi8wu",
+    "document-review:cmqw3onmp0227m92bemcb1bkm",
+    "document-review:cmqxeh4bh0audjx2d6ncvt92u",
+    "gmail-scan:cmqw3ngay020rm92bu32og3aa",
+    "gmail-scan:cmqxe7pxm0apdjx2dzymfyan8",
+    "gmail-scan:cmqxeb3hb0ar5jx2dd6mikakb",
+    "gmail-scan:cmqxegqwh0au5jx2dkcm0td92",
+    "gmail-scan:cmqxeh20k0aubjx2dii9h917x",
+    "gmail-scan:cmqxf1a1d0b1njx2dnhziydij",
+    "gmail-scan:cmqxf7tfq0b3hjx2ds3ah1ase"
+  ],
+  "liveVsWipMissing": [
+    "gmail-scan:cmqxegqwh0au5jx2dkcm0td92",
+    "gmail-scan:cmqxeh20k0aubjx2dii9h917x",
+    "gmail-scan:cmqxf1a1d0b1njx2dnhziydij",
+    "gmail-scan:cmqxf7tfq0b3hjx2ds3ah1ase"
+  ],
+  "liveExtraVsProd": [],
+  "liveExtraVsWip": [
+    "document-review:cmqxf61ak0b2zjx2dna3832rx",
+    "document-review:cmqxf65y40b31jx2d0snodln4",
+    "gmail-scan:cmr1vlh4m00rjj42c0eps0k9l",
+    "gmail-scan:cms1nw7uy00prjn2c1xbbn86r",
+    "gmail-scan:cms1p5nwl008xj81s2yeavjyx",
+    "gmail-scan:cms1p5x0k0091j81sy1y0xkcr"
+  ],
+  "liveMatchesProd": false,
+  "liveMatchesWip": false,
+  "sampleLiveIds": [
+    "document-review:cmqw3rtbx024hm92b5bd1j49r",
+    "document-review:cmqw3z6ax028fm92botia05ye",
+    "document-review:cmqxe53iy0anrjx2dhy513llq",
+    "document-review:cmqxe79370ap7jx2dvwtq4d7t",
+    "document-review:cmqxe86tr0appjx2dc2qgwz2k",
+    "document-review:cmqxe9jwn0aqdjx2dnji6020y",
+    "document-review:cmqxea8870aqpjx2dsrsz6bkt",
+    "document-review:cmqxed9zg0asljx2dltrn17ve",
+    "document-review:cmqxejucz0awhjx2d6v3motc5",
+    "document-review:cmqxetyxa0aytjx2dgiaib10u",
+    "document-review:cmqxeunvl0az3jx2d1kfkwt73",
+    "document-review:cmqxevlvs0azvjx2dcqselxwc",
+    "document-review:cmqxexthc0b0ljx2d2xnaeffh",
+    "document-review:cmqxez71k0b1bjx2da19kmqsc",
+    "document-review:cmqxf5s8p0b2xjx2do3o4dwxy"
+  ]
+}

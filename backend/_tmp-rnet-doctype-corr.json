@@ -1,0 +1,186 @@
+{
+  "totals": {
+    "local": 32,
+    "live": 22,
+    "missing": 10
+  },
+  "missingByDocumentType": {
+    "receipt": 4,
+    "unknown_needs_review": 2,
+    "tax_invoice_receipt": 3,
+    "invoice": 1
+  },
+  "presentByDocumentType": {
+    "receipt": 3,
+    "invoice": 1,
+    "tax_invoice": 18
+  },
+  "missingBySource": {
+    "gmail_scan_item": 7,
+    "financial_document_review": 3
+  },
+  "presentBySource": {
+    "gmail_scan_item": 4,
+    "financial_document_review": 18
+  },
+  "missing": [
+    {
+      "id": "gmail-scan:cmqxf1a1d0b1njx2dnhziydij",
+      "source": "gmail_scan_item",
+      "documentType": "receipt",
+      "isComplete": false,
+      "dataComplete": false,
+      "approvalRequired": true,
+      "amount": null,
+      "supplierName": "לא זוהה",
+      "onLive": false,
+      "decisionReason": "Held for review: confidence is medium; confidence below 80% (54%); supplier_ambi"
+    },
+    {
+      "id": "gmail-scan:cmqxe7pxm0apdjx2dzymfyan8",
+      "source": "gmail_scan_item",
+      "documentType": "receipt",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "amount": 98,
+      "supplierName": "פארק ארץ הצבי",
+      "onLive": false,
+      "decisionReason": "Auto-saved: receipt confidence=99%; attachment found: PDF; PDF invoice detected;"
+    },
+    {
+      "id": "gmail-scan:cmqxeb3hb0ar5jx2dd6mikakb",
+      "source": "gmail_scan_item",
+      "documentType": "receipt",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "amount": 144,
+      "supplierName": "סופר פארם",
+      "onLive": false,
+      "decisionReason": "Held for review: classifier money_direction_unsure; Auto-saved: receipt confiden"
+    },
+    {
+      "id": "gmail-scan:cmqxf7tfq0b3hjx2ds3ah1ase",
+      "source": "gmail_scan_item",
+      "documentType": "receipt",
+      "isComplete": false,
+      "dataComplete": false,
+      "approvalRequired": true,
+      "amount": null,
+      "supplierName": "לא זוהה",
+      "onLive": false,
+      "decisionReason": "Held for review: classifier outgoing_supplier_reality_unsure; Held for review: c"
+    },
+    {
+      "id": "gmail-scan:cmqxegqwh0au5jx2dkcm0td92",
+      "source": "gmail_scan_item",
+      "documentType": "unknown_needs_review",
+      "isComplete": false,
+      "dataComplete": false,
+      "approvalRequired": true,
+      "amount": null,
+      "supplierName": "Render Services dba Render",
+      "onLive": false,
+      "decisionReason": "process_save_failed: \nInvalid `prisma.gmailScanItem.upsert()` invocation:\n\n\nErro"
+    },
+    {
+      "id": "gmail-scan:cmqxeh20k0aubjx2dii9h917x",
+      "source": "gmail_scan_item",
+      "documentType": "unknown_needs_review",
+      "isComplete": false,
+      "dataComplete": false,
+      "approvalRequired": true,
+      "amount": null,
+      "supplierName": "Anthropic PBC",
+      "onLive": false,
+      "decisionReason": "process_save_failed: \nInvalid `prisma.gmailScanItem.upsert()` invocation:\n\n\nErro"
+    },
+    {
+      "id": "document-review:cmqxeh4bh0audjx2d6ncvt92u",
+      "source": "financial_document_review",
+      "documentType": "tax_invoice_receipt",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "amount": 1,
+      "supplierName": "shaykedma",
+      "onLive": false,
+      "decisionReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: ta"
+    },
+    {
+      "id": "document-review:cmqw3onmp0227m92bemcb1bkm",
+      "source": "financial_document_review",
+      "documentType": "tax_invoice_receipt",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "amount": 163.28,
+      "supplierName": "בזק - החברה הישראלית לתקשורת בע״מ",
+      "onLive": false,
+      "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+    },
+    {
+      "id": "gmail-scan:cmqw3ngay020rm92bu32og3aa",
+      "source": "gmail_scan_item",
+      "documentType": "invoice",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "amount": 3484.96,
+      "supplierName": "ליחידה כמות תאור מוצר מק\"ט",
+      "onLive": false,
+      "decisionReason": "Held for review: confidence is high; parsed amount rejected: looks like identifi"
+    },
+    {
+      "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+      "source": "financial_document_review",
+      "documentType": "tax_invoice_receipt",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "amount": 354,
+      "supplierName": "נ.ערנט איי.קום בע\"מ",
+      "onLive": false,
+      "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+    }
+  ],
+  "taxInvoiceReceiptFdr": [
+    {
+      "id": "document-review:cmqxeh4bh0audjx2d6ncvt92u",
+      "source": "financial_document_review",
+      "documentType": "tax_invoice_receipt",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "amount": 1,
+      "supplierName": "shaykedma",
+      "onLive": false,
+      "decisionReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: ta"
+    },
+    {
+      "id": "document-review:cmqw3onmp0227m92bemcb1bkm",
+      "source": "financial_document_review",
+      "documentType": "tax_invoice_receipt",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "amount": 163.28,
+      "supplierName": "בזק - החברה הישראלית לתקשורת בע״מ",
+      "onLive": false,
+      "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+    },
+    {
+      "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+      "source": "financial_document_review",
+      "documentType": "tax_invoice_receipt",
+      "isComplete": false,
+      "dataComplete": true,
+      "approvalRequired": true,
+      "amount": 354,
+      "supplierName": "נ.ערנט איי.קום בע\"מ",
+      "onLive": false,
+      "decisionReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure"
+    }
+  ]
+}

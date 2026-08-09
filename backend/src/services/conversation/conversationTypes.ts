@@ -1,4 +1,5 @@
 import type { NatalieClaudeResponse } from "../claude.js";
+import type { NatalieAskRoutingMeta } from "./natalieAskRouting.js";
 
 export const NATALIE_CHANNELS = ["web_chat", "web_voice", "whatsapp", "email", "api"] as const;
 export type NatalieChannel = (typeof NATALIE_CHANNELS)[number];
@@ -104,6 +105,7 @@ export type ProcessNatalieTurnResult = NatalieClaudeResponse & {
   confirmation: ConfirmationPolicyResult;
   zeroWrongAction: ZeroWrongActionResult;
   reliability: NatalieTurnReliabilityMetadata;
+  routing?: NatalieAskRoutingMeta;
 };
 
 export type ConversationMetricsSnapshot = {

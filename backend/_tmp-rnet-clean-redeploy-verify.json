@@ -1,0 +1,40 @@
+{
+  "redeploy": {
+    "fromCommit": "b46450eaf4c1ab90d3a49638029d2e8d392c7c21",
+    "clearCache": true,
+    "backendOnly": true,
+    "localWipExcluded": true,
+    "previousServerStartedAt": "2026-07-26T12:42:25.232Z",
+    "newServerStartedAt": "2026-07-26T13:11:48.885Z",
+    "newBuildTime": "2026-07-26T13:10:19.672Z"
+  },
+  "before": {
+    "totalHint": 22
+  },
+  "after": {
+    "httpStatus": 200,
+    "total": 22,
+    "rowCount": 22,
+    "truncated": false,
+    "serverTiming": "pre_route;dur=0, auth;dur=1, tenant;dur=0, tenant_db;dur=0, org;dur=0, query;dur=2234, count;dur=0, relations;dur=2839, map;dur=1, serialize;dur=0, response;dur=0, unaccounted;dur=0, total;dur=5075",
+    "searchOv": {
+      "total": 0,
+      "rowCount": 0
+    },
+    "rnetHits": [],
+    "hasRnetFdr": false,
+    "hasRnetGsi": false,
+    "sampleIds": [
+      "gmail-scan:cms1p5nwl008xj81s2yeavjyx",
+      "gmail-scan:cms1p5x0k0091j81sy1y0xkcr",
+      "gmail-scan:cms1nw7uy00prjn2c1xbbn86r",
+      "gmail-scan:cmr1vlh4m00rjj42c0eps0k9l",
+      "document-review:cmqygx5bn08ztme2d6uhv1w5b",
+      "document-review:cmqxejucz0awhjx2d6v3motc5",
+      "document-review:cmqxetyxa0aytjx2dgiaib10u",
+      "document-review:cmqw3rtbx024hm92b5bd1j49r"
+    ]
+  },
+  "changed22to32": false,
+  "rnetAppeared": false
+}

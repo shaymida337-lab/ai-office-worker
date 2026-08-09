@@ -1,0 +1,407 @@
+[
+  {
+    "label": "rnet_missing",
+    "fdr": {
+      "id": "cmqw3n5hx020dm92bp1joi8wu",
+      "inWhere": true,
+      "reviewStatus": "needs_review",
+      "documentType": "tax_invoice_receipt",
+      "amount": 354,
+      "supplierName": "נ.ערנט איי.קום בע\"מ",
+      "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "fingerprint": "87d30575d372c795d0c93e55fc3d293dcc1f2462a9bad9bf",
+      "mapped": {
+        "isComplete": false,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "actionable": true,
+        "nonFinancial": false
+      }
+    },
+    "mirrors": [
+      {
+        "id": "cmqw3n5ug020fm92b5smx5bx1",
+        "reviewStatus": "rejected",
+        "decisionReason": "Quarantined: cross-org gmail ingestion",
+        "inWhere": false,
+        "documentType": "receipt",
+        "amount": 354
+      }
+    ],
+    "simInWhereOnly": {
+      "before": [
+        {
+          "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+          "source": "financial_document_review",
+          "status": "needs_review"
+        }
+      ],
+      "afterNewDedupe": [
+        {
+          "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+          "source": "financial_document_review"
+        }
+      ],
+      "afterOldPreferGsi": [
+        {
+          "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+          "source": "financial_document_review"
+        }
+      ],
+      "afterIncompleteNew": [
+        "document-review:cmqw3n5hx020dm92bp1joi8wu"
+      ],
+      "afterIncompleteOld": [
+        "document-review:cmqw3n5hx020dm92bp1joi8wu"
+      ]
+    },
+    "simAllMirrorsIncludingQuarantined": {
+      "before": [
+        {
+          "id": "gmail-scan:cmqw3n5ug020fm92b5smx5bx1",
+          "source": "gmail_scan_item",
+          "status": "rejected",
+          "actionable": false
+        },
+        {
+          "id": "document-review:cmqw3n5hx020dm92bp1joi8wu",
+          "source": "financial_document_review",
+          "status": "needs_review",
+          "actionable": true
+        }
+      ],
+      "afterNewDedupe": [
+        "document-review:cmqw3n5hx020dm92bp1joi8wu"
+      ],
+      "afterOldPreferGsi": [
+        "gmail-scan:cmqw3n5ug020fm92b5smx5bx1"
+      ],
+      "afterIncompleteNew": [
+        "document-review:cmqw3n5hx020dm92bp1joi8wu"
+      ],
+      "afterIncompleteOld": []
+    }
+  },
+  {
+    "label": "bezeq_missing",
+    "fdr": {
+      "id": "cmqw3onmp0227m92bemcb1bkm",
+      "inWhere": true,
+      "reviewStatus": "needs_review",
+      "documentType": "tax_invoice_receipt",
+      "amount": 163.28,
+      "supplierName": "בזק - החברה הישראלית לתקשורת בע״מ",
+      "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "fingerprint": "327f78265d110edc5b3b6f37c4bfb903393eff044c295250",
+      "mapped": {
+        "isComplete": false,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "actionable": true,
+        "nonFinancial": false
+      }
+    },
+    "mirrors": [
+      {
+        "id": "cmqw3onza0229m92blwh0o3cs",
+        "reviewStatus": "rejected",
+        "decisionReason": "Quarantined: cross-org gmail ingestion",
+        "inWhere": false,
+        "documentType": "tax_invoice_receipt",
+        "amount": 163.28
+      },
+      {
+        "id": "cmqxdrz9t0aitjx2dmnyd5vyx",
+        "reviewStatus": "rejected",
+        "decisionReason": "Quarantined: cross-org gmail ingestion",
+        "inWhere": false,
+        "documentType": "tax_invoice_receipt",
+        "amount": null
+      }
+    ],
+    "simInWhereOnly": {
+      "before": [
+        {
+          "id": "document-review:cmqw3onmp0227m92bemcb1bkm",
+          "source": "financial_document_review",
+          "status": "needs_review"
+        }
+      ],
+      "afterNewDedupe": [
+        {
+          "id": "document-review:cmqw3onmp0227m92bemcb1bkm",
+          "source": "financial_document_review"
+        }
+      ],
+      "afterOldPreferGsi": [
+        {
+          "id": "document-review:cmqw3onmp0227m92bemcb1bkm",
+          "source": "financial_document_review"
+        }
+      ],
+      "afterIncompleteNew": [
+        "document-review:cmqw3onmp0227m92bemcb1bkm"
+      ],
+      "afterIncompleteOld": [
+        "document-review:cmqw3onmp0227m92bemcb1bkm"
+      ]
+    },
+    "simAllMirrorsIncludingQuarantined": {
+      "before": [
+        {
+          "id": "gmail-scan:cmqw3onza0229m92blwh0o3cs",
+          "source": "gmail_scan_item",
+          "status": "rejected",
+          "actionable": false
+        },
+        {
+          "id": "gmail-scan:cmqxdrz9t0aitjx2dmnyd5vyx",
+          "source": "gmail_scan_item",
+          "status": "rejected",
+          "actionable": false
+        },
+        {
+          "id": "document-review:cmqw3onmp0227m92bemcb1bkm",
+          "source": "financial_document_review",
+          "status": "needs_review",
+          "actionable": true
+        }
+      ],
+      "afterNewDedupe": [
+        "document-review:cmqw3onmp0227m92bemcb1bkm"
+      ],
+      "afterOldPreferGsi": [
+        "gmail-scan:cmqw3onza0229m92blwh0o3cs"
+      ],
+      "afterIncompleteNew": [
+        "document-review:cmqw3onmp0227m92bemcb1bkm"
+      ],
+      "afterIncompleteOld": []
+    }
+  },
+  {
+    "label": "ramatgan_present",
+    "fdr": {
+      "id": "cmqxf61ak0b2zjx2dna3832rx",
+      "inWhere": true,
+      "reviewStatus": "needs_review",
+      "documentType": "tax_invoice",
+      "amount": 5,
+      "supplierName": "עיריית רמת גן",
+      "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "fingerprint": "960021ce1d1a5b33468a1b82c036bc1b66636f7932cab815",
+      "mapped": {
+        "isComplete": false,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "actionable": true,
+        "nonFinancial": false
+      }
+    },
+    "mirrors": [],
+    "simInWhereOnly": {
+      "before": [
+        {
+          "id": "document-review:cmqxf61ak0b2zjx2dna3832rx",
+          "source": "financial_document_review",
+          "status": "needs_review"
+        }
+      ],
+      "afterNewDedupe": [
+        {
+          "id": "document-review:cmqxf61ak0b2zjx2dna3832rx",
+          "source": "financial_document_review"
+        }
+      ],
+      "afterOldPreferGsi": [
+        {
+          "id": "document-review:cmqxf61ak0b2zjx2dna3832rx",
+          "source": "financial_document_review"
+        }
+      ],
+      "afterIncompleteNew": [
+        "document-review:cmqxf61ak0b2zjx2dna3832rx"
+      ],
+      "afterIncompleteOld": [
+        "document-review:cmqxf61ak0b2zjx2dna3832rx"
+      ]
+    },
+    "simAllMirrorsIncludingQuarantined": {
+      "before": [
+        {
+          "id": "document-review:cmqxf61ak0b2zjx2dna3832rx",
+          "source": "financial_document_review",
+          "status": "needs_review",
+          "actionable": true
+        }
+      ],
+      "afterNewDedupe": [
+        "document-review:cmqxf61ak0b2zjx2dna3832rx"
+      ],
+      "afterOldPreferGsi": [
+        "document-review:cmqxf61ak0b2zjx2dna3832rx"
+      ],
+      "afterIncompleteNew": [
+        "document-review:cmqxf61ak0b2zjx2dna3832rx"
+      ],
+      "afterIncompleteOld": [
+        "document-review:cmqxf61ak0b2zjx2dna3832rx"
+      ]
+    }
+  },
+  {
+    "label": "detected_present",
+    "fdr": {
+      "id": "cmqxf65y40b31jx2d0snodln4",
+      "inWhere": true,
+      "reviewStatus": "needs_review",
+      "documentType": "tax_invoice",
+      "amount": 3,
+      "supplierName": "detected",
+      "uncertaintyReason": "outcome_BLOCKED:OE_TRUST_BLOCKED:Blocked by FSE critical failure",
+      "fingerprint": "b6a1c2652af6b240280db141e24686ec115e3f200e6d0e63",
+      "mapped": {
+        "isComplete": false,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "actionable": true,
+        "nonFinancial": false
+      }
+    },
+    "mirrors": [],
+    "simInWhereOnly": {
+      "before": [
+        {
+          "id": "document-review:cmqxf65y40b31jx2d0snodln4",
+          "source": "financial_document_review",
+          "status": "needs_review"
+        }
+      ],
+      "afterNewDedupe": [
+        {
+          "id": "document-review:cmqxf65y40b31jx2d0snodln4",
+          "source": "financial_document_review"
+        }
+      ],
+      "afterOldPreferGsi": [
+        {
+          "id": "document-review:cmqxf65y40b31jx2d0snodln4",
+          "source": "financial_document_review"
+        }
+      ],
+      "afterIncompleteNew": [
+        "document-review:cmqxf65y40b31jx2d0snodln4"
+      ],
+      "afterIncompleteOld": [
+        "document-review:cmqxf65y40b31jx2d0snodln4"
+      ]
+    },
+    "simAllMirrorsIncludingQuarantined": {
+      "before": [
+        {
+          "id": "document-review:cmqxf65y40b31jx2d0snodln4",
+          "source": "financial_document_review",
+          "status": "needs_review",
+          "actionable": true
+        }
+      ],
+      "afterNewDedupe": [
+        "document-review:cmqxf65y40b31jx2d0snodln4"
+      ],
+      "afterOldPreferGsi": [
+        "document-review:cmqxf65y40b31jx2d0snodln4"
+      ],
+      "afterIncompleteNew": [
+        "document-review:cmqxf65y40b31jx2d0snodln4"
+      ],
+      "afterIncompleteOld": [
+        "document-review:cmqxf65y40b31jx2d0snodln4"
+      ]
+    }
+  },
+  {
+    "label": "shaykedma_missing",
+    "fdr": {
+      "id": "cmqxeh4bh0audjx2d6ncvt92u",
+      "inWhere": true,
+      "reviewStatus": "needs_review",
+      "documentType": "tax_invoice_receipt",
+      "amount": 1,
+      "supplierName": "shaykedma",
+      "uncertaintyReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: tax_invoice_receipt confidence=99%; attach",
+      "fingerprint": "edb6c45bc9b36591af3a488f72f20d900770fc3aac5b6bd6",
+      "mapped": {
+        "isComplete": false,
+        "dataComplete": true,
+        "approvalRequired": true,
+        "actionable": true,
+        "nonFinancial": false
+      }
+    },
+    "mirrors": [
+      {
+        "id": "cmqxehcks0aunjx2d7a4cw83r",
+        "reviewStatus": "needs_review",
+        "decisionReason": "Held for review: classifier blocklisted_not_supplier_or_customer; Auto-saved: tax_invoice_receipt confidence=99%; attach",
+        "inWhere": false,
+        "documentType": "tax_invoice_receipt",
+        "amount": 1
+      }
+    ],
+    "simInWhereOnly": {
+      "before": [
+        {
+          "id": "document-review:cmqxeh4bh0audjx2d6ncvt92u",
+          "source": "financial_document_review",
+          "status": "needs_review"
+        }
+      ],
+      "afterNewDedupe": [
+        {
+          "id": "document-review:cmqxeh4bh0audjx2d6ncvt92u",
+          "source": "financial_document_review"
+        }
+      ],
+      "afterOldPreferGsi": [
+        {
+          "id": "document-review:cmqxeh4bh0audjx2d6ncvt92u",
+          "source": "financial_document_review"
+        }
+      ],
+      "afterIncompleteNew": [
+        "document-review:cmqxeh4bh0audjx2d6ncvt92u"
+      ],
+      "afterIncompleteOld": [
+        "document-review:cmqxeh4bh0audjx2d6ncvt92u"
+      ]
+    },
+    "simAllMirrorsIncludingQuarantined": {
+      "before": [
+        {
+          "id": "gmail-scan:cmqxehcks0aunjx2d7a4cw83r",
+          "source": "gmail_scan_item",
+          "status": "needs_review",
+          "actionable": true
+        },
+        {
+          "id": "document-review:cmqxeh4bh0audjx2d6ncvt92u",
+          "source": "financial_document_review",
+          "status": "needs_review",
+          "actionable": true
+        }
+      ],
+      "afterNewDedupe": [
+        "gmail-scan:cmqxehcks0aunjx2d7a4cw83r"
+      ],
+      "afterOldPreferGsi": [
+        "gmail-scan:cmqxehcks0aunjx2d7a4cw83r"
+      ],
+      "afterIncompleteNew": [
+        "gmail-scan:cmqxehcks0aunjx2d7a4cw83r"
+      ],
+      "afterIncompleteOld": [
+        "gmail-scan:cmqxehcks0aunjx2d7a4cw83r"
+      ]
+    }
+  }
+]

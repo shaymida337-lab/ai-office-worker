@@ -1,0 +1,19 @@
+{
+  "supplierName": "וולט הדר",
+  "totalAmount": 30,
+  "documentDate": "2026-07-03T00:00:00.000Z",
+  "documentType": "tax_invoice",
+  "reviewStatus": "approved",
+  "confidenceScore": 0,
+  "uncertaintyReason": null,
+  "parsedKeys": [
+    "camera"
+  ],
+  "parsed": {
+    "camera": {
+      "mimeType": "image/png",
+      "fileSha256": "29017b1e50a4f2ebf279b78e045970c6ff0e7609efdeddedfce118031214453f",
+      "processingStatus": "extracted"
+    }
+  }
+}

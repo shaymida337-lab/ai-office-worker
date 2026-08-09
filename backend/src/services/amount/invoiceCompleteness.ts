@@ -1,5 +1,10 @@
 import { parseAmountGateFromParsedFields } from "./amountGate.js";
 import { parseArcAmountSnapshot } from "./financeDisplayAmount.js";
+import {
+  parseDuplicateGateFromParsedFields,
+  type DuplicateGateReasonCode,
+  type DuplicateGateSnapshot,
+} from "../dedup/duplicateGate.js";
 import { isLikelyJunkSupplierName } from "../supplierNameValidation.js";
 import {
   isConfidentlyNotFinancialDocument,
@@ -7,6 +12,14 @@ import {
   type ExtractedDocumentFinancialInput,
 } from "../classification/financialDocumentClassification.js";
 
+/**
+ * Screen routing uses data completeness only (`isComplete` === `dataComplete`),
+ * with two routing blockers beyond missing fields:
+ * - unconfirmed camera drafts (must confirm before חשבוניות)
+ * - duplicate unsure / confirmed-duplicate gate
+ * Human review (`approvalRequired`, low confidence, needs_review) alone must NOT
+ * send data-complete non-camera invoices to השלמת חשבוניות.
+ */
 export const INVOICE_COMPLETION_REASON = {
   MISSING_AMOUNT: "חסר סכום",
   SUPPLIER_UNIDENTIFIED: "ספק לא זוהה",
@@ -14,9 +27,18 @@ export const INVOICE_COMPLETION_REASON = {
   MISSING_CURRENCY: "מטבע חסר",
   MISSING_DOCUMENT_TYPE: "סוג מסמך חסר",
   MULTIPLE_AMOUNTS: "כמה סכומים נמצאו",
+  DUPLICATE_UNSURE: "חשד לכפילות",
+  DUPLICATE_CONFIRMED: "כפילות מאומתת",
+  CAMERA_UNCONFIRMED: "ממתין לאישור צילום",
   LOW_CONFIDENCE: "רמת ביטחון נמוכה",
   USER_APPROVAL_REQUIRED: "ממתין לאישור",
 } as const;
+
+const DUPLICATE_UNSURE_REASON_CODES = new Set<DuplicateGateReasonCode>([
+  "duplicate.semantic_unsure",
+  "duplicate.cross_channel_unsure",
+  "duplicate.email_attachment_match",
+]);
 
 const RECOGNIZED_DOCUMENT_TYPES = new Set([
   "invoice",
@@ -40,11 +62,16 @@ export type InvoiceCompletenessInput = {
   confidenceScore?: string | number | null;
   decisionReason?: string | null;
   parsedFieldsJson?: unknown;
+  /** FDR/channel ingest source (`camera` | `gmail` | `whatsapp` | …). Not list entity type. */
+  ingestSource?: string | null;
 };
 
 export type InvoiceCompletenessAssessment = {
+  /** Required business fields present (supplier/amount/date/currency/type) and no real ambiguity/dup-unsure. */
   dataComplete: boolean;
+  /** Human may still want to glance — does NOT drive invoices vs completion routing. */
   approvalRequired: boolean;
+  /** Screen routing: same as dataComplete (review ≠ incomplete). */
   isComplete: boolean;
   missingDataReasons: string[];
   approvalReasons: string[];
@@ -87,7 +114,7 @@ function normalizeDecisionReason(reason: string | null | undefined): string {
     .trim();
 }
 
-function hasMultipleAmountSignals(input: InvoiceCompletenessInput): boolean {
+export function hasMultipleAmountSignals(input: Pick<InvoiceCompletenessInput, "parsedFieldsJson" | "decisionReason">): boolean {
   const arc = parseArcAmountSnapshot(input.parsedFieldsJson);
   if (arc?.status === "ambiguous") return true;
 
@@ -101,6 +128,67 @@ function hasMultipleAmountSignals(input: InvoiceCompletenessInput): boolean {
     reason.includes("multiple amount") ||
     reason.includes("כמה סכומים")
   );
+}
+
+export type DuplicateCompletenessBlock = "unsure" | "confirmed";
+
+function structuredDuplicateBlock(gate: DuplicateGateSnapshot): DuplicateCompletenessBlock | null {
+  if (gate.matchStrength === "unsure" || DUPLICATE_UNSURE_REASON_CODES.has(gate.reasonCode)) {
+    return "unsure";
+  }
+  if (gate.matchStrength === "confirmed" || gate.verdict === "block") {
+    return "confirmed";
+  }
+  return null;
+}
+
+function textDuplicateUnsureFallback(decisionReason: string | null | undefined): boolean {
+  const reason = normalizeDecisionReason(decisionReason);
+  return (
+    reason.includes("possible duplicate") ||
+    reason.includes("duplicate unsure") ||
+    reason.includes("semantic unsure") ||
+    reason.includes("cross channel unsure") ||
+    reason.includes("duplicate.semantic_unsure") ||
+    reason.includes("duplicate.cross_channel_unsure") ||
+    (reason.includes("duplicate") && reason.includes("unsure"))
+  );
+}
+
+/**
+ * Prefer structured duplicateGate (`gates[]` via parseDuplicateGateFromParsedFields).
+ * Text decisionReason is fallback only when no structured gate snapshot exists.
+ */
+export function resolveDuplicateCompletenessBlock(
+  input: Pick<InvoiceCompletenessInput, "decisionReason" | "reviewStatus" | "rawReviewStatus" | "parsedFieldsJson">
+): DuplicateCompletenessBlock | null {
+  const status = (input.rawReviewStatus ?? input.reviewStatus ?? "").trim().toLowerCase();
+  if (status === "duplicate") return "confirmed";
+
+  const gate = parseDuplicateGateFromParsedFields(input.parsedFieldsJson);
+  if (gate) {
+    return structuredDuplicateBlock(gate);
+  }
+
+  return textDuplicateUnsureFallback(input.decisionReason) ? "unsure" : null;
+}
+
+/** True when dedup left an unresolved possible-duplicate that needs human choice. */
+export function hasDuplicateUnsureSignal(
+  input: Pick<InvoiceCompletenessInput, "decisionReason" | "reviewStatus" | "rawReviewStatus" | "parsedFieldsJson">
+): boolean {
+  return resolveDuplicateCompletenessBlock(input) === "unsure";
+}
+
+/** Camera draft / unconfirmed upload — stays on השלמה until confirm/approve. */
+export function isUnconfirmedCameraIngest(
+  input: Pick<InvoiceCompletenessInput, "ingestSource" | "reviewStatus" | "rawReviewStatus">
+): boolean {
+  const ingest = (input.ingestSource ?? "").trim().toLowerCase();
+  if (ingest !== "camera") return false;
+  const raw = input.rawReviewStatus ?? input.reviewStatus;
+  if (isInvoiceRecordApproved(raw)) return false;
+  return (raw ?? "").trim().toLowerCase() !== "rejected";
 }
 
 function hasLowConfidence(confidenceScore: string | number | null | undefined): boolean {
@@ -125,17 +213,29 @@ export function assessInvoiceCompleteness(input: InvoiceCompletenessInput): Invo
   if (!hasValidCurrency(input.currency, input.currencyExplicit)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_CURRENCY);
   if (!hasRecognizedDocumentType(input.documentType)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE);
 
+  // Real ambiguity / unresolved duplicate are data-routing blockers — not mere review flags.
+  if (hasMultipleAmountSignals(input)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MULTIPLE_AMOUNTS);
+  const duplicateBlock = resolveDuplicateCompletenessBlock(input);
+  if (duplicateBlock === "unsure") missingDataReasons.push(INVOICE_COMPLETION_REASON.DUPLICATE_UNSURE);
+  if (duplicateBlock === "confirmed") missingDataReasons.push(INVOICE_COMPLETION_REASON.DUPLICATE_CONFIRMED);
+
+  // Camera draft / unconfirmed upload never routes to חשבוניות on data alone.
+  if (isUnconfirmedCameraIngest(input)) {
+    missingDataReasons.push(INVOICE_COMPLETION_REASON.CAMERA_UNCONFIRMED);
+  }
+
   const rawStatus = input.rawReviewStatus ?? input.reviewStatus;
   const approvalRequired = !isInvoiceRecordApproved(rawStatus) && rawStatus !== "rejected";
 
   if (approvalRequired) {
     approvalReasons.push(INVOICE_COMPLETION_REASON.USER_APPROVAL_REQUIRED);
-    if (hasMultipleAmountSignals(input)) approvalReasons.push(INVOICE_COMPLETION_REASON.MULTIPLE_AMOUNTS);
     if (hasLowConfidence(input.confidenceScore)) approvalReasons.push(INVOICE_COMPLETION_REASON.LOW_CONFIDENCE);
   }
 
   const dataComplete = missingDataReasons.length === 0;
-  const isComplete = dataComplete && !approvalRequired;
+  // Screen routing: data-complete invoices belong on חשבוניות even while awaiting glance/approval
+  // (except camera drafts — blocked above until confirm).
+  const isComplete = dataComplete;
 
   return {
     dataComplete,

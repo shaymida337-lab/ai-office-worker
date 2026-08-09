@@ -1,0 +1,31 @@
+{
+  "times": [
+    {
+      "status": 200,
+      "ms": 2451,
+      "kb": 92,
+      "leads": 42,
+      "hasTimeline": true,
+      "seqLen": 5,
+      "timelineLen": 3
+    },
+    {
+      "status": 200,
+      "ms": 2349,
+      "kb": 92,
+      "leads": 42,
+      "hasTimeline": true,
+      "seqLen": 5,
+      "timelineLen": 3
+    },
+    {
+      "status": 200,
+      "ms": 2487,
+      "kb": 92,
+      "leads": 42,
+      "hasTimeline": true,
+      "seqLen": 5,
+      "timelineLen": 3
+    }
+  ]
+}
