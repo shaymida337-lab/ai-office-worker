@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import * as Sentry from "@sentry/node";
 import { allowSentryDebugRoute } from "./lib/sentryDebug.js";
+import { buildLivenessHealthPayload } from "./lib/publicHealth.js";
 
 type ConfigModule = typeof import("./lib/config.js");
 type PrismaModule = typeof import("./lib/prisma.js");
@@ -88,7 +89,14 @@ function createApp(configModule: ConfigModule, prismaModule: PrismaModule, build
   // /uploads כבר לא סטטי-ציבורי: מוגש דרך uploadsRouter עם חתימת HMAC קשורת-ארגון
   // (ראו registerRoutes) — סגירת גישה לא-מאומתת לקבצי חשבוניות עם שמות ניתנים לניחוש.
 
-  async function healthHandler(_req: express.Request, res: express.Response) {
+  // Liveness for Render healthCheckPath + frontend warmup. Must not touch Postgres
+  // so Neon can reach its autosuspend idle window when the product is quiet.
+  function healthHandler(_req: express.Request, res: express.Response) {
+    res.json(buildLivenessHealthPayload(getHealthPayload, isPrismaConnected));
+  }
+
+  // Ops readiness only — probes DB. Do not point Render healthCheckPath here.
+  async function readyHandler(_req: express.Request, res: express.Response) {
     try {
       await prisma.$queryRaw`SELECT 1`;
       res.json(getHealthPayload({ status: "ok", database: "connected" }));
@@ -103,6 +111,8 @@ function createApp(configModule: ConfigModule, prismaModule: PrismaModule, build
 
   app.get("/health", healthHandler);
   app.get("/api/health", healthHandler);
+  app.get("/ready", readyHandler);
+  app.get("/api/ready", readyHandler);
   app.get("/debug-sentry", allowSentryDebugRoute, function debugSentryHandler(_req, _res) {
     throw new Error("My first Sentry error!");
   });

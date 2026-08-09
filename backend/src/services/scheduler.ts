@@ -31,8 +31,16 @@ import { markNoResponseDueAppointments, processDueReminderJobs } from "./reminde
 const TIMEZONE = "Asia/Jerusalem";
 const MAX_RETRIES = 3;
 const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL;
-const FAST_GMAIL_SCAN_INTERVAL_MS = 2 * 60 * 1000;
+/** Fast recurring Gmail scan cadence (exported for tests / ops visibility). */
+export const FAST_GMAIL_SCAN_INTERVAL_MS = 15 * 60 * 1000;
 const FAST_GMAIL_SCAN_START_DELAY_MS = 5_000;
+/**
+ * Combined job-watchdog + due-reminders + no-response marker.
+ * Must stay ≥ Neon autosuspend idle window (5m). 10m keeps same-day reminders
+ * (default offset 180m) within an immaterial delay without 1m/5m DB polls.
+ */
+export const SCHEDULER_MAINTENANCE_CRON = "*/10 * * * *";
+export const SCHEDULER_MAINTENANCE_INTERVAL_MINUTES = 10;
 
 type ScanType = "daily" | "quick" | "monthly" | "health" | "first_time" | "whatsapp" | "social" | "crm" | "gmail_auto" | "gmail_retry";
 type AssistantRow = { organizationId: string; ownerPhone: string; isActive: boolean };
@@ -86,12 +94,34 @@ class SchedulerService {
     cron.schedule("0 10 * * 0-5", () => this.withRetry("whatsapp", () => this.sendPaymentReminders()), { timezone: TIMEZONE });
     cron.schedule("0 * * * *", () => this.withRetry("social", () => this.publishApprovedSocialPosts()), { timezone: TIMEZONE });
     cron.schedule("*/15 * * * *", () => this.withRetry("crm", () => this.processCrmSequences()), { timezone: TIMEZONE });
-    cron.schedule("* * * * *", () => void timeoutStaleJobRuns(), { timezone: TIMEZONE });
-    cron.schedule("* * * * *", () => void processDueReminderJobs("scheduler"), { timezone: "UTC" });
-    cron.schedule("*/5 * * * *", () => void markNoResponseDueAppointments(), { timezone: "UTC" });
+    cron.schedule(SCHEDULER_MAINTENANCE_CRON, () => void this.runMaintenanceTick(), { timezone: "UTC" });
     cron.schedule("*/8 * * * *", () => this.pingKeepAlive(), { timezone: TIMEZONE });
 
-    console.log("[scheduler] All scheduled jobs started");
+    console.log(
+      `[scheduler] All scheduled jobs started maintenanceCron=${SCHEDULER_MAINTENANCE_CRON} intervalMinutes=${SCHEDULER_MAINTENANCE_INTERVAL_MINUTES}`
+    );
+  }
+
+  /**
+   * Single tick for stale JobRun watchdog, due appointment reminders, and
+   * no-response marking — one quiet gap between DB wakeups instead of 1m/5m polls.
+   */
+  async runMaintenanceTick() {
+    try {
+      await timeoutStaleJobRuns();
+    } catch (err) {
+      console.warn("[scheduler] timeoutStaleJobRuns failed", errorMessage(err));
+    }
+    try {
+      await processDueReminderJobs("scheduler");
+    } catch (err) {
+      console.warn("[scheduler] processDueReminderJobs failed", errorMessage(err));
+    }
+    try {
+      await markNoResponseDueAppointments();
+    } catch (err) {
+      console.warn("[scheduler] markNoResponseDueAppointments failed", errorMessage(err));
+    }
   }
 
   private async pingKeepAlive() {
