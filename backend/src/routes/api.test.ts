@@ -792,8 +792,65 @@ test("enrichReviewInvoiceCandidateWithCompleteness separates data gaps from appr
 
   assert.equal(candidate.dataComplete, true);
   assert.equal(candidate.approvalRequired, true);
-  assert.equal(candidate.isComplete, false);
+  // Review ≠ incomplete: data-complete docs route to חשבוניות.
+  assert.equal(candidate.isComplete, true);
   assert.deepEqual(candidate.missingDataReasons, []);
   assert.ok(candidate.approvalReasons.includes("ממתין לאישור"));
-  assert.equal(assessReviewInvoiceCandidate(candidate).isComplete, false);
+  assert.equal(assessReviewInvoiceCandidate(candidate).isComplete, true);
+});
+
+test("mapDocumentReviewToInvoiceCandidate: camera draft with complete data stays incomplete until confirm", () => {
+  const createdAt = new Date("2026-07-01T10:00:00.000Z");
+  const draft = mapDocumentReviewToInvoiceCandidate({
+    id: "cam-draft-1",
+    sender: null,
+    subject: "camera",
+    fileName: "shot.jpg",
+    invoiceNumber: "1",
+    documentDate: new Date("2026-07-01"),
+    dueDate: null,
+    totalAmount: 250,
+    currency: "ILS",
+    driveFileUrl: "/uploads/camera-invoices/shot.jpg",
+    supplierName: "בזק",
+    confidenceScore: 0.9,
+    reviewStatus: "needs_review",
+    uncertaintyReason: null,
+    emailMessageId: null,
+    gmailMessageId: null,
+    documentType: "tax_invoice",
+    source: "camera",
+    parsedFieldsJson: null,
+    createdAt,
+    updatedAt: createdAt,
+  });
+  assert.equal(draft.ingestSource, "camera");
+  assert.equal(draft.isComplete, false);
+  assert.ok(draft.missingDataReasons.includes("ממתין לאישור צילום"));
+
+  const confirmed = mapDocumentReviewToInvoiceCandidate({
+    id: "cam-confirmed-1",
+    sender: null,
+    subject: "camera",
+    fileName: "shot.jpg",
+    invoiceNumber: "1",
+    documentDate: new Date("2026-07-01"),
+    dueDate: null,
+    totalAmount: 250,
+    currency: "ILS",
+    driveFileUrl: "/uploads/camera-invoices/shot.jpg",
+    supplierName: "בזק",
+    confidenceScore: 0.9,
+    reviewStatus: "approved",
+    uncertaintyReason: null,
+    emailMessageId: null,
+    gmailMessageId: null,
+    documentType: "tax_invoice",
+    source: "camera",
+    parsedFieldsJson: null,
+    createdAt,
+    updatedAt: createdAt,
+  });
+  assert.equal(confirmed.ingestSource, "camera");
+  assert.equal(confirmed.isComplete, true);
 });

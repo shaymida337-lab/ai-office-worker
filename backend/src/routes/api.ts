@@ -4124,6 +4124,8 @@ type ReviewInvoiceCandidate = {
   attachmentFilename?: string | null;
   documentType: string | null;
   parsedFieldsJson?: unknown;
+  /** FDR ingest channel (`camera` | `gmail` | …) — distinct from list `source`. */
+  ingestSource?: string | null;
   rawReviewStatus?: string;
   dataComplete: boolean;
   approvalRequired: boolean;
@@ -4166,6 +4168,7 @@ export function assessReviewInvoiceCandidate(candidate: ReviewInvoiceCandidate):
     confidenceScore: candidate.confidenceScore,
     decisionReason: candidate.decisionReason,
     parsedFieldsJson: candidate.parsedFieldsJson,
+    ingestSource: candidate.ingestSource,
   });
 }
 
@@ -4189,6 +4192,7 @@ export function enrichReviewInvoiceCandidateWithCompleteness(
     confidenceScore: candidate.confidenceScore,
     decisionReason: candidate.decisionReason,
     parsedFieldsJson: candidate.parsedFieldsJson,
+    ingestSource: candidate.ingestSource,
   });
   return {
     ...candidate,
@@ -4426,6 +4430,8 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
   emailMessageId: string | null;
   gmailMessageId: string | null;
   documentType: string | null;
+  /** FDR ingest channel: camera | gmail | whatsapp | … */
+  source?: string | null;
   parsedFieldsJson?: unknown;
   rawAnalysis?: unknown;
   supplierPaymentId?: string | null;
@@ -4467,6 +4473,7 @@ export function mapDocumentReviewToInvoiceCandidate(item: {
     reviewStatus: presentedReviewStatus(item.reviewStatus),
     rawReviewStatus: item.reviewStatus,
     source: item.supplierPaymentId ? "supplier_payment" : "financial_document_review",
+    ingestSource: item.source ?? null,
     reviewSourceId: item.id,
     description: [item.subject, item.fileName].filter(Boolean).join(" · ") || null,
     driveUrl: signLocalUploadUrlIfNeeded(resolveDriveLink(item), organizationId ?? null),
