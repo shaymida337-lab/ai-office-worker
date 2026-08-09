@@ -1160,6 +1160,22 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
   try {
     logStep("[gmail-sync] Checking Gmail token and creating Google clients");
     const { gmail, drive, oauth2 } = await getGoogleClients(organizationId);
+    try {
+      const tokenResult = await oauth2.getAccessToken();
+      const accessToken = typeof tokenResult === "string" ? tokenResult : tokenResult?.token;
+      if (!accessToken) {
+        throw new Error("Gmail OAuth access token is unavailable after refresh. Reconnect Gmail in settings.");
+      }
+      logStep(`[gmail-sync] Gmail OAuth access token verified org=${organizationId}`);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[gmail-sync] Gmail OAuth token verification FAILED org=${organizationId}`, err);
+      const wrapped = new Error(
+        `Gmail OAuth token invalid or expired: ${detail}. Reconnect Gmail in settings.`
+      );
+      (wrapped as Error & { code?: string }).code = "GMAIL_TOKEN_EXPIRED";
+      throw wrapped;
+    }
     const { assertGmailConnectedAccountNotShared, GmailIntegrationIsolationError } = await import(
       "./gmailIntegrationIsolation.js"
     );
@@ -1510,6 +1526,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     }
 
     logStep(`[gmail-sync] Searching Gmail from last ${daysBack} days`);
+    console.log(`Starting Gmail historical scan for daysBack=${daysBack}`);
     await maybeSaveScanProgress(true);
     // Deep lookbacks must not inherit the incremental 500-message default — Gmail
     // returns newest-first, so a low cap truncates the window (e.g. only back to July).
@@ -1525,6 +1542,9 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         await touchGmailScanHeartbeat(log.id, "listing_page", organizationId);
       },
     });
+    console.log(
+      `Gmail API returned ${listing.messages.length} total messages for query (unique=${listing.diagnostics.totalGmailMessagesFound} daysBack=${daysBack})`
+    );
     const historicalMessages = listing.messages.filter((message) => {
       if (message.id && fastMessageIds.has(message.id)) {
         logStep(`[gmail-sync] FAST_SCAN_SKIPPED_DUPLICATE message=${message.id} reason=historical_candidate_duplicate`);
@@ -5068,6 +5088,29 @@ async function listFastCandidateMessages(
   };
 }
 
+/** Invoice/receipt-oriented Gmail `q` fragments (exported for tests). */
+export const GMAIL_INVOICE_ATTACHMENT_KEYWORD_OR =
+  "{invoice receipt payment \"payment request\" חשבונית קבלה תשלום \"דרישת תשלום\"}";
+
+export function buildGmailCandidateSearchQueries(input: {
+  dateFilter: string;
+  scanAllMail?: boolean;
+  excludeQuery?: string;
+}): string[] {
+  const excludeQuery = input.excludeQuery ?? (input.scanAllMail ? "-in:spam -in:trash" : GMAIL_EXCLUDE_QUERY);
+  const keywordOr = GMAIL_INVOICE_ATTACHMENT_KEYWORD_OR;
+  const invoiceAttachmentQuery = `${input.dateFilter} has:attachment ${keywordOr} ${excludeQuery}`;
+  if (input.scanAllMail) {
+    // Prefer invoice/receipt attachments first, then full mailbox window so nothing is missed.
+    return [invoiceAttachmentQuery, `${input.dateFilter} ${excludeQuery}`];
+  }
+  return [
+    invoiceAttachmentQuery,
+    `${input.dateFilter} ${keywordOr} ${excludeQuery}`,
+    `${input.dateFilter} {${SUPPLIER_KEYWORDS.map((keyword) => (keyword.includes(" ") ? `"${keyword}"` : keyword)).join(" ")}} ${excludeQuery}`,
+  ];
+}
+
 async function listCandidateMessages(
   gmail: GmailClient,
   daysBack: number,
@@ -5080,22 +5123,19 @@ async function listCandidateMessages(
   const dateFilter = since
     ? `after:${formatGmailSearchDate(since)}`
     : `newer_than:${safeDaysBack}d`;
-  const keywordOr = "{invoice receipt payment \"payment request\" חשבונית קבלה תשלום \"דרישת תשלום\"}";
   const excludeQuery = options.scanAllMail ? "-in:spam -in:trash" : GMAIL_EXCLUDE_QUERY;
   let totalPagesScanned = 0;
   let totalMessagesSeen = 0;
   let totalNextPageTokenUses = 0;
   const queryDiagnostics: GmailListingDiagnostics["queries"] = [];
-  const queries = options.scanAllMail
-    ? [`${dateFilter} ${excludeQuery}`]
-    : [
-        `${dateFilter} has:attachment ${keywordOr} ${excludeQuery}`,
-        `${dateFilter} ${keywordOr} ${excludeQuery}`,
-        `${dateFilter} {${SUPPLIER_KEYWORDS.map((keyword) => keyword.includes(" ") ? `"${keyword}"` : keyword).join(" ")}} ${excludeQuery}`,
-      ];
+  const queries = buildGmailCandidateSearchQueries({
+    dateFilter,
+    scanAllMail: options.scanAllMail,
+    excludeQuery,
+  });
 
   for (const q of queries) {
-    console.log(`[gmail-sync] Searching Gmail query="${q}" maxMessages=${maxMessages}`);
+    console.log(`[gmail-sync] Searching Gmail q="${q}" maxMessages=${maxMessages}`);
     let pageToken: string | undefined;
     let queryPages = 0;
     let queryMessagesSeen = 0;
@@ -5106,21 +5146,30 @@ async function listCandidateMessages(
       queryPages++;
       totalPagesScanned++;
       // P0 watchdog: קריאת Gmail בלי timeout יכולה להיתקע לנצח ולתקוע את תור הסריקות
-      const result = await withTimeout(
-        gmail.users.messages.list({
-          userId: "me",
-          q,
-          maxResults: Math.min(100, remaining),
-          pageToken,
-        }),
-        60_000,
-        "Gmail messages.list timed out after 60s"
-      );
+      let result: Awaited<ReturnType<GmailClient["users"]["messages"]["list"]>>;
+      try {
+        result = await withTimeout(
+          gmail.users.messages.list({
+            userId: "me",
+            q,
+            maxResults: Math.min(100, remaining),
+            pageToken,
+          }),
+          60_000,
+          "Gmail messages.list timed out after 60s"
+        );
+      } catch (err) {
+        console.error(
+          `[gmail-sync] Gmail messages.list FAILED q="${q}" page=${queryPages} org fetch error:`,
+          err instanceof Error ? err.stack ?? err.message : err
+        );
+        throw err;
+      }
 
       const pageMessages = result.data.messages ?? [];
       queryMessagesSeen += pageMessages.length;
       totalMessagesSeen += pageMessages.length;
-      console.log(`[gmail-sync] Gmail page query="${q}" page=${queryPages} messages=${pageMessages.length} uniqueSoFar=${byId.size} nextPage=${Boolean(result.data.nextPageToken)}`);
+      console.log(`[gmail-sync] Gmail page q="${q}" page=${queryPages} messages=${pageMessages.length} uniqueSoFar=${byId.size} nextPage=${Boolean(result.data.nextPageToken)}`);
       for (const message of pageMessages) {
         if (message.id && !byId.has(message.id)) {
           byId.set(message.id, message);
@@ -5150,6 +5199,9 @@ async function listCandidateMessages(
       nextPageTokensSeen: queryNextPageTokensSeen,
       stoppedBecauseMaxReached: byId.size >= maxMessages,
     });
+    console.log(
+      `Gmail API returned ${queryMessagesSeen} total messages for query q="${q}" (uniqueTotal=${byId.size})`
+    );
     console.log(`[gmail-sync] Gmail query complete pages=${queryPages} messagesSeen=${queryMessagesSeen} uniqueTotal=${byId.size}`);
   }
 

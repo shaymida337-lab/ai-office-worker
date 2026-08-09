@@ -885,6 +885,30 @@ export async function finalizeGmailScanCancelled(scanId: string, errorMessage: s
   return terminalizeGmailScan(scanId, "cancelled", errorMessage);
 }
 
+/** Modes that must not block an explicit historical / full manual scan. */
+export const GMAIL_SCAN_PREEMPTIBLE_MODES = ["fast_recurring", "manual_incremental"] as const;
+
+/**
+ * Cancel an active fast/incremental scan so a historical/full scan can start.
+ * Leaves an already-running manual/historical/first_time scan in place.
+ */
+export async function preemptPreemptibleGmailScansForOrg(
+  organizationId: string,
+  reason = "Superseded by historical/full Gmail scan"
+): Promise<{ preempted: boolean; scanId?: string; scanMode?: string | null }> {
+  const active = await findActiveGmailScanLog(organizationId);
+  if (!active) return { preempted: false };
+  const mode = active.scanMode ?? "";
+  if (!(GMAIL_SCAN_PREEMPTIBLE_MODES as readonly string[]).includes(mode)) {
+    return { preempted: false, scanId: active.id, scanMode: active.scanMode };
+  }
+  await finalizeGmailScanCancelled(active.id, reason);
+  console.warn(
+    `[gmail-scan] preempted active scanId=${active.id} mode=${mode} org=${organizationId} reason=${reason}`
+  );
+  return { preempted: true, scanId: active.id, scanMode: active.scanMode };
+}
+
 export async function ensureGmailScanTerminalized(scanId: string, fallbackMessage?: string) {
   const log = await prisma.syncLog.findFirst({
     where: { id: scanId, type: "gmail_scan" },

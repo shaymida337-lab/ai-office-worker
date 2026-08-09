@@ -161,6 +161,7 @@ import {
   findActiveGmailScanLog,
   findLastGmailScanSuccessCursor,
   logScanLifecycle,
+  preemptPreemptibleGmailScansForOrg,
   promoteGmailScanToRunning,
   refreshGmailScanProgressOnRead,
   resolveIncrementalGmailScanWindow,
@@ -8921,10 +8922,17 @@ async function scanGmail(req: Request, res: Response) {
     }
 
     await closeStaleGmailScansForOrg(organizationId);
+    // Historical/full scans must not attach to an in-flight fast_recurring job (≤20 msgs)
+    // — that was returning 202 with the wrong scanId and processing ~0 invoices.
+    if (useHistoricalScan || fullScan || rescanInvoices) {
+      await preemptPreemptibleGmailScansForOrg(organizationId);
+    }
     const activeLog = await findActiveGmailScanLog(organizationId);
     if (activeLog) {
       const progress = await buildGmailScanProgress(organizationId, activeLog.id);
-      console.log(`[gmail-scan] Existing scan in progress org=${organizationId} scanId=${activeLog.id}`);
+      console.log(
+        `[gmail-scan] Existing scan in progress org=${organizationId} scanId=${activeLog.id} mode=${activeLog.scanMode ?? "unknown"}`
+      );
       res.status(202).json({
         success: true,
         jobId: activeLog.id,
@@ -8975,8 +8983,18 @@ async function scanGmail(req: Request, res: Response) {
           scanMode,
         });
         if ("inProgress" in backgroundResult && backgroundResult.inProgress) {
-          leaveRunningForConcurrent = true;
-          logScanLifecycle(scanLog.id, "running", "background returned inProgress");
+          const activeId =
+            "scanLogId" in backgroundResult && typeof backgroundResult.scanLogId === "string"
+              ? backgroundResult.scanLogId
+              : null;
+          if (activeId && activeId !== scanLog.id) {
+            // Our job was superseded; do not leave it IN_PROGRESS.
+            logScanLifecycle(scanLog.id, "cancelled", `superseded_by=${activeId}`);
+            leaveRunningForConcurrent = false;
+          } else {
+            leaveRunningForConcurrent = true;
+            logScanLifecycle(scanLog.id, "running", "background returned inProgress");
+          }
           return;
         }
         const result = backgroundResult as {

@@ -103,7 +103,15 @@ export async function ensureGmailAccessToken(organizationId: string) {
     refresh_token: integration.refreshToken,
   });
 
-  const { credentials } = await oauth2.refreshAccessToken();
+  const { credentials } = await oauth2.refreshAccessToken().catch((err) => {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`[gmail] refreshAccessToken FAILED org=${organizationId} error=${detail}`, err);
+    const wrapped = new Error(
+      `Gmail OAuth token invalid or expired: ${detail}. Reconnect Gmail in settings.`
+    );
+    (wrapped as Error & { code?: string }).code = "GMAIL_TOKEN_EXPIRED";
+    throw wrapped;
+  });
   const updated = await prisma.integration.update({
     where: {
       organizationId_provider: { organizationId, provider: "gmail" },
