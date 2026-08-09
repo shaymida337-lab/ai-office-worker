@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button, StatusBadge } from "@/components/natalie-ui";
 import { apiFetch } from "@/lib/api";
 import type { OrganizationSettings } from "@/lib/business-config";
 import type { GmailScanResult, ScanProgressResult } from "@/lib/dashboard/homePageTypes";
 import {
-  GMAIL_SCAN_POLL_INTERVAL_MS,
-  HISTORICAL_GMAIL_SCAN_POLL_MAX_ATTEMPTS,
+  HISTORICAL_SCAN_UI_HARD_TIMEOUT_ATTEMPTS,
+  HISTORICAL_SCAN_UI_HARD_TIMEOUT_MESSAGE,
+  HISTORICAL_SCAN_UI_POLL_INTERVAL_MS,
 } from "@/lib/dashboard/scanPollLimits";
 import {
   summarizeOrgGmailScanProgress,
@@ -23,6 +24,7 @@ export type HistoricalScanYears = (typeof HISTORICAL_SCAN_YEAR_OPTIONS)[number];
 export type SettingsToast = { text: string; tone: "success" | "error" | "info" };
 
 export const HISTORICAL_SCAN_IN_PROGRESS_MESSAGE = "סורק את Gmail כעת... אנא המתן";
+export { HISTORICAL_SCAN_UI_HARD_TIMEOUT_MESSAGE };
 
 export function historicalScanCompletedMessage(documentsFound: number): string {
   return `הסריקה הושלמה! נמצאו ${documentsFound} מסמכים`;
@@ -69,6 +71,7 @@ export function HistoricalScanSelector({
   const [isScanning, setIsScanning] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
   const [statusTone, setStatusTone] = useState<"info" | "success" | "error">("info");
+  const pollAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (saving || isScanning) return;
@@ -82,6 +85,12 @@ export function HistoricalScanSelector({
     return () => window.clearTimeout(timer);
   }, [statusTone, statusText]);
 
+  useEffect(() => {
+    return () => {
+      pollAbortRef.current?.abort();
+    };
+  }, []);
+
   function setScanning(next: boolean) {
     setIsScanning(next);
     try {
@@ -91,11 +100,29 @@ export function HistoricalScanSelector({
     }
   }
 
+  function resetScanUi(options?: { keepErrorText?: string }) {
+    pollAbortRef.current?.abort();
+    pollAbortRef.current = null;
+    setSaving(false);
+    setScanning(false);
+    if (options?.keepErrorText) {
+      setStatusTone("error");
+      setStatusText(options.keepErrorText);
+    } else {
+      setStatusTone("info");
+      setStatusText(null);
+    }
+  }
+
   async function saveYears(years: HistoricalScanYears) {
     if (saving || isScanning) return;
 
     const previous = selected;
     let settingsSaved = false;
+    pollAbortRef.current?.abort();
+    const abort = new AbortController();
+    pollAbortRef.current = abort;
+
     setSelected(years);
     setSaving(true);
     setScanning(true);
@@ -132,17 +159,22 @@ export function HistoricalScanSelector({
         }),
       });
 
-      // POST is fire-and-forget (202 / IN_PROGRESS). Poll status until terminal.
+      // POST is fire-and-forget (202 / IN_PROGRESS). Poll status until terminal or hard UI timeout.
       let documentsFound = summarizeOrgGmailScanResult(scanResult, 0).documentsFound;
-      if (scanResult.scanId) {
+      const jobId = scanResult.scanId ?? scanResult.jobId;
+      if (jobId) {
         const progress = await waitForOrgGmailScanProgress({
-          scanId: scanResult.scanId,
-          intervalMs: GMAIL_SCAN_POLL_INTERVAL_MS,
-          maxAttempts: HISTORICAL_GMAIL_SCAN_POLL_MAX_ATTEMPTS,
+          scanId: jobId,
+          intervalMs: HISTORICAL_SCAN_UI_POLL_INTERVAL_MS,
+          maxAttempts: HISTORICAL_SCAN_UI_HARD_TIMEOUT_ATTEMPTS,
+          hardTimeoutMessage: HISTORICAL_SCAN_UI_HARD_TIMEOUT_MESSAGE,
+          signal: abort.signal,
           poll: (scanId) => apiFetch<ScanProgressResult>(`/api/gmail/scan/${scanId}`),
         });
         documentsFound = summarizeOrgGmailScanProgress(progress, 0).documentsFound;
       }
+
+      if (abort.signal.aborted) return;
 
       try {
         await onScanComplete?.({ documentsFound });
@@ -159,6 +191,7 @@ export function HistoricalScanSelector({
         /* ignore */
       }
     } catch (err) {
+      if (abort.signal.aborted) return;
       // Keep saved year selection — only revert if PATCH itself failed.
       if (!settingsSaved) {
         setSelected(previous);
@@ -167,6 +200,14 @@ export function HistoricalScanSelector({
         err instanceof Error && err.message.trim()
           ? err.message
           : "הסריקה נכשלה. אפשר לנסות שוב או לבחור טווח אחר.";
+      // Hard UI timeout: still try to refresh whatever was ingested.
+      if (errorText === HISTORICAL_SCAN_UI_HARD_TIMEOUT_MESSAGE) {
+        try {
+          await onScanComplete?.({ documentsFound: 0 });
+        } catch {
+          /* ignore */
+        }
+      }
       setStatusTone("error");
       setStatusText(errorText);
       try {
@@ -175,6 +216,9 @@ export function HistoricalScanSelector({
         /* ignore */
       }
     } finally {
+      if (pollAbortRef.current === abort) {
+        pollAbortRef.current = null;
+      }
       setSaving(false);
       setScanning(false);
     }
@@ -232,6 +276,19 @@ export function HistoricalScanSelector({
           <span className="inline-flex animate-pulse">
             <StatusBadge tone="info">{HISTORICAL_SCAN_IN_PROGRESS_MESSAGE}</StatusBadge>
           </span>
+          <Button
+            type="button"
+            variant="secondary"
+            className="min-h-8 px-3 text-xs"
+            data-testid="historical-scan-selector-reset"
+            onClick={() =>
+              resetScanUi({
+                keepErrorText: "הסריקה בוטלה. אפשר לבחור שוב או לרענן את הרשימה.",
+              })
+            }
+          >
+            איפוס / ביטול
+          </Button>
         </div>
       ) : null}
 

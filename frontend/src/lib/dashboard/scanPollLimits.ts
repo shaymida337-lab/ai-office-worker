@@ -9,8 +9,17 @@ export const MAX_GMAIL_SCAN_POLL_ATTEMPTS = Math.ceil(
   SCAN_CLIENT_STUCK_TIMEOUT_MS / GMAIL_SCAN_POLL_INTERVAL_MS
 );
 
-/** Historical/manual scans may run up to the backend cooperative 4h deadline. */
+/** Historical/manual scans may run up to the backend cooperative 4h deadline (backend only). */
 export const HISTORICAL_GMAIL_SCAN_POLL_MAX_MS = 4 * 60 * 60 * 1000;
 export const HISTORICAL_GMAIL_SCAN_POLL_MAX_ATTEMPTS = Math.ceil(
   HISTORICAL_GMAIL_SCAN_POLL_MAX_MS / GMAIL_SCAN_POLL_INTERVAL_MS
 );
+
+/** HistoricalScanSelector UI: poll every 3s with a hard 4-minute client timeout. */
+export const HISTORICAL_SCAN_UI_POLL_INTERVAL_MS = 3_000;
+export const HISTORICAL_SCAN_UI_HARD_TIMEOUT_MS = 4 * 60 * 1000;
+export const HISTORICAL_SCAN_UI_HARD_TIMEOUT_ATTEMPTS = Math.ceil(
+  HISTORICAL_SCAN_UI_HARD_TIMEOUT_MS / HISTORICAL_SCAN_UI_POLL_INTERVAL_MS
+);
+export const HISTORICAL_SCAN_UI_HARD_TIMEOUT_MESSAGE =
+  "הסריקה נלקחה יתר על המידה ונעצרה. חלק מהנתונים כבר נקלטו, ניתן לרענן.";

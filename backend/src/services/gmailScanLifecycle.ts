@@ -461,8 +461,32 @@ export async function closeOverdueActiveGmailScan(
   }
 
   const counters = gmailScanCountersFromLog(log);
-  const closeAs = classifyOverdueGmailScanClose(log, now);
   const previousStatus = "running";
+
+  // Heartbeat-stale / crashed worker → FAILED so the UI never polls forever.
+  if (stuck) {
+    const zombieMessage = "Job timed out / server restarted";
+    await finalizeGmailScanFailed(log.id, zombieMessage, counters, {
+      reason: zombieMessage,
+    });
+    logGmailScanTransition({
+      organizationId: undefined,
+      scanId: log.id,
+      previousStatus,
+      nextStatus: "failed",
+      reason: zombieMessage,
+      startedAt: log.startedAt,
+      lastProgressAt: gmailScanLastProgressAt(log),
+      currentStage: "heartbeat_stale",
+      processedEmails: log.emailsProcessed,
+      savedDocuments: log.emailsSaved,
+      durationMs: Math.max(0, now - log.startedAt.getTime()),
+      error: zombieMessage,
+    });
+    return "timed_out";
+  }
+
+  const closeAs = classifyOverdueGmailScanClose(log, now);
   if (closeAs === "timed_out") {
     await finalizeGmailScanTimedOut(log.id, SCAN_STALE_TIMEOUT_REASON, counters, {
       reason: SCAN_STALE_TIMEOUT_REASON,
@@ -475,7 +499,7 @@ export async function closeOverdueActiveGmailScan(
       reason: SCAN_STALE_TIMEOUT_REASON,
       startedAt: log.startedAt,
       lastProgressAt: gmailScanLastProgressAt(log),
-      currentStage: stuck ? "heartbeat_stale" : "deadline",
+      currentStage: "deadline",
       processedEmails: log.emailsProcessed,
       savedDocuments: log.emailsSaved,
       durationMs: Math.max(0, now - log.startedAt.getTime()),

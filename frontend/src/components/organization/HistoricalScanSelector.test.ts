@@ -42,8 +42,18 @@ test("HistoricalScanSelector shows active scanning state and success copy", () =
   assert.match(source, /הסריקה הושלמה! נמצאו/);
   assert.match(source, /waitForOrgGmailScanProgress/);
   assert.match(source, /onScanComplete/);
-  assert.match(source, /HISTORICAL_GMAIL_SCAN_POLL_MAX_ATTEMPTS/);
+  assert.match(source, /HISTORICAL_SCAN_UI_POLL_INTERVAL_MS/);
+  assert.match(source, /HISTORICAL_SCAN_UI_HARD_TIMEOUT_MESSAGE/);
+  assert.match(source, /איפוס \/ ביטול/);
   assert.match(source, /historical-scan-selector-error/);
+  assert.match(source, /historical-scan-selector-reset/);
+});
+
+test("historical scan UI hard-timeout copy is defined for the selector", () => {
+  const limits = readFileSync(join(here, "../../lib/dashboard/scanPollLimits.ts"), "utf8");
+  assert.match(limits, /HISTORICAL_SCAN_UI_POLL_INTERVAL_MS = 3_000/);
+  assert.match(limits, /HISTORICAL_SCAN_UI_HARD_TIMEOUT_MS = 4 \* 60 \* 1000/);
+  assert.match(limits, /הסריקה נלקחה יתר על המידה ונעצרה/);
 });
 
 test("HistoricalScanSelector is mounted on invoices page above Gmail action buttons", () => {

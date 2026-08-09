@@ -74,10 +74,15 @@ export async function waitForOrgGmailScanProgress(input: {
   intervalMs: number;
   maxAttempts: number;
   sleep?: (ms: number) => Promise<void>;
+  signal?: AbortSignal;
+  hardTimeoutMessage?: string;
 }): Promise<ScanProgressResult> {
   const sleep = input.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   let last: ScanProgressResult | null = null;
   for (let attempt = 0; attempt < input.maxAttempts; attempt += 1) {
+    if (input.signal?.aborted) {
+      throw new Error("הסריקה בוטלה");
+    }
     last = await input.poll(input.scanId);
     if (!gmailScanStillRunning(last)) {
       if (isFailedGmailScanStatus(last.status)) {
@@ -87,5 +92,7 @@ export async function waitForOrgGmailScanProgress(input: {
     }
     await sleep(input.intervalMs);
   }
-  throw new Error("הסריקה לוקחת יותר מדי זמן — רענן את הרשימה בעוד כמה דקות");
+  throw new Error(
+    input.hardTimeoutMessage ?? "הסריקה לוקחת יותר מדי זמן — רענן את הרשימה בעוד כמה דקות"
+  );
 }

@@ -145,6 +145,7 @@ export type GmailScanResult = {
   emailsProcessed?: number;
   emailsFound?: number;
   scanId?: string;
+  jobId?: string;
   status?: string;
   progressUrl?: string;
   paymentsCreated?: number;

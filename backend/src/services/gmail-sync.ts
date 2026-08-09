@@ -135,7 +135,10 @@ const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
 const MAX_MESSAGES_PER_QUICK_SCAN = 25;
 const MAX_MESSAGES_PER_FAST_SCAN = 20;
-const GMAIL_SCAN_BATCH_SIZE = 10;
+/** Process/fetch chunk size — keep memory bounded and heartbeat frequently. */
+export const GMAIL_SCAN_BATCH_SIZE = 50;
+/** Brief pause between batches to keep the event loop healthy under Render limits. */
+export const GMAIL_SCAN_BATCH_PAUSE_MS = 50;
 const GMAIL_PROGRESS_FETCH_EMAIL_INTERVAL = 25;
 const GMAIL_PROGRESS_PROCESSING_EMAIL_INTERVAL = 2;
 const GMAIL_PROGRESS_FETCH_MIN_INTERVAL_MS = 30_000;
@@ -1346,6 +1349,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         }
       }
         await maybeSaveScanProgress();
+        await touchGmailScanHeartbeat(log.id, `fetch_${label}_batch_${fetchBatchNumber}`, organizationId);
+        await sleep(GMAIL_SCAN_BATCH_PAUSE_MS);
         if (stopFetching) break;
       }
     };
@@ -1542,9 +1547,23 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     if (windowTruncated) {
       logStep(`[gmail-sync] SCAN_WINDOW_TRUNCATED scanned=${messages.length} maxMessages=${Math.max(fastListing.diagnostics.maxMessages, listing.diagnostics.maxMessages)} daysBack=${daysBack}`);
     }
-    await fetchAndParseMessages(historicalMessages, "historical");
-    const historicalScannedEmails = scannedEmails.splice(0, scannedEmails.length);
-    await processScannedEmails(historicalScannedEmails, "historical");
+    // Chunked historical path: never fetch+parse+process thousands of full messages at once.
+    {
+      let historicalChunk = 0;
+      const historicalChunks = Math.ceil(historicalMessages.length / GMAIL_SCAN_BATCH_SIZE) || 0;
+      for (const messageChunk of chunkArray(historicalMessages, GMAIL_SCAN_BATCH_SIZE)) {
+        if (await shouldStopScan()) break;
+        historicalChunk++;
+        logStep(
+          `[gmail-sync] HISTORICAL_CHUNK_START ${historicalChunk}/${historicalChunks} size=${messageChunk.length}`
+        );
+        await fetchAndParseMessages(messageChunk, "historical");
+        const historicalScannedEmails = scannedEmails.splice(0, scannedEmails.length);
+        await processScannedEmails(historicalScannedEmails, "historical");
+        await touchGmailScanHeartbeat(log.id, `historical_chunk_${historicalChunk}`, organizationId);
+        await sleep(GMAIL_SCAN_BATCH_PAUSE_MS);
+      }
+    }
     logScanLifecycle(log.id, "processing end");
     await maybeSaveScanProgress(true);
 
@@ -3539,6 +3558,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           }
         }
       }
+      await touchGmailScanHeartbeat(log.id, `process_${label}_batch_${processBatchNumber}`, organizationId);
+      await sleep(GMAIL_SCAN_BATCH_PAUSE_MS);
       if (stopProcessing) break;
     }
     }

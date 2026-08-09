@@ -99,3 +99,53 @@ test("waitForOrgGmailScanProgress returns when scan becomes terminal", async () 
   assert.equal(progress.status, "completed");
   assert.equal(calls, 2);
 });
+
+test("waitForOrgGmailScanProgress hard-times out with custom message", async () => {
+  await assert.rejects(
+    () =>
+      waitForOrgGmailScanProgress({
+        scanId: "scan-timeout",
+        intervalMs: 1,
+        maxAttempts: 2,
+        hardTimeoutMessage: "hard-timeout",
+        sleep: async () => undefined,
+        poll: async () =>
+          ({
+            scanId: "scan-timeout",
+            status: "IN_PROGRESS",
+            inProgress: true,
+            startedAt: new Date().toISOString(),
+            finishedAt: null,
+            error: null,
+            progressPercent: 10,
+            emailsFetched: 0,
+            emailsSaved: 0,
+            invoicesFound: 0,
+            supplierPaymentsFound: 0,
+            clientsFound: 0,
+            uploadedToDrive: 0,
+            rejectedReasons: {},
+          }) as ScanProgressResult,
+      }),
+    /hard-timeout/
+  );
+});
+
+test("waitForOrgGmailScanProgress aborts when signal is aborted", async () => {
+  const abort = new AbortController();
+  abort.abort();
+  await assert.rejects(
+    () =>
+      waitForOrgGmailScanProgress({
+        scanId: "scan-abort",
+        intervalMs: 1,
+        maxAttempts: 5,
+        signal: abort.signal,
+        sleep: async () => undefined,
+        poll: async () => {
+          throw new Error("poll should not run");
+        },
+      }),
+    /הסריקה בוטלה/
+  );
+});
