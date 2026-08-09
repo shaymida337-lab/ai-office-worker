@@ -68,22 +68,37 @@ export function summarizeOrgGmailScanResult(
   return { documentsFound, saved, needsCompletion };
 }
 
+export function historicalScanLiveProgressMessage(emailsProcessed: number, documentsSaved: number): string {
+  return `עובדו ${emailsProcessed} מיילים... נשמרו ${documentsSaved} מסמכים`;
+}
+
 export async function waitForOrgGmailScanProgress(input: {
   scanId: string;
   poll: (scanId: string) => Promise<ScanProgressResult>;
   intervalMs: number;
-  maxAttempts: number;
+  /** Omit or set Infinity to poll until terminal / abort (no client-side timeout alert). */
+  maxAttempts?: number;
   sleep?: (ms: number) => Promise<void>;
   signal?: AbortSignal;
   hardTimeoutMessage?: string;
+  onProgress?: (progress: ScanProgressResult) => void;
 }): Promise<ScanProgressResult> {
   const sleep = input.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const maxAttempts =
+    input.maxAttempts === undefined || !Number.isFinite(input.maxAttempts)
+      ? Number.POSITIVE_INFINITY
+      : Math.max(1, input.maxAttempts);
   let last: ScanProgressResult | null = null;
-  for (let attempt = 0; attempt < input.maxAttempts; attempt += 1) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     if (input.signal?.aborted) {
       throw new Error("הסריקה בוטלה");
     }
     last = await input.poll(input.scanId);
+    try {
+      input.onProgress?.(last);
+    } catch {
+      /* progress UI must never break polling */
+    }
     if (!gmailScanStillRunning(last)) {
       if (isFailedGmailScanStatus(last.status)) {
         throw new Error(last.userMessageHe ?? last.error ?? "סריקת Gmail נכשלה");

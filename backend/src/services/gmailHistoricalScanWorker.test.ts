@@ -21,10 +21,19 @@ test("gmail sync processes messages in batches of 50 with event-loop pause", () 
 test("POST /api/gmail/scan returns 202 with jobId and wraps worker in try/catch/finally", () => {
   assert.match(apiSource, /res\.status\(202\)\.json\(\{/);
   assert.match(apiSource, /jobId:\s*scanLog\.id/);
-  assert.match(apiSource, /status:\s*"IN_PROGRESS"/);
+  assert.match(apiSource, /status:\s*"started"/);
+  assert.match(apiSource, /Accepted fire-and-forget/);
   assert.match(apiSource, /promoteGmailScanToRunning\(scanLog\.id\)/);
   assert.match(apiSource, /ensureGmailScanTerminalized/);
   assert.match(apiSource, /leaveRunningForConcurrent/);
+  assert.match(apiSource, /\/gmail\/scan\/status/);
+  // Heavy sync must not be awaited before the HTTP 202 response.
+  const acceptIdx = apiSource.indexOf("Accepted fire-and-forget");
+  const syncImportIdx = apiSource.indexOf(
+    'const { syncGmailForOrganization } = await import("../services/gmail-sync.js");',
+    acceptIdx
+  );
+  assert.ok(acceptIdx > 0 && syncImportIdx > acceptIdx);
 });
 
 test("zombie heartbeat-stale jobs are marked FAILED with restart timeout message", () => {

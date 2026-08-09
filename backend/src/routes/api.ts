@@ -8850,7 +8850,6 @@ apiRouter.post("/whatsapp-assistant/test/:type", async (req, res) => {
 
 async function scanGmail(req: Request, res: Response) {
   try {
-    const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
     const organizationId = req.auth!.organizationId;
     const gmailIntegration = await prisma.integration.findUnique({
       where: { organizationId_provider: { organizationId, provider: "gmail" } },
@@ -8915,22 +8914,15 @@ async function scanGmail(req: Request, res: Response) {
     console.log(
       `[gmail-scan] POST /api/gmail/scan org=${organizationId} scanMode=${scanMode} historical=${useHistoricalScan} fullScan=${fullScan} rawDaysBack=${String(req.body?.daysBack ?? req.query.daysBack ?? "missing")} daysBack=${daysBack} since=${since?.toISOString() ?? "none"} maxMessages=${maxMessages ?? "default"} cursorSource=${incrementalCursorSource ?? "n/a"}`
     );
-    console.log("[gmail-scan] Step 1: checking Gmail authentication");
 
-    const cleanup = rescanInvoices ? await cleanupGmailInvoiceArtifacts(organizationId) : null;
-    if (cleanup) {
-      console.log(`[gmail-scan] invoice rescan cleanup org=${organizationId} invoicesDeleted=${cleanup.invoicesDeleted} paymentsDeleted=${cleanup.paymentsDeleted} scanItemsDeleted=${cleanup.scanItemsDeleted} emailsReset=${cleanup.emailsReset}`);
-    }
-
-    await closeStaleGmailScansForOrg(organizationId);
-    // Historical/full scans must not attach to an in-flight fast_recurring job (≤20 msgs)
-    // — that was returning 202 with the wrong scanId and processing ~0 invoices.
+    // Historical/full must not attach to an in-flight fast_recurring job — preempt before create.
+    // Keep this on the accept path (usually ms); heavy sync stays in the background worker.
     if (useHistoricalScan || fullScan || rescanInvoices) {
       await preemptPreemptibleGmailScansForOrg(organizationId);
     }
+
     const activeLog = await findActiveGmailScanLog(organizationId);
     if (activeLog) {
-      const progress = await buildGmailScanProgress(organizationId, activeLog.id);
       console.log(
         `[gmail-scan] Existing scan in progress org=${organizationId} scanId=${activeLog.id} mode=${activeLog.scanMode ?? "unknown"}`
       );
@@ -8938,42 +8930,64 @@ async function scanGmail(req: Request, res: Response) {
         success: true,
         jobId: activeLog.id,
         scanId: activeLog.id,
-        status: "IN_PROGRESS",
+        status: "started",
         inProgress: true,
         daysBack,
-        progressUrl: `/api/gmail/scan/${activeLog.id}`,
-        summary: progress,
+        progressUrl: `/api/gmail/scan/status?scanId=${encodeURIComponent(activeLog.id)}`,
+        message: "Gmail scan already in progress",
       });
       return;
     }
 
     const { scanLog, created } = await createQueuedGmailScanLog(organizationId, scanMode);
     if (!created) {
-      const progress = await buildGmailScanProgress(organizationId, scanLog.id);
       res.status(202).json({
         success: true,
         jobId: scanLog.id,
         scanId: scanLog.id,
-        status: "IN_PROGRESS",
+        status: "started",
         inProgress: true,
         daysBack,
-        progressUrl: `/api/gmail/scan/${scanLog.id}`,
-        summary: progress,
+        progressUrl: `/api/gmail/scan/status?scanId=${encodeURIComponent(scanLog.id)}`,
+        message: "Gmail scan already in progress",
       });
       return;
     }
 
-    // Accept immediately as running with a fresh heartbeat (updatedAt = lastHeartbeat).
-    await promoteGmailScanToRunning(scanLog.id);
-    await touchGmailScanHeartbeat(scanLog.id, "api_accepted", organizationId);
     logScanLifecycle(scanLog.id, "created");
-    console.log(`[gmail-scan] Step 2: background scan started org=${organizationId} scanId=${scanLog.id} daysBack=${daysBack}`);
+    console.log(
+      `[gmail-scan] Accepted fire-and-forget org=${organizationId} scanId=${scanLog.id} daysBack=${daysBack}`
+    );
+
+    // Return IMMEDIATELY — never await promote/sync/cleanup on the HTTP path (Render/Vercel 504).
+    res.status(202).json({
+      success: true,
+      jobId: scanLog.id,
+      scanId: scanLog.id,
+      status: "started",
+      inProgress: true,
+      daysBack,
+      progressUrl: `/api/gmail/scan/status?scanId=${encodeURIComponent(scanLog.id)}`,
+      message: "Gmail scan started in background",
+    });
 
     void (async () => {
       let hadError = false;
       let errorMessage: string | null = null;
       let leaveRunningForConcurrent = false;
       try {
+        await promoteGmailScanToRunning(scanLog.id);
+        await touchGmailScanHeartbeat(scanLog.id, "api_accepted", organizationId);
+        await closeStaleGmailScansForOrg(organizationId, scanLog.id);
+
+        if (rescanInvoices) {
+          const cleanup = await cleanupGmailInvoiceArtifacts(organizationId);
+          console.log(
+            `[gmail-scan] invoice rescan cleanup org=${organizationId} invoicesDeleted=${cleanup.invoicesDeleted} paymentsDeleted=${cleanup.paymentsDeleted} scanItemsDeleted=${cleanup.scanItemsDeleted} emailsReset=${cleanup.emailsReset}`
+          );
+        }
+
+        const { syncGmailForOrganization } = await import("../services/gmail-sync.js");
         const backgroundResult = await syncGmailForOrganization(organizationId, {
           daysBack,
           since,
@@ -8989,7 +9003,6 @@ async function scanGmail(req: Request, res: Response) {
               ? backgroundResult.scanLogId
               : null;
           if (activeId && activeId !== scanLog.id) {
-            // Our job was superseded; do not leave it IN_PROGRESS.
             logScanLifecycle(scanLog.id, "cancelled", `superseded_by=${activeId}`);
             leaveRunningForConcurrent = false;
           } else {
@@ -9012,14 +9025,18 @@ async function scanGmail(req: Request, res: Response) {
         console.log(
           `[gmail-scan] TOTAL_PROCESSED_EMAILS count=${totalProcessed} org=${organizationId} scanId=${scanLog.id} daysBack=${daysBack} maxMessages=${maxMessages ?? "default"} truncated=${Boolean(result.windowTruncated)}`
         );
-        console.log(`[gmail-scan] Background processing finished org=${organizationId} scanId=${scanLog.id} emails=${totalProcessed} saved=${result.emailsSavedToGmailScanItem ?? 0} payments=${result.paymentsCreated ?? 0} invoices=${result.invoicesCreated ?? 0} driveUploaded=${result.driveUploadsSucceeded ?? 0} rejected=${result.parserRejectedCount ?? result.ignoredCount ?? 0}`);
+        console.log(
+          `[gmail-scan] Background processing finished org=${organizationId} scanId=${scanLog.id} emails=${totalProcessed} saved=${result.emailsSavedToGmailScanItem ?? 0} payments=${result.paymentsCreated ?? 0} invoices=${result.invoicesCreated ?? 0} driveUploaded=${result.driveUploadsSucceeded ?? 0} rejected=${result.parserRejectedCount ?? result.ignoredCount ?? 0}`
+        );
       } catch (backgroundError) {
         hadError = true;
         errorMessage =
           backgroundError instanceof Error ? backgroundError.message : String(backgroundError);
         console.error(
           `[gmail-scan] Background processing failed org=${organizationId} scanId=${scanLog.id}`,
-          backgroundError instanceof Error ? backgroundError.stack ?? backgroundError.message : backgroundError
+          backgroundError instanceof Error
+            ? backgroundError.stack ?? backgroundError.message
+            : backgroundError
         );
         try {
           await finalizeGmailScanFailed(scanLog.id, errorMessage);
@@ -9028,8 +9045,6 @@ async function scanGmail(req: Request, res: Response) {
         }
         logScanLifecycle(scanLog.id, "failed", `reason=${errorMessage}`);
       } finally {
-        // Never leave this worker's job IN_PROGRESS after exit (OOM aside). Skip when sync
-        // reported a concurrent in-progress owner so we do not clobber the live scan.
         if (leaveRunningForConcurrent) return;
         try {
           await ensureGmailScanTerminalized(
@@ -9043,31 +9058,6 @@ async function scanGmail(req: Request, res: Response) {
         }
       }
     })();
-
-    // Return immediately — never await the heavy sync on the HTTP path (Render gateway timeouts).
-    res.status(202).json({
-      success: true,
-      jobId: scanLog.id,
-      scanId: scanLog.id,
-      status: "IN_PROGRESS",
-      inProgress: true,
-      daysBack,
-      progressUrl: `/api/gmail/scan/${scanLog.id}`,
-      message: "Gmail scan started in background",
-      cleanup,
-      summary: {
-        totalEmailsChecked: 0,
-        emailsScanned: 0,
-        emailsFetched: 0,
-        emailsSaved: 0,
-        invoicesFound: 0,
-        supplierPaymentsFound: 0,
-        clientsFound: 0,
-        uploadedToDrive: 0,
-        rejectedCount: 0,
-        rejectedReasons: {},
-      },
-    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
     const code = classifyGmailScanError(message);
@@ -9120,6 +9110,25 @@ async function cleanupGmailInvoiceArtifacts(organizationId: string) {
     emailsReset: emails.count,
   };
 }
+
+apiRouter.get("/gmail/scan/status", async (req, res) => {
+  try {
+    const scanId = typeof req.query.scanId === "string" ? req.query.scanId.trim() : "";
+    if (!scanId) {
+      res.status(400).json({ error: "scanId is required" });
+      return;
+    }
+    const progress = await buildGmailScanProgress(req.auth!.organizationId, scanId);
+    if (!progress) {
+      res.status(404).json({ error: "Scan not found" });
+      return;
+    }
+    res.json(progress);
+  } catch (err) {
+    console.error("[gmail-scan] status failed", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load scan status" });
+  }
+});
 
 apiRouter.get("/gmail/scan/:scanId", async (req, res) => {
   try {

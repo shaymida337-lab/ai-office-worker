@@ -484,7 +484,10 @@ export default function InvoicesPage() {
         return;
       }
 
-      const result = await apiFetch<GmailScanResult>("/api/gmail/scan", { method: "POST" });
+      const result = await apiFetch<GmailScanResult>("/api/gmail/scan", {
+        method: "POST",
+        timeoutMs: 12_000,
+      });
       let counts = summarizeOrgGmailScanResult(result, 0);
 
       if (result.scanId) {
@@ -492,7 +495,14 @@ export default function InvoicesPage() {
           scanId: result.scanId,
           intervalMs: GMAIL_SCAN_POLL_INTERVAL_MS,
           maxAttempts: MAX_GMAIL_SCAN_POLL_ATTEMPTS,
-          poll: (scanId) => apiFetch<ScanProgressResult>(`/api/gmail/scan/${scanId}`),
+          onProgress: (p) => {
+            const live = summarizeOrgGmailScanProgress(p, 0);
+            setScanProgress(
+              `עובדו ${p.emailsFetched ?? 0} מיילים... נשמרו ${live.saved} מסמכים`
+            );
+          },
+          poll: (scanId) =>
+            apiFetch<ScanProgressResult>(`/api/gmail/scan/status?scanId=${encodeURIComponent(scanId)}`),
         });
         counts = summarizeOrgGmailScanProgress(progress, 0);
       }

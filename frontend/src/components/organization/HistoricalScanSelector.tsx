@@ -7,11 +7,11 @@ import { apiFetch } from "@/lib/api";
 import type { OrganizationSettings } from "@/lib/business-config";
 import type { GmailScanResult, ScanProgressResult } from "@/lib/dashboard/homePageTypes";
 import {
-  HISTORICAL_SCAN_UI_HARD_TIMEOUT_ATTEMPTS,
-  HISTORICAL_SCAN_UI_HARD_TIMEOUT_MESSAGE,
   HISTORICAL_SCAN_UI_POLL_INTERVAL_MS,
+  HISTORICAL_SCAN_UI_POLL_MAX_ATTEMPTS,
 } from "@/lib/dashboard/scanPollLimits";
 import {
+  historicalScanLiveProgressMessage,
   summarizeOrgGmailScanProgress,
   summarizeOrgGmailScanResult,
   waitForOrgGmailScanProgress,
@@ -24,7 +24,6 @@ export type HistoricalScanYears = (typeof HISTORICAL_SCAN_YEAR_OPTIONS)[number];
 export type SettingsToast = { text: string; tone: "success" | "error" | "info" };
 
 export const HISTORICAL_SCAN_IN_PROGRESS_MESSAGE = "סורק את Gmail כעת... אנא המתן";
-export { HISTORICAL_SCAN_UI_HARD_TIMEOUT_MESSAGE };
 
 export function historicalScanCompletedMessage(documentsFound: number): string {
   return `הסריקה הושלמה! נמצאו ${documentsFound} מסמכים`;
@@ -149,8 +148,10 @@ export function HistoricalScanSelector({
         /* ignore */
       }
 
+      // Fire-and-forget accept (202 / started). Never block the UI on the worker.
       const scanResult = await apiFetch<GmailScanResult>("/api/gmail/scan", {
         method: "POST",
+        timeoutMs: 12_000,
         body: JSON.stringify({
           historical: true,
           daysBack: savedYears * 365,
@@ -159,20 +160,30 @@ export function HistoricalScanSelector({
         }),
       });
 
-      // POST is fire-and-forget (202 / IN_PROGRESS). Poll status until terminal or hard UI timeout.
       let documentsFound = summarizeOrgGmailScanResult(scanResult, 0).documentsFound;
       const jobId = scanResult.scanId ?? scanResult.jobId;
-      if (jobId) {
-        const progress = await waitForOrgGmailScanProgress({
-          scanId: jobId,
-          intervalMs: HISTORICAL_SCAN_UI_POLL_INTERVAL_MS,
-          maxAttempts: HISTORICAL_SCAN_UI_HARD_TIMEOUT_ATTEMPTS,
-          hardTimeoutMessage: HISTORICAL_SCAN_UI_HARD_TIMEOUT_MESSAGE,
-          signal: abort.signal,
-          poll: (scanId) => apiFetch<ScanProgressResult>(`/api/gmail/scan/${scanId}`),
-        });
-        documentsFound = summarizeOrgGmailScanProgress(progress, 0).documentsFound;
+      if (!jobId) {
+        throw new Error("הסריקה התחילה אך לא התקבל מזהה סריקה — רענן את הרשימה בעוד כמה דקות");
       }
+
+      setStatusText(historicalScanLiveProgressMessage(0, 0));
+
+      const progress = await waitForOrgGmailScanProgress({
+        scanId: jobId,
+        intervalMs: HISTORICAL_SCAN_UI_POLL_INTERVAL_MS,
+        maxAttempts: HISTORICAL_SCAN_UI_POLL_MAX_ATTEMPTS,
+        signal: abort.signal,
+        onProgress: (p: ScanProgressResult) => {
+          const live = summarizeOrgGmailScanProgress(p, 0);
+          setStatusTone("info");
+          setStatusText(
+            historicalScanLiveProgressMessage(p.emailsFetched ?? live.documentsFound, live.saved)
+          );
+        },
+        poll: (scanId) =>
+          apiFetch<ScanProgressResult>(`/api/gmail/scan/status?scanId=${encodeURIComponent(scanId)}`),
+      });
+      documentsFound = summarizeOrgGmailScanProgress(progress, 0).documentsFound;
 
       if (abort.signal.aborted) return;
 
@@ -192,7 +203,6 @@ export function HistoricalScanSelector({
       }
     } catch (err) {
       if (abort.signal.aborted) return;
-      // Keep saved year selection — only revert if PATCH itself failed.
       if (!settingsSaved) {
         setSelected(previous);
       }
@@ -200,14 +210,6 @@ export function HistoricalScanSelector({
         err instanceof Error && err.message.trim()
           ? err.message
           : "הסריקה נכשלה. אפשר לנסות שוב או לבחור טווח אחר.";
-      // Hard UI timeout: still try to refresh whatever was ingested.
-      if (errorText === HISTORICAL_SCAN_UI_HARD_TIMEOUT_MESSAGE) {
-        try {
-          await onScanComplete?.({ documentsFound: 0 });
-        } catch {
-          /* ignore */
-        }
-      }
       setStatusTone("error");
       setStatusText(errorText);
       try {
@@ -274,7 +276,7 @@ export function HistoricalScanSelector({
         >
           <Loader2 className="h-4 w-4 animate-spin text-[#2563EB]" aria-hidden />
           <span className="inline-flex animate-pulse">
-            <StatusBadge tone="info">{HISTORICAL_SCAN_IN_PROGRESS_MESSAGE}</StatusBadge>
+            <StatusBadge tone="info">{statusText ?? HISTORICAL_SCAN_IN_PROGRESS_MESSAGE}</StatusBadge>
           </span>
           <Button
             type="button"

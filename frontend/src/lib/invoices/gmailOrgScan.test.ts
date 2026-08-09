@@ -131,6 +131,56 @@ test("waitForOrgGmailScanProgress hard-times out with custom message", async () 
   );
 });
 
+test("waitForOrgGmailScanProgress invokes onProgress while running", async () => {
+  const seen: number[] = [];
+  let calls = 0;
+  await waitForOrgGmailScanProgress({
+    scanId: "scan-progress",
+    intervalMs: 1,
+    maxAttempts: 5,
+    sleep: async () => undefined,
+    onProgress: (p) => seen.push(p.emailsFetched ?? -1),
+    poll: async () => {
+      calls += 1;
+      if (calls < 2) {
+        return {
+          scanId: "scan-progress",
+          status: "running",
+          inProgress: true,
+          startedAt: new Date().toISOString(),
+          finishedAt: null,
+          error: null,
+          progressPercent: 20,
+          emailsFetched: 7,
+          emailsSaved: 3,
+          invoicesFound: 1,
+          supplierPaymentsFound: 0,
+          clientsFound: 0,
+          uploadedToDrive: 0,
+          rejectedReasons: {},
+        } as ScanProgressResult;
+      }
+      return {
+        scanId: "scan-progress",
+        status: "completed",
+        inProgress: false,
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        error: null,
+        progressPercent: 100,
+        emailsFetched: 10,
+        emailsSaved: 5,
+        invoicesFound: 2,
+        supplierPaymentsFound: 2,
+        clientsFound: 0,
+        uploadedToDrive: 1,
+        rejectedReasons: {},
+      } as ScanProgressResult;
+    },
+  });
+  assert.deepEqual(seen, [7, 10]);
+});
+
 test("waitForOrgGmailScanProgress aborts when signal is aborted", async () => {
   const abort = new AbortController();
   abort.abort();

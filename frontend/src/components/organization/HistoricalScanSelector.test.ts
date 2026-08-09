@@ -36,24 +36,27 @@ test("HistoricalScanSelector starts a full historical Gmail scan after successfu
   assert.match(source, /daysBack:\s*savedYears\s*\*\s*365/);
 });
 
-test("HistoricalScanSelector shows active scanning state and success copy", () => {
+test("HistoricalScanSelector shows live polling progress without client timeout alerts", () => {
   assert.match(source, /isScanning/);
   assert.match(source, /סורק את Gmail כעת/);
   assert.match(source, /הסריקה הושלמה! נמצאו/);
   assert.match(source, /waitForOrgGmailScanProgress/);
   assert.match(source, /onScanComplete/);
   assert.match(source, /HISTORICAL_SCAN_UI_POLL_INTERVAL_MS/);
-  assert.match(source, /HISTORICAL_SCAN_UI_HARD_TIMEOUT_MESSAGE/);
+  assert.match(source, /historicalScanLiveProgressMessage/);
+  assert.match(source, /\/api\/gmail\/scan\/status\?scanId=/);
+  assert.match(source, /onProgress:/);
+  assert.doesNotMatch(source, /HISTORICAL_SCAN_UI_HARD_TIMEOUT/);
   assert.match(source, /איפוס \/ ביטול/);
   assert.match(source, /historical-scan-selector-error/);
   assert.match(source, /historical-scan-selector-reset/);
 });
 
-test("historical scan UI hard-timeout copy is defined for the selector", () => {
+test("historical scan UI polls every 3s without a hard client timeout alert", () => {
   const limits = readFileSync(join(here, "../../lib/dashboard/scanPollLimits.ts"), "utf8");
   assert.match(limits, /HISTORICAL_SCAN_UI_POLL_INTERVAL_MS = 3_000/);
-  assert.match(limits, /HISTORICAL_SCAN_UI_HARD_TIMEOUT_MS = 4 \* 60 \* 1000/);
-  assert.match(limits, /הסריקה נלקחה יתר על המידה ונעצרה/);
+  assert.match(limits, /HISTORICAL_SCAN_UI_POLL_MAX_ATTEMPTS/);
+  assert.doesNotMatch(limits, /HISTORICAL_SCAN_UI_HARD_TIMEOUT_MESSAGE/);
 });
 
 test("HistoricalScanSelector is mounted on invoices page above Gmail action buttons", () => {
