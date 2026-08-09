@@ -160,6 +160,7 @@ import {
   finalizeGmailScanFailed,
   findActiveGmailScanLog,
   findLastGmailScanSuccessCursor,
+  isTerminalGmailScanDbStatus,
   logScanLifecycle,
   preemptPreemptibleGmailScansForOrg,
   promoteGmailScanToRunning,
@@ -9039,11 +9040,23 @@ async function scanGmail(req: Request, res: Response) {
             : backgroundError
         );
         try {
-          await finalizeGmailScanFailed(scanLog.id, errorMessage);
+          const existing = await prisma.syncLog.findFirst({
+            where: { id: scanLog.id, type: "gmail_scan" },
+            select: { status: true, finishedAt: true, emailsProcessed: true },
+          });
+          // Do not overwrite a productive completed/paused scan with FAILED.
+          if (!existing?.finishedAt && existing && !isTerminalGmailScanDbStatus(existing.status)) {
+            await finalizeGmailScanFailed(scanLog.id, errorMessage);
+            logScanLifecycle(scanLog.id, "failed", `reason=${errorMessage}`);
+          } else {
+            hadError = false;
+            console.warn(
+              `[gmail-scan] Background error ignored for already-terminal scanId=${scanLog.id} status=${existing?.status ?? "missing"} emailsProcessed=${existing?.emailsProcessed ?? 0}: ${errorMessage}`
+            );
+          }
         } catch (finalizeErr) {
           console.error(`[gmail-scan] FAILED status update also failed scanId=${scanLog.id}`, finalizeErr);
         }
-        logScanLifecycle(scanLog.id, "failed", `reason=${errorMessage}`);
       } finally {
         if (leaveRunningForConcurrent) return;
         try {

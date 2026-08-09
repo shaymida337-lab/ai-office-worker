@@ -42,3 +42,23 @@ test("zombie heartbeat-stale jobs are marked FAILED with restart timeout message
   assert.match(lifecycleSource, /GMAIL_MANUAL_SCAN_STUCK_TIMEOUT_MS = 15 \* 60 \* 1000/);
   assert.match(lifecycleSource, /skipping heartbeat_stale fail for active scan/);
 });
+
+test("historical scan isolates per-email and per-attachment failures without failing the job", () => {
+  assert.match(syncSource, /per-email isolation catch/);
+  assert.match(syncSource, /stage=process_isolation/);
+  assert.match(syncSource, /stage=invoice_attachment/);
+  assert.match(syncSource, /Per-attachment isolation/);
+  assert.match(syncSource, /non-fatal mid-scan error after progress/);
+  assert.match(syncSource, /finalizeGmailScanCompleted/);
+  assert.match(syncSource, /MID_SCAN_ERROR_ISOLATED/);
+  assert.match(syncSource, /historical chunk failed chunk=/);
+  assert.doesNotMatch(
+    syncSource.slice(syncSource.indexOf("invoice save failed"), syncSource.indexOf("invoice save failed") + 400),
+    /throw err/
+  );
+});
+
+test("background worker does not overwrite terminal scan with FAILED", () => {
+  assert.match(apiSource, /isTerminalGmailScanDbStatus/);
+  assert.match(apiSource, /Background error ignored for already-terminal/);
+});

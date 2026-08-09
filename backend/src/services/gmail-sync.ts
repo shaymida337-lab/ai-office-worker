@@ -111,10 +111,12 @@ import {
   closeStaleGmailScansForOrg,
   createQueuedGmailScanLog,
   ensureGmailScanTerminalized,
+  finalizeGmailScanCompleted,
   finalizeGmailScanFailed,
   finalizeGmailScanPaused,
   finalizeGmailScanTimedOut,
   finalizeGmailScanWithDeadlineGuard,
+  isTerminalGmailScanDbStatus,
   SCAN_STALE_TIMEOUT_REASON,
   findActiveGmailScanLog,
   handleConcurrentGmailScanExit,
@@ -759,9 +761,16 @@ export async function syncGmailForOrganization(organizationId: string, options: 
         return await runGmailSyncForOrganization(organizationId, options);
       } catch (err) {
         if (scanLogId) {
-          const message = err instanceof Error ? err.message : String(err);
-          await finalizeGmailScanFailed(scanLogId, message);
-          logScanLifecycle(scanLogId, "failed", `reason=${message}`);
+          const existing = await prisma.syncLog.findFirst({
+            where: { id: scanLogId, type: "gmail_scan" },
+            select: { status: true, finishedAt: true },
+          });
+          // Avoid double-failing a job that already completed/paused with partial progress.
+          if (!existing?.finishedAt && existing && !isTerminalGmailScanDbStatus(existing.status)) {
+            const message = err instanceof Error ? err.message : String(err);
+            await finalizeGmailScanFailed(scanLogId, message);
+            logScanLifecycle(scanLogId, "failed", `reason=${message}`);
+          }
         }
         throw err;
       }
@@ -1354,6 +1363,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         emailsProcessed++;
         } catch (err) {
           errorsCount++;
+          // Count skipped/failed fetches so progress advances and the job is not treated as stuck.
+          emailsProcessed++;
           console.error(`[gmail-sync] fetch/parse/save failed message=${msgRef.id}`, err);
           logStep(`[gmail-sync] error message=${msgRef.id} stage=fetch_parse_save reason="${err instanceof Error ? err.message : String(err)}"`);
           try {
@@ -1364,8 +1375,16 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           }
         }
       }
-        await maybeSaveScanProgress();
-        await touchGmailScanHeartbeat(log.id, `fetch_${label}_batch_${fetchBatchNumber}`, organizationId);
+        try {
+          await maybeSaveScanProgress();
+        } catch (progressErr) {
+          console.error(`[gmail-sync] fetch batch progress save failed batch=${fetchBatchNumber}`, progressErr);
+        }
+        try {
+          await touchGmailScanHeartbeat(log.id, `fetch_${label}_batch_${fetchBatchNumber}`, organizationId);
+        } catch (hbErr) {
+          console.error(`[gmail-sync] fetch batch heartbeat failed batch=${fetchBatchNumber}`, hbErr);
+        }
         await sleep(GMAIL_SCAN_BATCH_PAUSE_MS);
         if (stopFetching) break;
       }
@@ -1577,10 +1596,25 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         logStep(
           `[gmail-sync] HISTORICAL_CHUNK_START ${historicalChunk}/${historicalChunks} size=${messageChunk.length}`
         );
-        await fetchAndParseMessages(messageChunk, "historical");
-        const historicalScannedEmails = scannedEmails.splice(0, scannedEmails.length);
-        await processScannedEmails(historicalScannedEmails, "historical");
-        await touchGmailScanHeartbeat(log.id, `historical_chunk_${historicalChunk}`, organizationId);
+        try {
+          await fetchAndParseMessages(messageChunk, "historical");
+          const historicalScannedEmails = scannedEmails.splice(0, scannedEmails.length);
+          await processScannedEmails(historicalScannedEmails, "historical");
+        } catch (chunkErr) {
+          errorsCount++;
+          console.error(
+            `[gmail-sync] historical chunk failed chunk=${historicalChunk}; continuing next chunk`,
+            chunkErr
+          );
+          logStep(
+            `[gmail-sync] error stage=historical_chunk chunk=${historicalChunk} reason="${chunkErr instanceof Error ? chunkErr.message : String(chunkErr)}"`
+          );
+        }
+        try {
+          await touchGmailScanHeartbeat(log.id, `historical_chunk_${historicalChunk}`, organizationId);
+        } catch (hbErr) {
+          console.error(`[gmail-sync] historical chunk heartbeat failed chunk=${historicalChunk}`, hbErr);
+        }
         await sleep(GMAIL_SCAN_BATCH_PAUSE_MS);
       }
     }
@@ -1727,6 +1761,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       logStep(`[gmail-sync] process ${label} batch ${processBatchNumber}/${Math.ceil(emailsToProcess.length / GMAIL_SCAN_BATCH_SIZE)} size=${batch.length}`);
       for (const email of batch) {
         if (stopProcessing) break;
+        try {
         const messageTrace = createCoreWorkflowTrace({
           subsystem: "scanner_pipeline",
           organizationId,
@@ -2976,6 +3011,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         const shouldUseAttachmentInvoices = invoiceParts.length > 1 || invoiceParts.some(isInvoiceImageAttachmentPart);
         const createTargets = shouldUseAttachmentInvoices ? invoiceParts : [null];
         for (const invoicePart of createTargets) {
+          try {
           const targetFilename = invoicePart ? attachmentFilenameForPart(invoicePart) : attachmentFilename;
           const targetAttachmentId = invoicePart?.body?.attachmentId ?? null;
           const targetDriveLink = invoicePart ? findDriveLinkForAttachment(driveLinks, invoicePart) : driveLinks[0];
@@ -3116,7 +3152,18 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
           } catch (err) {
             errorsCount++;
             logStep(`[gmail-sync] invoice save failed message=${email.gmailId} file="${targetFilename ?? "body"}" supplier="${invoiceSupplierName}" reason="${err instanceof Error ? err.message : String(err)}"`);
-            throw err;
+            // Per-attachment isolation: skip this attachment and continue the scan.
+            continue;
+          }
+          } catch (attachmentErr) {
+            errorsCount++;
+            console.error(
+              `[gmail-sync] invoice attachment processing failed message=${email.gmailId} file="${invoicePart ? attachmentFilenameForPart(invoicePart) : "body"}"`,
+              attachmentErr
+            );
+            logStep(
+              `[gmail-sync] error message=${email.gmailId} stage=invoice_attachment reason="${attachmentErr instanceof Error ? attachmentErr.message : String(attachmentErr)}"`
+            );
           }
         }
       } else {
@@ -3573,21 +3620,58 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
             }
           }
         } finally {
+          // Always advance progress even when this email failed — never abort the whole scan.
           emailsAnalyzedInProcessing++;
-          await maybeSaveScanProgress();
+          try {
+            await maybeSaveScanProgress();
+          } catch (progressErr) {
+            console.error(`[gmail-sync] progress save failed after message=${email.gmailId}`, progressErr);
+          }
           // Heartbeat after EVERY email so OCR-heavy attachments cannot trip heartbeat_stale.
-          await touchGmailScanHeartbeat(
-            log.id,
-            `process_${label}_email_${email.gmailId}`,
-            organizationId
+          try {
+            await touchGmailScanHeartbeat(
+              log.id,
+              `process_${label}_email_${email.gmailId}`,
+              organizationId
+            );
+          } catch (hbErr) {
+            console.error(`[gmail-sync] heartbeat failed after message=${email.gmailId}`, hbErr);
+          }
+          try {
+            if (await shouldStopScan()) {
+              stopProcessing = true;
+              break;
+            }
+          } catch (stopErr) {
+            console.error(`[gmail-sync] shouldStopScan failed after message=${email.gmailId}`, stopErr);
+          }
+        }
+        } catch (isolationErr) {
+          errorsCount++;
+          emailsAnalyzedInProcessing++;
+          console.error(
+            `[gmail-sync] per-email isolation catch message=${email.gmailId}; continuing scan`,
+            isolationErr
           );
-          if (await shouldStopScan()) {
-            stopProcessing = true;
-            break;
+          logStep(
+            `[gmail-sync] error message=${email.gmailId} stage=process_isolation reason="${isolationErr instanceof Error ? isolationErr.message : String(isolationErr)}"`
+          );
+          try {
+            await touchGmailScanHeartbeat(
+              log.id,
+              `process_${label}_email_${email.gmailId}_isolated`,
+              organizationId
+            );
+          } catch {
+            /* ignore heartbeat failure during isolation recovery */
           }
         }
       }
-      await touchGmailScanHeartbeat(log.id, `process_${label}_batch_${processBatchNumber}`, organizationId);
+      try {
+        await touchGmailScanHeartbeat(log.id, `process_${label}_batch_${processBatchNumber}`, organizationId);
+      } catch (hbErr) {
+        console.error(`[gmail-sync] process batch heartbeat failed batch=${processBatchNumber}`, hbErr);
+      }
       await sleep(GMAIL_SCAN_BATCH_PAUSE_MS);
       if (stopProcessing) break;
     }
@@ -3608,7 +3692,22 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       `[gmail-sync] TOTAL_PROCESSED_EMAILS count=${emailsProcessed} listed=${messages.length} daysBack=${daysBack} maxMessages=${historicalListMaxMessages} truncated=${windowTruncated}`
     );
     const { backfillInvoicesFromGmailScanItems } = await import("./invoiceBackfill.js");
-    const invoiceBackfill = await backfillInvoicesFromGmailScanItems(organizationId, 200);
+    let invoiceBackfill = {
+      candidates: 0,
+      created: 0,
+      duplicates: 0,
+      skipped: 0,
+      errors: [] as Array<{ gmailMessageId: string; reason: string }>,
+    };
+    try {
+      invoiceBackfill = await backfillInvoicesFromGmailScanItems(organizationId, 200);
+    } catch (backfillErr) {
+      errorsCount++;
+      console.error(`[gmail-sync] invoice backfill failed; completing scan without failing job`, backfillErr);
+      logStep(
+        `[gmail-sync] error stage=invoice_backfill reason="${backfillErr instanceof Error ? backfillErr.message : String(backfillErr)}"`
+      );
+    }
     if (invoiceBackfill.created || invoiceBackfill.errors.length) {
       logStep(`[gmail-sync] invoice backfill candidates=${invoiceBackfill.candidates} created=${invoiceBackfill.created} duplicates=${invoiceBackfill.duplicates} skipped=${invoiceBackfill.skipped} errors=${invoiceBackfill.errors.length}`);
     }
@@ -3687,6 +3786,83 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     const message = err instanceof Error ? err.message : "Unknown error";
     if (syncTrace) emitCoreWorkflowFailure(syncTrace, "sync_run", err);
     if (log) {
+      const hasProgress =
+        emailsProcessed > 0 ||
+        emailsAnalyzedInProcessing > 0 ||
+        emailsSavedToGmailScanItem > 0 ||
+        invoicesCreated > 0 ||
+        paymentsCreated > 0;
+      // Mid-scan unexpected errors must not fail a productive historical job —
+      // per-email isolation should prevent this; if something still escapes, finish with errors.
+      if (hasProgress) {
+        errorsCount = Math.max(errorsCount, 1);
+        console.error(
+          `[gmail-sync] non-fatal mid-scan error after progress org=${organizationId} emailsProcessed=${emailsProcessed} analyzed=${emailsAnalyzedInProcessing}; completing with errors`,
+          err
+        );
+        logStep(
+          `[gmail-sync] MID_SCAN_ERROR_ISOLATED org=${organizationId} reason="${message}" emailsProcessed=${emailsProcessed} errors=${errorsCount}`
+        );
+        const recoveryCounters = {
+          emailsProcessed,
+          emailsSaved: emailsSavedToGmailScanItem,
+          invoicesFound: invoicesCreated + needsReviewCount,
+          paymentsCreated,
+          tasksCreated,
+          driveUploaded: driveUploadsSucceeded,
+          sheetsUpdated,
+          errorsCount,
+          totalMatched: plannedTotalMatched ?? undefined,
+          windowTruncated: true,
+        };
+        if (stuckTimeoutStop) {
+          await finalizeOnStuckTimeout(recoveryCounters);
+        } else if (deadlineTruncated) {
+          await finalizeGmailScanPaused(log.id, recoveryCounters, {
+            phase: scanProgressPhase,
+            reason: message,
+          });
+        } else {
+          await finalizeGmailScanCompleted(log.id, recoveryCounters, {
+            phase: scanProgressPhase,
+            reason: `completed_with_errors: ${message}`,
+          });
+        }
+        return {
+          emailsProcessed,
+          totalEmailsChecked: emailsProcessed,
+          relevantEmailsFound,
+          emailsFound: emailsProcessed,
+          paymentsCreated,
+          tasksCreated,
+          clientsCreated,
+          invoicesCreated,
+          uniqueSenders,
+          potentialClients,
+          invoiceEmails,
+          invoiceAmountsExtracted,
+          needsReviewCount,
+          errorsCount,
+          emailsSavedToGmailScanItem,
+          emailsParsed,
+          parserRejectedCount,
+          dbEmailMessageUpserts,
+          dbGmailScanItemUpserts,
+          driveUploadsAttempted,
+          driveUploadsSucceeded,
+          driveUploadsSkipped,
+          driveUploadsFailed,
+          sheetsUpdated,
+          windowTruncated: true,
+          totalMatched: plannedTotalMatched ?? 0,
+          duplicatesSkipped,
+          ignoredCount,
+          ignoredReasons,
+          driveUploadFailed,
+          scanSteps,
+          message: `completed_with_errors: ${message}`,
+        };
+      }
       await finalizeGmailScanFailed(log.id, message, {
         errorsCount: Math.max(errorsCount, 1),
         emailsProcessed,
