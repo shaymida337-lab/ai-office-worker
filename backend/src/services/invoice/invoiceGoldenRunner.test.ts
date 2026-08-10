@@ -7,15 +7,20 @@ import {
   loadInvoiceGoldenManifest,
 } from "./invoiceGoldenRunner.js";
 
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+
 test("invoice golden manifest loads exactly 20 fixtures", () => {
   const manifest = loadInvoiceGoldenManifest();
   assert.equal(manifest.version, "invoice-golden-v1");
   assert.equal(manifest.fixtures.length, 20);
   const ids = new Set(manifest.fixtures.map((f) => f.id));
   assert.equal(ids.size, 20);
+  const rootDir = resolve(process.cwd(), "test-fixtures/invoices/golden");
   for (const fixture of manifest.fixtures) {
     assert.ok(fixture.id, "fixture id required");
     assert.ok(fixture.file, "fixture file required");
+    assert.ok(existsSync(resolve(rootDir, fixture.file)), `fixture file missing on disk: ${fixture.file}`);
     assert.ok(fixture.expected, "fixture expected required");
     assert.ok(
       ["invoices", "completion", "excluded"].includes(fixture.expected.destination),
