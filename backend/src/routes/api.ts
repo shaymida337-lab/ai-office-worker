@@ -5375,7 +5375,7 @@ async function fetchEnrichedInvoiceListCandidates(
     supplierPayments,
     paymentDriveFallbackByInvoiceKey,
     organizationId,
-  }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }).sort((a, b) => new Date(b.date ?? b.createdAt).getTime() - new Date(a.date ?? a.createdAt).getTime());
 }
 
 export function summarizeCandidatesByMonth<T extends { date: Date; amount: number; currency: string }>(
