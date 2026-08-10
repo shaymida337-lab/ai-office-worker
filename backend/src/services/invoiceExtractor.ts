@@ -1,8 +1,13 @@
-﻿import Anthropic from "@anthropic-ai/sdk";
+import Anthropic from "@anthropic-ai/sdk";
 import { config, hasClaude } from "../lib/config.js";
 import { meterAnthropicResponse } from "../lib/anthropicMetering.js";
 import { parseLabeledAmount } from "./amount/parseAmount.js";
 import { clampBusinessDateString } from "./dates/businessDate.js";
+import {
+  composeTrustedSystemInstruction,
+  generateSafeDelimiter,
+  wrapUntrustedContent,
+} from "./security/promptContainment.js";
 
 export type InvoiceStatus = "paid" | "pending" | "overdue" | "needs_review";
 
@@ -25,6 +30,11 @@ type AttachmentSummary = { filename?: string | null; mimeType?: string | null };
 
 const anthropic = hasClaude() ? new Anthropic({ apiKey: config.anthropic.apiKey }) : null;
 
+const EXTRACTOR_SYSTEM_PROMPT = `Extract invoice details from email and document content. Return JSON only, no markdown.
+Return schema:
+{"clientName":null,"clientEmail":null,"supplierName":null,"invoiceNumber":null,"amount":null,"currency":"ILS","date":"YYYY-MM-DD","dueDate":null,"status":"pending","description":null}
+supplierName is the supplier/vendor/issuer business that issued the invoice, NOT the client/customer. If the supplier cannot be determined, return null. If a field is missing, use null. Amount must be numeric when present; if the total amount cannot be determined, return null for amount — never guess and never return 0 unless the document explicitly shows a zero total. Status: paid, pending, overdue.`;
+
 export async function extractInvoiceData(
   emailBody: string,
   subject: string,
@@ -35,20 +45,21 @@ export async function extractInvoiceData(
   const fallback = fallbackInvoiceData(emailBody, subject, attachments, clientFallback);
   if (!anthropic) return fallback;
 
-  const prompt = `Extract invoice details from this email. Return JSON only, no markdown.
-Subject: ${subject}
-Body: ${emailBody.slice(0, 8000)}
-Attachments: ${attachments.map((item) => item.filename).filter(Boolean).join(", ") || "none"}
-
-Return exactly:
-{"clientName":null,"clientEmail":null,"supplierName":null,"invoiceNumber":null,"amount":null,"currency":"ILS","date":"YYYY-MM-DD","dueDate":null,"status":"pending","description":null}
-supplierName is the supplier/vendor/issuer business that issued the invoice, NOT the client/customer. If the supplier cannot be determined, return null. If a field is missing, use null. Amount must be numeric when present; if the total amount cannot be determined, return null for amount — never guess and never return 0 unless the document explicitly shows a zero total. Status: paid, pending, overdue.`;
+  const trustedSystemPrompt = composeTrustedSystemInstruction(EXTRACTOR_SYSTEM_PROMPT);
+  const attachmentNames = attachments.map((item) => item.filename).filter(Boolean).join(", ") || "none";
+  const delimiter = generateSafeDelimiter([subject, emailBody, attachmentNames]);
+  const userContent = [
+    wrapUntrustedContent("subject", subject, delimiter).wrappedText,
+    wrapUntrustedContent("body", emailBody.slice(0, 8000), delimiter).wrappedText,
+    wrapUntrustedContent("attachments", attachmentNames, delimiter).wrappedText,
+  ].join("\n\n");
 
   try {
     const message = await anthropic.messages.create({
       model: config.anthropic.model,
       max_tokens: 900,
-      messages: [{ role: "user", content: prompt }],
+      system: trustedSystemPrompt,
+      messages: [{ role: "user", content: userContent }],
     });
     meterAnthropicResponse(organizationId, "invoice_extraction", message);
     const text = message.content[0]?.type === "text" ? message.content[0].text : "{}";

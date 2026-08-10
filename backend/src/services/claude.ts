@@ -14,6 +14,11 @@ import {
   extractDeterministicInvoiceFieldsFromEmailBody,
   mergePdfTextDeterministicIntoEmailAnalysis,
 } from "./invoice/pdfTextInvoiceExtraction.js";
+import {
+  composeTrustedSystemInstruction,
+  generateSafeDelimiter,
+  wrapUntrustedContent,
+} from "./security/promptContainment.js";
 
 export type EmailAnalysis = {
   supplier: string;
@@ -312,15 +317,19 @@ export async function analyzeEmailContent(input: {
     return mergePdfTextDeterministicIntoEmailAnalysis(fallbackAnalysis(input), pdfDeterministic);
   }
 
-  const userContent = `שולח: ${input.sender ?? "לא ידוע"}
-נושא: ${input.subject}
-גוף: ${input.body.slice(0, 6000)}
-קבצים: ${input.filenames.join(", ") || "אין"}`;
+  const trustedSystemPrompt = composeTrustedSystemInstruction(SYSTEM_PROMPT);
+  const delimiter = generateSafeDelimiter([input.sender, input.subject, input.body, input.filenames.join(",")]);
+  const userContent = [
+    wrapUntrustedContent("sender", input.sender ?? "לא ידוע", delimiter).wrappedText,
+    wrapUntrustedContent("subject", input.subject, delimiter).wrappedText,
+    wrapUntrustedContent("body", input.body.slice(0, 6000), delimiter).wrappedText,
+    wrapUntrustedContent("filenames", input.filenames.join(", ") || "אין", delimiter).wrappedText,
+  ].join("\n\n");
 
   const message = await anthropic.messages.create({
     model: config.anthropic.model,
     max_tokens: 1024,
-    system: SYSTEM_PROMPT,
+    system: trustedSystemPrompt,
     messages: [{ role: "user", content: userContent }],
   });
   meterAnthropicResponse(input.organizationId, "invoice_extraction", message);
@@ -497,11 +506,17 @@ ${ocrHintForPrompt(prepared.ocrText, prepared.ocrConfidence)}`;
           },
         };
 
+  const trustedSystemPrompt = composeTrustedSystemInstruction(SYSTEM_PROMPT);
+  const delimiter = generateSafeDelimiter([input.filename, prompt, prepared.preprocessingNotes]);
+  const wrappedFilename = wrapUntrustedContent("filename", input.filename ?? "לא ידוע", delimiter).wrappedText;
+  const wrappedPrompt = wrapUntrustedContent("ocr_prompt", `${prompt}\npreprocessing=${prepared.preprocessingNotes}`, delimiter).wrappedText;
+
   emitCoreWorkflowAudit(trace, "started", "claude_request");
   const message = await anthropic.messages.create(
     {
       model: config.anthropic.model,
       max_tokens: 700,
+      system: trustedSystemPrompt,
       messages: [
         {
           role: "user",
@@ -509,7 +524,7 @@ ${ocrHintForPrompt(prepared.ocrText, prepared.ocrConfidence)}`;
             fileBlock,
             {
               type: "text",
-              text: `${prompt}\nשם קובץ: ${input.filename ?? "לא ידוע"}\npreprocessing=${prepared.preprocessingNotes}`,
+              text: `${wrappedFilename}\n\n${wrappedPrompt}`,
             },
           ] as any,
         },

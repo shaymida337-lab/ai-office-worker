@@ -6,6 +6,11 @@ import { QUALIFIED_LEAD_TAG, shouldCreateLeadFromMessageScan } from "./crm/leadQ
 import { createCrmLead, handleLeadReply } from "./crm.js";
 import { normalizeWhatsAppNumber } from "./whatsapp.js";
 import { recordGmailCommunication } from "./communication/recordCommunicationTrace.js";
+import {
+  composeTrustedSystemInstruction,
+  generateSafeDelimiter,
+  wrapUntrustedContent,
+} from "./security/promptContainment.js";
 
 const anthropic = hasClaude() ? new Anthropic({ apiKey: config.anthropic.apiKey }) : null;
 
@@ -173,25 +178,31 @@ async function analyzeMessage(input: MessageScanInput & { existingClient: boolea
   const fallback = fallbackAnalysis(input);
   if (!anthropic) return fallback;
 
+  const trustedSystemPrompt = composeTrustedSystemInstruction(SYSTEM_PROMPT);
+  const delimiter = generateSafeDelimiter([
+    input.from,
+    input.senderName,
+    input.senderEmail,
+    input.senderPhone,
+    input.subject,
+    input.bodyText,
+  ]);
+  const userContent = [
+    `ערוץ: ${input.channel}`,
+    `לקוח קיים: ${input.existingClient ? "כן" : "לא"}`,
+    wrapUntrustedContent("sender", input.from ?? input.senderName ?? "", delimiter).wrappedText,
+    wrapUntrustedContent("sender_email", input.senderEmail ?? "", delimiter).wrappedText,
+    wrapUntrustedContent("sender_phone", input.senderPhone ?? "", delimiter).wrappedText,
+    wrapUntrustedContent("subject", input.subject ?? "", delimiter).wrappedText,
+    wrapUntrustedContent("body", input.bodyText.slice(0, 4000), delimiter).wrappedText,
+  ].join("\n\n");
+
   try {
     const message = await anthropic.messages.create({
       model: config.anthropic.model,
       max_tokens: 700,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: [
-            `ערוץ: ${input.channel}`,
-            `לקוח קיים: ${input.existingClient ? "כן" : "לא"}`,
-            `שולח: ${input.from ?? input.senderName ?? ""}`,
-            `מייל: ${input.senderEmail ?? ""}`,
-            `טלפון: ${input.senderPhone ?? ""}`,
-            `נושא: ${input.subject ?? ""}`,
-            `תוכן: ${input.bodyText.slice(0, 4000)}`,
-          ].join("\n"),
-        },
-      ],
+      system: trustedSystemPrompt,
+      messages: [{ role: "user", content: userContent }],
     });
     meterAnthropicResponse(
       input.organizationId,
