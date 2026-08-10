@@ -228,8 +228,6 @@ export type ScanProgressResult = {
   progressPercent?: number;
   estimatedRemainingSeconds?: number | null;
   summary?: GmailScanSummary;
-  windowTruncated?: boolean;
-  totalMatched?: number | null;
 };
 
 export type RecentInvoice = {
