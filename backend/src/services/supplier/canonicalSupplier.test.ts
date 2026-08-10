@@ -200,7 +200,7 @@ test("Delivery 8: SIR separates Supplier from Buyer (Bill To)", () => {
   });
 
   assert.equal(result.status, "resolved");
-  assert.equal(result.supplierName, "Vendor ABC Ltd");
+  assert.equal(result.supplierName, "Vendor ABC");
   assert.notEqual(result.supplierName, "Shay Business Ltd");
 });
 
@@ -221,4 +221,59 @@ test("Delivery 8: SIR rejects user's own business as supplier", () => {
   assert.equal(result.status, "missing");
   assert.equal(result.supplierName, null);
   assert.ok(result.rejected.some((r) => r.reason === "own_business_match" || r.reason === "own_business_vat_match"));
+});
+
+test("Delivery 8B Test A: Document supplier missing, sender is personal John Smith -> missing", () => {
+  const result = computeCanonicalSupplier({
+    organizationId: "org-test-a",
+    channel: "test",
+    candidates: [
+      { name: "John Smith", kind: "sender_display", source: "sender", confidence: 0.5 },
+    ],
+  });
+
+  assert.equal(result.status, "missing");
+  assert.equal(result.supplierName, null);
+});
+
+test("Delivery 8B Test B: Document supplier missing, sender domain noreply@google.com without registry -> missing", () => {
+  const result = computeCanonicalSupplier({
+    organizationId: "org-test-b",
+    channel: "test",
+    candidates: [
+      { name: "google.com", kind: "email_domain", source: "domain", confidence: 0.3 },
+    ],
+  });
+
+  assert.equal(result.status, "missing");
+  assert.equal(result.supplierName, null);
+});
+
+test("Delivery 8B Test C: Document supplier Vendor ABC Ltd outranks weak sender display Billing", () => {
+  const result = computeCanonicalSupplier({
+    organizationId: "org-test-c",
+    channel: "test",
+    candidates: [
+      { name: "Vendor ABC Ltd", kind: "document_labeled", source: "claude_file", confidence: 0.92 },
+      { name: "Billing", kind: "sender_display", source: "sender", confidence: 0.4 },
+    ],
+  });
+
+  assert.equal(result.status, "resolved");
+  assert.equal(result.supplierName, "Vendor ABC");
+});
+
+test("Delivery 8B Test D: Registry tax-ID match outranks conflicting sender name", () => {
+  const result = computeCanonicalSupplier({
+    organizationId: "org-test-d",
+    channel: "test",
+    candidates: [
+      { name: "Billing Department", kind: "sender_display", source: "sender", confidence: 0.5 },
+      { name: "חברת החשמל", kind: "vat_registry", source: "registry", vatNumber: "520000391", confidence: 0.95 },
+    ],
+  });
+
+  assert.equal(result.status, "resolved");
+  assert.equal(result.supplierName, "חברת החשמל");
+  assert.equal(result.canonicalSupplier, "iec");
 });

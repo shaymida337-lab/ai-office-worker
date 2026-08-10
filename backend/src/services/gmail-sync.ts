@@ -879,6 +879,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     select: { user: { select: { email: true } }, businessName: true, businessId: true },
   });
   const ownerEmails = new Set([organization?.user.email].filter((email): email is string => Boolean(email)).map((email) => email.toLowerCase()));
+  const ownerNames = new Set([organization?.businessName].filter((name): name is string => Boolean(name)));
+  const ownerVats = new Set([organization?.businessId].filter((id): id is string => Boolean(id)));
   const knownSupplierNames = await loadKnownSupplierNames(organizationId);
 
   const activeLogAfterReset = await findActiveGmailScanLog(organizationId, options.scanLogId);
@@ -2164,6 +2166,8 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                   senderEmail: email.senderEmail,
                   senderDomain: email.domain,
                   ownerEmails,
+                  ownerNames,
+                  ownerVats,
                   knownSupplierNames,
                   ocrKeywordMatch: ocrSupplierClassifier,
                   logStep,
@@ -6410,6 +6414,8 @@ export function resolveSupplierMetadata(input: {
   senderEmail: string;
   senderDomain: string;
   ownerEmails: Set<string>;
+  ownerNames?: Set<string>;
+  ownerVats?: Set<string>;
   knownSupplierNames: Map<string, string>;
   ocrKeywordMatch?: ReturnType<typeof classifyOcrSupplierText> | null;
   logStep?: (message: string) => void;
@@ -6467,6 +6473,8 @@ export function resolveSupplierMetadata(input: {
     candidates: supplierCandidates,
     registry: knownRegistryEntries,
     ownerEmails: input.ownerEmails,
+    ownerNames: input.ownerNames,
+    ownerVats: input.ownerVats,
   });
 
   input.logStep?.(
