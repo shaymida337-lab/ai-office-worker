@@ -121,7 +121,9 @@ export function isStrongEvidenceKind(kind: SupplierCandidateKind) {
 
 export function rejectSupplierCandidateReason(
   candidate: SupplierCandidate,
-  ownerEmails: Set<string> = new Set()
+  ownerEmails: Set<string> = new Set(),
+  ownerNames: Set<string> = new Set(),
+  ownerVats: Set<string> = new Set()
 ): string | null {
   const name = candidate.name.trim();
   if (!name) return "empty_name";
@@ -138,6 +140,8 @@ export function rejectSupplierCandidateReason(
   const normalizedToken = name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   if (GENERIC_SENDER_TOKENS.has(normalizedToken)) return "generic_sender_token";
   if ([...ownerEmails].some((email) => name.toLowerCase().includes(email.toLowerCase()))) return "owner_email_match";
+  if ([...ownerNames].some((own) => own.trim() && (normalizedToken === own.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim() || name.toLowerCase().includes(own.toLowerCase())))) return "own_business_match";
+  if (candidate.vatNumber && [...ownerVats].some((vat) => vat.trim() && candidate.vatNumber?.replace(/\D/g, "") === vat.replace(/\D/g, ""))) return "own_business_vat_match";
   if (name.length < 2 || name.length > 60) return "invalid_length";
   if (/[\r\n]/.test(name)) return "multiline_name";
   if (!/[\p{L}]/u.test(name) && candidate.kind !== "vat_registry") return "no_letters";
@@ -147,9 +151,11 @@ export function rejectSupplierCandidateReason(
 
 export function isValidSupplierCandidate(
   candidate: SupplierCandidate,
-  ownerEmails: Set<string> = new Set()
+  ownerEmails: Set<string> = new Set(),
+  ownerNames: Set<string> = new Set(),
+  ownerVats: Set<string> = new Set()
 ) {
-  return rejectSupplierCandidateReason(candidate, ownerEmails) === null;
+  return rejectSupplierCandidateReason(candidate, ownerEmails, ownerNames, ownerVats) === null;
 }
 
 export function isValidSupplierNameShared(value?: string | null): boolean {

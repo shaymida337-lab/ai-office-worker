@@ -290,7 +290,7 @@ export function computeCanonicalSupplier(input: CanonicalSupplierInput): Supplie
   const accepted: RankedSupplierCandidate[] = [];
 
   for (const candidate of dedupeCandidates(input.candidates)) {
-    const rejectReason = rejectSupplierCandidateReason(candidate, ownerEmails);
+    const rejectReason = rejectSupplierCandidateReason(candidate, ownerEmails, input.ownerNames, input.ownerVats);
     if (rejectReason) {
       rejected.push({ ...candidate, reason: rejectReason });
       continue;

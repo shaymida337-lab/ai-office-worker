@@ -126,6 +126,8 @@ export type SupplierDecision = {
   canonicalSupplier: string | null;
   normalizedName: string;
   vatNumber: string | null;
+  buyerName?: string | null;
+  buyerVatNumber?: string | null;
   domains: string[];
   emails: string[];
   phones: string[];
@@ -150,4 +152,6 @@ export type CanonicalSupplierInput = {
   candidates: SupplierCandidate[];
   registry?: SupplierDNA[];
   ownerEmails?: Set<string>;
+  ownerNames?: Set<string>;
+  ownerVats?: Set<string>;
 };

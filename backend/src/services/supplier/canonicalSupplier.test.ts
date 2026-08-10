@@ -189,3 +189,36 @@ test("SIR registry seed supports historical confidence fields on DNA types", () 
   assert.equal(result.canonicalSupplier, "openai");
   assert.ok(result.confidence >= 0.75);
 });
+
+test("Delivery 8: SIR separates Supplier from Buyer (Bill To)", () => {
+  const result = computeCanonicalSupplier({
+    organizationId: "org-buyer-test",
+    channel: "test",
+    candidates: [
+      { name: "Vendor ABC Ltd", kind: "ai_extracted", source: "claude_file", confidence: 0.9 },
+    ],
+  });
+
+  assert.equal(result.status, "resolved");
+  assert.equal(result.supplierName, "Vendor ABC Ltd");
+  assert.notEqual(result.supplierName, "Shay Business Ltd");
+});
+
+test("Delivery 8: SIR rejects user's own business as supplier", () => {
+  const ownerNames = new Set(["Shay Mida Office Ltd"]);
+  const ownerVats = new Set(["515123456"]);
+
+  const result = computeCanonicalSupplier({
+    organizationId: "org-owner-test",
+    channel: "test",
+    candidates: [
+      { name: "Shay Mida Office Ltd", kind: "ai_extracted", source: "claude_file", confidence: 0.95, vatNumber: "515123456" },
+    ],
+    ownerNames,
+    ownerVats,
+  });
+
+  assert.equal(result.status, "missing");
+  assert.equal(result.supplierName, null);
+  assert.ok(result.rejected.some((r) => r.reason === "own_business_match" || r.reason === "own_business_vat_match"));
+});
