@@ -1782,3 +1782,27 @@ model MarketingLeadEvent {
 
   @@index([leadId, createdAt])
 }
+
+model SourceDocument {
+  id                String   @id @default(cuid())
+  organizationId    String   @map("organization_id")
+  channel           String
+  sourceKey         String   @map("source_key")
+  contentSha256     String?  @map("content_sha256")
+  gmailMessageId    String?  @map("gmail_message_id")
+  gmailThreadId     String?  @map("gmail_thread_id")
+  gmailAttachmentId String?  @map("gmail_attachment_id")
+  whatsappLogId     String?  @map("whatsapp_log_id")
+  driveFileId       String?  @map("drive_file_id")
+  uploadId          String?  @map("upload_id")
+  originalFilename  String?  @map("original_filename")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@unique([organizationId, sourceKey])
+  @@index([organizationId])
+  @@index([contentSha256])
+  @@index([gmailMessageId])
+  @@index([driveFileId])
+  @@map("source_documents")
+}

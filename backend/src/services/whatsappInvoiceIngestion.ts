@@ -338,6 +338,21 @@ export async function ingestWhatsAppInvoiceMedia(input: WhatsAppMediaInput, deps
           fromNumber: input.fromNumber,
         })
       : null;
+
+    try {
+      const { upsertSourceDocumentShadow } = await import("./document/sourceIdentity.js");
+      await upsertSourceDocumentShadow({
+        organizationId: input.organizationId,
+        channel: "whatsapp_media",
+        whatsappLogId: input.whatsappLogId,
+        originalFilename: filename,
+        contentBytes: buffer,
+        contentSha256: fileHash,
+      });
+    } catch {
+      /* shadow error caught internally */
+    }
+
     const duplicate = isSupplierExpense ? await findCrossSourceDuplicate({
       organizationId: input.organizationId,
       supplier,

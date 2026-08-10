@@ -320,6 +320,19 @@ export async function ingestCameraDocument(
     },
   });
 
+  try {
+    const { upsertSourceDocumentShadow } = await import("../document/sourceIdentity.js");
+    await upsertSourceDocumentShadow({
+      organizationId: input.organizationId,
+      channel: "camera_upload",
+      uploadId: draft.id,
+      originalFilename: input.filename,
+      contentSha256: fileSha256,
+    });
+  } catch {
+    /* shadow errors are caught internally */
+  }
+
   // חילוץ — כשל לעולם לא מוחק את ה-draft, רק מתועד עליו
   let preview: CameraExtractionPreview | null = null;
   let extractionError: string | null = null;

@@ -3044,9 +3044,21 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                   }
                 }
 
-                logStep(`[gmail-sync] DB GmailScanItem upsert attempt message=${email.gmailId} duplicateKey=${documentDecision.documentFingerprint} legacyKey=${duplicateKey} type=${classification.documentType}`);
-                const scanItemDuplicateKey = documentDecision.documentFingerprint;
-                const upsertDuplicateKey = existingScanItem?.duplicateKey ?? scanItemDuplicateKey;
+                try {
+                  const { upsertSourceDocumentShadow } = await import("./document/sourceIdentity.js");
+                  await upsertSourceDocumentShadow({
+                    organizationId,
+                    channel: attachmentFilename ? "gmail_attachment" : "gmail_body",
+                    gmailMessageId: email.gmailId,
+                    gmailThreadId: email.threadId,
+                    gmailAttachmentId: targetPart?.body?.attachmentId ?? null,
+                    originalFilename: attachmentFilename ?? null,
+                    contentBytes: targetPartBuffer ?? null,
+                  });
+                } catch {
+                  /* shadow error caught internally */
+                }
+
                 const savedScanItem = await prisma.gmailScanItem.upsert({
                   where: { organizationId_duplicateKey: { organizationId, duplicateKey: upsertDuplicateKey } },
                   create: {
