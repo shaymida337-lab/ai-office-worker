@@ -79,7 +79,10 @@ export function isValidCalendarDateString(dateStr: string | null | undefined): b
  * Handles ISO format (YYYY-MM-DD), slash formats (DD/MM/YYYY, YYYY/MM/DD), and Hebrew date labels.
  * Returns null if string is unparseable or ambiguous without context.
  */
-export function normalizeRawDateToIso(rawText: string | null | undefined): {
+export function normalizeRawDateToIso(
+  rawText: string | null | undefined,
+  options?: { locale?: string }
+): {
   normalized: string | null;
   isAmbiguous: boolean;
 } {
@@ -112,7 +115,7 @@ export function normalizeRawDateToIso(rawText: string | null | undefined): {
     const second = parseInt(slashMatch[2], 10);
     const year = parseInt(slashMatch[3], 10);
 
-    // If first > 12, it must be DD/MM/YYYY
+    // If first > 12, it must be DD/MM/YYYY (e.g. 15/06/2026)
     if (first > 12 && first <= 31 && second >= 1 && second <= 12) {
       const formatted = `${year}-${String(second).padStart(2, "0")}-${String(first).padStart(2, "0")}`;
       return isValidCalendarDateString(formatted)
@@ -120,7 +123,7 @@ export function normalizeRawDateToIso(rawText: string | null | undefined): {
         : { normalized: null, isAmbiguous: false };
     }
 
-    // If second > 12, it must be MM/DD/YYYY
+    // If second > 12, it must be MM/DD/YYYY (e.g. 06/15/2026)
     if (second > 12 && second <= 31 && first >= 1 && first <= 12) {
       const formatted = `${year}-${String(first).padStart(2, "0")}-${String(second).padStart(2, "0")}`;
       return isValidCalendarDateString(formatted)
@@ -130,11 +133,21 @@ export function normalizeRawDateToIso(rawText: string | null | undefined): {
 
     // Both first and second <= 12 (e.g. 03/04/2026) -> Ambiguous numeric date!
     if (first <= 12 && second <= 12 && first !== second) {
-      // Default Israeli locale interpretation is DD/MM/YYYY if no other context, but flag as ambiguous
-      const defaultDdMm = `${year}-${String(second).padStart(2, "0")}-${String(first).padStart(2, "0")}`;
-      return isValidCalendarDateString(defaultDdMm)
-        ? { normalized: defaultDdMm, isAmbiguous: true }
-        : { normalized: null, isAmbiguous: false };
+      const loc = (options?.locale ?? "").toLowerCase();
+      if (loc === "he-il" || loc === "he" || loc === "il") {
+        const formatted = `${year}-${String(second).padStart(2, "0")}-${String(first).padStart(2, "0")}`;
+        return isValidCalendarDateString(formatted)
+          ? { normalized: formatted, isAmbiguous: false }
+          : { normalized: null, isAmbiguous: true };
+      }
+      if (loc === "en-us" || loc === "us") {
+        const formatted = `${year}-${String(first).padStart(2, "0")}-${String(second).padStart(2, "0")}`;
+        return isValidCalendarDateString(formatted)
+          ? { normalized: formatted, isAmbiguous: false }
+          : { normalized: null, isAmbiguous: true };
+      }
+      // Without trusted locale evidence, date is ambiguous and MUST NOT assume a country default
+      return { normalized: null, isAmbiguous: true };
     }
 
     if (first === second && first >= 1 && first <= 12) {
@@ -155,7 +168,8 @@ export function normalizeRawDateToIso(rawText: string | null | undefined): {
  */
 export function resolveCanonicalDocumentDate(
   candidates: DateCandidate[],
-  semanticType: CanonicalDateSemanticType = "issue_date"
+  semanticType: CanonicalDateSemanticType = "issue_date",
+  options?: { locale?: string }
 ): CanonicalDateDecision {
   const filtered = candidates.filter((c) => c.semanticType === semanticType);
 
@@ -173,20 +187,22 @@ export function resolveCanonicalDocumentDate(
   }
 
   // Inspect candidates with normalized value or attempt normalization
-  const validCandidates: { candidate: DateCandidate; normalized: string; isAmbiguous: boolean }[] = [];
+  const validCandidates: { candidate: DateCandidate; normalized: string | null; isAmbiguous: boolean }[] = [];
 
   for (const candidate of filtered) {
     let norm = candidate.normalizedValue;
     let ambiguous = false;
 
     if (!norm) {
-      const parsed = normalizeRawDateToIso(candidate.rawText);
+      const parsed = normalizeRawDateToIso(candidate.rawText, options);
       norm = parsed.normalized;
       ambiguous = parsed.isAmbiguous;
     }
 
-    if (norm && isValidCalendarDateString(norm)) {
-      validCandidates.push({ candidate, normalized: norm, isAmbiguous: ambiguous });
+    if (ambiguous) {
+      validCandidates.push({ candidate, normalized: null, isAmbiguous: true });
+    } else if (norm && isValidCalendarDateString(norm)) {
+      validCandidates.push({ candidate, normalized: norm, isAmbiguous: false });
     }
   }
 
@@ -203,34 +219,32 @@ export function resolveCanonicalDocumentDate(
     };
   }
 
+  // Check if any top candidate is ambiguous
+  const selected = validCandidates[0];
+  if (selected.isAmbiguous || !selected.normalized) {
+    return {
+      value: null,
+      semanticType,
+      status: "ambiguous",
+      confidence: 0,
+      source: selected.candidate.source,
+      candidates,
+      reasonCode: "AMBIGUOUS_NUMERIC_DATE",
+      resolverVersion: CANONICAL_DATE_RESOLVER_VERSION,
+    };
+  }
+
   // Check if top valid candidates conflict with distinct normalized dates
-  const distinctDates = new Set(validCandidates.map((v) => v.normalized));
+  const distinctDates = new Set(validCandidates.map((v) => v.normalized).filter(Boolean));
   if (distinctDates.size > 1) {
-    // Conflict exists between document date candidates
-    const topCandidate = validCandidates[0];
     return {
       value: null,
       semanticType,
       status: "ambiguous",
       confidence: 0.5,
-      source: topCandidate.candidate.source,
-      candidates,
-      reasonCode: "CONFLICTING_DOCUMENT_DATES",
-      resolverVersion: CANONICAL_DATE_RESOLVER_VERSION,
-    };
-  }
-
-  const selected = validCandidates[0];
-
-  if (selected.isAmbiguous) {
-    return {
-      value: selected.normalized,
-      semanticType,
-      status: "resolved",
-      confidence: selected.candidate.confidence ?? 0.7,
       source: selected.candidate.source,
       candidates,
-      reasonCode: "NUMERIC_DATE_RESOLVED_LOCALE_DEFAULT",
+      reasonCode: "CONFLICTING_DOCUMENT_DATES",
       resolverVersion: CANONICAL_DATE_RESOLVER_VERSION,
     };
   }

@@ -22,6 +22,10 @@ import {
   type FseSummaryForAmountGate,
 } from "./amount/amountGate.js";
 import { upsertFinanceGateSnapshot } from "./trust/financeGateSnapshots.js";
+import {
+  resolveCanonicalDocumentDate,
+  type DateCandidate,
+} from "./date/canonicalDocumentDate.js";
 import type { MoneyDecision } from "./amount/canonicalAmount.js";
 import {
   attachSupplierGateToParsedFields,
@@ -499,7 +503,27 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
   try {
   const documentType = normalizeFinancialDocumentType(input.documentType);
   const totalAmount = input.totalAmount ?? null;
-  const documentDate = parseDate(input.documentDate);
+
+  const rawDateString =
+    typeof input.documentDate === "string"
+      ? input.documentDate
+      : input.documentDate instanceof Date && !Number.isNaN(input.documentDate.getTime())
+      ? input.documentDate.toISOString().slice(0, 10)
+      : null;
+
+  const dateCandidates: DateCandidate[] = rawDateString
+    ? [
+        {
+          semanticType: "issue_date",
+          rawText: rawDateString,
+          normalizedValue: null,
+          source: "llm",
+        },
+      ]
+    : [];
+
+  const canonicalDateDecision = resolveCanonicalDocumentDate(dateCandidates, "issue_date");
+  const documentDate = canonicalDateDecision.value ? new Date(canonicalDateDecision.value) : null;
   const dueDate = parseDate(input.dueDate);
   const confidenceScore = clampConfidence(input.confidenceScore);
   const trustReason = trustGatesFailClosedReason(
@@ -601,6 +625,11 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
     return { action: "filtered" as const, documentType, sourceFingerprint, documentFingerprint };
   }
 
+  const mergedParsedFieldsJson = {
+    ...(asRecord(input.parsedFieldsJson) ?? {}),
+    canonicalDateDecision,
+  };
+
   if (blockingReason) {
     const review = await upsertReview({
       ...input,
@@ -608,7 +637,7 @@ export async function recordFinancialDocumentDecision(input: FinancialDocumentIn
       documentDate,
       dueDate,
       confidenceScore,
-      parsedFieldsJson: input.parsedFieldsJson,
+      parsedFieldsJson: mergedParsedFieldsJson,
       sourceFingerprint,
       documentFingerprint,
       reviewStatus: "needs_review",
