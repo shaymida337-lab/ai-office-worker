@@ -262,5 +262,30 @@ test("ReportsClient wires truncated banner and drops legacy incomplete-300", asy
   const src = await fs.readFile(file, "utf8");
   assert.match(src, /COMPLETION_TRUNCATED_MESSAGE/);
   assert.match(src, /completion-truncated-banner/);
+  assert.match(src, /completion-list-load-error/);
+  assert.match(src, /resolveCompletionListViewState/);
   assert.doesNotMatch(src, /\/api\/invoices\?completeness=incomplete/);
+});
+
+test("loadCompletionList propagates backend failure (no silent empty list)", async () => {
+  _resetCompletionListStoreForTests();
+  _setCompletionListIdentityForTests(() => IDENTITY);
+  _setCompletionListFetchForTests(async () => {
+    throw new Error("Failed to load invoice completion list");
+  });
+  await assert.rejects(
+    () => loadCompletionList({ page: 1, pageSize: 25 }),
+    /Failed to load invoice completion list/,
+  );
+});
+
+test("loadCompletionList propagates authorization failure", async () => {
+  _resetCompletionListStoreForTests();
+  _setCompletionListIdentityForTests(() => IDENTITY);
+  _setCompletionListFetchForTests(async () => {
+    const err = new Error("צריך להתחבר כדי להמשיך");
+    (err as Error & { status?: number }).status = 401;
+    throw err;
+  });
+  await assert.rejects(() => loadCompletionList({ page: 1 }), /צריך להתחבר/);
 });

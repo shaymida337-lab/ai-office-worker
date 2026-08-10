@@ -51,6 +51,7 @@ import {
   isCompletionTruncated,
   shouldFetchCompletionPage,
 } from "@/lib/invoiceCompletion/completionLoadPlan";
+import { resolveCompletionListViewState } from "@/lib/invoiceCompletion/completionListViewState";
 
 const REMOVAL_ANIMATION_MS = 250;
 const DEFAULT_LIST_QUERY: CompletionListQuery = { page: 1, pageSize: 25, sort: "date_desc" };
@@ -387,6 +388,7 @@ export default function ReportsClient() {
   const [message, setMessage] = useState("");
   const [messageTone, setMessageTone] = useState<"info" | "success" | "error">("info");
   const [loading, setLoading] = useState(true);
+  const [listLoadError, setListLoadError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const [removingIds, setRemovingIds] = useState<Set<string>>(() => new Set());
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
@@ -420,6 +422,7 @@ export default function ReportsClient() {
     const mountT0 = performance.now();
     completionFpDebug("completion_mount", { t: Math.round(mountT0) });
     setLoading(true);
+    setListLoadError(null);
 
     try {
       await runCompletionLoadPhases({
@@ -457,6 +460,7 @@ export default function ReportsClient() {
           truncatedRef.current = truncated;
           setResultsTruncated(truncated);
           setInvoices(rows);
+          setListLoadError(null);
           completionFpDebug("first_shell_render", {
             row_count: rows.length,
             network_count: getCompletionListNetworkCount() + getCompletionBootstrapNetworkCount(),
@@ -522,7 +526,9 @@ export default function ReportsClient() {
       });
     } catch (err) {
       if (!cancelledRef.current) {
-        showMessage("error", err instanceof Error ? err.message : "טעינת השלמת חשבוניות נכשלה");
+        const text = err instanceof Error ? err.message : "טעינת השלמת חשבוניות נכשלה";
+        setListLoadError(text);
+        showMessage("error", text);
         setLoading(false);
       }
     }
@@ -753,6 +759,12 @@ export default function ReportsClient() {
     }).finally(() => setActingId(null));
   }
 
+  const listViewState = resolveCompletionListViewState({
+    loading,
+    listLoadError,
+    rowCount: invoices.length,
+  });
+
   return (
     <div className="container" dir="rtl">
       <Nav />
@@ -782,10 +794,15 @@ export default function ReportsClient() {
           {COMPLETION_TRUNCATED_MESSAGE}
         </p>
       ) : null}
-      {loading ? (
+      {listViewState === "loading" ? (
         <div className="card"><p>טוען השלמת חשבוניות...</p></div>
-      ) : invoices.length === 0 ? (
-        <div className="card">
+      ) : listViewState === "error" ? (
+        <div className="card" data-testid="completion-list-load-error">
+          <h2 className="text-red-700">לא ניתן לטעון את רשימת ההשלמה</h2>
+          <p className="mt-2 text-ink-secondary">{listLoadError}</p>
+        </div>
+      ) : listViewState === "empty" ? (
+        <div className="card" data-testid="completion-list-empty">
           <h2 className="text-emerald-700">אין מסמכים להשלמה כרגע</h2>
           <p className="mt-2">כל החשבוניות מלאות ומאושרות — הן מוצגות במסך חשבוניות.</p>
         </div>

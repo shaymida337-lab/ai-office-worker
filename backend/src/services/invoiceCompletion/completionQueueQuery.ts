@@ -15,6 +15,7 @@ import {
   clampCompletionListPageSize,
   filterCompletionCandidatesBySearch,
   filterCompletionCandidatesByStatus,
+  completionCandidateSortDateMs,
   sortCompletionCandidates,
   type CompletionListCandidateLike,
   type CompletionListSort,
@@ -66,7 +67,7 @@ export function compareCompletionCandidates(
   let primary = 0;
   switch (sort) {
     case "date_asc":
-      primary = a.date.getTime() - b.date.getTime();
+      primary = completionCandidateSortDateMs(a) - completionCandidateSortDateMs(b);
       if (primary !== 0) return primary;
       primary = a.createdAt.getTime() - b.createdAt.getTime();
       break;
@@ -78,7 +79,7 @@ export function compareCompletionCandidates(
       break;
     case "date_desc":
     default:
-      primary = b.date.getTime() - a.date.getTime();
+      primary = completionCandidateSortDateMs(b) - completionCandidateSortDateMs(a);
       if (primary !== 0) return primary;
       primary = b.createdAt.getTime() - a.createdAt.getTime();
       break;

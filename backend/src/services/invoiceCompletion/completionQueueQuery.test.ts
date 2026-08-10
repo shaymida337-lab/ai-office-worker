@@ -141,6 +141,29 @@ test("sort stable when two rows share the same date/createdAt — id tie-breaker
   );
 });
 
+test("date_desc sort tolerates null document dates (GSI without explicit invoice date)", () => {
+  const createdLater = new Date("2026-07-10T00:00:00.000Z");
+  const createdEarlier = new Date("2026-06-01T00:00:00.000Z");
+  const dated = incompleteCandidate({
+    id: "dated",
+    date: new Date("2026-08-01T00:00:00.000Z"),
+    createdAt: createdEarlier,
+  });
+  const undated = incompleteCandidate({
+    id: "undated",
+    date: null,
+    createdAt: createdLater,
+    missingDataReasons: ["חסר תאריך"],
+  });
+  assert.doesNotThrow(() => compareCompletionCandidates(dated, undated, "date_desc"));
+  const page = paginateFilteredCompletionCandidates([undated, dated], {
+    page: 1,
+    pageSize: 25,
+    sort: "date_desc",
+  });
+  assert.deepEqual(page.pageRows.map((row) => row.id), ["dated", "undated"]);
+});
+
 test("bounded batch loader: each wave ≤ CHUNK; total exact for 301", async () => {
   const all = Array.from({ length: 301 }, (_, i) =>
     incompleteCandidate({

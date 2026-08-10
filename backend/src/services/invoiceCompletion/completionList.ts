@@ -18,7 +18,7 @@ export type CompletionListCandidateLike = {
   invoiceNumber: string | null;
   amount: number | null;
   currency: string;
-  date: Date;
+  date: Date | null;
   status: string;
   reviewStatus: string;
   source: CompletionListSource;
@@ -109,6 +109,14 @@ function mapMissingFields(candidate: CompletionListCandidateLike): string[] {
   return [...keys];
 }
 
+/** Sort key for date_* modes: explicit document date when present, else createdAt. */
+export function completionCandidateSortDateMs(candidate: CompletionListCandidateLike): number {
+  if (candidate.date instanceof Date && !Number.isNaN(candidate.date.getTime())) {
+    return candidate.date.getTime();
+  }
+  return candidate.createdAt.getTime();
+}
+
 export function mapCandidateToCompletionRow(candidate: CompletionListCandidateLike): CompletionListRow {
   const supplierDisplayName =
     (typeof candidate.supplierName === "string" && candidate.supplierName.trim()) ||
@@ -155,7 +163,7 @@ export function sortCompletionCandidates<T extends CompletionListCandidateLike>(
     case "date_asc":
       return copy.sort(
         (a, b) =>
-          a.date.getTime() - b.date.getTime() ||
+          completionCandidateSortDateMs(a) - completionCandidateSortDateMs(b) ||
           a.createdAt.getTime() - b.createdAt.getTime() ||
           idCmp(a, b, true)
       );
@@ -171,7 +179,7 @@ export function sortCompletionCandidates<T extends CompletionListCandidateLike>(
     default:
       return copy.sort(
         (a, b) =>
-          b.date.getTime() - a.date.getTime() ||
+          completionCandidateSortDateMs(b) - completionCandidateSortDateMs(a) ||
           b.createdAt.getTime() - a.createdAt.getTime() ||
           idCmp(a, b, false)
       );

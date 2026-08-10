@@ -13,6 +13,8 @@ import {
   filterCompletionCandidatesBySearch,
   filterCompletionCandidatesByStatus,
   mapCandidateToCompletionRow,
+  completionCandidateSortDateMs,
+  sortCompletionCandidates,
   sliceCompletionPage,
   type CompletionListCandidateLike,
 } from "./completionList.js";
@@ -101,6 +103,15 @@ test("missing supplier maps to missingFields without fake zeros", () => {
   assert.equal(row.supplierDisplayName, null);
   assert.equal(row.amount, null);
   assert.deepEqual(row.missingFields.sort(), ["amount", "supplier"]);
+});
+
+test("sortCompletionCandidates uses createdAt when document date is null", () => {
+  const created = new Date("2026-07-05T00:00:00.000Z");
+  const undated = candidate({ id: "undated", date: null, createdAt: created });
+  const dated = candidate({ id: "dated", date: new Date("2026-08-01T00:00:00.000Z"), createdAt: created });
+  assert.equal(completionCandidateSortDateMs(undated), created.getTime());
+  const sorted = sortCompletionCandidates([undated, dated], "date_desc");
+  assert.deepEqual(sorted.map((row) => row.id), ["dated", "undated"]);
 });
 
 test("status and search filters", () => {
