@@ -178,7 +178,7 @@ export async function confirmCameraDocument(
     supplierName: input.supplier,
     supplierTaxId: null,
     invoiceNumber: input.invoiceNumber ?? draft.invoiceNumber,
-    documentDate: input.documentDate ?? draft.documentDate ?? new Date(),
+    documentDate: input.documentDate ?? draft.documentDate ?? null,
     dueDate: input.dueDate ?? null,
     totalAmount: input.amount,
     currency: input.currency ?? draft.currency ?? "ILS",
@@ -204,11 +204,9 @@ export async function confirmCameraDocument(
           supplierPaymentId: paymentId,
           supplierName: input.supplier,
           totalAmount: input.amount,
-          // תאריך ומטבע חייבים להיכתב — בלעדיהם הרשומה אינה "complete"
-          // ולא תופיע במסך חשבוניות (assessInvoiceCompleteness דורש אותם).
-          // normalizedDocumentDate נדרש לסינון לפי חודש במסך החשבוניות.
-          documentDate: input.documentDate ?? draft.documentDate ?? new Date(),
-          normalizedDocumentDate: input.documentDate ?? draft.documentDate ?? new Date(),
+          // תאריך ומטבע נכתבים אם קיימים בטיוטה
+          documentDate: input.documentDate ?? draft.documentDate ?? null,
+          normalizedDocumentDate: input.documentDate ?? draft.documentDate ?? null,
           currency: input.currency ?? draft.currency ?? "ILS",
           ...(input.invoiceNumber ? { invoiceNumber: input.invoiceNumber } : {}),
           uncertaintyReason: null,

@@ -4391,7 +4391,7 @@ export function mapGmailScanItemToInvoiceCandidate(item: {
   const parsedFieldsJson = linkedReview?.parsedFieldsJson ?? gsiParsedFieldsJson;
   const invoiceNumber = stringValue(raw?.invoiceNumber) ?? stringValue(analysis?.invoiceNumber);
   const explicitDate = dateValue(raw?.invoiceDate) ?? dateValue(analysis?.invoiceDate);
-  const date = explicitDate ?? item.occurredAt;
+  const date = explicitDate ?? null;
   const dueDate = dateValue(raw?.dueDate) ?? dateValue(analysis?.dueDate);
   const explicitCurrency = stringValue(analysis?.currency);
   const currency = explicitCurrency ?? "ILS";
@@ -9670,7 +9670,11 @@ apiRouter.post("/camera/invoices", requirePerm("document.upload"), async (req, r
       res.status(400).json({ error: "סכום החשבונית חייב להיות גדול מאפס וקטן ממיליון" });
       return;
     }
-    const invoiceDate = body.invoiceDate ? new Date(body.invoiceDate) : new Date();
+    if (!body.invoiceDate) {
+      res.status(400).json({ error: "תאריך חשבונית חובה ליצירה ידנית" });
+      return;
+    }
+    const invoiceDate = new Date(body.invoiceDate);
     const dueDate = body.dueDate ? new Date(body.dueDate) : null;
     if (Number.isNaN(invoiceDate.getTime()) || (dueDate && Number.isNaN(dueDate.getTime()))) {
       res.status(400).json({ error: "Invalid invoice date" });
