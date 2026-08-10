@@ -101,6 +101,38 @@ test("ARC limits confidence for foreign currency", () => {
   assert.equal(result.isStrongEnoughForAutoSave, false);
 });
 
+test("Delivery 7: Extended Canonical Money contract populates subtotal, tax, total, and validation", () => {
+  const result = decision([
+    { value: 1000, kind: "subtotal_before_vat", source: "claude_file", confidence: 0.9 },
+    { value: 180, kind: "vat_only", source: "claude_file", confidence: 0.9 },
+    { value: 1180, kind: "invoice_total", source: "claude_file", confidence: 0.95 },
+    { value: 680, kind: "amount_due", source: "claude_file", confidence: 0.85 },
+    { value: 500, kind: "partial_payment", source: "claude_file", confidence: 0.85 },
+  ]);
+
+  assert.equal(result.selectedAmount, 1180);
+  assert.equal(result.status, "resolved");
+  assert.equal(result.subtotal?.amount, 1000);
+  assert.equal(result.tax?.amount, 180);
+  assert.equal(result.total?.amount, 1180);
+  assert.equal(result.amountDue?.amount, 680);
+  assert.equal(result.amountPaid?.amount, 500);
+  assert.equal(result.validation?.subtotalPlusTaxMatchesTotal, true);
+  assert.equal(result.validation?.paidPlusDueMatchesTotal, true);
+});
+
+test("Delivery 7: Multiple numbers with clear distinct semantic kinds are NOT ambiguous", () => {
+  const result = decision([
+    { value: 1000, kind: "subtotal_before_vat", source: "claude_file" },
+    { value: 180, kind: "vat_only", source: "claude_file" },
+    { value: 1180, kind: "invoice_total", source: "claude_file" },
+  ]);
+
+  assert.equal(result.selectedAmount, 1180);
+  assert.equal(result.status, "resolved");
+  assert.notEqual(result.status, "ambiguous");
+});
+
 test("ARC flags decimal shift between AI and regex (MAX receipt scenario)", () => {
   const result = decision([
     { value: 110723, kind: "ai_total", source: "claude_email", confidence: 0.9 },

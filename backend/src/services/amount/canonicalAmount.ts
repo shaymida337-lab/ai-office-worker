@@ -89,6 +89,11 @@ export type CanonicalAmountInput = {
   candidates: AmountCandidate[];
 };
 
+export type MoneyValue = {
+  amount: number;
+  currency: string | null;
+};
+
 export type MoneyDecision = {
   selectedAmount: number | null;
   amountBeforeVat: number | null;
@@ -104,6 +109,20 @@ export type MoneyDecision = {
   ambiguityFlags: string[];
   version: typeof ARC_VERSION;
   isStrongEnoughForAutoSave: boolean;
+
+  // Extended Canonical Money Engine Fields (Delivery 7)
+  subtotal?: MoneyValue | null;
+  tax?: MoneyValue | null;
+  total?: MoneyValue | null;
+  amountDue?: MoneyValue | null;
+  amountPaid?: MoneyValue | null;
+  discount?: MoneyValue | null;
+  charges?: MoneyValue | null;
+  validation?: {
+    subtotalPlusTaxMatchesTotal?: boolean | null;
+    paidPlusDueMatchesTotal?: boolean | null;
+    lineItemsMatchSubtotal?: boolean | null;
+  };
 };
 
 const KIND_TIER: Record<AmountCandidateKind, number> = {
@@ -640,6 +659,25 @@ export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecisi
     input.documentType !== "quote" &&
     (currency === "ILS" || confidence >= 0.9);
 
+  const dueCandidate = ranked.find((c) => c.kind === "amount_due");
+  const paidCandidate = ranked.find((c) => c.kind === "partial_payment");
+
+  const subtotalVal = subtotal?.value != null ? { amount: subtotal.value, currency } : null;
+  const taxVal = vat?.value != null ? { amount: vat.value, currency } : null;
+  const totalVal = winner?.value != null ? { amount: roundMoney(winner.value), currency } : null;
+  const dueVal = dueCandidate?.value != null ? { amount: dueCandidate.value, currency } : null;
+  const paidVal = paidCandidate?.value != null ? { amount: paidCandidate.value, currency } : null;
+
+  const subtotalPlusTaxMatchesTotal =
+    subtotalVal != null && taxVal != null && totalVal != null
+      ? amountsClose(subtotalVal.amount + taxVal.amount, totalVal.amount)
+      : null;
+
+  const paidPlusDueMatchesTotal =
+    paidVal != null && dueVal != null && totalVal != null
+      ? amountsClose(paidVal.amount + dueVal.amount, totalVal.amount)
+      : null;
+
   return {
     selectedAmount: roundMoney(winner.value),
     amountBeforeVat: subtotal?.value ?? null,
@@ -655,6 +693,18 @@ export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecisi
     ambiguityFlags,
     version: ARC_VERSION,
     isStrongEnoughForAutoSave,
+    subtotal: subtotalVal,
+    tax: taxVal,
+    total: totalVal,
+    amountDue: dueVal,
+    amountPaid: paidVal,
+    discount: null,
+    charges: null,
+    validation: {
+      subtotalPlusTaxMatchesTotal,
+      paidPlusDueMatchesTotal,
+      lineItemsMatchSubtotal: null,
+    },
   };
 }
 
