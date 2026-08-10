@@ -211,19 +211,22 @@ export function assessInvoiceCompleteness(input: InvoiceCompletenessInput): Invo
   const missingDataReasons: string[] = [];
   const approvalReasons: string[] = [];
 
-  // Primary routing: Vendor OR Amount missing → השלמת חשבוניות.
+  // Primary routing: Vendor, Amount, Date, or Recognized Document Type missing → השלמת חשבוניות.
   if (!hasValidSupplier(input.supplierName)) missingDataReasons.push(INVOICE_COMPLETION_REASON.SUPPLIER_UNIDENTIFIED);
   if (!hasValidAmount(input.amount, input.amountResolved)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_AMOUNT);
+  if (!hasValidDocumentDate(input.date, input.documentDateExplicit)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_DATE);
 
-  // Soft gaps: do not block חשבוניות when vendor+amount exist (email date covers missing OCR date).
-  if (!hasValidDocumentDate(input.date, input.documentDateExplicit)) {
-    approvalReasons.push(INVOICE_COMPLETION_REASON.MISSING_DATE);
+  const normDocType = (input.documentType ?? "").trim().toLowerCase();
+  if (normDocType === "credit_note") {
+    // Credit notes explicitly out of scope for Delivery 3C — kept as approval flag
+    approvalReasons.push(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE);
+  } else if (!hasRecognizedDocumentType(input.documentType)) {
+    missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE);
   }
+
+  // Soft gaps: currency missing flags review without blocking when core fields exist.
   if (!hasValidCurrency(input.currency, input.currencyExplicit)) {
     approvalReasons.push(INVOICE_COMPLETION_REASON.MISSING_CURRENCY);
-  }
-  if (!hasRecognizedDocumentType(input.documentType)) {
-    approvalReasons.push(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE);
   }
 
   // Real ambiguity / unresolved duplicate are data-routing blockers — not mere review flags.
