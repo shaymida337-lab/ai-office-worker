@@ -4768,7 +4768,7 @@ export function buildInvoiceListWhereInput(
   const financialDocumentReviewWhere: Prisma.FinancialDocumentReviewWhereInput = {
     organizationId: ctx.organizationId,
     ...(normalizedDocumentDate && { normalizedDocumentDate }),
-    documentType: { in: ["tax_invoice", "receipt", "tax_invoice_receipt"] },
+    documentType: { in: ["tax_invoice", "receipt", "tax_invoice_receipt", "invoice", "payment_request"] },
     ...(ctx.reviewCandidateStatuses?.length
       ? { reviewStatus: { in: ctx.reviewCandidateStatuses } }
       : {}),
