@@ -43,8 +43,10 @@ export function buildSourceKey(input: SourceIdentityInput): string {
   switch (input.channel) {
     case "gmail_attachment": {
       const msgId = (input.gmailMessageId ?? "unknown_msg").trim();
-      const attId = (input.gmailAttachmentId ?? input.originalFilename ?? "att").trim();
-      return `src:gmail_attachment:${org}:${msgId}:${attId}`;
+      const attId = input.gmailAttachmentId?.trim();
+      const hash = input.contentSha256?.trim().toLowerCase() ?? computeContentSha256(input.contentBytes);
+      const discriminator = attId || (hash ? `sha256_${hash.slice(0, 16)}` : null) || input.originalFilename || "att";
+      return `src:gmail_attachment:${org}:${msgId}:${discriminator}`;
     }
     case "gmail_body": {
       const msgId = (input.gmailMessageId ?? "unknown_msg").trim();

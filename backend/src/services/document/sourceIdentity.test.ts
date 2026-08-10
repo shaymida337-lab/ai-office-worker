@@ -26,6 +26,53 @@ test("sourceIdentity: buildSourceKey creates deterministic Gmail attachment key"
   assert.equal(key1, key2);
 });
 
+test("sourceIdentity: Gmail attachments with SAME filename and NO attachmentId but DIFFERENT bytes produce DIFFERENT sourceKeys", () => {
+  const att1 = buildSourceKey({
+    organizationId: "org-123",
+    channel: "gmail_attachment",
+    gmailMessageId: "msg-001",
+    gmailAttachmentId: null,
+    originalFilename: "invoice.pdf",
+    contentBytes: Buffer.from("ATTACHMENT_1_CONTENT_BYTES", "utf8"),
+  });
+
+  const att2 = buildSourceKey({
+    organizationId: "org-123",
+    channel: "gmail_attachment",
+    gmailMessageId: "msg-001",
+    gmailAttachmentId: null,
+    originalFilename: "invoice.pdf",
+    contentBytes: Buffer.from("ATTACHMENT_2_CONTENT_BYTES", "utf8"),
+  });
+
+  assert.notEqual(att1, att2);
+  assert.ok(att1.startsWith("src:gmail_attachment:org-123:msg-001:sha256_"));
+  assert.ok(att2.startsWith("src:gmail_attachment:org-123:msg-001:sha256_"));
+});
+
+test("sourceIdentity: same Gmail attachment retry produces SAME sourceKey", () => {
+  const bytes = Buffer.from("SAME_RETRY_BYTES", "utf8");
+  const run1 = buildSourceKey({
+    organizationId: "org-123",
+    channel: "gmail_attachment",
+    gmailMessageId: "msg-001",
+    gmailAttachmentId: null,
+    originalFilename: "invoice.pdf",
+    contentBytes: bytes,
+  });
+
+  const run2 = buildSourceKey({
+    organizationId: "org-123",
+    channel: "gmail_attachment",
+    gmailMessageId: "msg-001",
+    gmailAttachmentId: null,
+    originalFilename: "invoice.pdf",
+    contentBytes: bytes,
+  });
+
+  assert.equal(run1, run2);
+});
+
 test("sourceIdentity: supplier, amount, date, or OCR changes DO NOT alter sourceKey", () => {
   const inputBase = {
     organizationId: "org-123",
@@ -174,4 +221,27 @@ test("sourceIdentity REGRESSION PROOF: business deduplication (SCFC & legacy) is
   assert.equal(scfcSemantic.version, "scfc-v1");
   assert.equal(scfcSemantic.tier, "invoice-amount");
   assert.equal(scfcSemantic.legacyFingerprint, legacy);
+});
+
+test("sourceIdentity DB Contract: buildSourceKey and input validation for upsert", () => {
+  const inputA = {
+    organizationId: "org-1",
+    channel: "gmail_attachment" as const,
+    gmailMessageId: "msg-100",
+    gmailAttachmentId: "att-100",
+  };
+  const inputB = {
+    organizationId: "org-2",
+    channel: "gmail_attachment" as const,
+    gmailMessageId: "msg-100",
+    gmailAttachmentId: "att-100",
+  };
+
+  const keyA = buildSourceKey(inputA);
+  const keyB = buildSourceKey(inputB);
+
+  // Multitenancy: identical message IDs under different orgs produce distinct keys
+  assert.notEqual(keyA, keyB);
+  assert.equal(keyA, "src:gmail_attachment:org-1:msg-100:att-100");
+  assert.equal(keyB, "src:gmail_attachment:org-2:msg-100:att-100");
 });
