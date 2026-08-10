@@ -121,16 +121,58 @@ test("Delivery 7: Extended Canonical Money contract populates subtotal, tax, tot
   assert.equal(result.validation?.paidPlusDueMatchesTotal, true);
 });
 
-test("Delivery 7: Multiple numbers with clear distinct semantic kinds are NOT ambiguous", () => {
-  const result = decision([
-    { value: 1000, kind: "subtotal_before_vat", source: "claude_file" },
-    { value: 180, kind: "vat_only", source: "claude_file" },
-    { value: 1180, kind: "invoice_total", source: "claude_file" },
-  ]);
+test("Delivery 7B: Attachment-only amount evidence resolves end-to-end via ARC", () => {
+  const decision = resolveGmailOrgMoneyDecision({
+    organizationId: "org-att-test",
+    documentType: "tax_invoice",
+    analysis: {
+      amount: null,
+      totalAmount: null,
+      amountBeforeVat: null,
+      vatAmount: null,
+      currency: "ILS",
+      confidence: 0.5,
+    },
+    extractedFieldsAmount: null,
+    regexDetectedAmount: null,
+    attachmentAnalysis: {
+      totalAmount: 1180,
+      amount: 1180,
+      amountBeforeVat: 1000,
+      vatAmount: 180,
+      currency: "ILS",
+      confidence: 0.92,
+    },
+  });
+
+  assert.equal(decision.selectedAmount, 1180);
+  assert.equal(decision.status, "resolved");
+  assert.ok(decision.reasonCode === "COMPUTED_FROM_VAT" || decision.reasonCode === "AI_TOTAL");
+  assert.equal(decision.candidates[0].source, "claude_file");
+});
+
+test("Delivery 7B: Currency missing or un-evidenced yields currency null", () => {
+  const result = computeCanonicalAmount({
+    organizationId: "org-currency-null",
+    documentType: "tax_invoice",
+    currency: null,
+    source: "test",
+    candidates: [{ value: 1180, kind: "invoice_total", source: "claude_file" }],
+  });
 
   assert.equal(result.selectedAmount, 1180);
-  assert.equal(result.status, "resolved");
-  assert.notEqual(result.status, "ambiguous");
+  assert.equal(result.currency, null);
+});
+
+test("Delivery 7B: True conflicting totals flag ambiguous status and SOURCE_CONFLICT", () => {
+  const result = decision([
+    { value: 1180, kind: "ai_total", source: "claude_email", confidence: 0.9 },
+    { value: 1480, kind: "regex_labeled", source: "regex_gmail", confidence: 0.9 },
+  ]);
+
+  assert.equal(result.status, "ambiguous");
+  assert.equal(result.selectedAmount, null);
+  assert.equal(result.reasonCode, "SOURCE_CONFLICT");
 });
 
 test("ARC flags decimal shift between AI and regex (MAX receipt scenario)", () => {

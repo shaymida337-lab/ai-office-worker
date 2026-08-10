@@ -98,7 +98,7 @@ export type MoneyDecision = {
   selectedAmount: number | null;
   amountBeforeVat: number | null;
   vatAmount: number | null;
-  currency: string;
+  currency: string | null;
   confidence: number;
   evidenceScore: number;
   reason: string;
@@ -301,7 +301,7 @@ function sourceFamily(source: AmountCandidateSource) {
 }
 
 function buildAmbiguousDecision(input: {
-  currency: string;
+  currency: string | null;
   ranked: RankedAmountCandidate[];
   rejected: RejectedAmountCandidate[];
   subtotal: RankedAmountCandidate | null;
@@ -311,6 +311,14 @@ function buildAmbiguousDecision(input: {
   ambiguityFlags: string[];
   evidenceScore?: number;
 }): MoneyDecision {
+  const dueCandidate = input.ranked.find((c) => c.kind === "amount_due");
+  const paidCandidate = input.ranked.find((c) => c.kind === "partial_payment");
+
+  const subtotalVal = input.subtotal?.value != null ? { amount: input.subtotal.value, currency: input.currency } : null;
+  const taxVal = input.vat?.value != null ? { amount: input.vat.value, currency: input.currency } : null;
+  const dueVal = dueCandidate?.value != null ? { amount: dueCandidate.value, currency: input.currency } : null;
+  const paidVal = paidCandidate?.value != null ? { amount: paidCandidate.value, currency: input.currency } : null;
+
   return {
     selectedAmount: null,
     amountBeforeVat: input.subtotal?.value ?? null,
@@ -326,6 +334,18 @@ function buildAmbiguousDecision(input: {
     ambiguityFlags: input.ambiguityFlags,
     version: ARC_VERSION,
     isStrongEnoughForAutoSave: false,
+    subtotal: subtotalVal,
+    tax: taxVal,
+    total: null,
+    amountDue: dueVal,
+    amountPaid: paidVal,
+    discount: null,
+    charges: null,
+    validation: {
+      subtotalPlusTaxMatchesTotal: null,
+      paidPlusDueMatchesTotal: null,
+      lineItemsMatchSubtotal: null,
+    },
   };
 }
 
@@ -392,7 +412,8 @@ function detectCrossSourceConflict(payable: RankedAmountCandidate[]) {
 }
 
 export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecision {
-  const currency = (input.currency ?? "ILS").trim() || "ILS";
+  const rawCurrency = (input.currency ?? "").trim();
+  const currency = rawCurrency || null;
   const rejected: RejectedAmountCandidate[] = [];
   const accepted: AmountCandidate[] = [];
   const allowNegative = input.documentType === "credit_note";
@@ -430,7 +451,12 @@ export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecisi
   }
 
   const payableRanked = ranked.filter(
-    (candidate) => candidate.kind !== "subtotal_before_vat" && candidate.kind !== "vat_only"
+    (candidate) =>
+      candidate.kind !== "subtotal_before_vat" &&
+      candidate.kind !== "vat_only" &&
+      candidate.kind !== "amount_due" &&
+      candidate.kind !== "partial_payment" &&
+      candidate.kind !== "line_item"
   );
 
   if (!payableRanked.length) {
@@ -641,7 +667,7 @@ export function computeCanonicalAmount(input: CanonicalAmountInput): MoneyDecisi
     }
   }
 
-  if (currency !== "ILS") {
+  if (currency && currency !== "ILS") {
     ambiguityFlags.push("foreign_currency");
     confidence = Math.min(confidence, 0.79);
   }
