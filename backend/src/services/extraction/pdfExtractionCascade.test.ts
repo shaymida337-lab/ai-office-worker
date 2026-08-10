@@ -143,3 +143,44 @@ test("Delivery 9: multi-page marked text keeps supplier on page 1 and total on p
   assert.match(result.textForAnalysis, /TOTAL: 1180/);
   assert.equal(result.audit.pageCount, 2);
 });
+
+test("Delivery 9B: unusable native PDF + failed vision preserves OCR_FAILED and incomplete routing", async () => {
+  const { assessInvoiceCompleteness } = await import("../amount/invoiceCompleteness.js");
+
+  const result = await extractPdfWithCascade({
+    buffer: Buffer.from("pdf-bytes"),
+    extractNativePdfTextFn: async () => ({
+      text: "���� ���� ���� ���� ���� ����",
+      parserError: null,
+      encrypted: false,
+    }),
+    analyzeInvoiceFileFn: async () => {
+      throw new Error("vision unavailable");
+    },
+  });
+
+  assert.equal(result.audit.fallbackTriggered, true);
+  assert.equal(result.audit.outcome, "OCR_FAILED");
+  assert.equal(result.visionScan, null);
+
+  const summary = summarizeExtractionAudit(result.audit);
+  assert.equal(summary.outcome, "OCR_FAILED");
+
+  const completeness = assessInvoiceCompleteness({
+    supplierName: null,
+    amount: null,
+    amountResolved: false,
+    currency: null,
+    currencyExplicit: false,
+    date: null,
+    documentDateExplicit: false,
+    documentType: null,
+    reviewStatus: "needs_review",
+    parsedFieldsJson: { extraction: summary },
+  });
+
+  assert.equal(completeness.isComplete, false);
+  assert.ok(completeness.missingDataReasons.length > 0);
+  assert.equal(completeness.missingDataReasons.includes("חסר סכום"), true);
+  assert.equal(completeness.missingDataReasons.includes("ספק לא זוהה"), true);
+});

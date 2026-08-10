@@ -427,7 +427,7 @@ test("invoices-screen membership: camera draft stays in completion until confirm
   assert.equal(filterInvoicesByCompleteness([afterConfirm], "complete").length, 1, "after confirm: appears on invoices screen");
   assert.equal(filterInvoicesByCompleteness([afterConfirm], "incomplete").length, 0, "after confirm: gone from completion queue");
 
-  // Vendor+amount alone is enough for invoices routing; date/currency are approval-only soft gaps.
+  // Missing date/currency on an approved camera row stays in completion (FSE requires explicit date).
   const withoutDate = toCandidate({
     supplierName: "בזק",
     totalAmount: 250,
@@ -436,7 +436,8 @@ test("invoices-screen membership: camera draft stays in completion until confirm
     reviewStatus: "approved",
     ingestSource: "camera",
   });
-  assert.equal(filterInvoicesByCompleteness([withoutDate], "complete").length, 1, "vendor+amount complete routes to invoices even without explicit date/currency");
+  assert.equal(filterInvoicesByCompleteness([withoutDate], "complete").length, 0, "approved camera without date stays in completion");
+  assert.equal(filterInvoicesByCompleteness([withoutDate], "incomplete").length, 1, "missing date routes to completion queue");
 });
 
 test("confirm approves reviewId even when draft source is whatsapp (same file-tier upsert)", async () => {

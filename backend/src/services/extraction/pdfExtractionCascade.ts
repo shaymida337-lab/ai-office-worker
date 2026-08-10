@@ -84,7 +84,7 @@ function resolveOutcome(input: {
     if (/malformed|invalid pdf|corrupt/i.test(input.parserError)) return "MALFORMED_DOCUMENT";
     return "NO_TEXT";
   }
-  if (input.visionFailed && input.pageQuality !== "usable" && !input.nativeText.trim()) {
+  if (input.visionFailed && input.pageQuality !== "usable") {
     return "OCR_FAILED";
   }
   if (input.pageQuality === "usable" || input.visionScan) {
