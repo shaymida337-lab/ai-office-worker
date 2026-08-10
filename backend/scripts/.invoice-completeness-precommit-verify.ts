@@ -144,9 +144,11 @@ const completeOnly = filterInvoicesByCompleteness(all, "complete");
 const incompleteOnly = filterInvoicesByCompleteness(all, "incomplete");
 const union = filterInvoicesByCompleteness(all, "all");
 
-assert.equal(completeOnly.length, 1);
-assert.equal(completeOnly[0]?.id, completeApproved.id);
+assert.equal(completeOnly.length, 2);
+assert.ok(completeOnly.some((row) => row.id === completeApproved.id));
+assert.ok(completeOnly.some((row) => row.id === needsApproval.id));
 assert.ok(!incompleteOnly.some((row) => row.id === completeApproved.id));
+assert.ok(!incompleteOnly.some((row) => row.id === needsApproval.id));
 
 assert.ok(incompleteOnly.some((row) => row.id === missingAmount.id));
 assert.ok(!completeOnly.some((row) => row.id === missingAmount.id));
@@ -155,9 +157,11 @@ assert.ok(incompleteOnly.find((row) => row.id === missingAmount.id)?.completionR
 assert.ok(incompleteOnly.some((row) => row.id === missingSupplier.id));
 assert.ok(incompleteOnly.find((row) => row.id === missingSupplier.id)?.completionReasons.includes(INVOICE_COMPLETION_REASON.SUPPLIER_UNIDENTIFIED));
 
-const needsApprovalRow = incompleteOnly.find((row) => row.id === needsApproval.id);
+const needsApprovalRow = completeOnly.find((row) => row.id === needsApproval.id);
 assert.ok(needsApprovalRow);
 assert.ok(needsApprovalRow?.completionReasons.includes(INVOICE_COMPLETION_REASON.USER_APPROVAL_REQUIRED));
+assert.equal(needsApprovalRow?.isComplete, true);
+assert.equal(needsApprovalRow?.approvalRequired, true);
 
 const completeIds = new Set(completeOnly.map((row) => row.id));
 const incompleteIds = new Set(incompleteOnly.map((row) => row.id));
@@ -213,10 +217,10 @@ console.log(JSON.stringify({
   unionCount: union.length,
   overlap: 0,
   checks: [
-    "complete-only-approved-full",
+    "complete-includes-approved-and-vendor-amount-pending-approval",
     "missing-amount-incomplete-only",
     "missing-supplier-incomplete-only",
-    "needs-approval-reason",
+    "needs-approval-on-complete-with-approval-reason",
     "no-overlap",
     "union-equals-all",
     "months-respect-group",
