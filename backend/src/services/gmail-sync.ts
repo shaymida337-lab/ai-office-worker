@@ -17,6 +17,11 @@ import { appendSupplierPaymentToSheet, hasSupplierPaymentSheetRowData } from "./
 import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 import { GENERIC_SENDER_TOKENS } from "./supplier/supplierValidation.js";
 import { normalizeBusinessDate } from "./dates/businessDate.js";
+import {
+  hasVendorAndAmountForAutoApprove,
+  resolveGmailMessageReceivedAt,
+  resolveInvoiceDocumentDate,
+} from "./dates/invoiceDocumentDate.js";
 import { notifyNewInvoice } from "./whatsapp.js";
 import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from "./financialDocuments.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
@@ -33,7 +38,10 @@ import {
   listCrossOrgContaminatedGmailMessageIds,
   CROSS_ORG_QUARANTINE_MARKER,
 } from "./p0/crossOrgGmailQuarantine.js";
-import { attachPreviewToFinancialDocumentReview } from "./documents/documentReviewPreview.js";
+import {
+  attachPreviewToFinancialDocumentReview,
+  saveLocalIngestedDocument,
+} from "./documents/documentReviewPreview.js";
 import {
   classifyBusinessDocument,
   pipelineActionForClassification,
@@ -1055,6 +1063,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
       driveUploaded: driveUploadsSucceeded,
       sheetsUpdated,
       errorsCount,
+      ...(plannedTotalMatched != null ? { totalMatched: plannedTotalMatched } : {}),
     });
     lastProgressWriteAt = now;
     if (isProcessingPhase) {
@@ -1297,7 +1306,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
         decodeMimeHeader(headers.find((h) => h.name?.toLowerCase() === "from")?.value ?? "");
       const dateHeader =
         headers.find((h) => h.name?.toLowerCase() === "date")?.value ?? "";
-      const receivedAt = dateHeader ? new Date(dateHeader) : new Date();
+      const emailSentAt = resolveGmailMessageReceivedAt({
+        dateHeader,
+        internalDate: full.data.internalDate,
+      });
+      // EmailMessage.receivedAt is required — prefer real sent time; never invent for document dates.
+      const receivedAt = emailSentAt ?? new Date(0);
+      if (!emailSentAt) {
+        logStep(`[gmail-sync] email sent date missing message=${msgRef.id}; document date will not fall back to now()`);
+      }
       const bodyText = extractBody(full.data.payload as PayloadPart | undefined);
       const sender = parseSender(from);
       const source = /whatsapp|וואטסאפ/i.test(subject + from)
@@ -1425,8 +1442,23 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     await maybeSaveScanProgress(true);
     const fastListing = await listFastCandidateMessages(gmail, fastScanMaxMessages, {
       scanAllMail: options.scanAllMail,
-      onPage: async () => {
+      onPage: async ({ uniqueSoFar, page }) => {
         await touchGmailScanHeartbeat(log.id, "fast_listing_page", organizationId);
+        plannedTotalMatched = Math.max(plannedTotalMatched ?? 0, uniqueSoFar);
+        // Persist uniqueSoFar on totalMatched (+ emailsProcessed while fetch count is still 0)
+        // so status polling can show live discovery without freezing.
+        await saveScanProgress(log.id, {
+          emailsProcessed: Math.max(emailsProcessed, uniqueSoFar),
+          emailsSaved: emailsSavedToGmailScanItem,
+          invoicesFound: invoicesCreated + needsReviewCount,
+          paymentsCreated,
+          tasksCreated,
+          driveUploaded: driveUploadsSucceeded,
+          sheetsUpdated,
+          errorsCount,
+          totalMatched: uniqueSoFar,
+        });
+        console.log(`[gmail-sync] listing_page progress uniqueSoFar=${uniqueSoFar} page=${page}`);
       },
       onListingError: async ({ query, page, error }) => {
         errorsCount++;
@@ -1603,9 +1635,23 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     );
     const listing = await listCandidateMessages(gmail, daysBack, historicalListMaxMessages, since, {
       scanAllMail: options.scanAllMail,
-      onPage: async () => {
+      onPage: async ({ uniqueSoFar, page }) => {
         await touchGmailScanHeartbeat(log.id, "listing_page", organizationId);
-        await maybeSaveScanProgress(true);
+        plannedTotalMatched = Math.max(plannedTotalMatched ?? 0, uniqueSoFar);
+        // Persist uniqueSoFar so status polling shows live discovery instead of a frozen processed count.
+        await saveScanProgress(log.id, {
+          emailsProcessed: Math.max(emailsProcessed, uniqueSoFar),
+          emailsSaved: emailsSavedToGmailScanItem,
+          invoicesFound: invoicesCreated + needsReviewCount,
+          paymentsCreated,
+          tasksCreated,
+          driveUploaded: driveUploadsSucceeded,
+          sheetsUpdated,
+          errorsCount,
+          totalMatched: uniqueSoFar,
+        });
+        console.log(`[gmail-sync] listing_page progress uniqueSoFar=${uniqueSoFar} page=${page}`);
+        logStep(`[gmail-sync] listing_page uniqueSoFar=${uniqueSoFar}`);
       },
       onListingError: async ({ query, page, error }) => {
         errorsCount++;
@@ -1634,6 +1680,17 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     });
     const messages = [...fastMessages, ...historicalMessages];
     plannedTotalMatched = messages.length;
+    await saveScanProgress(log.id, {
+      emailsProcessed: Math.max(emailsProcessed, messages.length),
+      emailsSaved: emailsSavedToGmailScanItem,
+      invoicesFound: invoicesCreated + needsReviewCount,
+      paymentsCreated,
+      tasksCreated,
+      driveUploaded: driveUploadsSucceeded,
+      sheetsUpdated,
+      errorsCount,
+      totalMatched: plannedTotalMatched,
+    });
     logStep(`[gmail-sync] Gmail listing diagnostics ${JSON.stringify(listing.diagnostics)}`);
     logStep(`[gmail-sync] total emails fetched from Gmail=${messages.length} fast=${fastMessages.length} historical=${historicalMessages.length}`);
     logStep(
@@ -2195,10 +2252,14 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                   needsReviewCount++;
                   logStep(`[gmail-sync] classifier needs_review message=${email.gmailId} reason="${businessClassification.reason}" direction=${businessClassification.direction} party=${businessClassification.party}`);
                   const earlyInvoiceNumber = normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, primaryAttachmentFilename(email.parts) ?? ""].join("\n"));
-                  // F5 (stage 1): תאריך שלא חולץ נשאר null ברשומת הביקורת (לא ממציאים receivedAt).
-                  // earlyDocumentDate נשאר תאריך ייחוס תפעולי (receivedAt) לעזרי הזהות/FSE/trust/outcome.
-                  const earlyExtractedDocumentDate = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, null);
-                  const earlyDocumentDate = email.receivedAt;
+                  // Prefer OCR/AI invoice date; fall back to email sent time. Never invent today.
+                  const earlyDocumentDateResolution = resolveInvoiceDocumentDate({
+                    analysisInvoiceDate: analysis.invoiceDate,
+                    extractedInvoiceDate: extractedFields.invoiceDate,
+                    emailReceivedAt: email.receivedAt.getTime() > 0 ? email.receivedAt : null,
+                  });
+                  const earlyExtractedDocumentDate = earlyDocumentDateResolution.date;
+                  const earlyDocumentDate = earlyExtractedDocumentDate ?? (email.receivedAt.getTime() > 0 ? email.receivedAt : new Date());
                   const earlyFseDecision = await runGmailOrgFinancialSanity({
                     organizationId,
                     supplierDecision: supplierMetadata.decision,
@@ -2381,13 +2442,19 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                 if (classification.documentType === "supplier_message") supplierMessagesFound++;
                 if (invoiceMatch.amount !== null) invoiceAmountsExtracted++;
                 const invoiceNumberForDecision = normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ?? extractedFields.invoiceNumber ?? extractInvoiceNumber([email.subject, bodyForAnalysis, attachmentFilename ?? ""].join("\n"));
-                // F5 (stage 1 — Gmail review path): תאריך שלא חולץ נשאר null ולא מומצא ל-receivedAt.
-                // extractedDocumentDate (nullable) נשמר ברשומות הביקורת (record/review/GmailScanItem)
-                // כדי ש"חסר תאריך" ידלק ותופיע השלמה ידנית. documentDateForDecision שומר על fallback
-                // ל-receivedAt ומשמש לעזרי זהות/טביעת-אצבע/FSE/trust ולמסלול התשלום — התנהגות קיימת (שלב 2).
-                const extractedDocumentDate = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, null);
-                const documentDateForDecision = extractedDocumentDate ?? email.receivedAt;
+                // Prefer OCR/AI invoice date; fall back to email sent time. Never invent today.
+                const documentDateResolution = resolveInvoiceDocumentDate({
+                  analysisInvoiceDate: analysis.invoiceDate,
+                  extractedInvoiceDate: extractedFields.invoiceDate,
+                  emailReceivedAt: email.receivedAt.getTime() > 0 ? email.receivedAt : null,
+                });
+                const extractedDocumentDate = documentDateResolution.date;
+                const documentDateForDecision =
+                  extractedDocumentDate ?? (email.receivedAt.getTime() > 0 ? email.receivedAt : new Date());
                 const dueDateForDecision = normalizeBusinessDate(analysis.dueDate ?? extractedFields.dueDate, null);
+                if (documentDateResolution.source === "email_sent") {
+                  logStep(`[gmail-sync] invoice date fallback to email sent message=${email.gmailId} date=${extractedDocumentDate?.toISOString() ?? "null"}`);
+                }
                 const fseDecision = await runGmailOrgFinancialSanity({
                   organizationId,
                   supplierDecision: supplierMetadata.decision,
@@ -2461,6 +2528,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                 });
                 parsedFieldsJson.outcome = summarizeDocumentOutcome(documentOutcome);
                 classification = applyOutcomeReviewGate({ classification, documentOutcome });
+                classification = promoteCompleteVendorAmountToAutoSave({
+                  classification,
+                  supplierName,
+                  amount: finalTotalAmount,
+                  documentDate: extractedDocumentDate,
+                  ownerEmails,
+                });
                 if (gmailOutcomeStopsPersistence(documentOutcome.status)) {
                   await finalizeDriveLinkTerminalOutcome(email, driveLinkEvidence, {
                     uncertaintyReason: gmailOutcomeUncertaintyReason(documentOutcome),
@@ -2557,11 +2631,18 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                   sameEmailAttachmentMatch: Boolean(sameEmailPayment),
                 });
                 let duplicateGate = attachDuplicateGateToParsedFields(parsedFieldsJson, duplicateGateInput);
+                const vendorAmountReadyForPersist = hasVendorAndAmountForAutoApprove({
+                  supplierName,
+                  amount: finalTotalAmount,
+                  isUsableSupplier: (name) => isUsableSupplierName(name, ownerEmails),
+                }) && extractedDocumentDate != null;
                 const documentValidationReason = financialDocumentBlockingReason({
                   supplierName,
                   invoiceNumber: invoiceNumberForDecision,
+                  // Vendor+amount+email-date complete invoices should not be blocked solely for missing invoice #.
+                  requireInvoiceNumber: !vendorAmountReadyForPersist,
                   totalAmount: finalTotalAmount,
-                  // F5: תאריך חסר (null) → "invoice date missing or invalid" → ניתוב ל-needs_review.
+                  // Email sent-date is an accepted document date fallback (never invent today).
                   documentDate: extractedDocumentDate,
                   moneyDecision,
                   fseSummary: parsedFieldsJson.fse,
@@ -2628,7 +2709,14 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                   });
                 }
                 const canPersistFinancialRecord = documentDecision.action === "accepted";
-                const outcomeAllowsAutoSavePersistence = documentOutcome.status === "SAVED";
+                const outcomeAllowsAutoSavePersistence =
+                  documentOutcome.status === "SAVED" ||
+                  (
+                    vendorAmountReadyForPersist &&
+                    classification.reviewStatus === "auto_saved" &&
+                    documentOutcome.status !== "BLOCKED" &&
+                    documentOutcome.status !== "DUPLICATE"
+                  );
                 if (canPersistFinancialRecord && outcomeAllowsAutoSavePersistence && classification.reviewStatus === "auto_saved" && !clientId && !isIncomingSupplierExpense && classification.isRelevant && email.domain) {
                   const saved = await upsertPotentialClient({
                     organizationId,
@@ -2651,10 +2739,13 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                 let driveUploadFailureReason: string | null = null;
 
                 const shouldUploadAttachments =
-                  classification.isRelevant &&
+                  hasPdfOrImageDocumentEvidence &&
+                  documentDecision.action !== "filtered" &&
                   (
-                    (classification.reviewStatus === "auto_saved" && canPersistFinancialRecord && outcomeAllowsAutoSavePersistence) ||
-                    (documentOutcome.status === "NEEDS_REVIEW" && classification.reviewStatus === "needs_review" && isInvoiceRecordDocument(classification.documentType) && documentDecision.action !== "filtered")
+                    classification.isRelevant ||
+                    isInvoiceRecordDocument(classification.documentType) ||
+                    classification.reviewStatus === "needs_review" ||
+                    classification.reviewStatus === "auto_saved"
                   );
                 for (const part of email.parts) {
                   if (!shouldUploadAttachments) {
@@ -2830,23 +2921,68 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                       logStep(`[gmail-sync] Google Drive reconnect required org=${organizationId} message=${email.gmailId} file="${filename}" reason="${err instanceof Error ? err.message : String(err)}"`);
                     }
                     logStep(`[gmail-sync] Drive upload failed message=${email.gmailId} file="${filename}" reason="${err instanceof Error ? err.message : String(err)}"`);
-                    if (existingAttachment) {
-                      await prisma.emailAttachment.update({
-                        where: { id: existingAttachment.id },
-                        data: { driveUploadStatus: "pending_retry" },
+                    // Keep preview working: persist a local upload path when Drive is unavailable.
+                    try {
+                      const data = await withRetry(
+                        () => attachmentData(gmail, email.gmailId, part),
+                        `[gmail-sync] Gmail attachment fetch retry (local preview) message=${email.gmailId} file="${filename}"`
+                      );
+                      const buffer = decodeGmailAttachment(data);
+                      const localPreviewUrl = await saveLocalIngestedDocument({
+                        channel: "gmail",
+                        filename,
+                        buffer,
                       });
-                      console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${existingAttachment.id} reason=${driveUploadFailureReason}`);
-                    } else {
-                      const failedAttachment = await prisma.emailAttachment.create({
-                        data: {
-                          emailMessageId: email.emailRecordId,
-                          filename,
-                          mimeType: part.mimeType ?? undefined,
-                          gmailAttachmentId: attachmentId ?? undefined,
-                          driveUploadStatus: "pending_retry",
-                        },
+                      driveLinks.push({
+                        type: folderType,
+                        link: localPreviewUrl,
+                        filename,
+                        gmailAttachmentId: attachmentId ?? null,
+                        mimeType: part.mimeType ?? null,
+                        fileId: null,
+                        fileSize: buffer.length,
                       });
-                      console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${failedAttachment.id} reason=${driveUploadFailureReason}`);
+                      logStep(`[gmail-sync] LOCAL_PREVIEW_SAVED message=${email.gmailId} file="${filename}" path=${localPreviewUrl}`);
+                      if (existingAttachment) {
+                        await prisma.emailAttachment.update({
+                          where: { id: existingAttachment.id },
+                          data: {
+                            driveLink: localPreviewUrl,
+                            driveUploadStatus: "pending_retry",
+                          },
+                        });
+                      } else {
+                        await prisma.emailAttachment.create({
+                          data: {
+                            emailMessageId: email.emailRecordId,
+                            filename,
+                            mimeType: part.mimeType ?? undefined,
+                            gmailAttachmentId: attachmentId ?? undefined,
+                            driveLink: localPreviewUrl,
+                            driveUploadStatus: "pending_retry",
+                          },
+                        });
+                      }
+                    } catch (localErr) {
+                      logStep(`[gmail-sync] LOCAL_PREVIEW_FAILED message=${email.gmailId} file="${filename}" reason="${localErr instanceof Error ? localErr.message : String(localErr)}"`);
+                      if (existingAttachment) {
+                        await prisma.emailAttachment.update({
+                          where: { id: existingAttachment.id },
+                          data: { driveUploadStatus: "pending_retry" },
+                        });
+                        console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${existingAttachment.id} reason=${driveUploadFailureReason}`);
+                      } else {
+                        const failedAttachment = await prisma.emailAttachment.create({
+                          data: {
+                            emailMessageId: email.emailRecordId,
+                            filename,
+                            mimeType: part.mimeType ?? undefined,
+                            gmailAttachmentId: attachmentId ?? undefined,
+                            driveUploadStatus: "pending_retry",
+                          },
+                        });
+                        console.log(`DRIVE UPLOAD FAILED org=${organizationId} doc=emailAttachment:${failedAttachment.id} reason=${driveUploadFailureReason}`);
+                      }
                     }
                   }
                 }
@@ -2943,6 +3079,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                       supplierBranchName,
                       invoiceNumber: invoiceNumberForDecision,
                       invoiceDate: extractedDocumentDate?.toISOString() ?? null,
+                      invoiceDateSource: documentDateResolution.source,
                       dueDate: dueDateForDecision?.toISOString() ?? null,
                       parsed_fields_json: parsedFieldsJson,
                       relevant: classification.isRelevant,
@@ -2982,6 +3119,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                       supplierBranchName,
                       invoiceNumber: invoiceNumberForDecision,
                       invoiceDate: extractedDocumentDate?.toISOString() ?? null,
+                      invoiceDateSource: documentDateResolution.source,
                       dueDate: dueDateForDecision?.toISOString() ?? null,
                       parsed_fields_json: parsedFieldsJson,
                       relevant: classification.isRelevant,
@@ -3155,12 +3293,19 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                       ? UNKNOWN_SUPPLIER_FALLBACK
                       : targetSupplierName;
                     const invoiceNumber = targetAnalysis.analysis.invoiceNumber ?? extractInvoiceNumber([email.subject, targetBodyForDetection, targetFilename ?? ""].join("\n"));
-                    // F5 (stage 2): אין תאריך אמיתי → מדלגים על יצירת ה-Invoice (כמו הדילוג על amount==null).
-                    // המסמך כבר needs_review (שלב 1) ויופיע בהשלמת חשבוניות למילוי תאריך.
-                    const invoiceDate = normalizeBusinessDate(targetAnalysis.analysis.invoiceDate, null);
+                    // Prefer OCR/AI invoice date; fall back to email sent time. Never invent today.
+                    const targetInvoiceDateResolution = resolveInvoiceDocumentDate({
+                      analysisInvoiceDate: targetAnalysis.analysis.invoiceDate,
+                      extractedInvoiceDate: null,
+                      emailReceivedAt: email.receivedAt.getTime() > 0 ? email.receivedAt : null,
+                    });
+                    const invoiceDate = targetInvoiceDateResolution.date;
                     if (invoiceDate == null) {
                       logStep(`[gmail-sync] invoice date missing message=${email.gmailId} file="${targetFilename ?? "body"}"; skipping customer invoice create — held for review`);
                       continue;
+                    }
+                    if (targetInvoiceDateResolution.source === "email_sent") {
+                      logStep(`[gmail-sync] invoice date fallback to email sent message=${email.gmailId} file="${targetFilename ?? "body"}" date=${invoiceDate.toISOString()}`);
                     }
                     const attachmentInvoiceDedupeKey = invoicePart
                       ? buildInvoiceAttachmentDedupeKey({
@@ -3438,9 +3583,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                       logStep(`[gmail-sync] SUPPLIER_PAYMENT_SAVED_NEEDS_REVIEW message=${email.gmailId} id=${existingPayment.id} reason="${classification.decisionReason}"`);
                     }
                   } else if (extractedDocumentDate == null) {
-                    // F5 (stage 2): אין תאריך מסמך אמיתי → לא יוצרים SupplierPayment אוטומטי חדש.
-                    // המסמך כבר needs_review (שלב 1) ויופיע בהשלמת חשבוניות למילוי תאריך (fail-closed).
-                    // עדכון תשלום קיים מותר (הענף למעלה) — לרשומה הקיימת כבר יש תאריך.
+                    // No OCR date and no usable email sent date — do not invent today.
                     logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${email.gmailId} reason=document_date_missing_held_for_review`);
                   } else {
                     const dueDate = dueDateForDecision;
@@ -4041,6 +4184,16 @@ export function applySupplierDecisionReviewGate(input: {
   if (decision.status === "resolved" && decision.isStrongEnoughForAutoSave) {
     return input.classification;
   }
+  // Usable vendor already selected (including From-header fallback) + amount → keep auto_saved.
+  if (
+    input.classification.reviewStatus === "auto_saved" &&
+    input.classification.audit.amountFound &&
+    decision.status === "resolved" &&
+    decision.supplierName &&
+    isUsableSupplierName(decision.supplierName)
+  ) {
+    return input.classification;
+  }
   if (input.classification.reviewStatus === "needs_review") {
     return {
       ...input.classification,
@@ -4052,6 +4205,65 @@ export function applySupplierDecisionReviewGate(input: {
     reviewStatus: "needs_review",
     decisionReason: `${input.classification.decisionReason}; supplier_${decision.status}:${decision.reasonCode}`.slice(0, 500),
     confidence: Math.min(input.classification.confidence, Math.max(decision.confidence, 0.4)),
+  };
+}
+
+/**
+ * When vendor + amount are present (and a real document/email date exists),
+ * auto-approve into the main invoices path. Completion queue is only for missing vendor/amount.
+ */
+export function promoteCompleteVendorAmountToAutoSave(input: {
+  classification: GmailScanClassification;
+  supplierName: string;
+  amount: number | null;
+  documentDate: Date | null;
+  ownerEmails?: Set<string>;
+}): GmailScanClassification {
+  const { classification } = input;
+  if (classification.audit.blockedReason) return classification;
+  if (classification.reviewStatus === "auto_saved") return classification;
+  if (!input.documentDate) return classification;
+  if (
+    !hasVendorAndAmountForAutoApprove({
+      supplierName: input.supplierName,
+      amount: input.amount,
+      isUsableSupplier: (name) => isUsableSupplierName(name, input.ownerEmails ?? new Set()),
+    })
+  ) {
+    return classification;
+  }
+
+  const reason = (classification.decisionReason ?? "").toLowerCase();
+  if (
+    reason.includes("duplicate") ||
+    reason.includes("ambiguous amount") ||
+    reason.includes("multiple amount") ||
+    reason.includes("arc ambiguous")
+  ) {
+    return classification;
+  }
+
+  let documentType = classification.documentType;
+  if (
+    !isInvoiceRecordDocument(documentType) &&
+    documentType !== "payment_request" &&
+    classification.audit.strictPaymentEvidence
+  ) {
+    documentType = "invoice";
+  }
+  if (!isInvoiceRecordDocument(documentType) && documentType !== "payment_request") {
+    return classification;
+  }
+
+  return {
+    ...classification,
+    documentType,
+    reviewStatus: "auto_saved",
+    isRelevant: true,
+    confidence: Math.max(classification.confidence, 0.85),
+    confidenceScore: "high",
+    decisionReason: `Auto-saved: vendor and amount present with document/email date; ${classification.decisionReason}`.slice(0, 500),
+    evidence: [...classification.evidence, "vendor+amount complete → auto_saved"],
   };
 }
 
@@ -4719,9 +4931,9 @@ export function classifyGmailScanCandidate(input: {
     block && `blocked non-invoice message: ${block}`,
     personalSenderReason && !hasInvoiceEvidence && `personal email without invoice evidence: ${personalSenderReason}`,
     !(documentType === "invoice" || documentType === "receipt" || documentType === "tax_invoice_receipt" || documentType === "payment_request") && `documentType is ${documentType}`,
-    confidence < 0.8 && `confidence below 80% (${Math.round(confidence * 100)}%)`,
-    !hasStrictPaymentEvidence && "no strict invoice/payment evidence",
-    documentType === "invoice" && !hasStrongInvoiceEvidence && "no strong invoice evidence",
+    confidence < 0.8 && !(hasAmount && hasSupplier) && `confidence below 80% (${Math.round(confidence * 100)}%)`,
+    !hasStrictPaymentEvidence && !(hasAmount && hasSupplier && hasAttachment) && "no strict invoice/payment evidence",
+    documentType === "invoice" && !hasStrongInvoiceEvidence && !(hasAmount && hasSupplier) && "no strong invoice evidence",
     documentType === "invoice" && input.amountRejectedReason && input.amountRejectedReason,
     documentType === "invoice" && !hasAmount && (input.amountRejectedReason ?? "no valid amount"),
     documentType === "payment_request" && !hasExplicitPaymentEvidence && "no explicit payment request evidence",
@@ -5361,7 +5573,7 @@ async function listFastCandidateMessages(
   maxMessages = MAX_MESSAGES_PER_FAST_SCAN,
   options: {
     scanAllMail?: boolean;
-    onPage?: () => Promise<void>;
+    onPage?: (info: { uniqueSoFar: number; page: number; query: string }) => Promise<void>;
     onListingError?: (info: { query: string; page: number; error: string }) => Promise<void> | void;
   } = {}
 ): Promise<{ messages: GmailMessageRef[]; diagnostics: GmailListingDiagnostics }> {
@@ -5392,7 +5604,7 @@ async function listFastCandidateMessages(
         pageToken,
         page: queryPages,
       });
-        if (!listed.ok) {
+      if (!listed.ok) {
         stoppedBecauseError = listed.error;
         listingErrors.push(listed.error);
         if (listed.isQuotaOrRateLimit) {
@@ -5418,13 +5630,16 @@ async function listFastCandidateMessages(
         }
         byId.set(message.id, message);
       }
+      console.log(
+        `[gmail-sync] Gmail page q="${q}" page=${queryPages} messages=${pageMessages.length} uniqueSoFar=${byId.size} nextPage=${Boolean(listed.result.data.nextPageToken)}`
+      );
       if (listed.result.data.nextPageToken) {
         queryNextPageTokensSeen++;
         totalNextPageTokenUses++;
       }
       pageToken = listed.result.data.nextPageToken ?? undefined;
       try {
-        await options.onPage?.();
+        await options.onPage?.({ uniqueSoFar: byId.size, page: queryPages, query: q });
       } catch (err) {
         console.warn(`[gmail-sync] fast listing heartbeat failed page=${queryPages}`, err instanceof Error ? err.message : String(err));
       }
@@ -5488,7 +5703,7 @@ async function listCandidateMessages(
   since?: Date,
   options: {
     scanAllMail?: boolean;
-    onPage?: () => Promise<void>;
+    onPage?: (info: { uniqueSoFar: number; page: number; query: string }) => Promise<void>;
     onListingError?: (info: { query: string; page: number; error: string }) => Promise<void> | void;
   } = {}
 ): Promise<{ messages: GmailMessageRef[]; diagnostics: GmailListingDiagnostics }> {
@@ -5548,21 +5763,20 @@ async function listCandidateMessages(
       const pageMessages = listed.result.data.messages ?? [];
       queryMessagesSeen += pageMessages.length;
       totalMessagesSeen += pageMessages.length;
-      console.log(`[gmail-sync] Gmail page q="${q}" page=${queryPages} messages=${pageMessages.length} uniqueSoFar=${byId.size} nextPage=${Boolean(listed.result.data.nextPageToken)}`);
       for (const message of pageMessages) {
         if (message.id && !byId.has(message.id)) {
           byId.set(message.id, message);
         }
       }
+      console.log(`[gmail-sync] Gmail page q="${q}" page=${queryPages} messages=${pageMessages.length} uniqueSoFar=${byId.size} nextPage=${Boolean(listed.result.data.nextPageToken)}`);
       if (listed.result.data.nextPageToken) {
         queryNextPageTokensSeen++;
         totalNextPageTokenUses++;
       }
       pageToken = listed.result.data.nextPageToken ?? undefined;
-      // Keep SyncLog heartbeat fresh during long historical listings so manual
-      // scans are not false-positive "stuck" after 3 minutes of honest work.
+      // Keep SyncLog heartbeat + listing discovery count fresh for UI polling.
       try {
-        await options.onPage?.();
+        await options.onPage?.({ uniqueSoFar: byId.size, page: queryPages, query: q });
       } catch (err) {
         console.warn(
           `[gmail-sync] listing heartbeat failed page=${queryPages}`,
@@ -5702,6 +5916,7 @@ async function saveScanProgress(logId: string, data: {
   driveUploaded?: number;
   sheetsUpdated?: number;
   errorsCount?: number;
+  totalMatched?: number | null;
 }) {
   await prisma.syncLog.update({
     where: { id: logId },
@@ -6247,6 +6462,46 @@ export function resolveSupplierMetadata(input: {
   );
 
   if (decision.status !== "resolved" || !decision.supplierName || !isUsableSupplierName(decision.supplierName, input.ownerEmails)) {
+    const senderDisplay = normalizeSupplierName(input.senderName);
+    const domainLabel = (input.senderDomain || "")
+      .replace(/^www\./i, "")
+      .split(".")[0]
+      ?.trim() ?? "";
+    const senderFallback =
+      isUsableSupplierName(senderDisplay, input.ownerEmails) &&
+      !looksLikeEmailAddress(senderDisplay)
+        ? { name: senderDisplay, source: "sender_display" as const, confidence: 0.72 }
+        : isUsableSupplierName(domainLabel, input.ownerEmails)
+          ? { name: domainLabel, source: "domain" as const, confidence: 0.55 }
+          : null;
+
+    if (senderFallback) {
+      input.logStep?.(
+        `[gmail-sync] SUPPLIER_FALLBACK_FROM_SENDER message supplier="${senderFallback.name}" source=${senderFallback.source}`
+      );
+      const fallbackDecision: SupplierDecision = {
+        ...decision,
+        status: "resolved",
+        supplierName: senderFallback.name,
+        normalizedName: normalizeSupplierName(senderFallback.name),
+        confidence: senderFallback.confidence,
+        reasonCode: senderFallback.source === "domain" ? "EMAIL_DOMAIN" : "SENDER_DISPLAY",
+        reason: `Fallback supplier from email ${senderFallback.source}`,
+        isStrongEnoughForAutoSave: true,
+        // Empty candidates so supplier gate does not treat residual weak sender/domain rows as winnerKind.
+        candidates: [],
+        rejected: decision.rejected ?? [],
+      };
+      return withKnownSupplierName({
+        name: senderFallback.name,
+        taxId: normalizeSupplierTaxId(taxId),
+        confidence: senderFallback.confidence,
+        source: senderFallback.source,
+        keyword: keywordSupplier?.keyword ?? null,
+        decision: fallbackDecision,
+      }, input.knownSupplierNames);
+    }
+
     return {
       name: UNKNOWN_SUPPLIER_FALLBACK,
       taxId: normalizeSupplierTaxId(taxId),
@@ -6551,6 +6806,8 @@ export function extractInvoiceAmount(text: string): { amount: number | null; rej
     // סכום ליד תווית total גובר על Subtotal/Tax/VAT/Discount/Shipping
     // מעצם קדימות השכבה (prioritized נבחר לפני keywordAmounts).
     /\b(?:total\s+amount|grand\s+total|amount\s+due|total\s+due|balance\s+due)[^\d₪$€]{0,80}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
+    /\b(?:amount\s+charged|you\s+(?:paid|were\s+charged)|payment\s+of|charged\s+(?:for|amount))[^\d₪$€]{0,80}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
+    /(?:חויב(?:ת)?(?:\s+בסך)?|שולם(?:\s+בסך)?|סה["']?כ\s*(?:ששולם|שחויב)|סכום\s+העסקה)[^\d₪$€]{0,80}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
   ];
   const keywordPatterns = [
     /(?:סה["']?כ\s*(?:לתשלום)?|סך\s*הכל\s*(?:לתשלום)?|(?:ה)?סכום\s*לתשלום|יתרה\s*לתשלום|לתשלום|כולל\s*מע["']?מ|total\s*(?:due|amount|inc(?:luding)?\s*vat)?|grand\s*total|amount\s*(?:due|paid)?|balance\s*due|subtotal)[^\d₪$€]{0,60}(?:₪|ils|nis|ש["']?ח|\$|usd|€|eur)?\s*([0-9][0-9.,\s]*(?:[.,][0-9]{1,2})?)/gi,
@@ -7075,9 +7332,7 @@ async function ensureSupplierPaymentsForDriveLinks(input: {
       continue;
     }
 
-    // F5 (stage 2): אין תאריך מסמך אמיתי → לא יוצרים SupplierPayment אוטומטי חדש מ-Drive-link.
-    // עקבי עם 4 האתרים האחרים (fail-closed). המסמך כבר needs_review (שלב 1); עדכון תשלום
-    // קיים מותר (הענף למעלה). invoiceMonth/Year נשארים על התאריך התפעולי — לא מגיעים לכאן עם null.
+    // No OCR/AI date and no usable email sent date — do not invent today.
     if (input.extractedDocumentDate == null) {
       input.logStep(`[gmail-sync] SUPPLIER_PAYMENT_SKIPPED message=${input.email.gmailId} file="${driveLink.filename ?? "unnamed"}" reason=document_date_missing_held_for_review`);
       continue;
@@ -7499,7 +7754,11 @@ export async function fetchAndParseGmailMessageFinancialFields(input: {
   );
   const from = decodeMimeHeader(headers.find((h) => h.name?.toLowerCase() === "from")?.value ?? "");
   const dateHeader = headers.find((h) => h.name?.toLowerCase() === "date")?.value ?? "";
-  const receivedAt = dateHeader ? new Date(dateHeader) : new Date();
+  const emailSentAt = resolveGmailMessageReceivedAt({
+    dateHeader,
+    internalDate: full.data.internalDate,
+  });
+  const receivedAt = emailSentAt ?? new Date(0);
   const bodyText = extractBody(full.data.payload as PayloadPart | undefined);
   const sender = parseSender(from);
   const attachmentParts = collectAttachmentParts(full.data.payload as PayloadPart | undefined);
@@ -7564,8 +7823,11 @@ export async function fetchAndParseGmailMessageFinancialFields(input: {
     normalizeInvoiceNumberCandidate(analysis.invoiceNumber ?? "") ??
     extractedFields.invoiceNumber ??
     extractInvoiceNumber([subject, bodyForAnalysis, primaryAttachmentFilename(attachmentParts) ?? ""].join("\n"));
-  // F5: תאריך שלא חולץ נשאר null (לא מומצא ל-receivedAt) — reprocess מדלג על עדכון תאריך.
-  const documentDateForDecision = normalizeBusinessDate(analysis.invoiceDate ?? extractedFields.invoiceDate, null);
+  const documentDateForDecision = resolveInvoiceDocumentDate({
+    analysisInvoiceDate: analysis.invoiceDate,
+    extractedInvoiceDate: extractedFields.invoiceDate,
+    emailReceivedAt: emailSentAt,
+  }).date;
 
   return {
     supplierName: supplierMetadata.name,

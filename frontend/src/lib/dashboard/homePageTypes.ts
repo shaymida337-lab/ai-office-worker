@@ -187,6 +187,7 @@ export type ScanProgressResult = {
   canStartNewScan?: boolean;
   userMessageHe?: string | null;
   currentStage?: string | null;
+  scanPhase?: string | null;
   error: string | null;
   emailsFetched: number;
   emailsSaved: number;
@@ -196,6 +197,8 @@ export type ScanProgressResult = {
   clientsFound: number;
   uploadedToDrive: number;
   sheetsUpdated?: number;
+  totalMatched?: number | null;
+  windowTruncated?: boolean;
   failedItems?: Array<{
     id: string;
     gmailMessageId: string;

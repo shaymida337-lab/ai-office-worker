@@ -121,7 +121,8 @@ export function buildSenderSupplierCandidates(input: {
     name: input.senderDisplayName,
     kind: "sender_display",
     source: "sender",
-    confidence: 0.52,
+    // Higher confidence so From-header display names compete when OCR/AI miss the vendor.
+    confidence: 0.72,
     label: "sender_display",
   });
   if (input.senderDomain) {
@@ -130,7 +131,8 @@ export function buildSenderSupplierCandidates(input: {
       name: domainLabel,
       kind: "email_domain",
       source: "domain",
-      confidence: 0.35,
+      // Domain label is a last-resort vendor hint (not strong enough alone for SIR).
+      confidence: 0.55,
       label: input.senderDomain,
       raw: input.senderDomain,
     });

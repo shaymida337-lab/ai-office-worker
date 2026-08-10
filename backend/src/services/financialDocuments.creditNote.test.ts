@@ -60,7 +60,7 @@ test("credit_note is not confidently non-financial", () => {
   );
 });
 
-test("credit_note stays on completion (not recognized invoice type)", () => {
+test("credit_note with vendor+amount routes to invoices (type gap is approval-only)", () => {
   const assessment = assessInvoiceCompleteness({
     supplierName: "אפסילון לוגיסטיקה בע״מ",
     amount: 120,
@@ -73,8 +73,9 @@ test("credit_note stays on completion (not recognized invoice type)", () => {
     reviewStatus: "needs_review",
     rawReviewStatus: "needs_review",
   });
-  assert.equal(assessment.isComplete, false);
-  assert.ok(assessment.missingDataReasons.includes(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE));
+  assert.equal(assessment.isComplete, true);
+  assert.ok(assessment.approvalReasons.includes(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE));
+  assert.equal(assessment.missingDataReasons.includes(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE), false);
 });
 
 test("credit_note cannot be approved as a regular tax invoice", async () => {

@@ -13,12 +13,16 @@ import {
 } from "../classification/financialDocumentClassification.js";
 
 /**
- * Screen routing uses data completeness only (`isComplete` === `dataComplete`),
- * with two routing blockers beyond missing fields:
- * - unconfirmed camera drafts (must confirm before חשבוניות)
- * - duplicate unsure / confirmed-duplicate gate
- * Human review (`approvalRequired`, low confidence, needs_review) alone must NOT
- * send data-complete non-camera invoices to השלמת חשבוניות.
+ * Screen routing uses data completeness only (`isComplete` === `dataComplete`).
+ *
+ * השלמת חשבוניות blockers (missingDataReasons):
+ * - missing Vendor OR Amount
+ * - amount ambiguity / duplicate unsure|confirmed
+ * - unconfirmed camera drafts
+ *
+ * Date / currency / document-type gaps are approvalReasons only — they do NOT
+ * route to השלמה when vendor+amount are present (email sent-date is the date fallback).
+ * Human review (needs_review / low confidence) alone must NOT send complete docs to השלמה.
  */
 export const INVOICE_COMPLETION_REASON = {
   MISSING_AMOUNT: "חסר סכום",
@@ -207,11 +211,20 @@ export function assessInvoiceCompleteness(input: InvoiceCompletenessInput): Invo
   const missingDataReasons: string[] = [];
   const approvalReasons: string[] = [];
 
+  // Primary routing: Vendor OR Amount missing → השלמת חשבוניות.
   if (!hasValidSupplier(input.supplierName)) missingDataReasons.push(INVOICE_COMPLETION_REASON.SUPPLIER_UNIDENTIFIED);
   if (!hasValidAmount(input.amount, input.amountResolved)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_AMOUNT);
-  if (!hasValidDocumentDate(input.date, input.documentDateExplicit)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_DATE);
-  if (!hasValidCurrency(input.currency, input.currencyExplicit)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_CURRENCY);
-  if (!hasRecognizedDocumentType(input.documentType)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE);
+
+  // Soft gaps: do not block חשבוניות when vendor+amount exist (email date covers missing OCR date).
+  if (!hasValidDocumentDate(input.date, input.documentDateExplicit)) {
+    approvalReasons.push(INVOICE_COMPLETION_REASON.MISSING_DATE);
+  }
+  if (!hasValidCurrency(input.currency, input.currencyExplicit)) {
+    approvalReasons.push(INVOICE_COMPLETION_REASON.MISSING_CURRENCY);
+  }
+  if (!hasRecognizedDocumentType(input.documentType)) {
+    approvalReasons.push(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE);
+  }
 
   // Real ambiguity / unresolved duplicate are data-routing blockers — not mere review flags.
   if (hasMultipleAmountSignals(input)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MULTIPLE_AMOUNTS);

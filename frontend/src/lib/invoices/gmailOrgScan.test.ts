@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import type { ScanProgressResult } from "@/lib/dashboard/homePageTypes";
 import {
   formatInvoicesGmailScanDoneMessage,
+  historicalScanLiveProgressMessage,
   isGmailNotConnectedError,
   summarizeOrgGmailScanProgress,
   summarizeOrgGmailScanResult,
@@ -14,6 +15,17 @@ test("formatInvoicesGmailScanDoneMessage reports found / saved / needs completio
   assert.equal(
     formatInvoicesGmailScanDoneMessage({ documentsFound: 4, saved: 3, needsCompletion: 1 }),
     "נמצאו 4 מסמכים · נשמרו 3 · דורשים השלמה 1"
+  );
+});
+
+test("historicalScanLiveProgressMessage shows listing discovery while nothing saved", () => {
+  assert.equal(
+    historicalScanLiveProgressMessage(7, 0, { totalMatched: 42, scanPhase: "fetching" }),
+    "מאתר מיילים... נמצאו 42 מיילים"
+  );
+  assert.equal(
+    historicalScanLiveProgressMessage(12, 3, { totalMatched: 42, scanPhase: "processing" }),
+    "עובדו 12 מיילים... נשמרו 3 מסמכים"
   );
 });
 

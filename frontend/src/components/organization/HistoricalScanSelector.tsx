@@ -198,7 +198,10 @@ export function HistoricalScanSelector({
           const live = summarizeOrgGmailScanProgress(p, 0);
           setStatusTone("info");
           setStatusText(
-            historicalScanLiveProgressMessage(p.emailsFetched ?? live.documentsFound, live.saved)
+            historicalScanLiveProgressMessage(p.emailsFetched ?? live.documentsFound, live.saved, {
+              scanPhase: p.scanPhase ?? p.currentStage,
+              totalMatched: p.totalMatched,
+            })
           );
         },
         poll: (scanId) =>

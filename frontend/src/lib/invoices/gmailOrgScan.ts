@@ -68,7 +68,15 @@ export function summarizeOrgGmailScanResult(
   return { documentsFound, saved, needsCompletion };
 }
 
-export function historicalScanLiveProgressMessage(emailsProcessed: number, documentsSaved: number): string {
+export function historicalScanLiveProgressMessage(
+  emailsProcessed: number,
+  documentsSaved: number,
+  options?: { scanPhase?: string | null; totalMatched?: number | null }
+): string {
+  const found = Math.max(emailsProcessed, options?.totalMatched ?? 0);
+  if (documentsSaved <= 0) {
+    return `מאתר מיילים... נמצאו ${found} מיילים`;
+  }
   return `עובדו ${emailsProcessed} מיילים... נשמרו ${documentsSaved} מסמכים`;
 }
 

@@ -28,6 +28,12 @@ test("Gmail messages.list uses 15s timeout and soft-fails quota/timeouts", () =>
   assert.match(syncSource, /Fetch batch saved/);
 });
 
+test("listing_page persists uniqueSoFar into scan progress for UI discovery message", () => {
+  assert.match(syncSource, /listing_page progress uniqueSoFar=/);
+  assert.match(syncSource, /uniqueSoFar: byId\.size/);
+  assert.match(syncSource, /totalMatched: uniqueSoFar/);
+});
+
 test("POST /api/gmail/scan force-cancels active jobs and always creates a fresh scanId", () => {
   assert.match(apiSource, /cancelActiveGmailScansForOrg/);
   assert.match(apiSource, /force-cancelled prior active scans/);

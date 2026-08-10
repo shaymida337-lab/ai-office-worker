@@ -446,7 +446,7 @@ test("conflicting explicit supplier sources become ambiguous instead of guessing
   assert.ok(["ai", "sir", "keyword", "known_supplier"].includes(aiSupplier.source));
 });
 
-test("rejects unstable OCR supplier junk and does not guess supplier from sender", () => {
+test("rejects unstable OCR supplier junk and falls back to From-header supplier", () => {
   const cases = [
     ["supplier: address."],
     ["from: Current"],
@@ -465,13 +465,13 @@ test("rejects unstable OCR supplier junk and does not guess supplier from sender
       knownSupplierNames: new Map(),
     });
 
-    assert.equal(supplier.name, "לא זוהה");
-    assert.equal(supplier.source, "unknown");
-    assert.equal(supplier.decision.status, "missing");
+    assert.equal(supplier.name, "Bezeq");
+    assert.equal(supplier.source, "sender_display");
+    assert.equal(supplier.decision.status, "resolved");
   }
 });
 
-test("rejects OCR/AI output junk analysis supplier and keeps missing decision", () => {
+test("rejects OCR/AI output junk analysis supplier and falls back to From-header supplier", () => {
   const supplier = resolveSupplierMetadata({
     analysisSupplier: "OCR/AI output.",
     analysisSupplierTaxId: null,
@@ -483,9 +483,9 @@ test("rejects OCR/AI output junk analysis supplier and keeps missing decision", 
     knownSupplierNames: new Map(),
   });
 
-  assert.equal(supplier.name, "לא זוהה");
-  assert.equal(supplier.source, "unknown");
-  assert.equal(supplier.decision.status, "missing");
+  assert.equal(supplier.name, "Bezeq");
+  assert.equal(supplier.source, "sender_display");
+  assert.equal(supplier.decision.status, "resolved");
 });
 
 test("keeps real short Hebrew supplier from AI analysis", () => {
@@ -593,7 +593,7 @@ test("Gmail SIR: OCR and Claude agreement resolves supplier", () => {
   assert.ok(supplier.decision.evidence.length >= 2);
 });
 
-test("Gmail SIR: sender or domain evidence alone does not auto-resolve", () => {
+test("Gmail SIR: From-header / sender display falls back when OCR/AI miss vendor", () => {
   const supplier = resolveSupplierMetadata({
     analysisSupplier: null,
     analysisSupplierTaxId: null,
@@ -605,9 +605,26 @@ test("Gmail SIR: sender or domain evidence alone does not auto-resolve", () => {
     knownSupplierNames: new Map(),
   });
 
+  assert.equal(supplier.decision.status, "resolved");
+  assert.equal(supplier.name, "Bezeq");
+  assert.equal(supplier.source, "sender_display");
+  assert.equal(supplier.decision.isStrongEnoughForAutoSave, true);
+});
+
+test("Gmail SIR: generic personal mailbox does not invent supplier from gmail domain", () => {
+  const supplier = resolveSupplierMetadata({
+    analysisSupplier: null,
+    analysisSupplierTaxId: null,
+    bodyText: "",
+    senderName: "Unknown",
+    senderEmail: "friend@gmail.com",
+    senderDomain: "gmail.com",
+    ownerEmails: new Set(["owner@example.com"]),
+    knownSupplierNames: new Map(),
+  });
+
   assert.equal(supplier.decision.status, "missing");
   assert.equal(supplier.name, "לא זוהה");
-  assert.equal(supplier.decision.isStrongEnoughForAutoSave, false);
 });
 
 test("Gmail SIR: address candidate is rejected", () => {

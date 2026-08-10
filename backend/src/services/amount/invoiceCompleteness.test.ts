@@ -70,6 +70,9 @@ test("assessInvoiceCompleteness lists explicit missing required fields", () => {
   assert.ok(result.missingDataReasons.includes(INVOICE_COMPLETION_REASON.SUPPLIER_UNIDENTIFIED));
   assert.ok(result.missingDataReasons.includes(INVOICE_COMPLETION_REASON.MISSING_AMOUNT));
   assert.ok(result.missingDataReasons.includes(INVOICE_COMPLETION_REASON.MULTIPLE_AMOUNTS));
+  assert.ok(result.approvalReasons.includes(INVOICE_COMPLETION_REASON.MISSING_DATE));
+  assert.ok(result.approvalReasons.includes(INVOICE_COMPLETION_REASON.MISSING_CURRENCY));
+  assert.ok(result.approvalReasons.includes(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE));
   assert.ok(result.approvalReasons.includes(INVOICE_COMPLETION_REASON.USER_APPROVAL_REQUIRED));
 });
 
@@ -240,14 +243,15 @@ test("routing: Missing amount → השלמה", () => {
   assert.ok(result.missingDataReasons.includes(INVOICE_COMPLETION_REASON.MISSING_AMOUNT));
 });
 
-test("routing: Missing date → השלמה", () => {
+test("routing: Missing date alone → still חשבוניות when vendor+amount present", () => {
   const result = assessInvoiceCompleteness({
     ...completeBase,
     documentDateExplicit: false,
     date: null,
   });
-  assert.equal(result.isComplete, false);
-  assert.ok(result.missingDataReasons.includes(INVOICE_COMPLETION_REASON.MISSING_DATE));
+  assert.equal(result.isComplete, true);
+  assert.ok(result.approvalReasons.includes(INVOICE_COMPLETION_REASON.MISSING_DATE));
+  assert.equal(result.missingDataReasons.includes(INVOICE_COMPLETION_REASON.MISSING_DATE), false);
 });
 
 test("routing: Duplicate unsure → השלמה", () => {
@@ -395,23 +399,25 @@ test("routing: Camera complete data + confirmed/approved → חשבוניות", 
   assert.equal(result.missingDataReasons.includes(INVOICE_COMPLETION_REASON.CAMERA_UNCONFIRMED), false);
 });
 
-test("policy lock: supplier+amount+date+known type without currencyExplicit → still השלמה", () => {
+test("policy lock: supplier+amount+date+known type without currencyExplicit → still חשבוניות", () => {
   const result = assessInvoiceCompleteness({
     ...completeBase,
     currency: "ILS",
     currencyExplicit: false,
   });
-  assert.equal(result.isComplete, false);
-  assert.ok(result.missingDataReasons.includes(INVOICE_COMPLETION_REASON.MISSING_CURRENCY));
+  assert.equal(result.isComplete, true);
+  assert.ok(result.approvalReasons.includes(INVOICE_COMPLETION_REASON.MISSING_CURRENCY));
+  assert.equal(result.missingDataReasons.includes(INVOICE_COMPLETION_REASON.MISSING_CURRENCY), false);
 });
 
-test("routing: Unknown document type → השלמה", () => {
+test("routing: Unknown document type alone → still חשבוניות when vendor+amount present", () => {
   const result = assessInvoiceCompleteness({
     ...completeBase,
     documentType: "unknown_needs_review",
   });
-  assert.equal(result.isComplete, false);
-  assert.ok(result.missingDataReasons.includes(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE));
+  assert.equal(result.isComplete, true);
+  assert.ok(result.approvalReasons.includes(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE));
+  assert.equal(result.missingDataReasons.includes(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE), false);
 });
 
 test("routing: amount ambiguity alone → השלמה even when fields look filled", () => {
