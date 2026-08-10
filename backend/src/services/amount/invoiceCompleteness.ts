@@ -50,6 +50,7 @@ const RECOGNIZED_DOCUMENT_TYPES = new Set([
   "tax_invoice",
   "tax_invoice_receipt",
   "payment_request",
+  "credit_note",
 ]);
 
 export type InvoiceCompletenessInput = {
@@ -215,13 +216,12 @@ export function assessInvoiceCompleteness(input: InvoiceCompletenessInput): Invo
   if (!hasValidSupplier(input.supplierName)) missingDataReasons.push(INVOICE_COMPLETION_REASON.SUPPLIER_UNIDENTIFIED);
   if (!hasValidAmount(input.amount, input.amountResolved)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_AMOUNT);
   if (!hasValidDocumentDate(input.date, input.documentDateExplicit)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_DATE);
+  if (!hasRecognizedDocumentType(input.documentType)) missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE);
 
   const normDocType = (input.documentType ?? "").trim().toLowerCase();
   if (normDocType === "credit_note") {
-    // Credit notes explicitly out of scope for Delivery 3C — kept as approval flag
-    approvalReasons.push(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE);
-  } else if (!hasRecognizedDocumentType(input.documentType)) {
-    missingDataReasons.push(INVOICE_COMPLETION_REASON.MISSING_DOCUMENT_TYPE);
+    // Credit notes are valid financial documents but require user review before posting
+    approvalReasons.push(INVOICE_COMPLETION_REASON.USER_APPROVAL_REQUIRED);
   }
 
   // Soft gaps: currency missing flags review without blocking when core fields exist.

@@ -84,8 +84,8 @@
         "invoiceDate": "2026-06-08",
         "documentType": "credit_note",
         "destination": "completion",
-        "reason": "unrecognized_document_type",
-        "expectedMissingFields": ["MISSING_DOCUMENT_TYPE"]
+        "reason": "credit_note_requires_review",
+        "expectedMissingFields": []
       },
       "amountTolerance": 0.01,
       "notes": "Credit notes are not in completeness RECOGNIZED_DOCUMENT_TYPES yet — baseline should route to completion."

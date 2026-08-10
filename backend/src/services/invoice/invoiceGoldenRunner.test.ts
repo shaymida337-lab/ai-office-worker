@@ -30,9 +30,9 @@ test("invoice golden runner produces a full baseline report without throwing", (
   assert.ok(report.tableMarkdown.includes("| fixture |"));
   assert.equal(report.totals.passed + report.totals.failed, 20);
 
-  // Explicit baseline lock — Delivery 3C restores missing date & unknown doctype → 19/20 (credit_note remaining out of scope).
-  assert.equal(report.totals.passed, 19, "golden baseline passed count drifted");
-  assert.equal(report.totals.failed, 1, "golden baseline failed count drifted");
+  // Explicit baseline lock — Delivery 4 canonical document type semantics → 20/20.
+  assert.equal(report.totals.passed, 20, "golden baseline passed count drifted");
+  assert.equal(report.totals.failed, 0, "golden baseline failed count drifted");
 
   const missingSupplier = report.results.find((r) => r.fixtureId === "he_missing_supplier_001");
   assert.ok(missingSupplier);

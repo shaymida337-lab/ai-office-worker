@@ -201,6 +201,7 @@ function resolveDestination(
     filename: "golden.txt",
   });
   if (excluded) return "excluded";
+  if (extracted.documentType === "credit_note") return "completion";
   return completeness.isComplete ? "invoices" : "completion";
 }
 
