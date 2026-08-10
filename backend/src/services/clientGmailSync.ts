@@ -20,6 +20,7 @@ import {
 import { buildClientGmailPaymentLookupClauses } from "./dedup/fingerprintMigration.js";
 import { resolveClientGmailMoneyDecision } from "./amount/amountCandidates.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
+import { extractPdfWithCascade, mergePdfExtractionResults } from "./extraction/pdfExtractionCascade.js";
 
 const GMAIL_QUERIES = [
   "has:attachment newer_than:30d",
@@ -586,24 +587,24 @@ function decodeAttachment(data: string): Buffer {
 
 async function extractPdfTextFromParts(gmail: GmailClient, messageId: string, parts: PayloadPart[]) {
   const pdfParts = parts.filter((part) => part.body?.attachmentId && (part.mimeType === "application/pdf" || /\.pdf$/i.test(part.filename ?? "")));
-  const texts: string[] = [];
+  const results = [];
   for (const part of pdfParts) {
-    let parser: { getText(): Promise<{ text?: string }>; destroy(): Promise<void> } | null = null;
     try {
       const attachment = await gmail.users.messages.attachments.get({
         userId: "me",
         messageId,
         id: part.body!.attachmentId!,
       });
-      const { PDFParse } = await import("pdf-parse");
-      parser = new PDFParse({ data: new Uint8Array(decodeAttachment(attachment.data.data ?? "")) });
-      const parsed = await parser.getText();
-      if (parsed.text?.trim()) texts.push(parsed.text.trim());
+      const buffer = decodeAttachment(attachment.data.data ?? "");
+      results.push(
+        await extractPdfWithCascade({
+          buffer,
+          filename: part.filename ?? undefined,
+        })
+      );
     } catch (err) {
-      console.warn("[client-gmail-sync] PDF text extraction failed", err instanceof Error ? err.message : String(err));
-    } finally {
-      await parser?.destroy().catch(() => undefined);
+      console.warn("[client-gmail-sync] PDF extraction cascade failed", err instanceof Error ? err.message : String(err));
     }
   }
-  return texts.join("\n\n");
+  return mergePdfExtractionResults(results).textForAnalysis;
 }

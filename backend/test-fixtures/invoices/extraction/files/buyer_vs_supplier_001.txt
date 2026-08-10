@@ -1,0 +1,6 @@
+Invoice
+Supplier: Vendor ABC Ltd
+Bill To: Shay Business Ltd
+Issue Date: 13/04/2026
+Invoice No: BVS-001
+Total amount due 1,180.00 USD

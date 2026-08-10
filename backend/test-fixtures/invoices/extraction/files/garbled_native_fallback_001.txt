@@ -1,0 +1,7 @@
+Tax Invoice
+Supplier: Scanned Vendor Ltd
+Issue Date: 13/04/2026
+Invoice No: SCAN-001
+Subtotal: 1,000.00 ILS
+VAT: 180.00 ILS
+Total amount due 1,180.00 ILS

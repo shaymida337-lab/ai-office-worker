@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { config } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { analyzeEmailContent, analyzeInvoiceFile, type EmailAnalysis, type InvoiceScanResult } from "./claude.js";
+import { extractPdfWithCascade } from "./extraction/pdfExtractionCascade.js";
 import type { drive_v3 } from "googleapis";
 import { ensureInvoiceFolderTree, findExistingSupplierDriveDocument, uploadInvoiceAttachmentToDrive } from "./driveService.js";
 import { getGoogleClientsIfAvailable, type GoogleClients } from "./google.js";
@@ -622,19 +623,12 @@ async function downloadTwilioMedia(url: string) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function extractPdfText(buffer: Buffer) {
-  let parser: { getText(): Promise<{ text?: string }>; destroy(): Promise<void> } | null = null;
-  try {
-    const { PDFParse } = await import("pdf-parse");
-    parser = new PDFParse({ data: new Uint8Array(buffer) });
-    const parsed = await parser.getText();
-    return parsed.text?.trim() ?? "";
-  } catch (err) {
-    console.warn("[whatsapp-invoice] PDF text extraction failed", err instanceof Error ? err.message : String(err));
-    return "";
-  } finally {
-    await parser?.destroy().catch(() => undefined);
-  }
+async function extractPdfTextWithQualityGate(buffer: Buffer) {
+  const cascade = await extractPdfWithCascade({
+    buffer,
+    enableVisionFallback: false,
+  });
+  return cascade.textForAnalysis || cascade.text;
 }
 
 async function analyzeWhatsAppDocument(input: {
@@ -699,7 +693,7 @@ async function analyzeWhatsAppDocumentTextFallback(input: {
   fromNumber: string;
   organizationId?: string;
 }) {
-  const pdfText = input.mimeType === PDF_MIME ? await extractPdfText(input.buffer) : "";
+  const pdfText = input.mimeType === PDF_MIME ? await extractPdfTextWithQualityGate(input.buffer) : "";
   return analyzeEmailContent({
     subject: `WhatsApp document ${input.filename}`,
     body: [

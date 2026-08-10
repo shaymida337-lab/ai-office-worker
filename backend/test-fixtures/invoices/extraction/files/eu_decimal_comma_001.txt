@@ -1,0 +1,5 @@
+Rechnung / Invoice
+Supplier: Gamma Handels GmbH
+Invoice date: 18/06/2026
+Document number: EXT-EU-001
+Total amount due 1.234,56 EUR

@@ -2,6 +2,11 @@ import { createHash, randomUUID } from "crypto";
 import { prisma } from "../lib/prisma.js";
 import { stripNulBytesDeep } from "../lib/postgresTextSanitizer.js";
 import { analyzeEmailContent, analyzeInvoiceFile, type EmailAnalysis } from "./claude.js";
+import {
+  extractPdfWithCascade,
+  mergePdfExtractionResults,
+  summarizeExtractionAudit,
+} from "./extraction/pdfExtractionCascade.js";
 import { getGoogleClients, googleOAuthMetadata, isGoogleReconnectRequiredError } from "./google.js";
 import { analyzeAndSaveMessage } from "./messageScanner.js";
 import { shouldCreateLeadFromGmailEmail } from "./crm/leadQuality.js";
@@ -1983,7 +1988,15 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                   }
                 }
 
-                const pdfText = await extractPdfTextFromParts(gmail, email.gmailId, email.parts);
+                const pdfExtraction = await extractPdfTextFromParts(
+                  gmail,
+                  email.gmailId,
+                  email.parts,
+                  organizationId,
+                  resolveCoreWorkflowCorrelationId({ gmailMessageId: email.gmailId }),
+                );
+                const pdfText = pdfExtraction.textForAnalysis;
+                const pdfExtractionAudits = pdfExtraction.audits;
                 const visualAttachmentHints = await extractVisualAttachmentHints(
                   gmail,
                   email.gmailId,
@@ -2104,6 +2117,7 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                   dueDate: string | null;
                   confidence: number;
                   reasons: string[];
+                  extraction?: ReturnType<typeof summarizeExtractionAudit> | Array<ReturnType<typeof summarizeExtractionAudit>>;
                   arc: ReturnType<typeof summarizeMoneyDecision> | null;
                   sir: ReturnType<typeof summarizeSupplierDecision> | null;
                   fse: ReturnType<typeof summarizeFinancialSanityDecision> | null;
@@ -2118,6 +2132,10 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
                   dueDate: extractedFields.dueDate,
                   confidence: extractedFields.confidence,
                   reasons: extractedFields.reasons,
+                  extraction:
+                    pdfExtractionAudits.length === 1
+                      ? summarizeExtractionAudit(pdfExtractionAudits[0]!)
+                      : pdfExtractionAudits.map(summarizeExtractionAudit),
                   arc: null,
                   sir: null,
                   fse: null,
@@ -6160,31 +6178,51 @@ function decodeMimeHeader(value: string) {
   });
 }
 
-async function extractPdfTextFromParts(gmail: GmailClient, messageId: string, parts: PayloadPart[]) {
+async function extractPdfTextFromParts(
+  gmail: GmailClient,
+  messageId: string,
+  parts: PayloadPart[],
+  organizationId?: string | null,
+  correlationId?: string | null,
+) {
   const pdfParts = parts.filter(isPdfAttachmentPart);
-  const texts: string[] = [];
+  const cascadeResults = [];
   for (const part of pdfParts) {
     try {
-      const text = await extractPdfTextFromPart(gmail, messageId, part);
-      if (text) texts.push(text);
+      cascadeResults.push(await extractPdfTextFromPart(gmail, messageId, part, organizationId, correlationId));
     } catch (err) {
-      console.warn("[gmail-sync] PDF text extraction failed", err instanceof Error ? err.message : String(err));
+      console.warn("[gmail-sync] PDF extraction cascade failed", err instanceof Error ? err.message : String(err));
     }
   }
-  return texts.join("\n\n");
+  const merged = mergePdfExtractionResults(cascadeResults);
+  return {
+    text: merged.text,
+    textForAnalysis: merged.textForAnalysis,
+    audits: merged.audits,
+  };
 }
 
-async function extractPdfTextFromPart(gmail: GmailClient, messageId: string, part: PayloadPart) {
-  let parser: { getText(): Promise<{ text?: string }>; destroy(): Promise<void> } | null = null;
-  try {
-    const data = await attachmentData(gmail, messageId, part);
-    const { PDFParse } = await import("pdf-parse");
-    parser = new PDFParse({ data: new Uint8Array(decodeGmailAttachment(data)) });
-    const parsed = await parser.getText();
-    return parsed.text?.trim() ?? "";
-  } finally {
-    await parser?.destroy().catch(() => undefined);
+async function extractPdfTextFromPart(
+  gmail: GmailClient,
+  messageId: string,
+  part: PayloadPart,
+  organizationId?: string | null,
+  correlationId?: string | null,
+) {
+  const data = await attachmentData(gmail, messageId, part);
+  const buffer = decodeGmailAttachment(data);
+  const result = await extractPdfWithCascade({
+    buffer,
+    filename: part.filename ?? undefined,
+    organizationId,
+    correlationId,
+  });
+  if (result.audit.fallbackTriggered) {
+    console.log(
+      `[gmail-sync] PDF_EXTRACTION_FALLBACK message=${messageId} file="${part.filename ?? "unnamed"}" reason="${result.audit.fallbackReason ?? "unknown"}" outcome=${result.audit.outcome} vision=${result.audit.visionUsed}`
+    );
   }
+  return result;
 }
 
 async function analyzeInvoiceAttachmentForEmail(input: {
@@ -6248,13 +6286,20 @@ async function analyzeInvoiceAttachmentForEmail(input: {
     };
   }
 
-  const attachmentText = await extractPdfTextFromPart(input.gmail, input.gmailMessageId, input.part).catch((err) => {
+  const pdfCascade = await extractPdfTextFromPart(
+    input.gmail,
+    input.gmailMessageId,
+    input.part,
+    input.organizationId,
+    input.correlationId ?? resolveCoreWorkflowCorrelationId({ gmailMessageId: input.gmailMessageId }),
+  ).catch((err) => {
     console.warn(`[gmail-sync] per-PDF extraction failed message=${input.gmailMessageId} file="${input.part.filename ?? "unnamed"}"`, err instanceof Error ? err.message : String(err));
-    return "";
+    return null;
   });
+  const attachmentText = pdfCascade?.text ?? "";
   const body = [
     input.bodyText,
-    attachmentText && `--- PDF ATTACHMENT TEXT ---\n${attachmentText}`,
+    pdfCascade?.textForAnalysis && `--- PDF ATTACHMENT TEXT ---\n${pdfCascade.textForAnalysis}`,
   ].filter(Boolean).join("\n\n");
   const analysis = await analyzeEmailContent({
     subject: input.subject,
@@ -7792,7 +7837,14 @@ export async function fetchAndParseGmailMessageFinancialFields(input: {
   );
   const knownSupplierNames = await loadKnownSupplierNames(input.organizationId);
 
-  const pdfText = await extractPdfTextFromParts(input.gmail, input.gmailMessageId, attachmentParts);
+  const pdfExtraction = await extractPdfTextFromParts(
+    input.gmail,
+    input.gmailMessageId,
+    attachmentParts,
+    input.organizationId,
+    input.correlationId ?? resolveCoreWorkflowCorrelationId({ gmailMessageId: input.gmailMessageId }),
+  );
+  const pdfText = pdfExtraction.textForAnalysis;
   const visualAttachmentHints = await extractVisualAttachmentHints(
     input.gmail,
     input.gmailMessageId,

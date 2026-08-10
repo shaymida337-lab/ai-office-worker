@@ -1,0 +1,9 @@
+Invoice
+Supplier: Vendor ABC Ltd
+Issue Date: 13/04/2026
+Invoice No: MM-001
+Subtotal: 1,000.00 ILS
+VAT: 180.00 ILS
+Total amount due: 1,180.00 ILS
+Paid: 500.00 ILS
+Amount Due: 680.00 ILS

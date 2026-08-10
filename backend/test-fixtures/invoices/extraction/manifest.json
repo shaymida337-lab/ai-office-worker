@@ -1,0 +1,191 @@
+{
+  "version": "extraction-fixtures-v1",
+  "fixtures": [
+    {
+      "id": "il_hebrew_clean_001",
+      "file": "files/il_hebrew_clean_001.txt",
+      "locale": "IL",
+      "expected": {
+        "supplier": "אלפא שירותים בע״מ",
+        "issueDate": "2026-06-15",
+        "total": 1234.56,
+        "currency": "ILS",
+        "documentType": "invoice"
+      }
+    },
+    {
+      "id": "en_invoice_clean_001",
+      "file": "files/en_invoice_clean_001.txt",
+      "locale": "US",
+      "expected": {
+        "supplier": "Beta Office Supplies Ltd",
+        "issueDate": "2026-06-15",
+        "total": 118,
+        "currency": "USD",
+        "documentType": "invoice"
+      }
+    },
+    {
+      "id": "eu_decimal_comma_001",
+      "file": "files/eu_decimal_comma_001.txt",
+      "locale": "EU",
+      "expected": {
+        "supplier": "Gamma Handels GmbH",
+        "issueDate": "2026-06-18",
+        "total": 1234.56,
+        "currency": "EUR",
+        "documentType": null
+      }
+    },
+    {
+      "id": "multi_page_001",
+      "file": "files/multi_page_001.txt",
+      "locale": "IL",
+      "notes": "Page 1 supplier, page 2 total",
+      "expected": {
+        "supplier": "Vendor ABC Ltd",
+        "issueDate": "2026-04-13",
+        "total": 1180,
+        "currency": "ILS",
+        "documentType": "invoice"
+      }
+    },
+    {
+      "id": "missing_date_001",
+      "file": "files/missing_date_001.txt",
+      "locale": "IL",
+      "emailDateMustNotBecomeIssueDate": "2026-08-01",
+      "expected": {
+        "supplier": "אומיקרון הדפסות בע״מ",
+        "issueDate": null,
+        "total": 210,
+        "currency": "ILS",
+        "documentType": "invoice"
+      }
+    },
+    {
+      "id": "missing_amount_001",
+      "file": "files/missing_amount_001.txt",
+      "locale": "IL",
+      "expected": {
+        "supplier": "קסי שירותי ענן בע״מ",
+        "issueDate": "2026-06-14",
+        "total": null,
+        "currency": null,
+        "documentType": "invoice"
+      }
+    },
+    {
+      "id": "missing_supplier_001",
+      "file": "files/missing_supplier_001.txt",
+      "locale": "IL",
+      "expected": {
+        "supplier": null,
+        "issueDate": "2026-06-14",
+        "total": 150,
+        "currency": "ILS",
+        "documentType": "invoice"
+      }
+    },
+    {
+      "id": "multiple_money_fields_001",
+      "file": "files/multiple_money_fields_001.txt",
+      "locale": "IL",
+      "expected": {
+        "supplier": "Vendor ABC Ltd",
+        "issueDate": "2026-04-13",
+        "total": 1180,
+        "currency": "ILS",
+        "documentType": "invoice"
+      }
+    },
+    {
+      "id": "credit_note_001",
+      "file": "files/credit_note_001.txt",
+      "locale": "IL",
+      "expected": {
+        "supplier": "אפסילון לוגיסטיקה בע״מ",
+        "issueDate": "2026-06-08",
+        "total": 120,
+        "currency": "ILS",
+        "documentType": "credit_note"
+      }
+    },
+    {
+      "id": "buyer_vs_supplier_001",
+      "file": "files/buyer_vs_supplier_001.txt",
+      "locale": "US",
+      "senderMustNotBecomeSupplier": "accounts@agency.com",
+      "expected": {
+        "supplier": "Vendor ABC Ltd",
+        "buyer": "Shay Business Ltd",
+        "issueDate": "2026-04-13",
+        "total": 1180,
+        "currency": "USD",
+        "documentType": "invoice"
+      }
+    },
+    {
+      "id": "garbled_native_fallback_001",
+      "file": "files/garbled_native_fallback_001.txt",
+      "locale": "IL",
+      "notes": "Represents post-fallback recovered text, not raw garbled bytes",
+      "expected": {
+        "supplier": "Scanned Vendor Ltd",
+        "issueDate": "2026-04-13",
+        "total": 1180,
+        "currency": "ILS",
+        "documentType": null
+      }
+    },
+    {
+      "id": "no_currency_001",
+      "file": "files/no_currency_001.txt",
+      "locale": "IL",
+      "expected": {
+        "supplier": "למבדא שירותים",
+        "issueDate": "2026-05-01",
+        "total": 500,
+        "currency": "ILS",
+        "documentType": null
+      }
+    },
+    {
+      "id": "ambiguous_date_001",
+      "file": "files/ambiguous_date_001.txt",
+      "locale": "US",
+      "expected": {
+        "supplier": "Delta LLC",
+        "issueDate": "2026-04-03",
+        "total": 250,
+        "currency": null,
+        "documentType": "invoice"
+      }
+    },
+    {
+      "id": "sender_differs_supplier_001",
+      "file": "files/sender_differs_supplier_001.txt",
+      "locale": "US",
+      "senderMustNotBecomeSupplier": "Billing Team",
+      "expected": {
+        "supplier": "Vendor ABC Ltd",
+        "issueDate": "2026-04-13",
+        "total": 1180,
+        "currency": "USD",
+        "documentType": "invoice"
+      }
+    },
+    {
+      "id": "uk_gbp_001",
+      "file": "files/uk_gbp_001.txt",
+      "locale": "UK",
+      "expected": {
+        "supplier": "Omega Services Ltd",
+        "issueDate": "2026-07-01",
+        "total": 960,
+        "currency": null,
+        "documentType": "invoice"
+      }
+    }
+  ]
+}

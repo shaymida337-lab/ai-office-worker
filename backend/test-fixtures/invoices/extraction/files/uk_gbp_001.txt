@@ -1,0 +1,7 @@
+Invoice
+Supplier: Omega Services Ltd
+Invoice date: 01/07/2026
+Document number: UK-001
+Net amount £813.56
+VAT 20% £162.71
+Total amount due £960.00 GBP

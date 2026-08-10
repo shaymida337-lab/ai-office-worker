@@ -1,0 +1,6 @@
+Supplier: Vendor ABC Ltd
+Invoice number: MP-1001
+Issue date: 13/04/2026
+Subtotal before VAT: 1,000.00 ILS
+VAT 18%: 180.00 ILS
+Total amount due 1,180.00 ILS

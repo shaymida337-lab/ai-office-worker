@@ -1,0 +1,8 @@
+Invoice
+Supplier name: Beta Office Supplies Ltd
+Invoice date: 2026-06-15
+Document number: EXT-EN-001
+Consulting retainer — June
+Subtotal 100.00
+VAT 18.00
+Total amount due $118.00 USD

@@ -1,0 +1,5 @@
+Invoice
+Supplier: Delta LLC
+Invoice date: 03/04/2026
+Document number: AMB-001
+Total amount due 250.00
