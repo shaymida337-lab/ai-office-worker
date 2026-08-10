@@ -38,6 +38,7 @@ export function BottomNavigation({ items }: { items: BottomNavItem[] }) {
   const moreItems = useMemo(
     () => [
       { id: "invoices", label: t("globalNav.invoices"), href: "/dashboard/invoices" },
+      { id: "invoiceDrafts", label: "טיוטות חשבונית", href: "/dashboard/invoice-drafts" },
       { id: "payments", label: t("globalNav.payments"), href: "/payments" },
       { id: "reports", label: t("globalNav.reports"), href: "/reports" },
       { id: "settings", label: t("globalNav.settings"), href: "/dashboard/settings" },
