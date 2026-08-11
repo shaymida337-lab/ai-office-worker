@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { config, hasClaude } from "../lib/config.js";
 import { parseLabeledAmount } from "./amount/parseAmount.js";
-import { clampBusinessDateString } from "./dates/businessDate.js";
+import { clampBusinessDateString, DEFAULT_HISTORICAL_SCAN_YEARS } from "./dates/businessDate.js";
 import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 
 export type InvoiceStatus = "paid" | "pending" | "overdue" | "needs_review";
@@ -63,9 +63,13 @@ export async function extractInvoiceData(
   emailBody: string,
   subject: string,
   attachments: AttachmentSummary[],
-  clientFallback?: { name?: string | null; email?: string | null }
+  clientFallback?: { name?: string | null; email?: string | null },
+  // עומק היסטורי דינמי: תאריכים עד `maxPastYears` שנים אחורה נחשבים תקינים.
+  // מגיע מ-organization.historicalScanYears; ברירת מחדל 2 שנים.
+  options?: { maxPastYears?: number }
 ): Promise<InvoiceData> {
-  const fallback = fallbackInvoiceData(emailBody, subject, attachments, clientFallback);
+  const maxPastYears = options?.maxPastYears ?? DEFAULT_HISTORICAL_SCAN_YEARS;
+  const fallback = fallbackInvoiceData(emailBody, subject, attachments, clientFallback, maxPastYears);
   if (!anthropic) return fallback;
 
   const prompt = `Extract invoice details from this email. Return JSON only, no markdown.
@@ -94,7 +98,7 @@ supplierName is the supplier/vendor/issuer business that issued the invoice, NOT
       );
       return fallback;
     }
-    return normalizeInvoiceData(validated.data as Record<string, unknown>, fallback, clientFallback);
+    return normalizeInvoiceData(validated.data as Record<string, unknown>, fallback, clientFallback, maxPastYears);
   } catch (err) {
     console.error("[invoiceExtractor] AI extraction failed, using fallback", err);
     return fallback;
@@ -104,11 +108,12 @@ supplierName is the supplier/vendor/issuer business that issued the invoice, NOT
 function normalizeInvoiceData(
   parsed: Record<string, unknown>,
   fallback: InvoiceData,
-  clientFallback?: { name?: string | null; email?: string | null }
+  clientFallback?: { name?: string | null; email?: string | null },
+  maxPastYears: number = DEFAULT_HISTORICAL_SCAN_YEARS
 ): InvoiceData {
-  // F4: גם תאריכים שמגיעים מתשובת המודל עוברים את גבול ±2 השנים המשותף.
-  const date = clampBusinessDateString(normalizeDate(firstString(parsed, ["date", "invoiceDate"]))) ?? fallback.date;
-  const dueDate = clampBusinessDateString(normalizeDate(firstString(parsed, ["dueDate", "due_date"]))) ?? fallback.dueDate;
+  // F4: תאריכים מתשובת המודל עוברים את גבול העבר הדינמי (עד maxPastYears שנים).
+  const date = clampBusinessDateString(normalizeDate(firstString(parsed, ["date", "invoiceDate"])), maxPastYears) ?? fallback.date;
+  const dueDate = clampBusinessDateString(normalizeDate(firstString(parsed, ["dueDate", "due_date"])), maxPastYears) ?? fallback.dueDate;
   const parsedAmount = firstNumber(parsed, ["amount", "total", "sum", "totalAmount", "amountDue", "balanceDue"]);
   const hasParsedPositiveAmount = parsedAmount !== null && parsedAmount > 0;
   const amountMissing = hasParsedPositiveAmount ? false : fallback.amountMissing;
@@ -122,7 +127,7 @@ function normalizeInvoiceData(
   //   • שם ספק קיים ותקף (לא placeholder/זבל).
   // אם אחד מהם חסר/לא תקין — הרשומה מנותבת ל-needs_review במקום להישמר בשקט.
   const amountValid = !amountMissing && typeof amount === "number" && amount > 0;
-  const documentDateValid = clampBusinessDateString(date) !== null;
+  const documentDateValid = clampBusinessDateString(date, maxPastYears) !== null;
   const supplierValid = hasValidExtractedSupplier(supplierName);
   const coreFieldsValid = amountValid && documentDateValid && supplierValid;
 
@@ -146,21 +151,22 @@ function fallbackInvoiceData(
   emailBody: string,
   subject: string,
   attachments: AttachmentSummary[],
-  clientFallback?: { name?: string | null; email?: string | null }
+  clientFallback?: { name?: string | null; email?: string | null },
+  maxPastYears: number = DEFAULT_HISTORICAL_SCAN_YEARS
 ): InvoiceData {
   const text = `${subject}\n${emailBody}`;
   const amount = extractAmount(text);
   const hasExplicitZeroAmount = hasExplicitZeroInvoiceTotal(text);
   const amountMissing = amount === null && !hasExplicitZeroAmount;
   const supplierName = null;
-  const documentDate = clampBusinessDateString(extractDate(text)) ?? new Date().toISOString().slice(0, 10);
+  const documentDate = clampBusinessDateString(extractDate(text), maxPastYears) ?? new Date().toISOString().slice(0, 10);
   // תיקון #2 — אותה אכיפת ליבה גם במסלול ה-fallback הדטרמיניסטי: אין דרך
   // לאמת ספק מתוך regex בלבד (supplierName תמיד null), לכן חילוץ fallback
   // מנותב תמיד ל-needs_review ולא נשמר בשקט כ-paid/pending.
   const coreFieldsValid =
     !amountMissing &&
     (amount ?? 0) > 0 &&
-    clampBusinessDateString(documentDate) !== null &&
+    clampBusinessDateString(documentDate, maxPastYears) !== null &&
     hasValidExtractedSupplier(supplierName);
   return {
     clientName: clientFallback?.name ?? null,

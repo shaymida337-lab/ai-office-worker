@@ -5,6 +5,7 @@ import { extractInvoiceData } from "./invoiceExtractor.js";
 import { saveInvoiceToDrive } from "./driveOrganizer.js";
 import { logInvoiceToSheets } from "./clientSheetsService.js";
 import { evaluateFinancialSideEffectGate } from "./amount/invoiceCompleteness.js";
+import { clampHistoricalScanYears } from "./dates/businessDate.js";
 
 const INVOICE_KEYWORDS = [
   "חשבונית", "invoice", "receipt", "קבלה", "תשלום", "payment", "חשבון", "billing", "הצעת מחיר", "quote", "הזמנה", "order",
@@ -67,6 +68,12 @@ export async function scanForInvoices(clientId: string, options: ScanOptions = {
 
 async function runInvoiceScanForClient(clientId: string, client: ClientForInvoiceScan, options: ScanOptions = {}) {
   const organizationId = client.organizationId;
+  // עומק היסטורי של הטננט — תאריכים עד N שנים אחורה נחשבים תקינים בחילוץ.
+  const orgScanSettings = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { historicalScanYears: true },
+  });
+  const maxPastYears = clampHistoricalScanYears(orgScanSettings?.historicalScanYears);
   const { gmail, drive } = await getGoogleClientsForClient(clientId);
   const messages = await listInvoiceMessages(gmail, options.daysBack ?? 30, options.limit ?? 50);
   const errors: Array<{ emailId?: string; error: string }> = [];
@@ -102,7 +109,8 @@ async function runInvoiceScanForClient(clientId: string, client: ClientForInvoic
         bodyForExtraction,
         subject,
         parts.map((part) => ({ filename: part.filename, mimeType: part.mimeType })),
-        { name: client.name, email: getClientDeliverableEmail(client) ?? undefined }
+        { name: client.name, email: getClientDeliverableEmail(client) ?? undefined },
+        { maxPastYears }
       );
       invoice.pdfAttachment = attachments[0]?.buffer;
 

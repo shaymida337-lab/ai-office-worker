@@ -72,7 +72,7 @@ import {
   toApiGmailScanStatus,
 } from "../services/gmailScanLifecycle.js";
 import { resolveDocumentsFound } from "../services/gmailScanProgressCounts.js";
-import { isWithinBusinessDateWindow } from "../services/dates/businessDate.js";
+import { isWithinBusinessDateWindow, clampHistoricalScanYears, HISTORICAL_SCAN_YEARS_VALUES } from "../services/dates/businessDate.js";
 import { resolveDriveLink } from "../services/drive/driveLinkResolver.js";
 import { presentedReviewStatus, reviewCandidateStatusesForTab } from "../services/reviewStatusPolicy.js";
 import { MAX_REASONABLE_FINANCIAL_AMOUNT } from "../services/financialAmountLimits.js";
@@ -269,6 +269,49 @@ apiRouter.get("/organization/settings", async (req, res) => {
 
 apiRouter.put("/organization/settings", requirePerm("organization.settings"), async (req, res) => {
   res.json(await updateOrganizationBusinessSettings(req.auth!.organizationId, req.body as Record<string, unknown>));
+});
+
+// User / Tenant settings — Historical Scan Depth onboarding feature.
+apiRouter.get("/settings", async (req, res) => {
+  const organization = await prisma.organization.findUnique({
+    where: { id: req.auth!.organizationId },
+    select: { historicalScanYears: true, initialBackfillCompleted: true },
+  });
+  res.json({
+    historicalScanYears: clampHistoricalScanYears(organization?.historicalScanYears),
+    initialBackfillCompleted: organization?.initialBackfillCompleted ?? false,
+  });
+});
+
+apiRouter.patch("/settings", requirePerm("organization.settings"), async (req, res) => {
+  const body = (req.body ?? {}) as { historicalScanYears?: unknown; initialBackfillCompleted?: unknown };
+  const data: { historicalScanYears?: number; initialBackfillCompleted?: boolean } = {};
+
+  if (body.historicalScanYears !== undefined) {
+    const raw = Number(body.historicalScanYears);
+    if (!HISTORICAL_SCAN_YEARS_VALUES.includes(raw as (typeof HISTORICAL_SCAN_YEARS_VALUES)[number])) {
+      res.status(400).json({ error: "historicalScanYears must be one of 1, 2, 3, 4, 5" });
+      return;
+    }
+    data.historicalScanYears = raw;
+  }
+  if (typeof body.initialBackfillCompleted === "boolean") {
+    data.initialBackfillCompleted = body.initialBackfillCompleted;
+  }
+  if (Object.keys(data).length === 0) {
+    res.status(400).json({ error: "No valid settings provided (historicalScanYears / initialBackfillCompleted)" });
+    return;
+  }
+
+  const updated = await prisma.organization.update({
+    where: { id: req.auth!.organizationId },
+    data,
+    select: { historicalScanYears: true, initialBackfillCompleted: true },
+  });
+  res.json({
+    historicalScanYears: clampHistoricalScanYears(updated.historicalScanYears),
+    initialBackfillCompleted: updated.initialBackfillCompleted,
+  });
 });
 
 apiRouter.get("/settings/business-profile", async (req, res) => {

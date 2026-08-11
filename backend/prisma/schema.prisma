@@ -45,6 +45,8 @@ model Organization {
   businessSize                      String?   @map("business_size")
   mainBusinessPain                  String?   @map("main_business_pain")
   onboardingCompleted               Boolean   @default(true) @map("onboarding_completed")
+  historicalScanYears               Int       @default(2) @map("historical_scan_years")
+  initialBackfillCompleted          Boolean   @default(false) @map("initial_backfill_completed")
   accountantEmail                   String?
   accountantName                    String?
   businessName                      String?

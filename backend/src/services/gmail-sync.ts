@@ -16,7 +16,7 @@ import {
 import { appendSupplierPaymentToSheet, hasSupplierPaymentSheetRowData } from "./supplierPaymentsSheet.js";
 import { isLikelyJunkSupplierName } from "./supplierNameValidation.js";
 import { GENERIC_SENDER_TOKENS } from "./supplier/supplierValidation.js";
-import { normalizeBusinessDate } from "./dates/businessDate.js";
+import { clampHistoricalScanYears, normalizeBusinessDate } from "./dates/businessDate.js";
 import { notifyNewInvoice } from "./whatsapp.js";
 import { financialDocumentBlockingReason, recordFinancialDocumentDecision } from "./financialDocuments.js";
 import { classifyJunk, shouldAutoClassifyAfterJunkFilter } from "./classification/junkFilter.js";
@@ -135,6 +135,16 @@ import {
 const MAX_MESSAGES_PER_SYNC = 500;
 const MAX_MESSAGES_PER_RESCAN = 1_000;
 const MAX_MESSAGES_PER_QUICK_SCAN = 25;
+// Historical Scan Depth: rolling window used for ongoing syncs once the initial
+// historical backfill has completed (fast, recent-only).
+const ONGOING_SYNC_DAYS_BACK = 30;
+
+/** Backfill start date = now − historicalScanYears (for the Gmail `after:` filter). */
+function historicalBackfillStartDate(years: number): Date {
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - clampHistoricalScanYears(years));
+  return start;
+}
 const MAX_MESSAGES_PER_FAST_SCAN = 20;
 const GMAIL_SCAN_BATCH_SIZE = 10;
 const GMAIL_PROGRESS_FETCH_EMAIL_INTERVAL = 25;
@@ -806,9 +816,33 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
     logStep(`[gmail-sync] pending Drive retry skipped reason="${err instanceof Error ? err.message : String(err)}"`);
   }
 
+  // === Historical Scan Depth (onboarding) ===
+  // First connect: backfill up to historicalScanYears (1–5) via `after:YYYY/MM/DD`,
+  // then flip initialBackfillCompleted so subsequent syncs use a fast rolling window.
+  const scanSettings = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { historicalScanYears: true, initialBackfillCompleted: true },
+  });
+  const historicalScanYears = clampHistoricalScanYears(scanSettings?.historicalScanYears);
+  const callerSpecifiedWindow = Boolean(options.since || options.daysBack);
+  const runningInitialBackfill = !scanSettings?.initialBackfillCompleted && !callerSpecifiedWindow;
+
   const initialWindow = options.isFirstTime && !options.since && !options.daysBack ? initialConnectScanWindow() : null;
-  const daysBack = initialWindow?.daysBack ?? options.daysBack ?? 90;
-  const since = options.since ?? initialWindow?.since;
+  let daysBack: number;
+  let since: Date | undefined;
+  if (runningInitialBackfill) {
+    since = historicalBackfillStartDate(historicalScanYears);
+    daysBack = historicalScanYears * 365;
+    logStep(`[gmail-sync] INITIAL_BACKFILL years=${historicalScanYears} startDate=${since.toISOString().slice(0, 10)}`);
+  } else if (scanSettings?.initialBackfillCompleted && !callerSpecifiedWindow && !options.isFirstTime) {
+    // Ongoing sync: fast rolling window for performance.
+    daysBack = ONGOING_SYNC_DAYS_BACK;
+    since = undefined;
+    logStep(`[gmail-sync] ONGOING_SYNC rolling window ${ONGOING_SYNC_DAYS_BACK}d`);
+  } else {
+    daysBack = initialWindow?.daysBack ?? options.daysBack ?? 90;
+    since = options.since ?? initialWindow?.since;
+  }
   const scanMode = options.scanMode ?? (options.isFirstTime ? "first_time" : "manual");
   if (options.forceReprocess) {
     logStep(`[gmail-sync] Force reprocess enabled for ${daysBack} day scan`);
@@ -3542,6 +3576,14 @@ async function runGmailSyncForOrganization(organizationId: string, options: Gmai
 
     if (syncTrace) {
       completeCoreWorkflowStage(syncTrace, "sync_run", "completed", { health: "Healthy" });
+    }
+    // Historical Scan Depth: once the initial backfill run finishes successfully,
+    // mark it done so future syncs use the fast rolling window.
+    if (runningInitialBackfill) {
+      await prisma.organization
+        .update({ where: { id: organizationId }, data: { initialBackfillCompleted: true } })
+        .then(() => logStep(`[gmail-sync] INITIAL_BACKFILL_COMPLETED org=${organizationId}`))
+        .catch((err) => logStep(`[gmail-sync] initialBackfillCompleted update failed: ${err instanceof Error ? err.message : String(err)}`));
     }
     return {
       emailsProcessed,

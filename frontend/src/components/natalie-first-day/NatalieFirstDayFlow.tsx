@@ -47,6 +47,7 @@ import {
   NatalieFirstDayShell,
   NatalieOnboardingChoiceCard,
 } from "./NatalieFirstDayShell";
+import { HistoricalScanSelector } from "./HistoricalScanSelector";
 import {
   ONBOARDING_EXIT_TRANSITION_STEPS,
   ONBOARDING_HELP_OPTIONS,
@@ -99,6 +100,8 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
+  // עומק הסריקה ההיסטורית שנבחר; נשמר ל-PATCH /api/settings לפני חיבור Gmail.
+  const [historicalScanYears, setHistoricalScanYears] = useState<1 | 2 | 3 | 4 | 5>(2);
   const [hydrated, setHydrated] = useState(false);
   const [redirectingToDashboard, setRedirectingToDashboard] = useState(false);
   const prepStartedRef = useRef(false);
@@ -204,6 +207,13 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
     apiFetch<{ connected?: boolean }>("/api/whatsapp/status")
       .then((status) => setWhatsappConnected(Boolean(status.connected)))
       .catch(() => setWhatsappConnected(false));
+    // טוענים את עומק הסריקה ההיסטורית השמור (אם קיים) כדי לשקף אותו בבורר.
+    apiFetch<{ historicalScanYears?: number }>("/api/settings")
+      .then((settings) => {
+        const years = Number(settings.historicalScanYears);
+        if ([1, 2, 3, 4, 5].includes(years)) setHistoricalScanYears(years as 1 | 2 | 3 | 4 | 5);
+      })
+      .catch(() => {});
   }, [hydrated, step]);
 
   useEffect(() => {
@@ -338,11 +348,21 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
     router.push(exitDestination);
   }, [exitDestination, exitTransitionDone, router]);
 
-  const connectGmail = () => {
+  const connectGmail = async () => {
     const token = getToken();
     if (!token) {
       router.push(`/login?next=${encodeURIComponent("/onboarding")}`);
       return;
+    }
+    // שומרים את עומק הסריקה ההיסטורית שנבחר *לפני* הפעלת ה-OAuth/סריקת Gmail,
+    // כך שסבב הסריקה הראשוני (backfill) ישתמש בעומק הנכון. כשל בשמירה אינו חוסם.
+    try {
+      await apiFetch("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ historicalScanYears }),
+      });
+    } catch (err) {
+      console.warn("[onboarding] failed to persist historicalScanYears before gmail connect", err);
     }
     console.log("[onboarding] gmail oauth start returnTo=/onboarding");
     const returnTo = encodeURIComponent("/onboarding");
@@ -378,7 +398,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
   const handleIntegrationConnect = (id: (typeof ONBOARDING_INTEGRATIONS)[number]["id"]) => {
     setError("");
     if (id === "gmail" || id === "drive") {
-      connectGmail();
+      void connectGmail();
       return;
     }
     if (id === "calendar") {
@@ -582,6 +602,7 @@ export function NatalieFirstDayFlow({ onComplete }: { onComplete: () => void }) 
           <h2 className="text-2xl font-extrabold text-slate-900">בואו נחבר את נטלי לעבודה שלך</h2>
           <NatalieFirstDayMicrocopy>רק השירותים שכבר זמינים היום. אפשר לחבר עכשיו או אחר כך מההגדרות.</NatalieFirstDayMicrocopy>
         </div>
+        <HistoricalScanSelector value={historicalScanYears} onChange={setHistoricalScanYears} />
         <div className="grid gap-3">
           {ONBOARDING_INTEGRATIONS.map((integration) => {
             const Icon = INTEGRATION_ICONS[integration.id];
